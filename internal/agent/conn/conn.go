@@ -48,6 +48,10 @@ type Credentials struct {
 	// Simulated is the machine a simulated node stands for, whose policy
 	// (hostsim) decides what the connection serves; nil is a real node.
 	Simulated *hostsim.Host
+	// EnginePorts is this node's own engine port range (--engine-ports). It
+	// replaces the range a state sync carries and is reported to the server,
+	// which then allocates this node's ports from it. Nil follows the server.
+	EnginePorts *proto.PortRange
 }
 
 // RejectError is returned when the server explicitly rejects a handshake.
@@ -179,6 +183,10 @@ func New(creds Credentials, onReg OnRegistered, handlers Handlers, prober gpu.Pr
 	}
 	c := &Conn{creds: creds, log: log, onReg: onReg, handlers: handlers, prober: prober}
 	c.initConnectionObservation()
+	if creds.EnginePorts != nil {
+		r := *creds.EnginePorts
+		c.enginePorts.Store(&r)
+	}
 	return c
 }
 
@@ -474,6 +482,7 @@ func (c *Conn) reportStatus(ctx context.Context) {
 			network.Tools = h.NetworkTools()
 		}
 		network.EnginePortListeners = c.enginePortListeners()
+		network.EnginePortRange = c.creds.EnginePorts
 		if p, ok := c.prober.(gpu.AcceleratorPortProber); ok && cliAnswered {
 			network.AcceleratorPorts = p.AcceleratorPorts(ctx)
 		}

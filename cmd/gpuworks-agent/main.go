@@ -193,7 +193,15 @@ func run(log *slog.Logger, args []string) error {
 	fs.BoolVar(&cfg.DataLane, "data-lane", true, "open a dedicated high-throughput data lane (disable for single-connection proxies)")
 	fs.StringVar(&cfg.DCGM, "dcgm", cfg.DCGM, "optional DCGM SM-occupancy probe: off (default) | auto (opt in; enables only when dcgmi is on PATH)")
 	imagePullMaxConns := fs.Int("image-pull-max-connections", 0, "most simultaneous connections a runveil (udocker) image pull may open to one registry host (0 = automatic, up to "+strconv.Itoa(udockernative.DefaultMaxConnections)+"; 1 = one connection; at most "+strconv.Itoa(udockernative.MaxConnectionsLimit)+")")
+	enginePorts := fs.String("engine-ports", os.Getenv("GPUWORKS_ENGINE_PORTS"), "this node's own engine port range START-END (default: the server's)")
 	_ = fs.Parse(args)
+	if strings.TrimSpace(*enginePorts) != "" {
+		r, err := proto.ParsePortRange(*enginePorts)
+		if err != nil {
+			return fmt.Errorf("--engine-ports: %w", err)
+		}
+		cfg.EnginePorts = &r
+	}
 	if *imagePullMaxConns < 0 || *imagePullMaxConns > udockernative.MaxConnectionsLimit {
 		return fmt.Errorf("--image-pull-max-connections must be between 0 (automatic) and %d, got %d", udockernative.MaxConnectionsLimit, *imagePullMaxConns)
 	}

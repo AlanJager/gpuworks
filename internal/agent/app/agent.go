@@ -72,6 +72,9 @@ type Config struct {
 	// RegistryProbe ranks an image's registries for every pull. Nil probes
 	// the real registries, or none when Driver is injected (a test harness).
 	RegistryProbe *registryprobe.Prober
+	// EnginePorts is this node's own engine port range (--engine-ports); nil
+	// uses the server's.
+	EnginePorts *proto.PortRange
 }
 
 // Agent owns the reconnect lifecycle.
@@ -188,6 +191,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			ConnectMode: connectMode(a.cfg.ConnectMode),
 			DataLane:    a.cfg.DataLane,
 			Simulated:   a.cfg.SimulatedHost,
+			EnginePorts: a.cfg.EnginePorts,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			nodeUUID = uuid
@@ -270,6 +274,7 @@ func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, 
 			NodeToken:   nodeToken,
 			ConnectMode: "server_dial",
 			Simulated:   a.cfg.SimulatedHost,
+			EnginePorts: a.cfg.EnginePorts,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			*nodeUUID = uuid
