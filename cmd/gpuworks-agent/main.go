@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -33,6 +34,8 @@ import (
 	agentapp "gpuworks.ai/gpuworks/internal/agent/app"
 	agentconn "gpuworks.ai/gpuworks/internal/agent/conn"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
 	recordingruntime "gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
 	udockernative "gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
@@ -67,6 +70,12 @@ func main() {
 			log.Error("agent exited", "err", err)
 			os.Exit(1)
 		}
+	case "hold":
+		// What a kube node's hold pod runs: nothing, for as long as the pod
+		// keeps a card borrowed from the kubelet.
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		<-ctx.Done()
+		stop()
 	case "smoke":
 		if err := smoke(log, os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("agent smoke failed", "err", err)
@@ -213,6 +222,17 @@ func run(log *slog.Logger, args []string) error {
 	conf, stateDir, _, err := launch.resolve(os.Getenv)
 	if err != nil {
 		return safeAgentConfigurationError(err)
+	}
+	if strings.TrimSpace(conf.Token) == "" && strings.EqualFold(conf.RuntimeDriver, kube.DriverName) {
+		// An agent of a cluster's DaemonSet starts without a node token and
+		// trades the cluster's enrollment token for one.
+		ectx, estop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		id, err := enrollKubeNode(ectx, log, agentapp.Config{ServerURL: conf.Server, StateDir: stateDir})
+		estop()
+		if err != nil {
+			return err
+		}
+		conf.Token, cfg.KubeIdleReturn = id.NodeToken, id.IdleReturn()
 	}
 	if err := conf.Validate(); err != nil {
 		return safeAgentConfigurationError(err)
@@ -565,5 +585,37 @@ func logLevel() slog.Level {
 		return slog.LevelWarn
 	default:
 		return slog.LevelInfo
+	}
+}
+
+// enrollKubeNode makes an agent of a cluster's DaemonSet a node: it trades
+// the cluster's enrollment token for this node's token, retrying until the
+// server answers, since the DaemonSet may be applied before the server can
+// be reached.
+func enrollKubeNode(ctx context.Context, log *slog.Logger, cfg agentapp.Config) (kube.Identity, error) {
+	enrollToken := strings.TrimSpace(os.Getenv("GPUWORKS_KUBE_ENROLL_TOKEN"))
+	nodeName := strings.TrimSpace(os.Getenv("GPUWORKS_KUBE_NODE_NAME"))
+	if enrollToken == "" || nodeName == "" {
+		return kube.Identity{}, fmt.Errorf("--driver=kube without --token needs GPUWORKS_KUBE_ENROLL_TOKEN and GPUWORKS_KUBE_NODE_NAME (the DaemonSet manifest sets them)")
+	}
+	api, err := kubeapi.InCluster()
+	if err != nil {
+		return kube.Identity{}, err
+	}
+	httpc := &http.Client{Timeout: 30 * time.Second}
+	delay := 2 * time.Second
+	for {
+		id, err := kube.Enroll(ctx, api, httpc, cfg.ServerURL, enrollToken, nodeName, cfg.StateDir)
+		if err == nil {
+			log.Info("enrolled as a Kubernetes node", "node", nodeName, "uuid", id.NodeUUID)
+			return id, nil
+		}
+		log.Warn("enrollment failed; retrying", "err", err, "in", delay.String())
+		select {
+		case <-ctx.Done():
+			return kube.Identity{}, ctx.Err()
+		case <-time.After(delay):
+		}
+		delay = min(2*delay, time.Minute)
 	}
 }

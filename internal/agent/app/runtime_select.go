@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	dockerdrv "gpuworks.ai/gpuworks/internal/agent/runtime/docker"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
 	nerdctldrv "gpuworks.ai/gpuworks/internal/agent/runtime/nerdctl"
 	udockerdrv "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -144,10 +145,21 @@ func detectDriverWaiting(log *slog.Logger, baseDir, force string, prober gpu.Pro
 	case hostproc.DriverName:
 		log.Info("runtime driver forced", "driver", hostproc.DriverName)
 		return runtimeSelection{driver: hostproc.New(baseDir)}
+	case kube.DriverName:
+		d, err := kube.FromEnvironment(cardUUIDs(prober), log)
+		if err == nil {
+			_, err = d.Detect(ctx)
+		}
+		if err != nil {
+			log.Error("kube runtime unavailable", "err", err)
+			return runtimeSelection{}
+		}
+		log.Info("runtime driver forced", "driver", kube.DriverName)
+		return runtimeSelection{driver: d}
 	case "":
 		// auto-detect below
 	default:
-		log.Error("invalid runtime driver", "driver", force, "allowed", "docker|udocker|nerdctl|host|none")
+		log.Error("invalid runtime driver", "driver", force, "allowed", "docker|udocker|nerdctl|host|kube|none")
 		return runtimeSelection{}
 	}
 	candidates := []struct {
@@ -382,5 +394,26 @@ func (n *NodeRuntime) recheckRuntimeFallback(ctx context.Context) {
 	}
 	if err := n.applyAutoRuntime(ctx, true); err != nil {
 		n.log.Warn("runtime fallback recheck failed", "err", err)
+	}
+}
+
+// cardUUIDs maps the node's card indexes to their UUIDs, which is how the
+// kube runtime matches a card to what the kubelet's device plugin calls it.
+func cardUUIDs(prober gpu.Prober) func(context.Context) (map[int]string, error) {
+	return func(ctx context.Context) (map[int]string, error) {
+		if prober == nil {
+			return map[int]string{}, nil
+		}
+		gpus, err := prober.Probe(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make(map[int]string, len(gpus))
+		for _, g := range gpus {
+			if g.Index >= 0 && g.UUID != "" {
+				out[g.Index] = g.UUID
+			}
+		}
+		return out, nil
 	}
 }

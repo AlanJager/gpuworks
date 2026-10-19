@@ -28,7 +28,7 @@ func newLaunchFlags(fs *flag.FlagSet) *launchFlags {
 	fs.StringVar(&l.conf.Token, "token", "", "per-node connection token")
 	fs.StringVar(&l.conf.ConnectMode, "connect-mode", "", "connect mode: agent_dial | server_dial")
 	fs.StringVar(&l.conf.Listen, "listen", "", "server_dial listen address (default "+agentconf.DefaultListen+")")
-	fs.StringVar(&l.conf.RuntimeDriver, "driver", "", "force runtime driver: docker | udocker | nerdctl | host | none")
+	fs.StringVar(&l.conf.RuntimeDriver, "driver", "", "force runtime driver: docker | udocker | nerdctl | host | kube | none")
 	return l
 }
 
