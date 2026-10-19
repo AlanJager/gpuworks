@@ -565,3 +565,17 @@ const WarningBatchModelWaits = "BATCH_MODEL_WAITS"
 // ErrorServerStorageFull answers any request whose write failed because the
 // server's disk is full (store.IsStorageFull), whichever handler it reached.
 const ErrorServerStorageFull = "SERVER_STORAGE_FULL"
+
+// Kubernetes cluster codes (/kube/clusters, /kube/enroll).
+const (
+	// ErrorKubeClusterInvalid: a cluster parameter cannot be used
+	// ({field}, {reason}).
+	ErrorKubeClusterInvalid = "KUBE_CLUSTER_INVALID"
+	// ErrorKubeClusterNameTaken: another cluster already has {name}.
+	ErrorKubeClusterNameTaken = "KUBE_CLUSTER_NAME_TAKEN"
+	// ErrorKubeClusterHasNodes: the cluster still has nodes; remove them first.
+	ErrorKubeClusterHasNodes = "KUBE_CLUSTER_HAS_NODES"
+	// ErrorKubeEnrollRefused: the enrollment token is unknown, revoked or
+	// belongs to another cluster ({reason}: unknown_token | other_cluster).
+	ErrorKubeEnrollRefused = "KUBE_ENROLL_REFUSED"
+)

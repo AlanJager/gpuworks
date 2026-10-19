@@ -96,6 +96,7 @@ DELETE /api/v1/image-series/{id}
 DELETE /api/v1/images/{id}
 DELETE /api/v1/images/{id}/nodes/{uuid}
 DELETE /api/v1/inference-templates/spec
+DELETE /api/v1/kube/clusters/{uuid}
 DELETE /api/v1/models/{id}
 DELETE /api/v1/models/{id}/nodes/{uuid}
 DELETE /api/v1/models/{id}/storages/{storage_id}
@@ -184,6 +185,8 @@ GET /api/v1/instances/{uuid}
 GET /api/v1/instances/{uuid}/events
 GET /api/v1/instances/{uuid}/launch-facts
 GET /api/v1/instances/{uuid}/logs
+GET /api/v1/kube/clusters
+GET /api/v1/kube/clusters/{uuid}/manifest
 GET /api/v1/logs/context
 GET /api/v1/logs/histogram
 GET /api/v1/logs/search
@@ -256,6 +259,7 @@ GET /api/v1/updates
 GET /api/v1/usage-report
 GET /api/v1/usage-report/preview
 GET /healthz
+GET /kube/manifest.yaml
 PATCH /api/v1/ai/configs/{id}
 PATCH /api/v1/branding
 PATCH /api/v1/images/versions/{id}
@@ -325,6 +329,9 @@ POST /api/v1/inference-templates/sync
 POST /api/v1/instances/{uuid}/restart
 POST /api/v1/instances/{uuid}/sleep
 POST /api/v1/instances/{uuid}/wake
+POST /api/v1/kube/clusters
+POST /api/v1/kube/clusters/{uuid}/revoke
+POST /api/v1/kube/enroll
 POST /api/v1/mcp
 POST /api/v1/models
 POST /api/v1/models/local

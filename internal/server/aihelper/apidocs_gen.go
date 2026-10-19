@@ -73,6 +73,8 @@ var routeDocs = map[string]string{
 	"/api/v1/instances/{}/events":               "实例事件时间线（最新优先、游标分页、读取时折叠）",
 	"/api/v1/instances/{}/launch-facts":         "实例启动事实三层投影（intent/resolved/runtime observation，unknown 不降级，敏感文本脱敏）",
 	"/api/v1/instances/{}/logs":                 "实例容器日志（SSE，经 agent logtail 隧道）",
+	"/api/v1/kube/clusters":                     "集群列表：`{items:[{uuid,name,namespace,server_url,agent_image,node_selector,runtime_class,containerd_socket,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还",
+	"/api/v1/kube/clusters/{}/manifest":         "集群的 manifest（`application/yaml`）",
 	"/api/v1/logs/context":                      "单条命中的上下文窗口（`instance`、`ts`、`id`、`before`/`after` 取值 0–1000），等价 grep -C。返回 `{\"items\": [日志行], \"match_index\"}`；`match_index` 是锚点行在 `items` 中的下标，锚点行不在该分区时（已被保留策略清理，或 `ts` 与 `id` 不同天）为 `-1`，此时 `items` 仍是该位置附近真实存在的行，接口仍返回 200。调用方必须判 `match_index >= 0` 再取值，或只用它做比较",
 	"/api/v1/logs/histogram":                    "时间桶 × 级别计数（同 search 过滤参数，含 `instances`，+ `bucket` 毫秒，1s–24h）。返回 `{\"items\": [{\"start_ms\", \"counts\": {\"error\": N, …}}], \"total\"}`；桶按 UTC 对齐",
 	"/api/v1/logs/search":                       "日志检索/tail（`q`、`instance` 前缀、`instances`（逗号分隔 uuid 精确匹配集合，最多 64 个，与 `instance` 互斥）、`node`、`level`、`source`、`from`/`to`、`cursor_ts`/`cursor_id`、`limit`、`with_total`；按到达序倒序分页；未指定时间边界表示该方向不限制，均未指定时查询所有尚未清理的日志；列表与总数使用同一范围，页面默认显式传最近 24h）。返回 `{\"items\": [{\"id\", \"instance\", \"node\", \"level\", \"source\", \"time_ms\", \"line\"}], \"total\", \"total_capped\", \"truncated\"}`（后三项按需出现）",

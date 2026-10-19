@@ -1,0 +1,132 @@
+package store
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/bus"
+)
+
+func TestKubeClustersMigrationAddsTableAndNodeColumns(t *testing.T) {
+	db := nodesOnlyDB(t, "install_dir text")
+	if err := db.Exec(`INSERT INTO nodes (id, uuid) VALUES (1, 'n-1')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	m := migrationByName(t, "kube_clusters")
+	if err := migrateDB(db, []migration{m}); err != nil {
+		t.Fatal(err)
+	}
+	if !db.Migrator().HasTable("kube_clusters") || !db.Migrator().HasColumn("nodes", "kube_cluster_id") ||
+		!db.Migrator().HasColumn("nodes", "kube_node_name") || !db.Migrator().HasIndex(&Node{}, "idx_node_kube") {
+		t.Fatal("kube_clusters schema incomplete after the migration")
+	}
+	var row struct {
+		KubeClusterID int
+		KubeNodeName  string
+	}
+	if err := db.Raw(`SELECT COALESCE(kube_cluster_id,0) AS kube_cluster_id, COALESCE(kube_node_name,'') AS kube_node_name FROM nodes WHERE id = 1`).Scan(&row).Error; err != nil || row.KubeClusterID != 0 || row.KubeNodeName != "" {
+		t.Fatalf("existing node after the migration: %+v, %v", row, err)
+	}
+	if err := m.Apply(db); err != nil {
+		t.Fatalf("second application: %v", err)
+	}
+}
+
+func TestKubeClustersMigrationRollsBackAndCanRetry(t *testing.T) {
+	db := nodesOnlyDB(t, "")
+	m := migrationByName(t, "kube_clusters")
+	if err := db.Exec(fmt.Sprintf(`CREATE TRIGGER fail_kube_marker BEFORE INSERT ON schema_migrations WHEN NEW.version=%d BEGIN SELECT RAISE(ABORT, 'injected'); END`, m.Version)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, []migration{m}); err == nil {
+		t.Fatal("injected marker failure did not fail the migration")
+	}
+	if db.Migrator().HasTable("kube_clusters") || db.Migrator().HasColumn("nodes", "kube_cluster_id") {
+		t.Fatal("schema survived a failed migration")
+	}
+	if err := db.Exec(`DROP TRIGGER fail_kube_marker`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, []migration{m}); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+}
+
+func openKubeStore(t *testing.T) *Store {
+	t.Helper()
+	st, err := Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func TestEnrollKubeNodeIsIdempotentAndBindsTheCluster(t *testing.T) {
+	st := openKubeStore(t)
+	c, err := st.CreateKubeCluster(KubeCluster{Name: "prod", Namespace: "gpuworks-system", IdleReturnSeconds: KubeDefaultIdleReturnSeconds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Token == "" || c.TokenHash != HashToken(c.Token) || c.UUID == "" {
+		t.Fatalf("created cluster = %+v", c)
+	}
+	n1, got, err := st.EnrollKubeNode(c.Token, "uid-a", "gpu-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClusterUID != "uid-a" || n1.KubeClusterID != c.ID || n1.KubeNodeName != "gpu-1" || n1.Name != "gpu-1" || n1.State != NodeStateConnecting {
+		t.Fatalf("first enrollment: node=%+v cluster=%+v", n1, got)
+	}
+	again, _, err := st.EnrollKubeNode(c.Token, "uid-a", "gpu-1")
+	if err != nil || again.UUID != n1.UUID || again.Token != n1.Token {
+		t.Fatalf("re-enrollment = %+v, %v; want the same node and token", again, err)
+	}
+	n2, _, err := st.EnrollKubeNode(c.Token, "uid-a", "gpu-2")
+	if err != nil || n2.UUID == n1.UUID {
+		t.Fatalf("second node = %+v, %v", n2, err)
+	}
+	if _, _, err := st.EnrollKubeNode(c.Token, "uid-b", "gpu-3"); !errors.Is(err, ErrKubeClusterMismatch) {
+		t.Fatalf("other cluster: err=%v, want ErrKubeClusterMismatch", err)
+	}
+	if _, _, err := st.EnrollKubeNode("wrong", "uid-a", "gpu-3"); !errors.Is(err, ErrKubeTokenUnknown) {
+		t.Fatalf("wrong token: err=%v", err)
+	}
+	if _, _, err := st.EnrollKubeNode(c.Token, "", "gpu-3"); err == nil {
+		t.Fatal("empty cluster uid accepted")
+	}
+	counts, err := st.KubeClusterNodeCounts()
+	if err != nil || counts[c.ID] != 2 {
+		t.Fatalf("node counts = %v, %v", counts, err)
+	}
+	if err := st.DeleteKubeCluster(c.UUID); !errors.Is(err, ErrKubeClusterHasNodes) {
+		t.Fatalf("delete with nodes: %v", err)
+	}
+	if err := st.RevokeKubeCluster(c.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := st.EnrollKubeNode(c.Token, "uid-a", "gpu-1"); !errors.Is(err, ErrKubeTokenUnknown) {
+		t.Fatalf("revoked token: err=%v", err)
+	}
+	if err := st.RevokeKubeCluster("missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoke missing: %v", err)
+	}
+}
+
+func TestDeleteKubeClusterWithoutNodes(t *testing.T) {
+	st := openKubeStore(t)
+	c, err := st.CreateKubeCluster(KubeCluster{Name: "empty"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteKubeCluster(c.UUID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.KubeClusterByUUID(c.UUID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("after delete: %v", err)
+	}
+	if err := st.DeleteKubeCluster(c.UUID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete twice: %v", err)
+	}
+}

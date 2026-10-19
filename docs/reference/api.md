@@ -437,6 +437,20 @@ macOS 忽略 `no_systemd`。
 已有的翻译；客户端优先用 `display_code`，取不到时用 `display`。网络和节点的值是 ID 而不是名字，
 所以改名只改 `display`，不影响按标签做的匹配。
 
+## Kubernetes（集群接入）
+
+一个 Kubernetes 集群以一个 DaemonSet 接入：管理员创建集群，在集群里 `kubectl apply` 返回的命令，被选中的每个 GPU 节点上的 agent 用集群的接入令牌换取自己的节点 token，之后与普通节点一样。
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{uuid,name,namespace,server_url,agent_image,node_selector,runtime_class,containerd_socket,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
+| POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, node_selector?("k=v,k2=v2"), runtime_class?(nvidia，空串表示不用), containerd_socket?, engine_ports?(40000-42767), idle_return_seconds?(600)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN` | JWT(admin) |
+| GET | `/api/v1/kube/clusters/{uuid}/manifest` | 集群的 manifest（`application/yaml`） | JWT(admin) |
+| POST | `/api/v1/kube/clusters/{uuid}/revoke` | 吊销接入令牌：已接入节点不受影响，新节点不能再接入 | JWT(admin) |
+| DELETE | `/api/v1/kube/clusters/{uuid}` | 删除集群，返回 204；仍有节点时回 409 `KUBE_CLUSTER_HAS_NODES` | JWT(admin) |
+| GET | `/kube/manifest.yaml?token=` | 凭接入令牌取 manifest，供 `kubectl apply -f`；令牌未知或已吊销回 404 | 接入令牌 |
+| POST | `/api/v1/kube/enroll` | agent 用 `{token, cluster_uid, node_name}` 换节点 token：返回 `{node_uuid, node_token, idle_return_seconds}`；同一集群的同一节点总是得到同一个节点；令牌首次使用时绑定集群 UID，之后其他集群回 403 `KUBE_ENROLL_REFUSED`（`reason: other_cluster`），未知或已吊销回 403（`reason: unknown_token`） | 接入令牌 |
+
 ## Models（模型）
 
 | Method | Path | 说明 | 鉴权 |
