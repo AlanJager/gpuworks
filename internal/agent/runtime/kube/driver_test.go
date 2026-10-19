@@ -363,3 +363,18 @@ func TestPodResourcesFailureIsReported(t *testing.T) {
 		t.Fatal("ExternalCardHolders hid the kubelet error")
 	}
 }
+
+func TestUnschedulableReadsTheNode(t *testing.T) {
+	r := newRig(t, 0)
+	if v, err := r.d.Unschedulable(context.Background()); err != nil || v {
+		t.Fatalf("Unschedulable = %v, %v", v, err)
+	}
+	r.srv.SetUnschedulable(testNode, true)
+	if v, err := r.d.Unschedulable(context.Background()); err != nil || !v {
+		t.Fatalf("Unschedulable after cordon = %v, %v", v, err)
+	}
+	r.srv.FailNext["GET /api/v1/nodes/"] = 503
+	if _, err := r.d.Unschedulable(context.Background()); err == nil {
+		t.Fatal("an API failure read as a node state")
+	}
+}

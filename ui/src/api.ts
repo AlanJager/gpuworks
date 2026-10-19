@@ -175,7 +175,7 @@ export interface Node {
   scheduling_by?: "operator" | "platform";
   // cordon_reason is why the platform holds the node now; absent unless
   // scheduling_by is platform.
-  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot";
+  cordon_reason?: "runtime_gpu_blocked" | "card_needs_host_reboot" | "kube_unschedulable";
   name?: string;
   token?: string;
   /** Installs this node's agent; returned with the token, and the way back

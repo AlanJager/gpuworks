@@ -89,8 +89,12 @@ type Node struct {
 	// KubeClusterID is the Kubernetes cluster (KubeCluster) this node joined
 	// from, and KubeNodeName its node name there; zero and empty for a node
 	// that joined any other way. Enrollment finds a returning node by the pair.
-	KubeClusterID     uint   `gorm:"index:idx_node_kube,priority:1"`
-	KubeNodeName      string `gorm:"size:253;index:idx_node_kube,priority:2"`
+	KubeClusterID uint   `gorm:"index:idx_node_kube,priority:1"`
+	KubeNodeName  string `gorm:"size:253;index:idx_node_kube,priority:2"`
+	// KubeUnschedulable is the node's cordon in Kubernetes, as its agent
+	// last reported it. While it is set the platform cordons the node too,
+	// and lifts that once Kubernetes does (store.UpdateNodeStatus).
+	KubeUnschedulable bool
 	LastRemoteAddr    string `gorm:"size:128"` // address observed by the control plane
 	RuntimeDriver     string `gorm:"size:16"`  // docker | nerdctl | udocker | host (detected)
 	RuntimePreference string `gorm:"size:16"`  // auto | docker | nerdctl | udocker (desired)

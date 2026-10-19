@@ -79,7 +79,7 @@ func createKubeClusters(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&Node{}) {
 		return nil
 	}
-	for _, col := range []string{"KubeClusterID", "KubeNodeName"} {
+	for _, col := range []string{"KubeClusterID", "KubeNodeName", "KubeUnschedulable"} {
 		if !db.Migrator().HasColumn(&Node{}, col) {
 			if err := db.Migrator().AddColumn(&Node{}, col); err != nil {
 				return err

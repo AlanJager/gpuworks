@@ -78,7 +78,7 @@ type Node struct {
 	// platform lifts only its own.
 	SchedulingBy string `json:"scheduling_by,omitempty"`
 	// CordonReason is why the platform holds the node out of scheduling
-	// now (runtime_gpu_blocked, card_needs_host_reboot); absent unless
+	// now (runtime_gpu_blocked, card_needs_host_reboot, kube_unschedulable); absent unless
 	// SchedulingBy is platform. A client renders the code in its language.
 	CordonReason string `json:"cordon_reason,omitempty"`
 	Name         string `json:"name,omitempty"`

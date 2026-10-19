@@ -413,6 +413,15 @@ func (d *Driver) ExecPTY(ctx context.Context, id string, cmd []string) ([]string
 	return d.o.Images.ExecPTY(ctx, cid, cmd)
 }
 
+// Unschedulable reports whether this node is cordoned in Kubernetes.
+func (d *Driver) Unschedulable(ctx context.Context) (bool, error) {
+	var n kubeapi.Node
+	if err := d.o.API.Get(ctx, kubeapi.NodePath(d.o.NodeName)+"?resourceVersion=0", &n); err != nil {
+		return false, err
+	}
+	return n.Spec.Unschedulable, nil
+}
+
 // ExternalCardHolders maps card UUID to the pods outside the platform the
 // kubelet gave it to; the agent reports them as the card's foreign use.
 func (d *Driver) ExternalCardHolders(ctx context.Context) (map[string][]proto.CardProcess, error) {

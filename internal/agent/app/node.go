@@ -39,6 +39,12 @@ import (
 // status reports route to the live link (and are dropped when offline — the
 // server re-syncs and the agent re-reports on the next connect).
 type NodeRuntime struct {
+	// kubeCordon is the last cordon state a kube node read from its API
+	// server, restated when a round cannot ask.
+	kubeCordon struct {
+		mu   sync.Mutex
+		last bool
+	}
 	log            *slog.Logger
 	switchMu       sync.Mutex
 	engine         *engine.Engine

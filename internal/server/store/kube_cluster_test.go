@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 )
 
@@ -128,5 +129,53 @@ func TestDeleteKubeClusterWithoutNodes(t *testing.T) {
 	}
 	if err := st.DeleteKubeCluster(c.UUID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("delete twice: %v", err)
+	}
+}
+
+// A node cordoned in Kubernetes is cordoned here too, and comes back when
+// Kubernetes lets it; a node the operator cordoned for another reason is
+// not touched by a Kubernetes node that was never cordoned.
+func TestAKubernetesCordonIsFollowed(t *testing.T) {
+	s := openKubeStore(t)
+	if _, err := s.RegisterNode("uuid-kube", HashToken("t"), "kube-host"); err != nil {
+		t.Fatal(err)
+	}
+	ok := true
+	report := func(unschedulable bool) Node {
+		t.Helper()
+		if err := s.UpdateNodeStatus("uuid-kube", proto.NodeStatus{GPUProbeOK: &ok,
+			Sys: proto.SysInfo{RuntimeDriver: "kube", KubeUnschedulable: unschedulable}}); err != nil {
+			t.Fatal(err)
+		}
+		n, err := s.NodeByUUID("uuid-kube")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return *n
+	}
+	if n := report(false); n.Scheduling != NodeSchedulable || n.KubeUnschedulable {
+		t.Fatalf("uncordoned node = %q %v", n.Scheduling, n.KubeUnschedulable)
+	}
+	if n := report(true); n.Scheduling != NodeCordoned || !n.KubeUnschedulable || n.SchedulingBy != SchedulingByPlatform || n.CordonReason() != CordonKubeUnschedulable {
+		t.Fatalf("after kubectl cordon = %q %v by %q for %q", n.Scheduling, n.KubeUnschedulable, n.SchedulingBy, n.CordonReason())
+	}
+	if n := report(true); n.Scheduling != NodeCordoned {
+		t.Fatalf("still cordoned = %q", n.Scheduling)
+	}
+	if n := report(false); n.Scheduling != NodeSchedulable || n.KubeUnschedulable {
+		t.Fatalf("after kubectl uncordon = %q %v", n.Scheduling, n.KubeUnschedulable)
+	}
+	// An operator's own cordon stays, also when Kubernetes cordons and
+	// uncordons the node under it.
+	if err := s.DB().Model(&Node{}).Where("uuid = ?", "uuid-kube").Updates(map[string]any{
+		"scheduling": NodeCordoned, "scheduling_by": SchedulingByOperator}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if n := report(false); n.Scheduling != NodeCordoned {
+		t.Fatalf("operator cordon lifted = %q", n.Scheduling)
+	}
+	report(true)
+	if n := report(false); n.Scheduling != NodeCordoned || n.SchedulingBy != SchedulingByOperator {
+		t.Fatalf("operator cordon after a Kubernetes cordon and uncordon = %q by %q", n.Scheduling, n.SchedulingBy)
 	}
 }

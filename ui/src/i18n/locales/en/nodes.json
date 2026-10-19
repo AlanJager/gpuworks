@@ -523,7 +523,8 @@
       "platformLifts": "The platform turns scheduling back on once the reason is gone."
     },
     "cordonReason": {
-      "card_needs_host_reboot": "Stopped by the platform: a card reports that only a host reboot or power cycle recovers it, and the other cards sit behind the same driver."
+      "card_needs_host_reboot": "Stopped by the platform: a card reports that only a host reboot or power cycle recovers it, and the other cards sit behind the same driver.",
+      "kube_unschedulable": "Stopped by the platform: Kubernetes stopped scheduling onto this node (kubectl cordon or drain, or the node is being replaced)."
     }
   },
   "systemLabels": {

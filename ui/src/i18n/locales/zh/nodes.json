@@ -523,7 +523,8 @@
       "platformLifts": "原因消失后平台会自动恢复调度。"
     },
     "cordonReason": {
-      "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。"
+      "card_needs_host_reboot": "平台停止调度：有卡报告需要重启主机或断电重启才能恢复，同一驱动下的其他卡也可能受影响。",
+      "kube_unschedulable": "平台停止调度：Kubernetes 已停止向该节点调度（kubectl cordon/drain 或节点替换）。"
     }
   },
   "systemLabels": {
