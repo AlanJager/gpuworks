@@ -24,9 +24,9 @@ import (
 // Server is the fake API server.
 type Server struct {
 	*httptest.Server
-	mu        sync.Mutex
-	pods      map[string]*kubeapi.Pod // ns/name
-	nodes     map[string]*kubeapi.Node
+	mu    sync.Mutex
+	pods  map[string]*kubeapi.Pod // ns/name
+	nodes map[string]*kubeapi.Node
 	// daemonSet is kept as a generic JSON document so patches behave as
 	// the API server's do: a merge patch replaces lists whole, a strategic
 	// merge patch merges containers by name.
