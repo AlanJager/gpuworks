@@ -1,0 +1,359 @@
+// Package kubefake is an in-memory Kubernetes API server for the kube
+// runtime's tests. It answers the calls kubeapi makes the way a real API
+// server does — Status bodies with reason and code, AlreadyExists on a
+// duplicate create, Invalid on a pod without containers, label and field
+// selectors on lists — and stands in for the kubelet with a Kubelet hook
+// that decides what a created pod becomes.
+package kubefake
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
+)
+
+// Server is the fake API server.
+type Server struct {
+	*httptest.Server
+	mu        sync.Mutex
+	pods      map[string]*kubeapi.Pod // ns/name
+	nodes     map[string]*kubeapi.Node
+	daemonSet *kubeapi.DaemonSet
+	clusterID string
+	rv        int
+	// Logs is what a pod's log endpoint returns, by pod name.
+	Logs map[string]string
+	// Kubelet decides what a created pod becomes; nil makes it Running.
+	Kubelet func(*kubeapi.Pod)
+	// FailNext makes the next request whose "METHOD path" has this prefix
+	// fail with the given status code, once.
+	FailNext map[string]int
+	// Requests records "METHOD path?query" of every request.
+	Requests []string
+}
+
+// New starts a server with one node and an agent DaemonSet in ns.
+func New(t testing.TB, ns, node string) *Server {
+	s := &Server{pods: map[string]*kubeapi.Pod{}, nodes: map[string]*kubeapi.Node{}, Logs: map[string]string{}, FailNext: map[string]int{}, clusterID: "kube-system-uid"}
+	n := &kubeapi.Node{Metadata: kubeapi.ObjectMeta{Name: node, UID: "node-uid-" + node}}
+	n.Status.Allocatable = map[string]string{}
+	s.nodes[node] = n
+	ds := &kubeapi.DaemonSet{Metadata: kubeapi.ObjectMeta{Name: "gpuworks-agent", Namespace: ns, UID: "ds-uid"}}
+	ds.Spec.Template.Spec.Containers = append(ds.Spec.Template.Spec.Containers, struct {
+		Name  string `json:"name"`
+		Image string `json:"image"`
+	}{Name: "agent", Image: "gpuworks/gpuworks-agent:v1"})
+	s.daemonSet = ds
+	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
+	t.Cleanup(s.Close)
+	return s
+}
+
+// Client returns a kubeapi client for the server.
+func (s *Server) Client() *kubeapi.Client {
+	return kubeapi.New(s.URL, func() (string, error) { return "sa-token", nil }, s.Server.Client())
+}
+
+// Node returns the node for a test to change.
+func (s *Server) Node(name string) *kubeapi.Node {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nodes[name]
+}
+
+// SetAllocatable sets a node's allocatable resource.
+func (s *Server) SetAllocatable(node, resource, qty string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nodes[node].Status.Allocatable[resource] = qty
+}
+
+// SetUnschedulable cordons or uncordons a node.
+func (s *Server) SetUnschedulable(node string, v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nodes[node].Spec.Unschedulable = v
+}
+
+// Pod returns a copy of a pod, or nil.
+func (s *Server) Pod(ns, name string) *kubeapi.Pod {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.pods[ns+"/"+name]
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	return &cp
+}
+
+// Pods returns copies of every pod.
+func (s *Server) Pods() []kubeapi.Pod {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]kubeapi.Pod, 0, len(s.pods))
+	for _, p := range s.pods {
+		out = append(out, *p)
+	}
+	return out
+}
+
+// UpdatePod changes a stored pod (what the kubelet does over time).
+func (s *Server) UpdatePod(ns, name string, fn func(*kubeapi.Pod)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p := s.pods[ns+"/"+name]; p != nil {
+		fn(p)
+		s.rv++
+		p.Metadata.ResourceVersion = strconv.Itoa(s.rv)
+	}
+}
+
+// DaemonSetImage is the agent DaemonSet's current image.
+func (s *Server) DaemonSetImage() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.daemonSet.Spec.Template.Spec.Containers[0].Image
+}
+
+// Running makes a pod's only container run.
+func Running(p *kubeapi.Pod) {
+	p.Status.Phase = "Running"
+	p.Status.ContainerStatuses = []kubeapi.ContainerStatus{{
+		Name: p.Spec.Containers[0].Name, ContainerID: "containerd://" + p.Metadata.UID, Ready: true,
+		State: kubeapi.ContainerState{Running: &kubeapi.StateRunning{StartedAt: "2026-10-19T00:00:00Z"}},
+	}}
+}
+
+var dns1123 = regexp.MustCompile(`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`)
+
+func (s *Server) status(w http.ResponseWriter, code int, reason, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]any{"kind": "Status", "apiVersion": "v1", "metadata": map[string]any{}, "status": "Failure", "message": msg, "reason": reason, "code": code})
+}
+
+func (s *Server) json(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	s.Requests = append(s.Requests, r.Method+" "+r.URL.RequestURI())
+	for prefix, code := range s.FailNext {
+		if strings.HasPrefix(r.Method+" "+r.URL.Path, prefix) {
+			delete(s.FailNext, prefix)
+			s.mu.Unlock()
+			s.status(w, code, http.StatusText(code), "injected failure")
+			return
+		}
+	}
+	s.mu.Unlock()
+	if r.Header.Get("Authorization") != "Bearer sa-token" {
+		s.status(w, http.StatusUnauthorized, "Unauthorized", "Unauthorized")
+		return
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	switch {
+	case len(parts) == 4 && parts[0] == "api" && parts[2] == "namespaces" && r.Method == http.MethodGet:
+		if parts[3] != "kube-system" {
+			s.status(w, 404, "NotFound", fmt.Sprintf("namespaces %q not found", parts[3]))
+			return
+		}
+		s.json(w, 200, kubeapi.Namespace{Metadata: kubeapi.ObjectMeta{Name: "kube-system", UID: s.clusterID}})
+	case len(parts) == 4 && parts[0] == "api" && parts[2] == "nodes":
+		s.mu.Lock()
+		n := s.nodes[parts[3]]
+		var cp kubeapi.Node
+		if n != nil {
+			cp = *n
+		}
+		s.mu.Unlock()
+		if n == nil {
+			s.status(w, 404, "NotFound", fmt.Sprintf("nodes %q not found", parts[3]))
+			return
+		}
+		s.json(w, 200, cp)
+	case len(parts) == 7 && parts[0] == "apis" && parts[5] == "daemonsets":
+		s.serveDaemonSet(w, r, parts[6])
+	case len(parts) >= 5 && parts[0] == "api" && parts[2] == "namespaces" && parts[4] == "pods":
+		s.servePods(w, r, parts[3], parts[5:])
+	default:
+		s.status(w, 404, "NotFound", "the server could not find the requested resource")
+	}
+}
+
+func (s *Server) serveDaemonSet(w http.ResponseWriter, r *http.Request, name string) {
+	if name != s.daemonSet.Metadata.Name {
+		s.status(w, 404, "NotFound", fmt.Sprintf("daemonsets.apps %q not found", name))
+		return
+	}
+	if r.Method == http.MethodPatch {
+		if r.Header.Get("Content-Type") != "application/merge-patch+json" {
+			s.status(w, 415, "UnsupportedMediaType", "the body of the request was in an unknown format")
+			return
+		}
+		var patch kubeapi.DaemonSet
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+			s.status(w, 400, "BadRequest", err.Error())
+			return
+		}
+		s.mu.Lock()
+		for _, c := range patch.Spec.Template.Spec.Containers {
+			for i := range s.daemonSet.Spec.Template.Spec.Containers {
+				if s.daemonSet.Spec.Template.Spec.Containers[i].Name == c.Name && c.Image != "" {
+					s.daemonSet.Spec.Template.Spec.Containers[i].Image = c.Image
+				}
+			}
+		}
+		s.mu.Unlock()
+	}
+	s.mu.Lock()
+	cp := *s.daemonSet
+	s.mu.Unlock()
+	s.json(w, 200, cp)
+}
+
+func matches(p *kubeapi.Pod, labelSel, fieldSel string) bool {
+	for _, term := range strings.Split(labelSel, ",") {
+		if term == "" {
+			continue
+		}
+		k, v, _ := strings.Cut(term, "=")
+		if p.Metadata.Labels[k] != v {
+			return false
+		}
+	}
+	for _, term := range strings.Split(fieldSel, ",") {
+		if term == "" {
+			continue
+		}
+		k, v, _ := strings.Cut(term, "=")
+		switch k {
+		case "spec.nodeName":
+			if p.Spec.NodeName != v {
+				return false
+			}
+		case "metadata.name":
+			if p.Metadata.Name != v {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) servePods(w http.ResponseWriter, r *http.Request, ns string, rest []string) {
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodGet:
+		s.mu.Lock()
+		list := kubeapi.PodList{Items: []kubeapi.Pod{}}
+		for key, p := range s.pods {
+			if strings.HasPrefix(key, ns+"/") && matches(p, r.URL.Query().Get("labelSelector"), r.URL.Query().Get("fieldSelector")) {
+				list.Items = append(list.Items, *p)
+			}
+		}
+		s.mu.Unlock()
+		s.json(w, 200, list)
+	case len(rest) == 0 && r.Method == http.MethodPost:
+		var p kubeapi.Pod
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			s.status(w, 400, "BadRequest", err.Error())
+			return
+		}
+		if !dns1123.MatchString(p.Metadata.Name) || len(p.Metadata.Name) > 253 {
+			s.status(w, 422, "Invalid", fmt.Sprintf("Pod %q is invalid: metadata.name: Invalid value", p.Metadata.Name))
+			return
+		}
+		if len(p.Spec.Containers) == 0 || p.Spec.Containers[0].Image == "" {
+			s.status(w, 422, "Invalid", fmt.Sprintf("Pod %q is invalid: spec.containers: Required value", p.Metadata.Name))
+			return
+		}
+		key := ns + "/" + p.Metadata.Name
+		s.mu.Lock()
+		s.rv++
+		p.Metadata.Namespace = ns
+		p.Metadata.UID = fmt.Sprintf("uid-%d", s.rv)
+		p.Metadata.ResourceVersion = strconv.Itoa(s.rv)
+		p.Status = kubeapi.PodStatus{Phase: "Pending"}
+		exists := s.pods[key] != nil
+		kubelet := s.Kubelet
+		s.mu.Unlock()
+		if exists {
+			s.status(w, 409, "AlreadyExists", fmt.Sprintf("pods %q already exists", p.Metadata.Name))
+			return
+		}
+		// The kubelet acts outside the server's lock: it may read the API.
+		if kubelet != nil {
+			kubelet(&p)
+		} else {
+			Running(&p)
+		}
+		s.mu.Lock()
+		if s.pods[key] != nil {
+			s.mu.Unlock()
+			s.status(w, 409, "AlreadyExists", fmt.Sprintf("pods %q already exists", p.Metadata.Name))
+			return
+		}
+		s.pods[key] = &p
+		cp := p
+		s.mu.Unlock()
+		s.json(w, 201, cp)
+	case len(rest) == 1 || (len(rest) == 2 && rest[1] == "log"):
+		key := ns + "/" + rest[0]
+		s.mu.Lock()
+		p := s.pods[key]
+		var cp kubeapi.Pod
+		if p != nil {
+			cp = *p
+		}
+		s.mu.Unlock()
+		if p == nil {
+			s.status(w, 404, "NotFound", fmt.Sprintf("pods %q not found", rest[0]))
+			return
+		}
+		if len(rest) == 2 {
+			w.Header().Set("Content-Type", "text/plain")
+			text := s.Logs[rest[0]]
+			if tail := r.URL.Query().Get("tailLines"); tail != "" {
+				n, _ := strconv.Atoi(tail)
+				lines := strings.SplitAfter(text, "\n")
+				if lines[len(lines)-1] == "" {
+					lines = lines[:len(lines)-1]
+				}
+				if n < len(lines) {
+					lines = lines[len(lines)-n:]
+				}
+				text = strings.Join(lines, "")
+			}
+			_, _ = io.WriteString(w, text)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			s.json(w, 200, cp)
+		case http.MethodDelete:
+			s.mu.Lock()
+			delete(s.pods, key)
+			s.mu.Unlock()
+			s.json(w, 200, cp)
+		default:
+			s.status(w, 405, "MethodNotAllowed", "method not allowed")
+		}
+	default:
+		s.status(w, 404, "NotFound", "the server could not find the requested resource")
+	}
+}

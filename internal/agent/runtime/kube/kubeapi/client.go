@@ -7,7 +7,6 @@
 package kubeapi
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -18,7 +17,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -101,9 +99,6 @@ func IsAlreadyExists(err error) bool {
 	var e *APIError
 	return errors.As(err, &e) && e.Code == http.StatusConflict && e.Reason == "AlreadyExists"
 }
-
-// IsGone reports a 410: a watch's resourceVersion is too old to resume from.
-func IsGone(err error) bool { return hasCode(err, http.StatusGone) }
 
 func hasCode(err error, code int) bool {
 	var e *APIError
@@ -215,54 +210,4 @@ func (c *Client) Stream(ctx context.Context, path string) (io.ReadCloser, error)
 		return nil, err
 	}
 	return resp.Body, nil
-}
-
-// WatchEvent is one line of a watch stream.
-type WatchEvent struct {
-	Type   string          `json:"type"` // ADDED | MODIFIED | DELETED | BOOKMARK | ERROR
-	Object json.RawMessage `json:"object"`
-}
-
-// Watch streams the events of a collection from resourceVersion until ctx
-// ends, the server closes the stream, or fn returns an error (returned). An
-// ERROR event is returned as its Status (a 410 when resourceVersion is too
-// old: list again and resume from there).
-func (c *Client) Watch(ctx context.Context, path string, resourceVersion string, fn func(WatchEvent) error) error {
-	sep := "?"
-	if strings.Contains(path, "?") {
-		sep = "&"
-	}
-	q := url.Values{"watch": {"true"}, "allowWatchBookmarks": {"true"}}
-	if resourceVersion != "" {
-		q.Set("resourceVersion", resourceVersion)
-	}
-	resp, err := c.do(ctx, http.MethodGet, path+sep+q.Encode(), "", nil)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	for sc.Scan() {
-		var ev WatchEvent
-		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
-			return fmt.Errorf("watch event: %w", err)
-		}
-		if ev.Type == "ERROR" {
-			var st struct {
-				Code    int    `json:"code"`
-				Reason  string `json:"reason"`
-				Message string `json:"message"`
-			}
-			_ = json.Unmarshal(ev.Object, &st)
-			return &APIError{Code: st.Code, Reason: st.Reason, Message: st.Message}
-		}
-		if err := fn(ev); err != nil {
-			return err
-		}
-	}
-	if err := sc.Err(); err != nil && ctx.Err() == nil {
-		return err
-	}
-	return ctx.Err()
 }
