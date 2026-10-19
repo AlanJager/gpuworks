@@ -378,6 +378,8 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		// report does not immediately execute the same probe a second time.
 		_ = n.partitionProbeNeedsRefresh(reports, gpus)
 		return n.partitionProbe.Refresh(ctx, reports, gpus), nil
+	case proto.RPCKubeUpgrade, proto.RPCKubeNodeExists:
+		return n.kubeRPC(ctx, method, params)
 	case proto.RPCFSList:
 		return n.rpcFSList(params)
 	case proto.RPCFSReadFile:

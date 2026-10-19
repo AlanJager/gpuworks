@@ -455,6 +455,7 @@ func (a *App) Run(ctx context.Context) error {
 	goBG(func() { a.staleLoop(ctx) })
 	// Background: bound the deployment event timeline.
 	goBG(func() { a.eventRetentionLoop(ctx) })
+	goBG(func() { a.kubeNodeLoop(ctx) })
 	// Background: reconnect nodes that listen for reverse server_dial sessions.
 	goBG(func() { a.hub.RunServerDialReconnect(ctx, a.cfg.ServerDialReconnectInterval) })
 	goBG(func() { a.hub.RunNodeQueues(ctx) }) // persist reports queued off the read loops

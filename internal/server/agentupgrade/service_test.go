@@ -479,6 +479,7 @@ func TestDispatchRechecksPlatformAndLegacyDownloadReachability(t *testing.T) {
 	}{
 		{"platform", map[string]any{"arch": "arm64"}, "platform_changed"},
 		{"connection", map[string]any{"connect_mode": "server_dial"}, "legacy_unverified"},
+		{"kubernetes", map[string]any{"kube_cluster_id": 7}, "kubernetes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t, 1, false)
@@ -494,5 +495,25 @@ func TestDispatchRechecksPlatformAndLegacyDownloadReachability(t *testing.T) {
 				t.Fatal("issued upgrade using stale platform or download conditions")
 			}
 		})
+	}
+}
+
+// A Kubernetes node's agent is a pod of its cluster's DaemonSet: the batch
+// upgrade leaves it to the node's own upgrade, which rolls the DaemonSet.
+func TestPreviewLeavesKubernetesNodesToTheirDaemonSet(t *testing.T) {
+	f := newFixture(t, 2, false)
+	if err := f.st.DB().Model(&store.Node{}).Where("uuid = ?", "n1").Update("kube_cluster_id", 7).Error; err != nil {
+		t.Fatal(err)
+	}
+	p, err := f.s.Preview(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, c := range p.Nodes {
+		got[c.NodeUUID] = c.Eligibility
+	}
+	if got["n1"] != "kubernetes" || got["n2"] != "eligible" {
+		t.Fatalf("eligibility = %v, want n1 kubernetes and n2 eligible", got)
 	}
 }

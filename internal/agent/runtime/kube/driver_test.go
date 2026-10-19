@@ -378,3 +378,38 @@ func TestUnschedulableReadsTheNode(t *testing.T) {
 		t.Fatal("an API failure read as a node state")
 	}
 }
+
+func TestUpgradeDaemonSetMovesTheImageTag(t *testing.T) {
+	r := newRig(t, 0)
+	ctx := context.Background()
+	image, err := r.d.UpgradeDaemonSet(ctx, "v2.0.1")
+	if err != nil || image != "gpuworks/gpuworks-agent:v2.0.1" || r.srv.DaemonSetImage() != image {
+		t.Fatalf("UpgradeDaemonSet = %q, %v; DaemonSet runs %q", image, err, r.srv.DaemonSetImage())
+	}
+	if image, err := r.d.UpgradeDaemonSet(ctx, "v2.0.1"); err != nil || image != "gpuworks/gpuworks-agent:v2.0.1" {
+		t.Fatalf("same version again = %q, %v", image, err)
+	}
+	for _, bad := range []string{"", "v1:bad", "a/b", "x@sha256"} {
+		if _, err := r.d.UpgradeDaemonSet(ctx, bad); err == nil {
+			t.Fatalf("version %q accepted", bad)
+		}
+	}
+	r.srv.FailNext["PATCH /apis/apps/v1/"] = 403
+	if _, err := r.d.UpgradeDaemonSet(ctx, "v3"); err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("forbidden patch = %v", err)
+	}
+}
+
+func TestNodeExists(t *testing.T) {
+	r := newRig(t, 0)
+	if ok, err := r.d.NodeExists(context.Background(), testNode); !ok || err != nil {
+		t.Fatalf("own node = %v, %v", ok, err)
+	}
+	if ok, err := r.d.NodeExists(context.Background(), "gone-node"); ok || err != nil {
+		t.Fatalf("missing node = %v, %v", ok, err)
+	}
+	r.srv.FailNext["GET /api/v1/nodes/"] = 500
+	if _, err := r.d.NodeExists(context.Background(), "x"); err == nil {
+		t.Fatal("an API failure read as an answer")
+	}
+}

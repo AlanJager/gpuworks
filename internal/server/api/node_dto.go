@@ -53,6 +53,7 @@ func nodeDTO(n *store.Node, includeToken bool) dto.Node {
 		ServerDialListen:      n.ServerDialListen,
 		AgentVersion:          n.AgentVersion,
 		LastRemoteAddr:        n.LastRemoteAddr,
+		Kube:                  nodeKubeDTO(n),
 		LastRejectReason:      n.LastRejectReason,
 		LastRejectAt:          utcTimePtr(n.LastRejectAt),
 		LastSeenAt:            utcTimePtr(n.LastSeenAt),

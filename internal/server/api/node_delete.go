@@ -76,7 +76,10 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !force {
+	// A Kubernetes node's agent belongs to its cluster's DaemonSet, which
+	// nothing here can uninstall; the node comes back while the DaemonSet
+	// still selects it (the cluster's manifest is where it is removed).
+	if !force && node.KubeClusterID == 0 {
 		if !node.HasSSHCredential {
 			writeProductError(w, http.StatusConflict, ErrorNodeDeleteSSHRequired,
 				"normal deletion requires saved SSH credentials to uninstall the agent; node retained. Configure SSH and retry, or uninstall the agent manually and use force=true to remove only its management record", nil)

@@ -252,3 +252,21 @@ func (s *Store) EnrollKubeNode(token, clusterUID, nodeName string) (*Node, *Kube
 	}
 	return &node, &cluster, nil
 }
+
+// OfflineKubeNodes lists the Kubernetes nodes whose agents have been gone
+// since before cutoff: the candidates for having left their cluster. Offline
+// nodes are few, and the state column is indexed.
+func (s *Store) OfflineKubeNodes(cutoff time.Time) ([]Node, error) {
+	var nodes []Node
+	err := s.reader().Where("state = ? AND kube_cluster_id > 0 AND (last_seen_at IS NULL OR last_seen_at < ?)", NodeStateOffline, cutoff).
+		Order("id").Find(&nodes).Error
+	return nodes, err
+}
+
+// OnlineKubePeers lists the online nodes of a cluster other than exclude.
+func (s *Store) OnlineKubePeers(clusterID, exclude uint) ([]Node, error) {
+	var nodes []Node
+	err := s.reader().Where("kube_cluster_id = ? AND id <> ? AND state = ?", clusterID, exclude, NodeStateOnline).
+		Order("id").Limit(3).Find(&nodes).Error
+	return nodes, err
+}

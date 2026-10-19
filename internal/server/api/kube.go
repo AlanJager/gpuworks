@@ -37,7 +37,7 @@ func kubeManifestURL(c store.KubeCluster) string {
 
 func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool) dto.KubeCluster {
 	out := dto.KubeCluster{
-		UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
+		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
 		NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ContainerdSocket: c.ContainerdSocket,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
 		Revoked: c.RevokedAt != nil, NodeCount: nodes, CreatedAt: c.CreatedAt.UTC(),
@@ -249,4 +249,25 @@ func (a *apiHandlers) kubeEnroll(w http.ResponseWriter, r *http.Request) {
 		a.d.Log.Info("kubernetes node enrolled", "cluster", cluster.Name, "node", node.KubeNodeName, "uuid", node.UUID)
 	}
 	writeJSON(w, http.StatusOK, dto.KubeEnrollResponse{NodeUUID: node.UUID, NodeToken: node.Token, IdleReturnSeconds: cluster.IdleReturnSeconds})
+}
+
+func nodeKubeDTO(n *store.Node) *dto.NodeKube {
+	if n.KubeClusterID == 0 {
+		return nil
+	}
+	return &dto.NodeKube{ClusterID: n.KubeClusterID, NodeName: n.KubeNodeName, Unschedulable: n.KubeUnschedulable}
+}
+
+// upgradeKubeNode upgrades the agents of a Kubernetes node's cluster: the
+// node's agent moves its DaemonSet to this server's version, and Kubernetes
+// replaces every agent of the cluster in turn.
+func (a *apiHandlers) upgradeKubeNode(w http.ResponseWriter, r *http.Request, node *store.Node) {
+	raw, err := a.d.CallNode(r.Context(), node.UUID, proto.RPCKubeUpgrade, proto.KubeUpgradeParams{Version: version.Version})
+	if err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
+	var result proto.KubeUpgradeResult
+	_ = json.Unmarshal(raw, &result)
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "rolling", "image": result.Image})
 }

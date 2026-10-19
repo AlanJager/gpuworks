@@ -210,7 +210,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/healthz` | 健康检查（管理面） | JWT |
 | GET | `/healthz` | 健康检查（无需登录，供探活/负载均衡） | 无 |
 | GET | `/api/v1/engines?target_vendor=amd` | 面向指定厂商的引擎参数字典（省略 `target_vendor` 时使用通用 profile，未知厂商返回 400）；AMD profile 只表示实现准入范围，不证明特定 GPU/ROCm 版本已通过真机验收 | JWT |
-| GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”） | JWT |
+| GET | `/api/v1/nodes` | 节点列表；带 `page`/`page_size` 时分页并可按 `q`/`state`/`label` 筛选（见“错误与响应约定”）；从 Kubernetes 集群接入的节点带 `kube: {cluster_id, node_name, unschedulable}`（`cluster_id` 对应集群的 `id`） | JWT |
 | GET | `/api/v1/nodes/facets` | 筛选项及节点数量分布；查询参数 `q`、`state`、`label` 同节点列表，返回用户标签、系统标签与卡型号分布（含已报告的 `arch_id`），见[节点列表](#节点列表的筛选与返回字段) | JWT |
 | GET | `/api/v1/dashboard/summary` | 仪表盘汇总：节点按状态计数与硬件合计、部署按状态计数、按厂商与按标签（`label_key`，缺省或无节点带该 key 时取最常用的 key）分组的容量；另含当前 GPU 指标、卡占用、在途任务，字段见[仪表盘汇总](#仪表盘汇总的返回字段) | JWT |
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
@@ -230,7 +230,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/nodes/{uuid}/fs` | 节点文件系统浏览（本地模型注册用） | JWT |
 | POST | `/api/v1/nodes/{uuid}/doctor` | 触发节点自检 RPC | JWT |
 | POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | 在线经既有ctrl读取Agent运行态，无需SSH；另有保存地址、可选SSH检查及历史公网入口。空body或`{}`，不执行恢复或修改地址；见[节点连接诊断](#节点连接诊断) | JWT(admin) |
-| POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级 | JWT |
+| POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级；Kubernetes 节点改为把所属集群的 agent DaemonSet 换到与 server 同版本的镜像，返回 202 `{"status":"rolling","image"}`，k8s 依次替换该集群全部 agent，实例 Pod 不受影响（批量升级把 Kubernetes 节点标为 `kubernetes`、不升级） | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | 设置 `scheduling` 为 `cordoned`、`draining` 或 `schedulable`，返回节点；非法值 400 `FIELD_INVALID`。各状态的影响见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
 | PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | 设置一张卡是否接受新部署：`{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`（没有 PCI 地址的卡用 `uuid`）。`stopped` 一直有效、平台不会自动解除；`schedulable` 解除管理员的停止，或在平台判定这张卡不可用（故障、被平台外进程占用）时临时放开到放开 1 分钟后的第一次上报重新判定。返回节点（含卡），卡上 `scheduling_stopped`、`scheduling_allowed` 表示状态，`scheduling_actions` 给出现在可以做的操作。非法值或没点名卡 400 `FIELD_INVALID`；节点或卡不存在 404；卡已直通或没绑定驱动时设为可调度 409 `CARD_NOT_OWNED` | JWT |
 | GET | `/api/v1/nodes/{uuid}/health-checks` | 节点每张卡每项检查的当前状态，按表格给出（只读 server 内存，不触达 agent）：`checks` 是列（只含有卡适用的检查，带周期秒数），`cards[].cells[]` 是格子（`state` 为 `pass`/`warn`/`fail`/`skip`/`pending`/`na`，`reason` 为发现码或跳过原因，`checked_at`、`duration_ms`、`stale`），`cards[].worst`、`cards[].can_recheck` 与 `summary`（各状态格子数）由 server 计算。`?pcie_bdf=`（或 `uuid=`）只看一张卡。节点还没上报时 `cards` 为空、`reports` 为 false；离线时给出最后已知状态并标 `stale` | JWT |
@@ -252,7 +252,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | DELETE | `/api/v1/nodes/{uuid}/ssh` | 删除节点 SSH 凭据 | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/recovery/probe` | 手动触发一次离线节点恢复探测 | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | 重新生成节点 token（会踢掉当前连接） | JWT(admin) |
-| DELETE | `/api/v1/nodes/{uuid}` | 默认通过保存的 SSH 凭据卸载 agent，确认完成后删除记录，返回 `{"status":"deleted","agent_uninstalled":true}`。没有已保存的 SSH 凭据时回 409 `NODE_DELETE_SSH_REQUIRED`，保留节点并提示配置 SSH 后重试，或手动卸载后使用 `?force=true`。卸载未确认回 409 `NODE_UNINSTALL_UNCONFIRMED`，保留节点及 SSH 凭据，并提示修复 SSH 后重试或手动卸载后强制移除。显式 `?force=true` 跳过卸载，仅删除记录，返回 `agent_uninstalled:false`；两种方式均拒绝有实例的节点（409）。force 非布尔值或重复参数回 400；节点不存在回 404 | JWT |
+| DELETE | `/api/v1/nodes/{uuid}` | 默认通过保存的 SSH 凭据卸载 agent（Kubernetes 节点不卸载：agent 属于集群的 DaemonSet，只要 DaemonSet 仍选中该节点就会重新接入），确认完成后删除记录，返回 `{"status":"deleted","agent_uninstalled":true}`。没有已保存的 SSH 凭据时回 409 `NODE_DELETE_SSH_REQUIRED`，保留节点并提示配置 SSH 后重试，或手动卸载后使用 `?force=true`。卸载未确认回 409 `NODE_UNINSTALL_UNCONFIRMED`，保留节点及 SSH 凭据，并提示修复 SSH 后重试或手动卸载后强制移除。显式 `?force=true` 跳过卸载，仅删除记录，返回 `agent_uninstalled:false`；两种方式均拒绝有实例的节点（409）。force 非布尔值或重复参数回 400；节点不存在回 404 | JWT |
 | GET | `/api/v1/events` | SSE 变更事件流 | JWT |
 
 ### Agent 批量升级
@@ -443,7 +443,7 @@ macOS 忽略 `no_systemd`。
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{uuid,name,namespace,server_url,agent_image,node_selector,runtime_class,containerd_socket,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
+| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{id,uuid,name,namespace,server_url,agent_image,node_selector,runtime_class,containerd_socket,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
 | POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, node_selector?("k=v,k2=v2"), runtime_class?(nvidia，空串表示不用), containerd_socket?, engine_ports?(40000-42767), idle_return_seconds?(600)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN` | JWT(admin) |
 | GET | `/api/v1/kube/clusters/{uuid}/manifest` | 集群的 manifest（`application/yaml`） | JWT(admin) |
 | POST | `/api/v1/kube/clusters/{uuid}/revoke` | 吊销接入令牌：已接入节点不受影响，新节点不能再接入 | JWT(admin) |

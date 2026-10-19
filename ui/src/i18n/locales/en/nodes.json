@@ -802,6 +802,7 @@
       "offline": "Offline",
       "unsupported": "Unsupported platform or artifact",
       "legacy_unverified": "Legacy download conditions unverified",
+      "kubernetes": "Kubernetes DaemonSet",
       "unknown_version": "Version unknown",
       "busy": "Upgrade already reserved",
       "unavailable": "Unavailable"
@@ -814,6 +815,7 @@
       "artifact_missing": "The target Agent artifact is unavailable.",
       "artifact_untrusted": "The target artifact version or checksum could not be verified.",
       "legacy_unverified": "The old Agent download conditions cannot be verified; handle this node individually.",
+      "kubernetes": "The agent runs in a Kubernetes DaemonSet; upgrade the node on its own to roll its cluster's agents.",
       "unknown_version": "The Agent version cannot be identified.",
       "busy": "An earlier upgrade still owns this node.",
       "target_changed": "The target or artifact changed; refresh the preview.",

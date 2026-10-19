@@ -139,26 +139,3 @@ func judgeRuntimeGPU(ctx context.Context, log *slog.Logger, prober gpu.Prober, d
 	}
 	return "", true
 }
-
-// KubeUnschedulable is whether this Kubernetes node is cordoned there; false
-// on any other runtime, and when the API server cannot be asked (the server
-// keeps the node as it was rather than act on a guess).
-func (n *NodeRuntime) KubeUnschedulable(ctx context.Context) bool {
-	d, ok := n.runtimeDriver().(interface {
-		Unschedulable(context.Context) (bool, error)
-	})
-	if !ok {
-		return false
-	}
-	v, err := d.Unschedulable(ctx)
-	if err != nil {
-		n.log.Debug("kubernetes node state unavailable", "err", err)
-		n.kubeCordon.mu.Lock()
-		defer n.kubeCordon.mu.Unlock()
-		return n.kubeCordon.last
-	}
-	n.kubeCordon.mu.Lock()
-	n.kubeCordon.last = v
-	n.kubeCordon.mu.Unlock()
-	return v
-}

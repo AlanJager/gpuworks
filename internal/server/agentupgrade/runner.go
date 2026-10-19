@@ -137,6 +137,9 @@ func (s *Service) execute(ctx context.Context, run store.AgentUpgradeRun, item s
 	if proto.AgentBinaryName(node.OS, node.Arch) != item.ArtifactName {
 		return skip("platform_changed", "the agent platform changed; preview again")
 	}
+	if node.KubeClusterID != 0 {
+		return skip("kubernetes", "the agent runs in a Kubernetes DaemonSet; upgrade the node to roll its cluster's agents")
+	}
 	if item.Transport == "pull" && node.ConnectMode == "server_dial" {
 		return skip("legacy_unverified", "this older server-dial agent cannot prove a download address")
 	}

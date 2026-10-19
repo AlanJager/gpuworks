@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -8,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/version"
 )
 
 const kubeCreateBody = `{"name":"prod","server_url":"https://gw.example:8800/","node_selector":"gpuworks.ai/pool=a","agent_image":"reg.example/gpuworks-agent:v1"}`
@@ -166,5 +170,38 @@ func TestKubeClusterAccess(t *testing.T) {
 	}
 	if rec := rig.do(user, http.MethodGet, "/api/v1/kube/clusters/x/manifest", ""); rec.Code != http.StatusForbidden {
 		t.Fatalf("user manifest = %d", rec.Code)
+	}
+}
+
+func TestKubeNodeUpgradeMovesTheDaemonSetAndDeleteNeedsNoSSH(t *testing.T) {
+	rig := newTokenRig(t)
+	c, err := rig.st.CreateKubeCluster(store.KubeCluster{Name: "c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, _, err := rig.st.EnrollKubeNode(c.Token, "uid", "gpu-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotMethod string
+	var gotParams any
+	signer, err := auth.NewTokenSigner("platform-token-test-secret", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rig.h = Router(Deps{AuthSigner: signer, Store: rig.st, CallNode: func(_ context.Context, uuid, method string, params any) (json.RawMessage, error) {
+		gotMethod, gotParams = method, params
+		return json.RawMessage(`{"image":"gpuworks/gpuworks-agent:` + version.Version + `"}`), nil
+	}})
+	rec := rig.do(rig.session, http.MethodPost, "/api/v1/nodes/"+node.UUID+"/upgrade", "")
+	if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"rolling"`) || !strings.Contains(rec.Body.String(), "gpuworks-agent:") {
+		t.Fatalf("upgrade = %d %s", rec.Code, rec.Body)
+	}
+	if gotMethod != proto.RPCKubeUpgrade || gotParams.(proto.KubeUpgradeParams).Version != version.Version {
+		t.Fatalf("RPC = %s %+v", gotMethod, gotParams)
+	}
+	rec = rig.do(rig.session, http.MethodDelete, "/api/v1/nodes/"+node.UUID, "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"status":"deleted"`) {
+		t.Fatalf("delete kube node = %d %s", rec.Code, rec.Body)
 	}
 }
