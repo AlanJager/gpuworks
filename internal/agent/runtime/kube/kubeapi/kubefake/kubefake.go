@@ -27,7 +27,10 @@ type Server struct {
 	mu        sync.Mutex
 	pods      map[string]*kubeapi.Pod // ns/name
 	nodes     map[string]*kubeapi.Node
-	daemonSet *kubeapi.DaemonSet
+	// daemonSet is kept as a generic JSON document so patches behave as
+	// the API server's do: a merge patch replaces lists whole, a strategic
+	// merge patch merges containers by name.
+	daemonSet map[string]any
 	clusterID string
 	rv        int
 	// Logs is what a pod's log endpoint returns, by pod name.
@@ -47,12 +50,13 @@ func New(t testing.TB, ns, node string) *Server {
 	n := &kubeapi.Node{Metadata: kubeapi.ObjectMeta{Name: node, UID: "node-uid-" + node}}
 	n.Status.Allocatable = map[string]string{}
 	s.nodes[node] = n
-	ds := &kubeapi.DaemonSet{Metadata: kubeapi.ObjectMeta{Name: "gpuworks-agent", Namespace: ns, UID: "ds-uid"}}
-	ds.Spec.Template.Spec.Containers = append(ds.Spec.Template.Spec.Containers, struct {
-		Name  string `json:"name"`
-		Image string `json:"image"`
-	}{Name: "agent", Image: "gpuworks/gpuworks-agent:v1"})
-	s.daemonSet = ds
+	s.daemonSet = map[string]any{
+		"metadata": map[string]any{"name": "gpuworks-agent", "namespace": ns, "uid": "ds-uid"},
+		"spec": map[string]any{"template": map[string]any{"spec": map[string]any{"containers": []any{
+			map[string]any{"name": "agent", "image": "gpuworks/gpuworks-agent:v1",
+				"args": []any{"run", "--driver=kube"}, "env": []any{map[string]any{"name": "A", "value": "1"}}},
+		}}}},
+	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
 	return s
@@ -118,11 +122,22 @@ func (s *Server) UpdatePod(ns, name string, fn func(*kubeapi.Pod)) {
 	}
 }
 
-// DaemonSetImage is the agent DaemonSet's current image.
-func (s *Server) DaemonSetImage() string {
+// DaemonSetContainer is the agent DaemonSet's first container.
+func (s *Server) DaemonSetContainer() map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.daemonSet.Spec.Template.Spec.Containers[0].Image
+	cs := s.daemonSet["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)
+	if len(cs) == 0 {
+		return nil
+	}
+	return cs[0].(map[string]any)
+}
+
+// DaemonSetImage is the agent DaemonSet's current image.
+func (s *Server) DaemonSetImage() string {
+	c := s.DaemonSetContainer()
+	img, _ := c["image"].(string)
+	return img
 }
 
 // Running makes a pod's only container run.
@@ -195,34 +210,86 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveDaemonSet(w http.ResponseWriter, r *http.Request, name string) {
-	if name != s.daemonSet.Metadata.Name {
+	s.mu.Lock()
+	dsName := s.daemonSet["metadata"].(map[string]any)["name"]
+	s.mu.Unlock()
+	if name != dsName {
 		s.status(w, 404, "NotFound", fmt.Sprintf("daemonsets.apps %q not found", name))
 		return
 	}
 	if r.Method == http.MethodPatch {
-		if r.Header.Get("Content-Type") != "application/merge-patch+json" {
+		strategic := false
+		switch r.Header.Get("Content-Type") {
+		case "application/merge-patch+json":
+		case "application/strategic-merge-patch+json":
+			strategic = true
+		default:
 			s.status(w, 415, "UnsupportedMediaType", "the body of the request was in an unknown format")
 			return
 		}
-		var patch kubeapi.DaemonSet
+		var patch map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 			s.status(w, 400, "BadRequest", err.Error())
 			return
 		}
 		s.mu.Lock()
-		for _, c := range patch.Spec.Template.Spec.Containers {
-			for i := range s.daemonSet.Spec.Template.Spec.Containers {
-				if s.daemonSet.Spec.Template.Spec.Containers[i].Name == c.Name && c.Image != "" {
-					s.daemonSet.Spec.Template.Spec.Containers[i].Image = c.Image
-				}
-			}
-		}
+		s.daemonSet = mergeJSON(s.daemonSet, patch, strategic).(map[string]any)
 		s.mu.Unlock()
 	}
 	s.mu.Lock()
-	cp := *s.daemonSet
+	raw, _ := json.Marshal(s.daemonSet)
 	s.mu.Unlock()
-	s.json(w, 200, cp)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(raw)
+}
+
+// mergeJSON applies patch to doc: maps merge key by key (null deletes),
+// anything else replaces — except, in a strategic merge, the "containers"
+// list, whose entries merge with the ones of the same name.
+func mergeJSON(doc, patch any, strategic bool) any {
+	pm, ok := patch.(map[string]any)
+	if !ok {
+		return patch
+	}
+	dm, _ := doc.(map[string]any)
+	out := map[string]any{}
+	for k, v := range dm {
+		out[k] = v
+	}
+	for k, v := range pm {
+		switch {
+		case v == nil:
+			delete(out, k)
+		case strategic && k == "containers":
+			out[k] = mergeByName(out[k], v)
+		default:
+			out[k] = mergeJSON(out[k], v, strategic)
+		}
+	}
+	return out
+}
+
+func mergeByName(doc, patch any) any {
+	have, _ := doc.([]any)
+	want, ok := patch.([]any)
+	if !ok {
+		return patch
+	}
+	out := append([]any(nil), have...)
+	for _, p := range want {
+		pm, _ := p.(map[string]any)
+		merged := false
+		for i, h := range out {
+			if hm, _ := h.(map[string]any); hm != nil && pm != nil && hm["name"] == pm["name"] {
+				out[i] = mergeJSON(hm, pm, true)
+				merged = true
+			}
+		}
+		if !merged {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func matches(p *kubeapi.Pod, labelSel, fieldSel string) bool {

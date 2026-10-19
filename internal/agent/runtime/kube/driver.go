@@ -449,10 +449,13 @@ func (d *Driver) UpgradeDaemonSet(ctx context.Context, version string) (string, 
 	if image == c.Image {
 		return image, nil
 	}
+	// A strategic merge patch merges the containers by name: the agent's
+	// arguments, environment and mounts stay as the manifest set them. A
+	// JSON merge patch would replace the whole list with this one entry.
 	patch := map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
 		"containers": []map[string]string{{"name": c.Name, "image": image}},
 	}}}}
-	if err := d.o.API.MergePatch(ctx, kubeapi.DaemonSetPath(d.o.Namespace, DaemonSetName), patch, nil); err != nil {
+	if err := d.o.API.StrategicMergePatch(ctx, kubeapi.DaemonSetPath(d.o.Namespace, DaemonSetName), patch, nil); err != nil {
 		return "", fmt.Errorf("update the agent DaemonSet image: %w", err)
 	}
 	d.o.Log.Info("agent DaemonSet moved to a new image", "image", image)

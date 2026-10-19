@@ -386,6 +386,14 @@ func TestUpgradeDaemonSetMovesTheImageTag(t *testing.T) {
 	if err != nil || image != "gpuworks/gpuworks-agent:v2.0.1" || r.srv.DaemonSetImage() != image {
 		t.Fatalf("UpgradeDaemonSet = %q, %v; DaemonSet runs %q", image, err, r.srv.DaemonSetImage())
 	}
+	// Only the image changes: the manifest's arguments and environment stay.
+	c := r.srv.DaemonSetContainer()
+	if args, _ := c["args"].([]any); len(args) != 2 || args[0] != "run" {
+		t.Fatalf("container after upgrade = %v; the arguments were lost", c)
+	}
+	if env, _ := c["env"].([]any); len(env) != 1 {
+		t.Fatalf("container after upgrade = %v; the environment was lost", c)
+	}
 	if image, err := r.d.UpgradeDaemonSet(ctx, "v2.0.1"); err != nil || image != "gpuworks/gpuworks-agent:v2.0.1" {
 		t.Fatalf("same version again = %q, %v", image, err)
 	}
