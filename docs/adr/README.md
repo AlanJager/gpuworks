@@ -55,6 +55,7 @@
 | [0049](0049-expose-trusts-same-host-connector.md) | 公网入口启用期间，server 信任来自本机的转发头 | 2026-10-17 | 已接受；补充 0045 |
 | [0050](0050-model-pull-sources-and-proxies.md) | 来源规则同时覆盖模型站点，代理按标签配置，凭据按 host 统一 | 2026-10-17 | 已接受；取代 0048「后果」中模型下载规则留待后续的一条 |
 | [0051](0051-agent-launch-configuration-file.md) | agent 的启动配置记在 `<state>/gpuworks-agent.conf`，所有启动方式都只是 `run --state` | 2026-10-19 | 已接受 |
+| [0052](0052-kubernetes-nodes.md) | Kubernetes 是一种节点来源加一种运行时，卡按需向 kubelet 借用 | 2026-10-19 | 已接受 |
 | [0053](0053-storage-files.md) | 整个存储可浏览，只有 `files/` 与 `.gpuworks/apps/` 可写；上传先落暂存、成功后才回报，下载边打包边传 | 2026-10-21 | 已接受 |
 | [0054](0054-usage-report-and-notices.md) | 用户体验改进计划默认加入，日报发往托管日志服务；发布方通知走签名发布通道 | 2026-10-22 | 已接受；修订 0040 补充的开关取舍 |
 | [0055](0055-long-term-statistics.md) | 长期统计与原始观测分开存储：一对象一行、在入库路径上累加、增量写入；Token 用量放主库，其余放 stats.db | 2026-10-22 | 已接受 |

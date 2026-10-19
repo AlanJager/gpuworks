@@ -483,6 +483,22 @@ _Avoid_: 健康检查（那是运行中的存活探测）、ping
 agent 升级机制：下载新二进制 → smoke 握手通过 → 原子替换文件 → `exec` 原地换进程映像（PID 不变、进程从不退出），从而不触发 systemd 重启、不杀正在跑的推理。
 _Avoid_: 重启升级、滚动升级
 
+**Kubernetes 集群 — Kubernetes Cluster**:
+以一个 DaemonSet 接入的一组 GPU 节点，记录接入令牌与 manifest 参数（`kube_clusters`）。集群里的每个节点仍是普通节点。
+_Avoid_: 集群分组（标签的事）、k8s 节点池
+
+**接入令牌 — Enrollment Token**:
+集群级凭证，只用来让 DaemonSet 的 agent 换取各自的节点 token（`POST /kube/enroll`），首次使用时绑定集群。吊销后新节点不能再加入，已加入的节点照常。
+_Avoid_: bootstrap token、节点 token
+
+**kube 运行时 — Kube Runtime**:
+agent 的运行时之一（`--driver=kube`），把实例落成钉在本节点的裸 Pod；镜像在节点 containerd 的 `k8s.io` 命名空间。
+_Avoid_: k8s 驱动、Operator
+
+**占位 Pod / 借卡 — Hold Pod / Card Borrowing**:
+有 device plugin 的节点上，gpuworks 为要用的卡起一个只申请 1 张卡的占位 Pod（`gpuworks-hold-*`），使该卡在 Kubernetes 账面上归平台；实例全部停止超过集群的「空闲归还」时间后删除，称为归还。
+_Avoid_: 预留 Pod、独占
+
 **带外恢复 — Out-of-band Recovery**:
 agent 控制面连接失联后，server 经独立的 SSH 旁路判定节点与 agent 状态并尝试修复的机制；它与 agent 自身重连、server_dial 拨号并列，是最后一层手段。
 _Avoid_: 失联恢复（「失联」只是 offline 的口语泛称）、节点自愈（没有体现旁路通道）
