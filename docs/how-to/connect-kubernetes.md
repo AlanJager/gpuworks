@@ -46,7 +46,7 @@ plugin 时，gpuworks 直接使用节点上的卡。
 
 | 场景 | 做法 |
 |---|---|
-| 维护节点 | 在 Kubernetes 里 `kubectl cordon`：gpuworks 跟着停止往该节点放新副本，`uncordon` 后恢复 |
+| 维护节点 | 在 Kubernetes 里 `kubectl cordon`：gpuworks 在下一次状态上报（一分钟内）跟着停止往该节点放新副本，`uncordon` 后同样恢复 |
 | 升级 agent | 节点详情里点「升级」：把该集群的 agent DaemonSet 换到与 server 同版本的镜像，Kubernetes 依次替换各节点的 agent，实例 Pod 不受影响。也可以自己 `kubectl -n gpuworks-system set image ds/gpuworks-agent agent=<镜像>` |
 | 节点被删除或缩容 | 节点离线 15 分钟后，gpuworks 请同集群另一台在线节点确认；Kubernetes 里已没有该节点且其上没有实例时自动移除 |
 | 从 gpuworks 删除节点 | 只删除记录，不卸载 agent；DaemonSet 仍选中该节点时它会重新加入，需要先调整节点选择器 |
