@@ -32,8 +32,8 @@ func TestTranslateDockerArgs(t *testing.T) {
 func TestInstancePod(t *testing.T) {
 	spec := runtime.WorkloadSpec{
 		Name: "gpuworks-0123456789ab", Image: "vllm/vllm-openai:v0.11", Entrypoint: []string{"vllm"}, Cmd: []string{"serve", "/model"},
-		Env:    map[string]string{"Z": "1", "CUDA_VISIBLE_DEVICES": "0"},
-		Mounts: []runtime.Mount{{Source: "/opt/gpuworks/models/qwen", Target: "/model", ReadOnly: true}},
+		Env:        map[string]string{"Z": "1", "CUDA_VISIBLE_DEVICES": "0"},
+		Mounts:     []runtime.Mount{{Source: "/opt/gpuworks/models/qwen", Target: "/model", ReadOnly: true}},
 		DockerArgs: []string{"--gpus", `"device=2"`}, HostNetwork: true, ShmBytes: 1 << 30,
 	}
 	owner := &kubeapi.OwnerReference{APIVersion: "apps/v1", Kind: "DaemonSet", Name: DaemonSetName, UID: "ds"}
