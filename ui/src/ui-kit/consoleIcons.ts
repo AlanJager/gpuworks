@@ -19,6 +19,7 @@ import Blueprint from "@hugeicons/core-free-icons/BlueprintIcon";
 import Rocket01 from "@hugeicons/core-free-icons/Rocket01Icon";
 import ServerStack01 from "@hugeicons/core-free-icons/ServerStack01Icon";
 import Settings01 from "@hugeicons/core-free-icons/Settings01Icon";
+import ShipWheel from "@hugeicons/core-free-icons/ShipWheelIcon";
 import SidebarLeft01 from "@hugeicons/core-free-icons/SidebarLeft01Icon";
 import TestTube01 from "@hugeicons/core-free-icons/TestTube01Icon";
 import TimeSchedule from "@hugeicons/core-free-icons/TimeScheduleIcon";
@@ -56,6 +57,7 @@ export const ConsoleIcon = {
   storage: createHugeIcon(Database01),
   networks: createHugeIcon(ConnectIcon),
   platforms: createHugeIcon(Cloud),
+  kubernetes: createHugeIcon(ShipWheel),
   apiKeys: createHugeIcon(Key01),
   settings: createHugeIcon(Settings01),
   notifications: createHugeIcon(Notification01),

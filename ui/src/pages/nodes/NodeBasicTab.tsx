@@ -6,6 +6,7 @@ import type { UpgradePhase } from "../../agentUpgrade";
 import KVDiskKernelWarning from "../../components/KVDiskKernelWarning";
 import { GPUProbeFailedTag } from "../../components/NodeAcceleratorWarnings";
 import { NodeConnectionBadge } from "../../components/NodeConnectionBadge";
+import NodeKubeTags from "../../components/NodeKubeTags";
 import NodeNetworksCard from "../../components/NodeNetworksCard";
 import NodePullProxy from "../../components/NodePullProxy";
 import { NodeSSHAccess } from "../../components/NodeRecoveryControls";
@@ -23,6 +24,7 @@ import NodeConnectionDiagnostics from "../../components/NodeConnectionDiagnostic
 export default function NodeBasicTab({
   node,
   engines,
+  kubeClusterNames,
   upgradePhase,
   runtimeLoading,
   onRename,
@@ -31,6 +33,7 @@ export default function NodeBasicTab({
 }: {
   node: Node;
   engines?: EngineProfile[] | null;
+  kubeClusterNames?: ReadonlyMap<number, string>;
   upgradePhase?: UpgradePhase;
   runtimeLoading: boolean;
   onRename: () => void;
@@ -55,6 +58,7 @@ export default function NodeBasicTab({
             <Space size={4} wrap>
               <NodeConnectionBadge node={node} />
               <GPUProbeFailedTag node={node} />
+              <NodeKubeTags node={node} clusterNames={kubeClusterNames} />
             </Space>
           </Descriptions.Item>
           <Descriptions.Item label="UUID">{node.uuid}</Descriptions.Item>

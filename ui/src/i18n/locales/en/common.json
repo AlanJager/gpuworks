@@ -694,24 +694,6 @@
     "updateAvailable": "Update available",
     "updateAvailableHint": "A newer server or official catalog is available; see Version and updates in Settings"
   },
-  "resourcePlaceholder": {
-    "currentEntry": "Current entry point",
-    "deliveryScope": "Delivery scope",
-    "futureCapabilities": "Planned capabilities",
-    "k8s": {
-      "current": "You can currently install the agent on Kubernetes worker nodes and onboard and schedule them as ordinary compute nodes.",
-      "description": "The Kubernetes onboarding entry point is reserved. Agentless and DaemonSet onboarding will be delivered in a later version.",
-      "next": {
-        "0": "DaemonSet onboarding",
-        "1": "Agentless virtual compute nodes",
-        "2": "External GPU allocation injection",
-        "3": "Cluster-based filtering and scheduling"
-      },
-      "primary": "Open onboarding wizard",
-      "status": "Planned for v3",
-      "title": "Kubernetes"
-    }
-  },
   "states": {
     "offline": "Offline",
     "active": "Preparing",

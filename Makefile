@@ -63,13 +63,13 @@ build: check-libvgpu ui cross-agents server agent
 AGENT_IMAGE ?= gpuworks/gpuworks-agent:$(VERSION)
 NERDCTL_VERSION ?= 2.1.6
 ARCH ?= amd64
-ALPINE_MIRROR ?= https://mirrors.aliyun.com/alpine
+DEBIAN_MIRROR ?= mirrors.aliyun.com
 agent-image:
 	@set -eu; ctx="$$(mktemp -d)"; trap 'rm -rf "$$ctx"' EXIT; \
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) $(GO) build -buildvcs=false -trimpath -ldflags "$(LDFLAGS)" -o "$$ctx/gpuworks-agent" ./cmd/gpuworks-agent; \
 	curl -fsSL "https://github.com/containerd/nerdctl/releases/download/v$(NERDCTL_VERSION)/nerdctl-$(NERDCTL_VERSION)-linux-$(ARCH).tar.gz" | tar -xz -C "$$ctx" nerdctl; \
 	cp build/agent-image/Dockerfile "$$ctx/"; \
-	docker build --platform linux/$(ARCH) --build-arg ALPINE_MIRROR=$(ALPINE_MIRROR) -t $(AGENT_IMAGE) "$$ctx"
+	docker build --platform linux/$(ARCH) --build-arg DEBIAN_MIRROR=$(DEBIAN_MIRROR) -t $(AGENT_IMAGE) "$$ctx"
 
 ## server: build the control-plane binary (embeds UI + cross-compiled agents)
 server: cross-agents

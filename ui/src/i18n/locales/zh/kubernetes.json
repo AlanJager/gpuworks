@@ -1,0 +1,100 @@
+{
+  "page": {
+    "title": "Kubernetes",
+    "description": "Kubernetes 集群以一个 DaemonSet 接入 gpuworks：DaemonSet 选中的每个 GPU 节点会自动成为这里的节点，实例以 Pod 的形式运行在各自的节点上。卡在实例使用期间向 Kubernetes 借用，空闲一段时间后归还。",
+    "breadcrumb": {
+      "platform": "AI 算力平台",
+      "resources": "资源",
+      "kubernetes": "Kubernetes"
+    },
+    "add": "接入集群",
+    "empty": "还没有接入 Kubernetes 集群。接入后，集群里的 GPU 节点会出现在节点列表里。"
+  },
+  "column": {
+    "name": "名称",
+    "namespace": "命名空间",
+    "nodes": "节点",
+    "clusterUid": "集群 UID",
+    "cardReturn": "卡归还",
+    "status": "状态",
+    "createdAt": "创建时间",
+    "actions": "操作"
+  },
+  "clusterUid": {
+    "notEnrolled": "未接入",
+    "notEnrolledHint": "还没有节点从这个集群接入。"
+  },
+  "returnPolicy": {
+    "afterIdle": "空闲 {{duration}}后归还",
+    "keep": "常驻（不归还）"
+  },
+  "duration": {
+    "seconds": "{{count}} 秒",
+    "minutes": "{{count}} 分钟",
+    "hours": "{{count}} 小时"
+  },
+  "status": {
+    "active": "正常",
+    "revoked": "已吊销"
+  },
+  "actions": {
+    "copyCommand": "复制接入命令",
+    "manifest": "查看 manifest",
+    "revoke": "吊销",
+    "revokeConfirm": "吊销 {{name}} 的接入令牌？",
+    "revokeHelp": "已接入的节点不受影响，新节点不能再用这条命令接入。",
+    "revoked": "集群 {{name}} 已吊销",
+    "delete": "删除",
+    "deleteConfirm": "删除集群 {{name}}？",
+    "deleteHelp": "只删除这里的集群记录，集群里的 DaemonSet 请在 Kubernetes 里自行删除。仍有节点的集群不能删除。",
+    "deleted": "集群 {{name}} 已删除",
+    "cancel": "取消",
+    "failed": "操作失败"
+  },
+  "manifest": {
+    "title": "{{name}} 的 manifest",
+    "copy": "复制 manifest",
+    "close": "关闭",
+    "failed": "无法加载 manifest"
+  },
+  "drawer": {
+    "title": "接入 Kubernetes 集群",
+    "name": "名称",
+    "nameRequired": "请输入集群名称",
+    "namePlaceholder": "prod-gpu",
+    "serverUrl": "Server 地址",
+    "serverUrlHelp": "集群里的 agent 访问本服务的地址，须能从集群的 Pod 里访问到。",
+    "serverUrlRequired": "请输入 Server 地址",
+    "serverUrlInvalid": "请输入 http:// 或 https:// 开头的地址",
+    "nodeSelector": "节点选择器",
+    "nodeSelectorPlaceholder": "nvidia.com/gpu.present=true",
+    "nodeSelectorHelp": "可选。以逗号分隔的 key=value，只有同时带有这些标签的 Kubernetes 节点才会接入；留空表示所有节点。",
+    "advanced": "高级",
+    "namespace": "命名空间",
+    "namespaceHelp": "DaemonSet 及其资源创建在哪个命名空间。",
+    "agentImage": "agent 镜像",
+    "agentImagePlaceholder": "默认镜像",
+    "agentImageHelp": "留空使用默认的 agent 镜像。",
+    "runtimeClass": "RuntimeClass",
+    "runtimeClassHelp": "agent Pod 和实例 Pod 用来访问 GPU 的 RuntimeClass。留空表示不使用。",
+    "containerdSocket": "containerd socket",
+    "containerdSocketHelp": "节点上的路径。k3s 用 /run/k3s/containerd/containerd.sock。",
+    "enginePorts": "引擎端口段",
+    "enginePortsHelp": "推理引擎监听的主机端口，须避开集群的 NodePort 端口段（默认 30000-32767）。",
+    "idleReturn": "空闲归还",
+    "idleReturnSeconds": "空闲多少秒后归还卡",
+    "idleReturnHelp": "向 Kubernetes 借来的卡，空闲这么久后还给它。",
+    "keepCards": "常驻",
+    "keepCardsHelp": "借来的卡不再归还给 Kubernetes。",
+    "submit": "接入",
+    "cancel": "取消",
+    "close": "关闭"
+  },
+  "created": {
+    "title": "集群 {{name}} 已创建",
+    "note": "在集群里执行这条命令；被选中的 GPU 节点会自动出现在节点列表。",
+    "command": "接入命令",
+    "copyCommand": "复制接入命令",
+    "secret": "命令里含有接入令牌，请像密码一样保管。"
+  }
+}

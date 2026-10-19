@@ -6,6 +6,7 @@ import type { ResourceColumn } from "../../components/resourceTable/ResourceTabl
 import CellTags from "../../components/resourceTable/CellTags";
 import { NodeSchedulingTag } from "../../components/NodeSchedulingModal";
 import { NodeConnectionBadge } from "../../components/NodeConnectionBadge";
+import NodeKubeTags from "../../components/NodeKubeTags";
 import { NODE_CONNECTION_STATES } from "../../nodes/connectionState";
 import { systemLabelName, systemLabelValue } from "../../components/SystemLabelTags";
 import { formatTime } from "../../i18n/datetime";
@@ -42,6 +43,8 @@ export interface NodeColumnContext {
   serverVersion?: string;
   upgradeErrors?: Record<string, string> | null;
   upgradePhase: (uuid: string) => UpgradePhase | undefined;
+  /** Names of the Kubernetes clusters by id, for the nodes that joined from one. */
+  kubeClusterNames?: ReadonlyMap<number, string>;
   onOpen: (node: Node) => void;
   onEditLabels: (node: Node) => void;
   onScheduling: (node: Node) => void;
@@ -52,7 +55,7 @@ export interface NodeColumnContext {
  * The node list's columns. Keys are the server's sort keys where the column
  * sorts, so a header click asks GET /nodes for that order.
  */
-export function nodeColumns({ t, states, serverVersion, upgradeErrors, upgradePhase, onOpen, onEditLabels, onScheduling, onDelete }: NodeColumnContext): ResourceColumn<Node>[] {
+export function nodeColumns({ t, states, serverVersion, upgradeErrors, upgradePhase, kubeClusterNames, onOpen, onEditLabels, onScheduling, onDelete }: NodeColumnContext): ResourceColumn<Node>[] {
   return [
     {
       key: "name",
@@ -64,6 +67,7 @@ export function nodeColumns({ t, states, serverVersion, upgradeErrors, upgradePh
         <>
           <Button type="link" onClick={() => onOpen(n)}>{n.name || n.hostname || n.uuid.slice(0, 12)}</Button>
           <span className="resource-table-sub">{n.hostname || t("waitingFirstConnection")}</span>
+          {n.kube && <span className="resource-table-sub"><NodeKubeTags node={n} clusterNames={kubeClusterNames} /></span>}
         </>
       ),
     },

@@ -1158,5 +1158,10 @@
       "elapsed": "观察到的阶段耗时",
       "milliseconds": "{{count}} ms"
     }
+  },
+  "kube": {
+    "tag": "K8s · {{place}}",
+    "cordoned": "K8s 已 cordon",
+    "cordonedHint": "Kubernetes 已将这个节点 cordon。在 Kubernetes 里 uncordon 之前，gpuworks 不会再往上面放新实例。"
   }
 }

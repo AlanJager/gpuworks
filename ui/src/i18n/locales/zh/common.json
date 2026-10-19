@@ -694,24 +694,6 @@
     "updateAvailable": "有可用更新",
     "updateAvailableHint": "服务端或官方目录有新版本，在设置页「版本与更新」中查看"
   },
-  "resourcePlaceholder": {
-    "currentEntry": "当前入口",
-    "deliveryScope": "交付范围",
-    "futureCapabilities": "后续能力",
-    "k8s": {
-      "current": "当前可以在 Kubernetes 工作节点内安装 agent，并按普通计算节点纳管与调度。",
-      "description": "Kubernetes 纳管入口已预留，agentless 与 DaemonSet 接入将在后续版本实现。",
-      "next": {
-        "0": "DaemonSet 接入",
-        "1": "agentless 虚拟计算节点",
-        "2": "外部 GPU 占用注入",
-        "3": "按集群过滤与调度"
-      },
-      "primary": "打开接入向导",
-      "status": "v3 规划中",
-      "title": "Kubernetes"
-    }
-  },
   "states": {
     "offline": "离线",
     "active": "准备中",

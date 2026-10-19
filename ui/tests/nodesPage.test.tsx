@@ -137,6 +137,7 @@ const originals = {
   node: api.node,
   storageUsage: api.storageUsage,
   storages: api.storages,
+  kubeClusters: api.kubeClusters,
   metricsQuery: api.metricsQuery,
   nodeDoctor: api.nodeDoctor,
 };
@@ -190,6 +191,7 @@ function stubApi(nodes: Node[]) {
   }]);
   api.agentUpgradeErrors = async () => ({});
   api.engines = async () => list([]);
+  api.kubeClusters = async () => list([{ id: 7, uuid: "c-7", name: "prod-gpu" }]) as never;
 }
 
 afterEach(async () => {
@@ -901,4 +903,38 @@ test("a node-list refresh failure preserves an open upgrade preview and its retr
   assert.equal(submitted[0].idempotency_key, submitted[1].idempotency_key);
   assert.deepEqual(submitted[1].node_uuids, [onlineNode.uuid]);
   assert.ok(screen.getByRole("button", { name: "Recent Agent upgrades" }));
+});
+
+const kubeNode: Node = { ...onlineNode, uuid: "33333333-3333-3333-3333-333333333333", name: "k8s-gpu-01", hostname: "k8s-gpu-01", kube: { cluster_id: 7, node_name: "worker-3", unschedulable: false } };
+
+test("a node that joined from Kubernetes carries a tag naming its cluster and Kubernetes node; other nodes carry none", async () => {
+  stubApi([onlineNode, kubeNode]);
+  renderPage();
+  const row = (await screen.findByText("k8s-gpu-01", { selector: "button span, button" })).closest("tr") as HTMLElement;
+  await waitFor(() => assert.ok(within(row).getByText("K8s · prod-gpu/worker-3")));
+  assert.ok(within(row).queryByText("K8s cordoned") === null, "not cordoned in Kubernetes");
+  const other = screen.getByText("gpu-a100-node-01").closest("tr") as HTMLElement;
+  assert.ok(within(other).queryByText(/^K8s/) === null, "a plain node has no Kubernetes tag");
+});
+
+test("a node Kubernetes has cordoned says so in the list and in the detail drawer", async () => {
+  const cordoned = { ...kubeNode, kube: { ...kubeNode.kube!, unschedulable: true } };
+  stubApi([cordoned]);
+  api.node = async (uuid: string) => ({ ...cordoned, uuid }) as never;
+  renderPage();
+  const row = (await screen.findByText("k8s-gpu-01", { selector: "button span, button" })).closest("tr") as HTMLElement;
+  await waitFor(() => assert.ok(within(row).getByText("K8s cordoned")));
+  screen.getByRole("button", { name: "k8s-gpu-01" }).click();
+  await waitFor(() => assert.ok(screen.queryByRole("dialog")));
+  const drawer = within(screen.queryByRole("dialog") as HTMLElement);
+  await waitFor(() => assert.ok(drawer.getByText("K8s · prod-gpu/worker-3")));
+  assert.ok(drawer.getByText("K8s cordoned"));
+});
+
+test("when the clusters cannot be listed, the Kubernetes tag falls back to the Kubernetes node name", async () => {
+  stubApi([kubeNode]);
+  api.kubeClusters = async () => { throw new Error("forbidden"); };
+  renderPage();
+  const row = (await screen.findByText("k8s-gpu-01", { selector: "button span, button" })).closest("tr") as HTMLElement;
+  await waitFor(() => assert.ok(within(row).getByText("K8s · worker-3")));
 });

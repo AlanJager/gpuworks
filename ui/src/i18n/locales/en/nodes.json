@@ -1158,5 +1158,10 @@
       "elapsed": "Observed stage duration",
       "milliseconds": "{{count}} ms"
     }
+  },
+  "kube": {
+    "tag": "K8s · {{place}}",
+    "cordoned": "K8s cordoned",
+    "cordonedHint": "Kubernetes has this node cordoned. gpuworks places no new instances on it until it is uncordoned there."
   }
 }

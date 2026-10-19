@@ -1,0 +1,100 @@
+{
+  "page": {
+    "title": "Kubernetes",
+    "description": "A Kubernetes cluster joins gpuworks as one DaemonSet: every GPU node the DaemonSet selects becomes a node here by itself, and instances run as Pods on their node. Cards are borrowed from Kubernetes while an instance uses them and handed back after the idle period.",
+    "breadcrumb": {
+      "platform": "AI Compute Platform",
+      "resources": "Resources",
+      "kubernetes": "Kubernetes"
+    },
+    "add": "Connect cluster",
+    "empty": "No Kubernetes cluster yet. Connect one and its GPU nodes show up in the node list."
+  },
+  "column": {
+    "name": "Name",
+    "namespace": "Namespace",
+    "nodes": "Nodes",
+    "clusterUid": "Cluster UID",
+    "cardReturn": "Card return",
+    "status": "Status",
+    "createdAt": "Created",
+    "actions": "Actions"
+  },
+  "clusterUid": {
+    "notEnrolled": "Not connected yet",
+    "notEnrolledHint": "No node has joined from this cluster yet."
+  },
+  "returnPolicy": {
+    "afterIdle": "Returned after {{duration}} idle",
+    "keep": "Kept (never returned)"
+  },
+  "duration": {
+    "seconds": "{{count}} s",
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h"
+  },
+  "status": {
+    "active": "Active",
+    "revoked": "Revoked"
+  },
+  "actions": {
+    "copyCommand": "Copy connect command",
+    "manifest": "View manifest",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke the connect token of {{name}}?",
+    "revokeHelp": "Nodes already connected keep working. New nodes can no longer join with this command.",
+    "revoked": "Cluster {{name}} revoked",
+    "delete": "Delete",
+    "deleteConfirm": "Delete cluster {{name}}?",
+    "deleteHelp": "Only the cluster record here is removed. Delete the DaemonSet in Kubernetes yourself. A cluster that still has nodes cannot be deleted.",
+    "deleted": "Cluster {{name}} deleted",
+    "cancel": "Cancel",
+    "failed": "The action failed"
+  },
+  "manifest": {
+    "title": "Manifest of {{name}}",
+    "copy": "Copy manifest",
+    "close": "Close",
+    "failed": "The manifest could not be loaded"
+  },
+  "drawer": {
+    "title": "Connect a Kubernetes cluster",
+    "name": "Name",
+    "nameRequired": "Enter a name for the cluster",
+    "namePlaceholder": "prod-gpu",
+    "serverUrl": "Server address",
+    "serverUrlHelp": "The address the agents in the cluster reach this server at. It must be reachable from the cluster's Pods.",
+    "serverUrlRequired": "Enter the server address",
+    "serverUrlInvalid": "Enter an http:// or https:// address",
+    "nodeSelector": "Node selector",
+    "nodeSelectorPlaceholder": "nvidia.com/gpu.present=true",
+    "nodeSelectorHelp": "Optional. Comma-separated key=value pairs; only Kubernetes nodes with all of these labels join. Empty means every node.",
+    "advanced": "Advanced",
+    "namespace": "Namespace",
+    "namespaceHelp": "Where the DaemonSet and its resources are created.",
+    "agentImage": "Agent image",
+    "agentImagePlaceholder": "Default image",
+    "agentImageHelp": "Empty uses the default agent image.",
+    "runtimeClass": "RuntimeClass",
+    "runtimeClassHelp": "The RuntimeClass the agent Pod and instance Pods use to reach the GPUs. Empty means none.",
+    "containerdSocket": "containerd socket",
+    "containerdSocketHelp": "Path on the node. k3s uses /run/k3s/containerd/containerd.sock.",
+    "enginePorts": "Engine port range",
+    "enginePortsHelp": "Host ports the inference engines listen on. It must not overlap the cluster's NodePort range (30000-32767 by default).",
+    "idleReturn": "Idle return",
+    "idleReturnSeconds": "Seconds idle before a card is returned",
+    "idleReturnHelp": "A card borrowed from Kubernetes goes back to it after sitting idle for this long.",
+    "keepCards": "Keep borrowed cards",
+    "keepCardsHelp": "Never hand borrowed cards back to Kubernetes.",
+    "submit": "Connect",
+    "cancel": "Cancel",
+    "close": "Close"
+  },
+  "created": {
+    "title": "Cluster {{name}} is ready",
+    "note": "Run this command in the cluster. The GPU nodes it selects show up in the node list by themselves.",
+    "command": "Connect command",
+    "copyCommand": "Copy connect command",
+    "secret": "The command contains the connect token. Treat it like a password."
+  }
+}

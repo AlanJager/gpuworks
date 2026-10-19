@@ -165,8 +165,19 @@ export interface AcceleratorPresence {
   model?: string;
 }
 
+/** Where a node that joined from a Kubernetes cluster sits there (dto.NodeKube). */
+export interface NodeKube {
+  /** The id of the KubeCluster the node joined through. */
+  cluster_id: number;
+  node_name: string;
+  /** Kubernetes has the node cordoned. */
+  unschedulable: boolean;
+}
+
 export interface Node {
   uuid: string;
+  /** Set for a node that joined from a Kubernetes cluster. */
+  kube?: NodeKube;
   // scheduling is whether the node takes new replicas: cordoned takes none,
   // draining also moves the replicas a pool placed there.
   scheduling?: NodeScheduling;
@@ -996,6 +1007,44 @@ export interface ImageSeries {
   present_nodes: number;
   total_nodes: number;
   versions?: ImageCatalogEntry[];
+}
+
+/** A Kubernetes cluster whose GPU nodes join through one DaemonSet (dto.KubeCluster). */
+export interface KubeCluster {
+  /** What NodeKube.cluster_id refers to. */
+  id: number;
+  uuid: string;
+  name: string;
+  namespace: string;
+  server_url: string;
+  agent_image: string;
+  node_selector: string;
+  runtime_class: string;
+  containerd_socket: string;
+  engine_ports: string;
+  /** Seconds a borrowed card may sit idle before it goes back; -1 keeps it. */
+  idle_return_seconds: number;
+  /** Empty until the first node enrolled. */
+  cluster_uid: string;
+  revoked: boolean;
+  node_count: number;
+  created_at: string;
+  /** Carries the enrollment token; administrators only. */
+  apply_command?: string;
+}
+
+/** Creates a cluster; an omitted optional field takes the server's default (dto.KubeClusterRequest). */
+export interface KubeClusterRequest {
+  name: string;
+  server_url: string;
+  namespace?: string;
+  agent_image?: string;
+  node_selector?: string;
+  /** "" means no RuntimeClass; omitted means the default (nvidia). */
+  runtime_class?: string;
+  containerd_socket?: string;
+  engine_ports?: string;
+  idle_return_seconds?: number;
 }
 
 // Every collection endpoint answers an envelope, never a bare array
@@ -4844,6 +4893,12 @@ export const api = {
   deletePlatformToken: (id: number) => sendJSON<void>("DELETE", `/api/v1/platform-tokens/${id}`),
   mcpStatus: () => getJSON<MCPStatus>("/api/v1/mcp/status"),
   putMCPSettings: (enabled: boolean) => sendJSON<MCPStatus>("PUT", "/api/v1/mcp/settings", { enabled }),
+
+  kubeClusters: () => getJSON<List<KubeCluster>>("/api/v1/kube/clusters"),
+  createKubeCluster: (body: KubeClusterRequest) => sendJSON<KubeCluster>("POST", "/api/v1/kube/clusters", body),
+  kubeManifest: (uuid: string) => getText(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/manifest`),
+  revokeKubeCluster: (uuid: string) => sendJSON<KubeCluster>("POST", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/revoke`),
+  deleteKubeCluster: (uuid: string) => sendJSON<void>("DELETE", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}`),
 
   providerKinds: () => getJSON<List<ProviderKindInfo>>("/api/v1/providers/kinds"),
   providers: () => getJSON<List<CloudProvider>>("/api/v1/providers"),
