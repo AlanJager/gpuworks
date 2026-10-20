@@ -27,6 +27,8 @@ import (
 	partitionprobe "gpuworks.ai/gpuworks/internal/agent/probe"
 	"gpuworks.ai/gpuworks/internal/agent/registryprobe"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
+	"gpuworks.ai/gpuworks/internal/agent/storagemount"
 	"gpuworks.ai/gpuworks/internal/assets"
 	"gpuworks.ai/gpuworks/internal/debuglog"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -281,7 +283,13 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		log.Warn("agent state directory unavailable", "path", stateDir, "err", err)
 	}
 	n := &NodeRuntime{log: log, modelsDir: modelsDir, stateDir: stateDir, prober: prober, downloading: map[string]*modelDownload{}, modelSyncs: map[string]*activeModelSync{}, imageSyncs: map[string]*activeImageSync{}, netBench: newNetBenchManager(), progress: newProgressGate()}
-	n.storage = newStorageRuntime(stateDir, n.mountBusy)
+	var mountRunner storagemount.Runner
+	if forceDriver == kube.DriverName {
+		// The agent's pod mounts NFS on the host, with the host's
+		// mount.nfs, where instance pods see it.
+		mountRunner = kube.HostExec
+	}
+	n.storage = newStorageRuntime(stateDir, n.mountBusy, mountRunner)
 	n.servingForward = newServingForwarder(log, n.currentNodeToken, n.instanceAPIPort)
 	n.perftest = perftest.Host(stateDir)
 	if accelerator.HasRuntimeAssetBundles(prober.Vendor()) {

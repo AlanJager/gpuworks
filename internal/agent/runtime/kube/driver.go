@@ -16,11 +16,14 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/deviceplugin"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/podresources"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/nerdctl"
@@ -32,6 +35,17 @@ const DriverName = "kube"
 
 // DaemonSetName is the agent DaemonSet the manifest creates.
 const DaemonSetName = "gpuworks-agent"
+
+// hostToolsBin holds the nerdctl wrapper (host.go); it is in the agent
+// container, first in PATH.
+const hostToolsBin = "/run/gpuworks/bin"
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
 
 // ImageStore is what the runtime needs of the node's containerd: nerdctl
 // pinned to kubelet's "k8s.io" namespace, where pods' images live.
@@ -64,17 +78,33 @@ type Options struct {
 	Poll time.Duration
 	// StartTimeout bounds how long Run waits for the container to start.
 	StartTimeout time.Duration
+	// HostRoot is the host's file system (HostRoot); when set, Detect
+	// prepares nerdctl for the node's containerd and learns whether it
+	// enables CDI. Tests leave it empty and set CDI themselves.
+	HostRoot string
+	// StateDir is the agent's state directory, the same path on the host.
+	StateDir string
+	// ContainerdSocket overrides the socket Detect would find.
+	ContainerdSocket string
+	// CardDevices maps each card index to the --device values the vendor's
+	// injection gives a workload on that card alone (devices.go).
+	CardDevices func(context.Context) (map[int][]string, error)
+	// PluginDir is the kubelet's device plugin directory; "" serves none.
+	PluginDir string
 }
 
 // Driver implements runtime.Driver on Kubernetes.
 type Driver struct {
 	o     Options
 	cards *cardPool
+
+	planMu sync.Mutex
+	plan   *devicePlan
 }
 
 // FromEnvironment builds the driver from the pod's environment (the
 // DaemonSet manifest sets it).
-func FromEnvironment(cards func(context.Context) (map[int]string, error), log *slog.Logger) (*Driver, error) {
+func FromEnvironment(stateDir string, cards func(context.Context) (map[int]string, error), cardDevices func(context.Context) (map[int][]string, error), log *slog.Logger) (*Driver, error) {
 	api, err := kubeapi.InCluster()
 	if err != nil {
 		return nil, err
@@ -83,7 +113,9 @@ func FromEnvironment(cards func(context.Context) (map[int]string, error), log *s
 		API: api, Kubelet: podresources.New(podresources.DefaultSocket), Images: nerdctl.NewInNamespace("k8s.io"),
 		Namespace: os.Getenv("GPUWORKS_KUBE_NAMESPACE"), NodeName: os.Getenv("GPUWORKS_KUBE_NODE_NAME"),
 		PodName: os.Getenv("GPUWORKS_KUBE_POD_NAME"), RuntimeClass: os.Getenv("GPUWORKS_KUBE_RUNTIME_CLASS"),
-		Cards: cards, IdleReturn: 10 * time.Minute, Log: log,
+		Cards: cards, IdleReturn: time.Minute, Log: log,
+		HostRoot: HostRoot, StateDir: stateDir, ContainerdSocket: os.Getenv("GPUWORKS_KUBE_CONTAINERD_SOCKET"),
+		CardDevices: cardDevices, PluginDir: deviceplugin.DefaultDir,
 	}
 	if o.Namespace == "" || o.NodeName == "" || o.PodName == "" {
 		return nil, errors.New("GPUWORKS_KUBE_NAMESPACE, GPUWORKS_KUBE_NODE_NAME and GPUWORKS_KUBE_POD_NAME must be set (the DaemonSet manifest sets them)")
@@ -122,8 +154,36 @@ func (d *Driver) SetIdleReturn(v time.Duration) {
 func (d *Driver) Name() string { return DriverName }
 
 // Detect reads the agent's own pod and DaemonSet: the image a hold pod runs
-// and the owner every pod gets, so deleting the DaemonSet removes them.
+// and the owner every pod gets, so deleting the DaemonSet removes them. It
+// refuses a node whose kubelet does not run containerd, and prepares nerdctl
+// for the node's containerd (host.go).
 func (d *Driver) Detect(ctx context.Context) (bool, error) {
+	var node kubeapi.Node
+	if err := d.o.API.Get(ctx, kubeapi.NodePath(d.o.NodeName), &node); err != nil {
+		return false, fmt.Errorf("read the agent's node: %w", err)
+	}
+	if err := checkRuntime(node.Status.NodeInfo.ContainerRuntimeVersion); err != nil {
+		return false, err
+	}
+	if d.o.HostRoot != "" {
+		nerdctlPath, err := exec.LookPath("nerdctl")
+		if err != nil {
+			return false, fmt.Errorf("the agent image has no nerdctl: %w", err)
+		}
+		socket := d.o.ContainerdSocket
+		if socket == "" {
+			socket = shimSocket("/proc", os.Getpid())
+		}
+		tools, err := prepareHost(d.o.HostRoot, d.o.StateDir, hostToolsBin, socket, nerdctlPath)
+		if err != nil {
+			return false, err
+		}
+		if !strings.HasPrefix(os.Getenv("PATH"), tools.Bin+":") {
+			_ = os.Setenv("PATH", tools.Bin+":"+os.Getenv("PATH"))
+		}
+		d.o.Log.Info("node containerd found", "layout", tools.Layout.Name, "socket", tools.Layout.Socket,
+			"runtime", node.Status.NodeInfo.ContainerRuntimeVersion)
+	}
 	var self kubeapi.Pod
 	if err := d.o.API.Get(ctx, kubeapi.PodPath(d.o.Namespace, d.o.PodName), &self); err != nil {
 		return false, fmt.Errorf("read the agent's own pod: %w", err)
@@ -135,7 +195,7 @@ func (d *Driver) Detect(ctx context.Context) (bool, error) {
 	if len(self.Spec.Containers) > 0 {
 		d.cards.holdImage = self.Spec.Containers[0].Image
 	}
-	d.cards.holdCmd = []string{"/usr/local/bin/gpuworks-agent", "hold"}
+	d.cards.holdCmd = []string{"gpuworks-agent", "hold"}
 	d.cards.owner = &kubeapi.OwnerReference{APIVersion: "apps/v1", Kind: "DaemonSet", Name: DaemonSetName, UID: ds.Metadata.UID}
 	return true, nil
 }
@@ -148,6 +208,7 @@ func (d *Driver) Start(ctx context.Context) {
 			d.o.Log.Warn("borrowing the node's cards failed", "err", err)
 		}
 	}
+	d.servePlugin(ctx)
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
 	for {
@@ -266,17 +327,34 @@ func startFailure(p kubeapi.Pod) string {
 // Run implements runtime.Driver: borrow the cards, create the pod and wait
 // until its container runs (or exited, which the engine then reports).
 func (d *Driver) Run(ctx context.Context, spec runtime.WorkloadSpec) (string, error) {
+	devices, err := workloadDevices(spec)
+	if err != nil {
+		return "", err
+	}
 	cards, err := d.cards.acquire(ctx, spec.Name, spec.GPUIndexes)
 	if err != nil {
 		return "", err
 	}
-	pod, err := instancePod(spec, podOptions{Namespace: d.o.Namespace, NodeName: d.o.NodeName, RuntimeClass: d.o.RuntimeClass, Owner: d.cards.owner, Cards: cards})
+	opts := podOptions{Namespace: d.o.Namespace, NodeName: d.o.NodeName, RuntimeClass: d.o.RuntimeClass, Owner: d.cards.owner, Cards: cards,
+		Group: func(name string) (int64, error) { return groupID(firstNonEmpty(d.o.HostRoot, "/"), name) }}
+	if len(devices) > 0 {
+		plan, err := d.devicePlan(ctx)
+		if err == nil {
+			opts.DeviceRequests, opts.UncoveredDevices, err = plan.requests(devices, spec.GPUIndexes)
+		}
+		if err != nil {
+			d.cards.release(spec.Name)
+			return "", fmt.Errorf("hand the devices of %s to its pod: %w", spec.Name, err)
+		}
+	}
+	undo := func() { d.cards.release(spec.Name) }
+	pod, err := instancePod(spec, opts)
 	if err != nil {
-		d.cards.release(spec.Name)
+		undo()
 		return "", err
 	}
 	if err := d.o.API.Create(ctx, kubeapi.PodsPath(d.o.Namespace), pod, nil); err != nil {
-		d.cards.release(spec.Name)
+		undo()
 		return "", fmt.Errorf("create pod %s: %w", spec.Name, err)
 	}
 	deadline := time.Now().Add(d.o.StartTimeout)
@@ -413,72 +491,13 @@ func (d *Driver) ExecPTY(ctx context.Context, id string, cmd []string) ([]string
 	return d.o.Images.ExecPTY(ctx, cid, cmd)
 }
 
-// Unschedulable reports whether this node is cordoned in Kubernetes.
-func (d *Driver) Unschedulable(ctx context.Context) (bool, error) {
-	var n kubeapi.Node
-	if err := d.o.API.Get(ctx, kubeapi.NodePath(d.o.NodeName)+"?resourceVersion=0", &n); err != nil {
-		return false, err
-	}
-	return n.Spec.Unschedulable, nil
-}
-
-// UpgradeDaemonSet moves the agent DaemonSet to version: the same image
-// repository at that tag. Kubernetes then replaces every agent of the
-// cluster in turn; the instance pods are not the agents' and keep running.
-func (d *Driver) UpgradeDaemonSet(ctx context.Context, version string) (string, error) {
-	version = strings.TrimSpace(version)
-	if version == "" || strings.ContainsAny(version, "/@: ") {
-		return "", fmt.Errorf("version %q is not an image tag", version)
-	}
-	var ds kubeapi.DaemonSet
-	if err := d.o.API.Get(ctx, kubeapi.DaemonSetPath(d.o.Namespace, DaemonSetName), &ds); err != nil {
-		return "", fmt.Errorf("read the agent DaemonSet: %w", err)
-	}
-	if len(ds.Spec.Template.Spec.Containers) == 0 {
-		return "", errors.New("the agent DaemonSet has no container")
-	}
-	c := ds.Spec.Template.Spec.Containers[0]
-	repo := c.Image
-	if at := strings.Index(repo, "@"); at >= 0 {
-		repo = repo[:at]
-	}
-	if colon := strings.LastIndex(repo, ":"); colon > strings.LastIndex(repo, "/") {
-		repo = repo[:colon]
-	}
-	image := repo + ":" + version
-	if image == c.Image {
-		return image, nil
-	}
-	// A strategic merge patch merges the containers by name: the agent's
-	// arguments, environment and mounts stay as the manifest set them. A
-	// JSON merge patch would replace the whole list with this one entry.
-	patch := map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
-		"containers": []map[string]string{{"name": c.Name, "image": image}},
-	}}}}
-	if err := d.o.API.StrategicMergePatch(ctx, kubeapi.DaemonSetPath(d.o.Namespace, DaemonSetName), patch, nil); err != nil {
-		return "", fmt.Errorf("update the agent DaemonSet image: %w", err)
-	}
-	d.o.Log.Info("agent DaemonSet moved to a new image", "image", image)
-	return image, nil
-}
-
-// NodeExists reports whether a node of this cluster still exists.
-func (d *Driver) NodeExists(ctx context.Context, name string) (bool, error) {
-	var n kubeapi.Node
-	err := d.o.API.Get(ctx, kubeapi.NodePath(name), &n)
-	if kubeapi.IsNotFound(err) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
 // ExternalCardHolders maps card UUID to the pods outside the platform the
 // kubelet gave it to; the agent reports them as the card's foreign use.
 func (d *Driver) ExternalCardHolders(ctx context.Context) (map[string][]proto.CardProcess, error) {
 	if d.o.Kubelet == nil {
 		return nil, nil
 	}
-	return d.cards.externalHolders(ctx)
+	return d.cards.holders(ctx)
 }
 
 var (
@@ -492,3 +511,44 @@ var (
 	_ runtime.StreamedRefReporter = (*Driver)(nil)
 	_ ImageStore                  = (*nerdctl.Driver)(nil)
 )
+
+// devicePlan splits the node's card devices between the plugin's resources;
+// it is worked out once, from the first answer.
+func (d *Driver) devicePlan(ctx context.Context) (devicePlan, error) {
+	d.planMu.Lock()
+	defer d.planMu.Unlock()
+	if d.plan != nil {
+		return *d.plan, nil
+	}
+	if d.o.CardDevices == nil {
+		return devicePlan{byPath: map[string]string{}}, nil
+	}
+	perCard, err := d.o.CardDevices(ctx)
+	if err != nil {
+		return devicePlan{}, err
+	}
+	plan, err := planDevices(perCard)
+	if err != nil {
+		return devicePlan{}, err
+	}
+	d.plan = &plan
+	return plan, nil
+}
+
+// servePlugin registers the agent's device plugin when the node's cards
+// have device nodes to hand out (NVIDIA's come through its runtime class).
+func (d *Driver) servePlugin(ctx context.Context) {
+	if d.o.PluginDir == "" {
+		return
+	}
+	plan, err := d.devicePlan(ctx)
+	if err != nil {
+		d.o.Log.Warn("the cards' device nodes are unknown; instances that need them cannot start", "err", err)
+		return
+	}
+	if len(plan.byPath) == 0 {
+		return
+	}
+	p := &deviceplugin.Plugin{Dir: d.o.PluginDir, Log: d.o.Log}
+	go p.Run(ctx, plan.resources)
+}

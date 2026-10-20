@@ -1,6 +1,8 @@
 package kube
 
 import (
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,14 +17,15 @@ func TestTranslateDockerArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if tr.Env["NVIDIA_VISIBLE_DEVICES"] != "1,3" || tr.Env["A"] != "b" || tr.RuntimeClass != "nvidia" || !tr.HostIPC || !tr.Privileged ||
-		len(tr.CapAdd) != 1 || tr.CapAdd[0] != "IPC_LOCK" || tr.ShmBytes != 8<<30 || len(tr.Groups) != 1 || tr.Groups[0] != 44 {
+		len(tr.CapAdd) != 1 || tr.CapAdd[0] != "IPC_LOCK" || tr.ShmBytes != 8<<30 || len(tr.Groups) != 1 || tr.Groups[0] != 44 ||
+		!slices.Equal(tr.Devices, []string{"/dev/infiniband"}) {
 		t.Fatalf("translation = %+v", tr)
 	}
 	tr, err = translateDockerArgs([]string{"--runtime", "ascend", "--pid", "host"})
 	if err != nil || tr.RuntimeClass != "ascend" || !tr.HostPID || tr.Privileged {
 		t.Fatalf("ascend translation = %+v, %v", tr, err)
 	}
-	for _, bad := range [][]string{{"--memory=1g"}, {"--network", "bridge"}, {"--group-add", "video"}, {"--gpus"}, {"positional"}, {"--shm-size", "lots"}} {
+	for _, bad := range [][]string{{"--memory=1g"}, {"--network", "bridge"}, {"--gpus"}, {"-v", "relative:/x"}, {"-v", "/a:/b:z"}, {"-v", "/a"}, {"positional"}, {"--shm-size", "lots"}} {
 		if _, err := translateDockerArgs(bad); err == nil {
 			t.Fatalf("translateDockerArgs(%q) accepted", bad)
 		}
@@ -73,5 +76,53 @@ func TestInstancePod(t *testing.T) {
 	spec.DockerArgs = []string{"--memory", "1g"}
 	if _, err := instancePod(spec, podOptions{}); err == nil {
 		t.Fatal("an untranslatable docker option was dropped")
+	}
+}
+
+// TestInstancePodHygonShape: Hygon's injection (devices, a driver volume and
+// the video group by name) becomes device plugin requests, a host path and a
+// numeric supplementary group; devices the plugin does not serve refuse the
+// pod rather than start it without its cards.
+func TestInstancePodHygonShape(t *testing.T) {
+	spec := runtime.WorkloadSpec{
+		Name: "gpuworks-0123456789ab", Image: "img:1",
+		DockerArgs: []string{"--device", "/dev/kfd:/dev/kfd:rwm", "--device", "/dev/dri/renderD128:/dev/dri/renderD128:rwm",
+			"--volume", "/opt/hyhal:/opt/hyhal:ro", "--group-add", "video"},
+	}
+	groups := func(name string) (int64, error) {
+		if name == "video" {
+			return 39, nil
+		}
+		return 0, errors.New("no such group")
+	}
+	if _, err := instancePod(spec, podOptions{Namespace: "gw", NodeName: "n1", Group: groups}); err == nil || !strings.Contains(err.Error(), "device plugin") {
+		t.Fatalf("devices the plugin does not serve = %v", err)
+	}
+	reqs := map[string]string{"gpuworks.ai/accelerator-0": "1", "gpuworks.ai/accelerator-shared": "1"}
+	pod, err := instancePod(spec, podOptions{Namespace: "gw", NodeName: "n1", Group: groups, DeviceRequests: reqs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := pod.Spec.Containers[0].Resources; r.Limits["gpuworks.ai/accelerator-0"] != "1" || r.Requests["gpuworks.ai/accelerator-shared"] != "1" || r.Requests["cpu"] != "500m" {
+		t.Fatalf("resources = %+v", r)
+	}
+	if pod.Spec.SecurityContext == nil || !slices.Equal(pod.Spec.SecurityContext.SupplementalGroups, []int64{39}) {
+		t.Fatalf("pod security = %+v", pod.Spec.SecurityContext)
+	}
+	c := pod.Spec.Containers[0]
+	if c.SecurityContext != nil {
+		t.Fatalf("container security = %+v", c.SecurityContext)
+	}
+	if len(c.VolumeMounts) != 1 || c.VolumeMounts[0].MountPath != "/opt/hyhal" || !c.VolumeMounts[0].ReadOnly || pod.Spec.Volumes[0].HostPath.Path != "/opt/hyhal" {
+		t.Fatalf("mounts = %+v, volumes %+v", c.VolumeMounts, pod.Spec.Volumes)
+	}
+	spec.DockerArgs = append(spec.DockerArgs, "--group-add", "render")
+	if _, err := instancePod(spec, podOptions{Group: groups, DeviceRequests: reqs}); err == nil || !strings.Contains(err.Error(), "render") {
+		t.Fatalf("unknown group = %v", err)
+	}
+	// A privileged workload sees every device already and asks for none.
+	spec.DockerArgs = []string{"--privileged", "--device", "/dev/kfd"}
+	if pod, err := instancePod(spec, podOptions{DeviceRequests: reqs}); err != nil || pod.Spec.Containers[0].Resources.Limits != nil {
+		t.Fatalf("privileged = %+v, %v", pod.Spec.Containers[0].Resources, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/kubemanifest"
@@ -16,15 +17,16 @@ import (
 )
 
 // Kubernetes clusters join as one DaemonSet (artifacts/work/
-// 2026-10-15-kubernetes-nodes/plan-v2.md): an administrator creates the
+// 2026-10-15-kubernetes-nodes/plan-v3.md): an administrator creates the
 // cluster here, applies the manifest it renders, and every selected node's
 // agent trades the cluster's enrollment token for a node token of its own.
 
 // Defaults a new cluster takes for the fields its request leaves empty.
 const (
 	kubeDefaultNamespace    = "gpuworks-system"
+	kubeDefaultVendor       = accelerator.VendorNVIDIA
 	kubeDefaultRuntimeClass = "nvidia"
-	kubeDefaultSocket       = "/run/containerd/containerd.sock"
+	kubeDefaultStateDir     = kubemanifest.DefaultStateDir
 	kubeDefaultEnginePorts  = "40000-42767"
 	kubeAgentImageRepo      = "gpuworks/gpuworks-agent"
 )
@@ -38,7 +40,8 @@ func kubeManifestURL(c store.KubeCluster) string {
 func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool) dto.KubeCluster {
 	out := dto.KubeCluster{
 		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
-		NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ContainerdSocket: c.ContainerdSocket,
+		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir,
+		APIServer: c.APIServer,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
 		Revoked: c.RevokedAt != nil, NodeCount: nodes, CreatedAt: c.CreatedAt.UTC(),
 	}
@@ -55,8 +58,8 @@ func kubeManifestParams(c store.KubeCluster) (kubemanifest.Params, error) {
 	}
 	return kubemanifest.Params{
 		ClusterName: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, Token: c.Token,
-		AgentImage: c.AgentImage, NodeSelector: sel, RuntimeClass: c.RuntimeClass,
-		ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts,
+		AgentImage: c.AgentImage, Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
+		ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts, StateDir: c.StateDir, APIServer: c.APIServer,
 	}, nil
 }
 
@@ -94,11 +97,18 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 		Namespace:         firstNonEmpty(strings.TrimSpace(req.Namespace), kubeDefaultNamespace),
 		ServerURL:         strings.TrimRight(strings.TrimSpace(req.ServerURL), "/"),
 		AgentImage:        firstNonEmpty(strings.TrimSpace(req.AgentImage), kubeDefaultAgentImage()),
+		Vendor:            accelerator.NormalizeVendor(firstNonEmpty(strings.TrimSpace(req.Vendor), kubeDefaultVendor)),
 		NodeSelector:      strings.TrimSpace(req.NodeSelector),
-		RuntimeClass:      kubeDefaultRuntimeClass,
-		ContainerdSocket:  firstNonEmpty(strings.TrimSpace(req.ContainerdSocket), kubeDefaultSocket),
+		ContainerdSocket:  strings.TrimSpace(req.ContainerdSocket),
+		StateDir:          firstNonEmpty(strings.TrimSpace(req.StateDir), kubeDefaultStateDir),
+		APIServer:         strings.TrimSpace(req.APIServer),
 		EnginePorts:       firstNonEmpty(strings.TrimSpace(req.EnginePorts), kubeDefaultEnginePorts),
 		IdleReturnSeconds: store.KubeDefaultIdleReturnSeconds,
+	}
+	// The RuntimeClass names NVIDIA's runtime; other vendors' devices come
+	// through CDI and need none.
+	if c.Vendor == accelerator.VendorNVIDIA {
+		c.RuntimeClass = kubeDefaultRuntimeClass
 	}
 	if req.RuntimeClass != nil {
 		c.RuntimeClass = strings.TrimSpace(*req.RuntimeClass)
@@ -108,6 +118,10 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	}
 	if c.Name == "" || len(c.Name) > 128 {
 		kubeInvalid(w, "name", "must be 1 to 128 bytes")
+		return
+	}
+	if _, ok := accelerator.KubeProfileFor(c.Vendor); !ok {
+		kubeInvalid(w, "vendor", "must be one of "+strings.Join(accelerator.KubeVendors(), ", "))
 		return
 	}
 	if c.IdleReturnSeconds < store.KubeKeepCards {

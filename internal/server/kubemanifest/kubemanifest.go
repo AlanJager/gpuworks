@@ -8,11 +8,15 @@ package kubemanifest
 import (
 	"bytes"
 	"fmt"
+	"net"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"text/template"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
 )
 
 // Names every rendered object uses. The agent finds its own DaemonSet and
@@ -21,25 +25,71 @@ const (
 	AgentName         = "gpuworks-agent"
 	EnrollSecret      = "gpuworks-enroll"
 	PriorityClassName = "gpuworks-inference"
-	// StateDir is where the agent keeps its state on the host. It is mounted
-	// at the same path inside the agent so every path the agent hands an
-	// instance pod is a host path as well.
-	StateDir = "/opt/gpuworks"
+	// DefaultStateDir is where the agent keeps its state on the host unless
+	// the cluster names another directory (a host that already runs an agent
+	// of its own keeps that one's). It is mounted at the same path inside the
+	// agent so every path the agent hands an instance pod is a host path too.
+	DefaultStateDir = "/opt/gpuworks"
 	// PodResourcesDir is kubelet's PodResources socket directory.
 	PodResourcesDir = "/var/lib/kubelet/pod-resources"
+	// DevicePluginDir is the kubelet's device plugin directory: the agent
+	// registers a plugin there that hands instance pods their cards' device
+	// nodes.
+	DevicePluginDir = "/var/lib/kubelet/device-plugins"
 )
 
 // Params are a cluster's manifest parameters.
 type Params struct {
-	ClusterName      string
-	Namespace        string
-	ServerURL        string
-	Token            string
-	AgentImage       string
-	NodeSelector     map[string]string
-	RuntimeClass     string
+	ClusterName string
+	Namespace   string
+	ServerURL   string
+	Token       string
+	AgentImage  string
+	// Vendor is the accelerator vendor of the cluster's selected nodes; it
+	// decides which host paths the agent mounts (accelerator.KubeProfile).
+	Vendor       string
+	NodeSelector map[string]string
+	RuntimeClass string
+	// ContainerdSocket overrides the containerd socket the agent finds on
+	// its own (the usual, k3s and RKE2 places); empty lets it look.
 	ContainerdSocket string
 	EnginePorts      string
+	// StateDir is the agent's directory on the host; empty is DefaultStateDir.
+	StateDir string
+	// APIServer is the API server address the agents use instead of the
+	// cluster's "kubernetes" Service: for nodes where nothing serves Service
+	// addresses (no kube-proxy or replacement, as on KubeEdge or OpenYurt
+	// edge nodes). "https://host:port" or "host:port"; empty uses the Service.
+	APIServer string
+}
+
+// ParseAPIServer splits an API server address into host and port.
+func ParseAPIServer(s string) (host, port string, err error) {
+	s = strings.TrimSpace(s)
+	addr := s
+	if rest, ok := strings.CutPrefix(s, "https://"); ok {
+		addr = strings.TrimSuffix(rest, "/")
+		if !strings.Contains(strings.TrimPrefix(addr, "["), "]:") && strings.Count(addr, ":") == 0 {
+			addr += ":443"
+		}
+	} else if strings.Contains(s, "://") {
+		return "", "", fmt.Errorf("API server %q: only https is served", s)
+	}
+	host, port, err = net.SplitHostPort(addr)
+	if err != nil || host == "" || strings.ContainsAny(host, "/ ") {
+		return "", "", fmt.Errorf("API server %q: want https://host:port or host:port", s)
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+		return "", "", fmt.Errorf("API server %q: port %q is not a port", s, port)
+	}
+	return host, port, nil
+}
+
+func (p Params) stateDir() string {
+	if p.StateDir == "" {
+		return DefaultStateDir
+	}
+	return p.StateDir
 }
 
 var (
@@ -82,10 +132,24 @@ func (p Params) Validate() error {
 		return fmt.Errorf("agent image is empty")
 	case p.RuntimeClass != "" && (len(p.RuntimeClass) > 63 || !dnsLabel.MatchString(p.RuntimeClass)):
 		return fmt.Errorf("runtime class %q is not a DNS label", p.RuntimeClass)
-	case !strings.HasPrefix(p.ContainerdSocket, "/"):
+	case p.ContainerdSocket != "" && !cleanAbs(p.ContainerdSocket):
 		return fmt.Errorf("containerd socket %q must be an absolute path", p.ContainerdSocket)
+	case p.StateDir != "" && (!cleanAbs(p.StateDir) || p.StateDir == "/"):
+		return fmt.Errorf("state directory %q must be an absolute path below /", p.StateDir)
+	}
+	if p.APIServer != "" {
+		if _, _, err := ParseAPIServer(p.APIServer); err != nil {
+			return err
+		}
+	}
+	if _, ok := accelerator.KubeProfileFor(p.Vendor); !ok {
+		return fmt.Errorf("vendor %q cannot run on Kubernetes (supported: %s)", p.Vendor, strings.Join(accelerator.KubeVendors(), ", "))
 	}
 	return nil
+}
+
+func cleanAbs(s string) bool {
+	return strings.HasPrefix(s, "/") && path.Clean(s) == s && !strings.ContainsAny(s, "\"\n")
 }
 
 // Render returns the manifest as one multi-document YAML stream.
@@ -103,10 +167,34 @@ func Render(p Params) (string, error) {
 	for _, k := range keys {
 		selector = append(selector, kv{k, p.NodeSelector[k]})
 	}
+	profile, _ := accelerator.KubeProfileFor(p.Vendor)
+	env := make([]kv, 0, len(profile.Env))
+	for k, v := range profile.Env {
+		env = append(env, kv{k, v})
+	}
+	sort.Slice(env, func(i, j int) bool { return env[i].K < env[j].K })
+	type hostPath struct{ Name, Path, Type string }
+	var hostPaths []hostPath
+	for i, d := range profile.HostDirs {
+		hostPaths = append(hostPaths, hostPath{fmt.Sprintf("host-dir-%d", i), d, "Directory"})
+	}
+	for i, f := range profile.HostFiles {
+		hostPaths = append(hostPaths, hostPath{fmt.Sprintf("host-file-%d", i), f, "File"})
+	}
+	runtimeClass := ""
+	if profile.RuntimeClass {
+		runtimeClass = p.RuntimeClass
+	}
+	apiHost, apiPort := "", ""
+	if p.APIServer != "" {
+		apiHost, apiPort, _ = ParseAPIServer(p.APIServer)
+	}
 	var buf bytes.Buffer
 	err := manifest.Execute(&buf, map[string]any{
+		"APIHost": apiHost, "APIPort": apiPort,
 		"P": p, "Selector": selector, "Agent": AgentName, "Secret": EnrollSecret,
-		"Priority": PriorityClassName, "StateDir": StateDir, "PodResources": PodResourcesDir,
+		"Priority": PriorityClassName, "StateDir": p.stateDir(), "PodResources": PodResourcesDir,
+		"DevicePlugins": DevicePluginDir, "Env": env, "HostPaths": hostPaths, "AgentRuntimeClass": runtimeClass, "HostCLIs": profile.HostCLIs,
 	})
 	return buf.String(), err
 }
@@ -229,10 +317,13 @@ spec:
       serviceAccountName: {{.Agent}}
       hostNetwork: true
       hostPID: true
-      dnsPolicy: ClusterFirstWithHostNet
+      # The node's own resolver, as an agent installed on the host has: the
+      # agent reaches the server and model sources outside the cluster, and
+      # the API server by address.
+      dnsPolicy: Default
       priorityClassName: system-node-critical
-{{- if .P.RuntimeClass}}
-      runtimeClassName: {{q .P.RuntimeClass}}
+{{- if .AgentRuntimeClass}}
+      runtimeClassName: {{q .AgentRuntimeClass}}
 {{- end}}
 {{- if .Selector}}
       nodeSelector:
@@ -250,7 +341,7 @@ spec:
           args:
             - run
             - {{q (printf "--server=%s" .P.ServerURL)}}
-            - "--state={{.StateDir}}"
+            - {{q (printf "--state=%s" .StateDir)}}
             - "--driver=kube"
 {{- if .P.EnginePorts}}
             - {{q (printf "--engine-ports=%s" .P.EnginePorts)}}
@@ -275,34 +366,57 @@ spec:
                   fieldPath: metadata.namespace
             - name: GPUWORKS_KUBE_RUNTIME_CLASS
               value: {{q .P.RuntimeClass}}
-            - name: CONTAINERD_ADDRESS
+{{- if .APIHost}}
+            - name: KUBERNETES_SERVICE_HOST
+              value: {{q .APIHost}}
+            - name: KUBERNETES_SERVICE_PORT
+              value: {{q .APIPort}}
+{{- end}}
+{{- if .P.ContainerdSocket}}
+            - name: GPUWORKS_KUBE_CONTAINERD_SOCKET
               value: {{q .P.ContainerdSocket}}
-            - name: NVIDIA_VISIBLE_DEVICES
-              value: "all"
-            - name: NVIDIA_DRIVER_CAPABILITIES
-              value: "compute,utility"
+{{- end}}
+{{- if .HostCLIs}}
+            - name: GPUWORKS_KUBE_HOST_CLIS
+              value: "1"
+{{- end}}
+{{- range .Env}}
+            - name: {{q .K}}
+              value: {{q .V}}
+{{- end}}
           securityContext:
             privileged: true
           volumeMounts:
             - name: state
-              mountPath: {{.StateDir}}
+              mountPath: {{q .StateDir}}
               mountPropagation: Bidirectional
-            - name: containerd
-              mountPath: {{q .P.ContainerdSocket}}
             - name: pod-resources
               mountPath: {{.PodResources}}
               readOnly: true
+            - name: device-plugins
+              mountPath: {{.DevicePlugins}}
+{{- range .HostPaths}}
+            - name: {{.Name}}
+              mountPath: {{q .Path}}
+              readOnly: true
+{{- end}}
       volumes:
         - name: state
           hostPath:
-            path: {{.StateDir}}
+            path: {{q .StateDir}}
             type: DirectoryOrCreate
-        - name: containerd
-          hostPath:
-            path: {{q .P.ContainerdSocket}}
-            type: Socket
         - name: pod-resources
           hostPath:
             path: {{.PodResources}}
             type: DirectoryOrCreate
+        - name: device-plugins
+          hostPath:
+            path: {{.DevicePlugins}}
+            type: DirectoryOrCreate
+{{- range .HostPaths}}
+        - name: {{.Name}}
+          hostPath:
+            path: {{q .Path}}
+            type: {{.Type}}
+{{- end}}
 `))

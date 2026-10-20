@@ -133,7 +133,7 @@ func RunTracked(ctx context.Context, key string, timeout time.Duration, build fu
 // killed (RunTracked, under the binary's name).
 func RunVendorCLI(ctx context.Context, stdin io.Reader, name string, args ...string) (string, error) {
 	return RunTracked(ctx, binaryKey(name), vendorCLITimeout, func(ctx context.Context) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, name, args...)
+		cmd := cliCommand(ctx, name, args...)
 		cmd.Stdin = stdin
 		return cmd
 	})

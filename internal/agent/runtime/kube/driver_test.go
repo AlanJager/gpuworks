@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -25,19 +26,20 @@ const (
 // the GPU resource is given free cards in order, or refused admission when
 // none is left. Allocations live as long as the pod does.
 type fakeKubelet struct {
-	mu      sync.Mutex
-	srv     *kubefake.Server
-	devices []string
-	given   map[string]string // pod key -> device
-	extra   []podresources.Allocation
-	listErr error
+	mu       sync.Mutex
+	srv      *kubefake.Server
+	resource string // "" is nvidia.com/gpu
+	devices  []string
+	given    map[string]string // pod key -> device
+	extra    []podresources.Allocation
+	listErr  error
 }
 
 func (k *fakeKubelet) admit(p *kubeapi.Pod) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	res := p.Spec.Containers[0].Resources
-	if res == nil || res.Limits["nvidia.com/gpu"] == "" {
+	if res == nil || res.Limits[k.res()] == "" {
 		kubefake.Running(p)
 		return
 	}
@@ -68,9 +70,16 @@ func (k *fakeKubelet) allocationsLocked() []podresources.Allocation {
 			continue
 		}
 		ns, name, _ := strings.Cut(key, "/")
-		out = append(out, podresources.Allocation{Namespace: ns, Pod: name, Container: "hold", Resource: "nvidia.com/gpu", DeviceID: dev})
+		out = append(out, podresources.Allocation{Namespace: ns, Pod: name, Container: "hold", Resource: k.res(), DeviceID: dev})
 	}
 	return out
+}
+
+func (k *fakeKubelet) res() string {
+	if k.resource == "" {
+		return "nvidia.com/gpu"
+	}
+	return k.resource
 }
 
 func (k *fakeKubelet) List(context.Context) ([]podresources.Allocation, error) {
@@ -106,17 +115,25 @@ type rig struct {
 
 func newRig(t *testing.T, gpus int) *rig {
 	t.Helper()
-	srv := kubefake.New(t, testNS, testNode)
-	r := &rig{srv: srv, images: &fakeImages{}, now: time.Unix(1_800_000_000, 0)}
-	r.kubelet = &fakeKubelet{srv: srv, given: map[string]string{}}
 	cards := map[int]string{}
+	var devices []string
 	for i := 0; i < gpus; i++ {
 		dev := "GPU-" + string(rune('a'+i))
-		r.kubelet.devices = append(r.kubelet.devices, dev)
+		devices = append(devices, dev)
 		cards[i] = dev
 	}
-	if gpus > 0 {
-		srv.SetAllocatable(testNode, "nvidia.com/gpu", string(rune('0'+gpus)))
+	return newRigFor(t, "nvidia.com/gpu", cards, devices)
+}
+
+// newRigFor builds a node whose device plugin advertises devices as
+// resource, over cards (the node's own probe, index to UUID).
+func newRigFor(t *testing.T, resource string, cards map[int]string, devices []string) *rig {
+	t.Helper()
+	srv := kubefake.New(t, testNS, testNode)
+	r := &rig{srv: srv, images: &fakeImages{}, now: time.Unix(1_800_000_000, 0)}
+	r.kubelet = &fakeKubelet{srv: srv, given: map[string]string{}, resource: resource, devices: devices}
+	if len(devices) > 0 {
+		srv.SetAllocatable(testNode, resource, strconv.Itoa(len(devices)))
 	}
 	srv.Kubelet = r.kubelet.admit
 	if err := srv.Client().Create(context.Background(), kubeapi.PodsPath(testNS), kubeapi.Pod{

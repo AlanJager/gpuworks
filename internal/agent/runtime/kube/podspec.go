@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -34,6 +35,13 @@ type podOptions struct {
 	RuntimeClass string // the RuntimeClass that injects NVIDIA devices; "" uses the default runtime
 	Owner        *kubeapi.OwnerReference
 	Cards        []string // card UUIDs, recorded on the pod
+	// DeviceRequests are the agent's device plugin resources holding the
+	// workload's --device nodes (devices.go); UncoveredDevices: some node
+	// is not the plugin's, so the pod runs privileged.
+	DeviceRequests   map[string]string
+	UncoveredDevices bool
+	// Group resolves a --group-add name on the node.
+	Group func(name string) (int64, error)
 }
 
 // dockerTranslation is what a workload's docker-style arguments amount to
@@ -42,6 +50,9 @@ type dockerTranslation struct {
 	Env          map[string]string
 	RuntimeClass string // from --runtime; "nvidia" means the node's NVIDIA class
 	Privileged   bool
+	Devices      []string // --device values, handed over by the device plugin
+	Volumes      []runtime.Mount
+	GroupNames   []string // --group-add names, resolved on the node
 	HostIPC      bool
 	HostPID      bool
 	CapAdd       []string
@@ -51,7 +62,8 @@ type dockerTranslation struct {
 
 // dockerOptionsWithValues are the translated options that take a value.
 var dockerOptionsWithValues = map[string]bool{"--gpus": true, "--device": true, "--runtime": true, "--ipc": true, "--pid": true, "--ulimit": true,
-	"--cap-add": true, "--shm-size": true, "--security-opt": true, "--network": true, "--net": true, "--group-add": true, "-e": true, "--env": true}
+	"--cap-add": true, "--shm-size": true, "--security-opt": true, "--network": true, "--net": true, "--group-add": true, "-e": true, "--env": true,
+	"-v": true, "--volume": true}
 
 // translateDockerArgs turns the docker run options a workload carries into
 // pod settings. Every option the platform or a template is known to pass is
@@ -86,9 +98,9 @@ func translateDockerArgs(args []string) (dockerTranslation, error) {
 			}
 		case "--runtime":
 			t.RuntimeClass = val
-		case "--device", "--privileged":
-			// A pod cannot be given single device nodes without a device
-			// plugin; a privileged container sees the host's /dev.
+		case "--device":
+			t.Devices = append(t.Devices, val)
+		case "--privileged":
 			t.Privileged = true
 		case "--ipc":
 			t.HostIPC = val == "host"
@@ -113,11 +125,17 @@ func translateDockerArgs(args []string) (dockerTranslation, error) {
 				return t, fmt.Errorf("docker option --network=%s cannot be expressed in a host-network pod", val)
 			}
 		case "--group-add":
-			g, err := strconv.ParseInt(val, 10, 64)
-			if err != nil {
-				return t, fmt.Errorf("docker option --group-add=%s: only numeric groups can be added to a pod", val)
+			if g, err := strconv.ParseInt(val, 10, 64); err == nil {
+				t.Groups = append(t.Groups, g)
+			} else {
+				t.GroupNames = append(t.GroupNames, val)
 			}
-			t.Groups = append(t.Groups, g)
+		case "-v", "--volume":
+			parts := strings.Split(val, ":")
+			if len(parts) < 2 || len(parts) > 3 || !strings.HasPrefix(parts[0], "/") || !strings.HasPrefix(parts[1], "/") || (len(parts) == 3 && parts[2] != "ro" && parts[2] != "rw") {
+				return t, fmt.Errorf("docker option --volume=%s: only HOST:CONTAINER[:ro|rw] bind mounts can be given to a pod", val)
+			}
+			t.Volumes = append(t.Volumes, runtime.Mount{Source: parts[0], Target: parts[1], ReadOnly: len(parts) == 3 && parts[2] == "ro"})
 		case "-e", "--env":
 			k, v, _ := strings.Cut(val, "=")
 			t.Env[k] = v
@@ -151,6 +169,23 @@ func instancePod(spec runtime.WorkloadSpec, o podOptions) (kubeapi.Pod, error) {
 	if err != nil {
 		return kubeapi.Pod{}, err
 	}
+	for _, name := range tr.GroupNames {
+		if o.Group == nil {
+			return kubeapi.Pod{}, fmt.Errorf("docker option --group-add=%s: the node's groups cannot be read", name)
+		}
+		g, err := o.Group(name)
+		if err != nil {
+			return kubeapi.Pod{}, fmt.Errorf("docker option --group-add=%s: %w", name, err)
+		}
+		tr.Groups = append(tr.Groups, g)
+	}
+	if len(tr.Devices) > 0 && !tr.Privileged {
+		if o.UncoveredDevices {
+			tr.Privileged = true
+		} else if len(o.DeviceRequests) == 0 {
+			return kubeapi.Pod{}, errors.New("the workload needs device nodes and the agent's device plugin hands out none of them")
+		}
+	}
 	env := map[string]string{}
 	for k, v := range tr.Env {
 		env[k] = v
@@ -168,11 +203,17 @@ func instancePod(spec runtime.WorkloadSpec, o podOptions) (kubeapi.Pod, error) {
 		Command: spec.Entrypoint, Args: spec.Cmd,
 		Resources: &kubeapi.Resources{Requests: map[string]string{"cpu": "500m", "memory": "1Gi"}},
 	}
+	if len(tr.Devices) > 0 && !tr.Privileged {
+		c.Resources.Limits = map[string]string{}
+		for r, n := range o.DeviceRequests {
+			c.Resources.Requests[r], c.Resources.Limits[r] = n, n
+		}
+	}
 	for _, k := range keys {
 		c.Env = append(c.Env, kubeapi.EnvVar{Name: k, Value: env[k]})
 	}
 	var volumes []kubeapi.Volume
-	for i, m := range spec.Mounts {
+	for i, m := range append(append([]runtime.Mount(nil), spec.Mounts...), tr.Volumes...) {
 		name := fmt.Sprintf("m%d", i)
 		volumes = append(volumes, kubeapi.Volume{Name: name, HostPath: &kubeapi.HostPath{Path: m.Source}})
 		c.VolumeMounts = append(c.VolumeMounts, kubeapi.VolumeMount{Name: name, MountPath: m.Target, ReadOnly: m.ReadOnly})
@@ -231,4 +272,13 @@ func instancePod(spec runtime.WorkloadSpec, o podOptions) (kubeapi.Pod, error) {
 		pod.Metadata.Annotations = map[string]string{AnnotationCards: strings.Join(o.Cards, ",")}
 	}
 	return pod, nil
+}
+
+// workloadDevices are the device nodes a workload's pod must be given.
+func workloadDevices(spec runtime.WorkloadSpec) ([]string, error) {
+	tr, err := translateDockerArgs(spec.DockerArgs)
+	if err != nil || tr.Privileged {
+		return nil, err
+	}
+	return tr.Devices, nil
 }

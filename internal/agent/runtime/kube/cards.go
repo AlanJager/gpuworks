@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/kubeapi"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube/podresources"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -55,8 +57,13 @@ type cardPool struct {
 	log        *slog.Logger
 	poll       time.Duration
 
-	mu        sync.Mutex
-	resource  string            // the device plugin resource; "" = none advertised
+	mu       sync.Mutex
+	resource string // the device plugin resource; "" = none advertised
+	// shared says why the node's cards cannot be borrowed: the device
+	// plugin hands out parts of cards (time-slicing, MIG, HAMi, vNPU), so a
+	// unit Kubernetes allocates is not a card the platform could own. The
+	// cards are then reported as used outside the platform. "" = whole cards.
+	shared    string
 	held      map[string]string // card UUID -> hold pod name
 	users     map[string]map[string]bool
 	idleSince map[string]time.Time
@@ -87,30 +94,64 @@ func randomSuffix() string {
 	return hex.EncodeToString(b)
 }
 
-// load reads which device resource the node advertises and rebuilds the
-// pool from the hold pods and instance pods already on the node, so a
-// restarted agent picks up where it left off.
+// classify reads which device resource the node advertises, and whether it
+// advertises whole cards. It runs on every load, so a device plugin installed
+// or reconfigured after the agent started is noticed.
+func (p *cardPool) classify(ctx context.Context) error {
+	var node kubeapi.Node
+	if err := p.api.Get(ctx, kubeapi.NodePath(p.node)+"?resourceVersion=0", &node); err != nil {
+		return fmt.Errorf("read node %s: %w", p.node, err)
+	}
+	capacity := node.Status.Capacity
+	if len(capacity) == 0 {
+		capacity = node.Status.Allocatable
+	}
+	var whole, parts []string
+	for name, qty := range capacity {
+		if qty == "0" {
+			continue
+		}
+		switch kind, _ := accelerator.ClassifyKubeResource(name); kind {
+		case accelerator.KubeResourceCard:
+			whole = append(whole, name)
+		case accelerator.KubeResourceShared:
+			parts = append(parts, name)
+		}
+	}
+	sort.Strings(whole)
+	sort.Strings(parts)
+	p.resource, p.shared = "", ""
+	if len(whole) > 0 {
+		p.resource = whole[0]
+	}
+	if len(parts) > 0 {
+		p.shared = "Kubernetes hands out parts of this node's cards (" + strings.Join(parts, ", ") + "); the platform borrows whole cards only"
+		return nil
+	}
+	if p.resource != "" {
+		byIndex, err := p.cards(ctx)
+		if err != nil {
+			return err
+		}
+		if n, _ := strconv.Atoi(capacity[p.resource]); len(byIndex) > 0 && n > len(byIndex) {
+			p.shared = fmt.Sprintf("Kubernetes advertises %d %s on %d cards (time-slicing or MPS shares them); the platform borrows whole cards only", n, p.resource, len(byIndex))
+		}
+	}
+	return nil
+}
+
+// load classifies the node's cards and, the first time, rebuilds the pool
+// from the hold pods and instance pods already on the node, so a restarted
+// agent picks up where it left off.
 func (p *cardPool) load(ctx context.Context) error {
+	if err := p.classify(ctx); err != nil {
+		return err
+	}
 	if p.loaded {
 		return nil
 	}
-	var node kubeapi.Node
-	if err := p.api.Get(ctx, kubeapi.NodePath(p.node), &node); err != nil {
-		return fmt.Errorf("read node %s: %w", p.node, err)
-	}
-	p.resource = ""
-	var names []string
-	for name, qty := range node.Status.Allocatable {
-		if podresources.IsGPUResource(name) && qty != "0" {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	if len(names) > 0 {
-		p.resource = names[0]
-	}
 	p.held, p.users, p.idleSince = map[string]string{}, map[string]map[string]bool{}, map[string]time.Time{}
-	if p.resource != "" {
+	if p.resource != "" && p.shared == "" {
 		if err := p.refreshHeld(ctx); err != nil {
 			return err
 		}
@@ -181,6 +222,9 @@ func (p *cardPool) acquire(ctx context.Context, instance string, indexes []int) 
 	if err := p.load(ctx); err != nil {
 		return nil, err
 	}
+	if p.shared != "" {
+		return nil, errors.New(p.shared)
+	}
 	byIndex, err := p.cards(ctx)
 	if err != nil {
 		return nil, err
@@ -221,7 +265,8 @@ func (p *cardPool) borrow(ctx context.Context, want []string) error {
 	if err := p.checkHolders(ctx, want); err != nil {
 		return err
 	}
-	if _, err := p.takeAllFree(ctx); err != nil {
+	_, refused, err := p.takeAllFree(ctx)
+	if err != nil {
 		return err
 	}
 	var still []string
@@ -236,7 +281,11 @@ func (p *cardPool) borrow(ctx context.Context, want []string) error {
 	}
 	p.returnUnused(ctx, keep)
 	if len(still) > 0 {
-		return fmt.Errorf("Kubernetes did not give this node's cards %s to the platform: another pod took them first", strings.Join(still, ","))
+		why := "another pod took them first"
+		if refused != "" {
+			why = "the kubelet refused the hold pods: " + refused
+		}
+		return fmt.Errorf("Kubernetes did not give this node's cards %s to the platform: %s", strings.Join(still, ","), why)
 	}
 	return nil
 }
@@ -257,22 +306,23 @@ func (p *cardPool) checkHolders(ctx context.Context, want []string) error {
 }
 
 // takeAllFree creates one hold pod per free card and waits for the kubelet
-// to admit them; it returns how many it got.
-func (p *cardPool) takeAllFree(ctx context.Context) (int, error) {
+// to admit them; it returns how many it got and, when some were refused,
+// the kubelet's reason (node pressure, a failed allocation).
+func (p *cardPool) takeAllFree(ctx context.Context) (int, string, error) {
 	free, err := p.freeCount(ctx)
 	if err != nil || free <= 0 {
-		return 0, err
+		return 0, "", err
 	}
 	names := make([]string, 0, free)
 	for i := 0; i < free; i++ {
 		name := holdPrefix + randomSuffix()
 		if err := p.api.Create(ctx, kubeapi.PodsPath(p.ns), p.holdPod(name), nil); err != nil {
 			p.deletePods(ctx, names)
-			return 0, fmt.Errorf("create hold pod: %w", err)
+			return 0, "", fmt.Errorf("create hold pod: %w", err)
 		}
 		names = append(names, name)
 	}
-	admitted := p.waitAdmitted(ctx, names)
+	admitted, refused := p.waitAdmitted(ctx, names)
 	var failed []string
 	for _, n := range names {
 		if !admitted[n] {
@@ -281,9 +331,9 @@ func (p *cardPool) takeAllFree(ctx context.Context) (int, error) {
 	}
 	p.deletePods(ctx, failed)
 	if err := p.refreshHeld(ctx); err != nil {
-		return 0, err
+		return 0, "", err
 	}
-	return len(names) - len(failed), nil
+	return len(names) - len(failed), refused, nil
 }
 
 // freeCount is how many of the advertised cards no pod holds.
@@ -330,9 +380,10 @@ func (p *cardPool) holdPod(name string) kubeapi.Pod {
 	return pod
 }
 
-// waitAdmitted waits until each hold pod runs or the kubelet refused it.
-func (p *cardPool) waitAdmitted(ctx context.Context, names []string) map[string]bool {
-	out := map[string]bool{}
+// waitAdmitted waits until each hold pod runs or the kubelet refused it, and
+// returns the first refusal's reason.
+func (p *cardPool) waitAdmitted(ctx context.Context, names []string) (map[string]bool, string) {
+	out, refused := map[string]bool{}, ""
 	pending := map[string]bool{}
 	for _, n := range names {
 		pending[n] = true
@@ -350,6 +401,12 @@ func (p *cardPool) waitAdmitted(ctx context.Context, names []string) map[string]
 				out[n] = true
 				delete(pending, n)
 			case pod.Status.Phase == "Failed":
+				// A failed device allocation is the race borrow already
+				// describes; anything else (eviction under node pressure)
+				// is the reason worth reporting.
+				if refused == "" && pod.Status.Reason != "UnexpectedAdmissionError" {
+					refused = strings.TrimSpace(pod.Status.Reason + ": " + pod.Status.Message)
+				}
 				delete(pending, n)
 			}
 		}
@@ -360,7 +417,7 @@ func (p *cardPool) waitAdmitted(ctx context.Context, names []string) map[string]
 			}
 		}
 	}
-	return out
+	return out, refused
 }
 
 func (p *cardPool) deletePods(ctx context.Context, names []string) {
@@ -428,10 +485,10 @@ func (p *cardPool) sweep(ctx context.Context) {
 func (p *cardPool) keepAll(ctx context.Context) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if err := p.load(ctx); err != nil || p.resource == "" {
+	if err := p.load(ctx); err != nil || p.resource == "" || p.shared != "" {
 		return err
 	}
-	if _, err := p.takeAllFree(ctx); err != nil {
+	if _, _, err := p.takeAllFree(ctx); err != nil {
 		return err
 	}
 	for card := range p.held {
@@ -440,6 +497,29 @@ func (p *cardPool) keepAll(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// holders answers the agent's question "who outside the platform uses
+// which card": the pods the kubelet gave a card to, or, when the node's
+// cards are shared out in parts, every card, since any of them may be.
+func (p *cardPool) holders(ctx context.Context) (map[string][]proto.CardProcess, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err := p.load(ctx); err != nil {
+		return nil, err
+	}
+	if p.shared == "" {
+		return p.externalHolders(ctx)
+	}
+	byIndex, err := p.cards(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]proto.CardProcess{}
+	for _, uuid := range byIndex {
+		out[uuid] = []proto.CardProcess{{Name: p.shared}}
+	}
+	return out, nil
 }
 
 // externalHolders maps card UUID to the pods outside the platform the
@@ -455,7 +535,7 @@ func (p *cardPool) externalHolders(ctx context.Context) (map[string][]proto.Card
 	}
 	out := map[string][]proto.CardProcess{}
 	for _, a := range allocs {
-		if !podresources.IsGPUResource(a.Resource) || (a.Namespace == p.ns && strings.HasPrefix(a.Pod, holdPrefix)) {
+		if kind, _ := accelerator.ClassifyKubeResource(a.Resource); kind == accelerator.KubeResourceOther || (a.Namespace == p.ns && strings.HasPrefix(a.Pod, holdPrefix)) {
 			continue
 		}
 		if card := cardOf(a.DeviceID, byIndex); card != "" {

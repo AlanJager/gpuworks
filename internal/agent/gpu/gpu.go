@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"sync"
 	"time"
 
@@ -263,7 +262,7 @@ func deviceExists(path string) bool {
 }
 
 func commandExists(name string) bool {
-	_, err := exec.LookPath(name)
+	_, err := lookCLI(name)
 	return err == nil
 }
 

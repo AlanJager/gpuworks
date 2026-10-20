@@ -112,7 +112,10 @@ spec:
       serviceAccountName: gpuworks-agent
       hostNetwork: true
       hostPID: true
-      dnsPolicy: ClusterFirstWithHostNet
+      # The node's own resolver, as an agent installed on the host has: the
+      # agent reaches the server and model sources outside the cluster, and
+      # the API server by address.
+      dnsPolicy: Default
       priorityClassName: system-node-critical
       runtimeClassName: "nvidia"
       nodeSelector:
@@ -151,33 +154,31 @@ spec:
                   fieldPath: metadata.namespace
             - name: GPUWORKS_KUBE_RUNTIME_CLASS
               value: "nvidia"
-            - name: CONTAINERD_ADDRESS
-              value: "/run/containerd/containerd.sock"
-            - name: NVIDIA_VISIBLE_DEVICES
-              value: "all"
-            - name: NVIDIA_DRIVER_CAPABILITIES
+            - name: "NVIDIA_DRIVER_CAPABILITIES"
               value: "compute,utility"
+            - name: "NVIDIA_VISIBLE_DEVICES"
+              value: "all"
           securityContext:
             privileged: true
           volumeMounts:
             - name: state
-              mountPath: /opt/gpuworks
+              mountPath: "/opt/gpuworks"
               mountPropagation: Bidirectional
-            - name: containerd
-              mountPath: "/run/containerd/containerd.sock"
             - name: pod-resources
               mountPath: /var/lib/kubelet/pod-resources
               readOnly: true
+            - name: device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
       volumes:
         - name: state
           hostPath:
-            path: /opt/gpuworks
+            path: "/opt/gpuworks"
             type: DirectoryOrCreate
-        - name: containerd
-          hostPath:
-            path: "/run/containerd/containerd.sock"
-            type: Socket
         - name: pod-resources
           hostPath:
             path: /var/lib/kubelet/pod-resources
+            type: DirectoryOrCreate
+        - name: device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
             type: DirectoryOrCreate

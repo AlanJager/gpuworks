@@ -178,7 +178,11 @@ type Node struct {
 		Unschedulable bool `json:"unschedulable,omitempty"`
 	} `json:"spec"`
 	Status struct {
+		Capacity    map[string]string `json:"capacity,omitempty"`
 		Allocatable map[string]string `json:"allocatable,omitempty"`
+		NodeInfo    struct {
+			ContainerRuntimeVersion string `json:"containerRuntimeVersion,omitempty"`
+		} `json:"nodeInfo"`
 	} `json:"status"`
 }
 

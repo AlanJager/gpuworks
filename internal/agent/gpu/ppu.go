@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -43,7 +42,7 @@ var _ DriverAwareInjector = (*PPUProber)(nil)
 func (p *PPUProber) Vendor() string { return accelerator.VendorPPU }
 
 func (p *PPUProber) Available() bool {
-	if _, err := exec.LookPath("ppu-smi"); err != nil {
+	if _, err := lookCLI("ppu-smi"); err != nil {
 		return false
 	}
 	_, err := queryPPU(context.Background(), "--query-ppu=index", "--format=csv,noheader,nounits")
@@ -53,7 +52,7 @@ func (p *PPUProber) Available() bool {
 const ppuProbeFields = "index,name,architecture,uuid,minor_number,pci.bus_id,memory.total,memory.used,utilization.ppu,temperature.ppu,power.draw,driver_version,ecc.errors.uncorrected.volatile.dram,ecc.errors.uncorrected.aggregate.dram,retired_pages.double_bit.count,retired_pages.pending,remapped_rows.uncorrectable,remapped_rows.pending,remapped_rows.failure,xid.correctable.ppu_reset,xid.correctable.os_reboot,xid.correctable.cold_reboot"
 
 func (p *PPUProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
-	if _, err := exec.LookPath("ppu-smi"); err != nil {
+	if _, err := lookCLI("ppu-smi"); err != nil {
 		return p.roster(nil, false), nil //nolint:nilerr // Absence of this vendor CLI is an unavailable probe, not a node failure.
 	}
 	out, err := queryPPU(ctx, "--query-ppu="+ppuProbeFields, "--format=csv,noheader,nounits")
@@ -127,8 +126,8 @@ func sharedLibraryPath(ctx context.Context, name string) (string, error) {
 		return "", fmt.Errorf("invalid shared library name %q", name)
 	}
 	var candidates []string
-	if path, err := exec.LookPath("ldconfig"); err == nil {
-		if out, runErr := exec.CommandContext(ctx, path, "-p").Output(); runErr == nil {
+	if path, err := lookCLI("ldconfig"); err == nil {
+		if out, runErr := cliCommand(ctx, path, "-p").Output(); runErr == nil {
 			for _, line := range strings.Split(string(out), "\n") {
 				if candidate := parseLdconfigLibraryPath(line, name); candidate != "" {
 					candidates = append(candidates, candidate)

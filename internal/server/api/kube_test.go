@@ -30,8 +30,8 @@ func TestKubeClusterLifecycleOverTheWire(t *testing.T) {
 	for key, want := range map[string]any{
 		"name": "prod", "namespace": "gpuworks-system", "server_url": "https://gw.example:8800",
 		"agent_image": "reg.example/gpuworks-agent:v1", "node_selector": "gpuworks.ai/pool=a",
-		"runtime_class": "nvidia", "containerd_socket": "/run/containerd/containerd.sock",
-		"engine_ports": "40000-42767", "idle_return_seconds": float64(600), "cluster_uid": "",
+		"vendor": "nvidia", "runtime_class": "nvidia", "containerd_socket": "", "state_dir": "/opt/gpuworks", "api_server": "",
+		"engine_ports": "40000-42767", "idle_return_seconds": float64(60), "cluster_uid": "",
 		"revoked": false, "node_count": float64(0),
 	} {
 		if created[key] != want {
@@ -73,7 +73,7 @@ func TestKubeClusterLifecycleOverTheWire(t *testing.T) {
 	}
 	tok, _ := json.Marshal(token)
 	code, first := enroll(`{"token":` + string(tok) + `,"cluster_uid":"uid-a","node_name":"gpu-1"}`)
-	if code != http.StatusOK || first["node_uuid"] == "" || first["node_token"] == "" || first["idle_return_seconds"] != float64(600) {
+	if code != http.StatusOK || first["node_uuid"] == "" || first["node_token"] == "" || first["idle_return_seconds"] != float64(60) {
 		t.Fatalf("enroll = %d %v", code, first)
 	}
 	if code, again := enroll(`{"token":` + string(tok) + `,"cluster_uid":"uid-a","node_name":"gpu-1"}`); code != http.StatusOK || again["node_uuid"] != first["node_uuid"] || again["node_token"] != first["node_token"] {
@@ -127,6 +127,11 @@ func TestKubeClusterValidation(t *testing.T) {
 		{`{"name":"a","server_url":"https://gw","idle_return_seconds":-2}`, "idle_return_seconds"},
 		{`{"name":"a","server_url":"https://gw","namespace":"Bad_NS"}`, "manifest"},
 		{`{"name":"a","server_url":"https://gw","node_selector":"novalue"}`, "manifest"},
+		{`{"name":"a","server_url":"https://gw","vendor":"apple"}`, "vendor"},
+		{`{"name":"a","server_url":"https://gw","vendor":"bogus"}`, "vendor"},
+		{`{"name":"a","server_url":"https://gw","state_dir":"opt/x"}`, "manifest"},
+		{`{"name":"a","server_url":"https://gw","containerd_socket":"run/x.sock"}`, "manifest"},
+		{`{"name":"a","server_url":"https://gw","api_server":"http://10.0.0.5:6443"}`, "manifest"},
 	} {
 		rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", tc.body)
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), ErrorKubeClusterInvalid) || !strings.Contains(rec.Body.String(), `"field":"`+tc.field+`"`) {
@@ -142,6 +147,24 @@ func TestKubeClusterValidation(t *testing.T) {
 	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"b","server_url":"https://gw","runtime_class":"","idle_return_seconds":-1}`); rec.Code != http.StatusCreated ||
 		!strings.Contains(rec.Body.String(), `"runtime_class":""`) || !strings.Contains(rec.Body.String(), `"idle_return_seconds":-1`) {
 		t.Fatalf("explicit empty runtime class and keep = %d %s", rec.Code, rec.Body)
+	}
+	// An Ascend cluster needs no RuntimeClass, and its manifest mounts the
+	// host's driver tree into the agents under its own state directory.
+	rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"npu","server_url":"https://gw","vendor":"Ascend","state_dir":"/opt/gpuworks-kube","containerd_socket":"/run/k3s/containerd/containerd.sock","api_server":"https://10.0.0.5:6443"}`)
+	var npu map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &npu)
+	if rec.Code != http.StatusCreated || npu["vendor"] != "ascend" || npu["runtime_class"] != "" || npu["state_dir"] != "/opt/gpuworks-kube" ||
+		npu["containerd_socket"] != "/run/k3s/containerd/containerd.sock" || npu["api_server"] != "https://10.0.0.5:6443" {
+		t.Fatalf("ascend cluster = %d %s", rec.Code, rec.Body)
+	}
+	manifest := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+npu["uuid"].(string)+"/manifest", "").Body.String()
+	for _, want := range []string{`"--state=/opt/gpuworks-kube"`, `path: "/usr/local"`, "GPUWORKS_KUBE_CONTAINERD_SOCKET", `value: "10.0.0.5"`, `value: "6443"`} {
+		if !strings.Contains(manifest, want) {
+			t.Fatalf("ascend manifest lacks %s:\n%s", want, manifest)
+		}
+	}
+	if strings.Contains(manifest, "runtimeClassName") {
+		t.Fatal("ascend manifest names a RuntimeClass")
 	}
 }
 

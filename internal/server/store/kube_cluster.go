@@ -20,9 +20,10 @@ const (
 	// KubeKeepCards keeps every card the platform has borrowed: the node's
 	// cards stay the platform's for as long as it is enrolled.
 	KubeKeepCards = -1
-	// KubeDefaultIdleReturnSeconds returns a card ten minutes after the last
-	// instance on it stopped, long enough to survive a redeploy.
-	KubeDefaultIdleReturnSeconds = 600
+	// KubeDefaultIdleReturnSeconds returns a card a minute after the last
+	// instance on it stopped: long enough for a restart or redeploy to find it
+	// again, short enough that the cluster's own pods get it back quickly.
+	KubeDefaultIdleReturnSeconds = 60
 )
 
 // KubeCluster is a Kubernetes cluster whose GPU nodes join through one
@@ -48,14 +49,24 @@ type KubeCluster struct {
 	ServerURL string `gorm:"size:512"`
 	// AgentImage is the image the DaemonSet runs.
 	AgentImage string `gorm:"size:512"`
+	// Vendor is the accelerator vendor of the selected nodes; it decides the
+	// host paths the agents mount. A cluster with cards of two vendors joins
+	// as two clusters, each selecting its own nodes.
+	Vendor string `gorm:"size:16"`
 	// NodeSelector is the DaemonSet's node selector, "key=value" pairs joined
 	// by commas; empty selects every node.
 	NodeSelector string `gorm:"size:512"`
 	// RuntimeClass names the RuntimeClass that injects NVIDIA devices; empty
 	// when the nodes' default runtime does.
 	RuntimeClass string `gorm:"size:63"`
-	// ContainerdSocket is the node's containerd socket (k3s keeps its own).
+	// ContainerdSocket overrides the containerd socket the agents find on
+	// their own; empty lets them look.
 	ContainerdSocket string `gorm:"size:255"`
+	// StateDir is the agents' directory on the host; empty is /opt/gpuworks.
+	StateDir string `gorm:"size:255"`
+	// APIServer is the API server address the agents use instead of the
+	// "kubernetes" Service ("https://host:port"); empty uses the Service.
+	APIServer string `gorm:"size:512"`
 	// EnginePorts is the engine port range the agents use, "START-END".
 	EnginePorts string `gorm:"size:32"`
 	// IdleReturnSeconds is how long a borrowed card stays the platform's after

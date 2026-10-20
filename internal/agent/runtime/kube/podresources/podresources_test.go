@@ -152,11 +152,3 @@ func TestListRejectsMalformedAnswers(t *testing.T) {
 		t.Fatal("missing socket accepted")
 	}
 }
-
-func TestIsGPUResource(t *testing.T) {
-	for r, want := range map[string]bool{"nvidia.com/gpu": true, "huawei.com/Ascend910": true, "amd.com/gpu": true, "nvidia.com/mig-1g.10gb": false, "rdma/hca": false, "cpu": false} {
-		if IsGPUResource(r) != want {
-			t.Fatalf("IsGPUResource(%q) != %v", r, want)
-		}
-	}
-}

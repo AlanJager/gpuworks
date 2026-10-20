@@ -20,7 +20,7 @@ func sample() Params {
 		ClusterName: "prod", Namespace: "gpuworks-system", ServerURL: "https://gw.example:8800",
 		Token: "enroll-token", AgentImage: "registry.example/gpuworks/gpuworks-agent:v1.2.3",
 		NodeSelector: map[string]string{"nvidia.com/gpu.present": "true", "gpuworks.ai/pool": "a"},
-		RuntimeClass: "nvidia", ContainerdSocket: "/run/containerd/containerd.sock", EnginePorts: "40000-42767",
+		Vendor:       "nvidia", RuntimeClass: "nvidia", EnginePorts: "40000-42767",
 	}
 }
 
@@ -101,7 +101,7 @@ func TestRenderedObjects(t *testing.T) {
 	}
 	ds := kinds["DaemonSet"]
 	spec := dig(t, ds, "spec", "template", "spec")
-	if dig(t, spec, "hostNetwork") != true || dig(t, spec, "runtimeClassName") != "nvidia" ||
+	if dig(t, spec, "hostNetwork") != true || dig(t, spec, "dnsPolicy") != "Default" || dig(t, spec, "runtimeClassName") != "nvidia" ||
 		dig(t, spec, "nodeSelector", "gpuworks.ai/pool") != "a" || dig(t, spec, "serviceAccountName") != AgentName {
 		t.Fatalf("daemonset pod spec = %#v", spec)
 	}
@@ -116,7 +116,7 @@ func TestRenderedObjects(t *testing.T) {
 		}
 	}
 	mounts := dig(t, spec, "containers", 0, "volumeMounts").([]any)
-	if dig(t, mounts[0], "mountPath") != StateDir || dig(t, mounts[0], "mountPropagation") != "Bidirectional" {
+	if dig(t, mounts[0], "mountPath") != DefaultStateDir || dig(t, mounts[0], "mountPropagation") != "Bidirectional" {
 		t.Fatalf("state mount = %v", mounts[0])
 	}
 	if dig(t, kinds["Secret"], "stringData", "token") != "enroll-token" {
@@ -142,6 +142,63 @@ func TestRenderWithoutOptionalFields(t *testing.T) {
 		if _, ok := spec["nodeSelector"]; ok {
 			t.Fatal("nodeSelector rendered without one")
 		}
+	}
+}
+
+// TestRenderAscend: an Ascend cluster's agents run without the NVIDIA
+// RuntimeClass (even if one is named) and mount the host's /usr/local, where
+// npu-smi and the driver live, plus the install record the probe reads.
+func TestRenderAscend(t *testing.T) {
+	p := sample()
+	p.Vendor, p.StateDir, p.ContainerdSocket = "ascend", "/opt/gpuworks-kube", "/run/k3s/containerd/containerd.sock"
+	p.APIServer = "https://10.0.0.5:6443"
+	out, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ds map[string]any
+	for _, d := range docs(t, out) {
+		if d["kind"] == "DaemonSet" {
+			ds = d
+		}
+	}
+	spec := dig(t, ds, "spec", "template", "spec").(map[string]any)
+	if _, ok := spec["runtimeClassName"]; ok {
+		t.Fatal("an Ascend agent must not run under the NVIDIA RuntimeClass")
+	}
+	c := dig(t, spec, "containers", 0).(map[string]any)
+	if dig(t, c, "args", 2) != "--state=/opt/gpuworks-kube" {
+		t.Fatalf("args = %v", c["args"])
+	}
+	env := map[string]any{}
+	for _, e := range c["env"].([]any) {
+		env[dig(t, e, "name").(string)] = e.(map[string]any)["value"]
+	}
+	if _, ok := env["NVIDIA_VISIBLE_DEVICES"]; ok {
+		t.Fatal("NVIDIA env on an Ascend agent")
+	}
+	if env["GPUWORKS_KUBE_HOST_CLIS"] != "1" || env["GPUWORKS_KUBE_CONTAINERD_SOCKET"] != "/run/k3s/containerd/containerd.sock" ||
+		env["KUBERNETES_SERVICE_HOST"] != "10.0.0.5" || env["KUBERNETES_SERVICE_PORT"] != "6443" {
+		t.Fatalf("env = %v", env)
+	}
+	mounts := map[string]map[string]any{}
+	for _, m := range c["volumeMounts"].([]any) {
+		mounts[dig(t, m, "mountPath").(string)] = m.(map[string]any)
+	}
+	for _, path := range []string{"/opt/gpuworks-kube", "/usr/local", "/etc/ascend_install.info", DevicePluginDir, PodResourcesDir} {
+		if mounts[path] == nil {
+			t.Fatalf("no mount at %s: %v", path, mounts)
+		}
+	}
+	if mounts["/usr/local"]["readOnly"] != true || mounts[DevicePluginDir]["readOnly"] == true {
+		t.Fatalf("mount modes: /usr/local %v, device plugins %v", mounts["/usr/local"], mounts[DevicePluginDir])
+	}
+	types := map[string]any{}
+	for _, v := range spec["volumes"].([]any) {
+		types[dig(t, v, "hostPath", "path").(string)] = dig(t, v, "hostPath", "type")
+	}
+	if types["/usr/local"] != "Directory" || types["/etc/ascend_install.info"] != "File" || types["/opt/gpuworks-kube"] != "DirectoryOrCreate" {
+		t.Fatalf("volume types = %v", types)
 	}
 }
 
@@ -172,6 +229,13 @@ func TestValidate(t *testing.T) {
 		"image":        func(p *Params) { p.AgentImage = "" },
 		"runtimeclass": func(p *Params) { p.RuntimeClass = "No" },
 		"socket":       func(p *Params) { p.ContainerdSocket = "run/containerd.sock" },
+		"state":        func(p *Params) { p.StateDir = "/" },
+		"state-rel":    func(p *Params) { p.StateDir = "opt/x" },
+		"state-dirty":  func(p *Params) { p.StateDir = "/opt/../x" },
+		"vendor":       func(p *Params) { p.Vendor = "apple" },
+		"apiserver":    func(p *Params) { p.APIServer = "http://10.0.0.5:6443" },
+		"apiserver-np": func(p *Params) { p.APIServer = "10.0.0.5" },
+		"no-vendor":    func(p *Params) { p.Vendor = "" },
 	} {
 		p := sample()
 		mut(&p)
@@ -193,5 +257,37 @@ func TestParseNodeSelector(t *testing.T) {
 		if _, err := ParseNodeSelector(bad); err == nil {
 			t.Fatalf("ParseNodeSelector(%q) accepted", bad)
 		}
+	}
+}
+
+func TestParseAPIServer(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"https://10.0.0.5:6443":     {"10.0.0.5", "6443"},
+		"https://api.example/":      {"api.example", "443"},
+		"10.0.0.5:6443":             {"10.0.0.5", "6443"},
+		"[fd00::1]:6443":            {"fd00::1", "6443"},
+		"https://[fd00::1]:6443":    {"fd00::1", "6443"},
+		" https://k8s.local:16443 ": {"k8s.local", "16443"},
+	} {
+		host, port, err := ParseAPIServer(in)
+		if err != nil || host != want[0] || port != want[1] {
+			t.Errorf("ParseAPIServer(%q) = %q %q %v", in, host, port, err)
+		}
+	}
+	for _, bad := range []string{"http://10.0.0.5:6443", "10.0.0.5", "host:0", "host:99999", ":6443", "https://a b:1"} {
+		if _, _, err := ParseAPIServer(bad); err == nil {
+			t.Errorf("ParseAPIServer(%q) accepted", bad)
+		}
+	}
+}
+
+// TestRenderWithoutAPIServer: the Service the kubelet injects is used.
+func TestRenderWithoutAPIServer(t *testing.T) {
+	out, err := Render(sample())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "KUBERNETES_SERVICE_HOST") {
+		t.Fatal("API server override rendered without one")
 	}
 }

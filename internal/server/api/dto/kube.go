@@ -12,9 +12,12 @@ type KubeCluster struct {
 	Namespace         string    `json:"namespace"`
 	ServerURL         string    `json:"server_url"`
 	AgentImage        string    `json:"agent_image"`
+	Vendor            string    `json:"vendor"`
 	NodeSelector      string    `json:"node_selector"`
 	RuntimeClass      string    `json:"runtime_class"`
-	ContainerdSocket  string    `json:"containerd_socket"`
+	ContainerdSocket  string    `json:"containerd_socket"` // empty: the agents find it
+	StateDir          string    `json:"state_dir"`
+	APIServer         string    `json:"api_server"` // empty: the agents use the cluster's "kubernetes" Service
 	EnginePorts       string    `json:"engine_ports"`
 	IdleReturnSeconds int       `json:"idle_return_seconds"` // -1 keeps borrowed cards
 	ClusterUID        string    `json:"cluster_uid"`         // empty until the first node enrolls
@@ -31,9 +34,12 @@ type KubeClusterRequest struct {
 	ServerURL         string  `json:"server_url"`
 	Namespace         string  `json:"namespace,omitempty"`
 	AgentImage        string  `json:"agent_image,omitempty"`
+	Vendor            string  `json:"vendor,omitempty"`
 	NodeSelector      string  `json:"node_selector,omitempty"`
 	RuntimeClass      *string `json:"runtime_class,omitempty"`
 	ContainerdSocket  string  `json:"containerd_socket,omitempty"`
+	StateDir          string  `json:"state_dir,omitempty"`
+	APIServer         string  `json:"api_server,omitempty"`
 	EnginePorts       string  `json:"engine_ports,omitempty"`
 	IdleReturnSeconds *int    `json:"idle_return_seconds,omitempty"`
 }

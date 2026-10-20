@@ -49,6 +49,8 @@ func New(t testing.TB, ns, node string) *Server {
 	s := &Server{pods: map[string]*kubeapi.Pod{}, nodes: map[string]*kubeapi.Node{}, Logs: map[string]string{}, FailNext: map[string]int{}, clusterID: "kube-system-uid"}
 	n := &kubeapi.Node{Metadata: kubeapi.ObjectMeta{Name: node, UID: "node-uid-" + node}}
 	n.Status.Allocatable = map[string]string{}
+	n.Status.Capacity = map[string]string{}
+	n.Status.NodeInfo.ContainerRuntimeVersion = "containerd://2.0.5"
 	s.nodes[node] = n
 	s.daemonSet = map[string]any{
 		"metadata": map[string]any{"name": "gpuworks-agent", "namespace": ns, "uid": "ds-uid"},
@@ -74,11 +76,20 @@ func (s *Server) Node(name string) *kubeapi.Node {
 	return s.nodes[name]
 }
 
-// SetAllocatable sets a node's allocatable resource.
+// SetAllocatable sets a node's resource the way a device plugin does: its
+// capacity and, with every device healthy, its allocatable quantity.
 func (s *Server) SetAllocatable(node, resource, qty string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.nodes[node].Status.Allocatable[resource] = qty
+	s.nodes[node].Status.Capacity[resource] = qty
+}
+
+// SetRuntime sets the container runtime the node's kubelet reports.
+func (s *Server) SetRuntime(node, version string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nodes[node].Status.NodeInfo.ContainerRuntimeVersion = version
 }
 
 // SetUnschedulable cordons or uncordons a node.
