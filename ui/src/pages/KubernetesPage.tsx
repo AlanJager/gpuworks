@@ -40,6 +40,7 @@ export default function KubernetesPage() {
 
   const columns: ResourceColumn<KubeCluster>[] = [
     { key: "name", role: "name", title: t("column.name"), width: 200, sortValue: (c) => c.name, render: (_, c) => <Typography.Text strong>{c.name}</Typography.Text> },
+    { key: "vendor", title: t("column.vendor"), width: 110, sortValue: (c) => c.vendor, render: (_, c) => c.vendor ? tCommon(`vendor.${c.vendor}`, { defaultValue: c.vendor }) : "-" },
     { key: "namespace", title: t("column.namespace"), width: 160, sortValue: (c) => c.namespace, render: (_, c) => <Typography.Text code>{c.namespace}</Typography.Text> },
     { key: "nodes", title: t("column.nodes"), width: 90, align: "right", sortValue: (c) => c.node_count, render: (_, c) => c.node_count },
     {

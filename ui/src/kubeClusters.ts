@@ -1,17 +1,24 @@
 import { useEffect, useState } from "react";
 import type { TFunction } from "i18next";
-import { api, type KubeCluster } from "./api";
+import { api, type KubeCluster, type KubeVendor } from "./api";
 
 /** The idle_return_seconds value that keeps a borrowed card for good. */
 export const KEEP_BORROWED_CARDS = -1;
 
-/** The defaults the server applies to an omitted field (docs/reference/api.md, Kubernetes). */
+/** The accelerator vendors a cluster can be connected for, the first being the server's default. */
+export const KUBE_VENDORS: readonly KubeVendor[] = ["nvidia", "ascend", "hygon", "ppu"];
+
+/**
+ * The defaults the server applies to an omitted field (docs/reference/api.md, Kubernetes).
+ * The containerd socket has none: empty means the agents detect it themselves.
+ */
 export const KUBE_DEFAULTS = {
+  vendor: "nvidia",
   namespace: "gpuworks-system",
+  stateDir: "/opt/gpuworks",
   runtimeClass: "nvidia",
-  containerdSocket: "/run/containerd/containerd.sock",
   enginePorts: "40000-42767",
-  idleReturnSeconds: 600,
+  idleReturnSeconds: 60,
 } as const;
 
 /** How long a borrowed card may sit idle before it goes back, as the list shows it. */

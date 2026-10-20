@@ -1,20 +1,23 @@
 import { useRef, useState } from "react";
-import { Alert, Button, Collapse, Drawer, Form, Input, InputNumber, Space, Switch, Typography } from "antd";
+import { Alert, Button, Collapse, Drawer, Form, Input, InputNumber, Select, Space, Switch, Typography } from "antd";
 import type { InputRef } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, type KubeCluster, type KubeClusterRequest } from "../../api";
+import { api, type KubeCluster, type KubeClusterRequest, type KubeVendor } from "../../api";
 import { APIError, apiErrorText } from "../../apiError";
-import { KEEP_BORROWED_CARDS, KUBE_DEFAULTS } from "../../kubeClusters";
+import { KEEP_BORROWED_CARDS, KUBE_DEFAULTS, KUBE_VENDORS } from "../../kubeClusters";
 import ApplyCommand from "./ApplyCommand";
 
 interface FormValues {
   name: string;
   server_url: string;
+  vendor: KubeVendor;
   node_selector: string;
   namespace: string;
+  state_dir: string;
   agent_image: string;
   runtime_class: string;
   containerd_socket: string;
+  api_server: string;
   engine_ports: string;
   keep_cards: boolean;
   idle_return_seconds: number;
@@ -25,11 +28,14 @@ interface FormValues {
 const FIELD_OF: Record<string, keyof FormValues> = {
   name: "name",
   server_url: "server_url",
+  vendor: "vendor",
+  state_dir: "state_dir",
   node_selector: "node_selector",
   namespace: "namespace",
   agent_image: "agent_image",
   runtime_class: "runtime_class",
   containerd_socket: "containerd_socket",
+  api_server: "api_server",
   engine_ports: "engine_ports",
   idle_return_seconds: "idle_return_seconds",
 };
@@ -38,11 +44,13 @@ function requestOf(values: FormValues): KubeClusterRequest {
   const request: KubeClusterRequest = {
     name: values.name.trim(),
     server_url: values.server_url.trim(),
-    // Empty is meaningful for the RuntimeClass (none); every other empty field takes the server's default.
-    runtime_class: (values.runtime_class ?? "").trim(),
+    vendor: values.vendor,
     idle_return_seconds: values.keep_cards ? KEEP_BORROWED_CARDS : values.idle_return_seconds,
   };
-  const optional = { namespace: values.namespace, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, engine_ports: values.engine_ports } as const;
+  // Only NVIDIA nodes get their devices through a RuntimeClass (the others through the agent's device plugin), and for
+  // them an empty RuntimeClass is meaningful (none). Every other empty field takes the server's default.
+  if (values.vendor === "nvidia") request.runtime_class = (values.runtime_class ?? "").trim();
+  const optional = { namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
   for (const [key, value] of Object.entries(optional)) {
     const text = (value ?? "").trim();
     if (text) (request as unknown as Record<string, string>)[key] = text;
@@ -60,6 +68,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
   const { t: tCommon } = useTranslation("common");
   const [form] = Form.useForm<FormValues>();
   const keepCards = Form.useWatch("keep_cards", form);
+  const vendor = Form.useWatch("vendor", form);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<KubeCluster | null>(null);
@@ -92,11 +101,19 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
       <Form.Item name="agent_image" label={t("drawer.agentImage")} extra={t("drawer.agentImageHelp")}>
         <Input placeholder={t("drawer.agentImagePlaceholder")} />
       </Form.Item>
-      <Form.Item name="runtime_class" label={t("drawer.runtimeClass")} extra={t("drawer.runtimeClassHelp")}>
-        <Input allowClear />
+      <Form.Item name="state_dir" label={t("drawer.stateDir")} extra={t("drawer.stateDirHelp")}>
+        <Input placeholder={KUBE_DEFAULTS.stateDir} />
       </Form.Item>
+      {vendor === "nvidia" && (
+        <Form.Item name="runtime_class" label={t("drawer.runtimeClass")} extra={t("drawer.runtimeClassHelp")}>
+          <Input allowClear />
+        </Form.Item>
+      )}
       <Form.Item name="containerd_socket" label={t("drawer.containerdSocket")} extra={t("drawer.containerdSocketHelp")}>
-        <Input />
+        <Input placeholder={t("drawer.containerdSocketPlaceholder")} />
+      </Form.Item>
+      <Form.Item name="api_server" label={t("drawer.apiServer")} extra={t("drawer.apiServerHelp")}>
+        <Input placeholder={t("drawer.apiServerPlaceholder")} />
       </Form.Item>
       <Form.Item name="engine_ports" label={t("drawer.enginePorts")} extra={t("drawer.enginePortsHelp")}>
         <Input />
@@ -152,11 +169,14 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
           initialValues={{
             name: "",
             server_url: window.location.origin,
+            vendor: KUBE_DEFAULTS.vendor,
             node_selector: "",
             namespace: KUBE_DEFAULTS.namespace,
+            state_dir: "",
             agent_image: "",
             runtime_class: KUBE_DEFAULTS.runtimeClass,
-            containerd_socket: KUBE_DEFAULTS.containerdSocket,
+            containerd_socket: "",
+            api_server: "",
             engine_ports: KUBE_DEFAULTS.enginePorts,
             keep_cards: false,
             idle_return_seconds: KUBE_DEFAULTS.idleReturnSeconds,
@@ -178,6 +198,9 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
             ]}
           >
             <Input />
+          </Form.Item>
+          <Form.Item name="vendor" label={t("drawer.vendor")} extra={t("drawer.vendorHelp")}>
+            <Select options={KUBE_VENDORS.map((value) => ({ value, label: tCommon(`vendor.${value}`) }))} />
           </Form.Item>
           <Form.Item name="node_selector" label={t("drawer.nodeSelector")} extra={t("drawer.nodeSelectorHelp")}>
             <Input placeholder={t("drawer.nodeSelectorPlaceholder")} />

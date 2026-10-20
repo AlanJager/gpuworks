@@ -1558,7 +1558,23 @@
     { "term_en": "Wake Waiting", "translations": { "zh": "唤醒等位" } },
     { "term_en": "Yielding Wake", "translations": { "zh": "让位唤醒" } },
     { "term_en": "Scheduling History", "translations": { "zh": "调度记录" } },
-    { "term_en": "Batch", "translations": { "zh": "批处理任务" } }
+    { "term_en": "Batch", "translations": { "zh": "批处理任务" } },
+    {
+      "term_en": "Kubernetes Cluster",
+      "translations": { "zh": "Kubernetes 集群" }
+    },
+    {
+      "term_en": "Enrollment Token",
+      "translations": { "zh": "接入令牌" }
+    },
+    {
+      "term_en": "Kube Runtime",
+      "translations": { "zh": "kube 运行时" }
+    },
+    {
+      "term_en": "Hold Pod / Card Borrowing",
+      "translations": { "zh": "占位 Pod / 借卡" }
+    }
   ],
   "do_not_translate": [
     "GPUWorks",

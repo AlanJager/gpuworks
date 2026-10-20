@@ -1009,6 +1009,9 @@ export interface ImageSeries {
   versions?: ImageCatalogEntry[];
 }
 
+/** The accelerator vendors a Kubernetes cluster's nodes can have. */
+export type KubeVendor = "nvidia" | "ascend" | "hygon" | "ppu";
+
 /** A Kubernetes cluster whose GPU nodes join through one DaemonSet (dto.KubeCluster). */
 export interface KubeCluster {
   /** What NodeKube.cluster_id refers to. */
@@ -1019,8 +1022,16 @@ export interface KubeCluster {
   server_url: string;
   agent_image: string;
   node_selector: string;
+  /** Accelerator vendor of the cluster's nodes: nvidia, ascend, hygon or ppu. */
+  vendor: KubeVendor;
+  /** The agent's directory on the host. */
+  state_dir: string;
+  /** Empty for any vendor but nvidia (devices come through the agent's device plugin). */
   runtime_class: string;
+  /** Empty means the agents find the socket themselves. */
   containerd_socket: string;
+  /** API server address the agents use instead of the "kubernetes" Service; empty uses the Service. */
+  api_server: string;
   engine_ports: string;
   /** Seconds a borrowed card may sit idle before it goes back; -1 keeps it. */
   idle_return_seconds: number;
@@ -1040,9 +1051,16 @@ export interface KubeClusterRequest {
   namespace?: string;
   agent_image?: string;
   node_selector?: string;
-  /** "" means no RuntimeClass; omitted means the default (nvidia). */
+  /** Omitted means nvidia. */
+  vendor?: KubeVendor;
+  /** The agent's directory on the host; omitted means /opt/gpuworks. */
+  state_dir?: string;
+  /** NVIDIA only. "" means no RuntimeClass; omitted means the default (nvidia). */
   runtime_class?: string;
+  /** Omitted means the agents detect it (containerd, k3s, RKE2, microk8s). */
   containerd_socket?: string;
+  /** "https://host:port"; omitted means the cluster's "kubernetes" Service. */
+  api_server?: string;
   engine_ports?: string;
   idle_return_seconds?: number;
 }

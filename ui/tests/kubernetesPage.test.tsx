@@ -24,15 +24,15 @@ const APPLY = "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?tok
 function cluster(overrides: Partial<KubeCluster> = {}): KubeCluster {
   return {
     id: 1, uuid: "c-1", name: "prod-gpu", namespace: "gpuworks-system", server_url: "https://gpuworks.example",
-    agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "nvidia",
-    containerd_socket: "/run/containerd/containerd.sock", engine_ports: "40000-42767", idle_return_seconds: 600,
+    vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "nvidia",
+    containerd_socket: "", api_server: "", engine_ports: "40000-42767", idle_return_seconds: 600,
     cluster_uid: "7f3c2a10-aaaa-bbbb-cccc-0123456789ab", revoked: false, node_count: 3,
     created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, ...overrides,
   };
 }
 const prod = cluster();
 const lab = cluster({ id: 2, uuid: "c-2", name: "lab", namespace: "gpu-lab", cluster_uid: "", node_count: 0, idle_return_seconds: -1, apply_command: "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?token=lab-token'" });
-const old = cluster({ id: 3, uuid: "c-3", name: "retired", revoked: true, idle_return_seconds: 7200 });
+const old = cluster({ id: 3, uuid: "c-3", name: "retired", revoked: true, idle_return_seconds: 7200, vendor: "ascend", runtime_class: "" });
 
 type Calls = Record<string, unknown[][]>;
 function stubApi(options: { clusters?: KubeCluster[] | Error; admin?: boolean } = {}) {
@@ -104,6 +104,8 @@ test("one row per cluster: namespace, node count, cluster UID or not-connected, 
   const row = await rowOf("prod-gpu");
   assert.equal(screen.getAllByRole("row").length, 1 + 3, "header plus a row per cluster");
   assert.ok(within(row).getByText("gpuworks-system"));
+  assert.ok(within(row).getByText(locale.common.vendor.nvidia), "the cluster's accelerator vendor");
+  assert.ok(within(await rowOf("retired")).getByText(locale.common.vendor.ascend));
   assert.ok(within(row).getByText("3"));
   assert.ok(within(row).getByText("7f3c2a10-aaaa-bbbb-cccc-0123456789ab"));
   assert.ok(within(row).getByText("Returned after 10 min idle"));
@@ -227,10 +229,15 @@ test("connecting opens a form with the server address prefilled and the defaults
   assert.ok(form.getByPlaceholderText("nvidia.com/gpu.present=true"));
   assert.equal((form.getByLabelText(k.drawer.namespace) as HTMLInputElement).value, "gpuworks-system");
   assert.equal((form.getByLabelText(k.drawer.runtimeClass) as HTMLInputElement).value, "nvidia");
-  assert.equal((form.getByLabelText(k.drawer.containerdSocket) as HTMLInputElement).value, "/run/containerd/containerd.sock");
+  const socket = form.getByLabelText(k.drawer.containerdSocket) as HTMLInputElement;
+  assert.equal(socket.value, "", "empty means the agents detect the socket themselves");
+  assert.equal(socket.placeholder, k.drawer.containerdSocketPlaceholder);
+  assert.equal((form.getByLabelText(k.drawer.stateDir) as HTMLInputElement).placeholder, "/opt/gpuworks");
+  assert.ok(form.getByText(k.drawer.stateDirHelp));
+  assert.equal(form.getByTitle(locale.common.vendor.nvidia).textContent, locale.common.vendor.nvidia, "NVIDIA is the default vendor");
   assert.equal((form.getByLabelText(k.drawer.enginePorts) as HTMLInputElement).value, "40000-42767");
-  assert.equal((form.getByLabelText(k.drawer.idleReturnSeconds) as HTMLInputElement).value, "600");
-  assert.ok(form.getByText(k.drawer.containerdSocketHelp), "the k3s hint");
+  assert.equal((form.getByLabelText(k.drawer.idleReturnSeconds) as HTMLInputElement).value, "60");
+  assert.ok(form.getByText(k.drawer.containerdSocketHelp), "the auto-detect hint");
   assert.ok(form.getByText(k.drawer.enginePortsHelp), "the NodePort hint");
 });
 
@@ -260,9 +267,8 @@ test("submitting sends exactly what the form shows, then presents the command to
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   assert.deepEqual(calls.createKubeCluster[0], [{
-    name: "edge", server_url: "http://localhost", runtime_class: "nvidia", idle_return_seconds: 600,
-    namespace: "gpuworks-system", node_selector: "gpu=a100,zone=b",
-    containerd_socket: "/run/containerd/containerd.sock", engine_ports: "40000-42767",
+    name: "edge", server_url: "http://localhost", vendor: "nvidia", runtime_class: "nvidia", idle_return_seconds: 60,
+    namespace: "gpuworks-system", node_selector: "gpu=a100,zone=b", engine_ports: "40000-42767",
   }]);
   assert.ok(await dialog().findByText(k.created.note));
   assert.ok(dialog().getByText(k.created.title.replace("{{name}}", "edge")));
@@ -282,6 +288,7 @@ test("advanced choices travel: no RuntimeClass is an explicit empty string, a re
   await user.clear(form.getByLabelText(k.drawer.runtimeClass));
   await user.clear(form.getByLabelText(k.drawer.containerdSocket));
   await user.type(form.getByLabelText(k.drawer.containerdSocket), "/run/k3s/containerd/containerd.sock");
+  await user.type(form.getByLabelText(k.drawer.apiServer), "https://10.0.0.5:6443");
   await user.click(form.getByRole("switch", { name: k.drawer.keepCards }));
   assert.ok((form.getByLabelText(k.drawer.idleReturnSeconds) as HTMLInputElement).disabled, "no seconds to enter once cards are kept");
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
@@ -290,6 +297,7 @@ test("advanced choices travel: no RuntimeClass is an explicit empty string, a re
   assert.equal(body.runtime_class, "");
   assert.equal(body.idle_return_seconds, -1);
   assert.equal(body.containerd_socket, "/run/k3s/containerd/containerd.sock");
+  assert.equal(body.api_server, "https://10.0.0.5:6443");
   assert.equal("node_selector" in body, false, "an empty selector is left to the server");
   assert.equal("agent_image" in body, false, "an empty image takes the default");
 });
@@ -337,4 +345,49 @@ test("Escape closes the form without sending anything", async () => {
   fireEvent.keyDown(document.querySelector(".ant-drawer-content-wrapper") as HTMLElement, { key: "Escape", keyCode: 27 });
   await waitFor(() => assert.ok(document.querySelector(".ant-drawer-open") === null));
   assert.equal(calls.createKubeCluster, undefined);
+});
+
+async function selectVendor(user: ReturnType<typeof userEvent.setup>, form: ReturnType<typeof dialog>, label: string) {
+  fireEvent.mouseDown(form.getByLabelText(k.drawer.vendor).closest(".ant-select")!.querySelector(".ant-select-selector") as HTMLElement);
+  const option = await waitFor(() => {
+    const found = [...document.querySelectorAll(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option")].find((el) => el.textContent === label);
+    assert.ok(found, `option ${label}`);
+    return found as HTMLElement;
+  });
+  await user.click(option);
+}
+
+test("the vendor choice offers the four vendors; an Ascend cluster sends its vendor and state directory, and no RuntimeClass or socket", async () => {
+  const calls = stubApi();
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  await user.type(await form.findByLabelText(k.drawer.name), "npu");
+  await user.click(form.getByText(k.drawer.advanced));
+  assert.ok(form.getByLabelText(k.drawer.runtimeClass), "NVIDIA clusters pick a RuntimeClass");
+  await selectVendor(user, form, locale.common.vendor.ascend);
+  await waitFor(() => assert.ok(form.queryByLabelText(k.drawer.runtimeClass) === null, "devices come through CDI, so no RuntimeClass"));
+  await user.type(form.getByLabelText(k.drawer.stateDir), "/opt/gpuworks-k8s");
+  await user.click(form.getByRole("button", { name: k.drawer.submit }));
+  await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
+  assert.deepEqual(calls.createKubeCluster[0], [{
+    name: "npu", server_url: "http://localhost", vendor: "ascend", idle_return_seconds: 60,
+    namespace: "gpuworks-system", state_dir: "/opt/gpuworks-k8s", engine_ports: "40000-42767",
+  }]);
+});
+
+test("every vendor can be chosen, and going back to NVIDIA brings the RuntimeClass field back", async () => {
+  stubApi();
+  const { user } = renderPage();
+  await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
+  const form = dialog();
+  await form.findByLabelText(k.drawer.name);
+  await user.click(form.getByText(k.drawer.advanced));
+  for (const vendor of ["hygon", "ppu"] as const) {
+    await selectVendor(user, form, locale.common.vendor[vendor]);
+    await waitFor(() => assert.ok(form.getByTitle(locale.common.vendor[vendor])));
+    assert.ok(form.queryByLabelText(k.drawer.runtimeClass) === null);
+  }
+  await selectVendor(user, form, locale.common.vendor.nvidia);
+  assert.equal((await form.findByLabelText(k.drawer.runtimeClass) as HTMLInputElement).value, "nvidia");
 });
