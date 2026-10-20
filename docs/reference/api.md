@@ -443,8 +443,8 @@ macOS 忽略 `no_systemd`。
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{id,uuid,name,namespace,server_url,agent_image,node_selector,runtime_class,containerd_socket,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
-| POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, node_selector?("k=v,k2=v2"), runtime_class?(nvidia，空串表示不用), containerd_socket?, engine_ports?(40000-42767), idle_return_seconds?(600)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN` | JWT(admin) |
+| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{id,uuid,name,namespace,server_url,agent_image,vendor,node_selector,runtime_class,containerd_socket,state_dir,api_server,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
+| POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, vendor?(nvidia\|ascend\|hygon\|ppu，默认 nvidia), node_selector?("k=v,k2=v2"), runtime_class?(NVIDIA 默认 nvidia、其他厂商默认空，空串表示不用), containerd_socket?(空表示 agent 自己找), state_dir?(/opt/gpuworks), api_server?("https://host:port"，空表示用集群的 kubernetes Service), engine_ports?(40000-42767), idle_return_seconds?(60)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN` | JWT(admin) |
 | GET | `/api/v1/kube/clusters/{uuid}/manifest` | 集群的 manifest（`application/yaml`） | JWT(admin) |
 | POST | `/api/v1/kube/clusters/{uuid}/revoke` | 吊销接入令牌：已接入节点不受影响，新节点不能再接入 | JWT(admin) |
 | DELETE | `/api/v1/kube/clusters/{uuid}` | 删除集群，返回 204；仍有节点时回 409 `KUBE_CLUSTER_HAS_NODES` | JWT(admin) |
