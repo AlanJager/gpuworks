@@ -30,8 +30,10 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
    只有资源名能指定是哪张卡。曾试过 Pod 注解 + CDI：kubelet 不把 Pod 注解交给容器，containerd 只认 device plugin 给的
    CDI，真机上设备并未注入（PPU 实例 `Failed to infer device type`）。agent 经 hostPID 以 `nsenter -t 1 -m` 在节点挂载
    命名空间运行 nerdctl、mount 与厂商 CLI：containerd socket、`certs.d`、exec 的 FIFO、NFS 挂载、厂商 CLI 依赖的 C 库都
-   在节点自己的路径与版本上（PPU SDK 需要 glibc 2.38，agent 镜像是 2.36）。NVIDIA 不变：驱动可能在 GPU Operator 的容器
-   里，CLI 由 RuntimeClass 注入。kubelet 用的 containerd 按 agent 容器的 shim 的 `-address` 认定，不按 socket 位置猜。
+   在节点自己的路径与版本上（PPU SDK 需要 glibc 2.38，agent 镜像是 2.36）。NVIDIA 的 CLI 由 NVIDIA 运行时注入：集群
+   条目指定 RuntimeClass 时 agent 在其下运行；不指定时（默认）agent 容器用节点的默认运行时，托管 Kubernetes 的默认运行时就是
+   NVIDIA 的，注入了 `nvidia-smi`，没注入时（k3s 默认 runc）agent 在节点上运行它；实例 Pod 用集群的 `nvidia` RuntimeClass，
+   没有就用默认运行时。kubelet 用的 containerd 按 agent 容器的 shim 的 `-address` 认定，不按 socket 位置猜。
    一个集群条目一个厂商。device plugin 以非整卡分配（time-slicing、MIG、HAMi、vNPU）时不借卡，卡报为外部占用并带原因。
 6. **生命周期跟随 Kubernetes**：节点 cordon 时平台同样 cordon；升级是把 agent DaemonSet 换到 server 同版本的镜像；离线
    15 分钟的节点经同集群在线 agent 确认已不存在且无实例时移除；节点自报引擎端口段，避开 NodePort 范围。

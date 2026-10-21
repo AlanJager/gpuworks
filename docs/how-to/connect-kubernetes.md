@@ -2,14 +2,16 @@
 
 **适用场景**：已有带 GPU 的 Kubernetes 集群，希望把其中一批 GPU 节点交给 gpuworks 部署模型，而不逐台安装 agent。
 
+公有云托管集群（阿里云 ACK、DigitalOcean DOKS、Nebius mk8s）的逐步操作见 [接入公有云托管 Kubernetes](connect-managed-kubernetes.md)。
+
 **前置条件**：
 
 - server 已经启动，集群节点能访问 server 地址（agent 主动外连，不需要节点入站端口）。
 - 集群使用 containerd（kubeadm、k3s、RKE2、microk8s、GPU Operator 环境都是）。CRI-O（OpenShift）与 Docker 节点不支持，
   agent 启动时会拒绝并写明原因。
-- 一个集群条目对应一个厂商的节点：NVIDIA、昇腾、海光或 PPU。NVIDIA 节点的 NVIDIA 容器运行时可用，通常已有名为
-  `nvidia` 的 RuntimeClass（k3s 与 GPU Operator 会自动创建）；其他厂商只要求节点上装好厂商驱动，不需要厂商的容器
-  运行时，也不需要厂商的 device plugin。
+- 一个集群条目对应一个厂商的节点：NVIDIA、昇腾、海光或 PPU。NVIDIA 节点的 NVIDIA 容器运行时可用：或者是 containerd 的
+  默认运行时（托管 Kubernetes 如 DOKS、Nebius、ACK 都是），或者有名为 `nvidia` 的 RuntimeClass（k3s 会自动创建）；
+  其他厂商只要求节点上装好厂商驱动，不需要厂商的容器运行时，也不需要厂商的 device plugin。
 - 要挂 NFS 存储的节点装有 `mount.nfs`（nfs-utils / nfs-common）：agent 在节点的挂载命名空间里用它挂载。
 - 能在集群里执行 `kubectl apply`，并允许一个 `privileged` 的 namespace（manifest 会给 namespace 打上
   Pod Security Admission 的 `privileged` 标签；Kyverno、Gatekeeper 一类的策略需另外放行）。
@@ -51,7 +53,12 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
    - API server 地址：只给节点上没有组件提供 Service 地址的集群用（没有 kube-proxy 或其替代品，例如 KubeEdge、
      OpenYurt 的边缘节点），写成 `https://host:port`，地址须在 API server 的证书里；留空时 agent 经集群的
      `kubernetes` Service 访问。
-   - RuntimeClass：只对 NVIDIA：注入 NVIDIA 设备的 RuntimeClass，默认 `nvidia`；节点默认运行时已是 NVIDIA 的可以清空。
+   - 镜像拉取凭据：agent 镜像放在需要登录的仓库（企业 Harbor、云厂商的私有仓库）时，先在命名空间里建一个
+     docker-registry 类型的 Secret（`kubectl -n gpuworks-system create secret docker-registry regcred …`，namespace 不存在时
+     先建），再在这里填它的名称。agent Pod 用它拉镜像，agent 起的占位 Pod 也沿用它。
+   - RuntimeClass：只对 NVIDIA：实例 Pod 访问 GPU 用的 RuntimeClass。留空（默认）时每个节点的 agent 自己判断：集群里有
+     `nvidia` RuntimeClass 就用它，没有就用节点的默认运行时；agent 自己的容器里没有 `nvidia-smi` 时在节点上运行它。
+     只有 RuntimeClass 叫别的名字时才需要填写。
    - 引擎端口段：默认 `40000-42767`。不要与集群的 NodePort 范围（默认 `30000-32767`）重叠：kube-proxy 会把发往本机
      地址的 NodePort 流量转走。
    - 空闲归还：借来的卡在最后一个实例停止后保留多久，默认 60 秒（每 30 秒检查一次，实际在 60 到 90 秒之间归还）；「常驻」表示一直不还，节点池整体交给 gpuworks。
@@ -61,7 +68,9 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
    kubectl apply -f 'https://server.example/kube/manifest.yaml?token=…'
    ```
 
-   被选中的节点会自动出现在节点页，带「K8s · 集群/节点名」标签；扩容出来的节点同样自动加入。
+   被选中的节点会自动出现在节点页，带「K8s · 集群/节点名」标签；扩容出来的节点同样自动加入。创建 5 分钟后仍没有
+   节点加入时，列表上的「排查」给出要执行的 `kubectl` 命令和常见原因（拉不到 agent 镜像、RuntimeClass 不存在、节点
+   选择器没选中节点、agent 连不上 server）。
 
 命令里带着集群的接入令牌，只给管理员看。吊销接入令牌后新节点不能再加入，已加入的节点不受影响。
 
@@ -78,7 +87,8 @@ agent 用节点自己的 DNS（`dnsPolicy: Default`），与直接装在主机�
 ## 限制
 
 - 只支持 containerd：镜像由 agent 经节点的 containerd（kubelet 的 `k8s.io` 命名空间）拉取与导入，不经过 kubelet，
-  所以 Pod 的 `imagePullSecrets` 不起作用，私有仓库的凭据配在 gpuworks 的镜像来源里。
+  所以实例镜像不用 Pod 的 `imagePullSecrets`，私有仓库的凭据配在 gpuworks 的镜像来源里（集群条目的镜像拉取凭据只管
+  agent 镜像）。
 - 实例使用 host 网络，不创建 Service / Ingress，经 gpuworks 网关访问。
 - 厂商的命令行工具（`npu-smi`、`hy-smi`、`ppu-smi`）在节点的挂载命名空间里运行，用节点自己的 C 库与驱动库，所以 agent
   镜像与节点的发行版无关。
