@@ -23,7 +23,8 @@
   },
   "clusterUid": {
     "notEnrolled": "未接入",
-    "notEnrolledHint": "还没有节点从这个集群接入。"
+    "notEnrolledHint": "还没有节点从这个集群接入。",
+    "troubleshoot": "排查"
   },
   "returnPolicy": {
     "afterIdle": "空闲 {{duration}}后归还",
@@ -80,8 +81,12 @@
     "agentImage": "agent 镜像",
     "agentImagePlaceholder": "默认镜像",
     "agentImageHelp": "留空使用默认的 agent 镜像。",
+    "imagePullSecret": "镜像拉取凭据",
+    "imagePullSecretPlaceholder": "不使用",
+    "imagePullSecretHelp": "agent 镜像在需要登录的仓库时填写：命名空间里一个 docker-registry 类型 Secret 的名称，须在 apply 前建好。",
     "runtimeClass": "RuntimeClass",
-    "runtimeClassHelp": "仅 NVIDIA：agent Pod 和实例 Pod 用来访问 GPU 的 RuntimeClass，留空表示不使用。其他厂商的设备通过 CDI 获得。",
+    "runtimeClassPlaceholder": "自动",
+    "runtimeClassHelp": "仅 NVIDIA：实例 Pod 访问 GPU 用的 RuntimeClass。留空时自动判断：集群里有 nvidia RuntimeClass 就用它（如 k3s），没有就用节点的默认运行时（托管 Kubernetes 一般如此）。",
     "containerdSocket": "containerd socket",
     "containerdSocketHelp": "节点上的路径。留空由 agent 自行探测，只有路径特殊时才需要填写。",
     "containerdSocketPlaceholder": "留空自动探测（containerd、k3s、RKE2、microk8s）",
@@ -105,5 +110,15 @@
     "command": "接入命令",
     "copyCommand": "复制接入命令",
     "secret": "命令里含有接入令牌，请像密码一样保管。"
+  },
+  "stalled": {
+    "title": "还没有节点接入",
+    "intro": "集群创建已超过 {{minutes}} 分钟，仍没有节点接入。先在集群里看 agent 的 DaemonSet 和 Pod：",
+    "causes": "常见原因",
+    "pull": "Pod 处于 ImagePullBackOff：拉不到 agent 镜像。镜像在需要登录的仓库时，在命名空间里建好 docker-registry Secret，并在新建集群时填写“镜像拉取凭据”。",
+    "runtimeClass": "DaemonSet 事件提示 RuntimeClass 不存在：填写的 RuntimeClass 在集群里没有；留空即可，由 agent 自动判断。",
+    "selector": "DaemonSet 的 DESIRED 为 0：节点选择器没有选中任何节点。",
+    "connect": "Pod 在运行但节点没出现：agent 连不上 Server 地址，看 agent 日志。",
+    "copy": "复制命令"
   }
 }

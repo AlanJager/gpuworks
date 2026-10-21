@@ -33,6 +33,8 @@ type Server struct {
 	daemonSet map[string]any
 	clusterID string
 	rv        int
+	// RuntimeClasses are the cluster's RuntimeClass names.
+	RuntimeClasses map[string]bool
 	// Logs is what a pod's log endpoint returns, by pod name.
 	Logs map[string]string
 	// Kubelet decides what a created pod becomes; nil makes it Running.
@@ -46,7 +48,7 @@ type Server struct {
 
 // New starts a server with one node and an agent DaemonSet in ns.
 func New(t testing.TB, ns, node string) *Server {
-	s := &Server{pods: map[string]*kubeapi.Pod{}, nodes: map[string]*kubeapi.Node{}, Logs: map[string]string{}, FailNext: map[string]int{}, clusterID: "kube-system-uid"}
+	s := &Server{pods: map[string]*kubeapi.Pod{}, nodes: map[string]*kubeapi.Node{}, RuntimeClasses: map[string]bool{}, Logs: map[string]string{}, FailNext: map[string]int{}, clusterID: "kube-system-uid"}
 	n := &kubeapi.Node{Metadata: kubeapi.ObjectMeta{Name: node, UID: "node-uid-" + node}}
 	n.Status.Allocatable = map[string]string{}
 	n.Status.Capacity = map[string]string{}
@@ -211,6 +213,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.json(w, 200, cp)
+	case len(parts) == 5 && parts[0] == "apis" && parts[1] == "node.k8s.io" && parts[3] == "runtimeclasses" && r.Method == http.MethodGet:
+		s.mu.Lock()
+		ok := s.RuntimeClasses[parts[4]]
+		s.mu.Unlock()
+		if !ok {
+			s.status(w, 404, "NotFound", fmt.Sprintf("runtimeclasses.node.k8s.io %q not found", parts[4]))
+			return
+		}
+		s.json(w, 200, map[string]any{"apiVersion": "node.k8s.io/v1", "kind": "RuntimeClass", "metadata": map[string]any{"name": parts[4]}, "handler": parts[4]})
 	case len(parts) == 7 && parts[0] == "apis" && parts[5] == "daemonsets":
 		s.serveDaemonSet(w, r, parts[6])
 	case len(parts) >= 5 && parts[0] == "api" && parts[2] == "namespaces" && parts[4] == "pods":

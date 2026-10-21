@@ -62,12 +62,15 @@ type ImageStore interface {
 
 // Options configure a Driver.
 type Options struct {
-	API          *kubeapi.Client
-	Kubelet      allocationLister
-	Images       ImageStore
-	Namespace    string
-	NodeName     string
-	PodName      string // the agent's own pod
+	API       *kubeapi.Client
+	Kubelet   allocationLister
+	Images    ImageStore
+	Namespace string
+	NodeName  string
+	PodName   string // the agent's own pod
+	// RuntimeClass injects NVIDIA devices into instance pods; empty makes
+	// Detect use the cluster's "nvidia" class if there is one, and the
+	// node's default runtime otherwise.
 	RuntimeClass string
 	// Cards maps device index to card UUID (the node's probe).
 	Cards func(context.Context) (map[int]string, error)
@@ -195,9 +198,33 @@ func (d *Driver) Detect(ctx context.Context) (bool, error) {
 	if len(self.Spec.Containers) > 0 {
 		d.cards.holdImage = self.Spec.Containers[0].Image
 	}
+	// Hold pods run the agent's image, so they pull it as the agent's pod
+	// did (the manifest's secret, or whatever the service account added).
+	d.cards.pullSecrets = self.Spec.ImagePullSecrets
+	if d.o.RuntimeClass == "" {
+		d.o.RuntimeClass = d.nvidiaRuntimeClass(ctx)
+	}
 	d.cards.holdCmd = []string{"gpuworks-agent", "hold"}
 	d.cards.owner = &kubeapi.OwnerReference{APIVersion: "apps/v1", Kind: "DaemonSet", Name: DaemonSetName, UID: ds.Metadata.UID}
 	return true, nil
+}
+
+// nvidiaRuntimeClass is "nvidia" when the cluster defines that
+// RuntimeClass (k3s does, beside a default runc), and "" when it does not
+// (managed clusters make NVIDIA's runtime the default) or the agent may not
+// look (a manifest from before the agent did).
+func (d *Driver) nvidiaRuntimeClass(ctx context.Context) string {
+	err := d.o.API.Get(ctx, kubeapi.RuntimeClassPath("nvidia"), &struct{}{})
+	switch {
+	case err == nil:
+		d.o.Log.Info("instance pods use the cluster's nvidia RuntimeClass")
+		return "nvidia"
+	case kubeapi.IsNotFound(err):
+		d.o.Log.Info("the cluster has no nvidia RuntimeClass; instance pods use the node's default runtime")
+	default:
+		d.o.Log.Warn("cannot read the nvidia RuntimeClass; instance pods use the node's default runtime", "err", err)
+	}
+	return ""
 }
 
 // Start borrows every free card at once when the cluster keeps cards, and

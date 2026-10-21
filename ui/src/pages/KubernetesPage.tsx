@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Button, Card, Popconfirm, Space, Tag, Tooltip, Typography, message } from "antd";
+import { Alert, Button, Card, Popconfirm, Popover, Space, Tag, Tooltip, Typography, message } from "antd";
 import { DeleteOutlined, FileTextOutlined, PlusOutlined, StopOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import PageHeader from "../components/PageHeader";
@@ -9,9 +9,28 @@ import { useIsAdmin } from "../components/useIsAdmin";
 import { api, usePolling, type KubeCluster, type List } from "../api";
 import { apiErrorText } from "../apiError";
 import { formatTime } from "../i18n/datetime";
-import { cardReturnText } from "../kubeClusters";
+import { KUBE_STALLED_MINUTES, cardReturnText, kubeClusterStalled, kubeTroubleshootCommands } from "../kubeClusters";
 import KubeClusterDrawer from "./kubernetes/KubeClusterDrawer";
 import KubeManifestModal from "./kubernetes/KubeManifestModal";
+
+/** Why a cluster's agents may not have joined, and the commands that tell which. */
+function StalledHelp({ cluster }: { cluster: KubeCluster }) {
+  const { t } = useTranslation("kubernetes");
+  const commands = kubeTroubleshootCommands(cluster.namespace);
+  return (
+    <Space direction="vertical" size={8} style={{ maxWidth: 520 }}>
+      <Typography.Text>{t("stalled.intro", { minutes: KUBE_STALLED_MINUTES })}</Typography.Text>
+      <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+        <pre aria-label={t("stalled.copy")} style={{ margin: 0, flex: 1, minWidth: 0, overflowX: "auto", fontSize: 12 }}>{commands}</pre>
+        <CopyButton size="small" label={t("stalled.copy")} text={commands} />
+      </div>
+      <Typography.Text strong>{t("stalled.causes")}</Typography.Text>
+      <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+        {(["pull", "runtimeClass", "selector", "connect"] as const).map((key) => <li key={key}>{t(`stalled.${key}`)}</li>)}
+      </ul>
+    </Space>
+  );
+}
 
 /** The Kubernetes clusters whose GPU nodes join this gpuworks, one line each. */
 export default function KubernetesPage() {
@@ -49,7 +68,14 @@ export default function KubernetesPage() {
       width: 300,
       render: (_, c) => c.cluster_uid
         ? <Typography.Text code>{c.cluster_uid}</Typography.Text>
-        : <Tooltip title={t("clusterUid.notEnrolledHint")}><Tag>{t("clusterUid.notEnrolled")}</Tag></Tooltip>,
+        : kubeClusterStalled(c) ? (
+          <Space size={4}>
+            <Tag color="warning">{t("clusterUid.notEnrolled")}</Tag>
+            <Popover trigger="click" title={t("stalled.title")} content={<StalledHelp cluster={c} />}>
+              <Button type="link" size="small" style={{ padding: 0 }}>{t("clusterUid.troubleshoot")}</Button>
+            </Popover>
+          </Space>
+        ) : <Tooltip title={t("clusterUid.notEnrolledHint")}><Tag>{t("clusterUid.notEnrolled")}</Tag></Tooltip>,
     },
     { key: "card_return", title: t("column.cardReturn"), width: 200, sortValue: (c) => c.idle_return_seconds, render: (_, c) => cardReturnText(t, c.idle_return_seconds) },
     {

@@ -23,12 +23,11 @@ import (
 
 // Defaults a new cluster takes for the fields its request leaves empty.
 const (
-	kubeDefaultNamespace    = "gpuworks-system"
-	kubeDefaultVendor       = accelerator.VendorNVIDIA
-	kubeDefaultRuntimeClass = "nvidia"
-	kubeDefaultStateDir     = kubemanifest.DefaultStateDir
-	kubeDefaultEnginePorts  = "40000-42767"
-	kubeAgentImageRepo      = "gpuworks/gpuworks-agent"
+	kubeDefaultNamespace   = "gpuworks-system"
+	kubeDefaultVendor      = accelerator.VendorNVIDIA
+	kubeDefaultStateDir    = kubemanifest.DefaultStateDir
+	kubeDefaultEnginePorts = "40000-42767"
+	kubeAgentImageRepo     = "gpuworks/gpuworks-agent"
 )
 
 func kubeDefaultAgentImage() string { return kubeAgentImageRepo + ":" + version.Version }
@@ -40,8 +39,8 @@ func kubeManifestURL(c store.KubeCluster) string {
 func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool) dto.KubeCluster {
 	out := dto.KubeCluster{
 		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
-		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir,
-		APIServer: c.APIServer,
+		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ImagePullSecret: c.ImagePullSecret,
+		ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir, APIServer: c.APIServer,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
 		Revoked: c.RevokedAt != nil, NodeCount: nodes, CreatedAt: c.CreatedAt.UTC(),
 	}
@@ -59,7 +58,7 @@ func kubeManifestParams(c store.KubeCluster) (kubemanifest.Params, error) {
 	return kubemanifest.Params{
 		ClusterName: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, Token: c.Token,
 		AgentImage: c.AgentImage, Vendor: firstNonEmpty(c.Vendor, kubeDefaultVendor), NodeSelector: sel, RuntimeClass: c.RuntimeClass,
-		ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts, StateDir: c.StateDir, APIServer: c.APIServer,
+		ImagePullSecret: c.ImagePullSecret, ContainerdSocket: c.ContainerdSocket, EnginePorts: c.EnginePorts, StateDir: c.StateDir, APIServer: c.APIServer,
 	}, nil
 }
 
@@ -99,19 +98,20 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 		AgentImage:        firstNonEmpty(strings.TrimSpace(req.AgentImage), kubeDefaultAgentImage()),
 		Vendor:            accelerator.NormalizeVendor(firstNonEmpty(strings.TrimSpace(req.Vendor), kubeDefaultVendor)),
 		NodeSelector:      strings.TrimSpace(req.NodeSelector),
+		RuntimeClass:      strings.TrimSpace(req.RuntimeClass),
+		ImagePullSecret:   strings.TrimSpace(req.ImagePullSecret),
 		ContainerdSocket:  strings.TrimSpace(req.ContainerdSocket),
 		StateDir:          firstNonEmpty(strings.TrimSpace(req.StateDir), kubeDefaultStateDir),
 		APIServer:         strings.TrimSpace(req.APIServer),
 		EnginePorts:       firstNonEmpty(strings.TrimSpace(req.EnginePorts), kubeDefaultEnginePorts),
 		IdleReturnSeconds: store.KubeDefaultIdleReturnSeconds,
 	}
-	// The RuntimeClass names NVIDIA's runtime; other vendors' devices come
-	// through CDI and need none.
-	if c.Vendor == accelerator.VendorNVIDIA {
-		c.RuntimeClass = kubeDefaultRuntimeClass
-	}
-	if req.RuntimeClass != nil {
-		c.RuntimeClass = strings.TrimSpace(*req.RuntimeClass)
+	// An empty RuntimeClass is decided on each node: managed clusters make
+	// NVIDIA's runtime the default and define no class, k3s defines
+	// "nvidia" beside a default runc. Other vendors' devices come through the
+	// agent's device plugin and need none.
+	if c.Vendor != accelerator.VendorNVIDIA {
+		c.RuntimeClass = ""
 	}
 	if req.IdleReturnSeconds != nil {
 		c.IdleReturnSeconds = *req.IdleReturnSeconds
@@ -126,6 +126,10 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	}
 	if c.IdleReturnSeconds < store.KubeKeepCards {
 		kubeInvalid(w, "idle_return_seconds", "must be -1 (keep) or at least 0")
+		return
+	}
+	if c.ImagePullSecret != "" && !kubemanifest.ValidSecretName(c.ImagePullSecret) {
+		kubeInvalid(w, "image_pull_secret", "must be the name of a Secret in the namespace")
 		return
 	}
 	if _, err := proto.ParsePortRange(c.EnginePorts); err != nil {

@@ -13,8 +13,12 @@ import (
 type KubeProfile struct {
 	Vendor string
 	// RuntimeClass: the agent pod runs under the cluster's RuntimeClass,
-	// which injects the CLI and devices (NVIDIA's runtime does).
+	// which injects the CLI and devices (NVIDIA's runtime does). A cluster
+	// without one leaves it to the node's default runtime, which injects
+	// them on managed clusters; elsewhere the agent runs CLI on the host.
 	RuntimeClass bool
+	// CLI is the vendor's probe CLI that RuntimeClass injects.
+	CLI string
 	// HostDirs and HostFiles are mounted read-only at the same path.
 	HostDirs  []string
 	HostFiles []string
@@ -28,7 +32,7 @@ type KubeProfile struct {
 }
 
 var kubeProfiles = map[string]KubeProfile{
-	VendorNVIDIA: {Vendor: VendorNVIDIA, RuntimeClass: true,
+	VendorNVIDIA: {Vendor: VendorNVIDIA, RuntimeClass: true, CLI: "nvidia-smi",
 		Env: map[string]string{"NVIDIA_VISIBLE_DEVICES": "all", "NVIDIA_DRIVER_CAPABILITIES": "compute,utility"}},
 	// The probes read the driver's version files under /usr/local; the CLIs
 	// themselves run on the host.

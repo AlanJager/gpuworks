@@ -45,12 +45,18 @@ type PodSpec struct {
 	HostPID                       bool         `json:"hostPID,omitempty"`
 	DNSPolicy                     string       `json:"dnsPolicy,omitempty"`
 	RuntimeClassName              *string      `json:"runtimeClassName,omitempty"`
+	ImagePullSecrets              []LocalRef   `json:"imagePullSecrets,omitempty"`
 	PriorityClassName             string       `json:"priorityClassName,omitempty"`
 	TerminationGracePeriodSeconds *int64       `json:"terminationGracePeriodSeconds,omitempty"`
 	Tolerations                   []Toleration `json:"tolerations,omitempty"`
 	Containers                    []Container  `json:"containers"`
 	Volumes                       []Volume     `json:"volumes,omitempty"`
 	SecurityContext               *PodSecurity `json:"securityContext,omitempty"`
+}
+
+// LocalRef names an object in the pod's namespace.
+type LocalRef struct {
+	Name string `json:"name"`
 }
 
 // PodSecurity is the pod-level security context.
@@ -221,6 +227,11 @@ func NamespacePath(name string) string { return "/api/v1/namespaces/" + url.Path
 // DaemonSetPath is one DaemonSet.
 func DaemonSetPath(ns, name string) string {
 	return "/apis/apps/v1/namespaces/" + url.PathEscape(ns) + "/daemonsets/" + url.PathEscape(name)
+}
+
+// RuntimeClassPath is one RuntimeClass.
+func RuntimeClassPath(name string) string {
+	return "/apis/node.k8s.io/v1/runtimeclasses/" + url.PathEscape(name)
 }
 
 // ListQuery builds a list query that the API server answers from its watch

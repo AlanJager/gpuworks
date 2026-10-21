@@ -142,6 +142,46 @@ func TestRenderWithoutOptionalFields(t *testing.T) {
 		if _, ok := spec["nodeSelector"]; ok {
 			t.Fatal("nodeSelector rendered without one")
 		}
+		if _, ok := spec["imagePullSecrets"]; ok {
+			t.Fatal("imagePullSecrets rendered without one")
+		}
+		// No RuntimeClass: nvidia-smi from the default runtime if it put one
+		// in the container, from the host otherwise.
+		if env := envOf(t, spec); env["GPUWORKS_KUBE_HOST_CLIS"] != "nvidia-smi" || env["GPUWORKS_KUBE_RUNTIME_CLASS"] != "" {
+			t.Fatalf("agent env without a RuntimeClass = %v", env)
+		}
+	}
+}
+
+func envOf(t *testing.T, spec any) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, e := range dig(t, spec, "containers", 0, "env").([]any) {
+		v, _ := dig(t, e, "value").(string)
+		out[dig(t, e, "name").(string)] = v
+	}
+	return out
+}
+
+func TestRenderImagePullSecret(t *testing.T) {
+	p := sample()
+	p.ImagePullSecret = "acr-credential.prod"
+	out, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range docs(t, out) {
+		if d["kind"] != "DaemonSet" {
+			continue
+		}
+		spec := dig(t, d, "spec", "template", "spec")
+		if dig(t, spec, "imagePullSecrets", 0, "name") != "acr-credential.prod" {
+			t.Fatalf("imagePullSecrets = %v", dig(t, spec, "imagePullSecrets"))
+		}
+		// A named RuntimeClass puts nvidia-smi in the agent's container.
+		if _, ok := envOf(t, spec)["GPUWORKS_KUBE_HOST_CLIS"]; ok {
+			t.Fatal("agent under a RuntimeClass runs CLIs on the host")
+		}
 	}
 }
 
@@ -228,6 +268,8 @@ func TestValidate(t *testing.T) {
 		"token":        func(p *Params) { p.Token = " " },
 		"image":        func(p *Params) { p.AgentImage = "" },
 		"runtimeclass": func(p *Params) { p.RuntimeClass = "No" },
+		"pullsecret":   func(p *Params) { p.ImagePullSecret = "Reg Cred" },
+		"pullsecret-l": func(p *Params) { p.ImagePullSecret = strings.Repeat("a", 254) },
 		"socket":       func(p *Params) { p.ContainerdSocket = "run/containerd.sock" },
 		"state":        func(p *Params) { p.StateDir = "/" },
 		"state-rel":    func(p *Params) { p.StateDir = "opt/x" },

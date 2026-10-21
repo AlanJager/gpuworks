@@ -24,14 +24,14 @@ const APPLY = "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?tok
 function cluster(overrides: Partial<KubeCluster> = {}): KubeCluster {
   return {
     id: 1, uuid: "c-1", name: "prod-gpu", namespace: "gpuworks-system", server_url: "https://gpuworks.example",
-    vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "nvidia",
+    vendor: "nvidia", state_dir: "/opt/gpuworks", agent_image: "", node_selector: "nvidia.com/gpu.present=true", runtime_class: "", image_pull_secret: "",
     containerd_socket: "", api_server: "", engine_ports: "40000-42767", idle_return_seconds: 600,
     cluster_uid: "7f3c2a10-aaaa-bbbb-cccc-0123456789ab", revoked: false, node_count: 3,
     created_at: "2026-10-19T08:30:00Z", apply_command: APPLY, ...overrides,
   };
 }
 const prod = cluster();
-const lab = cluster({ id: 2, uuid: "c-2", name: "lab", namespace: "gpu-lab", cluster_uid: "", node_count: 0, idle_return_seconds: -1, apply_command: "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?token=lab-token'" });
+const lab = cluster({ id: 2, uuid: "c-2", name: "lab", namespace: "gpu-lab", cluster_uid: "", node_count: 0, created_at: new Date(Date.now() - 60_000).toISOString(), idle_return_seconds: -1, apply_command: "kubectl apply -f 'https://gpuworks.example/kube/manifest.yaml?token=lab-token'" });
 const old = cluster({ id: 3, uuid: "c-3", name: "retired", revoked: true, idle_return_seconds: 7200, vendor: "ascend", runtime_class: "" });
 
 type Calls = Record<string, unknown[][]>;
@@ -228,7 +228,11 @@ test("connecting opens a form with the server address prefilled and the defaults
   assert.equal((await form.findByLabelText(k.drawer.serverUrl) as HTMLInputElement).value, "http://localhost", "the origin of this page, stated explicitly");
   assert.ok(form.getByPlaceholderText("nvidia.com/gpu.present=true"));
   assert.equal((form.getByLabelText(k.drawer.namespace) as HTMLInputElement).value, "gpuworks-system");
-  assert.equal((form.getByLabelText(k.drawer.runtimeClass) as HTMLInputElement).value, "nvidia");
+  const runtimeClass = form.getByLabelText(k.drawer.runtimeClass) as HTMLInputElement;
+  assert.equal(runtimeClass.value, "", "empty: each node decides");
+  assert.equal(runtimeClass.placeholder, k.drawer.runtimeClassPlaceholder);
+  assert.equal((form.getByLabelText(k.drawer.imagePullSecret) as HTMLInputElement).value, "");
+  assert.ok(form.getByText(k.drawer.imagePullSecretHelp));
   const socket = form.getByLabelText(k.drawer.containerdSocket) as HTMLInputElement;
   assert.equal(socket.value, "", "empty means the agents detect the socket themselves");
   assert.equal(socket.placeholder, k.drawer.containerdSocketPlaceholder);
@@ -267,7 +271,7 @@ test("submitting sends exactly what the form shows, then presents the command to
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   assert.deepEqual(calls.createKubeCluster[0], [{
-    name: "edge", server_url: "http://localhost", vendor: "nvidia", runtime_class: "nvidia", idle_return_seconds: 60,
+    name: "edge", server_url: "http://localhost", vendor: "nvidia", idle_return_seconds: 60,
     namespace: "gpuworks-system", node_selector: "gpu=a100,zone=b", engine_ports: "40000-42767",
   }]);
   assert.ok(await dialog().findByText(k.created.note));
@@ -278,14 +282,15 @@ test("submitting sends exactly what the form shows, then presents the command to
   assert.ok(dialog().getByLabelText(k.created.command).textContent === APPLY, "the command is shown for reading too");
 });
 
-test("advanced choices travel: no RuntimeClass is an explicit empty string, a resident cluster is -1", async () => {
+test("advanced choices travel: a named RuntimeClass, an image pull secret, a resident cluster is -1", async () => {
   const calls = stubApi();
   const { user } = renderPage();
   await user.click((await screen.findAllByRole("button", { name: new RegExp(`${add}$`) }))[0]);
   const form = dialog();
   await user.type(await form.findByLabelText(k.drawer.name), "k3s");
   await user.click(form.getByText(k.drawer.advanced));
-  await user.clear(form.getByLabelText(k.drawer.runtimeClass));
+  await user.type(form.getByLabelText(k.drawer.runtimeClass), "nvidia");
+  await user.type(form.getByLabelText(k.drawer.imagePullSecret), " regcred ");
   await user.clear(form.getByLabelText(k.drawer.containerdSocket));
   await user.type(form.getByLabelText(k.drawer.containerdSocket), "/run/k3s/containerd/containerd.sock");
   await user.type(form.getByLabelText(k.drawer.apiServer), "https://10.0.0.5:6443");
@@ -294,7 +299,8 @@ test("advanced choices travel: no RuntimeClass is an explicit empty string, a re
   await user.click(form.getByRole("button", { name: k.drawer.submit }));
   await waitFor(() => assert.equal(calls.createKubeCluster?.length, 1));
   const body = calls.createKubeCluster[0][0] as Record<string, unknown>;
-  assert.equal(body.runtime_class, "");
+  assert.equal(body.runtime_class, "nvidia");
+  assert.equal(body.image_pull_secret, "regcred");
   assert.equal(body.idle_return_seconds, -1);
   assert.equal(body.containerd_socket, "/run/k3s/containerd/containerd.sock");
   assert.equal(body.api_server, "https://10.0.0.5:6443");
@@ -389,5 +395,20 @@ test("every vendor can be chosen, and going back to NVIDIA brings the RuntimeCla
     assert.ok(form.queryByLabelText(k.drawer.runtimeClass) === null);
   }
   await selectVendor(user, form, locale.common.vendor.nvidia);
-  assert.equal((await form.findByLabelText(k.drawer.runtimeClass) as HTMLInputElement).value, "nvidia");
+  assert.equal((await form.findByLabelText(k.drawer.runtimeClass) as HTMLInputElement).value, "");
+});
+
+test("a cluster no node joined from for minutes offers the commands and causes to look at; a fresh one does not", async () => {
+  const stalled = cluster({ id: 4, uuid: "c-4", name: "doks", namespace: "gpuworks-system", cluster_uid: "", node_count: 0, created_at: new Date(Date.now() - 10 * 60_000).toISOString() });
+  stubApi({ clusters: [stalled, lab] });
+  const { user } = renderPage();
+  assert.equal(within(await rowOf("lab")).queryByRole("button", { name: k.clusterUid.troubleshoot }), null, "a minute is not long enough to worry");
+  await user.click(within(await rowOf("doks")).getByRole("button", { name: k.clusterUid.troubleshoot }));
+  assert.ok(await screen.findByText(k.stalled.title));
+  assert.ok(screen.getByText(k.stalled.intro.replace("{{minutes}}", "5")));
+  for (const key of ["pull", "runtimeClass", "selector", "connect"] as const) assert.ok(screen.getByText(k.stalled[key]));
+  const commands = screen.getByLabelText(k.stalled.copy, { selector: "pre" }).textContent ?? "";
+  assert.ok(commands.includes("kubectl -n gpuworks-system describe daemonset gpuworks-agent"), commands);
+  await user.click(screen.getByRole("button", { name: k.stalled.copy }));
+  assert.equal(await navigator.clipboard.readText(), commands);
 });

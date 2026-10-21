@@ -1026,8 +1026,13 @@ export interface KubeCluster {
   vendor: KubeVendor;
   /** The agent's directory on the host. */
   state_dir: string;
-  /** Empty for any vendor but nvidia (devices come through the agent's device plugin). */
+  /**
+   * Empty for any vendor but nvidia (devices come through the agent's device plugin); for nvidia, empty uses the
+   * cluster's "nvidia" RuntimeClass when it has one and the node's default runtime otherwise.
+   */
   runtime_class: string;
+  /** A docker-registry Secret in the namespace the agent image is pulled with; empty pulls without one. */
+  image_pull_secret: string;
   /** Empty means the agents find the socket themselves. */
   containerd_socket: string;
   /** API server address the agents use instead of the "kubernetes" Service; empty uses the Service. */
@@ -1055,8 +1060,10 @@ export interface KubeClusterRequest {
   vendor?: KubeVendor;
   /** The agent's directory on the host; omitted means /opt/gpuworks. */
   state_dir?: string;
-  /** NVIDIA only. "" means no RuntimeClass; omitted means the default (nvidia). */
+  /** NVIDIA only; omitted lets the agents decide on each node. */
   runtime_class?: string;
+  /** Omitted pulls the agent image without credentials. */
+  image_pull_secret?: string;
   /** Omitted means the agents detect it (containerd, k3s, RKE2, microk8s). */
   containerd_socket?: string;
   /** "https://host:port"; omitted means the cluster's "kubernetes" Service. */

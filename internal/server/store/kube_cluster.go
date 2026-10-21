@@ -57,8 +57,14 @@ type KubeCluster struct {
 	// by commas; empty selects every node.
 	NodeSelector string `gorm:"size:512"`
 	// RuntimeClass names the RuntimeClass that injects NVIDIA devices; empty
-	// when the nodes' default runtime does.
+	// lets each agent use the cluster's "nvidia" RuntimeClass when there is
+	// one and the node's default runtime otherwise (managed clusters make
+	// NVIDIA's runtime the default and define no class).
 	RuntimeClass string `gorm:"size:63"`
+	// ImagePullSecret names a docker-registry Secret in Namespace that the
+	// agent pods (and the hold pods they start, from the agent image) pull
+	// with; empty pulls without credentials.
+	ImagePullSecret string `gorm:"size:253"`
 	// ContainerdSocket overrides the containerd socket the agents find on
 	// their own; empty lets them look.
 	ContainerdSocket string `gorm:"size:255"`
@@ -101,6 +107,14 @@ func createKubeClusters(db *gorm.DB) error {
 		return db.Migrator().CreateIndex(&Node{}, "idx_node_kube")
 	}
 	return nil
+}
+
+// addKubeClusterImagePullSecret adds KubeCluster.ImagePullSecret.
+func addKubeClusterImagePullSecret(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&KubeCluster{}) || db.Migrator().HasColumn(&KubeCluster{}, "ImagePullSecret") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&KubeCluster{}, "ImagePullSecret")
 }
 
 // CreateKubeCluster stores a cluster with a fresh enrollment token.

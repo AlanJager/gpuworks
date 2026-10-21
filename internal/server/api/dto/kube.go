@@ -14,7 +14,8 @@ type KubeCluster struct {
 	AgentImage        string    `json:"agent_image"`
 	Vendor            string    `json:"vendor"`
 	NodeSelector      string    `json:"node_selector"`
-	RuntimeClass      string    `json:"runtime_class"`
+	RuntimeClass      string    `json:"runtime_class"`     // empty: the cluster's "nvidia" class when it has one, else the default runtime
+	ImagePullSecret   string    `json:"image_pull_secret"` // empty: the agent image is pulled without credentials
 	ContainerdSocket  string    `json:"containerd_socket"` // empty: the agents find it
 	StateDir          string    `json:"state_dir"`
 	APIServer         string    `json:"api_server"` // empty: the agents use the cluster's "kubernetes" Service
@@ -30,18 +31,19 @@ type KubeCluster struct {
 // KubeClusterRequest creates a cluster. Empty optional fields take the
 // defaults the response shows.
 type KubeClusterRequest struct {
-	Name              string  `json:"name"`
-	ServerURL         string  `json:"server_url"`
-	Namespace         string  `json:"namespace,omitempty"`
-	AgentImage        string  `json:"agent_image,omitempty"`
-	Vendor            string  `json:"vendor,omitempty"`
-	NodeSelector      string  `json:"node_selector,omitempty"`
-	RuntimeClass      *string `json:"runtime_class,omitempty"`
-	ContainerdSocket  string  `json:"containerd_socket,omitempty"`
-	StateDir          string  `json:"state_dir,omitempty"`
-	APIServer         string  `json:"api_server,omitempty"`
-	EnginePorts       string  `json:"engine_ports,omitempty"`
-	IdleReturnSeconds *int    `json:"idle_return_seconds,omitempty"`
+	Name              string `json:"name"`
+	ServerURL         string `json:"server_url"`
+	Namespace         string `json:"namespace,omitempty"`
+	AgentImage        string `json:"agent_image,omitempty"`
+	Vendor            string `json:"vendor,omitempty"`
+	NodeSelector      string `json:"node_selector,omitempty"`
+	RuntimeClass      string `json:"runtime_class,omitempty"`
+	ImagePullSecret   string `json:"image_pull_secret,omitempty"`
+	ContainerdSocket  string `json:"containerd_socket,omitempty"`
+	StateDir          string `json:"state_dir,omitempty"`
+	APIServer         string `json:"api_server,omitempty"`
+	EnginePorts       string `json:"engine_ports,omitempty"`
+	IdleReturnSeconds *int   `json:"idle_return_seconds,omitempty"`
 }
 
 // KubeEnrollRequest is what an agent of a cluster's DaemonSet sends to trade

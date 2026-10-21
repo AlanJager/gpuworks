@@ -179,3 +179,57 @@ func TestAKubernetesCordonIsFollowed(t *testing.T) {
 		t.Fatalf("operator cordon after a Kubernetes cordon and uncordon = %q by %q", n.Scheduling, n.SchedulingBy)
 	}
 }
+
+// kubeClustersV165 is the kube_clusters table as migration 165 created it,
+// before the image pull secret.
+const kubeClustersV165 = `CREATE TABLE kube_clusters (id integer PRIMARY KEY, uuid text, name text, token text, token_hash text,
+	cluster_uid text, namespace text, server_url text, agent_image text, vendor text, node_selector text, runtime_class text,
+	containerd_socket text, state_dir text, api_server text, engine_ports text, idle_return_seconds integer,
+	revoked_at datetime, created_at datetime, updated_at datetime)`
+
+func TestKubeClusterImagePullSecretMigrationKeepsRows(t *testing.T) {
+	db := nodesOnlyDB(t, "")
+	if err := db.Exec(kubeClustersV165).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO kube_clusters (id, uuid, name, runtime_class) VALUES (1, 'c-1', 'old', 'nvidia')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	m := migrationByName(t, "kube_cluster_image_pull_secret")
+	if err := migrateDB(db, []migration{m}); err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		Name, RuntimeClass, ImagePullSecret string
+	}
+	if err := db.Raw(`SELECT name, runtime_class, COALESCE(image_pull_secret,'') AS image_pull_secret FROM kube_clusters WHERE id = 1`).Scan(&row).Error; err != nil ||
+		row.Name != "old" || row.RuntimeClass != "nvidia" || row.ImagePullSecret != "" {
+		t.Fatalf("existing cluster after the migration: %+v, %v", row, err)
+	}
+	if err := m.Apply(db); err != nil {
+		t.Fatalf("second application: %v", err)
+	}
+}
+
+func TestKubeClusterImagePullSecretMigrationRollsBack(t *testing.T) {
+	db := nodesOnlyDB(t, "")
+	if err := db.Exec(kubeClustersV165).Error; err != nil {
+		t.Fatal(err)
+	}
+	m := migrationByName(t, "kube_cluster_image_pull_secret")
+	if err := db.Exec(fmt.Sprintf(`CREATE TRIGGER fail_pull_secret_marker BEFORE INSERT ON schema_migrations WHEN NEW.version=%d BEGIN SELECT RAISE(ABORT, 'injected'); END`, m.Version)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, []migration{m}); err == nil {
+		t.Fatal("injected marker failure did not fail the migration")
+	}
+	if db.Migrator().HasColumn("kube_clusters", "image_pull_secret") {
+		t.Fatal("column survived a failed migration")
+	}
+	if err := db.Exec(`DROP TRIGGER fail_pull_secret_marker`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, []migration{m}); err != nil || !db.Migrator().HasColumn("kube_clusters", "image_pull_secret") {
+		t.Fatalf("retry: %v", err)
+	}
+}

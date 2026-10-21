@@ -280,10 +280,10 @@ func run(log *slog.Logger, args []string) error {
 	cfg.DebugLog = tee
 	slog.SetDefault(log)
 
-	if strings.EqualFold(cfg.ForceDriver, kube.DriverName) && os.Getenv(kube.EnvHostCLIs) == "1" {
-		// The DaemonSet of a vendor whose CLIs are the host's (the manifest
-		// sets it; accelerator.KubeProfile.HostCLIs). Before New: the prober
-		// it builds runs them.
+	if strings.EqualFold(cfg.ForceDriver, kube.DriverName) && kube.HostCLIs(os.Getenv(kube.EnvHostCLIs), exec.LookPath) {
+		// The DaemonSet's CLIs are the host's (the manifest says when;
+		// kube.EnvHostCLIs). Before New: the prober it builds runs them.
+		log.Info("vendor CLIs run on the host")
 		gpu.RunCLIsOnHost()
 	}
 	a := agentapp.New(cfg, log)

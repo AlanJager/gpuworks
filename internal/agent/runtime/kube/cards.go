@@ -47,7 +47,9 @@ type cardPool struct {
 	ns, node  string
 	holdImage string
 	holdCmd   []string
-	owner     *kubeapi.OwnerReference
+	// pullSecrets are the agent pod's image pull secrets, for holdImage.
+	pullSecrets []kubeapi.LocalRef
+	owner       *kubeapi.OwnerReference
 	// cards maps device index to card UUID, from the node's own probe.
 	cards func(context.Context) (map[int]string, error)
 	// idleReturn is how long an unused borrowed card is kept; negative keeps
@@ -363,7 +365,7 @@ func (p *cardPool) holdPod(name string) kubeapi.Pod {
 		Metadata: kubeapi.ObjectMeta{Name: name, Namespace: p.ns,
 			Labels: map[string]string{LabelManagedBy: "gpuworks", LabelRole: RoleHold, LabelNode: p.node}},
 		Spec: kubeapi.PodSpec{
-			NodeName: p.node, RestartPolicy: "Always", TerminationGracePeriodSeconds: &grace,
+			NodeName: p.node, RestartPolicy: "Always", TerminationGracePeriodSeconds: &grace, ImagePullSecrets: p.pullSecrets,
 			PriorityClassName: "gpuworks-inference", Tolerations: []kubeapi.Toleration{{Operator: "Exists"}},
 			Containers: []kubeapi.Container{{
 				Name: "hold", Image: p.holdImage, ImagePullPolicy: "IfNotPresent", Command: p.holdCmd,

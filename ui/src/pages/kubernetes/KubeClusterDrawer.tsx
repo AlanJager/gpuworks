@@ -15,6 +15,7 @@ interface FormValues {
   namespace: string;
   state_dir: string;
   agent_image: string;
+  image_pull_secret: string;
   runtime_class: string;
   containerd_socket: string;
   api_server: string;
@@ -33,6 +34,7 @@ const FIELD_OF: Record<string, keyof FormValues> = {
   node_selector: "node_selector",
   namespace: "namespace",
   agent_image: "agent_image",
+  image_pull_secret: "image_pull_secret",
   runtime_class: "runtime_class",
   containerd_socket: "containerd_socket",
   api_server: "api_server",
@@ -47,10 +49,9 @@ function requestOf(values: FormValues): KubeClusterRequest {
     vendor: values.vendor,
     idle_return_seconds: values.keep_cards ? KEEP_BORROWED_CARDS : values.idle_return_seconds,
   };
-  // Only NVIDIA nodes get their devices through a RuntimeClass (the others through the agent's device plugin), and for
-  // them an empty RuntimeClass is meaningful (none). Every other empty field takes the server's default.
-  if (values.vendor === "nvidia") request.runtime_class = (values.runtime_class ?? "").trim();
-  const optional = { namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
+  // Only NVIDIA nodes get their devices through a RuntimeClass (the others through the agent's device plugin). Every
+  // empty field takes the server's default; an empty RuntimeClass is decided on each node.
+  const optional = { runtime_class: values.vendor === "nvidia" ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
   for (const [key, value] of Object.entries(optional)) {
     const text = (value ?? "").trim();
     if (text) (request as unknown as Record<string, string>)[key] = text;
@@ -101,12 +102,15 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
       <Form.Item name="agent_image" label={t("drawer.agentImage")} extra={t("drawer.agentImageHelp")}>
         <Input placeholder={t("drawer.agentImagePlaceholder")} />
       </Form.Item>
+      <Form.Item name="image_pull_secret" label={t("drawer.imagePullSecret")} extra={t("drawer.imagePullSecretHelp")}>
+        <Input placeholder={t("drawer.imagePullSecretPlaceholder")} />
+      </Form.Item>
       <Form.Item name="state_dir" label={t("drawer.stateDir")} extra={t("drawer.stateDirHelp")}>
         <Input placeholder={KUBE_DEFAULTS.stateDir} />
       </Form.Item>
       {vendor === "nvidia" && (
         <Form.Item name="runtime_class" label={t("drawer.runtimeClass")} extra={t("drawer.runtimeClassHelp")}>
-          <Input allowClear />
+          <Input allowClear placeholder={t("drawer.runtimeClassPlaceholder")} />
         </Form.Item>
       )}
       <Form.Item name="containerd_socket" label={t("drawer.containerdSocket")} extra={t("drawer.containerdSocketHelp")}>
@@ -174,7 +178,8 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
             namespace: KUBE_DEFAULTS.namespace,
             state_dir: "",
             agent_image: "",
-            runtime_class: KUBE_DEFAULTS.runtimeClass,
+            image_pull_secret: "",
+            runtime_class: "",
             containerd_socket: "",
             api_server: "",
             engine_ports: KUBE_DEFAULTS.enginePorts,

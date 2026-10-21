@@ -77,3 +77,34 @@ func TestCLIsOnHost(t *testing.T) {
 		t.Fatalf("command off the host = %s", got)
 	}
 }
+
+// TestNVIDIAProbeFindsTheHostsNvidiaSmi: an agent pod under the node's
+// default runc (k3s) has no nvidia-smi of its own; the probe must find and
+// run the host's instead of reporting cards without a driver.
+func TestNVIDIAProbeFindsTheHostsNvidiaSmi(t *testing.T) {
+	root, bin := t.TempDir(), t.TempDir()
+	smi := filepath.Join(root, "/usr/bin/nvidia-smi")
+	if err := os.MkdirAll(filepath.Dir(smi), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(smi, []byte("#!/bin/sh\necho 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// nsenter runs the host path under the fake host root.
+	nsenter := "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done; shift\nexec " + root + "\"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "nsenter"), []byte(nsenter), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	oldRoot := hostRoot
+	hostRoot = root
+	t.Cleanup(func() { hostRoot = oldRoot; cliOnHost.Store(false) })
+
+	if (&SMIProber{}).Available() {
+		t.Fatal("nvidia-smi found with CLIs in the container and none there")
+	}
+	cliOnHost.Store(true)
+	if !(&SMIProber{}).Available() {
+		t.Fatal("the host's nvidia-smi was not found and run")
+	}
+}

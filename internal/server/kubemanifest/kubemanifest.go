@@ -49,7 +49,15 @@ type Params struct {
 	// decides which host paths the agent mounts (accelerator.KubeProfile).
 	Vendor       string
 	NodeSelector map[string]string
+	// RuntimeClass is the class that injects NVIDIA devices; empty lets each
+	// agent decide (the cluster's "nvidia" class when there is one, the
+	// node's default runtime otherwise) and run nvidia-smi on the host when
+	// its own container has none.
 	RuntimeClass string
+	// ImagePullSecret names a docker-registry Secret in Namespace the agent
+	// image is pulled with; the agents hand it on to the pods they start
+	// from that image.
+	ImagePullSecret string
 	// ContainerdSocket overrides the containerd socket the agent finds on
 	// its own (the usual, k3s and RKE2 places); empty lets it look.
 	ContainerdSocket string
@@ -94,6 +102,7 @@ func (p Params) stateDir() string {
 
 var (
 	dnsLabel  = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	dnsName   = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 	labelPart = regexp.MustCompile(`^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$`)
 )
 
@@ -132,6 +141,8 @@ func (p Params) Validate() error {
 		return fmt.Errorf("agent image is empty")
 	case p.RuntimeClass != "" && (len(p.RuntimeClass) > 63 || !dnsLabel.MatchString(p.RuntimeClass)):
 		return fmt.Errorf("runtime class %q is not a DNS label", p.RuntimeClass)
+	case p.ImagePullSecret != "" && !ValidSecretName(p.ImagePullSecret):
+		return fmt.Errorf("image pull secret %q is not a Secret name", p.ImagePullSecret)
 	case p.ContainerdSocket != "" && !cleanAbs(p.ContainerdSocket):
 		return fmt.Errorf("containerd socket %q must be an absolute path", p.ContainerdSocket)
 	case p.StateDir != "" && (!cleanAbs(p.StateDir) || p.StateDir == "/"):
@@ -147,6 +158,9 @@ func (p Params) Validate() error {
 	}
 	return nil
 }
+
+// ValidSecretName says whether s can name a Secret (a DNS subdomain).
+func ValidSecretName(s string) bool { return len(s) <= 253 && dnsName.MatchString(s) }
 
 func cleanAbs(s string) bool {
 	return strings.HasPrefix(s, "/") && path.Clean(s) == s && !strings.ContainsAny(s, "\"\n")
@@ -181,9 +195,17 @@ func Render(p Params) (string, error) {
 	for i, f := range profile.HostFiles {
 		hostPaths = append(hostPaths, hostPath{fmt.Sprintf("host-file-%d", i), f, "File"})
 	}
-	runtimeClass := ""
-	if profile.RuntimeClass {
+	// The agent runs under the vendor's RuntimeClass when the cluster names
+	// one; without it, it runs the vendor CLI on the host unless the node's
+	// default runtime put one in its container (hostCLIs names that CLI).
+	runtimeClass, hostCLIs := "", ""
+	switch {
+	case profile.HostCLIs:
+		hostCLIs = "1"
+	case profile.RuntimeClass && p.RuntimeClass != "":
 		runtimeClass = p.RuntimeClass
+	case profile.RuntimeClass:
+		hostCLIs = profile.CLI
 	}
 	apiHost, apiPort := "", ""
 	if p.APIServer != "" {
@@ -194,7 +216,7 @@ func Render(p Params) (string, error) {
 		"APIHost": apiHost, "APIPort": apiPort,
 		"P": p, "Selector": selector, "Agent": AgentName, "Secret": EnrollSecret,
 		"Priority": PriorityClassName, "StateDir": p.stateDir(), "PodResources": PodResourcesDir,
-		"DevicePlugins": DevicePluginDir, "Env": env, "HostPaths": hostPaths, "AgentRuntimeClass": runtimeClass, "HostCLIs": profile.HostCLIs,
+		"DevicePlugins": DevicePluginDir, "Env": env, "HostPaths": hostPaths, "AgentRuntimeClass": runtimeClass, "HostCLIs": hostCLIs,
 	})
 	return buf.String(), err
 }
@@ -272,6 +294,10 @@ rules:
     resources: ["namespaces"]
     resourceNames: ["kube-system"]
     verbs: ["get"]
+  - apiGroups: ["node.k8s.io"]
+    resources: ["runtimeclasses"]
+    resourceNames: ["nvidia"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -315,6 +341,10 @@ spec:
         app.kubernetes.io/managed-by: gpuworks
     spec:
       serviceAccountName: {{.Agent}}
+{{- if .P.ImagePullSecret}}
+      imagePullSecrets:
+        - name: {{q .P.ImagePullSecret}}
+{{- end}}
       hostNetwork: true
       hostPID: true
       # The node's own resolver, as an agent installed on the host has: the
@@ -378,7 +408,7 @@ spec:
 {{- end}}
 {{- if .HostCLIs}}
             - name: GPUWORKS_KUBE_HOST_CLIS
-              value: "1"
+              value: {{q .HostCLIs}}
 {{- end}}
 {{- range .Env}}
             - name: {{q .K}}

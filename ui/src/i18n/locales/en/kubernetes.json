@@ -23,7 +23,8 @@
   },
   "clusterUid": {
     "notEnrolled": "Not connected yet",
-    "notEnrolledHint": "No node has joined from this cluster yet."
+    "notEnrolledHint": "No node has joined from this cluster yet.",
+    "troubleshoot": "Troubleshoot"
   },
   "returnPolicy": {
     "afterIdle": "Returned after {{duration}} idle",
@@ -80,8 +81,12 @@
     "agentImage": "Agent image",
     "agentImagePlaceholder": "Default image",
     "agentImageHelp": "Empty uses the default agent image.",
+    "imagePullSecret": "Image pull secret",
+    "imagePullSecretPlaceholder": "None",
+    "imagePullSecretHelp": "For an agent image in a registry that needs a login: the name of a docker-registry Secret in the namespace, created before applying.",
     "runtimeClass": "RuntimeClass",
-    "runtimeClassHelp": "NVIDIA only: the RuntimeClass the agent Pod and instance Pods use to reach the GPUs. Empty means none. Other vendors get their devices through CDI.",
+    "runtimeClassPlaceholder": "Automatic",
+    "runtimeClassHelp": "NVIDIA only: the RuntimeClass instance Pods reach the GPUs with. Empty decides on each node: the cluster's nvidia RuntimeClass when it has one (k3s), the node's default runtime otherwise (as on managed Kubernetes).",
     "containerdSocket": "containerd socket",
     "containerdSocketHelp": "Path on the node. Empty lets the agents find it themselves; set it only for an unusual location.",
     "containerdSocketPlaceholder": "Auto-detect (containerd, k3s, RKE2, microk8s)",
@@ -105,5 +110,15 @@
     "command": "Connect command",
     "copyCommand": "Copy connect command",
     "secret": "The command contains the connect token. Treat it like a password."
+  },
+  "stalled": {
+    "title": "No node has joined yet",
+    "intro": "The cluster was created more than {{minutes}} minutes ago and no node has joined. Look at the agent DaemonSet and its Pods in the cluster:",
+    "causes": "Common causes",
+    "pull": "Pods in ImagePullBackOff: the agent image cannot be pulled. For a registry that needs a login, create a docker-registry Secret in the namespace and name it as the image pull secret when creating the cluster.",
+    "runtimeClass": "A DaemonSet event says the RuntimeClass does not exist: the cluster has no such RuntimeClass; leave it empty and the agent decides.",
+    "selector": "The DaemonSet wants 0 Pods: the node selector selects no node.",
+    "connect": "Pods run but no node appears: the agents cannot reach the server address; read the agent log.",
+    "copy": "Copy commands"
   }
 }

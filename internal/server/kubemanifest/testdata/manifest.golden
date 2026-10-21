@@ -67,6 +67,10 @@ rules:
     resources: ["namespaces"]
     resourceNames: ["kube-system"]
     verbs: ["get"]
+  - apiGroups: ["node.k8s.io"]
+    resources: ["runtimeclasses"]
+    resourceNames: ["nvidia"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
