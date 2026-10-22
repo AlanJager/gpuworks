@@ -6,6 +6,18 @@ import { api, type KubeCluster, type KubeClusterRequest, type KubeVendor } from 
 import { APIError, apiErrorText } from "../../apiError";
 import { KEEP_BORROWED_CARDS, KUBE_DEFAULTS, KUBE_VENDORS } from "../../kubeClusters";
 import ApplyCommand from "./ApplyCommand";
+import KubeClusterOperationModal from "./KubeClusterOperationModal";
+
+/** A cluster entry made from a cloud account's cluster: what the form starts with, and the source it records. */
+export interface KubeClusterPrefill {
+  name: string;
+  vendor: KubeVendor;
+  node_selector: string;
+  provider_id: number;
+  provider_cluster_id: string;
+  /** "Account · cluster" as the drawer names the source. */
+  source_label: string;
+}
 
 interface FormValues {
   name: string;
@@ -42,13 +54,17 @@ const FIELD_OF: Record<string, keyof FormValues> = {
   idle_return_seconds: "idle_return_seconds",
 };
 
-function requestOf(values: FormValues): KubeClusterRequest {
+function requestOf(values: FormValues, prefill?: KubeClusterPrefill): KubeClusterRequest {
   const request: KubeClusterRequest = {
     name: values.name.trim(),
     server_url: values.server_url.trim(),
     vendor: values.vendor,
     idle_return_seconds: values.keep_cards ? KEEP_BORROWED_CARDS : values.idle_return_seconds,
   };
+  if (prefill) {
+    request.provider_id = prefill.provider_id;
+    request.provider_cluster_id = prefill.provider_cluster_id;
+  }
   // Only NVIDIA nodes get their devices through a RuntimeClass (the others through the agent's device plugin). Every
   // empty field takes the server's default; an empty RuntimeClass is decided on each node.
   const optional = { runtime_class: values.vendor === "nvidia" ? values.runtime_class : "", image_pull_secret: values.image_pull_secret, namespace: values.namespace, state_dir: values.state_dir, agent_image: values.agent_image, node_selector: values.node_selector, containerd_socket: values.containerd_socket, api_server: values.api_server, engine_ports: values.engine_ports } as const;
@@ -64,7 +80,7 @@ function requestOf(values: FormValues): KubeClusterRequest {
  * cluster. The list reloads as soon as the cluster exists; the drawer stays
  * on the command until it is closed.
  */
-export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+export default function KubeClusterDrawer({ open, onClose, onCreated, prefill }: { open: boolean; onClose: () => void; onCreated: () => void; prefill?: KubeClusterPrefill }) {
   const { t } = useTranslation("kubernetes");
   const { t: tCommon } = useTranslation("common");
   const [form] = Form.useForm<FormValues>();
@@ -73,13 +89,14 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<KubeCluster | null>(null);
+  const [applying, setApplying] = useState(false);
   const nameInput = useRef<InputRef>(null);
 
   const submit = async (values: FormValues) => {
     setSaving(true);
     setError(null);
     try {
-      const cluster = await api.createKubeCluster(requestOf(values));
+      const cluster = await api.createKubeCluster(requestOf(values, prefill));
       setCreated(cluster);
       onCreated();
     } catch (e) {
@@ -159,9 +176,18 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
     >
       {created ? (
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
-          <Alert type="success" showIcon message={t("created.title", { name: created.name })} description={t("created.note")} />
+          <Alert type="success" showIcon message={t("created.title", { name: created.name })} description={created.source ? t("created.noteSource") : t("created.note")} />
+          {created.source && (
+            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+              <Typography.Text strong>{t("created.byGpuworks")}</Typography.Text>
+              <Typography.Text type="secondary">{t("created.byGpuworksHelp")}</Typography.Text>
+              <Button type="primary" onClick={() => setApplying(true)}>{t("created.applyNow")}</Button>
+              <Typography.Text strong style={{ marginTop: 8 }}>{t("created.byKubectl")}</Typography.Text>
+            </Space>
+          )}
           {created.apply_command && <ApplyCommand command={created.apply_command} />}
           <Typography.Text type="secondary">{t("created.secret")}</Typography.Text>
+          {applying && <KubeClusterOperationModal cluster={created} op="apply" onClose={() => setApplying(false)} onDone={onCreated} />}
         </Space>
       ) : (
         <Form<FormValues>
@@ -171,10 +197,10 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
           requiredMark
           onFinish={(values) => void submit(values)}
           initialValues={{
-            name: "",
+            name: prefill?.name ?? "",
             server_url: window.location.origin,
-            vendor: KUBE_DEFAULTS.vendor,
-            node_selector: "",
+            vendor: prefill?.vendor ?? KUBE_DEFAULTS.vendor,
+            node_selector: prefill?.node_selector ?? "",
             namespace: KUBE_DEFAULTS.namespace,
             state_dir: "",
             agent_image: "",
@@ -190,6 +216,7 @@ export default function KubeClusterDrawer({ open, onClose, onCreated }: { open: 
           {/* The footer's button is outside the form; this one lets Enter in a field submit it. */}
           <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
           {error && <Alert type="error" showIcon style={{ marginBottom: 16 }} message={error} />}
+          {prefill && <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("drawer.fromSource", { source: prefill.source_label })} />}
           <Form.Item name="name" label={t("drawer.name")} rules={[{ required: true, whitespace: true, message: t("drawer.nameRequired") }]}>
             <Input ref={nameInput} placeholder={t("drawer.namePlaceholder")} />
           </Form.Item>

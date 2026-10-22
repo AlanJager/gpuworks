@@ -5,6 +5,7 @@ import {
   Popconfirm,
   Space,
   Tag,
+  Tabs,
   Tooltip,
   Typography,
   message,
@@ -21,6 +22,7 @@ import PageHeader from "../components/PageHeader";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
 import ProviderConfigModal from "../components/ProviderConfigModal";
 import ProviderInstancesTable from "../components/ProviderInstancesTable";
+import ProviderClustersTable from "../components/ProviderClustersTable";
 import { formatTime } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -319,14 +321,29 @@ export default function CloudProvidersPage() {
             </Button>
           }
           expandable={{
-            expandedRowRender: (p) => (
-              <ProviderInstancesTable
-                providerId={p.id}
-                kindInfo={kindInfos.find((k) => k.kind === p.kind)}
-                refreshKey={`${p.updated_at}:${instanceRefreshVersion}`}
-                showRegion={p.category !== "private_cloud"}
-              />
-            ),
+            expandedRowRender: (p) => {
+              const kindInfo = kindInfos.find((k) => k.kind === p.kind);
+              const instances = (
+                <ProviderInstancesTable
+                  providerId={p.id}
+                  kindInfo={kindInfo}
+                  refreshKey={`${p.updated_at}:${instanceRefreshVersion}`}
+                  showRegion={p.category !== "private_cloud"}
+                />
+              );
+              if (!kindInfo?.can_list_clusters) return instances;
+              // Clusters are read from the cloud when their tab is opened.
+              return (
+                <Tabs
+                  size="small"
+                  destroyInactiveTabPane
+                  items={[
+                    { key: "instances", label: t("tabs.instances"), children: instances },
+                    { key: "clusters", label: t("tabs.clusters"), children: <ProviderClustersTable providerId={p.id} providerName={p.name} /> },
+                  ]}
+                />
+              );
+            },
           }}
         />
       </section>

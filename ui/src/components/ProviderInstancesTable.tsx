@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Popconfirm, Space, Table, Tag, Typography, message } from "antd";
+import { Alert, Badge, Button, Popconfirm, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { localizedText } from "../i18n/localizedText";
 import { isCommandChannel } from "../providerConnections";
@@ -175,7 +175,11 @@ export default function ProviderInstancesTable({
         return (
           <>
             {powerButton}
-            {inst.node_id === 0 ? (
+            {inst.managed_cluster ? (
+              <Tooltip title={t("instances.clusterNodeHint", { cluster: inst.managed_cluster })}>
+                <Tag color="purple">{t("instances.clusterNode")}</Tag>
+              </Tooltip>
+            ) : inst.node_id === 0 ? (
               <Button type="link" size="small" onClick={() => setInstallFor(inst)}>
                 {t("instances.installAgent")}
               </Button>

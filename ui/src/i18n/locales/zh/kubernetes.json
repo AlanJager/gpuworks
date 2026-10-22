@@ -19,7 +19,8 @@
     "cardReturn": "卡归还",
     "status": "状态",
     "createdAt": "创建时间",
-    "actions": "操作"
+    "actions": "操作",
+    "source": "来源"
   },
   "clusterUid": {
     "notEnrolled": "未接入",
@@ -51,7 +52,9 @@
     "deleteHelp": "只删除这里的集群记录，集群里的 DaemonSet 请在 Kubernetes 里自行删除。仍有节点的集群不能删除。",
     "deleted": "集群 {{name}} 已删除",
     "cancel": "取消",
-    "failed": "操作失败"
+    "failed": "操作失败",
+    "apply": "应用到集群",
+    "remove": "从集群卸载"
   },
   "manifest": {
     "title": "{{name}} 的 manifest",
@@ -102,14 +105,20 @@
     "keepCardsHelp": "借来的卡不再归还给 Kubernetes。",
     "submit": "接入",
     "cancel": "取消",
-    "close": "关闭"
+    "close": "关闭",
+    "fromSource": "来自 {{source}}：已按所选节点池填好节点选择器。"
   },
   "created": {
     "title": "集群 {{name}} 已创建",
     "note": "在集群里执行这条命令；被选中的 GPU 节点会自动出现在节点列表。",
     "command": "接入命令",
     "copyCommand": "复制接入命令",
-    "secret": "命令里含有接入令牌，请像密码一样保管。"
+    "secret": "命令里含有接入令牌，请像密码一样保管。",
+    "noteSource": "接下来把 manifest 应用到集群，二选一：",
+    "byGpuworks": "由 gpuworks 应用到集群",
+    "byGpuworksHelp": "gpuworks 用云账号现取的临时集群凭据（15 分钟内有效，用完即弃，不保存）先检查再应用，应用前会列出要创建的对象请你确认。",
+    "applyNow": "检查并应用…",
+    "byKubectl": "或者自己在集群里执行"
   },
   "stalled": {
     "title": "还没有节点接入",
@@ -120,5 +129,59 @@
     "selector": "DaemonSet 的 DESIRED 为 0：节点选择器没有选中任何节点。",
     "connect": "Pod 在运行但节点没出现：agent 连不上 Server 地址，看 agent 日志。",
     "copy": "复制命令"
+  },
+  "source": {
+    "byHand": "手动接入"
+  },
+  "operation": {
+    "applyTitle": "应用到集群 · {{name}}",
+    "removeTitle": "从集群卸载 · {{name}}",
+    "applyIntro": "gpuworks 将用云账号 {{account}} 现取的临时凭据（不保存）在集群 {{cluster}} 中创建或更新下列对象。",
+    "removeIntro": "gpuworks 将用云账号 {{account}} 现取的临时凭据（不保存）删除集群 {{cluster}} 中的下列对象：agent、占位 Pod 和实例 Pod 随 DaemonSet 一起删除，卡还给 Kubernetes。",
+    "checking": "正在请集群检查这些改动（dry run，不会改动集群）…",
+    "checkedApply": "检查通过。确认后才会真正应用。",
+    "checkedRemove": "检查通过。确认后才会真正删除。",
+    "applying": "正在应用…",
+    "removing": "正在删除…",
+    "applied": "已应用到集群",
+    "appliedNext": "被选中的 GPU 节点约半分钟后出现在节点页。",
+    "removed": "已从集群卸载",
+    "failed": {
+      "kubeconfig": "云账号没能签发可用的集群凭据",
+      "api_server": "集群拒绝了这次操作",
+      "other": "操作失败"
+    },
+    "planTitle": "将要进行的改动",
+    "resultTitle": "结果",
+    "retry": "重新检查",
+    "close": "关闭",
+    "cancel": "取消",
+    "confirmApply": "确认应用",
+    "confirmRemove": "确认卸载",
+    "column": {
+      "kind": "类型",
+      "name": "名称",
+      "action": "操作"
+    },
+    "plan": {
+      "create": "将创建",
+      "update": "将更新",
+      "delete": "将删除",
+      "absent": "不存在",
+      "kept": "保留",
+      "failed": "被拒绝",
+      "not_tried": "未执行",
+      "dependent": "随命名空间创建"
+    },
+    "done": {
+      "create": "已创建",
+      "update": "已更新",
+      "delete": "已删除",
+      "absent": "不存在",
+      "kept": "保留",
+      "failed": "被拒绝",
+      "not_tried": "未执行",
+      "dependent": "随命名空间创建"
+    }
   }
 }

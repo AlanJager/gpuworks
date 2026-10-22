@@ -19,7 +19,8 @@
     "cardReturn": "Card return",
     "status": "Status",
     "createdAt": "Created",
-    "actions": "Actions"
+    "actions": "Actions",
+    "source": "Source"
   },
   "clusterUid": {
     "notEnrolled": "Not connected yet",
@@ -51,7 +52,9 @@
     "deleteHelp": "Only the cluster record here is removed. Delete the DaemonSet in Kubernetes yourself. A cluster that still has nodes cannot be deleted.",
     "deleted": "Cluster {{name}} deleted",
     "cancel": "Cancel",
-    "failed": "The action failed"
+    "failed": "The action failed",
+    "apply": "Apply to the cluster",
+    "remove": "Remove from the cluster"
   },
   "manifest": {
     "title": "Manifest of {{name}}",
@@ -102,14 +105,20 @@
     "keepCardsHelp": "Never hand borrowed cards back to Kubernetes.",
     "submit": "Connect",
     "cancel": "Cancel",
-    "close": "Close"
+    "close": "Close",
+    "fromSource": "From {{source}}: the node selector is set for the chosen node pool."
   },
   "created": {
     "title": "Cluster {{name}} is ready",
     "note": "Run this command in the cluster. The GPU nodes it selects show up in the node list by themselves.",
     "command": "Connect command",
     "copyCommand": "Copy connect command",
-    "secret": "The command contains the connect token. Treat it like a password."
+    "secret": "The command contains the connect token. Treat it like a password.",
+    "noteSource": "Next, apply the manifest to the cluster, one way or the other:",
+    "byGpuworks": "Let gpuworks apply it",
+    "byGpuworksHelp": "gpuworks uses short-lived cluster credentials issued to the cloud account now (valid 15 minutes, discarded after use, never stored), checks first, and lists the objects for you to confirm before applying.",
+    "applyNow": "Check and apply…",
+    "byKubectl": "Or run this in the cluster yourself"
   },
   "stalled": {
     "title": "No node has joined yet",
@@ -120,5 +129,59 @@
     "selector": "The DaemonSet wants 0 Pods: the node selector selects no node.",
     "connect": "Pods run but no node appears: the agents cannot reach the server address; read the agent log.",
     "copy": "Copy commands"
+  },
+  "source": {
+    "byHand": "Added by hand"
+  },
+  "operation": {
+    "applyTitle": "Apply to the cluster · {{name}}",
+    "removeTitle": "Remove from the cluster · {{name}}",
+    "applyIntro": "gpuworks will create or update the objects below in cluster {{cluster}}, with short-lived credentials the cloud account {{account}} issues now (not stored).",
+    "removeIntro": "gpuworks will delete the objects below from cluster {{cluster}}, with short-lived credentials the cloud account {{account}} issues now (not stored): the agents, hold pods and instance pods go with the DaemonSet, and the cards go back to Kubernetes.",
+    "checking": "Asking the cluster to check these changes (dry run; nothing changes)…",
+    "checkedApply": "Checked. Nothing is applied until you confirm.",
+    "checkedRemove": "Checked. Nothing is deleted until you confirm.",
+    "applying": "Applying…",
+    "removing": "Deleting…",
+    "applied": "Applied to the cluster",
+    "appliedNext": "The selected GPU nodes appear on the Nodes page in about half a minute.",
+    "removed": "Removed from the cluster",
+    "failed": {
+      "kubeconfig": "The cloud account did not issue usable cluster credentials",
+      "api_server": "The cluster refused the operation",
+      "other": "The operation failed"
+    },
+    "planTitle": "Changes to make",
+    "resultTitle": "Result",
+    "retry": "Check again",
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirmApply": "Apply",
+    "confirmRemove": "Remove",
+    "column": {
+      "kind": "Kind",
+      "name": "Name",
+      "action": "Action"
+    },
+    "plan": {
+      "create": "will create",
+      "update": "will update",
+      "delete": "will delete",
+      "absent": "absent",
+      "kept": "kept",
+      "failed": "refused",
+      "not_tried": "not tried",
+      "dependent": "created with its namespace"
+    },
+    "done": {
+      "create": "created",
+      "update": "updated",
+      "delete": "deleted",
+      "absent": "absent",
+      "kept": "kept",
+      "failed": "refused",
+      "not_tried": "not tried",
+      "dependent": "created with its namespace"
+    }
   }
 }

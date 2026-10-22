@@ -1,5 +1,5 @@
 {
-  "kind": { "aliyun": "Alibaba Cloud", "autodl": "AutoDL", "compshare": "CompShare", "runpod": "RunPod", "vast": "Vast.ai", "zstack": "ZStack Cloud" },
+  "kind": { "aliyun": "Alibaba Cloud", "autodl": "AutoDL", "compshare": "CompShare", "runpod": "RunPod", "vast": "Vast.ai", "digitalocean": "DigitalOcean", "zstack": "ZStack Cloud" },
   "platforms": { "title": "External Platforms", "description": "Connect public and private clouds, sync their GPU instances, and install the agent to make them compute nodes.", "empty": "No external platform yet. Pick one above to connect it.", "label": "External Platform" },
   "category": { "public_cloud": "Public cloud", "private_cloud": "Private cloud" },
   "page": {
@@ -61,7 +61,7 @@
     "templateUnchanged": "Replace the placeholder in {{field}} with an actual value"
   },
   "install": {
-    "autoAuth": {
+    "autoAuth": { "digitalocean": "The platform signs in with its own SSH key: once the DigitalOcean account is added, the platform key is an SSH key of the account, and Droplets gpuworks creates afterwards carry it. DigitalOcean cannot add an account key to an existing Droplet; for a Droplet created elsewhere, give a private key or password once under Advanced settings, and the platform key is written on sign-in.",
       "aliyun": "GPUWorks runs the install as root through Alibaba Cloud Cloud Assistant, so no SSH credential or public address is needed. When Cloud Assistant is offline it falls back to SSH on the public address; give a password or key under Advanced for that.",
       "runpod": "GPUWorks signs in with its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key), which it adds to your RunPod account's SSH keys when the account is added; RunPod writes account keys into a Pod when it starts, so Pods started from then on need nothing else. A Pod that was already running does not accept the key yet: the install asks whether to change the Pod's configuration to add it (which restarts the Pod), or you can give its private key under Advanced once.",
       "vast": "GPUWorks attaches its platform SSH key (its public key is under Settings → Nodes & deployments → SSH Key) to the instance through the Vast API and signs in with it; nothing to enter here.",
@@ -140,7 +140,10 @@
     "attemptFailed": "Connection to {{target}} failed; fell back automatically",
     "checks": { "item": "Check", "status": "Status", "detail": "Details", "passed": "Passed", "warning": "Warning", "failed": "Failed" }
   },
+  "tabs": {"instances": "Instances", "clusters": "Kubernetes clusters"},
+  "clusters": {"intro": "The account's managed Kubernetes clusters, read live from the cloud. Connect a GPU node pool, then let gpuworks apply the manifest to the cluster (after you confirm) or run kubectl yourself.", "refresh": "Refresh", "loadFailed": "Cannot read the clusters", "empty": "This account has no managed Kubernetes clusters", "column": {"name": "Cluster", "region": "Region", "version": "Version", "state": "State", "gpuPools": "GPU node pools"}, "running": "Running", "publicAPI": "Public API", "privateAPI": "Private API only", "privateAPIHint": "The API server has no public address, so gpuworks cannot apply the manifest for you; after connecting, run the kubectl command from inside the cluster's network.", "connected": "Connected", "notRunning": "Cluster not ready", "noGPUPools": "No recognizable GPU node pool (auto-mode pools, shared GPUs and unsupported vendors are not listed)", "pool": "{{name}} · {{model}} ×{{count}} · {{nodes}} nodes", "mixedModels": "mixed models", "connect": "Connect"},
   "instances": {
+    "clusterNode": "Cluster node", "clusterNodeHint": "This instance is a node of Kubernetes cluster {{cluster}} and joins with the cluster; the agent cannot be installed on it alone. Connect the cluster from the Kubernetes clusters tab.",
     "empty": "No instances have been synchronized. Click Sync above and try again.",
     "notReturned": "Not returned",
     "cancel": "Cancel",

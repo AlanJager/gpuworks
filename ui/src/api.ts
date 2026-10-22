@@ -1047,6 +1047,38 @@ export interface KubeCluster {
   created_at: string;
   /** Carries the enrollment token; administrators only. */
   apply_command?: string;
+  /** The cloud account cluster the entry was made from; gpuworks can then apply the manifest itself. */
+  source?: KubeClusterSource;
+}
+
+/** Where a cluster entry came from (dto.KubeClusterSource). */
+export interface KubeClusterSource {
+  provider_id: number;
+  /** Empty when the account is no longer listed. */
+  provider_name: string;
+  provider_kind: string;
+  cluster_id: string;
+}
+
+/** What an apply or removal did to each object of the manifest (dto.KubeClusterOperation). */
+export interface KubeClusterOperation {
+  dry_run: boolean;
+  results: KubeObjectResult[];
+  /** Present when the operation failed: KUBE_CLUSTER_OPERATION_FAILED. */
+  code?: string;
+  error?: string;
+  params?: { step: "kubeconfig" | "api_server"; reason: string };
+}
+
+export type KubeObjectAction = "create" | "update" | "delete" | "absent" | "kept" | "failed" | "not_tried" | "dependent";
+
+export interface KubeObjectResult {
+  kind: string;
+  name: string;
+  namespace?: string;
+  action: KubeObjectAction;
+  reason?: string;
+  error?: string;
 }
 
 /** Creates a cluster; an omitted optional field takes the server's default (dto.KubeClusterRequest). */
@@ -1070,6 +1102,9 @@ export interface KubeClusterRequest {
   api_server?: string;
   engine_ports?: string;
   idle_return_seconds?: number;
+  /** The cloud account cluster the entry is made from; both or neither. */
+  provider_id?: number;
+  provider_cluster_id?: string;
 }
 
 // Every collection endpoint answers an envelope, never a bare array
@@ -2393,6 +2428,37 @@ export interface ProviderKindInfo {
   // The provider maps container ports: the server chooses the agent's port
   // and address when they are left empty.
   server_dial_auto_port?: boolean;
+  /** The account's managed Kubernetes clusters can be listed and connected (GET /providers/{id}/clusters). */
+  can_list_clusters?: boolean;
+}
+
+/** A managed Kubernetes cluster of a cloud account (dto.ProviderCluster), listed live. */
+export interface ProviderCluster {
+  external_id: string;
+  name: string;
+  region: string;
+  version: string;
+  /** The vendor's own word for the cluster's state. */
+  state: string;
+  running: boolean;
+  /** The API server has a public address, so gpuworks can apply the manifest itself. */
+  public_api: boolean;
+  gpu_pools: ProviderClusterPool[];
+  /** The cluster entry already made from this cluster. */
+  entry?: { uuid: string; name: string };
+}
+
+/** A GPU node pool of a ProviderCluster. */
+export interface ProviderClusterPool {
+  id: string;
+  name: string;
+  gpu_model: string;
+  /** GPUs per node. */
+  gpu_count: number;
+  nodes: number;
+  vendor: KubeVendor;
+  /** "key=value" pairs selecting the pool's nodes, as a cluster entry takes them. */
+  node_selector: string;
 }
 
 export interface ProviderInstance {
@@ -2409,6 +2475,8 @@ export interface ProviderInstance {
   ssh_connections: SSHConnection[];
   kind: string;
   node_id: number;
+  /** The instance is a node of this Kubernetes cluster of the account; it joins through the cluster. */
+  managed_cluster?: string;
 }
 
 export interface SSHConnection {
@@ -4003,6 +4071,22 @@ async function getText(path: string, signal?: AbortSignal): Promise<string> {
 }
 
 /** An error response as an Error in the reader's language: a product error's text, or the proxy-page explanation. */
+async function kubeClusterOperation(uuid: string, op: "apply" | "remove", dryRun: boolean): Promise<KubeClusterOperation> {
+  const res = await fetch(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/${op}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
+  if (res.status === 424) {
+    // The cluster or the cloud refused: the body still says what happened to each object.
+    const body = (await res.clone().json().catch(() => null)) as KubeClusterOperation | null;
+    if (body && Array.isArray(body.results)) return body;
+  }
+  if (!res.ok) throw await localizedResponseError(res, `${op}: ${res.status}`);
+  return (await res.json()) as KubeClusterOperation;
+}
+
 export async function localizedResponseError(
   response: Response,
   fallback: string,
@@ -4924,6 +5008,9 @@ export const api = {
   kubeManifest: (uuid: string) => getText(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/manifest`),
   revokeKubeCluster: (uuid: string) => sendJSON<KubeCluster>("POST", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/revoke`),
   deleteKubeCluster: (uuid: string) => sendJSON<void>("DELETE", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}`),
+  /** Applies (or, with remove, deletes) an entry's manifest on its cluster; a failure still carries the results it got to. */
+  kubeClusterOperation: (uuid: string, op: "apply" | "remove", dryRun: boolean) => kubeClusterOperation(uuid, op, dryRun),
+  providerClusters: (id: number) => getJSON<List<ProviderCluster>>(`/api/v1/providers/${id}/clusters`),
 
   providerKinds: () => getJSON<List<ProviderKindInfo>>("/api/v1/providers/kinds"),
   providers: () => getJSON<List<CloudProvider>>("/api/v1/providers"),

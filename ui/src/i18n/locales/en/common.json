@@ -587,7 +587,11 @@
     "ACCELERATOR_RUNTIME_UNREPORTED": "The node has not reported all runtime facts required by {{vendor}}. Refresh the node inventory before retrying.",
     "ACCELERATOR_DEVICE_UNAVAILABLE": "The selected {{vendor}} devices could not be verified. Check the device identities and driver diagnostics.",
     "ACCELERATOR_INVENTORY_UNAVAILABLE": "The {{vendor}} driver inventory could not be read. Check the vendor CLI and driver.",
-    "ACCELERATOR_RESOURCE_UNAVAILABLE": "{{vendor}} requires {{resource}} for this launch. Check the host device and resolved container resources."
+    "ACCELERATOR_RESOURCE_UNAVAILABLE": "{{vendor}} requires {{resource}} for this launch. Check the host device and resolved container resources.",
+    "KUBE_CLUSTER_SOURCE_TAKEN": "Cluster {{cluster}} of the account is already connected; a cluster is connected once.",
+    "KUBE_CLUSTER_NO_SOURCE": "This cluster was not connected from a cloud account (or the account was deleted), so gpuworks cannot reach it; run the kubectl command in the cluster.",
+    "KUBE_CLUSTER_OPERATION_FAILED": "The cluster operation failed ({{step}}): {{reason}}",
+    "PROVIDER_INSTANCE_IN_CLUSTER": "This instance is a node of Kubernetes cluster {{cluster}}; connect the cluster from the Kubernetes clusters tab."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
