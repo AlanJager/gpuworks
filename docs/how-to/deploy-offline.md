@@ -13,7 +13,7 @@
 | 要带进去的 | 首选 | 什么时候换别的 |
 |---|---|---|
 | server 与 agent | 发布包拷到 server 主机安装；节点用离线包 `gpuworks-agent.run` | — |
-| 镜像 | 拷 `docker save` 归档到节点，`docker load`，平台自动认出 | 节点是 udocker（runveil）或不方便登录节点：[经管理节点中转](#方式二经管理节点中转从-url-导入)；节点多且长期离线：[内网镜像仓](#方式三内网镜像仓) |
+| 镜像 | 从[阿里云盘](#从阿里云盘下载镜像归档)下载现成归档（或自己 `docker save`），拷到节点 `docker load`，平台自动认出 | 节点是 udocker（runveil）或不方便登录节点：[经管理节点中转](#方式二经管理节点中转从-url-导入)；节点多且长期离线：[内网镜像仓](#方式三内网镜像仓) |
 | 模型 | 拷模型目录到节点，模型页「注册模型」→「计算节点本地」 | 节点多：放到 NFS 上[扫描导入](#方式二nfs-加扫描导入)，所有节点共用 |
 | 第 2 台及以后的节点 | 不用再拷：同一同步组的节点在部署时自动从已有的节点复制 | 节点之间不通时，每台都按上面做一遍 |
 
@@ -25,6 +25,21 @@
 
 部署用的镜像由推理模板决定。在镜像页「系统镜像」里按引擎和硬件找到对应版本，复制它的**镜像引用**，例如
 `gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2`。手动指定节点部署时，部署页的逐节点预估也会列出要拉取的镜像。
+
+### 从阿里云盘下载镜像归档
+
+GPUWorks 在阿里云盘上提供内置推理镜像的现成归档，访问 Docker Hub 慢或不稳定时建议从这里下载，不需要外网机装 Docker：
+
+<https://bj20013.apps.aliyunfile.com/disk/s/pweW8krgZfw?domainId=bj20013>
+
+- 按「引擎-框架」分目录：`vllm-cuda/`、`sglang-cuda/`、`vllm-omni-cuda/`、`vllm-cann/`、`sglang-cann/`、`vllm-omni-cann/`、
+  `vllm-dtk/`、`sglang-dtk/`、`vllm-hggc/`、`sglang-hggc/`，以及评测应用用的 `evalscope/`。
+- 推理镜像的文件名是 `gpuworks-runner_<tag>_linux-<架构>.tar.gz`，对应镜像引用 `gpuworks/gpuworks-runner:<tag>`。按节点 CPU 架构选
+  `amd64` 或 `arm64`；昇腾文件名里的 `910b`、`a3`、`310p`、`950` 是芯片型号。
+- 文件是 gzip 压缩的 `docker save` 归档，里面已经是规范引用，导入后不需要再打 tag，导入方法见[方式一](#方式一在节点上直接-load最快)。
+- 网盘里通常只有各系列的当前版本。要的版本不在网盘上时，按下面的办法自己拉取导出。
+
+### 自己拉取并导出
 
 在外网机上拉取并导出。注意节点的 CPU 架构（昇腾、GB10 等多为 arm64）：
 
@@ -67,10 +82,12 @@ server 内嵌了系统镜像目录和推理模板目录，离线也能直接用�
 适用于 Docker 或 nerdctl 运行时的节点，需要能登录节点。
 
 ```bash
-# Docker 运行时
+# Docker 运行时（.tar 与阿里云盘上的 .tar.gz 都可以直接 load）
 docker load -i runner-cuda13.0-sglang.tar
 # nerdctl 运行时（昇腾节点常见）：必须带 gpuworks 命名空间，否则平台看不到
 nerdctl -n gpuworks load -i runner-cuda13.0-sglang.tar
+# nerdctl 导入 .tar.gz 时先解压
+gunzip -c gpuworks-runner_<tag>_linux-arm64.tar.gz | nerdctl -n gpuworks load
 ```
 
 agent 每 60 秒上报一次镜像目录里各镜像在本节点是否存在，load 完约一分钟后，镜像页的节点行变成「已存在」；不等上报直接部署也可以，
