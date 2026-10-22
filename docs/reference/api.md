@@ -443,10 +443,12 @@ macOS 忽略 `no_systemd`。
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{id,uuid,name,namespace,server_url,agent_image,vendor,node_selector,runtime_class,image_pull_secret,containerd_socket,state_dir,api_server,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?}], total}`；`apply_command` 含接入令牌，只给管理员；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
-| POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, vendor?(nvidia\|ascend\|hygon\|ppu，默认 nvidia), node_selector?("k=v,k2=v2"), runtime_class?(只对 NVIDIA；空表示各节点自己判断：有 nvidia RuntimeClass 就用，没有用默认运行时), image_pull_secret?(命名空间里 docker-registry Secret 的名称，agent 镜像用它拉取；空表示不用), containerd_socket?(空表示 agent 自己找), state_dir?(/opt/gpuworks), api_server?("https://host:port"，空表示用集群的 kubernetes Service), engine_ports?(40000-42767), idle_return_seconds?(60)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN` | JWT(admin) |
+| GET | `/api/v1/kube/clusters` | 集群列表：`{items:[{id,uuid,name,namespace,server_url,agent_image,vendor,node_selector,runtime_class,image_pull_secret,containerd_socket,state_dir,api_server,engine_ports,idle_return_seconds,cluster_uid,revoked,node_count,created_at,apply_command?,source?:{provider_id,provider_name,provider_kind,cluster_id}}], total}`；`apply_command` 含接入令牌，只给管理员；`source` 只在从云账号的集群接入时出现；`cluster_uid` 在首个节点接入前为空；`idle_return_seconds` 为 -1 表示借到的卡不归还 | JWT |
+| POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, vendor?(nvidia\|ascend\|hygon\|ppu，默认 nvidia), node_selector?("k=v,k2=v2"), runtime_class?(只对 NVIDIA；空表示各节点自己判断：有 nvidia RuntimeClass 就用，没有用默认运行时), image_pull_secret?(命名空间里 docker-registry Secret 的名称，agent 镜像用它拉取；空表示不用), containerd_socket?(空表示 agent 自己找), state_dir?(/opt/gpuworks), api_server?("https://host:port"，空表示用集群的 kubernetes Service), engine_ports?(40000-42767), idle_return_seconds?(60), provider_id?, provider_cluster_id?(两者同给：从云账号的这个集群接入，见 GET /providers/{id}/clusters)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN`；同一来源集群已接入过回 409 `KUBE_CLUSTER_SOURCE_TAKEN`（`cluster`） | JWT(admin) |
 | GET | `/api/v1/kube/clusters/{uuid}/manifest` | 集群的 manifest（`application/yaml`） | JWT(admin) |
 | POST | `/api/v1/kube/clusters/{uuid}/revoke` | 吊销接入令牌：已接入节点不受影响，新节点不能再接入 | JWT(admin) |
+| POST | `/api/v1/kube/clusters/{uuid}/apply` | 把集群的 manifest 应用到它的来源集群：`{dry_run}`；server 向云账号现取短期 kubeconfig（不保存，ADR 0054），逐个对象 server-side apply，`dry_run` 时只让 API server 检查。返回 `{dry_run, results:[{kind,name,namespace?,action(create\|update\|failed\|not_tried\|dependent),error?}]}`；云账号签不出凭据或集群拒绝时回 424，体内同样带 `results`，另有 `code: KUBE_CLUSTER_OPERATION_FAILED`、`params:{step(kubeconfig\|api_server),reason}`；手动建的条目或云账号已删除回 409 `KUBE_CLUSTER_NO_SOURCE` | JWT(admin) |
+| POST | `/api/v1/kube/clusters/{uuid}/remove` | 从来源集群删除 manifest 的对象（先删 DaemonSet，集群里其他 gpuworks namespace 仍在用的 PriorityClass 保留，`action` 另有 `delete\|absent\|kept`+`reason`）；请求、响应与错误同 apply | JWT(admin) |
 | DELETE | `/api/v1/kube/clusters/{uuid}` | 删除集群，返回 204；仍有节点时回 409 `KUBE_CLUSTER_HAS_NODES` | JWT(admin) |
 | GET | `/kube/manifest.yaml?token=` | 凭接入令牌取 manifest，供 `kubectl apply -f`；令牌未知或已吊销回 404 | 接入令牌 |
 | POST | `/api/v1/kube/enroll` | agent 用 `{token, cluster_uid, node_name}` 换节点 token：返回 `{node_uuid, node_token, idle_return_seconds}`；同一集群的同一节点总是得到同一个节点；令牌首次使用时绑定集群 UID，之后其他集群回 403 `KUBE_ENROLL_REFUSED`（`reason: other_cluster`），未知或已吊销回 403（`reason: unknown_token`） | 接入令牌 |
@@ -1630,12 +1632,13 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 | PUT | `/api/v1/providers/{id}` | 更新云厂商账号 | JWT |
 | DELETE | `/api/v1/providers/{id}` | 删除云厂商账号 | JWT |
 | POST | `/api/v1/providers/{id}/sync` | 同步该账号下的实例：列出的实例写入/更新，云端已不存在的实例行移除（关联节点保留，带外恢复置 `stopped`）；列举失败返回 424、不改动实例行 | JWT |
+| GET | `/api/v1/providers/{id}/clusters` | 该账号下的托管 Kubernetes 集群，实时向云厂商读取、不落库：`{items:[{external_id,name,region,version,state,running,public_api,gpu_pools:[{id,name,gpu_model,gpu_count,nodes,vendor,node_selector}],entry?:{uuid,name}}],total}`；`entry` 是已由它建的集群条目；驱动没有集群能力回 501，云厂商报错回 424 | JWT |
 | POST | `/api/v1/providers/{id}/instances` | 租用新实例；云厂商报错返回 424（不支持返回 501） | JWT |
-| GET | `/api/v1/providers/{id}/instances` | 该账号下的实例列表 | JWT |
+| GET | `/api/v1/providers/{id}/instances` | 该账号下的实例列表；`managed_cluster` 表示实例是该账号某个托管 Kubernetes 集群的节点（随集群接入，不能单独安装） | JWT |
 | DELETE | `/api/v1/providers/{id}/instances/{externalID}` | 释放/删除实例；云厂商确认后移除该实例行；云厂商报错返回 424（不支持返回 501），实例行不变 | JWT |
 | POST | `/api/v1/providers/{id}/instances/{externalID}/power` | 开关机；云厂商报错返回 424（不支持返回 501） | JWT |
 | POST | `/api/v1/providers/{id}/instances/{externalID}/resize` | 变更实例规格；云厂商报错返回 424（不支持返回 501） | JWT |
-| POST | `/api/v1/providers/{id}/install` | 在已租实例上安装 agent；连接参数同创建节点。需要重启 Pod 时先返回 409，显式允许后才修改；见[云实例安装与重启确认](#云实例安装与重启确认) | JWT |
+| POST | `/api/v1/providers/{id}/install` | 在已租实例上安装 agent；连接参数同创建节点。需要重启 Pod 时先返回 409，显式允许后才修改；见[云实例安装与重启确认](#云实例安装与重启确认)；实例是托管 Kubernetes 集群的节点时回 409 `PROVIDER_INSTANCE_IN_CLUSTER`（`cluster`） | JWT |
 
 云厂商相关接口里，云厂商 API 或实例 SSH 出错一律返回 424 Failed Dependency，正文 `{error}` 是原因。不用 502/504：Cloudflare 等 CDN/隧道会把源站 502/504 的正文换成它自己的错误页，原因就丢了。
 

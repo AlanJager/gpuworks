@@ -68,6 +68,24 @@ flowchart LR
 - **占位 Pod** 是 gpuworks 向云厂商自带的 device plugin「借卡」的方式：卡同一时刻只有一个分配者，占位 Pod 占着，实例才能用。
 - **实例 Pod** 就是你部署的模型，`kubectl -n gpuworks-system get pods` 能看到。
 
+## 捷径：从云账号接入（阿里云 ACK、DigitalOcean DOKS）
+
+云账号已经添加在「公有云」页时，不用自己找节点标签，也不用自己执行 `kubectl apply`：
+
+1. 「公有云」页展开账号，切到「Kubernetes 集群」页签。gpuworks 实时向云厂商读取账号下的托管集群和 GPU 节点池
+   （阿里云需要的额外权限见[租用云 GPU · 阿里云](rent-cloud-gpus.md#阿里云)）。
+2. 在要用的 GPU 节点池后点「接入」。抽屉里名称、厂商和节点选择器已按节点池填好；Server 地址、agent 镜像与镜像拉取凭据的
+   要求与下文第 0、2、3 步相同（agent 镜像要能被节点拉到）。点「接入」。
+3. 抽屉给出两个选择：
+   - **检查并应用**：gpuworks 用云账号现取的临时集群凭据（15 分钟有效，用完即弃，不保存）先让集群做一次检查（dry run），
+     列出要创建或更新的每个对象，你点「确认应用」后才真正应用；
+   - 或者照旧复制 `kubectl apply` 命令自己执行（见下文第 5 步）。
+4. 约半分钟后节点出现在节点页。之后「Kubernetes」页这个条目的「应用到集群」可以再次应用（例如重建了节点池），
+   「从集群卸载」同样先检查、确认后删除。
+
+前提：集群的 API Server 有公网地址（列表里显示「公网 API」）；显示「仅内网 API」的集群只能复制命令、在集群内网里执行。
+属于托管集群的节点在「实例」页签里标为「集群节点」，不能单独安装 agent。Nebius 还没有云账号接入，按下文手动接入。
+
 ## 三家共同的事实
 
 | | 阿里云 ACK | DigitalOcean DOKS | Nebius mk8s |
@@ -396,6 +414,7 @@ flowchart TD
 用完按顺序清理：
 
 1. gpuworks 里删除部署；
-2. `kubectl delete -f '<同一个 manifest 地址>'`：删除 DaemonSet、占位 Pod、实例 Pod，卡还给集群；
+2. 从云账号接入的集群在「Kubernetes」页点「从集群卸载」（先检查、确认后删除）；其他集群执行
+   `kubectl delete -f '<同一个 manifest 地址>'`。两者都删除 DaemonSet、占位 Pod、实例 Pod，卡还给集群；
 3. gpuworks 节点页删除这些节点，「Kubernetes」页删除集群条目；
 4. 在云控制台删除集群（连同节点池、负载均衡、EIP）与镜像仓库，避免继续计费。
