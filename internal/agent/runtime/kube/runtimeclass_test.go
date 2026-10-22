@@ -47,7 +47,6 @@ func detectedRig(t *testing.T, runtimeClass string, classes []string, pullSecret
 	return r
 }
 
-
 func TestInstancePodsUseTheClustersNvidiaRuntimeClassWhenItHasOne(t *testing.T) {
 	cases := []struct {
 		name, configured string

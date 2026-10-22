@@ -36,13 +36,13 @@ func kubeManifestURL(c store.KubeCluster) string {
 	return strings.TrimRight(c.ServerURL, "/") + "/kube/manifest.yaml?token=" + url.QueryEscape(c.Token)
 }
 
-func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool) dto.KubeCluster {
+func kubeClusterDTO(c store.KubeCluster, nodes int, admin bool, source *dto.KubeClusterSource) dto.KubeCluster {
 	out := dto.KubeCluster{
 		ID: c.ID, UUID: c.UUID, Name: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, AgentImage: c.AgentImage,
 		Vendor: c.Vendor, NodeSelector: c.NodeSelector, RuntimeClass: c.RuntimeClass, ImagePullSecret: c.ImagePullSecret,
 		ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir, APIServer: c.APIServer,
 		EnginePorts: c.EnginePorts, IdleReturnSeconds: c.IdleReturnSeconds, ClusterUID: c.ClusterUID,
-		Revoked: c.RevokedAt != nil, NodeCount: nodes, CreatedAt: c.CreatedAt.UTC(),
+		Revoked: c.RevokedAt != nil, NodeCount: nodes, Source: source, CreatedAt: c.CreatedAt.UTC(),
 	}
 	if admin && c.RevokedAt == nil {
 		out.ApplyCommand = "kubectl apply -f '" + kubeManifestURL(c) + "'"
@@ -75,8 +75,9 @@ func (a *apiHandlers) listKubeClusters(w http.ResponseWriter, r *http.Request) {
 	}
 	claims, _ := a.claimsFromRequest(r)
 	items := make([]dto.KubeCluster, 0, len(rows))
+	sources := a.kubeClusterSources(rows)
 	for _, c := range rows {
-		items = append(items, kubeClusterDTO(c, counts[c.ID], claims.Role == "admin"))
+		items = append(items, kubeClusterDTO(c, counts[c.ID], claims.Role == "admin", sources[c.ID]))
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(items))
 }
@@ -115,6 +116,9 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.IdleReturnSeconds != nil {
 		c.IdleReturnSeconds = *req.IdleReturnSeconds
+	}
+	if !a.kubeClusterSource(w, req, &c) {
+		return
 	}
 	if c.Name == "" || len(c.Name) > 128 {
 		kubeInvalid(w, "name", "must be 1 to 128 bytes")
@@ -157,6 +161,10 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	created, err := a.d.Store.CreateKubeCluster(c)
+	if errors.Is(err, store.ErrKubeClusterSourceTaken) {
+		writeProductError(w, http.StatusConflict, ErrorKubeClusterSourceTaken, err.Error(), map[string]any{"cluster": c.ProviderClusterID})
+		return
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -164,7 +172,7 @@ func (a *apiHandlers) createKubeCluster(w http.ResponseWriter, r *http.Request) 
 	if a.d.Log != nil {
 		a.d.Log.Info("kubernetes cluster created", "cluster", created.Name, "uuid", created.UUID)
 	}
-	writeJSON(w, http.StatusCreated, kubeClusterDTO(*created, 0, true))
+	writeJSON(w, http.StatusCreated, kubeClusterDTO(*created, 0, true, a.kubeClusterSources([]store.KubeCluster{*created})[created.ID]))
 }
 
 func (a *apiHandlers) revokeKubeCluster(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +191,7 @@ func (a *apiHandlers) revokeKubeCluster(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	counts, _ := a.d.Store.KubeClusterNodeCounts()
-	writeJSON(w, http.StatusOK, kubeClusterDTO(*c, counts[c.ID], true))
+	writeJSON(w, http.StatusOK, kubeClusterDTO(*c, counts[c.ID], true, a.kubeClusterSources([]store.KubeCluster{*c})[c.ID]))
 }
 
 func (a *apiHandlers) deleteKubeCluster(w http.ResponseWriter, r *http.Request) {

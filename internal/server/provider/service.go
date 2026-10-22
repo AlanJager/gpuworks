@@ -475,6 +475,9 @@ func (s *Service) installTarget(ctx context.Context, providerID uint, externalID
 	for i := range insts {
 		if insts[i].ExternalID == externalID {
 			target := insts[i]
+			if target.Cluster != "" {
+				return nil, nil, Credentials{}, nil, &InstanceInClusterError{Cluster: target.Cluster}
+			}
 			if getter, ok := drv.(InstanceGetter); ok && target.Power != PowerStopped {
 				target = s.detailUntilSSH(ctx, getter, creds, target)
 			}

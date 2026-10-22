@@ -16,7 +16,7 @@ server 里有 30 余处依赖“节点后面有一个 agent”，agent 承担探
    host 网络、hostPath 同路径挂载、ownerReference 指向 agent 的 DaemonSet）。server 下发的期望状态不变，不知道执行载体
    是 Pod；与 Mac 的 host 运行时（ADR 0044）同构。不做 agentless 虚拟节点，不做 Operator / CRD。
 2. **集群接入令牌换节点 token**：独立的 `POST /api/v1/kube/enroll`，按 `(集群, 节点名)` 幂等，首次使用时绑定集群
-   （`kube-system` namespace 的 UID）；hub 握手不变。server 不持有 kubeconfig、不连 apiserver。
+   （`kube-system` namespace 的 UID）；hub 握手不变。server 不持有 kubeconfig、不连 apiserver（2026-10-22 由 [ADR 0054](0054-apply-to-cloud-clusters.md) 修订：从云账号接入的集群，经用户确认后用云厂商现发的短期 kubeconfig 应用 manifest，不保存）。
 3. **每张卡一个分配者**：有 device plugin 时卡归 kubelet，gpuworks 为要用的卡起只申请 1 张卡的占位 Pod。device plugin
    不接受指定设备，所以借卡时一次为全部空闲卡各起一个占位 Pod（kubelet 没有选择余地），经 kubelet PodResources 认出
    每个占位 Pod 拿到的卡，退回不需要的；最后一个实例停止超过集群的空闲时间（默认 60 秒，2026-10-20 由 600 秒改定；-1 常驻）后归还。分给其他

@@ -578,4 +578,17 @@ const (
 	// ErrorKubeEnrollRefused: the enrollment token is unknown, revoked or
 	// belongs to another cluster ({reason}: unknown_token | other_cluster).
 	ErrorKubeEnrollRefused = "KUBE_ENROLL_REFUSED"
+	// ErrorKubeClusterSourceTaken: an entry was already made from cluster
+	// {cluster} of the cloud account.
+	ErrorKubeClusterSourceTaken = "KUBE_CLUSTER_SOURCE_TAKEN"
+	// ErrorKubeClusterNoSource: the entry was not made from a cloud
+	// account's cluster, so the server has no way into the cluster; apply
+	// the manifest with kubectl.
+	ErrorKubeClusterNoSource = "KUBE_CLUSTER_NO_SOURCE"
+	// ErrorKubeClusterOperationFailed: applying to or removing from the
+	// cluster failed at {step} (kubeconfig | api_server): {reason}.
+	ErrorKubeClusterOperationFailed = "KUBE_CLUSTER_OPERATION_FAILED"
+	// ErrorProviderInstanceInCluster: the instance is a node of the
+	// account's Kubernetes cluster {cluster}; connect the cluster instead.
+	ErrorProviderInstanceInCluster = "PROVIDER_INSTANCE_IN_CLUSTER"
 )

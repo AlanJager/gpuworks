@@ -226,6 +226,7 @@ GET /api/v1/playground/openapi.json
 GET /api/v1/providers
 GET /api/v1/providers/kinds
 GET /api/v1/providers/{id}
+GET /api/v1/providers/{id}/clusters
 GET /api/v1/providers/{id}/instances
 GET /api/v1/pull/credentials
 GET /api/v1/pull/metadata-sources
@@ -330,6 +331,8 @@ POST /api/v1/instances/{uuid}/restart
 POST /api/v1/instances/{uuid}/sleep
 POST /api/v1/instances/{uuid}/wake
 POST /api/v1/kube/clusters
+POST /api/v1/kube/clusters/{uuid}/apply
+POST /api/v1/kube/clusters/{uuid}/remove
 POST /api/v1/kube/clusters/{uuid}/revoke
 POST /api/v1/kube/enroll
 POST /api/v1/mcp

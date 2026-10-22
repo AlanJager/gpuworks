@@ -191,6 +191,9 @@ func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) 
 		SSHConnections []provider.SSHConnection `json:"ssh_connections"`
 		Kind           string                   `json:"kind"`
 		NodeID         uint                     `json:"node_id"`
+		// ManagedCluster: the instance is a node of this Kubernetes cluster
+		// of the account and joins through it, not by its own install.
+		ManagedCluster string `json:"managed_cluster,omitempty"`
 	}
 	out := make([]instanceDTO, 0, len(pis))
 	for _, p := range pis {
@@ -202,6 +205,7 @@ func (a *apiHandlers) providerInstances(w http.ResponseWriter, r *http.Request) 
 			ExternalID: p.ExternalID, Name: p.Name, GPUModel: p.GPUModel, GPUCount: p.GPUCount,
 			Power: p.Power, PricePerHr: p.PricePerHr, Region: p.Region, PublicIP: p.PublicIP,
 			SSHPort: p.SSHPort, SSHUser: p.SSHUser, SSHConnections: connections, Kind: p.Kind, NodeID: p.NodeID,
+			ManagedCluster: p.ManagedCluster,
 		})
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(out))

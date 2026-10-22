@@ -75,6 +75,13 @@ type KubeCluster struct {
 	APIServer string `gorm:"size:512"`
 	// EnginePorts is the engine port range the agents use, "START-END".
 	EnginePorts string `gorm:"size:32"`
+	// ProviderID and ProviderClusterID name the managed cluster this entry was
+	// made from (a cloud account's cluster, provider.ClusterProvider); the
+	// server applies the manifest there with a kubeconfig the cloud issues
+	// for that one operation. Both are empty for an entry made by hand, and
+	// ProviderID is cleared when the account is deleted.
+	ProviderID        *uint  `gorm:"index:idx_kube_cluster_source,priority:1"`
+	ProviderClusterID string `gorm:"size:128;index:idx_kube_cluster_source,priority:2"`
 	// IdleReturnSeconds is how long a borrowed card stays the platform's after
 	// the last instance on it stopped; KubeKeepCards keeps it.
 	IdleReturnSeconds int
@@ -128,7 +135,19 @@ func (s *Store) CreateKubeCluster(c KubeCluster) (*KubeCluster, error) {
 	c.TokenHash = HashToken(c.Token)
 	c.ClusterUID = ""
 	c.RevokedAt = nil
-	if err := s.db.Create(&c).Error; err != nil {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if c.ProviderID != nil {
+			var n int64
+			if err := tx.Model(&KubeCluster{}).Where("provider_id = ? AND provider_cluster_id = ?", *c.ProviderID, c.ProviderClusterID).Count(&n).Error; err != nil {
+				return err
+			}
+			if n > 0 {
+				return ErrKubeClusterSourceTaken
+			}
+		}
+		return tx.Create(&c).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &c, nil

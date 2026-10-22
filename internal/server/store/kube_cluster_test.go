@@ -182,10 +182,12 @@ func TestAKubernetesCordonIsFollowed(t *testing.T) {
 
 // kubeClustersV165 is the kube_clusters table as migration 165 created it,
 // before the image pull secret.
-const kubeClustersV165 = `CREATE TABLE kube_clusters (id integer PRIMARY KEY, uuid text, name text, token text, token_hash text,
+const kubeClustersV165 = kubeClustersV165Body + ")"
+
+const kubeClustersV165Body = `CREATE TABLE kube_clusters (id integer PRIMARY KEY, uuid text, name text, token text, token_hash text,
 	cluster_uid text, namespace text, server_url text, agent_image text, vendor text, node_selector text, runtime_class text,
 	containerd_socket text, state_dir text, api_server text, engine_ports text, idle_return_seconds integer,
-	revoked_at datetime, created_at datetime, updated_at datetime)`
+	revoked_at datetime, created_at datetime, updated_at datetime`
 
 func TestKubeClusterImagePullSecretMigrationKeepsRows(t *testing.T) {
 	db := nodesOnlyDB(t, "")
