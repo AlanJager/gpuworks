@@ -639,6 +639,9 @@ func (s *Store) DeleteNode(uuid string) error {
 		if err := tx.Where("node_id = ?", n.ID).Delete(&ModelFile{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("node_id = ?", n.ID).Delete(&ImageNode{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("node_id = ?", n.ID).Delete(&ProviderBootstrapToken{}).Error; err != nil {
 			return err
 		}

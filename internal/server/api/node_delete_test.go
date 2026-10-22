@@ -51,7 +51,22 @@ func nodeDeleteFixture(t *testing.T) (*store.Store, *store.Node) {
 	if _, err := st.SetNodeSSHCredential(node.UUID, "compute.example", 2222, "operator", store.NodeSSHSecrets{Password: "secret-test-password"}); err != nil {
 		t.Fatal(err)
 	}
+	image, err := st.UpsertImage(&store.Image{ImageRef: "example/image:node-delete", Engine: "vllm", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.UpsertImageNode(&store.ImageNode{ImageVersionID: image.ID, NodeID: node.ID, State: store.ImageStatePresent}); err != nil {
+		t.Fatal(err)
+	}
 	return st, node
+}
+
+func assertNodeDeleteImageRows(t *testing.T, st *store.Store, node *store.Node, want int) {
+	t.Helper()
+	rows, err := st.ImageNodesForNode(node.ID)
+	if err != nil || len(rows) != want {
+		t.Fatalf("image rows = %v, err = %v, want %d rows", rows, err, want)
+	}
 }
 
 func deleteNodeRequest(h *apiHandlers, uuid, query string) *httptest.ResponseRecorder {
@@ -95,6 +110,7 @@ func TestDeleteNodeUninstallsBeforeRemovingRecords(t *testing.T) {
 	if _, err := st.NodeByUUID(node.UUID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("node still exists: %v", err)
 	}
+	assertNodeDeleteImageRows(t, st, node, 0)
 }
 
 func TestDeleteNodeRetainsRecordsWhenUninstallFails(t *testing.T) {
@@ -112,6 +128,7 @@ func TestDeleteNodeRetainsRecordsWhenUninstallFails(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "secret-test-password") {
 		t.Fatal("response exposed SSH password")
 	}
+	assertNodeDeleteImageRows(t, st, node, 1)
 }
 
 func TestDeleteNodeRequiresExplicitForceWithoutSSH(t *testing.T) {
@@ -130,6 +147,7 @@ func TestDeleteNodeRequiresExplicitForceWithoutSSH(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"agent_uninstalled":false`) {
 		t.Fatalf("force removal must disclose no uninstall: %d %s", rec.Code, rec.Body.String())
 	}
+	assertNodeDeleteImageRows(t, st, node, 0)
 }
 
 func TestDeleteNodeForceStillRejectsInstances(t *testing.T) {
@@ -146,6 +164,7 @@ func TestDeleteNodeForceStillRejectsInstances(t *testing.T) {
 			t.Fatalf("busy node %s status=%d", query, rec.Code)
 		}
 	}
+	assertNodeDeleteImageRows(t, st, node, 1)
 }
 
 func TestDeleteNodeValidatesForceAndMissingNode(t *testing.T) {
@@ -174,6 +193,7 @@ func TestDeleteNodeRetainsRecordsWhenDatabaseCleanupFails(t *testing.T) {
 	if _, _, err := st.GetNodeSSHCredential(node.UUID); err != nil {
 		t.Fatalf("transaction did not preserve credentials: %v", err)
 	}
+	assertNodeDeleteImageRows(t, st, node, 1)
 }
 
 func TestDeleteNodeRouteRequiresAuthentication(t *testing.T) {
@@ -210,6 +230,7 @@ func TestNodeDeleteKeepsAgentWhileCacheDeletionUnconfirmed(t *testing.T) {
 	if _, err := st.NodeByUUID(node.UUID); err != nil {
 		t.Fatal(err)
 	}
+	assertNodeDeleteImageRows(t, st, node, 1)
 }
 
 func TestNodeDeleteReservesCacheBeforeUninstall(t *testing.T) {
@@ -256,4 +277,5 @@ func TestNodeDeleteBusyCacheReturnsProductError(t *testing.T) {
 	if _, err := st.NodeByUUID(node.UUID); err != nil {
 		t.Fatal(err)
 	}
+	assertNodeDeleteImageRows(t, st, node, 1)
 }
