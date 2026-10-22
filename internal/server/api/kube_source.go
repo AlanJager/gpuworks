@@ -114,6 +114,11 @@ func (a *apiHandlers) kubeClusterOperation(w http.ResponseWriter, r *http.Reques
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
+	if req.DryRun == nil {
+		kubeInvalid(w, "dry_run", "say true to check or false to apply")
+		return
+	}
+	dryRun := *req.DryRun
 	if a.d.Providers == nil {
 		writeErr(w, http.StatusServiceUnavailable, errNoProviders)
 		return
@@ -148,8 +153,8 @@ func (a *apiHandlers) kubeClusterOperation(w http.ResponseWriter, r *http.Reques
 	if remove {
 		op = a.d.Providers.RemoveFromCluster
 	}
-	results, err := op(r.Context(), *c.ProviderID, c.ProviderClusterID, manifest, req.DryRun)
-	out := dto.KubeClusterOperation{DryRun: req.DryRun, Results: make([]dto.KubeObjectResult, 0, len(results))}
+	results, err := op(r.Context(), *c.ProviderID, c.ProviderClusterID, manifest, dryRun)
+	out := dto.KubeClusterOperation{DryRun: dryRun, Results: make([]dto.KubeObjectResult, 0, len(results))}
 	for _, res := range results {
 		out.Results = append(out.Results, dto.KubeObjectResult{Kind: res.Kind, Name: res.Name, Namespace: res.Namespace,
 			Action: res.Action, Reason: res.Reason, Error: res.Error})
@@ -157,7 +162,7 @@ func (a *apiHandlers) kubeClusterOperation(w http.ResponseWriter, r *http.Reques
 	var opErr *provider.ClusterOperationError
 	switch {
 	case err == nil:
-		if a.d.Log != nil && !req.DryRun {
+		if a.d.Log != nil && !dryRun {
 			a.d.Log.Info("kubernetes cluster manifest", "cluster", c.Name, "removed", remove, "objects", len(results))
 		}
 		writeJSON(w, http.StatusOK, out)

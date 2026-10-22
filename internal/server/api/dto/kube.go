@@ -109,7 +109,9 @@ type KubeClusterRef struct {
 
 // KubeClusterOperationRequest asks for an apply or a removal.
 type KubeClusterOperationRequest struct {
-	DryRun bool `json:"dry_run"`
+	// DryRun is required: an operation on a cluster is never taken by
+	// default.
+	DryRun *bool `json:"dry_run"`
 }
 
 // KubeClusterOperation is what an apply or a removal did to each object of

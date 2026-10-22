@@ -73,15 +73,25 @@ flowchart LR
 云账号已经添加在「公有云」页时，不用自己找节点标签，也不用自己执行 `kubectl apply`：
 
 1. 「公有云」页展开账号，切到「Kubernetes 集群」页签。gpuworks 实时向云厂商读取账号下的托管集群和 GPU 节点池
-   （阿里云需要的额外权限见[租用云 GPU · 阿里云](rent-cloud-gpus.md#阿里云)）。
+   （阿里云需要的额外权限见[租用云 GPU · 阿里云](rent-cloud-gpus.md#阿里云)）：
+
+   ![云账号的「Kubernetes 集群」页签](../assets/screenshots/k8s-cloud-clusters.png)
+
 2. 在要用的 GPU 节点池后点「接入」。抽屉里名称、厂商和节点选择器已按节点池填好；Server 地址、agent 镜像与镜像拉取凭据的
    要求与下文第 0、2、3 步相同（agent 镜像要能被节点拉到）。点「接入」。
 3. 抽屉给出两个选择：
    - **检查并应用**：gpuworks 用云账号现取的临时集群凭据（15 分钟有效，用完即弃，不保存）先让集群做一次检查（dry run），
-     列出要创建或更新的每个对象，你点「确认应用」后才真正应用；
+     列出要创建或更新的每个对象，你点「确认应用」后才真正应用：
+
+     ![应用前的检查结果，确认后才执行](../assets/screenshots/k8s-cloud-apply.png)
+
    - 或者照旧复制 `kubectl apply` 命令自己执行（见下文第 5 步）。
-4. 约半分钟后节点出现在节点页。之后「Kubernetes」页这个条目的「应用到集群」可以再次应用（例如重建了节点池），
-   「从集群卸载」同样先检查、确认后删除。
+4. 约半分钟后节点出现在节点页。「Kubernetes」页的「来源」列标出条目来自哪个云账号的哪个集群；之后这个条目的
+   「应用到集群」可以再次应用（例如重建了节点池），「从集群卸载」同样先检查、确认后删除：
+
+   ![Kubernetes 页的来源列与「应用到集群」「从集群卸载」](../assets/screenshots/k8s-cloud-source.png)
+
+   卸载会删除整个 `gpuworks-system` 命名空间，事先在里面建的镜像拉取凭据也一起删除，重新接入前要再建。
 
 前提：集群的 API Server 有公网地址（列表里显示「公网 API」）；显示「仅内网 API」的集群只能复制命令、在集群内网里执行。
 属于托管集群的节点在「实例」页签里标为「集群节点」，不能单独安装 agent。Nebius 还没有云账号接入，按下文手动接入。
@@ -91,7 +101,7 @@ flowchart LR
 | | 阿里云 ACK | DigitalOcean DOKS | Nebius mk8s |
 |---|---|---|---|
 | NVIDIA 驱动 | 节点镜像自带 | 节点镜像自带 | 节点组选驱动预设（`cuda13.0`）后自带 |
-| device plugin | 自带（`nvidia.com/gpu`） | 自带 | 自带 |
+| device plugin | 自带（`nvidia.com/gpu`） | 1.36 自带；1.37 起默认不装，见下 | 自带 |
 | `nvidia` RuntimeClass | 没有，默认运行时就是 NVIDIA 的 | 没有 | 没有 |
 | GPU 节点的标签（作节点选择器） | `ack.node.gpu.schedule=default` | `doks.digitalocean.com/gpu-brand=nvidia` | `nebius.com/gpu=true` |
 | 镜像仓库 | ACR（私有） | DOCR（私有） | Nebius Container Registry（私有） |
@@ -209,6 +219,17 @@ doctl kubernetes cluster create gpuworks-k8s --region tor1 \
 
 `doctl` 会把 kubeconfig 写进本机的 `~/.kube/config`。GPU 节点带 `nvidia.com/gpu:NoSchedule` 污点；gpuworks 的 Pod 容忍所有污点，
 不用另外处理。
+
+DOKS 1.37 起新建集群默认不装 NVIDIA device plugin，GPU 节点没有 `nvidia.com/gpu` 资源。gpuworks 照样能用（节点没有
+device plugin 时直接使用节点上的卡），但集群里别的 Pod 就没法按 `nvidia.com/gpu` 申请卡、也就不会与 gpuworks 协调。要开启：
+
+```bash
+curl -X PUT -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"gpuworks-k8s","nvidia_gpu_device_plugin":{"enabled":true}}' \
+  https://api.digitalocean.com/v2/kubernetes/clusters/<集群 ID>
+```
+
+约 10 秒后 `kube-system` 里出现 device plugin 的 DaemonSet，节点不会被替换。
 
 ### 2. 推送 agent 镜像到 DOCR
 

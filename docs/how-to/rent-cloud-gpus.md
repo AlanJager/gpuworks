@@ -316,7 +316,7 @@ server 调用 `RunCommand`，让实例以 root 执行与**添加节点**相同�
 
 **安装**：走 SSH（`root@<公网 IP>:22`）。添加账号时平台公钥登记为账号的 SSH Key，之后经 GPUWORKS 创建的 Droplet 自带它，
 不用填凭据；DigitalOcean 不能给已经存在的 Droplet 追加账号 Key，别处创建的 Droplet 在安装的「高级设置」里提供一次私钥或密码。
-账号里已有的 SSH Key 不会被修改或删除。
+账号里已有的 SSH Key 不会被修改或删除；平台登记的 `gpuworks-platform` 在 GPUWORKS 里删除账号后仍留在 DigitalOcean，不再需要时到控制台「Settings → Security」删除。
 
 **开关机与释放**：开机、关机对应 Droplet 的 power on / power off（关机后仍计费）；释放即删除 Droplet，数据一并删除。
 

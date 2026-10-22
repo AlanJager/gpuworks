@@ -231,7 +231,10 @@ func TestApplyAndRemoveAnEntryOnItsCluster(t *testing.T) {
 		t.Fatalf("daemonset in a namespace not yet created = %v", results[8])
 	}
 
-	applied := rig.do(rig.session, http.MethodPost, base+"/apply", `{}`)
+	if rec := rig.do(rig.session, http.MethodPost, base+"/apply", `{}`); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "dry_run") || len(rig.api.objects) != 0 {
+		t.Fatalf("apply without dry_run = %d %s; nothing may be applied by default", rec.Code, rec.Body)
+	}
+	applied := rig.do(rig.session, http.MethodPost, base+"/apply", `{"dry_run":false}`)
 	if applied.Code != http.StatusOK || len(rig.api.objects) != 9 || !strings.Contains(applied.Body.String(), `"dry_run":false`) {
 		t.Fatalf("apply = %d %s, objects %d", applied.Code, applied.Body, len(rig.api.objects))
 	}
@@ -252,15 +255,15 @@ func TestApplyAndRemoveAnEntryOnItsCluster(t *testing.T) {
 	if rec := rig.do(rig.session, http.MethodPost, base+"/apply", `{"dry_run":"yes"}`); rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad body = %d", rec.Code)
 	}
-	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters/nope/apply", `{}`); rec.Code != http.StatusNotFound {
+	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters/nope/apply", `{"dry_run":true}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown entry = %d", rec.Code)
 	}
-	if rec := rig.do("", http.MethodPost, base+"/apply", `{}`); rec.Code != http.StatusUnauthorized {
+	if rec := rig.do("", http.MethodPost, base+"/apply", `{"dry_run":true}`); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("anonymous apply = %d", rec.Code)
 	}
 	byHand := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"hand","server_url":"https://gw.example"}`)
 	hand := decodeKube[map[string]any](t, byHand)["uuid"].(string)
-	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters/"+hand+"/remove", `{}`); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), ErrorKubeClusterNoSource) {
+	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters/"+hand+"/remove", `{"dry_run":true}`); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), ErrorKubeClusterNoSource) {
 		t.Fatalf("remove for an entry made by hand = %d %s", rec.Code, rec.Body)
 	}
 	if _, ok := decodeKube[map[string]any](t, byHand)["source"]; ok {

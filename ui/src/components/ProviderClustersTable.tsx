@@ -66,11 +66,19 @@ export default function ProviderClustersTable({ providerId, providerName }: { pr
       title: t("clusters.column.gpuPools"),
       key: "pools",
       render: (_, c) => {
+        const pools = c.gpu_pools.map((p) => (
+          <Typography.Text key={p.id}>
+            {t("clusters.pool", { name: p.name, model: p.gpu_model || t("clusters.mixedModels"), count: p.gpu_count, nodes: p.nodes })}
+          </Typography.Text>
+        ));
         if (c.entry) {
           return (
-            <Space size={6} wrap>
-              <Tag color="green">{t("clusters.connected")}</Tag>
-              <Link to="/kubernetes">{c.entry.name}</Link>
+            <Space direction="vertical" size={4}>
+              {pools}
+              <Space size={6} wrap>
+                <Tag color="green">{t("clusters.connected")}</Tag>
+                <Link to="/kubernetes">{c.entry.name}</Link>
+              </Space>
             </Space>
           );
         }
@@ -83,7 +91,7 @@ export default function ProviderClustersTable({ providerId, providerName }: { pr
                 <Typography.Text>
                   {t("clusters.pool", { name: p.name, model: p.gpu_model || t("clusters.mixedModels"), count: p.gpu_count, nodes: p.nodes })}
                 </Typography.Text>
-                <Button size="small" type="primary" ghost onClick={() => connect(c, p)}>{t("clusters.connect")}</Button>
+                <Button size="small" type="primary" onClick={() => connect(c, p)}>{t("clusters.connect")}</Button>
               </Space>
             ))}
           </Space>
