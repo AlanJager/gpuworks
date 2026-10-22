@@ -11,17 +11,23 @@ import (
 // object stores the index is served from (ADR 0040).
 //
 // It names no host, address, user or deployment. InstallID is a one-way
-// derivative of the installation's master key, there only so that the hourly
-// checks of one installation count once.
+// derivative of the installation's master key, there so that installations
+// can be counted and the hourly checks of one count once.
+//
+// Every automatic check carries the installation ID, the server version and
+// the agent versions; the size of the fleet and its cards only ride along
+// when the installation takes part in the improvement program (Fleet).
 type FleetReport struct {
 	InstallID     string
 	ServerVersion string
-	Nodes         int
-	OnlineNodes   int
-	// AgentVersions and GPUModels count nodes per agent version and cards per
-	// model; the lists are bounded by Query.
+	// AgentVersions counts nodes per agent version; bounded by Query.
 	AgentVersions []Count
-	GPUModels     []Count
+	// Fleet adds Nodes, OnlineNodes and GPUModels (cards per model, bounded
+	// by Query) to the query.
+	Fleet       bool
+	Nodes       int
+	OnlineNodes int
+	GPUModels   []Count
 }
 
 // Query encodes the report. Every group is a repeated "name:count" value
@@ -30,11 +36,14 @@ func (r *FleetReport) Query() url.Values {
 	q := url.Values{}
 	q.Set("id", r.InstallID)
 	q.Set("v", r.ServerVersion)
-	q.Set("nodes", strconv.Itoa(r.Nodes))
-	q.Set("online", strconv.Itoa(r.OnlineNodes))
 	for _, c := range bounded(r.AgentVersions) {
 		q.Add("agent", countParam(c))
 	}
+	if !r.Fleet {
+		return q
+	}
+	q.Set("nodes", strconv.Itoa(r.Nodes))
+	q.Set("online", strconv.Itoa(r.OnlineNodes))
 	for _, c := range bounded(r.GPUModels) {
 		q.Add("gpu", countParam(c))
 	}

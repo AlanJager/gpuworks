@@ -164,9 +164,9 @@ func errorCode(body []byte) string {
 // "only support keys{__topic__, __source__, __logs__, __tags__}"), although
 // its API reference lists project and logstoreName in the body too.
 type slsLogGroup struct {
-	Topic    string              `json:"__topic__"`
-	Source   string              `json:"__source__"`
-	Logs     []map[string]string `json:"__logs__"`
+	Topic  string              `json:"__topic__"`
+	Source string              `json:"__source__"`
+	Logs   []map[string]string `json:"__logs__"`
 }
 
 func slsRequest(ctx context.Context, ep Endpoint, r *Report, report []byte) (*http.Request, error) {

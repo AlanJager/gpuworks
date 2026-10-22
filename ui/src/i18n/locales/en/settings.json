@@ -46,7 +46,7 @@
     "channelReleaseHelp": "Only tagged releases: fewer updates, more stable.",
     "channelNightlyHelp": "Every main-branch build: frequent updates, for early adopters and internal testing.",
     "autoCheck": "Check for new versions automatically",
-    "autoCheckOnHelp": "When on, opening the console checks the release sources for updates (the server asks at most once an hour).",
+    "autoCheckOnHelp": "When on, opening the console checks the release sources for updates (the server asks at most once an hour), sending the server and agent version numbers.",
     "autoCheckOffHelp": "Off: the server does not check by itself. \"Check for updates\" still reads the version index when you ask.",
     "notChecked": "Not checked yet",
     "notCheckedHelp": "Automatic checks are off. Use \"Check for updates\" at the top right, or upload files here.",

@@ -431,7 +431,7 @@ func TestCountersPeekLeavesTheCounts(t *testing.T) {
 
 func sampleFleetReport() *FleetReport {
 	return &FleetReport{
-		InstallID: "0123456789abcdef", ServerVersion: "v0.9.1", Nodes: 5, OnlineNodes: 4,
+		InstallID: "0123456789abcdef", ServerVersion: "v0.9.1", Fleet: true, Nodes: 5, OnlineNodes: 4,
 		AgentVersions: []Count{{"v0.9.1", 4}, {"v0.9.0", 1}},
 		GPUModels:     []Count{{"NVIDIA A100-SXM4-80GB", 16}, {"NVIDIA H20", 8}},
 	}
@@ -460,7 +460,7 @@ func TestFleetReportQueryWireFormat(t *testing.T) {
 // However varied the fleet, the request stays short: the biggest groups are
 // kept and the tail is summed into "other".
 func TestFleetReportQueryBoundsGroups(t *testing.T) {
-	report := &FleetReport{}
+	report := &FleetReport{Fleet: true}
 	total := 0
 	for i := 1; i <= 40; i++ {
 		report.GPUModels = append(report.GPUModels, Count{fmt.Sprintf("model-%02d", i), i})
@@ -569,5 +569,18 @@ func TestProbeTreatsServerErrorsAsUnreachable(t *testing.T) {
 	order, ms := s.probe(context.Background(), []Endpoint{{Kind: EndpointCollector, URL: down.URL}, {Kind: EndpointSLS, URL: slsSrv.URL}})
 	if order[0].Kind != EndpointSLS || ms[0] != unreachable || ms[1] < 0 {
 		t.Fatalf("order %v ms %v", order, ms)
+	}
+}
+
+// Outside the improvement program a check still names the installation and
+// its versions, so installations can be counted, but not the fleet's size
+// or cards.
+func TestFleetReportQueryOutsideTheProgram(t *testing.T) {
+	report := sampleFleetReport()
+	report.Fleet = false
+	q := report.Query()
+	want := url.Values{"id": {"0123456789abcdef"}, "v": {"v0.9.1"}, "agent": {"v0.9.1:4", "v0.9.0:1"}}
+	if fmt.Sprint(q) != fmt.Sprint(want) {
+		t.Fatalf("query = %v\nwant    %v", q, want)
 	}
 }

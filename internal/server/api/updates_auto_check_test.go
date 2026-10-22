@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -95,10 +96,10 @@ func TestAutomaticUpdateCheckTellsTheChannelTheFleet(t *testing.T) {
 	}
 }
 
-// Out of the improvement program, an automatic check still asks the channel
-// but says nothing about the fleet; the update check itself is not part of
-// the program.
-func TestAutomaticUpdateCheckOutsideTheProgramSaysNothing(t *testing.T) {
+// Out of the improvement program, an automatic check still names the
+// installation and its versions (so installations can be counted) but says
+// nothing about the fleet's size or cards.
+func TestAutomaticUpdateCheckOutsideTheProgramNamesOnlyVersions(t *testing.T) {
 	for name, usage := range map[string]*fakeUsageReport{"switched off": {enabled: false}, "not wired": nil} {
 		t.Run(name, func(t *testing.T) {
 			run, channel := reportingRun(t, &autoCheckServer{id: "0123456789abcdef"}, usage)
@@ -109,8 +110,17 @@ func TestAutomaticUpdateCheckOutsideTheProgramSaysNothing(t *testing.T) {
 			if status := getUpdateStatus(t, run); !status.AutoCheck || !status.Available {
 				t.Fatalf("status = %+v", status)
 			}
-			if queries := channel.queryLog(); len(queries) != 1 || queries[0] != "" {
-				t.Fatalf("the check carried %q, want nothing", queries)
+			queries := channel.queryLog()
+			if len(queries) != 1 {
+				t.Fatalf("the sources were asked %d times", len(queries))
+			}
+			got, err := url.ParseQuery(queries[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := url.Values{"id": {"0123456789abcdef"}, "v": {version.Version}, "agent": {"v0.9.1:2", "unknown:1"}}
+			if fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Fatalf("the check carried %v, want %v", got, want)
 			}
 		})
 	}
