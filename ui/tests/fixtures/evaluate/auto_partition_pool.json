@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "replicas": 1,
+  "plan_scope": "per_replica",
+  "ok": true,
+  "template_deviated": false,
+  "entrypoint": [
+    "vllm",
+    "serve",
+    "/model"
+  ],
+  "argv": [
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "$TP_SIZE",
+    "--enable-prompt-tokens-details",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "$TP_SIZE",
+    "--enable-prompt-tokens-details",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "env": {
+    "GLOO_SOCKET_IFNAME": "lo",
+    "HF_HUB_OFFLINE": "1",
+    "NCCL_SOCKET_IFNAME": "lo",
+    "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_HOST_IP": "127.0.0.1"
+  },
+  "env_layers": {
+    "system": {
+      "GLOO_SOCKET_IFNAME": "lo",
+      "HF_HUB_OFFLINE": "1",
+      "NCCL_SOCKET_IFNAME": "lo",
+      "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_HOST_IP": "127.0.0.1"
+    }
+  },
+  "command_mode": "engine",
+  "model_mount_path": "/model",
+  "shm_bytes": 17179869184,
+  "image": "example/vllm:test",
+  "warnings": [
+    {
+      "code": "IMAGE_CATALOG_NO_MATCH"
+    }
+  ],
+  "candidates": [
+    {
+      "node_uuid": "pool-busy",
+      "node_name": "pool-busy",
+      "ok": false,
+      "reason": {
+        "code": "no_free_gpu"
+      },
+      "plan": {
+        "plan": null,
+        "explain": {
+          "chosen": null,
+          "rejected": null,
+          "topo_highlight": {
+            "gpus": null,
+            "links": null,
+            "numa": null
+          },
+          "filters": [
+            {
+              "code": "no_free_gpu"
+            }
+          ]
+        },
+        "ok": false,
+        "message": {
+          "code": "no_free_gpu"
+        }
+      }
+    }
+  ],
+  "acquisition": {
+    "providers": [
+      {
+        "key": "public:huggingface:org/partition-pool:main",
+        "label": "huggingface",
+        "reason": "configured model provider",
+        "recommended": true
+      }
+    ],
+    "image": {
+      "image": "example/vllm:test",
+      "cache_reason": "node_unselected",
+      "options": [
+        {
+          "image": "example/vllm:test",
+          "reason": "engine_default",
+          "compatible": true
+        }
+      ]
+    }
+  },
+  "eligible_nodes": [
+    {
+      "uuid": "pool-busy",
+      "name": "pool-busy",
+      "eligible": true
+    }
+  ],
+  "pool_partition_capability": {
+    "backend": "nvidia-dgpu",
+    "display_name": "NVIDIA dGPU",
+    "vendor": "nvidia",
+    "maturity": "stable",
+    "status": "ready",
+    "compatibility_summary": "NVIDIA CUDA GPU"
+  },
+  "form_values": {
+    "dtype": "auto",
+    "enable_cache_report": true,
+    "extra_args": "",
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto",
+    "performance_mode": "balanced",
+    "served_model_name": ""
+  },
+  "defaults": {
+    "model_mount": "/model",
+    "master_port": 29500,
+    "engine": "vllm"
+  },
+  "effective_params": {
+    "dtype": "auto",
+    "enable_cache_report": true,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto",
+    "performance_mode": "balanced",
+    "served_model_name": ""
+  },
+  "engine_decides_param_keys": [
+    "enable_request_metrics"
+  ]
+}

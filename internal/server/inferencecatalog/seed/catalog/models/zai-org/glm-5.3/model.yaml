@@ -1,0 +1,119 @@
+model_id: zai-org/glm-5.3
+source: upstream
+display_title: GLM-5.3
+parameter_count: 743B
+architecture: moe
+input_modalities:
+- text
+context_length: 1048576
+release_date: '2026-08-25'
+model_config:
+  model_type: glm_moe_dsa
+  num_hidden_layers: 78
+  hidden_size: 6144
+  num_attention_heads: 64
+  num_key_value_heads: 64
+  head_dim: 192
+  max_position_embeddings: 1048576
+  kv_lora_rank: 512
+  qk_rope_head_dim: 64
+  qk_nope_head_dim: 192
+  v_head_dim: 256
+specs:
+- name: fp8-vllm-nvidia-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-5.3
+        revision: ba32f8c19c8738e2c57c71798c601d477a7bf844
+  weight_bytes: 755632050320
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200|H20-3e|B200|B300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --kv-cache-dtype
+  - fp8_e4m3
+  - --tool-call-parser
+  - glm47
+  - --reasoning-parser
+  - glm47
+  - --enable-auto-tool-choice
+  - --max-model-len
+  - '262144'
+  - --max-num-seqs
+  - '32'
+  - --speculative-config
+  - '{"method":"mtp","num_speculative_tokens":5}'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-amd-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: vllm/vllm-openai-rocm:v0.29.0
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-5.3
+        revision: ba32f8c19c8738e2c57c71798c601d477a7bf844
+  weight_bytes: 755632050320
+  gpus:
+    vendor: amd
+    name: (^|[^A-Za-z0-9])(?:MI300X|MI325X|MI350X|MI355X)([^A-Za-z0-9]|$)
+    display_target: amd
+  args:
+  - --kv-cache-dtype
+  - fp8_e4m3
+  - --tool-call-parser
+  - glm47
+  - --reasoning-parser
+  - glm47
+  - --enable-auto-tool-choice
+  - --max-model-len
+  - '524288'
+  - --max-num-seqs
+  - '32'
+  - --speculative-config
+  - '{"method":"mtp","num_speculative_tokens":5}'
+  - --linear-backend
+  - aiter
+  - --moe-backend
+  - aiter
+  - --gpu-memory-utilization
+  - '0.80'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  env:
+    VLLM_ROCM_USE_AITER: '1'
+    VLLM_ROCM_USE_AITER_FUSION_SHARED_EXPERTS: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md

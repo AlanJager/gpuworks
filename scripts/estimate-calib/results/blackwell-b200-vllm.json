@@ -1,0 +1,18 @@
+[
+  {
+    "tag": "b200-q3-8b-u50-L4k",
+    "model": "Qwen/Qwen3-8B", "engine": "vllm", "gpu": "NVIDIA B200",
+    "dtype": "bfloat16", "kv_cache_dtype": "auto", "tp": 1,
+    "max_model_len": 4096, "mnbt": 8192, "gpu_mem_util": 0.5,
+    "kv_tokens": 511600, "weights_gib": 15.27,
+    "source": "runpod pod, vllm/vllm-openai, --load-format dummy, read from /metrics kv_cache_size_tokens"
+  },
+  {
+    "tag": "b200-q3-8b-u90-L4k",
+    "model": "Qwen/Qwen3-8B", "engine": "vllm", "gpu": "NVIDIA B200",
+    "dtype": "bfloat16", "kv_cache_dtype": "auto", "tp": 1,
+    "max_model_len": 4096, "mnbt": 8192, "gpu_mem_util": 0.9,
+    "kv_tokens": 1031008, "weights_gib": 15.27,
+    "source": "runpod pod, vllm/vllm-openai, --load-format dummy, read from /metrics kv_cache_size_tokens"
+  }
+]

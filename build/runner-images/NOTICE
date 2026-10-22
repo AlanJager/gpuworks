@@ -1,0 +1,43 @@
+gpuworks-runner 自建镜像构建仓
+==============================
+
+本目录下的构建配方（Dockerfile、patches/、build.sh 的构建流程）部分派生自
+GPUStack Runner 项目：
+
+    GPUStack Runner
+    https://github.com/gpustack/runner
+    Copyright (c) GPUStack contributors
+    Licensed under the Apache License, Version 2.0
+
+    参照版本：commit 80034d199fd29b712f68131ab8d0cdddf9646e8a（2026-09-24）
+
+Apache License 2.0 全文见 licenses/Apache-2.0.txt。按该许可第 4 条，派生作品
+必须随附许可副本并保留本声明。
+
+具体派生关系（逐文件）
+----------------------
+
+| 本仓文件 | 上游对应 | 派生程度 |
+|---|---|---|
+| `patches/vllm/001_wrong_dp_ray.patch` | `pack/.post_operation/20260605_vllm_patch_dp_port` | 补丁内容实质相同 |
+| `patches/vllm/002_mooncake_prom_metrics.patch` | `pack/.post_operation/20260916_vllm_patch_mooncake_prom_metrics` | 补丁内容实质相同 |
+| `patches/vllm/003_mooncake_store_rejected_pending_load.patch` | `pack/.post_operation/20260924_vllm_patch_mooncake_store_pending_load` | 补丁内容实质相同 |
+| `patches/vllm_omni/001_omni_bypass_non_omni_loads.diff` | 上游 omni 补丁层 | 补丁内容实质相同 |
+| `cuda/Dockerfile.sglang` | `pack/cuda/Dockerfile.sglang` | 工具层与分层思路参照（r2 已删除 diffusion 安装层——上游 base 自带，故不再派生自上游的 diffusion post-operation） |
+| `cuda/Dockerfile.vllm` | `pack/cuda/Dockerfile.vllm` | 工具层/ray pin/omni 与补丁顺序参照 |
+| `cann/Dockerfile.{vllm,sglang}` | `pack/cann/Dockerfile.{vllm,sglang}` | 引擎可执行文件 env 包装、型号差异化跳过规则参照 |
+| `dtk/Dockerfile.{vllm,sglang}` | `pack/dtk/Dockerfile.{vllm,sglang}` | 工具层与 vanilla 分层思路参照 |
+| `hggc/Dockerfile.{vllm,sglang}` | `pack/hggc/Dockerfile.{vllm,sglang}` | 工具层与 vanilla 分层思路参照 |
+| `overlays/audit/stack-audit.py` | 非上游：同事 `zhangckid/gpuworks-runner` 的 Gen3 镜像 `nv-cu130-vllm0290-e5907b16267a` 的 layers[37]（层摘要 `sha256:7d01738a5455…`），2026-10-05 核对与原件逐字节相同（112 行 / 5390 字节） | 见 artifacts/work/2026-10-03-runner-images/research/upstream-image-diff.md。r2 新增 `GPUWORKS_PIP_CHECK_ALLOW` 白名单一处改动。已知差异：同事 9 月 20 日的 0280 镜像（层摘要 `sha256:5be65c09…`）里该文件的 dtk 版本探测路径多两项（`/opt/dtk/.dtk_version`、`/opt/dtk/.info/version-dev`） |
+| `build.sh` 的 `squash_image()` | `pack/squash_image.sh` | 做法派生（FROM scratch + COPY --from + 重放 config） |
+| `matrix.yaml` | `pack/matrix.yaml` | 仅借用「每项声明 backend/engine/args」的组织方式；档位与版本为本仓自选 |
+
+tag 命名风格与上游 `gpustack/runner` 保持可比（`<backend><框架档>[-<型号>]-<engine><版本>`），
+目的是推理目录（seed catalog）的 image 字段平移成本低。
+
+镜像标签（label）与用户可见字符串
+---------------------------------
+
+产出镜像的 label 一律为 `io.gpuworks.*` / `org.opencontainers.image.vendor=gpuworks`，
+tag 中不含上游项目名。署名保留在本构建仓的源码树与本文件中，这既满足 Apache-2.0
+第 4 条，也不会出现在用户看到的镜像名或控制台文本里。

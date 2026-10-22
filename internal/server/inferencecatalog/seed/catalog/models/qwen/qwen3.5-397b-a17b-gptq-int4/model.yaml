@@ -1,0 +1,118 @@
+model_id: Qwen/Qwen3.5-397B-A17B-GPTQ-Int4
+source: upstream
+display_title: Qwen3.5-397B-A17B-GPTQ-Int4
+parameter_count: 397B
+architecture: moe
+context_length: 262144
+release_date: '2026-02-16'
+model_config:
+  model_type: qwen3_5_moe
+  num_hidden_layers: 60
+  hidden_size: 4096
+  num_attention_heads: 32
+  num_key_value_heads: 2
+  head_dim: 256
+  max_position_embeddings: 262144
+  layer_types:
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  vision_config:
+    patch_size: 16
+    max_position_embeddings: 2304
+kv_bytes_per_token:
+  vllm: 30720
+  sglang: 30720
+input_modalities:
+- text
+- image
+specs:
+- name: int4-vllm-ppu-df333de3
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-397B-A17B-GPTQ-Int4
+        revision: df333de344e06b492063d1ca04e2d4ee878f7595
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-397B-A17B-GPTQ-Int4
+        revision: ff0ea7b12c6367b392e3a963ac8ba7b1071e82fc
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"PPU profile requires exactly 4 GPUs\")\n    return\
+      \ {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"PP_SIZE\": 1, \"SP_DEGREE\": 1}"
+  weight_bytes: 235708083992

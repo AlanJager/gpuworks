@@ -1,0 +1,103 @@
+model_id: qwen/qwen3-30b-a3b-instruct-2507
+source: upstream
+display_title: Qwen3 30b A3b Instruct 2507
+release_date: '2025-07-28'
+model_config: {model_type: qwen3_moe, num_hidden_layers: 48, hidden_size: 2048, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-sglang-ascend-04996b03
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-30B-A3B-Instruct-2507
+        revision: 0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe
+    - modelscope:
+        repo_id: Qwen/Qwen3-30B-A3B-Instruct-2507
+        revision: 1bb16df4f3619dc6685f46f7cbb482b06291d707
+  weight_bytes: 61084263662
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-30B-A3B-Instruct-2507
+        revision: 0d7cf23991f47feeb3a57ecb4c9cee8ea4a17bfe
+    - modelscope:
+        repo_id: Qwen/Qwen3-30B-A3B-Instruct-2507
+        revision: 1bb16df4f3619dc6685f46f7cbb482b06291d707
+  weight_bytes: 61084262963
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
+        revision: 5a5a776300a41aaa681dd7ff0106608ef2bc90db
+    - modelscope:
+        repo_id: Qwen/Qwen3-30B-A3B-Instruct-2507-FP8
+        revision: e6c8b0cfccd9d593ec7b6686353e9a91dad8f5cf
+  weight_bytes: 31195094809
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

@@ -1,0 +1,60 @@
+{
+  "id": "model-arch-qwen3-tts-without-omni",
+  "source": "artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md (control run on cuda13.0-vllm0.30.0-r2)",
+  "note": "Qwen3-TTS checkpoint served with the plain vLLM 0.30.0 runner image and no --omni: transformers does not know model_type qwen3_tts (the model is vllm-omni only). Error text verbatim per the record plus the rest of the upstream transformers message; INFO lines and traceback frames reconstructed; GPU from the record's 3090 host.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen3-tts-0.6b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 3090",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-07 14:10:21 [api_server.py:1971] vLLM API server version 0.30.0",
+    "(APIServer pid=1) INFO 10-07 14:10:21 [utils.py:328] non-default args: {'model_tag': '/model', 'host': '127.0.0.1', 'port': 30000, 'model': '/model', 'served_model_name': ['qwen3-tts-0.6b']}",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/models/auto/configuration_auto.py\", line 1371, in from_pretrained",
+    "(APIServer pid=1)     config_class = CONFIG_MAPPING[config_dict[\"model_type\"]]",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/models/auto/configuration_auto.py\", line 1060, in __getitem__",
+    "(APIServer pid=1)     raise KeyError(key)",
+    "(APIServer pid=1) KeyError: 'qwen3_tts'",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) During handling of the above exception, another exception occurred:",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/config/model.py\", line 471, in __post_init__",
+    "(APIServer pid=1)     hf_config = get_config(self.hf_config_path or self.model,",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/config.py\", line 141, in parse",
+    "(APIServer pid=1)     config = AutoConfig.from_pretrained(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/models/auto/configuration_auto.py\", line 1373, in from_pretrained",
+    "(APIServer pid=1)     raise ValueError(",
+    "(APIServer pid=1) ValueError: The checkpoint you are trying to load has model type `qwen3_tts` but Transformers does not recognize this architecture. This could be because of an issue with the checkpoint, or because your version of Transformers is out of date.",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) You can update Transformers with the command `pip install --upgrade transformers`. If this does not work, and the checkpoint is very new, then there may not be a release version that supports this model yet. In this case, you can get the most up-to-date code by installing Transformers from source with the command `pip install git+https://github.com/huggingface/transformers.git`"
+  ],
+  "expect_signature": "model_arch_unsupported",
+  "expect_keywords": [
+    [
+      "vllm-omni",
+      "--omni",
+      "omni"
+    ],
+    [
+      "镜像",
+      "image"
+    ]
+  ]
+}

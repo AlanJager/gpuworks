@@ -1,0 +1,73 @@
+{
+  "id": "cuda-oom-weights-32b-tp1-l40s",
+  "source": "https://github.com/pytorch/pytorch/blob/main/c10/cuda/CUDACachingAllocator.cpp (message format; same format captured verbatim in artifacts/archive/2026-08-24-partition-framework/partition-framework-l4/TestNVIDIADockerHAMiPartitionQuota.txt)",
+  "note": "Qwen2.5-32B-Instruct bf16 (~61 GiB of weights) on a single 48 GB L40S with TP=1: OOM while allocating parameters. Constructed from upstream message format; command and GPU chosen for the scenario.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen2.5-32b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--max-model-len",
+    "32768",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA L40S",
+      "memory_gib": 48
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 06:21:17 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 06:21:17 [utils.py:233] non-default args: {'model_tag': '/model', 'host': '127.0.0.1', 'port': 30000, 'model': '/model', 'max_model_len': 32768, 'served_model_name': ['qwen2.5-32b']}",
+    "(APIServer pid=1) INFO 10-09 06:21:26 [model.py:547] Resolved architecture: Qwen2ForCausalLM",
+    "(APIServer pid=1) INFO 10-09 06:21:26 [model.py:1510] Using max model len 32768",
+    "(EngineCore_DP0 pid=212) INFO 10-09 06:21:31 [core.py:644] Waiting for init message from front-end.",
+    "(EngineCore_DP0 pid=212) INFO 10-09 06:21:31 [core.py:77] Initializing a V1 LLM engine (v0.11.0) with config: model='/model', dtype=torch.bfloat16, max_seq_len=32768, tensor_parallel_size=1, pipeline_parallel_size=1, quantization=None",
+    "(EngineCore_DP0 pid=212) INFO 10-09 06:21:33 [parallel_state.py:1208] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, TP rank 0, EP rank 0",
+    "(EngineCore_DP0 pid=212) INFO 10-09 06:21:34 [gpu_model_runner.py:2602] Starting to load model /model...",
+    "(EngineCore_DP0 pid=212) INFO 10-09 06:21:34 [cuda.py:366] Using Flash Attention backend on V1 engine.",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708] EngineCore failed to start.",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708] Traceback (most recent call last):",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_model_runner.py\", line 2635, in load_model",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]     self.model = model_loader.load_model(",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/base_loader.py\", line 45, in load_model",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]     model = initialize_model(vllm_config=vllm_config,",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/models/qwen2.py\", line 92, in __init__",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]     self.gate_up_proj = MergedColumnParallelLinear(",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/linear.py\", line 233, in create_weights",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]     weight = Parameter(torch.empty(sum(output_partition_sizes),",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/torch/utils/_device.py\", line 104, in __torch_function__",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708]     return func(*args, **kwargs)",
+    "(EngineCore_DP0 pid=212) ERROR 10-09 06:21:41 [core.py:708] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 270.00 MiB. GPU 0 has a total capacity of 44.39 GiB of which 87.38 MiB is free. Including non-PyTorch memory, this process has 44.29 GiB memory in use. Of the allocated memory 43.85 GiB is allocated by PyTorch, and 15.62 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://docs.pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf)",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/bin/vllm\", line 10, in <module>",
+    "(APIServer pid=1)     sys.exit(main())",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "cuda_oom",
+  "expect_keywords": [
+    [
+      "tensor-parallel-size",
+      "tensor_parallel_size",
+      "TP"
+    ],
+    [
+      "quantiz",
+      "量化",
+      "AWQ",
+      "GPTQ",
+      "FP8",
+      "INT4"
+    ]
+  ]
+}

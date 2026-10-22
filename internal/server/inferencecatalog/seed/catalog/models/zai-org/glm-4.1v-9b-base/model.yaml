@@ -1,0 +1,64 @@
+model_id: zai-org/glm-4.1v-9b-base
+source: upstream
+display_title: glm-4.1v-9b-base
+release_date: '2025-06-28'
+model_config: {model_type: glm4v, num_hidden_layers: 40, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 2, max_position_embeddings: 65536, vision_config: {image_size: 336, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 40960
+  sglang: 40960
+specs:
+- name: bf16-callable-hygon-ffbf0c54
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: image.sourcefind.cn:5000/dcu/admin/base/pytorch
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.1V-9B-Base
+        revision: 5e8d1942554a9277eabcf9e83211bbf9c86136ee
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.1V-9B-Base
+        revision: 74171243b5d7d2628ef6eda0a8bba141beccb722
+  weight_bytes: 20605689796
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --adapter
+  - vision_remote_adapter
+  - --operation
+  - openai.chat
+  - --adapter-config
+  - '{"family":"glm4v","max_new_tokens":128}'
+  env:
+    HF_HUB_OFFLINE: '1'
+    PYTHONPATH: /opt/gpuworks/runtime
+    TOKENIZERS_PARALLELISM: 'false'
+    TRANSFORMERS_OFFLINE: '1'
+  assets:
+  - file: assets/gpuworks-vision_remote-runtime.tar.gz
+    sha256: 96a58516ab8a27abdc685b38062c1d8a9691283c6ece1a34fb7412acf4479f38
+    unpack_to: /opt/gpuworks/runtime
+  entrypoint:
+  - python3
+  - /opt/gpuworks/runtime/gpuworks_serve.py
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

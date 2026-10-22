@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "errors": [
+    {
+      "field": "replicas",
+      "code": "REPLICAS_NEGATIVE"
+    },
+    {
+      "field": "container_mount_rows",
+      "code": "MOUNT_TARGET_DUPLICATE",
+      "params": {
+        "target": "/model"
+      }
+    }
+  ],
+  "replicas": -1,
+  "plan_scope": "per_replica",
+  "ok": false,
+  "template_deviated": false,
+  "argv": null,
+  "image": "",
+  "warnings": [],
+  "eligible_nodes": [
+    {
+      "uuid": "fixture-peer",
+      "name": "fixture-peer",
+      "eligible": true
+    },
+    {
+      "uuid": "fixture-chip-old",
+      "name": "fixture-chip-old",
+      "eligible": true
+    },
+    {
+      "uuid": "fixture-node",
+      "name": "fixture-node",
+      "eligible": true
+    }
+  ]
+}

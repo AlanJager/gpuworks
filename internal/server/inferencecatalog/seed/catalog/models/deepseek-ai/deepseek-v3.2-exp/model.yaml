@@ -1,0 +1,74 @@
+model_id: deepseek-ai/deepseek-v3.2-exp
+source: upstream
+display_title: DeepSeek-V3.2-Exp
+parameter_count: 671B
+architecture: moe
+context_length: 163840
+release_date: '2025-09-29'
+model_config: {model_type: deepseek_v32, num_hidden_layers: 61, hidden_size: 7168, num_attention_heads: 128, num_key_value_heads: 128, max_position_embeddings: 163840, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128}
+kv_bytes_per_token:
+  vllm: 70272
+  sglang: 70272
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V3.2-Exp
+        revision: 194c67e12b1b0d6df0ef373ddcf215bc84027409
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V3.2-Exp
+        revision: 9d57add95c1afb8baa18be1d7adcf4eb51e2b258
+  weight_bytes: 689500018570
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V3.2-Exp
+        revision: 194c67e12b1b0d6df0ef373ddcf215bc84027409
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V3.2-Exp
+        revision: 9d57add95c1afb8baa18be1d7adcf4eb51e2b258
+  weight_bytes: 689500018570
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - deepseek_v32
+  - --tool-call-parser
+  - deepseek_v32
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

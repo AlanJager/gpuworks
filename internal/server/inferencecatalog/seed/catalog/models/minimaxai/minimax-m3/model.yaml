@@ -1,0 +1,481 @@
+model_id: minimaxai/minimax-m3
+source: upstream
+display_title: MiniMax-M3
+parameter_count: 427B
+architecture: moe
+context_length: 1048576
+release_date: '2026-06-02'
+model_config: {model_type: minimax_m3_vl, num_hidden_layers: 60, hidden_size: 6144, num_attention_heads: 64, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 1048576, vision_config: {image_size: 2016, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 122880
+  sglang: 122880
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3
+        revision: f0e1c1e04d40177e4673a22097036854f536e9c0
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3
+        revision: 5c6288b3f1525cd303b8f64853452282e3a79625
+  weight_bytes: 854200504173
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3
+        revision: f0e1c1e04d40177e4673a22097036854f536e9c0
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3
+        revision: 5c6288b3f1525cd303b8f64853452282e3a79625
+  weight_bytes: 854200504173
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general-eagle3-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3
+        revision: f0e1c1e04d40177e4673a22097036854f536e9c0
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3
+        revision: 5c6288b3f1525cd303b8f64853452282e3a79625
+  weight_bytes: 854200504173
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --speculative-config
+  - '{"method":"eagle3","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASH_ATTN"}'
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: MiniMaxAI/MiniMax-M3
+          revision: f0e1c1e04d40177e4673a22097036854f536e9c0
+      - modelscope:
+          repo_id: MiniMax/MiniMax-M3
+          revision: 5c6288b3f1525cd303b8f64853452282e3a79625
+    weight_bytes: 854200504173
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: inferact/minimax-m3-eagle3
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: 44cafa5ace418d8b22e2958df0c6aa1f2476842c
+      - modelscope:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: e946c27626cceac369a4f56d14a97fe5060a8161
+    weight_bytes: 6527483166
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: mxfp8
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3-MXFP8
+        revision: bfda9553334175c28dae8d3fedf4a428b5169776
+  weight_bytes: 443776005285
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --attention-backend
+  - fa4
+  - --moe-runner-backend
+  - deep_gemm
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp8-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp8
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3-MXFP8
+        revision: bfda9553334175c28dae8d3fedf4a428b5169776
+  weight_bytes: 443776005285
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --attention_config.indexer_kv_dtype
+  - fp8
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp8-vllm-nvidia-cc100-eagle3-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp8
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3-MXFP8
+        revision: bfda9553334175c28dae8d3fedf4a428b5169776
+  weight_bytes: 443776005285
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --attention_config.indexer_kv_dtype
+  - fp8
+  - --speculative-config
+  - '{"method":"eagle3","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASH_ATTN"}'
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: mxfp8
+      sources:
+      - huggingface:
+          repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+          revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+      - modelscope:
+          repo_id: MiniMax/MiniMax-M3-MXFP8
+          revision: bfda9553334175c28dae8d3fedf4a428b5169776
+    weight_bytes: 443776005285
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: inferact/minimax-m3-eagle3
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: 44cafa5ace418d8b22e2958df0c6aa1f2476842c
+      - modelscope:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: e946c27626cceac369a4f56d14a97fe5060a8161
+    weight_bytes: 6527483166
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp8
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3-MXFP8
+        revision: bfda9553334175c28dae8d3fedf4a428b5169776
+  weight_bytes: 443776005285
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --attention_config.indexer_kv_dtype
+  - fp8
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp8-vllm-nvidia-general-eagle3-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp8
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+        revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+    - modelscope:
+        repo_id: MiniMax/MiniMax-M3-MXFP8
+        revision: bfda9553334175c28dae8d3fedf4a428b5169776
+  weight_bytes: 443776005285
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --speculative-config
+  - '{"method":"eagle3","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASH_ATTN"}'
+  - --attention_config.indexer_kv_dtype
+  - fp8
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: mxfp8
+      sources:
+      - huggingface:
+          repo_id: MiniMaxAI/MiniMax-M3-MXFP8
+          revision: c5454eb03678d8710e54a4e0fc681b9f3b4a3dba
+      - modelscope:
+          repo_id: MiniMax/MiniMax-M3-MXFP8
+          revision: bfda9553334175c28dae8d3fedf4a428b5169776
+    weight_bytes: 443776005285
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: inferact/minimax-m3-eagle3
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: 44cafa5ace418d8b22e2958df0c6aa1f2476842c
+      - modelscope:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: e946c27626cceac369a4f56d14a97fe5060a8161
+    weight_bytes: 6527483166
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/MiniMax-M3-NVFP4
+        revision: 901464083161bf8612a29ff7ad29914cd4ab4a85
+    - modelscope:
+        repo_id: nv-community/MiniMax-M3-NVFP4
+        revision: f681d41330a08e7fb85b07b08f2226555bc50d96
+  weight_bytes: 250137296832
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --attention_config.backend
+  - FLASHINFER
+  - --attention_config.minimax_m3_msa_decode_backend
+  - cutlass
+  - --attention_config.use_trtllm_attention
+  - 'true'
+  - --attention_config.indexer_kv_dtype
+  - fp8
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+    VLLM_FLOAT32_MATMUL_PRECISION: high
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100-eagle3-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/MiniMax-M3-NVFP4
+        revision: 901464083161bf8612a29ff7ad29914cd4ab4a85
+    - modelscope:
+        repo_id: nv-community/MiniMax-M3-NVFP4
+        revision: f681d41330a08e7fb85b07b08f2226555bc50d96
+  weight_bytes: 250137296832
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --attention_config.backend
+  - FLASHINFER
+  - --attention_config.minimax_m3_msa_decode_backend
+  - cutlass
+  - --attention_config.use_trtllm_attention
+  - 'true'
+  - --attention_config.indexer_kv_dtype
+  - fp8
+  - --speculative-config
+  - '{"method":"eagle3","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASH_ATTN"}'
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - minimax_m3
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+    VLLM_FLOAT32_MATMUL_PRECISION: high
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/MiniMax-M3-NVFP4
+          revision: 901464083161bf8612a29ff7ad29914cd4ab4a85
+      - modelscope:
+          repo_id: nv-community/MiniMax-M3-NVFP4
+          revision: f681d41330a08e7fb85b07b08f2226555bc50d96
+    weight_bytes: 250137296832
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: inferact/minimax-m3-eagle3
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: 44cafa5ace418d8b22e2958df0c6aa1f2476842c
+      - modelscope:
+          repo_id: Inferact/MiniMax-M3-EAGLE3
+          revision: e946c27626cceac369a4f56d14a97fe5060a8161
+    weight_bytes: 6527483166
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

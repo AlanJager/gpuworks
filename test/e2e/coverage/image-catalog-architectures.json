@@ -1,0 +1,100 @@
+{
+  "contract_id": "gpuworks/image-catalog/architecture-options",
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_catalog_enums.py",
+  "test_function": "test_image_enum_options",
+  "name": "镜像登记 / architecture全部枚举选择 / 请求与刷新详情一致",
+  "command": "python3 test/e2e/image_catalog_enums.py --case architectures",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Catalog declaration only; does not assert architecture/framework compatibility, registry content or execution."
+  },
+  "product_contracts": [
+    "ui/src/pages/images/ImageImportDrawer.tsx",
+    "ui/src/pages/ImagesPage.tsx",
+    "internal/server/api/images_catalog_import.go"
+  ],
+  "crud": {
+    "create": "covered: each enum option creates an independent image",
+    "read": "covered: series/versions GET and refreshed detail",
+    "update": "MISSING",
+    "delete": "MISSING: teardown only"
+  },
+  "dimensions": {
+    "enum_options": [
+      "multi",
+      "amd64",
+      "arm64"
+    ],
+    "checklist": [
+      "5.1",
+      "5.2",
+      "6.1",
+      "6.2"
+    ],
+    "request": "series[].versions[].arch",
+    "persistence": "version.arch",
+    "partial_checklist": {
+      "5.6": "Keyboard opens/traverses options; only default architecture selected with Enter. Full keyboard selection/closing focus matrix remains missing."
+    }
+  },
+  "missing": [
+    "full field negative/default/reset matrix",
+    "framework/engine/architecture compatibility and cross-product combinations",
+    "service errors and permissions",
+    "image pull and actual engine execution",
+    "list filters and 10/30/100 volumes",
+    "complete focus/computed-style matrix"
+  ],
+  "fields": [
+    {
+      "field_id": "image.architecture",
+      "component": "Select",
+      "request": "series[].versions[].arch",
+      "persistence": "version.arch",
+      "covered": [
+        "each visible option selected",
+        "exact wire value",
+        "independent GET and UI refreshed detail"
+      ],
+      "missing": [
+        "clear/reset",
+        "disabled/error/loading"
+      ],
+      "required": false,
+      "default": "multi",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    },
+    {
+      "field_id": "image.rolling",
+      "component": "Switch",
+      "request": "series[].versions[].rolling_tag",
+      "persistence": "version.rolling_tag",
+      "covered": [
+        "default false",
+        "false->true->false",
+        "both final values submitted and independently read"
+      ],
+      "missing": [
+        "existing-version editing"
+      ],
+      "required": false,
+      "default": false,
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    }
+  ],
+  "other_field_contract": "test/e2e/coverage/image-catalog-register.json"
+}

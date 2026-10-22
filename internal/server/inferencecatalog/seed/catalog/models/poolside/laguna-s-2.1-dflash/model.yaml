@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 24576
+  sglang: 24576
+model_id: poolside/laguna-s-2.1-dflash
+source: upstream
+display_title: Laguna-S-2.1-DFlash
+release_date: '2026-07-13'
+specs: []
+input_modalities: [text]

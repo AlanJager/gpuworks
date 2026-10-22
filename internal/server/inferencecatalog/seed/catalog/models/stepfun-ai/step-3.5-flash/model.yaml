@@ -1,0 +1,231 @@
+model_id: stepfun-ai/step-3.5-flash
+source: upstream
+display_title: Step-3.5-Flash
+parameter_count: 196B
+architecture: moe
+context_length: 262144
+release_date: '2026-02-01'
+model_config: {model_type: step3p5, num_hidden_layers: 45, hidden_size: 4096, num_attention_heads: 64, head_dim: 128, max_position_embeddings: 262144, sliding_window: 512, layer_types: [full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention]}
+kv_bytes_per_token:
+  vllm: 184320
+  sglang: 184320
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash
+        revision: ab446a3de5e171ea341227e24bb1f090e1b771f7
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash
+        revision: 48319ae28f0c974b551a6c4c7bf459e2d111c4af
+  weight_bytes: 398779647674
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash
+        revision: ab446a3de5e171ea341227e24bb1f090e1b771f7
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash
+        revision: 48319ae28f0c974b551a6c4c7bf459e2d111c4af
+  weight_bytes: 398779647674
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - step3p5
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - step3p5
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash-FP8
+        revision: 6eebda59dd87ca5729648ec7cfed0becfceb273e
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash-FP8
+        revision: 8c1da080ce2915f1aedc3c27b17ad74f1a0dc8ca
+  weight_bytes: 208572502235
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash-FP8
+        revision: 6eebda59dd87ca5729648ec7cfed0becfceb273e
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash-FP8
+        revision: 8c1da080ce2915f1aedc3c27b17ad74f1a0dc8ca
+  weight_bytes: 208572502235
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - step3p5
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - step3p5
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP8: '0'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash-FP8
+        revision: 6eebda59dd87ca5729648ec7cfed0becfceb273e
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash-FP8
+        revision: 8c1da080ce2915f1aedc3c27b17ad74f1a0dc8ca
+  weight_bytes: 208572502235
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - step3p5
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - step3p5
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash-INT4
+        revision: 6930492fee9ffd6f13c2e665a94244c60d2d7d83
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash-INT4
+        revision: 78d61ac40ae1a60a9e50b8c2fc5977d95e13de7b
+  weight_bytes: 111499772316
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - step3p5
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - step3p5
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int8
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step-3.5-Flash-INT8
+        revision: cd1b6ac3724fd6ec8b7e47091ae38c9ecb21144d
+    - modelscope:
+        repo_id: stepfun-ai/Step-3.5-Flash-INT8
+        revision: dfc680edae3d8136b4f7abd47ea47d73ac2b4b97
+  weight_bytes: 209417904039
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - step3p5
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - step3p5
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

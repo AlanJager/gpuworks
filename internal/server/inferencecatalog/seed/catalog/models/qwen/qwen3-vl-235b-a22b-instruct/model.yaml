@@ -1,0 +1,153 @@
+model_id: qwen/qwen3-vl-235b-a22b-instruct
+source: upstream
+display_title: Qwen3-VL-235B-A22B-Instruct
+parameter_count: 235B
+architecture: moe
+context_length: 262144
+release_date: '2025-09-22'
+model_config: {model_type: qwen3_vl_moe, num_hidden_layers: 94, hidden_size: 4096, num_attention_heads: 64, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 262144, vision_config: {patch_size: 16, max_position_embeddings: 2304}}
+kv_bytes_per_token:
+  vllm: 192512
+  sglang: 192512
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct
+        revision: 710c13861be6c466e66de3f484069440b8f31389
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct
+        revision: 40d2a46b2b50c238868f4b94e1685f4247cc0f29
+  weight_bytes: 471351862384
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct
+        revision: 710c13861be6c466e66de3f484069440b8f31389
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct
+        revision: 40d2a46b2b50c238868f4b94e1685f4247cc0f29
+  weight_bytes: 471351862384
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct-FP8
+        revision: 7fbcd8c9e2ad011808ed8a57d64c462605c3e381
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct-FP8
+        revision: 8889421117900c118e5b994a7b5efac959e2f628
+  weight_bytes: 237615527371
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct-FP8
+        revision: 7fbcd8c9e2ad011808ed8a57d64c462605c3e381
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-235B-A22B-Instruct-FP8
+        revision: 8889421117900c118e5b994a7b5efac959e2f628
+  weight_bytes: 237615527371
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/Qwen3-VL-235B-A22B-Instruct-NVFP4
+        revision: 871d38d02226334efbf047f7186f57c64a146ac4
+    - modelscope:
+        repo_id: nv-community/Qwen3-VL-235B-A22B-Instruct-NVFP4
+        revision: 2879da8a1ee19278435d5683152d58d0f5f41dff
+  weight_bytes: 135306045356
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP4: '1'
+  args:
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

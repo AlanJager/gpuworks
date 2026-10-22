@@ -1,0 +1,101 @@
+/* Network topology guide, in the product's antd look: neutrals from
+   theme/tokens.ts, and one colour per kind of traffic taken from the antd tag
+   presets the network role tags use, shared by the legend, the diagram and
+   the table's tags. */
+.net-topo {
+  --topo-primary: #005bd4;
+  --topo-primary-hover: #0043b1;
+  --topo-primary-soft: #e6f6ff;
+  --topo-ink: #181a1d;
+  --topo-text: #4a4c4f;
+  --topo-muted: #707275;
+  --topo-border: #dbdde0;
+  --topo-border-soft: #f0f2f5;
+  --topo-control: #c8cacd;
+  --topo-canvas: #f5f7fa;
+  --topo-panel: #ffffff;
+  --topo-edge: #96989b;
+  --topo-edge-bg: #f5f7fa;
+  --topo-edge-bd: #dbdde0;
+  --topo-mgmt: #595959;
+  --topo-mgmt-bg: #fafafa;
+  --topo-mgmt-bd: #d9d9d9;
+  --topo-serve: #08979c;
+  --topo-serve-bg: #e6fffb;
+  --topo-serve-bd: #87e8de;
+  --topo-store: #1677ff;
+  --topo-store-bg: #e6f4ff;
+  --topo-store-bd: #91caff;
+  --topo-compute: #722ed1;
+  --topo-compute-bg: #f9f0ff;
+  --topo-compute-bd: #d3adf7;
+  --topo-host: #d46b08;
+  --topo-host-bg: #fff7e6;
+  --topo-host-bd: #ffd591;
+  display: grid;
+  gap: 12px;
+}
+
+.net-topo-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--topo-muted); }
+.net-topo-key { display: inline-flex; align-items: center; gap: 6px; }
+.net-topo-swatch { width: 18px; height: 0; border-top: 2px solid var(--topo-lane); }
+.net-topo-swatch.dash { border-top-style: dashed; }
+
+.net-topo-diagram { border: 1px solid var(--topo-border); border-radius: 2px; overflow-x: auto; background: var(--topo-panel); }
+.net-topo-diagram svg { display: block; width: 100%; min-width: 860px; height: auto; }
+.net-topo-diagram text { fill: var(--topo-text); }
+.net-topo-diagram .title { fill: var(--topo-ink); font-weight: 600; }
+.net-topo-diagram .muted { fill: var(--topo-muted); }
+.net-topo-diagram .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: var(--topo-ink); }
+.net-topo-diagram .halo { paint-order: stroke; stroke: var(--topo-panel); stroke-width: 4px; stroke-linejoin: round; }
+.net-topo-diagram .box { fill: var(--topo-panel); stroke: var(--topo-border); }
+.net-topo-diagram .server { fill: var(--topo-canvas); stroke: var(--topo-control); }
+.net-topo-diagram .actor { fill: var(--topo-edge-bg); stroke: var(--topo-edge-bd); }
+.net-topo-diagram .link { fill: none; stroke-width: 1.5; }
+.net-topo-diagram .link.dash { stroke-dasharray: 5 4; }
+.net-topo-diagram .edge { stroke: var(--topo-edge); }
+.net-topo-diagram .mgmt { stroke: var(--topo-mgmt); }
+.net-topo-diagram .serve { stroke: var(--topo-serve); }
+.net-topo-diagram .store { stroke: var(--topo-store); }
+.net-topo-diagram .compute { stroke: var(--topo-compute); }
+.net-topo-diagram .host { stroke: var(--topo-host); }
+.net-topo-diagram .fill-edge { fill: var(--topo-edge-bg); stroke: var(--topo-edge-bd); }
+.net-topo-diagram .fill-mgmt { fill: var(--topo-mgmt-bg); stroke: var(--topo-mgmt-bd); }
+.net-topo-diagram .fill-serve { fill: var(--topo-serve-bg); stroke: var(--topo-serve-bd); }
+.net-topo-diagram .fill-store { fill: var(--topo-store-bg); stroke: var(--topo-store-bd); }
+.net-topo-diagram .fill-compute { fill: var(--topo-compute-bg); stroke: var(--topo-compute-bd); }
+.net-topo-diagram .arrow-edge { fill: var(--topo-edge); }
+.net-topo-diagram .arrow-mgmt { fill: var(--topo-mgmt); }
+.net-topo-diagram .arrow-serve { fill: var(--topo-serve); }
+.net-topo-diagram .arrow-host { fill: var(--topo-host); }
+.net-topo-diagram [data-ref], .net-topo-marker { transition: opacity 0.15s; }
+.net-topo-diagram .dimmed { opacity: 0.18; }
+.net-topo-marker { cursor: pointer; outline: none; }
+.net-topo-marker circle { fill: var(--topo-primary); stroke: var(--topo-panel); stroke-width: 2; }
+.net-topo-marker text { fill: #ffffff; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+.net-topo-marker.on circle, .net-topo-marker:hover circle, .net-topo-marker:focus-visible circle { fill: var(--topo-primary-hover); }
+.net-topo-marker:focus-visible circle { stroke: var(--topo-primary-soft); stroke-width: 3; }
+
+.net-topo-num {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--topo-primary); color: #ffffff; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.net-topo-setting { min-width: 180px; white-space: nowrap; }
+.net-topo-tag {
+  display: inline-block; margin-right: 6px; padding: 0 7px; font-size: 12px; line-height: 20px; white-space: nowrap;
+  border-radius: 2px; border: 1px solid var(--topo-lane-bd); color: var(--topo-lane); background: var(--topo-lane-bg);
+}
+.net-topo-lit > td { background: var(--topo-primary-soft) !important; }
+.net-topo-not { color: var(--topo-muted); font-size: 13px; }
+
+.lane-edge { --topo-lane: var(--topo-text); --topo-lane-bg: var(--topo-mgmt-bg); --topo-lane-bd: var(--topo-mgmt-bd); }
+.lane-mgmt { --topo-lane: var(--topo-text); --topo-lane-bg: var(--topo-mgmt-bg); --topo-lane-bd: var(--topo-mgmt-bd); }
+.lane-serve { --topo-lane: var(--topo-serve); --topo-lane-bg: var(--topo-serve-bg); --topo-lane-bd: var(--topo-serve-bd); }
+.lane-store { --topo-lane: var(--topo-store); --topo-lane-bg: var(--topo-store-bg); --topo-lane-bd: var(--topo-store-bd); }
+.lane-compute { --topo-lane: var(--topo-compute); --topo-lane-bg: var(--topo-compute-bg); --topo-lane-bd: var(--topo-compute-bd); }
+.lane-host { --topo-lane: var(--topo-host); --topo-lane-bg: var(--topo-host-bg); --topo-lane-bd: var(--topo-host-bd); }
+/* The legend's line colours follow the diagram, not the tags. */
+.net-topo-legend .lane-edge { --topo-lane: var(--topo-edge); }
+.net-topo-legend .lane-mgmt { --topo-lane: var(--topo-mgmt); }
+
+@media (prefers-reduced-motion: reduce) { .net-topo-diagram [data-ref], .net-topo-marker { transition: none; } }

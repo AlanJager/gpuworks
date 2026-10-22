@@ -1,0 +1,20 @@
+{
+  "parameters": {
+    "temperature": "温度",
+    "top_p": "Top P",
+    "max_tokens": "最大输出 Token",
+    "seed": "随机种子",
+    "stop": "停止词",
+    "frequency_penalty": "频率惩罚",
+    "presence_penalty": "存在惩罚"
+  },
+  "presets": {
+    "low_reasoning_effort": "低推理强度",
+    "disable_thinking": "关闭思考",
+    "template_parameters": "模板参数"
+  },
+  "stream_options": {
+    "include_usage": { "label": "返回用量（include_usage）", "description": "在流的最后一个块返回 prompt / completion token 数，用于计算回答结束后的准确指标。" },
+    "continuous_usage_stats": { "label": "逐块返回用量（continuous_usage_stats）", "description": "每个块都带累计 token 数，速度指标随回答实时刷新（vLLM、SGLang 支持）。端点不认这个参数而报错时关闭，指标改按块数估算。" }
+  }
+}

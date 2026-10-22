@@ -1,0 +1,71 @@
+{
+  "id": "hygon-dcu-fa3-page-size-64-hang",
+  "source": "artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md (sections 4.4 / 4.5, K100_AI)",
+  "note": "Hygon K100_AI, SGLang 0.5.12 (DTK) with --attention-backend fa3 but no --page-size 64: serving starts, the first forward_extend crashes with a VMFault and 'Paged KV cache block size must be 64', then the container hangs Up so the instance stays starting until the health check times out. Key error strings verbatim per the record; the ROCm queue-abort line, other INFO lines and frames reconstructed. Long tail: fix is --page-size 64.",
+  "message": "health check timed out",
+  "command": [
+    "python",
+    "-m",
+    "sglang.launch_server",
+    "--model-path",
+    "/model",
+    "--tp-size",
+    "1",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--served-model-name",
+    "qwen3-4b",
+    "--log-level",
+    "info",
+    "--enable-metrics",
+    "--mem-fraction-static",
+    "0.88",
+    "--enable-cache-report",
+    "--trust-remote-code",
+    "--attention-backend",
+    "fa3"
+  ],
+  "gpus": [
+    {
+      "name": "K100_AI",
+      "memory_gib": 64
+    }
+  ],
+  "logs": [
+    "[2026-10-07 10:02:11] server_args=ServerArgs(model_path='/model', host='127.0.0.1', port=30000, mem_fraction_static=0.88, tp_size=1, attention_backend='fa3', page_size=1, served_model_name='qwen3-4b')",
+    "[2026-10-07 10:02:19] Load weight begin. avail mem=63.42 GB",
+    "[2026-10-07 10:02:31] Load weight end. type=Qwen3ForCausalLM, dtype=torch.bfloat16, avail mem=55.81 GB, mem usage=7.61 GB.",
+    "[2026-10-07 10:02:32] KV Cache is allocated. #tokens: 340112, K size: 23.35 GB, V size: 23.35 GB",
+    "[2026-10-07 10:02:32] Attention backend created: backend=fa3",
+    "[2026-10-07 10:02:33] Capture cuda graph begin. This can take up to several minutes. avail mem=8.92 GB",
+    "[2026-10-07 10:03:41] Capture cuda graph end. Time elapsed: 68.20 s. mem usage=0.41 GB. avail mem=8.51 GB.",
+    "[2026-10-07 10:03:43] INFO:     Started server process [1]",
+    "[2026-10-07 10:03:43] INFO:     Uvicorn running on http://127.0.0.1:30000 (Press CTRL+C to quit)",
+    "[2026-10-07 10:03:44] Prefill batch. #new-seq: 1, #new-token: 6, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0",
+    ":0:rocdevice.cpp:2984: 1873212345678 us: [pid:1 tid:0x7f2a3c1fe700] Callback: Queue 0x7f2a28400000 aborting with error : HSA_STATUS_ERROR_EXCEPTION: An HSAIL operation resulted in a hardware exception. code: 0x1016",
+    "KERNEL VMFault",
+    "[2026-10-07 10:03:44] Scheduler hit an exception: Traceback (most recent call last):",
+    "  File \"/usr/local/lib/python3.12/dist-packages/sglang/srt/model_executor/model_runner.py\", line 1789, in forward_extend",
+    "    return self.model.forward(",
+    "  File \"/usr/local/lib/python3.12/dist-packages/sglang/srt/layers/attention/flashattention_backend.py\", line 702, in forward_extend",
+    "    result = flash_attn_with_kvcache(",
+    "RuntimeError: Paged KV cache block size must be 64",
+    "",
+    "[2026-10-07 10:03:44] Received sigquit from a child process. It usually means the child failed."
+  ],
+  "expect_signature": "",
+  "expect_keywords": [
+    [
+      "--page-size",
+      "page_size",
+      "page-size 64"
+    ],
+    [
+      "fa3",
+      "attention-backend",
+      "attention backend"
+    ]
+  ]
+}

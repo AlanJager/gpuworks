@@ -1,0 +1,117 @@
+{
+  "contract_id": "gpuworks/image-catalog/series-filter-matrix",
+  "name": "镜像目录 / 引擎、框架、状态组合筛选 / 精确交集与清空恢复",
+  "test_file": "test/e2e/image_catalog_filters.py",
+  "test_function": "test_image_series_filters",
+  "command": "make test-e2e-image-filters",
+  "priority": "P1",
+  "page_id": "images",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Read-only catalog predicates; no image pull, agent or container claim."
+  },
+  "crud": {
+    "create": "MISSING: fixture only",
+    "read": "PARTIAL: filter rows, counts, source isolation and refresh",
+    "update": "MISSING",
+    "delete": "MISSING: cleanup only"
+  },
+  "components": [
+    {
+      "id": "image-series.engine-filter",
+      "type": "Menu/Checkbox",
+      "request": "N/A: client-side predicate on GET /images",
+      "persistence": "N/A: ephemeral filter",
+      "dimensions": [
+        "every visible option",
+        "multi-select OR",
+        "reset"
+      ]
+    },
+    {
+      "id": "image-series.framework-filter",
+      "type": "Menu/Checkbox",
+      "request": "N/A: client-side predicate on GET /images",
+      "persistence": "N/A: ephemeral filter",
+      "dimensions": [
+        "option:cann",
+        "option:cuda",
+        "option:dtk",
+        "option:hggc",
+        "option:metal",
+        "option:rocm",
+        "reset"
+      ]
+    },
+    {
+      "id": "image-series.enabled-filter",
+      "type": "Menu/Checkbox",
+      "request": "N/A: client-side predicate on GET /images",
+      "persistence": "N/A: ephemeral filter",
+      "dimensions": [
+        "enabled",
+        "disabled",
+        "reset"
+      ]
+    },
+    {
+      "id": "image-series.source",
+      "type": "Tabs",
+      "request": "N/A: client-side source projection",
+      "persistence": "N/A: resets to official on reload",
+      "dimensions": [
+        "custom",
+        "community",
+        "official excludes owned community/custom"
+      ]
+    }
+  ],
+  "checklist_items": {
+    "partial": [
+      "5.1",
+      "5.2",
+      "5.4",
+      "10.1",
+      "10.3",
+      "10.10",
+      "10.12",
+      "22.2",
+      "22.5"
+    ],
+    "reason": "List enum predicates only; form selection persistence and other component states are independent."
+  },
+  "not_applicable": {
+    "keyword_search": "Series table has no search control",
+    "architecture_filter": "Architecture is a version field; series table provides no architecture filter",
+    "filter_query": "GET /images returns the complete catalog; AntD applies client-side filters"
+  },
+  "missing": [
+    "MISSING: source Tabs with active engine/framework/enabled predicates, both interaction orders, replace/remove and reset; current case clears predicates before changing source",
+    "MISSING: enabled switches combined with active filters/source changes; the standalone child off/on and parent disable/restore contract is implemented separately in image-catalog-enabled-cycle.json",
+    "MISSING: source-scoped summary cards (series/images/distributed/catalogSize/localSize) versus client-filtered table totals; independently derive each scope instead of assuming equality",
+    "MISSING: image-series ResourceTable column width/visibility/order/reset and preference isolation; detail versions have separate page size 8 and node table its own pagination",
+    "official catalog full predicate matrix",
+    "sorting and page-size matrix",
+    "10/30/100 record volumes and cross-page operations",
+    "loading/error recovery",
+    "keyboard and computed styles",
+    "non-admin permissions",
+    "form enum and dependent prefill",
+    "image pull and container runtime"
+  ],
+  "product_contracts": [
+    "ui/src/pages/ImagesPage.tsx",
+    "ui/src/pages/images/ImageSeriesTable.tsx",
+    "ui/src/components/resourceTable/ResourceTable.tsx",
+    "internal/server/api/images.go",
+    "internal/server/api/images_catalog_import.go"
+  ]
+}

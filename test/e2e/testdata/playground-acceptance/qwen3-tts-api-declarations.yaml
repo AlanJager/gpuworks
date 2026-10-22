@@ -1,0 +1,98 @@
+# Staged P2 data for the five Qwen3-TTS seed models
+# (internal/server/inferencecatalog/seed/catalog/models/qwen/qwen3-tts-*/model.yaml).
+#
+# P2 step 3 of artifacts/archive/2026-08-21-playground/plan-request-composition.md splices
+# each `api` block below into EVERY spec of the named model, replacing the
+# existing `api` block (all current specs declare only openai.audio.speech).
+# Semantics come from the vllm-omni speech API captured on gpu3 on 2026-09-05
+# (test/fake-engine/handler/testdata/openapi/README.md):
+#   - Base checkpoints have no preset speakers; GET /v1/audio/voices returns
+#     {"voices":[]}. Cloning needs task_type=Base + ref_audio + ref_text.
+#   - CustomVoice checkpoints expose preset speakers via /v1/audio/voices
+#     (vivian, ryan, ...); task_type is inferred, `instructions` is optional.
+#   - VoiceDesign checkpoints need an explicit task_type=VoiceDesign and a
+#     free-text `instructions` describing the voice.
+# The fake-engine fixture deploys these same declarations offline; the gpu3
+# acceptance replays them against the real engine.
+declarations:
+  qwen/qwen3-tts-12hz-0.6b-base: &base
+    health_endpoint: /health
+    operations:
+      - type: openai.audio.speech
+        endpoint: /v1/audio/speech
+        mode: sync
+        request_defaults:
+          task_type: Base
+          response_format: wav
+        inputs:
+          - name: ref_audio
+            kind: audio
+            encoding: data_url
+            required: true
+            label: { en: Reference audio, zh-CN: 参考音频 }
+          - name: ref_text
+            kind: text
+            required: true
+            label: { en: Reference transcript, zh-CN: 参考音频的文字 }
+          - name: language
+            kind: select
+            options: [Auto, Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian]
+            default: Auto
+            label: { en: Language, zh-CN: 语言 }
+  qwen/qwen3-tts-12hz-1.7b-base: *base
+
+  qwen/qwen3-tts-12hz-0.6b-customvoice: &customvoice
+    health_endpoint: /health
+    operations:
+      - type: openai.audio.speech
+        endpoint: /v1/audio/speech
+        mode: sync
+        request_defaults:
+          response_format: wav
+        inputs:
+          - name: voice
+            kind: select
+            options: []            # runtime discovery: GET /v1/audio/voices
+            required: true
+            label: { en: Voice, zh-CN: 音色 }
+          - name: instructions
+            kind: text
+            label: { en: Style or emotion instructions, zh-CN: 风格或情绪说明 }
+          - name: language
+            kind: select
+            options: [Auto, Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian]
+            default: Auto
+            label: { en: Language, zh-CN: 语言 }
+  qwen/qwen3-tts-12hz-1.7b-customvoice: *customvoice
+
+  qwen/qwen3-tts-12hz-1.7b-voicedesign:
+    health_endpoint: /health
+    operations:
+      - type: openai.audio.speech
+        endpoint: /v1/audio/speech
+        mode: sync
+        request_defaults:
+          task_type: VoiceDesign
+          response_format: wav
+        inputs:
+          - name: instructions
+            kind: text
+            required: true
+            default: 体现撒娇稚嫩的萝莉女声，音调偏高
+            label: { en: Voice description, zh-CN: 音色描述 }
+          - name: language
+            kind: select
+            options: [Auto, Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian]
+            default: Auto
+            label: { en: Language, zh-CN: 语言 }
+
+# P5 (plan-unify-model-kinds appendix A) dispositions decided on 2026-09-05
+# after reading each model.yaml; applied in P5 E1 together with the lint.
+kinds_dispositions:
+  google/embeddinggemma-300m: { action: 改 kinds, kinds: [vector] }
+  qwen/qwen3-asr-1.7b: { action: 补 input_modalities 并改 kinds, input_modalities: [audio, text], kinds: [multimodal_understanding] }
+  qwen/qwen3-tts-12hz-1.7b-voicedesign: { action: 改 kinds, kinds: [multimodal_generation] }
+  zai-org/glm-4.5v: { action: 补 input_modalities, input_modalities: [image, text] }
+  zai-org/glm-ocr: { action: 补 input_modalities, input_modalities: [image, text] }
+  google/gemma-4-e2b-it-qat-w4a16-ct: { action: 补 input_modalities, input_modalities: [image, text] }
+  liquidai/lfm2.5-vl-450m: { action: 补 input_modalities, input_modalities: [image, text] }

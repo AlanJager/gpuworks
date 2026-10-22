@@ -1,0 +1,204 @@
+package store
+
+import (
+	"crypto/sha256"
+	"sync"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/auth"
+)
+
+// API keys are 192-bit random secrets (auth.NewAPIKey). The argon2id hash
+// protects the stored value if the database leaks; it is not there to slow down guessing a
+// low-entropy input. Paying it on every /v1 request cost ~40ms of CPU and a
+// 64 MiB allocation per call, which capped the whole gateway at a few hundred
+// requests per second and let a burst of concurrent requests exhaust memory.
+// A key that has passed the full check once is therefore remembered by the
+// SHA-256 of what was presented, for a bounded time.
+const (
+	// apiKeyCacheTTL bounds how long a verified key is trusted without
+	// re-reading the database. Deletions through this store invalidate
+	// immediately; the TTL only covers changes made by another process.
+	apiKeyCacheTTL = 5 * time.Minute
+	// apiKeyCacheMaxEntries bounds memory. Only keys that verified are
+	// cached, so the set is at most the number of live keys in use; the cap
+	// guards against a pathological key churn rather than normal traffic.
+	apiKeyCacheMaxEntries = 4096
+	// apiKeyLastUsedInterval is how often last_used is persisted per key. The
+	// column is an operator hint ("is this key still used?"), so minute
+	// resolution is plenty and saves one SQLite write per request.
+	apiKeyLastUsedInterval = time.Minute
+)
+
+// verifyAPIKeyHash is the slow check; tests replace it to count calls.
+var verifyAPIKeyHash = auth.VerifyPassword
+
+type verifiedAPIKey struct {
+	id      uint
+	userID  uint
+	prefix  string
+	expires time.Time
+}
+
+// verifyCall is one slow check in progress; concurrent requests presenting
+// the same secret wait for it instead of each running their own. Without this
+// a restart in front of a busy client population would run one 64 MiB
+// argon2id per in-flight request at once.
+type verifyCall struct {
+	done   chan struct{}
+	id     uint
+	userID uint
+	ok     bool
+}
+
+type apiKeyCache struct {
+	mu       sync.Mutex
+	verified map[[sha256.Size]byte]verifiedAPIKey
+	inflight map[[sha256.Size]byte]*verifyCall
+	lastUsed map[uint]time.Time
+	// hasAny caches HasAnyAPIKey: 0 unknown, 1 none, 2 some.
+	hasAny int
+	// generation advances on every key create/delete. A reader samples it
+	// before its database read and may only publish what it read if nothing
+	// changed meanwhile; otherwise a read that raced a delete could cache the
+	// deleted key, or a count that raced a create could cache "no keys" and
+	// leave the gateway open.
+	generation uint64
+	now        func() time.Time
+}
+
+func (c *apiKeyCache) snapshot() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.generation
+}
+
+func (c *apiKeyCache) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now().UTC()
+}
+
+// lookup returns the cached key for a presented secret, if still fresh.
+func (c *apiKeyCache) lookup(digest [sha256.Size]byte) (verifiedAPIKey, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.verified[digest]
+	if !ok {
+		return verifiedAPIKey{}, false
+	}
+	if !c.clock().Before(entry.expires) {
+		delete(c.verified, digest)
+		return verifiedAPIKey{}, false
+	}
+	return entry, true
+}
+
+func (c *apiKeyCache) remember(generation uint64, digest [sha256.Size]byte, id, userID uint, prefix string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if generation != c.generation {
+		return
+	}
+	if c.verified == nil {
+		c.verified = make(map[[sha256.Size]byte]verifiedAPIKey)
+	}
+	if len(c.verified) >= apiKeyCacheMaxEntries {
+		now := c.clock()
+		for key, entry := range c.verified {
+			if !now.Before(entry.expires) {
+				delete(c.verified, key)
+			}
+		}
+		if len(c.verified) >= apiKeyCacheMaxEntries {
+			// Still full of live entries: start over rather than grow. The
+			// next request per key pays one slow check and repopulates.
+			clear(c.verified)
+		}
+	}
+	c.verified[digest] = verifiedAPIKey{id: id, userID: userID, prefix: prefix, expires: c.clock().Add(apiKeyCacheTTL)}
+}
+
+// join returns the in-progress check for digest, and whether the caller is
+// the one that must run it (and then call finish).
+func (c *apiKeyCache) join(digest [sha256.Size]byte) (*verifyCall, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if call, ok := c.inflight[digest]; ok {
+		return call, false
+	}
+	if c.inflight == nil {
+		c.inflight = make(map[[sha256.Size]byte]*verifyCall)
+	}
+	call := &verifyCall{done: make(chan struct{})}
+	c.inflight[digest] = call
+	return call, true
+}
+
+func (c *apiKeyCache) finish(digest [sha256.Size]byte, call *verifyCall) {
+	c.mu.Lock()
+	delete(c.inflight, digest)
+	c.mu.Unlock()
+	close(call.done)
+}
+
+// forget drops every cached secret for a key prefix (the key's identity).
+func (c *apiKeyCache) forget(prefix string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for digest, entry := range c.verified {
+		if entry.prefix == prefix {
+			delete(c.verified, digest)
+			delete(c.lastUsed, entry.id)
+		}
+	}
+	c.hasAny = 0
+	c.generation++
+}
+
+// dueLastUsed reports whether key id's last_used should be written now, and
+// if so records the write time so concurrent callers skip it.
+func (c *apiKeyCache) dueLastUsed(id uint) (time.Time, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.clock()
+	if last, ok := c.lastUsed[id]; ok && now.Sub(last) < apiKeyLastUsedInterval {
+		return now, false
+	}
+	if c.lastUsed == nil {
+		c.lastUsed = make(map[uint]time.Time)
+	}
+	c.lastUsed[id] = now
+	return now, true
+}
+
+// cachedHasAny returns the cached answer, whether it is known, and the
+// generation to hand back to setHasAny when it is not.
+func (c *apiKeyCache) cachedHasAny() (bool, bool, uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.hasAny == 2, c.hasAny != 0, c.generation
+}
+
+func (c *apiKeyCache) setHasAny(generation uint64, some bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if generation != c.generation {
+		return
+	}
+	if some {
+		c.hasAny = 2
+	} else {
+		c.hasAny = 1
+	}
+}
+
+// changed records a key create: the cached count is stale and any read that
+// started before it must not be published.
+func (c *apiKeyCache) changed() {
+	c.mu.Lock()
+	c.hasAny = 0
+	c.generation++
+	c.mu.Unlock()
+}

@@ -1,0 +1,49 @@
+sections: [hero, cards, cta]
+
+hero:
+  align: center
+  eyebrow: GPUWorks · 文档随代码更新
+  title_lines:
+    - words: [{ text: 从第一台 GPU， }]
+    - words: [{ text: 到可用的推理服务。 }]
+  lead: 安装控制面、接入节点、部署模型、解释调度结果。这里的内容来自当前代码仓库的 docs/，随 master 构建发布。
+  actions:
+    - { label: 从零开始, url: docs/tutorials/getting-started/, icon: fa-solid fa-rocket, style: primary }
+    - { label: 浏览全部文档, url: docs/, icon: fa-solid fa-book-open, style: ghost }
+
+cards:
+  eyebrow: 按任务找入口
+  title: 先完成一条能跑通的路径
+  columns: 3
+  items:
+    - title: 用户教程
+      desc: 从零启动控制面，接入节点并部署第一个模型。
+      icon: fa-solid fa-rocket
+      url: docs/tutorials/
+    - title: 操作指南
+      desc: 安装、模型同步、监控、云 GPU、离线环境和生产部署。
+      icon: fa-solid fa-sliders
+      url: docs/how-to/
+    - title: 参考手册
+      desc: REST API、CLI、配置、支持矩阵、镜像和安全边界。
+      icon: fa-solid fa-table-list
+      url: docs/reference/
+    - title: 架构说明
+      desc: server、agent、yamux、调度、显存估算与 dGPU 的设计依据。
+      icon: fa-solid fa-diagram-project
+      url: docs/explanation/
+    - title: 开发者文档
+      desc: 本地搭建、测试分层、代码地图、发布和贡献约定。
+      icon: fa-solid fa-code
+      url: docs/dev/
+    - title: 架构决策记录
+      desc: 追踪长期有效的协议、部署、网络和安全取舍。
+      icon: fa-solid fa-compass-drafting
+      url: docs/adr/
+
+cta:
+  title: 文档和代码保持同一个版本事实。
+  text: 页面底部会显示构建 commit；每次文档构建都能回到对应的 GitLab 提交。
+  label: 查看项目仓库
+  url: https://dev.zstack.io/wei.wang/gpuworks
+  style: primary

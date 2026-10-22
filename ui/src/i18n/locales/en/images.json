@@ -1,0 +1,268 @@
+{
+  "page": {
+    "title": "Images",
+    "description": "Manage GPUWorks runtime images by series, version, and node distribution",
+    "breadcrumb": {
+      "platform": "AI Computing Platform",
+      "resources": "Resources",
+      "images": "Images"
+    },
+    "refresh": "Refresh",
+    "tab": {
+      "official": "System",
+      "community": "Community",
+      "custom": "Custom"
+    },
+    "catalog": {
+      "update": "Check for updates",
+      "hint": "System images are maintained by GPUWorks. Check for updates from the GPUWorks manifest site, or upload a manifest JSON file when this server is offline.",
+      "updateFailed": "Catalog update failed",
+      "upload": "Upload manifest",
+      "version": "Catalog {{version}} imported",
+      "result": {
+        "created": "Added {{n}}",
+        "updated": "Updated {{n}}",
+        "deleted": "Deleted {{n}}",
+        "deprecated": "Deprecated {{n}}"
+      }
+    },
+    "addCommunity": "Add Community Image",
+    "addCustom": "Add Custom Image",
+    "summary": {
+      "series": "Image Series",
+      "images": "Total Images",
+      "distributed": "Distributed Copies",
+      "catalogSize": "Total Image Size",
+      "localSize": "Total Locally Pulled Size"
+    },
+    "operationNotice": "Image operation notice",
+    "loadFailed": "Failed to load images",
+    "seriesTitle": "Image Series",
+    "updatedAt": "Updated {{time}}"
+  },
+  "action": {
+    "source": {
+      "peer": "Node distribution"
+    },
+    "submitted": "Submitted a {{source}} task",
+    "pullSubmitted": "Pull submitted",
+    "pullFailed": "Pull failed",
+    "cancelled": "Transfer cancelled.",
+    "removed": "Image deleted from the node",
+    "removeFailed": "The image could not be deleted",
+    "cancelFailed": "The transfer could not be cancelled.",
+    "detailFailed": "Failed to load image details",
+    "imported": "{{source}} image added to the catalog",
+    "sourceType": {
+      "community": "Community",
+      "custom": "Custom"
+    },
+    "importFailed": "Import failed",
+    "seriesEnabled": "Series enabled",
+    "seriesDisabled": "Series disabled",
+    "seriesDeleted": "Image series deleted",
+    "deleteSeriesFailed": "Failed to delete image series",
+    "versionEnabled": "Version enabled",
+    "versionDisabled": "Version disabled",
+    "versionDeleted": "Image version deleted",
+    "deleteVersionFailed": "Failed to delete image version",
+    "updateFailed": "Update failed",
+    "inspectUpdated": "Image configuration read",
+    "inspectFailed": "Image inspect failed",
+    "repullSubmitted": "Submitted a re-pull"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "retry": "Retry",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "state": {
+    "present": "Present",
+    "pulling": "Pulling",
+    "syncing": "Syncing",
+    "failed": "Failed",
+    "absent": "Absent"
+  },
+  "tag": {
+    "rolling": "Rolling tag",
+    "upstreamGone": "Removed upstream"
+  },
+  "seriesTable": {
+    "enabledLabel": "Enable image series {{name}}",
+    "column": {
+      "series": "Series",
+      "vendor": "Vendor",
+      "engine": "Engine",
+      "framework": "Framework",
+      "count": "Images",
+      "coverage": "Node Coverage",
+      "status": "Status"
+    },
+    "deleteTitle": "Delete image series “{{name}}”?",
+    "deleteDescription": "All versions and node distribution records in this series will also be deleted.",
+    "details": "Details"
+  },
+  "versionTable": {
+    "enabledLabel": "Enable image version {{ref}}",
+    "column": {
+      "tag": "Image Tag",
+      "engineVersion": "Engine Version",
+      "frameworkVersion": "Framework Version",
+      "labels": "Labels",
+      "size": "Image Size",
+      "arch": "Architecture",
+      "distributed": "Distributed",
+      "status": "Status"
+    },
+    "sizeHelp": "Estimated compressed Registry layer size. Actual node usage is reported by each node.",
+    "deleteTitle": "Delete image version “{{ref}}”?",
+    "deleteDescription": "Node distribution records for this version will also be deleted.",
+    "deprecatedSince": "Deprecated since catalog {{version}}",
+    "disabledBySeries": "Disabled with series",
+    "deprecatedRefs": "Deprecated · {{refs}} references"
+  },
+  "nodeTable": {
+    "column": {
+      "node": "Node",
+      "status": "Status",
+      "message": "Message",
+      "progress": "Progress",
+      "source": "Acquisition Method",
+      "actions": "Actions",
+      "digest": "Image ID",
+      "updated": "Updated"
+    },
+    "peerFrom": "Node distribution · {{node}}",
+    "offline": "Local offline package",
+    "inspectHelp": "Read the image's own entrypoint, environment, and volume declarations from the node; shown read-only, not stored",
+    "refreshInspect": "Refresh Inspect",
+    "pull": "Pull",
+    "sourceAuto": "Automatic (Pull Settings)",
+    "autoNote": "Where an image is pulled from is decided automatically by the Pull Settings.",
+    "autoNoteLink": "Pull Settings",
+    "cancel": "Cancel transfer",
+    "remove": "Delete image",
+    "removeConfirm": "Delete “{{ref}}” from node “{{node}}”?",
+    "removeImpact": "Only this node's local copy will be removed. The catalog version and copies on other nodes will remain.",
+    "removeConfirmOk": "Delete",
+    "pullingFrom": "Pulling from {{source}}",
+    "pullingPending": "Choosing a source",
+    "sourceUnknown": "Not recorded",
+    "sourceUnknownHelp": "The image is on the node, but the platform has no record of where it came from: a replica pulled it when it started, or someone pulled it on the node by hand.",
+    "sourceMirror": "Mirror",
+    "sourceURL": "URL",
+    "sourceURLRelay": "URL · relayed",
+    "sourceFromURL": "Import from a URL…",
+    "pullFromURL": "Get from URL…",
+    "relay": "Relay through the management server",
+    "relayHelp": "The management server downloads the archive and streams it to this node. Use it when the node cannot reach the mirror itself; the transfer cannot resume.",
+    "rateLimit": "Rate limit",
+    "unlimited": "Unlimited",
+    "testDirect": "Test direct connection",
+    "peerOption": "Sync from another node…",
+    "peerAction": "Sync from node…",
+    "peerDialog": {
+      "title": "Sync {{ref}} to {{node}} from another node",
+      "description": "The source node sends the image straight to this node. The management server only coordinates the transfer and never carries the image.",
+      "source": "Source node",
+      "sourcePlaceholder": "Choose a node that already has this image",
+      "rateHelp": "Applies to this transfer only. Leave empty or 0 for no limit.",
+      "probeHint": "Test the direct connection before starting.",
+      "probeOk": "The source node can reach this node directly.",
+      "probeFailed": "The source node cannot reach this node directly",
+      "start": "Start sync"
+    },
+    "archiveDialog": {
+      "title": "Get {{ref}} on {{node}} from a URL",
+      "description": "Paste the address of a docker save archive. Resolve it first: the references are read out of the archive itself, not guessed from the file name.",
+      "recordNote": "This address will be recorded in {{ref}}'s acquisition addresses, so other nodes and deployments can use it too.",
+      "mismatch": "This archive carries a different image, so the transfer was refused",
+      "mismatchDetail": "{{ref}} is the image being fetched, but the archive contains {{tags}}. Check that you pasted the right archive.",
+      "unverified": "This archive could not be checked before the download"
+    },
+    "repull": "Pull again",
+    "repullHelp": "Pull this rolling tag again on this node so it gets whatever the tag points at upstream now."
+  },
+  "import": {
+    "title": {
+      "community": "Add Community Image",
+      "custom": "Add Custom Image"
+    },
+    "rolling": "Rolling",
+    "customNotice": "Image registries are resolved by platform rules",
+    "customDescription": "When a node pulls the image, it tries the addresses the image declares together with the pull source rules (Settings → Pull settings), and finally the actual registry. Community and custom images are not restricted by repository name.",
+    "seriesName": "Series Name (optional)",
+    "seriesNamePlaceholder": "Leave blank to group automatically by the image repository",
+    "engine": "Inference Engine",
+    "engineRequired": "Select an inference engine",
+    "imageRef": "Image Reference",
+    "frameworkVersionRequired": "Enter a framework version",
+    "imageRefRequired": "Enter an image reference",
+    "tagRequired": "Enter an image reference with a tag; digests are not supported in this release",
+    "framework": "Framework",
+    "frameworkVersion": "Framework Version",
+    "exampleFrameworkVersion": "For example, 12.8",
+    "engineVersion": "Engine Version",
+    "exampleEngineVersion": "For example, 0.17.1",
+    "hostArch": "Host Architecture",
+    "addImage": "Add Image",
+    "registrySources": "Acquisition addresses",
+    "registrySourcesHelp": "Extra addresses this image can be fetched from: registry references, or the URL of a docker save archive.",
+    "url": {
+      "title": "Import from a URL",
+      "description": "Paste the address of a docker save archive. Its real image references are read out of the archive itself, so you do not have to guess them from the file name.",
+      "label": "Image archive URL",
+      "required": "Enter the image archive URL first.",
+      "resolve": "Resolve",
+      "failed": "The image archive could not be read.",
+      "size": "Archive size",
+      "tags": "References in the archive",
+      "tagsUnknown": "The references could not be read from this archive.",
+      "notPreviewable": "This archive cannot be inspected before it is downloaded. Enter the image reference yourself; the node tags whatever the archive turns out to carry.",
+      "matched": "{{ref}} is already in the catalog. The URL was added to it.",
+      "prefilled": "The form below was filled in with {{ref}}. Complete the remaining fields and add the image.",
+      "recorded": "The URL was recorded on {{ref}}."
+    },
+    "frameworkRequired": "Select a framework; images without one are never recommended automatically",
+    "rollingTag": "Rolling tag",
+    "rollingTagHelp": "Tags such as nightly or latest move upstream; nodes can pull them again later.",
+    "community": {
+      "title": "Community repositories",
+      "reposLoading": "Loading community repositories…",
+      "reposFailed": "The community repository list could not be loaded",
+      "otherRepo": "Other repository",
+      "otherRepoPlaceholder": "Any repository, for example vllm/vllm-openai",
+      "browse": "List tags",
+      "tagsLoading": "Listing the tags of {{repo}}…",
+      "tagsFailed": "The tags of {{repo}} could not be listed",
+      "tagCount": "{{repo}} · {{total}} tags",
+      "search": "Search tags",
+      "searchPlaceholder": "Search by name, for example qwen38 or nightly",
+      "noTags": "This repository has no tags upstream",
+      "noMatch": "No tag matches the search",
+      "column": {
+        "tag": "Tag",
+        "labels": "Labels",
+        "lastUpdated": "Last updated"
+      }
+    },
+    "enginesFailed": "The inference engine list could not be loaded"
+  },
+  "detail": {
+    "title": "{{name}} · Details",
+    "fallbackTitle": "Image Details",
+    "builtInTitle": "Image's own configuration",
+    "builtInFrom": "Read from {{node}} just now; shown as read, not stored.",
+    "builtInNone": "(none)",
+    "builtInHint": "Inspect the image on a node that holds it to see the ENTRYPOINT, CMD, ENV and VOLUME it was built with. Deployments do not inherit catalog settings; choose the image entrypoint command mode when deploying to run this entrypoint.",
+    "driverRequirement": "Driver requirement: {{value}}",
+    "nodeDistributionFor": "Node Distribution · {{ref}}",
+    "nodeDistribution": "Node Distribution",
+    "selectVersion": "Select a version to view node distribution, sources, and pull/distribution actions",
+    "deleteSeries": "Delete series",
+    "deleteVersion": "Delete version",
+    "digestMismatch": "{{ref}}: the image IDs on {{nodes}} nodes differ"
+  }
+}

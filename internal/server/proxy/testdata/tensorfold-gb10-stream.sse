@@ -1,0 +1,21 @@
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": "1"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 2 3 4"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 5 6 7"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 8 9 10"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 11 12 13"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 14 15 16"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 17 18 19"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {"content": " 20"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-aaaaac1270804182ac73e9a5", "object": "chat.completion.chunk", "created": 1791591060, "model": "model", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "tensorfold": {"prefill_s": 0.1112, "decode_s": 2.272, "rounds": 7, "drafts": true, "cached": 0, "min_rows": 6, "drafted": 35, "accepted": 32, "sha256": "87f4aa901601042b", "tokens_per_round": 5.571, "parallel": 4, "policy": "auto", "token_sha": "6a063a978581"}, "usage": {"prompt_tokens": 17, "completion_tokens": 40, "total_tokens": 57, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens_details": {"reasoning_tokens": 0}}}
+
+data: [DONE]

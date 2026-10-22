@@ -1,0 +1,143 @@
+model_id: qwen/qwen3.5-2b
+source: upstream
+display_title: Qwen3.5-2B
+parameter_count: 2B
+architecture: dense
+context_length: 262144
+release_date: '2026-02-28'
+model_config: {model_type: qwen3_5, num_hidden_layers: 24, hidden_size: 2048, num_attention_heads: 8, num_key_value_heads: 2, head_dim: 256, max_position_embeddings: 262144, layer_types: [linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention], vision_config: {patch_size: 16, max_position_embeddings: 2304}}
+kv_bytes_per_token:
+  vllm: 12288
+  sglang: 12288
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: c00cc5fd7803c60b7788e053dcce33d0d26b11ef
+  weight_bytes: 4571274023
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - qwen3
+  - --tool-call-parser
+  - qwen3_coder
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: c00cc5fd7803c60b7788e053dcce33d0d26b11ef
+  weight_bytes: 4571274023
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: c00cc5fd7803c60b7788e053dcce33d0d26b11ef
+  weight_bytes: 4571274023
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --dtype
+  - half
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-15852e8c
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-2B
+        revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+  weight_bytes: 4548221488
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

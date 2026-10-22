@@ -1,0 +1,66 @@
+model_id: dots-studio/dots3-note-prev
+source: upstream
+display_title: dots3-note-prev
+parameter_count: 288B
+architecture: moe
+context_length: 524288
+release_date: '2026-08-09'
+model_config: {model_type: dots3_note, num_hidden_layers: 46, hidden_size: 5120, num_attention_heads: 128, num_key_value_heads: 128, max_position_embeddings: 524288, layer_types: [full_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention], kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128, vision_config: {patch_size: 14}, audio_config: {model_type: ""}}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots3-note-prev
+        revision: 1e1e7b0cd37a3a48a6c8d7fa55d5f9d14377006b
+    - modelscope:
+        repo_id: dots-studio/dots3-note-prev
+        revision: 8ab73db2f416a816779d1d464216a81164bb4a7b
+  weight_bytes: 576915141987
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --moe-backend
+  - triton
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots3-note-prev-fp8
+        revision: 7c14222e22423d6df6848eb0d1c5c3a88a00311a
+    - modelscope:
+        repo_id: dots-studio/dots3-note-prev-fp8
+        revision: 4b27319b24e42eb354194d0d57ffce66f7b4d3be
+  weight_bytes: 298700352070
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --moe-backend
+  - deep_gemm
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image, audio]

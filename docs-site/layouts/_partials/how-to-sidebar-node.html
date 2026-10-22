@@ -1,0 +1,30 @@
+{{- $page := .page -}}
+{{- $root := .section -}}
+{{- $iconPolicy := .iconPolicy -}}
+{{- $groups := "" -}}
+{{- range $root.Params.guide_groups -}}
+  {{- $rows := "" -}}
+  {{- $activePath := false -}}
+  {{- range .pages -}}
+    {{- $target := $page.Site.GetPage .path -}}
+    {{- if not $target -}}
+      {{- errorf "operation guide navigation target is missing: %s" .path -}}
+    {{- else -}}
+      {{- $active := eq $page.RelPermalink $target.RelPermalink -}}
+      {{- $activePath = or $activePath $active -}}
+      {{- $rows = printf "%s%s" $rows (partial "shell/sidebar-node.html" (dict
+          "page" $page "section" $target "active" $active "activePath" $active
+          "withChild" false "foldable" false "shouldExpand" false "iconPolicy" $iconPolicy)) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $url := printf "%s#%s" $root.RelPermalink (.title | anchorize) -}}
+  {{- $children := printf "<ul class=\"td-shell-tree__list td-shell-tree__list--3\">%s</ul>" $rows | safeHTML -}}
+  {{- $groups = printf "%s%s" $groups (partial "how-to-sidebar-group.html" (dict
+      "title" .title "url" $url "activePath" $activePath
+      "expanded" $activePath "children" $children)) -}}
+{{- end -}}
+{{- $activePath := or (eq $page $root) ($page.IsDescendant $root) -}}
+{{- partial "shell/sidebar-node.html" (dict
+    "page" $page "section" $root "active" (eq $page $root) "activePath" $activePath
+    "withChild" true "foldable" true "shouldExpand" $activePath "iconPolicy" $iconPolicy
+    "children" (printf "<ul class=\"td-shell-tree__list td-shell-tree__list--2\">%s</ul>" $groups | safeHTML)) -}}

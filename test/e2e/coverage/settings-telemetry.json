@@ -1,0 +1,101 @@
+{
+  "contract_id": "gpuworks/settings/telemetry-export",
+  "name": "设置 / 请求 Trace 导出 / OTLP 测试 span、加密请求头、采样比例、保存与关闭",
+  "test_file": "test/e2e/settings_telemetry.py",
+  "test_function": "test_telemetry_export",
+  "command": "make test-e2e-settings-telemetry",
+  "priority": "P1",
+  "page_id": "settings",
+  "lane": "local-real-server-sqlite-otlp-fixture",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The OpenTelemetry collector is an audited local OTLP/HTTP fixture. The server, encrypted header storage, browser and SQLite are real; no agent, GPU, container or engine is claimed."
+  },
+  "crud": {
+    "create": "UI Save stores the export setting through PUT /api/v1/telemetry/export",
+    "read": "The card, reload and independent GET preserve enabled, endpoint, sample ratio, trace link and header names",
+    "update": "Switch off/on, header value kept when left blank, sample ratio percent-to-ratio conversion, endpoint changed for a failing test",
+    "delete": "Cleanup clears the export setting and the independent GET returns the defaults"
+  },
+  "fields": [
+    {
+      "id": "telemetry.enabled",
+      "component": "Switch",
+      "request": "enabled",
+      "persisted": "enabled",
+      "covered": ["off initially", "off→on and on→off through the real switch", "exact boolean in PUT", "refresh readback", "status active/off"],
+      "missing": ["save failure restoring the switch"]
+    },
+    {
+      "id": "telemetry.endpoint",
+      "component": "Text input",
+      "request": "endpoint",
+      "persisted": "endpoint",
+      "covered": ["base collector URL", "traces URL adds /v1/traces", "a failing collector endpoint returns a visible test error"],
+      "missing": ["invalid URL and unreachable endpoint validation", "pasted /v1/traces normalization"]
+    },
+    {
+      "id": "telemetry.headers",
+      "component": "Header name + password value rows",
+      "request": "headers[{name,value}]",
+      "persisted": "header name; value encrypted",
+      "covered": ["new header sent to the collector", "GET returns only the name", "blank stored value is sent as null and keeps the stored secret", "the test span reuses the stored secret"],
+      "missing": ["duplicate names", "remove/re-add", "header value encryption across a server restart"]
+    },
+    {
+      "id": "telemetry.sample-ratio",
+      "component": "InputNumber with percent suffix",
+      "request": "sample_ratio",
+      "persisted": "sample_ratio",
+      "covered": ["default 100%", "50% is sent as 0.5 and read back as 50"],
+      "missing": ["0% and 100% boundaries", "invalid ratios"]
+    },
+    {
+      "id": "telemetry.trace-link",
+      "component": "Text input",
+      "request": "trace_link",
+      "persisted": "trace_link",
+      "covered": ["a URL with {trace_id} is saved and reloaded"],
+      "missing": ["missing placeholder rejection", "non-URL values"]
+    },
+    {
+      "id": "telemetry.test-span",
+      "component": "Send test span button and result alert",
+      "request": "POST /api/v1/telemetry/export/test",
+      "persisted": "N/A: draft only",
+      "covered": ["successful test span", "collector receives header and gzip", "span name/trace id/attribute", "failing collector shows the error", "test does not persist the draft"],
+      "missing": ["collector timeout", "partial success rejection"]
+    },
+    {
+      "id": "telemetry.cleanup",
+      "component": "N/A: settings restore",
+      "request": "PUT /api/v1/telemetry/export",
+      "persisted": "restored defaults",
+      "covered": ["disabled", "empty endpoint", "empty headers", "empty trace link", "sample ratio 1"],
+      "missing": ["server restart with a stored header"]
+    }
+  ],
+  "checklist_items": {
+    "1.10": "A failing test span shows the collector error, sends no partial success, and does not persist the draft",
+    "1.14": "Reload and independent GET preserve the saved setting and never return the header value",
+    "3.1": "The percent control stores the exact ratio (50% → 0.5) and reads it back",
+    "6.2": "The Export switch is changed off→on→off with exact boolean requests and refresh readback",
+    "7.2": "A stored header left blank is sent as null, keeps the encrypted value, and the test span reuses it",
+    "7.6": "The independent GET and artifacts do not expose the header value",
+    "22.2": "The Settings Integrations tab is selected through the real Tabs control"
+  },
+  "missing": [
+    "MISSING: real gateway request spans (only the test span is exported)",
+    "MISSING: a real tracing backend and its query UI",
+    "MISSING: invalid endpoint, duplicate header names and invalid sample-ratio validation",
+    "MISSING: encryption persistence across a server restart",
+    "MISSING: non-admin authorization",
+    "N/A: checklist 5.3 (selector search) — the settings card has no selector",
+    "MISSING: checklist 22.5 (zh/en navigation, first screen, error and empty text)",
+    "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test/fixture digests, locale, PUT bodies without header values, independent GET documents, OTLP request summaries (header names only) and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and restored settings"
+}

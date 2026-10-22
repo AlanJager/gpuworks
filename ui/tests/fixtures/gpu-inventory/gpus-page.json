@@ -1,0 +1,173 @@
+{
+  "items": [
+    {
+      "index": 0,
+      "uuid": "GPU-quadro",
+      "name": "Quadro RTX 8000",
+      "vendor": "nvidia",
+      "arch_family": "turing",
+      "arch_id": "sm_75",
+      "compute_capability": "7.5",
+      "memory_total_bytes": 48318382080,
+      "power_limit_watts": 250,
+      "pcie_bdf": "0000:17:00.0",
+      "numa_node": 0,
+      "partition_capabilities": [
+        {
+          "backend": "nvidia-dgpu",
+          "display_name": "NVIDIA dGPU",
+          "vendor": "nvidia",
+          "maturity": "stable",
+          "status": "ready",
+          "compatibility_summary": "NVIDIA CUDA GPU"
+        }
+      ],
+      "schedulable": true,
+      "health_status": "OK",
+      "node_uuid": "node-fixture",
+      "node_name": "gpu3",
+      "node_state": "online",
+      "driver_version": "580.126.09",
+      "allocation_state": "allocated",
+      "allocated_bytes": 48318382080,
+      "available_bytes": 0,
+      "occupants": [
+        {
+          "instance_uuid": "inst-whole",
+          "deployment_id": 1,
+          "deployment_name": "qwen3-fullcard",
+          "state": "running"
+        }
+      ],
+      "load": {
+        "utilization_pct": 0,
+        "memory_used_bytes": 42755686400,
+        "updated_at": "2026-10-18T05:40:00Z"
+      }
+    },
+    {
+      "index": 1,
+      "uuid": "GPU-2080ti",
+      "name": "GeForce RTX 2080 Ti",
+      "vendor": "nvidia",
+      "arch_family": "turing",
+      "arch_id": "sm_75",
+      "compute_capability": "7.5",
+      "memory_total_bytes": 23622320128,
+      "power_limit_watts": 250,
+      "pcie_bdf": "0000:65:00.0",
+      "numa_node": 0,
+      "partition_capabilities": [
+        {
+          "backend": "nvidia-dgpu",
+          "display_name": "NVIDIA dGPU",
+          "vendor": "nvidia",
+          "maturity": "stable",
+          "status": "ready",
+          "compatibility_summary": "NVIDIA CUDA GPU"
+        }
+      ],
+      "schedulable": true,
+      "health_status": "OK",
+      "node_uuid": "node-fixture",
+      "node_name": "gpu3",
+      "node_state": "online",
+      "driver_version": "580.126.09",
+      "allocation_state": "partial",
+      "allocated_bytes": 23085449216,
+      "available_bytes": 536870912,
+      "occupants": [
+        {
+          "instance_uuid": "inst-slice-a",
+          "deployment_id": 2,
+          "deployment_name": "qwen3-dgpu-a",
+          "state": "running",
+          "limit_bytes": 8589934592
+        },
+        {
+          "instance_uuid": "inst-slice-b",
+          "deployment_id": 3,
+          "deployment_name": "qwen3-dgpu-b",
+          "state": "running",
+          "limit_bytes": 8589934592
+        },
+        {
+          "instance_uuid": "inst-slice-c",
+          "deployment_id": 4,
+          "deployment_name": "qwen3-dgpu-c",
+          "state": "starting",
+          "limit_bytes": 4294967296
+        }
+      ],
+      "load": {
+        "utilization_pct": 100,
+        "memory_used_bytes": 15750660096,
+        "updated_at": "2026-10-18T05:40:00Z"
+      }
+    },
+    {
+      "index": -1,
+      "uuid": "",
+      "name": "GeForce RTX 3090",
+      "vendor": "nvidia",
+      "memory_total_bytes": 0,
+      "pcie_bdf": "0000:1b:00.0",
+      "numa_node": 0,
+      "partition_capabilities": [
+        {
+          "backend": "nvidia-dgpu",
+          "display_name": "NVIDIA dGPU",
+          "vendor": "nvidia",
+          "maturity": "stable",
+          "status": "ready",
+          "compatibility_summary": "NVIDIA CUDA GPU"
+        }
+      ],
+      "schedulable": false,
+      "ownership": "passthrough",
+      "health_status": "OK",
+      "node_uuid": "node-fixture",
+      "node_name": "gpu3",
+      "node_state": "online",
+      "driver_version": "580.126.09",
+      "allocation_state": "unusable",
+      "allocated_bytes": 0,
+      "available_bytes": 0,
+      "occupants": [],
+      "load": {}
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 3,
+  "overview": {
+    "total": 3,
+    "health": {
+      "ok": 3,
+      "warning": 0,
+      "error": 0
+    },
+    "allocation": {
+      "allocated": 2,
+      "allocatable": 1,
+      "unusable": 1,
+      "unknown": 0
+    }
+  },
+  "facets": {
+    "nodes": [
+      {
+        "uuid": "node-fixture",
+        "name": "gpu3"
+      }
+    ],
+    "models": [
+      "GeForce RTX 2080 Ti",
+      "GeForce RTX 3090",
+      "Quadro RTX 8000"
+    ],
+    "vendors": [
+      "nvidia"
+    ]
+  }
+}

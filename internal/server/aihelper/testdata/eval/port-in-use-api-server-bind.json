@@ -1,0 +1,67 @@
+{
+  "id": "port-in-use-api-server-bind",
+  "source": "https://github.com/vllm-project/vllm/issues/9763 ; https://github.com/vllm-project/vllm/issues/14197",
+  "note": "vLLM 0.6.3 binds the API port before starting the engine; a leftover engine process from a crashed previous instance still holds the host-network port. Constructed from upstream traceback format (issue #9763 frames: api_server.py line 585 uvloop.run, line 544 sock.bind); scenario and command are illustrative.",
+  "message": "container exited (code 1)",
+  "command": [
+    "python3",
+    "-m",
+    "vllm.entrypoints.openai.api_server",
+    "--model",
+    "/model",
+    "--served-model-name",
+    "qwen2.5-7b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A10",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "INFO 10-28 03:12:01 api_server.py:528] vLLM API server version 0.6.3.post1",
+    "INFO 10-28 03:12:01 api_server.py:529] args: Namespace(host='127.0.0.1', port=30000, uvicorn_log_level='info', allow_credentials=False, model='/model', served_model_name=['qwen2.5-7b'], tensor_parallel_size=1, gpu_memory_utilization=0.9)",
+    "Traceback (most recent call last):",
+    "  File \"<frozen runpy>\", line 198, in _run_module_as_main",
+    "  File \"<frozen runpy>\", line 88, in _run_code",
+    "  File \"/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py\", line 585, in <module>",
+    "    uvloop.run(run_server(args))",
+    "  File \"/usr/local/lib/python3.12/dist-packages/uvloop/__init__.py\", line 109, in run",
+    "    return __asyncio.run(",
+    "  File \"/usr/lib/python3.12/asyncio/runners.py\", line 194, in run",
+    "    return runner.run(main)",
+    "  File \"uvloop/loop.pyx\", line 1517, in uvloop.loop.Loop.run_until_complete",
+    "  File \"/usr/local/lib/python3.12/dist-packages/uvloop/__init__.py\", line 61, in wrapper",
+    "    return await main",
+    "  File \"/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py\", line 544, in run_server",
+    "    sock.bind((\"\", args.port))",
+    "OSError: [Errno 98] Address already in use"
+  ],
+  "expect_signature": "port_in_use",
+  "expect_keywords": [
+    [
+      "lsof",
+      "ss -ltnp",
+      "ss -lntp",
+      "netstat",
+      "fuser"
+    ],
+    [
+      "残留",
+      "leftover",
+      "stale",
+      "orphan",
+      "另一个进程",
+      "其他进程",
+      "another process",
+      "old container",
+      "旧容器"
+    ]
+  ]
+}

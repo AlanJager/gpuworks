@@ -1,0 +1,2 @@
+Firewall is disabled. (State = 0)
+Firewall stealth mode is off

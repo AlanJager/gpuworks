@@ -1,0 +1,1549 @@
+{
+  "terms": [
+    {
+      "term_en": "Acquisition",
+      "translations": {
+        "zh": "获取"
+      },
+      "forbidden": {
+        "zh": [
+          "获得",
+          "采集"
+        ]
+      }
+    },
+    {
+      "term_en": "Peer Sync",
+      "translations": {
+        "zh": "节点间同步"
+      },
+      "forbidden": {
+        "zh": [
+          "对等同步",
+          "节点同步"
+        ]
+      }
+    },
+    {
+      "term_en": "Pull Address",
+      "translations": {
+        "zh": "拉取地址"
+      },
+      "forbidden": {
+        "zh": [
+          "镜像源地址"
+        ]
+      }
+    },
+    {
+      "term_en": "Pull Settings",
+      "translations": {
+        "zh": "拉取设置"
+      }
+    },
+    {
+      "term_en": "Pull Source Rule",
+      "translations": {
+        "zh": "来源规则"
+      },
+      "forbidden": {
+        "zh": [
+          "镜像站",
+          "加速地址"
+        ]
+      }
+    },
+    {
+      "term_en": "Sync Group",
+      "translations": {
+        "zh": "同步组"
+      },
+      "forbidden": {
+        "zh": [
+          "网络分区"
+        ]
+      }
+    },
+    {
+      "term_en": "Model HTTP Directory Source",
+      "translations": {
+        "zh": "模型 HTTP 目录来源"
+      },
+      "forbidden": {
+        "zh": [
+          "目录源",
+          "url 仓库"
+        ]
+      }
+    },
+    {
+      "term_en": "Simulation Test (L1)",
+      "translations": {
+        "zh": "Sim 测试（L1）"
+      },
+      "forbidden": {
+        "en": [
+          "integration test",
+          "e2e test"
+        ]
+      }
+    },
+    {
+      "term_en": "Multi-process Test (L2)",
+      "translations": {
+        "zh": "多进程测试（L2）"
+      },
+      "forbidden": {
+        "zh": [
+          "双进程测试"
+        ]
+      }
+    },
+    {
+      "term_en": "Container Test (L3)",
+      "translations": {
+        "zh": "容器测试（L3）"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Cloud GPU Test (L4)",
+      "translations": {
+        "zh": "云 GPU 测试（L4）"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "dGPU Backend",
+      "translations": {
+        "zh": "dGPU 后端"
+      },
+      "forbidden": {
+        "en": [
+          "partitioner"
+        ]
+      }
+    },
+    {
+      "term_en": "dGPU Capability",
+      "translations": {
+        "zh": "dGPU 能力"
+      },
+      "forbidden": {
+        "en": [
+          "partition_mode"
+        ]
+      }
+    },
+    {
+      "term_en": "dGPU Probe",
+      "translations": {
+        "zh": "dGPU 探针"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Chip Family",
+      "translations": {
+        "zh": "芯片族"
+      },
+      "forbidden": {
+        "zh": [
+          "芯片家族"
+        ]
+      }
+    },
+    {
+      "term_en": "GPU Model Name",
+      "translations": {
+        "zh": "GPU 型号名"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "GPU Architecture Identity",
+      "translations": {
+        "zh": "架构身份"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "GPU Filter",
+      "translations": {
+        "zh": "GPU 适配谓词"
+      },
+      "forbidden": {
+        "en": [
+          "Chip Class"
+        ],
+        "zh": [
+          "芯片类"
+        ]
+      }
+    },
+    {
+      "term_en": "Match Specificity",
+      "translations": {
+        "zh": "匹配特异度"
+      },
+      "forbidden": {
+        "zh": [
+          "手工优先级"
+        ]
+      }
+    },
+    {
+      "term_en": "Asset Report",
+      "translations": {
+        "zh": "资产清单"
+      },
+      "forbidden": {
+        "en": [
+          "readiness report"
+        ]
+      }
+    },
+    {
+      "term_en": "Experimental Backend",
+      "translations": {
+        "zh": "实验性后端"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Fake Model",
+      "translations": {
+        "zh": "fake 模型"
+      },
+      "forbidden": {
+        "zh": [
+          "假模型",
+          "截断模型"
+        ]
+      }
+    },
+    {
+      "term_en": "Fake Engine",
+      "translations": {
+        "zh": "fake 引擎"
+      },
+      "forbidden": {
+        "zh": [
+          "fake vllm 镜像"
+        ]
+      }
+    },
+    {
+      "term_en": "Revision",
+      "translations": {
+        "zh": "版本指定"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "SHA Pinning",
+      "translations": {
+        "zh": "commit 钉住"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Image Series / Image Version",
+      "translations": {
+        "zh": "镜像系列 / 镜像版本"
+      },
+      "forbidden": {
+        "en": [
+          "Image Family / Image Release"
+        ]
+      }
+    },
+    {
+      "term_en": "Source Types",
+      "translations": {
+        "zh": "三类来源"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Image Catalog",
+      "translations": {
+        "zh": "镜像目录"
+      },
+      "forbidden": {
+        "zh": [
+          "镜像列表"
+        ]
+      }
+    },
+    {
+      "term_en": "Inference Catalog",
+      "translations": {
+        "zh": "推理模板目录"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Canonical Ref / Effective Ref",
+      "translations": {
+        "zh": "规范引用 / 有效引用"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Template Image Source",
+      "translations": {
+        "zh": "模板镜像来源"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Container Image Archive URL",
+      "translations": {
+        "zh": "容器镜像归档地址"
+      },
+      "forbidden": {
+        "en": [
+          "Archive Link"
+        ],
+        "zh": [
+          "归档链接",
+          "镜像链接"
+        ]
+      }
+    },
+    {
+      "term_en": "Container Image Management Relay",
+      "translations": {
+        "zh": "容器镜像管理节点中转"
+      },
+      "forbidden": {
+        "zh": [
+          "管理端中转",
+          "服务端中转"
+        ]
+      }
+    },
+    {
+      "term_en": "Image Built-in Configuration",
+      "translations": {
+        "zh": "镜像内置配置"
+      },
+      "forbidden": {
+        "en": [
+          "Image Defaults"
+        ],
+        "zh": [
+          "镜像默认值",
+          "RunSpec"
+        ]
+      }
+    },
+    {
+      "term_en": "Container Overrides",
+      "translations": {
+        "zh": "容器覆盖"
+      },
+      "forbidden": {
+        "en": [
+          "RunSpec Overrides"
+        ]
+      }
+    },
+    {
+      "term_en": "Start Timeout",
+      "translations": {
+        "zh": "启动超时"
+      }
+    },
+    {
+      "term_en": "Resolved Launch",
+      "translations": {
+        "zh": "解析后启动方案"
+      },
+      "forbidden": {
+        "en": [
+          "RuntimeSpec",
+          "Assembly"
+        ]
+      }
+    },
+    {
+      "term_en": "Instance Desired State",
+      "translations": {
+        "zh": "实例期望状态"
+      },
+      "forbidden": {
+        "en": [
+          "Instance Spec"
+        ]
+      }
+    },
+    {
+      "term_en": "Command Mode",
+      "translations": {
+        "zh": "命令模式"
+      },
+      "forbidden": {
+        "zh": [
+          "entrypoint 覆盖"
+        ]
+      }
+    },
+    {
+      "term_en": "Default Environment Variables / Common Candidates",
+      "translations": {
+        "zh": "默认环境变量 / 常用候选"
+      },
+      "forbidden": {
+        "zh": [
+          "默认参数"
+        ]
+      }
+    },
+    {
+      "term_en": "Inference Template",
+      "definition": "A collective term for one original model and all of its specs; a spec is the only deployable unit.",
+      "translations": {
+        "zh": "推理模板"
+      },
+      "forbidden": {
+        "en": [
+          "Recipe"
+        ],
+        "zh": [
+          "配方",
+          "蓝图"
+        ]
+      }
+    },
+    {
+      "term_en": "Built-in Inference Catalog",
+      "translations": {
+        "zh": "内置推理模板目录"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Catalog Authoring Tooling",
+      "translations": {
+        "zh": "目录维护工具"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Executable Inference Catalog Package",
+      "translations": {
+        "zh": "可执行推理目录包"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Sparse Repository Materialization",
+      "translations": {
+        "zh": "仓库稀疏物化"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Runtime Component",
+      "translations": {
+        "zh": "运行组件"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Runtime Wrapper",
+      "translations": {
+        "zh": "运行包装器"
+      },
+      "forbidden": {
+        "en": [
+          "Serve Adapter"
+        ]
+      }
+    },
+    {
+      "term_en": "Inference API Contract",
+      "translations": {
+        "zh": "推理 API 契约"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Original Model",
+      "translations": {
+        "zh": "原始模型"
+      },
+      "forbidden": {
+        "en": [
+          "Logical Model",
+          "Model Family",
+          "Base Model"
+        ],
+        "zh": [
+          "逻辑模型",
+          "模型家族",
+          "基座模型"
+        ]
+      }
+    },
+    {
+      "term_en": "Draft Model",
+      "translations": {
+        "zh": "草稿模型"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Model Organization",
+      "translations": {
+        "zh": "模型组织"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Weights",
+      "translations": {
+        "zh": "权重"
+      },
+      "forbidden": {
+        "en": [
+          "Weight Variant"
+        ],
+        "zh": [
+          "权重版本",
+          "变体标签"
+        ]
+      }
+    },
+    {
+      "term_en": "Chip Compatibility",
+      "translations": {
+        "zh": "芯片兼容性"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Domestic Generation Compatibility Inheritance",
+      "translations": {
+        "zh": "国产代际兼容继承"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "GPUWorks Verified",
+      "translations": {
+        "zh": "GPUWorks 已验证"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Compatibility Reference",
+      "translations": {
+        "zh": "兼容性参考"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Custom Template",
+      "translations": {
+        "zh": "自定义模板"
+      },
+      "forbidden": {
+        "zh": [
+          "自定义蓝图"
+        ]
+      }
+    },
+    {
+      "term_en": "Cluster Verified",
+      "translations": {
+        "zh": "本集群已验证"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Deviated",
+      "translations": {
+        "zh": "偏离"
+      },
+      "forbidden": {
+        "zh": [
+          "降级"
+        ]
+      }
+    },
+    {
+      "term_en": "Quick Mode / Expert Mode",
+      "translations": {
+        "zh": "快捷模式 / 专家模式"
+      },
+      "forbidden": {
+        "zh": [
+          "简单模式",
+          "快捷部署",
+          "标准部署"
+        ]
+      }
+    },
+    {
+      "term_en": "Spec",
+      "translations": {
+        "zh": "档位"
+      },
+      "forbidden": {
+        "en": [
+          "Template Profile",
+          "Tier",
+          "Grade"
+        ]
+      }
+    },
+    {
+      "term_en": "Spec Resource Contract",
+      "translations": {
+        "zh": "档位资源合同"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Spec Source",
+      "translations": {
+        "zh": "档位来源"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Template Display Type",
+      "translations": {
+        "zh": "模板展示类型"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Scenario",
+      "translations": {
+        "zh": "场景"
+      },
+      "forbidden": {
+        "zh": [
+          "性能模式"
+        ]
+      }
+    },
+    {
+      "term_en": "Quick Deploy / Standard Deploy",
+      "translations": {
+        "zh": "快捷部署 / 标准部署"
+      },
+      "forbidden": {
+        "en": [
+          "Simple Deploy / Expert Deploy"
+        ],
+        "zh": [
+          "简单模式",
+          "专家模式"
+        ]
+      }
+    },
+    {
+      "term_en": "GPU Hardware Facts",
+      "translations": {
+        "zh": "GPU 硬件事实"
+      },
+      "forbidden": {
+        "zh": [
+          "硬件过滤"
+        ]
+      }
+    },
+    {
+      "term_en": "Vendor / Framework",
+      "translations": {
+        "zh": "厂商 / 框架"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Vendor Catalog Image Required",
+      "translations": {
+        "zh": "厂商目录镜像必需"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Verification",
+      "translations": {
+        "zh": "校验"
+      },
+      "forbidden": {
+        "zh": [
+          "校验三态"
+        ]
+      }
+    },
+    {
+      "term_en": "Browse / Adopt",
+      "translations": {
+        "zh": "浏览 / 采用"
+      },
+      "forbidden": {
+        "zh": [
+          "同步"
+        ]
+      }
+    },
+    {
+      "term_en": "Deprecated",
+      "translations": {
+        "zh": "废弃"
+      },
+      "forbidden": {
+        "zh": [
+          "删除",
+          "下架"
+        ]
+      }
+    },
+    {
+      "term_en": "Rolling Tag",
+      "translations": {
+        "zh": "滚动 tag"
+      }
+    },
+    {
+      "term_en": "Presence",
+      "translations": {
+        "zh": "就位"
+      },
+      "forbidden": {
+        "zh": [
+          "已下载"
+        ]
+      }
+    },
+    {
+      "term_en": "Evaluation",
+      "translations": {
+        "zh": "评测"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Benchmark",
+      "translations": {
+        "zh": "压测"
+      },
+      "forbidden": {
+        "en": [
+          "EvalScope",
+          "PerfTest",
+          "StressTest"
+        ]
+      }
+    },
+    {
+      "term_en": "Load Origin",
+      "translations": {
+        "zh": "发压点"
+      },
+      "forbidden": {
+        "zh": [
+          "压测客户端"
+        ]
+      }
+    },
+    {
+      "term_en": "Run",
+      "translations": {
+        "zh": "运行"
+      },
+      "forbidden": {
+        "en": [
+          "Job"
+        ]
+      }
+    },
+    {
+      "term_en": "Point",
+      "translations": {
+        "zh": "点位"
+      },
+      "forbidden": {
+        "en": [
+          "Case"
+        ]
+      }
+    },
+    {
+      "term_en": "Sample",
+      "translations": {
+        "zh": "样本"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Agent Benchmark Trace",
+      "translations": {
+        "zh": "Agent 基准轨迹"
+      },
+      "forbidden": {
+        "zh": [
+          "生产 Agent 轨迹",
+          "真实 Agent 流量"
+        ]
+      }
+    },
+    {
+      "term_en": "Synthetic Agentic Workload",
+      "translations": {
+        "zh": "Agentic 合成负载"
+      },
+      "forbidden": {
+        "zh": [
+          "Agent 基准轨迹"
+        ]
+      }
+    },
+    {
+      "term_en": "Session Concurrency",
+      "translations": {
+        "zh": "会话并发"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Mean Input Length",
+      "translations": {
+        "zh": "平均输入长度"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Required Context Length",
+      "translations": {
+        "zh": "所需上下文长度"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Designed Prefix Reuse Rate",
+      "translations": {
+        "zh": "设计前缀复用率"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Observed Cache Hit Rate",
+      "translations": {
+        "zh": "实测缓存命中率"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Interactivity",
+      "translations": {
+        "zh": "单用户输出速度"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Endpoint Token Throughput",
+      "translations": {
+        "zh": "整体处理速度"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Samples per Channel",
+      "translations": {
+        "zh": "每并发样本数"
+      },
+      "forbidden": {
+        "zh": [
+          "每点请求数"
+        ]
+      }
+    },
+    {
+      "term_en": "Exact Mode / Estimation Mode",
+      "translations": {
+        "zh": "精确模式 / 估算模式"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Automatic Tokenizer Source",
+      "translations": {
+        "zh": "自动 Tokenizer 来源"
+      },
+      "forbidden": {
+        "zh": [
+          "自动分词器",
+          "自动编码器"
+        ]
+      }
+    },
+    {
+      "term_en": "Run Curve",
+      "translations": {
+        "zh": "过程曲线"
+      },
+      "forbidden": {
+        "zh": [
+          "实时指标",
+          "监控指标"
+        ]
+      }
+    },
+    {
+      "term_en": "Target Snapshot",
+      "translations": {
+        "zh": "被测对象快照"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Baseline",
+      "translations": {
+        "zh": "基线"
+      },
+      "forbidden": {
+        "zh": [
+          "天梯榜"
+        ]
+      }
+    },
+    {
+      "term_en": "Verdict",
+      "translations": {
+        "zh": "判定"
+      },
+      "forbidden": {
+        "en": [
+          "Recommendation"
+        ],
+        "zh": [
+          "建议"
+        ]
+      }
+    },
+    {
+      "term_en": "Stop Reason",
+      "translations": {
+        "zh": "停止原因"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "API Token",
+      "translations": {
+        "zh": "API 令牌"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Node Token",
+      "translations": {
+        "zh": "节点 token"
+      },
+      "forbidden": {
+        "en": [
+          "Bootstrap Token",
+          "API Key"
+        ]
+      }
+    },
+    {
+      "term_en": "Pending Node",
+      "translations": {
+        "zh": "pending 节点"
+      },
+      "forbidden": {
+        "zh": [
+          "未注册节点",
+          "临时节点"
+        ]
+      }
+    },
+    {
+      "term_en": "Registered",
+      "translations": {
+        "zh": "注册确认消息"
+      },
+      "forbidden": {
+        "en": [
+          "identity.json"
+        ]
+      }
+    },
+    {
+      "term_en": "Reject",
+      "translations": {
+        "zh": "拒绝消息"
+      },
+      "forbidden": {
+        "zh": [
+          "踢下线"
+        ]
+      }
+    },
+    {
+      "term_en": "Smoke Handshake",
+      "translations": {
+        "zh": "smoke 握手"
+      },
+      "forbidden": {
+        "en": [
+          "Health Check",
+          "Ping"
+        ]
+      }
+    },
+    {
+      "term_en": "In-place Upgrade",
+      "translations": {
+        "zh": "原地升级"
+      },
+      "forbidden": {
+        "zh": [
+          "重启升级",
+          "滚动升级"
+        ]
+      }
+    },
+    {
+      "term_en": "Out-of-band Recovery",
+      "translations": {
+        "zh": "带外恢复"
+      },
+      "forbidden": {
+        "zh": [
+          "失联恢复",
+          "节点自愈"
+        ]
+      }
+    },
+    {
+      "term_en": "Out-of-band Probe",
+      "translations": {
+        "zh": "带外探测"
+      },
+      "forbidden": {
+        "en": [
+          "Health Check",
+          "Heartbeat"
+        ]
+      }
+    },
+    {
+      "term_en": "Agent Restart",
+      "translations": {
+        "zh": "agent 重启"
+      },
+      "forbidden": {
+        "zh": [
+          "原地升级"
+        ]
+      }
+    },
+    {
+      "term_en": "Out-of-band Reinstall",
+      "translations": {
+        "zh": "带外重装"
+      },
+      "forbidden": {
+        "zh": [
+          "重新纳管"
+        ]
+      }
+    },
+    {
+      "term_en": "Agent Version / Upgrade Available",
+      "translations": {
+        "zh": "AgentVersion / 可升级"
+      },
+      "forbidden": {
+        "zh": [
+          "manifest 版本"
+        ]
+      }
+    },
+    {
+      "term_en": "Name / Hostname",
+      "translations": {
+        "zh": "name / hostname"
+      },
+      "forbidden": {}
+    },
+    {
+      "term_en": "Last Remote Address",
+      "translations": {
+        "zh": "最近来源地址"
+      },
+      "forbidden": {
+        "zh": [
+          "节点地址"
+        ]
+      }
+    },
+    {
+      "term_en": "SSH Connection Method",
+      "translations": {
+        "zh": "SSH 连接方式"
+      },
+      "forbidden": {
+        "en": [
+          "SSH over TCP"
+        ]
+      }
+    },
+    {
+      "term_en": "Management Node Address",
+      "translations": {
+        "zh": "管理节点接入地址"
+      },
+      "forbidden": {
+        "zh": [
+          "控制面接入地址",
+          "server 外部地址",
+          "监听地址",
+          "SSH 地址"
+        ]
+      }
+    },
+    {
+      "term_en": "Server-dial Address",
+      "translations": {
+        "zh": "agent 接入地址"
+      },
+      "forbidden": {
+        "zh": [
+          "agent 外部地址",
+          "节点 IP"
+        ]
+      }
+    },
+    {
+      "term_en": "Agent Listen Address",
+      "translations": {
+        "zh": "agent 监听地址"
+      },
+      "forbidden": {
+        "zh": [
+          "agent 监听端口",
+          "节点端口"
+        ]
+      }
+    },
+    {
+      "term_en": "Node Interconnect Address",
+      "translations": {
+        "zh": "节点互联地址"
+      },
+      "forbidden": {
+        "zh": [
+          "agent 互联地址"
+        ]
+      }
+    },
+    {
+      "term_en": "dGPU",
+      "definition": "dynamic GPU; the product term for GPU partitioning. Implemented by HAMi-core libvgpu (NVIDIA), vCANN (Ascend), and HGGC (PPU) — implementation names stay in engineering docs, never in UI copy.",
+      "translations": {
+        "zh": "dGPU"
+      },
+      "forbidden": {
+        "en": [
+          "HAMi",
+          "vGPU",
+          "VRAM partitioning",
+          "GPU partitioning",
+          "Slicing"
+        ],
+        "zh": [
+          "切分",
+          "显存切分",
+          "虚拟化"
+        ]
+      }
+    },
+    {
+      "term_en": "Sleep / Wake",
+      "translations": {
+        "zh": "睡眠 / 唤醒"
+      },
+      "forbidden": {
+        "en": [
+          "Hibernate / Resume"
+        ]
+      }
+    },
+    {
+      "term_en": "VRAM",
+      "translations": {
+        "zh": "显存"
+      },
+      "forbidden": {
+        "en": [
+          "Video Memory Capacity"
+        ]
+      }
+    },
+    {
+      "term_en": "Playground",
+      "translations": {
+        "zh": "试验场"
+      },
+      "forbidden": {
+        "en": [
+          "Sandbox"
+        ]
+      }
+    },
+    {
+      "term_en": "Onboard",
+      "translations": {
+        "zh": "纳管 / 接入"
+      },
+      "forbidden": {
+        "en": [
+          "Register Machine",
+          "Take Over"
+        ]
+      }
+    },
+    {
+      "term_en": "Initial Password",
+      "translations": {
+        "zh": "初始密码"
+      },
+      "forbidden": {
+        "zh": [
+          "默认密码",
+          "首启凭证"
+        ]
+      }
+    },
+    {
+      "term_en": "Server Config",
+      "translations": {
+        "zh": "服务端配置"
+      },
+      "forbidden": {
+        "zh": [
+          "安装清单",
+          "发布清单"
+        ]
+      }
+    },
+    {
+      "term_en": "Listen Function",
+      "translations": {
+        "zh": "监听功能"
+      },
+      "forbidden": {
+        "zh": [
+          "监听角色"
+        ]
+      }
+    },
+    {
+      "term_en": "Distribution Channel",
+      "translations": {
+        "zh": "发布通道"
+      },
+      "forbidden": {
+        "zh": [
+          "发布站",
+          "上游地址"
+        ]
+      }
+    },
+    {
+      "term_en": "Distribution Source",
+      "translations": {
+        "zh": "发布源"
+      },
+      "forbidden": {
+        "zh": [
+          "镜像站"
+        ]
+      }
+    },
+    {
+      "term_en": "Distribution Index",
+      "translations": {
+        "zh": "发布索引"
+      },
+      "forbidden": {
+        "zh": [
+          "发布清单"
+        ]
+      }
+    },
+    {
+      "term_en": "Console Upgrade",
+      "translations": {
+        "zh": "控制台升级"
+      },
+      "forbidden": {
+        "zh": [
+          "在线升级"
+        ]
+      }
+    },
+    {
+      "term_en": "Control-plane Upgrade",
+      "translations": {
+        "zh": "控制面升级"
+      },
+      "forbidden": {
+        "zh": [
+          "原地升级",
+          "重装"
+        ]
+      }
+    },
+    {
+      "term_en": "Pre-upgrade Backup",
+      "translations": {
+        "zh": "升级备份"
+      },
+      "forbidden": {
+        "zh": [
+          "数据备份",
+          "升级快照"
+        ]
+      }
+    },
+    {
+      "term_en": "Exposure",
+      "translations": {
+        "zh": "公网入口"
+      },
+      "forbidden": {
+        "zh": [
+          "公网地址",
+          "反向代理"
+        ]
+      }
+    },
+    {
+      "term_en": "Exposure Provider",
+      "translations": {
+        "zh": "公网入口提供方"
+      },
+      "forbidden": {
+        "zh": [
+          "厂商",
+          "隧道类型"
+        ]
+      }
+    },
+    {
+      "term_en": "Node Label",
+      "translations": { "zh": "用户标签" }
+    },
+    {
+      "term_en": "System Label",
+      "translations": { "zh": "系统标签" }
+    },
+    {
+      "term_en": "Node Requirement",
+      "translations": { "zh": "节点条件" },
+      "forbidden": { "zh": ["节点标签约束", "节点标签筛选"] }
+    },
+    {
+      "term_en": "Cordon",
+      "translations": { "zh": "停止调度" }
+    },
+    {
+      "term_en": "Node Drain",
+      "translations": { "zh": "驱逐" }
+    },
+    {
+      "term_en": "Allocation Claim",
+      "translations": { "zh": "资源分配权" }
+    },
+    {
+      "term_en": "Physical Footprint",
+      "translations": { "zh": "物理占用" }
+    },
+    {
+      "term_en": "Transition Peak",
+      "translations": { "zh": "过渡峰值" }
+    },
+    {
+      "term_en": "Same-NUMA Constraint",
+      "translations": { "zh": "同 NUMA 约束" }
+    },
+    {
+      "term_en": "PD Deployment",
+      "translations": { "zh": "PD 部署" }
+    },
+    {
+      "term_en": "Role",
+      "translations": { "zh": "角色" }
+    },
+    {
+      "term_en": "PD Mode",
+      "translations": { "zh": "PD 模式" }
+    },
+    {
+      "term_en": "Wire Protocol",
+      "translations": { "zh": "线协议" }
+    },
+    {
+      "term_en": "Fallback",
+      "translations": { "zh": "降级" }
+    },
+    {
+      "term_en": "PD Effectiveness",
+      "translations": { "zh": "PD 有效性" }
+    },
+    {
+      "term_en": "Replica",
+      "translations": { "zh": "副本" }
+    },
+    {
+      "term_en": "Instance",
+      "translations": { "zh": "实例" }
+    },
+    {
+      "term_en": "Generation",
+      "translations": { "zh": "代" }
+    },
+    {
+      "term_en": "RDMA Runtime Transport",
+      "translations": { "zh": "RDMA 运行传输" }
+    },
+    {
+      "term_en": "Network",
+      "translations": { "zh": "网络" },
+      "forbidden": { "zh": ["VPC"] }
+    },
+    {
+      "term_en": "HCA",
+      "translations": { "zh": "HCA（rail）" },
+      "forbidden": { "zh": ["RDMA 网卡"] }
+    },
+    {
+      "term_en": "HCA IP",
+      "translations": { "zh": "HCA IP" }
+    },
+    {
+      "term_en": "Bootstrap Address",
+      "translations": { "zh": "bootstrap 地址" },
+      "forbidden": { "zh": ["管理地址"] }
+    },
+    {
+      "term_en": "Auto / Manual",
+      "translations": { "zh": "自动 / 手动" }
+    },
+    {
+      "term_en": "Storage-sync / Compute / Serving Network",
+      "translations": { "zh": "存储同步网络 / 参数网络 / 服务网络" },
+      "forbidden": { "zh": ["数据网络", "业务网络"], "en": ["parameter network", "parameter traffic"] }
+    },
+    {
+      "term_en": "Attachment",
+      "translations": { "zh": "加载" },
+      "forbidden": { "zh": ["挂载"] }
+    },
+    {
+      "term_en": "Management Network",
+      "translations": { "zh": "管理网" },
+      "forbidden": { "zh": ["直连地址"] }
+    },
+    {
+      "term_en": "Platform SSH Key",
+      "translations": { "zh": "平台密钥" }
+    },
+    {
+      "term_en": "Compute Node Address",
+      "translations": { "zh": "计算节点接入地址" },
+      "forbidden": { "zh": ["直连地址", "主机接入地址"] }
+    },
+    {
+      "term_en": "Network Inventory",
+      "translations": { "zh": "网卡清单" },
+      "forbidden": { "zh": ["网络配置"] }
+    },
+    {
+      "term_en": "Card Reachability Test",
+      "translations": { "zh": "卡连通性测试" },
+      "forbidden": { "zh": ["卡间带宽"] }
+    },
+    {
+      "term_en": "Storage",
+      "translations": { "zh": "存储" },
+      "forbidden": { "zh": ["存储策略"] }
+    },
+    {
+      "term_en": "Model File",
+      "translations": { "zh": "模型文件" },
+      "forbidden": { "zh": ["副本", "模型拷贝"] }
+    },
+    {
+      "term_en": "Model Location",
+      "translations": { "zh": "位置查询" }
+    },
+    {
+      "term_en": "Writer Node",
+      "translations": { "zh": "写入节点" }
+    },
+    {
+      "term_en": "Control Plane Heartbeat",
+      "translations": { "zh": "控制面心跳" }
+    },
+    {
+      "term_en": "Internal Network Test",
+      "translations": { "zh": "内部测试" },
+      "forbidden": { "zh": ["压测"] }
+    },
+    {
+      "term_en": "Inference Metric Vocabulary",
+      "translations": { "zh": "平台指标词表" }
+    },
+    {
+      "term_en": "Metric Source",
+      "translations": { "zh": "指标来源" }
+    },
+    {
+      "term_en": "Instance Observation",
+      "translations": { "zh": "观察配置" }
+    },
+    {
+      "term_en": "Signal",
+      "translations": { "zh": "信号" }
+    },
+    {
+      "term_en": "Environment Package",
+      "translations": { "zh": "环境包" }
+    },
+    {
+      "term_en": "Shared by Memory",
+      "translations": { "zh": "按内存共享卡" }
+    },
+    { "term_en": "Request Success Rate", "translations": { "zh": "请求成功率" } },
+    { "term_en": "Session Completion Rate", "translations": { "zh": "会话完成率" } },
+    { "term_en": "Cache Report Coverage", "translations": { "zh": "缓存上报覆盖率" } }
+  ],
+  "do_not_translate": [
+    "GPUWorks",
+    "vLLM",
+    "SGLang",
+    "dGPU",
+    "KV Cache",
+    "TTFT",
+    "TPOT",
+    "CUDA",
+    "ROCm",
+    "CANN",
+    "API",
+    "SSH",
+    "UUID"
+  ]
+}

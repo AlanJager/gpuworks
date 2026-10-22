@@ -1,0 +1,56 @@
+model_id: carlosqsw/longpt_trace_qwen3_4b_sft_04
+source: upstream
+display_title: longpt_trace_qwen3_4b_sft_04
+parameter_count: 4B
+architecture: dense
+context_length: 40960
+release_date: '2025-04-27'
+model_config:
+  model_type: qwen3
+  num_hidden_layers: 36
+  hidden_size: 2560
+  num_attention_heads: 32
+  num_key_value_heads: 8
+  head_dim: 128
+  max_position_embeddings: 40960
+kv_bytes_per_token:
+  vllm: 147456
+  sglang: 147456
+input_modalities:
+- text
+specs:
+- name: bf16-vllm-ppu-def46411
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: carlosqsw/longpt_trace_qwen3_4b_sft_04
+        revision: def46411b3f52b16014f6be11d397e2c3615066e
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '4096'
+  - --max-num-seqs
+  - '8'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 8044982080

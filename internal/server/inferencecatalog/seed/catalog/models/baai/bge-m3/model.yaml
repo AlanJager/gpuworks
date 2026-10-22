@@ -1,0 +1,102 @@
+model_id: baai/bge-m3
+source: upstream
+display_title: bge-m3
+release_date: '2024-01-27'
+model_config: {model_type: xlm-roberta, num_hidden_layers: 24, hidden_size: 1024, num_attention_heads: 16, max_position_embeddings: 8194}
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-vllm-hygon-a2d17323
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: BAAI/bge-m3
+        revision: 5617a9f61b028005a4858fdac845db406aefb181
+    - modelscope:
+        repo_id: BAAI/bge-m3
+        revision: a46a13810c9d7f876fccd8d7017512ebc265d2c1
+  weight_bytes: 4587311333
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  - --dtype
+  - bfloat16
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: BAAI/bge-m3
+        revision: 5617a9f61b028005a4858fdac845db406aefb181
+    - modelscope:
+        repo_id: BAAI/bge-m3
+        revision: a46a13810c9d7f876fccd8d7017512ebc265d2c1
+  weight_bytes: 4587311333
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-vllm-ppu-5617a9f6
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: BAAI/bge-m3
+        revision: 5617a9f61b028005a4858fdac845db406aefb181
+    - modelscope:
+        repo_id: BAAI/bge-m3
+        revision: a46a13810c9d7f876fccd8d7017512ebc265d2c1
+  weight_bytes: 2271145830
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --runner
+  - pooling
+  - --enforce-eager
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+input_modalities: [text]

@@ -1,0 +1,108 @@
+# gpuworks-runner: T-Head PPU（HGGC）vLLM 线
+#
+# 派生自 gpustack/runner 的 pack/hggc/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
+# 「厂商 vanilla 之上只叠工具层」与运行期 env 的取值参照其实现。
+#
+# vanilla = asllm 厂商镜像（containerimages.zstack.ai 的 tar，docker load 后入
+# 本地 mirror）。artifacts/work/2026-10-03-runner-images/research/ppu-asllm-base.md 实测其自带 PPU_SDK 2.1.0（HGGC 13.0）、torch 2.10.0、
+# vllm 0.23.0+ppu2.1.0.cosyvoice3、vllm-omni 0.23.0rc2、sglang 0.5.13+asllm2.0.0.8、
+# diffusers 0.37.0 全家、mooncake-transfer-engine 0.3.9 —— omni/diffusion/mooncake
+# 全部继承 vanilla，不做合并层。
+#
+# 本层只做：
+#   - 排障工具 + tini
+#   - 清 BASH_ENV（ASLLM autocache 每次 bash 启动都部署 cache bundle，拖慢健康检查）
+#   - 运行期 env（VLLM_USE_V1=0 等）
+#
+# **必须配合 build.sh --squash**：厂商 vanilla 的 image config history 里含
+# T-Head 内网代理的明文账号密码，而 history 随镜像分发到任何 registry。
+# squash（FROM scratch + COPY --from + 重放 config）把 history 压成一层后，
+# 凭据不再随镜像走。见 ../build.sh 的 squash_image 与 matrix.yaml 的 SQUASH。
+ARG BASE_IMAGE=asllm:2.0.0-vanilla
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层
+RUN <<EOF
+    set -eux
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y
+        apt-get install -y --no-install-recommends \
+            tini jq curl wget vim less tree bc \
+            iproute2 iputils-ping net-tools dnsutils \
+            procps sysstat htop \
+            ffmpeg patch
+        rm -rf /var/cache/apt /var/tmp/* /tmp/*
+    else
+        yum install -y jq curl wget vim less tree bc iproute iputils net-tools procps-ng sysstat htop ffmpeg patch
+        rm -rf /var/cache/yum /tmp/*
+    fi
+EOF
+
+## 接管 ASLLM 自启动行为（artifacts/work/2026-10-03-runner-images/research/ppu-asllm-base.md §5）
+## 厂商 base 的运行期 env 里带着 T-Head 内网的包源（`PIP_INDEX_URL`、`PYTHON_PKG_URL`、
+## `PYTHON_GET_PIP_URL`，域名 *.eng.t-head.cn，不含凭据，2026-10-06 在 PPU 上复验发现）。
+## 外部用户在容器里 `pip install` 会走到连不上的内网源，所以改回公网默认源、清空另外两个
+## （它们只在厂商构建镜像时用）。ENV 只改元数据，不增加文件层。
+ENV BASH_ENV="" \
+    PIP_INDEX_URL="https://pypi.org/simple" \
+    PYTHON_PKG_URL="" \
+    PYTHON_GET_PIP_URL="" \
+    VLLM_USE_V1=0 \
+    RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+
+## 厂商 base 还在 /etc/profile.d/dockerenv.sh 里无条件 export 了同样的内网变量（外加
+## BASH_ENV=autocache-init.sh），登录 shell（terminal、`docker exec -it … bash -l`）会把上面清掉的
+## 值全部还原回去（2026-10-06 在 PPU 上复验发现）。把这几行从脚本和 /etc/instanceInfo 的 dump 里删掉。
+RUN <<EOF
+    set -eux
+    for f in /etc/profile.d/dockerenv.sh /etc/instanceInfo; do
+        [ -f "$f" ] || continue
+        sed -i -E '/t-head\.cn|^export BASH_ENV=|^BASH_ENV=/d' "$f"
+    done
+    if grep -rlE 't-head\.cn' /etc/profile.d /etc/instanceInfo 2>/dev/null; then
+        echo "vendor-internal hosts still present in login-shell config" >&2
+        exit 1
+    fi
+EOF
+
+WORKDIR /
+ENTRYPOINT [ "tini", "--" ]
+
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "vllm",
+    "framework": "hggc",
+    "requires": os.environ["REQUIRES"].split(),
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=vllm bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm-hggc" \
+      io.gpuworks.framework="hggc" \
+      io.gpuworks.framework.version="13.0" \
+      io.gpuworks.ppu-sdk="2.1.0" \
+      io.gpuworks.omni="inherited-0.23.0rc2" \
+      io.gpuworks.mooncake="inherited-0.3.9" \
+      io.gpuworks.requires="${REQUIRES}"

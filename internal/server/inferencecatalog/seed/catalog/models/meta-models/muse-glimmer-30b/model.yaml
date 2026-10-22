@@ -1,0 +1,109 @@
+model_id: meta-models/muse-glimmer-30b
+source: upstream
+display_title: Muse Glimmer 30B
+parameter_count: 29.6B
+architecture: dense
+context_length: 131072
+release_date: '2026-08-09'
+model_config: {model_type: muse_glimmer, num_hidden_layers: 52, hidden_size: 6656, num_attention_heads: 32, num_key_value_heads: 2, head_dim: 128, max_position_embeddings: 131072, sliding_window: 2048, layer_types: [sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention], vision_config: {patch_size: 14, max_position_embeddings: 1024}}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: meta-models/Muse-Glimmer-30B
+        revision: a4e59da52a7bc87ae7251dd5545c0dd437c44b68
+    - modelscope:
+        repo_id: meta-models/Muse-Glimmer-30B
+        revision: 0b32986fa095997d32982fc508718b84e05759eb
+  weight_bytes: 59581829216
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --generation-config
+  - auto
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - muse_glimmer
+  - --reasoning-parser
+  - muse_glimmer
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/Muse-Glimmer-30B-FP8-block
+        revision: 8ed2e29141d4fef439b9a0e15e0a2678bc190a82
+    - modelscope:
+        repo_id: RedHatAI/Muse-Glimmer-30B-FP8-block
+        revision: 0eb684b558ed9ca3e42d420695938ea37877aee8
+  weight_bytes: 34421255510
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --generation-config
+  - auto
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - muse_glimmer
+  - --reasoning-parser
+  - muse_glimmer
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: Inferact/Muse-Glimmer-30B-NVFP4-W4A4
+        revision: d35cb79050f419c457611b1cee5c5d15b176f285
+    - modelscope:
+        repo_id: Inferact/Muse-Glimmer-30B-NVFP4-W4A4
+        revision: 0bb6095afcebc9286ad31ea2b7b69657f6f283fe
+  weight_bytes: 25447097878
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --generation-config
+  - auto
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - muse_glimmer
+  - --reasoning-parser
+  - muse_glimmer
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

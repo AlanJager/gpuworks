@@ -1,0 +1,66 @@
+{
+  "modes": {
+    "saturation": {
+      "label": "吞吐上限探测",
+      "description": "找到吞吐停止明显增长的并发拐点"
+    },
+    "sla": {
+      "label": "SLA 最大并发",
+      "description": "找到仍满足延迟或吞吐约束的最大并发"
+    },
+    "grid": {
+      "label": "参数扫描",
+      "description": "按并发、输入长度和输出长度组合逐点测量"
+    }
+  },
+  "datasets": {
+	"agentic": {
+	  "label": "Agentic 合成负载",
+	  "description": "按平均输入生成从短到长的多轮上下文，适合测量 Agent 场景的前缀缓存与并发吞吐"
+	},
+    "random": {
+      "label": "纯随机定长",
+      "description": "每次生成新的随机 token/字符负载，避免合成语料的前缀缓存偏差"
+    },
+    "multiturn": {
+      "label": "OASST1 多轮对话（3,826 条）",
+      "description": "Apache-2.0 上游真实对话树的固定子集；不是生产流量"
+    },
+    "imported": {
+      "label": "已导入的生产 JSONL",
+      "description": "推荐导入脱敏生产样本以做容量决策"
+    }
+  },
+  "retired_datasets": {
+	"agenttrace": {
+	  "label": "ETO WebShop（已移除）",
+	  "description": "仅用于显示历史评测；不能用于新建或重跑"
+	}
+  },
+  "sla_constraints": {
+    "max_avg_ttft": "平均 TTFT",
+    "max_p99_ttft": "P99 TTFT",
+    "max_avg_tpot": "平均 TPOT",
+    "max_p99_tpot": "P99 TPOT",
+    "max_avg_latency": "平均延迟",
+    "max_p99_latency": "P99 延迟",
+    "max_rps": "请求吞吐",
+    "max_tps": "输出吞吐",
+    "min_rps": "请求吞吐",
+    "min_tps": "输出吞吐",
+    "min_interactivity": "单用户输出速度",
+    "min_session_completion": "会话完成率（0–1）"
+  },
+  "objectives": {
+    "rps": { "label": "请求吞吐" },
+    "output_tps": { "label": "输出吞吐" },
+    "total_tps": { "label": "总 Token 吞吐" }
+  },
+  "statuses": {
+    "pending": { "label": "等待中" },
+    "running": { "label": "运行中" },
+    "done": { "label": "已完成" },
+    "failed": { "label": "失败" },
+    "canceled": { "label": "已取消" }
+  }
+}

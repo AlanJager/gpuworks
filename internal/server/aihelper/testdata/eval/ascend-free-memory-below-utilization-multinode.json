@@ -1,0 +1,71 @@
+{
+  "id": "ascend-free-memory-below-utilization-multinode",
+  "source": "artifacts/archive/2026-09-30-accelerator-parameter-network/evidence/ascend-multinode.md",
+  "note": "vllm-ascend 0.26.0rc1, two-node TP=2 on 910B4 card 4; both cards already held other tenants' inference workloads, so init_device saw only 7.45/29.49 GiB free. ValueError and DP leader lines verbatim from the record; other INFO lines and traceback frames reconstructed. Platform rejects gpu_memory_utilization < 0.7, real fix was moving to a free card (gpus [3]). Long tail: memory is held by another process, not an OOM.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen3-npu-tp2",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "2",
+    "--nnodes",
+    "2",
+    "--node-rank",
+    "0",
+    "--master-addr",
+    "10.0.0.31",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "gpus": [
+    {
+      "name": "Ascend 910B4",
+      "memory_gib": 32
+    }
+  ],
+  "logs": [
+    "INFO 09-30 15:41:02 [__init__.py:43] Available plugins for group vllm.platform_plugins:",
+    "INFO 09-30 15:41:02 [__init__.py:45] - ascend -> vllm_ascend:register",
+    "INFO 09-30 15:41:02 [__init__.py:239] Platform plugin ascend is activated",
+    "(APIServer pid=1) INFO 09-30 15:41:06 [api_server.py:1885] vLLM API server version 0.26.0rc1",
+    "(APIServer pid=1) INFO 09-30 15:41:06 [utils.py:328] non-default args: {'model': '/model', 'host': '0.0.0.0', 'port': 30000, 'served_model_name': ['qwen3-npu-tp2'], 'tensor_parallel_size': 2, 'nnodes': 2, 'node_rank': 0, 'master_addr': '10.0.0.31'}",
+    "(APIServer pid=1) INFO 09-30 15:41:15 [core.py:96] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=10.0.0.31, mp_master_port=29550, world_size=2",
+    "(EngineCore_DP0 pid=88) INFO 09-30 15:41:18 [multiproc_executor.py:720] Use multiprocessing distributed executor on 2 nodes",
+    "(Worker pid=103) INFO 09-30 15:41:24 [worker.py:268] Initializing NPU device npu:0",
+    "(Worker pid=103) ERROR 09-30 15:41:25 [multiproc_executor.py:772] WorkerProc failed to start.",
+    "(Worker pid=103) ERROR 09-30 15:41:25 [multiproc_executor.py:772] Traceback (most recent call last):",
+    "(Worker pid=103) ERROR 09-30 15:41:25 [multiproc_executor.py:772]   File \"/usr/local/lib/python3.12/site-packages/vllm/v1/executor/multiproc_executor.py\", line 743, in worker_main",
+    "(Worker pid=103) ERROR 09-30 15:41:25 [multiproc_executor.py:772]     worker = WorkerProc(*args, **kwargs)",
+    "(Worker pid=103) ERROR 09-30 15:41:25 [multiproc_executor.py:772]   File \"/vllm-workspace/vllm-ascend/vllm_ascend/worker/worker.py\", line 287, in init_device",
+    "(Worker pid=103) ERROR 09-30 15:41:25 [multiproc_executor.py:772]     self.init_npu_memory = self._init_device()",
+    "(Worker pid=103) ValueError: Free memory on device (7.45/29.49 GiB) on startup is less than desired GPU memory utilization (0.9, 26.54 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.",
+    "(EngineCore_DP0 pid=88) ERROR 09-30 15:41:26 [core.py:1231] Exception: WorkerProc initialization failed due to an exception in a background process. See stack trace for root cause.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "",
+  "expect_keywords": [
+    [
+      "其他进程",
+      "other process",
+      "占用",
+      "occupied",
+      "in use by"
+    ],
+    [
+      "npu-smi",
+      "换卡",
+      "另一张卡",
+      "空闲的卡",
+      "another NPU",
+      "another card",
+      "free card"
+    ]
+  ]
+}

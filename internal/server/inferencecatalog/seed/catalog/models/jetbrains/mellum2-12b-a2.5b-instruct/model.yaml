@@ -1,0 +1,43 @@
+model_id: jetbrains/mellum2-12b-a2.5b-instruct
+source: upstream
+display_title: Mellum2-12B-A2.5B-Instruct
+parameter_count: 12B
+architecture: moe
+context_length: 131072
+release_date: '2026-05-26'
+model_config: {model_type: mellum, num_hidden_layers: 28, hidden_size: 2304, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 131072, sliding_window: 1024, layer_types: [sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention]}
+kv_bytes_per_token:
+  vllm: 57344
+  sglang: 57344
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: JetBrains/Mellum2-12B-A2.5B-Instruct
+        revision: 273d9c1c6882ac8e1562e5b7e043857d35a787b6
+    - modelscope:
+        repo_id: JetBrains/Mellum2-12B-A2.5B-Instruct
+        revision: 3cc64d0f22aa455e1756c653fe7827ff7cf14cc8
+  weight_bytes: 24308189361
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

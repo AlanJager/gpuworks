@@ -1,0 +1,163 @@
+{
+  "contract_id": "gpuworks/storage/shared-dir-trial-mount-lifecycle",
+  "name": "存储 / 已挂载共享目录 / 试挂、创建、扫描、只读切换与删除保留文件",
+  "priority": "P0",
+  "page_id": "storage",
+  "control_id": "storage-shared-dir",
+  "scope": "Single targeted contract; not a full storage-type or page completion claim",
+  "test_file": "test/e2e/storage_shared_dir.py",
+  "test_function": "test_shared_dir_lifecycle",
+  "command": "make test-e2e-storage-shared-dir",
+  "lane": "local-real-server-agent-bind-mounted-shared-dir",
+  "identity": "admin browser; real agent; the fixture process owns a private bind mount",
+  "fixture": "isolated server, fresh SQLite, unique runId, real Chrome, real agent over WS, private bind mount standing in for an already-mounted shared directory, passwordless sudo required only for mount/umount",
+  "product_contracts": [
+    "ui/src/pages/storage/StorageFormModal.tsx",
+    "ui/src/pages/storage/StorageTargetsEditor.tsx",
+    "ui/src/pages/storage/StorageDetailActions.tsx",
+    "ui/src/pages/storage/StorageScanModal.tsx",
+    "internal/server/api/storages.go",
+    "internal/agent/storagemount/backing.go",
+    "internal/agent/app/storages_rpc.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "covered",
+    "reason": "The agent probed the real bind mount (ok/readable/writable/capacity), reported the storage ready, and scanned the real directory into a model candidate. Deleting the storage left the mount and its files in place."
+  },
+  "crud": {
+    "create": "covered: type/name/path/scope through the modal, real trial mount, create request body and 201 response",
+    "read": "covered: detail heading, independent GET with all node states, scan candidates",
+    "update": "covered: enabled true→false→true through the switch with exact boolean bodies and GET readback",
+    "delete": "covered: menu confirmation, DELETE 204, 404, list row gone, mount and files retained"
+  },
+  "fields": [
+    {
+      "field_id": "storage.type",
+      "component": "Radio (button)",
+      "required": true,
+      "default": "local",
+      "request": "type=shared_dir",
+      "persistence": "type",
+      "contract": "switching the type shows only the fields of that type",
+      "covered": [
+        "local default is replaced by shared_dir",
+        "shared_dir shows the shared path help and hides the NFS export field",
+        "probe and create send type=shared_dir"
+      ],
+      "missing": [
+        "every other type in the same run",
+        "switching back and stale hidden values"
+      ]
+    },
+    {
+      "field_id": "storage.name",
+      "component": "Text",
+      "required": true,
+      "request": "name",
+      "persistence": "name",
+      "contract": "1..63 lowercase letters, digits or hyphens",
+      "covered": [
+        "unique runId name"
+      ],
+      "missing": [
+        "empty/whitespace, uppercase, length boundaries and duplicate names"
+      ]
+    },
+    {
+      "field_id": "storage.shared-path",
+      "component": "Text",
+      "required": true,
+      "request": "path",
+      "persistence": "path",
+      "contract": "absolute path of an already-mounted directory",
+      "covered": [
+        "real mount path round-trips in probe, create and independent GET",
+        "agent confirms the path is a mount point and writable"
+      ],
+      "missing": [
+        "empty/relative/invalid path errors",
+        "a directory that is not a mount point (probe refusal)",
+        "read-only mount saved as disabled"
+      ]
+    },
+    {
+      "field_id": "storage.scope",
+      "component": "Radio + multi Select",
+      "required": true,
+      "request": "all_nodes=false, targets[].node_uuid, probe_node",
+      "persistence": "targets",
+      "contract": "one by one requires at least one chosen node",
+      "covered": [
+        "one chosen node by readable name",
+        "the same node in probe_node and targets",
+        "independent GET returns the node relation and its ready state"
+      ],
+      "missing": [
+        "labels scope",
+        "all nodes",
+        "rebinding A→B and clearing the selection",
+        "offline or deleted candidate rejection"
+      ]
+    },
+    {
+      "field_id": "storage.enabled",
+      "component": "Switch",
+      "default": "true",
+      "request": "enabled",
+      "persistence": "enabled",
+      "covered": [
+        "checked default",
+        "off with {\"enabled\":false}",
+        "on with {\"enabled\":true}",
+        "reload/GET readback after each step"
+      ],
+      "missing": [
+        "the write-refusal path that keeps a storage read-only",
+        "runtime effect of a disabled storage on a real download"
+      ]
+    },
+    {
+      "field_id": "storage.delete",
+      "component": "Menu + confirmation",
+      "request": "DELETE /api/v1/storages/{id}",
+      "persistence": "storage absent",
+      "covered": [
+        "confirmation names the storage and states that shared files stay",
+        "204, 404 and row removal",
+        "files and the mount survive deletion"
+      ],
+      "missing": [
+        "reference-protected deletion while a deployment uses the storage",
+        "delete failure and retry"
+      ]
+    }
+  ],
+  "dimensions": [
+    "1.2",
+    "1.7",
+    "1.14",
+    "5.5",
+    "6.2",
+    "8.1",
+    "10.9",
+    "12.7",
+    "13.5"
+  ],
+  "missing": [
+    "Real CephFS/Lustre/NFS backing, its latency and disconnect behavior",
+    "Storage edit: name, path, targets, node overrides and expected_updated_at conflicts",
+    "Model import from scan candidates and a real download into the storage",
+    "Read-only enforcement: a disabled storage refusing writes/downloads",
+    "Reference-protected deletion while a deployment uses the storage",
+    "Local and NFS/NFS-cache type flows in the same lane",
+    "Pagination and large directory scans",
+    "The other locale (each run covers one --locale)"
+  ]
+}

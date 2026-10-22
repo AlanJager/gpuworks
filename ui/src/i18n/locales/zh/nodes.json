@@ -1,0 +1,670 @@
+{
+  "pullProxy": {
+    "title": "拉取代理",
+    "entry": "代理 #{{n}}",
+    "none": "不使用代理",
+    "noneDetail": "不使用代理（节点 agent 使用自身环境变量）",
+    "httpProxy": "HTTP 代理",
+    "httpsProxy": "HTTPS 代理",
+    "user": "用户名：{{user}}",
+    "appliesTo": "适用节点：",
+    "allNodes": "全部节点",
+    "direct": "直连",
+    "settingsLink": "在设置中管理代理",
+    "loadFailed": "无法加载该节点的代理配置"
+  },
+  "runtimeProxy": {
+    "driver": "容器运行时：{{driver}}",
+    "unknownDriver": "未知",
+    "perPull": "代理在每次拉取时生效，无需重启。",
+    "unknownOffline": "节点离线时，容器运行时的代理状态未知。",
+    "applied": "已生效",
+    "notApplied": "未生效",
+    "using": "dockerd 正在使用 {{proxy}}",
+    "unmanaged": "平台未给这台节点设置代理，dockerd 自己的设置是 {{proxy}}",
+    "stillUsing": "dockerd 仍在使用 {{proxy}}",
+    "direct": "直连",
+    "daemonJsonWins": "/etc/docker/daemon.json 里的代理优先于平台设置，请在那里删除。",
+    "liveRestoreOn": "live-restore 开启",
+    "liveRestoreOff": "live-restore 关闭",
+    "systemd": "由 systemd 管理",
+    "noSystemd": "不由 systemd 管理",
+    "privilegeRoot": "agent 以 root 运行",
+    "privilegeSudo": "agent 经 sudo 执行",
+    "privilegeNone": "agent 没有特权",
+    "noSystemdNote": "dockerd 不由 systemd 管理，平台不能管理它的代理，请在节点上自行修改。",
+    "restart": "重启 dockerd",
+    "confirmTitle": "重启 dockerd？",
+    "confirmOk": "重启",
+    "confirmLive": "已开启 live-restore，容器不会中断。",
+    "confirmNoLive": "这台节点上的所有容器会中断，包括推理实例；重启后平台会自动重新拉起它们。",
+    "restarted": "dockerd 已重启",
+    "restartFailed": "重启 dockerd 失败",
+    "noPrivilege": "agent 不是 root，也没有免密 sudo，平台不能修改 dockerd。请在节点上执行下面的命令。",
+    "fileHint": "把下面的内容保存为该文件。",
+    "fileAuthority": "按当前已保存的设置生成；平台实际写在节点上的文件为准。",
+    "copyFile": "复制文件内容",
+    "copyCommand": "复制命令：{{command}}",
+    "autoRefresh": "dockerd 使用代理后，这里会自动显示已生效。",
+    "refresh": "刷新状态"
+  },
+  "page": {
+    "title": "计算节点",
+    "description": "查看接入计算节点的硬件、健康状态和互联拓扑",
+    "resourceBreadcrumb": "资源",
+    "count": "{{filtered}}/{{total}} 个计算节点",
+    "search": "按名称、主机名或 ID 搜索"
+  },
+  "column": {
+    "status": "状态",
+    "name": "名称",
+    "createdAt": "创建时间",
+    "node": "节点",
+    "lastReject": "最近拒绝",
+    "memory": "内存",
+    "driver": "驱动",
+    "framework": "框架"
+  },
+  "action": {
+    "details": "详情",
+    "terminal": "终端",
+    "delete": "删除",
+    "more": "更多",
+    "cancel": "取消",
+    "add": "添加节点",
+    "edit": "编辑",
+    "doctor": "诊断",
+    "save": "保存"
+  },
+  "message": {
+    "deleted": "计算节点已删除",
+    "deleteFailed": "删除失败：{{detail}}",
+    "doctorFailed": "诊断失败：{{detail}}",
+    "forceDeleted": "管理记录已删除，节点上的 agent 可能仍在运行"
+  },
+  "delete": {
+    "confirm": "确认删除该计算节点？",
+    "description": "请先停止该计算节点上的部署实例。",
+    "uninstallDescription": "普通移除会先通过 SSH 卸载 agent，再删除节点记录。",
+    "force": "强制移除：仅删除管理记录",
+    "forceWarning": "节点上的 agent 可能仍在运行，请在节点可访问后手动停止。"
+  },
+  "waitingFirstConnection": "等待首次连接",
+  "noGPU": "无 GPU",
+  "cpuCores": "{{count}} 核",
+  "terminal": {
+    "openHost": "在浏览器中打开该节点的宿主机终端",
+    "offline": "节点离线，无法打开终端"
+  },
+  "labelFilter": {
+    "label": "标签",
+    "aria": "按标签筛选",
+    "placeholder": "选择 key=value 标签",
+    "none": "计算节点暂无标签"
+  },
+  "add": {
+    "replaceAgent": {
+      "title": "替换主机上已有的 agent？",
+      "content": "继续安装会替换该主机上的 gpuworks-agent 服务，原来的节点或 server 将失去这台主机。",
+      "confirm": "仍然安装",
+      "cancel": "取消"
+    },
+    "waitingForConnection": "等待 Agent 接入",
+    "waitingForConnectionHelp": "该节点上线后将自动关闭。也可先关闭抽屉，稍后在节点列表查看连接状态。",
+    "commandPlaceholder": "创建节点后生成包含专属 Token 的安装命令",
+    "sshSupportLabel": "目标机器是否支持 SSH",
+    "sshSupported": "支持 SSH",
+    "sshUnsupported": "不支持 SSH",
+    "nodeNameOptional": "节点名称（可选）",
+    "nodeNamePlaceholder": "留空则首次连接时使用主机名",
+    "connectionDirection": "连接方向",
+    "hostAddress": "计算节点接入地址",
+    "hostAddressHelp": "server 连接这台主机用的地址：IP、域名或平台给的映射地址。只填主机时端口与监听端口相同；平台把端口映射成别的号码时，填映射后的地址和端口。",
+    "hostAddressPlaceholder": "例如 10.0.0.8、gpu-worker-01 或 http://0.tcp.ap.ngrok.io:25408",
+    "target": "SSH 目标",
+    "targetRequired": "请输入 SSH 地址或 ssh 命令",
+    "targetHelp": "填 user@host[:port]，或直接粘贴 ssh 命令，例如 ssh -p 2222 root@192.0.2.10",
+    "advanced": "高级",
+    "installDir": "安装目录",
+    "installDirHelp": "存放 agent、模型和运行时数据",
+    "installDirTooltip": "没有 docker 的节点使用 runveil 运行时，镜像和容器根文件系统也放在这里，所以要选本地文件系统；不允许文件名带冒号的网络卷（例如 RunPod 的 /workspace）不能用。",
+    "useSystemd": "通过 systemd 启动",
+    "useSystemdTooltip": "开启时把 agent 注册为 systemd 服务 gpuworks-agent：开机自启、崩溃自动拉起。关闭时 agent 以 nohup 后台运行，安装目录里的 agent-restart.sh 用于手动重启；主机上已有的 gpuworks-agent 服务和其他目录里的 agent 都不受影响，换一个安装目录即可在同一台主机上再加一个 agent。主机没有 systemd 或没有 root/免密 sudo 时总是 nohup；macOS 节点使用 launchd，不受此项影响。",
+    "useSystemdOffHelp": "agent 不随开机启动，进程退出后也不会自动拉起",
+    "agentListenAddress": "Agent 监听地址",
+    "agentListenAddressHelp": "agent 在这台主机（或容器）里监听的地址，即 --listen。",
+    "offlineInstructions": "节点访问不到管理节点，所以从离线包安装：下载离线包，把它传到节点上（scp、Web 终端或 JupyterLab 上传均可），在它所在的目录执行下面的命令。离线包里没有 token，所有节点通用。",
+    "offlineDownload": "下载离线包 gpuworks-agent.run",
+    "offlineChecksum": "sha256：{{sum}}",
+    "startPrecheck": "开始预检查",
+    "installAgent": "安装 Agent",
+    "precheckSummary": "预检查摘要",
+    "precheckResults": "预检查结果",
+    "installSummary": "安装摘要",
+    "installResults": "安装结果 · {{binary}} · {{installDir}}{{address}}",
+    "manualInstructions": "先创建一个节点（Agent 接入前显示为“连接中”）取得唯一 Token，再在目标机器执行以下命令：",
+    "createCommand": "创建节点并生成命令",
+    "tokenSaved": "Token 已铸造并保存，可在节点详情中回看或重新生成。",
+    "copyCommand": "复制命令",
+    "message": {
+      "hostAddressRequired": "Server 发起连接需要填写计算节点接入地址",
+      "created": "节点已创建，请复制命令到目标机器执行",
+      "createFailed": "创建节点失败：{{detail}}",
+      "copied": "已复制安装命令",
+      "precheckWithIssues": "预检查完成，结果包含警告项；仍可继续安装",
+      "precheckWithErrors": "预检查发现失败项，请先查看处理，否则安装可能失败",
+      "precheckComplete": "预检查完成",
+      "precheckFailed": "预检查失败：{{detail}}",
+      "connected": "节点已成功接入",
+      "installExecuted": "安装命令已执行",
+      "installFailed": "安装失败：{{detail}}"
+    },
+    "check": {
+      "item": "检查项",
+      "status": "状态",
+      "detail": "详情",
+      "ok": "通过",
+      "warn": "警告",
+      "error": "失败",
+      "okCount": "通过 {{count}}",
+      "warnCount": "警告 {{count}}",
+      "errorCount": "失败 {{count}}"
+    }
+  },
+  "rejects": {
+    "title": "最近 Agent 握手拒绝",
+    "emptyToken": "（空）",
+    "unknownAddress": "未知地址"
+  },
+  "empty": {
+    "all": "暂无计算节点，请点击添加节点接入",
+    "filtered": "没有匹配搜索或所选标签的计算节点"
+  },
+  "connection": {
+    "serverDial": "Server 发起连接",
+    "serverDialAddress": "Server 发起连接 · {{address}}",
+    "agentDial": "Agent 发起连接"
+  },
+  "upgrade": {
+    "failed": "升级失败",
+    "available": "可升级",
+    "completed": "{{name}}：Agent 已升级并重新上线",
+    "timeout": "{{name}}：升级未在 2 分钟内完成，请检查 Agent 日志",
+    "dispatched": "已下发升级，等待节点携带新版本重连",
+    "requestFailed": "升级失败：{{detail}}",
+    "waitingReconnect": "等待重连",
+    "action": "升级 Agent",
+    "inProgress": "升级中，等待重连",
+    "failedDetail": "{{name}}：Agent 升级失败：{{detail}}",
+    "upgrading": "升级中"
+  },
+  "rename": {
+    "updated": "节点名称已更新",
+    "failed": "修改名称失败：{{detail}}",
+    "title": "编辑节点名称",
+    "placeholder": "留空表示不设置显示名称"
+  },
+  "runtime": {
+    "select": "选择运行时",
+    "updated": "运行时已切换",
+    "failed": "切换运行时失败：{{detail}}",
+    "pluginMissingHint": "当前容器运行时缺少厂商插件，安装后才能向容器暴露加速卡。",
+    "pluginNotInstalled": "未安装",
+    "copyInstallCommand": "复制安装命令",
+    "pluginInstallCopied": "插件安装命令已复制",
+    "manualCopyTitle": "复制插件安装命令",
+    "autoCurrent": "auto（当前 {{runtime}}）",
+    "copyConfigureCommand": "复制配置命令",
+    "configureCopied": "配置命令已复制",
+    "fallback": {
+      "gpu_plugin_missing": "检测到 {{from}}，但未安装 {{plugin}}，已改用 runveil。建议安装 {{plugin}}；安装后节点空闲时自动切回 {{from}}。",
+      "gpu_runtime_unconfigured": "检测到 {{from}} 且已安装 {{plugin}}，但 {{from}} 未配置 GPU 支持，已改用 runveil。建议配置后重启 {{from}}；之后节点空闲时自动切回。",
+      "gpu_ready": "{{from}} 已可用，可切换；节点空闲时将自动切换。"
+    }
+  },
+  "accelerator": {
+    "autoCurrent": "自动（当前：{{vendor}}）",
+    "cards": "{{vendor}} ×{{n}}",
+    "cardsWithModel": "{{vendor}} ×{{n}}（{{model}}）",
+    "separator": "、",
+    "unmanaged": "这台机器还有 {{cards}} 未纳管，可切换。节点同一时间只管理一种厂商的卡。",
+    "switching": "正在切换到 {{vendor}}：agent 重启后将改为管理它的卡。",
+    "updated": "已切换，agent 正在重启，稍后显示新的加速卡",
+    "failed": "切换加速卡失败：{{detail}}"
+  },
+  "detail": {
+    "title": "计算节点详情",
+    "name": "名称",
+    "os": "操作系统",
+    "kernel": "内核",
+    "kvDiskKernelTooOld": "KV Cache 磁盘层需要内核 {{required}} 或更高，当前为 {{current}}。在该节点上开启磁盘层的部署会启动失败。",
+    "disk": "磁盘",
+    "gpuDriver": "GPU 驱动",
+    "computeFramework": "计算框架",
+    "runtime": "运行时",
+    "runtimePlugin": "运行时插件",
+    "connectionMode": "连接方式",
+    "sshChannel": "SSH 带外通道",
+    "serverExternalAddress": "管理节点接入地址",
+    "agentExternalAddress": "计算节点接入地址",
+    "managementAddress": "管理网地址",
+    "agentListenAddress": "Agent 监听地址",
+    "agentVersion": "Agent 版本",
+    "sourceAddress": "来源地址",
+    "partitioningCapability": "dGPU",
+    "partitioningCapabilityEmpty": "未检测到 dGPU 后端",
+    "accelerator": "加速卡",
+    "tab": {
+      "basic": "基础信息",
+      "accelerators": "GPU",
+      "doctor": "诊断",
+      "count": "共 {{count}} 张"
+    },
+    "section": {
+      "node": "节点信息",
+      "runtime": "运行时",
+      "storage": "存储",
+      "network": "网络"
+    }
+  },
+  "accelerators": {
+    "title": "加速卡（{{count}}）",
+    "empty": "该计算节点未检测到 GPU",
+    "telemetry": "实时指标",
+    "topology": "加速卡拓扑",
+    "column": {
+      "model": "型号",
+      "vram": "显存",
+      "architecture": "架构",
+      "partitioning": "dGPU",
+      "health": "健康"
+    },
+    "overview": "概况",
+    "list": "GPU 列表",
+    "listHint": "实时数据每 10 秒刷新；点击行查看架构、NUMA、PCIe 地址等信息。",
+    "expand": "展开详情",
+    "collapse": "收起详情",
+    "field": {
+      "pcie": "PCIe 地址",
+      "uuid": "UUID",
+      "updatedAt": "指标时间"
+    }
+  },
+  "state": {
+    "online": "在线",
+    "offline": "离线",
+    "connecting": "连接中"
+  },
+  "gpuProbeFailed": {
+    "tag": "厂商工具未响应",
+    "detail": "自 {{at}} 起厂商工具没有返回，所以这台节点上本机自用的卡，凡是只有厂商工具才知道的信息（显存、UUID、健康），都还是上一次拿到的：{{detail}}\n\n哪些卡在机器里、归谁、插在哪，来自 PCI 总线，不受影响。"
+  },
+  "ssh": {
+    "title": "SSH 带外连接",
+    "configured": "已配置",
+    "notConfigured": "未配置",
+    "edit": "编辑",
+    "configure": "配置",
+    "save": "保存",
+    "cancel": "取消",
+    "clear": "清除",
+    "clearConfirm": "清除 SSH 连接信息？",
+    "host": "主机",
+    "hostRequired": "请输入 SSH 主机",
+    "port": "端口",
+    "user": "用户",
+    "userRequired": "请输入 SSH 用户",
+    "probeAfterSave": "保存后立即探测一次",
+    "existingAuth": "现有认证：{{method}}。出于安全原因，凭证不会回显；保存时需重新输入。",
+    "password": "SSH 密码",
+    "passwordRequired": "请输入 SSH 密码",
+    "privateKey": "SSH 私钥",
+    "privateKeyRequired": "请输入 SSH 私钥",
+    "authorizesPlatformKey": "登录成功后平台会把平台公钥写入目标机，只保留平台密钥，这里填的密码或私钥不会保存。",
+    "platformKey": {
+      "unavailable": "平台 SSH 密钥不可用：{{detail}}",
+      "authorizeLabel": "在目标机授权平台公钥",
+      "authorizeHelp": "在目标机上以 SSH 用户身份执行一次（或在云厂商控制台添加该公钥）。密钥指纹：{{fingerprint}}"
+    },
+    "auth": {
+      "label": "认证方式",
+      "password": "密码",
+      "key": "私钥",
+      "platformKey": "平台密钥"
+    },
+    "message": {
+      "savedProbeFailed": "SSH 信息已保存，但探测失败：{{detail}}",
+      "savedProbeForeignAgent": "SSH 信息已保存，但该主机上的 gpuworks-agent 服务属于另一个 server（{{server}}），本节点的 agent 未运行",
+      "switchedToPlatformKey": "SSH 信息已保存：已在节点写入平台公钥，未保存密码或私钥",
+      "platformKeyNotAuthorized": "平台公钥未能写入（{{detail}}），已改为保存所填凭据",
+      "saved": "SSH 带外连接信息已保存",
+      "saveFailed": "保存 SSH 信息失败：{{detail}}",
+      "cleared": "SSH 带外连接信息已清除",
+      "clearFailed": "清除 SSH 信息失败：{{detail}}"
+    }
+  },
+  "recovery": {
+    "title": "带外恢复",
+    "currentPhase": "当前阶段",
+    "attempts": "尝试次数",
+    "lastProbe": "上次探测",
+    "lastError": "最后错误",
+    "reconnect": "重连",
+    "reconnectGone": "实例已销毁，没有可以重连的节点",
+    "manual": {
+      "title": "手动重连该节点",
+      "hint": "平台没有该节点的 SSH 凭据，请在节点上执行下面的命令让 Agent 重新接入。它与当初安装时的命令相同。",
+      "copy": "复制命令",
+      "copied": "命令已复制",
+      "unavailable": "该节点没有安装命令：缺少服务端地址或 token。请配置 SSH 凭据，或删除后重新添加节点。"
+    },
+    "phase": {
+      "probing": "探测中",
+      "artifactCheck": "检查 Agent 安装包",
+      "uploading": "上传 Agent",
+      "verifying": "校验 Agent",
+      "replacing": "替换 Agent",
+      "reconnecting": "等待 Agent 重连",
+      "blocked": "恢复受阻",
+      "restarting": "重启中",
+      "reinstalling": "重装中",
+      "unreachable": "不可达",
+      "stopped": "实例已销毁"
+    },
+    "message": {
+      "recovered": "带外恢复成功，Agent 已重新上线",
+      "probeComplete": "带外探测已完成",
+      "probeFailed": "带外探测失败：{{detail}}"
+    }
+  },
+  "telemetry": {
+    "waiting": "等待 GPU 指标",
+    "waitingDescription": "Agent 默认每 10 秒上报一次利用率、显存、温度和功耗；计算节点刚接入或离线时这里可能为空。",
+    "notReported": "未上报",
+    "utilization": "利用率",
+    "vram": "显存",
+    "temperature": "温度",
+    "power": "功耗"
+  },
+  "topology": {
+    "accelerator": "加速卡",
+    "numaUnknown": "NUMA 未知",
+    "acceleratorCount": "{{count}} 张加速卡",
+    "empty": "未采集拓扑信息",
+    "fastLinkCount": "高速互联 {{count}}",
+    "scheduleHighlight": "调度选择已高亮",
+    "view": "拓扑视图",
+    "legend": {
+      "fast": "高速互联",
+      "other": "其他互联",
+      "selected": "已选中",
+      "cardDescription": "GPU 卡片内显示名称、架构和健康态"
+    }
+  },
+  "terminalView": {
+    "cannotOpen": "无法打开终端",
+    "containerUnsupported": "该运行时不支持容器终端",
+    "runveilShell": "runveil 容器 Shell：从工作负载 rootfs 启动新的 PTY，并注入其环境、挂载、GPU 可见性和工作目录；模型进程独立运行，标准输出请在实例日志中查看。",
+    "sessionEnded": "会话结束",
+    "connectionClosed": "连接关闭",
+    "container": "容器终端",
+    "host": "宿主机终端",
+    "reconnect": "重新连接",
+    "status": {
+      "connecting": "连接中",
+      "open": "已连接",
+      "exited": "已结束",
+      "error": "不可用"
+    }
+  },
+  "labels": {
+    "title": "节点标签",
+    "edit": "编辑标签",
+    "help": "以 key=value 标记用途、机房或资源池，可用于筛选计算节点和约束部署放置。修改标签不会迁移运行中的实例，新建实例时会重新校验放置条件。",
+    "key": "标签键",
+    "value": "标签值",
+    "keyRequired": "请输入标签键",
+    "duplicate": "标签键不能重复",
+    "add": "添加标签",
+    "remove": "删除标签",
+    "saved": "标签已保存",
+    "failed": "保存标签失败：{{detail}}",
+    "placement": "节点标签约束",
+    "placementHelp": "所有标签必须同时匹配；在匹配范围内选择节点，硬件和资源继续单独校验。",
+    "placeholder": "例如 pool=inference",
+    "noMatch": "没有匹配这些标签的节点，请修改约束或节点标签。",
+    "matches": "匹配 {{count}} 个节点：{{nodes}}"
+  },
+  "scheduling": {
+    "menu": "调度与驱逐",
+    "title": "{{node}} 的调度",
+    "current": "调度状态：",
+    "blocked": {
+      "title": "该节点的运行时无法使用加速卡",
+      "description": "{{reason}}\n\n放到这里的部署都会在容器启动时失败。平台因此停止了该节点的调度，如果原因未解决，下一次上报时还会再次停止。",
+      "reason": {
+        "gpu_plugin_missing": "容器运行时 {{runtime}} 需要厂商 GPU 插件 {{plugin}}，而它没有安装，因此容器拿不到这台节点的加速卡。",
+        "gpu_runtime_unconfigured": "{{runtime}} 在运行，但没有配置 GPU 支持，因此容器拿不到这台节点的加速卡。装好厂商插件后还要让 {{runtime}} 用上它（NVIDIA：nvidia-ctk runtime configure --runtime=docker，然后重启 Docker）。"
+      }
+    },
+    "state": {
+      "schedulable": "可调度",
+      "cordoned": "已停止调度",
+      "draining": "驱逐中"
+    },
+    "help": {
+      "schedulable": "节点接收新副本。停止调度后不再往这里放新副本，已有副本照常服务；驱逐还会把从候选池放过来的副本迁到别的节点。",
+      "cordoned": "不再往这里启动新副本，已有副本照常服务。可以继续驱逐，把从候选池放过来的副本迁走，或恢复调度。",
+      "draining": "不再往这里启动新副本；从候选池放过来的副本逐个先在别的节点起好替代、再退役，每个部署一次迁一个，服务副本数不低于驱逐前。钉在本节点的副本和多机、PD 的 rank 留在原处，直到强制驱逐。"
+    },
+    "action": {
+      "cordon": "停止调度",
+      "drain": "驱逐",
+      "uncordon": "恢复调度",
+      "uncordonAnyway": "仍然恢复调度",
+      "evict": "强制驱逐",
+      "evictConfirm": "不等替代副本就绪，立即把本节点上的所有副本撤下？钉在本节点的副本和多机、PD 的 rank 会等节点恢复调度，或其部署换到别的节点后再启动。"
+    },
+    "done": {
+      "schedulable": "节点已恢复调度",
+      "cordoned": "节点已停止调度",
+      "draining": "节点正在驱逐"
+    },
+    "evicted": "已撤下 {{count}} 个副本",
+    "stuck": "这里有 {{count}} 个副本不会被驱逐迁走：钉在本节点，或是多机、PD 的 rank。改它们部署的节点，或强制驱逐。",
+    "replicas": "本节点上的副本（{{count}}）",
+    "empty": "本节点上没有运行的副本",
+    "columns": {
+      "deployment": "部署",
+      "instance": "实例",
+      "state": "状态",
+      "drain": "驱逐时"
+    },
+    "kind": {
+      "pool": "迁到别的节点",
+      "pinned": "钉在本节点：等待",
+      "named": "指定了本节点：需强制驱逐"
+    }
+  },
+  "systemLabels": {
+    "title": "系统标签",
+    "more": "另有 {{count}} 项",
+    "key": {
+      "node": "节点",
+      "vendor": "厂商",
+      "cpu-arch": "CPU 架构",
+      "gpu-model": "GPU 型号",
+      "gpu-arch": "GPU 架构",
+      "compute-network": "参数网络",
+      "storage-sync-network": "存储同步网络",
+      "serving-network": "服务网络",
+      "storage": "存储"
+    }
+  },
+  "diskUsage": {
+    "unknown": "磁盘容量未知",
+    "title": "磁盘用量",
+    "loading": "正在加载磁盘用量…",
+    "loadFailed": "无法加载磁盘用量",
+    "barAria": "磁盘已用",
+    "pathAria": "{{path}} 的用量",
+    "breakdown": "受管模型 {{models}} · 镜像 {{images}} · 其他 {{other}} · 可用 {{available}}",
+    "none": "尚未上报磁盘用量",
+    "column": {
+      "kind": "路径类型",
+      "path": "路径",
+      "usage": "已用"
+    },
+    "kind": {
+      "models": "模型目录",
+      "docker": "Docker",
+      "udocker": "runveil",
+      "host": "环境包",
+      "storage": "存储 {{name}}",
+      "storageCache": "存储 {{name}} 的缓存"
+    }
+  },
+  "doctor": {
+    "title": "诊断报告",
+    "legacy": "该节点的代理版本较旧，以下为原始诊断输出；升级代理后可查看结构化诊断。",
+    "rawToggle": "查看原始输出",
+    "overview": "概况",
+    "host": "主机",
+    "cpu": "CPU",
+    "memory": "内存",
+    "disk": "磁盘",
+    "memoryValue": "共 {{total}}，可用 {{avail}}",
+    "diskValue": "{{path}}：共 {{total}}，可用 {{avail}}（{{percent}}%）",
+    "runtimes": "运行时",
+    "runtimeNotFound": "未安装",
+    "runtimeQueryFailed": "已安装（查询失败）",
+    "runtimeSelected": "已选用",
+    "accelerators": "加速卡",
+    "noAccelerator": "未找到加速卡工具（纯 CPU 节点或未安装驱动）。",
+    "acceleratorSummary": "厂商 {{vendor}} · 驱动 {{driver}} · 共 {{total}} 张：{{ok}} 张正常，{{warning}} 张告警，{{error}} 张故障",
+    "column": {
+      "index": "#",
+      "name": "型号",
+      "memory": "显存",
+      "bdf": "BDF",
+      "numa": "NUMA",
+      "health": "状态"
+    },
+    "findings": "需要处理",
+    "noFindings": "未发现需要处理的问题。",
+    "phenomenon": "现象",
+    "evidence": "依据",
+    "recheck": "复核",
+    "impact": "影响",
+    "action": "处理",
+    "cards": "{{count}} 张卡：{{indexes}}",
+    "card": "加速卡 {{index}}（{{bdf}}）",
+    "runningProcess": "卡上仍有进程 {{pid}} {{name}}，请先停止。",
+    "rerun": "无对应的单条命令，请重新执行诊断。",
+    "finding": {
+      "disk_low": {
+        "label": "磁盘空间不足",
+        "summary": "{{path}} 可用 {{avail}}，占总容量 {{total}} 的 {{percent}}%。",
+        "impact": "镜像拉取、模型下载可能失败。"
+      },
+      "runtime_unavailable": {
+        "label": "容器运行时无响应",
+        "summary": "已选用的容器运行时查询失败。",
+        "impact": "本节点无法启动推理实例。"
+      },
+      "runtime_provision_failed": {
+        "label": "运行时初始化失败",
+        "summary": "本节点的容器运行时无法完成初始化，最近一次尝试失败，错误见下。",
+        "impact": "在问题修复前，本节点上的所有部署都会失败。代理会自动重试：首次失败后等待 30 秒，之后最长间隔 5 分钟。"
+      },
+      "path_noexec": {
+        "label": "路径挂载为 noexec",
+        "summary": "{{path}} 位于 {{point}}（{{fstype}}），该挂载带有 noexec。",
+        "impact": "运行时无法从该路径启动程序。请把代理安装到允许执行的文件系统上，或去掉 noexec 重新挂载。"
+      },
+      "path_read_only": {
+        "label": "路径挂载为只读",
+        "summary": "{{path}} 位于 {{point}}（{{fstype}}），该挂载为只读。",
+        "impact": "代理无法在此写入模型、镜像或运行时状态。请改用可写目录，或以读写方式重新挂载。"
+      },
+      "path_ephemeral": {
+        "label": "数据位于容器层",
+        "summary": "{{path}} 位于本容器自身的文件系统层（{{point}} 上的 {{fstype}}），而不是数据卷。",
+        "impact": "容器被重建时，模型、镜像和运行时状态都会丢失。实例有本地文件系统的持久卷时，请把代理安装到那里；不允许文件名带冒号的网络卷（如 RunPod 的 /workspace）放不了 runveil 运行时的镜像。"
+      },
+      "accelerator_probe_failed": {
+        "label": "加速卡探测失败",
+        "summary": "厂商工具执行失败。",
+        "impact": "本节点的加速卡不可分配。"
+      },
+      "accelerator_unrecognized": {
+        "label": "有未识别的加速卡设备",
+        "summary": "本机上有属于已支持厂商的 PCI 设备，但不符合该厂商任何一条识别规则，通常是我们还没见过的新型号。",
+        "impact": "这些设备不会出现在加速卡列表里，也不参与调度。请把下面的 PCI 标识发给我们以便补充识别规则。"
+      },
+      "cuda_init_failed": {
+        "label": "CUDA 初始化失败",
+        "summary": "CUDA 驱动初始化失败。复核命令输出 0 表示初始化成功。",
+        "impact": "本节点无法运行 CUDA 推理。"
+      },
+      "multi_gpu_check_failed": {
+        "label": "多卡通信检查失败",
+        "summary": "多卡通信检查未通过。",
+        "impact": "多卡张量并行可能无法启动。"
+      },
+      "macos_unsupported": {
+        "label": "macOS 版本过低",
+        "summary": "Mac 节点需要 macOS {{required}} 或更高版本，这台 Mac 的版本见证据。",
+        "impact": "环境包无法在此运行，本节点不能部署推理实例。升级 macOS 后重新诊断。"
+      },
+      "macos_idle_sleep": {
+        "label": "空闲时会睡眠",
+        "summary": "按当前电源的设置，这台 Mac 空闲一段时间后会睡眠。有实例运行时代理会阻止空闲睡眠，没有实例时则不会。",
+        "impact": "Mac 睡眠后节点离线，新部署无法调度到这里，直到它被唤醒。需要它常驻时，可在接电源时关闭空闲睡眠：sudo pmset -c sleep 0（平台不修改此设置）。"
+      }
+    },
+    "facts": "信息",
+    "fact": {
+      "runtime_details": "运行时详情",
+      "runtime_plugin": "运行时插件",
+      "device_access": "设备访问",
+      "device_injection": "设备注入",
+      "fabric_manager": "驱动与 Fabric Manager",
+      "cuda_runtime": "CUDA 运行时",
+      "peer_access": "GPU 点对点访问",
+      "nccl": "NCCL 多卡通信",
+      "runtime_identity": "运行身份",
+      "network_filesystem": "网络文件系统",
+      "metal_working_set": "Metal 可用内存",
+      "power": "电源与睡眠",
+      "macos_firewall": "macOS 应用防火墙"
+    },
+    "identity": {
+      "pending": "{{runtime}} 在首次使用时初始化",
+      "dedicated": "专用用户 {{user}}（uid {{uid}}）",
+      "own": "agent 自身用户（uid {{uid}}）",
+      "fallback": "agent 自身用户（uid {{uid}}）；未使用专用运行时用户，原因：{{reason}}"
+    },
+    "networkFilesystem": "{{point}} 是 {{fstype}}，承载 {{paths}}",
+    "networkFilesystemFrom": "{{point}} 是 {{fstype}}（{{source}}），承载 {{paths}}",
+    "listSeparator": "、",
+    "pathKind": {
+      "root": "根目录",
+      "models": "模型目录",
+      "udocker": "runveil",
+      "host": "环境包",
+      "docker": "Docker",
+      "storage": "存储",
+      "storage_cache": "存储缓存",
+      "agent": "agent 目录"
+    },
+    "pluginNone": "无（由 gpuworks 直接挂载设备）",
+    "injectionExplicit": "部署时由 gpuworks 直接将加速卡设备挂载进容器，仅挂载可调度（正常与告警状态）的卡。",
+    "mountFlag": {
+      "network": "网络",
+      "noexec": "noexec",
+      "readOnly": "只读",
+      "ephemeral": "容器层"
+    }
+  }
+}

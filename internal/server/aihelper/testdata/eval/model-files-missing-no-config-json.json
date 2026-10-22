@@ -1,0 +1,68 @@
+{
+  "id": "model-files-missing-no-config-json",
+  "source": "https://github.com/vllm-project/vllm/blob/main/vllm/transformers_utils/config.py (get_config, auto format)",
+  "note": "The mounted model directory has no config.json at its root (weights sit one level down in a nested Qwen2.5-7B-Instruct/ folder, or the download did not finish). Constructed from upstream message format; command and GPU chosen for the scenario.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen2.5-7b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A10",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 08:44:30 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 08:44:30 [utils.py:233] non-default args: {'model_tag': '/model', 'host': '127.0.0.1', 'port': 30000, 'model': '/model', 'served_model_name': ['qwen2.5-7b']}",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/config.py\", line 612, in get_config",
+    "(APIServer pid=1)     raise ValueError(",
+    "(APIServer pid=1) ValueError: Could not detect config format for no config file found. With config_format 'auto', ensure your model has either config.json (HF format) or params.json (Mistral format). Otherwise please specify your_custom_config_format in engine args for customized config parser.",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) The above exception was the direct cause of the following exception:",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/bin/vllm\", line 10, in <module>",
+    "(APIServer pid=1)     sys.exit(main())",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/engine/arg_utils.py\", line 1121, in create_engine_config",
+    "(APIServer pid=1)     model_config = self.create_model_config()",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/config/model.py\", line 456, in __post_init__",
+    "(APIServer pid=1)     hf_config = get_config(self.hf_config_path or self.model,",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/config.py\", line 631, in get_config",
+    "(APIServer pid=1)     raise ValueError(error_message) from e",
+    "(APIServer pid=1) ValueError: Invalid repository ID or local directory specified: '/model'.",
+    "(APIServer pid=1) Please verify the following requirements:",
+    "(APIServer pid=1) 1. Provide a valid Hugging Face repository ID.",
+    "(APIServer pid=1) 2. Specify a local directory that contains a recognized configuration file.",
+    "(APIServer pid=1)    - For Hugging Face models: ensure the presence of a 'config.json'.",
+    "(APIServer pid=1)    - For Mistral models: ensure the presence of a 'params.json'."
+  ],
+  "expect_signature": "model_files_missing",
+  "expect_keywords": [
+    [
+      "config.json"
+    ],
+    [
+      "子目录",
+      "subdirectory",
+      "nested",
+      "下载未完成",
+      "incomplete",
+      "挂载路径",
+      "mount path",
+      "model path",
+      "模型路径"
+    ]
+  ]
+}

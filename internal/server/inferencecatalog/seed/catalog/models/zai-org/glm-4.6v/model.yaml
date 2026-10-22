@@ -1,0 +1,153 @@
+model_id: zai-org/glm-4.6v
+source: upstream
+display_title: GLM-4.6V
+parameter_count: 107B
+architecture: moe
+context_length: 131072
+release_date: '2025-12-07'
+model_config: {model_type: glm4v_moe, num_hidden_layers: 46, hidden_size: 4096, num_attention_heads: 96, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, vision_config: {image_size: 336, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 188416
+  sglang: 188416
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.6V
+        revision: 4e2d47eb0b41c5280d8294b17cef9e94fdcfff46
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.6V
+        revision: 76d1f8fe28db3c271a548d573eb1a986a393b22c
+  weight_bytes: 215446294700
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - glm45
+  - --tool-call-parser
+  - glm45
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.6V
+        revision: 4e2d47eb0b41c5280d8294b17cef9e94fdcfff46
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.6V
+        revision: 76d1f8fe28db3c271a548d573eb1a986a393b22c
+  weight_bytes: 215446294700
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-expert-parallel
+  - --allowed-local-media-path
+  - /
+  - --mm-processor-cache-type
+  - shm
+  - --tool-call-parser
+  - glm45
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - glm45
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.6V-FP8
+        revision: 33172e26eb88482cf3d0a36fced01d05454734ec
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.6V-FP8
+        revision: 63660cd984cc8da091d1e3865976a378917eba43
+  weight_bytes: 110028606347
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - glm45
+  - --tool-call-parser
+  - glm45
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.6V-FP8
+        revision: 33172e26eb88482cf3d0a36fced01d05454734ec
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.6V-FP8
+        revision: 63660cd984cc8da091d1e3865976a378917eba43
+  weight_bytes: 110028606347
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --enable-expert-parallel
+  - --allowed-local-media-path
+  - /
+  - --mm-processor-cache-type
+  - shm
+  - --tool-call-parser
+  - glm45
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - glm45
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

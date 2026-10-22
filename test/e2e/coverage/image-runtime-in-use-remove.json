@@ -1,0 +1,73 @@
+{
+  "contract_id": "gpuworks/image-runtime/in-use-remove",
+  "name": "镜像节点副本 / 运行中容器占用时删除被拒绝 / 保持可用且释放后UI重试删除成功",
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_in_use.py",
+  "test_function": "test_in_use_remove",
+  "command": "make test-e2e-image-in-use-remove",
+  "lane": "local-real-server-agent-isolated-docker",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "product_contracts": [
+    "internal/agent/runtime/docker/docker.go",
+    "internal/server/hub/image_remove.go",
+    "internal/server/api/images_nodes.go",
+    "ui/src/pages/images/ImageNodeTable.tsx",
+    "ui/src/pages/ImagesPage.tsx",
+    "internal/agent/conn/status_image_order.go",
+    "internal/agent/app/control.go",
+    "internal/server/hub/status_image_order.go"
+  ],
+  "crud": {
+    "create": "N/A: image acquisition is fixture setup; no UI Create claim",
+    "read": "covered: exact version/node GET and reload, real Docker image/container identity",
+    "update": "N/A: immutable image content; state changes are Delete outcome",
+    "delete": "covered: node replica in-use refusal409, no partial change, release then UI deletion202; catalog deletion is cleanup"
+  },
+  "fields": [
+    {
+      "field_id": "image-node.remove",
+      "component": "Confirmation",
+      "request": "DELETE /api/v1/images/{version}/nodes/{node}",
+      "persistence": "image_node.state/digest/present_nodes",
+      "covered": [
+        "named image/node and impact",
+        "409 refusal identifies referencing container",
+        "present and digest survive refusal/reload",
+        "release consumer then delete202",
+        "absent after reload and actual Docker removal"
+      ],
+      "missing": [
+        "full keyboard/focus/computed-style contract",
+        "other refusal reasons",
+        "managed deployment references"
+      ]
+    }
+  ],
+  "dimensions": [
+    "12.1",
+    "12.7",
+    "in-use-container-refusal",
+    "no-partial-node-state-change",
+    "container-pid-and-start-time-stable",
+    "consumer-exec-after-refusal",
+    "release-and-delete-recovery"
+  ],
+  "missing": [
+    "managed GPUWorks deployment/instance deletion references",
+    "stopped-container or multiple-container references",
+    "parent-series or version deletion impact/CAS",
+    "non-admin permissions",
+    "other runtimes",
+    "registry/peer/relay acquisition",
+    "GPU inference",
+    "full keyboard/focus/computed-style/error layout matrix"
+  ]
+}

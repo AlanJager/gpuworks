@@ -1,0 +1,74 @@
+{
+  "contract_id": "gpuworks/node/offline-reconnect-doctor",
+  "name": "节点 / 真实 agent 离线重连与主机诊断 / 状态回读、同一节点身份、诊断报告",
+  "test_file": "test/e2e/node_reconnect_doctor.py",
+  "test_function": "test_node_reconnect_doctor",
+  "command": "make test-e2e-node-reconnect-doctor",
+  "priority": "P1",
+  "page_id": "nodes",
+  "lane": "local-real-server-agent-webdoctor",
+  "identity": "admin browser / the node's real agent",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The real agent reports host diagnostics. No container, GPU, engine or workload is claimed."
+  },
+  "crud": {
+    "create": "A node definition is prepared through the product API and the real agent connects",
+    "read": "The node table shows Online, then Offline after the agent stops, then Online after it restarts with the same token/state",
+    "update": "The detail drawer runs the host doctor through POST /nodes/{uuid}/doctor",
+    "delete": "Cleanup stops the agent and force-deletes the owned node; independent GET returns 404"
+  },
+  "fields": [
+    {
+      "id": "node.connection-state",
+      "component": "Node table status badge",
+      "request": "GET /nodes and GET /nodes/{uuid}",
+      "persisted": "node state",
+      "covered": ["online", "offline after the agent stops", "online after restart", "the same node UUID"],
+      "missing": ["the connecting/recovery phase", "heartbeat timeout timing", "a stale token", "fleet-scale churn"]
+    },
+    {
+      "id": "node.identity",
+      "component": "Node row and independent GET",
+      "request": "GET /nodes/{uuid}",
+      "persisted": "uuid, name, hostname",
+      "covered": ["the restarted agent keeps the same node identity"],
+      "missing": ["token regeneration and stale-session rejection", "a different agent claiming the token"]
+    },
+    {
+      "id": "node.doctor",
+      "component": "Detail drawer Diagnose action",
+      "request": "POST /nodes/{uuid}/doctor",
+      "persisted": "N/A: diagnostic response",
+      "covered": ["raw report", "host hostname/os/arch/kernel compared with the local authoritative values and the rendered host line", "each runtime name/version selected from the API response and the single selected tag", "Overview/Host/CPU/Memory/Disk sections", "no horizontal overflow in the drawer after the report is appended"],
+      "missing": ["a doctor failure on an unreachable host", "an older agent's raw-only report", "findings and accelerators with a real GPU", "recheck actions"]
+    },
+    {
+      "id": "node.cleanup",
+      "component": "N/A: process cleanup",
+      "request": "DELETE /nodes/{uuid}?force=true",
+      "persisted": "removal",
+      "covered": ["agent stopped", "node deleted", "independent GET 404"],
+      "missing": ["the normal SSH uninstall path, already covered by gpuworks/node/removal-with-explicit-force"]
+    }
+  ],
+  "checklist_items": {
+    "1.14": "A page reload and an independent GET preserve the online→offline→online transition on the same UUID",
+    "10.9": "The row action opens the node detail drawer inside the 1440x900 viewport",
+    "12.2": "The drawer and Diagnose action fit the viewport and the appended doctor report does not overflow the drawer horizontally"
+  },
+  "missing": [
+    "MISSING: checklist 10.4 (column sorting) — the nodes table supports server sorting but no sort interaction is exercised",
+    "MISSING: checklist 10.6 (list pagination) — the row is checked but page sizes and boundaries are not",
+    "MISSING: checklist 22.5 (zh/en navigation, first screen, error and empty text)",
+    "MISSING: token regeneration and stale-session rejection",
+    "MISSING: server_dial nodes and SSH recovery",
+    "MISSING: doctor failures, older agents and accelerators/findings with a real GPU",
+    "MISSING: agent upgrade/downgrade across the reconnect",
+    "MISSING: heartbeat timeout timing and fleet-scale reconnect churn",
+    "MISSING: non-admin access"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/agent/test digests, locale, state transition, doctor response summary, agent PIDs/logs and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

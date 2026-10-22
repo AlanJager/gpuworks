@@ -1,0 +1,44 @@
+--- a/vllm_omni/model_executor/models/common/ming/audio_dsp.py
++++ b/vllm_omni/model_executor/models/common/ming/audio_dsp.py
+@@ -6,6 +6,12 @@
+ import torch.nn as nn
+ 
+ 
++def _fold_cpu(x: torch.Tensor, **kwargs) -> torch.Tensor:
++    # gpuworks: on Ascend NPU, F.fold fails in the aivec vector core (error 507035), so do the
++    # overlap-add on CPU and move the result back. The tensors are small (one audio chunk).
++    return torch.nn.functional.fold(x.cpu(), **kwargs).to(x.device)
++
++
+ class ISTFT(nn.Module):
+     """
+     Custom implementation of ISTFT since torch.istft doesn't allow custom padding (other than `center=True`) with
+@@ -29,7 +35,9 @@
+         self.n_fft = n_fft
+         self.hop_length = hop_length
+         self.win_length = win_length
+-        window = torch.hann_window(win_length)
++        # gpuworks: on Ascend NPU, hann_window's in-place cos has no int64 kernel (aclnnInplaceCos
++        # fails), so build the window on CPU and move it to the default device.
++        window = torch.hann_window(win_length, device="cpu").to(torch.empty(0).device)
+         self.register_buffer("window", window)
+ 
+         self.buffer_len = self.win_length - self.hop_length
+@@ -120,7 +128,7 @@
+ 
+         # Overlap and Add
+         output_size = (T - 1) * self.hop_length + self.win_length
+-        y = torch.nn.functional.fold(
++        y = _fold_cpu(
+             ifft,
+             output_size=(1, output_size),
+             kernel_size=(1, self.win_length),
+@@ -132,7 +140,7 @@
+         # Window envelope
+         window_sq = self.window.square().expand(1, T, -1).transpose(1, 2)
+         window_envelope = (
+-            torch.nn.functional.fold(
++            _fold_cpu(
+                 window_sq,
+                 output_size=(1, output_size),
+                 kernel_size=(1, self.win_length),

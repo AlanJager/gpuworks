@@ -1,0 +1,71 @@
+{
+  "id": "disk-full-hf-cache-download-32b",
+  "source": "https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/file_download.py (_check_disk_space warning, _download_to_tmp_and_move -> http_get)",
+  "note": "Engine downloads Qwen2.5-32B-Instruct (~65 GB) into the default HF cache inside the container's writable layer; the filesystem fills up mid-shard. Constructed from upstream message formats (hub disk-space warning, Python ENOSPC); command, sizes and GPU chosen for the scenario.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "--served-model-name",
+    "qwen2.5-32b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "2"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memory_gib": 80
+    },
+    {
+      "name": "NVIDIA A100-SXM4-80GB",
+      "memory_gib": 80
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 10:05:02 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 10:05:02 [utils.py:233] non-default args: {'model_tag': 'Qwen/Qwen2.5-32B-Instruct', 'host': '127.0.0.1', 'port': 30000, 'model': 'Qwen/Qwen2.5-32B-Instruct', 'tensor_parallel_size': 2, 'served_model_name': ['qwen2.5-32b']}",
+    "(APIServer pid=1) INFO 10-09 10:05:11 [model.py:547] Resolved architecture: Qwen2ForCausalLM",
+    "(EngineCore_DP0 pid=244) INFO 10-09 10:05:17 [core.py:77] Initializing a V1 LLM engine (v0.11.0) with config: model='Qwen/Qwen2.5-32B-Instruct', dtype=torch.bfloat16, max_seq_len=32768, tensor_parallel_size=2, pipeline_parallel_size=1, quantization=None",
+    "(Worker_TP0 pid=318) INFO 10-09 10:05:31 [gpu_model_runner.py:2602] Starting to load model Qwen/Qwen2.5-32B-Instruct...",
+    "(Worker_TP0 pid=318) INFO 10-09 10:05:32 [weight_utils.py:392] Using model weights format ['*.safetensors']",
+    "(Worker_TP0 pid=318) /usr/local/lib/python3.12/dist-packages/huggingface_hub/file_download.py:801: UserWarning: Not enough free disk space to download the file. The expected file size is: 3953.93 MB. The target location /root/.cache/huggingface/hub/models--Qwen--Qwen2.5-32B-Instruct/blobs only has 1247.52 MB free disk space.",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597] WorkerProc failed to start.",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597] Traceback (most recent call last):",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]   File \"/usr/local/lib/python3.12/dist-packages/vllm/model_executor/model_loader/weight_utils.py\", line 418, in download_weights_from_hf",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]     hf_folder = snapshot_download(",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]   File \"/usr/local/lib/python3.12/dist-packages/huggingface_hub/file_download.py\", line 1171, in _hf_hub_download_to_cache_dir",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]     _download_to_tmp_and_move(",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]   File \"/usr/local/lib/python3.12/dist-packages/huggingface_hub/file_download.py\", line 1738, in _download_to_tmp_and_move",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]     http_get(",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]   File \"/usr/local/lib/python3.12/dist-packages/huggingface_hub/file_download.py\", line 499, in http_get",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597]     temp_file.write(chunk)",
+    "(Worker_TP0 pid=318) ERROR 10-09 10:21:48 [multiproc_executor.py:597] OSError: [Errno 28] No space left on device",
+    "(EngineCore_DP0 pid=244) ERROR 10-09 10:21:49 [core.py:708] Exception: WorkerProc initialization failed due to an exception in a background process. See stack trace for root cause.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "disk_full",
+  "expect_keywords": [
+    [
+      "df -h",
+      "磁盘空间",
+      "disk space",
+      "free space",
+      "可用空间"
+    ],
+    [
+      "HF_HOME",
+      "缓存目录",
+      "cache dir",
+      "挂载",
+      "mount",
+      "预先下载",
+      "pre-download",
+      "清理"
+    ]
+  ]
+}

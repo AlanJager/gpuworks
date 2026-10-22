@@ -1,0 +1,44 @@
+{
+  "scope": "Runner preflight regression coverage only; no GPU or full Playground business acceptance",
+  "test_file": "test/e2e/test_playground_acceptance.py",
+  "command": "python3 -m unittest discover -s test/e2e -p test_playground_acceptance.py",
+  "lane": "offline-runner-contract",
+  "identity": "No product login or remote principal",
+  "cases": [
+    {
+      "case_id": "manifest-preflight",
+      "contract_id": "gpuworks/playground/manifest-fail-closed",
+      "name": "Playground runner / Unsupported manifest semantics / MISSING before external actions",
+      "test_function": "ManifestGateTest",
+      "required_evidence": ["unit assertions", "real manifest CLI exit and report"],
+      "fields": [
+        {"id": "manifest.cases", "covered": ["all cases checked before startup", "unique safe IDs", "full selected case list retained"], "missing": ["GPU business execution"]},
+        {"id": "case.browser", "covered": ["unknown actions rejected", "navigation-only scope"], "missing": ["generation", "attachments", "compare", "sleep/wake", "model-kind parity"]},
+        {"id": "case.expect", "covered": ["unknown assertions rejected", "regex and visible-text type validation"], "missing": ["wire requests", "SSE", "media decoding", "usage", "curl parity"]},
+        {"id": "case.inputs", "covered": ["unimplemented inputs rejected, never copied as request evidence"], "missing": ["input-driven GPU interactions"]},
+        {"id": "case.deploy", "covered": ["all manifest deployment setup rejected before mutation", "gpu and unknown fields explicitly reported"], "missing": ["identity and placement validation", "GPU occupancy preflight", "owned deployment lifecycle"]},
+        {"id": "manifest.defaults", "covered": ["unconsumed node_hostname/node_uuid/model_source/chain_dir/ready_timeout_seconds rejected", "supported value type validation"], "missing": ["GPU environment preparation"]}
+      ],
+      "crud": {
+        "Create": "N/A: preflight performs no product mutation",
+        "Read": "Reads the complete manifest and writes local validation diagnostics",
+        "Update": "N/A: no product resource is edited",
+        "Delete": "N/A: no product resource is created or owned"
+      },
+      "checklist_items": {"20": "MISSING: business operations; runner validation is not browser execution"},
+      "business_manifest": "test/e2e/testdata/playground-acceptance/cases.yaml",
+      "business_manifest_status": "MISSING: unchanged historical matrix retains every case and is rejected before browser startup",
+      "missing": ["All GPU business cases remain unexecuted", "Navigation-only browser execution in this change", "Real browser execution of existing-deployment smoke"],
+      "cleanup": "Unit tests own temporary files only; rejection asserts browser, login and deployment setup never start"
+    },
+    {
+      "case_id": "existing-deployment-smoke-boundary",
+      "contract_id": "gpuworks/playground/existing-renderer-smoke-boundary",
+      "name": "Existing deployment mode / Keep separate smoke lane / No manifest business coverage claim",
+      "test_function": "ManifestGateTest.test_existing_deployment_is_separate_smoke_mode",
+      "required_evidence": ["unit assertions"],
+      "missing": ["Real browser renderer smoke execution", "Real-model inference", "GPU behavior"],
+      "cleanup": "Unit-only browser boundary substitute; no remote resources"
+    }
+  ]
+}

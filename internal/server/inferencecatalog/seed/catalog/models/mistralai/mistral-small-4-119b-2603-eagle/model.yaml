@@ -1,0 +1,6 @@
+model_id: mistralai/mistral-small-4-119b-2603-eagle
+source: upstream
+display_title: Mistral-Small-4-119B-2603-eagle
+release_date: '2026-03-04'
+specs: []
+input_modalities: [text]

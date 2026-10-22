@@ -1,0 +1,64 @@
+{
+  "id": "hf-connect-timeout-no-route-to-hub",
+  "source": "https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/utils/_http.py (http_backoff retry warnings); https://github.com/huggingface/transformers/blob/main/src/transformers/utils/hub.py (\"We couldn't connect to\" message)",
+  "note": "Node in a network without a route to huggingface.co; the engine is given a Hub repo id and tries to fetch config.json itself, every attempt times out. Constructed from upstream message formats (requests/urllib3 timeout text, hub retry warning, transformers connection error); command and GPU chosen for the scenario.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "Qwen/Qwen2.5-7B-Instruct",
+    "--served-model-name",
+    "qwen2.5-7b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A10",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 09:31:40 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 09:31:40 [utils.py:233] non-default args: {'model_tag': 'Qwen/Qwen2.5-7B-Instruct', 'host': '127.0.0.1', 'port': 30000, 'model': 'Qwen/Qwen2.5-7B-Instruct', 'served_model_name': ['qwen2.5-7b']}",
+    "(APIServer pid=1) WARNING 10-09 09:31:50 [_http.py:308] '(MaxRetryError(\"HTTPSConnectionPool(host='huggingface.co', port=443): Max retries exceeded with url: /Qwen/Qwen2.5-7B-Instruct/resolve/main/config.json (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x7f3c1a2b5d90>, 'Connection to huggingface.co timed out. (connect timeout=10)'))\"), '(Request ID: 9a1f0c2e-5d7b-4e1a-9c3d-000000000000)')' thrown while requesting HEAD https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/resolve/main/config.json",
+    "(APIServer pid=1) WARNING 10-09 09:31:50 [_http.py:319] Retrying in 1s [Retry 1/5].",
+    "(APIServer pid=1) WARNING 10-09 09:32:01 [_http.py:319] Retrying in 2s [Retry 2/5].",
+    "(APIServer pid=1) WARNING 10-09 09:32:13 [_http.py:319] Retrying in 4s [Retry 3/5].",
+    "(APIServer pid=1) WARNING 10-09 09:32:27 [_http.py:319] Retrying in 8s [Retry 4/5].",
+    "(APIServer pid=1) WARNING 10-09 09:32:45 [_http.py:319] Retrying in 8s [Retry 5/5].",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/bin/vllm\", line 10, in <module>",
+    "(APIServer pid=1)     sys.exit(main())",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/config.py\", line 128, in parse",
+    "(APIServer pid=1)     config = AutoConfig.from_pretrained(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/utils/hub.py\", line 548, in cached_files",
+    "(APIServer pid=1)     raise OSError(",
+    "(APIServer pid=1) OSError: We couldn't connect to 'https://huggingface.co' to load the files, and couldn't find them in the cached files.",
+    "(APIServer pid=1) Check your internet connection or see how to run the library in offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'."
+  ],
+  "expect_signature": "hf_download_failed",
+  "expect_keywords": [
+    [
+      "HF_ENDPOINT",
+      "hf-mirror",
+      "VLLM_USE_MODELSCOPE",
+      "ModelScope",
+      "modelscope"
+    ],
+    [
+      "proxy",
+      "代理",
+      "HTTPS_PROXY",
+      "预先下载",
+      "pre-download",
+      "本地模型",
+      "local model",
+      "模型目录"
+    ]
+  ]
+}

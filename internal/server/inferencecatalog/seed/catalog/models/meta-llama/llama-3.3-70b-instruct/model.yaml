@@ -1,0 +1,88 @@
+model_id: meta-llama/llama-3.3-70b-instruct
+source: upstream
+display_title: Llama-3.3-70B
+parameter_count: 70B
+architecture: dense
+context_length: 131072
+release_date: '2024-11-26'
+model_config: {model_type: llama, num_hidden_layers: 80, hidden_size: 8192, num_attention_heads: 64, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072}
+kv_bytes_per_token:
+  vllm: 327680
+  sglang: 327680
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: meta-llama/Llama-3.3-70B-Instruct
+        revision: 6f6073b423013f6a7d4d9f39144961bfbfbc386b
+    - modelscope:
+        repo_id: LLM-Research/Llama-3.3-70B-Instruct
+        revision: 4935e741a428ca7237e672d205ccbffef553bfdc
+  weight_bytes: 282254830887
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: nvidia/Llama-3.3-70B-Instruct-FP8
+        revision: fde04ee76a27704c88f569542ef023b57d4d0362
+    - modelscope:
+        repo_id: nv-community/Llama-3.3-70B-Instruct-FP8
+        revision: 14407628dab7190f4a2f045e5a956cd261207c9e
+  weight_bytes: 72674106768
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/Llama-3.3-70B-Instruct-NVFP4
+        revision: f792b707002f2c613e0729c6b37bbcedc4efa94e
+    - modelscope:
+        repo_id: nv-community/Llama-3.3-70B-Instruct-NVFP4
+        revision: af480652e117ef45df4911dffd9709f2a63e0baa
+  weight_bytes: 42726969831
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

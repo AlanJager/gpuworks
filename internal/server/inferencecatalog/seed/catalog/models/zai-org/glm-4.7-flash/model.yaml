@@ -1,0 +1,60 @@
+model_id: zai-org/glm-4.7-flash
+source: upstream
+display_title: Glm 4.7 Flash
+release_date: '2026-01-19'
+model_config: {model_type: glm4_moe_lite, num_hidden_layers: 47, hidden_size: 2048, num_attention_heads: 20, num_key_value_heads: 20, max_position_embeddings: 202752, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 192, v_head_dim: 256}
+kv_bytes_per_token:
+  vllm: 54144
+  sglang: 54144
+specs:
+- name: bf16-vllm-ppu-7dd20894
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface: {repo_id: zai-org/GLM-4.7-Flash, revision: 7dd20894a642a0aa287e9827cb1a1f7f91386b67}
+    - modelscope: {repo_id: ZhipuAI/GLM-4.7-Flash, revision: b902b78e8586b770f250c17081dfea59900d9e02}
+  weight_bytes: 62444175504
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.7-Flash
+        revision: 7dd20894a642a0aa287e9827cb1a1f7f91386b67
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.7-Flash
+        revision: b902b78e8586b770f250c17081dfea59900d9e02
+  weight_bytes: 62465286500
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

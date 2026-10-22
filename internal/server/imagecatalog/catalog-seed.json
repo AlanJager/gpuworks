@@ -1,0 +1,467 @@
+{
+  "schema_version": 3,
+  "catalog_version": "2026-10-16.12310d0c",
+  "sha256": "39c7895b9a35e79cd943886e57ac76c744c6e805288c81c2861d75bb76c49528",
+  "series": [
+    {
+      "name": "MLX Audio · Metal",
+      "engine": "callable",
+      "purpose": "inference",
+      "framework": "metal",
+      "versions": [
+        {
+          "name": "metal15.0-mlx-audio0.5.9-r1",
+          "image_ref": "gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1",
+          "engine_version": "0.5.9",
+          "framework_version": "15.0",
+          "arch": "arm64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1"
+          ],
+          "notes": "Apple silicon 的 mlx-audio 档（目录引擎 callable）：ASR/TTS 模板用，入口 gpuworks-mlx-audio 预加载 --model 并补 /health。webrtcvad 换成同模块的 webrtcvad-wheels（原包只有源码），misaki[en] 与 spaCy 英文模型预装，运行时不联网。 构建：build/host-envs/build.sh mlx-audio 0.5.9 r1。"
+        }
+      ]
+    },
+    {
+      "name": "MLX-VLM · Metal",
+      "engine": "callable",
+      "purpose": "inference",
+      "framework": "metal",
+      "versions": [
+        {
+          "name": "metal15.0-mlx-vlm0.7.8-r2",
+          "image_ref": "gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2",
+          "engine_version": "0.7.8",
+          "framework_version": "15.0",
+          "arch": "arm64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-mlx-vlm0.7.8-r2"
+          ],
+          "notes": "Apple silicon 的 mlx-vlm 档（目录引擎 callable）：视觉/OCR 模板用，入口 gpuworks-mlx-vlm 把实例钉在 --model 上（网关会改写请求的 model）。r2 修正该入口 截断流式响应的问题。构建：build/host-envs/build.sh mlx-vlm 0.7.8 r2。"
+        }
+      ]
+    },
+    {
+      "name": "SGLang · CANN",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "cann",
+      "versions": [
+        {
+          "name": "cann8.5-910b-sglang0.5.12.post1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann8.5-910b-sglang0.5.12.post1-r2",
+          "engine_version": "0.5.12.post1",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann8.5-910b-sglang0.5.12.post1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann8.5-910b-sglang0.5.12.post1-r2"
+          ],
+          "notes": "CANN 8.5 的存量机队 sglang 档，含 diffusion 依赖。\nrequires: engine, diffusion, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann8.5-a3-sglang0.5.12.post1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann8.5-a3-sglang0.5.12.post1-r2",
+          "engine_version": "0.5.12.post1",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann8.5-a3-sglang0.5.12.post1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann8.5-a3-sglang0.5.12.post1-r2"
+          ],
+          "notes": "A3（910C）的 CANN 8.5 存量档，其余同 910b 档。\nrequires: engine, diffusion, overlays\nmodel: a3"
+        },
+        {
+          "name": "cann9.0-910b-sglang0.5.18-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2",
+          "engine_version": "0.5.18",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2"
+          ],
+          "notes": "910B 的 sglang 档，CANN 9.0.0，含 diffusion 依赖。\nrequires: engine, diffusion, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.0-a3-sglang0.5.18-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2",
+          "engine_version": "0.5.18",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2"
+          ],
+          "notes": "A3（910C）的 sglang 档，其余同 910b 档。\nrequires: engine, diffusion, overlays\nmodel: a3"
+        }
+      ]
+    },
+    {
+      "name": "SGLang · CUDA",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "cuda",
+      "versions": [
+        {
+          "name": "cuda12.9-sglang0.5.18-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2",
+          "engine_version": "0.5.18",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2"
+          ],
+          "notes": "CUDA 12.x 的 sglang 档，含 diffusion 依赖。\nrequires: engine, engine_import, diffusion, overlays"
+        },
+        {
+          "name": "cuda13.0-sglang0.5.21-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2",
+          "engine_version": "0.5.21",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2"
+          ],
+          "notes": "CUDA 13 的 sglang 档，含 diffusion 依赖（从 base 的 sglang 源码树安装， 装不上即构建失败）。\nrequires: engine, engine_import, diffusion, overlays"
+        }
+      ]
+    },
+    {
+      "name": "SGLang · DTK",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "dtk",
+      "versions": [
+        {
+          "name": "dtk26.04-sglang0.5.12-r2",
+          "image_ref": "gpuworks/gpuworks-runner:dtk26.04-sglang0.5.12-r2",
+          "engine_version": "0.5.12",
+          "framework_version": "26.04",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:dtk26.04-sglang0.5.12-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:dtk26.04-sglang0.5.12-r2"
+          ],
+          "notes": "K100 等海光 DCU 的 sglang 档，含 diffusion 依赖。DCU 的 fa3 注意力后端要求 KV 页大小为 64，推理目录的 spec 必须带 --page-size 64，否则第一次 forward 就 崩且容器进程挂住不退出。\nrequires: engine, diffusion, overlays"
+        }
+      ]
+    },
+    {
+      "name": "SGLang · HGGC",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "hggc",
+      "versions": [
+        {
+          "name": "hggc13.0-sglang0.5.13-r2",
+          "image_ref": "gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2",
+          "engine_version": "0.5.13",
+          "framework_version": "13.0",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2"
+          ],
+          "notes": "PPU 的 sglang 档。与 vllm 档同一 vanilla、同一 rootfs，只有 label 与引擎标识 不同，因此两档共享 base 的全部层（前提是 base 只压一次，见本线说明）。\nrequires: engine, diffusion, overlays"
+        }
+      ]
+    },
+    {
+      "name": "llama.cpp · Metal",
+      "engine": "callable",
+      "purpose": "inference",
+      "framework": "metal",
+      "versions": [
+        {
+          "name": "metal15.0-llama.cpp-b11617-r1",
+          "image_ref": "gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1",
+          "engine_version": "b11617",
+          "framework_version": "15.0",
+          "arch": "arm64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1"
+          ],
+          "notes": "Apple silicon 的 llama.cpp 档（目录引擎 callable）：上游 b11617 的 macOS arm64 预编译包（llama-server 与它的 dylib，Metal 着色器内嵌），不带 Python。b10660 起 上游支持 Qwen3.8-Flash-Next（qwen4exp，含 n-gram 嵌入表），Mac 上跑它的模板用这档。 构建：build/host-envs/build.sh llama.cpp b11617 r1。"
+        }
+      ]
+    },
+    {
+      "name": "vLLM Omni · CANN",
+      "engine": "vllm-omni",
+      "purpose": "inference",
+      "framework": "cann",
+      "versions": [
+        {
+          "name": "cann9.0-910b-vllm-omni0.23.0rc1-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.0-910b-vllm-omni0.23.0rc1-r1",
+          "engine_version": "0.23.0rc1",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.0-910b-vllm-omni0.23.0rc1-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.0-910b-vllm-omni0.23.0rc1-r1"
+          ],
+          "notes": "910B 的 omni 基线档，CANN 9.0.0，**驱动 26.0.rc1 也能用**（0.30.0 线要 26.1.1）。 驱动未升级的机队要跑 omni 负载就用本档。仍需 002 补丁才能跑 Ming-omni-tts。\nrequires: engine, omni, omni_no_mooncake, omni_patched, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.0-a3-vllm-omni0.23.0rc1-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.0-a3-vllm-omni0.23.0rc1-r1",
+          "engine_version": "0.23.0rc1",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.0-a3-vllm-omni0.23.0rc1-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.0-a3-vllm-omni0.23.0rc1-r1"
+          ],
+          "notes": "A3（910C）的 omni 基线档，其余同 910b 档。\nrequires: engine, omni, omni_no_mooncake, omni_patched, overlays\nmodel: a3"
+        },
+        {
+          "name": "cann9.1-910b-vllm-omni0.30.0-r3",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-910b-vllm-omni0.30.0-r3",
+          "engine_version": "0.30.0",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-910b-vllm-omni0.30.0-r3",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-910b-vllm-omni0.30.0-r3"
+          ],
+          "notes": "910B 的 omni 档，CANN 9.1.0，要求 HDK ≥ 26.1.1。omni 由 base 提供，不装 PyPI 的 vllm-omni。不含 mooncake（见本线说明），需要 PD 分离请用 vllm 线。\nrequires: engine, omni, omni_no_mooncake, omni_patched, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.1-950-vllm-omni0.30.0-r3",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-950-vllm-omni0.30.0-r3",
+          "engine_version": "0.30.0",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-950-vllm-omni0.30.0-r3",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-950-vllm-omni0.30.0-r3"
+          ],
+          "notes": "950 的 omni 档，omni 由 base 的 a5 变体自带（NPU 原生）。其余同 910b 档。\nrequires: engine, omni, omni_no_mooncake, omni_patched, overlays\nmodel: 950"
+        },
+        {
+          "name": "cann9.1-a3-vllm-omni0.30.0-r3",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-a3-vllm-omni0.30.0-r3",
+          "engine_version": "0.30.0",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-a3-vllm-omni0.30.0-r3",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-a3-vllm-omni0.30.0-r3"
+          ],
+          "notes": "A3（910C）的 omni 档，其余同 910b 档。\nrequires: engine, omni, omni_no_mooncake, omni_patched, overlays\nmodel: a3"
+        }
+      ]
+    },
+    {
+      "name": "vLLM Omni · CUDA",
+      "engine": "vllm-omni",
+      "purpose": "inference",
+      "framework": "cuda",
+      "versions": [
+        {
+          "name": "cuda13.0-vllm-omni0.30.0-r3",
+          "image_ref": "gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3",
+          "engine_version": "0.30.0",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3"
+          ],
+          "notes": "omni 档，给 vllm-omni 独家支持的负载用（Qwen3-TTS、Ming-omni-tts、图像与 视频生成等）。代价是 transformers 被压到 \u003c5.15、accelerate 钉到 1.12.0， 所以普通负载请用默认档。不声明 diffusion：omni 自带 diffusers 但不带 opencv， 与 sglang 的 diffusion 扩展不是一回事。r3 加装 vllm-omni 的 indextts2 前端 （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel， 所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。\nrequires: engine, engine_import, omni, indextts2_frontend, mooncake, overlays, audit"
+        }
+      ]
+    },
+    {
+      "name": "vLLM · CANN",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "cann",
+      "versions": [
+        {
+          "name": "cann8.5-910b-vllm0.18.0-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann8.5-910b-vllm0.18.0-r2",
+          "engine_version": "0.18.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann8.5-910b-vllm0.18.0-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann8.5-910b-vllm0.18.0-r2"
+          ],
+          "notes": "CANN 8.5 的存量机队档。该引擎版本没有配套的 omni，也不声明 mooncake 断言 （base 自带的版本不一定齐）。\nrequires: engine, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.1-310p-vllm0.27.1rc1-r3",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-310p-vllm0.27.1rc1-r3",
+          "engine_version": "0.27.1rc1",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-310p-vllm0.27.1rc1-r3",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-310p-vllm0.27.1rc1-r3"
+          ],
+          "notes": "310P，要求 HDK ≥ 26.1.1。**不含 mooncake**：该型号没有对应的 NPU 传输后端， 所以也不支持 mooncake 路线的 PD 分离。该硬件没有 bf16 单元，部署规格必须钉 `--dtype float16`，否则 vLLM 按模型默认取 bf16 并报 `aclnnInplaceOne ... DT_BFLOAT16`。\nrequires: engine, overlays\nmodel: 310p"
+        },
+        {
+          "name": "cann9.1-910b-vllm0.26.0rc1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2",
+          "engine_version": "0.26.0rc1",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2"
+          ],
+          "notes": "910B，**驱动 26.0.rc1 可用**，也可在 26.1.1 上跑。驱动未升级到 26.1.1 的机队 选本档，不要选 0.27.1rc1。含 NPU 版 mooncake，PD 分离（vllm-ascend-mooncake 模式）用本线。\nrequires: engine, mooncake, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.1-910b-vllm0.27.1rc1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2",
+          "engine_version": "0.27.1rc1",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2"
+          ],
+          "notes": "910B，**要求 Ascend HDK ≥ 26.1.1**（driver 与 firmware 都要到位）。在 26.0.rc1 上该栈的引擎初始化子进程会堆损坏崩溃，升级驱动前请用 0.26.0rc1 档。 含 NPU 版 mooncake。\nrequires: engine, mooncake, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.1-950-vllm0.27.1rc1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2",
+          "engine_version": "0.27.1rc1",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2"
+          ],
+          "notes": "950。950 自己的驱动线与 910B 不同（实测 driver 25.7.rc1.10 上本档可正常 serving），不照搬 910B 的 HDK 26.1.1 门槛。含 NPU 版 mooncake。\nrequires: engine, mooncake, overlays\nmodel: 950"
+        },
+        {
+          "name": "cann9.1-a3-vllm0.26.0rc1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2",
+          "engine_version": "0.26.0rc1",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2"
+          ],
+          "notes": "A3（910C），其余同 910b 档。\nrequires: engine, mooncake, overlays\nmodel: a3"
+        },
+        {
+          "name": "cann9.1-a3-vllm0.27.1rc1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.1-a3-vllm0.27.1rc1-r2",
+          "engine_version": "0.27.1rc1",
+          "framework_version": "9.1",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.1-a3-vllm0.27.1rc1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-a3-vllm0.27.1rc1-r2"
+          ],
+          "notes": "A3（910C），要求 HDK ≥ 26.1.1，其余同 910b 档。\nrequires: engine, mooncake, overlays\nmodel: a3"
+        }
+      ]
+    },
+    {
+      "name": "vLLM · CUDA",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "cuda",
+      "versions": [
+        {
+          "name": "cuda12.9-vllm0.31.0-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
+          "engine_version": "0.31.0",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2"
+          ],
+          "notes": "CUDA 12.x 的 vllm 档（驱动低于 580 的节点用它，CUDA 13.0 要求驱动 ≥580）。 不含 omni。torchcodec 换成 0.16.0+cu129，其余 torch 栈与 base 逐包一致。 补丁 001（wrong_dp_ray）在 vllm 0.31 上不适用——上游已重构 get_open_port， 故由 PATCHES_NOT_APPLICABLE 显式声明跳过；002 应用，003 已在上游。\nrequires: engine, engine_import, mooncake, overlays, audit"
+        },
+        {
+          "name": "cuda13.0-vllm0.30.0-r2",
+          "image_ref": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+          "engine_version": "0.30.0",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"
+          ],
+          "notes": "CUDA 13 的默认档，普通文本/多模态推理负载用。不含 vllm-omni，transformers 不设上界。mooncake 由 base 预装（cuda13 的包名是 mooncake-transfer-engine-cuda13）。\nrequires: engine, engine_import, mooncake, overlays, audit"
+        }
+      ]
+    },
+    {
+      "name": "vLLM · DTK",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "dtk",
+      "versions": [
+        {
+          "name": "dtk26.04-vllm0.18.1-r2",
+          "image_ref": "gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
+          "engine_version": "0.18.1",
+          "framework_version": "26.04",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2"
+          ],
+          "notes": "K100 等海光 DCU 的 vllm 档。**不含 omni**：厂商原件的 pip 清单是 vllm 0.18.1、 vllm-hcu 0.18.1、transformers 5.5.0、flash-attn、flash_mla，没有 vllm-omni； 海光的 omni 负载在推理目录里走厂商 custom:* 系列镜像，不依赖本档。 内置 vllm-hcu-apply-patches（推理目录的 pre_start_argv 依赖它）。 callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。\nrequires: engine, hcu_patches, overlays"
+        }
+      ]
+    },
+    {
+      "name": "vLLM · HGGC",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "hggc",
+      "versions": [
+        {
+          "name": "hggc13.0-vllm0.23.0-r2",
+          "image_ref": "gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2",
+          "engine_version": "0.23.0",
+          "framework_version": "13.0",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2"
+          ],
+          "notes": "PPU 的 vllm 档。omni、diffusion、mooncake 都来自 vanilla，所以本档同时能跑 omni 负载。本层只做：排障工具与 tini、清掉 vanilla 的 BASH_ENV 自启动 （每次 bash 启动都部署 cache bundle，拖慢健康检查）、把 vanilla 继承的 内网包源 env 改回公网源、运行期 env（VLLM_USE_V1=0 等）。\nrequires: engine, omni, mooncake, diffusion, overlays"
+        }
+      ]
+    },
+    {
+      "name": "vLLM · Metal",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "metal",
+      "versions": [
+        {
+          "name": "metal15.0-vllm0.31.0-r2",
+          "image_ref": "gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2",
+          "engine_version": "0.31.0",
+          "framework_version": "15.0",
+          "arch": "arm64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2"
+          ],
+          "notes": "Apple silicon（M1–M5，macOS 15+）的 vLLM 档，引擎是 vllm-metal 0.31.0（钉 vLLM 0.31.0 CPU 核心 + MLX）。不是容器镜像：agent 的 host 运行时把它解包成宿主环境， 引擎以 macOS 原生进程跑在 Metal 上。构建： build/host-envs/build.sh vllm-metal 0.31.0 r2。r2 起带 vLLM 源码里的 examples/*.jinja 并以 /vllm-workspace 为工作目录（与 Linux runner 一致，模板的 --chat-template 可原样引用）。 不支持 sleep、多机、KV 磁盘层（accelerator.Supports）。"
+        }
+      ]
+    }
+  ]
+}

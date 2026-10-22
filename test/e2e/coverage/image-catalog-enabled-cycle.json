@@ -1,0 +1,64 @@
+{
+  "contract_id": "gpuworks/image-catalog/series-version-enable-cycle",
+  "name": "镜像启用状态 / 版本双向切换与父系列关闭恢复 / 刷新后可编辑且子版本原值保留",
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_enable_cycle.py",
+  "test_function": "test_image_enable_cycle",
+  "command": "make test-e2e-image-enable-cycle",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "product_contracts": [
+    "ui/src/pages/ImagesPage.tsx",
+    "ui/src/pages/images/ImageSeriesTable.tsx",
+    "ui/src/pages/images/ImageVersionColumns.tsx",
+    "internal/server/api/images.go"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Catalog enabled flags only; no deployment selector, scheduler, agent, container, image availability or inference assertion."
+  },
+  "crud": {
+    "create": "MISSING: API fixture only; UI Create is outside this case",
+    "read": "implemented: independent series detail, series/version collections and browser reload",
+    "update": "implemented: UI series/version enabled booleans with exact PATCH; parent cycle preserves mixed child values",
+    "delete": "MISSING: parent-series teardown only"
+  },
+  "components": [
+    {
+      "id": "image-series.enabled-switch",
+      "type": "Switch",
+      "request": "PATCH /api/v1/images/{series_id} body.enabled (boolean)",
+      "persistence": "series.enabled",
+      "dependencies": ["image-version.enabled-switch"],
+      "dimensions": ["accessible name includes series name", "true to false", "false to true via Space", "reload", "does not write child enabled flags"]
+    },
+    {
+      "id": "image-version.enabled-switch",
+      "type": "Switch",
+      "request": "PATCH /api/v1/images/versions/{version_id} body.enabled (boolean)",
+      "persistence": "version.enabled; effective_enabled is version.enabled AND series.enabled",
+      "dependencies": ["image-series.enabled-switch"],
+      "dimensions": ["accessible name includes image reference", "true to false", "reload then false to true via Space", "enabled parent leaves disabled child editable", "disabled parent disables both child controls with reason", "parent restoration preserves one enabled and one disabled child"]
+    }
+  ],
+  "combinations": [
+    {"id": "enabled-parent-child-cycle", "expected": "parent true; A true/false/true; B unchanged; own false does not disable A's switch"},
+    {"id": "mixed-children-parent-cycle", "expected": "A own true/B own false; parent true/false/true; effective pairs true,false / false,false / true,false; child settings unchanged"}
+  ],
+  "checklist_items": {
+    "partial": ["6.1", "6.2", "6.4", "10.10", "12.2", "12.4", "22.5", "22.6"],
+    "reason": "Only named switch state, keyboard Space activation, dependency reasons, detail viewport/Esc focus return and reload are asserted; each locale requires its own passing report."
+  },
+  "missing": [
+    "switch mutation failure/recovery, in-flight duplicate-submit barrier and non-admin permissions",
+    "deprecated/official/community catalog state interactions; this case owns custom metadata only",
+    "enabled filters combined with mutation, source tabs and sorting; summary card/view consistency",
+    "official catalog update/upload, runtime inspect/rolling repull and peer controls",
+    "10/30/100 series/version/node list volumes, pagination, column preferences and full keyboard/style matrix",
+    "deployment consumer selectors, scheduling, existing running workloads and image acquisition/runtime effects",
+    "parent-series business deletion and referenced version deletion"
+  ],
+  "result": "NOT_RUN until a report for the source SHA and locale records PASS with all required evidence; no page-wide coverage claim"
+}

@@ -1,0 +1,577 @@
+{
+  "contract_id": "gpuworks/models/files-failure-retry",
+  "name": "模型文件 / 真实503失败后同一行Retry / 保留节点和存储并恢复",
+  "priority": "P0",
+  "page_id": "models",
+  "control_id": "model-files-failure-retry",
+  "test_file": "test/e2e/model_files_browser.py",
+  "test_function": "exercise_failure_retry",
+  "driver_file": "test/e2e/model_files_lifecycle.py",
+  "command": "python3 -B test/e2e/model_files_lifecycle.py --case failure-retry --locale en",
+  "lane": "local-real-server-agent-docker-chrome-url-repository",
+  "identity": "isolated admin browser / bearer oracle / real agent / exact external repository",
+  "scope": "Public URL model download into owned non-default local storage. Same-node two-storage guard is not a two-node claim. Synthetic valid tensors prove transfer, not GPU inference.",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "product_contracts": ["ui/src/pages/models/ModelDownloadModal.tsx", "ui/src/pages/models/ModelFilesSection.tsx", "ui/src/pages/models/ModelNodeFileDelete.tsx", "internal/server/api/models_storage.go", "internal/server/store/model_files.go", "internal/agent/app/modelfiles.go", "internal/agent/download/multi.go"],
+  "fixture": "ModelDownload exact config and valid synthetic safetensors over real loopback HTTP; actual socket send audit,503,held partial disconnect; real management server/DB/agent.",
+  "inventory": [
+    {
+      "component": "DownloadModal",
+      "fields": {
+        "storage_id": {
+          "type": "Select",
+          "default": "preferred writable default then first",
+          "options": ["local", "nfs", "nfs_cache", "shared_dir"],
+          "required": true,
+          "wire": "storage_id"
+        },
+        "node_uuids": {
+          "type": "NodePicker multiple",
+          "required": "local only",
+          "default": [],
+          "wire": "node_uuids",
+          "eligibility": ["online no ready copy", "ready copy disabled", "offline excluded", "search unmatched"]
+        }
+      },
+      "actions": ["download", "cancel before submit"]
+    },
+    {
+      "component": "ModelFilesSection",
+      "columns": ["node", "path", "size_bytes", "state/message", "progress/downloaded/size/rate", "acquisition/origin", "last_used_at", "actions"],
+      "wire_states": ["pending", "downloading", "syncing", "present", "registered", "failed", "deleting", "insufficient_disk_space", "download_required", "absent", "missing"],
+      "acquisition": ["peer", "download", "registered", "auto", "imported", "copy"],
+      "actions": ["Retry failed public row", "delete writable admin row", "peer cancel only not public cancel"]
+    },
+    {
+      "component": "ModelNodeFileDelete",
+      "confirmation": ["full node name", "deployments must stop impact"],
+      "actions": ["cancel zero request", "confirm node+storage deletion"]
+    }
+  ],
+  "failure_table": [
+    {
+      "bug": "ignores chosen storage",
+      "assertion": "exact actual browser POST storage_id + independent path/root + every payload hash; default storage remains unused"
+    },
+    {
+      "bug": "deletes all replicas",
+      "assertion": "target directory absent; second independently downloaded storage hash unchanged; model still GET200"
+    },
+    {
+      "bug": "Retry uses peer endpoint",
+      "assertion": "same failed row button emits only POST model/download with exact original node+storage and202"
+    },
+    {
+      "bug": "503 mislabeled present",
+      "assertion": "actual HTTP503 audit; failed UI tag and exact API message; no final payload hash match before Retry"
+    },
+    {
+      "bug": "Range ignored or partial bytes duplicated",
+      "assertion": "actual incomplete send+resumed exact Range offset and final full-file SHA256"
+    }
+  ],
+  "crud": {
+    "create": "Browser exact POST202 starts chosen node/storage files; metadata registration is setup only.",
+    "read": "Exact payload files/hash, authoritative GET, rendered path/state/size/progress and page refresh.",
+    "update": "Same-row public Retry recovery.",
+    "delete": "MISSING: business delete covered by files-download-delete; teardown is not a business assertion."
+  },
+  "component_checklist": [
+    {
+      "item": "1.1",
+      "status": "partial",
+      "assertion": "inventory lists actual download fields; only local branch exercised"
+    },
+    {
+      "item": "1.2",
+      "status": "partial",
+      "assertion": "empty node disables submit and loaded explicit storage selection; loading/error/no-writable missing"
+    },
+    {
+      "item": "1.3",
+      "status": "MISSING",
+      "assertion": "MISSING: **必填校验**：每个必填字段分别输入空字符串和纯空白，错误定位到该字段，且没有 mutation 请求。"
+    },
+    {
+      "item": "1.4",
+      "status": "MISSING",
+      "assertion": "MISSING: **字段边界**：按后续组件清单逐字段执行最小、最大、越界、非法格式等适用场景；不虚构产品没有的上限。"
+    },
+    {
+      "item": "1.5",
+      "status": "partial",
+      "assertion": "local only; nfs/nfs_cache/shared_dir missing"
+    },
+    {
+      "item": "1.6",
+      "status": "MISSING",
+      "assertion": "MISSING: **条件字段**：切换控制项，验证显隐、首次默认值、隐藏值的提交规则、重新显示后的保留或重置规则。"
+    },
+    {
+      "item": "1.7",
+      "status": "partial",
+      "assertion": "required storage/node POST202, actual files, GET and detail reload; full source registration is setup"
+    },
+    {
+      "item": "1.8",
+      "status": "MISSING",
+      "assertion": "MISSING: **完整创建**：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"
+    },
+    {
+      "item": "1.9",
+      "status": "MISSING",
+      "assertion": "MISSING: **防重复提交**：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"
+    },
+    {
+      "item": "1.10",
+      "status": "partial",
+      "assertion": "real source503 persisted failed then same failed row Retry202; this is background task retry, submit-rejection draft matrix missing"
+    },
+    {
+      "item": "1.11",
+      "status": "MISSING",
+      "assertion": "MISSING: **取消退出**：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"
+    },
+    {
+      "item": "1.12",
+      "status": "MISSING",
+      "assertion": "MISSING: **编辑变更**：分别覆盖 A→B、开→关→开、有值→空、绑定 A→B→无；仅改一个字段时其他字段保持原值。"
+    },
+    {
+      "item": "1.13",
+      "status": "MISSING",
+      "assertion": "MISSING: **并发与失效**：编辑期间资源被删除或被另一个会话更新，按真实 API 合同验证冲突或最后写入结果及恢复入口。"
+    },
+    {
+      "item": "1.14",
+      "status": "partial",
+      "assertion": "independent fixture bytes -> chosen agent root -> exact API/UI and refresh; other placement/storage types missing"
+    },
+    {
+      "item": "1.15",
+      "status": "partial",
+      "assertion": "modal geometry and node keyboard Enter/Esc; full focus-visible theme matrix missing"
+    },
+    {
+      "item": "5.1",
+      "status": "partial",
+      "assertion": "explicit local storage and actual node label; other storage types missing"
+    },
+    {
+      "item": "5.2",
+      "status": "partial",
+      "assertion": "both owned local storage instances in delete case; only target local in others; full type enum missing"
+    },
+    {
+      "item": "5.3",
+      "status": "MISSING",
+      "assertion": "MISSING: 有搜索能力时验证完整/部分搜索、无结果、清空搜索及恢复候选。"
+    },
+    {
+      "item": "5.4",
+      "status": "MISSING",
+      "assertion": "MISSING: 有清空能力时验证清空；没有时验证产品规定的返回默认路径，不添加不存在的清空操作。"
+    },
+    {
+      "item": "5.5",
+      "status": "MISSING",
+      "assertion": "MISSING: 切换选项触发的区域、默认值及隐藏字段提交规则正确；切回原选项后没有错误的陈旧值。"
+    },
+    {
+      "item": "5.6",
+      "status": "partial",
+      "assertion": "node picker keyboard Enter selection and Esc; storage keyboard matrix missing"
+    },
+    {
+      "item": "5.7",
+      "status": "MISSING",
+      "assertion": "MISSING: 异步选项加载失败、重试或选项失效时，不得提交看似有效但实际不存在的值。"
+    },
+    {
+      "item": "8.1",
+      "status": "partial",
+      "assertion": "actual online node name selected by NodePicker; API body and agent path checked"
+    },
+    {
+      "item": "8.2",
+      "status": "MISSING",
+      "assertion": "MISSING: 验证搜索、无结果、清空搜索、候选加载失败与重试，精确检查 query 和候选集合。"
+    },
+    {
+      "item": "8.3",
+      "status": "MISSING",
+      "assertion": "MISSING: 验证选中值回填；候选因新搜索不在当前集合时，已选资源名称仍正确。"
+    },
+    {
+      "item": "8.4",
+      "status": "MISSING",
+      "assertion": "MISSING: 分别绑定 A、换绑 B、移除/清空，刷新查询正向关系；有反向查询能力时同时验证旧关系已解除。"
+    },
+    {
+      "item": "8.5",
+      "status": "MISSING",
+      "assertion": "MISSING: 多选添加或删除一项不影响其他项；最大选择数和重复选择按合同验证。"
+    },
+    {
+      "item": "8.6",
+      "status": "MISSING",
+      "assertion": "MISSING: 禁用、离线、不兼容、已删除或无权限候选有正确提示且不可错误提交；提交时失效要由真实后端拒绝。"
+    },
+    {
+      "item": "8.7",
+      "status": "MISSING",
+      "assertion": "MISSING: 大集合目标仍可找到：当前 NodePicker 搜索返回单页，验证第 51 条可通过搜索找到，不虚构分页按钮。"
+    },
+    {
+      "item": "8.8",
+      "status": "partial",
+      "assertion": "actual chosen agent storage path verified; incompatible/multi-machine address modes missing"
+    },
+    {
+      "item": "10.1",
+      "status": "MISSING",
+      "assertion": "MISSING: 分别构造 loading、空数据、失败和有数据，验证完整状态、总数、重试和恢复后的行集合。"
+    },
+    {
+      "item": "10.2",
+      "status": "MISSING",
+      "assertion": "MISSING: 搜索覆盖完整、部分、不存在、特殊字符、清空及大小写/空白合同，检查 query、命中和排除行。"
+    },
+    {
+      "item": "10.3",
+      "status": "MISSING",
+      "assertion": "MISSING: list-wide search/filter/sort/pagination datasets are outside this exact file-lifecycle contract."
+    },
+    {
+      "item": "10.4",
+      "status": "MISSING",
+      "assertion": "MISSING: list-wide search/filter/sort/pagination datasets are outside this exact file-lifecycle contract."
+    },
+    {
+      "item": "10.5",
+      "status": "MISSING",
+      "assertion": "MISSING: list-wide search/filter/sort/pagination datasets are outside this exact file-lifecycle contract."
+    },
+    {
+      "item": "10.6",
+      "status": "MISSING",
+      "assertion": "MISSING: list-wide search/filter/sort/pagination datasets are outside this exact file-lifecycle contract."
+    },
+    {
+      "item": "10.7",
+      "status": "MISSING",
+      "assertion": "MISSING: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"
+    },
+    {
+      "item": "10.8",
+      "status": "MISSING",
+      "assertion": "MISSING: list-wide search/filter/sort/pagination datasets are outside this exact file-lifecycle contract."
+    },
+    {
+      "item": "10.9",
+      "status": "partial",
+      "assertion": "unique model name row opens exact detail, scoped file rows"
+    },
+    {
+      "item": "10.10",
+      "status": "partial",
+      "assertion": "real event-driven file row then page refresh; full unsaved draft races missing"
+    },
+    {
+      "item": "10.11",
+      "status": "MISSING",
+      "assertion": "MISSING: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"
+    },
+    {
+      "item": "10.12",
+      "status": "MISSING",
+      "assertion": "MISSING: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"
+    },
+    {
+      "item": "10.13",
+      "status": "MISSING",
+      "assertion": "MISSING: list-wide search/filter/sort/pagination datasets are outside this exact file-lifecycle contract."
+    },
+    {
+      "item": "12.1",
+      "status": "partial",
+      "assertion": "page opens the named DownloadModal and exact model detail"
+    },
+    {
+      "item": "12.2",
+      "status": "partial",
+      "assertion": "download modal viewport geometry only; full popup/detail layout matrix missing"
+    },
+    {
+      "item": "12.3",
+      "status": "MISSING",
+      "assertion": "MISSING: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"
+    },
+    {
+      "item": "12.4",
+      "status": "MISSING",
+      "assertion": "MISSING: 分别关闭按钮、取消、Esc 及适用的遮罩关闭；焦点返回触发器，取消不产生 mutation。"
+    },
+    {
+      "item": "12.5",
+      "status": "MISSING",
+      "assertion": "MISSING: 嵌套弹层关闭不误关父层，关闭后残留 portal 不可交互，定位当前实际受控弹层。"
+    },
+    {
+      "item": "12.6",
+      "status": "MISSING",
+      "assertion": "MISSING: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"
+    },
+    {
+      "item": "12.7",
+      "status": "MISSING",
+      "assertion": "MISSING: 删除确认包含名称及实际影响；引用阻止、允许清理和失败无部分修改分别验证。"
+    },
+    {
+      "item": "12.8",
+      "status": "N/A",
+      "assertion": "The public local replica delete API exposes no preview/revision/CAS control."
+    },
+    {
+      "item": "13.1",
+      "status": "MISSING",
+      "assertion": "MISSING: 验证触发器可访问名称，鼠标和适用键盘操作可打开、选择和关闭，禁用项不可执行。"
+    },
+    {
+      "item": "13.2",
+      "status": "MISSING",
+      "assertion": "MISSING: 长列表末行及屏幕边缘打开时浮层在视口内、不遮挡必要操作，关闭后焦点合理返回。"
+    },
+    {
+      "item": "13.3",
+      "status": "MISSING",
+      "assertion": "MISSING: 菜单项权限、状态条件与真实 API 一致；隐藏按钮之外还需后端权限拒绝证据。"
+    },
+    {
+      "item": "13.4",
+      "status": "MISSING",
+      "assertion": "MISSING: Tooltip 只补充说明，不作为唯一可达操作或唯一错误信息；有键盘触发能力时必须验证。"
+    },
+    {
+      "item": "13.5",
+      "status": "MISSING",
+      "assertion": "MISSING: 成功通知对应真实持久化结果，错误通知包含操作与具体原因；消失不能替代后端恢复证明。"
+    },
+    {
+      "item": "13.6",
+      "status": "MISSING",
+      "assertion": "MISSING: 连续事件或轮询不产生无限重复通知，不遮挡后续重试、取消或编辑入口。"
+    },
+    {
+      "item": "16.1",
+      "status": "N/A",
+      "assertion": "This case starts an already registered repository download; no file upload/import control is exercised."
+    },
+    {
+      "item": "16.2",
+      "status": "N/A",
+      "assertion": "This case starts an already registered repository download; no file upload/import control is exercised."
+    },
+    {
+      "item": "16.3",
+      "status": "partial",
+      "assertion": "real source download, actual payloads and final exact progress; complete moving UI numeric matrix missing"
+    },
+    {
+      "item": "16.4",
+      "status": "partial",
+      "assertion": "real503 then same-row public Retry with original node/storage; malformed transport and resume covered by distinct case"
+    },
+    {
+      "item": "16.5",
+      "status": "N/A",
+      "assertion": "Public download has no in-flight cancel control; modal Cancel closes only before submit. Peer-sync cancel is a separate contract."
+    },
+    {
+      "item": "16.6",
+      "status": "partial",
+      "assertion": "detail refresh retains present file row; interrupted case also refreshes held downloading state"
+    },
+    {
+      "item": "16.7",
+      "status": "partial",
+      "assertion": "every synthetic payload byte/hash checked at independent agent root; tensor inference consumption missing"
+    },
+    {
+      "item": "16.8",
+      "status": "MISSING",
+      "assertion": "MISSING: 下载/导出检查原始字节、格式、中文编码、列/单位、记录数和筛选一致；失败不能下载 HTML 错误页冒充文件。"
+    },
+    {
+      "item": "22.1",
+      "status": "MISSING",
+      "assertion": "MISSING: 每个实际页面入口与深链分别进入，检查标题、选中态、目标组件及刷新后位置。"
+    },
+    {
+      "item": "22.2",
+      "status": "MISSING",
+      "assertion": "MISSING: 浏览器前进/后退、Tabs 切换与 URL 参数按合同保留状态，不能出现页面内容和导航选中态不一致。"
+    },
+    {
+      "item": "22.3",
+      "status": "MISSING",
+      "assertion": "MISSING: admin/user 分别验证菜单、按钮和直接 API 权限；GPUWorks 不套用 Router 的组织/IAM 权限模型。"
+    },
+    {
+      "item": "22.4",
+      "status": "MISSING",
+      "assertion": "MISSING: 登录失效与重新认证验证目的页面和可恢复草稿；后台轮询不能被当成人类活动无限续期。"
+    },
+    {
+      "item": "22.5",
+      "status": "partial",
+      "assertion": "en/zh labels, states and dynamic file path/units; broader navigation/error states missing"
+    },
+    {
+      "item": "22.6",
+      "status": "MISSING",
+      "assertion": "MISSING: 真实键盘操作验证 focus-visible；颜色、间距和禁用态使用浏览器 computed style 与主题 token 语义比较。"
+    },
+    {
+      "item": "22.7",
+      "status": "MISSING",
+      "assertion": "MISSING: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"
+    }
+  ],
+  "missing": ["MISSING: nfs/nfs_cache/shared_dir, peer, HF/MS within this E case, cache retries, shared availability and actual GPU/L4.", "MISSING: 401/403/non-admin/session expiry, referenced deletion, read-only deletion, disk-full/offline and malformed repository matrices.", "MISSING: full storage/node enum and selector loading/error/search/reset matrix, duplicate submit, complete keyboard/focus/theme/layout matrices.", "MISSING: in-flight UI numeric precision across unknown-total/all-unknown; terminal full known total/100% only is asserted.", "N/A: public download has no in-flight Cancel UI; do not substitute closing the pre-submit modal.", "NOT_RUN until matching clean-source/build en/zh reports and a real product mutation failure are recorded."],
+  "not_applicable_sections": {
+    "2": "No editable business text field; node selector search is section8.",
+    "3": "No editable numeric control.",
+    "4": "URL metadata registration is fixture preparation; no tested URL input.",
+    "6": "No switch/checkbox.",
+    "7": "No model secret input; login completes before trace.",
+    "9": "No time selector.",
+    "11": "No column preferences or batch selection operation.",
+    "14": "No deployment wizard.",
+    "15": "No command/YAML editor.",
+    "17": "No chart or metric-card claim; file progress is section16.",
+    "18": "No log viewer.",
+    "19": "No terminal.",
+    "20": "No Playground.",
+    "21": "No clipboard controls.",
+    "23": "No assistant."
+  },
+  "result": "NOT_RUN: declarations only; runtime reports must prove every required evidence layer, exact source/binary and observed scoped cleanup.",
+  "component_value_coverage": [
+    {
+      "id": "model.files.storage_type",
+      "name": "模型文件 / 存储类型",
+      "scope": "product",
+      "universe": ["local", "nfs", "nfs_cache", "shared_dir"],
+      "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
+      "sources": [
+        {
+          "file": "ui/src/storageTypes.ts",
+          "sha256": "7099cead90973060bca2a12528ab4affab09df153c9fe1e010032cc3d4022528"
+        }
+      ],
+      "covered": {
+        "local": [
+          {
+            "file": "test/e2e/model_files_browser.py",
+            "function": "assert_ready",
+            "assertion": "selected storage is actual local file placement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "model.files.wire_state",
+      "name": "模型文件 / wire状态",
+      "scope": "product",
+      "universe": ["pending", "downloading", "syncing", "present", "registered", "failed", "deleting", "insufficient_disk_space", "download_required", "absent", "missing"],
+      "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
+      "sources": [
+        {
+          "file": "internal/proto/modelfile.go",
+          "sha256": "98b7790418b6fb96c52d9bd567d3a80cfd5c72dbca1a22c6d357454da27ca1a7"
+        }
+      ],
+      "covered": {
+        "present": [
+          {
+            "file": "test/e2e/model_files_browser.py",
+            "function": "assert_ready",
+            "assertion": "downloaded file reaches actual present state"
+          }
+        ],
+        "failed": [
+          {
+            "file": "test/e2e/model_files_browser.py",
+            "function": "exercise_failure_retry",
+            "assertion": "source503 reaches actual failed file state"
+          }
+        ]
+      }
+    },
+    {
+      "id": "model.files.acquisition",
+      "name": "模型文件 / 获取来源",
+      "scope": "product",
+      "universe": ["peer", "download", "registered", "auto", "imported", "copy"],
+      "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
+      "sources": [
+        {
+          "file": "ui/src/pages/models/modelPresenceDisplay.ts",
+          "sha256": "1d539d1c4465350d4fec95d2520a7574b48af3635efd763a8e8a0d3d91b6b934"
+        }
+      ],
+      "covered": {
+        "download": [
+          {
+            "file": "test/e2e/model_files_browser.py",
+            "function": "assert_ready",
+            "assertion": "public file acquisition is download"
+          }
+        ]
+      }
+    },
+    {
+      "id": "model.download.storage_loading",
+      "name": "下载弹窗 / 存储加载状态",
+      "scope": "product",
+      "universe": ["loading", "load-error-retry", "no-writable", "loaded-writable"],
+      "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
+      "sources": [
+        {
+          "file": "ui/src/pages/models/ModelDownloadModal.tsx",
+          "sha256": "8a45e1f79df940f47087e9ac74294dc337aee35db4fe97e7546995756fa4d62f"
+        }
+      ],
+      "covered": {}
+    },
+    {
+      "id": "model.download.target_eligibility",
+      "name": "下载弹窗 / 节点可选性类别",
+      "scope": "product",
+      "universe": ["online-no-copy-selectable", "online-ready-disabled", "offline-excluded", "search-no-match"],
+      "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
+      "sources": [
+        {
+          "file": "ui/src/pages/models/ModelDownloadModal.tsx",
+          "sha256": "8a45e1f79df940f47087e9ac74294dc337aee35db4fe97e7546995756fa4d62f"
+        }
+      ],
+      "covered": {}
+    },
+    {
+      "id": "model.files.data_shape",
+      "name": "模型文件 / 数据形态",
+      "scope": "product",
+      "universe": ["empty", "local", "shared", "cache"],
+      "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
+      "sources": [
+        {
+          "file": "ui/src/pages/models/ModelFilesSection.tsx",
+          "sha256": "6c4d09e5afa6b4acfd95f592e8e198e70dfbe856cf4e0d9683f2bf46c3213bcb"
+        }
+      ],
+      "covered": {}
+    }
+  ]
+}

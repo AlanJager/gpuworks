@@ -1,0 +1,259 @@
+model_id: qwen/qwen3-0.6b
+source: upstream
+display_title: Qwen3 0.6b
+release_date: '2025-04-27'
+model_config: {model_type: qwen3, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-sglang-ascend-25218b07
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209873
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209243
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-hygon-4cb0dcc8
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209873
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B-FP8
+        revision: e5be08033360965ceca7b0ffd72d521a51331ce0
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B-FP8
+        revision: 235c78853a34cd01164c144d9375bc1e92efb556
+  weight_bytes: 1078885538
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-edd19286
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: vllm-ascend/Qwen3-0.6B-W8A16
+        revision: 982e3e077fed55e096f781dc89c94cc4899aa40f
+  weight_bytes: 1078646710
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --quantization
+  - ascend
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-c1899de2
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: c1899de289a04d12100db370d81485cdf75e47ca
+  weight_bytes: 1503300328
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-ppu-e5be0803
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-0.6B-FP8
+        revision: e5be08033360965ceca7b0ffd72d521a51331ce0
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B-FP8
+        revision: 235c78853a34cd01164c144d9375bc1e92efb556
+  weight_bytes: 1062975744
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-ff6dce2f
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dahye58/Qwen3-0.6B-JSON-SFT
+        revision: ff6dce2fa26bf56030ee69454440490e51e1987e
+  weight_bytes: 1192135096
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

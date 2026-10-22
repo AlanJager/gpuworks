@@ -1,0 +1,567 @@
+{
+  "title": "Networks",
+  "description": "Declare storage-sync, compute and serving networks, attach them to nodes or node labels, and see which interface each node resolves to.",
+  "breadcrumb": {
+    "resources": "Resources"
+  },
+  "fallbackNote": "Dedicated networks come first. A role without one is carried by the management network: serving goes through the agent tunnel, storage sync and compute traffic use the address the node reaches the server from. Switch these roles off per node on the node's Networks tab.",
+  "empty": "No networks yet",
+  "role": {
+    "storage_sync": "Storage sync",
+    "compute": "Compute",
+    "serving": "Serving"
+  },
+  "type": {
+    "host_ethernet": "Host Ethernet",
+    "host_rdma": "Host RDMA",
+    "accelerator_rdma": "Accelerator RDMA"
+  },
+  "source": {
+    "node": "Node",
+    "label": "Label",
+    "management": "Management"
+  },
+  "table": {
+    "name": "Name",
+    "roles": "Roles",
+    "type": "Type",
+    "selector": "Default selector",
+    "attachedTo": "Attached to",
+    "nodes": "Resolved nodes",
+    "actions": "Actions"
+  },
+  "selector": {
+    "cidr": "CIDR",
+    "interface": "Interface",
+    "none": "No selector",
+    "inferred": "Bootstrap and HCAs inferred",
+    "bootstrapCidr": "Bootstrap CIDR",
+    "inferredShort": "Inferred"
+  },
+  "actions": {
+    "create": "New network",
+    "edit": "Edit",
+    "delete": "Delete",
+    "detail": "Details",
+    "attach": "Attach",
+    "detach": "Detach",
+    "cancel": "Cancel",
+    "save": "Save",
+    "confirmDelete": "Delete network {{name}}? Running instances keep the network they started with.",
+    "confirmDetach": "Detach this target?",
+    "close": "Close"
+  },
+  "form": {
+    "createTitle": "New network",
+    "editTitle": "Edit network",
+    "name": "Name",
+    "nameRequired": "Enter a name",
+    "description": "Description",
+    "roles": "Roles",
+    "rolesHint": "Select all three for an all-in-one network. Internal testing covers storage sync and compute networks.",
+    "rolesRequired": "Select at least one role",
+    "type": "Type",
+    "typeHint": "Host Ethernet is TCP on a host interface. Host RDMA uses the host's RDMA ports, InfiniBand and RoCE alike; which one a node has is read from its ports. Accelerator RDMA uses the RoCE ports on the accelerator cards themselves (Ascend NPUs), one rail per card. The type decides the NCCL/UCX/HCCL settings and device injection; only nodes on the same network are treated as reachable.",
+    "cidr": "Default CIDR",
+    "cidrHint": "Traffic uses the interface whose address is in this subnet.",
+    "interface": "Default interface name",
+    "interfacePlaceholder": "e.g. ens*f0, globs allowed",
+    "selectorNote": "The selector is only a default: a node attachment can override the interface, IP and HCAs. With both CIDR and interface name filled in, both must match.",
+    "bootstrapCidr": "Bootstrap CIDR",
+    "bootstrapCidrHint": "Only when the inferred bootstrap does not fit: the handshake (NCCL out-of-band, vLLM master address) uses the interface in this subnet; data still goes over the HCAs.",
+    "interfaceHint": "Only needed when the subnet alone is ambiguous. A node attachment can override it.",
+    "advanced": "Advanced: bootstrap CIDR",
+    "rdmaInferred": "Nothing to fill in: once nodes are attached, each node's bootstrap IP, HCAs and HCA IPs are inferred. You can then add or remove HCAs in the node list.",
+    "acceleratorInferred": "No selector is needed: once nodes are attached, each node's rails are the accelerator cards whose port is up and has an address, and you can add or remove cards in the node list. The handshake uses a host address (the management address by default); data moves on the cards' ports.",
+    "acceleratorBootstrapCidrHint": "For the handshake only (HCCL rootInfo, MASTER_ADDR): it moves to the host interface inside this subnet. Data moves on the cards' ports, which are not in this subnet.",
+    "roleNotOnType": "Accelerator RDMA carries compute traffic only: host processes cannot bind the address of a card's port, so storage sync and serving cannot use it."
+  },
+  "detail": {
+    "back": "Networks",
+    "selector": "Default selector",
+    "attachments": "Attached to",
+    "resolved": "Resolved nodes ({{count}})",
+    "noAttachments": "Not attached yet",
+    "noNodes": "No node resolves to this network yet",
+    "overrides": "Overrides: {{value}}",
+    "attachedAt": "Attached {{time}}",
+    "rdmaInferred": "Each node uses its fastest active RDMA ports (a RoCE port needs an IPv4 address on its interface) as HCAs, and the first HCA's interface address as bootstrap; InfiniBand without IPoIB uses the management address. Add or remove HCAs, or change the bootstrap, per node below.",
+    "acceleratorInferred": "Each node's rails are the accelerator cards whose port is up and has an address. The bootstrap is the host address the handshake uses, the management address by default; data moves on the cards' ports. Add or remove cards, or change the bootstrap, per node in the table below."
+  },
+  "nodeTable": {
+    "node": "Node",
+    "roles": "Roles",
+    "source": "Source",
+    "endpoint": "Interface / IP",
+    "hcas": "HCA",
+    "bootstrap": "Bootstrap IP",
+    "hcaIPs": "HCAs and their IPs"
+  },
+  "attach": {
+    "title": "Attach {{name}}",
+    "mode": "Attach to",
+    "modeNode": "Node",
+    "modeLabel": "Node label",
+    "modeHint": "Node attachments outrank label attachments; within the same rank the earlier attachment wins.",
+    "nodeRequired": "Select a node",
+    "labelKey": "Label key",
+    "labelKeyRequired": "Enter a label key",
+    "labelValue": "Label value",
+    "overrides": "Override the default selector (optional)",
+    "interface": "Interface",
+    "interfaceIB": "Bootstrap interface",
+    "ip": "IP",
+    "ipPlaceholder": "Leave empty to use the interface's address",
+    "editTitle": "Edit overrides",
+    "nodes": "Nodes",
+    "rdmaInferred": "Each node's bootstrap IP and HCAs are inferred once attached.",
+    "partial": "Attached {{ok}} nodes; failed: {{failed}}",
+    "done": "Attached {{count}} nodes",
+    "editBootstrapTitle": "Set bootstrap",
+    "bootstrapOverride": "Bootstrap (empty: inferred)"
+  },
+  "warning": {
+    "conflict": "Several {{role}} networks reach this node at the same rank. {{winner}} was attached first and is used; not used: {{losers}}. Attach one of them to this node directly to choose explicitly.",
+    "override_missing": "Override {{value}} ({{kind}}) is not in the node's last reported inventory.",
+    "unknown": "Network warning: {{code}}",
+    "summary": "{{count}} node(s) have warnings; open the details to see why.",
+    "link_layer_mismatch": "Nodes on this network resolved to different link layers ({{link_layers}}). InfiniBand and RoCE cannot form one fabric; split them into separate networks.",
+    "rdma_no_hca": "No usable RDMA port: ports are down, or a RoCE port's interface has no IPv4 address.",
+    "bootstrap_missing": "No bootstrap address was resolved, so the handshake cannot reach this node.",
+    "hca_unusable": "HCA {{value}} is unusable: the port is down, or a RoCE port's interface has no IPv4 address.",
+    "hca_mismatch": "This node uses {{count}} HCAs while nodes on this network use {{counts}}; extra HCAs have no peer."
+  },
+  "node": {
+    "loaded": "Loaded networks",
+    "none": "No network is attached to this node.",
+    "inventory": "Network inventory",
+    "inventoryHint": "reported by the agent",
+    "rate": "Traffic (rx / tx)",
+    "notReported": "This agent has not reported a network inventory yet.",
+    "interfaces": "Interfaces",
+    "rdma": "RDMA ports",
+    "accelerator": "Accelerator ports",
+    "acceleratorHint": "RoCE ports on the cards themselves; the host does not list them as interfaces",
+    "iface": {
+      "name": "Interface",
+      "addrs": "Addresses",
+      "state": "State",
+      "speed": "Speed",
+      "mtu": "MTU"
+    },
+    "port": {
+      "device": "Device",
+      "state": "State",
+      "linkLayer": "Link layer",
+      "rate": "Rate",
+      "netdev": "Interface",
+      "ip": "IP"
+    },
+    "card": {
+      "name": "Card",
+      "ip": "Compute address",
+      "state": "Link",
+      "speed": "Speed"
+    },
+    "forward": {
+      "title": "Serving network forwarder",
+      "address": "Address",
+      "status": "Gateway path",
+      "direct": "Direct",
+      "unreachable": "Unreachable",
+      "unused": "Not used yet",
+      "hint": "The gateway connects here with TLS and a per-instance token. A node on a serving network is only reached over it: when the address is unreachable, requests to its instances fail, and new instances are not started there."
+    }
+  },
+  "message": {
+    "saved": "Saved",
+    "deleted": "Deleted",
+    "failed": "Failed: {{detail}}"
+  },
+  "tabs": {
+    "overview": "Overview",
+    "test": "Internal test",
+    "monitor": "Monitoring"
+  },
+  "test": {
+    "start": "Start test",
+    "scope": "Nodes",
+    "scopeAll": "All nodes on this network",
+    "scopeNodes": "Selected nodes",
+    "scopeLabel": "Filter by label",
+    "nodes": "Nodes",
+    "nodesRequired": "Select at least two nodes",
+    "labelKey": "Label key",
+    "labelValue": "Label value",
+    "bandwidth": "Measure throughput",
+    "seconds": "Seconds per pair",
+    "what": "Every ordered pair of nodes connects from its address on this network to the peer's address on a fresh port and, optionally, streams data for a few seconds. Pairs run in rounds, one stream in and out per node at a time.",
+    "rdmaNote": "TCP runs over the bootstrap interface. Choose RDMA bandwidth to measure the RDMA ports.",
+    "unsupported": "Serving networks are reached from the server, not between nodes, so they have no internal test.",
+    "none": "No test has run on this network yet.",
+    "running": "Testing {{nodes}} nodes, {{pairs}} pairs…",
+    "summary": "{{time}} · {{scope}}",
+    "interrupted": "The test started {{time}} was interrupted before it finished.",
+    "scopeName": {
+      "all": "all nodes",
+      "nodes": "selected nodes",
+      "label": "label {{detail}}"
+    },
+    "matrix": "Source → target",
+    "failed": "Failed",
+    "reachable": "Reachable",
+    "gbps": "{{value}} Gb/s",
+    "rtt": "RTT p50 {{p50}} ms, p99 {{p99}} ms",
+    "started": "Test started",
+    "slow": "Under a tenth of the fastest pair in this run, likely across a slower link.",
+    "kind": "Test",
+    "kindTcp": "TCP",
+    "kindRdmaTool": "RDMA bandwidth (ib_write_bw)",
+    "kindName": {
+      "tcp": "TCP",
+      "rdma_tool": "RDMA bandwidth",
+      "card_ping": "Card reachability (same-named cards)",
+      "card_matrix": "Card reachability (full card matrix)"
+    },
+    "toolMissing": "These nodes have no ib_write_bw, so their pairs will fail: {{nodes}}. Install perftest (for example apt install perftest) and wait for the next node report.",
+    "toolReady": "Every node reported ib_write_bw. Each pair runs one ib_write_bw per rail in parallel and sums the rails.",
+    "pattern": "Pairs",
+    "patternName": {
+      "mesh": "All pairs",
+      "ring": "Ring"
+    },
+    "patternHint": {
+      "mesh": "Every node probes every other node: N×(N−1) pairs, slow on large networks.",
+      "ring": "Nodes form a ring by name and each probes the next: N pairs in one round. It finds a bad node or HCA, not a break only between non-adjacent nodes."
+    },
+    "pairCounts": "pairs {{passed}} passed / {{partial}} partial / {{failed}} failed",
+    "railCounts": "HCAs {{passed}}/{{total}} passed",
+    "problems": "Problems",
+    "problemWhere": "Node / HCA",
+    "problemPairs": "Affects",
+    "problemWhy": "Reason",
+    "pairsAffected": "{{count}} pairs",
+    "source": "Source",
+    "target": "Target",
+    "result": "Result",
+    "status": {
+      "passed": "Passed",
+      "partial": "Partial",
+      "failed": "Failed"
+    },
+    "targetAddress": "Target address",
+    "sourceHCA": "Source HCA",
+    "targetHCA": "Target HCA",
+    "retestHint": "Run the test again after removing an HCA to see the new result.",
+    "partialHint": "Some HCAs failed; click to see each HCA",
+    "noBootstrap": "These nodes have no bootstrap address and their pairs will fail: {{nodes}}.",
+    "noAddress": "These nodes have no address on this network and their pairs will fail: {{nodes}}.",
+    "noRails": "These nodes have no usable HCA and their pairs will fail: {{nodes}}.",
+    "side": {
+      "source": "Source node",
+      "target": "Target node",
+      "node": "Node"
+    },
+    "error": {
+      "offline": "{{node}} is offline",
+      "deleted": "{{node}} was deleted",
+      "no_address": "{{node}} has no address on this network (the bootstrap address on RDMA networks)",
+      "no_hca": "{{node}} has no usable HCA",
+      "tool_missing": "{{node}} cannot run ib_write_bw; install perftest",
+      "no_roce_v2_gid": "This RoCE port on {{node}} has no IPv4 address on its interface, so no RoCE v2 connection",
+      "tool_failed": "ib_write_bw failed: {{detail}}",
+      "no_peer_rail": "This HCA on {{node}} has no HCA to pair with on the other node",
+      "listener_failed": "{{node}} could not open the test port: {{detail}}",
+      "rpc_failed": "Agent call on {{node}} failed: {{detail}}",
+      "probe_failed": "Connection failed: {{detail}}",
+      "bandwidth_failed": "Reachable, but the throughput test failed: {{detail}}"
+    },
+    "acceleratorNote": "The TCP test uses the bootstrap interface: it checks the host addresses the handshake uses, not the cards' ports.",
+    "kindCardPing": "Card reachability · same-named cards",
+    "kindCardMatrix": "Card reachability · full card matrix",
+    "cardNote": {
+      "card_ping": "The same-named accelerator cards of two nodes ping each other (npu3 to npu3). Good for routine checks and for confirming a network wired card to card.",
+      "card_matrix": "Every accelerator card of one node pings every card of the other. Which card reaches which cannot be read from the addresses; this measures it when the network is set up."
+    },
+    "cardPatternHint": {
+      "mesh": "Every two nodes are tested once (a ping is answered, so one probe proves both directions): N×(N−1)÷2 pairs.",
+      "ring": "Nodes are ordered by name in a circle and each tests the next: N pairs. Every pair of neighbours gets a complete result; a break that only shows between nodes that are not neighbours goes unseen."
+    },
+    "cardEstimate": "{{nodes}} nodes, {{pairs}} pairs: {{probes}} probes in {{rounds}} rounds, at most {{duration}}. A card sends one ping at a time, so a round lasts one probe's time limit at most.",
+    "durationSeconds": "{{count}} s",
+    "durationMinutes": "{{value}} minutes",
+    "card": {
+      "counts": "{{pairs}} node pairs · {{passed}}/{{total}} card pairs reachable",
+      "overview": "Node ↔ node",
+      "openHint": "Click a cell to see each pair of cards",
+      "unreachable": "Unreachable",
+      "rtt": "{{value}} ms",
+      "listSeparator": ", ",
+      "more": " and {{count}} more",
+      "odd": "Node pairs that differ from the rest ({{count}}): {{pairs}}. This is usually the wiring or configuration fault to find.",
+      "shape": {
+        "matrix": {
+          "full": "All cards",
+          "diagonal": "Same-named only",
+          "mixed": "Partly reachable",
+          "none": "None",
+          "untested": "Not tested"
+        },
+        "ping": {
+          "full": "All same-named",
+          "diagonal": "All same-named",
+          "mixed": "Partly reachable",
+          "none": "None",
+          "untested": "Not tested"
+        }
+      },
+      "verdict": {
+        "matrix": {
+          "full": "Every card reaches every card: any combination of cards can be used.",
+          "diagonal": "Cards reach their namesake only: a deployment must pick the same card numbers on both ends.",
+          "mixed": "The wiring is irregular: open each node pair to see which cards reach which, and pick cards accordingly.",
+          "none": "No pair of cards is reachable: check the links and addresses of the accelerator ports.",
+          "untested": "No pair of cards was tested: see the reason on each node pair below."
+        },
+        "ping": {
+          "full": "All same-named cards reach each other.",
+          "diagonal": "All same-named cards reach each other.",
+          "mixed": "Some same-named cards do not reach each other: open each node pair to see which.",
+          "none": "No same-named cards reach each other: check the links and addresses of the accelerator ports, or run a full card matrix to see whether they are cross-wired.",
+          "untested": "No pair of cards was tested: see the reason on each node pair below."
+        }
+      },
+      "error": {
+        "offline": "{{node}} is offline",
+        "deleted": "{{node}} was deleted",
+        "no_address": "This card of {{node}} has no address",
+        "no_hca": "{{node}} has no usable accelerator card on this network",
+        "unreachable": "No answer within the time limit",
+        "no_card": "{{node}} does not have this card: {{detail}}",
+        "tool_failed": "hccn_tool failed on {{node}}: {{detail}}",
+        "no_peer_rail": "This card of {{node}} has no namesake on the other node",
+        "rpc_failed": "The agent call on {{node}} failed: {{detail}}"
+      },
+      "measuredAt": "a reading of that moment; test again after the wiring or links change"
+    },
+    "cardEstimating": "Estimating…",
+    "cardEstimateFailed": "Cannot start: {{detail}}"
+  },
+  "management": {
+    "name": "Management network",
+    "description": "Derived from the address each node reaches the server from. Every node is on it, and it cannot be edited, deleted or attached. It carries a role on a node that has no dedicated network for it; switch the roles it may carry per node below, one by one or in bulk, or on the node's Networks tab.",
+    "selector": "Address the node reaches the server from",
+    "attachedTo": "All nodes",
+    "title": "Management network",
+    "address": "Address",
+    "notReported": "The agent has not reported its management address yet; upgrade the agent.",
+    "remote": "Source address seen by the server",
+    "nat": "Behind NAT",
+    "canCarry": "May carry",
+    "roleSwitch": {
+      "serving": "Serving (over the agent tunnel)",
+      "storage_sync": "Storage sync (node to node)",
+      "compute": "Compute traffic (multi-node inference)"
+    },
+    "roleHint": "Dedicated networks come first; these switches only matter where a node has none for the role. When off: serving — no new instances on this node; storage sync — download from the image or model source only; compute traffic — multi-node deployments are refused. Applies to new instances only.",
+    "dedicated": "Carried by a dedicated network",
+    "labels": "Labels",
+    "search": "Search name or address",
+    "labelFilter": "Filter by label",
+    "shown": "Showing {{shown}} of {{total}} nodes",
+    "noMatch": "No node matches the filters",
+    "bulk": {
+      "title": "Bulk edit",
+      "selectShown": "Select filtered ({{count}})",
+      "selected": "{{count}} nodes selected",
+      "keep": "Keep",
+      "allow": "Allow",
+      "deny": "Deny",
+      "apply": "Apply",
+      "confirm": "Change the management network roles of the {{count}} selected nodes? Applies to new instances only.",
+      "done": "Updated {{count}} nodes"
+    },
+    "saved": "Management network roles updated"
+  },
+  "monitor": {
+    "scope": "One line per node, counted on this network's interface and HCAs on that node.",
+    "loadFailed": "Could not load monitoring data: {{detail}}",
+    "nicRx": "NIC receive",
+    "nicTx": "NIC transmit",
+    "rdmaRx": "RDMA receive",
+    "rdmaTx": "RDMA transmit",
+    "errors": "Errors and congestion",
+    "errorsHint": "NIC errors and drops, RDMA errors and CNPs",
+    "roleHint": "All of the node's traffic for this role (rx + tx)",
+    "role": {
+      "storage_sync": "Storage-sync traffic",
+      "serving": "Serving traffic"
+    },
+    "computeEthernet": "Compute traffic over Ethernet cannot be told apart in NIC counters; it is part of the NIC totals.",
+    "acceleratorNote": "Traffic on the accelerator ports does not pass through host interfaces; these charts show the bootstrap interface only."
+  },
+  "linkLayer": {
+    "infiniband": "InfiniBand",
+    "roce": "RoCE"
+  },
+  "topology": {
+    "title": "Network topology and settings",
+    "description": "Two typical deployments: which network each kind of traffic takes, and where each setting is made and what it does. The numbers on the diagram match the table below; point at a number or a table row to highlight its lines.",
+    "legend": {
+      "title": "Legend",
+      "external": "External traffic (browsers, inference clients)",
+      "management": "Management network",
+      "serving": "Serving network",
+      "storageSync": "Storage sync network",
+      "compute": "Compute network",
+      "hostAccess": "Host access (SSH / server dial, optional)"
+    },
+    "columns": {
+      "setting": "Setting",
+      "where": "Where it is set",
+      "does": "What it does",
+      "not": "What it does not decide"
+    },
+    "kind": {
+      "listen": "Listen",
+      "auto": "Automatic",
+      "network": "Network",
+      "optional": "Optional"
+    },
+    "diagram": {
+      "simpleLabel": "Simple topology diagram",
+      "complexLabel": "Complex topology diagram",
+      "marker": "Setting {{n}}",
+      "browser": "Operator's browser",
+      "browserSimple": "Console / management API",
+      "browserOffice": "Office net · proxy/NAT ok",
+      "client": "Inference client",
+      "clientSimple": "OpenAI-compatible /v1",
+      "clientBusiness": "Business network · /v1",
+      "server": "Control node: gpuworks server",
+      "consoleShared": "Console listen address (all three)",
+      "consoleListen": "Console listen address",
+      "gatewayListen": "Inference API listen address",
+      "agentListen": "Node access listen address",
+      "tunnelRoute": "The gateway routes per node:",
+      "tunnelVia": "through the agent tunnel to the instance",
+      "loopback": "+ 127.0.0.1 (local tools)",
+      "loopbackAlways": "+ 127.0.0.1 (local tools, always)",
+      "servingDirect": "Gateway dials serving network",
+      "servingTarget": "→ node serving IP:19443",
+      "node": "Compute node {{name}}",
+      "mgmtNic": "{{nic}} · management",
+      "servingNic": "{{nic}} · serving",
+      "storageNic": "{{nic}} · storage sync",
+      "computeNic": "{{nic}} · compute",
+      "computeNetwork": "Compute network",
+      "ibBootstrap": "IB (bootstrap {{nic}})",
+      "storageSync": "Storage sync",
+      "nodeToNode": "(node to node)",
+      "hostAccess": "SSH / server dial"
+    },
+    "simple": {
+      "tab": "Simple",
+      "heading": "Simple: the management network carries everything, compute has its own",
+      "summary": "The server has one listen address that operators, inference clients and nodes all reach. The management network carries serving and storage sync on its own; only multi-node inference needs a compute network.",
+      "rows": {
+        "1": {
+          "name": "Console listen address",
+          "where": "Settings → Listen addresses (listen.console in server.yaml); restart to apply",
+          "does": "The IP:port this server accepts connections on. Node access and the inference API use it too unless set separately",
+          "not": "The address others use to reach the server: browsers use the one in the address bar, nodes the one in their install command; reverse proxies and NAT work"
+        },
+        "2": {
+          "name": "Management network",
+          "where": "Nothing to set. Node detail → Networks → Management network, or Networks → Management network, can turn off roles per node",
+          "does": "The local address an agent reaches the server from. Without a dedicated network it carries serving (through the agent tunnel), storage sync (node to node) and compute traffic",
+          "not": "Cannot be deleted or re-addressed; roles with a dedicated network do not use it"
+        },
+        "3": {
+          "name": "Compute network (RDMA)",
+          "where": "Networks → Create network, role Compute, type RDMA, attached to nodes or a node label",
+          "does": "NCCL / RDMA traffic of multi-node inference and KV transfer of disaggregated prefill/decode; a deployment's nodes must share one compute network",
+          "not": "Carries no serving or storage sync; falls back to the management network (Ethernet) with a warning when not all nodes of a group are on it"
+        }
+      }
+    },
+    "complex": {
+      "tab": "Complex",
+      "heading": "Complex: a dedicated network per kind of traffic",
+      "summary": "The console and management API listen on the office network and the inference API on the business network; the server and compute nodes share a dedicated management network, inference requests take a dedicated serving network, and nodes have dedicated storage sync and compute networks.",
+      "rows": {
+        "1": {
+          "name": "Console listen address",
+          "where": "Settings → Listen addresses (listen.console); restart to apply",
+          "does": "Serves the console and management API only on these local addresses",
+          "not": "The address operators use (a proxy or NAT on the office network works)"
+        },
+        "2": {
+          "name": "Inference API listen address",
+          "where": "Settings → Listen addresses → Advanced (listen.gateway); restart to apply",
+          "does": "Answers /v1 only on these local addresses, keeping inference traffic apart from management",
+          "not": "The address clients use; integration examples use the browser's current address"
+        },
+        "3": {
+          "name": "Node access listen address",
+          "where": "Settings → Listen addresses → Advanced (listen.agent); restart to apply",
+          "does": "Accepts agent connections only on these local addresses, for example only on the management network",
+          "not": "The address nodes dial: the --server in the install command, kept in the agent's config; before changing this, make sure that address still forwards here"
+        },
+        "4": {
+          "name": "Management network",
+          "where": "Nothing to set. Node detail → Networks → Management network, or Networks → Management network, switches roles per node",
+          "does": "The local address an agent reaches the server from (eth0 here). Carries any role that has no dedicated network",
+          "not": "Here serving, storage sync and compute all have dedicated networks, so it carries only the control plane"
+        },
+        "5": {
+          "name": "Serving network",
+          "where": "Networks → Create network, role Serving, attached to nodes",
+          "does": "The gateway sends inference requests straight to port 19443 (TLS) on the node's serving IP, not through the agent tunnel; it probes once before an instance goes live and fails if unreachable",
+          "not": "Not the address clients use (that is ②); never falls back to the tunnel"
+        },
+        "6": {
+          "name": "Storage sync network",
+          "where": "Networks → Create network, role Storage sync, attached to nodes",
+          "does": "Nodes copy models and images directly, over a network both ends of a pair share",
+          "not": "Downloads from registries and model hubs take the node's default route, unaffected"
+        },
+        "7": {
+          "name": "Compute network",
+          "where": "Networks → Create network, role Compute, type RDMA, attached to nodes",
+          "does": "NCCL / RDMA of multi-node inference and disaggregated KV transfer; the RDMA type injects devices and NCCL_IB_HCA and similar variables",
+          "not": "Bootstrap handshakes use its IP interface (eth0 here); data uses the IB ports"
+        },
+        "8": {
+          "name": "Compute node address",
+          "where": "Entered when adding a node (SSH-managed or server-dial mode)",
+          "does": "The server connects to the host: installs or recovers the agent over SSH, or dials the connection in server-dial mode",
+          "not": "Unrelated to traffic between nodes"
+        }
+      }
+    }
+  },
+  "rail": {
+    "gap": {
+      "inactive": "Port is not active",
+      "no_ipv4": "Its interface has no IPv4 address, so no RoCE v2",
+      "unknown": "The node did not report this port"
+    },
+    "auto": "Auto",
+    "manual": "Manual",
+    "reset": "Back to auto",
+    "removed": "Removed; run the test again to see the effect",
+    "removeTitle": "Remove HCA {{hca}}?",
+    "onlyNode": "From {{node}} only (by default it is removed from every node)",
+    "remove": "Remove {{hca}}",
+    "removeShort": "Remove HCA",
+    "pick": "Pick an RDMA port the node reported",
+    "noMore": "No more ports",
+    "add": "Add HCA",
+    "noBootstrap": "No bootstrap address",
+    "pickInterface": "Pick an interface with an address",
+    "changeBootstrap": "Change",
+    "confirm": "Remove",
+    "pickCard": "Pick an accelerator port the node reported"
+  }
+}

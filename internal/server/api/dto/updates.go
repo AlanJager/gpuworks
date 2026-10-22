@@ -1,0 +1,84 @@
+package dto
+
+import "time"
+
+// UpdateStatus is GET /api/v1/updates: what the distribution channel offers
+// next to what this server runs (ADR 0040). Available is false when no source
+// served a valid index; Sources then says why for each of them.
+type UpdateStatus struct {
+	// Channel is nightly or release; ChannelEditable says the console can
+	// switch it (the server keeps it in server.yaml).
+	Channel         string `json:"channel"`
+	ChannelEditable bool   `json:"channel_editable"`
+	// AutoCheck is whether the server checks the channel by itself and
+	// describes the fleet (node count, GPU models, agent versions) to it
+	// while doing so; false means it asks only when an administrator does,
+	// and then says nothing. Editable follows ChannelEditable.
+	AutoCheck bool      `json:"auto_check"`
+	CheckedAt time.Time `json:"checked_at"`
+	Available bool      `json:"available"`
+	// UnavailableReason says why no source served the channel's index when
+	// Available is false: "unpublished" (a source answered that the channel
+	// has no index — it is reachable and empty), "invalid" (a source served an
+	// index that did not verify) or "unreachable" (none answered at all).
+	UnavailableReason string `json:"unavailable_reason,omitempty"`
+	// Source is the base URL whose index the latest values come from.
+	Source          string               `json:"source,omitempty"`
+	Sources         []UpdateSourceStatus `json:"sources"`
+	Server          ServerUpdate         `json:"server"`
+	ImageCatalog    CatalogUpdate        `json:"image_catalog"`
+	TemplateCatalog CatalogUpdate        `json:"template_catalog"`
+}
+
+// UpdateSourceStatus is how one distribution source answered.
+type UpdateSourceStatus struct {
+	URL       string `json:"url"`
+	OK        bool   `json:"ok"`
+	LatencyMS int64  `json:"latency_ms"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ServerUpdate compares the running server with the channel's release.
+// Installable says the release has an archive for this server's platform.
+// SelfUpgrade says the console can upgrade this server in place; otherwise
+// SelfUpgradeBlocker names why (no_service_manager, not_installed,
+// not_installed_binary, not_writable) and the CLI is the way. InstallDir is
+// the installation the server runs from (the directory of its server.yaml),
+// for the commands the page offers; empty when it was started without one.
+type ServerUpdate struct {
+	Current            string `json:"current"`
+	Latest             string `json:"latest,omitempty"`
+	BuiltAt            string `json:"built_at,omitempty"`
+	UpdateAvailable    bool   `json:"update_available"`
+	Installable        bool   `json:"installable"`
+	SelfUpgrade        bool   `json:"self_upgrade"`
+	SelfUpgradeBlocker string `json:"self_upgrade_blocker,omitempty"`
+	InstallDir         string `json:"install_dir,omitempty"`
+}
+
+// ServerUpgradeStarted answers a console upgrade: the binary is swapped and
+// the server is restarting into To; the next start confirms it or restores
+// Backup.
+type ServerUpgradeStarted struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Backup string `json:"backup"`
+}
+
+// CatalogUpdate compares an official catalog in force with the published one.
+// Versions are for display; UpdateAvailable compares identities. Compatible is
+// false when the published catalog needs a newer server.
+type CatalogUpdate struct {
+	Current         string `json:"current"`
+	Latest          string `json:"latest,omitempty"`
+	UpdateAvailable bool   `json:"update_available"`
+	Compatible      bool   `json:"compatible"`
+}
+
+// OfficialInferenceCatalogResult is the answer to applying an official
+// inference template catalog, from the channel or an upload.
+type OfficialInferenceCatalogResult struct {
+	Models        int    `json:"models"`
+	PackageDigest string `json:"package_digest"`
+	Version       string `json:"version"`
+}

@@ -1,0 +1,6 @@
+model_id: mistralai/mistral-medium-3.5-128b-eagle
+source: upstream
+display_title: Mistral-Medium-3.5-128B-EAGLE
+release_date: '2026-04-27'
+specs: []
+input_modalities: [text]

@@ -1,0 +1,665 @@
+model_id: deepseek-ai/deepseek-v4.1-flash-1017
+source: upstream
+display_title: DeepSeek-V4.1-Flash-1017
+parameter_count: 748B (552B backbone + 196B Engram)
+architecture: moe
+input_modalities:
+- text
+- image
+context_length: 1048576
+release_date: '2026-10-17'
+model_config:
+  model_type: deepseek_v41_text
+  num_hidden_layers: 40
+  hidden_size: 5120
+  num_attention_heads: 64
+  num_key_value_heads: 1
+  head_dim: 512
+  max_position_embeddings: 1048576
+  qk_rope_head_dim: 64
+  sliding_window: 128
+  vision_config:
+    patch_size: 14
+specs:
+- name: fp4-sglang-nvidia-h200-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '8'
+  - --mem-fraction-static
+  - '0.8'
+  - --attention-backend
+  - dsv4
+  - --moe-runner-backend
+  - flashinfer_mxfp4
+  - --enable-decoder-swa-bounded-replay
+  - --cuda-graph-max-bs-decode
+  - '64'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-sglang-nvidia-h200-tp4-engram-host
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '4'
+  - --mem-fraction-static
+  - '0.8'
+  - --attention-backend
+  - dsv4
+  - --moe-runner-backend
+  - flashinfer_mxfp4
+  - --enable-decoder-swa-bounded-replay
+  - --cuda-graph-max-bs-decode
+  - '64'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  env:
+    SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE: '1'
+  placement:
+    language: starlark
+    resolver: |
+      # The ~196 GB Engram tables live in host memory, so each GPU holds about
+      # 73 GB of backbone (measured on 4x H200): admission asks for that plus
+      # compile/graph headroom, not weight_bytes / 4. The card selector
+      # already limits it to H200.
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return accept(gpu_memory_mib_per_device=88000,
+                        variables={"TP_SIZE": 4, "SP_DEGREE": 1})
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-sglang-nvidia-h200-tp4-engram-host-dspark
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '4'
+  - --mem-fraction-static
+  - '0.8'
+  - --attention-backend
+  - dsv4
+  - --moe-runner-backend
+  - flashinfer_mxfp4
+  - --enable-decoder-swa-bounded-replay
+  - --speculative-algorithm
+  - DSPARK
+  - --speculative-dspark-block-size
+  - '5'
+  - --context-length
+  - '262144'
+  - --cuda-graph-max-bs-decode
+  - '32'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  env:
+    SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE: '1'
+  placement:
+    language: starlark
+    resolver: |
+      # The ~196 GB Engram tables live in host memory, so each GPU holds about
+      # 73 GB of backbone plus the 2 GB DSpark head (measured on 4x H200):
+      # admission asks for that plus compile/graph headroom, not
+      # weight_bytes / 4. The card selector already limits it to H200.
+      # DSpark's decode-graph capture allocates a
+      # 12 GiB index tensor at the 1M default context, which does not fit next
+      # to the KV pool; 256K context leaves room for it.
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return accept(gpu_memory_mib_per_device=88000,
+                        variables={"TP_SIZE": 4, "SP_DEGREE": 1})
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-sglang-nvidia-b200-tp4
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200|B300|GB300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '4'
+  - --mem-fraction-static
+  - '0.8'
+  - --speculative-algorithm
+  - DSPARK
+  - --speculative-dspark-block-size
+  - '5'
+  - --cuda-graph-max-bs-decode
+  - '64'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return {"TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-sglang-nvidia-h200-tp8-throughput
+  display_profile: compatible
+  scenario: throughput
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '8'
+  - --mem-fraction-static
+  - '0.8'
+  - --attention-backend
+  - dsv4
+  - --moe-runner-backend
+  - flashinfer_mxfp4
+  - --cuda-graph-max-bs-decode
+  - '64'
+  - --max-running-requests
+  - '256'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-sglang-nvidia-b200-tp4-throughput
+  display_profile: compatible
+  scenario: throughput
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200|B300|GB300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '4'
+  - --max-running-requests
+  - '256'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return {"TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-vllm-nvidia-h200-tp4-engram-host
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --tokenizer-mode
+  - deepseek_v41
+  - --engram-config
+  - '{"cpu_offload":true}'
+  - --tool-call-parser
+  - deepseek_v41
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v41
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return {"TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-vllm-nvidia-b200-tp2
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --tokenizer-mode
+  - deepseek_v41
+  - --attention-config
+  - '{"backend":"FLASHINFER_MLA_SPARSE_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}'
+  - --kv-cache-dtype
+  - fp8
+  - --engram-config
+  - '{"cpu_offload":true,"use_thp":true}'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '4096'
+  - --compilation-config
+  - '{"mode":"VLLM_COMPILE","cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2046,3072,4092]}'
+  - --max-cudagraph-capture-size
+  - '4092'
+  - --tool-call-parser
+  - deepseek_v41
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v41
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 2:
+              return reject("this recipe requires exactly 2 GPUs per node")
+          return {"TP_SIZE": 2, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-vllm-nvidia-b300-tp2
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --tokenizer-mode
+  - deepseek_v41
+  - --attention-config
+  - '{"backend":"FLASHINFER_MLA_SPARSE_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}'
+  - --kv-cache-dtype
+  - fp8
+  - --engram-config
+  - '{"cpu_offload":true}'
+  - --compilation-config
+  - '{"mode":"VLLM_COMPILE","cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[6,12,18,24,30,36,48,60,72,96,120,144,192,240,288,384,480,576,768,1020,1536,2046,3072,4092,6144,8190]}'
+  - --max-cudagraph-capture-size
+  - '8190'
+  - --max-num-batched-tokens
+  - '8192'
+  - --max-num-seqs
+  - '256'
+  - --tool-call-parser
+  - deepseek_v41
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v41
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 2:
+              return reject("this recipe requires exactly 2 GPUs per node")
+          return {"TP_SIZE": 2, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-vllm-nvidia-blackwell-dep8
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --tokenizer-mode
+  - deepseek_v41
+  - --tensor-parallel-size
+  - '1'
+  - --data-parallel-size
+  - '8'
+  - --enable-expert-parallel
+  - --kernel-config
+  - '{"moe_backend":"deep_gemm_mega_moe"}'
+  - --attention-config
+  - '{"backend":"FLASHMLA_MEGA_ATTN_DSV41","indexer_kv_dtype":"mxfp4","indexer_sparse_logits":true}'
+  - --kv-cache-dtype
+  - fp8
+  - --max-num-seqs
+  - '128'
+  - --engram-config
+  - '{"embedding_across_dp":true}'
+  - --tool-call-parser
+  - deepseek_v41
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v41
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 1, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-deepinfer-nvidia-blackwell-ep
+  display_profile: optimized
+  scenario: throughput
+  engine: callable
+  image: gpuworks/deepinfer:774ce24-r9
+  image_sources:
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/deepinfer:774ce24-r9
+  - quay.io/gpuworks/deepinfer:774ce24-r9
+  - registry.zstack.ai/gpuworks/deepinfer:774ce24-r9
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  shm_bytes: 483183820800
+  memlock_unlimited: true
+  entrypoint:
+  - /opt/venv/bin/python
+  - /opt/serve/deepinfer_openai_server.py
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --max-num-seqs
+  - '128'
+  - --max-model-len
+  - '131072'
+  env:
+    DEEPINFER_ENGRAM_LOCAL_FETCH: '1'
+    EP_DISABLE_GIN: '1'
+    DEEPINFER_ENABLE_MTP_VARLEN: '1'
+    DEEPINFER_USE_MULTIMODAL_POOL: '0'
+    PYTHONUNBUFFERED: '1'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4 and gpu.count != 8:
+              return reject("DeepInfer runs on 4 or 8 GPUs of one node")
+          return accept(gpu_memory_mib_per_device=120000, variables={"TP_SIZE": gpu.count, "SP_DEGREE": 1}, prefer=gpu.count)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    - type: openai.completions
+      endpoint: /v1/completions
+      mode: stream
+    metrics:
+      map:
+        deepinfer:requests_running: requests_running
+        deepinfer:requests_waiting: requests_waiting
+        deepinfer:prompt_tokens_total: prompt_tokens_total
+        deepinfer:generation_tokens_total: generation_tokens_total
+        deepinfer:requests_success_total: requests_success_total
+        deepinfer:time_to_first_token_seconds: ttft_seconds
+        deepinfer:time_per_output_token_seconds: tpot_seconds
+        deepinfer:e2e_request_latency_seconds: e2e_seconds
+- name: fp4-deepinfer-nvidia-blackwell-ep-multinode
+  display_profile: optimized
+  scenario: throughput
+  engine: callable
+  image: gpuworks/deepinfer:774ce24-r9
+  image_sources:
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/deepinfer:774ce24-r9
+  - quay.io/gpuworks/deepinfer:774ce24-r9
+  - registry.zstack.ai/gpuworks/deepinfer:774ce24-r9
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash-1017
+        revision: 1bae0e1088993b9b82de08f59de5be5a34e42170
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200|B300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  shm_bytes: 68719476736
+  entrypoint:
+  - /opt/venv/bin/python
+  - /opt/serve/deepinfer_openai_server.py
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --max-num-seqs
+  - '128'
+  - --max-model-len
+  - '131072'
+  - --nnodes
+  - ${NNODES}
+  - --node-rank
+  - ${NODE_RANK}
+  - --master-addr
+  - ${MASTER_ADDR}
+  - --master-port
+  - ${MASTER_PORT}
+  env:
+    DEEPINFER_ENABLE_MTP_VARLEN: '1'
+    DEEPINFER_USE_MULTIMODAL_POOL: '0'
+    PYTHONUNBUFFERED: '1'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4 and gpu.count != 8:
+              return reject("DeepInfer runs on 4 or 8 GPUs per node")
+          return accept(gpu_memory_mib_per_device=120000, variables={"TP_SIZE": gpu.count, "SP_DEGREE": 1}, prefer=gpu.count)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    - type: openai.completions
+      endpoint: /v1/completions
+      mode: stream
+    metrics:
+      map:
+        deepinfer:requests_running: requests_running
+        deepinfer:requests_waiting: requests_waiting
+        deepinfer:prompt_tokens_total: prompt_tokens_total
+        deepinfer:generation_tokens_total: generation_tokens_total
+        deepinfer:requests_success_total: requests_success_total
+        deepinfer:time_to_first_token_seconds: ttft_seconds
+        deepinfer:time_per_output_token_seconds: tpot_seconds
+        deepinfer:e2e_request_latency_seconds: e2e_seconds
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md

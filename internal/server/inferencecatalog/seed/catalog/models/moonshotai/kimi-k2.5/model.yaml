@@ -1,0 +1,249 @@
+model_id: moonshotai/kimi-k2.5
+source: upstream
+display_title: Kimi-K2.5
+parameter_count: 1T
+architecture: moe
+context_length: 262144
+release_date: '2026-01-01'
+model_config: {model_type: kimi_k25, num_hidden_layers: 61, hidden_size: 7168, num_attention_heads: 64, num_key_value_heads: 64, max_position_embeddings: 262144, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 70272
+  sglang: 70272
+specs:
+- name: int4-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K2.5
+        revision: 4d01dfe0332d63057c186e0b262165819efb6611
+    - modelscope:
+        repo_id: moonshotai/Kimi-K2.5
+        revision: 16213deed4b8eca15ca802d4b064dc2851dad9f2
+  weight_bytes: 595205007449
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --reasoning-parser
+  - kimi_k2
+  - --tool-call-parser
+  - kimi_k2
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K2.5
+        revision: 4d01dfe0332d63057c186e0b262165819efb6611
+    - modelscope:
+        repo_id: moonshotai/Kimi-K2.5
+        revision: 16213deed4b8eca15ca802d4b064dc2851dad9f2
+  weight_bytes: 595205007449
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - kimi_k2
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - kimi_k2
+  - --speculative-config
+  - '{"model":"lightseekorg/kimi-k2.5-eagle3-mla","method":"eagle3","num_speculative_tokens":3}'
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general-eagle3-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K2.5
+        revision: 4d01dfe0332d63057c186e0b262165819efb6611
+    - modelscope:
+        repo_id: moonshotai/Kimi-K2.5
+        revision: 16213deed4b8eca15ca802d4b064dc2851dad9f2
+  weight_bytes: 595205007449
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - kimi_k2
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - kimi_k2
+  - --speculative-config
+  - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'
+  - --mm-encoder-tp-mode
+  - data
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: int4
+      sources:
+      - huggingface:
+          repo_id: moonshotai/Kimi-K2.5
+          revision: 4d01dfe0332d63057c186e0b262165819efb6611
+      - modelscope:
+          repo_id: moonshotai/Kimi-K2.5
+          revision: 16213deed4b8eca15ca802d4b064dc2851dad9f2
+    weight_bytes: 595205007449
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: lightseekorg/kimi-k2.5-eagle3-mla
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: lightseekorg/kimi-k2.5-eagle3-mla
+          revision: 9c0c42dfe8460a1d90ff9825de910fb51b0d293c
+      - modelscope:
+          repo_id: lightseekorg/kimi-k2.5-eagle3-mla
+          revision: def1764379a8515cb07156245f21e714fb54b6c6
+    weight_bytes: 6031216729
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/Kimi-K2.5-NVFP4
+        revision: 0fd0a5e6879298d3476e3b61852a79792a35ae3d
+    - modelscope:
+        repo_id: nv-community/Kimi-K2.5-NVFP4
+        revision: 032475c08c0c68b011003bc35237f1aeb9b6e1ca
+  weight_bytes: 590850973287
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - kimi_k2
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - kimi_k2
+  - --speculative-config
+  - '{"model":"lightseekorg/kimi-k2.5-eagle3-mla","method":"eagle3","num_speculative_tokens":3}'
+  - --mm-encoder-tp-mode
+  - data
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP4: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100-eagle3-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/Kimi-K2.5-NVFP4
+        revision: 0fd0a5e6879298d3476e3b61852a79792a35ae3d
+    - modelscope:
+        repo_id: nv-community/Kimi-K2.5-NVFP4
+        revision: 032475c08c0c68b011003bc35237f1aeb9b6e1ca
+  weight_bytes: 590850973287
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - kimi_k2
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - kimi_k2
+  - --speculative-config
+  - '{"model":"/models/draft","method":"eagle3","num_speculative_tokens":3}'
+  - --mm-encoder-tp-mode
+  - data
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP4: '1'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/Kimi-K2.5-NVFP4
+          revision: 0fd0a5e6879298d3476e3b61852a79792a35ae3d
+      - modelscope:
+          repo_id: nv-community/Kimi-K2.5-NVFP4
+          revision: 032475c08c0c68b011003bc35237f1aeb9b6e1ca
+    weight_bytes: 590850973287
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: lightseekorg/kimi-k2.5-eagle3-mla
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: lightseekorg/kimi-k2.5-eagle3-mla
+          revision: 9c0c42dfe8460a1d90ff9825de910fb51b0d293c
+      - modelscope:
+          repo_id: lightseekorg/kimi-k2.5-eagle3-mla
+          revision: def1764379a8515cb07156245f21e714fb54b6c6
+    weight_bytes: 6031216729
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

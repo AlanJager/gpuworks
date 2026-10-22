@@ -1,0 +1,3 @@
+kern.osproductversion: 26.5
+hw.memsize: 137438953472
+iogpu.wired_limit_mb: 0

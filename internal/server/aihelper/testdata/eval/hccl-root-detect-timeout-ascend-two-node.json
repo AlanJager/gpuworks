@@ -1,0 +1,58 @@
+{
+  "id": "hccl-root-detect-timeout-ascend-two-node",
+  "source": "artifacts/archive/2026-09-30-accelerator-parameter-network/evidence/ascend-multinode.md",
+  "note": "Ascend 910B4 two-node TP=2 with the platform's pre-fix container config (GLOO/NCCL ifname set, no HCCL_SOCKET_IFNAME/HCCL_IF_IP, no /etc/hccn.conf mount): HCCL root-info detection times out after HCCL_CONNECT_TIMEOUT. HCCL error lines verbatim from the record (captured with the same container config running an all-reduce script); framing as a vllm-ascend deployment and the INFO lines are constructed. HCCL is Ascend's NCCL counterpart, labeled nccl_failure.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen3-npu-tp2",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "2",
+    "--nnodes",
+    "2",
+    "--node-rank",
+    "0",
+    "--master-addr",
+    "10.0.0.31",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "gpus": [
+    {
+      "name": "Ascend 910B4",
+      "memory_gib": 32
+    }
+  ],
+  "logs": [
+    "INFO 09-30 10:12:03 [__init__.py:239] Platform plugin ascend is activated",
+    "(APIServer pid=1) INFO 09-30 10:12:07 [api_server.py:1885] vLLM API server version 0.26.0rc1",
+    "(APIServer pid=1) INFO 09-30 10:12:07 [utils.py:328] non-default args: {'model': '/model', 'host': '0.0.0.0', 'port': 30000, 'served_model_name': ['qwen3-npu-tp2'], 'tensor_parallel_size': 2, 'nnodes': 2, 'node_rank': 0, 'master_addr': '10.0.0.31'}",
+    "(APIServer pid=1) INFO 09-30 10:12:16 [core.py:96] DP group leader: node_rank=0, node_rank_within_dp=0, master_addr=10.0.0.31, mp_master_port=29550, world_size=2",
+    "(EngineCore_DP0 pid=88) INFO 09-30 10:12:19 [multiproc_executor.py:720] Use multiprocessing distributed executor on 2 nodes",
+    "(Worker pid=103) INFO 09-30 10:12:27 [parallel_state.py:1208] rank 0 in world size 2 is assigned as DP rank 0, PP rank 0, TP rank 0, EP rank 0",
+    "(Worker pid=103) RuntimeError: create_config:../torch_npu/csrc/distributed/HCCLUtils.cpp:140",
+    "(Worker pid=103)   HCCL function error: hcclCommInitRootInfoConfig(numRanks, &rootInfo, rank, config, &(comm->hcclComm_)), error code is 1",
+    "(Worker pid=103) [ERROR] ERR02200 DIST call hccl api failed.",
+    "(Worker pid=103) Communication_Error_Ranktable_Detect(EI0015): Failed to collect cluster information of the communicator based on rootInfo detection. Reason: No rank in the communicator can connect to the root node within the timeout period. List of unconnected ranks: \"[1,]\".",
+    "(Worker pid=103)   Solution: ... 3. Check whether the HCCL_SOCKET_IFNAME environment variable of all nodes is correctly configured. ...",
+    "(EngineCore_DP0 pid=88) ERROR 09-30 10:14:30 [core.py:1231] Exception: WorkerProc initialization failed due to an exception in a background process. See stack trace for root cause.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "nccl_failure",
+  "expect_keywords": [
+    [
+      "HCCL_SOCKET_IFNAME"
+    ],
+    [
+      "HCCL_IF_IP",
+      "hccn.conf"
+    ]
+  ]
+}

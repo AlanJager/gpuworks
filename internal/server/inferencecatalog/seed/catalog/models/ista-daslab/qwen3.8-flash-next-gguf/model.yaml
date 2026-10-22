@@ -1,0 +1,172 @@
+# Qwen3.8-Flash-Next 125B on Apple silicon through upstream llama.cpp, which
+# supports the architecture (qwen4exp, its n-gram embedding table included)
+# since b10660 (ggml-org/llama.cpp PR #27742). The same GGUF as the Strata
+# template, which serves NVIDIA cards; Strata has no macOS backend.
+# 值来源:
+#   - weight_bytes: ModelScope ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF IQ2_XS/
+#     两个分片字节之和(39225954592 + 28800138432),与 Strata 模板同一 revision。
+#   - 架构/上下文: Qwen/Qwen3.8-Flash-Next config.json(model_type qwen4_exp,
+#     text_config.max_position_embeddings 262144)。
+#   - 环境包 gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1: 上游 b11617
+#     的 macOS arm64 预编译包(llama-server 与 dylib,Metal 着色器内嵌)。
+model_id: ista-daslab/qwen3.8-flash-next-gguf
+source: upstream
+display_title: Qwen3.8-Flash-Next 125B (GGUF · llama.cpp)
+parameter_count: 125B MoE
+architecture: Qwen4ExpForConditionalGeneration
+context_length: 262144
+release_date: '2026-09-29'
+# kv_bytes_per_token is not stated: no measurement for this GGUF on llama.cpp.
+specs:
+# Apple silicon, 128 GB (Metal working set about 96 GiB by default).
+# llama.cpp keeps tensors over 4 GiB on the SSD and reads their rows on demand
+# (--lazy-mode auto, its default): here that is the n-gram table, which ISTA
+# keeps in a shard of its own (28.8 GB). What stays resident is the first
+# shard (39.2 GB) and the KV cache, which is small: 12 of the 48 layers use
+# full attention, about 24 KiB per token.
+- name: iq2xs-llamacpp-apple-128g
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1
+  weights:
+    quantization: GSQ-RCO IQ2_XS
+    sources:
+    - huggingface:
+        repo_id: ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+        revision: ed59f92082b1e93c0e96d60a8b11aab089b52f09
+        subfolder: IQ2_XS
+    - modelscope:
+        repo_id: ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+        revision: 1868010e27505d4b8cc15970cdcc4dd76005d7de
+        subfolder: IQ2_XS
+  weight_bytes: 68026093024
+  gpus:
+    vendor: apple
+    display_target: apple
+  # llama-server opens a split GGUF from its first shard; the download keeps
+  # the repository layout, so the shards are under IQ2_XS/. -ngl 99 keeps every
+  # layer on the GPU; --jinja applies the chat template the GGUF carries (tool
+  # calls, reasoning); --metrics serves Prometheus text on /metrics.
+  args:
+  - -m
+  - ${MODEL_PATH}/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - -ngl
+  - '99'
+  - -c
+  - '32768'
+  - --jinja
+  - --metrics
+  entrypoint:
+  - llama-server
+  # Admitted with room for the resident shard, the context and other work.
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.min_memory_gib < 80:
+              return reject("this spec is for a 128 GB Mac (80 GiB or more for Metal); a 64 GB Mac takes the 64 GB spec")
+          return accept(gpu_memory_mib_per_device=81920)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # llama-server --metrics: Prometheus text on /metrics (families as
+    # llama.cpp b11617 serves them on the Mac this template was tested on).
+    metrics:
+      map:
+        'llamacpp:requests_processing': requests_running
+        'llamacpp:requests_deferred': requests_waiting
+        'llamacpp:prompt_tokens_total': prompt_tokens_total
+        'llamacpp:prompt_tokens_cached_total': prompt_tokens_cache_hit_total
+        'llamacpp:tokens_predicted_total': generation_tokens_total
+        'llamacpp:spec_decode_num_draft_tokens_total': spec_draft_tokens_total
+        'llamacpp:spec_decode_num_accepted_tokens_total': spec_accepted_tokens_total
+    # Every reply carries llama.cpp's timings beside usage.
+    request_stats:
+      timings.prompt_ms: {to: prefill_seconds, scale: 0.001}
+      timings.predicted_ms: {to: decode_seconds, scale: 0.001}
+# Apple silicon, 64 GB (Metal working set about 48 GiB by default): the same
+# weights and resident set as the 128 GB spec, with less room around it.
+# Measured with a 128 GB Mac Studio capped at iogpu.wired_limit_mb=49152:
+# 39.3 GiB in use on the GPU at 32K context, decode 40.6 tok/s.
+# llama.cpp keeps tensors over 4 GiB on the SSD and reads their rows on demand
+# (--lazy-mode auto, its default): here that is the n-gram table, which ISTA
+# keeps in a shard of its own (28.8 GB). What stays resident is the first
+# shard (39.2 GB) and the KV cache, which is small: 12 of the 48 layers use
+# full attention, about 24 KiB per token.
+- name: iq2xs-llamacpp-apple-64g
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: gpuworks/gpuworks-runner:metal15.0-llama.cpp-b11617-r1
+  weights:
+    quantization: GSQ-RCO IQ2_XS
+    sources:
+    - huggingface:
+        repo_id: ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+        revision: ed59f92082b1e93c0e96d60a8b11aab089b52f09
+        subfolder: IQ2_XS
+    - modelscope:
+        repo_id: ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+        revision: 1868010e27505d4b8cc15970cdcc4dd76005d7de
+        subfolder: IQ2_XS
+  weight_bytes: 68026093024
+  gpus:
+    vendor: apple
+    display_target: apple
+  # llama-server opens a split GGUF from its first shard; the download keeps
+  # the repository layout, so the shards are under IQ2_XS/. -ngl 99 keeps every
+  # layer on the GPU; --jinja applies the chat template the GGUF carries (tool
+  # calls, reasoning); --metrics serves Prometheus text on /metrics.
+  args:
+  - -m
+  - ${MODEL_PATH}/IQ2_XS/Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - -ngl
+  - '99'
+  - -c
+  - '32768'
+  - --jinja
+  - --metrics
+  entrypoint:
+  - llama-server
+  # The resident shard plus context and compute buffers.
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.min_memory_gib < 44:
+              return reject("needs 44 GiB or more for Metal (a 64 GB Mac): the first shard (39.2 GB) stays resident")
+          return accept(gpu_memory_mib_per_device=45056)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # llama-server --metrics: Prometheus text on /metrics (families as
+    # llama.cpp b11617 serves them on the Mac this template was tested on).
+    metrics:
+      map:
+        'llamacpp:requests_processing': requests_running
+        'llamacpp:requests_deferred': requests_waiting
+        'llamacpp:prompt_tokens_total': prompt_tokens_total
+        'llamacpp:prompt_tokens_cached_total': prompt_tokens_cache_hit_total
+        'llamacpp:tokens_predicted_total': generation_tokens_total
+        'llamacpp:spec_decode_num_draft_tokens_total': spec_draft_tokens_total
+        'llamacpp:spec_decode_num_accepted_tokens_total': spec_accepted_tokens_total
+    # Every reply carries llama.cpp's timings beside usage.
+    request_stats:
+      timings.prompt_ms: {to: prefill_seconds, scale: 0.001}
+      timings.predicted_ms: {to: decode_seconds, scale: 0.001}
+input_modalities: [text]

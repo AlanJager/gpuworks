@@ -1,0 +1,87 @@
+{
+  "contract_id": "gpuworks/benchmark/cancel-upstream-termination",
+  "name": "评测 / 运行中取消 / UI 取消、执行器停止、上游连接终止与取消状态回读",
+  "test_file": "test/e2e/evaluation_external.py",
+  "test_function": "test_cancel_running_run",
+  "command": "make test-e2e-benchmark-cancel",
+  "priority": "P1",
+  "page_id": "evaluations",
+  "lane": "local-real-server-sqlite-openai-fixture",
+  "identity": "admin browser / benchmark executor on the server",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The target is an audited external OpenAI-compatible fixture. No GPU, agent, container, engine or real model is claimed."
+  },
+  "crud": {
+    "create": "covered as setup: the same UI wizard creates the external-endpoint run that is then canceled",
+    "read": "covered: running state before cancel, canceled state from the cancel response, an independent GET and a reload",
+    "update": "covered: cancel while the upstream stream is held",
+    "delete": "covered: the canceled run is deleted through the API, the list row disappears and GET returns 404"
+  },
+  "fields": [
+    {
+      "field_id": "benchmark.cancel",
+      "component": "Button + Popconfirm",
+      "request": "POST /api/v1/benchmarks/{id}/cancel",
+      "persisted": "state=canceled, error=canceled by user",
+      "covered": [
+        "the button is present while the run is active",
+        "confirmation, 200 response and success toast",
+        "canceled state in the response and an independent GET",
+        "reload renders the canceled verdict"
+      ],
+      "missing": [
+        "dismissing the confirmation (no mutation)",
+        "cancel when the executor cannot confirm the stop (BENCHMARK_CANCEL_UNCONFIRMED)",
+        "cancel after some points completed and retained-point readback"
+      ]
+    },
+    {
+      "field_id": "benchmark.cancel.upstream",
+      "component": "Executor to external endpoint",
+      "request": "streamed /v1/chat/completions held by the fixture",
+      "persisted": "N/A",
+      "covered": [
+        "the fixture holds the first chunk until the test releases it",
+        "after cancel and release the fixture observes BrokenPipe/ConnectionReset",
+        "the held stream never reaches [DONE] and receives exactly one request"
+      ],
+      "missing": [
+        "cancel while the endpoint is slow to accept the connection",
+        "cancel of concurrent in-flight requests",
+        "agent-origin cancellation and its RPC acknowledgement"
+      ]
+    },
+    {
+      "field_id": "benchmark.cancel.state",
+      "component": "Verdict card",
+      "request": "GET /api/v1/benchmarks/{id}",
+      "persisted": "state, error and verdict",
+      "covered": [
+        "canceled title after reload",
+        "no grid_done verdict",
+        "error text records the user cancellation"
+      ],
+      "missing": [
+        "partial completed points and their metrics after cancel",
+        "comparison and report behavior for a canceled run"
+      ]
+    }
+  ],
+  "dimensions": ["13.5"],
+  "partial_checklist": {
+    "17.1": "The canceled verdict is rendered from persisted state after reload; point metrics are N/A because no point completed, and loading/empty/error/stale remain MISSING."
+  },
+  "missing": [
+    "MISSING: checklist 12.7 (delete confirmation names the run and impact) — the canceled run is deleted through the API; the sweep manifest records the product's generic delete confirmation as missing",
+    "MISSING: cancel after some points completed and retained-point readback",
+    "MISSING: cancel failure path when execution stop cannot be confirmed",
+    "MISSING: delete while a run is still active (the API rejects it)",
+    "MISSING: managed-instance target cancellation through the agent RPC",
+    "MISSING: dismissing the cancel confirmation and repeated cancel clicks",
+    "MISSING: non-admin authorization and the other locale (each run covers one --locale)",
+    "N/A: GPU performance and real model behavior — the target is an audited fixture",
+    "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
+  ]
+}

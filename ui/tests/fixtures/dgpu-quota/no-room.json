@@ -1,0 +1,10 @@
+{
+  "code": "DGPU_QUOTA_NO_ROOM",
+  "error": "a card the replicas hold cannot keep them at the new quota",
+  "params": {
+    "free_gib": 23.5,
+    "gpu": 0,
+    "need_gib": 24.5,
+    "node": "quota-node"
+  }
+}

@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "replicas": 1,
+  "plan_scope": "per_replica",
+  "ok": true,
+  "template_spec_source": "upstream",
+  "template_spec_name": "callable-serve",
+  "template_match": "spec-name",
+  "matched_by": "spec:callable-serve gpus:{vendor=nvidia cc=\u003e=8.9}",
+  "template_deviated": false,
+  "entrypoint": [
+    "gpuworks-callable"
+  ],
+  "argv": [
+    "--model",
+    "/model",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "30000",
+    "--adapter-threads",
+    "4"
+  ],
+  "command": [
+    "gpuworks-callable",
+    "--model",
+    "/model",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "30000",
+    "--adapter-threads",
+    "4"
+  ],
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "env_layers": {
+    "system": {
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    }
+  },
+  "command_mode": "engine",
+  "model_mount_path": "/model",
+  "shm_bytes": 17179869184,
+  "rank_commands": [
+    {
+      "node_uuid": "fixture-node",
+      "node_name": "fixture-node",
+      "node_rank": 0,
+      "role": "standalone",
+      "headless": false,
+      "image": "acme/adapter:latest",
+      "entrypoint": [
+        "gpuworks-callable"
+      ],
+      "argv": [
+        "--model",
+        "/model",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "30000",
+        "--adapter-threads",
+        "4"
+      ],
+      "command": [
+        "gpuworks-callable",
+        "--model",
+        "/model",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "30000",
+        "--adapter-threads",
+        "4"
+      ],
+      "env": {
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1"
+      },
+      "command_mode": "engine",
+      "model_mount_path": "/model",
+      "shm_bytes": 17179869184,
+      "env_layers": {
+        "system": {
+          "HF_HUB_OFFLINE": "1",
+          "TRANSFORMERS_OFFLINE": "1"
+        }
+      }
+    }
+  ],
+  "image": "acme/adapter:latest",
+  "warnings": [],
+  "breakdown": {
+    "weight_bytes": 17179869184,
+    "kv_bytes_per_token": 0,
+    "kv_total_bytes": 0,
+    "reserve_bytes": 5233652531,
+    "mm_encoder_bytes": 0,
+    "per_gpu_bytes": 22413521715,
+    "startup_fixed_bytes": 22413521715,
+    "total_bytes": 22413521715,
+    "actual_total_bytes": 22413521715,
+    "grade": "rough_upper",
+    "tensor_parallel": 1,
+    "max_model_len": 0,
+    "source": "estimate",
+    "gpu_memory_utilization": 0.9,
+    "capacity_bytes": 77309411328,
+    "kv_pool_bytes": 54895889613,
+    "kv_estimate_reason": "kv_no_measurement",
+    "fits": true
+  },
+  "plan": {
+    "plan": {
+      "gpus": [
+        0
+      ],
+      "tp": 1,
+      "per_gpu_bytes": 22413521715,
+      "score": 0,
+      "reasons": [
+        {
+          "code": "topology_single",
+          "params": {
+            "gpus": 1,
+            "pp": 1,
+            "tp": 1
+          }
+        },
+        {
+          "code": "packing"
+        }
+      ]
+    },
+    "explain": {
+      "chosen": {
+        "gpus": [
+          0
+        ],
+        "tp": 1,
+        "per_gpu_bytes": 22413521715,
+        "score": 0,
+        "reasons": [
+          {
+            "code": "topology_single",
+            "params": {
+              "gpus": 1,
+              "pp": 1,
+              "tp": 1
+            }
+          },
+          {
+            "code": "packing"
+          }
+        ]
+      },
+      "rejected": null,
+      "topo_highlight": {
+        "gpus": [
+          0
+        ],
+        "links": null,
+        "numa": [
+          0
+        ]
+      },
+      "filters": [
+        {
+          "code": "filters_passed"
+        }
+      ]
+    },
+    "ok": true,
+    "message": {}
+  },
+  "acquisition": {
+    "targets": [
+      {
+        "key": "storage:1",
+        "label": "default",
+        "reason": "writable storage",
+        "recommended": true,
+        "storage_id": 1,
+        "storage_type": "local",
+        "default": true
+      }
+    ],
+    "providers": [
+      {
+        "key": "public:modelscope:Acme/Deploy-FP8:",
+        "label": "modelscope",
+        "reason": "configured model provider",
+        "recommended": true
+      }
+    ],
+    "image": {
+      "image": "acme/adapter:latest",
+      "cache_reason": "query_failed",
+      "options": [
+        {
+          "image": "acme/adapter:latest",
+          "reason": "template_image",
+          "compatible": true
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "node_uuid": "fixture-node",
+        "node_name": "fixture-node",
+        "image_cache_reason": "query_failed",
+        "image_plan": "pull",
+        "image_pull_refs": [
+          "acme/adapter:latest"
+        ],
+        "image_pull_ranked": true,
+        "weights_present": false,
+        "weights_plan": "download",
+        "weights_provider": "modelscope",
+        "weights_fetch_hosts": [
+          "modelscope.cn"
+        ]
+      }
+    ]
+  },
+  "weight_sources": [
+    {
+      "provider": "modelscope",
+      "repo_id": "Acme/Deploy-FP8",
+      "suggested": true,
+      "registered": true
+    }
+  ],
+  "parallelism": {
+    "tp": 1,
+    "pp": 1,
+    "nodes": 1,
+    "gpus_per_node": 1
+  },
+  "eligible_nodes": [
+    {
+      "uuid": "fixture-peer",
+      "name": "fixture-peer",
+      "eligible": true
+    },
+    {
+      "uuid": "fixture-chip-old",
+      "name": "fixture-chip-old",
+      "eligible": false,
+      "reasons": [
+        {
+          "code": "chip_mismatch",
+          "params": {
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=8.9\"}"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "fixture-node",
+      "name": "fixture-node",
+      "eligible": true
+    }
+  ],
+  "form_values": {
+    "extra_args": "",
+    "served_model_name": ""
+  },
+  "defaults": {
+    "model_mount": "/model",
+    "master_port": 29500,
+    "engine": "vllm"
+  },
+  "effective_params": {
+    "served_model_name": ""
+  },
+  "template_residual_args": [
+    "--model",
+    "${MODEL_PATH}",
+    "--host",
+    "${API_HOST}",
+    "--port",
+    "${API_PORT}",
+    "--adapter-threads",
+    "4"
+  ]
+}

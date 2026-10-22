@@ -1,0 +1,187 @@
+{
+  "tooltip": "Opens in the AI assistant panel (⌘I). Platform checks need no setup; the AI analysis needs an AI service configured in Settings.",
+  "title": "AI Assistant",
+  "factsSection": "Platform checks",
+  "answerSection": "AI analysis",
+  "loading": "AI is analyzing…",
+  "elapsed": "{{seconds}}s",
+  "stop": "Stop",
+  "stopped": "Stopped. What arrived so far and the platform checks above are kept.",
+  "reanalyze": "Analyze again",
+  "retry": "Retry",
+  "requestFailed": "AI request failed",
+  "configureFirst": "Configure an AI service in Settings to get an AI explanation. The platform checks above work without one.",
+  "empty": "(No content)",
+  "finding": {
+    "none": "No known failure pattern matched; the AI analysis below reads the logs.",
+    "ruleTag": "Rule match · AI verifies",
+    "evidence": "Matching log lines",
+    "verifyNote": "Rule matches are hypotheses: the AI analysis checks them against the logs and says whether they hold.",
+    "kv_cache_insufficient": {
+      "title": "KV cache does not fit",
+      "fix": "Lower --max-model-len, raise the GPU memory utilization, or use a larger tensor-parallel size."
+    },
+    "cuda_oom": {
+      "title": "Out of GPU memory",
+      "fix": "Check that the weights fit each GPU's share, that no other process holds memory on the GPU, and lower --max-model-len or raise the tensor-parallel size."
+    },
+    "shm_insufficient": {
+      "title": "Shared memory (/dev/shm) too small",
+      "fix": "Give the container a larger shared memory size (or ipc=host)."
+    },
+    "nccl_failure": {
+      "title": "Collective communication failed (NCCL/HCCL)",
+      "fix": "Check the network interface the collective library uses, P2P support, firewalls between nodes, and that every rank started."
+    },
+    "disk_full": {
+      "title": "Disk full",
+      "fix": "Free space on the node's model storage or container runtime directory."
+    },
+    "port_in_use": {
+      "title": "Port already in use",
+      "fix": "Another process or container on the node holds the serving port; stop it or use another port."
+    },
+    "image_pull_denied": {
+      "title": "Image pull failed",
+      "fix": "Check the image name and tag, and the registry credentials on the node."
+    },
+    "dtype_unsupported": {
+      "title": "GPU does not support this dtype",
+      "fix": "Serve with --dtype float16, or use a GPU that supports the dtype."
+    },
+    "gpu_arch_unsupported": {
+      "title": "Image not built for this GPU architecture",
+      "fix": "Use an image built for this GPU's compute capability, or another GPU."
+    },
+    "trust_remote_code_required": {
+      "title": "Model needs --trust-remote-code",
+      "fix": "Enable it only if you trust the model repository's code."
+    },
+    "model_arch_unsupported": {
+      "title": "Engine does not support this model architecture",
+      "fix": "Use a newer engine image or another engine."
+    },
+    "model_files_missing": {
+      "title": "Model files missing or wrong path",
+      "fix": "Check the model path in the launch command and whether the download completed."
+    },
+    "hf_download_failed": {
+      "title": "Model hub download failed",
+      "fix": "Check the repository id, the access token for gated models, and the node's network or proxy."
+    }
+  },
+  "fit": {
+    "title": "Fit on the online fleet",
+    "estimatorTag": "Estimator",
+    "noNodes": "No online node has an accelerator to size this model against.",
+    "card": "Accelerator",
+    "nodes_one": "{{count}} node",
+    "nodes_other": "{{count}} nodes",
+    "runs": "Runs",
+    "yes": "Yes · TP {{tp}}",
+    "no": "Not within one node",
+    "perGPU": "Needed / usable per GPU",
+    "headroom": "Left for KV cache",
+    "note": "Weights plus the engine reserve at {{util}}% memory utilization; multi-node serving and quantized variants are not considered.",
+    "unusable_one": "{{count}} broken card not counted",
+    "unusable_other": "{{count}} broken cards not counted",
+    "dtypeUnsupported": "Cannot compute {{dtype}}",
+    "link": "Interconnect",
+    "fastLink": "Fast link ×{{count}}",
+    "pcieOnly": "PCIe only"
+  },
+  "trace": {
+    "steps": "Tool calls",
+    "running": "running…",
+    "summary": "First text {{first}}s · total {{total}}s · {{tools}} tool calls · {{calls}} model calls · {{tokens}} tokens",
+    "noTools": "answered from the context the platform gathered",
+    "selfCorrect": "query needs a fix - the model got the actual structure"
+  },
+  "tool": {
+    "cluster_overview": "Cluster overview",
+    "search_api": "Find endpoint",
+    "call_api": "Read",
+    "search_metrics": "Find metric",
+    "get_gpu_topology": "GPU topology",
+    "compare_with_healthy_replica": "Compare with healthy replica"
+  },
+  "investigating": "AI is looking up more information…",
+  "reasoning": "Reasoning",
+  "streamCut": "The connection closed before the answer finished; what arrived is shown above.",
+  "thinking": "AI is thinking…",
+  "panel": {
+    "shortcut": "⌘I / Ctrl+I",
+    "headerTooltip": "AI assistant (⌘I / Ctrl+I)",
+    "newThread": "New conversation",
+    "close": "Close",
+    "about": "About:",
+    "threadAbout": "Follow-ups are about {{subject}}",
+    "followUpPlaceholder": "Ask a follow-up… (Enter to send)",
+    "askPlaceholder": "Ask about this page, or anything about the cluster… (Enter to send)",
+    "input": "Question",
+    "send": "Send",
+    "onThisPage": "On this page",
+    "emptyTitle": "Pick a task from a page, or ask below",
+    "emptyHint": "Open a deployment, node or failed instance and its tasks appear here; models, failed instances, unplaced deployments and nodes also have AI buttons.",
+    "followUps": "Suggested follow-ups"
+  },
+  "subject": {
+    "instance": "Instance",
+    "model": "Model",
+    "deployment": "Deployment",
+    "node": "Node"
+  },
+  "task": {
+    "instance.diagnose": {
+      "title": "Why did this instance fail?",
+      "action": "Diagnose failure"
+    },
+    "model.fit": {
+      "title": "Which hardware can run this model?",
+      "action": "Check hardware fit"
+    },
+    "deployment.unscheduled": {
+      "title": "Why are replicas not being placed?",
+      "action": "Why not placed"
+    },
+    "node.health": {
+      "title": "Is this node healthy?",
+      "action": "Health check"
+    },
+    "ask": {
+      "title": "Question",
+      "action": "Ask"
+    }
+  },
+  "attention": {
+    "unscheduled_one": "{{count}} replica is waiting for a node",
+    "unscheduled_other": "{{count}} replicas are waiting for a node",
+    "failed": "Failed",
+    "nodeOffline": "The node is offline",
+    "nodeConnecting": "The node is connecting",
+    "brokenGPUs_one": "{{count}} accelerator reports an error",
+    "brokenGPUs_other": "{{count}} accelerators report errors"
+  },
+  "followUp": {
+    "instance.diagnose": {
+      "fullCommand": "Give me the complete corrected launch arguments",
+      "compareHealthy": "Compare it with a healthy replica of the same deployment",
+      "withoutChange": "Is there a fix that keeps the current arguments?"
+    },
+    "model.fit": {
+      "recommendConfig": "Recommend a concrete deployment configuration",
+      "quantized": "How much memory would a quantized variant save?",
+      "longContext": "How many cards for a 128K context?"
+    },
+    "deployment.unscheduled": {
+      "closestNode": "Which node is closest to fitting it?",
+      "lowerTP": "Would it fit with a lower TP?",
+      "freeCards": "What would I have to stop to free the cards?"
+    },
+    "node.health": {
+      "confirmHardware": "How do I confirm whether this is a hardware fault?",
+      "acceptNew": "Can this node still take new deployments?",
+      "thermals": "Check temperature and power over the last hour"
+    }
+  }
+}

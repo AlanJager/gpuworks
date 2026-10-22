@@ -1,0 +1,156 @@
+{
+  "page": {
+    "title": "GPU 设备",
+    "description": "集群加速卡资源、分配状态与实时负载",
+    "resourceBreadcrumb": "资源",
+    "physicalCount": "{{count}} 张物理 GPU"
+  },
+  "tab": {
+    "physical": "物理 GPU",
+    "dgpu": "dGPU"
+  },
+  "column": {
+    "node": "节点",
+    "model": "型号",
+    "vendor": "厂商",
+    "allocationState": "分配状态",
+    "occupants": "占用实例",
+    "powerLimit": "功耗 / 上限",
+    "instance": "实例",
+    "deployment": "部署",
+    "physicalGPU": "物理 GPU",
+    "vramLimit": "显存限额",
+    "actualVRAM": "实际显存",
+    "smLimit": "SM 限额",
+    "smReference": "SM 参考值",
+    "partitionCapability": "dGPU",
+    "nodeGPU": "节点名称 / GPU",
+    "health": "健康",
+    "state": "状态"
+  },
+  "metric": {
+    "utilization": "利用率",
+    "gpuUtilization": "GPU 利用率",
+    "vram": "显存",
+    "vramUsage": "显存使用",
+    "temperature": "温度",
+    "power": "功耗",
+    "fan": "风扇",
+    "fanSpeed": "风扇转速",
+    "smReferenceAvg": "SM 利用率（参考，1 分钟均值）",
+    "sliceVRAM": "实际显存（上限 {{limit}}）"
+  },
+  "filter": {
+    "searchAria": "搜索 GPU",
+    "searchPlaceholder": "搜索节点、型号、UUID 或 BDF"
+  },
+  "action": {
+    "refresh": "刷新",
+    "details": "详情",
+    "openNode": "查看节点",
+    "openDeployment": "查看部署",
+    "editQuota": "调整配额"
+  },
+  "error": {
+    "physicalLoadFailed": "GPU 数据加载失败",
+    "dgpuLoadFailed": "dGPU 数据加载失败"
+  },
+  "overview": {
+    "allocationState": "分配状态",
+    "health": "健康状况"
+  },
+  "dgpu": {
+    "note": "列出所有持有显存配额的 dGPU 切片，包括启动中与休眠中的；SM 利用率为采样参考值。"
+  },
+  "detail": {
+    "physicalTitle": "GPU 详情",
+    "dgpuTitle": "dGPU 详情",
+    "basicInfo": "基本信息",
+    "partitionCapability": "dGPU",
+    "partitionCapabilityEmpty": "未检测到 dGPU 后端",
+    "hardwareInfo": "硬件信息",
+    "architecture": "架构",
+    "driver": "驱动",
+    "maxPower": "最大功耗",
+    "liveLoad": "实时负载",
+    "monitoringData": "监控数据",
+    "quotaInfo": "限额信息"
+  },
+  "unnamedDeployment": "未命名部署",
+  "noData": "暂无数据",
+  "fullGPU": "整卡",
+  "none": "无",
+  "allocation": {
+    "available": "可分配",
+    "partial": "部分分配",
+    "allocated": "已分配",
+    "unusable": "不可分配",
+    "unknown": "未知"
+  },
+  "vendor": {
+    "nvidia": "NVIDIA",
+    "ascend": "昇腾",
+    "ppu": "平头哥"
+  },
+  "empty": {
+    "physical": "暂无 GPU 设备",
+    "dgpu": "暂无 dGPU 切片"
+  },
+  "health": {
+    "ok": "正常",
+    "warning": "告警",
+    "error": "故障"
+  },
+  "slices": {
+    "summary": "{{count}} 个切片 · {{limit}} / {{total}}",
+    "summaryTitle": "已按显存上限切出 {{limit}}，整卡 {{total}}"
+  },
+  "composition": {
+    "title": "显存分配",
+    "aria": "显存分配",
+    "slice": "{{name}} · 上限 {{limit}} GiB",
+    "wholeCard": "{{name}} · 整卡",
+    "overhead": "上限外开销（CUDA context 等）",
+    "sleeping": "休眠实例残留",
+    "free": "可分配",
+    "used": "整卡实际使用 {{used}}",
+    "usedLegend": "整卡实际使用（nvidia-smi）",
+    "note": "色块按调度器记账绘制：dGPU 切片记显存上限，加上限外的 CUDA context；黑线是整张卡当前实际占用。"
+  },
+  "state": {
+    "asleep": "休眠 L{{level}}"
+  },
+  "tooltip": {
+    "actualVRAM": "HAMi 统计的切片显存；nvidia-smi 看到的进程显存还多约 0.4 GiB 的 CUDA context",
+    "smReference": "按采样周期取的参考值，两个切片分时共用 SM 时会在 0 和 100 之间跳变；看趋势请打开详情里的 1 分钟均值"
+  },
+  "quota": {
+    "title": "调整 dGPU 配额",
+    "deployment": "部署",
+    "current": "当前显存上限",
+    "limit": "新的显存上限",
+    "help": "每个副本在每张卡上的显存上限，保存后立即生效。",
+    "required": "请输入显存上限",
+    "min": "至少 0.5 GiB",
+    "save": "保存",
+    "saved": "dGPU 配额已保存",
+    "note": "新上限立即作用于运行中的实例（调度记账与 HAMi 显存上限同步更新）。vLLM、SGLang 等引擎在启动时按上限分配 KV 缓存，要到部署页重启实例才会用上新上限；按需分配显存的引擎可以直接用上。调低时，已占用超过新上限的实例保持原上限，重启后生效。",
+    "applied_one": "显存上限已改为 {{limit}}，{{count}} 个运行中的实例已立即生效。",
+    "applied_other": "显存上限已改为 {{limit}}，{{count}} 个运行中的实例已立即生效。",
+    "appliedDeployment": "部署的显存上限已改为 {{limit}}，之后启动的实例按它运行。",
+    "pendingTitle_one": "{{count}} 个实例保持原上限，重启后生效：",
+    "pendingTitle_other": "{{count}} 个实例保持原上限，重启后生效：",
+    "pending": {
+      "backend": "所用切分后端只在启动时读取上限",
+      "asleep": "正在休眠，调低上限可能导致唤醒失败",
+      "starting": "正在启动，调低上限可能导致启动失败",
+      "in_use": "已占用 {{used}}，高于新上限 {{limit}}",
+      "no_usage": "没有上报显存用量，不冒险调低"
+    },
+    "restartHint": "vLLM、SGLang 等在启动时分配 KV 缓存的引擎，需要到部署页重启实例才会真正用上新上限。",
+    "openDeployment": "前往部署页",
+    "done": "完成",
+    "pendingTag": "重启后 {{limit}}",
+    "pendingTooltip": "部署的显存上限已改，这个实例要重启后才按新上限运行"
+  }
+}

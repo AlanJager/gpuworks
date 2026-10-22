@@ -1,0 +1,138 @@
+model_id: qwen/qwen2-audio-7b-instruct
+source: upstream
+display_title: qwen2-audio-7b-instruct
+release_date: '2024-07-31'
+model_config: {model_type: qwen2, num_hidden_layers: 32, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 32, head_dim: 128, max_position_embeddings: 32768}
+kv_bytes_per_token:
+  vllm: 524288
+  sglang: 524288
+specs:
+- name: bf16-vllm-hygon-357dc371
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 0a095220c30b7b31434169c3086508ef3ea5bf0a
+    - modelscope:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 96cacd1ebda59dba34044b837fd4cac3a2c1265f
+  weight_bytes: 16806502061
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-hygon-cf217d0d
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm0210-ubuntu26.04-dtk26.04-py3.10-20260528
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 0a095220c30b7b31434169c3086508ef3ea5bf0a
+    - modelscope:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 96cacd1ebda59dba34044b837fd4cac3a2c1265f
+  weight_bytes: 16806502061
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - bfloat16
+  - --attention-backend
+  - TRITON_ATTN
+  - --trust-remote-code
+  env:
+    HF_HUB_OFFLINE: '1'
+    PYTHONPATH: /audio-overlay
+    TOKENIZERS_PARALLELISM: 'false'
+    TRANSFORMERS_OFFLINE: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 0a095220c30b7b31434169c3086508ef3ea5bf0a
+    - modelscope:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 96cacd1ebda59dba34044b837fd4cac3a2c1265f
+  weight_bytes: 16806502061
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-0a095220
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 0a095220c30b7b31434169c3086508ef3ea5bf0a
+    - modelscope:
+        repo_id: Qwen/Qwen2-Audio-7B-Instruct
+        revision: 96cacd1ebda59dba34044b837fd4cac3a2c1265f
+  weight_bytes: 16794296368
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, audio]

@@ -1,0 +1,86 @@
+{
+  "contract_id": "gpuworks/settings/platform-ssh-key-rotate-import",
+  "name": "设置 / 平台 SSH 密钥 / 重新生成、拒绝损坏私钥、导入既有私钥并刷新回读",
+  "test_file": "test/e2e/settings_ssh_key.py",
+  "test_function": "test_platform_ssh_key",
+  "command": "make test-e2e-settings-ssh-key",
+  "priority": "P1",
+  "page_id": "settings",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The contract ends at the server's own key pair. No node, sshd, agent, container or GPU is claimed."
+  },
+  "crud": {
+    "create": "The server seeds the key pair; UI Rotate creates a replacement through POST /ssh-key/rotate",
+    "read": "Public key, fingerprint and authorize command are shown; reload and independent GET agree",
+    "update": "UI Import replaces the key through PUT /ssh-key with an unencrypted OpenSSH private key",
+    "delete": "N/A: no delete operation; the server keeps one platform key"
+  },
+  "fields": [
+    {
+      "id": "ssh-key.public-key",
+      "component": "Copyable code block",
+      "request": "GET /api/v1/ssh-key",
+      "persisted": "public_key",
+      "covered": ["displayed after load", "changes after rotation", "matches the imported private key"],
+      "missing": ["copy-to-clipboard readback", "long-key wrapping at narrow viewports"]
+    },
+    {
+      "id": "ssh-key.fingerprint",
+      "component": "Descriptions item",
+      "request": "GET /api/v1/ssh-key",
+      "persisted": "fingerprint",
+      "covered": ["initial", "rotation changes it", "import matches ssh-keygen", "reload preserves it"],
+      "missing": ["copy button"]
+    },
+    {
+      "id": "ssh-key.rotate",
+      "component": "Danger button + Popconfirm",
+      "request": "POST /api/v1/ssh-key/rotate",
+      "persisted": "replacement key pair",
+      "covered": ["confirmation opens", "confirm rotates once", "success message", "independent GET sees the new key", "confirmation title and rotation impact warning are asserted before accepting"],
+      "missing": ["cancel leaves the key unchanged", "failure recovery"]
+    },
+    {
+      "id": "ssh-key.import",
+      "component": "Modal + TextArea",
+      "request": "PUT /api/v1/ssh-key {\"private_key_pem\"}",
+      "persisted": "imported key pair and fingerprint",
+      "covered": ["corrupt input rejected with the modal open and no key change", "valid unencrypted OpenSSH key imported", "fingerprint and public-key blob match ssh-keygen", "GET and the page contain no private-key material", "reopening the dialog does not echo the submitted private key"],
+      "missing": ["encrypted private key rejection", "PKCS#8 acceptance", "cancel and re-open preserving or clearing a non-submitted draft"]
+    },
+    {
+      "id": "ssh-key.authorize-command",
+      "component": "Copyable code block",
+      "request": "GET /api/v1/ssh-key",
+      "persisted": "derived from public_key",
+      "covered": ["rendered after load, rotation and import", "matches the API value", "embeds the current public key"],
+      "missing": ["that the command actually authorizes the key on a real sshd", "copy-to-clipboard readback"]
+    }
+  ],
+  "checklist_items": {
+    "1.10": "Invalid private-key content is rejected without changing the stored key; the modal remains usable and a later valid import succeeds",
+    "1.14": "Reload and independent GET preserve the rotated and imported key",
+    "7.3": "N/A: the private key is supplied by the user, not a one-time plaintext credential issued by the platform",
+    "7.6": "GET and the page contain no private-key material; the import dialog reopens empty; secret-bearing failures omit screenshots and reports are redacted",
+    "12.6": "Rejected import preserves the modal and stored key; successful import is independently read back",
+    "12.7": "N/A: the platform key has no deletion operation; rotation warning text is separately asserted by the case",
+    "16.1": "N/A: import uses a text area, not a file uploader; malformed and valid key content are exercised through the import form"
+  },
+
+  "missing": [
+    "MISSING: checklist 7.4 (use the imported key for a real allowed operation) — no real sshd or node operation is part of this lane",
+    "N/A: checklist 12.8 (delete preview/revision/CAS) — the platform keeps exactly one key and has no delete operation",
+    "MISSING: authorizing the new public key on a real sshd and using it for onboarding or recovery",
+    "MISSING: encrypted private key rejection and PKCS#8 variants",
+    "MISSING: cancel semantics for rotation and a non-submitted import draft",
+    "MISSING: non-admin authorization and forbidden rotate/import evidence",
+    "MISSING: key persistence across a server restart",
+    "MISSING: copy-to-clipboard readback for the public key and authorize command"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test digests, locale, fingerprints, mutation paths and redacted server log; the generated private key is registered for redaction and removed with its temporary directory",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and private-key cleanup"
+}

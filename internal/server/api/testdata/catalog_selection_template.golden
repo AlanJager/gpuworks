@@ -1,0 +1,76 @@
+{
+  "api": {
+    "operations": [
+      {
+        "type": "openai.chat"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "vision",
+      "role": "encoder",
+      "provider": "huggingface",
+      "repo_id": "org/vision",
+      "mount_path": "/vision",
+      "store_model_id": 9,
+      "weight_bytes": 1073741824
+    }
+  ],
+  "deviated_fields": [
+    "params"
+  ],
+  "engine": "vllm",
+  "entrypoint": [
+    "vllm",
+    "serve",
+    "/model"
+  ],
+  "env": {
+    "VLLM_LOGGING_LEVEL": "INFO"
+  },
+  "extra_args": [
+    "--dtype",
+    "bfloat16"
+  ],
+  "gpus": {
+    "min_count": 1,
+    "vendors": [
+      "nvidia"
+    ]
+  },
+  "image": "registry.example/org/spec@sha256:abc",
+  "image_digest_warning": true,
+  "matched_by": "spec",
+  "model_id": "org/fixture-8b",
+  "placement": {
+    "language": "starlark",
+    "resolver": "def resolve(gpus):\n  return gpus"
+  },
+  "pre_start_argv": [
+    "--prepare"
+  ],
+  "pre_start_script": "set -a\nexport GPUWORKS_PREPARED=1",
+  "quantization": "fp8",
+  "runtime_assets": [
+    {
+      "file": "serve.py",
+      "sha256": "",
+      "unpack_to": "",
+      "content": "cHJpbnQoMSk="
+    }
+  ],
+  "runtime_weight_bytes": 7516192768,
+  "scenario": "chat",
+  "spec_name": "balanced",
+  "spec_source": "upstream",
+  "template_id": 7,
+  "unsupported": [
+    "ppu"
+  ],
+  "weight_bytes": 8589934592,
+  "weight_provider": "huggingface",
+  "weight_repo_id": "org/fixture-8b",
+  "weight_revision": "main",
+  "weight_subfolder": "weights"
+}

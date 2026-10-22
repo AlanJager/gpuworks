@@ -1,0 +1,105 @@
+model_id: openbmb/minicpm-v-4.6
+source: upstream
+display_title: MiniCPM-V 4.6
+parameter_count: 1.3B
+architecture: dense
+context_length: 262144
+release_date: '2026-04-13'
+model_config: {model_type: minicpmv4_6, num_hidden_layers: 24, hidden_size: 1024, num_attention_heads: 8, num_key_value_heads: 2, head_dim: 256, max_position_embeddings: 262144, layer_types: [linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention], vision_config: {image_size: 980, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 12288
+  sglang: 12288
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: openbmb/MiniCPM-V-4.6
+        revision: 36f34a661a4bd35d0dc2294cb044d2584646c7d3
+    - modelscope:
+        repo_id: openbmb/MiniCPM-V-4.6
+        revision: fd02313ad21ac485c595cb01231a3bded449cff5
+  weight_bytes: 2620992102
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --dtype
+  - bfloat16
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: openbmb/MiniCPM-V-4.6
+        revision: 36f34a661a4bd35d0dc2294cb044d2584646c7d3
+    - modelscope:
+        repo_id: openbmb/MiniCPM-V-4.6
+        revision: fd02313ad21ac485c595cb01231a3bded449cff5
+  weight_bytes: 2620992102
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: openbmb/MiniCPM-V-4.6
+        revision: 36f34a661a4bd35d0dc2294cb044d2584646c7d3
+    - modelscope:
+        repo_id: openbmb/MiniCPM-V-4.6
+        revision: fd02313ad21ac485c595cb01231a3bded449cff5
+  weight_bytes: 2620992102
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --dtype
+  - half
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

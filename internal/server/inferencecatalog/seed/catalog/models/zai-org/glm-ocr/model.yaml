@@ -1,0 +1,134 @@
+model_id: zai-org/glm-ocr
+source: upstream
+display_title: GLM-OCR
+parameter_count: 0.9B
+architecture: dense
+context_length: 131072
+release_date: '2026-01-30'
+model_config: {model_type: glm_ocr, num_hidden_layers: 16, hidden_size: 1536, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, vision_config: {image_size: 336, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 65536
+  sglang: 65536
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-OCR
+        revision: ca5d8b3e287e52589e37c28385d9655ee4372f9d
+    - modelscope:
+        repo_id: ZhipuAI/GLM-OCR
+        revision: 48483961e0bd6329a39bb3dc0f2dea467bd047e8
+  weight_bytes: 2657442192
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-OCR
+        revision: ca5d8b3e287e52589e37c28385d9655ee4372f9d
+    - modelscope:
+        repo_id: ZhipuAI/GLM-OCR
+        revision: 48483961e0bd6329a39bb3dc0f2dea467bd047e8
+  weight_bytes: 2657442192
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --speculative-config.method
+  - mtp
+  - --speculative-config.num_speculative_tokens
+  - '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-OCR
+        revision: ca5d8b3e287e52589e37c28385d9655ee4372f9d
+    - modelscope:
+        repo_id: ZhipuAI/GLM-OCR
+        revision: 48483961e0bd6329a39bb3dc0f2dea467bd047e8
+  weight_bytes: 2657442192
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  - --speculative-config.method
+  - mtp
+  - --speculative-config.num_speculative_tokens
+  - '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-ca5d8b3e
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-OCR
+        revision: ca5d8b3e287e52589e37c28385d9655ee4372f9d
+    - modelscope:
+        repo_id: ZhipuAI/GLM-OCR
+        revision: 48483961e0bd6329a39bb3dc0f2dea467bd047e8
+  weight_bytes: 2650579464
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --speculative-config.method
+  - mtp
+  - --speculative-config.num_speculative_tokens
+  - 1
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

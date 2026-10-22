@@ -1,0 +1,33 @@
+.agentic-wizard-summary {
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.agentic-wizard-stat {
+  display: flex;
+  min-height: 54px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 8px;
+}
+
+.agentic-wizard-stat strong {
+  color: #181a1d;
+  font-size: 18px;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agentic-summary-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-top: 6px;
+  padding: 6px 8px 0;
+  border-top: 1px solid #f0f2f5;
+  color: #4a4c4f;
+  font-size: 13px;
+}

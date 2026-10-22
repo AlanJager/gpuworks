@@ -1,0 +1,23 @@
+package messages
+
+// Node requirement product error codes: where a deployment may run, decided in
+// package planning and passed on by the api layer.
+const (
+	// ErrorNodeRequirementsInvalid: the requirements a request states cannot
+	// be stored ({detail}).
+	ErrorNodeRequirementsInvalid = "NODE_REQUIREMENTS_INVALID"
+	// ErrorNodeRequirementsUnmet: a node the request names does not satisfy
+	// the deployment's requirements ({detail}).
+	ErrorNodeRequirementsUnmet = "NODE_REQUIREMENTS_UNMET"
+	// ErrorPlacementStrategyInvalid: placement_strategy is not one of the
+	// strategies ({strategy}).
+	ErrorPlacementStrategyInvalid = "PLACEMENT_STRATEGY_INVALID"
+	// ErrorDeploymentNeverFits: no node of the pool ({pool} nodes, {shapes}
+	// hardware shapes) could run a replica even with nothing else on it;
+	// {node} refused for {reason}.
+	ErrorDeploymentNeverFits = "DEPLOYMENT_NEVER_FITS"
+	// ErrorNodeRequirementsNotEditable: the deployment's replicas are not
+	// placed from a pool ({shape}: multi_node or pd), so it has no node
+	// requirements to edit.
+	ErrorNodeRequirementsNotEditable = "NODE_REQUIREMENTS_NOT_EDITABLE"
+)

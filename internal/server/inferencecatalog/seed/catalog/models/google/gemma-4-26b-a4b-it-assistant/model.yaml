@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 32768
+  sglang: 32768
+model_id: google/gemma-4-26b-a4b-it-assistant
+source: upstream
+display_title: gemma-4-26B-A4B-it-assistant
+release_date: '2026-04-23'
+specs: []
+input_modalities: [text]

@@ -1,0 +1,8 @@
+name = "gpuworks-usage"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+routes = [{ pattern = "usage.gpuworks.ai", custom_domain = true }]
+
+[[r2_buckets]]
+binding = "REPORTS"
+bucket_name = "gpuworks-usage"

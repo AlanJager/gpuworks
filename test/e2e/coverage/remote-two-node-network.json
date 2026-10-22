@@ -1,0 +1,108 @@
+{
+  "scope": "Targeted two-host management TCP test; not whole network page or distributed GPU coverage",
+  "test_file": "test/e2e/remote_two_node_network.py",
+  "command": "python3 test/e2e/remote_runtime_acceptance.py --config <private.json> --case two-node-network",
+  "lane": "remote-real-agent-two-node-tcp",
+  "identity": "admin",
+  "cases": [
+    {
+      "case_id": "two-node-network",
+      "contract_id": "gpuworks/network/two-node-management-tcp",
+      "name": "管理网络 / UI 选择两个真实节点进行 1 秒吞吐测试 / 双向传输成功、刷新保留结果且临时监听器退出",
+      "test_function": "run_two_node_network",
+      "required_evidence": ["ui", "request", "persistence", "runtime", "cleanup"],
+      "prerequisites": [
+        "Explicit remote base_url, node_uuid and second_node_uuid; credentials only in private config",
+        "Two distinct online agents on different hosts with different routable management addresses",
+        "Both agents expose host terminal for read-only listener verification",
+        "Both nodes have unique human-readable names in the management network selector",
+        "No other management-network test is running",
+        "Environment preparation safely onboards the temporary agent without orphan cleanup affecting existing workloads",
+        "Short bidirectional unthrottled 1-second TCP traffic is permitted on the shared management link"
+      ],
+      "crud": {
+        "Create": "UI submits one network test after single-node validation blocks mutation",
+        "Read": "GET and browser reload preserve the exact returned run ID, node set and pair measurements",
+        "Update": "N/A: completed test runs have no update API",
+        "Delete": "N/A: management-network test runs have no delete API; product retains latest 10 runs"
+      },
+      "fields": [
+        {
+          "id": "network-test.pattern",
+          "component": "Radio",
+          "request": "pattern",
+          "persisted": "latest_test.pattern",
+          "covered": ["All pairs default", "exact mesh request and refresh"],
+          "missing": ["Ring"]
+        },
+        {
+          "id": "network-test.nodes",
+          "component": "Radio / searchable multi-select",
+          "request": "scope / node_uuids",
+          "persisted": "latest_test.scope / latest_test.node_uuids",
+          "covered": ["Selected nodes", "human-readable search and keyboard selection", "single-node validation sends no POST", "exact two-node request and refresh"],
+          "missing": ["All nodes", "label scope", "empty search", "clear and replacement", "large set", "offline node failures"]
+        },
+        {
+          "id": "network-test.bandwidth",
+          "component": "Switch",
+          "request": "bandwidth",
+          "persisted": "latest_test.bandwidth",
+          "covered": ["default enabled", "true Boolean request", "real bidirectional throughput and refresh"],
+          "missing": ["off/on transition", "reachability-only run"]
+        },
+        {
+          "id": "network-test.seconds",
+          "component": "Number",
+          "request": "seconds",
+          "persisted": "NetworkTestRun.Seconds; not exposed by public DTO",
+          "covered": ["minimum valid value 1", "exact JSON number"],
+          "missing": ["default 3 assertion", "upper bound 10", "invalid and out-of-range values"]
+        }
+      ],
+      "checklist_items": {
+        "1": "PARTIAL: deterministic node selection, invalid selection without mutation, exact successful request and persistence",
+        "3": "PARTIAL: 1-second numeric request only",
+        "5": "PARTIAL: selected-nodes scope and mesh pattern only",
+        "8": "PARTIAL: searchable multi-select, keyboard selection and minimum cardinality",
+        "12": "PARTIAL: named pair dialogs, actual viewport, keyboard open/Escape close and focus return",
+        "16": "PARTIAL: real task finishes and exact result survives refresh; cancellation not available"
+      },
+      "runtime": {
+        "scope": "Two real hosts exchange authenticated TCP traffic over management addresses; no Docker or GPU requirement",
+        "assertions": [
+          "Exactly A-to-B and B-to-A pairs pass with positive finite RTT and Gbps, no error codes",
+          "Every target host matches the selected node management IP and uses a valid ephemeral port",
+          "API pair values, displayed values and refreshed result are consistent",
+          "Both agents have no LISTEN socket for the corresponding completed test port",
+          "Network definition, attachments and selected-node routing remain unchanged"
+        ],
+        "evidence_limits": [
+          "Agent throughput is based on peer-reported received bytes, but public DTO does not expose byte counts or actual duration",
+          "Positive throughput proves communication, not a performance threshold or exclusive physical path",
+          "No claim for RDMA, NCCL, accelerator P2P or distributed inference"
+        ]
+      },
+      "cleanup": "Agent-owned ephemeral listeners are verified closed on both hosts. Completed run ID is retained and mapped to the local runId as product history. Environment preparation owns temporary agent/node cleanup; the case checks baseline GPU process identities remain unchanged.",
+      "missing": [
+        "Other scope/pattern/throughput options and full numeric boundaries",
+        "Packet loss, offline agent, blocked ephemeral port, interrupted run and server restart recovery",
+        "RDMA/NCCL/GPU P2P/distributed inference",
+        "Precise byte-count conservation through public API",
+        "Full list/form/permission/theme/component matrix",
+        "Chinese locale"
+      ],
+      "product_contracts": [
+        "ui/src/pages/networks/ManagementNetworkDetail.tsx",
+        "ui/src/pages/networks/NetworkTestPanel.tsx",
+        "ui/src/pages/networks/NetworkTestResult.tsx",
+        "internal/server/api/network_tests.go",
+        "internal/server/api/dto/network.go",
+        "internal/server/controller/network_test_run.go",
+        "internal/server/nettest/nettest.go",
+        "internal/agent/app/netprobe.go",
+        "internal/server/store/network_tests.go"
+      ]
+    }
+  ]
+}

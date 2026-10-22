@@ -1,0 +1,63 @@
+model_id: microsoft/phi-4-mini-reasoning
+source: upstream
+display_title: Phi-4-mini-reasoning
+release_date: '2025-04-29'
+model_config: {model_type: phi3, num_hidden_layers: 32, hidden_size: 3072, num_attention_heads: 24, num_key_value_heads: 8, max_position_embeddings: 131072, sliding_window: 262144}
+kv_bytes_per_token:
+  vllm: 131072
+  sglang: 131072
+specs:
+- name: bf16-mini-reasoning-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: microsoft/Phi-4-mini-reasoning
+        revision: 0e3b1e2d02ee478a3743abe3f629e9c0cb722e0a
+    - modelscope:
+        repo_id: microsoft/Phi-4-mini-reasoning
+        revision: 6cc624dc0e38ec11d8c61cde084abb33e28ebbb4
+  weight_bytes: 7694628324
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-0e3b1e2d
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: microsoft/Phi-4-mini-reasoning
+        revision: 0e3b1e2d02ee478a3743abe3f629e9c0cb722e0a
+    - modelscope:
+        repo_id: microsoft/Phi-4-mini-reasoning
+        revision: 6cc624dc0e38ec11d8c61cde084abb33e28ebbb4
+  weight_bytes: 7672066216
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --enforce-eager
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

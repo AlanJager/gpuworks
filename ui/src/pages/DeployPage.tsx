@@ -1,0 +1,393 @@
+import { useMemo, useRef, useState } from "react";
+import { Form, Segmented, Select, Space } from "antd";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import {
+  api,
+  usePolling,
+  type ImageCatalogEntry,
+  type EngineProfile,
+  type ImageSeries,
+  type List,
+  type Model,
+  type Node,
+} from "../api";
+import PageHeader from "../components/PageHeader";
+import RoutingPolicyHelp from "../components/RoutingPolicyHelp";
+import DeployBasicStep from "./deploy/DeployBasicStep";
+import DeployMovedFlagsNotice from "./deploy/DeployMovedFlagsNotice";
+import DeployQuickForm from "./deploy/DeployQuickForm";
+import DeployRuntimeCommand from "./deploy/DeployRuntimeCommand";
+import DeployStepSummary from "./deploy/DeployStepSummary";
+import DeployTemplateBar from "./deploy/DeployTemplateBar";
+import DeployWeightSourceModal from "./deploy/DeployWeightSourceModal";
+import {
+  deployDraftPayload,
+  deploymentQuery,
+  EngineDecidesContext,
+  effectiveEngineDecidesParamKeys,
+  draftPartitionCapability,
+  type ImageSelectionMode,
+} from "./deploy/deployHelpers";
+import useDeployEvaluation from "./deploy/useDeployEvaluation";
+import useDeploySubmit from "./deploy/useDeploySubmit";
+import useDeployPrefill from "./deploy/useDeployPrefill";
+import useDeployTemplateSelection from "./deploy/useDeployTemplateSelection";
+import useDeployNodeSync from "./deploy/useDeployNodeSync";
+import useTemplateWeightSource from "./deploy/useTemplateWeightSource";
+import useDeployImageState from "./deploy/useDeployImageState";
+import DeployExpertTabs from "./deploy/DeployExpertTabs";
+import DeploySubmitBar from "./deploy/DeploySubmitBar";
+import useDeploymentIdentity from "./deploy/useDeploymentIdentity";
+import useDeployFormChanges from "./deploy/useDeployFormChanges";
+import HealthCheckFields from "./deploy/HealthCheckFields";
+import TokenizeField from "./deploy/TokenizeField";
+import DeployNoOperationsNotice from "./deploy/DeployNoOperationsNotice";
+import { localizedText } from "../i18n/localizedText";
+import { useNodeFacets } from "../nodes/useNodeFacets";
+import { useNodeLookup } from "../nodes/useNodeLookup";
+import "./deploy/deployWizard.css";
+import "./deploy/deployRuntimePreview.css";
+import "./deploy/deployWizardResponsive.css";
+
+const ONLINE = { state: ["online"] };
+import "./deploy/deployLayout.css";
+
+export default function DeployPage() {
+  const { t, i18n } = useTranslation("deploy");
+  const [form] = Form.useForm();
+  const watchOptions = { form, preserve: true } as const;
+  const [deployMode, setDeployMode] = useState<"quick" | "expert">("quick");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { queryTemplateID, querySpecName, querySpecSource, queryModelID } =
+    useMemo(() => deploymentQuery(location.search), [location.search]);
+  // The form never lists the fleet: what the online nodes carry comes from
+  // the server's facets, and the few nodes the draft names are read one by
+  // one (knownNodes, below).
+  const fleet = useNodeFacets(ONLINE, 15000);
+  const knownNodesRef = useRef<Node[]>([]);
+  const engines = usePolling<List<EngineProfile>>(
+    api.engines,
+    60000,
+  );
+  const routingPolicies = usePolling(api.routingPolicies, 0);
+  // The cluster's instance start timeout is the placeholder of the form's own
+  // start timeout field: an empty field keeps following it.
+  const settings = usePolling(api.settings, 0);
+  const startTimeoutDefaultSec =
+    Number(settings.data?.deployment?.start_timeout_sec) > 0
+      ? Number(settings.data?.deployment?.start_timeout_sec)
+      : undefined;
+  const routingOptions = useMemo(
+    () => (routingPolicies.data?.items ?? []).map((policy) => ({ value: policy.value, label: localizedText(policy.label, i18n.language) })),
+    [routingPolicies.data, i18n.language],
+  );
+  const templateIndex = usePolling(api.inferenceTemplateIndex, 0);
+  const { selectedTemplate, templates, selectedTemplateSpec } =
+    useDeployTemplateSelection({
+      form,
+      templateIndex: templateIndex.data ?? undefined,
+      queryTemplateID,
+      querySpecName,
+      querySpecSource,
+    });
+  const images = usePolling<List<ImageCatalogEntry>>(api.imageVersions, 30000);
+  const imageSeries = usePolling<List<ImageSeries>>(api.images, 30000);
+  const selectedNodeUUID = Form.useWatch("node_uuid", watchOptions);
+  // The default engine is the server's answer (evaluate's defaults), not a
+  // literal here: an empty engine travels as omitted and the server picks.
+  const selectedEngine = (Form.useWatch("engine", watchOptions) ||
+    "") as string;
+  const engineProfile = engines.data?.items.find(
+    (engine) => engine.name === selectedEngine,
+  );
+  const nodeSelectionMode =
+    Form.useWatch("node_selection_mode", watchOptions) || "manual";
+  const formValues = (Form.useWatch([], watchOptions) || {}) as Record<
+    string,
+    unknown
+  >;
+  const selectedImage = Form.useWatch("image", watchOptions);
+  const imageMode = Form.useWatch("image_mode", watchOptions) as
+    ImageSelectionMode | undefined;
+  const selectedSeriesID = Form.useWatch("image_series_id", watchOptions) as
+    number | undefined;
+  const selectedVersionID = Form.useWatch("image_version_id", watchOptions) as
+    number | undefined;
+  const selectedModelID = Form.useWatch("model_id", watchOptions);
+  // The page never lists the models: the picker searches them, and the
+  // chosen one is read (and kept fresh) by id.
+  const selectedModelRead = usePolling<Model | null>(
+    () => (selectedModelID ? api.model(selectedModelID) : Promise.resolve(null)),
+    15000,
+    [selectedModelID],
+  );
+  // A model read for an earlier choice never stands in for the current one.
+  const selectedModel =
+    selectedModelRead.data && selectedModelRead.data.id === selectedModelID
+      ? selectedModelRead.data
+      : undefined;
+  const evaluation = useDeployEvaluation({
+    form,
+    signal: formValues,
+    // Without a target accelerator the scheduler would pick any vendor's
+    // node, and that answer would linger on screen once one is chosen.
+    buildPayload: () =>
+      !form.getFieldValue("target_vendor") ? null : deployDraftPayload(
+        form.getFieldsValue(true),
+        knownNodesRef.current,
+        engineProfile,
+        selectedModel?.input_modalities,
+      ),
+    translate: (key, options) => i18n.t(key, options),
+  });
+  const { result: evalResult, error: evalErr, evaluating } = evaluation;
+  // The node whose facts the page renders: the form's pick in manual mode,
+  // and in automatic mode the server's selection (the form field stays empty;
+  // display only, the create confirms the selection explicitly).
+  const distributedNodes = Form.useWatch("distributed_nodes", watchOptions);
+  const knownNodes = useNodeLookup([
+    selectedNodeUUID,
+    evalResult?.selected_node?.uuid,
+    ...(Array.isArray(distributedNodes) ? (distributedNodes as string[]) : []),
+  ]);
+  const knownList = useMemo(() => [...knownNodes.values()], [knownNodes]);
+  knownNodesRef.current = knownList;
+  const selectedNode = knownNodes.get(
+    (nodeSelectionMode === "manual"
+      ? selectedNodeUUID
+      : selectedNodeUUID || evalResult?.selected_node?.uuid) ?? "",
+  );
+  const selectedPartitionCapability = draftPartitionCapability(
+    nodeSelectionMode,
+    selectedNode,
+    evalResult,
+  );
+
+  // Keys whose default this launch leaves to the engine: their controls
+  // start at "automatic" (EngineDecidesContext), never hidden.
+  const engineDecidesParamKeys = effectiveEngineDecidesParamKeys(
+    evalResult,
+    selectedTemplateSpec?.spec.engine_decides_param_keys,
+  );
+  const weightSource = useTemplateWeightSource({
+    form,
+    template: selectedTemplate ?? undefined,
+    selection: selectedTemplateSpec,
+    engineProfile,
+  });
+  const { runtimeSeries, autoResolutionText, inferenceSeries } =
+    useDeployImageState({
+      images: images.data?.items,
+      imageSeries: imageSeries.data?.items,
+      evalResult,
+      selectedEngine,
+      selectedVersionID,
+      selectedNode,
+    });
+  useDeployNodeSync({
+    form,
+    mode: nodeSelectionMode,
+    capability: selectedPartitionCapability,
+    nodes: knownList,
+    nnodes: Form.useWatch("nnodes", watchOptions),
+    distributedNodes,
+  });
+  const onValuesChange = useDeployFormChanges({
+    form,
+    templates: templateIndex.data?.items ?? [],
+    images: images.data?.items ?? [],
+  });
+  const handleValuesChange = (changed: Record<string, unknown>) => {
+    evaluation.noteDraftChanged();
+    onValuesChange(changed);
+  };
+  useDeploymentIdentity(form, selectedModel);
+
+  useDeployPrefill({
+    form,
+    queryModelID,
+    queryTemplateID,
+    querySpecName,
+    querySpecSource,
+    selectedTemplate,
+    selectedTemplateSpec,
+    nodeSelectionMode,
+    defaultsEngine: evalResult?.defaults?.engine,
+  });
+
+  const { submit, submitting } = useDeploySubmit({
+    form,
+    nodes: knownList,
+    engineProfile,
+    selectedModel,
+    evalResult,
+    evalErr,
+    evaluating,
+    onCreated: () => navigate("/deployments"),
+  });
+
+  return (
+    <div className="deploy-page">
+      <PageHeader
+        title={
+          selectedTemplate
+            ? t("page.deployTemplate", {
+                name:
+                  selectedTemplate.display_title || selectedTemplate.model_id,
+              })
+            : t("page.title")
+        }
+        description={t("page.description")}
+        breadcrumb={[
+          t("page.breadcrumb.services"),
+          t("page.breadcrumb.deploy"),
+        ]}
+        extra={
+          <Segmented
+            value={deployMode}
+            onChange={(value) => setDeployMode(value as "quick" | "expert")}
+            options={[
+              { value: "quick", label: t("page.mode.quick") },
+              { value: "expert", label: t("page.mode.expert") },
+            ]}
+          />
+        }
+      />
+      <EngineDecidesContext.Provider value={engineDecidesParamKeys}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{
+          model_id: queryModelID,
+          template_id: queryTemplateID,
+          template_spec_source: querySpecSource,
+          template_spec_name: querySpecName,
+          image_mode: "auto",
+          command_mode: "engine",
+          // Automatic placement is the server's answer (selected_node with
+          // its candidates); the manual option stays one click away.
+          node_selection_mode: "auto",
+          nnodes: 1,
+          replicas: 1,
+        }}
+        onValuesChange={handleValuesChange}
+      >
+        {selectedTemplate && selectedTemplateSpec && (
+          <DeployTemplateBar
+            selection={selectedTemplateSpec}
+            changed={evalResult?.template_deviated}
+            evaluatedImage={evalResult?.image}
+            weightModel={weightSource.appliedModel}
+            onDetails={() =>
+              navigate(`/inference-templates/${selectedTemplate.model_id}`)
+            }
+          />
+        )}
+        <DeployMovedFlagsNotice
+          moved={evalResult?.moved}
+          responseSeq={evaluation.responseSeq}
+        />
+        <DeployNoOperationsNotice
+          model={selectedModel}
+          templateOperations={selectedTemplateSpec?.spec.api?.operations}
+        />
+        <fieldset className="deploy-structured-fields">
+          <section className="deploy-generic-entry">
+            <DeployBasicStep
+              templateIndex={templateIndex.data?.items ?? []}
+              chips={fleet.data?.gpus ?? []}
+              selectedModel={selectedModel}
+            />
+            <Form.Item noStyle shouldUpdate={(prev, next) => prev.replicas !== next.replicas}>
+              {({ getFieldValue }) => getFieldValue("replicas") > 1 ? (
+                <Form.Item name="routing_policy" label={<Space size={4}>{t("routing.policy")}<RoutingPolicyHelp policies={routingPolicies.data?.items ?? []} /></Space>} extra={t("routing.help")}>
+                  <Select loading={routingPolicies.loading} options={routingOptions} />
+                </Form.Item>
+              ) : null}
+            </Form.Item>
+            <HealthCheckFields selectedModel={selectedModel} />
+            <TokenizeField />
+          </section>
+          <div className="deploy-config-layout">
+            <div className="deploy-config-inputs">
+              {deployMode === "quick" ? (
+                <>
+                  <DeployQuickForm
+                    templates={templates}
+                    fleet={fleet.data}
+                    knownNodes={knownNodes}
+                    selectedNode={selectedNode}
+                    partitionCapability={selectedPartitionCapability}
+                    eligibleNodes={evalResult?.eligible_nodes}
+                    selectedModel={selectedModel}
+                    profile={engineProfile}
+                    startTimeoutDefaultSec={startTimeoutDefaultSec}
+                    engine={selectedEngine}
+                    images={images.data?.items ?? []}
+                    result={evalResult}
+                    loading={evaluating}
+                  />
+                </>
+              ) : (
+                <DeployExpertTabs
+                  engineProfile={engineProfile}
+                  startTimeoutDefaultSec={startTimeoutDefaultSec}
+                  templateShmBytes={selectedTemplateSpec?.spec.shm_bytes}
+                  selectedEngine={selectedEngine}
+                  selectedModel={selectedModel}
+                  selectedNode={selectedNode}
+                  selectedPartitionCapability={selectedPartitionCapability}
+                  engines={{ data: engines.data?.items, loading: engines.loading }}
+                  images={images.data?.items ?? []}
+                  imageMode={imageMode || "auto"}
+                  imageSeriesLoading={imageSeries.loading}
+                  selectedSeriesID={selectedSeriesID}
+                  selectedVersionID={selectedVersionID}
+                  selectedImage={selectedImage}
+                  inferenceSeries={inferenceSeries}
+                  autoResolutionText={autoResolutionText}
+                  runtimeSeries={runtimeSeries}
+                  evalResult={evalResult}
+                />
+              )}
+            </div>
+            <aside className="deploy-config-evaluation">
+              <DeployStepSummary
+                result={evalResult}
+                error={evalErr}
+                loading={evaluating}
+                onReevaluate={evaluation.reevaluate}
+              />
+            </aside>
+          </div>
+        </fieldset>
+        <DeployRuntimeCommand
+          result={evalResult}
+          error={evalErr}
+          loading={evaluating}
+        />
+        <DeploySubmitBar
+          selectedTemplate={selectedTemplate}
+          submit={submit}
+          submitting={submitting}
+          disabled={evaluating || !!evalErr || !evalResult || !selectedModelID || !form.getFieldValue("target_vendor")}
+        />
+      </Form>
+      </EngineDecidesContext.Provider>
+      <DeployWeightSourceModal
+        open={weightSource.modalOpen}
+        loading={weightSource.registering}
+        selection={selectedTemplateSpec}
+        choice={weightSource.choice}
+        matches={weightSource.matches}
+        useModel={weightSource.useModel}
+        onUseModel={weightSource.setUseModel}
+        onChoice={weightSource.setChoice}
+        onCancel={() => weightSource.setModalOpen(false)}
+        onConfirm={weightSource.confirm}
+      />
+    </div>
+  );
+}

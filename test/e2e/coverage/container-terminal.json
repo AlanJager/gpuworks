@@ -1,0 +1,188 @@
+{
+  "contract_id": "gpuworks/terminal/container-pty-release",
+  "name": "实例容器终端 / 命令实际落盘、退出与连接消失释放、权限和错误目标",
+  "page_id": "deployments",
+  "priority": "P0",
+  "lane": "local-real-server-agent-docker-webterm",
+  "identity": "admin session plus independent user-role session; real Docker exec PTY",
+  "driver_file": "test/e2e/container_terminal.py",
+  "test_file": "test/e2e/container_terminal_browser.py",
+  "test_function": "test_container_terminal",
+  "command": "make test-e2e-container-terminal E2E_LOCALE=en",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "result": "NOT_RUN until current clean source/binary/runId and separate en/zh reports; implementation is not execution evidence",
+  "external_boundary": "Cached Alpine shell plus unchanged fake-engine; real browser WS, server manager, agent PTY, Docker exec and independent /proc/file observations. GPU facts only permit scheduling.",
+  "fields": [
+    {
+      "field_id": "instance.container-shell",
+      "component": "Button / popup",
+      "request": "GET terminal/settings then WS /nodes/{uuid}/terminal?target=container&ref&rows&cols",
+      "covered": [
+        "real instance entry opens exact node/ref with no token in URL",
+        "one actual preflight and WS",
+        "Docker capability and zero initial concurrency"
+      ],
+      "missing": [
+        "offline/capability and kill-switch changes while popup loads",
+        "other runtimes including udocker controlled shell"
+      ]
+    },
+    {
+      "field_id": "terminal.input-output",
+      "component": "xterm real PTY",
+      "covered": [
+        "UTF-8 output marker cannot be satisfied by echoed command",
+        "typed command writes exact independent bytes in selected container",
+        "shell PID/starttime observed via independent exec",
+        "stty size matches actual initial WS rows/cols"
+      ],
+      "missing": [
+        "arbitrary UTF-8 frame splits",
+        "continuous/large output",
+        "resize/SIGWINCH after connection",
+        "background descendant and detached job cleanup"
+      ]
+    },
+    {
+      "field_id": "terminal.exit",
+      "component": "typed shell exit",
+      "covered": [
+        "actual WS exit code0 and UI ended",
+        "same process identity disappears",
+        "ended audit and active counters zero"
+      ],
+      "missing": [
+        "nonzero shell exit codes and signal variations"
+      ]
+    },
+    {
+      "field_id": "terminal.close",
+      "component": "browser tab close",
+      "covered": [
+        "live shell and audit active before close",
+        "after tab closes: process gone, audit client_closed and counters zero"
+      ],
+      "missing": [
+        "browser crash, abrupt OS process death"
+      ]
+    },
+    {
+      "field_id": "terminal.disconnect",
+      "component": "isolated browser context destruction",
+      "covered": [
+        "live shell connection destroyed with its context",
+        "process gone, audit ended/client_closed and counters zero"
+      ],
+      "missing": [
+        "arbitrary network faults and reconnect semantics",
+        "agent reconnect and multi-tab concurrent sessions"
+      ]
+    },
+    {
+      "field_id": "terminal.wrong-container",
+      "component": "deep link / runtime rejection",
+      "covered": [
+        "run-scoped nonexistent ref exits with Docker No such container and failing WS exit",
+        "ended container-target audit and released concurrency",
+        "real original container identity unchanged"
+      ],
+      "missing": [
+        "missing ref, malformed/unsupported target, stopped container and foreign-node mismatch"
+      ]
+    },
+    {
+      "field_id": "terminal.permission",
+      "component": "preflight rejection / Alert",
+      "covered": [
+        "real user-role login yields exact403 ADMINISTRATOR_REQUIRED",
+        "localized denial UI, no WS and audit unchanged"
+      ],
+      "missing": [
+        "session revocation while attached",
+        "expired session and unauthenticated request",
+        "instance button visibility policy"
+      ]
+    },
+    {
+      "field_id": "terminal.remaining-controls",
+      "component": "Reconnect button / session banner / viewport",
+      "missing": [
+        "reconnect interaction",
+        "idle timeout and concurrency limit admission",
+        "full banner identity, geometry, keyboard and theme matrix"
+      ]
+    }
+  ],
+  "crud": {
+    "create": "browser creates real container terminal sessions; fixture creates model/node/deployment prerequisites",
+    "read": "real UTF-8 PTY output and independent files/process identities; actual audit metadata",
+    "update": {
+      "status": "N/A",
+      "reason": "This target has no terminal-session editing API/UI"
+    },
+    "delete": "exit, tab close and browser context disconnect release actual session and process"
+  },
+  "checklist_items": {
+    "12.1-12.8": "MISSING: this standalone terminal is not a product modal; deployment drawer behavior stays with diagnostic/lifecycle authority",
+    "13.1-13.6": "MISSING: instance entry/alert exercised, full menus/tooltips/notification matrix is separate",
+    "19.1": "PARTIAL: container preflight, user permission and nonexistent ref covered; kill switch/capability/offline remain separate",
+    "19.2": "covered: real target=container WS/PTY, non-echo UTF-8 output and independent exact target file",
+    "19.3": "PARTIAL: UTF-8 text and initial geometry; arbitrary frame split, continuous output and resize missing",
+    "19.4": "PARTIAL: exit/tab close/context disconnect and shell identity release; network/agent fault and reconnect missing",
+    "19.5": "MISSING: concurrency rejection, idle timeout and hidden multi-tab/descendant process matrix",
+    "19.6": "covered: audit admin principal/node/container ref and close result; no credentials or arbitrary terminal content exported",
+    "22.1": "PARTIAL: instance entry and container terminal deep link; other page/deep-link matrix missing",
+    "22.2": "MISSING: browser history and navigation state",
+    "22.3": "PARTIAL: user preflight denied403 and no WS/audit; all menus and button policy missing",
+    "22.4-22.7": "MISSING: auth expiry, full-site language, computed focus and other links"
+  },
+  "failure_table": [
+    {
+      "wrong_implementation": "container entry silently opens host or different ref",
+      "fails_at": "actual page/WS target fields plus independent file and PID identity in original container"
+    },
+    {
+      "wrong_implementation": "only PTY input echo is displayed",
+      "fails_at": "assembled output marker absent from typed command and independent exact file bytes"
+    },
+    {
+      "wrong_implementation": "closed audit hides a still-running shell or consumed slot",
+      "fails_at": "wait_released independently checks /proc starttime plus active_node/total zero"
+    },
+    {
+      "wrong_implementation": "context disconnect leaves invisible session",
+      "fails_at": "live identity before context destruction and independent release poll after"
+    },
+    {
+      "wrong_implementation": "wrong ref falls back to host shell",
+      "fails_at": "explicit runtime No such container and nonzero WS exit; no open shell accepted"
+    },
+    {
+      "wrong_implementation": "non-admin admission is allowed",
+      "fails_at": "exact403 code/localized UI/no WS/no audit side effect"
+    },
+    {
+      "wrong_implementation": "context/session/user cleanup query fails",
+      "fails_at": "selftest proves base resource reclaim continues and failed ownership remains residual"
+    }
+  ],
+  "product_mutation": {
+    "instruction": "In an isolated Go overlay for internal/agent/runtime/docker/docker.go, change only ExecPTY default argv from /bin/sh -l to /bin/cat. Rebuild the agent; keep the approved local Docker endpoint selection and normal server intact. Run --mutation container-pty-echo-only; the real container PTY remains connected but merely echoes typed input, so the assembled UTF-8 output marker and independent target file assertion must fail. Restore/rebuild normal binaries and run en/zh independently.",
+    "expected_failure": "execute: assembled PTY output marker absent from echoed command; independently observed target file cannot be created",
+    "status": "NOT_RUN until actual product-mutation report is retained"
+  },
+  "cleanup": "Each popup/context is owned immediately. Independent close attempts and terminal counter queries continue despite failure, fixture user is deleted and absence observed, then existing exact-image scoped deployment/key/model/template/node/image cleanup runs. Failures retain run-scoped residuals; runner independently stops agent/server/browser and scans artifacts.",
+  "missing": [
+    "arbitrary network faults/reconnect, agent reconnect and process crash",
+    "detached descendants, job-control process trees and concurrent sessions",
+    "idle timeout/concurrency caps, resize and frame-split matrices",
+    "non-Docker runtimes and real GPU behavior",
+    "full deployment controls and host terminal (separate authoritative case)"
+  ]
+}

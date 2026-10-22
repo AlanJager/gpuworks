@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""Platform token scope × expiry options on isolated real server/SQLite + Chrome.
+
+E2E standard: test/e2e/browser-e2e-testing-standard.md
+Run: make test-e2e-platform-token-options (all eight combinations, English).
+Use E2E_LOCALE=zh; E2E_TOKEN_CASE=write-30 selects one independent case.
+After build: python3 test/e2e/platform_token_options.py --case write-30 --locale en
+Optional --server-bin/--artifact-dir; artifacts default to secrets/e2e/<runId>.
+No GPU, existing server, management mock or wall-clock expiry waiting. Future
+expiry persistence and currently-valid authorization are covered; actual expiry
+boundaries remain missing. Secrets are excluded at capture time and scanned.
+Owned server is stopped; private DB is retained for diagnosis for seven days.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import traceback
+from urllib.parse import urlsplit
+import uuid
+
+from playwright.sync_api import expect, sync_playwright
+from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
+from platform_token_read_revoke import (
+    ITEM_FIELDS, TOKEN_PATH, button, check, collection, modal_geometry, strings,
+)
+
+CASES = {
+    # Mainline: UI选read+无期限→POST省略expiry、刷新GET为null→Bearer读成功/写403→UI吊销后401。
+    "read-0": ("read", 0),
+    # Mainline: UI选read+30天→POST数值30、刷新GET为服务端T0+30天→Bearer读成功/写403→UI吊销后401。
+    "read-30": ("read", 30),
+    # Mainline: UI选read+90天→POST数值90、刷新GET为服务端T0+90天→Bearer读成功/写403→UI吊销后401。
+    "read-90": ("read", 90),
+    # Mainline: UI选read+365天→POST数值365、刷新GET为服务端T0+365天→Bearer读成功/写403→UI吊销后401。
+    "read-365": ("read", 365),
+    # Mainline: UI选write+无期限→POST省略expiry、刷新GET为null→Bearer真实创建/回读/删除推理Key→UI吊销后401。
+    "write-0": ("write", 0),
+    # Mainline: UI选write+30天→POST数值30、刷新GET为服务端T0+30天→Bearer真实创建/回读/删除推理Key→UI吊销后401。
+    "write-30": ("write", 30),
+    # Mainline: UI选write+90天→POST数值90、刷新GET为服务端T0+90天→Bearer真实创建/回读/删除推理Key→UI吊销后401。
+    "write-90": ("write", 90),
+    # Mainline: UI选write+365天→POST数值365、刷新GET为服务端T0+365天→Bearer真实创建/回读/删除推理Key→UI吊销后401。
+    "write-365": ("write", 365),
+}
+
+
+def select_expiry(page, dialog, label, selected, all_labels):
+    control = dialog.get_by_role("combobox", name=label, exact=True)
+    control.press("ArrowDown")
+    # AntD virtual Select renders its ARIA options separately from the visible
+    # labels. The live controlled listbox establishes selection, visible text
+    # supplies the actual pointer target; no generated ID is hardcoded.
+    controlled = control.get_attribute("aria-controls")
+    check(bool(controlled), "expiry control has no associated listbox")
+    popup = page.locator('[id="' + controlled + '"]')
+    expect(popup).to_have_attribute("role", "listbox")
+    for text in all_labels:
+        visible = page.get_by_text(text, exact=True).filter(visible=True)
+        check(visible.count() > 0, "expiry option is not visible: " + text)
+    page.get_by_text(selected, exact=True).filter(visible=True).click()
+    expect(control).to_have_attribute("aria-expanded", "false")
+    # Reopening exposes the selected option's actual accessibility state.
+    control.press("ArrowDown")
+    option = popup.get_by_role("option", name=selected, exact=True)
+    expect(option).to_have_attribute("aria-selected", "true")
+    control.press("Escape")
+    expect(control).to_have_attribute("aria-expanded", "false")
+    expect(dialog).to_be_visible()
+
+
+# Contract: gpuworks/platform-token/options/<case>; each parameter Mainline is above.
+# Mainline: 独立真实SQLite→UI选scope/expiry并创建复制→刷新GET核对期限→无cookie真实权限→UI吊销并回读失效。
+def test_platform_token_option(page, context, server, artifacts, report, locale, case):
+    scope, days = CASES[case]
+    k, _ = strings(locale)
+    platform = k["platform"]
+    name = f"e2e-{report['run_id']}-{case}"
+    errors, mutations = [], []
+    page.on("pageerror", lambda error: errors.append({"page": str(error)}))
+    page.on("console", lambda msg: errors.append({"console": msg.text}) if msg.type == "error" else None)
+    page.on("response", lambda r: errors.append({"path": urlsplit(r.url).path, "status": r.status}) if r.status >= 400 else None)
+    page.on("request", lambda r: mutations.append({"method": r.method, "path": urlsplit(r.url).path})
+        if urlsplit(r.url).path.startswith(TOKEN_PATH) and r.method in {"POST", "DELETE"} else None)
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "fixture tokens not empty")
+    keys_path = "/api/v1/apikeys"
+    initial_keys = collection(page.request.get(server.base + keys_path))
+    button(page, platform["create"]).click()
+    dialog = page.get_by_role("dialog", name=platform["createTitle"], exact=True)
+    submit = button(dialog, k["actions"]["create"])
+    modal_geometry(dialog, submit)
+    expect(dialog.get_by_role("radio")).to_have_count(2)
+    expect(dialog.get_by_role("radio", name=platform["scopes"]["read"], exact=True)).to_be_checked()
+    dialog.get_by_label(k["table"]["name"], exact=True).fill(name)
+    # Choose the opposite first so returning to read and no-expiry is exercised
+    # through real interactions, rather than only accepting their defaults.
+    for selected_scope in ["write" if scope == "read" else "read", scope]:
+        radio = dialog.get_by_role("radio", name=platform["scopes"][selected_scope], exact=True)
+        radio.check()
+        expect(radio).to_be_checked()
+    labels = [platform["noExpiry"] if value == 0 else platform["days"].replace("{{count}}", str(value))
+        for value in (0, 30, 90, 365)]
+    if days == 0:
+        select_expiry(page, dialog, platform["expiresAt"], labels[1], labels)
+    chosen = labels[(0, 30, 90, 365).index(days)]
+    select_expiry(page, dialog, platform["expiresAt"], chosen, labels)
+    expect(dialog.get_by_role("radio", name=platform["scopes"][scope], exact=True)).to_be_checked()
+    expect(dialog.get_by_title(chosen, exact=True)).to_be_visible()
+    check(not mutations, "option selection unexpectedly mutated a token")
+    report["evidence"].append({"layer": "ui", "scope": scope, "expiry_days": days,
+        "visible_expiry_options": labels, "selected": chosen, "default_return": days == 0})
+    page.screenshot(path=artifacts.directory / "selected-form.png")
+    # HTTP Date from the same server brackets creation in server UTC, avoiding
+    # dependence on runner clock/latency. Header granularity is one second.
+    before = page.request.get(server.base + TOKEN_PATH)
+    collection(before)
+    t0 = parsedate_to_datetime(before.headers["date"])
+    artifacts.stop_trace(context)
+    report["sensitive_phase"] = True
+    with page.expect_response(lambda r: urlsplit(r.url).path == TOKEN_PATH and r.request.method == "POST") as created:
+        submit.click()
+    response = created.value
+    check(response.status == 201, f"token create HTTP {response.status}")
+    expected_body = {"name": name, "scope": scope}
+    if days:
+        expected_body["expires_in_days"] = days
+    check(response.request.post_data_json == expected_body and not urlsplit(response.url).query, "incorrect scope/expiry POST")
+    payload = response.json()
+    check(set(payload) == {"token", "item"}, "unexpected creation envelope")
+    secret, item = payload["token"], payload["item"]
+    artifacts.remember(secret)
+    check(isinstance(secret, str) and secret.startswith("gwp_"), "one-time token missing")
+    check(set(item) == ITEM_FIELDS and item["name"] == name and item["scope"] == scope, "token item drift/leak")
+    check(item["prefix"] == secret[:12] and isinstance(item["id"], int), "incorrect prefix/id")
+    created_at = datetime.fromisoformat(item["created_at"].replace("Z", "+00:00"))
+    t1 = parsedate_to_datetime(response.headers["date"]) + timedelta(seconds=1)
+    check(t0 <= created_at < t1, "creation timestamp outside server time bracket")
+    if days:
+        expiry = datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00"))
+        check(t0 + timedelta(days=days) <= expiry < t1 + timedelta(days=days), "expiry does not match selected UTC days")
+        rendered_expiry = expiry.strftime("%Y-%m-%d %H:%M")
+    else:
+        check(item["expires_at"] is None, "zero expiry must persist null")
+        rendered_expiry = platform["noExpiry"]
+    secret_dialog = page.get_by_role("dialog", name=k["secret"]["title"], exact=True)
+    expect(secret_dialog).to_be_visible()
+    check(secret_dialog.get_by_text(secret, exact=True).count() == 1, "one-time token display differs")
+    button(secret_dialog, k["secret"]["copy"]).click()
+    copied = page.evaluate("navigator.clipboard.readText()")
+    check(copied == secret, "copy differs from one-time token")
+    button(secret_dialog, k["secret"]["saved"]).click()
+    expect(secret_dialog).not_to_be_visible()
+    page.wait_for_function("secret => !document.documentElement.outerHTML.includes(secret)", arg=secret)
+    report["sensitive_phase"] = False
+    artifacts.start_trace(context)
+    report["evidence"].append({"layer": "request", "method": "POST", "path": TOKEN_PATH,
+        "body": expected_body, "status": 201, "server_utc_bracket": [t0.isoformat(), t1.isoformat()], "item": item})
+    page.reload()
+    row = page.get_by_role("row").filter(has_text=name)
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text(platform["scopes"][scope])
+    expect(row).to_contain_text(rendered_expiry)
+    persisted = collection(page.request.get(server.base + TOKEN_PATH))
+    check(persisted == [item], "GET differs from created token")
+    check(secret not in page.content() and secret not in json.dumps(persisted), "secret leaked on reload/GET")
+    report["evidence"].append({"layer": "persistence", "items": persisted, "ui_expiry_utc": rendered_expiry})
+    code, identity = http(server.base, "GET", "/api/v1/auth/me", copied)
+    check(code == 200 and identity["username"] == "admin" and identity["role"] == "admin", "wrong bearer principal")
+    code, nodes = http(server.base, "GET", "/api/v1/nodes", copied)
+    check(code == 200 and nodes == {"items": [], "total": 0}, "valid token cannot read nodes")
+    key_name = name + "-write-proof"
+    code, result = http(server.base, "POST", keys_path, copied, {"name": key_name})
+    if scope == "read":
+        check(code == 403 and result == {"code": "PLATFORM_TOKEN_READ_ONLY", "error": "a read token can only read",
+            "params": {"scope": "read"}}, "read scope did not reject mutation precisely")
+        check(collection(page.request.get(server.base + keys_path)) == initial_keys, "denied write had side effects")
+        permission = {"write_status": code, "body": result, "side_effects": "none"}
+    else:
+        check(code == 201 and set(result) == {"name", "key"} and result["name"] == key_name, "write scope failed real mutation")
+        artifacts.remember(result["key"])
+        check(result["key"].startswith("gw-"), "mutation did not return inference credential")
+        all_keys = collection(page.request.get(server.base + keys_path))
+        rows = [key for key in all_keys if key["name"] == key_name]
+        check([key for key in all_keys if key["name"] != key_name] == initial_keys, "write changed unrelated keys")
+        check(len(rows) == 1 and rows[0]["name"] == key_name and result["key"].startswith(rows[0]["prefix"]), "write not independently persisted")
+        code, deleted = http(server.base, "DELETE", keys_path + "/" + rows[0]["prefix"], copied)
+        check(code == 200 and deleted == {"status": "deleted"}, "write bearer cannot remove owned inference key")
+        check(collection(page.request.get(server.base + keys_path)) == initial_keys, "write probe cleanup not persisted")
+        permission = {"write_status": 201, "persisted": rows, "delete_status": code, "cleanup": "independent GET equals baseline"}
+    code, denied = http(server.base, "GET", TOKEN_PATH, copied)
+    check(code == 403 and denied["code"] == "PLATFORM_TOKEN_NOT_ALLOWED" and denied["params"] == {"scope": scope}, "bearer accessed session-only token management")
+    used = collection(page.request.get(server.base + TOKEN_PATH))
+    check(len(used) == 1 and used[0]["id"] == item["id"] and used[0]["last_used_at"] is not None, "bearer use not persisted")
+    report["evidence"].append({"layer": "runtime", "auth": "copied bearer only; no cookie jar", "nodes_status": 200,
+        "permissions": permission, "session_only_status": code, "last_used_at": used[0]["last_used_at"],
+        "expiry": "currently valid; exact expiration boundary NOT COVERED"})
+    button(row, platform["revoke"]).click()
+    confirmation = platform["revokeConfirm"].replace("{{name}}", name)
+    popup = page.get_by_role("tooltip").filter(has_text=confirmation)
+    confirm = button(popup, platform["revoke"])
+    expect(confirm).to_be_in_viewport(ratio=1)
+    delete_path = f"{TOKEN_PATH}/{item['id']}"
+    with page.expect_response(lambda r: urlsplit(r.url).path == delete_path and r.request.method == "DELETE") as deleted:
+        confirm.click()
+    check(deleted.value.status == 204 and deleted.value.request.post_data is None and not urlsplit(deleted.value.url).query,
+        "unexpected revoke response/body/query")
+    expect(row).to_have_count(0)
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "revoked token still persisted")
+    for method, path, body in [("GET", "/api/v1/nodes", None), ("POST", keys_path, {"name": key_name})]:
+        code, denied = http(server.base, method, path, copied, body)
+        check(code == 401 and denied["code"] == "AUTHENTICATION_REQUIRED", "revoked token still authorized")
+    page.reload()
+    expect(page.get_by_text(platform["empty"], exact=True)).to_be_visible()
+    expect(row).to_have_count(0)
+    check(collection(page.request.get(server.base + keys_path)) == initial_keys, "revoked write had side effects")
+    check(mutations == [{"method": "POST", "path": TOKEN_PATH}, {"method": "DELETE", "path": delete_path}], "extra token mutations")
+    check(not errors, "browser errors: " + str(errors))
+    check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "horizontal overflow")
+    page.screenshot(path=artifacts.directory / "revoked.png")
+    report["evidence"].append({"layer": "cleanup", "method": "DELETE", "path": delete_path, "status": 204,
+        "get_after_reload": "empty", "revoked_bearer_get_and_post": 401, "inference_keys": "unchanged baseline", "mutations": mutations})
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--case", choices=list(CASES), required=True)
+    parser.add_argument("--locale", choices=["en", "zh"], default="en")
+    parser.add_argument("--server-bin", type=Path, default=ROOT / "bin/gpuworks")
+    parser.add_argument("--artifact-dir", type=Path)
+    args = parser.parse_args()
+    os.umask(0o077)
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
+    artifacts = Artifacts(args.artifact_dir or ROOT / "secrets/e2e" / run_id)
+    server = LocalServer(args.server_bin, artifacts.private)
+    manifest_path = ROOT / "test/e2e/coverage/platform-token-options.json"
+    manifest = json.loads(manifest_path.read_text())
+    check(manifest["test_function"] == test_platform_token_option.__name__, "manifest function differs")
+    check([entry["case"] for entry in manifest["cases"]] == list(CASES), "manifest selection differs")
+    contract = "gpuworks/platform-token/options/" + args.case
+    report = {"contract": contract, "case": f"平台 API 令牌 / {args.case} / 期限持久化、权限与吊销生效",
+        "run_id": run_id, "status": "NOT_RUN", "locale": args.locale, "timezone": "UTC",
+        "source_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "working_tree": "dirty" if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT) else "clean",
+        "lane": "local-real-server-sqlite", "identity": "admin session creates; copied bearer consumes",
+        "viewport": {"width": 1440, "height": 900}, "selection": [contract], "retries": 0, "evidence": [],
+        "not_covered": manifest["missing"], "command": ["python3", "test/e2e/platform_token_options.py", *sys.argv[1:]],
+        "execution": "N/A: platform authorization has no agent/GPU workload",
+        "source_hashes": {str(path.relative_to(ROOT)): digest(path) for path in [Path(__file__).resolve(), manifest_path,
+            ROOT / "test/e2e/local_browser_fixture.py", ROOT / "test/e2e/platform_token_read_revoke.py",
+            ROOT / "ui/src/pages/apikeys/PlatformTokensCard.tsx", ROOT / "internal/server/api/platform_tokens.go",
+            ROOT / "internal/server/store/platform_tokens.go"]}}
+    try:
+        report["binary_sha256"] = digest(args.server_bin)
+        report["health"] = server.start()
+        report["base_url"] = server.base
+        report["owned_server_pid"] = server.process.pid
+        with sync_playwright() as play:
+            browser = play.chromium.launch(channel="chrome", headless=True)
+            context = browser.new_context(viewport=report["viewport"], timezone_id="UTC", permissions=["clipboard-read", "clipboard-write"],
+                locale="zh-CN" if args.locale == "zh" else "en-US")
+            page = context.new_page()
+            page.set_default_timeout(10000)
+            report["browser_version"] = browser.version
+            try:
+                k, auth = strings(args.locale)
+                page.goto(server.base + "/apikeys")
+                page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
+                page.get_by_label(auth["password"], exact=True).fill("password")
+                with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login" and r.request.method == "POST") as login:
+                    button(page, auth["submit"]).click()
+                check(login.value.status == 200, "browser login failed")
+                for cookie in context.cookies():
+                    artifacts.remember(cookie["value"])
+                expect(page.get_by_role("heading", name=k["title"], exact=True)).to_be_visible()
+                report["preflight"] = "PASS"
+                artifacts.start_trace(context)
+                test_platform_token_option(page, context, server, artifacts, report, args.locale, args.case)
+                check(set(manifest["required_evidence"]) <= {e["layer"] for e in report["evidence"]}, "required evidence missing")
+                check(all(digest(ROOT / path) == value for path, value in report["source_hashes"].items()), "sources changed during run")
+                report["status"] = "VERIFYING_ARTIFACTS"
+            except Exception:
+                report.update(status="FAIL_TEST", failure=traceback.format_exc(), classification="UNTRIAGED")
+                if report.get("preflight") == "PASS" and not report.get("sensitive_phase"):
+                    page.screenshot(path=artifacts.directory / "failure.png")
+                    (artifacts.directory / "failure-aria.txt").write_text(artifacts.redact(page.locator("body").aria_snapshot()))
+                else:
+                    report["failure_capture"] = "omitted: credential capture boundary"
+            finally:
+                artifacts.stop_trace(context)
+                context.close()
+                browser.close()
+    except Exception:
+        report.update(status="FAIL_TEST" if report.get("preflight") == "PASS" else "BLOCKED_INFRA", failure=traceback.format_exc())
+    finally:
+        report["server_stopped"] = server.stop()
+        if not report["server_stopped"]:
+            report["status"] = "FAIL_TEST"
+        log = artifacts.private / "server.log"
+        if log.exists():
+            (artifacts.directory / "server.log").write_text(artifacts.redact(log.read_text()))
+        report["private_state"] = "isolated DB/logs retained; owned server stopped; remove this run directory within 7 days"
+        artifacts.write_json("report.json", report)
+        try:
+            artifacts.scan()
+            if report["status"] == "VERIFYING_ARTIFACTS":
+                report["status"] = "PASS"
+        except Exception:
+            report.update(status="FAIL_TEST", artifact_error="credential scan rejected artifact; do not upload")
+        artifacts.write_json("report.json", report)
+    print(json.dumps({"status": report["status"], "contract": contract, "report": str(artifacts.directory / "report.json")}))
+    return 0 if report["status"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

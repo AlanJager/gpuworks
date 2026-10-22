@@ -1,0 +1,51 @@
+model_id: mistralai/ministral-3-8b-instruct-2512
+source: upstream
+display_title: Ministral-3-8B-Instruct-2512
+release_date: '2025-10-31'
+model_config: {model_type: mistral3, num_hidden_layers: 34, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 262144, vision_config: {image_size: 1540, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 139264
+  sglang: 139264
+specs:
+- name: fp8-8b-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Ministral-3-8B-Instruct-2512
+        revision: 5b26027e7b19eeb4b7352e1fed3926375dd2cb4d
+    - modelscope:
+        repo_id: mistralai/Ministral-3-8B-Instruct-2512
+        revision: 10c79cef27290ae36648bdefe9c7ab728512ddc0
+  weight_bytes: 20875283973
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --tokenizer-mode
+  - mistral
+  - --config-format
+  - mistral
+  - --load-format
+  - mistral
+  - --tokenizer_mode
+  - mistral
+  - --config_format
+  - mistral
+  - --load_format
+  - mistral
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

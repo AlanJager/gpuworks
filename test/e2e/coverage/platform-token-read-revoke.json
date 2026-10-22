@@ -1,0 +1,126 @@
+{
+  "contract_id": "gpuworks/platform-token/read-create-revoke",
+  "name": "平台 API 令牌 / UI 创建只读令牌并吊销 / 刷新持久化、只读权限生效且吊销立即失效",
+  "priority": "P0",
+  "page_id": "api-tokens",
+  "control_id": "platform-tokens",
+  "scope": "Single targeted contract; not a full-site Coverage Registry or percentage claim",
+  "test_file": "test/e2e/platform_token_read_revoke.py",
+  "test_function": "test_read_token_create_revoke",
+  "command": "make test-e2e-platform-token",
+  "additional_cases": [
+    {
+      "contract_id": "gpuworks/platform-token/options",
+      "manifest": "test/e2e/coverage/platform-token-options.json"
+    }
+  ],
+  "lane": "local-real-server-sqlite",
+  "identity": "admin creates; read bearer consumes without cookies",
+  "fixture": "isolated process, fresh SQLite, unique runId, real Chrome, no GPU and no management mocks",
+  "product_contracts": [
+    "docs/reference/api.md",
+    "ui/src/pages/apikeys/PlatformTokensCard.tsx",
+    "internal/server/api/platform_tokens.go",
+    "internal/server/api/auth.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "N/A",
+    "reason": "Platform-token authorization is performed by server middleware and store; no agent workload exists"
+  },
+  "fields": [
+    {
+      "field_id": "platform-token.name",
+      "component": "Text",
+      "required": true,
+      "default": "",
+      "request": "name",
+      "persistence": "name",
+      "contract": "trim; 1..128 UTF-8 bytes",
+      "covered": [
+        "empty",
+        "whitespace",
+        "valid name"
+      ],
+      "missing": [
+        "all browser length/character boundaries"
+      ]
+    },
+    {
+      "field_id": "platform-token.scope",
+      "component": "Radio",
+      "default": "read",
+      "request": "scope",
+      "persistence": "scope",
+      "covered": [
+        "option:read"
+      ],
+      "missing": [
+        "option:write"
+      ]
+    },
+    {
+      "field_id": "platform-token.expiry",
+      "component": "Select",
+      "default": 0,
+      "request": "expires_in_days (zero omitted)",
+      "persistence": "expires_at",
+      "covered": [
+        "option:0"
+      ],
+      "missing": [
+        "option:30",
+        "option:90",
+        "option:365",
+        "expiry boundary"
+      ]
+    },
+    {"field_id": "platform-tokens.table-preferences", "component": "ResourceTable settings drawer and resize handles", "request": "N/A: browser-local table preferences", "persistence": "preferences keyed by tableId=platform-tokens", "covered": [], "missing": ["MISSING: drag width/minimum width, hide/show/reorder/reset columns and reload persistence", "MISSING: fixed name/action column restrictions and safe handling of unknown saved columns", "MISSING: api-keys and platform-tokens preferences remain isolated on the same page", "MISSING: concrete sortable columns name/scope/last_used_at/expires_at/created_at in both directions and tied-value ordering; existing full-list gap includes pagination and volumes"]}
+  ],
+  "crud": {
+    "create": "Covered in the named case: default read/no expiry; not full form coverage",
+    "read": "Covered in the named case: reload + exact independent GET + no secret",
+    "update": {
+      "status": "N/A",
+      "reason": "Platform token API and UI expose create/list/revoke only"
+    },
+    "delete": "Covered in the named case: cancel + confirmed revoke + immediate bearer 401"
+  },
+  "checklist_items": {
+    "covered_in_this_scenario": [
+      "1.3",
+      "1.7",
+      "1.14",
+      "7.3",
+      "21.1",
+      "21.5"
+    ],
+    "partial": {
+      "1.2": "default read/no expiry only; no edit form exists",
+      "1.11": "Esc cancellation only; cancel/close button branches missing",
+      "7.4": "read/revoke only; wrong scope and expiry matrix not complete",
+      "7.6": "list/DOM and produced artifact checks; not every response/download surface",
+      "12.1": "create/secret dialog identities; no multi-step wizard applicable",
+      "12.2": "dialog/footer viewport and containment; full spacing/overlap matrix missing",
+      "12.3": "Tab stays inside create modal; explicit default-focus and reverse-cycle matrix missing",
+      "12.4": "Esc with focus return; all closure methods not covered",
+      "12.7": "token name/impact and cancel/revoke; other referenced-resource deletion contracts not applicable"
+    }
+  },
+  "missing": [
+    "complete list matrix and 10/30/100 volumes",
+    "all expiry/scope choices",
+    "non-admin ownership isolation",
+    "server failure and recovery",
+    "full keyboard/style state matrix"
+  ],
+  "result": "NOT_RUN until report.json from this command records PASS and all required evidence; do not infer execution from this manifest",
+  "artifact": "secrets/e2e/<runId>/report.json; SHA, binary digest, locale, evidence, redacted traces and screenshots",
+  "cleanup": "UI revoke asserted inside case; stop owned server; private DB/logs retained for scoped diagnosis, remove this run directory after review within 7 days"
+}

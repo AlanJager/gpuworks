@@ -1,0 +1,159 @@
+model_id: qwen/qwen2.5-vl-7b-instruct
+source: upstream
+display_title: Qwen2.5-VL-7B-Instruct
+parameter_count: 7B
+architecture: dense
+context_length: 128000
+release_date: '2025-01-26'
+model_config: {model_type: qwen2_5_vl, num_hidden_layers: 28, hidden_size: 3584, num_attention_heads: 28, num_key_value_heads: 4, max_position_embeddings: 128000, sliding_window: 32768, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 57344
+  sglang: 57344
+specs:
+- name: int4-vllm-ppu-vision-536a3579
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface: {repo_id: Qwen/Qwen2.5-VL-7B-Instruct-AWQ, revision: 536a35794df8831aa814970ee8f89eff577e7718}
+    - modelscope: {repo_id: Qwen/Qwen2.5-VL-7B-Instruct-AWQ, revision: 4586728e11ebe1809acb1c25073b616f803183d6}
+  weight_bytes: 6923972384
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  args: [--trust-remote-code, --dtype, float16, --quantization, awq, --mm-encoder-tp-mode, data]
+  api:
+    health_endpoint: /health
+    operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct
+        revision: cc594898137f460bfe9f0759e9844b3ce807cfb5
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct
+        revision: 643fa78f70fc5f7c445f6deedf27338629e464ea
+  weight_bytes: 16595981281
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct-AWQ
+        revision: 536a35794df8831aa814970ee8f89eff577e7718
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct-AWQ
+        revision: 4586728e11ebe1809acb1c25073b616f803183d6
+  weight_bytes: 6939964850
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --quantization
+  - awq
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-ppu-536a3579
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct-AWQ
+        revision: 536a35794df8831aa814970ee8f89eff577e7718
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct-AWQ
+        revision: 4586728e11ebe1809acb1c25073b616f803183d6
+  weight_bytes: 6923972384
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --dtype
+  - float16
+  - --quantization
+  - awq
+  - --mm-encoder-tp-mode
+  - data
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-cc594898
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct
+        revision: cc594898137f460bfe9f0759e9844b3ce807cfb5
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-7B-Instruct
+        revision: 643fa78f70fc5f7c445f6deedf27338629e464ea
+  weight_bytes: 16584414560
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --max-model-len
+  - '128000'
+  - --max-num-seqs
+  - '1'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,205 @@
+// pd_sequential.go is the sequential handoff (pdmode.WireSequential): the
+// prefill instance answers a one-token copy of the request, and the decode
+// instance receives the kv_transfer_params it returned.
+
+package proxy
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
+)
+
+// maxPrefillResponseBytes bounds the prefill instance's one-token answer.
+const maxPrefillResponseBytes = 16 << 20
+
+// prefillBody is the prefill instance's copy of the request: one output
+// token, not streamed, and asked to keep the KV for a remote decoder. Fields
+// that only make sense for the real generation go.
+func prefillBody(original []byte) ([]byte, error) {
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(original, &doc); err != nil || doc == nil {
+		return nil, fmt.Errorf("request body is not a JSON object")
+	}
+	one := json.RawMessage("1")
+	doc["max_tokens"] = one
+	if _, ok := doc["max_completion_tokens"]; ok {
+		doc["max_completion_tokens"] = one
+	}
+	doc["stream"] = json.RawMessage("false")
+	for _, key := range []string{"stream_options", "min_tokens", "min_completion_tokens"} {
+		delete(doc, key)
+	}
+	doc[kvTransferField] = json.RawMessage(`{"do_remote_decode":true}`)
+	return json.Marshal(doc)
+}
+
+// prefillOutcome is how one prefill call ended.
+type prefillOutcome struct {
+	prefill  string          // the prefill instance that answered
+	params   json.RawMessage // set on success
+	status   int             // upstream status, 0 when none arrived
+	body     []byte          // upstream body for a 4xx the client gets
+	header   http.Header
+	fallback string // reason to fall back, empty on success or 4xx
+}
+
+// callPrefill sends the prefill copy to one instance over the same tunnel or
+// serving path the decode request uses. A request's prefill copy carries its
+// stage's span as the trace parent; the verifier's own probes (no stage)
+// carry none.
+func (p *Proxy) callPrefill(ctx context.Context, c candidate, path string, body []byte, stage *pdStage) (*http.Response, error) {
+	ctx = context.WithValue(ctx, targetKey, target{nodeUUID: c.nodeUUID, port: c.port, modelName: c.modelName, instanceUUID: c.instanceUUID})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d%s", c.port, path), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	setPrefillTraceHeaders(ctx, req.Header, stage)
+	return p.transport.RoundTrip(req)
+}
+
+// runPrefill finds a prefill instance that answers, trying the next one when
+// a connection fails, and classifies the answer.
+func (p *Proxy) runPrefill(ctx context.Context, route *pdRoute, affinity, decodeNode, path string, body []byte, stage *pdStage, reading replyReading) prefillOutcome {
+	excluded := map[string]bool{}
+	for attempt := 0; attempt < retryMaxAttempts; attempt++ {
+		l := p.pickPrefill(route, affinity, decodeNode, excluded)
+		if l == nil {
+			if attempt == 0 {
+				return prefillOutcome{fallback: pdFallbackNoPrefill}
+			}
+			return prefillOutcome{fallback: pdFallbackUnreachable}
+		}
+		excluded[l.c.instanceUUID] = true
+		stage.tried(l.c.instanceUUID)
+		resp, err := p.callPrefill(ctx, l.c, path, body, stage)
+		if err != nil {
+			if ctx.Err() != nil {
+				l.release(outcomeCanceled)
+				return prefillOutcome{fallback: pdFallbackPrefillFailed}
+			}
+			l.release(outcomeConnFailure)
+			continue
+		}
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, maxPrefillResponseBytes))
+		_ = resp.Body.Close()
+		switch {
+		case readErr != nil:
+			l.release(outcomeConnFailure)
+			return prefillOutcome{status: resp.StatusCode, fallback: pdFallbackPrefillFailed}
+		case resp.StatusCode >= 500:
+			l.release(outcomeUpstreamUnavailable)
+			return prefillOutcome{status: resp.StatusCode, fallback: pdFallbackServerError}
+		case resp.StatusCode >= 400:
+			// The request itself is wrong; the decoder would say the same.
+			l.release(outcomeOK)
+			return prefillOutcome{status: resp.StatusCode, body: data, header: resp.Header}
+		}
+		var answer struct {
+			Params json.RawMessage            `json:"kv_transfer_params"`
+			Usage  map[string]json.RawMessage `json:"usage"`
+		}
+		_ = json.Unmarshal(data, &answer)
+		params := bytes.TrimSpace(answer.Params)
+		if len(params) == 0 || bytes.Equal(params, []byte("null")) || params[0] != '{' {
+			// 200 without the handoff: the engine is not running as a PD
+			// producer (a replaced connector, an image without it). Count it
+			// against the instance so a broken one cools down.
+			p.log.Warn("prefill instance answered without kv_transfer_params", "instance", l.c.instanceUUID, "node", l.c.nodeUUID)
+			l.release(outcomeUpstreamUnavailable)
+			return prefillOutcome{status: resp.StatusCode, fallback: pdFallbackNoKVParams}
+		}
+		l.release(outcomeOK)
+		var cached uint64
+		var cachedKnown bool
+		if shape, ok := inferenceapi.UsageForPath(path); ok && answer.Usage != nil {
+			cached, cachedKnown = cacheFigure(answer.Usage, shape, reading)
+		}
+		stage.answered(l.c.instanceUUID, requestStats(data, reading.rules), cached, cachedKnown)
+		return prefillOutcome{prefill: l.c.instanceUUID, status: resp.StatusCode, params: append(json.RawMessage(nil), params...)}
+	}
+	return prefillOutcome{fallback: pdFallbackUnreachable}
+}
+
+// serveSequentialPrefill is the prefill stage of a sequential handoff
+// (pdmode.WireSequential): the prefill copy first, then the decode request
+// carries the kv_transfer_params it answered with.
+func (p *Proxy) serveSequentialPrefill(w http.ResponseWriter, r *http.Request, tgtp *target, deploymentID uint) (bool, func()) {
+	noop := func() {}
+	tgt := *tgtp
+	route := tgt.pd
+	started := time.Now()
+	original, err := readRequestBody(r, p.maxBodyBytes)
+	if err != nil {
+		// Unreadable here is unreadable for the decoder too; it answers.
+		return true, noop
+	}
+	body, err := prefillBody(original)
+	if err != nil {
+		return true, noop
+	}
+	// The request is in flight from here: the stage shows in the live table
+	// before any decode instance has it.
+	stage := newPDStage(started)
+	tgtp.stage = stage
+	if probeFrom(r.Context()) == nil {
+		_, ident := p.identify(r, "")
+		tgtp.live = newLiveRequest(r, ident, deploymentID, stage, started)
+		p.live.add(tgtp.live)
+	}
+	reading, _ := p.routes.observationFor(deploymentID)
+	outcome := p.runPrefill(r.Context(), route, tgt.affinity, tgt.nodeUUID, r.URL.Path, body, stage, reading)
+	stage.done(time.Now())
+	if outcome.fallback != "" {
+		stage.fellBack(outcome.fallback)
+	}
+	p.acctFor(r.Context()).RecordPDPrefill(deploymentID, time.Since(started), outcome.fallback)
+	if r.Context().Err() != nil {
+		p.releaseTarget(tgt)
+		return false, noop
+	}
+	if outcome.params != nil {
+		cleanup, err := setRequestJSONField(r, kvTransferField, outcome.params, true, p.maxBodyBytes)
+		if err != nil {
+			p.acctFor(r.Context()).RecordPDFallback(deploymentID, pdFallbackPrefillFailed)
+			return true, noop
+		}
+		done := p.handoffs.begin(outcome.prefill)
+		tgtp.firstByte = done
+		return true, func() { done(); cleanup() }
+	}
+	if outcome.fallback == "" {
+		// A 4xx from the prefill instance goes back to the client as it came.
+		p.releaseTarget(tgt)
+		p.acctFor(r.Context()).RecordImmediate(deploymentID, outcome.status, false)
+		for _, h := range []string{"Content-Type"} {
+			if v := outcome.header.Get(h); v != "" {
+				w.Header().Set(h, v)
+			}
+		}
+		w.Header().Set("X-Request-ID", requestID(r))
+		w.WriteHeader(outcome.status)
+		_, _ = w.Write(outcome.body)
+		return false, noop
+	}
+	p.acctFor(r.Context()).RecordPDFallback(deploymentID, outcome.fallback)
+	if route.fallback == pdmode.FallbackFail || !route.mode.DecodeServesAlone {
+		p.releaseTarget(tgt)
+		p.acctFor(r.Context()).RecordImmediate(deploymentID, http.StatusServiceUnavailable, false)
+		w.Header().Set("Retry-After", strconv.Itoa(dataLaneUnavailableRetryAfterSeconds))
+		writeErr(w, http.StatusServiceUnavailable, "no prefill instance could take the request ("+outcome.fallback+")")
+		return false, noop
+	}
+	// Fall back: the decoder computes the prefill itself. The body already
+	// carries no client kv_transfer_params.
+	return true, noop
+}

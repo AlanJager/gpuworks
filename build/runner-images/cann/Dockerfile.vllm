@@ -1,0 +1,267 @@
+# gpuworks-runner: Ascend CANN vLLM 线（vllm-ascend）
+#
+# 派生自 gpustack/runner 的 pack/cann/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
+# 「包装引擎可执行文件以 source SDK env」与「按型号跳过 mooncake/LMCache」两处
+# 做法参照其实现。
+#
+# 内容 = 上游 vanilla（quay.io/ascend/vllm-ascend|vllm-omni，自带 CANN/torch-npu/
+#          vllm-ascend）+ 轻量工具层 + audio extras + mooncake（npu 变体，按型号）
+#
+# **本线一律不装 PyPI 的 vllm-omni**（VLLM_OMNI_VERSION 默认空）：
+#   2026-10-04 在 .32（驱动 26.0.rc1）实证，vllm-omni wheel 装进 vllm-ascend 后，
+#   vllm registry 检查子进程一加载它的 vllm.general_plugins 入口就 SIGABRT
+#   （glibc 堆损坏，LD_PRELOAD=libasan 后不再 abort，属 native 越界写），
+#   与 omni 版本是否对齐无关；容器内卸掉 vllm-omni 后同镜像 serving+chat 全通。
+#   昇腾的 omni 负载请用 vllm-omni 档（base 自带 NPU 原生构建）。
+#   证据：artifacts/work/2026-10-03-runner-images/evidence/r1-verify.md §2.2 与 §2.4
+#
+# **omni 档（OMNI_IN_BASE 非空）额外做两件事**（r3 起；证据 artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md §6h）：
+#   1) 卸掉 base 自带的 pip 包 mooncake-transfer-engine-npu。quay.io/ascend/vllm-omni 从
+#      v0.24.0 起带它（v0.23.0rc1 没有）；它与 vllm_omni 同进程加载时（mooncake/*.so、
+#      libcann_hixl.so、libllm_datadist.so、libibverbs）触发 glibc 堆损坏，表现为
+#      `corrupted size vs. prev_size`：`import vllm_omni` / `vllm --help` 退出阶段 abort，
+#      vLLM 的模型架构内省子进程 SIGABRT，Ming-omni-tts / Qwen3-TTS 起不来。单独
+#      `import mooncake` 不崩。真机（.32，8x910B4，driver 26.1.1）上在 v0.24.0~v0.30.0
+#      容器里先卸这个包：import / `vllm --help` 5/5 rc=0，Qwen3-TTS 出音频。
+#      omni 档因此不装 mooncake 层（MOONCAKE 置空），并用 requires 项 omni_no_mooncake 守住，
+#      以后换 base 时它悄悄回来会让构建失败。
+#   2) 给 vllm_omni 打补丁（patches/vllm_omni/；严格应用）：001 非 omni 负载旁路；002 让
+#      Ming-omni-tts 的 ISTFT 在 NPU 上能跑（hann_window 与 F.fold 回 CPU）。
+ARG BASE_IMAGE=quay.io/ascend/vllm-ascend:v0.26.0rc1
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG VLLM_OMNI_VERSION=
+# omni 由 base 自带（vllm-omni 档）时记在这里：只用于自描述，不触发安装。
+ARG OMNI_IN_BASE=
+ARG MOONCAKE=npu
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+# base 里被 pip uninstall 卸干净、却留下空目录的包名（空格分隔）。见下方 PURGE_STUB_PKGS 一节。
+ARG PURGE_STUB_PKGS=
+# 构建期镜像源：ARG 而非 ENV。写进 ENV 等于把构建期的国内镜像源烙进运行期镜像，
+# 用户在别的网络环境里 pip 装东西会莫名走阿里云。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+ARG APT_MIRROR=mirrors.aliyun.com
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层
+#
+# apt 源的镜像改写只在构建期生效：先备份、装完还原，不把镜像源留给用户。
+RUN <<EOF
+    set -eux
+    if command -v apt-get >/dev/null 2>&1; then
+        mkdir -p /tmp/apt-backup
+        cp -a /etc/apt/sources.list /tmp/apt-backup/ 2>/dev/null || true
+        cp -a /etc/apt/sources.list.d /tmp/apt-backup/ 2>/dev/null || true
+        sed -i \
+            -e "s|archive.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+            -e "s|security.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+            -e "s|ports.ubuntu.com/ubuntu-ports|${APT_MIRROR}/ubuntu-ports|g" \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+        apt-get update -y
+        apt-get install -y --no-install-recommends \
+            tini jq curl wget vim less tree bc \
+            iproute2 iputils-ping net-tools dnsutils \
+            procps sysstat htop \
+            ffmpeg patch
+        rm -rf /etc/apt/sources.list /etc/apt/sources.list.d
+        cp -a /tmp/apt-backup/sources.list /etc/apt/ 2>/dev/null || true
+        cp -a /tmp/apt-backup/sources.list.d /etc/apt/ 2>/dev/null || true
+        rm -rf /tmp/apt-backup /var/cache/apt /var/tmp/* /tmp/*
+    else
+        yum install -y epel-release || true
+        yum install -y jq curl wget vim less tree bc iproute iputils net-tools procps-ng sysstat htop ffmpeg patch
+        rm -rf /var/cache/yum /tmp/*
+    fi
+EOF
+
+## audio extras（+ 可选 omni，默认不装）
+RUN <<EOF
+    set -eux
+    PIP="python3 -m pip"
+    if [ -n "${VLLM_OMNI_VERSION}" ]; then
+        # 仅当调用方显式要求时才装；默认空。装了就必须能 import，否则构建失败。
+        ${PIP} install --no-cache-dir "vllm-omni==${VLLM_OMNI_VERSION}"
+        python3 -c "import vllm_omni"
+    fi
+    ${PIP} install --no-cache-dir librosa soundfile 'mistral_common[audio]'
+EOF
+
+## mooncake（npu 变体；310p 等无对应后端的型号传 MOONCAKE="" 跳过；omni 档不许装，见顶部说明）
+RUN <<EOF
+    set -eux
+    if [ -n "${OMNI_IN_BASE}" ] && [ -n "${MOONCAKE}" ]; then
+        echo "ERROR: omni 档（OMNI_IN_BASE=${OMNI_IN_BASE}）不能装 mooncake：它与 vllm_omni 同进程加载会堆损坏。" >&2
+        echo "       matrix 里该档的 MOONCAKE 必须置空。" >&2
+        exit 1
+    fi
+    if [ "${MOONCAKE}" = "npu" ]; then
+        python3 -m pip install --no-cache-dir mooncake-transfer-engine-npu
+        python3 -c "import mooncake"
+    else
+        echo "mooncake disabled for this档 (MOONCAKE='${MOONCAKE}')"
+    fi
+EOF
+
+## omni 档：卸掉 base 自带的 mooncake-transfer-engine-npu 并给 vllm_omni 打补丁
+#
+# 卸载放在所有 pip 安装之后，保证后面没有层把它装回来。非 omni 档（OMNI_IN_BASE 为空）整层空操作。
+# vllm_omni 在 base 里是 editable 安装（/vllm-workspace/vllm-omni），不在 site-packages，
+# 所以补丁目标按 find_spec 定位（只定位、不 import：import 本身就是崩溃的触发点之一）。
+COPY shared/apply_patches.sh /opt/gpuworks/shared/apply_patches.sh
+COPY patches/vllm_omni/ /tmp/patches-omni/
+RUN <<EOF
+    set -eux
+    if [ -n "${OMNI_IN_BASE}" ]; then
+        if python3 -m pip show mooncake-transfer-engine-npu >/dev/null 2>&1; then
+            python3 -m pip uninstall -y mooncake-transfer-engine-npu
+        fi
+        if python3 -m pip show mooncake-transfer-engine-npu >/dev/null 2>&1; then
+            echo "ERROR: mooncake-transfer-engine-npu 卸载后仍在" >&2; exit 1
+        fi
+        OMNI_ROOT=$(python3 -c "import importlib.util as u, os; s = u.find_spec('vllm_omni'); print(os.path.dirname(os.path.dirname(s.origin)))")
+        test -d "${OMNI_ROOT}/vllm_omni"
+        PATCH_DIR=/tmp/patches-omni TARGET="${OMNI_ROOT}" \
+            MANIFEST=/opt/gpuworks/patches-omni.json EXPECT_ALL=1 \
+            bash /opt/gpuworks/shared/apply_patches.sh
+        find "${OMNI_ROOT}/vllm_omni" -name '*.rej' -o -name '*.orig' | head -50 | xargs -r rm -f
+    fi
+    rm -rf /tmp/patches-omni
+EOF
+
+## PURGE_STUB_PKGS：删掉 base 里 pip uninstall 留下的空壳包目录
+#
+# pip uninstall 只删文件、不删空目录。被卸干净的包会在 site-packages 留下一棵只有目录的
+# 残骸，而 PEP 420 让它成为可导入的命名空间包，把真正该装的包遮掉：`import X` 成功、
+# X 却没有任何属性。上游 `-310p` base 卸掉 triton-ascend 后就是这样，真机上原样
+# `import torch` 直接失败（artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md）。
+#
+# 为什么要逐档声明而不是无条件清：无条件删「没有文件的目录」会把 base 里将来可能正当
+# 存在的空目录一起删掉，静默改变 base 内容。声明式让每档对自己的 base 负责。
+#
+# 声明按档、事实按平台：同一档的两个架构可能不同。实测 `-310p` base 的 amd64 有这棵
+# triton 残骸，arm64 连目录都没有（完全没装 triton，torch 的 `import triton` 直接
+# ImportError，于是绕开整条 triton 路径，不会坏）。所以「目录不存在」只记一条 NOTICE，
+# 不算失败；真正该拦的是「声明要清的却是个带文件的真包」，那一定是声明写错了。
+#
+# 这样放宽是安全的，因为我们要的不变量由 assert_requires.sh 的 check_no_stub_pkg_dirs
+# 在每个平台的构建末尾无条件断言（site-packages 下不许有不含任何文件的目录树）：
+# 残骸真的还在，那条断言就会让构建失败，正确性不依赖这里的声明是否精确。
+RUN <<EOF
+    set -eux
+    if [ -n "${PURGE_STUB_PKGS}" ]; then
+        mkdir -p /opt/gpuworks
+        PURGE_STUB_PKGS="${PURGE_STUB_PKGS}" python3 - > /opt/gpuworks/purged-stubs.json <<'PY'
+import json, os, shutil, sys, sysconfig
+
+roots = []
+for key in ("purelib", "platlib"):
+    # 两者常常是同一个目录，去重，否则同一棵树会被删两次
+    path = sysconfig.get_paths().get(key)
+    if path and os.path.isdir(path) and path not in roots:
+        roots.append(path)
+
+purged, absent = [], []
+for pkg in os.environ["PURGE_STUB_PKGS"].split():
+    dirs = [os.path.join(r, pkg) for r in roots if os.path.isdir(os.path.join(r, pkg))]
+    if not dirs:
+        print(f"NOTICE: PURGE_STUB_PKGS declares {pkg} but this platform has no "
+              f"{pkg}/ under {roots}; nothing to purge", file=sys.stderr)
+        absent.append(pkg)
+        continue
+    for target in dirs:
+        files = []
+        for dirpath, dirnames, filenames in os.walk(target):
+            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+            files += [os.path.join(dirpath, f) for f in filenames]
+        if files:
+            sys.exit(f"PURGE_STUB_PKGS declares {pkg} but {target} still holds files "
+                     f"({files[:3]}): it is a real install, not uninstall debris")
+        shutil.rmtree(target)
+        purged.append(target)
+json.dump({"absent": sorted(absent), "purged": sorted(purged)},
+          open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    fi
+EOF
+
+## 包装引擎可执行文件，使其自行 source Ascend env
+#
+# 为什么需要：base 的 ENTRYPOINT 会 source ascend-toolkit/ascendnpu-ir/nnal-atb 的
+# set_env.sh 再 exec "$@"。但 gpuworks 的 spec 一旦声明 entrypoint，就会**覆盖**
+# 镜像 ENTRYPOINT（internal/agent/engine 的 toWorkloadSpec / docker 驱动的
+# --entrypoint），env 链就断了。把 source 放进 `vllm` 自身，两种情形都成立。
+RUN <<EOF
+    set -eux
+    PREFIX=$(python3 -c "import sys; print(sys.base_prefix)")
+    TARGET="${PREFIX}/bin/vllm"
+    if [ ! -x "${TARGET}" ]; then
+        echo "WARN: no vllm executable at ${TARGET}, skip wrapper"
+        exit 0
+    fi
+    if [ -e "${TARGET}.real" ]; then
+        echo "wrapper already installed"
+        exit 0
+    fi
+    mv "${TARGET}" "${TARGET}.real"
+    cat > "${TARGET}" <<'WRAP'
+#!/usr/bin/env bash
+# gpuworks: source the Ascend env chain before handing off to the real vllm.
+# Keep this idempotent and quiet —— it runs on every container start, including
+# the ones whose entrypoint was overridden by a catalog spec.
+set -eo pipefail
+_source_if() { [ -f "$1" ] && . "$1" || true; }
+_source_if /usr/local/Ascend/ascend-toolkit/set_env.sh
+for _irsh in /usr/local/Ascend/cann-*/share/info/ascendnpu-ir/bin/set_env.sh; do
+    _source_if "${_irsh}"
+done
+if [ -f /usr/local/Ascend/nnal/atb/set_env.sh ]; then
+    . /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi="${ATB_CXX_ABI:-1}" || true
+fi
+exec "${BASH_SOURCE[0]}.real" "$@"
+WRAP
+    chmod a+x "${TARGET}"
+    # 只做语法检查，**不在构建期执行 vllm**：构建容器里没有 NPU，而本线的已知
+    # 崩溃恰好发生在 vllm 子进程的 import 扫描里（artifacts/work/2026-10-03-runner-images/evidence/r1-verify.md §2.2），在这里跑一次等于
+    # 把一个与镜像内容无关的环境问题变成构建失败。引擎能否起来由真机验证负责。
+    bash -n "${TARGET}"
+    test -x "${TARGET}" && test -x "${TARGET}.real"
+EOF
+
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    export OMNI_IN_BASE="${OMNI_IN_BASE}" VLLM_OMNI_VERSION="${VLLM_OMNI_VERSION}"
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "vllm",
+    "framework": "cann",
+    "requires": os.environ["REQUIRES"].split(),
+    "omni": os.environ.get("VLLM_OMNI_VERSION") or os.environ.get("OMNI_IN_BASE") or None,
+    "mooncake": os.environ.get("MOONCAKE") or None,
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=vllm OMNI_VERSION="${VLLM_OMNI_VERSION:-${OMNI_IN_BASE}}" \
+        bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm-ascend" \
+      io.gpuworks.framework="cann" \
+      io.gpuworks.omni="${VLLM_OMNI_VERSION:-${OMNI_IN_BASE}}" \
+      io.gpuworks.mooncake="${MOONCAKE}" \
+      io.gpuworks.requires="${REQUIRES}"

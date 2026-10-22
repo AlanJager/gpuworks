@@ -1,0 +1,64 @@
+model_id: ath-maas/ovis2.5-2b
+source: upstream
+display_title: ovis2.5-2b
+release_date: '2025-08-15'
+model_config: {model_type: ovis2_5, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960, vision_config: {image_size: 512, patch_size: 16}}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-callable-hygon-5b05949a
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: image.sourcefind.cn:5000/dcu/admin/base/pytorch
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: AIDC-AI/Ovis2.5-2B
+        revision: 393c932b2a03e28eb9aaa503e3c4ab3ad384d958
+    - modelscope:
+        repo_id: ATH-MaaS/Ovis2.5-2B
+        revision: 560840a79eba7100f1454ee41071d91d60b6e276
+  weight_bytes: 5156987258
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --adapter
+  - vision_remote_adapter
+  - --operation
+  - openai.chat
+  - --adapter-config
+  - '{"family":"ovis","max_new_tokens":128}'
+  env:
+    HF_HUB_OFFLINE: '1'
+    PYTHONPATH: /opt/gpuworks/runtime
+    TOKENIZERS_PARALLELISM: 'false'
+    TRANSFORMERS_OFFLINE: '1'
+  assets:
+  - file: assets/gpuworks-vision_remote-runtime.tar.gz
+    sha256: 96a58516ab8a27abdc685b38062c1d8a9691283c6ece1a34fb7412acf4479f38
+    unpack_to: /opt/gpuworks/runtime
+  entrypoint:
+  - python3
+  - /opt/gpuworks/runtime/gpuworks_serve.py
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

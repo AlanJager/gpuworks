@@ -1,0 +1,64 @@
+model_id: weiboai/vibethinker-3b
+source: upstream
+display_title: VibeThinker 3B
+parameter_count: 3.09B
+architecture: dense
+model_config: {model_type: qwen2, num_hidden_layers: 36, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 2, max_position_embeddings: 131072, sliding_window: 32768}
+kv_bytes_per_token:
+  vllm: 36864
+  sglang: 36864
+specs:
+- name: bf16-vllm-ppu-77bd2cce
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: WeiboAI/VibeThinker-3B
+        revision: 77bd2cced09193c8b9a59a32bd8577bbd1f3e01c
+    - modelscope:
+        repo_id: WeiboAI/VibeThinker-3B
+        revision: 77bd2cced09193c8b9a59a32bd8577bbd1f3e01c
+  weight_bytes: 6171927000
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: WeiboAI/VibeThinker-3B
+        revision: 77bd2cced09193c8b9a59a32bd8577bbd1f3e01c
+    - modelscope:
+        repo_id: WeiboAI/VibeThinker-3B
+        revision: 77bd2cced09193c8b9a59a32bd8577bbd1f3e01c
+  weight_bytes: 6171927000
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

@@ -1,0 +1,369 @@
+{
+  "scope": "Targeted network definition contracts, not communication or full page coverage",
+  "test_file": "test/e2e/network_type_roles.py",
+  "command": "make test-e2e-network-type-roles",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "result": "NOT_RUN: execution belongs to SHA/runId report",
+  "product_contracts": [
+    "ui/src/pages/networks/NetworkFormModal.tsx",
+    "ui/src/pages/networks/networkDisplay.tsx",
+    "internal/server/netplan/vocab.go",
+    "internal/server/api/networks.go"
+  ],
+  "dictionary": {
+    "types": [
+      "host_ethernet",
+      "host_rdma",
+      "accelerator_rdma"
+    ],
+    "roles": [
+      "storage_sync",
+      "compute",
+      "serving"
+    ],
+    "type_roles": {
+      "host_ethernet": [
+        "storage_sync",
+        "compute",
+        "serving"
+      ],
+      "host_rdma": [
+        "storage_sync",
+        "compute",
+        "serving"
+      ],
+      "accelerator_rdma": [
+        "compute"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "case_id": "host_ethernet--storage_sync",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--storage_sync",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--storage_sync / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_ethernet--compute",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--compute",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--compute / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_ethernet--serving",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_ethernet--storage_sync-compute",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--storage_sync-compute",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--storage_sync-compute / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_ethernet--storage_sync-serving",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--storage_sync-serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--storage_sync-serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_ethernet--compute-serving",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--compute-serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--compute-serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_ethernet--storage_sync-compute-serving",
+      "contract_id": "gpuworks/network/type-role/host_ethernet--storage_sync-compute-serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_ethernet--storage_sync-compute-serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--storage_sync",
+      "contract_id": "gpuworks/network/type-role/host_rdma--storage_sync",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--storage_sync / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--compute",
+      "contract_id": "gpuworks/network/type-role/host_rdma--compute",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--compute / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--serving",
+      "contract_id": "gpuworks/network/type-role/host_rdma--serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--storage_sync-compute",
+      "contract_id": "gpuworks/network/type-role/host_rdma--storage_sync-compute",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--storage_sync-compute / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--storage_sync-serving",
+      "contract_id": "gpuworks/network/type-role/host_rdma--storage_sync-serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--storage_sync-serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--compute-serving",
+      "contract_id": "gpuworks/network/type-role/host_rdma--compute-serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--compute-serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "host_rdma--storage_sync-compute-serving",
+      "contract_id": "gpuworks/network/type-role/host_rdma--storage_sync-compute-serving",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / host_rdma--storage_sync-compute-serving / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "accelerator_rdma--compute",
+      "contract_id": "gpuworks/network/type-role/accelerator_rdma--compute",
+      "test_function": "test_type_role_combination",
+      "name": "网络 / accelerator_rdma--compute / UI保存、刷新类型角色回填并删除",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "to-host_rdma-and-back",
+      "contract_id": "gpuworks/network/type-role/to-host_rdma-and-back",
+      "test_function": "test_type_transition",
+      "name": "网络 / to-host_rdma-and-back / 隐藏接口清空且切回不复活角色",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    },
+    {
+      "case_id": "to-accelerator_rdma-and-back",
+      "contract_id": "gpuworks/network/type-role/to-accelerator_rdma-and-back",
+      "test_function": "test_type_transition",
+      "name": "网络 / to-accelerator_rdma-and-back / 隐藏接口清空且切回不复活角色",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "id": "name",
+      "component": "Text",
+      "request": "name",
+      "persisted": "name",
+      "required": true,
+      "default": "",
+      "contract": "trim/nonempty/UI maxLength64",
+      "covered": "Unique runId name for each owned definition",
+      "missing": [
+        "boundaries; baseline empty/space/cancel in network-storage-lifecycle.json"
+      ]
+    },
+    {
+      "id": "description",
+      "component": "Text",
+      "request": "description",
+      "persisted": "description",
+      "required": false,
+      "default": "",
+      "contract": "UI maxLength256",
+      "covered": "empty combinations; unchanged nonempty during type updates",
+      "missing": [
+        "boundaries; baseline clear in network-storage-lifecycle.json"
+      ]
+    },
+    {
+      "id": "type",
+      "component": "Radio",
+      "request": "type",
+      "persisted": "type",
+      "options": [
+        "host_ethernet",
+        "host_rdma",
+        "accelerator_rdma"
+      ],
+      "covered": "Every option and valid nonempty role subset; both Ethernet/RDMA switch-back paths",
+      "missing": [
+        "RDMA to the other RDMA directly",
+        "full keyboard arrow navigation"
+      ]
+    },
+    {
+      "id": "roles",
+      "component": "Checkbox group",
+      "request": "roles",
+      "persisted": "roles",
+      "options": [
+        "storage_sync",
+        "compute",
+        "serving"
+      ],
+      "covered": "All 15 allowed nonempty type-role combinations; accelerator removes/disables unsupported roles without resurrection",
+      "missing": [
+        "all role removals in one draft",
+        "server dictionary failure/refresh while form dirty"
+      ]
+    },
+    {
+      "id": "cidr",
+      "component": "Conditional Text",
+      "request": "cidr",
+      "persisted": "cidr",
+      "covered": "Empty default all types; IPv4 CIDR preserved across two RDMA switch/back paths and independent GET",
+      "missing": [
+        "IPv6",
+        "invalid/boundary CIDR",
+        "clear saved RDMA CIDR"
+      ]
+    },
+    {
+      "id": "interface",
+      "component": "Conditional Text",
+      "request": "interface",
+      "persisted": "interface",
+      "covered": "Draft glob retained before save; RDMA hides field/submits empty; saved empty remains on Ethernet switch-back",
+      "missing": [
+        "pattern boundaries",
+        "agent interface resolution"
+      ]
+    },
+    {
+      "id": "advanced",
+      "component": "Collapse",
+      "request": null,
+      "persisted": null,
+      "covered": "Empty RDMA create/edit collapsed; saved CIDR edit expanded; close/reopen preserves CIDR",
+      "missing": [
+        "keyboard expansion",
+        "collapsed submission with nonempty CIDR"
+      ]
+    }
+  ],
+  "crud": {
+    "Create": "15 valid combinations and 2 transition prerequisites via UI",
+    "Read": "Independent detail GET and refreshed edit backfill",
+    "Update": "Two Ethernet→RDMA→Ethernet paths via UI PUT",
+    "Delete": "UI delete/GET404/list restored for each owned unreferenced resource"
+  },
+  "checklist_items": {
+    "1.1/1.9/1.10/1.14": "PARTIAL: defaults, condition switching, precise request, saved refresh",
+    "5.1/5.2/5.4/5.5": "covered for three network type options and declared switch paths",
+    "6.1/6.4": "covered for role compatibility; full toggle matrix MISSING",
+    "12.1/12.2/12.7": "PARTIAL: named create dialog viewport and scoped deletion; full geometry/focus/state matrix MISSING"
+  },
+  "runtime": {
+    "status": "N/A for definition-only contract",
+    "reason": "No attached agent/node; no communication, address resolution, RDMA rail, probe, or throughput claim"
+  },
+  "missing": [
+    "node/label attachments and propagation",
+    "traffic and connectivity across nodes",
+    "reference-protected deletion",
+    "permissions",
+    "failure recovery",
+    "field length and invalid-value boundaries",
+    "10/30/100 records and full list matrix",
+    "submit loading/double click",
+    "all theme/keyboard states"
+  ],
+  "priority": "P1"
+}

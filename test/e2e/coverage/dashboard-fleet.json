@@ -1,0 +1,76 @@
+{
+  "contract_id": "gpuworks/dashboard/fleet-inventory-label-grouping",
+  "name": "概览 / 未上线节点库存与标签容量分组 / UI 计数、切换标签键、刷新与独立 GET 一致",
+  "test_file": "test/e2e/dashboard_fleet.py",
+  "test_function": "test_dashboard_fleet",
+  "command": "make test-e2e-dashboard-fleet",
+  "priority": "P1",
+  "page_id": "dashboard",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The dashboard reads fleet records. The three nodes are pending (connecting) definitions prepared through the product API; no agent, container, GPU or live metric is claimed."
+  },
+  "crud": {
+    "create": "N/A for the tested read path: three pending (connecting) node definitions and their labels are fixtures prepared through the product API",
+    "read": "UI totals, offline tag, default team groups and switched rack groups; independent GET for both keys",
+    "update": "N/A: the dashboard does not mutate fleet records",
+    "delete": "Cleanup only: all three owned nodes are force-deleted through the API"
+  },
+  "fields": [
+    {
+      "id": "dashboard.node-counts",
+      "component": "Statistic cards",
+      "request": "GET /api/v1/dashboard/summary",
+      "persisted": "N/A: counted from stored nodes",
+      "covered": ["total 3", "online 0", "connecting 3", "managed GPUs 0", "offline tag 0", "normal platform health"],
+      "missing": ["online nodes", "live GPU/VRAM capacity", "memory and power cards"]
+    },
+    {
+      "id": "dashboard.label-keys",
+      "component": "Select in Capacity by label",
+      "request": "GET /api/v1/dashboard/summary?label_key=rack",
+      "persisted": "N/A: ephemeral selection",
+      "covered": ["keys team and rack", "default team (most used)", "switch to rack requests label_key=rack"],
+      "missing": ["ties between keys", "an unknown requested key", "key disappearing after a label edit"]
+    },
+    {
+      "id": "dashboard.label-groups",
+      "component": "Capacity rows",
+      "request": "GET /api/v1/dashboard/summary[?label_key=...]",
+      "persisted": "N/A: counted from stored labels",
+      "covered": ["A2+B1: team=alpha has 2 nodes and team=beta 1 in the UI and the summary", "rack=r1 has 2 nodes and the unlabeled group 1 after switching", "each group count tag is asserted in its own row", "group counts add up to the fleet total for both keys", "the reloaded default summary matches the earlier default"],
+      "missing": ["labels on online nodes with real GPUs", "unusable GPU counts", "capacity percentages with nonzero GPUs", "a group whose nodes are deleted while the page is open"]
+    },
+    {
+      "id": "dashboard.cleanup",
+      "component": "N/A: API fixture cleanup",
+      "request": "DELETE /nodes/{uuid}?force=true",
+      "persisted": "removal",
+      "covered": ["all three owned nodes deleted", "independent GET returns 404"],
+      "missing": ["the force-removal UI, already covered by gpuworks/node/removal-with-explicit-force"]
+    }
+  ],
+  "checklist_items": {
+    "1.14": "Refresh keeps the fleet counts and default grouping",
+    "5.3": "N/A: the label-key Select has no search input (no showSearch); the option is chosen from the visible list",
+    "10.11": "A2+B1 grouping: per-group node counts, exact group sets, totals and key-switch consistency in the UI and summary",
+    "17.1": "Known nonzero and zero sample values are rendered from the persisted summary; loading, empty, error and stale states remain MISSING"
+  },
+  "missing": [
+    "MISSING: checklist 10.4 (group-row sorting) — no sort interaction exists or is exercised",
+    "MISSING: checklist 17.1 loading, empty, error and stale states",
+    "MISSING: checklist 22.5 (zh/en navigation, first screen, error and empty text)",
+    "MISSING: real GPU capacity, VRAM, utilization, temperature and power",
+    "MISSING: time-series charts and historical windows",
+    "MISSING: provider health and invalid public/private clouds",
+    "MISSING: an empty fleet and the empty-state copy",
+    "MISSING: ties between label keys and an unknown requested key",
+    "MISSING: capacity percentages and unusable GPU counts with nonzero GPUs",
+    "MISSING: a thousand-node scale run"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test digests, locale, summary requests, independent GET documents and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

@@ -1,0 +1,58 @@
+model_id: ATH-MaaS/Ovis2.5-9B-ppu
+source: upstream
+display_title: ATH-MaaS/Ovis2.5-9B PPU alias
+model_config:
+  model_type: ovis2_5
+  num_hidden_layers: 36
+  hidden_size: 4096
+  num_attention_heads: 32
+  num_key_value_heads: 8
+  head_dim: 128
+  max_position_embeddings: 40960
+  vision_config:
+    image_size: 512
+    patch_size: 16
+kv_bytes_per_token:
+  vllm: 147456
+  sglang: 147456
+specs:
+- name: bf16-vllm-ppu-d73b2283-alias
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ATH-MaaS/Ovis2.5-9B
+        revision: d73b2283ae2a930b7762f8d7b8b8a3f0f3b5c3bd
+    - modelscope:
+        repo_id: ATH-MaaS/Ovis2.5-9B
+        revision: 093424e005d8e3f795fb37665ad62ba0e37446ef
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --max-model-len
+  - '40960'
+  - --max-num-seqs
+  - '1'
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 18349727512
+input_modalities:
+- text
+- image

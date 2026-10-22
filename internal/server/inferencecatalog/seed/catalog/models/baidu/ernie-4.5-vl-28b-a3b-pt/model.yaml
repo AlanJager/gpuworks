@@ -1,0 +1,42 @@
+model_id: baidu/ernie-4.5-vl-28b-a3b-pt
+source: upstream
+display_title: ERNIE-4.5-VL-28B-A3B-PT
+parameter_count: 28B
+architecture: moe
+context_length: 131072
+release_date: '2025-06-28'
+model_config: {model_type: ernie4_5_moe_vl, num_hidden_layers: 28, hidden_size: 2560, num_attention_heads: 20, num_key_value_heads: 4, max_position_embeddings: 131072, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 57344
+  sglang: 57344
+specs:
+- name: bf16-default-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: baidu/ERNIE-4.5-VL-28B-A3B-PT
+        revision: e3815e65c607ea211bfe21b46ab0cd264b76731c
+    - modelscope:
+        repo_id: PaddlePaddle/ERNIE-4.5-VL-28B-A3B-PT
+        revision: 101ce591a513e42e6ce75bea04bbb1663e36826d
+  weight_bytes: 58820707865
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,69 @@
+model_id: qwen/qwen3.5-122b-a10b-gptq-int4
+source: upstream
+display_title: Qwen3.5 122B A10B GPTQ Int4
+parameter_count: 125B
+architecture: dense
+model_config: {model_type: qwen3_5_moe, num_hidden_layers: 48, hidden_size: 3072, num_attention_heads: 32, num_key_value_heads: 2, head_dim: 256, max_position_embeddings: 262144, layer_types: [linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention], vision_config: {patch_size: 16, max_position_embeddings: 2304}}
+kv_bytes_per_token:
+  vllm: 24576
+  sglang: 24576
+specs:
+- name: int4-vllm-ppu-30cd92cb
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-122B-A10B-GPTQ-Int4
+        revision: 30cd92cba9707a9aba09d1e490ed4b66b78e9606
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-122B-A10B-GPTQ-Int4
+        revision: 30cd92cba9707a9aba09d1e490ed4b66b78e9606
+  weight_bytes: 78864326320
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"PPU profile\
+      \ requires exactly 2 GPU(s)\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2,\
+      \ \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.5-122B-A10B-GPTQ-Int4
+        revision: 30cd92cba9707a9aba09d1e490ed4b66b78e9606
+    - modelscope:
+        repo_id: Qwen/Qwen3.5-122B-A10B-GPTQ-Int4
+        revision: 30cd92cba9707a9aba09d1e490ed4b66b78e9606
+  weight_bytes: 78864326320
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,10 @@
+--- a/src/host_validation.c
++++ b/src/host_validation.c
+@@ -30,6 +30,7 @@
+ 
+ /* Cross-platform CPU yield/pause hint for spin-wait loops */
+ #if defined(__x86_64__) || defined(__i386__)
++  #include <immintrin.h>
+   #define cpu_relax() _mm_pause()
+ #elif defined(__aarch64__)
+   #define cpu_relax() __asm__ __volatile__("yield" ::: "memory")

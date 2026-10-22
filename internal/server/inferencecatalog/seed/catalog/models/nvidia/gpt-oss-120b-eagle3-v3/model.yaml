@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 2048
+  sglang: 2048
+model_id: nvidia/gpt-oss-120b-eagle3-v3
+source: upstream
+display_title: gpt-oss-120b-Eagle3-v3
+release_date: '2026-03-28'
+specs: []
+input_modalities: [text]

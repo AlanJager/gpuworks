@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>E2E 覆盖地图 · GPUWorks</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#203047;background:#f3f5f8;font-size:14px;color-scheme:light}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0}button,input,select{font:inherit}button,select{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #6887ea;outline-offset:2px}
+header{background:#17283f;color:#fff;padding:24px 32px}h1{margin:0 0 8px;font-size:26px;letter-spacing:-.5px}header p{margin:5px 0;color:#becde0;line-height:1.6}.sha{font-family:monospace;color:#e6edff}
+main{max-width:1680px;margin:auto;padding:22px 28px}.note{background:#fff8e8;border:1px solid #ead8aa;padding:12px 16px;border-radius:9px;line-height:1.7;color:#75551e}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:18px 0}.stat{background:#fff;border:1px solid #dfe5ee;border-radius:10px;padding:16px}.stat strong{display:block;font-size:28px;margin:5px 0}.muted{color:#66758a;font-size:12px;line-height:1.6}
+.layout{display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px}aside{align-self:start;background:#fff;padding:10px;border:1px solid #dfe5ee;border-radius:10px}aside button{display:flex;justify-content:space-between;gap:8px;width:100%;border:0;background:none;padding:10px;border-radius:6px;color:#455670;text-align:left}aside button.active{background:#eaf0ff;color:#244dba;font-weight:650}.count{font-size:12px;color:#7b8ba1}
+.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{border:1px solid #d5ddea;border-radius:7px;background:#fff;padding:10px 16px;color:#4d5e76}.tabs button[aria-selected=true]{background:#244dba;color:#fff;border-color:#244dba}.filters{display:flex;flex-wrap:wrap;gap:9px;align-items:end;background:#fff;padding:14px;border:1px solid #dfe5ee;border-radius:9px;margin-bottom:12px}.filters label{display:grid;gap:5px;font-size:12px;color:#5e6e83}.filters input,.filters select{padding:8px 9px;background:#fff;color:#203047;border:1px solid #cbd5e2;border-radius:6px;max-width:240px}.filters .search{flex:1;min-width:180px}.search input{width:100%;max-width:none}.check{display:flex!important;align-items:center;gap:6px!important;padding-bottom:8px}.summary-line{display:flex;justify-content:space-between;margin:10px 0;color:#66758a;font-size:12px}
+.content{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;align-items:start}.panel{background:#fff;border:1px solid #dfe5ee;border-radius:9px;min-width:0;overflow:hidden}table{border-collapse:collapse;width:100%;font-size:13px}th{text-align:left;background:#f8fafe;color:#62718a;font-size:12px;font-weight:600;padding:12px;border-bottom:1px solid #e0e6ef}td{padding:12px;border-bottom:1px solid #eef1f5;vertical-align:top;overflow-wrap:anywhere}tr.selected{background:#eef3ff}.row-name{background:none;border:0;padding:0;color:#244dba;font-weight:600;line-height:1.6;text-align:left}.sub{font-size:11px;color:#738197;margin-top:5px;overflow-wrap:anywhere}.badge{display:inline-block;border-radius:5px;padding:3px 6px;font-size:11px;margin:2px 3px 2px 0;line-height:1.4;background:#edf1f6;color:#54657c}.pass{background:#e5f5ed;color:#18734b}.fail{background:#fce8e7;color:#a32f29}.history{background:#eef0f4;color:#647086}.evidence,.dirty,.blocked{background:#fff1d9;color:#95611c}.bar{height:6px;min-width:75px;background:#e7edf5;border-radius:5px;margin-top:8px;overflow:hidden}.bar span{display:block;height:100%;background:#4267c7}.percent{font-size:18px;font-weight:650;white-space:nowrap}.ratio{font-size:12px;color:#697990;white-space:nowrap}
+#detail{padding:20px;max-height:1000px;overflow:auto}h2{font-size:17px;line-height:1.6;margin:0 0 10px}h3{font-size:13px;margin:20px 0 8px}p{line-height:1.7}dl{display:grid;grid-template-columns:65px minmax(0,1fr);gap:8px;margin:14px 0;font-size:12px}dt{color:#7a8799}dd{margin:0;overflow-wrap:anywhere}pre{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;padding:12px;border-radius:6px;line-height:1.65}ul{padding-left:20px;line-height:1.7}li{margin:7px 0;overflow-wrap:anywhere}.claim-path{font-family:monospace;font-size:10px;color:#8290a1;display:block}.empty{padding:35px 20px;text-align:center;color:#748399;line-height:1.8}.run{padding:9px 0;border-bottom:1px solid #eef1f5}.copy{border:1px solid #cad6e5;background:#fff;padding:6px 10px;border-radius:5px;color:#355a9c}details{margin-top:15px}summary{cursor:pointer;color:#4e6382;font-size:12px}.warnings{margin-top:20px;color:#91601b}footer{margin-top:20px;color:#7a879b;font-size:12px;line-height:1.8}
+@media(max-width:1150px){.content{grid-template-columns:1fr}#detail{max-height:none}.stats{gap:8px}.stat{padding:12px}.stat strong{font-size:23px}}@media(max-width:700px){header{padding:20px}main{padding:15px}.stats{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}aside{display:flex;flex-wrap:wrap;gap:2px}aside button{width:auto;padding:7px 9px}.filters input,.filters select{max-width:100%}}
+</style>
+<header><h1>E2E 覆盖地图</h1><p>按业务找合同，按组件找缺口，按版本查看运行报告。</p><p id="version"></p></header>
+<main>
+<div class="note">百分比只用于分母明确的枚举、组合或规范项，表示<strong>清单声明覆盖</strong>。它不代表整个业务完成度，也不等于实际运行通过率。历史报告与当前源码分开显示。</div>
+<section class="stats" aria-label="覆盖概览" id="stats"></section>
+<div class="layout"><aside id="modules" aria-label="业务模块"></aside><section>
+<div class="tabs" role="tablist" aria-label="覆盖视图"><button id="business-tab" role="tab" aria-selected="true">业务合同</button><button id="component-tab" role="tab" aria-selected="false">组件覆盖</button></div>
+<form class="filters" id="filters" onsubmit="return false">
+<label class="search">搜索业务、组件或缺口<input id="search" type="search" placeholder="例如：健康检查、筛选、architecture" autocomplete="off"></label>
+<label>环境<select id="lane"><option value="">全部环境</option></select></label>
+<label>语言<select id="locale"><option value="">全部语言</option><option value="zh">中文 zh</option><option value="en">英文 en</option><option value="unspecified">未标注</option></select></label>
+<label id="kind-label">条目类型<select id="kind"><option value="business">业务合同</option><option value="">全部（含历史缺口与 runner）</option><option value="legacy">历史缺口</option><option value="runner">Runner 自测</option></select></label>
+<label id="dimension-label" hidden>覆盖维度<select id="dimension"><option value="">全部维度</option></select></label>
+<label>报告状态<select id="state"><option value="">全部状态</option><option value="pass">当前源码 PASS</option><option value="fail">失败报告</option><option value="historical">历史版本</option><option value="incomplete">证据不全</option><option value="none">未找到报告</option></select></label>
+<label class="check"><input id="gaps" type="checkbox">只看缺口 / 未知</label>
+</form>
+<div class="summary-line"><span id="results" role="status" aria-live="polite"></span><span id="selection-note"></span></div>
+<div class="content"><div class="panel"><table><thead id="thead"></thead><tbody id="rows"></tbody></table><div id="empty" class="empty" hidden></div></div><article class="panel" id="detail" aria-label="覆盖详情"></article></div>
+</section></div>
+<details class="warnings" id="warnings" hidden><summary id="warnings-title"></summary><div id="warnings-list"></div></details>
+<footer>数据来自 test/e2e/coverage/*.json、组件检查清单与明确指定的 report.json。页面离线工作，不发送网络请求，不运行测试，也不导出报告中的请求、响应、凭据或日志。<br>没有登记合同的模块仍显示；未找到报告表示本次提供的报告集合中没有匹配项。</footer>
+</main>
+<script type="application/json" id="coverage-data"><!--COVERAGE_DATA--></script>
+<script>
+"use strict";
+const data=JSON.parse(document.getElementById("coverage-data").textContent);
+const $=id=>document.getElementById(id), byId=new Map(data.contracts.map(c=>[c.id,c]));
+let view="business",moduleId="",selected="";
+const locale=()=>$("locale").value;
+const dimensionName=d=>({checklist:"组件规范项",enum:"枚举选项",combination:"选项组合",field:"组件明细"}[d]||d);
+const text=value=>typeof value==="string"?value:JSON.stringify(value);
+function el(tag,value,cls){const n=document.createElement(tag);if(value!==undefined)n.textContent=value;if(cls)n.className=cls;return n;}
+function append(parent,...nodes){parent.append(...nodes);return parent;}
+function latest(c,lang=locale()){
+ const runs=(c.runs||[]).filter(r=>!lang||r.locale===lang),normal=runs.filter(r=>r.state!=="mutation");
+ return normal[0]||runs[0];
+}
+function state(r){if(!r)return "none";if(r.state==="historical")return "historical";if(r.status.startsWith("FAIL"))return "fail";if(r.state==="current"&&r.status==="PASS")return "pass";return "incomplete";}
+function badge(r){
+ if(!r)return el("span","未找到报告","badge");
+ const names={current:"当前源码",historical:"历史版本",uncommitted:"工作树有改动",incomplete:"证据不全",mutation:"变异运行"};
+ return el("span",r.locale+" · "+(names[r.state]||r.state)+" · "+r.status,"badge "+state(r));
+}
+function runsBadge(c,parent){
+ const langs=locale()?[locale()]:[...new Set((c.runs||[]).map(r=>r.locale))];
+ if(!langs.length)parent.append(badge(null));
+ for(const lang of langs)parent.append(badge(latest(c,lang)));
+}
+function memberContracts(item){return view==="business"?[item]:(item.contract_ids||[]).map(id=>byId.get(id)).filter(Boolean);}
+function executionMetric(item,lang){
+ if(!item.value_contract_ids||item.denominator===null)return null;
+ const n=item.covered.filter(value=>(item.value_contract_ids[value]||[]).some(id=>byId.has(id)&&state(latest(byId.get(id),lang))==="pass")).length;
+ return {n,total:item.denominator,percent:item.denominator?Math.round(n*1000/item.denominator)/10:null};
+}
+function matches(item){
+ const cs=memberContracts(item),q=$("search").value.trim().toLowerCase(),lane=$("lane").value,s=$("state").value;
+ if(moduleId&&item.module!==moduleId)return false;
+ if(q&&!JSON.stringify(item).toLowerCase().includes(q))return false;
+ if(lane&&!cs.some(c=>c.lane===lane))return false;
+ if(view==="business"&&$("kind").value&&item.kind!==$("kind").value)return false;
+ if(view==="component"&&$("dimension").value&&item.dimension!==$("dimension").value)return false;
+ if(s&&!cs.some(c=>state(latest(c))===s))return false;
+ if($("gaps").checked&&!(item.missing?.length||item.unknown?.length||(view==="component"&&item.denominator===null)))return false;
+ return true;
+}
+function list(parent,values){
+ if(!values?.length){parent.append(el("p","没有登记条目","muted"));return;}
+ const ul=el("ul");for(const value of values){const li=el("li");if(value&&typeof value==="object"&&"text"in value){li.append(el("span",value.text));if(value.path)li.append(el("span",value.path,"claim-path"));}else li.textContent=text(value);ul.append(li);}parent.append(ul);
+}
+function detail(item){
+ const box=$("detail");box.replaceChildren();if(!item){box.append(el("p","选择一项查看分子、分母、缺口和报告。","muted"));return;}
+ box.append(el("h2",item.name));box.append(el("div",item.id,"sub"));
+ if(view==="component"){
+  box.append(el("h3","清单声明覆盖"));
+  box.append(el("p",item.denominator===0?"N/A：本维度全部项有理由排除":item.percent===null?"未知：缺少可计算的完整分母":`${item.numerator} / ${item.denominator} = ${item.percent}%`));
+  box.append(el("p",item.basis||"分母未登记","muted"));
+  const cs=memberContracts(item),passing=cs.filter(c=>state(latest(c))==="pass").length;
+  box.append(el("p",`当前源码运行报告：${passing} / ${cs.length} 个关联合同有匹配的 PASS；该数字不替代上面的组件维度覆盖。`,"muted"));
+  for(const lang of locale()?[locale()]:["en","zh"]){const metric=executionMetric(item,lang);if(metric)box.append(el("p",`${lang} 当前源码执行覆盖：${metric.n} / ${metric.total}${metric.percent===null?"":` = ${metric.percent}%`}（仅计算已绑定到具体值且有匹配 PASS 的报告）`,"muted"));}
+  box.append(el("h3","已覆盖值 / 规范项"));list(box,item.covered);
+  box.append(el("h3","未覆盖"));list(box,item.missing);
+  box.append(el("h3","未登记 / 分母未知"));list(box,item.unknown);
+  if(item.not_applicable?.length){box.append(el("h3","排除的 N/A 与理由"));list(box,item.not_applicable);}
+  if(item.assertions?.length){box.append(el("h3","断言绑定"));list(box,item.assertions);}
+  box.append(el("h3","来源"),el("pre",item.source||item.manifest));
+  const links=el("div");for(const c of cs){const b=el("button",c.name,"copy");b.onclick=()=>{view="business";selected=c.id;render();};links.append(b);}box.append(links);
+ }else{
+  const dl=el("dl");for(const [key,value]of [["环境",item.lane],["优先级",item.priority||"未登记"],["清单",item.manifest],["用例",item.test_file],["函数",item.test_function],["选择",text(item.selection||{})]])append(dl,el("dt",key),el("dd",value||"未登记"));box.append(dl);
+  if(item.conflict)box.append(el("p","同一 ID 存在冲突声明，不能确认当前覆盖。","note"));
+  box.append(el("h3","声明的运行命令"),el("pre",item.command||"未登记命令"));
+  if(item.command){const copy=el("button","复制命令","copy");copy.onclick=async()=>{try{await navigator.clipboard.writeText(item.command);copy.textContent="已复制";}catch{copy.textContent="复制未获允许，请选中上方命令复制";}};box.append(copy);}
+  box.append(el("h3","声明已覆盖"));list(box,item.covered);box.append(el("h3","声明缺口"));list(box,item.missing);
+  box.append(el("h3","运行报告（不包含原始内容）"));
+  const runs=(item.runs||[]).filter(r=>!locale()||r.locale===locale());
+  if(!runs.length)box.append(el("p","本次提供的报告集合中没有匹配报告。","muted"));
+  for(const r of runs){const row=el("div",undefined,"run");row.append(badge(r),el("div",r.run_id,"sub"),el("div",`source: ${r.source_sha||"未标注"} · 证据层: ${r.layers.join(", ")||"缺失"}`,"sub"));if(r.reasons.length)list(row,r.reasons);row.append(el("div",r.binary_checked===true?"已核对指定本地二进制":r.binary_checked===false?"指定二进制不匹配":"未指定本地二进制，未额外核对构建身份","muted"));box.append(row);}
+  const raw=el("details");append(raw,el("summary","查看原清单声明"),el("pre",JSON.stringify(item.details,null,2)));box.append(raw);
+ }
+}
+function render(){
+ $("business-tab").setAttribute("aria-selected",String(view==="business"));$("component-tab").setAttribute("aria-selected",String(view==="component"));$("kind-label").hidden=view!=="business";$("dimension-label").hidden=view!=="component";
+ $("modules").replaceChildren();
+ const all=el("button","全部模块");all.classList.toggle("active",!moduleId);all.onclick=()=>{moduleId="";selected="";render();};$("modules").append(all);
+ for(const m of data.modules){const count=data.contracts.filter(c=>c.module===m.id&&c.kind==="business").length,b=el("button");append(b,el("span",m.name),el("span",count?String(count):"无合同","count"));b.classList.toggle("active",moduleId===m.id);b.onclick=()=>{moduleId=m.id;selected="";render();};$("modules").append(b);}
+ const rows=(view==="business"?data.contracts:data.components||[]).filter(matches);
+ $("results").textContent=`${rows.length} 项 · ${view==="business"?"登记合同及缺口":"组件维度声明覆盖"}`;
+ $("selection-note").textContent=view==="component"?"百分比 ≠ 当前执行通过率":"参数化选项分别登记";
+ $("thead").replaceChildren();const header=el("tr");for(const t of view==="business"?["业务合同","优先级","运行报告"]:["组件 / 规范","维度","声明覆盖"])header.append(el("th",t));$("thead").append(header);$("rows").replaceChildren();
+ if(!rows.some(x=>x.id===selected))selected=rows[0]?.id||"";
+ for(const item of rows){const tr=el("tr");tr.classList.toggle("selected",item.id===selected);const first=el("td"),b=el("button",item.name,"row-name");b.onclick=()=>{selected=item.id;render();};first.append(b,el("div",view==="business"?`${item.missing.length} 条声明缺口 · ${item.kind}`:item.basis||"未知分母","sub"));tr.append(first);
+  if(view==="business"){tr.append(el("td",item.priority||"—"));const cell=el("td");runsBadge(item,cell);tr.append(cell);}else{tr.append(el("td",dimensionName(item.dimension)));const cell=el("td");cell.append(el("div",item.denominator===0?"N/A":item.percent===null?"未知":`${item.percent}%`,"percent"),el("div",item.denominator===0?"全部项有理由排除":item.percent===null?"分母未登记":`${item.numerator} / ${item.denominator}`,"ratio"));if(item.percent!==null){const bar=el("div",undefined,"bar"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,item.percent))+"%";bar.append(fill);cell.append(bar);}for(const lang of locale()?[locale()]:["en","zh"]){const m=executionMetric(item,lang);if(m)cell.append(el("div",`执行 ${lang} ${m.n}/${m.total}`,"sub"));}tr.append(cell);}$("rows").append(tr);
+ }
+ $("empty").hidden=rows.length>0;$("empty").textContent=moduleId&&!data.contracts.some(c=>c.module===moduleId&&c.kind==="business")?"此模块尚无业务合同登记。功能仍存在，缺口保留。":"没有匹配项。可清除搜索、环境或报告状态筛选。";detail(rows.find(x=>x.id===selected));
+}
+$("business-tab").onclick=()=>{view="business";selected="";render();};$("component-tab").onclick=()=>{view="component";selected="";render();};
+for(const id of ["search","lane","locale","kind","state","dimension","gaps"])$(id).addEventListener(id==="search"?"input":"change",()=>{selected="";render();});
+$("version").append(el("span",`HEAD ${data.repository.head.slice(0,12)}`,"sha"),document.createTextNode(` · ${data.repository.modified?"工作树有未提交改动":"干净工作树"} · 生成于 ${data.repository.generated_at}`));
+for(const lane of [...new Set(data.contracts.map(c=>c.lane).filter(Boolean))].sort()){$("lane").append(new Option(lane,lane));}
+for(const d of [...new Set((data.components||[]).map(c=>c.dimension))].sort())$("dimension").append(new Option(dimensionName(d),d));
+const business=data.contracts.filter(c=>c.kind==="business"),pass=business.filter(c=>[...new Set(c.runs.map(r=>r.locale))].some(l=>state(latest(c,l))==="pass")).length;
+for(const [name,value,hint]of [["业务合同登记",business.length,"参数化组合分开计数，不是业务覆盖率"],["当前源码 PASS",pass,"至少一种语言；完整语言结果在合同中查看"],["可计算组件指标",(data.components||[]).filter(c=>c.percent!==null).length,"仅分母明确的声明维度"],["未登记导航模块",data.modules.filter(m=>m.paths.length&&!business.some(c=>c.module===m.id)).length,"不会从视图中隐藏"]]){const card=el("div",undefined,"stat");append(card,el("div",name),el("strong",String(value)),el("div",hint,"muted"));$("stats").append(card);}
+if(data.warnings.length){$("warnings").hidden=false;$("warnings-title").textContent=`${data.warnings.length} 条数据提示`;list($("warnings-list"),data.warnings);}
+render();
+</script>
+</html>

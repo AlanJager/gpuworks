@@ -1,0 +1,103 @@
+{
+  "contract_ids": [
+    "gpuworks/templates/clone-edit",
+    "gpuworks/templates/yaml-syntax-recovery",
+    "gpuworks/templates/yaml-schema-recovery"
+  ],
+  "page_id": "inference-templates",
+  "priority": "P0",
+  "test_file": "test/e2e/template_edit.py",
+  "test_function": "test_template_edit",
+  "parameters": [
+    "clone",
+    "syntax",
+    "schema"
+  ],
+  "command": "make test-e2e-template-edit",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "recovery_required_for": [
+    "syntax",
+    "schema"
+  ],
+  "fields": [
+    {
+      "field_id": "inference-templates.yaml",
+      "component": "CodeMirror YAML",
+      "request": "raw application/yaml import?overwrite=true",
+      "persistence": "InferenceModel + InferenceSpec",
+      "covered": [
+        "localized editable accessible name",
+        "canonical initial YAML",
+        "one spec argument change",
+        "dirty cancel/keep",
+        "syntax error",
+        "unknown field error",
+        "draft retained",
+        "retry corrected content",
+        "refresh/reopen"
+      ],
+      "missing": [
+        "all schema fields",
+        "empty YAML",
+        "large document",
+        "reset",
+        "dirty discard",
+        "overwrite another model",
+        "concurrent edits"
+      ]
+    },
+    {"field_id": "inference-templates.error-line", "component": "Error jump button", "request": "N/A: moves editor selection to server-reported error line", "persistence": "N/A: transient editor position", "covered": ["syntax/schema rejection shows a numeric line button", "click focuses the editor and retains the invalid draft"], "missing": ["MISSING: displayed line equals the known malformed YAML line and cursor/selection actually reaches that line; focus alone does not prove location"]}
+  ],
+  "crud": {
+    "create": "UI clone with independent source/spec readback",
+    "read": "detail and canonical YAML plus browser reload",
+    "update": "UI YAML edit, error atomicity and corrected save",
+    "delete": "UI cancel/confirm last user spec; independent model 404 and empty filtered list"
+  },
+  "execution_evidence": {
+    "status": "MISSING",
+    "reason": "Edited spec arguments affect runtime, but agent argv/env/mount/role/rank consumption and deployment have not been verified"
+  },
+  "cleanup": "Each case deletes only its runId-owned user specs via UI, proves model 404/list absence, stops own server",
+  "missing": [
+    "referenced-spec deletion",
+    "non-admin permissions",
+    "all form/component states",
+    "all computed styles",
+    "template deployment and runtime argv/env/mount/role/rank consumption",
+    "10/30/100 list matrix",
+    "executable adapter assets",
+    "client-side YAML submission blocking",
+    "missing required schema field"
+  ],
+  "result": "PARTIAL: control-plane configuration coverage only; selected cases require PASS reports and applicable runtime evidence remains MISSING",
+  "artifact": "secrets/e2e/<runId>/report.json",
+  "fixture": "test/e2e/template_catalog_fixture.py (owned deterministic package with README; no remote reads)",
+  "product_contracts": [
+    "ui/src/pages/InferenceTemplateDetailPage.tsx",
+    "ui/src/pages/yamlEditor.tsx",
+    "internal/server/api/inference_templates.go",
+    "internal/server/api/inference_template_spec.go",
+    "internal/server/store/inference_catalog.go"
+  ],
+  "checklist_items": {
+    "partial": {
+      "12.1-12.7": "named drawer/viewport, header Tab to editor, Esc focus return, dirty keep, save/failure, named delete cancel; not every keyboard/style/close variant",
+      "15.1-15.3": "initial actual editor, syntax/schema unknown field, numeric line button/reason and editor focus, corrected save/reopen; exact error-line/cursor location remains MISSING and authoritative validation is server-side",
+      "15.7": "user-source original package/specs unchanged by clone/edit; upstream read-only lane missing"
+    },
+    "not_applicable": {
+      "15.4-15.5": "this template page has no form/text toggle"
+    },
+    "missing": {
+      "15.6": "edited specification consumption by a real deployment (argv/env/mount/role/rank) remains unverified"
+    }
+  }
+}

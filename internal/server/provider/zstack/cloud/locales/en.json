@@ -1,0 +1,5 @@
+{
+  "endpoint": { "label": "API Endpoint", "placeholder": "https://zstack.example.com" },
+  "public_key": { "label": "AccessKey ID", "placeholder": "ZStack administrator AccessKey ID" },
+  "private_key": { "label": "AccessKey Secret", "placeholder": "ZStack administrator AccessKey Secret" }
+}

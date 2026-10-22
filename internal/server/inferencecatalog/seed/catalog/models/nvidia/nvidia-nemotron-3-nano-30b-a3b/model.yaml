@@ -1,0 +1,82 @@
+model_id: nvidia/nvidia-nemotron-3-nano-30b-a3b
+source: upstream
+display_title: NVIDIA Nemotron-3-Nano-30B-A3B
+parameter_count: 30B
+architecture: moe
+context_length: 262144
+release_date: '2026-01-08'
+model_config: {model_type: nemotron_h, num_hidden_layers: 52, hidden_size: 2688, num_attention_heads: 32, num_key_value_heads: 2, head_dim: 128, max_position_embeddings: 262144, layer_types: [mamba, E, mamba, E, mamba, full_attention, E, mamba, E, mamba, E, mamba, full_attention, E, mamba, E, mamba, E, mamba, full_attention, E, mamba, E, mamba, E, mamba, full_attention, E, mamba, E, mamba, E, mamba, full_attention, E, mamba, E, mamba, E, mamba, E, mamba, full_attention, E, mamba, E, mamba, E, mamba, E, mamba, E]}
+kv_bytes_per_token:
+  vllm: 53248
+  sglang: 29696
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+        revision: bf77c3174f68ad409e1c2aa60daeb46e32d1c606
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+        revision: 3fd4f2441517626803f880530d905ebf2cd29d9d
+  weight_bytes: 63174967188
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --async-scheduling
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - nemotron_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
+        revision: 9bee19446c0dfd01f356e10979d225b2a6621944
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
+        revision: f241a090eb968fe169f23bc2c9216780e689b13a
+  weight_bytes: 32703351602
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --async-scheduling
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - nemotron_v3
+  env:
+    VLLM_FLASHINFER_MOE_BACKEND: throughput
+    VLLM_USE_FLASHINFER_MOE_FP8: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

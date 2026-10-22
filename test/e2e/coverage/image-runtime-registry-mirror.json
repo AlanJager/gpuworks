@@ -1,0 +1,86 @@
+{
+  "contract_id": "gpuworks/image-runtime/registry-mirror",
+  "priority": "P0",
+  "page_id": "images",
+  "test_file": "test/e2e/image_registry.py",
+  "test_function": "test_registry_pull",
+  "name": "镜像节点副本 / UI切换为Mirror拉取 / 仅请求所选镜像源且刷新来源不冒充canonical",
+  "command": "make test-e2e-image-registry-mirror",
+  "lane": "local-real-server-agent-isolated-docker",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "REQUIRED",
+    "target": "Real local Registry manifest/config/layer requests, exact content digests, canonical tag CPU execution"
+  },
+  "crud": {
+    "create": "covered: UI acquires a node image replica; catalog creation is fixture only",
+    "read": "covered: independent GET, refresh, source, Docker inspect and execution",
+    "update": "N/A: immutable acquired content; changing a pre-submit source is not catalog Update",
+    "delete": "not covered: catalog teardown and owned daemon cleanup only"
+  },
+  "fields": [
+    {
+      "field_id": "image-node.source",
+      "component": "Select",
+      "request": "source=<explicit registry host:port>",
+      "persistence": "image_node.source",
+      "covered": [
+        "explicit mirror selection after canonical selection",
+        "selected label",
+        "exact source body",
+        "completed source after refresh"
+      ],
+      "missing": [
+        "all visible options",
+        "peer",
+        "URL relay",
+        "failed source retry",
+        "search/clear where applicable"
+      ]
+    }
+  ],
+  "dimensions": [
+    "explicit-source-selection",
+    "exact-request",
+    "reload-source",
+    "registry-manifest-and-blob-content",
+    "canonical-tag-consumption",
+    "no-archive-path",
+    "canonical-to-mirror-reselection",
+    "unselected-registry-zero-requests",
+    "completed-mirror-does-not-invent-host"
+  ],
+  "checklist_items": {
+    "partial": [
+      "5.1",
+      "16.6",
+      "16.7"
+    ],
+    "reason": "Only canonical or generic mirror success; not full source enum, progress, failure or keyboard/style matrix"
+  },
+  "product_contracts": [
+    "ui/src/pages/images/ImageNodeTable.tsx",
+    "ui/src/pages/images/ImagePageHelpers.tsx",
+    "internal/server/imagecatalog/pullref/pullref.go",
+    "internal/server/hub/image_pull.go",
+    "internal/agent/app/control.go",
+    "internal/agent/runtime/docker/docker.go"
+  ],
+  "missing": [
+    "TLS and authenticated/public registries",
+    "multi-architecture manifests",
+    "registry failure/retry/cancel and explicit-source failure no-fallback",
+    "peer distribution and relay",
+    "progress/stage UI",
+    "repull existing image",
+    "GPU inference and deployment argument consumption",
+    "non-admin permissions and full keyboard/focus/computed-style matrix"
+  ]
+}

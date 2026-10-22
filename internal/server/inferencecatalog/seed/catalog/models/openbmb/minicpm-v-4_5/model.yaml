@@ -1,0 +1,55 @@
+model_id: openbmb/minicpm-v-4_5
+source: upstream
+display_title: minicpm-v-4_5
+parameter_count: 8B-class nominal base model; exact scalar count not derived
+architecture: MiniCPMV (version 4.5 dispatches to MiniCPMV4_5)
+context_length: 40960
+release_date: '2025-08-24'
+model_config: {model_type: minicpmv, num_hidden_layers: 36, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960, vision_config: {image_size: 980, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 147456
+  sglang: 147456
+specs:
+- name: int4-sglang-ascend-8fe71b3c
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: OpenBMB/MiniCPM-V-4_5-AWQ
+        revision: 23130f1a8d35972beab2a173ab65e3aa225ab5d7
+    - modelscope:
+        repo_id: OpenBMB/MiniCPM-V-4_5-AWQ
+        revision: 566719e89354bac768fb890f151af3ad5f9fecf5
+  weight_bytes: 7125126738
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --enable-multimodal
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --quantization
+  - awq
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

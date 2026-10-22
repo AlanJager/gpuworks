@@ -1,0 +1,83 @@
+model_id: arcee-ai/trinity-mini
+source: upstream
+display_title: trinity-mini
+parameter_count: 26,123,974,400 BF16 parameters
+architecture: AfmoeForCausalLM; sparse Mixture-of-Experts decoder-only language model
+context_length: 131072
+release_date: '2025-12-01'
+model_config: {model_type: afmoe, num_hidden_layers: 32, hidden_size: 2048, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 131072, sliding_window: 2048, layer_types: [sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention]}
+kv_bytes_per_token:
+  vllm: 65536
+  sglang: 65536
+specs:
+- name: bf16-sglang-ascend-b30c5932
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: arcee-ai/Trinity-Mini
+        revision: cdb81e8130815fec299cccc8f8700004b8366e1e
+    - modelscope:
+        repo_id: arcee-ai/Trinity-Mini
+        revision: 45ffa21d8c0a9ddc64b751c455d87847cc96baad
+  weight_bytes: 52265200181
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  - --chat-template
+  - /model/chat_template.jinja
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-cdb81e81
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: arcee-ai/Trinity-Mini
+        revision: cdb81e8130815fec299cccc8f8700004b8366e1e
+    - modelscope:
+        repo_id: arcee-ai/Trinity-Mini
+        revision: 45ffa21d8c0a9ddc64b751c455d87847cc96baad
+  weight_bytes: 52249446248
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

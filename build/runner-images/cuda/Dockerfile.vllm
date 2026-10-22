@@ -1,0 +1,399 @@
+# gpuworks-runner: NVIDIA CUDA vLLM 线
+#
+# 派生自 gpustack/runner 的 pack/cuda/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
+# 工具层构成、ray 的 2.54.0 pin、omni 与补丁的先后顺序参照其做法。
+#
+# 内容 = 上游 vanilla（vllm/vllm-openai，自带 torch/vllm/flashinfer；cu13 档还预装
+#          改名包 mooncake-transfer-engine-cuda13，故 mooncake 无需另装）
+#       + 轻量工具层（刻意不含编译链，wheel 均为预编译）
+#       + vllm-omni（PyPI wheel；其 pin 会把 transformers 降到 <5.15、
+#          accelerate 钉到 1.12.0，与上游官方镜像一致，属已知取舍）
+#       + ray 2.54.0（2.55 破坏无 raylet 的 ray.init）
+#       + audio extras
+#       + 补丁（严格应用，上游漂移即构建失败——见 shared/apply_patches.sh 顶部说明）
+#       + 离线审计门（产出 components.json）
+#       + 模型 overlay（供 catalog 的 spec 引用，免下载）
+#
+# 不改 ENTRYPOINT：gpuworks 的 spec 若不声明 entrypoint 就用镜像默认值，
+# 声明了则覆盖（internal/agent/engine 的 toWorkloadSpec）。CUDA 档的 base
+# entrypoint 无需 source 任何 SDK env，两种情形都能跑。
+ARG BASE_IMAGE=vllm/vllm-openai:v0.30.0
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG VLLM_OMNI_VERSION=0.30.0
+ARG MOONCAKE=base
+ARG ENGINE_VERSION=0.30.0
+ARG FRAMEWORK_VERSION=13.0
+# 矩阵显式声明「在本档 base 上不适用」的 vllm 补丁文件名（空格分隔），见补丁层。
+ARG PATCHES_NOT_APPLICABLE=""
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+# 构建期 pip 镜像源：ARG 而非 ENV，不写进运行期镜像。
+# 必须有：buildkit 不走代理，直连 pypi.org 实测会把 73 MiB 的 ray wheel 卡住半小时，
+# 整档构建拖到 66~72 分钟；阿里云镜像实测 3.6 MiB/s、延迟 0.12s。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+# 显式替换 base 里的 torchcodec（可选；空 = 不替换）。仅 cu129 档用：上游 cu129 base 里的
+# torchcodec 是 cu13 构建，见下面「torchcodec 替换」一节。SPEC 必须是 name==version[+local]。
+ARG TORCHCODEC_SPEC=""
+ARG TORCHCODEC_INDEX_URL=https://download.pytorch.org/whl/cu129
+ARG APT_MIRROR=mirrors.aliyun.com
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层
+#
+# apt 源的镜像改写只在构建期生效：先备份、装完还原，不把镜像源留给用户。
+RUN <<EOF
+    set -eux
+    mkdir -p /tmp/apt-backup
+    cp -a /etc/apt/sources.list /tmp/apt-backup/ 2>/dev/null || true
+    cp -a /etc/apt/sources.list.d /tmp/apt-backup/ 2>/dev/null || true
+    sed -i \
+        -e "s|archive.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+        -e "s|security.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+        -e "s|ports.ubuntu.com/ubuntu-ports|${APT_MIRROR}/ubuntu-ports|g" \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+    apt-get update -y
+    apt-get install -y --no-install-recommends \
+        tini jq curl wget vim less tree bc \
+        iproute2 iputils-ping net-tools dnsutils \
+        procps sysstat htop \
+        ffmpeg patch
+    apt-get install -y --no-install-recommends rdma-core rdmacm-utils infiniband-diags \
+        || echo "WARN: RDMA tools unavailable, skipped"
+    rm -rf /etc/apt/sources.list /etc/apt/sources.list.d
+    cp -a /tmp/apt-backup/sources.list /etc/apt/ 2>/dev/null || true
+    cp -a /tmp/apt-backup/sources.list.d /etc/apt/ 2>/dev/null || true
+    rm -rf /tmp/apt-backup /var/cache/apt /var/tmp/* /tmp/*
+EOF
+
+## pip 不变量守卫：记录 base 的 torch / CUDA 运行库 / NCCL
+#
+# 为什么：上游 vLLM 镜像里的 torch 栈（torch、triton、nvidia-*、cuda-*）是与 vllm 的编译产物
+# 配套选定的，其中 NCCL 还被刻意覆盖成比 torch 元数据声明（==2.29.7）更新的 2.30.7。之后任何
+# 一次 `pip install`，只要依赖解析碰到 torch，pip 就可能悄悄改动它们：
+#   - NCCL：为满足 torch 元数据里的 pin 被降回 2.29.7；
+#   - torch 本体：在 cu129 上装 vllm-omni 时，pip 会把 base 的 torch 整个换成 PyPI
+#     默认的 CUDA 13 wheel，连带 triton / cudnn / nccl，而 vllm 的编译产物是针对
+#     原 torch 编的。这类改动不报错，只能靠守卫拦住。
+# 做法：先把 base 的整份 pip 状态记下来（含 torch 的运行期构建信息 torch.version.cuda），
+# 装完所有 pip 包后核对（见下面的还原层与核对层）：
+#   - torch / torchvision / torchaudio / triton / nvidia-*（NCCL 除外）/ cuda-* /
+#     flashinfer-* / vllm 一律不许变化——变了构建失败，并逐包打印「旧版本 -> 新版本」；
+#   - NCCL 保持「还原」语义：降级了就装回 base 的版本（还原后仍必须与 base 一致）。
+# plain 档（不装 omni）装的 ray 与 audio extras 不碰这些包，核对必然通过，对镜像零改动。
+# 脚本与快照留在镜像里（/opt/gpuworks/shared/pip_guard.py、/opt/gpuworks/base-pip.json），
+# 作为「base 的 pip 状态」的出处。
+RUN <<EOF
+    set -eux
+    mkdir -p /opt/gpuworks/shared
+    cat > /opt/gpuworks/shared/pip_guard.py <<'PY'
+#!/usr/bin/env python3
+"""Snapshot / restore-list / check of the base image's torch stack across pip steps.
+
+  snapshot     write /opt/gpuworks/base-pip.json (every dist + torch runtime build info)
+  nccl-specs   print the base's nvidia-nccl-* pins, one `name==version` per line
+  replaced     NAME VERSION REASON: declare that this image deliberately replaces a guarded
+               base package (e.g. torchcodec); asserts the installed version is VERSION and
+               differs from the base, and appends before/after to /opt/gpuworks/base-replaced.json
+  check        compare the current state against the snapshot; exit 1 on a forbidden change
+               (a guarded package may differ only if declared via `replaced`, to that exact version)
+"""
+import importlib.metadata as md
+import json
+import re
+import subprocess
+import sys
+
+SNAP = '/opt/gpuworks/base-pip.json'
+# Deliberate, per-image replacements of guarded base packages (name -> {from, to, reason}).
+REPLACED = '/opt/gpuworks/base-replaced.json'
+# NCCL: handled by "restore" (see Dockerfile), checked here only after the restore.
+NCCL = re.compile(r'^nvidia-nccl(-|$)')
+# Forbidden to change: torch itself, the CUDA runtime libs, the kernels compiled against them.
+GUARDED = re.compile(
+    r'^(torch|torchvision|torchaudio|torchao|torchcodec|triton|nvidia-.+|cuda-.+|'
+    r'flashinfer-.+|xformers|vllm)$')
+# NVML python bindings: not a CUDA runtime library, may legitimately float.
+EXEMPT = {'nvidia-ml-py'}
+
+
+def norm(name):
+    return re.sub(r'[-_.]+', '-', name).lower()
+
+
+def dists():
+    out = {}
+    for d in md.distributions():
+        n = d.metadata['Name']
+        if n:
+            out.setdefault(norm(n), set()).add(d.version)
+    return {n: ','.join(sorted(v)) for n, v in out.items()}
+
+
+def torch_build():
+    # What the wheel really is, not what its dist-info says: the metadata Version of a CUDA 13
+    # PyPI wheel is a bare "2.13.0", the build is in torch/version.py.
+    r = subprocess.run([sys.executable, '-c',
+                        'import torch; print(torch.__version__, "cuda=" + str(torch.version.cuda))'],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else 'import-failed: ' + r.stderr.strip()[-300:]
+
+
+def guarded(name):
+    return name not in EXEMPT and (GUARDED.match(name) is not None or NCCL.match(name) is not None)
+
+
+def main(cmd):
+    if cmd == 'snapshot':
+        d = dists()
+        build = torch_build()
+        json.dump({'dists': d, 'torch_build': build}, open(SNAP, 'w'), indent=1, sort_keys=True)
+        g = sorted(n for n in d if guarded(n))
+        print('pip-guard: snapshot of %d dists, %d guarded; torch build: %s' % (len(d), len(g), build))
+        for n in g:
+            print('  %-34s %s' % (n, d[n]))
+        return 0
+    base = json.load(open(SNAP))
+    if cmd == 'nccl-specs':
+        for n, v in sorted(base['dists'].items()):
+            if NCCL.match(n):
+                print('%s==%s' % (n, v))
+        return 0
+    if cmd == 'replaced':
+        if len(sys.argv) != 5:
+            print('usage: pip_guard.py replaced NAME VERSION REASON', file=sys.stderr)
+            return 2
+        name, want, reason = norm(sys.argv[2]), sys.argv[3], sys.argv[4]
+        have, was = dists().get(name), base['dists'].get(name)
+        if have != want:
+            print('pip-guard: %s is %s, declared replacement is %s' % (name, have, want), file=sys.stderr)
+            return 1
+        if was == have:
+            print('pip-guard: %s is unchanged from the base (%s); nothing was replaced' % (name, was),
+                  file=sys.stderr)
+            return 1
+        try:
+            rep = json.load(open(REPLACED))
+        except FileNotFoundError:
+            rep = {}
+        rep[name] = {'from': was, 'to': have, 'reason': reason}
+        json.dump(rep, open(REPLACED, 'w'), indent=1, sort_keys=True)
+        print('pip-guard: DECLARED REPLACEMENT %s: %s -> %s (%s)' % (name, was or '(absent)', have, reason))
+        return 0
+    if cmd != 'check':
+        print('usage: pip_guard.py snapshot|nccl-specs|replaced|check', file=sys.stderr)
+        return 2
+    try:
+        replaced = json.load(open(REPLACED))
+    except FileNotFoundError:
+        replaced = {}
+    old, new = base['dists'], dists()
+    bad, info, declared = [], [], []
+    for n in sorted(set(old) | set(new)):
+        a, b = old.get(n), new.get(n)
+        if a == b:
+            continue
+        kind = 'ADDED' if a is None else 'REMOVED' if b is None else 'CHANGED'
+        line = '%-8s %-34s %s -> %s' % (kind, n, a or '(absent)', b or '(absent)')
+        if n in replaced:
+            # Allowed only as exactly what the Dockerfile declared; anything else is still forbidden.
+            if (replaced[n]['from'], replaced[n]['to']) == (a, b):
+                declared.append(line + '   [declared: %s]' % replaced[n]['reason'])
+                continue
+            line += '   (declared %s -> %s, but the state differs)' % (replaced[n]['from'], replaced[n]['to'])
+        (bad if guarded(n) else info).append(line)
+    for n in sorted(set(replaced) - set(old) - set(new)):
+        bad.append('%-8s %-34s declared replacement of a package that does not exist' % ('INVALID', n))
+    print('pip-guard: %d guarded package(s) deliberately replaced (declared in %s):' % (len(declared), REPLACED))
+    for line in declared:
+        print('  ' + line)
+    tb_old, tb_new = base['torch_build'], torch_build()
+    if tb_old != tb_new:
+        bad.append('%-8s %-34s %s -> %s' % ('CHANGED', 'torch (runtime build)', tb_old, tb_new))
+    print('pip-guard: %d other dist(s) changed by pip (informational):' % len(info))
+    for line in info:
+        print('  ' + line)
+    if bad:
+        print('=== pip-guard FAILED: pip changed packages that must stay as in the base image',
+              file=sys.stderr)
+        for line in bad:
+            print('  ' + line, file=sys.stderr)
+        print('  (only the vllm-omni / ray / audio-extras pip steps ran in between; one of them '
+              'pulled a different torch stack. Pin or drop it; do not let pip move torch. '
+              'A deliberate replacement must be declared with `pip_guard.py replaced`.)',
+              file=sys.stderr)
+        return 1
+    print('pip-guard OK: torch stack and CUDA runtime libs unchanged (torch build: %s)' % tb_new)
+    return 0
+
+
+sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else ''))
+PY
+    python3 /opt/gpuworks/shared/pip_guard.py snapshot
+    test -s /opt/gpuworks/base-pip.json
+    # 纯净 base 自带的 `pip check` 问题（上游刻意覆盖 NCCL；arm64 base 的 cusparselt 平台提示等）。
+    # 在任何 pip 操作之前记下来，审计门只放行「也出现在这份基线里的行」，基线之外的才是我们引入的。
+    # pip check 有问题时非零退出，这里只记录、不当失败。
+    python3 -m pip check > /opt/gpuworks/base-pip-check.txt 2>&1 || true
+    echo "=== base pip check ($(uname -m)):"; cat /opt/gpuworks/base-pip-check.txt
+    # base 必须带 NCCL，「还原」才有对象
+    test -n "$(python3 /opt/gpuworks/shared/pip_guard.py nccl-specs)"
+EOF
+
+## vllm-omni + ray + audio extras
+#
+# 这三项都是 requires 里声明过的组件，装不上就不该出镜像：不再 `|| echo WARN`。
+RUN <<EOF
+    set -eux
+    PIP="python3 -m pip"
+    if [ -n "${VLLM_OMNI_VERSION}" ]; then
+        ${PIP} install --no-cache-dir "vllm-omni==${VLLM_OMNI_VERSION}"
+        # IndexTTS 2.5 的文本前端（vllm-omni 的 indextts2 extra）：日文分词 fugashi + unidic-lite，
+        # 中英文规范化 WeTextProcessing（import 名 tn）。缺了它们 IndexTTS 2.5 的每个请求都会报
+        # "text normalization backend ... is unavailable"。WeTextProcessing 依赖的 pynini 在 PyPI 上
+        # 只有 cp312 的 x86_64 wheel，arm64 要从源码连同 OpenFst 一起编，本档在 arm64 上不装它
+        # （requires 的 indextts2_frontend 断言同样只在 x86_64 上要求 tn）。
+        ${PIP} install --no-cache-dir "fugashi>=1.2.0" "unidic-lite>=1.0.0"
+        case "${TARGETPLATFORM}" in
+            linux/amd64) ${PIP} install --no-cache-dir WeTextProcessing ;;
+            *) echo "WeTextProcessing skipped on ${TARGETPLATFORM}: pynini has no cp312 wheel there" ;;
+        esac
+    fi
+    ${PIP} install --no-cache-dir "ray[default]==2.54.0"
+    ${PIP} install --no-cache-dir librosa soundfile 'mistral_common[audio]'
+EOF
+
+## torchcodec 替换（按档例外，默认不执行）
+#
+# 为什么：vllm/vllm-openai:v0.31.0-cu129 的 torchcodec 0.17.0 是 CUDA 13 构建（libtorchcodec_core*.so
+# 依赖 libnvrtc.so.13 / libcudart.so.13，镜像里只有 .12），`import torchcodec` 直接
+# OSError，而 `vllm serve` 在 CLI 导入阶段就会 `from torchcodec.decoders import AudioDecoder`
+# （vllm/multimodal/media/audio.py），所以任何硬件上都起不来。成因：上游用 uv + `--extra-index-url
+# https://download.pytorch.org/whl/cu129` 装依赖，cu129 索引的 torchcodec 只到 0.16.0+cu129，PyPI 的
+# 0.17.0（Linux 默认 CUDA 13）版本更高，被选中。
+# 修复：从 PyTorch 官方 cu129 索引装同一厂商发布的 0.16.0+cu129（torchcodec 0.14~0.17 都只要求
+# torch>=2.11，vllm 要求 torchcodec>=0.14，均满足）。--no-deps 不动 torch 栈；之后必须用
+# pip_guard 声明这次替换，否则下面的核对会因 torchcodec 变化而失败。
+# 放在其它 pip 步骤之后，避免被它们再次解析掉。
+RUN <<EOF
+    set -eux
+    if [ -n "${TORCHCODEC_SPEC}" ]; then
+        name="${TORCHCODEC_SPEC%%==*}"; want="${TORCHCODEC_SPEC##*==}"
+        echo "torchcodec before: $(python3 -m pip show "${name}" | sed -n 's/^Version: //p')"
+        python3 -m pip install --no-cache-dir --no-deps --force-reinstall \
+            "${TORCHCODEC_SPEC}" --index-url "${TORCHCODEC_INDEX_URL}"
+        python3 /opt/gpuworks/shared/pip_guard.py replaced "${name}" "${want}" \
+            "base ships a CUDA 13 build; replaced by ${TORCHCODEC_SPEC} from the official cu129 index"
+        python3 -c "import torchcodec; print('torchcodec after:', torchcodec.__version__)"
+    fi
+EOF
+
+## 还原 base 的 NCCL（见上面"pip 不变量守卫"一节）
+RUN <<EOF
+    set -eux
+    python3 /opt/gpuworks/shared/pip_guard.py nccl-specs | while read -r spec; do
+        [ -n "${spec}" ] || continue
+        name="${spec%%==*}"; want="${spec##*==}"
+        have="$(python3 -c "import importlib.metadata as m; print(m.version('${name}'))" 2>/dev/null || echo absent)"
+        if [ "${have}" != "${want}" ]; then
+            echo "restoring ${name}: ${have} -> ${want} (pip downgraded it to satisfy torch's metadata pin)"
+            python3 -m pip install --no-cache-dir --no-deps "${spec}"
+        fi
+        now="$(python3 -c "import importlib.metadata as m; print(m.version('${name}'))")"
+        test "${now}" = "${want}"
+    done
+EOF
+
+## 核对：torch 本体与 CUDA 运行库不许变（NCCL 此时已还原，同样必须与 base 一致）
+RUN python3 /opt/gpuworks/shared/pip_guard.py check
+
+## 补丁层
+#
+# mooncake 由 base 预装；本层只打 vLLM 侧的 mooncake 指标/修复与 dp 端口补丁，
+# 以及 omni 的「非 omni 负载旁路」。严格应用：上下文不匹配即失败，不留 .rej/.orig。
+COPY shared/apply_patches.sh /opt/gpuworks/shared/apply_patches.sh
+COPY patches/vllm/ /tmp/patches-vllm/
+COPY patches/vllm_omni/ /tmp/patches-omni/
+RUN <<EOF
+    set -eux
+    SITE=$(python3 -c "import vllm,os;print(os.path.dirname(os.path.dirname(vllm.__file__)))")
+    # EXPECT_ALL=1：任一补丁不适用即失败。上游已修的补丁（003 在 vllm 0.30 起）被识别成 already-present；
+    # 确实不适用于本档 base 的补丁必须由矩阵用 PATCHES_NOT_APPLICABLE 显式声明（001 在 vllm 0.31 上：
+    # 上游已重构 get_open_port），记进 patches-vllm.json 的 skipped，声明与事实不符照样失败。
+    PATCH_DIR=/tmp/patches-vllm TARGET="${SITE}" \
+        MANIFEST=/opt/gpuworks/patches-vllm.json EXPECT_ALL=1 NOT_APPLICABLE="${PATCHES_NOT_APPLICABLE}" \
+        bash /opt/gpuworks/shared/apply_patches.sh
+    if [ -n "${VLLM_OMNI_VERSION}" ]; then
+        PATCH_DIR=/tmp/patches-omni TARGET="${SITE}" \
+            MANIFEST=/opt/gpuworks/patches-omni.json EXPECT_ALL=1 \
+            bash /opt/gpuworks/shared/apply_patches.sh
+    fi
+    rm -rf /tmp/patches-vllm /tmp/patches-omni
+    # 保险：清掉可能残留在 site-packages 里的 .rej/.orig（打补丁本身已禁止产生）。
+    find "${SITE}" -name '*.rej' -o -name '*.orig' | head -50 | xargs -r rm -f
+EOF
+
+## 模型 overlay
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 离线审计门（组件清单，不等于 GPU 验收）
+ENV GPUWORKS_EXPECT_ENGINE=vllm \
+    GPUWORKS_EXPECT_ENGINE_VERSION=${ENGINE_VERSION} \
+    GPUWORKS_EXPECT_FRAMEWORK=cuda \
+    GPUWORKS_EXPECT_FRAMEWORK_VERSION=${FRAMEWORK_VERSION}
+RUN <<EOF
+    set -eux
+    cp /opt/gpuworks/overlays/audit/stack-audit.py /opt/gpuworks/stack-audit.py
+    # 审计门是门：errors 非空即构建失败。只打印 WARN 等于从不拦截，不要那样做。
+    # 失败时必须把 errors 打到日志里——否则 components.json 随失败的层一起消失，
+    # 只剩一句"process did not complete successfully"，没法诊断。
+    # pip check 只放行「纯净 base 本来就有」的行（/opt/gpuworks/base-pip-check.txt，在任何 pip
+    # 操作之前记录）；基线之外新增的行仍然致命。放行的行记进 components.json 的 pip_check_allowed。
+    export GPUWORKS_PIP_CHECK_BASELINE=/opt/gpuworks/base-pip-check.txt
+    python3 /opt/gpuworks/stack-audit.py --self-test
+    if ! python3 /opt/gpuworks/stack-audit.py > /opt/gpuworks/components.json; then
+        echo "=== stack-audit FAILED, errors:" >&2
+        python3 -c "import json; print(json.dumps(json.load(open('/opt/gpuworks/components.json')).get('errors'), indent=2, ensure_ascii=False))" >&2 || true
+        python3 -c "import json; d=json.load(open('/opt/gpuworks/components.json')); print('pip_check:', d.get('pip_check',{}).get('output','')[-1500:])" >&2 || true
+        exit 1
+    fi
+EOF
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "vllm",
+    "engine_version": os.environ["ENGINE_VERSION"],
+    "framework": "cuda",
+    "framework_version": os.environ["FRAMEWORK_VERSION"],
+    "requires": os.environ["REQUIRES"].split(),
+    "omni": os.environ.get("VLLM_OMNI_VERSION") or None,
+    "mooncake": os.environ.get("MOONCAKE") or None,
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=vllm ENGINE_VERSION="${ENGINE_VERSION}" \
+        bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm" \
+      io.gpuworks.engine.version="${ENGINE_VERSION}" \
+      io.gpuworks.framework="cuda" \
+      io.gpuworks.framework.version="${FRAMEWORK_VERSION}" \
+      io.gpuworks.omni="${VLLM_OMNI_VERSION}" \
+      io.gpuworks.mooncake="${MOONCAKE}" \
+      io.gpuworks.requires="${REQUIRES}"

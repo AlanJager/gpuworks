@@ -1,0 +1,269 @@
+{
+  "log_level": {
+    "label": "日志级别",
+    "help": "设置日志级别，并为支持的 SGLang 启动日志补充级别标识。",
+    "options": {
+      "debug": "DEBUG",
+      "info": "INFO",
+      "warning": "WARNING",
+      "error": "ERROR",
+      "critical": "CRITICAL",
+      "notset": "NOTSET"
+    }
+  },
+  "max_model_len": {
+    "label": "最大上下文长度",
+    "placeholder": "自动",
+    "help": "留空时沿用模型配置"
+  },
+  "dtype": {
+    "label": "权重精度",
+    "options": {
+      "auto": "自动",
+      "float16": "Float16",
+      "bfloat16": "BFloat16",
+      "float32": "Float32"
+    }
+  },
+  "quantization": {
+    "label": "量化方式",
+    "placeholder": "例如 awq",
+    "help": "量化格式由模型和镜像共同决定"
+  },
+  "rope_scaling": {
+    "label": "RoPE scaling",
+    "placeholder": "{\"rope_type\":\"yarn\",\"factor\":2}"
+  },
+  "trust_remote_code": {
+    "label": "信任远程代码",
+    "help": "允许加载模型仓库中的自定义代码"
+  },
+  "reasoning_parser": {
+    "label": "推理内容解析器",
+    "options": {
+      "deepseek_r1": "DeepSeek R1",
+      "granite": "Granite",
+      "mistral": "Mistral",
+      "qwen3": "Qwen3",
+      "step3": "Step3"
+    }
+  },
+  "tool_call_parser": {
+    "label": "工具调用解析器",
+    "options": {
+      "deepseek_v3": "DeepSeek V3",
+      "granite": "Granite",
+      "hermes": "Hermes",
+      "llama3_json": "Llama 3 JSON",
+      "mistral": "Mistral",
+      "qwen3": "Qwen3",
+      "qwen3_coder": "Qwen3 Coder"
+    }
+  },
+  "enable_auto_tool_choice": {
+    "label": "自动选择工具",
+    "help": "允许模型根据请求自动选择工具"
+  },
+  "limit_mm_per_prompt": {
+    "label": "每请求媒体上限",
+    "placeholder": "{\"image\":2,\"audio\":1}"
+  },
+  "mm_processor_kwargs": {
+    "label": "多模态处理器参数",
+    "placeholder": "{\"max_dynamic_patch\":12}"
+  },
+  "media_io_kwargs": {
+    "label": "媒体 I/O 参数",
+    "placeholder": "{\"video\":{\"num_frames\":16}}"
+  },
+  "allowed_local_media_path": {
+    "label": "允许本地媒体路径",
+    "placeholder": "/model/media",
+    "help": "容器内绝对非根路径"
+  },
+  "performance_mode": {
+    "label": "性能档位",
+    "options": {
+      "interactivity": "低延迟",
+      "balanced": "均衡",
+      "throughput": "高吞吐"
+    }
+  },
+  "gpu_memory_utilization": {
+    "label": "显存使用率",
+    "help": "本实例的每卡显存上限；同卡多实例时需自行分摊"
+  },
+  "enable_chunked_prefill": {
+    "label": "分块预填充",
+    "help": "关闭时单批最大 Token 数不得小于上下文长度"
+  },
+  "max_num_batched_tokens": {
+    "label": "单批最大 Token 数",
+    "placeholder": "自动",
+    "help": "留空时按卡型和性能档位推导"
+  },
+  "max_num_seqs": {
+    "label": "最大并发序列数",
+    "placeholder": "自动",
+    "help": "留空时按显存容量推导"
+  },
+  "enable_prefix_caching": {
+    "label": "前缀缓存",
+    "help": "KV Offload 的前置条件"
+  },
+  "enable_cache_report": {
+    "label": "返回缓存命中统计",
+    "help": "开启后推理响应的 usage 携带前缀缓存命中 token 数"
+  },
+  "enable_request_metrics": {
+    "label": "返回逐请求耗时",
+    "help": "开启后每个推理响应的最后一个事件同时携带该请求的排队、Prefill 与 Decode 耗时，监控中心的请求视图据此拆分各阶段。仅对已知为 vLLM 0.25.0 及以上的镜像生效，其余镜像不带此参数启动。"
+  },
+  "kv_cache_dtype": {
+    "label": "KV Cache 精度",
+    "placeholder": "auto",
+    "help": "FP8 可显著增加 KV 容量，但需模型与引擎版本支持",
+    "options": {
+      "auto": "自动",
+      "float16": "FP16",
+      "bfloat16": "BF16",
+      "fp8": "FP8",
+      "fp8_e4m3": "FP8 E4M3",
+      "fp8_e5m2": "FP8 E5M2",
+      "fp8_inc": "FP8 (INC)",
+      "fp8_per_token_head": "FP8 per-token-head",
+      "fp8_ds_mla": "FP8 DeepSeek MLA",
+      "nvfp4": "NVFP4",
+      "nvfp4_4over6": "NVFP4 4/6",
+      "nvfp4_ds_mla": "NVFP4 DeepSeek MLA",
+      "int8_per_token_head": "INT8 per-token-head",
+      "int4_per_token_head": "INT4 per-token-head",
+      "turboquant_k8v4": "TurboQuant K8V4",
+      "turboquant_4bit_nc": "TurboQuant 4-bit",
+      "turboquant_k3v4_nc": "TurboQuant K3V4",
+      "turboquant_3bit_nc": "TurboQuant 3-bit",
+      "ultraquant_4bit": "UltraQuant 4-bit",
+      "mxfp8": "MXFP8",
+      "fp4_mx_block16": "FP4 MX block-16"
+    }
+  },
+  "kv_offloading_size": {
+    "label": "KV Offload 到内存",
+    "help": "所有 GPU 的内存层总量（GiB），不是每卡容量"
+  },
+  "kv_disk_offload": {
+    "label": "KV Offload 到磁盘",
+    "help": "磁盘层经内存层中转，必须先配置内存层"
+  },
+  "shared_kv_dir": {
+    "label": "共享 KV 目录",
+    "placeholder": "/data/gpuworks/kv-cache",
+    "help": "平台会在该容器路径挂载一个受管宿主机目录，并把它控制在磁盘层容量上限之内。"
+  },
+  "kv_offload_read_threads": {
+    "label": "磁盘读取线程"
+  },
+  "kv_offload_write_threads": {
+    "label": "磁盘写入线程"
+  },
+  "kv_disk_limit_gib": {
+    "label": "磁盘层容量上限（GiB）",
+    "placeholder": "模型权重的两倍",
+    "help": "平台对磁盘层目录施加的容量上限，引擎自身没有上限。留空则由平台按模型权重推导。"
+  },
+  "enforce_eager": {
+    "label": "强制 Eager",
+    "help": "启动更快且更省显存，但会降低稳态解码性能"
+  },
+  "speculative_algorithm": {
+    "label": "投机解码算法",
+    "options": {
+      "eagle": "EAGLE",
+      "eagle3": "EAGLE 3",
+      "mtp": "MTP",
+      "ngram": "N-gram",
+      "draft_model": "Draft 模型",
+      "EAGLE": "EAGLE",
+      "EAGLE3": "EAGLE 3",
+      "NEXTN": "NextN（MTP）",
+      "DSPARK": "DSpark",
+      "NGRAM": "N-gram",
+      "STANDALONE": "独立草稿模型"
+    }
+  },
+  "speculative_draft_model": {
+    "label": "Draft 模型",
+    "placeholder": "模型 ID 或容器内路径"
+  },
+  "speculative_tokens": {
+    "label": "每步投机 Token 数"
+  },
+  "speculative_num_steps": {
+    "label": "投机步数"
+  },
+  "speculative_eagle_top_k": {
+    "label": "EAGLE Top K"
+  },
+  "optimization_level": {
+    "label": "编译优化级别",
+    "options": {
+      "O0": "O0",
+      "O1": "O1",
+      "O2": "O2",
+      "O3": "O3"
+    }
+  },
+  "async_scheduling": {
+    "label": "异步调度"
+  },
+  "long_prefill_token_threshold": {
+    "label": "长预填充阈值",
+    "placeholder": "自动"
+  },
+  "kv_cache_memory_bytes": {
+    "label": "KV Cache 显存字节数",
+    "placeholder": "自动"
+  },
+  "prefix_caching_hash_algo": {
+    "label": "前缀缓存哈希算法",
+    "options": {
+      "builtin": "Builtin",
+      "sha256": "SHA-256",
+      "sha256_cbor": "SHA-256 CBOR",
+      "xxhash": "xxHash"
+    }
+  },
+  "cpu_offload_gb": {
+    "label": "CPU 权重 Offload（GiB）",
+    "help": "这是模型权重 offload，与 KV Offload 无关"
+  },
+  "stream_interval": {
+    "label": "流式输出间隔"
+  },
+  "watermark": {
+    "label": "缓存 Watermark"
+  },
+  "max_cudagraph_capture_size": {
+    "label": "最大 CUDA Graph 捕获尺寸"
+  },
+  "mm_encoder_tp_mode": {
+    "label": "多模态编码器 TP 模式",
+    "options": {
+      "weights": "权重",
+      "data": "数据"
+    }
+  },
+  "api_server_count": {
+    "label": "API Server 数量"
+  },
+  "data_parallel_size": {
+    "label": "数据并行数"
+  },
+  "lora": {
+    "label": "启用 LoRA"
+  },
+  "enable_metrics": {
+    "label": "推理监控指标",
+    "help": "向 GPUWorks 提供引擎推理指标；关闭后无法查看实例级推理监控数据"
+  }
+}

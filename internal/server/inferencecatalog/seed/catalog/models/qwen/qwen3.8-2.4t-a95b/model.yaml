@@ -1,0 +1,114 @@
+model_id: qwen/qwen3.8-2.4t-a95b
+source: upstream
+display_title: Qwen3.8-2.4T-A95B
+parameter_count: 2.4T
+architecture: moe
+context_length: 262144
+release_date: '2026-08-08'
+model_config: {model_type: qwen3_5_moe_text, num_hidden_layers: 92, hidden_size: 8192, num_attention_heads: 64, num_key_value_heads: 4, head_dim: 256, max_position_embeddings: 262144, layer_types: [linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention]}
+kv_bytes_per_token:
+  vllm: 94208
+  sglang: 94208
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.8-2.4T-A95B
+        revision: 207bd685a7e3696cfaff12ded7c6a7ea0f88c996
+    - modelscope:
+        repo_id: Qwen/Qwen3.8-2.4T-A95B
+        revision: 3d8576f323f7b29b2bc4bf2fb46c2a4ef150211a
+  weight_bytes: 4892388741252
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.8-2.4T-A95B-FP8
+        revision: d2dc35658bcf77e66643428cb52e774cc3b5bd29
+    - modelscope:
+        repo_id: Qwen/Qwen3.8-2.4T-A95B-FP8
+        revision: e822fd81bb69c52d3b69c77614b97c91fd731cdd
+  weight_bytes: 2496154395007
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: Inferact/Qwen3.8-2.4T-A95B-NVFP4
+        revision: a6abb8bfb82b6965166d4129275f012d8809bc40
+    - modelscope:
+        repo_id: Inferact/Qwen3.8-2.4T-A95B-NVFP4
+        revision: d15c64250713ec056a1fbe14438c71fb50abf7ad
+  weight_bytes: 1447416840218
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --linear-backend
+  - flashinfer_cutedsl
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  env:
+    VLLM_ENGINE_READY_TIMEOUT_S: '3600'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

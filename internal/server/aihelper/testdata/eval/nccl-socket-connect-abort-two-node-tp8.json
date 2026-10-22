@@ -1,0 +1,87 @@
+{
+  "id": "nccl-socket-connect-abort-two-node-tp8",
+  "source": "https://github.com/NVIDIA/nccl-tests/issues/162 ; https://discuss.vllm.ai/t/nccl-error-across-2-machines-2x4gpus-need-advice/1846",
+  "note": "Two nodes x 4 L40S, vLLM 0.11.0 TP=8 across nodes: NCCL bootstraps on an interface the peer cannot reach (link-local 169.254.x) and socketStartConnect aborts. Constructed from upstream message formats (NCCL WARN line from nccl-tests#162, vLLM/NCCL error lines from the vLLM forum thread); NCCL INFO lines and addresses are placeholders.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen3-coder-480b-fp8",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "8",
+    "--nnodes",
+    "2",
+    "--node-rank",
+    "0",
+    "--master-addr",
+    "10.0.0.1",
+    "--quantization",
+    "fp8"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA L40S",
+      "memory_gib": 48
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memory_gib": 48
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memory_gib": 48
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memory_gib": 48
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-08 13:40:02 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-08 13:40:02 [utils.py:233] non-default args: {'model': '/model', 'host': '0.0.0.0', 'port': 30000, 'tensor_parallel_size': 8, 'nnodes': 2, 'node_rank': 0, 'master_addr': '10.0.0.1', 'quantization': 'fp8'}",
+    "(EngineCore_DP0 pid=231) INFO 10-08 13:40:15 [multiproc_executor.py:720] Use multiprocessing distributed executor on 2 nodes",
+    "(Worker_TP0 pid=305) INFO 10-08 13:40:24 [parallel_state.py:1208] rank 0 in world size 8 is assigned as DP rank 0, PP rank 0, TP rank 0, EP rank 0",
+    "(Worker_TP0 pid=305) INFO 10-08 13:40:24 [pynccl.py:103] vLLM is using nccl==2.27.3",
+    "node-a:305:305 [0] NCCL INFO Bootstrap: Using eth0:10.0.0.1<0>",
+    "node-a:305:305 [0] NCCL INFO NET/Plugin: Could not find: libnccl-net.so. Using internal net plugin.",
+    "node-a:305:305 [0] NCCL INFO NET/IB : No device found.",
+    "node-a:305:305 [0] NCCL INFO NET/Socket : Using [0]eth0:10.0.0.1<0> [1]docker0:172.17.0.1<0> [2]enp1s0f1:169.254.3.1<0>",
+    "node-a:305:305 [0] NCCL INFO Using network Socket",
+    "node-a:305:1203 [0] misc/socket.cc:484 NCCL WARN socketStartConnect: Connect to 169.254.3.2<46721> failed : Software caused connection abort",
+    "node-a:305:1203 [0] NCCL INFO misc/socket.cc:567 -> 2",
+    "node-a:305:1203 [0] NCCL INFO transport/net_socket.cc:339 -> 2",
+    "node-a:305:1203 [0] NCCL INFO transport/net.cc:684 -> 2",
+    "node-a:305:305 [0] NCCL INFO init.cc:1408 -> 2",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597] WorkerProc failed to start.",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597] Traceback (most recent call last):",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597]   File \"/usr/local/lib/python3.12/dist-packages/vllm/distributed/device_communicators/pynccl.py\", line 123, in __init__",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597]     self.comm: ncclComm_t = self.nccl.ncclCommInitRank(",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597]   File \"/usr/local/lib/python3.12/dist-packages/vllm/distributed/device_communicators/pynccl_wrapper.py\", line 315, in NCCL_CHECK",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597]     raise RuntimeError(f\"NCCL error: {error_str}\")",
+    "(Worker_TP0 pid=305) ERROR 10-08 13:40:31 [multiproc_executor.py:597] RuntimeError: NCCL error: unhandled system error (run with NCCL_DEBUG=INFO for details)",
+    "(EngineCore_DP0 pid=231) ERROR 10-08 13:40:32 [core.py:708] Exception: WorkerProc initialization failed due to an exception in a background process. See stack trace for root cause.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "nccl_failure",
+  "expect_keywords": [
+    [
+      "NCCL_SOCKET_IFNAME",
+      "SOCKET_IFNAME"
+    ],
+    [
+      "169.254",
+      "link-local",
+      "链路本地",
+      "网卡",
+      "interface",
+      "防火墙",
+      "firewall"
+    ]
+  ]
+}

@@ -1,0 +1,61 @@
+# TYPE deepinfer:requests_running gauge
+deepinfer:requests_running 3
+# TYPE deepinfer:requests_waiting gauge
+deepinfer:requests_waiting 1
+# TYPE deepinfer:prompt_tokens_total counter
+deepinfer:prompt_tokens_total 8440
+# TYPE deepinfer:generation_tokens_total counter
+deepinfer:generation_tokens_total 2048
+# TYPE deepinfer:requests_success_total counter
+deepinfer:requests_success_total 2
+# TYPE deepinfer:time_to_first_token_seconds histogram
+deepinfer:time_to_first_token_seconds_bucket{le="0.05"} 0
+deepinfer:time_to_first_token_seconds_bucket{le="0.1"} 0
+deepinfer:time_to_first_token_seconds_bucket{le="0.25"} 0
+deepinfer:time_to_first_token_seconds_bucket{le="0.5"} 0
+deepinfer:time_to_first_token_seconds_bucket{le="1"} 1
+deepinfer:time_to_first_token_seconds_bucket{le="2.5"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="5"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="10"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="20"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="40"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="80"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="160"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="320"} 2
+deepinfer:time_to_first_token_seconds_bucket{le="+Inf"} 2
+deepinfer:time_to_first_token_seconds_sum 2.4000000000000004
+deepinfer:time_to_first_token_seconds_count 2
+# TYPE deepinfer:time_per_output_token_seconds histogram
+deepinfer:time_per_output_token_seconds_bucket{le="0.002"} 0
+deepinfer:time_per_output_token_seconds_bucket{le="0.004"} 0
+deepinfer:time_per_output_token_seconds_bucket{le="0.006"} 0
+deepinfer:time_per_output_token_seconds_bucket{le="0.008"} 1
+deepinfer:time_per_output_token_seconds_bucket{le="0.01"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.015"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.02"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.03"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.05"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.075"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.1"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.2"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="0.5"} 2
+deepinfer:time_per_output_token_seconds_bucket{le="+Inf"} 2
+deepinfer:time_per_output_token_seconds_sum 0.0165
+deepinfer:time_per_output_token_seconds_count 2
+# TYPE deepinfer:e2e_request_latency_seconds histogram
+deepinfer:e2e_request_latency_seconds_bucket{le="0.05"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="0.1"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="0.25"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="0.5"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="1"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="2.5"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="5"} 0
+deepinfer:e2e_request_latency_seconds_bucket{le="10"} 1
+deepinfer:e2e_request_latency_seconds_bucket{le="20"} 2
+deepinfer:e2e_request_latency_seconds_bucket{le="40"} 2
+deepinfer:e2e_request_latency_seconds_bucket{le="80"} 2
+deepinfer:e2e_request_latency_seconds_bucket{le="160"} 2
+deepinfer:e2e_request_latency_seconds_bucket{le="320"} 2
+deepinfer:e2e_request_latency_seconds_bucket{le="+Inf"} 2
+deepinfer:e2e_request_latency_seconds_sum 20.4
+deepinfer:e2e_request_latency_seconds_count 2

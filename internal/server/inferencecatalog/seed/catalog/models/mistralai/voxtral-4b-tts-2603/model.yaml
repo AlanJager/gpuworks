@@ -1,0 +1,77 @@
+model_id: mistralai/voxtral-4b-tts-2603
+source: upstream
+display_title: Voxtral-4B-TTS-2603
+parameter_count: 4B
+architecture: dense
+release_date: '2025-11-17'
+model_config: {model_type: voxtral_tts, num_hidden_layers: 26, hidden_size: 3072, num_attention_heads: 32, head_dim: 128, max_position_embeddings: 128000}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: mistralai/Voxtral-4B-TTS-2603
+        revision: b81be46c3777f88621676791b512bb01dc1cb970
+    - modelscope:
+        repo_id: mistralai/Voxtral-4B-TTS-2603
+        revision: 4aaafdccdf8fc0bfd26a69941976bd4744b72604
+  weight_bytes: 8037630658
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      inputs:
+      - name: voice
+        kind: select
+      - name: ref_audio
+        kind: audio
+        encoding: data_url
+- name: bf16-vllm-ppu-b81be46c
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: mistralai/Voxtral-4B-TTS-2603
+        revision: b81be46c3777f88621676791b512bb01dc1cb970
+    - modelscope:
+        repo_id: mistralai/Voxtral-4B-TTS-2603
+        revision: 4aaafdccdf8fc0bfd26a69941976bd4744b72604
+  weight_bytes: 8004752248
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --omni
+  - --deploy-config
+  - /usr/local/lib/python3.12/site-packages/vllm_omni/deploy/voxtral_tts.yaml
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      inputs:
+      - name: voice
+        kind: select
+      - name: ref_audio
+        kind: audio
+        encoding: data_url
+input_modalities: [text, audio]

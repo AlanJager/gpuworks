@@ -1,0 +1,49 @@
+{
+  "source_language": "en",
+  "target_languages": [
+    "zh"
+  ],
+  "translation_batch_size": 24,
+  "review_batch_size": 24,
+  "review_concurrency": 2,
+  "review_sample_rate": 0.02,
+  "request_timeout_seconds": 300,
+  "request_retries": 2,
+  "resources": [
+    {
+      "id": "ui",
+      "directory": "ui/src/i18n/locales",
+      "layout": "language-directories"
+    },
+    {
+      "id": "deploy-parameters",
+      "directory": "internal/server/deploy/locales",
+      "layout": "language-files"
+    },
+    {
+      "id": "playground-parameters",
+      "directory": "internal/server/api/locales/playground",
+      "layout": "language-files"
+    },
+    {
+      "id": "settings-presets",
+      "directory": "internal/server/api/locales/settings",
+      "layout": "language-files"
+    },
+    {
+      "id": "benchmark-metadata",
+      "directory": "pkg/bench/locales",
+      "layout": "language-files"
+    },
+    {
+      "id": "gpu-vendors",
+      "directory": "internal/server/imagecatalog/locales/vendor",
+      "layout": "language-files"
+    },
+    {
+      "id": "provider-metadata",
+      "directory": "internal/server/provider/locales",
+      "layout": "language-files"
+    }
+  ]
+}

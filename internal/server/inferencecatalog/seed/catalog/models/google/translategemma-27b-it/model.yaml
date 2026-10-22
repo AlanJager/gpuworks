@@ -1,0 +1,83 @@
+model_id: google/translategemma-27b-it
+source: upstream
+display_title: translategemma-27b-it
+parameter_count: 27B
+architecture: dense
+context_length: 131072
+release_date: '2026-01-12'
+model_config: {model_type: gemma3, num_hidden_layers: 62, hidden_size: 5376, num_attention_heads: 32, num_key_value_heads: 16, head_dim: 128, max_position_embeddings: 131072, sliding_window: 1024, layer_types: [sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention], vision_config: {image_size: 896, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 507904
+  sglang: 507904
+specs:
+- name: bf16-vllm-ppu-7d10f0b7
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/translategemma-27b-it
+        revision: 7d10f0b72f89a2d0f268cea30727d8b77c0d25c2
+    - modelscope:
+        repo_id: google/translategemma-27b-it
+        revision: 749380b7771ca7417933a6dd8fa3d3b54c673180
+  weight_bytes: 54864980440
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  args: [--trust-remote-code, --skip-mm-profiling]
+  api:
+    health_endpoint: /health
+    operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
+- name: bf16-default-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/translategemma-27b-it
+        revision: 7d10f0b72f89a2d0f268cea30727d8b77c0d25c2
+    - modelscope:
+        repo_id: google/translategemma-27b-it
+        revision: 749380b7771ca7417933a6dd8fa3d3b54c673180
+  weight_bytes: 54904377103
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-optimized-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Infomaniak-AI/vllm-translategemma-27b-it
+        revision: be47a43850d00bdf556df71fdff7f9740ded598e
+    - modelscope:
+        repo_id: google/translategemma-27b-it
+        revision: 749380b7771ca7417933a6dd8fa3d3b54c673180
+  weight_bytes: 54904389343
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,1242 @@
+{
+  "items": [
+    {
+      "series": "gpuworks_infer_decode_time_seconds",
+      "name": "decode_time_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_decode_time_seconds_sum",
+      "name": "decode_time_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_decode_time_seconds_count",
+      "name": "decode_time_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_e2e_seconds",
+      "name": "e2e_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_e2e_seconds_sum",
+      "name": "e2e_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_e2e_seconds_count",
+      "name": "e2e_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_generation_tokens_total",
+      "name": "generation_tokens_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_gpu_cache_usage_percent",
+      "name": "gpu_cache_usage_percent",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "ratio",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_capacity_tokens",
+      "name": "kv_capacity_tokens",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_disk_hits_total",
+      "name": "kv_disk_hits_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_disk_queries_total",
+      "name": "kv_disk_queries_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_disk_write_bytes_total",
+      "name": "kv_disk_write_bytes_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "bytes",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_disk_write_failures_total",
+      "name": "kv_disk_write_failures_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_free_tokens",
+      "name": "kv_free_tokens",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_hit_rate_instant",
+      "name": "kv_hit_rate_instant",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "ratio",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_hits_total",
+      "name": "kv_hits_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_memory_hits_total",
+      "name": "kv_memory_hits_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_memory_queries_total",
+      "name": "kv_memory_queries_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_kv_queries_total",
+      "name": "kv_queries_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_nixl_failed_transfers_total",
+      "name": "nixl_failed_transfers_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_nixl_kv_expired_total",
+      "name": "nixl_kv_expired_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_nixl_transfer_bytes",
+      "name": "nixl_transfer_bytes",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "bytes",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_nixl_transfer_bytes_sum",
+      "name": "nixl_transfer_bytes",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "bytes",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_nixl_transfer_bytes_count",
+      "name": "nixl_transfer_bytes",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_nixl_transfer_seconds",
+      "name": "nixl_transfer_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_nixl_transfer_seconds_sum",
+      "name": "nixl_transfer_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_nixl_transfer_seconds_count",
+      "name": "nixl_transfer_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_preemptions_total",
+      "name": "preemptions_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_prefill_time_seconds",
+      "name": "prefill_time_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_prefill_time_seconds_sum",
+      "name": "prefill_time_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_prefill_time_seconds_count",
+      "name": "prefill_time_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_prompt_tokens_cache_hit_total",
+      "name": "prompt_tokens_cache_hit_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_prompt_tokens_external_total",
+      "name": "prompt_tokens_external_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_prompt_tokens_local_compute_total",
+      "name": "prompt_tokens_local_compute_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_prompt_tokens_total",
+      "name": "prompt_tokens_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_queue_time_seconds",
+      "name": "queue_time_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_queue_time_seconds_sum",
+      "name": "queue_time_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_queue_time_seconds_count",
+      "name": "queue_time_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_requests_running",
+      "name": "requests_running",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_requests_success_total",
+      "name": "requests_success_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_requests_waiting",
+      "name": "requests_waiting",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_spec_accept_length",
+      "name": "spec_accept_length",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_spec_accept_rate",
+      "name": "spec_accept_rate",
+      "source": "engine",
+      "kind": "gauge",
+      "unit": "ratio",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_spec_accepted_tokens_total",
+      "name": "spec_accepted_tokens_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_spec_draft_tokens_total",
+      "name": "spec_draft_tokens_total",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_tpot_seconds",
+      "name": "tpot_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_tpot_seconds_sum",
+      "name": "tpot_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_tpot_seconds_count",
+      "name": "tpot_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_ttft_seconds",
+      "name": "ttft_seconds",
+      "source": "engine",
+      "kind": "histogram",
+      "unit": "seconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_infer_ttft_seconds_sum",
+      "name": "ttft_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "seconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_infer_ttft_seconds_count",
+      "name": "ttft_seconds",
+      "source": "engine",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_cached_tokens_total",
+      "name": "cached_tokens_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_completion_tokens_total",
+      "name": "completion_tokens_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_prompt_tokens_total",
+      "name": "prompt_tokens_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "tokens",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_reported_decode_ms",
+      "name": "reported_decode_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_reported_decode_ms_sum",
+      "name": "reported_decode_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_reported_decode_ms_count",
+      "name": "reported_decode_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_reported_prefill_ms",
+      "name": "reported_prefill_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_reported_prefill_ms_sum",
+      "name": "reported_prefill_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_reported_prefill_ms_count",
+      "name": "reported_prefill_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_reported_queue_ms",
+      "name": "reported_queue_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_reported_queue_ms_sum",
+      "name": "reported_queue_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_reported_queue_ms_count",
+      "name": "reported_queue_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_request_duration_ms",
+      "name": "request_duration_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_request_duration_ms_sum",
+      "name": "request_duration_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_request_duration_ms_count",
+      "name": "request_duration_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_requests_inflight",
+      "name": "requests_inflight",
+      "source": "gateway",
+      "kind": "gauge",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_requests_total",
+      "name": "requests_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_tpot_ms",
+      "name": "tpot_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_tpot_ms_sum",
+      "name": "tpot_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_tpot_ms_count",
+      "name": "tpot_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_ttft_ms",
+      "name": "ttft_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_ttft_ms_sum",
+      "name": "ttft_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_ttft_ms_count",
+      "name": "ttft_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_usage_missing_total",
+      "name": "usage_missing_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_bench_latency_p99_ms",
+      "name": "bench_latency_p99_ms",
+      "source": "benchmark",
+      "kind": "gauge",
+      "unit": "milliseconds",
+      "quantiles": false,
+      "labels": [
+        "benchmark",
+        "point",
+        "node"
+      ],
+      "description": "A benchmark point's 99th percentile request latency."
+    },
+    {
+      "series": "gpuworks_bench_output_tput",
+      "name": "bench_output_tput",
+      "source": "benchmark",
+      "kind": "gauge",
+      "unit": "tokens_per_second",
+      "quantiles": false,
+      "labels": [
+        "benchmark",
+        "point",
+        "node"
+      ],
+      "description": "A benchmark point's output token throughput."
+    },
+    {
+      "series": "gpuworks_bench_request_tput",
+      "name": "bench_request_tput",
+      "source": "benchmark",
+      "kind": "gauge",
+      "unit": "requests_per_second",
+      "quantiles": false,
+      "labels": [
+        "benchmark",
+        "point",
+        "node"
+      ],
+      "description": "A benchmark point's completed requests per second."
+    },
+    {
+      "series": "gpuworks_bench_total_tput",
+      "name": "bench_total_tput",
+      "source": "benchmark",
+      "kind": "gauge",
+      "unit": "tokens_per_second",
+      "quantiles": false,
+      "labels": [
+        "benchmark",
+        "point",
+        "node"
+      ],
+      "description": "A benchmark point's input plus output token throughput."
+    },
+    {
+      "series": "gpuworks_bench_tpot_p50_ms",
+      "name": "bench_tpot_p50_ms",
+      "source": "benchmark",
+      "kind": "gauge",
+      "unit": "milliseconds",
+      "quantiles": false,
+      "labels": [
+        "benchmark",
+        "point",
+        "node"
+      ],
+      "description": "A benchmark point's median time per output token."
+    },
+    {
+      "series": "gpuworks_bench_ttft_p50_ms",
+      "name": "bench_ttft_p50_ms",
+      "source": "benchmark",
+      "kind": "gauge",
+      "unit": "milliseconds",
+      "quantiles": false,
+      "labels": [
+        "benchmark",
+        "point",
+        "node"
+      ],
+      "description": "A benchmark point's median time to first token."
+    },
+    {
+      "series": "gpuworks_dgpu_memory_used_bytes",
+      "name": "dgpu_memory_used_bytes",
+      "source": "dgpu",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "instance"
+      ],
+      "description": "Device memory a dGPU slice's instance uses on one GPU, as the slice accounts it."
+    },
+    {
+      "series": "gpuworks_dgpu_sm_util",
+      "name": "dgpu_sm_util",
+      "source": "dgpu",
+      "kind": "gauge",
+      "unit": "percent",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "instance"
+      ],
+      "description": "SM utilization a dGPU slice's instance gets on one GPU (0-100)."
+    },
+    {
+      "series": "gpuworks_gpu_fan_speed_percent",
+      "name": "gpu_fan_speed_percent",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "percent",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "GPU fan speed as a share of its maximum; absent on passively cooled cards."
+    },
+    {
+      "series": "gpuworks_gpu_memory_bandwidth_utilization",
+      "name": "gpu_memory_bandwidth_utilization",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "percent",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "Share of time device memory was being read or written (0-100)."
+    },
+    {
+      "series": "gpuworks_gpu_memory_total_bytes",
+      "name": "gpu_memory_total_bytes",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "Device memory the GPU has."
+    },
+    {
+      "series": "gpuworks_gpu_memory_used_bytes",
+      "name": "gpu_memory_used_bytes",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "Device memory in use on the GPU, by every process."
+    },
+    {
+      "series": "gpuworks_gpu_pcie_rx_bytes_per_sec",
+      "name": "gpu_pcie_rx_bytes_per_sec",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "PCIe traffic into the GPU."
+    },
+    {
+      "series": "gpuworks_gpu_pcie_tx_bytes_per_sec",
+      "name": "gpu_pcie_tx_bytes_per_sec",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "PCIe traffic out of the GPU."
+    },
+    {
+      "series": "gpuworks_gpu_power_watts",
+      "name": "gpu_power_watts",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "watts",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "GPU power draw."
+    },
+    {
+      "series": "gpuworks_gpu_sm_active",
+      "name": "gpu_sm_active",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "ratio",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "DCGM: fraction of time at least one warp was active on an SM, averaged over SMs (0-1)."
+    },
+    {
+      "series": "gpuworks_gpu_sm_clock_max_mhz",
+      "name": "gpu_sm_clock_max_mhz",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "megahertz",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "Maximum SM clock; a current clock well below it with throttle reasons set means the GPU is being held back."
+    },
+    {
+      "series": "gpuworks_gpu_sm_clock_mhz",
+      "name": "gpu_sm_clock_mhz",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "megahertz",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "Current SM clock."
+    },
+    {
+      "series": "gpuworks_gpu_sm_occupancy",
+      "name": "gpu_sm_occupancy",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "ratio",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "DCGM: fraction of resident warps relative to the SM maximum (0-1)."
+    },
+    {
+      "series": "gpuworks_gpu_temperature_celsius",
+      "name": "gpu_temperature_celsius",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "celsius",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "GPU core temperature."
+    },
+    {
+      "series": "gpuworks_gpu_tensor_active",
+      "name": "gpu_tensor_active",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "ratio",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "DCGM: fraction of cycles the tensor cores were active (0-1)."
+    },
+    {
+      "series": "gpuworks_gpu_throttle_reasons",
+      "name": "gpu_throttle_reasons",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "bitmask",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "nvidia-smi clock event (throttle) reasons as a bitmask; 0 means none."
+    },
+    {
+      "series": "gpuworks_gpu_utilization",
+      "name": "gpu_utilization",
+      "source": "gpu",
+      "kind": "gauge",
+      "unit": "percent",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "gpu",
+        "gpu_uuid",
+        "vendor"
+      ],
+      "description": "Share of time the GPU's compute engines were busy over the last sample period (0-100)."
+    },
+    {
+      "series": "gpuworks_kv_disk_limit_bytes",
+      "name": "kv_disk_limit_bytes",
+      "source": "kv_disk",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "instance",
+        "engine"
+      ],
+      "description": "Space an instance's KV cache disk tier may use."
+    },
+    {
+      "series": "gpuworks_kv_disk_used_bytes",
+      "name": "kv_disk_used_bytes",
+      "source": "kv_disk",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "instance",
+        "engine"
+      ],
+      "description": "Space an instance's KV cache disk tier uses."
+    },
+    {
+      "series": "gpuworks_node_cpu_busy_percent",
+      "name": "node_cpu_busy_percent",
+      "source": "node",
+      "kind": "gauge",
+      "unit": "percent",
+      "quantiles": false,
+      "labels": [
+        "node"
+      ],
+      "description": "Share of CPU time the host spent not idle, over all cores (0-100)."
+    },
+    {
+      "series": "gpuworks_node_disk_read_bytes_per_sec",
+      "name": "node_disk_read_bytes_per_sec",
+      "source": "node",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "device"
+      ],
+      "description": "Reads from one block device."
+    },
+    {
+      "series": "gpuworks_node_disk_write_bytes_per_sec",
+      "name": "node_disk_write_bytes_per_sec",
+      "source": "node",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "device"
+      ],
+      "description": "Writes to one block device."
+    },
+    {
+      "series": "gpuworks_node_mem_total_bytes",
+      "name": "node_mem_total_bytes",
+      "source": "node",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node"
+      ],
+      "description": "Host memory."
+    },
+    {
+      "series": "gpuworks_node_mem_used_bytes",
+      "name": "node_mem_used_bytes",
+      "source": "node",
+      "kind": "gauge",
+      "unit": "bytes",
+      "quantiles": false,
+      "labels": [
+        "node"
+      ],
+      "description": "Host memory in use (total minus available)."
+    },
+    {
+      "series": "gpuworks_node_net_rx_bytes_per_sec",
+      "name": "node_net_rx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node"
+      ],
+      "description": "Traffic received over all the host's interfaces."
+    },
+    {
+      "series": "gpuworks_node_net_tx_bytes_per_sec",
+      "name": "node_net_tx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node"
+      ],
+      "description": "Traffic sent over all the host's interfaces."
+    },
+    {
+      "series": "gpuworks_node_nic_errors_per_sec",
+      "name": "node_nic_errors_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "events_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "iface",
+        "kind"
+      ],
+      "description": "Errors or drops of one kind on one NIC."
+    },
+    {
+      "series": "gpuworks_node_nic_rx_bytes_per_sec",
+      "name": "node_nic_rx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "iface"
+      ],
+      "description": "Traffic received on one NIC."
+    },
+    {
+      "series": "gpuworks_node_nic_tx_bytes_per_sec",
+      "name": "node_nic_tx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "iface"
+      ],
+      "description": "Traffic sent on one NIC."
+    },
+    {
+      "series": "gpuworks_node_rdma_events_per_sec",
+      "name": "node_rdma_events_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "events_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "hca",
+        "counter"
+      ],
+      "description": "One RDMA port error or congestion counter's rate (counter names it)."
+    },
+    {
+      "series": "gpuworks_node_rdma_rx_bytes_per_sec",
+      "name": "node_rdma_rx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "hca"
+      ],
+      "description": "Traffic received on one RDMA port."
+    },
+    {
+      "series": "gpuworks_node_rdma_tx_bytes_per_sec",
+      "name": "node_rdma_tx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "hca"
+      ],
+      "description": "Traffic sent on one RDMA port."
+    },
+    {
+      "series": "gpuworks_node_role_rx_bytes_per_sec",
+      "name": "node_role_rx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "role"
+      ],
+      "description": "Traffic received on the network a role (serving, management, storage...) is bound to."
+    },
+    {
+      "series": "gpuworks_node_role_tx_bytes_per_sec",
+      "name": "node_role_tx_bytes_per_sec",
+      "source": "network",
+      "kind": "gauge",
+      "unit": "bytes_per_second",
+      "quantiles": false,
+      "labels": [
+        "node",
+        "role"
+      ],
+      "description": "Traffic sent on the network a role is bound to."
+    },
+    {
+      "series": "gpuworks_proxy_accounting_dropped_total",
+      "name": "proxy_accounting_dropped_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "events",
+      "quantiles": false,
+      "labels": [
+        "node"
+      ],
+      "description": "Usage accounting records the gateway dropped because its queue was full."
+    },
+    {
+      "series": "gpuworks_proxy_pd_fallback_total",
+      "name": "proxy_pd_fallback_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false,
+      "labels": [
+        "deployment",
+        "reason",
+        "node"
+      ],
+      "description": "Prefill/decode requests the gateway served without disaggregation after the prefill step failed."
+    },
+    {
+      "series": "gpuworks_proxy_pd_prefill_duration_ms_count",
+      "name": "proxy_pd_prefill_duration_ms_count",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false,
+      "labels": [
+        "deployment",
+        "node"
+      ],
+      "description": "Prefill/decode requests whose prefill step was timed."
+    },
+    {
+      "series": "gpuworks_proxy_pd_prefill_duration_ms_sum",
+      "name": "proxy_pd_prefill_duration_ms_sum",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false,
+      "labels": [
+        "deployment",
+        "node"
+      ],
+      "description": "Total time spent in the prefill step of prefill/decode requests; with _count, the mean."
+    },
+    {
+      "series": "gpuworks_proxy_retries_total",
+      "name": "proxy_retries_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false,
+      "labels": [
+        "deployment",
+        "reason",
+        "node"
+      ],
+      "description": "Requests the gateway retried on another replica, by why."
+    },
+    {
+      "series": "gpuworks_proxy_routed_total",
+      "name": "proxy_routed_total",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false,
+      "labels": [
+        "deployment",
+        "instance",
+        "node"
+      ],
+      "description": "Requests the gateway routed to each replica."
+    }
+  ],
+  "total": 121
+}

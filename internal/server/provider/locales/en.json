@@ -1,0 +1,26 @@
+{
+  "provider_kinds": {
+    "aliyun": "Alibaba Cloud",
+    "autodl": "AutoDL",
+    "compshare": "UCloud",
+    "runpod": "RunPod",
+    "vast": "Vast.ai",
+    "zstack": "ZStack Cloud"
+  },
+  "credential_fields": {
+    "api_key": { "label": "API Key", "placeholder": "API Key" },
+    "endpoint": { "label": "API Endpoint" },
+    "public_key": { "label": "Public Key", "placeholder": "UCloud Public Key" },
+    "private_key": { "label": "Private Key", "placeholder": "UCloud Private Key" },
+    "ssh_password": { "label": "SSH Password", "placeholder": "Optional AutoDL SSH password" },
+    "access_key_id": { "label": "AccessKey ID", "placeholder": "AccessKey ID of a RAM user (or the account)" },
+    "access_key_secret": { "label": "AccessKey Secret", "placeholder": "AccessKey Secret" },
+    "role_arn": { "label": "RAM Role ARN", "placeholder": "Optional: acs:ram::<account>:role/<name>, assumed with the AccessKey" },
+    "regions": { "label": "Regions", "placeholder": "Optional: cn-shanghai,cn-beijing (default: every region)" }
+  },
+  "ssh_connections": {
+    "cloud_assistant": "Cloud Assistant",
+    "direct": "Direct",
+    "proxy": "Platform Proxy"
+  }
+}

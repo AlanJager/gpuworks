@@ -1,0 +1,72 @@
+model_id: inclusionai/ling-2.6-1t
+source: upstream
+display_title: Ling-2.6-1T
+parameter_count: 1T
+architecture: moe
+context_length: 262144
+release_date: '2026-04-29'
+model_config: {model_type: bailing_hybrid, num_hidden_layers: 80, hidden_size: 8192, num_attention_heads: 64, num_key_value_heads: 64, head_dim: 128, max_position_embeddings: 262144, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128}
+kv_bytes_per_token:
+  vllm: 92160
+  sglang: 92160
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: inclusionAI/Ling-2.6-1T
+        revision: 07b9e26bb1f97494b4fd62eed83f22722ffd560a
+    - modelscope:
+        repo_id: inclusionAI/Ling-2.6-1T
+        revision: 91164a3c667b90183610675cdb58fe16202a14c1
+  weight_bytes: 1041859731971
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --model-loader-extra-config
+  - '{"enable_multithread_load":"true","num_threads":64}'
+  - --tool-call-parser
+  - qwen
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: inclusionAI/Ling-2.6-1T
+        revision: 07b9e26bb1f97494b4fd62eed83f22722ffd560a
+    - modelscope:
+        repo_id: inclusionAI/Ling-2.6-1T
+        revision: 91164a3c667b90183610675cdb58fe16202a14c1
+  weight_bytes: 1041859731971
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

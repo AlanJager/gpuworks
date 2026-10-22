@@ -1,0 +1,85 @@
+{
+  "scope": "Targeted real GPU inference credential lifecycle; not complete API-key or model coverage",
+  "test_file": "test/e2e/remote_inference_runtime.py",
+  "command": "python3 test/e2e/remote_runtime_acceptance.py --config <private.json> --case inference",
+  "lane": "remote-real-agent-gpu",
+  "identity": "admin creates; copied inference bearer generates without admin cookies",
+  "cases": [
+    {
+      "case_id": "inference",
+      "contract_id": "gpuworks/inference-key/real-gpu-generation-revocation",
+      "name": "推理令牌 / UI 创建复制并撤销 / 真实 GPU 流式与非流式生成成功，撤销后拒绝而 guard 仍可生成",
+      "test_function": "run_inference",
+      "required_evidence": ["ui", "request", "persistence", "execution", "runtime", "cleanup"],
+      "prerequisites": [
+        "Explicit remote base_url/node_uuid and private credentials",
+        "Runner creates an owned deployment on an explicitly selected idle real GPU; no fake engine",
+        "Runner verifies real container PID against GPU process and nonzero device memory",
+        "Browser trusts only the configured test origin for real clipboard readback; no product UI injection",
+        "Existing API keys remain intact; owned API-created guard keeps auth enabled during revocation"
+      ],
+      "fields": [
+        {
+          "id": "inference-key.name",
+          "component": "Text",
+          "request": "name",
+          "persisted": "name",
+          "covered": ["unique run-owned name", "exact create body", "refresh metadata"],
+          "missing": ["validation boundary matrix", "Unicode and whitespace normalization"]
+        },
+        {
+          "id": "inference-key.secret",
+          "component": "Secret / real clipboard",
+          "request": "Authorization bearer on public gateway",
+          "persisted": "prefix only in list response",
+          "covered": ["once-only exact response/display/copy", "clipboard cleared after read", "secret DOM destroyed", "GET never reveals full secret", "real generation", "revocation"],
+          "missing": ["all log/export secret surfaces", "HTTP fallback clipboard path"]
+        }
+      ],
+      "crud": {
+        "Create": "UI primary Create button creates key, exact POST/201, copy matches response and display",
+        "Read": "Independent GET and refresh prove metadata/prefix; real use updates last_used",
+        "Update": "N/A: inference-key UI/API offer no update operation",
+        "Delete": "UI cancel keeps generation working; confirm deletes, refresh removes row and same bearer receives 401"
+      },
+      "checklist_items": {
+        "7.3": "Once-only display, clipboard consumption, subsequent DOM/GET absence",
+        "7.4": "Copied bearer generates; revoked bearer rejected while independent guard still generates",
+        "12.2": "Named creation and secret dialogs/footer in viewport; delete confirmation reachable",
+        "12.7": "Named-impact confirmation; cancel and actual deletion results",
+        "20.2": "Actual public gateway request and meaningful real model output",
+        "20.3": "Non-stream and SSE content, terminal DONE, finish reason, positive exact usage; cancel/error streams missing",
+        "21.1": "Actual copy interaction and clipboard exact equality",
+        "21.5": "Copied bearer consumed without rewriting; sensitive phase untraced and artifacts redacted"
+      },
+      "runtime": {
+        "assertions": [
+          "Public POST /v1/chat/completions with exact copied bearer returns real nonempty assistant content and usage",
+          "Streaming response has correct model, one request id, nonempty assembled content, finish_reason=stop, final DONE and usage",
+          "Prompt/completion token counts are positive; total equals their sum",
+          "Cancel deletion retains real generation access",
+          "Confirmed deletion causes generation request with old bearer to return 401 exact gateway denial",
+          "Anonymous generation remains denied while guard exists",
+          "Independent guard still produces real generation after target deletion"
+        ],
+        "execution_evidence_owner": "remote_gpu_fixture.verify_gpu: owned container, real GPU process and memory; no UI deployment-creation claim"
+      },
+      "cleanup": "Target deleted through UI; only run-owned guard deleted through API; pre-existing key metadata retained. Runner removes only its deployment/container and verifies baseline containers plus GPU memory restoration.",
+      "missing": [
+        "Playground UI or IndexedDB history",
+        "Image/audio/embedding/rerank operations",
+        "Generation cancellation and failure recovery",
+        "GPU performance, dGPU isolation or sleep/wake",
+        "Full API-key list/field/permission/style matrix",
+        "Deleting the last key through UI and anonymous development-mode generation"
+      ],
+      "product_contracts": [
+        "ui/src/pages/APIKeysPage.tsx",
+        "ui/src/pages/apikeys/SecretModal.tsx",
+        "internal/server/api/deploy.go",
+        "internal/server/proxy/proxy.go",
+        "internal/server/store/auth.go"
+      ]
+    }
+  ]
+}

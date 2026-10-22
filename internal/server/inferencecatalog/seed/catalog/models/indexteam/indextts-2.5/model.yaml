@@ -1,0 +1,116 @@
+model_id: indexteam/indextts-2.5
+source: upstream
+display_title: IndexTTS-2.5
+parameter_count: Undisclosed
+architecture: dense
+release_date: '2026-08-10'
+model_config: {model_type: qwen3, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: IndexTeam/IndexTTS-2.5
+        revision: c39ce5ba981572cb187443877ff559dfb246ce63
+    - modelscope:
+        repo_id: IndexTeam/IndexTTS-2.5
+        revision: 0b328234ba044f491e35f103f2d3b8ecfd90efe1
+  weight_bytes: 5491182363
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  # IndexTTS 2.5 reads its Wav2Vec2-BERT, CAMPPlus and BigVGAN assets only from
+  # beside the model (vllm_omni/model_executor/models/indextts2/preprocess_utils.py)
+  # and otherwise fetches them from the Hugging Face Hub, which an offline node
+  # cannot reach. The platform mounts each repository on its own, so the
+  # preparation step links them into one directory and the engine serves that.
+  entrypoint:
+  - vllm
+  - serve
+  - /opt/gpuworks/indextts-2.5
+  pre_start_script: |-
+    set -e
+    d=/opt/gpuworks/indextts-2.5
+    mkdir -p "$d"
+    for f in /models/indextts/*; do ln -sfn "$f" "$d/"; done
+    ln -sfn /models/w2v-bert-2.0 "$d/w2v-bert-2.0"
+    ln -sfn /models/campplus/campplus_cn_common.bin "$d/campplus_cn_common.bin"
+    ln -sfn /models/bigvgan "$d/bigvgan"
+  args:
+  - --omni
+  - --deploy-config
+  - /usr/local/lib/python3.12/dist-packages/vllm_omni/deploy/indextts2_5.yaml
+  - --trust-remote-code
+  components:
+  - name: indextts
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: IndexTeam/IndexTTS-2.5
+          revision: c39ce5ba981572cb187443877ff559dfb246ce63
+      - modelscope:
+          repo_id: IndexTeam/IndexTTS-2.5
+          revision: 0b328234ba044f491e35f103f2d3b8ecfd90efe1
+    weight_bytes: 5491182363
+    mount_path: /models/indextts
+  - name: w2v-bert
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: facebook/w2v-bert-2.0
+          revision: da985ba0987f70aaeb84a80f2851cfac8c697a7b
+      - modelscope:
+          repo_id: facebook/w2v-bert-2.0
+          revision: 68cfcc9e237812bb3a1793199bec79f7cb85b96e
+    weight_bytes: 4651204811
+    mount_path: /models/w2v-bert-2.0
+  - name: campplus
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: funasr/campplus
+          revision: e4b6ede7ce16997aff4ae69fbca1f0175e2afede
+      - modelscope:
+          repo_id: iic/speech_campplus_sv_zh-cn_16k-common
+          revision: a045b2afcaa9c3049c98a9215a2bc274407ab237
+    weight_bytes: 28857970
+    mount_path: /models/campplus
+  - name: bigvgan
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: nvidia/bigvgan_v2_22khz_80band_256x
+          revision: 633ff708ed5b74903e86ff1298cf4a98e921c513
+      - modelscope:
+          repo_id: nv-community/bigvgan_v2_22khz_80band_256x
+          revision: 28f63362719fc3b44bf7b9ca7b302c7fd0e34752
+    weight_bytes: 3789949782
+    mount_path: /models/bigvgan
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      inputs:
+      - name: ref_audio
+        kind: audio
+        encoding: data_url
+        required: true
+      - name: voice
+        kind: select
+input_modalities: [text, audio]

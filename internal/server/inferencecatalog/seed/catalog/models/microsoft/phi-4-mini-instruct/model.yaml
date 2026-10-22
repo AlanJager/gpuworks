@@ -1,0 +1,106 @@
+model_id: microsoft/phi-4-mini-instruct
+source: upstream
+display_title: Phi-4-mini-instruct
+parameter_count: 4B
+architecture: dense
+context_length: 131072
+release_date: '2025-02-19'
+model_config: {model_type: phi3, num_hidden_layers: 32, hidden_size: 3072, num_attention_heads: 24, num_key_value_heads: 8, max_position_embeddings: 131072, sliding_window: 262144}
+kv_bytes_per_token:
+  vllm: 131072
+  sglang: 131072
+specs:
+- name: bf16-default-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: microsoft/Phi-4-mini-instruct
+        revision: cfbefacb99257ffa30c83adab238a50856ac3083
+    - modelscope:
+        repo_id: microsoft/Phi-4-mini-instruct
+        revision: 8499918ca3a6c058b44def91b3322d857ce57ed3
+  weight_bytes: 7694054130
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-ascend-6f1be74c
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: microsoft/Phi-4-mini-instruct
+        revision: cfbefacb99257ffa30c83adab238a50856ac3083
+    - modelscope:
+        repo_id: microsoft/Phi-4-mini-instruct
+        revision: 8499918ca3a6c058b44def91b3322d857ce57ed3
+  weight_bytes: 7694054706
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  env:
+    GLOO_SOCKET_IFNAME: lo
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-cfbefacb
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: microsoft/Phi-4-mini-instruct
+        revision: cfbefacb99257ffa30c83adab238a50856ac3083
+    - modelscope:
+        repo_id: microsoft/Phi-4-mini-instruct
+        revision: cfbefacb99257ffa30c83adab238a50856ac3083
+  weight_bytes: 7672066216
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

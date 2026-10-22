@@ -1,0 +1,74 @@
+{
+  "capacity": {
+    "byLabel": "Capacity by label",
+    "byVendor": "Capacity by vendor",
+    "empty": "No compute-node capacity",
+    "labelKeyAria": "Label key to group by",
+    "noLabels": "No node carries a label yet. Add labels on the Nodes page to group capacity.",
+    "nodeCount": "Nodes: {{count}}",
+    "unusableGPUCount": "GPUs unavailable for allocation: {{count}}",
+    "unlabeled": "Not set"
+  },
+  "description": "Monitor cluster capacity, GPU utilization, temperature, power, and service health in real time",
+  "health": {
+    "attention": "The platform has {{count}} item requiring attention",
+    "attention_other": "The platform has {{count}} items requiring attention",
+    "attentionDescription": "Check offline compute nodes, GPUs unavailable for allocation, public and private clouds, and service health first.",
+    "normal": "Platform operating normally",
+    "normalDescription": "Compute nodes, deployments, public clouds, and private clouds are currently within their available ranges."
+  },
+  "labels": {
+    "unusableCount": "Unavailable for allocation: {{count}}",
+    "validCount": "Valid: {{count}}",
+    "invalidCount": "Invalid: {{count}}"
+  },
+  "metrics": {
+    "power": {
+      "description": "Real-time GPU/NPU power",
+      "title": "Power"
+    },
+    "temperature": {
+      "description": "GPU/NPU thermal status",
+      "title": "Temperature"
+    },
+    "title": "Core GPU metrics",
+    "utilization": {
+      "description": "Real-time compute utilization for each GPU",
+      "title": "Utilization"
+    },
+    "vram": {
+      "description": "VRAM used by each GPU",
+      "title": "VRAM usage"
+    }
+  },
+  "platform": {
+    "title": "Platform",
+    "version": "Version {{version}}"
+  },
+  "situation": {
+    "activeAgentSessions": "Active agent sessions: {{count}}",
+    "invalidPrivateClouds": "Invalid private clouds: {{count}}",
+    "invalidPublicClouds": "Invalid public clouds: {{count}}",
+    "offlineNodes": "Offline compute nodes: {{count}}",
+    "platform": "Platform {{state}}",
+    "sleepableDeployments": "Sleepable deployments: {{count}}",
+    "title": "Platform status",
+    "unusableGPUs": "GPUs unavailable for allocation: {{count}}"
+  },
+  "stats": {
+    "averageUtilization": "Average GPU utilization",
+    "deploymentsRunning": "Running deployments",
+    "deploymentsTotal": "Total deployments",
+    "deploymentsWarming": "Starting / optimizing",
+    "gpusTotal": "Managed GPUs",
+    "gpusTotalHelp": "Cards the platform can schedule onto, unusable ones included; cards passed through to a VM or without a bound driver are not counted here and are listed on the GPU page",
+    "hostMemoryUsed": "Host memory used",
+    "maximumTemperature": "Maximum GPU temperature",
+    "nodesOnline": "Online compute nodes",
+    "nodesTotal": "Total compute nodes",
+    "publicClouds": "Public clouds",
+    "totalPower": "Total GPU power",
+    "vramTotal": "Total VRAM (GiB)"
+  },
+  "title": "Overview"
+}

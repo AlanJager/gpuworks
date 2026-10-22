@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 20480
+  sglang: 20480
+model_id: poolside/laguna-xs.2-speculator.dflash
+source: upstream
+display_title: Laguna-XS.2-speculator.dflash
+release_date: '2026-05-07'
+specs: []
+input_modalities: [text]

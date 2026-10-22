@@ -1,0 +1,200 @@
+model_id: qwen/qwen3-tts-12hz-0.6b-customvoice
+source: upstream
+display_title: Qwen3-TTS-12Hz-0.6B-CustomVoice
+release_date: '2026-01-21'
+model_config: {model_type: qwen3_tts, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768}
+specs:
+- name: bf16-customvoice-0-6b-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+        revision: 85e237c12c027371202489a0ec509ded67b5e4b5
+    - modelscope:
+        repo_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+        revision: 70b274883e68023af521a9199603192d58ccdd3f
+  weight_bytes: 2498388392
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      request_defaults:
+        response_format: wav
+      inputs:
+      - name: voice
+        kind: select
+        options: []
+        required: true
+        label:
+          en: Voice
+          zh-CN: 音色
+      - name: instructions
+        kind: text
+        label:
+          en: Style or emotion instructions
+          zh-CN: 风格或情绪说明
+      - name: language
+        kind: select
+        options:
+        - Auto
+        - Chinese
+        - English
+        - Japanese
+        - Korean
+        - German
+        - French
+        - Russian
+        - Portuguese
+        - Spanish
+        - Italian
+        default: Auto
+        label:
+          en: Language
+          zh-CN: 语言
+- name: bf16-customvoice-0-6b-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+        revision: 85e237c12c027371202489a0ec509ded67b5e4b5
+    - modelscope:
+        repo_id: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+        revision: 70b274883e68023af521a9199603192d58ccdd3f
+  weight_bytes: 2498388392
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --omni
+  - --dtype
+  - float32
+  - --init-timeout
+  - '1800'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      request_defaults:
+        response_format: wav
+      inputs:
+      - name: voice
+        kind: select
+        options: []
+        required: true
+        label:
+          en: Voice
+          zh-CN: 音色
+      - name: instructions
+        kind: text
+        label:
+          en: Style or emotion instructions
+          zh-CN: 风格或情绪说明
+      - name: language
+        kind: select
+        options:
+        - Auto
+        - Chinese
+        - English
+        - Japanese
+        - Korean
+        - German
+        - French
+        - Russian
+        - Portuguese
+        - Spanish
+        - Italian
+        default: Auto
+        label:
+          en: Language
+          zh-CN: 语言
+# Apple silicon (macOS 15+, M1-M5): served by the gpuworks adapter in the
+# gpuworks-runner metal package, which pins the instance to this model
+# (the gateway rewrites every request's "model").
+- name: mlx8-mlx-audio-apple
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: gpuworks/gpuworks-runner:metal15.0-mlx-audio0.5.9-r1
+  weights:
+    quantization: mlx-8bit
+    sources:
+    - huggingface:
+        repo_id: mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit
+        revision: 049ef77fe8816b536193c0c25f9a214d17921282
+    - modelscope:
+        repo_id: mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit
+        revision: a04a567b78dae1d0bb08bb63eb90a13976e09fd0
+  weight_bytes: 1969036262
+  gpus:
+    vendor: apple
+    display_target: apple
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  entrypoint:
+  - gpuworks-mlx-audio
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      request_defaults:
+        response_format: wav
+      inputs:
+      - name: voice
+        kind: select
+        options: []
+        required: true
+        label:
+          en: Voice
+          zh-CN: 音色
+      - name: instructions
+        kind: text
+        label:
+          en: Style or emotion instructions
+          zh-CN: 风格或情绪说明
+      - name: language
+        kind: select
+        options:
+        - Auto
+        - Chinese
+        - English
+        - Japanese
+        - Korean
+        - German
+        - French
+        - Russian
+        - Portuguese
+        - Spanish
+        - Italian
+        default: Auto
+        label:
+          en: Language
+          zh-CN: 语言
+input_modalities: [text]

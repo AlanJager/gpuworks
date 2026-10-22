@@ -1,0 +1,151 @@
+model_id: qwen/qwen3-235b-a22b-instruct-2507
+source: upstream
+display_title: Qwen3-235B-A22B-Instruct-2507
+parameter_count: 235B
+architecture: moe
+context_length: 262144
+release_date: '2025-07-21'
+model_config: {model_type: qwen3_moe, num_hidden_layers: 94, hidden_size: 4096, num_attention_heads: 64, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 192512
+  sglang: 192512
+specs:
+- name: bf16-vllm-ppu-tp8-ac9c66cc
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface: {repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507, revision: ac9c66cc9b46af7306746a9250f23d47083d689e}
+    - modelscope: {repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507, revision: 08179c62d94e91f8bbd3097ed6d297b1dc6fad17}
+  weight_bytes: 470191875040
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  args: [--trust-remote-code, --enable-auto-tool-choice, --tool-call-parser, hermes]
+  placement:
+    language: starlark
+    resolver: |-
+      def resolve(gpu):
+          if gpu.count != 8: return reject("PPU profile requires exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "PP_SIZE": 1, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507
+        revision: ac9c66cc9b46af7306746a9250f23d47083d689e
+    - modelscope:
+        repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507
+        revision: 08179c62d94e91f8bbd3097ed6d297b1dc6fad17
+  weight_bytes: 470211497053
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507
+        revision: ac9c66cc9b46af7306746a9250f23d47083d689e
+    - modelscope:
+        repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507
+        revision: 08179c62d94e91f8bbd3097ed6d297b1dc6fad17
+  weight_bytes: 470211497053
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507-FP8
+        revision: e156cb4efae43fbee1a1ab073f946a1377e6b969
+    - modelscope:
+        repo_id: Qwen/Qwen3-235B-A22B-Instruct-2507-FP8
+        revision: 7188987764039818d8e877b335970db1f9c4807c
+  weight_bytes: 236449100685
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/Qwen3-235B-A22B-Instruct-2507-NVFP4
+        revision: 1c4ec35802abf3a20672be7e5c51a098796f71d6
+    - modelscope:
+        repo_id: nv-community/Qwen3-235B-A22B-Instruct-2507-NVFP4
+        revision: 267ee2bd5ffcd09151728857411d7d3fd86144e2
+  weight_bytes: 139249459981
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP4: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

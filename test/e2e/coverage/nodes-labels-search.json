@@ -1,0 +1,78 @@
+{
+  "contract_id": "gpuworks/node/labels-search-filter",
+  "name": "节点 / 离线节点定义 / 标签保存、名称搜索与标签筛选 / 刷新和独立 GET 一致",
+  "test_file": "test/e2e/nodes_labels_search.py",
+  "test_function": "test_node_labels_search",
+  "command": "make test-e2e-nodes-labels-search",
+  "priority": "P1",
+  "page_id": "nodes",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The two nodes are offline definitions prepared through the product API. No agent, container, GPU or engine is claimed."
+  },
+  "crud": {
+    "create": "N/A for the tested operation: two offline definitions are prepared through POST /nodes as fixtures",
+    "read": "Node table shows both, name search narrows to the target, label filter selects the labeled node",
+    "update": "UI label modal saves team=alpha through PUT /nodes/{uuid}/labels",
+    "delete": "Cleanup only: both owned nodes are force-deleted through DELETE /nodes/{uuid}?force=true; the explicit-force contract is covered by node-removal"
+  },
+  "fields": [
+    {
+      "id": "node.labels",
+      "component": "Menu action + Form.List modal",
+      "request": "PUT /nodes/{uuid}/labels {\"labels\":{\"team\":\"alpha\"}}",
+      "persisted": "labels",
+      "covered": ["add key/value and save", "row tag", "refresh", "independent GET", "reserved gpuworks.ai/ key rejected through the UI with the modal open and stored labels unchanged", "corrected save succeeds"],
+      "missing": ["editing an existing value", "removing a label", "duplicate-key and empty-key validation", "long key/value bounds"]
+    },
+    {
+      "id": "node.search",
+      "component": "Search input",
+      "request": "GET /nodes?q=...",
+      "persisted": "N/A: ephemeral filter",
+      "covered": ["partial runId matches both nodes", "exact name matches only the target, total=1", "missing value returns the empty state and total=0", "clearing restores both rows and total=2", "query and result ID set checked against an independent GET"],
+      "missing": ["search by hostname or UUID", "special characters and case/whitespace contract", "pagination with a filtered set"]
+    },
+    {
+      "id": "node.label-filter",
+      "component": "Multi-select fed by node facets",
+      "request": "GET /nodes?label=team%3Dalpha",
+      "persisted": "N/A: ephemeral filter",
+      "covered": ["selecting team=alpha keeps the labeled node and excludes the other", "GET /nodes?label=team%3Dalpha returns exactly the target with total=1", "deselecting restores both rows and total=2"],
+      "missing": ["clearing the selector search restores all candidates", "multiple label AND semantics", "a combination whose individual filters match but whose intersection is empty", "facet values changing after another edit"]
+    },
+    {
+      "id": "node.cleanup",
+      "component": "N/A: API fixture cleanup",
+      "request": "DELETE /nodes/{uuid}?force=true",
+      "persisted": "removal",
+      "covered": ["both owned nodes deleted", "independent GET returns 404"],
+      "missing": ["the force-removal UI and failure path, already covered by gpuworks/node/removal-with-explicit-force"]
+    }
+  ],
+  "checklist_items": {
+    "1.12": "Partial: add a label to an existing node; editing/removing labels and preservation of every unrelated field remain MISSING",
+    "1.14": "Refresh and independent GET preserve the saved label",
+    "2.4": "A reserved gpuworks.ai/ key (a product-forbidden character/value class) is rejected by the real server, the modal and stored labels stay unchanged, and the corrected save succeeds",
+    "2.5": "MISSING: no real uniqueness/duplicate-name conflict is constructed for labels",
+    "5.3": "The multi-select search filters candidates to team=alpha, reports the no-result state for a missing term, selector search restoration after clearing remains MISSING",
+    "10.2": "Search covers partial, exact, missing and cleared queries with independent hit/exclusion sets and totals",
+    "12.2": "The row menu and labels modal open inside the 1440x900 viewport; the modal container and Save button are reachable"
+  },
+  "missing": [
+    "MISSING: checklist 10.4 (column sorting) — no sort interaction is exercised",
+    "MISSING: checklist 2.5 (service-side uniqueness conflict) — only a forbidden reserved key is rejected",
+    "MISSING: the add-node drawer and SSH installation",
+    "MISSING: renaming a node",
+    "MISSING: online, reconnect and terminal behavior",
+    "MISSING: scheduling, eviction and management roles",
+    "MISSING: duplicate keys, empty keys, removing labels and length boundaries",
+    "MISSING: multiple label filters and their AND semantics",
+    "MISSING: search by hostname or UUID, special characters and pagination"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test digests, locale, label PUT body, independent GET labels and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

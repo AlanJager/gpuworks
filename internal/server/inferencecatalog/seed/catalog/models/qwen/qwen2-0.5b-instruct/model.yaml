@@ -1,0 +1,64 @@
+model_id: qwen/qwen2-0.5b-instruct
+source: upstream
+display_title: Qwen2 0.5B Instruct
+parameter_count: 494M
+architecture: dense
+model_config: {model_type: qwen2, num_hidden_layers: 24, hidden_size: 896, num_attention_heads: 14, num_key_value_heads: 2, max_position_embeddings: 32768, sliding_window: 32768}
+kv_bytes_per_token:
+  vllm: 12288
+  sglang: 12288
+specs:
+- name: bf16-vllm-ppu-c540970f
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2-0.5B-Instruct
+        revision: c540970f9e29518b1d8f06ab8b24cba66ad77b6d
+    - modelscope:
+        repo_id: Qwen/Qwen2-0.5B-Instruct
+        revision: c540970f9e29518b1d8f06ab8b24cba66ad77b6d
+  weight_bytes: 988097824
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2-0.5B-Instruct
+        revision: c540970f9e29518b1d8f06ab8b24cba66ad77b6d
+    - modelscope:
+        repo_id: Qwen/Qwen2-0.5B-Instruct
+        revision: c540970f9e29518b1d8f06ab8b24cba66ad77b6d
+  weight_bytes: 988097824
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

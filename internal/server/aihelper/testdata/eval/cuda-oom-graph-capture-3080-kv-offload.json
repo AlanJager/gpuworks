@@ -1,0 +1,65 @@
+{
+  "id": "cuda-oom-graph-capture-3080-kv-offload",
+  "source": "artifacts/archive/2026-09-16-kv-disk-offload/acceptance/disk-tier-running-3080.md",
+  "note": "RTX 3080 Ti 12 GiB, vLLM 0.25.1, KV offloading connector + max_model_len 16384 + default gpu_memory_utilization 0.9: OOM after KV allocation during CUDA graph capture. The OOM line, KV cache lines and argv shape are verbatim from the record (full log file not committed); surrounding INFO lines and the traceback frames are reconstructed in vLLM's format. Real fix: max_model_len 8192 + gpu_memory_utilization 0.85.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "kvtest-3080-default",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--max-model-len",
+    "16384",
+    "--gpu-memory-utilization",
+    "0.9",
+    "--kv-transfer-config",
+    "{\"kv_connector\":\"OffloadingConnector\",\"kv_connector_extra_config\":{\"cpu_bytes_to_use\":2147483648,\"secondary_tiers\":[{\"n_read_threads\":16,\"n_write_threads\":16,\"root_dir\":\"/mnt/kv\",\"type\":\"fs\"}],\"spec_name\":\"TieringOffloadingSpec\"},\"kv_role\":\"kv_both\"}"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 3080 Ti",
+      "memory_gib": 12
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 09-16 11:02:07 [api_server.py:1885] vLLM API server version 0.25.1",
+    "(APIServer pid=1) INFO 09-16 11:02:07 [utils.py:328] non-default args: {'model': '/model', 'host': '127.0.0.1', 'port': 30000, 'served_model_name': ['kvtest-3080-default'], 'max_model_len': 16384, 'kv_transfer_config': KVTransferConfig(kv_connector='OffloadingConnector', kv_role='kv_both')}",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:19 [factory.py:62] Creating v1 connector with name: OffloadingConnector",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:19 [factory.py:61] Creating offloading spec with name: TieringOffloadingSpec",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:20 [gpu_model_runner.py:3338] Starting to load model /model...",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:22 [default_loader.py:291] Loading weights took 0.61 seconds",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:22 [gpu_model_runner.py:3420] Model loading took 0.9277 GiB and 1.48 seconds",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:31 [gpu_worker.py:538] Available KV cache memory: 9.44 GiB",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:31 [kv_cache_utils.py:2146] GPU KV cache size: 824,704 tokens",
+    "(EngineCore_DP0 pid=212) INFO 09-16 11:02:31 [kv_cache_utils.py:2150] Maximum concurrency for 16,384 tokens per request: 50.34x",
+    "(EngineCore_DP0 pid=212) Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):  37%|███▋      | 25/67 [00:03<00:05,  7.71it/s]",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231] EngineCore failed to start.",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231] Traceback (most recent call last):",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 1222, in run_engine_core",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231]     engine_core = EngineCoreProc(*args, **kwargs)",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 283, in _initialize_kv_caches",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231]     self.model_executor.initialize_from_config(kv_cache_configs)",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py\", line 612, in compile_or_warm_up_model",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231]     self.model_runner.capture_model()",
+    "(EngineCore_DP0 pid=212) ERROR 09-16 11:02:36 [core.py:1231] torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 150.00 MiB. GPU 0 has a total capacity of 11.63 GiB of which 37.50 MiB is free.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "cuda_oom",
+  "expect_keywords": [
+    [
+      "gpu-memory-utilization",
+      "gpu_memory_utilization"
+    ],
+    [
+      "max-model-len",
+      "max_model_len"
+    ]
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "page": {
+    "title": "GPU Devices",
+    "description": "Cluster accelerator resources, allocation states, and live load",
+    "resourceBreadcrumb": "Resources",
+    "physicalCount": "{{count}} physical GPUs"
+  },
+  "tab": {
+    "physical": "Physical GPUs",
+    "dgpu": "dGPU"
+  },
+  "column": {
+    "node": "Node",
+    "model": "Model",
+    "vendor": "Vendor",
+    "allocationState": "Allocation state",
+    "occupants": "Instances",
+    "powerLimit": "Power / limit",
+    "instance": "Instance",
+    "deployment": "Deployment",
+    "physicalGPU": "Physical GPU",
+    "vramLimit": "VRAM limit",
+    "actualVRAM": "Actual VRAM",
+    "smLimit": "SM limit",
+    "smReference": "SM reference",
+    "partitionCapability": "dGPU",
+    "nodeGPU": "Node / GPU",
+    "health": "Health",
+    "state": "State"
+  },
+  "metric": {
+    "utilization": "Utilization",
+    "gpuUtilization": "GPU utilization",
+    "vram": "VRAM",
+    "vramUsage": "VRAM usage",
+    "temperature": "Temperature",
+    "power": "Power",
+    "fan": "Fan",
+    "fanSpeed": "Fan speed",
+    "smReferenceAvg": "SM utilization (reference, 1-minute average)",
+    "sliceVRAM": "Memory in use (limit {{limit}})"
+  },
+  "filter": {
+    "searchAria": "Search GPUs",
+    "searchPlaceholder": "Search node, model, UUID, or BDF"
+  },
+  "action": {
+    "refresh": "Refresh",
+    "details": "Details",
+    "openNode": "Open node",
+    "openDeployment": "Open deployment",
+    "editQuota": "Change quota"
+  },
+  "error": {
+    "physicalLoadFailed": "Failed to load GPU data",
+    "dgpuLoadFailed": "Failed to load dGPU data"
+  },
+  "overview": {
+    "allocationState": "Allocation state",
+    "health": "Health"
+  },
+  "dgpu": {
+    "note": "Every dGPU slice that holds a memory quota, starting and sleeping ones included; SM utilization is a sampled reference."
+  },
+  "detail": {
+    "physicalTitle": "GPU details",
+    "dgpuTitle": "dGPU details",
+    "basicInfo": "Basic information",
+    "partitionCapability": "dGPU",
+    "partitionCapabilityEmpty": "No dGPU backend detected",
+    "hardwareInfo": "Hardware information",
+    "architecture": "Architecture",
+    "driver": "Driver",
+    "maxPower": "Maximum power",
+    "liveLoad": "Live load",
+    "monitoringData": "Monitoring data",
+    "quotaInfo": "Quota information"
+  },
+  "unnamedDeployment": "Unnamed deployment",
+  "noData": "No data",
+  "fullGPU": "Full GPU",
+  "none": "None",
+  "allocation": {
+    "available": "Available",
+    "partial": "Partially allocated",
+    "allocated": "Allocated",
+    "unusable": "Unavailable for allocation",
+    "unknown": "Unknown"
+  },
+  "vendor": {
+    "nvidia": "NVIDIA",
+    "ascend": "Ascend",
+    "ppu": "T-Head"
+  },
+  "empty": {
+    "physical": "No GPU devices",
+    "dgpu": "No dGPU slices"
+  },
+  "health": {
+    "ok": "OK",
+    "warning": "Warning",
+    "error": "Error"
+  },
+  "slices": {
+    "summary": "{{count}} slices · {{limit}} / {{total}}",
+    "summaryTitle": "{{limit}} of {{total}} carved out as slice limits"
+  },
+  "composition": {
+    "title": "Memory allocation",
+    "aria": "Memory allocation",
+    "slice": "{{name}} · limit {{limit}} GiB",
+    "wholeCard": "{{name}} · whole card",
+    "overhead": "Held outside the limits (CUDA context)",
+    "sleeping": "Sleeping instances' residue",
+    "free": "Allocatable",
+    "used": "Card in use: {{used}}",
+    "usedLegend": "Card in use (nvidia-smi)",
+    "note": "Blocks are what the scheduler books: a dGPU slice books its limit plus the CUDA context held outside it. The black line is what the card has in use now."
+  },
+  "state": {
+    "asleep": "Asleep L{{level}}"
+  },
+  "tooltip": {
+    "actualVRAM": "Memory the HAMi interception counts for the slice; nvidia-smi shows about 0.4 GiB more per process (its CUDA context)",
+    "smReference": "A sampled reference: slices time-sharing the SMs jump between 0 and 100 per sample; the details chart shows a 1-minute average"
+  },
+  "quota": {
+    "title": "Change dGPU quota",
+    "deployment": "Deployment",
+    "current": "Current memory limit",
+    "limit": "New memory limit",
+    "help": "The memory limit of each replica on each card; it takes effect when saved.",
+    "required": "Enter a memory limit",
+    "min": "At least 0.5 GiB",
+    "save": "Save",
+    "saved": "dGPU quota saved",
+    "note": "The new limit applies to running instances at once (the scheduler's books and the HAMi memory limit move together). Engines that size their KV cache at start, such as vLLM and SGLang, use it only after their instances are restarted from the deployment page; engines that allocate as they go use it right away. When lowering, an instance already holding more than the new limit keeps its limit until it restarts.",
+    "applied_one": "The memory limit is now {{limit}}; {{count}} running instance took it at once.",
+    "applied_other": "The memory limit is now {{limit}}; {{count}} running instances took it at once.",
+    "appliedDeployment": "The deployment's memory limit is now {{limit}}; the instances it starts from now on run under it.",
+    "pendingTitle_one": "{{count}} instance keeps its limit until it restarts:",
+    "pendingTitle_other": "{{count}} instances keep their limit until they restart:",
+    "pending": {
+      "backend": "its partition backend reads the limit only at start",
+      "asleep": "it is asleep; a lower limit could fail its wake",
+      "starting": "it is starting; a lower limit could fail its start",
+      "in_use": "it holds {{used}}, more than the new {{limit}}",
+      "no_usage": "it reports no memory use, so a lower limit is not risked"
+    },
+    "restartHint": "Engines that allocate their KV cache at start, such as vLLM and SGLang, use the new limit only after their instances are restarted from the deployment page.",
+    "openDeployment": "Open deployment",
+    "done": "Done",
+    "pendingTag": "{{limit}} after restart",
+    "pendingTooltip": "The deployment's memory limit changed; this instance runs under the new one after it restarts"
+  }
+}

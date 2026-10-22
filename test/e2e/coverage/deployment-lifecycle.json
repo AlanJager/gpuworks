@@ -1,0 +1,121 @@
+{
+  "contract_id": "gpuworks/deployment/container-lifecycle",
+  "name": "部署 / 真实容器生命周期 / 停止、启动、网关请求、删除与资源回收",
+  "priority": "P0",
+  "page_id": "deployments",
+  "control_id": "deployment-lifecycle",
+  "scope": "Single targeted contract; not a full-page completion claim",
+  "test_file": "test/e2e/deployment_lifecycle.py",
+  "test_function": "test_deployment_lifecycle",
+  "command": "make test-e2e-deployment-lifecycle",
+  "lane": "local-real-agent-docker-fake-gpu-facts",
+  "identity": "admin browser; real agent/Docker identity; OpenAI-compatible inference key for the gateway",
+  "fixture": "isolated server, fresh SQLite, unique runId, real Chrome, real agent over WS, real Docker daemon; GPU facts injected for scheduling only; engine is the audited fake-engine image",
+  "product_contracts": [
+    "ui/src/pages/DeploymentsPage.tsx",
+    "ui/src/pages/DeploymentLifecycleActions.tsx",
+    "internal/server/api/deploy.go",
+    "internal/agent/engine/reconcile.go",
+    "internal/server/gateway"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "covered",
+    "reason": "The deployment runs a real Docker container from gpuworks/fake-engine:test; stop removes the container, start creates a new one that answers a real gateway /v1/chat/completions request, and delete leaves neither the deployment nor its container."
+  },
+  "crud": {
+    "create": "MISSING: deployment creation through the browser deploy form and its preflight/validation (separate contract); this case creates the deployment through the API as a fixture",
+    "read": "covered: deployments list row, drawer details and independent GET after every transition",
+    "update": "covered: stop and start through the drawer, including desired state, instance state, container identity and gateway availability",
+    "delete": "covered: drawer delete with confirmation, DELETE request, deployment 404, container absence and row removal"
+  },
+  "fields": [
+    {
+      "field_id": "deployment.lifecycle.stop",
+      "component": "Button + Popconfirm",
+      "request": "POST /api/v1/deployments/{id}/stop",
+      "persistence": "desired_state=stopped; instance stopped",
+      "covered": [
+        "confirmation prompt keeps the drawer open",
+        "success toast tied to the observed stop",
+        "real container removed"
+      ],
+      "missing": [
+        "cancel of the confirmation (no mutation)",
+        "stop failure response and retry",
+        "stop during an in-flight chat request"
+      ]
+    },
+    {
+      "field_id": "deployment.lifecycle.start",
+      "component": "Button",
+      "request": "POST /api/v1/deployments/{id}/start",
+      "persistence": "desired_state=active; instance running with a new container id",
+      "covered": [
+        "button appears only after the stop is observed",
+        "success toast tied to the observed start",
+        "new real container runs and serves gateway chat"
+      ],
+      "missing": [
+        "start failure response and retry",
+        "start before the previous teardown completed"
+      ]
+    },
+    {
+      "field_id": "deployment.lifecycle.delete",
+      "component": "Button + Modal",
+      "request": "DELETE /api/v1/deployments/{id}",
+      "persistence": "deployment absent; container absent",
+      "covered": [
+        "confirmation names the deployment",
+        "success toast tied to the observed deletion",
+        "deployment 404, container absent, list row gone"
+      ],
+      "missing": [
+        "force delete",
+        "deletion failure and partial cleanup",
+        "deleting a deployment referenced by another operation"
+      ]
+    },
+    {
+      "field_id": "deployment.detail.open",
+      "component": "Link button in table row",
+      "request": "GET /api/v1/deployments/{id}",
+      "persistence": "N/A",
+      "covered": [
+        "row located by unique name",
+        "drawer opens in the current viewport",
+        "drawer follows state transitions without closing"
+      ],
+      "missing": [
+        "deep link via ?deployment= and focusInstance",
+        "drawer at 1024/375 widths and full keyboard contract"
+      ]
+    }
+  ],
+  "dimensions": [
+    "10.9",
+    "10.10",
+    "12.5",
+    "12.7",
+    "13.5"
+  ],
+  "missing": [
+    "Deployment creation through the browser form, preflight and parameter validation (checklist 14)",
+    "Engine failure, OOM, health-check timeout and retry exhaustion",
+    "Multi-replica and rolling restart",
+    "Sleep/wake and dGPU partition behavior",
+    "Gateway error paths: unauthorized key, unknown model, engine refusal, streaming and cancellation",
+    "Non-admin authorization and permission denials",
+    "Stop/start/delete failure responses and retry",
+    "Container logs and terminal for the deployment",
+    "Real GPU compute, performance, dGPU isolation and vendor drivers (out of this lane)",
+    "The other locale (each run covers one --locale)"
+  ]
+}

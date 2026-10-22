@@ -1,0 +1,92 @@
+model_id: tencent/hunyuanocr
+source: upstream
+display_title: HunyuanOCR
+parameter_count: 1B
+architecture: dense
+context_length: 32768
+release_date: '2025-11-18'
+model_config: {model_type: hunyuan_vl, num_hidden_layers: 24, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, vision_config: {patch_size: 16}}
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/HunyuanOCR
+        revision: 47644ecc4fc854efa4f505155158831f36773ee4
+    - modelscope:
+        repo_id: Tencent-Hunyuan/HunyuanOCR
+        revision: 9d8082d87e0f38a1d9c8d417124e3bd354828ee4
+  weight_bytes: 4622600430
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/HunyuanOCR
+        revision: 47644ecc4fc854efa4f505155158831f36773ee4
+    - modelscope:
+        repo_id: Tencent-Hunyuan/HunyuanOCR
+        revision: 9d8082d87e0f38a1d9c8d417124e3bd354828ee4
+  weight_bytes: 4622600430
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-47644ecc
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/HunyuanOCR
+        revision: 47644ecc4fc854efa4f505155158831f36773ee4
+  weight_bytes: 2239932512
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

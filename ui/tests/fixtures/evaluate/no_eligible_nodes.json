@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "replicas": 1,
+  "plan_scope": "per_replica",
+  "ok": true,
+  "template_spec_source": "upstream",
+  "template_spec_name": "future-hardware",
+  "template_match": "spec-name",
+  "matched_by": "spec-name",
+  "template_deviated": false,
+  "entrypoint": [
+    "vllm",
+    "serve",
+    "/model"
+  ],
+  "argv": [
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "$TP_SIZE",
+    "--enable-prompt-tokens-details",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "$TP_SIZE",
+    "--enable-prompt-tokens-details",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "env": {
+    "GLOO_SOCKET_IFNAME": "lo",
+    "HF_HUB_OFFLINE": "1",
+    "NCCL_SOCKET_IFNAME": "lo",
+    "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_HOST_IP": "127.0.0.1"
+  },
+  "env_layers": {
+    "system": {
+      "GLOO_SOCKET_IFNAME": "lo",
+      "HF_HUB_OFFLINE": "1",
+      "NCCL_SOCKET_IFNAME": "lo",
+      "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_HOST_IP": "127.0.0.1"
+    }
+  },
+  "command_mode": "engine",
+  "model_mount_path": "/model",
+  "shm_bytes": 17179869184,
+  "image": "vllm/vllm-openai:latest",
+  "warnings": [],
+  "candidates": [
+    {
+      "node_uuid": "fixture-peer",
+      "node_name": "fixture-peer",
+      "ok": false,
+      "reason": {
+        "code": "chip_mismatch",
+        "params": {
+          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+        }
+      }
+    },
+    {
+      "node_uuid": "fixture-chip-old",
+      "node_name": "fixture-chip-old",
+      "ok": false,
+      "reason": {
+        "code": "chip_mismatch",
+        "params": {
+          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+        }
+      }
+    },
+    {
+      "node_uuid": "fixture-node",
+      "node_name": "fixture-node",
+      "ok": false,
+      "reason": {
+        "code": "chip_mismatch",
+        "params": {
+          "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+        }
+      }
+    }
+  ],
+  "acquisition": {
+    "providers": [
+      {
+        "key": "public:modelscope:Acme/Deploy-FP8:",
+        "label": "modelscope",
+        "reason": "configured model provider",
+        "recommended": true
+      }
+    ],
+    "image": {
+      "image": "vllm/vllm-openai:latest",
+      "cache_reason": "node_unselected",
+      "options": [
+        {
+          "image": "vllm/vllm-openai:latest",
+          "reason": "template_image",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann8.5-910b-vllm0.18.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.1-310p-vllm0.27.1rc1-r3",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.1-a3-vllm0.27.1rc1-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:metal15.0-vllm0.31.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        }
+      ]
+    }
+  },
+  "weight_sources": [
+    {
+      "provider": "modelscope",
+      "repo_id": "Acme/Deploy-FP8",
+      "suggested": true,
+      "registered": true
+    }
+  ],
+  "eligible_nodes": [
+    {
+      "uuid": "fixture-peer",
+      "name": "fixture-peer",
+      "eligible": false,
+      "reasons": [
+        {
+          "code": "chip_mismatch",
+          "params": {
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "fixture-chip-old",
+      "name": "fixture-chip-old",
+      "eligible": false,
+      "reasons": [
+        {
+          "code": "chip_mismatch",
+          "params": {
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+          }
+        }
+      ]
+    },
+    {
+      "uuid": "fixture-node",
+      "name": "fixture-node",
+      "eligible": false,
+      "reasons": [
+        {
+          "code": "chip_mismatch",
+          "params": {
+            "predicate": "{\"vendor\":\"nvidia\",\"cc\":\"\u003e=10.0\"}"
+          }
+        }
+      ]
+    }
+  ],
+  "form_values": {
+    "dtype": "auto",
+    "enable_cache_report": true,
+    "extra_args": "",
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto",
+    "performance_mode": "balanced",
+    "served_model_name": ""
+  },
+  "defaults": {
+    "model_mount": "/model",
+    "master_port": 29500,
+    "engine": "vllm"
+  },
+  "effective_params": {
+    "dtype": "auto",
+    "enable_cache_report": true,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto",
+    "performance_mode": "balanced",
+    "served_model_name": ""
+  },
+  "engine_decides_param_keys": [
+    "enable_request_metrics"
+  ]
+}

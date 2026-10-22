@@ -1,0 +1,109 @@
+{
+  "contract_id": "gpuworks/image-runtime/url-cancel-retry",
+  "name": "镜像获取 / 真实部分下载取消后重试 / 连接断开与暂存清理且旧请求不复活",
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_transfer_recovery.py",
+  "test_function": "test_url_cancel_retry",
+  "command": "make test-e2e-image-cancel-retry",
+  "lane": "local-real-server-agent-isolated-docker",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "REQUIRED",
+    "target": "real HTTP archive download/load, isolated Docker and CPU execution; no GPU claim"
+  },
+  "crud": {
+    "create": "fixture only; catalog Create not claimed",
+    "read": "image node state and independent detail/reload",
+    "update": "UI transfer action and retry, state and content identity",
+    "delete": "N/A: catalog teardown is cleanup only"
+  },
+  "fields": [
+    {
+      "field_id": "image-node.source",
+      "component": "Select",
+      "request": "source",
+      "persistence": "node.source",
+      "covered": [
+        "option:url"
+      ],
+      "missing": [
+    "MISSING: transferred/total bytes, percentage and rate display; checklist 16.3 currently covers only selected stages/terminal outcomes, not progress accuracy",
+    "MISSING: fresh inventory while a transfer is active must not promote old content to present; terminal progress requires completed transfer identity and new content",
+        "registry",
+        "peer",
+        "relay"
+      ]
+    },
+    {
+      "field_id": "image-node.archive-url",
+      "component": "URL",
+      "request": "archive_url",
+      "persistence": "version.registry_sources",
+      "covered": [
+        "declared URL remains selected on retry"
+      ],
+      "missing": [
+        "invalid URL",
+        "manual override"
+      ]
+    },
+    {
+      "field_id": "image-node.relay",
+      "component": "Checkbox",
+      "request": "relay",
+      "persistence": "node.source",
+      "covered": [
+        "default false/direct transfer"
+      ],
+      "missing": [
+        "true/relayed download"
+      ]
+    }
+  ],
+  "dimensions": [
+    "partial-download-cancellation",
+    "fresh-transfer-id-on-retry",
+    "exact-request-body",
+    "reload-state",
+    "content-digest",
+    "real-container-consumption",
+    "owned-staging-cleanup"
+  ],
+  "checklist_items": {
+    "partial": [
+      "5.1",
+      "12.1",
+      "12.2",
+      "16.3",
+      "16.4",
+      "16.6",
+      "16.7",
+      "16.5"
+    ],
+    "reason": "Only explicit direct HTTP archive recovery branches; full component states not claimed"
+  },
+  "product_contracts": [
+    "ui/src/pages/ImagesPage.tsx",
+    "ui/src/pages/images/ImageNodeTable.tsx",
+    "internal/agent/app/image_load_url.go",
+    "internal/server/api/images_nodes.go",
+    "internal/server/hub/image_cancel.go"
+  ],
+  "missing": [
+    "registry and peer sources",
+    "relayed download",
+    "network timeout/401/403/404/429 and malformed archive failures",
+    "non-admin permissions",
+    "full keyboard/focus/computed-style matrix",
+    "image parent/version deletion and referenced-image deletion",
+    "GPU inference and deployment argument consumption"
+  ]
+}

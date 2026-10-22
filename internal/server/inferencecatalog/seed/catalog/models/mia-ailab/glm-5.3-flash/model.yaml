@@ -1,0 +1,401 @@
+# GLM-5.3-Flash on TensorFold (EXL3 4-bit), hosted by the callable engine
+# (ADR 0036). Two measured recipes, one spec each:
+#   - glm-5.3-flash-tensorfold-exl3-gb10-tp2: two DGX Spark GB10 nodes, TP2,
+#     one rank per node over RoCE (artifacts/work/2026-10-04-gpuworks-gb10-inference-templates,
+#     validated 2026-10-08 on a rented Spark pair);
+#   - glm-5.3-flash-tensorfold-exl3-rtx-pro-6000-tp4: one host with four
+#     RTX PRO 6000 / 6000D, TP4 in one container
+#     (artifacts/archive/2026-10-08-rtxpro6000-glm5.3-flash-tensorfold, validated
+#     on an AutoDL 4x RTX 6000D node).
+# The two recipes use different EXL3 checkpoints (TR3 for GB10, the Aevonix
+# TensorFold export for the PCIe host); both share the DFlash2 draft.
+# The TP4 adapter asset is rebuilt by that directory's build-package.sh, which
+# pins its sha256 and size here; the GB10 asset is serve.sh of the GB10
+# directory's tensorfold-adapter/, packed the same way.
+model_id: mia-ailab/glm-5.3-flash
+source: upstream
+display_title: GLM-5.3-Flash
+parameter_count: original GLM-5.3-Flash checkpoint, EXL3 4-bit runtime
+architecture: Glm5NextForConditionalGeneration
+# Both checkpoints carry the vision tower (model.visual.*) and both images
+# serve it with --vision: images and video clips, as data URLs (image and
+# clip checked on the GB10 profile 2026-10-10).
+input_modalities: [text, image, video]
+context_length: 1048576
+release_date: '2026-10-04'
+specs:
+- name: glm-5.3-flash-tensorfold-exl3-gb10-tp2
+  display_profile: optimized
+  scenario: throughput
+  engine: callable
+  # Upstream MiaAI-Lab image, pinned by digest (upstream tag v0.6.0-ae8d1c789b47;
+  # the repository keeps re-tagging, the digest does not move). ghcr is slow or
+  # unreachable from the mainland, so the deploy page offers two further
+  # sources, first one first: the gpuworks SWR namespace, a byte-identical
+  # public copy of the same manifest, and the NJU ghcr mirror.
+  image: ghcr.io/miaai-lab/glm-5.3-flash-exl3-2x-dgx-sparks-tensorfold@sha256:22789f0cb3dc308f0b2ce52a33961b88bd624af1725e91e8aba0a74a671bb969
+  image_sources:
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/glm-5.3-flash-exl3-2x-dgx-sparks-tensorfold@sha256:22789f0cb3dc308f0b2ce52a33961b88bd624af1725e91e8aba0a74a671bb969
+  - ghcr.nju.edu.cn/miaai-lab/glm-5.3-flash-exl3-2x-dgx-sparks-tensorfold@sha256:22789f0cb3dc308f0b2ce52a33961b88bd624af1725e91e8aba0a74a671bb969
+  # The ModelScope copy (the one deployed on the Spark pair) mirrors
+  # brandonmusic/GLM-5.3-Flash-tr3-4bpw@5ab363a8 on Hugging Face: all 120
+  # shards and the config/index/tokenizer files have equal sha256. The
+  # Mia-AiLab Hugging Face namespace of this checkpoint is not public.
+  weights:
+    quantization: exl3-q4
+    sources:
+    - huggingface:
+        repo_id: brandonmusic/GLM-5.3-Flash-tr3-4bpw
+        revision: 5ab363a8dcf6405955fd5f99671e01a1c9fb124b
+    - modelscope:
+        repo_id: Mia-AiLab/GLM-5.3-Flash-EXL3-TR3-4bpw
+        revision: 8a0d5eb6e26db19595adc80e951ee9b0350561cb
+  weight_bytes: 175715854415
+  runtime_weight_bytes: 175715854415
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (^|[^A-Za-z0-9])(?:DGX[ _-]?Spark|GB10)([^A-Za-z0-9]|$)
+    display_target: gb10
+  # The callable engine appends nothing: the template places the platform's
+  # launch facts itself and the adapter reshapes them into TensorFold's CLI.
+  # TensorFold's tensor-parallel degree is the node count - one rank per
+  # Spark - and not ${TP_SIZE}: a two-node deployment that states no TP
+  # defaults to one pipeline stage per node (TP 1 x PP 2), and TensorFold
+  # refuses --tp 1 ("--rank 1 needs --tp 2").
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --tp
+  - ${NNODES}
+  - --rank
+  - ${NODE_RANK}
+  - --headless
+  - ${HEADLESS}
+  - --master
+  - ${MASTER_ADDR}
+  - --master-port
+  - ${MASTER_PORT}
+  - --context
+  - '1048576'
+  - --parallel
+  - '4'
+  - --max-tokens
+  - '32768'
+  - --drafter
+  - /draft
+  # Both profiles serve alike: a think block on by default at medium effort
+  # (GLM-5.3's template has no medium; TensorFold maps it to High, which
+  # thinks adaptively), and image and video input through the checkpoint's
+  # vision tower.
+  - --thinking
+  - --reasoning-effort
+  - medium
+  - --vision
+  # Runtime assets are finalized read-only by GPUWorks, so shell scripts lose
+  # their executable bit. Invoke the adapter through the image's interpreter.
+  entrypoint: [bash, /opt/gpuworks/tensorfold/serve.sh]
+  env:
+    TF_GLM_KV: fp8
+    TF_GLM_DENSE: q4
+    TF_GLM_COMM: roce
+    TF_ROCE_MAX_KB: '512'
+    TF_GLM_DFLASH_POLICY: fc5:0.3
+    TF_GLM_KDA_CHUNKED: '1'
+    TF_GLM_MULTI_PREFILL: '1'
+    TF_GLM_CACHE_ENTRIES: '8'
+    TF_GLM_FILL_ROWS: '1024'
+    TF_GLM_FILL_SHARE: '0.25'
+    TF_GLM_EXL3_LOADS: nc
+    TF_GLM_HC_SPLIT: '1'
+    TF_GLM_PREFILL_OVERLAP: '2'
+    TF_GLM_L2PF: '1'
+    TF_GLM_COPY_DRAFTS: '1'
+    TF_GLM_COPY_MAX: '15'
+    TF_GLM_SHARED_PREFIX: '1'
+  assets:
+  - file: assets/tensorfold-adapter.tar.gz
+    sha256: 59a5e96cf72b474e1d5794c7a6f1c13118d1f5cbdd61e010937fb0baddc2c817
+    size_bytes: 1156
+    unpack_to: /opt/gpuworks/tensorfold
+  components:
+  - name: primary
+    role: primary
+    weights:
+      quantization: exl3-q4
+      sources:
+      - huggingface:
+          repo_id: brandonmusic/GLM-5.3-Flash-tr3-4bpw
+          revision: 5ab363a8dcf6405955fd5f99671e01a1c9fb124b
+      - modelscope:
+          repo_id: Mia-AiLab/GLM-5.3-Flash-EXL3-TR3-4bpw
+          revision: 8a0d5eb6e26db19595adc80e951ee9b0350561cb
+    weight_bytes: 175715854415
+    mount_path: /model
+  - name: dflash2
+    role: speculative_draft
+    model_id: incoai/glm-5.3-flash-dflash2
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: incoai/GLM-5.3-Flash-DFlash2
+          revision: bf582e4eacc1810f76656d1811693ff6c6737d2a
+      - modelscope:
+          repo_id: incoai/GLM-5.3-Flash-DFlash2
+          revision: 52653cabba9e128366a3a3ac0e00b979c413cd44
+    weight_bytes: 2342460697
+    mount_path: /draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # TensorFold's /metrics (tensorfold/server/metrics.py plus the miaai-lab
+    # cuda-metrics patch both images carry), scraped from this image on the
+    # Spark pair 2026-10-10 (artifacts/work/2026-10-10-inference-metrics-sources/evidence/tensorfold-gb10-metrics.txt).
+    # The KV usage ratio is derived from the pool's size and free rows, which
+    # is what vLLM's usage gauge measures; tensorfold:kv_cache_usage_ratio is
+    # per stream and stays unmapped. request_latency_seconds runs from arrival
+    # to the reply leaving, so it is the end-to-end latency.
+    # tensorfold:generation_tokens_total only grows when a request finishes;
+    # tensorfold_health:completion_tokens_total includes the running replies'
+    # tokens so far, so the throughput chart moves while a reply streams.
+    # tensorfold_health:requests_total counts finished requests, which the
+    # deployment's gateway alignment compares with the requests it forwarded.
+    metrics:
+      map:
+        'tensorfold:requests_running': requests_running
+        'tensorfold:requests_waiting': requests_waiting
+        'tensorfold_health:requests_total': requests_success_total
+        'tensorfold:prompt_tokens_total': prompt_tokens_total
+        'tensorfold_health:completion_tokens_total': generation_tokens_total
+        'tensorfold_health:cached_tokens_total': prompt_tokens_cache_hit_total
+        'tensorfold:mtp_drafted_total': spec_draft_tokens_total
+        'tensorfold:mtp_accepted_total': spec_accepted_tokens_total
+        'tensorfold:time_to_first_token_seconds': ttft_seconds
+        'tensorfold:request_latency_seconds': e2e_seconds
+        'tensorfold_health:pool_tokens': kv_capacity_tokens
+        'tensorfold_health:pool_free_tokens': kv_free_tokens
+    # Every reply's last event carries a tensorfold object with the request's
+    # own prefill and decode seconds, beside usage (TensorFold v0.6.5,
+    # artifacts/work/2026-10-10-inference-metrics-sources/evidence/tensorfold-gb10-stream.sse).
+    request_stats:
+      tensorfold.prefill_s: prefill_seconds
+      tensorfold.decode_s: decode_seconds
+# Aevonix's production recipe for one PCIe host with four 96 GB RTX PRO 6000
+# Blackwell cards (github.com/Aevonix/GLM-5.3-Flash-EXL3-4x-RTX-PRO-6000-TensorFold
+# at a19078566298f8c51d9dbb317f20efd51fe564df), also run on the 84 GB RTX 6000D.
+- name: glm-5.3-flash-tensorfold-exl3-rtx-pro-6000-tp4
+  display_profile: optimized
+  scenario: throughput
+  engine: callable
+  # Built by image/build.sh of the work directory; the same manifest
+  # (sha256:31690e00447f6792097a909027721ac301d9c74940c52fca2d00c02933f2f498) is
+  # published on Docker Hub, quay.io and SWR. The deploy page offers the copies
+  # in image_sources, which a mainland node reaches when Docker Hub is not;
+  # SWR comes first, as in the GB10 profile.
+  image: gpuworks/tensorfold-glm5.3-flash:0.6.5-aevonix1.1.0
+  image_sources:
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/tensorfold-glm5.3-flash:0.6.5-aevonix1.1.0
+  - quay.io/gpuworks/tensorfold-glm5.3-flash:0.6.5-aevonix1.1.0
+  weights:
+    quantization: exl3-q4
+    sources:
+    - huggingface:
+        repo_id: Mia-AiLab/GLM-5.3-Flash-EXL3-4bpw-TensorFold
+        revision: 78353f1f6eb2c96fa6c62de57b44345d1f497c38
+    # Same weight and config bytes as the pinned Hugging Face revision (only
+    # the model card and licence files differ).
+    - modelscope:
+        repo_id: Mia-AiLab/GLM-5.3-Flash-EXL3-4bpw-TensorFold
+        revision: d2efd74ee477dff2718c90d9a3297725da3e8b8c
+  weight_bytes: 175716134948
+  runtime_weight_bytes: 175716134948
+  gpus:
+    vendor: nvidia
+    cc: '>=12.0'
+    # RTX PRO 6000 Blackwell (Workstation / Max-Q / Server) and the RTX 6000D,
+    # whose name carries no "PRO". cc >= 12.0 keeps the Ada RTX 6000 out.
+    name: (^|[^A-Za-z0-9])RTX[ _-]?(?:PRO[ _-]?)?6000D?([^A-Za-z0-9]|$)
+    display_target: rtx_pro_6000
+  # The callable engine appends nothing: the template places the platform's
+  # launch facts and the adapter turns them into one TensorFold rank per GPU.
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --tp
+  - ${GPU_COUNT}
+  - --context
+  - '1048576'
+  - --parallel
+  - '40'
+  - --max-tokens
+  - '32768'
+  - --drafter
+  - /draft
+  # The same serving defaults as the GB10 profile.
+  - --thinking
+  - --reasoning-effort
+  - medium
+  - --vision
+  # Runtime assets are finalized read-only by GPUWorks, so shell scripts lose
+  # their executable bit. Invoke the adapter through the image's interpreter.
+  entrypoint: [bash, /opt/gpuworks/tensorfold/serve.sh]
+  # The engine switches of the Aevonix launcher (scripts/config.sh).
+  # TF_GLM_TUNE names the launch table shipped in the adapter asset: tables
+  # are keyed by GPU name, SM count and capability, so a card the table has
+  # no entry for keeps every kernel's default launch (the engine says so).
+  # TF_GLM_CACHE_GIB is a cap the engine shrinks to the memory left after
+  # weights and the reserve.
+  env:
+    HF_HUB_OFFLINE: '1'
+    TF_GLM_TUNE: /opt/gpuworks/tensorfold/launch-table.json
+    TENSORFOLD_NO_UPDATE_CHECK: '1'
+    TENSORFOLD_MEMORY_RESERVE_GIB: '7.5'
+    TENSORFOLD_GPU_SAMPLE: '1'
+    TENSORFOLD_NUCLEUS_UNION: '1'
+    TENSORFOLD_PRIORITY: '1'
+    TF_GLM_CACHE_GIB: '60'
+    TF_GLM_CACHE_ENTRIES: '32'
+    TF_GLM_CLEAR_THINKING: '1'
+    TF_GLM_COMM: nccl
+    TF_GLM_COPY_DRAFTS: '1'
+    TF_GLM_COPY_MAX: '15'
+    TF_GLM_COPY_REPLY_MATCH: '16'
+    TF_GLM_DENSE: fp8
+    TF_GLM_DFLASH_POLICY: fnc7:0.3
+    TF_GLM_DRAFT_FAST: all
+    TF_GLM_DRAFT_FAST_AHEAD: '1'
+    TF_GLM_DRAFT_FAST_BLOCK: auto
+    TF_GLM_DRAFT_FAST_GATHER: auto16
+    TF_GLM_DRAFT_PROMPT_SKIP: '1'
+    TF_GLM_DSA_FUSE: '1'
+    TF_GLM_EXL3_LOADS: nc
+    TF_GLM_EXPERT_PROMPT_KERNEL: k12-p80
+    TF_GLM_FILL_ROWS: '2048'
+    TF_GLM_FUSE: all
+    TF_GLM_HC_EXCHANGE: ce
+    TF_GLM_HC_SPLIT: '1'
+    TF_GLM_HC_SPLIT_MIN_ROWS: '512'
+    TF_GLM_INDEX_SPLIT: '1'
+    TF_GLM_INDEX_SPLIT_GATHER: ipc
+    TF_GLM_KDA_CHUNKED: '1'
+    TF_GLM_KDA_OVERLAP: '2'
+    TF_GLM_KDA_SPLIT: '32:512'
+    TF_GLM_KV: fp8
+    TF_GLM_L2PF: '1'
+    TF_GLM_LANE_DIRECT: '1'
+    TF_GLM_LANE_INPUTS: '0'
+    TF_GLM_MOE_GLUE: side,defer,combine,shared,rowsplit
+    TF_GLM_MOE_SHARED_TILE: '1'
+    TF_GLM_MTP: auto
+    TF_GLM_MULTI_ASYNC: '1'
+    TF_GLM_MULTI_GRAPH_STEP: '8'
+    TF_GLM_MULTI_LONE: '0'
+    TF_GLM_MULTI_PREFILL: '1'
+    TF_GLM_MULTI_SAMPLER: packed
+    TF_GLM_MULTI_WINDOW: '128'
+    TF_GLM_OVERLAP_PIECES: '4'
+    TF_GLM_PREFILL_LANES: '2'
+    TF_GLM_PREFILL_OVERLAP: '2'
+    TF_GLM_PREFILL_ROWS: '4096'
+    TF_GLM_SHARED_PREFIX: '1'
+    TF_GLM_SPARSE_FAST: '2'
+    TF_GLM_TOPK_FAST: '1'
+    TF_GLM_TWOSHOT_GATHER: comm
+    TF_GLM_TWOSHOT_KIND: bf16
+    TF_GLM_TWOSHOT_ROWS: '8'
+    TF_GLM_TWOSHOT_SCATTER: exchange
+    TF_GLM_WIDE_GRAPHS: '16'
+    TF_NCCL_EXCHANGE_ENV: NCCL_P2P_DISABLE=1
+    TF_W1_INCREMENTAL: '1'
+    # NCCL collectives over PCIe P2P on loopback, four channels.
+    NCCL_SOCKET_IFNAME: lo
+    NCCL_IB_DISABLE: '1'
+    NCCL_P2P_LEVEL: SYS
+    NCCL_MIN_NCHANNELS: '4'
+    NCCL_MAX_NCHANNELS: '4'
+    NCCL_DEBUG: WARN
+  assets:
+  - file: assets/tensorfold-tp-adapter.tar.gz
+    sha256: 902af6161b8fa936fd88f8b2123f141873a0af674406f7c6e0e72efd8c319211
+    size_bytes: 17626
+    unpack_to: /opt/gpuworks/tensorfold
+  components:
+  - name: primary
+    role: primary
+    weights:
+      quantization: exl3-q4
+      sources:
+      - huggingface:
+          repo_id: Mia-AiLab/GLM-5.3-Flash-EXL3-4bpw-TensorFold
+          revision: 78353f1f6eb2c96fa6c62de57b44345d1f497c38
+      - modelscope:
+          repo_id: Mia-AiLab/GLM-5.3-Flash-EXL3-4bpw-TensorFold
+          revision: d2efd74ee477dff2718c90d9a3297725da3e8b8c
+    weight_bytes: 175716134948
+    mount_path: /model
+  - name: dflash2
+    role: speculative_draft
+    model_id: incoai/glm-5.3-flash-dflash2
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: incoai/GLM-5.3-Flash-DFlash2
+          revision: bf582e4eacc1810f76656d1811693ff6c6737d2a
+      - modelscope:
+          repo_id: incoai/GLM-5.3-Flash-DFlash2
+          revision: 52653cabba9e128366a3a3ac0e00b979c413cd44
+    weight_bytes: 2342460697
+    mount_path: /draft
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          # TensorFold's GLM layout is exactly four tensor-parallel ranks, one per card.
+          if gpu.count != 4:
+              return reject("this recipe runs four TensorFold ranks: select exactly 4 GPUs on one node")
+          # Weights take ~44 GB per card; the rest is KV pool, graphs and the 7.5 GiB reserve.
+          if gpu.min_memory_gib < 80:
+              return reject("each card needs at least 80 GiB (RTX PRO 6000 96 GB or RTX 6000D 84 GB)")
+          return accept(gpu_memory_mib_per_device=73728)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # The same TensorFold metrics as the GB10 profile: v0.6.5 keeps the names
+    # (artifacts/work/2026-10-10-inference-metrics-sources/evidence/tensorfold-v065-metrics.py)
+    # and this image carries the same cuda-metrics patch.
+    metrics:
+      map:
+        'tensorfold:requests_running': requests_running
+        'tensorfold:requests_waiting': requests_waiting
+        'tensorfold_health:requests_total': requests_success_total
+        'tensorfold:prompt_tokens_total': prompt_tokens_total
+        'tensorfold_health:completion_tokens_total': generation_tokens_total
+        'tensorfold_health:cached_tokens_total': prompt_tokens_cache_hit_total
+        'tensorfold:mtp_drafted_total': spec_draft_tokens_total
+        'tensorfold:mtp_accepted_total': spec_accepted_tokens_total
+        'tensorfold:time_to_first_token_seconds': ttft_seconds
+        'tensorfold:request_latency_seconds': e2e_seconds
+        'tensorfold_health:pool_tokens': kv_capacity_tokens
+        'tensorfold_health:pool_free_tokens': kv_free_tokens
+    # Every reply's last event carries a tensorfold object with the request's
+    # own prefill and decode seconds, beside usage (TensorFold v0.6.5,
+    # artifacts/work/2026-10-10-inference-metrics-sources/evidence/tensorfold-gb10-stream.sse).
+    request_stats:
+      tensorfold.prefill_s: prefill_seconds
+      tensorfold.decode_s: decode_seconds

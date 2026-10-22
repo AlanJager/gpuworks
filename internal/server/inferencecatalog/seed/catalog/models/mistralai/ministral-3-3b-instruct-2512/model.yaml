@@ -1,0 +1,55 @@
+model_id: mistralai/ministral-3-3b-instruct-2512
+source: upstream
+display_title: Ministral-3-3B-Instruct-2512
+release_date: '2025-10-31'
+model_config: {model_type: mistral3, num_hidden_layers: 26, hidden_size: 3072, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 262144, vision_config: {image_size: 1540, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 106496
+  sglang: 106496
+specs:
+- name: fp8-3b-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Ministral-3-3B-Instruct-2512
+        revision: b35d4dfe56c142746f54dbd64f579faab2744308
+    - modelscope:
+        repo_id: mistralai/Ministral-3-3B-Instruct-2512
+        revision: b7d5f180077d4aaa203e7dfd0932dca6068ab779
+  weight_bytes: 9378081120
+  gpus:
+    vendor: nvidia
+    # Measured on A100-SXM4-40GB (CC 8.0) at TP=1, so the Hopper-only gate was too
+    # narrow for this 3B fp8 checkpoint. That run used the gpustack vLLM 0.25.1
+    # runner image rather than the floating tag below, so it establishes the CC
+    # requirement, not this exact image tag.
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --tokenizer-mode
+  - mistral
+  - --config-format
+  - mistral
+  - --load-format
+  - mistral
+  - --tokenizer_mode
+  - mistral
+  - --config_format
+  - mistral
+  - --load_format
+  - mistral
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

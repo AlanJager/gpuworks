@@ -1,0 +1,63 @@
+{
+  "breadcrumb": {
+    "platform": "Platform"
+  },
+  "description": "Search container and infrastructure logs by keyword, instance, level, and time",
+  "histogram": {
+    "caption": "Log volume over the selected time range (red = error, blue = info/warn)"
+  },
+  "range": {
+    "30m": "Last 30m",
+    "1h": "Last 1h",
+    "6h": "Last 6h",
+    "24h": "Last 24h",
+    "7d": "Last 7d",
+    "all": "All time",
+    "custom": "Custom"
+  },
+  "search": {
+    "autoRefresh": "Auto refresh 5s",
+    "button": "Search",
+    "context": "Context",
+    "contextAfter": "after",
+    "contextBefore": "before",
+    "contextLines": "lines",
+    "empty": "No logs",
+    "error": "Search failed",
+    "export": "Export CSV",
+    "instancePlaceholder": "Instance (short ID or UUID)",
+    "levelPlaceholder": "Min level",
+    "limit": "Result limit",
+    "loading": "Searching…",
+    "loadMore": "Load more",
+    "matches": "{{count}} matches",
+    "matchesCapped": "{{count}}+ matches",
+    "nodePlaceholder": "Node",
+    "placeholder": "Search logs (leave empty for recent logs)",
+    "quick": "Quick filters:",
+    "refresh": "Refresh",
+    "sourceAgent": "Source: agent",
+    "sourceAll": "Source: all",
+    "sourceInstance": "Source: instance",
+    "sourceNode": "Source: node",
+    "sourceServer": "Source: server",
+    "title": "Log search",
+    "updated": "Updated {{time}}",
+    "contextTitle": "Context ±{{count}} lines around the match",
+    "contextClose": "Close",
+    "contextCustom": "Custom",
+    "truncated": "over the cap; showing the newest {{limit}}",
+    "sourceLabel": "Log source",
+    "rangeLabel": "Time range"
+  },
+  "table": {
+    "instance": "Instance",
+    "log": "Log",
+    "time": "Time"
+  },
+  "title": "Logs",
+  "traceback": {
+    "expand": "Show {{count}} frame lines",
+    "collapse": "Hide {{count}} frame lines"
+  }
+}

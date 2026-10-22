@@ -1,0 +1,47 @@
+{
+  "items": [
+    {
+      "instance_uuid": "inst-slice-a",
+      "deployment_id": 2,
+      "deployment_name": "qwen3-dgpu-a",
+      "state": "running",
+      "node_uuid": "node-fixture",
+      "node_name": "gpu3",
+      "gpu_index": 1,
+      "gpu_uuid": "GPU-2080ti",
+      "gpu_name": "GeForce RTX 2080 Ti",
+      "memory_limit_bytes": 8589934592,
+      "memory_used_bytes": 7541358592,
+      "sm_util_pct": 99,
+      "updated_at": "2026-10-18T05:40:00Z"
+    },
+    {
+      "instance_uuid": "inst-slice-b",
+      "deployment_id": 3,
+      "deployment_name": "qwen3-dgpu-b",
+      "state": "running",
+      "node_uuid": "node-fixture",
+      "node_name": "gpu3",
+      "gpu_index": 1,
+      "gpu_uuid": "GPU-2080ti",
+      "gpu_name": "GeForce RTX 2080 Ti",
+      "memory_limit_bytes": 8589934592,
+      "pending_limit_bytes": 6442450944,
+      "memory_used_bytes": 7407140864,
+      "sm_util_pct": 0,
+      "updated_at": "2026-10-18T05:40:00Z"
+    },
+    {
+      "instance_uuid": "inst-slice-c",
+      "deployment_id": 4,
+      "deployment_name": "qwen3-dgpu-c",
+      "state": "starting",
+      "node_uuid": "node-fixture",
+      "node_name": "gpu3",
+      "gpu_index": 1,
+      "gpu_uuid": "GPU-2080ti",
+      "gpu_name": "GeForce RTX 2080 Ti",
+      "memory_limit_bytes": 4294967296
+    }
+  ]
+}

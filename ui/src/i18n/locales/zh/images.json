@@ -1,0 +1,268 @@
+{
+  "page": {
+    "title": "镜像",
+    "description": "按系列、版本和节点分布管理 GPUWorks 运行镜像",
+    "breadcrumb": {
+      "platform": "AI 算力平台",
+      "resources": "资源",
+      "images": "镜像"
+    },
+    "refresh": "刷新",
+    "tab": {
+      "official": "系统镜像",
+      "community": "社区镜像",
+      "custom": "自定义镜像"
+    },
+    "catalog": {
+      "update": "检查更新",
+      "hint": "系统镜像由 GPUWorks 维护。可以从 GPUWorks manifest 站点检查更新；服务器离线时上传 manifest JSON 文件。",
+      "updateFailed": "目录更新失败",
+      "upload": "上传 manifest",
+      "version": "已导入目录 {{version}}",
+      "result": {
+        "created": "新增 {{n}}",
+        "updated": "更新 {{n}}",
+        "deleted": "删除 {{n}}",
+        "deprecated": "弃用 {{n}}"
+      }
+    },
+    "addCommunity": "添加社区镜像",
+    "addCustom": "添加自定义镜像",
+    "summary": {
+      "series": "镜像系列",
+      "images": "镜像总数",
+      "distributed": "已分发数量",
+      "catalogSize": "镜像总体积",
+      "localSize": "本地拉取镜像总体积"
+    },
+    "operationNotice": "镜像操作提示",
+    "loadFailed": "镜像加载失败",
+    "seriesTitle": "镜像系列",
+    "updatedAt": "更新于 {{time}}"
+  },
+  "action": {
+    "source": {
+      "peer": "节点分发"
+    },
+    "submitted": "已提交 {{source}} 任务",
+    "pullSubmitted": "已提交拉取任务",
+    "pullFailed": "拉取失败",
+    "cancelled": "已取消该传输。",
+    "removed": "已从该节点删除镜像",
+    "removeFailed": "无法删除该镜像",
+    "cancelFailed": "无法取消该传输。",
+    "detailFailed": "读取镜像详情失败",
+    "imported": "{{source}}镜像已加入目录",
+    "sourceType": {
+      "community": "社区",
+      "custom": "自定义"
+    },
+    "importFailed": "导入失败",
+    "seriesEnabled": "系列已启用",
+    "seriesDisabled": "系列已停用",
+    "seriesDeleted": "镜像系列已删除",
+    "deleteSeriesFailed": "删除镜像系列失败",
+    "versionEnabled": "版本已启用",
+    "versionDisabled": "版本已停用",
+    "versionDeleted": "镜像版本已删除",
+    "deleteVersionFailed": "删除镜像版本失败",
+    "updateFailed": "更新失败",
+    "inspectUpdated": "已读取镜像配置",
+    "inspectFailed": "镜像 inspect 失败",
+    "repullSubmitted": "已提交重新拉取任务"
+  },
+  "common": {
+    "cancel": "取消",
+    "delete": "删除",
+    "retry": "重试",
+    "enabled": "启用",
+    "disabled": "停用"
+  },
+  "state": {
+    "present": "已存在",
+    "pulling": "拉取中",
+    "syncing": "同步中",
+    "failed": "失败",
+    "absent": "未存在"
+  },
+  "tag": {
+    "rolling": "滚动标签",
+    "upstreamGone": "上游已消失"
+  },
+  "seriesTable": {
+    "enabledLabel": "启用镜像系列 {{name}}",
+    "column": {
+      "series": "系列",
+      "vendor": "厂商",
+      "engine": "引擎",
+      "framework": "框架",
+      "count": "镜像数",
+      "coverage": "节点覆盖",
+      "status": "状态"
+    },
+    "deleteTitle": "删除镜像系列“{{name}}”？",
+    "deleteDescription": "系列下的所有版本和节点分发记录会一并删除。",
+    "details": "详情"
+  },
+  "versionTable": {
+    "enabledLabel": "启用镜像版本 {{ref}}",
+    "column": {
+      "tag": "镜像 tag",
+      "engineVersion": "引擎版本",
+      "frameworkVersion": "框架版本",
+      "labels": "标签",
+      "size": "镜像体积",
+      "arch": "架构",
+      "distributed": "已分发",
+      "status": "状态"
+    },
+    "sizeHelp": "Registry 压缩层体积估算；节点实际占用以本地上报为准",
+    "deleteTitle": "删除镜像版本“{{ref}}”？",
+    "deleteDescription": "该版本的节点分发记录也会被清理。",
+    "deprecatedSince": "目录 {{version}} 起废弃",
+    "disabledBySeries": "随系列禁用",
+    "deprecatedRefs": "已弃用 · {{refs}} 个引用"
+  },
+  "nodeTable": {
+    "column": {
+      "node": "节点",
+      "status": "状态",
+      "message": "提示",
+      "progress": "进度",
+      "source": "获取方式",
+      "actions": "操作",
+      "digest": "镜像 ID",
+      "updated": "更新时间"
+    },
+    "peerFrom": "节点分发 · {{node}}",
+    "offline": "本地离线包",
+    "inspectHelp": "从节点读取镜像自带的 entrypoint、env 和卷声明，只读显示、不保存",
+    "refreshInspect": "刷新 inspect",
+    "pull": "拉取",
+    "sourceAuto": "自动（按拉取设置）",
+    "autoNote": "镜像从哪里拉取由拉取设置自动决定。",
+    "autoNoteLink": "拉取设置",
+    "cancel": "取消传输",
+    "remove": "删除镜像",
+    "removeConfirm": "从节点“{{node}}”删除镜像“{{ref}}”？",
+    "removeImpact": "仅删除该节点上的本地镜像副本，保留镜像目录中的版本及其他节点上的副本。",
+    "removeConfirmOk": "删除",
+    "pullingFrom": "正在从 {{source}} 拉取",
+    "pullingPending": "选择来源中",
+    "sourceUnknown": "未记录",
+    "sourceUnknownHelp": "镜像已在节点上，但平台没有它的拉取记录：例如部署启动时由副本自己拉取，或在节点上手动拉取。",
+    "sourceMirror": "Mirror",
+    "sourceURL": "URL",
+    "sourceURLRelay": "URL·中转",
+    "sourceFromURL": "从 URL 导入…",
+    "pullFromURL": "从 URL 获取…",
+    "relay": "管理节点中转",
+    "relayHelp": "由管理节点下载归档并流式推送到该节点。节点自身无法访问镜像站时使用；该传输不可续传。",
+    "rateLimit": "限速",
+    "unlimited": "不限速",
+    "testDirect": "测试直连",
+    "peerOption": "从其他节点同步…",
+    "peerAction": "从节点同步…",
+    "peerDialog": {
+      "title": "从其他节点同步 {{ref}} 到 {{node}}",
+      "description": "由源节点把镜像直接传给该节点，管理节点只负责协调，不中转镜像数据。",
+      "source": "源节点",
+      "sourcePlaceholder": "选择已有该镜像的节点",
+      "rateHelp": "只作用于这一次传输，留空或 0 表示不限速。",
+      "probeHint": "开始同步前需先测试直连。",
+      "probeOk": "源节点可以直连该节点。",
+      "probeFailed": "源节点无法直连该节点",
+      "start": "开始同步"
+    },
+    "archiveDialog": {
+      "title": "在 {{node}} 上从 URL 获取 {{ref}}",
+      "description": "粘贴 docker save 归档的地址。请先解析：引用是从归档里读出来的，不是靠文件名猜的。",
+      "recordNote": "确认后这个地址会记录到 {{ref}} 的获取地址里，其他节点和部署也能直接选它。",
+      "mismatch": "该归档里是另一个镜像，已拦住本次拉取",
+      "mismatchDetail": "要获取的是 {{ref}}，但归档里有 {{tags}}。请确认粘贴的归档地址是否正确。",
+      "unverified": "该归档无法在下载前校验"
+    },
+    "repull": "重新拉取",
+    "repullHelp": "在该节点上重新拉取这个滚动 tag，取得上游当前指向的镜像。"
+  },
+  "import": {
+    "title": {
+      "community": "添加社区镜像",
+      "custom": "添加自定义镜像"
+    },
+    "rolling": "滚动",
+    "customNotice": "镜像 Registry 由平台规则统一解析",
+    "customDescription": "节点拉取镜像时，按镜像声明的获取地址和拉取设置里的来源规则（设置 → 拉取设置）依次尝试，最后是实际的仓库；社区与自定义镜像不受仓库名称限制。",
+    "seriesName": "镜像系列名称（可选）",
+    "seriesNamePlaceholder": "留空则按镜像仓库自动归组",
+    "engine": "推理引擎",
+    "engineRequired": "请选择推理引擎",
+    "imageRef": "镜像引用",
+    "frameworkVersionRequired": "请输入框架版本",
+    "imageRefRequired": "请输入镜像引用",
+    "tagRequired": "请输入带 tag 的镜像引用；本期不支持 digest",
+    "framework": "框架",
+    "frameworkVersion": "框架版本",
+    "exampleFrameworkVersion": "例如 12.8",
+    "engineVersion": "引擎版本",
+    "exampleEngineVersion": "例如 0.17.1",
+    "hostArch": "宿主架构",
+    "addImage": "添加镜像",
+    "registrySources": "获取地址",
+    "registrySourcesHelp": "该镜像可用的额外获取地址：registry 引用，或 docker save 归档的 URL。",
+    "url": {
+      "title": "从 URL 导入",
+      "description": "粘贴 docker save 归档的地址。真实的镜像引用直接从归档里读出，不必靠文件名猜。",
+      "label": "镜像归档 URL",
+      "required": "请先填写镜像归档 URL。",
+      "resolve": "解析",
+      "failed": "无法读取该镜像归档。",
+      "size": "归档大小",
+      "tags": "归档内的引用",
+      "tagsUnknown": "无法从该归档读出引用。",
+      "notPreviewable": "该归档无法在下载前解析。请自行填写镜像引用；节点会把归档实际携带的引用打成该标签。",
+      "matched": "{{ref}} 已在目录中，URL 已追加到该条目。",
+      "prefilled": "下方表单已按 {{ref}} 预填，补齐其余字段后添加镜像即可。",
+      "recorded": "URL 已记录到 {{ref}}。"
+    },
+    "frameworkRequired": "请选择框架；没有框架的镜像不会参与自动推荐",
+    "rollingTag": "滚动 tag",
+    "rollingTagHelp": "nightly、latest 这类 tag 会随上游变化，之后可以在节点上重新拉取。",
+    "community": {
+      "title": "社区仓库",
+      "reposLoading": "正在读取社区仓库…",
+      "reposFailed": "无法读取社区仓库列表",
+      "otherRepo": "其他仓库",
+      "otherRepoPlaceholder": "任意仓库，例如 vllm/vllm-openai",
+      "browse": "列出 tag",
+      "tagsLoading": "正在列出 {{repo}} 的 tag…",
+      "tagsFailed": "无法列出 {{repo}} 的 tag",
+      "tagCount": "{{repo}} · 共 {{total}} 个 tag",
+      "search": "搜索 tag",
+      "searchPlaceholder": "按名称搜索，例如 qwen38 或 nightly",
+      "noTags": "该仓库上游没有 tag",
+      "noMatch": "没有匹配的 tag",
+      "column": {
+        "tag": "Tag",
+        "labels": "标签",
+        "lastUpdated": "上游更新时间"
+      }
+    },
+    "enginesFailed": "无法读取推理引擎列表"
+  },
+  "detail": {
+    "title": "{{name}} · 详情",
+    "fallbackTitle": "镜像详情",
+    "builtInTitle": "镜像内置配置",
+    "builtInFrom": "刚从 {{node}} 读取，仅展示，不保存。",
+    "builtInNone": "（无）",
+    "builtInHint": "在持有该镜像的节点上执行“检查”，可以看到镜像构建时写入的 ENTRYPOINT、CMD、ENV 和 VOLUME。部署不会继承目录里的任何配置；要运行这个入口，部署时选择“镜像入口”命令模式。",
+    "driverRequirement": "驱动要求：{{value}}",
+    "nodeDistributionFor": "节点分布 · {{ref}}",
+    "nodeDistribution": "节点分布",
+    "selectVersion": "选择一个版本查看节点分布、来源和拉取/分发操作",
+    "deleteSeries": "删除系列",
+    "deleteVersion": "删除版本",
+    "digestMismatch": "{{ref}}：{{nodes}} 个节点的 digest 不一致"
+  }
+}

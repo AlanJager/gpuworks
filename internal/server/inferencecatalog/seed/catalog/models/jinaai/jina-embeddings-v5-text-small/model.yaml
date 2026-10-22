@@ -1,0 +1,323 @@
+model_id: jinaai/jina-embeddings-v5-text-small
+source: upstream
+display_title: Jina Embeddings v5 Text Small
+parameter_count: 0.7B
+architecture: dense
+context_length: 32768
+release_date: '2026-01-22'
+model_config: {model_type: qwen3, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768, layer_types: [full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention]}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-classification-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-classification
+        revision: 4447914a9b5b2fb00db3ce0884602b47a08f9458
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-classification
+        revision: 39c7b782b71b4f830fac1aa4e01fed59f7c022e4
+  weight_bytes: 9515125331
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-classification-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-classification
+        revision: 4447914a9b5b2fb00db3ce0884602b47a08f9458
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-classification
+        revision: 39c7b782b71b4f830fac1aa4e01fed59f7c022e4
+  weight_bytes: 9515125331
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-clustering-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-clustering
+        revision: 4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-clustering
+        revision: c5d44078ac5945f35450d3aa36f410e86542f793
+  weight_bytes: 9515124553
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-clustering-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-clustering
+        revision: 4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-clustering
+        revision: c5d44078ac5945f35450d3aa36f410e86542f793
+  weight_bytes: 9515124553
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-default-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-retrieval
+        revision: 6856e76bb72982e58de0620458a4e8b3614da340
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-retrieval
+        revision: 48dec26731191e6da58497f125d3f60188dce04d
+  weight_bytes: 9515125352
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-text-matching-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-text-matching
+        revision: 69890c317b81d4e1f412e66ebe68b6ebf9534d24
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-text-matching
+        revision: e41c4f3d5628175f9c534ff043e62187b7f9a2e6
+  weight_bytes: 9515124717
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-text-matching-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-text-matching
+        revision: 69890c317b81d4e1f412e66ebe68b6ebf9534d24
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-text-matching
+        revision: e41c4f3d5628175f9c534ff043e62187b7f9a2e6
+  weight_bytes: 9515124717
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-vllm-ascend-d5dadb85
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small
+        revision: dd76d535f5447ca3897a9c893fb1e612ead98192
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small
+        revision: b615e0e4b00aef9b9f84f7858731ce6f8379247c
+  weight_bytes: 1369725552
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  - --dtype
+  - bfloat16
+  - --pooler-config
+  - '{pooling_type:LAST}'
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-retrieval
+        revision: 6856e76bb72982e58de0620458a4e8b3614da340
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-retrieval
+        revision: 48dec26731191e6da58497f125d3f60188dce04d
+  weight_bytes: 9515125352
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-vllm-ppu-dd76d535
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small
+        revision: dd76d535f5447ca3897a9c893fb1e612ead98192
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small
+        revision: dd76d535f5447ca3897a9c893fb1e612ead98192
+  weight_bytes: 1192133208
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --runner
+  - pooling
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+input_modalities: [text]

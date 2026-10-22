@@ -1,0 +1,3 @@
+*.patch whitespace=-trailing-space,-space-before-tab
+# Captured CLI output: trailing blanks are part of what the CLI printed.
+internal/agent/runtime/nerdctl/testdata/** whitespace=-trailing-space,-blank-at-eol,-blank-at-eof,-space-before-tab

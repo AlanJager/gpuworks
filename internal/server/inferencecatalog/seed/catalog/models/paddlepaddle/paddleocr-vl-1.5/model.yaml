@@ -1,0 +1,104 @@
+model_id: paddlepaddle/paddleocr-vl-1.5
+source: upstream
+display_title: PaddleOCR-VL-1.5
+parameter_count: 0.9B
+architecture: dense
+context_length: 131072
+release_date: '2026-01-28'
+model_config: {model_type: paddleocr_vl, num_hidden_layers: 18, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 2, head_dim: 128, max_position_embeddings: 131072, vision_config: {image_size: 384, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 18432
+  sglang: 18432
+specs:
+- name: bf16-vllm-hygon-ad9d4d29
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: PaddlePaddle/PaddleOCR-VL-1.5
+        revision: 2a4195faa5e7914c12f2fc601d72c81caf8d2da5
+    - modelscope:
+        repo_id: PaddlePaddle/PaddleOCR-VL-1.5
+        revision: 6752ece06216dd4331067a166d5df1f11489e5b8
+  weight_bytes: 1930469532
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --trust-remote-code
+  env:
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: 'True'
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: PaddlePaddle/PaddleOCR-VL-1.5
+        revision: 2a4195faa5e7914c12f2fc601d72c81caf8d2da5
+    - modelscope:
+        repo_id: PaddlePaddle/PaddleOCR-VL-1.5
+        revision: 6752ece06216dd4331067a166d5df1f11489e5b8
+  weight_bytes: 1930468959
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: PaddlePaddle/PaddleOCR-VL-1.5
+        revision: 2a4195faa5e7914c12f2fc601d72c81caf8d2da5
+    - modelscope:
+        repo_id: PaddlePaddle/PaddleOCR-VL-1.5
+        revision: 6752ece06216dd4331067a166d5df1f11489e5b8
+  weight_bytes: 1930468959
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

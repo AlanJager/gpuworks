@@ -1,0 +1,68 @@
+model_id: tencent-hunyuan/hy-mt2-1.8b
+source: upstream
+display_title: hy-mt2-1.8b
+release_date: '2026-05-11'
+model_config: {model_type: hunyuan_v1_dense, num_hidden_layers: 32, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 65536
+  sglang: 65536
+specs:
+- name: bf16-vllm-hygon-c12be12d
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm-ubuntu22.04-dtk26.04-hunyuan-v3-0507
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy-MT2-1.8B
+        revision: 9a341cd1b679d3efd23b46e847b01745a71ed792
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy-MT2-1.8B
+        revision: 09fd81b4d8952bad2906e5c72f167bc84b0c6921
+  weight_bytes: 4090994367
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --trust-remote-code
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy-MT2-1.8B
+        revision: 9a341cd1b679d3efd23b46e847b01745a71ed792
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy-MT2-1.8B
+        revision: 09fd81b4d8952bad2906e5c72f167bc84b0c6921
+  weight_bytes: 4090994367
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

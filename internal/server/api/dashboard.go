@@ -1,0 +1,174 @@
+package api
+
+import (
+	"net/http"
+	"sort"
+	"strings"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+// dashboardSummary answers GET /dashboard/summary: the fleet counts and
+// capacity groups the dashboard shows, so the page no longer fetches every
+// node and deployment to count them. label_key picks the label the capacity
+// is grouped by.
+func (a *apiHandlers) dashboardSummary(w http.ResponseWriter, r *http.Request) {
+	nodes, err := a.d.Store.ListNodes()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	deps, err := a.d.Store.ListDeployments()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	instances, err := a.d.Store.ListInstances()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	rows, err := newListLookup(a.d.Store, a.d.Preparation, deps, instances)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	out := summarizeNodes(nodes, strings.TrimSpace(r.URL.Query().Get("label_key")))
+	out.CurrentMetrics = a.dashboardCurrentMetrics(nodes)
+	out.Deployments.Total = len(deps)
+	for i := range deps {
+		d := &deps[i]
+		if d.Sleepable {
+			out.Deployments.Sleepable++
+		}
+		switch effectiveDeploymentState(d, deploymentRuntimeState(rows, d, rows.instances(d.ID), recordedModelProgress(rows, d))) {
+		case "running":
+			out.Deployments.Running++
+		case "pulling", "starting":
+			out.Deployments.Warming++
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// nodeCapacity is what one node adds to a capacity group.
+type nodeCapacity struct {
+	gpus, unusable int
+	vramGiB        float64
+}
+
+// capacityOf sums what the fleet can actually run on. Cards owned
+// elsewhere (passed through, or with no driver) are part of the node's
+// hardware and are shown in its detail, but they are nobody's capacity and
+// counting them as unhealthy would report a fleet-wide fault that is not
+// there.
+func capacityOf(n *store.Node) nodeCapacity {
+	owned := n.OwnedGPUs()
+	c := nodeCapacity{gpus: n.GPUCount}
+	for i := range owned {
+		c.vramGiB += float64(owned[i].MemoryTotal) / bytesPerGiB
+		if !owned[i].CanTakeWork() {
+			c.unusable++
+		}
+	}
+	return c
+}
+
+// summarizeNodes counts the fleet and groups its capacity by vendor and by
+// the label key asked for.
+func summarizeNodes(nodes []store.Node, wantKey string) dto.DashboardSummary {
+	out := dto.DashboardSummary{ByVendor: []dto.CapacityGroup{}, LabelKeys: []string{}, ByLabel: []dto.CapacityGroup{}}
+	labels := make([]map[string]string, len(nodes))
+	keyCounts := map[string]int{}
+	byVendor := capacityGroups{}
+	for i := range nodes {
+		n := &nodes[i]
+		switch n.ConnectionState() {
+		case store.NodeStateOnline:
+			out.Nodes.Online++
+		case store.NodeStateOffline:
+			out.Nodes.Offline++
+		case store.NodeStateConnecting:
+			out.Nodes.Connecting++
+		}
+		c := capacityOf(n)
+		out.Nodes.GPUs += c.gpus
+		out.Nodes.UnusableGPUs += c.unusable
+		out.Nodes.VRAMGiB += c.vramGiB
+		out.Nodes.MemoryGiB += float64(n.MemTotalKB) * 1024 / bytesPerGiB
+		vendor := nodeDTOGPUVendor(n)
+		if vendor == "" {
+			vendor = "unknown"
+		}
+		byVendor.add(dto.CapacityGroup{Key: vendor}, c)
+		// A node whose labels cannot be read has none, as the DTO shows it.
+		labels[i], _ = store.NodeLabels(n.Labels)
+		for key := range labels[i] {
+			keyCounts[key]++
+		}
+	}
+	out.Nodes.Total = len(nodes)
+	out.ByVendor = byVendor.sorted()
+	for key := range keyCounts {
+		out.LabelKeys = append(out.LabelKeys, key)
+	}
+	sort.Slice(out.LabelKeys, func(i, j int) bool {
+		a, b := out.LabelKeys[i], out.LabelKeys[j]
+		return keyCounts[a] > keyCounts[b] || keyCounts[a] == keyCounts[b] && a < b
+	})
+	// The picked key falls back to the most widely used one, also when a
+	// label edit removed it from every node.
+	if keyCounts[wantKey] > 0 {
+		out.LabelKey = wantKey
+	} else if len(out.LabelKeys) > 0 {
+		out.LabelKey = out.LabelKeys[0]
+	}
+	if out.LabelKey != "" {
+		byLabel := capacityGroups{}
+		for i := range nodes {
+			group := dto.CapacityGroup{Unlabeled: true}
+			if value, ok := labels[i][out.LabelKey]; ok {
+				group = dto.CapacityGroup{Key: out.LabelKey + "=" + value}
+			}
+			byLabel.add(group, capacityOf(&nodes[i]))
+		}
+		out.ByLabel = byLabel.sorted()
+	}
+	return out
+}
+
+// capacityGroups accumulates groups by key; the unlabeled group has its own
+// slot so no label value can collide with it.
+type capacityGroups map[string]*dto.CapacityGroup
+
+func (g capacityGroups) add(group dto.CapacityGroup, c nodeCapacity) {
+	slot := group.Key
+	if group.Unlabeled {
+		slot = "\x00unlabeled"
+	}
+	row := g[slot]
+	if row == nil {
+		row = &group
+		g[slot] = row
+	}
+	row.Nodes++
+	row.GPUs += c.gpus
+	row.VRAMGiB += c.vramGiB
+	row.UnusableGPUs += c.unusable
+}
+
+// sorted lists the groups most GPUs first, then by key.
+func (g capacityGroups) sorted() []dto.CapacityGroup {
+	out := make([]dto.CapacityGroup, 0, len(g))
+	for _, row := range g {
+		out = append(out, *row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].GPUs != out[j].GPUs {
+			return out[i].GPUs > out[j].GPUs
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out
+}

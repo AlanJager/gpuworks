@@ -1,0 +1,103 @@
+model_id: openai/whisper-large-v3
+source: upstream
+display_title: Whisper Large v3
+parameter_count: 1.55B
+architecture: dense
+context_length: 448
+release_date: '2023-11-07'
+model_config: {model_type: whisper, num_hidden_layers: 32, hidden_size: 1280, num_attention_heads: 20}
+kv_bytes_per_token:
+  vllm: 163840
+  sglang: 163840
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: openai/whisper-large-v3
+        revision: 06f233fe06e710322aca913c1bc4249a0d71fce1
+    - modelscope:
+        repo_id: openai-mirror/whisper-large-v3
+        revision: 256f53c7db167c5c00efebd7fde118dfa365118a
+  weight_bytes: 24701695487
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: openai/whisper-large-v3
+        revision: 06f233fe06e710322aca913c1bc4249a0d71fce1
+    - modelscope:
+        repo_id: openai-mirror/whisper-large-v3
+        revision: 256f53c7db167c5c00efebd7fde118dfa365118a
+  weight_bytes: 24701695487
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+- name: bf16-vllm-ppu-06f233fe
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: openai/whisper-large-v3
+        revision: 06f233fe06e710322aca913c1bc4249a0d71fce1
+    - modelscope:
+        repo_id: openai-mirror/whisper-large-v3
+        revision: 256f53c7db167c5c00efebd7fde118dfa365118a
+  weight_bytes: 9261243048
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --max-model-len
+  - '448'
+  - --max-num-seqs
+  - '1'
+  - --max-num-batched-tokens
+  - '2048'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+input_modalities: [text, audio]

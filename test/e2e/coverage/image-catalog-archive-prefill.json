@@ -1,0 +1,105 @@
+{
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_selection.py",
+  "test_function": "test_archive_prefill",
+  "contract_id": "gpuworks/image-catalog/archive-prefill",
+  "name": "镜像目录 / 归档地址 A 到 B 与失败恢复 / 仅保存最终解析的引用与地址",
+  "command": "make test-e2e-image-archive-prefill",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "External metadata parsing only; synthetic archives are not runnable images. No agent, pull or container claim."
+  },
+  "crud": {
+    "create": "covered: selected metadata imported through UI",
+    "read": "covered: independent series GET and refreshed details",
+    "update": "MISSING",
+    "delete": "MISSING: teardown only"
+  },
+  "checklist_items": {
+    "partial": [
+      "1.8",
+      "1.11",
+      "4.5",
+      "5.5",
+      "8.4",
+      "12.1",
+      "12.2"
+    ],
+    "reason": "Only source selection and draft preservation branches asserted in this case."
+  },
+  "fields": [
+    {
+      "field_id": "image.reference",
+      "component": "Text",
+      "request": "series[].versions[].image_ref",
+      "persistence": "version.image_ref",
+      "covered": [
+        "selection A->B",
+        "exact submit",
+        "independent read"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.sources",
+      "component": "Multi-select",
+      "request": "series[].versions[].registry_sources",
+      "persistence": "version.registry_sources",
+      "covered": [
+        "A->B archive source replacement"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.archive-url",
+      "component": "URL",
+      "request": "POST /images/preview-archive-url body.url",
+      "persistence": "Successful explicit resolve prefills version.registry_sources; raw input is transient",
+      "covered": [
+        "A resolve",
+        "typing preserves manual ref",
+        "503 keeps draft",
+        "explicit B resolve replaces A"
+      ],
+      "missing": [
+        "matched-existing-version flow",
+        "invalid URL",
+        "unpreviewable archive"
+      ]
+    }
+  ],
+  "missing": [
+    "all enum options",
+    "framework-changing dependency reset",
+    "cross-source archive-to-community transition",
+    "reopen unsaved draft semantics",
+    "referenced image deletion",
+    "permissions",
+    "runtime image pull and container execution",
+    "all component keyboard/computed-style states",
+    "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
+  ],
+  "product_contracts": [
+    "ui/src/pages/images/ImageImportDrawer.tsx",
+    "ui/src/pages/ImagesPage.tsx",
+    "ui/src/pages/images/ImageArchiveURLImport.tsx",
+    "internal/server/api/images_catalog_import.go"
+  ],
+  "field_contract_reference": {
+    "file": "test/e2e/coverage/image-catalog-register.json",
+    "scope": "Shared registration field labels/defaults/requiredness; this case claims only the selection branches listed here. It does not inherit registration execution evidence."
+  }
+}

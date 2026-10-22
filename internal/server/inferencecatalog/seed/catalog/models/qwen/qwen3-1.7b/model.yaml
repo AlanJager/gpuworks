@@ -1,0 +1,164 @@
+model_id: qwen/qwen3-1.7b
+source: upstream
+display_title: Qwen3-1.7B
+parameter_count: 1.7B
+architecture: dense
+context_length: 40960
+release_date: '2025-04-27'
+model_config: {model_type: qwen3, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
+  weight_bytes: 4079450110
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
+  weight_bytes: 4079450110
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
+  weight_bytes: 4079450110
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B-FP8
+        revision: 1641e6c1b620b7ed7e8711b443990429a23b1b99
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B-FP8
+        revision: a615075cbbc32ab6853d1a954ff57075fe3cd4f0
+  weight_bytes: 2670335894
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-70d244cc
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+    - modelscope:
+        repo_id: Qwen/Qwen3-1.7B
+        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+  weight_bytes: 4063515592
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --reasoning-parser
+  - qwen3
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

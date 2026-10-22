@@ -1,0 +1,113 @@
+{
+  "google/gemma-3-4b-it": {
+    "model_config": {
+      "model_type": "gemma3_text",
+      "num_hidden_layers": 34,
+      "hidden_size": 2560,
+      "num_attention_heads": 8,
+      "num_key_value_heads": 4,
+      "head_dim": 256,
+      "sliding_window": 1024,
+      "max_position_embeddings": 131072
+    },
+    "note": "Gemma 3's config.json declares no attention heads at all (the canonical repository is gated too); the shape is read from the published safetensors header (q_proj [2048, 2560] / q_norm [256], k_proj [1024, 2560])"
+  },
+  "nvidia/nvidia-nemotron-nano-9b-v2-base": {
+    "repo": "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Base",
+    "note": "the catalog's ModelScope mirror publishes no config.json"
+  },
+  "qwen/qwen3-14b-gguf": {
+    "repo": "Qwen/Qwen3-14B",
+    "note": "a GGUF repository carries no config.json; this is the model the published quantizations were built from"
+  },
+  "indexteam/indextts-2.5": {
+    "repo": "IndexTeam/IndexTTS-2.5",
+    "subfolder": "qwen0.6bemo4-merge",
+    "note": "the language model is the repository's Qwen3-0.6B component, not the package root"
+  },
+  "zai-org/glm-tts": {
+    "repo": "zai-org/GLM-TTS",
+    "subfolder": "llm",
+    "note": "the language model is the repository's llm component, not the package root"
+  },
+  "qwen/qwen2-audio-7b-instruct": {
+    "model_config": {
+      "model_type": "qwen2",
+      "num_hidden_layers": 32,
+      "hidden_size": 4096,
+      "num_attention_heads": 32,
+      "num_key_value_heads": 32,
+      "head_dim": 128,
+      "max_position_embeddings": 32768
+    },
+    "note": "the upstream text_config declares no attention shape at all; the shape is read from the published safetensors header (32 language layers, q_proj and k_proj both [4096, 4096], embeddings [156032, 4096]). The KV width is the projection width the weights fix, 32 * 128 = 4096"
+  },
+  "deepseek-ai/deepseek-vl2": {
+    "model_config": {
+      "num_hidden_layers": 30,
+      "kv_lora_rank": 512,
+      "qk_rope_head_dim": 64
+    },
+    "note": "the upstream language_config declares no attention shape; the language tower is a 30-layer MLA stack, read from the published safetensors header (kv_a_proj_with_mqa [576, 2560] = 512 + 64 latent, kv_b_proj [8192, 512])"
+  },
+  "deepseek-ai/janus-pro-7b": {
+    "model_config": {
+      "model_type": "llama",
+      "num_hidden_layers": 30,
+      "hidden_size": 4096,
+      "num_attention_heads": 32,
+      "num_key_value_heads": 32,
+      "max_position_embeddings": 16384
+    },
+    "note": "the upstream language_config declares only its layer count; the shape is DeepSeek-LLM-7B, which has the same 30 layers and 102400 vocabulary"
+  },
+
+  "qwen/qwen-image": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline (model_index.json only): image generation, no token-indexed KV cache"
+  },
+  "wan-ai/wan2.1-t2v-1.3b-diffusers": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline: video generation, no token-indexed KV cache"
+  },
+  "wan-ai/wan2.2-t2v-a14b-diffusers": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline: video generation, no token-indexed KV cache"
+  },
+  "lightricks/ltx-2.5-diffusers": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline: video generation, no token-indexed KV cache (repository is gated)"
+  },
+  "zai-org/glm-image": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline (model_index.json only): image generation, no token-indexed KV cache"
+  },
+  "paddlepaddle/ernie-image": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline (model_index.json only): image generation, no token-indexed KV cache"
+  },
+  "meituan-longcat/longcat-image-edit": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline (model_index.json only): image generation, no token-indexed KV cache"
+  },
+  "minimaxai/minimax-h3": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline served with --model-type diffusion: video generation, no token-indexed KV cache"
+  },
+  "stabilityai/stable-diffusion-3.5-large": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline: image generation, no token-indexed KV cache (repository is gated)"
+  },
+  "stabilityai/stable-diffusion-3.5-large-turbo": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline: image generation, no token-indexed KV cache (repository is gated)"
+  },
+  "stabilityai/stable-diffusion-3.5-medium": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline: image generation, no token-indexed KV cache (repository is gated)"
+  },
+  "stabilityai/stable-audio-open-1.0": {
+    "model_config": { "kv_cache": false },
+    "note": "diffusion pipeline (model_index.json only): audio generation, no token-indexed KV cache"
+  }
+}

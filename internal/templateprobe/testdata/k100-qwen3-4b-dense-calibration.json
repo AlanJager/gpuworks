@@ -1,0 +1,28 @@
+{
+  "model_id": "Qwen/Qwen3-4B",
+  "arch_family": "dense",
+  "config_fields": {
+    "architectures": ["Qwen3ForCausalLM"],
+    "model_type": "qwen3",
+    "num_hidden_layers": 36,
+    "max_position_embeddings": 40960,
+    "torch_dtype": "bfloat16"
+  },
+  "expected_min_layers": 2,
+  "full_result": {
+    "status": "pass"
+  },
+  "truncated_result": {
+    "status": "pass"
+  },
+  "image_digest": "sha256:164afad43171dd431f0344d9808e42777ccfd1af2264e2409a8326ca4da509f4",
+  "chip": "K100_AI",
+  "calibrated_at": "2026-08-27T12:10:19Z",
+  "engine": "vllm",
+  "source": "hardware",
+  "alignment": {
+    "aligned": true,
+    "reason": "full and truncated probes passed"
+  },
+  "disable_truncation": false
+}

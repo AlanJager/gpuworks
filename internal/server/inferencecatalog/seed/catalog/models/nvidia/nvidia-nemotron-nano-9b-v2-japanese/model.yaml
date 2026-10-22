@@ -1,0 +1,65 @@
+model_id: nvidia/nvidia-nemotron-nano-9b-v2-japanese
+source: upstream
+display_title: NVIDIA-Nemotron-Nano-9B-v2-Japanese
+release_date: '2026-02-04'
+model_config: {model_type: nemotron_h, num_hidden_layers: 56, hidden_size: 4480, num_attention_heads: 40, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, layer_types: [mamba, mlp, mamba, mlp, mamba, mlp, mamba, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mamba, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, mlp]}
+kv_bytes_per_token:
+  vllm: 229376
+  sglang: 118784
+specs:
+- name: bf16-japanese-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese
+        revision: 3979dd16634988c34cc3bd911583c51e6a731d10
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-Nano-9B-v2-Japanese
+        revision: ee7221a66d49e77c7fee6200f959ea4c9dfbe122
+  weight_bytes: 17794034528
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-3979dd16
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-Nano-9B-v2-Japanese
+        revision: 3979dd16634988c34cc3bd911583c51e6a731d10
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-Nano-9B-v2-Japanese
+        revision: ee7221a66d49e77c7fee6200f959ea4c9dfbe122
+  weight_bytes: 17776492488
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

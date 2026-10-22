@@ -1,0 +1,81 @@
+model_id: inclusionai/ling-lite
+source: upstream
+display_title: ling-lite
+parameter_count: 16.8B total
+architecture: BailingMoeForCausalLM
+context_length: 32768
+release_date: '2025-02-28'
+model_config: {model_type: bailing_moe, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 4, max_position_embeddings: 32768}
+kv_bytes_per_token:
+  vllm: 57344
+  sglang: 57344
+specs:
+- name: bf16-sglang-ascend-386736ff
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: inclusionAI/Ling-lite
+        revision: d80333a0f637caa11a37629af46e0c0cf387de45
+    - modelscope:
+        repo_id: inclusionAI/Ling-lite
+        revision: ab27d3b7838081ad1197e72ddbbc2ae6f51d2ec6
+  weight_bytes: 33611387532
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --attention-backend
+  - ascend
+  - --device
+  - npu
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-d80333a0
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: inclusionAI/Ling-lite
+        revision: d80333a0f637caa11a37629af46e0c0cf387de45
+    - modelscope:
+        repo_id: inclusionAI/Ling-lite
+        revision: ab27d3b7838081ad1197e72ddbbc2ae6f51d2ec6
+  weight_bytes: 33604635512
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

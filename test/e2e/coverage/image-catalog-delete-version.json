@@ -1,0 +1,44 @@
+{
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_catalog.py",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Catalog metadata only. No image pull, layer validation, node availability or container execution is claimed."
+  },
+  "product_contracts": [
+    "ui/src/pages/images/ImageImportDrawer.tsx",
+    "ui/src/pages/images/ImageDetailDrawer.tsx",
+    "internal/server/api/images_catalog_import.go",
+    "internal/server/api/images.go"
+  ],
+  "contract_id": "gpuworks/image-catalog/delete-sibling-version",
+  "name": "镜像详情 / 删除系列中版本 A / 兄弟版本 B 与父系列保留",
+  "test_function": "test_delete_sibling_version",
+  "command": "make test-e2e-image-version-delete",
+  "missing": [
+    "full field and enumeration matrix",
+    "list search/filter/page-size and 10/30/100 volumes",
+    "service failure and recovery",
+    "non-admin permissions",
+    "referenced-version deletion and CAS/impact contract",
+    "parent-series business deletion (cleanup is not coverage)",
+    "full keyboard/computed-style/loading/error layout matrix",
+    "image pull, distribution, container runtime and inference",
+    "deployment consumer selector: availability depends on selected model/engine and deployment evaluation; this metadata lane checks authoritative version collection only"
+  ],
+  "crud": {
+    "create": "N/A: API fixture, not tested UI operation",
+    "read": "covered: A/B before, B after independent GET and reload",
+    "update": "MISSING",
+    "delete": "covered: cancel and delete unreferenced version A only; parent and sibling unchanged"
+  }
+}

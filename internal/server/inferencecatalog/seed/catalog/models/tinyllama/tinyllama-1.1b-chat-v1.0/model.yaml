@@ -1,0 +1,39 @@
+model_id: tinyllama/tinyllama-1.1b-chat-v1.0
+source: upstream
+display_title: TinyLlama 1.1B Chat v1.0
+parameter_count: 1.1B
+architecture: dense
+model_config: {model_type: llama, num_hidden_layers: 22, hidden_size: 2048, num_attention_heads: 32, num_key_value_heads: 4, max_position_embeddings: 2048}
+kv_bytes_per_token:
+  vllm: 22528
+  sglang: 22528
+specs:
+- name: bf16-vllm-ppu-fe8a4ea1
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+        revision: fe8a4ea1ffedaf415f4da2f062534de366a451e6
+    - modelscope:
+        repo_id: AI-ModelScope/TinyLlama-1.1B-Chat-v1.0
+        revision: ffc1b93dcd9adb27af1b1bfaac7498838ec25143
+  weight_bytes: 2200119864
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

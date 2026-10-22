@@ -1,0 +1,138 @@
+// Bus-event routing: which change notifications make which deployments need
+// another reconcile pass. It is split out of controller.go because it is the
+// one place that decides what counts as a change worth re-planning for, and
+// that decision is what keeps a fleet's progress traffic from turning into a
+// cluster-wide re-plan.
+package controller
+
+import (
+	"strconv"
+	"strings"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+// onEvent maps a change event to the deployment(s) that need reconciling.
+//
+// A progress event is deliberately inert here. Reconciling is driven by state:
+// a transfer that is merely further along cannot place, start, or unblock
+// anything, and treating each of its samples as a change is what turned one
+// downloading node into a full re-plan of every deployment in the cluster.
+func (c *Controller) onEvent(ev bus.Event) {
+	c.cacheEvent(ev)
+	switch ev.Topic {
+	case store.InferenceTemplateTopic:
+		c.observation.request(ev.Key)
+	case "network_test":
+		c.onNetworkTestEvent(ev.Key, ev.Reason)
+	case "deployment":
+		if id, err := strconv.ParseUint(ev.Key, 10, 64); err == nil {
+			if ev.Reason == store.DeploymentChangeRequirements || ev.Reason == store.DeploymentChangeDGPUQuota {
+				// A node refused under the old pool or the old slice size may
+				// be exactly what the new one admits; try it again at once.
+				c.forgetPool(uint(id))
+			}
+			if ev.Reason == store.DeploymentChangeDGPUQuota {
+				c.markDGPULimitPush(uint(id))
+			}
+			c.q.add(depKey(uint(id)))
+		}
+	case "instance":
+		if ev.Reason == bus.ReasonProgress {
+			return
+		}
+		// Instance status changed → reconcile its deployment.
+		if inst, err := c.store.InstanceByUUID(ev.Key); err == nil {
+			c.q.add(depKey(inst.DeploymentID))
+		}
+	case "modelfile", "node", "storage":
+		if ev.Reason == bus.ReasonProgress {
+			return
+		}
+		if ev.Topic == "node" && ev.Reason == store.NodeChangeStatus {
+			c.nodeStatusReported() // acted on in batches (settleNodeStatus)
+			return
+		}
+		if ev.Topic == "modelfile" {
+			c.releaseTerminalModelSync(ev.Key)
+		}
+		// A model becoming present, or a node reconnecting, may unblock deploys.
+		if deps, err := c.store.ListDeployments(); err == nil {
+			for _, d := range deps {
+				c.q.add(depKey(d.ID))
+			}
+		}
+	case store.PullSettingsTopic:
+		// A rule change may allow a download or a pull a deployment was
+		// refused for, or forbid one; an operator's edit is rare, so every
+		// deployment gets a pass rather than an index of who was refused.
+		if deps, err := c.store.ListDeployments(); err == nil {
+			for _, d := range deps {
+				c.q.add(depKey(d.ID))
+			}
+		}
+	case "image":
+		// Image-node progress/presence and peer-sync starts do not change catalog refs.
+		// Pushing the same full list back to every agent here creates a feedback
+		// loop: each agent refreshes node status, which publishes another image
+		// node event. Catalog mutations still propagate the new ref set.
+		if ev.Reason != "node" && ev.Reason != "syncing" && ev.Reason != bus.ReasonProgress {
+			c.pushImageRefs()
+		}
+		if ev.Reason == bus.ReasonProgress {
+			return
+		}
+		// A copy finishing or failing unblocks the deployments waiting for
+		// it; only those are re-queued.
+		if ev.Reason == "node" {
+			if id, err := strconv.ParseUint(strings.TrimSpace(ev.Key), 10, 64); err == nil {
+				for _, dep := range c.imageWaits.waiting(uint(id)) {
+					c.q.add(depKey(dep))
+				}
+			}
+		}
+	}
+}
+
+func (c *Controller) pushImageRefs() {
+	images, err := c.store.ListEnabledImages()
+	if err != nil {
+		return
+	}
+	refs := make([]string, 0, len(images))
+	for _, image := range images {
+		refs = append(refs, image.ImageRef)
+	}
+	nodes, err := c.store.ListNodes()
+	if err != nil {
+		return
+	}
+	for _, node := range nodes {
+		_ = c.hub.PushToNode(node.UUID, proto.StateUpdate{ImageRefs: refs})
+	}
+}
+
+func (c *Controller) releaseTerminalModelSync(key string) {
+	mf, err := c.store.ResolveModelFileKey(key)
+	if err != nil || mf.State == proto.MFSyncing {
+		return
+	}
+	c.syncMu.Lock()
+	run := c.modelSyncs[key]
+	if run != nil {
+		delete(c.modelSyncs, key)
+	}
+	c.syncMu.Unlock()
+	if run != nil {
+		// A target can publish its terminal present status just before the
+		// source-side RPC response reaches the coordinator. Do not cancel that
+		// successful in-flight response: doing so turns a completed transfer
+		// into a spurious context-canceled failure. Failed/canceled terminal
+		// states still need to interrupt any remaining transfer work.
+		if mf.State != proto.MFPresent && mf.State != proto.MFRegistered {
+			run.cancel()
+		}
+	}
+}

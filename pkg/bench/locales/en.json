@@ -1,0 +1,66 @@
+{
+  "modes": {
+    "saturation": {
+      "label": "Throughput Limit Probe",
+      "description": "Find the concurrency turning point where throughput stops increasing significantly"
+    },
+    "sla": {
+      "label": "SLA Maximum Concurrency",
+      "description": "Find the maximum concurrency that still satisfies latency or throughput constraints"
+    },
+    "grid": {
+      "label": "Parameter Sweep",
+      "description": "Measure every combination of concurrency, input length, and output length"
+    }
+  },
+  "datasets": {
+	"agentic": {
+	  "label": "Agentic Synthetic Workload",
+	  "description": "Generate growing multi-turn contexts from a target mean input to measure prefix-cache and concurrency behavior"
+	},
+    "random": {
+      "label": "Fixed-Length Random",
+      "description": "Generate a new random token or character workload for every request to avoid prefix-cache bias in synthetic data"
+    },
+    "multiturn": {
+      "label": "OASST1 Multi-turn Conversations (3,826)",
+      "description": "A fixed subset of real upstream conversation trees under Apache-2.0; not production traffic"
+    },
+    "imported": {
+      "label": "Imported Production JSONL",
+      "description": "Importing sanitized production samples is recommended for capacity decisions"
+    }
+  },
+  "retired_datasets": {
+	"agenttrace": {
+	  "label": "ETO WebShop (removed)",
+	  "description": "Display-only metadata for historical runs; it cannot be selected for a new run"
+	}
+  },
+  "sla_constraints": {
+    "max_avg_ttft": "Average TTFT",
+    "max_p99_ttft": "P99 TTFT",
+    "max_avg_tpot": "Average TPOT",
+    "max_p99_tpot": "P99 TPOT",
+    "max_avg_latency": "Average Latency",
+    "max_p99_latency": "P99 Latency",
+    "max_rps": "Request Throughput",
+    "max_tps": "Output Throughput",
+    "min_rps": "Request Throughput",
+    "min_tps": "Output Throughput",
+    "min_interactivity": "Interactivity (per-user output speed)",
+    "min_session_completion": "Session completion rate (0–1)"
+  },
+  "objectives": {
+    "rps": { "label": "Request Throughput" },
+    "output_tps": { "label": "Output Throughput" },
+    "total_tps": { "label": "Total Token Throughput" }
+  },
+  "statuses": {
+    "pending": { "label": "Pending" },
+    "running": { "label": "Running" },
+    "done": { "label": "Completed" },
+    "failed": { "label": "Failed" },
+    "canceled": { "label": "Canceled" }
+  }
+}

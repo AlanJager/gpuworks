@@ -1,0 +1,230 @@
+model_id: qwen/qwen2.5-3b-instruct
+source: upstream
+display_title: qwen2.5-3b-instruct
+release_date: '2024-09-17'
+model_config: {model_type: qwen2, num_hidden_layers: 36, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 2, max_position_embeddings: 32768, sliding_window: 32768}
+kv_bytes_per_token:
+  vllm: 36864
+  sglang: 36864
+specs:
+- name: bf16-vllm-hygon-9b612cf0
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct
+        revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct
+        revision: 8f4992eda43eea7c770690ddc0de8f732da246f5
+  weight_bytes: 6183464937
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - auto
+  - --trust-remote-code
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-hygon-43a7b1cc
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-AWQ
+        revision: 3559b226e8ce77211e2c1bd7ddfb7686fec4d6dd
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-AWQ
+        revision: 6d0dedd6a187ce9dd7a2dd85b3e9967b72742acc
+  weight_bytes: 2698207529
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - auto
+  - --trust-remote-code
+  env:
+    VLLM_USE_TRITON_AWQ: '1'
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-hygon-66a35c26
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4
+        revision: 68c4276063d1496cdf13d0b8e8221f899bfa77f7
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4
+        revision: d7fdadddc1f49d915647a33696a10023602b528e
+  weight_bytes: 2079259809
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - auto
+  - --trust-remote-code
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct
+        revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct
+        revision: 8f4992eda43eea7c770690ddc0de8f732da246f5
+  weight_bytes: 6183464937
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-aa8e7253
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct
+        revision: aa8e72537993ba99e69dfaafa59ed015b17504d1
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct
+        revision: 8f4992eda43eea7c770690ddc0de8f732da246f5
+  weight_bytes: 6171926992
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-ppu-3559b226
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-AWQ
+        revision: 3559b226e8ce77211e2c1bd7ddfb7686fec4d6dd
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-AWQ
+        revision: 6d0dedd6a187ce9dd7a2dd85b3e9967b72742acc
+  weight_bytes: 2686704624
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --dtype
+  - auto
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-ppu-68c42760
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4
+        revision: 68c4276063d1496cdf13d0b8e8221f899bfa77f7
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-3B-Instruct-GPTQ-Int4
+        revision: d7fdadddc1f49d915647a33696a10023602b528e
+  weight_bytes: 2067756448
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --dtype
+  - auto
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

@@ -1,0 +1,84 @@
+.deploy-command-preview,
+.deploy-runtime-command pre,
+.deploy-command-editor {
+  padding: 14px 16px;
+  overflow-wrap: anywhere;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #101828;
+  color: #e6edf3;
+  font: 12px/1.75 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.deploy-command-editor:focus {
+  background: #0d1420;
+  color: #e6edf3;
+}
+
+.deploy-command-preview {
+  margin-bottom: 16px;
+}
+
+.deploy-command-preview pre {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.deploy-runtime-command {
+  margin-top: 12px;
+  padding: 16px 20px 12px;
+  border-radius: 9px 9px 0 0;
+}
+
+.deploy-runtime-command-heading,
+.deploy-runtime-command-heading > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.deploy-runtime-command-heading > div:first-child {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.deploy-runtime-command pre,
+.deploy-command-editor {
+  min-height: 132px;
+  margin: 11px 0 0;
+}
+
+.deploy-runtime-command .ant-alert {
+  margin-top: 10px;
+}
+
+.deploy-mount-preview {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e7eaf0;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.deploy-mount-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.deploy-mount-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.deploy-mount-row {
+  overflow-wrap: anywhere;
+}

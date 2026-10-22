@@ -1,0 +1,397 @@
+model_id: moonshotai/kimi-k3
+source: upstream
+display_title: Kimi-K3
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md
+parameter_count: 2.8T
+architecture: moe
+context_length: 1048576
+release_date: '2026-06-13'
+model_config: {model_type: kimi_k3, num_hidden_layers: 93, hidden_size: 7168, num_attention_heads: 96, num_key_value_heads: 96, max_position_embeddings: 1048576, layer_types: [linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, linear_attention, linear_attention, linear_attention, full_attention, full_attention], kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 107136
+  sglang: 107136
+specs:
+- name: mxfp4-vllm-amd-mi355x-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: vllm/vllm-openai-rocm:nightly-rocm100
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3
+        revision: f831ab66814297da540d832a5235f8e904f29d06
+  weight_bytes: 1560936091448
+  gpus:
+    vendor: amd
+    name: (^|[^A-Za-z0-9])(?:MI355X)([^A-Za-z0-9]|$)
+    display_target: amd
+  args:
+  - --trust-remote-code
+  - --load-format
+  - auto
+  - --gpu-memory-utilization
+  - '0.95'
+  - --mm-encoder-tp-mode
+  - data
+  - --max-num-seqs
+  - '128'
+  - --max-model-len
+  - '131072'
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  - --enable-auto-tool-choice
+  - --max-num-batched-tokens
+  - '4096'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY","custom_ops":["+fused_rms_norm_gated"]}'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  env:
+    VLLM_ROCM_USE_AITER: '1'
+    SAFETENSORS_FAST_GPU: '1'
+    VLLM_ROCM_USE_AITER_MOE_SITUV2: '1'
+    VLLM_USE_BREAKABLE_CUDAGRAPH: '0'
+    VLLM_ENGINE_READY_TIMEOUT_S: '7200'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3
+        revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+    - modelscope:
+        repo_id: moonshotai/Kimi-K3
+        revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+  weight_bytes: 1560998987867
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - kimi_k3
+  - --tool-call-parser
+  - kimi_k3
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3
+        revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+    - modelscope:
+        repo_id: moonshotai/Kimi-K3
+        revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+  weight_bytes: 1560998987867
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-general-dspark-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3
+        revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+    - modelscope:
+        repo_id: moonshotai/Kimi-K3
+        revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+  weight_bytes: 1560998987867
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":8,"method":"dspark","draft_sample_method":"probabilistic","rejection_sample_method":"block"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: mxfp4
+      sources:
+      - huggingface:
+          repo_id: moonshotai/Kimi-K3
+          revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+      - modelscope:
+          repo_id: moonshotai/Kimi-K3
+          revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+    weight_bytes: 1560998987867
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: redhatai/kimi-k3-speculator.dspark
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: RedHatAI/Kimi-K3-speculator.dspark
+          revision: 48beb88daae33227c148ea2b78a2ac2f493dbccb
+      - modelscope:
+          repo_id: RedHatAI/Kimi-K3-speculator.dspark
+          revision: 914021979ccb2b43817a2f432f78c39aac327115
+    weight_bytes: 9489830747
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-hopper
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3
+        revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+    - modelscope:
+        repo_id: moonshotai/Kimi-K3
+        revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+  weight_bytes: 1560998987867
+  gpus:
+    vendor: nvidia
+    cc: '9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --moe-backend
+  - marlin
+  - --attention-backend
+  - FLASHMLA
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: mxfp4-vllm-nvidia-hopper-dspark-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: mxfp4
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-K3
+        revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+    - modelscope:
+        repo_id: moonshotai/Kimi-K3
+        revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+  weight_bytes: 1560998987867
+  gpus:
+    vendor: nvidia
+    cc: '9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --moe-backend
+  - marlin
+  - --attention-backend
+  - FLASHMLA
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":8,"method":"dspark","draft_sample_method":"probabilistic","rejection_sample_method":"block"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: mxfp4
+      sources:
+      - huggingface:
+          repo_id: moonshotai/Kimi-K3
+          revision: a590ce090cb049c93a33dfe8c208ec652aa20503
+      - modelscope:
+          repo_id: moonshotai/Kimi-K3
+          revision: fc0873d9132bda0db4c360b9427522e67d7e6c44
+    weight_bytes: 1560998987867
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: redhatai/kimi-k3-speculator.dspark
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: RedHatAI/Kimi-K3-speculator.dspark
+          revision: 48beb88daae33227c148ea2b78a2ac2f493dbccb
+      - modelscope:
+          repo_id: RedHatAI/Kimi-K3-speculator.dspark
+          revision: 914021979ccb2b43817a2f432f78c39aac327115
+    weight_bytes: 9489830747
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/Kimi-K3-NVFP4
+        revision: 629201a1d42015f39a3ca4c016c63b14a17f933e
+    - modelscope:
+        repo_id: RedHatAI/Kimi-K3-NVFP4
+        revision: f5aae28ffc67c7acd734c3d9a85d7e6a1dbc73c2
+  weight_bytes: 1646198125753
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100-dspark-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/Kimi-K3-NVFP4
+        revision: 629201a1d42015f39a3ca4c016c63b14a17f933e
+    - modelscope:
+        repo_id: RedHatAI/Kimi-K3-NVFP4
+        revision: f5aae28ffc67c7acd734c3d9a85d7e6a1dbc73c2
+  weight_bytes: 1646198125753
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":8,"method":"dspark","draft_sample_method":"probabilistic","rejection_sample_method":"block"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - kimi_k3
+  - --reasoning-parser
+  - kimi_k3
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: RedHatAI/Kimi-K3-NVFP4
+          revision: 629201a1d42015f39a3ca4c016c63b14a17f933e
+      - modelscope:
+          repo_id: RedHatAI/Kimi-K3-NVFP4
+          revision: f5aae28ffc67c7acd734c3d9a85d7e6a1dbc73c2
+    weight_bytes: 1646198125753
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: redhatai/kimi-k3-speculator.dspark
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: RedHatAI/Kimi-K3-speculator.dspark
+          revision: 48beb88daae33227c148ea2b78a2ac2f493dbccb
+      - modelscope:
+          repo_id: RedHatAI/Kimi-K3-speculator.dspark
+          revision: 914021979ccb2b43817a2f432f78c39aac327115
+    weight_bytes: 9489830747
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

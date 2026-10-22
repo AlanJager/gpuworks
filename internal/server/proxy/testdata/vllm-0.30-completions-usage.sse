@@ -1,0 +1,36 @@
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" Paris","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":".","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" The","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" capital","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" of","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" Italy","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" is","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" Rome","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":".","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" The","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" capital","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" of","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" Spain","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" is","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":" Madrid","logprobs":null,"finish_reason":null,"stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[{"index":0,"text":".","logprobs":null,"finish_reason":"length","stop_reason":null,"prompt_token_ids":null,"token_ids":null}]}
+
+data: {"id":"cmpl-a465dafe548abc84","object":"text_completion","created":1792471692,"model":"qwen3","choices":[],"usage":{"prompt_tokens":5,"total_tokens":21,"completion_tokens":16,"prompt_tokens_details":{"cached_tokens":0}},"system_fingerprint":"vllm-0.30.0-33eebefe"}
+
+data: [DONE]
+

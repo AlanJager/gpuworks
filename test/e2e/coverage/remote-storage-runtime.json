@@ -1,0 +1,74 @@
+{
+  "scope": "Targeted NFS mount contract; not all storage types, fields or page coverage",
+  "test_file": "test/e2e/remote_storage_runtime.py",
+  "command": "python3 test/e2e/remote_runtime_acceptance.py --config <private-json> --case storage",
+  "lane": "remote-real-agent-nfs",
+  "identity": "admin",
+  "cases": [
+    {
+      "case_id": "storage",
+      "contract_id": "gpuworks/storage/remote-nfs-mount-roundtrip",
+      "name": "存储 / UI 指定真实节点试挂载并创建 NFS / 刷新 ready、双向文件校验且删除后真实卸载",
+      "test_function": "run_storage",
+      "required_evidence": ["fixture", "ui", "request", "persistence", "execution", "runtime", "cleanup"],
+      "environment": {
+        "configuration": ["base_url", "node_uuid", "storage_source_id"],
+        "requirements": [
+          "Explicit authenticated remote instance and online real agent with accessible host terminal",
+          "Existing enabled NFS storage ready and writable on exactly the configured fixture node",
+          "Agent host root privilege, NFS mount helper and NFS server permitting subdirectory mounting",
+          "Dedicated runId source subdirectory and absent /mnt/gpuworks-e2e/<runId> target",
+          "Host inspection reads the same mount namespace as the agent"
+        ],
+        "selection": "Only the explicitly configured node; existing storage definition is read-only fixture input"
+      },
+      "crud": {
+        "Create": "UI trial mount then UI create with exact chosen-node request",
+        "Read": "Independent API GET and refreshed nodes tab agree with live agent status",
+        "Update": "MISSING: NFS edit and enabled-state runtime changes are separate contracts",
+        "Delete": "UI deletion, API 404, actual agent unmount and retained source bytes before fixture cleanup"
+      },
+      "fields": [
+        {"id": "type", "component": "Radio", "request": "type", "persisted": "type", "covered": ["nfs"], "missing": ["nfs_cache", "shared_dir"]},
+        {"id": "name", "component": "Text", "request": "name", "persisted": "name", "covered": ["unique runId name"], "missing": ["all boundaries"]},
+        {"id": "export", "component": "Path", "request": "export", "persisted": "export", "covered": ["owned NFS subdirectory exact value and mountinfo source"], "missing": ["invalid export", "read-only export", "unreachable server"]},
+        {"id": "path", "component": "Path", "request": "path", "persisted": "path", "covered": ["explicit new mount point and actual kernel mount"], "missing": ["default mount point", "conflicting mount"]},
+        {"id": "mount_options", "component": "Text", "request": "mount_options", "persisted": "mount_options", "covered": ["omitted request; kernel effective options in trial evidence"], "missing": ["all allowed options", "invalid options"]},
+        {"id": "scope", "component": "Radio/resource selector", "request": "all_nodes/targets/probe_node", "persisted": "all_nodes/targets", "covered": ["one explicitly chosen online node", "existing unchecked"], "missing": ["labels", "all nodes", "node overrides", "existing mount"]}
+      ],
+      "checklist_items": {
+        "1.7": "UI NFS create after real trial mount",
+        "1.14": "Independent persistence, observed agent readiness and kernel/filesystem evidence",
+        "4.3": "Exact export and mount point in UI request, saved definition and kernel mountinfo",
+        "6": "PARTIAL: exact real node selection; full selector matrix remains missing",
+        "12": "PARTIAL: named create/delete dialogs and current-viewport footer"
+      },
+      "runtime": {
+        "proof": [
+          "Trial mount reports real NFS version/options, read/write and capacity, then leaves no temporary mount of this export",
+          "Saved resource reports only the selected node ready with the exact mount point",
+          "Kernel mountinfo maps that mount point to the owned export with NFS filesystem type",
+          "Source marker read through new mount matches SHA256",
+          "File written and fsynced through new mount is read through source share with matching SHA256",
+          "UI delete causes agent-owned mount to disappear while source files remain intact"
+        ],
+        "limits": [
+          "One real agent; no cross-host coherence or NFS performance claim",
+          "No deployment or container consumes the new storage",
+          "No NFS cache, failover or mount recovery claim"
+        ]
+      },
+      "cleanup": "Remove only owned storage and runId directories after observed unmount; retain owned inventory and failure evidence on error; verify existing source definition unchanged",
+      "missing": ["permissions", "server failure recovery", "referenced deletion", "all field boundaries", "NFS cache", "read-only and unavailable exports", "storage-to-deployment/container mount"],
+      "product_contracts": [
+        "ui/src/pages/storage/StorageFormModal.tsx",
+        "ui/src/pages/storage/storageForm.ts",
+        "internal/server/api/storages.go",
+        "internal/server/api/storage_ops.go",
+        "internal/agent/storagemount/probe.go",
+        "internal/agent/storagemount/reconcile.go",
+        "internal/agent/storagemount/backing.go"
+      ]
+    }
+  ]
+}

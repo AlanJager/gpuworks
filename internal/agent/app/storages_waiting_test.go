@@ -1,0 +1,222 @@
+package app
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/storagemount"
+	"gpuworks.ai/gpuworks/internal/proto"
+)
+
+func (r *storageTestRuntime) waitingKeys() []string {
+	r.storage.mu.RLock()
+	defer r.storage.mu.RUnlock()
+	var keys []string
+	for key := range r.storage.waiting {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func (r *storageTestRuntime) fileStatusCount(key string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, st := range r.files {
+		if st.Key == key {
+			n++
+		}
+	}
+	return n
+}
+
+// parkedTask is a download-less task for a storage that has not been checked
+// yet: it waits, and would write into the storage once it is ready.
+func parkedTask(key string, storageID uint, target string) proto.ModelFileTask {
+	return proto.ModelFileTask{Key: key, StorageID: storageID, TargetPath: target, DesiredState: "present",
+		Acquisition: proto.ModelAcquireRegistered, Source: "local", SourceID: target}
+}
+
+func TestParkedTaskIsDroppedWhenItsModelIsWithdrawn(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared := t.TempDir()
+	r.fs.mountNFS(t, shared)
+	r.applyStorages([]proto.StorageTask{{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared}})
+	<-r.storage.trigger
+	task := parkedTask("f7", 2, "Qwen/a")
+	r.reconcileModelFile(context.Background(), task)
+	if got := r.waitingKeys(); len(got) != 1 {
+		t.Fatalf("task was not parked: %v", got)
+	}
+
+	// The model was deleted meanwhile: the server now says absent.
+	task.DesiredState = "absent"
+	r.reconcileModelFile(context.Background(), task)
+	if got := r.waitingKeys(); len(got) != 0 {
+		t.Fatalf("a withdrawn task is still parked: %v", got)
+	}
+	<-r.storage.trigger // the park asked for a check; run it as the loop would
+	r.checkStorages(context.Background(), true)
+	if n := r.fileStatusCount("f7"); n != 0 {
+		t.Fatalf("the storage recovered and the withdrawn task ran: %d statuses", n)
+	}
+}
+
+func TestParkedTaskIsDroppedWhenTheFullStateNoLongerListsIt(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared := t.TempDir()
+	r.applyStorages([]proto.StorageTask{{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared}})
+	<-r.storage.trigger
+	r.reconcileModelFile(context.Background(), parkedTask("f7", 2, "Qwen/a"))
+	r.reconcileModelFile(context.Background(), parkedTask("f8", 2, "Qwen/b"))
+	r.OnStateSync(context.Background(), proto.DesiredState{Storages: []proto.StorageTask{{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared}},
+		ModelFiles: []proto.ModelFileTask{parkedTask("f8", 2, "Qwen/b")}})
+	if got := r.waitingKeys(); len(got) != 1 || got[0] != "f8" {
+		t.Fatalf("parked after a full state that lists only f8: %v", got)
+	}
+}
+
+func TestParkedTaskIsDroppedWhenTheModelIsEvicted(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared, cache := t.TempDir(), filepath.Join(t.TempDir(), "cache")
+	r.fs.mountNFS(t, shared)
+	r.applyStorages([]proto.StorageTask{{ID: 3, Name: "c", Type: proto.StorageNFSCache, Path: shared, Existing: true, CachePath: cache}})
+	<-r.storage.trigger
+	// The cache copy of a model whose storage has not been checked yet.
+	task := parkedTask("f9", 3, "modelscope/m")
+	task.Cache = true
+	r.reconcileModelFile(context.Background(), task)
+	if got := r.waitingKeys(); len(got) != 1 {
+		t.Fatalf("task was not parked: %v", got)
+	}
+	other := parkedTask("f10", 3, "modelscope/other")
+	other.Cache = true
+	r.reconcileModelFile(context.Background(), other)
+
+	evicted := filepath.Join(cache, "modelscope", "m")
+	if _, err := r.rpcModelEvict(context.Background(), mustRaw(t, map[string]string{"path": evicted})); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.waitingKeys(); len(got) != 1 || got[0] != "f10" {
+		t.Fatalf("parked after evicting one model: %v", got)
+	}
+}
+
+func TestParkedTaskIsDroppedWhenItsStorageIsRemoved(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared := t.TempDir()
+	keep := t.TempDir()
+	r.applyStorages([]proto.StorageTask{
+		{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared},
+		{ID: 4, Name: "keep", Type: proto.StorageSharedDir, Path: keep},
+	})
+	<-r.storage.trigger
+	r.reconcileModelFile(context.Background(), parkedTask("f7", 2, "Qwen/a"))
+	r.reconcileModelFile(context.Background(), parkedTask("f8", 4, "Qwen/b"))
+	r.applyStorages([]proto.StorageTask{{ID: 4, Name: "keep", Type: proto.StorageSharedDir, Path: keep}})
+	if got := r.waitingKeys(); len(got) != 1 || got[0] != "f8" {
+		t.Fatalf("parked after storage 2 was removed: %v", got)
+	}
+}
+
+// A write task for a storage that is ready but read-only here can never run;
+// it is reported instead of waiting forever.
+func TestWriteTaskOnAReadOnlyStorageFails(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared := t.TempDir()
+	// A file where the write probe wants its directory: the share rejects writes.
+	if err := os.WriteFile(filepath.Join(shared, storagemount.MetaDirName), nil, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	r.fs.mountNFS(t, shared)
+	r.applyStorages([]proto.StorageTask{{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: shared}})
+	<-r.storage.trigger
+	r.checkStorages(context.Background(), true)
+	if st := r.storage.statuses[2]; st.State != storagemount.StateReady || st.Writable {
+		t.Fatalf("setup: want a ready, read-only storage, got %+v", st)
+	}
+	source := filepath.Join(t.TempDir(), "source")
+	writeModel(t, source, "weights")
+	task := proto.ModelFileTask{Key: "f7", StorageID: 2, TargetPath: "Qwen/a", DesiredState: "present", Acquisition: proto.ModelAcquireCopy,
+		SourcePath: source, Staging: proto.StagingRelPath("cp", "Qwen/a"), Source: "local", SourceID: "Qwen/a"}
+	r.reconcileModelFile(context.Background(), task)
+	if got := r.lastFile(t, "f7"); got.State != proto.MFFailed || got.Message != "storage is read-only on this node" {
+		t.Fatalf("write task on a read-only storage = %+v", got)
+	}
+	if got := r.waitingKeys(); len(got) != 0 {
+		t.Fatalf("the task waits for a storage that will not become writable: %v", got)
+	}
+}
+
+// The node cache of an nfs_cache storage is a local directory: a read-only
+// share does not stop it from filling.
+func TestCacheTaskOnAReadOnlyShareStillRuns(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared, cache := t.TempDir(), filepath.Join(t.TempDir(), "cache")
+	if err := os.WriteFile(filepath.Join(shared, storagemount.MetaDirName), nil, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	r.fs.mountNFS(t, shared)
+	r.applyStorages([]proto.StorageTask{{ID: 3, Name: "c", Type: proto.StorageNFSCache, Path: shared, Existing: true, CachePath: cache}})
+	<-r.storage.trigger
+	r.checkStorages(context.Background(), true)
+	root, ready, err := r.storageRoot(proto.ModelFileTask{StorageID: 3, Cache: true})
+	if err != nil || !ready || root != cache {
+		t.Fatalf("cache root = %q ready=%v err=%v", root, ready, err)
+	}
+}
+
+// The agent has no default directories: the server always sends them.
+func TestStorageWithoutADirectoryFails(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared := t.TempDir()
+	r.fs.mountNFS(t, shared)
+	r.applyStorages([]proto.StorageTask{
+		{ID: 1, Name: "default", Type: proto.StorageLocal},
+		{ID: 3, Name: "cached", Type: proto.StorageNFSCache, Path: shared, Existing: true},
+	})
+	<-r.storage.trigger
+	r.checkStorages(context.Background(), true)
+	for _, id := range []uint{1, 3} {
+		st := r.storage.statuses[id]
+		if st.State != proto.StorageStateFailed || st.Reason != storagemount.ReasonPathMissing || st.Writable {
+			t.Errorf("storage %d = %+v, want failed/path_missing", id, st)
+		}
+	}
+	if _, err := os.Stat(r.ModelsRoot()); !os.IsNotExist(err) {
+		t.Errorf("the models root was used as the storage's directory: %v", err)
+	}
+	// Tasks for them are reported, not run against a made-up directory.
+	r.reconcileModelFile(context.Background(), proto.ModelFileTask{Key: "f1", StorageID: 1, TargetPath: "m", DesiredState: "present"})
+	if got := r.lastFile(t, "f1"); got.State != proto.MFFailed || !strings.Contains(got.Message, "no directory") {
+		t.Errorf("task on a local storage without a directory = %+v", got)
+	}
+	cacheTask := proto.ModelFileTask{Key: "f3", StorageID: 3, TargetPath: "m", DesiredState: "present", Cache: true}
+	r.reconcileModelFile(context.Background(), cacheTask)
+	if got := r.lastFile(t, "f3"); got.State != proto.MFFailed || !strings.Contains(got.Message, "no cache directory") {
+		t.Errorf("cache task without a cache directory = %+v", got)
+	}
+}
+
+// A shared directory that is a bare directory on the local disk is not a share.
+func TestSharedDirOnTheLocalDiskIsNotMounted(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	bare := t.TempDir()
+	r.fs.onLocalDisk(bare)
+	r.applyStorages([]proto.StorageTask{{ID: 2, Name: "archive", Type: proto.StorageSharedDir, Path: bare}})
+	<-r.storage.trigger
+	r.checkStorages(context.Background(), true)
+	st := r.storage.statuses[2]
+	if st.State != proto.StorageStateFailed || st.Reason != storagemount.ReasonNotMounted || st.Writable {
+		t.Fatalf("shared_dir on a local directory = %+v", st)
+	}
+	// Its tasks wait; nothing is written to the local disk.
+	r.reconcileModelFile(context.Background(), parkedTask("f7", 2, "Qwen/a"))
+	r.checkStorages(context.Background(), false)
+	if entries, _ := os.ReadDir(bare); len(entries) != 0 {
+		t.Fatalf("something was written to the unmounted directory: %v", entries)
+	}
+}

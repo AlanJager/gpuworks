@@ -1,0 +1,52 @@
+model_id: BAAI/bge-reranker-v2-m3-ppu
+source: upstream
+display_title: BAAI/bge-reranker-v2-m3 PPU alias
+model_config:
+  model_type: xlm-roberta
+  num_hidden_layers: 24
+  hidden_size: 1024
+  num_attention_heads: 16
+  max_position_embeddings: 8194
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-vllm-ppu-953dc6f6-alias
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: BAAI/bge-reranker-v2-m3
+        revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+    - modelscope:
+        repo_id: BAAI/bge-reranker-v2-m3
+        revision: e099d4b9cdbd291b1569d416f19aaa6523570bc3
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --runner
+  - pooling
+  - --tensor-parallel-size
+  - '1'
+  - --max-model-len
+  - '512'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enforce-eager
+  - --trust-remote-code
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.rerank
+      endpoint: /v1/rerank
+      mode: sync
+  weight_bytes: 2271071852
+input_modalities:
+- text

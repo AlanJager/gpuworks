@@ -1,0 +1,592 @@
+// Package app is the server assembly root: it wires config, store, bus, hub and
+// the HTTP surface, and owns startup/graceful-shutdown.
+package app
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/offlinepkg"
+	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/version"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/selflog"
+	"gpuworks.ai/gpuworks/internal/server/agentbin"
+	"gpuworks.ai/gpuworks/internal/server/api"
+	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/controller"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/expose"
+	"gpuworks.ai/gpuworks/internal/server/healthcheck"
+	"gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/packages"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
+	"gpuworks.ai/gpuworks/internal/server/modelmeta"
+	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/outbound"
+	"gpuworks.ai/gpuworks/internal/server/provider"
+	_ "gpuworks.ai/gpuworks/internal/server/provider/all" // register drivers
+	"gpuworks.ai/gpuworks/internal/server/provision"
+	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/recovery"
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/tsdb"
+	"gpuworks.ai/gpuworks/internal/server/webterm"
+	"gpuworks.ai/gpuworks/internal/server/webui"
+)
+
+// App holds the assembled server.
+type App struct {
+	cfg      Config
+	log      *slog.Logger
+	store    *store.Store
+	bus      *bus.Bus
+	hub      *hub.Hub
+	ctrl     *controller.Controller
+	obs      *observability
+	recovery *recovery.Recoverer
+	// proxyAcct is proxy request accounting (see accounting.go in the proxy
+	// package).
+	proxyAcct *proxy.Accountant
+	proxy     *proxy.Proxy
+	health    *healthcheck.Checker // the deployments' health checks
+	telemetry *telemetryService    // the request trace export
+	http      *http.Server
+	// ln is created by Run instead of http.Server.ListenAndServe so tests can
+	// bind an ephemeral port and discover the actual address through Addr.
+	// trackingListener also lets shutdown close hijacked agent websocket
+	// connections, which net/http otherwise leaves alive.
+	lnMu sync.RWMutex
+	lns  []*trackingListener
+	// settings serves server.yaml to the API; restart cancels Run so the
+	// service manager starts the process again.
+	settings       *serverSettings
+	restartMu      sync.Mutex
+	stopForRestart context.CancelFunc
+	// selfLog captures the server's own error-level slog records into the
+	// logstore under source=server; nil disables the drain loop.
+	selfLog *selflog.Collector
+	// usage is the user experience improvement program's daily report;
+	// notices the console's notice bell.
+	usage   *usageReporter
+	notices *noticeService
+}
+
+// proxyMetricsSink adapts an Accountant flush batch to observability's tsdb
+// ingest path, the same one every agent-reported metric batch already goes
+// through. It always runs on the Accountant's own single writer goroutine
+// (see proxy.Accountant), never on a request-handling goroutine.
+func proxyMetricsSink(obs *observability) func([]tsdb.Sample) {
+	return func(samples []tsdb.Sample) {
+		batch := make([]proto.MetricSample, 0, len(samples))
+		for _, s := range samples {
+			batch = append(batch, proto.MetricSample{Metric: s.Metric, Labels: s.Labels, Value: s.Value, TimeMS: s.TimeMS})
+		}
+		obs.ingestMetrics("server", batch)
+	}
+}
+
+// New builds the server from config.
+func New(cfg Config, log *slog.Logger) (*App, error) {
+	cfg = normalizeRuntimeConfig(cfg)
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return nil, err
+	}
+	// Derive the DB path from the (possibly overridden) data dir when unset.
+	if cfg.DBPath == "" {
+		cfg.DBPath = filepath.Join(cfg.DataDir, "gpuworks.db")
+	}
+	// New node enrollment uses per-node tokens stored in the database.
+
+	b := bus.New()
+	st, err := store.Open(cfg.DBPath, b)
+	if err != nil {
+		return nil, err
+	}
+	embedded, err := startEmbeddedCatalogs(st, log)
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	// Bring stored deployments to the current launch-configuration shape before
+	// anything reads one. The controller launches instances straight from these
+	// columns, so a row still in the old shape would be started from a
+	// configuration that is missing values nobody merges in any more.
+	if err := normalizeLaunchConfigs(st); err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	catalogPackages, err := packages.New(filepath.Join(cfg.DataDir, "catalog-packages"))
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	// Materialize the exact package embedded in this binary before updating the
+	// database projection. A later server version then keeps this directory as
+	// long as an older deployment or instance snapshot still references it.
+	embeddedCatalogArchive, err := seed.Archive()
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	if _, _, err := catalogPackages.PutArchive(bytes.NewReader(embeddedCatalogArchive)); err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	if err := embedded.finish(st); err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	if recovered, err := st.RecoverServerBenchmarkRuns(); err != nil {
+		_ = st.Close()
+		return nil, err
+	} else if recovered > 0 {
+		log.Warn("recovered orphaned server benchmarks", "count", recovered)
+	}
+	// Express the configured model endpoint as site rules, the one place a
+	// node's download addresses come from, so node downloads stay hermetic
+	// without a second, implicit endpoint setting.
+	if strings.TrimSpace(cfg.ModelEndpoint) != "" {
+		if err := ensureModelEndpointRules(st, strings.TrimSpace(cfg.ModelEndpoint)); err != nil {
+			return nil, err
+		}
+	}
+	// One network service for every component, so they all resolve against
+	// the same catalog: every network declared in the store.
+	networks := network.New(st, network.StoreCatalog{Store: st})
+	h := hub.New(st, log)
+	h.SetOutboundAllowPrivateHosts(cfg.OutboundAllowPrivateHosts)
+	h.SetNetworks(networks)
+	// Besides the listed proxies, the public entry point's connector on this
+	// host while `gpuworks expose` has it enabled (ADR 0049).
+	proxies, invalidProxies := auth.NewProxyTrust(cfg.TrustedProxies, expose.NewStore(cfg.DataDir).WatchEnabled().Enabled)
+	for _, raw := range invalidProxies {
+		log.Warn("invalid trusted proxy, ignored", "value", raw)
+	}
+	h.SetProxyTrust(proxies)
+	modelLogoDir := filepath.Join(cfg.DataDir, "model-logos")
+	if err := os.MkdirAll(modelLogoDir, 0o755); err != nil {
+		return nil, err
+	}
+	if referenced, referenceErr := st.ReferencedCatalogPackageDigests(); referenceErr != nil {
+		log.Warn("list referenced inference catalog packages during startup", "error", referenceErr)
+	} else if removed, pruneErr := catalogPackages.Prune(referenced); pruneErr != nil {
+		log.Warn("prune inference catalog packages during startup", "error", pruneErr)
+	} else if len(removed) > 0 {
+		log.Info("pruned unreferenced inference catalog packages during startup", "count", len(removed))
+	}
+	h.SetRuntimeAssetLoader(func(packageDigest, modelID, file string) ([]byte, error) {
+		return catalogPackages.ReadAsset(strings.ToLower(strings.TrimSpace(packageDigest)), modelID, file)
+	})
+	deploy.SetDefaultImage(deploy.EngineVLLM, cfg.VLLMImage)
+	ctrl := controller.New(st, h, log)
+	ctrl.SetNetworks(networks)
+	h.SetEnginePorts(ctrl.EnginePorts)
+	px := proxy.New(st, networks, h, log, cfg.ProxyMaxBodyBytes)
+	ctrl.SetDrainProbe(px)
+
+	// Credential encryption for cloud providers (master secret persisted in data dir).
+	master := masterSecret(cfg)
+	box, err := auth.NewSecretbox(master)
+	if err != nil {
+		return nil, err
+	}
+	st.SetSecretbox(box)
+	// The network settings' proxies become proxy entries once the key that
+	// seals their passwords is there; until that succeeds they stay put.
+	if err := st.CarryOverNetworkProxies(); err != nil {
+		log.Warn("carry the network settings' proxies over to the pull settings", "err", err)
+	}
+	ensurePlatformSSHKey(st, log)
+	jwtSigner, err := auth.NewTokenSigner(master, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	provSvc := provider.NewService(st, box)
+	if err := provider.UseDataDir(cfg.DataDir); err != nil {
+		log.Warn("cloud provider state stays in memory", "err", err)
+	}
+
+	ctrl.SetInferenceNodeLifecycleHandler(provSvc)
+	// Metrics + logs stores, wired to the hub ingest sinks.
+	obs, err := openObservability(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	obs.resolveDeployment = wrapDeploymentLookup(func(instanceUUID string) (uint, error) {
+		inst, err := st.InstanceByUUID(instanceUUID)
+		if err != nil {
+			return 0, err
+		}
+		return inst.DeploymentID, nil
+	}, store.ErrNotFound)
+	h.SetSinks(func(instanceUUID string, samples []proto.MetricSample) {
+		obs.ingestMetrics(instanceUUID, samples)
+		px.ObserveEngineMetrics(samples)
+	}, obs.ingestLogs)
+	h.SetBenchmarkDetailSink(newAgentBenchmarkDetailSink(filepath.Join(cfg.DataDir, "benchmark-artifacts"), st).Handle)
+
+	// Proxy request accounting (plan-9-18-monitor-center.md §4.3): counts
+	// completed /v1 requests per deployment+class and flushes to tsdb every
+	// 10s through the same ingest path agent-reported metrics use.
+	acct := proxy.NewAccountant(proxyMetricsSink(obs), log)
+	px.SetAccountant(acct)
+	// Every finished /v1 request's record goes to ux.db (ADR 0042), where
+	// the request view reads it back with the in-flight table, and to the
+	// trace exporter, which samples the traces the gateway starts (ADR 0046).
+	telemetry := newTelemetry(st, cfg.OutboundAllowPrivateHosts...)
+	px.SetTraceSampler(telemetry.exporter.Sample)
+	px.SetRequestSink(requestSink(obs.ux.Observe, telemetry.exporter))
+
+	ai := newAIService(st, obs, box)
+	ai.log = log
+	ai.outboundAllowPrivateHosts = append([]string(nil), cfg.OutboundAllowPrivateHosts...)
+	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
+	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health)
+
+	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, telemetry: telemetry}
+	var restart func()
+	if cfg.SelfRestart {
+		restart = a.requestRestart
+	}
+	a.settings = newServerSettings(cfg, restart, st.SnapshotTo)
+	a.settings.installID = installIDOf(master)
+	outside := outsideSources(st, cfg.OutboundAllowPrivateHosts...)
+	a.usage, a.notices = newImprovementProgram(st, obs.ux, a.settings, outside.Channel, log)
+	h.SetUsageCounters(a.usage.Counters())
+
+	// Bootstrap an admin account and a default API key so /v1 is usable.
+	bootstrapAdminAccount(cfg, st, log)
+
+	dlDir := filepath.Join(cfg.DataDir, "dl")
+	_ = os.MkdirAll(dlDir, 0o755)
+	provSvc.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	h.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	sshHostKeys, err := provision.NewFileHostKeyStore(filepath.Join(cfg.DataDir, "ssh-hostkeys.json"))
+	if err != nil {
+		return nil, err
+	}
+	nodePrechecker := provision.NewSSHPrechecker()
+	nodePrechecker.HostKeys = sshHostKeys
+	nodeInstaller := provision.NewSSHInstaller(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	nodeInstaller.HostKeys = sshHostKeys
+	nodeInstaller.UdockerBundleSource = cfg.UdockerBundleSource
+	provision.SetSSHProxy(cfg.SSHProxy)
+	provSvc.ConfigureDrivers(nodeInstaller)
+	recoverer := recovery.New(st, h, provSvc, nodeInstaller, log, recovery.Config{
+		Enabled: cfg.RecoveryEnabled, GracePeriod: cfg.RecoveryGracePeriod,
+		InitialInterval: cfg.RecoveryInitialInterval, BackoffMultiplier: cfg.RecoveryBackoffMultiplier,
+		MaxInterval: cfg.RecoveryMaxInterval, RestartWait: cfg.RecoveryRestartWait,
+	})
+	a.recovery = recoverer
+
+	metadataClient := &http.Client{Transport: outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, cfg.OutboundAllowPrivateHosts...)}
+	handler := api.Router(api.Deps{
+		Store:         st,
+		Bus:           b,
+		Log:           log,
+		SessionCount:  h.SessionCount,
+		AgentConnect:  h.ServeWS,
+		InstallSh:     a.installHandler(),
+		RecentRejects: func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
+		UpgradeErrors: h.UpgradeErrors,
+		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }), webui.Handler()),
+		Online:        h.Online,
+		KickNode:      h.Kick,
+		NodeSync:      h,
+		CallNode:      h.CallNode,
+		SyncModel:     ctrl.SyncModelToNode,
+		PeerSync: api.PeerSyncHooks{
+			SyncModelWithOptions: ctrl.SyncModelToNodeWithOptions,
+			ProbeModel:           ctrl.ProbeModelSync,
+			SyncImageWithRate:    h.SyncImageFromRate,
+			ProbeImage:           h.ProbeImagePath,
+			RetryImage:           h.RetryImageSync,
+			CopyModel:            ctrl.CopyModelFile,
+		},
+		CancelModelSync: ctrl.CancelModelSync,
+		Preparation:     modelPreparation{h, ctrl},
+		NodeRuntime:     h,
+		Outside:         outside,
+		ImageFetch: api.ImageFetchHooks{
+			Pull:   h.PullImage,
+			Cancel: h.CancelImageTransfer,
+			Remove: h.RemoveImageFromNode,
+		},
+		InspectImage:    h.InspectImage,
+		ImageExists:     h.ImageExists,
+		CatalogPackages: catalogPackages,
+		ModelLogoDir:    modelLogoDir,
+		FetchModelMeta: func(ctx context.Context, source, repo, revision, subfolder string, candidates []string) (*modelmeta.Meta, error) {
+			return modelmeta.FetchFrom(ctx, source, repo, revision, subfolder, candidates, metadataClient, planning.ModelLogins(st))
+		},
+		ServerDialAgent:      h.DialAgentWithSecret,
+		NodeStreams:          h,
+		OpenTerminal:         h.OpenTerminal,
+		NodeCaps:             h.NodeCaps,
+		Terminal:             webterm.New(st),
+		ProxyV1:              px.Handler(),
+		ProxyModels:          px.ModelsHandler(),
+		PlaygroundV1:         px.PlaygroundHandler(box),
+		NodePrecheck:         nodePrechecker,
+		NodeInstaller:        nodeInstaller,
+		Providers:            provSvc,
+		Networks:             networks,
+		Server:               a.settings,
+		MetricsQuery:         obs.queryMetrics,
+		MetricsLatest:        obs.latestMetrics,
+		MetricsIngest:        obs.ingestMetrics,
+		LogsSearch:           obs.searchLogs,
+		LogsContext:          obs.contextLogs,
+		LogsHistogram:        obs.histogramLogs,
+		Monitor:              monSvc,
+		Telemetry:            telemetry,
+		UsageReport:          a.usage,
+		Notices:              a.notices,
+		AI:                   ai,
+		AuthSigner:           jwtSigner,
+		AISecretbox:          box,
+		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
+		Recovery:             recoverer,
+	}, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
+	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(handler)))
+
+	a.http = &http.Server{
+		Handler: handler,
+		// No read/write timeouts: the agent WS and SSE are long-lived. The WS
+		// route bypasses these via hijacking; SSE flushes keepalives.
+	}
+	return a, nil
+}
+
+// Run starts the HTTP server and background loops, blocking until ctx is done.
+func (a *App) Run(ctx context.Context) error {
+	tlsConfig, err := a.cfg.listenerTLS()
+	if err != nil {
+		return err
+	}
+	// Bind before starting any background loops. This makes a failed bind a
+	// synchronous startup error and, for Addr :0, publishes the real port before
+	// the first agent is started by an in-process harness.
+	lns, err := listenAll(a.cfg.bindings())
+	if err != nil {
+		return err
+	}
+	a.lnMu.Lock()
+	if a.lns != nil {
+		a.lnMu.Unlock()
+		closeAll(lns)
+		return errors.New("server app already running")
+	}
+	// net/http marks a Server as permanently shut down after Shutdown. Build a
+	// fresh wrapper on every Run so a test harness (and an embeddable caller)
+	// can restart the same assembled app on its existing store and handler.
+	a.http = &http.Server{Handler: a.http.Handler, ConnContext: connFunctions, TLSConfig: tlsConfig}
+	a.lns = lns
+	a.lnMu.Unlock()
+	ctx, stopForRestart := context.WithCancel(ctx)
+	defer stopForRestart()
+	a.restartMu.Lock()
+	a.stopForRestart = stopForRestart
+	a.restartMu.Unlock()
+	a.proxy.Start()
+	// Deferred first so it runs last: the request store's final flush and
+	// the trace exporter's take the records of requests the proxy finished
+	// while closing.
+	defer a.closeRequestSinks()
+	defer a.proxy.Close()
+	defer func() {
+		closeAll(lns)
+		a.lnMu.Lock()
+		a.lns = nil
+		a.lnMu.Unlock()
+	}()
+
+	// bg tracks every loop started below that runs on the shared ctx; see
+	// backgroundGroup in shutdown.go (proxyAcct/metricsIngestLoop track their own).
+	var bg backgroundGroup
+	goBG := bg.start
+
+	// Background: flip stale-online nodes to offline as a safety net.
+	goBG(func() { a.staleLoop(ctx) })
+	// Background: bound the deployment event timeline.
+	goBG(func() { a.eventRetentionLoop(ctx) })
+	// Background: reconnect nodes that listen for reverse server_dial sessions.
+	goBG(func() { a.hub.RunServerDialReconnect(ctx, a.cfg.ServerDialReconnectInterval) })
+	goBG(func() { a.hub.RunNodeQueues(ctx) }) // persist reports queued off the read loops
+	// Background: the independent SSH path after ordinary reconnects exhaust.
+	goBG(func() { a.recovery.Run(ctx) })
+	// The public entry point's connector service (`gpuworks expose`) runs on
+	// its own and forwards to what this server really bound.
+	if err := expose.RecordServerOrigin(a.cfg.DataDir, exposeOrigin(lns)); err != nil {
+		a.log.Warn("cannot record the listening address for `gpuworks expose`", "err", err)
+	}
+	// Background: reconcile deployments → instances.
+	goBG(func() { a.ctrl.Run(ctx) })
+	// Background: verify each PD prefill instance's KV handoff once.
+	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
+	goBG(func() { a.health.Run(ctx) })  // Background: the deployments' health checks.
+	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
+	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.
+	// Background: prune metrics/logs beyond the retention window
+	// (--metrics-retention, default 72h).
+	//
+	// metricsIngestLoop deliberately runs on its OWN context (metricsCtx),
+	// never the shared shutdown ctx: the proxy accountant's final flush (see
+	// acctDone below) is only enqueued into the metrics ingest queue partway
+	// through the accountant's OWN ctx.Done handling, which takes up to
+	// proxy.finalFlushWaitTimeout. If metricsIngestLoop reacted to the same
+	// ctx, it would very likely have already drained whatever was queued at
+	// that instant and returned - with nothing left running to ever pick up
+	// the accountant's later enqueue, silently dropping it. Keeping it on a
+	// separate context lets Run stop it explicitly, after stopProxyAccounting
+	// confirms the accountant (and therefore its final enqueue) is done - see
+	// stopMetricsIngest.
+	metricsCtx, metricsCancel := context.WithCancel(context.Background())
+	// Guarantees metricsCancel is called on every return path (including the
+	// unexpected-listen-error path below, which does not itself wait on
+	// metricsIngestLoop): the two ordinary shutdown paths already call it
+	// explicitly via stopMetricsIngest, and calling a context.CancelFunc more
+	// than once is a no-op, so this only matters for the path that doesn't.
+	defer metricsCancel()
+	metricsDone := make(chan struct{})
+	if a.obs != nil {
+		goBG(func() { a.obs.retainLoop(ctx, a.cfg.MetricsRetention) })
+		goBG(func() { a.obs.logIngestLoop(ctx) })
+		go func() {
+			defer close(metricsDone)
+			a.obs.metricsIngestLoop(metricsCtx)
+		}()
+		// Background: the server's own error-level slog records become
+		// searchable server-source logs instead of living only in the
+		// process's rotated file.
+		goBG(func() { a.obs.selfLogLoop(ctx, a.selfLog) })
+	} else {
+		close(metricsDone)
+	}
+	// Background: flush proxy request accounting to tsdb every 10s. acctDone
+	// closes once Run returns, so shutdown can wait (briefly) for the final
+	// flush to be fully enqueued into the metrics ingest queue before this
+	// App's caller is free to close the metrics store out from under it; see
+	// stopProxyAccounting. That enqueue reaching tsdb itself is a separate
+	// guarantee, provided by stopMetricsIngest running only after
+	// stopProxyAccounting returns.
+	acctDone := make(chan struct{})
+	go func() {
+		defer close(acctDone)
+		a.proxyAcct.Run(ctx)
+	}()
+
+	errc := make(chan error, len(lns))
+	for _, ln := range lns {
+		go func() {
+			a.log.Info("server listening", "addr", ln.Addr().String(), "functions", ln.functions)
+			var err error
+			if tlsConfig != nil && publicTLSListener(ln) {
+				err = a.http.ServeTLS(ln, "", "")
+			} else {
+				err = a.http.Serve(ln)
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errc <- err
+			}
+		}()
+	}
+
+	select {
+	case <-ctx.Done():
+		a.log.Info("shutting down")
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.http.Shutdown(shutCtx); err != nil {
+			// Long-lived SSE or websocket clients may not close during the
+			// graceful window. Force-close those connections so shutdown does not
+			// report a false failure to service managers.
+			_ = a.http.Close()
+			closeConns(lns)
+			if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+				a.log.Warn("forced HTTP shutdown", "err", err)
+			}
+			a.stopProxyAccounting(acctDone)
+			a.stopMetricsIngest(metricsCancel, metricsDone)
+			// ctx is already Done here, so every loop in bg is already
+			// unwinding; wait for all of them before the deferred
+			// a.proxy.Close() above runs.
+			bg.wait()
+			return nil
+		}
+		// Shutdown does not close hijacked websocket connections. Force-close
+		// anything still tracked after the graceful window (and also on a clean
+		// shutdown, where a websocket may otherwise keep an agent alive).
+		closeConns(lns)
+		a.stopProxyAccounting(acctDone)
+		a.stopMetricsIngest(metricsCancel, metricsDone)
+		bg.wait()
+		return nil
+	case err := <-errc:
+		// A listener's Serve failed on its own: nothing above has cancelled
+		// ctx (that otherwise only happens via the caller's ctx or a
+		// restart), so without cancelling it here every loop in bg - and the
+		// proxy accountant and metrics ingest, which also select on it -
+		// would keep running past this return.
+		stopForRestart()
+		a.stopProxyAccounting(acctDone)
+		a.stopMetricsIngest(metricsCancel, metricsDone)
+		bg.wait()
+		return err
+	}
+}
+
+// eventRetentionLoop bounds the deployment event timeline. Events are history
+// and are deliberately kept when their deployment is deleted, so this is what
+// stops the table growing for the life of the installation. The bounds (180
+// days / 50 GiB by default) are operator-tunable in settings.
+func (a *App) eventRetentionLoop(ctx context.Context) {
+	const interval = 6 * time.Hour
+	sweep := func() {
+		n, err := a.store.SweepEventRetention(time.Now())
+		if err != nil {
+			a.log.Warn("event retention sweep failed", "err", err)
+			return
+		}
+		if n > 0 {
+			a.log.Info("event retention sweep", "removed", n)
+		}
+	}
+	sweep()
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			sweep()
+		}
+	}
+}
+
+func (a *App) staleLoop(ctx context.Context) {
+	t := time.NewTicker(a.cfg.StaleCheckInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			// Nodes with a live session heartbeat within 90s stay online.
+			_ = a.store.MarkStaleOffline(ctx, a.cfg.StaleAfter)
+		}
+	}
+}

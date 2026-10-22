@@ -1,0 +1,51 @@
+model_id: BAAI/bge-m3-ppu
+source: upstream
+display_title: BAAI/bge-m3 PPU alias
+model_config:
+  model_type: xlm-roberta
+  num_hidden_layers: 24
+  hidden_size: 1024
+  num_attention_heads: 16
+  max_position_embeddings: 8194
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-vllm-ppu-5617a9f6-alias
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: BAAI/bge-m3
+        revision: 5617a9f61b028005a4858fdac845db406aefb181
+    - modelscope:
+        repo_id: BAAI/bge-m3
+        revision: a46a13810c9d7f876fccd8d7017512ebc265d2c1
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --runner
+  - pooling
+  - --tensor-parallel-size
+  - '1'
+  - --max-model-len
+  - '512'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enforce-eager
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+  weight_bytes: 2271145830
+input_modalities:
+- text

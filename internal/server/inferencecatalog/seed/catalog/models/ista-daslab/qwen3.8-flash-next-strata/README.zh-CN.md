@@ -1,0 +1,53 @@
+# Qwen3.8-Flash-Next 125B（Strata 分层推理）
+
+[Strata](https://github.com/Niko1221/Strata) 把 MoE 专家放在显存、内存和 SSD 之间分层调度，单张 12 GiB 以上的 NVIDIA 卡即可运行 125B 的 Qwen3.8-Flash-Next（IQ2_XS 量化，权重约 68 GB）。模板使用 callable 引擎：镜像入口 `/opt/strata/gpuworks-entrypoint.sh` 把平台给出的模型路径、地址、端口以及分配到的 GPU 转成 Strata 的安装参数，然后启动服务。
+
+## 图像输入
+
+默认开启。镜像里带有 Strata 的图像编码器 `strata-vision`，以及与权重同一 revision 的视觉投影文件 `mmproj-Qwen3.8-Flash-Next-BF16.gguf`（该文件在仓库根目录，模板只下载 `IQ2_XS/`，所以它随镜像提供；模型目录里若自带同名文件则优先用它）。入口以 `--vision gpu` 安装：编码器和引擎在同一张卡上，引擎会按编码器占掉的显存缩小专家缓存。实测（单张 RTX 4090D，128K 上下文）：编码器约占 1.4 GB 显存，解码速度约 51–55 tok/s，与不开图像输入时相当。
+
+- 请求按 OpenAI 格式在消息里放 `image_url`，支持 base64 data URL 和 http(s) 地址；GPU 编码器每张图最多 1024 个图像 token。
+- 在「自定义参数」里加 `--vision cpu` 改由 CPU 编码（不占显存，每张图最多 300 个 token，较慢），加 `--vision no` 关闭图像输入、把显存全留给专家缓存。
+- 关闭后请同时在模型页把输入模态改回只有文本，Playground 才不再显示传图入口。
+
+## 用几张卡
+
+Strata 使用平台分配给这次部署的卡：自动放置时用一张；在部署表单里选了几张卡就用几张，Strata 会把各层分到这些卡上。卡越多，能放进显存的专家越多，生成越快。每张卡至少 12 GiB，不满足时部署评估直接拒绝。
+
+模板里看不到卡数或卡号，这是有意的。分到的卡是这样传到 Strata 的：
+
+1. 调度器选卡。模板的 placement resolver 只检查每张卡的显存，不指定卡数。
+2. agent 启动容器时，把这些卡写进环境变量 `CUDA_VISIBLE_DEVICES`，所有引擎都是这样。udocker 节点上写的是物理卡号；docker 节点上容器只挂进选中的卡，写的是容器内的编号 0..n-1。两种情况下都等于容器里 `nvidia-smi` 显示的编号。
+3. 镜像入口读取 `CUDA_VISIBLE_DEVICES`：一张卡传 `--gpu N`，多张卡传 `--gpus A,B`。Strata 本身就是按 `nvidia-smi` 的编号选卡的。
+
+卡号不做成模板变量，是因为它取决于节点的容器运行时，只有 agent 知道；模板变量在 server 上展开，那时还确定不了。因此不要在「自定义参数」里手写 `--gpu`/`--gpus`，写死的卡号可能指向分给别的部署的卡。
+
+想确认实际用了哪几张卡，可以看容器内 Strata 安装配置 `/opt/strata/strata-iq2_xs.json` 里的 `gpu` 字段（部署详情的实例终端里可以直接查看），或在节点上运行 `nvidia-smi`，看占用显存的是不是分配给这个部署的卡。
+
+## 可配置的参数
+
+callable 档位没有参数字典，调整都靠在部署表单的「自定义参数」里追加命令行参数。入口脚本会把它们原样交给 Strata 的 `setup.py`；同名参数以后出现的为准，所以这里写的值会覆盖入口脚本的默认值。
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `--context N` | Strata 按显卡推荐（见下） | 上下文窗口，即一次请求的输入加输出 token 数的上限 |
+| `--kv int8\|q4_0\|k8v4` | `int8` | 8K 以上上下文的 KV 精度。`q4_0` 的 KV 显存减半，质量略降 |
+| `--kv-streaming auto\|on\|off` | `auto` | 64K 以上上下文时，把 KV 放在内存里，显存只保留注意力窗口 |
+| `--rope-scaling linear\|yarn`、`--rope-scale F` | 超过 262144 时自动选 yarn，系数为上下文 / 262144 | 超出训练长度时的 RoPE 外推方式 |
+| `--vision gpu\|cpu\|no` | `gpu` | 图像编码器跑在 GPU、CPU，或关闭图像输入（见「图像输入」） |
+| `--vram-reserve-mib N` | 引擎默认 | 给同卡上的其他程序预留的显存 |
+| `--gpu N`、`--gpus A,B` | 平台分到的卡 | 不要改：入口由 `CUDA_VISIBLE_DEVICES` 得出（见上），改成分配之外的卡会抢占别的部署的显存 |
+
+请求里的 `max_tokens` 决定这一次最多输出多少。不传时 Strata 会一直生成到上下文用满，所以单次输出的上限是「上下文 − 输入长度」。
+
+## 上下文的默认值与上限
+
+- **默认**：不传 `--context` 时，Strata 按分到的卡里显存最小的那张推荐：小于 14 GB 用 32K，小于 20 GB 用 64K，其余用 128K。IQ2_XS 不受 Strata 的内存规则约束（该规则只针对 IQ3 量化）。例如 24 GB 的 RTX 4090 / 4090D 默认是 128K。
+- **上限**：模型训练长度是 262144（256K）。Strata 还提供 384K、512K 两档，靠 yarn 外推实现，属实验性质。
+- **代价**：KV 很省，int8 每个 token 约 13.4 KB（`q4_0` 约 7.3 KB），256K 上下文的 KV 约 3.5 GB，由各卡按层分摊。但这部分显存和专家缓存共用：上下文每多占 1 GB，就少缓存 1 GB 专家，生成速度随之下降。显存小的卡建议保持默认，长上下文搭配 `--kv q4_0` 或 `--kv-streaming on` 使用。
+- 模型信息里的 `context_length: 262144` 是模型的训练长度，不是一次部署实际使用的上下文。实际值看 Strata 启动日志里的 `context N tokens`，或 `/v1/models` 返回的 `meta.n_ctx`。
+
+## 已知边界
+
+- 没有 `/metrics`，平台采集不到引擎指标。
+- 首次启动会建立专家索引，比重启慢。

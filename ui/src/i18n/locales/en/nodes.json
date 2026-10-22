@@ -1,0 +1,670 @@
+{
+  "pullProxy": {
+    "title": "Pull proxy",
+    "entry": "Proxy #{{n}}",
+    "none": "No proxy",
+    "noneDetail": "No proxy (the node's agent uses its own environment)",
+    "httpProxy": "HTTP proxy",
+    "httpsProxy": "HTTPS proxy",
+    "user": "User: {{user}}",
+    "appliesTo": "Applies to:",
+    "allNodes": "All nodes",
+    "direct": "direct",
+    "settingsLink": "Manage proxies in Settings",
+    "loadFailed": "Cannot load this node's proxy configuration"
+  },
+  "runtimeProxy": {
+    "driver": "Container runtime: {{driver}}",
+    "unknownDriver": "unknown",
+    "perPull": "The proxy applies on every pull; no restart is needed.",
+    "unknownOffline": "The runtime proxy state is unknown while the node is offline.",
+    "applied": "Applied",
+    "notApplied": "Not applied",
+    "using": "dockerd is using {{proxy}}",
+    "unmanaged": "No proxy is set for this node in the platform; dockerd uses its own setting: {{proxy}}",
+    "stillUsing": "dockerd is still using {{proxy}}",
+    "direct": "a direct connection",
+    "daemonJsonWins": "The proxies in /etc/docker/daemon.json take precedence over the platform setting; remove them there.",
+    "liveRestoreOn": "live-restore on",
+    "liveRestoreOff": "live-restore off",
+    "systemd": "managed by systemd",
+    "noSystemd": "not managed by systemd",
+    "privilegeRoot": "agent runs as root",
+    "privilegeSudo": "agent runs via sudo",
+    "privilegeNone": "agent has no privileges",
+    "noSystemdNote": "dockerd is not managed by systemd, so the platform cannot manage its proxy. Change it on the node.",
+    "restart": "Restart dockerd",
+    "confirmTitle": "Restart dockerd?",
+    "confirmOk": "Restart",
+    "confirmLive": "live-restore is on; containers keep running.",
+    "confirmNoLive": "All containers on this node stop, including inference instances; the platform restarts them afterwards.",
+    "restarted": "dockerd restarted",
+    "restartFailed": "Could not restart dockerd",
+    "noPrivilege": "The agent is neither root nor has passwordless sudo, so the platform cannot change dockerd. Run the commands below on the node.",
+    "fileHint": "Save this content as the file below.",
+    "fileAuthority": "Based on the saved settings; the file the platform actually writes on the node is authoritative.",
+    "copyFile": "Copy file content",
+    "copyCommand": "Copy command: {{command}}",
+    "autoRefresh": "This page shows Applied automatically once dockerd uses the proxy.",
+    "refresh": "Refresh status"
+  },
+  "page": {
+    "title": "Nodes",
+    "description": "View the hardware, health, and interconnect topology of onboarded nodes",
+    "resourceBreadcrumb": "Resources",
+    "count": "{{filtered}}/{{total}} nodes",
+    "search": "Search by name, hostname or ID"
+  },
+  "column": {
+    "status": "Status",
+    "name": "Name",
+    "createdAt": "Created",
+    "node": "Node",
+    "lastReject": "Latest rejection",
+    "memory": "Memory",
+    "driver": "Driver",
+    "framework": "Framework"
+  },
+  "action": {
+    "details": "Details",
+    "terminal": "Terminal",
+    "delete": "Delete",
+    "more": "More",
+    "cancel": "Cancel",
+    "add": "Add node",
+    "edit": "Edit",
+    "doctor": "Diagnose",
+    "save": "Save"
+  },
+  "message": {
+    "deleted": "Node deleted",
+    "deleteFailed": "Failed to delete node: {{detail}}",
+    "doctorFailed": "Diagnostics failed: {{detail}}",
+    "forceDeleted": "Management records deleted; the agent may still be running"
+  },
+  "delete": {
+    "confirm": "Delete this node?",
+    "description": "Stop deployment instances on this node first.",
+    "uninstallDescription": "Normal removal uninstalls the agent over SSH before deleting the node record.",
+    "force": "Force removal: only delete management records",
+    "forceWarning": "The agent may still be running on the node. Stop it manually when the node is accessible."
+  },
+  "waitingFirstConnection": "Waiting for first connection",
+  "noGPU": "No GPU",
+  "cpuCores": "{{count}} cores",
+  "terminal": {
+    "openHost": "Open this node's host terminal in the browser",
+    "offline": "The node is offline, so its terminal cannot be opened"
+  },
+  "labelFilter": {
+    "label": "Labels",
+    "aria": "Filter by label",
+    "placeholder": "Select key=value labels",
+    "none": "No labels on any node"
+  },
+  "add": {
+    "replaceAgent": {
+      "title": "Replace the agent already on this host?",
+      "content": "Installing replaces the gpuworks-agent service on the host; the node or server it belongs to loses this host.",
+      "confirm": "Install anyway",
+      "cancel": "Cancel"
+    },
+    "waitingForConnection": "Waiting for the agent to connect",
+    "waitingForConnectionHelp": "This drawer closes when this node is online. You can close it now and check the node list later.",
+    "commandPlaceholder": "Create the node to generate an installation command with its unique Token",
+    "sshSupportLabel": "Does the target machine support SSH?",
+    "sshSupported": "SSH supported",
+    "sshUnsupported": "SSH unavailable",
+    "nodeNameOptional": "Node name (optional)",
+    "nodeNamePlaceholder": "Leave blank to use the hostname on first connection",
+    "connectionDirection": "Connection direction",
+    "hostAddress": "Compute node address",
+    "hostAddressHelp": "The address the server connects to this host at: an IP, a domain, or the mapped address a platform gives. With a host only, the port is the listen port; when a platform maps the port to another number, give the mapped address and port.",
+    "hostAddressPlaceholder": "For example: 10.0.0.8, gpu-worker-01, or http://0.tcp.ap.ngrok.io:25408",
+    "target": "SSH target",
+    "targetRequired": "Enter an SSH address or ssh command",
+    "targetHelp": "user@host[:port], or paste an ssh command such as ssh -p 2222 root@192.0.2.10",
+    "advanced": "Advanced",
+    "installDir": "Installation directory",
+    "installDirHelp": "Holds the agent, models and runtime data",
+    "installDirTooltip": "On nodes without docker the runveil runtime keeps images and container root filesystems here too, so choose a local filesystem; a network volume that refuses ':' in file names (such as RunPod's /workspace) does not work.",
+    "useSystemd": "Start via systemd",
+    "useSystemdTooltip": "On: the agent is registered as the gpuworks-agent systemd service, started at boot and restarted when it crashes. Off: the agent runs in the background under nohup, with agent-restart.sh in the install directory for restarting it by hand; the host's existing gpuworks-agent service and agents in other directories are left alone, so another install directory adds one more agent to the same host. Hosts without systemd, or without root or passwordless sudo, always use nohup; macOS nodes use launchd regardless.",
+    "useSystemdOffHelp": "The agent does not start at boot and is not restarted when it exits",
+    "agentListenAddress": "Agent listen address",
+    "agentListenAddressHelp": "Where the agent listens on this host (or in its container): its --listen.",
+    "offlineInstructions": "The node cannot reach the management node, so it installs from the offline package: download it, copy it to the node (scp, a web terminal or JupyterLab upload), and run the command below in the directory that holds it. The package holds no token and is the same for every node.",
+    "offlineDownload": "Download the offline package gpuworks-agent.run",
+    "offlineChecksum": "sha256: {{sum}}",
+    "startPrecheck": "Start precheck",
+    "installAgent": "Install Agent",
+    "precheckSummary": "Precheck summary",
+    "precheckResults": "Precheck results",
+    "installSummary": "Installation summary",
+    "installResults": "Installation results · {{binary}} · {{installDir}}{{address}}",
+    "manualInstructions": "First create a node (shown as Connecting until its Agent arrives) to obtain its unique Token, then run the following command on the target machine:",
+    "createCommand": "Create node and generate command",
+    "tokenSaved": "The Token has been minted and saved. You can view or regenerate it from node details.",
+    "copyCommand": "Copy command",
+    "message": {
+      "hostAddressRequired": "A server-initiated connection needs the compute node address",
+      "created": "Node created. Copy the command and run it on the target machine.",
+      "createFailed": "Failed to create node: {{detail}}",
+      "copied": "Installation command copied",
+      "precheckWithIssues": "Precheck completed with warnings. Installation can still continue.",
+      "precheckWithErrors": "Precheck found failures. Review them before installing: the installation may fail.",
+      "precheckComplete": "Precheck completed",
+      "precheckFailed": "Precheck failed: {{detail}}",
+      "connected": "Node connected successfully",
+      "installExecuted": "Installation command executed",
+      "installFailed": "Installation failed: {{detail}}"
+    },
+    "check": {
+      "item": "Check",
+      "status": "Status",
+      "detail": "Details",
+      "ok": "Passed",
+      "warn": "Warning",
+      "error": "Failed",
+      "okCount": "Passed {{count}}",
+      "warnCount": "Warnings {{count}}",
+      "errorCount": "Failed {{count}}"
+    }
+  },
+  "rejects": {
+    "title": "Recent Agent handshake rejections",
+    "emptyToken": "(empty)",
+    "unknownAddress": "Unknown address"
+  },
+  "empty": {
+    "all": "No nodes yet. Click Add node to onboard one.",
+    "filtered": "No nodes match the search or the selected labels"
+  },
+  "connection": {
+    "serverDial": "Server-initiated connection",
+    "serverDialAddress": "Server-initiated connection · {{address}}",
+    "agentDial": "Agent-initiated connection"
+  },
+  "upgrade": {
+    "failed": "Upgrade failed",
+    "available": "Upgrade available",
+    "completed": "{{name}}: the Agent was upgraded and is back online",
+    "timeout": "{{name}}: the upgrade did not complete within 2 minutes. Check the Agent logs.",
+    "dispatched": "Upgrade dispatched; waiting for the node to reconnect with the new version",
+    "requestFailed": "Upgrade failed: {{detail}}",
+    "waitingReconnect": "Waiting to reconnect",
+    "action": "Upgrade Agent",
+    "inProgress": "Upgrading; waiting to reconnect",
+    "failedDetail": "{{name}}: Agent upgrade failed: {{detail}}",
+    "upgrading": "Upgrading"
+  },
+  "rename": {
+    "updated": "Node name updated",
+    "failed": "Failed to update node name: {{detail}}",
+    "title": "Edit node name",
+    "placeholder": "Leave blank to use no display name"
+  },
+  "runtime": {
+    "select": "Select runtime",
+    "updated": "Runtime switched",
+    "failed": "Failed to switch runtime: {{detail}}",
+    "pluginMissingHint": "The selected container runtime cannot expose this accelerator until its vendor plugin is installed.",
+    "pluginNotInstalled": "not installed",
+    "copyInstallCommand": "Copy install command",
+    "pluginInstallCopied": "Plugin install command copied",
+    "manualCopyTitle": "Copy plugin install command",
+    "autoCurrent": "auto (now {{runtime}})",
+    "copyConfigureCommand": "Copy configure command",
+    "configureCopied": "Configure command copied",
+    "fallback": {
+      "gpu_plugin_missing": "{{from}} is installed but {{plugin}} is not, so this node uses runveil. Install {{plugin}}; the node switches back to {{from}} once it is idle.",
+      "gpu_runtime_unconfigured": "{{from}} and {{plugin}} are installed but {{from}} is not configured for GPUs, so this node uses runveil. Configure it and restart {{from}}; the node switches back once it is idle.",
+      "gpu_ready": "{{from}} is ready and can be switched to; the node switches automatically once it is idle."
+    }
+  },
+  "accelerator": {
+    "autoCurrent": "Auto (now {{vendor}})",
+    "cards": "{{vendor}} ×{{n}}",
+    "cardsWithModel": "{{vendor}} ×{{n}} ({{model}})",
+    "separator": ", ",
+    "unmanaged": "This machine also has {{cards}}, not managed by this node; you can switch. A node manages one vendor's cards at a time.",
+    "switching": "Switching to {{vendor}}: the agent restarts and then manages its cards.",
+    "updated": "Switched. The agent is restarting; the new cards appear shortly",
+    "failed": "Could not switch accelerators: {{detail}}"
+  },
+  "detail": {
+    "title": "Node details",
+    "name": "Name",
+    "os": "Operating system",
+    "kernel": "Kernel",
+    "kvDiskKernelTooOld": "The KV Cache disk tier needs kernel {{required}} or newer; this node runs {{current}}. A deployment that turns the disk tier on will fail to start here.",
+    "disk": "Disk",
+    "gpuDriver": "GPU driver",
+    "computeFramework": "Compute framework",
+    "runtime": "Runtime",
+    "runtimePlugin": "Runtime plugin",
+    "connectionMode": "Connection mode",
+    "sshChannel": "Out-of-band SSH channel",
+    "serverExternalAddress": "Management node address",
+    "agentExternalAddress": "Compute node address",
+    "managementAddress": "Management network address",
+    "agentListenAddress": "Agent listen address",
+    "agentVersion": "Agent version",
+    "sourceAddress": "Source address",
+    "partitioningCapability": "dGPU",
+    "partitioningCapabilityEmpty": "No dGPU backend detected",
+    "accelerator": "Accelerator",
+    "tab": {
+      "basic": "Overview",
+      "accelerators": "GPUs",
+      "doctor": "Diagnosis",
+      "count": "{{count}} in total"
+    },
+    "section": {
+      "node": "Node",
+      "runtime": "Runtime",
+      "storage": "Storage",
+      "network": "Network"
+    }
+  },
+  "accelerators": {
+    "title": "Accelerators ({{count}})",
+    "empty": "No GPU was detected on this node",
+    "telemetry": "Live metrics",
+    "topology": "Accelerator topology",
+    "column": {
+      "model": "Model",
+      "vram": "VRAM",
+      "architecture": "Architecture",
+      "partitioning": "dGPU",
+      "health": "Health"
+    },
+    "overview": "Summary",
+    "list": "GPU list",
+    "listHint": "Live readings refresh every 10 s. Click a row for its architecture, NUMA node, PCIe address and more.",
+    "expand": "Show details",
+    "collapse": "Hide details",
+    "field": {
+      "pcie": "PCIe address",
+      "uuid": "UUID",
+      "updatedAt": "Reported at"
+    }
+  },
+  "state": {
+    "online": "Online",
+    "offline": "Offline",
+    "connecting": "Connecting"
+  },
+  "gpuProbeFailed": {
+    "tag": "Vendor tool did not answer",
+    "detail": "Since {{at}} the vendor tool has not answered, so for this node's own cards anything only that tool knows — memory, UUID, health — is still what it last reported: {{detail}}\n\nWhich cards are in the machine, whose they are and where they sit comes from the PCI bus and is unaffected."
+  },
+  "ssh": {
+    "title": "Out-of-band SSH connection",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "edit": "Edit",
+    "configure": "Configure",
+    "save": "Save",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "clearConfirm": "Clear the SSH connection details?",
+    "host": "Host",
+    "hostRequired": "Enter the SSH host",
+    "port": "Port",
+    "user": "User",
+    "userRequired": "Enter the SSH user",
+    "probeAfterSave": "Run a probe immediately after saving",
+    "existingAuth": "Current authentication: {{method}}. Credentials are never displayed for security reasons and must be entered again when saving.",
+    "password": "SSH password",
+    "passwordRequired": "Enter the SSH password",
+    "privateKey": "SSH private key",
+    "privateKeyRequired": "Enter the SSH private key",
+    "authorizesPlatformKey": "After signing in, the server adds its platform key to the target and keeps only that; this password or key is not stored.",
+    "platformKey": {
+      "unavailable": "The platform SSH key is not available: {{detail}}",
+      "authorizeLabel": "Authorize the platform key on the target",
+      "authorizeHelp": "Run this once on the target as the SSH user (or add the public key in your cloud console). Key fingerprint: {{fingerprint}}"
+    },
+    "auth": {
+      "label": "Authentication",
+      "password": "Password",
+      "key": "Private key",
+      "platformKey": "Platform key"
+    },
+    "message": {
+      "savedProbeFailed": "SSH details were saved, but the probe failed: {{detail}}",
+      "savedProbeForeignAgent": "SSH details were saved, but the gpuworks-agent service on this host belongs to another server ({{server}}); this node's agent is not running",
+      "switchedToPlatformKey": "SSH saved: the platform key was added to the node, the password or key was not kept",
+      "platformKeyNotAuthorized": "The platform key could not be added ({{detail}}); the credential you entered was saved instead",
+      "saved": "Out-of-band SSH connection details saved",
+      "saveFailed": "Failed to save SSH details: {{detail}}",
+      "cleared": "Out-of-band SSH connection details cleared",
+      "clearFailed": "Failed to clear SSH details: {{detail}}"
+    }
+  },
+  "recovery": {
+    "title": "Out-of-band recovery",
+    "currentPhase": "Current phase",
+    "attempts": "Attempts",
+    "lastProbe": "Last probe",
+    "lastError": "Last error",
+    "reconnect": "Reconnect",
+    "reconnectGone": "The instance was destroyed, so there is nothing to reconnect to",
+    "manual": {
+      "title": "Reconnect this node by hand",
+      "hint": "The platform has no SSH credential for this node, so run this on the node itself to bring its agent back. It is the same command that installed it.",
+      "copy": "Copy command",
+      "copied": "Command copied",
+      "unavailable": "This node has no install command: it has no server address or token recorded. Add an SSH credential, or remove and add the node again."
+    },
+    "phase": {
+      "probing": "Probing",
+      "artifactCheck": "Checking the agent package",
+      "uploading": "Uploading the agent",
+      "verifying": "Verifying the agent",
+      "replacing": "Replacing the agent",
+      "reconnecting": "Waiting for the agent to reconnect",
+      "blocked": "Recovery blocked",
+      "restarting": "Restarting",
+      "reinstalling": "Reinstalling",
+      "unreachable": "Unreachable",
+      "stopped": "Instance terminated"
+    },
+    "message": {
+      "recovered": "Out-of-band recovery succeeded and the Agent is back online",
+      "probeComplete": "Out-of-band probe completed",
+      "probeFailed": "Out-of-band probe failed: {{detail}}"
+    }
+  },
+  "telemetry": {
+    "waiting": "Waiting for GPU metrics",
+    "waitingDescription": "The Agent reports utilization, VRAM, temperature, and power every 10 seconds by default. Metrics may be empty while a node is onboarding or offline.",
+    "notReported": "Not reported",
+    "utilization": "Utilization",
+    "vram": "VRAM",
+    "temperature": "Temperature",
+    "power": "Power"
+  },
+  "topology": {
+    "accelerator": "Accelerator",
+    "numaUnknown": "NUMA unknown",
+    "acceleratorCount": "{{count}} accelerators",
+    "empty": "No topology information collected",
+    "fastLinkCount": "High-speed links {{count}}",
+    "scheduleHighlight": "Schedule selection highlighted",
+    "view": "Topology view",
+    "legend": {
+      "fast": "High-speed link",
+      "other": "Other link",
+      "selected": "Selected",
+      "cardDescription": "GPU cards show the name, architecture, and health"
+    }
+  },
+  "terminalView": {
+    "cannotOpen": "Unable to open terminal",
+    "containerUnsupported": "This runtime does not support container terminals",
+    "runveilShell": "runveil shell: a new PTY is started from the workload rootfs with its environment, mounts, GPU visibility, and working directory. The model process runs separately; view its standard output in Instance Logs.",
+    "sessionEnded": "Session ended",
+    "connectionClosed": "Connection closed",
+    "container": "Container terminal",
+    "host": "Host terminal",
+    "reconnect": "Reconnect",
+    "status": {
+      "connecting": "Connecting",
+      "open": "Connected",
+      "exited": "Ended",
+      "error": "Unavailable"
+    }
+  },
+  "labels": {
+    "title": "Node labels",
+    "edit": "Edit labels",
+    "help": "Use key=value labels for purpose, location, or resource pools, then filter nodes and target deployments by them. Editing labels does not move running instances; placement is checked again for new instances.",
+    "key": "Label key",
+    "value": "Label value",
+    "keyRequired": "Enter a label key",
+    "duplicate": "Label keys must be unique",
+    "add": "Add label",
+    "remove": "Remove label",
+    "saved": "Labels saved",
+    "failed": "Could not save labels: {{detail}}",
+    "placement": "Node label constraints",
+    "placementHelp": "All labels must match. Choose nodes within this scope; hardware and capacity are checked separately.",
+    "placeholder": "For example pool=inference",
+    "noMatch": "No nodes match these labels. Change the constraints or node labels.",
+    "matches": "Matching {{count}} nodes: {{nodes}}"
+  },
+  "scheduling": {
+    "menu": "Scheduling and drain",
+    "title": "Scheduling on {{node}}",
+    "current": "Scheduling:",
+    "blocked": {
+      "title": "This node's runtime cannot use its accelerators",
+      "description": "{{reason}}\n\nEvery deployment placed here would fail when its container starts. The platform cordoned the node for this reason and will do so again on its next report unless the cause is fixed.",
+      "reason": {
+        "gpu_plugin_missing": "The container runtime {{runtime}} needs the vendor GPU plugin {{plugin}}, which is not installed, so a container cannot be given this node's accelerators.",
+        "gpu_runtime_unconfigured": "{{runtime}} is running with no GPU support configured, so a container cannot be given this node's accelerators. Installing the vendor plugin is not enough; {{runtime}} has to be told to use it (NVIDIA: nvidia-ctk runtime configure --runtime=docker, then restart Docker)."
+      }
+    },
+    "state": {
+      "schedulable": "Schedulable",
+      "cordoned": "Cordoned",
+      "draining": "Draining"
+    },
+    "help": {
+      "schedulable": "The node takes new replicas. Cordon it to keep new ones off while what runs keeps running, or drain it to also move the replicas placed from a pool onto other nodes.",
+      "cordoned": "No new replica is started here; what runs keeps running. Drain to move the pool-placed replicas off, or make it schedulable again.",
+      "draining": "No new replica is started here, and each pool-placed replica is replaced on another node before it is retired, one at a time per deployment, so no deployment serves fewer replicas than before. Replicas pinned to this node and multi-node or PD ranks stay until evicted."
+    },
+    "action": {
+      "cordon": "Cordon",
+      "drain": "Drain",
+      "uncordon": "Make schedulable",
+      "uncordonAnyway": "Make schedulable anyway",
+      "evict": "Evict now",
+      "evictConfirm": "Take every replica off this node now, without waiting for replacements? Pinned replicas and multi-node or PD ranks wait until the node is schedulable again or their deployment names another node."
+    },
+    "done": {
+      "schedulable": "The node takes new replicas again",
+      "cordoned": "The node is cordoned",
+      "draining": "The node is draining"
+    },
+    "evicted": "{{count}} replica(s) evicted",
+    "stuck": "{{count}} replica(s) here are not moved by a drain: pinned to this node, or a multi-node or PD rank. Change their deployment's nodes, or evict them.",
+    "replicas": "Replicas on this node ({{count}})",
+    "empty": "Nothing runs on this node",
+    "columns": {
+      "deployment": "Deployment",
+      "instance": "Instance",
+      "state": "State",
+      "drain": "On drain"
+    },
+    "kind": {
+      "pool": "Moved to another node",
+      "pinned": "Pinned here: waits",
+      "named": "Names this node: evict to move"
+    }
+  },
+  "systemLabels": {
+    "title": "System labels",
+    "more": "{{count}} more",
+    "key": {
+      "node": "Node",
+      "vendor": "Vendor",
+      "cpu-arch": "CPU arch",
+      "gpu-model": "GPU model",
+      "gpu-arch": "GPU arch",
+      "compute-network": "Compute network",
+      "storage-sync-network": "Storage sync network",
+      "serving-network": "Serving network",
+      "storage": "Storage"
+    }
+  },
+  "diskUsage": {
+    "unknown": "Disk capacity unknown",
+    "title": "Disk usage",
+    "loading": "Loading disk usage…",
+    "loadFailed": "Could not load the disk usage",
+    "barAria": "Disk used",
+    "pathAria": "Usage of {{path}}",
+    "breakdown": "Managed models {{models}} · images {{images}} · other {{other}} · available {{available}}",
+    "none": "No disk usage reported yet",
+    "column": {
+      "kind": "Path type",
+      "path": "Path",
+      "usage": "Used"
+    },
+    "kind": {
+      "models": "Models directory",
+      "docker": "Docker",
+      "udocker": "runveil",
+      "host": "Environment packages",
+      "storage": "Storage {{name}}",
+      "storageCache": "Cache of storage {{name}}"
+    }
+  },
+  "doctor": {
+    "title": "Diagnostic report",
+    "legacy": "This node runs an older agent; below is its raw diagnostic output. Upgrade the agent to see the structured report.",
+    "rawToggle": "Show raw output",
+    "overview": "Overview",
+    "host": "Host",
+    "cpu": "CPU",
+    "memory": "Memory",
+    "disk": "Disk",
+    "memoryValue": "{{total}} total, {{avail}} available",
+    "diskValue": "{{path}}: {{total}} total, {{avail}} available ({{percent}}%)",
+    "runtimes": "Runtimes",
+    "runtimeNotFound": "Not installed",
+    "runtimeQueryFailed": "Installed (query failed)",
+    "runtimeSelected": "Selected",
+    "accelerators": "Accelerators",
+    "noAccelerator": "No accelerator tool found (CPU-only node or driver not installed).",
+    "acceleratorSummary": "Vendor {{vendor}} · driver {{driver}} · {{total}} total: {{ok}} OK, {{warning}} warning, {{error}} fault",
+    "column": {
+      "index": "#",
+      "name": "Model",
+      "memory": "Memory",
+      "bdf": "BDF",
+      "numa": "NUMA",
+      "health": "Status"
+    },
+    "findings": "Action required",
+    "noFindings": "No issues require action.",
+    "phenomenon": "Finding",
+    "evidence": "Evidence",
+    "recheck": "Recheck",
+    "impact": "Impact",
+    "action": "Action",
+    "cards": "{{count}} cards: {{indexes}}",
+    "card": "Accelerator {{index}} ({{bdf}})",
+    "runningProcess": "Process {{pid}} {{name}} still runs on this card; stop it first.",
+    "rerun": "No single command reproduces this check; run the diagnosis again.",
+    "finding": {
+      "disk_low": {
+        "label": "Low disk space",
+        "summary": "{{path}} has {{avail}} available, {{percent}}% of {{total}}.",
+        "impact": "Image pulls and model downloads may fail."
+      },
+      "runtime_unavailable": {
+        "label": "Container runtime not responding",
+        "summary": "The selected container runtime query failed.",
+        "impact": "This node cannot start inference instances."
+      },
+      "runtime_provision_failed": {
+        "label": "Runtime setup failed",
+        "summary": "The container runtime could not be set up on this node. Its last attempt failed with the error below.",
+        "impact": "Every deployment on this node fails until the cause is fixed. The agent tries again by itself, waiting 30 seconds after the first failure and up to 5 minutes later on."
+      },
+      "path_noexec": {
+        "label": "Path mounted noexec",
+        "summary": "{{path}} is on {{point}} ({{fstype}}), which is mounted noexec.",
+        "impact": "Programs the runtime runs from this path cannot start. Install the agent into a directory on a filesystem that allows execution, or remount without noexec."
+      },
+      "path_read_only": {
+        "label": "Path mounted read-only",
+        "summary": "{{path}} is on {{point}} ({{fstype}}), which is mounted read-only.",
+        "impact": "The agent cannot write models, images or runtime state there. Use a writable directory or remount read-write."
+      },
+      "path_ephemeral": {
+        "label": "Data on the container layer",
+        "summary": "{{path}} is on this container's own filesystem layer ({{fstype}} at {{point}}), not on a volume.",
+        "impact": "Models, images and runtime state are lost when the container is recreated. Install the agent into a persistent volume on a local filesystem if the instance has one; a network volume that refuses ':' in file names, such as RunPod's /workspace, cannot hold the runveil runtime's images."
+      },
+      "accelerator_probe_failed": {
+        "label": "Accelerator probe failed",
+        "summary": "The vendor tool failed.",
+        "impact": "The accelerators on this node cannot be scheduled."
+      },
+      "accelerator_unrecognized": {
+        "label": "Unrecognized accelerator devices",
+        "summary": "This host has PCI devices belonging to a supported vendor that match none of that vendor's rules, usually a model we have not seen.",
+        "impact": "They are left out of the accelerator list and are unavailable for allocation. Send the PCI ids below so the rule can be added."
+      },
+      "cuda_init_failed": {
+        "label": "CUDA initialization failed",
+        "summary": "The CUDA driver failed to initialize. The recheck command prints 0 when initialization succeeds.",
+        "impact": "This node cannot run CUDA inference."
+      },
+      "multi_gpu_check_failed": {
+        "label": "Multi-GPU check failed",
+        "summary": "A multi-GPU communication check did not pass.",
+        "impact": "Multi-GPU tensor parallelism may fail to start."
+      },
+      "macos_unsupported": {
+        "label": "macOS too old",
+        "summary": "Mac nodes need macOS {{required}} or later; the evidence shows this Mac's version.",
+        "impact": "Environment packages cannot run here, so no instance can be deployed on this node. Upgrade macOS and run the diagnosis again."
+      },
+      "macos_idle_sleep": {
+        "label": "Sleeps when idle",
+        "summary": "With the settings for its current power source, this Mac goes to sleep after being idle. The agent prevents idle sleep while an instance runs, not otherwise.",
+        "impact": "A sleeping Mac is offline: new deployments cannot be scheduled here until it wakes. To keep it available, turn off idle sleep on AC power: sudo pmset -c sleep 0 (the platform does not change this setting)."
+      }
+    },
+    "facts": "Information",
+    "fact": {
+      "runtime_details": "Runtime details",
+      "runtime_plugin": "Runtime plugin",
+      "device_access": "Device access",
+      "device_injection": "Device injection",
+      "fabric_manager": "Driver and Fabric Manager",
+      "cuda_runtime": "CUDA runtime",
+      "peer_access": "GPU peer access",
+      "nccl": "NCCL multi-GPU",
+      "runtime_identity": "Runtime identity",
+      "network_filesystem": "Network filesystem",
+      "metal_working_set": "Metal memory",
+      "power": "Power and sleep",
+      "macos_firewall": "macOS application firewall"
+    },
+    "identity": {
+      "pending": "{{runtime}} is set up on first use",
+      "dedicated": "dedicated user {{user}} (uid {{uid}})",
+      "own": "the agent's own user (uid {{uid}})",
+      "fallback": "the agent's own user (uid {{uid}}); the dedicated runtime user is not used because {{reason}}"
+    },
+    "networkFilesystem": "{{point}} is {{fstype}}; holds {{paths}}",
+    "networkFilesystemFrom": "{{point}} is {{fstype}} ({{source}}); holds {{paths}}",
+    "listSeparator": ", ",
+    "pathKind": {
+      "root": "root",
+      "models": "models",
+      "udocker": "runveil",
+      "host": "Environment packages",
+      "docker": "Docker",
+      "storage": "storage",
+      "storage_cache": "storage cache",
+      "agent": "agent"
+    },
+    "pluginNone": "None (gpuworks mounts the devices itself)",
+    "injectionExplicit": "At deployment gpuworks mounts the accelerator devices into the container itself, only the schedulable cards (OK and warning).",
+    "mountFlag": {
+      "network": "Network",
+      "noexec": "noexec",
+      "readOnly": "Read-only",
+      "ephemeral": "Container layer"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 1152
+  sglang: 1152
+model_id: lightseekorg/kimi-k2.5-eagle3-mla
+source: upstream
+display_title: kimi-k2.5-eagle3-mla
+release_date: '2026-04-06'
+specs: []
+input_modalities: [text]

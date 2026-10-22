@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 4096
+  sglang: 4096
+model_id: redhatai/llama-3.1-8b-instruct-speculator.eagle3
+source: upstream
+display_title: Llama-3.1-8B-Instruct-speculator.eagle3
+release_date: '2025-09-19'
+specs: []
+input_modalities: [text]

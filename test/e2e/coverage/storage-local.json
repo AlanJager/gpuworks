@@ -1,0 +1,86 @@
+{
+  "contract_id": "gpuworks/storage/local-create-delete",
+  "name": "存储 / 本地存储表单与生命周期 / 类型条件字段、字段负例、创建、刷新与删除",
+  "test_file": "test/e2e/storage_local.py",
+  "test_function": "test_storage_local",
+  "command": "make test-e2e-storage-local",
+  "priority": "P1",
+  "page_id": "storage",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "A local storage is a control-plane record. No agent trial mount, capacity, model file or container is claimed."
+  },
+  "crud": {
+    "create": "UI Add storage creates a local record through POST /api/v1/storages; invalid names and relative paths send nothing; the server refuses an out-of-root absolute path",
+    "read": "The list row, refresh and independent GET preserve the record",
+    "update": "N/A in this case: editing is not exercised",
+    "delete": "UI row delete with confirmation; independent GET returns 404"
+  },
+  "fields": [
+    {
+      "id": "storage.type",
+      "component": "Radio.Group",
+      "request": "type",
+      "persisted": "type",
+      "covered": ["local default", "NFS reveals Export and Mount point", "an unprobed NFS form cannot save", "switching back restores the local Directory field"],
+      "missing": ["shared_dir and nfs_cache fields", "cache wizard steps", "type switching after values are entered"]
+    },
+    {
+      "id": "storage.name",
+      "component": "Text input",
+      "request": "name",
+      "persisted": "name",
+      "covered": ["invalid uppercase/space name is rejected without a request", "valid lowercase name creates the record"],
+      "missing": ["length boundaries", "duplicate names", "Unicode and whitespace normalization"]
+    },
+    {
+      "id": "storage.path",
+      "component": "Text input whose label follows the type",
+      "request": "path",
+      "persisted": "path",
+      "covered": ["relative path is rejected without a request", "an absolute path outside storage_probe_roots reaches POST /storages, is refused with 400 STORAGE_PATH_INVALID, the form shows the save-failed alert with the code's localized text, keeps the draft and creates no record", "an absolute path below the server's storage root is persisted"],
+      "missing": ["empty path for each type", "per-node override paths", "NFS mount point defaults", "the root boundary on PATCH /storages/{id} and POST /storages/probe", "BLOCKED_PRODUCT: retrying in the same dialog after the refusal — the enabled Save button can keep AntD's collapsed loading icon in its accessible name (\"loading Save\") after a fast failed save; the case cancels and creates from a fresh form instead", "BLOCKED_PRODUCT: an actionable reason — STORAGE_PATH_INVALID reads \"paths must be absolute and sizes non-negative\" and does not describe the storage-root boundary"]
+    },
+    {
+      "id": "storage.scope",
+      "component": "all/labels/nodes scope",
+      "request": "all_nodes and targets",
+      "persisted": "all_nodes, targets",
+      "covered": ["the default all-nodes scope is sent explicitly"],
+      "missing": ["label and node scopes", "mixed scope", "target validation"]
+    },
+    {
+      "id": "storage.delete",
+      "component": "Row action + Popconfirm",
+      "request": "DELETE /api/v1/storages/{id}",
+      "persisted": "removal",
+      "covered": ["delete through the UI", "list row and independent GET disappear"],
+      "missing": ["in-use deletion refusal", "delete permission for non-admins"]
+    }
+  ],
+  "checklist_items": {
+    "1.5": "The local and NFS options are selected and their conditional fields appear; shared_dir and nfs_cache are MISSING",
+    "1.6": "Switching type changes the path label and reveals the NFS export",
+    "1.7": "Minimum local creation reaches the exact POST body",
+    "1.10": "PARTIAL: the server's refusal of an out-of-root path keeps the dialog and draft, writes nothing and shows the save-failed alert; BLOCKED_PRODUCT: the reason is not actionable for this refusal and same-dialog retry (see missing)",
+    "1.14": "Refresh and independent GET preserve the record",
+    "5.5": "Switching local↔NFS reveals/hides the conditional fields and switching back leaves no stale NFS field",
+    "12.7": "Delete names the storage and requires confirmation"
+  },
+  "missing": [
+    "MISSING: checklist 1.11 (cancel, close, Esc) and the unsaved-draft behavior",
+    "N/A: checklist 5.3 (search inside the selector) — the storage type is a Radio.Group with no search",
+    "MISSING: agent trial mount, capacity and model files",
+    "MISSING: creating shared_dir, NFS or NFS-cache storage (only local is created)",
+    "MISSING: node and label scopes, mixed scope and per-node overrides",
+    "MISSING: editing a storage and expected_updated_at conflicts",
+    "MISSING: deleting a storage a deployment uses",
+    "MISSING: duplicate exports and duplicate names",
+    "MISSING: non-admin permissions"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test digests, locale, exact create body, delete status, independent GET and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

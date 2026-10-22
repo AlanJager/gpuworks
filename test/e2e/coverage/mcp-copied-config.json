@@ -1,0 +1,128 @@
+{
+  "page_id": "settings",
+  "priority": "P1",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin browser; independent read bearer client",
+  "product_contracts": [
+    "ui/src/pages/SettingsPage.tsx",
+    "ui/src/pages/settings/MCPCard.tsx",
+    "internal/server/api/mcp.go",
+    "internal/server/mcp/mcp.go",
+    "ui/tests/mcpCard.test.tsx"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "cases": [
+    {
+      "selection": "endpoint",
+      "contract_id": "gpuworks/settings/mcp-copied-endpoint",
+      "name": "设置 / 复制MCP地址 / 原地址读取自有网络且关闭与吊销后拒绝",
+      "test_file": "test/e2e/mcp_copied_config.py",
+      "test_function": "test_mcp_copied_config",
+      "command": "python3 test/e2e/mcp_copied_config.py --case endpoint"
+    },
+    {
+      "selection": "generic-json",
+      "contract_id": "gpuworks/settings/mcp-copied-generic-json",
+      "name": "设置 / 折叠时复制MCP JSON / JSON原地址与header可读取自有网络且不改变折叠",
+      "test_file": "test/e2e/mcp_copied_config.py",
+      "test_function": "test_mcp_copied_config",
+      "command": "python3 test/e2e/mcp_copied_config.py --case generic-json"
+    }
+  ],
+  "fields": [
+    {
+      "field_id": "settings.tab.access",
+      "component": "Tabs",
+      "request": "URL fragment #access (client navigation)",
+      "persistence": "URL fragment; refresh restores tab",
+      "covered": [
+        "real Security & access tab click sets aria-selected=true and /settings#access",
+        "each toggle reload preserves #access and MCP switch state",
+        "API key link then browser back returns to #access with access tab selected and MCP off"
+      ],
+      "missing": [
+        "all other tabs",
+        "direct access deep link before login",
+        "keyboard tab navigation",
+        "browser forward"
+      ]
+    },
+    {
+      "field_id": "settings.mcp.endpoint",
+      "component": "Copyable text",
+      "covered": [
+        "display = clipboard = browser origin + status.path",
+        "scheme/host/port/path exact",
+        "unmodified URL initialize and read known network",
+        "keyboard Enter copy replaces run-owned clipboard sentinel"
+      ]
+    },
+    {
+      "field_id": "settings.mcp.other-clients",
+      "component": "Collapse and copyable JSON",
+      "covered": [
+        "expand/collapse/reopen",
+        "copy while collapsed preserves collapsed state",
+        "exact display/clipboard JSON",
+        "parsed URL/headers consumed with only documented token placeholder replaced",
+        "collapsed keyboard Enter and expanded click each replace fresh clipboard sentinel without toggling"
+      ]
+    },
+    {
+      "field_id": "settings.mcp.create-token-link",
+      "component": "Link",
+      "covered": [
+        "/apikeys navigation and heading",
+        "browser back restores settings and persisted off state"
+      ]
+    }
+  ],
+  "crud": {
+    "create": "N/A: derived client configuration; resource creation only fixture",
+    "read": "copy display/clipboard and real JSON-RPC canonical network read",
+    "update": "MCP switch UI with independent GET and refresh",
+    "delete": "N/A: derived client configuration; token revocation and fixture deletion explicit"
+  },
+  "checklist_items": {
+    "covered_in_this_scenario": [
+      "6.2",
+      "6.6",
+      "21.1",
+      "21.2",
+      "21.3",
+      "21.4"
+    ],
+    "partial": {
+      "21.5": "generic JSON parsed and URL/header consumed by real MCP; no vendor CLI compatibility claim",
+      "22.5": "target MCP controls en/zh only",
+      "22.2": "Access tab click and reload preserve URL; API key link and browser back restore #access, selected access tab and persisted MCP off. Other tabs and browser forward are MISSING.",
+      "15.3": "Read-only generic JSON copies byte-for-byte and reopening preserves content; formatting and saving editable JSON are N/A."
+    },
+    "missing": [
+      "21.6 clipboard failure/permission recovery",
+      "21.1 insecure HTTP fallback",
+      "22.6 computed-style state matrix"
+    ]
+  },
+  "execution_evidence": {
+    "status": "N/A",
+    "reason": "MCP reads real control-plane network definitions; no agent or GPU execution claim"
+  },
+  "missing": [
+    "Claude Code command real CLI consumption",
+    "HTTP fallback / clipboard permission errors",
+    "non-admin browser",
+    "MCP failure recovery and all tool argument boundaries",
+    "reverse-proxy/external-host network boundary",
+    "other settings cards"
+  ],
+  "cleanup": "UI restores disabled; fixture bearer revoked and real401; network deleted and independent GET absence; owned server stopped; artifact scan before PASS; failure cleanup uses real APIs, retaining resource IDs until independent absence; trace/context/browser/server stages run independently and any failed stage withdraws PASS. remaining_resources records unresolved IDs/processes. test_mcp_cleanup.py injects close and cleanup failures.",
+  "result": "NOT_RUN: only clean-SHA run reports prove execution; not full MCP page coverage",
+  "artifact": "secrets/e2e/<runId>/report.json (target branch/SHA, source SHA, cleanup_stages and remaining_resources included)"
+}

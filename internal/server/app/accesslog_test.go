@@ -1,0 +1,126 @@
+package app
+
+import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestAccessLogHandlerLogsOneCompletionRecord(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	h := accessLogHandler(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte("queued"))
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/deployments", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	out := logs.String()
+	if strings.Count(out, "msg=\"http request\"") != 1 || strings.Contains(out, "http request start") || strings.Contains(out, "http request complete") {
+		t.Fatalf("logs = %q", out)
+	}
+	if !strings.Contains(out, "request_id=r") || !strings.Contains(out, "status=202") || !strings.Contains(out, "bytes=6") {
+		t.Fatalf("completion log = %q", out)
+	}
+}
+
+func TestAccessLogHandlerLogsRedactedJSONParamsAndRestoresBody(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	const body = `{"model_id":12,"engine":"vllm","password":"password-value-123","nested":{"api_key":"api-value-456","HF_TOKEN":"token-value-789"},"env":{"SAFE":"env-value-012"}}`
+	h := accessLogHandler(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, err := io.ReadAll(r.Body)
+		if err != nil || string(got) != body {
+			t.Fatalf("body = %q, err=%v", got, err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/evaluate", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	out := logs.String()
+	if !strings.Contains(out, `model_id`) || !strings.Contains(out, `vllm`) || !strings.Contains(out, `[REDACTED]`) {
+		t.Fatalf("safe params missing from logs: %q", out)
+	}
+	for _, secret := range []string{"password-value-123", "api-value-456", "token-value-789", "env-value-012"} {
+		if strings.Contains(out, secret) {
+			t.Fatalf("secret %q leaked in logs: %q", secret, out)
+		}
+	}
+}
+
+func TestAccessLogHandlerSeparatesStreamLifecycle(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	h := accessLogHandler(log, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: ok\n\n"))
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	out := logs.String()
+	if strings.Count(out, "http stream opened") != 1 || strings.Count(out, "http stream closed") != 1 {
+		t.Fatalf("stream logs = %q", out)
+	}
+}
+
+// readRecorder records how much of a body was read.
+type readRecorder struct {
+	r    io.Reader
+	read int
+}
+
+func (b *readRecorder) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	b.read += n
+	return n, err
+}
+
+// A storage-files upload is never read ahead of its handler nor logged,
+// whatever Content-Type the browser gives it (a .json file arrives as
+// application/json), and both transfers are logged as streams.
+func TestAccessLogHandlerLeavesStorageUploadsUnread(t *testing.T) {
+	for _, contentType := range []string{"application/octet-stream", "application/json", ""} {
+		var logs strings.Builder
+		log := slog.New(slog.NewTextHandler(&logs, nil))
+		body := &readRecorder{r: strings.NewReader(`{"secret_dataset":"row-value-345"}`)}
+		readBeforeHandler := -1
+		h := accessLogHandler(log, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			readBeforeHandler = body.read
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.WriteHeader(http.StatusOK)
+		}))
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/storages/3/files/upload?path=files/a.json", body)
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		out := logs.String()
+		if readBeforeHandler != 0 || strings.Contains(out, "row-value-345") || strings.Contains(out, "params=") {
+			t.Fatalf("content type %q: read ahead %d bytes, logs = %q", contentType, readBeforeHandler, out)
+		}
+		if strings.Count(out, "http stream opened") != 1 || strings.Count(out, "http stream closed") != 1 {
+			t.Fatalf("upload logs = %q", out)
+		}
+	}
+	var logs strings.Builder
+	h := accessLogHandler(slog.New(slog.NewTextHandler(&logs, nil)), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/storages/3/files/download?path=files/d", nil))
+	if strings.Count(logs.String(), "http stream opened") != 1 {
+		t.Fatalf("download logs = %q", logs.String())
+	}
+	logs.Reset()
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/storages/3/files?path=files", nil))
+	if strings.Contains(logs.String(), "http stream opened") {
+		t.Fatalf("a listing is not a stream: %q", logs.String())
+	}
+}

@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 65536
+  sglang: 65536
+model_id: google/gemma-4-31b-it-assistant
+source: upstream
+display_title: gemma-4-31B-it-assistant
+release_date: '2026-04-23'
+specs: []
+input_modalities: [text]

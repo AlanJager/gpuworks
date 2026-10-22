@@ -1,0 +1,85 @@
+model_id: deepseek-ai/deepseek-r1
+source: upstream
+display_title: DeepSeek-R1
+parameter_count: 671B
+architecture: moe
+context_length: 163840
+release_date: '2025-01-20'
+model_config: {model_type: deepseek_v3, num_hidden_layers: 61, hidden_size: 7168, num_attention_heads: 128, num_key_value_heads: 128, max_position_embeddings: 163840, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128}
+kv_bytes_per_token:
+  vllm: 70272
+  sglang: 70272
+specs:
+- name: fp8-default-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-R1
+        revision: 56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-R1
+        revision: fb6e25504e2c84c5cbb1cdb101bd8b350b4d1094
+  weight_bytes: 688604360633
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --enable-expert-parallel
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - deepseek_v3
+  - --chat-template
+  - examples/tool_chat_template_deepseekr1.jinja
+  - --reasoning-parser
+  - deepseek_r1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-default-vllm-nvidia-hopper
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-R1
+        revision: 56d4cbbb4d29f4355bab4b9a39ccb717a14ad5ad
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-R1
+        revision: fb6e25504e2c84c5cbb1cdb101bd8b350b4d1094
+  weight_bytes: 688604360633
+  gpus:
+    vendor: nvidia
+    cc: '9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --enable-expert-parallel
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - deepseek_v3
+  - --chat-template
+  - examples/tool_chat_template_deepseekr1.jinja
+  - --reasoning-parser
+  - deepseek_r1
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP8: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

@@ -1,0 +1,78 @@
+{
+  "contract_id": "gpuworks/terminal/host-pty-lifecycle",
+  "name": "终端 / 宿主机 PTY / 真实命令回显、退出结束、管理员开关禁用与恢复",
+  "test_file": "test/e2e/terminal_host.py",
+  "test_function": "test_terminal_host",
+  "command": "make test-e2e-terminal-host",
+  "priority": "P1",
+  "page_id": "terminal",
+  "lane": "local-real-server-agent-webterm",
+  "identity": "admin browser / the node's real agent",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The real agent starts a host pty. No container, GPU, engine or inference is claimed."
+  },
+  "crud": {
+    "create": "The node row opens a terminal tab; the server preflight admits the session and the agent starts the host pty",
+    "read": "Connected status, typed command echo and the exit message are visible in the real terminal",
+    "update": "The Settings Web Terminal switch is persisted through PUT /api/v1/settings/terminal",
+    "delete": "Exit ends the session; cleanup stops the agent and force-deletes the owned node"
+  },
+  "fields": [
+    {
+      "id": "terminal.entry",
+      "component": "Node row terminal button",
+      "request": "GET /nodes/{uuid}/terminal/settings",
+      "persisted": "N/A: session",
+      "covered": ["an online node opens a terminal tab", "the connected status appears"],
+      "missing": ["an offline node and its disabled button", "a node without the webterm capability"]
+    },
+    {
+      "id": "terminal.pty",
+      "component": "xterm host terminal",
+      "request": "terminal websocket frames",
+      "persisted": "N/A: pty session",
+      "covered": ["echo marker reaches the real shell and returns", "exit ends the session with the ended status"],
+      "missing": ["multi-byte and box-drawing output", "resize/SIGWINCH", "full-screen programs", "reconnect after a dropped connection"]
+    },
+    {
+      "id": "terminal.policy",
+      "component": "Settings Web Terminal card",
+      "request": "PUT /api/v1/settings/terminal",
+      "persisted": "enabled",
+      "covered": ["disabled in the UI blocks a new terminal with the server reason", "re-enabled restores the terminal", "the switch state is read back"],
+      "missing": ["idle timeout firing", "SIGTERM/SIGKILL grace", "per-node and global limits", "disabling while a session is open", "non-admin access"]
+    },
+    {
+      "id": "terminal.cleanup",
+      "component": "N/A: process cleanup",
+      "request": "DELETE /nodes/{uuid}?force=true",
+      "persisted": "removal",
+      "covered": ["agent stopped", "owned node deleted"],
+      "missing": ["the audit record contents", "closing a session while a command is running"]
+    }
+  ],
+  "checklist_items": {
+    "19.1": "The online node's preflight admits the host terminal; the Settings kill switch denies and restores it",
+    "19.2": "Typed keyboard input reaches the real pty and its output is visible",
+    "19.4": "Exit ends the session and the ended state is shown",
+    "22.2": "The Settings Access tab is selected through the real Tabs control"
+  },
+  "missing": [
+    "MISSING: checklist 19.3 (UTF-8 across frames, continuous output and resize/SIGWINCH)",
+    "MISSING: checklist 19.5 (per-node/global concurrency and idle timeout)",
+    "MISSING: checklist 19.6 (session audit subject, target and result)",
+    "MISSING: checklist 22.5 (zh/en navigation, first screen, error and empty text)",
+    "MISSING: container terminal targets and runtime capability differences",
+    "MISSING: idle timeout, SIGTERM/SIGKILL cleanup and leftover process checks",
+    "MISSING: per-node and global concurrency limits (429)",
+    "MISSING: disabling the terminal while a session is already open",
+    "MISSING: reconnect after the agent connection drops",
+    "MISSING: multi-tab sessions and resize/SIGWINCH",
+    "MISSING: multi-byte output and full-screen programs",
+    "MISSING: audit metadata and non-admin access"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/agent/test digests, locale, preflight responses, settings PUT bodies, terminal marker/exit evidence and redacted server/agent logs",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

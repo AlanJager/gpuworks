@@ -1,0 +1,269 @@
+{
+  "log_level": {
+    "label": "Log level",
+    "help": "Set the log level and include severity in supported SGLang launch logs.",
+    "options": {
+      "debug": "DEBUG",
+      "info": "INFO",
+      "warning": "WARNING",
+      "error": "ERROR",
+      "critical": "CRITICAL",
+      "notset": "NOTSET"
+    }
+  },
+  "max_model_len": {
+    "label": "Maximum Context Length",
+    "placeholder": "Automatic",
+    "help": "Leave empty to use the model configuration"
+  },
+  "dtype": {
+    "label": "Weight Precision",
+    "options": {
+      "auto": "Automatic",
+      "float16": "Float16",
+      "bfloat16": "BFloat16",
+      "float32": "Float32"
+    }
+  },
+  "quantization": {
+    "label": "Quantization Method",
+    "placeholder": "For example, awq",
+    "help": "The quantization format is determined jointly by the model and image"
+  },
+  "rope_scaling": {
+    "label": "RoPE Scaling",
+    "placeholder": "{\"rope_type\":\"yarn\",\"factor\":2}"
+  },
+  "trust_remote_code": {
+    "label": "Trust Remote Code",
+    "help": "Allow custom code from the model repository to be loaded"
+  },
+  "reasoning_parser": {
+    "label": "Reasoning Content Parser",
+    "options": {
+      "deepseek_r1": "DeepSeek R1",
+      "granite": "Granite",
+      "mistral": "Mistral",
+      "qwen3": "Qwen3",
+      "step3": "Step3"
+    }
+  },
+  "tool_call_parser": {
+    "label": "Tool Call Parser",
+    "options": {
+      "deepseek_v3": "DeepSeek V3",
+      "granite": "Granite",
+      "hermes": "Hermes",
+      "llama3_json": "Llama 3 JSON",
+      "mistral": "Mistral",
+      "qwen3": "Qwen3",
+      "qwen3_coder": "Qwen3 Coder"
+    }
+  },
+  "enable_auto_tool_choice": {
+    "label": "Automatic Tool Selection",
+    "help": "Allow the model to select tools automatically for each request"
+  },
+  "limit_mm_per_prompt": {
+    "label": "Media Limit per Request",
+    "placeholder": "{\"image\":2,\"audio\":1}"
+  },
+  "mm_processor_kwargs": {
+    "label": "Multimodal Processor Parameters",
+    "placeholder": "{\"max_dynamic_patch\":12}"
+  },
+  "media_io_kwargs": {
+    "label": "Media I/O Parameters",
+    "placeholder": "{\"video\":{\"num_frames\":16}}"
+  },
+  "allowed_local_media_path": {
+    "label": "Allowed Local Media Path",
+    "placeholder": "/model/media",
+    "help": "An absolute, non-root path inside the container"
+  },
+  "performance_mode": {
+    "label": "Performance Profile",
+    "options": {
+      "interactivity": "Low Latency",
+      "balanced": "Balanced",
+      "throughput": "High Throughput"
+    }
+  },
+  "gpu_memory_utilization": {
+    "label": "GPU Memory Utilization",
+    "help": "Per-GPU memory limit for this instance; divide capacity manually when multiple instances share a GPU"
+  },
+  "enable_chunked_prefill": {
+    "label": "Chunked Prefill",
+    "help": "When disabled, the maximum batched token count cannot be smaller than the context length"
+  },
+  "max_num_batched_tokens": {
+    "label": "Maximum Batched Tokens",
+    "placeholder": "Automatic",
+    "help": "Leave empty to derive the value from the GPU model and performance profile"
+  },
+  "max_num_seqs": {
+    "label": "Maximum Concurrent Sequences",
+    "placeholder": "Automatic",
+    "help": "Leave empty to derive the value from available GPU memory"
+  },
+  "enable_prefix_caching": {
+    "label": "Prefix Caching",
+    "help": "Required for KV Offload"
+  },
+  "enable_cache_report": {
+    "label": "Cache Hit Stats",
+    "help": "Include prefix-cache hit token counts in each response's usage"
+  },
+  "enable_request_metrics": {
+    "label": "Per-request Timings",
+    "help": "The last event of each response also carries the request's queue, prefill and decode times, which the monitor's request view shows. Takes effect on images known to run vLLM 0.25.0 or later; other images start without it."
+  },
+  "kv_cache_dtype": {
+    "label": "KV Cache Precision",
+    "placeholder": "auto",
+    "help": "FP8 can significantly increase KV capacity, but requires support from the model and engine version",
+    "options": {
+      "auto": "Automatic",
+      "float16": "FP16",
+      "bfloat16": "BF16",
+      "fp8": "FP8",
+      "fp8_e4m3": "FP8 E4M3",
+      "fp8_e5m2": "FP8 E5M2",
+      "fp8_inc": "FP8 (INC)",
+      "fp8_per_token_head": "FP8 per-token-head",
+      "fp8_ds_mla": "FP8 DeepSeek MLA",
+      "nvfp4": "NVFP4",
+      "nvfp4_4over6": "NVFP4 4/6",
+      "nvfp4_ds_mla": "NVFP4 DeepSeek MLA",
+      "int8_per_token_head": "INT8 per-token-head",
+      "int4_per_token_head": "INT4 per-token-head",
+      "turboquant_k8v4": "TurboQuant K8V4",
+      "turboquant_4bit_nc": "TurboQuant 4-bit",
+      "turboquant_k3v4_nc": "TurboQuant K3V4",
+      "turboquant_3bit_nc": "TurboQuant 3-bit",
+      "ultraquant_4bit": "UltraQuant 4-bit",
+      "mxfp8": "MXFP8",
+      "fp4_mx_block16": "FP4 MX block-16"
+    }
+  },
+  "kv_offloading_size": {
+    "label": "KV Offload to Memory",
+    "help": "Total memory-tier capacity across all GPUs in GiB, not capacity per GPU"
+  },
+  "kv_disk_offload": {
+    "label": "KV Offload to Disk",
+    "help": "The disk tier is relayed through the memory tier, so configure the memory tier first"
+  },
+  "shared_kv_dir": {
+    "label": "Shared KV Directory",
+    "placeholder": "/data/gpuworks/kv-cache",
+    "help": "The platform creates and mounts a managed host directory at this container path, and keeps it inside the disk tier capacity."
+  },
+  "kv_offload_read_threads": {
+    "label": "Disk Read Threads"
+  },
+  "kv_offload_write_threads": {
+    "label": "Disk Write Threads"
+  },
+  "kv_disk_limit_gib": {
+    "label": "Disk Tier Capacity (GiB)",
+    "placeholder": "Twice the model weights",
+    "help": "Ceiling the platform enforces on the disk tier directory; the engine has no such limit. Leave empty to let the platform derive it from the model weights."
+  },
+  "enforce_eager": {
+    "label": "Enforce Eager Mode",
+    "help": "Starts faster and uses less GPU memory, but reduces steady-state decoding performance"
+  },
+  "speculative_algorithm": {
+    "label": "Speculative Decoding Algorithm",
+    "options": {
+      "eagle": "EAGLE",
+      "eagle3": "EAGLE 3",
+      "mtp": "MTP",
+      "ngram": "N-gram",
+      "draft_model": "Draft Model",
+      "EAGLE": "EAGLE",
+      "EAGLE3": "EAGLE 3",
+      "NEXTN": "NextN (MTP)",
+      "DSPARK": "DSpark",
+      "NGRAM": "N-gram",
+      "STANDALONE": "Standalone Draft Model"
+    }
+  },
+  "speculative_draft_model": {
+    "label": "Draft Model",
+    "placeholder": "Model ID or path inside the container"
+  },
+  "speculative_tokens": {
+    "label": "Speculative Tokens per Step"
+  },
+  "speculative_num_steps": {
+    "label": "Speculative Steps"
+  },
+  "speculative_eagle_top_k": {
+    "label": "EAGLE Top K"
+  },
+  "optimization_level": {
+    "label": "Compilation Optimization Level",
+    "options": {
+      "O0": "O0",
+      "O1": "O1",
+      "O2": "O2",
+      "O3": "O3"
+    }
+  },
+  "async_scheduling": {
+    "label": "Asynchronous Scheduling"
+  },
+  "long_prefill_token_threshold": {
+    "label": "Long Prefill Token Threshold",
+    "placeholder": "Automatic"
+  },
+  "kv_cache_memory_bytes": {
+    "label": "KV Cache GPU Memory in Bytes",
+    "placeholder": "Automatic"
+  },
+  "prefix_caching_hash_algo": {
+    "label": "Prefix Cache Hash Algorithm",
+    "options": {
+      "builtin": "Builtin",
+      "sha256": "SHA-256",
+      "sha256_cbor": "SHA-256 CBOR",
+      "xxhash": "xxHash"
+    }
+  },
+  "cpu_offload_gb": {
+    "label": "CPU Weight Offload (GiB)",
+    "help": "This offloads model weights and is unrelated to KV Offload"
+  },
+  "stream_interval": {
+    "label": "Streaming Output Interval"
+  },
+  "watermark": {
+    "label": "Cache Watermark"
+  },
+  "max_cudagraph_capture_size": {
+    "label": "Maximum CUDA Graph Capture Size"
+  },
+  "mm_encoder_tp_mode": {
+    "label": "Multimodal Encoder TP Mode",
+    "options": {
+      "weights": "Weights",
+      "data": "Data"
+    }
+  },
+  "api_server_count": {
+    "label": "API Server Count"
+  },
+  "data_parallel_size": {
+    "label": "Data Parallel Size"
+  },
+  "lora": {
+    "label": "Enable LoRA"
+  },
+  "enable_metrics": {
+    "label": "Enable Inference Metrics",
+    "help": "Expose engine inference metrics for GPUWorks monitoring"
+  }
+}

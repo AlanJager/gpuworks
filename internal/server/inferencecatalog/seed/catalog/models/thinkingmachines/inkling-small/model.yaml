@@ -1,0 +1,85 @@
+model_id: thinkingmachines/inkling-small
+source: upstream
+display_title: TML Inkling-Small
+parameter_count: 276B
+architecture: moe
+context_length: 1048576
+release_date: '2026-07-27'
+model_config: {model_type: inkling_mm_model, num_hidden_layers: 42, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, vision_config: {patch_size: 40}, audio_config: {model_type: ""}}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: thinkingmachines/Inkling-Small
+        revision: 8cc5877b44d343f88b92086aa1fb72897950f06a
+    - modelscope:
+        repo_id: thinkingmachines/Inkling-Small
+        revision: b2efc3c6b3aabc3a4faf6a8d57c802cbb267a7d4
+  weight_bytes: 531944669421
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - inkling
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - inkling
+  - --reasoning-parser
+  - inkling
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: thinkingmachines/Inkling-Small-NVFP4
+        revision: b6a99534467840620d411e4cd4ad5819b2610d9c
+    - modelscope:
+        repo_id: thinkingmachines/Inkling-Small-NVFP4
+        revision: 43cca267255415f915cd3cbb19836ed4159c8b68
+  weight_bytes: 170764923366
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - inkling
+  - --kernel-config.enable_flashinfer_autotune
+  - 'False'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - inkling
+  - --reasoning-parser
+  - inkling
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    FLASH_ATTENTION_CUTE_DSL_CACHE_ENABLED: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image, audio]

@@ -1,0 +1,117 @@
+{
+  "as_of": 1758182650000,
+  "stale": false,
+  "signals": [
+    { "key": "ready_replicas", "collected": true, "value": 9, "denominator": 11, "detail": { "not_ready": ["Llama-3.1-70B"] } },
+    { "key": "error_rate", "collected": true, "value": 2.9, "detail": { "5xx": 0.6, "429": 2.0, "asleep_503": 0.3 }, "spark": [[1758181650000, 2.1], [1758182150000, 2.5], [1758182650000, 2.9]] },
+    { "key": "request_rate", "collected": false },
+    { "key": "token_rate", "collected": true, "value": 8420, "denominator": 5130, "spark": [[1758181650000, 7800], [1758182150000, 8100], [1758182650000, 8420]] },
+    { "key": "ttft", "collected": true, "value": 310, "denominator": 480, "detail": { "upper_bound": true }, "spark": [[1758181650000, 280], [1758182150000, 300], [1758182650000, 310]] },
+    { "key": "tpot", "collected": true, "value": 55, "denominator": 90, "detail": { "upper_bound": true }, "spark": [[1758181650000, 48], [1758182150000, 52], [1758182650000, 55]] },
+    { "key": "waiting", "collected": true, "value": 14, "spark": [[1758181650000, 3], [1758182150000, 9], [1758182650000, 14]] },
+    { "key": "preemptions", "collected": true, "value": 0, "detail": { "no_recent_requests": true }, "spark": [[1758181650000, 0], [1758182150000, 0], [1758182650000, 0]] }
+  ],
+  "services": [
+    {
+      "deployment_id": 101, "name": "Qwen3-32B", "engine": "vllm", "placement": "TP4 · gpu3, gpu4",
+      "replicas": { "ready": 2, "desired": 2 }, "state": "running",
+      "request_rate": 8.4, "ttft_p95_ms": 210,
+      "running": 12, "waiting": 0, "kv_usage_pct": 38, "kv_hit_rate_pct": 61,
+      "prompt_tok_s": 620, "generation_tok_s": 410,
+      "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
+    },
+    {
+      "deployment_id": 102, "name": "Qwen2.5-7B-Instruct", "engine": "vllm", "placement": "TP1 · gpu1",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "running",
+      "request_rate": 14.2, "ttft_p95_ms": 480,
+      "running": 64, "waiting": 21, "kv_usage_pct": 94, "kv_hit_rate_pct": 33,
+      "prompt_tok_s": 3100, "generation_tok_s": 1820,
+      "health": { "status": "timeout", "threshold_sec": 30, "last": { "at_ms": 1758182640000, "status": "timeout", "latency_ms": 30000, "message": "context deadline exceeded" }, "recent_mean_ms": null, "recent_ok": 0, "recent": [{ "at_ms": 1758182640000, "status": "timeout", "latency_ms": 30000, "message": "context deadline exceeded" }] }
+    },
+    {
+      "deployment_id": 103, "name": "Llama-3.1-70B", "engine": "sglang", "placement": "TP8 · gpu5, gpu6",
+      "replicas": { "ready": 0, "desired": 2 }, "state": "starting",
+      "request_rate": null, "ttft_p95_ms": null,
+      "running": null, "waiting": null, "kv_usage_pct": null, "kv_hit_rate_pct": null,
+      "prompt_tok_s": null, "generation_tok_s": null,
+      "health": { "status": "no_replica", "threshold_sec": 60, "last": null, "recent_mean_ms": null, "recent_ok": 0, "recent": [] }
+    },
+    {
+      "deployment_id": 104, "name": "DeepSeek-V2-Lite", "engine": "vllm", "placement": "TP1 · gpu2",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "running",
+      "request_rate": 0, "ttft_p95_ms": null,
+      "running": 0, "waiting": 0, "kv_usage_pct": 2, "kv_hit_rate_pct": 0,
+      "prompt_tok_s": 0, "generation_tok_s": 0,
+      "health": { "status": "off", "threshold_sec": 60, "last": null, "recent_mean_ms": null, "recent_ok": 0, "recent": [] }
+    },
+    {
+      "deployment_id": 105, "name": "Baichuan2-13B", "engine": "vllm", "placement": "TP2 · gpu3",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "running",
+      "request_rate": 6.1, "ttft_p95_ms": 340,
+      "running": 32, "waiting": 8, "kv_usage_pct": 55, "kv_hit_rate_pct": 40,
+      "prompt_tok_s": 900, "generation_tok_s": 610,
+      "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
+    },
+    {
+      "deployment_id": 106, "name": "Yi-1.5-34B", "engine": "sglang", "placement": "TP2 · gpu7",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "running",
+      "request_rate": 2.3, "ttft_p95_ms": 180,
+      "running": 5, "waiting": 0, "kv_usage_pct": 20, "kv_hit_rate_pct": 71,
+      "prompt_tok_s": 300, "generation_tok_s": 200,
+      "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
+    },
+    {
+      "deployment_id": 107, "name": "ChatGLM3-6B", "engine": "vllm", "placement": "TP1 · gpu8",
+      "replicas": { "ready": 0, "desired": 1 }, "state": "failed",
+      "request_rate": 1.8, "ttft_p95_ms": null,
+      "running": null, "waiting": null, "kv_usage_pct": null, "kv_hit_rate_pct": null,
+      "prompt_tok_s": null, "generation_tok_s": null,
+      "health": { "status": "failed", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "failed", "latency_ms": 12, "http_status": 503, "message": "no healthy upstream" }, "recent_mean_ms": null, "recent_ok": 0, "recent": [{ "at_ms": 1758182640000, "status": "failed", "latency_ms": 12, "http_status": 503, "message": "no healthy upstream" }] }
+    },
+    {
+      "deployment_id": 108, "name": "InternLM2-20B", "engine": "vllm", "placement": "TP2 · gpu4",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "running",
+      "request_rate": 9.7, "ttft_p95_ms": 260,
+      "running": 18, "waiting": 3, "kv_usage_pct": 47, "kv_hit_rate_pct": 55,
+      "prompt_tok_s": 700, "generation_tok_s": 450,
+      "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
+    },
+    {
+      "deployment_id": 109, "name": "Mixtral-8x7B", "engine": "vllm", "placement": "TP4 · gpu5",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "asleep",
+      "request_rate": 0.4, "ttft_p95_ms": null,
+      "running": 0, "waiting": 0, "kv_usage_pct": null, "kv_hit_rate_pct": null,
+      "prompt_tok_s": 0, "generation_tok_s": 0,
+      "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
+    },
+    {
+      "deployment_id": 110, "name": "GLM-4-9B", "engine": "sglang", "placement": "TP1 · gpu6",
+      "replicas": { "ready": 1, "desired": 1 }, "state": "running",
+      "request_rate": 11.5, "ttft_p95_ms": 300,
+      "running": 40, "waiting": 12, "kv_usage_pct": 61, "kv_hit_rate_pct": 45,
+      "prompt_tok_s": 1200, "generation_tok_s": 800,
+      "health": { "status": "pending", "threshold_sec": 60, "last": null, "recent_mean_ms": null, "recent_ok": 0, "recent": [] }
+    },
+    {
+      "deployment_id": 111, "name": "Qwen2-72B", "engine": "vllm", "placement": "TP8 · gpu1, gpu2",
+      "replicas": { "ready": 2, "desired": 2 }, "state": "running",
+      "request_rate": 20.9, "ttft_p95_ms": 220,
+      "running": 50, "waiting": 6, "kv_usage_pct": 70, "kv_hit_rate_pct": 38,
+      "prompt_tok_s": 1600, "generation_tok_s": 950,
+      "health": { "status": "ok", "threshold_sec": 60, "last": { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }, "recent_mean_ms": 90, "recent_ok": 2, "recent": [{ "at_ms": 1758182580000, "status": "ok", "latency_ms": 95, "http_status": 200 }, { "at_ms": 1758182640000, "status": "ok", "latency_ms": 85, "http_status": 200 }] }
+    }
+  ],
+  "vram_by_node": [
+    { "node_uuid": "node-gpu3", "name": "gpu3", "gpu_count": 8, "total_bytes": 687194767360, "allocated_bytes": 549755813888, "used_bytes": 214748364800, "used_as_of": 1758182650000 },
+    { "node_uuid": "node-gpu4", "name": "gpu4", "gpu_count": 8, "total_bytes": 687194767360, "allocated_bytes": 343597383680, "used_bytes": 300647710720, "used_as_of": 1758182650000 },
+    { "node_uuid": "node-gpu5", "name": "gpu5", "gpu_count": 4, "total_bytes": 343597383680, "allocated_bytes": 85899345920, "used_bytes": 21474836480, "used_as_of": 1758182650000 }
+  ],
+  "cluster_tokens": {
+    "prompt": { "labels": {}, "points": [[1758181650000, 6800], [1758181950000, 7200], [1758182250000, 7900], [1758182650000, 8420]] },
+    "generation": { "labels": {}, "points": [[1758181650000, 4200], [1758181950000, 4500], [1758182250000, 4800], [1758182650000, 5130]] }
+  },
+  "events": [
+    { "time_ms": 1758182100000, "kind": "instance_failed", "deployment_id": 107, "instance_uuid": "inst-chatglm3-1", "label": "ChatGLM3-6B" },
+    { "time_ms": 1758182500000, "kind": "instance_running", "deployment_id": 103, "instance_uuid": "inst-llama-1", "label": "Llama-3.1-70B" }
+  ]
+}

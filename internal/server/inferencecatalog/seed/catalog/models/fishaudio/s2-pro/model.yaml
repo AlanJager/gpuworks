@@ -1,0 +1,77 @@
+model_id: fishaudio/s2-pro
+source: upstream
+display_title: Fish Speech S2 Pro
+parameter_count: 4.6B
+architecture: dense
+release_date: '2026-03-09'
+model_config: {model_type: fish_qwen3_omni, num_hidden_layers: 36, hidden_size: 2560, num_attention_heads: 32, head_dim: 128}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: fishaudio/s2-pro
+        revision: 1de9996b6be38b745688de084d87a5633f714e4e
+    - modelscope:
+        repo_id: fishaudio/s2-pro
+        revision: 25d17c7b8763aa4bab6ec86fd61e2a3f388f2d04
+  weight_bytes: 11011629649
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      inputs:
+      - name: ref_audio
+        kind: audio
+        encoding: data_url
+      - name: ref_text
+        kind: text
+- name: bf16-vllm-ppu-1de9996b
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: fishaudio/s2-pro
+        revision: 1de9996b6be38b745688de084d87a5633f714e4e
+    - modelscope:
+        repo_id: fishaudio/s2-pro
+        revision: 25d17c7b8763aa4bab6ec86fd61e2a3f388f2d04
+  weight_bytes: 9123749088
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --omni
+  - --deploy-config
+  - /usr/local/lib/python3.12/site-packages/vllm_omni/deploy/fish_qwen3_omni.yaml
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      inputs:
+      - name: ref_audio
+        kind: audio
+        encoding: data_url
+      - name: ref_text
+        kind: text
+input_modalities: [text, audio]

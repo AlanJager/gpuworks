@@ -1,0 +1,101 @@
+{
+  "scope": "Targeted real serving-network path; not whole network page coverage",
+  "test_file": "test/e2e/remote_network_runtime.py",
+  "command": "python3 test/e2e/remote_runtime_acceptance.py --config <private.json> --case network",
+  "lane": "remote-real-agent-gpu",
+  "identity": "admin",
+  "cases": [
+    {
+      "case_id": "network",
+      "contract_id": "gpuworks/network/serving-direct-real-gpu",
+      "name": "网络 / UI 创建并绑定专属 Serving 网络 / 真实 GPU 推理走直连、解绑删除后恢复管理网络推理",
+      "test_function": "run_network",
+      "required_evidence": ["ui", "request", "persistence", "runtime", "cleanup"],
+      "prerequisites": [
+        "Explicit remote base_url and node_uuid; credentials only in private config",
+        "Real online agent with network inventory, host terminal and non-loopback IPv4 management NIC",
+        "Selected node serving resolves only to management; no existing explicit serving binding",
+        "Every instance on this server's selected node belongs to the run-owned GPU deployment",
+        "Run-owned real GPU model deployment and API key; selected node has a unique searchable display name",
+        "Server can reach the selected node's serving TLS forwarder on port 19443"
+      ],
+      "crud": {
+        "Create": "UI creates run-owned host_ethernet serving network and attaches selected node",
+        "Read": "Independent GET plus browser refresh proves fields, attachment and resolved endpoint",
+        "Update": "UI removes attachment; standalone network field edits not covered here",
+        "Delete": "UI deletes detached network; detail 404, collection absence and node baseline restored"
+      },
+      "fields": [
+        {
+          "id": "network.name",
+          "component": "Text",
+          "request": "name",
+          "persisted": "name",
+          "covered": ["unique run-owned name", "refresh and independent GET"],
+          "missing": ["length and validation boundaries"]
+        },
+        {
+          "id": "network.type-and-roles",
+          "component": "Radio / Checkbox",
+          "request": "type / roles",
+          "persisted": "type / roles",
+          "covered": ["host_ethernet default", "serving selected", "exact JSON and GET"],
+          "missing": ["other roles and types", "combinations"]
+        },
+        {
+          "id": "network.endpoint-selector",
+          "component": "Text",
+          "request": "cidr / interface",
+          "persisted": "cidr / interface",
+          "covered": ["real reported IPv4 /32 and NIC", "host inventory confirmation", "resolved node endpoint"],
+          "missing": ["IPv6", "wildcards", "invalid or unavailable endpoint"]
+        },
+        {
+          "id": "attachment.nodes",
+          "component": "NodePicker multi-select",
+          "request": "node_uuids",
+          "persisted": "attachments[].node_uuid",
+          "covered": ["human-readable API search", "keyboard selection", "exact single-node batch body", "refresh", "UI detach"],
+          "missing": ["empty search", "large set", "multiple nodes", "disabled nodes", "label binding", "override edit"]
+        }
+      ],
+      "checklist_items": {
+        "1": "PARTIAL: create/attach/detach/delete with exact request and refresh",
+        "8": "PARTIAL: human-readable searchable node selector, keyboard selection and persisted binding",
+        "12": "PARTIAL: named dialogs, viewport and visible confirmation actions",
+        "14.8": "Runtime prerequisite: runner owns real GPU deployment; this case does not claim UI deployment creation",
+        "20.2": "Public gateway non-stream chat confirms real generation on baseline/direct/restored paths"
+      },
+      "runtime": {
+        "scope": "Single real GPU node; direct serving uses the same physical NIC as management, but replaces its agent tunnel path",
+        "assertions": [
+          "Host ip inventory contains the authoritative management NIC/address",
+          "Baseline real chat succeeds with management serving only",
+          "UI binding resolves serving uniquely to this run's network and attachment IDs",
+          "Real chat succeeds and serving_forward.address equals selected IP:19443, mode=direct, reason empty",
+          "UI detach and delete restore management networks exactly and remove serving_forward",
+          "The same model again returns real chat text and usage after restoration"
+        ],
+        "failure_injection": "Not covered: no shared-node firewall or interface disruption is performed"
+      },
+      "cleanup": "Case removes only its network through UI. Runner separately owns deployment/API key cleanup; failure keeps scoped resource IDs for diagnosis.",
+      "missing": [
+        "Failure injection proving unreachable dedicated network rejects instead of falling back",
+        "Cross-node communication, storage-sync transfer, NCCL/RDMA or bandwidth",
+        "Distinct physical serving NIC isolation",
+        "Concurrent existing workloads on this server's selected node",
+        "Full field/list/error/permission/component matrix",
+        "Streaming, cancellation and Playground UI"
+      ],
+      "product_contracts": [
+        "ui/src/pages/networks/NetworkFormModal.tsx",
+        "ui/src/pages/networks/AttachNetworkModal.tsx",
+        "ui/src/pages/networks/NetworkDetailPage.tsx",
+        "internal/server/api/network_attachments.go",
+        "internal/server/network/service.go",
+        "internal/server/proxy/serving_dial.go",
+        "internal/server/proxy/proxy.go"
+      ]
+    }
+  ]
+}

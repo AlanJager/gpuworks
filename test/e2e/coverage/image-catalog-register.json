@@ -1,0 +1,247 @@
+{
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_catalog.py",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Catalog metadata only. No image pull, layer validation, node availability or container execution is claimed."
+  },
+  "product_contracts": [
+    "ui/src/pages/images/ImageImportDrawer.tsx",
+    "ui/src/pages/images/ImageDetailDrawer.tsx",
+    "internal/server/api/images_catalog_import.go",
+    "internal/server/api/images.go"
+  ],
+  "contract_id": "gpuworks/image-catalog/tagged-registration",
+  "name": "镜像目录 / 自定义带 tag 镜像登记 / 系列和版本分别持久化",
+  "test_function": "test_image_registration",
+  "command": "make test-e2e-image-register",
+  "missing": [
+    "MISSING: official catalog update button and manifest file upload; valid/invalid/duplicate content, result counters and independent catalog readback are separate from custom form registration",
+    "full field and enumeration matrix",
+    "list search/filter/page-size and 10/30/100 volumes",
+    "service failure and recovery",
+    "non-admin permissions",
+    "referenced-version deletion and CAS/impact contract",
+    "parent-series business deletion (cleanup is not coverage)",
+    "full keyboard/computed-style/loading/error layout matrix",
+    "image pull, distribution, container runtime and inference"
+  ],
+  "crud": {
+    "create": "covered: explicit series name, tagged vLLM/CUDA metadata",
+    "read": "covered: independent series and versions GET, reload/detail",
+    "update": "MISSING",
+    "delete": "MISSING: cleanup only"
+  },
+  "fields": [
+    {
+      "field_id": "image.series-name",
+      "component": "Text",
+      "request": "series[].name",
+      "persistence": "series.name",
+      "covered": [
+        "default empty",
+        "explicit unique name"
+      ],
+      "missing": [
+        "automatic repository grouping",
+        "length/whitespace boundaries"
+      ],
+      "required": false,
+      "default": "",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    },
+    {
+      "field_id": "image.reference",
+      "component": "Text",
+      "request": "series[].versions[].image_ref",
+      "persistence": "version.image_ref",
+      "covered": [
+        "empty",
+        "whitespace",
+        "missing tag",
+        "trim valid tagged ref"
+      ],
+      "missing": [
+        "digest",
+        "invalid syntax",
+        "length boundaries"
+      ],
+      "required": true,
+      "default": "",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "Explicit tag required; digest references rejected"
+    },
+    {
+      "field_id": "image.engine",
+      "component": "Select",
+      "request": "series[].engine",
+      "persistence": "series.engine",
+      "covered": [
+        "real GET /images/engines",
+        "option:vllm"
+      ],
+      "missing": [
+        "all other server options",
+        "clear/reset",
+        "loading/error"
+      ],
+      "required": true,
+      "default": "",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "Options are supplied by GET /images/engines"
+    },
+    {
+      "field_id": "image.engine-version",
+      "component": "Text",
+      "request": "series[].versions[].engine_version",
+      "persistence": "version.engine_version",
+      "covered": [
+        "valid 0.10.2"
+      ],
+      "missing": [
+        "empty default",
+        "boundaries"
+      ],
+      "required": false,
+      "default": "",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    },
+    {
+      "field_id": "image.framework",
+      "component": "Select",
+      "request": "series[].framework",
+      "persistence": "series.framework",
+      "covered": [
+        "option:cuda"
+      ],
+      "missing": [
+        "option:cann",
+        "option:rocm",
+        "option:hggc",
+        "option:dtk",
+        "option:metal",
+        "clear"
+      ],
+      "required": true,
+      "default": "",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    },
+    {
+      "field_id": "image.framework-version",
+      "component": "Text",
+      "request": "series[].versions[].framework_version",
+      "persistence": "version.framework_version",
+      "covered": [
+        "required",
+        "valid 12.8"
+      ],
+      "missing": [
+        "whitespace",
+        "boundaries"
+      ],
+      "required": true,
+      "default": "",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "Required non-whitespace when framework is declared"
+    },
+    {
+      "field_id": "image.architecture",
+      "component": "Select",
+      "request": "series[].versions[].arch",
+      "persistence": "version.arch",
+      "covered": [
+        "default multi"
+      ],
+      "missing": [
+        "option:amd64",
+        "option:arm64"
+      ],
+      "required": false,
+      "default": "multi",
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    },
+    {
+      "field_id": "image.rolling",
+      "component": "Switch",
+      "request": "series[].versions[].rolling_tag",
+      "persistence": "version.rolling_tag",
+      "covered": [
+        "default false"
+      ],
+      "missing": [
+        "true",
+        "toggle back"
+      ],
+      "required": false,
+      "default": false,
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    },
+    {
+      "field_id": "image.sources",
+      "component": "Multi-select",
+      "request": "series[].versions[].registry_sources",
+      "persistence": "version.registry_sources",
+      "covered": [
+        "omitted -> empty array"
+      ],
+      "missing": [
+        "add",
+        "remove",
+        "clear",
+        "invalid URL"
+      ],
+      "required": false,
+      "default": [],
+      "unit": "N/A: metadata string/boolean/list, not a quantity",
+      "conditional": "Always visible in custom catalog registration form",
+      "validation_contract": "No additional length boundary declared by this UI form"
+    }
+  ],
+  "separate_flow_not_covered": [
+    "archive URL resolve/import card",
+    "community repository browser"
+  ],
+  "checklist_items": {
+    "partial": [
+      "1.2",
+      "1.3",
+      "1.5",
+      "1.7",
+      "1.8",
+      "1.11",
+      "1.14",
+      "2.1",
+      "2.2",
+      "4.4",
+      "5.1",
+      "5.2",
+      "6.1",
+      "12.1",
+      "12.2",
+      "12.4"
+    ],
+    "reason": "Evidence is restricted to the field branches explicitly listed above; no full component claims"
+  }
+}

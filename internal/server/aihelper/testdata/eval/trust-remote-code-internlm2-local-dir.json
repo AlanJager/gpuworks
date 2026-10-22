@@ -1,0 +1,67 @@
+{
+  "id": "trust-remote-code-internlm2-local-dir",
+  "source": "https://github.com/huggingface/transformers/blob/main/src/transformers/dynamic_module_utils.py (resolve_trust_remote_code); https://github.com/vllm-project/vllm/blob/main/vllm/transformers_utils/config.py",
+  "note": "internlm2_5-7b-chat ships its config/modeling code via auto_map; deployment launched without --trust-remote-code, so AutoConfig refuses while vLLM builds the model config. Constructed from upstream message format (local-directory variant, which upstream concatenates with the hub-URL sentence); command and GPU chosen for the scenario.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "internlm2.5-7b-chat",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--max-model-len",
+    "8192"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A10",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 08:01:12 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 08:01:12 [utils.py:233] non-default args: {'model_tag': '/model', 'host': '127.0.0.1', 'port': 30000, 'model': '/model', 'max_model_len': 8192, 'served_model_name': ['internlm2.5-7b-chat']}",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/bin/vllm\", line 10, in <module>",
+    "(APIServer pid=1)     sys.exit(main())",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/cli/serve.py\", line 59, in cmd",
+    "(APIServer pid=1)     uvloop.run(run_server(args))",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/openai/api_server.py\", line 1884, in run_server_worker",
+    "(APIServer pid=1)     async with build_async_engine_client(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/engine/arg_utils.py\", line 1121, in create_engine_config",
+    "(APIServer pid=1)     model_config = self.create_model_config()",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/config/model.py\", line 456, in __post_init__",
+    "(APIServer pid=1)     hf_config = get_config(self.hf_config_path or self.model,",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/config.py\", line 128, in parse",
+    "(APIServer pid=1)     config = AutoConfig.from_pretrained(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/models/auto/configuration_auto.py\", line 1312, in from_pretrained",
+    "(APIServer pid=1)     trust_remote_code = resolve_trust_remote_code(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/dynamic_module_utils.py\", line 728, in resolve_trust_remote_code",
+    "(APIServer pid=1)     raise ValueError(",
+    "(APIServer pid=1) ValueError: The repository /model contains custom code which must be executed to correctly load the model. You can inspect the repository content at /model .",
+    "(APIServer pid=1)  You can inspect the repository content at https://hf.co//model.",
+    "(APIServer pid=1) Please pass the argument `trust_remote_code=True` to allow custom code to be run."
+  ],
+  "expect_signature": "trust_remote_code_required",
+  "expect_keywords": [
+    [
+      "--trust-remote-code",
+      "trust_remote_code"
+    ],
+    [
+      "auto_map",
+      "custom code",
+      "自定义代码",
+      "来源可信",
+      "trusted source",
+      "审查",
+      "inspect"
+    ]
+  ]
+}

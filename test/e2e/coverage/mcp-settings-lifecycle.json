@@ -1,0 +1,161 @@
+{
+  "contract_id": "gpuworks/settings/mcp-toggle-runtime",
+  "name": "设置 / MCP 开关关闭、开启、再关闭与恢复 / 刷新持久化且真实工具调用随开关允许或拒绝",
+  "priority": "P0",
+  "page_id": "settings",
+  "test_file": "test/e2e/mcp_settings_lifecycle.py",
+  "test_function": "test_mcp_toggle_runtime",
+  "command": "make test-e2e-mcp-settings",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin browser; independent read-token client",
+  "product_contracts": [
+    "ui/src/pages/SettingsPage.tsx",
+    "ui/src/pages/settings/MCPCard.tsx",
+    "internal/server/api/mcp.go",
+    "internal/server/api/mcp_test.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "fields": [
+    {
+      "field_id": "settings.tab.access",
+      "component": "Tabs",
+      "request": "URL fragment #access (client navigation)",
+      "persistence": "URL fragment; refresh restores tab",
+      "covered": [
+        "real Security & access tab click sets aria-selected=true and /settings#access",
+        "each toggle reload preserves #access and MCP switch state"
+      ],
+      "missing": [
+        "all other tabs",
+        "direct access deep link before login",
+        "keyboard tab navigation",
+        "browser forward"
+      ]
+    },
+    {
+      "field_id": "settings.mcp.enabled",
+      "component": "Switch",
+      "default": false,
+      "request": "enabled (boolean)",
+      "persistence": "mcp_enabled",
+      "covered": [
+        "default off",
+        "off->on",
+        "on->off",
+        "re-enable",
+        "reload"
+      ],
+      "missing": [
+        "non-admin disabled state",
+        "server write failure"
+      ]
+    },
+    {
+      "field_id": "settings.mcp.endpoint",
+      "component": "Copyable text",
+      "request": "POST to the copied endpoint",
+      "persistence": "N/A: derived from browser origin and MCP status.path",
+      "covered": [],
+      "missing": [],
+      "covered_by_additional_cases": "test/e2e/coverage/mcp-copied-config.json"
+    },
+    {
+      "field_id": "settings.mcp.claude-config",
+      "component": "Copyable command",
+      "request": "MCP endpoint and Authorization placeholder in command",
+      "persistence": "N/A: derived client configuration",
+      "covered": [],
+      "missing": [
+        "MISSING: copied command equals displayed configuration, preserves origin/path, and is parsed/consumed without rewriting endpoint"
+      ]
+    },
+    {
+      "field_id": "settings.mcp.other-clients",
+      "component": "Collapse and copyable JSON",
+      "request": "MCP endpoint and Authorization placeholder in JSON",
+      "persistence": "N/A: derived client configuration",
+      "covered": [],
+      "missing": [],
+      "covered_by_additional_cases": "test/e2e/coverage/mcp-copied-config.json"
+    },
+    {
+      "field_id": "settings.mcp.create-token-link",
+      "component": "Link",
+      "request": "navigation to /apikeys",
+      "persistence": "N/A: navigation",
+      "covered": [],
+      "missing": [],
+      "covered_by_additional_cases": "test/e2e/coverage/mcp-copied-config.json"
+    },
+    {
+      "field_id": "settings.mcp.retry",
+      "component": "Button",
+      "request": "GET /api/v1/mcp/status",
+      "persistence": "N/A: retries status read",
+      "covered": [],
+      "missing": [
+        "MISSING: real status-load failure exposes retry; retry restores status and switch availability; browser management mocks are not evidence"
+      ]
+    }
+  ],
+  "crud": {
+    "create": "N/A: built-in singleton setting",
+    "read": "status and browser reload after each toggle",
+    "update": "UI on/off/recovery with exact boolean body",
+    "delete": "N/A: singleton is disabled rather than deleted"
+  },
+  "runtime": [
+    "off gives 403 MCP_DISABLED",
+    "initialize protocol/capabilities",
+    "initialized notification 202",
+    "tools/list agrees with status",
+    "call_api reads canonical node inventory",
+    "credential APIs not readable",
+    "read token cannot write settings",
+    "same token recovers after re-enable"
+  ],
+  "checklist_items": {
+    "covered_in_this_scenario": [
+      "6.2",
+      "6.6"
+    ],
+    "partial": {
+      "6.1": "default and accessible name; non-admin disabled state missing",
+      "22.2": "Access tab click sets #access; each toggle reload preserves the access selected state, URL and persisted MCP state; browser history and other tabs are MISSING."
+    },
+    "not_applicable": {
+      "6.3": "MCP uses a boolean, no tri-state",
+      "6.4": "No conditional form fields"
+    }
+  },
+  "execution_evidence": {
+    "status": "N/A",
+    "reason": "MCP authorization/tools run in server, no agent/container/GPU required"
+  },
+  "missing": [
+    "non-admin browser lane",
+    "all tool argument/error boundaries",
+    "computed-style state matrix",
+    "service failure recovery",
+    "other settings cards"
+  ],
+  "cleanup": "UI restores off; API fixture token revoked with GET absence; owned process stopped; failure cleanup uses real APIs, retaining resource IDs until independent absence; trace/context/browser/server stages run independently and any failed stage withdraws PASS. remaining_resources records unresolved IDs/processes. test_mcp_cleanup.py injects close and cleanup failures.",
+  "result": "NOT_RUN until the selected run report contains PASS and required evidence; not full page coverage",
+  "artifact": "secrets/e2e/<runId>/report.json (target branch/SHA, source SHA, cleanup_stages and remaining_resources included)",
+  "additional_cases": [
+    {
+      "coverage_manifest": "test/e2e/coverage/mcp-copied-config.json",
+      "test_file": "test/e2e/mcp_copied_config.py",
+      "contract_ids": [
+        "gpuworks/settings/mcp-copied-endpoint",
+        "gpuworks/settings/mcp-copied-generic-json"
+      ]
+    }
+  ]
+}

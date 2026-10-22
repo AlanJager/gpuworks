@@ -1,0 +1,108 @@
+model_id: poolside/Laguna-S-2.1-INT4
+source: upstream
+display_title: Laguna-S-2.1-INT4
+model_config:
+  model_type: laguna
+  num_hidden_layers: 48
+  hidden_size: 3072
+  num_attention_heads: 48
+  num_key_value_heads: 8
+  head_dim: 128
+  max_position_embeddings: 1048576
+  sliding_window: 512
+  layer_types:
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+  - full_attention
+  - sliding_attention
+  - sliding_attention
+  - sliding_attention
+kv_bytes_per_token:
+  vllm: 196608
+  sglang: 196608
+specs:
+- name: int4-vllm-ppu-a6977d07
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-S-2.1-INT4
+        revision: a6977d070dded94c8776e29a94f7166ab1488e6c
+    - modelscope:
+        repo_id: poolside/Laguna-S-2.1-INT4
+        revision: ee646c64d2e6c64e5ace1bc6486047f26ff259ef
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '1024'
+  - --max-num-seqs
+  - '1'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 99690147680
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"PPU profile requires exactly 2 GPUs\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"PP_SIZE\": 1, \"SP_DEGREE\": 1}\n"
+input_modalities:
+- text

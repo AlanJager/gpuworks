@@ -1,0 +1,133 @@
+{
+  "deployment": {
+    "operations": [],
+    "id": 1,
+    "template_deviated": false,
+    "catalog_selection_snapshot": {},
+    "name": "sliced",
+    "engine": "vllm",
+    "image": "example/vllm:test",
+    "model_id": 1,
+    "model_name": "partition-pool",
+    "node_uuid": "quota-node",
+    "node_name": "quota-node",
+    "node_uuids": [
+      "quota-node"
+    ],
+    "node_names": [
+      "quota-node"
+    ],
+    "node_requirements": {
+      "gpuworks.ai/node": [
+        "quota-node"
+      ],
+      "gpuworks.ai/vendor": [
+        "nvidia"
+      ]
+    },
+    "node_requirement_labels": [
+      {
+        "key": "gpuworks.ai/node",
+        "value": "quota-node",
+        "display": "quota-node",
+        "nodes": 1
+      },
+      {
+        "key": "gpuworks.ai/vendor",
+        "value": "nvidia",
+        "display": "NVIDIA",
+        "display_code": "common:vendor.nvidia",
+        "nodes": 1
+      }
+    ],
+    "placement_strategy": "spread",
+    "served_name": "partition-pool",
+    "quick_params": {
+      "dtype": "auto",
+      "enable_cache_report": true,
+      "gpu_memory_utilization": 0.9,
+      "kv_cache_dtype": "auto",
+      "performance_mode": "balanced",
+      "served_model_name": ""
+    },
+    "desired_state": "active",
+    "runtime_state": "running",
+    "sleepable": false,
+    "partition_backend": "nvidia-dgpu",
+    "vram_limit_bytes": 6442450944,
+    "replicas": 1,
+    "max_replicas": 32,
+    "routing_policy": "least_request",
+    "ready_replicas": 1,
+    "health": {
+      "status": "off",
+      "threshold_sec": 60,
+      "last": null,
+      "recent_mean_ms": null,
+      "recent_ok": 0,
+      "recent": []
+    },
+    "tokenize_enabled": true,
+    "nnodes": 1,
+    "node_rank": 0,
+    "created_at": "2026-10-18T08:00:00Z",
+    "model_progress": [
+      {
+        "model_id": 1,
+        "model_name": "partition-pool",
+        "preparation": {
+          "phase": "waiting",
+          "reason": "MODEL_PREPARATION_WAITING",
+          "total_known": false,
+          "idle_seconds": 0
+        },
+        "node_uuid": "quota-node",
+        "node_name": "quota-node",
+        "state": "pending",
+        "path": "",
+        "progress": 0,
+        "size_bytes": 0,
+        "downloaded": 0,
+        "transferred_bytes": 0,
+        "rate_bps": 0,
+        "acquisition": "",
+        "storage_id": 1,
+        "storage_name": "default",
+        "storage_type": "local"
+      }
+    ],
+    "instances": [
+      {
+        "uuid": "quota-own",
+        "deployment_id": 1,
+        "node_uuid": "quota-node",
+        "state": "running",
+        "gpu_indexes": [
+          0
+        ],
+        "vram_limit_bytes": 12884901888,
+        "ports": null,
+        "api_port": 0,
+        "image": "",
+        "message": "",
+        "sleep_level": 0,
+        "desired_sleep": 0,
+        "asleep": false,
+        "replica": {
+          "index": 0
+        },
+        "can_sleep_alone": false,
+        "can_wake_alone": false,
+        "node_rank": 0
+      }
+    ]
+  },
+  "live": [],
+  "pending": [
+    {
+      "instance_uuid": "quota-own",
+      "reason": "in_use",
+      "used_bytes": 10737418240
+    }
+  ]
+}

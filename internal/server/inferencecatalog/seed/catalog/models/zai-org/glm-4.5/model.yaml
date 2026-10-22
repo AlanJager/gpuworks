@@ -1,0 +1,77 @@
+model_id: zai-org/glm-4.5
+source: upstream
+display_title: GLM-4.5
+parameter_count: 358B
+architecture: moe
+context_length: 131072
+release_date: '2025-07-20'
+model_config: {model_type: glm4_moe, num_hidden_layers: 92, hidden_size: 5120, num_attention_heads: 96, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072}
+kv_bytes_per_token:
+  vllm: 376832
+  sglang: 376832
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.5
+        revision: cbb2c7cfb52fa128a9660cb1a7a78e017899e115
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.5
+        revision: 617a23ee4d1bceaab8e3be62b26baf77e1f39507
+  weight_bytes: 716705229651
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - glm45
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - glm45
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-4.5-FP8
+        revision: 8cc290ee4c7cbfa38d3a2db9bd0b7371773ece81
+    - modelscope:
+        repo_id: ZhipuAI/GLM-4.5-FP8
+        revision: 8942304d06702837e581c54afa39444cba29e44b
+  weight_bytes: 361316492703
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --tool-call-parser
+  - glm45
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - glm45
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

@@ -1,0 +1,297 @@
+import { useEffect, useMemo, useState } from "react";
+import { PlusOutlined } from "@ant-design/icons";
+import {
+  Button,
+  Card,
+  Checkbox,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Typography,
+  message,
+} from "antd";
+import {
+  api,
+  useEvents,
+  usePolling,
+  type EngineProfile,
+  type List,
+  type Node,
+  type TopoHighlight,
+} from "../api";
+import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import ResourceTable, { storedPageSize, type ServerSort } from "../components/resourceTable/ResourceTable";
+import { NODE_TABLE_ID, nodeColumns } from "./nodes/nodeColumns";
+import NodeDetailDrawer, { type NodeDetailTab } from "./nodes/NodeDetailDrawer";
+import { usePagedList } from "../pagedList";
+import PageHeader from "../components/PageHeader";
+import AddNodeDrawer from "../components/AddNodeDrawer";
+import { nodeDisplayName } from "../nodeDisplay";
+import NodeLabelsModal from "../components/NodeLabelsModal";
+import { NodeSchedulingModal } from "../components/NodeSchedulingModal";
+import { labelPair } from "../nodeLabels";
+import {
+  useAgentUpgrades,
+  type UpgradeEvent,
+} from "../agentUpgrade";
+
+const NODE_PAGE_SIZE = 20;
+
+export default function NodesPage() {
+  const { t } = useTranslation("nodes");
+  const location = useLocation();
+  const incoming = location.state as {
+    nodeUUID?: string;
+    tab?: NodeDetailTab;
+    highlight?: TopoHighlight;
+    openAddDrawer?: boolean;
+  } | null;
+  // The server pages, searches and filters by label: at a thousand nodes the
+  // page used to fetch and render all of them every few seconds.
+  const [search, setSearch] = useState("");
+  const [labelFilter, setLabelFilter] = useState<string[]>([]);
+  const [states, setStates] = useState<string[]>([]);
+  const [sort, setSort] = useState<ServerSort | null>(null);
+  const { data, refetch, loading, error, updatedAt, pagination } = usePagedList(api.nodesPage, {
+    filters: { q: search, label: labelFilter, state: states, ...(sort ? { sort: `${sort.order === "desc" ? "-" : ""}${sort.key}` } : {}) },
+    pageSize: storedPageSize(NODE_TABLE_ID, NODE_PAGE_SIZE),
+    intervalMs: 8000,
+  });
+  const filtering = search !== "" || labelFilter.length > 0 || states.length > 0;
+  const serverHealth = usePolling(api.health, 30000);
+  const upgradeErrors = usePolling(api.agentUpgradeErrors, 8000);
+  // Engine profiles are static server configuration; one load feeds the detail
+  // drawer's kernel check, which is why they are fetched here and not per node.
+  const engines = usePolling<List<EngineProfile>>(api.engines, 0);
+  useEvents("node", refetch);
+  const [detail, setDetail] = useState<Node | null>(null);
+  const [scheduling, setScheduling] = useState<Node | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<Node | null>(null);
+  const [forceDelete, setForceDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editingLabels, setEditingLabels] = useState<Node | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const onUpgradeEvent = (event: UpgradeEvent) => {
+    const name = event.name;
+    switch (event.kind) {
+      case "dispatched":
+        message.success(t("upgrade.dispatched"));
+        break;
+      case "requestFailed":
+        message.error(t("upgrade.requestFailed", { detail: event.detail }));
+        break;
+      case "completed":
+        message.success(t("upgrade.completed", { name }));
+        // Reload the open drawer so it shows the new version.
+        setDetail((current) =>
+          current?.uuid === event.uuid ? event.node : current,
+        );
+        break;
+      case "failed":
+        message.error(
+          t("upgrade.failedDetail", { name, detail: event.detail }),
+        );
+        break;
+      case "timeout":
+        message.error(t("upgrade.timeout", { name }));
+        break;
+    }
+  };
+  const upgrades = useAgentUpgrades({
+    nodes: data?.items,
+    serverVersion: serverHealth.data?.version,
+    upgradeErrors: upgradeErrors.data,
+    onEvent: onUpgradeEvent,
+  });
+  // A deep link names a node that need not be on the first page.
+  useEffect(() => {
+    if (!incoming?.nodeUUID) return;
+    let alive = true;
+    api
+      .node(incoming.nodeUUID)
+      .then((node) => alive && setDetail(node))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [incoming?.nodeUUID]);
+  useEffect(() => {
+    if (incoming?.openAddDrawer) setAddOpen(true);
+  }, [incoming?.openAddDrawer]);
+
+  const nodes = data?.items ?? [];
+  // The server offers every label in the fleet, not only the page's.
+  const labelOptions = useMemo(
+    () =>
+      (data?.labels ?? []).map(({ key, values }) => ({
+        label: key,
+        options: values.map((value) => {
+          const pair = labelPair(key, value);
+          return { value: pair, label: pair };
+        }),
+      })),
+    [data?.labels],
+  );
+
+  const deleteNode = async (node: Node) => {
+    setDeleting(true);
+    try {
+      await api.deleteNode(node.uuid, forceDelete);
+      message.success(t(forceDelete ? "message.forceDeleted" : "message.deleted"));
+      setConfirmingDelete(null);
+      if (detail?.uuid === node.uuid) setDetail(null);
+      refetch();
+    } catch (e) {
+      message.error(
+        t("message.deleteFailed", { detail: (e as Error).message }),
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // The delete affordance lives in the row's "more" dropdown; this controlled
+  // modal keeps the two-step confirmation the old Popconfirm provided. The
+  // same shape DeploymentsPage uses for its delete flow.
+  const requestDelete = (node: Node) => {
+    setForceDelete(false);
+    setConfirmingDelete(node);
+  };
+
+  const columns = nodeColumns({
+    t,
+    states,
+    serverVersion: serverHealth.data?.version,
+    upgradeErrors: upgradeErrors.data,
+    upgradePhase: upgrades.phaseOf,
+    onOpen: setDetail,
+    onEditLabels: setEditingLabels,
+    onScheduling: setScheduling,
+    onDelete: requestDelete,
+  });
+
+  return (
+    <>
+      <PageHeader
+        title={t("page.title")}
+        description={t("page.description")}
+        breadcrumb={[t("page.resourceBreadcrumb"), t("page.title")]}
+        extra={
+          <Space>
+            <Typography.Text type="secondary">
+              {t("page.count", {
+                filtered: data?.total ?? 0,
+                total: data?.all ?? 0,
+              })}
+            </Typography.Text>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setAddOpen(true)}
+            >
+              {t("action.add")}
+            </Button>
+          </Space>
+        }
+      />
+      <Card>
+        <ResourceTable<Node>
+          tableId={NODE_TABLE_ID}
+          rowKey="uuid"
+          columns={columns}
+          data={nodes}
+          loading={loading}
+          error={error}
+          onRefresh={refetch}
+          updatedAt={updatedAt}
+          pagination={pagination}
+          sort={sort}
+          onSortChange={setSort}
+          onFiltersChange={(filters) => setStates(filters.state ?? [])}
+          toolbar={
+            <>
+              <Input.Search
+                allowClear
+                style={{ width: 260 }}
+                placeholder={t("page.search")}
+                aria-label={t("page.search")}
+                onSearch={(value) => setSearch(value.trim())}
+              />
+              <Select
+                mode="multiple"
+                allowClear
+                style={{ minWidth: 240 }}
+                value={labelFilter}
+                onChange={(next: string[]) => setLabelFilter(next)}
+                aria-label={t("labelFilter.aria")}
+                placeholder={t("labelFilter.placeholder")}
+                notFoundContent={t("labelFilter.none")}
+                options={labelOptions}
+                prefix={<Typography.Text type="secondary">{t("labelFilter.label")}</Typography.Text>}
+              />
+            </>
+          }
+          emptyDescription={t(filtering ? "empty.filtered" : "empty.all")}
+          emptyKind="nodes"
+          emptyAction={
+            <Button type="primary" onClick={() => setAddOpen(true)}>
+              {t("action.add")}
+            </Button>
+          }
+        />
+      </Card>
+      <NodeDetailDrawer
+        node={detail}
+        engines={engines.data?.items}
+        // The deep link's tab and highlight belong to the node it names, not to
+        // one opened from the list afterwards.
+        initialTab={detail && detail.uuid === incoming?.nodeUUID ? incoming.tab : undefined}
+        highlight={detail && detail.uuid === incoming?.nodeUUID ? incoming.highlight : undefined}
+        upgradePhase={upgrades.phaseOf(detail?.uuid)}
+        onUpgrade={(node) => void upgrades.start(node)}
+        onClose={() => setDetail(null)}
+      />
+      <Modal
+        open={!!confirmingDelete}
+        title={t("delete.confirm")}
+        okText={t("action.delete")}
+        cancelText={t("action.cancel")}
+        okButtonProps={{ danger: true, "aria-label": t("action.delete"), "aria-busy": deleting }}
+        confirmLoading={deleting}
+        cancelButtonProps={{ disabled: deleting }}
+        closable={!deleting}
+        maskClosable={!deleting}
+        keyboard={!deleting}
+        onOk={() => confirmingDelete && !deleting && deleteNode(confirmingDelete)}
+        onCancel={() => !deleting && setConfirmingDelete(null)}
+      >
+        <p>{confirmingDelete && nodeDisplayName(confirmingDelete)}</p>
+        <p>{t("delete.description")}</p>
+        <p>{t("delete.uninstallDescription")}</p>
+        <Checkbox checked={forceDelete} disabled={deleting} onChange={(event) => setForceDelete(event.target.checked)}>
+          {t("delete.force")}
+        </Checkbox>
+        {forceDelete && <p role="alert">{t("delete.forceWarning")}</p>}
+      </Modal>
+      {scheduling && (
+        <NodeSchedulingModal node={scheduling} onClose={() => setScheduling(null)} onChanged={() => refetch()} />
+      )}
+      <NodeLabelsModal
+        node={editingLabels}
+        onClose={() => setEditingLabels(null)}
+        onSaved={(node) => {
+          if (detail?.uuid === node.uuid) setDetail(node);
+          setEditingLabels(null);
+          refetch();
+        }}
+      />
+      <AddNodeDrawer
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onInstalled={refetch}
+      />
+    </>
+  );
+}

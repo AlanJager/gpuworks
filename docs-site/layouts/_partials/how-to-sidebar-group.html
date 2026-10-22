@@ -1,0 +1,16 @@
+{{- $id := printf "m-%s" (.url | anchorize) -}}
+<li class="td-shell-tree__item td-has-child{{ if .activePath }} td-active-path{{ end }}" id="{{ $id }}-li">
+  <div class="td-shell-tree__row">
+    <a href="{{ .url }}" class="td-shell-tree__link" id="{{ $id }}"><span>{{ .title }}</span></a>
+    <button type="button" class="td-shell-tree__chevron" data-td-shell-tree-toggle
+        aria-expanded="{{ .expanded }}" aria-controls="{{ $id }}-children"
+        aria-label="{{ if .expanded }}{{ T "ui_sidebar_collapse_section" }}{{ else }}{{ T "ui_sidebar_expand_section" }}{{ end }}: {{ .title }}"
+        data-td-label-expand="{{ T "ui_sidebar_expand_section" }}: {{ .title }}"
+        data-td-label-collapse="{{ T "ui_sidebar_collapse_section" }}: {{ .title }}">
+      {{- partialCached "shell/icon.html" "chevron-down" "chevron-down" -}}
+    </button>
+  </div>
+  <div id="{{ $id }}-children" class="td-shell-tree__children{{ if .expanded }} td-is-open{{ end }}">
+    <div class="td-shell-tree__children-inner">{{ .children }}</div>
+  </div>
+</li>

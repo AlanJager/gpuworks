@@ -1,0 +1,64 @@
+model_id: qwen/qwen3-30b-a3b-thinking-2507
+source: upstream
+display_title: Qwen3 30b A3b Thinking 2507
+release_date: '2025-07-29'
+model_config: {model_type: qwen3_moe, num_hidden_layers: 48, hidden_size: 2048, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-30B-A3B-Thinking-2507
+        revision: 144afc2f379b542fdd4e85a1fcd5e1f79112d95d
+    - modelscope:
+        repo_id: Qwen/Qwen3-30B-A3B-Thinking-2507
+        revision: a5ac5eeece453d213a81bc0ec7a079698e46192f
+  weight_bytes: 61079876387
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-30B-A3B-Thinking-2507-FP8
+        revision: 60d80c83c53c3b611c642dbb8c942b3f90c5948a
+    - modelscope:
+        repo_id: Qwen/Qwen3-30B-A3B-Thinking-2507-FP8
+        revision: 9f761701fab7f8b678fc84ba33fe6a7c85e34296
+  weight_bytes: 31195097989
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

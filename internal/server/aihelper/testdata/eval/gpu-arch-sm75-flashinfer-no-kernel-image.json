@@ -1,0 +1,66 @@
+{
+  "id": "gpu-arch-sm75-flashinfer-no-kernel-image",
+  "source": "artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md (section 6, gpu3 RTX 2080 Ti)",
+  "note": "SGLang 0.5.21 runner image (cuda13.0) on Turing sm_75: model load and KV allocation succeed, CUDA graph capture crashes because flashinfer's prebuilt norm/attention kernels have no sm_75 build. The 'Compute capability below sm80', RuntimeError and flashinfer frame lines are verbatim from the record; other lines reconstructed in SGLang's format; model path unspecified in the record. Workaround found: --attention-backend triton --sampling-backend pytorch --disable-cuda-graph + SGLANG_FORCE_FUSED_OP_BACKEND=torch; catalog specs require cc>=8.0.",
+  "message": "container exited (code 1)",
+  "command": [
+    "python",
+    "-m",
+    "sglang.launch_server",
+    "--model-path",
+    "/model",
+    "--tp-size",
+    "1",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--served-model-name",
+    "qwen3-0.6b",
+    "--enable-metrics"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 2080 Ti",
+      "memory_gib": 11
+    }
+  ],
+  "logs": [
+    "[2026-10-05 09:12:01] server_args=ServerArgs(model_path='/model', tokenizer_path='/model', dtype='auto', host='127.0.0.1', port=30000, mem_fraction_static=0.835, tp_size=1, attention_backend=None, sampling_backend=None, disable_cuda_graph=False, served_model_name='qwen3-0.6b')",
+    "[2026-10-05 09:12:03] Compute capability below sm80. Use float16 due to lack of bfloat16 support.",
+    "[2026-10-05 09:12:09] Attention backend not explicitly specified. Use flashinfer backend by default.",
+    "[2026-10-05 09:12:09] Init torch distributed begin.",
+    "[2026-10-05 09:12:10] Init torch distributed ends. mem usage=0.00 GB",
+    "[2026-10-05 09:12:10] Load weight begin. avail mem=10.52 GB",
+    "[2026-10-05 09:12:12] Load weight end. type=Qwen3ForCausalLM, dtype=torch.float16, avail mem=9.31 GB, mem usage=1.21 GB.",
+    "[2026-10-05 09:12:12] KV Cache is allocated. #tokens: 61234, K size: 3.27 GB, V size: 3.27 GB",
+    "[2026-10-05 09:12:12] Memory pool end. avail mem=2.61 GB",
+    "[2026-10-05 09:12:13] Capture cuda graph begin. This can take up to several minutes. avail mem=2.58 GB",
+    "[2026-10-05 09:12:13] Capture cuda graph bs [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64]",
+    "[2026-10-05 09:12:14] Scheduler hit an exception: Traceback (most recent call last):",
+    "  File \"/usr/local/lib/python3.12/dist-packages/sglang/srt/model_executor/cuda_graph_runner.py\", line 382, in capture",
+    "    ) = self.capture_one_batch_size(bs, forward)",
+    "  File \"/usr/local/lib/python3.12/dist-packages/sglang/srt/layers/layernorm.py\", line 158, in forward_cuda",
+    "    out = rmsnorm(x, self.weight.data, self.variance_epsilon)",
+    "  File \"/usr/local/lib/python3.12/dist-packages/flashinfer/norm/__init__.py\", line 189, in _rmsnorm_impl",
+    "    get_norm_module().rmsnorm(out, input, weight, eps, enable_pdl)",
+    "RuntimeError: Check failed: (status == cudaSuccess) is false: RMSNorm failed with error code no kernel image is available for execution on the device",
+    "",
+    "[2026-10-05 09:12:14] Received sigquit from a child process. It usually means the child failed."
+  ],
+  "expect_signature": "gpu_arch_unsupported",
+  "expect_keywords": [
+    [
+      "sm_75",
+      "7.5",
+      "Turing"
+    ],
+    [
+      "sm_80",
+      "8.0",
+      "Ampere",
+      "SGLANG_FORCE_FUSED_OP_BACKEND",
+      "triton"
+    ]
+  ]
+}

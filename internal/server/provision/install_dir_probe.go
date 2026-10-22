@@ -1,0 +1,534 @@
+package provision
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/crypto/ssh"
+)
+
+// The agent keeps its binary, the runtime's PRoot and unpacked images, and the
+// model cache under the install directory, so the filesystem behind it decides
+// whether the node works at all (noexec), which user workloads can run as
+// (ownership changes), how fast models load (network filesystems) and whether
+// the install survives the instance being recreated (container overlay). The
+// precheck and the SSH install share this one probe so both say the same thing.
+
+// Names of the checks one probe produces. The UI lists them as separate rows
+// and keys rows by name, so each is unique within a report.
+const (
+	checkInstallDir            = "Install directory"
+	checkInstallDirOwnership   = "Install directory ownership"
+	checkInstallDirFilesystem  = "Install directory filesystem"
+	checkInstallDirPersistence = "Install directory persistence"
+	checkInstallDirSpace       = "Install directory free space"
+	checkInstallDirNames       = "Install directory file names"
+)
+
+// minInstallDirFreeKiB is the free space below which the install directory is
+// flagged: one inference engine image unpacks to 10-20 GiB under the udocker
+// runtime and a mid-size model is another 15-70 GiB, so 50 GiB is the least
+// that fits one engine plus one model with some headroom.
+const minInstallDirFreeKiB = 50 << 20
+
+// installDirProbeTimeout bounds one probe: stat and df block indefinitely on a
+// hung network mount.
+var installDirProbeTimeout = 20 * time.Second
+
+// ownershipProbeID is the uid:gid the probe tries to hand a scratch file to.
+// It is the conventional "nobody" id: any filesystem that lets root assign it
+// lets root assign the dedicated udocker user's id as well.
+const ownershipProbeID = "65534:65534"
+
+// installDirProbeScript prints facts about dir as key=value lines. It is POSIX
+// sh and needs neither findmnt nor GNU-only flags, and creates no directory on
+// the install path. Its writes go only into scratch directories mktemp creates
+// in the nearest existing ancestor (mode 700, a fresh name), never to a
+// predictable path, so a symlink planted there cannot redirect a privileged
+// write; a trap removes them however the script ends. It always exits 0; a fact
+// it could not learn is printed empty or left out.
+func installDirProbeScript(dir string) string {
+	return "dir=" + shellQuote(dir) + "\n" + installDirProbeBody
+}
+
+// installDirProbeCommand wraps the script so it runs under sh whatever the SSH
+// account's login shell is.
+func installDirProbeCommand(dir string) string {
+	return "sh -c " + shellQuote(installDirProbeScript(dir))
+}
+
+const installDirProbeBody = `mounts=/proc/mounts
+probe=$dir
+while [ ! -d "$probe" ]; do
+  parent=$(dirname -- "$probe")
+  [ "$parent" = "$probe" ] && break
+  probe=$parent
+done
+if [ -d "$dir" ]; then exists=yes; elif [ -e "$dir" ]; then exists=file; else exists=no; fi
+resolved=$(CDPATH= cd -- "$probe" 2>/dev/null && pwd -P)
+[ -n "$resolved" ] || resolved=$probe
+uid=$(id -u 2>/dev/null)
+printf 'requested=%s\n' "$dir"
+printf 'exists=%s\n' "$exists"
+printf 'probed=%s\n' "$resolved"
+printf 'uid=%s\n' "$uid"
+printf 'user=%s\n' "$(id -un 2>/dev/null)"
+info=""
+if command -v findmnt >/dev/null 2>&1; then
+  info=$(findmnt -n -o TARGET,FSTYPE,OPTIONS -T "$resolved" 2>/dev/null | head -n 1 | awk 'NF >= 3 { t = $1; for (i = 2; i < NF - 1; i++) t = t " " $i; print "mount=" t; print "fstype=" $(NF - 1); print "options=" $NF }')
+fi
+if [ -z "$info" ] && [ -r "$mounts" ]; then
+  info=$(P="$resolved" awk 'BEGIN { best = -1; p = ENVIRON["P"] }
+    { m = $2; gsub(/\\040/, " ", m); gsub(/\\011/, "\t", m)
+      if ((m == "/" || p == m || substr(p, 1, length(m) + 1) == m "/") && length(m) >= best) { best = length(m); t = m; f = $3; o = $4 } }
+    END { if (best >= 0) { print "mount=" t; print "fstype=" f; print "options=" o } }' "$mounts" 2>/dev/null)
+fi
+if [ -z "$info" ] && [ ! -r "$mounts" ] && command -v mount >/dev/null 2>&1; then
+  # BSD and macOS. df names the mount point: on macOS a path's prefix can
+  # mislead, since /Users is a firmlink into /System/Volumes/Data while / is
+  # the sealed read-only system volume. mount then gives that point's type and
+  # options: "/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled)".
+  point=$(df -Pk -- "$resolved" 2>/dev/null | awk 'NR == 2 { m = $6; for (i = 7; i <= NF; i++) m = m " " $i; print m }')
+  [ -z "$point" ] || info=$(mount 2>/dev/null | M="$point" awk '
+    { on = index($0, " on "); open = index($0, " ("); if (!on || open <= on) next
+      m = substr($0, on + 4, open - on - 4); if (m != ENVIRON["M"]) next
+      opts = substr($0, open + 2); sub(/\)$/, "", opts)
+      n = split(opts, parts, ", "); o = ""
+      for (i = 2; i <= n; i++) { v = parts[i]; if (v == "read-only") v = "ro"; o = o (o == "" ? "" : ",") v }
+      print "mount=" m; print "fstype=" parts[1]; print "options=" o; exit }')
+fi
+[ -z "$info" ] || printf '%s\n' "$info"
+# GNU stat only: BSD stat reads -f as a format and echoes it back.
+fs=$(stat -f -c %T -- "$resolved" 2>/dev/null) || fs=""
+printf 'statfs=%s\n' "$fs"
+df -Pk -- "$resolved" 2>/dev/null | awk 'NR == 2 { print "total_kib=" $2; print "avail_kib=" $4 }'
+container=no
+containerfiles="/.dockerenv /run/.containerenv"
+for f in $containerfiles; do [ -e "$f" ] && container=yes; done
+printf 'container=%s\n' "$container"
+sudo=no
+if [ "$uid" != 0 ] && command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then sudo=yes; fi
+printf 'sudo=%s\n' "$sudo"
+priv=""
+[ "$sudo" = yes ] && priv="sudo -n"
+docker=no
+if command -v docker >/dev/null 2>&1; then
+  limit=""
+  command -v timeout >/dev/null 2>&1 && limit="timeout 5"
+  if $limit docker info >/dev/null 2>&1 || { [ -n "$priv" ] && $priv $limit docker info >/dev/null 2>&1; }; then docker=yes; fi
+fi
+printf 'docker=%s\n' "$docker"
+ud=""
+pd=""
+cleanup() {
+  [ -z "$ud" ] || rm -rf -- "$ud"
+  [ -z "$pd" ] || $priv rm -rf -- "$pd"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+writable=no
+if ud=$(mktemp -d "$resolved/.gpuworks-probe.XXXXXX" 2>/dev/null); then writable=yes; else ud=""; fi
+printf 'writable=%s\n' "$writable"
+chown_state=skipped
+if [ "$uid" = 0 ] || [ "$sudo" = yes ]; then
+  if pd=$($priv mktemp -d "$resolved/.gpuworks-probe.XXXXXX" 2>/dev/null); then
+    printf 'priv_writable=yes\n'
+    if err=$($priv sh -c ': > "$1/owner" && chown ` + ownershipProbeID + ` "$1/owner"' sh "$pd" 2>&1); then
+      chown_state=ok
+    else
+      chown_state=refused
+      printf 'chown_err=%s\n' "$(printf '%s' "$err" | tr '\n' ' ')"
+    fi
+  else
+    pd=""
+    printf 'priv_writable=no\n'
+  fi
+fi
+printf 'chown=%s\n' "$chown_state"
+names=skipped
+nd=""
+nw=""
+if [ -n "$ud" ]; then nd=$ud; elif [ -n "$pd" ]; then nd=$pd; nw=$priv; fi
+if [ -n "$nd" ]; then
+  if err=$($nw touch -- "$nd/name:probe" 2>&1); then
+    names=ok
+  else
+    names=refused
+    printf 'names_err=%s\n' "$(printf '%s' "$err" | tr '\n' ' ')"
+  fi
+fi
+printf 'names=%s\n' "$names"
+exit 0
+`
+
+// installDirFacts is the parsed probe output.
+type installDirFacts struct {
+	requested, exists, probed string
+	uid, user                 string
+	mount, fstype, options    string
+	statfs                    string
+	totalKiB, availKiB        int64
+	haveSpace                 bool
+	container, sudo           bool
+	writable, privWritable    bool
+	chown, chownErr           string
+	names, namesErr           string
+	docker                    bool
+	// mac is a Mac install; macAdmin means its installer runs with
+	// administrator rights, which may come from sudo with the SSH password
+	// rather than the passwordless sudo the probe itself can use.
+	mac, macAdmin bool
+}
+
+func parseInstallDirFacts(out string) (installDirFacts, error) {
+	var f installDirFacts
+	seen := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		key, value, ok := strings.Cut(strings.TrimRight(line, "\r"), "=")
+		if !ok {
+			continue
+		}
+		seen[key] = true
+		switch key {
+		case "requested":
+			f.requested = value
+		case "exists":
+			f.exists = value
+		case "probed":
+			f.probed = value
+		case "uid":
+			f.uid = strings.TrimSpace(value)
+		case "user":
+			f.user = strings.TrimSpace(value)
+		case "mount":
+			f.mount = value
+		case "fstype":
+			f.fstype = strings.TrimSpace(value)
+		case "options":
+			f.options = strings.TrimSpace(value)
+		case "statfs":
+			f.statfs = strings.TrimSpace(value)
+		case "total_kib":
+			f.totalKiB, _ = strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		case "avail_kib":
+			n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+			f.availKiB, f.haveSpace = n, err == nil
+		case "container":
+			f.container = value == "yes"
+		case "sudo":
+			f.sudo = value == "yes"
+		case "writable":
+			f.writable = value == "yes"
+		case "priv_writable":
+			f.privWritable = value == "yes"
+		case "chown":
+			f.chown = value
+		case "chown_err":
+			f.chownErr = strings.TrimSpace(value)
+		case "names":
+			f.names = value
+		case "names_err":
+			f.namesErr = strings.TrimSpace(value)
+		case "docker":
+			f.docker = value == "yes"
+		}
+	}
+	if !seen["probed"] || !seen["chown"] {
+		return f, fmt.Errorf("incomplete probe output: %q", sanitizeProbeOutput(out))
+	}
+	return f, nil
+}
+
+func (f installDirFacts) root() bool { return f.uid == "0" }
+
+// filesystem is the mount's own type name (nfs4 rather than the nfs that
+// statfs(2) reports for both NFS versions), falling back to statfs.
+func (f installDirFacts) filesystem() string {
+	if f.fstype != "" {
+		return f.fstype
+	}
+	return f.statfs
+}
+
+func (f installDirFacts) noexec() bool {
+	for _, opt := range strings.Split(f.options, ",") {
+		if opt == "noexec" {
+			return true
+		}
+	}
+	return false
+}
+
+func (f installDirFacts) onNetworkFilesystem() bool {
+	switch fs := f.filesystem(); fs {
+	case "nfs", "nfs4", "cifs", "smb3", "smbfs", "ceph", "glusterfs", "lustre", "beegfs", "gpfs", "afs", "9p", "virtiofs", "fuse":
+		return true
+	default:
+		// fuse.overlayfs is a local layered filesystem; every other FUSE
+		// filesystem (sshfs, s3fs, juicefs, rclone...) is remote or
+		// userspace-backed.
+		return strings.HasPrefix(fs, "fuse.") && fs != "fuse.overlayfs"
+	}
+}
+
+func (f installDirFacts) onOverlay() bool {
+	fs := f.filesystem()
+	return fs == "overlay" || fs == "overlayfs" || fs == "fuse.overlayfs"
+}
+
+func (f installDirFacts) onMemory() bool {
+	fs := f.filesystem()
+	return fs == "tmpfs" || fs == "ramfs"
+}
+
+func gib(kib int64) string { return fmt.Sprintf("%.1f GiB", float64(kib)/(1<<20)) }
+
+// location says which directory was inspected and where it lives: filesystem
+// type and mount point, never the mount options. A container root mount lists
+// every image layer in its options (dozens of paths on a layered image), which
+// says nothing the type does not; noexec, the one option that matters, has its
+// own message.
+func (f installDirFacts) location() string {
+	var b strings.Builder
+	b.WriteString(f.requested)
+	if f.exists == "no" {
+		fmt.Fprintf(&b, " (does not exist yet; inspected its nearest existing parent %s)", f.probed)
+	} else if f.probed != f.requested {
+		fmt.Fprintf(&b, " (resolves to %s)", f.probed)
+	}
+	if fs := f.filesystem(); fs != "" {
+		fmt.Fprintf(&b, ": filesystem %s", fs)
+	} else {
+		b.WriteString(": filesystem type unknown")
+	}
+	if f.mount != "" {
+		fmt.Fprintf(&b, ", mounted at %s", f.mount)
+	}
+	if f.haveSpace {
+		fmt.Fprintf(&b, ", %s free", gib(f.availKiB))
+	}
+	return b.String()
+}
+
+// installDirChecks turns the facts into one CheckResult per verdict.
+// instanceKind is the caller's hint ("container" or "vm"); the probe's own
+// /.dockerenv and /run/.containerenv sniffing covers callers without one.
+// providerKind is set when a cloud provider's one-click flow chose the
+// directory, which the operator then cannot change.
+func installDirChecks(f installDirFacts, instanceKind, providerKind string) (checks []CheckResult, noexec bool) {
+	noexec = f.noexec()
+	checks = append(checks,
+		installDirAccessCheck(f, noexec),
+		installDirOwnershipCheck(f),
+		installDirFilesystemCheck(f),
+		installDirSpaceCheck(f),
+		installDirPersistenceCheck(f, instanceKind, providerKind),
+		installDirNamesCheck(f),
+	)
+	return checks, noexec
+}
+
+// installDirNamesCheck reports a filesystem that refuses ':' in file names
+// (RunPod's /workspace answers EINVAL). The runveil runtime keeps its images
+// and unpacks their root filesystems under the install directory, and both
+// hold such names, so it cannot run anything from there: an error on a node
+// without docker. A node with docker keeps its images with dockerd, so there
+// it is only a warning about the runtime the node does not use. The install is
+// not stopped either way.
+func installDirNamesCheck(f installDirFacts) CheckResult {
+	switch f.names {
+	case "ok":
+		return CheckResult{Name: checkInstallDirNames, Status: "ok", Detail: "':' is allowed in file names"}
+	case "refused":
+		refusal := fmt.Sprintf("%s does not allow ':' in file names, which container images need (image layers are named sha256:<hex>, and Debian-based images hold /var/lib/dpkg/info/<package>:amd64.list)", f.probed)
+		cause := ""
+		if f.namesErr != "" {
+			cause = ": " + f.namesErr
+		}
+		if f.docker {
+			return CheckResult{Name: checkInstallDirNames, Status: "warn", Detail: refusal + "; this node has docker, which keeps images elsewhere, but the runveil runtime could not run from here" + cause}
+		}
+		return CheckResult{Name: checkInstallDirNames, Status: "error", Detail: refusal + ", so the runveil runtime used on nodes without docker cannot run deployments from here; choose an install directory on a local filesystem (on a container instance such as RunPod, a path on the container disk sized for the images)" + cause}
+	default:
+		return CheckResult{Name: checkInstallDirNames, Status: "ok", Detail: fmt.Sprintf("not checked: no file could be created in %s", f.probed)}
+	}
+}
+
+func installDirAccessCheck(f installDirFacts, noexec bool) CheckResult {
+	var problems []string
+	if f.exists == "file" {
+		problems = append(problems, f.requested+" exists but is not a directory")
+	}
+	if noexec {
+		problems = append(problems, fmt.Sprintf("%s is mounted noexec, so the agent binary and the runtime's PRoot cannot run from it; choose a directory on a filesystem mounted with exec", f.mount))
+	}
+	var access string
+	switch {
+	case f.mac && !f.writable && f.macAdmin:
+		access = "created by the installer with administrator rights"
+	case f.mac && !f.writable:
+		problems = append(problems, fmt.Sprintf("%s is not writable by %s and the installer has no administrator rights; leave the directory empty to install in ~/.gpuworks, or sign in with the account password so the installer can use sudo", f.probed, f.userLabel()))
+	case f.writable:
+		access = "writable by " + f.userLabel()
+	case f.sudo && f.privWritable:
+		access = "writable through passwordless sudo"
+	case f.root():
+		problems = append(problems, fmt.Sprintf("%s is not writable even by root (a read-only mount, or a network filesystem that maps root to an unprivileged user); choose a writable directory (left empty, the install falls back to /tmp/gpuworks, which is lost on reboot)", f.probed))
+	case f.sudo:
+		problems = append(problems, fmt.Sprintf("%s is not writable by %s, even through sudo; choose a writable directory (left empty, the install falls back to /tmp/gpuworks, which is lost on reboot)", f.probed, f.userLabel()))
+	default:
+		problems = append(problems, fmt.Sprintf("%s is not writable by %s and there is no passwordless sudo; choose a writable directory (left empty, the install falls back to /tmp/gpuworks, which is lost on reboot)", f.probed, f.userLabel()))
+	}
+	if len(problems) > 0 {
+		return CheckResult{Name: checkInstallDir, Status: "error", Detail: strings.Join(problems, "; ") + ". " + f.location()}
+	}
+	return CheckResult{Name: checkInstallDir, Status: "ok", Detail: f.location() + "; " + access}
+}
+
+func (f installDirFacts) userLabel() string {
+	if f.user != "" {
+		return f.user
+	}
+	return "uid " + f.uid
+}
+
+func installDirOwnershipCheck(f installDirFacts) CheckResult {
+	if f.mac {
+		return CheckResult{Name: checkInstallDirOwnership, Status: "ok", Detail: "not needed on a Mac: engines run as the agent's own user"}
+	}
+	switch f.chown {
+	case "ok":
+		return CheckResult{Name: checkInstallDirOwnership, Status: "ok", Detail: "files can be handed to another user; runveil workloads run as the dedicated runtime user"}
+	case "refused":
+		detail := fmt.Sprintf("%s does not allow changing file ownership, so runveil workloads will run as the agent's own user (root) instead of the dedicated runtime user", f.probed)
+		if f.chownErr != "" {
+			detail += ": " + f.chownErr
+		}
+		return CheckResult{Name: checkInstallDirOwnership, Status: "warn", Detail: detail}
+	default:
+		if !f.root() && !f.sudo {
+			return CheckResult{Name: checkInstallDirOwnership, Status: "ok", Detail: fmt.Sprintf("not checked: %s is not root and has no passwordless sudo, so the agent will run as that user anyway", f.userLabel())}
+		}
+		return CheckResult{Name: checkInstallDirOwnership, Status: "ok", Detail: fmt.Sprintf("not checked: no file could be created in %s with privileges", f.probed)}
+	}
+}
+
+func installDirFilesystemCheck(f installDirFacts) CheckResult {
+	if f.onNetworkFilesystem() {
+		return CheckResult{Name: checkInstallDirFilesystem, Status: "warn", Detail: fmt.Sprintf("%s is a network or userspace filesystem (%s); model loading and engine start-up speed depend on its throughput and latency", f.probed, f.filesystem())}
+	}
+	if fs := f.filesystem(); fs != "" {
+		return CheckResult{Name: checkInstallDirFilesystem, Status: "ok", Detail: fs + " (local)"}
+	}
+	return CheckResult{Name: checkInstallDirFilesystem, Status: "ok", Detail: "filesystem type unknown"}
+}
+
+func installDirSpaceCheck(f installDirFacts) CheckResult {
+	if !f.haveSpace {
+		return CheckResult{Name: checkInstallDirSpace, Status: "ok", Detail: "free space unknown (df reported nothing)"}
+	}
+	detail := fmt.Sprintf("%s free of %s", gib(f.availKiB), gib(f.totalKiB))
+	if f.availKiB < minInstallDirFreeKiB {
+		return CheckResult{Name: checkInstallDirSpace, Status: "warn", Detail: fmt.Sprintf("%s; inference engine images and model weights need roughly %s or more", detail, gib(minInstallDirFreeKiB))}
+	}
+	return CheckResult{Name: checkInstallDirSpace, Status: "ok", Detail: detail}
+}
+
+// installDirPersistenceCheck warns about an install directory whose contents
+// do not outlive the instance. In a provider's one-click flow the directory is
+// fixed and the container disk is the only place the agent can live (the
+// provider's network volume refuses the file names the runtime needs), so the
+// warning says what will be lost instead of advising a move the operator
+// cannot make there.
+func installDirPersistenceCheck(f installDirFacts, instanceKind, providerKind string) CheckResult {
+	container := f.container || strings.EqualFold(strings.TrimSpace(instanceKind), "container")
+	switch {
+	case f.onOverlay() && container && strings.TrimSpace(providerKind) != "":
+		return CheckResult{Name: checkInstallDirPersistence, Status: "warn", Detail: fmt.Sprintf("%s is on the instance's container disk (%s), the only place the agent can live on a %s container instance. It is lost when the instance is deleted or recreated, taking the agent, its identity and the model cache with it; install the agent again on the replacement", f.probed, f.filesystem(), strings.TrimSpace(providerKind))}
+	case f.onOverlay() && container:
+		return CheckResult{Name: checkInstallDirPersistence, Status: "warn", Detail: fmt.Sprintf("%s is on the container's writable layer (%s), which is lost when the instance is recreated, taking the agent, its identity and the model cache with it; install under a persistent volume on a local filesystem if the instance has one; a network volume that refuses ':' in file names (RunPod's /workspace) cannot hold the runveil runtime's images", f.probed, f.filesystem())}
+	case f.onMemory():
+		return CheckResult{Name: checkInstallDirPersistence, Status: "warn", Detail: fmt.Sprintf("%s is on %s, which lives in memory and is lost on reboot", f.probed, f.filesystem())}
+	default:
+		return CheckResult{Name: checkInstallDirPersistence, Status: "ok", Detail: "not on a container's writable layer"}
+	}
+}
+
+// InstallDirOutcome is what probing an install directory found.
+type InstallDirOutcome struct {
+	Checks []CheckResult
+	// Noexec: the directory is on a noexec mount, so nothing installed there
+	// can run. The install stops on it; every other verdict only reports.
+	Noexec bool
+}
+
+// ProbeInstallDir inspects the install directory over SSH. dir is used as
+// given (callers resolve the default with installDir). A probe that cannot run
+// is reported as a warning rather than an error: it says nothing about the
+// directory, and must not stop an install that would otherwise work.
+func ProbeInstallDir(ctx context.Context, client *ssh.Client, dir, instanceKind, providerKind string) InstallDirOutcome {
+	return probeInstallDir(ctx, client, dir, instanceKind, providerKind, nil)
+}
+
+func probeInstallDir(ctx context.Context, client *ssh.Client, dir, instanceKind, providerKind string, adjust func(*installDirFacts)) InstallDirOutcome {
+	if !strings.HasPrefix(dir, "/") {
+		// A relative directory lands wherever the SSH session starts, and a
+		// leading '-' would read as an option to every tool the probe runs.
+		return InstallDirOutcome{Checks: []CheckResult{{Name: checkInstallDir, Status: "error",
+			Detail: fmt.Sprintf("%q is not an absolute path; give the install directory as one, for example /opt/gpuworks", dir)}}}
+	}
+	ctx, cancel := context.WithTimeout(ctx, installDirProbeTimeout)
+	defer cancel()
+	out, err := runContext(ctx, client, installDirProbeCommand(dir))
+	if err != nil {
+		return InstallDirOutcome{Checks: []CheckResult{{Name: checkInstallDir, Status: "warn", Detail: fmt.Sprintf("could not inspect %s: %v", dir, err)}}}
+	}
+	facts, err := parseInstallDirFacts(out)
+	if err != nil {
+		return InstallDirOutcome{Checks: []CheckResult{{Name: checkInstallDir, Status: "warn", Detail: fmt.Sprintf("could not inspect %s: %v", dir, err)}}}
+	}
+	if adjust != nil {
+		adjust(&facts)
+	}
+	checks, noexec := installDirChecks(facts, instanceKind, providerKind)
+	return InstallDirOutcome{Checks: checks, Noexec: noexec}
+}
+
+// ProbeMacInstallDir probes an install directory on a Mac. admin says whether
+// the installer will have administrator rights (macPrivilege), which the probe
+// cannot learn itself when they come from sudo with the SSH password.
+func ProbeMacInstallDir(ctx context.Context, client *ssh.Client, dir string, admin bool) InstallDirOutcome {
+	return probeInstallDir(ctx, client, dir, "", "", func(f *installDirFacts) { f.mac, f.macAdmin = true, admin })
+}
+
+// mergeChecks adds checks to a report, replacing earlier rows of the same name
+// so a re-probe after the install directory changed does not leave the old
+// directory's verdicts beside the new ones.
+func mergeChecks(existing, added []CheckResult) []CheckResult {
+	for _, c := range added {
+		replaced := false
+		for i := range existing {
+			if existing[i].Name == c.Name {
+				existing[i], replaced = c, true
+				break
+			}
+		}
+		if !replaced {
+			existing = append(existing, c)
+		}
+	}
+	return existing
+}
+
+// noexecInstallError is the reason an install stops on a noexec directory.
+func noexecInstallError(outcome InstallDirOutcome) error {
+	for _, c := range outcome.Checks {
+		if c.Name == checkInstallDir {
+			return fmt.Errorf("%s: %s", c.Name, c.Detail)
+		}
+	}
+	return fmt.Errorf("install directory is mounted noexec")
+}

@@ -1,0 +1,48 @@
+[
+  {
+    "tag": "h100pcie-q3-8b-u50-L4k",
+    "model": "Qwen/Qwen3-8B",
+    "engine": "vllm",
+    "gpu": "NVIDIA H100 PCIe",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "tp": 1,
+    "max_model_len": 4096,
+    "mnbt": 8192,
+    "gpu_mem_util": 0.5,
+    "kv_tokens": 146496,
+    "weights_gib": 15.27,
+    "source": "runpod pod, vllm/vllm-openai, --load-format dummy, read from /metrics kv_cache_size_tokens"
+  },
+  {
+    "tag": "h100pcie-q3-8b-u90-L4k",
+    "model": "Qwen/Qwen3-8B",
+    "engine": "vllm",
+    "gpu": "NVIDIA H100 PCIe",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "tp": 1,
+    "max_model_len": 4096,
+    "mnbt": 8192,
+    "gpu_mem_util": 0.9,
+    "kv_tokens": 377120,
+    "weights_gib": 15.27,
+    "source": "runpod pod, vllm/vllm-openai, --load-format dummy, read from /metrics kv_cache_size_tokens"
+  },
+  {
+    "tag": "h100pcie-q3-8b-u90-L4k-eager",
+    "model": "Qwen/Qwen3-8B",
+    "engine": "vllm",
+    "gpu": "NVIDIA H100 PCIe",
+    "dtype": "bfloat16",
+    "kv_cache_dtype": "auto",
+    "tp": 1,
+    "max_model_len": 4096,
+    "mnbt": 8192,
+    "gpu_mem_util": 0.9,
+    "enforce_eager": true,
+    "kv_tokens": 395344,
+    "weights_gib": 15.27,
+    "source": "runpod pod, vllm/vllm-openai, --load-format dummy, read from /metrics kv_cache_size_tokens"
+  }
+]

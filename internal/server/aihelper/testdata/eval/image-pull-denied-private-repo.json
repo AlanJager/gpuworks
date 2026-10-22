@@ -1,0 +1,59 @@
+{
+  "id": "image-pull-denied-private-repo",
+  "source": "https://github.com/moby/moby (distribution pull error: \"pull access denied for %s, repository does not exist or may require 'docker login'\"); gpuworks message format from internal/agent/engine/image_prepare.go and internal/agent/runtime/docker/docker.go",
+  "note": "Deployment references a private Docker Hub image; the node's registry mirror does not have it and Docker Hub refuses the anonymous pull (no credentials on the node). Constructed from the upstream docker daemon messages plus gpuworks' agent message formats (image_prepare.go state messages, docker.go slog lines); the logs render the instance's pull events and agent log lines. Image names are placeholders.",
+  "message": "all image sources failed: registry.local:5000/myorg/vllm-custom:v0.11.0-patched: docker pull: exit status 1: Error response from daemon: manifest for registry.local:5000/myorg/vllm-custom:v0.11.0-patched not found: manifest unknown: manifest unknown | myorg/vllm-custom:v0.11.0-patched: docker pull: exit status 1: Error response from daemon: pull access denied for myorg/vllm-custom, repository does not exist or may require 'docker login': denied: requested access to the resource is denied",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen2.5-7b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A10",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "[pulling] checking whether the image is already available",
+    "[pulling] image is not available locally; download required",
+    "time=2026-10-11T09:20:01.403+08:00 level=INFO msg=\"runtime command\" runtime=docker args=\"[pull registry.local:5000/myorg/vllm-custom:v0.11.0-patched]\"",
+    "Error response from daemon: manifest for registry.local:5000/myorg/vllm-custom:v0.11.0-patched not found: manifest unknown: manifest unknown",
+    "time=2026-10-11T09:20:01.917+08:00 level=WARN msg=\"runtime command failed\" runtime=docker args=\"[pull registry.local:5000/myorg/vllm-custom:v0.11.0-patched]\" err=\"exit status 1\" stderr_tail=\"\\nError response from daemon: manifest for registry.local:5000/myorg/vllm-custom:v0.11.0-patched not found: manifest unknown: manifest unknown\"",
+    "time=2026-10-11T09:20:01.917+08:00 level=WARN msg=\"image preparation failed\" instance=4c1d2e9a image=myorg/vllm-custom:v0.11.0-patched runtime=docker phase=pull ref=registry.local:5000/myorg/vllm-custom:v0.11.0-patched err=\"docker pull: exit status 1: \\nError response from daemon: manifest for registry.local:5000/myorg/vllm-custom:v0.11.0-patched not found: manifest unknown: manifest unknown\"",
+    "[pulling] image source failed: registry.local:5000/myorg/vllm-custom:v0.11.0-patched: docker pull: exit status 1: Error response from daemon: manifest for registry.local:5000/myorg/vllm-custom:v0.11.0-patched not found: manifest unknown: manifest unknown",
+    "time=2026-10-11T09:20:01.920+08:00 level=INFO msg=\"runtime command\" runtime=docker args=\"[pull myorg/vllm-custom:v0.11.0-patched]\"",
+    "Error response from daemon: pull access denied for myorg/vllm-custom, repository does not exist or may require 'docker login': denied: requested access to the resource is denied",
+    "time=2026-10-11T09:20:03.871+08:00 level=WARN msg=\"runtime command failed\" runtime=docker args=\"[pull myorg/vllm-custom:v0.11.0-patched]\" err=\"exit status 1\" stderr_tail=\"\\nError response from daemon: pull access denied for myorg/vllm-custom, repository does not exist or may require 'docker login': denied: requested access to the resource is denied\"",
+    "time=2026-10-11T09:20:03.871+08:00 level=WARN msg=\"image preparation failed\" instance=4c1d2e9a image=myorg/vllm-custom:v0.11.0-patched runtime=docker phase=pull ref=myorg/vllm-custom:v0.11.0-patched err=\"docker pull: exit status 1: \\nError response from daemon: pull access denied for myorg/vllm-custom, repository does not exist or may require 'docker login': denied: requested access to the resource is denied\"",
+    "[pulling] image source failed: myorg/vllm-custom:v0.11.0-patched: docker pull: exit status 1: Error response from daemon: pull access denied for myorg/vllm-custom, repository does not exist or may require 'docker login': denied: requested access to the resource is denied",
+    "[failed] all image sources failed: registry.local:5000/myorg/vllm-custom:v0.11.0-patched: docker pull: exit status 1: Error response from daemon: manifest for registry.local:5000/myorg/vllm-custom:v0.11.0-patched not found: manifest unknown: manifest unknown | myorg/vllm-custom:v0.11.0-patched: docker pull: exit status 1: Error response from daemon: pull access denied for myorg/vllm-custom, repository does not exist or may require 'docker login': denied: requested access to the resource is denied"
+  ],
+  "expect_signature": "image_pull_denied",
+  "expect_keywords": [
+    [
+      "docker login",
+      "credential",
+      "凭据",
+      "认证",
+      "authentication"
+    ],
+    [
+      "镜像名",
+      "image name",
+      "image reference",
+      "镜像地址",
+      "tag",
+      "拼写",
+      "typo"
+    ]
+  ]
+}

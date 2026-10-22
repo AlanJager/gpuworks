@@ -1,0 +1,69 @@
+model_id: qwen/qwen3-tts-12hz-1.7b-base
+source: upstream
+display_title: Qwen3-TTS-12Hz-1.7B-Base
+release_date: '2026-01-21'
+model_config: {model_type: qwen3_tts, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768}
+specs:
+- name: bf16-base-1-7b-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-TTS-12Hz-1.7B-Base
+        revision: fd4b254389122332181a7c3db7f27e918eec64e3
+    - modelscope:
+        repo_id: Qwen/Qwen3-TTS-12Hz-1.7B-Base
+        revision: dfb4a462f62f8f831ff0ffabf31189fc9d4344fd
+  weight_bytes: 4544229700
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      request_defaults:
+        task_type: Base
+        response_format: wav
+      inputs:
+      - name: ref_audio
+        kind: audio
+        encoding: data_url
+        required: true
+        label:
+          en: Reference audio
+          zh-CN: 参考音频
+      - name: ref_text
+        kind: text
+        required: true
+        label:
+          en: Reference transcript
+          zh-CN: 参考音频的文字
+      - name: language
+        kind: select
+        options:
+        - Auto
+        - Chinese
+        - English
+        - Japanese
+        - Korean
+        - German
+        - French
+        - Russian
+        - Portuguese
+        - Spanish
+        - Italian
+        default: Auto
+        label:
+          en: Language
+          zh-CN: 语言
+input_modalities: [text, audio]

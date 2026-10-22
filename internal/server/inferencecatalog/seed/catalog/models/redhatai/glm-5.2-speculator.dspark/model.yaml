@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 49152
+  sglang: 49152
+model_id: redhatai/glm-5.2-speculator.dspark
+source: upstream
+display_title: GLM-5.2-speculator.dspark
+release_date: '2026-07-24'
+specs: []
+input_modalities: [text]

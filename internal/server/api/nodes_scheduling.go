@@ -1,0 +1,192 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"sort"
+
+	"github.com/go-chi/chi/v5"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+// Node scheduling wire names. Schedulable is the stored zero value.
+const nodeSchedulableName = "schedulable"
+
+func nodeSchedulingName(s store.NodeScheduling) string {
+	if s == store.NodeSchedulable {
+		return nodeSchedulableName
+	}
+	return string(s)
+}
+
+func parseNodeScheduling(name string) (store.NodeScheduling, bool) {
+	if name == nodeSchedulableName {
+		return store.NodeSchedulable, true
+	}
+	s := store.NodeScheduling(name)
+	return s, s != store.NodeSchedulable && s.Valid()
+}
+
+// setNodeScheduling cordons a node, drains it, or makes it schedulable
+// again. Cordoned, it takes no new replica and what runs there keeps
+// running; draining, the controller also replaces each replica a pool placed
+// there on another node, one at a time per deployment, before retiring it
+// (controller.nodeDrain). Schedulable again, every waiting deployment is
+// retried at once.
+func (a *apiHandlers) setNodeScheduling(w http.ResponseWriter, r *http.Request) {
+	var req dto.NodeSchedulingRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	scheduling, ok := parseNodeScheduling(req.Scheduling)
+	if !ok {
+		writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "scheduling must be schedulable, cordoned or draining", map[string]any{"field": "scheduling", "detail": req.Scheduling})
+		return
+	}
+	node, err := a.d.Store.SetNodeScheduling(chi.URLParam(r, "uuid"), scheduling)
+	if errors.Is(err, store.ErrNotFound) {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toNodeDTO(node))
+}
+
+// nodeReplicas lists what still runs on a node and whether a drain moves it
+// (dto.NodeReplica), so a drain can be followed to empty.
+func (a *apiHandlers) nodeReplicas(w http.ResponseWriter, r *http.Request) {
+	node, err := a.d.Store.NodeByUUID(chi.URLParam(r, "uuid"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	insts, err := a.d.Store.InstancesForNode(node.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	out := dto.NodeReplicas{Scheduling: nodeSchedulingName(node.Scheduling), Items: []dto.NodeReplica{}}
+	kinds := map[uint]string{}
+	names := map[uint]string{}
+	for _, inst := range insts {
+		if inst.State == proto.InstStopped || inst.State == proto.InstFailed {
+			continue
+		}
+		kind, seen := kinds[inst.DeploymentID]
+		if !seen {
+			dep, err := a.d.Store.GetDeployment(inst.DeploymentID)
+			if err != nil {
+				continue // deleted meanwhile
+			}
+			if kind, err = a.drainKind(dep, node); err != nil {
+				writeErr(w, http.StatusInternalServerError, err)
+				return
+			}
+			kinds[dep.ID], names[dep.ID] = kind, dep.Name
+		}
+		out.Items = append(out.Items, dto.NodeReplica{
+			Instance: inst.UUID, DeploymentID: inst.DeploymentID, Deployment: names[inst.DeploymentID],
+			State: inst.State, Kind: kind,
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// drainKind says whether a drain moves a deployment's replica off node: a
+// pool replica is replaced elsewhere unless its requirements name only this
+// node; a multi-node or PD rank names its node.
+func (a *apiHandlers) drainKind(dep *store.Deployment, node *store.Node) (string, error) {
+	pd, err := planning.PDOf(dep.Placement)
+	if err != nil {
+		return "", err
+	}
+	if pd != nil || dep.NNodes > 1 {
+		return "named", nil
+	}
+	reqs, err := a.d.Store.DeploymentRequirements(dep.ID)
+	if err != nil {
+		return "", err
+	}
+	if pinned, ok := planning.PinnedNode(reqs); ok && pinned == node.UUID {
+		return "pinned", nil
+	}
+	return "pool", nil
+}
+
+// evictNode takes every replica off a cordoned or draining node now, without
+// waiting for replacements: each generation with an instance there drains its
+// leader (the gateway sends it nothing new and it is retired once idle), and
+// the controller rebuilds the replica wherever it may run - a pool replica on
+// another node, a named or pinned one once the node takes replicas again. It
+// costs no replica a retry. A schedulable node is refused: evicting from it
+// would only put the replicas back.
+func (a *apiHandlers) evictNode(w http.ResponseWriter, r *http.Request) {
+	node, err := a.d.Store.NodeByUUID(chi.URLParam(r, "uuid"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	if node.Scheduling.TakesReplicas() {
+		writeProductError(w, http.StatusConflict, ErrorNodeSchedulable, "cordon or drain the node before evicting its replicas", nil)
+		return
+	}
+	insts, err := a.d.Store.InstancesForNode(node.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	byDeployment := map[uint][]string{}
+	for _, inst := range insts {
+		byDeployment[inst.DeploymentID] = append(byDeployment[inst.DeploymentID], inst.UUID)
+	}
+	out := dto.NodeEviction{Evicted: []string{}}
+	for depID, uuids := range byDeployment {
+		dep, err := a.d.Store.GetDeployment(depID)
+		if err != nil || dep.State != store.DeployActive {
+			continue // gone, stopped or being deleted: nothing to rebuild
+		}
+		all, err := a.d.Store.InstancesForDeployment(dep.ID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		match, err := a.deploymentUnitMatch(dep, all)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		leaders := map[string]bool{}
+		for _, uuid := range uuids {
+			// A follower names its whole generation: a collective cannot
+			// lose one process.
+			if slot := match.SlotOf(uuid); slot != nil && slot.Inst != nil {
+				leaders[slot.Inst.UUID] = true
+			}
+		}
+		for leader := range leaders {
+			err := a.d.Store.TransitionInstances(dep.ID, []string{leader}, store.ReplicaFillingStates(), proto.InstDraining, "evicted from node "+node.DisplayName())
+			if errors.Is(err, store.ErrStateChanged) {
+				continue
+			}
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err)
+				return
+			}
+			out.Evicted = append(out.Evicted, leader)
+			a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventReplicaRestarted, map[string]any{"instance": leader, "drain": true, "evicted_from": node.UUID})
+		}
+	}
+	sort.Strings(out.Evicted)
+	writeJSON(w, http.StatusAccepted, out)
+}

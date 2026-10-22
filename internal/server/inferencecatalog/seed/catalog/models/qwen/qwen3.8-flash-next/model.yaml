@@ -1,0 +1,180 @@
+model_id: qwen/qwen3.8-flash-next
+source: upstream
+display_title: Qwen3.8-Flash-Next
+parameter_count: 176B (125B backbone + 51B embeddings)
+architecture: moe
+input_modalities:
+- text
+- image
+- video
+context_length: 262144
+release_date: '2026-08-24'
+model_config:
+  model_type: qwen4_exp_text
+  num_hidden_layers: 48
+  hidden_size: 2560
+  num_attention_heads: 24
+  num_key_value_heads: 2
+  head_dim: 256
+  max_position_embeddings: 262144
+  layer_types:
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  - linear_attention
+  - linear_attention
+  - linear_attention
+  - full_attention
+  vision_config:
+    patch_size: 16
+specs:
+- name: fp8-sglang-nvidia-tp4
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:qwen38flashnext
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.8-Flash-Next-FP8
+        revision: 236dfdf285828023ca3bcd3f37366c58a3469b13
+  weight_bytes: 185523317458
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --ep
+  - '4'
+  - --mem-fraction-static
+  - '0.85'
+  - --chunked-prefill-size
+  - '8192'
+  - --linear-attn-prefill-backend
+  - flashinfer
+  - --linear-attn-decode-backend
+  - flashinfer
+  - --linear-attn-verify-backend
+  - triton
+  - --mamba-ssm-dtype
+  - bfloat16
+  - --speculative-algorithm
+  - NEXTN
+  - --speculative-num-steps
+  - '3'
+  - --speculative-eagle-topk
+  - '1'
+  - --speculative-num-draft-tokens
+  - '4'
+  - --reasoning-parser
+  - auto
+  - --enable-metrics
+  - --tool-call-parser
+  - qwen3_coder
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return {"TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-amd-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang-rocm:qwen38flashnext
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3.8-Flash-Next-FP8
+        revision: 236dfdf285828023ca3bcd3f37366c58a3469b13
+  weight_bytes: 185523317458
+  gpus:
+    vendor: amd
+    name: (^|[^A-Za-z0-9])(?:MI350X|MI355X)([^A-Za-z0-9]|$)
+    display_target: amd
+  args:
+  - --attention-backend
+  - aiter
+  - --page-size
+  - '32'
+  - --kv-cache-dtype
+  - auto
+  - --chunked-prefill-size
+  - '16384'
+  - --watchdog-timeout
+  - '1200'
+  - --mem-fraction-static
+  - '0.9'
+  - --model-loader-extra-config
+  - '{"enable_multithread_load": true}'
+  - --trust-remote-code
+  - --enable-metrics
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - qwen3_coder
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md

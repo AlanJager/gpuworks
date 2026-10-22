@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "test_file": "test/e2e/provider_endpoint_defaults.py",
+  "test_function": "test_provider_endpoint_defaults",
+  "contract_id": "gpuworks/provider/create-endpoint-defaults",
+  "command": "make test-e2e-provider-endpoint-defaults",
+  "jira": [
+    "ZSTAC-89797"
+  ],
+  "scope": "Create endpoint defaults and custom endpoint persistence; not full provider CRUD or cloud rental coverage",
+  "lane": "local-real-server-sqlite-autodl-fixture",
+  "fields": {
+    "kind": "all public schemas + AutoDL\u2192RunPod switch",
+    "endpoint": "actual value/default/custom proxy with port/path/refresh and real saved-credential sync",
+    "name": "runId scoped create/read",
+    "api_key": "blank initial, invalid rejection, valid create, encrypted saved credential consumed",
+    "public_key": "blank initial where applicable",
+    "private_key": "blank initial where applicable",
+    "extra": "schema initial defaults only"
+  },
+  "crud": {
+    "create": "browser + exact wire + independent GET + real driver sync",
+    "read": "refresh and independent list",
+    "delete": "browser + baseline restored",
+    "update": "NOT_COVERED: ZSTAC-89799 separate case"
+  },
+  "components": {
+    "form": [
+      "1.1",
+      "1.2",
+      "1.5",
+      "1.6",
+      "1.7",
+      "1.10",
+      "1.11",
+      "1.14"
+    ],
+    "text": [
+      "2.1"
+    ],
+    "url": [
+      "4.1",
+      "4.3",
+      "4.5"
+    ],
+    "secret": [
+      "7.1",
+      "7.4"
+    ]
+  },
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "gaps": [
+    "Default public HTTPS endpoint submission is covered by exact RTL wire/API schema; browser does not call live cloud APIs.",
+    "Cloud rental, node onboarding, GPU execution, other field validation, keyboard and localization matrix remain out of scope.",
+    "General browser CI gate remains unimplemented; explicit local aggregate includes this case."
+  ]
+}

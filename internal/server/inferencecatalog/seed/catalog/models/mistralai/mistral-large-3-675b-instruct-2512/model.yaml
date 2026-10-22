@@ -1,0 +1,96 @@
+model_id: mistralai/mistral-large-3-675b-instruct-2512
+source: upstream
+display_title: Mistral-Large-3-675B-Instruct
+parameter_count: 675B
+architecture: moe
+context_length: 294912
+release_date: '2025-11-28'
+model_config: {num_hidden_layers: 61, hidden_size: 7168, num_attention_heads: 128, head_dim: 192, max_position_embeddings: 294912, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128, vision_config: {image_size: 1540, patch_size: 14}}
+specs:
+- name: fp8-default-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Mistral-Large-3-675B-Instruct-2512
+        revision: 383ffea2c7d60dfd44ca960e8e691709d4fdb9cd
+    - modelscope:
+        repo_id: mistralai/Mistral-Large-3-675B-Instruct-2512
+        revision: f6e5e6078a0b4f1e012d74225479f98e0bcc262c
+  weight_bytes: 681542908857
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --tokenizer-mode
+  - mistral
+  - --config-format
+  - mistral
+  - --load-format
+  - mistral
+  - --tokenizer_mode
+  - mistral
+  - --config_format
+  - mistral
+  - --load_format
+  - mistral
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: mistralai/Mistral-Large-3-675B-Instruct-2512-NVFP4
+        revision: c8fe8a02a4b2fb6af0cdeb4ee71fcf147742e59c
+    - modelscope:
+        repo_id: mistralai/Mistral-Large-3-675B-Instruct-2512-NVFP4
+        revision: 3c5329da566813c593b8aa2159e1716d81ad4a5d
+  weight_bytes: 403177742186
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --tokenizer-mode
+  - mistral
+  - --config-format
+  - mistral
+  - --load-format
+  - mistral
+  - --tokenizer_mode
+  - mistral
+  - --config_format
+  - mistral
+  - --load_format
+  - mistral
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - mistral
+  - --mm-encoder-tp-mode
+  - data
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

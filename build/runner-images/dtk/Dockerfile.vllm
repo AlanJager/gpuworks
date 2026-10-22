@@ -1,0 +1,97 @@
+# gpuworks-runner: Hygon DTK vLLM 线
+#
+# 派生自 gpustack/runner 的 pack/dtk/Dockerfile.vllm（Apache-2.0，见 ../NOTICE）：
+# 工具层构成与「厂商 vanilla 之上只叠薄层」的分层思路参照其实现。
+#
+# 内容 = 厂商 vanilla（sourcefind 的 dtk vllm 镜像，自带 DTK/torch/vllm 的 DCU 构建）
+#       + 轻量工具层
+#       + vllm-hcu-apply-patches 预启动工具（厂商 custom 镜像里提取，见 files/README）
+#
+# 三条硬规则：
+#   1) **base 必须是海光厂商原件**，不能用公司内部在它之上叠了 AIOS 层的版本
+#      （那种 base 带 zstack_ai_starter/juicefs/aios-*.sh 与明文凭据，还会把 CMD 改掉）；
+#      构建前由 ../shared/check_vendor_base.sh 拦截。
+#   2) **不装 PyPI 的 vllm-omni**。厂商原件里本来就没有 omni（pip 清单是 vllm、vllm-hcu、
+#      transformers 5.5.0、flash-attn、flash_mla）；PyPI 的 omni 是 CUDA 取向的 wheel，
+#      装上会把 transformers 顶到 5.18.0 并带进 fa3_fwd/onnxruntime。海光的 omni 负载在
+#      推理目录里走厂商 custom:* 系列镜像。
+#   3) **不把 callable runtime 烤进镜像**：推理目录的 spec 用 sha256 钉住同一资产并只读
+#      挂载到 /opt/gpuworks/runtime（见 internal/agent/engine/catalog_assets.go），
+#      镜像内那份永远会被盖住。
+#
+ARG BASE_IMAGE=harbor.sourcefind.cn:5443/dcu/admin/base/vllm:0.18.1-ubuntu22.04-dtk26.04-py3.10
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层
+RUN <<EOF
+    set -eux
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y
+        apt-get install -y --no-install-recommends \
+            tini jq curl wget vim less tree bc \
+            iproute2 iputils-ping net-tools dnsutils \
+            procps sysstat htop \
+            ffmpeg patch
+        rm -rf /var/cache/apt /var/tmp/* /tmp/*
+    else
+        yum install -y jq curl wget vim less tree bc iproute iputils net-tools procps-ng sysstat htop ffmpeg patch
+        rm -rf /var/cache/yum /tmp/*
+    fi
+EOF
+
+## vllm-hcu-apply-patches（Hygon spec 的 pre_start_argv 依赖）
+#
+# 该工具随厂商 custom:* 镜像分发，不在 vllm vanilla 里。files/ 下有就装；
+# 本档 requires 声明了 hcu_patches，没有就会在末尾断言处失败——不再静默跳过。
+COPY dtk/files/ /opt/gpuworks/hcu-files/
+RUN <<EOF
+    set -eux
+    if [ -f /opt/gpuworks/hcu-files/vllm-hcu-apply-patches ]; then
+        install -m 0755 /opt/gpuworks/hcu-files/vllm-hcu-apply-patches /usr/local/bin/vllm-hcu-apply-patches
+    else
+        echo "vllm-hcu-apply-patches not shipped in dtk/files/" >&2
+    fi
+EOF
+
+## audio extras
+RUN <<EOF
+    set -eux
+    python3 -m pip install --no-cache-dir librosa soundfile 'mistral_common[audio]'
+EOF
+
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "vllm",
+    "framework": "dtk",
+    "requires": os.environ["REQUIRES"].split(),
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=vllm bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm-dcu" \
+      io.gpuworks.framework="dtk" \
+      io.gpuworks.requires="${REQUIRES}"

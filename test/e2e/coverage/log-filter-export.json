@@ -1,0 +1,70 @@
+{
+  "contract_id": "gpuworks/logs/server-warning-filter-export",
+  "name": "日志 / 真实告警按关键字快捷词来源级别时间筛选并导出 / 搜索与直方图一致，唯一行刷新可回查，CSV逐字段等于当前加载行集",
+  "priority": "P1",
+  "page_id": "logs",
+  "test_file": "test/e2e/log_filter_export.py",
+  "test_function": "test_log_filter_export",
+  "command": "make test-e2e-log-filter-export",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "locales": ["en", "zh"],
+  "required_evidence": ["collection", "ui", "request", "persistence", "download", "cleanup"],
+  "phase_0": "Source, time range and minimum-level comboboxes plus the auto-refresh switch lacked accessible names. Localized labels are protected by a prior red-to-green LogsPage RTL regression.",
+  "product_contracts": [
+    "ui/src/pages/LogsPage.tsx",
+    "ui/src/pages/logsPageRange.ts",
+    "internal/server/api/logs_search.go",
+    "internal/server/logstore/query.go",
+    "internal/server/app/observability.go"
+  ],
+  "fixture": {
+    "entry": "GET /api/v1/agent/connect with an invalid marker-bearing Sec-WebSocket-Version",
+    "expected_status": 400,
+    "source": "real server WARN -> selflog collector -> local logstore -> authenticated GET",
+    "isolation": "two unique e2e-runId markers in one private LocalServer database; no DB writes or management mocks",
+    "characters": ["Chinese", "comma", "double quote", "literal WARNING without ERROR"]
+  },
+  "additional_cases": ["test/e2e/coverage/log-quick-controls.json"],
+  "fields": [
+    {"field_id": "logs.query", "component": "Search Text", "request": "q", "persistence": "none; resets on reload", "covered": ["quoted exact marker", "nonexistent marker", "restore", "request and result equality", "free-text OR grouped before quick-filter AND"], "missing": ["empty/all search", "remaining FTS operators", "invalid syntax", "full keyword boundary matrix"]},
+    {"field_id": "logs.quick", "component": "AntD Button / aria-pressed", "request": "q", "persistence": "none; component state", "covered": ["quoted text plus WARNING", "WARNING OR ERROR combined with explicit AND", "ERROR-only excludes warning even with free-text OR", "deselect restores text", "exact search and histogram queries and known result counts"], "missing": ["all pairwise signature combinations", "full keyboard focus/computed-style matrix", "additional signature/order/truth-table coverage is independently bound in log-quick-controls.json"]},
+    {"field_id": "logs.source", "component": "Select", "request": "source", "persistence": "none; reload defaults to instance", "covered": ["default instance", "server selected and matching", "agent empty", "restore server"], "missing": ["real agent and container collection", "node and all options"]},
+    {"field_id": "logs.level", "component": "Select", "request": "level", "persistence": "none; resets on reload", "covered": ["default unset", "warn includes real warning", "error excludes warning", "restore warn"], "missing": ["info and fatal options", "clearing via control", "actual error/fatal log collection"]},
+    {"field_id": "logs.range", "component": "Select / custom deep link", "request": "from/to", "persistence": "custom bounds from URL survive reload", "covered": ["fixed custom window at authoritative target time_ms minus/plus 1ms", "exact millisecond query", "UTC display", "quick-filter histogram uses same fixed bounds and exact aligned warn bucket"], "missing": ["all six interactive presets", "inclusive left/right boundary fixtures", "invalid window", "full histogram and timezone matrix"]},
+    {"field_id": "logs.auto", "component": "Switch", "request": "repeated search when enabled", "persistence": "none", "covered": ["accessible name", "default off and remains off after reload"], "missing": ["on/off lifecycle", "timer-driven refresh and stop"]},
+    {"field_id": "logs.export", "component": "Download button", "request": "N/A: browser serializes currently loaded entries", "persistence": "downloaded CSV bytes", "covered": ["disabled for empty filters", "real browser download", "UTF-8 Chinese", "CSV commas and quotes", "exact headers/order/fields/row count"], "missing": ["large loaded pages", "download failure", "permission matrix"]},
+    {"field_id": "logs.quick.traceback", "component": "AntD Button / aria-pressed", "request": "q (chip terms OR together; chip group AND free text)", "persistence": "none; local selected chips", "covered": [], "additional_case": {"manifest": "test/e2e/coverage/log-quick-controls.json", "test_file": "test/e2e/log_quick_controls.py", "parameter": "Traceback"}, "missing": ["all pairwise signatures and full keyboard/style matrix; see additional case for independently executed selection/composition coverage"]},
+    {"field_id": "logs.quick.err99999", "component": "AntD Button / aria-pressed", "request": "q (chip terms OR together; chip group AND free text)", "persistence": "none; local selected chips", "covered": [], "additional_case": {"manifest": "test/e2e/coverage/log-quick-controls.json", "test_file": "test/e2e/log_quick_controls.py", "parameter": "ERR99999"}, "missing": ["all pairwise signatures and full keyboard/style matrix; see additional case for independently executed selection/composition coverage"]},
+    {"field_id": "logs.quick.out-of-memory", "component": "AntD Button / aria-pressed", "request": "q (chip terms OR together; chip group AND free text)", "persistence": "none; local selected chips", "covered": [], "additional_case": {"manifest": "test/e2e/coverage/log-quick-controls.json", "test_file": "test/e2e/log_quick_controls.py", "parameter": "out of memory"}, "missing": ["all pairwise signatures and full keyboard/style matrix; see additional case for independently executed selection/composition coverage"]},
+    {"field_id": "logs.quick.no-such-container", "component": "AntD Button / aria-pressed", "request": "q (chip terms OR together; chip group AND free text)", "persistence": "none; local selected chips", "covered": [], "additional_case": {"manifest": "test/e2e/coverage/log-quick-controls.json", "test_file": "test/e2e/log_quick_controls.py", "parameter": "no such container"}, "missing": ["all pairwise signatures and full keyboard/style matrix; see additional case for independently executed selection/composition coverage"]},
+    {"field_id": "logs.instance", "component": "AutoComplete and per-row instance link", "request": "instance", "persistence": "instance deep-link seeds initial value", "covered": [], "missing": ["MISSING: typed/selected/cleared instance, row-link filtering, exact request and resource isolation with node/source/q"]},
+    {"field_id": "logs.node", "component": "NodePicker", "request": "node and selector search query", "persistence": "none; local UI selection", "covered": [], "missing": ["MISSING: server-side search/no results/clear, selected name preservation, and exact matching/excluded resources with instance/source/q"]},
+    {"field_id": "logs.context", "component": "Row context button, Select, InputNumber and close button", "request": "GET /api/v1/logs/context: instance/node/ts/id/before/after", "persistence": "none; local context selection", "covered": [], "missing": ["MISSING: anchor identity/match_index and surrounding rows, per-option ±5/10/20/50/100, custom 1..500/empty boundaries, close/reopen and source scoping"]}
+  ],
+  "crud": {
+    "Create": "N/A for UI: log facts originate from actual server events; collector evidence is separately recorded",
+    "Read": "Browser combined search and independent authenticated GET return the same stable id/time/source/level/line; reload and reapply retain the same fact",
+    "Update": "N/A: log facts are immutable; filters are local UI state, not saved resources",
+    "Delete": "N/A: UI has no per-log delete; isolated server/database lifecycle is fixture cleanup"
+  },
+  "checklist_items": {
+    "2.2": "Partial: exact quoted marker and non-match; other normalization boundaries missing",
+    "5.1": "Localized accessible names and actual selected source/level; enumerations remain partial",
+    "9.2": "Exact fixed custom from/to seeded by supported deep link; not an invented custom picker",
+    "9.4": "Uses documented inclusive logstore contract; exact endpoint boundary cases remain missing",
+    "16.8": "Read actual downloaded CSV bytes, UTF-8 and schema, compare every field to loaded rows",
+    "18.1": "Real server warning collection and keyword/quick-chip/source/level/time intersection; agent/container facts remain missing",
+    "18.4": "Browser chip and free-text OR queries match exact search/histogram expressions, known row identities and bucket counts; pagination remains missing",
+    "18.6": "CSV content is verified; no live-follow or clipboard claim"
+  },
+  "time_semantics": "Server logs include both endpoints. This case uses a fixed enclosing window; it does not claim complete endpoint boundary coverage.",
+  "export_contract": "Current loaded entries, not all backend matches. BOM is optional because the product does not promise it.",
+  "cleanup": "Stop only the owned LocalServer and release its port lock; preserve the private run database/logs for diagnosis, with seven-day scoped removal guidance. No shared server, GPU, agent or Docker dependency.",
+  "missing": [
+    "Agent/container/end-to-end node log collection, live SSE, reconnect, cancellation and resource filters",
+    "All source/level/time choices, pagination, 10/30/100 record volume, cursor ordering and retention",
+    "Multi-bucket histogram totals, traceback folding/context drawer and complete keyboard/computed-style matrix",
+    "Error recovery, malformed query, export failure and non-admin permissions"
+  ]
+}

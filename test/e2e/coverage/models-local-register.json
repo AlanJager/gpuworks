@@ -1,0 +1,94 @@
+{
+  "contract_id": "gpuworks/model/local-directory-registration",
+  "name": "模型 / 节点本地目录登记 / 真实 agent 读取预览、UI 登记、刷新回读与清理",
+  "test_file": "test/e2e/models_local_register.py",
+  "test_function": "test_models_local_register",
+  "command": "make test-e2e-models-local-register",
+  "priority": "P1",
+  "page_id": "models",
+  "lane": "local-real-server-agent-local-files",
+  "identity": "admin browser / the node's real agent",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The real local agent only reads the model directory. No container, GPU, engine or inference is claimed."
+  },
+  "crud": {
+    "create": "UI Register model with Local path on node; preview and registration both reach the real agent",
+    "read": "The model card, refresh and independent GET preserve source, identity, architecture and weight bytes",
+    "update": "N/A in this case: metadata refresh and inference config are not exercised",
+    "delete": "Cleanup: the model is deleted, the agent stopped and the node force-deleted; independent GETs return 404"
+  },
+  "fields": [
+    {
+      "id": "model.source",
+      "component": "Source select",
+      "request": "source=local",
+      "persisted": "source",
+      "covered": ["Local path on node selection reveals the node and directory fields"],
+      "missing": ["Hugging Face, ModelScope and HTTP-directory sources"]
+    },
+    {
+      "id": "model.node",
+      "component": "NodePicker searching online nodes",
+      "request": "node_uuid on preview and registration",
+      "persisted": "the node file reference",
+      "covered": ["the online agent node is selected through the real picker", "the independent GET carries node_uuid, node_name, storage_id/name/type, path, state and acquisition"],
+      "missing": ["offline nodes and their disabled state", "multiple nodes", "server-side search by name"]
+    },
+    {
+      "id": "model.directory",
+      "component": "Text input",
+      "request": "path",
+      "persisted": "the registered file reference path",
+      "covered": ["absolute directory on the node", "the agent reads config.json and the tiny weight file", "the registered path persists in the node-file association and is shown in the files dialog after reload"],
+      "missing": ["relative and missing paths", "permission errors", "GGUF-only and config-less directories", "large directories"]
+    },
+    {
+      "id": "model.preview",
+      "component": "Parse preview alert",
+      "request": "POST /models/local/preview",
+      "persisted": "N/A: preview",
+      "covered": ["architecture Qwen2ForCausalLM", "the directory's reported byte size", "the agent path"],
+      "missing": ["README truncation", "modalities", "preview failures and retry"]
+    },
+    {
+      "id": "model.identity",
+      "component": "Model ID and name inputs after preview",
+      "request": "source_id and name",
+      "persisted": "source_id and name",
+      "covered": ["explicit model ID and display name", "independent GET readback"],
+      "missing": ["identity conflicts", "duplicate path registration", "Unicode and whitespace normalization"]
+    },
+    {
+      "id": "model.cleanup",
+      "component": "API cleanup",
+      "request": "DELETE /models/{id}, DELETE /nodes/{uuid}?force=true",
+      "persisted": "removal",
+      "covered": ["model and node removed", "agent process stopped"],
+      "missing": ["the model-delete UI menu and in-use refusal"]
+    }
+  ],
+  "checklist_items": {
+    "1.7": "Minimum local registration reaches the exact preview and register bodies",
+    "1.14": "Refresh and independent GET preserve the registered model and its node-file association",
+    "5.5": "Choosing the local source reveals the node picker and directory field",
+    "8.1": "The node picker offers the online agent node with its readable name",
+    "12.2": "The model files dialog opens inside the 1440x900 viewport and shows the node, path and registered state"
+  },
+  "missing": [
+    "MISSING: checklist 5.3 (selector search) — the source select has no search and the node picker search is not exercised",
+    "MISSING: checklist 16.1 (corrupt/empty directory and size boundaries) — only a valid tiny directory is previewed",
+    "N/A: checklist 23.3 (AI assistant tool result) — this contract has no assistant",
+    "MISSING: downloads, copies and per-node model file deletion",
+    "MISSING: GGUF-only and config-less directories",
+    "MISSING: relative, missing, unreadable and very large directories",
+    "MISSING: an offline node and its disabled state",
+    "MISSING: duplicate registration and identity conflicts",
+    "MISSING: storage selection when a node has several local storages",
+    "MISSING: metadata refresh and inference config editing",
+    "MISSING: non-admin permissions"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/agent/test digests, locale, preview and register bodies, independent GET, agent PID/log and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

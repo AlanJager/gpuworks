@@ -1,0 +1,70 @@
+{
+  "as_of": 1758182650000,
+  "stale": false,
+  "deployment": { "id": 102, "name": "Qwen2.5-7B-Instruct", "engine": "vllm", "placement": "TP2 · gpu1, gpu2", "replicas": { "ready": 2, "desired": 2 } },
+  "alignment": { "proxy_requests": 5120, "engine_completed": 5094, "client_errors": 12, "server_errors": 8, "lost": 6, "in_flight": 3, "discrepancy_persistent": true },
+  "ttft_breakdown": { "queue_ms": 180, "prefill_ms": 260, "first_token_ms": 40, "total_ms": 480, "approximate": true },
+  "charts": {
+    "latency": [
+      { "labels": { "metric": "ttft_p50" }, "points": [[1758181650000, 190], [1758182150000, 205], [1758182650000, 210]] },
+      { "labels": { "metric": "ttft_p95" }, "points": [[1758181650000, 420], [1758182150000, 450], [1758182650000, 480]] },
+      { "labels": { "metric": "ttft_p99" }, "points": [[1758181650000, 560], [1758182150000, 590], [1758182650000, 610]] }
+    ],
+    "tpot": [
+      { "labels": { "metric": "tpot_p95" }, "points": [[1758181650000, 70], [1758182150000, 80], [1758182650000, 85]] },
+      { "labels": { "metric": "tpot_p99" }, "points": [[1758181650000, 95], [1758182150000, 100], [1758182650000, 110]] }
+    ],
+    "concurrency": [
+      { "labels": { "metric": "running", "instance": "1111aaaa2222bbbb3333cccc4444dddd" }, "points": [[1758181650000, 30], [1758182150000, 34], [1758182650000, 38]] },
+      { "labels": { "metric": "waiting", "instance": "1111aaaa2222bbbb3333cccc4444dddd" }, "points": [[1758181650000, 4], [1758182150000, 12], [1758182650000, 21]] }
+    ],
+    "kv": [
+      { "labels": { "metric": "usage_pct", "instance": "1111aaaa2222bbbb3333cccc4444dddd" }, "points": [[1758181650000, 71], [1758182150000, 85], [1758182650000, 94]] },
+      { "labels": { "metric": "hit_rate_pct", "instance": "1111aaaa2222bbbb3333cccc4444dddd" }, "points": [[1758181650000, 40], [1758182150000, 36], [1758182650000, 33]] }
+    ],
+    "throughput": [
+      { "labels": { "metric": "prompt_tok_s", "instance": "1111aaaa2222bbbb3333cccc4444dddd" }, "points": [[1758181650000, 2600], [1758182150000, 2900], [1758182650000, 3100]] },
+      { "labels": { "metric": "generation_tok_s", "instance": "1111aaaa2222bbbb3333cccc4444dddd" }, "points": [[1758181650000, 1500], [1758182150000, 1700], [1758182650000, 1820]] }
+    ],
+    "stage_time": [
+      { "labels": { "metric": "queue_ms" }, "points": [[1758181650000, 140], [1758182150000, 165], [1758182650000, 180]] },
+      { "labels": { "metric": "prefill_ms" }, "points": [[1758181650000, 220], [1758182150000, 240], [1758182650000, 260]] },
+      { "labels": { "metric": "decode_ms" }, "points": [[1758181650000, 75], [1758182150000, 82], [1758182650000, 88]] }
+    ],
+    "preemptions": [
+      { "labels": { "metric": "preemptions_per_s" }, "points": [[1758181650000, 0.1], [1758182150000, 0.2], [1758182650000, 0.3]] }
+    ]
+  },
+  "replicas": [
+    {
+      "instance_uuid": "1111aaaa2222bbbb3333cccc4444dddd", "state": "running", "node_name": "gpu1", "gpu_indexes": [0, 1],
+      "running": 38, "waiting": 9, "kv_usage_pct": 96, "kv_hit_rate_pct": 40,
+      "prompt_tok_s": 1500, "generation_tok_s": 900,
+      "gpus": [
+        { "index": 0, "util_pct": 91, "mem_bw_pct": 76, "temperature_c": 78, "power_w": 310 },
+        { "index": 1, "util_pct": 88, "mem_bw_pct": 74, "temperature_c": 76, "power_w": 300 }
+      ]
+    },
+    {
+      "instance_uuid": "5555eeee6666ffff7777000088889999", "state": "running", "node_name": "gpu2", "gpu_indexes": [2, 3],
+      "running": 26, "waiting": 12, "kv_usage_pct": 92, "kv_hit_rate_pct": 26,
+      "prompt_tok_s": 1600, "generation_tok_s": 920,
+      "gpus": [
+        { "index": 2, "util_pct": 85, "mem_bw_pct": 72, "temperature_c": 81, "power_w": 320 },
+        { "index": 3, "util_pct": 83, "mem_bw_pct": 70, "temperature_c": 80, "power_w": 315 }
+      ]
+    }
+  ],
+  "log_instances": ["1111aaaa2222bbbb3333cccc4444dddd", "5555eeee6666ffff7777000088889999"],
+  "sources": { "ttft": "engine", "e2e": "engine", "prompt_tokens": "engine", "generation_tokens": "engine", "running": "engine" },
+  "health": {
+    "status": "ok", "threshold_sec": 60,
+    "last": { "at_ms": 1758182650000, "status": "ok", "latency_ms": 180, "http_status": 200, "instance_uuid": "5555eeee6666ffff7777000088889999" },
+    "recent_mean_ms": 195, "recent_ok": 2,
+    "recent": [
+      { "at_ms": 1758182530000, "status": "ok", "latency_ms": 210, "http_status": 200, "instance_uuid": "1111aaaa2222bbbb3333cccc4444dddd" },
+      { "at_ms": 1758182590000, "status": "timeout", "latency_ms": 60000, "message": "context deadline exceeded" },
+      { "at_ms": 1758182650000, "status": "ok", "latency_ms": 180, "http_status": 200, "instance_uuid": "5555eeee6666ffff7777000088889999" }
+    ]
+  }
+}

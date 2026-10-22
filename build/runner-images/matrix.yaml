@@ -1,0 +1,575 @@
+# gpuworks-runner 自建镜像矩阵
+#
+# 本文件是每一档镜像的权威定义：构建什么、以什么为 base、必须具备什么。
+# 读这一个文件就能知道某档是干什么用的、有什么前提、有什么已知限制。
+# 署名与派生关系见 NOTICE（构建配方部分派生自 Apache-2.0 的 gpustack/runner）。
+# 构建与发布怎么跑见 README.md；真机验证结论见 artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md。
+#
+# tag 命名：<backend><框架档>[-<型号>]-<engine><版本>，并发一个带构建版次的不可变
+# tag <同名>-<revision>。推理目录（seed catalog）一律引用带 revision 的不可变 tag；
+# 裸 tag 只作人用别名，会被后续版次移动。
+#
+# 字段：
+#   id          矩阵项 ID，同时就是裸 tag 名
+#   revision    构建版次（r1、r2…）。配方变了必须 +1，不许原地覆盖同名 tag：
+#               节点上已有同名镜像时不会重拉，覆盖等于改了没生效
+#   backend     cuda | cann | dtk | hggc | metal
+#   builder     缺省为本目录的 buildx 构建。host-env 表示 macOS 宿主环境包：由
+#               build/host-envs/build.sh 构建（框架档 = 最低 macOS），本目录的
+#               build.sh / verify.sh 跳过它，push.sh / publish.py 照常分发
+#   engine      vllm | sglang | callable（目录引擎；仅作说明，generate() 按 id 解析）
+#   platforms   buildx platforms（缺省取 defaults）
+#   base        上游或厂商的公开原件。不用公司内部二次封装的镜像；构建前由
+#               shared/check_vendor_base.sh 拦截带内部封装痕迹的 base
+#   args        传给 Dockerfile 的 --build-arg。各后端的 Dockerfile 头部是权威定义，
+#               跨档出现的几个：
+#                 MOONCAKE               ""=不要 / base=沿用 base 自带 / npu=装 npu 变体
+#                 OMNI_IN_BASE           omni 由 base 自带时记其版本（只用于自描述）
+#                 PATCHES_NOT_APPLICABLE 本档 base 上确实不适用的补丁；声明过期会失败
+#                 PURGE_STUB_PKGS        base 里被 pip uninstall 卸干净、却留下空目录
+#                                        的包名。PEP 420 会把这种空目录变成遮蔽真包的
+#                                        命名空间包，必须删掉；声明过期（目录不存在或
+#                                        里面有文件）会失败
+#                 TORCHCODEC_SPEC        base 自带的 torchcodec 与本档 CUDA 不匹配时，
+#                                        用它显式替换成正确的构建
+#   requires    本档必须成立的断言，构建末尾与 verify.sh 都会检查，不过即失败：
+#                 engine            引擎本体装对（元数据 + 模块可定位）
+#                 engine_import     真的 import 成功；vllm 档另断言
+#                                   import vllm.multimodal.media.audio 与
+#                                   （已装时）import torchcodec——这是 vllm serve
+#                                   的 CLI 启动路径，import vllm 本身覆盖不到
+#                 omni              vllm-omni 在位
+#                 omni_no_mooncake  mooncake-transfer-engine-npu 的 pip 包与模块
+#                                   都不存在（昇腾 omni 档，理由见该线说明）
+#                 omni_patched      vllm_omni 补丁清单无 failed，且 Ming 的 NPU
+#                                   补丁确实在文件里
+#                 indextts2_frontend IndexTTS 2.5 的文本前端：fugashi 能用 unidic-lite
+#                                   分词；x86_64 上 tn（WeTextProcessing）能 import
+#                 mooncake          mooncake 传输引擎在位（plain / cuda13 改名包 / npu 变体）
+#                 diffusion         diffusers 与 cv2 等 diffusion 依赖在位
+#                 audit             离线组件审计门通过（components.json status=PASS）
+#                 hcu_patches       vllm-hcu-apply-patches 在 PATH 上（海光）
+#   base_requires_clean_history
+#               true = 该 base 的 image history 里有内网凭据，必须先用
+#               prepare-base.sh 在 base 这一层压掉 history，再以干净 base 构建；
+#               build.sh 构建前校验，不干净直接拒绝
+#   base_note   为什么选这个 base、怎么拿到它
+#   note        这一档干什么用、硬件与驱动前提、有什么没什么、已知限制
+
+defaults:
+  platforms: [linux/amd64, linux/arm64]
+
+items:
+
+  # =======================================================================
+  # NVIDIA CUDA
+  # =======================================================================
+  # 框架档只做上游实际提供 base 的版本：cuda13.0 与 cuda12.9。cuda12.8 上游没有
+  # vllm 的 base（sglang 仅有 B200 专用的 -cu128-b200 旧版），cuda13.3 不存在，
+  # cuda13.4 等上游出 stable 再补。
+  #
+  # vllm 与 omni 分两档，不合并，原因是合并的代价落在所有负载头上：
+  #   1) vllm-omni 把 transformers 钉到 <5.15、accelerate 钉到 1.12.0、
+  #      diffusers 钉到 0.40.0，而普通 vllm 对 transformers 不设上界；
+  #   2) vllm-omni 在 import 期替换 vllm 的 EngineCoreOutput、TokensPrompt 等内部
+  #      类型，需要 patches/vllm_omni/001 按 argv 里有无 --omni 来旁路；
+  #   3) 推理目录里 nvidia 的 vllm spec 是 517 普通 : 27 omni，收益面很小。
+  # 分档几乎没有代价：omni 相关包约 280 MB，两档同一 base，同仓库内大层完全去重。
+
+  - id: cuda13.0-vllm0.30.0
+    revision: r2
+    backend: cuda
+    engine: vllm
+    base: vllm/vllm-openai:v0.30.0
+    base_note: 上游默认构建即 CUDA 13.0.x，同名 tag 含 aarch64
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "base"
+      ENGINE_VERSION: "0.30.0"
+      FRAMEWORK_VERSION: "13.0"
+    requires: [engine, engine_import, mooncake, overlays, audit]
+    note: >-
+      CUDA 13 的默认档，普通文本/多模态推理负载用。不含 vllm-omni，transformers
+      不设上界。mooncake 由 base 预装（cuda13 的包名是 mooncake-transfer-engine-cuda13）。
+
+  - id: cuda13.0-vllm-omni0.30.0
+    revision: r3
+    backend: cuda
+    engine: vllm
+    base: vllm/vllm-openai:v0.30.0
+    base_note: 与默认档同一 base，同仓库内大层去重
+    args:
+      VLLM_OMNI_VERSION: "0.30.0"
+      MOONCAKE: "base"
+      ENGINE_VERSION: "0.30.0"
+      FRAMEWORK_VERSION: "13.0"
+    requires: [engine, engine_import, omni, indextts2_frontend, mooncake, overlays, audit]
+    note: >-
+      omni 档，给 vllm-omni 独家支持的负载用（Qwen3-TTS、Ming-omni-tts、图像与
+      视频生成等）。代价是 transformers 被压到 <5.15、accelerate 钉到 1.12.0，
+      所以普通负载请用默认档。不声明 diffusion：omni 自带 diffusers 但不带 opencv，
+      与 sglang 的 diffusion 扩展不是一回事。r3 加装 vllm-omni 的 indextts2 前端
+      （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel，
+      所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。
+
+  - id: cuda13.0-sglang0.5.21
+    revision: r2
+    backend: cuda
+    engine: sglang
+    base: lmsysorg/sglang:v0.5.21-cu130
+    base_note: 上游官方双架构 manifest
+    args:
+      SGLANG_VERSION: "0.5.21"
+    requires: [engine, engine_import, diffusion, overlays]
+    note: >-
+      CUDA 13 的 sglang 档，含 diffusion 依赖（从 base 的 sglang 源码树安装，
+      装不上即构建失败）。
+
+  # cuda12.9 的 vllm 档需要替换 base 里的 torchcodec，原因与做法：
+  #   上游 v0.31.0-cu129 的 torch 栈自洽（torch 2.13.0+cu129、torchvision 0.28.0+cu129、
+  #   torchaudio 2.11.0+cu129），但镜像里的 torchcodec 0.17.0 是 CUDA 13 构建——
+  #   libtorchcodec_core*.so 依赖 libnvrtc.so.13 / libcudart.so.13，而镜像里只有 .12，
+  #   于是 import torchcodec 抛 OSError。vllm 的 multimodal/media/audio.py 只捕获
+  #   ImportError 与 RuntimeError，接不住 OSError，所以 vllm serve 在 CLI 导入阶段
+  #   就崩，任何硬件上都起不来。成因是上游用 uv + --extra-index-url .../whl/cu129 解析
+  #   依赖，而 cu129 索引里 torchcodec 只到 0.16.0，PyPI 的 0.17.0（Linux 默认 CUDA 13）
+  #   版本号更高被选中。-cu129-ubuntu2404 变体同样是 0.17.0，换 base 不解决。
+  #   做法：用 PyTorch 官方 cu129 索引的 torchcodec 0.16.0+cu129 以 --no-deps 替换
+  #   （torchcodec 0.14~0.17 都只要求 torch>=2.11，vllm 要求 >=0.14，所以满足）。
+  #   pip_guard 把这一次替换作为按档声明的例外记进 /opt/gpuworks/base-replaced.json，
+  #   其余受守卫的包（torch 全家、triton、nvidia-*、cuda-*、flashinfer、xformers、vllm）
+  #   仍一概不许变。
+  # 另外 v0.30.0-cu129 这个 tag 整体是坏的（torch 2.14.0+cu130、torchvision 无法 import），
+  # 不要用它作 base。
+
+  - id: cuda12.9-vllm0.31.0
+    revision: r2
+    backend: cuda
+    engine: vllm
+    base: vllm/vllm-openai:v0.31.0-cu129
+    base_note: >-
+      cu129 线上 torch 栈自洽的版本（torch 2.13.0+cu129，NCCL cu12 2.30.7）；
+      不是 -cu129-ubuntu2404 变体。torchcodec 需替换，见上方说明。
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "base"
+      ENGINE_VERSION: "0.31.0"
+      FRAMEWORK_VERSION: "12.9"
+      TORCHCODEC_SPEC: "torchcodec==0.16.0+cu129"
+      TORCHCODEC_INDEX_URL: "https://download.pytorch.org/whl/cu129"
+      PATCHES_NOT_APPLICABLE: "001_wrong_dp_ray.patch"
+    requires: [engine, engine_import, mooncake, overlays, audit]
+    note: >-
+      CUDA 12.x 的 vllm 档（驱动低于 580 的节点用它，CUDA 13.0 要求驱动 ≥580）。
+      不含 omni。torchcodec 换成 0.16.0+cu129，其余 torch 栈与 base 逐包一致。
+      补丁 001（wrong_dp_ray）在 vllm 0.31 上不适用——上游已重构 get_open_port，
+      故由 PATCHES_NOT_APPLICABLE 显式声明跳过；002 应用，003 已在上游。
+
+  - id: cuda12.9-sglang0.5.18
+    revision: r2
+    backend: cuda
+    engine: sglang
+    base: lmsysorg/sglang:v0.5.18-cu129
+    base_note: cu129 线上最新的官方 sglang 档（0.5.21 没有 cu129 构建）
+    args:
+      SGLANG_VERSION: "0.5.18"
+    requires: [engine, engine_import, diffusion, overlays]
+    note: CUDA 12.x 的 sglang 档，含 diffusion 依赖。
+
+  # =======================================================================
+  # Ascend CANN —— vllm 线（不含 omni）
+  # =======================================================================
+  # 本线一律不装 PyPI 的 vllm-omni：把它装进 vllm-ascend 后，vllm 的 registry 检查
+  # 子进程一加载它的 vllm.general_plugins 入口就 SIGABRT（glibc 堆损坏），影响该镜像
+  # 里的所有负载，与 omni 版本是否对齐无关。昇腾的 omni 负载请用下面的 vllm-omni 线
+  # （base 自带 NPU 原生构建）。
+  #
+  # 驱动前提是选档的关键：vllm-ascend 0.27.1rc1 线要求 Ascend HDK ≥ 26.1.1，在
+  # 26.0.rc1 上引擎初始化即崩；0.26.0rc1 线在 26.0.rc1 上可用。按机队驱动选档。
+
+  - id: cann9.1-910b-vllm0.26.0rc1
+    revision: r2
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.26.0rc1
+    base_note: 上游 quay 原件，内部 CANN 为 9.1.0
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "npu"
+    requires: [engine, mooncake, overlays]
+    note: >-
+      910B，**驱动 26.0.rc1 可用**，也可在 26.1.1 上跑。驱动未升级到 26.1.1 的机队
+      选本档，不要选 0.27.1rc1。含 NPU 版 mooncake，PD 分离（vllm-ascend-mooncake
+      模式）用本线。
+
+  - id: cann9.1-a3-vllm0.26.0rc1
+    revision: r2
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.26.0rc1-a3
+    base_note: 上游 quay 原件的 A3 变体
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "npu"
+    requires: [engine, mooncake, overlays]
+    note: A3（910C），其余同 910b 档。
+
+  - id: cann9.1-910b-vllm0.27.1rc1
+    revision: r2
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.27.1rc1
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "npu"
+    requires: [engine, mooncake, overlays]
+    note: >-
+      910B，**要求 Ascend HDK ≥ 26.1.1**（driver 与 firmware 都要到位）。在 26.0.rc1
+      上该栈的引擎初始化子进程会堆损坏崩溃，升级驱动前请用 0.26.0rc1 档。
+      含 NPU 版 mooncake。
+
+  - id: cann9.1-a3-vllm0.27.1rc1
+    revision: r2
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.27.1rc1-a3
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "npu"
+    requires: [engine, mooncake, overlays]
+    note: A3（910C），要求 HDK ≥ 26.1.1，其余同 910b 档。
+
+  - id: cann9.1-310p-vllm0.27.1rc1
+    revision: r3
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.27.1rc1-310p
+    base_note: >-
+      base 卸掉了 triton-ascend，但 pip 留下了 site-packages/triton 的空目录树，
+      于是 PEP 420 把它变成遮蔽真 triton 的命名空间包，`import torch` 加载 torch_npu
+      时抛 AttributeError。靠 PURGE_STUB_PKGS 清掉。
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: ""
+      PURGE_STUB_PKGS: "triton"
+    requires: [engine, overlays]
+    note: >-
+      310P，要求 HDK ≥ 26.1.1。**不含 mooncake**：该型号没有对应的 NPU 传输后端，
+      所以也不支持 mooncake 路线的 PD 分离。该硬件没有 bf16 单元，部署规格必须钉
+      `--dtype float16`，否则 vLLM 按模型默认取 bf16 并报
+      `aclnnInplaceOne ... DT_BFLOAT16`。
+
+  - id: cann9.1-950-vllm0.27.1rc1
+    revision: r2
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.27.1rc1-a5
+    base_note: 950（Atlas A5 / CloudMatrix）对应上游的 a5 变体
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "npu"
+    requires: [engine, mooncake, overlays]
+    note: >-
+      950。950 自己的驱动线与 910B 不同（实测 driver 25.7.rc1.10 上本档可正常
+      serving），不照搬 910B 的 HDK 26.1.1 门槛。含 NPU 版 mooncake。
+
+  # =======================================================================
+  # Ascend CANN —— vllm-omni 线（base 自带 NPU 原生 omni）
+  # =======================================================================
+  # 昇腾侧的 omni 负载（Qwen3-TTS、Ming-omni-tts、MiniMax-H3 等）用本线：base 里
+  # 就是 vllm 与 omni 合一的 NPU 原生构建，本仓只叠工具层、补丁与 overlay。
+  #
+  # 本线一律卸掉 base 自带的 mooncake-transfer-engine-npu（requires 里的
+  # omni_no_mooncake 守住这一点）：该包与 vllm_omni 在同一进程里加载时会在进程退出
+  # 阶段破坏 glibc 堆（corrupted size vs. prev_size），表现为 import vllm_omni 与
+  # vllm --help 在退出时 abort；更严重的是 vLLM 为自定义模型架构起的内省子进程也会
+  # SIGABRT，于是 Ming-omni-tts、Qwen3-TTS 这类 omni 独家模型直接起不来。单独
+  # import mooncake 不触发。卸掉它之后上述路径全部正常。
+  # 代价：本线不能用 mooncake 传输做 PD 分离，需要 PD 的请用上面的 vllm 线。
+  #
+  # Ming-omni-tts 在 NPU 上另需 patches/vllm_omni/002（各版本的 audio_dsp.py 相同）：
+  # hann_window 对 int64 调 aclnnInplaceCos 失败、F.fold 在 aivec 向量核报 507035，
+  # 补丁把这两处放到 CPU 上算。requires 里的 omni_patched 守住补丁已落地。
+  #
+  # 版本选择：0.30.0 线是 CANN 9.1.0，配套 HDK ≥ 26.1.1；驱动还在 26.0.rc1 的机队用
+  # 下面 CANN 9.0.0 的 0.23.0rc1 基线档。上游 v0.25.0 的 Ming 有独立的 lm_head 缺陷，
+  # 不要用它作 base。
+
+  - id: cann9.1-910b-vllm-omni0.30.0
+    revision: r3
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-omni:v0.30.0
+    args:
+      VLLM_OMNI_VERSION: ""
+      OMNI_IN_BASE: "0.30.0"
+      MOONCAKE: ""
+    requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
+    note: >-
+      910B 的 omni 档，CANN 9.1.0，要求 HDK ≥ 26.1.1。omni 由 base 提供，不装 PyPI
+      的 vllm-omni。不含 mooncake（见本线说明），需要 PD 分离请用 vllm 线。
+
+  - id: cann9.1-a3-vllm-omni0.30.0
+    revision: r3
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-omni:v0.30.0-a3
+    args:
+      VLLM_OMNI_VERSION: ""
+      OMNI_IN_BASE: "0.30.0"
+      MOONCAKE: ""
+    requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
+    note: A3（910C）的 omni 档，其余同 910b 档。
+
+  - id: cann9.1-950-vllm-omni0.30.0
+    revision: r3
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-omni:v0.30.0-a5
+    args:
+      VLLM_OMNI_VERSION: ""
+      OMNI_IN_BASE: "0.30.0"
+      MOONCAKE: ""
+    requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
+    note: >-
+      950 的 omni 档，omni 由 base 的 a5 变体自带（NPU 原生）。其余同 910b 档。
+
+  - id: cann9.0-910b-vllm-omni0.23.0rc1
+    revision: r1
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-omni:v0.23.0rc1
+    base_note: >-
+      上游原件，双架构，约 6.5 GiB/架构（压缩）、解压 17.9 GiB。其 vllm-omni 实际
+      版本是 0.23.0rc2.dev147（vllm 0.23.0），且本身不带 mooncake-transfer-engine-npu。
+    args:
+      VLLM_OMNI_VERSION: ""
+      OMNI_IN_BASE: "0.23.0rc2.dev147"
+      MOONCAKE: ""
+    requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
+    note: >-
+      910B 的 omni 基线档，CANN 9.0.0，**驱动 26.0.rc1 也能用**（0.30.0 线要 26.1.1）。
+      驱动未升级的机队要跑 omni 负载就用本档。仍需 002 补丁才能跑 Ming-omni-tts。
+
+  - id: cann9.0-a3-vllm-omni0.23.0rc1
+    revision: r1
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-omni:v0.23.0rc1-a3
+    base_note: 上游原件的 A3 变体（该版本只有无后缀与 -a3 两种，没有 310p 与 a5）
+    args:
+      VLLM_OMNI_VERSION: ""
+      OMNI_IN_BASE: "0.23.0rc2.dev147"
+      MOONCAKE: ""
+    requires: [engine, omni, omni_no_mooncake, omni_patched, overlays]
+    note: A3（910C）的 omni 基线档，其余同 910b 档。
+
+  # =======================================================================
+  # Ascend CANN —— sglang 线与存量档
+  # =======================================================================
+
+  - id: cann9.0-910b-sglang0.5.18
+    revision: r2
+    backend: cann
+    engine: sglang
+    base: quay.io/ascend/sglang:v0.5.18-cann9.0.0-910b
+    args:
+      SGLANG_VERSION: "0.5.18"
+    requires: [engine, diffusion, overlays]
+    note: 910B 的 sglang 档，CANN 9.0.0，含 diffusion 依赖。
+
+  - id: cann9.0-a3-sglang0.5.18
+    revision: r2
+    backend: cann
+    engine: sglang
+    base: quay.io/ascend/sglang:v0.5.18-cann9.0.0-a3
+    args:
+      SGLANG_VERSION: "0.5.18"
+    requires: [engine, diffusion, overlays]
+    note: A3（910C）的 sglang 档，其余同 910b 档。
+
+  - id: cann8.5-910b-vllm0.18.0
+    revision: r2
+    backend: cann
+    engine: vllm
+    base: quay.io/ascend/vllm-ascend:v0.18.0
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: "npu"
+    requires: [engine, overlays]
+    note: >-
+      CANN 8.5 的存量机队档。该引擎版本没有配套的 omni，也不声明 mooncake 断言
+      （base 自带的版本不一定齐）。
+
+  - id: cann8.5-910b-sglang0.5.12.post1
+    revision: r2
+    backend: cann
+    engine: sglang
+    base: quay.io/ascend/sglang:v0.5.12.post1-cann8.5.0-910b
+    args:
+      SGLANG_VERSION: "0.5.12.post1"
+    requires: [engine, diffusion, overlays]
+    note: CANN 8.5 的存量机队 sglang 档，含 diffusion 依赖。
+
+  - id: cann8.5-a3-sglang0.5.12.post1
+    revision: r2
+    backend: cann
+    engine: sglang
+    base: quay.io/ascend/sglang:v0.5.12.post1-cann8.5.0-a3
+    args:
+      SGLANG_VERSION: "0.5.12.post1"
+    requires: [engine, diffusion, overlays]
+    note: A3（910C）的 CANN 8.5 存量档，其余同 910b 档。
+
+  # =======================================================================
+  # Hygon DTK（海光 DCU）
+  # =======================================================================
+  # base 是海光厂商原件（sourcefind 的 harbor，端口 5443，凭据见
+  # secrets/test-environments.md 的 sourcefind 一节）。构建机用 base-mirrors.local
+  # 把它映射到本地 mirror 里的厂商原件副本，matrix 里不写 mirror 地址。
+  # 设备侧：K100 上运行时必须把宿主的 /opt/hyhal 只读挂进容器，否则 torch 找不到
+  # librocm_smi64.so.2。构建容器里没有宿主驱动库，所以 dtk 档的 import 断言只到
+  # 「模块可定位」，真 import 由真机验证覆盖。
+  # PPU 与 DCU 都没有 arm64 供给，这两类档只出 amd64。
+
+  - id: dtk26.04-vllm0.18.1
+    revision: r2
+    backend: dtk
+    engine: vllm
+    platforms: [linux/amd64]
+    base: harbor.sourcefind.cn:5443/dcu/admin/base/vllm:0.18.1-ubuntu22.04-dtk26.04-py3.10
+    base_note: >-
+      海光厂商原件。该 base 的 history 里有厂商内网的凭据形态字符串，须先压
+      history（见 base_requires_clean_history）。
+    base_requires_clean_history: true
+    args:
+      VLLM_OMNI_VERSION: ""
+      MOONCAKE: ""
+    requires: [engine, hcu_patches, overlays]
+    note: >-
+      K100 等海光 DCU 的 vllm 档。**不含 omni**：厂商原件的 pip 清单是 vllm 0.18.1、
+      vllm-hcu 0.18.1、transformers 5.5.0、flash-attn、flash_mla，没有 vllm-omni；
+      海光的 omni 负载在推理目录里走厂商 custom:* 系列镜像，不依赖本档。
+      内置 vllm-hcu-apply-patches（推理目录的 pre_start_argv 依赖它）。
+      callable runtime 不烤进镜像：推理目录用 sha256 钉住同一资产并只读挂到同一路径。
+
+  - id: dtk26.04-sglang0.5.12
+    revision: r2
+    backend: dtk
+    engine: sglang
+    platforms: [linux/amd64]
+    base: harbor.sourcefind.cn:5443/dcu/admin/base/sglang:0.5.12-ubuntu22.04-dtk2604-py3.10
+    base_note: 海光厂商原件，取法同 vllm 档
+    # 该 base 当前扫不出凭据，但同源 base 出现过，这道门很便宜，留着当保险。
+    base_requires_clean_history: true
+    args:
+      SGLANG_VERSION: "0.5.12"
+    requires: [engine, diffusion, overlays]
+    note: >-
+      K100 等海光 DCU 的 sglang 档，含 diffusion 依赖。DCU 的 fa3 注意力后端要求
+      KV 页大小为 64，推理目录的 spec 必须带 --page-size 64，否则第一次 forward 就
+      崩且容器进程挂住不退出。
+
+  # =======================================================================
+  # T-Head PPU（HGGC）
+  # =======================================================================
+  # base 是厂商的 asllm tar（containerimages.zstack.ai，docker load 后入本地 mirror；
+  # URL 与 sha256 见 artifacts/work/2026-10-03-runner-images/research/ppu-asllm-base.md）。vanilla 自带 PPU 构建的
+  # vllm 0.23.0、vllm-omni 0.23.0rc2、sglang 0.5.13、diffusers 0.37.0、mooncake 0.3.9，
+  # omni / diffusion / mooncake 全部继承 vanilla，本仓不再叠这些层。
+  #
+  # 该 vanilla 的 image config history 里含 T-Head 内网代理的明文账号密码，而 history
+  # 会随镜像分发到任何 registry，所以必须压掉。**只在 base 这一层压**
+  # （prepare-base.sh），不要对每个成品镜像分别 squash：两个 hggc 档共享 asllm 的
+  # 全部层（合计 50.4 GB，去重后 25.4 GB），逐个压会把这份去重打碎成两份约 25 GB。
+
+  - id: hggc13.0-vllm0.23.0
+    revision: r2
+    backend: hggc
+    engine: vllm
+    platforms: [linux/amd64]
+    base: asllm:2.0.0-vanilla
+    base_note: 厂商 asllm tar，经本地 mirror 提供；history 须先压掉
+    base_requires_clean_history: true
+    requires: [engine, omni, mooncake, diffusion, overlays]
+    note: >-
+      PPU 的 vllm 档。omni、diffusion、mooncake 都来自 vanilla，所以本档同时能跑
+      omni 负载。本层只做：排障工具与 tini、清掉 vanilla 的 BASH_ENV 自启动
+      （每次 bash 启动都部署 cache bundle，拖慢健康检查）、把 vanilla 继承的
+      内网包源 env 改回公网源、运行期 env（VLLM_USE_V1=0 等）。
+
+  - id: hggc13.0-sglang0.5.13
+    revision: r2
+    backend: hggc
+    engine: sglang
+    platforms: [linux/amd64]
+    base: asllm:2.0.0-vanilla
+    base_note: 同 vllm 档，同一 vanilla
+    args:
+      SGLANG_VERSION: "0.5.13"
+    base_requires_clean_history: true
+    requires: [engine, diffusion, overlays]
+    note: >-
+      PPU 的 sglang 档。与 vllm 档同一 vanilla、同一 rootfs，只有 label 与引擎标识
+      不同，因此两档共享 base 的全部层（前提是 base 只压一次，见本线说明）。
+
+  - id: metal15.0-vllm0.31.0
+    revision: r2
+    backend: metal
+    engine: vllm
+    builder: host-env
+    platforms: [darwin/arm64]
+    args:
+      ENGINE_VERSION: "0.31.0"
+      FRAMEWORK_VERSION: "15.0"
+    note: >-
+      Apple silicon（M1–M5，macOS 15+）的 vLLM 档，引擎是 vllm-metal 0.31.0（钉 vLLM
+      0.31.0 CPU 核心 + MLX）。不是容器镜像：agent 的 host 运行时把它解包成宿主环境，
+      引擎以 macOS 原生进程跑在 Metal 上。构建：
+      build/host-envs/build.sh vllm-metal 0.31.0 r2。r2 起带 vLLM 源码里的 examples/*.jinja
+      并以 /vllm-workspace 为工作目录（与 Linux runner 一致，模板的 --chat-template 可原样引用）。
+      不支持 sleep、多机、KV 磁盘层（accelerator.Supports）。
+
+  - id: metal15.0-mlx-vlm0.7.8
+    revision: r2
+    backend: metal
+    engine: callable
+    builder: host-env
+    platforms: [darwin/arm64]
+    args:
+      ENGINE_VERSION: "0.7.8"
+      FRAMEWORK_VERSION: "15.0"
+    note: >-
+      Apple silicon 的 mlx-vlm 档（目录引擎 callable）：视觉/OCR 模板用，入口
+      gpuworks-mlx-vlm 把实例钉在 --model 上（网关会改写请求的 model）。r2 修正该入口
+      截断流式响应的问题。构建：build/host-envs/build.sh mlx-vlm 0.7.8 r2。
+
+  - id: metal15.0-mlx-audio0.5.9
+    revision: r1
+    backend: metal
+    engine: callable
+    builder: host-env
+    platforms: [darwin/arm64]
+    args:
+      ENGINE_VERSION: "0.5.9"
+      FRAMEWORK_VERSION: "15.0"
+    note: >-
+      Apple silicon 的 mlx-audio 档（目录引擎 callable）：ASR/TTS 模板用，入口
+      gpuworks-mlx-audio 预加载 --model 并补 /health。webrtcvad 换成同模块的
+      webrtcvad-wheels（原包只有源码），misaki[en] 与 spaCy 英文模型预装，运行时不联网。
+      构建：build/host-envs/build.sh mlx-audio 0.5.9 r1。
+
+  - id: metal15.0-llama.cpp-b11617
+    revision: r1
+    backend: metal
+    engine: callable
+    builder: host-env
+    platforms: [darwin/arm64]
+    args:
+      ENGINE_VERSION: "b11617"
+      FRAMEWORK_VERSION: "15.0"
+    note: >-
+      Apple silicon 的 llama.cpp 档（目录引擎 callable）：上游 b11617 的 macOS arm64
+      预编译包（llama-server 与它的 dylib，Metal 着色器内嵌），不带 Python。b10660 起
+      上游支持 Qwen3.8-Flash-Next（qwen4exp，含 n-gram 嵌入表），Mac 上跑它的模板用这档。
+      构建：build/host-envs/build.sh llama.cpp b11617 r1。

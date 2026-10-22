@@ -1,0 +1,113 @@
+model_id: pfnet/plamo-2-translate
+source: upstream
+display_title: PLaMo 2 Translate
+parameter_count: 9.5B
+architecture: dense
+context_length: 8192
+release_date: '2025-05-27'
+model_config: {model_type: plamo2, num_hidden_layers: 32, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 4, max_position_embeddings: 10485760, sliding_window: 32768}
+kv_bytes_per_token:
+  vllm: 65536
+  sglang: 65536
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  # vLLM dropped its PLaMo 2 implementation (Plamo2ForCausalLM) in 0.27; on
+  # 0.30 the model falls back to the Transformers backend and fails to load.
+  # 0.26 serves it (both verified on an Aliyun L20, 2026-10-20).
+  image: vllm/vllm-openai:v0.26.0
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: pfnet/plamo-2-translate
+        revision: cae8da342a3e051ed69f90ce24c23eacff908732
+    - modelscope:
+        repo_id: pfnet/plamo-2-translate
+        revision: 7ccab6f71e9850ae3683205ec15987d574c9cd1f
+  weight_bytes: 19067249748
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  # config.json declares 10485760 positions; keep the context this catalog
+  # entry states.
+  - --max-model-len
+  - '8192'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.completions
+      endpoint: /v1/completions
+      mode: stream
+      # The model card's usage: a fixed <|plamo:op|> prompt
+      # (dataset/translation, input lang=..., output lang=...) and
+      # generation stopped at the next tag.
+      request_defaults:
+        stop: ['<|plamo:op|>']
+        temperature: 0
+      # The prompt the model card gives: shown in the usage example and
+      # what the Playground starts with. Only English and Japanese are tested.
+      example_input:
+        prompt: |
+          <|plamo:op|>dataset
+          translation
+          <|plamo:op|>input lang=English
+          GPU clusters make it easy to deploy and serve large language models.
+          <|plamo:op|>output lang=Japanese
+- name: bf16-vllm-ppu-cae8da34
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: pfnet/plamo-2-translate
+        revision: cae8da342a3e051ed69f90ce24c23eacff908732
+    - modelscope:
+        repo_id: pfnet/plamo-2-translate
+        revision: 7ccab6f71e9850ae3683205ec15987d574c9cd1f
+  weight_bytes: 19056520928
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --max-model-len
+  - '2048'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enforce-eager
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.completions
+      endpoint: /v1/completions
+      mode: stream
+      # The model card's usage: a fixed <|plamo:op|> prompt
+      # (dataset/translation, input lang=..., output lang=...) and
+      # generation stopped at the next tag.
+      request_defaults:
+        stop: ['<|plamo:op|>']
+        temperature: 0
+      # The prompt the model card gives: shown in the usage example and
+      # what the Playground starts with. Only English and Japanese are tested.
+      example_input:
+        prompt: |
+          <|plamo:op|>dataset
+          translation
+          <|plamo:op|>input lang=English
+          GPU clusters make it easy to deploy and serve large language models.
+          <|plamo:op|>output lang=Japanese
+input_modalities: [text]
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md

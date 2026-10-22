@@ -1,0 +1,356 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { after, afterEach, test } from "node:test";
+import { JSDOM } from "jsdom";
+import React from "react";
+import { createInstance } from "i18next";
+import { I18nextProvider, initReactI18next } from "react-i18next";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  url: "http://localhost/",
+});
+for (const name of [
+  "window",
+  "document",
+  "navigator",
+  "HTMLElement",
+  "HTMLTextAreaElement",
+  "SVGElement",
+  "Element",
+  "Node",
+  "MutationObserver",
+  "ShadowRoot",
+] as const) {
+  Object.defineProperty(globalThis, name, {
+    value: dom.window[name],
+    configurable: true,
+  });
+}
+Object.defineProperty(globalThis, "getComputedStyle", {
+  value: (element: Element) => dom.window.getComputedStyle(element),
+  configurable: true,
+});
+Object.defineProperty(dom.window, "matchMedia", {
+  configurable: true,
+  value: () => ({
+    matches: false,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return false;
+    },
+  }),
+});
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+Object.defineProperty(globalThis, "ResizeObserver", {
+  value: ResizeObserverStub,
+  configurable: true,
+});
+
+const deployLocale = JSON.parse(
+  fs.readFileSync(
+    new URL("../src/i18n/locales/en/deploy.json", import.meta.url),
+    "utf8",
+  ),
+);
+const i18n = createInstance();
+await i18n.use(initReactI18next).init({
+  lng: "en",
+  fallbackLng: "en",
+  resources: { en: { deploy: deployLocale } },
+  defaultNS: "deploy",
+  interpolation: { escapeValue: false },
+});
+const { act, cleanup, fireEvent, render, screen, waitFor } = await import(
+  "@testing-library/react"
+);
+const { Form } = await import("antd");
+const { api } = await import("../src/api.ts");
+const DeployWeightSourceModal = (await import("../src/pages/deploy/DeployWeightSourceModal.tsx")).default;
+const useTemplateWeightSource = (
+  await import("../src/pages/deploy/useTemplateWeightSource.ts")
+).default;
+import type { ListQuery, ModelPage } from "../src/api";
+import { fakeModels, type FixtureModel } from "./helpers/fakeModels.ts";
+
+const apiAny = api as unknown as Record<string, unknown>;
+const originals = { models: api.models, modelsPage: api.modelsPage, model: api.model, quickRegisterModel: api.quickRegisterModel };
+afterEach(() => {
+  cleanup();
+  Object.assign(api, originals);
+});
+after(() => dom.window.close());
+
+// The page answers lookups from a registry the test controls; `hold` makes
+// each lookup wait until the test releases (or fails) it.
+function serve(registry: FixtureModel[], { hold = false } = {}) {
+  const fake = fakeModels(registry);
+  const held: Array<{ release: () => void; fail: (error: Error) => void }> = [];
+  const registered: unknown[] = [];
+  apiAny.models = fake.models_all;
+  apiAny.model = fake.model;
+  apiAny.modelsPage = (query: ListQuery): Promise<ModelPage> => {
+    if (!hold) return fake.modelsPage(query);
+    return new Promise((resolve, reject) => {
+      held.push({ release: () => resolve(fake.modelsPage(query)), fail: reject });
+    });
+  };
+  apiAny.quickRegisterModel = async (payload: Record<string, unknown>) => {
+    registered.push(payload);
+    const model = { id: 100 + registered.length, source: payload.source, source_id: payload.source_id, artifact_subfolder: payload.artifact_subfolder };
+    registry.push(model as FixtureModel);
+    return model;
+  };
+  return { fake, held, registered };
+}
+
+const spec = (weight_sources: unknown[], engine = "vllm") =>
+  ({ spec: { name: "balanced", source: "upstream", engine, image: "img/vllm", weight_sources } }) as never;
+const twoSources = spec([
+  { provider: "huggingface", repo_id: "org/model" },
+  { provider: "modelscope", repo_id: "org/model" },
+]);
+const oneSource = spec([{ provider: "modelscope", repo_id: "Org/Model" }]);
+
+function Host({ selection, engine = "vllm", initialSource }: { selection: unknown; engine?: string; initialSource?: Record<string, unknown> }) {
+  const [form] = Form.useForm();
+  const state = useTemplateWeightSource({
+    form,
+    template: { id: 3 } as never,
+    selection: selection as never,
+    engineProfile: { name: engine } as never,
+  });
+  const values = Form.useWatch([], { form, preserve: true }) as Record<string, unknown> | undefined;
+  return (
+    <Form form={form} initialValues={{ model_source: initialSource }}>
+      <span data-testid="modal-state">
+        {state.modalOpen ? "open" : "closed"}
+      </span>
+      <span data-testid="source-choice">{JSON.stringify(values?.model_source ?? {})}</span>
+      <span data-testid="model-id">{String(values?.model_id ?? "")}</span>
+      <span data-testid="template-id">{String(values?.template_id ?? "")}</span>
+      <span data-testid="applied-source">{state.appliedModel ? `${state.appliedModel.source}:${state.appliedModel.source_id}` : ""}</span>
+      <DeployWeightSourceModal
+        open={state.modalOpen}
+        loading={state.registering}
+        selection={selection as never}
+        choice={state.choice}
+        matches={state.matches}
+        useModel={state.useModel}
+        onUseModel={state.setUseModel}
+        onChoice={state.setChoice}
+        onCancel={() => state.setModalOpen(false)}
+        onConfirm={state.confirm}
+      />
+    </Form>
+  );
+}
+
+const mount = (selection: unknown, engine?: string) =>
+  render(
+    <I18nextProvider i18n={i18n}>
+      <Host selection={selection} engine={engine} />
+    </I18nextProvider>,
+  );
+const text = (id: string) => screen.getByTestId(id).textContent;
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+const okButton = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+const chooseSource = (label: string) => {
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: "Choose a model source" }));
+  fireEvent.click(screen.getByText(label, { selector: ".ant-select-item-option-content" }));
+};
+const useModelLabel = deployLocale.weightSourceModal.useModel;
+const fromTemplateLabel = deployLocale.weightSourceModal.registerFromTemplate;
+
+test("no registered model matches and several sources are declared: the user chooses, nothing is preselected", async () => {
+  const { registered } = serve([{ id: 4, source: "modelscope", source_id: "org/other" }]);
+  mount(twoSources);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.ok(screen.getByText(deployLocale.action.selectWeightSource, { selector: ".ant-modal-title" }));
+  assert.equal(okButton(deployLocale.action.registerAndDeploy).disabled, true, "no source is chosen yet");
+  assert.equal(screen.queryByText("ModelScope · org/model", { selector: ".ant-select-selection-item" }), null, "ModelScope is not the default");
+  await settle();
+  assert.equal(registered.length, 0);
+  chooseSource("ModelScope · org/model");
+  await waitFor(() => assert.equal(okButton(deployLocale.action.registerAndDeploy).disabled, false));
+  fireEvent.click(okButton(deployLocale.action.registerAndDeploy));
+  await waitFor(() => assert.equal(text("model-id"), "101"));
+  assert.deepEqual(registered.map((r) => (r as { source: string }).source), ["modelscope"]);
+  await waitFor(() => assert.equal(text("template-id"), "3"));
+  await waitFor(() => assert.equal(text("applied-source"), "modelscope:org/model"), "the form shows where the weights come from");
+});
+
+test("one registered model matches: it is listed with where its files are and preselected", async () => {
+  const { registered } = serve([{ id: 7, source: "huggingface", source_id: "org/model", name: "My HF copy", presence: { ready_nodes: 2, ready_storages: 1 } }]);
+  mount(twoSources);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.ok(screen.getByText("My HF copy"));
+  assert.ok(screen.getByText("2 node(s) · 1 shared storage(s)"));
+  assert.equal((screen.getByRole("radio", { name: /My HF copy/ }) as HTMLInputElement).checked, true);
+  await settle();
+  assert.equal(text("model-id"), "", "nothing is used before the user confirms");
+  fireEvent.click(okButton(useModelLabel));
+  await waitFor(() => assert.equal(text("model-id"), "7"));
+  await waitFor(() => assert.equal(text("template-id"), "3"));
+  assert.equal(text("modal-state"), "closed");
+  assert.equal(text("applied-source"), "huggingface:org/model");
+  assert.equal(registered.length, 0);
+});
+
+test("several registered models match: none is preselected and the user picks one", async () => {
+  const { registered } = serve([
+    { id: 7, source: "huggingface", source_id: "org/model", name: "HF copy" },
+    { id: 8, source: "modelscope", source_id: "ORG/Model", name: "MS copy" },
+  ]);
+  mount(twoSources);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.equal(okButton(useModelLabel).disabled, true);
+  assert.equal((screen.getByRole("radio", { name: /HF copy/ }) as HTMLInputElement).checked, false);
+  assert.equal((screen.getByRole("radio", { name: /MS copy/ }) as HTMLInputElement).checked, false);
+  fireEvent.click(screen.getByRole("radio", { name: /MS copy/ }));
+  fireEvent.click(okButton(useModelLabel));
+  await waitFor(() => assert.equal(text("model-id"), "8"));
+  await waitFor(() => assert.equal(text("template-id"), "3"));
+  assert.equal(registered.length, 0);
+});
+
+test("declining the registered model lists the template's sources and registers the chosen one", async () => {
+  const { registered } = serve([{ id: 7, source: "huggingface", source_id: "org/model", name: "HF copy" }]);
+  mount(twoSources);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.equal(screen.queryByRole("combobox", { name: "Choose a model source" }), null, "sources are not offered while a model is preselected");
+  fireEvent.click(screen.getByRole("radio", { name: fromTemplateLabel }));
+  assert.equal(okButton(deployLocale.action.registerAndDeploy).disabled, true);
+  chooseSource("ModelScope · org/model");
+  fireEvent.click(okButton(deployLocale.action.registerAndDeploy));
+  await waitFor(() => assert.equal(text("model-id"), "101"));
+  assert.deepEqual(registered.map((r) => (r as { source: string }).source), ["modelscope"]);
+});
+
+test("a single source with a matching registered model asks for confirmation instead of using it silently", async () => {
+  const { registered, fake } = serve([{ id: 9, source: "modelscope", source_id: "org/model", name: "Shared copy" }]);
+  mount(oneSource);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  await settle();
+  assert.equal(text("model-id"), "");
+  fireEvent.click(okButton(useModelLabel));
+  await waitFor(() => assert.equal(text("model-id"), "9"));
+  assert.equal(text("template-id"), "3");
+  assert.equal(registered.length, 0);
+  assert.deepEqual(fake.pages, [{ page: 1, page_size: 50, extra: { source_id: ["Org/Model"] } }]);
+});
+
+test("a single source with no registered match registers directly, once, without a dialog (R2, R3, R8)", async () => {
+  const { held, registered } = serve([{ id: 4, source: "modelscope", source_id: "org/other" }], { hold: true });
+  const view = mount(oneSource);
+  await waitFor(() => assert.equal(held.length, 1));
+  await settle();
+  assert.equal(registered.length, 0, "nothing is registered while the lookup is pending");
+  await act(async () => held[0].release());
+  await waitFor(() => assert.equal(text("model-id"), "101"));
+  await waitFor(() => assert.equal(text("template-id"), "3"), "the new model applies the template");
+  assert.equal(text("modal-state"), "closed", "the registration was not offered as a choice");
+  view.rerender(
+    <I18nextProvider i18n={i18n}>
+      <Host selection={oneSource} />
+    </I18nextProvider>,
+  );
+  await settle();
+  assert.equal(registered.length, 1);
+  assert.equal(text("modal-state"), "closed", "the model registered here is not asked about afterwards");
+});
+
+test("a failed lookup registers nothing and asks nothing (R4)", async () => {
+  const { held, registered } = serve([], { hold: true });
+  mount(oneSource);
+  await waitFor(() => assert.equal(held.length, 1));
+  await act(async () => held[0].fail(new Error("server down")));
+  await settle();
+  assert.equal(registered.length, 0);
+  assert.equal(text("model-id"), "");
+  assert.equal(text("modal-state"), "closed");
+});
+
+test("a failed lookup on confirming a source registers nothing and keeps the dialog (R4, R5)", async () => {
+  const { held, registered } = serve([], { hold: true });
+  mount(twoSources);
+  await waitFor(() => assert.equal(held.length, 1));
+  await act(async () => held[0].release());
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  chooseSource("Hugging Face · org/model");
+  fireEvent.click(okButton(deployLocale.action.registerAndDeploy));
+  await waitFor(() => assert.equal(held.length, 2));
+  await act(async () => held[1].fail(new Error("server down")));
+  await settle();
+  assert.equal(registered.length, 0);
+  assert.equal(text("model-id"), "");
+  assert.equal(text("modal-state"), "open");
+});
+
+test("a confirmed model waits for its engine profile before the template is written (R6)", async () => {
+  const { registered } = serve([{ id: 9, source: "modelscope", source_id: "org/model" }]);
+  const view = mount(oneSource, "sglang");
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  fireEvent.click(okButton(useModelLabel));
+  await settle();
+  assert.equal(text("template-id"), "", "the engine profile of another engine does not apply the template");
+  view.rerender(
+    <I18nextProvider i18n={i18n}>
+      <Host selection={oneSource} engine="vllm" />
+    </I18nextProvider>,
+  );
+  await waitFor(() => assert.equal(text("template-id"), "3"));
+  assert.equal(text("model-id"), "9");
+  assert.equal(registered.length, 0);
+});
+
+test("subfolders: a whole-repo model serves a subfolder request, another subfolder does not (R7)", async () => {
+  const subfolder = spec([{ provider: "modelscope", repo_id: "org/model", subfolder: "int4" }]);
+  const whole = serve([{ id: 9, source: "modelscope", source_id: "org/model" }]);
+  const view = mount(subfolder);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  fireEvent.click(okButton(useModelLabel));
+  await waitFor(() => assert.equal(text("model-id"), "9"));
+  assert.equal(whole.registered.length, 0);
+  view.unmount();
+  cleanup();
+  const other = serve([{ id: 9, source: "modelscope", source_id: "org/model", artifact_subfolder: "int8" }]);
+  mount(subfolder);
+  await waitFor(() => assert.equal(text("model-id"), "101"));
+  assert.deepEqual(other.registered.map((r) => (r as { artifact_subfolder: string }).artifact_subfolder), ["int4"]);
+});
+
+
+test("selecting a running spec clears a previous model-only provider it does not declare", async () => {
+  serve([{ id: 7, source: "local", source_id: "org/model" }]);
+  const view = render(<I18nextProvider i18n={i18n}>
+    <Host selection={undefined} initialSource={{ provider: "local", storage_id: 9 }} />
+  </I18nextProvider>);
+  await waitFor(() => assert.deepEqual(JSON.parse(text("source-choice")!), { provider: "local", storage_id: 9 }));
+  view.rerender(<I18nextProvider i18n={i18n}>
+    <Host selection={twoSources} initialSource={{ provider: "local", storage_id: 9 }} />
+  </I18nextProvider>);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.deepEqual(JSON.parse(text("source-choice")!), { storage_id: 9 },
+    "the spec's next evaluation must not send the old local provider; storage choice is preserved");
+  fireEvent.click(okButton(useModelLabel));
+  await waitFor(() => assert.equal(text("applied-source"), "local:org/model"));
+});
+
+test("selecting a running spec preserves an explicit provider it still declares", async () => {
+  serve([{ id: 7, source: "local", source_id: "org/model" }]);
+  const view = render(<I18nextProvider i18n={i18n}>
+    <Host selection={undefined} initialSource={{ provider: "huggingface", storage_id: 9 }} />
+  </I18nextProvider>);
+  view.rerender(<I18nextProvider i18n={i18n}>
+    <Host selection={twoSources} initialSource={{ provider: "huggingface", storage_id: 9 }} />
+  </I18nextProvider>);
+  await waitFor(() => assert.equal(text("modal-state"), "open"));
+  assert.deepEqual(JSON.parse(text("source-choice")!), { provider: "huggingface", storage_id: 9 });
+});

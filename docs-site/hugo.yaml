@@ -1,0 +1,59 @@
+title: &siteTitle GPUWorks 文档
+baseURL: https://gpuworks.zstack.ai/docs/
+defaultContentLanguage: zh
+disableLanguages: [en, fr]
+enableGitInfo: true
+enableRobotsTXT: true
+enableEmoji: true
+timeZone: Asia/Shanghai
+
+languages:
+  zh:
+    label: 简体中文
+    locale: zh-CN
+    weight: 1
+    title: *siteTitle
+    hasCJKLanguage: true
+    params:
+      description: GPUWorks 控制面、GPU 节点、模型部署与推理服务文档。
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+    parser:
+      attribute:
+        block: true
+      wrapStandAloneImageWithinParagraph: false
+  highlight:
+    noClasses: false
+
+outputs:
+  home: [HTML, RSS, markdown, LLMS]
+  page: [HTML, markdown]
+  section: [HTML, RSS, print, markdown]
+
+params:
+  offline_search: true
+  copyright:
+    authors: GPUWorks contributors
+    from_year: 2026
+  footer_center_info: "内容来自 GPUWorks 仓库 docs/"
+  ui:
+    dark_mode: true
+    typography: system
+    theme_color: '#1559bd'
+    section_index: cards
+    sidebar_menu_foldable: true
+    sidebar_root_enabled: true
+    sidebar_root_menu: false
+    docs_sidebar_root: home
+    sidebar_icon_policy: groups
+    backlinks: true
+    page_width: wide
+  github_repo: https://dev.zstack.io/wei.wang/gpuworks
+  github_branch: master
+
+# The theme is fetched by build.sh from the gpuworks_website repository into
+# themes/oink; it needs hugo extended >= 0.160.1.
+theme: oink

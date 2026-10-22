@@ -1,0 +1,68 @@
+model_id: openmoss-team/moss-transcribe-diarize
+source: upstream
+display_title: MOSS-Transcribe-Diarize
+parameter_count: 0.9B
+architecture: dense
+release_date: '2026-05-19'
+model_config: {model_type: moss_transcribe_diarize, num_hidden_layers: 28, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, layer_types: [full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention], audio_config: {max_source_positions: 1500}}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: OpenMOSS-Team/MOSS-Transcribe-Diarize
+        revision: e8681d68e7042738ffca8ac8212bc8fcb1131ab8
+    - modelscope:
+        repo_id: openmoss/MOSS-Transcribe-Diarize
+        revision: 667feb623b2bd8cafbb88679d9bcda5af8982434
+  weight_bytes: 1833165119
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: OpenMOSS-Team/MOSS-Transcribe-Diarize
+        revision: e8681d68e7042738ffca8ac8212bc8fcb1131ab8
+    - modelscope:
+        repo_id: openmoss/MOSS-Transcribe-Diarize
+        revision: 667feb623b2bd8cafbb88679d9bcda5af8982434
+  weight_bytes: 1833165119
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --trust-remote-code
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+input_modalities: [text, audio]

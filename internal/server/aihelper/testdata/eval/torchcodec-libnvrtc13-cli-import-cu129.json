@@ -1,0 +1,61 @@
+{
+  "id": "torchcodec-libnvrtc13-cli-import-cu129",
+  "source": "artifacts/work/2026-10-03-runner-images/evidence/r2-verify.md (sections 6e / 6e.1, 3090)",
+  "note": "Runner image cuda12.9-vllm0.31.0-r2 (pre-fix): the upstream base ships torchcodec 0.17.0 built for CUDA 13, so `vllm serve` dies in CLI import (vllm/multimodal/media/audio.py only catches ImportError/RuntimeError, not OSError) before touching the GPU. Call chain and OSError text per the record; frames in between reconstructed. Long tail: image defect, fixed by pinning torchcodec 0.16.0+cu129.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen3-0.6b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 3090",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "Traceback (most recent call last):",
+    "  File \"/usr/local/bin/vllm\", line 4, in <module>",
+    "    from vllm.entrypoints.cli.main import main",
+    "  File \"/usr/local/lib/python3.12/dist-packages/vllm/entrypoints/cli/__init__.py\", line 3, in <module>",
+    "    from vllm.entrypoints.cli.benchmark.latency import BenchmarkLatencySubcommand",
+    "  File \"/usr/local/lib/python3.12/dist-packages/vllm/multimodal/__init__.py\", line 3, in <module>",
+    "    from .hasher import MultiModalHasher",
+    "  File \"/usr/local/lib/python3.12/dist-packages/vllm/multimodal/media/__init__.py\", line 4, in <module>",
+    "    from .audio import AudioMediaIO",
+    "  File \"/usr/local/lib/python3.12/dist-packages/vllm/multimodal/media/audio.py\", line 40, in <module>",
+    "    from torchcodec.decoders import AudioDecoder",
+    "  File \"/usr/local/lib/python3.12/dist-packages/torchcodec/__init__.py\", line 12, in <module>",
+    "    from . import decoders, encoders, samplers, transforms  # noqa",
+    "  File \"/usr/local/lib/python3.12/dist-packages/torchcodec/_core/ops.py\", line 69, in load_torchcodec_shared_libraries",
+    "    torch.ops.load_library(core_library_path)",
+    "  File \"/usr/local/lib/python3.12/dist-packages/torch/_ops.py\", line 1488, in load_library",
+    "    ctypes.CDLL(path)",
+    "  File \"/usr/lib/python3.12/ctypes/__init__.py\", line 379, in __init__",
+    "    self._handle = _dlopen(self._name, mode)",
+    "OSError: libnvrtc.so.13: cannot open shared object file: No such file or directory"
+  ],
+  "expect_signature": "",
+  "expect_keywords": [
+    [
+      "torchcodec"
+    ],
+    [
+      "cu129",
+      "cu12",
+      "CUDA 12",
+      "CUDA 13",
+      "cu13",
+      "0.16.0"
+    ]
+  ]
+}

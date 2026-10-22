@@ -1,0 +1,50 @@
+model_id: qwen/qwen3-14b-gguf
+source: upstream
+display_title: qwen3-14b-gguf
+parameter_count: 14B nominal model class; exact parameter count was not derived from
+  quantized GGUF tensor payloads
+architecture: Qwen3ForCausalLM; dense decoder-only Qwen3
+context_length: 40960
+release_date: '2025-05-01'
+model_config: {model_type: qwen3, num_hidden_layers: 40, hidden_size: 5120, num_attention_heads: 40, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960}
+specs:
+- name: fp16-sglang-ascend-41226ec8
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: fp16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-14B-GGUF
+        revision: 530227a7d994db8eca5ab5ced2fb692b614357fd
+    - modelscope:
+        repo_id: Qwen/Qwen3-14B-GGUF
+        revision: abdca9b1ba0c8731c65a18735d1429cbaf4a1d8f
+  weight_bytes: 9001752960
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  env:
+    runtime_namespace: gpuworks-validation
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

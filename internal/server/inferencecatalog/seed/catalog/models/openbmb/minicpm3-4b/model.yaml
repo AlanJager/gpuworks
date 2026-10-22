@@ -1,0 +1,78 @@
+model_id: openbmb/minicpm3-4b
+source: upstream
+display_title: minicpm3-4b
+parameter_count: 4B class
+architecture: MiniCPM3ForCausalLM
+context_length: 32768
+release_date: '2024-09-03'
+model_config: {model_type: minicpm3, num_hidden_layers: 62, hidden_size: 2560, num_attention_heads: 40, num_key_value_heads: 40, max_position_embeddings: 32768, kv_lora_rank: 256, qk_rope_head_dim: 32, qk_nope_head_dim: 64}
+kv_bytes_per_token:
+  vllm: 317440
+  sglang: 317440
+specs:
+- name: bf16-sglang-ascend-25156446
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: OpenBMB/MiniCPM3-4B
+        revision: d6b14ddaefdb11c624dd75c3c779549bc90b08cb
+    - modelscope:
+        repo_id: OpenBMB/MiniCPM3-4B
+        revision: 16deade435f8112a1e23f96933206e47d9927c62
+  weight_bytes: 8152974047
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --trust-remote-code
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-d6b14dda
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: OpenBMB/MiniCPM3-4B
+        revision: d6b14ddaefdb11c624dd75c3c779549bc90b08cb
+    - modelscope:
+        repo_id: OpenBMB/MiniCPM3-4B
+        revision: 16deade435f8112a1e23f96933206e47d9927c62
+  weight_bytes: 8148010378
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

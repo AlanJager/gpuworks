@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 4096
+  sglang: 4096
+model_id: google/gemma-4-e2b-it-assistant
+source: upstream
+display_title: gemma-4-E2B-it-assistant
+release_date: '2026-04-23'
+specs: []
+input_modalities: [text]

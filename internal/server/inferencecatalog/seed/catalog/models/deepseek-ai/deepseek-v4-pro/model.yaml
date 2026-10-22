@@ -1,0 +1,224 @@
+model_id: deepseek-ai/deepseek-v4-pro
+source: upstream
+display_title: DeepSeek-V4-Pro
+parameter_count: 1600B
+architecture: moe
+context_length: 1048576
+release_date: '2026-04-22'
+model_config: {model_type: deepseek_v4, num_hidden_layers: 61, hidden_size: 7168, num_attention_heads: 128, num_key_value_heads: 1, head_dim: 512, max_position_embeddings: 1048576, sliding_window: 128, qk_rope_head_dim: 64}
+kv_bytes_per_token:
+  vllm: 62464
+  sglang: 62464
+specs:
+- name: fp4-sglang-nvidia-cc100
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4-Pro
+        revision: b5968e9190ef611bbf34a7229255be88a0e937c1
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V4-Pro
+        revision: 2b70c35a4b26d535e3ca78829bc7ec0bc1ed5958
+  weight_bytes: 864739856856
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-fp8-vllm-nvidia-hopper
+  display_profile: optimized
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4-Pro
+        revision: b5968e9190ef611bbf34a7229255be88a0e937c1
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V4-Pro
+        revision: 2b70c35a4b26d535e3ca78829bc7ec0bc1ed5958
+  weight_bytes: 864739856856
+  gpus:
+    vendor: nvidia
+    cc: 9.0..9.9
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - deepseek_v4
+  - --tool-call-parser
+  - deepseek_v4
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v4
+  - --kv-cache-dtype
+  - fp8
+  - --block-size
+  - '256'
+  - --max-model-len
+  - '200000'
+  - --gpu-memory-utilization
+  - '0.95'
+  - --max-num-seqs
+  - '16'
+  - --no-enable-flashinfer-autotune
+  - --compilation-config
+  - '{"mode":0,"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: sgl-project/DeepSeek-V4-Pro-FP8
+        revision: 54eeff4ae56c7605c99bbb8b5fcd54412745fb5f
+    - modelscope:
+        repo_id: sgl-project/DeepSeek-V4-Pro-FP8
+        revision: 0c2ca08473051f4b31076db9222cd535a8877955
+  weight_bytes: 1606524714306
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-sglang-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/DeepSeek-V4-Pro-NVFP4
+        revision: 1449d1e641023406daf6b432361486c768aad740
+    - modelscope:
+        repo_id: nv-community/DeepSeek-V4-Pro-NVFP4
+        revision: 8f5d2b7681073af99bef5188a0272c4da9f23f08
+  weight_bytes: 913128322951
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --enable-metrics
+  - --moe-runner-backend
+  - flashinfer_trtllm_routed
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/DeepSeek-V4-Pro-NVFP4
+        revision: 1449d1e641023406daf6b432361486c768aad740
+    - modelscope:
+        repo_id: nv-community/DeepSeek-V4-Pro-NVFP4
+        revision: 8f5d2b7681073af99bef5188a0272c4da9f23f08
+  weight_bytes: 913128322951
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --attention_config.use_fp4_indexer_cache=True
+  - --tokenizer-mode
+  - deepseek_v4
+  - --tool-call-parser
+  - deepseek_v4
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v4
+  - --kv-cache-dtype
+  - fp8
+  - --block-size
+  - '256'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/DeepSeek-V4-Pro-NVFP4
+        revision: 1449d1e641023406daf6b432361486c768aad740
+    - modelscope:
+        repo_id: nv-community/DeepSeek-V4-Pro-NVFP4
+        revision: 8f5d2b7681073af99bef5188a0272c4da9f23f08
+  weight_bytes: 913128322951
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --tokenizer-mode
+  - deepseek_v4
+  - --tool-call-parser
+  - deepseek_v4
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v4
+  - --kv-cache-dtype
+  - fp8
+  - --block-size
+  - '256'
+  - --attention_config.use_fp4_indexer_cache=True
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

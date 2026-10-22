@@ -1,0 +1,643 @@
+model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b
+source: upstream
+display_title: NVIDIA Nemotron 3.5 Lightning
+parameter_count: 30B
+architecture: moe
+context_length: 1048576
+release_date: '2026-08-03'
+model_config: {model_type: nemotron_h, num_hidden_layers: 52, hidden_size: 2688, num_attention_heads: 32, num_key_value_heads: 2, head_dim: 128, max_position_embeddings: 262144, layer_types: [mamba, moe, mamba, moe, mamba, attention, moe, mamba, moe, mamba, moe, mamba, attention, moe, mamba, moe, mamba, moe, mamba, attention, moe, mamba, moe, mamba, moe, mamba, attention, moe, mamba, moe, mamba, moe, mamba, attention, moe, mamba, moe, mamba, moe, mamba, moe, mamba, attention, moe, mamba, moe, mamba, moe, mamba, moe, mamba, moe]}
+kv_bytes_per_token:
+  vllm: 53248
+  sglang: 29696
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+        revision: a9904d24bcc1d289a1950fa9d2b978c47cf903b9
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16
+        revision: c455ed7d1d86bbaa3f6ce4327620773286919ccc
+  weight_bytes: 65845713051
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - flashinfer_cutlass
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  env:
+    VLLM_USE_FASTOKENS: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100-dflash-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --speculative-config
+  - '{"method":"dflash","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASHINFER"}'
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: cc84af2fe71647d87f4486c064f320e1e7535243
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+    weight_bytes: 21583785362
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dflash
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DFlash
+          revision: 7fc1f1ff4b82b917efbd0710df0872c2bb89caa5
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DFlash
+          revision: 5c1fdbd191263a08dc16bd9b05391207903780f2
+    weight_bytes: 1177109658
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100-dspark-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --speculative-config
+  - '{"method":"dspark","model":"/models/draft","num_speculative_tokens":3}'
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: cc84af2fe71647d87f4486c064f320e1e7535243
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+    weight_bytes: 21583785362
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dspark
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+          revision: d10c6ff40d6e69d1f92e407e027de3eafdb77645
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+          revision: 72a099c4082157a524f08c705570f8f58ba271bb
+    weight_bytes: 1349077661
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-dgx-spark-gb10
+  display_profile: optimized
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Spark|GB10)
+    display_target: gb10
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --load-format
+  - fastsafetensors
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-dgx-spark-gb10-dflash-draft
+  display_profile: optimized
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Spark|GB10)
+    display_target: gb10
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --load-format
+  - fastsafetensors
+  - --speculative-config
+  - '{"method":"dflash","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASHINFER"}'
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: cc84af2fe71647d87f4486c064f320e1e7535243
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+    weight_bytes: 21583785362
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dflash
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DFlash
+          revision: 7fc1f1ff4b82b917efbd0710df0872c2bb89caa5
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DFlash
+          revision: 5c1fdbd191263a08dc16bd9b05391207903780f2
+    weight_bytes: 1177109658
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-dgx-spark-gb10-dspark-draft
+  display_profile: optimized
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Spark|GB10)
+    display_target: gb10
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --load-format
+  - fastsafetensors
+  - --speculative-config
+  - '{"method":"dspark","model":"/models/draft","num_speculative_tokens":3}'
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: cc84af2fe71647d87f4486c064f320e1e7535243
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+    weight_bytes: 21583785362
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dspark
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+          revision: d10c6ff40d6e69d1f92e407e027de3eafdb77645
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+          revision: 72a099c4082157a524f08c705570f8f58ba271bb
+    weight_bytes: 1349077661
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-dgx-station-gb300
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Station|GB300)
+    display_target: gb300
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --attention-backend
+  - flashinfer
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-dgx-station-gb300-dflash-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Station|GB300)
+    display_target: gb300
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --attention-backend
+  - flashinfer
+  - --speculative-config
+  - '{"method":"dflash","model":"/models/draft","num_speculative_tokens":3,"attention_backend":"FLASHINFER"}'
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: cc84af2fe71647d87f4486c064f320e1e7535243
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+    weight_bytes: 21583785362
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dflash
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DFlash
+          revision: 7fc1f1ff4b82b917efbd0710df0872c2bb89caa5
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DFlash
+          revision: 5c1fdbd191263a08dc16bd9b05391207903780f2
+    weight_bytes: 1177109658
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-dgx-station-gb300-dspark-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: cc84af2fe71647d87f4486c064f320e1e7535243
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+        revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+  weight_bytes: 21583785362
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Station|GB300)
+    display_target: gb300
+  args:
+  - --mamba-backend
+  - flashinfer
+  - --mamba-cache-mode
+  - align
+  - --moe-backend
+  - marlin
+  - --attention-backend
+  - flashinfer
+  - --speculative-config
+  - '{"method":"dspark","model":"/models/draft","num_speculative_tokens":3}'
+  - --enable-prefix-caching
+  - --reasoning-parser
+  - nemotron_v3
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --mamba-ssm-cache-dtype
+  - float16
+  - --enable-mamba-cache-stochastic-rounding
+  - --mamba-cache-philox-rounds
+  - '5'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: cc84af2fe71647d87f4486c064f320e1e7535243
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4
+          revision: daa8d9c93d47b29a6c8bc07a5e767cd03ced73fe
+    weight_bytes: 21583785362
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dspark
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+          revision: d10c6ff40d6e69d1f92e407e027de3eafdb77645
+      - modelscope:
+          repo_id: nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+          revision: 72a099c4082157a524f08c705570f8f58ba271bb
+    weight_bytes: 1349077661
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

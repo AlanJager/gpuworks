@@ -1,0 +1,91 @@
+{
+  "contract_id": "gpuworks/assistant/service-tool-read-stream",
+  "name": "AI 助手 / 服务配置与只读工具读取 / 流式回答、停止、刷新与删除",
+  "test_file": "test/e2e/assistant_service_tools.py",
+  "test_function": "test_assistant_service_tools",
+  "command": "make test-e2e-assistant-service-tools",
+  "priority": "P1",
+  "page_id": "assistant",
+  "lane": "local-real-server-sqlite-llm-fixture",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The LLM endpoint is an audited local fixture. The server, AI service configuration, read-only tools, SQLite and browser are real; no GPU, agent, container or vendor model is claimed."
+  },
+  "crud": {
+    "create": "UI Add AI Service creates a default custom endpoint through POST /ai/configs; the upstream key is never returned",
+    "read": "The settings row and independent GET keep the non-secret service fields after refresh",
+    "update": "N/A: the service card offers create and delete, not edit",
+    "delete": "UI delete confirmation removes the configuration; independent GET returns an empty list"
+  },
+  "fields": [
+    {
+      "id": "assistant.service-config",
+      "component": "Modal with preset, name, URL, model, password and default switch",
+      "request": "POST /api/v1/ai/configs {\"name\",\"preset\",\"base_url\",\"api_key\",\"model\",\"is_default\"}",
+      "persisted": "name, preset, base_url, model, is_default; the key is encrypted and not returned",
+      "covered": ["custom preset", "required fields", "default flag", "refresh and independent GET", "preset, base_url and model readback", "delete confirmation"],
+      "missing": ["all vendor presets", "validation failures", "editing an existing service", "multiple services and default switching"]
+    },
+    {
+      "id": "assistant.ask-stream",
+      "component": "Panel textarea and Send button; SSE answer",
+      "request": "POST /api/v1/ai/ask with task, question and locale",
+      "persisted": "N/A: the assistant thread is browser state",
+      "covered": ["free question", "streamed final answer", "answer visible after the stream", "exact task/question/locale and history presence for the first and follow-up asks"],
+      "missing": ["reasoning deltas", "error and retry", "rate-limit response", "thread persistence"]
+    },
+    {
+      "id": "assistant.tool-loop",
+      "component": "Tool step list in the answer",
+      "request": "The server offers tools, executes cluster_overview and sends the tool result back",
+      "persisted": "N/A: tool calls are part of the answer trace",
+      "covered": ["cluster_overview offered", "real server-side tool result", "tool result compared with an independent GET of the seeded node", "tool_call_id and exact function arguments matched to the preceding call; orphan or unanswered calls rejected", "error/unavailable content rejected by the fixture", "final answer derived from validated tool facts and compared with independently generated inventory text", "localized tool step"],
+      "missing": ["search_api/call_api/search_metrics", "multiple or parallel calls", "tool self-correction and retry", "step budget exhaustion"]
+    },
+    {
+      "id": "assistant.stop",
+      "component": "Stop button while streaming",
+      "request": "The browser aborts POST /ai/ask",
+      "persisted": "N/A",
+      "covered": ["a slow stream is stopped and the stopped notice appears", "the fixture barrier proves the upstream request was observed and then cancelled"],
+      "missing": ["stop followed by retry", "cancellation observed by a real vendor endpoint"]
+    },
+    {
+      "id": "assistant.cleanup",
+      "component": "Row delete + Popconfirm",
+      "request": "DELETE /api/v1/ai/configs/{id}",
+      "persisted": "removal",
+      "covered": ["deleted through the UI", "independent GET empty", "the seeded node is force-deleted and an independent GET returns 404"],
+      "missing": ["deleting the active service while a question is in flight"]
+    }
+  ],
+  "checklist_items": {
+    "1.7": "Create a service with the minimum required fields through the real modal",
+    "1.14": "Refresh and independent GET preserve the non-secret configuration",
+    "7.3": "N/A: the upstream key is supplied by the user, not a one-time credential issued by the platform",
+    "7.6": "The upstream key is absent from config GET and the saved page; acquired fixture/node credentials are registered for failure-artifact redaction",
+    "12.7": "MISSING: the delete Popconfirm has only the title 'Delete this configuration?' and shows neither the configuration name nor an impact description",
+    "23.1": "Without a service the assistant states that one must be configured while Settings stays usable; with a service the tool loop runs",
+    "23.2": "Question, streaming answer, stop, upstream cancellation and final state are exercised",
+    "23.3": "The tool result matches an independent inventory read, carries the requested call ID, and error/unavailable content is not reported as success",
+    "23.4": "Partial: call_api to the denied /api/v1/ssh-key route returns an error and no key material; write tools, arbitrary commands and terminal-route attempts remain MISSING"
+  },
+  "missing": [
+    "MISSING: checklist 12.7 (delete names the object and impact) — the product shows only a generic title; the confirmation is required but the name/impact claim is not covered",
+    "MISSING: real vendor models and answer quality",
+    "MISSING: search_api and search_metrics tool paths",
+    "MISSING: multiple or parallel tool calls and the step budget",
+    "MISSING: tool self-correction, retry and timeout recovery",
+    "MISSING: terminal-route denial with a node UUID and attempts to use write tools",
+    "MISSING: MCP clients and their token permissions",
+    "MISSING: prompt and answer secret-redaction assertions",
+    "MISSING: assistant thread persistence across reload",
+    "MISSING: rate limiting and concurrent questions",
+    "MISSING: all built-in presets and editing an existing service",
+    "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test/fixture digests, locale, sanitized config body, ask requests, tool-loop fixture evidence and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

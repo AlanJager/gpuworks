@@ -1,0 +1,85 @@
+model_id: inclusionai/ling-3.0-flash
+source: upstream
+display_title: Ling-3.0-flash
+parameter_count: 124B
+architecture: moe
+context_length: 262144
+release_date: '2026-08-02'
+model_config: {model_type: bailing_hybrid, num_hidden_layers: 42, hidden_size: 2560, num_attention_heads: 32, num_key_value_heads: 32, head_dim: 128, max_position_embeddings: 262144, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128}
+kv_bytes_per_token:
+  vllm: 48384
+  sglang: 48384
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: inclusionAI/Ling-3.0-flash
+        revision: 42766a814ab117e75e2e61465d5e131b72d931a3
+    - modelscope:
+        repo_id: inclusionAI/Ling-3.0-flash
+        revision: 9c3c2a34376f7216ed747e1555416c40b5593996
+  weight_bytes: 254999502236
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --dtype
+  - bfloat16
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - ling3
+  - --reasoning-parser
+  - ling3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: inclusionAI/Ling-3.0-flash-fp8
+        revision: 840a0fa97b688791ea2b97dc6e0287920152936d
+    - modelscope:
+        repo_id: inclusionAI/Ling-3.0-flash-fp8
+        revision: d7783a58d52e0312c4617e0ab1d9a07f8a8fb20b
+  weight_bytes: 128468070707
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --dtype
+  - bfloat16
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - ling3
+  - --reasoning-parser
+  - ling3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

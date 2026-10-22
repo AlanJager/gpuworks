@@ -1,0 +1,29 @@
+Read the same synchronous allocation ledger used for quota admission when rewriting the
+slice HBM usage in npu-smi. The first patch's DCMI process-memory query is asynchronous and
+can lag an allocation by several calls, which made npu-smi disagree with rtMemGetInfoEx and
+the admission decision.
+
+Apply after 0001-dsmi-get-hbm-info-slice-view.patch.
+
+diff --git a/src/dsmi/dsmi_hook.c b/src/dsmi/dsmi_hook.c
+index 7521bd4..91af722 100644
+--- a/src/dsmi/dsmi_hook.c
++++ b/src/dsmi/dsmi_hook.c
+@@ -43,6 +43,7 @@
+ #include <strings.h>
+ #include "common.h"
+ #include "config.h"
++#include "memory_ledger.h"
+ #include "dcmi_wrapper.h"
+ #include "npu_manager.h"
+
+@@ -199,8 +200,7 @@ __attribute__((visibility("default"))) int dsmi_get_hbm_info(int device_id, stru
+
+     unsigned long long usage_kb = info->memory_usage;
+     size_t used = 0;
+-    if (g_usage_known &&
+-        enpu_dcmi_get_device_resource_info(g_logic_id, g_card_id, g_device_id, &used) == ENPU_SUCCESS) {
++    if (memory_accounted_used(&used) == ENPU_SUCCESS) {
+         usage_kb = (unsigned long long)used / B_TO_KB;
+     }
+     if (usage_kb > quota_kb) {

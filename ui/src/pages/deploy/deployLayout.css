@@ -1,0 +1,32 @@
+.deploy-config-layout,
+.deploy-config-inputs,
+.deploy-config-evaluation {
+  min-width: 0;
+}
+
+@media (min-width: 1440px) {
+  .deploy-config-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* Sticks below the 52px app header (.app-header), and a tall evaluation
+     scrolls within the viewport instead of running off its top or bottom. */
+  .deploy-config-evaluation {
+    position: sticky;
+    top: 68px;
+    max-height: calc(100vh - 84px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .deploy-config-evaluation .deploy-step-summary {
+    margin-top: 0;
+  }
+
+  .deploy-config-inputs .deploy-resource-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

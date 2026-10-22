@@ -1,0 +1,216 @@
+package deploy
+
+import (
+	"encoding/json"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
+	"reflect"
+	"testing"
+)
+
+func argValue(t *testing.T, argv []string, flag string) string {
+	t.Helper()
+	for i, arg := range argv {
+		if arg == flag && i+1 < len(argv) {
+			return argv[i+1]
+		}
+	}
+	return ""
+}
+
+func countFlag(argv []string, flag string) int {
+	n := 0
+	for _, arg := range argv {
+		if arg == flag {
+			n++
+		}
+	}
+	return n
+}
+
+func pdParams(role string, q LaunchConfig, network ComputeNetwork) Params {
+	return Params{
+		ModelPath: "/model", ServedName: "qwen", APIPort: 30000, AssignedGPUs: 1, TensorParallel: 1,
+		Quick: PDRoleLaunchConfig(q, role), ComputeNetwork: network, NNodes: 1,
+		PD: &PDLaunch{Mode: "vllm-nixl", Role: role, SideChannelHost: "10.0.0.5", SideChannelPort: 30001},
+	}
+}
+
+func TestVLLMPDRoleArgvAndEnv(t *testing.T) {
+	ethernet := ComputeNetwork{Type: netplan.TypeHostEthernet, Interface: "br_bond0_31"}
+	for role, want := range map[string]string{
+		"prefill": `{"kv_connector":"NixlConnector","kv_load_failure_policy":"fail","kv_role":"kv_producer"}`,
+		"decode":  `{"kv_connector":"NixlConnector","kv_load_failure_policy":"fail","kv_role":"kv_consumer"}`,
+	} {
+		launch := BuildVLLM(pdParams(role, LaunchConfig{}, ethernet))
+		if got := argValue(t, launch.Argv, "--kv-transfer-config"); got != want {
+			t.Fatalf("%s config = %s", role, got)
+		}
+		wantEnv := map[string]string{
+			"VLLM_NIXL_SIDE_CHANNEL_HOST": "10.0.0.5", "VLLM_NIXL_SIDE_CHANNEL_PORT": "30001",
+			"UCX_NET_DEVICES": "br_bond0_31", "UCX_TCP_BRIDGE_ENABLE": "y",
+		}
+		for key, value := range wantEnv {
+			if launch.Env[key] != value {
+				t.Fatalf("%s env %s = %q, want %q", role, key, launch.Env[key], value)
+			}
+		}
+		if _, ok := launch.Env["UCX_TLS"]; ok {
+			t.Fatal("ethernet must not restrict UCX transports")
+		}
+		// A PD instance is single-node: the intra-node collective stays on loopback.
+		if launch.Env["NCCL_SOCKET_IFNAME"] != "lo" {
+			t.Fatalf("NCCL_SOCKET_IFNAME = %q", launch.Env["NCCL_SOCKET_IFNAME"])
+		}
+	}
+}
+
+func TestVLLMPDRecomputePolicyAndRDMA(t *testing.T) {
+	p := pdParams("decode", LaunchConfig{}, ComputeNetwork{Type: netplan.TypeHostRDMA, Interface: "eth0", HCAs: []string{"mlx5_0:1", "mlx5_1:1"}})
+	p.PD.KVLoadFailure = "recompute"
+	launch := BuildVLLM(p)
+	var config map[string]any
+	if err := json.Unmarshal([]byte(argValue(t, launch.Argv, "--kv-transfer-config")), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["kv_load_failure_policy"] != "recompute" {
+		t.Fatalf("policy = %v", config["kv_load_failure_policy"])
+	}
+	if launch.Env["UCX_NET_DEVICES"] != "mlx5_0:1" || launch.Env["UCX_TLS"] != "rc,cuda_copy,cuda_ipc,gdr_copy" {
+		t.Fatalf("rdma env = %v", launch.Env)
+	}
+	if _, ok := launch.Env["UCX_TCP_BRIDGE_ENABLE"]; ok {
+		t.Fatal("RDMA does not use the TCP bridge switch")
+	}
+	args := withComputeNetworkDockerArgs(nil, p)
+	if !reflect.DeepEqual(args, []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}) {
+		t.Fatalf("docker args = %v", args)
+	}
+	// An ordinary single-node launch on the same network gets none of it.
+	p.PD = nil
+	if got := withComputeNetworkDockerArgs(nil, p); len(got) != 0 {
+		t.Fatalf("non-PD single node docker args = %v", got)
+	}
+}
+
+func TestVLLMPDComposesKVOffloadOnPrefillOnly(t *testing.T) {
+	cpu := LaunchConfig{KVOffloadingSize: 2}
+	prefill := BuildVLLM(pdParams("prefill", cpu, ComputeNetwork{}))
+	want := `{"kv_connector":"MultiConnector","kv_connector_extra_config":{"connectors":[{"kv_connector":"NixlConnector","kv_role":"kv_producer"},{"kv_connector":"OffloadingConnector","kv_connector_extra_config":{"cpu_bytes_to_use":2147483648},"kv_role":"kv_both"}]},"kv_load_failure_policy":"fail","kv_role":"kv_producer"}`
+	if got := argValue(t, prefill.Argv, "--kv-transfer-config"); got != want {
+		t.Fatalf("prefill config =\n%s\nwant\n%s", got, want)
+	}
+	// The CPU tier flag must not appear beside the composed config: vLLM
+	// would replace the NIXL connector with it.
+	if countFlag(prefill.Argv, "--kv-offloading-size") != 0 || countFlag(prefill.Argv, "--kv-transfer-config") != 1 {
+		t.Fatalf("argv = %v", prefill.Argv)
+	}
+	decode := BuildVLLM(pdParams("decode", cpu, ComputeNetwork{}))
+	if got := argValue(t, decode.Argv, "--kv-transfer-config"); got != `{"kv_connector":"NixlConnector","kv_load_failure_policy":"fail","kv_role":"kv_consumer"}` {
+		t.Fatalf("decode config = %s", got)
+	}
+	if countFlag(decode.Argv, "--kv-offloading-size") != 0 {
+		t.Fatal("decode carries a KV cache tier")
+	}
+
+	disk := LaunchConfig{KVOffloadingSize: 4, KVDiskOffload: true, SharedKVDir: "/kv", KVOffloadReadThreads: 2, KVOffloadWriteThreads: 3}
+	withDisk := BuildVLLM(pdParams("prefill", disk, ComputeNetwork{}))
+	var config struct {
+		Connector string `json:"kv_connector"`
+		Extra     struct {
+			Connectors []map[string]any `json:"connectors"`
+		} `json:"kv_connector_extra_config"`
+	}
+	if err := json.Unmarshal([]byte(argValue(t, withDisk.Argv, "--kv-transfer-config")), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Connector != "MultiConnector" || len(config.Extra.Connectors) != 2 || config.Extra.Connectors[1]["kv_connector"] != "OffloadingConnector" {
+		t.Fatalf("disk composition = %+v", config)
+	}
+	if got := PDRoleLaunchConfig(disk, "decode"); got.KVDiskOffload || got.SharedKVDir != "" || got.KVOffloadingSize != 0 {
+		t.Fatalf("decode kept a tier: %+v", got)
+	}
+	if got := PDRoleLaunchConfig(disk, "prefill"); !reflect.DeepEqual(got, disk) {
+		t.Fatal("prefill config changed")
+	}
+}
+
+func TestVLLMWithoutPDKeepsDiskTierShape(t *testing.T) {
+	q := LaunchConfig{KVOffloadingSize: 4, KVDiskOffload: true, SharedKVDir: "/kv"}
+	launch := BuildVLLM(Params{ModelPath: "/model", APIPort: 1, Quick: q})
+	if got, want := argValue(t, launch.Argv, "--kv-transfer-config"), diskKVTransferConfig(q); got != want {
+		t.Fatalf("disk tier = %s want %s", got, want)
+	}
+	for _, key := range []string{"VLLM_NIXL_SIDE_CHANNEL_HOST", "UCX_NET_DEVICES"} {
+		if _, ok := launch.Env[key]; ok {
+			t.Fatalf("non-PD launch has %s", key)
+		}
+	}
+}
+
+func TestSGLangPDRoleArgv(t *testing.T) {
+	engine, _ := SelectEngine("sglang")
+	network := ComputeNetwork{Type: netplan.TypeHostEthernet, Interface: "eth1"}
+	prefill := engine.Build(Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, ComputeNetwork: network,
+		PD: &PDLaunch{Mode: "sglang-nixl", Role: "prefill", SideChannelHost: "10.0.0.5", SideChannelPort: 30001}})
+	argv := prefill.Entrypoint
+	if argValue(t, argv, "--disaggregation-mode") != "prefill" || argValue(t, argv, "--disaggregation-transfer-backend") != "nixl" || argValue(t, argv, "--disaggregation-bootstrap-port") != "30001" {
+		t.Fatalf("prefill argv = %v", argv)
+	}
+	if argValue(t, argv, "--host") != "0.0.0.0" {
+		t.Fatalf("prefill bootstrap server must be reachable: --host %s", argValue(t, argv, "--host"))
+	}
+	if prefill.Env["UCX_NET_DEVICES"] != "eth1" || prefill.Env["UCX_TCP_BRIDGE_ENABLE"] != "y" {
+		t.Fatalf("env = %v", prefill.Env)
+	}
+	decode := engine.Build(Params{ModelPath: "/model", APIPort: 30002, TensorParallel: 1,
+		PD: &PDLaunch{Mode: "sglang-nixl", Role: "decode"}})
+	if argValue(t, decode.Entrypoint, "--disaggregation-mode") != "decode" || countFlag(decode.Entrypoint, "--disaggregation-bootstrap-port") != 0 || argValue(t, decode.Entrypoint, "--host") != "127.0.0.1" {
+		t.Fatalf("decode argv = %v", decode.Entrypoint)
+	}
+	plain := engine.Build(Params{ModelPath: "/model", APIPort: 30000})
+	if countFlag(plain.Entrypoint, "--disaggregation-mode") != 0 {
+		t.Fatal("an ordinary SGLang launch got a disaggregation role")
+	}
+}
+
+func TestVLLMAscendMooncakeLaunch(t *testing.T) {
+	p := Params{ModelPath: "/model", APIPort: 30000, TensorParallel: 1, NNodes: 1, Vendor: "ascend",
+		ComputeNetwork: ComputeNetwork{Interface: "br_ens3_36"},
+		PD:             &PDLaunch{Mode: "vllm-ascend-mooncake", Role: "decode", SideChannelHost: "172.30.8.32", SideChannelPort: 30010, RoleTP: map[string]int{"prefill": 2, "decode": 1}}}
+	launch := BuildVLLM(p)
+	var config map[string]any
+	if err := json.Unmarshal([]byte(argValue(t, launch.Argv, "--kv-transfer-config")), &config); err != nil {
+		t.Fatal(err)
+	}
+	extra, _ := config["kv_connector_extra_config"].(map[string]any)
+	prefill, _ := extra["prefill"].(map[string]any)
+	if config["kv_connector"] != "MooncakeConnectorV1" || config["kv_role"] != "kv_consumer" || config["kv_port"] != "30010" || prefill["tp_size"] != float64(2) {
+		t.Fatalf("config = %v", config)
+	}
+	// The connector reads the node address through vLLM's get_ip: the
+	// loopback default of a single-node launch would hand peers 127.0.0.1.
+	for key, want := range map[string]string{"VLLM_HOST_IP": "172.30.8.32", "HCCL_IF_IP": "172.30.8.32", "HCCL_SOCKET_IFNAME": "br_ens3_36", "TP_SOCKET_IFNAME": "br_ens3_36"} {
+		if launch.Env[key] != want {
+			t.Fatalf("env %s = %q, want %q", key, launch.Env[key], want)
+		}
+	}
+	for _, key := range []string{"VLLM_NIXL_SIDE_CHANNEL_HOST", "UCX_NET_DEVICES"} {
+		if _, ok := launch.Env[key]; ok {
+			t.Fatalf("Mooncake launch carries %s", key)
+		}
+	}
+	engine, _ := SelectEngine("vllm")
+	resolved, err := ResolveLaunch(ResolveLaunchInput{Engine: engine, Params: p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range resolved.Mounts {
+		if m.Target == "/etc/hccn.conf" && m.Source == "/etc/hccn.conf" && m.ReadOnly {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("mounts = %+v", resolved.Mounts)
+	}
+}

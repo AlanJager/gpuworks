@@ -1,0 +1,52 @@
+model_id: avishaynaim/sefaria-qwen-1.5b
+source: upstream
+display_title: sefaria-qwen-1.5b
+model_config:
+  model_type: qwen2
+  num_hidden_layers: 28
+  hidden_size: 1536
+  num_attention_heads: 12
+  num_key_value_heads: 2
+  max_position_embeddings: 32768
+  sliding_window: 32768
+kv_bytes_per_token:
+  vllm: 28672
+  sglang: 28672
+specs:
+- name: bf16-vllm-ppu-c3cc84e2
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: avishaynaim/sefaria-qwen-1.5b
+        revision: c3cc84e2b8b17725b70c8a8d3b58562064d86d62
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '4096'
+  - --max-num-seqs
+  - '8'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 3087467144
+input_modalities:
+- text

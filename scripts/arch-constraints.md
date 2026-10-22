@@ -1,0 +1,555 @@
+# 架构约束说明
+
+`scripts/arch-constraints.txt` 的每一行是一条预算：`键<TAB>上限/下限<TAB>方向`。
+`max` 表示实测值必须 ≤ 限额（只允许下降），`min` 表示实测值必须 ≥ 限额（只允许上升）。
+`scripts/check_architecture.sh` 读取该文件，逐项实测并打印 `键 实测/限额 (方向)`。
+
+规则来自 `artifacts/archive/2026-09-09-architecture-cleanup/plan.md` §3 P0 与 §6：
+
+- 超限即失败（exit 1）。
+- `max` 键实测**严格低于**限额时打印 WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值。
+- 误报以**修模式为先**，不以调预算为先。每条排除项都记录在本文；改脚本时必须同步本文。
+- **上调（`max` 变大、`min` 变小）必须带理由**：`check_architecture.sh` 把本文件与基线版本
+  比较——基线优先取 GitLab MR 流水线的 `$CI_MERGE_REQUEST_DIFF_BASE_SHA`，否则取
+  `git merge-base HEAD origin/master`；解析不出基线（浅克隆、没有 `origin` remote、当前就在
+  default branch 上）时打印 NOTE 并跳过，不算失败。被判定为上调的行必须在行尾追加 Tab 分隔的
+  `# raised: <原因>` 注释（`min` 键同一标记），否则直接 FAIL；新增或删除的键不算上调。该注释
+  是第 4 个 Tab 分隔字段，不影响 `key<TAB>limit<TAB>direction` 的既有解析。
+
+初值取 2026-09-09 `refactor/refactor-2` 分支上的实测结果，不是计划正文里的人工估算值。
+
+公共 provider 主线另有不可豁免的依赖方向检查：`provider` 根包和 `controller` 不得导入具体 provider 子包；`app` 只允许导入 `provider` 根包和注册入口 `provider/all`。具体驱动的初始化、节点归属规则及后台业务必须保留在实现模块内，不通过搬到公共包绕过这条边界。
+
+---
+
+## 逐项说明
+
+下表的"命令"是脚本 `measure()` 中该键的实测逻辑（此处按可直接粘贴运行的形式书写）。
+所有命令都在仓库根目录执行。
+
+### pending_removal_literal（初值 14）
+
+意图：`"pending-removal"` 是真实的实例状态但不在 `proto.Inst*` 枚举里（计划 A3）。
+收敛后应为 0。
+
+```sh
+grep -rn '"pending-removal"' internal --include='*.go' | grep -v '_test\.go' \
+  | grep -v '^internal/proto/instance\.go:' | grep -c .
+```
+
+排除：`*_test.go`（测试断言字面量是合理的）；`internal/proto/instance.go`（`InstPendingRemoval`
+常量的定义处，即唯一产地——预算的意思是"proto 之外没有字面量"，把定义本身计进去会让 0 永远不可达）。
+
+### deployment_state_literal（初值 8）
+
+意图：`Deployment.State` 无枚举，比较与写入都用裸字符串（计划 A1）。
+
+```sh
+{ grep -rnE 'dep(loyment)?\.State (==|!=) "[a-z-]+"' internal --include='*.go' | grep -v '_test\.go'
+  grep -rnE 'SetDeploymentState\([^)]*"[a-z-]+"' internal --include='*.go' | grep -v '_test\.go'; } | grep -c .
+```
+
+排除：`*_test.go`。计划正文估的 9 是把两类合并后的手工计数；实测按行去重后为 8（比较 6 处 + 写入 2 处）。
+
+### engine_literal_server（初值 21）
+
+意图：引擎名有注册表却仍有 `"vllm"` / `"sglang"` 字面量散落（计划 A7）。计数单位是**文件数**，
+不是出现次数——目标是让引擎名只在注册表所在文件出现。
+
+```sh
+grep -rlE '"vllm"|"sglang"' internal pkg cmd --include='*.go' \
+  | grep -v '_test\.go' \
+  | grep -v '^internal/engines/engines\.go$' \
+  | grep -v '^internal/server/deploy/engine\.go$' \
+  | grep -v '^pkg/enginelog/' | grep -c .
+```
+
+排除：
+
+- `*_test.go`。
+- `internal/engines/engines.go`：P1 落地后引擎名的唯一产地（纯叶子包，无 import）。
+- `internal/server/deploy/engine.go`：注册表本身，其 `EngineVLLM` 等常量是对 `internal/engines` 的再导出。
+- `pkg/enginelog/**`：`pkg` 不能依赖 `internal`，方言名必须自带（计划 P1 任务 4）；
+  两份名单由 `internal/server/deploy/engine_names_test.go` 断言相等。
+
+计划正文估的 20 未含 `cmd/`；实测把 `cmd/` 一并纳入后为 21。
+
+P1 变更：`internal/server/deploy/sglang.go` 的排除项已**删除**——该文件已全部改用 `EngineSGLang`
+常量，不再需要豁免；同时新增 `internal/engines/engines.go` 排除项（新的唯一产地）。
+
+P1 收敛后实测 2，是这两个文件：
+
+- `internal/server/imagecatalog/pullref/pullref.go`：注释里用 `"vllm"` 举例说明 Docker Hub
+  仓库路径的分段规则；
+- `internal/agent/runtime/udocker/udocker.go`：注释里用 `["vllm", "serve"]` 举例说明 argv 前缀。
+
+两处都在注释中，都不是引擎名选择逻辑，也都没有加排除项——预算停在 2 而不是 0，是因为
+本条计数单位是**文件**且这两个文件确实含该字符串。若将来要归零，应改写这两句注释的措辞
+（例如换成占位符），而不是加排除项。
+
+### engine_literal_ui（初值 15）
+
+意图：前端硬编码引擎列表，应改读 server `/engines` 下发的字典（计划 A7、C5）。计数单位是**出现次数**。
+
+```sh
+grep -rnE "'vllm'|\"vllm\"|'sglang'|\"sglang\"" ui/src --include='*.ts' --include='*.tsx' \
+  | grep -v '\.test\.' | grep -v '^ui/src/i18n/' | grep -c .
+```
+
+排除：`*.test.*`；`ui/src/i18n/**`（引擎名作为展示文案出现在 locale 里是合理的）。
+
+### setting_key_literal（初值 27）
+
+意图：设置键无常量，`GetSetting("…")` / `SetSetting("…")` 字面量散落多包（计划 A9）。
+
+```sh
+grep -rnE '(Get|Set)Setting\("' internal --include='*.go' \
+  | grep -v '_test\.go' | grep -v '^internal/server/store/settings_keys\.go:' | grep -c .
+```
+
+排除：`*_test.go`；`internal/server/store/settings_keys.go`（P1 新建的常量文件，是唯一产地）。
+
+P1 收敛后为 0：`GetSetting` / `SetSetting` / `DeleteSetting` 三者的形参类型都改成了
+`store.SettingKey`，字面量在编译期就过不去。唯一允许未定型键进入 store 的位置是
+`/settings/{key}` 通用路由（`api/provider.go`），那里显式写 `store.SettingKey(key)` 做边界转换，
+不匹配 `(Get|Set)Setting\("` 因而不计数——这是有意的：路径参数本来就来自 HTTP，不可能是常量。
+
+### vendor_normalize_funcs（初值 2）
+
+意图：vendor 规范化有两份实现（计划 A4）。目标 1。
+
+```sh
+grep -rnE 'func (normalizeVendor|NormalizeVendor)\(' internal pkg cmd --include='*.go' \
+  | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。
+
+### infer_vendor_callers（基线 4，目标 0，当前 0）
+
+意图：`deploy.InferVendor` 已迁入 `internal/accelerator/infer.go`（`accelerator.InferVendor`），`deploy.InferVendor` 函数定义已删除。
+该预算现在度量的是 `deploy.InferVendor(` 调用点的残留数量——目标仍是 0；函数本身仍然存在于 accelerator，调用点统一以 `accelerator.InferVendor(` 形式，不计入此预算。
+
+```sh
+grep -rn 'deploy\.InferVendor(' internal pkg cmd --include='*.go' | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。原 4 处调用（`api/deployments_evaluate.go`、`api/deployments_node_helpers.go`、`api/deployments_chipmatch.go`、`controller/schedule.go`）已全部改调 `accelerator.InferVendor`。
+
+### store_concrete_importers（初值 17）
+
+意图：`*store.Store` 具体类型贯穿全服务端，无窄接口（计划 B6）。
+
+```sh
+go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
+  | grep -v '\.test$' \
+  | awk -F'\t' '$2 ~ /gpuworks\/internal\/server\/store( |$)/ {print $1}' | sort -u | grep -c .
+```
+
+排除：`.test` 伪包（`go list` 为带测试的包生成的合成包）。
+计划正文列了 16 个包；实测 17，多出的是 `scripts/seeddemo`（同属 module，计划正文漏计）。
+
+`go list` 说明：本仓库缺少 `internal/server/webui/dist` 时 `go list` 会因 `go:embed all:dist`
+匹配不到文件而报错，因此脚本一律用 `go list -e`（保留可用的包信息，只把出错的包降级）。
+`internal/server/webui` 自身不 import 任何一方包，降级不影响任何一项实测。这样 CI 与本地
+都无需先构建前端即可跑门禁，也不需要临时造占位文件。
+
+2026-09-29：ZStack Cloud 资源服务（`internal/server/provider/zstack/cloud`）负责持久化主机资源快照与资源租约，
+新增对 `store` 的依赖；`store_concrete_importers` 上限由 18 调整为 19。
+
+2026-10-17：资源占用职责独立为 `provider/zstack/cloud/resourceclaim`。父包继续负责主机接入与快照保存，
+子包读取节点/GPU 并管理资源占用；实际持久化职责未扩大，但包级直接导入数从 19 增加到 20，
+相应调整上限。公共 provider/controller 的接口和依赖不变。
+
+### api_fanout（初值 36）
+
+意图：`api` 包扇出全仓最高（计划 B1）。计数为 `api` 直接 import 的**本仓库**包数。
+
+```sh
+go list -e -f '{{join .Imports "\n"}}' ./internal/server/api \
+  | grep '^gpuworks\.ai/gpuworks/' | sort -u | grep -c .
+```
+
+排除：标准库与第三方 import。
+
+2026-09-27：网络模块化（`artifacts/archive/2026-09-27-network-module/plan.md`）把网络解析从
+`store` 搬到纯叶子包 `internal/server/netplan` 与服务包 `internal/server/network`。三项预算各
+抬 1：`store_concrete_importers` 17→18（`network` 服务要读节点与网络行，它承载的解析原先是
+`*store.Store` 的方法，调用方仍因其他用途依赖 store，没有随之减少）；`api_fanout` 36→37（api 改为
+依赖 `network` 与 `netplan` +2，`nodeaddr` 收进 `planning.PeerHost` −1）；`api_deps_fields`
+49→50（`Deps.Networks`，全服务端共享的唯一网络服务实例）。
+
+2026-10-11：发布通道（[ADR 0040](../docs/adr/0040-signed-multi-source-distribution.md)）。`api_fanout` 38→39：检查更新与官方目录更新要读
+签名索引，api 直接依赖叶子包 `internal/server/distribution`（它不依赖本仓库任何包，见下文依赖方向检查）。`api_deps_fields`
+不变：渠道客户端放进原来的 `Deps.ImageCatalog`（改名 `Deps.Outside`，社区仓库浏览器与渠道客户端同属「从外部读取」），
+界面升级 server 用的是已有 `Deps.Server` 接口上的方法。
+
+2026-10-22：用户体验改进计划（`docs/reference/usage-report.md`）。`api_fanout` 43→44：api 把调用、产品错误码与 panic
+计入叶子包 `internal/server/usagereport`，更新检查附带的装机规模参数（原 `distribution.Report`）也搬进该包，`distribution`
+因此仍不依赖本仓库任何包。
+
+### api_opaque_response_fields（初值 40，2026-10-11）
+
+意图：API 响应里类型为 `any`、`map[string]any`、`json.RawMessage` 的字段，`scripts/apiconv` 看不到其中的字段名，
+无法检查 snake_case 与集合信封（`docs/reference/api-conventions.md`）。只降不升：新接口用具名 DTO。
+
+```sh
+CGO_ENABLED=0 go run ./scripts/apiconv -opaque      # 加 -v 列出字段
+```
+
+排除：带 `MarshalJSON`/`MarshalText` 的类型自己决定编码，不计入。初值来自 API 规范统一时的实测：
+统一前 42，把节点拓扑、benchmark `long_tail`、agent 拒绝记录、终端会话改为具名 DTO 后为 40。
+
+### api_deps_fields（初值 48，2026-09-18 → 49（Monitor），2026-09-19 → 51（Logs 三回调））
+
+意图：`api.Deps` 是 48 字段的上帝结构体（计划 B1），应分组为具名接口。
+
+```sh
+awk '/^type Deps struct/ {inside=1; next}
+     inside && /^}/ {exit}
+     inside && /^\t[A-Z]/ {n++}
+     END {print n+0}' internal/server/api/api.go
+```
+
+排除：注释行与空行（只计一级缩进的导出字段）。
+
+2026-09-18：`artifacts/archive/2026-09-19-monitor-center/plan.md`（监控中枢）第一期给
+`api.Deps` 加了一个 `Monitor MonitorService` 字段，服务
+`/monitor/overview`、`/monitor/deployments/{id}`、`/monitor/series` 三个路由。
+本可以像 `MetricsQuery`/`LogsSearch` 那样加三个独立回调，但那样是 48→51；改成
+一个持有三方法接口的字段，只把预算从 48 抬到 49——`api_deps_fields` 数的是
+`Deps` 结构体的字段数，不是接口方法数，`MonitorService` 接口本身的方法数量
+不计入这项预算。`MonitorService` 的方法只用 `dto` 包类型和标准库类型
+（`context.Context`、`time.Duration`），刻意不引用
+`internal/server/monitor`：`api_fanout` 当时已经在 36/36 的上限，
+`internal/server/api` 引入 `monitor` 包会让它变 37，而这次改动的授权范围只
+允许抬 `api_deps_fields`。实际的 `monitor.ClusterSnapshot`/`ServiceSnapshot`
+→ dto 转换发生在新叶子包 `internal/server/monitorapi`（`MonitorService` 的
+具体实现，只依赖 `monitor`、`api/dto`、`proto` 与标准库（`monitor/rules` 已随 ADR 0043 删除），
+不依赖 `store` 也不依赖 `internal/server/api`），不在 `internal/server/api`；
+`internal/server/app` 只保留 store → `monitor.Inventory`/`monitorapi.EventRef`
+的适配代码，并把 `monitorapi.New(...)` 的结果接到 `api.Deps.Monitor`。
+`api.ErrMonitorDeploymentNotFound`/`ErrMonitorSeriesTooLarge` 这两个哨兵错误
+仍然定义在 `internal/server/api`，由 `app` 注入给 `monitorapi.Deps`（避免
+`monitorapi` 反过来依赖 `api`）；`internal/server/api/monitor.go` 与
+`internal/server/monitorapi/service.go` 的文档注释里有同样的说明。
+
+2026-09-19：日志中心改造（artifacts/archive/2026-09-19-log-center/plan.md commit 4）在
+`api.Deps` 上把单个 `LogsSearch` 回调扩为 `LogsSearch` / `LogsContext` /
+`LogsHistogram` 三个，净增 2 个字段。这是刻意的接口扩面（新端点
+/logs/context、/logs/histogram），不是依赖失控；与 Monitor 的单字段设计
+叠加后，49→51 为新实测值。若 Monitor 也拆成三个独立回调，两处改动叠加会是
+48→53；`MonitorService` 收敛成一个字段，是 51 与 53 之间的差额。
+
+2026-09-22：评测改为「tokenizer 自动来源」时新增了一条 server 开流拉取节点单文件
+的通道（`file.large_read`，见 `internal/server/api/benchmark_tokenizer.go`，
+用于把目标机上已有的 tokenizer.json 取回 server 本地盘）。按本项预算的既定方向
+（「应分组为具名接口」），没有新增 `Deps` 字段，而是把 `OpenLogtail` 与新的
+`OpenLargeFileRead` 合成一个 `Deps.NodeStreams NodeStreams` 接口字段：字段数仍是
+51，`api_fanout` 不变（接口只用 `net.Conn` 等标准库类型），新增流类型从此只增加
+接口方法而不是结构体字段。调用点只有 `api/logs.go` 与 `internal/server/app` 的接线，
+`hub.Hub` 直接满足该接口（方法名与 hub 方法同名，无适配层）。
+
+2026-10-15：请求级 trace 导出（[ADR 0046](../docs/adr/0046-gateway-request-traces.md)）49→50：`Deps.Telemetry`
+（`api.TelemetryService`，三个方法：读设置与状态、保存并应用、发测试 span）。它是数据库里的平台设置加运行中的导出器，
+既不属于 `server.yaml` 的 `Deps.Server`，也不属于监控读路径的 `Deps.Monitor`，所以单独成一个具名接口；
+`api` 不 import `traceexport`（`api_fanout` 不变），实现与校验在 `app`。
+
+2026-10-18：NFS Cache 准备进度把高频复制观测、实际选中的准备节点与缓存淘汰阶段放回各自的生产者（hub、controller，`internal/server/prepobs` 叶子包提供有界过期表），不再放进 store；API 经一个具名接口字段 `Deps.Preparation`（`api.ModelPreparation`：三项观测加缓存复制重试）读取，50→51。拆成四个回调会是 50→54。
+
+
+2026-10-22：51→53。`Deps.UsageReport`（改进计划的日报：状态、开关、预览与 API 写入的进程内计数）与 `Deps.Notices`
+（页头通知铃铛，内容来自签名发布通道）各是一个具名接口，不挂在含义不同的 `Deps.Server` 或 `Deps.Outside` 上。
+### api_goroutines（初值 5）
+
+意图：后台 job 起在 HTTP 层（计划 B4）。
+
+```sh
+grep -rnE '^[[:space:]]+go (a\.|func)' internal/server/api --include='*.go' | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。计划保留 `logs.go` / `terminal.go` 的流式转发协程，目标 ≤ 2。
+
+### store_domain_imports（初值 9）
+
+意图：store 因替 hub 装配 `DesiredState` 而引入领域包（计划 B5）。目标 0。
+
+```sh
+grep -rnE '"gpuworks\.ai/gpuworks/(pkg/bench|pkg/topoparse|pkg/modelrepo|internal/server/imagecatalog/manifest|internal/server/monitor)' \
+  internal/server/store --include='*.go' | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。计划正文估 6；实测非测试文件共 9 处 import（`pkg/bench` 及其子包 3、
+`pkg/modelrepo` 2、`pkg/topoparse` 1、`imagecatalog/manifest` 3）。`internal/server/monitor`
+是监控中枢诊断阈值设置（`monitor.rules`）review 后新增的排除项，目标仍是 0——store 不得导入
+`internal/server/monitor`（该设置已随 ADR 0043 删除，排除项保留）。
+
+### agent_direct_exec（初值 5）
+
+意图：agent 绕过 `runtime.Driver` 直接 `exec`（计划 B9）。目标 ≤ 1（doctor 的可注入 runner）。
+
+```sh
+grep -rn 'exec\.Command' internal/agent/app --include='*.go' | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。注意匹配的是 `exec.Command` 前缀，`exec.CommandContext` 一并计入。
+
+### bare_time_now_ctrl_hub（初值 14）
+
+意图：controller / hub 时钟不可注入（计划 C1）。目标 0。
+
+```sh
+grep -rn 'time\.Now()' internal/server/controller internal/server/hub --include='*.go' \
+  | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。store 的 `time.Now().UTC()` 是写库时间戳，明确不在本预算范围内，
+由 `scripts/check_time_policy.sh` 单独守护（计划 §4）。
+
+### files_over_600（当前 13）
+
+意图：CLAUDE.md 规定单文件 > 600 行触发拆分（计划 D1）。目标 0。
+
+```sh
+find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' \
+  | while read -r f; do wc -l < "$f"; done | awk '$1 > 600 {n++} END {print n+0}'
+```
+
+排除：`*_test.go`。计划 §4 声明 `internal/testenv` 与 `templateprobe` 的超长文件另行安排，
+但它们是**非测试**文件，仍计入本预算（`internal/testenv/testenv.go` 755 行）；收敛时可以
+在计划里显式记为取舍，但不从计数里悄悄抠掉。
+
+### milestone_named_files（初值 7）
+
+意图：按里程碑命名的文件（计划 A12）。目标 0。
+
+```sh
+find internal pkg cmd -type f -name '*.go' ! -name '*_test.go' \
+  | while read -r f; do
+      basename "$f" | grep -qE '(^|[^0-9a-z])[msgp][0-9]{1,2}([^0-9a-z]|$)' && echo "$f"
+    done | grep -c .
+```
+
+P0 时的命中：`internal/proto/m1.go`、`m5.go`、`internal/server/store/entities_m1.go`、
+`entities_m3.go`、`entities_m6.go`、`entities_m16.go`、`entities_m18.go`。P1 已全部按内容改名，
+当前 0（改名清单见计划 §3 P1 的状态段）。
+
+### process_name_refs（初值 77）
+
+**这是计划正文之外新增的一条预算。** 意图：过程/里程碑标签属于项目管理词汇，不是领域词汇。
+生产代码里的 `M1`、`S0`、`G2`、`P3` 这类标签会随计划失效而变成误导性注释——读者无从判断
+"M11 之前的过渡桥"里的 M11 是否已经发生。它们应当被替换为对**行为**的描述，或删除。
+测试文件可以自由使用（测试常需要引用具体阶段的回归场景），因此不计入。
+
+计数单位是**命中行数**：生产源码里含标签的每一行，加上文件名含标签的每个文件（记为
+`<file>:0`）。范围是 `internal/`、`pkg/`、`cmd/` 的非测试 Go 文件，以及 `ui/src` 下
+非 `*.test.*` 的 `.ts` / `.tsx` / `.css`。
+
+核心模式（每行先经过下述"已知词汇消解"后再匹配）：
+
+```
+(^|[^0-9A-Za-z_])[MSGP][0-9]{1,2}(\.[0-9])?([^0-9A-Za-z_]|$)
+```
+
+文件名模式（小写）：
+
+```
+(^|[^0-9a-z])[msgp][0-9]{1,2}([^0-9a-z]|$)
+```
+
+模式设计要点：
+
+- 两侧用 `[^0-9A-Za-z_]` 而非依赖 `\b`。`\b` 在 `M300`、`sm90`、`P40` 这类更长的
+  token 内部也会成立（`M300` 中 `M3` 后面跟 `0`，`\b` 不在此处成立，但 `sm90` 的 `m9`
+  两侧都是字母/数字，显式否定字符类才能可靠排除）。显式否定类同时排除了下划线，
+  于是 `entities_m16` 这类**标识符内**的标签在文件名检查里仍会命中，而
+  `ttft_p50` 里的 `p50` 因紧邻 `_` 与数字不会误伤（另有专门排除，见下）。
+- 正文只匹配大写 `[MSGP]`，文件名只匹配小写 `[msgp]`。Go 与 UI 的实际写法是
+  注释里大写（`(M18)`）、文件名里小写（`m1.go`），分开处理可显著降低噪声。
+- 小数位 `(\.[0-9])?` 用于捕获 `M16.5` 这种带小数的阶段号。
+
+排除清单（false positive），全部在 `neutralize_known_tokens()` 中实现——做法是先把已知
+的合法 token 替换成占位符，再跑主模式，这样同一行里若另有真标签仍会被抓到：
+
+1. **百分位**：`P50` / `P75` / `P90` / `P95` / `P99` 及其小写 `p50` 等。
+   出现在 `pkg/bench/metrics`、`api/preflight.go`、`api/benchmark_curve.go`、
+   `agent/app/netprobe.go`、`ui/src/pages/evaluations/**` 的指标名与 JSON 键里。
+   这是性能统计词汇，与阶段无关。
+2. **SVG path 数据**：形如 `d="M12 2.5a9.5 …"` 的属性值。SVG 路径命令字母恰好包含
+   `M`（moveto）后跟坐标。命中于 `ui/src/components/VendorLogo.tsx`。
+   排除方式是整体替换 `d="[Mm][0-9]…"` 属性值。
+3. **base64 数据 URI**：`data:image/png;base64,…` 的载荷是任意字母数字串，必然偶然命中。
+   命中于 `ui/src/components/vendorAssets.ts`。
+4. **udocker 的 P1 执行模式**（路径限定 `internal/agent/runtime/udocker/**` 与复刻该模式的 `internal/agent/runtime/runveil/**`）：
+   udocker 的 PRoot 执行模式官方名称就叫 `P1`（`udocker setup --execmode=P1`），
+   是外部工具词汇。仅在该目录下排除，其他目录的 `P1` 仍视为阶段标签。
+5. **Tesla P40 显卡型号**（路径限定 `internal/testenv/cloudprovider/**`，2026-09-25 新增）：
+   `P40` 是 compshare 容量 API 要求的 GpuType 原样拼法（`case "P40"`，代码不可改写），
+   属外部硬件目录词汇。仅在该包（云厂商目录的唯一映射地）排除，做法与第 4 条相同。
+6. **Apple silicon 芯片代际**（路径限定 `internal/accelerator/identity.go`、`internal/agent/gpu/apple*.go`、
+   `internal/server/hardwarecatalog/catalog.go`，2026-10-14 新增）：Apple 把芯片代际命名为 `M1`…`M6`
+   （`Apple M4 Pro`），统一内存名单、探测器解析的 SoC 名和硬件目录都须原样拼写。属外部硬件词汇，
+   仅在建模 Apple 硬件的这几个文件排除，做法与第 5 条相同。
+
+**硬件型号的处理**：`M300`、`P40`、`P100`、`M40`、`M60`、`T4`、`A100`、`sm90` 等加速卡与
+架构名不需要额外排除项——`[MSGP][0-9]{1,2}` 后必须紧跟非字母数字，三位数的 `M300` /
+`P100` 天然不匹配；`T4`、`A100` 的首字母不在 `[MSGP]` 里；`sm90` 的 `m9` 左侧是字母 `s`，
+被否定字符类挡掉。当前仓库的 `internal/server/hardwarecatalog` 与 `internal/server/estimate`
+下确实一条都不命中，已实测确认。若将来引入 `P4`、`M60` 这类两位数以内的 NVIDIA 老型号，
+应按第 4 条的做法加**路径限定**的排除项（限定到硬件目录），而不是放宽主模式。
+第 5 条正是该预案的首次落地：`P40` 作为 compshare 目录拼法进入 `cloudprovider` 时，
+未调预算、未改正则，只加了路径限定的排除项。
+
+P0 时 77 条命中的分布：`internal/server/store` 19、`internal/proto` 16、`internal/server/api` 12、
+`internal/agent` 9、`internal/server/hub` 5、`ui/src` 3、`internal/server/deploy` 3、
+`internal/server/controller` 3、`internal/server/scheduler` 2、`internal/server/app` 2、
+`internal/templateprobe` 1、`internal/server/proxy` 1、`internal/server/modelmeta` 1。
+其中 7 条是文件名命中，与 `milestone_named_files` 有意重叠：后者只数文件，前者数所有引用，
+两者一起归零才算这类问题真正消失。
+
+**P1 已归零（当前 0）。** 70 条正文命中全部改写为对行为的描述（例如
+`// Hub integration (M1).` → `// Hub integration.`；
+`// v1 ships a docker driver (M1); udocker (M3) implements the same interface.` →
+`// The docker, udocker and nerdctl drivers all implement the same interface.`），
+7 条文件名命中随文件改名消失。**没有新增任何排除项，也没有放宽正则**——
+`neutralize_known_tokens()` 与 P0 时逐字相同，本文的排除清单（百分位、SVG path、base64、
+udocker 的 P1 执行模式）四条不变。
+
+### dto_test_lines_min（初值 81，方向 min）
+
+意图：`dto` 包 1012 行源码只有 81 行测试，CLAUDE.md 的"字面 wire JSON round-trip"要求未兑现
+（计划 C2）。这是唯一的下限项，只允许上升；计划 P5 的目标是 ≥ 600。
+
+```sh
+cat internal/server/api/dto/*_test.go | grep -c ''
+```
+
+用 `grep -c ''` 而非 `wc -l`，这样最后一行即使没有换行符也计入。
+
+### store_text_columns（初值 74，2026-10-01 → 70（镜像目录四个适配声明列删除，迁移 115）→ 72（计量扩到注释声明 JSON 的定长列）→ 73（`inference_specs.image_sources`，迁移 133）→ 75（`gpus.foreign_processes`，迁移 146）→ 76（`nodes.accelerator_vendors`，迁移 156））
+
+意图：持久化默认用带类型的列/表，JSON 只做整体读写的不透明快照（ADR 0032）。能装 JSON 的列是把 schema
+藏进 Go 代码的入口，所以按行数设上限。新增这样的列必须上调本项，并在 `# raised:` 里写明
+为什么不能是带类型的列。
+
+计数对象是 store 非测试文件里带 `gorm:"` 标签的结构体字段行，满足任一条件即计入：
+
+- 标签里有 `type:text`；
+- 字段的注释声明了 JSON：同行 `//` 注释里，或紧挨着的上一行注释里，出现单词 `JSON`（区分大小写，
+  前后不是字母）。这一条把 `size:` 定长却装 JSON 的列算进来。
+
+```sh
+find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
+  | xargs awk 'FNR == 1 { prev = "" }
+      { own = ""; if (index($0, "//") > 0) own = substr($0, index($0, "//"))
+        above = (prev ~ /^[[:space:]]*\/\//) ? prev : ""
+        field = ($0 ~ /^[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+[^\/]*`[^`]*gorm:"/)
+        json = (own ~ /(^|[^A-Za-z])JSON([^A-Za-z]|$)/ || above ~ /(^|[^A-Za-z])JSON([^A-Za-z]|$)/)
+        if (field && ($0 ~ /type:text/ || json)) print ((own != "" || above != "") ? "documented" : "undocumented") "\t" FILENAME ":" FNR
+        prev = $0 }' \
+  | grep -c .
+```
+
+脚本里这段 awk 是 `store_json_column_lines()`，`store_text_columns_undocumented` 读同一份列表。
+
+ZStack Cloud 接入增加 `CloudHost.Snapshot`，上限从 73 调整到 74：该列整体保存安装时的
+`provider/zstack/cloud/inventory.CloudResource` 发现快照，不按内部字段执行 SQL 查询；其用途是保留外部资源
+的原始快照，当前资源可用性仍通过 Cloud API 实时查询。字段注释声明归属类型。
+
+排除：`*_test.go`。迁移文件里的历史形状结构体照常计入：它们同样是表上真实存在过的列。
+
+2026-10-17 从 75 到 76 是新增列 `nodes.accelerator_vendors`（`Node.AcceleratorVendors`，`type:text`，
+`// JSON []proto.AcceleratorPresence`）：agent 最近一次上报的、主机 PCI 总线上每个厂商的卡数与型号（含节点正在管理的
+那家），供操作员在一机多厂商的主机上选择节点管哪家的卡。每次上报整体替换、读时整体读出画下拉框，数据库从不按其内容
+查询、排序或关联；拆成带类型的表，1000 节点里几乎每台都只有一家，却要每次状态上报多写一张表。
+
+2026-10-08 从 72 到 73 是新增列 `inference_specs.image_sources`（`InferenceSpecRow.ImageSources`，`type:text`，
+`// JSON []string`，ADR 0038）：模板为自己的镜像声明的更多拉取地址，有序、整体读写，和同一行的 `args`、`entrypoint`
+一样只是 spec 投影的一部分，数据库从不按其内容查询、排序、关联或局部更新，拆成带类型的表只会让每次读模板多一次
+关联。归属类型是 `inferencecatalog.InferenceSpec.ImageSources`。
+
+2026-10-01 从 70 到 72 不是新增列，是计量变宽后数到的两个已有定长列：`instances.gpu_indexes`
+（`Instance.GPUIndexes`，`size:64`，`// JSON []int`）与 `instances.ports`（`Instance.Ports`，`size:128`，
+`// JSON []int`），都在 `internal/server/store/entities_deployment.go`。本键是本 MR 新增的，基线里没有它，
+所以不需要 `# raised:`。
+
+盲区（归 review）：
+
+- 定长字符串列装 JSON、注释却没写 `JSON`（例如只写「列表」或干脆没有注释）——脚本无从知道它装的是 JSON。
+- 注释写在字段上方两行以外、或用 `/* */` 写的，不计入。
+- 其他能装 JSON 的写法：`type:` 取 `text` 以外的值（`TEXT`、`json`、`longtext`），或 GORM 的
+  `serializer:json`。目前 store 里一处都没有。
+
+### store_text_columns_undocumented（初值 0）
+
+意图：每个计入 `store_text_columns` 的列都要在注释里写明唯一的归属 Go 类型（`包.类型`，store 不能
+import 的包只写在注释里），或写明是自由文本 / 密文。脚本只能检查「有注释」，注释内容是否写对归 review。
+
+```sh
+# 与 store_text_columns 同一段 awk（store_json_column_lines），只数没有注释的行：
+... | grep -c '^undocumented'
+```
+
+排除：`*_test.go`。同行带 `//` 注释，或上一行是注释行（多行注释块写在字段上方的写法），都算有注释。
+因注释声明 JSON 而计入的定长列天然有注释，所以实际能让本项变红的只有没有注释的 `type:text` 列；
+两项读同一份列表，是为了「什么算一列」只有一个定义。
+
+### store_sql_json_lines（初值 2）
+
+意图：SQL 不按 JSON 列的内部字段查询、排序、关联或局部更新；需要看进 JSON 时在领域包里用归属类型
+解码（ADR 0032）。计数单位是**行数**：已豁免的文件里再多写一行这样的 SQL 同样会超限。
+
+```sh
+find internal/server/store -type f -name '*.go' ! -name '*_test.go' | sort \
+  | grep -v '/migration[^/]*\.go$' \
+  | xargs grep -nE "json_[a-z_]+[[:space:]]*\(|instr[[:space:]]*\(|->>?[[:space:]]*('|\?|[0-9])" \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c .
+```
+
+脚本里这段是 `store_sql_json_hits()`。匹配三类：
+
+- SQLite JSON 函数调用：`json_` 开头的函数名后跟 `(`，覆盖 `json_extract`、`json_valid`、`json_type`、
+  `json_each`、`json_tree`、`json_set`、`json_insert`、`json_array_length` 等全部 JSON1 函数；
+- `instr(`：对 JSON 文本做子串匹配的老写法；
+- `->` / `->>` 运算符，后跟引号路径（`data->'$.state'`）、绑定参数（`->>?`）或数字下标。箭头后跟别的
+  不算：`internal/server/store/benchmark.go` 的错误文案 `"%q -> %q"` 就是这样排除的。
+
+**注释行不计入**：整行以 `//` 开头的行不能执行查询，计入只会逼人删解释性注释；同一行代码后面带的
+注释照常计入。一行里有几处调用都只算一行。
+
+排除：`*_test.go`；`migration*.go`（迁移按定义要改写已有数据，改写 JSON 列的内部形状只能在 SQL 里做）。
+
+初值 2 是 `internal/server/store/instance_timeline.go` 里 `eventFoldKey` 的两行：
+
+- 第 32 行 `CASE WHEN json_valid(data)`；
+- 第 33 行 `THEN COALESCE(json_extract(data,'$.state'),'') || char(31) || COALESCE(json_extract(data,'$.phase'),'')`。
+
+时间线折叠用它们取历史事件行的 `$.state` / `$.phase`，只对 retention 尚未淘汰的旧行起作用，淘汰后连同
+折叠 SQL 一起删除（`todo.md`），本项降到 0。
+
+盲区（归 review）：对 JSON 列做 `LIKE '%"key":"v"%'` 的文本匹配与普通的 `LIKE` 查询在正则上无法区分，
+本项不数它；评审时看到对 JSON 列的 `LIKE` / `=` / `GLOB` 比较，按 ADR 0032 第 4 条改成在领域包里解码。
+
+---
+
+## 依赖方向检查
+
+`check_architecture.sh` 除预算外还执行计划 §5.3 的依赖方向检查。这些**不是预算**，
+是结构规则，违反即失败：
+
+- 叶子包 `inferenceapi`、`messages`、`placement`、`acquisition`、`chipmatch`、`partitioncap`
+  不得 import `internal/server/store`；
+- `api` 与 `controller` 互不 import；
+- `pkg/**` 不得 import `internal/**`；
+- `internal/agent/**` 不得 import `internal/server/**`；
+- `internal/proto` 不得 import 本仓库任何包；
+- `internal/server/distribution`（发布通道客户端，CLI 升级与 api 共用）不得 import 本仓库任何包，
+  免得 `selfinstall` 经由它依赖到 server 其余部分（ADR 0040）。
+
+**当前豁免**：`inferenceapi` 与 `partitioncap` 今天确实 import 了 store（计划 B7、B6），
+计划在 store 边界阶段切断。脚本用 `LEAF_STORE_WAIVED` 按包名豁免并打印 `WAIVED`，
+这样规则仍能拦住**新**的叶子包伸手够 store。豁免是双向的：某个包不再 import store 时，
+脚本会**失败**并要求把它从豁免名单里删掉，避免豁免长期挂着变成死条目。
+
+`internal/proto` 那条只匹配 import 列表，绝不匹配包自身的 import path——否则
+`./internal/proto` 会因为自己的路径里含 `gpuworks/` 而永远"违规"。

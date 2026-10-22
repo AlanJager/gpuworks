@@ -1,0 +1,168 @@
+{
+  "priority": "P1",
+  "page_id": "images",
+  "test_file": "test/e2e/image_selection.py",
+  "test_function": "test_community_prefill",
+  "contract_id": "gpuworks/image-catalog/community-prefill",
+  "name": "镜像目录 / 社区选择从 A 到 B / 预填替换、手工草稿与刷新持久化",
+  "command": "make test-e2e-image-community-prefill",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "External metadata parsing only; synthetic archives are not runnable images. No agent, pull or container claim."
+  },
+  "crud": {
+    "create": "covered: selected metadata imported through UI",
+    "read": "covered: independent series GET and refreshed details",
+    "update": "MISSING",
+    "delete": "MISSING: teardown only"
+  },
+  "checklist_items": {
+    "partial": [
+      "1.8",
+      "1.11",
+      "4.5",
+      "5.5",
+      "8.4",
+      "12.1",
+      "12.2"
+    ],
+    "reason": "Only source selection and draft preservation branches asserted in this case."
+  },
+  "fields": [
+    {
+      "field_id": "image.reference",
+      "component": "Text",
+      "request": "series[].versions[].image_ref",
+      "persistence": "version.image_ref",
+      "covered": [
+        "selection A->B",
+        "exact submit",
+        "independent read"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.engine",
+      "component": "Select",
+      "request": "series[].engine",
+      "persistence": "series.engine",
+      "covered": [
+        "authoritative selection"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.engine-version",
+      "component": "Text",
+      "request": "series[].versions[].engine_version",
+      "persistence": "version.engine_version",
+      "covered": [
+        "selection/default and exact request"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.framework",
+      "component": "Select",
+      "request": "series[].framework",
+      "persistence": "series.framework",
+      "covered": [
+        "CUDA"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.rolling",
+      "component": "Switch",
+      "request": "series[].versions[].rolling_tag",
+      "persistence": "version.rolling_tag",
+      "covered": [
+        "nightly true -> release false"
+      ],
+      "missing": [
+        "other field boundaries"
+      ]
+    },
+    {
+      "field_id": "image.community-repository",
+      "component": "Resource selector",
+      "request": "GET /images/community/browse query.repo",
+      "persistence": "Selection derives version.image_ref, series.engine/framework",
+      "covered": [
+        "configured A/B cards",
+        "exact repo query"
+      ],
+      "missing": [
+        "manual repository",
+        "siblings",
+        "pagination",
+        "unauthorized upstream"
+      ]
+    },
+    {
+      "field_id": "image.community-tag-search",
+      "component": "Text",
+      "request": "N/A: client search over authoritative fetched tag list",
+      "persistence": "N/A: transient filter",
+      "covered": [
+        "empty result",
+        "clear",
+        "does not overwrite manual draft"
+      ],
+      "missing": [
+        "case/whitespace boundaries",
+        "partial search"
+      ]
+    },
+    {
+      "field_id": "image.community-tag",
+      "component": "Button",
+      "request": "No mutation until import; selected metadata contributes import body",
+      "persistence": "version.image_ref/engine_version/rolling_tag",
+      "covered": [
+        "nightly to release",
+        "explicit selection replaces previous defaults"
+      ],
+      "missing": [
+        "all tags",
+        "removed upstream"
+      ]
+    }
+  ],
+  "missing": [
+    "all enum options",
+    "framework-changing dependency reset",
+    "cross-source archive-to-community transition",
+    "reopen unsaved draft semantics",
+    "referenced image deletion",
+    "permissions",
+    "runtime image pull and container execution",
+    "all component keyboard/computed-style states"
+  ],
+  "product_contracts": [
+    "ui/src/pages/images/ImageImportDrawer.tsx",
+    "ui/src/pages/ImagesPage.tsx",
+    "ui/src/pages/images/ImageCommunityBrowser.tsx",
+    "internal/server/api/images_catalog_import.go"
+  ],
+  "field_contract_reference": {
+    "file": "test/e2e/coverage/image-catalog-register.json",
+    "scope": "Shared registration field labels/defaults/requiredness; this case claims only the selection branches listed here. It does not inherit registration execution evidence."
+  }
+}

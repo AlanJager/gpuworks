@@ -1,0 +1,20 @@
+{
+  "parameters": {
+    "temperature": "Temperature",
+    "top_p": "Top P",
+    "max_tokens": "Maximum Output Tokens",
+    "seed": "Random Seed",
+    "stop": "Stop Sequence",
+    "frequency_penalty": "Frequency Penalty",
+    "presence_penalty": "Presence Penalty"
+  },
+  "presets": {
+    "low_reasoning_effort": "Low Reasoning Effort",
+    "disable_thinking": "Disable Thinking",
+    "template_parameters": "Template Parameters"
+  },
+  "stream_options": {
+    "include_usage": { "label": "Report usage (include_usage)", "description": "Return prompt and completion token counts in the last chunk, for exact metrics once the reply ends." },
+    "continuous_usage_stats": { "label": "Usage on every chunk (continuous_usage_stats)", "description": "Put the running token counts on every chunk so speed metrics update while the reply streams (vLLM, SGLang). Turn it off if the endpoint rejects it; metrics then estimate tokens from chunks." }
+  }
+}

@@ -1,0 +1,100 @@
+model_id: qwen/qwen2.5-vl-3b-instruct
+source: upstream
+display_title: qwen2.5-vl-3b-instruct
+parameter_count: 3B product checkpoint label; exact tensor-scalar count was not recomputed
+architecture: Qwen2_5_VLForConditionalGeneration
+context_length: 128000
+release_date: '2025-01-26'
+model_config: {model_type: qwen2_5_vl, num_hidden_layers: 36, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 2, max_position_embeddings: 128000, sliding_window: 32768, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 36864
+  sglang: 36864
+specs:
+- name: bf16-vllm-ascend-60815434
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-3B-Instruct
+        revision: 66285546d2b821cf421d4f5eb2576359d3770cd3
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-3B-Instruct
+        revision: 1b5a7674d40a0ac9acef541a46fed12d710bd36b
+  weight_bytes: 7520919692
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-3B-Instruct
+        revision: 66285546d2b821cf421d4f5eb2576359d3770cd3
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-3B-Instruct
+        revision: 1b5a7674d40a0ac9acef541a46fed12d710bd36b
+  weight_bytes: 7520919692
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-66285546
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen2.5-VL-3B-Instruct
+        revision: 66285546d2b821cf421d4f5eb2576359d3770cd3
+    - modelscope:
+        repo_id: Qwen/Qwen2.5-VL-3B-Instruct
+        revision: 1b5a7674d40a0ac9acef541a46fed12d710bd36b
+  weight_bytes: 7509337976
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,54 @@
+// GPUWorks brand layer. OINK supplies the document shell and components;
+// this file only changes the project identity and a few high-level surfaces.
+
+:root,
+[data-bs-theme="light"] {
+  --bs-primary: #2176ed;
+  --bs-primary-rgb: 33, 118, 237;
+  --bs-link-color: #1559bd;
+  --bs-link-color-rgb: 21, 89, 189;
+  --bs-link-hover-color: #0b4aab;
+  --bs-link-hover-color-rgb: 11, 74, 171;
+  --td-accent: #2176ed;
+  --td-accent-rgb: 33, 118, 237;
+  --td-brand-copper: #2176ed;
+  --td-brand-mark-from: #2176ed;
+  --td-brand-mark-to: #48d7e8;
+  --td-brand-header-bg: rgba(7, 17, 31, .95);
+  --td-brand-shadow-md: 0 12px 34px rgba(14, 48, 92, .12);
+}
+
+[data-bs-theme="dark"] {
+  --bs-primary: #7eb8ff;
+  --bs-primary-rgb: 126, 184, 255;
+  --bs-link-color: #8bc3ff;
+  --bs-link-color-rgb: 139, 195, 255;
+  --bs-link-hover-color: #b5d9ff;
+  --bs-link-hover-color-rgb: 181, 217, 255;
+  --td-accent: #7eb8ff;
+  --td-accent-rgb: 126, 184, 255;
+  --td-brand-header-bg: rgba(7, 17, 31, .96);
+}
+
+.td-site-header {
+  border-bottom-color: rgba(255, 255, 255, .12);
+}
+
+.td-site-header .navbar-brand {
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+
+.td-content h1,
+.td-content h2,
+.td-content h3 {
+  letter-spacing: -.025em;
+}
+
+.td-content pre {
+  border-radius: .65rem;
+}
+
+.td-card {
+  border-radius: .8rem;
+}

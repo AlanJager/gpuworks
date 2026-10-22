@@ -1,0 +1,44 @@
+{
+  "breadcrumb": { "services": "Inference Services", "templates": "Inference Templates" },
+  "page": { "title": "Inference Templates", "loadFailed": "Failed to load inference templates: {{detail}}" },
+  "organization": { "other": "Other", "title": "Model Organizations", "aria": "Model organizations" },
+  "models": { "view": "View {{title}}", "count": "{{count}} models" },
+  "chips": { "mine": "My Chips", "add": "Add Chip", "selectToFilter": "Select one to filter", "noOnlineNode": "No detected or hypothetical chips" },
+  "filters": { "all": "All" },
+  "columns": { "model": "Model", "inputModalities": "Input modalities", "weightVariants": "Weight artifacts", "vendor": "GPU vendor", "engine": "Engine" },
+  "vendor": { "nvidia": "NVIDIA", "amd": "AMD", "ascend": "Ascend", "hygon": "Hygon", "ppu": "PPU", "apple": "Apple", "hygonAlt": "Hygon" },
+  "displayProfile": { "general": "{{target}} general spec", "compatible": "{{target}} compatible spec", "optimized": "{{target}} optimized spec" },
+  "displayTarget": { "nvidia": "NVIDIA", "ascend": "Ascend", "hygon": "Hygon", "turing": "Turing", "hopper": "Hopper", "blackwell": "Blackwell", "gb10": "GB10", "b200": "B200", "b300": "B300", "gb200": "GB200", "gb300": "GB300", "rtx_4090": "RTX 4090", "rtx_5090": "RTX 5090", "rtx_pro_5000": "RTX PRO 5000", "rtx_pro_6000": "RTX PRO 6000", "apple": "Apple silicon" },
+  "scenario": { "general": "General" },
+  "weightSources": { "title": "Weight sources", "huggingface": "Hugging Face", "modelscope": "ModelScope" },
+  "flat": { "description": "Browse deployable model specs from the flat catalog", "hypotheticalPrompt": "GPU model name", "vendorPrompt": "GPU vendor", "importTemplates": "Import Templates", "importHint": "A flat YAML file, or a .gpuworks-catalog.tar.gz package for templates with adapter assets or documentation", "imported": "Templates imported", "overwritePrompt": "A same-named user spec already exists. Overwrite it? {{detail}}", "overwritten": "Same-named user spec overwritten", "overwriteTitle": "Overwrite same-named user spec?", "overwriteOk": "Overwrite", "cancel": "Cancel", "search": "Search models or weight repositories", "modelCount": "{{count}} original models", "deployableCount": "{{count}} deployable specs", "selectedChip": "Selected chip: {{chip}}", "retry": "Retry", "empty": "No models match the filters", "myTemplates": "My Templates", "saved": "Template saved", "edit": "Edit", "context": "Context", "specCount": "Specs", "specID": "Spec ID", "builtInSource": "Built-in", "userSource": "User", "details": "Details", "emptySpecs": "No specs for this engine", "gpus": "Applicable GPU", "sources": "Download sources", "imageSources": "Image sources", "commandPreview": "Server command preview", "editYAML": "Edit flat YAML", "save": "Save", "addHypothetical": "Add a hypothetical GPU", "chooseChip": "Choose a GPU from the hardware catalog", "add": "Add", "alternativeAvailable": "Another quantization has a deployable spec for your cluster." },
+  "editor": {
+    "reset": "Reset",
+    "saveFailed": "Save failed",
+    "loadFailed": "Failed to load the template YAML: {{detail}}",
+    "line": "Line {{line}}",
+    "discardTitle": "Discard unsaved changes?",
+    "discardBody": "The YAML in the editor differs from the saved template. Closing the editor discards your changes.",
+    "discard": "Discard changes",
+    "keepEditing": "Keep editing",
+    "modelChangedTitle": "model_id changed",
+    "modelChangedBody": "The YAML now targets \"{{to}}\" instead of \"{{from}}\". Saving replaces same-named user specs of \"{{to}}\" and overwrites its model-level fields. Continue?",
+    "overwriteSave": "Save and overwrite",
+    "deleteSpec": "Delete user spec {{name}}",
+    "deleteSpecTitle": "Delete this user spec?",
+    "deleteSpecBody": "\"{{name}}\" will be removed from the template. Built-in specs are not affected. Deleting the last user spec removes the whole template.",
+    "deleteSpecOk": "Delete",
+    "specDeleted": "User spec {{name}} deleted",
+    "modelDeleted": "Last user spec deleted; template {{name}} removed"
+  },
+  "warnings": {
+    "title_one": "Imported, with {{count}} thing to check",
+    "title_other": "Imported, with {{count}} things to check",
+    "CATALOG_CALLABLE_METRICS_UNDECLARED": "Spec \"{{spec}}\" of {{model_id}} runs the callable engine but declares no api.metrics, so the monitoring center shows no engine metrics for it unless its /metrics happens to use vLLM or SGLang metric names.",
+    "CATALOG_HEALTH_ENDPOINT_UNDECLARED": "Spec \"{{spec}}\" of {{model_id}} runs the callable engine but declares no api.health_endpoint, so its readiness is probed on the default /health."
+  },
+  "detail": {
+    "operations": "Operations", "inputModalities": "Input modalities",
+    "sizePending": "Size pending", "loadFailed": "Failed to load inference template details: {{detail}}", "cloneFailed": "Clone failed: {{detail}}", "notFound": "Inference template not found", "back": "Back to List", "clone": "Clone", "deploy": "Deploy", "modelID": "Model ID", "engine": "Engine", "source": "Model metadata source", "vendorGroup": "{{vendor}} · {{count}} specs", "configuration": "Launch Configuration", "usage": "Usage", "instructions": "Model Guide", "noInstructions": "This model does not include a localized guide", "noOperations": "This spec has no Playground operation", "openPlayground": "Open in Playground"
+  }
+}

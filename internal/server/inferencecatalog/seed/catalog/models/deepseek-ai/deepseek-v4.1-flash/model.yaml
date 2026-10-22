@@ -1,0 +1,117 @@
+model_id: deepseek-ai/deepseek-v4.1-flash
+source: upstream
+display_title: DeepSeek-V4.1-Flash
+parameter_count: 748B (552B backbone + 196B Engram)
+architecture: moe
+input_modalities:
+- text
+- image
+context_length: 1048576
+release_date: '2026-09-10'
+model_config:
+  model_type: deepseek_v41_text
+  num_hidden_layers: 40
+  hidden_size: 5120
+  num_attention_heads: 64
+  num_key_value_heads: 1
+  head_dim: 512
+  max_position_embeddings: 1048576
+  qk_rope_head_dim: 64
+  sliding_window: 128
+  vision_config:
+    patch_size: 14
+specs:
+- name: fp4-sglang-nvidia-h200-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash
+        revision: 314113f8a7dadb388215396ba5fbee2c610a04d6
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '8'
+  - --mem-fraction-static
+  - '0.8'
+  - --attention-backend
+  - dsv4
+  - --moe-runner-backend
+  - flashinfer_mxfp4
+  - --cuda-graph-max-bs-decode
+  - '64'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 GPUs per node")
+          return {"TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp4-sglang-nvidia-b200-tp4
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: lmsysorg/sglang:dev-dsv41
+  weights:
+    quantization: fp4
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4.1-Flash
+        revision: 314113f8a7dadb388215396ba5fbee2c610a04d6
+  weight_bytes: 510296708312
+  gpus:
+    vendor: nvidia
+    name: (^|[^A-Za-z0-9])(?:B200|B300|GB300)([^A-Za-z0-9]|$)
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --ep-size
+  - '4'
+  - --mem-fraction-static
+  - '0.8'
+  - --speculative-algorithm
+  - DSPARK
+  - --speculative-dspark-block-size
+  - '5'
+  - --cuda-graph-max-bs-decode
+  - '64'
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  - --enable-metrics
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("this recipe requires exactly 4 GPUs per node")
+          return {"TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+readme_zh_cn: README.zh-CN.md
+readme_en: README.en.md

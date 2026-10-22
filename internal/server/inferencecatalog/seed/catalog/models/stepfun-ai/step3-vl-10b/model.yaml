@@ -1,0 +1,132 @@
+model_id: stepfun-ai/step3-vl-10b
+source: upstream
+display_title: Step3 Vl 10b
+release_date: '2026-01-13'
+model_config: {model_type: step_robotics, num_hidden_layers: 36, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 65536, vision_config: {image_size: 728, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 147456
+  sglang: 147456
+specs:
+- name: bf16-sglang-ascend-d02b6a67
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step3-VL-10B
+        revision: 5026053b0c2f5dfaa08fc2d149384162c3c8bca1
+    - modelscope:
+        repo_id: stepfun-ai/Step3-VL-10B
+        revision: 62f4a8bd1e05959c4da956facb69040726c098bb
+  weight_bytes: 20360337341
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --attention-backend
+  - ascend
+  - --device
+  - npu
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step3-VL-10B
+        revision: 5026053b0c2f5dfaa08fc2d149384162c3c8bca1
+    - modelscope:
+        repo_id: stepfun-ai/Step3-VL-10B
+        revision: 62f4a8bd1e05959c4da956facb69040726c098bb
+  weight_bytes: 20360338099
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/Step3-VL-10B-FP8
+        revision: 84e144cba3877fc2b18465a7aa3fbba17ab8f14a
+    - modelscope:
+        repo_id: stepfun-ai/Step3-VL-10B-FP8
+        revision: 48c39fd2e7d4f3280a44ed636f3e71cce334fda3
+  weight_bytes: 15075094051
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-5026053b
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stepfun-ai/step3-vl-10b
+        revision: 5026053b0c2f5dfaa08fc2d149384162c3c8bca1
+    - modelscope:
+        repo_id: stepfun-ai/step3-vl-10b
+        revision: 62f4a8bd1e05959c4da956facb69040726c098bb
+  weight_bytes: 20343630808
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

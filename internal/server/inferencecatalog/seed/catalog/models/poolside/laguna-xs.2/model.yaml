@@ -1,0 +1,489 @@
+model_id: poolside/laguna-xs.2
+source: upstream
+display_title: Laguna XS.2
+parameter_count: 33B
+architecture: moe
+context_length: 262144
+release_date: '2026-04-23'
+model_config: {model_type: laguna, num_hidden_layers: 40, hidden_size: 2048, num_attention_heads: 48, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 262144, sliding_window: 512, layer_types: [full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention]}
+kv_bytes_per_token:
+  vllm: 163840
+  sglang: 163840
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2
+        revision: 69e3f4046616e40fb55ac54e0e2e6accbe5cadfe
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2
+        revision: b58d646b58512021fbc9459e3944db31b51c97fa
+  weight_bytes: 66900710333
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --reasoning-parser
+  - poolside_v1
+  - --tool-call-parser
+  - poolside_v1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2
+        revision: 69e3f4046616e40fb55ac54e0e2e6accbe5cadfe
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2
+        revision: b58d646b58512021fbc9459e3944db31b51c97fa
+  weight_bytes: 66900710333
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general-dflash-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2
+        revision: 69e3f4046616e40fb55ac54e0e2e6accbe5cadfe
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2
+        revision: b58d646b58512021fbc9459e3944db31b51c97fa
+  weight_bytes: 66900710333
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":7,"method":"dflash"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2
+          revision: 69e3f4046616e40fb55ac54e0e2e6accbe5cadfe
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2
+          revision: b58d646b58512021fbc9459e3944db31b51c97fa
+    weight_bytes: 66900710333
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: poolside/laguna-xs.2-speculator.dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 6c936ca2a04faee6989df6d40686fbd9ac61a064
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 714d4d2153f0c2bcd3a411e85fd45bacaf0556b0
+    weight_bytes: 1213625755
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-FP8
+        revision: 607820a6ffb33dd567ab9ff1f765d82c8d1d6ac9
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-FP8
+        revision: 93b10b2a87bdf90bff44656883cfd49d3a21fa7d
+  weight_bytes: 35329660157
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --reasoning-parser
+  - poolside_v1
+  - --tool-call-parser
+  - poolside_v1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-FP8
+        revision: 607820a6ffb33dd567ab9ff1f765d82c8d1d6ac9
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-FP8
+        revision: 93b10b2a87bdf90bff44656883cfd49d3a21fa7d
+  weight_bytes: 35329660157
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  env:
+    VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER: '0'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general-dflash-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-FP8
+        revision: 607820a6ffb33dd567ab9ff1f765d82c8d1d6ac9
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-FP8
+        revision: 93b10b2a87bdf90bff44656883cfd49d3a21fa7d
+  weight_bytes: 35329660157
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":7,"method":"dflash"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  env:
+    VLLM_BLOCKSCALE_FP8_GEMM_FLASHINFER: '0'
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: fp8
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-FP8
+          revision: 607820a6ffb33dd567ab9ff1f765d82c8d1d6ac9
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-FP8
+          revision: 93b10b2a87bdf90bff44656883cfd49d3a21fa7d
+    weight_bytes: 35329660157
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: poolside/laguna-xs.2-speculator.dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 6c936ca2a04faee6989df6d40686fbd9ac61a064
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 714d4d2153f0c2bcd3a411e85fd45bacaf0556b0
+    weight_bytes: 1213625755
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-INT4
+        revision: 610af28e6675c77f53027f850d4856b9c47e009f
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-INT4
+        revision: f8feaa47468ceedb1b40a9f062ffff0a6f4daa9c
+  weight_bytes: 23910497761
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general-dflash-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-INT4
+        revision: 610af28e6675c77f53027f850d4856b9c47e009f
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-INT4
+        revision: f8feaa47468ceedb1b40a9f062ffff0a6f4daa9c
+  weight_bytes: 23910497761
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":7,"method":"dflash"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: int4
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-INT4
+          revision: 610af28e6675c77f53027f850d4856b9c47e009f
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-INT4
+          revision: f8feaa47468ceedb1b40a9f062ffff0a6f4daa9c
+    weight_bytes: 23910497761
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: poolside/laguna-xs.2-speculator.dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 6c936ca2a04faee6989df6d40686fbd9ac61a064
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 714d4d2153f0c2bcd3a411e85fd45bacaf0556b0
+    weight_bytes: 1213625755
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-sglang-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-NVFP4
+        revision: d3cca23dc520049c2cfb041f708a0c2ec5957e99
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-NVFP4
+        revision: c99761907d12107e65ef35e290a7f78f646f9725
+  weight_bytes: 21523727209
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --reasoning-parser
+  - poolside_v1
+  - --tool-call-parser
+  - poolside_v1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-NVFP4
+        revision: d3cca23dc520049c2cfb041f708a0c2ec5957e99
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-NVFP4
+        revision: c99761907d12107e65ef35e290a7f78f646f9725
+  weight_bytes: 21523727209
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100-dflash-draft
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: poolside/Laguna-XS.2-NVFP4
+        revision: d3cca23dc520049c2cfb041f708a0c2ec5957e99
+    - modelscope:
+        repo_id: poolside/Laguna-XS.2-NVFP4
+        revision: c99761907d12107e65ef35e290a7f78f646f9725
+  weight_bytes: 21523727209
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":7,"method":"dflash"}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - poolside_v1
+  - --reasoning-parser
+  - poolside_v1
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: nvfp4
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-NVFP4
+          revision: d3cca23dc520049c2cfb041f708a0c2ec5957e99
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-NVFP4
+          revision: c99761907d12107e65ef35e290a7f78f646f9725
+    weight_bytes: 21523727209
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: poolside/laguna-xs.2-speculator.dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 6c936ca2a04faee6989df6d40686fbd9ac61a064
+      - modelscope:
+          repo_id: poolside/Laguna-XS.2-speculator.dflash
+          revision: 714d4d2153f0c2bcd3a411e85fd45bacaf0556b0
+    weight_bytes: 1213625755
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

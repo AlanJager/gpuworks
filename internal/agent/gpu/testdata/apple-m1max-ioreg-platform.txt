@@ -1,0 +1,4 @@
+      "target-type" = <"J316c">
+      "compatible" = <"J316cAP","MacBookPro18,2","AppleARM">
+      "model" = <"MacBookPro18,2">
+      "IOPlatformUUID" = "00000000-1111-2222-3333-444455556666"

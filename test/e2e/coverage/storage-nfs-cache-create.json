@@ -1,0 +1,157 @@
+{
+  "contract_id": "gpuworks/storage/nfs-cache-create",
+  "name": "存储 / NFS Cache 四步创建 / 节点例外、真实试挂、创建后挂载与缓存预算收敛、刷新回读",
+  "priority": "P0",
+  "page_id": "storage",
+  "control_id": "storage-nfs-cache-create",
+  "scope": "Single targeted contract for creating one nfs_cache storage on one local node; not a storage-type or page completion claim",
+  "test_file": "test/e2e/storage_cache_create.py",
+  "test_function": "test_storage_cache_create",
+  "command": "make test-e2e-storage-nfs-cache-create E2E_NFS_EXPORT=host:/path",
+  "lane": "local-real-server-agent-nfs",
+  "identity": "admin browser; one real agent (driver=none) enrolled through the real nodes API and run with sudo -n",
+  "fixture": "isolated server and fresh SQLite, real Chrome, real agent over WS, a caller-owned NFSv4.2 export allowing root writes (gated by mount.nfs4 and a TCP connection to port 2049 before the run counts); every storage path sits under the isolated server's storage root; the default local storage is moved there through the real API before the browser flow, although the agent may report its own models directory for that storage; fixture setup sets reserve_free_bytes=1048576 through the real storage settings API so this empty-cache scenario does not depend on the workstation having the production default disk reserve free",
+  "product_contracts": [
+    "ui/src/pages/storage/StorageFormModal.tsx",
+    "ui/src/pages/storage/StorageCacheDraftEditor.tsx",
+    "ui/src/pages/storage/StorageCacheDraftTable.tsx",
+    "ui/src/pages/storage/StorageProbePanel.tsx",
+    "ui/src/pages/storage/StorageNodesTab.tsx",
+    "internal/server/api/storages.go",
+    "internal/agent/storagemount"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "covered",
+    "reason": "The trial mount reports readable, writable and NFS version 4.2 without leaving the final mount. After create the kernel shows exactly one mount at the requested path whose type is nfs4, source equals the export and options contain vers=4.2; the probe's total equals statvfs of that mount; a file round-trips through it. The agent creates only the node override cache directory, and the settled cache total equals statvfs of that directory, with available bytes within 256 MiB of statvfs, and the budget converges to satisfied. The report records cache_capacity_source_distinct: distinguishing mount capacity from cache-disk capacity requires those filesystems to differ."
+  },
+  "crud": {
+    "create": "covered: four-step wizard, node cache exception, probe body and result, POST /storages exact body and 201, list row after create",
+    "read": "covered: independent GET ?all_nodes=1 equals every sent field (name, type, all_nodes, path, export, mount_options, cache_path, cache_max_bytes) and the override target; reload, edit dialog prefill, node tab state",
+    "update": "N/A in this case: the edit dialog is only opened and cancelled",
+    "delete": "cleanup only: real API DELETE 204, agent unmount observed and GET 404; not claimed as UI deletion coverage"
+  },
+  "fields": [
+    {
+      "field_id": "storage.type",
+      "component": "Radio (button)",
+      "request": "type=nfs_cache",
+      "persistence": "type",
+      "covered": [
+        "nfs_cache selected and checked"
+      ],
+      "missing": [
+        "switching away and back with values entered"
+      ]
+    },
+    {
+      "field_id": "storage.name",
+      "component": "Text",
+      "request": "name",
+      "persistence": "name",
+      "covered": [
+        "valid name round-trips in the create body and edit title"
+      ],
+      "missing": [
+        "empty/invalid/duplicate names"
+      ]
+    },
+    {
+      "field_id": "storage.export",
+      "component": "Text",
+      "request": "export",
+      "persistence": "export",
+      "covered": [
+        "owned export reaches probe and create bodies and is actually mounted"
+      ],
+      "missing": [
+        "unreachable or malformed export and the probe refusal"
+      ]
+    },
+    {
+      "field_id": "storage.mount",
+      "component": "Text (mount point) + Text (mount options)",
+      "request": "path, mount_options",
+      "persistence": "path, mount_options",
+      "covered": [
+        "absolute mount point and vers=4.2,proto=tcp reach probe and create; mountinfo shows nfs4 at that path"
+      ],
+      "missing": [
+        "relative/empty mount point",
+        "invalid mount options"
+      ]
+    },
+    {
+      "field_id": "storage.scope",
+      "component": "Radio",
+      "request": "all_nodes",
+      "persistence": "all_nodes",
+      "covered": [
+        "all-nodes default is checked and sent as true"
+      ],
+      "missing": [
+        "label and node scopes"
+      ]
+    },
+    {
+      "field_id": "storage.cache",
+      "component": "Text (cache path) + policy radio + Number (GiB)",
+      "request": "cache_path, cache_max_bytes",
+      "persistence": "cache_path, cache_max_bytes",
+      "covered": [
+        "custom 8 GiB is sent as bytes and prefilled 8 after refresh"
+      ],
+      "missing": [
+        "unlimited/inherit defaults at creation",
+        "limit boundaries"
+      ]
+    },
+    {
+      "field_id": "storage.node-exception",
+      "component": "Draft table row + override dialog",
+      "request": "targets[{node_uuid, override_only, cache_path, cache_max_bytes:0}]",
+      "persistence": "targets[]",
+      "covered": [
+        "custom node cache path and unlimited exception are sent, persisted and used by the agent"
+      ],
+      "missing": [
+        "several nodes, removing an exception before save"
+      ]
+    }
+  ],
+  "checklist_items": {
+    "1.2": "PARTIAL: after reload the edit dialog prefills the 8 GiB default and the node's unlimited exception; no-submission before async load is MISSING",
+    "1.8": "PARTIAL: creation with optional mount options, a custom cache limit and a node exception reaches the exact POST body, the list row and an independent GET with every sent field; backend defaults for omitted optional fields are MISSING",
+    "1.14": "Independent GET, kernel mountinfo (type, source, vers), statvfs capacities, a file round-trip, the node cache directory on disk and the settled cache budget agree with the saved configuration",
+    "4.4": "PARTIAL: mount point and cache paths are absolute filesystem paths below the storage root sent unchanged and the export is a host:/path NFS target; relative and out-of-root negatives are MISSING here (storage-local.json covers the out-of-root refusal for local storage)",
+    "14.1": "PARTIAL: Next advances through the steps and Save stays disabled until the real probe succeeds; step names, back navigation and per-step validation are MISSING",
+    "14.8": "The submitted configuration is followed to the agent: the real mount, the node cache directory and the cache budget"
+  },
+  "missing": [
+    "MISSING: 1.1 full field inventory of the wizard",
+    "MISSING: 1.3 required-field and 2.x text negatives for name, export, mount point and cache path",
+    "MISSING: 1.4 field boundaries, 1.5 every storage type in the same run, 1.6 conditional fields after switching type with values entered",
+    "MISSING: 1.7 minimum creation with only required fields",
+    "MISSING: 1.9 duplicate submit of Save",
+    "MISSING: 1.10 probe failure against an unreachable export and recovery after correcting it",
+    "MISSING: 1.11 and 14.2 cancelling the wizard, going back a step and draft retention",
+    "MISSING: 1.12 and 1.13 editing a saved NFS cache storage and edit conflicts",
+    "MISSING: 1.15 and 12.2-12.6 wizard keyboard reachability, focus, Esc and layout at 1440×900",
+    "MISSING: 4.2 invalid export formats; 4.5 overrides surviving reopening the wizard",
+    "MISSING: 14.3-14.7 mode switching, parameter dictionaries and snapshot consistency (not applicable to storage beyond the probe)",
+    "MISSING: label and node scopes and more than one node",
+    "MISSING: UI deletion of an NFS cache storage (cleanup uses the API)",
+    "MISSING: non-admin refusal of create and probe",
+    "MISSING: NFS stall, disconnect and disk-full behavior",
+    "N/A: container, GPU and engine execution — the agent runs with driver=none"
+  ],
+  "cleanup": "Ownership of the storage is registered from the 201 response before any assertion. Cleanup runs in reverse order as independently guarded stages: browser trace/context/browser, the agent (TERM then KILL, only while /proc/<pid>/cmdline still names this run's agent state), the mount (fallback sudo umount), the server and the log copies. Each stage's outcome is in cleanup_stages; remaining_resources keeps the storage, mount and processes that were not observed gone with a scoped reclaim command, and any non-ok stage withdraws PASS. The agent writes its state (including its node token) and the cache directories as root (root_owned_paths); remove only this run directory with sudo after diagnosis (7 days). The export itself is owned and torn down by the caller. Failure-path self-tests: test_storage_cache_cleanup.py (make test-e2e-storage-nfs-cache-fixture). The export marker is registered before writing, removed and observed absent independently, and retained as an export-file residual on failure; NFS file commands and fallback unmount have deadlines. Mountinfo paths are decoded before ownership checks. NFS statvfs, file I/O and fallback umount use a root GNU timeout process group, not a timeout on sudo alone. Root command PID/PGID remains in the ledger while a process is still active; an outstanding writer prevents marker ownership from being cleared. A real sudo delayed-writer self-test verifies that the watchdog leaves no running writer.",
+  "artifact": "secrets/e2e/<runId>/report.json with source SHA/working-tree state, server/agent/test/helper/manifest digests, locale, browser version, probe and create bodies, independent GETs, mountinfo, settled node cache, cleanup observations, remaining_resources, redacted trace, server and agent logs; browser page/console/HTTP errors are recorded and unexpected errors fail the case; target branch and SHA are recorded",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, all cleanup stages ok and no remaining resources"
+}

@@ -1,0 +1,66 @@
+model_id: jinaai/jina-reranker-m0
+source: upstream
+display_title: Jina Reranker m0
+parameter_count: 2.4B
+architecture: dense
+context_length: 32768
+release_date: '2025-03-27'
+model_config: {model_type: qwen2_vl, num_hidden_layers: 28, hidden_size: 1536, num_attention_heads: 12, num_key_value_heads: 2, max_position_embeddings: 32768, sliding_window: 32768, vision_config: {model_type: qwen2_vl}}
+kv_bytes_per_token:
+  vllm: 28672
+  sglang: 28672
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-reranker-m0
+        revision: 94bfe0aeb2d4dd7978362699cddd5893d4e0adc8
+    - modelscope:
+        repo_id: jinaai/jina-reranker-m0
+        revision: 9b9f4fc0c6e665b347cbf3b1b58c3d31964585bb
+  weight_bytes: 4905437872
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.rerank
+      endpoint: /v1/rerank
+      mode: sync
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-reranker-m0
+        revision: 94bfe0aeb2d4dd7978362699cddd5893d4e0adc8
+    - modelscope:
+        repo_id: jinaai/jina-reranker-m0
+        revision: 9b9f4fc0c6e665b347cbf3b1b58c3d31964585bb
+  weight_bytes: 4905437872
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.rerank
+      endpoint: /v1/rerank
+      mode: sync
+input_modalities: [text, image]

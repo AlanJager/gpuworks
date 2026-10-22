@@ -1,0 +1,17 @@
+{
+  "contract_id": "gpuworks/node/local-host-ssh-uninstall",
+  "name": "本机真实 SSH/systemd 验收节点卸载及强制移除",
+  "test_file": "test/e2e/node_removal_local_host.py",
+  "test_function": "HostAcceptance.accept",
+  "command": "python3 test/e2e/node_removal_local_host.py --root <owned-dir> --base http://127.0.0.1:<server-port> --ssh-port <loopback-ssh-port> --ssh-unit <owned-sshd.service> --browser-path <chromium> --locale zh",
+  "lane": "local-host-real-systemd-openssh",
+  "fixture": "独立真实 server、SQLite、OpenSSH；本机真实 agent，driver=none；标准 agent unit 必须尚不存在；不使用管理 API/SSH/systemd mock",
+  "fields": [{"field_id": "node.delete.force", "default": false, "request": "缺省或 force=true", "persistence": "非持久化操作参数", "covered": ["普通删除", "显式强制移除", "真实 SSH 故障后的重试"]}],
+  "crud": {"create": "真实 API 接入为前置准备", "read": "在线节点与删除后独立 GET/刷新", "update": "配置真实平台 SSH 密钥", "delete": "浏览器操作，观察真实服务和进程"},
+  "required_evidence": ["浏览器真实 DELETE/响应", "独立 GET/刷新", "systemd unit/PID", "保留文件摘要", "其他现有服务未改变"],
+  "checklist_items": {"partial": {"6.1": "默认关闭及真实勾选", "6.2": "缺省/true 请求及结果", "6.4": "强制提示", "6.5": "失败保留弹窗与节点", "12.1": "真实节点行打开命名确认弹窗", "12.6": "SSH 故障保留、恢复后重试成功", "12.7": "节点名、影响、失败保留及真实清理"}},
+  "missing": ["无计算 GPU，未验收真实推理或 GPU 释放", "有真实运行实例时的删除拦截（已有 API 单测）", "macOS", "并发调度/自动恢复竞态", "全量测试"],
+  "result": "以具体 report.json 为准，清单本身不声明通过",
+  "artifact": "<owned-dir>/evidence/<runId>/report.json、截图与脱敏 trace",
+  "cleanup": "成功后保留 server、专用 loopback sshd 和重新接入的本机节点供用户查看；失败保留本次现场，仅操作已确认属于本次的进程和服务"
+}

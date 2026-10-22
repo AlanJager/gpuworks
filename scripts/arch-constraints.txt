@@ -1,0 +1,30 @@
+# Architecture constraints consumed by scripts/check_architecture.sh.
+# Format: key<TAB>limit<TAB>direction[<TAB># raised: <reason>]
+#   max = measured must stay <= limit (ratchet down only)
+#   min = measured must stay >= limit (ratchet up only)
+#   A loosened limit (max grew, min shrank) vs the origin/master baseline
+#   fails unless the line carries that trailing "# raised: <reason>" comment.
+# Rationale, exact measurement command and exclusion list per key:
+# scripts/arch-constraints.md
+pending_removal_literal	0	max
+deployment_state_literal	0	max
+engine_literal_server	2	max
+engine_literal_ui	5	max
+setting_key_literal	0	max
+vendor_normalize_funcs	1	max
+infer_vendor_callers	0	max
+store_concrete_importers	20	max	# raised: Cloud resource ownership moved into provider/zstack/cloud/resourceclaim; cloud retains host onboarding, while resourceclaim owns node/GPU reads and lease lifecycle state
+api_fanout	44	max	# raised: the user experience improvement program (docs/reference/usage-report.md); api counts its calls, product errors and panics into the leaf usagereport package and builds the update check's fleet query with it, so the one new import is that leaf (43 was master's own count)
+api_opaque_response_fields	40	max
+api_deps_fields	53	max	# raised: Deps.Networks, the one network service every component shares; Deps.Telemetry, the request trace export setting and its running exporter (ADR 0046), a named interface of its own rather than methods on an unrelated one; Deps.Preparation, one named interface for model preparation where it is produced (the hub's copy progress, the controller's placements, evictions and cache retry), so none of those in-memory facts sit in the store; Deps.UsageReport, the improvement program's daily report (status, switch, preview, the counters the API adds to), and Deps.Notices, the notice bell fed from the signed distribution channel, two named interfaces of their own rather than methods on Server or Outside, which are about something else
+api_goroutines	5	max
+store_domain_imports	7	max
+agent_direct_exec	5	max
+bare_time_now_ctrl_hub	13	max
+files_over_600	10	max
+milestone_named_files	0	max
+process_name_refs	0	max
+dto_test_lines_min	81	min
+store_text_columns	76	max	# raised: nodes.accelerator_vendors (proto.AcceleratorPresence list), every vendor whose cards are on the host's PCI bus as the agent last reported it, so the operator can choose which the node manages; it is replaced whole on each report and read whole to draw the choice, never queried, sorted or joined, and a typed table would cost a write per vendor on every status report of a 1000-node fleet that nearly always has one; gpus.foreign_processes, the compute processes somebody outside the platform is running on a card (proto.CardProcess), reported whole by the agent and read whole to show who holds it; the verdict asks only whether it is empty (GPU.HeldOutsidePlatform), the database never queries into it, and a typed table would add a join to every card read of a fleet that mostly has none; inference_specs.image_sources (ADR 0038), the ordered list of further pull references a template declares for its image; it is read and written whole with the rest of the spec projection and never queried, sorted, joined or updated in part, so a typed table would only add a join to every template read; same opaque-snapshot shape as args and entrypoint on the same row; CloudHost.Snapshot preserves the complete installation-time CloudResource inventory, read and written as one opaque snapshot rather than queried by its fields
+store_text_columns_undocumented	0	max
+store_sql_json_lines	2	max

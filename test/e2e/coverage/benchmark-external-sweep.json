@@ -1,0 +1,176 @@
+{
+  "contract_id": "gpuworks/benchmark/external-endpoint-sweep",
+  "name": "\u8bc4\u6d4b / \u5916\u90e8 OpenAI \u7aef\u70b9\u53c2\u6570\u626b\u63cf / UI \u63a2\u6d4b\u6a21\u578b\u3001\u771f\u5b9e\u6d41\u5f0f\u8bf7\u6c42\u3001\u5b8c\u6210\u56de\u8bfb\u4e0e\u5220\u9664",
+  "test_file": "test/e2e/evaluation_external.py",
+  "test_function": "test_external_endpoint_sweep",
+  "command": "make test-e2e-benchmark-external",
+  "additional_cases": [
+    {
+      "manifest": "test/e2e/coverage/benchmark-external-cancel.json",
+      "scope": "Cancellation while a run is active is a separate contract in the same business module"
+    }
+  ],
+  "priority": "P1",
+  "page_id": "evaluations",
+  "lane": "local-real-server-sqlite-openai-fixture",
+  "identity": "admin browser / benchmark executor on the server",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The target is an audited external OpenAI-compatible fixture. No GPU, agent, container, engine or real model is claimed."
+  },
+  "crud": {
+    "create": "UI wizard: Parameter Sweep + External Endpoint, probe and select the fixture model, single-point load; POST /benchmarks returns 202",
+    "read": "Detail completion, browser reload, independent GET and CSV report preserve the same run",
+    "update": "N/A: benchmark runs expose no update operation",
+    "delete": "UI list delete removes the run; independent GET becomes 404; the fixture receives no further request"
+  },
+  "fields": [
+    {
+      "id": "benchmark.target-kind",
+      "component": "Radio.Group",
+      "request": "target_kind=external",
+      "persisted": "target_kind",
+      "covered": [
+        "external selection replaces the managed-instance selector",
+        "load origin forced to server"
+      ],
+      "missing": [
+        "managed-instance target and its deployment/node selectors",
+        "switching back between target kinds"
+      ]
+    },
+    {
+      "id": "benchmark.endpoint",
+      "component": "Text / password / probe button",
+      "request": "base_url and api_key on POST /benchmarks/models and POST /benchmarks",
+      "persisted": "base_url (without a pasted /v1 suffix)",
+      "covered": [
+        "UI probe reaches GET /v1/models with the bearer key",
+        "create admission probes again",
+        "exact URL persisted"
+      ],
+      "missing": [
+        "pasted /v1 normalization",
+        "unreachable endpoint",
+        "401 from the endpoint",
+        "empty model list",
+        "invalid URL"
+      ]
+    },
+    {
+      "id": "benchmark.model",
+      "component": "Select fed by probe",
+      "request": "model",
+      "persisted": "model and target snapshot",
+      "covered": [
+        "probe result auto-selects the only model",
+        "request uses that model"
+      ],
+      "missing": [
+        "multiple models and reselection",
+        "probe failure recovery"
+      ]
+    },
+    {
+      "id": "benchmark.question",
+      "component": "Mode cards / steps",
+      "request": "mode=grid",
+      "persisted": "mode",
+      "covered": [
+        "Parameter Sweep selected before target configuration"
+      ],
+      "missing": [
+        "saturation and SLA questions",
+        "question switching after configuration"
+      ]
+    },
+    {
+      "id": "benchmark.load",
+      "component": "Number inputs / advanced collapse",
+      "request": "search.concurrency, isl, osl, requests_per_point_multiplier, warmup_requests; dataset lengths",
+      "persisted": "dataset and search documents",
+      "covered": [
+        "one concurrency",
+        "one ISL/OSL pair",
+        "one sample per channel",
+        "warmup disabled"
+      ],
+      "missing": [
+        "multiple concurrency/length points",
+        "open-loop rates",
+        "ignore_eos",
+        "invalid and boundary values"
+      ]
+    },
+    {
+      "id": "benchmark.result",
+      "component": "Verdict card / point table / metrics",
+      "request": "independent GET /benchmarks/{id}",
+      "persisted": "state, verdict, point metrics",
+      "covered": [
+        "grid_done verdict",
+        "one successful point",
+        "exact fixture-emitted usage and non-approximate token counts",
+        "selected point-table metrics and units",
+        "real CSV menu download, all 97 columns in exact order, scalar units/presence/unknown values, full v1 evidence and report context identity/configuration matched against independent GET",
+        "refresh retains verdict"
+      ],
+      "missing": [
+        "curve chart",
+        "Pareto comparison",
+        "per-request gzip detail",
+        "HTML and Markdown reports",
+        "compare view"
+      ]
+    },
+    {
+      "id": "benchmark.delete",
+      "component": "Row action / Popconfirm",
+      "request": "DELETE /benchmarks/{id}",
+      "persisted": "removal",
+      "covered": [
+        "UI confirmation deletes the completed run",
+        "independent GET returns 404"
+      ],
+      "missing": [
+        "delete while running is rejected",
+        "cancel and cleanup of a running run"
+      ]
+    }
+  ],
+  "checklist_items": {
+    "1.5": "The Parameter Sweep mode card is selected through the real wizard",
+    "1.7": "Minimum creation through the real wizard and exact request body",
+    "1.14": "Refresh and independent GET preserve the saved result",
+    "3.1": "Concurrency, ISL, OSL and sample count use their real units",
+    "5.5": "External Endpoint selection reveals the endpoint fields and replaces the managed-instance selector",
+    "17.1": "Persisted verdict plus actual point-table lengths, throughput and latency cells/units match independent GET; other metric columns and loading/empty/error/stale states remain MISSING"
+  },
+  "missing": [
+    "MISSING: checklist 1.9 (duplicate Start submission) \u2014 only one Start click is exercised",
+    "MISSING: checklist 5.3 \u2014 model and load-origin Select search, no-result and clearing recovery are not exercised; only mode cards and target radios have no search",
+    "MISSING: checklist 10.6 (list pagination) \u2014 the row is checked but page sizes and boundaries are not",
+    "N/A: checklist 18.7 (log viewer) \u2014 this contract has no log stream",
+    "MISSING: managed-instance target, deployment/node selection and gateway versus direct entry",
+    "MISSING: saturation and SLA questions, adaptive concurrency and objective constraints",
+    "MISSING: open-loop arrival rates, burstiness, point duration and max in-flight",
+    "MISSING: multi-point grid, multiple ISL/OSL lengths and sample reuse warnings",
+    "MISSING: endpoint probe failures (unreachable, 401, empty models, invalid URL, pasted /v1)",
+    "MISSING: request failures, partial success and run failure recovery",
+    "MISSING: cancellation while running and deletion of a running run",
+    "MISSING: gzip per-request details, curve chart, Pareto chart, compare view",
+    "MISSING: HTML and Markdown report formats and their field-level contents",
+    "MISSING: exact tokenizer modes and imported datasets",
+    "MISSING: checklist 12.7 named-impact confirmation; current product provides generic confirmation only",
+    "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test/fixture digests, locale, evidence, redacted server log and completion screenshot",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+}

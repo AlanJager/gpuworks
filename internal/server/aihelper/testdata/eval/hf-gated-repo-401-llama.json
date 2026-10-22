@@ -1,0 +1,77 @@
+{
+  "id": "hf-gated-repo-401-llama",
+  "source": "https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/utils/_http.py (hf_raise_for_status); https://github.com/huggingface/transformers/blob/main/src/transformers/utils/hub.py (cached_files)",
+  "note": "Deployment passes a gated Hub repo id (meta-llama/Llama-3.1-8B-Instruct) for the engine to download itself, with no HF token in the container: config.json download returns 401 GatedRepoError. Constructed from upstream message formats; the 'Access to model ... is restricted' line is the Hub server's message as commonly reported; request id is a placeholder.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "--served-model-name",
+    "llama-3.1-8b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--max-model-len",
+    "8192"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA A10",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 09:02:11 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 09:02:11 [utils.py:233] non-default args: {'model_tag': 'meta-llama/Llama-3.1-8B-Instruct', 'host': '127.0.0.1', 'port': 30000, 'model': 'meta-llama/Llama-3.1-8B-Instruct', 'max_model_len': 8192, 'served_model_name': ['llama-3.1-8b']}",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_http.py\", line 409, in hf_raise_for_status",
+    "(APIServer pid=1)     response.raise_for_status()",
+    "(APIServer pid=1) requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/resolve/main/config.json",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) The above exception was the direct cause of the following exception:",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/utils/hub.py\", line 479, in cached_files",
+    "(APIServer pid=1)     hf_hub_download(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/huggingface_hub/file_download.py\", line 1010, in hf_hub_download",
+    "(APIServer pid=1)     return _hf_hub_download_to_cache_dir(",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/huggingface_hub/utils/_http.py\", line 426, in hf_raise_for_status",
+    "(APIServer pid=1)     raise _format(GatedRepoError, message, response) from e",
+    "(APIServer pid=1) huggingface_hub.errors.GatedRepoError: 401 Client Error. (Request ID: Root=1-6706a1b2-0000000000000000000000)",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) Cannot access gated repo for url https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/resolve/main/config.json.",
+    "(APIServer pid=1) Access to model meta-llama/Llama-3.1-8B-Instruct is restricted. You must have access to it and be authenticated to access it. Please log in.",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) The above exception was the direct cause of the following exception:",
+    "(APIServer pid=1) ",
+    "(APIServer pid=1) Traceback (most recent call last):",
+    "(APIServer pid=1)   File \"/usr/local/bin/vllm\", line 10, in <module>",
+    "(APIServer pid=1)     sys.exit(main())",
+    "(APIServer pid=1)   File \"/usr/local/lib/python3.12/dist-packages/transformers/utils/hub.py\", line 543, in cached_files",
+    "(APIServer pid=1)     raise OSError(",
+    "(APIServer pid=1) OSError: You are trying to access a gated repo.",
+    "(APIServer pid=1) Make sure to have access to it at https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct.",
+    "(APIServer pid=1) 401 Client Error. (Request ID: Root=1-6706a1b2-0000000000000000000000)"
+  ],
+  "expect_signature": "hf_download_failed",
+  "expect_keywords": [
+    [
+      "HF_TOKEN",
+      "token",
+      "hf auth login",
+      "huggingface-cli login"
+    ],
+    [
+      "gated",
+      "受限",
+      "license",
+      "许可",
+      "申请访问",
+      "request access"
+    ]
+  ]
+}

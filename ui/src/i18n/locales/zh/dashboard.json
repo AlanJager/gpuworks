@@ -1,0 +1,74 @@
+{
+  "capacity": {
+    "byLabel": "按标签容量分布",
+    "byVendor": "厂商容量分布",
+    "empty": "暂无计算节点容量",
+    "labelKeyAria": "用于分组的标签键",
+    "noLabels": "计算节点尚未设置标签，请在计算节点页面添加标签后按标签查看容量。",
+    "nodeCount": "{{count}} 个计算节点",
+    "unusableGPUCount": "不可分配 GPU：{{count}}",
+    "unlabeled": "未设置"
+  },
+  "description": "实时查看集群容量、GPU 利用率、温度、功耗和服务健康状态",
+  "health": {
+    "attention": "平台有 {{count}} 项需要关注",
+    "attention_other": "平台有 {{count}} 项需要关注",
+    "attentionDescription": "请优先检查离线计算节点、不可分配的 GPU、公有云、专有云和服务健康。",
+    "normal": "平台运行正常",
+    "normalDescription": "计算节点、部署、公有云和专有云当前都处于可用范围。"
+  },
+  "labels": {
+    "unusableCount": "{{count}} 不可分配",
+    "validCount": "{{count}} 有效",
+    "invalidCount": "{{count}} 异常"
+  },
+  "metrics": {
+    "power": {
+      "description": "GPU/NPU 实时功耗",
+      "title": "功耗"
+    },
+    "temperature": {
+      "description": "GPU/NPU 热状态",
+      "title": "温度"
+    },
+    "title": "GPU 核心指标",
+    "utilization": {
+      "description": "每张 GPU 的实时计算占用",
+      "title": "利用率"
+    },
+    "vram": {
+      "description": "每张 GPU 的显存占用",
+      "title": "显存使用"
+    }
+  },
+  "platform": {
+    "title": "平台",
+    "version": "版本 {{version}}"
+  },
+  "situation": {
+    "activeAgentSessions": "活跃 agent 会话 {{count}}",
+    "invalidPrivateClouds": "异常专有云 {{count}}",
+    "invalidPublicClouds": "异常公有云 {{count}}",
+    "offlineNodes": "离线计算节点 {{count}}",
+    "platform": "平台 {{state}}",
+    "sleepableDeployments": "可休眠部署 {{count}}",
+    "title": "平台态势",
+    "unusableGPUs": "不可分配 GPU {{count}}"
+  },
+  "stats": {
+    "averageUtilization": "平均 GPU 利用率",
+    "deploymentsRunning": "运行中部署",
+    "deploymentsTotal": "部署总数",
+    "deploymentsWarming": "启动 / 优化中",
+    "gpusTotal": "平台管理的 GPU",
+    "gpusTotalHelp": "平台可以调度的卡（含暂时不可分配的）；直通给虚拟机或未绑定驱动的卡不计入，在「GPU 设备」页单独列出",
+    "hostMemoryUsed": "主机内存使用",
+    "maximumTemperature": "最高 GPU 温度",
+    "nodesOnline": "在线计算节点",
+    "nodesTotal": "计算节点总数",
+    "publicClouds": "公有云",
+    "totalPower": "GPU 总功耗",
+    "vramTotal": "显存总量 (GiB)"
+  },
+  "title": "概览"
+}

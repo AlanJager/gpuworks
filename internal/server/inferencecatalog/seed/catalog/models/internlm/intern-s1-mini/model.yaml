@@ -1,0 +1,91 @@
+model_id: internlm/intern-s1-mini
+source: upstream
+display_title: Intern S1 Mini
+release_date: '2025-08-18'
+model_config: {model_type: interns1, num_hidden_layers: 36, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 65536, vision_config: {model_type: interns1_vision}}
+kv_bytes_per_token:
+  vllm: 147456
+  sglang: 147456
+specs:
+- name: bf16-vllm-ppu-0f25c8f6
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface: {repo_id: internlm/Intern-S1-mini, revision: 0f25c8f60f4190a18dd6620c94bdccedbebc208d}
+    - modelscope: {repo_id: Shanghai_AI_Laboratory/Intern-S1-mini, revision: fc615e0cf3a7995214e60228805bd53aa14b0ec4}
+  weight_bytes: 17077718216
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: internlm/Intern-S1-mini
+        revision: 0f25c8f60f4190a18dd6620c94bdccedbebc208d
+    - modelscope:
+        repo_id: Shanghai_AI_Laboratory/Intern-S1-mini
+        revision: fc615e0cf3a7995214e60228805bd53aa14b0ec4
+  weight_bytes: 17083046250
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: internlm/Intern-S1-mini-FP8
+        revision: 6809eb525d995d6ad8fbe46fecabe55398df61c9
+    - modelscope:
+        repo_id: Shanghai_AI_Laboratory/Intern-S1-mini-FP8
+        revision: 33eaa291c14a0409daf757858798362841b6e334
+  weight_bytes: 11461324648
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --tokenizer-path
+  - internlm/Intern-S1-mini
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,88 @@
+# gpuworks-runner: Hygon DTK SGLang 线
+#
+# 派生自 gpustack/runner 的 pack/dtk/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）。
+#
+# vanilla = sourcefind 的 sglang dtk 镜像，自带 DTK/torch/sglang 的 DCU 构建。
+# 本层：工具层 + diffusion 依赖 + 模型 overlay。
+ARG BASE_IMAGE=harbor.sourcefind.cn:5443/dcu/admin/base/sglang:0.5.12-ubuntu22.04-dtk2604-py3.10
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG SGLANG_VERSION=0.5.12
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层
+RUN <<EOF
+    set -eux
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -y
+        apt-get install -y --no-install-recommends \
+            tini jq curl wget vim less tree bc \
+            iproute2 iputils-ping net-tools dnsutils \
+            procps sysstat htop \
+            ffmpeg patch
+        apt-get install -y --no-install-recommends rdma-core rdmacm-utils infiniband-diags \
+            || echo "WARN: RDMA tools unavailable, skipped"
+        rm -rf /var/cache/apt /var/tmp/* /tmp/*
+    else
+        yum install -y jq curl wget vim less tree bc iproute iputils net-tools procps-ng sysstat htop ffmpeg patch
+        rm -rf /var/cache/yum /tmp/*
+    fi
+EOF
+
+## diffusion 依赖（声明在 requires 里，装不上即失败）
+RUN <<EOF
+    set -eux
+    # 只补 base 缺的模块。base 已带 opencv-python 时再装 opencv-python-headless，会让两个包的
+    # cv2 互相覆盖（2026-10-05 在 .32 验证时发现 opencv-python 4.10 与 headless 5.0.0 并存，
+    # cv2 实际是 5.0.0，把 base 测试过的版本悄悄升了级）。
+    missing=""
+    for spec in diffusers:diffusers cv2:opencv-python-headless soundfile:soundfile librosa:librosa; do
+        mod="${spec%%:*}"; pkg="${spec##*:}"
+        python3 -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('${mod}') else 1)" \
+            || missing="${missing} ${pkg}"
+    done
+    if [ -n "${missing}" ]; then
+        python3 -m pip install --no-cache-dir ${missing}
+    fi
+    echo "diffusion deps: installed only the missing ones:${missing:- (none)}"
+    # dtk 的 torch 依赖宿主 /opt/hyhal 里的 librocm_smi64.so.2，构建容器里 `import diffusers`
+    # （会连带 import torch）必然失败；这里只确认模块能被定位，真 import 由真机验证覆盖。
+    python3 -c "import importlib.util as u, importlib.metadata as m; [(print(x, 'located') if u.find_spec(x) else (_ for _ in ()).throw(SystemExit(x + ' missing'))) for x in ('diffusers','cv2','soundfile','librosa')]; print('diffusers', m.version('diffusers'))"
+EOF
+
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "sglang",
+    "engine_version": os.environ["SGLANG_VERSION"],
+    "framework": "dtk",
+    "requires": os.environ["REQUIRES"].split(),
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=sglang bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="sglang-dcu" \
+      io.gpuworks.framework="dtk" \
+      io.gpuworks.diffusion="${SGLANG_VERSION}" \
+      io.gpuworks.requires="${REQUIRES}"

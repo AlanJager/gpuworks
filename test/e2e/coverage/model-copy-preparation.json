@@ -1,0 +1,74 @@
+{
+  "contract_id": "gpuworks/deployments/model-copy-preparation",
+  "priority": "P1",
+  "page_id": "deployments",
+  "test_file": "test/e2e/model_copy_preparation.py",
+  "test_function": "main",
+  "name": "模型复制准备 / 连续进度与刷新回读 / 键盘打开对应存储",
+  "command": "GPUWORKS_TEST_STRICT=1 GPUWORKS_COPY_BROWSER=1 GPUWORKS_COPY_BROWSER_OUTPUT=/tmp/gpuworks-copy-browser go test -tags=docker -v ./test/l3 -run '^TestDockerModelCopyReadinessAndMount$'",
+  "lane": "local-real-server-agent-docker",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "REQUIRED",
+    "target": "L3 fixture verifies no instance before copy completion and correct readonly Docker mount afterwards; fake-engine is not GPU inference"
+  },
+  "crud": {
+    "create": "fixture only",
+    "read": "phase, bytes, storage identity, reload and independent GET",
+    "update": "MISSING: retry and stop browser actions",
+    "delete": "N/A: cleanup only"
+  },
+  "dimensions": {
+    "checklist": [
+      "12.1",
+      "12.2"
+    ],
+    "request": "GET deployment detail and GET storage detail?all_nodes=1",
+    "persistence": "reload and independent GET observe the same active durable intent and increasing transient bytes",
+    "partial_checklist": {
+      "12.1": "Drawer opened through the supported deployment URL; list-row opening remains uncovered",
+      "12.2": "1440x900 screenshots retained; mobile and full viewport matrix remain uncovered"
+    }
+  },
+  "fields": [
+    {
+      "field_id": "deployment.model_progress",
+      "component": "Progress",
+      "request": "GET /api/v1/deployments/{id}",
+      "persistence": "model-file identity + live agent observation",
+      "covered": [
+        "copying phase",
+        "increasing real bytes",
+        "unknown/terminal states covered by RTL only",
+        "refresh and independent GET"
+      ],
+      "missing": [
+        "browser faults and retries",
+        "mobile layout"
+      ]
+    },
+    {
+      "field_id": "deployment.model_progress.storage_id",
+      "component": "Link",
+      "request": "GET /api/v1/storages/{id}?all_nodes=1",
+      "persistence": "chosen storage identity",
+      "covered": [
+        "keyboard focus and Enter",
+        "correct detail URL and successful actual request"
+      ],
+      "missing": []
+    }
+  ],
+  "missing": [
+    "browser disk-full/eviction-error/NFS-stall/offline/retry/stop matrix",
+    "real NFS kernel fault recovery",
+    "GPU inference"
+  ]
+}

@@ -1,0 +1,24 @@
+{{- $page := . -}}
+{{- $sidebarRoot := partial "shell/sidebar-root.html" . -}}
+{{- $iconPolicy := partial "shell/sidebar-icon-policy.html" . -}}
+<div id="td-sidebar-menu" class="td-shell-tree-wrap">
+  <nav class="td-shell-tree" id="td-section-nav" aria-label="{{ T "ui_sidebar_nav" }}"
+      data-td-sidebar-icon-policy="{{ $iconPolicy }}" data-td-sidebar-root-id="{{ $sidebarRoot.RelPermalink }}">
+    <ul class="td-shell-tree__list td-shell-tree__list--1">
+      {{- partial "shell/sidebar-node.html" (dict
+          "page" $page "section" $sidebarRoot "active" (eq $page $sidebarRoot)
+          "activePath" true "treeRoot" true "withChild" false "foldable" false
+          "shouldExpand" false "iconPolicy" $iconPolicy) -}}
+      {{- range $sidebarRoot.Sections.ByWeight -}}
+        {{- if eq .Section "how-to" -}}
+          {{- partial "how-to-sidebar-node.html" (dict
+              "page" $page "section" . "iconPolicy" $iconPolicy) -}}
+        {{- else -}}
+          {{- partial "shell/sidebar-tree-node.html" (dict
+              "page" $page "section" . "shouldDelayActive" false
+              "sidebarMenuTruncate" 2000 "ulNr" 1 "ulShow" 2 "iconPolicy" $iconPolicy) -}}
+        {{- end -}}
+      {{- end -}}
+    </ul>
+  </nav>
+</div>

@@ -1,0 +1,1017 @@
+Add a synchronous, cross-process memory ledger to vcann-rt.
+
+The pinned upstream implementation checks DCMI process memory before each allocation.
+That observation is asynchronous, so rapid allocations can all see stale usage and
+collectively exceed the configured quota. This patch pre-charges allocations under a
+process mutex and cross-process flock, records pointer/size ownership, refunds successful
+frees and failed real allocations, and reclaims slots left by dead processes. The same
+ledger backs rtMemGetInfoEx and enpu-monitor.
+
+Apply to ubs-virt bac3d461c9312acfaa388bed89e9ed2a61971d1a, subdirectory
+ubs-virt-enpu/vcann-rt. Apply before 0003-dsmi-use-synchronous-ledger.patch.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8b3886e..4fcc5f6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -22,8 +22,9 @@ set(SECURE_COMPILE_OPTIONS
+     -fPIC
+     -fstack-protector-strong
+     -fvisibility=hidden
+-    -fno-common
+-)
++    -fno-common
++    -include${CMAKE_CURRENT_SOURCE_DIR}/src/include/cann_compat.h
++)
+
+ include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/cmake/securec.cmake)
+
+@@ -93,4 +94,4 @@ if(BUILD_TESTS)
+     add_subdirectory(test)
+ endif()
+
+-message(STATUS "CMakeList end")
+\ No newline at end of file
++message(STATUS "CMakeList end")
+diff --git a/src/ascend/hook.c b/src/ascend/hook.c
+index ddf7637..e585339 100644
+--- a/src/ascend/hook.c
++++ b/src/ascend/hook.c
+@@ -21,12 +21,21 @@ rt_entry_t rt_library_entry[] = {
+     {.name = "rtGetSocVersion"},
+     /* Memory Part */
+     {.name = "rtMalloc"},
++    {.name = "rtFree"},
++    {.name = "rtFreeWithDevSync"},
+     {.name = "rtMallocCached"},
+     {.name = "rtDvppMalloc"},
+     {.name = "rtDvppMallocWithFlag"},
++    {.name = "rtDvppFree"},
+     {.name = "rtMemAlloc"},
+     {.name = "rtMemAllocManaged"},
++    {.name = "rtMemFreeManaged"},
+     {.name = "rtMallocPhysical"},
++    {.name = "rtFreePhysical"},
++    {.name = "rtsMalloc"},
++    {.name = "rtsFree"},
++    {.name = "rtsMemMallocPhysical"},
++    {.name = "rtsMemFreePhysical"},
+     {.name = "rtMemGetInfoEx"},
+     /* Kernel Part */
+     {.name = "rtKernelLaunch"},
+@@ -102,4 +111,4 @@ rt_entry_t rt_library_entry[] = {
+     {.name = "rtStreamSynchronize"},
+     {.name = "rtStreamDestroy"},
+     {.name = "rtDestroyStreamForce"},
+-};
+\ No newline at end of file
++};
+diff --git a/src/ascend/memory.c b/src/ascend/memory.c
+index f59da94..62a5792 100644
+--- a/src/ascend/memory.c
++++ b/src/ascend/memory.c
+@@ -12,105 +12,256 @@
+
+ #include "log.h"
+ #include "mem_limiter.h"
++#include "memory_ledger.h"
+ #include "npu_manager.h"
+ #include "runtime_hook.h"
+
+ void load_rt_libraries(void);
+
++static rtError_t finish_pointer_allocation(rtError_t result, void **pointer, memory_reservation_t *reservation,
++                                           memory_allocation_kind_t kind, rt_hook_enum_t free_hook)
++{
++    if (result != RT_ERROR_NONE) {
++        memory_cancel(reservation);
++        return result;
++    }
++    if (pointer != NULL && memory_commit(reservation, (uintptr_t)*pointer, kind) == ENPU_SUCCESS) {
++        return result;
++    }
++
++    if (pointer == NULL) {
++        memory_cancel(reservation);
++    }
++
++    if (pointer != NULL && *pointer != NULL) {
++        rt_symbol_t free_entry = (rt_symbol_t)rt_library_entry[free_hook].func_ptr;
++        if (free_entry != NULL) {
++            (void)free_entry(*pointer);
++        }
++    }
++    LOG_ERROR("Failed to commit a successful allocation to the memory ledger.");
++    return ACL_ERROR_FAILURE;
++}
++
++static rtError_t reserve_memory(size_t size, memory_reservation_t **reservation)
++{
++    int result = memory_reserve(size, reservation);
++    if (result != ENPU_SUCCESS) {
++        LOG_ERROR("Memory reservation rejected for requested:%zu.", size);
++    }
++    return result;
++}
++
+ RUNTIME_HOOK_DEFINE(rtMalloc, void **devPtr, uint64_t size, rtMemType_t type, const uint16_t moduleId)
+ {
+-    LOG_DEBUG("Hook mem rtMalloc size:%" PRIu64 ".", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtMalloc, devPtr, size, type, moduleId);
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtMalloc, devPtr, size, type, moduleId);
++    return finish_pointer_allocation(result, devPtr, reservation, MEMORY_ALLOCATION_DEVICE, HOOK_rtFree);
++}
++
++RUNTIME_HOOK_DEFINE(rtFree, void *devPtr)
++{
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtFree, devPtr);
++    if (result == RT_ERROR_NONE) {
++        memory_release((uintptr_t)devPtr, MEMORY_ALLOCATION_DEVICE);
++    }
++    return result;
++}
++
++RUNTIME_HOOK_DEFINE(rtFreeWithDevSync, void *devPtr)
++{
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtFreeWithDevSync, devPtr);
++    if (result == RT_ERROR_NONE) {
++        memory_release((uintptr_t)devPtr, MEMORY_ALLOCATION_DEVICE);
++    }
++    return result;
+ }
+
+ RUNTIME_HOOK_DEFINE(rtMallocCached, void **devPtr, uint64_t size, rtMemType_t type, const uint16_t moduleId)
+ {
+-    LOG_DEBUG("Hook mem rtMallocCached size:%" PRIu64 ".", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtMallocCached, devPtr, size, type, moduleId);
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtMallocCached, devPtr, size, type, moduleId);
++    return finish_pointer_allocation(result, devPtr, reservation, MEMORY_ALLOCATION_DEVICE, HOOK_rtFree);
+ }
+
+ RUNTIME_HOOK_DEFINE(rtDvppMalloc, void **devPtr, uint64_t size, uint16_t moduleId)
+ {
+-    LOG_DEBUG("Hook mem rtDvppMalloc size:%" PRIu64 ".", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtDvppMalloc, devPtr, size, moduleId);
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtDvppMalloc, devPtr, size, moduleId);
++    return finish_pointer_allocation(result, devPtr, reservation, MEMORY_ALLOCATION_DVPP, HOOK_rtDvppFree);
+ }
+
+ RUNTIME_HOOK_DEFINE(rtDvppMallocWithFlag, void **devPtr, uint64_t size, uint32_t flag, const uint16_t moduleId)
+ {
+-    LOG_DEBUG("Hook mem rtDvppMallocWithFlag size:%" PRIu64 ".", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtDvppMallocWithFlag, devPtr, size, flag, moduleId);
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtDvppMallocWithFlag, devPtr, size, flag, moduleId);
++    return finish_pointer_allocation(result, devPtr, reservation, MEMORY_ALLOCATION_DVPP, HOOK_rtDvppFree);
++}
++
++RUNTIME_HOOK_DEFINE(rtDvppFree, void *devPtr)
++{
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtDvppFree, devPtr);
++    if (result == RT_ERROR_NONE) {
++        memory_release((uintptr_t)devPtr, MEMORY_ALLOCATION_DVPP);
++    }
++    return result;
+ }
+
+ RUNTIME_HOOK_DEFINE(rtMemAlloc, void **devPtr, uint64_t size, rtMallocPolicy policy, rtMallocAdvise advise,
+                     rtMallocConfig_t *cfg)
+ {
+-    LOG_DEBUG("Hook mem rtMemAlloc size:%" PRIu64 ".", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtMemAlloc, devPtr, size, policy, advise, cfg);
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtMemAlloc, devPtr, size, policy, advise, cfg);
++    return finish_pointer_allocation(result, devPtr, reservation, MEMORY_ALLOCATION_DEVICE, HOOK_rtFree);
+ }
+
+ RUNTIME_HOOK_DEFINE(rtMemAllocManaged, void **ptr, uint64_t size, uint32_t flag, const uint16_t moduleId)
+ {
+-    LOG_DEBUG("Hook mem rtMemAllocManaged size:%" PRIu64 ".", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtMemAllocManaged, ptr, size, flag, moduleId);
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtMemAllocManaged, ptr, size, flag, moduleId);
++    return finish_pointer_allocation(result, ptr, reservation, MEMORY_ALLOCATION_MANAGED, HOOK_rtMemFreeManaged);
++}
++
++RUNTIME_HOOK_DEFINE(rtMemFreeManaged, void *ptr)
++{
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtMemFreeManaged, ptr);
++    if (result == RT_ERROR_NONE) {
++        memory_release((uintptr_t)ptr, MEMORY_ALLOCATION_MANAGED);
++    }
++    return result;
+ }
+
+ RUNTIME_HOOK_DEFINE(rtMallocPhysical, rtDrvMemHandle *handle, size_t size, rtDrvMemProp_t *prop, uint64_t flags)
+ {
+-    LOG_DEBUG("Hook mem rtMallocPhysical size:%zd.", size);
+-    int ret = guard_memory(size);
+-    if (ret != ENPU_SUCCESS) {
+-        return ret;
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory(size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
++    }
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtMallocPhysical, handle, size, prop, flags);
++    if (result != RT_ERROR_NONE) {
++        memory_cancel(reservation);
++        return result;
++    }
++    if (handle != NULL && memory_commit(reservation, (uintptr_t)*handle, MEMORY_ALLOCATION_PHYSICAL) == ENPU_SUCCESS) {
++        return result;
++    }
++    if (handle == NULL) {
++        memory_cancel(reservation);
++    }
++    if (handle != NULL && *handle != NULL) {
++        (void)RUNTIME_HOOK_CALL(rt_library_entry, rtFreePhysical, *handle);
++    }
++    LOG_ERROR("Failed to commit a successful physical allocation to the memory ledger.");
++    return ACL_ERROR_FAILURE;
++}
++
++RUNTIME_HOOK_DEFINE(rtFreePhysical, rtDrvMemHandle handle)
++{
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtFreePhysical, handle);
++    if (result == RT_ERROR_NONE) {
++        memory_release((uintptr_t)handle, MEMORY_ALLOCATION_PHYSICAL);
++    }
++    return result;
++}
++
++RUNTIME_HOOK_DEFINE(rtsMalloc, void **devPtr, uint64_t size, rtMallocPolicy policy, rtMallocAdvise advise,
++                    rtMallocConfig_t *cfg)
++{
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory((size_t)size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
++    }
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtsMalloc, devPtr, size, policy, advise, cfg);
++    return finish_pointer_allocation(result, devPtr, reservation, MEMORY_ALLOCATION_DEVICE, HOOK_rtsFree);
++}
++
++RUNTIME_HOOK_DEFINE(rtsFree, void *devPtr)
++{
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtsFree, devPtr);
++    if (result == RT_ERROR_NONE) {
++        memory_release((uintptr_t)devPtr, MEMORY_ALLOCATION_DEVICE);
+     }
+-    return RUNTIME_HOOK_CALL(rt_library_entry, rtMallocPhysical, handle, size, prop, flags);
++    return result;
++}
++
++RUNTIME_HOOK_DEFINE(rtsMemMallocPhysical, rtMemHandle *handle, size_t size, rtMallocPolicy policy,
++                    rtMallocConfig_t *cfg)
++{
++    memory_reservation_t *reservation = NULL;
++    rtError_t result = reserve_memory(size, &reservation);
++    if (result != ENPU_SUCCESS) {
++        return result;
++    }
++    result = RUNTIME_HOOK_CALL(rt_library_entry, rtsMemMallocPhysical, handle, size, policy, cfg);
++    if (result != RT_ERROR_NONE) {
++        memory_cancel(reservation);
++        return result;
++    }
++    if (handle != NULL && memory_commit(reservation, (uintptr_t)*handle, MEMORY_ALLOCATION_PHYSICAL) == ENPU_SUCCESS) {
++        return result;
++    }
++    if (handle == NULL) {
++        memory_cancel(reservation);
++    } else if (*handle != NULL) {
++        (void)RUNTIME_HOOK_CALL(rt_library_entry, rtsMemFreePhysical, handle);
++    }
++    LOG_ERROR("Failed to commit a successful RTS physical allocation to the memory ledger.");
++    return ACL_ERROR_FAILURE;
++}
++
++RUNTIME_HOOK_DEFINE(rtsMemFreePhysical, rtMemHandle *handle)
++{
++    uintptr_t key = (handle == NULL) ? 0 : (uintptr_t)*handle;
++    rtError_t result = RUNTIME_HOOK_CALL(rt_library_entry, rtsMemFreePhysical, handle);
++    if (result == RT_ERROR_NONE && key != 0) {
++        memory_release(key, MEMORY_ALLOCATION_PHYSICAL);
++    }
++    return result;
+ }
+
+ RUNTIME_HOOK_DEFINE(rtMemGetInfoEx, rtMemInfoType_t memInfoType, size_t *freeSize, size_t *totalSize)
+ {
+     (void)memInfoType;
+-    int res = log_init();
+-    CHECK_COND_RETURN_((res != ENPU_SUCCESS), res, "Failed to init log module, res:%d.", res);
++    int result = log_init();
++    CHECK_COND_RETURN_((result != ENPU_SUCCESS), result, "Failed to init log module, res:%d.", result);
+     pre_rt_init();
+     enpu_global_init();
+     CHECK_COND_RETURN_(!check_init_success(), ACL_ERROR_UNINITIALIZE,
+                        "Failed to initialize vcann-rt, please check the config file in %s.", NPU_CONFIG_PATH);
+-    LOG_DEBUG("Hook mem rtMemGetInfoEx.");
++
+     size_t quota = get_mem_limit_quota();
+-    size_t used;
+-    int ret = get_mem_used(&used);
+-    if (ret != 0) {
+-        LOG_ERROR("Get mem used failed.");
++    size_t used = 0;
++    if (memory_accounted_used(&used) != ENPU_SUCCESS || used > quota) {
++        LOG_ERROR("Failed to read a valid memory ledger value.");
+         return RT_ERROR_INVALID_VALUE;
+     }
+-    if (used > quota) {
+-        LOG_ERROR("Mem used is abnormally high, exceeding the quota.");
+-        return RT_ERROR_INVALID_VALUE;
+-    }
+-    size_t remain = quota - used;
+-    *freeSize = remain;
++    *freeSize = quota - used;
+     *totalSize = quota;
+     return RT_ERROR_NONE;
+-}
+\ No newline at end of file
++}
+diff --git a/src/include/cann_compat.h b/src/include/cann_compat.h
+new file mode 100644
+index 0000000..3235124
+--- /dev/null
++++ b/src/include/cann_compat.h
+@@ -0,0 +1,7 @@
++#ifndef ENPU_CANN_COMPAT_H
++#define ENPU_CANN_COMPAT_H
++
++/* CANN 9.0.0's acl_dump.h uses acldumpType as a typedef without declaring one. */
++typedef enum acldumpType acldumpType;
++
++#endif
+diff --git a/src/include/memory_ledger.h b/src/include/memory_ledger.h
+new file mode 100644
+index 0000000..1af5444
+--- /dev/null
++++ b/src/include/memory_ledger.h
+@@ -0,0 +1,36 @@
++/*
++ * Copyright (c) 2026 GPUWorks contributors.
++ * ubs-virt-enpu is licensed under Mulan PSL v2.
++ */
++
++#ifndef __MEMORY_LEDGER_H__
++#define __MEMORY_LEDGER_H__
++
++#include <inttypes.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#if defined(__cplusplus)
++extern "C" {
++#endif
++
++typedef enum {
++    MEMORY_ALLOCATION_DEVICE = 1,
++    MEMORY_ALLOCATION_DVPP = 2,
++    MEMORY_ALLOCATION_MANAGED = 3,
++    MEMORY_ALLOCATION_PHYSICAL = 4,
++} memory_allocation_kind_t;
++
++typedef struct memory_reservation memory_reservation_t;
++
++int memory_reserve(size_t size, memory_reservation_t **reservation);
++int memory_commit(memory_reservation_t *reservation, uintptr_t key, memory_allocation_kind_t kind);
++void memory_cancel(memory_reservation_t *reservation);
++void memory_release(uintptr_t key, memory_allocation_kind_t kind);
++int memory_accounted_used(size_t *used);
++
++#if defined(__cplusplus)
++}
++#endif
++
++#endif
+diff --git a/src/include/runtime_hook.h b/src/include/runtime_hook.h
+index a8e91b8..13d9837 100644
+--- a/src/include/runtime_hook.h
++++ b/src/include/runtime_hook.h
+@@ -54,12 +54,21 @@ typedef enum
+     RUNTIME_HOOK_ENUM(rtGetSocVersion),
+     /* Memory Part */
+     RUNTIME_HOOK_ENUM(rtMalloc),
++    RUNTIME_HOOK_ENUM(rtFree),
++    RUNTIME_HOOK_ENUM(rtFreeWithDevSync),
+     RUNTIME_HOOK_ENUM(rtMallocCached),
+     RUNTIME_HOOK_ENUM(rtDvppMalloc),
+     RUNTIME_HOOK_ENUM(rtDvppMallocWithFlag),
++    RUNTIME_HOOK_ENUM(rtDvppFree),
+     RUNTIME_HOOK_ENUM(rtMemAlloc),
+     RUNTIME_HOOK_ENUM(rtMemAllocManaged),
++    RUNTIME_HOOK_ENUM(rtMemFreeManaged),
+     RUNTIME_HOOK_ENUM(rtMallocPhysical),
++    RUNTIME_HOOK_ENUM(rtFreePhysical),
++    RUNTIME_HOOK_ENUM(rtsMalloc),
++    RUNTIME_HOOK_ENUM(rtsFree),
++    RUNTIME_HOOK_ENUM(rtsMemMallocPhysical),
++    RUNTIME_HOOK_ENUM(rtsMemFreePhysical),
+     RUNTIME_HOOK_ENUM(rtMemGetInfoEx),
+     /* Kernel Part */
+     RUNTIME_HOOK_ENUM(rtKernelLaunch),
+@@ -146,4 +155,4 @@ extern void pre_rt_init(void);
+ }
+ #endif
+
+-#endif
+\ No newline at end of file
++#endif
+diff --git a/src/memory_ledger.c b/src/memory_ledger.c
+new file mode 100644
+index 0000000..f145749
+--- /dev/null
++++ b/src/memory_ledger.c
+@@ -0,0 +1,460 @@
++/*
++ * Copyright (c) 2026 GPUWorks contributors.
++ * ubs-virt-enpu is licensed under Mulan PSL v2.
++ */
++
++#include "memory_ledger.h"
++
++#include <errno.h>
++#include <fcntl.h>
++#include <pthread.h>
++#include <signal.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/file.h>
++#include <sys/mman.h>
++#include <sys/stat.h>
++#include <unistd.h>
++
++#include "acl/acl.h"
++#include "common.h"
++#include "npu_manager.h"
++
++#define MEMORY_LEDGER_MAGIC UINT64_C(0x454E50554D454D31) /* ENPUMEM1 */
++#define MEMORY_LEDGER_VERSION 1U
++#define MEMORY_LEDGER_PROCESS_SLOTS 64U
++#define MEMORY_LEDGER_NAME_LEN 160U
++
++typedef struct {
++    int64_t pid;
++    uint64_t start_time_ticks;
++    uint64_t used;
++} memory_process_slot_t;
++
++typedef struct {
++    uint64_t magic;
++    uint32_t version;
++    uint32_t structure_size;
++    uint64_t quota;
++    uint64_t used;
++    memory_process_slot_t processes[MEMORY_LEDGER_PROCESS_SLOTS];
++} memory_shared_ledger_t;
++
++struct memory_reservation {
++    uintptr_t key;
++    size_t size;
++    memory_allocation_kind_t kind;
++    struct memory_reservation *next;
++};
++
++static pthread_mutex_t g_ledger_init_mutex = PTHREAD_MUTEX_INITIALIZER;
++static pthread_mutex_t g_ledger_mutex = PTHREAD_MUTEX_INITIALIZER;
++static pthread_mutex_t g_allocation_mutex = PTHREAD_MUTEX_INITIALIZER;
++static memory_shared_ledger_t *g_ledger = NULL;
++static int g_ledger_fd = -1;
++static int g_process_slot = -1;
++static pid_t g_process_pid = 0;
++static uint64_t g_process_start_time = 0;
++static memory_reservation_t *g_allocations = NULL;
++
++static int read_process_start_time(pid_t pid, uint64_t *start_time)
++{
++    char path[64];
++    char buffer[1024];
++    int rc = snprintf(path, sizeof(path), "/proc/%ld/stat", (long)pid);
++    if (rc < 0 || (size_t)rc >= sizeof(path)) {
++        return ENPU_FAIL;
++    }
++
++    FILE *file = fopen(path, "r");
++    if (file == NULL) {
++        return ENPU_FAIL;
++    }
++    char *line = fgets(buffer, sizeof(buffer), file);
++    (void)fclose(file);
++    if (line == NULL) {
++        return ENPU_FAIL;
++    }
++
++    char *cursor = strrchr(buffer, ')');
++    if (cursor == NULL || cursor[1] != ' ') {
++        return ENPU_FAIL;
++    }
++    cursor += 2;
++    for (int field = 3; field <= 22; ++field) {
++        char *end = strchr(cursor, ' ');
++        if (field == 22) {
++            errno = 0;
++            char *number_end = NULL;
++            unsigned long long value = strtoull(cursor, &number_end, 10);
++            if (errno != 0 || number_end == cursor) {
++                return ENPU_FAIL;
++            }
++            *start_time = (uint64_t)value;
++            return ENPU_SUCCESS;
++        }
++        if (end == NULL) {
++            return ENPU_FAIL;
++        }
++        cursor = end + 1;
++    }
++    return ENPU_FAIL;
++}
++
++static bool process_slot_is_alive(const memory_process_slot_t *slot)
++{
++    uint64_t start_time = 0;
++    if (slot->pid <= 0 || read_process_start_time((pid_t)slot->pid, &start_time) != ENPU_SUCCESS) {
++        return false;
++    }
++    return start_time == slot->start_time_ticks;
++}
++
++static void reclaim_dead_processes_locked(void)
++{
++    for (size_t index = 0; index < MEMORY_LEDGER_PROCESS_SLOTS; ++index) {
++        memory_process_slot_t *slot = &g_ledger->processes[index];
++        if (slot->pid == 0 || process_slot_is_alive(slot)) {
++            continue;
++        }
++        if (slot->used > g_ledger->used) {
++            g_ledger->used = 0;
++        } else {
++            g_ledger->used -= slot->used;
++        }
++        (void)memset(slot, 0, sizeof(*slot));
++    }
++}
++
++static int find_or_create_process_slot_locked(void)
++{
++    pid_t pid = getpid();
++    uint64_t start_time = 0;
++    if (read_process_start_time(pid, &start_time) != ENPU_SUCCESS) {
++        LOG_ERROR("Failed to read process start time for memory accounting.");
++        return ENPU_FAIL;
++    }
++
++    if (g_process_slot >= 0 && g_process_pid == pid && g_process_start_time == start_time) {
++        memory_process_slot_t *slot = &g_ledger->processes[g_process_slot];
++        if (slot->pid == pid && slot->start_time_ticks == start_time) {
++            return ENPU_SUCCESS;
++        }
++    }
++
++    g_process_slot = -1;
++    for (size_t index = 0; index < MEMORY_LEDGER_PROCESS_SLOTS; ++index) {
++        memory_process_slot_t *slot = &g_ledger->processes[index];
++        if (slot->pid == pid && slot->start_time_ticks == start_time) {
++            g_process_slot = (int)index;
++            break;
++        }
++    }
++    if (g_process_slot < 0) {
++        for (size_t index = 0; index < MEMORY_LEDGER_PROCESS_SLOTS; ++index) {
++            memory_process_slot_t *slot = &g_ledger->processes[index];
++            if (slot->pid != 0) {
++                continue;
++            }
++            slot->pid = pid;
++            slot->start_time_ticks = start_time;
++            slot->used = 0;
++            g_process_slot = (int)index;
++            break;
++        }
++    }
++    if (g_process_slot < 0) {
++        LOG_ERROR("No free process slot in the shared memory ledger.");
++        return ENPU_FAIL;
++    }
++
++    g_process_pid = pid;
++    g_process_start_time = start_time;
++    return ENPU_SUCCESS;
++}
++
++static int lock_ledger(void)
++{
++    if (pthread_mutex_lock(&g_ledger_mutex) != 0) {
++        return ENPU_FAIL;
++    }
++    if (g_ledger_fd < 0 || flock(g_ledger_fd, LOCK_EX) != 0) {
++        LOG_ERROR("Failed to lock shared memory ledger, errno:%s.", strerror(errno));
++        (void)pthread_mutex_unlock(&g_ledger_mutex);
++        return ENPU_FAIL;
++    }
++    return ENPU_SUCCESS;
++}
++
++static void unlock_ledger(void)
++{
++    if (g_ledger_fd >= 0 && flock(g_ledger_fd, LOCK_UN) != 0) {
++        LOG_ERROR("Failed to unlock shared memory ledger, errno:%s.", strerror(errno));
++    }
++    (void)pthread_mutex_unlock(&g_ledger_mutex);
++}
++
++static int initialize_shared_ledger(void)
++{
++    if (g_ledger != NULL) {
++        return ENPU_SUCCESS;
++    }
++
++    int rc = pthread_mutex_lock(&g_ledger_init_mutex);
++    if (rc != 0) {
++        return ENPU_FAIL;
++    }
++    if (g_ledger != NULL) {
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_SUCCESS;
++    }
++
++    char name[MEMORY_LEDGER_NAME_LEN];
++    rc = snprintf(name, sizeof(name), "/enpu-vmem-%s-%u", get_vnpu_shm_id(), (unsigned int)get_vnpu_id());
++    if (rc < 0 || (size_t)rc >= sizeof(name)) {
++        LOG_ERROR("The shared memory ledger name is too long.");
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++
++    int fd = shm_open(name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
++    if (fd < 0) {
++        LOG_ERROR("Failed to open shared memory ledger %s, errno:%s.", name, strerror(errno));
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++    if (flock(fd, LOCK_EX) != 0) {
++        LOG_ERROR("Failed to initialize shared memory ledger lock, errno:%s.", strerror(errno));
++        (void)close(fd);
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++
++    struct stat stat_buffer;
++    if (fstat(fd, &stat_buffer) != 0) {
++        LOG_ERROR("Failed to stat shared memory ledger, errno:%s.", strerror(errno));
++        (void)flock(fd, LOCK_UN);
++        (void)close(fd);
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++    bool new_ledger = stat_buffer.st_size == 0;
++    if (new_ledger && ftruncate(fd, (off_t)sizeof(memory_shared_ledger_t)) != 0) {
++        LOG_ERROR("Failed to size shared memory ledger, errno:%s.", strerror(errno));
++        (void)flock(fd, LOCK_UN);
++        (void)close(fd);
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++    if (!new_ledger && stat_buffer.st_size != (off_t)sizeof(memory_shared_ledger_t)) {
++        LOG_ERROR("Shared memory ledger size mismatch: found %lld, expected %zu.", (long long)stat_buffer.st_size,
++                  sizeof(memory_shared_ledger_t));
++        (void)flock(fd, LOCK_UN);
++        (void)close(fd);
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++
++    memory_shared_ledger_t *ledger = mmap(NULL, sizeof(*ledger), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++    if (ledger == MAP_FAILED) {
++        LOG_ERROR("Failed to map shared memory ledger, errno:%s.", strerror(errno));
++        (void)flock(fd, LOCK_UN);
++        (void)close(fd);
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++
++    if (new_ledger) {
++        (void)memset(ledger, 0, sizeof(*ledger));
++        ledger->magic = MEMORY_LEDGER_MAGIC;
++        ledger->version = MEMORY_LEDGER_VERSION;
++        ledger->structure_size = (uint32_t)sizeof(*ledger);
++        ledger->quota = get_mem_limit_quota();
++    } else if (ledger->magic != MEMORY_LEDGER_MAGIC || ledger->version != MEMORY_LEDGER_VERSION ||
++               ledger->structure_size != sizeof(*ledger)) {
++        LOG_ERROR("Unsupported or corrupt shared memory ledger.");
++        (void)munmap(ledger, sizeof(*ledger));
++        (void)flock(fd, LOCK_UN);
++        (void)close(fd);
++        (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++        return ENPU_FAIL;
++    }
++
++    g_ledger = ledger;
++    g_ledger_fd = fd;
++    reclaim_dead_processes_locked();
++    if (g_ledger->quota != get_mem_limit_quota()) {
++        if (g_ledger->used != 0) {
++            LOG_ERROR("Memory quota changed while the shared ledger is in use: old:%" PRIu64 " new:%zu.",
++                      g_ledger->quota, get_mem_limit_quota());
++            g_ledger = NULL;
++            g_ledger_fd = -1;
++            (void)munmap(ledger, sizeof(*ledger));
++            (void)flock(fd, LOCK_UN);
++            (void)close(fd);
++            (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++            return ENPU_FAIL;
++        }
++        g_ledger->quota = get_mem_limit_quota();
++    }
++    rc = find_or_create_process_slot_locked();
++    (void)flock(fd, LOCK_UN);
++    (void)pthread_mutex_unlock(&g_ledger_init_mutex);
++    return rc;
++}
++
++static void refund_locked(size_t size)
++{
++    if (g_process_slot < 0) {
++        return;
++    }
++    memory_process_slot_t *slot = &g_ledger->processes[g_process_slot];
++    uint64_t refund = (uint64_t)size;
++    if (refund > slot->used) {
++        refund = slot->used;
++    }
++    slot->used -= refund;
++    if (refund > g_ledger->used) {
++        g_ledger->used = 0;
++    } else {
++        g_ledger->used -= refund;
++    }
++}
++
++int memory_reserve(size_t size, memory_reservation_t **reservation)
++{
++    if (reservation == NULL) {
++        return ACL_ERROR_FAILURE;
++    }
++    *reservation = NULL;
++
++    memory_reservation_t *entry = calloc(1, sizeof(*entry));
++    if (entry == NULL) {
++        return ACL_ERROR_FAILURE;
++    }
++    entry->size = size;
++
++    if (initialize_shared_ledger() != ENPU_SUCCESS || lock_ledger() != ENPU_SUCCESS) {
++        free(entry);
++        return ACL_ERROR_FAILURE;
++    }
++    reclaim_dead_processes_locked();
++    if (find_or_create_process_slot_locked() != ENPU_SUCCESS) {
++        unlock_ledger();
++        free(entry);
++        return ACL_ERROR_FAILURE;
++    }
++
++    uint64_t total = 0;
++    if (__builtin_add_overflow(g_ledger->used, (uint64_t)size, &total) || total > g_ledger->quota) {
++        LOG_ERROR("Out of memory! Request:%zu B, accounted:%" PRIu64 " B, quota:%" PRIu64 " B.", size,
++                  g_ledger->used, g_ledger->quota);
++        unlock_ledger();
++        free(entry);
++        return ACL_ERROR_STORAGE_OVER_LIMIT;
++    }
++
++    g_ledger->used = total;
++    g_ledger->processes[g_process_slot].used += (uint64_t)size;
++    unlock_ledger();
++    *reservation = entry;
++    return ENPU_SUCCESS;
++}
++
++int memory_commit(memory_reservation_t *reservation, uintptr_t key, memory_allocation_kind_t kind)
++{
++    if (reservation == NULL) {
++        return ENPU_FAIL;
++    }
++    if (reservation->size == 0) {
++        free(reservation);
++        return ENPU_SUCCESS;
++    }
++    if (key == 0) {
++        memory_cancel(reservation);
++        return ENPU_FAIL;
++    }
++
++    reservation->key = key;
++    reservation->kind = kind;
++    int rc = pthread_mutex_lock(&g_allocation_mutex);
++    if (rc != 0) {
++        memory_cancel(reservation);
++        return ENPU_FAIL;
++    }
++    reservation->next = g_allocations;
++    g_allocations = reservation;
++    (void)pthread_mutex_unlock(&g_allocation_mutex);
++    return ENPU_SUCCESS;
++}
++
++void memory_cancel(memory_reservation_t *reservation)
++{
++    if (reservation == NULL) {
++        return;
++    }
++    if (g_ledger != NULL && lock_ledger() == ENPU_SUCCESS) {
++        if (find_or_create_process_slot_locked() == ENPU_SUCCESS) {
++            refund_locked(reservation->size);
++        }
++        unlock_ledger();
++    }
++    free(reservation);
++}
++
++void memory_release(uintptr_t key, memory_allocation_kind_t kind)
++{
++    memory_reservation_t *found = NULL;
++    if (pthread_mutex_lock(&g_allocation_mutex) != 0) {
++        return;
++    }
++    memory_reservation_t **cursor = &g_allocations;
++    while (*cursor != NULL) {
++        if ((*cursor)->key == key && (*cursor)->kind == kind) {
++            found = *cursor;
++            *cursor = found->next;
++            break;
++        }
++        cursor = &(*cursor)->next;
++    }
++    (void)pthread_mutex_unlock(&g_allocation_mutex);
++    if (found == NULL) {
++        return;
++    }
++
++    if (g_ledger != NULL && lock_ledger() == ENPU_SUCCESS) {
++        if (find_or_create_process_slot_locked() == ENPU_SUCCESS) {
++            refund_locked(found->size);
++        }
++        unlock_ledger();
++    }
++    free(found);
++}
++
++int memory_accounted_used(size_t *used)
++{
++    if (used == NULL || initialize_shared_ledger() != ENPU_SUCCESS || lock_ledger() != ENPU_SUCCESS) {
++        return ENPU_FAIL;
++    }
++    reclaim_dead_processes_locked();
++    *used = (size_t)g_ledger->used;
++    unlock_ledger();
++    return ENPU_SUCCESS;
++}
++
++__attribute__((destructor)) static void memory_ledger_process_exit(void)
++{
++    if (g_ledger == NULL || g_ledger_fd < 0 || lock_ledger() != ENPU_SUCCESS) {
++        return;
++    }
++    if (g_process_slot >= 0) {
++        memory_process_slot_t *slot = &g_ledger->processes[g_process_slot];
++        if (slot->pid == g_process_pid && slot->start_time_ticks == g_process_start_time) {
++            refund_locked((size_t)slot->used);
++            (void)memset(slot, 0, sizeof(*slot));
++        }
++    }
++    unlock_ledger();
++}
+diff --git a/src/npu_manager.c b/src/npu_manager.c
+index 1d6c782..65236a0 100644
+--- a/src/npu_manager.c
++++ b/src/npu_manager.c
+@@ -19,6 +19,7 @@
+ #include "dcmi_wrapper.h"
+ #include "include/common.h"
+ #include "mem_limiter.h"
++#include "memory_ledger.h"
+ #include "runtime_hook.h"
+ #include "utils.h"
+
+@@ -115,10 +116,9 @@ int get_mem_used(size_t *used)
+         return ENPU_FAIL;
+     }
+
+-    npu_info *npu = &g_npu_info;
+-    int rc = enpu_dcmi_get_device_resource_info(npu->logic_id, npu->card_id, npu->device_id, used);
+-    CHECK_RETURN_ERROR_CODE(rc, "Failed to get device resource info.");
+-    return ENPU_SUCCESS;
++    int rc = memory_accounted_used(used);
++    CHECK_RETURN_ERROR_CODE(rc, "Failed to get memory usage from the synchronous ledger.");
++    return rc;
+ }
+
+ int enpu_config_info_init()
+diff --git a/test/CMakeLists.txt b/test/CMakeLists.txt
+index 36f999a..b51ebdc 100644
+--- a/test/CMakeLists.txt
++++ b/test/CMakeLists.txt
+@@ -18,6 +18,7 @@ include(${PROJECT_SOURCE_DIR}/scripts/cmake/mockcpp.cmake)
+ set(VNPU_SRC_FILES
+     ${PROJECT_SOURCE_DIR}/src/core_limiter.c
+     ${PROJECT_SOURCE_DIR}/src/mem_limiter.c
++    ${PROJECT_SOURCE_DIR}/src/memory_ledger.c
+     ${PROJECT_SOURCE_DIR}/src/npu_manager.c
+     ${PROJECT_SOURCE_DIR}/src/log.c
+     ${PROJECT_SOURCE_DIR}/src/ascend/device.c
+@@ -105,4 +106,4 @@ if(ENABLE_COVERAGE)
+     add_compile_options(-fprofile-arcs -ftest-coverage)
+     target_compile_options(vnpu_test PRIVATE -fprofile-arcs -ftest-coverage)
+     target_link_options(vnpu_test PRIVATE -fprofile-arcs -ftest-coverage)
+-endif()
+\ No newline at end of file
++endif()
+diff --git a/test/stub/runtime/rt.h b/test/stub/runtime/rt.h
+index 2f2bfc8..3c53e2b 100644
+--- a/test/stub/runtime/rt.h
++++ b/test/stub/runtime/rt.h
+@@ -136,16 +136,27 @@ typedef enum tagRtMemInfoType
+     RUNTIME_FUNCTION_ENTRY(rtSetDeviceEx, int32_t devId)                                                               \
+     RUNTIME_FUNCTION_ENTRY(rtSetDeviceWithFlags, int32_t deviceId, uint64_t flags)                                     \
+     RUNTIME_FUNCTION_ENTRY(rtMalloc, void **devPtr, uint64_t size, rtMemType_t type, const uint16_t moduleId)          \
++    RUNTIME_FUNCTION_ENTRY(rtFree, void *devPtr)                                                                       \
++    RUNTIME_FUNCTION_ENTRY(rtFreeWithDevSync, void *devPtr)                                                            \
+     RUNTIME_FUNCTION_ENTRY(rtSetDeviceWithoutTsd, int32_t deviceId)                                                    \
+     RUNTIME_FUNCTION_ENTRY(rtGetSocVersion, char_t *ver, const uint32_t maxLen)                                        \
+     RUNTIME_FUNCTION_ENTRY(rtMallocCached, void **devPtr, uint64_t size, rtMemType_t type, const uint16_t moduleId)    \
+     RUNTIME_FUNCTION_ENTRY(rtDvppMalloc, void **devPtr, uint64_t size, uint16_t moduleId)                              \
+     RUNTIME_FUNCTION_ENTRY(rtDvppMallocWithFlag, void **devPtr, uint64_t size, uint32_t flag, const uint16_t moduleId) \
++    RUNTIME_FUNCTION_ENTRY(rtDvppFree, void *devPtr)                                                                   \
+     RUNTIME_FUNCTION_ENTRY(rtMemAlloc, void **devPtr, uint64_t size, rtMallocPolicy policy, rtMallocAdvise advise,     \
+                            rtMallocConfig_t *cfg)                                                                      \
+     RUNTIME_FUNCTION_ENTRY(rtMemAllocManaged, void **ptr, uint64_t size, uint32_t flag, const uint16_t moduleid)       \
++    RUNTIME_FUNCTION_ENTRY(rtMemFreeManaged, void *ptr)                                                               \
+     RUNTIME_FUNCTION_ENTRY(rtMallocPhysical, rtDrvMemHandle *handle, size_t size, rtDrvMemProp_t *prop,                \
+                            uint64_t flags)                                                                             \
++    RUNTIME_FUNCTION_ENTRY(rtFreePhysical, rtDrvMemHandle handle)                                                      \
++    RUNTIME_FUNCTION_ENTRY(rtsMalloc, void **devPtr, uint64_t size, rtMallocPolicy policy, rtMallocAdvise advise,     \
++                           rtMallocConfig_t *cfg)                                                                      \
++    RUNTIME_FUNCTION_ENTRY(rtsFree, void *devPtr)                                                                      \
++    RUNTIME_FUNCTION_ENTRY(rtsMemMallocPhysical, rtMemHandle *handle, size_t size, rtMallocPolicy policy,             \
++                           rtMallocConfig_t *cfg)                                                                      \
++    RUNTIME_FUNCTION_ENTRY(rtsMemFreePhysical, rtMemHandle *handle)                                                   \
+     RUNTIME_FUNCTION_ENTRY(rtMemGetInfoEx, rtMemInfoType_t memInfoType, size_t *freeSize, size_t *totalSize)           \
+     RUNTIME_FUNCTION_ENTRY(rtKernelLaunch, const void *stubFunc, uint32_t blockDim, void *args, uint32_t argsSize,     \
+                            rtSmDesc_t *smDesc, rtStream_t stm)                                                         \
+@@ -259,4 +270,4 @@ RUNTIME_FUNCTION_LIST
+ }
+ #endif
+
+-#endif // RT_H
+\ No newline at end of file
++#endif // RT_H

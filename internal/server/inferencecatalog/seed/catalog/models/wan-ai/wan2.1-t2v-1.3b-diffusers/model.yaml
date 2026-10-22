@@ -1,0 +1,127 @@
+model_id: wan-ai/wan2.1-t2v-1.3b-diffusers
+source: upstream
+display_title: wan2.1-t2v-1.3b-diffusers
+parameter_count: 1.3B class
+architecture: WanPipeline / WanTransformer3DModel / UMT5EncoderModel / AutoencoderKLWan
+release_date: '2025-03-01'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-sglang-ascend-6f557629
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+        revision: 0fad780a534b6463e45facd96134c9f345acfa5b
+    - modelscope:
+        repo_id: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+        revision: 9c0c3b1a54efbd0d1674386cb8dd720fa4e6dc3d
+  weight_bytes: 28935653617
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --num-gpus
+  - ${GPU_COUNT}
+  - --warmup-mode
+  - 'off'
+  entrypoint:
+  - sglang
+  - serve
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos
+      mode: async
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  # Verified end to end on A100-SXM4-40GB (TP=1): /health 200, POST /v1/videos
+  # completed, h264 832x480 17-frame MP4. See
+  # vendors/nvidia/runs/2026-09-14--manual-wan21-t2v-a100-video-validation/.
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+        revision: 0fad780a534b6463e45facd96134c9f345acfa5b
+    - modelscope:
+        repo_id: Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+        revision: 9c0c3b1a54efbd0d1674386cb8dd720fa4e6dc3d
+  weight_bytes: 28935653617
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  env:
+    # The image ships an AWS EFA net plugin that cannot initialise off AWS;
+    # NCCL then double-frees inside ncclIbFinalize() while cleaning up that
+    # failure. Disabling the external net plugin avoids it. Single-node only --
+    # do NOT carry this onto a spec that runs over RDMA/EFA fabric.
+    NCCL_NET_PLUGIN: none
+  entrypoint:
+  # This checkpoint is a diffusers pipeline, so it needs sglang's `serve`
+  # front end, not the LLM-only `python -m sglang.launch_server` the engine
+  # builder assembles by default.
+  - sglang
+  - serve
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos
+      mode: async
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 832x480
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      # Wan's VAE requires num_frames = 4n+1 (17, 81, ...). Left unspecified the
+      # server derives fps*seconds, which need not satisfy that, so expose it.
+      - name: num_frames
+        kind: number
+      - name: negative_prompt
+        kind: text
+      - name: input_reference
+        kind: image
+        encoding: data_url
+input_modalities: [text, image]

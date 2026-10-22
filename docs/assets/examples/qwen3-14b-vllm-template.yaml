@@ -1,0 +1,57 @@
+models:
+  - model_id: qwen/qwen3-14b
+    source: user
+    display_title: Qwen3-14B
+    parameter_count: 14B
+    architecture: dense
+    input_modalities: [text]
+    context_length: 40960
+    release_date: '2025-04-27'
+    model_config:
+      model_type: qwen3
+      num_hidden_layers: 40
+      hidden_size: 5120
+      num_attention_heads: 40
+      num_key_value_heads: 8
+      head_dim: 128
+      max_position_embeddings: 40960
+    kv_bytes_per_token:
+      vllm: 163840
+      sglang: 163840
+    specs:
+      - name: bf16-vllm-nvidia-tutorial
+        display_profile: general
+        scenario: balanced
+        engine: vllm
+        image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+        weights:
+          quantization: bf16
+          sources:
+            - modelscope:
+                repo_id: Qwen/Qwen3-14B
+                revision: 6b837d17776dcf0f91d781839615d0271a065dc7
+            - huggingface:
+                repo_id: Qwen/Qwen3-14B
+                revision: 40c069824f4251a91eefaf281ebe4c544efd3e18
+        weight_bytes: 29552613776
+        gpus:
+          vendor: nvidia
+          cc: '>=8.0'
+          display_target: nvidia
+        args:
+          - --dtype
+          - bfloat16
+          - --max-model-len
+          - '8192'
+          - --gpu-memory-utilization
+          - '0.90'
+          - --reasoning-parser
+          - qwen3
+          - --default-chat-template-kwargs
+          - '{"enable_thinking":false}'
+        api:
+          health_endpoint: /health
+          operations:
+            - type: openai.chat
+              endpoint: /v1/chat/completions
+              mode: stream

@@ -1,0 +1,67 @@
+{
+  "id": "kv-cache-insufficient-qwen3-8b-l4",
+  "source": "https://github.com/vllm-project/vllm/blob/main/vllm/v1/core/kv_cache_utils.py (_check_enough_kv_cache_memory)",
+  "note": "Qwen3-8B bf16 (~15.3 GiB weights) on a 24 GB L4 with the model's default 40960 context: weights load fine but one full-length request's KV cache (5.62 GiB) exceeds the 3.12 GiB left. Constructed from upstream message format; numbers computed for 36 layers x 8 KV heads x 128 dim bf16.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen3-8b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA L4",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-10 02:14:51 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-10 02:14:51 [utils.py:233] non-default args: {'model_tag': '/model', 'host': '127.0.0.1', 'port': 30000, 'model': '/model', 'served_model_name': ['qwen3-8b']}",
+    "(APIServer pid=1) INFO 10-10 02:14:59 [model.py:547] Resolved architecture: Qwen3ForCausalLM",
+    "(APIServer pid=1) INFO 10-10 02:14:59 [model.py:1510] Using max model len 40960",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:15:04 [core.py:77] Initializing a V1 LLM engine (v0.11.0) with config: model='/model', dtype=torch.bfloat16, max_seq_len=40960, tensor_parallel_size=1, pipeline_parallel_size=1, quantization=None",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:15:06 [gpu_model_runner.py:2602] Starting to load model /model...",
+    "(EngineCore_DP0 pid=209) Loading safetensors checkpoint shards: 100% Completed | 5/5 [00:21<00:00,  4.27s/it]",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:15:28 [default_loader.py:267] Loading weights took 21.40 seconds",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:15:29 [gpu_model_runner.py:2653] Model loading took 15.2683 GiB and 22.11 seconds",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:15:41 [backends.py:548] Using cache directory: /root/.cache/vllm/torch_compile_cache/3f1c9a2b7e/rank_0_0/backbone for vLLM's torch.compile",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:15:58 [monitor.py:34] torch.compile takes 16.92 s in total",
+    "(EngineCore_DP0 pid=209) INFO 10-10 02:16:00 [gpu_worker.py:298] Available KV cache memory: 3.12 GiB",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708] EngineCore failed to start.",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708] Traceback (most recent call last):",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 699, in run_engine_core",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]     engine_core = EngineCoreProc(*args, **kwargs)",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 195, in _initialize_kv_caches",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]     kv_cache_configs = get_kv_cache_configs(vllm_config, kv_cache_specs,",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py\", line 1154, in get_kv_cache_configs",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]     check_enough_kv_cache_memory(vllm_config, kv_cache_spec_one_worker,",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/core/kv_cache_utils.py\", line 675, in check_enough_kv_cache_memory",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708]     raise ValueError(",
+    "(EngineCore_DP0 pid=209) ERROR 10-10 02:16:00 [core.py:708] ValueError: To serve at least one request with the model's max seq len (40960), (5.62 GiB KV cache is needed, which is larger than the available KV cache memory (3.12 GiB). Based on the available memory, the estimated maximum model length is 22704. Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine. See https://docs.vllm.ai/en/latest/configuration/conserving_memory/ for more details.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "kv_cache_insufficient",
+  "expect_keywords": [
+    [
+      "max-model-len",
+      "max_model_len"
+    ],
+    [
+      "gpu-memory-utilization",
+      "gpu_memory_utilization",
+      "tensor-parallel",
+      "tensor_parallel",
+      "TP"
+    ]
+  ]
+}

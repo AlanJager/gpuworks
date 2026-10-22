@@ -1,0 +1,65 @@
+model_id: zai-org/glm-asr-nano-2512
+source: upstream
+display_title: GLM-ASR-Nano-2512
+parameter_count: 2.3B
+architecture: dense
+context_length: 8192
+release_date: '2025-12-09'
+model_config: {model_type: glmasr, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 8192, audio_config: {max_position_embeddings: 1500}}
+kv_bytes_per_token:
+  vllm: 57344
+  sglang: 57344
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-ASR-Nano-2512
+        revision: 61ba4e0b3309b6656edea3e93e419f7bd5c61957
+    - modelscope:
+        repo_id: ZhipuAI/GLM-ASR-Nano-2512
+        revision: d17ac1a44329454bbb989fe0c1a4ef88eb028689
+  weight_bytes: 4522623926
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+- name: bf16-vllm-ppu-61ba4e0b
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-ASR-Nano-2512
+        revision: 61ba4e0b3309b6656edea3e93e419f7bd5c61957
+    - modelscope:
+        repo_id: ZhipuAI/GLM-ASR-Nano-2512
+        revision: d17ac1a44329454bbb989fe0c1a4ef88eb028689
+  weight_bytes: 4515776712
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.transcribe
+      endpoint: /v1/audio/transcriptions
+      mode: sync
+input_modalities: [text, audio]

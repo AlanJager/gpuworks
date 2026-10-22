@@ -1,0 +1,187 @@
+{
+  "kind": { "aliyun": "Alibaba Cloud", "autodl": "AutoDL", "compshare": "CompShare", "runpod": "RunPod", "vast": "Vast.ai", "zstack": "ZStack Cloud" },
+  "scope": {
+    "public": { "title": "Public Clouds", "description": "Connect and manage public-cloud GPU resources, synchronize instances, and install the agent according to platform capabilities.", "empty": "No public cloud provider. Add one to get started." },
+    "private": { "title": "Private Clouds", "description": "Connect and manage private-cloud GPU resources. ZStack Cloud is currently supported.", "empty": "No private cloud provider. Add ZStack Cloud to get started." }
+  },
+  "page": {
+    "resourceBreadcrumb": "Resources",
+    "count": "{{count}} {{scope}}",
+    "add": "Add {{scope}}",
+    "syncAll": "Sync All",
+    "invalidMessage": "Some {{scope}} providers have errors",
+    "invalidDescription": "Review provider status or synchronize again to verify credentials and API availability.",
+    "summary": "Accounts: {{count}} · Instances: {{instances}}",
+    "summaryInvalid": "Invalid: {{count}}",
+    "addKind": "Add {{kind}}",
+    "supportedTypes": "Quick Connect",
+    "listFailed": "Failed to load {{scope}} providers",
+    "schemaMissing": "Provider schema was not loaded",
+    "schemaMissingDescription": "Retry later or refresh the page.",
+    "connected": "Connected {{scope}}",
+    "refresh": "Refresh"
+  },
+  "table": {
+    "column": { "name": "Name", "type": "Type", "instances": "Instances", "updatedAt": "Updated", "status": "Status" },
+    "state": { "valid": "Valid", "invalid": "Error" },
+    "edit": "Edit",
+    "comingSoon": "Coming Soon",
+    "sync": "Sync",
+    "deleteConfirm": "Delete this {{scope}} provider?",
+    "delete": "Delete",
+    "cancel": "Cancel"
+  },
+  "message": {
+    "syncDone": "Synchronization complete; {{count}} instances found",
+    "syncFailed": "Synchronization failed: {{detail}}",
+    "syncAllDone": "Synchronized {{count}} supported {{scope}} providers",
+    "syncAllPartial": "Synchronization complete: {{ok}} succeeded and {{failed}} failed",
+    "deleted": "Deleted",
+    "deleteFailed": "Delete failed: {{detail}}"
+  },
+  "config": {
+    "autodlProOnly": "AutoDL's API lists only Pro container instances (容器实例Pro); other instances do not appear here.",
+    "runpodSecureOnly": "Only Secure Cloud pods are supported; Community Cloud pods are not.",
+    "loadFailed": "Unable to load saved configuration. Close this dialog and try again.",
+    "operationFailed": "{{operation}} failed: {{detail}}",
+    "operation": { "update": "Update", "add": "Add" },
+    "title": "{{operation}} {{provider}}",
+    "edit": "Edit",
+    "save": "Save",
+    "add": "Add",
+    "cancel": "Cancel",
+    "basic": "Basic Information",
+    "type": "Type",
+    "typeRequired": "Select a type",
+    "name": "Name",
+    "nameRequired": "Enter a name",
+    "namePlaceholder": "For example, My {{kind}}",
+    "credentials": "Credentials",
+    "credentialsRetained": "Credential fields left blank will retain their current values.",
+    "fieldRequired": "Enter {{field}}"
+  },
+  "install": {
+    "autoAuth": {
+      "aliyun": "The server runs the install as root through Alibaba Cloud Cloud Assistant, so no SSH credential or public address is needed. When Cloud Assistant is offline it falls back to SSH on the public address; give a password or key under Advanced for that.",
+      "runpod": "The server signs in with its platform SSH key, which it adds to your RunPod account's SSH keys when the account is added; RunPod writes account keys into a Pod when it starts, so Pods started from then on need nothing else. A Pod that was already running does not accept the key yet: the install asks whether to change the Pod's configuration to add it (which restarts the Pod), or you can give its private key under Advanced once.",
+      "vast": "The server attaches its platform SSH key to the instance through the Vast API and signs in with it; nothing to enter here.",
+      "compshare": "CompShare instances only offer password login: the server signs in once with the password the CompShare API issued, adds its platform SSH key, and uses the key from then on. Nothing to enter here.",
+      "autodl": "The server signs in once with the root password AutoDL issued for the instance, adds its platform SSH key, and uses the key from then on. Nothing to enter here.",
+      "other": "The server signs in with its platform SSH key. If the instance does not accept it yet, give a private key or password under Advanced once; the key is added during the install."
+    },
+    "details": "Install details",
+    "credentialOverride": "SSH credentials (optional)",
+    "credentialOverrideHelp": "Only needed when the platform key and the provider's own login do not work. After a successful login the platform key is added and these are not kept.",
+    "privateKey": "SSH private key",
+    "password": "SSH password",
+    "precheckDetails": "Precheck details",
+    "running": "Installing the agent. This can take up to a minute; the result appears here.",
+    "done": "Done",
+    "retry": "Try again",
+    "outcome": {
+      "installed": {
+        "title": "Agent installed and connected",
+        "description": "The agent is running and has connected to this server. The instance now shows as onboarded and the node appears under Compute Nodes."
+      },
+      "installedWithNotes": {
+        "title": "Agent installed, with notes",
+        "description": "The agent was installed. The items marked Warning or Failed below are worth a look, but the install itself went through."
+      },
+      "waitingForAgent": {
+        "title": "Agent started, not connected yet",
+        "description": "The agent is running on the instance but has not connected to this server yet. Check Compute Nodes in a minute. If it never appears, the server address is probably not reachable from the instance; see the agent_dial row below."
+      },
+      "waitingForServer": {
+        "title": "Agent started, the server cannot reach it yet",
+        "description": "The agent is running on the instance, but the server cannot connect to its port yet. Usually a security group or firewall blocks the port: see the server_dial row below and the Security group and Server to agent rows of the precheck. Once the port is open the server connects on its own; there is no need to install again."
+      },
+      "failed": {
+        "title": "Installation failed",
+        "description": "The agent was not installed. See the checks below for the reason."
+      }
+    },
+    "title": "Install Agent · {{name}}",
+    "install": "Install",
+    "cancel": "Cancel",
+    "passwordPlaceholder": "SSH password (used when no private key is supplied, such as password-only cloud hosts)",
+    "connection": "Connection",
+    "autoConnection": "Automatic",
+    "direct": "Direct",
+    "proxy": "Provider proxy",
+    "terminalOnly": "(terminal only)",
+    "agentDial": "Agent-initiated connection",
+    "serverDial": "Server-initiated connection",
+    "serverURL": "Management node address",
+    "agentAddress": "Compute node address",
+    "agentAddressHelp": "The address the server connects to this instance at. With a host only, the port is the listen port; when a platform maps the port to another number, give the mapped address and port.",
+    "addressPlaceholder": "For example 203.0.113.8 or connect.example.com:37145",
+    "autodlAgentDialOnly": "The AutoDL one-click install supports agent-initiated connections only. For a server-initiated connection, follow",
+    "autodlPortDocs": "the AutoDL documentation to open a TCP port, then add the node by hand under Add compute node",
+    "automatic": "Automatic",
+    "autoPortHelp": "With both left empty, a TCP port the instance maps and nothing holds is used, and the address filled in.",
+    "restartConfirm": {
+      "title": "Restart the pod?",
+      "content": "RunPod opens a port only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add the port automatically?",
+      "contentSSHKey": "This pod started before the platform key was added to the RunPod account, so it does not accept the key yet. RunPod adds a key only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add it automatically?",
+      "contentSSHKeyPort": "This pod does not accept the platform key yet and has no TCP port to use. RunPod adds a key and opens a port only by changing the pod's configuration, which restarts its container and clears what is not on a volume. Add both automatically?",
+      "ok": "Confirm and restart the pod"
+    },
+    "advanced": "Advanced Settings",
+    "installDir": "Installation directory",
+    "installDirHelp": "Holds the agent, models and runtime data; empty means /opt/gpuworks. Give an absolute path starting with /, such as /data/gpuworks on a data disk; the install fails when a directory given here cannot be written.",
+    "useSystemd": "Start via systemd",
+    "useSystemdHelp": "On: the agent is registered as the gpuworks-agent systemd service, started at boot and restarted when it crashes; instances without systemd (most container instances) always run it under nohup.",
+    "useSystemdOffHelp": "The agent runs under nohup: it does not start at boot and is not restarted when it exits; the host's existing gpuworks-agent service and agents in other directories are left alone.",
+    "listenAddress": "Agent listen address",
+    "listenAddressHelp": "Where the agent listens on the instance (or in its container): its --listen.",
+    "serverURLUsed": "Using: {{url}}",
+    "connectionUsed": "Used {{label}} · {{user}}@{{host}}:{{port}}",
+    "connectionUsedChannel": "Used {{label}}",
+    "attemptFailed": "Connection to {{target}} failed; fell back automatically",
+    "checks": { "item": "Check", "status": "Status", "detail": "Details", "passed": "Passed", "warning": "Warning", "failed": "Failed" }
+  },
+  "instances": {
+    "empty": "No instances have been synchronized. Click Sync above and try again.",
+    "notReturned": "Not returned",
+    "cancel": "Cancel",
+    "powerOn": "Power on",
+    "powerOff": "Power off",
+    "powerOffConfirm": "Power off this instance?",
+    "installAgent": "Install Agent",
+    "onboarded": "Onboarded",
+    "containerRuntimeNote": "Container instances automatically use the runveil runtime (no root or daemon needed).",
+    "loadFailed": "Failed to load the instance list",
+    "retry": "Retry",
+    "pricePerHour": "¥{{price}}/hr",
+    "column": {
+      "name": "Instance name",
+      "id": "Instance ID",
+      "gpuModel": "GPU model",
+      "gpuCount": "GPUs",
+      "sshConnection": "Connection",
+      "status": "Status",
+      "price": "Price",
+      "region": "Region",
+      "type": "Type"
+    },
+    "power": {
+      "running": "Running",
+      "stopped": "Stopped",
+      "unknown": "Unknown"
+    },
+    "connection": {
+      "direct": "Direct",
+      "proxy": "Provider proxy",
+      "terminalOnly": "Terminal only", "noSSH": "no SSH needed"
+    },
+    "type": {
+      "container": "Container",
+      "vm": "Virtual machine"
+    },
+    "message": {
+      "powerOnSent": "Power-on request sent",
+      "powerOffSent": "Power-off request sent",
+      "actionFailed": "Action failed: {{detail}}"
+    }
+  }
+}

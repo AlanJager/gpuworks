@@ -1,0 +1,66 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "delete": "Delete"
+  },
+  "breadcrumb": {
+    "platform": "Platform"
+  },
+  "create": {
+    "button": "Create inference token",
+    "failed": "Failed to create token: {{detail}}",
+    "namePlaceholder": "For example, my-app",
+    "nameRequired": "Enter a name",
+    "title": "Create API token"
+  },
+  "delete": {
+    "confirm": "Delete “{{name}}”? This token will be revoked. If no tokens remain, the gateway allows anonymous access (development mode).",
+    "failed": "Failed to delete token: {{detail}}",
+    "success": "Token deleted"
+  },
+  "description": "Issue and manage two kinds of credential: inference tokens for calling deployed models, and platform API tokens for the management API and MCP",
+  "empty": "No API tokens",
+  "never": "Never",
+  "secret": {
+    "saved": "I have saved it",
+    "title": "Save this API token now",
+    "warning": "This API token is shown only once. It cannot be viewed again after this dialog is closed.",
+    "copy": "Copy API token",
+    "copied": "API token copied"
+  },
+  "table": {
+    "createdAt": "Created",
+    "lastUsed": "Last used",
+    "name": "Name",
+    "prefix": "Prefix"
+  },
+  "title": "API Tokens",
+  "usage": "Usage",
+  "gateway": {
+    "title": "Inference tokens",
+    "description": "For applications calling deployed models (/v1, OpenAI-compatible); they start with gw-. They cannot call the platform management API."
+  },
+  "platform": {
+    "title": "Platform API tokens",
+    "description": "Call the platform management API without signing in, and connect to the MCP service; they start with gwp_. A token acts as you, with your current permissions, narrowed by its scope: a read token can only read; a read-write token can do what you can in the console. Tokens are created and revoked from a signed-in session only.",
+    "create": "Create platform token",
+    "createTitle": "Create a platform API token",
+    "namePlaceholder": "e.g. claude-code, ci",
+    "scope": "Scope",
+    "scopeHelp": "MCP needs read only. A read-write token can change the platform; give one only to programs that need it.",
+    "scopes": {
+      "read": "Read",
+      "write": "Read-write"
+    },
+    "expiresAt": "Expires",
+    "noExpiry": "No expiry",
+    "days": "{{count}} days",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke “{{name}}”? Programs using it lose access at once.",
+    "revoked": "Revoked",
+    "empty": "No platform API tokens",
+    "nameTooLong": "Name must not exceed 128 UTF-8 bytes (Chinese characters usually use 3 bytes each)"
+  }
+}

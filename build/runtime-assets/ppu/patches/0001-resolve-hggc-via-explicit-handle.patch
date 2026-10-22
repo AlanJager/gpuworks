@@ -1,0 +1,71 @@
+diff --git a/hggc/hggc_quota.h b/hggc/hggc_quota.h
+--- a/hggc/hggc_quota.h
++++ b/hggc/hggc_quota.h
+@@ -132,6 +132,9 @@
+  * anything would hand the caller an unwritten out-parameter. */
+ VPPU_INTERNAL void *vppu_hggc_next(enum vppu_entry entry);
+
++/* Resolve an unwrapped driver symbol through libhggc.so's explicit handle. */
++VPPU_INTERNAL void *vppu_hggc_driver_symbol(const char *symbol);
++
+ /* vppu_hggc_self — this library's own definition of this entry, resolved once and cached.
+  * What the resolvers hand out in place of the vendor's address. */
+ VPPU_INTERNAL void *vppu_hggc_self(enum vppu_entry entry);
+diff --git a/hggc/hggc_quota.c b/hggc/hggc_quota.c
+--- a/hggc/hggc_quota.c
++++ b/hggc/hggc_quota.c
+@@ -153,6 +153,24 @@
+  * totals, and asking maps the region — a process that allocated nothing (every process in the
+  * container carries this preload) must not create the file on its way out. */
+ static bool ledger_touched;
++
++static void *driver_handle;
++static bool driver_handle_tried;
++
++void *vppu_hggc_driver_symbol(const char *symbol)
++{
++    if (!driver_handle_tried) {
++        driver_handle = dlopen("libhggc.so", RTLD_LAZY | RTLD_LOCAL);
++        if (driver_handle == NULL) {
++            vppu_log(VPPU_LOG_DENY, "cannot load libhggc.so (%s)\n", dlerror());
++        }
++        driver_handle_tried = true;
++    }
++    if (driver_handle == NULL) {
++        return NULL;
++    }
++    return dlsym(driver_handle, symbol);
++}
+
+ const char *vppu_hggc_name(enum vppu_entry entry)
+ {
+@@ -167,7 +185,7 @@
+ void *vppu_hggc_next(enum vppu_entry entry)
+ {
+     if (!next_resolved[entry]) {
+-        void *fn = dlsym(RTLD_NEXT, entry_names[entry]);
++        void *fn = vppu_hggc_driver_symbol(entry_names[entry]);
+
+         if (fn == NULL) {
+             vppu_log(VPPU_LOG_DENY, "no next %s — libhggc.so not in the search order?\n",
+@@ -207,7 +225,7 @@
+     static bool resolved;
+
+     if (!resolved) {
+-        real_get_device = dlsym(RTLD_NEXT, "hgCtxGetDevice");
++        real_get_device = vppu_hggc_driver_symbol("hgCtxGetDevice");
+         resolved = true;
+     }
+     if (real_get_device == NULL) {
+diff --git a/hggc/hggc_mem.c b/hggc/hggc_mem.c
+--- a/hggc/hggc_mem.c
++++ b/hggc/hggc_mem.c
+@@ -143,7 +143,7 @@
+     static bool resolved;
+
+     if (!resolved) {
+-        real_default_pool = dlsym(RTLD_NEXT, "hgDeviceGetDefaultMemPool");
++        real_default_pool = vppu_hggc_driver_symbol("hgDeviceGetDefaultMemPool");
+         resolved = true;
+     }
+     if (real_default_pool == NULL) {

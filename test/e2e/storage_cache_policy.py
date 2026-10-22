@@ -1,0 +1,490 @@
+#!/usr/bin/env python3
+"""Storage / NFS cache node policy against an isolated real server/SQLite.
+
+E2E standard: test/e2e/browser-e2e-testing-standard.md
+Run: make test-e2e-storage-nfs-cache-policy [E2E_LOCALE=zh]
+After build: python3 test/e2e/storage_cache_policy.py --locale en
+Requires Python Playwright and system Chrome. Fixture: 25 offline node records,
+an existing NFS-cache definition and a non-admin account seeded into the
+isolated database; no agent, mount, GPU or RPC success is simulated. Successful
+creation is covered separately by storage_cache_create.py with a real agent and
+NFS export.
+Artifacts: secrets/e2e/<runId>; the runner stops its own server and retains the
+private database/logs for scoped diagnosis (seven days).
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import re
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+import traceback
+from urllib.parse import urlsplit
+import uuid
+
+from playwright.sync_api import expect, sync_playwright
+from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
+from network_storage_lifecycle import locale_strings, read
+from platform_token_read_revoke import button, check
+
+CONTRACT = 'gpuworks/storage/nfs-cache-node-policy'
+CASE = '存储 / NFS Cache 节点缓存策略 / 单节点与跨页批量覆盖、默认值继承、离线重试、搜索筛选与只读账号'
+VIEWPORT = {'width': 1440, 'height': 900}
+GIB = 1024 ** 3
+
+
+def mutate(page, action, method, path, body, status, evidence):
+    """Record the observed wire contract before checking it, including failures."""
+    observation = {'layer': 'request', 'method': method, 'path': path,
+                   'expected_body': body, 'expected_status': status, 'status': None, 'sent': []}
+    evidence.append(observation)
+    def sent(request):
+        if request.method == method and urlsplit(request.url).path == path:
+            observation['sent'].append({'query': urlsplit(request.url).query, 'raw_body': request.post_data})
+    page.on('request', sent)
+    try:
+        with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == method) as received:
+            action()
+    finally:
+        page.remove_listener('request', sent)
+    response = received.value
+    observation.update(status=response.status, query=urlsplit(response.url).query,
+                       raw_body=response.request.post_data, response_text=response.text())
+    observation['body'] = response.request.post_data_json if response.request.post_data is not None else None
+    check(response.status == status, f'{method} {path}: expected {status}, received {response.status}')
+    check(not observation['query'], f'{method} {path}: unexpected query {observation["query"]!r}')
+    check(observation['body'] == body,
+          f'{method} {path}: expected body {body!r}, received {observation["body"]!r}')
+    result = response.json() if status != 204 else None
+    observation['response'] = result
+    return result
+
+
+def cleanup_stage(report, name, action):
+    """Run one cleanup stage on its own: a failure is recorded and never skips the next stage."""
+    try:
+        result = action()
+        done = result is None or result is True
+        report.setdefault('cleanup_stages', {})[name] = 'ok' if done else f'incomplete: {result!r}'
+        return done
+    except Exception:
+        report.setdefault('cleanup_stages', {})[name] = 'error: ' + traceback.format_exc(limit=2).strip().splitlines()[-1]
+        return False
+
+
+def copy_redacted(artifacts, name):
+    """Copy one private log into the artifacts, redacted; a missing or empty log is not a failure."""
+    log = artifacts.private / name
+    if log.exists():
+        (artifacts.directory / name).write_text(artifacts.redact(log.read_text()))
+
+
+def observe_browser(page, report, identity='admin'):
+    errors = {'identity': identity, 'page': [], 'console': [], 'http': []}
+    report.setdefault('browser_errors', []).append(errors)
+    page.on('pageerror', lambda error: errors['page'].append(str(error)))
+    page.on('console', lambda message: errors['console'].append({
+        'path': urlsplit(message.location.get('url', '')).path, 'text': message.text})
+        if message.type == 'error' else None)
+    page.on('response', lambda response: errors['http'].append({
+        'method': response.request.method, 'path': urlsplit(response.url).path, 'status': response.status})
+        if response.status >= 400 else None)
+    return errors
+
+
+def check_browser(errors):
+    check(not any(errors[key] for key in ('page', 'console', 'http')), f'unexpected browser errors: {errors!r}')
+
+
+def capture(page, artifacts, name):
+    """Failure screenshot that can itself fail without replacing the original failure."""
+    if page is None:
+        return
+    try:
+        page.screenshot(path=artifacts.directory / name, full_page=True)
+    except Exception:
+        pass
+
+
+def seed(server, name):
+    """Preexisting resources/facts only; tested operations always go through UI."""
+    databases = list((server.work / 'server-data').glob('*.db'))
+    for path in databases:
+        with sqlite3.connect(path) as db:
+            if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='storages'").fetchone()[0]:
+                break
+    else:
+        raise RuntimeError('isolated main database not found')
+    now = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO users(username,password_hash,role,created_at,updated_at) SELECT 'cache-viewer',password_hash,'user',?,? FROM users WHERE username='admin'", (now, now))
+        ids = []
+        for index in range(1, 26):
+            cursor = db.execute("INSERT INTO nodes(uuid,name,hostname,state,labels,created_at,updated_at) VALUES(?,?,?,'offline',?,?,?)",
+                                (f'cache-node-{index:02}', f'Cache node {index:02}', f'cache-host-{index:02}', json.dumps({'rack': 'a' if index <= 20 else 'b'}), now, now))
+            ids.append(cursor.lastrowid)
+        # Paths sit below the isolated server's only storage root, as a real definition must.
+        cursor = db.execute("INSERT INTO storages(name,type,enabled,is_default,all_nodes,path,export,cache_path,cache_max_bytes,created_at,updated_at) VALUES(?,'nfs_cache',1,0,1,?,'fixture.invalid:/models',?,?,?,?)",
+                            (name, str(server.storage_root / name), str(server.storage_root / 'cache'), 128 * GIB, now, now))
+        storage_id = cursor.lastrowid
+        for node_id, limit in ((ids[0], 0), (ids[1], 64 * GIB)):
+            db.execute("INSERT INTO storage_nodes(storage_id,node_id,override_only,cache_max_bytes,cache_path,created_at) VALUES(?,?,1,?,'',?)", (storage_id, node_id, limit, now))
+    return storage_id
+
+
+def login(page, server, artifacts, locale, username='admin'):
+    t = locale_strings(locale, 'auth')
+    page.goto(server.base + '/dashboard')
+    page.get_by_role('textbox', name=t['username'], exact=True).fill(username)
+    page.get_by_label(t['password'], exact=True).fill('password')
+    with page.expect_response(lambda r: urlsplit(r.url).path == '/api/v1/auth/login' and r.request.method == 'POST') as result:
+        button(page, t['submit']).click()
+    check(result.value.status == 200, 'browser login failed')
+    for cookie in page.context.cookies():
+        artifacts.remember(cookie['value'])
+    check(read(page, server.base, '/api/v1/auth/me')['username'] == username, 'identity mismatch')
+
+
+def test_storage_cache_policy(page, server, artifacts, report, storage_id, storage_name, locale):
+    t = locale_strings(locale, 'storage')
+    cm, cp, draft, form = (t[key] for key in ('cacheManage', 'cachePolicy', 'cacheDraft', 'form'))
+    path = f'/api/v1/storages/{storage_id}'
+    evidence = report['evidence']
+    def saved():
+        value = read(page, server.base, path + '?all_nodes=1')
+        evidence.append({'layer': 'persistence', 'response': value})
+        return value
+    def targets():
+        return {x['node_uuid']: x for x in saved()['targets'] if x.get('node_uuid')}
+    def nodes():
+        page.goto(server.base + f'/storage/{storage_id}')
+        page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True).click()
+        page.get_by_role('columnheader', name=t['nodes']['column']['node'], exact=True).click()
+        expect(page.get_by_role('link', name='Cache node 01', exact=True)).to_be_visible()
+    def row(name):
+        return page.get_by_role('row').filter(has=page.get_by_role('link', name=name, exact=True))
+    node_links = page.get_by_role('link', name=re.compile(r'^Cache node \d\d$'))
+    def effective(limit):
+        return cm['effectiveLimit'].replace('{{value}}', limit)
+    unlimited_text = t['overview']['cacheUnlimited']
+    def radio(dialog, name):
+        dialog.get_by_role('radio', name=name, exact=True).check()
+    def shot(name):
+        page.screenshot(path=artifacts.directory / (name + '.png'), full_page=True)
+    # Mainline: existing offline NFS definition -> real node overrides -> refresh -> defaults -> cross-page batch -> inheritance.
+    nodes()
+    expect(row('Cache node 01')).to_contain_text(cm['mode']['unlimited'])
+    expect(row('Cache node 02')).to_contain_text('64.0 GiB')
+    expect(row('Cache node 03')).to_contain_text(cm['mode']['inherit'])
+    # An inheriting node's effective limit is the storage default (128 GiB seeded).
+    expect(row('Cache node 03')).to_contain_text(effective('128.0 GiB'))
+    retry_button = button(row('Cache node 01'), cm['retry'])
+    expect(retry_button).to_be_in_viewport()
+    check(retry_button.evaluate('el => el.scrollWidth <= el.clientWidth'), 'retry label clipped inside button')
+    shot('01-node-management')
+    report['last_step'] = 'table-loaded'
+    button(row('Cache node 01'), cm['configure']).click()
+    dialog = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
+    expect(dialog.get_by_role('radio', name=cp['unlimited'], exact=True)).to_be_checked()
+    # Native radio arrow behavior and keyboard focus, not DOM mutation.
+    dialog.get_by_role('radio', name=cp['unlimited'], exact=True).focus()
+    page.keyboard.press('ArrowLeft')
+    expect(dialog.get_by_role('radio', name=cp['custom'], exact=True)).to_be_checked()
+    limit_input = dialog.get_by_role('spinbutton', name=cm['limit'], exact=True)
+    limit_input.fill('-1')
+    button(dialog, cm['save']).click()
+    expect(dialog.get_by_role('alert').filter(has_text=cm['invalidLimit'])).to_be_visible()
+    check(targets()['cache-node-01']['cache_max_bytes'] == 0, 'negative input changed persisted policy')
+    limit_input.fill('32')
+    expect(dialog.get_by_text(cm['unknownImpact'].replace('{{count}}', '1'), exact=True)).to_be_visible()
+    mutate(page, button(dialog, cm['save']).click, 'PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': 32 * GIB}, 200, evidence)
+    expect(dialog).not_to_be_visible()
+    check(targets()['cache-node-01']['cache_max_bytes'] == 32 * GIB, 'custom limit not persisted')
+    nodes()
+    expect(row('Cache node 01')).to_contain_text('32.0 GiB')
+    button(row('Cache node 01'), cm['configure']).click()
+    expect(dialog.get_by_role('spinbutton', name=cm['limit'], exact=True)).to_have_value('32')
+    radio(dialog, cp['unlimited'])
+    mutate(page, button(dialog, cm['save']).click, 'PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': 0}, 200, evidence)
+    expect(dialog).not_to_be_visible()
+    check(targets()['cache-node-01']['cache_max_bytes'] == 0, 'explicit zero lost')
+    nodes()
+    expect(row('Cache node 01')).to_contain_text(cm['mode']['unlimited'])
+    expect(row('Cache node 01')).to_contain_text(effective(unlimited_text))
+    report['last_step'] = 'single-node-overrides'
+    # Cross-page selection uses real pagination and retains exact identities.
+    checkbox = page.get_by_role('checkbox', name=cm['selectNode'].replace('{{node}}', 'Cache node 01'), exact=True)
+    checkbox.focus()
+    page.keyboard.press('Space')
+    expect(checkbox).to_be_checked()
+    page.get_by_title('2', exact=True).click()
+    expect(page.get_by_role('link', name='Cache node 25', exact=True)).to_be_visible()
+    page.get_by_role('checkbox', name=cm['selectNode'].replace('{{node}}', 'Cache node 25'), exact=True).check()
+    batch = button(page, cm['batch'])
+    batch.focus()
+    page.keyboard.press('Tab')
+    page.keyboard.press('Shift+Tab')
+    expect(batch).to_be_focused()
+    page.keyboard.press('Enter')
+    bulk = page.get_by_role('dialog', name=cm['batchTitle'].replace('{{count}}', '2'), exact=True)
+    bulk.get_by_role('checkbox', name=cm['changeLimit'], exact=True).check()
+    radio(bulk, cp['custom'])
+    bulk.get_by_role('spinbutton', name=cm['limit'], exact=True).fill('16')
+    shot('02-cross-page-batch')
+    mutate(page, button(bulk, cm['save']).click, 'PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-01', 'cache-node-25'], 'cache_max_bytes': 16 * GIB}, 200, evidence)
+    expect(bulk).not_to_be_visible()
+    result = targets()
+    check(result['cache-node-01']['cache_max_bytes'] == result['cache-node-25']['cache_max_bytes'] == 16 * GIB, 'cross-page selection lost')
+    check(result['cache-node-02']['cache_max_bytes'] == 64 * GIB, 'unselected node changed')
+    button(page, cm['restore']).click()
+    expect(bulk.get_by_role('radio', name=cp['inherit'], exact=True)).to_be_checked()
+    mutate(page, button(bulk, cm['save']).click, 'PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-01', 'cache-node-25'], 'cache_max_bytes': None}, 200, evidence)
+    expect(bulk).not_to_be_visible()
+    result = targets()
+    check(all(result.get(key, {}).get('cache_max_bytes') is None for key in ('cache-node-01', 'cache-node-25')), 'inheritance not restored')
+    button(page, cm['deselect']).click()
+    expect(button(page, cm['batch'])).to_be_disabled()
+    nodes()
+    expect(row('Cache node 01')).to_contain_text(cm['mode']['inherit'])
+    expect(row('Cache node 01')).to_contain_text(effective('128.0 GiB'))
+    report['last_step'] = 'batch-and-restore'
+    # Defaults change and independent node exception survive full edit+refresh.
+    button(page, cm['defaults']).click()
+    default_dialog = page.get_by_role('dialog', name=cm['defaults'], exact=True)
+    radio(default_dialog, cp['unlimited'])
+    before = saved()
+    mutate(page, button(default_dialog, cm['save']).click, 'PATCH', path, {'cache_max_bytes': 0, 'expected_updated_at': before['updated_at']}, 200, evidence)
+    expect(default_dialog).not_to_be_visible()
+    # The DTO omits a zero default (omitempty), so absence and 0 both mean unlimited.
+    check(saved().get('cache_max_bytes', 0) == 0 and targets()['cache-node-02']['cache_max_bytes'] == 64 * GIB, 'default zero changed custom node')
+    nodes()
+    expect(row('Cache node 03')).to_contain_text(effective(unlimited_text))
+    expect(row('Cache node 02')).to_contain_text(effective('64.0 GiB'))
+    button(page, t['actions']['edit']).click()
+    edit = page.get_by_role('dialog', name=form['editTitle'].replace('{{name}}', storage_name), exact=True)
+    expect(edit.get_by_role('radio', name=cp['unlimited'], exact=True)).to_be_checked()
+    edit.get_by_role('searchbox', name=t['nodes']['search'], exact=True).fill('Cache node 02')
+    expect(edit.get_by_role('row').filter(has_text='Cache node 02')).to_contain_text('64.0 GiB')
+    shot('03-edit-zero-and-exceptions')
+    button(edit, form['cancel']).click()
+    report['last_step'] = 'defaults-and-edit'
+    # Real offline reconcile request: accepted intent, NOT a successful cleanup RPC.
+    mutate(page, button(row('Cache node 01'), cm['retry']).click, 'POST', path + '/cache/reconcile', {'node_uuids': ['cache-node-01'], 'mode': 'trim'}, 202, evidence)
+    check(next(n for n in saved()['nodes']['all'] if n['node_uuid'] == 'cache-node-01')['cache']['state'] == 'offline', 'offline node must remain awaiting connection')
+    report['last_step'] = 'offline-retry'
+    # Search and policy filter compose against 25 distinguishable records whose
+    # expected sets follow from the seed: node 02 is the only custom node, every
+    # other node inherits, and the table shows 20 rows per page.
+    def shown(indices):
+        expect(node_links).to_have_text([f'Cache node {index:02}' for index in indices])
+    search = page.get_by_role('searchbox', name=t['nodes']['search'], exact=True)
+    shown(range(1, 21))
+    search.fill('Cache node 02')
+    shown([2])
+    search.fill('cache NODE 2')  # case-insensitive partial name match: nodes 20..25
+    shown(range(20, 26))
+    search.fill('no-such-cache-node')
+    shown([])
+    expect(page.get_by_text(t['nodes']['empty'], exact=True)).to_be_visible()
+    search.fill('')
+    shown(range(1, 21))
+    picker = page.get_by_role('combobox', name=cm['filterMode'], exact=True)
+    picker.focus()
+    page.keyboard.press('ArrowDown')
+    expect(picker).to_have_attribute('aria-expanded', 'true')
+    # AntD renders role=option only for a small window of the list (a hidden a11y
+    # mirror), so the visible items are read by their title, which carries the label.
+    labels = [cm['mode'][m] for m in ('inherit', 'custom', 'unlimited')]
+    # Options are looked up inside the popup the combobox controls (aria-controls names the
+    # a11y list; its parent also holds the rendered items), never by class name.
+    popup = page.locator(f"#{picker.get_attribute('aria-controls')}").locator('xpath=..')
+    def offered(*names):
+        expect(popup.locator('[title]')).to_have_count(len(names))
+        for label in labels:
+            expect(popup.get_by_title(label, exact=True)).to_have_count(1 if label in names else 0)
+    offered(*labels)
+    first_word = cm['mode']['inherit'].split()[0] if ' ' in cm['mode']['inherit'] else cm['mode']['inherit'][:1]
+    page.keyboard.type(first_word)  # partial term
+    offered(*[label for label in labels if first_word.lower() in label.lower()])
+    for _ in first_word:
+        page.keyboard.press('Backspace')
+    page.keyboard.type('zz-no-such-mode')
+    offered()
+    for _ in 'zz-no-such-mode':
+        page.keyboard.press('Backspace')
+    offered(*labels)  # clearing the term restores every option
+    page.keyboard.type(cm['mode']['inherit'])
+    offered(cm['mode']['inherit'])
+    page.keyboard.press('Enter')
+    page.keyboard.press('Escape')
+    expect(picker).to_have_attribute('aria-expanded', 'false')
+    expect(picker).to_be_focused()
+    shown([1, *range(3, 22)])
+    page.get_by_title('2', exact=True).click()
+    shown(range(22, 26))  # 24 inheriting nodes in all
+    page.get_by_title('1', exact=True).click()
+    search.fill('Cache node 02')  # each condition alone matches; their intersection is empty
+    shown([])
+    search.fill('cache NODE 2')
+    shown(range(20, 26))
+    button(page, cm['clearFilters']).click()
+    expect(search).to_have_value('')
+    shown(range(1, 21))
+    evidence.append({'layer': 'ui', 'checks': ['negative-limit-rejected', 'three-state-zero-refresh', 'default-inheritance-effective-limit', 'search-exact-partial-none-clear', 'mode-filter-keyboard', 'retry-action-not-clipped', 'cross-page-fixed-selection', 'keyboard-space-enter-radio-arrows', 'independent-limit-survives-default', 'edit-roundtrip', 'offline-capacity-unknown', 'offline-retry', 'search-and-mode-filter-intersection']})
+    shot('04-management-complete')
+
+
+def viewer_read_only(browser, server, artifacts, report, storage_id, locale):
+    """The seeded non-admin account reads the node table without any mutation control."""
+    context = browser.new_context(viewport=VIEWPORT, locale='zh-CN' if locale == 'zh' else 'en-US', timezone_id='UTC')
+    page = None
+    try:
+        page = context.new_page()
+        page.set_default_timeout(15000)
+        login(page, server, artifacts, locale, 'cache-viewer')
+        errors = observe_browser(page, report, 'user')
+        t = locale_strings(locale, 'storage')
+        page.goto(server.base + f'/storage/{storage_id}')
+        page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True).click()
+        expect(page.get_by_role('link', name='Cache node 25', exact=True)).to_be_visible()
+        for key in ['configure', 'batch', 'restore', 'retry', 'defaults', 'clear', 'editScope']:
+            expect(button(page, t['cacheManage'][key])).to_have_count(0)
+        expect(page.get_by_role('checkbox')).to_have_count(0)
+        page.screenshot(path=artifacts.directory / '05-viewer-read-only.png', full_page=True)
+        report['evidence'].append({'layer': 'ui', 'identity': 'user', 'checks': ['readable-node-table', 'no-mutation-controls', 'no-selection']})
+        # Hidden controls are not the authorization: the same session's write is refused and changes nothing.
+        path = f'/api/v1/storages/{storage_id}'
+        before = read(page, server.base, path + '?all_nodes=1')
+        writes = [('PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-02'], 'cache_max_bytes': GIB}),
+                  ('PATCH', path, {'cache_max_bytes': GIB, 'expected_updated_at': before['updated_at']}),
+                  ('POST', path + '/cache/reconcile', {'node_uuids': ['cache-node-02'], 'mode': 'clear'}),
+                  ('DELETE', path + '/cache', None)]
+        for method, target, data in writes:
+            denied = page.request.fetch(server.base + target, method=method, data=data)
+            body = denied.json()
+            check(denied.status == 403 and body.get('code') == 'ADMINISTRATOR_REQUIRED',
+                  f'non-admin {method} {target}: expected 403 ADMINISTRATOR_REQUIRED, received {denied.status} {body.get("code")}')
+            report['evidence'].append({'layer': 'request', 'identity': 'user', 'method': method, 'path': target,
+                                       'status': denied.status, 'code': body.get('code')})
+        after = read(page, server.base, path + '?all_nodes=1')
+        check({k: after.get(k) for k in ('targets', 'updated_at', 'cache_max_bytes')}
+              == {k: before.get(k) for k in ('targets', 'updated_at', 'cache_max_bytes')},
+              'a refused non-admin write changed the storage')
+        report['evidence'].append({'layer': 'persistence', 'identity': 'user', 'unchanged_after_refusals': True})
+        # UpdateNotice explicitly treats its admin-only update check's 403 as a
+        # silent non-admin result; account for that exact shell request and Chrome line.
+        expected_update = {'method': 'GET', 'path': '/api/v1/updates', 'status': 403}
+        update_http = [item for item in errors['http'] if item == expected_update]
+        update_console = [item for item in errors['console'] if item['path'] == '/api/v1/updates'
+                          and item['text'] == 'Failed to load resource: the server responded with a status of 403 (Forbidden)']
+        check(len(update_http) == len(update_console) == 1,
+              f'expected exactly one non-admin UpdateNotice refusal: {errors!r}')
+        errors['expected_refusals'] = {'http': update_http, 'console': update_console}
+        errors['http'].remove(update_http[0])
+        errors['console'].remove(update_console[0])
+        check_browser(errors)
+    except Exception:
+        capture(page, artifacts, 'failure-viewer.png')
+        raise
+    finally:
+        context.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--server-bin', type=Path, default=ROOT / 'bin/gpuworks')
+    parser.add_argument('--artifact-dir', type=Path)
+    parser.add_argument('--locale', choices=['en', 'zh'], default='en')
+    args = parser.parse_args()
+    os.umask(0o077)
+    run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
+    artifacts = Artifacts(args.artifact_dir or ROOT / 'secrets/e2e' / run_id)
+    manifest_path = ROOT / 'test/e2e/coverage/storage-nfs-cache-policy.json'
+    manifest = json.loads(manifest_path.read_text())
+    bound = manifest['contract_id'] == CONTRACT and manifest['test_function'] == test_storage_cache_policy.__name__
+    report = {'contract': CONTRACT, 'case': CASE, 'run_id': run_id, 'status': 'NOT_RUN',
+              'source_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+              'working_tree': 'dirty' if subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT) else 'clean',
+              'target_branch': 'wei/master',
+              'target_sha': subprocess.check_output(['git', 'rev-parse', 'wei/master'], cwd=ROOT, text=True).strip(),
+              'lane': 'local-real-server-sqlite', 'identity': 'admin; role=user for the read-only phase', 'locale': args.locale,
+              'timezone': 'UTC', 'viewport': VIEWPORT, 'selection': [CONTRACT], 'retries': 0, 'evidence': [],
+              'coverage_manifest_sha256': digest(manifest_path), 'test_sha256': digest(Path(__file__)),
+              'helper_sha256': digest(ROOT / 'test/e2e/local_browser_fixture.py'),
+              'execution': 'N/A: no connected agent; no mount, eviction or capacity is claimed',
+              'runtime': 'N/A: no agent, container, GPU or engine',
+              'limits': ['No connected agent: no mount/eviction/runtime success claim.',
+                         'Online capacity and failure-recovery RPC execution require separate integration/runtime tests.',
+                         'Successful NFS creation requires a connected agent and real probe.'],
+              'command': ['python3', 'test/e2e/storage_cache_policy.py', *sys.argv[1:]]}
+    server = LocalServer(args.server_bin, artifacts.private)
+    if not bound:
+        report['status'], report['failure'] = 'FAIL_TEST', 'coverage manifest does not bind this case'
+        artifacts.write_json('report.json', report)
+        print(json.dumps({'status': report['status'], 'contract': CONTRACT, 'run_id': run_id}, ensure_ascii=False))
+        return 1
+    try:
+        report['binary_sha256'] = digest(args.server_bin)
+        report['health'] = server.start()
+        report['base_url'] = server.base
+        report['server_environment'] = server.environment
+        report['storage_name'] = storage_name = f"e2e-{run_id.lower()}-cache"
+        storage_id = seed(server, storage_name)
+        report['preflight'] = 'PASS'
+        with sync_playwright() as play:
+            browser = play.chromium.launch(channel='chrome', headless=True)
+            report['browser_version'] = browser.version
+            context = browser.new_context(viewport=VIEWPORT, locale='zh-CN' if args.locale == 'zh' else 'en-US', timezone_id='UTC')
+            page = context.new_page()
+            page.set_default_timeout(15000)
+            try:
+                login(page, server, artifacts, args.locale)
+                errors = observe_browser(page, report)
+                artifacts.start_trace(context)
+                test_storage_cache_policy(page, server, artifacts, report, storage_id, storage_name, args.locale)
+                artifacts.stop_trace(context)
+                viewer_read_only(browser, server, artifacts, report, storage_id, args.locale)
+                check_browser(errors)
+                layers = {item['layer'] for item in report['evidence']}
+                check(set(manifest['required_evidence']) <= layers, 'required evidence is missing')
+                report['status'] = 'PASS'
+            except Exception:
+                report['status'] = 'FAIL_TEST'
+                report['failure'] = artifacts.redact(traceback.format_exc())
+                capture(page, artifacts, 'failure.png')
+            finally:
+                cleanup_stage(report, 'trace', lambda: artifacts.stop_trace(context))
+                cleanup_stage(report, 'context', context.close)
+                cleanup_stage(report, 'browser', browser.close)
+    except Exception:
+        report['status'] = 'FAIL_TEST' if report.get('preflight') == 'PASS' else 'BLOCKED_INFRA'
+        report['failure'] = artifacts.redact(traceback.format_exc())
+    finally:
+        report['server_stopped'] = cleanup_stage(report, 'server', server.stop)
+        cleanup_stage(report, 'server-log', lambda: copy_redacted(artifacts, 'server.log'))
+        if report['status'] == 'PASS' and any(v != 'ok' for v in report['cleanup_stages'].values()):
+            report['status'] = 'FAIL_TEST'
+        report['remaining_resources'] = [] if report['server_stopped'] else [
+            {'kind': 'process', 'pid': server.process.pid if server.process else None,
+             'reclaim': f"kill {server.process.pid}" if server.process else 'none: never started'}]
+        report['private_state'] = ('private/ retains the isolated DB and logs (seeded records only); '
+                                   'remove only this run directory after diagnosis (7 days)')
+        artifacts.write_json('report.json', report)
+        try:
+            artifacts.scan()
+        except Exception:
+            report['status'] = 'FAIL_TEST'
+            report['artifact_error'] = 'credential scan rejected artifacts; private directory must not be uploaded'
+            artifacts.write_json('report.json', report)
+    print(json.dumps({'status': report['status'], 'contract': CONTRACT, 'run_id': run_id,
+                      'report': str(artifacts.directory / 'report.json')}, ensure_ascii=False))
+    return 0 if report['status'] == 'PASS' else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,0 +1,302 @@
+time="2026-10-20T06:23:52-05:00" level=warning msg="skipping verifying HTTPS certs for \"localhost:5098\""
+localhost:5098/t73/raw:2: resolving      |[32m[0m--------------------------------------| 
+elapsed: 0.1 s            total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2: resolving      |[32m[0m--------------------------------------| 
+elapsed: 0.2 s            total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2: resolving      |[32m[0m--------------------------------------| 
+elapsed: 0.3 s            total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2: resolving      |[32m[0m--------------------------------------| 
+elapsed: 0.4 s            total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: downloading    |[32m[0m--------------------------------------|    0.0 B/1.1 KiB 
+elapsed: 0.5 s                                                                    total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: downloading    |[32m[0m--------------------------------------|    0.0 B/1.1 KiB 
+elapsed: 0.6 s                                                                    total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: downloading    |[32m[0m--------------------------------------|    0.0 B/1.1 KiB 
+elapsed: 0.7 s                                                                    total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: downloading    |[32m[0m--------------------------------------|    0.0 B/1.1 KiB 
+elapsed: 0.8 s                                                                    total:   0.0 B (0.0 B/s)                                         
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   downloading    |[32m[0m--------------------------------------|    0.0 B/491.0 B 
+elapsed: 0.9 s                                                                    total:  1.1 Ki (1.2 KiB/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   downloading    |[32m[0m--------------------------------------|    0.0 B/491.0 B 
+elapsed: 1.0 s                                                                    total:  1.1 Ki (1.1 KiB/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   downloading    |[32m[0m--------------------------------------|    0.0 B/491.0 B 
+elapsed: 1.1 s                                                                    total:  1.1 Ki (1014.0 B/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   downloading    |[32m[0m--------------------------------------|    0.0 B/491.0 B 
+elapsed: 1.2 s                                                                    total:  1.1 Ki (929.0 B/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 1.3 s                                                                    total:  1.6 Ki (1.2 KiB/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m[0m--------------------------------------|    0.0 B/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    downloading    |[32m[0m--------------------------------------|    0.0 B/138.0 B 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    downloading    |[32m[0m--------------------------------------|    0.0 B/139.0 B 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    downloading    |[32m[0m--------------------------------------|    0.0 B/140.0 B 
+elapsed: 1.4 s                                                                    total:  1.6 Ki (1.1 KiB/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m[0m--------------------------------------|    0.0 B/1.5 GiB   
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    downloading    |[32m[0m--------------------------------------|    0.0 B/138.0 B   
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    downloading    |[32m[0m--------------------------------------|    0.0 B/139.0 B   
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m[0m--------------------------------------|    0.0 B/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    downloading    |[32m[0m--------------------------------------|    0.0 B/140.0 B   
+elapsed: 1.5 s                                                                    total:  1.6 Ki (1.0 KiB/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m[0m--------------------------------------|    0.0 B/1.5 GiB   
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    downloading    |[32m[0m--------------------------------------|    0.0 B/138.0 B   
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    downloading    |[32m[0m--------------------------------------|    0.0 B/139.0 B   
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m[0m--------------------------------------|    0.0 B/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    downloading    |[32m[0m--------------------------------------|    0.0 B/140.0 B   
+elapsed: 1.6 s                                                                    total:  1.6 Ki (1004.0 B/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m[0m--------------------------------------|    0.0 B/1.5 GiB   
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    downloading    |[32m[0m--------------------------------------|    0.0 B/138.0 B   
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    downloading    |[32m[0m--------------------------------------|    0.0 B/139.0 B   
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m[0m--------------------------------------|    0.0 B/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    downloading    |[32m[0m--------------------------------------|    0.0 B/140.0 B   
+elapsed: 1.7 s                                                                    total:  1.6 Ki (945.0 B/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m[0m--------------------------------------| 13.0 MiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m[0m--------------------------------------|  5.0 MiB/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 1.9 s                                                                    total:  18.0 M (9.5 MiB/s)                                       
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m[0m--------------------------------------| 27.0 MiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m[0m--------------------------------------| 20.0 MiB/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 2.0 s                                                                    total:  47.0 M (23.5 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+[0m-------------------------------------| 42.0 MiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+[0m-------------------------------------| 34.0 MiB/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 2.1 s                                                                    total:  76.0 M (36.2 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+[0m-------------------------------------| 56.0 MiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+[0m-------------------------------------| 49.0 MiB/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 2.2 s                                                                    total:  105.0  (47.7 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+[0m-------------------------------------| 69.0 MiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m++[0m------------------------------------| 63.0 MiB/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 2.3 s                                                                    total:  132.0  (57.3 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++[0m------------------------------------| 82.0 MiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+++[0m-----------------------------------| 77.0 MiB/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 2.4 s                                                                    total:  159.0  (66.2 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++[0m----------------------------------| 161.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m++++++[0m--------------------------------| 157.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 3.0 s                                                                    total:  318.0  (106.0 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++[0m---------------------------------| 236.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+++++++++++[0m---------------------------| 297.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 4.0 s                                                                    total:  533.0  (133.2 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++[0m------------------------------| 324.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+++++++++++++++++[0m---------------------| 431.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 5.0 s                                                                    total:  755.0  (151.0 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++[0m----------------------------| 418.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m++++++++++++++++++++++[0m----------------| 557.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 6.0 s                                                                    total:  975.0  (162.5 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++[0m-------------------------| 537.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+++++++++++++++++++++++++++[0m-----------| 685.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 7.0 s                                                                    total:  1.2 Gi (174.5 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++[0m-----------------------| 624.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m++++++++++++++++++++++++++++++++[0m------| 804.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 8.0 s                                                                    total:  1.4 Gi (178.5 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++[0m----------------------| 667.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m+++++++++++++++++++++++++++++++++++++[0m-| 935.0 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 9.0 s                                                                    total:  1.6 Gi (178.0 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++++[0m---------------------| 696.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m++++++++++++++++++++++++++++++++++++++[0m| 941.8 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 10.0s                                                                    total:  1.6 Gi (163.8 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++++[0m--------------------| 724.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    downloading    |[32m++++++++++++++++++++++++++++++++++++++[0m| 941.8 Mi/941.8 MiB 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 11.0s                                                                    total:  1.6 Gi (151.4 MiB/s)                                     
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++++++[0m-------------------| 764.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 12.0s                                                                    total:  764.0  (63.7 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++++++++[0m-----------------| 856.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 13.0s                                                                    total:  856.0  (65.8 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++++++++++[0m--------------| 971.0 Mi/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 14.0s                                                                    total:  971.0  (69.4 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++++++++++++++[0m-----------|  1.1 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 15.0s                                                                    total:  1.1 Gi (73.5 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++++++++++++++++++[0m-------|  1.2 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 16.0s                                                                    total:  1.2 Gi (77.4 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m+++++++++++++++++++++++++++++++++[0m-----|  1.3 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 17.0s                                                                    total:  1.3 Gi (78.6 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++++++++++++++++++++++[0m--|  1.4 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 18.1s                                                                    total:  1.4 Gi (80.8 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++++++++++++++++++++++++[0m|  1.5 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 18.6s                                                                    total:  1.5 Gi (80.7 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++++++++++++++++++++++++[0m|  1.5 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 18.7s                                                                    total:  1.5 Gi (80.2 MiB/s)                                      
+localhost:5098/t73/raw:2:                                                         resolved       |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+manifest-sha256:9b7ee906936a2f968edfb9929ddea1d0d834ca83b0765ecd9c965a094a18a5b3: done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+config-sha256:c5d796db4ff98f926111035cbccd0622b93b396c32932b75f4f5ab7be94b6b9f:   done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:a171f301df7b8d27e72eb53099ab1a7b548ec5b3ac8baf546ea16d2fa64c46aa:    downloading    |[32m++++++++++++++++++++++++++++++++++++++[0m|  1.5 GiB/1.5 GiB 
+layer-sha256:7cca94b583da72b5f46957c9713e3b75e64f37d0f6201d0c2f805fe6f6f89494:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:13ed291811edc4e04cc4719edf94a71dab8fdf77b4c9bc5b614be635adeb09c4:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+layer-sha256:2ef5388bbdeb62d3ec42e5ece9a1547a15d206a794d7b5e41c245af7249e4e2d:    waiting        |[32m[0m--------------------------------------| 
+layer-sha256:9250fc1e012caebd10d2bf1d40b1b5dd879b8c3b0f03483b77b16e2eeaecfb42:    done           |[32m++++++++++++++++++++++++++++++++++++++[0m| 
+elapsed: 18.8s                                                                    total:  1.5 Gi (79.8 MiB/s)                                      

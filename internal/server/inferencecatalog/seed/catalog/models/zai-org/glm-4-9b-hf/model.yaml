@@ -1,0 +1,58 @@
+model_id: zai-org/glm-4-9b-hf
+source: upstream
+display_title: GLM-4-9B
+parameter_count: 9B
+architecture: dense
+context_length: 8192
+release_date: '2025-01-16'
+model_config: {model_type: glm, num_hidden_layers: 40, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 2, head_dim: 128, max_position_embeddings: 8192}
+kv_bytes_per_token:
+  vllm: 40960
+  sglang: 40960
+specs:
+- name: bf16-vllm-ppu-b44e98fc
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/glm-4-9b-hf
+        revision: b44e98fcc8df0faba03a48b405356af6b91821e7
+    - modelscope:
+        repo_id: ZhipuAI/glm-4-9b-hf
+        revision: 6f58a24ed236c60a6056f37d4993de4a668e4863
+  weight_bytes: 18799953696
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  args: [--trust-remote-code, --enforce-eager]
+  api:
+    health_endpoint: /health
+    operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/glm-4-9b-hf
+        revision: b44e98fcc8df0faba03a48b405356af6b91821e7
+    - modelscope:
+        repo_id: ZhipuAI/glm-4-9b-hf
+        revision: 6f58a24ed236c60a6056f37d4993de4a668e4863
+  weight_bytes: 18819980493
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

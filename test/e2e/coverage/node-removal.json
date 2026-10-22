@@ -1,0 +1,27 @@
+{
+  "contract_id": "gpuworks/node/removal-with-explicit-force",
+  "name": "节点删除 / 卸载失败保留记录，用户显式强制移除后刷新消失",
+  "test_file": "test/e2e/node_removal.py",
+  "test_function": "test_node_removal",
+  "command": "python3 test/e2e/node_removal.py --server-bin ./bin/gpuworks --locale en",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "fixture": "isolated server/SQLite, unique pending node, real Chromium; no management mocks",
+  "fields": [{"field_id": "node.delete.force", "component": "Checkbox", "default": false,
+    "request": "force=true query only when selected; otherwise omitted", "persistence": "not persisted: request option",
+    "covered": ["default false", "keyboard off/on/off/on", "warning visibility", "exact query and response"]}],
+  "crud": {"create": "fixture only", "read": "GET and reload after failure and deletion", "update": "out of scope", "delete": "cancel, normal rejection, explicit force success"},
+  "checklist_items": {
+    "covered_in_this_scenario": ["6.2", "6.4", "6.5", "12.1"],
+    "partial": {"6.1": "default and accessible label; loading/disabled tested by RTL",
+      "12.2": "dialog and submit within 1440x900 viewport", "12.4": "Esc only",
+      "12.6": "failure recovery and persistence; loading barrier covered by RTL",
+      "12.7": "name/impact, failure retains node; busy-node rejection covered by Go API tests"}
+  },
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "execution_evidence": {"status": "N/A", "reason": "force removal touches management records only; pending node fixture has no running agent"},
+  "missing": ["browser normal SSH success (separate Go process/container tests)", "real macOS/systemd host", "full focus and closure matrix", "browser loading barrier"],
+  "result": "NOT_RUN until a matching run report records PASS",
+  "artifact": "secrets/e2e/<runId>/report.json and redacted trace",
+  "cleanup": "tested UI action removes the node; only the owned server stops; private fixture files retained for diagnosis"
+}

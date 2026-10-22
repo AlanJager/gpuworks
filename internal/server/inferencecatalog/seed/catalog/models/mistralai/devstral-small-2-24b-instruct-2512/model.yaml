@@ -1,0 +1,37 @@
+model_id: mistralai/devstral-small-2-24b-instruct-2512
+source: upstream
+display_title: Devstral Small 2 24b Instruct 2512
+release_date: '2025-11-28'
+model_config: {model_type: mistral3, num_hidden_layers: 40, hidden_size: 5120, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 393216, vision_config: {image_size: 1540, patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 163840
+  sglang: 163840
+specs:
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: mistralai/Devstral-Small-2-24B-Instruct-2512
+        revision: 55c5b41e98c2dbd21b0c8afffc540dcfc9eb5128
+    - modelscope:
+        repo_id: mistralai/Devstral-Small-2-24B-Instruct-2512
+        revision: e3f708cffcacee561baf07d7e9f70f978d3da5ad
+  weight_bytes: 51620249351
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

@@ -1,0 +1,301 @@
+{
+  "scope": "Targeted contracts; not whole page or site coverage",
+  "test_file": "test/e2e/network_storage_lifecycle.py",
+  "command": "python3 test/e2e/network_storage_lifecycle.py",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "cases": [
+    {
+      "case_id": "network",
+      "additional_cases": [{"manifest": "test/e2e/coverage/network-type-roles.json", "scope": "Three types, all 15 valid nonempty role combinations, and Ethernet to each RDMA and back conditional-field definitions; legacy case gaps below remain scoped to this case"}],
+      "contract_id": "gpuworks/network/ethernet-resource-lifecycle",
+      "resource": "Ethernet network definition",
+      "test_function": "test_network_lifecycle",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ],
+      "crud": {
+        "Create": "covered for this unreferenced resource definition only",
+        "Read": "covered for this unreferenced resource definition only",
+        "Update": "covered for this unreferenced resource definition only",
+        "Delete": "covered for this unreferenced resource definition only"
+      },
+      "fields": [
+        {
+          "id": "name",
+          "component": "Text",
+          "required": true,
+          "default": "",
+          "request": "name",
+          "persisted": "name",
+          "contract": "trim; nonempty; UI maxLength 64",
+          "covered": [
+            "empty",
+            "whitespace",
+            "create",
+            "A→B"
+          ],
+          "missing": [
+            "length boundaries"
+          ]
+        },
+        {
+          "id": "description",
+          "component": "Text",
+          "required": false,
+          "default": "",
+          "request": "description",
+          "persisted": "description",
+          "covered": [
+            "value→empty"
+          ],
+          "missing": [
+            "maxLength 256 boundaries"
+          ]
+        },
+        {
+          "id": "roles",
+          "component": "Checkbox group",
+          "required": true,
+          "default": [],
+          "request": "roles",
+          "persisted": "roles",
+          "covered": [
+            "empty rejected",
+            "serving"
+          ],
+          "missing": [
+            "storage_sync",
+            "compute",
+            "MISSING: role combinations from server type_roles; selecting an incompatible type removes and disables disallowed roles, with exact saved roles and switching-back behavior"
+          ]
+        },
+        {
+          "id": "type",
+          "component": "Radio",
+          "default": "host_ethernet",
+          "request": "type",
+          "persisted": "type",
+          "covered": [
+            "host_ethernet"
+          ],
+          "missing": [
+            "host_rdma",
+            "accelerator_rdma"
+          ]
+        },
+        {
+          "id": "cidr",
+          "component": "Text",
+          "default": "",
+          "request": "cidr",
+          "persisted": "cidr",
+          "covered": [
+            "valid IPv4 CIDR A→B"
+          ],
+          "missing": [
+            "invalid",
+            "IPv6",
+            "empty",
+            "MISSING: RDMA advanced bootstrap-CIDR disclosure, edit auto-expansion for a saved CIDR, and CIDR preservation across type changes"
+          ]
+        },
+        {
+          "id": "interface",
+          "component": "Text",
+          "default": "",
+          "request": "interface",
+          "persisted": "interface",
+          "covered": [
+            "glob value→empty"
+          ],
+          "missing": [
+            "all pattern boundaries",
+            "MISSING: host_ethernet to each RDMA type hides interface and submits an empty value; switching back follows the retained/reset value contract"
+          ]
+        }
+      ],
+      "checklist_items": {
+        "1": "PARTIAL: validation, cancel, create/update and refresh",
+        "10": "PARTIAL: owned row and deletion; no full list matrix",
+        "12": "PARTIAL: named dialog, viewport, cancel/Esc, focus return; no complete keyboard/style matrix"
+      },
+      "runtime": {
+        "status": "N/A for resource registration contract",
+        "reason": "No attached agent/node; actual execution and filesystem/network effects are separate missing contracts"
+      },
+      "missing": [
+        "node/label attachment and selector resolution",
+        "RDMA/accelerator options",
+        "traffic and connectivity",
+        "referenced deletion",
+        "server failure recovery",
+        "permissions",
+        "10/30/100 records and pagination",
+        "all field boundaries"
+      ],
+      "name": "网络 / UI 创建并编辑未绑定的以太网定义 / 刷新持久化、可选字段清空且删除后不可读",
+      "product_contracts": [
+        "docs/reference/api.md",
+        "docs/reference/web-ui-tour.md",
+        "ui/src/pages/networks/NetworkFormModal.tsx",
+        "internal/server/api/networks.go"
+      ]
+    },
+    {
+      "case_id": "storage",
+      "contract_id": "gpuworks/storage/local-resource-lifecycle",
+      "resource": "Local storage definition",
+      "test_function": "test_storage_lifecycle",
+      "required_evidence": [
+        "ui",
+        "request",
+        "persistence",
+        "cleanup"
+      ],
+      "crud": {
+        "Create": "covered for this unreferenced resource definition only",
+        "Read": "covered for this unreferenced resource definition only",
+        "Update": "covered for this unreferenced resource definition only",
+        "Delete": "covered for this unreferenced resource definition only"
+      },
+      "fields": [
+        {
+          "id": "type",
+          "component": "Radio",
+          "default": "local",
+          "request": "type",
+          "persisted": "type",
+          "covered": [
+            "local default"
+          ],
+          "missing": [
+            "nfs",
+            "nfs_cache",
+            "shared_dir"
+          ]
+        },
+        {
+          "id": "name",
+          "component": "Text",
+          "required": true,
+          "default": "",
+          "request": "name",
+          "persisted": "name",
+          "contract": "trim; 1..63 lowercase letters/digits/hyphens, starts letter/digit",
+          "covered": [
+            "empty",
+            "whitespace",
+            "invalid characters",
+            "trim",
+            "A→B"
+          ],
+          "missing": [
+            "length boundaries"
+          ]
+        },
+        {
+          "id": "path",
+          "component": "Path",
+          "required": true,
+          "default": "",
+          "request": "path",
+          "persisted": "path",
+          "contract": "absolute path below the server's storage_probe_roots (the isolated server allows only private/storage)",
+          "covered": [
+            "relative rejected",
+            "trim",
+            "A→B"
+          ],
+          "missing": [
+            "node accessibility",
+            "server refusal of a path outside storage_probe_roots (storage-local.json covers it on create only)"
+          ]
+        },
+        {
+          "id": "scope",
+          "component": "Radio/resource selector",
+          "default": "all",
+          "request": "all_nodes/targets",
+          "persisted": "all_nodes/targets",
+          "covered": [
+            "all_nodes=true, targets=[]"
+          ],
+          "missing": [
+            "label",
+            "selected nodes",
+            "overrides",
+            "MISSING: conditional mixed option for an existing all_nodes/label/node target combination; UI edit must preserve each target and override",
+            "MISSING: all/labels/nodes/mixed switch-back and hidden-target submission rules; mixed all_nodes checkbox in both directions",
+            "MISSING: label add/remove and empty-key filtering; node multi-select search, add/remove and already-selected name preservation"
+          ]
+        },
+        {
+          "id": "enabled",
+          "component": "Switch",
+          "default": true,
+          "request": "enabled",
+          "persisted": "enabled",
+          "covered": [
+            "true→false→true and refreshed checked state"
+          ],
+          "missing": [
+            "runtime write denial"
+          ]
+        },
+        {"id": "export", "component": "Conditional Text", "request": "export on NFS creation; omitted from edit PATCH", "persisted": "export", "covered": [], "missing": ["MISSING: nfs/nfs_cache export format/whitespace validation, edit disabled value, and omission after switching to local/shared_dir"]},
+        {"id": "mount-options", "component": "Conditional Text", "request": "mount_options for NFS types", "persisted": "mount_options", "covered": [], "missing": ["MISSING: nonempty/empty defaults and clearing on edit; hidden-type omission and switch-back behavior"]},
+        {"id": "cache-path", "component": "Conditional Path", "request": "cache_path for nfs_cache", "persisted": "cache_path", "covered": [], "missing": ["MISSING: empty server default, absolute/relative paths, clear on edit, per-node cache_path override and hidden-type omission"]},
+        {"id": "cache-limit", "component": "Conditional InputNumber", "request": "cache_max_bytes", "persisted": "cache_max_bytes", "unit": "GiB in UI; integer bytes on wire", "covered": [], "missing": ["MISSING: GiB to bytes rounding, null/0 unlimited, positive/fractional values and negative UI boundary; existing per-node cache_max_bytes survives unrelated edits"]},
+        {"id": "existing-mount", "component": "Conditional Checkbox per selected node", "request": "targets[].existing and probe existing for the selected probe node", "persisted": "targets[].existing", "covered": [], "missing": ["MISSING: true/false, NFS-only submission and switching type; compare probe target/override with saved target"]},
+        {"id": "probe", "component": "Button and conditional result panel", "request": "POST /api/v1/storages/probe from type/export/path/mount options/selected probe node", "persisted": "N/A: transient result gates shared-storage creation", "covered": [], "missing": ["MISSING: probe required before shared create; changes to probe-signature inputs invalidate the prior result and block save until reprobed", "MISSING: readable-only result changes save action and enabled=false; request failure/retry and stale async responses after close/reopen", "MISSING: per-type field omission/defaults and probe node/path override request assertions; real mount/read/write evidence remains in the separate runtime gap"]}
+      ],
+      "checklist_items": {
+        "1": "PARTIAL: validation, cancel, create/update and refresh",
+        "10": "PARTIAL: owned row and deletion; no full list matrix",
+        "12": "PARTIAL: named dialog, viewport, cancel/Esc, focus return; no complete keyboard/style matrix"
+      },
+      "runtime": {
+        "status": "N/A for resource registration contract",
+        "reason": "No attached agent/node; actual execution and filesystem/network effects are separate missing contracts"
+      },
+      "missing": [
+        "actual agent directory creation or mounts",
+        "NFS/shared storage/probe",
+        "capacity and model files",
+        "scope binding",
+        "referenced deletion",
+        "failure recovery",
+        "permissions",
+        "10/30/100 records and pagination",
+        "all field boundaries"
+      ],
+      "name": "存储 / UI 登记并编辑本地存储定义 / 刷新保留路径与启停状态且删除后不可读",
+      "product_contracts": [
+        "docs/reference/api.md",
+        "docs/reference/web-ui-tour.md",
+        "ui/src/pages/storage/storageForm.ts",
+        "internal/server/api/storages.go"
+      ],
+      "phase0_regression": {
+        "defect": "Closing unmounted the modal before focus restoration; retained modal needed stale-request isolation; delete tooltip could obscure confirmation actions",
+        "fix": [
+          "ui/src/pages/StoragePage.tsx",
+          "ui/src/pages/storage/StorageDetailPage.tsx",
+          "ui/src/pages/storage/StorageFormModal.tsx",
+          "ui/src/pages/storage/StorageDeleteButton.tsx"
+        ],
+        "tests": [
+          "ui/tests/storagePage.test.tsx",
+          "ui/tests/storageDetailPage.test.tsx",
+          "ui/tests/storageFormModal.test.tsx",
+          "ui/tests/storageDeleteButton.test.tsx"
+        ],
+        "browser": "Cancel create returns to Add; Esc edit returns to Edit; confirmation Cancel is reachable with a normal pointer click"
+      }
+    }
+  ]
+}

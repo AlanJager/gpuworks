@@ -1,0 +1,333 @@
+model_id: tencent/hy3
+source: upstream
+display_title: Hy3
+parameter_count: 295B
+architecture: moe
+context_length: 262144
+release_date: '2026-07-02'
+model_config: {model_type: hy_v3, num_hidden_layers: 80, hidden_size: 4096, num_attention_heads: 64, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 327680
+  sglang: 327680
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3
+        revision: a960ebc3da325ba167f069f76c41eb62c9280d22
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3
+        revision: 9fb66f1eef8e5471de49923e9c3c820dd666b804
+  weight_bytes: 597598708525
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3
+        revision: a960ebc3da325ba167f069f76c41eb62c9280d22
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3
+        revision: 9fb66f1eef8e5471de49923e9c3c820dd666b804
+  weight_bytes: 597598708525
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3
+        revision: a960ebc3da325ba167f069f76c41eb62c9280d22
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3
+        revision: 9fb66f1eef8e5471de49923e9c3c820dd666b804
+  weight_bytes: 597598708525
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-hopper
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3
+        revision: a960ebc3da325ba167f069f76c41eb62c9280d22
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3
+        revision: 9fb66f1eef8e5471de49923e9c3c820dd666b804
+  weight_bytes: 597598708525
+  gpus:
+    vendor: nvidia
+    cc: '9.0'
+    display_target: hopper
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3-FP8
+        revision: ecc1d8e194e093f33177f2f0ef7ce8f397b2d68b
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3-FP8
+        revision: c5625dc1ce664986f663b3381a63cbabaa5d8383
+  weight_bytes: 299918936567
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - auto
+  - --tool-call-parser
+  - auto
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3-FP8
+        revision: ecc1d8e194e093f33177f2f0ef7ce8f397b2d68b
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3-FP8
+        revision: c5625dc1ce664986f663b3381a63cbabaa5d8383
+  weight_bytes: 299918936567
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3-FP8
+        revision: ecc1d8e194e093f33177f2f0ef7ce8f397b2d68b
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3-FP8
+        revision: c5625dc1ce664986f663b3381a63cbabaa5d8383
+  weight_bytes: 299918936567
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-hopper
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: tencent/Hy3-FP8
+        revision: ecc1d8e194e093f33177f2f0ef7ce8f397b2d68b
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hy3-FP8
+        revision: c5625dc1ce664986f663b3381a63cbabaa5d8383
+  weight_bytes: 299918936567
+  gpus:
+    vendor: nvidia
+    cc: '9.0'
+    display_target: hopper
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/Hy3-NVFP4-FP8
+        revision: f2d0ca3f3ccc0203a5c8c3864c5e910c88e079b0
+    - modelscope:
+        repo_id: RedHatAI/Hy3-NVFP4-FP8
+        revision: 97954cc95826780b3749f988a408be4256db3f38
+  weight_bytes: 177669576239
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  env:
+    VLLM_FLASHINFER_ALLREDUCE_BACKEND: trtllm
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: RedHatAI/Hy3-NVFP4-FP8
+        revision: f2d0ca3f3ccc0203a5c8c3864c5e910c88e079b0
+    - modelscope:
+        repo_id: RedHatAI/Hy3-NVFP4-FP8
+        revision: 97954cc95826780b3749f988a408be4256db3f38
+  weight_bytes: 177669576239
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --tool-call-parser
+  - hy_v3
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - hy_v3
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

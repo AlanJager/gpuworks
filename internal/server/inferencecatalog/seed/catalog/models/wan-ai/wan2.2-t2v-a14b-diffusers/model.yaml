@@ -1,0 +1,99 @@
+model_id: wan-ai/wan2.2-t2v-a14b-diffusers
+source: upstream
+display_title: Wan2.2
+parameter_count: 28B
+architecture: moe
+release_date: '2025-07-28'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+        revision: 5be7df9619b54f4e2667b2755bc6a756675b5cd7
+    - modelscope:
+        repo_id: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+        revision: 30fe580f54530764ae038ddbd23938f0d032b51d
+  weight_bytes: 126200628126
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-vllm-ppu-5be7df96
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+        revision: 5be7df9619b54f4e2667b2755bc6a756675b5cd7
+    - modelscope:
+        repo_id: Wan-AI/Wan2.2-T2V-A14B-Diffusers
+        revision: 30fe580f54530764ae038ddbd23938f0d032b51d
+  weight_bytes: 126177598620
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --omni
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"PPU profile requires exactly 2 GPUs\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"PP_SIZE\": 1, \"SP_DEGREE\"\
+      : 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+input_modalities: [text, image]

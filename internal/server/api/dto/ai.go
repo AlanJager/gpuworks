@@ -1,0 +1,114 @@
+package dto
+
+// AIAskRequest is POST /api/v1/ai/ask: a task about a subject named by
+// reference - instance_uuid for instance.diagnose, model_id for model.fit,
+// deployment_id for deployment.unscheduled, node_uuid for node.health - and
+// the server gathers its context itself. Task "ask" is a free question,
+// about at most one subject when one is named. A follow-up carries the
+// thread's earlier turns in history.
+type AIAskRequest struct {
+	Task         string      `json:"task"`
+	InstanceUUID string      `json:"instance_uuid,omitempty"`
+	ModelID      uint        `json:"model_id,omitempty"`
+	DeploymentID uint        `json:"deployment_id,omitempty"`
+	NodeUUID     string      `json:"node_uuid,omitempty"`
+	Question     string      `json:"question,omitempty"`
+	History      []AIMessage `json:"history,omitempty"`
+	Locale       string      `json:"locale,omitempty"`
+}
+
+// AIMessage is one earlier turn of a thread.
+type AIMessage struct {
+	Role    string `json:"role"` // user | assistant
+	Content string `json:"content"`
+}
+
+// AIAnswer is the answer and how the model reached it: every tool it called,
+// the LLM round trips and the tokens they cost.
+type AIAnswer struct {
+	Answer string   `json:"answer"`
+	Steps  []AIStep `json:"steps"`
+	Calls  int      `json:"calls"`
+	Usage  AIUsage  `json:"usage"`
+}
+
+type AIStep struct {
+	Tool  string `json:"tool"`
+	Args  string `json:"args"`
+	MS    int64  `json:"ms"`
+	Error string `json:"error,omitempty"`
+}
+
+type AIUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+}
+
+// AIFinding is one known failure an instance's logs match, as GET
+// /api/v1/ai/instances/{uuid}/findings lists them. code is stable; the
+// client renders its title and suggested fix.
+type AIFinding struct {
+	Code     string       `json:"code"`
+	Evidence []AIEvidence `json:"evidence"`
+}
+
+type AIEvidence struct {
+	Line string `json:"line"`
+}
+
+// AIModelFit is GET /api/v1/ai/models/{id}/fit: the physical fit of a model
+// on each accelerator type of the online fleet (not what is free now).
+type AIModelFit struct {
+	ModelID     uint       `json:"model_id"`
+	WeightBytes int64      `json:"weight_bytes"`
+	Dtype       string     `json:"dtype,omitempty"`
+	GPUMemUtil  float64    `json:"gpu_memory_utilization"`
+	Rows        []AIFitRow `json:"rows"`
+}
+
+type AIFitRow struct {
+	Vendor          string `json:"vendor"`
+	Name            string `json:"name"`
+	MemoryBytes     int64  `json:"memory_bytes"`
+	Nodes           int    `json:"nodes"`
+	Cards           int    `json:"cards"`
+	Unusable        int    `json:"unusable"`
+	MaxCardsPerNode int    `json:"max_cards_per_node"`
+	DtypeSupported  bool   `json:"dtype_supported"`
+	DtypeNote       string `json:"dtype_note,omitempty"`
+	FastLinkCards   int    `json:"fast_link_cards"`
+	Fits            bool   `json:"fits"`
+	TP              int    `json:"tp"`
+	PerGPUBytes     int64  `json:"per_gpu_bytes"`
+	UsableBytes     int64  `json:"usable_bytes"`
+	HeadroomBytes   int64  `json:"headroom_bytes"`
+}
+
+// The streamed form of /ai/ask (Accept: text/event-stream) sends these as SSE
+// events: "step" for each tool call as it starts and ends, "text" and
+// "reasoning" deltas, then one "done" or "error" event. ": ping" comments keep
+// idle proxies from closing the stream.
+
+// AIStreamStep is a "step" event. id ties a tool call's running and finished
+// events together.
+type AIStreamStep struct {
+	ID     int    `json:"id"`
+	Tool   string `json:"tool"`
+	Args   string `json:"args"`
+	Status string `json:"status"` // running | done | error
+	MS     int64  `json:"ms"`
+	Error  string `json:"error,omitempty"`
+}
+
+// AIStreamDelta is a "text" or "reasoning" event.
+type AIStreamDelta struct {
+	Delta string `json:"delta"`
+}
+
+// AIStreamDone is the "done" event.
+type AIStreamDone struct {
+	Calls       int     `json:"calls"`
+	Usage       AIUsage `json:"usage"`
+	FirstTextMS int64   `json:"first_text_ms"`
+	TotalMS     int64   `json:"total_ms"`
+}

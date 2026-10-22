@@ -1,0 +1,13 @@
+[Unit]
+Description=Load the NVIDIA kernel modules this GPU supports (open, else proprietary)
+DefaultDependencies=no
+After=local-fs.target systemd-udevd.service systemd-modules-load.service
+Before=nvidia-persistenced.service containerd.service docker.service gpuworks-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/gpuworks-nvidia-kmod
+
+[Install]
+WantedBy=multi-user.target

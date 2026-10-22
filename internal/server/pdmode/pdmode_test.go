@@ -1,0 +1,92 @@
+package pdmode
+
+import "testing"
+
+func TestVLLMNixlDeclaration(t *testing.T) {
+	mode, ok := Lookup("vllm-nixl")
+	if !ok {
+		t.Fatal("vllm-nixl missing")
+	}
+	if mode.Roles[0] != RoleDecode || !mode.HasRole(RolePrefill) || mode.HasRole("encode") {
+		t.Fatalf("roles = %v", mode.Roles)
+	}
+	if mode.ConnectorRole(RolePrefill) != "kv_producer" || mode.ConnectorRole(RoleDecode) != "kv_consumer" {
+		t.Fatalf("connector roles = %v", mode.ConnectorRoles)
+	}
+	if !mode.TwoStage("/v1/chat/completions") || !mode.TwoStage("/v1/completions") || mode.TwoStage("/v1/embeddings") {
+		t.Fatal("two-stage paths wrong")
+	}
+	if mode.TransferMetricsRole != RoleDecode {
+		t.Fatal("NIXL transfer counters live on the decoder")
+	}
+	if !mode.SupportsVendor("nvidia") || mode.SupportsVendor("ascend") {
+		t.Fatal("vendor list wrong")
+	}
+}
+
+func TestCheckTP(t *testing.T) {
+	nixl, _ := Lookup("vllm-nixl")
+	for _, c := range []struct {
+		p, d int
+		ok   bool
+	}{{1, 1, true}, {1, 4, true}, {4, 2, false}} {
+		if err := nixl.CheckTP(c.p, c.d); (err == nil) != c.ok {
+			t.Fatalf("CheckTP(%d,%d) = %v", c.p, c.d, err)
+		}
+	}
+	equal := Mode{Name: "x", TP: TPEqual}
+	if equal.CheckTP(2, 2) != nil || equal.CheckTP(2, 4) == nil {
+		t.Fatal("equal rule")
+	}
+}
+
+func TestSideChannelPortsAndValues(t *testing.T) {
+	nixl, _ := Lookup("vllm-nixl")
+	if nixl.ExtraPorts(RolePrefill, 0) != 1 || nixl.ExtraPorts(RoleDecode, 4) != 4 {
+		t.Fatal("side channel block")
+	}
+	sglang, ok := Lookup("sglang-nixl")
+	if !ok || sglang.ExtraPorts(RolePrefill, 4) != 1 || sglang.ExtraPorts(RoleDecode, 4) != 0 {
+		t.Fatalf("sglang ports: %+v", sglang)
+	}
+	if sglang.DecodeServesAlone || sglang.MayBeEmpty(RolePrefill) || !nixl.DecodeServesAlone || sglang.Wire != WireConcurrent {
+		t.Fatal("sglang has no decode-only path")
+	}
+	// Each mode states its own policy values and defaults.
+	if !nixl.ValidFallback("") || !nixl.ValidFallback(FallbackDecode) || !nixl.ValidFallback(FallbackFail) || nixl.ValidFallback("drop") {
+		t.Fatal("vllm-nixl fallback values")
+	}
+	if nixl.EffectiveFallback("") != FallbackDecode || nixl.EffectiveFallback(FallbackFail) != FallbackFail {
+		t.Fatal("vllm-nixl falls back to its decoder by default")
+	}
+	// A decoder that cannot serve alone has nothing to fall back to.
+	if sglang.ValidFallback(FallbackDecode) || !sglang.ValidFallback(FallbackFail) || sglang.EffectiveFallback("") != FallbackFail {
+		t.Fatalf("sglang fallbacks = %v", sglang.Fallbacks())
+	}
+	if !nixl.ValidKVLoadFailure(KVLoadRecompute) || nixl.ValidKVLoadFailure("retry") || nixl.EffectiveKVLoadFailure("") != KVLoadFail {
+		t.Fatal("vllm-nixl kv load failure values")
+	}
+	// SGLang has no KV load failure setting at all.
+	if sglang.ValidKVLoadFailure(KVLoadFail) || !sglang.ValidKVLoadFailure("") || sglang.EffectiveKVLoadFailure("") != "" {
+		t.Fatal("sglang kv load failure values")
+	}
+	if got := ForEngine("vllm"); len(got) != 2 || got[0] != "vllm-ascend-mooncake" || got[1] != "vllm-nixl" {
+		t.Fatalf("ForEngine = %v", got)
+	}
+	if got := ForEngine("sglang"); len(got) != 1 || got[0] != "sglang-nixl" {
+		t.Fatalf("sglang modes = %v", got)
+	}
+}
+
+func TestAscendMooncakeDeclaration(t *testing.T) {
+	mode, ok := Lookup("vllm-ascend-mooncake")
+	if !ok || !mode.SupportsVendor("ascend") || mode.SupportsVendor("nvidia") || mode.Unverified {
+		t.Fatalf("mode = %+v", mode)
+	}
+	if mode.CheckTP(4, 1) != nil || mode.CheckTP(1, 4) == nil {
+		t.Fatal("Mooncake needs prefill TP >= decode TP")
+	}
+	if mode.Connector != "MooncakeConnectorV1" || mode.ExtraPorts(RoleDecode, 2) != 2 || mode.Transport != "hccl" {
+		t.Fatalf("mode = %+v", mode)
+	}
+}

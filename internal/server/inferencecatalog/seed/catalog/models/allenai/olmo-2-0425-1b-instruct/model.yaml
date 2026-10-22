@@ -1,0 +1,54 @@
+model_id: allenai/OLMo-2-0425-1B-Instruct
+source: upstream
+display_title: OLMo-2-0425-1B-Instruct
+model_config:
+  model_type: olmo2
+  num_hidden_layers: 32
+  hidden_size: 4096
+  num_attention_heads: 32
+  num_key_value_heads: 32
+  max_position_embeddings: 4096
+kv_bytes_per_token:
+  vllm: 524288
+  sglang: 524288
+specs:
+- name: bf16-vllm-ppu-48d788ec
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: allenai/OLMo-2-0425-1B-Instruct
+        revision: 48d788eca847d4d7548f375ad03d3c9312f6139e
+    - modelscope:
+        repo_id: allenai/OLMo-2-0425-1B-Instruct
+        revision: 510f5cde5bd2ff97971465da731c04b998a4592f
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '4096'
+  - --max-num-seqs
+  - '8'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 2969854224
+input_modalities:
+- text

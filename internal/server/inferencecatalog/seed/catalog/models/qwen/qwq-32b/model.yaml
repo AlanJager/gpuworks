@@ -1,0 +1,54 @@
+model_id: qwen/qwq-32b
+source: upstream
+display_title: qwq-32b
+parameter_count: 32763876352
+architecture: Qwen2ForCausalLM
+context_length: 40960
+release_date: '2025-03-05'
+model_config: {model_type: qwen2, num_hidden_layers: 64, hidden_size: 5120, num_attention_heads: 40, num_key_value_heads: 8, max_position_embeddings: 40960, sliding_window: 32768}
+kv_bytes_per_token:
+  vllm: 262144
+  sglang: 262144
+specs:
+- name: int8-sglang-ascend-48738293
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: sgl-npu/QwQ-32B-W8A8
+        revision: 28ad6fabf7ab80385155c45ef035df5e24a44550
+  weight_bytes: 43443975837
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --attention-backend
+  - ascend
+  - --device
+  - npu
+  - --dtype
+  - bfloat16
+  - --quantization
+  - modelslim
+  - --reasoning-parser
+  - deepseek-r1
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

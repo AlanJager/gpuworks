@@ -1,0 +1,8 @@
+# DFlash2 speculative draft for GLM-5.3-Flash, mounted at /draft by the
+# TensorFold profiles of mia-ailab/glm-5.3-flash. A component only: no spec
+# of its own.
+model_id: incoai/glm-5.3-flash-dflash2
+source: upstream
+display_title: GLM-5.3-Flash DFlash2 draft component
+input_modalities: [text]
+specs: []

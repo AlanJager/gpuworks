@@ -1,0 +1,44 @@
+{
+  "breadcrumb": { "services": "推理服务", "templates": "推理模板" },
+  "page": { "title": "推理模板", "loadFailed": "推理模板加载失败：{{detail}}" },
+  "organization": { "other": "其他", "title": "模型组织", "aria": "模型组织" },
+  "models": { "view": "查看 {{title}}", "count": "{{count}} 个模型" },
+  "chips": { "mine": "我的芯片", "add": "添加芯片", "selectToFilter": "选择后才筛选", "noOnlineNode": "暂无探测或假想芯片" },
+  "filters": { "all": "全部" },
+  "columns": { "model": "模型", "inputModalities": "输入模态", "weightVariants": "权重制品", "vendor": "GPU 厂商", "engine": "引擎" },
+  "vendor": { "nvidia": "英伟达", "amd": "AMD", "ascend": "昇腾", "hygon": "海光", "ppu": "平头哥", "apple": "Apple", "hygonAlt": "海光" },
+  "displayProfile": { "general": "{{target}} 通用档位", "compatible": "{{target}} 兼容档位", "optimized": "{{target}} 优化档位" },
+  "displayTarget": { "nvidia": "NVIDIA", "ascend": "昇腾", "hygon": "海光", "turing": "Turing", "hopper": "Hopper", "blackwell": "Blackwell", "gb10": "GB10", "b200": "B200", "b300": "B300", "gb200": "GB200", "gb300": "GB300", "rtx_4090": "RTX 4090", "rtx_5090": "RTX 5090", "rtx_pro_5000": "RTX PRO 5000", "rtx_pro_6000": "RTX PRO 6000", "apple": "Apple 芯片" },
+  "scenario": { "general": "通用" },
+  "weightSources": { "title": "权重来源", "huggingface": "Hugging Face", "modelscope": "ModelScope" },
+  "flat": { "description": "浏览扁平目录中的可部署模型档位", "hypotheticalPrompt": "GPU 型号名称", "vendorPrompt": "GPU 厂商", "importTemplates": "导入模板", "importHint": "支持扁平 YAML，或带适配器资产与说明文档的 .gpuworks-catalog.tar.gz 模板包", "imported": "模板已导入", "overwritePrompt": "同名用户档位已存在，是否覆盖？{{detail}}", "overwritten": "同名用户档位已覆盖", "overwriteTitle": "覆盖同名用户档位？", "overwriteOk": "覆盖", "cancel": "取消", "search": "搜索模型或权重仓库", "modelCount": "{{count}} 个原始模型", "deployableCount": "{{count}} 个可部署档位", "selectedChip": "已选芯片：{{chip}}", "retry": "重试", "empty": "没有符合筛选条件的模型", "myTemplates": "我的模板", "saved": "模板已保存", "edit": "编辑", "context": "上下文", "specCount": "档位数", "specID": "档位标识", "builtInSource": "内置", "userSource": "用户", "details": "详情", "emptySpecs": "该引擎没有档位", "gpus": "适用 GPU", "sources": "下载源", "imageSources": "镜像来源", "commandPreview": "服务端命令预览", "editYAML": "编辑扁平 YAML", "save": "保存", "addHypothetical": "添加假想芯片", "chooseChip": "从静态硬件目录选择芯片", "add": "添加", "alternativeAvailable": "当前集群还有其他量化的可部署档位。" },
+  "editor": {
+    "reset": "重置",
+    "saveFailed": "保存失败",
+    "loadFailed": "无法读取模板 YAML：{{detail}}",
+    "line": "第 {{line}} 行",
+    "discardTitle": "放弃未保存的修改？",
+    "discardBody": "编辑器中的 YAML 与已保存模板不一致，关闭编辑器将丢弃这些修改。",
+    "discard": "放弃修改",
+    "keepEditing": "继续编辑",
+    "modelChangedTitle": "model_id 已变更",
+    "modelChangedBody": "YAML 的目标模型从「{{from}}」改成了「{{to}}」。保存将替换「{{to}}」的同名用户档位并覆盖其模型级字段，确定继续吗？",
+    "overwriteSave": "保存并覆盖",
+    "deleteSpec": "删除用户档位 {{name}}",
+    "deleteSpecTitle": "删除该用户档位？",
+    "deleteSpecBody": "将从模板中移除「{{name}}」，内置档位不受影响；删除最后一个用户档位会移除整个模板。",
+    "deleteSpecOk": "删除",
+    "specDeleted": "用户档位 {{name}} 已删除",
+    "modelDeleted": "最后一个用户档位已删除，模板 {{name}} 已移除"
+  },
+  "warnings": {
+    "title_one": "已导入，有 {{count}} 项需要确认",
+    "title_other": "已导入，有 {{count}} 项需要确认",
+    "CATALOG_CALLABLE_METRICS_UNDECLARED": "{{model_id}} 的档位“{{spec}}”使用 callable 引擎但没有声明 api.metrics：除非引擎的 /metrics 恰好使用 vLLM 或 SGLang 的指标名，监控中心不会有它的引擎指标。",
+    "CATALOG_HEALTH_ENDPOINT_UNDECLARED": "{{model_id}} 的档位“{{spec}}”使用 callable 引擎但没有声明 api.health_endpoint：就绪探测会使用默认的 /health。"
+  },
+  "detail": {
+    "operations": "推理能力", "inputModalities": "输入模态",
+    "sizePending": "体积待补充", "loadFailed": "推理模板详情加载失败：{{detail}}", "cloneFailed": "克隆失败：{{detail}}", "notFound": "没有找到该推理模板", "back": "返回列表", "clone": "克隆", "deploy": "部署", "modelID": "模型 ID", "engine": "引擎", "source": "模型信息来源", "vendorGroup": "{{vendor}} · {{count}} 个档位", "configuration": "运行配置", "usage": "使用说明", "instructions": "模型说明", "noInstructions": "该模型没有附带本地化使用说明", "noOperations": "该档位没有可用于试验场的接口", "openPlayground": "在试验场中打开"
+  }
+}

@@ -1,0 +1,87 @@
+model_id: stabilityai/stable-diffusion-3.5-medium
+source: upstream
+display_title: stable-diffusion-3.5-medium
+parameter_count: 2.5B
+architecture: dense
+release_date: '2024-10-29'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-default-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stabilityai/stable-diffusion-3.5-medium
+        revision: b940f670f0eda2d07fbb75229e779da1ad11eb80
+    - modelscope:
+        repo_id: stabilityai/stable-diffusion-3.5-medium
+        revision: fe81289a07ee5ebe2410fa7bcf275cb6910145a5
+  weight_bytes: 48861581303
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+- name: bf16-vllm-ppu-b940f670
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stabilityai/stable-diffusion-3.5-medium
+        revision: b940f670f0eda2d07fbb75229e779da1ad11eb80
+    - modelscope:
+        repo_id: stabilityai/stable-diffusion-3.5-medium
+        revision: fe81289a07ee5ebe2410fa7bcf275cb6910145a5
+  weight_bytes: 5107104286
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+input_modalities: [text]

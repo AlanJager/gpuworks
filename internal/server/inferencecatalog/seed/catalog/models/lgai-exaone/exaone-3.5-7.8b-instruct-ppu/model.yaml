@@ -1,0 +1,55 @@
+model_id: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-ppu
+source: upstream
+display_title: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct PPU alias
+model_config:
+  model_type: exaone
+  num_hidden_layers: 32
+  hidden_size: 4096
+  num_attention_heads: 32
+  num_key_value_heads: 8
+  head_dim: 128
+  max_position_embeddings: 32768
+kv_bytes_per_token:
+  vllm: 131072
+  sglang: 131072
+specs:
+- name: bf16-vllm-ppu-553ea250-alias
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct
+        revision: 553ea250b9a5317231459279d5847d6cf955b9aa
+    - modelscope:
+        repo_id: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct
+        revision: 761647b6b9af7c5a7073bd7940ec603fea935a13
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '2048'
+  - --max-num-seqs
+  - '2'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 31273829024
+input_modalities:
+- text

@@ -1,0 +1,64 @@
+model_id: openonerec/onerec-1.7b
+source: upstream
+display_title: OneRec 1.7B
+parameter_count: 2.13B
+architecture: dense
+model_config: {model_type: qwen3, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960, layer_types: [full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention, full_attention]}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-vllm-ppu-cc4d0b5b
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: OpenOneRec/OneRec-1.7B
+        revision: cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b
+    - modelscope:
+        repo_id: OpenOneRec/OneRec-1.7B
+        revision: cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b
+  weight_bytes: 4263793656
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: OpenOneRec/OneRec-1.7B
+        revision: cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b
+    - modelscope:
+        repo_id: OpenOneRec/OneRec-1.7B
+        revision: cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b
+  weight_bytes: 4263793656
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

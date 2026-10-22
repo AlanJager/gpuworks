@@ -1,0 +1,115 @@
+{
+  "contract_id": "gpuworks/deployment/sleep-wake-gateway",
+  "name": "部署 / 休眠与唤醒 / 引擎真实休眠、网关 503、L1/L2 唤醒后恢复推理",
+  "priority": "P0",
+  "page_id": "deployments",
+  "control_id": "deployment-sleep-wake",
+  "scope": "Single targeted contract; not a full sleep/wake or dGPU completion claim",
+  "test_file": "test/e2e/deployment_sleep_wake.py",
+  "test_function": "test_deployment_sleep_wake",
+  "command": "make test-e2e-deployment-sleep-wake",
+  "lane": "local-real-agent-docker-fake-gpu-facts",
+  "identity": "admin browser; real agent/Docker; OpenAI-compatible inference key for the gateway",
+  "fixture": "isolated server, fresh SQLite, unique runId, real Chrome, real agent over WS, real Docker daemon; GPU facts injected for scheduling only; engine is the audited fake-engine image; engine /is_sleeping read over the host network",
+  "product_contracts": [
+    "ui/src/pages/DeploymentSleepControls.tsx",
+    "ui/src/components/SleepModeDialog.tsx",
+    "internal/server/api/deployments_sleep.go",
+    "internal/server/proxy/route_select.go",
+    "internal/agent/engine"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "covered",
+    "reason": "The real engine reported /is_sleeping=true after both L1 and L2 orders and false after each wake. The container stayed running through L1. The gateway returned 503 while asleep and 200 with choices after both wakes."
+  },
+  "crud": {
+    "create": "N/A: the deployment is created through the API as a fixture with sleepable=true; deployment creation is a separate contract",
+    "read": "covered: list row, drawer, independent GET instance state and engine /is_sleeping",
+    "update": "covered: L1 sleep → wake → L2 sleep → wake through the drawer with exact requests and observed engine/instance state",
+    "delete": "N/A: the fixture force-deletes the deployment in cleanup; deletion is covered by the deployment lifecycle contract"
+  },
+  "fields": [
+    {
+      "field_id": "deployment.sleep.level",
+      "component": "Button + SleepModeDialog",
+      "request": "POST /deployments/{id}/sleep?level=1|2&mode=wait",
+      "persistence": "instance sleep_level 1|2 and asleep=true",
+      "covered": [
+        "L1 through the quick action and confirmation",
+        "L2 through the deep action and confirmation",
+        "exact level and mode query values",
+        "real engine sleeping state"
+      ],
+      "missing": [
+        "invalid levels and the server's 400 response",
+        "sleep refused because the deployment is not sleepable"
+      ]
+    },
+    {
+      "field_id": "deployment.sleep.mode",
+      "component": "Radio in SleepModeDialog",
+      "default": "wait",
+      "request": "mode=wait",
+      "persistence": "N/A (order parameter)",
+      "covered": [
+        "default wait is selected and sent for both levels"
+      ],
+      "missing": [
+        "abort mode with a real in-flight request and its termination evidence",
+        "wait mode with a request held open so the sleep is delayed"
+      ]
+    },
+    {
+      "field_id": "deployment.wake",
+      "component": "Button",
+      "request": "POST /deployments/{id}/wake",
+      "persistence": "instance sleep_level=0 and asleep=false",
+      "covered": [
+        "wake after L1 and after L2",
+        "engine /is_sleeping=false",
+        "gateway 200 with choices after each wake"
+      ],
+      "missing": [
+        "wake refusal when co-tenants hold the GPU memory (WAKE_INSUFFICIENT_GPU_MEMORY)",
+        "partial wake and PD role wake"
+      ]
+    },
+    {
+      "field_id": "deployment.gateway.asleep",
+      "component": "Gateway",
+      "request": "POST /v1/chat/completions with an inference key",
+      "persistence": "N/A",
+      "covered": [
+        "503 with an asleep message while L1 and L2 sleep",
+        "200 with choices before sleep and after each wake"
+      ],
+      "missing": [
+        "other gateway refusal reasons (unknown model, unauthorized key)",
+        "streaming and cancellation while asleep"
+      ]
+    }
+  ],
+  "dimensions": [
+    "10.9",
+    "12.2",
+    "12.6",
+    "13.5"
+  ],
+  "missing": [
+    "Real GPU memory release and dGPU quota/partition effects",
+    "In-flight request handling for wait vs abort modes, including upstream termination",
+    "Wake refusal (insufficient GPU memory) and partial wake",
+    "PD role sleep/wake",
+    "L2 weight reload proven beyond the engine agreeing to wake (the fake engine does not expose garbage output)",
+    "Deployment creation through the browser form with the sleepable option",
+    "Non-admin authorization",
+    "The other locale (each run covers one --locale)"
+  ]
+}

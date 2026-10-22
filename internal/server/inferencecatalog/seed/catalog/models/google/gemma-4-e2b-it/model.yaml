@@ -1,0 +1,399 @@
+model_id: google/gemma-4-e2b-it
+source: upstream
+display_title: Gemma 4 E2B IT
+parameter_count: 5B
+architecture: dense
+context_length: 131072
+release_date: '2026-03-02'
+model_config: {model_type: gemma4, num_hidden_layers: 35, hidden_size: 1536, num_attention_heads: 8, num_key_value_heads: 1, head_dim: 256, max_position_embeddings: 131072, sliding_window: 512, layer_types: [sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention, sliding_attention, sliding_attention, sliding_attention, sliding_attention, full_attention], vision_config: {patch_size: 16, max_position_embeddings: 131072}, audio_config: {model_type: gemma4_audio}}
+kv_bytes_per_token:
+  vllm: 35840
+  sglang: 35840
+specs:
+- name: bf16-gemma-4-e2b-it-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it-qat-q4_0-unquantized
+        revision: 6befbaca7398925921802abd1f277b495b78b738
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it-qat-q4_0-unquantized
+        revision: e1b4d5631fc40f7fda4afb845a4ea11809c93e34
+  weight_bytes: 10241082561
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - gemma4
+  - --tool-call-parser
+  - gemma4
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it
+        revision: 3e22461f65e89153144f8adb70e3b8c2cc9845a7
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it
+        revision: 00e3e80811964b8cbf6e73da57ec66baa21b9d8c
+  weight_bytes: 10278849571
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - gemma4
+  - --tool-call-parser
+  - gemma4
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it
+        revision: 3e22461f65e89153144f8adb70e3b8c2cc9845a7
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it
+        revision: 00e3e80811964b8cbf6e73da57ec66baa21b9d8c
+  weight_bytes: 10278849571
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general-speculative-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it
+        revision: 3e22461f65e89153144f8adb70e3b8c2cc9845a7
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it
+        revision: 00e3e80811964b8cbf6e73da57ec66baa21b9d8c
+  weight_bytes: 10278849571
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":2}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-E2B-it
+          revision: 3e22461f65e89153144f8adb70e3b8c2cc9845a7
+      - modelscope:
+          repo_id: google/gemma-4-E2B-it
+          revision: 00e3e80811964b8cbf6e73da57ec66baa21b9d8c
+    weight_bytes: 10278849571
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: google/gemma-4-e2b-it-assistant
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-E2B-it-assistant
+          revision: 2d874ef7d29f9a30599a1e4b3c1cbc9595f005df
+      - modelscope:
+          repo_id: google/gemma-4-E2B-it-assistant
+          revision: af7c3aae0d8da2fe754cf0ffb7fd9bb80b146a96
+    weight_bytes: 189769566
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int2-4-8-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int2/4/8
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it-qat-mobile-ct
+        revision: 594b1c7919e98f8275aefdc844c306d709e61727
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it-qat-mobile-ct
+        revision: 98d63640ca8672aad07a6da84ba0994cf2df0cf8
+  weight_bytes: 2704260678
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int2-4-8-vllm-nvidia-general-speculative-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int2/4/8
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it-qat-mobile-ct
+        revision: 594b1c7919e98f8275aefdc844c306d709e61727
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it-qat-mobile-ct
+        revision: 98d63640ca8672aad07a6da84ba0994cf2df0cf8
+  weight_bytes: 2704260678
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":2}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: int2/4/8
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-E2B-it-qat-mobile-ct
+          revision: 594b1c7919e98f8275aefdc844c306d709e61727
+      - modelscope:
+          repo_id: google/gemma-4-E2B-it-qat-mobile-ct
+          revision: 98d63640ca8672aad07a6da84ba0994cf2df0cf8
+    weight_bytes: 2704260678
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: google/gemma-4-e2b-it-assistant
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-E2B-it-assistant
+          revision: 2d874ef7d29f9a30599a1e4b3c1cbc9595f005df
+      - modelscope:
+          repo_id: google/gemma-4-E2B-it-assistant
+          revision: af7c3aae0d8da2fe754cf0ffb7fd9bb80b146a96
+    weight_bytes: 189769566
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
+        revision: 971342c08f607aa7779983f6b5289778b5d271a7
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
+        revision: 5bdbf89b944c027915fd322913a00f6be6476309
+  weight_bytes: 8348553610
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int4-vllm-nvidia-general-speculative-draft
+  display_profile: general
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: int4
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
+        revision: 971342c08f607aa7779983f6b5289778b5d271a7
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
+        revision: 5bdbf89b944c027915fd322913a00f6be6476309
+  weight_bytes: 8348553610
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --speculative-config
+  - '{"model":"/models/draft","num_speculative_tokens":2}'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: int4
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
+          revision: 971342c08f607aa7779983f6b5289778b5d271a7
+      - modelscope:
+          repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
+          revision: 5bdbf89b944c027915fd322913a00f6be6476309
+    weight_bytes: 8348553610
+    mount_path: /models/target
+  - name: draft
+    role: speculative_draft
+    model_id: google/gemma-4-e2b-it-assistant
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: google/gemma-4-E2B-it-assistant
+          revision: 2d874ef7d29f9a30599a1e4b3c1cbc9595f005df
+      - modelscope:
+          repo_id: google/gemma-4-E2B-it-assistant
+          revision: af7c3aae0d8da2fe754cf0ffb7fd9bb80b146a96
+    weight_bytes: 189769566
+    mount_path: /models/draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-3e22461f
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: google/gemma-4-E2B-it
+        revision: 3e22461f65e89153144f8adb70e3b8c2cc9845a7
+    - modelscope:
+        repo_id: google/gemma-4-E2B-it
+        revision: 00e3e80811964b8cbf6e73da57ec66baa21b9d8c
+  weight_bytes: 10246621918
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - gemma4
+  - --chat-template
+  - examples/tool_chat_template_gemma4.jinja
+  - --reasoning-parser
+  - gemma4
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image, audio]

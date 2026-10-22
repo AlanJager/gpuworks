@@ -1,0 +1,87 @@
+model_id: meituan-longcat/longcat-image-edit
+source: upstream
+display_title: LongCat-Image-Edit
+parameter_count: 6B
+architecture: dense
+release_date: '2025-12-05'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: meituan-longcat/LongCat-Image-Edit
+        revision: 7b54ef423aa7854be7861600024be5c56ab7875a
+    - modelscope:
+        repo_id: meituan-longcat/LongCat-Image-Edit
+        revision: 993fe75d9c923f6ad42d98f61afcb181690c1711
+  weight_bytes: 29322429940
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+- name: bf16-vllm-ppu-7b54ef42
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: meituan-longcat/LongCat-Image-Edit
+        revision: 7b54ef423aa7854be7861600024be5c56ab7875a
+    - modelscope:
+        repo_id: meituan-longcat/LongCat-Image-Edit
+        revision: 993fe75d9c923f6ad42d98f61afcb181690c1711
+  weight_bytes: 29293491614
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --omni
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+input_modalities: [text, image]

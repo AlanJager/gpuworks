@@ -1,0 +1,255 @@
+{
+  "contract_id": "gpuworks/platform-token/options",
+  "name": "平台 API 令牌 / scope × expiry / 逐项持久化、真实权限与吊销",
+  "priority": "P0",
+  "page_id": "api-tokens",
+  "control_id": "platform-tokens.create",
+  "scope": "Eight targeted option combinations; not full form/page or actual-expiration coverage",
+  "test_file": "test/e2e/platform_token_options.py",
+  "test_function": "test_platform_token_option",
+  "command": "make test-e2e-platform-token-options",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin login session creates; read/write bearer consumes without cookies",
+  "fixture": "fresh isolated server/SQLite for each case, real Chrome, runId-owned resources, no management mocks",
+  "cases": [
+    {
+      "case": "read-0",
+      "contract_id": "gpuworks/platform-token/options/read-0",
+      "parameters": {
+        "scope": "read",
+        "days": 0
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-0"
+    },
+    {
+      "case": "read-30",
+      "contract_id": "gpuworks/platform-token/options/read-30",
+      "parameters": {
+        "scope": "read",
+        "days": 30
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-30"
+    },
+    {
+      "case": "read-90",
+      "contract_id": "gpuworks/platform-token/options/read-90",
+      "parameters": {
+        "scope": "read",
+        "days": 90
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-90"
+    },
+    {
+      "case": "read-365",
+      "contract_id": "gpuworks/platform-token/options/read-365",
+      "parameters": {
+        "scope": "read",
+        "days": 365
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=read-365"
+    },
+    {
+      "case": "write-0",
+      "contract_id": "gpuworks/platform-token/options/write-0",
+      "parameters": {
+        "scope": "write",
+        "days": 0
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-0"
+    },
+    {
+      "case": "write-30",
+      "contract_id": "gpuworks/platform-token/options/write-30",
+      "parameters": {
+        "scope": "write",
+        "days": 30
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-30"
+    },
+    {
+      "case": "write-90",
+      "contract_id": "gpuworks/platform-token/options/write-90",
+      "parameters": {
+        "scope": "write",
+        "days": 90
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-90"
+    },
+    {
+      "case": "write-365",
+      "contract_id": "gpuworks/platform-token/options/write-365",
+      "parameters": {
+        "scope": "write",
+        "days": 365
+      },
+      "command": "make test-e2e-platform-token-options E2E_TOKEN_CASE=write-365"
+    }
+  ],
+  "product_contracts": [
+    "ui/src/pages/apikeys/PlatformTokensCard.tsx",
+    "ui/src/i18n/datetime.ts",
+    "internal/server/api/platform_tokens.go",
+    "internal/server/api/dto/platform_tokens.go",
+    "internal/server/api/auth.go",
+    "internal/server/store/platform_tokens.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "N/A",
+    "reason": "Server/store authorization has no agent/GPU workload"
+  },
+  "fields": [
+    {
+      "field_id": "platform-token.name",
+      "component": "Text",
+      "required": true,
+      "default": "",
+      "request": "name",
+      "persistence": "name",
+      "contract": "trim; 1..128 UTF-8 bytes",
+      "covered": [
+        "unique valid runId name in every case"
+      ],
+      "related_contract": "gpuworks/platform-token/read-create-revoke",
+      "missing": [
+        "length/character boundaries"
+      ]
+    },
+    {
+      "field_id": "platform-token.scope",
+      "component": "Radio",
+      "required": false,
+      "default": "read",
+      "request": "scope",
+      "persistence": "scope",
+      "options": [
+        "read",
+        "write"
+      ],
+      "covered": [
+        "option:read",
+        "option:write",
+        "switch from opposite selection",
+        "read/write × all expiry choices",
+        "read denial has no side effects; write creates and deletes a real inference token"
+      ],
+      "missing": [
+        "non-admin current-role/ownership isolation"
+      ]
+    },
+    {
+      "field_id": "platform-token.expiry",
+      "component": "Select",
+      "required": false,
+      "default": 0,
+      "unit": "UTC calendar days",
+      "request": "expires_in_days (0 omitted; positive JSON integer)",
+      "persistence": "expires_at",
+      "options": [
+        0,
+        30,
+        90,
+        365
+      ],
+      "covered": [
+        "option:0",
+        "option:30",
+        "option:90",
+        "option:365",
+        "30→0 reset",
+        "UI selection + request + independent GET + reload for every option",
+        "future expiry bracketed by server HTTP Date; no-expiry null",
+        "currently valid bearer use for each option"
+      ],
+      "missing": [
+        "just-before/exactly-at/after expiry; requires controlled authoritative clock or fixture"
+      ],
+      "not_applicable": {
+        "search/clear": "fixed non-searchable select; reset through No expiry"
+      }
+    },
+    {
+      "field_id": "platform-token.create-secret",
+      "component": "SecretModal + copy button",
+      "request": "POST token",
+      "persistence": "hash/prefix only",
+      "covered": [
+        "one-time display matches response",
+        "clipboard consumed unchanged as bearer",
+        "no full secret in reload or list",
+        "trace disabled during token POST/display"
+      ],
+      "missing": [
+        "clipboard denial/failure recovery"
+      ]
+    },
+    {
+      "field_id": "platform-token.revoke",
+      "component": "Popconfirm",
+      "request": "DELETE /platform-tokens/{id}",
+      "persistence": "token removed",
+      "covered": [
+        "named impact confirmation",
+        "GET+POST 401 after revoke",
+        "refresh/list empty"
+      ],
+      "related_contract": "gpuworks/platform-token/read-create-revoke",
+      "missing": [
+        "service-failure recovery"
+      ]
+    }
+  ],
+  "other_reachable_controls": {
+    "reference": "test/e2e/coverage/platform-token-read-revoke.json",
+    "scope": "Creation cancel/close/Esc, table preferences/sorting/pagination/refresh, usage snippet and inference-token sibling card retain their existing claims and gaps; this case does not claim them"
+  },
+  "combination_contract": "Scope and expiry are independent persisted fields; choosing expiry must preserve scope. Both scopes run all four expiry options.",
+  "crud": {
+    "create": "8 named option combinations",
+    "read": "exact independent GET + UI reload",
+    "update": {
+      "status": "N/A",
+      "reason": "Platform token API/UI expose only create/list/revoke"
+    },
+    "delete": "UI confirmation then independent absence and copied bearer rejection"
+  },
+  "checklist_items": {
+    "covered_in_this_scenario": [
+      "1.5",
+      "1.8",
+      "1.14",
+      "5.1",
+      "5.2",
+      "5.4",
+      "5.5",
+      "7.3",
+      "21.1",
+      "21.5"
+    ],
+    "partial": {
+      "5.6": "Escape closes select; complete keyboard navigation missing",
+      "7.4": "scope/current validity/revocation covered; actual expiry and wrong-token remain outside this case",
+      "7.6": "list/DOM/artifact scan; not every response surface",
+      "12.2": "dialog/footer viewport; all spacing/states missing",
+      "22.5": "en/zh form/options and list; full-site language audit missing"
+    }
+  },
+  "missing": [
+    "actual expiry boundary and expired-token denial",
+    "non-admin ownership and role changes",
+    "name length/UTF-8 boundaries",
+    "server failure/recovery",
+    "complete list/sorting/pagination and 10/30/100 volumes",
+    "complete keyboard/computed-style matrix",
+    "inference/GPU generation (not a platform-token authorization capability)"
+  ],
+  "result": "NOT_RUN until an exact SHA/runId report records PASS after required evidence, server stop and artifact scan; case implementation is not run evidence",
+  "artifact": "secrets/e2e/<runId>/report.json with selected case, SHA, binary/test/fixture digests, locale, evidence and redacted traces",
+  "cleanup": "Runtime probe deletes its own inference key; UI revokes platform token in test body; runner stops owned server and retains private DB for scoped diagnosis for seven days"
+}

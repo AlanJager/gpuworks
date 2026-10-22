@@ -1,0 +1,128 @@
+{
+  "contract_id": "gpuworks/playground/chat-streaming-conversations",
+  "name": "Playground / 真实流式对话 / 部署入口、网关 SSE、刷新持久化与新对话隔离",
+  "priority": "P0",
+  "page_id": "playground",
+  "control_id": "playground-chat",
+  "scope": "Single targeted contract; not a full Playground or renderer completion claim",
+  "test_file": "test/e2e/playground_chat_gateway.py",
+  "test_function": "test_playground_chat",
+  "command": "make test-e2e-playground-chat-gateway",
+  "lane": "local-real-agent-docker-fake-gpu-facts",
+  "identity": "admin browser session; node agent/Docker; the Playground calls /api/v1/playground/v1/* with the session, not an inference key",
+  "fixture": "isolated server, fresh SQLite, unique runId, real Chrome (two browser contexts), real agent over WS, real Docker daemon; GPU facts injected for scheduling only; engine is the audited fake-engine image",
+  "product_contracts": [
+    "ui/src/pages/DeploymentsPage.tsx",
+    "ui/src/pages/playground/route.ts",
+    "ui/src/pages/playground/ChatPage.tsx",
+    "ui/src/pages/playground/api.ts",
+    "ui/src/pages/playground/conversations/db.ts",
+    "internal/server/api/playground.go",
+    "internal/server/api/api.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "covered",
+    "reason": "The Playground streamed two real requests through the gateway to the fake-engine container; the SSE bodies carried the engine marker and [DONE], and the UI rendered the replies. The deployment container stayed running."
+  },
+  "crud": {
+    "create": "covered: a conversation is created by sending the first message and appears in the sidebar",
+    "read": "covered: messages render, survive a reload, and reopen from the sidebar",
+    "update": "MISSING: rename and parameter changes",
+    "delete": "MISSING: conversation deletion and the retention cap"
+  },
+  "fields": [
+    {
+      "field_id": "playground.entry",
+      "component": "Button in the deployment row",
+      "request": "GET /api/v1/playground/models",
+      "persistence": "N/A",
+      "covered": [
+        "the deployment's openai.chat operation enables the button",
+        "the URL carries operation=openai.chat and the served model",
+        "the served name is listed by the Playground catalog and selected"
+      ],
+      "missing": [
+        "entries from inference templates",
+        "a deployment with several operations",
+        "the disabled entry before the runtime is ready"
+      ]
+    },
+    {
+      "field_id": "playground.chat.prompt",
+      "component": "Textarea",
+      "required": true,
+      "request": "messages[].content",
+      "persistence": "IndexedDB conversation record",
+      "covered": [
+        "a prompt is sent unchanged in a streaming chat body",
+        "the user message renders"
+      ],
+      "missing": [
+        "empty/whitespace and Enter-vs-Shift+Enter keyboard paths",
+        "length boundaries and multi-line content"
+      ]
+    },
+    {
+      "field_id": "playground.chat.stream",
+      "component": "SSE renderer",
+      "request": "POST /api/v1/playground/v1/chat/completions, stream=true",
+      "persistence": "assistant message content",
+      "covered": [
+        "200, stream=true and the served model",
+        "SSE content deltas contain the engine marker",
+        "the [DONE] end event",
+        "the reply renders and the stop button clears"
+      ],
+      "missing": [
+        "chunk timing and partial-text assertions",
+        "SSE error events and usage details",
+        "stop/cancel and upstream termination"
+      ]
+    },
+    {
+      "field_id": "playground.conversations",
+      "component": "Sidebar",
+      "request": "N/A (browser storage)",
+      "persistence": "IndexedDB per browser origin",
+      "covered": [
+        "the first prompt becomes the conversation title",
+        "a reload keeps the conversation and its messages",
+        "a new conversation starts empty and the sidebar shows both",
+        "switching back restores the first conversation only",
+        "a fresh browser context has no conversations",
+        "each fresh conversation sends exactly one user message with its own prompt, model and stream flag"
+      ],
+      "missing": [
+        "two accounts on the same browser and their isolation",
+        "rename, delete and the retention cap",
+        "generation continuing across page switches"
+      ]
+    }
+  ],
+  "dimensions": [
+    "20.1",
+    "20.2",
+    "20.3"
+  ],
+  "partial_checklist": {
+    "20.6": "A fresh browser context (separate storage) shows no conversations. Two accounts in the same browser profile, re-login isolation and the retention cap are not covered.",
+    "20.9": "Only the session path /api/v1/playground/v1/* is covered; the public /v1/* inference-key path is not exercised."
+  },
+  "missing": [
+    "Streaming cancellation, upstream termination and interrupted-reply marking",
+    "Compare mode, attachments, parameters and non-chat renderers",
+    "Gateway error paths (unknown model, unauthorized key, engine failure/429)",
+    "Public /v1 inference-key parity with the Playground session path",
+    "Conversation rename/delete, retention cap and multi-account isolation",
+    "Markdown/HTML preview and CSP behavior",
+    "Non-admin authorization",
+    "The other locale (each run covers one --locale)"
+  ]
+}

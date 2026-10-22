@@ -1,0 +1,62 @@
+{
+  "id": "kv-disk-tier-madvise-einval-kernel-4.18",
+  "source": "artifacts/archive/2026-09-16-kv-disk-offload/acceptance/nvidia-madvise-einval.md",
+  "note": "vLLM 0.25.1 with the KV disk tier (TieringOffloadingSpec) on a RHEL8-family host with kernel 4.18: SharedOffloadRegion calls madvise(MADV_POPULATE_WRITE), which needs Linux >= 5.14, and gets EINVAL. Engine lines verbatim from the record; head of the log and the elided traceback middle reconstructed; GPU per gpu3 in r2-verify.md. Long tail: fix is a >= 5.14 kernel, or disabling the disk tier / an engine version with the EINVAL fallback.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "kvtest-nv-default",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--max-model-len",
+    "32768",
+    "--kv-transfer-config",
+    "{\"kv_connector\":\"OffloadingConnector\",\"kv_connector_extra_config\":{\"cpu_bytes_to_use\":4294967296,\"secondary_tiers\":[{\"n_read_threads\":16,\"n_write_threads\":16,\"root_dir\":\"/mnt/kv\",\"type\":\"fs\"}],\"spec_name\":\"TieringOffloadingSpec\"},\"kv_role\":\"kv_both\"}"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 2080 Ti",
+      "memory_gib": 11
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 09-16 08:40:02 [api_server.py:1885] vLLM API server version 0.25.1",
+    "(APIServer pid=1) INFO 09-16 08:40:02 [utils.py:328] non-default args: {'model': '/model', 'host': '127.0.0.1', 'port': 30000, 'served_model_name': ['kvtest-nv-default'], 'max_model_len': 32768, 'kv_transfer_config': KVTransferConfig(kv_connector='OffloadingConnector', kv_role='kv_both')}",
+    "(EngineCore) INFO 09-16 08:40:13 [factory.py:62] Creating v1 connector with name: OffloadingConnector",
+    "(EngineCore) INFO 09-16 08:40:13 [factory.py:61] Creating offloading spec with name: TieringOffloadingSpec",
+    "(EngineCore) INFO 09-16 08:40:13 [shared_offload_region.py:71] Created mmap file /dev/shm/vllm_offload_1789603504368532802.mmap (4.29 GB)",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231] EngineCore failed to start.",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231] Traceback (most recent call last):",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231]   File \"/usr/local/lib/python3.12/dist-packages/vllm/distributed/kv_transfer/kv_connector/v1/offloading_connector.py\", line 112, in __init__",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231]     self.connector_worker = OffloadingConnectorWorker(spec)",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/kv_offload/tiering/spec.py\", line 192, in create_worker",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231]     worker_mmap = SharedOffloadRegion(",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/kv_offload/cpu/shared_offload_region.py\", line 100, in __init__",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231]     self.mmap_obj.madvise(",
+    "(EngineCore) ERROR 09-16 08:40:13 [core.py:1231] OSError: [Errno 22] Invalid argument",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "",
+  "expect_keywords": [
+    [
+      "内核",
+      "kernel",
+      "5.14",
+      "uname"
+    ],
+    [
+      "MADV_POPULATE_WRITE",
+      "kv_disk_offload",
+      "磁盘层",
+      "disk tier",
+      "disk offload"
+    ]
+  ]
+}

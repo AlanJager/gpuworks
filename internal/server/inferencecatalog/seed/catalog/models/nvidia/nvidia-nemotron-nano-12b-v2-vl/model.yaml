@@ -1,0 +1,106 @@
+model_id: nvidia/nvidia-nemotron-nano-12b-v2-vl
+source: upstream
+display_title: NVIDIA Nemotron-Nano-12B-v2-VL
+parameter_count: 12B
+architecture: dense
+context_length: 131072
+release_date: '2025-10-31'
+model_config: {model_type: NemotronH_Nano_VL_V2, num_hidden_layers: 62, hidden_size: 5120, num_attention_heads: 40, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 131072, layer_types: [mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, full_attention, mlp, mamba, mlp, mamba, mlp, mamba, mlp, mamba, mlp], vision_config: {patch_size: 16}}
+kv_bytes_per_token:
+  vllm: 253952
+  sglang: 253952
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16
+        revision: ca9543b126e8bf3176916d3d305ccc415f89fd4d
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16
+        revision: 38000d54f6763226f7164d9f1defaf5fec2a1db5
+  weight_bytes: 26395869966
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --video-pruning-rate
+  - '0.75'
+  env:
+    VLLM_VIDEO_LOADER_BACKEND: opencv
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8
+        revision: 7394488badb786e1decc0e00e308de1cab9560e6
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8
+        revision: c35bed021470e059621c6ab7a7a0287953cb5e67
+  weight_bytes: 15415958165
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --video-pruning-rate
+  - '0.75'
+  env:
+    VLLM_VIDEO_LOADER_BACKEND: opencv
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD
+        revision: 312eb94f6d36209f7c6a82eda896e27200d152ee
+    - modelscope:
+        repo_id: nv-community/NVIDIA-Nemotron-Nano-12B-v2-VL-NVFP4-QAD
+        revision: e270f9ef51789b2590dbc3706b4c171420dd6509
+  weight_bytes: 10618593065
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --trust-remote-code
+  - --video-pruning-rate
+  - '0.75'
+  env:
+    VLLM_VIDEO_LOADER_BACKEND: opencv
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

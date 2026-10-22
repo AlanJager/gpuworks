@@ -1,0 +1,131 @@
+package api
+
+import (
+	"cmp"
+	"net/http"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+// listDeployments answers GET /deployments. With page or page_size it returns
+// one dto.DeploymentPage of list rows, filtered by q (a substring of the
+// name, the served name or the model's name) and state (effective states,
+// comma separated); without them, every deployment as a full dto.Deployment.
+//
+// Either way the rows are read with a fixed number of queries; only the
+// requested page is turned into DTOs. A page is ordered by sort (one of
+// deploymentListSorts, "-" for descending), after filtering and before paging.
+func (a *apiHandlers) listDeployments(w http.ResponseWriter, r *http.Request) {
+	query, err := parseListQuery(r, deploymentListStates)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	order, err := deploymentListSorts.parse(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	deps, err := a.d.Store.ListDeployments()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	instances, err := a.d.Store.ListInstances()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	rows, err := newListLookup(a.d.Store, a.d.Preparation, deps, instances)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	matched := make([]*store.Deployment, 0, len(deps))
+	for i := range deps {
+		if deploymentMatches(rows, &deps[i], query) {
+			matched = append(matched, &deps[i])
+		}
+	}
+	deploymentListSorters(rows).apply(matched, order)
+	// Without page parameters every match comes back in full; the filters
+	// and order apply either way.
+	if !query.paged {
+		out := make([]dto.Deployment, 0, len(matched))
+		for _, d := range matched {
+			out = append(out, a.deploymentDTOFrom(rows, d, false))
+		}
+		writeJSON(w, http.StatusOK, dto.NewList(out))
+		return
+	}
+	writeJSON(w, http.StatusOK, pageOf(matched, query, func(page []*store.Deployment) []dto.DeploymentListItem {
+		items := make([]dto.DeploymentListItem, 0, len(page))
+		for _, d := range page {
+			full := a.deploymentDTOFrom(rows, d, false)
+			items = append(items, deploymentListItem(full, deploymentPreparationSummary(d, full.ModelProgress)))
+		}
+		return items
+	}))
+}
+
+// deploymentListSorts names the orders GET /deployments offers; the
+// comparisons read the lookup, so the ones that sort are built per request.
+var deploymentListSorts = deploymentListSorters(nil)
+
+// deploymentListSorters are the orders GET /deployments offers, by the
+// deployment list's column keys. A state is worked out once per deployment
+// and only when the list is sorted by it.
+func deploymentListSorters(rows dtoLookup) listSorters[*store.Deployment] {
+	modelName := func(d *store.Deployment) string {
+		if model := rows.model(d.ModelID); model != nil {
+			return model.Name
+		}
+		return ""
+	}
+	states := map[uint]string{}
+	state := func(d *store.Deployment) string {
+		if s, ok := states[d.ID]; ok {
+			return s
+		}
+		runtime := deploymentRuntimeState(rows, d, rows.instances(d.ID), recordedModelProgress(rows, d))
+		states[d.ID] = effectiveDeploymentState(d, runtime)
+		return states[d.ID]
+	}
+	return listSorters[*store.Deployment]{
+		"name":       func(a, b *store.Deployment) int { return compareText(a.Name, b.Name) },
+		"model":      func(a, b *store.Deployment) int { return compareText(modelName(a), modelName(b)) },
+		"state":      func(a, b *store.Deployment) int { return cmp.Compare(state(a), state(b)) },
+		"replicas":   func(a, b *store.Deployment) int { return cmp.Compare(a.Replicas, b.Replicas) },
+		"created_at": func(a, b *store.Deployment) int { return a.CreatedAt.Compare(b.CreatedAt) },
+	}
+}
+
+// deploymentMatches applies a list query's filters to one deployment.
+func deploymentMatches(rows dtoLookup, d *store.Deployment, query listQuery) bool {
+	modelName := ""
+	if model := rows.model(d.ModelID); model != nil {
+		modelName = model.Name
+	}
+	if !query.matchesSearch(d.Name, d.ServedName, modelName) {
+		return false
+	}
+	if len(query.states) == 0 {
+		return true
+	}
+	runtime := deploymentRuntimeState(rows, d, rows.instances(d.ID), recordedModelProgress(rows, d))
+	return query.matchesState(effectiveDeploymentState(d, runtime))
+}
+
+// deploymentListItem is the list row of a deployment DTO; preparation is the
+// one line it shows of the DTO's model progress.
+func deploymentListItem(d dto.Deployment, preparation *dto.ModelNodePresence) dto.DeploymentListItem {
+	return dto.DeploymentListItem{
+		Preparation: preparation, ID: d.ID, Name: d.Name, TemplateID: d.TemplateID, TemplateDeviated: d.TemplateDeviated,
+		Engine: d.Engine, Image: d.Image, ModelID: d.ModelID, ModelName: d.ModelName, ServedName: d.ServedName,
+		NodeUUID: d.NodeUUID, NodeName: d.NodeName, NodeNames: d.NodeNames,
+		DesiredState: d.DesiredState, RuntimeState: d.RuntimeState, Sleepable: d.Sleepable, Replicas: d.Replicas,
+		ReadyReplicas: d.ReadyReplicas, Health: d.Health,
+		Operations: d.Operations, CreatedAt: d.CreatedAt,
+	}
+}

@@ -1,0 +1,214 @@
+{
+  "id": 1,
+  "name": "ib-a",
+  "description": "fabric A",
+  "roles": [
+    "compute"
+  ],
+  "type": "host_rdma",
+  "cidr": "10.20.0.0/16",
+  "interface": "",
+  "builtin": false,
+  "attachments": [
+    {
+      "id": 1,
+      "target": "label",
+      "label_key": "pool",
+      "label_value": "h20-a",
+      "hcas": [],
+      "created_at": "2026-09-25T02:02:00Z"
+    },
+    {
+      "id": 3,
+      "target": "node",
+      "node_uuid": "uuid-h7",
+      "node_name": "h20-07",
+      "interface": "bond0",
+      "hcas": [
+        "mlx5_0",
+        "mlx5_9:1"
+      ],
+      "created_at": "2026-09-25T02:05:00Z"
+    }
+  ],
+  "resolved_node_count": 2,
+  "warning_node_count": 2,
+  "created_at": "2026-09-25T02:00:00Z",
+  "updated_at": "2026-09-25T02:00:00Z",
+  "nodes": [
+    {
+      "node_uuid": "uuid-h5",
+      "node_name": "h20-05",
+      "roles": [
+        "compute"
+      ],
+      "attachment_id": 1,
+      "source": "label",
+      "label_key": "pool",
+      "label_value": "h20-a",
+      "interface": "bond0",
+      "ip": "10.20.1.15",
+      "hcas": [
+        {
+          "name": "mlx5_0:1",
+          "ip": "",
+          "netdev": "",
+          "link_layer": "infiniband",
+          "state": "ACTIVE",
+          "speed_gbps": 400
+        },
+        {
+          "name": "mlx5_1:1",
+          "ip": "",
+          "netdev": "",
+          "link_layer": "infiniband",
+          "state": "ACTIVE",
+          "speed_gbps": 400
+        },
+        {
+          "name": "mlx5_2:1",
+          "ip": "",
+          "netdev": "",
+          "link_layer": "infiniband",
+          "state": "ACTIVE",
+          "speed_gbps": 400
+        },
+        {
+          "name": "mlx5_3:1",
+          "ip": "",
+          "netdev": "",
+          "link_layer": "infiniband",
+          "state": "ACTIVE",
+          "speed_gbps": 400
+        }
+      ],
+      "warnings": [
+        {
+          "code": "conflict",
+          "params": {
+            "role": "compute",
+            "winner": "ib-a",
+            "losers": "legacy"
+          }
+        }
+      ],
+      "tools": [
+        "ib_write_bw"
+      ],
+      "link_layer": "infiniband",
+      "hca_source": "auto",
+      "bootstrap_source": "auto"
+    },
+    {
+      "node_uuid": "uuid-h7",
+      "node_name": "h20-07",
+      "roles": [
+        "compute"
+      ],
+      "attachment_id": 3,
+      "source": "node",
+      "interface": "bond0",
+      "ip": "10.20.1.17",
+      "hcas": [
+        {
+          "name": "mlx5_0:1",
+          "ip": "",
+          "netdev": "",
+          "link_layer": "infiniband",
+          "state": "ACTIVE",
+          "speed_gbps": 400
+        },
+        {
+          "name": "mlx5_9:1",
+          "ip": "",
+          "netdev": "",
+          "link_layer": "",
+          "state": "",
+          "speed_gbps": 0,
+          "gap": "unknown"
+        }
+      ],
+      "warnings": [
+        {
+          "code": "override_missing",
+          "params": {
+            "kind": "hca",
+            "value": "mlx5_9:1"
+          }
+        }
+      ],
+      "tools": [],
+      "link_layer": "infiniband",
+      "hca_source": "manual",
+      "bootstrap_source": "manual"
+    }
+  ],
+  "role_options": [
+    "storage_sync",
+    "compute",
+    "serving"
+  ],
+  "type_options": [
+    "host_ethernet",
+    "host_rdma",
+    "accelerator_rdma"
+  ],
+  "type_roles": {
+    "host_ethernet": ["storage_sync", "compute", "serving"],
+    "host_rdma": ["storage_sync", "compute", "serving"],
+    "accelerator_rdma": ["compute"]
+  },
+  "test_supported": true,
+  "latest_test": {
+    "id": 4,
+    "status": "done",
+    "scope": "label",
+    "label_key": "pool",
+    "label_value": "h20-a",
+    "bandwidth": true,
+    "node_count": 2,
+    "pair_count": 2,
+    "passed_count": 1,
+    "node_uuids": [
+      "uuid-h5",
+      "uuid-h7"
+    ],
+    "pairs": [
+      {
+        "source_uuid": "uuid-h5",
+        "source_name": "h20-05",
+        "target_uuid": "uuid-h7",
+        "target_name": "h20-07",
+        "target": "10.20.1.17:41000",
+        "passed": true,
+        "reachable": true,
+        "rtt_ms_p50": 0.21,
+        "rtt_ms_p99": 0.4,
+        "gbps": 23.4,
+        "status": "passed"
+      },
+      {
+        "source_uuid": "uuid-h7",
+        "source_name": "h20-07",
+        "target_uuid": "uuid-h5",
+        "target_name": "h20-05",
+        "target": "10.20.1.15:41000",
+        "passed": false,
+        "reachable": false,
+        "rtt_ms_p50": 0,
+        "rtt_ms_p99": 0,
+        "gbps": 0,
+        "error": "dial tcp 10.20.1.15:41000: i/o timeout",
+        "status": "failed",
+        "code": "probe_failed"
+      }
+    ],
+    "started_at": "2026-09-25T06:20:00Z",
+    "finished_at": "2026-09-25T06:21:00Z",
+    "kind": "tcp",
+    "pattern": "mesh",
+    "partial_count": 0,
+    "rail_count": 0,
+    "rail_passed_count": 0
+  }
+}

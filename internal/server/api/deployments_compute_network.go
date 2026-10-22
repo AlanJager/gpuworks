@@ -1,0 +1,98 @@
+package api
+
+import (
+	"errors"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
+	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+// A multi-node group runs over one network: the compute network every rank
+// is on, else the management network when every rank lets it carry compute
+// traffic (network.Service.ComputeGroup).
+
+// computeGroup picks the network a group's ranks share and checks that it
+// can carry the group (planning.CheckGroupNetwork).
+func (a *apiHandlers) computeGroup(nodes []*store.Node) (netplan.Group, error) {
+	plain := make([]store.Node, len(nodes))
+	for i, n := range nodes {
+		plain[i] = *n
+	}
+	group, err := a.networks().ComputeGroup(plain)
+	var ge *netplan.GroupError
+	if errors.As(err, &ge) {
+		switch ge.Reason {
+		case netplan.ComputeMixed:
+			return group, productError(ErrorComputeNetworkMixed, ge.Error(),
+				map[string]any{"node": ge.Node.Name, "other": ge.Other.Name})
+		case netplan.ComputeMismatch:
+			return group, productError(ErrorComputeNetworkMismatch, ge.Error(),
+				map[string]any{"node": ge.Node.Name, "network": ge.Network, "other": ge.Other.Name, "expected": ge.Expected})
+		default:
+			return group, productError(ErrorComputeNetworkNone, ge.Error(), map[string]any{"node": ge.Node.Name})
+		}
+	}
+	if err != nil {
+		return group, err
+	}
+	return group, planning.CheckGroupNetwork(plain, group)
+}
+
+// computeFallbackWarning tells the operator a group falls back to the
+// management network although some ranks have a compute network.
+func computeFallbackWarning(group netplan.Group) []messages.Warning {
+	if !group.FellBack {
+		return nil
+	}
+	return []messages.Warning{messages.NewWarning(messages.WarningComputeNetworkFallback, nil)}
+}
+
+// fillResolvedNodeFields sets what a node's resolved networks tell the API
+// about it: the compute network the deploy form uses to tell which nodes can
+// join a multi-node group, and the generated system labels, whose network
+// keys name the network carrying each role.
+//
+// A resolution that cannot be loaded still leaves every node its system
+// labels, without the network (or storage) ones - the hardware facts are known either
+// way, and dropping them all would make a node look unlabelled.
+func (a *apiHandlers) fillResolvedNodeFields(nodes []store.Node, out []dto.Node) {
+	resolved, err := a.networks().Resolve(nodes)
+	if err != nil {
+		resolved = nil
+	}
+	storages, err := planning.LoadStorageScope(a.d.Store, nodePointers(nodes))
+	if err != nil {
+		storages = nil
+	}
+	ids := make([]uint, len(nodes))
+	for i := range nodes {
+		ids[i] = nodes[i].ID
+	}
+	providers, err := a.d.Store.NodeProviders(ids)
+	if err != nil {
+		providers = nil
+	}
+	for i := range nodes {
+		if r, ok := resolved.For(nodes[i].ID, netplan.RoleCompute); ok {
+			out[i].ComputeNetwork, out[i].ComputeAddress = r.Network.Name, r.IP
+		}
+		out[i].SystemLabels = systemLabelsDTO(planning.SystemLabels(&nodes[i], planning.NodeFacts{Networks: resolved, Storages: storages, Providers: providers}))
+	}
+}
+
+// systemLabelsDTO is the wire form of the generated labels. It is a straight
+// rename of planning's fields; the API adds nothing, which is what keeps the
+// label a node shows and the label a selector matches the same thing.
+func systemLabelsDTO(labels []planning.SystemLabel) []dto.SystemLabel {
+	out := make([]dto.SystemLabel, 0, len(labels))
+	for _, label := range labels {
+		out = append(out, dto.SystemLabel{
+			Key: label.Key, Value: label.Value,
+			Display: label.Display, DisplayCode: label.DisplayCode,
+		})
+	}
+	return out
+}

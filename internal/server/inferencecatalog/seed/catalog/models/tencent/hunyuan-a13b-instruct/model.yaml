@@ -1,0 +1,67 @@
+model_id: tencent/hunyuan-a13b-instruct
+source: upstream
+display_title: Hunyuan-A13B-Instruct
+parameter_count: 80B
+architecture: moe
+context_length: 32768
+release_date: '2025-06-25'
+model_config: {model_type: hunyuan_v1_moe, num_hidden_layers: 32, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 32768}
+kv_bytes_per_token:
+  vllm: 131072
+  sglang: 131072
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/Hunyuan-A13B-Instruct
+        revision: 290ddb9a56ed23c2c83a1c8081533e58925df952
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hunyuan-A13B-Instruct
+        revision: bd38712dafd867a13a95d132321bd29ec062e978
+  weight_bytes: 160821132101
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: tencent/Hunyuan-A13B-Instruct-FP8
+        revision: b56026567708b2b41e62c5d595c6f10a51640820
+    - modelscope:
+        repo_id: Tencent-Hunyuan/Hunyuan-A13B-Instruct-FP8
+        revision: 3b55634bfbe19cc738fa5eebbe97a4a71713643c
+  weight_bytes: 80935356888
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

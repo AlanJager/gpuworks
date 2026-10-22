@@ -1,0 +1,75 @@
+{
+  "contract_id": "gpuworks/settings/deployment-start-timeout",
+  "name": "设置 / 部署启动超时默认值 / 边界保存、刷新回读与服务端拒绝",
+  "test_file": "test/e2e/settings_deployment_policy.py",
+  "test_function": "test_deployment_start_timeout",
+  "command": "make test-e2e-settings-deployment-policy",
+  "priority": "P1",
+  "page_id": "settings",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "The contract ends at the cluster-wide deployment policy. No agent, container, GPU or engine is claimed."
+  },
+  "crud": {
+    "create": "N/A: the policy is seeded by the server",
+    "read": "Settings card, page reload and independent GET /api/v1/settings agree",
+    "update": "UI saves the minimum and maximum bounds; PUT /api/v1/settings/deployment carries only start_timeout_sec",
+    "delete": "N/A: no delete operation; the case restores the original value as cleanup"
+  },
+  "fields": [
+    {
+      "id": "deployment.start-timeout",
+      "component": "InputNumber with min/max and seconds suffix",
+      "request": "start_timeout_sec",
+      "persisted": "deployment.start_timeout_sec",
+      "covered": ["initial default read", "empty value disables Save with no request", "minimum 60", "maximum 86400", "refresh and independent GET", "restore original"],
+      "missing": ["typing an out-of-range value into the control itself", "step behavior with the 60-second increment"]
+    },
+    {
+      "id": "deployment.other-policy-fields",
+      "component": "N/A: not edited by this card",
+      "request": "omitted from the PUT body",
+      "persisted": "pending_timeout_sec, event_retention_days, event_retention_bytes",
+      "covered": ["all three remain unchanged after this card saves"],
+      "missing": ["their own UI editing and validation"]
+    },
+    {
+      "id": "deployment.server-validation",
+      "component": "API boundary behind the card",
+      "request": "PUT with start_timeout_sec below the floor",
+      "persisted": "unchanged",
+      "covered": ["direct out-of-range request returns 400 and does not change the stored policy"],
+      "missing": ["non-admin authorization", "out-of-range above the ceiling", "malformed JSON"]
+    },
+    {
+      "id": "deployment.inheritance",
+      "component": "Deployment launch path",
+      "request": "deployment with no start_timeout_sec",
+      "persisted": "deployment policy",
+      "covered": [],
+      "missing": ["an actual instance start that consumes the changed default; this requires an agent and engine"]
+    }
+  ],
+  "checklist_items": {
+    "1.2": "The stored value is shown after load and after reload",
+    "1.4": "Minimum 60 and maximum 86400 are accepted through the UI; typing an out-of-range value into the control itself remains MISSING",
+    "1.14": "Refresh and independent GET preserve the saved policy",
+    "3.1": "Seconds are edited with the real unit and bounds; step behavior remains MISSING",
+    "3.4": "The PUT body carries start_timeout_sec as a JSON number, not a string",
+    "3.6": "The server rejects a value below the floor and the stored policy is unchanged"
+  },
+  "missing": [
+    "N/A: checklist 1.11 (cancel, close, Esc) — the settings card exposes Save only; it has no cancel control",
+    "MISSING: checklist 22.5 (zh/en nav, first screen, error and empty text) — each locale run only asserts the localized form label and Save/saved text",
+    "MISSING: typing 30 into the InputNumber itself (the control may clamp before Save)",
+    "MISSING: pending timeout and event retention controls",
+    "MISSING: a deployment that inherits the changed default and actually starts",
+    "MISSING: non-admin authorization and forbidden PUT evidence",
+    "MISSING: malformed or above-ceiling server requests"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test digests, locale, PUT bodies, independent GET values and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and restored cleanup"
+}

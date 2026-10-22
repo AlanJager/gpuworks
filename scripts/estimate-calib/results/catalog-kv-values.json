@@ -1,0 +1,934 @@
+{
+ "allenai/olmo-2-1124-7b-instruct": {
+  "sglang": 524288,
+  "vllm": 524288
+ },
+ "arcee-ai/trinity-large-thinking": {
+  "sglang": 245760,
+  "vllm": 245760
+ },
+ "arcee-ai/trinity-mini": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "baai/bge-m3": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "baai/bge-reranker-v2-m3": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "baidu/ernie-4.5-21b-a3b-pt": {
+  "sglang": 57344,
+  "vllm": 57344
+ },
+ "baidu/ernie-4.5-300b-a47b-pt": {
+  "sglang": 221184,
+  "vllm": 221184
+ },
+ "baidu/unlimited-ocr": {
+  "sglang": 61440,
+  "vllm": 61440
+ },
+ "bytedance-seed/seed-coder-8b-instruct": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "bytedance-seed/seed-oss-36b-instruct": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "deepreinforce-ai/ornith-1.0-35b": {
+  "sglang": 20480,
+  "vllm": 20480
+ },
+ "deepreinforce-ai/ornith-1.0-397b": {
+  "sglang": 30720,
+  "vllm": 30720
+ },
+ "deepreinforce-ai/ornith-1.0-9b": {
+  "sglang": 32768,
+  "vllm": 32768
+ },
+ "deepseek-ai/deepseek-math-v2": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-ocr": {
+  "sglang": 61440,
+  "vllm": 61440
+ },
+ "deepseek-ai/deepseek-ocr-2": {
+  "sglang": 61440,
+  "vllm": 61440
+ },
+ "deepseek-ai/deepseek-r1": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-r1-0528": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-v2-lite": {
+  "sglang": 31104,
+  "vllm": 31104
+ },
+ "deepseek-ai/deepseek-v2-lite-chat": {
+  "sglang": 31104,
+  "vllm": 31104
+ },
+ "deepseek-ai/deepseek-v3": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-v3.1": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-v3.2": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-v3.2-exp": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-v3.2-speciale": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "deepseek-ai/deepseek-v4-flash": {
+  "sglang": 44032,
+  "vllm": 44032
+ },
+ "deepseek-ai/deepseek-v4-flash-0731": {
+  "sglang": 44032,
+  "vllm": 44032
+ },
+ "deepseek-ai/deepseek-v4-flash-dspark": {
+  "sglang": 44032,
+  "vllm": 44032
+ },
+ "deepseek-ai/deepseek-v4-pro": {
+  "sglang": 62464,
+  "vllm": 62464
+ },
+ "deepseek-ai/deepseek-v4-pro-0813": {
+  "sglang": 62464,
+  "vllm": 62464
+ },
+ "deepseek-ai/deepseek-v4-pro-dspark": {
+  "sglang": 62464,
+  "vllm": 62464
+ },
+ "deepseek-ai/deepseek-vl2": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "google/diffusiongemma-26b-a4b-it": {
+  "sglang": 245760,
+  "vllm": 245760
+ },
+ "google/embeddinggemma-300m": {
+  "sglang": 24576,
+  "vllm": 24576
+ },
+ "google/gemma-3-27b-it": {
+  "sglang": 507904,
+  "vllm": 507904
+ },
+ "google/gemma-3-4b-it": {
+  "sglang": 139264,
+  "vllm": 139264
+ },
+ "google/gemma-4-12b-it": {
+  "sglang": 393216,
+  "vllm": 393216
+ },
+ "google/gemma-4-26b-a4b-it": {
+  "sglang": 245760,
+  "vllm": 245760
+ },
+ "google/gemma-4-31b-it": {
+  "sglang": 983040,
+  "vllm": 983040
+ },
+ "google/gemma-4-e2b-it": {
+  "sglang": 35840,
+  "vllm": 35840
+ },
+ "google/gemma-4-e2b-it-qat-w4a16-ct": {
+  "sglang": 35840,
+  "vllm": 35840
+ },
+ "google/gemma-4-e4b-it": {
+  "sglang": 86016,
+  "vllm": 86016
+ },
+ "google/translategemma-27b-it": {
+  "sglang": 507904,
+  "vllm": 507904
+ },
+ "google/translategemma-4b-it": {
+  "sglang": 139264,
+  "vllm": 139264
+ },
+ "huggingfacetb/smollm-135m-instruct": {
+  "sglang": 23040,
+  "vllm": 23040
+ },
+ "huggingfacetb/smollm2-1.7b-instruct": {
+  "sglang": 196608,
+  "vllm": 196608
+ },
+ "huggingfacetb/smollm2-135m-instruct": {
+  "sglang": 23040,
+  "vllm": 23040
+ },
+ "huggingfacetb/smollm2-360m-instruct": {
+  "sglang": 40960,
+  "vllm": 40960
+ },
+ "huggingfacetb/smollm3-3b": {
+  "sglang": 73728,
+  "vllm": 73728
+ },
+ "ibm-granite/granite-3.1-8b-instruct": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "ibm-granite/granite-3.2-2b-instruct": {
+  "sglang": 81920,
+  "vllm": 81920
+ },
+ "ibm-granite/granite-4.1-3b": {
+  "sglang": 81920,
+  "vllm": 81920
+ },
+ "ibm-granite/granite-4.2-3b": {
+  "sglang": 81920,
+  "vllm": 81920
+ },
+ "iic/gme-qwen2-vl-2b-instruct": {
+  "sglang": 28672,
+  "vllm": 28672
+ },
+ "iic/gte-qwen2-1.5b-instruct": {
+  "sglang": 28672,
+  "vllm": 28672
+ },
+ "jetbrains/mellum2-12b-a2.5b-instruct": {
+  "sglang": 57344,
+  "vllm": 57344
+ },
+ "jetbrains/mellum2-12b-a2.5b-thinking": {
+  "sglang": 57344,
+  "vllm": 57344
+ },
+ "jinaai/jina-embeddings-v5-text-small": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "jinaai/jina-embeddings-v5-text-small-clustering": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "jinaai/jina-reranker-m0": {
+  "sglang": 28672,
+  "vllm": 28672
+ },
+ "liquidai/lfm2.5-1.2b-base": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-1.2b-instruct": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-1.2b-jp": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-1.2b-jp-202606": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-1.2b-thinking": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-230m": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-350m": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-8b-a1b": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-vl-1.6b": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "liquidai/lfm2.5-vl-450m": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "meta-llama/llama-3.1-405b": {
+  "sglang": 516096,
+  "vllm": 516096
+ },
+ "meta-llama/llama-3.1-405b-instruct": {
+  "sglang": 516096,
+  "vllm": 516096
+ },
+ "meta-llama/llama-3.1-70b": {
+  "sglang": 327680,
+  "vllm": 327680
+ },
+ "meta-llama/llama-3.1-70b-instruct": {
+  "sglang": 327680,
+  "vllm": 327680
+ },
+ "meta-llama/llama-3.1-8b": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "meta-llama/llama-3.1-8b-instruct": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "meta-llama/llama-3.2-1b": {
+  "sglang": 32768,
+  "vllm": 32768
+ },
+ "meta-llama/llama-3.2-1b-instruct": {
+  "sglang": 32768,
+  "vllm": 32768
+ },
+ "meta-llama/llama-3.2-3b-instruct": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "meta-llama/llama-3.3-70b-instruct": {
+  "sglang": 327680,
+  "vllm": 327680
+ },
+ "meta-llama/llama-4-maverick-17b-128e-instruct": {
+  "sglang": 196608,
+  "vllm": 196608
+ },
+ "meta-llama/llama-4-scout-17b-16e-instruct": {
+  "sglang": 196608,
+  "vllm": 196608
+ },
+ "microsoft/phi-4-mini-instruct": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "microsoft/phi-4-mini-reasoning": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "microsoft/phi-4-reasoning": {
+  "sglang": 204800,
+  "vllm": 204800
+ },
+ "mindlab-research/macaron-v1-coding-venti": {
+  "sglang": 89856,
+  "vllm": 89856
+ },
+ "minimaxai/minimax-m2": {
+  "sglang": 253952,
+  "vllm": 253952
+ },
+ "minimaxai/minimax-m2.1": {
+  "sglang": 253952,
+  "vllm": 253952
+ },
+ "minimaxai/minimax-m2.5": {
+  "sglang": 253952,
+  "vllm": 253952
+ },
+ "minimaxai/minimax-m2.7": {
+  "sglang": 253952,
+  "vllm": 253952
+ },
+ "minimaxai/minimax-m3": {
+  "sglang": 122880,
+  "vllm": 122880
+ },
+ "mistralai/devstral-2-123b-instruct-2512": {
+  "sglang": 360448,
+  "vllm": 360448
+ },
+ "mistralai/devstral-small-2-24b-instruct-2512": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "mistralai/ministral-3-14b-instruct-2512": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "mistralai/ministral-3-14b-reasoning-2512": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "mistralai/ministral-3-3b-instruct-2512": {
+  "sglang": 106496,
+  "vllm": 106496
+ },
+ "mistralai/ministral-3-3b-reasoning-2512": {
+  "sglang": 106496,
+  "vllm": 106496
+ },
+ "mistralai/ministral-3-8b-instruct-2512": {
+  "sglang": 139264,
+  "vllm": 139264
+ },
+ "mistralai/ministral-3-8b-reasoning-2512": {
+  "sglang": 139264,
+  "vllm": 139264
+ },
+ "mistralai/mistral-medium-3.5-128b": {
+  "sglang": 360448,
+  "vllm": 360448
+ },
+ "mistralai/mistral-small-3.1-24b-instruct-2503": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "mistralai/mistral-small-4-119b-2603": {
+  "sglang": 589824,
+  "vllm": 589824
+ },
+ "mistralai/shieldstral-1.0-3b": {
+  "sglang": 106496,
+  "vllm": 106496
+ },
+ "mistralai/voxtral-mini-4b-realtime-2602": {
+  "sglang": 106496,
+  "vllm": 106496
+ },
+ "moonshotai/kimi-k2-instruct": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "moonshotai/kimi-k2-thinking": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "moonshotai/kimi-k2.5": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "moonshotai/kimi-k2.6": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "moonshotai/kimi-k2.7-code": {
+  "sglang": 70272,
+  "vllm": 70272
+ },
+ "moonshotai/kimi-linear-48b-a3b-instruct": {
+  "sglang": 31104,
+  "vllm": 31104
+ },
+ "moonshotai/kimi-vl-a3b-instruct": {
+  "sglang": 31104,
+  "vllm": 31104
+ },
+ "nvidia/cosmos3-nano": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "nvidia/cosmos3-super": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "nvidia/cosmos3-super-image2video": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "nvidia/cosmos3-super-text2image": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "nvidia/nemotron-3-embed-1b-bf16": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "nvidia/nvidia-nemotron-3-nano-30b-a3b": {
+  "sglang": 29696,
+  "vllm": 53248
+ },
+ "nvidia/nvidia-nemotron-3-nano-4b": {
+  "sglang": 86016,
+  "vllm": 172032
+ },
+ "nvidia/nvidia-nemotron-3-nano-4b-bf16": {
+  "sglang": 86016,
+  "vllm": 172032
+ },
+ "nvidia/nvidia-nemotron-3-super-120b-a12b": {
+  "sglang": 49152,
+  "vllm": 90112
+ },
+ "nvidia/nvidia-nemotron-3-super-120b-a12b-base": {
+  "sglang": 49152,
+  "vllm": 90112
+ },
+ "nvidia/nvidia-nemotron-3-ultra-550b-a55b": {
+  "sglang": 61440,
+  "vllm": 110592
+ },
+ "nvidia/nvidia-nemotron-3.5-lightning-30b-a3b": {
+  "sglang": 29696,
+  "vllm": 53248
+ },
+ "nvidia/nvidia-nemotron-nano-9b-v2": {
+  "sglang": 118784,
+  "vllm": 229376
+ },
+ "nvidia/nvidia-nemotron-nano-9b-v2-base": {
+  "sglang": 118784,
+  "vllm": 229376
+ },
+ "nvidia/nvidia-nemotron-nano-9b-v2-japanese": {
+  "sglang": 118784,
+  "vllm": 229376
+ },
+ "openai/gpt-oss-120b": {
+  "sglang": 73728,
+  "vllm": 73728
+ },
+ "openai/gpt-oss-20b": {
+  "sglang": 49152,
+  "vllm": 49152
+ },
+ "openai/whisper-large-v3": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "openbmb/minicpm-v-4.6": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "openbmb/minicpm-v-4.6-thinking": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "openbmb/minicpm3-4b": {
+  "sglang": 317440,
+  "vllm": 317440
+ },
+ "openbmb/minicpm5-1b": {
+  "sglang": 24576,
+  "vllm": 24576
+ },
+ "openmoss-team/moss-transcribe-diarize": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "openonerec/onerec-1.7b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "paddlepaddle/ernie-4.5-0.3b-pt": {
+  "sglang": 18432,
+  "vllm": 18432
+ },
+ "paddlepaddle/paddleocr-vl": {
+  "sglang": 18432,
+  "vllm": 18432
+ },
+ "paddlepaddle/paddleocr-vl-1.5": {
+  "sglang": 18432,
+  "vllm": 18432
+ },
+ "paddlepaddle/paddleocr-vl-1.6": {
+  "sglang": 18432,
+  "vllm": 18432
+ },
+ "poolside/laguna-m.1": {
+  "sglang": 286720,
+  "vllm": 286720
+ },
+ "poolside/laguna-s-2.1": {
+  "sglang": 196608,
+  "vllm": 196608
+ },
+ "poolside/laguna-xs-2.1": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "poolside/laguna-xs.2": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "qwen/qwen1.5-0.5b-chat": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen2-0.5b": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "qwen/qwen2-0.5b-instruct": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "qwen/qwen2-1.5b-instruct": {
+  "sglang": 28672,
+  "vllm": 28672
+ },
+ "qwen/qwen2-audio-7b-instruct": {
+  "sglang": 524288,
+  "vllm": 524288
+ },
+ "qwen/qwen2.5-0.5b-instruct": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "qwen/qwen2.5-1.5b": {
+  "sglang": 28672,
+  "vllm": 28672
+ },
+ "qwen/qwen2.5-1.5b-instruct": {
+  "sglang": 28672,
+  "vllm": 28672
+ },
+ "qwen/qwen2.5-32b": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "qwen/qwen2.5-3b-instruct": {
+  "sglang": 36864,
+  "vllm": 36864
+ },
+ "qwen/qwen2.5-coder-0.5b-instruct": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "qwen/qwen2.5-omni-3b": {
+  "sglang": 36864,
+  "vllm": 36864
+ },
+ "qwen/qwen2.5-vl-3b-instruct": {
+  "sglang": 36864,
+  "vllm": 36864
+ },
+ "qwen/qwen2.5-vl-72b-instruct": {
+  "sglang": 327680,
+  "vllm": 327680
+ },
+ "qwen/qwen2.5-vl-7b-instruct": {
+  "sglang": 57344,
+  "vllm": 57344
+ },
+ "qwen/qwen3-0.6b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-1.7b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-1.7b-base": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-14b": {
+  "sglang": 163840,
+  "vllm": 163840
+ },
+ "qwen/qwen3-235b-a22b": {
+  "sglang": 192512,
+  "vllm": 192512
+ },
+ "qwen/qwen3-235b-a22b-instruct-2507": {
+  "sglang": 192512,
+  "vllm": 192512
+ },
+ "qwen/qwen3-235b-a22b-thinking-2507": {
+  "sglang": 192512,
+  "vllm": 192512
+ },
+ "qwen/qwen3-30b-a3b": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen3-30b-a3b-instruct-2507": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen3-30b-a3b-thinking-2507": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen3-32b": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "qwen/qwen3-4b": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-4b-instruct-2507": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-4b-thinking-2507": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-8b": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-asr-1.7b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-coder-30b-a3b-instruct": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen3-coder-480b-a35b-instruct": {
+  "sglang": 253952,
+  "vllm": 253952
+ },
+ "qwen/qwen3-coder-next": {
+  "sglang": 24576,
+  "vllm": 98304
+ },
+ "qwen/qwen3-embedding-0.6b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-embedding-8b": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-next-80b-a3b-instruct": {
+  "sglang": 24576,
+  "vllm": 98304
+ },
+ "qwen/qwen3-omni-30b-a3b-instruct": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen3-reranker-8b": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-vl-235b-a22b-instruct": {
+  "sglang": 192512,
+  "vllm": 192512
+ },
+ "qwen/qwen3-vl-2b-instruct": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-vl-30b-a3b-instruct": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "qwen/qwen3-vl-32b-instruct": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "qwen/qwen3-vl-4b-instruct": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-vl-8b-instruct": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3-vl-embedding-2b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3-vl-reranker-2b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3.5-0.8b": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "qwen/qwen3.5-122b-a10b": {
+  "sglang": 24576,
+  "vllm": 24576
+ },
+ "qwen/qwen3.5-122b-a10b-gptq-int4": {
+  "sglang": 24576,
+  "vllm": 24576
+ },
+ "qwen/qwen3.5-27b": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "qwen/qwen3.5-2b": {
+  "sglang": 12288,
+  "vllm": 12288
+ },
+ "qwen/qwen3.5-35b-a3b": {
+  "sglang": 20480,
+  "vllm": 20480
+ },
+ "qwen/qwen3.5-397b-a17b": {
+  "sglang": 30720,
+  "vllm": 30720
+ },
+ "qwen/qwen3.5-4b": {
+  "sglang": 32768,
+  "vllm": 32768
+ },
+ "qwen/qwen3.5-9b": {
+  "sglang": 32768,
+  "vllm": 32768
+ },
+ "qwen/qwen3.6-27b": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "qwen/qwen3.6-35b-a3b": {
+  "sglang": 20480,
+  "vllm": 20480
+ },
+ "qwen/qwen3.8-2.4t-a95b": {
+  "sglang": 94208,
+  "vllm": 94208
+ },
+ "qwen/qwen3.8-27b": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "qwen/qwen3guard-gen-0.6b": {
+  "sglang": 114688,
+  "vllm": 114688
+ },
+ "qwen/qwen3guard-gen-4b": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwen3guard-gen-8b": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "qwen/qwq-32b": {
+  "sglang": 262144,
+  "vllm": 262144
+ },
+ "stepfun-ai/step-3.5-flash": {
+  "sglang": 184320,
+  "vllm": 184320
+ },
+ "tencent-hunyuan/hy-mt1.5-7b": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "tencent-hunyuan/hy-mt2-1.8b": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "tencent-hunyuan/hy-mt2-7b": {
+  "sglang": 131072,
+  "vllm": 131072
+ },
+ "tencent/hunyuanocr": {
+  "sglang": 98304,
+  "vllm": 98304
+ },
+ "tencent/hy3": {
+  "sglang": 327680,
+  "vllm": 327680
+ },
+ "tencent/hy3-preview": {
+  "sglang": 327680,
+  "vllm": 327680
+ },
+ "tinyllama/tinyllama-1.1b-chat-v1.0": {
+  "sglang": 22528,
+  "vllm": 22528
+ },
+ "weiboai/vibethinker-3b": {
+  "sglang": 36864,
+  "vllm": 36864
+ },
+ "xiaomimimo/mimo-v2-flash": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "xiaomimimo/mimo-vl-7b-rl": {
+  "sglang": 147456,
+  "vllm": 147456
+ },
+ "zai-org/glm-4-9b-hf": {
+  "sglang": 40960,
+  "vllm": 40960
+ },
+ "zai-org/glm-4.1v-9b-base": {
+  "sglang": 40960,
+  "vllm": 40960
+ },
+ "zai-org/glm-4.5": {
+  "sglang": 376832,
+  "vllm": 376832
+ },
+ "zai-org/glm-4.5v": {
+  "sglang": 188416,
+  "vllm": 188416
+ },
+ "zai-org/glm-4.6": {
+  "sglang": 376832,
+  "vllm": 376832
+ },
+ "zai-org/glm-4.6v": {
+  "sglang": 188416,
+  "vllm": 188416
+ },
+ "zai-org/glm-4.6v-flash": {
+  "sglang": 40960,
+  "vllm": 40960
+ },
+ "zai-org/glm-4.7": {
+  "sglang": 376832,
+  "vllm": 376832
+ },
+ "zai-org/glm-4.7-flash": {
+  "sglang": 54144,
+  "vllm": 54144
+ },
+ "zai-org/glm-5": {
+  "sglang": 89856,
+  "vllm": 89856
+ },
+ "zai-org/glm-5.1": {
+  "sglang": 89856,
+  "vllm": 89856
+ },
+ "zai-org/glm-5.2": {
+  "sglang": 89856,
+  "vllm": 89856
+ },
+ "zai-org/glm-asr-nano-2512": {
+  "sglang": 57344,
+  "vllm": 57344
+ },
+ "zai-org/glm-ocr": {
+  "sglang": 65536,
+  "vllm": 65536
+ },
+ "zai-org/glyph": {
+  "sglang": 40960,
+  "vllm": 40960
+ }
+}

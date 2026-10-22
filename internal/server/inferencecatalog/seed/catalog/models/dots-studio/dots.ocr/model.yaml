@@ -1,0 +1,171 @@
+model_id: dots-studio/dots.ocr
+source: upstream
+display_title: dots.ocr
+parameter_count: 3039179264
+architecture: DotsOCRForCausalLM; dense Qwen2-derived text decoder + Dots vision encoder
+context_length: 131072
+release_date: '2025-07-30'
+model_config: {model_type: dots_ocr, num_hidden_layers: 28, hidden_size: 1536, num_attention_heads: 12, num_key_value_heads: 2, max_position_embeddings: 131072, sliding_window: 131072, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 28672
+  sglang: 28672
+specs:
+- name: bf16-sglang-ascend-3b05bcd6
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots.ocr
+        revision: c0111ce6bc07803dbc267932ffef0ae3a51dc951
+    - modelscope:
+        repo_id: dots-studio/dots.ocr
+        revision: 389f25857aee12827bfc92b24753b6ed64d67d62
+  weight_bytes: 6090159015
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --mm-attention-backend
+  - ascend_attn
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-hygon-93e8818e
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots.ocr
+        revision: c0111ce6bc07803dbc267932ffef0ae3a51dc951
+    - modelscope:
+        repo_id: dots-studio/dots.ocr
+        revision: 389f25857aee12827bfc92b24753b6ed64d67d62
+  weight_bytes: 6090159015
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --trust-remote-code
+  - --chat-template-content-format
+  - string
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots.ocr
+        revision: c0111ce6bc07803dbc267932ffef0ae3a51dc951
+    - modelscope:
+        repo_id: dots-studio/dots.ocr
+        revision: 389f25857aee12827bfc92b24753b6ed64d67d62
+  weight_bytes: 6090159015
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots.ocr
+        revision: c0111ce6bc07803dbc267932ffef0ae3a51dc951
+    - modelscope:
+        repo_id: dots-studio/dots.ocr
+        revision: 389f25857aee12827bfc92b24753b6ed64d67d62
+  weight_bytes: 6090159015
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --trust-remote-code
+  - --chat-template-content-format
+  - string
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-c0111ce6
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: dots-studio/dots.ocr
+        revision: c0111ce6bc07803dbc267932ffef0ae3a51dc951
+    - modelscope:
+        repo_id: dots-studio/dots.ocr
+        revision: 389f25857aee12827bfc92b24753b6ed64d67d62
+  weight_bytes: 6078431736
+  gpus:
+    vendor: ppu
+    name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)'
+    display_target: ppu
+  args:
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

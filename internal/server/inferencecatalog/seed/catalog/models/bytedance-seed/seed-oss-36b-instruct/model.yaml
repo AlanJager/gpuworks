@@ -1,0 +1,73 @@
+model_id: bytedance-seed/seed-oss-36b-instruct
+source: upstream
+display_title: Seed-OSS-36B
+parameter_count: 36B
+architecture: dense
+context_length: 524288
+release_date: '2025-08-20'
+model_config: {model_type: seed_oss, num_hidden_layers: 64, hidden_size: 5120, num_attention_heads: 80, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 524288}
+kv_bytes_per_token:
+  vllm: 262144
+  sglang: 262144
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ByteDance-Seed/Seed-OSS-36B-Instruct
+        revision: 497f1dca95ebdec98e41d517b9f060ee753c902f
+    - modelscope:
+        repo_id: hf/YanLabs-Seed-OSS-36B-Instruct-MPOA-v1
+        revision: fd9fb0a5715b9a69e25b52d0cb9f0d9fbb06fefc
+  weight_bytes: 72314506146
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - seed_oss
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-497f1dca
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ByteDance-Seed/Seed-OSS-36B-Instruct
+        revision: 497f1dca95ebdec98e41d517b9f060ee753c902f
+    - modelscope:
+        repo_id: hf/YanLabs-Seed-OSS-36B-Instruct-MPOA-v1
+        revision: fd9fb0a5715b9a69e25b52d0cb9f0d9fbb06fefc
+  weight_bytes: 72302298216
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - seed_oss
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

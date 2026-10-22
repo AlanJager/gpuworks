@@ -1,0 +1,567 @@
+{
+  "title": "网络",
+  "description": "声明存储同步、参数、服务网络，加载到节点或节点标签后，查看每个节点解析到的网卡。",
+  "breadcrumb": {
+    "resources": "资源"
+  },
+  "fallbackNote": "独立网络优先。某个角色没有独立网络时由管理网承担：服务走 agent 隧道，存储同步和参数同步走节点连接 server 所用的地址。可以在节点详情的“网络”页按节点关闭管理网的角色。",
+  "empty": "还没有网络",
+  "role": {
+    "storage_sync": "存储同步",
+    "compute": "参数",
+    "serving": "服务"
+  },
+  "type": {
+    "host_ethernet": "主机以太网",
+    "host_rdma": "主机 RDMA",
+    "accelerator_rdma": "加速器 RDMA"
+  },
+  "source": {
+    "node": "节点",
+    "label": "标签",
+    "management": "管理网"
+  },
+  "table": {
+    "name": "名称",
+    "roles": "角色",
+    "type": "类型",
+    "selector": "默认选择器",
+    "attachedTo": "加载到",
+    "nodes": "解析节点",
+    "actions": "操作"
+  },
+  "selector": {
+    "cidr": "网段",
+    "interface": "网卡",
+    "none": "未设置选择器",
+    "inferred": "自动推断 bootstrap 与 HCA",
+    "bootstrapCidr": "bootstrap 网段",
+    "inferredShort": "自动推断"
+  },
+  "actions": {
+    "create": "新建网络",
+    "edit": "编辑",
+    "delete": "删除",
+    "detail": "详情",
+    "attach": "加载",
+    "detach": "移除",
+    "cancel": "取消",
+    "save": "保存",
+    "confirmDelete": "删除网络 {{name}}？运行中的实例继续使用启动时的网络。",
+    "confirmDetach": "移除这个加载对象？",
+    "close": "关闭"
+  },
+  "form": {
+    "createTitle": "新建网络",
+    "editTitle": "编辑网络",
+    "name": "名称",
+    "nameRequired": "请输入名称",
+    "description": "描述",
+    "roles": "角色",
+    "rolesHint": "三个都勾选即 all in one。内部测试只覆盖存储同步和参数网络。",
+    "rolesRequired": "至少选择一个角色",
+    "type": "类型",
+    "typeHint": "主机以太网走主机网卡的 TCP；主机 RDMA 走主机的 RDMA 端口，包含 InfiniBand 和 RoCE，每个节点是哪一种由其端口自动识别；加速器 RDMA 走加速卡自带的 RoCE 口（昇腾 NPU），每张卡是一条 rail。类型决定 NCCL/UCX/HCCL 配置和设备注入；只有同一个网络上的节点被视为可以互通。",
+    "cidr": "默认网段（CIDR）",
+    "cidrHint": "流量走地址落在这个网段内的网卡。",
+    "interface": "默认网卡名",
+    "interfacePlaceholder": "如 ens*f0，支持通配",
+    "selectorNote": "选择器只是默认值：加载到节点时可以覆盖网卡、IP 和 HCA。网段和网卡名都填写时需要同时满足。",
+    "bootstrapCidr": "Bootstrap 网段（CIDR）",
+    "bootstrapCidrHint": "只在自动推断的 bootstrap 不合适时填写：握手（NCCL 带外通道、vLLM master 地址）改走这个网段内的网卡，数据仍走 HCA。",
+    "interfaceHint": "只在网段区分不开时需要填写；加载到节点时可以单独指定。",
+    "advanced": "高级：指定 bootstrap 网段",
+    "rdmaInferred": "不需要填写选择器：加载节点后自动为每个节点推断 bootstrap IP、HCA 和 HCA IP，之后可以在节点列表里增删 HCA。",
+    "acceleratorInferred": "不需要填写选择器：加载节点后，每个节点的 rail 自动取链路 UP 且配了地址的加速卡，之后可以在节点列表里增删。握手走主机地址（默认是管理网地址），数据走加速卡网口。",
+    "acceleratorBootstrapCidrHint": "只用于握手（HCCL rootInfo、MASTER_ADDR）：握手改走这个网段内的主机网卡。数据走加速卡网口，不在这个网段里。",
+    "roleNotOnType": "加速器 RDMA 只能承载参数流量：主机进程无法绑定加速卡网口的地址，存储同步和服务都走不了。"
+  },
+  "detail": {
+    "back": "网络",
+    "selector": "默认选择器",
+    "attachments": "加载到",
+    "resolved": "解析到的节点（{{count}}）",
+    "noAttachments": "尚未加载",
+    "noNodes": "还没有节点解析到这个网络",
+    "overrides": "覆盖：{{value}}",
+    "attachedAt": "加载于 {{time}}",
+    "rdmaInferred": "每个节点的 HCA 取已激活、速率最高的一组 RDMA 端口（RoCE 端口要求网卡有 IPv4 地址）；bootstrap 取第一条 HCA 所在网卡的地址，没有 IPoIB 的 InfiniBand 用管理网地址。可以在下表逐个节点增删 HCA 或改 bootstrap。",
+    "acceleratorInferred": "每个节点的 rail 取链路 UP 且配了地址的加速卡；bootstrap 是握手用的主机地址，默认取管理网地址，数据走加速卡网口。可以在下表逐个节点增删加速卡或改 bootstrap。"
+  },
+  "nodeTable": {
+    "node": "节点",
+    "roles": "角色",
+    "source": "来源",
+    "endpoint": "网卡 / IP",
+    "hcas": "HCA",
+    "bootstrap": "bootstrap IP",
+    "hcaIPs": "HCA 与 HCA IP"
+  },
+  "attach": {
+    "title": "加载 {{name}}",
+    "mode": "加载方式",
+    "modeNode": "节点",
+    "modeLabel": "节点标签",
+    "modeHint": "直接加载到节点的优先于经标签加载的；同一优先级时先加载的生效。",
+    "nodeRequired": "请选择节点",
+    "labelKey": "标签键",
+    "labelKeyRequired": "请输入标签键",
+    "labelValue": "标签值",
+    "overrides": "覆盖默认选择器（可选）",
+    "interface": "网卡",
+    "interfaceIB": "bootstrap 网卡",
+    "ip": "IP",
+    "ipPlaceholder": "留空则使用网卡上的地址",
+    "editTitle": "编辑覆盖项",
+    "nodes": "节点",
+    "rdmaInferred": "加载后自动推断每个节点的 bootstrap IP 和 HCA。",
+    "partial": "已加载 {{ok}} 个节点；失败：{{failed}}",
+    "done": "已加载 {{count}} 个节点",
+    "editBootstrapTitle": "指定 bootstrap",
+    "bootstrapOverride": "bootstrap（留空则自动推断）"
+  },
+  "warning": {
+    "conflict": "同一优先级有多个{{role}}网络命中这个节点。{{winner}} 加载得最早，正在使用；未生效：{{losers}}。把其中一个直接加载到本节点即可明确选择。",
+    "override_missing": "覆盖项 {{value}}（{{kind}}）不在节点最近上报的网卡清单中。",
+    "unknown": "网络提示：{{code}}",
+    "summary": "{{count}} 个节点有提示，进入详情查看原因。",
+    "link_layer_mismatch": "这个网络上的节点识别出了不同的链路层（{{link_layers}}）。InfiniBand 和 RoCE 无法组成同一套 fabric，请拆成不同的网络。",
+    "rdma_no_hca": "没有可用的 RDMA 端口：端口未激活，或 RoCE 端口所在网卡没有 IPv4 地址。",
+    "bootstrap_missing": "没有解析出 bootstrap 地址，握手无法连到这个节点。",
+    "hca_unusable": "HCA {{value}} 不可用：端口未激活，或 RoCE 端口所在网卡没有 IPv4 地址。",
+    "hca_mismatch": "这个节点用了 {{count}} 条 HCA，网络上的节点分别用了 {{counts}} 条；多出的 HCA 在对端没有配对。"
+  },
+  "node": {
+    "loaded": "已加载网络",
+    "none": "这个节点没有加载网络。",
+    "inventory": "网卡清单",
+    "inventoryHint": "由 agent 上报",
+    "rate": "流量（收 / 发）",
+    "notReported": "这个 agent 还没有上报网卡清单。",
+    "interfaces": "网卡",
+    "rdma": "RDMA 端口",
+    "accelerator": "加速卡网口",
+    "acceleratorHint": "加速卡自带的 RoCE 口，主机网卡里看不到",
+    "iface": {
+      "name": "网卡",
+      "addrs": "地址",
+      "state": "状态",
+      "speed": "速率",
+      "mtu": "MTU"
+    },
+    "port": {
+      "device": "设备",
+      "state": "状态",
+      "linkLayer": "链路层",
+      "rate": "速率",
+      "netdev": "网卡",
+      "ip": "IP"
+    },
+    "card": {
+      "name": "卡",
+      "ip": "参数面地址",
+      "state": "链路",
+      "speed": "速率"
+    },
+    "forward": {
+      "title": "服务网络转发",
+      "address": "地址",
+      "status": "网关路径",
+      "direct": "直连",
+      "unreachable": "不可达",
+      "unused": "尚未使用",
+      "hint": "网关以 TLS 和每个实例的令牌连接这里。在服务网络上的节点只经服务网络访问：地址不可达时，发往其实例的请求会失败，也不会在该节点上启动新实例。"
+    }
+  },
+  "message": {
+    "saved": "已保存",
+    "deleted": "已删除",
+    "failed": "操作失败：{{detail}}"
+  },
+  "tabs": {
+    "overview": "概览",
+    "test": "内部测试",
+    "monitor": "监控"
+  },
+  "test": {
+    "start": "开始测试",
+    "scope": "测试范围",
+    "scopeAll": "网络上的全部节点",
+    "scopeNodes": "指定节点",
+    "scopeLabel": "按标签筛选",
+    "nodes": "节点",
+    "nodesRequired": "至少选择两个节点",
+    "labelKey": "标签键",
+    "labelValue": "标签值",
+    "bandwidth": "测量吞吐",
+    "seconds": "每对测试秒数",
+    "what": "每个有序节点对从本节点在该网络上的地址连接对端地址上的临时端口，可选再持续发送几秒数据测吞吐。按轮次执行，每个节点同一时间只收发各一路。",
+    "rdmaNote": "TCP 测试走 bootstrap 网卡；要测 RDMA 端口请选择“RDMA 带宽”。",
+    "unsupported": "服务网络由 server 访问节点，不在节点之间互通，没有内部测试。",
+    "none": "这个网络还没有测试过。",
+    "running": "正在测试 {{nodes}} 个节点、{{pairs}} 对……",
+    "summary": "{{time}} · {{scope}}",
+    "interrupted": "{{time}} 开始的测试在完成前被中断。",
+    "scopeName": {
+      "all": "全部节点",
+      "nodes": "指定节点",
+      "label": "标签 {{detail}}"
+    },
+    "matrix": "源 → 目标",
+    "failed": "失败",
+    "reachable": "可达",
+    "gbps": "{{value}} Gb/s",
+    "rtt": "RTT p50 {{p50}} ms，p99 {{p99}} ms",
+    "started": "测试已开始",
+    "slow": "不到本次最快一对的十分之一，可能经过了较慢的链路。",
+    "kind": "测试方式",
+    "kindTcp": "TCP",
+    "kindRdmaTool": "RDMA 带宽（ib_write_bw）",
+    "kindName": {
+      "tcp": "TCP",
+      "rdma_tool": "RDMA 带宽",
+      "card_ping": "卡连通性（同号卡）",
+      "card_matrix": "卡连通性（全卡矩阵）"
+    },
+    "toolMissing": "以下节点没有 ib_write_bw，涉及它们的节点对会失败：{{nodes}}。请安装 perftest（例如 apt install perftest），等节点下次上报后再测。",
+    "toolReady": "所有节点都上报了 ib_write_bw。每对节点按 rail 并行各跑一个 ib_write_bw，带宽为各 rail 之和。",
+    "pattern": "测试哪些节点对",
+    "patternName": {
+      "mesh": "全互测",
+      "ring": "环形"
+    },
+    "patternHint": {
+      "mesh": "每个节点测其余所有节点，共 N×(N−1) 对，节点多时耗时较长。",
+      "ring": "节点按名称排成一圈，每个节点只测下一个，共 N 对、一轮完成。能发现单个节点或单条 HCA 的问题，发现不了只在不相邻节点之间才出现的不通。"
+    },
+    "pairCounts": "节点对 {{passed}} 通过 / {{partial}} 部分通过 / {{failed}} 失败",
+    "railCounts": "HCA {{passed}}/{{total}} 通过",
+    "problems": "问题汇总",
+    "problemWhere": "节点 / HCA",
+    "problemPairs": "影响",
+    "problemWhy": "原因",
+    "pairsAffected": "{{count}} 对",
+    "source": "源",
+    "target": "目标",
+    "result": "结果",
+    "status": {
+      "passed": "通过",
+      "partial": "部分通过",
+      "failed": "失败"
+    },
+    "targetAddress": "目标地址",
+    "sourceHCA": "源 HCA",
+    "targetHCA": "目标 HCA",
+    "retestHint": "移除 HCA 后重新测试才能看到新结果。",
+    "partialHint": "部分 HCA 失败，点击查看每条 HCA",
+    "noBootstrap": "以下节点没有 bootstrap 地址，涉及它们的节点对会失败：{{nodes}}。",
+    "noAddress": "以下节点在这个网络上没有地址，涉及它们的节点对会失败：{{nodes}}。",
+    "noRails": "以下节点没有可用的 HCA，涉及它们的节点对会失败：{{nodes}}。",
+    "side": {
+      "source": "源节点",
+      "target": "目标节点",
+      "node": "节点"
+    },
+    "error": {
+      "offline": "{{node}} 离线",
+      "deleted": "{{node}} 已删除",
+      "no_address": "{{node}} 在这个网络上没有地址（RDMA 网络即 bootstrap 地址）",
+      "no_hca": "{{node}} 没有可用的 HCA",
+      "tool_missing": "{{node}} 没有可运行的 ib_write_bw，请安装 perftest",
+      "no_roce_v2_gid": "{{node}} 的这个 RoCE 端口所在网卡没有 IPv4 地址，无法建立 RoCE v2 连接",
+      "tool_failed": "ib_write_bw 失败：{{detail}}",
+      "no_peer_rail": "{{node}} 的这条 HCA 在对端没有可配对的 HCA",
+      "listener_failed": "{{node}} 无法开启测试端口：{{detail}}",
+      "rpc_failed": "{{node}} 的 agent 调用失败：{{detail}}",
+      "probe_failed": "连接失败：{{detail}}",
+      "bandwidth_failed": "可达，但吞吐测试失败：{{detail}}"
+    },
+    "acceleratorNote": "TCP 测试走 bootstrap 网卡，只验证握手用的主机地址，不经过加速卡网口。",
+    "kindCardPing": "卡连通性 · 同号卡",
+    "kindCardMatrix": "卡连通性 · 全卡矩阵",
+    "cardNote": {
+      "card_ping": "两个节点的同号加速卡互相 ping（npu3 对 npu3）。适合日常巡检，也用来确认按卡号互通的网络。",
+      "card_matrix": "一个节点的每张加速卡 ping 另一个节点的每张卡。哪张卡能通哪张卡从地址上看不出来，建网时用它测出来。"
+    },
+    "cardPatternHint": {
+      "mesh": "每两个节点测一次（ping 有回包，一次就证明了双向），共 N×(N−1)÷2 对。",
+      "ring": "节点按名称排成一圈，每个节点只测下一个，共 N 对。每对相邻节点都给出完整结果，发现不了只在不相邻节点之间才出现的不通。"
+    },
+    "cardEstimate": "{{nodes}} 个节点、{{pairs}} 对，{{probes}} 次探测，分 {{rounds}} 轮，预计最长 {{duration}}。每张卡同一时间只发一次，一轮最长就是一次探测的超时。",
+    "durationSeconds": "{{count}} 秒",
+    "durationMinutes": "{{value}} 分钟",
+    "card": {
+      "counts": "{{pairs}} 个节点对 · 卡对 {{passed}}/{{total}} 可达",
+      "overview": "节点 ↔ 节点",
+      "openHint": "点击查看每一对卡",
+      "unreachable": "不通",
+      "rtt": "{{value}} ms",
+      "listSeparator": "、",
+      "more": " 等 {{count}} 对",
+      "odd": "{{count}} 个节点对与其余不同：{{pairs}}。这通常就是要找的布线或配置问题。",
+      "shape": {
+        "matrix": {
+          "full": "全互通",
+          "diagonal": "仅同号卡",
+          "mixed": "部分可达",
+          "none": "全不通",
+          "untested": "未测"
+        },
+        "ping": {
+          "full": "同号卡全通",
+          "diagonal": "同号卡全通",
+          "mixed": "部分可达",
+          "none": "全不通",
+          "untested": "未测"
+        }
+      },
+      "verdict": {
+        "matrix": {
+          "full": "全互通：任意卡号组合可用。",
+          "diagonal": "按卡号互通：只有同号卡之间能通，部署时两端必须选相同卡号。",
+          "mixed": "布线不规则：请逐个节点对查看可达的卡对，按它选卡。",
+          "none": "所有卡对都不通：请检查加速卡网口的链路与地址。",
+          "untested": "没有测到任何卡对：请看下面各节点对的原因。"
+        },
+        "ping": {
+          "full": "同号卡全部互通。",
+          "diagonal": "同号卡全部互通。",
+          "mixed": "部分同号卡不通：请逐个节点对查看。",
+          "none": "同号卡都不通：请检查加速卡网口的链路与地址，或用全卡矩阵看是否错位互通。",
+          "untested": "没有测到任何卡对：请看下面各节点对的原因。"
+        }
+      },
+      "error": {
+        "offline": "{{node}} 离线",
+        "deleted": "{{node}} 已删除",
+        "no_address": "{{node}} 的这张卡没有配置地址",
+        "no_hca": "{{node}} 在这个网络上没有可用的加速卡",
+        "unreachable": "超时未应答",
+        "no_card": "{{node}} 没有这张卡：{{detail}}",
+        "tool_failed": "{{node}} 的 hccn_tool 失败：{{detail}}",
+        "no_peer_rail": "{{node}} 的这张卡在对端没有同号卡",
+        "rpc_failed": "{{node}} 的 agent 调用失败：{{detail}}"
+      },
+      "measuredAt": "结果是测试那一刻的情况，布线或链路变化后需要重测"
+    },
+    "cardEstimating": "正在估算……",
+    "cardEstimateFailed": "无法发起：{{detail}}"
+  },
+  "management": {
+    "name": "管理网",
+    "description": "由每个节点连接 server 所用的地址自动得到，所有节点都在上面，不能编辑、删除或加载。某个角色没有独立网络时由管理网承担；每个节点可以分别关闭它承担的角色，在下表中逐个或批量设置，也可以在节点详情的“网络”页设置。",
+    "selector": "节点连接 server 所用的地址",
+    "attachedTo": "全部节点",
+    "title": "管理网",
+    "address": "地址",
+    "notReported": "agent 尚未上报管理网地址，升级 agent 后可见。",
+    "remote": "server 看到的来源地址",
+    "nat": "经 NAT 接入",
+    "canCarry": "可承担",
+    "roleSwitch": {
+      "serving": "服务（经 agent 隧道）",
+      "storage_sync": "存储同步（节点间直连）",
+      "compute": "参数同步（多机推理）"
+    },
+    "roleHint": "独立网络优先，这里只影响没有对应独立网络的情况。关闭后：服务——不能在该节点新建实例；存储同步——只从镜像源、模型源下载；参数同步——多机部署被拒绝。只对新实例生效。",
+    "dedicated": "由独立网络承担",
+    "labels": "标签",
+    "search": "搜索名称或地址",
+    "labelFilter": "按标签筛选",
+    "shown": "显示 {{shown}} / {{total}} 个节点",
+    "noMatch": "没有符合筛选条件的节点",
+    "bulk": {
+      "title": "批量设置",
+      "selectShown": "选中筛选结果（{{count}}）",
+      "selected": "已选 {{count}} 个节点",
+      "keep": "保持不变",
+      "allow": "允许",
+      "deny": "禁止",
+      "apply": "批量设置",
+      "confirm": "修改所选 {{count}} 个节点的管理网角色？只对新实例生效。",
+      "done": "已修改 {{count}} 个节点"
+    },
+    "saved": "已更新管理网角色"
+  },
+  "monitor": {
+    "scope": "每条线是一个节点；按这个网络在该节点上的网卡和 HCA 统计。",
+    "loadFailed": "监控数据加载失败：{{detail}}",
+    "nicRx": "网卡接收",
+    "nicTx": "网卡发送",
+    "rdmaRx": "RDMA 接收",
+    "rdmaTx": "RDMA 发送",
+    "errors": "错误与拥塞",
+    "errorsHint": "网卡错误、丢包，RDMA 错误与 CNP",
+    "roleHint": "节点上该角色的全部流量（收 + 发）",
+    "role": {
+      "storage_sync": "存储同步流量",
+      "serving": "服务流量"
+    },
+    "computeEthernet": "以太网上的参数流量无法从网卡计数中单独拆出，已包含在网卡收发里。",
+    "acceleratorNote": "加速卡网口的流量不经过主机网卡，这里的图只反映 bootstrap 网卡。"
+  },
+  "linkLayer": {
+    "infiniband": "InfiniBand",
+    "roce": "RoCE"
+  },
+  "topology": {
+    "title": "网络拓扑与配置",
+    "description": "两种典型部署下，各类流量走哪条网络、每项配置在哪里设置、起什么作用。图上的编号和下方表格一一对应，把鼠标移到编号或表格行上会高亮对应的线路。",
+    "legend": {
+      "title": "图例",
+      "external": "对外流量（浏览器、推理客户端）",
+      "management": "管理网",
+      "serving": "服务网络",
+      "storageSync": "存储同步网络",
+      "compute": "参数网络",
+      "hostAccess": "主机接入（SSH / server 拨号，可选）"
+    },
+    "columns": {
+      "setting": "配置",
+      "where": "在哪设置",
+      "does": "起什么作用",
+      "not": "不决定什么"
+    },
+    "kind": {
+      "listen": "监听",
+      "auto": "自动",
+      "network": "网络",
+      "optional": "可选"
+    },
+    "diagram": {
+      "simpleLabel": "简单拓扑示意图",
+      "complexLabel": "复杂拓扑示意图",
+      "marker": "配置 {{n}}",
+      "browser": "运维人员浏览器",
+      "browserSimple": "控制台 / 管理 API",
+      "browserOffice": "办公网 · 可经反代 / NAT",
+      "client": "推理客户端",
+      "clientSimple": "OpenAI 兼容 /v1",
+      "clientBusiness": "业务网 · OpenAI 兼容 /v1",
+      "server": "管理节点：gpuworks server",
+      "consoleShared": "控制台监听地址（三种功能共用）",
+      "consoleListen": "控制台监听地址",
+      "gatewayListen": "推理 API 监听地址",
+      "agentListen": "节点接入监听地址",
+      "tunnelRoute": "网关按节点选路：",
+      "tunnelVia": "经 agent 隧道把请求送到实例",
+      "loopback": "+ 127.0.0.1（本机工具）",
+      "loopbackAlways": "+ 127.0.0.1（本机工具，始终监听）",
+      "servingDirect": "网关直连服务网络（源地址由路由决定）",
+      "servingTarget": "→ 节点服务网络 IP:19443",
+      "node": "计算节点 {{name}}",
+      "mgmtNic": "{{nic}} · 管理网",
+      "servingNic": "{{nic}} · 服务网络",
+      "storageNic": "{{nic}} · 存储同步网络",
+      "computeNic": "{{nic}} · 参数网络",
+      "computeNetwork": "参数网络",
+      "ibBootstrap": "IB（bootstrap {{nic}}）",
+      "storageSync": "存储同步",
+      "nodeToNode": "（节点直连）",
+      "hostAccess": "SSH 纳管 / server 拨号"
+    },
+    "simple": {
+      "tab": "简单拓扑",
+      "heading": "简单：管理网承载各类流量，参数网络独立",
+      "summary": "server 只有一个监听地址，浏览器、推理客户端和节点都连它。服务和存储同步都由管理网自动承担，只需要为多机推理建一个参数网络。",
+      "rows": {
+        "1": {
+          "name": "控制台监听地址",
+          "where": "设置 → 监听地址（server.yaml 的 listen.console），改后重启",
+          "does": "server 在本机哪个 IP:端口接受连接。节点接入和推理 API 没单独设置时也用它",
+          "not": "别人用什么地址访问 server：浏览器用地址栏里的地址，节点用安装命令里的地址，经反代 / NAT 都可以"
+        },
+        "2": {
+          "name": "管理网",
+          "where": "无需设置。节点详情 → 网络 → 管理网，或网络 → 管理网，可按节点关闭它承担的角色",
+          "does": "agent 连 server 所用的本机地址。没有独立网络时承担服务（经 agent 隧道）、存储同步（节点直连）和参数流量",
+          "not": "不能删、不能改地址；有独立网络的角色不走它"
+        },
+        "3": {
+          "name": "参数网络（RDMA）",
+          "where": "网络 → 新建网络，角色选「参数」，类型 RDMA，加载到节点或节点标签",
+          "does": "多机推理的 NCCL / RDMA 通信与 PD 分离的 KV 传输，同一部署的节点须在同一个参数网络上",
+          "not": "不参与服务和存储同步；同组节点不全在上面时回退管理网（以太）并提醒"
+        }
+      }
+    },
+    "complex": {
+      "tab": "复杂拓扑",
+      "heading": "复杂：每类流量走专用网络",
+      "summary": "控制台和管理 API 开在办公网上，推理 API 开在业务网上；server 与计算节点之间有专用管理网，推理请求走专用服务网络，计算节点之间有专用的存储同步网络和参数网络。",
+      "rows": {
+        "1": {
+          "name": "控制台监听地址",
+          "where": "设置 → 监听地址（listen.console），改后重启",
+          "does": "只在这些本机地址上提供控制台和管理 API",
+          "not": "运维人员用什么地址访问（办公网反代 / NAT 均可）"
+        },
+        "2": {
+          "name": "推理 API 监听地址",
+          "where": "设置 → 监听地址 → 高级设置（listen.gateway），改后重启",
+          "does": "只在这些本机地址上应答 /v1，把推理流量和管理流量分开",
+          "not": "客户端用什么地址访问；接入示例里的地址取浏览器当前地址"
+        },
+        "3": {
+          "name": "节点接入监听地址",
+          "where": "设置 → 监听地址 → 高级设置（listen.agent），改后重启",
+          "does": "只在这些本机地址上接受 agent 连接，例如只开在专用管理网上",
+          "not": "节点连哪个地址：由安装命令里的 --server 决定，写进 agent 配置后一直使用；改监听地址前要确认原地址仍能转发到这里"
+        },
+        "4": {
+          "name": "管理网",
+          "where": "无需设置。节点详情 → 网络 → 管理网，或网络 → 管理网，按节点开关角色",
+          "does": "agent 连 server 所用的本机地址（图中 eth0）。某个角色没有独立网络时由它承担",
+          "not": "这张图里服务、存储同步、参数都有独立网络，管理网只承担控制面"
+        },
+        "5": {
+          "name": "服务网络",
+          "where": "网络 → 新建网络，角色选「服务」，加载到节点",
+          "does": "网关把推理请求直接发到节点服务网络 IP 的 19443 端口（TLS），不经 agent 隧道；实例上线前先探测一次，不通就报错",
+          "not": "不是客户端访问的地址（那是 ②）；不回退隧道"
+        },
+        "6": {
+          "name": "存储同步网络",
+          "where": "网络 → 新建网络，角色选「存储同步」，加载到节点",
+          "does": "节点之间直接复制模型和镜像，按节点对选两端共有的网络",
+          "not": "从镜像源、模型源下载走节点默认路由，不受它影响"
+        },
+        "7": {
+          "name": "参数网络",
+          "where": "网络 → 新建网络，角色选「参数」，类型 RDMA，加载到节点",
+          "does": "多机推理的 NCCL / RDMA 与 PD 分离的 KV 传输；RDMA 类型注入设备与 NCCL_IB_HCA 等变量",
+          "not": "bootstrap 握手走它的 IP 网卡（图中 eth0），数据走 IB 端口"
+        },
+        "8": {
+          "name": "计算节点接入地址",
+          "where": "添加节点时填写（SSH 纳管或 Server 发起连接模式）",
+          "does": "server 主动连这台主机：SSH 安装 / 恢复 agent，或在 Server 发起连接模式下由 server 拨号建立连接",
+          "not": "与节点之间的业务流量无关"
+        }
+      }
+    }
+  },
+  "rail": {
+    "gap": {
+      "inactive": "端口未激活",
+      "no_ipv4": "所在网卡没有 IPv4 地址，无法使用 RoCE v2",
+      "unknown": "节点没有上报这个端口"
+    },
+    "auto": "自动",
+    "manual": "手动",
+    "reset": "恢复自动",
+    "removed": "已移除，重新测试后生效",
+    "removeTitle": "移除 HCA {{hca}}？",
+    "onlyNode": "只从 {{node}} 移除（默认从所有节点移除同名 HCA）",
+    "remove": "移除 {{hca}}",
+    "removeShort": "移除 HCA",
+    "pick": "选择节点上报的 RDMA 端口",
+    "noMore": "没有更多端口",
+    "add": "添加 HCA",
+    "noBootstrap": "无 bootstrap 地址",
+    "pickInterface": "选择节点上带地址的网卡",
+    "changeBootstrap": "修改",
+    "confirm": "移除",
+    "pickCard": "选择节点上报的加速卡网口"
+  }
+}

@@ -1,0 +1,174 @@
+model_id: qwen/qwen3-14b
+source: upstream
+display_title: Qwen3 14b
+release_date: '2025-04-27'
+model_config: {model_type: qwen3, num_hidden_layers: 40, hidden_size: 5120, num_attention_heads: 40, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 40960}
+kv_bytes_per_token:
+  vllm: 163840
+  sglang: 163840
+specs:
+- name: fp8-sglang-ppu-no-piecewise-9a283b4a
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface: {repo_id: Qwen/Qwen3-14B-FP8, revision: 9a283b4a5efbc09ce247e0ae5b02b744739e525a}
+    - modelscope: {repo_id: Qwen/Qwen3-14B-FP8, revision: 67a1c54946f00f2a2061b234ce9b1b52b70566fd}
+  weight_bytes: 16326253296
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --disable-piecewise-cuda-graph
+  api:
+    health_endpoint: /health
+    operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-14B
+        revision: 40c069824f4251a91eefaf281ebe4c544efd3e18
+    - modelscope:
+        repo_id: Qwen/Qwen3-14B
+        revision: 6b837d17776dcf0f91d781839615d0271a065dc7
+  weight_bytes: 29552613776
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-14B-FP8
+        revision: 9a283b4a5efbc09ce247e0ae5b02b744739e525a
+    - modelscope:
+        repo_id: Qwen/Qwen3-14B-FP8
+        revision: 67a1c54946f00f2a2061b234ce9b1b52b70566fd
+  weight_bytes: 16342227959
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-hygon-a9c93b02
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: hygon/Qwen3-14B-Channel-INT8-w8a8
+        revision: bbdc66a41a3dde1f6d14b26d640b09e075cdde3e
+  weight_bytes: 17696933913
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - auto
+  - --trust-remote-code
+  env:
+    VLLM_HCU_USE_CUSTOM_QUANTIZATION_GEMM: 'false'
+  pre_start_argv:
+  - vllm-hcu-apply-patches
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-ppu-9a283b4a
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-14B-FP8
+        revision: 9a283b4a5efbc09ce247e0ae5b02b744739e525a
+    - modelscope:
+        repo_id: Qwen/Qwen3-14B-FP8
+        revision: 67a1c54946f00f2a2061b234ce9b1b52b70566fd
+  weight_bytes: 16326253296
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --disable-piecewise-cuda-graph
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-40c06982
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-14B
+        revision: 40c069824f4251a91eefaf281ebe4c544efd3e18
+    - modelscope:
+        repo_id: Qwen/Qwen3-14B
+        revision: 6b837d17776dcf0f91d781839615d0271a065dc7
+  weight_bytes: 29536665640
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

@@ -1,0 +1,111 @@
+{
+  "contract_id": "gpuworks/image-runtime/url-acquire-remove",
+  "priority": "P0",
+  "page_id": "images",
+  "test_file": "test/e2e/image_runtime.py",
+  "test_function": "test_url_acquire_remove",
+  "name": "镜像节点副本 / URL实际获取、容器消费与UI删除 / digest一致且删除后absent",
+  "command": "make test-e2e-image-url-runtime",
+  "lane": "local-real-server-agent-isolated-docker",
+  "identity": "admin",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "product_contracts": [
+    "ui/src/pages/images/ImageNodeTable.tsx",
+    "ui/src/pages/images/ImageArchiveURLDialog.tsx",
+    "internal/server/api/images_nodes.go",
+    "internal/agent/app/image_load_url.go",
+    "internal/server/hub/image_remove.go"
+  ],
+  "crud": {
+    "create": "covered: node image replica acquired through UI",
+    "read": "covered: independent series GET, reload, real Docker inspect and execution",
+    "update": "N/A: acquired content immutable; repull/alternate acquisition is a separate operation",
+    "delete": "covered: UI node-replica deletion and cancel; catalog deletion only teardown"
+  },
+  "fields": [
+    {
+      "field_id": "image-node.source",
+      "component": "Select",
+      "request": "source=url",
+      "persistence": "image_node.source",
+      "covered": [
+        "explicit declared URL selection"
+      ],
+      "missing": [
+    "MISSING: image-node.inspect UI action and displayed ENTRYPOINT/CMD/ENV; independent Docker inspect is runtime evidence, not coverage of this button",
+    "MISSING: rolling image repull UI action, force request and changed runtime digest; rolling catalog metadata is a separate contract",
+    "MISSING: peer source replacement invalidates probe, probe failure/recovery and rate-limit empty/zero/unit conversion; requires isolated two-agent runtime fixture",
+        "registry",
+        "peer",
+        "relay",
+        "all visible options"
+      ]
+    },
+    {
+      "field_id": "image-node.archive-url",
+      "component": "URL",
+      "request": "archive_url",
+      "persistence": "version.registry_sources and image_node source",
+      "covered": [
+        "prefilled declared URL",
+        "real preview tags/bytes",
+        "real transfer"
+      ],
+      "missing": [
+        "invalid",
+        "mismatch",
+        "new URL recording"
+      ]
+    },
+    {
+      "field_id": "image-node.relay",
+      "component": "Checkbox",
+      "request": "relay",
+      "persistence": "image_node.source",
+      "covered": [
+        "default false"
+      ],
+      "missing": [
+        "true then false",
+        "relay execution"
+      ]
+    },
+    {
+      "field_id": "image-node.remove",
+      "component": "Confirmation",
+      "request": "DELETE image version/node",
+      "persistence": "image_node.state=absent",
+      "covered": [
+        "name and impact",
+        "cancel no mutation",
+        "confirm and runtime absence"
+      ],
+      "missing": [
+        "referenced/running container refuses removal",
+        "full keyboard contract"
+      ]
+    }
+  ],
+  "dimensions": [
+    "16.6",
+    "16.7",
+    "12.1",
+    "12.7"
+  ],
+  "missing": [
+    "Registry pull and digest verification across registries",
+    "peer distribution and relay",
+    "failure/retry/cancel (separate contracts)",
+    "in-use image refusal and referenced deletion",
+    "non-admin permissions and all source/field boundaries",
+    "pagination, 10/30/100 replicas, computed styles and full keyboard matrix",
+    "GPU compatibility and model inference",
+    "16.3 progress/stage presentation; terminal present/absent states alone do not cover it"
+  ]
+}

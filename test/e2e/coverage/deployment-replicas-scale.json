@@ -1,0 +1,487 @@
+{
+  "contract_id": "gpuworks/deployment/replicas-scale",
+  "name": "部署 / 副本 / 1→2→1 与指定移除",
+  "priority": "P0",
+  "page_id": "deployments",
+  "control_id": "ordinary-replica-scale",
+  "test_file": "test/e2e/deployment_replica_browser.py",
+  "test_function": "test_replicas",
+  "command": "make test-e2e-deployment-replicas REPLICA_CASE=scale LOCALE=en",
+  "lane": "local-real-agent-docker-fake-gpu-facts",
+  "identity": "admin browser, run-owned inference key",
+  "fixture": "API-created initial ordinary deployment, local model, real agent and Docker; exactly two synthetic A100 cards with whole-card claims and explicit failover routing; drain additionally proves no ready replacement while target holds its stream; audited fake-engine with 120x500ms SSE deltas; real host network; image ID captured once and deployed through a run-owned immutable tag, removed independently after containers; explicit dedicated DOCKER_HOST required and DOCKER_CONTEXT empty, shared/default daemon rejected before resources",
+  "product_contracts": [
+    "ui/src/pages/DeploymentReplicaActions.tsx",
+    "ui/src/api.ts",
+    "internal/server/api/instances_lifecycle.go",
+    "internal/server/api/deployments_replicas.go",
+    "test/fake-engine/handler/handler.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "inventory": [
+    {
+      "component": "ReplicasEditor/InputNumber",
+      "fields": [
+        "replicas"
+      ],
+      "semantics": "default1/2, min1, max32, Apply disabled unchanged; PUT /deployments/:id/replicas numeric body",
+      "execution": "exercised in this contract"
+    },
+    {
+      "component": "ReplicaActions/Popconfirm",
+      "fields": [
+        "remove"
+      ],
+      "semantics": "target instance panel; cancel no mutation; PUT replicas1/remove target UUID; current copy describes impact but does not contain full object name, 12.7 remains MISSING",
+      "execution": "exercised in this contract"
+    },
+    {
+      "component": "ReplicaActions/ConfirmOrderModal/Checkbox",
+      "fields": [
+        "drain"
+      ],
+      "semantics": "defaulttrue; false explicit query; POST /instances/:uuid/restart no body; description and checkbox exact locale text",
+      "execution": "NOT EXERCISED in this contract; full page inventory only; separate replicas-drain contract"
+    },
+    {
+      "component": "Fixture-only routing/capacity facts (not browser-edited controls)",
+      "fields": [
+        "routing_policy",
+        "node.gpu_count",
+        "node.gpus.index",
+        "instance.gpu_indexes"
+      ],
+      "semantics": "routing_policy=failover; node count2 and indices[0,1], ready pair claims[[0],[1]] independently read; no-surge guard during drain",
+      "execution": "exercised in this contract via fixture.ready; route editor and hardware UI edits remain MISSING"
+    }
+  ],
+  "oracle_chain": [
+    "Fixture count1, exact selected target UUID and unchanged non-target peer UUID determine full numeric PUT bodies/count/order; cancel emits no mutation",
+    "Independent bearer GET desired/ready/current instance UUID+container ID sets at1→2→1; browser reentry matches persisted counts",
+    "Real Docker host-network pinned image IDs running, selected target absent, non-target peer container unchanged; exact nonstream gateway completion",
+    "Cleanup exact-name discovery for lost create response; independent run-owned Config.Image inventory and agent-log ledger; API404 and Docker absence"
+  ],
+  "dimensions": [
+    "1.14"
+  ],
+  "component_checklist": [
+    {
+      "item": "1.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.7",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.8",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.9",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.10",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.11",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.12",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.13",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "1.14",
+      "status": "covered",
+      "reason": "Independent GET desired/ready/instance identities, browser reentry, actual pinned Docker IDs and gateway output; deployment_replica_browser.scale"
+    },
+    {
+      "item": "1.15",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "3.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "3.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "3.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "3.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "3.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "3.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "6.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "6.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "6.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "6.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "6.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "6.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.7",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.8",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.9",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.10",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.11",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.12",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "10.13",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.7",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "12.8",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "13.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "13.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "13.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "13.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "13.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "13.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.7",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "14.8",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "17.7",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.1",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.2",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.3",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.4",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.5",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.6",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    },
+    {
+      "item": "22.7",
+      "status": "MISSING",
+      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+    }
+  ],
+  "missing": [
+    "numeric limits/invalid/empty/fractional inputs",
+    "401/403/user role/session expiry",
+    "duplicate submit and backend refusal recovery",
+    "keyboard/focus/computed theme and responsive layouts",
+    "multinode/PD/dGPU/sleep/wake/rolling-all strategies",
+    "real GPU computation and cloud providers",
+    "CI browser gate (not installed)"
+  ],
+  "driver_file": "test/e2e/deployment_replicas.py",
+  "failure_table": [
+    {
+      "wrong_implementation": "backend ignores selected remove UUID or removes peer",
+      "killed_by": "scale: survivor identity exact UUID/container equality; selected target Docker absent"
+    },
+    {
+      "wrong_implementation": "cancel emits mutation or wire boolean/string replaces count",
+      "killed_by": "scale: cancel removal wire; strict full final complete mutation ledger"
+    },
+    {
+      "wrong_implementation": "scale up replaces existing replica",
+      "killed_by": "scale: original UUID+container unchanged after2 ready"
+    },
+    {
+      "wrong_implementation": "late extra deployment or instance mutation",
+      "killed_by": "mutation_wire collection/descendant listener and test_replicas final complete mutation ledger"
+    },
+    {
+      "wrong_implementation": "cleanup/close failure overwritten with PASS",
+      "killed_by": "actual-main selftests and main aggregate environment_cleanup_ok/close/required layers; remaining_resources preserved"
+    }
+  ]
+}

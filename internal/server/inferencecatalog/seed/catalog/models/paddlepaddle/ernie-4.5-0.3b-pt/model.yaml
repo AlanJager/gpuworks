@@ -1,0 +1,68 @@
+model_id: paddlepaddle/ernie-4.5-0.3b-pt
+source: upstream
+display_title: ernie-4.5-0.3b-pt
+release_date: '2025-06-28'
+model_config: {model_type: ernie4_5, num_hidden_layers: 18, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 2, head_dim: 128, max_position_embeddings: 131072}
+kv_bytes_per_token:
+  vllm: 18432
+  sglang: 18432
+specs:
+- name: bf16-vllm-hygon-94fda81d
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: baidu/ERNIE-4.5-0.3B-PT
+        revision: b565cf6caebdb7a1eadf00100857b1ed5e044f12
+    - modelscope:
+        repo_id: PaddlePaddle/ERNIE-4.5-0.3B-PT
+        revision: c3fdc0edc91626d75be53a3477ebc3fc1cd6f76d
+  weight_bytes: 734583974
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --trust-remote-code
+  env:
+    VLLM_HCU_USE_LIGHTOP_MOE_ALIGN: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: baidu/ERNIE-4.5-0.3B-PT
+        revision: b565cf6caebdb7a1eadf00100857b1ed5e044f12
+    - modelscope:
+        repo_id: PaddlePaddle/ERNIE-4.5-0.3B-PT
+        revision: c3fdc0edc91626d75be53a3477ebc3fc1cd6f76d
+  weight_bytes: 734583974
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

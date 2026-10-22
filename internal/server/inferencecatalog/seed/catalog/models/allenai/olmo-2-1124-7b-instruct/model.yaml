@@ -1,0 +1,109 @@
+model_id: allenai/olmo-2-1124-7b-instruct
+source: upstream
+display_title: olmo-2-1124-7b-instruct
+parameter_count: 7,298,617,344 BF16 parameters
+architecture: Olmo2ForCausalLM; dense decoder-only transformer with 32 layers, hidden
+  size 4096, intermediate size 11008, 32 attention heads and 32 KV heads
+context_length: 4096
+release_date: '2024-12-18'
+model_config: {model_type: olmo2, num_hidden_layers: 32, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 32, max_position_embeddings: 4096}
+kv_bytes_per_token:
+  vllm: 524288
+  sglang: 524288
+specs:
+- name: bf16-sglang-ascend-d7abd26d
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: allenai/OLMo-2-1124-7B-Instruct
+        revision: 470b1fba1ae01581f270116362ee4aa1b97f4c84
+    - modelscope:
+        repo_id: allenai/OLMo-2-1124-7B-Instruct
+        revision: 610b6220b98cdbc3177438886d4cdbb6311f8ba1
+  weight_bytes: 14606988015
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --attention-backend
+  - ascend
+  - --device
+  - npu
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-470b1fba
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: allenai/OLMo-2-1124-7B-Instruct
+        revision: 470b1fba1ae01581f270116362ee4aa1b97f4c84
+    - modelscope:
+        repo_id: allenai/OLMo-2-1124-7B-Instruct
+        revision: 610b6220b98cdbc3177438886d4cdbb6311f8ba1
+  weight_bytes: 14597276128
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-48d788ec
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: allenai/OLMo-2-0425-1B-Instruct
+        revision: 48d788eca847d4d7548f375ad03d3c9312f6139e
+    - modelscope:
+        repo_id: allenai/OLMo-2-0425-1B-Instruct
+        revision: 510f5cde5bd2ff97971465da731c04b998a4592f
+  weight_bytes: 2969854224
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --skip-mm-profiling
+  - vllm
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

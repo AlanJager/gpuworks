@@ -1,0 +1,116 @@
+{
+  "contract_id": "gpuworks/session/two-tab-logout-relogin",
+  "plan_id": "NEXT-06",
+  "name": "登录 / 两标签注销与重新登录 / 旧 Cookie 和登录 Bearer 均撤销，深链恢复",
+  "priority": "P0",
+  "page_id": "login",
+  "test_file": "test/e2e/session_logout.py",
+  "test_function": "test_two_tab_logout_relogin",
+  "command": "make test-e2e-session-logout",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin browser; separate cookie-only and bearer-only clients",
+  "product_contracts": [
+    "ui/src/pages/LoginPage.tsx",
+    "ui/src/components/SessionBoundary.tsx",
+    "ui/src/session.ts",
+    "internal/server/api/auth.go",
+    "internal/server/api/auth_session_test.go"
+  ],
+  "phase_zero": "Cookie and returned login Bearer bind to the same revocable management session. Logout removes that session; storage events notify the second tab. Re-authentication retains each deep link. No token refresh, idle expiry or GPU behavior is claimed.",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "fields": [
+    {
+      "field_id": "auth.username",
+      "component": "Text",
+      "required": true,
+      "default": "",
+      "request": "username",
+      "persistence": "authenticated user identity; not a user creation operation",
+      "covered": [
+        "accessible label",
+        "empty blocks request",
+        "admin retained after 401",
+        "exact request"
+      ],
+      "missing": [
+        "whitespace normalization",
+        "unknown username",
+        "length boundaries"
+      ]
+    },
+    {
+      "field_id": "auth.password",
+      "component": "Password",
+      "required": true,
+      "default": "",
+      "request": "password",
+      "persistence": "N/A: supplied credential is verified; not saved as a new password",
+      "covered": [
+        "accessible label",
+        "empty blocks request",
+        "masked input",
+        "incorrect value gives 401",
+        "correction clears error",
+        "Enter submits",
+        "never traced"
+      ],
+      "missing": [
+        "visibility toggle",
+        "whitespace",
+        "password change"
+      ]
+    },
+    {"field_id": "auth.language-switcher", "component": "Dropdown", "request": "N/A: browser locale preference", "persistence": "localStorage gpuworks.locale", "covered": [], "missing": ["MISSING: select English and Chinese through the actual login-page menu, current selection and refresh persistence; --locale runs alone do not prove menu interaction"]},
+    {"field_id": "auth.session-retry", "component": "Button", "request": "GET /api/v1/auth/me", "persistence": "N/A: session check", "covered": [], "missing": ["MISSING: initial session-check failure and authenticated check failure show retry and recover via the real server; logout-failure coverage remains separately missing"]},
+    {"field_id": "auth.reauthentication-dialog", "component": "Modal containing LoginForm", "request": "POST /api/v1/auth/login", "persistence": "replacement management session", "covered": ["named dialog in viewport after peer logout", "Enter submits valid credentials and restores both deep links"], "missing": ["MISSING: Esc and mask cannot dismiss mandatory reauthentication; default focus, Tab/Shift+Tab containment", "MISSING: empty/wrong credentials and correction in this modal while both tabs remain unauthenticated"]}
+  ],
+  "crud": {
+    "create": "UI login creates an opaque Cookie and associated Bearer; independent clients each prove 200",
+    "read": "auth/me identity, two deep links and refresh",
+    "update": "N/A: re-login creates a replacement session; no session edit UI",
+    "delete": "UI logout makes captured Cookie and associated Bearer return exact 401; UI re-login cannot revive either"
+  },
+  "checklist_items": {
+    "covered_in_this_scenario": [
+      "7.5"
+    ],
+    "partial": {
+      "1.1": "both actual login fields and empty defaults; not full form matrix",
+      "7.1": "required empty and masked password; reveal/whitespace missing",
+      "7.4": "successful identity reads, incorrect password and revocation; expiry missing",
+      "7.6": "secrets consumed in memory, trace disabled during login, sanitized artifacts scanned; not all download/log surfaces",
+      "22.1": "networks/settings deep links and refresh; not all pages",
+      "22.4": "explicit logout and re-authentication retain destination; draft preservation and idle expiry missing",
+      "22.5": "locale is explicit; a language is covered only when its own run passes",
+      "22.6": "Enter submits and reauthentication dialog is in viewport; computed-style/focus-state matrix missing"
+    },
+    "not_applicable": {
+      "7.2": "No credential edit form",
+      "7.3": "Login bearer is returned to API clients, not displayed as a one-time UI credential"
+    }
+  },
+  "execution_evidence": {
+    "status": "N/A",
+    "reason": "Management authentication is enforced by real server and SQLite; no agent/container/GPU required"
+  },
+  "missing": [
+    "idle/absolute expiry",
+    "password-change session revocation",
+    "logout server failure",
+    "user role lane",
+    "concurrent login race",
+    "unrelated session isolation",
+    "draft preservation",
+    "complete component style and keyboard matrix"
+  ],
+  "cleanup": "UI revokes replacement session and both credential clients prove 401; owned process stops, private database retained for diagnosis only",
+  "result": "NOT_RUN until selected report is PASS after required evidence, server cleanup and artifact scan; not full authentication coverage",
+  "artifact": "secrets/e2e/<runId>/report.json",
+  "response_observation": "Chrome response-stage barrier is limited to exact login/logout POST. Fetch.getResponseBody reads actual server bytes; Fetch.continueResponse supplies only requestId. No synthetic response or mutation. This is necessary because UI does not consume successful authentication response bodies."
+}

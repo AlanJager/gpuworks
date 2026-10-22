@@ -1,0 +1,226 @@
+package proxy
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+// selectDeploymentInstance keeps API-contract authorization and data-plane
+// routing on the same rollout. Multiple active deployments with one served
+// name are valid during replacement; a pending rollout must not shadow an
+// older deployment that is already serving.
+//
+// The final bool return is asleep: it is true only when the returned 503 is
+// specifically a "model is asleep" rejection, so accounting can classify it as
+// asleep_503 by this explicit flag rather than by matching rejection text.
+func (p *Proxy) selectDeploymentInstance(modelName string) (*store.Deployment, target, int, string, bool) {
+	return p.selectDeploymentInstanceWithKey(modelName, "")
+}
+
+func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*store.Deployment, target, int, string, bool) {
+	if p.routes != nil {
+		deployments, ok := p.routes.snapshot(modelName)
+		if ok {
+			for _, rd := range deployments {
+				if tgt, ok := p.pickRouted(rd, modelName, affinity); ok {
+					return rd.dep, tgt, 0, "", false
+				}
+			}
+			// A dirty snapshot is refreshed asynchronously. The name-scoped store
+			// lookup below is the bounded correctness fallback; never rebuild the
+			// complete route table on the request path.
+		}
+		p.routes.requestRebuild()
+	}
+	deployments, err := p.store.DeploymentsByServedName(modelName)
+	if err != nil || len(deployments) == 0 {
+		return nil, target{}, http.StatusNotFound, "no deployment serves model " + modelName, false
+	}
+	message := "no running instance for " + modelName + " (still starting?)"
+	// attempted tracks which deployment the surfaced message (and asleep
+	// flag) belongs to, for accounting even when every candidate failed: it
+	// starts at the first candidate and is overridden whenever a later
+	// candidate is specifically the asleep case, mirroring the message
+	// selection below exactly.
+	attempted := &deployments[0]
+	asleep := false
+	for index := range deployments {
+		dep := &deployments[index]
+		tgt, status, candidateMessage, candidateAsleep := p.selectDeploymentInstances(dep, modelName, affinity)
+		if status == 0 {
+			return dep, tgt, 0, "", false
+		}
+		if index == 0 || candidateAsleep {
+			message = candidateMessage
+			asleep = candidateAsleep
+			attempted = dep
+		}
+	}
+	return attempted, target{}, http.StatusServiceUnavailable, message, asleep
+}
+
+// pickRouted picks one of a snapshot deployment's replicas, false when
+// none is ready.
+func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string) (target, bool) {
+	if rd.nnodes > 1 {
+		// Distributed readiness is read through once per request because
+		// all ranks must belong to the same current attempt. The route
+		// snapshot still supplies the node UUID map, avoiding one NodeByID
+		// query for every rank.
+		insts, _ := p.store.InstancesForDeployment(rd.id)
+		tgt, status, _, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes)
+		return tgt, status == 0
+	}
+	lease := p.pickAwake(rd.candidates, rd.policy, affinity, false)
+	if lease == nil {
+		return target{}, false
+	}
+	attempt := &routeAttempt{candidates: rd.candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct}
+	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: rd.candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true
+}
+
+func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affinity string) (target, int, string, bool) {
+	insts, _ := p.store.InstancesForDeployment(dep.ID)
+	if dep.NNodes > 1 {
+		return p.selectDistributedInstance(dep, insts, modelName, affinity)
+	}
+	candidates := make([]candidate, 0, len(insts))
+	anyAsleep := false
+	pd, err := pdRouteFor(dep)
+	if err != nil {
+		p.log.Warn("PD deployment not routed: placement cannot be read", "dep", dep.ID, "err", err)
+		return target{}, http.StatusServiceUnavailable, "the deployment's PD placement cannot be read", false
+	}
+	for _, in := range insts {
+		// An instance ordered to sleep, or still asleep, is "running" but cannot
+		// serve: the offloaded engine would hang the request. Only when no awake
+		// instance is left is the caller told to wake the model.
+		if in.State == proto.InstRunning && planning.InstanceAsleep(&in) {
+			anyAsleep = true
+			if pd != nil {
+				pd.noteAsleep(&in)
+			}
+			continue
+		}
+		if in.State == proto.InstRunning && !in.Headless && in.APIPort > 0 {
+			node, err := p.store.NodeByID(in.NodeID)
+			if err != nil {
+				continue
+			}
+			if !p.hub.Online(node.UUID) {
+				continue
+			}
+			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: instanceModelName(dep, &in), uuidHash: fnv64([]byte(in.UUID))}
+			if pd != nil {
+				var ok bool
+				if c, ok = pd.admit(&in, c); !ok {
+					continue
+				}
+			}
+			candidates = append(candidates, c)
+		}
+	}
+	if pd != nil {
+		nodes := map[uint]string{}
+		for _, in := range insts {
+			if node, err := p.store.NodeByID(in.NodeID); err == nil {
+				nodes[in.NodeID] = node.UUID
+			}
+		}
+		candidates = pd.withoutUnroutable(candidates, insts, nodes)
+	}
+	if len(candidates) > 0 {
+		policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
+		if lease := p.pickAwake(candidates, policy, affinity, true); lease != nil {
+			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct}
+			return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: pd, affinity: affinity}, 0, "", false
+		}
+	}
+	// Distinguish "sleeping" from "not ready" so the caller is told to wake
+	// the model rather than to retry.
+	if anyAsleep {
+		return target{}, http.StatusServiceUnavailable, "model is asleep; wake it first", true
+	}
+	return target{}, http.StatusServiceUnavailable, "no running instance for " + modelName + " (still starting?)", false
+}
+
+// selectDistributedInstance picks a multi-node replica to serve the request:
+// a leader whose generation is complete (every follower of its group and
+// attempt running, planning.GroupsIncomplete) and whose node is online, by
+// the deployment's routing policy, as for single-node replicas. A deployment
+// may list several multi-node replicas; each generation is its own group.
+// The final bool return is asleep; see selectDeploymentInstance.
+func (p *Proxy) selectDistributedInstance(dep *store.Deployment, insts []store.Instance, modelName, affinity string) (target, int, string, bool) {
+	return p.selectDistributedInstanceWithNodes(dep, insts, modelName, affinity, nil)
+}
+
+func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts []store.Instance, modelName, affinity string, nodes map[uint]string) (target, int, string, bool) {
+	nodeUUID := func(id uint) string {
+		if nodes != nil {
+			return nodes[id]
+		}
+		if node, err := p.store.NodeByID(id); err == nil {
+			return node.UUID
+		}
+		return ""
+	}
+	online := func(id uint) bool {
+		uuid := nodeUUID(id)
+		return uuid != "" && p.hub.Online(uuid)
+	}
+	incomplete := planning.GroupsIncomplete(insts)
+	var followers []store.Instance
+	for _, in := range insts {
+		if in.Headless && in.State == proto.InstRunning {
+			followers = append(followers, in)
+		}
+	}
+	candidates := make([]candidate, 0, len(insts))
+	anySleeping := false
+	for i := range insts {
+		in := &insts[i]
+		if in.State != proto.InstRunning || in.Headless {
+			continue
+		}
+		// A generation serves as a whole: every follower of it must be on
+		// an online node. It sleeps with its leader's engine, so the leader
+		// alone says whether it is asleep. Rows from before rank metadata
+		// was recorded carry no group; such a leader takes every running
+		// follower of the deployment as its own.
+		legacy := in.NNodes <= 1 && in.DistGroup == ""
+		ranks, asleep, reachable := 0, planning.InstanceAsleep(in), online(in.NodeID)
+		for j := range followers {
+			if legacy || planning.SameGeneration(followers[j], *in) {
+				ranks++
+				reachable = reachable && online(followers[j].NodeID)
+			}
+		}
+		if asleep {
+			anySleeping = true
+			continue
+		}
+		if in.APIPort <= 0 || incomplete[in.UUID] || (legacy && ranks < dep.NNodes-1) || !reachable {
+			continue
+		}
+		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: instanceModelName(dep, in), uuidHash: fnv64([]byte(in.UUID))})
+	}
+	if len(candidates) == 0 {
+		if anySleeping {
+			return target{}, http.StatusServiceUnavailable, "model is asleep; wake it first", true
+		}
+		return target{}, http.StatusServiceUnavailable, fmt.Sprintf("distributed model %s is not ready: no replica has every rank running on an online node", modelName), false
+	}
+	policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
+	lease := p.pickAwake(candidates, policy, affinity, true)
+	if lease == nil {
+		return target{}, http.StatusServiceUnavailable, "distributed model leader is offline for " + modelName, false
+	}
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct}
+	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, affinity: affinity}, 0, "", false
+}

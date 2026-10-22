@@ -1,0 +1,134 @@
+{
+  "contract_id": "gpuworks/settings/branding",
+  "name": "设置 / 品牌外观 / 文字与图标保存、刷新回读、登录页与浏览器标题生效",
+  "test_file": "test/e2e/settings_branding.py",
+  "test_function": "test_branding",
+  "command": "make test-e2e-settings-branding",
+  "priority": "P1",
+  "page_id": "settings",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin / public sign-in page",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Branding is a control-plane setting rendered by the console and the public sign-in page. No agent, container, GPU or engine is claimed."
+  },
+  "crud": {
+    "create": "N/A: branding starts empty and every field defaults",
+    "read": "The card, header, document title, public sign-in page and independent GET agree",
+    "update": "UI Save sends the exact PATCH body with product name, console title, sign-in text and SVG data URL",
+    "delete": "Restore default clears the logo; empty values restore all text defaults"
+  },
+  "fields": [
+    {
+      "id": "branding.product-name",
+      "component": "Text input",
+      "request": "product_name",
+      "persisted": "product_name",
+      "covered": [
+        "empty default",
+        "custom value saved",
+        "document title",
+        "public sign-in name",
+        "reload and independent GET",
+        "empty restores the default"
+      ],
+      "missing": [
+        "maximum length and whitespace-only text",
+        "Unicode normalization"
+      ]
+    },
+    {
+      "id": "branding.console-title",
+      "component": "Text input",
+      "request": "console_title",
+      "persisted": "console_title",
+      "covered": [
+        "empty default",
+        "custom header title",
+        "reload and independent GET",
+        "empty restores the default"
+      ],
+      "missing": [
+        "maximum length and multiline rejection"
+      ]
+    },
+    {
+      "id": "branding.login-description",
+      "component": "Textarea",
+      "request": "login_description",
+      "persisted": "login_description",
+      "covered": [
+        "empty default",
+        "multiline custom text shown on the public sign-in page",
+        "reload and independent GET",
+        "empty restores the default"
+      ],
+      "missing": [
+        "maximum length",
+        "HTML/script text handling on the sign-in page"
+      ]
+    },
+    {
+      "id": "branding.logo",
+      "component": "Upload + preview",
+      "request": "logo data URL",
+      "persisted": "logo data URL",
+      "covered": [
+        "a text file is rejected with the not-an-image reason and sends no PATCH",
+        "the real crop dialog opens for the SVG, its image and preview render, and the confirm action accepts the full crop",
+        "a small SVG is accepted as a data URL",
+        "the saved logo is visible and decodes in the console",
+        "header and sign-in page render it",
+        "reload and independent GET",
+        "Restore default clears it and restores the default title and built-in mark",
+        "the full 32×32 SVG decodes in the anonymous sign-in context"
+      ],
+      "missing": [
+        "crop to a sub-region, the square toggle and raster crop output",
+        "PNG/JPEG/WebP rasterization and compression",
+        "the tooLarge path",
+        "a corrupt image/* decode failure",
+        "favicon replacement"
+      ]
+    },
+    {
+      "id": "branding.cleanup",
+      "component": "Restore default + Save",
+      "request": "PATCH with empty fields",
+      "persisted": "restored defaults",
+      "covered": [
+        "all text and the logo return to empty",
+        "header/document title return to defaults",
+        "independent GET is empty"
+      ],
+      "missing": [
+        "server restart after restore"
+      ]
+    }
+  ],
+  "checklist_items": {
+    "1.7": "Saving the card reaches the exact PATCH body for all four fields",
+    "1.14": "Reload and independent GET preserve the branding; the public sign-in page agrees",
+    "2.1": "Labels, defaults and the empty values are asserted before editing",
+    "2.2": "Multiline sign-in text is persisted and shown on the public page",
+    "16.1": "The upload rejects a non-image type and accepts a real image; size/type boundaries remain MISSING"
+  },
+  "missing": [
+    "MISSING: checklist 1.10 corrupt image decode failure and server-side rejection; only the non-image type is rejected",
+    "MISSING: crop sub-region, square toggle and raster logo output",
+    "MISSING: maximum-length and whitespace-only text boundaries",
+    "MISSING: PNG/JPEG/WebP rasterization, compression and the tooLarge path",
+    "MISSING: server-side invalid-text rejection and HTML/script handling on the sign-in page",
+    "MISSING: non-admin authorization",
+    "MISSING: favicon replacement and branding across a server restart",
+    "MISSING: checklist 22.5 (zh/en navigation, first screen, error and empty text)"
+  ],
+  "artifact": "secrets/e2e/<runId>/report.json with source/binary/test digests, locale, exact branding PATCH bodies, independent GET documents, public sign-in evidence and redacted server log",
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and restored branding"
+}

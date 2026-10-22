@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 6144
+  sglang: 6144
+model_id: nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4-dspark
+source: upstream
+display_title: NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark
+release_date: '2026-08-05'
+specs: []
+input_modalities: [text]

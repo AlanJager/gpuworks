@@ -1,0 +1,144 @@
+# gpuworks-runner: Ascend CANN SGLang 线
+#
+# 派生自 gpustack/runner 的 pack/cann/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）：
+# 引擎可执行文件的 env 包装做法参照其 ENTRYPOINT/wrapper 实现。
+#
+# 内容 = 上游 vanilla（quay.io/ascend/sglang:<v>-cann<x>-<型号>，自带 CANN/
+#          torch-npu/sglang-npu）+ 轻量工具层 + diffusion 依赖
+ARG BASE_IMAGE=quay.io/ascend/sglang:v0.5.18-cann9.0.0-910b
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG SGLANG_VERSION=0.5.18
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+ARG APT_MIRROR=mirrors.aliyun.com
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层（apt 镜像源只在构建期生效，装完还原）
+RUN <<EOF
+    set -eux
+    if command -v apt-get >/dev/null 2>&1; then
+        mkdir -p /tmp/apt-backup
+        cp -a /etc/apt/sources.list /tmp/apt-backup/ 2>/dev/null || true
+        cp -a /etc/apt/sources.list.d /tmp/apt-backup/ 2>/dev/null || true
+        sed -i \
+            -e "s|archive.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+            -e "s|security.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+            -e "s|ports.ubuntu.com/ubuntu-ports|${APT_MIRROR}/ubuntu-ports|g" \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+        apt-get update -y
+        apt-get install -y --no-install-recommends \
+            tini jq curl wget vim less tree bc \
+            iproute2 iputils-ping net-tools dnsutils \
+            procps sysstat htop \
+            ffmpeg patch
+        rm -rf /etc/apt/sources.list /etc/apt/sources.list.d
+        cp -a /tmp/apt-backup/sources.list /etc/apt/ 2>/dev/null || true
+        cp -a /tmp/apt-backup/sources.list.d /etc/apt/ 2>/dev/null || true
+        rm -rf /tmp/apt-backup /var/cache/apt /var/tmp/* /tmp/*
+    else
+        yum install -y jq curl wget vim less tree bc iproute iputils net-tools procps-ng sysstat htop ffmpeg patch
+        rm -rf /var/cache/yum /tmp/*
+    fi
+EOF
+
+## diffusion 依赖
+#
+# 本档 requires 里声明了 diffusion，所以装不上就该失败——不要写成
+# `pip install ... || echo WARN`，那样 NPU 上装不上也照样出镜像。
+RUN <<EOF
+    set -eux
+    # 只补 base 缺的模块。base 已带 opencv-python 时再装 opencv-python-headless，会让两个包的
+    # cv2 互相覆盖（2026-10-05 在 .32 验证时发现 opencv-python 4.10 与 headless 5.0.0 并存，
+    # cv2 实际是 5.0.0，把 base 测试过的版本悄悄升了级）。
+    missing=""
+    for spec in diffusers:diffusers cv2:opencv-python-headless soundfile:soundfile librosa:librosa; do
+        mod="${spec%%:*}"; pkg="${spec##*:}"
+        python3 -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('${mod}') else 1)" \
+            || missing="${missing} ${pkg}"
+    done
+    if [ -n "${missing}" ]; then
+        python3 -m pip install --no-cache-dir ${missing}
+    fi
+    echo "diffusion deps: installed only the missing ones:${missing:- (none)}"
+    # 构建容器里没有宿主驱动库：不关掉 torch 的设备后端自动加载，`import diffusers` 会因
+    # torch_npu 加载失败而报错（2026-10-05 cann9.0-910b-sglang 构建因此失败）。
+    TORCH_DEVICE_BACKEND_AUTOLOAD=0 python3 -c "import diffusers, cv2, soundfile, librosa; print('diffusers', diffusers.__version__, 'cv2', cv2.__version__)"
+EOF
+
+## 包装引擎可执行文件，使其自行 source Ascend env
+#
+# 2026-10-05 昇腾 .32 真机验证结论：对 **sglang 档这个 wrapper 并非必要**——反向对照（绕过
+# wrapper 的 `--entrypoint sglang.real`，乃至整条 source 链都绕开的 `--entrypoint python`，
+# 即 gpuworks 实际的 LLM 启动形态 `python -m sglang.launch_server`）都正常，因为该 base 的
+# ENV 已烘焙了环境链；而 vllm 档同样的反向对照会让 EngineCore 崩溃。保留它是因为经验证无害
+# （路径 B 走 wrapper 也通）。另：本循环里的 `sglang_router` 在镜像里并不存在，实际可执行文件
+# 是连字符的 `sglang-router`（pip 原生入口脚本），因此它**没有**被包装，该项是空操作。
+#
+# 与 vllm 线同理：推理目录里已经有 spec 把 entrypoint 覆盖成 ["sglang","serve"]
+# （wan-ai/wan2.1-t2v-1.3b-diffusers 等 2 个 ascend sglang spec），那条路径会绕开
+# 镜像 ENTRYPOINT 里的 env source 链。把 source 放进可执行文件本身即可兼顾。
+RUN <<EOF
+    set -eux
+    PREFIX=$(python3 -c "import sys; print(sys.base_prefix)")
+    wrapped=0
+    for name in sglang sglang_router; do
+        TARGET="${PREFIX}/bin/${name}"
+        [ -x "${TARGET}" ] || continue
+        [ -e "${TARGET}.real" ] && continue
+        mv "${TARGET}" "${TARGET}.real"
+        cat > "${TARGET}" <<'WRAP'
+#!/usr/bin/env bash
+# gpuworks: source the Ascend env chain before handing off to the real binary.
+set -eo pipefail
+_source_if() { [ -f "$1" ] && . "$1" || true; }
+_source_if /usr/local/Ascend/ascend-toolkit/set_env.sh
+for _irsh in /usr/local/Ascend/cann-*/share/info/ascendnpu-ir/bin/set_env.sh; do
+    _source_if "${_irsh}"
+done
+if [ -f /usr/local/Ascend/nnal/atb/set_env.sh ]; then
+    . /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi="${ATB_CXX_ABI:-1}" || true
+fi
+exec "${BASH_SOURCE[0]}.real" "$@"
+WRAP
+        chmod a+x "${TARGET}"
+        bash -n "${TARGET}"
+        wrapped=$((wrapped+1))
+    done
+    echo "wrapped ${wrapped} engine executable(s)"
+EOF
+
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "sglang",
+    "engine_version": os.environ["SGLANG_VERSION"],
+    "framework": "cann",
+    "requires": os.environ["REQUIRES"].split(),
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=sglang bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="sglang-npu" \
+      io.gpuworks.framework="cann" \
+      io.gpuworks.diffusion="${SGLANG_VERSION}" \
+      io.gpuworks.requires="${REQUIRES}"

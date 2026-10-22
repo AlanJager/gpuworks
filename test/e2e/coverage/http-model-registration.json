@@ -1,0 +1,166 @@
+{
+  "scope": "Two targeted browser cases for HTTP-directory model registration; no site/page percentage claim",
+  "page_id": "models",
+  "test_file": "test/e2e/http_model_registration.py",
+  "test_function": "test_model_registration",
+  "lane": "local-real-server-sqlite-http-directory",
+  "command": "make test-e2e-http-model-registration",
+  "cases": {
+    "register": {
+      "id": "gpuworks/models/http-register",
+      "plan_id": "NEXT-05",
+      "name": "模型管理 / HTTP目录预览与注册 / 元数据与真实来源一致",
+      "required_evidence": [
+        "ui",
+        "preview",
+        "request",
+        "persistence",
+        "source",
+        "cleanup"
+      ]
+    },
+    "recovery": {
+      "id": "gpuworks/models/http-register-recovery",
+      "plan_id": "NEXT-09",
+      "name": "模型管理 / 预览后上游目录失效 / 注册拒绝且修复后成功",
+      "required_evidence": [
+        "ui",
+        "preview",
+        "request",
+        "persistence",
+        "source",
+        "cleanup",
+        "recovery"
+      ]
+    }
+  },
+  "product_contracts": [
+    "ui/src/pages/models/RegisterModelModal.tsx",
+    "ui/src/pages/ModelsPage.tsx",
+    "internal/server/api/model_url_register.go",
+    "internal/server/api/dto/deploy.go",
+    "internal/server/modelmeta/httpdir.go"
+  ],
+  "fixture": "Unique loopback HTTP directory with actual config.json, exact HEAD lengths, auditable GET/HEAD and controllable HTTP503; fresh server/SQLite/context per case",
+  "fields": [
+    {
+      "id": "model.source",
+      "component": "Select",
+      "required": true,
+      "default": null,
+      "request": "url selects preview-url/register-url endpoints",
+      "persistence": "source=url",
+      "covered": [
+        "HTTP directory option selected"
+      ],
+      "missing": [
+    "MISSING: source URL A-to-B invalidates prior preview; parsed metadata and submitted source/name/size must all belong to B",
+    "MISSING: HTTP-to-other-source-to-HTTP transitions preserve/reset fields by contract and cannot submit stale preview values",
+    "MISSING: URL Enter-to-preview and form Enter-to-register paths, including exactly one mutation and explicit-button equivalence",
+        "Hugging Face/ModelScope/local options"
+      ]
+    },
+    {
+      "id": "model.source_url",
+      "component": "URL Input",
+      "required": true,
+      "default": "",
+      "request": "preview.url; register.source_url",
+      "persistence": "source_url",
+      "covered": [
+        "empty local validation",
+        "trailing slash normalized",
+        "exact host/port/path",
+        "failure retains value"
+      ],
+      "missing": [
+        "whitespace",
+        "invalid protocol/host/port",
+        "query",
+        "file URL fallback"
+      ]
+    },
+    {
+      "id": "model.source_id",
+      "component": "Text",
+      "required": true,
+      "conditional": "after successful preview",
+      "default": "derived directory path",
+      "request": "source_id",
+      "persistence": "source_id",
+      "covered": [
+        "preview default",
+        "operator override",
+        "failure retains value"
+      ],
+      "missing": [
+        "empty/whitespace",
+        "trim",
+        "Unicode and special characters"
+      ]
+    },
+    {
+      "id": "model.name",
+      "component": "Text",
+      "required": false,
+      "default": "directory basename after preview",
+      "request": "name",
+      "persistence": "name",
+      "covered": [
+        "preview default",
+        "operator override",
+        "failure retains value"
+      ],
+      "missing": [
+        "blank default fallback",
+        "trim",
+        "Unicode and special characters"
+      ]
+    }
+  ],
+  "crud": {
+    "create": "UI preview POST then register POST201 with exact body; recovery rejects502 without partial model",
+    "read": "independent collection/detail GET, reload row and UI detail",
+    "update": {
+      "status": "MISSING",
+      "reason": "Model inference configuration editing is a separate exposed function, not tested here"
+    },
+    "delete": "UI named confirmation cancel/no mutation then DELETE204, independent404 and refreshed empty list"
+  },
+  "checklist_items": {
+    "covered_in_this_scenario": [
+      "1.10",
+      "4.3"
+    ],
+    "partial": {
+      "1.2": "HTTP defaults only",
+      "1.3": "empty URL only; other field boundaries missing",
+      "1.8": "all HTTP registration fields; no other source modes",
+      "1.11": "Esc and delete Cancel only",
+      "1.14": "registration metadata/readback; not agent download",
+      "1.15": "Tab, focus border, named modal/footer viewport; other states missing",
+      "5.2": "HTTP option only",
+      "12.7": "unreferenced model cancel/delete; referenced deletion missing",
+      "16.5": "no background task: registration fetches metadata synchronously"
+    }
+  },
+  "missing": [
+    "download to node, content verification on agent and real GPU inference",
+    "full list search/filter/pagination and10/30/100 records",
+    "permissions other than admin",
+    "all non-HTTP source modes",
+    "duplicate submission/in-flight barrier",
+    "all text/URL boundaries",
+    "upstream malformed config/metadata changes",
+    "referenced deletion",
+    "full style/loading/empty/error geometry matrix",
+    "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
+  ],
+  "runtime": {
+    "status": "N/A",
+    "reason": "Registration reads remote metadata only; source audit is real HTTP, synthetic weight bytes are not executable model files"
+  },
+  "result": "NOT_RUN until matching report has PASS, all required evidence, unchanged source hashes and artifact scan",
+  "artifacts": "secrets/e2e/<runId>/report.json, redacted trace/screenshots/server log; raw DB/log private",
+  "cleanup": "UI deletes only owned model; runner stops owned server/HTTP listener even on failure, retains isolated diagnosis DB at most seven days"
+}

@@ -1,0 +1,55 @@
+model_id: HuggingFaceTB/SmolLM-135M-Instruct-ppu
+source: upstream
+display_title: HuggingFaceTB/SmolLM-135M-Instruct PPU alias
+model_config:
+  model_type: llama
+  num_hidden_layers: 30
+  hidden_size: 576
+  num_attention_heads: 9
+  num_key_value_heads: 3
+  max_position_embeddings: 2048
+kv_bytes_per_token:
+  vllm: 23040
+  sglang: 23040
+specs:
+- name: bf16-vllm-ppu-fcc320f4-alias
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: HuggingFaceTB/SmolLM-135M-Instruct
+        revision: fcc320f490e08fdb4b99d935b2c58d40bf35b0d0
+    - modelscope:
+        repo_id: HuggingFaceTB/SmolLM-135M-Instruct
+        revision: 89e86e700a070e77373fb7bda7b02ddded846b41
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '512'
+  - --max-num-seqs
+  - '1'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --enforce-eager
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 269060552
+input_modalities:
+- text

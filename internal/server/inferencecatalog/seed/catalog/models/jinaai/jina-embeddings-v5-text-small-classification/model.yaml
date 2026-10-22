@@ -1,0 +1,82 @@
+model_id: jinaai/jina-embeddings-v5-text-small-classification
+source: upstream
+display_title: jina-embeddings-v5-text-small-classification
+model_config:
+  model_type: qwen3
+  num_hidden_layers: 28
+  hidden_size: 1024
+  num_attention_heads: 16
+  num_key_value_heads: 8
+  head_dim: 128
+  max_position_embeddings: 32768
+  layer_types:
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+  - full_attention
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-vllm-ppu-4447914a
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: jinaai/jina-embeddings-v5-text-small-classification
+        revision: 4447914a9b5b2fb00db3ce0884602b47a08f9458
+    - modelscope:
+        repo_id: jinaai/jina-embeddings-v5-text-small-classification
+        revision: 39c7b782b71b4f830fac1aa4e01fed59f7c022e4
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --runner
+  - pooling
+  - --tensor-parallel-size
+  - '1'
+  - --max-model-len
+  - '512'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enforce-eager
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+  weight_bytes: 1192133232
+input_modalities:
+- text

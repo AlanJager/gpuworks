@@ -1,0 +1,502 @@
+{
+  "contract_id": "gpuworks/models/template-quick-registration",
+  "name": "模板 / 快速登记 / 明确选择来源、异步元数据与已有模型复用",
+  "priority": "P0",
+  "page_id": "deploy",
+  "control_id": "model-hub-quick",
+  "test_file": "test/e2e/model_hub_registration_browser.py",
+  "test_function": "test_quick",
+  "driver_file": "test/e2e/model_hub_registration.py",
+  "command": "python3 test/e2e/model_hub_registration.py --case quick --locale en",
+  "lane": "local-real-server-chrome-audited-hub-http",
+  "identity": "isolated admin browser and independent bearer reads",
+  "scope": "Metadata registration only; source rules configure genuine local external HTTP endpoints; management API is real.",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "source",
+    "cleanup"
+  ],
+  "runtime_evidence": {
+    "status": "N/A",
+    "reason": "Registration metadata is read through actual HTTP; no weights, agent, runtime or GPU are involved."
+  },
+  "product_contracts": [
+    "ui/src/pages/models/RegisterModelModal.tsx",
+    "ui/src/modelmeta.ts",
+    "ui/src/pages/models/modelMetadataRefresh.ts",
+    "ui/src/pages/deploy/useTemplateWeightSource.ts",
+    "internal/server/api/models.go",
+    "internal/server/api/model_quick_register.go",
+    "internal/server/api/model_metadata.go",
+    "pkg/modelrepo/modelrepo.go"
+  ],
+  "crud": {
+    "create": "partial: selected branch exact POST/count/body, source facts, same-artifact identity reuse",
+    "read": "partial: independent GET/list and fresh browser detail exact key metadata",
+    "update": "MISSING: metadata/config editing not this case",
+    "delete": "partial: named UI deletion and independent404; cancellation/references MISSING"
+  },
+  "inventory": [
+    {
+      "component": "Template detail Deploy button",
+      "fields": [
+        "template",
+        "spec_source",
+        "spec"
+      ],
+      "assertion": "Real owned template Deploy action; no deployment POST occurs."
+    },
+    {
+      "component": "Weight-source Modal + Select",
+      "fields": [
+        "provider",
+        "repo_id",
+        "revision"
+      ],
+      "default": "no source; action disabled",
+      "options": [
+        "huggingface",
+        "modelscope"
+      ],
+      "assertion": "Explicit MS selection, exact quick-register body; initial no choice; initial application and reopened confirmation both show exact ModelPicker repo/source and emit actual evaluate with exact numeric model_id; reuse adds zero quick POST."
+    },
+    {
+      "component": "Existing model confirmation / Radio",
+      "fields": [
+        "model_id"
+      ],
+      "assertion": "Unique matching registered model is selected, confirm retains same ID/metadata; multiple matches and register-new-provider branch MISSING."
+    },
+    {
+      "component": "Model detail / metadata refresh",
+      "fields": [
+        "source",
+        "source_id",
+        "revision",
+        "name",
+        "arch",
+        "precision",
+        "context_length",
+        "weight_gib",
+        "readme"
+      ],
+      "assertion": "GET derived from fixture bytes; UI exact repo/revision/architecture/dtype/context; MS refresh503->502 unchanged and source recovery200; other fields UI not claimed."
+    },
+    {
+      "component": "Model row dropdown + deletion modal",
+      "fields": [
+        "id",
+        "name"
+      ],
+      "assertion": "Name and full impact text; DELETE204, independent404 and exact empty owned repo list."
+    }
+  ],
+  "component_checklist": [
+    {
+      "item": "1.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **字段盘点**：逐个登记标签、组件类型、必填性、默认值、单位、合法范围、条件显示、请求字段和持久化字段。"
+    },
+    {
+      "item": "1.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **首次打开**：默认值正确；编辑时回填已保存值；异步加载结束前不能提交不完整数据；secret 不回显。"
+    },
+    {
+      "item": "1.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **必填校验**：每个必填字段分别输入空字符串和纯空白，错误定位到该字段，且没有 mutation 请求。"
+    },
+    {
+      "item": "1.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **字段边界**：按后续组件清单逐字段执行最小、最大、越界、非法格式等适用场景；不虚构产品没有的上限。"
+    },
+    {
+      "item": "1.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **枚举穷举**：每个实际可选项单独选择，验证选中态、精确提交值、保存回读及适用运行时效果。"
+    },
+    {
+      "item": "1.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **条件字段**：切换控制项，验证显隐、首次默认值、隐藏值的提交规则、重新显示后的保留或重置规则。"
+    },
+    {
+      "item": "1.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **最小创建**：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"
+    },
+    {
+      "item": "1.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **完整创建**：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"
+    },
+    {
+      "item": "1.9",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **防重复提交**：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"
+    },
+    {
+      "item": "1.10",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **失败恢复**：真实服务端拒绝时保留草稿和弹窗，显示可操作原因；修正或重试后成功，失败时没有部分写入。"
+    },
+    {
+      "item": "1.11",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **取消退出**：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"
+    },
+    {
+      "item": "1.12",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **编辑变更**：分别覆盖 A→B、开→关→开、有值→空、绑定 A→B→无；仅改一个字段时其他字段保持原值。"
+    },
+    {
+      "item": "1.13",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **并发与失效**：编辑期间资源被删除或被另一个会话更新，按真实 API 合同验证冲突或最后写入结果及恢复入口。"
+    },
+    {
+      "item": "1.14",
+      "status": "MISSING",
+      "assertion": "Partial: independent source-wire facts -> GET metadata/identity + fresh page detail; saved form editor and every metadata field UI are not claimed."
+    },
+    {
+      "item": "1.15",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: **键盘与布局**：Tab 可达、Enter 不误提交、错误可感知，1440×900 下字段与底部操作可达且不重叠。"
+    },
+    {
+      "item": "2.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 检查标签、说明、placeholder、默认值及只读/禁用状态；placeholder 不能代替可访问标签。 默认值必须断言控件实际值（如 `input_value()`），不能以 placeholder 或提示文字作为证据；同时核对未手改时提交的字段值或明确的后端默认语义。"
+    },
+    {
+      "item": "2.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 分别验证空、纯空白、前后空格，明确 trim 与保留空白的字段差异，并检查最终请求和回读值。"
+    },
+    {
+      "item": "2.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 有长度合同的字段分别验证最短、最短减一、最长、最长加一；明确按字符还是字节计数。"
+    },
+    {
+      "item": "2.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 输入中文、英文、数字、标点、换行及产品禁止字符，验证接受或具体错误，不能以浏览器输入成功代替保存成功。"
+    },
+    {
+      "item": "2.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 对名称唯一性等服务端约束构造真实冲突；失败后原值保留，修改后错误消失且可重新提交。"
+    },
+    {
+      "item": "2.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 验证文本粘贴、清空、键盘编辑；多行内容换行在保存与重进后保持合同语义。"
+    },
+    {
+      "item": "2.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 在列表、详情和预览显示带 HTML 字符的文本，确认按该字段合同转义，不能执行非预期脚本。"
+    },
+    {
+      "item": "5.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 验证默认项、可见标签、选中态与禁用原因，枚举本次页面实际显示的所有选项。"
+    },
+    {
+      "item": "5.2",
+      "status": "MISSING",
+      "assertion": "Partial: explicitly selected ModelScope template source only; other source branches have separate contracts or remain MISSING."
+    },
+    {
+      "item": "5.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 有搜索能力时验证完整/部分搜索、无结果、清空搜索及恢复候选。"
+    },
+    {
+      "item": "5.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 有清空能力时验证清空；没有时验证产品规定的返回默认路径，不添加不存在的清空操作。"
+    },
+    {
+      "item": "5.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 切换选项触发的区域、默认值及隐藏字段提交规则正确；切回原选项后没有错误的陈旧值。"
+    },
+    {
+      "item": "5.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 验证键盘打开、移动、选择和关闭；菜单 portal 关闭后焦点回到合理触发位置。"
+    },
+    {
+      "item": "5.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 异步选项加载失败、重试或选项失效时，不得提交看似有效但实际不存在的值。"
+    },
+    {
+      "item": "10.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 分别构造 loading、空数据、失败和有数据，验证完整状态、总数、重试和恢复后的行集合。"
+    },
+    {
+      "item": "10.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 搜索覆盖完整、部分、不存在、特殊字符、清空及大小写/空白合同，检查 query、命中和排除行。"
+    },
+    {
+      "item": "10.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 每个实际筛选项独立执行；组合至少两个条件，覆盖各自有结果但交集为空，检查参数与集合。"
+    },
+    {
+      "item": "10.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 每个可排序列验证升降序和相同值稳定顺序，确保先按产品合同排序再分页。"
+    },
+    {
+      "item": "10.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 独立切换全部实际 page-size；ResourceTable 默认 20，可选 10/20/50/100，以页面配置为准。"
+    },
+    {
+      "item": "10.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 验证首页、上一页、下一页、末页及边界禁用；逐页收集稳定 ID，无重复无遗漏，返回顺序一致。"
+    },
+    {
+      "item": "10.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"
+    },
+    {
+      "item": "10.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 分别准备总量 10、30、100 的真实归属数据，验证跨页查询与操作；page-size 选项不能代替总量证据。"
+    },
+    {
+      "item": "10.9",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 逐行按唯一业务文本定位操作，验证详情/编辑/诊断在当前视口打开；不依赖自动滚动掩盖页面问题。"
+    },
+    {
+      "item": "10.10",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 修改后手动刷新与后台更新按合同保留筛选；轮询不能覆盖未保存草稿或让已删除对象重新出现。"
+    },
+    {
+      "item": "10.11",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"
+    },
+    {
+      "item": "10.12",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"
+    },
+    {
+      "item": "10.13",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 按主规范的组合查询合同，逐条验证相互影响的控件路径：同时命中、单项命中、交集为空、"
+    },
+    {
+      "item": "12.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 从真实页面入口打开，验证角色、可访问名称、业务组件种类与首个步骤，防止误打开另一个正常组件。"
+    },
+    {
+      "item": "12.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 打开即检查容器和关键操作在当前视口；1440×900 下标题、说明、内容与底部操作不重叠。"
+    },
+    {
+      "item": "12.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"
+    },
+    {
+      "item": "12.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 分别关闭按钮、取消、Esc 及适用的遮罩关闭；焦点返回触发器，取消不产生 mutation。"
+    },
+    {
+      "item": "12.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 嵌套弹层关闭不误关父层，关闭后残留 portal 不可交互，定位当前实际受控弹层。"
+    },
+    {
+      "item": "12.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"
+    },
+    {
+      "item": "12.7",
+      "status": "MISSING",
+      "assertion": "Partial: named model deletion + exact impact description and GET404; referenced deletion/refusal and cancellation remain MISSING."
+    },
+    {
+      "item": "12.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 仅产品实际提供删除预览/revision/CAS 时验证预览变化冲突；teardown 不充当删除业务断言。"
+    },
+    {
+      "item": "13.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 验证触发器可访问名称，鼠标和适用键盘操作可打开、选择和关闭，禁用项不可执行。"
+    },
+    {
+      "item": "13.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 长列表末行及屏幕边缘打开时浮层在视口内、不遮挡必要操作，关闭后焦点合理返回。"
+    },
+    {
+      "item": "13.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 菜单项权限、状态条件与真实 API 一致；隐藏按钮之外还需后端权限拒绝证据。"
+    },
+    {
+      "item": "13.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: Tooltip 只补充说明，不作为唯一可达操作或唯一错误信息；有键盘触发能力时必须验证。"
+    },
+    {
+      "item": "13.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 成功通知对应真实持久化结果，错误通知包含操作与具体原因；消失不能替代后端恢复证明。"
+    },
+    {
+      "item": "13.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 连续事件或轮询不产生无限重复通知，不遮挡后续重试、取消或编辑入口。"
+    },
+    {
+      "item": "14.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 检查步骤名、初始步骤、前进/返回及每步校验；非法输入不能绕过必需步骤提交。"
+    },
+    {
+      "item": "14.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 前后切换保持同一草稿；取消整个向导不创建半成品，已创建的异步资源按产品合同处理。"
+    },
+    {
+      "item": "14.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 快捷/专家模式来回切换，默认值、显式值和 unset 语义保持一致。"
+    },
+    {
+      "item": "14.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"
+    },
+    {
+      "item": "14.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 更换模型、引擎、spec 或硬件时验证兼容性、模板锁定/偏离、依赖字段更新和失效选择提示。"
+    },
+    {
+      "item": "14.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 获取来源由用户明确选择；候选过期须展示真实拒绝，不得静默替换模型/镜像来源。"
+    },
+    {
+      "item": "14.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 预览、创建快照与 instance 启动配置一致；分配后端口等差异需有明确合同，测试不能另拼一份命令充当权威。"
+    },
+    {
+      "item": "14.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 从提交继续观察 desired→reconcile→agent→workload；recording runtime 只证明派发，真实容器/GPU 效果使用相应 lane。"
+    },
+    {
+      "item": "22.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 每个实际页面入口与深链分别进入，检查标题、选中态、目标组件及刷新后位置。"
+    },
+    {
+      "item": "22.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 浏览器前进/后退、Tabs 切换与 URL 参数按合同保留状态，不能出现页面内容和导航选中态不一致。"
+    },
+    {
+      "item": "22.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: admin/user 分别验证菜单、按钮和直接 API 权限；GPUWorks 不套用 Router 的组织/IAM 权限模型。"
+    },
+    {
+      "item": "22.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 登录失效与重新认证验证目的页面和可恢复草稿；后台轮询不能被当成人类活动无限续期。"
+    },
+    {
+      "item": "22.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: zh/en 分别检查导航、首屏、表单、错误、空态及实际动态文本，内部字段名不能代替翻译。"
+    },
+    {
+      "item": "22.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 真实键盘操作验证 focus-visible；颜色、间距和禁用态使用浏览器 computed style 与主题 token 语义比较。"
+    },
+    {
+      "item": "22.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"
+    }
+  ],
+  "failure_table": [
+    {
+      "wrong_implementation": "Wrong source or revision persisted",
+      "killed_by": "full typed browser POST plus independent source/commit/main->master GET assertions"
+    },
+    {
+      "wrong_implementation": "Metadata values corrupted or never fetched",
+      "killed_by": "real HTTP fixture byte hashes plus independent exact arch/dtype/context/weight/readme"
+    },
+    {
+      "wrong_implementation": "Reusing existing template model issues another registration",
+      "killed_by": "test_quick: selected ModelPicker exact repo/source plus newly observed evaluate.model_id after initial apply and existing-model confirm; exact mutation list remains one quick POST, model GET unchanged"
+    },
+    {
+      "wrong_implementation": "Delete returns204 while row survives",
+      "killed_by": "fresh bearer GET404, exact empty owned repository list and browser row gone"
+    },
+    {
+      "wrong_implementation": "Existing-model confirm closes modal without applying the chosen model",
+      "killed_by": "applied_model: visible selected ModelPicker label and action-window actual evaluate request model_id"
+    }
+  ],
+  "missing": [
+    "No model weight download, byte/hash consumption by an agent, container launch or real GPU claim; only metadata HTTP is exercised.",
+    "Non-admin/401/403/session expiry, held duplicate submission, all source-ID/revision text boundaries and cross-origin failure matrices remain MISSING.",
+    "Full list search/filter/page sizes/10-30-100 datasets, keyboard focus/theme/layout matrices and referenced deletion remain MISSING.",
+    "No source-rule UI coverage: API setup selects an isolated metadata origin and verifies real metadataSources output; source rule UI controls remain MISSING.",
+    "HF logo/avatar, gated/private repository credentials, malformed/partial body and multi-mirror race behavior remain MISSING.",
+    "A matching clean-source/build en/zh report and product mutation FAIL must be collected before claiming executed coverage.",
+    "Quick template duplicate endpoint200 is not exercised: actual UI reuses matching registered model with zero new POST; no API replay is substituted."
+  ],
+  "not_applicable_sections": {
+    "3": "No editable numeric control; context and weight are source facts.",
+    "4": "No URL control in tested form; source endpoints are declared API fixture setup.",
+    "6": "No boolean control.",
+    "7": "No model credentials control; browser login is before trace and credentials registered.",
+    "8": "No node/storage resource selector; no file placement.",
+    "9": "No time range.",
+    "11": "No column/batch preference action.",
+    "15": "No YAML/command editor.",
+    "16": "Metadata reads only; no file upload/download/import business action.",
+    "17": "No chart or timeline.",
+    "18": "No log viewer.",
+    "19": "No terminal.",
+    "20": "No Playground operation.",
+    "21": "No clipboard operation.",
+    "23": "No assistant operation."
+  },
+  "result": "NOT_RUN until a matching report proves required evidence, source/build identity and observed scoped cleanup; fixture tests are not browser execution evidence."
+}

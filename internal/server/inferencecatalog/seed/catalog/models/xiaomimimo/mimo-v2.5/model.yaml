@@ -1,0 +1,79 @@
+model_id: xiaomimimo/mimo-v2.5
+source: upstream
+display_title: MiMo-V2.5
+parameter_count: 311B
+architecture: moe
+context_length: 1048576
+release_date: '2026-04-27'
+model_config: {model_type: mimo_v2, num_hidden_layers: 48, hidden_size: 4096, num_attention_heads: 64, num_key_value_heads: 4, head_dim: 192, max_position_embeddings: 1048576, sliding_window: 128, v_head_dim: 128, vision_config: {patch_size: 16}, audio_config: {model_type: ""}}
+kv_bytes_per_token:
+  vllm: 147456
+  sglang: 147456
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: XiaomiMiMo/MiMo-V2.5
+        revision: 63651580ca774f8504f676040460aed3e1244ac1
+    - modelscope:
+        repo_id: XiaomiMiMo/MiMo-V2.5
+        revision: d6a9d27b588c90186dce1b9105f5369f1c23ac3f
+  weight_bytes: 315714053402
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --reasoning-parser
+  - mimo
+  - --tool-call-parser
+  - mimo
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: XiaomiMiMo/MiMo-V2.5
+        revision: 63651580ca774f8504f676040460aed3e1244ac1
+    - modelscope:
+        repo_id: XiaomiMiMo/MiMo-V2.5
+        revision: d6a9d27b588c90186dce1b9105f5369f1c23ac3f
+  weight_bytes: 315714053402
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --generation-config
+  - vllm
+  - --tool-call-parser
+  - mimo
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - mimo
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image, audio]

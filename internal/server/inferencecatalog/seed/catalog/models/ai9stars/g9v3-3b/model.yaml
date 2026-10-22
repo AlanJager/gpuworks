@@ -1,0 +1,55 @@
+model_id: ai9stars/G9v3-3B
+source: upstream
+display_title: G9v3-3B
+model_config:
+  model_type: qwen2
+  num_hidden_layers: 36
+  hidden_size: 2048
+  num_attention_heads: 16
+  num_key_value_heads: 2
+  max_position_embeddings: 32768
+  sliding_window: 32768
+kv_bytes_per_token:
+  vllm: 36864
+  sglang: 36864
+specs:
+- name: bf16-vllm-ppu-d9553445
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ai9stars/G9v3-3B
+        revision: d9553445ff92dbce667381954c9699fbcbc924f9
+    - modelscope:
+        repo_id: ai9stars/G9v3-3B
+        revision: 27452d6214d8bddfdaadc94ff15bbd24982e7fd6
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --tensor-parallel-size
+  - '1'
+  - --pipeline-parallel-size
+  - '1'
+  - --max-model-len
+  - '4096'
+  - --max-num-seqs
+  - '8'
+  - --gpu-memory-utilization
+  - '0.88'
+  - --trust-remote-code
+  - --skip-mm-profiling
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+  weight_bytes: 5977367224
+input_modalities:
+- text

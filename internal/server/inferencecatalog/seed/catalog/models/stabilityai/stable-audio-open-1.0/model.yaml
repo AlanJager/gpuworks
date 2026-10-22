@@ -1,0 +1,45 @@
+model_id: stabilityai/stable-audio-open-1.0
+source: upstream
+display_title: Stable Audio Open
+parameter_count: 1.2B
+architecture: dense
+release_date: '2024-05-24'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: stabilityai/stable-audio-open-1.0
+        revision: f21265c1e2710b3bd2386596943f0007f55f802e
+    - modelscope:
+        repo_id: stabilityai/stable-audio-open-1.0
+        revision: 1389ee4a4b8606525511abc491e8aff776d15c43
+  weight_bytes: 15680736700
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/generate
+      mode: sync
+      request_defaults:
+        response_format: wav
+      inputs:
+      - name: audio_length
+        kind: number
+        default: 10
+      - name: negative_prompt
+        kind: text
+input_modalities: [text]

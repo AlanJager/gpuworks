@@ -1,0 +1,295 @@
+{
+  "contract_id": "gpuworks/logs/quick-signature-composition",
+  "name": "日志 / 快捷词与文本双顺序增删组合 / 精确行与直方图守恒，刷新回读相同事实",
+  "priority": "P1",
+  "page_id": "logs",
+  "test_file": "test/e2e/log_quick_controls.py",
+  "test_function": "test_quick_controls",
+  "parameters": [
+    "Traceback",
+    "ERROR",
+    "WARNING",
+    "ERR99999",
+    "out of memory",
+    "no such container"
+  ],
+  "command": "make test-e2e-log-quick-controls",
+  "lane": "local-real-server-sqlite",
+  "identity": "admin",
+  "locales": [
+    "en",
+    "zh"
+  ],
+  "required_evidence": [
+    "collection",
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "phase_0": "Plain CheckableTag spans lacked keyboard access and accessible selected state. Native AntD toggle buttons replace them, preserving query semantics and historical test IDs; RTL first red, then green.",
+  "product_contracts": [
+    "ui/src/pages/LogsPage.tsx",
+    "ui/src/pages/logsPageRange.ts",
+    "internal/server/api/logs_search.go",
+    "internal/server/logstore/query.go"
+  ],
+  "fixture": {
+    "source": "Real invalid WebSocket handshakes -> server WARN -> selflog collector -> SQLite",
+    "isolation": "six uniquely marked records per case and private server/DB",
+    "facts": [
+      "A-only",
+      "A-and-B",
+      "B-only",
+      "neither",
+      "A-and-C",
+      "C-only"
+    ],
+    "semantics": "A is a quoted phrase, B primary signature, C partner signature; all records have WARN severity independently of text"
+  },
+  "fields": [
+    {
+      "field_id": "logs.quick.traceback",
+      "component": "AntD Button / aria-pressed",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "option:Traceback",
+        "Tab/Enter/Space via RTL and real browser",
+        "selected and deselected state",
+        "selected/default computed background from shared primary/white theme tokens",
+        "chips-first and text-first",
+        "nonempty intersection",
+        "individually nonempty predicates with empty intersection",
+        "OR expansion and removal",
+        "clear text restores signature-only",
+        "search rows and histogram buckets from independent fixture facts"
+      ],
+      "missing": [
+        "all pairwise combinations",
+        "all keyboard focus/computed-style states"
+      ]
+    },
+    {
+      "field_id": "logs.quick.error",
+      "component": "AntD Button / aria-pressed",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "option:ERROR",
+        "Tab/Enter/Space via RTL and real browser",
+        "selected and deselected state",
+        "selected/default computed background from shared primary/white theme tokens",
+        "chips-first and text-first",
+        "nonempty intersection",
+        "individually nonempty predicates with empty intersection",
+        "OR expansion and removal",
+        "clear text restores signature-only",
+        "search rows and histogram buckets from independent fixture facts"
+      ],
+      "missing": [
+        "all pairwise combinations",
+        "all keyboard focus/computed-style states"
+      ]
+    },
+    {
+      "field_id": "logs.quick.warning",
+      "component": "AntD Button / aria-pressed",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "option:WARNING",
+        "Tab/Enter/Space via RTL and real browser",
+        "selected and deselected state",
+        "selected/default computed background from shared primary/white theme tokens",
+        "chips-first and text-first",
+        "nonempty intersection",
+        "individually nonempty predicates with empty intersection",
+        "OR expansion and removal",
+        "clear text restores signature-only",
+        "search rows and histogram buckets from independent fixture facts"
+      ],
+      "missing": [
+        "all pairwise combinations",
+        "all keyboard focus/computed-style states"
+      ]
+    },
+    {
+      "field_id": "logs.quick.err99999",
+      "component": "AntD Button / aria-pressed",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "option:ERR99999",
+        "Tab/Enter/Space via RTL and real browser",
+        "selected and deselected state",
+        "selected/default computed background from shared primary/white theme tokens",
+        "chips-first and text-first",
+        "nonempty intersection",
+        "individually nonempty predicates with empty intersection",
+        "OR expansion and removal",
+        "clear text restores signature-only",
+        "search rows and histogram buckets from independent fixture facts"
+      ],
+      "missing": [
+        "all pairwise combinations",
+        "all keyboard focus/computed-style states"
+      ]
+    },
+    {
+      "field_id": "logs.quick.out-of-memory",
+      "component": "AntD Button / aria-pressed",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "option:out of memory",
+        "Tab/Enter/Space via RTL and real browser",
+        "selected and deselected state",
+        "selected/default computed background from shared primary/white theme tokens",
+        "chips-first and text-first",
+        "nonempty intersection",
+        "individually nonempty predicates with empty intersection",
+        "OR expansion and removal",
+        "clear text restores signature-only",
+        "search rows and histogram buckets from independent fixture facts"
+      ],
+      "missing": [
+        "all pairwise combinations",
+        "all keyboard focus/computed-style states"
+      ]
+    },
+    {
+      "field_id": "logs.quick.no-such-container",
+      "component": "AntD Button / aria-pressed",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "option:no such container",
+        "Tab/Enter/Space via RTL and real browser",
+        "selected and deselected state",
+        "selected/default computed background from shared primary/white theme tokens",
+        "chips-first and text-first",
+        "nonempty intersection",
+        "individually nonempty predicates with empty intersection",
+        "OR expansion and removal",
+        "clear text restores signature-only",
+        "search rows and histogram buckets from independent fixture facts"
+      ],
+      "missing": [
+        "all pairwise combinations",
+        "all keyboard focus/computed-style states"
+      ]
+    },
+    {
+      "field_id": "logs.query",
+      "component": "Search text",
+      "request": "q",
+      "persistence": "none; reset on reload",
+      "covered": [
+        "quoted phrase",
+        "replace with unique A-only marker",
+        "clear and restore"
+      ],
+      "missing": [
+        "all FTS operators",
+        "invalid syntax",
+        "maximum length"
+      ]
+    },
+    {
+      "field_id": "logs.level",
+      "component": "Select",
+      "request": "level",
+      "covered": [
+        "error excludes WARN regardless of literal signature",
+        "warn restores same fact"
+      ],
+      "missing": [
+        "all level options and actual error/fatal collection"
+      ]
+    },
+    {
+      "field_id": "logs.source",
+      "component": "Select",
+      "request": "source",
+      "covered": [
+        "instance empty",
+        "server selected",
+        "refresh resets to instance"
+      ],
+      "missing": [
+        "agent/node/all"
+      ]
+    },
+    {
+      "field_id": "logs.range",
+      "component": "fixed custom URL",
+      "request": "from/to",
+      "covered": [
+        "fixed inclusive window from real fixture timestamps; retained on reload"
+      ],
+      "missing": [
+        "presets",
+        "time endpoint boundaries"
+      ]
+    },
+    {
+      "field_id": "logs.histogram",
+      "component": "rendered histogram bars",
+      "request": "same q/source/level/from/to plus bucket",
+      "covered": [
+        "exact counts and aligned bucket identity",
+        "visible accessible bars",
+        "empty and restored histogram"
+      ],
+      "missing": [
+        "deterministic multi-bucket fixtures",
+        "timezone matrix"
+      ]
+    }
+  ],
+  "other_controls": {
+    "inventory": "test/e2e/coverage/log-filter-export.json",
+    "missing": [
+      "node/instance/context",
+      "live/auto refresh",
+      "pagination",
+      "export bytes (separate original case)"
+    ]
+  },
+  "crud": {
+    "Create": "N/A: immutable log facts emitted by server fixture, no log creation UI",
+    "Read": "UI combinations, exact GET search/histogram, independent GET and reload/reapply",
+    "Update": "N/A: transient filters only",
+    "Delete": "N/A: no per-log deletion UI; own server stopped, private DB retained for bounded diagnosis"
+  },
+  "checklist_items": {
+    "covered": [
+      "10.13",
+      "18.7",
+      "18.8",
+      "18.9"
+    ],
+    "partial": {
+      "5.1-5.6": "all six signatures; not all source/level options or keyboard focus/style matrix",
+      "18.1": "server collector only, no agent/container",
+      "18.4": "search and histogram; no pagination",
+      "22.5": "both locales for this flow; not full page language audit"
+    }
+  },
+  "missing": [
+    "agent/container collection",
+    "node/instance/context",
+    "live SSE reconnect and cancellation",
+    "all FTS operators",
+    "all source/level/time enumerations",
+    "all pairwise signatures",
+    "10/30/100 volumes and pagination",
+    "negative API/permission recovery",
+    "full computed-style matrix",
+    "deterministic multi-bucket histogram"
+  ],
+  "result": "NOT_RUN until each selected chip/locale has matching clean-SHA PASS evidence; no whole-page coverage claim",
+  "artifact": "secrets/e2e/<runId>/report.json; source/build identity, digest manifest, trace, screenshot, exact requests and cleanup",
+  "cleanup": "Stop own server and release port lock before PASS; secret scan. Private SQLite/logs retained for scoped diagnosis up to seven days."
+}

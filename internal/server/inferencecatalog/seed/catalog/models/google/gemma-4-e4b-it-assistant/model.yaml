@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 8192
+  sglang: 8192
+model_id: google/gemma-4-e4b-it-assistant
+source: upstream
+display_title: gemma-4-E4B-it-assistant
+release_date: '2026-04-23'
+specs: []
+input_modalities: [text]

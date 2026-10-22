@@ -1,0 +1,400 @@
+{
+  "contract_id": "gpuworks/deployment/wizard-create",
+  "name": "部署 / 页面创建 / 自有模型与 spec、手工节点、本地权重镜像、真实启动和网关",
+  "priority": "P0",
+  "page_id": "deploy",
+  "control_id": "deployment-wizard-create",
+  "scope": "One registered local model, one user vLLM running spec, one explicit node, one replica; partial deployment form coverage",
+  "test_file": "test/e2e/deployment_wizard_create.py",
+  "test_function": "test_deployment_wizard_create",
+  "command": "make test-e2e-deployment-wizard-create",
+  "lane": "local-real-agent-docker-fake-gpu-facts",
+  "identity": "admin browser, real local agent and Docker; inference API key for gateway",
+  "fixture": "Fresh real server/SQLite, Chrome, run-scoped local weights copied from testdata/fake-model; user running spec imported before browser; synthetic A100 facts without GPU injection; real Docker fake-engine. Preparation performs no deployment create.",
+  "product_contracts": [
+    "ui/src/pages/DeployPage.tsx",
+    "ui/src/pages/deploy/ModelPicker.tsx",
+    "ui/src/pages/deploy/TemplateRecommendations.tsx",
+    "ui/src/pages/deploy/DeployWeightSourceModal.tsx",
+    "ui/src/pages/deploy/DeployNodeSection.tsx",
+    "ui/src/pages/deploy/DeployNodeAcquisition.tsx",
+    "ui/src/pages/deploy/useDeploySubmit.ts",
+    "internal/server/api/request_validation.go",
+    "internal/server/deploy/vllm.go",
+    "test/fake-engine/handler"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "crud": {
+    "create": "covered: blank-name UI rejection; real FIELD_INVALID 400 with zero persisted resources; corrected successful browser POST, exact full body/count/order",
+    "read": "covered: independent GET identity and instance node, list/detail after reload, precise route and image",
+    "update": "N/A: new deployment draft only; editing existing deployments is a separate contract",
+    "delete": "covered: UI confirmation names exact deployment and cleanup impact; independent GET 404 and Docker absence"
+  },
+  "oracle_chain": [
+    "Fixture-owned registered model/node/spec identities and local files determine expected full create body independently of evaluate",
+    "Page POST response event records full actual wire body; separate bearer GET checks persisted identities",
+    "docker inspect checks image, actual model mount and spec environment; gateway completion equals audited fake-engine output",
+    "After browser deletion, independent bearer GET=404 and scoped docker inspect explicitly reports absent"
+  ],
+  "dimensions": [
+    "1.10",
+    "1.14",
+    "14.8"
+  ],
+  "inventory": [
+    {
+      "component": "ModelPicker / Select",
+      "fields": [
+        "model_id"
+      ],
+      "contract": "required; searches GET /models?page=1&page_size=50&q=; fixture model selected by readable name; local registered source"
+    },
+    {
+      "component": "Vendor / Select",
+      "fields": [
+        "target_vendor"
+      ],
+      "contract": "required; nvidia selected; other server/catalog vendors MISSING"
+    },
+    {
+      "component": "TemplateRecommendations / Button",
+      "fields": [
+        "template_id",
+        "template_spec_source",
+        "template_spec_name",
+        "engine",
+        "scenario"
+      ],
+      "contract": "fixture user spec browser-vllm, engine vllm, balanced, explicit selected class; alternatives MISSING"
+    },
+    {
+      "component": "Weight-source confirmation / Modal + Radio",
+      "fields": [
+        "model_id"
+      ],
+      "contract": "registered local model explicitly confirmed; alternative register-from-template/provider branches MISSING"
+    },
+    {
+      "component": "Basic text fields / Input",
+      "fields": [
+        "name",
+        "served_name"
+      ],
+      "contract": "name required; server name text limit 256 Unicode runes; 257 ASCII tested; explicit route; default/trim/unicode matrices MISSING"
+    },
+    {
+      "component": "HealthCheckFields",
+      "fields": [
+        "health_check",
+        "health_check_threshold_sec"
+      ],
+      "contract": "default server health policy left unchanged; toggle/threshold MISSING"
+    },
+    {
+      "component": "TokenizeField / Checkbox",
+      "fields": [
+        "tokenize_enabled"
+      ],
+      "contract": "default (on, field omitted from the body) left unchanged; unchecking to send false, the detail switch and the gateway 404 when off MISSING (RTL deploymentTokenize and proxy/L2 tests only)"
+    },
+    {
+      "component": "Node placement",
+      "fields": [
+        "node_selection_mode",
+        "node_uuid",
+        "node_labels",
+        "system_conditions",
+        "pool_nodes",
+        "placement_strategy",
+        "gpu_indexes",
+        "nnodes",
+        "distributed_nodes",
+        "pd_mode",
+        "pd_roles",
+        "pd_fallback",
+        "pd_kv_load_failure"
+      ],
+      "contract": "manual selected; exact fixture node and real execution; auto/multi/PD and label/hardware combinations MISSING"
+    },
+    {
+      "component": "Image AutoComplete",
+      "fields": [
+        "image"
+      ],
+      "contract": "exact fake-engine reference entered and read from persisted/Docker identities; auto/catalog alternatives and image version compatibility MISSING"
+    },
+    {
+      "component": "Weight source fields / Select and local forecast / Table",
+      "fields": [
+        "model_source.provider",
+        "model_source.storage_id"
+      ],
+      "contract": "local registered weights confirmed, both image and weights forecast present on selected node; local acquisition itself is read-only, no local-candidate select control; provider/storage branches MISSING"
+    },
+    {
+      "component": "Quick resources and dictionary feature controls",
+      "fields": [
+        "replicas",
+        "tp",
+        "pp",
+        "max_model_len",
+        "gpu_memory_utilization",
+        "sleepable",
+        "vram_limit_gib",
+        "kv_offloading_size",
+        "kv_disk_offload",
+        "all currently visible /engines parameter keys"
+      ],
+      "contract": "one replica with default balanced/performance_mode/cache-report/kv-cache dtype, initial evaluation dtype=auto and request metrics=true preserved across spec selection, 0.9 memory; exhaustive parameter/type/boundary/version, sleep and dGPU MISSING"
+    },
+    {
+      "component": "ContainerOverridesEditor and advanced inputs",
+      "fields": [
+        "container_model_mount_path",
+        "container_env_rows",
+        "container_env_unset",
+        "container_mount_rows",
+        "container_docker_args",
+        "container_shm_gib",
+        "container_entrypoint",
+        "container_cmd",
+        "command_mode",
+        "extra_args",
+        "start_timeout_sec"
+      ],
+      "contract": "only spec-provided E2E_WIZARD environment reaches Docker; all browser override and manual-command branches MISSING"
+    },
+    {
+      "component": "Quick/Expert Segmented + expert Tabs",
+      "fields": [
+        "deployMode"
+      ],
+      "contract": "quick retained; switch preservation and model/performance/resource/runtime tabs MISSING"
+    },
+    {
+      "component": "Evaluation and runtime preview",
+      "fields": [
+        "evaluate response",
+        "command preview",
+        "mount preview",
+        "estimated VRAM"
+      ],
+      "contract": "settled evaluation enables submit; numerical estimate and command-preview equality MISSING"
+    },
+    {
+      "component": "DeploySubmitBar / Button",
+      "fields": [
+        "createDeployment body"
+      ],
+      "contract": "blank name sends no mutation; real 400 draft preserved; corrected submit emits exactly one 201; held double-submit matrix MISSING"
+    },
+    {
+      "component": "Deployments row + detail Drawer + delete Modal",
+      "fields": [
+        "name",
+        "served_name",
+        "image",
+        "delete force"
+      ],
+      "contract": "reload identity and normal delete with exact name and impact; forced deletion, edit, clone, list filters/paging MISSING"
+    }
+  ],
+  "fields": [
+    {
+      "field_id": "deployment.identity",
+      "covered": [
+        "full body fixture identities/name/served_name/node/model/spec/image",
+        "independent persisted values",
+        "reload route and image"
+      ],
+      "missing": [
+        "alternate sources/vendors/engines/specs",
+        "default/unset/null and whitespace/unicode matrices"
+      ]
+    },
+    {
+      "field_id": "deployment.defaults",
+      "covered": [
+        "full literal request compares all keys/types including spread, nnodes=1, replicas=1, quick parameters and spec env"
+      ],
+      "missing": [
+        "all other engine dictionary defaults and version visibility",
+        "all optional deployment fields and boundaries"
+      ]
+    },
+    {
+      "field_id": "deployment.local_assets",
+      "covered": [
+        "confirmed registered local weights",
+        "exact local forecast row for selected node",
+        "Docker image and host model mount",
+        "spec E2E_WIZARD env and exact gateway completion"
+      ],
+      "missing": [
+        "real GPU compute",
+        "public download, peer copy, remote storage and expired candidates"
+      ]
+    }
+  ],
+  "failure_table": [
+    {
+      "wrong_implementation": "submit uses wrong or omits model, spec, image, node or route",
+      "killed_by": "expected_body exact dictionary equality on both browser POSTs"
+    },
+    {
+      "wrong_implementation": "257-rune name accepted or partially persisted",
+      "killed_by": "literal FIELD_INVALID 400 wire + independent deployment list total=0"
+    },
+    {
+      "wrong_implementation": "server swallows template env or runtime uses other local weights/image/node",
+      "killed_by": "independent GET instance node + docker inspect exact image/mount/env"
+    },
+    {
+      "wrong_implementation": "control plane reports ready without a functioning engine route",
+      "killed_by": "gateway chat exact assistant completion from real fake-engine"
+    },
+    {
+      "wrong_implementation": "delete acknowledges but keeps DB record/container",
+      "killed_by": "independent GET=404 and scoped docker inspect absent"
+    },
+    {
+      "wrong_implementation": "AntD required validation leaks unhandled rejection",
+      "killed_by": "strict pageerror=[] plus RTL deploySubmitValidation test"
+    }
+  ],
+  "missing": [
+    "Real GPU inference, GPU memory release, dGPU quota and vendor driver behavior",
+    "Remote weight/image download, peer copy, storage and provider choices, acquisition candidate expiry",
+    "All engine dictionary parameter options, numeric boundaries, mode preservation, estimates and command preview equality",
+    "Auto placement, multihost, PD, replica scaling and execution failure/cancellation",
+    "Non-admin permissions, authentication expiry and reconnect",
+    "Full keyboard/focus/layout and 10/30/100 candidate/list matrices",
+    "Held handler, external cleanup timeout and persistent filesystem failure matrices remain MISSING; dedicated selftests run actual main for successful baseline, context/browser close failure, first/finally report write failure, screenshot failure and failed context setup",
+    "Each run covers one --locale; both locales require separate reports"
+  ],
+  "not_applicable_sections": {
+    "4": "No URL/path entry is exercised in the deployment draft; fixture paths are prepared through APIs.",
+    "7": "No product secret control is under test; setup credentials use existing artifact redaction helper.",
+    "9": "No time-range control is exercised.",
+    "11": "No table preference or batch-selection operation is under test.",
+    "16": "Files/image preloaded; no upload/download/import business operation under test.",
+    "18": "No logs viewer operation under test.",
+    "19": "No terminal operation under test.",
+    "20": "Gateway chat execution oracle only; no Playground UI claim.",
+    "21": "No clipboard/code-copy operation under test.",
+    "23": "No AI helper operation under test."
+  },
+  "checklist": [
+    {"item": "1.1", "status": "MISSING", "assertion": "Not fully exercised: 字段盘点：逐个登记标签、组件类型、必填性、默认值、单位、合法范围、条件显示、请求字段和持久化字段。"},
+    {"item": "1.2", "status": "MISSING", "assertion": "Not fully exercised: 首次打开：默认值正确；编辑时回填已保存值；异步加载结束前不能提交不完整数据；secret 不回显。"},
+    {"item": "1.3", "status": "MISSING", "assertion": "Not fully exercised: 必填校验：每个必填字段分别输入空字符串和纯空白，错误定位到该字段，且没有 mutation 请求。"},
+    {"item": "1.4", "status": "MISSING", "assertion": "Not fully exercised: 字段边界：按后续组件清单逐字段执行最小、最大、越界、非法格式等适用场景；不虚构产品没有的上限。"},
+    {"item": "1.5", "status": "MISSING", "assertion": "Not fully exercised: 枚举穷举：每个实际可选项单独选择，验证选中态、精确提交值、保存回读及适用运行时效果。"},
+    {"item": "1.6", "status": "MISSING", "assertion": "Not fully exercised: 条件字段：切换控制项，验证显隐、首次默认值、隐藏值的提交规则、重新显示后的保留或重置规则。"},
+    {"item": "1.7", "status": "MISSING", "assertion": "Not fully exercised: 最小创建：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"},
+    {"item": "1.8", "status": "MISSING", "assertion": "Not fully exercised: 完整创建：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"},
+    {"item": "1.9", "status": "MISSING", "assertion": "Not fully exercised: 防重复提交：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"},
+    {"item": "1.10", "status": "covered", "assertion": "Real FIELD_INVALID 400, exact localized notice, unchanged image/name draft, independent total=0, corrected 201."},
+    {"item": "1.11", "status": "MISSING", "assertion": "Not fully exercised: 取消退出：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"},
+    {"item": "1.12", "status": "MISSING", "assertion": "Not fully exercised: 编辑变更：分别覆盖 A→B、开→关→开、有值→空、绑定 A→B→无；仅改一个字段时其他字段保持原值。"},
+    {"item": "1.13", "status": "MISSING", "assertion": "Not fully exercised: 并发与失效：编辑期间资源被删除或被另一个会话更新，按真实 API 合同验证冲突或最后写入结果及恢复入口。"},
+    {"item": "1.14", "status": "covered", "assertion": "Independent GET identity + refreshed route/image + actual Docker image/model mount/spec env + exact gateway completion."},
+    {"item": "1.15", "status": "MISSING", "assertion": "Not fully exercised: 键盘与布局：Tab 可达、Enter 不误提交、错误可感知，1440×900 下字段与底部操作可达且不重叠。"},
+    {"item": "2.1", "status": "MISSING", "assertion": "Not fully exercised: 检查标签、说明、placeholder、默认值及只读/禁用状态；placeholder 不能代替可访问标签。 默认值必须断言控件实际值（如 `input_value()`），不能以 placeholder 或提示文字作为证据；同时核对未手改时提交的字段值或明确的后端默认语义。"},
+    {"item": "2.2", "status": "MISSING", "assertion": "Not fully exercised: 分别验证空、纯空白、前后空格，明确 trim 与保留空白的字段差异，并检查最终请求和回读值。"},
+    {"item": "2.3", "status": "MISSING", "assertion": "Not fully exercised: 有长度合同的字段分别验证最短、最短减一、最长、最长加一；明确按字符还是字节计数。"},
+    {"item": "2.4", "status": "MISSING", "assertion": "Not fully exercised: 输入中文、英文、数字、标点、换行及产品禁止字符，验证接受或具体错误，不能以浏览器输入成功代替保存成功。"},
+    {"item": "2.5", "status": "MISSING", "assertion": "Not fully exercised: 对名称唯一性等服务端约束构造真实冲突；失败后原值保留，修改后错误消失且可重新提交。"},
+    {"item": "2.6", "status": "MISSING", "assertion": "Not fully exercised: 验证文本粘贴、清空、键盘编辑；多行内容换行在保存与重进后保持合同语义。"},
+    {"item": "2.7", "status": "MISSING", "assertion": "Not fully exercised: 在列表、详情和预览显示带 HTML 字符的文本，确认按该字段合同转义，不能执行非预期脚本。"},
+    {"item": "3.1", "status": "MISSING", "assertion": "Not fully exercised: 检查默认值、单位、step、上下限；区分 GPU 数量、MiB/GiB、百分比、时间与并发数量。"},
+    {"item": "3.2", "status": "MISSING", "assertion": "Not fully exercised: 分别验证 0、最小、最大、上下越界；负数、小数、空值和非数字按真实字段合同接受或拒绝。"},
+    {"item": "3.3", "status": "MISSING", "assertion": "Not fully exercised: 使用键盘、加减按钮和滑块实际改变值；有联动输入框时值与限制一致。"},
+    {"item": "3.4", "status": "MISSING", "assertion": "Not fully exercised: 检查 JSON 数值类型，不得把字符串、空字符串、null、0 和省略混为一谈。"},
+    {"item": "3.5", "status": "MISSING", "assertion": "Not fully exercised: 保存后刷新和 GET 回读单位换算与精度；运行时按保存值执行，不能只比较格式化展示文本。"},
+    {"item": "3.6", "status": "MISSING", "assertion": "Not fully exercised: 对服务端字典提供的范围与 step 验证前后端一致，拒绝后原配置保持不变。"},
+    {"item": "5.1", "status": "MISSING", "assertion": "Not fully exercised: 验证默认项、可见标签、选中态与禁用原因，枚举本次页面实际显示的所有选项。"},
+    {"item": "5.2", "status": "MISSING", "assertion": "Not fully exercised: 每个可选项独立执行选择→请求→保存→刷新回读；只检查 option 存在不算该项覆盖。"},
+    {"item": "5.3", "status": "MISSING", "assertion": "Not fully exercised: 有搜索能力时验证完整/部分搜索、无结果、清空搜索及恢复候选。"},
+    {"item": "5.4", "status": "MISSING", "assertion": "Not fully exercised: 有清空能力时验证清空；没有时验证产品规定的返回默认路径，不添加不存在的清空操作。"},
+    {"item": "5.5", "status": "MISSING", "assertion": "Not fully exercised: 切换选项触发的区域、默认值及隐藏字段提交规则正确；切回原选项后没有错误的陈旧值。"},
+    {"item": "5.6", "status": "MISSING", "assertion": "Not fully exercised: 验证键盘打开、移动、选择和关闭；菜单 portal 关闭后焦点回到合理触发位置。"},
+    {"item": "5.7", "status": "MISSING", "assertion": "Not fully exercised: 异步选项加载失败、重试或选项失效时，不得提交看似有效但实际不存在的值。"},
+    {"item": "6.1", "status": "MISSING", "assertion": "Not fully exercised: 验证默认态、可访问名称、禁用态及原因。"},
+    {"item": "6.2", "status": "MISSING", "assertion": "Not fully exercised: 分别完成关→开、开→关并检查精确布尔请求值及刷新回读。"},
+    {"item": "6.3", "status": "MISSING", "assertion": "Not fully exercised: 三态引擎参数分别验证“由引擎决定”、显式 true、显式 false，确认省略与显式 false 不混用。"},
+    {"item": "6.4", "status": "MISSING", "assertion": "Not fully exercised: 控制项影响其他字段时验证显隐、禁用、默认值与陈旧值提交规则。"},
+    {"item": "6.5", "status": "MISSING", "assertion": "Not fully exercised: 保存失败时按产品合同恢复原态或保留待保存态，不能显示成功而后端未改变。"},
+    {"item": "6.6", "status": "MISSING", "assertion": "Not fully exercised: 涉及运行时能力的开关通过真实 workload/调用观察效果；disabled 不一律等同于现有资源立即不可读。"},
+    {"item": "8.1", "status": "MISSING", "assertion": "Not fully exercised: 候选展示可读名称和必要辨识信息，通过真实 selector API 选择，不能要求用户输入内部 ID。"},
+    {"item": "8.2", "status": "MISSING", "assertion": "Not fully exercised: 验证搜索、无结果、清空搜索、候选加载失败与重试，精确检查 query 和候选集合。"},
+    {"item": "8.3", "status": "MISSING", "assertion": "Not fully exercised: 验证选中值回填；候选因新搜索不在当前集合时，已选资源名称仍正确。"},
+    {"item": "8.4", "status": "MISSING", "assertion": "Not fully exercised: 分别绑定 A、换绑 B、移除/清空，刷新查询正向关系；有反向查询能力时同时验证旧关系已解除。"},
+    {"item": "8.5", "status": "MISSING", "assertion": "Not fully exercised: 多选添加或删除一项不影响其他项；最大选择数和重复选择按合同验证。"},
+    {"item": "8.6", "status": "MISSING", "assertion": "Not fully exercised: 禁用、离线、不兼容、已删除或无权限候选有正确提示且不可错误提交；提交时失效要由真实后端拒绝。"},
+    {"item": "8.7", "status": "MISSING", "assertion": "Not fully exercised: 大集合目标仍可找到：当前 NodePicker 搜索返回单页，验证第 51 条可通过搜索找到，不虚构分页按钮。"},
+    {"item": "8.8", "status": "MISSING", "assertion": "Not fully exercised: EligibleNodePicker 分别覆盖在线、硬件适配和多机地址条件；影响调度/挂载的选择继续验证真实落点。"},
+    {"item": "10.1", "status": "MISSING", "assertion": "Not fully exercised: 分别构造 loading、空数据、失败和有数据，验证完整状态、总数、重试和恢复后的行集合。"},
+    {"item": "10.2", "status": "MISSING", "assertion": "Not fully exercised: 搜索覆盖完整、部分、不存在、特殊字符、清空及大小写/空白合同，检查 query、命中和排除行。"},
+    {"item": "10.3", "status": "MISSING", "assertion": "Not fully exercised: 每个实际筛选项独立执行；组合至少两个条件，覆盖各自有结果但交集为空，检查参数与集合。"},
+    {"item": "10.4", "status": "MISSING", "assertion": "Not fully exercised: 每个可排序列验证升降序和相同值稳定顺序，确保先按产品合同排序再分页。"},
+    {"item": "10.5", "status": "MISSING", "assertion": "Not fully exercised: 独立切换全部实际 page-size；ResourceTable 默认 20，可选 10/20/50/100，以页面配置为准。"},
+    {"item": "10.6", "status": "MISSING", "assertion": "Not fully exercised: 验证首页、上一页、下一页、末页及边界禁用；逐页收集稳定 ID，无重复无遗漏，返回顺序一致。"},
+    {"item": "10.7", "status": "MISSING", "assertion": "Not fully exercised: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"},
+    {"item": "10.8", "status": "MISSING", "assertion": "Not fully exercised: 分别准备总量 10、30、100 的真实归属数据，验证跨页查询与操作；page-size 选项不能代替总量证据。"},
+    {"item": "10.9", "status": "MISSING", "assertion": "Not fully exercised: 逐行按唯一业务文本定位操作，验证详情/编辑/诊断在当前视口打开；不依赖自动滚动掩盖页面问题。"},
+    {"item": "10.10", "status": "MISSING", "assertion": "Not fully exercised: 修改后手动刷新与后台更新按合同保留筛选；轮询不能覆盖未保存草稿或让已删除对象重新出现。"},
+    {"item": "10.11", "status": "MISSING", "assertion": "Not fully exercised: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"},
+    {"item": "10.12", "status": "MISSING", "assertion": "Not fully exercised: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"},
+    {"item": "10.13", "status": "MISSING", "assertion": "Not fully exercised: 按主规范的组合查询合同，逐条验证相互影响的控件路径：同时命中、单项命中、交集为空、"},
+    {"item": "12.1", "status": "MISSING", "assertion": "Not fully exercised: 从真实页面入口打开，验证角色、可访问名称、业务组件种类与首个步骤，防止误打开另一个正常组件。"},
+    {"item": "12.2", "status": "MISSING", "assertion": "Not fully exercised: 打开即检查容器和关键操作在当前视口；1440×900 下标题、说明、内容与底部操作不重叠。"},
+    {"item": "12.3", "status": "MISSING", "assertion": "Not fully exercised: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"},
+    {"item": "12.4", "status": "MISSING", "assertion": "Not fully exercised: 分别关闭按钮、取消、Esc 及适用的遮罩关闭；焦点返回触发器，取消不产生 mutation。"},
+    {"item": "12.5", "status": "MISSING", "assertion": "Not fully exercised: 嵌套弹层关闭不误关父层，关闭后残留 portal 不可交互，定位当前实际受控弹层。"},
+    {"item": "12.6", "status": "MISSING", "assertion": "Not fully exercised: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"},
+    {"item": "12.7", "status": "MISSING", "assertion": "Not fully exercised: 删除确认包含名称及实际影响；引用阻止、允许清理和失败无部分修改分别验证。"},
+    {"item": "12.8", "status": "MISSING", "assertion": "Not fully exercised: 仅产品实际提供删除预览/revision/CAS 时验证预览变化冲突；teardown 不充当删除业务断言。"},
+    {"item": "13.1", "status": "MISSING", "assertion": "Not fully exercised: 验证触发器可访问名称，鼠标和适用键盘操作可打开、选择和关闭，禁用项不可执行。"},
+    {"item": "13.2", "status": "MISSING", "assertion": "Not fully exercised: 长列表末行及屏幕边缘打开时浮层在视口内、不遮挡必要操作，关闭后焦点合理返回。"},
+    {"item": "13.3", "status": "MISSING", "assertion": "Not fully exercised: 菜单项权限、状态条件与真实 API 一致；隐藏按钮之外还需后端权限拒绝证据。"},
+    {"item": "13.4", "status": "MISSING", "assertion": "Not fully exercised: Tooltip 只补充说明，不作为唯一可达操作或唯一错误信息；有键盘触发能力时必须验证。"},
+    {"item": "13.5", "status": "MISSING", "assertion": "Not fully exercised: 成功通知对应真实持久化结果，错误通知包含操作与具体原因；消失不能替代后端恢复证明。"},
+    {"item": "13.6", "status": "MISSING", "assertion": "Not fully exercised: 连续事件或轮询不产生无限重复通知，不遮挡后续重试、取消或编辑入口。"},
+    {"item": "14.1", "status": "MISSING", "assertion": "Not fully exercised: 检查步骤名、初始步骤、前进/返回及每步校验；非法输入不能绕过必需步骤提交。"},
+    {"item": "14.2", "status": "MISSING", "assertion": "Not fully exercised: 前后切换保持同一草稿；取消整个向导不创建半成品，已创建的异步资源按产品合同处理。"},
+    {"item": "14.3", "status": "MISSING", "assertion": "Not fully exercised: 快捷/专家模式来回切换，默认值、显式值和 unset 语义保持一致。"},
+    {"item": "14.4", "status": "MISSING", "assertion": "Not fully exercised: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"},
+    {"item": "14.5", "status": "MISSING", "assertion": "Not fully exercised: 更换模型、引擎、spec 或硬件时验证兼容性、模板锁定/偏离、依赖字段更新和失效选择提示。"},
+    {"item": "14.6", "status": "MISSING", "assertion": "Not fully exercised: 获取来源由用户明确选择；候选过期须展示真实拒绝，不得静默替换模型/镜像来源。"},
+    {"item": "14.7", "status": "MISSING", "assertion": "Not fully exercised: 预览、创建快照与 instance 启动配置一致；分配后端口等差异需有明确合同，测试不能另拼一份命令充当权威。"},
+    {"item": "14.8", "status": "covered", "assertion": "Browser POST continues through real server reconcile, WS agent and Docker fake-engine; exact gateway output and observed deletion."},
+    {"item": "15.1", "status": "MISSING", "assertion": "Not fully exercised: 验证初始内容、只读/可编辑状态、格式说明及键盘编辑，编辑器不能吞掉必要导航键。"},
+    {"item": "15.2", "status": "MISSING", "assertion": "Not fully exercised: 输入语法错误、schema 错误、未知字段和缺必填字段，验证具体位置/原因及不发送非法 mutation。"},
+    {"item": "15.3", "status": "MISSING", "assertion": "Not fully exercised: 格式化、复制、保存和重开后语义一致；敏感字段遵守 secret 合同。"},
+    {"item": "15.4", "status": "MISSING", "assertion": "Not fully exercised: 表单与文本模式切换不丢值；无法无损转换时按产品合同提示，不能静默丢弃自定义参数。"},
+    {"item": "15.5", "status": "MISSING", "assertion": "Not fully exercised: 手工命令模式禁用应禁用的字段，placement 等仍可编辑项保持有效；切回表单恢复参数来源合同。"},
+    {"item": "15.6", "status": "MISSING", "assertion": "Not fully exercised: 验证最终 argv、env、mount 与各 role/rank 的派发配置；预览字符串相同不等于命令实际正确执行。"},
+    {"item": "15.7", "status": "MISSING", "assertion": "Not fully exercised: 系统模板只读与克隆后可编辑边界正确，失败不修改原模板。"},
+    {"item": "17.1", "status": "MISSING", "assertion": "Not fully exercised: 分别验证 loading、empty、error、数据与陈旧数据，缺失值和真实零值必须可区分。"},
+    {"item": "17.2", "status": "MISSING", "assertion": "Not fully exercised: 用已知样本检查查询参数、时间范围、聚合、单位与精度；canvas 存在或截图相似不足以证明数据正确。"},
+    {"item": "17.3", "status": "MISSING", "assertion": "Not fully exercised: 实际操作图例、tooltip、时间控件及适用联动，验证对应系列与样本值。"},
+    {"item": "17.4", "status": "MISSING", "assertion": "Not fully exercised: 切换节点/GPU/部署或范围后旧响应不覆盖新图表，刷新、follow 与暂停遵循当前选择。"},
+    {"item": "17.5", "status": "MISSING", "assertion": "Not fully exercised: GPU 显存、利用率、引擎吞吐和网关请求分别使用其权威来源，不把健康探测请求当成业务调用。"},
+    {"item": "17.6", "status": "MISSING", "assertion": "Not fully exercised: 时间线验证事件顺序、状态转移、关联资源与终态；时间接近的历史事件不能代替本次 runId。"},
+    {"item": "17.7", "status": "MISSING", "assertion": "Not fully exercised: 无数据、长标签、大数和错误态下检查实际尺寸、单位可见性与无重叠，颜色从主题语义推导。"},
+    {"item": "22.1", "status": "MISSING", "assertion": "Not fully exercised: 每个实际页面入口与深链分别进入，检查标题、选中态、目标组件及刷新后位置。"},
+    {"item": "22.2", "status": "MISSING", "assertion": "Not fully exercised: 浏览器前进/后退、Tabs 切换与 URL 参数按合同保留状态，不能出现页面内容和导航选中态不一致。"},
+    {"item": "22.3", "status": "MISSING", "assertion": "Not fully exercised: admin/user 分别验证菜单、按钮和直接 API 权限；GPUWorks 不套用 Router 的组织/IAM 权限模型。"},
+    {"item": "22.4", "status": "MISSING", "assertion": "Not fully exercised: 登录失效与重新认证验证目的页面和可恢复草稿；后台轮询不能被当成人类活动无限续期。"},
+    {"item": "22.5", "status": "MISSING", "assertion": "Not fully exercised: zh/en 分别检查导航、首屏、表单、错误、空态及实际动态文本，内部字段名不能代替翻译。"},
+    {"item": "22.6", "status": "MISSING", "assertion": "Not fully exercised: 真实键盘操作验证 focus-visible；颜色、间距和禁用态使用浏览器 computed style 与主题 token 语义比较。"},
+    {"item": "22.7", "status": "MISSING", "assertion": "Not fully exercised: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"}
+  ]
+}

@@ -1,0 +1,127 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/monitorapi"
+	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/uxrecord"
+	"gpuworks.ai/gpuworks/internal/server/uxstore"
+)
+
+// requestSource is monitorapi.RequestSource over the gateway's in-flight
+// table and the request store (ux.db).
+type requestSource struct {
+	store *store.Store
+	live  func(deploymentID uint, limit int) uxrecord.LiveSnapshot
+	ux    *uxstore.Store
+	now   func() time.Time
+
+	mu       sync.Mutex
+	names    map[uint]string
+	namesAt  time.Time
+	namesTTL time.Duration
+}
+
+// keyNamesTTL bounds how stale a renamed key's name may show in the request
+// view, which a browser polls every few seconds.
+const keyNamesTTL = 10 * time.Second
+
+func newRequestSource(st *store.Store, live func(uint, int) uxrecord.LiveSnapshot, ux *uxstore.Store) *requestSource {
+	return &requestSource{store: st, live: live, ux: ux, now: time.Now, namesTTL: keyNamesTTL}
+}
+
+func (s *requestSource) DeploymentExists(id uint) bool {
+	_, err := s.store.GetDeployment(id)
+	return err == nil
+}
+
+func (s *requestSource) Live(deploymentID uint, limit int) uxrecord.LiveSnapshot {
+	return s.live(deploymentID, limit)
+}
+
+func (s *requestSource) History(ctx context.Context, q monitorapi.HistoryQuery) ([]uxrecord.Request, string, error) {
+	records, next, err := s.ux.Requests(ctx, uxstore.RequestQuery{
+		DeploymentID: q.DeploymentID, FromMS: q.FromMS, ToMS: q.ToMS,
+		APIKeyID: q.APIKeyID, InstanceUUID: q.InstanceUUID, Results: q.Results,
+		MinEndMS: q.MinEndMS, MaxEndMS: q.MaxEndMS, Limit: q.Limit, Cursor: q.Cursor,
+	})
+	if errors.Is(err, uxstore.ErrBadQuery) {
+		return nil, "", fmt.Errorf("%w: %w", monitorapi.ErrBadHistoryQuery, err)
+	}
+	return records, next, err
+}
+
+func (s *requestSource) Grid(ctx context.Context, deploymentID uint, kind string, fromMS, toMS int64) ([]uxrecord.Cell, error) {
+	return s.ux.Grid(ctx, uxstore.GridQuery{DeploymentID: deploymentID, Kind: kind, FromMS: fromMS, ToMS: toMS})
+}
+
+func (s *requestSource) Coverage(ctx context.Context, deploymentID uint, fromMS, toMS int64) (int64, int64, int64, error) {
+	c, err := s.ux.Coverage(ctx, deploymentID, fromMS, toMS)
+	return c.Total, c.WithUsage, c.WithCache, err
+}
+
+func (s *requestSource) Latency(ctx context.Context, deploymentID uint, fromMS, toMS int64) (uxrecord.LatencySums, error) {
+	return s.ux.Latency(ctx, deploymentID, fromMS, toMS)
+}
+
+func (s *requestSource) Lookup(ctx context.Context, q monitorapi.LookupQuery) ([]uxrecord.Request, error) {
+	records, err := s.ux.Lookup(ctx, uxstore.LookupQuery{TraceID: q.TraceID, RequestID: q.RequestID, FromMS: q.FromMS, ToMS: q.ToMS, Limit: q.Limit})
+	if errors.Is(err, uxstore.ErrBadQuery) {
+		return nil, fmt.Errorf("%w: %w", monitorapi.ErrBadHistoryQuery, err)
+	}
+	return records, err
+}
+
+// DeploymentNames names the deployments of a lookup's requests (a handful)
+// by their served name; a deleted one is left out.
+func (s *requestSource) DeploymentNames(ids []uint) map[uint]string {
+	out := make(map[uint]string, len(ids))
+	for _, id := range ids {
+		if dep, err := s.store.GetDeployment(id); err == nil {
+			out[id] = dep.ServedName
+		}
+	}
+	return out
+}
+
+// KeyNames names API keys by id, from a list refreshed at most every
+// namesTTL. A failed refresh keeps the previous names.
+func (s *requestSource) KeyNames() map[uint]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.names != nil && s.now().Sub(s.namesAt) < s.namesTTL {
+		return s.names
+	}
+	keys, err := s.store.ListAPIKeys()
+	if err != nil {
+		if s.names == nil {
+			return map[uint]string{}
+		}
+		return s.names
+	}
+	names := make(map[uint]string, len(keys))
+	for _, key := range keys {
+		names[key.ID] = key.Name
+	}
+	s.names, s.namesAt = names, s.now()
+	return names
+}
+
+// closeRequestSinks flushes and closes ux.db and the trace exporter once the
+// gateway has stopped.
+func (a *App) closeRequestSinks() {
+	if a.telemetry != nil {
+		a.telemetry.exporter.Close()
+	}
+	if a.obs == nil || a.obs.ux == nil {
+		return
+	}
+	if err := a.obs.ux.Close(); err != nil {
+		a.log.Warn("request store close failed", "err", err)
+	}
+}

@@ -1,0 +1,469 @@
+model_id: minimaxai/minimax-h3
+source: upstream
+display_title: MiniMax-H3
+parameter_count: 64B
+architecture: dense
+release_date: '2026-07-28'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-sglang-ascend-4x32g
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-H3
+        revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+        subfolder: FL2VA
+    - modelscope:
+        repo_id: MiniMax/MiniMax-H3
+        revision: 57559a6720ddaa2eaee52b09ec2ef011127997b2
+        subfolder: FL2VA
+  weight_bytes: 144051182625
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910[BC][A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  entrypoint:
+  - sglang
+  - serve
+  args:
+  - --model-type
+  - diffusion
+  - --model-variant
+  - fl2va
+  - --dit-cpu-offload
+  - 'false'
+  - --num-gpus
+  - ${GPU_COUNT}
+  - --tp-size
+  - ${TP_SIZE}
+  - --sp-degree
+  - ${SP_DEGREE}
+  - --encoder-parallel
+  - fold
+  - --attention-backend
+  - laser_attn
+  - --vae-cpu-offload
+  - 'true'
+  - --pin-cpu-memory
+  - 'false'
+  - --warmup-mode
+  - 'off'
+  - --component-residency
+  - text_encoder=layerwise-offload
+  # The placement contract below claims 29424 MiB of a 32 GiB card (0.898), so
+  # this preset cannot run at SGLang's default static memory fraction. It is
+  # stated here because the launch configuration is materialized from these
+  # args, and admission sizes the card by whatever fraction it holds.
+  - --mem-fraction-static
+  - '0.9'
+  env:
+    HCCL_BUFFSIZE: '16'
+    SGLANG_CACHE_DIT_BN: '1'
+    SGLANG_CACHE_DIT_ENABLED: 'true'
+    SGLANG_CACHE_DIT_FN: '2'
+    SGLANG_CACHE_DIT_MC: '4'
+    SGLANG_CACHE_DIT_RDT: '0.4'
+    SGLANG_CACHE_DIT_TAYLORSEER: 'true'
+    SGLANG_CACHE_DIT_TS_ORDER: '2'
+    SGLANG_CACHE_DIT_WARMUP: '4'
+    TOKENIZERS_PARALLELISM: 'false'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 4:\n        return reject(\"\
+      该档位需要正好 4 张 GPU\")\n    if gpu.min_memory_gib < 32:\n        return reject(\"\
+      单卡显存至少需要 32 GiB\")\n    return accept(\n        gpu_memory_mib_per_device =\
+      \ 29424,\n        variables = {\"GPU_COUNT\": gpu.count, \"TP_SIZE\": 4, \"\
+      SP_DEGREE\": 1},\n    )\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos
+      mode: async
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-H3
+        revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+    - modelscope:
+        repo_id: MiniMax/MiniMax-H3
+        revision: 57559a6720ddaa2eaee52b09ec2ef011127997b2
+  weight_bytes: 498474749480
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  args:
+  - --omni
+  - --task-type
+  - fl2va
+  - --trust-remote-code
+  - --num-gpus
+  - '4'
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --usp
+  - '4'
+  - --ring
+  - '1'
+  - --vae-patch-parallel-size
+  - '4'
+  - --vae-parallel-mode
+  - tile
+  - --vae-use-tiling
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    VLLM_OMNI_VIDEO_SYNC_TIMEOUT: '1800'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("该档位需要正好 4 张 GPU")
+          return accept(gpu_memory_mib_per_device = 153600, variables = {"GPU_COUNT": gpu.count, "TP_SIZE": 1})
+  # Ulysses replicates the DiT weights on every rank, and both partitions stay resident;
+  # 150 GiB per GPU is an estimate for this no-offload profile.
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-H3
+        revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+    - modelscope:
+        repo_id: MiniMax/MiniMax-H3
+        revision: 57559a6720ddaa2eaee52b09ec2ef011127997b2
+  weight_bytes: 498474749480
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  - --task-type
+  - fl2va
+  - --trust-remote-code
+  - --num-gpus
+  - '1'
+  - --diffusion-offload-config
+  - '{"mode":"layer","components":["dit","text_encoder"]}'
+  - --enforce-eager
+  - --diffusion-attention-backend
+  - FLASH_ATTN
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    VLLM_OMNI_VIDEO_SYNC_TIMEOUT: '14400'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 1:
+              return reject("该档位需要正好 1 张 GPU")
+          return accept(gpu_memory_mib_per_device = 65536, variables = {"GPU_COUNT": gpu.count})
+  # The recipe measured 77,728 MiB on one B300 with only the text encoder streamed; this
+  # profile streams the DiT as well. 64 GiB is an estimate, not a measurement.
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-vllm-nvidia-rtx-4090-2x
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-H3
+        revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+    - modelscope:
+        repo_id: MiniMax/MiniMax-H3
+        revision: 57559a6720ddaa2eaee52b09ec2ef011127997b2
+  weight_bytes: 498474749480
+  gpus:
+    vendor: nvidia
+    cc: '8.9'
+    name: RTX[ _-]?4090
+    display_target: rtx_4090
+  args:
+  - --omni
+  - --task-type
+  - fl2va
+  - --trust-remote-code
+  - --num-gpus
+  - '2'
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --usp
+  - '1'
+  - --ring
+  - '1'
+  - --text-encoder-tp-size
+  - '2'
+  - --vae-patch-parallel-size
+  - '2'
+  - --vae-parallel-mode
+  - tile
+  - --vae-use-tiling
+  - --enable-distributed-layerwise-offload
+  - --dlo-no-use-allgather
+  - --dlo-resident-layers
+  - '12'
+  - --enforce-eager
+  - --diffusion-attention-backend
+  - CUDNN_ATTN
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    VLLM_OMNI_VIDEO_SYNC_TIMEOUT: '14400'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 2:
+              return reject("该档位需要正好 2 张 GPU")
+          return accept(gpu_memory_mib_per_device = 20480, variables = {"GPU_COUNT": gpu.count, "TP_SIZE": 2})
+  # Two-B300 capacity proxy of this profile peaked at 18,888 MiB per rank (1024x576).
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-vllm-nvidia-rtx-5090-2x
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-H3
+        revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+    - modelscope:
+        repo_id: MiniMax/MiniMax-H3
+        revision: 57559a6720ddaa2eaee52b09ec2ef011127997b2
+  weight_bytes: 498474749480
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: RTX[ _-]?5090
+    display_target: rtx_5090
+  args:
+  - --omni
+  - --task-type
+  - fl2va
+  - --trust-remote-code
+  - --num-gpus
+  - '2'
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --usp
+  - '1'
+  - --ring
+  - '1'
+  - --text-encoder-tp-size
+  - '2'
+  - --vae-patch-parallel-size
+  - '2'
+  - --vae-parallel-mode
+  - tile
+  - --vae-use-tiling
+  - --enable-distributed-layerwise-offload
+  - --dlo-no-use-allgather
+  - --dlo-resident-layers
+  - '20'
+  - --enforce-eager
+  - --diffusion-attention-backend
+  - CUDNN_ATTN
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    VLLM_OMNI_VIDEO_SYNC_TIMEOUT: '14400'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 2:
+              return reject("该档位需要正好 2 张 GPU")
+          return accept(gpu_memory_mib_per_device = 28672, variables = {"GPU_COUNT": gpu.count, "TP_SIZE": 2})
+  # 2 x RTX 5090 full run sampled about 22.6 GiB per GPU; the B300 proxy peaked at 27,726 MiB.
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+- name: bf16-vllm-nvidia-rtx-pro-5000-4x
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: MiniMaxAI/MiniMax-H3
+        revision: 42ed227ee7df40d41602854ae760620d6eb651fe
+    - modelscope:
+        repo_id: MiniMax/MiniMax-H3
+        revision: 57559a6720ddaa2eaee52b09ec2ef011127997b2
+  weight_bytes: 498474749480
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: RTX[ _-]?PRO[ _-]?5000
+    display_target: rtx_pro_5000
+  args:
+  - --omni
+  - --task-type
+  - fl2va
+  - --trust-remote-code
+  - --num-gpus
+  - '4'
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --usp
+  - '2'
+  - --ring
+  - '1'
+  - --text-encoder-tp-size
+  - '4'
+  - --vae-patch-parallel-size
+  - '4'
+  - --vae-parallel-mode
+  - tile
+  - --vae-use-tiling
+  - --diffusion-attention-backend
+  - CUDNN_ATTN
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+    VLLM_OMNI_VIDEO_SYNC_TIMEOUT: '1800'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 4:
+              return reject("该档位需要正好 4 张 GPU")
+          return accept(gpu_memory_mib_per_device = 61440, variables = {"GPU_COUNT": gpu.count, "TP_SIZE": 2})
+  # The recipe targets 72 GiB RTX PRO 5000 cards; 60 GiB per GPU is an estimate.
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.video.generate
+      endpoint: /v1/videos/sync
+      mode: sync
+      inputs:
+      - name: seconds
+        kind: number
+      - name: size
+        kind: select
+        options:
+        - 640x360
+        - 1280x720
+      - name: fps
+        kind: number
+      - name: num_frames
+        kind: number
+      - name: input_reference
+        kind: image
+        encoding: data_url
+input_modalities: [text, image]

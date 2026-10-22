@@ -1,0 +1,188 @@
+# Unattended acceptance manifest for plan-playground-request-composition §六.
+# Consumed by test/e2e/playground_acceptance.py. Cases run strictly in order;
+# each deploys (or reuses) its model on the named GPU, waits for `running`,
+# executes the browser + curl checks, then stops the deployment unless
+# `keep: true`. On failure the deployment is left running (CLAUDE.md: freeze
+# the scene) and the run aborts with a report of what was completed.
+#
+# gpu index: 0 = Quadro RTX 8000 (46 GiB), 1 = RTX 2080 Ti (22 GiB). Both are
+# Turing (sm_75), so every seed spec here is the `cc: 7.5..7.9` profile.
+defaults:
+  base_url: http://gpu3:8800
+  username: admin
+  password: password
+  node_hostname: 172-25-17-156
+  model_source: modelscope
+  ready_timeout_seconds: 1800     # first-time weight download + engine start
+  artifact_dir: artifacts/archive/2026-08-21-playground/playground-request-composition-gpu3
+  # Seed the cross-case audio chain with a short WAV so the first speech case
+  # does not depend on a microphone.
+  chain_dir: /tmp/playground-acceptance
+
+cases:
+  - id: l4-gpu3-playground-route-speech-deployments-page
+    deploy:
+      template: qwen/qwen3-tts-12hz-0.6b-base
+      spec: bf16-base-0-6b-vllm-nvidia-turing
+      served_name: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+      gpu: 1
+      keep: true                 # reused by the next three cases
+    browser: route_from_deployments
+    expect:
+      url_regex: "/playground/audio\\?.*operation=openai\\.audio\\.speech.*model=Qwen%2FQwen3-TTS-12Hz-0\\.6B-Base"
+      selected_model: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+
+  - id: l4-gpu3-playground-route-unsupported-model-no-rewrite
+    reuse: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+    browser: open_unsupported_chat
+    expect:
+      url_regex: "/playground/chat\\?model=Qwen%2FQwen3-TTS-12Hz-0\\.6B-Base$"
+      visible_text: ["openai.audio.speech"]
+
+  - id: l4-gpu3-playground-speech-customvoice-vllm-omni
+    deploy:
+      template: qwen/qwen3-tts-12hz-0.6b-customvoice
+      spec: bf16-customvoice-0-6b-vllm-nvidia-turing
+      served_name: Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice
+      gpu: 0
+    browser: speech_form
+    inputs: { voice: vivian, text: 今天天气不错，我们去公园散步吧。 }
+    expect:
+      discovery: { path: /v1/audio/voices, status: 200, json_min_len: { voices: 1 } }
+      request_body: { has: [voice], absent: [task_type] }
+      response_content_type: audio/wav
+      save_audio_as: customvoice.wav          # chain → ref_audio
+      save_text_as: customvoice.txt
+
+  - id: l4-gpu3-playground-speech-clone-base-vllm-omni
+    reuse: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+    browser: speech_form
+    inputs: { ref_audio: "@customvoice.wav", ref_text: "@customvoice.txt", text: 语音克隆测试，这一句由参考音频的音色合成。 }
+    expect:
+      discovery: { path: /v1/audio/voices, status: 200, json_equals: { voices: [] } }
+      form_absent_fields: [voice]
+      request_body: { equals: { task_type: Base }, prefix: { ref_audio: "data:audio/wav;base64," }, has: [ref_text] }
+      response_content_type: audio/wav
+      engine_log_absent: ["no speakers configured"]
+      save_audio_as: cloned.wav
+
+  - id: l4-gpu3-playground-speech-expert-raw-vllm-omni
+    reuse: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+    browser: speech_expert_raw
+    raw_patch: { language: English, speed: 1.2 }
+    expect:
+      request_body_bytes_equal_editor: true
+      status: 200
+
+  - id: l4-gpu3-playground-speech-openapi-skeleton-vllm-omni
+    reuse: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+    browser: speech_openapi_skeleton
+    expect:
+      discovery: { path: /openapi.json, status: 200 }
+      editor_contains: ['"input"', '"model"', "task_type"]
+      status: 200
+
+  - id: l4-gpu3-playground-transcribe-asr-backread-vllm
+    deploy:
+      template: openmoss-team/moss-transcribe-diarize
+      spec: bf16-vllm-nvidia-turing
+      served_name: moss-transcribe-diarize
+      gpu: 0
+    browser: transcribe_upload
+    inputs: { file: "@cloned.wav" }
+    expect:
+      request_multipart_fields: [model, file]
+      wer_max: 0.3
+      wer_reference_file: customvoice.txt
+
+  - id: l4-gpu3-playground-chat-audio-input-vllm
+    deploy:
+      template: qwen/qwen3-asr-1.7b
+      spec: bf16-vllm-nvidia-turing
+      served_name: Qwen/Qwen3-ASR-1.7B
+      gpu: 0
+    browser: chat_with_attachment
+    inputs: { attachment: "@cloned.wav", text: 这段音频说了什么？ }
+    expect:
+      deployment_operations: [openai.chat, openai.audio.transcribe]
+      attachment_entries: [audio]
+      request_body_part_types: [input_audio]
+      sse_ok: true
+
+  - id: l4-gpu3-playground-chat-image-input-vllm
+    deploy:
+      template: liquidai/lfm2.5-vl-450m
+      spec: bf16-vllm-nvidia-turing
+      served_name: LiquidAI/LFM2.5-VL-450M
+      gpu: 1
+    browser: chat_with_attachment
+    inputs: { attachment: "@fixture:test/e2e/testdata/playground-acceptance/red-square.png", text: 图里是什么颜色？ }
+    expect:
+      attachment_entries: [image]
+      request_body_part_types: [image_url]
+      sse_ok: true
+      reply_contains_any: [红, red]
+
+  - id: l4-gpu3-playground-chat-expert-extra-json-migrated
+    reuse: Qwen/Qwen3.5-0.8B
+    browser: chat_compare_expert
+    raw_patch: { chat_template_kwargs: { enable_thinking: false } }
+    expect:
+      compare_columns: 2
+      both_request_bodies_have: [chat_template_kwargs]
+      view_code_curl_matches_network: true
+
+  - id: l4-gpu3-playground-embeddings-vllm
+    deploy:
+      template: jinaai/jina-embeddings-v5-text-small
+      spec: bf16-vllm-nvidia-turing
+      served_name: jina-embeddings-v5-text-small
+      gpu: 0
+    browser: vector_run
+    expect:
+      request_body: { keys_exactly: [model, input] }
+      embedding_dimensions_equal_model: true
+
+  - id: l4-gpu3-playground-rerank-vllm
+    deploy:
+      template: jinaai/jina-reranker-m0
+      spec: bf16-vllm-nvidia-turing
+      served_name: jina-reranker-m0
+      gpu: 0
+    browser: rerank_run
+    expect:
+      request_body: { keys_exactly: [model, query, documents] }
+      results_sorted_desc_by: relevance_score
+
+  - id: l4-gpu3-playground-generation-pages-fake-engine-docker
+    import_catalog: test/e2e/testdata/playground-acceptance/catalog-gpu3-fake-engine.yaml
+    deploy:
+      template: gpuworks/playground-acceptance
+      spec: fake-engine-nvidia-any
+      served_name: playground-acceptance
+      gpu: 1
+    browser: generation_pages_and_expert
+    expect:
+      image: { request_body: { equals: { response_format: b64_json, size: 1024x1024 } }, rendered: img.playground-generated-image }
+      video: { network_sequence: ["POST /v1/videos", "GET /v1/videos/{id}", "GET /v1/videos/{id}/content", "DELETE /v1/videos/{id}"], rendered: video.playground-generated-video }
+      realtime: { ws_status: 101, first_event: session.created }
+      expert_paths_exactly: [/v1/chat/completions, /v1/embeddings, /v1/rerank, /v1/audio/transcriptions, /v1/audio/speech, /v1/images/generations, /v1/videos, /v1/realtime]
+
+  - id: l4-gpu3-playground-public-v1-parity
+    reuse: Qwen/Qwen3.5-0.8B
+    curl: replay_copied_curl_with_temporary_api_key
+    expect: { status: 200, api_key_deleted_after: true }
+
+  - id: l4-gpu3-playground-sleep-wake-discovery
+    reuse: Qwen/Qwen3.5-0.8B
+    browser: sleep_then_open_and_wake
+    expect:
+      page_not_blocked_by_discovery: true
+      sleeping_banner: true
+      after_wake_discovery_refetched: [/openapi.json]
+
+  - id: l4-gpu3-model-kinds-tabs-parity
+    browser: kinds_tabs_parity
+    expect:
+      same_kinds_on_models_and_templates_pages: true
+      unknown_tab_only_models_without_config_and_catalog_hit: true

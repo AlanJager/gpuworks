@@ -1,0 +1,57 @@
+{
+  "host": "mirror1",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 3080 Ti",
+    "compute_capability": "8.6",
+    "memory_mib": 12288,
+    "driver": "595.99.02",
+    "cuda_framework": "13.2"
+  },
+  "image": "gpustack/runner:cuda13.0-vllm0.25.1",
+  "image_id": "f9c58b163ec7",
+  "dtype": "bfloat16",
+  "load_format": "dummy",
+  "measurements": [
+    {
+      "model": "qwen/qwen3.5-0.8b",
+      "model_path": "/models/modelscope/Qwen_Qwen3.5-0.8B-main",
+      "gpu_memory_utilization": 0.92,
+      "max_model_len": 262144,
+      "available_kv_gib": 7.25,
+      "kv_tokens": 629145,
+      "effective_bytes_per_token": 12373.35,
+      "catalog_vllm_bytes_per_token": 49152,
+      "catalog_sglang_bytes_per_token": 12288,
+      "notes": [
+        "Setting attention block size to 544 tokens",
+        "Padding mamba page size by 2.64%"
+      ]
+    },
+    {
+      "model": "qwen/qwen3-0.6b",
+      "model_path": "/models/modelscope/Qwen_Qwen3-0.6B",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 40960,
+      "available_kv_gib": 8.98,
+      "kv_tokens": 84016,
+      "effective_bytes_per_token": 114766.25,
+      "catalog_vllm_bytes_per_token": 114688,
+      "catalog_sglang_bytes_per_token": 114688
+    },
+    {
+      "model": "liquidai/lfm2.5-350m",
+      "model_path": "/models/modelscope/LiquidAI_LFM2.5-350M",
+      "gpu_memory_utilization": 0.90,
+      "max_model_len": 32768,
+      "available_kv_gib": 9.24,
+      "kv_tokens": 806636,
+      "effective_bytes_per_token": 12299.69,
+      "catalog_vllm_bytes_per_token": 32768,
+      "catalog_sglang_bytes_per_token": 12288,
+      "notes": [
+        "Padding mamba page size by 700.00%",
+        "vLLM warned about two padding layers"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+# gpuworks-runner: NVIDIA CUDA SGLang 线
+#
+# 派生自 gpustack/runner 的 pack/cuda/Dockerfile.sglang（Apache-2.0，见 ../NOTICE）：
+# 工具层构成与分层思路参照其做法。
+#
+# 内容 = 上游 vanilla（lmsysorg/sglang 官方镜像，**已自带 diffusion 全套**）
+#       + 轻量工具层
+#
+# 这里**没有**"安装 diffusion 扩展"的层：上游 base 本就自带，改由 requires 断言把关，
+# 理由见下方 diffusion 一节。
+
+ARG BASE_IMAGE=lmsysorg/sglang:v0.5.21-cu130
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG TARGETPLATFORM
+ARG SGLANG_VERSION=0.5.21
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine overlays"
+# 构建期 pip 镜像源：ARG 而非 ENV，不写进运行期镜像。
+# 必须有：buildkit 不走代理，直连 pypi.org 实测会把 73 MiB 的 ray wheel 卡住半小时
+# 整档构建拖到 66~72 分钟；阿里云镜像实测 3.6 MiB/s、延迟 0.12s。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+ARG APT_MIRROR=mirrors.aliyun.com
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+## 工具层
+#
+# apt 源的镜像改写只在构建期生效：先备份、装完还原，不把镜像源留给用户。
+RUN <<EOF
+    set -eux
+    mkdir -p /tmp/apt-backup
+    cp -a /etc/apt/sources.list /tmp/apt-backup/ 2>/dev/null || true
+    cp -a /etc/apt/sources.list.d /tmp/apt-backup/ 2>/dev/null || true
+    sed -i \
+        -e "s|archive.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+        -e "s|security.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+        -e "s|ports.ubuntu.com/ubuntu-ports|${APT_MIRROR}/ubuntu-ports|g" \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+    apt-get update -y
+    apt-get install -y --no-install-recommends \
+        tini jq curl wget vim less tree bc \
+        iproute2 iputils-ping net-tools dnsutils \
+        procps sysstat htop \
+        ffmpeg patch
+    rm -rf /etc/apt/sources.list /etc/apt/sources.list.d
+    cp -a /tmp/apt-backup/sources.list /etc/apt/ 2>/dev/null || true
+    cp -a /tmp/apt-backup/sources.list.d /etc/apt/ 2>/dev/null || true
+    rm -rf /tmp/apt-backup /var/cache/apt /var/tmp/* /tmp/*
+EOF
+
+## diffusion 扩展：**由上游 base 提供，本层不安装**
+#
+# 上游 lmsysorg 的 sglang 镜像自带 diffusion 全套（diffusers、
+# opencv-python-headless、cache-dit、st_attn、vsa），不需要我们再装一遍。
+# 自己装反而有两个坑：base 没有声明 SHELL，RUN 走 dash 时 pushd 不存在；
+# `/sgl-workspace/sglang` 下没有 pyproject，`.[diffusion]` 必然失败，而失败后 pip
+# 会静默退回去装已经存在的 diffusers，于是那一层在 image history 里是 0 字节——
+# 名字里有 diffusion，实际什么也没装。从 github clone 源码树也不可行：构建机不走
+# 代理时 github.com 完全不可达。
+#
+# 本档在 matrix.yaml 里声明 requires: diffusion，由构建末尾的断言证明 base 确实
+# 带着它；将来上游若不再自带，构建会直接失败。
+
+COPY overlays/ /opt/gpuworks/overlays/
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python3 - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "sglang",
+    "engine_version": os.environ["SGLANG_VERSION"],
+    "framework": "cuda",
+    "requires": os.environ["REQUIRES"].split(),
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=sglang bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="sglang" \
+      io.gpuworks.engine.version="${SGLANG_VERSION}" \
+      io.gpuworks.framework="cuda" \
+      io.gpuworks.diffusion="${SGLANG_VERSION}" \
+      io.gpuworks.requires="${REQUIRES}"

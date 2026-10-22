@@ -1,0 +1,97 @@
+{
+  "scope": "Source audit of historical browser entrypoints and shared evidence boundaries; not executable coverage claims or a passing suite",
+  "audit_base_sha": "d63e16c379e81b1c925423ced30af7d381369510",
+  "standard": "test/e2e/browser-e2e-testing-standard.md",
+  "result": "NOT_RUN: source inspection only; each future execution needs its own source/build identity, fixed selection and evidence",
+  "entries": [
+    {
+      "entry_id": "legacy/deployment-flow",
+      "test_file": "test/e2e/deployment_flow_acceptance.py",
+      "fixture_file": "test/e2e/deployment_flow_env.py",
+      "lane": "local-real-server-recording-agent",
+      "existing_evidence_scope": "UI evaluate/create, independent GET and recorded workload comparisons; recording runtime does not prove containers or GPU inference",
+      "missing": [
+        "MISSING: stable case bindings, per-case Mainline and required evidence declarations; fixture helper is not another business case",
+        "MISSING: lock built-in catalog package identity or prepare owned profile/filter/pagination data; hardcoded Gemma profile and page counts drift with catalog updates",
+        "MISSING: final result includes successful scoped cleanup; current observations.passed is written before DELETE and final 404 verification",
+        "MISSING: complete actual control inventory, mutually discriminating combination data, negative combinations and component-state matrix"
+      ]
+    },
+    {
+      "entry_id": "legacy/deployment-detail-timerange",
+      "test_file": "test/e2e/deployment_detail_timerange.py",
+      "lane": "explicit-running-deployment",
+      "existing_evidence_scope": "DOM controls and captured request URLs only; not known-sample or response evidence",
+      "missing": [
+        "FAIL_TEST: main calls sync_playwright without importing it; identified by source review, browser entry has not been run in this audit",
+        "MISSING: every actual preset and custom confirm/cancel/invalid range, exact UTC bounds, response status and known boundary samples",
+        "MISSING: condition waiting that dispatches synchronous Playwright events; polling currently blocks that dispatcher",
+        "MISSING: case bindings, Mainline, runId/build/source evidence, exact selected deployment and cleanup ownership"
+      ]
+    },
+    {
+      "entry_id": "legacy/benchmark-admission",
+      "test_file": "test/e2e/benchmark_admission_walkthrough.py",
+      "lane": "local-real-server-agent-external-engine-fixture",
+      "existing_evidence_scope": "Admission UI walkthrough; does not establish complete benchmark or performance coverage",
+      "missing": [
+        "FAIL_TEST: REPO resolves to repo/test, so the default test/bin binaries differ from standard make build outputs in repo/bin; source-inspected, not executed",
+        "MISSING: deterministic active-request barrier, exact conflicting run identity and cancellation/completion evidence instead of fixed-delay overlap",
+        "MISSING: faithful upstream path/model/body/stream validation, rejected invalid requests, terminal SSE and usage; current handler accepts every POST",
+        "MISSING: preserve failed DB/agent scene with owned ledger and bounded reclamation; current finally removes state on failure",
+        "MISSING: standard case bindings/Mainline, actual controls and a fixed per-case selection/report"
+      ]
+    },
+    {
+      "entry_id": "legacy/inference-catalog-renderers",
+      "test_file": "test/e2e/browser_inference_catalog.py",
+      "lane": "explicit-real-server-deployment",
+      "existing_evidence_scope": "Renderer UI smoke including some error/cancel states; not per-operation inference closure",
+      "missing": [
+        "MISSING: exact observed wire requests/responses, SSE completion/usage and upstream cancellation evidence",
+        "MISSING: valid decodable audio fixture rather than model.safetensors used as upload content; decode generated media and verify bytes",
+        "MISSING: standard reference/Mainline, case manifest, owned fixture setup and source/build/run evidence",
+        "MISSING: independent persistence and account-isolated conversation history"
+      ]
+    },
+    {
+      "entry_id": "legacy/playground-acceptance",
+      "test_file": "test/e2e/playground_acceptance.py",
+      "manifest_file": "test/e2e/testdata/playground-acceptance/cases.yaml",
+      "lane": "explicit-gpu3-L4",
+      "existing_evidence_scope": "Strict preflight rejects unsupported actions/expect/inputs/curl/deploy and unconsumed defaults before external actions; inputs are no longer reported as requests. Existing-deployment mode remains renderer smoke. Gate implementation is tracked in playground-manifest-gate.json; no new execution claimed here.",
+      "missing": [
+        "MISSING: implement the retained manifest business actions and assertions; strict rejection is implemented, but MISSING results do not prove GPU/SSE/media/curl behavior",
+        "MISSING: actual deploy.gpu/node_hostname placement submission and readback; these unsupported constraints are now rejected before browser/login/deployment creation",
+        "MISSING: independent business-case selection/reuse ownership, real submitted inputs and operation-specific assertions",
+        "MISSING: scoped stop/delete response and terminal runtime checks when deployment actions become executable; manifest preflight currently rejects deployment creation"
+      ],
+      "coverage_file": "test/e2e/coverage/playground-manifest-gate.json"
+    },
+    {
+      "entry_id": "runner/remote-runtime-contract-selection",
+      "test_file": "test/e2e/remote_runtime_acceptance.py",
+      "lane": "explicit-remote",
+      "existing_evidence_scope": "Existing four remote business manifests and runtime assertions remain valid targeted implementations; no new execution claimed",
+      "missing": [
+        "MISSING: read and validate selected case ID/function/contract/required evidence and fix manifest hash before RemoteSession/login/mutations; current runner reads manifest after business effects",
+        "MISSING: detect manifest changes during execution and report the original fixed selection"
+      ]
+    },
+    {
+      "entry_id": "runner/local-build-evidence",
+      "test_file": "test/e2e/local_browser_fixture.py",
+      "runner_files": [
+        "test/e2e/image_catalog_runner.py",
+        "test/e2e/image_runtime_runner.py",
+        "test/e2e/http_model_registration.py"
+      ],
+      "lane": "local-real-server",
+      "existing_evidence_scope": "Callers record health and binary digest; source SHA and binary hash alone do not bind the embedded UI/server to the checked-out source",
+      "missing": [
+        "MISSING_EVIDENCE: direct Python entries can start an old bin/gpuworks while recording current Git SHA; require build provenance validation before claiming same-source execution",
+        "MISSING: classify product/test/environment failures after diagnosis; generic FAIL_TEST plus UNTRIAGED must not be interpreted as an established test-code fault"
+      ]
+    }
+  ]
+}

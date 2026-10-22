@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 4096
+  sglang: 4096
+model_id: zjcxy-smartai/eagle3-qwen3-8b-zh
+source: upstream
+display_title: Eagle3-Qwen3-8B-zh
+release_date: '2025-11-12'
+specs: []
+input_modalities: [text]

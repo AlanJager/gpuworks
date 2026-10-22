@@ -1,0 +1,77 @@
+{
+  "id": "shm-insufficient-nccl-tp2-3090",
+  "source": "https://github.com/vllm-project/vllm/issues/4383",
+  "note": "vLLM 0.4.1, 2x RTX 3090 (no P2P), Qwen1.5-7B-Chat TP=2 in a container with a ~45 MiB /dev/shm: NCCL cannot create its shared-memory segment. NCCL WARN / DistBackendError / Ray /dev/shm lines are taken from the issue (quoted fragments); surrounding INFO lines and traceback frames reconstructed in vLLM 0.4 format. In gpuworks this happens when the deployment's container shm size is set far below the 16 GiB default.",
+  "message": "container exited (code 1)",
+  "command": [
+    "python3",
+    "-m",
+    "vllm.entrypoints.openai.api_server",
+    "--model",
+    "/data/Qwen/Qwen1.5-7B-Chat/",
+    "--tokenizer",
+    "/data/Qwen/Qwen1.5-7B-Chat/",
+    "--tensor-parallel-size",
+    "2",
+    "--gpu-memory-utilization",
+    "0.9",
+    "--max-model-len",
+    "4096",
+    "--port",
+    "30000"
+  ],
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 3090",
+      "memory_gib": 24
+    },
+    {
+      "name": "NVIDIA GeForce RTX 3090",
+      "memory_gib": 24
+    }
+  ],
+  "logs": [
+    "INFO 04-26 08:12:31 api_server.py:149] vLLM API server version 0.4.1",
+    "INFO 04-26 08:12:31 api_server.py:150] args: Namespace(host=None, port=30000, model='/data/Qwen/Qwen1.5-7B-Chat/', tokenizer='/data/Qwen/Qwen1.5-7B-Chat/', max_model_len=4096, tensor_parallel_size=2, gpu_memory_utilization=0.9)",
+    "2024-04-26 08:12:34,118\tINFO worker.py:1749 -- Started a local Ray instance.",
+    "(raylet) WARNING: The object store is using /tmp instead of /dev/shm because /dev/shm has only 47824896 bytes available. This will harm performance! You may be able to free up space by deleting files in /dev/shm. If you are inside a Docker container, you can increase /dev/shm size by passing '--shm-size=10.24gb' to 'docker run' (or add it to the run_options list in a Ray cluster config). Make sure to set this to more than 30% of available RAM.",
+    "INFO 04-26 08:12:40 llm_engine.py:98] Initializing an LLM engine (v0.4.1) with config: model='/data/Qwen/Qwen1.5-7B-Chat/', dtype=torch.bfloat16, max_seq_len=4096, tensor_parallel_size=2, disable_custom_all_reduce=False, quantization=None, seed=0)",
+    "INFO 04-26 08:12:44 utils.py:608] Found nccl from library /root/.config/vllm/nccl/cu12/libnccl.so.2.18.1",
+    "(RayWorkerWrapper pid=5280) INFO 04-26 08:12:44 utils.py:608] Found nccl from library /root/.config/vllm/nccl/cu12/libnccl.so.2.18.1",
+    "INFO 04-26 08:12:45 selector.py:28] Using FlashAttention backend.",
+    "INFO 04-26 08:12:46 pynccl_utils.py:43] vLLM is using nccl==2.18.1",
+    "node-a:4987:4987 [0] NCCL INFO comm 0x5581c2e0 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 1000 commId 0x2f1c - Init COMPLETE",
+    "WARNING 04-26 08:12:47 custom_all_reduce.py:74] Custom allreduce is disabled because your platform lacks GPU P2P capability or P2P test failed. To silence this warning, specify disable_custom_all_reduce=True explicitly.",
+    "node-a:4987:4987 [0] misc/shmutils.cc:72 NCCL WARN Error: failed to extend /dev/shm/nccl-v2jS20 to 9637892 bytes",
+    "node-a:4987:4987 [0] misc/shmutils.cc:113 NCCL WARN Error while creating shared memory segment /dev/shm/nccl-v2jS20 (size 9637888)",
+    "ERROR 04-26 08:12:48 worker_base.py:145] Error executing method init_device. This might cause deadlock in distributed execution.",
+    "Traceback (most recent call last):",
+    "  File \"/usr/local/lib/python3.10/dist-packages/vllm/worker/worker.py\", line 110, in init_device",
+    "    init_worker_distributed_environment(self.parallel_config, self.rank,",
+    "  File \"/usr/local/lib/python3.10/dist-packages/vllm/worker/worker.py\", line 313, in init_worker_distributed_environment",
+    "    torch.distributed.all_reduce(torch.zeros(1).cuda())",
+    "  File \"/usr/local/lib/python3.10/dist-packages/torch/distributed/c10d_logger.py\", line 75, in wrapper",
+    "    return func(*args, **kwargs)",
+    "  File \"/usr/local/lib/python3.10/dist-packages/torch/distributed/distributed_c10d.py\", line 1992, in all_reduce",
+    "    work = group.allreduce([tensor], opts)",
+    "torch.distributed.DistBackendError: NCCL error in: ../torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:1691, unhandled system error (run with NCCL_DEBUG=INFO for details), NCCL version 2.19.3",
+    "ncclSystemError: System call (e.g. socket, malloc) or external library call failed or device error.",
+    "Last error:",
+    "Error while creating shared memory segment /dev/shm/nccl-v2jS20 (size 9637888)"
+  ],
+  "expect_signature": "shm_insufficient",
+  "expect_keywords": [
+    [
+      "shm-size",
+      "shm_size",
+      "shm_gib",
+      "shm_bytes",
+      "共享内存大小",
+      "shared memory size",
+      "ipc=host"
+    ],
+    [
+      "/dev/shm"
+    ]
+  ]
+}

@@ -1,0 +1,11 @@
+--- a/vllm_omni/patch.py
++++ b/vllm_omni/patch.py
+@@ -297,6 +297,8 @@
+ for module_name, module in list(sys.modules.items()):
+     # only do patch on module of vllm, pass others
+     if "vllm" not in module_name:
++        continue
++    if "--omni" not in sys.argv:
+         continue
+     if hasattr(module, "EngineCoreOutput") and module.EngineCoreOutput == _OriginalEngineCoreOutput:
+         module.EngineCoreOutput = OmniEngineCoreOutput

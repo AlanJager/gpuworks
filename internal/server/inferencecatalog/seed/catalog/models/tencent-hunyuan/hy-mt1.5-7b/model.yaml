@@ -1,0 +1,61 @@
+model_id: tencent-hunyuan/hy-mt1.5-7b
+source: upstream
+display_title: hy-mt1.5-7b
+release_date: '2025-12-27'
+model_config: {model_type: hunyuan_v1_dense, num_hidden_layers: 32, hidden_size: 4096, num_attention_heads: 32, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 131072
+  sglang: 131072
+specs:
+- name: bf16-callable-hygon-a5ad616f
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: harbor.sourcefind.cn:5443/dcu/admin/base/custom:vllm-ubuntu22.04-dtk26.04-hunyuan-v3-0507
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: tencent/HY-MT1.5-7B
+        revision: 397085d46158ad0b437ffd74228499e8c2a35c76
+    - modelscope:
+        repo_id: Tencent-Hunyuan/HY-MT1.5-7B
+        revision: 8454200fe3d727c7a2bf3da1cab736a5c74b7dcc
+  weight_bytes: 16075607925
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --adapter
+  - transformers_adapter
+  - --operation
+  - openai.chat
+  - --adapter-config
+  - '{"load_kwargs":{"device":0,"trust_remote_code":true},"task":"text-generation"}'
+  env:
+    PYTHONPATH: /opt/gpuworks/runtime
+  assets:
+  - file: assets/gpuworks-transformers-runtime.tar.gz
+    sha256: ce9529d979b8d84f73d5de139f507ce1500fa2c97b9e76bbf7741985d8eb4a4e
+    unpack_to: /opt/gpuworks/runtime
+  entrypoint:
+  - python3
+  - /opt/gpuworks/runtime/gpuworks_serve.py
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

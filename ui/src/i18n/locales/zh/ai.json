@@ -1,0 +1,187 @@
+{
+  "tooltip": "在 AI 助手侧边栏中打开（⌘I）。平台检查无需配置；AI 分析需要在设置中配置 AI 服务。",
+  "title": "AI 助手",
+  "factsSection": "平台检查",
+  "answerSection": "AI 分析",
+  "loading": "AI 分析中…",
+  "elapsed": "{{seconds}} 秒",
+  "stop": "停止",
+  "stopped": "已停止。已收到的内容和上方的平台检查结果都保留。",
+  "reanalyze": "重新分析",
+  "retry": "重试",
+  "requestFailed": "AI 请求失败",
+  "configureFirst": "在设置中配置 AI 服务后可获得 AI 解读；上方的平台检查无需配置。",
+  "empty": "（无内容）",
+  "finding": {
+    "none": "未命中已知故障模式，下方由 AI 读取日志分析。",
+    "ruleTag": "规则判断 · 由 AI 验证",
+    "evidence": "命中的日志行",
+    "verifyNote": "规则判断只是假设，AI 分析会对照日志验证并说明是否成立。",
+    "kv_cache_insufficient": {
+      "title": "KV cache 放不下",
+      "fix": "降低 --max-model-len、调高显存利用率，或增大张量并行。"
+    },
+    "cuda_oom": {
+      "title": "显存不足",
+      "fix": "确认权重按每卡份额放得下、同卡没有其他进程占用显存，再降低 --max-model-len 或增大张量并行。"
+    },
+    "shm_insufficient": {
+      "title": "共享内存（/dev/shm）不足",
+      "fix": "给容器更大的共享内存（或 ipc=host）。"
+    },
+    "nccl_failure": {
+      "title": "集合通信失败（NCCL/HCCL）",
+      "fix": "检查集合通信使用的网卡、P2P 支持、节点间防火墙，以及每个 rank 是否都已启动。"
+    },
+    "disk_full": {
+      "title": "磁盘已满",
+      "fix": "清理节点的模型存储或容器运行时目录。"
+    },
+    "port_in_use": {
+      "title": "端口已被占用",
+      "fix": "节点上有其他进程或容器占用了服务端口，停止它或换端口。"
+    },
+    "image_pull_denied": {
+      "title": "镜像拉取失败",
+      "fix": "检查镜像名和标签，以及节点上的镜像仓库凭据。"
+    },
+    "dtype_unsupported": {
+      "title": "GPU 不支持该数据类型",
+      "fix": "改用 --dtype float16，或换支持该类型的 GPU。"
+    },
+    "gpu_arch_unsupported": {
+      "title": "镜像未针对该 GPU 架构编译",
+      "fix": "换用针对该 GPU 计算能力编译的镜像，或换 GPU。"
+    },
+    "trust_remote_code_required": {
+      "title": "模型需要 --trust-remote-code",
+      "fix": "仅在信任该模型仓库代码时开启。"
+    },
+    "model_arch_unsupported": {
+      "title": "引擎不支持该模型架构",
+      "fix": "换更新的引擎镜像或其他引擎。"
+    },
+    "model_files_missing": {
+      "title": "模型文件缺失或路径错误",
+      "fix": "检查启动命令里的模型路径，以及下载是否完成。"
+    },
+    "hf_download_failed": {
+      "title": "模型仓库下载失败",
+      "fix": "检查仓库 ID、受限模型的访问令牌，以及节点的网络或代理。"
+    }
+  },
+  "fit": {
+    "title": "在线集群适配",
+    "estimatorTag": "估算器",
+    "noNodes": "没有在线节点带加速卡，无法估算。",
+    "card": "加速卡",
+    "nodes_one": "{{count}} 个节点",
+    "nodes_other": "{{count}} 个节点",
+    "runs": "能否运行",
+    "yes": "可以 · TP {{tp}}",
+    "no": "单节点放不下",
+    "perGPU": "每卡需要 / 可用",
+    "headroom": "留给 KV cache",
+    "note": "按权重加引擎预留、显存利用率 {{util}}% 估算；未考虑多机部署和量化版本。",
+    "unusable_one": "另有 {{count}} 张故障卡未计入",
+    "unusable_other": "另有 {{count}} 张故障卡未计入",
+    "dtypeUnsupported": "不支持 {{dtype}}",
+    "link": "互联",
+    "fastLink": "高速互联 ×{{count}}",
+    "pcieOnly": "仅 PCIe"
+  },
+  "trace": {
+    "steps": "工具调用",
+    "running": "进行中…",
+    "summary": "首字 {{first}} 秒 · 共 {{total}} 秒 · {{tools}} 次工具调用 · {{calls}} 次模型调用 · {{tokens}} tokens",
+    "noTools": "直接基于平台预先收集的上下文回答",
+    "selfCorrect": "查询写法有误，已把实际结构交给模型"
+  },
+  "tool": {
+    "cluster_overview": "集群概况",
+    "search_api": "查找接口",
+    "call_api": "读取",
+    "search_metrics": "查找指标",
+    "get_gpu_topology": "GPU 拓扑",
+    "compare_with_healthy_replica": "对比健康副本"
+  },
+  "investigating": "AI 正在查更多信息…",
+  "reasoning": "推理过程",
+  "streamCut": "连接在回答完成前断开，上方是已收到的部分。",
+  "thinking": "AI 思考中…",
+  "panel": {
+    "shortcut": "⌘I / Ctrl+I",
+    "headerTooltip": "AI 助手（⌘I / Ctrl+I）",
+    "newThread": "新对话",
+    "close": "关闭",
+    "about": "关于：",
+    "threadAbout": "追问针对：{{subject}}",
+    "followUpPlaceholder": "继续追问…（回车发送）",
+    "askPlaceholder": "问问当前页面的内容，或集群的任何问题…（回车发送）",
+    "input": "问题",
+    "send": "发送",
+    "onThisPage": "当前页面",
+    "emptyTitle": "从页面上选一个任务，或在下面直接提问",
+    "emptyHint": "打开某个部署、节点或失败实例的详情，这里就会出现对应的任务；模型、失败实例、调度不上的部署和节点旁也有 AI 按钮。",
+    "followUps": "推荐追问"
+  },
+  "subject": {
+    "instance": "实例",
+    "model": "模型",
+    "deployment": "部署",
+    "node": "节点"
+  },
+  "task": {
+    "instance.diagnose": {
+      "title": "这个实例为什么失败？",
+      "action": "AI 诊断"
+    },
+    "model.fit": {
+      "title": "哪些硬件能跑这个模型？",
+      "action": "硬件适配"
+    },
+    "deployment.unscheduled": {
+      "title": "为什么副本调度不上？",
+      "action": "为什么调度不上"
+    },
+    "node.health": {
+      "title": "这台节点健康吗？",
+      "action": "AI 健康检查"
+    },
+    "ask": {
+      "title": "提问",
+      "action": "提问"
+    }
+  },
+  "attention": {
+    "unscheduled_one": "{{count}} 个副本在等待节点",
+    "unscheduled_other": "{{count}} 个副本在等待节点",
+    "failed": "已失败",
+    "nodeOffline": "节点离线",
+    "nodeConnecting": "节点连接中",
+    "brokenGPUs_one": "{{count}} 张加速卡报告故障",
+    "brokenGPUs_other": "{{count}} 张加速卡报告故障"
+  },
+  "followUp": {
+    "instance.diagnose": {
+      "fullCommand": "给出修正后的完整启动参数",
+      "compareHealthy": "和同部署里正常运行的副本对比一下",
+      "withoutChange": "不改现有参数还有办法吗？"
+    },
+    "model.fit": {
+      "recommendConfig": "推荐一个具体的部署配置",
+      "quantized": "换成量化版本能省多少显存？",
+      "longContext": "128K 长上下文需要几张卡？"
+    },
+    "deployment.unscheduled": {
+      "closestNode": "哪台节点最接近能放下？",
+      "lowerTP": "降低 TP 能放下吗？",
+      "freeCards": "需要停掉哪些实例才能腾出卡？"
+    },
+    "node.health": {
+      "confirmHardware": "怎么确认是不是硬件故障？",
+      "acceptNew": "这台节点现在还能接新部署吗？",
+      "thermals": "看一下最近一小时的温度和功耗"
+    }
+  }
+}

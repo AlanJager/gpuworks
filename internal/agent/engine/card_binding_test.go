@@ -1,0 +1,129 @@
+package engine
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/proto"
+)
+
+func nvidiaCard(index int, bdf string) proto.GPUInfo {
+	return proto.GPUInfo{Index: index, UUID: "GPU-" + bdf, Vendor: "nvidia", PCIeBDF: bdf, Healthy: true}
+}
+
+func engineWithCards(gpus ...proto.GPUInfo) *Engine {
+	return &Engine{prober: &gpu.FixedProber{VendorName: "nvidia", GPUs: gpus}}
+}
+
+// The cards an instance was placed on now carry different device indexes
+// (one card failed to initialize and dropped out of the vendor CLI). The
+// launch must follow the identity, not the index.
+func TestResolveBoundCardsFollowsTheCardsToTheirCurrentIndexes(t *testing.T) {
+	e := engineWithCards(nvidiaCard(0, "0000:1c:00.0"), nvidiaCard(1, "0000:3f:00.0"))
+	spec := proto.InstanceDesiredState{
+		UUID:       "inst-1",
+		GPUIndexes: []int{1, 2},
+		GPUIdents:  []string{"pci:0000:1c:00.0", "pci:0000:3f:00.0"},
+	}
+	if err := e.resolveBoundCards(context.Background(), &spec); err != nil {
+		t.Fatalf("resolve = %v", err)
+	}
+	if len(spec.GPUIndexes) != 2 || spec.GPUIndexes[0] != 0 || spec.GPUIndexes[1] != 1 {
+		t.Fatalf("indexes = %v, want [0 1]", spec.GPUIndexes)
+	}
+}
+
+// Starting on whichever card now holds that index is exactly the failure
+// this exists to prevent, so a missing card fails the launch and the message
+// names what the node does have.
+func TestResolveBoundCardsRefusesToStartWhenTheCardIsGone(t *testing.T) {
+	e := engineWithCards(nvidiaCard(0, "0000:3f:00.0"))
+	spec := proto.InstanceDesiredState{
+		UUID:       "inst-2",
+		GPUIndexes: []int{0},
+		GPUIdents:  []string{"pci:0000:1c:00.0"},
+	}
+	err := e.resolveBoundCards(context.Background(), &spec)
+	if err == nil {
+		t.Fatal("a launch on an absent card was allowed")
+	}
+	for _, want := range []string{"pci:0000:1c:00.0", "device 0 = pci:0000:3f:00.0"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not name %q", err, want)
+		}
+	}
+	if len(spec.GPUIndexes) != 1 || spec.GPUIndexes[0] != 0 {
+		t.Fatalf("a refused resolve rewrote the spec: %v", spec.GPUIndexes)
+	}
+}
+
+// An old server sends no identities, and a prober may report cards with
+// neither a PCI address nor a UUID. Both keep the indexes they were given.
+func TestResolveBoundCardsLeavesUnboundSpecsAlone(t *testing.T) {
+	e := engineWithCards(nvidiaCard(0, "0000:1c:00.0"))
+	spec := proto.InstanceDesiredState{UUID: "inst-3", GPUIndexes: []int{7}}
+	if err := e.resolveBoundCards(context.Background(), &spec); err != nil || len(spec.GPUIndexes) != 1 || spec.GPUIndexes[0] != 7 {
+		t.Fatalf("spec without identities: err=%v indexes=%v", err, spec.GPUIndexes)
+	}
+
+	// A count mismatch is not something a current server sends; the indexes
+	// remain the only complete statement of the selection.
+	mismatch := proto.InstanceDesiredState{UUID: "inst-4", GPUIndexes: []int{3, 4}, GPUIdents: []string{"pci:0000:1c:00.0"}}
+	if err := e.resolveBoundCards(context.Background(), &mismatch); err != nil {
+		t.Fatalf("mismatched lengths = %v", err)
+	}
+	if len(mismatch.GPUIndexes) != 2 || mismatch.GPUIndexes[0] != 3 {
+		t.Fatalf("mismatched lengths rewrote the spec: %v", mismatch.GPUIndexes)
+	}
+
+	// Without a prober there is nothing to resolve against.
+	bare := &Engine{}
+	noProber := proto.InstanceDesiredState{UUID: "inst-5", GPUIndexes: []int{2}, GPUIdents: []string{"pci:0000:1c:00.0"}}
+	if err := bare.resolveBoundCards(context.Background(), &noProber); err != nil || noProber.GPUIndexes[0] != 2 {
+		t.Fatalf("no prober: err=%v indexes=%v", err, noProber.GPUIndexes)
+	}
+}
+
+// A probe that cannot enumerate the cards says nothing about where they are;
+// the launch proceeds and fails later with the runtime's own error if the
+// card really is gone, rather than being blocked by an unreadable CLI.
+func TestResolveBoundCardsProceedsWhenTheProbeFails(t *testing.T) {
+	e := &Engine{prober: &failingProber{}}
+	spec := proto.InstanceDesiredState{UUID: "inst-6", GPUIndexes: []int{1}, GPUIdents: []string{"pci:0000:1c:00.0"}}
+	if err := e.resolveBoundCards(context.Background(), &spec); err != nil {
+		t.Fatalf("resolve = %v", err)
+	}
+	if len(spec.GPUIndexes) != 1 || spec.GPUIndexes[0] != 1 {
+		t.Fatalf("indexes = %v, want the spec's own", spec.GPUIndexes)
+	}
+}
+
+type failingProber struct{ gpu.FixedProber }
+
+func (*failingProber) Probe(context.Context) ([]proto.GPUInfo, error) {
+	return nil, context.DeadlineExceeded
+}
+
+// A card the vendor CLI did not list has no device to launch against.
+// Resolving a binding to it started the container on device -1, which is
+// the case this function's own doc says must fail the launch instead.
+func TestABindingToAnUnlistedCardFailsRatherThanResolvingToMinusOne(t *testing.T) {
+	e := &Engine{prober: &gpu.FixedProber{VendorName: "nvidia", GPUs: []proto.GPUInfo{
+		{Index: -1, Name: "GA102", PCIeBDF: "0000:1c:00.0"}, // driver could not bring it up
+		{Index: 0, UUID: "GPU-3f", Name: "A100", PCIeBDF: "0000:3f:00.0"},
+	}}}
+	spec := proto.InstanceDesiredState{
+		UUID: "i-1", GPUIdents: []string{"pci:0000:1c:00.0"}, GPUIndexes: []int{1},
+	}
+	err := e.resolveBoundCards(context.Background(), &spec)
+	if err == nil {
+		t.Fatalf("launch allowed on an unlisted card: indexes = %v", spec.GPUIndexes)
+	}
+	for _, i := range spec.GPUIndexes {
+		if i < 0 {
+			t.Fatalf("indexes = %v, want no device -1", spec.GPUIndexes)
+		}
+	}
+}

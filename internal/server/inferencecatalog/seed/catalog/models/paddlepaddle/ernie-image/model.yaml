@@ -1,0 +1,70 @@
+model_id: paddlepaddle/ernie-image
+source: upstream
+display_title: ernie-image
+release_date: '2026-04-13'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-callable-hygon-6ae11c73
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: baidu/ERNIE-Image
+        revision: 5346b31d68c9c23758ba56ef8be5e9dc174c7f99
+    - modelscope:
+        repo_id: PaddlePaddle/ERNIE-Image
+        revision: 5e3d62d889d84a6d4880a4b7775fb788a590e236
+  weight_bytes: 31648079569
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])(?:K100(?:[_ -]?AI)?|BW[_ -]?1000|BW[_ -]?1100)([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  - --adapter
+  - diffusers_adapter
+  - --operation
+  - openai.image.generate
+  - --adapter-config
+  - '{"device":"cuda"}'
+  env:
+    PYTHONPATH: /opt/gpuworks/runtime
+  assets:
+  - file: assets/gpuworks-diffusers-runtime.tar.gz
+    sha256: fc7eb9d16fd2f43d9c49b51fc1f6bd00d6cef17eab17eac4adf828528c408cec
+    unpack_to: /opt/gpuworks/runtime
+  entrypoint:
+  - python3
+  - /opt/gpuworks/runtime/gpuworks_serve.py
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+input_modalities: [text]

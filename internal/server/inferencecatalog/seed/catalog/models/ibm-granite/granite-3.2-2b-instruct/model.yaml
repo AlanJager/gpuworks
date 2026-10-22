@@ -1,0 +1,86 @@
+model_id: ibm-granite/granite-3.2-2b-instruct
+source: upstream
+display_title: Granite-3.2-2B-Instruct
+parameter_count: 2B
+architecture: dense
+context_length: 131072
+release_date: '2025-02-17'
+model_config: {model_type: granite, num_hidden_layers: 40, hidden_size: 2048, num_attention_heads: 32, num_key_value_heads: 8, max_position_embeddings: 131072}
+kv_bytes_per_token:
+  vllm: 81920
+  sglang: 81920
+specs:
+- name: bf16-vllm-ppu-641593c3
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ibm-granite/granite-3.2-2b-instruct
+        revision: 641593c3b25bec0b1efe9f0f7d7a67f7243f86a3
+    - modelscope:
+        repo_id: ibm-granite/granite-3.2-2b-instruct
+        revision: 75a3165e635899a7c6407f95cec92f19164c28c2
+  weight_bytes: 5067105168
+  gpus: {vendor: ppu, name: '(?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)', display_target: ppu}
+  args: [--trust-remote-code, --skip-mm-profiling]
+  api:
+    health_endpoint: /health
+    operations: [{type: openai.chat, endpoint: /v1/chat/completions, mode: stream}]
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ibm-granite/granite-3.2-2b-instruct
+        revision: 641593c3b25bec0b1efe9f0f7d7a67f7243f86a3
+    - modelscope:
+        repo_id: ibm-granite/granite-3.2-2b-instruct
+        revision: 75a3165e635899a7c6407f95cec92f19164c28c2
+  weight_bytes: 5071860144
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ibm-granite/granite-3.2-2b-instruct
+        revision: 641593c3b25bec0b1efe9f0f7d7a67f7243f86a3
+    - modelscope:
+        repo_id: ibm-granite/granite-3.2-2b-instruct
+        revision: 75a3165e635899a7c6407f95cec92f19164c28c2
+  weight_bytes: 5071860144
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

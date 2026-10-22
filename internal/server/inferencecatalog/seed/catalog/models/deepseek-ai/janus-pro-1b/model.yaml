@@ -1,0 +1,79 @@
+model_id: deepseek-ai/janus-pro-1b
+source: upstream
+display_title: janus-pro-1b
+parameter_count: 1B-class Janus-Pro variant; complete BF16 multimodal checkpoint is
+  4,178,890,389 bytes
+architecture: MultiModalityCausalLM; 24-layer Llama language model + SigLIP-L 384
+  vision encoder + separate VQ-16 image-generation path
+context_length: 16384
+release_date: '2025-01-26'
+model_config: {model_type: multi_modality, num_hidden_layers: 24, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 16, max_position_embeddings: 16384, vision_config: {model_type: vision}}
+specs:
+- name: bf16-sglang-ascend-5f02b0b0
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/Janus-Pro-1B
+        revision: 960ab33191f61342a4c60ae74d8dc356a39fafcb
+    - modelscope:
+        repo_id: deepseek-ai/Janus-Pro-1B
+        revision: bc299531bae896710f9ea16e7d4d8ea5719290f6
+  weight_bytes: 4184243996
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --enable-multimodal
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/Janus-Pro-1B
+        revision: 960ab33191f61342a4c60ae74d8dc356a39fafcb
+    - modelscope:
+        repo_id: deepseek-ai/Janus-Pro-1B
+        revision: bc299531bae896710f9ea16e7d4d8ea5719290f6
+  weight_bytes: 4184243996
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]

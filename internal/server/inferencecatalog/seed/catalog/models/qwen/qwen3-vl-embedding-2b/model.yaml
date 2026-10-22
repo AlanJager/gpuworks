@@ -1,0 +1,64 @@
+model_id: qwen/qwen3-vl-embedding-2b
+source: upstream
+display_title: Qwen3 VL Embedding 2B
+parameter_count: 2.13B
+architecture: dense
+model_config: {model_type: qwen3_vl, num_hidden_layers: 28, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 8, head_dim: 128, max_position_embeddings: 262144, vision_config: {patch_size: 16, max_position_embeddings: 2304}}
+kv_bytes_per_token:
+  vllm: 114688
+  sglang: 114688
+specs:
+- name: bf16-vllm-ppu-9f2f7e71
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-Embedding-2B
+        revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-Embedding-2B
+        revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+  weight_bytes: 4255140312
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-Embedding-2B
+        revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-Embedding-2B
+        revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+  weight_bytes: 4255140312
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+input_modalities: [text, image]

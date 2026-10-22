@@ -1,0 +1,135 @@
+package enginelog
+
+import (
+	"strings"
+	"testing"
+)
+
+const realVLLMLog = `INFO 08-18 10:00:01 [config.py:123] Initializing vllm engine
+(EngineCore_0 pid=4123) INFO 08-18 10:00:12 [model_runner.py:1024] Model loading took 14.9889 GiB and 4.32 seconds
+(EngineCore_0 pid=4123) INFO 08-18 10:00:20 [worker.py:210] the model weights take 14.99 GiB; non_torch_memory takes 0.30 GiB; PyTorch activation peak memory takes 1.20 GiB; the rest of the memory reserved for KV Cache is 60.20 GiB.
+(EngineCore_0 pid=4123) INFO 08-18 10:00:21 [gpu_worker.py:88] Available KV cache memory: 60.20 GiB
+INFO 08-18 10:00:22 [executor.py:55] GPU KV cache size: 1,234,567 tokens
+INFO 08-18 10:00:22 [executor.py:56] Maximum concurrency for 32768 tokens per request: 12.34x
+INFO 08-18 10:00:23 [cache_engine.py:77] # GPU blocks: 27000, # CPU blocks: 4096
+(EngineCore_0 pid=4123) INFO 08-18 10:00:35 [model_runner.py:1600] Graph capturing finished in 12 secs, took 0.58 GiB`
+
+func TestParseVLLMDialect(t *testing.T) {
+	m := ParseDialect("vllm", realVLLMLog)
+	if !m.Found {
+		t.Fatal("Found = false, want true")
+	}
+	if m.ModelWeightsGiB != 14.9889 {
+		t.Errorf("ModelWeightsGiB = %v, want 14.9889", m.ModelWeightsGiB)
+	}
+	if m.KVCacheGiB != 60.20 {
+		t.Errorf("KVCacheGiB = %v, want 60.20", m.KVCacheGiB)
+	}
+	if m.KVCacheTokens != 1234567 {
+		t.Errorf("KVCacheTokens = %v, want 1234567", m.KVCacheTokens)
+	}
+	if m.MaxConcurrency != 12.34 {
+		t.Errorf("MaxConcurrency = %v, want 12.34", m.MaxConcurrency)
+	}
+	if m.NumGPUBlocks != 27000 {
+		t.Errorf("NumGPUBlocks = %v, want 27000", m.NumGPUBlocks)
+	}
+	if m.GraphCaptureGiB != 0.58 {
+		t.Errorf("GraphCaptureGiB = %v, want 0.58", m.GraphCaptureGiB)
+	}
+}
+
+func TestParseSGLangDialect(t *testing.T) {
+	log := `INFO scheduler.py:100 Load weight end. type=Qwen, avail mem=62.10 GiB, weight memory=14.50 GiB
+INFO radix_cache.py:88 KV Cache is allocated. #tokens: 524,288, memory: 49.75 GiB
+INFO cuda_graph_runner.py:61 Capture cuda graph end, took 0.62 GiB`
+	m := ParseDialect("sglang", log)
+	if !m.Found {
+		t.Fatal("Found = false, want true")
+	}
+	if m.ModelWeightsGiB != 14.50 {
+		t.Errorf("ModelWeightsGiB = %v, want 14.50", m.ModelWeightsGiB)
+	}
+	if m.KVCacheGiB != 49.75 {
+		t.Errorf("KVCacheGiB = %v, want 49.75", m.KVCacheGiB)
+	}
+	if m.KVCacheTokens != 524288 {
+		t.Errorf("KVCacheTokens = %v, want 524288", m.KVCacheTokens)
+	}
+	if m.GraphCaptureGiB != 0.62 {
+		t.Errorf("GraphCaptureGiB = %v, want 0.62", m.GraphCaptureGiB)
+	}
+}
+
+func TestParseUnknownDialectFallsBackToVLLM(t *testing.T) {
+	m := ParseDialect("unknown", `Model loading took 8.5 GiB and 2.10 seconds`)
+	if !m.Found || m.ModelWeightsGiB != 8.5 {
+		t.Fatalf("unexpected result: %+v", m)
+	}
+}
+
+func TestParseEmptyAndGarbage(t *testing.T) {
+	for _, in := range []string{"", "   \n\t", "nothing to see here\nrandom log line 42\n"} {
+		m := Parse(in)
+		if m.Found {
+			t.Errorf("Parse(%q).Found = true, want false", in)
+		}
+		if m != (Measured{}) {
+			t.Errorf("Parse(%q) = %+v, want zero", in, m)
+		}
+	}
+}
+
+func TestHumanizeStartupFailureMapsDynamicLinkerGLIBC(t *testing.T) {
+	for _, logText := range []string{
+		"libc.so.6: version `GLIBC_2.33' not found (required by /opt/libvruntime.so)",
+		"/lib64/libc.so.6: GLIBC_2.34 not found",
+	} {
+		if got := HumanizeStartupFailure(logText); !strings.Contains(got, "glibc too old") || !strings.Contains(got, "GLIBC_2.3") {
+			t.Fatalf("HumanizeStartupFailure(%q) = %q", logText, got)
+		}
+	}
+	if got := HumanizeStartupFailure("ordinary engine error"); got != "" {
+		t.Fatalf("ordinary error mapped to %q", got)
+	}
+}
+
+// A refusal by the dGPU interposer is named as the limit it enforces, from the
+// last refusal (an engine retries smaller first); output without one says
+// nothing about the limit.
+func TestDGPULimitExceededNamesTheLastRefusal(t *testing.T) {
+	logs := "[HAMI-core ERROR (pid:9 thread=1 allocator.c:52)]: Device 1 OOM 9663676416 / 8589934592\n" +
+		"INFO retrying\n" +
+		"[HAMI-core ERROR (pid:9 thread=1 allocator.c:52)]: Device 1 OOM 9126805504 / 8589934592\n"
+	if got, want := DGPULimitExceeded(logs), "dGPU memory limit reached on GPU 1: the engine needed 8.5 GiB, its limit is 8.0 GiB"; got != want {
+		t.Fatalf("DGPULimitExceeded = %q, want %q", got, want)
+	}
+	for _, logs := range []string{"", "torch.OutOfMemoryError: CUDA out of memory", "[HAMI-core Info(9:1:allocator.c:50)]: _usage=1 limit=2 new_allocated=1"} {
+		if got := DGPULimitExceeded(logs); got != "" {
+			t.Errorf("DGPULimitExceeded(%q) = %q, want none", logs, got)
+		}
+	}
+}
+
+// The line a failed engine's output ends with is its last error, found among
+// the final lines and stripped of colour codes; an ordinary last line says
+// nothing about the failure and gives none.
+func TestLastErrorIsTheFinalErrorLine(t *testing.T) {
+	long := strings.Repeat("x", 400)
+	for name, tc := range map[string]struct{ logs, want string }{
+		"python exception":   {"Traceback (most recent call last):\n  File \"x\", line 1\n\x1b[31mRuntimeError: Failed to infer device type\x1b[0m\n\n", "RuntimeError: Failed to infer device type"},
+		"argparse":           {"usage: vllm\nvllm: error: unrecognized arguments: --x\n", "vllm: error: unrecognized arguments: --x"},
+		"prefixed exception": {"(EngineCore pid=1) torch.OutOfMemoryError: CUDA out of memory\nINFO shutting down\n", "(EngineCore pid=1) torch.OutOfMemoryError: CUDA out of memory"},
+		"ordinary last line": {"INFO serving\nINFO 200 GET /health\n", ""},
+		"nothing":            {"", ""},
+		"bounded":            {"ValueError: " + long, "ValueError: " + long[:288] + "…"},
+	} {
+		if got := LastError(tc.logs); got != tc.want {
+			t.Errorf("%s: LastError = %q, want %q", name, got, tc.want)
+		}
+	}
+	// Only the final lines are searched: an error long before the end is history.
+	if got := LastError("ValueError: early\n" + strings.Repeat("INFO line\n", 60)); got != "" {
+		t.Errorf("an error before the final lines = %q", got)
+	}
+}

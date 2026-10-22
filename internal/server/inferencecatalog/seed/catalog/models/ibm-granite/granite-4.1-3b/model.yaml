@@ -1,0 +1,64 @@
+model_id: ibm-granite/granite-4.1-3b
+source: upstream
+display_title: granite 4.1 3b
+parameter_count: 3.4B
+architecture: dense
+model_config: {model_type: granite, num_hidden_layers: 40, hidden_size: 2560, num_attention_heads: 40, num_key_value_heads: 8, max_position_embeddings: 131072}
+kv_bytes_per_token:
+  vllm: 81920
+  sglang: 81920
+specs:
+- name: bf16-vllm-ppu-c0650403
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ibm-granite/granite-4.1-3b
+        revision: c0650403e44e78ec0262dab1c90914c65b196c4e
+    - modelscope:
+        repo_id: ibm-granite/granite-4.1-3b
+        revision: c0650403e44e78ec0262dab1c90914c65b196c4e
+  weight_bytes: 6805714792
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: ibm-granite/granite-4.1-3b
+        revision: c0650403e44e78ec0262dab1c90914c65b196c4e
+    - modelscope:
+        repo_id: ibm-granite/granite-4.1-3b
+        revision: c0650403e44e78ec0262dab1c90914c65b196c4e
+  weight_bytes: 6805714792
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

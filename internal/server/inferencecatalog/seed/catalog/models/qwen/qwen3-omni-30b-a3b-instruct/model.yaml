@@ -1,0 +1,56 @@
+model_id: qwen/qwen3-omni-30b-a3b-instruct
+source: upstream
+display_title: qwen3-omni-30b-a3b-instruct
+parameter_count: 30B nominal MoE
+architecture: Qwen3OmniMoeForConditionalGeneration
+context_length: 65536
+release_date: '2025-09-20'
+model_config: {model_type: qwen3_omni_moe, num_hidden_layers: 48, hidden_size: 2048, num_attention_heads: 32, num_key_value_heads: 4, head_dim: 128, max_position_embeddings: 65536, vision_config: {image_size: 768, patch_size: 16}, audio_config: {max_source_positions: 1500}}
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 98304
+specs:
+- name: bf16-sglang-ascend-68c174cb
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-Omni-30B-A3B-Instruct
+        revision: 26291f793822fb6be9555850f06dfe95f2d7e695
+    - modelscope:
+        repo_id: Qwen/Qwen3-Omni-30B-A3B-Instruct
+        revision: ea64d566a2a0731823dc44965e7f89bad78f95cb
+  weight_bytes: 70530597320
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --attention-backend
+  - ascend
+  - --mm-attention-backend
+  - ascend_attn
+  - --device
+  - npu
+  - --dtype
+  - bfloat16
+  - --enable-multimodal
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image, audio]

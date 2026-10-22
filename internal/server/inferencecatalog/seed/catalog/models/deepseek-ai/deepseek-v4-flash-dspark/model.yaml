@@ -1,0 +1,107 @@
+model_id: deepseek-ai/deepseek-v4-flash-dspark
+source: upstream
+display_title: DeepSeek-V4-Flash-DSpark
+release_date: '2026-06-27'
+model_config: {model_type: deepseek_v4, num_hidden_layers: 43, hidden_size: 4096, num_attention_heads: 64, num_key_value_heads: 1, head_dim: 512, max_position_embeddings: 1048576, sliding_window: 128, qk_rope_head_dim: 64}
+kv_bytes_per_token:
+  vllm: 44032
+  sglang: 44032
+specs:
+- name: fp8-dspark-vllm-nvidia-dgx-spark-gb10
+  display_profile: optimized
+  scenario: throughput
+  engine: vllm
+  image: eugr/spark-vllm-b12x:latest
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4-Flash-DSpark
+        revision: 62af8fffb2f7030cac4de2f0169f5b8d1101b646
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V4-Flash-DSpark
+        revision: 6fb3d8ba770fc332f01f0f34e9abfd850b5778ae
+  weight_bytes: 166898666055
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    name: (?:DGX[ _-]?Spark|GB10)
+    display_target: gb10
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"method":"dspark","num_speculative_tokens":7,"draft_sample_method":"probabilistic"}'
+  - --default-chat-template-kwargs.thinking=true
+  - --default-chat-template-kwargs.reasoning_effort=high
+  - --load-format
+  - instanttensor
+  - --moe-backend
+  - b12x
+  - --linear-backend
+  - b12x
+  - --attention-backend
+  - B12X_MLA_SPARSE
+  - --tokenizer-mode
+  - deepseek_v4
+  - --tool-call-parser
+  - deepseek_v4
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v4
+  - --reasoning-config
+  - '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}'
+  env:
+    B12X_MLA_SM120_UNIFIED: '1'
+    B12X_MOE_FORCE_A8: '1'
+    CUTE_DSL_ARCH: sm_121a
+    VLLM_USE_B12X_FP8_GEMM: '1'
+    VLLM_USE_B12X_MHC: '1'
+    VLLM_USE_B12X_MOE: '1'
+    VLLM_USE_B12X_SPARSE_INDEXER: '1'
+    VLLM_USE_B12X_WO_PROJECTION: '1'
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-dspark-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4-Flash-DSpark
+        revision: 62af8fffb2f7030cac4de2f0169f5b8d1101b646
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V4-Flash-DSpark
+        revision: 6fb3d8ba770fc332f01f0f34e9abfd850b5778ae
+  weight_bytes: 166898666055
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --trust-remote-code
+  - --speculative-config
+  - '{"method":"dspark","num_speculative_tokens":7,"draft_sample_method":"probabilistic"}'
+  - --tokenizer-mode
+  - deepseek_v4
+  - --tool-call-parser
+  - deepseek_v4
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v4
+  - --reasoning-config
+  - '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}'
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

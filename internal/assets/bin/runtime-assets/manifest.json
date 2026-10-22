@@ -1,0 +1,45 @@
+{
+  "version": "dgpu-runtime-v1",
+  "bundles": [
+    {
+      "id": "ascend-dgpu-arm64",
+      "backend": "ascend-dgpu",
+      "vendor": "ascend",
+      "platform_arch": "arm64",
+      "files": [
+        {
+          "path": "ascend/linux-arm64/libvruntime.so",
+          "sha256": "3dbe727ace3c76db95a8c5989bf29d702d844949d37f5666c5b08703fd7d3d49"
+        }
+      ]
+    },
+    {
+      "id": "ascend-dgpu-amd64",
+      "backend": "ascend-dgpu",
+      "vendor": "ascend",
+      "platform_arch": "amd64",
+      "files": [
+        {
+          "path": "ascend/linux-amd64/libvruntime.so",
+          "sha256": "57a9641a2aebcc7e6158be74137c93ee4e251e2bf19a062b306a0892d539d010"
+        }
+      ]
+    },
+    {
+      "id": "ppu-hggc-13.0-amd64",
+      "backend": "ppu-dgpu",
+      "vendor": "ppu",
+      "platform_arch": "amd64",
+      "files": [
+        {
+          "path": "ppu/linux-amd64/hggc-13.0/hggc_quota.so",
+          "sha256": "4f87596e9fc68772192be0772d3555284382a9c319ab9ecb7f4455d7c3dc32d4"
+        },
+        {
+          "path": "ppu/linux-amd64/hggc-13.0/hgml_dlsym_hook.so",
+          "sha256": "596de494d4a1300f887075ef1a8da4b95c260b587f8ebb1e0fc3b2c6caddc3b6"
+        }
+      ]
+    }
+  ]
+}

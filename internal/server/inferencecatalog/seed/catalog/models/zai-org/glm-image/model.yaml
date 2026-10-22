@@ -1,0 +1,91 @@
+model_id: zai-org/glm-image
+source: upstream
+display_title: GLM-Image
+parameter_count: 16B
+architecture: dense
+context_length: 4096
+release_date: '2026-01-08'
+model_config: {kv_cache: false}
+specs:
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r3
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-Image
+        revision: 2c433cc0cbc293bde2ac8ca9624f279b5d23fcf4
+    - modelscope:
+        repo_id: ZhipuAI/GLM-Image
+        revision: 94f178584c8f811f2d78dc88d2ccd7c73f53be4d
+  weight_bytes: 35789282228
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --omni
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+- name: bf16-vllm-ppu-2c433cc0
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: zai-org/GLM-Image
+        revision: 2c433cc0cbc293bde2ac8ca9624f279b5d23fcf4
+    - modelscope:
+        repo_id: ZhipuAI/GLM-Image
+        revision: 94f178584c8f811f2d78dc88d2ccd7c73f53be4d
+  weight_bytes: 35765307854
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - vllm-omni
+  - --omni
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.generate
+      endpoint: /v1/images/generations
+      mode: sync
+      inputs:
+      - name: size
+        kind: select
+        options:
+        - 512x512
+        - 768x768
+        - 1024x1024
+        default: 1024x1024
+      - name: num_inference_steps
+        kind: number
+      - name: guidance_scale
+        kind: number
+input_modalities: [text]

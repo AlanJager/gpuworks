@@ -1,0 +1,134 @@
+model_id: liquidai/lfm2.5-230m
+source: upstream
+display_title: LFM2.5 230M
+parameter_count: 230M
+architecture: dense
+context_length: 32768
+release_date: '2026-06-24'
+model_config: {model_type: lfm2, num_hidden_layers: 14, hidden_size: 1024, num_attention_heads: 16, num_key_value_heads: 8, max_position_embeddings: 128000, layer_types: [conv, conv, full_attention, conv, full_attention, conv, full_attention, conv, full_attention, conv, full_attention, conv, full_attention, conv]}
+kv_bytes_per_token:
+  vllm: 12288
+  sglang: 12288
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 40cb2ad3b3044d5a41eee083a6103c8b523afa45
+    - modelscope:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 0f47b78615315693c4f56644aac9cb3d7698180e
+  weight_bytes: 464168258
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-metrics
+  - --tool-call-parser
+  - lfm2
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 40cb2ad3b3044d5a41eee083a6103c8b523afa45
+    - modelscope:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 0f47b78615315693c4f56644aac9cb3d7698180e
+  weight_bytes: 464168258
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - lfm2
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-turing
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 40cb2ad3b3044d5a41eee083a6103c8b523afa45
+    - modelscope:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 0f47b78615315693c4f56644aac9cb3d7698180e
+  weight_bytes: 464168258
+  gpus:
+    vendor: nvidia
+    cc: 7.5..7.9
+    display_target: turing
+  args:
+  - --dtype
+  - half
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - lfm2
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-40cb2ad3
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 40cb2ad3b3044d5a41eee083a6103c8b523afa45
+    - modelscope:
+        repo_id: LiquidAI/LFM2.5-230M
+        revision: 40cb2ad3b3044d5a41eee083a6103c8b523afa45
+  weight_bytes: 459401112
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - lfm2
+  env: null
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

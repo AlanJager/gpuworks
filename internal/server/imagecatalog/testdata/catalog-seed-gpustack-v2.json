@@ -1,0 +1,978 @@
+{
+  "schema_version": 3,
+  "catalog_version": "v2",
+  "sha256": "a6b312a2f7cbfffca4e54c76f017137dd4c228d6c4e64087ceb2336ee495f63e",
+  "series": [
+    {
+      "name": "vLLM",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "cuda",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:cuda13.0-vllm0.25.1",
+          "engine_version": "0.25.1",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-vllm0.25.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-vllm0.25.1"
+          ],
+          "size_bytes": 11047082746
+        },
+        {
+          "image_ref": "gpustack/runner:cuda13.0-vllm0.24.0",
+          "engine_version": "0.24.0",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-vllm0.24.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-vllm0.24.0"
+          ],
+          "size_bytes": 11425183664
+        },
+        {
+          "image_ref": "gpustack/runner:cuda13.0-vllm0.22.1",
+          "engine_version": "0.22.1",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-vllm0.22.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-vllm0.22.1"
+          ],
+          "size_bytes": 11503306153
+        },
+        {
+          "image_ref": "gpustack/runner:cuda13.0-vllm0.22.0",
+          "engine_version": "0.22.0",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-vllm0.22.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-vllm0.22.0"
+          ],
+          "size_bytes": 11497160285
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-vllm0.25.1",
+          "engine_version": "0.25.1",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-vllm0.25.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-vllm0.25.1"
+          ],
+          "size_bytes": 13605834825
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-vllm0.25.0",
+          "engine_version": "0.25.0",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-vllm0.25.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-vllm0.25.0"
+          ],
+          "size_bytes": 13605781626
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-vllm0.24.0",
+          "engine_version": "0.24.0",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-vllm0.24.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-vllm0.24.0"
+          ],
+          "size_bytes": 13997809411
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-vllm0.22.1",
+          "engine_version": "0.22.1",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-vllm0.22.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-vllm0.22.1"
+          ],
+          "size_bytes": 13700354679
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-vllm0.17.1",
+          "engine_version": "0.17.1",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-vllm0.17.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-vllm0.17.1"
+          ],
+          "size_bytes": 15516930922
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-vllm0.16.0",
+          "engine_version": "0.16.0",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-vllm0.16.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-vllm0.16.0"
+          ],
+          "size_bytes": 16989757576
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-vllm0.15.1",
+          "engine_version": "0.15.1",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-vllm0.15.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-vllm0.15.1"
+          ],
+          "size_bytes": 15966418517
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-vllm0.14.1",
+          "engine_version": "0.14.1",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-vllm0.14.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-vllm0.14.1"
+          ],
+          "size_bytes": 16578897204
+        }
+      ]
+    },
+    {
+      "name": "vLLM Ascend",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "cann",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:cann9.0-910b-vllm0.20.2",
+          "engine_version": "0.20.2",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-910b-vllm0.20.2",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-910b-vllm0.20.2"
+          ],
+          "size_bytes": 7108154802
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-vllm0.18.0",
+          "engine_version": "0.18.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-vllm0.18.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-vllm0.18.0"
+          ],
+          "size_bytes": 6981901002
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-vllm0.17.0",
+          "engine_version": "0.17.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-vllm0.17.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-vllm0.17.0"
+          ],
+          "size_bytes": 5628888402
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-vllm0.16.0",
+          "engine_version": "0.16.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-vllm0.16.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-vllm0.16.0"
+          ],
+          "size_bytes": 5612229092
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-vllm0.15.0",
+          "engine_version": "0.15.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-vllm0.15.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-vllm0.15.0"
+          ],
+          "size_bytes": 5675968499
+        },
+        {
+          "image_ref": "gpustack/runner:cann9.0-a3-vllm0.20.2",
+          "engine_version": "0.20.2",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-a3-vllm0.20.2",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-a3-vllm0.20.2"
+          ],
+          "size_bytes": 7156944866
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-vllm0.18.0",
+          "engine_version": "0.18.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-vllm0.18.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-vllm0.18.0"
+          ],
+          "size_bytes": 7054806527
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-vllm0.17.0",
+          "engine_version": "0.17.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-vllm0.17.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-vllm0.17.0"
+          ],
+          "size_bytes": 5628724763
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-vllm0.16.0",
+          "engine_version": "0.16.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-vllm0.16.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-vllm0.16.0"
+          ],
+          "size_bytes": 5689866718
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-vllm0.15.0",
+          "engine_version": "0.15.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-vllm0.15.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-vllm0.15.0"
+          ],
+          "size_bytes": 5675974573
+        },
+        {
+          "image_ref": "gpustack/runner:cann9.0-310p-vllm0.20.2",
+          "engine_version": "0.20.2",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-310p-vllm0.20.2",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-310p-vllm0.20.2"
+          ],
+          "size_bytes": 5888000658
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-310p-vllm0.18.0",
+          "engine_version": "0.18.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-310p-vllm0.18.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-310p-vllm0.18.0"
+          ],
+          "size_bytes": 5560972478
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-310p-vllm0.17.0",
+          "engine_version": "0.17.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-310p-vllm0.17.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-310p-vllm0.17.0"
+          ],
+          "size_bytes": 5514716325
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-310p-vllm0.16.0",
+          "engine_version": "0.16.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-310p-vllm0.16.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-310p-vllm0.16.0"
+          ],
+          "size_bytes": 5578060335
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-310p-vllm0.15.0",
+          "engine_version": "0.15.0",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-310p-vllm0.15.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-310p-vllm0.15.0"
+          ],
+          "size_bytes": 5492302840
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-910b-vllm0.13.0",
+          "engine_version": "0.13.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-910b-vllm0.13.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-910b-vllm0.13.0"
+          ],
+          "size_bytes": 6102312756
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-910b-vllm0.12.0",
+          "engine_version": "0.12.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-910b-vllm0.12.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-910b-vllm0.12.0"
+          ],
+          "size_bytes": 6096502338
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-910b-vllm0.11.0",
+          "engine_version": "0.11.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-910b-vllm0.11.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-910b-vllm0.11.0"
+          ],
+          "size_bytes": 6058043290
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-a3-vllm0.13.0",
+          "engine_version": "0.13.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-a3-vllm0.13.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-a3-vllm0.13.0"
+          ],
+          "size_bytes": 6101178813
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-a3-vllm0.12.0",
+          "engine_version": "0.12.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-a3-vllm0.12.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-a3-vllm0.12.0"
+          ],
+          "size_bytes": 6095208211
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-a3-vllm0.11.0",
+          "engine_version": "0.11.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-a3-vllm0.11.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-a3-vllm0.11.0"
+          ],
+          "size_bytes": 6043673145
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-310p-vllm0.11.0",
+          "engine_version": "0.11.0",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-310p-vllm0.11.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-310p-vllm0.11.0"
+          ],
+          "size_bytes": 5896889663
+        }
+      ]
+    },
+    {
+      "name": "SGLang",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "cuda",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:cuda13.0-sglang0.5.15.post1",
+          "engine_version": "0.5.15.post1",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-sglang0.5.15.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-sglang0.5.15.post1"
+          ],
+          "size_bytes": 14387421224
+        },
+        {
+          "image_ref": "gpustack/runner:cuda13.0-sglang0.5.14",
+          "engine_version": "0.5.14",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-sglang0.5.14",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-sglang0.5.14"
+          ],
+          "size_bytes": 14077112932
+        },
+        {
+          "image_ref": "gpustack/runner:cuda13.0-sglang0.5.12.post1",
+          "engine_version": "0.5.12.post1",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda13.0-sglang0.5.12.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda13.0-sglang0.5.12.post1"
+          ],
+          "size_bytes": 14118752399
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-sglang0.5.15.post1",
+          "engine_version": "0.5.15.post1",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-sglang0.5.15.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-sglang0.5.15.post1"
+          ],
+          "size_bytes": 18782199189
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-sglang0.5.14",
+          "engine_version": "0.5.14",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-sglang0.5.14",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-sglang0.5.14"
+          ],
+          "size_bytes": 19514694317
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-sglang0.5.12.post1",
+          "engine_version": "0.5.12.post1",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-sglang0.5.12.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-sglang0.5.12.post1"
+          ],
+          "size_bytes": 19047604026
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.9-sglang0.5.9",
+          "engine_version": "0.5.9",
+          "framework_version": "12.9",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.9-sglang0.5.9",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.9-sglang0.5.9"
+          ],
+          "size_bytes": 18518826265
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-sglang0.5.9",
+          "engine_version": "0.5.9",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-sglang0.5.9",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-sglang0.5.9"
+          ],
+          "size_bytes": 17736024258
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-sglang0.5.8.post1",
+          "engine_version": "0.5.8.post1",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-sglang0.5.8.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-sglang0.5.8.post1"
+          ],
+          "size_bytes": 18640540818
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-sglang0.5.8",
+          "engine_version": "0.5.8",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-sglang0.5.8",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-sglang0.5.8"
+          ],
+          "size_bytes": 17930187055
+        },
+        {
+          "image_ref": "gpustack/runner:cuda12.8-sglang0.5.7",
+          "engine_version": "0.5.7",
+          "framework_version": "12.8",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cuda12.8-sglang0.5.7",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cuda12.8-sglang0.5.7"
+          ],
+          "size_bytes": 15707543859
+        }
+      ]
+    },
+    {
+      "name": "SGLang Ascend",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "cann",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:cann9.0-910b-sglang0.5.15.post1",
+          "engine_version": "0.5.15.post1",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-910b-sglang0.5.15.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-910b-sglang0.5.15.post1"
+          ],
+          "size_bytes": 6769211987
+        },
+        {
+          "image_ref": "gpustack/runner:cann9.0-910b-sglang0.5.14",
+          "engine_version": "0.5.14",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-910b-sglang0.5.14",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-910b-sglang0.5.14"
+          ],
+          "size_bytes": 6684542368
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-sglang0.5.12.post1",
+          "engine_version": "0.5.12.post1",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-sglang0.5.12.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-sglang0.5.12.post1"
+          ],
+          "size_bytes": 6265755268
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-sglang0.5.9",
+          "engine_version": "0.5.9",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-sglang0.5.9",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-sglang0.5.9"
+          ],
+          "size_bytes": 5400141941
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-sglang0.5.8.post1",
+          "engine_version": "0.5.8.post1",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-sglang0.5.8.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-sglang0.5.8.post1"
+          ],
+          "size_bytes": 5385995574
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-910b-sglang0.5.8",
+          "engine_version": "0.5.8",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-910b-sglang0.5.8",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-910b-sglang0.5.8"
+          ],
+          "size_bytes": 5412458966
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-910b-sglang0.5.7",
+          "engine_version": "0.5.7",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-910b-sglang0.5.7",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-910b-sglang0.5.7"
+          ],
+          "size_bytes": 6130562068
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-910b-sglang0.5.6.post2",
+          "engine_version": "0.5.6.post2",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-910b-sglang0.5.6.post2",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-910b-sglang0.5.6.post2"
+          ],
+          "size_bytes": 6072468888
+        },
+        {
+          "image_ref": "gpustack/runner:cann9.0-a3-sglang0.5.15.post1",
+          "engine_version": "0.5.15.post1",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-a3-sglang0.5.15.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-a3-sglang0.5.15.post1"
+          ],
+          "size_bytes": 6742824564
+        },
+        {
+          "image_ref": "gpustack/runner:cann9.0-a3-sglang0.5.14",
+          "engine_version": "0.5.14",
+          "framework_version": "9.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann9.0-a3-sglang0.5.14",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-a3-sglang0.5.14"
+          ],
+          "size_bytes": 6658131654
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-sglang0.5.12.post1",
+          "engine_version": "0.5.12.post1",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-sglang0.5.12.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-sglang0.5.12.post1"
+          ],
+          "size_bytes": 6239324183
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-sglang0.5.9",
+          "engine_version": "0.5.9",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-sglang0.5.9",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-sglang0.5.9"
+          ],
+          "size_bytes": 5373452123
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-sglang0.5.8.post1",
+          "engine_version": "0.5.8.post1",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-sglang0.5.8.post1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-sglang0.5.8.post1"
+          ],
+          "size_bytes": 5359303872
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.5-a3-sglang0.5.8",
+          "engine_version": "0.5.8",
+          "framework_version": "8.5",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.5-a3-sglang0.5.8",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.5-a3-sglang0.5.8"
+          ],
+          "size_bytes": 5385777785
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-a3-sglang0.5.7",
+          "engine_version": "0.5.7",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-a3-sglang0.5.7",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-a3-sglang0.5.7"
+          ],
+          "size_bytes": 6116141004
+        },
+        {
+          "image_ref": "gpustack/runner:cann8.3-a3-sglang0.5.6.post2",
+          "engine_version": "0.5.6.post2",
+          "framework_version": "8.3",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:cann8.3-a3-sglang0.5.6.post2",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann8.3-a3-sglang0.5.6.post2"
+          ],
+          "size_bytes": 6058042099
+        }
+      ]
+    },
+    {
+      "name": "vLLM Omni",
+      "engine": "vllm-omni",
+      "purpose": "inference",
+      "framework": "cuda",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "vllm/vllm-omni:v0.26.0post1.20260811",
+          "engine_version": "0.26.0post1.20260811",
+          "arch": "multi",
+          "registry_sources": [
+            "vllm/vllm-omni:v0.26.0post1.20260811"
+          ],
+          "size_bytes": 10854105849
+        },
+        {
+          "image_ref": "vllm/vllm-omni:v0.26.0",
+          "engine_version": "0.26.0",
+          "arch": "multi",
+          "registry_sources": [
+            "vllm/vllm-omni:v0.26.0"
+          ],
+          "size_bytes": 10849136970
+        },
+        {
+          "image_ref": "vllm/vllm-omni:v0.24.0",
+          "engine_version": "0.24.0",
+          "arch": "multi",
+          "registry_sources": [
+            "vllm/vllm-omni:v0.24.0"
+          ],
+          "size_bytes": 11103285075
+        },
+        {
+          "image_ref": "vllm/vllm-omni:v0.22.0",
+          "engine_version": "0.22.0",
+          "arch": "multi",
+          "registry_sources": [
+            "vllm/vllm-omni:v0.22.0"
+          ],
+          "size_bytes": 11148554305
+        }
+      ]
+    },
+    {
+      "name": "EvalScope",
+      "engine": "",
+      "purpose": "evaluation",
+      "framework": "cuda",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-py312-torch2.10.0-1.39.0",
+          "engine_version": "1.10.0",
+          "arch": "multi",
+          "registry_sources": [
+            "modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-py312-torch2.10.0-1.39.0"
+          ],
+          "size_bytes": 8122439925
+        }
+      ]
+    },
+    {
+      "name": "vLLM Hygon",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "dtk",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:dtk24.04-vllm0.6.0",
+          "engine_version": "0.6.0",
+          "framework_version": "24.04",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:dtk24.04-vllm0.6.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:dtk24.04-vllm0.6.0"
+          ],
+          "size_bytes": 8000000000
+        },
+        {
+          "image_ref": "gpustack/runner:dtk24.04-vllm0.5.0",
+          "engine_version": "0.5.0",
+          "framework_version": "24.04",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:dtk24.04-vllm0.5.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:dtk24.04-vllm0.5.0"
+          ],
+          "size_bytes": 8000000000
+        }
+      ]
+    },
+    {
+      "name": "vLLM PPU",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "hggc",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:hggc13.0-vllm0.23.0",
+          "engine_version": "0.23.0",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:hggc13.0-vllm0.23.0",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:hggc13.0-vllm0.23.0"
+          ],
+          "size_bytes": 8000000000
+        },
+        {
+          "image_ref": "gpustack/runner:hggc13.0-vllm0.20.1",
+          "engine_version": "0.20.1",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:hggc13.0-vllm0.20.1",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:hggc13.0-vllm0.20.1"
+          ],
+          "size_bytes": 8000000000
+        }
+      ]
+    },
+    {
+      "name": "SGLang PPU",
+      "engine": "sglang",
+      "purpose": "inference",
+      "framework": "hggc",
+      "common_args": [
+        {
+          "flag": "--trust-remote-code",
+          "description": "Allow the model to load custom code"
+        }
+      ],
+      "common_env": [
+        {
+          "key": "HF_HUB_OFFLINE",
+          "value": "1",
+          "description": "Disable runtime access to Hugging Face"
+        }
+      ],
+      "versions": [
+        {
+          "image_ref": "gpustack/runner:hggc13.0-sglang0.5.12",
+          "engine_version": "0.5.12",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:hggc13.0-sglang0.5.12",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:hggc13.0-sglang0.5.12"
+          ],
+          "size_bytes": 8000000000
+        },
+        {
+          "image_ref": "gpustack/runner:hggc13.0-sglang0.5.10",
+          "engine_version": "0.5.10",
+          "framework_version": "13.0",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpustack/runner:hggc13.0-sglang0.5.10",
+            "swr.cn-south-1.myhuaweicloud.com/gpustack/runner:hggc13.0-sglang0.5.10"
+          ],
+          "size_bytes": 8000000000
+        }
+      ]
+    }
+  ]
+}

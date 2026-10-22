@@ -1,0 +1,230 @@
+{
+ "prefill_request": {
+  "model": "qwen",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Capture sample. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. "
+   }
+  ],
+  "max_tokens": 1,
+  "stream": false,
+  "temperature": 0,
+  "kv_transfer_params": {
+   "do_remote_decode": true
+  }
+ },
+ "prefill_response": {
+  "id": "chatcmpl-8b4450db247d69b9",
+  "object": "chat.completion",
+  "created": 1790617895,
+  "model": "qwen",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "<think>",
+     "refusal": null,
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "length",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.25.1-fc31ee30",
+  "usage": {
+   "prompt_tokens": 332,
+   "total_tokens": 333,
+   "completion_tokens": 1,
+   "prompt_tokens_details": null
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": {
+   "do_remote_prefill": true,
+   "do_remote_decode": false,
+   "remote_block_ids": [
+    [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21
+    ]
+   ],
+   "remote_engine_id": "8440d54a-6bd7-4696-87c2-d545e094ecce",
+   "remote_request_id": "chatcmpl-8b4450db247d69b9-b284d53d",
+   "remote_host": "172.25.17.156",
+   "remote_port": 18110,
+   "tp_size": 1,
+   "remote_num_tokens": 332
+  },
+  "metrics": null
+ },
+ "decode_request": {
+  "model": "qwen",
+  "messages": [
+   {
+    "role": "user",
+    "content": "Capture sample. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. Rome was not built in a day. "
+   }
+  ],
+  "max_tokens": 8,
+  "temperature": 0,
+  "stream": true,
+  "stream_options": {
+   "include_usage": true
+  },
+  "kv_transfer_params": {
+   "do_remote_prefill": true,
+   "do_remote_decode": false,
+   "remote_block_ids": [
+    [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21
+    ]
+   ],
+   "remote_engine_id": "8440d54a-6bd7-4696-87c2-d545e094ecce",
+   "remote_request_id": "chatcmpl-8b4450db247d69b9-b284d53d",
+   "remote_host": "172.25.17.156",
+   "remote_port": 18110,
+   "tp_size": 1,
+   "remote_num_tokens": 332
+  }
+ },
+ "decode_stream": "data: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"prompt_token_ids\":null,\"prompt_text\":null}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"<think>\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\\n\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Okay\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\",\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" the\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" user\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" provided\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" a\"},\"logprobs\":null,\"finish_reason\":\"length\",\"stop_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-8798b08d5ef20521\",\"object\":\"chat.completion.chunk\",\"created\":1790617896,\"model\":\"qwen\",\"choices\":[],\"usage\":{\"prompt_tokens\":332,\"total_tokens\":340,\"completion_tokens\":8},\"system_fingerprint\":\"vllm-0.25.1-fc31ee30\"}\n\ndata: [DONE]\n\n",
+ "completions_prefill_response": {
+  "id": "cmpl-89318bf61460183e",
+  "object": "text_completion",
+  "created": 1790617899,
+  "model": "qwen",
+  "choices": [
+   {
+    "index": 0,
+    "text": " Capture",
+    "logprobs": null,
+    "finish_reason": "length",
+    "stop_reason": null,
+    "token_ids": null,
+    "prompt_logprobs": null,
+    "prompt_token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.25.1-fc31ee30",
+  "usage": {
+   "prompt_tokens": 151,
+   "total_tokens": 152,
+   "completion_tokens": 1,
+   "prompt_tokens_details": null
+  },
+  "kv_transfer_params": {
+   "do_remote_prefill": true,
+   "do_remote_decode": false,
+   "remote_block_ids": [
+    [
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30
+    ]
+   ],
+   "remote_engine_id": "8440d54a-6bd7-4696-87c2-d545e094ecce",
+   "remote_request_id": "cmpl-89318bf61460183e-0-a3b5b0be",
+   "remote_host": "172.25.17.156",
+   "remote_port": 18110,
+   "tp_size": 1,
+   "remote_num_tokens": 151
+  },
+  "metrics": null
+ },
+ "decode_local_response": {
+  "id": "chatcmpl-80cdc928d3bfdb6e",
+  "object": "chat.completion",
+  "created": 1790617899,
+  "model": "qwen",
+  "choices": [
+   {
+    "index": 0,
+    "message": {
+     "role": "assistant",
+     "content": "<think>\nOkay,",
+     "refusal": null,
+     "annotations": null,
+     "audio": null,
+     "function_call": null,
+     "reasoning": null
+    },
+    "logprobs": null,
+    "finish_reason": "length",
+    "stop_reason": null,
+    "token_ids": null,
+    "routed_experts": null
+   }
+  ],
+  "service_tier": null,
+  "system_fingerprint": "vllm-0.25.1-fc31ee30",
+  "usage": {
+   "prompt_tokens": 332,
+   "total_tokens": 336,
+   "completion_tokens": 4,
+   "prompt_tokens_details": null
+  },
+  "prompt_logprobs": null,
+  "prompt_token_ids": null,
+  "prompt_text": null,
+  "kv_transfer_params": null,
+  "metrics": null
+ }
+}

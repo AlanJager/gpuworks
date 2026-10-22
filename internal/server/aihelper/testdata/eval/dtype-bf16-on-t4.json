@@ -1,0 +1,62 @@
+{
+  "id": "dtype-bf16-on-t4",
+  "source": "https://github.com/vllm-project/vllm/blob/main/vllm/platforms/cuda.py (check_if_supports_dtype)",
+  "note": "Deployment forces --dtype bfloat16 on a Tesla T4 (compute capability 7.5); vLLM refuses at worker init. Constructed from upstream message format; command and GPU chosen for the scenario.",
+  "message": "container exited (code 1)",
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--served-model-name",
+    "qwen2.5-7b",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--dtype",
+    "bfloat16",
+    "--max-model-len",
+    "8192"
+  ],
+  "gpus": [
+    {
+      "name": "Tesla T4",
+      "memory_gib": 16
+    }
+  ],
+  "logs": [
+    "(APIServer pid=1) INFO 10-09 07:29:55 [api_server.py:1839] vLLM API server version 0.11.0",
+    "(APIServer pid=1) INFO 10-09 07:29:55 [utils.py:233] non-default args: {'model_tag': '/model', 'host': '127.0.0.1', 'port': 30000, 'model': '/model', 'dtype': 'bfloat16', 'max_model_len': 8192, 'served_model_name': ['qwen2.5-7b']}",
+    "(APIServer pid=1) INFO 10-09 07:30:03 [model.py:547] Resolved architecture: Qwen2ForCausalLM",
+    "(APIServer pid=1) INFO 10-09 07:30:03 [model.py:1510] Using max model len 8192",
+    "(EngineCore_DP0 pid=214) INFO 10-09 07:30:08 [core.py:77] Initializing a V1 LLM engine (v0.11.0) with config: model='/model', dtype=torch.bfloat16, max_seq_len=8192, tensor_parallel_size=1, pipeline_parallel_size=1, quantization=None",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708] EngineCore failed to start.",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708] Traceback (most recent call last):",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/engine/core.py\", line 699, in run_engine_core",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]     engine_core = EngineCoreProc(*args, **kwargs)",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/executor/abstract.py\", line 55, in __init__",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]     self._init_executor()",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/worker_base.py\", line 603, in init_device",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]     self.worker.init_device()  # type: ignore",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/v1/worker/gpu_worker.py\", line 194, in init_device",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]     current_platform.check_if_supports_dtype(self.model_config.dtype)",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]   File \"/usr/local/lib/python3.12/dist-packages/vllm/platforms/cuda.py\", line 520, in check_if_supports_dtype",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708]     raise ValueError(",
+    "(EngineCore_DP0 pid=214) ERROR 10-09 07:30:12 [core.py:708] ValueError: Bfloat16 is only supported on GPUs with compute capability of at least 8.0. Your Tesla T4 GPU has compute capability 7.5. You can use float16 instead by explicitly setting the `dtype` flag in CLI, for example: --dtype=half.",
+    "(APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}"
+  ],
+  "expect_signature": "dtype_unsupported",
+  "expect_keywords": [
+    [
+      "--dtype",
+      "dtype"
+    ],
+    [
+      "half",
+      "float16",
+      "fp16"
+    ]
+  ]
+}

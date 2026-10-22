@@ -1,0 +1,416 @@
+{
+  "schema_version": 1,
+  "replicas": 1,
+  "plan_scope": "per_replica",
+  "ok": true,
+  "template_deviated": false,
+  "entrypoint": [
+    "vllm",
+    "serve",
+    "/model"
+  ],
+  "argv": [
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--enable-prompt-tokens-details",
+    "--enable-per-request-metrics",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "command": [
+    "vllm",
+    "serve",
+    "/model",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "30000",
+    "--tensor-parallel-size",
+    "1",
+    "--enable-prompt-tokens-details",
+    "--enable-per-request-metrics",
+    "--gpu-memory-utilization",
+    "0.9"
+  ],
+  "env": {
+    "GLOO_SOCKET_IFNAME": "lo",
+    "HF_HUB_OFFLINE": "1",
+    "NCCL_SOCKET_IFNAME": "lo",
+    "TRANSFORMERS_OFFLINE": "1",
+    "VLLM_HOST_IP": "127.0.0.1"
+  },
+  "env_layers": {
+    "system": {
+      "GLOO_SOCKET_IFNAME": "lo",
+      "HF_HUB_OFFLINE": "1",
+      "NCCL_SOCKET_IFNAME": "lo",
+      "TRANSFORMERS_OFFLINE": "1",
+      "VLLM_HOST_IP": "127.0.0.1"
+    }
+  },
+  "command_mode": "engine",
+  "model_mount_path": "/model",
+  "shm_bytes": 17179869184,
+  "rank_commands": [
+    {
+      "node_uuid": "fixture-node",
+      "node_name": "fixture-node",
+      "node_rank": 0,
+      "role": "standalone",
+      "headless": false,
+      "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+      "entrypoint": [
+        "vllm",
+        "serve",
+        "/model"
+      ],
+      "argv": [
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "30000",
+        "--tensor-parallel-size",
+        "1",
+        "--enable-prompt-tokens-details",
+        "--enable-per-request-metrics",
+        "--gpu-memory-utilization",
+        "0.9"
+      ],
+      "command": [
+        "vllm",
+        "serve",
+        "/model",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "30000",
+        "--tensor-parallel-size",
+        "1",
+        "--enable-prompt-tokens-details",
+        "--enable-per-request-metrics",
+        "--gpu-memory-utilization",
+        "0.9"
+      ],
+      "env": {
+        "GLOO_SOCKET_IFNAME": "lo",
+        "HF_HUB_OFFLINE": "1",
+        "NCCL_SOCKET_IFNAME": "lo",
+        "TRANSFORMERS_OFFLINE": "1",
+        "VLLM_HOST_IP": "127.0.0.1"
+      },
+      "command_mode": "engine",
+      "model_mount_path": "/model",
+      "shm_bytes": 17179869184,
+      "env_layers": {
+        "system": {
+          "GLOO_SOCKET_IFNAME": "lo",
+          "HF_HUB_OFFLINE": "1",
+          "NCCL_SOCKET_IFNAME": "lo",
+          "TRANSFORMERS_OFFLINE": "1",
+          "VLLM_HOST_IP": "127.0.0.1"
+        }
+      }
+    }
+  ],
+  "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+  "warnings": [
+    {
+      "code": "IMAGE_DRIVER_COMPATIBILITY",
+      "params": {
+        "framework": "cuda",
+        "framework_version": "13.0",
+        "level": "unknown",
+        "reason": "driver or framework version is unavailable"
+      }
+    }
+  ],
+  "breakdown": {
+    "weight_bytes": 17179869184,
+    "kv_bytes_per_token": 0,
+    "kv_total_bytes": 0,
+    "reserve_bytes": 5233652531,
+    "mm_encoder_bytes": 0,
+    "per_gpu_bytes": 22413521715,
+    "startup_fixed_bytes": 22413521715,
+    "total_bytes": 22413521715,
+    "actual_total_bytes": 22413521715,
+    "grade": "rough_upper",
+    "tensor_parallel": 1,
+    "max_model_len": 0,
+    "source": "estimate",
+    "gpu_memory_utilization": 0.9,
+    "capacity_bytes": 77309411328,
+    "kv_pool_bytes": 54895889613,
+    "kv_estimate_reason": "kv_no_measurement",
+    "fits": true
+  },
+  "plan": {
+    "plan": {
+      "gpus": [
+        0
+      ],
+      "tp": 1,
+      "per_gpu_bytes": 22413521715,
+      "score": 0,
+      "reasons": [
+        {
+          "code": "topology_single",
+          "params": {
+            "gpus": 1,
+            "pp": 1,
+            "tp": 1
+          }
+        },
+        {
+          "code": "packing"
+        }
+      ]
+    },
+    "explain": {
+      "chosen": {
+        "gpus": [
+          0
+        ],
+        "tp": 1,
+        "per_gpu_bytes": 22413521715,
+        "score": 0,
+        "reasons": [
+          {
+            "code": "topology_single",
+            "params": {
+              "gpus": 1,
+              "pp": 1,
+              "tp": 1
+            }
+          },
+          {
+            "code": "packing"
+          }
+        ]
+      },
+      "rejected": null,
+      "topo_highlight": {
+        "gpus": [
+          0
+        ],
+        "links": null,
+        "numa": [
+          0
+        ]
+      },
+      "filters": [
+        {
+          "code": "filters_passed"
+        }
+      ]
+    },
+    "ok": true,
+    "message": {}
+  },
+  "selected_node": {
+    "uuid": "fixture-node",
+    "name": "fixture-node",
+    "reasons": [
+      {
+        "code": "topology_single",
+        "params": {
+          "gpus": 1,
+          "pp": 1,
+          "tp": 1
+        }
+      },
+      {
+        "code": "packing"
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "node_uuid": "fixture-node",
+      "node_name": "fixture-node",
+      "ok": true,
+      "reason": {},
+      "plan": {
+        "plan": {
+          "gpus": [
+            0
+          ],
+          "tp": 1,
+          "per_gpu_bytes": 22413521715,
+          "score": 0,
+          "reasons": [
+            {
+              "code": "topology_single",
+              "params": {
+                "gpus": 1,
+                "pp": 1,
+                "tp": 1
+              }
+            },
+            {
+              "code": "packing"
+            }
+          ]
+        },
+        "explain": {
+          "chosen": {
+            "gpus": [
+              0
+            ],
+            "tp": 1,
+            "per_gpu_bytes": 22413521715,
+            "score": 0,
+            "reasons": [
+              {
+                "code": "topology_single",
+                "params": {
+                  "gpus": 1,
+                  "pp": 1,
+                  "tp": 1
+                }
+              },
+              {
+                "code": "packing"
+              }
+            ]
+          },
+          "rejected": null,
+          "topo_highlight": {
+            "gpus": [
+              0
+            ],
+            "links": null,
+            "numa": [
+              0
+            ]
+          },
+          "filters": [
+            {
+              "code": "filters_passed"
+            }
+          ]
+        },
+        "ok": true,
+        "message": {}
+      }
+    }
+  ],
+  "acquisition": {
+    "targets": [
+      {
+        "key": "storage:1",
+        "label": "default",
+        "reason": "writable storage",
+        "recommended": true,
+        "storage_id": 1,
+        "storage_type": "local",
+        "default": true
+      }
+    ],
+    "providers": [
+      {
+        "key": "public:modelscope:Acme/Deploy-FP8:main",
+        "label": "modelscope",
+        "reason": "configured model provider",
+        "recommended": true
+      }
+    ],
+    "image": {
+      "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+      "cache_reason": "query_failed",
+      "options": [
+        {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda12.9-sglang0.5.18-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "node_uuid": "fixture-node",
+        "node_name": "fixture-node",
+        "image_cache_reason": "query_failed",
+        "image_plan": "pull",
+        "image_pull_refs": [
+          "quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+          "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
+          "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"
+        ],
+        "image_pull_ranked": true,
+        "weights_present": false,
+        "weights_plan": "download",
+        "weights_provider": "modelscope",
+        "weights_fetch_hosts": [
+          "modelscope.cn"
+        ]
+      }
+    ]
+  },
+  "parallelism": {
+    "tp": 1,
+    "pp": 1,
+    "nodes": 1,
+    "gpus_per_node": 1
+  },
+  "eligible_nodes": [
+    {
+      "uuid": "fixture-peer",
+      "name": "fixture-peer",
+      "eligible": true
+    },
+    {
+      "uuid": "fixture-chip-old",
+      "name": "fixture-chip-old",
+      "eligible": true
+    },
+    {
+      "uuid": "fixture-node",
+      "name": "fixture-node",
+      "eligible": true
+    }
+  ],
+  "form_values": {
+    "dtype": "auto",
+    "enable_cache_report": true,
+    "enable_request_metrics": true,
+    "extra_args": "",
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto",
+    "performance_mode": "balanced",
+    "served_model_name": ""
+  },
+  "defaults": {
+    "model_mount": "/model",
+    "master_port": 29500,
+    "engine": "vllm"
+  },
+  "effective_params": {
+    "dtype": "auto",
+    "enable_cache_report": true,
+    "enable_request_metrics": true,
+    "gpu_memory_utilization": 0.9,
+    "kv_cache_dtype": "auto",
+    "performance_mode": "balanced",
+    "served_model_name": ""
+  }
+}

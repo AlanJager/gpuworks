@@ -1,0 +1,28 @@
+{
+  "ascend": {
+    "upstream": "https://atomgit.com/openeuler/ubs-virt.git",
+    "commit": "bac3d461c9312acfaa388bed89e9ed2a61971d1a",
+    "patches": [
+      "ascend/patches/0001-dsmi-get-hbm-info-slice-view.patch",
+      "ascend/patches/0002-synchronous-memory-ledger.patch",
+      "ascend/patches/0003-dsmi-use-synchronous-ledger.patch"
+    ]
+  },
+  "ppu": {
+    "upstream": "https://github.com/gpustack/gpustack-operator.git",
+	"commit": "fa399c037a96d2cb3e1e755e0a7dbce65773caeb",
+	"path": "csrc/thead/ppu-slicing-shim",
+    "patches": ["ppu/patches/0001-resolve-hggc-via-explicit-handle.patch"]
+  },
+  "perftest": {
+    "upstream": "https://github.com/linux-rdma/perftest",
+    "version": "26.07.8",
+    "sha256": "4d348ce6a36886b32da0afc9fce49b9f4350674cdc18ae1f49343907d1b1afaa",
+    "rdma_core": {
+      "upstream": "https://github.com/linux-rdma/rdma-core",
+      "version": "35.0",
+      "sha256": "c87d4faa8bd88c485c59faa34a8a323a2ba2dd765b007e28c4abf6d333526372"
+    },
+    "patches": ["perftest/patches/0001-include-immintrin-for-mm-pause.patch"]
+  }
+}

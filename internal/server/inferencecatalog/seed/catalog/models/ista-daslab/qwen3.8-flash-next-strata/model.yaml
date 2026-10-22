@@ -1,0 +1,135 @@
+# Strata 分层推理(https://github.com/Niko1221/Strata,MIT,基于 llama.cpp):MoE 专家在
+# VRAM/RAM/SSD 间分层,单张 >=12GiB 的 NVIDIA 卡跑 125B 的 Qwen3.8-Flash-Next。
+# 值来源:
+#   - weight_bytes: ModelScope ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF IQ2_XS/
+#     两个分片字节之和(39225954592 + 28800138432)。仓库只有 GGUF 分片、没有 config.json,
+#     平台不要求模型目录布局,由镜像内的引擎读取。
+#   - 架构/上下文: Qwen/Qwen3.8-Flash-Next config.json(model_type qwen4_exp,
+#     text_config.max_position_embeddings 262144,48 层 x 512 专家)。
+#   - 镜像 gpuworks/strata:0.1-gw6(同内容另有 quay.io/gpuworks、SWR gpuworks、registry.zstack.ai 三份,
+#     列在 image_sources 里供部署页选择,均可匿名拉取;
+#     gw5 = gw4 + 新入口:不再写死 --context 32768,上下文交给 Strata
+#     setup 按显卡推荐,模板/用户 args 里的 --context 覆盖,见 README;
+#     gw6 = gw5 + 图像编码器 strata-vision + 钉住仓库 revision 的 mmproj
+#     (/opt/strata/preloaded/mmproj,模板只下载 IQ2_XS/,而 mmproj 在仓库根目录)
+#     + 默认 --vision gpu 的入口,见 artifacts/archive/2026-10-10-strata-vision):
+#     上游 Dockerfile + /opt/strata/gpuworks-entrypoint.sh(把模板以变量给出的
+#     --model/--host/--port 转译成 Strata 参数,递归收集模型挂载下的 gguf(模板下载保留
+#     仓库布局,分片在 IQ2_XS/ 子目录),在可写层建 symlink farm 避开只读
+#     模型挂载)+ 预置 MTP 层 /opt/strata/preloaded/mtp。
+model_id: ista-daslab/qwen3.8-flash-next-strata
+source: upstream
+display_title: Qwen3.8-Flash-Next 125B (Strata 分层推理)
+parameter_count: 125B MoE
+architecture: Qwen4ExpForConditionalGeneration
+context_length: 262144
+release_date: '2026-09-29'
+# kv_bytes_per_token 故意不写: Strata 的 KV 在 VRAM/RAM 间流式分层,平台无测量
+# 即报 no_measurement,不发明数字。
+specs:
+- name: iq2xs-strata-nvidia-single-gpu
+  display_profile: general
+  scenario: balanced
+  engine: callable
+  image: gpuworks/strata:0.1-gw6
+  # Sources in pull order (ADR 0038: they come before image): SWR first,
+  # reachable from the mainland without a proxy; Docker Hub (image) last.
+  image_sources:
+  - swr.cn-southwest-2.myhuaweicloud.com/gpuworks/strata:0.1-gw6
+  - quay.io/gpuworks/strata:0.1-gw6
+  - registry.zstack.ai/gpuworks/strata:0.1-gw6
+  weights:
+    quantization: GSQ-RCO IQ2_XS
+    sources:
+    - huggingface:
+        repo_id: ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+        revision: ed59f92082b1e93c0e96d60a8b11aab089b52f09
+        subfolder: IQ2_XS
+    - modelscope:
+        repo_id: ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF
+        revision: 1868010e27505d4b8cc15970cdcc4dd76005d7de
+        subfolder: IQ2_XS
+  # 下载与磁盘准入用的仓库字节数。显存准入不看它: Strata 把专家分层放在
+  # VRAM/RAM/SSD,平台按权重估算的显存对它不成立,准入线由下面 placement
+  # 的 accept(gpu_memory_mib_per_device=12288) 声明(引擎声明的最低显存)。
+  weight_bytes: 68026093024
+  gpus:
+    vendor: nvidia
+    cc: '>=7.5'
+    display_target: nvidia
+  # The callable engine appends nothing (ADR 0036): the template places the
+  # platform facts the image's entrypoint translates into Strata arguments.
+  # No --context here: Strata's setup recommends one for the cards it sees;
+  # an extra --context N (deploy form arguments) replaces it - see README.
+  # No --gpu/--gpus either: the entrypoint derives them from the assigned
+  # cards (see placement below), and a fixed value here would point Strata at
+  # cards other deployments own.
+  args:
+  - --model
+  - ${MODEL_PATH}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  entrypoint:
+  - /opt/strata/gpuworks-entrypoint.sh
+  # Strata runs on the cards the platform assigns: one when placement picks,
+  # or every card the deployment selects (Strata splits the layers across
+  # them and caches more experts). Neither the count nor the indexes appear
+  # in this spec, on purpose:
+  #   1. the scheduler picks the cards; this resolver only checks that each
+  #      has 12 GiB and declares that as the per-card admission contract, and
+  #      returns no GPU_COUNT / TP_SIZE that would pin a count;
+  #   2. the agent sets CUDA_VISIBLE_DEVICES in the container to those cards,
+  #      as for every engine - udocker with the physical indexes, docker with
+  #      the compacted 0..n-1 of its --gpus device inventory. Either way they
+  #      are the numbers nvidia-smi shows inside the container;
+  #   3. the entrypoint (since gw5) turns CUDA_VISIBLE_DEVICES into Strata's --gpu N
+  #      or --gpus A,B (Strata picks cards by nvidia-smi numbering).
+  # A template variable could not carry the indexes: they depend on the node's
+  # runtime, which only the agent knows, while variables are expanded on the
+  # server. ${GPU_COUNT} exists but would only repeat what step 2 already says.
+  # The spec keeps its historical "single-gpu" name, which existing
+  # deployments reference.
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.min_memory_gib < 12:
+              return reject("Strata requires at least 12 GiB VRAM on every card")
+          # The admission contract, not a steady-state figure: the expert cache
+          # grows into whatever the card has. That oversells nothing, since a
+          # non-dGPU instance owns its whole cards in the scheduler's ledger.
+          return accept(gpu_memory_mib_per_device=12288)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    # Strata 0.1.38's /metrics answers one JSON document, not Prometheus text
+    # (artifacts/work/2026-10-10-inference-metrics-sources/evidence/strata-gw6-metrics.json).
+    # It serves one request at a time: live describes it (state "generating",
+    # "idle" between requests) and totals grow only when it finishes, by what
+    # live showed so far (evidence/strata-gw6-live-during-request.jsonl). Token
+    # counters add the two so throughput shows while a request runs.
+    metrics:
+      format: json
+      map:
+        'live.state!=idle': requests_running
+        'live.queued': requests_waiting
+        'totals.requests': requests_success_total
+        'totals.prompt_tokens': prompt_tokens_total
+        'live.prompt_tokens': prompt_tokens_total
+        'totals.output_tokens': generation_tokens_total
+        'live.generated': generation_tokens_total
+        'totals.drafts_offered': spec_draft_tokens_total
+        'totals.drafts_accepted': spec_accepted_tokens_total
+    # The last event of every reply carries llama.cpp-style timings beside
+    # usage: prompt_ms is the prompt's processing, predicted_ms the generation
+    # (artifacts/work/2026-10-10-inference-metrics-sources/evidence/strata-stream.sse).
+    request_stats:
+      timings.prompt_ms: {to: prefill_seconds, scale: 0.001}
+      timings.predicted_ms: {to: decode_seconds, scale: 0.001}
+# The gw6 entrypoint serves the vision encoder by default (--vision gpu).
+input_modalities: [text, image]

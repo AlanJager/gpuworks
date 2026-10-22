@@ -1,0 +1,123 @@
+# User-source inference catalog for the gpu3 playground acceptance
+# (artifacts/archive/2026-08-21-playground/plan-request-composition.md §六, case
+# l4-gpu3-playground-generation-pages-fake-engine-docker).
+#
+# It runs the statically built fake-engine from the registered model directory
+# inside a small public base image on any NVIDIA GPU. The tiny ModelScope
+# fixture zstack/qwen3-4b-fake supplies config.json and the acceptance setup
+# copies test/fake-engine/fake-engine into that directory before registration.
+# declares all eight operations, and exercises every `inputs.kind` the P2 schema
+# defines. `request_defaults` / `inputs` are P2 fields: importing this file
+# before P2 lands is rejected by KnownFields, which is intended.
+models:
+  - model_id: gpuworks/playground-acceptance
+    source: user
+    display_title: Playground Acceptance (fake-engine)
+    kinds:
+      - text
+      - multimodal_understanding
+      - multimodal_generation
+      - vector
+    input_modalities: [text, image, audio]
+    architecture: Qwen3ForCausalLM
+    context_length: 4096
+    parameter_count: 4B
+    release_date: 2026-09-05
+    specs:
+      - name: fake-engine-nvidia-any
+        scenario: balanced
+        engine: vllm
+        image: busybox:1.36
+        weights:
+          quantization: bf16
+          sources:
+            - modelscope: zstack/qwen3-4b-fake
+        weight_bytes: 8589934592
+        gpus:
+          vendor: nvidia
+        entrypoint: [/model/fake-engine, serve]
+        args: []
+        env: {}
+        api:
+          health_endpoint: /health
+          operations:
+            - type: openai.chat
+              endpoint: /v1/chat/completions
+              mode: stream
+            - type: openai.embeddings
+              endpoint: /v1/embeddings
+              mode: sync
+            - type: openai.rerank
+              endpoint: /v1/rerank
+              mode: sync
+            - type: openai.audio.transcribe
+              endpoint: /v1/audio/transcriptions
+              mode: sync
+              inputs:
+                - name: language
+                  kind: text
+                  label: { en: Language hint, zh-CN: 语言提示 }
+            - type: openai.audio.speech
+              endpoint: /v1/audio/speech
+              mode: sync
+              request_defaults:
+                response_format: wav
+              inputs:
+                - name: voice
+                  kind: select
+                  options: []            # filled at runtime from GET /v1/audio/voices
+                  label: { en: Voice, zh-CN: 音色 }
+                - name: language
+                  kind: select
+                  options: [Auto, Chinese, English]
+                  default: Auto
+                  label: { en: Language, zh-CN: 语言 }
+                - name: ref_audio
+                  kind: audio
+                  encoding: data_url
+                  label: { en: Reference audio, zh-CN: 参考音频 }
+                - name: instructions
+                  kind: text
+                  label: { en: Style instructions, zh-CN: 风格说明 }
+            - type: openai.image.generate
+              endpoint: /v1/images/generations
+              mode: sync
+              request_defaults:
+                response_format: b64_json
+              inputs:
+                - name: size
+                  kind: select
+                  options: [512x512, 768x768, 1024x1024]
+                  default: 1024x1024
+                  label: { en: Size, zh-CN: 尺寸 }
+                - name: num_inference_steps
+                  kind: number
+                  default: 20
+                  label: { en: Steps, zh-CN: 步数 }
+                - name: extra
+                  kind: json
+                  label: { en: Extra parameters, zh-CN: 额外参数 }
+            - type: openai.video.generate
+              endpoint: /v1/videos
+              mode: async
+              inputs:
+                - name: seconds
+                  kind: number
+                  required: true
+                  default: 4
+                  label: { en: Seconds, zh-CN: 秒 }
+                - name: size
+                  kind: select
+                  options: [640x360, 1280x720]
+                  default: 640x360
+                  label: { en: Size, zh-CN: 尺寸 }
+                - name: input_reference
+                  kind: image
+                  encoding: data_url
+                  label: { en: Reference image, zh-CN: 参考图 }
+            - type: openai.realtime
+              endpoint: /v1/realtime
+              mode: realtime
+              request_defaults:
+                session:
+                  modalities: [text, audio]

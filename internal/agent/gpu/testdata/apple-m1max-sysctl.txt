@@ -1,0 +1,4 @@
+hw.memsize: 68719476736
+iogpu.wired_limit_mb: 0
+kern.osproductversion: 15.4.1
+machdep.cpu.brand_string: Apple M1 Max

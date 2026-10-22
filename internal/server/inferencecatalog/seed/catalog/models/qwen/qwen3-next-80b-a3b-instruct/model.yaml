@@ -1,0 +1,230 @@
+model_id: qwen/qwen3-next-80b-a3b-instruct
+source: upstream
+display_title: Qwen3-Next-80B-A3B-Instruct
+parameter_count: 80B
+architecture: moe
+context_length: 262144
+release_date: '2025-09-09'
+model_config: {model_type: qwen3_next, num_hidden_layers: 48, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 2, head_dim: 256, max_position_embeddings: 262144}
+kv_bytes_per_token:
+  vllm: 98304
+  sglang: 24576
+specs:
+- name: bf16-sglang-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct
+        revision: 9c7f2fbe84465e40164a94cc16cd30b6999b0cc7
+    - modelscope:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct
+        revision: 02ac308d71328bf7c19dc77a3db266903894f84d
+  weight_bytes: 162682272937
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-nvidia-general
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct
+        revision: 9c7f2fbe84465e40164a94cc16cd30b6999b0cc7
+    - modelscope:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct
+        revision: 02ac308d71328bf7c19dc77a3db266903894f84d
+  weight_bytes: 162682272937
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+    display_target: nvidia
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-sglang-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  args:
+  - --enable-metrics
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+        revision: c5f5f263bdd5cc134092897864e8905d8fe7b928
+    - modelscope:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+        revision: 736c0e0e501ea037803257fce10242e772ea7be7
+  weight_bytes: 82082296496
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-blackwell
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+        revision: c5f5f263bdd5cc134092897864e8905d8fe7b928
+    - modelscope:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+        revision: 736c0e0e501ea037803257fce10242e772ea7be7
+  weight_bytes: 82082296496
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  env:
+    VLLM_ATTENTION_BACKEND: FLASH_ATTN
+    VLLM_FLASHINFER_MOE_BACKEND: latency
+    VLLM_USE_DEEP_GEMM: '0'
+    VLLM_USE_FLASHINFER_MOE_FP8: '1'
+    VLLM_USE_TRTLLM_ATTENTION: '0'
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: fp8-vllm-nvidia-general
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+        revision: c5f5f263bdd5cc134092897864e8905d8fe7b928
+    - modelscope:
+        repo_id: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+        revision: 736c0e0e501ea037803257fce10242e772ea7be7
+  weight_bytes: 82082296496
+  gpus:
+    vendor: nvidia
+    cc: '>=9.0'
+    display_target: hopper
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-sglang-ascend-7d129784
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: vllm-ascend/Qwen3-Next-80B-A3B-Instruct-W8A8
+        revision: 850aaae5f21256a059c8f81aba812b382207a1be
+  weight_bytes: 84900794893
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --attention-backend
+  - ascend
+  - --device
+  - npu
+  - --quantization
+  - modelslim
+  env:
+    GDN_ATTN_BACKEND_TRITON: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 4: return reject(\"at least 4\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: nvfp4-vllm-nvidia-cc100
+  display_profile: compatible
+  scenario: throughput
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2
+  weights:
+    quantization: nvfp4
+    sources:
+    - huggingface:
+        repo_id: nvidia/Qwen3-Next-80B-A3B-Instruct-NVFP4
+        revision: 8fb2682f136cf94d932a498f18cb1e428832a912
+    - modelscope:
+        repo_id: nv-community/Qwen3-Next-80B-A3B-Instruct-NVFP4
+        revision: 2207579ef5cecbd167987e024af270da1b100761
+  weight_bytes: 50802129136
+  gpus:
+    vendor: nvidia
+    cc: '>=10.0'
+    display_target: blackwell
+  env:
+    VLLM_USE_FLASHINFER_MOE_FP4: '1'
+  args:
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text]

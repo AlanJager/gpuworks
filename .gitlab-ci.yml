@@ -1,0 +1,1051 @@
+stages:
+  - core-prepare
+  - core
+  - release
+  - publish
+  - l4-smoke
+  - l4-acceptance
+
+default:
+  interruptible: true
+
+# Run validation for merge requests and the default branch. Ordinary feature
+# branch and tag pushes do not create pipelines until a merge request exists;
+# scheduled, web, API, and trigger pipelines remain available explicitly.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
+    - when: never
+
+variables:
+  # Workspaces are shared across executor slots on the shell runners. Docker
+  # jobs keep TMPDIR inside the workspace (the DinD daemon only mounts
+  # $CI_PROJECT_DIR, so bind-mounted model dirs must live under it) and
+  # engine containers write root-owned files there; if a runner-killed job
+  # skips its after_script prune, git clean must not try to delete .tmp or
+  # every later job reusing that workspace fails checkout with Permission
+  # denied. Excluded for ALL jobs — any job can be the victim, not just the
+  # docker one that produced the leftover. .docker-core prunes .tmp after
+  # each run so the exclusion cannot leak unbounded growth.
+  GIT_CLEAN_FLAGS: "-ffdx -e .tmp/"
+  # Servers started by CI jobs never send usage reports (ADR 0054).
+  GPUWORKS_USAGE_REPORT: "off"
+
+.go-core:
+  image:
+    name: golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89
+  variables:
+    # gpu3 cannot reach proxy.golang.org consistently. Keep direct fallback for
+    # modules that have not reached the mainland mirrors yet.
+    GOPROXY: "https://goproxy.cn,direct"
+    GOSUMDB: "sum.golang.google.cn"
+    # Module and build caches live on a persistent host bind mounted at
+    # /host-go-cache by the docker runners. Unlike the per-job checkout, the
+    # bind survives git clean and concurrent jobs, and unlike the runner-local
+    # GitLab cache it keeps working across go.sum bumps (entries are keyed by
+    # module@version). -modcacherw keeps the tree cleanable with
+    # `go clean -modcache` when a host eventually needs pruning.
+    GOMODCACHE: "/host-go-cache/go-mod"
+    GOCACHE: "/host-go-cache/go-build"
+    GOFLAGS: "-modcacherw"
+    # The pinned image ships go1.26.9, exactly what go.mod requires; fail
+    # loudly instead of silently downloading a toolchain through GOPROXY.
+    GOTOOLCHAIN: "local"
+  needs:
+    - job: core-ui
+      artifacts: true
+
+core-ui:
+  # Keep the UI artifact in a short preparation stage so Go checks that compile
+  # the embedded web UI can fan out in core.
+  stage: core-prepare
+  image:
+    name: node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
+  variables:
+    # Route npm metadata and tarballs through the mirror while package-lock.json
+    # remains authoritative.
+    NPM_REGISTRY: "https://registry.npmmirror.com"
+    npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+  cache:
+    key:
+      files:
+        - ui/package-lock.json
+      prefix: npm-node22
+    paths:
+      - .cache/npm/
+  script:
+    - node scripts/i18n-check.mjs
+    - cd ui
+    # registry.npmmirror.com occasionally stalls mid-transfer from this runner
+    # and resets the connection after 15-20 minutes instead of failing fast.
+    # Retry the whole install a few times rather than let one flaky fetch
+    # fail the job.
+    - |
+      for attempt in 1 2 3; do
+        npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund \
+          --fetch-retries=5 --fetch-retry-mintimeout=5000 --fetch-retry-maxtimeout=60000 \
+          && break
+        echo "npm ci attempt $attempt failed" >&2
+        if [ "$attempt" = 3 ]; then
+          exit 1
+        fi
+        rm -rf node_modules
+        sleep 15
+      done
+    - npm run lint:i18n
+    - npm run build
+  artifacts:
+    # Vite writes directly to the directory embedded by the Go server.
+    paths:
+      - internal/server/webui/dist/
+    # Full cloud jobs can queue behind provider resource groups for several
+    # hours. Keep the UI long enough for the final hosted job to build its
+    # embedded server binary after leaving the queue.
+    expire_in: 1 day
+
+docs-build:
+  # Build the public documentation independently from the product release
+  # jobs. A successful job produces the exact static tree consumed by the
+  # existing gpuworks-site refresh timer.
+  stage: core-prepare
+  image:
+    name: golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89
+  variables:
+    # Nothing in this job reaches a public host: the Hugo binary comes from
+    # the rustfs mirror on mirror1 and the oink theme is cloned by
+    # docs-site/build.sh from the gpuworks_website repository, authenticated
+    # by the WEBSITE_REPO project variable (a read-only deploy-token URL).
+    # No Go toolchain or module proxy is involved at all.
+    HUGO_VERSION: "0.165.0"
+    # The runners have no egress to github.com, so Hugo comes from the rustfs
+    # mirror on mirror1 (bucket gpuworks-mirror). A systemd timer there
+    # (gpuworks-hugo-mirror) refreshes the mirror daily through a proxy; after
+    # bumping HUGO_VERSION, run mirror1's refresh-hugo-mirror.sh with the new
+    # version, or wait for the daily run when it is among the newest releases.
+    HUGO_MIRROR: "http://172.20.16.58:9000/gpuworks-mirror"
+    # Set to 1 when the runner image already contains Hugo. In that mode the
+    # mirror download is skipped and the job fails clearly if the binary is
+    # absent.
+    DOCS_OFFLINE: "0"
+    HUGO_BIN: ""
+  script:
+    - |
+      if [ "$DOCS_OFFLINE" = "1" ]; then
+        test -n "$HUGO_BIN" && test -x "$HUGO_BIN" || {
+          echo "DOCS_OFFLINE=1 requires a preinstalled Hugo binary" >&2
+          exit 1
+        }
+      else
+        command -v curl >/dev/null
+        command -v tar >/dev/null
+        name=hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz
+        base="${HUGO_MIRROR}/hugo"
+        curl --fail --location --retry 3 --silent --show-error "$base/$name" -o "$name"
+        curl --fail --location --retry 3 --silent --show-error "$base/$name.sha256" -o "$name.sha256"
+        sha256sum -c "$name.sha256"
+        tar -xzf "$name" -C /usr/local/bin hugo
+        HUGO_BIN=/usr/local/bin/hugo
+      fi
+      HUGO_BIN="$HUGO_BIN" docs-site/build.sh
+  artifacts:
+    name: "gpuworks-docs-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - docs-site/public/
+    expire_in: 30 days
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - docs/**/*
+        - docs-site/**/*
+        - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes:
+        - docs/**/*
+        - docs-site/**/*
+        - .gitlab-ci.yml
+    - when: never
+
+core-ui-test:
+  stage: core
+  # One retry for the known timing flakes (async render assertions, e.g. the
+  # canvas/filter-chip specs that fail once every couple of days under load);
+  # a persistent failure still fails the pipeline. The L4 lanes stopped
+  # hard-requiring this job (see .l4-acceptance) but the nightly report still
+  # reads pipeline status, so a single flake stays worth absorbing.
+  retry: 1
+  image:
+    name: node:22-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
+  variables:
+    NPM_REGISTRY: "https://registry.npmmirror.com"
+    npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
+  cache:
+    key:
+      files:
+        - ui/package-lock.json
+      prefix: npm-node22
+    paths:
+      - .cache/npm/
+    # This job deliberately starts independently of core-ui, so only consume a
+    # cache produced by an earlier pipeline and never race to publish it.
+    policy: pull
+  needs: []
+  script:
+    # The macOS serve adapters' tests need only the image's python3.
+    - make test-host-env-adapters
+    - cd ui
+    # See core-ui: registry.npmmirror.com occasionally stalls mid-transfer and
+    # resets the connection instead of failing fast, so retry the install.
+    - |
+      for attempt in 1 2 3; do
+        npm ci --registry="$NPM_REGISTRY" --prefer-offline --no-audit --no-fund \
+          --fetch-retries=5 --fetch-retry-mintimeout=5000 --fetch-retry-maxtimeout=60000 \
+          && break
+        echo "npm ci attempt $attempt failed" >&2
+        if [ "$attempt" = 3 ]; then
+          exit 1
+        fi
+        rm -rf node_modules
+        sleep 15
+      done
+    - npm run test:coverage
+  artifacts:
+    when: always
+    # Only the reports: coverage/tmp holds c8's raw V8 dumps (one per test
+    # process, node_modules included), which made the archive outgrow the
+    # coordinator's upload limit (413) while adding nothing a reader uses.
+    paths:
+      - ui/coverage/lcov.info
+      - ui/coverage/lcov-report/
+    expire_in: 14 days
+
+core-test:
+  extends: .go-core
+  stage: core
+  # One retry: environment hiccups on the shared runners (a full disk once
+  # failed the build-cache writes) otherwise cascade — every L4 cloud lane
+  # hard-needs this job and gets skipped for the night. Persistent failures
+  # still fail the pipeline; the retry only heals one-shot flakes.
+  retry: 1
+  script:
+    - ./scripts/check_time_policy.sh
+    - ./scripts/check_architecture.sh
+    - ./scripts/check_ci_yaml.sh
+    - CGO_ENABLED=0 go run ./scripts/artifactsindex
+    - make test-e2e-coverage-check
+    - test -f internal/server/webui/dist/index.html
+    # -timeout: the 10m default is per package binary, and a starved runner
+    # (a store package that takes 45 s alone ran 10 min on one) turns it into a
+    # panic that names whichever test happened to be running.
+    - CGO_ENABLED=0 go test -v -timeout 30m -coverprofile=coverage-core.out ./...
+    # Build-tag suites are reported separately; compile them here so a
+    # refactor cannot silently break an opt-in lane while core remains green.
+    - make check-tagged-build
+  artifacts:
+    when: always
+    paths:
+      - coverage-core.out
+    expire_in: 14 days
+
+core-vet:
+  extends: .go-core
+  stage: core
+  script:
+    - CGO_ENABLED=0 go vet ./...
+
+# Strict L2 contains a real Docker adoption/recovery case and L3 is entirely a
+# Docker gate. The ordinary project runners use an unprivileged Docker executor
+# with no daemon socket, so both jobs are pinned to the project's tag-only
+# shell runners (mirror1/gpu3/gpu2, tag gpuworks-l3). A per-job DinD container
+# isolates every child container and gives cancellation an exact cleanup
+# target instead of touching unrelated host workloads. There is no
+# resource_group: a project-wide one serialized every pipeline's L2/L3 behind a
+# single slot and left the tagged runners idle. Per-host concurrency is capped
+# instead by each shell runner's `limit` in its config.toml. Same-host
+# concurrency is safe: each job gets its own executor slot (separate checkout)
+# and its own DinD, and the shared host image cache is written via
+# tmp-file-plus-atomic-rename below.
+.docker-core:
+  stage: core
+  tags:
+    - gpuworks-l3
+  timeout: 45m
+  needs:
+    - job: core-ui
+      artifacts: true
+  variables:
+    DOCKER_DIND_IMAGE: "docker:29-dind@sha256:12e683a161823b2a839aeea999b9d960e6e1f9a97b1679ad6b441982e2d9cf07"
+    DOCKER_GO_IMAGE: "golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89"
+    # Docker Hub is intermittently unreachable from the CI runner. Keep the
+    # L3 fixtures reproducible while using a public mainland mirror for their
+    # busybox/Python/Alpine base images. The registry image keeps the quay
+    # name test/l3 hardcodes; seeding it below avoids pulling it in-test.
+    GPUWORKS_L3_RUNTIME_BASE_IMAGE: "docker.m.daocloud.io/library/python:3.12"
+    GPUWORKS_L3_SHELL_BASE_IMAGE: "docker.m.daocloud.io/library/busybox:1.36"
+    GPUWORKS_L3_NO_PYTHON_IMAGE: "docker.m.daocloud.io/library/alpine:3.20"
+    GPUWORKS_L3_REGISTRY_IMAGE: "quay.io/libpod/registry:2.8.2"
+  script:
+    # Go deliberately makes module-cache directories read-only. Keep those
+    # files outside the reusable Git checkout so the next job using this
+    # executor slot can clean the worktree, and use -modcacherw for future
+    # cache updates.
+    - export DOCKER_HOST_CACHE="$HOME/.cache/gpuworks-ci/$CI_PROJECT_ID"
+    - mkdir -p "$DOCKER_HOST_CACHE/go-mod" "$DOCKER_HOST_CACHE/go-build" "$DOCKER_HOST_CACHE/images" "$CI_PROJECT_DIR/.cache/home" "$CI_PROJECT_DIR/.tmp"
+    # Share a short job-owned Unix endpoint with the non-root Go container.
+    # Container PTYs require a local socket, and exec pins this exact daemon.
+    - export GPUWORKS_CI_SOCKET_DIR="$CI_PROJECT_DIR/.tmp/gpuworks-e2e-$CI_JOB_ID"
+    - mkdir -p "$GPUWORKS_CI_SOCKET_DIR"
+    # A cancelled or killed job may skip after_script and leave its DinD
+    # running; each DinD also owns a ~1.6 GB anonymous /var/lib/docker volume.
+    # Reap labelled containers (and their volumes) older than 2h, well past
+    # this template's 45m timeout, so a concurrent job is never touched.
+    - |
+      now=$(date +%s)
+      for c in $(docker ps -aq --filter label=gpuworks-ci-docker-core); do
+        created=$(docker inspect -f '{{.Created}}' "$c" 2>/dev/null) || continue
+        if [ $((now - $(date -d "$created" +%s))) -gt 7200 ]; then
+          echo "reaping leaked CI container $c (created $created)"
+          docker rm -f -v "$c" >/dev/null 2>&1 || true
+        fi
+      done
+    - >
+      docker run -d --privileged
+      --name "gpuworks-docker-core-dind-$CI_JOB_ID"
+      --label gpuworks-ci-docker-core
+      -e DOCKER_TLS_CERTDIR=
+      -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
+      -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
+      -v "$DOCKER_HOST_CACHE/images:$DOCKER_HOST_CACHE/images"
+      "$DOCKER_DIND_IMAGE"
+      --host=tcp://0.0.0.0:2375
+      --host=unix:///var/run/docker.sock
+      --host=unix:///run/gpuworks-e2e/docker.sock
+    - |
+      ready=0
+      for attempt in $(seq 1 60); do
+        if docker exec "gpuworks-docker-core-dind-$CI_JOB_ID" docker --host unix:///run/gpuworks-e2e/docker.sock info >/dev/null 2>&1; then
+          ready=1
+          break
+        fi
+        sleep 1
+      done
+      if [ "$ready" != 1 ]; then
+        docker logs "gpuworks-docker-core-dind-$CI_JOB_ID" || true
+        echo "isolated Docker test daemon did not become ready" >&2
+        exit 1
+      fi
+      docker exec "gpuworks-docker-core-dind-$CI_JOB_ID" chown "$(id -u):$(id -g)" /run/gpuworks-e2e/docker.sock
+    # Every job starts a brand-new, empty DinD daemon, so without this it
+    # re-pulls the L3 fixture base images from the network on every run. Seed
+    # the fresh daemon from a host-side tar cache first; only pull (and then
+    # refresh the cache) on a miss. A miss is pulled by the host daemon first:
+    # the per-job DinD has none of the host's proxy or registry-mirror settings,
+    # and some runners (ppu1) cannot reach Docker Hub or quay directly. The
+    # tmp-file-plus-rename keeps a concurrent writer (e.g. a parallel core-l2
+    # run) from exposing a half-written tar.
+    - |
+      dind="gpuworks-docker-core-dind-$CI_JOB_ID"
+      for image in "$GPUWORKS_L3_SHELL_BASE_IMAGE" "$GPUWORKS_L3_RUNTIME_BASE_IMAGE" "$GPUWORKS_L3_NO_PYTHON_IMAGE" "$GPUWORKS_L3_REGISTRY_IMAGE"; do
+        [ -n "$image" ] || continue
+        cache_file="$DOCKER_HOST_CACHE/images/$(echo "$image" | tr -c 'A-Za-z0-9._-' '_').tar"
+        if [ -f "$cache_file" ]; then
+          echo "docker image cache hit: $image"
+          docker exec "$dind" docker load -i "$cache_file"
+        elif docker image inspect "$image" >/dev/null 2>&1; then
+          echo "host docker image hit: $image"
+          tmp_file="$cache_file.$CI_JOB_ID.tmp"
+          docker save -o "$tmp_file" "$image"
+          docker exec "$dind" docker load -i "$tmp_file"
+          mv -n "$tmp_file" "$cache_file" 2>/dev/null || rm -f "$tmp_file"
+        elif [ "$image" = "docker.m.daocloud.io/library/python:3.12" ] && docker image inspect python:3.12 >/dev/null 2>&1; then
+          # mirror1 keeps the full Python fixture preloaded under the short
+          # Docker Hub name. Import it without contacting either registry,
+          # then add the configured mirror reference used by the tests.
+          echo "host docker image alias hit: python:3.12 -> $image"
+          tmp_file="$cache_file.$CI_JOB_ID.tmp"
+          docker save -o "$tmp_file" python:3.12
+          docker exec "$dind" docker load -i "$tmp_file"
+          docker exec "$dind" docker tag python:3.12 "$image"
+          docker exec "$dind" docker save -o "$tmp_file" "$image"
+          mv -n "$tmp_file" "$cache_file" 2>/dev/null || rm -f "$tmp_file"
+        elif docker pull "$image"; then
+          echo "docker image cache miss: $image (pulled by host daemon)"
+          tmp_file="$cache_file.$CI_JOB_ID.tmp"
+          docker save -o "$tmp_file" "$image"
+          docker exec "$dind" docker load -i "$tmp_file"
+          mv -n "$tmp_file" "$cache_file" 2>/dev/null || rm -f "$tmp_file"
+        else
+          echo "docker image cache miss: $image (pulling in DinD)"
+          docker exec "$dind" docker pull "$image"
+          tmp_file="$cache_file.$CI_JOB_ID.tmp"
+          docker exec "$dind" docker save -o "$tmp_file" "$image"
+          mv -n "$tmp_file" "$cache_file" 2>/dev/null || rm -f "$tmp_file"
+        fi
+      done
+    - >
+      docker run --rm
+      --name "gpuworks-docker-core-go-$CI_JOB_ID"
+      --label gpuworks-ci-docker-core
+      --network "container:gpuworks-docker-core-dind-$CI_JOB_ID"
+      --user "$(id -u):$(id -g)"
+      -v /usr/bin/docker:/usr/bin/docker:ro
+      -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
+      -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
+      -v "$DOCKER_HOST_CACHE/go-mod:/go-cache/mod"
+      -v "$DOCKER_HOST_CACHE/go-build:/go-cache/build"
+      -w "$CI_PROJECT_DIR"
+      -e DOCKER_HOST=unix:///run/gpuworks-e2e/docker.sock
+      -e HOME="$CI_PROJECT_DIR/.cache/home"
+      -e TMPDIR="$CI_PROJECT_DIR/.tmp"
+      -e GOMODCACHE=/go-cache/mod
+      -e GOCACHE=/go-cache/build
+      -e GOFLAGS=-modcacherw
+      -e GOPROXY=https://goproxy.cn,direct
+      -e GOSUMDB=sum.golang.google.cn
+      -e GOTOOLCHAIN=local
+      -e GPUWORKS_TEST_STRICT=1
+      -e GPUWORKS_L3_RUNTIME_BASE_IMAGE="$GPUWORKS_L3_RUNTIME_BASE_IMAGE"
+      -e GPUWORKS_L3_SHELL_BASE_IMAGE="$GPUWORKS_L3_SHELL_BASE_IMAGE"
+      -e GPUWORKS_L3_NO_PYTHON_IMAGE="$GPUWORKS_L3_NO_PYTHON_IMAGE"
+      "$DOCKER_GO_IMAGE"
+      sh -c "$DOCKER_TEST_COMMAND"
+  after_script:
+    # On failure keep what is needed to tell a wedged inner dockerd (docker run
+    # never creating the container, stop/rm/inspect all killed by their
+    # timeouts) from a test bug: the DinD daemon's own timestamped log plus the
+    # host load/pressure at the end of the job. The job trace alone only shows
+    # the CLI side. Read-only and best effort, so it cannot change the result.
+    - |
+      if [ "$CI_JOB_STATUS" = failed ]; then
+        echo "== host load at job end: $(cat /proc/loadavg 2>/dev/null)"
+        for p in cpu io memory; do echo "== /proc/pressure/$p: $(cat /proc/pressure/$p 2>/dev/null | tr '\n' ' ')"; done
+        echo "== inner dockerd log (last 300 lines)"
+        docker logs --timestamps --tail 300 "gpuworks-docker-core-dind-$CI_JOB_ID" 2>&1 || true
+      fi
+    # -v: the DinD image declares /var/lib/docker as an anonymous volume;
+    # without it every job leaked ~1.6 GB and filled the runner's root disk.
+    - docker rm -f -v "gpuworks-docker-core-go-$CI_JOB_ID" >/dev/null 2>&1 || true
+    - docker rm -f -v "gpuworks-docker-core-dind-$CI_JOB_ID" >/dev/null 2>&1 || true
+    # Engine containers write root-owned files into TMPDIR (.tmp, kept inside
+    # the workspace for DinD-visible bind mounts); a crashed-container test
+    # cannot clean them itself. Prune as root via a container so the next
+    # job's checkout stays healthy. Guarded so docker never auto-create a
+    # root-owned .tmp in a fresh workspace.
+    - if [ -d "$CI_PROJECT_DIR/.tmp" ]; then docker run --rm -v "$CI_PROJECT_DIR/.tmp:/t" "$DOCKER_GO_IMAGE" sh -c "rm -rf /t/* /t/.[!.]*" || true; fi
+
+core-l2:
+  extends: .docker-core
+  # One retry for the known timing flakes: these suites fail roughly once a
+  # night across the runner pool on different cases (docker adopt waits,
+  # fixture download races), and a single flake failing the pipeline blocks
+  # the nightly report even though the L4 lanes no longer depend on this job.
+  # A persistent failure still fails: only one retry.
+  retry: 1
+  variables:
+    DOCKER_TEST_COMMAND: "make test-l2 COVERPROFILE=coverage-l2.out"
+  artifacts:
+    when: always
+    paths:
+      - coverage-l2.out
+    expire_in: 14 days
+
+core-l3:
+  extends: .docker-core
+  # Same rationale as core-l2: single retry for container-timing flakes.
+  retry: 1
+  variables:
+    DOCKER_TEST_COMMAND: "make test-l3 COVERPROFILE=coverage-l3.out"
+  artifacts:
+    when: always
+    paths:
+      - coverage-l3.out
+    expire_in: 14 days
+
+# Control-plane scale cases, both gated by FLEET_REDEPLOY_CHURN=1 from a
+# nightly schedule (or an operator via web/api), never on merge requests: the
+# redeploy churn (real server binary as one process, 1000 real agents in a
+# second one, half of them redeploying) and the log-center read budget case
+# (every instance streaming at the target aggregate ~2000 lines/s while half
+# the fleet redeploys; asserts the p95 budgets from
+# artifacts/archive/2026-09-19-log-center/plan.md). Both are measurements of a loaded
+# host and need no Docker and no GPU. Strict mode turns a too-low descriptor
+# limit into a failure instead of a skip that would read as green.
+l2-fleet-redeploy-churn:
+  extends: .go-core
+  stage: core
+  timeout: 55m
+  variables:
+    GPUWORKS_TEST_STRICT: "1"
+    GPUWORKS_FLEET_PROCESS_LOGS: "1"
+    GPUWORKS_FLEET_WORK_DIR: "$CI_PROJECT_DIR/.tmp/fleet"
+  script:
+    - test -f internal/server/webui/dist/index.html
+    - mkdir -p "$GPUWORKS_FLEET_WORK_DIR"
+    - ulimit -n 65536 || true
+    # No pipe into tee: without pipefail the job would report tee's status.
+    # Each case logs to its own file so a log-budget failure keeps the churn
+    # evidence intact; the job fails if either case fails.
+    - status=0; make test-fleet-perf-processes > fleet-redeploy-churn.log 2>&1 || status=$?
+    - cat fleet-redeploy-churn.log
+    - make test-fleet-log-scale-processes > fleet-log-scale.log 2>&1 || status=$?
+    - cat fleet-log-scale.log
+    - exit "$status"
+  artifacts:
+    when: always
+    paths:
+      - fleet-redeploy-churn.log
+      - fleet-log-scale.log
+      - .tmp/fleet/**/*.log
+    expire_in: 14 days
+  rules:
+    - if: '$FLEET_REDEPLOY_CHURN == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+
+# Provider API/SSH contracts are tagged L4 code but use only faithful local
+# fixtures. Run them as an automatic hermetic gate without cloud credentials or
+# cleanup calls; real CompShare allocation remains in explicit cloud jobs.
+core-compshare-offline-contracts:
+  extends: .go-core
+  stage: core
+  script:
+    - make test-l4-compshare-offline-contracts GO_TEST_FLAGS='-coverpkg=./internal/...,./pkg/... -coverprofile=coverage-compshare-contracts.out'
+  artifacts:
+    when: always
+    paths:
+      - coverage-compshare-contracts.out
+    expire_in: 14 days
+
+# One archive per job keeps each below GitLab's per-job artifact size limit
+# (an archive is ~53 MB since the server embeds a macOS agent too; two per job
+# no longer fit). The release website publishes a pipeline only after every
+# job succeeds; gpuworks-dist assembles the archives themselves and trusts no
+# job's release.json or SHA256SUMS. Failed or running pipelines never replace
+# a build.
+.release-build:
+  extends: .go-core
+  stage: release
+  # Same gate policy as .l4-acceptance: only the fast deterministic gates.
+  # core-l2/l3/ui-test flakes must not also kill the nightly packages, as
+  # they did on 2026-09-30 and 2026-10-01.
+  needs:
+    - job: core-ui
+      artifacts: true
+    - job: core-test
+    - job: core-vet
+    - job: core-compshare-offline-contracts
+  variables:
+    GPUWORKS_RELEASE_ID: "$CI_COMMIT_SHORT_SHA"
+  script:
+    # The zstd CLI packs the embedded agents ~10% smaller than the Go
+    # encoder make falls back to; a mirror hiccup only costs that, not the build.
+    - (apt-get update -qq && apt-get install -y -qq zstd >/dev/null) || echo "zstd unavailable; embedding the agents with the Go encoder"
+    - make release-packages
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 30 days
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: never
+
+release-build-linux-amd64:
+  extends: .release-build
+  variables:
+    GPUWORKS_RELEASE_OSES: "linux"
+    GPUWORKS_RELEASE_ARCHES: "amd64"
+  artifacts:
+    name: "gpuworks-$CI_COMMIT_SHORT_SHA-linux-amd64"
+
+release-build-linux-arm64:
+  extends: .release-build
+  variables:
+    GPUWORKS_RELEASE_OSES: "linux"
+    GPUWORKS_RELEASE_ARCHES: "arm64"
+  artifacts:
+    name: "gpuworks-$CI_COMMIT_SHORT_SHA-linux-arm64"
+
+release-build-macos-amd64:
+  extends: .release-build
+  variables:
+    GPUWORKS_RELEASE_OSES: "darwin"
+    GPUWORKS_RELEASE_ARCHES: "amd64"
+  artifacts:
+    name: "gpuworks-$CI_COMMIT_SHORT_SHA-darwin-amd64"
+
+release-build-macos-arm64:
+  extends: .release-build
+  variables:
+    GPUWORKS_RELEASE_OSES: "darwin"
+    GPUWORKS_RELEASE_ARCHES: "arm64"
+  artifacts:
+    name: "gpuworks-$CI_COMMIT_SHORT_SHA-darwin-arm64"
+
+# Publish each default-branch release and the catalogs embedded in it to the
+# distribution sources (ADR 0040): Aliyun OSS, Huawei OBS and Cloudflare R2.
+# Both build jobs' dist/ artifacts are merged here; gpuworks-dist reads the
+# archives themselves, not either job's release.json. Credentials and the
+# index signing key are protected, masked project variables, so the job only
+# runs on protected refs. resource_group keeps two publishes from interleaving,
+# and the script skips a pipeline older than what the sources already serve.
+# rclone is built once per version into the persistent host cache. It sits in
+# a stage of its own because GitLab 14.0 only lets needs name jobs of earlier
+# stages.
+release-publish:
+  extends: .go-core
+  stage: publish
+  needs:
+    - job: release-build-linux-amd64
+      artifacts: true
+    - job: release-build-linux-arm64
+      artifacts: true
+    - job: release-build-macos-amd64
+      artifacts: true
+    - job: release-build-macos-arm64
+      artifacts: true
+  resource_group: distribution
+  interruptible: false
+  variables:
+    # Not RCLONE_VERSION: rclone reads every RCLONE_<FLAG> variable as that
+    # flag, and took this one for --version (job 217655).
+    GPUWORKS_RCLONE_VERSION: "v1.75.2"
+  script:
+    - export RCLONE="/host-go-cache/tools/rclone-$GPUWORKS_RCLONE_VERSION/rclone"
+    - test -x "$RCLONE" || GOBIN="$(dirname "$RCLONE")" go install "github.com/rclone/rclone@$GPUWORKS_RCLONE_VERSION"
+    - ./scripts/publish_dist.sh nightly dist
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - when: never
+
+.l4-cloud:
+  image:
+    name: golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89
+  interruptible: false
+  retry: 0
+  needs:
+    - job: core-ui
+      artifacts: true
+  variables:
+    GOPROXY: "https://goproxy.cn,direct"
+    GOSUMDB: "sum.golang.google.cn"
+    # Persistent host bind, same as .go-core: cloud jobs share one warm
+    # module/build cache per runner host across pipelines and go.sum bumps.
+    GOMODCACHE: "/host-go-cache/go-mod"
+    GOCACHE: "/host-go-cache/go-build"
+    GOFLAGS: "-modcacherw"
+    GOTOOLCHAIN: "local"
+    # Every cloud job gets a distinct immutable owner. Cleanup requires an
+    # exact resource-name match, so jobs and external test agents stay isolated.
+    GPUWORKS_CLOUD_TEST_RUN_ID: "gitlab-$CI_PROJECT_ID-$CI_JOB_ID"
+    # Tagged L4 execution has its own profile instead of disappearing from the
+    # untagged core report. Each cloud job runs one authoritative suite.
+    GO_TEST_FLAGS: "-coverpkg=./internal/...,./pkg/... -coverprofile=coverage-cloud.out"
+  before_script:
+    - make test-l4-cleanup-leaked
+  after_script:
+    - make test-l4-cleanup-leaked
+  artifacts:
+    when: always
+    paths:
+      - coverage-cloud.out
+    expire_in: 14 days
+
+.l4-acceptance:
+  extends: .l4-cloud
+  stage: l4-acceptance
+  timeout: 120m
+  # A needs graph otherwise lets these costly jobs bypass stage ordering as
+  # soon as core-ui finishes. The remaining gates are the fast, deterministic
+  # ones (unit tests, vet, offline contracts) plus the core-ui artifacts the
+  # jobs embed. core-l2/l3/ui-test are deliberately NOT needed: they flake
+  # often enough that hard-requiring them skipped the whole scheduled cloud
+  # matrix for full nights (2026-09-30, 2026-10-01), losing cloud coverage to
+  # a local-timing failure. This GitLab (14.0.12) cannot express a conditional
+  # or failure-tolerant need (needs:optional only excuses absent jobs —
+  # verified with a live probe pipeline, 2026-09-25), so the weaker
+  # gate is expressed by dropping the need entirely; nightly cloud spend is
+  # still protected by core-test, which fails on any real build breakage.
+  needs:
+    - job: core-ui
+      artifacts: true
+    - job: core-test
+    - job: core-vet
+    - job: core-compshare-offline-contracts
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+l4-runpod-node-onboarding:
+# The runner egress to RunPod/HuggingFace sags during business hours (TLS
+# handshake timeouts against api.runpod.io were part of the 2026-09-20
+# incident); routing the provider HTTPS through the internal proxy measured
+# 20-50% faster cold connections. The provider HTTP client uses the default
+# transport, so it honors these without code changes; loopback and the
+# domestic module/GitLab hosts stay direct.
+  variables:
+    HTTPS_PROXY: "http://zstack.one:7890"
+    HTTP_PROXY: "http://zstack.one:7890"
+    NO_PROXY: "localhost,127.0.0.1,::1,dev.zstack.io,goproxy.cn"
+    # The HTTP proxy refuses CONNECT to port 22, but the SOCKS listener on
+    # 7891 tunnels arbitrary TCP (verified from the runners), so the SSH
+    # agent upload rides it: the in-process test server passes this into its ssh_proxy setting.
+    GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
+  extends: .l4-acceptance
+  stage: l4-smoke
+  timeout: 30m
+  environment:
+    name: cloud-test/runpod/smoke
+  allow_failure: true
+  script:
+    - make test-l4-runpod-node-onboarding
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_SMOKE == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CLOUD_SMOKE == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_SMOKE == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+# Public download verification is isolated from the stable provider smoke and
+# only runs when an operator/schedule explicitly enables the low-rate lane.
+l4-runpod-huggingface-public-download:
+# The runner egress to RunPod/HuggingFace sags during business hours (TLS
+# handshake timeouts against api.runpod.io were part of the 2026-09-20
+# incident); routing the provider HTTPS through the internal proxy measured
+# 20-50% faster cold connections. The provider HTTP client uses the default
+# transport, so it honors these without code changes; loopback and the
+# domestic module/GitLab hosts stay direct.
+  variables:
+    HTTPS_PROXY: "http://zstack.one:7890"
+    HTTP_PROXY: "http://zstack.one:7890"
+    NO_PROXY: "localhost,127.0.0.1,::1,dev.zstack.io,goproxy.cn"
+    # The HTTP proxy refuses CONNECT to port 22, but the SOCKS listener on
+    # 7891 tunnels arbitrary TCP (verified from the runners), so the SSH
+    # agent upload rides it: the in-process test server passes this into its ssh_proxy setting.
+    GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
+  extends: .l4-acceptance
+  timeout: 30m
+  environment:
+    # Keep provider credentials scoped under cloud-test/runpod/* while making
+    # the low-frequency download lane distinguishable in GitLab environments.
+    name: cloud-test/runpod/download-huggingface
+  script:
+    - make test-l4-runpod-huggingface-public-download
+  rules:
+    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+l4-runpod-vllm-sglang-lifecycle:
+# The runner egress to RunPod/HuggingFace sags during business hours (TLS
+# handshake timeouts against api.runpod.io were part of the 2026-09-20
+# incident); routing the provider HTTPS through the internal proxy measured
+# 20-50% faster cold connections. The provider HTTP client uses the default
+# transport, so it honors these without code changes; loopback and the
+# domestic module/GitLab hosts stay direct.
+  variables:
+    HTTPS_PROXY: "http://zstack.one:7890"
+    HTTP_PROXY: "http://zstack.one:7890"
+    NO_PROXY: "localhost,127.0.0.1,::1,dev.zstack.io,goproxy.cn"
+    # The HTTP proxy refuses CONNECT to port 22, but the SOCKS listener on
+    # 7891 tunnels arbitrary TCP (verified from the runners), so the SSH
+    # agent upload rides it: the in-process test server passes this into its ssh_proxy setting.
+    GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
+  extends: .l4-acceptance
+  environment:
+    name: cloud-test/runpod/full
+  script:
+    - make test-l4-runpod-vllm-sglang-lifecycle
+
+l4-autodl-node-onboarding:
+  extends: .l4-acceptance
+  timeout: 65m
+  environment:
+    name: cloud-test/autodl/full
+  script:
+    - make test-l4-autodl-node-onboarding
+
+# Nightly Gitee coverage is capability-only and may run concurrently with other
+# providers. Gitee VMs cannot expose device-share, so real memory isolation is
+# covered by l4-ascend-pool-partition-inference; see the dated limitation artifact.
+l4-gitee-ascend-partition-capability:
+  extends: .l4-acceptance
+  timeout: 110m
+  environment:
+    name: cloud-test/gitee-capability
+  script:
+    # Nightly capability-only check: no business image, model download, or chat.
+    - make test-l4-gitee-ascend-partition-capability
+
+# Full Gitee deployment/chat is intentionally opt-in. The capability job above
+# remains the nightly signal; this long, network-heavy acceptance is only
+# started explicitly from a web/API pipeline or an MR manual action.
+l4-gitee-ascend-deploy-chat:
+  extends: .l4-acceptance
+  timeout: 135m
+  environment:
+    name: cloud-test/gitee-deploy-chat
+  script:
+    - make test-l4-gitee-ascend-deploy-chat
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+# The self-owned Ascend pool uses current source in an isolated state directory
+# and reuses cached models/images. Host addresses, SSH paths and proxy settings
+# are environment-scoped GitLab variables, not repository configuration.
+l4-ascend-pool-partition-inference:
+  stage: l4-acceptance
+  # The test starts temporary agents and containers on the shared Ascend pool.
+  # Let its in-test cleanup finish even when a newer commit updates the MR.
+  interruptible: false
+  tags:
+    - gpuworks-l3
+  resource_group: gpuworks-ascend-pool
+  timeout: 35m
+  needs:
+    - job: core-ui
+      artifacts: true
+    - job: core-test
+    - job: core-vet
+    - job: core-compshare-offline-contracts
+  environment:
+    name: cloud-test/ascend-primary
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_FULL == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    # The shell runner reuses its checkout between jobs. Keep the mounted test
+    # container on the runner UID so evidence files cannot become root-owned
+    # and poison the next core checkout.
+    - mkdir -p "$CI_PROJECT_DIR/.cache/l4-home/.ssh"
+    # Share the persistent host-side Go caches with core-l2/core-l3 instead of
+    # re-downloading the full module set inside a fresh container every run.
+    - export DOCKER_HOST_CACHE="$HOME/.cache/gpuworks-ci/$CI_PROJECT_ID"
+    - mkdir -p "$DOCKER_HOST_CACHE/go-mod" "$DOCKER_HOST_CACHE/go-build"
+    # Pass the checkout path explicitly: the shell command is evaluated
+    # inside the container, where CI_PROJECT_DIR is otherwise undefined.
+    # A folded scalar joins its lines with spaces, so a '#' inside the block is
+    # not a YAML comment: it comments out the rest of the assembled shell
+    # command. Keep every note about this command above the '- >'.
+    #
+    # Keep the injected credentials read-only, but leave HOME/.ssh writable:
+    # OpenSSH must atomically rewrite known_hosts when StrictHostKeyChecking
+    # is enabled by the partition tests, so the container copies them from
+    # /run/gpuworks-ssh into a writable $HOME/.ssh on startup. OpenSSH
+    # resolves the known_hosts path from the passwd entry, NOT from $HOME:
+    # when the runner itself is root (gpu2) uid 0 already exists, no ci-runner
+    # user is created, and ssh reads /root/.ssh — so the credentials are also
+    # copied to the passwd home of RUNNER_UID after the useradd step
+    # (2026-10-03: both pool hosts failed host key verification on gpu2 while
+    # the same file passed on gpu3, whose runner uid gets a matching home).
+    - >
+      docker run --rm --network host
+      -e http_proxy="$GPUWORKS_ASCEND_HTTP_PROXY" -e https_proxy="$GPUWORKS_ASCEND_HTTP_PROXY"
+      -e HOME="$CI_PROJECT_DIR/.cache/l4-home"
+      -e CI_PROJECT_DIR="$CI_PROJECT_DIR"
+      -e RUNNER_UID="$(id -u)" -e RUNNER_GID="$(id -g)"
+      -v "$GPUWORKS_ASCEND_SSH_DIR:/run/gpuworks-ssh:ro"
+      -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR" -w "$CI_PROJECT_DIR"
+      -v "$DOCKER_HOST_CACHE/go-mod:/go-cache/mod"
+      -v "$DOCKER_HOST_CACHE/go-build:/go-cache/build"
+      -e GOMODCACHE=/go-cache/mod
+      -e GOCACHE=/go-cache/build
+      -e GOFLAGS=-modcacherw
+      -e GOPROXY=https://goproxy.cn,direct -e GOSUMDB=sum.golang.google.cn
+      -e GOTOOLCHAIN=local
+      -e GPUWORKS_TEST_STRICT=1
+      -e "GO_TEST_FLAGS=-coverpkg=./internal/...,./pkg/... -coverprofile=coverage-cloud.out"
+      -e GPUWORKS_ASCEND_PRIMARY_HOST="$GPUWORKS_ASCEND_PRIMARY_HOST"
+      -e GPUWORKS_ASCEND_HOST="$GPUWORKS_ASCEND_HOST"
+      -e GPUWORKS_ASCEND_HOST_2="$GPUWORKS_ASCEND_HOST_2"
+      -e GPUWORKS_ASCEND_L4_IMAGE="$GPUWORKS_ASCEND_L4_IMAGE"
+      -e GPUWORKS_ASCEND_L4_MODEL="$GPUWORKS_ASCEND_L4_MODEL"
+      -e GPUWORKS_ASCEND_L4_CARD="$GPUWORKS_ASCEND_L4_CARD"
+      -e GPUWORKS_ASCEND_NERDCTL_L4_IMAGE="$GPUWORKS_ASCEND_NERDCTL_L4_IMAGE"
+      -e GPUWORKS_ASCEND_NERDCTL_L4_CARD="$GPUWORKS_ASCEND_NERDCTL_L4_CARD"
+      golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89
+      sh -c "apt-get update -qq && apt-get install -y -qq openssh-client >/dev/null && cp -a /run/gpuworks-ssh/. \$HOME/.ssh/ && chown -R \$RUNNER_UID:\$RUNNER_GID \$HOME/.ssh && if ! getent passwd \$RUNNER_UID >/dev/null; then getent group \$RUNNER_GID >/dev/null || groupadd --gid \$RUNNER_GID ci-runner; useradd --uid \$RUNNER_UID --gid \$RUNNER_GID --home-dir \$CI_PROJECT_DIR/.cache/l4-home --no-create-home --shell /bin/sh ci-runner; fi && pw_home=\$(getent passwd \$RUNNER_UID | cut -d: -f6) && { [ \"\$pw_home/.ssh\" = \"\$HOME/.ssh\" ] || { mkdir -p \"\$pw_home/.ssh\" && cp -a /run/gpuworks-ssh/. \"\$pw_home/.ssh/\" && chown -R \$RUNNER_UID:\$RUNNER_GID \"\$pw_home/.ssh\"; }; } && setpriv --reuid=\$RUNNER_UID --regid=\$RUNNER_GID --clear-groups -- make test-l4-ascend-pool-partition-inference"
+  artifacts:
+    when: always
+    paths:
+      - coverage-cloud.out
+    expire_in: 14 days
+
+
+l4-vast-node-onboarding:
+  extends: .l4-acceptance
+  timeout: 65m
+  environment:
+    name: cloud-test/vast/full
+  script:
+    - make test-l4-vast-node-onboarding
+
+# The in-process server dials the agent at the public address Vast maps to
+# its port.
+l4-vast-server-dial-node-onboarding:
+  extends: .l4-acceptance
+  timeout: 65m
+  environment:
+    name: cloud-test/vast/full
+  script:
+    - make test-l4-vast-server-dial-node-onboarding
+
+# A server-dialed agent on a pod, then an edit that renumbers the pod's
+# ports: recovery follows the new SSH and agent addresses.
+l4-runpod-server-dial-node-onboarding:
+  variables:
+    GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
+  extends: .l4-acceptance
+  timeout: 65m
+  environment:
+    name: cloud-test/runpod/smoke
+  script:
+    - make test-l4-runpod-server-dial-node-onboarding
+
+l4-compshare-modelscope-public-download:
+  extends: .l4-acceptance
+  timeout: 30m
+  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
+  environment:
+    # CompShare credentials are environment-scoped to cloud-test/compshare/*.
+    name: cloud-test/compshare/download-modelscope
+  script:
+    - make test-l4-compshare-modelscope-public-download
+  rules:
+    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+# CompShare allows 20 VMs and normal development has at most three concurrent
+# pipelines. Use two per-pipeline lanes: a pipeline occupies at most three VMs
+# (one single-VM case plus the two-VM case), while three pipelines peak at nine.
+# The remaining eleven-VM margin covers cleanup lag and template maintenance.
+# Contracts allocate no VM. Every live job still has an immutable run-id and
+# exact cleanup; the pipeline IID suffix prevents unrelated pipelines from
+# serializing each other.
+l4-compshare-single-vm-tp2-dgpu:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/compshare/suite
+  script:
+    - make test-l4-compshare-single-vm-tp2-dgpu
+
+l4-compshare-provisioning-matrix:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/compshare/provider
+  script:
+    - make test-l4-compshare-provisioning-matrix
+
+l4-compshare-one-vm-two-logical-nodes:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/compshare/onevm-nnode2
+  script:
+    - make test-l4-compshare-one-vm-two-logical-nodes
+
+l4-compshare-two-vm-docker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/compshare/docker-nnode2
+  script:
+    - make test-l4-compshare-two-vm-docker-distributed
+
+l4-compshare-pd-deploy-chat-two-vm-docker:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/compshare/pd-two-vm
+  script:
+    - make test-l4-compshare-pd-deploy-chat-two-vm-docker
+
+# The runner must expose an explicitly provisioned read-only NFS fixture.
+# Never points at a production export by default; no network disruption.
+l4-storage-model-cache-copy-nfs:
+  stage: l4-acceptance
+  extends: .go-core
+  tags:
+    - gpuworks-l3
+  timeout: 10m
+  resource_group: gpuworks-nfs-copy-test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $GPUWORKS_NFS_COPY_SOURCE != ""'
+      when: manual
+      allow_failure: false
+    - when: never
+  script:
+    - make test-l4-storage-model-cache-copy-nfs
+
+# Opt-in only: a disposable NFS server, never a production export.
+# The dedicated runner must invoke its shell inside a private mount namespace.
+l4-storage-model-cache-recovery-nfs:
+  stage: l4-acceptance
+  extends: .go-core
+  tags:
+    - gpuworks-l3
+  timeout: 25m
+  resource_group: gpuworks-nfs-fault-test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $GPUWORKS_NFS_FAULT_IMAGE != ""'
+      when: manual
+      allow_failure: false
+    - when: never
+  script:
+    - unshare --mount --propagation private -- make test-l4-storage-model-cache-recovery-nfs

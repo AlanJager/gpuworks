@@ -1,0 +1,88 @@
+model_id: moonshotai/kimi-vl-a3b-instruct
+source: upstream
+display_title: kimi-vl-a3b-instruct
+parameter_count: 16B total parameters（上游模型卡）
+architecture: KimiVLForConditionalGeneration; MoonViT vision encoder + MoE language
+  decoder
+context_length: 131072
+release_date: '2025-04-09'
+model_config: {model_type: kimi_vl, num_hidden_layers: 27, hidden_size: 2048, num_attention_heads: 16, num_key_value_heads: 16, max_position_embeddings: 131072, kv_lora_rank: 512, qk_rope_head_dim: 64, qk_nope_head_dim: 128, v_head_dim: 128, vision_config: {patch_size: 14}}
+kv_bytes_per_token:
+  vllm: 31104
+  sglang: 31104
+specs:
+- name: bf16-sglang-ascend-71f6709d
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-VL-A3B-Instruct
+        revision: 398eede0903cd983a2bfa0cc634e9ac1d843f375
+    - modelscope:
+        repo_id: moonshotai/Kimi-VL-A3B-Instruct
+        revision: fd5b8b4c516172318b78a0c2dcbce74ef4f108fc
+  weight_bytes: 32823063513
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --enable-multimodal
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --mm-attention-backend
+  - ascend_attn
+  - --dtype
+  - bfloat16
+  env:
+    GLOO_SOCKET_IFNAME: lo
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ppu-398eede0
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:hggc13.0-vllm0.23.0-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-VL-A3B-Instruct
+        revision: 398eede0903cd983a2bfa0cc634e9ac1d843f375
+    - modelscope:
+        repo_id: moonshotai/Kimi-VL-A3B-Instruct
+        revision: fd5b8b4c516172318b78a0c2dcbce74ef4f108fc
+  weight_bytes: 32816098528
+  gpus:
+    vendor: ppu
+    name: (?:PPU[ _-]?(?:ZW810E|M890)|Beethoven)
+    display_target: ppu
+  args:
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --trust-remote-code
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+input_modalities: [text, image]
