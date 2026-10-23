@@ -33,7 +33,6 @@
     "granularity": "粒度",
     "hour": "按小时",
     "day": "按天",
-    "hourDisabled": "超过 {{days}} 天只有按天数据",
     "deployment": "部署",
     "allDeployments": "全部部署",
     "deploymentNotForGpu": "GPU 利用不按部署筛选，请使用节点与卡型筛选",
@@ -129,7 +128,6 @@
       "hitRate": "命中率",
       "uncached": "未命中输入",
       "output": "输出",
-      "reasoning": "其中思考",
       "noUsage": "无 usage",
       "span": "首次 / 最近使用"
     },
@@ -283,7 +281,6 @@
     "foot": "利用率、显存、功耗、温度为采样点在每个时间桶内的均值与最大值，再汇总到统计期。"
   },
   "gpuTime": {
-    "note": "卡时 = 占用卡数 × 小时，不涉及价格。",
     "cards": {
       "hours": "总卡时",
       "hoursSub": "各部署占用卡时之和",

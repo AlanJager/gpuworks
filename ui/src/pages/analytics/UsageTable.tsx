@@ -72,7 +72,6 @@ export default function UsageTable({ tree, totals, group, granularity, tz }: {
     },
     { key: "uncached", title: t("usage.table.uncached"), ...num((n) => uncachedTokens(n.counts)) },
     { key: "output", title: t("usage.table.output"), ...num((n) => n.counts.completion_tokens) },
-    { key: "reasoning", title: t("usage.table.reasoning"), ...num((n) => n.counts.reasoning_tokens) },
     { key: "noUsage", title: t("usage.table.noUsage"), ...num((n) => n.counts.no_usage) },
     { key: "span", title: t("usage.table.span"), width: 190, render: (_, n) => <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{span(n)}</span> },
   ];
@@ -96,9 +95,8 @@ export default function UsageTable({ tree, totals, group, granularity, tz }: {
             <Table.Summary.Cell index={5} align="right"><RateBar percent={hitRate(totals)} /></Table.Summary.Cell>
             <Table.Summary.Cell index={6} align="right">{fmtInt(uncachedTokens(totals))}</Table.Summary.Cell>
             <Table.Summary.Cell index={7} align="right">{fmtInt(totals.completion_tokens)}</Table.Summary.Cell>
-            <Table.Summary.Cell index={8} align="right">{fmtInt(totals.reasoning_tokens)}</Table.Summary.Cell>
-            <Table.Summary.Cell index={9} align="right">{fmtInt(totals.no_usage)}</Table.Summary.Cell>
-            <Table.Summary.Cell index={10}>{DASH}</Table.Summary.Cell>
+            <Table.Summary.Cell index={8} align="right">{fmtInt(totals.no_usage)}</Table.Summary.Cell>
+            <Table.Summary.Cell index={9}>{DASH}</Table.Summary.Cell>
           </Table.Summary.Row>
         </Table.Summary>
       )}

@@ -17,8 +17,6 @@ interface Props {
   tz: string;
   granularity: Granularity;
   hourAllowed: boolean;
-  /** The longest range answered by hour, in days. */
-  hourLimitDays: number;
   deployments: DeploymentOption[];
   deployment?: number;
   deploymentDisabled: boolean;
@@ -86,7 +84,6 @@ export default function Toolbar(p: Props) {
                 { value: "day", label: t("toolbar.day") },
               ]}
             />
-            {!p.hourAllowed && <Typography.Text type="warning" style={{ fontSize: 12 }}>{t("toolbar.hourDisabled", { days: p.hourLimitDays })}</Typography.Text>}
           </Space>
           <Space size={8}>
             <Typography.Text type="secondary">{t("toolbar.deployment")}</Typography.Text>

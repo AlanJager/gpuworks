@@ -135,7 +135,6 @@ export default function AnalyticsPage({ now = Date.now }: { now?: () => number }
         tz={tz}
         granularity={granularity}
         hourAllowed={hourAllowed}
-        hourLimitDays={hourLimitDays}
         deployments={deployments}
         deployment={deployment}
         deploymentDisabled={tab === "gpus"}

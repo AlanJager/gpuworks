@@ -372,7 +372,6 @@ test("GPU hours cards: the total, the allocation rate over schedulable hours, ea
   assert.ok(stat("output").getByTitle("320,000"));
   assert.ok(stat("perMillion").getByText("275.0"));
   assert.ok(stat("perMillion").getByText(i18n.t("analytics:gpuTime.cards.perMillionAll", { value: "8.7" })));
-  assert.ok(screen.getByText(a.gpuTime.note));
 });
 
 test("the GPU hours table has a row per deployment and card model, dashes for what has no tokens, and a total", async () => {
@@ -406,5 +405,4 @@ test("no card time is the empty state, and the note stays", async () => {
   analyticsApi.gpuTime = async () => ({ range: fx.range(fx.TODAY_START, 2, "hour"), rows: [], series: [], capacity: [] });
   mount("/analytics/gpu-time");
   await screen.findByText(a.state.empty);
-  assert.ok(screen.getByText(a.gpuTime.note));
 });

@@ -145,17 +145,15 @@ test("each quick range sends its bounds in the statistics zone and a granularity
   }
 });
 
-test("by hour is disabled, with the reason, when the range outlasts the hourly data", async () => {
+test("by hour is disabled when the range outlasts the hourly data", async () => {
   stub();
   const user = mount();
   await waitFor(() => assert.equal(calls.usage.length, 1));
   const hour = () => screen.getByRole("radio", { name: a.toolbar.hour }) as HTMLInputElement;
   assert.equal(hour().disabled, false);
-  assert.ok(screen.queryByText(i18n.t("analytics:toolbar.hourDisabled", { days: 7 })) === null);
   // 30 days is more than the 7 days the server answers by hour.
   await user.click(screen.getByRole("button", { name: a.toolbar.ranges["30d"] }));
   await waitFor(() => assert.equal(hour().disabled, true));
-  assert.ok(screen.getByText(i18n.t("analytics:toolbar.hourDisabled", { days: 7 })));
   assert.equal(last(calls.usage).granularity, "day");
 });
 
@@ -173,7 +171,6 @@ test("the hour retention caps the hourly range below a week", async () => {
   await waitFor(() => assert.equal(calls.usage.length, 1));
   assert.equal(calls.usage[0].granularity, "day");
   assert.equal((screen.getByRole("radio", { name: a.toolbar.hour }) as HTMLInputElement).disabled, true);
-  assert.ok(screen.getByText(i18n.t("analytics:toolbar.hourDisabled", { days: 3 })));
 });
 
 test("picking by hour for a week asks for hours and lands in the URL", async () => {
@@ -427,12 +424,12 @@ test("export is off until a table is on screen, then downloads the rows with a l
     const text = await created[0].text();
     const lines = text.replace(/^﻿/, "").split("\r\n");
     assert.equal(lines[0], [a.usage.export.key, a.usage.export.prefix, a.usage.export.status, a.usage.export.deployment, a.usage.export.model, a.usage.export.source,
-      a.usage.table.requests, a.usage.table.input, a.usage.table.cached, a.usage.table.hitRate, a.usage.table.uncached, a.usage.table.output, a.usage.table.reasoning, a.usage.table.noUsage,
+      a.usage.table.requests, a.usage.table.input, a.usage.table.cached, a.usage.table.hitRate, a.usage.table.uncached, a.usage.table.output, a.usage.table.noUsage,
       a.usage.export.first, a.usage.export.last].map((c) => `"${c}"`).join(","));
     assert.equal(lines.length, 1 + 7 + 1, "header, one line per row, a total");
-    assert.match(lines[1], /^"111","gw-5fd30737e","","glm-5-3-flash-nvfp4","glm-5.3-flash","API","1000","9000000","7200000","80.0%","1800000","300000","120000","10","2026-10-22 01:00","2026-10-22 13:00"$/);
+    assert.match(lines[1], /^"111","gw-5fd30737e","","glm-5-3-flash-nvfp4","glm-5.3-flash","API","1000","9000000","7200000","80.0%","1800000","300000","10","2026-10-22 01:00","2026-10-22 13:00"$/);
     assert.match(lines.at(-1)!, new RegExp(`^"${a.table.total}"`));
-    assert.match(lines.at(-1)!, /"1317","10865000","7315000","76\.5%","3550000","375500","122000","30"/);
+    assert.match(lines.at(-1)!, /"1317","10865000","7315000","76\.5%","3550000","375500","30"/);
     assert.match(lines.find((l) => l.includes("trial-2026q3"))!, new RegExp(`"${a.names.revoked}"`));
   } finally {
     anchor.click = savedClick;

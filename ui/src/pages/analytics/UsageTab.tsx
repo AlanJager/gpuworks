@@ -70,12 +70,12 @@ export default function UsageTab(props: TabProps) {
 
   const exportModel = useMemo<CsvModel | null>(() => {
     if (!data) return null;
-    const cs = (c: typeof data.totals) => [c.requests, c.prompt_tokens, c.cached_tokens, fmtPct(hitRate(c)), uncachedTokens(c), c.completion_tokens, c.reasoning_tokens, c.no_usage];
+    const cs = (c: typeof data.totals) => [c.requests, c.prompt_tokens, c.cached_tokens, fmtPct(hitRate(c)), uncachedTokens(c), c.completion_tokens, c.no_usage];
     return {
       name: "usage",
       head: [
         t("usage.export.key"), t("usage.export.prefix"), t("usage.export.status"), t("usage.export.deployment"), t("usage.export.model"), t("usage.export.source"),
-        t("usage.table.requests"), t("usage.table.input"), t("usage.table.cached"), t("usage.table.hitRate"), t("usage.table.uncached"), t("usage.table.output"), t("usage.table.reasoning"), t("usage.table.noUsage"),
+        t("usage.table.requests"), t("usage.table.input"), t("usage.table.cached"), t("usage.table.hitRate"), t("usage.table.uncached"), t("usage.table.output"), t("usage.table.noUsage"),
         t("usage.export.first"), t("usage.export.last"),
       ],
       rows: [

@@ -33,7 +33,6 @@
     "granularity": "Granularity",
     "hour": "By hour",
     "day": "By day",
-    "hourDisabled": "Hourly figures cover at most {{days}} days; longer ranges are shown by day",
     "deployment": "Deployment",
     "allDeployments": "All deployments",
     "deploymentNotForGpu": "GPU utilization is not filtered by deployment; use the node and model filters",
@@ -129,7 +128,6 @@
       "hitRate": "Hit rate",
       "uncached": "Uncached input",
       "output": "Output",
-      "reasoning": "Thinking",
       "noUsage": "No usage",
       "span": "First / last used"
     },
@@ -283,7 +281,6 @@
     "foot": "Utilization, memory, power and temperature are the means and peaks of the samples in each bucket, then over the range."
   },
   "gpuTime": {
-    "note": "GPU hours = cards held × hours. No prices are involved.",
     "cards": {
       "hours": "Total GPU hours",
       "hoursSub": "Held by the deployments",

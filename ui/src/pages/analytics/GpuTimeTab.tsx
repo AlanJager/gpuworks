@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Alert, Card, Space, Table, Typography } from "antd";
+import { Card, Space, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useTranslation } from "react-i18next";
 import { analyticsApi, type GPUTimeAnalytics, type GPUTimeRow } from "../../analyticsApi";
@@ -126,7 +126,6 @@ export default function GpuTimeTab({ from, to, granularity, deployment, tz, relo
 
   return (
     <div>
-      <Alert type="info" showIcon={false} style={{ marginBottom: 16 }} message={t("gpuTime.note")} />
       <QueryState query={query} isEmpty={(d) => d.rows.length === 0 && d.series.length === 0}>
         {(d) => {
           const hours = d.rows.reduce((a, r) => a + r.gpu_hours, 0);
