@@ -209,10 +209,14 @@ test("a deployment with no requests shows dashes, not zeros, for what was not me
   assert.match(busyCells[2]!, /97\.5%/);
 });
 
-test("the first-token chart leaves a gap where an hour had no requests, and the outcome chart can hide the completed ones", async () => {
+test("the outcome chart sits above the first-token chart, which leaves a gap where an hour had no requests, and the outcome chart can hide the completed ones", async () => {
   stub();
   const user = mount("/analytics/quality");
   await ready("requests");
+  // The outcome chart comes first, the first-token chart below it.
+  const charts = screen.getAllByRole("img").map((el) => el.getAttribute("aria-label"));
+  const at = (label: string) => charts.indexOf(label);
+  assert.ok(at(a.quality.chart.resultsAria) >= 0 && at(a.quality.chart.resultsAria) < at(a.quality.chart.ttftAria), String(charts));
   const ttft = option(a.quality.chart.ttftAria);
   assert.deepEqual(ttft.series.map((s: { name: string }) => s.name), [a.quality.chart.ttftP50, a.quality.chart.ttftP95]);
   assert.equal(ttft.series[0].data[3], null);

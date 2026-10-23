@@ -128,10 +128,6 @@ export default function QualityTab({ from, to, granularity, deployment, tz, relo
           <>
             <StatCards items={cards(d)} />
             <Card style={{ marginBottom: 16 }}>
-              <Typography.Title level={5} style={{ marginTop: 0 }}>{t("quality.chart.ttftTitle", { granularity: t(`granularityName.${d.range.granularity}`) })}</Typography.Title>
-              <EChart option={c.ttft} height={300} label={t("quality.chart.ttftAria")} />
-            </Card>
-            <Card style={{ marginBottom: 16 }}>
               <Space wrap align="center" style={{ width: "100%", marginBottom: 8 }}>
                 <Typography.Title level={5} style={{ margin: 0 }}>{t("quality.chart.resultsTitle", { granularity: t(`granularityName.${d.range.granularity}`) })}</Typography.Title>
                 <Segmented
@@ -142,6 +138,10 @@ export default function QualityTab({ from, to, granularity, deployment, tz, relo
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t(mode === "bad" ? "quality.chart.metaBad" : "quality.chart.metaAll")}</Typography.Text>
               </Space>
               <EChart option={c.results} height={300} label={t("quality.chart.resultsAria")} />
+            </Card>
+            <Card style={{ marginBottom: 16 }}>
+              <Typography.Title level={5} style={{ marginTop: 0 }}>{t("quality.chart.ttftTitle", { granularity: t(`granularityName.${d.range.granularity}`) })}</Typography.Title>
+              <EChart option={c.ttft} height={300} label={t("quality.chart.ttftAria")} />
             </Card>
             <Card styles={{ body: { padding: 0 } }} title={<Space align="baseline"><span>{t("quality.table.title")}</span><Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>{t("quality.table.hint")}</Typography.Text></Space>}>
               <Table<QualityRow>
