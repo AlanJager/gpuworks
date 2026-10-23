@@ -1,6 +1,56 @@
 package uxstore
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"time"
+)
+
+// SetLimits changes the age and size bounds (Options.MaxAge, MaxBytes) of a
+// running store; the next retention pass, within a minute, applies them.
+// A non-positive value keeps the current bound.
+func (s *Store) SetLimits(maxAge time.Duration, maxBytes int64) {
+	if maxAge > 0 {
+		s.maxAge.Store(int64(maxAge))
+	}
+	if maxBytes > 0 {
+		s.maxBytes.Store(maxBytes)
+	}
+}
+
+// Limits are the bounds in effect.
+func (s *Store) Limits() (time.Duration, int64) {
+	return time.Duration(s.maxAge.Load()), s.maxBytes.Load()
+}
+
+// SizeBytes is the file's size on disk, its write-ahead log included. The
+// file keeps its high water mark: dropped days' pages are reused, not freed.
+func (s *Store) SizeBytes() int64 {
+	var total int64
+	for _, suffix := range []string{"", "-wal"} {
+		if info, err := os.Stat(s.path + suffix); err == nil {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
+// EarliestDayMS is the start of the oldest day the store holds, or false
+// when it holds none.
+func (s *Store) EarliestDayMS() (int64, bool, error) {
+	days, err := listDays(s.reader)
+	if err != nil || len(days) == 0 {
+		return 0, false, err
+	}
+	oldest := days[0]
+	for _, d := range days {
+		if d < oldest {
+			oldest = d
+		}
+	}
+	start, err := dayStartMS(oldest)
+	return start, err == nil, err
+}
 
 // maybeRetain runs retention at most once per retainEvery of the store clock.
 func (s *Store) maybeRetain() {
@@ -34,7 +84,8 @@ func (s *Store) retain() error {
 	if err != nil {
 		return fmt.Errorf("list partitions: %w", err)
 	}
-	cutoff := now - s.opts.MaxAge.Milliseconds()
+	cutoff := now - time.Duration(s.maxAge.Load()).Milliseconds()
+	maxBytes := s.maxBytes.Load()
 	var kept []string // newest first
 	for _, day := range days {
 		start, err := dayStartMS(day)
@@ -54,7 +105,7 @@ func (s *Store) retain() error {
 		if err != nil {
 			return err
 		}
-		if live <= s.opts.MaxBytes {
+		if live <= maxBytes {
 			break
 		}
 		if err := s.drop(kept[i]); err != nil {

@@ -49,11 +49,12 @@ func newTelemetry(st *store.Store, allowedPrivateHosts ...string) *telemetryServ
 	return t
 }
 
-// requestSink hands each finished request's record to the request store and
-// to the trace exporter; neither blocks.
-func requestSink(ux func(uxrecord.Request), traces *traceexport.Exporter) func(uxrecord.Request) {
+// requestSink hands each finished request's record to the request store, to
+// the long-term statistics and to the trace exporter; none blocks.
+func requestSink(ux, stats func(uxrecord.Request), traces *traceexport.Exporter) func(uxrecord.Request) {
 	return func(r uxrecord.Request) {
 		ux(r)
+		stats(r)
 		traces.Observe(r)
 	}
 }

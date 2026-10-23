@@ -118,6 +118,7 @@ func (a *App) closeRequestSinks() {
 	if a.telemetry != nil {
 		a.telemetry.exporter.Close()
 	}
+	a.ops.close()
 	if a.obs == nil || a.obs.ux == nil {
 		return
 	}

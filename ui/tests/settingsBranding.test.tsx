@@ -236,7 +236,7 @@ test("the settings page opens on General and switches tabs by click and keyboard
     // is small, so find tabs by their text (a focused tab gains a hidden
     // "Tab n of m" prefix for screen readers).
     const tab = (label: string) => screen.getAllByRole("tab").find((element) => element.textContent?.endsWith(label))!;
-    assert.deepEqual(screen.getAllByRole("tab").map((element) => element.textContent), [tabs.general, tabs.pull, tabs.nodes, tabs.access, tabs.integrations]);
+    assert.deepEqual(screen.getAllByRole("tab").map((element) => element.textContent), [tabs.general, tabs.pull, tabs.nodes, tabs.access, tabs.integrations, tabs.data]);
     assert.equal(tab(tabs.general).getAttribute("aria-selected"), "true");
     assert.ok(await screen.findByText(b.title));
     await user.click(tab(tabs.nodes));

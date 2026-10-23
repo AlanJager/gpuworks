@@ -125,9 +125,13 @@ type Stats struct {
 
 // Store is the request store.
 type Store struct {
-	opts   Options
-	writer *sql.DB // the single connection SQLite allows to write
-	reader *sql.DB // searches do not queue behind the writer under WAL
+	opts Options
+	path string
+	// maxAge (nanoseconds) and maxBytes are opts.MaxAge and opts.MaxBytes as
+	// SetLimits last changed them; the writer reads them each retention pass.
+	maxAge, maxBytes atomic.Int64
+	writer           *sql.DB // the single connection SQLite allows to write
+	reader           *sql.DB // searches do not queue behind the writer under WAL
 
 	queue chan uxrecord.Request
 	ctl   chan ctlReq
@@ -167,6 +171,7 @@ func Open(path string, opts Options) (*Store, error) {
 	}
 	s := &Store{
 		opts:   opts,
+		path:   path,
 		writer: writer,
 		reader: reader,
 		queue:  make(chan uxrecord.Request, opts.Queue),
@@ -174,6 +179,8 @@ func Open(path string, opts Options) (*Store, error) {
 		stop:   make(chan struct{}),
 		done:   make(chan struct{}),
 	}
+	s.maxAge.Store(int64(opts.MaxAge))
+	s.maxBytes.Store(opts.MaxBytes)
 	err = s.initSchema()
 	if err == nil {
 		err = s.initWriter()
@@ -274,6 +281,10 @@ func (s *Store) sync(retain bool) error {
 		return errClosed
 	}
 }
+
+// Sync waits until every record observed so far is written: the history
+// fill reads the log right after, and tests in place of the flush ticker.
+func (s *Store) Sync() error { return s.sync(false) }
 
 // Close stops the writer after it drains the queue and flushes what it holds,
 // then closes the database. Records observed concurrently with Close may be

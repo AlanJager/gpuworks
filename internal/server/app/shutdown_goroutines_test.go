@@ -26,7 +26,7 @@ func backgroundLoopMarkers() []string {
 		"internal/server/recovery.(*Recoverer).Run(",
 		"internal/server/controller.(*Controller).Run(",
 		"internal/server/app.runPDVerifier(",
-		"internal/server/app.(*observability).retainLoop(",
+		"internal/server/app.(*opsStats).run(",
 		"internal/server/app.(*observability).logIngestLoop(",
 		"internal/server/app.(*observability).selfLogLoop(",
 	}

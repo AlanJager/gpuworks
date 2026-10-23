@@ -52,7 +52,7 @@ usage_report: false        # 退出用户体验改进计划（不发日报，检
 | `tls_cert_file` / `tls_key_file` | 空 | 原生 HTTPS 的 PEM 证书链和私钥路径，必须同时设置。非维护监听使用 TLS 1.2 以上；要求显式监听 IP，不支持通配地址。本机 `127.0.0.1` / `::1` 维护入口保留 HTTP，见[生产部署](../how-to/deploy-production.md#原生-https) | — |
 | `outbound_allow_private_hosts` | 空 | 管理节点访问模型、镜像、AI 和遥测等 HTTP 来源的私网例外：精确主机名、IP 或 CIDR；重启生效。禁止通配域名；元数据、链路本地和特殊保留地址始终拒绝。仅管理员编辑此文件可授权，管理 API 不能修改 | — |
 | `storage_probe_roots` | `/opt/gpuworks/models`、`/opt/gpuworks/cache`、`/mnt/gpuworks` | 新建、修改存储与探测允许使用的目录根；子目录按路径分段匹配，不能用相似前缀绕过。自定义存储需在文件中显式添加根目录。系统目录始终拒绝；探测要求规范路径，不能经符号链接越界。重启生效 | — |
-| `metrics_retention` | 72h | tsdb 原始样本**和** logstore 日志行的保留窗口（Go duration，非法或非正值按默认 72h）；清理分批执行（样本每批 5 万行，日志边界日每批 5000 行） | `--metrics-retention` |
+| `metrics_retention` | 72h | **只在首次启动时**作为指标原始样本与容器日志保留时长的初值（Go duration，非法或非正值按默认 72h，限定在 24 小时–30 天）；之后以设置页「数据保留」为准（`PUT /api/v1/data-retention`，[ADR 0055](../adr/0055-long-term-statistics.md)），两者不一致时启动日志打一条 warn。清理每小时一次、分批执行（样本每批 5 万行，日志边界日每批 5000 行） | `--metrics-retention` |
 | `session_idle_timeout` | 24h | 管理会话无真实操作后的失效期限（Go duration，非法或非正值取默认值） | — |
 | `session_max_lifetime` | 168h（7 天） | 从登录起计算的绝对期限，操作不会延长（Go duration，非法或非正值取默认值） | — |
 | `udocker_bundle_source` | 空 | server 本机的 udocker 离线包（目录或压缩包）；SSH 安装请求带 `udocker_bundle`（节点上的解压目录）时，server 把它上传并解压到那里，节点服务的 `GPUWORKS_UDOCKER_BUNDLE` 指向该目录 | — |

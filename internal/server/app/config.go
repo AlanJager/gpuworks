@@ -76,7 +76,8 @@ type Config struct {
 	StaleAfter                  time.Duration
 	ServerDialReconnectInterval time.Duration
 	// MetricsRetention bounds how long raw tsdb samples (and logstore rows) are
-	// kept; see observability.retainLoop.
+	// kept on a first start, the data retention setting's initial value for
+	// both (opsStats); the setting decides from then on.
 	MetricsRetention time.Duration
 }
 

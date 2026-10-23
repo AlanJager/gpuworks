@@ -123,6 +123,9 @@ func (o *observability) writeMetricsBatch(batch []tsdb.Sample) {
 		o.sweepExpiredBucketState(now)
 	}
 	o.evictDeployCacheIfOverCapacity()
+	if o.onSamples != nil {
+		o.onSamples(batch)
+	}
 	_ = o.tsdb.WriteBatch(o.applyQuantiles(batch))
 }
 

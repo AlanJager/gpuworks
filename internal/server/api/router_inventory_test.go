@@ -123,6 +123,8 @@ GET /api/v1/benchmarks/{id}/points/{seq}/detail
 GET /api/v1/benchmarks/{id}/report
 GET /api/v1/branding
 GET /api/v1/dashboard/summary
+GET /api/v1/data-retention
+GET /api/v1/data-retention/status
 GET /api/v1/deployments
 GET /api/v1/deployments/{id}
 GET /api/v1/deployments/{id}/candidates
@@ -325,6 +327,7 @@ POST /api/v1/telemetry/export/test
 POST /api/v1/updates/prefetch
 POST /api/v1/updates/server
 POST /api/v1/updates/server/upload
+PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
 PUT /api/v1/deployments/{id}/pd

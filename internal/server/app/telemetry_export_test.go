@@ -204,14 +204,15 @@ func TestTheRequestSinkFeedsBothTheStoreAndTheExporter(t *testing.T) {
 	}
 	svc := newTelemetry(st, "127.0.0.1")
 	var stored []uxrecord.Request
-	feed := requestSink(func(r uxrecord.Request) { stored = append(stored, r) }, svc.exporter)
+	var counted int
+	feed := requestSink(func(r uxrecord.Request) { stored = append(stored, r) }, func(uxrecord.Request) { counted++ }, svc.exporter)
 	trace := tracecontext.Begin(tracecontext.Parent{}, false, time.Now(), svc.exporter.Sample)
 	feed(uxrecord.Request{ID: "r1", Trace: trace, ReceivedMS: time.Now().UnixMilli(), Path: "/v1/chat/completions", Status: 200, EndMS: 5,
 		DispatchMS: 1, FirstByteMS: -1, FirstThinkMS: -1, FirstAnswerMS: -1, LastChunkMS: -1, MaxGapMS: -1,
 		CachedTokens: -1, ReasoningTokens: -1, EngineQueueMS: -1, EnginePrefillMS: -1, EngineDecodeMS: -1})
 	svc.exporter.Close()
 	_, bodies := sink.calls()
-	if len(stored) != 1 || len(bodies) != 1 || !strings.Contains(mustJSON(t, bodies[0]), trace.Trace.String()) {
+	if len(stored) != 1 || counted != 1 || len(bodies) != 1 || !strings.Contains(mustJSON(t, bodies[0]), trace.Trace.String()) {
 		t.Fatalf("stored %d, exported %v", len(stored), bodies)
 	}
 }

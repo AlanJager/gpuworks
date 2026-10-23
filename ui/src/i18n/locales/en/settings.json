@@ -58,7 +58,7 @@
     "readOnly": "Set usage_report in server.yaml to change it.",
     "saved": "Saved"
   },
-  "page": { "title": "Settings", "description": "Manage branding, updates, where images and models are pulled from, node and deployment policy, security and access, and integrations such as AI services", "breadcrumb": { "platform": "Platform", "settings": "Settings" }, "tabs": { "general": "General", "pull": "Image & model pulls", "nodes": "Nodes & deployments", "access": "Security & access", "integrations": "Integrations" } },
+  "page": { "title": "Settings", "description": "Manage branding, updates, where images and models are pulled from, node and deployment policy, security and access, and integrations such as AI services", "breadcrumb": { "platform": "Platform", "settings": "Settings" }, "tabs": { "general": "General", "pull": "Image & model pulls", "nodes": "Nodes & deployments", "access": "Security & access", "integrations": "Integrations", "data": "Data retention" } },
   "branding": {
     "title": "Branding",
     "description": "Customize the logo, product name, header title and sign-in page text. Fields left empty use the built-in defaults, shown in the viewer's language; custom text is shown exactly as written, without translation.",
@@ -343,5 +343,75 @@
       "gateway": "inference API"
     }
   },
-  "ai": { "empty": "No AI service configured", "service": "AI Services", "notice": "The platform is fully usable without AI configuration. Configure a service to enable deployment advice, error diagnosis, and model Q&A.", "egressNotice": "The assistant reads the platform data the asking user can see - nodes, deployments, models, logs and metrics - and sends what it reads to the AI service in use ({{host}}). To keep it inside the platform, use a model served by this platform.", "name": "Name", "preset": "Preset", "model": "Model", "default": "Default", "deleteConfirm": "Delete this configuration?", "deleted": "Configuration deleted", "addService": "Add AI Service", "added": "AI service added", "baseUrl": "Base URL", "upstreamKey": "Upstream API Key", "setDefault": "Set as Default", "nameRequired": "Enter a name", "namePlaceholder": "For example, deepseek-primary", "baseUrlRequired": "Enter the base URL", "modelRequired": "Enter a model name", "keyRequired": "Enter the upstream API key", "presetName": { "deepseek": "DeepSeek (default)", "bailian": "Alibaba Cloud Model Studio", "siliconflow": "SiliconFlow", "openrouter": "OpenRouter", "poe": "Poe", "custom": "Custom" } }
+  "ai": { "empty": "No AI service configured", "service": "AI Services", "notice": "The platform is fully usable without AI configuration. Configure a service to enable deployment advice, error diagnosis, and model Q&A.", "egressNotice": "The assistant reads the platform data the asking user can see - nodes, deployments, models, logs and metrics - and sends what it reads to the AI service in use ({{host}}). To keep it inside the platform, use a model served by this platform.", "name": "Name", "preset": "Preset", "model": "Model", "default": "Default", "deleteConfirm": "Delete this configuration?", "deleted": "Configuration deleted", "addService": "Add AI Service", "added": "AI service added", "baseUrl": "Base URL", "upstreamKey": "Upstream API Key", "setDefault": "Set as Default", "nameRequired": "Enter a name", "namePlaceholder": "For example, deepseek-primary", "baseUrlRequired": "Enter the base URL", "modelRequired": "Enter a model name", "keyRequired": "Enter the upstream API key", "presetName": { "deepseek": "DeepSeek (default)", "bailian": "Alibaba Cloud Model Studio", "siliconflow": "SiliconFlow", "openrouter": "OpenRouter", "poe": "Poe", "custom": "Custom" } },
+  "dataRetention": {
+    "title": "Data retention",
+    "description": "How long each kind of data is kept, how much space it may take, and the time zone daily statistics are counted in. Saving applies at once; what a shorter retention no longer keeps is deleted in the background.",
+    "configNote": "metrics_retention in the configuration file only sets the first start's retention of metrics and logs; from then on this setting decides.",
+    "billing": "Billing record, set on its own",
+    "reset": "Reset",
+    "saved": "Saved and applied",
+    "shrinkTitle": "Shorten retention",
+    "shrinkBody": "After shortening these, what they no longer keep is deleted in the background and cannot be recovered: {{fields}}.",
+    "shrinkOk": "Save and delete",
+    "listSeparator": ", ",
+    "passFailed": "A background cleanup or roll-up failed",
+    "lastRetain": "Last cleanup: {{time}}",
+    "fileSize": "{{file}} uses {{size}}",
+    "rows": "{{hourly}} hourly rows, {{daily}} daily rows",
+    "earliest": "available from {{time}}",
+    "requestsNote": "Whichever limit is reached first applies; under heavy traffic the size limit usually comes first. Today's data is never deleted.",
+    "serverZone": "{{zone}} (the server's zone)",
+    "unit": {
+      "hours": "hours",
+      "days": "days",
+      "mb": "MB"
+    },
+    "range": {
+      "hours": "{{min}}–{{max}} hours",
+      "days": "{{min}}–{{max}} days",
+      "mb": "{{min}}–{{max}} MB"
+    },
+    "fields": {
+      "metrics_hours": "Raw metric samples",
+      "logs_hours": "Container logs",
+      "request_log_days": "Request records, days",
+      "request_log_max_mb": "Request records, size limit",
+      "usage_hourly_days": "Token usage by hour",
+      "usage_daily_days": "Token usage by day",
+      "stats_hourly_days": "Statistics by hour",
+      "stats_daily_days": "Statistics by day"
+    },
+    "switches": {
+      "quality": "Service quality: request outcomes, first-token and end-to-end latency",
+      "gpu": "GPU utilization: utilization, memory, power, temperature",
+      "gpu_time": "GPU hours: cards each deployment held × hours"
+    },
+    "groups": {
+      "metrics": {
+        "title": "Raw metric samples",
+        "description": "Raw samples of nodes, GPUs, engines and the gateway; the monitoring charts read them."
+      },
+      "logs": {
+        "title": "Container logs",
+        "description": "Output of inference engines and containers; log search reads it."
+      },
+      "requests": {
+        "title": "Request records",
+        "description": "The gateway's record of every request (timing, tokens, outcome); the monitoring request view reads it."
+      },
+      "usage": {
+        "title": "Token usage",
+        "description": "Tokens every API key used on every deployment, by hour and by day, never sampled; operations analytics and billing read it."
+      },
+      "stats": {
+        "title": "Service quality / GPU utilization / GPU hours",
+        "description": "The long-term statistics of operations analytics share one retention and can be switched off one by one; a statistic switched off stops counting and what it has ages out."
+      },
+      "zone": {
+        "title": "Statistics time zone",
+        "description": "Where days start for daily statistics. A change applies to days rolled up after it; days already rolled up stay."
+      }
+    }
+  }
 }

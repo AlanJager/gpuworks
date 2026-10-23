@@ -39,6 +39,7 @@ import PullSettingsCard from "./settings/pull/PullSettingsCard";
 import BrandingCard, { BRANDING_ANCHOR } from "./settings/BrandingCard";
 import { TELEMETRY_ANCHOR } from "./settings/TelemetryCard";
 import { SECURITY_ANCHOR } from "./settings/SecurityCard";
+import DataRetentionCard, { DATA_RETENTION_ANCHOR } from "./settings/DataRetentionCard";
 
 const { Text } = Typography;
 
@@ -66,6 +67,7 @@ const SETTINGS_TABS: { key: string; anchors: string[]; cards: () => ReactNode }[
     cards: () => <><SecurityCard /><TerminalCard /><MCPCard /></>,
   },
   { key: "integrations", anchors: [TELEMETRY_ANCHOR], cards: () => <><AICard /><TelemetryCard /></> },
+  { key: "data", anchors: [DATA_RETENTION_ANCHOR], cards: () => <DataRetentionCard /> },
 ];
 
 /** settingsTabFor returns the tab a URL fragment selects (the first by default). */
