@@ -1,9 +1,16 @@
 package api
 
-import "gpuworks.ai/gpuworks/internal/server/store"
+import (
+	"fmt"
+	"strings"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
 
 // Configured roots belong to server.yaml and cannot be changed through the
 // management API. Existing storage definitions never grant a new root.
+// Callers pass only paths this request is setting: a stored path that later
+// falls outside storage_probe_roots stays, and is not judged again.
 func (a *apiHandlers) validateStoragePaths(row *store.Storage, targets []store.StorageNode) error {
 	roots := a.serverSettings().StorageProbeRoots()
 	paths := []string{row.Path, row.CachePath}
@@ -15,21 +22,15 @@ func (a *apiHandlers) validateStoragePaths(row *store.Storage, targets []store.S
 			continue
 		}
 		if err := store.CheckStoragePath(p); err != nil {
-			return productError(ErrorStoragePathInvalid, err.Error(), nil)
+			return productError(ErrorStoragePathInvalid, err.Error(), map[string]any{"path": p})
 		}
-		if len(roots) == 0 {
+		if store.StoragePathAllowed(roots, p) {
 			continue
 		}
-		allowed := false
-		for _, root := range roots {
-			if store.CheckStoragePath(root) == nil && store.StoragePathWithin(root, p) {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return productError(ErrorStoragePathInvalid, "storage path is outside the configured storage_probe_roots", nil)
-		}
+		allowed := strings.Join(roots, ", ")
+		return productError(ErrorStoragePathInvalid,
+			fmt.Sprintf("storage path %s is outside the configured storage_probe_roots (%s)", p, allowed),
+			map[string]any{"path": p, "allowed_roots": roots})
 	}
 	return nil
 }

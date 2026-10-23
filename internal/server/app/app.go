@@ -209,6 +209,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		log.Warn("carry the network settings' proxies over to the pull settings", "err", err)
 	}
 	ensurePlatformSSHKey(st, log)
+	warnUnmanagedStoragePaths(st, cfg.StorageProbeRoots, log)
 	jwtSigner, err := auth.NewTokenSigner(master, 24*time.Hour)
 	if err != nil {
 		return nil, err
