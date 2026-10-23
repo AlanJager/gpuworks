@@ -14,9 +14,10 @@ var requiredPlaygroundLocales = []string{localization.English, localization.Chin
 var playgroundLocaleFiles embed.FS
 
 type playgroundLocale struct {
-	Parameters    map[string]string                       `json:"parameters"`
-	Presets       map[string]string                       `json:"presets"`
-	StreamOptions map[string]playgroundStreamOptionLocale `json:"stream_options"`
+	Parameters        map[string]string                       `json:"parameters"`
+	Presets           map[string]string                       `json:"presets"`
+	PresetUnavailable map[string]string                       `json:"preset_unavailable"`
+	StreamOptions     map[string]playgroundStreamOptionLocale `json:"stream_options"`
 }
 
 type playgroundStreamOptionLocale struct {
@@ -24,9 +25,14 @@ type playgroundStreamOptionLocale struct {
 	Description string `json:"description"`
 }
 
+// playgroundThinkingToggle is the only model family whose "disable thinking"
+// preset is a reliable switch. Other presets stay generic parameter examples.
+const playgroundThinkingToggle = "qwen3"
+
 type playgroundPresetDefinition struct {
-	Key   string
-	Value map[string]any
+	Key         string
+	Value       map[string]any
+	AppliesWhen string
 }
 
 var playgroundParameterDefinitions = []dto.PlaygroundParameter{
@@ -51,8 +57,10 @@ var playgroundStreamOptionDefinitions = []dto.PlaygroundStreamOption{
 
 var playgroundPresetDefinitions = []playgroundPresetDefinition{
 	{Key: "low_reasoning_effort", Value: map[string]any{"reasoning_effort": "low"}},
-	{Key: "disable_thinking", Value: map[string]any{"enable_thinking": false}},
-	{Key: "template_parameters", Value: map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}},
+	// vLLM and SGLang apply Qwen3's chat-template flag only through
+	// chat_template_kwargs. A top-level enable_thinking field is accepted and
+	// ignored, so the model keeps writing the thinking body.
+	{Key: "disable_thinking", AppliesWhen: playgroundThinkingToggle, Value: map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}},
 }
 
 var playgroundLocales map[string]playgroundLocale
@@ -88,6 +96,9 @@ func validatePlaygroundLocales(locales map[string]playgroundLocale) error {
 		if err := validateDisplayLabels(language, "preset", presetKeys, locale.Presets); err != nil {
 			return err
 		}
+		if err := validatePresetUnavailable(language, locale.PresetUnavailable); err != nil {
+			return err
+		}
 		if len(locale.StreamOptions) != len(playgroundStreamOptionDefinitions) {
 			return fmt.Errorf("locale %s has %d stream options, want %d", language, len(locale.StreamOptions), len(playgroundStreamOptionDefinitions))
 		}
@@ -112,6 +123,16 @@ func validateDisplayLabels(language, kind string, expected map[string]struct{}, 
 		}
 	}
 	return nil
+}
+
+func validatePresetUnavailable(language string, labels map[string]string) error {
+	expected := map[string]struct{}{}
+	for _, definition := range playgroundPresetDefinitions {
+		if definition.AppliesWhen != "" {
+			expected[definition.Key] = struct{}{}
+		}
+	}
+	return validateDisplayLabels(language, "preset unavailable text", expected, labels)
 }
 
 func playgroundStreamOptions() []dto.PlaygroundStreamOption {
@@ -143,7 +164,14 @@ func playgroundDictionary() ([]dto.PlaygroundParameter, []dto.PlaygroundExtraPre
 		for _, language := range requiredPlaygroundLocales {
 			label[language] = playgroundLocales[language].Presets[definition.Key]
 		}
-		presets = append(presets, dto.PlaygroundExtraPreset{Label: label, Value: definition.Value})
+		preset := dto.PlaygroundExtraPreset{Key: definition.Key, Label: label, Value: definition.Value, AppliesWhen: definition.AppliesWhen}
+		if definition.AppliesWhen != "" {
+			preset.Unavailable = make(localization.Text, len(requiredPlaygroundLocales))
+			for _, language := range requiredPlaygroundLocales {
+				preset.Unavailable[language] = playgroundLocales[language].PresetUnavailable[definition.Key]
+			}
+		}
+		presets = append(presets, preset)
 	}
 	return parameters, presets
 }

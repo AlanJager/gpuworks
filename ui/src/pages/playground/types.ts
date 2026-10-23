@@ -18,6 +18,9 @@ export interface PlaygroundModel {
   template_spec_name?: string;
   external?: boolean;
   public_data_plane: boolean;
+  engine?: string;
+  /** Qwen3 chat on vLLM or SGLang, where Disable Thinking is a reliable switch. */
+  thinking_toggle?: boolean;
 }
 
 export interface ParameterDefinition {
@@ -42,8 +45,12 @@ export interface StreamOptionDefinition {
 }
 
 export interface ExtraParameterPreset {
+  key?: string;
   label: LocalizedText;
   value: Record<string, unknown>;
+  /** Capability that makes this preset a reliable switch. Empty means it is only an example. */
+  applies_when?: string;
+  unavailable?: LocalizedText;
 }
 
 export interface PlaygroundCatalog {

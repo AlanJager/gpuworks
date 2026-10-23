@@ -10,8 +10,10 @@
   },
   "presets": {
     "low_reasoning_effort": "低推理强度",
-    "disable_thinking": "关闭思考",
-    "template_parameters": "模板参数"
+    "disable_thinking": "关闭思考"
+  },
+  "preset_unavailable": {
+    "disable_thinking": "只有 vLLM 或 SGLang 上的 Qwen3 对话模型会响应这个开关。当前模型已禁用它；藏起思考文本并不能阻止模型继续生成思考内容。"
   },
   "stream_options": {
     "include_usage": { "label": "返回用量（include_usage）", "description": "在流的最后一个块返回 prompt / completion token 数，用于计算回答结束后的准确指标。" },
