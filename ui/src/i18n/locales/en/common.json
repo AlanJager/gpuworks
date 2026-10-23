@@ -223,6 +223,7 @@
     "IMAGE_ENGINE_REQUIRED": "Select an inference engine for the image.",
     "STORAGE_ENABLED_REQUIRED": "Specify whether the storage is enabled.",
     "STORAGE_IN_USE": "The storage is in use by deployments or running instances. Stop or move them first.",
+    "STORAGE_IS_DEFAULT": "The default storage cannot be deleted. Set another storage as the default first.",
     "STORAGE_EXPORT_ALREADY_REGISTERED": "This export is already registered as another storage.",
     "STORAGE_NAME_TAKEN": "Another storage already has this name. Choose a different one.",
     "STORAGE_DISABLED": "The storage is read-only (disabled): nothing can be written into it.",

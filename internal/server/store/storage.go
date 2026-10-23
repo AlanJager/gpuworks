@@ -22,6 +22,7 @@ var (
 	ErrStorageExportTaken   = errors.New("storage export is already registered")
 	ErrStorageNameTaken     = errors.New("storage name is already used")
 	ErrStorageInUse         = errors.New("storage is in use")
+	ErrStorageIsDefault     = errors.New("the default storage cannot be deleted until another storage is set as the default")
 	ErrStorageDisabled      = errors.New("storage is disabled")
 	ErrStorageConfigChanged = errors.New("storage configuration changed")
 )
@@ -337,8 +338,8 @@ func (s *Store) UpdateStorage(id uint, patch StoragePatch) (*Storage, error) {
 }
 
 // DeleteStorage removes a storage object and every index row under it. Files
-// on disk are left alone. A storage a deployment reads from or is limited to
-// cannot go.
+// on disk are left alone. The default storage stays until another one is
+// default. A storage a deployment reads from or is limited to cannot go.
 func (s *Store) DeleteStorage(id uint) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var row Storage
@@ -346,6 +347,9 @@ func (s *Store) DeleteStorage(id uint) error {
 			return ErrNotFound
 		} else if err != nil {
 			return err
+		}
+		if row.IsDefault {
+			return ErrStorageIsDefault
 		}
 		if err := checkStorageIdle(tx, id, true); err != nil {
 			return err

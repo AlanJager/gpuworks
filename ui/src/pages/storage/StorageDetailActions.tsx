@@ -1,4 +1,4 @@
-import { Button, Dropdown, Modal, Switch, message } from "antd";
+import { Button, Dropdown, Modal, Switch, Tooltip, message } from "antd";
 import type { MenuProps } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
@@ -36,9 +36,25 @@ export default function StorageDetailActions({ storage, runner, onEdit, onScan, 
     ...(switchTo ? [{ key: "type", label: t("actions.switchTo", { type: otherLabel }) }] : []),
     ...(cache ? [{ key: "cache", label: t("actions.clearCache") }] : []),
     { type: "divider" as const },
-    { key: "delete", label: t("actions.delete"), danger: true },
+    storage.is_default
+      ? {
+          key: "delete",
+          disabled: true,
+          label: (
+            <Tooltip title={t("actions.deleteDefaultBlocked")}>
+              <span>
+                {t("actions.delete")}
+                <span style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}>
+                  {t("actions.deleteDefaultBlocked")}
+                </span>
+              </span>
+            </Tooltip>
+          ),
+        }
+      : { key: "delete", label: t("actions.delete"), danger: true },
   ];
   const onMenu: MenuProps["onClick"] = ({ key }) => {
+    if (key === "delete" && storage.is_default) return;
     switch (key) {
       case "default":
         void run("default", () => api.updateStorage(storage.id, { is_default: true }), t("actions.defaultSet", { name: storage.name }));

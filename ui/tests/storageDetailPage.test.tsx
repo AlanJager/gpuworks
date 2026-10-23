@@ -148,6 +148,19 @@ test("an admin can make the storage default and disable and enable it from the k
   await waitFor(() => assert.deepEqual(calls.updateStorage[1], [2, { enabled: false }]));
 });
 
+test("a default storage's delete action is disabled and explains why", async () => {
+  const calls = stubDetail({ storage: localStorage() });
+  renderDetail("/storage/1");
+  await screen.findByRole("heading", { name: /default/ });
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(s.actions.more) }));
+  const item = await screen.findByRole("menuitem", { name: new RegExp(s.actions.delete) });
+  assert.equal(item.getAttribute("aria-disabled"), "true");
+  assert.match(item.textContent ?? "", new RegExp(s.actions.deleteDefaultBlocked));
+  fireEvent.click(item);
+  assert.equal(calls.deleteStorage, undefined);
+  assert.equal(document.querySelector(".ant-modal-confirm:not(.ant-zoom-leave)"), null);
+});
+
 test("a default or read-only storage offers no Make default", async () => {
   stubDetail({ storage: localStorage() });
   const first = renderDetail("/storage/1");

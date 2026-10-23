@@ -18,7 +18,7 @@ function setup() {
   render(
     <I18nextProvider i18n={i18n}>
       <ConfigProvider theme={{ token: { motion: false } }}>
-        <StorageDeleteButton link storage={localStorage({ name: "test-storage" })} onConfirm={() => { confirmed += 1; }} />
+        <StorageDeleteButton link storage={localStorage({ name: "test-storage", is_default: false })} onConfirm={() => { confirmed += 1; }} />
       </ConfigProvider>
     </I18nextProvider>,
   );
@@ -52,6 +52,25 @@ test("opening storage deletion dismisses its hover tooltip; cancel preserves the
   await user.hover(trigger);
   await waitFor(() => assert.equal(hoverTooltips().length, 1));
   assert.equal(confirmed(), 0);
+});
+
+test("the default storage's delete control stays disabled and explains why", async () => {
+  let confirmed = 0;
+  render(
+    <I18nextProvider i18n={i18n}>
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <StorageDeleteButton link storage={localStorage({ name: "test-storage" })} onConfirm={() => { confirmed += 1; }} />
+      </ConfigProvider>
+    </I18nextProvider>,
+  );
+  const button = screen.getByRole("button", { name: s.actions.delete }) as HTMLButtonElement;
+  assert.equal(button.disabled, true);
+  const described = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+  assert.equal(described?.textContent, s.actions.deleteDefaultBlocked);
+  const { fireEvent } = await import("@testing-library/react");
+  fireEvent.click(button);
+  assert.equal(confirmed, 0);
+  assert.equal(screen.queryByText(s.actions.deleteConfirm.replace("{{name}}", "test-storage")), null);
 });
 
 test("confirming storage deletion calls the mutation once", async () => {
