@@ -22,7 +22,30 @@ type Usage struct {
 	// StreamTextInChoice says the StreamText keys are members of the choice
 	// itself (text completion: choices[0].text) rather than of its delta.
 	StreamTextInChoice bool
+	// Format is the reply protocol beyond the usage keys: how a stream's
+	// events are told apart and how the reply says it ended.
+	Format Format
+	// UsageOnRequest says a stream carries usage only when the request asks
+	// for it (OpenAI stream_options.include_usage), so the gateway may ask
+	// on the client's behalf (ADR 0042).
+	UsageOnRequest bool
 }
+
+// Format is a reply protocol the gateway reads usage and stream text from.
+type Format uint8
+
+const (
+	// FormatOpenAI is a chat or text completion: choices with deltas, a
+	// finish_reason, usage in the last event.
+	FormatOpenAI Format = iota
+	// FormatResponses is the OpenAI Responses API: typed events
+	// (response.output_text.delta), usage inside the final response object.
+	FormatResponses
+	// FormatMessages is the Anthropic Messages API: content_block_delta
+	// events, the input tokens in message_start and the output tokens in the
+	// last message_delta.
+	FormatMessages
+)
 
 var usages = map[string]Usage{
 	OperationChat: {
@@ -32,7 +55,8 @@ var usages = map[string]Usage{
 		// reasoning_content (vLLM, SGLang, TensorFold) and reasoning (newer
 		// vLLM, OpenRouter) carry a reasoning model's first tokens; a reply
 		// that opens with a tool call has no content at all.
-		StreamText: []string{"content", "reasoning_content", "reasoning", "tool_calls"},
+		StreamText:     []string{"content", "reasoning_content", "reasoning", "tool_calls"},
+		UsageOnRequest: true,
 	},
 	// Text completion reports usage as chat does; a streamed choice carries
 	// its text directly, with no delta.
@@ -40,8 +64,38 @@ var usages = map[string]Usage{
 		Prompt: "prompt_tokens", Completion: "completion_tokens",
 		Cached:     []string{"prompt_tokens_details", "cached_tokens"},
 		StreamText: []string{"text"}, StreamTextInChoice: true,
+		UsageOnRequest: true,
 	},
 	OperationEmbeddings: {Prompt: "prompt_tokens"},
+}
+
+// protocolUsages are replies the gateway forwards on paths no operation
+// owns: agent clients (Claude Code, Codex) call vLLM's and SGLang's
+// Anthropic- and Responses-compatible endpoints directly. Both always report
+// usage, streamed or not, so nothing is asked on the client's behalf.
+var protocolUsages = map[string]Usage{
+	// input_tokens counts the whole prompt here; the cached share is under
+	// input_tokens_details (vLLM 0.30, SGLang).
+	"/v1/responses": {
+		Prompt: "input_tokens", Completion: "output_tokens",
+		Cached:    []string{"input_tokens_details", "cached_tokens"},
+		Reasoning: [][]string{{"output_tokens_details", "reasoning_tokens"}},
+		Format:    FormatResponses,
+		// Responses events are typed, not deltas: the proxy reads them by
+		// their type (response.reasoning_text.delta), these keys only make
+		// the reply a stream.
+		StreamText: []string{"delta"},
+	},
+	// Anthropic usage splits the prompt: input_tokens is the uncached part
+	// when cache_read_input_tokens and cache_creation_input_tokens are
+	// present (vLLM), and the whole prompt when they are not (SGLang). The
+	// proxy adds them up (messagesUsage); Prompt and Cached name the parts.
+	"/v1/messages": {
+		Prompt: "input_tokens", Completion: "output_tokens",
+		Cached:     []string{"cache_read_input_tokens"},
+		Format:     FormatMessages,
+		StreamText: []string{"text", "thinking", "partial_json"},
+	},
 }
 
 // usageByEndpoint maps every endpoint an operation with usage may be served
@@ -61,6 +115,9 @@ var usageByEndpoint = func() map[string]Usage {
 // UsageForPath returns the usage of the operation served at a gateway request
 // path (/v1/chat/completions), or false when the operation reports none.
 func UsageForPath(path string) (Usage, bool) {
-	usage, ok := usageByEndpoint[path]
+	if usage, ok := usageByEndpoint[path]; ok {
+		return usage, true
+	}
+	usage, ok := protocolUsages[path]
 	return usage, ok
 }

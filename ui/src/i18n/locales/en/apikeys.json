@@ -3,7 +3,7 @@
     "cancel": "Cancel",
     "close": "Close",
     "create": "Create",
-    "delete": "Delete"
+    "revoke": "Revoke"
   },
   "breadcrumb": {
     "platform": "Platform"
@@ -14,11 +14,6 @@
     "namePlaceholder": "For example, my-app",
     "nameRequired": "Enter a name",
     "title": "Create API token"
-  },
-  "delete": {
-    "confirm": "Delete “{{name}}”? This token will be revoked. If no tokens remain, the gateway allows anonymous access (development mode).",
-    "failed": "Failed to delete token: {{detail}}",
-    "success": "Token deleted"
   },
   "description": "Issue and manage two kinds of credential: inference tokens for calling deployed models, and platform API tokens for the management API and MCP",
   "empty": "No API tokens",
@@ -34,7 +29,8 @@
     "createdAt": "Created",
     "lastUsed": "Last used",
     "name": "Name",
-    "prefix": "Prefix"
+    "prefix": "Prefix",
+    "status": "Status"
   },
   "title": "API Tokens",
   "usage": "Usage",
@@ -62,5 +58,16 @@
     "revoked": "Revoked",
     "empty": "No platform API tokens",
     "nameTooLong": "Name must not exceed 128 UTF-8 bytes (Chinese characters usually use 3 bytes each)"
-  }
+  },
+  "revoke": {
+    "confirm": "Revoke “{{name}}”? Programs using it lose access at once; its past usage stays in Operations analytics. If no active tokens remain, the gateway allows anonymous access (development mode).",
+    "failed": "Failed to revoke token: {{detail}}",
+    "success": "Token revoked"
+  },
+  "status": {
+    "active": "Active",
+    "revoked": "Revoked",
+    "revokedAt": "Revoked {{time}}"
+  },
+  "showRevoked": "Show revoked ({{count}})"
 }

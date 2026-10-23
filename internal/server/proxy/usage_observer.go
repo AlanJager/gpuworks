@@ -120,6 +120,11 @@ type responseObserver struct {
 	// inChoice: the stream text keys are members of the choice itself (text
 	// completion), not of its delta.
 	inChoice bool
+	// capture keeps the usage members of a Responses or Messages reply,
+	// which need not sit in the tail (usage_protocols.go); captures says it
+	// runs.
+	capture  usageCapture
+	captures bool
 }
 
 // newResponseObserver observes a reply of the operation at path, or returns
@@ -145,6 +150,10 @@ func newResponseObserver(path string, status int, header map[string][]string, st
 	if o.stream {
 		o.keys, o.thinkKey = streamKeys(shape.StreamText)
 		o.inChoice = shape.StreamTextInChoice
+	}
+	if shape.Format != inferenceapi.FormatOpenAI {
+		o.captures = true
+		o.capture.keepFirst = shape.Format == inferenceapi.FormatMessages
 	}
 	return o
 }
@@ -201,6 +210,9 @@ func (o *responseObserver) observe(p []byte) {
 		o.readAt = 0
 		o.scan(p)
 	}
+	if o.captures {
+		o.capture.observe(p)
+	}
 	o.keepTail(p)
 }
 
@@ -248,7 +260,7 @@ func (o *responseObserver) scan(p []byte) {
 
 // reasoningKeys are the stream text keys that carry reasoning; the others in
 // the operation's StreamText are the answer.
-var reasoningKeys = map[string]bool{"reasoning_content": true, "reasoning": true}
+var reasoningKeys = map[string]bool{"reasoning_content": true, "reasoning": true, "thinking": true}
 
 // event classifies one SSE line: a data event carrying non-empty reasoning
 // text, answer text, both, or neither (role-only openers, finish and usage
@@ -256,6 +268,10 @@ var reasoningKeys = map[string]bool{"reasoning_content": true, "reasoning": true
 func (o *responseObserver) event(line []byte) {
 	payload, ok := bytes.CutPrefix(bytes.TrimRight(line, "\r"), []byte("data:"))
 	if !ok {
+		return
+	}
+	if o.shape.Format == inferenceapi.FormatResponses {
+		o.note(responsesText(payload))
 		return
 	}
 	// Engines put the delta near the start of a chunk, after its id, model
@@ -270,12 +286,16 @@ func (o *responseObserver) event(line []byte) {
 		return
 	}
 	window := payload[at+len(anchor) : min(len(payload), at+deltaWindow)]
-	var think, answer bool
 	if o.inChoice {
-		think, answer = o.choiceText(window)
+		o.note(o.choiceText(window))
 	} else {
-		think, answer = o.deltaText(window)
+		o.note(o.deltaText(window))
 	}
+}
+
+// note times one stream event that carried reasoning text, answer text, or
+// neither.
+func (o *responseObserver) note(think, answer bool) {
 	if !think && !answer {
 		return
 	}
@@ -462,9 +482,15 @@ func (o *responseObserver) stats(clean bool) responseStats {
 	}
 	out := o.timeline
 	tail := o.linearTail()
+	out.engine = requestStats(tail, o.reading.rules)
+	if o.shape.Format != inferenceapi.FormatOpenAI {
+		o.protocolStats(&out, tail, clean)
+		tailPool.Put(o.tail)
+		o.tail = nil
+		return out
+	}
 	finishReason, finishAt := lastStringFieldAt(tail, "finish_reason")
 	out.finishReason = finishReason
-	out.engine = requestStats(tail, o.reading.rules)
 	usage, usageAt, hasUsage := lastObjectAt(tail, "usage")
 	// A reply whose last event has arrived - a finish reason, and its usage
 	// with it or after it - is whole even if the copy stopped before the

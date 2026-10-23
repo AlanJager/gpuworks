@@ -1810,6 +1810,8 @@ export interface ApiKey {
   prefix: string;
   last_used?: string;
   created_at: string;
+  /** When the key was revoked; a revoked key no longer authenticates. */
+  revoked_at?: string;
 }
 
 export interface CloudProvider {
@@ -4123,7 +4125,7 @@ export const api = {
   apiKeys: () => getJSON<List<ApiKey>>("/api/v1/apikeys"),
   createApiKey: (name: string) =>
     sendJSON<{ key: string } & ApiKey>("POST", "/api/v1/apikeys", { name }),
-  deleteApiKey: (prefix: string) =>
+  revokeApiKey: (prefix: string) =>
     sendJSON<void>("DELETE", `/api/v1/apikeys/${prefix}`),
   platformTokens: () => getJSON<List<PlatformToken>>("/api/v1/platform-tokens"),
   createPlatformToken: (body: { name: string; scope: PlatformToken["scope"]; expires_in_days?: number }) =>

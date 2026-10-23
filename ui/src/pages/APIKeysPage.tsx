@@ -7,11 +7,14 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Space,
+  Switch,
+  Tag,
   Tooltip,
   Typography,
   message,
 } from "antd";
-import { DeleteOutlined } from "@ant-design/icons";
+import { StopOutlined } from "@ant-design/icons";
 import { api, usePolling, type ApiKey, type List } from "../api";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
 import PageHeader from "../components/PageHeader";
@@ -27,38 +30,57 @@ export default function APIKeysPage() {
   const { data, refetch, loading, error, updatedAt } = usePolling<List<ApiKey>>(api.apiKeys, 15000);
   const [createOpen, setCreateOpen] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
+  const [showRevoked, setShowRevoked] = useState(false);
+  const keys = data?.items ?? [];
+  const revokedCount = keys.filter((k) => k.revoked_at).length;
+  const shown = showRevoked ? keys : keys.filter((k) => !k.revoked_at);
 
   // A token has no detail of its own, so its name is plain text rather than a link.
   const columns: ResourceColumn<ApiKey>[] = [
     { key: "name", role: "name", title: t("table.name"), width: 220, sortValue: (k) => k.name, render: (_: unknown, k: ApiKey) => <Text strong>{k.name || "—"}</Text> },
     { key: "prefix", title: t("table.prefix"), width: 180, render: (_: unknown, k: ApiKey) => <Text code>{k.prefix}</Text> },
+    {
+      key: "status",
+      title: t("table.status"),
+      width: 160,
+      sortValue: (k) => (k.revoked_at ? 1 : 0),
+      render: (_: unknown, k: ApiKey) =>
+        k.revoked_at ? (
+          <Tooltip title={t("status.revokedAt", { time: formatTime(k.revoked_at) })}>
+            <Tag>{t("status.revoked")}</Tag>
+          </Tooltip>
+        ) : (
+          <Tag color="green">{t("status.active")}</Tag>
+        ),
+    },
     { key: "last_used", title: t("table.lastUsed"), width: 180, sortValue: (k) => k.last_used, render: (_: unknown, k: ApiKey) => formatTime(k.last_used, t("never")) },
     { key: "created_at", title: t("table.createdAt"), width: 180, sortValue: (k) => k.created_at, render: (_: unknown, k: ApiKey) => formatTime(k.created_at) },
     {
       key: "action",
       role: "actions",
       width: 90,
-      render: (_: unknown, k: ApiKey) => (
-        <Popconfirm
-          title={t("delete.confirm", { name: k.name })}
-          onConfirm={async () => {
-            try {
-              await api.deleteApiKey(k.prefix);
-              message.success(t("delete.success"));
-              refetch();
-            } catch (e) {
-              message.error(t("delete.failed", { detail: (e as Error).message }));
-            }
-          }}
-          okText={t("actions.delete")}
-          cancelText={t("actions.cancel")}
-          okButtonProps={{ danger: true }}
-        >
-          <Tooltip title={t("actions.delete")}>
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} aria-label={t("actions.delete")} />
-          </Tooltip>
-        </Popconfirm>
-      ),
+      render: (_: unknown, k: ApiKey) =>
+        k.revoked_at ? null : (
+          <Popconfirm
+            title={t("revoke.confirm", { name: k.name })}
+            onConfirm={async () => {
+              try {
+                await api.revokeApiKey(k.prefix);
+                message.success(t("revoke.success"));
+                refetch();
+              } catch (e) {
+                message.error(t("revoke.failed", { detail: (e as Error).message }));
+              }
+            }}
+            okText={t("actions.revoke")}
+            cancelText={t("actions.cancel")}
+            okButtonProps={{ danger: true }}
+          >
+            <Tooltip title={t("actions.revoke")}>
+              <Button type="text" size="small" danger icon={<StopOutlined />} aria-label={t("actions.revoke")} />
+            </Tooltip>
+          </Popconfirm>
+        ),
     },
   ];
 
@@ -75,14 +97,24 @@ export default function APIKeysPage() {
       <Card
         title={t("gateway.title")}
         style={{ marginBottom: 16 }}
-        extra={<Button type="primary" onClick={() => setCreateOpen(true)}>{t("create.button")}</Button>}
+        extra={
+          <Space size={16}>
+            {revokedCount > 0 && (
+              <Space size={6}>
+                <Switch size="small" checked={showRevoked} onChange={setShowRevoked} aria-label={t("showRevoked", { count: revokedCount })} />
+                <Text type="secondary">{t("showRevoked", { count: revokedCount })}</Text>
+              </Space>
+            )}
+            <Button type="primary" onClick={() => setCreateOpen(true)}>{t("create.button")}</Button>
+          </Space>
+        }
       >
       <Paragraph type="secondary">{t("gateway.description")}</Paragraph>
       <ResourceTable<ApiKey>
         tableId="api-keys"
         rowKey="prefix"
         columns={columns}
-        data={data?.items ?? []}
+        data={shown}
         loading={loading}
         error={error}
         onRefresh={refetch}

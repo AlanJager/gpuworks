@@ -317,6 +317,9 @@ type APIKey struct {
 	Prefix   string     `json:"prefix"`
 	LastUsed *time.Time `json:"last_used,omitempty"`
 	Created  time.Time  `json:"created_at"`
+	// Revoked is when the key was revoked; a revoked key never authenticates
+	// and is listed so its past usage keeps a name.
+	Revoked *time.Time `json:"revoked_at,omitempty"`
 }
 
 // DeployRequest is the create-deployment body.

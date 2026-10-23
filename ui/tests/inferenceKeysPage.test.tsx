@@ -13,7 +13,7 @@ const { MemoryRouter } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { default: APIKeysPage } = await import("../src/pages/APIKeysPage.tsx");
 const k = locale.apikeys;
-const original = { apiKeys: api.apiKeys, platformTokens: api.platformTokens, createApiKey: api.createApiKey, deleteApiKey: api.deleteApiKey };
+const original = { apiKeys: api.apiKeys, platformTokens: api.platformTokens, createApiKey: api.createApiKey, revokeApiKey: api.revokeApiKey };
 function setup(items: import("../src/api.ts").ApiKey[] = []) {
   api.apiKeys = async () => ({ items, total: items.length });
   api.platformTokens = async () => ({ items: [], total: 0 });
@@ -79,13 +79,42 @@ test("server refusal preserves the inference token draft and allows a corrected 
   assert.ok(await screen.findByText("gw-RETRIED_SECRET"));
 });
 
-test("delete confirmation names the token and explains the last-key anonymous-mode exception", async () => {
+test("revoke confirmation names the token and explains the last-key anonymous-mode exception", async () => {
   const { user } = setup([{ name: "production-app", prefix: "gw-production", created_at: "2026-10-13T00:00:00Z" }]);
   const row = (await screen.findByText("production-app")).closest("tr")!;
-  await user.click(within(row).getByRole("button", { name: k.actions.delete }));
-  const text = i18n.t("apikeys:delete.confirm", { name: "production-app" });
+  await user.click(within(row).getByRole("button", { name: k.actions.revoke }));
+  const text = i18n.t("apikeys:revoke.confirm", { name: "production-app" });
   assert.match(text, /production-app/);
-  assert.match(text, /revoked/);
-  assert.match(text, /no tokens remain.*anonymous access/);
+  assert.match(text, /lose access/);
+  assert.match(text, /no active tokens remain.*anonymous access/);
   assert.ok(await screen.findByText(text));
+});
+
+test("revoking calls the API once and a revoked token is hidden until asked for", async () => {
+  const revoked: string[] = [];
+  const items: import("../src/api.ts").ApiKey[] = [
+    { name: "live-app", prefix: "gw-live00000", created_at: "2026-10-13T00:00:00Z" },
+    { name: "old-app", prefix: "gw-old000000", created_at: "2026-10-01T00:00:00Z", revoked_at: "2026-10-20T08:00:00Z" },
+  ];
+  const { user } = setup(items);
+  api.revokeApiKey = async (prefix) => { revoked.push(prefix); };
+  const row = (await screen.findByText("live-app")).closest("tr")!;
+  assert.ok(within(row).getByText(k.status.active));
+  assert.equal(screen.queryByText("old-app"), null);
+  const toggle = screen.getByRole("switch", { name: i18n.t("apikeys:showRevoked", { count: 1 }) });
+  await user.click(toggle);
+  const old = (await screen.findByText("old-app")).closest("tr")!;
+  assert.ok(within(old).getByText(k.status.revoked));
+  assert.equal(within(old).queryByRole("button", { name: k.actions.revoke }), null);
+  await user.click(within(row).getByRole("button", { name: k.actions.revoke }));
+  // The confirmation's own button is the last one with that name.
+  await waitFor(() => assert.ok(screen.getAllByRole("button", { name: k.actions.revoke }).length > 1));
+  await user.click(screen.getAllByRole("button", { name: k.actions.revoke }).at(-1)!);
+  await waitFor(() => assert.deepEqual(revoked, ["gw-live00000"]));
+});
+
+test("without revoked tokens there is no revoked toggle", async () => {
+  setup([{ name: "live-app", prefix: "gw-live00000", created_at: "2026-10-13T00:00:00Z" }]);
+  await screen.findByText("live-app");
+  assert.equal(screen.queryByRole("switch"), null);
 });

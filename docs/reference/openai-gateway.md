@@ -50,6 +50,10 @@ server 的 /v1/* 使用 API key 鉴权；请求体中的 model 选择 served mod
 回复里的 `usage` 原样来自引擎，只有两处不同：
 
 - 客户端没要求流式 usage（`stream_options.include_usage`）时，网关为自己的统计向引擎要了一份，并从流里删掉它带来的那个 usage 事件，客户端收到的流与没要时一样。
+- Anthropic Messages（`/v1/messages`）与 OpenAI Responses（`/v1/responses`）请求原样转发，网关不往请求里加任何字段（这两个协议流式也总带 usage），只从回复里读平台自己的统计：
+  - 输入统一记为**总输入**：Responses 的 `input_tokens` 本身就是总数，缓存命中取 `input_tokens_details.cached_tokens`；Messages 带 `cache_read_input_tokens` / `cache_creation_input_tokens` 时（vLLM）`input_tokens` 只是未命中部分，总输入 = 三者之和、缓存命中 = `cache_read_input_tokens`；不带时（SGLang）`input_tokens` 就是总数，缓存命中记为未知。
+  - Messages 流式的输入取自 `message_start`（SGLang 最后的 `message_delta` 只有输出），输出取自最后的 `message_delta`；思考 token 数只有 Responses 报（`output_tokens_details.reasoning_tokens`）。
+  - 结束原因归一成 chat 的写法：`max_tokens` / 状态为 `incomplete` 且原因是 `max_output_tokens` 记为长度截断，`end_turn` 与 `completed` 记为正常完成。vLLM 在截断时仍发 `response.completed`，以其中 response 的 `status` 为准。
 - PD 分离部署顺序交接（`vllm-nixl`、`vllm-ascend-mooncake`）的请求，`prompt_tokens_details.cached_tokens` 是 **prefill 实例**回复里的值：decode 实例把从 prefill 实例拉来的 KV 也算作缓存命中，它报的数总等于整个提示；真正省下计算的是 prefill 实例的前缀缓存命中。网关原地替换这个数（不足的位数补空格，`Content-Length` 不变），usage 的其他字段仍是 decode 实例写的。prefill 实例的回复不带这个数、请求降级由 decode 单独完成、或 SGLang 并发交接时，保留 decode 实例的值。平台的请求记录、网关计数与导出的 trace 用的是同一个数。
 
 ## Playground
