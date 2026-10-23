@@ -74,7 +74,12 @@
     "maxPower": "Maximum power",
     "liveLoad": "Live load",
     "monitoringData": "Monitoring data",
-    "quotaInfo": "Quota information"
+    "currentUse": "Current use",
+    "quotaInfo": "Quota information",
+    "tab": {
+      "basic": "Overview",
+      "monitoring": "Monitoring"
+    }
   },
   "unnamedDeployment": "Unnamed deployment",
   "noData": "No data",
@@ -110,12 +115,12 @@
     "aria": "Memory allocation",
     "slice": "{{name}} · limit {{limit}} GiB",
     "wholeCard": "{{name}} · whole card",
-    "overhead": "Held outside the limits (CUDA context)",
+    "overhead": "Held outside the limits (runtime context)",
     "sleeping": "Sleeping instances' residue",
     "free": "Allocatable",
     "used": "Card in use: {{used}}",
-    "usedLegend": "Card in use (nvidia-smi)",
-    "note": "Blocks are what the scheduler books: a dGPU slice books its limit plus the CUDA context held outside it. The black line is what the card has in use now."
+    "usedLegend": "Card in use",
+    "note": "Blocks are what the scheduler books: a dGPU slice books its limit plus the runtime overhead held outside it. The black line is what the card has in use now."
   },
   "state": {
     "asleep": "Asleep L{{level}}"

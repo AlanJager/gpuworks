@@ -463,8 +463,6 @@ button, input, textarea, select { letter-spacing: 0; }
 .gpu-clickable-row { cursor: pointer; }
 .gpu-clickable-row:hover > td { background: #e6f6ff !important; }
 .dgpu-note { margin-bottom: 12px; }
-.gpu-detail-section + .gpu-detail-section { margin-top: 24px; }
-.gpu-detail-section > .ant-typography { margin: 0 0 10px !important; font-size: 14px !important; }
 .gpu-load-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .gpu-load-tile { display: grid; min-height: 76px; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #dbdde0; border-radius: 4px; background: #f9fafb; }
 .gpu-load-tile > span { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 2px; background: #e6f6ff; color: #005bd4; font-size: 16px; }
