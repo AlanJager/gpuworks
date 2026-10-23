@@ -3,9 +3,11 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -110,8 +112,8 @@ func (a *apiHandlers) storageDTO(row *store.Storage, nodes []store.Node, all boo
 		}
 	}
 	out.ModelCount, _ = a.d.Store.CountModelsInStorage(row.ID)
-	if deps, err := a.d.Store.DeploymentsUsingStorage(row.ID); err == nil {
-		out.DeploymentIDs = append(out.DeploymentIDs, deps...)
+	if _, inUse, err := a.storageRemovalScope(row.ID); err == nil {
+		out.DeploymentIDs = append(out.DeploymentIDs, inUse.DeploymentIDs...)
 	}
 	a.fillStorageCaches(&out, row, nodes)
 	return out
@@ -464,21 +466,90 @@ func (a *apiHandlers) deleteStorage(w http.ResponseWriter, r *http.Request) {
 		writeStoreErr(w, err)
 		return
 	}
-	nodes, _ := a.d.Store.NodesForStorage(row)
-	// The nodes that can write the heartbeat away are read first: deleting
-	// the storage drops their states.
-	writers, _ := a.onlineStorageNodes(row, true)
+	models, inUse, err := a.storageRemovalScope(id)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	if len(inUse.DeploymentIDs) > 0 || len(inUse.InstanceUUIDs) > 0 {
+		writeStoreErr(w, inUse)
+		return
+	}
+	nodes, err := a.d.Store.NodesForStorage(row)
+	if err != nil {
+		writeStoreErr(w, err)
+		return
+	}
+	var writers []*store.Node
+	if proto.StorageShared(row.Type) {
+		ids, err := a.d.Store.ReadyStorageNodes(id, true)
+		if err != nil {
+			writeStoreErr(w, err)
+			return
+		}
+		byID := make(map[uint]*store.Node, len(nodes))
+		for i := range nodes {
+			byID[nodes[i].ID] = &nodes[i]
+		}
+		for _, nodeID := range ids {
+			if node := byID[nodeID]; node != nil && (a.d.Online == nil || a.d.Online(node.UUID)) {
+				writers = append(writers, node)
+			}
+		}
+	}
 	if err := a.d.Store.DeleteStorage(id); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	if proto.StorageShared(row.Type) {
-		// Best effort, and only once the storage is gone: a refused delete
-		// leaves this control plane visible to the others.
-		_, _ = a.storagePeersOn(r.Context(), row, true, writers)
+	var cleanupErr error
+	for _, modelID := range models {
+		if err := a.d.Store.DeleteModel(modelID); err != nil {
+			cleanupErr = fmt.Errorf("remove model %d: %w", modelID, err)
+			break
+		}
 	}
-	a.syncNodes(nodes)
+	if len(writers) > 0 {
+		_, err := a.storagePeersOn(r.Context(), row, true, writers)
+		cleanupErr = errors.Join(cleanupErr, err)
+	}
+	if a.d.NodeSync != nil {
+		for _, node := range nodes {
+			if a.d.Online == nil || a.d.Online(node.UUID) {
+				if err := a.d.NodeSync.SyncNode(node.UUID); err != nil {
+					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("sync storage state to node %s: %w", node.UUID, err))
+				}
+			}
+		}
+	}
+	if cleanupErr != nil {
+		writeErr(w, http.StatusInternalServerError, cleanupErr)
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *apiHandlers) storageRemovalScope(id uint) ([]uint, *store.StorageInUseError, error) {
+	refs, err := a.d.Store.StorageModelReferences(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	keep := make(map[uint]bool)
+	for _, file := range refs.OtherFiles {
+		// Keep unfinished operations without treating them as readable copies.
+		if proto.ModelFileStateReady(file.State) || store.TransferUnderWay(&file) || file.State == proto.MFDeleting {
+			keep[file.ModelID] = true
+		}
+	}
+	models := slices.DeleteFunc(refs.ModelIDs, func(id uint) bool { return keep[id] })
+	inUse := refs.DirectUsers
+	for _, user := range refs.ModelUsers {
+		if !keep[user.ModelID] {
+			inUse.DeploymentIDs = append(inUse.DeploymentIDs, user.ID)
+		}
+	}
+	slices.Sort(inUse.DeploymentIDs)
+	inUse.DeploymentIDs = slices.Compact(inUse.DeploymentIDs)
+	return models, &inUse, nil
 }
 
 // syncStorageNodes resends the desired state to every node a storage applies

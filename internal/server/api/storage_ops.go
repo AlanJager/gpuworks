@@ -179,7 +179,16 @@ func (a *apiHandlers) storagePeersOn(ctx context.Context, row *store.Storage, re
 	if a.d.CallNode == nil {
 		return nil, productError(ErrorNodeRPCUnavailable, "node RPC is not configured", nil)
 	}
-	identity := a.d.Store.ControlPlaneIdentity()
+	var identity store.ControlPlaneIdentity
+	if remove {
+		var err error
+		identity, err = a.d.Store.EnsureControlPlaneIdentity()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		identity = a.d.Store.ControlPlaneIdentity()
+	}
 	for _, node := range writers {
 		callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		raw, err := a.d.CallNode(callCtx, node.UUID, proto.RPCStoragePeers, proto.StoragePeersParams{
