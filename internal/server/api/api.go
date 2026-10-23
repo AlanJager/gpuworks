@@ -199,6 +199,10 @@ type Deps struct {
 	UsageReport UsageReport
 	Notices     Notices
 
+	// Analytics is operations analytics: the data retention every store is
+	// kept under (analytics.go). Nil answers 404.
+	Analytics Analytics
+
 	// AI serves /ai/available, /ai/ask and the LLM-free findings and fit
 	// reads. Nil means no AI service is wired: available reports false.
 	AI AIService
@@ -540,6 +544,9 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/security/settings", a.getSecuritySettings)
 			r.With(a.managementAdmin).Patch("/security/settings", a.patchSecuritySettings)
 			r.With(a.managementAdmin).Patch("/branding", a.patchBranding)
+			r.Get("/data-retention", a.getDataRetention)
+			r.With(a.managementAdmin).Put("/data-retention", a.putDataRetention)
+			r.Get("/data-retention/status", a.getDataRetentionStatus)
 			r.With(a.managementAdmin).Get("/updates", a.getUpdates)
 			r.With(a.managementAdmin).Put("/updates/channel", a.putUpdateChannel)
 			r.With(a.managementAdmin).Put("/updates/auto-check", a.putUpdateAutoCheck)

@@ -47,6 +47,34 @@ func TestRetainByAge(t *testing.T) {
 	}
 }
 
+// The data retention setting shortens the age bound of a running store; a
+// non-positive value keeps the bound it had.
+func TestSetLimitsShortensTheAgeOfARunningStore(t *testing.T) {
+	c := newClock(day0)
+	s, _ := openTest(t, testOpts(c))
+	for _, d := range []int{3, 2, 0} {
+		s.Observe(okReq(fmt.Sprint(d), 1, ms(day0.AddDate(0, 0, -d))))
+	}
+	mustSync(t, s, true)
+	if got := len(dayTables(t, s)); got != 3 {
+		t.Fatalf("days before = %d", got)
+	}
+	s.SetLimits(36*time.Hour, 0)
+	if age, bytes := s.Limits(); age != 36*time.Hour || bytes != DefaultMaxBytes {
+		t.Fatalf("limits = %v %d", age, bytes)
+	}
+	mustSync(t, s, true)
+	if got, want := strings.Join(dayTables(t, s), ","), "20261012"; got != want {
+		t.Fatalf("days = %s, want %s", got, want)
+	}
+	if start, ok, err := s.EarliestDayMS(); err != nil || !ok || start != ms(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("earliest = %d %v %v", start, ok, err)
+	}
+	if s.SizeBytes() <= 0 {
+		t.Fatal("no size")
+	}
+}
+
 // The writer runs retention on its own once a minute of store time has
 // passed since the last pass.
 func TestRetainRunsFromTheWriterLoop(t *testing.T) {
@@ -104,17 +132,17 @@ func TestRetainBySizeDropsOldestButNeverToday(t *testing.T) {
 	}
 
 	// A bound between the two: dropping the heavy oldest day is enough.
-	s.opts.MaxBytes = lightBytes + (allBytes-lightBytes)/2
+	s.SetLimits(0, lightBytes+(allBytes-lightBytes)/2)
 	mustSync(t, s, true)
 	if got, want := strings.Join(dayTables(t, s), ","), "20261012,20261011,20261010"; got != want {
 		t.Fatalf("days = %s, want %s", got, want)
 	}
-	if live, _ := s.liveBytes(); live > s.opts.MaxBytes {
-		t.Fatalf("live %d still over %d", live, s.opts.MaxBytes)
+	if _, bound := s.Limits(); func() bool { live, _ := s.liveBytes(); return live > bound }() {
+		t.Fatalf("live still over %d", bound)
 	}
 
 	// A bound nothing fits: every day but today goes.
-	s.opts.MaxBytes = 1
+	s.SetLimits(0, 1)
 	mustSync(t, s, true)
 	if got := strings.Join(dayTables(t, s), ","); got != "20261012" {
 		t.Fatalf("days = %s, want only today", got)

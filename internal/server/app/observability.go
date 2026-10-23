@@ -24,6 +24,9 @@ type observability struct {
 	logs logstore.Store
 	// ux keeps the gateway's per-request records (ux.db).
 	ux *uxstore.Store
+	// onSamples sees every ingest batch on the ingest goroutine, before it
+	// is written (the long-term GPU statistics count its card samples).
+	onSamples func([]tsdb.Sample)
 
 	// logQueue decouples log ingest from the hub's ctrl-stream read loops:
 	// ingestLogs only enqueues, and logIngestLoop is the sole appender. A
@@ -319,29 +322,6 @@ func (o *observability) histogramLogs(f api.LogsFilter, bucketMS int64) ([]api.L
 		out = append(out, api.LogsBucket{StartMS: b.StartMS, Counts: b.Counts})
 	}
 	return out, nil
-}
-
-// retainLoop prunes metrics + logs beyond the retention window daily.
-func (o *observability) retainLoop(ctx context.Context, keep time.Duration) {
-	t := time.NewTicker(6 * time.Hour)
-	defer t.Stop()
-	prune := func() {
-		cutoff := time.Now().Add(-keep).UnixMilli()
-		// Both Retain calls honour ctx between batches/partitions, so a
-		// cancelled ctx here returns promptly instead of running a large
-		// backlog to completion; the rest resumes on the next scheduled call.
-		_ = o.tsdb.Retain(ctx, cutoff)
-		_ = o.logs.Retain(ctx, cutoff)
-	}
-	prune()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			prune()
-		}
-	}
 }
 
 func (o *observability) close() {

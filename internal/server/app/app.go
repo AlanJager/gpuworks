@@ -55,6 +55,7 @@ type App struct {
 	hub      *hub.Hub
 	ctrl     *controller.Controller
 	obs      *observability
+	ops      *opsStats // operations analytics' long-term statistics
 	recovery *recovery.Recoverer
 	// proxyAcct is proxy request accounting (see accounting.go in the proxy
 	// package).
@@ -248,7 +249,11 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	// trace exporter, which samples the traces the gateway starts (ADR 0046).
 	telemetry := newTelemetry(st, cfg.OutboundAllowPrivateHosts...)
 	px.SetTraceSampler(telemetry.exporter.Sample)
-	px.SetRequestSink(requestSink(obs.ux.Observe, telemetry.exporter))
+	ops, err := newOpsStats(cfg.DataDir, cfg.MetricsRetention, st, obs, log)
+	if err != nil {
+		return nil, err
+	}
+	px.SetRequestSink(requestSink(obs.ux.Observe, ops.observeRequest, telemetry.exporter))
 
 	ai := newAIService(st, obs, box)
 	ai.log = log
@@ -256,7 +261,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
 	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health)
 
-	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, telemetry: telemetry}
+	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, telemetry: telemetry}
 	var restart func()
 	if cfg.SelfRestart {
 		restart = a.requestRestart
@@ -353,6 +358,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		LogsHistogram:        obs.histogramLogs,
 		Monitor:              monSvc,
 		Telemetry:            telemetry,
+		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
 		AI:                   ai,
@@ -463,7 +469,8 @@ func (a *App) Run(ctx context.Context) error {
 	defer metricsCancel()
 	metricsDone := make(chan struct{})
 	if a.obs != nil {
-		goBG(func() { a.obs.retainLoop(ctx, a.cfg.MetricsRetention) })
+		goBG(func() { a.ops.run(ctx) })
+		goBG(func() { a.ops.backfill(ctx) })
 		goBG(func() { a.obs.logIngestLoop(ctx) })
 		go func() {
 			defer close(metricsDone)

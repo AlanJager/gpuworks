@@ -420,10 +420,23 @@ func (s *Store) SetDeploymentState(id uint, state DeploymentState) error {
 
 // DeleteDeployment removes a deployment after its instances have been torn
 // down by the controller. Instance events are deployment-owned history and are
-// removed together with the deployment.
+// removed together with the deployment; its names stay behind in
+// DeletedDeployment for the usage and statistics it leaves.
 func (s *Store) DeleteDeployment(id uint) error {
 	var deletedInstances []string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var dep Deployment
+		if err := tx.Select("ID", "Name", "ServedName").First(&dep, id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&DeletedDeployment{
+			ID: dep.ID, Name: dep.Name, ServedName: dep.ServedName, DeletedAt: time.Now().UTC(),
+		}).Error; err != nil {
+			return err
+		}
 		var insts []Instance
 		if err := tx.Where("deployment_id = ?", id).Find(&insts).Error; err != nil {
 			return err

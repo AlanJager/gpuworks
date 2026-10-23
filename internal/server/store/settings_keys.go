@@ -82,6 +82,12 @@ const (
 	// Only its own route reads and writes it; the generic settings routes
 	// neither list nor accept it.
 	SettingTelemetryExport SettingKey = "telemetry_export"
+
+	// SettingDataRetention holds how long every kind of observation and
+	// statistic is kept, and the statistics time zone, as one JSON value
+	// (store.DataRetention). Only its own route reads and writes it; the
+	// generic settings routes neither list nor accept it.
+	SettingDataRetention SettingKey = "data_retention"
 )
 
 // SettingKeys returns every setting key this server writes on its own. The
@@ -95,6 +101,7 @@ func SettingKeys() []SettingKey {
 		SettingOrphanCleanup,
 		SettingMCPEnabled,
 		SettingTelemetryExport,
+		SettingDataRetention,
 	}
 }
 

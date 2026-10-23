@@ -336,6 +336,8 @@ func (a *apiHandlers) getSettings(w http.ResponseWriter, r *http.Request) {
 	delete(out, store.SettingTelemetryExport.String())
 	// Branding carries an inline logo; it is read through /branding only.
 	delete(out, store.SettingBranding.String())
+	// Data retention has its bounds and status beside it on its own route.
+	delete(out, store.SettingDataRetention.String())
 	out[store.SettingDeploymentPolicy.String()] = a.deploymentPolicyJSON()
 	writeJSON(w, http.StatusOK, out)
 }
@@ -363,6 +365,10 @@ func (a *apiHandlers) putSetting(w http.ResponseWriter, r *http.Request) {
 	}
 	if key == store.SettingBranding.String() {
 		writeProductError(w, http.StatusBadRequest, ErrorSettingHasOwnRoute, "branding is set through PATCH /api/v1/branding", map[string]any{"setting": key, "route": "/api/v1/branding"})
+		return
+	}
+	if key == store.SettingDataRetention.String() {
+		writeProductError(w, http.StatusBadRequest, ErrorSettingHasOwnRoute, "data_retention is set through PUT /api/v1/data-retention", map[string]any{"setting": key, "route": "/api/v1/data-retention"})
 		return
 	}
 	body, err := readAll(r)

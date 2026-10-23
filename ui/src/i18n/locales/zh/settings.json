@@ -58,7 +58,7 @@
     "readOnly": "请在 server.yaml 中修改 usage_report。",
     "saved": "已保存"
   },
-  "page": { "title": "设置", "description": "管理品牌外观、版本更新、镜像和模型从哪里拉取、节点与部署策略、安全与访问，以及 AI 服务等外部集成", "breadcrumb": { "platform": "平台", "settings": "设置" }, "tabs": { "general": "通用", "pull": "镜像与模型拉取", "nodes": "节点与部署", "access": "安全与访问", "integrations": "集成" } },
+  "page": { "title": "设置", "description": "管理品牌外观、版本更新、镜像和模型从哪里拉取、节点与部署策略、安全与访问，以及 AI 服务等外部集成", "breadcrumb": { "platform": "平台", "settings": "设置" }, "tabs": { "general": "通用", "pull": "镜像与模型拉取", "nodes": "节点与部署", "access": "安全与访问", "integrations": "集成", "data": "数据保留" } },
   "branding": {
     "title": "品牌外观",
     "description": "自定义 Logo、产品名称、顶栏标题和登录页介绍文字。留空的项使用内置默认值，默认文案会跟随界面语言；自定义的文字原样显示，不做翻译。",
@@ -343,5 +343,75 @@
       "gateway": "推理 API"
     }
   },
-  "ai": { "empty": "尚未配置 AI 服务", "service": "AI 服务", "notice": "不配置 AI 也能 100% 使用平台；配置后解锁部署建议、错误诊断和模型问答。", "egressNotice": "AI 助手会读取提问用户能看到的平台数据（节点、部署、模型、日志与指标），并把读到的内容发送给当前使用的 AI 服务（{{host}}）。如需数据不出平台，请改用本平台部署的模型。", "name": "名称", "preset": "预设", "model": "模型", "default": "默认", "deleteConfirm": "删除该配置？", "deleted": "已删除", "addService": "添加 AI 服务", "added": "已添加", "baseUrl": "Base URL", "upstreamKey": "上游 API 密钥", "setDefault": "设为默认", "nameRequired": "请输入名称", "namePlaceholder": "例如 deepseek-primary", "baseUrlRequired": "请输入 Base URL", "modelRequired": "请输入模型名", "keyRequired": "请输入上游 API 密钥", "presetName": { "deepseek": "DeepSeek（默认）", "bailian": "百炼", "siliconflow": "硅基流动", "openrouter": "OpenRouter", "poe": "Poe", "custom": "自定义" } }
+  "ai": { "empty": "尚未配置 AI 服务", "service": "AI 服务", "notice": "不配置 AI 也能 100% 使用平台；配置后解锁部署建议、错误诊断和模型问答。", "egressNotice": "AI 助手会读取提问用户能看到的平台数据（节点、部署、模型、日志与指标），并把读到的内容发送给当前使用的 AI 服务（{{host}}）。如需数据不出平台，请改用本平台部署的模型。", "name": "名称", "preset": "预设", "model": "模型", "default": "默认", "deleteConfirm": "删除该配置？", "deleted": "已删除", "addService": "添加 AI 服务", "added": "已添加", "baseUrl": "Base URL", "upstreamKey": "上游 API 密钥", "setDefault": "设为默认", "nameRequired": "请输入名称", "namePlaceholder": "例如 deepseek-primary", "baseUrlRequired": "请输入 Base URL", "modelRequired": "请输入模型名", "keyRequired": "请输入上游 API 密钥", "presetName": { "deepseek": "DeepSeek（默认）", "bailian": "百炼", "siliconflow": "硅基流动", "openrouter": "OpenRouter", "poe": "Poe", "custom": "自定义" } },
+  "dataRetention": {
+    "title": "数据保留",
+    "description": "每类数据保留多久、最多占多少空间，以及按天统计用哪个时区。保存后立即生效；改短的部分会在后台分批删除。",
+    "configNote": "配置文件里的 metrics_retention 只在第一次启动时作为指标与日志保留时长的初值，之后以这里为准。",
+    "billing": "对账依据，单独设置",
+    "reset": "重置",
+    "saved": "已保存，立即生效",
+    "shrinkTitle": "缩短保留期",
+    "shrinkBody": "以下各项改短后，超出部分会在后台分批删除，删除后不可恢复：{{fields}}。",
+    "shrinkOk": "确认并保存",
+    "listSeparator": "、",
+    "passFailed": "后台清理或汇总出错",
+    "lastRetain": "最近一次清理：{{time}}",
+    "fileSize": "{{file}} 占用 {{size}}",
+    "rows": "按小时 {{hourly}} 行，按天 {{daily}} 行",
+    "earliest": "最早可查 {{time}}",
+    "requestsNote": "两项哪个先到按哪个清理；流量大时容量上限通常先到。当天的数据不会被清理。",
+    "serverZone": "{{zone}}（server 所在时区）",
+    "unit": {
+      "hours": "小时",
+      "days": "天",
+      "mb": "MB"
+    },
+    "range": {
+      "hours": "允许 {{min}}–{{max}} 小时",
+      "days": "允许 {{min}}–{{max}} 天",
+      "mb": "允许 {{min}}–{{max}} MB"
+    },
+    "fields": {
+      "metrics_hours": "指标原始样本保留时长",
+      "logs_hours": "容器日志保留时长",
+      "request_log_days": "逐请求记录保留天数",
+      "request_log_max_mb": "逐请求记录容量上限",
+      "usage_hourly_days": "Token 用量按小时保留",
+      "usage_daily_days": "Token 用量按天保留",
+      "stats_hourly_days": "长期统计按小时保留",
+      "stats_daily_days": "长期统计按天保留"
+    },
+    "switches": {
+      "quality": "服务质量：请求结果、首 token 与端到端延迟",
+      "gpu": "GPU 利用：利用率、显存、功耗、温度",
+      "gpu_time": "卡时：各部署占用的卡数 × 小时"
+    },
+    "groups": {
+      "metrics": {
+        "title": "指标原始样本",
+        "description": "节点、GPU、引擎与网关的原始采集点，监控中心的曲线读它。"
+      },
+      "logs": {
+        "title": "容器日志",
+        "description": "推理引擎与容器的输出日志，日志检索读它。"
+      },
+      "requests": {
+        "title": "逐请求记录",
+        "description": "网关每个请求的明细（耗时、token、结果），监控中心的请求视图读它。"
+      },
+      "usage": {
+        "title": "Token 用量",
+        "description": "每个 API Key 在每个部署上用了多少 token，按小时和按天汇总、不抽样，运营分析与对账读它。"
+      },
+      "stats": {
+        "title": "服务质量 / GPU 利用 / 卡时",
+        "description": "运营分析的长期统计，三类共用一组保留期，可分别关闭；关闭后不再累计，已有数据按保留期清理。"
+      },
+      "zone": {
+        "title": "统计时区",
+        "description": "按天汇总的日界线。改动只影响之后汇总的天，已经汇总好的不重算。"
+      }
+    }
+  }
 }
