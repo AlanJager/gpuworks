@@ -246,12 +246,14 @@ func smoke(log *slog.Logger, args []string) error {
 	if conf.Server == "" || conf.Token == "" {
 		return fmt.Errorf("--server and --token are required")
 	}
+	// The deadline covers the dial and the handshake only. Accelerator
+	// discovery stays outside it: New skips that probe for a smoke connection.
+	c := agentconn.New(agentconn.Credentials{ServerURL: conf.Server, NodeToken: conf.Token, Smoke: true}, nil, nil, nil, log)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	c := agentconn.New(agentconn.Credentials{ServerURL: conf.Server, NodeToken: conf.Token, Smoke: true}, nil, nil, nil, log)
 	err = c.Run(ctx)
-	if ctx.Err() != nil {
-		return &exitCodeError{code: 3, err: ctx.Err()}
+	if err != nil && ctx.Err() != nil {
+		return &exitCodeError{code: 3, err: err}
 	}
 	var reject *agentconn.RejectError
 	if errors.As(err, &reject) {

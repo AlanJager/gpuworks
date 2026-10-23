@@ -39,6 +39,9 @@ type PlaygroundModel struct {
 	TemplateSpecName   string                `json:"template_spec_name,omitempty"`
 	External           bool                  `json:"external,omitempty"`
 	PublicDataPlane    bool                  `json:"public_data_plane"`
+	// ThinkingToggle reports that Disable Thinking is a reliable switch for
+	// this deployment: a Qwen3 chat model on vLLM or SGLang.
+	ThinkingToggle bool `json:"thinking_toggle,omitempty"`
 }
 
 // PlaygroundOperation is the resolved catalog operation plus the code-owned
@@ -83,6 +86,11 @@ type PlaygroundStreamOption struct {
 }
 
 type PlaygroundExtraPreset struct {
+	Key   string            `json:"key"`
 	Label localization.Text `json:"label"`
 	Value map[string]any    `json:"value"`
+	// AppliesWhen names the capability that makes Value a reliable switch.
+	// Empty means the preset is an example the caller can send as-is.
+	AppliesWhen string            `json:"applies_when,omitempty"`
+	Unavailable localization.Text `json:"unavailable,omitempty"`
 }

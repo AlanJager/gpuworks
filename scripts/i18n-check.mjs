@@ -127,6 +127,7 @@ const serverDictionaries = [
     sourceFiles: [
       path.join(root, "internal/server/api/playground.go"),
       path.join(root, "internal/server/api/playground_dictionary.go"),
+      path.join(root, "internal/server/api/playground_thinking.go"),
     ],
   },
   {

@@ -10,8 +10,10 @@
   },
   "presets": {
     "low_reasoning_effort": "Low Reasoning Effort",
-    "disable_thinking": "Disable Thinking",
-    "template_parameters": "Template Parameters"
+    "disable_thinking": "Disable Thinking"
+  },
+  "preset_unavailable": {
+    "disable_thinking": "Only a Qwen3 chat model on vLLM or SGLang honors this switch. It is off for the current model, and hiding the thinking text would not stop the model from generating it."
   },
   "stream_options": {
     "include_usage": { "label": "Report usage (include_usage)", "description": "Return prompt and completion token counts in the last chunk, for exact metrics once the reply ends." },

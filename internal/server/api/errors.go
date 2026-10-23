@@ -240,6 +240,7 @@ const (
 	ErrorStorageEnabledRequired                 = "STORAGE_ENABLED_REQUIRED"
 	ErrorStorageConfigChanged                   = "STORAGE_CONFIG_CHANGED"
 	ErrorStorageInUse                           = "STORAGE_IN_USE"
+	ErrorStorageIsDefault                       = "STORAGE_IS_DEFAULT"
 	ErrorStorageExportTaken                     = "STORAGE_EXPORT_ALREADY_REGISTERED"
 	ErrorStorageNameTaken                       = "STORAGE_NAME_TAKEN"
 	ErrorStorageDisabled                        = "STORAGE_DISABLED"

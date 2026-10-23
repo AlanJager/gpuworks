@@ -132,6 +132,17 @@ test("a storage with nodes in trouble shows a warning mark that names them", asy
   assert.equal(within(await rowOf("team-cache")).queryByRole("img", { name: /with problems/ }), null);
 });
 
+test("the default storage's delete control is disabled and explains why", async () => {
+  const calls = stubApi();
+  renderPage();
+  const row = await rowOf("default");
+  const button = within(row).getByRole("button", { name: s.actions.delete }) as HTMLButtonElement;
+  assert.equal(button.disabled, true);
+  assert.equal(document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent, s.actions.deleteDefaultBlocked);
+  fireEvent.click(button);
+  assert.equal(calls.deleteStorage, undefined);
+});
+
 test("an admin has Edit and Delete on each row; Details opens the storage's page", async () => {
   stubApi();
   const { user } = renderPage();

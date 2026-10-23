@@ -148,6 +148,8 @@ func writeStoreErr(w http.ResponseWriter, err error) {
 		writeProductError(w, http.StatusConflict, ErrorStorageInUse, err.Error(), map[string]any{
 			"deployment_ids": inUse.DeploymentIDs, "instance_uuids": inUse.InstanceUUIDs,
 		})
+	case errors.Is(err, store.ErrStorageIsDefault):
+		writeProductError(w, http.StatusConflict, ErrorStorageIsDefault, "the default storage cannot be deleted until another storage is set as the default", nil)
 	case errors.Is(err, store.ErrStorageExportTaken):
 		writeProductError(w, http.StatusConflict, ErrorStorageExportTaken, err.Error(), nil)
 	case errors.Is(err, store.ErrStorageNameTaken):

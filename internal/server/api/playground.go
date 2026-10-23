@@ -71,10 +71,18 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 			// callable Playground entry. Do not synthesize Chat as a fallback.
 			continue
 		}
+		hasChat := false
+		for _, operation := range contract.Operations {
+			if operation.Type == inferenceapi.OperationChat {
+				hasChat = true
+				break
+			}
+		}
 		catalog.Models = append(catalog.Models, dto.PlaygroundModel{
 			ID: dep.ServedName, Label: dep.ServedName, Operations: playgroundOperations(contract, dep.ServedName),
 			InputModalities: modelView.InputModalities, ContextLength: model.ContextLength,
 			Sleeping: sleeping, DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
+			ThinkingToggle: playgroundThinkingToggleEnabled(dep.Engine, dep.ServedName, model, hasChat),
 		})
 	}
 

@@ -60,7 +60,7 @@ func TestPlaygroundCatalogIncludesDeploymentsWithoutAssistantConfigs(t *testing.
 	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Parameters) != 7 || len(catalog.ExtraParameterPresets) < 3 || len(catalog.Models) != 1 {
+	if len(catalog.Parameters) != 7 || len(catalog.ExtraParameterPresets) != 2 || len(catalog.Models) != 1 {
 		t.Fatalf("catalog = %+v", catalog)
 	}
 	for _, parameter := range catalog.Parameters {

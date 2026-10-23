@@ -154,6 +154,12 @@ func TestStoragesAPI(t *testing.T) {
 			t.Fatalf("create %s = %d %s, want %s", bad.body, code, body, bad.code)
 		}
 	}
+	if code, body := call(admin, http.MethodDelete, "/api/v1/storages/1", ""); code != http.StatusConflict || !strings.Contains(body, `"code":"`+ErrorStorageIsDefault+`"`) {
+		t.Fatalf("delete default = %d %s", code, body)
+	}
+	if row, err := st.StorageByID(1); err != nil || !row.IsDefault {
+		t.Fatalf("default storage after refused delete = %+v err=%v", row, err)
+	}
 	code, body := call(admin, http.MethodPost, "/api/v1/storages", `{"name":"nvme","type":"local","path":"/nvme/models","is_default":true}`)
 	var created dto.Storage
 	if err := json.Unmarshal([]byte(body), &created); err != nil || code != http.StatusCreated || !created.IsDefault || !created.AllNodes || created.Path != "/nvme/models" {
@@ -173,15 +179,24 @@ func TestStoragesAPI(t *testing.T) {
 	if code, body := call(admin, http.MethodPatch, "/api/v1/storages/9", `{"enabled":true}`); code != http.StatusNotFound {
 		t.Fatalf("unknown storage patch = %d %s", code, body)
 	}
-	// A deployment limited to the storage by a node requirement keeps it.
-	if _, err := st.CreateDeploymentWithRequirements(&store.Deployment{Name: "d", ServedName: "d", SaveToStorageID: created.ID},
-		nodelabel.Requirements{nodelabel.KeyStorage: {strconv.FormatUint(uint64(created.ID), 10)}}); err != nil {
+	// A deployment limited to the previous storage keeps it. That storage is
+	// no longer the default, so the refusal names the deployment.
+	if _, err := st.CreateDeploymentWithRequirements(&store.Deployment{Name: "d", ServedName: "d", SaveToStorageID: first.ID},
+		nodelabel.Requirements{nodelabel.KeyStorage: {strconv.FormatUint(uint64(first.ID), 10)}}); err != nil {
 		t.Fatal(err)
 	}
-	if code, body := call(admin, http.MethodDelete, fmt.Sprintf("/api/v1/storages/%d", created.ID), ""); code != http.StatusConflict || !strings.Contains(body, ErrorStorageInUse) {
+	if code, body := call(admin, http.MethodDelete, "/api/v1/storages/1", ""); code != http.StatusConflict || !strings.Contains(body, ErrorStorageInUse) {
 		t.Fatalf("delete a storage a deployment is limited to = %d %s", code, body)
 	}
-	if code, _ := call(admin, http.MethodDelete, "/api/v1/storages/1", ""); code != http.StatusNoContent {
+	if code, body := call(admin, http.MethodDelete, fmt.Sprintf("/api/v1/storages/%d", created.ID), ""); code != http.StatusConflict || !strings.Contains(body, `"code":"`+ErrorStorageIsDefault+`"`) {
+		t.Fatalf("delete current default = %d %s", code, body)
+	}
+	spareCode, spareBody := call(admin, http.MethodPost, "/api/v1/storages", `{"name":"spare","type":"local","path":"/spare/models"}`)
+	var spare dto.Storage
+	if err := json.Unmarshal([]byte(spareBody), &spare); err != nil || spareCode != http.StatusCreated || spare.IsDefault {
+		t.Fatalf("spare = %d %s", spareCode, spareBody)
+	}
+	if code, _ := call(admin, http.MethodDelete, fmt.Sprintf("/api/v1/storages/%d", spare.ID), ""); code != http.StatusNoContent {
 		t.Fatalf("delete unbound storage = %d", code)
 	}
 	if code, body := call(member, http.MethodGet, "/api/v1/storages/settings", ""); code != http.StatusOK || !strings.Contains(body, `"control_plane_name":"gpuworks-`) {

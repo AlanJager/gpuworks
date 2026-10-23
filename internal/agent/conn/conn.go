@@ -152,21 +152,40 @@ type Conn struct {
 	localMu  sync.Mutex
 	local    net.IP
 	viaProxy bool
+
+	// trace records smoke stage timings. It is nil for a normal connection.
+	trace *smokeTrace
 }
+
+// discoverProber is the accelerator probe a normal connection runs when the
+// caller does not pass one. Tests replace it. Smoke must not call it: a
+// vendor CLI blocks for its own timeout, and that work sits before the
+// server has anything to say.
+var discoverProber = gpu.New
 
 // New creates a Conn (not yet connected). handlers may be nil for a
 // node-only connection that serves no control requests; prober may be nil to
-// use the default nvidia-smi prober.
+// use the default nvidia-smi prober. A smoke connection with a nil prober
+// skips that probe and reports no accelerator.
 func New(creds Credentials, onReg OnRegistered, handlers Handlers, prober gpu.Prober, log *slog.Logger) *Conn {
 	if prober == nil {
-		prober = gpu.New()
+		if creds.Smoke {
+			prober = gpu.NoAccelerator{}
+		} else {
+			prober = discoverProber()
+		}
 	}
 	return &Conn{creds: creds, log: log, onReg: onReg, handlers: handlers, prober: prober}
 }
 
 // Run dials, handshakes, and serves until the connection drops or ctx is done.
-// It returns the terminating error (nil on clean ctx cancellation).
-func (c *Conn) Run(ctx context.Context) error {
+// It returns the terminating error (nil on clean ctx cancellation). A smoke
+// connection's error names the stage that was in progress.
+func (c *Conn) Run(ctx context.Context) (err error) {
+	if c.creds.Smoke {
+		c.trace = newSmokeTrace()
+		defer func() { err = c.finishSmoke(err) }()
+	}
 	// A connection that will open a data lane dials the ctrl lane with the ctrl
 	// profile and ?lane=ctrl; the server then issues a SessionID. Otherwise the
 	// agent keeps the single adaptive data-profile session with no lane
@@ -182,10 +201,12 @@ func (c *Conn) Run(ctx context.Context) error {
 	defer cancel()
 
 	client, dialedFrom := localAddrClient()
+	endDial := c.smokeStage("dial")
 	ws, _, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{
 		HTTPClient: client,
 		HTTPHeader: http.Header{"User-Agent": []string{"gpuworks-agent/" + version.Version}},
 	})
+	endDial()
 	if err != nil {
 		return err
 	}
@@ -230,10 +251,12 @@ func (c *Conn) RunAccepted(ctx context.Context, netConn net.Conn) error {
 func (c *Conn) runYamuxClient(ctx context.Context, netConn net.Conn, lane string, wantData bool) error {
 	// The ctrl connection uses the profile selected by lane; a data lane, when
 	// opened, always uses the adaptive data profile on its own socket.
+	endYamux := c.smokeStage("yamux")
 	ycfg := laneYamuxConfig(lane, io.Discard)
 	var err error
 	c.ysess, err = yamux.Client(netConn, ycfg, nil)
 	if err != nil {
+		endYamux()
 		return err
 	}
 	defer c.ysess.Close()
@@ -241,11 +264,14 @@ func (c *Conn) runYamuxClient(ctx context.Context, netConn net.Conn, lane string
 	// Open the ctrl stream and write its header.
 	c.ctrl, err = c.ysess.OpenStream(ctx)
 	if err != nil {
+		endYamux()
 		return err
 	}
 	if err := c.writeStreamHeader(proto.StreamHeader{Kind: proto.StreamCtrl}); err != nil {
+		endYamux()
 		return err
 	}
+	endYamux()
 	c.dec = json.NewDecoder(bufio.NewReader(c.ctrl))
 
 	if err := c.handshake(); err != nil {
@@ -332,6 +358,7 @@ func randomNonce() (string, error) {
 }
 
 func (c *Conn) handshake() error {
+	endHello := c.smokeStage("hello")
 	hello := proto.Hello{
 		ProtoMin: proto.ProtoMin,
 		ProtoMax: proto.ProtoMax,
@@ -355,14 +382,19 @@ func (c *Conn) handshake() error {
 	hello.ConnectMode = c.creds.ConnectMode
 	hello.Smoke = c.creds.Smoke
 	if err := c.send(proto.THello, 0, hello); err != nil {
+		endHello()
 		return err
 	}
+	endHello()
 
 	// First reply is the registered identity, followed by the server hello.
+	endRegistered := c.smokeStage("wait_registered")
 	var env proto.Envelope
 	if err := c.dec.Decode(&env); err != nil {
+		endRegistered()
 		return err
 	}
+	endRegistered()
 	if env.T == proto.TReject {
 		var rej proto.Reject
 		if err := json.Unmarshal(env.D, &rej); err != nil {
@@ -387,9 +419,12 @@ func (c *Conn) handshake() error {
 		}
 		c.log.Info("registered with server", "node", reg.NodeUUID)
 		// Then read the server hello.
+		endWelcome := c.smokeStage("server_hello")
 		if err := c.dec.Decode(&env); err != nil {
+			endWelcome()
 			return err
 		}
+		endWelcome()
 	}
 	if env.T != proto.THello {
 		return errors.New("handshake: expected hello, got " + env.T)

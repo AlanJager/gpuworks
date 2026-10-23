@@ -236,6 +236,7 @@
     "switchHelp": "只影响之后的启动，NFS 上的文件不动。",
     "switch": "切换",
     "switched": "{{name}} 已切换为 {{type}}",
+    "deleteDefaultBlocked": "默认存储不能删除，请先把其它存储设为默认。",
     "deleteConfirm": "移除存储 {{name}}？",
     "deleteHelp": "节点上的模型文件不会被删除，只移除存储记录。被部署使用的存储不能移除。",
     "deleteSharedHelp": "共享存储上的文件不会被删除，只移除存储记录和它的心跳。被部署使用的存储不能移除。",

@@ -236,6 +236,7 @@
     "switchHelp": "Only later starts are affected; the files on the NFS stay where they are.",
     "switch": "Switch",
     "switched": "{{name}} is now {{type}}",
+    "deleteDefaultBlocked": "The default storage cannot be deleted. Set another storage as the default first.",
     "deleteConfirm": "Remove storage {{name}}?",
     "deleteHelp": "Model files stay on the nodes; only the storage record is removed. A storage a deployment uses cannot be removed.",
     "deleteSharedHelp": "Files on the shared storage are not deleted; only this storage record and its heartbeat are removed. A storage a deployment uses cannot be removed.",

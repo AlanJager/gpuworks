@@ -1,6 +1,8 @@
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { Checkbox, Input, InputNumber, Space, Tooltip, Typography } from "antd";
 import type { ExtraParameterPreset, ParameterDefinition, ParameterState, StreamOptionDefinition } from "./types";
+import { mergedExtraJSON } from "./extraPreset";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { localizedText } from "../../i18n/localizedText";
 
@@ -20,15 +22,19 @@ export default function ParametersPanel({
   streamOptions = [],
   value,
   onChange,
+  thinkingToggle = false,
 }: {
   definitions: ParameterDefinition[];
   presets: ExtraParameterPreset[];
   streamOptions?: StreamOptionDefinition[];
   value: ParameterState;
   onChange: (value: ParameterState) => void;
+  /** The selected model honors the Qwen3 disable-thinking preset. */
+  thinkingToggle?: boolean;
 }) {
   const { t, i18n } = useTranslation("playground");
   const language = i18n.resolvedLanguage || i18n.language;
+  const [presetError, setPresetError] = useState("");
   const toggle = (name: string, checked: boolean) => onChange({
     ...value,
     enabled: { ...value.enabled, [name]: checked },
@@ -42,10 +48,15 @@ export default function ParametersPanel({
     ...value,
     streamOptions: { ...Object.fromEntries(streamOptions.map((option) => [option.name, streamOptionOn(option)])), [name]: checked },
   });
-  const applyPreset = (preset: ExtraParameterPreset) => onChange({
-    ...value,
-    extraJSON: JSON.stringify(preset.value, null, 2),
-  });
+  const applyPreset = (preset: ExtraParameterPreset) => {
+    try {
+      const extraJSON = mergedExtraJSON(value.extraJSON, preset.value);
+      setPresetError("");
+      onChange({ ...value, extraJSON });
+    } catch {
+      setPresetError(t("parameters.extraPresetRejected"));
+    }
+  };
 
   return (
     <div className="playground-parameters">
@@ -124,12 +135,30 @@ export default function ParametersPanel({
       <div className="playground-field">
         <Typography.Text strong>{t("parameters.extra")}</Typography.Text>
         <Space size={[4, 4]} wrap>
-          {presets.map((preset) => (
-            <button key={JSON.stringify(preset.value)} type="button" className="playground-preset" onClick={() => applyPreset(preset)}>
-              {localizedText(preset.label, language)}
-            </button>
-          ))}
+          {presets.map((preset) => {
+            const label = localizedText(preset.label, language);
+            const blocked = preset.applies_when === "qwen3" && !thinkingToggle;
+            const reason = blocked ? localizedText(preset.unavailable, language) : "";
+            const button = (
+              <button
+                type="button"
+                className="playground-preset"
+                disabled={blocked}
+                title={reason || undefined}
+                aria-label={reason ? `${label}. ${reason}` : label}
+                onClick={() => applyPreset(preset)}
+              >
+                {label}
+              </button>
+            );
+            return (
+              <span key={preset.key || JSON.stringify(preset.value)}>
+                {blocked ? <Tooltip title={reason}><span>{button}</span></Tooltip> : button}
+              </span>
+            );
+          })}
         </Space>
+        {presetError && <p role="alert">{presetError}</p>}
         <Input.TextArea
           id="playground-extra-parameters"
           name="playground-extra-parameters"

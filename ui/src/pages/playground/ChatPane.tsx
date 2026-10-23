@@ -141,7 +141,7 @@ const ChatPane = memo(function ChatPane({
         {showParameters && (
           <aside className="playground-parameter-aside">
             {number && <Button size="small" block onClick={() => { store.applyParameters(column.id); message.success(t("chat.appliedAll")); }}>{t("pane.applyAll")}</Button>}
-            <ParametersPanel definitions={definitions} presets={presets} streamOptions={streamOptions} value={column.parameters} onChange={(value) => store.setParameters(column.id, value)} />
+            <ParametersPanel definitions={definitions} presets={presets} streamOptions={streamOptions} thinkingToggle={!!selectedModel?.thinking_toggle} value={column.parameters} onChange={(value) => store.setParameters(column.id, value)} />
           </aside>
         )}
       </div>

@@ -4,6 +4,7 @@ import { DeleteOutlined } from "@ant-design/icons";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { storageTypeInfo, type Storage } from "../../storageTypes";
+import { WithReason } from "./StorageBrowseActions";
 
 /** The words of the delete confirmation, for the list's button and the detail page's menu alike. */
 export function storageDeleteConfirmText(t: TFunction<"storage">, storage: Storage) {
@@ -26,6 +27,12 @@ export default function StorageDeleteButton({ storage, loading, link = false, on
   const { t } = useTranslation("storage");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const text = storageDeleteConfirmText(t, storage);
+  if (storage.is_default) {
+    const button = link
+      ? <Button size="small" type="text" danger icon={<DeleteOutlined />} aria-label={t("actions.delete")} />
+      : <Button danger>{t("actions.delete")}</Button>;
+    return <WithReason reason={t("actions.deleteDefaultBlocked")}>{button}</WithReason>;
+  }
   return (
     <Popconfirm
       title={text.title}

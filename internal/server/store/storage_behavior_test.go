@@ -230,12 +230,21 @@ func TestStorageAcceptsWritesAndHeartbeatNode(t *testing.T) {
 func TestStorageInvariants(t *testing.T) {
 	f := newStorageFixture(t)
 	st := f.st
+	if err := st.DeleteStorage(f.local.ID); !errors.Is(err, ErrStorageIsDefault) {
+		t.Fatalf("delete default storage = %v", err)
+	}
+	if row, err := st.StorageByID(f.local.ID); err != nil || !row.IsDefault {
+		t.Fatalf("default storage after refused delete = %+v err=%v", row, err)
+	}
 	if _, err := st.CreateStorage(&Storage{Name: "dup", Type: proto.StorageNFS, Export: "NFS.example.internal:/export/models/", Path: "/mnt/x"}, nil); !errors.Is(err, ErrStorageExportTaken) {
 		t.Fatalf("second registration of an export = %v", err)
 	}
 	makeDefault := true
 	if _, err := st.UpdateStorage(f.nfs.ID, StoragePatch{IsDefault: &makeDefault}); err != nil {
 		t.Fatal(err)
+	}
+	if err := st.DeleteStorage(f.nfs.ID); !errors.Is(err, ErrStorageIsDefault) {
+		t.Fatalf("delete the storage that just became default = %v", err)
 	}
 	var defaults int64
 	if err := st.DB().Model(&Storage{}).Where("is_default = ?", true).Count(&defaults).Error; err != nil || defaults != 1 {
