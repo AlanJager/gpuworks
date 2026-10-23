@@ -539,6 +539,18 @@ func TestCloneInferenceTemplateRejectsInvalidModelID(t *testing.T) {
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("invalid clone changed catalog=%+v err=%v", rows, err)
 	}
+	for _, body := range []string{
+		`{"source_model_id":"missing/model","model_id":"me/nowhere"}`,
+		`{"model_id":"me/nowhere"}`,
+	} {
+		rec := request(body, token)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("missing source status=%d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+	if rows, err = st.ListInferenceModels(); err != nil || len(rows) != 1 {
+		t.Fatalf("missing source created a template=%+v err=%v", rows, err)
+	}
 	rec := request(`{"source_model_id":"acme/source","model_id":" ME/Valid "}`, token)
 	if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"model_id":"me/valid"`) {
 		t.Fatalf("valid clone=%d %s", rec.Code, rec.Body.String())
