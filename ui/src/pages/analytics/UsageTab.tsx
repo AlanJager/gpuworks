@@ -148,14 +148,6 @@ export default function UsageTab(props: TabProps) {
     <div>
       <Space wrap size={16} style={{ marginBottom: 16 }}>
         <Space size={8}>
-          <Typography.Text type="secondary">{t("usage.filters.group")}</Typography.Text>
-          <Segmented
-            value={group}
-            onChange={(v) => setSearch({ group: v === "key" ? undefined : String(v) })}
-            options={GROUPS.map((g) => ({ value: g, label: t(`usage.group.${g}`) }))}
-          />
-        </Space>
-        <Space size={8}>
           <Typography.Text type="secondary">{t("usage.filters.key")}</Typography.Text>
           <Select
             showSearch
@@ -201,7 +193,21 @@ export default function UsageTab(props: TabProps) {
               </Space>
               <EChart option={chart(d)} height={340} label={t("usage.chart.aria")} />
             </Card>
-            <Card styles={{ body: { padding: 0 } }} title={<Space align="baseline"><span>{t("usage.table.title")}</span><Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>{t("usage.table.hint")}</Typography.Text></Space>}>
+            {/* The grouping shapes only the details, so it sits on them, where its effect is seen. */}
+            <Card
+              styles={{ body: { padding: 0 } }}
+              title={<Space align="baseline"><span>{t("usage.table.title")}</span><Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>{t("usage.table.hint")}</Typography.Text></Space>}
+              extra={
+                <Space size={8}>
+                  <Typography.Text type="secondary">{t("usage.filters.group")}</Typography.Text>
+                  <Segmented
+                    value={group}
+                    onChange={(v) => setSearch({ group: v === "key" ? undefined : String(v) })}
+                    options={GROUPS.map((g) => ({ value: g, label: t(`usage.group.${g}`) }))}
+                  />
+                </Space>
+              }
+            >
               <UsageTable tree={tree} totals={d.totals} group={group} granularity={d.range.granularity} tz={tz} />
             </Card>
             <BackfillNote range={d.range} kind="usage" />

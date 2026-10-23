@@ -108,6 +108,9 @@ test("grouping by deployment or model lists those first and the keys beneath", a
   stub();
   const user = mount("/analytics/usage");
   await ready("requests");
+  // The grouping shapes only the details, so it sits on the details card.
+  const details = screen.getByText(a.usage.table.title).closest(".ant-card")!;
+  assert.ok(within(details as HTMLElement).getByText(a.usage.group.deployment));
   await choose(user, a.usage.group.deployment);
   await waitFor(() => assert.ok(firstCells().some((c) => c!.includes("qwen3-32b"))));
   assert.ok(firstCells().every((c) => !c!.includes("gw-5fd30737e")), "keys are the second level here");
