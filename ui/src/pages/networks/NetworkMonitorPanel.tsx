@@ -99,7 +99,8 @@ export default function NetworkMonitorPanel({ network }: { network: NetworkDetai
       ) : (
         <Row gutter={[16, 16]}>
           {charts.map((chart) => (
-            <Col xs={24} xl={12} key={chart.key}>
+            // One chart per row: two side by side are too narrow to read in the detail drawer.
+            <Col span={24} key={chart.key}>
               <Card size="small" title={chart.title} extra={chart.hint && <Typography.Text type="secondary" style={{ fontWeight: 400 }}>{chart.hint}</Typography.Text>}>
                 <TimeSeriesChart
                   height={200}

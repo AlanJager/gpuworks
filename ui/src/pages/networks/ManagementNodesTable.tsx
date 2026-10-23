@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { Button, Input, Popconfirm, Select, Space, Switch, Table, Typography, message } from "antd";
+import { useMemo, useState } from "react";
+import { detailExpandable } from "../../components/detail/DetailDrawer";
+import { Alert, Button, Input, Popconfirm, Select, Space, Switch, Table, Tooltip, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { useIsAdmin } from "../../components/useIsAdmin";
 import { apiErrorText } from "../../apiError";
 import type { NetworkNode, NetworkRole } from "../../networkTypes";
 import { Endpoint, WarningMark } from "./networkDisplay";
@@ -25,17 +27,13 @@ function labelPairs(labels: Record<string, string> | undefined): string[] {
 export default function ManagementNodesTable({ nodes, onChanged }: { nodes: NetworkNode[]; onChanged: () => void }) {
   const { t } = useTranslation("networks");
   const { t: tCommon } = useTranslation("common");
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Until the identity is known, or if the lookup fails, the table is read-only.
+  const isAdmin = useIsAdmin();
   const [search, setSearch] = useState("");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulk, setBulk] = useState<Record<NetworkRole, BulkChoice>>({ serving: "keep", storage_sync: "keep", compute: "keep" });
   const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    // A failed identity lookup leaves the table read-only.
-    api.me().then((user) => setIsAdmin(user.role === "admin")).catch(() => {});
-  }, []);
 
   const labelOptions = useMemo(() => {
     const all = new Set<string>();
@@ -68,8 +66,13 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
     }
   };
 
+  // The header says what the switch is about; hovering it says what turning it off does.
   const roleColumn = (role: NetworkRole) => ({
-    title: t(`role.${role}`),
+    title: (
+      <Tooltip title={t(`management.roleTip.${role}`)}>
+        <span className="header-help">{t(`management.roleColumn.${role}`)}</span>
+      </Tooltip>
+    ),
     key: role,
     render: (_: unknown, n: NetworkNode) => {
       const allowed = !(n.roles_off ?? []).includes(role);
@@ -94,12 +97,21 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
     {
       title: t("nodeTable.node"),
       dataIndex: "node_name",
-      render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span>,
+      render: (_, n) => <span><Link to="/nodes" state={{ nodeUUID: n.node_uuid }} className="detail-name-cap" title={n.node_name} onClick={(event) => event.stopPropagation()}>{n.node_name}</Link><WarningMark warnings={n.warnings} /></span>,
     },
     { title: t("management.address"), key: "endpoint", render: (_, n) => <Endpoint iface={n.interface} ip={n.ip} /> },
-    { title: t("management.labels"), key: "labels", render: (_, n) => labelPairs(n.labels).join(", ") || <Typography.Text type="secondary">—</Typography.Text> },
-    ...ROLES.map(roleColumn),
+    { title: t("management.carried"), key: "carried", children: ROLES.map(roleColumn) },
   ];
+  // A node's labels sit one step down: the row keeps the node, its address
+  // and the role switches, which is what fits the 720px detail drawer.
+  const labelsOf = (n: NetworkNode) => (
+    <dl className="detail-extra">
+      <div style={{ gridColumn: "1 / -1" }}>
+        <dt>{t("management.labels")}</dt>
+        <dd>{labelPairs(n.labels).join(", ") || "—"}</dd>
+      </div>
+    </dl>
+  );
 
   const allow = ROLES.filter((r) => bulk[r] === "allow");
   const deny = ROLES.filter((r) => bulk[r] === "deny");
@@ -107,6 +119,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
 
   return (
     <Space direction="vertical" size={12} style={{ width: "100%" }}>
+      <Alert type="info" showIcon message={t("management.switchIntro")} description={t("management.switchEffect")} />
       <Space wrap>
         <Input.Search allowClear placeholder={t("management.search")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 240 }} aria-label={t("management.search")} />
         <Select
@@ -123,13 +136,14 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
       </Space>
       {isAdmin && (
         <Space wrap>
+          <Typography.Text strong>{t("management.bulk.label")}</Typography.Text>
           <Button size="small" onClick={() => setSelected(visible.map((n) => n.node_uuid))} disabled={visible.length === 0}>
             {t("management.bulk.selectShown", { count: visible.length })}
           </Button>
           <Typography.Text>{t("management.bulk.selected", { count: selected.length })}</Typography.Text>
           {ROLES.map((role) => (
             <Space key={role} size={4}>
-              <Typography.Text type="secondary">{t(`role.${role}`)}</Typography.Text>
+              <Typography.Text type="secondary">{t(`management.roleColumn.${role}`)}</Typography.Text>
               <Select
                 size="small"
                 aria-label={`${t("management.bulk.title")} ${t(`role.${role}`)}`}
@@ -160,16 +174,17 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
       )}
       <Table<NetworkNode>
         rowKey="node_uuid"
-        size="middle"
+        className="detail-expandable"
+        size="small"
         // The management network holds every node of the fleet.
         pagination={{ defaultPageSize: 20, hideOnSinglePage: true, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
         columns={columns}
         dataSource={visible}
         rowSelection={isAdmin ? { selectedRowKeys: selected, onChange: (keys) => setSelected(keys as string[]), preserveSelectedRowKeys: true } : undefined}
         locale={{ emptyText: nodes.length === 0 ? t("detail.noNodes") : t("management.noMatch") }}
-        scroll={{ x: true }}
+        scroll={{ x: "max-content" }}
+        expandable={detailExpandable<NetworkNode>(labelsOf, { expand: t("detail.expand"), collapse: t("detail.collapse") })}
       />
-      <Typography.Text type="secondary">{t("management.roleHint")}</Typography.Text>
     </Space>
   );
 }

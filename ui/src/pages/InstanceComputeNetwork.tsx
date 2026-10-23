@@ -1,4 +1,5 @@
 import { Space, Tag, Typography } from "antd";
+import { networkDetailPath } from "./networks/networkLinks";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { InstanceComputeNetwork } from "../api";
@@ -15,7 +16,7 @@ export default function InstanceComputeNetworkView({ network }: { network: Insta
     <Space size={6} wrap>
       {network.management ? (
         <>
-          <Link to="/networks/0">{tNetworks("management.name")}</Link>
+          <Link to={networkDetailPath(0)}>{tNetworks("management.name")}</Link>
           <Tag color="orange">{t("instance.computeNetworkFallback")}</Tag>
         </>
       ) : (

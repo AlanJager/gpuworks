@@ -131,3 +131,7 @@
 /* Points inside a detail's alert: one fact per line, tight to the title. */
 .detail-body .detail-points { margin: 0; padding-left: 16px; }
 .detail-body .detail-points > li + li { margin-top: 2px; }
+
+/* A long identifier in a row (a node's name): capped with an ellipsis, the
+   full text on hover, so it cannot push the row's switches out of view. */
+.detail-body .detail-name-cap { display: inline-block; max-width: 120px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }

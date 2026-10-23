@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { Alert, Button, Card, Popconfirm, Space, Tag, Tooltip, Typography, message } from "antd";
 import { DeleteOutlined, EditOutlined, ProfileOutlined } from "@ant-design/icons";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { numericDetailID, useDetailParam } from "../../components/detail/useDetailParam";
+import NetworkDetailDrawer from "./NetworkDetailDrawer";
+import { networkDetailPath } from "./networkLinks";
 import { useTranslation } from "react-i18next";
 import { api, usePolling } from "../../api";
 import type { Network, NetworkList } from "../../networkTypes";
@@ -29,7 +32,7 @@ export function AttachmentTags({ network }: { network: Network }) {
 
 export default function NetworksPage() {
   const { t } = useTranslation("networks");
-  const navigate = useNavigate();
+  const detail = useDetailParam("network");
   const { data, refetch, loading, error, updatedAt } = usePolling<NetworkList>(api.networks, 15000);
   const [editing, setEditing] = useState<Network | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -45,7 +48,7 @@ export default function NetworksPage() {
   };
 
   const columns: ResourceColumn<Network>[] = [
-    { key: "name", role: "name", title: t("table.name"), width: 220, sortValue: (n) => networkName(t, n), render: (_, n) => <Link to={`/networks/${n.id}`}>{networkName(t, n)}</Link> },
+    { key: "name", role: "name", title: t("table.name"), width: 220, sortValue: (n) => networkName(t, n), render: (_, n) => <Link to={networkDetailPath(n.id)}>{networkName(t, n)}</Link> },
     { key: "roles", title: t("table.roles"), width: 200, render: (_, n) => <RoleTags roles={n.roles} /> },
     {
       key: "type",
@@ -78,7 +81,7 @@ export default function NetworksPage() {
       width: 110,
       render: (_, n) => (
         <Space size={2}>
-          <Tooltip title={t("actions.detail")}><Button type="text" size="small" icon={<ProfileOutlined />} aria-label={t("actions.detail")} onClick={() => navigate(`/networks/${n.id}`)} /></Tooltip>
+          <Tooltip title={t("actions.detail")}><Button type="text" size="small" icon={<ProfileOutlined />} aria-label={t("actions.detail")} onClick={() => detail.open(n.id)} /></Tooltip>
           {/* The management network is built in: it is neither edited nor deleted. */}
           {!n.builtin && (
             <>
@@ -134,8 +137,15 @@ export default function NetworksPage() {
         onSaved={(saved) => {
           setFormOpen(false);
           refetch();
-          if (!editing) navigate(`/networks/${saved.id}`);
+          if (!editing) detail.open(saved.id);
         }}
+      />
+      <NetworkDetailDrawer
+        id={numericDetailID(detail.id)}
+        tab={detail.tab}
+        onTab={detail.setTab}
+        onClose={() => detail.open(null)}
+        onChanged={refetch}
       />
     </>
   );

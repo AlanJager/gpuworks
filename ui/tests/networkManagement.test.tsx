@@ -36,7 +36,15 @@ const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const { ConfigProvider } = await import("antd");
 const apiModule = await import("../src/api.ts");
 const NetworksPage = (await import("../src/pages/networks/NetworksPage.tsx")).default;
-const NetworkDetailPage = (await import("../src/pages/networks/NetworkDetailPage.tsx")).default;
+const { default: NetworkDetailDrawer } = await import("../src/pages/networks/NetworkDetailDrawer.tsx");
+const { useParams: useRouteParams } = await import("react-router-dom");
+// The detail is a drawer over the list now; this stands in for the old page
+// route, opening the drawer on the network the path names.
+function NetworkDetailPage() {
+  const id = Number(useRouteParams().id);
+  const [tab, setTab] = React.useState<string>();
+  return <NetworkDetailDrawer id={id} tab={tab} onTab={setTab} onClose={() => {}} onChanged={() => {}} />;
+}
 const NodeNetworksCard = (await import("../src/components/NodeNetworksCard.tsx")).default;
 const NetworkTestResult = (await import("../src/pages/networks/NetworkTestResult.tsx")).default;
 
@@ -123,13 +131,38 @@ function stubManagement(role: "admin" | "member") {
 const roleSwitch = (node: string, role: "serving" | "storage_sync" | "compute") =>
   screen.getByRole("switch", { name: `${node} ${n.management.roleSwitch[role]}` });
 
+test("following a node's link does not also expand its row, in either node table", async () => {
+  // No routes: the link only changes the location, so the table stays to be read.
+  const drawer = (id: number) => render(
+    <I18nextProvider i18n={i18n}><MemoryRouter><NetworkDetailDrawer id={id} onTab={() => {}} onClose={() => {}} onChanged={() => {}} /></MemoryRouter></I18nextProvider>,
+  );
+  // Taken once the table has settled: an earlier render's link may be gone.
+  const followDoesNotExpand = (name: string) => {
+    const link = screen.getAllByRole("link", { name })[0];
+    const row = link.closest("tr") as HTMLElement;
+    fireEvent.click(link);
+    assert.equal(row.nextElementSibling?.classList.contains("ant-table-expanded-row") ?? false, false, `${name}'s row stays folded`);
+  };
+  stubManagement("admin");
+  drawer(0);
+  await waitFor(() => assert.equal(roleSwitch("gpu-a", "compute").hasAttribute("disabled"), false));
+  followDoesNotExpand("gpu-a");
+  cleanup();
+  stub("network", async () => detailFixture);
+  drawer(detailFixture.id);
+  await screen.findByText("Resolved nodes (2)");
+  followDoesNotExpand("h20-05");
+});
+
 test("members see the management network's per-node roles read-only", async () => {
   stubManagement("member");
   wrap(<NetworkDetailPage />, "/networks/0", "/networks/:id");
-  assert.ok(await screen.findByText(n.management.description));
-  const a = screen.getByRole("link", { name: "gpu-a" }).closest("tr")!;
+  assert.ok(await screen.findByText(n.management.intro.title));
+  const a = screen.getByRole("link", { name: "gpu-a" }).closest("tr")! as HTMLElement;
   assert.ok(within(a).getByText("eth0 · 172.25.0.11"));
-  assert.ok(await within(a).findByText("site=lab"));
+  // A node's labels sit in its row's expanded detail.
+  await userEvent.click(within(a).getByRole("button", { name: n.detail.expand }));
+  assert.ok(await within(a.nextElementSibling as HTMLElement).findByText("site=lab"));
   // Storage sync is allowed on gpu-a but a dedicated network carries it.
   assert.equal(roleSwitch("gpu-a", "storage_sync").getAttribute("aria-checked"), "true");
   assert.ok(within(a).getByText(n.management.dedicated));
@@ -165,6 +198,13 @@ test("the management network runs internal tests like any other network", async 
   assert.deepEqual(body.node_uuids, ["a", "c"]);
 });
 
+// An option of the open select: the node table's links carry the same names
+// as their title, so a page-wide title lookup is ambiguous.
+const dropdownOption = (name: string) => {
+  const dropdown = document.querySelector(".ant-select-dropdown:not(.ant-select-dropdown-hidden)") as HTMLElement;
+  return within(dropdown).getByTitle(name);
+};
+
 test("internal test node search recovers from no results and submits only the selected network nodes", async () => {
   stubManagement("admin");
   const calls: unknown[][] = [];
@@ -191,7 +231,7 @@ test("internal test node search recovers from no results and submits only the se
   await user.type(picker, "gpu-a");
   assert.ok(await screen.findByRole("option", { name: "gpu-a" }));
   assert.equal(screen.queryByRole("option", { name: "gpu-b" }), null, "search filters the network candidates");
-  await user.click(screen.getByTitle("gpu-a"));
+  await user.click(dropdownOption("gpu-a"));
   await user.click(screen.getByRole("button", { name: n.test.start }));
   assert.ok(await screen.findByText(n.test.nodesRequired));
   assert.deepEqual(calls, [], "one real selection is insufficient");
@@ -199,7 +239,7 @@ test("internal test node search recovers from no results and submits only the se
   await user.click(picker);
   await user.type(picker, "h200");
   assert.ok(await screen.findByRole("option", { name: "h200-c" }));
-  await user.click(screen.getByTitle("h200-c"));
+  await user.click(dropdownOption("h200-c"));
   await user.click(screen.getByRole("button", { name: n.test.start }));
   await waitFor(() => assert.deepEqual(calls, [[0, {
     kind: "tcp", pattern: "mesh", scope: "nodes", bandwidth: true, seconds: 3, node_uuids: ["a", "c"],
@@ -286,6 +326,7 @@ test("the label filter narrows the table and a failed bulk change shows the erro
   stub("updateManagementRoles", async () => { throw new Error("node gone"); });
   wrap(<NetworkDetailPage />, "/networks/0", "/networks/:id");
   await screen.findByRole("link", { name: "gpu-a" });
+  for (const button of screen.getAllByRole("button", { name: n.detail.expand })) await userEvent.click(button);
   await screen.findAllByText("site=lab");
   await userEvent.click(screen.getByRole("combobox", { name: n.management.labelFilter }));
   await userEvent.click((await screen.findAllByTitle("pool=cpu")).at(-1)!);

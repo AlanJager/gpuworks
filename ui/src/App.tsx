@@ -36,7 +36,7 @@ import ImagesPage from "./pages/ImagesPage";
 import StoragePage from "./pages/StoragePage";
 import { StorageDetailRedirect } from "./pages/storage/storageLinks";
 import NetworksPage from "./pages/networks/NetworksPage";
-import NetworkDetailPage from "./pages/networks/NetworkDetailPage";
+import { NetworkDetailRedirect } from "./pages/networks/networkLinks";
 import GPUPage from "./pages/GPUPage";
 import TerminalPage from "./pages/TerminalPage";
 import AppErrorBoundary from "./components/AppErrorBoundary";
@@ -174,7 +174,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/storage" element={<StoragePage />} />
             <Route path="/storage/:id" element={<StorageDetailRedirect />} />
             <Route path="/networks" element={<NetworksPage />} />
-            <Route path="/networks/:id" element={<NetworkDetailPage />} />
+            <Route path="/networks/:id" element={<NetworkDetailRedirect />} />
             <Route path="/ai-store/ai-model" element={<ModelsPage />} />
             <Route path="/deploy" element={<DeployPage />} />
             <Route path="/deployments" element={<DeploymentsPage />} />
