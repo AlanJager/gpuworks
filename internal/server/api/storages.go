@@ -409,7 +409,14 @@ func (a *apiHandlers) patchStorage(w http.ResponseWriter, r *http.Request) {
 	if patch.Targets != nil {
 		nextTargets = *patch.Targets
 	}
-	if err := a.validateStoragePaths(&next, nextTargets); err != nil {
+	pathsToValidate := &store.Storage{}
+	if req.Path != nil {
+		pathsToValidate.Path = next.Path
+	}
+	if req.CachePath != nil {
+		pathsToValidate.CachePath = next.CachePath
+	}
+	if err := a.validateStoragePaths(pathsToValidate, nextTargets); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
