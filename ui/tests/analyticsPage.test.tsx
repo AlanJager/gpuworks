@@ -357,6 +357,21 @@ test("the backfill note and the zone appear only when the range starts before li
   mount();
   await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
   assert.ok(screen.queryByText(a.backfill.usage) === null);
+  cleanup();
+  // A fresh installation: the range starts before live accumulation did, but
+  // nothing older than it exists, so nothing was filled in.
+  stub();
+  const fresh = fx.usageToday();
+  analyticsApi.usage = async () => ({ ...fresh, range: { ...fresh.range, earliest_ms: fresh.range.live_since_ms } });
+  mount();
+  await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
+  assert.ok(screen.queryByText(a.backfill.usage) === null);
+  cleanup();
+  stub();
+  analyticsApi.usage = async () => ({ ...fresh, range: { ...fresh.range, earliest_ms: 0 } });
+  mount();
+  await waitFor(() => assert.ok(document.querySelector('[data-stat="requests"]')));
+  assert.ok(screen.queryByText(a.backfill.usage) === null);
 });
 
 test("the subtitle names the retention of the tab and links to the setting", async () => {

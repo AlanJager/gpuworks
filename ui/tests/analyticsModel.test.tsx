@@ -280,3 +280,20 @@ test("the node and model filters list what the cards hold", () => {
   assert.deepEqual(nodes, [{ value: "node-a", label: "6000*4" }, { value: "node-c", label: "gone-node" }, { value: "node-b", label: "PPU810E*16" }].sort((x, y) => x.label.localeCompare(y.label)));
   assert.deepEqual(models.map((m) => m.value), ["PPU 810E", "RTX 6000D"]);
 });
+
+test("buckets before live accumulation count as filled in only when older history exists", async () => {
+  const { leadingBackfilled } = await import("../src/pages/analytics/backfill.tsx");
+  const H = 3_600_000;
+  const base = { from_ms: 0, to_ms: 4 * H, granularity: "hour" as const, time_zone: "UTC", buckets: [0, H, 2 * H, 3 * H] };
+  assert.equal(leadingBackfilled({ ...base, earliest_ms: H, live_since_ms: 2.5 * H }), 3);
+  // A fresh installation started at 2:30: its oldest bucket is the 2:00 one it started in.
+  assert.equal(leadingBackfilled({ ...base, earliest_ms: 2 * H, live_since_ms: 2.5 * H }), 0);
+  assert.equal(leadingBackfilled({ ...base, earliest_ms: 0, live_since_ms: 2.5 * H }), 0);
+  assert.equal(leadingBackfilled({ ...base, earliest_ms: H, live_since_ms: 0 }), 0);
+  // By day: the day it started in is not history either.
+  const D = 24 * H;
+  const days = { ...base, granularity: "day" as const, buckets: [0, D, 2 * D] };
+  assert.equal(leadingBackfilled({ ...days, earliest_ms: D, live_since_ms: D + 5 * H }), 0);
+  assert.equal(leadingBackfilled({ ...days, earliest_ms: 0, live_since_ms: D + 5 * H }), 0);
+  assert.equal(leadingBackfilled({ ...days, earliest_ms: 1, live_since_ms: 2 * D + 5 * H }), 3);
+});
