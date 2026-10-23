@@ -186,7 +186,14 @@ type ImageInspector interface {
 // WorkloadInspection is the portable subset of container inspect output used
 // for instance-scoped launch observation. ContainerID and ImageID must be the
 // immutable runtime identities, never the caller's lookup name or image tag.
+// ImageID may be unknown until the driver resolves an immutable ImageLookupRef.
 type WorkloadInspection struct {
+	// ImageLookupRef is an immutable reference for querying image metadata when
+	// ImageID is not yet known or cannot be used for lookup. Empty means use
+	// ImageID. InspectImage must resolve this exact reference; its returned ID
+	// fills an unknown ImageID, or must match an already known ImageID.
+	ImageLookupRef string
+
 	ContainerID string
 	ImageID     string
 	Entrypoint  []string

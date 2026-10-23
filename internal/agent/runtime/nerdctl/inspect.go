@@ -4,11 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
+
+// Recorded by this driver immediately before run, using the original image
+// reference. This survives later retags, but cannot detect a concurrent retag
+// between inspection and creation by nerdctl.
+const imageTargetLabel = "gpuworks.image-target"
+
+// OCI SHA-2 digests use lowercase hex with the algorithm-defined length.
+var imageDigestPattern = regexp.MustCompile(`^(sha256:[0-9a-f]{64}|sha384:[0-9a-f]{96}|sha512:[0-9a-f]{128})$`)
 
 func (d *Driver) InspectWorkload(ctx context.Context, id string) (runtime.WorkloadInspection, error) {
 	out, err := output(ctx, 10*time.Second, "container", "inspect", "--format", "{{json .}}", id)
@@ -32,6 +41,8 @@ func parseWorkloadInspection(data []byte) (runtime.WorkloadInspection, error) {
 			Entrypoint []string `json:"Entrypoint"`
 			Cmd        []string `json:"Cmd"`
 			Env        []string `json:"Env"`
+
+			Labels map[string]string `json:"Labels"`
 		} `json:"Config"`
 		HostConfig struct {
 			Runtime     string `json:"Runtime"`
@@ -53,11 +64,19 @@ func parseWorkloadInspection(data []byte) (runtime.WorkloadInspection, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return runtime.WorkloadInspection{}, fmt.Errorf("decode nerdctl container inspect: %w", err)
 	}
-	if strings.TrimSpace(raw.ID) == "" || strings.TrimSpace(raw.Image) == "" {
+	target := raw.Config.Labels[imageTargetLabel]
+	// Even an immutable raw.Image is a lookup reference, not necessarily a
+	// config digest. Resolve the recorded target before reporting ImageID.
+	if strings.TrimSpace(raw.ID) == "" || !imageDigestPattern.MatchString(target) {
 		return runtime.WorkloadInspection{}, fmt.Errorf("nerdctl container inspect missing immutable identity")
 	}
+	if imageDigestPattern.MatchString(raw.Image) && raw.Image != target {
+		return runtime.WorkloadInspection{}, fmt.Errorf("nerdctl container image target disagrees with recorded label")
+	}
 	result := runtime.WorkloadInspection{
-		ContainerID: raw.ID, ImageID: raw.Image, Entrypoint: nonNilStrings(raw.Config.Entrypoint),
+		ImageLookupRef: target,
+
+		ContainerID: raw.ID, Entrypoint: nonNilStrings(raw.Config.Entrypoint),
 		Cmd: nonNilStrings(raw.Config.Cmd), Path: raw.Path, Args: nonNilStrings(raw.Args),
 		Env: parseEnv(raw.Config.Env), Mounts: make([]runtime.InspectedMount, 0, len(raw.Mounts)),
 		Devices:     make([]string, 0, len(raw.HostConfig.Devices)+len(raw.HostConfig.DeviceRequests)),
