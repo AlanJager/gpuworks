@@ -18,7 +18,6 @@ export interface PlaygroundModel {
   template_spec_name?: string;
   external?: boolean;
   public_data_plane: boolean;
-  engine?: string;
   /** Qwen3 chat on vLLM or SGLang, where Disable Thinking is a reliable switch. */
   thinking_toggle?: boolean;
 }

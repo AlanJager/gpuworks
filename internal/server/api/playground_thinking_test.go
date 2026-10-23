@@ -145,7 +145,7 @@ func TestPlaygroundCatalogMarksQwen3ThinkingToggle(t *testing.T) {
 	for _, model := range catalog.Models {
 		byID[model.ID] = model
 	}
-	if !byID["Qwen/Qwen3-0.6B"].ThinkingToggle || byID["Qwen/Qwen3-0.6B"].Engine != deploy.EngineVLLM {
+	if !byID["Qwen/Qwen3-0.6B"].ThinkingToggle {
 		t.Fatalf("qwen model = %+v", byID["Qwen/Qwen3-0.6B"])
 	}
 	if byID["llama"].ThinkingToggle {

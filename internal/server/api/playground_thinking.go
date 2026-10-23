@@ -26,30 +26,20 @@ func playgroundThinkingToggleEnabled(engine, servedName string, model *store.Mod
 	}
 	fields := []string{servedName, model.Name, model.SourceID, model.Arch}
 	fields = append(fields, qwen3MetaFields(model.Meta)...)
+	matched := false
 	for _, field := range fields {
-		if qwen3NonThinking(field) {
-			return false
+		lower := strings.ToLower(field)
+		if !strings.Contains(lower, "qwen3") {
+			continue
 		}
-	}
-	for _, field := range fields {
-		if strings.Contains(strings.ToLower(field), "qwen3") {
-			return true
+		for _, marker := range nonThinkingQwen3Markers {
+			if strings.Contains(lower, marker) {
+				return false
+			}
 		}
+		matched = true
 	}
-	return false
-}
-
-func qwen3NonThinking(value string) bool {
-	lower := strings.ToLower(value)
-	if !strings.Contains(lower, "qwen3") {
-		return false
-	}
-	for _, marker := range nonThinkingQwen3Markers {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	return false
+	return matched
 }
 
 // qwen3MetaFields returns the config identity strings. The raw config is not

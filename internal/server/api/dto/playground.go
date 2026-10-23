@@ -39,7 +39,6 @@ type PlaygroundModel struct {
 	TemplateSpecName   string                `json:"template_spec_name,omitempty"`
 	External           bool                  `json:"external,omitempty"`
 	PublicDataPlane    bool                  `json:"public_data_plane"`
-	Engine             string                `json:"engine,omitempty"`
 	// ThinkingToggle reports that Disable Thinking is a reliable switch for
 	// this deployment: a Qwen3 chat model on vLLM or SGLang.
 	ThinkingToggle bool `json:"thinking_toggle,omitempty"`
