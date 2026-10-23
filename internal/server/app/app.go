@@ -356,7 +356,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		LogsSearch:           obs.searchLogs,
 		LogsContext:          obs.contextLogs,
 		LogsHistogram:        obs.histogramLogs,
-		Monitor:              monSvc,
+		Monitor:              monitorService{monSvc},
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
 		UsageReport:          a.usage,

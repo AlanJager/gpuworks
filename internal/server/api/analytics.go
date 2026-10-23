@@ -6,9 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -24,6 +26,32 @@ type Analytics interface {
 	// a *store.DataRetentionError.
 	SetRetention(dto.DataRetention) (dto.DataRetentionView, error)
 	RetentionStatus(ctx context.Context) (dto.DataRetentionStatus, error)
+
+	// The statistics over a range. A query the service refuses is a
+	// *messages.ProductError (answered 400 with its code and params).
+	Usage(ctx context.Context, q AnalyticsQuery) (dto.UsageAnalytics, error)
+	Quality(ctx context.Context, q AnalyticsQuery) (dto.QualityAnalytics, error)
+	GPUs(ctx context.Context, q AnalyticsQuery) (dto.GPUAnalytics, error)
+	GPUTime(ctx context.Context, q AnalyticsQuery) (dto.GPUTimeAnalytics, error)
+	KeyUsage(ctx context.Context) (dto.KeyUsageList, error)
+}
+
+// AnalyticsQuery is a statistics query's parameters: the range (Unix ms)
+// and its granularity (hour, day, or "" to pick by span), and the filters
+// each statistic takes.
+type AnalyticsQuery struct {
+	FromMS, ToMS int64
+	Granularity  string
+	DeploymentID uint
+	// APIKeyID filters the usage by key; Keyless asks for the requests
+	// without one; Source is api, playground or "".
+	APIKeyID uint
+	Keyless  bool
+	Source   string
+	// The GPU heat map: rows (model, node, gpu), colour (util, power, temp,
+	// mem), and the cards (node UUID, model).
+	GroupBy, Metric    string
+	NodeUUID, GPUModel string
 }
 
 func (a *apiHandlers) getDataRetention(w http.ResponseWriter, _ *http.Request) {
@@ -103,4 +131,86 @@ func dataRetentionFields() map[string]bool {
 		out[name] = true
 	}
 	return out
+}
+
+// analyticsQuery reads the query parameters every statistics route shares
+// and the ones it names; a malformed one is a 400 product error.
+func analyticsQuery(r *http.Request) (AnalyticsQuery, error) {
+	v := r.URL.Query()
+	var q AnalyticsQuery
+	bad := func(field string) error {
+		return messages.NewProductError(messages.ErrorAnalyticsValueInvalid, field+" is malformed", map[string]any{"field": field, "detail": "malformed"})
+	}
+	var err error
+	if q.FromMS, err = strconv.ParseInt(v.Get("from"), 10, 64); err != nil {
+		return q, messages.NewProductError(messages.ErrorAnalyticsRangeInvalid, "from is required", map[string]any{"field": "from", "detail": "required, Unix milliseconds"})
+	}
+	if q.ToMS, err = strconv.ParseInt(v.Get("to"), 10, 64); err != nil {
+		return q, messages.NewProductError(messages.ErrorAnalyticsRangeInvalid, "to is required", map[string]any{"field": "to", "detail": "required, Unix milliseconds"})
+	}
+	q.Granularity = v.Get("granularity")
+	if s := v.Get("deployment"); s != "" {
+		id, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			return q, bad("deployment")
+		}
+		q.DeploymentID = uint(id)
+	}
+	switch s := v.Get("key"); s {
+	case "":
+	case "none":
+		q.Keyless = true
+	default:
+		id, err := strconv.ParseUint(s, 10, 64)
+		if err != nil || id == 0 {
+			return q, bad("key")
+		}
+		q.APIKeyID = uint(id)
+	}
+	switch q.Source = v.Get("source"); q.Source {
+	case "", "api", "playground":
+	default:
+		return q, bad("source")
+	}
+	q.GroupBy, q.Metric = v.Get("group_by"), v.Get("metric")
+	q.NodeUUID, q.GPUModel = v.Get("node"), v.Get("model")
+	return q, nil
+}
+
+// analyticsRoute serves one statistics route.
+func analyticsRoute[T any](a *apiHandlers, get func(Analytics, context.Context, AnalyticsQuery) (T, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.d.Analytics == nil {
+			writeErr(w, http.StatusNotFound, ErrAnalyticsUnavailable)
+			return
+		}
+		q, err := analyticsQuery(r)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		out, err := get(a.d.Analytics, r.Context(), q)
+		var refused *messages.ProductError
+		switch {
+		case errors.As(err, &refused):
+			writeErr(w, http.StatusBadRequest, err)
+		case err != nil:
+			writeErr(w, http.StatusInternalServerError, err)
+		default:
+			writeJSON(w, http.StatusOK, out)
+		}
+	}
+}
+
+func (a *apiHandlers) getKeyUsage(w http.ResponseWriter, r *http.Request) {
+	if a.d.Analytics == nil {
+		writeErr(w, http.StatusNotFound, ErrAnalyticsUnavailable)
+		return
+	}
+	out, err := a.d.Analytics.KeyUsage(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }

@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/analytics"
+	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/statsdb"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
 // analyticsAPI serves operations analytics to the API (api.Analytics).
@@ -17,10 +20,46 @@ type analyticsAPI struct {
 	store   *store.Store
 	obs     *observability
 	dataDir string
+	queries *analytics.Service
 }
 
 func newAnalyticsAPI(ops *opsStats, st *store.Store, obs *observability, dataDir string) *analyticsAPI {
-	return &analyticsAPI{ops: ops, store: st, obs: obs, dataDir: dataDir}
+	return &analyticsAPI{ops: ops, store: st, obs: obs, dataDir: dataDir, queries: &analytics.Service{
+		Store: st, Stats: ops.stats, Retention: ops.Retention, LiveSinceMS: ops.liveSinceMS,
+		Now: func() time.Time { return ops.now() },
+	}}
+}
+
+func analyticsQuery(q api.AnalyticsQuery) analytics.Query {
+	return analytics.Query{FromMS: q.FromMS, ToMS: q.ToMS, Granularity: q.Granularity}
+}
+
+func (a *analyticsAPI) Usage(ctx context.Context, q api.AnalyticsQuery) (dto.UsageAnalytics, error) {
+	f := analytics.UsageFilter{DeploymentID: q.DeploymentID, APIKeyID: q.APIKeyID, KeylessOnly: q.Keyless}
+	switch q.Source {
+	case "api":
+		f.Source = 1 + uint8(uxrecord.SourceAPI)
+	case "playground":
+		f.Source = 1 + uint8(uxrecord.SourcePlayground)
+	}
+	return a.queries.Usage(ctx, analyticsQuery(q), f)
+}
+
+func (a *analyticsAPI) Quality(ctx context.Context, q api.AnalyticsQuery) (dto.QualityAnalytics, error) {
+	return a.queries.Quality(ctx, analyticsQuery(q), q.DeploymentID)
+}
+
+func (a *analyticsAPI) GPUs(ctx context.Context, q api.AnalyticsQuery) (dto.GPUAnalytics, error) {
+	return a.queries.GPUs(ctx, analytics.GPUQuery{Query: analyticsQuery(q), GroupBy: q.GroupBy, Metric: q.Metric,
+		GPUFilter: statsdb.GPUFilter{NodeUUID: q.NodeUUID, GPUModel: q.GPUModel}})
+}
+
+func (a *analyticsAPI) GPUTime(ctx context.Context, q api.AnalyticsQuery) (dto.GPUTimeAnalytics, error) {
+	return a.queries.GPUTime(ctx, analyticsQuery(q), q.DeploymentID)
+}
+
+func (a *analyticsAPI) KeyUsage(ctx context.Context) (dto.KeyUsageList, error) {
+	return a.queries.KeyUsage(ctx)
 }
 
 func retentionDTO(r store.DataRetention) dto.DataRetention {

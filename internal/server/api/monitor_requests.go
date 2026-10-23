@@ -166,16 +166,15 @@ func (a *apiHandlers) monitorLatency(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, ErrorDeploymentIDInvalid, "invalid deployment id", nil)
 		return
 	}
-	rng, ok := parseMonitorRange(r.URL.Query().Get("range"))
+	svc, rng, ok := a.monitorWindow(w, r)
 	if !ok {
-		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
 		return
 	}
-	if a.d.Monitor == nil {
+	if svc == nil {
 		writeErr(w, http.StatusNotFound, ErrMonitorDeploymentNotFound)
 		return
 	}
-	out, err := a.d.Monitor.Latency(r.Context(), id, rng)
+	out, err := svc.Latency(r.Context(), id, rng)
 	switch {
 	case errors.Is(err, ErrMonitorDeploymentNotFound):
 		writeErr(w, http.StatusNotFound, err)
@@ -191,9 +190,8 @@ func (a *apiHandlers) monitorLatency(w http.ResponseWriter, r *http.Request) {
 // finished within range, of one deployment or (without deployment) all.
 func (a *apiHandlers) monitorDistributions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	rng, ok := parseMonitorRange(q.Get("range"))
+	svc, rng, ok := a.monitorWindow(w, r)
 	if !ok {
-		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
 		return
 	}
 	var deployment uint
@@ -203,11 +201,11 @@ func (a *apiHandlers) monitorDistributions(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	if a.d.Monitor == nil {
+	if svc == nil {
 		writeErr(w, http.StatusNotFound, ErrMonitorDeploymentNotFound)
 		return
 	}
-	out, err := a.d.Monitor.Distributions(r.Context(), deployment, rng)
+	out, err := svc.Distributions(r.Context(), deployment, rng)
 	switch {
 	case errors.Is(err, ErrMonitorDeploymentNotFound):
 		writeErr(w, http.StatusNotFound, err)

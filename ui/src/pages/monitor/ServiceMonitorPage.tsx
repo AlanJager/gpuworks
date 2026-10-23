@@ -15,7 +15,7 @@ import LatencyBreakdown from "./LatencyBreakdown";
 import LiveRequestsOverview from "./LiveRequestsOverview";
 import ServiceHealthCard from "./ServiceHealthCard";
 import ServiceLogStream from "./ServiceLogStream";
-import TimeRangeControl, { TimeRangeProvider, useTimeRange } from "./TimeRangeContext";
+import TimeRangeControl, { PickedRangeNote, TimeRangeProvider, useTimeRange } from "./TimeRangeContext";
 import { DistributionState, InputOutputHeatmap, UncachedTTFTHeatmap } from "./RequestShapeCards";
 import RequestView from "./RequestView";
 import { useMonitorDeployment, useMonitorDistributions } from "./useMonitor";
@@ -109,6 +109,7 @@ function ServiceMonitorPageContent() {
   return (
     <div>
       <PageHeader
+        className="page-header-wrap"
         title={data?.deployment.name ?? `#${deploymentId}`}
         description={
           data
@@ -123,7 +124,7 @@ function ServiceMonitorPageContent() {
         }
         breadcrumb={[t("overview.title"), data?.deployment.name ?? `#${deploymentId}`]}
         extra={
-          <Space wrap>
+          <Space wrap style={{ justifyContent: "flex-end" }}>
             <TimeRangeControl />
             <Button onClick={() => navigate("/monitor")}>{t("deployment.backToMonitor")}</Button>
             <Link to={`/deployments?deployment=${deploymentId}`}>
@@ -149,6 +150,7 @@ function ServiceMonitorPageContent() {
       {data && (
         <>
           <AsOfCaption asOf={data.as_of} stale={data.stale} />
+          <PickedRangeNote />
 
           {data.pd && <PdCard pd={data.pd} />}
 

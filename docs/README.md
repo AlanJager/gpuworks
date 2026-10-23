@@ -62,6 +62,7 @@
 
 - [排障指南](how-to/troubleshooting.md)
 - [查看指标与检索日志](how-to/monitor-and-logs.md)
+- [查看运营分析](how-to/analyze-operations.md)
 - [导出请求 trace 到 OpenTelemetry](how-to/export-request-traces.md)
 - [为推理模板声明引擎指标](how-to/declare-engine-metrics.md)
 - [运行评测并解读报告](how-to/benchmark.md)

@@ -1,3 +1,5 @@
+import { rangeParams, type MonitorRange } from "./monitorRange";
+
 // Wire types of the per-request monitor views (dto/monitor_requests.go):
 // GET /api/v1/monitor/deployments/{id}/requests and
 // GET /api/v1/monitor/distributions.
@@ -120,8 +122,8 @@ export interface MonitorLatency {
   };
 }
 
-export function monitorLatencyURL(id: number, range: string): string {
-  return `/api/v1/monitor/deployments/${id}/latency?${new URLSearchParams({ range })}`;
+export function monitorLatencyURL(id: number, range: MonitorRange): string {
+  return `/api/v1/monitor/deployments/${id}/latency?${new URLSearchParams(rangeParams(range))}`;
 }
 
 export interface MonitorRequestCounts {
@@ -186,10 +188,12 @@ export interface MonitorRequestsQuery {
 
 export function monitorRequestsURL(id: number, q: MonitorRequestsQuery): string {
   const params = new URLSearchParams({ view: q.view });
-  if (q.range) params.set("range", q.range);
   if (q.from && q.to) {
     params.set("from", String(q.from));
     params.set("to", String(q.to));
+  } else if (q.range) {
+    // A picked page range is the history's window too.
+    for (const [k, v] of Object.entries(rangeParams(q.range as MonitorRange))) params.set(k, v);
   }
   if (q.limit) params.set("limit", String(q.limit));
   if (q.key) params.set("key", String(q.key));
@@ -201,8 +205,8 @@ export function monitorRequestsURL(id: number, q: MonitorRequestsQuery): string 
   return `/api/v1/monitor/deployments/${id}/requests?${params}`;
 }
 
-export function monitorDistributionsURL(range: string, deploymentId?: number): string {
-  const params = new URLSearchParams({ range });
+export function monitorDistributionsURL(range: MonitorRange, deploymentId?: number): string {
+  const params = new URLSearchParams(rangeParams(range));
   if (deploymentId) params.set("deployment", String(deploymentId));
   return `/api/v1/monitor/distributions?${params}`;
 }

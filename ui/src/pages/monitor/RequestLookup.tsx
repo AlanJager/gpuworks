@@ -65,7 +65,7 @@ export default function RequestLookup() {
         onSearch={search}
         placeholder={t("lookup.placeholder")}
         aria-label={t("lookup.label")}
-        style={{ width: 300 }}
+        style={{ width: 200 }}
       />
       <Drawer open={state != null} onClose={() => setState(null)} title={t(`lookup.title.${kind}`)} width={720}>
         {state && (

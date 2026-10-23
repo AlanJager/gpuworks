@@ -197,3 +197,11 @@ func pdPlacement(raw string) *planning.PDPlacement {
 	pd, _ := planning.PDOf(raw)
 	return pd
 }
+
+// monitorService is monitorapi.Service as the API takes it: its view as of a
+// picked range's end is an api.MonitorService too.
+type monitorService struct{ *monitorapi.Service }
+
+func (m monitorService) At(end time.Time) api.MonitorService {
+	return monitorService{m.Service.At(end)}
+}

@@ -88,3 +88,206 @@ type UsageFlush struct {
 	MS    int64  `json:"ms"`
 	Error string `json:"error,omitempty"`
 }
+
+// AnalyticsRange is the span a statistics answer covers, as the server
+// resolved it: day spans are whole days of the statistics time zone.
+type AnalyticsRange struct {
+	FromMS      int64  `json:"from_ms"`
+	ToMS        int64  `json:"to_ms"`
+	Granularity string `json:"granularity"` // hour | day
+	TimeZone    string `json:"time_zone"`
+	// EarliestMS is the oldest bucket the statistic still has at this
+	// granularity; 0 when it has none.
+	EarliestMS int64 `json:"earliest_ms"`
+	// LiveSinceMS is when live accumulation began: buckets before it were
+	// filled in once from the request log (sampled rows weighed, requests
+	// whose usage the gateway did not read then left without tokens).
+	LiveSinceMS int64 `json:"live_since_ms"`
+	// Buckets are the bucket starts, in order; series align with them.
+	Buckets []int64 `json:"buckets"`
+}
+
+// UsageCounts are a usage total (rollup.Usage): tokens add up the requests
+// that reported usage; the hit rate divides cached_tokens by
+// cache_reported_prompt.
+type UsageCounts struct {
+	Requests            int64 `json:"requests"`
+	NoUsage             int64 `json:"no_usage"`
+	PromptTokens        int64 `json:"prompt_tokens"`
+	CompletionTokens    int64 `json:"completion_tokens"`
+	ReasoningTokens     int64 `json:"reasoning_tokens"`
+	ReasoningReported   int64 `json:"reasoning_reported"`
+	CachedTokens        int64 `json:"cached_tokens"`
+	CacheReported       int64 `json:"cache_reported"`
+	CacheReportedPrompt int64 `json:"cache_reported_prompt"`
+}
+
+// UsageRow is one key x user x deployment x source over the range.
+type UsageRow struct {
+	APIKeyID      uint   `json:"api_key_id"`
+	APIKeyName    string `json:"api_key_name"`
+	APIKeyPrefix  string `json:"api_key_prefix"`
+	APIKeyRevoked bool   `json:"api_key_revoked"`
+	// APIKeyDeleted marks a key deleted before keys were kept on revoking.
+	APIKeyDeleted     bool   `json:"api_key_deleted"`
+	UserID            uint   `json:"user_id"`
+	UserName          string `json:"user_name"`
+	DeploymentID      uint   `json:"deployment_id"`
+	DeploymentName    string `json:"deployment_name"`
+	ServedName        string `json:"served_name"`
+	DeploymentDeleted bool   `json:"deployment_deleted"`
+	Source            string `json:"source"` // api | playground
+	// FirstMS and LastMS are the first and last buckets it was used in.
+	FirstMS int64 `json:"first_ms"`
+	LastMS  int64 `json:"last_ms"`
+	UsageCounts
+}
+
+// UsageAnalytics is the token usage over a range.
+type UsageAnalytics struct {
+	Range  AnalyticsRange `json:"range"`
+	Totals UsageCounts    `json:"totals"`
+	// Series is the total of each bucket.
+	Series []UsageCounts `json:"series"`
+	Rows   []UsageRow    `json:"rows"`
+}
+
+// QualityFigures are a quality total: outcomes, latency percentiles of the
+// whole replies (null without any) and the output speed of the streamed ones.
+type QualityFigures struct {
+	Requests     int64    `json:"requests"`
+	Completed    int64    `json:"completed"`
+	Length       int64    `json:"length"`
+	ClientClosed int64    `json:"client_closed"`
+	Interrupted  int64    `json:"interrupted"`
+	Error        int64    `json:"error"`
+	TTFTP50MS    *float64 `json:"ttft_p50_ms"`
+	TTFTP95MS    *float64 `json:"ttft_p95_ms"`
+	E2EP50MS     *float64 `json:"e2e_p50_ms"`
+	E2EP95MS     *float64 `json:"e2e_p95_ms"`
+	// OutputTokensPerSec is completion tokens over the time from the first
+	// token to the last event; null without a timed stream.
+	OutputTokensPerSec *float64 `json:"output_tokens_per_sec"`
+}
+
+// QualityRow is a deployment's quality over the range.
+type QualityRow struct {
+	DeploymentID      uint   `json:"deployment_id"`
+	DeploymentName    string `json:"deployment_name"`
+	ServedName        string `json:"served_name"`
+	DeploymentDeleted bool   `json:"deployment_deleted"`
+	QualityFigures
+}
+
+// QualityAnalytics is the service quality over a range.
+type QualityAnalytics struct {
+	Range  AnalyticsRange   `json:"range"`
+	Totals QualityFigures   `json:"totals"`
+	Series []QualityFigures `json:"series"`
+	Rows   []QualityRow     `json:"rows"`
+}
+
+// GPUFigures are a card's or a group's statistics: means over the samples,
+// maxima over them; null without samples of that kind.
+type GPUFigures struct {
+	UtilAvg      *float64 `json:"util_avg"`
+	UtilMax      *float64 `json:"util_max"`
+	MemUsedAvg   *float64 `json:"mem_used_avg_bytes"`
+	MemUsedMax   *float64 `json:"mem_used_max_bytes"`
+	MemTotal     *float64 `json:"mem_total_bytes"`
+	PowerAvg     *float64 `json:"power_avg_watts"`
+	TempAvg      *float64 `json:"temp_avg_celsius"`
+	TempMax      *float64 `json:"temp_max_celsius"`
+	UtilSamples  int64    `json:"util_samples"`
+	PowerSamples int64    `json:"power_samples"`
+}
+
+// GPUCardRow is one card over the range.
+type GPUCardRow struct {
+	NodeUUID string `json:"node_uuid"`
+	NodeName string `json:"node_name"`
+	GPUIndex int    `json:"gpu_index"`
+	GPUUUID  string `json:"gpu_uuid"`
+	GPUModel string `json:"gpu_model"`
+	// Deployments hold the card now (empty when none, or the card is gone).
+	Deployments []string `json:"deployments"`
+	// Present says the card is in the inventory now.
+	Present bool `json:"present"`
+	GPUFigures
+}
+
+// GPUHeatRow is one row of the heat map: a model, a node or a card.
+type GPUHeatRow struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	// Values align with the range's buckets; null where the row had no
+	// samples of the metric.
+	Values []*float64 `json:"values"`
+}
+
+// GPUAnalytics is the GPU utilization over a range.
+type GPUAnalytics struct {
+	Range  AnalyticsRange `json:"range"`
+	Metric string         `json:"metric"` // util | power | temp | mem
+	// GroupBy is what the heat map's rows are: model, node or gpu.
+	GroupBy string       `json:"group_by"`
+	Totals  GPUFigures   `json:"totals"`
+	Cards   []GPUCardRow `json:"cards"`
+	Heat    []GPUHeatRow `json:"heat"`
+}
+
+// GPUTimeRow is a deployment's card time on a model over the range.
+type GPUTimeRow struct {
+	DeploymentID      uint    `json:"deployment_id"`
+	DeploymentName    string  `json:"deployment_name"`
+	ServedName        string  `json:"served_name"`
+	DeploymentDeleted bool    `json:"deployment_deleted"`
+	GPUModel          string  `json:"gpu_model"`
+	GPUHours          float64 `json:"gpu_hours"`
+	WholeGPUHours     float64 `json:"whole_gpu_hours"`
+	AvgInstances      float64 `json:"avg_instances"`
+	MaxInstances      int64   `json:"max_instances"`
+	// The deployment's tokens over the range (all its models), for the GPU
+	// hours per million tokens; null per-million figures without tokens.
+	PromptTokens                int64    `json:"prompt_tokens"`
+	CompletionTokens            int64    `json:"completion_tokens"`
+	GPUHoursPerMillionOutput    *float64 `json:"gpu_hours_per_million_output"`
+	GPUHoursPerMillionAllTokens *float64 `json:"gpu_hours_per_million_tokens"`
+}
+
+// GPUTimeSeries is a deployment's GPU hours per bucket.
+type GPUTimeSeries struct {
+	DeploymentID   uint      `json:"deployment_id"`
+	DeploymentName string    `json:"deployment_name"`
+	GPUHours       []float64 `json:"gpu_hours"`
+}
+
+// GPUCapacity is the cluster's cards over the range, in GPU hours.
+type GPUCapacity struct {
+	GPUModel          string  `json:"gpu_model"`
+	TotalGPUHours     float64 `json:"total_gpu_hours"`
+	SchedulableHours  float64 `json:"schedulable_gpu_hours"`
+	AllocatedGPUHours float64 `json:"allocated_gpu_hours"`
+}
+
+// GPUTimeAnalytics is the card time over a range.
+type GPUTimeAnalytics struct {
+	Range    AnalyticsRange  `json:"range"`
+	Rows     []GPUTimeRow    `json:"rows"`
+	Series   []GPUTimeSeries `json:"series"`
+	Capacity []GPUCapacity   `json:"capacity"`
+}
+
+// KeyUsage is one API key's tokens today and over the last 7 days (today
+// included), for the API Keys page.
+type KeyUsage struct {
+	Prefix    string      `json:"prefix"`
+	Today     UsageCounts `json:"today"`
+	Last7Days UsageCounts `json:"last_7_days"`
+}
+
+// KeyUsageList is every key with usage in the last 7 days.
+type KeyUsageList struct {
+	Items    []KeyUsage `json:"items"`
+	TimeZone string     `json:"time_zone"`
+}

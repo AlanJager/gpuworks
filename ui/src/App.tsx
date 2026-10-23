@@ -11,12 +11,13 @@ import {
   UnorderedListOutlined, KeyOutlined, CloudOutlined, SettingOutlined, FileSearchOutlined,
   LogoutOutlined, SearchOutlined, ApartmentOutlined,
   MenuOutlined, ControlOutlined, ApiOutlined,
-  ExperimentOutlined, HeartOutlined, RobotOutlined,
+  ExperimentOutlined, HeartOutlined, RobotOutlined, BarChartOutlined,
 } from "@ant-design/icons";
 import NodesPage from "./pages/NodesPage";
 import DashboardPage from "./pages/DashboardPage";
 import MonitorPage from "./pages/monitor/MonitorPage";
 import ServiceMonitorPage from "./pages/monitor/ServiceMonitorPage";
+import AnalyticsPage from "./pages/analytics/AnalyticsPage";
 import ModelsPage from "./pages/ModelsPage";
 import InferenceTemplatesPage from "./pages/InferenceTemplatesPage";
 import InferenceTemplateDetailPage from "./pages/InferenceTemplateDetailPage";
@@ -57,6 +58,7 @@ const navGroups = [
   { labelKey: "navigation.groups.overview", items: [
     { key: "/dashboard", icon: <DashboardOutlined />, labelKey: "navigation.dashboard" },
     { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
+    { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
   ] },
   { labelKey: "navigation.groups.resources", items: [
     { key: "/providers", icon: <CloudOutlined />, labelKey: "navigation.publicCloud" },
@@ -171,6 +173,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/monitor" element={<MonitorPage />} />
             <Route path="/monitor/d/:id" element={<ServiceMonitorPage />} />
+            <Route path="/analytics/:tab?" element={<AnalyticsPage />} />
             <Route path="/nodes" element={<NodesPage />} />
             <Route path="/gpus" element={<GPUPage />} />
             <Route path="/providers" element={<CloudProvidersPage scope="public" />} />

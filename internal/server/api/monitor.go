@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,10 @@ type MonitorService interface {
 	// Metrics serves GET /monitor/metrics: the inference metric vocabulary
 	// (internal/inferencemetrics) as the stored series it defines.
 	Metrics() []dto.MonitorMetricSeries
+	// At is the service as of end, for a range the operator picked
+	// (from/to): charts, distributions and latency cover the range ending
+	// there; what the inventory says now stays current.
+	At(end time.Time) MonitorService
 }
 
 // ErrMonitorDeploymentNotFound is returned by MonitorService.Deployment when
@@ -64,6 +69,52 @@ var monitorRanges = map[string]time.Duration{
 	"6h":   6 * time.Hour,
 	"24h":  24 * time.Hour,
 	"168h": 168 * time.Hour,
+}
+
+// Bounds of a picked range (from/to): raw samples are kept at most 30 days.
+const (
+	monitorWindowMin = time.Minute
+	monitorWindowMax = 30 * 24 * time.Hour
+)
+
+// monitorWindow reads a chart route's range: from and to (Unix ms) for a
+// picked one, which answers from the service as of to, or range (a preset
+// ending now). Giving both is refused; so is a picked range outside its
+// bounds or ending in the future. ok false has answered 400.
+func (a *apiHandlers) monitorWindow(w http.ResponseWriter, r *http.Request) (MonitorService, time.Duration, bool) {
+	q := r.URL.Query()
+	from, to := q.Get("from"), q.Get("to")
+	if from == "" && to == "" {
+		rng, ok := parseMonitorRange(q.Get("range"))
+		if !ok {
+			writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
+			return nil, 0, false
+		}
+		return a.d.Monitor, rng, true
+	}
+	invalid := func(detail string) (MonitorService, time.Duration, bool) {
+		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, detail, map[string]any{"detail": detail})
+		return nil, 0, false
+	}
+	if q.Get("range") != "" {
+		return invalid("give range or from and to, not both")
+	}
+	fromMS, errFrom := strconv.ParseInt(from, 10, 64)
+	toMS, errTo := strconv.ParseInt(to, 10, 64)
+	if errFrom != nil || errTo != nil || fromMS <= 0 || toMS <= fromMS {
+		return invalid("from and to are Unix milliseconds, from before to")
+	}
+	if time.UnixMilli(toMS).After(time.Now().UTC().Add(time.Minute)) {
+		return invalid("to is in the future")
+	}
+	rng := time.Duration(toMS-fromMS) * time.Millisecond
+	if rng < monitorWindowMin || rng > monitorWindowMax {
+		return invalid("a picked range is between one minute and 30 days")
+	}
+	if a.d.Monitor == nil {
+		return nil, rng, true
+	}
+	return a.d.Monitor.At(time.UnixMilli(toMS)), rng, true
 }
 
 func parseMonitorRange(raw string) (time.Duration, bool) {
@@ -89,7 +140,9 @@ func defaultMonitorStep(rng time.Duration) time.Duration {
 	case 168 * time.Hour:
 		return 30 * time.Minute
 	default:
-		return 30 * time.Second
+		// A picked range: about 240 points, in whole 10 s steps.
+		step := (rng/240 + 10*time.Second - 1) / (10 * time.Second) * (10 * time.Second)
+		return max(step, 10*time.Second)
 	}
 }
 
@@ -99,16 +152,15 @@ var monitorAggregations = map[string]bool{"": true, "avg": true, "sum": true, "m
 
 // monitorOverview serves GET /api/v1/monitor/overview.
 func (a *apiHandlers) monitorOverview(w http.ResponseWriter, r *http.Request) {
-	rng, ok := parseMonitorRange(r.URL.Query().Get("range"))
+	svc, rng, ok := a.monitorWindow(w, r)
 	if !ok {
-		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
 		return
 	}
-	if a.d.Monitor == nil {
+	if svc == nil {
 		writeJSON(w, http.StatusOK, emptyMonitorOverview())
 		return
 	}
-	out, err := a.d.Monitor.Overview(r.Context(), rng)
+	out, err := svc.Overview(r.Context(), rng)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -123,16 +175,15 @@ func (a *apiHandlers) monitorDeployment(w http.ResponseWriter, r *http.Request) 
 		writeProductError(w, http.StatusBadRequest, ErrorDeploymentIDInvalid, "invalid deployment id", nil)
 		return
 	}
-	rng, ok := parseMonitorRange(r.URL.Query().Get("range"))
+	svc, rng, ok := a.monitorWindow(w, r)
 	if !ok {
-		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
 		return
 	}
-	if a.d.Monitor == nil {
+	if svc == nil {
 		writeErr(w, http.StatusNotFound, ErrMonitorDeploymentNotFound)
 		return
 	}
-	out, err := a.d.Monitor.Deployment(r.Context(), id, rng)
+	out, err := svc.Deployment(r.Context(), id, rng)
 	if err != nil {
 		if errors.Is(err, ErrMonitorDeploymentNotFound) {
 			writeErr(w, http.StatusNotFound, err)
@@ -165,9 +216,8 @@ func (a *apiHandlers) monitorSeries(w http.ResponseWriter, r *http.Request) {
 	if fn == "" {
 		fn = "avg"
 	}
-	rng, ok := parseMonitorRange(q.Get("range"))
+	svc, rng, ok := a.monitorWindow(w, r)
 	if !ok {
-		writeProductError(w, http.StatusBadRequest, ErrorMonitorRangeInvalid, "invalid range", nil)
 		return
 	}
 	// step is always clamped up to the range's own recommended minimum,
@@ -181,11 +231,11 @@ func (a *apiHandlers) monitorSeries(w http.ResponseWriter, r *http.Request) {
 	if minStep := defaultMonitorStep(rng); step < minStep {
 		step = minStep
 	}
-	if a.d.Monitor == nil {
+	if svc == nil {
 		writeJSON(w, http.StatusOK, dto.NewList([]dto.MonitorSeries{}))
 		return
 	}
-	out, err := a.d.Monitor.Series(r.Context(), metric, by, fn, rng, step)
+	out, err := svc.Series(r.Context(), metric, by, fn, rng, step)
 	if err != nil {
 		if errors.Is(err, ErrMonitorSeriesTooLarge) {
 			writeProductError(w, http.StatusBadRequest, ErrorMonitorSeriesTooLarge, "series request too large", nil)

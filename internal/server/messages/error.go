@@ -12,6 +12,13 @@ type ProductError struct {
 // Product error codes shared by domain services and the API layer.
 const (
 	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
+
+	// Operations analytics queries (internal/server/analytics); params name
+	// the field and say why.
+	ErrorAnalyticsRangeInvalid = "ANALYTICS_RANGE_INVALID"
+	ErrorAnalyticsRangeTooLong = "ANALYTICS_RANGE_TOO_LONG"
+	ErrorAnalyticsTooManyCards = "ANALYTICS_TOO_MANY_CARDS"
+	ErrorAnalyticsValueInvalid = "ANALYTICS_VALUE_INVALID"
 	// ErrorCatalogFileValuedArgUnresolved reports a catalog spec that hands an
 	// engine a file path no declaration inside the spec can supply - the
 	// nano_v3_reasoning_parser.py defect, where the flag named a file that was
