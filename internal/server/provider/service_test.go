@@ -481,3 +481,54 @@ func kindAutoPort(infos []KindInfo, kind string) bool {
 	}
 	return false
 }
+
+// compshareMapperTestDriver maps ports for containers only, as CompShare
+// does: its VMs have a public address.
+type compshareMapperTestDriver struct{ *portMapperTestDriver }
+
+func (*compshareMapperTestDriver) Name() string { return "compshare" }
+
+func (*compshareMapperTestDriver) MapsServerDialPorts(inst Instance) bool {
+	return inst.Kind == "container"
+}
+
+// A CompShare container is dialed where the driver forwards the agent's
+// port from; a CompShare VM at its public address on the listen port.
+func TestServiceInstallMapsPortsForCompShareContainersOnly(t *testing.T) {
+	for _, tc := range []struct {
+		kind, wantSeen, wantAddress string
+	}{
+		{kind: "container", wantSeen: "", wantAddress: "198.51.100.4:18211"},
+		{kind: "vm", wantSeen: "203.0.113.10", wantAddress: "203.0.113.10:3389"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			drv := &compshareMapperTestDriver{&portMapperTestDriver{installTokenTestDriver: &installTokenTestDriver{
+				listedInstance: &Instance{ExternalID: "inst-1", Name: "inst-1", PublicIP: "203.0.113.10", Kind: tc.kind},
+			}}}
+			Register(drv)
+			st, err := store.Open("file:provider_install_compshare_mapper_"+tc.kind+"?mode=memory&cache=shared", bus.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			box, err := auth.NewSecretbox("provider-install-compshare-mapper-test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			svc := NewService(st, box)
+			p, err := svc.Add(context.Background(), "compshare", "compshare", Credentials{APIKey: "key"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := svc.Install(context.Background(), p.ID, "inst-1", "", InstallOptions{ConnectMode: "server_dial"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if drv.seen.ServerDialAddress != tc.wantSeen {
+				t.Fatalf("driver was handed address %q, want %q", drv.seen.ServerDialAddress, tc.wantSeen)
+			}
+			if result.ServerDialAddress != tc.wantAddress {
+				t.Fatalf("server_dial address = %q, want %q", result.ServerDialAddress, tc.wantAddress)
+			}
+		})
+	}
+}

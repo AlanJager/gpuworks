@@ -28,6 +28,25 @@ type ServerDialPortMapper interface {
 	ServerDialAddressFor(ctx context.Context, creds Credentials, externalID, listen string) (string, error)
 }
 
+// InstancePortMapper narrows ServerDialPortMapper to the instances whose
+// ports the provider maps: CompShare maps a container's ports but gives a VM
+// a public address, where the server dials the agent's listen port directly.
+type InstancePortMapper interface {
+	MapsServerDialPorts(inst Instance) bool
+}
+
+// MapsServerDialPorts reports whether the driver chooses where a
+// server-dialed agent on inst listens and is reached.
+func MapsServerDialPorts(drv Driver, inst Instance) bool {
+	if _, ok := drv.(ServerDialPortMapper); !ok {
+		return false
+	}
+	if narrowed, ok := drv.(InstancePortMapper); ok {
+		return narrowed.MapsServerDialPorts(inst)
+	}
+	return true
+}
+
 // ErrInstanceRestartRequired is a driver's answer when the change an install
 // needs (a port for a server-dialed agent, the platform key on the instance)
 // restarts the instance, and the operator has not agreed to that

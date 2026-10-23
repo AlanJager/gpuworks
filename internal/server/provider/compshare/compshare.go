@@ -130,6 +130,7 @@ type ucloudResp struct {
 	CompShareImageID string              `json:"CompShareImageId"`
 	Process          float64             `json:"Process"`
 	ImageSet         []customImageRecord `json:"ImageSet"`
+	TcpForwards      []tcpForward        `json:"TcpForwards"`
 }
 
 type ucloudInstance struct {
@@ -146,6 +147,8 @@ type ucloudInstance struct {
 	MachineType     string        `json:"MachineType"`
 	InstancePrice   float64       `json:"InstancePrice"`
 	IPSet           []compshareIP `json:"IPSet"`
+	Ports           openPorts     `json:"Ports"`
+	TcpForwards     []tcpForward  `json:"TcpForwards"`
 }
 
 type supportZone struct {

@@ -18,8 +18,22 @@ func (d *Driver) InstallAgent(ctx context.Context, creds provider.Credentials, r
 }
 
 func (d *Driver) InstallAgentWithReport(ctx context.Context, creds provider.Credentials, req provider.InstallRequest) (provider.InstallReport, error) {
-	if req.Instance.PublicIP == "" || req.ServerURL == "" || req.Token == "" {
-		return provider.InstallReport{}, fmt.Errorf("compshare: install requires instance public IP, server URL and token")
+	if req.Instance.PublicIP == "" || req.Token == "" {
+		return provider.InstallReport{}, fmt.Errorf("compshare: install requires instance public IP and token")
+	}
+	// A server-dialed agent never connects out, so it is installed without a
+	// server URL.
+	if req.ServerURL == "" && req.ConnectMode != "server_dial" {
+		return provider.InstallReport{}, fmt.Errorf("compshare: install requires a server URL unless the server dials the agent")
+	}
+	listen, address := providerInstallListen(req.ServerDialListen), req.ServerDialAddress
+	var chosen provider.InstallCheck
+	autoPort := req.ConnectMode == "server_dial" && strings.TrimSpace(address) == "" && d.MapsServerDialPorts(req.Instance)
+	if autoPort {
+		var err error
+		if listen, address, chosen, err = d.serverDialPort(ctx, creds, req); err != nil {
+			return provider.InstallReport{}, err
+		}
 	}
 	installer := provision.NewSSHInstaller(provision.AgentBinaryReader(req.ReadAgentBinary))
 	installer.HostKeys = d.hostKeys
@@ -27,8 +41,8 @@ func (d *Driver) InstallAgentWithReport(ctx context.Context, creds provider.Cred
 		Target: net.JoinHostPort(req.Instance.PublicIP, strconv.Itoa(firstPort(req.Instance.SSHPort))),
 		User:   firstNonEmptyLocal(req.Instance.SSHUser, "root"), Port: firstPort(req.Instance.SSHPort), ServerURL: req.ServerURL, Token: req.Token,
 		ProviderKind: "compshare", Region: req.Instance.Region, InstanceKind: req.InstanceKind,
-		ConnectMode: providerInstallConnectMode(req.ConnectMode), ServerDialListen: providerInstallListen(req.ServerDialListen),
-		ServerDialAddress: req.ServerDialAddress,
+		ConnectMode: providerInstallConnectMode(req.ConnectMode), ServerDialListen: listen,
+		ServerDialAddress: address,
 		InstallDir:        req.InstallDir,
 		NoSystemd:         req.NoSystemd,
 		SSHAuth:           req.SSHAuth(),
@@ -43,7 +57,12 @@ func (d *Driver) InstallAgentWithReport(ctx context.Context, creds provider.Cred
 	if len(report.Checks) == 0 {
 		return provider.InstallReport{}, fmt.Errorf("compshare: installer returned no checks")
 	}
-	return provider.ReportFromSSHInstall(report), nil
+	out := provider.ReportFromSSHInstall(report)
+	if autoPort {
+		out.Checks = append([]provider.InstallCheck{chosen}, out.Checks...)
+		out.ServerDialListen, out.ServerDialAddress = listen, address
+	}
+	return out, nil
 }
 
 func firstPort(port int) int {
