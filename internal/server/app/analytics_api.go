@@ -14,7 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
-// analyticsAPI serves operations analytics to the API (api.Analytics).
+// analyticsAPI serves usage analytics to the API (api.Analytics).
 type analyticsAPI struct {
 	ops     *opsStats
 	store   *store.Store

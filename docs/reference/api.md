@@ -630,7 +630,7 @@ vLLM 的载荷复用到 SGLang 上，会从"静默忽略"变成 400。`engine_de
 
 监控图表的自选时间段：`overview`、`deployments/{id}`、`deployments/{id}/latency`、`distributions`、`series` 都接受 `from`+`to`（Unix 毫秒，成对给出，与 `range` 互斥），跨度 1 分钟到 30 天、`to` 不能在未来，否则 400 `MONITOR_RANGE_INVALID`（`detail`）。此时图表、分布、延迟拆解与信号按截至 `to` 的这段时间计算，不缓存；服务列表、副本、健康检查等当前状态仍是现在的。
 
-## Analytics（运营分析）
+## Analytics（用量分析）
 
 长期统计与数据保留，见 [ADR 0055](../adr/0055-long-term-statistics.md)。
 

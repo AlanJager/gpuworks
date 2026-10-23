@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Reading the token usage back for operations analytics. Every query ranges
+// Reading the token usage back for usage analytics. Every query ranges
 // over the primary key (hour_ms or day first) or, filtered by key, over the
 // key index, and aggregates in SQL, so its cost is the rows in range, never
 // the table.

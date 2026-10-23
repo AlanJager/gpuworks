@@ -16,9 +16,9 @@ import (
 
 // ErrAnalyticsUnavailable answers the analytics routes of a server built
 // without the service (a harness).
-var ErrAnalyticsUnavailable = errors.New("operations analytics is not available")
+var ErrAnalyticsUnavailable = errors.New("usage analytics is not available")
 
-// Analytics is operations analytics as the API sees it: the data retention
+// Analytics is usage analytics as the API sees it: the data retention
 // setting, applied the moment it is saved, and what it keeps.
 type Analytics interface {
 	Retention() dto.DataRetentionView

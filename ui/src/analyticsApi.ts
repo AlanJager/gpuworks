@@ -1,4 +1,4 @@
-// Client for operations analytics (GET /api/v1/analytics/*, docs/reference/api.md
+// Client for usage analytics (GET /api/v1/analytics/*, docs/reference/api.md
 // "Analytics"). The wire types mirror internal/server/api/dto/analytics.go.
 import { getJSON } from "./api";
 

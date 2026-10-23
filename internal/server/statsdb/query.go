@@ -7,7 +7,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/rollup"
 )
 
-// Reading the statistics back for operations analytics. A range is over hour
+// Reading the statistics back for usage analytics. A range is over hour
 // rows (bucket = hour_ms) or day rows (bucket = YYYYMMDD); every query starts
 // on the primary key's leading column and aggregates in SQL where it can.
 

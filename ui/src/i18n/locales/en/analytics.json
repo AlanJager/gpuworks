@@ -1,5 +1,5 @@
 {
-  "title": "Operations analytics",
+  "title": "Usage analytics",
   "subtitle": "Long-term statistics: kept {{hourly}} days by hour and {{daily}} days by day (adjust in <settings>Settings › Data retention</settings>)",
   "zoneNote": "Times are shown in the statistics time zone ({{zone}}).",
   "tabs": {

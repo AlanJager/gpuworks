@@ -28,7 +28,7 @@ function positiveInt(value: string | null): number | undefined {
   return value && Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
-// AnalyticsPage is the operations analytics page: a time range, granularity
+// AnalyticsPage is the usage analytics page: a time range, granularity
 // and deployment shared by four tabs, all of it kept in the URL so a link or a
 // refresh shows the same view.
 export default function AnalyticsPage({ now = Date.now }: { now?: () => number }) {

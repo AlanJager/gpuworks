@@ -1,6 +1,6 @@
 package store
 
-// Names for operations analytics: the deployments, nodes and users its rows
+// Names for usage analytics: the deployments, nodes and users its rows
 // refer to, read for those IDs only, lean columns, and deployments deleted
 // since from what they left behind.
 

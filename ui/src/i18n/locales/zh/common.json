@@ -480,7 +480,7 @@
     },
     "dashboard": "概览",
     "monitor": "监控中心",
-    "analytics": "运营分析",
+    "analytics": "用量分析",
     "publicCloud": "公有云",
     "privateCloud": "专有云",
     "kubernetes": "Kubernetes",

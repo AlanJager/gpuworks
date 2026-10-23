@@ -1,5 +1,5 @@
 {
-  "title": "运营分析",
+  "title": "用量分析",
   "subtitle": "长期汇总统计：按小时保留 {{hourly}} 天，按天保留 {{daily}} 天（可在 <settings>设置 › 数据保留</settings> 调整）",
   "zoneNote": "时间按统计时区（{{zone}}）显示。",
   "tabs": {

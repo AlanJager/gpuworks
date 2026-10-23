@@ -1,4 +1,4 @@
-// Package analytics answers operations analytics' queries (ADR 0055): token
+// Package analytics answers usage analytics' queries (ADR 0055): token
 // usage, service quality, GPU utilization and card time over any range the
 // retention still holds, by hour or by day, shaped for the API.
 //

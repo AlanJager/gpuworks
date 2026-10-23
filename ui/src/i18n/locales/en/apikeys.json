@@ -62,7 +62,7 @@
     "nameTooLong": "Name must not exceed 128 UTF-8 bytes (Chinese characters usually use 3 bytes each)"
   },
   "revoke": {
-    "confirm": "Revoke “{{name}}”? Programs using it lose access at once; its past usage stays in Operations analytics. If no active tokens remain, the gateway allows anonymous access (development mode).",
+    "confirm": "Revoke “{{name}}”? Programs using it lose access at once; its past usage stays in Usage analytics. If no active tokens remain, the gateway allows anonymous access (development mode).",
     "failed": "Failed to revoke token: {{detail}}",
     "success": "Token revoked"
   },
@@ -74,6 +74,6 @@
   "showRevoked": "Show revoked ({{count}})",
   "tokens": {
     "tooltip": "Input {{input}} (cached {{cached}}) · Output {{output}}",
-    "open": "{{tokens}} tokens of {{name}}, open in Operations analytics"
+    "open": "{{tokens}} tokens of {{name}}, open in Usage analytics"
   }
 }

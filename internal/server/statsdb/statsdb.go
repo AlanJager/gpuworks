@@ -1,5 +1,5 @@
 // Package statsdb keeps the long-term service quality, GPU utilization and
-// card time of operations analytics in stats.db, a SQLite file of its own
+// card time of usage analytics in stats.db, a SQLite file of its own
 // beside metrics.db and ux.db (ADR 0055): an hour table and a day table per
 // statistic, one row per object, typed columns. Hours are added to as
 // rollup's deltas arrive; days are rolled up from hours in the statistics

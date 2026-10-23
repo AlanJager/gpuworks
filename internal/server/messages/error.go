@@ -13,7 +13,7 @@ type ProductError struct {
 const (
 	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
 
-	// Operations analytics queries (internal/server/analytics); params name
+	// Usage analytics queries (internal/server/analytics); params name
 	// the field and say why.
 	ErrorAnalyticsRangeInvalid = "ANALYTICS_RANGE_INVALID"
 	ErrorAnalyticsRangeTooLong = "ANALYTICS_RANGE_TOO_LONG"
