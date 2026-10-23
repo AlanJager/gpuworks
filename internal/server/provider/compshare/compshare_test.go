@@ -645,6 +645,31 @@ func TestInstallAgentErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when SSHKeyPEM missing")
 	}
+	agentDial := provider.InstallRequest{Instance: provider.Instance{PublicIP: "127.0.0.1", SSHPort: 1}, Token: "tok"}
+	if _, err := d.InstallAgentWithReport(context.Background(), provider.Credentials{}, agentDial); err == nil || !strings.Contains(err.Error(), "server URL") {
+		t.Fatalf("agent_dial without server URL: err = %v, want server URL error", err)
+	}
+}
+
+// The API clears the server URL of a server_dial install; the driver must
+// go on to SSH instead of rejecting the request.
+func TestInstallAgentServerDialNeedsNoServerURL(t *testing.T) {
+	d := New()
+	req := provider.InstallRequest{
+		Instance: provider.Instance{PublicIP: "127.0.0.1", SSHPort: 1}, Token: "tok",
+		ConnectMode: "server_dial", Password: "x",
+		ReadAgentBinary: func(string) ([]byte, error) { return []byte("agent"), nil },
+	}
+	_, err := d.InstallAgentWithReport(context.Background(), provider.Credentials{}, req)
+	if err == nil {
+		t.Fatal("install against a closed port succeeded")
+	}
+	if strings.Contains(err.Error(), "requires") {
+		t.Fatalf("server_dial install rejected before SSH: %v", err)
+	}
+	if !provider.IsRetryableSSHConnectionError(err) {
+		t.Fatalf("err = %v, want a retryable SSH connection error", err)
+	}
 }
 
 func TestRegistered(t *testing.T) {

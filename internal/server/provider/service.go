@@ -333,9 +333,8 @@ func (s *Service) Install(ctx context.Context, providerID uint, externalID, serv
 	serverDialAddress := opts.ServerDialAddress
 	// A provider that maps container ports chooses the agent's port and its
 	// address itself when the operator gives no address (InstallReport).
-	_, mapsPorts := drv.(ServerDialPortMapper)
-	autoPort := mode == "server_dial" && mapsPorts && strings.TrimSpace(serverDialAddress) == ""
-	if mode == "server_dial" && strings.TrimSpace(serverDialAddress) == "" && p.Kind == "compshare" {
+	autoPort := mode == "server_dial" && MapsServerDialPorts(drv, *target) && strings.TrimSpace(serverDialAddress) == ""
+	if mode == "server_dial" && strings.TrimSpace(serverDialAddress) == "" && p.Kind == "compshare" && !autoPort {
 		serverDialAddress = target.PublicIP
 	}
 	if mode == "server_dial" && strings.TrimSpace(serverDialAddress) == "" && !autoPort {

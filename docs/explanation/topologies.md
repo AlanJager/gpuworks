@@ -288,7 +288,7 @@ ZStack），列出实例并确认型号、卡数、区域、价格后，创建�
 | server → 云厂商 | HTTPS 出站 | 调 provider API（凭证由 server 加密存储，不写入 install script 或日志） |
 | server → 云实例 | SSH（默认 `22`，或厂商提供的直连 / 平台代理方式） | 预检查与安装 agent |
 | 云实例 → server | `listen.agent` 的地址 | 默认 `agent_dial`：**云实例必须能访问你填的 `server_url`** |
-| server → 云实例 | agent 监听端口（默认 `0.0.0.0:18800`；CompShare 的默认是 `:3389`） | 仅当选 `server_dial`：server 无法被云实例访问时由 server 拨入。Vast 与 RunPod 只经平台映射的 TCP 端口到达容器，由驱动自动选端口并记录映射后的地址；AutoDL 只开放 HTTP 端口，不能选 `server_dial` |
+| server → 云实例 | agent 监听端口（默认 `0.0.0.0:18800`；CompShare 的默认是 `:3389`） | 仅当选 `server_dial`：server 无法被云实例访问时由 server 拨入。Vast、RunPod 与 CompShare 容器实例只经平台映射的 TCP 端口到达容器，由驱动自动选端口（CompShare 没有空闲端口时经接口加开一个）并记录映射后的地址；AutoDL 只开放 HTTP 端口，不能选 `server_dial` |
 
 **关键约束**：
 

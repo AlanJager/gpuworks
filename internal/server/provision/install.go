@@ -537,7 +537,7 @@ fi
 `, shellQuote(udockerDir), shellQuote(proot), shellQuote(entry))
 }
 
-func connect(ctx context.Context, user, host string, port int, methods []ssh.AuthMethod, timeout time.Duration, hostKeys HostKeyStore) (*ssh.Client, error) {
+func connectOnce(ctx context.Context, user, host string, port int, methods []ssh.AuthMethod, timeout time.Duration, hostKeys HostKeyStore) (*ssh.Client, error) {
 	cfg := &ssh.ClientConfig{
 		User:            user,
 		Auth:            methods,
@@ -545,10 +545,11 @@ func connect(ctx context.Context, user, host string, port int, methods []ssh.Aut
 		Timeout:         timeout,
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := dialTCP(ctx, addr, timeout)
+	raw, err := dialTCP(ctx, addr, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("ssh dial: %w", err)
 	}
+	conn := &identCapturingConn{Conn: raw}
 	// ssh.NewClientConn does not honor ClientConfig.Timeout when it is given an
 	// already-open net.Conn (that field only bounds ssh.Dial's own dial+
 	// handshake). Without this, a stalled remote handshake can block past both
@@ -565,7 +566,7 @@ func connect(ctx context.Context, user, host string, port int, methods []ssh.Aut
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("ssh handshake: %w", err)
+		return nil, handshakeError(conn, err)
 	}
 	if err := conn.SetDeadline(time.Time{}); err != nil {
 		c.Close()

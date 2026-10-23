@@ -54,7 +54,7 @@ func (s *Service) Precheck(ctx context.Context, providerID uint, externalID, ser
 	report, err := checker.PrecheckSSH(precheckCtx, provision.SSHPrecheckRequest{
 		Target: net.JoinHostPort(selected.Host, strconv.Itoa(port)), User: user, Port: port, ServerURL: serverURL, ConnectMode: mode, InstanceKind: target.Kind,
 		ProviderKind: p.Kind, ServerDialListen: opts.ServerDialListen, InstallDir: opts.InstallDir,
-		HostAddress: dialHost, SkipServerToAgent: dialHost == "", ProviderChoosesPort: providerChoosesPort(drv, mode, opts),
+		HostAddress: dialHost, SkipServerToAgent: dialHost == "", ProviderChoosesPort: providerChoosesPort(drv, *target, mode, opts),
 		SSHAuth: InstallRequest{SSHKeyPEM: opts.SSHKeyPEM, Password: opts.Password, PlatformKey: access.platformKey, InstancePassword: access.instancePassword}.SSHAuth(),
 	})
 	prepared := make([]provision.CheckResult, 0, len(access.checks))
@@ -121,9 +121,8 @@ func serverDialPort(opts InstallOptions) int {
 // providerChoosesPort reports whether the install, not the operator, picks
 // where a server-dialed agent listens and is reached (ServerDialPortMapper
 // with no address given): the precheck cannot know that port yet.
-func providerChoosesPort(drv Driver, mode string, opts InstallOptions) bool {
-	_, maps := drv.(ServerDialPortMapper)
-	return maps && mode == "server_dial" && strings.TrimSpace(opts.ServerDialAddress) == ""
+func providerChoosesPort(drv Driver, target Instance, mode string, opts InstallOptions) bool {
+	return MapsServerDialPorts(drv, target) && mode == "server_dial" && strings.TrimSpace(opts.ServerDialAddress) == ""
 }
 
 // precheckDialHost is the address the server would dial a server_dial agent
