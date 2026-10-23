@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -115,7 +116,9 @@ func TestStatsAddRollUpAndRetain(t *testing.T) {
 		t.Fatalf("quality rows = %d %d", hourly, daily)
 	}
 	n, err := s.Retain(ctx, hourMS(22, 0), 20261023)
-	if err != nil || n != 1+1+1+1+1+1+1+1+1 {
+	// An hour row and a day row of each table (the GPU's per card, node and
+	// model) and the rolled day; quality's second hour is kept.
+	if err != nil || n != 1+3+1+1+1+3+1+1+1 {
 		t.Fatalf("retained %d %v", n, err)
 	}
 	hourly, daily, _ = s.RowCount(ctx, KindQuality)
@@ -175,6 +178,8 @@ func TestStatsQueriesUseThePrimaryKey(t *testing.T) {
 		`SELECT SUM(gpu_seconds) FROM gpu_time_hourly WHERE hour_ms >= 0 AND hour_ms < 1 GROUP BY deployment_id, gpu_model`,
 		`SELECT requests FROM quality_hourly WHERE hour_ms >= 0 AND hour_ms < 1`,
 		`SELECT requests FROM quality_daily WHERE day >= 0 AND day < 1`,
+		`SELECT SUM(util_sum) FROM gpu_node_hourly WHERE hour_ms >= 0 AND hour_ms < 1 GROUP BY node_uuid`,
+		`SELECT SUM(util_sum) FROM gpu_model_daily WHERE day >= 0 AND day < 1 GROUP BY gpu_model`,
 	} {
 		rows, err := s.reader.Query(`EXPLAIN QUERY PLAN ` + q)
 		if err != nil {
@@ -238,17 +243,56 @@ func TestStatsQueriesReadRanges(t *testing.T) {
 	if only, _ := s.GPUCards(ctx, r, GPUFilter{GPUModel: "PPU 810E"}); len(only) != 1 || only[0].NodeUUID != "n2" {
 		t.Fatalf("by model = %+v", only)
 	}
+	if only, _ := s.GPUCards(ctx, r, GPUFilter{NodeUUIDs: []string{"n2"}}); len(only) != 1 || only[0].GPUUUID != "GPU-b" || only[0].UtilSum != 100 {
+		t.Fatalf("node n2's cards = %+v", only)
+	}
+	if none, err := s.GPUCards(ctx, r, GPUFilter{NodeUUIDs: []string{}}); err != nil || len(none) != 0 {
+		t.Fatalf("no nodes = %+v %v", none, err)
+	}
 	for by, want := range map[GPUGroupBy]int{GPUByModel: 3, GPUByNode: 3, GPUByCard: 3} {
-		cells, err := s.GPUHeat(ctx, r, GPUFilter{}, by)
+		cells, err := s.GPUHeat(ctx, r, GPUFilter{}, by, nil)
 		if err != nil || len(cells) != want {
 			t.Fatalf("%s heat = %+v %v", by, cells, err)
 		}
 	}
-	if cells, _ := s.GPUHeat(ctx, r, GPUFilter{NodeUUID: "n1"}, GPUByCard); len(cells) != 2 || cells[0].Group != "n1/0/GPU-a" {
+	if cells, _ := s.GPUHeat(ctx, r, GPUFilter{NodeUUIDs: []string{"n1"}}, GPUByCard, nil); len(cells) != 2 || cells[0].Group != "n1/0/GPU-a" {
 		t.Fatalf("card heat = %+v", cells)
 	}
-	if _, err := s.GPUHeat(ctx, r, GPUFilter{}, "rack"); err == nil {
+	// A node heat map reads only the nodes it shows.
+	if cells, _ := s.GPUHeat(ctx, r, GPUFilter{}, GPUByNode, []string{"n2"}); len(cells) != 1 || cells[0].Group != "n2" || cells[0].Bucket != hourMS(22, 1) {
+		t.Fatalf("n2 heat = %+v", cells)
+	}
+	if _, err := s.GPUHeat(ctx, r, GPUFilter{}, "rack", nil); err == nil {
 		t.Fatal("an unknown grouping was accepted")
+	}
+	// Groups sum the range from the model rows, or the node rows when nodes
+	// are named.
+	groups := func(f GPUFilter, by GPUGroupBy) map[string]float64 {
+		t.Helper()
+		rows, err := s.GPUGroups(ctx, r, f, by)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]float64{}
+		for _, g := range rows {
+			out[g.Group] = g.UtilSum
+		}
+		return out
+	}
+	for _, c := range []struct {
+		f    GPUFilter
+		by   GPUGroupBy
+		want string
+	}{
+		{GPUFilter{}, GPUByModel, "map[PPU 810E:100 RTX 6000D:200]"},
+		{GPUFilter{}, GPUByNode, "map[n1:200 n2:100]"},
+		{GPUFilter{NodeUUIDs: []string{"n1"}}, GPUByModel, "map[RTX 6000D:200]"},
+		{GPUFilter{GPUModel: "PPU 810E"}, GPUByNode, "map[n2:100]"},
+		{GPUFilter{NodeUUIDs: []string{}}, GPUByNode, "map[]"},
+	} {
+		if got := fmt.Sprint(groups(c.f, c.by)); got != c.want {
+			t.Fatalf("%+v by %s = %s, want %s", c.f, c.by, got, c.want)
+		}
 	}
 	times, err := s.GPUTime(ctx, r, 0)
 	if err != nil || len(times) != 1 || times[0].GPUSeconds != 3600 {
@@ -275,5 +319,11 @@ func TestStatsQueriesReadRanges(t *testing.T) {
 	}
 	if dc, _ := s.GPUCards(ctx, daily, GPUFilter{}); len(dc) != 2 {
 		t.Fatalf("daily cards = %+v", dc)
+	}
+	if dc, _ := s.GPUCards(ctx, daily, GPUFilter{NodeUUIDs: []string{"n1"}}); len(dc) != 1 || dc[0].UtilSum != 200 {
+		t.Fatalf("daily n1 cards = %+v", dc)
+	}
+	if dg, _ := s.GPUGroups(ctx, daily, GPUFilter{}, GPUByNode); len(dg) != 2 {
+		t.Fatalf("daily node groups = %+v", dg)
 	}
 }

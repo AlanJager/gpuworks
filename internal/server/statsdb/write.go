@@ -84,37 +84,93 @@ func qualityArgs(q rollup.Quality) []any {
 }
 
 // AddGPUs adds a delta to the hour rows in one transaction; models names
-// each card's model (a card it does not name keeps the one it has).
+// each card's model (a card it does not name keeps the one it has). The
+// cards' rows are summed into their node's and model's rows in the same
+// transaction, under the model each card's row holds.
 func (s *Store) AddGPUs(ctx context.Context, delta map[rollup.GPUKey]rollup.GPU, models map[rollup.GPUKey]string) error {
 	if len(delta) == 0 {
 		return nil
 	}
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		stmt, err := tx.PrepareContext(ctx, `INSERT INTO gpu_hourly (hour_ms, node_uuid, gpu_index, gpu_uuid, gpu_model,
-			util_sum, util_n, util_max, mem_used_sum, mem_used_n, mem_used_max, mem_total, power_sum, power_n, temp_sum, temp_n, temp_max)
+		card, err := tx.PrepareContext(ctx, `INSERT INTO gpu_hourly (hour_ms, node_uuid, gpu_index, gpu_uuid, gpu_model, `+gpuNames+`)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (hour_ms, node_uuid, gpu_index, gpu_uuid) DO UPDATE SET
-			gpu_model = CASE WHEN excluded.gpu_model <> '' THEN excluded.gpu_model ELSE gpu_model END,
-			util_sum = util_sum + excluded.util_sum, util_n = util_n + excluded.util_n, util_max = MAX(util_max, excluded.util_max),
-			mem_used_sum = mem_used_sum + excluded.mem_used_sum, mem_used_n = mem_used_n + excluded.mem_used_n,
-			mem_used_max = MAX(mem_used_max, excluded.mem_used_max), mem_total = MAX(mem_total, excluded.mem_total),
-			power_sum = power_sum + excluded.power_sum, power_n = power_n + excluded.power_n,
-			temp_sum = temp_sum + excluded.temp_sum, temp_n = temp_n + excluded.temp_n, temp_max = MAX(temp_max, excluded.temp_max)`)
+			gpu_model = CASE WHEN excluded.gpu_model <> '' THEN excluded.gpu_model ELSE gpu_model END, `+gpuAdds+`
+			RETURNING gpu_model`)
 		if err != nil {
 			return err
 		}
-		defer stmt.Close()
+		defer card.Close()
+		type nodeKey struct {
+			hour        int64
+			node, model string
+		}
+		type modelKey struct {
+			hour  int64
+			model string
+		}
+		nodes := map[nodeKey]*rollup.GPU{}
+		byModel := map[modelKey]*rollup.GPU{}
+		add := func(sum *rollup.GPU, g rollup.GPU) *rollup.GPU {
+			if sum == nil {
+				sum = &rollup.GPU{}
+			}
+			sum.Add(g)
+			return sum
+		}
 		for k, g := range delta {
-			card := k
-			card.HourMS = 0
-			if _, err := stmt.ExecContext(ctx, k.HourMS, k.NodeUUID, k.GPUIndex, k.GPUUUID, models[card],
-				g.UtilSum, g.UtilN, g.UtilMax, g.MemUsedSum, g.MemUsedN, g.MemUsedMax, g.MemTotal,
-				g.PowerSum, g.PowerN, g.TempSum, g.TempN, g.TempMax); err != nil {
+			named := k
+			named.HourMS = 0
+			var model string
+			if err := card.QueryRowContext(ctx, append([]any{k.HourMS, k.NodeUUID, k.GPUIndex, k.GPUUUID, models[named]}, gpuArgs(g)...)...).Scan(&model); err != nil {
+				return err
+			}
+			nk := nodeKey{k.HourMS, k.NodeUUID, model}
+			nodes[nk] = add(nodes[nk], g)
+			mk := modelKey{k.HourMS, model}
+			byModel[mk] = add(byModel[mk], g)
+		}
+		node, err := tx.PrepareContext(ctx, `INSERT INTO gpu_node_hourly (hour_ms, node_uuid, gpu_model, `+gpuNames+`)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (hour_ms, node_uuid, gpu_model) DO UPDATE SET `+gpuAdds)
+		if err != nil {
+			return err
+		}
+		defer node.Close()
+		for k, g := range nodes {
+			if _, err := node.ExecContext(ctx, append([]any{k.hour, k.node, k.model}, gpuArgs(*g)...)...); err != nil {
+				return err
+			}
+		}
+		model, err := tx.PrepareContext(ctx, `INSERT INTO gpu_model_hourly (hour_ms, gpu_model, `+gpuNames+`)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (hour_ms, gpu_model) DO UPDATE SET `+gpuAdds)
+		if err != nil {
+			return err
+		}
+		defer model.Close()
+		for k, g := range byModel {
+			if _, err := model.ExecContext(ctx, append([]any{k.hour, k.model}, gpuArgs(*g)...)...); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+// gpuNames are the figure columns in gpuArgs' order; gpuAdds adds a
+// conflicting row's figures to the stored ones.
+const (
+	gpuNames = `util_sum, util_n, util_max, mem_used_sum, mem_used_n, mem_used_max, mem_total, power_sum, power_n, temp_sum, temp_n, temp_max`
+	gpuAdds  = `util_sum = util_sum + excluded.util_sum, util_n = util_n + excluded.util_n, util_max = MAX(util_max, excluded.util_max),
+			mem_used_sum = mem_used_sum + excluded.mem_used_sum, mem_used_n = mem_used_n + excluded.mem_used_n,
+			mem_used_max = MAX(mem_used_max, excluded.mem_used_max), mem_total = MAX(mem_total, excluded.mem_total),
+			power_sum = power_sum + excluded.power_sum, power_n = power_n + excluded.power_n,
+			temp_sum = temp_sum + excluded.temp_sum, temp_n = temp_n + excluded.temp_n, temp_max = MAX(temp_max, excluded.temp_max)`
+)
+
+func gpuArgs(g rollup.GPU) []any {
+	return []any{g.UtilSum, g.UtilN, g.UtilMax, g.MemUsedSum, g.MemUsedN, g.MemUsedMax, g.MemTotal, g.PowerSum, g.PowerN, g.TempSum, g.TempN, g.TempMax}
 }
 
 // AddGPUTime adds the card time and capacity deltas in one transaction.
@@ -178,6 +234,12 @@ func (s *Store) RollupDay(ctx context.Context, day rollup.Day, loc *time.Locatio
 				SUM(util_sum), SUM(util_n), MAX(util_max), SUM(mem_used_sum), SUM(mem_used_n), MAX(mem_used_max), MAX(mem_total),
 				SUM(power_sum), SUM(power_n), SUM(temp_sum), SUM(temp_n), MAX(temp_max)
 				FROM gpu_hourly WHERE hour_ms >= ?2 AND hour_ms < ?3 GROUP BY node_uuid, gpu_index, gpu_uuid`,
+			`DELETE FROM gpu_node_daily WHERE day = ?1`,
+			`INSERT INTO gpu_node_daily SELECT ?1, node_uuid, gpu_model, ` + gpuSums + `
+				FROM gpu_node_hourly WHERE hour_ms >= ?2 AND hour_ms < ?3 GROUP BY node_uuid, gpu_model`,
+			`DELETE FROM gpu_model_daily WHERE day = ?1`,
+			`INSERT INTO gpu_model_daily SELECT ?1, gpu_model, ` + gpuSums + `
+				FROM gpu_model_hourly WHERE hour_ms >= ?2 AND hour_ms < ?3 GROUP BY gpu_model`,
 			`DELETE FROM gpu_time_daily WHERE day = ?1`,
 			`INSERT INTO gpu_time_daily SELECT ?1, deployment_id, gpu_model,
 				SUM(gpu_seconds), SUM(whole_gpu_seconds), SUM(instance_seconds), MAX(max_instances)
@@ -275,8 +337,10 @@ func (s *Store) Retain(ctx context.Context, hourCutoffMS int64, dayCutoff rollup
 		cutoff        int64
 	}{
 		{"quality_hourly", "hour_ms", hourCutoffMS}, {"gpu_hourly", "hour_ms", hourCutoffMS},
+		{"gpu_node_hourly", "hour_ms", hourCutoffMS}, {"gpu_model_hourly", "hour_ms", hourCutoffMS},
 		{"gpu_time_hourly", "hour_ms", hourCutoffMS}, {"gpu_capacity_hourly", "hour_ms", hourCutoffMS},
 		{"quality_daily", "day", int64(dayCutoff)}, {"gpu_daily", "day", int64(dayCutoff)},
+		{"gpu_node_daily", "day", int64(dayCutoff)}, {"gpu_model_daily", "day", int64(dayCutoff)},
 		{"gpu_time_daily", "day", int64(dayCutoff)}, {"gpu_capacity_daily", "day", int64(dayCutoff)},
 		{"rolled_days", "day", int64(dayCutoff)},
 	} {

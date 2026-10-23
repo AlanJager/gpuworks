@@ -12,7 +12,7 @@ export interface TabProps {
   reload: number;
   search: URLSearchParams;
   /** Sets (or with undefined removes) URL parameters, keeping the others. */
-  setSearch: (patch: Record<string, string | undefined>) => void;
+  setSearch: (patch: Record<string, string | string[] | undefined>) => void;
 }
 
 export const TAB_KEYS = ["usage", "quality", "gpus", "gpu-time"] as const;

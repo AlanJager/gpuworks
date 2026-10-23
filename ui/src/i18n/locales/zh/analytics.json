@@ -204,10 +204,11 @@
     "filters": {
       "group": "分组",
       "metric": "指标",
-      "node": "节点",
       "allNodes": "全部节点",
       "model": "卡型",
-      "allModels": "全部卡型"
+      "allModels": "全部卡型",
+      "labels": "节点标签",
+      "labelsHint": "按节点现在的标签筛选（同一个键的多个值任一满足，不同键都要满足）；已删除的节点没有标签，不会出现在筛选结果里"
     },
     "group": {
       "model": "按卡型",
@@ -221,7 +222,7 @@
       "mem": "显存"
     },
     "tooMany": {
-      "hint": "卡数太多，无法逐卡展示。请先在上方选择节点或卡型，或改为按卡型、按节点分组。",
+      "hint": "卡数太多，无法逐卡展示。请先在上方用节点标签或卡型筛选，或改为按卡型、按节点分组。",
       "byModel": "改为按卡型分组",
       "byNode": "改为按节点分组"
     },
@@ -235,7 +236,8 @@
       "powerPerCard": "平均每卡 {{value}}",
       "idle": "长期闲置卡数",
       "idleSub": "利用率均值 < {{threshold}}%",
-      "idleTip": "统计期内利用率均值低于 {{threshold}}% 的卡，既包括已分配但几乎没有流量的卡，也包括未分配给任何部署的卡。"
+      "idleTip": "统计期内利用率均值低于 {{threshold}}% 的卡，既包括已分配但几乎没有流量的卡，也包括未分配给任何部署的卡。",
+      "idleNeedsDetail": "筛选到 {{limit}} 张卡以内后统计"
     },
     "chart": {
       "title": {
@@ -244,7 +246,8 @@
         "temp": "温度热力图（{{granularity}}，颜色 = 温度均值）",
         "mem": "显存热力图（{{granularity}}，颜色 = 显存占用均值）"
       },
-      "aria": "GPU 热力图"
+      "aria": "GPU 热力图",
+      "extremes": "共 {{total}} 个节点，热力图只显示{{metric}}最高的 {{half}} 个和最低的 {{half}} 个；用节点标签筛选可查看其他节点。"
     },
     "table": {
       "title": {
@@ -269,7 +272,8 @@
       "powerPerCard": "功耗均值（每卡）",
       "tempMax": "温度最大",
       "deployments": "所属部署",
-      "unassigned": "未分配"
+      "unassigned": "未分配",
+      "nodeCount": "{{count}} 个节点"
     },
     "export": {
       "detail": "说明",
@@ -279,7 +283,8 @@
       "memMaxPct": "显存占用最大（%）",
       "yes": "是"
     },
-    "foot": "利用率、显存、功耗、温度为采样点在每个时间桶内的均值与最大值，再汇总到统计期。"
+    "foot": "利用率、显存、功耗、温度为采样点在每个时间桶内的均值与最大值，再汇总到统计期。",
+    "summaryNote": "当前范围覆盖 {{count}} 张卡，超过 {{limit}} 张时按卡型或节点汇总展示；用节点标签或卡型筛选到 {{limit}} 张以内可查看每张卡。"
   },
   "gpuTime": {
     "cards": {

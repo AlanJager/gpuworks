@@ -1,9 +1,8 @@
-import { useMemo } from "react";
 import { Alert, Select, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { NodeRequirementsMap } from "../../../api";
-import { systemLabelName, systemLabelValue } from "../../../components/SystemLabelTags";
 import { useNodeFacets } from "../../../nodes/useNodeFacets";
+import { useNodeLabelOptions } from "../../../nodes/useNodeLabelOptions";
 import { picksToRequirements, requirementPicks } from "./pullFormat";
 
 /**
@@ -26,28 +25,11 @@ export default function NodeRequirementsSelect({
   ariaLabel: string;
 }) {
   const { t } = useTranslation("settings");
-  const { t: tNodes } = useTranslation("nodes");
   const picks = requirementPicks(value);
-  const all = useNodeFacets({});
+  const all = useNodeLabelOptions();
   const matched = useNodeFacets(picks.length ? { label: picks } : null);
-
-  const options = useMemo(() => {
-    const data = all.data;
-    if (!data) return [];
-    const written = data.labels.flatMap(({ key, values }) =>
-      values.map((item) => ({ value: `${key}=${item.value}`, label: `${key}=${item.value}`, nodes: item.nodes })),
-    );
-    const system = data.system_labels.flatMap(({ key, values }) =>
-      values.map((item) => ({
-        value: `${key}=${item.value}`,
-        label: `${systemLabelName(key, tNodes)}: ${systemLabelValue({ key, value: item.value, display: item.display, display_code: item.display_code }, tNodes)}`,
-        nodes: item.nodes,
-      })),
-    );
-    return [...written, ...system];
-  }, [all.data, tNodes]);
-
-  const total = all.data?.total;
+  const options = all.options;
+  const total = all.total;
   const count = picks.length ? matched.data?.total : total;
   const failed = all.error || matched.error;
 

@@ -64,11 +64,12 @@ export default function AnalyticsPage({ now = Date.now }: { now?: () => number }
   searchRef.current = search;
   const setParamsRef = useRef(setSearchParams);
   setParamsRef.current = setSearchParams;
-  const setSearch = useCallback((patch: Record<string, string | undefined>) => {
+  const setSearch = useCallback((patch: Record<string, string | string[] | undefined>) => {
     const next = new URLSearchParams(searchRef.current);
     for (const [key, value] of Object.entries(patch)) {
-      if (value === undefined || value === "") next.delete(key);
-      else next.set(key, value);
+      next.delete(key);
+      if (Array.isArray(value)) for (const v of value) next.append(key, v);
+      else if (value !== undefined && value !== "") next.set(key, value);
     }
     searchRef.current = next;
     setParamsRef.current(next, { replace: true });

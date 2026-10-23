@@ -3,8 +3,6 @@ package statsdb
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/rollup"
 )
@@ -65,116 +63,6 @@ func (s *Store) Quality(ctx context.Context, r Range, deploymentID uint) ([]Qual
 			return nil, err
 		}
 		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
-// GPUFilter narrows the GPU queries; empty values do not filter.
-type GPUFilter struct {
-	NodeUUID string
-	GPUModel string
-}
-
-func (f GPUFilter) where() (string, []any) {
-	var clauses []string
-	var args []any
-	if f.NodeUUID != "" {
-		clauses = append(clauses, "node_uuid = ?")
-		args = append(args, f.NodeUUID)
-	}
-	if f.GPUModel != "" {
-		clauses = append(clauses, "gpu_model = ?")
-		args = append(args, f.GPUModel)
-	}
-	if len(clauses) == 0 {
-		return "", nil
-	}
-	return " AND " + strings.Join(clauses, " AND "), args
-}
-
-// GPUCard is a card's statistics summed over a range.
-type GPUCard struct {
-	NodeUUID string
-	GPUIndex int
-	GPUUUID  string
-	GPUModel string
-	rollup.GPU
-}
-
-const gpuSums = `SUM(util_sum), SUM(util_n), MAX(util_max), SUM(mem_used_sum), SUM(mem_used_n), MAX(mem_used_max), MAX(mem_total),
-	SUM(power_sum), SUM(power_n), SUM(temp_sum), SUM(temp_n), MAX(temp_max)`
-
-func scanGPU(dest *rollup.GPU) []any {
-	return []any{&dest.UtilSum, &dest.UtilN, &dest.UtilMax, &dest.MemUsedSum, &dest.MemUsedN, &dest.MemUsedMax, &dest.MemTotal,
-		&dest.PowerSum, &dest.PowerN, &dest.TempSum, &dest.TempN, &dest.TempMax}
-}
-
-// GPUCards sums every card over a range.
-func (s *Store) GPUCards(ctx context.Context, r Range, f GPUFilter) ([]GPUCard, error) {
-	table, column := r.table("gpu")
-	where, args := f.where()
-	rows, err := s.reader.QueryContext(ctx, `SELECT node_uuid, gpu_index, gpu_uuid, MAX(gpu_model), `+gpuSums+` FROM `+table+
-		` WHERE `+column+` >= ? AND `+column+` < ?`+where+` GROUP BY node_uuid, gpu_index, gpu_uuid`, append([]any{r.From, r.To}, args...)...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []GPUCard
-	for rows.Next() {
-		var c GPUCard
-		if err := rows.Scan(append([]any{&c.NodeUUID, &c.GPUIndex, &c.GPUUUID, &c.GPUModel}, scanGPU(&c.GPU)...)...); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
-}
-
-// GPUGroupBy is what a GPU heat map's rows are.
-type GPUGroupBy string
-
-const (
-	GPUByModel GPUGroupBy = "model"
-	GPUByNode  GPUGroupBy = "node"
-	GPUByCard  GPUGroupBy = "gpu"
-)
-
-// GPUCell is one bucket of one heat map row: a model, a node, or a card
-// (node_uuid/gpu_index/gpu_uuid joined by "/").
-type GPUCell struct {
-	Bucket int64
-	Group  string
-	rollup.GPU
-}
-
-// GPUHeat sums the cards of each group per bucket.
-func (s *Store) GPUHeat(ctx context.Context, r Range, f GPUFilter, by GPUGroupBy) ([]GPUCell, error) {
-	table, column := r.table("gpu")
-	var group string
-	switch by {
-	case GPUByModel:
-		group = "gpu_model"
-	case GPUByNode:
-		group = "node_uuid"
-	case GPUByCard:
-		group = "node_uuid || '/' || gpu_index || '/' || gpu_uuid"
-	default:
-		return nil, fmt.Errorf("statsdb: no GPU grouping %q", by)
-	}
-	where, args := f.where()
-	rows, err := s.reader.QueryContext(ctx, `SELECT `+column+`, `+group+`, `+gpuSums+` FROM `+table+
-		` WHERE `+column+` >= ? AND `+column+` < ?`+where+` GROUP BY `+column+`, `+group, append([]any{r.From, r.To}, args...)...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []GPUCell
-	for rows.Next() {
-		var c GPUCell
-		if err := rows.Scan(append([]any{&c.Bucket, &c.Group}, scanGPU(&c.GPU)...)...); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
 	}
 	return out, rows.Err()
 }

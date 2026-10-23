@@ -204,10 +204,11 @@
     "filters": {
       "group": "Group by",
       "metric": "Color by",
-      "node": "Node",
       "allNodes": "All nodes",
       "model": "Card model",
-      "allModels": "All card models"
+      "allModels": "All card models",
+      "labels": "Node labels",
+      "labelsHint": "Filter by the labels nodes carry now (values of one key are alternatives, different keys must all hold); a deleted node has no labels and is left out"
     },
     "group": {
       "model": "By card model",
@@ -221,7 +222,7 @@
       "mem": "Memory"
     },
     "tooMany": {
-      "hint": "Too many cards to show one by one. Pick a node or card model above, or group by card model or node.",
+      "hint": "Too many cards to show one by one. Filter by node label or card model above, or group by card model or node.",
       "byModel": "Group by card model",
       "byNode": "Group by node"
     },
@@ -235,7 +236,8 @@
       "powerPerCard": "{{value}} per card",
       "idle": "Long-idle cards",
       "idleSub": "Average utilization < {{threshold}}%",
-      "idleTip": "Cards whose average utilization over the range is below {{threshold}}%: both cards given to a deployment that gets little traffic and cards given to none."
+      "idleTip": "Cards whose average utilization over the range is below {{threshold}}%: both cards given to a deployment that gets little traffic and cards given to none.",
+      "idleNeedsDetail": "Counted once filtered to at most {{limit}} cards"
     },
     "chart": {
       "title": {
@@ -244,7 +246,8 @@
         "temp": "Temperature heat map ({{granularity}}, mean °C)",
         "mem": "Memory heat map ({{granularity}}, mean memory used)"
       },
-      "aria": "GPU heat map"
+      "aria": "GPU heat map",
+      "extremes": "{{total}} nodes; the heat map shows the {{half}} with the highest and the {{half}} with the lowest {{metric}}. Filter by node label to see the others."
     },
     "table": {
       "title": {
@@ -269,7 +272,8 @@
       "powerPerCard": "Mean power (per card)",
       "tempMax": "Peak temperature",
       "deployments": "Deployments",
-      "unassigned": "Unassigned"
+      "unassigned": "Unassigned",
+      "nodeCount": "Nodes: {{count}}"
     },
     "export": {
       "detail": "Detail",
@@ -279,7 +283,8 @@
       "memMaxPct": "Peak memory used (%)",
       "yes": "Yes"
     },
-    "foot": "Utilization, memory, power and temperature are the means and peaks of the samples in each bucket, then over the range."
+    "foot": "Utilization, memory, power and temperature are the means and peaks of the samples in each bucket, then over the range.",
+    "summaryNote": "This range covers {{count}} cards; past {{limit}} they are shown by card model or node. Filter by node label or card model to at most {{limit}} to see each card."
   },
   "gpuTime": {
     "cards": {

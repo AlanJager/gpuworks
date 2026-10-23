@@ -47,17 +47,14 @@ export default function GpuTable({ rows, group }: { rows: GpuRow[]; group: GpuGr
       key: "deployments",
       title: t("gpus.table.deployments"),
       width: 220,
-      render: (_, r) => {
-        const idle = r.cards.filter((c) => (c.deployments ?? []).length === 0).length;
-        return (
-          <div>
-            {r.deployments.map((d) => (
-              <div key={d.name}>{d.name}{r.cards.length > 1 && <Typography.Text type="secondary" style={{ fontSize: 12 }}> × {d.cards}</Typography.Text>}</div>
-            ))}
-            {idle > 0 && <div><Typography.Text type="secondary">{t("gpus.table.unassigned")}{r.cards.length > 1 ? ` × ${idle}` : ""}</Typography.Text></div>}
-          </div>
-        );
-      },
+      render: (_, r) => (
+        <div>
+          {r.deployments.map((d) => (
+            <div key={d.name}>{d.name}{r.cardCount > 1 && <Typography.Text type="secondary" style={{ fontSize: 12 }}> × {d.cards}</Typography.Text>}</div>
+          ))}
+          {r.unassigned > 0 && <div><Typography.Text type="secondary">{t("gpus.table.unassigned")}{r.cardCount > 1 ? ` × ${r.unassigned}` : ""}</Typography.Text></div>}
+        </div>
+      ),
     },
   ];
   return (

@@ -51,7 +51,7 @@ func (a *analyticsAPI) Quality(ctx context.Context, q api.AnalyticsQuery) (dto.Q
 
 func (a *analyticsAPI) GPUs(ctx context.Context, q api.AnalyticsQuery) (dto.GPUAnalytics, error) {
 	return a.queries.GPUs(ctx, analytics.GPUQuery{Query: analyticsQuery(q), GroupBy: q.GroupBy, Metric: q.Metric,
-		GPUFilter: statsdb.GPUFilter{NodeUUID: q.NodeUUID, GPUModel: q.GPUModel}})
+		NodeUUIDs: q.NodeUUIDs, GPUModel: q.GPUModel})
 }
 
 func (a *analyticsAPI) GPUTime(ctx context.Context, q api.AnalyticsQuery) (dto.GPUTimeAnalytics, error) {

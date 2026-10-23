@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -226,14 +228,53 @@ func TestAnalyticsRoutes(t *testing.T) {
 	if code, _ := call("/api/v1/analytics/usage?from=1&to=2&key=none", viewer); code != http.StatusOK || !fake.queries[1].Keyless {
 		t.Fatalf("keyless = %d %+v", code, fake.queries[1])
 	}
-	if code, _ := call("/api/v1/analytics/gpus?from=1&to=2&group_by=node&metric=temp&node=n1&model=RTX", viewer); code != http.StatusOK {
+	if code, _ := call("/api/v1/analytics/gpus?from=1&to=2&group_by=node&metric=temp&model=RTX", viewer); code != http.StatusOK {
 		t.Fatalf("gpus = %d", code)
 	}
-	if got := fake.queries[2]; got.GroupBy != "node" || got.Metric != "temp" || got.NodeUUID != "n1" || got.GPUModel != "RTX" {
+	if got := fake.queries[2]; got.GroupBy != "node" || got.Metric != "temp" || got.NodeUUIDs != nil || got.GPUModel != "RTX" {
 		t.Fatalf("gpu params = %+v", got)
 	}
-	// Malformed parameters are refused before the service.
+	// A label filter reads as the nodes it matches now, written labels and
+	// system labels alike; a filter matching none is an empty list, not nil.
+	for _, n := range []struct {
+		uuid string
+		pool string
+	}{{"n-a", "inference"}, {"n-b", "inference"}, {"n-c", "training"}} {
+		if _, err := st.RegisterNode(n.uuid, store.HashToken("token"), n.uuid); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.SetNodeLabels(n.uuid, map[string]string{"pool": n.pool}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"label=pool%3Dinference", "[n-a n-b]"},
+		{"label=pool%3Dinference&label=pool%3Dtraining", "[n-a n-b n-c]"},
+		{"label=gpuworks.ai%2Fnode%3Dn-c", "[n-c]"},
+		{"label=pool%3Dnone", "[]"},
+	} {
+		at := len(fake.queries)
+		if code, body := call("/api/v1/analytics/gpus?from=1&to=2&"+tc.query, viewer); code != http.StatusOK {
+			t.Fatalf("%s = %d %s", tc.query, code, body)
+		}
+		got := append([]string(nil), fake.queries[at].NodeUUIDs...)
+		sort.Strings(got)
+		if fake.queries[at].NodeUUIDs == nil || fmt.Sprint(got) != tc.want {
+			t.Fatalf("%s nodes = %#v, want %s", tc.query, fake.queries[at].NodeUUIDs, tc.want)
+		}
+	}
 	before := len(fake.queries)
+	if code, body := call("/api/v1/analytics/gpus?from=1&to=2&label=nokey", viewer); code != http.StatusBadRequest || !strings.Contains(body, ErrorListFilterInvalid) {
+		t.Fatalf("malformed label = %d %s", code, body)
+	}
+	if len(fake.queries) != before {
+		t.Fatal("a malformed label reached the service")
+	}
+	// Malformed parameters are refused before the service.
+	before = len(fake.queries)
 	for _, tc := range []struct{ query, code, field string }{
 		{"", "ANALYTICS_RANGE_INVALID", "from"},
 		{"from=1", "ANALYTICS_RANGE_INVALID", "to"},

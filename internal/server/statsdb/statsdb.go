@@ -22,7 +22,11 @@ import (
 
 // schemaVersion is stored in PRAGMA user_version. A file written by a newer
 // schema is refused rather than misread.
-const schemaVersion = 1
+const schemaVersion = 2
+
+// schemaSteps take a file from one version to the next: step i makes
+// version i+1.
+var schemaSteps = [][]string{schemaV1, schemaV2}
 
 // Store is stats.db.
 type Store struct {
@@ -88,9 +92,11 @@ func (s *Store) initSchema() error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, stmt := range schemaV1 {
-		if _, err := tx.Exec(stmt); err != nil {
-			return fmt.Errorf("create stats db schema: %w", err)
+	for step := version; step < schemaVersion; step++ {
+		for _, stmt := range schemaSteps[step] {
+			if _, err := tx.Exec(stmt); err != nil {
+				return fmt.Errorf("stats db schema %d: %w", step+1, err)
+			}
 		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion)); err != nil {
@@ -133,7 +139,7 @@ func (k Kind) tables() (hourly, daily []string) {
 	case KindQuality:
 		return []string{"quality_hourly"}, []string{"quality_daily"}
 	case KindGPU:
-		return []string{"gpu_hourly"}, []string{"gpu_daily"}
+		return []string{"gpu_hourly", "gpu_node_hourly", "gpu_model_hourly"}, []string{"gpu_daily", "gpu_node_daily", "gpu_model_daily"}
 	case KindGPUTime:
 		return []string{"gpu_time_hourly", "gpu_capacity_hourly"}, []string{"gpu_time_daily", "gpu_capacity_daily"}
 	}
@@ -222,3 +228,38 @@ var schemaV1 = []string{
 	// per kind: it fills hours before through_ms until done.
 	`CREATE TABLE backfill (kind TEXT PRIMARY KEY, through_ms INTEGER NOT NULL, done INTEGER NOT NULL)`,
 }
+
+// schemaV2 adds the GPU statistics summed per node and card model, written
+// with the cards' rows: a fleet's pages read them instead of every card's
+// rows (ADR 0055). A node's rows are split by card model, so a node of mixed
+// cards can be filtered by model. Their figures are the cards' summed;
+// mem_total is the largest card's. The step fills them from the cards' rows
+// a file already holds.
+var schemaV2 = []string{
+	`CREATE TABLE gpu_node_hourly (
+		hour_ms INTEGER NOT NULL, node_uuid TEXT NOT NULL, gpu_model TEXT NOT NULL,
+		` + gpuColumns + `,
+		PRIMARY KEY (hour_ms, node_uuid, gpu_model))`,
+	`CREATE TABLE gpu_node_daily (
+		day INTEGER NOT NULL, node_uuid TEXT NOT NULL, gpu_model TEXT NOT NULL,
+		` + gpuColumns + `,
+		PRIMARY KEY (day, node_uuid, gpu_model))`,
+	`CREATE TABLE gpu_model_hourly (
+		hour_ms INTEGER NOT NULL, gpu_model TEXT NOT NULL,
+		` + gpuColumns + `,
+		PRIMARY KEY (hour_ms, gpu_model))`,
+	`CREATE TABLE gpu_model_daily (
+		day INTEGER NOT NULL, gpu_model TEXT NOT NULL,
+		` + gpuColumns + `,
+		PRIMARY KEY (day, gpu_model))`,
+	`INSERT INTO gpu_node_hourly SELECT hour_ms, node_uuid, gpu_model, ` + gpuSums + ` FROM gpu_hourly GROUP BY hour_ms, node_uuid, gpu_model`,
+	`INSERT INTO gpu_node_daily SELECT day, node_uuid, gpu_model, ` + gpuSums + ` FROM gpu_daily GROUP BY day, node_uuid, gpu_model`,
+	`INSERT INTO gpu_model_hourly SELECT hour_ms, gpu_model, ` + gpuSums + ` FROM gpu_hourly GROUP BY hour_ms, gpu_model`,
+	`INSERT INTO gpu_model_daily SELECT day, gpu_model, ` + gpuSums + ` FROM gpu_daily GROUP BY day, gpu_model`,
+}
+
+// gpuColumns are the figure columns every GPU table has.
+const gpuColumns = `util_sum REAL NOT NULL, util_n INTEGER NOT NULL, util_max REAL NOT NULL,
+		mem_used_sum REAL NOT NULL, mem_used_n INTEGER NOT NULL, mem_used_max REAL NOT NULL, mem_total REAL NOT NULL,
+		power_sum REAL NOT NULL, power_n INTEGER NOT NULL,
+		temp_sum REAL NOT NULL, temp_n INTEGER NOT NULL, temp_max REAL NOT NULL`

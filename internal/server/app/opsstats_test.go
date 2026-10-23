@@ -102,7 +102,8 @@ func TestOpsStatsAccumulatesFlushesRollsUpAndRetains(t *testing.T) {
 	if err := ops.flushStats(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if h, _, err := ops.stats.RowCount(ctx, statsdb.KindGPU); err != nil || h != 1 {
+	// The card's hour, and its node's and its model's.
+	if h, _, err := ops.stats.RowCount(ctx, statsdb.KindGPU); err != nil || h != 3 {
 		t.Fatalf("gpu rows = %d %v", h, err)
 	}
 	if h, _, _ := ops.stats.RowCount(ctx, statsdb.KindQuality); h != 1 {

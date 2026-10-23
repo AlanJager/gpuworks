@@ -225,15 +225,56 @@ type GPUHeatRow struct {
 	Values []*float64 `json:"values"`
 }
 
+// GPUGroupRow is a model's or a node's cards over the range.
+type GPUGroupRow struct {
+	Key   string `json:"key"` // the model, or the node's UUID
+	Label string `json:"label"`
+	// Cards and Nodes count the group's cards and their nodes in the
+	// inventory now; Models are the models of a node's cards.
+	Cards  int      `json:"cards"`
+	Nodes  int      `json:"nodes"`
+	Models []string `json:"models"`
+	// Deployments hold the group's cards now, each with how many;
+	// Unassigned counts the cards no deployment holds.
+	Deployments []GPUHolding `json:"deployments"`
+	Unassigned  int          `json:"unassigned"`
+	GPUFigures
+}
+
+// GPUHolding is a deployment holding cards of a group.
+type GPUHolding struct {
+	Name  string `json:"name"`
+	Cards int    `json:"cards"`
+}
+
+// GPUModelCount is how many cards of a model the filter covers now.
+type GPUModelCount struct {
+	Model string `json:"model"`
+	Cards int    `json:"cards"`
+}
+
 // GPUAnalytics is the GPU utilization over a range.
 type GPUAnalytics struct {
 	Range  AnalyticsRange `json:"range"`
 	Metric string         `json:"metric"` // util | power | temp | mem
-	// GroupBy is what the heat map's rows are: model, node or gpu.
-	GroupBy string       `json:"group_by"`
-	Totals  GPUFigures   `json:"totals"`
-	Cards   []GPUCardRow `json:"cards"`
-	Heat    []GPUHeatRow `json:"heat"`
+	// GroupBy is what the heat map's and the groups' rows are: model, node
+	// or gpu.
+	GroupBy string     `json:"group_by"`
+	Totals  GPUFigures `json:"totals"`
+	// CardCount is how many cards the filter covers in the inventory now,
+	// ByModel how many of each model.
+	CardCount int             `json:"card_count"`
+	ByModel   []GPUModelCount `json:"by_model"`
+	// Detail says Cards lists each card: only when the filter covers at most
+	// a few hundred cards, otherwise Cards is empty.
+	Detail bool         `json:"detail"`
+	Cards  []GPUCardRow `json:"cards"`
+	// Groups are the models or nodes (empty by card: Cards are the rows).
+	Groups []GPUGroupRow `json:"groups"`
+	Heat   []GPUHeatRow  `json:"heat"`
+	// HeatTotal is the heat map's rows in all; when Heat holds fewer, it
+	// holds the highest and lowest of the metric over the range.
+	HeatTotal int `json:"heat_total"`
 }
 
 // GPUTimeRow is a deployment's card time on a model over the range.

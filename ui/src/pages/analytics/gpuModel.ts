@@ -1,5 +1,6 @@
-// The GPU tab's figures and table rows, derived from the API's per-card rows.
-import type { GpuGroupBy, GPUCardRow, GPUFigures } from "../../analyticsApi";
+// The GPU tab's figures and table rows: from the API's per-card rows when it
+// lists each card, from its models' or nodes' rows when it does not.
+import type { GpuGroupBy, GPUAnalytics, GPUCardRow, GPUFigures, GPUGroupRow } from "../../analyticsApi";
 
 /** A card whose utilization averages below this over the range is idle. */
 export const IDLE_UTIL = 5;
@@ -33,9 +34,9 @@ export interface GpuSummary {
   /** The cards' mean power added up: what the whole set draws. */
   powerTotal: number | null;
   powerCards: number;
-  idle: number;
-  /** Cards with a utilization figure: the idle count's denominator. */
-  measured: number;
+  /** Idle cards, and the cards with a utilization figure (its denominator); null when the answer lists no cards. */
+  idle: number | null;
+  measured: number | null;
 }
 
 export function summarize(cards: GPUCardRow[], totals: GPUFigures): GpuSummary {
@@ -62,7 +63,9 @@ export interface GpuRow {
   /** What the row is: a card, a node or a card model. */
   title: string;
   sub: string;
-  cards: GPUCardRow[];
+  /** The row's cards, and those of them no deployment holds. */
+  cardCount: number;
+  unassigned: number;
   /** Cards in the row no longer in the inventory. */
   removed: number;
   utilAvg: number | null;
@@ -86,7 +89,8 @@ function rowOf(id: string, title: string, sub: string, cards: GPUCardRow[]): Gpu
     id,
     title,
     sub,
-    cards,
+    cardCount: cards.length,
+    unassigned: cards.filter((c) => (c.deployments ?? []).length === 0).length,
     removed: cards.filter((c) => !c.present).length,
     utilAvg: mean(cards.map((c) => c.util_avg)),
     utilMax: maxOf(cards.map((c) => c.util_max)),
@@ -121,16 +125,57 @@ export interface FilterOption {
   label: string;
 }
 
-/** filterOptions are the nodes and card models in cards, once each, for the node and model filters. */
-export function filterOptions(cards: GPUCardRow[]): { nodes: FilterOption[]; models: FilterOption[] } {
-  const nodes = new Map<string, string>();
-  const models = new Set<string>();
-  for (const c of cards) {
-    nodes.set(c.node_uuid, c.node_name || c.node_uuid);
-    if (c.gpu_model) models.add(c.gpu_model);
-  }
+
+/** groupRows are the table's rows of an answer that lists no cards: its models' or nodes' own figures. */
+export function groupRows(groups: GPUGroupRow[], by: GpuGroupBy, nodesLabel: (count: number) => string): GpuRow[] {
+  return groups.map((g) => {
+    const memAvgPercent = memPercent(g.mem_used_avg_bytes, g.mem_total_bytes);
+    return {
+      id: g.key,
+      title: g.label,
+      sub: by === "node" ? g.models.join(" / ") : nodesLabel(g.nodes),
+      cardCount: g.cards,
+      unassigned: g.unassigned,
+      removed: 0,
+      utilAvg: g.util_avg,
+      utilMax: g.util_max,
+      memAvg: g.mem_used_avg_bytes,
+      memAvgPercent,
+      memMax: g.mem_used_max_bytes,
+      memMaxPercent: memPercent(g.mem_used_max_bytes, g.mem_total_bytes),
+      powerAvg: g.power_avg_watts,
+      tempMax: g.temp_max_celsius,
+      deployments: g.deployments,
+    };
+  });
+}
+
+/** summarizeGroups is summarize for an answer that lists no cards: from its counts and groups, without idle cards. */
+export function summarizeGroups(d: GPUAnalytics): GpuSummary {
+  const weighted = (value: (g: GPUGroupRow) => number | null) => {
+    let sum = 0;
+    let cards = 0;
+    for (const g of d.groups) {
+      const v = value(g);
+      if (v != null && g.cards > 0) {
+        sum += v * g.cards;
+        cards += g.cards;
+      }
+    }
+    return { sum, cards };
+  };
+  const mem = weighted((g) => memPercent(g.mem_used_avg_bytes, g.mem_total_bytes));
+  const power = weighted((g) => g.power_avg_watts);
   return {
-    nodes: [...nodes].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
-    models: [...models].sort().map((m) => ({ value: m, label: m })),
+    cards: d.card_count,
+    byModel: d.by_model.map((m) => ({ model: m.model, count: m.cards })),
+    utilAvg: d.totals.util_avg,
+    utilMax: d.totals.util_max,
+    memPercentAvg: mem.cards ? mem.sum / mem.cards : null,
+    memUsedAvg: d.totals.mem_used_avg_bytes,
+    powerTotal: power.cards ? power.sum : null,
+    powerCards: power.cards,
+    idle: null,
+    measured: null,
   };
 }

@@ -7,7 +7,7 @@ import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 import * as fx from "./helpers/analyticsFixtures.ts";
 
 const closeChannels = trackMessageChannels();
-const { i18n, locale } = await createI18n(["analytics"]);
+const { i18n, locale } = await createI18n(["analytics", "nodes"]);
 fx.installCanvas(dom);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
@@ -20,7 +20,7 @@ type Params = import("../src/analyticsApi.ts").AnalyticsParams;
 
 const a = locale.analytics;
 const originalAnalytics = { ...analyticsApi };
-const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments };
+const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments, nodeFacets: api.nodeFacets };
 
 const calls = { usage: [] as Params[], quality: [] as Params[], gpus: [] as Params[], gpuTime: [] as Params[] };
 let retention = fx.retentionView();
@@ -30,6 +30,7 @@ function stub() {
   retention = fx.retentionView();
   api.dataRetention = (async () => retention) as typeof api.dataRetention;
   api.deployments = (async () => fx.deployments) as unknown as typeof api.deployments;
+  api.nodeFacets = (async () => fx.nodeFacets) as typeof api.nodeFacets;
   analyticsApi.usage = async (p) => { calls.usage.push(p); return fx.usageToday(); };
   analyticsApi.quality = async (p) => { calls.quality.push(p); return fx.qualityToday(); };
   analyticsApi.gpus = async (p) => { calls.gpus.push(p); return fx.gpusToday(); };
