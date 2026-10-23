@@ -206,11 +206,14 @@
     "showNodes": "查看节点",
     "tab": {
       "overview": "概览",
-      "nodes": "节点（{{count}}）",
-      "files": "模型文件（{{count}}）",
+      "nodes": "节点",
+      "files": "模型文件",
       "browse": "浏览"
     },
-    "refreshFailed": "刷新失败，当前显示的容量和状态可能已过期。"
+    "refreshFailed": "刷新失败，当前显示的容量和状态可能已过期。",
+    "title": "存储详情",
+    "expand": "展开详情",
+    "collapse": "收起详情"
   },
   "actions": {
     "more": "更多",

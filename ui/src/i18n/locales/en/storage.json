@@ -206,11 +206,14 @@
     "showNodes": "Show the nodes",
     "tab": {
       "overview": "Overview",
-      "nodes": "Nodes ({{count}})",
-      "files": "Model files ({{count}})",
+      "nodes": "Nodes",
+      "files": "Model files",
       "browse": "Browse"
     },
-    "refreshFailed": "Refresh failed. Displayed capacity and status may be out of date."
+    "refreshFailed": "Refresh failed. Displayed capacity and status may be out of date.",
+    "title": "Storage details",
+    "expand": "Show details",
+    "collapse": "Hide details"
   },
   "actions": {
     "more": "More",

@@ -34,7 +34,7 @@ import SessionBoundary from "./components/SessionBoundary";
 import NotFoundPage from "./pages/NotFoundPage";
 import ImagesPage from "./pages/ImagesPage";
 import StoragePage from "./pages/StoragePage";
-import StorageDetailPage from "./pages/storage/StorageDetailPage";
+import { StorageDetailRedirect } from "./pages/storage/storageLinks";
 import NetworksPage from "./pages/networks/NetworksPage";
 import NetworkDetailPage from "./pages/networks/NetworkDetailPage";
 import GPUPage from "./pages/GPUPage";
@@ -183,7 +183,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
 			<Route path="/inference-templates/*" element={<InferenceTemplateDetailPage />} />
             <Route path="/images" element={<ImagesPage />} />
             <Route path="/storage" element={<StoragePage />} />
-            <Route path="/storage/:id" element={<StorageDetailPage />} />
+            <Route path="/storage/:id" element={<StorageDetailRedirect />} />
             <Route path="/networks" element={<NetworksPage />} />
             <Route path="/networks/:id" element={<NetworkDetailPage />} />
             <Route path="/ai-store/ai-model" element={<ModelsPage />} />

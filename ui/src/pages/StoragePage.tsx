@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Alert, Button, Card, Space, Tooltip, Typography } from "antd";
 import { EditOutlined, PlusOutlined, ProfileOutlined, SettingOutlined } from "@ant-design/icons";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import PageHeader from "../components/PageHeader";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
@@ -15,6 +15,9 @@ import StorageFormModal from "./storage/StorageFormModal";
 import StorageNodeHealth from "./storage/StorageNodeHealth";
 import StorageSettingsModal from "./storage/StorageSettingsModal";
 import StorageTags from "./storage/StorageTags";
+import StorageDetailDrawer from "./storage/StorageDetailDrawer";
+import { storageDetailPath } from "./storage/storageLinks";
+import { numericDetailID, useDetailParam } from "../components/detail/useDetailParam";
 import { scopeText } from "./storage/storageScope";
 import { useStorageRunner } from "./storage/useStorageRunner";
 
@@ -33,11 +36,11 @@ function Location({ storage }: { storage: Storage }) {
   return storage.path ? <Typography.Text code>{storage.path}</Typography.Text> : <Typography.Text type="secondary">—</Typography.Text>;
 }
 
-/** The storages of this gpuworks, one line each; everything about one is on its own page. */
+/** The storages of this gpuworks, one line each; everything about one opens in a drawer over the list (?storage=). */
 export default function StoragePage() {
   const { t } = useTranslation("storage");
-  const navigate = useNavigate();
   const isAdmin = useIsAdmin();
+  const detail = useDetailParam("storage");
   const storages = usePolling<List<Storage>>(api.storages, 15000);
   const nodes = usePolling<List<Node>>(api.nodes, 0);
   const [adding, setAdding] = useState(false);
@@ -52,7 +55,7 @@ export default function StoragePage() {
       title: t("list.column.name"),
       width: 220,
       sortValue: (s) => s.name,
-      render: (_, s) => <Space size={4}><Link to={`/storage/${s.id}`}>{s.name}</Link><StorageTags storage={s} /></Space>,
+      render: (_, s) => <Space size={4}><Link to={storageDetailPath(s.id)}>{s.name}</Link><StorageTags storage={s} /></Space>,
     },
     {
       key: "type",
@@ -85,7 +88,7 @@ export default function StoragePage() {
       width: 110,
       render: (_, s) => (
         <Space size={2}>
-          <Tooltip title={t("actions.detail")}><Button type="text" size="small" icon={<ProfileOutlined />} aria-label={t("actions.detail")} onClick={() => navigate(`/storage/${s.id}`)} /></Tooltip>
+          <Tooltip title={t("actions.detail")}><Button type="text" size="small" icon={<ProfileOutlined />} aria-label={t("actions.detail")} onClick={() => detail.open(s.id)} /></Tooltip>
           {isAdmin && <Tooltip title={t("actions.edit")}><Button type="text" size="small" icon={<EditOutlined />} aria-label={t("actions.edit")} onClick={() => setEditing(s)} /></Tooltip>}
           {isAdmin && <StorageDeleteButton link storage={s} loading={runner.busy === `delete-${s.id}`} onConfirm={() => void runner.run(`delete-${s.id}`, () => api.deleteStorage(s.id), t("actions.deleted", { name: s.name }))} />}
         </Space>
@@ -127,8 +130,16 @@ export default function StoragePage() {
           setAdding(false);
           setEditing(null);
           void storages.refresh();
-          if (created) navigate(`/storage/${saved.id}`);
+          if (created) detail.open(saved.id);
         }}
+      />
+      <StorageDetailDrawer
+        id={numericDetailID(detail.id)}
+        tab={detail.tab}
+        onTab={detail.setTab}
+        onClose={() => detail.open(null)}
+        onDeleted={() => { detail.open(null); void storages.refresh(); }}
+        nodes={nodes.data?.items ?? []}
       />
     </div>
   );

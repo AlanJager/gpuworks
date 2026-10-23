@@ -17,12 +17,12 @@ const cache = nfsStorage({
 });
 const q = (label: string) => new RegExp(`${label}$`);
 
-test("while loading it shows a skeleton; a failed load says so with retry and a way back", async () => {
+test("while loading it shows a spinner; a failed load says so with retry, and the drawer closes back to the list", async () => {
   let release: (value: unknown) => void = () => {};
   stubDetail();
   api.storage = (() => new Promise((resolve) => { release = resolve; })) as never;
   const pending = renderDetail("/storage/2");
-  assert.ok(document.querySelector(".ant-card-loading"), "a skeleton card while the first load runs");
+  await waitFor(() => assert.ok(document.querySelector(".ant-drawer .ant-spin"), "a spinner while the first load runs"));
   release(archive);
   await screen.findByRole("heading", { name: /model-archive/ });
   pending.view.unmount();
@@ -31,33 +31,33 @@ test("while loading it shows a skeleton; a failed load says so with retry and a 
   const { user } = renderDetail("/storage/2");
   assert.ok(await screen.findByText(s.detail.loadFailed));
   assert.ok(screen.getByText("storage gone"));
-  assert.equal(screen.getByRole("link", { name: s.detail.back }).getAttribute("href"), "/storage");
+  assert.ok(screen.getByRole("button", { name: "Close" }), "the drawer closes back to the list");
   const calls = stubDetail({ storage: archive });
   await user.click(screen.getByRole("button", { name: s.detail.retry }));
   await waitFor(() => assert.ok(calls.storage.length > 0));
   assert.ok(await screen.findByRole("heading", { name: /model-archive/ }));
 });
 
-test("the header names the storage with its type and marks, and the breadcrumb links back to the list", async () => {
+test("the drawer title names the storage with its type and marks, over the list", async () => {
   stubDetail({ storage: nfsStorage({ is_default: true, enabled: false, writable: false }) });
   renderDetail("/storage/2");
   const title = await screen.findByRole("heading", { name: /model-archive/ });
   assert.ok(within(title).getByText(locale.common.storageType.nfs));
   assert.ok(within(title).getByText(s.tag.default));
   assert.ok(within(title).getByText(s.tag.readOnly));
-  assert.equal(screen.getByRole("link", { name: s.page.breadcrumb.storage }).getAttribute("href"), "/storage");
+  assert.equal(where(), "/storage?storage=2", "the old address opened the drawer over the list");
 });
 
 test("the tab lives in the URL: ?tab= opens it, choosing a tab writes it, an unknown one falls back to the overview", async () => {
   const calls = stubDetail({ storage: archive });
-  const first = renderDetail("/storage/2?tab=nodes");
+  const first = renderDetail("/storage?storage=2&tab=nodes");
   assert.ok(await screen.findByRole("columnheader", { name: s.nodes.column.node }));
-  assert.equal(screen.getByRole("tab", { name: s.detail.tab.nodes.replace("{{count}}", "130") }).getAttribute("aria-selected"), "true");
+  assert.equal(screen.getByRole("tab", { name: new RegExp(`^${s.detail.tab.nodes}\\s*130$`) }).getAttribute("aria-selected"), "true");
   assert.deepEqual(calls.storage[0], [2, true], "the node list is asked for");
-  await first.user.click(screen.getByRole("tab", { name: s.detail.tab.files.replace("{{count}}", "0") }));
-  await waitFor(() => assert.equal(where(), "/storage/2?tab=files"));
+  await first.user.click(screen.getByRole("tab", { name: new RegExp(`^${s.detail.tab.files}\\s*0$`) }));
+  await waitFor(() => assert.equal(where(), "/storage?storage=2&tab=files"));
   assert.ok(await screen.findByText(s.files.emptyShared));
-  first.view.unmount();
+  cleanup();
 
   renderDetail("/storage/2?tab=bogus");
   await screen.findByText(s.overview.config);
@@ -70,7 +70,7 @@ test("when nodes are not ready a warning counts them, names the first ones and j
   assert.ok(await screen.findByText(s.detail.notReady.replace("{{count}}", "2").replace("{{total}}", "130")));
   assert.ok(screen.getByText(/node-47: Failed · nfs client missing/));
   await user.click(screen.getByRole("button", { name: s.detail.showNodes }));
-  await waitFor(() => assert.equal(where(), "/storage/2?tab=nodes"));
+  await waitFor(() => assert.equal(where(), "/storage?storage=2&tab=nodes"));
 });
 
 test("a storage ready everywhere has no warning", async () => {
@@ -84,12 +84,12 @@ test("overview of an NFS storage: configuration, capacity once, who else uses it
   stubDetail({ storage: archive, planes: [{ id: "cp-2", name: "team-b", version: "0.9.7", last_seen_seconds: 200, fresh: true }, { id: "cp-3", name: "team-old", last_seen_seconds: 7200, fresh: false }] });
   renderDetail("/storage/2");
   await screen.findByText(s.overview.config);
-  const config = screen.getByText(s.overview.config).closest(".ant-card") as HTMLElement;
+  const config = screen.getByRole("heading", { name: s.overview.config }).closest("section") as HTMLElement;
   assert.ok(within(config).getByText("nfs.example.internal:/export/models"));
   assert.ok(within(config).getByText("/mnt/gpuworks/model-archive"));
   assert.ok(within(config).getByText("vers=4.2"));
   assert.ok(within(config).getByText(s.scope.all));
-  const capacity = screen.getByText(s.overview.capacity, { selector: ".ant-card-head-title" }).closest(".ant-card") as HTMLElement;
+  const capacity = screen.getByRole("heading", { name: s.overview.capacity }).closest("section") as HTMLElement;
   assert.ok(within(capacity).getByText(/Used 69\.0 TiB of 117\.0 TiB, 48\.0 TiB available/));
   assert.ok(within(capacity).getByText(s.capacity.once));
   assert.ok(await screen.findByText("team-b"));
@@ -123,7 +123,7 @@ test("overview of a local storage summarises free space per node and links to th
   assert.equal(screen.queryByText(s.overview.controlPlanes), null);
   assert.equal(calls.storageControlPlanes, undefined);
   await user.click(screen.getByRole("button", { name: s.overview.showNodes }));
-  await waitFor(() => assert.equal(where(), "/storage/1?tab=nodes"));
+  await waitFor(() => assert.equal(where(), "/storage?storage=1&tab=nodes"));
 });
 
 test("a read-only shared storage says it tracks nobody instead of asking", async () => {
@@ -166,7 +166,7 @@ test("a default or read-only storage offers no Make default", async () => {
   const first = renderDetail("/storage/1");
   await screen.findByRole("heading", { name: /default/ });
   assert.ok(!(await moreItems()).includes(s.actions.setDefault));
-  first.view.unmount();
+  cleanup();
   stubDetail({ storage: nfsStorage({ enabled: false, writable: false }) });
   renderDetail("/storage/2");
   await screen.findByRole("heading", { name: /model-archive/ });
@@ -195,7 +195,9 @@ test("only an NFS cache has Clear cache, and only NFS types switch into each oth
   await chooseMore(s.actions.switchTo.replace("{{type}}", locale.common.storageType.nfs));
   await confirmDialog(s.actions.switch);
   await waitFor(() => assert.deepEqual(calls.updateStorage.at(-1), [3, { type: "nfs" }]));
-  first.view.unmount();
+  // The confirmations above are Modal.confirm portals; clear them as afterEach does.
+  Modal.destroyAll();
+  cleanup();
 
   const plain = stubDetail({ storage: archive });
   renderDetail("/storage/2");
@@ -242,7 +244,7 @@ test("deleting asks first and goes back to the list; one a deployment uses is re
   await confirmDialog(s.actions.delete);
   assert.ok(await screen.findByText(s.actions.failed));
   assert.ok(screen.getByText(/#4, #9/));
-  assert.equal(where(), "/storage/2");
+  assert.equal(where(), "/storage?storage=2");
 
   api.deleteStorage = (async (...args: unknown[]) => { (calls.deleteStorage ??= []).push(args); }) as never;
   await chooseMore(s.actions.delete);
@@ -280,16 +282,15 @@ test("switching storage hides the previous resource's cached models until its ow
   const React = await import("react");
   const { MemoryRouter, Routes, Route, useNavigate } = await import("react-router-dom");
   const { I18nextProvider } = await import("react-i18next");
-  const { i18n, modelFile } = await import("./helpers/storageDetailHarness.tsx");
-  const { default: Detail } = await import("../src/pages/storage/StorageDetailPage.tsx");
+  const { i18n, modelFile, DrawerHost } = await import("./helpers/storageDetailHarness.tsx");
   const { list } = await import("./helpers/listPage.ts");
   stubDetail();
   const base = nfsStorage({type:"nfs_cache",cache_path:"/cache",nodes:{total:1,ready:1,problems:[],all:[nodeStatus("n1","shared-node","ready")]}});
   api.storage = async (id) => ({...base,id,name:`storage-${id}`});
   let release!: (value: ReturnType<typeof list>) => void;
   api.storageModelFiles = (async (id: number) => id === 3 ? list([modelFile({cache:true,node_uuid:"n1",model_name:"previous-only-model"})]) : new Promise((resolve) => {release = resolve;})) as typeof api.storageModelFiles;
-  function Navigation() { const navigate = useNavigate(); return React.createElement("button",{onClick:()=>navigate("/storage/4?tab=nodes")},"switch-resource"); }
-  rtl.render(React.createElement(I18nextProvider,{i18n},React.createElement(MemoryRouter,{initialEntries:["/storage/3?tab=nodes"]},React.createElement(Navigation),React.createElement(Routes,null,React.createElement(Route,{path:"/storage/:id",element:React.createElement(Detail)})))));
+  function Navigation() { const navigate = useNavigate(); return React.createElement("button",{onClick:()=>navigate("/storage?storage=4&tab=nodes")},"switch-resource"); }
+  rtl.render(React.createElement(I18nextProvider,{i18n},React.createElement(MemoryRouter,{initialEntries:["/storage?storage=3&tab=nodes"]},React.createElement(Navigation),React.createElement(Routes,null,React.createElement(Route,{path:"/storage",element:React.createElement(DrawerHost)})))));
   await screen.findAllByText("storage-3");
   fireEvent.click(screen.getByRole("button",{name:"switch-resource"}));
   await waitFor(() => assert.ok(screen.queryAllByText("storage-4").length));
@@ -303,7 +304,7 @@ test("switching storage hides the previous resource's cached models until its ow
 
 test("refresh failure retains the storage with an explicit stale-data warning and recovers on retry", async () => {
   stubDetail({ storage: { ...archive, type: "nfs_cache", cache_path: "/cache" } });
-  const { user } = renderDetail("/storage/2?tab=nodes", false);
+  const { user } = renderDetail("/storage?storage=2&tab=nodes", false);
   await screen.findByRole("heading", { name: /model-archive/ });
   api.storage = async () => { throw new Error("refresh unavailable"); };
   await user.click(screen.getByRole("button", { name: locale.common.dataTable.refresh }));
