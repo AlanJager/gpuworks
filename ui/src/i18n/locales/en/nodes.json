@@ -269,6 +269,7 @@
   },
   "accelerators": {
     "title": "Accelerators ({{count}})",
+    "capabilityCards": "{{count}} cards",
     "empty": "No GPU was detected on this node",
     "telemetry": "Live metrics",
     "topology": "Accelerator topology",
@@ -277,7 +278,9 @@
       "vram": "VRAM",
       "architecture": "Architecture",
       "partitioning": "dGPU",
-      "health": "Health"
+      "health": "Health",
+      "utilizationShort": "Util.",
+      "temperatureShort": "Temp."
     },
     "overview": "Summary",
     "list": "GPU list",

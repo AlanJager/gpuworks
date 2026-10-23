@@ -321,11 +321,15 @@ export default function TopologyGraph({
                 strokeDasharray={isHl ? undefined : "4 3"}
               />
               <rect x={x} y={y} width={4} height={h} rx={2} fill={isHl ? colors.chartPrimary : colors.controlBorder} />
-              <text x={x + 14} y={y + 17} fontSize={12} fontWeight={700} fill={colors.ink}>
-                {laneTitle(group, t)}
-              </text>
-              <text x={x + 86} y={y + 17} fontSize={11} fill={colors.muted}>
-                {laneSubtitle(group, t)}
+              {/* The count follows the title in the same line of text: at a fixed
+                  offset, a longer title ("NUMA unknown") ran into it. */}
+              <text x={x + 14} y={y + 17}>
+                <tspan fontSize={12} fontWeight={700} fill={colors.ink}>
+                  {laneTitle(group, t)}
+                </tspan>
+                <tspan dx={10} fontSize={11} fill={colors.muted}>
+                  {laneSubtitle(group, t)}
+                </tspan>
               </text>
             </g>
           );

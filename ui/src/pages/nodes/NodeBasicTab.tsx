@@ -14,7 +14,7 @@ import RuntimePluginStatus from "../../components/RuntimePluginStatus";
 import { SystemLabelTags } from "../../components/SystemLabelTags";
 import { formatTime } from "../../i18n/datetime";
 import { runtimeChoices, runtimeLabel } from "../../nodeDisplay";
-import NodeDetailSection from "./NodeDetailSection";
+import DetailSection from "../../components/detail/DetailSection";
 import NodeDiskUsage from "./NodeDiskUsage";
 
 // NodeBasicTab is the node detail's overview tab: the node itself, its
@@ -40,7 +40,7 @@ export default function NodeBasicTab({
   const labels = Object.entries(node.labels ?? {});
   return (
     <>
-      <NodeDetailSection title={t("detail.section.node")}>
+      <DetailSection title={t("detail.section.node")}>
         <Descriptions bordered size="small" column={1}>
           <Descriptions.Item label={t("detail.name")}>
             <Space>
@@ -96,9 +96,9 @@ export default function NodeBasicTab({
             )}
           </Descriptions.Item>
         </Descriptions>
-      </NodeDetailSection>
+      </DetailSection>
 
-      <NodeDetailSection title={t("detail.section.runtime")}>
+      <DetailSection title={t("detail.section.runtime")}>
         <Descriptions bordered size="small" column={1}>
           <Descriptions.Item label={t("detail.runtime")}>
             <Space direction="vertical" size={4} style={{ width: "100%" }}>
@@ -124,19 +124,19 @@ export default function NodeBasicTab({
             <RuntimePluginStatus node={node} />
           </Descriptions.Item>
         </Descriptions>
-      </NodeDetailSection>
+      </DetailSection>
 
-      <NodeDetailSection title={t("detail.section.storage")}>
+      <DetailSection title={t("detail.section.storage")}>
         <Descriptions bordered size="small" column={1}>
           <Descriptions.Item label={t("detail.disk")}>{node.disk_total_gib.toFixed(1)} GiB</Descriptions.Item>
         </Descriptions>
         {/* The usage table runs the drawer's full width; inside a value cell its paths wrapped. */}
-        <div className="node-detail-block" aria-label={t("diskUsage.title")}>
+        <div className="detail-block" aria-label={t("diskUsage.title")}>
           <NodeDiskUsage node={node} />
         </div>
-      </NodeDetailSection>
+      </DetailSection>
 
-      <NodeDetailSection title={t("detail.section.network")}>
+      <DetailSection title={t("detail.section.network")}>
         <Descriptions bordered size="small" column={1}>
           <Descriptions.Item label={t("detail.connectionMode")}>{formatConnection(node, t)}</Descriptions.Item>
           <Descriptions.Item label={t("detail.sshChannel")}>
@@ -151,11 +151,11 @@ export default function NodeBasicTab({
               (node.server_dial_address ? `:${node.server_dial_address.split(":").pop()}` : "—")}
           </Descriptions.Item>
         </Descriptions>
-        <div className="node-detail-cards">
+        <div className="detail-cards">
           <NodeNetworksCard nodeUUID={node.uuid} />
           <NodePullProxy nodeUUID={node.uuid} />
         </div>
-      </NodeDetailSection>
+      </DetailSection>
     </>
   );
 }

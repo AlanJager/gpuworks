@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Drawer, Input, Modal, Space, Tabs, Typography, message } from "antd";
+import { Button, Input, Modal, Space, message } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   api,
@@ -17,13 +17,9 @@ import NodeDoctorReport from "../../components/NodeDoctorReport";
 import { NodeReconnectButton } from "../../components/NodeReconnectButton";
 import { NodeRecoveryStatus } from "../../components/NodeRecoveryControls";
 import { nodeDisplayName } from "../../nodeDisplay";
+import DetailDrawer from "../../components/detail/DetailDrawer";
 import NodeBasicTab from "./NodeBasicTab";
 import NodeGpuTab from "./NodeGpuTab";
-
-// As wide as the deployment drawer: a little wider than it used to be, room
-// for the GPU list without scrolling sideways, never wider than the window
-// less a margin.
-export const NODE_DETAIL_WIDTH = "min(720px, calc(100vw - 32px))";
 
 export type NodeDetailTab = "basic" | "accelerators" | "doctor";
 
@@ -120,26 +116,12 @@ export default function NodeDetailDrawer({
   };
 
   return (
-    <Drawer
-      title={
-        node ? (
-          // The name leads; the hostname follows when the node has a name of its own.
-          <Space size={8} wrap>
-            <span>{shown?.name || node.hostname}</span>
-            {shown?.name && shown.name !== node.hostname && (
-              <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
-                {node.hostname}
-              </Typography.Text>
-            )}
-          </Space>
-        ) : (
-          t("detail.title")
-        )
-      }
+    <DetailDrawer
       open={!!node}
       onClose={onClose}
-      width={NODE_DETAIL_WIDTH}
-      styles={{ body: { paddingTop: 0 } }}
+      // The name leads; the hostname follows when the node has a name of its own.
+      title={node ? shown?.name || node.hostname : t("detail.title")}
+      subtitle={node && shown?.name && shown.name !== node.hostname ? node.hostname : undefined}
       extra={
         node && (
           <Space wrap>
@@ -152,15 +134,12 @@ export default function NodeDetailDrawer({
           </Space>
         )
       }
-    >
-      {shown && (
-        <>
-          <NodeRecoveryStatus node={shown} onUpdated={setFull} />
-          <Tabs
-            className="node-detail-tabs"
-            activeKey={tab}
-            onChange={(key) => setTab(key as NodeDetailTab)}
-            items={[
+      banner={shown && <NodeRecoveryStatus node={shown} onUpdated={setFull} />}
+      activeTab={tab}
+      onTabChange={(key) => setTab(key as NodeDetailTab)}
+      tabs={
+        shown
+          ? [
               {
                 key: "basic",
                 label: t("detail.tab.basic"),
@@ -181,39 +160,32 @@ export default function NodeDetailDrawer({
               },
               {
                 key: "accelerators",
-                label: (
-                  <span>
-                    {t("detail.tab.accelerators")}
-                    <span className="node-detail-tab-count" title={t("detail.tab.count", { count: shown.gpus.length })}>
-                      {shown.gpus.length}
-                    </span>
-                  </span>
-                ),
+                label: t("detail.tab.accelerators"),
+                count: shown.gpus.length,
+                countTitle: t("detail.tab.count", { count: shown.gpus.length }),
                 children: <NodeGpuTab node={shown} topology={full?.topology} highlight={highlight} onUpdated={merge} />,
               },
-              ...(doctor
-                ? [{ key: "doctor", label: t("detail.tab.doctor"), children: <NodeDoctorReport report={doctor} /> }]
-                : []),
-            ]}
-          />
-          <Modal
-            title={t("rename.title")}
-            open={renameOpen}
-            onCancel={() => setRenameOpen(false)}
-            onOk={rename}
-            confirmLoading={renameLoading}
-            okText={t("action.save")}
-            cancelText={t("action.cancel")}
-          >
-            <Input
-              value={renameValue}
-              maxLength={255}
-              onChange={(e) => setRenameValue(e.target.value)}
-              placeholder={t("rename.placeholder")}
-            />
-          </Modal>
-        </>
-      )}
-    </Drawer>
+              ...(doctor ? [{ key: "doctor", label: t("detail.tab.doctor"), children: <NodeDoctorReport report={doctor} /> }] : []),
+            ]
+          : undefined
+      }
+    >
+      <Modal
+        title={t("rename.title")}
+        open={renameOpen}
+        onCancel={() => setRenameOpen(false)}
+        onOk={rename}
+        confirmLoading={renameLoading}
+        okText={t("action.save")}
+        cancelText={t("action.cancel")}
+      >
+        <Input
+          value={renameValue}
+          maxLength={255}
+          onChange={(e) => setRenameValue(e.target.value)}
+          placeholder={t("rename.placeholder")}
+        />
+      </Modal>
+    </DetailDrawer>
   );
 }

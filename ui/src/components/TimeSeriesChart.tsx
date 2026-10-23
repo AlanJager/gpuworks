@@ -158,7 +158,10 @@ export function buildTimeSeriesOption(
     nameLocation: "end" as const,
     nameGap: 8,
     nameTextStyle: { color: colors.chartTick, align: position === "left" ? ("right" as const) : ("left" as const), fontSize: 11 },
-    axisLabel: { color: colors.chartTick, formatter: (value: number) => valueFmt(value) },
+    // A scaled axis over a narrow band (VRAM within 0.05 GiB) puts several
+    // ticks on one rounded label, which read as "2.6 2.6 2.6"; each label is
+    // drawn once, at its lowest tick.
+    axisLabel: { color: colors.chartTick, formatter: onceEach(valueFmt) },
     axisLine: { show: false },
     // Only the left axis draws grid lines: two sets that disagree read as noise.
     splitLine: position === "left" ? { lineStyle: { color: colors.chartGrid, type: "dashed" as const } } : { show: false },
@@ -166,10 +169,11 @@ export function buildTimeSeriesOption(
   return {
     animation: false,
     color: PALETTE,
-    // bottom strips x-axis labels and the legend apart: labels hang ~18px
-    // below the grid, the legend owns the strip under them. The top leaves
-    // room for the unit above the y-axis.
-    grid: { top: axisName || dualAxis ? 28 : 18, right: dualAxis ? 58 : 20, bottom: showLegend ? 52 : 30, left: 58 },
+    // The grid holds its axis labels (containLabel): a fixed left margin cut
+    // the first digits of wide values ("168 Kb/s" read "8 Kb/s"). Margins are
+    // then outside the labels: the bottom leaves the legend its strip, the
+    // top room for the unit above the y-axis.
+    grid: { containLabel: true, top: axisName || dualAxis ? 28 : 18, right: 20, bottom: showLegend ? 30 : 6, left: 8 },
     tooltip: { trigger: "axis", axisPointer: { type: "cross" }, valueFormatter: (value) => `${valueFmt(Number(value))}${unit ? ` ${unit}` : ""}` },
     legend: { show: showLegend, type: "scroll", bottom: 2, left: 8, right: 8, textStyle: { color: colors.text, fontSize: 12 }, data: legend },
     xAxis: { type: "time", boundaryGap: [0, 0], axisLabel: { color: colors.chartTick, hideOverlap: true, ...(span ? { formatter: spacedTimeLabels(span) } : {}) }, axisLine: { lineStyle: { color: colors.chartGrid } }, splitLine: { lineStyle: { color: colors.chartGrid, type: "dashed" } } },
@@ -260,4 +264,17 @@ export default function TimeSeriesChart({ series, height = 200, unit, valueFmt =
     <div ref={hostRef} role="img" aria-label={t("timeSeries.ariaLabel")} style={{ width: "100%", height }} />
     {visibleSeries.length === 0 && <div style={{ position: "absolute", inset: 0, background: colors.white }}><EmptyState compact kind="data" description={t("dataTable.empty")} /></div>}
   </div>;
+}
+
+// onceEach formats axis ticks, leaving blank a tick whose label repeats the
+// one below it. echarts formats an axis's ticks in order from index 0.
+function onceEach(format: (value: number) => string) {
+  let previous: string | undefined;
+  return (value: number, index: number) => {
+    const label = format(value);
+    if (index === 0) previous = undefined;
+    if (label === previous) return "";
+    previous = label;
+    return label;
+  };
 }
