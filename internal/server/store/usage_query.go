@@ -179,3 +179,29 @@ func (s *Store) UsageByKey(ctx context.Context, fromDay, toDay int32, fromHourMS
 	}
 	return out, nil
 }
+
+// UsageByDeployment sums each deployment's usage over the hours from fromMS
+// up to toMS: the card time's tokens, without the per-key groups.
+func (s *Store) UsageByDeployment(ctx context.Context, fromMS, toMS int64, f UsageFilter) (map[uint]UsageCounts, error) {
+	return s.usageByDeployment(ctx, usageHours(fromMS, toMS), f)
+}
+
+// UsageDayByDeployment is UsageByDeployment over rolled-up days.
+func (s *Store) UsageDayByDeployment(ctx context.Context, fromDay, toDay int32, f UsageFilter) (map[uint]UsageCounts, error) {
+	return s.usageByDeployment(ctx, usageDays(fromDay, toDay), f)
+}
+
+func (s *Store) usageByDeployment(ctx context.Context, r usageRange, f UsageFilter) (map[uint]UsageCounts, error) {
+	var rows []struct {
+		DeploymentID uint
+		UsageCounts
+	}
+	err := f.where(s.reader().WithContext(ctx).Table(r.table).
+		Where(r.column+" >= ? AND "+r.column+" < ?", r.from, r.to)).
+		Select("deployment_id, " + usageSums).Group("deployment_id").Scan(&rows).Error
+	out := make(map[uint]UsageCounts, len(rows))
+	for _, row := range rows {
+		out[row.DeploymentID] = row.UsageCounts
+	}
+	return out, err
+}

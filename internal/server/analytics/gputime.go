@@ -7,7 +7,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/rollup"
 	"gpuworks.ai/gpuworks/internal/server/statsdb"
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // GPUTime answers the card time over a range, of one deployment when
@@ -69,15 +68,9 @@ func (s *Service) GPUTime(ctx context.Context, q Query, deploymentID uint) (dto.
 		}
 	}
 	// The deployments' tokens over the same span.
-	usage, err := s.usageData(ctx, sp, UsageFilter{DeploymentID: deploymentID})
+	tokens, err := s.usageByDeployment(ctx, sp, UsageFilter{DeploymentID: deploymentID})
 	if err != nil {
 		return dto.GPUTimeAnalytics{}, err
-	}
-	tokens := map[uint]store.UsageCounts{}
-	for k, acc := range usage.groups {
-		cur := tokens[k.dep]
-		addCounts(&cur, acc.UsageCounts)
-		tokens[k.dep] = cur
 	}
 	ids := map[uint]bool{}
 	for k := range rows {

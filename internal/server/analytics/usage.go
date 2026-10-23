@@ -121,6 +121,40 @@ func (s *Service) usageData(ctx context.Context, sp *span, f UsageFilter) (*usag
 	return out, nil
 }
 
+// usageByDeployment sums each deployment's usage over a span as usageData
+// reads it: the rolled-up days, and the hours of the days not rolled up.
+func (s *Service) usageByDeployment(ctx context.Context, sp *span, f UsageFilter) (map[uint]store.UsageCounts, error) {
+	if !sp.daily {
+		return s.Store.UsageByDeployment(ctx, sp.fromMS, sp.toMS, f)
+	}
+	from, to := int32(sp.days[0]), int32(sp.lastDay())
+	out, err := s.Store.UsageDayByDeployment(ctx, from, to, f)
+	if err != nil {
+		return nil, err
+	}
+	rolledDays, err := s.Store.UsageRolledDays(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	rolled := make(map[rollup.Day]bool, len(rolledDays))
+	for d := range rolledDays {
+		rolled[rollup.Day(d)] = true
+	}
+	for _, d := range sp.unrolled(rolled, s.now()) {
+		hFrom, hTo := sp.hoursOf(d)
+		hours, err := s.Store.UsageByDeployment(ctx, hFrom, hTo, f)
+		if err != nil {
+			return nil, err
+		}
+		for dep, c := range hours {
+			cur := out[dep]
+			addCounts(&cur, c)
+			out[dep] = cur
+		}
+	}
+	return out, nil
+}
+
 // Usage answers the token usage over a range.
 func (s *Service) Usage(ctx context.Context, q Query, f UsageFilter) (dto.UsageAnalytics, error) {
 	sp, err := s.resolve(q)
