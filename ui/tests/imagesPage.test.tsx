@@ -69,7 +69,18 @@ async function openSeries(user: ReturnType<typeof userEvent.setup>, name: string
     return button;
   });
   await user.click(row);
-  return (await screen.findByText(z.detail.title.replace("{{name}}", name))).closest(".ant-drawer-content") as HTMLElement;
+  return (await screen.findByText(name, { selector: ".ant-drawer-title span" })).closest(".ant-drawer-content") as HTMLElement;
+}
+
+// A node row's image ID, age and the actions on a held image sit in its
+// expanded row; open every row of the tab in view.
+async function expandNodeRows(user: ReturnType<typeof userEvent.setup>, drawer: HTMLElement) {
+  const pane = await waitFor(() => {
+    const active = drawer.querySelector(".ant-tabs-tabpane-active") as HTMLElement | null;
+    assert.ok(active && within(active).queryAllByRole("button", { name: z.nodeTable.expand }).length > 0, "the node rows are listed");
+    return active;
+  });
+  for (const button of within(pane).getAllByRole("button", { name: z.nodeTable.expand })) await user.click(button);
 }
 
 test("the page names three image sources and offers no offline package or manifest URL", async () => {
@@ -182,7 +193,8 @@ test("system images are read-only and a deprecated one shows its references", as
   await within(drawer).findByText("已弃用 · 1 个引用");
   assert.equal(within(drawer).queryByRole("button", { name: /删除系列/ }) !== null, false);
   await user.click(within(drawer).getByRole("link", { name: "gpustack/runner:cuda12.9-vllm0.25.1" }));
-  await within(drawer).findByText(z.detail.nodeDistributionFor.replace("{{ref}}", "gpustack/runner:cuda12.9-vllm0.25.1"));
+  // Picking the version opens the node tab on it.
+  await waitFor(() => assert.ok(drawer.querySelector('.ant-select-selection-item[title="gpustack/runner:cuda12.9-vllm0.25.1"]')));
   assert.equal(within(drawer).queryByRole("button", { name: /删除版本/ }) !== null, false);
   assert.equal(within(drawer).queryByText(/常用候选|常用参数/) !== null, false, "no series defaults editor");
 });
@@ -213,8 +225,7 @@ test("a rolling tag shows each node's image ID and age, flags differing IDs, and
   await within(drawer).findByText("vllm/vllm-openai:nightly：2 个节点的 digest 不一致");
   await user.click(within(drawer).getByRole("link", { name: nightlyVersion.image_ref }));
 
-  const table = await within(drawer).findByRole("columnheader", { name: z.nodeTable.column.digest });
-  assert.ok(table);
+  await expandNodeRows(user, drawer);
   assert.ok(within(drawer).getByText("0123456789ab"), "12 characters, without the sha256: prefix");
   assert.ok(within(drawer).getByText("fedcba987654"));
   assert.ok(within(drawer).getByText("5 分钟前"));
@@ -237,6 +248,7 @@ test("an immutable system tag offers no pull again on a node that has it", async
   const { user } = renderPage();
   const drawer = await openSeries(user, systemSeries.name);
   await user.click(within(drawer).getByRole("link", { name: "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2" }));
+  await expandNodeRows(user, drawer);
   await within(drawer).findByText("aaaaaaaaaaaa");
   assert.equal(within(drawer).queryByRole("button", { name: "重新拉取" }) !== null, false);
   assert.equal(within(drawer).queryByText(/digest 不一致/) !== null, false);
@@ -272,7 +284,7 @@ test("the catalog list carries counts only: version coverage and the summary rea
   });
   assert.ok(within(row).getByText("1 / 3"), "present / total from the counts");
   await user.click(within(drawer).getByRole("link", { name: systemVersion.image_ref }));
-  await waitFor(() => assert.ok(drawer.querySelector(".ant-card .ant-spin-spinning"), "the node table waits for the detail"));
+  await waitFor(() => assert.ok(drawer.querySelector(".detail-section .ant-spin-spinning"), "the node table waits for the detail"));
   assert.equal(within(drawer).queryByText("gpu-01") !== null, false, "no node row comes from the list");
   release?.();
   await within(drawer).findByText("gpu-01");
@@ -287,6 +299,7 @@ test("opening a series reads its node rows from GET /images/{series_id}", async 
   await waitFor(() => assert.ok(calls.some((call) => call.method === "GET" && call.path === "/api/v1/images/3")));
   await user.click(within(drawer).getByRole("link", { name: nightlyVersion.image_ref }));
   // The digest column and node names exist only in the detail answer.
+  await expandNodeRows(user, drawer);
   await within(drawer).findByText("0123456789ab");
   for (const name of ["gpu-01", "gpu-02", "gpu-03"]) assert.ok(within(drawer).getByText(name), name);
   assert.ok(within(drawer).getByText("2 / 3"));

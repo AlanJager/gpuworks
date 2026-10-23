@@ -114,7 +114,8 @@
       "size": "镜像体积",
       "arch": "架构",
       "distributed": "已分发",
-      "status": "状态"
+      "status": "状态",
+      "ref": "镜像地址"
     },
     "sizeHelp": "Registry 压缩层体积估算；节点实际占用以本地上报为准",
     "deleteTitle": "删除镜像版本“{{ref}}”？",
@@ -183,7 +184,9 @@
       "unverified": "该归档无法在下载前校验"
     },
     "repull": "重新拉取",
-    "repullHelp": "在该节点上重新拉取这个滚动 tag，取得上游当前指向的镜像。"
+    "repullHelp": "在该节点上重新拉取这个滚动 tag，取得上游当前指向的镜像。",
+    "expand": "展开详情",
+    "collapse": "收起详情"
   },
   "import": {
     "title": {
@@ -263,6 +266,12 @@
     "selectVersion": "选择一个版本查看节点分布、来源和拉取/分发操作",
     "deleteSeries": "删除系列",
     "deleteVersion": "删除版本",
-    "digestMismatch": "{{ref}}：{{nodes}} 个节点的 digest 不一致"
+    "digestMismatch": "{{ref}}：{{nodes}} 个节点的 digest 不一致",
+    "tab": {
+      "versions": "版本",
+      "nodes": "节点分布"
+    },
+    "versionHint": "点击一个版本，查看它在各节点上的分布、来源和拉取/分发操作。",
+    "version": "版本"
   }
 }

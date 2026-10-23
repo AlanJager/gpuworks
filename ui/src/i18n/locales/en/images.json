@@ -114,7 +114,8 @@
       "size": "Image Size",
       "arch": "Architecture",
       "distributed": "Distributed",
-      "status": "Status"
+      "status": "Status",
+      "ref": "Image reference"
     },
     "sizeHelp": "Estimated compressed Registry layer size. Actual node usage is reported by each node.",
     "deleteTitle": "Delete image version “{{ref}}”?",
@@ -183,7 +184,9 @@
       "unverified": "This archive could not be checked before the download"
     },
     "repull": "Pull again",
-    "repullHelp": "Pull this rolling tag again on this node so it gets whatever the tag points at upstream now."
+    "repullHelp": "Pull this rolling tag again on this node so it gets whatever the tag points at upstream now.",
+    "expand": "Show details",
+    "collapse": "Hide details"
   },
   "import": {
     "title": {
@@ -263,6 +266,12 @@
     "selectVersion": "Select a version to view node distribution, sources, and pull/distribution actions",
     "deleteSeries": "Delete series",
     "deleteVersion": "Delete version",
-    "digestMismatch": "{{ref}}: the image IDs on {{nodes}} nodes differ"
+    "digestMismatch": "{{ref}}: the image IDs on {{nodes}} nodes differ",
+    "tab": {
+      "versions": "Versions",
+      "nodes": "Node distribution"
+    },
+    "versionHint": "Click a version to see where it is on each node, its sources, and pull or distribution actions.",
+    "version": "Version"
   }
 }

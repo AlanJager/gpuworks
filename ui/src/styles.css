@@ -438,9 +438,14 @@ button, input, textarea, select { letter-spacing: 0; }
 .mono-value, .ant-statistic-content-value, .ant-table-cell code { font-variant-numeric: tabular-nums; }
 .image-version-disabled > td { color: #96989b !important; background: #fafafa; }
 .image-version-disabled a { opacity: 0.65; }
+.image-version-selected > td { background: #e6f6ff !important; }
+.image-version-pick { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.image-version-pick .ant-select { flex: 1; min-width: 0; max-width: 420px; }
 /* A header that explains itself on hover: a dotted underline, the usual hint,
    costs no width where an icon would push a column out of a narrow table. */
 .header-help { cursor: help; text-decoration: underline dotted #96989b; text-underline-offset: 3px; }
+.image-version-ref { display: flex; flex-direction: column; line-height: 1.4; }
+.image-version-ref > .ant-typography { font-size: 12px; }
 
 .gpu-page > .ant-tabs > .ant-tabs-nav { margin-bottom: 12px; }
 .gpu-page > .ant-tabs > .ant-tabs-nav::before { border-bottom-color: #dbdde0; }

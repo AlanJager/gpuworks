@@ -49,7 +49,7 @@ for (const language of ["en", "zh"] as const) {
     })));
 
     for (const source of sources) {
-      const row = screen.getByRole("row", { name: new RegExp(`^host-${slug(source.source)} `) });
+      const row = screen.getByRole("row", { name: new RegExp(`(^|\\s)host-${slug(source.source)} `) });
       within(row).getByText(source.expected, { exact: true });
       if (source.source === "mirror") {
         for (const unprovenHost of ["canonical.example", "alternate.example", "other.example"]) {
@@ -81,7 +81,7 @@ for (const language of ["en", "zh"] as const) {
       inspectVersion: () => {}, cancelTransfer: () => {}, removeFromNode: () => {},
       repullVersion: () => {},
     })));
-    const row = (name: string) => screen.getByRole("row", { name: new RegExp(`^${name} `) });
+    const row = (name: string) => screen.getByRole("row", { name: new RegExp(`(^|\\s)${name} `) });
     within(row("host-swr")).getByText(text.pullingFrom.replace("{{source}}", "Huawei Cloud"));
     within(row("host-peer")).getByText(text.peerFrom.replace("{{node}}", "src-host"));
     within(row("host-new")).getByText(text.pullingPending);

@@ -14,6 +14,7 @@ import {
   shortDigest,
   stateTag,
 } from "./ImagePageHelpers";
+import { detailExpandable } from "../../components/detail/DetailDrawer";
 import ImageArchiveURLDialog from "./ImageArchiveURLDialog";
 import ImagePeerSyncDialog from "./ImagePeerSyncDialog";
 
@@ -116,6 +117,85 @@ export default function ImageNodeTable({
       ...archives,
     ];
   };
+  // The row's own facts beyond its state, and the actions on an image the node
+  // already holds: one step down from the row, so the row keeps to what the
+  // table is read for and the actions that move bytes (detailDrawer.css).
+  const renderExtra = (row: ImageNode) => {
+    const at = row.updated_at ? Date.parse(row.updated_at) : NaN;
+    return (
+      <>
+        <dl className="detail-extra">
+          <div>
+            <dt>{t("nodeTable.column.digest")}</dt>
+            <dd>{row.image_digest_id ? <Text code copyable={{ text: row.image_digest_id }}>{shortDigest(row.image_digest_id)}</Text> : "—"}</dd>
+          </div>
+          <div>
+            <dt>{t("nodeTable.column.updated")}</dt>
+            <dd>
+              {Number.isNaN(at) ? "—" : (
+                <Tooltip title={formatTime(row.updated_at)}>
+                  <span>{agoText(t, Math.max(0, (Date.now() - at) / 1000))}</span>
+                </Tooltip>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>UUID</dt>
+            <dd><Text code copyable>{row.node_uuid}</Text></dd>
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <dt>{t("nodeTable.column.message")}</dt>
+            <dd>{row.message ? <Text type="warning">{row.message}</Text> : "—"}</dd>
+          </div>
+        </dl>
+        <Space size={8} wrap className="detail-extra-actions">
+          <Tooltip title={t("nodeTable.inspectHelp")}>
+          <Button
+            size="small"
+            disabled={row.state !== "present"}
+            loading={inspecting === `${selectedVersion.id}:${row.node_uuid}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              inspectVersion(selectedVersion, row.node_uuid);
+            }}
+          >
+            {t("nodeTable.refreshInspect")}
+          </Button>
+          </Tooltip>
+          {row.state === "present" && selectedVersion.rolling_tag ? (
+            <Tooltip title={t("nodeTable.repullHelp")}>
+              <Button
+                size="small"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  repullVersion(selectedVersion, row.node_uuid);
+                }}
+              >
+                {t("nodeTable.repull")}
+              </Button>
+            </Tooltip>
+          ) : null}
+          {row.state === "present" ? (
+            <Popconfirm
+              title={t("nodeTable.removeConfirm", { ref: selectedVersion.image_ref, node: nodeLabel(row) })}
+              description={t("nodeTable.removeImpact")}
+              okText={t("nodeTable.removeConfirmOk")}
+              cancelText={t("common.cancel")}
+              onConfirm={() => removeFromNode(selectedVersion, row.node_uuid)}
+            >
+              <Button
+                size="small"
+                danger
+                onClick={(event) => event.stopPropagation()}
+              >
+                {t("nodeTable.remove")}
+              </Button>
+            </Popconfirm>
+          ) : null}
+        </Space>
+      </>
+    );
+  };
   const nodeColumns = [
     {
       title: t("nodeTable.column.node"),
@@ -139,45 +219,6 @@ export default function ImageNodeTable({
       render: (value: string) => stateTag(t, value),
     },
     {
-      title: t("nodeTable.column.digest"),
-      key: "digest",
-      render: (_: unknown, row: ImageNode) =>
-        row.image_digest_id ? (
-          <Tooltip title={row.image_digest_id}>
-            <Text code>{shortDigest(row.image_digest_id)}</Text>
-          </Tooltip>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
-    },
-    {
-      title: t("nodeTable.column.updated"),
-      key: "updated",
-      render: (_: unknown, row: ImageNode) => {
-        const at = row.updated_at ? Date.parse(row.updated_at) : NaN;
-        if (Number.isNaN(at)) return <Text type="secondary">—</Text>;
-        return (
-          <Tooltip title={formatTime(row.updated_at)}>
-            <Text type="secondary">{agoText(t, Math.max(0, (Date.now() - at) / 1000))}</Text>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: t("nodeTable.column.message"),
-      dataIndex: "message",
-      render: (value?: string) =>
-        value ? (
-          <Tooltip title={value}>
-            <Text type="warning" ellipsis style={{ maxWidth: 220, display: "inline-block" }}>
-              {value}
-            </Text>
-          </Tooltip>
-        ) : (
-          <Text type="secondary">—</Text>
-        ),
-    },
-    {
       title: t("nodeTable.column.progress"),
       key: "progress",
       render: (_: unknown, row: ImageNode) => {
@@ -188,7 +229,7 @@ export default function ImageNodeTable({
         // download that is not happening.
         const done = row.state === "present" && expected ? expected : row.transferred_bytes || 0;
         return (
-          <Space direction="vertical" style={{ width: 160 }} size={2}>
+          <Space direction="vertical" style={{ width: 108 }} size={2}>
             <Progress
               percent={
                 expected
@@ -254,14 +295,17 @@ export default function ImageNodeTable({
             <Text type="secondary">{t("nodeTable.pullingPending")}</Text>
           )
         ) : (
-          <Select
-            size="small"
-            style={{ minWidth: 180 }}
-            aria-label={t("nodeTable.column.source")}
-            value={modeFor(selectedVersion, row)}
-            onChange={(value) => setMode(selectedVersion, row.node_uuid, value)}
-            options={sourceOptions(row)}
-          />
+          // A click in the picker must not also expand the row.
+          <span onClick={(event) => event.stopPropagation()}>
+            <Select
+              size="small"
+              style={{ minWidth: 156 }}
+              aria-label={t("nodeTable.column.source")}
+              value={modeFor(selectedVersion, row)}
+              onChange={(value) => setMode(selectedVersion, row.node_uuid, value)}
+              options={sourceOptions(row)}
+            />
+          </span>
         ),
     },
     {
@@ -269,19 +313,6 @@ export default function ImageNodeTable({
       key: "action",
       render: (_: unknown, row: ImageNode) => (
         <Space>
-          <Tooltip title={t("nodeTable.inspectHelp")}>
-          <Button
-            size="small"
-            disabled={row.state !== "present"}
-            loading={inspecting === `${selectedVersion.id}:${row.node_uuid}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              inspectVersion(selectedVersion, row.node_uuid);
-            }}
-          >
-            {t("nodeTable.refreshInspect")}
-          </Button>
-          </Tooltip>
           {row.state === "pulling" || row.state === "syncing" ? (
             <Button
               size="small"
@@ -293,36 +324,6 @@ export default function ImageNodeTable({
             >
               {t("nodeTable.cancel")}
             </Button>
-          ) : null}
-          {row.state === "present" && selectedVersion.rolling_tag ? (
-            <Tooltip title={t("nodeTable.repullHelp")}>
-              <Button
-                size="small"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  repullVersion(selectedVersion, row.node_uuid);
-                }}
-              >
-                {t("nodeTable.repull")}
-              </Button>
-            </Tooltip>
-          ) : null}
-          {row.state === "present" ? (
-            <Popconfirm
-              title={t("nodeTable.removeConfirm", { ref: selectedVersion.image_ref, node: nodeLabel(row) })}
-              description={t("nodeTable.removeImpact")}
-              okText={t("nodeTable.removeConfirmOk")}
-              cancelText={t("common.cancel")}
-              onConfirm={() => removeFromNode(selectedVersion, row.node_uuid)}
-            >
-              <Button
-                size="small"
-                danger
-                onClick={(event) => event.stopPropagation()}
-              >
-                {t("nodeTable.remove")}
-              </Button>
-            </Popconfirm>
           ) : null}
           {row.state === "present" ? null : (
             <Button
@@ -378,6 +379,9 @@ export default function ImageNodeTable({
         dataSource={selectedVersion.nodes ?? []}
         loading={loading}
         columns={nodeColumns}
+        className="detail-expandable"
+        scroll={{ x: "max-content" }}
+        expandable={detailExpandable<ImageNode>(renderExtra, { expand: t("nodeTable.expand"), collapse: t("nodeTable.collapse") })}
         // An image reaches every node of the fleet; the drawer pages them.
         pagination={{ defaultPageSize: 20, hideOnSinglePage: true, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100] }}
       />
