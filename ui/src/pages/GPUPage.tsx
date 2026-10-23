@@ -1,41 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Alert, Badge, Button, Card, Descriptions, Drawer, Input, Progress, Segmented,
+  Alert, Badge, Button, Card, Input, Progress,
   Space, Tabs, Tag, Tooltip, Typography,
 } from "antd";
 import {
-  AppstoreOutlined, ClusterOutlined, DashboardOutlined, DatabaseOutlined, DeploymentUnitOutlined, FireOutlined,
-  ProfileOutlined, ThunderboltOutlined, EditOutlined,
+  ClusterOutlined, DashboardOutlined, DatabaseOutlined, DeploymentUnitOutlined,
+  ProfileOutlined, EditOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { TablePaginationConfig } from "antd/es/table/interface";
 import {
-  api, useEvents, usePolling, type GPUListResponse, type GPUPage as GPUListPage, type MetricSeries,
+  api, useEvents, usePolling, type GPUListResponse, type GPUPage as GPUListPage,
   type PhysicalGPU, type DGPU,
 } from "../api";
 import { usePagedList } from "../pagedList";
 import PageHeader from "../components/PageHeader";
-import TimeSeriesChart from "../components/TimeSeriesChart";
 import { useTranslation } from "react-i18next";
 import PartitionCapability from "../components/PartitionCapability";
-import GPUMemoryComposition from "../components/GPUMemoryComposition";
 import { stateLabel } from "./state";
-import { cardHasDetail, cardOrdinal, physicalCardKey } from "../nodes/cardIdentity";
+import { cardHasDetail, physicalCardKey } from "../nodes/cardIdentity";
 import GPUHealthTag, { gpuHealthStatus, gpuOwned } from "../components/GPUHealth";
 import ResourceTable, { storedPageSize, type ResourceColumn, type ServerSort } from "../components/resourceTable/ResourceTable";
 import DGPUQuotaModal from "./DGPUQuotaModal";
+import { DGPUDetail, PhysicalGPUDetail } from "./gpus/GPUDetailDrawers";
+import { allocationLabels, dash, fmtGiB, fmtRate, gpuHeading, optionalPercent, shortID, vendorLabel } from "./gpus/gpuFormat";
 
-const GIB = 1024 ** 3;
 
-const allocationLabels: Record<PhysicalGPU["allocation_state"], { labelKey: string; color: string }> = {
-  available: { labelKey: "allocation.available", color: "green" },
-  partial: { labelKey: "allocation.partial", color: "blue" },
-  allocated: { labelKey: "allocation.allocated", color: "gold" },
-  unknown: { labelKey: "allocation.unknown", color: "default" },
-  // A card that takes no work: its health, its ownership, or somebody
-  // else's process on it. Which one is said beside it, by its own state.
-  unusable: { labelKey: "allocation.unusable", color: "red" },
-};
 
 const GPU_TABLE_ID = "gpus";
 const GPU_FILTER_KEYS = ["node", "model", "vendor", "allocation_state"];
@@ -133,8 +123,10 @@ export default function GPUPage() {
           },
         ]}
       />
-      <PhysicalGPUDetail gpu={detail} onClose={closePhysical} />
-      <DGPUDetail gpu={dgpuDetail} onClose={() => setDGPUDetail(null)} />
+      {/* An open detail follows the polled list, so its readings stay current;
+          a card off the shown page keeps the copy it was opened with. */}
+      <PhysicalGPUDetail gpu={detail && (physical.data?.items.find((row) => physicalCardKey(row) === physicalCardKey(detail)) ?? detail)} onClose={closePhysical} />
+      <DGPUDetail gpu={dgpuDetail && (dgpu.data?.items.find((row) => row.instance_uuid === dgpuDetail.instance_uuid) ?? dgpuDetail)} onClose={() => setDGPUDetail(null)} />
       {quotaDeployment != null && (
         <DGPUQuotaModal deploymentID={quotaDeployment} onClose={() => setQuotaDeployment(null)} onChanged={() => dgpu.refetch()} />
       )}
@@ -219,7 +211,7 @@ function PhysicalGPUView({ page, loading, error, pagination, query, onQuery, fil
       key: "memory", title: t("metric.vram"), width: 170, serverSort: true,
       render: (_, gpu) => gpu.load.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.load.memory_used_bytes)} / ${fmtGiB(gpu.memory_total_bytes)}`,
     },
-    { key: "temperature", title: t("metric.temperature"), width: 90, align: "right", serverSort: true, render: (_, gpu) => gpu.load.temperature_c == null ? "-" : `${gpu.load.temperature_c.toFixed(0)} C` },
+    { key: "temperature", title: t("metric.temperature"), width: 90, align: "right", serverSort: true, render: (_, gpu) => gpu.load.temperature_c == null ? "-" : `${gpu.load.temperature_c.toFixed(0)} °C` },
     {
       key: "power", title: t("column.powerLimit"), width: 125, align: "right", serverSort: true,
       render: (_, gpu) => gpu.load.power_watts == null ? "-" : `${gpu.load.power_watts.toFixed(0)} / ${gpu.power_limit_watts?.toFixed(0) ?? "-"} W`,
@@ -350,139 +342,6 @@ function DGPUView({ rows, loading, error, onOpen, onEditQuota, onRefresh }: { ro
   </>;
 }
 
-function PhysicalGPUDetail({ gpu, onClose }: { gpu: PhysicalGPU | null; onClose: () => void }) {
-  const { t } = useTranslation("gpus");
-  return <Drawer title={gpu ? `${gpu.name.replace(/^NVIDIA\s+/i, "")} · ${gpuHeading(gpu)}` : t("detail.physicalTitle")} open={!!gpu} onClose={onClose} width={760} className="gpu-detail-drawer">
-    {gpu && <>
-      <DetailSection title={t("detail.basicInfo")}>
-        <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label={t("column.allocationState")}><Tag color={allocationLabels[gpu.allocation_state].color}>{t(allocationLabels[gpu.allocation_state].labelKey)}</Tag></Descriptions.Item>
-          <Descriptions.Item label={t("column.health")}><GPUHealthTag gpu={gpu} /></Descriptions.Item>
-          <Descriptions.Item label={t("column.node")}><Link to="/nodes" state={{ nodeUUID: gpu.node_uuid }}>{gpu.node_name}</Link></Descriptions.Item>
-          <Descriptions.Item label={t("column.occupants")}>{gpu.occupants.length ? gpu.occupants.map((item) => <div key={item.instance_uuid}><Link to={`/deployments?deployment=${item.deployment_id}`}>{item.deployment_name || shortID(item.instance_uuid)}</Link>{item.limit_bytes ? ` · ${fmtGiB(item.limit_bytes)}` : ` · ${t("fullGPU")}`}</div>) : "-"}</Descriptions.Item>
-          <Descriptions.Item label="BDF">{dash(gpu.pcie_bdf)}</Descriptions.Item>
-          <Descriptions.Item label="NUMA">{gpu.numa_node < 0 ? "-" : gpu.numa_node}</Descriptions.Item>
-          <Descriptions.Item label="UUID" span={2}><Typography.Text copyable code>{gpu.uuid || "-"}</Typography.Text></Descriptions.Item>
-          <Descriptions.Item label={t("detail.partitionCapability")} span={2}><Space direction="vertical" size={6}>{(gpu.partition_capabilities ?? []).map((capability) => <PartitionCapability key={capability.backend} capability={capability} />)}{!gpu.partition_capabilities?.length && t("detail.partitionCapabilityEmpty")}</Space></Descriptions.Item>
-        </Descriptions>
-      </DetailSection>
-      <DetailSection title={t("detail.hardwareInfo")}>
-        <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label={t("column.vendor")}>{vendorLabel(gpu.vendor, t)}</Descriptions.Item><Descriptions.Item label={t("column.model")}>{gpu.name}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.architecture")}>{gpu.arch_id || gpu.arch_family || "-"}</Descriptions.Item><Descriptions.Item label={t("metric.vram")}>{fmtGiB(gpu.memory_total_bytes)}</Descriptions.Item>
-          <Descriptions.Item label={t("detail.driver")}>{dash(gpu.driver_version)}</Descriptions.Item><Descriptions.Item label={t("detail.maxPower")}>{gpu.power_limit_watts ? `${gpu.power_limit_watts.toFixed(0)} W` : "-"}</Descriptions.Item>
-        </Descriptions>
-      </DetailSection>
-      {cardHasDetail(gpu) && gpu.memory_total_bytes > 0 && <DetailSection title={t("composition.title")}><GPUMemoryComposition gpu={gpu} /></DetailSection>}
-      <DetailSection title={t("detail.liveLoad")}><LoadTiles gpu={gpu} /></DetailSection>
-      <DetailSection title={t("detail.monitoringData")}><GPUHistory node={gpu.node_uuid} gpu={gpu.index} /></DetailSection>
-    </>}
-  </Drawer>;
-}
-
-function DGPUDetail({ gpu, onClose }: { gpu: DGPU | null; onClose: () => void }) {
-  const { t } = useTranslation("gpus");
-  return <Drawer title={gpu ? `${t("tab.dgpu")} · ${gpu.deployment_name || shortID(gpu.instance_uuid)}` : t("detail.dgpuTitle")} open={!!gpu} onClose={onClose} width={720}>
-    {gpu && <>
-      <DetailSection title={t("detail.quotaInfo")}><Descriptions bordered size="small" column={2}>
-        <Descriptions.Item label={t("column.deployment")}><Link to={`/deployments?deployment=${gpu.deployment_id}`}>{gpu.deployment_name || t("unnamedDeployment")}</Link></Descriptions.Item><Descriptions.Item label={t("column.node")}><Link to="/nodes" state={{ nodeUUID: gpu.node_uuid }}>{gpu.node_name}</Link></Descriptions.Item>
-        <Descriptions.Item label={t("column.physicalGPU")}>{gpu.gpu_name || "GPU"} #{gpu.gpu_index}</Descriptions.Item><Descriptions.Item label={t("column.vramLimit")}>{fmtGiB(gpu.memory_limit_bytes)}</Descriptions.Item>
-        <Descriptions.Item label={t("column.smLimit")}>{gpu.sm_limit_pct ? `${gpu.sm_limit_pct}%` : "-"}</Descriptions.Item><Descriptions.Item label={t("column.instance")}><Typography.Text code>{shortID(gpu.instance_uuid)}</Typography.Text></Descriptions.Item>
-      </Descriptions></DetailSection>
-      <DetailSection title={t("detail.monitoringData")}><DGPUHistory gpu={gpu} /></DetailSection>
-    </>}
-  </Drawer>;
-}
-
-function LoadTiles({ gpu }: { gpu: PhysicalGPU }) {
-  const { t } = useTranslation("gpus");
-  const items = [
-    { icon: <DashboardOutlined />, label: t("metric.gpuUtilization"), value: optionalPercent(gpu.load.utilization_pct) },
-    { icon: <DatabaseOutlined />, label: t("metric.vram"), value: gpu.load.memory_used_bytes == null ? "-" : `${fmtGiB(gpu.load.memory_used_bytes)} / ${fmtGiB(gpu.memory_total_bytes)}` },
-    { icon: <FireOutlined />, label: t("metric.temperature"), value: gpu.load.temperature_c == null ? "-" : `${gpu.load.temperature_c.toFixed(0)} C` },
-    { icon: <ThunderboltOutlined />, label: t("metric.power"), value: gpu.load.power_watts == null ? "-" : `${gpu.load.power_watts.toFixed(0)} W` },
-    { icon: <AppstoreOutlined />, label: t("metric.fan"), value: optionalPercent(gpu.load.fan_speed_pct) },
-    { icon: <ThunderboltOutlined />, label: "PCIe RX / TX", value: `${fmtRate(gpu.load.pcie_rx_bytes_per_sec)} / ${fmtRate(gpu.load.pcie_tx_bytes_per_sec)}` },
-  ];
-  return <div className="gpu-load-grid">{items.map((item) => <div className="gpu-load-tile" key={item.label}><span>{item.icon}</span><div><Typography.Text type="secondary">{item.label}</Typography.Text><strong>{item.value}</strong></div></div>)}</div>;
-}
-
-const ranges = { "15m": "15m", "1h": "1h", "6h": "6h", "24h": "24h" } as const;
-const steps: Record<keyof typeof ranges, string> = { "15m": "10s", "1h": "30s", "6h": "2m", "24h": "10m" };
-
-function GPUHistory({ node, gpu }: { node: string; gpu: number }) {
-  const { t } = useTranslation("gpus");
-  const [range, setRange] = useState<keyof typeof ranges>("15m");
-  const charts = useMetricCharts([
-    [t("metric.gpuUtilization"), "gpuworks_gpu_utilization", "%", (value) => value.toFixed(0), undefined, PERCENT],
-    [t("metric.vramUsage"), "gpuworks_gpu_memory_used_bytes", "GiB", (value) => (value / GIB).toFixed(1)],
-    [t("metric.temperature"), "gpuworks_gpu_temperature_celsius", "C", (value) => value.toFixed(0)],
-    [t("metric.power"), "gpuworks_gpu_power_watts", "W", (value) => value.toFixed(0)],
-    [t("metric.fanSpeed"), "gpuworks_gpu_fan_speed_percent", "%", (value) => value.toFixed(0), undefined, PERCENT],
-    ["PCIe RX", "gpuworks_gpu_pcie_rx_bytes_per_sec", "MiB/s", (value) => (value / 1024 ** 2).toFixed(1)],
-    ["PCIe TX", "gpuworks_gpu_pcie_tx_bytes_per_sec", "MiB/s", (value) => (value / 1024 ** 2).toFixed(1)],
-  ], { node, gpu: String(gpu), range, step: steps[range] });
-  return <><Segmented value={range} onChange={(value) => setRange(value as keyof typeof ranges)} options={Object.keys(ranges)} size="small" /><ChartGrid charts={charts} /></>;
-}
-
-function DGPUHistory({ gpu }: { gpu: DGPU }) {
-  const { t } = useTranslation("gpus");
-  const [range, setRange] = useState<keyof typeof ranges>("15m");
-  const charts = useMetricCharts([
-    [t("metric.sliceVRAM", { limit: fmtGiB(gpu.memory_limit_bytes) }), "gpuworks_dgpu_memory_used_bytes", "GiB", (value) => (value / GIB).toFixed(1), undefined, [0, gpu.memory_limit_bytes]],
-    // HAMi samples which slice held the SMs at that instant, so two slices
-    // sharing a card read 0 and 100 by turns; the trend is the average.
-    [t("metric.smReferenceAvg"), "gpuworks_dgpu_sm_util", "%", (value) => value.toFixed(0), (series) => movingAverage(series, SM_AVERAGE_WINDOW_MS), PERCENT],
-  ], { node: gpu.node_uuid, gpu: String(gpu.gpu_index), instance: gpu.instance_uuid, range, step: steps[range] });
-  return <><Segmented value={range} onChange={(value) => setRange(value as keyof typeof ranges)} options={Object.keys(ranges)} size="small" /><ChartGrid charts={charts} /></>;
-}
-
-type ChartSpec = [string, string, string, (value: number) => string, ((series: MetricSeries[]) => MetricSeries[])?, [number, number]?];
-type ChartModel = { title: string; unit: string; format: (value: number) => string; series: MetricSeries[]; yRange?: [number, number] };
-
-function useMetricCharts(specs: ChartSpec[], params: { node: string; gpu: string; instance?: string; range: string; step: string }): ChartModel[] {
-  const [charts, setCharts] = useState<ChartModel[]>(() => specs.map(([title, , unit, format, , yRange]) => ({ title, unit, format, series: [], yRange })));
-  useEffect(() => {
-    let alive = true;
-    Promise.all(specs.map(async ([title, metric, unit, format, transform, yRange]) => {
-      const series = (await api.metricsQuery(metric, params)).items;
-      return { title, unit, format, series: transform ? transform(series) : series, yRange };
-    }))
-      .then((data) => { if (alive) setCharts(data); })
-      .catch(() => { if (alive) setCharts(specs.map(([title, , unit, format, , yRange]) => ({ title, unit, format, series: [], yRange }))); });
-    return () => { alive = false; };
-    // Metric names are fixed by the caller; query identity is fully captured below.
-  }, [params.node, params.gpu, params.instance, params.range, params.step]);
-  return charts;
-}
-
-function ChartGrid({ charts }: { charts: ChartModel[] }) {
-  return <div className="gpu-chart-grid">{charts.map((chart) => <div className="gpu-chart" key={chart.title}><Typography.Text strong>{chart.title}</Typography.Text><TimeSeriesChart height={180} series={chart.series} unit={chart.unit} valueFmt={chart.format} yRange={chart.yRange} /></div>)}</div>;
-}
-
-const SM_AVERAGE_WINDOW_MS = 60_000;
-const PERCENT: [number, number] = [0, 100];
-
-// movingAverage replaces each point by the mean of the points within the
-// trailing window, per series.
-export function movingAverage(series: MetricSeries[], windowMs: number): MetricSeries[] {
-  return series.map((entry) => {
-    const points = entry.points ?? [];
-    let start = 0;
-    let sum = 0;
-    const out: MetricSeries["points"] = [];
-    points.forEach((point, index) => {
-      sum += point[1];
-      while (points[start][0] < point[0] - windowMs + 1) {
-        sum -= points[start][1];
-        start += 1;
-      }
-      out.push([point[0], sum / (index - start + 1)]);
-    });
-    return { ...entry, points: out };
-  });
-}
-
 // SliceSummary is the dGPU column of the card list.
 function SliceSummary({ gpu }: { gpu: PhysicalGPU }) {
   const { t } = useTranslation("gpus");
@@ -508,20 +367,3 @@ function SliceState({ row }: { row: DGPU }) {
   const label = stateLabel(row.state, tc);
   return <Badge status={label.status} text={label.text} />;
 }
-
-function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="gpu-detail-section"><Typography.Title level={5}>{title}</Typography.Title>{children}</section>;
-}
-
-// "GPU 3" for a card with a device number; a card without one is named by
-// its PCI address, never "GPU -1".
-function gpuHeading(gpu: Pick<PhysicalGPU, "index" | "pcie_bdf">) { return gpu.index >= 0 ? `GPU ${gpu.index}` : cardOrdinal(gpu); }
-function vendorLabel(value: string, t: (key: string) => string) {
-  const key = ({ nvidia: "vendor.nvidia", ascend: "vendor.ascend", ppu: "vendor.ppu" } as Record<string, string>)[value?.toLowerCase()];
-  return key ? t(key) : value || "-";
-}
-function fmtGiB(value: number) { return `${(value / GIB).toFixed(value >= 10 * GIB ? 0 : 1)} GiB`; }
-function fmtRate(value?: number) { return value == null ? "-" : value >= GIB ? `${(value / GIB).toFixed(1)} GiB/s` : `${(value / 1024 ** 2).toFixed(1)} MiB/s`; }
-function optionalPercent(value?: number) { return value == null ? "-" : `${value.toFixed(0)}%`; }
-function dash(value?: string) { return value || "-"; }
-function shortID(value: string) { return value.length > 16 ? `${value.slice(0, 12)}...` : value; }

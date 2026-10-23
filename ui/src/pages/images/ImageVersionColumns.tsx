@@ -24,40 +24,33 @@ export function buildVersionColumns({
     {
       title: t("versionTable.column.tag"),
       dataIndex: "image_ref",
-      render: (value: string, row) => (
-        <a
-          href="#image-version"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onSelect(row);
-          }}
-        >
-          <Text code>{value}</Text>
-        </a>
-      ),
+      // The tag tells a series' versions apart; the repository they share
+      // goes under it. The link keeps the full reference as its name.
+      render: (value: string, row) => {
+        const { repository, tag } = splitImageRef(value);
+        return (
+          <div className="image-version-ref">
+            <Space size={4}>
+              <a
+                href="#image-version"
+                aria-label={value}
+                title={value}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelect(row);
+                }}
+              >
+                <Text code>{tag}</Text>
+              </a>
+              {rollingTag(t, row)}
+              {upstreamGoneTag(t, row)}
+            </Space>
+            {repository && <Text type="secondary">{repository}</Text>}
+          </div>
+        );
+      },
     },
-    { title: t("versionTable.column.engineVersion"), dataIndex: "engine_version" },
-    {
-      title: t("versionTable.column.frameworkVersion"),
-      key: "framework",
-      render: (_value, row) => `${row.framework || "—"} ${row.framework_version || ""}`,
-    },
-    {
-      title: t("versionTable.column.labels"),
-      key: "tag",
-      render: (_value, row) => <>{rollingTag(t, row)}{upstreamGoneTag(t, row)}</>,
-    },
-    {
-      title: (
-        <Tooltip title={t("versionTable.sizeHelp")}>
-          {t("versionTable.column.size")}
-        </Tooltip>
-      ),
-      dataIndex: "size_bytes",
-      render: (value: number) => bytes(value),
-    },
-    { title: t("versionTable.column.arch"), dataIndex: "arch", render: (value: string) => value || "multi" },
     {
       title: t("versionTable.column.distributed"),
       key: "coverage",
@@ -90,4 +83,45 @@ export function buildVersionColumns({
         ),
     },
   ];
+}
+
+// splitImageRef parts a reference into the repository and what tells its
+// versions apart: the tag, or the digest of a pinned reference.
+export function splitImageRef(ref: string): { repository: string; tag: string } {
+  const at = ref.indexOf("@");
+  if (at > 0) return { repository: ref.slice(0, at), tag: ref.slice(at + 1) };
+  const colon = ref.lastIndexOf(":");
+  if (colon > ref.lastIndexOf("/")) return { repository: ref.slice(0, colon), tag: ref.slice(colon + 1) };
+  return { repository: "", tag: ref };
+}
+
+// VersionExtra is a version row's expanded detail: what it runs and how big
+// it is, beside the tag, coverage and state the row keeps.
+export function VersionExtra({ row, t }: { row: ImageCatalogEntry; t: TFunction }) {
+  return (
+    <dl className="detail-extra">
+      <div>
+        <dt>{t("versionTable.column.engineVersion")}</dt>
+        <dd>{row.engine_version || "—"}</dd>
+      </div>
+      <div>
+        <dt>{t("versionTable.column.frameworkVersion")}</dt>
+        <dd>{`${row.framework || "—"} ${row.framework_version || ""}`}</dd>
+      </div>
+      <div>
+        <dt>
+          <Tooltip title={t("versionTable.sizeHelp")}>{t("versionTable.column.size")}</Tooltip>
+        </dt>
+        <dd>{bytes(row.size_bytes)}</dd>
+      </div>
+      <div>
+        <dt>{t("versionTable.column.arch")}</dt>
+        <dd>{row.arch || "multi"}</dd>
+      </div>
+      <div style={{ gridColumn: "1 / -1" }}>
+        <dt>{t("versionTable.column.ref")}</dt>
+        <dd><Text code copyable>{row.image_ref}</Text></dd>
+      </div>
+    </dl>
+  );
 }

@@ -50,7 +50,8 @@ const dgpus = fixture("dgpus");
 
 const { MemoryRouter } = await import("react-router-dom");
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
-const { default: GPUPage, movingAverage } = await import("../src/pages/GPUPage.tsx");
+const { default: GPUPage } = await import("../src/pages/GPUPage.tsx");
+const { movingAverage } = await import("../src/pages/gpus/GPUDetailDrawers.tsx");
 const { memorySegments } = await import("../src/components/GPUMemoryComposition.tsx");
 const { gpuModelSummary } = await import("../src/nodes/cardIdentity.ts");
 
@@ -113,6 +114,26 @@ test("the dGPU list shows a starting slice with its state", async () => {
   const running = screen.getByText("qwen3-dgpu-a").closest("tr") as HTMLElement;
   assert.ok(within(running).getByText(common.states.running));
   assert.ok(within(running).getByText("7.0 GiB"));
+});
+
+test("a slice's detail shows its use only when its backend reports it", async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole("tab", { name: gpus.tab.dgpu }));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-dgpu-a" }));
+  const reported = await waitFor(() => document.querySelector(".ant-drawer-open") as HTMLElement);
+  assert.ok(await within(reported).findByRole("heading", { name: gpus.detail.currentUse }));
+  assert.ok(within(reported).getByText("7.0 GiB / 8.0 GiB"));
+  assert.ok(within(reported).getByRole("heading", { name: gpus.detail.monitoringData }));
+  cleanup();
+
+  // A starting slice, like any Ascend or PPU slice, has reported no use: no empty block stands in for it.
+  renderPage();
+  fireEvent.click(await screen.findByRole("tab", { name: gpus.tab.dgpu }));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-dgpu-c" }));
+  const silent = await waitFor(() => document.querySelector(".ant-drawer-open") as HTMLElement);
+  assert.ok(await within(silent).findByRole("heading", { name: gpus.detail.quotaInfo }));
+  assert.equal(within(silent).queryByRole("heading", { name: gpus.detail.currentUse }), null);
+  assert.equal(within(silent).queryByRole("heading", { name: gpus.detail.monitoringData }), null);
 });
 
 test("memory segments follow the books: limits, what slices hold beyond them, residue, free", () => {

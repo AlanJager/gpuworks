@@ -558,6 +558,8 @@ for (const language of ["en", "zh"] as const) {
     })));
 
     const user = userEvent.setup({ document: dom.window.document });
+    // Deleting a held image is an action of the row's expanded detail.
+    for (const expand of await screen.findAllByRole("button", { name: locale.nodeTable.expand })) await user.click(expand);
     const buttons = await screen.findAllByRole("button", { name: locale.nodeTable.remove });
     assert.equal(buttons.length, 1, "only the node that holds the image can delete it");
     await user.click(buttons[0]);

@@ -74,7 +74,12 @@
     "maxPower": "最大功耗",
     "liveLoad": "实时负载",
     "monitoringData": "监控数据",
-    "quotaInfo": "限额信息"
+    "currentUse": "当前用量",
+    "quotaInfo": "限额信息",
+    "tab": {
+      "basic": "基础信息",
+      "monitoring": "监控"
+    }
   },
   "unnamedDeployment": "未命名部署",
   "noData": "暂无数据",
@@ -110,12 +115,12 @@
     "aria": "显存分配",
     "slice": "{{name}} · 上限 {{limit}} GiB",
     "wholeCard": "{{name}} · 整卡",
-    "overhead": "上限外开销（CUDA context 等）",
+    "overhead": "上限外开销（运行时上下文等）",
     "sleeping": "休眠实例残留",
     "free": "可分配",
     "used": "整卡实际使用 {{used}}",
-    "usedLegend": "整卡实际使用（nvidia-smi）",
-    "note": "色块按调度器记账绘制：dGPU 切片记显存上限，加上限外的 CUDA context；黑线是整张卡当前实际占用。"
+    "usedLegend": "整卡实际使用",
+    "note": "色块按调度记账绘制：dGPU 切片按显存上限计，另加上限外的运行时开销；黑线是整张卡当前的实际占用。"
   },
   "state": {
     "asleep": "休眠 L{{level}}"

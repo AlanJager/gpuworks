@@ -79,7 +79,7 @@ async function openNightly(user: ReturnType<typeof userEvent.setup>) {
     return button;
   });
   await user.click(row);
-  const drawer = (await screen.findByText(z.detail.title.replace("{{name}}", communitySeries.name))).closest(".ant-drawer-content") as HTMLElement;
+  const drawer = (await screen.findByText(communitySeries.name, { selector: ".ant-drawer-title span" })).closest(".ant-drawer-content") as HTMLElement;
   await user.click(await within(drawer).findByRole("link", { name: nightlyVersion.image_ref }));
   const node = await within(drawer).findByText("gpu-03");
   return { drawer, row: node.closest("tr") as HTMLElement };
