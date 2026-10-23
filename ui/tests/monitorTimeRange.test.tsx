@@ -27,7 +27,7 @@ await i18n.use(initReactI18next).init({
 const { MemoryRouter, Routes, Route, useLocation } = await import("react-router-dom");
 const { cleanup, render, screen } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { TimeRangeProvider, default: TimeRangeControl, useTimeRange, outsidePickable } = await import("../src/pages/monitor/TimeRangeContext.tsx");
+const { TimeRangeProvider, default: TimeRangeControl, PickedRangeNote, useTimeRange, outsidePickable } = await import("../src/pages/monitor/TimeRangeContext.tsx");
 const { rangeParams, rangeBounds, pickedBounds, customRange } = await import("../src/monitorRange.ts");
 const dayjs = (await import("dayjs")).default;
 
@@ -62,6 +62,7 @@ function renderApp(initialEntry: string) {
                 <LocationProbe />
                 <ValueProbe />
                 <TimeRangeControl />
+                <PickedRangeNote />
               </TimeRangeProvider>
             }
           />
@@ -126,6 +127,7 @@ test("picking writes from/to and drops the preset; a preset drops from/to", asyn
 test("a malformed from/to falls back to the preset", () => {
   renderApp("/monitor?range=6h&from=9&to=3");
   assert.equal(screen.getByTestId("value").textContent, "6h:on");
+  assert.equal(screen.queryByText(/services, replicas and health are current/), null, "a preset needs no note");
 });
 
 test("the picker refuses the future and days before raw samples are kept", () => {

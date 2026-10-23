@@ -10,7 +10,7 @@ import ClusterTokensChart from "./ClusterTokensChart";
 import MetricExplorer from "./MetricExplorer";
 import ServiceTable from "./ServiceTable";
 import SignalTile from "./SignalTile";
-import TimeRangeControl, { TimeRangeProvider, useTimeRange } from "./TimeRangeContext";
+import TimeRangeControl, { PickedRangeNote, TimeRangeProvider, useTimeRange } from "./TimeRangeContext";
 import HealthSummary from "./HealthSummary";
 import InfoTitle from "./InfoTitle";
 import RequestLookup from "./RequestLookup";
@@ -86,8 +86,8 @@ function MonitorPageContent() {
 
   return (
     <div>
-      <PageHeader title={t("overview.title")} description={t("overview.description")} breadcrumb={[t("overview.title")]} extra={
-          <Space size={12} wrap>
+      <PageHeader className="page-header-wrap" title={t("overview.title")} description={t("overview.description")} breadcrumb={[t("overview.title")]} extra={
+          <Space size={12} wrap style={{ justifyContent: "flex-end" }}>
             <RequestLookup />
             <TimeRangeControl />
           </Space>
@@ -112,6 +112,7 @@ function MonitorPageContent() {
       {data && (
         <>
           <AsOfCaption asOf={data.as_of} stale={data.stale} />
+          <PickedRangeNote />
 
           <div className="monitor-signal-grid">
             {data.signals.map((signal) => (

@@ -81,7 +81,8 @@ export function outsidePickable(day: Dayjs, now = dayjs()): boolean {
 
 // TimeRangeControl is the header widget: the presets, a picker for any other
 // range within the raw retention, and the follow Switch, all writing straight
-// through to the URL via useTimeRange.
+// through to the URL via useTimeRange. What a picked range covers is spelled
+// out under the header (PickedRangeNote), keeping the header one row.
 export default function TimeRangeControl() {
   const { t } = useTranslation("monitoring");
   const { range, picked, follow, setRange, setPicked, setFollow } = useTimeRange();
@@ -101,8 +102,9 @@ export default function TimeRangeControl() {
       <DatePicker.RangePicker
         size="small"
         showTime={{ format: "HH:mm" }}
-        format="YYYY-MM-DD HH:mm"
+        format="MM-DD HH:mm"
         allowClear={false}
+        style={{ width: 240 }}
         aria-label={t("range.pick")}
         placeholder={[t("range.pickFrom"), t("range.pickTo")]}
         value={picked ? [dayjs(picked.from), dayjs(picked.to)] : null}
@@ -118,11 +120,19 @@ export default function TimeRangeControl() {
           <Typography.Text style={{ fontSize: 12 }}>{t("range.follow")}</Typography.Text>
         </Space>
       </Tooltip>
-      {picked && (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {t("range.pickedNote", { from: formatTime(new Date(picked.from).toISOString()), to: formatTime(new Date(picked.to).toISOString()) })}
-        </Typography.Text>
-      )}
     </Space>
+  );
+}
+
+// PickedRangeNote says which parts of the page follow a picked range and
+// which stay current; nothing for a preset.
+export function PickedRangeNote() {
+  const { t } = useTranslation("monitoring");
+  const { picked } = useTimeRange();
+  if (!picked) return null;
+  return (
+    <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8, fontSize: 12 }}>
+      {t("range.pickedNote", { from: formatTime(new Date(picked.from).toISOString()), to: formatTime(new Date(picked.to).toISOString()) })}
+    </Typography.Text>
   );
 }
