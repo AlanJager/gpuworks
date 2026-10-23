@@ -1,0 +1,135 @@
+event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-r2150","type":"message","role":"assistant","content":[],"model":"Qwen/Qwen3.5-0.8B-8e86","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1706,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"text","text":""},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"I"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" provide"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" a"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" generic"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" options"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" for"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" you"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"."},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" My"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" own"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" responses"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" are"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" being"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" biased"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" in"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" a"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" positive"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" manner"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" and"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" be"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" prone"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" to"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" my"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" own"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" biases"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" in"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" a"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" positive"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" manner"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"."},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" I"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" suggest"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" that"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" you"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" choose"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" the"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" option"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" that"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" is"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":" most"},"index":0}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"max_tokens","stop_sequence":null},"usage":{"input_tokens":74,"output_tokens":40,"cache_creation_input_tokens":0,"cache_read_input_tokens":1632}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

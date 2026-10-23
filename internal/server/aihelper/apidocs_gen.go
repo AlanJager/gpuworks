@@ -10,7 +10,7 @@ var routeDocs = map[string]string{
 	"/api/v1/ai/configs":                        "AI 助手 LLM 接入配置列表",
 	"/api/v1/ai/instances/{}/findings":          "失败实例日志命中的已知故障：`{items:[{code, evidence:[{line}]}], total}`，`code` 稳定、文案由前端渲染。不需要 LLM；实例不存在 404",
 	"/api/v1/ai/models/{}/fit":                  "模型在在线集群每种加速卡上的物理适配（讲硬件事实，不讲当前空闲）：`{model_id, weight_bytes, dtype, gpu_memory_utilization, rows:[{vendor,name,memory_bytes,nodes,cards,unusable,max_cards_per_node,dtype_supported,dtype_note?,fast_link_cards,fits,tp,per_gpu_bytes,usable_bytes,headroom_bytes}]}`。`cards` 是可用卡数，`unusable` 是故障卡数（与前端健康等级同一规则）；`dtype_supported` 表示该卡能否计算模型的精度；`fast_link_cards` 是单节点内 NVLink 等高速互联组的最大卡数（1 表示只有 PCIe，0 表示未知；每种卡型最多抽样 8 个节点）；`tp` 是单节点内放得下权重与引擎预留的最小 2 的幂，放不下时 `fits:false`、`tp:0`。数据按「节点 × 卡型」分组读取。不需要 LLM；模型不存在回 404",
-	"/api/v1/apikeys":                           "API key 列表（不含明文）",
+	"/api/v1/apikeys":                           "API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段",
 	"/api/v1/auth/me":                           "返回当前用户与实时权限；不延长空闲期限",
 	"/api/v1/benchmarks":                        "评测任务列表",
 	"/api/v1/benchmarks/meta":                   "评测字典（数据集/指标元信息）",

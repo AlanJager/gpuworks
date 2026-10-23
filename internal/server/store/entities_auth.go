@@ -14,6 +14,8 @@ type User struct {
 
 // APIKey authenticates data-plane (/v1) and API access. The prefix is stored in
 // clear for O(1) lookup; the full key is verified against an argon2id hash.
+// A revoked key stays, so its usage keeps a name; it never authenticates
+// again and its prefix is never reused.
 type APIKey struct {
 	ID        uint   `gorm:"primaryKey"`
 	Name      string `gorm:"size:128"`
@@ -22,6 +24,7 @@ type APIKey struct {
 	UserID    uint   `gorm:"index"`
 	CreatedAt time.Time
 	LastUsed  *time.Time
+	RevokedAt *time.Time
 }
 
 // ManagementSession stores only the hash of a browser or management credential.

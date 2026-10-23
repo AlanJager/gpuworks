@@ -89,7 +89,7 @@ func TestVerifyAPIKeyNeverCachesARejectedSecret(t *testing.T) {
 	}
 }
 
-func TestDeleteAPIKeyInvalidatesTheCacheImmediately(t *testing.T) {
+func TestRevokeAPIKeyInvalidatesTheCacheImmediately(t *testing.T) {
 	st := openAPIKeyStore(t)
 	key, err := st.CreateAPIKey("gateway", 0)
 	if err != nil {
@@ -98,18 +98,55 @@ func TestDeleteAPIKeyInvalidatesTheCacheImmediately(t *testing.T) {
 	if !st.VerifyAPIKey(key) || !st.HasAnyAPIKey() {
 		t.Fatal("fresh key did not verify")
 	}
-	if err := st.DeleteAPIKey(auth.PrefixOf(key)); err != nil {
+	sub := st.Bus.Subscribe(4, "apikey")
+	defer sub.Close()
+	if err := st.RevokeAPIKey(auth.PrefixOf(key)); err != nil {
 		t.Fatal(err)
 	}
 	if st.VerifyAPIKey(key) {
-		t.Fatal("deleted key still verified from the cache")
+		t.Fatal("revoked key still verified from the cache")
 	}
 	if st.HasAnyAPIKey() {
-		t.Fatal("HasAnyAPIKey still true after the only key was deleted")
+		t.Fatal("HasAnyAPIKey still true after the only key was revoked")
+	}
+	select {
+	case e := <-sub.C():
+		if e.Key != auth.PrefixOf(key) || e.Reason != "revoked" {
+			t.Fatalf("event = %+v", e)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("revoking published no change")
+	}
+	// The key stays, marked, so its usage keeps a name; revoking it again
+	// changes nothing.
+	keys, err := st.ListAPIKeys()
+	if err != nil || len(keys) != 1 || keys[0].Name != "gateway" || keys[0].RevokedAt == nil {
+		t.Fatalf("keys after revoke = %+v err=%v", keys, err)
+	}
+	revokedAt := *keys[0].RevokedAt
+	if err := st.RevokeAPIKey(auth.PrefixOf(key)); err != nil {
+		t.Fatal(err)
+	}
+	keys, _ = st.ListAPIKeys()
+	if !keys[0].RevokedAt.Equal(revokedAt) {
+		t.Fatalf("a second revoke moved revoked_at: %v -> %v", revokedAt, keys[0].RevokedAt)
+	}
+	select {
+	case e := <-sub.C():
+		t.Fatalf("a no-op revoke published %+v", e)
+	default:
+	}
+	if err := st.RevokeAPIKey("gw-unknown000"); err != nil {
+		t.Fatalf("revoking an unknown prefix: %v", err)
+	}
+	// A new key works beside the revoked one.
+	other, err := st.CreateAPIKey("gateway", 0)
+	if err != nil || !st.VerifyAPIKey(other) || !st.HasAnyAPIKey() || st.VerifyAPIKey(key) {
+		t.Fatalf("a new key beside a revoked one: err=%v", err)
 	}
 }
 
-func TestHasAnyAPIKeyFollowsCreateAndDelete(t *testing.T) {
+func TestHasAnyAPIKeyFollowsCreateAndRevoke(t *testing.T) {
 	st := openAPIKeyStore(t)
 	if st.HasAnyAPIKey() {
 		t.Fatal("empty store reports a key")
@@ -123,11 +160,11 @@ func TestHasAnyAPIKeyFollowsCreateAndDelete(t *testing.T) {
 	if !st.HasAnyAPIKey() {
 		t.Fatal("HasAnyAPIKey stayed false after a key was created")
 	}
-	if err := st.DeleteAPIKey(auth.PrefixOf(key)); err != nil {
+	if err := st.RevokeAPIKey(auth.PrefixOf(key)); err != nil {
 		t.Fatal(err)
 	}
 	if st.HasAnyAPIKey() {
-		t.Fatal("HasAnyAPIKey stayed true after the key was deleted")
+		t.Fatal("HasAnyAPIKey stayed true after the key was revoked")
 	}
 }
 

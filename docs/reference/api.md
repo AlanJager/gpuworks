@@ -498,9 +498,9 @@ vLLM 的载荷复用到 SGLang 上，会从"静默忽略"变成 400。`engine_de
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/apikeys` | API key 列表（不含明文） | JWT |
+| GET | `/api/v1/apikeys` | API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段 | JWT |
 | POST | `/api/v1/apikeys` | 创建 API key；`name` 去除首尾空白后不能为空，否则返回 400 `API_KEY_NAME_REQUIRED`；明文仅创建响应中返回一次 | JWT |
-| DELETE | `/api/v1/apikeys/{prefix}` | 按前缀吊销 API key | JWT |
+| DELETE | `/api/v1/apikeys/{prefix}` | 按前缀吊销 API key：立即不能再认证，记录保留（名字留给它的历史用量），前缀不复用；返回 `{"status":"revoked"}`。吊销未知或已吊销的 key 不报错、不改动；所有 key 都吊销后网关回到匿名访问（与没有 key 时相同） | JWT |
 
 ## Platform Tokens（平台 API 令牌）
 

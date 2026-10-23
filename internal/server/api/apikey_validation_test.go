@@ -78,3 +78,48 @@ func TestAPIKeyCreationBoundsNamesAndRequestBody(t *testing.T) {
 		t.Fatalf("Unicode name at limit: %d %s", rec.Code, rec.Body)
 	}
 }
+
+// Revoking keeps the key listed with when it was revoked, so its past usage
+// keeps a name; the key no longer authenticates and revoking it again is a
+// no-op.
+func TestAPIKeyRevokeKeepsTheKeyListed(t *testing.T) {
+	rig := newTokenRig(t)
+	t.Cleanup(func() { _ = rig.st.Close() })
+	rec := rig.do(rig.session, http.MethodPost, "/api/v1/apikeys", `{"name":"client"}`)
+	var created map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	prefix := created["key"][:12]
+	list := rig.do(rig.session, http.MethodGet, "/api/v1/apikeys", "")
+	if strings.Contains(list.Body.String(), "revoked_at") {
+		t.Fatalf("a live key lists revoked_at: %s", list.Body)
+	}
+	rec = rig.do(rig.session, http.MethodDelete, "/api/v1/apikeys/"+prefix, "")
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"status":"revoked"}`+"\n" {
+		t.Fatalf("revoke: %d %q", rec.Code, rec.Body)
+	}
+	if rig.st.VerifyAPIKey(created["key"]) {
+		t.Fatal("a revoked key still authenticates")
+	}
+	list = rig.do(rig.session, http.MethodGet, "/api/v1/apikeys", "")
+	var page struct {
+		Items []map[string]any `json:"items"`
+		Total int              `json:"total"`
+	}
+	if err := json.Unmarshal(list.Body.Bytes(), &page); err != nil || page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("list after revoke: %s", list.Body)
+	}
+	item := page.Items[0]
+	revoked, _ := item["revoked_at"].(string)
+	if item["name"] != "client" || item["prefix"] != prefix || !strings.HasSuffix(revoked, "Z") || item["key"] != nil || item["hash"] != nil {
+		t.Fatalf("revoked item = %v", item)
+	}
+	if rec := rig.do(rig.session, http.MethodDelete, "/api/v1/apikeys/"+prefix, ""); rec.Code != http.StatusOK {
+		t.Fatalf("second revoke: %d", rec.Code)
+	}
+	again := rig.do(rig.session, http.MethodGet, "/api/v1/apikeys", "")
+	if !strings.Contains(again.Body.String(), `"revoked_at":"`+revoked+`"`) {
+		t.Fatalf("a second revoke moved revoked_at: %s", again.Body)
+	}
+}

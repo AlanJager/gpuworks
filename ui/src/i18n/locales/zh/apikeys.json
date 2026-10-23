@@ -3,7 +3,7 @@
     "cancel": "取消",
     "close": "关闭",
     "create": "创建",
-    "delete": "删除"
+    "revoke": "吊销"
   },
   "breadcrumb": {
     "platform": "平台"
@@ -14,11 +14,6 @@
     "namePlaceholder": "例如 my-app",
     "nameRequired": "请输入名称",
     "title": "创建 API 令牌"
-  },
-  "delete": {
-    "confirm": "删除“{{name}}”？此令牌将被撤销。如果不再有任何推理令牌，网关将允许匿名访问（开发模式）。",
-    "failed": "删除失败：{{detail}}",
-    "success": "已删除"
   },
   "description": "签发并管理两种凭据：调用已部署模型的推理服务令牌，以及调用平台管理 API 与 MCP 的平台 API 令牌",
   "empty": "暂无 API 令牌",
@@ -34,7 +29,8 @@
     "createdAt": "创建时间",
     "lastUsed": "最近使用",
     "name": "名称",
-    "prefix": "前缀"
+    "prefix": "前缀",
+    "status": "状态"
   },
   "title": "API 令牌",
   "usage": "调用方式",
@@ -62,5 +58,16 @@
     "revoked": "已吊销",
     "empty": "暂无平台 API 令牌",
     "nameTooLong": "名称不能超过 128 个 UTF-8 字节（中文通常占 3 个字节）"
-  }
+  },
+  "revoke": {
+    "confirm": "吊销“{{name}}”？使用它的程序会立即失去访问权限；它的历史用量仍保留在运营分析中。如果不再有任何有效的推理令牌，网关将允许匿名访问（开发模式）。",
+    "failed": "吊销失败：{{detail}}",
+    "success": "已吊销"
+  },
+  "status": {
+    "active": "有效",
+    "revoked": "已吊销",
+    "revokedAt": "吊销于 {{time}}"
+  },
+  "showRevoked": "显示已吊销（{{count}}）"
 }

@@ -1271,6 +1271,7 @@ var migrations = []migration{
 	{Version: 166, Name: "notice_reads", Apply: createNoticeReads},
 	{Version: 167, Name: "inference_spec_shm_bytes", Apply: addInferenceSpecShmBytes},
 	{Version: 168, Name: "inference_spec_memlock_unlimited", Apply: addInferenceSpecMemlockUnlimited},
+	{Version: 169, Name: "api_key_revoked_at", Apply: addAPIKeyRevokedAt},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

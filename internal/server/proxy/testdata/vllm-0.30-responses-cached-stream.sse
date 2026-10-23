@@ -1,0 +1,144 @@
+event: response.created
+data: {"response":{"id":"resp_b066514ffc9342c9","created_at":1792683446,"incomplete_details":null,"instructions":null,"metadata":null,"model":"Qwen/Qwen3.5-0.8B-8e86","object":"response","output":[],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":"none","tools":[],"top_p":1.0,"background":false,"max_output_tokens":40,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null,"presence_penalty":0.0,"frequency_penalty":0.0,"kv_transfer_params":null,"ec_transfer_params":null,"input_messages":null,"output_messages":null},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"id":"resp_b066514ffc9342c9","created_at":1792683446,"incomplete_details":null,"instructions":null,"metadata":null,"model":"Qwen/Qwen3.5-0.8B-8e86","object":"response","output":[],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":"none","tools":[],"top_p":1.0,"background":false,"max_output_tokens":40,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"in_progress","text":null,"top_logprobs":null,"truncation":"disabled","usage":null,"user":null,"presence_penalty":0.0,"frequency_penalty":0.0,"kv_transfer_params":null,"ec_transfer_params":null,"input_messages":null,"output_messages":null},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"id":"95f1bbe5595335be","content":[],"role":"assistant","status":"in_progress","type":"message","phase":null},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.content_part.added
+data: {"content_index":0,"item_id":"95f1bbe5595335be","output_index":0,"part":{"annotations":[],"text":"","type":"output_text","logprobs":[]},"sequence_number":3,"type":"response.content_part.added"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"Based","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":4,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" on","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":5,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" the","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":6,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" text","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":7,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" provided","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":8,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":",","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":9,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" there","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":10,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" are","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":11,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" **","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":12,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"1","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":13,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"0","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":14,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"5","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":15,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" distinct","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":16,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" sentences","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":17,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"**.","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":18,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"\n\n","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":19,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"This","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":20,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" count","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":21,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" accounts","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":22,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" for","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":23,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" the","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":24,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" total","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":25,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" number","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":26,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" of","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":27,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" numbers","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":28,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" mentioned","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":29,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" (","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":30,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"from","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":31,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" ","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":32,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"0","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":33,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" to","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":34,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" ","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":35,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"1","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":36,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"0","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":37,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":"0","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":38,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":")","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":39,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" and","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":40,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" the","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":41,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" total","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":42,"type":"response.output_text.delta"}
+
+event: response.output_text.delta
+data: {"content_index":0,"delta":" number","item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":43,"type":"response.output_text.delta"}
+
+event: response.output_text.done
+data: {"content_index":0,"item_id":"95f1bbe5595335be","logprobs":[],"output_index":0,"sequence_number":44,"text":"Based on the text provided, there are **105 distinct sentences**.\n\nThis count accounts for the total number of numbers mentioned (from 0 to 100) and the total number","type":"response.output_text.done"}
+
+event: response.content_part.done
+data: {"content_index":0,"item_id":"95f1bbe5595335be","output_index":0,"part":{"annotations":[],"text":"Based on the text provided, there are **105 distinct sentences**.\n\nThis count accounts for the total number of numbers mentioned (from 0 to 100) and the total number","type":"output_text","logprobs":null},"sequence_number":45,"type":"response.content_part.done"}
+
+event: response.output_item.done
+data: {"item":{"id":"95f1bbe5595335be","content":[{"annotations":[],"text":"Based on the text provided, there are **105 distinct sentences**.\n\nThis count accounts for the total number of numbers mentioned (from 0 to 100) and the total number","type":"output_text","logprobs":null}],"role":"assistant","status":"completed","type":"message","phase":null,"summary":[]},"output_index":0,"sequence_number":46,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"id":"resp_b066514ffc9342c9","created_at":1792683446,"incomplete_details":{"reason":"max_output_tokens"},"instructions":null,"metadata":null,"model":"Qwen/Qwen3.5-0.8B-8e86","object":"response","output":[{"id":"msg_b47df45bd7edce38","content":[{"annotations":[],"text":"Based on the text provided, there are **105 distinct sentences**.\n\nThis count accounts for the total number of numbers mentioned (from 0 to 100) and the total number","type":"output_text","logprobs":null}],"role":"assistant","status":"completed","type":"message","phase":null}],"parallel_tool_calls":true,"temperature":1.0,"tool_choice":"none","tools":[],"top_p":1.0,"background":false,"max_output_tokens":40,"max_tool_calls":null,"previous_response_id":null,"prompt":null,"reasoning":null,"service_tier":"auto","status":"incomplete","text":null,"top_logprobs":null,"truncation":"disabled","usage":{"input_tokens":1706,"input_tokens_details":{"cached_tokens":1632,"input_tokens_per_turn":[],"cached_tokens_per_turn":[]},"output_tokens":40,"output_tokens_details":{"reasoning_tokens":0,"tool_output_tokens":0,"output_tokens_per_turn":[],"tool_output_tokens_per_turn":[]},"total_tokens":1746},"user":null,"presence_penalty":0.0,"frequency_penalty":0.0,"kv_transfer_params":null,"ec_transfer_params":null,"input_messages":null,"output_messages":null},"sequence_number":47,"type":"response.completed"}
+

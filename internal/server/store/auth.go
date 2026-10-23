@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"strconv"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -94,20 +95,26 @@ func (s *Store) CreateAPIKey(name string, userID uint) (fullKey string, err erro
 	return full, nil
 }
 
-// ListAPIKeys returns key metadata (never the secret).
+// ListAPIKeys returns key metadata (never the secret), revoked keys included.
 func (s *Store) ListAPIKeys() ([]APIKey, error) {
 	var ks []APIKey
 	err := s.db.Order("id desc").Find(&ks).Error
 	return ks, err
 }
 
-// DeleteAPIKey removes a key by prefix.
-func (s *Store) DeleteAPIKey(prefix string) error {
-	err := s.db.Where("prefix = ?", prefix).Delete(&APIKey{}).Error
-	// Forget the key even when the delete errored: re-verifying against the
-	// database is always safe, trusting a possibly deleted key is not.
+// RevokeAPIKey stops a key authenticating, keeping its row (and so its name
+// in the usage it has). Revoking an unknown or already revoked key is a
+// no-op.
+func (s *Store) RevokeAPIKey(prefix string) error {
+	result := s.db.Model(&APIKey{}).Where("prefix = ? AND revoked_at IS NULL", prefix).
+		Update("revoked_at", time.Now().UTC())
+	// Forget the key even when the write errored: re-verifying against the
+	// database is always safe, trusting a possibly revoked key is not.
 	s.apiKeys.forget(prefix)
-	return err
+	if result.Error == nil && result.RowsAffected > 0 {
+		s.Bus.PublishChange("apikey", prefix, "revoked")
+	}
+	return result.Error
 }
 
 // APIKeyIdentity is who presented a valid API key: the key and its owner.
@@ -142,7 +149,7 @@ func (s *Store) ResolveAPIKey(presented string) (APIKeyIdentity, bool) {
 	defer s.apiKeys.finish(digest, call)
 	generation := s.apiKeys.snapshot()
 	var k APIKey
-	if err := s.db.Where("prefix = ?", auth.PrefixOf(presented)).First(&k).Error; err != nil {
+	if err := s.db.Where("prefix = ? AND revoked_at IS NULL", auth.PrefixOf(presented)).First(&k).Error; err != nil {
 		// Not found and read errors both reject; neither is cached.
 		return APIKeyIdentity{}, false
 	}
@@ -161,15 +168,15 @@ func (s *Store) touchAPIKey(id uint) {
 	}
 }
 
-// HasAnyAPIKey reports whether at least one API key exists. The answer is
-// cached until a key is created or deleted through this store.
+// HasAnyAPIKey reports whether at least one unrevoked API key exists. The
+// answer is cached until a key is created or revoked through this store.
 func (s *Store) HasAnyAPIKey() bool {
 	some, known, generation := s.apiKeys.cachedHasAny()
 	if known {
 		return some
 	}
 	var count int64
-	if err := s.db.Model(&APIKey{}).Count(&count).Error; err != nil {
+	if err := s.db.Model(&APIKey{}).Where("revoked_at IS NULL").Count(&count).Error; err != nil {
 		// A failed read is not cached, so it cannot pin the answer.
 		return count > 0
 	}

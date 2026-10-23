@@ -246,7 +246,7 @@ func injectUsage(r *http.Request, maxBody int64, inject bool) (facts bodyFacts, 
 	facts, err = scanBodyFacts(body)
 	_ = body.Close()
 	shape, usageOp := inferenceapi.UsageForPath(r.URL.Path)
-	if err != nil || !inject || !usageOp || len(shape.StreamText) == 0 || !facts.stream || facts.streamOptions {
+	if err != nil || !inject || !usageOp || !shape.UsageOnRequest || len(shape.StreamText) == 0 || !facts.stream || facts.streamOptions {
 		return facts, false, cleanup, nil
 	}
 	source, err := r.GetBody()

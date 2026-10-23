@@ -150,7 +150,7 @@ func (a *apiHandlers) listAPIKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]dto.APIKey, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, dto.APIKey{Name: k.Name, Prefix: k.Prefix, LastUsed: utcTimePtr(k.LastUsed), Created: utcTime(k.CreatedAt)})
+		out = append(out, dto.APIKey{Name: k.Name, Prefix: k.Prefix, LastUsed: utcTimePtr(k.LastUsed), Created: utcTime(k.CreatedAt), Revoked: utcTimePtr(k.RevokedAt)})
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(out))
 }
@@ -180,11 +180,11 @@ func (a *apiHandlers) createAPIKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) deleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	if err := a.d.Store.DeleteAPIKey(chi.URLParam(r, "prefix")); err != nil {
+	if err := a.d.Store.RevokeAPIKey(chi.URLParam(r, "prefix")); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }
 
 // ---- helpers ----
