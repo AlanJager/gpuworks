@@ -60,10 +60,10 @@ test("an admin sets a product name and header title; the shell follows the save"
   const api = stub();
   const user = renderCard();
   await waitFor(() => assert.equal(saveButton().disabled, false));
-  assert.equal(screen.getByRole("status", { name: "shell" }).textContent, "GPUWorks|GPUWorks Cluster Management Platform");
+  // A fresh deployment has no top bar title: the logo stands alone.
+  assert.equal(screen.getByRole("status", { name: "shell" }).textContent, "GPUWorks|");
   await user.type(productInput(), "Acme AI");
-  // The header title's placeholder previews the default for the typed name.
-  const title = screen.getByPlaceholderText("Acme AI Cluster Management Platform");
+  const title = screen.getByPlaceholderText(b.consoleTitlePlaceholder);
   await user.type(title, "Acme 算力平台");
   await user.type(screen.getByPlaceholderText(locale.common.branding.defaultLoginDescription), "first{Enter}second");
   assert.equal(api.updates.length, 0, "typing alone does not save");
@@ -82,8 +82,7 @@ test("a stored logo shows in the preview and restoring the default clears it", a
   assert.equal(productInput().value, "Acme");
   await waitFor(() => assert.equal(saveButton().disabled, false));
   await user.click(screen.getByRole("button", { name: b.restoreDefault }));
-  assert.equal(container.querySelector(".branding-logo-preview img"), null);
-  assert.equal(container.querySelector(".branding-logo-preview")?.textContent, "G");
+  assert.equal(container.querySelector(".branding-logo-preview img")?.getAttribute("src"), branding.DEFAULT_LOGO);
   assert.equal(screen.queryByRole("button", { name: b.restoreDefault }), null);
   await user.click(saveButton());
   await waitFor(() => assert.equal(api.updates[0]?.logo, ""));
@@ -132,8 +131,7 @@ test("choosing an image opens the crop dialog; a non-image is refused", async ()
   assert.ok(await screen.findByText(b.crop.title));
   assert.equal(screen.getByAltText(b.crop.image).getAttribute("src"), "blob:test/logo");
   await user.click(screen.getByRole("button", { name: locale.settings.common.cancel }));
-  await waitFor(() => assert.equal(container.querySelector(".branding-logo-preview img"), null));
-  assert.equal(container.querySelector(".branding-logo-preview")?.textContent, "G", "cancelling keeps the current logo");
+  assert.equal(container.querySelector(".branding-logo-preview img")?.getAttribute("src"), branding.DEFAULT_LOGO, "cancelling keeps the current logo");
 });
 
 // prepareLogo, with a codec that records what it was asked to produce.

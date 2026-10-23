@@ -82,8 +82,8 @@ test("square snaps to the centered square, reset keeps the square, unchecking fr
   await s.user.click(squareBox());
   assert.equal(squareBox().checked, true);
   const preview = screen.getByTestId("logo-crop-preview").firstElementChild as HTMLElement;
-  assert.equal(preview.style.width, "28px");
-  assert.equal(preview.style.height, "28px");
+  assert.equal(preview.style.width, "24px");
+  assert.equal(preview.style.height, "24px", "a square stops at the top bar's 24 px height");
   await s.user.click(ok());
   await waitFor(() => assert.equal(s.calls.length, 1));
   near(s.calls[0], squareCrop(400, 100));
@@ -98,8 +98,8 @@ test("square snaps to the centered square, reset keeps the square, unchecking fr
   await s.user.keyboard(" ");
   assert.equal(squareBox().checked, false);
   const wide = screen.getByTestId("logo-crop-preview").firstElementChild as HTMLElement;
-  assert.equal(wide.style.width, "28px");
-  assert.equal(wide.style.height, "7px", "the whole 4:1 image fits the mark letterboxed");
+  assert.equal(wide.style.width, "96px");
+  assert.equal(wide.style.height, "24px", "the whole 4:1 image keeps its shape, stopped by the height");
   await s.user.click(ok());
   await waitFor(() => assert.equal(s.calls.length, 3));
   near(s.calls[2], FULL_CROP);

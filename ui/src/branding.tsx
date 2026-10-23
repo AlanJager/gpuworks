@@ -5,6 +5,15 @@ import { api, type Branding } from "./api";
 /** DEFAULT_PRODUCT_NAME is the product name when none is configured. */
 export const DEFAULT_PRODUCT_NAME = "GPUWorks";
 
+/** DEFAULT_LOGO is the built-in GPUWorks wordmark. */
+export const DEFAULT_LOGO = "/assets/gpuworks-wordmark.svg";
+
+/**
+ * LOGO_BOX is the most room a logo gets in the top bar: it scales with its
+ * proportions until either side reaches the limit (mirrored in styles.css).
+ */
+export const LOGO_BOX = { width: 160, height: 24 };
+
 /** BRANDING_LOGO_MAX_BYTES mirrors the server's logo limit (decoded bytes). */
 export const BRANDING_LOGO_MAX_BYTES = 128 << 10;
 
@@ -49,9 +58,12 @@ export function resetBrandingForTest() {
 
 export interface ResolvedBranding {
   productName: string;
+  /** Whether an administrator set the product name, rather than the default. */
+  productNameSet: boolean;
+  /** The top bar title; "" shows the logo alone. */
   consoleTitle: string;
   loginDescription: string;
-  /** The custom logo, or "" for the built-in mark. */
+  /** The custom logo, or "" for the built-in wordmark. */
   logo: string;
 }
 
@@ -63,16 +75,19 @@ export function useBranding(): ResolvedBranding {
   const productName = branding.product_name || DEFAULT_PRODUCT_NAME;
   return {
     productName,
-    consoleTitle: branding.console_title || t("branding.defaultConsoleTitle", { product: productName }),
+    productNameSet: branding.product_name !== "",
+    consoleTitle: branding.console_title,
     loginDescription: branding.login_description || t("branding.defaultLoginDescription"),
     logo: branding.logo,
   };
 }
 
-/** BrandMark is the logo: the custom image, or the built-in "G" mark. */
-export function BrandMark({ logo }: { logo: string }) {
-  if (logo) return <img className="app-brand-mark app-brand-logo" src={logo} alt="" aria-hidden="true" />;
-  return <span className="app-brand-mark" aria-hidden="true">G</span>;
+/**
+ * BrandMark is the logo: the custom image, or the built-in wordmark. With a
+ * label it names the product for screen readers; otherwise it is decoration.
+ */
+export function BrandMark({ logo, label }: { logo: string; label?: string }) {
+  return <img className="app-brand-logo" src={logo || DEFAULT_LOGO} alt={label ?? ""} aria-hidden={label ? undefined : true} />;
 }
 
 /**

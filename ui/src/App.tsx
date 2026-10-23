@@ -197,7 +197,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
         onClose={() => setMobileNavOpen(false)}
         styles={{ body: { padding: 0 } }}
       >
-        <Brand title={branding.productName} />
+        <Brand />
         <Menu
           mode="inline"
           selectedKeys={[selected]}
@@ -225,12 +225,14 @@ function AssistantHeaderButton() {
   );
 }
 
-function Brand({ title }: { title: string }) {
-  const { logo } = useBranding();
+// Brand is the logo, followed by the top bar title when one is set.
+function Brand({ title = "" }: { title?: string }) {
+  const { productName, logo } = useBranding();
   return (
     <div className="app-brand">
-      <BrandMark logo={logo} />
-      <span className="app-brand-name">{title}</span>
+      <BrandMark logo={logo} label={productName} />
+      {title && <span className="app-brand-sep" aria-hidden="true" />}
+      {title && <span className="app-brand-name">{title}</span>}
     </div>
   );
 }

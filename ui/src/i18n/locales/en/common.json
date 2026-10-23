@@ -500,7 +500,6 @@
     "networks": "Networks"
   },
   "branding": {
-    "defaultConsoleTitle": "{{product}} Cluster Management Platform",
     "defaultLoginDescription": "Manage heterogeneous GPU nodes, model deployments, inference services, and runtime status in one place."
   },
   "header": {

@@ -35,8 +35,6 @@ export default function BrandingCard() {
 
   const edit = (patch: Partial<Branding>) => setDraft((current) => current && { ...current, ...patch });
   const disabled = !isAdmin || !draft;
-  const productName = draft?.product_name.trim() || DEFAULT_PRODUCT_NAME;
-  const defaultTitle = tCommon("branding.defaultConsoleTitle", { product: productName });
 
   const pickLogo = (file: File) => {
     if (file.type.startsWith("image/")) setPicked(file);
@@ -96,7 +94,7 @@ export default function BrandingCard() {
           <Form.Item label={t("branding.consoleTitle")} extra={t("branding.consoleTitleHelp")}>
             <Input
               value={draft?.console_title ?? ""}
-              placeholder={defaultTitle}
+              placeholder={t("branding.consoleTitlePlaceholder")}
               maxLength={CONSOLE_TITLE_MAX}
               showCount
               allowClear

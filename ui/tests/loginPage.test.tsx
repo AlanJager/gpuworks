@@ -24,12 +24,12 @@ await i18n.use(initReactI18next).init({
   defaultNS: "common", interpolation: { escapeValue: false },
 });
 
-const { cleanup, render, screen, waitFor } = await import("@testing-library/react");
+const { cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEventModule = await import("@testing-library/user-event");
 const userEvent = userEventModule.default ?? userEventModule;
 const apiModule = await import("../src/api.ts");
 const LoginPage = (await import("../src/pages/LoginPage.tsx")).default;
-const { resetBrandingForTest } = await import("../src/branding.tsx");
+const { DEFAULT_LOGO, resetBrandingForTest } = await import("../src/branding.tsx");
 
 const originalPrefetch = apiModule.api.prefetchUpdates;
 const originalBranding = apiModule.api.branding;
@@ -135,9 +135,11 @@ test("the sign-in page shows the built-in branding and no account hint by defaul
   apiModule.api.prefetchUpdates = async () => {};
   render(page());
   const panel = await screen.findByRole("region", { name: "GPUWorks product information" });
-  assert.ok(panel.textContent?.includes("GPUWorks"));
+  // The built-in wordmark spells the name, so it is not repeated as text.
+  const mark = within(panel).getByRole("img", { name: "GPUWorks" });
+  assert.equal(mark.getAttribute("src"), DEFAULT_LOGO);
+  assert.equal(panel.querySelector(".auth-brand-name"), null);
   assert.ok(panel.textContent?.includes(locale("common").branding.defaultLoginDescription));
-  assert.equal(panel.querySelector("img"), null, "the built-in mark is not an image");
   assert.equal(screen.queryByText(/administrator account/i), null);
   await waitFor(() => assert.equal(document.title, "GPUWorks"));
 });
@@ -148,7 +150,7 @@ test("the sign-in page shows the configured product name, logo and text", async 
   apiModule.api.branding = async () => ({ product_name: "Acme AI", console_title: "", login_description: "Line one\nLine two", logo });
   render(page());
   const panel = await screen.findByRole("region", { name: "Acme AI product information" });
-  assert.ok(panel.textContent?.includes("Acme AI"));
+  assert.equal(panel.querySelector(".auth-brand-name")?.textContent, "Acme AI");
   assert.equal(panel.querySelector(".auth-brand-copy")?.textContent, "Line one\nLine two");
   assert.equal(panel.querySelector("img")?.getAttribute("src"), logo);
   await waitFor(() => assert.equal(document.title, "Acme AI"));

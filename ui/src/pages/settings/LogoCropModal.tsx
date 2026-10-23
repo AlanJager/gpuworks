@@ -3,11 +3,10 @@ import { Button, Checkbox, Modal, Space, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 import ReactCrop, { type PercentCrop } from "react-image-crop";
 import { FULL_CROP, LogoError, prepareLogo, squareCrop, type LogoCrop } from "../../brandingLogo";
+import { LOGO_BOX } from "../../branding";
 
 const { Text } = Typography;
 
-/** The box the logo is shown in across the console (.app-brand-mark). */
-const MARK_PX = 28;
 
 const toPercent = (crop: LogoCrop): PercentCrop => ({
   unit: "%", x: crop.x * 100, y: crop.y * 100, width: crop.width * 100, height: crop.height * 100,
@@ -122,7 +121,7 @@ export default function LogoCropModal({ file, onCancel, onConfirm, prepare = pre
           </Checkbox>
           <Space size={8} align="center">
             <Text type="secondary">{t("branding.crop.preview")}</Text>
-            <span className="app-brand-mark logo-crop-preview" data-testid="logo-crop-preview">
+            <span className="logo-crop-preview" data-testid="logo-crop-preview">
               {url && size && <span style={previewStyle(url, crop, size)} />}
             </span>
           </Space>
@@ -133,13 +132,13 @@ export default function LogoCropModal({ file, onCancel, onConfirm, prepare = pre
 }
 
 /**
- * previewStyle shows the selection the way the console will: fitted inside
- * the 28 px mark, keeping its proportions.
+ * previewStyle shows the selection the way the top bar will: keeping its
+ * proportions, grown until either side reaches LOGO_BOX.
  */
 function previewStyle(url: string, crop: PercentCrop, size: { width: number; height: number }): CSSProperties {
   const w = Math.max(1, (crop.width / 100) * size.width);
   const h = Math.max(1, (crop.height / 100) * size.height);
-  const scale = MARK_PX / Math.max(w, h);
+  const scale = Math.min(LOGO_BOX.width / w, LOGO_BOX.height / h);
   const position = (offset: number, extent: number) => (extent >= 100 ? 0 : (offset / (100 - extent)) * 100);
   return {
     display: "block",

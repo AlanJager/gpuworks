@@ -148,7 +148,7 @@ button, input, textarea, select { letter-spacing: 0; }
 }
 
 /* Shared by the shell and pages that fit the viewport below the top bar. */
-:root { --app-header-height: 40px; }
+:root { --app-header-height: 44px; }
 .app-shell { min-height: 100vh; background: #f5f7fa; }
 .app-header {
   position: sticky;
@@ -188,29 +188,22 @@ button, input, textarea, select { letter-spacing: 0; }
   min-width: 0;
   height: var(--app-header-height);
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   color: #181a1d;
   font-size: 15px;
   font-weight: 600;
 }
 /* The mobile drawer covers the top bar, so it repeats the brand. */
 .ant-drawer .app-brand { padding: 0 16px; border-bottom: 1px solid #f0f2f5; }
-.app-brand-mark {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 2px;
-  background: #005bd4;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-.app-brand .app-brand-mark { width: 24px; height: 24px; font-size: 13px; }
-/* A custom logo keeps its own colors and proportions inside the mark's box. */
-.app-brand-logo { flex: none; background: transparent; object-fit: contain; }
+/* Any logo keeps its proportions and grows until either side reaches the
+   160 x 24 box (LOGO_BOX in branding.tsx): the height is set and the width
+   follows; a logo wider than the box shrinks inside it. Sizing from the
+   height also covers SVGs that declare only a viewBox. */
+.app-brand-logo { display: block; flex: none; width: auto; height: 24px; max-width: 160px; object-fit: contain; object-position: left center; }
+.app-brand-sep { flex: none; width: 1px; height: 16px; background: #dbdde0; }
 .app-brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.branding-logo-preview { display: inline-flex; padding: 8px; border: 1px solid #f0f2f5; border-radius: 2px; }
+/* Shows the logo at its top bar size, inside a top-bar-high strip. */
+.branding-logo-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: 2px; background: #fff; }
 .app-nav { padding: 4px 0 12px; border-inline-end: 0 !important; }
 .mobile-menu-button { display: none; }
 /* Centered so wide viewports split the leftover margin symmetrically instead
@@ -620,12 +613,11 @@ button, input, textarea, select { letter-spacing: 0; }
   background: #fff;
   box-shadow: 0 4px 8px rgba(0, 0, 0, .12);
 }
-.auth-brand-panel { position: relative; padding: 72px 38px; overflow: hidden; background: #005bd4; color: #fff; }
+.auth-brand-panel { position: relative; padding: 72px 38px; overflow: hidden; border-right: 1px solid #f0f2f5; background: #f7faff; color: #181a1d; }
 .auth-brand-content { position: relative; z-index: 1; }
-.auth-brand-name { margin: 12px 0 16px; color: #fff; font-size: 24px; font-weight: 600; overflow-wrap: anywhere; }
-.auth-brand-copy { color: rgba(255, 255, 255, .88); font-size: 14px; line-height: 22px; white-space: pre-line; overflow-wrap: anywhere; }
-/* The panel is brand blue; a white tile keeps any custom logo legible on it. */
-.auth-brand-panel .app-brand-logo { box-sizing: content-box; padding: 4px; background: #fff; }
+.auth-brand-name { margin: 16px 0 0; color: #181a1d; font-size: 24px; font-weight: 600; overflow-wrap: anywhere; }
+.auth-brand-copy { margin-top: 16px; color: #4a4c4f; font-size: 14px; line-height: 22px; white-space: pre-line; overflow-wrap: anywhere; }
+.auth-brand-panel .app-brand-logo { height: 36px; max-width: 240px; }
 .auth-form-panel { display: flex; flex-direction: column; justify-content: center; padding: 48px 60px; }
 .auth-title { margin: 0 0 28px !important; color: #181a1d !important; font-size: 24px !important; line-height: 32px !important; }
 .auth-error-slot { height: 72px; min-height: 72px; overflow: auto; }
@@ -1088,4 +1080,4 @@ button, input, textarea, select { letter-spacing: 0; }
 /* Logo crop dialog: the image fits the dialog; the preview copies the mark. */
 .logo-crop-stage { display: flex; justify-content: center; padding: 12px; background: repeating-conic-gradient(#f0f2f5 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
 .logo-crop-image { display: block; max-width: 100%; max-height: 360px; }
-.logo-crop-preview { background: transparent; box-shadow: inset 0 0 0 1px #e5e7eb; }
+.logo-crop-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: 2px; background: #fff; }

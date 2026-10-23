@@ -500,7 +500,6 @@
     "networks": "网络"
   },
   "branding": {
-    "defaultConsoleTitle": "{{product}} 集群管理平台",
     "defaultLoginDescription": "集中管理异构 GPU 计算节点、模型部署、推理服务与运行状态。"
   },
   "header": {
