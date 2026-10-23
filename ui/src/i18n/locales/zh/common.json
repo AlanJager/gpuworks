@@ -504,17 +504,13 @@
     "defaultLoginDescription": "集中管理异构 GPU 计算节点、模型部署、推理服务与运行状态。"
   },
   "header": {
+    "collapseNavigation": "收起菜单",
+    "expandNavigation": "展开菜单",
     "openNavigation": "打开导航",
-    "search": "全局导航搜索",
     "administrator": "管理员",
     "logout": "退出登录",
     "updateAvailable": "有可用更新",
     "updateAvailableHint": "服务端或官方目录有新版本，在设置页「版本与更新」中查看"
-  },
-  "search": {
-    "title": "全局导航",
-    "placeholder": "搜索页面",
-    "empty": "未找到页面"
   },
   "resourcePlaceholder": {
     "currentEntry": "当前入口",
