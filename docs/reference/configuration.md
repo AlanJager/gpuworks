@@ -58,8 +58,8 @@ usage_report: false        # 退出用户体验改进计划（不发日报，检
 | `udocker_bundle_source` | 空 | server 本机的 udocker 离线包（目录或压缩包）；SSH 安装请求带 `udocker_bundle`（节点上的解压目录）时，server 把它上传并解压到那里，节点服务的 `GPUWORKS_UDOCKER_BUNDLE` 指向该目录 | — |
 | `ssh_proxy` | 空 | 到节点的 SSH（含 agent 上传）走的 SOCKS5 代理 | — |
 | `update_channel` | 空（跟随构建：master 构建为 `nightly`，`v*` tag 构建为 `release`） | 检查更新、官方目录更新与升级读哪个发布渠道：`release`（正式发布版）或 `nightly`（滚动预览版）。设置页「版本与更新」切换渠道时写入本键并立即生效；`gpuworks upgrade` 不带 `--channel` 时也读它。发布通道之前的版本不认识这个键、会拒绝启动：降级到那些版本前先删掉这一行（`gpuworks upgrade --archive` 降级时旧版本起不来会自动回滚） | `gpuworks upgrade --channel` |
-| `auto_check_updates` | 空（开启） | 是否自动检测新版本：开启时打开控制台会触发检查（同时拉取发布方的[通知](usage-report.md#发布方通知)），`false` 时 server 不自动检查，只在设置页点「检查更新」时读取版本索引与通知。是否随检查附带装机规模由 `usage_report` 决定。设置页「版本与更新」的开关写入本键并立即生效，开启时删除该键。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
-| `usage_report` | 空（加入） | 是否加入[用户体验改进计划](usage-report.md)：每天向发布方发送一份匿名日报，并在自动检查更新时附带装机规模（见下文「更新检查报告什么」）。`false` 时都不发送，检查更新与通知照常。设置页「用户体验改进计划」的开关写入本键并立即生效，开启时删除该键。**私有化交付在 server 首次启动前写入 `usage_report: false`**（首次启动会立刻发送一份）；环境变量 `GPUWORKS_USAGE_REPORT=off` 同样强制关闭。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
+| `auto_check_updates` | 空（开启） | 是否自动检测新版本：开启时打开控制台会触发检查（同时拉取发布方的[通知](usage-report.md#发布方通知)），`false` 时 server 不自动检查，只在设置页点「检查更新」时读取版本索引与通知。自动检查总会附带安装标识、server 版本与 agent 版本分布（用于统计装机数与版本），节点数与 GPU 型号只在加入改进计划（`usage_report`）时附带，见下文「更新检查报告什么」。设置页「版本与更新」的开关写入本键并立即生效，开启时删除该键。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
+| `usage_report` | 空（加入） | 是否加入[用户体验改进计划](usage-report.md)：每天向发布方发送一份匿名日报，并在自动检查更新时附带节点数与 GPU 型号（见下文「更新检查报告什么」）。`false` 时不发日报、检查更新不再附带节点数与 GPU 型号；自动检查仍会附带安装标识与版本，要完全不发送还需关闭 `auto_check_updates`。设置页「用户体验改进计划」的开关写入本键并立即生效，开启时删除该键。**私有化交付在 server 首次启动前写入 `usage_report: false`**（首次启动会立刻发送一份）；环境变量 `GPUWORKS_USAGE_REPORT=off` 同样强制关闭。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
 
 ### 管理会话
 
@@ -187,17 +187,17 @@ Cloudflare R2 `https://dl.gpuworks.ai`），渠道由 `server.yaml` 的 `update_
 请求优先使用管理节点的出站代理（拉取设置里勾选的第一条代理），未配置时继承 `HTTPS_PROXY` / `HTTP_PROXY` 环境变量。不能访问任何源的环境改用「上传 manifest」与「上传目录包」，见
 [镜像目录](image-families.md#更新目录)。
 
-**更新检查报告什么。** 加入用户体验改进计划（`usage_report` 开启）的安装，自动检查（`auto_check_updates` 开启）向三个发布源请求签名索引时，在 URL 上带一组查询参数，发布方从对象存储的访问日志里统计装机规模；参数就是下面这些，没有别的：
+**更新检查报告什么。** 自动检查（`auto_check_updates` 开启）向三个发布源请求签名索引时，在 URL 上带一组查询参数，发布方从对象存储的访问日志里统计装机数与版本分布；参数就是下面这些，没有别的。`id`、`v`、`agent` 每次自动检查都带，`nodes`、`online`、`gpu` 只在加入用户体验改进计划（`usage_report` 开启）时带：
 
 | 参数 | 含义 |
 |---|---|
-| `id` | 安装标识：用 `master.key` 做密钥对固定字符串求 HMAC-SHA256 后取前 8 字节的十六进制，单向，推不出 master.key，只用于让同一安装每小时一次的检查只算一个 |
+| `id` | 安装标识：用 `master.key` 做密钥对固定字符串求 HMAC-SHA256 后取前 8 字节的十六进制，单向，推不出 master.key，用于统计装机数，并让同一安装每小时一次的检查只算一个 |
 | `v` | server 版本 |
 | `nodes` / `online` | 节点总数 / 当前在线节点数 |
 | `agent` | 可重复，`<agent 版本>:<节点数>`；尚未连接过的节点记为 `unknown` |
 | `gpu` | 可重复，`<GPU 型号>:<卡数>`；只算节点自己拥有的卡 |
 
-`agent` 与 `gpu` 各最多 16 项，超出的合并为 `other`，名称最长 64 字节。不含主机名、IP、用户名、部署或模型信息。只发给内置的三个发布源：命令行 `--source` 或自建站点收到的是不带参数的普通请求。参数随检查发出，所以频率就是检查的频率（同一渠道每小时最多一次）。关闭 `usage_report` 后不再发送（检查照常）；关闭 `auto_check_updates` 后也不再发送，手动「检查更新」从不发送。改进计划的日报另见[用户体验改进计划](usage-report.md)。
+`agent` 与 `gpu` 各最多 16 项，超出的合并为 `other`，名称最长 64 字节。不含主机名、IP、用户名、部署或模型信息。只发给内置的三个发布源：命令行 `--source` 或自建站点收到的是不带参数的普通请求。参数随检查发出，所以频率就是检查的频率（同一渠道每小时最多一次）。关闭 `usage_report` 后只剩 `id`、`v`、`agent`；关闭 `auto_check_updates` 后什么都不发送，手动「检查更新」也从不带参数。改进计划的日报另见[用户体验改进计划](usage-report.md)。
 
 **镜像的拉取地址**不再是一个设置项，由[拉取设置](../how-to/configure-pull-settings.md)决定：设置 → 拉取设置里的
 来源规则（`/api/v1/pull/source-rules`，镜像规则与模型站点规则同表）、同步组（`/api/v1/pull/sync-groups`）、代理（`/api/v1/pull/proxies`）与凭据（`/api/v1/pull/credentials`；旧的 `/api/v1/pull/registry-credentials*` 返回 410）。

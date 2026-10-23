@@ -46,7 +46,7 @@
     "channelReleaseHelp": "只接收打过版本号的正式版本，更新少、更稳。",
     "channelNightlyHelp": "每次主干构建都会推送，更新快，适合尝鲜和内部测试。",
     "autoCheck": "自动检测新版本",
-    "autoCheckOnHelp": "开启时，打开控制台会自动向发布源检查更新（服务端每小时最多一次）。",
+    "autoCheckOnHelp": "开启时，打开控制台会自动向发布源检查更新（服务端每小时最多一次），并附带 server 与 agent 的版本号。",
     "autoCheckOffHelp": "已关闭：服务端不再自动检查。点「检查更新」时仍会读取版本索引。",
     "notChecked": "尚未检查更新",
     "notCheckedHelp": "自动检测已关闭。点右上角「检查更新」手动检查，或在这里上传文件更新。",

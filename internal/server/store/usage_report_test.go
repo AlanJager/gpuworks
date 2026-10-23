@@ -78,7 +78,7 @@ func TestUsageFactsReadsTheFleetAndTheDay(t *testing.T) {
 	event("i-ready", instanceEventStatusUpdated, `{"state":"running","phase":""}`, day.Add(2*time.Hour+90*time.Second))
 	event("i-failed", instanceEventCreated, `{"state":"pending"}`, day.Add(23*time.Hour))
 	event("i-failed", instanceEventStateChanged, `{"state":"failed"}`, until.Add(10*time.Minute)) // after the day, before now
-	event("i-old", instanceEventCreated, `{"state":"pending"}`, day.Add(-time.Hour))             // before the day
+	event("i-old", instanceEventCreated, `{"state":"pending"}`, day.Add(-time.Hour))              // before the day
 	event("i-old", EventUnitRetryExhausted, `{}`, day.Add(3*time.Hour))
 	event("i-late", instanceEventCreated, `{}`, now.Add(time.Minute)) // after now: not read
 

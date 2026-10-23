@@ -38,20 +38,14 @@ func (a *apiHandlers) prefetchUpdates(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// fleetReporter describes the fleet to an automatic update check when the
-// installation takes part in the user experience improvement program
-// (usage_report), and is nil, so the check says nothing, when it does not.
-func (a *apiHandlers) fleetReporter() func() url.Values {
-	if a.d.UsageReport == nil || !a.d.UsageReport.Status().Enabled {
-		return nil
-	}
-	return a.fleetReport
-}
+// fleetReporter describes the installation to an automatic update check:
+// its ID and versions always, its size and cards too when it takes part in
+// the user experience improvement program (usage_report).
+func (a *apiHandlers) fleetReporter() func() url.Values { return a.fleetReport }
 
 // fleetReport is what an automatic update check tells the channel about this
-// installation: its size and makeup, never its identity
-// (usagereport.FleetReport). A fleet that cannot be read is not reported
-// rather than reported wrong.
+// installation (usagereport.FleetReport). A fleet that cannot be read is not
+// reported rather than reported wrong.
 func (a *apiHandlers) fleetReport() url.Values {
 	summary, err := a.d.Store.FleetSummary()
 	if err != nil {
@@ -59,6 +53,7 @@ func (a *apiHandlers) fleetReport() url.Values {
 	}
 	report := &usagereport.FleetReport{
 		InstallID: a.serverSettings().InstallID(), ServerVersion: version.Version,
+		Fleet: a.d.UsageReport != nil && a.d.UsageReport.Status().Enabled,
 		Nodes: summary.Nodes, OnlineNodes: summary.OnlineNodes,
 	}
 	for _, c := range summary.AgentVersions {
