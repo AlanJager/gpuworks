@@ -1,4 +1,5 @@
 import { Button, Progress, Space, Typography, message } from "antd";
+import { storageDetailPath } from "./storage/storageLinks";
 import { useState } from "react";
 import { apiErrorText } from "../apiError";
 import { useTranslation } from "react-i18next";
@@ -42,7 +43,7 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
           <Typography.Text strong>{item.node_name || item.node_uuid.slice(0, 12)}</Typography.Text>
           {item.model_name && <Typography.Text>{item.model_name}</Typography.Text>}
           <Typography.Text type={view?.reason && view.reason !== "MODEL_PREPARATION_WAITING" ? "warning" : "secondary"}><PreparationLabel item={item} /></Typography.Text>
-          {item.storage_id && <Link to={`/storage/${item.storage_id}`}>{item.storage_name || t("preparation.storage")}</Link>}
+          {item.storage_id && <Link to={storageDetailPath(item.storage_id)}>{item.storage_name || t("preparation.storage")}</Link>}
         </Space>
         {measurable && <Progress aria-label={t("preparation.progress")} percent={Math.min(100, Math.round(item.progress * 100))} size="small" />}
         <div><Typography.Text type="secondary">
