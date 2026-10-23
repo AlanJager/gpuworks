@@ -337,42 +337,6 @@ func (s *Store) UpdateStorage(id uint, patch StoragePatch) (*Storage, error) {
 	return &out, nil
 }
 
-// DeleteStorage removes a storage object and every index row under it. Files
-// on disk are left alone. The default storage stays until another one is
-// default. A storage a deployment reads from or is limited to cannot go.
-func (s *Store) DeleteStorage(id uint) error {
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var row Storage
-		if err := tx.First(&row, id).Error; errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrNotFound
-		} else if err != nil {
-			return err
-		}
-		if row.IsDefault {
-			return ErrStorageIsDefault
-		}
-		if err := checkStorageIdle(tx, id, true); err != nil {
-			return err
-		}
-		// A deployment that saved into the storage saves by the default order
-		// from now on.
-		if err := tx.Model(&Deployment{}).Where("weight_storage_id = ?", id).Update("weight_storage_id", 0).Error; err != nil {
-			return err
-		}
-		for _, model := range []any{&ModelFile{}, &StorageNode{}, &StorageNodeState{}, &StorageCacheOperation{}} {
-			if err := tx.Where("storage_id = ?", id).Delete(model).Error; err != nil {
-				return err
-			}
-		}
-		return tx.Delete(&Storage{}, id).Error
-	})
-	if err != nil {
-		return err
-	}
-	s.publishStorage(id, "deleted")
-	return nil
-}
-
 // StorageNodes lists a storage's node and label targets. Legacy node identities
 // are merged on read so API clients can edit the equivalent configuration
 // without resubmitting duplicates that new writes correctly reject.

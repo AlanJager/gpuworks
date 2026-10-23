@@ -345,17 +345,67 @@ func TestStorageDeleteTriesAvailableWriters(t *testing.T) {
 	}
 }
 
-func TestStorageDeleteLaterModelFailureKeepsEarlierCommits(t *testing.T) {
-	f := newStorageDeleteFixture(t)
-	first := f.model("first", f.target)
-	second := f.model("second", f.target)
-	f.failDelete("models", second.ID)
-	f.delete(http.StatusInternalServerError)
-	f.expectStorage(f.target, http.StatusNotFound)
-	f.expectModel(first, false)
-	f.expectModel(second, true)
-	f.expectFileStorages(second)
-	f.delete(http.StatusNotFound)
+func TestStorageDeleteDatabaseFailureRollsBackAllRecords(t *testing.T) {
+	for _, table := range []string{"profiles", "models", "storages"} {
+		t.Run(table, func(t *testing.T) {
+			f := newStorageDeleteFixture(t)
+			first := f.model("first", f.target)
+			second := f.model("second", f.target)
+			unrelated := f.model("unrelated")
+			modelIDs := []uint{first.ID, second.ID}
+			profiles := []store.Profile{{ModelID: first.ID, Fingerprint: "first"}, {ModelID: second.ID, Fingerprint: "second"}}
+			if err := f.st.DB().Create(&profiles).Error; err != nil {
+				t.Fatal(err)
+			}
+			dep, err := f.st.CreateDeployment(&store.Deployment{Name: "download-only", ServedName: "download-only",
+				ModelID: unrelated.ID, SaveToStorageID: f.target.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			failedID := second.ID
+			if table == "profiles" {
+				failedID = profiles[1].ID
+			} else if table == "storages" {
+				failedID = f.target.ID
+			}
+			f.failDelete(table, failedID)
+			sub := f.st.Bus.Subscribe(8, "storage", "model", "modelfile")
+			defer sub.Close()
+			f.delete(http.StatusInternalServerError)
+			f.expectStorage(f.target, http.StatusOK)
+			for _, model := range []*store.Model{first, second} {
+				f.expectModel(model, true)
+				f.expectFileStorages(model, f.target.ID)
+			}
+			var count int64
+			if err := f.st.DB().Model(&store.Profile{}).Where("model_id IN ?", modelIDs).Count(&count).Error; err != nil || count != 2 {
+				t.Fatalf("failed deletion changed profiles: count=%d, error=%v", count, err)
+			}
+			if got, err := f.st.GetDeployment(dep.ID); err != nil || got.SaveToStorageID != f.target.ID {
+				t.Fatalf("failed deletion changed download destination: %+v, %v", got, err)
+			}
+			select {
+			case event := <-sub.C():
+				t.Fatalf("rolled back deletion published a change: %+v", event)
+			default:
+			}
+			// A new user request can finish after the database fault is removed.
+			if err := f.st.DB().Exec("DROP TRIGGER reject_delete").Error; err != nil {
+				t.Fatal(err)
+			}
+			f.delete(http.StatusNoContent)
+			f.expectStorage(f.target, http.StatusNotFound)
+			f.expectModel(first, false)
+			f.expectModel(second, false)
+			f.expectModel(unrelated, true)
+			if err := f.st.DB().Model(&store.Profile{}).Where("model_id IN ?", modelIDs).Count(&count).Error; err != nil || count != 0 {
+				t.Fatalf("completed deletion retained profiles: count=%d, error=%v", count, err)
+			}
+			if got, err := f.st.GetDeployment(dep.ID); err != nil || got.SaveToStorageID != 0 {
+				t.Fatalf("completed deletion retained download destination: %+v, %v", got, err)
+			}
+		})
+	}
 }
 
 type storageDeleteTransactionCounter struct {
@@ -421,8 +471,8 @@ func TestStorageDeleteBatchesNodeRegistrations(t *testing.T) {
 					t.Fatalf("remaining %T: %d, %v", entity, remaining, err)
 				}
 			}
-			// One session renewal, one storage deletion and one deletion per model.
-			wantTransactions := modelCount + 2
+			// One session renewal and one transaction for the entire deletion.
+			wantTransactions := 2
 			if pool.count != wantTransactions {
 				t.Fatalf("%d registrations caused %d transactions, want %d", len(files), pool.count, wantTransactions)
 			}

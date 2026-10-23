@@ -136,7 +136,7 @@ func TestStorageDeleteFileFailurePreservesStorageTransaction(t *testing.T) {
 	}
 	f.failDelete("model_files", file.ID)
 	f.delete(http.StatusInternalServerError)
-	// Storage and its registrations share the unchanged master transaction.
+	// A failed registration deletion must preserve the entire operation.
 	f.expectStorage(f.target, http.StatusOK)
 	f.expectModel(first, true)
 	f.expectModel(second, true)
@@ -183,7 +183,7 @@ func TestStorageDeleteNodeErrorsReturnFailure(t *testing.T) {
 	}
 }
 
-func TestStorageDeleteModelFailureStillSyncsNodes(t *testing.T) {
+func TestStorageDeleteModelFailureDoesNotReachNodes(t *testing.T) {
 	var calls, syncs int
 	f := newStorageDeleteFixture(t, func(d *Deps) {
 		d.CallNode = func(_ context.Context, _ string, method string, _ any) (json.RawMessage, error) {
@@ -198,9 +198,10 @@ func TestStorageDeleteModelFailureStillSyncsNodes(t *testing.T) {
 	m := f.model("only", f.target)
 	f.failDelete("models", m.ID)
 	f.delete(http.StatusInternalServerError)
-	f.expectStorage(f.target, http.StatusNotFound)
+	f.expectStorage(f.target, http.StatusOK)
 	f.expectModel(m, true)
-	if calls != 1 || syncs != 1 {
-		t.Fatalf("committed storage removal was not propagated: calls/syncs %d/%d", calls, syncs)
+	f.expectFileStorages(m, f.target.ID)
+	if calls != 0 || syncs != 0 {
+		t.Fatalf("uncommitted storage removal reached nodes: calls/syncs %d/%d", calls, syncs)
 	}
 }

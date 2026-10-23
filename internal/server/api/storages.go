@@ -497,17 +497,11 @@ func (a *apiHandlers) deleteStorage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err := a.d.Store.DeleteStorage(id); err != nil {
+	if err := a.d.Store.DeleteStorage(id, models...); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
 	var cleanupErr error
-	for _, modelID := range models {
-		if err := a.d.Store.DeleteModel(modelID); err != nil {
-			cleanupErr = fmt.Errorf("remove model %d: %w", modelID, err)
-			break
-		}
-	}
 	if len(writers) > 0 {
 		_, err := a.storagePeersOn(r.Context(), row, true, writers)
 		cleanupErr = errors.Join(cleanupErr, err)

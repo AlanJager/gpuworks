@@ -95,15 +95,14 @@ func TestStorageDeleteRequirements(t *testing.T) {
 		f.failDelete("storages", f.target.ID)
 		f.delete(http.StatusInternalServerError)
 	})
-	t.Run("cleanup_error_does_not_restore_deleted_storage", func(t *testing.T) {
+	t.Run("model_cleanup_error_preserves_storage_and_registrations", func(t *testing.T) {
 		f := newStorageDeleteFixture(t)
 		m := f.model("cleanup-fails", f.target)
 		f.failDelete("models", m.ID)
 		f.delete(http.StatusInternalServerError)
-		f.expectStorage(f.target, http.StatusNotFound)
+		f.expectStorage(f.target, http.StatusOK)
 		f.expectModel(m, true)
-		f.expectFileStorages(m)
-		// A second manual DELETE has no success contract in this task.
+		f.expectFileStorages(m, f.target.ID)
 	})
 }
 
