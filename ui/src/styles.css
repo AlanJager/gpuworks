@@ -438,6 +438,9 @@ button, input, textarea, select { letter-spacing: 0; }
 .mono-value, .ant-statistic-content-value, .ant-table-cell code { font-variant-numeric: tabular-nums; }
 .image-version-disabled > td { color: #96989b !important; background: #fafafa; }
 .image-version-disabled a { opacity: 0.65; }
+/* A header that explains itself on hover: a dotted underline, the usual hint,
+   costs no width where an icon would push a column out of a narrow table. */
+.header-help { cursor: help; text-decoration: underline dotted #96989b; text-underline-offset: 3px; }
 
 .gpu-page > .ant-tabs > .ant-tabs-nav { margin-bottom: 12px; }
 .gpu-page > .ant-tabs > .ant-tabs-nav::before { border-bottom-color: #dbdde0; }
@@ -488,8 +491,17 @@ button, input, textarea, select { letter-spacing: 0; }
 
 .ant-btn { transition: color .15s ease, background-color .15s ease, border-color .15s ease, transform .15s ease; }
 .ant-btn:active:not(:disabled) { transform: scale(.97); }
-/* A disabled primary button keeps antd's disabled look; forcing the brand blue
-   on it too left grey disabled text on a blue button that looked clickable. */
+/* faded-disabled: the disabled look a view opts into, by putting the class on
+   its container. A disabled solid button (primary or danger) is the same
+   button faded: its colour and white text stay, at half opacity, and it takes
+   no clicks; antd's own grey on grey read as a different, broken button.
+   Views adopt it one at a time; the detail drawers do. */
+.faded-disabled .ant-btn-variant-solid:disabled, .faded-disabled .ant-btn-variant-solid.ant-btn-disabled { color: #fff !important; border-color: transparent !important; opacity: .5; }
+.faded-disabled .ant-btn-primary:not(.ant-btn-dangerous):disabled { background: #005bd4 !important; }
+.faded-disabled .ant-btn-dangerous.ant-btn-variant-solid:disabled { background: #f93940 !important; }
+/* Elsewhere a disabled primary button keeps antd's disabled look; forcing the
+   brand blue on it too left grey disabled text on a blue button that looked
+   clickable. */
 .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) { background: #005bd4 !important; }
 .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover { background: #0043b1 !important; }
 .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):active { background: #052e82 !important; }

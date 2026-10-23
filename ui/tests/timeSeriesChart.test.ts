@@ -17,10 +17,12 @@ test("charts carry no dataZoom: the drawer scroll mis-triggers it", () => {
   // The slider was removed deliberately and wheel zoom with it; the visible
   // window is chosen by the time-range control above the chart instead.
   assert.equal(option.dataZoom, undefined);
-  // A single line is named by the chart's title: no legend, and the bottom
-  // strip only hosts the x-axis labels.
+  // A single line is named by the chart's title: no legend. The grid holds its
+  // axis labels (a fixed margin cut wide values), so the bottom margin is only
+  // the gap under the x-axis labels.
   assert.equal((option.legend as { show: boolean }).show, false);
-  assert.equal((option.grid as { bottom: number }).bottom, 30);
+  assert.equal((option.grid as { containLabel: boolean }).containLabel, true);
+  assert.equal((option.grid as { bottom: number }).bottom, 6);
   assert.equal(option.series.length, 1);
   assert.deepEqual((option.series[0] as { data: unknown }).data, [[1, 2], [2, 3]]);
 });
@@ -30,10 +32,10 @@ test("several lines get a legend below the x-axis labels, and the unit sits abov
     [{ labels: { gpu: "0" }, points: [[1, 2]] }, { labels: { gpu: "1" }, points: [[1, 3]] }],
     { valueFmt: (v) => String(v), unit: "GiB" },
   );
-  // The bottom strip hosts x-axis labels and the legend as separate rows.
+  // The legend has its own strip under the grid, which holds the x-axis labels.
   assert.equal((option.legend as { show: boolean; bottom: number }).show, true);
   assert.equal((option.legend as { bottom: number }).bottom, 2);
-  assert.equal((option.grid as { bottom: number }).bottom, 52);
+  assert.equal((option.grid as { bottom: number }).bottom, 30);
   assert.deepEqual((option.legend as { data: string[] }).data, ["GPU 0", "GPU 1"]);
   assert.equal((option.yAxis as { name: string }).name, "GiB");
 });
@@ -96,7 +98,9 @@ test("a right axis carries the series it matches; without a match the chart keep
   assert.deepEqual(axes.map((a) => [a.position, a.name, a.min, a.max]), [["left", "使用率 %", 0, 100], ["right", "命中率 %", 0, 100]]);
   assert.equal(axes[1].splitLine.show, false);
   assert.deepEqual((option.series as Array<{ yAxisIndex?: number }>).map((s) => s.yAxisIndex), [0, 1]);
-  assert.equal((option.grid as { right: number }).right, 58);
+  // The grid holds the right axis's labels too: no wider margin for them.
+  assert.equal((option.grid as { containLabel: boolean }).containLabel, true);
+  assert.equal((option.grid as { right: number }).right, 20);
 
   // An engine that reports no hit rate leaves only usage: one axis, as before.
   const single = buildTimeSeriesOption([usage], { valueFmt: String, leftName: "使用率 %", yRange: [0, 100], rightAxis });

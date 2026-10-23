@@ -269,6 +269,7 @@
   },
   "accelerators": {
     "title": "加速卡（{{count}}）",
+    "capabilityCards": "{{count}} 张卡",
     "empty": "该计算节点未检测到 GPU",
     "telemetry": "实时指标",
     "topology": "加速卡拓扑",
@@ -277,7 +278,9 @@
       "vram": "显存",
       "architecture": "架构",
       "partitioning": "dGPU",
-      "health": "健康"
+      "health": "健康",
+      "utilizationShort": "利用率",
+      "temperatureShort": "温度"
     },
     "overview": "概况",
     "list": "GPU 列表",

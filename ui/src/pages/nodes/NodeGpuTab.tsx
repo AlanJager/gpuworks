@@ -1,9 +1,8 @@
-import { RightOutlined } from "@ant-design/icons";
 import { Alert, Descriptions, Empty, Progress, Space, Table, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { GPU, Node, TopoHighlight, Topology } from "../../api";
+import type { GPU, Node, PartitionCapability as Capability, TopoHighlight, Topology } from "../../api";
 import AcceleratorChoice, { hasAcceleratorChoice } from "../../components/AcceleratorChoice";
 import GPUHealthTag from "../../components/GPUHealth";
 import PartitionCapability from "../../components/PartitionCapability";
@@ -13,7 +12,8 @@ import { cardHasDetail, cardKey } from "../../nodes/cardIdentity";
 import { useGpuTelemetry, type GpuSnapshot } from "../../nodes/useGpuTelemetry";
 import { colors } from "../../theme/tokens";
 import { formatFramework, formatGPUDriver } from "./nodeColumns";
-import NodeDetailSection from "./NodeDetailSection";
+import DetailSection from "../../components/detail/DetailSection";
+import { detailExpandable } from "../../components/detail/DetailDrawer";
 
 const GIB = 1024 ** 3;
 
@@ -38,7 +38,7 @@ export default function NodeGpuTab({
 
   return (
     <>
-      <NodeDetailSection title={t("accelerators.overview")}>
+      <DetailSection title={t("accelerators.overview")}>
         <Descriptions bordered size="small" column={1}>
           <Descriptions.Item label={t("detail.gpuDriver")}>{formatGPUDriver(node)}</Descriptions.Item>
           <Descriptions.Item label={t("detail.computeFramework")}>{formatFramework(node)}</Descriptions.Item>
@@ -49,12 +49,11 @@ export default function NodeGpuTab({
           )}
           <Descriptions.Item label={t("detail.partitioningCapability")}>
             <Space direction="vertical" size={4}>
-              {(node.partition_capabilities ?? []).map((capability) => (
-                <PartitionCapability
-                  key={`${capability.backend}:${capability.status}:${capability.reason ?? ""}`}
-                  capability={capability}
-                  compact
-                />
+              {sameCapabilities(node.partition_capabilities ?? []).map(({ key, capability, count }) => (
+                <Space key={key} size={4}>
+                  <PartitionCapability capability={capability} compact />
+                  {count > 1 && <Typography.Text type="secondary">{t("accelerators.capabilityCards", { count })}</Typography.Text>}
+                </Space>
               ))}
               {!node.partition_capabilities?.length && (
                 <Typography.Text type="secondary">{t("detail.partitioningCapabilityEmpty")}</Typography.Text>
@@ -62,16 +61,15 @@ export default function NodeGpuTab({
             </Space>
           </Descriptions.Item>
         </Descriptions>
-      </NodeDetailSection>
+      </DetailSection>
 
-      <NodeDetailSection title={t("accelerators.list")}>
+      <DetailSection title={t("accelerators.list")}>
         {gpus.length === 0 ? (
           <Empty description={t("accelerators.empty")} />
         ) : (
           <>
             {numbered && !telemetry.hasAnyMetric && !telemetry.loading ? (
               <Alert
-                className="node-gpu-waiting"
                 type="info"
                 showIcon
                 style={{ marginBottom: 10 }}
@@ -84,38 +82,26 @@ export default function NodeGpuTab({
               </Typography.Paragraph>
             )}
             <Table<GPU>
-              className="node-gpu-table"
+              className="node-gpu-table detail-expandable"
               rowKey={cardKey}
               size="small"
               pagination={false}
               scroll={{ x: "max-content" }}
               dataSource={gpus}
               columns={gpuColumns(t, telemetry.snapshotOf)}
-              expandable={{
-                expandRowByClick: true,
-                columnWidth: 36,
-                expandIcon: ({ expanded, onExpand, record }) => (
-                  <button
-                    type="button"
-                    className="node-gpu-expand"
-                    aria-expanded={expanded}
-                    aria-label={t(expanded ? "accelerators.collapse" : "accelerators.expand")}
-                    onClick={(event) => onExpand(record, event)}
-                  >
-                    <RightOutlined />
-                  </button>
-                ),
-                expandedRowRender: (gpu) => <GpuExtra gpu={gpu} snapshot={telemetry.snapshotOf(gpu)} />,
-              }}
+              expandable={detailExpandable<GPU>(
+                (gpu) => <GpuExtra gpu={gpu} snapshot={telemetry.snapshotOf(gpu)} />,
+                { expand: t("accelerators.expand"), collapse: t("accelerators.collapse") },
+              )}
             />
           </>
         )}
-      </NodeDetailSection>
+      </DetailSection>
 
       {gpus.length > 0 && (
-        <NodeDetailSection title={t("accelerators.topology")}>
+        <DetailSection title={t("accelerators.topology")}>
           <TopologyGraph topology={topology} highlight={highlight} gpus={gpus} />
-        </NodeDetailSection>
+        </DetailSection>
       )}
     </>
   );
@@ -173,7 +159,7 @@ function gpuColumns(t: TFunction<"nodes">, snapshotOf: (gpu: GPU) => GpuSnapshot
       },
     },
     {
-      title: t("telemetry.utilization"),
+      title: <span title={t("telemetry.utilization")}>{t("accelerators.column.utilizationShort")}</span>,
       key: "utilization",
       width: 92,
       render: (_: unknown, gpu: GPU) => {
@@ -189,7 +175,7 @@ function gpuColumns(t: TFunction<"nodes">, snapshotOf: (gpu: GPU) => GpuSnapshot
       },
     },
     {
-      title: t("telemetry.temperature"),
+      title: <span title={t("telemetry.temperature")}>{t("accelerators.column.temperatureShort")}</span>,
       key: "temperature",
       width: 52,
       render: (_: unknown, gpu: GPU) => {
@@ -222,7 +208,7 @@ function GpuExtra({ gpu, snapshot }: { gpu: GPU; snapshot: GpuSnapshot }) {
   const arch = gpu.arch_id || gpu.arch_family || "—";
   const power = snapshot.powerWatts == null ? "—" : `${snapshot.powerWatts.toFixed(0)} W`;
   return (
-    <dl className="node-gpu-extra">
+    <dl className="detail-extra">
       <div>
         <dt>{t("accelerators.column.architecture")}</dt>
         <dd>
@@ -267,4 +253,18 @@ function GpuExtra({ gpu, snapshot }: { gpu: GPU; snapshot: GpuSnapshot }) {
       </div>
     </dl>
   );
+}
+
+// The node reports one capability per card. Entries the compact tags cannot
+// tell apart (the per-card reason is not among them) are shown once with how
+// many cards share them.
+function sameCapabilities(capabilities: Capability[]) {
+  const groups = new Map<string, { key: string; capability: Capability; count: number }>();
+  for (const capability of capabilities) {
+    const key = `${capability.backend}:${capability.status}:${capability.maturity ?? ""}:${capability.compatibility_notes?.length ? "notes" : ""}`;
+    const group = groups.get(key);
+    if (group) group.count += 1;
+    else groups.set(key, { key, capability, count: 1 });
+  }
+  return [...groups.values()];
 }

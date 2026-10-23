@@ -77,7 +77,7 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@t
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
-const { NODE_DETAIL_WIDTH } = await import("../src/pages/nodes/NodeDetailDrawer.tsx");
+const { DETAIL_DRAWER_WIDTH } = await import("../src/components/detail/DetailDrawer.tsx");
 const { runtimeChoices, runtimeLabel } = await import("../src/nodeDisplay.ts");
 import type { ListQuery, Node, NodePage } from "../src/api";
 import { list } from "./helpers/listPage.ts";
@@ -663,10 +663,10 @@ test("the detail drawer opens on the overview, in sections, and is a little wide
   for (const section of ["Node", "Runtime", "Storage", "Network"]) assert.ok(drawer.getByRole("heading", { name: section }), section);
   // The GPU tab carries its card count apart from its label.
   const gpuTab = drawer.getByRole("tab", { name: /GPUs/ });
-  assert.equal(gpuTab.querySelector(".node-detail-tab-count")?.textContent, "1");
+  assert.equal(gpuTab.querySelector(".detail-tab-count")?.textContent, "1");
   // JSDOM drops a min() width from inline styles, so the bound is checked
   // where the drawer takes it from.
-  assert.equal(NODE_DETAIL_WIDTH, "min(720px, calc(100vw - 32px))");
+  assert.equal(DETAIL_DRAWER_WIDTH, "min(720px, calc(100vw - 32px))");
 });
 
 test("the GPU tab leads each card with its model, memory and live readings, and keeps the rest in its expanded row", async () => {
@@ -677,7 +677,8 @@ test("the GPU tab leads each card with its model, memory and live readings, and 
   fireEvent.click(drawer.getByRole("tab", { name: /GPUs/ }));
   const table = (await waitFor(() => document.querySelector(".node-gpu-table") as HTMLElement));
   const headers = [...table.querySelectorAll("thead th")].map((th) => th.textContent).filter(Boolean);
-  assert.deepEqual(headers.slice(0, 5), ["#", "Model", "VRAM", "Utilization", "Temperature"]);
+  assert.deepEqual(headers.slice(0, 5), ["#", "Model", "VRAM", "Util.", "Temp."]);
+  assert.equal(table.querySelector("thead span[title=\"Temperature\"]")?.textContent, "Temp.", "the full name on hover");
   await waitFor(() => assert.ok(within(table).getByText("63%")));
   assert.ok(within(table).getByText("20.0 / 80 GiB"));
   assert.ok(within(table).getByText("61°C"));
@@ -688,6 +689,14 @@ test("the GPU tab leads each card with its model, memory and live readings, and 
   await waitFor(() => assert.ok(within(table).getByText("0000:8a:00.0")));
   assert.ok(within(table).getByText("GPU-FAKE-0"));
   assert.equal(within(table).getByRole("button", { name: "Hide details" }).getAttribute("aria-expanded"), "true");
+});
+
+test("a capability every card reports alike is listed once, with how many cards share it", async () => {
+  const capability = (card: number, status: "ready" | "unavailable") => ({ backend: "ascend-dgpu", display_name: "Ascend dGPU", maturity: "experimental", status, reason: `probe failed: card ${card}` });
+  const drawer = await openDrawer({ ...onlineNode, gpus: [gpuInfo(0)], partition_capabilities: [capability(0, "unavailable"), capability(1, "unavailable"), capability(2, "ready")] } as Node);
+  fireEvent.click(drawer.getByRole("tab", { name: /GPUs/ }));
+  await waitFor(() => assert.ok(drawer.getByText("2 cards")));
+  assert.equal(drawer.getAllByText("Ascend dGPU").length, 2, "one row per distinct state");
 });
 
 test("a diagnosis opens its own tab", async () => {

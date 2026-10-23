@@ -84,6 +84,7 @@ export default function ResourceTable<T extends object>({
   emptyDescription,
   emptyKind = "data",
   emptyAction,
+  columnSettings = true,
 }: {
   /** Names the saved column layout; unique per list. */
   tableId: string;
@@ -111,6 +112,8 @@ export default function ResourceTable<T extends object>({
   emptyDescription?: string;
   emptyKind?: EmptyStateKind;
   emptyAction?: ReactNode;
+  /** The column settings button; a table that keeps only its key columns (a detail drawer's) has none. */
+  columnSettings?: boolean;
 }) {
   const { t } = useTranslation("common");
   const [prefs, setPrefs] = useState<ColumnPrefs>(() => loadColumnPrefs(tableId, columns));
@@ -169,7 +172,8 @@ export default function ResourceTable<T extends object>({
     };
   });
 
-  const extraWidth = (rowSelection ? 48 : 0) + (expandable ? 48 : 0);
+  const expandWidth = typeof expandable?.columnWidth === "number" ? expandable.columnWidth : 48;
+  const extraWidth = (rowSelection ? 48 : 0) + (expandable ? expandWidth : 0);
   const scrollX = arranged.reduce((sum, column) => sum + effectiveWidth(column), extraWidth);
 
   const rows = data ?? [];
@@ -245,9 +249,11 @@ export default function ResourceTable<T extends object>({
               <Button icon={<ReloadOutlined />} onClick={onRefresh} aria-label={t("dataTable.refresh")} />
             </Tooltip>
           )}
-          <Tooltip title={t("resourceTable.settings")}>
-            <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)} aria-label={t("resourceTable.settings")} />
-          </Tooltip>
+          {columnSettings && (
+            <Tooltip title={t("resourceTable.settings")}>
+              <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)} aria-label={t("resourceTable.settings")} />
+            </Tooltip>
+          )}
         </Space>
       </div>
       <Table<T>

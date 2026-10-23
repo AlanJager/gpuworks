@@ -222,7 +222,7 @@ export default function GPUHealthTag({ gpu }: { gpu: GPUHealthFacts }) {
   // instead — reading it as a fault would be wrong and alarming.
   if (!gpuOwned(gpu)) {
     return (
-      <Tag color="default" style={{ marginInlineEnd: 0 }}>
+      <Tag color="default" className="status-tag" title={t(`gpuHealth.ownership.${gpu.ownership}`)} style={{ marginInlineEnd: 0 }}>
         {t(`gpuHealth.ownership.${gpu.ownership}`)}
       </Tag>
     );
@@ -237,7 +237,7 @@ export default function GPUHealthTag({ gpu }: { gpu: GPUHealthFacts }) {
     const detail = t("gpuHealth.foreignUse.detail", { processes: who });
     return (
       <Tooltip trigger={["hover", "focus"]} title={<span style={{ whiteSpace: "pre-line" }}>{detail}</span>}>
-        <Tag color="orange" tabIndex={0} aria-label={detail} style={{ marginInlineEnd: 0, cursor: "help" }}>
+        <Tag color="orange" className="status-tag" tabIndex={0} aria-label={detail} style={{ marginInlineEnd: 0, cursor: "help" }}>
           {t("gpuHealth.foreignUse.label", { count: gpu.foreign_processes.length })}
         </Tag>
       </Tooltip>
@@ -249,7 +249,8 @@ export default function GPUHealthTag({ gpu }: { gpu: GPUHealthFacts }) {
   const hasDetail = status !== "OK" || !!gpu.health_code;
   return (
     <Space size={4}>
-      <Tag color={tagColor[status]} style={{ marginInlineEnd: 0 }}>{label}</Tag>
+      {/* A long label (English especially) stops at the tag's maximum width; its colour carries the level. */}
+      <Tag color={tagColor[status]} className="status-tag" title={label} style={{ marginInlineEnd: 0 }}>{label}</Tag>
       {hasDetail && (
         <Popover
           trigger={["hover", "click"]}
