@@ -37,7 +37,8 @@
     "allDeployments": "All deployments",
     "deploymentNotForGpu": "GPU utilization is not filtered by deployment; use the node and model filters",
     "refresh": "Refresh",
-    "export": "Export CSV"
+    "export": "Export CSV",
+    "retention": "Data retention"
   },
   "state": {
     "loadFailed": "Failed to load the statistics",

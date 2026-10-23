@@ -371,15 +371,20 @@ test("the backfill note and the zone appear only when the range starts before li
   assert.ok(screen.queryByText(a.backfill.usage) === null);
 });
 
-test("the subtitle names the retention of the tab and links to the setting", async () => {
+test("the mark beside the picker names the retention of the tab on hover and links to the setting", async () => {
   stub();
   retention = fx.retentionView({ usage_hourly_days: 14, usage_daily_days: 500, stats_hourly_days: 9, stats_daily_days: 600 });
   const user = mount();
+  await waitFor(() => assert.equal(calls.usage.length, 1));
+  assert.equal(screen.queryByRole("link", { name: /Settings › Data retention/ }), null, "hidden until hovered");
+  const mark = screen.getByRole("img", { name: a.toolbar.retention });
+  assert.ok(within(screen.getByRole("region", { name: a.toolbar.ariaLabel })).getByRole("img", { name: a.toolbar.retention }), "in the toolbar");
+  await user.hover(mark);
   const link = await screen.findByRole("link", { name: /Data retention/ });
   assert.equal(link.getAttribute("href"), "/settings#data-retention");
-  await waitFor(() => assert.match(link.closest(".ant-typography")!.textContent!, /14 days by hour and 500 days by day/));
+  await waitFor(() => assert.match(link.parentElement!.textContent!, /14 days by hour and 500 days by day/));
   await user.click(screen.getByRole("tab", { name: a.tabs.quality }));
-  await waitFor(() => assert.match(screen.getByRole("link", { name: /Data retention/ }).closest(".ant-typography")!.textContent!, /9 days by hour and 600 days by day/));
+  await waitFor(() => assert.match(screen.getByRole("link", { name: /Data retention/ }).parentElement!.textContent!, /9 days by hour and 600 days by day/));
 });
 
 test("without the retention setting the page still works, in a week's hours and the browser's zone", async () => {

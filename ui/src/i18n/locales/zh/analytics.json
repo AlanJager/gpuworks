@@ -37,7 +37,8 @@
     "allDeployments": "全部部署",
     "deploymentNotForGpu": "GPU 利用不按部署筛选，请使用节点与卡型筛选",
     "refresh": "刷新",
-    "export": "导出 CSV"
+    "export": "导出 CSV",
+    "retention": "数据保留时长"
   },
   "state": {
     "loadFailed": "统计数据加载失败",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Skeleton, Tabs, Typography } from "antd";
+import { Skeleton, Tabs } from "antd";
 import { Trans, useTranslation } from "react-i18next";
 import { api, type DataRetention } from "../../api";
 import type { Granularity } from "../../analyticsApi";
@@ -120,14 +120,6 @@ export default function AnalyticsPage({ now = Date.now }: { now?: () => number }
   return (
     <div>
       <PageHeader title={t("title")} breadcrumb={[t("title")]} />
-      <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
-        <Trans
-          t={t}
-          i18nKey="subtitle"
-          values={{ hourly: hourDays ?? "—", daily: dailyDays ?? "—" }}
-          components={{ settings: <Link to="/settings#data-retention" /> }}
-        />
-      </Typography.Paragraph>
       <Toolbar
         range={range}
         from={from}
@@ -135,6 +127,14 @@ export default function AnalyticsPage({ now = Date.now }: { now?: () => number }
         tz={tz}
         granularity={granularity}
         hourAllowed={hourAllowed}
+        retention={
+          <Trans
+            t={t}
+            i18nKey="subtitle"
+            values={{ hourly: hourDays ?? "—", daily: dailyDays ?? "—" }}
+            components={{ settings: <Link to="/settings#data-retention" /> }}
+          />
+        }
         deployments={deployments}
         deployment={deployment}
         deploymentDisabled={tab === "gpus"}

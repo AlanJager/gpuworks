@@ -1,5 +1,6 @@
-import { Button, DatePicker, Select, Segmented, Space, Tooltip, Typography } from "antd";
-import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
+import type { ReactNode } from "react";
+import { Button, DatePicker, Popover, Select, Segmented, Space, Tooltip, Typography } from "antd";
+import { DownloadOutlined, ExclamationCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { useTranslation } from "react-i18next";
 import type { Granularity } from "../../analyticsApi";
@@ -17,6 +18,8 @@ interface Props {
   tz: string;
   granularity: Granularity;
   hourAllowed: boolean;
+  /** How long the statistics are kept, shown on hovering the mark beside the picker. */
+  retention: ReactNode;
   deployments: DeploymentOption[];
   deployment?: number;
   deploymentDisabled: boolean;
@@ -71,6 +74,9 @@ export default function Toolbar(p: Props) {
               }}
               style={p.range === "custom" ? { borderColor: "#005bd4" } : undefined}
             />
+            <Popover content={<div style={{ maxWidth: 320 }}>{p.retention}</div>}>
+              <ExclamationCircleOutlined tabIndex={0} role="img" aria-label={t("toolbar.retention")} style={{ color: "#8c8c8c", cursor: "help" }} />
+            </Popover>
           </Space>
         </Space>
         <Space wrap size={[16, 8]} style={{ width: "100%" }}>
