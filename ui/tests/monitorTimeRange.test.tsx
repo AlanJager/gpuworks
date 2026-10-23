@@ -27,7 +27,9 @@ await i18n.use(initReactI18next).init({
 const { MemoryRouter, Routes, Route, useLocation } = await import("react-router-dom");
 const { cleanup, render, screen } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
-const { TimeRangeProvider, default: TimeRangeControl, useTimeRange } = await import("../src/pages/monitor/TimeRangeContext.tsx");
+const { TimeRangeProvider, default: TimeRangeControl, useTimeRange, outsidePickable } = await import("../src/pages/monitor/TimeRangeContext.tsx");
+const { rangeParams, rangeBounds, pickedBounds, customRange } = await import("../src/monitorRange.ts");
+const dayjs = (await import("dayjs")).default;
 
 afterEach(() => cleanup());
 
@@ -39,8 +41,13 @@ function LocationProbe() {
 }
 
 function ValueProbe() {
-  const { range, follow } = useTimeRange();
-  return <div data-testid="value">{range}:{follow ? "on" : "off"}</div>;
+  const { range, follow, setPicked } = useTimeRange();
+  return (
+    <>
+      <div data-testid="value">{range}:{follow ? "on" : "off"}</div>
+      <button type="button" onClick={() => setPicked(1_800_000_000_000, 1_800_003_600_000)}>pick</button>
+    </>
+  );
 }
 
 function renderApp(initialEntry: string) {
@@ -95,4 +102,45 @@ test("toggling follow writes follow=0 to the URL and back to follow=1", async ()
   await userEvent.setup().click(toggle);
   assert.equal(screen.getByTestId("value").textContent, "1h:on");
   assert.equal(seenLocation, "/monitor?range=1h&follow=1");
+});
+
+test("a picked range is read from from/to, never follows, and says what stays current", () => {
+  renderApp("/monitor?from=1800000000000&to=1800003600000&follow=1");
+  assert.equal(screen.getByTestId("value").textContent, "1800000000000~1800003600000:off");
+  const toggle = screen.getByRole("switch", { name: "Follow latest" }) as HTMLButtonElement;
+  assert.equal(toggle.disabled, true);
+  assert.ok(screen.getByText(/services, replicas and health are current/));
+  assert.ok(screen.getByText("Custom"));
+});
+
+test("picking writes from/to and drops the preset; a preset drops from/to", async () => {
+  renderApp("/monitor?range=6h");
+  const user = userEvent.setup();
+  await user.click(screen.getByText("pick"));
+  assert.equal(seenLocation, "/monitor?from=1800000000000&to=1800003600000");
+  await user.click(screen.getByText("24h"));
+  assert.equal(seenLocation, "/monitor?range=24h");
+  assert.equal(screen.getByTestId("value").textContent, "24h:on");
+});
+
+test("a malformed from/to falls back to the preset", () => {
+  renderApp("/monitor?range=6h&from=9&to=3");
+  assert.equal(screen.getByTestId("value").textContent, "6h:on");
+});
+
+test("the picker refuses the future and days before raw samples are kept", () => {
+  const now = dayjs("2026-10-22T12:00:00Z");
+  assert.equal(outsidePickable(now.add(1, "day"), now), true);
+  assert.equal(outsidePickable(now.subtract(31, "day"), now), true);
+  assert.equal(outsidePickable(now.subtract(29, "day"), now), false);
+  assert.equal(outsidePickable(now, now), false);
+});
+
+test("a range becomes the API's parameters and its window", () => {
+  assert.deepEqual(rangeParams("6h"), { range: "6h" });
+  assert.deepEqual(rangeParams(customRange(1000, 5000)), { from: "1000", to: "5000" });
+  assert.deepEqual(rangeBounds("1h", 10_000_000), { from: 10_000_000 - 3_600_000, to: 10_000_000 });
+  assert.deepEqual(rangeBounds(customRange(1000, 5000)), { from: 1000, to: 5000 });
+  assert.equal(pickedBounds("5000~1000"), null);
+  assert.equal(pickedBounds("1h"), null);
 });

@@ -15,25 +15,48 @@ import {
   message,
 } from "antd";
 import { StopOutlined } from "@ant-design/icons";
+import { Link } from "react-router-dom";
 import { api, usePolling, type ApiKey, type List } from "../api";
+import { analyticsApi, type KeyUsageList, type UsageCounts } from "../analyticsApi";
 import ResourceTable, { type ResourceColumn } from "../components/resourceTable/ResourceTable";
 import PageHeader from "../components/PageHeader";
 import { formatTime } from "../i18n/datetime";
 import { useTranslation } from "react-i18next";
+import { fmtCompact, fmtInt } from "./analytics/format";
 import PlatformTokensCard from "./apikeys/PlatformTokensCard";
 import SecretModal from "./apikeys/SecretModal";
 
 const { Paragraph, Text } = Typography;
 
 export default function APIKeysPage() {
-  const { t } = useTranslation("apikeys");
+  const { t, i18n } = useTranslation("apikeys");
+  const language = i18n.resolvedLanguage ?? "en";
   const { data, refetch, loading, error, updatedAt } = usePolling<List<ApiKey>>(api.apiKeys, 15000);
   const [createOpen, setCreateOpen] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [showRevoked, setShowRevoked] = useState(false);
+  // Token usage is a convenience beside the keys: while it loads, or if it
+  // fails, its columns read as a dash and the table is unaffected.
+  const usage = usePolling<KeyUsageList>(() => analyticsApi.keyUsage(), 60000);
+  const usageByPrefix = new Map((usage.data?.items ?? []).map((u) => [u.prefix, u]));
   const keys = data?.items ?? [];
   const revokedCount = keys.filter((k) => k.revoked_at).length;
   const shown = showRevoked ? keys : keys.filter((k) => !k.revoked_at);
+
+  // tokensCell is a key's prompt + completion tokens over a period, linking to
+  // that period's usage in Operations analytics; no record at all is a dash.
+  const tokensCell = (k: ApiKey, counts: UsageCounts | undefined, range: "today" | "7d") => {
+    if (!counts) return "—";
+    const total = counts.prompt_tokens + counts.completion_tokens;
+    const text = fmtCompact(total, language);
+    if (counts.requests === 0) return text;
+    return (
+      <Tooltip title={t("tokens.tooltip", { input: fmtInt(counts.prompt_tokens), cached: fmtInt(counts.cached_tokens), output: fmtInt(counts.completion_tokens) })}>
+        <Link to={`/analytics/usage?keyPrefix=${encodeURIComponent(k.prefix)}&range=${range}`} aria-label={t("tokens.open", { tokens: text, name: k.name })}>{text}</Link>
+      </Tooltip>
+    );
+  };
+  const tokensOf = (counts: UsageCounts | undefined) => (counts ? counts.prompt_tokens + counts.completion_tokens : null);
 
   // A token has no detail of its own, so its name is plain text rather than a link.
   const columns: ResourceColumn<ApiKey>[] = [
@@ -52,6 +75,20 @@ export default function APIKeysPage() {
         ) : (
           <Tag color="green">{t("status.active")}</Tag>
         ),
+    },
+    {
+      key: "tokens_today",
+      title: t("table.tokensToday"),
+      width: 130,
+      sortValue: (k) => tokensOf(usageByPrefix.get(k.prefix)?.today),
+      render: (_: unknown, k: ApiKey) => tokensCell(k, usageByPrefix.get(k.prefix)?.today, "today"),
+    },
+    {
+      key: "tokens_7d",
+      title: t("table.tokens7d"),
+      width: 150,
+      sortValue: (k) => tokensOf(usageByPrefix.get(k.prefix)?.last_7_days),
+      render: (_: unknown, k: ApiKey) => tokensCell(k, usageByPrefix.get(k.prefix)?.last_7_days, "7d"),
     },
     { key: "last_used", title: t("table.lastUsed"), width: 180, sortValue: (k) => k.last_used, render: (_: unknown, k: ApiKey) => formatTime(k.last_used, t("never")) },
     { key: "created_at", title: t("table.createdAt"), width: 180, sortValue: (k) => k.created_at, render: (_: unknown, k: ApiKey) => formatTime(k.created_at) },

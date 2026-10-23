@@ -1,0 +1,327 @@
+{
+  "title": "运营分析",
+  "subtitle": "长期汇总统计：按小时保留 {{hourly}} 天，按天保留 {{daily}} 天（可在 <settings>设置 › 数据保留</settings> 调整）",
+  "zoneNote": "时间按统计时区（{{zone}}）显示。",
+  "tabs": {
+    "usage": "Token 用量",
+    "quality": "服务质量",
+    "gpus": "GPU 利用",
+    "gpu-time": "卡时"
+  },
+  "granularityName": {
+    "hour": "按小时",
+    "day": "按天"
+  },
+  "table": {
+    "total": "合计"
+  },
+  "chart": {
+    "unavailable": "此浏览器无法绘制图表。"
+  },
+  "toolbar": {
+    "ariaLabel": "筛选",
+    "quickRanges": "快捷时间段",
+    "ranges": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "7d": "近 7 天",
+      "30d": "近 30 天",
+      "month": "本月",
+      "lastmonth": "上月"
+    },
+    "custom": "自定义",
+    "granularity": "粒度",
+    "hour": "按小时",
+    "day": "按天",
+    "hourDisabled": "超过 {{days}} 天只有按天数据",
+    "deployment": "部署",
+    "allDeployments": "全部部署",
+    "deploymentNotForGpu": "GPU 利用不按部署筛选，请使用节点与卡型筛选",
+    "refresh": "刷新",
+    "export": "导出 CSV"
+  },
+  "state": {
+    "loadFailed": "统计数据加载失败",
+    "empty": "所选时间段内没有统计数据。",
+    "emptyHint": "统计数据从升级后才开始累积；可以换一个更晚的时间段或放宽筛选条件。",
+    "noRows": "没有符合条件的数据"
+  },
+  "backfill": {
+    "label": "由请求记录补算",
+    "usage": "浅色背景的部分由逐请求记录补算，可能含抽样，且不含 /v1/messages、/v1/responses 请求；其余时间的数据按小时汇总，全量统计不抽样。",
+    "quality": "浅色背景的部分由逐请求记录补算，可能含抽样；其余时间的数据按小时汇总，全量统计不抽样。"
+  },
+  "names": {
+    "deletedKey": "已删除的 API 令牌 #{{id}}",
+    "playground": "Playground（{{user}}）",
+    "playgroundAnonymous": "Playground",
+    "noKey": "未使用 API 令牌",
+    "revoked": "已吊销",
+    "deletedDeployment": "已删除的部署",
+    "deploymentId": "部署 #{{id}}"
+  },
+  "usage": {
+    "filters": {
+      "group": "分组",
+      "key": "API 令牌",
+      "allKeys": "全部 API 令牌",
+      "noKey": "无 API 令牌",
+      "source": "来源",
+      "allSources": "全部来源"
+    },
+    "group": {
+      "key": "按 API 令牌",
+      "deployment": "按部署",
+      "model": "按模型"
+    },
+    "source": {
+      "api": "API",
+      "playground": "Playground"
+    },
+    "keyPrefixMissing": "API 令牌 {{prefix}} 在所选时间段内没有用量，列表未做筛选；可以换更长的时间段。",
+    "cards": {
+      "requests": "请求数",
+      "withUsage": "有 usage：{{count}}",
+      "input": "输入 token",
+      "inputSub": "缓存命中 + 未命中",
+      "cached": "其中缓存命中",
+      "hitRate": "命中率 {{rate}}（按上报缓存的请求计）",
+      "hitUnknown": "没有请求上报缓存命中",
+      "uncached": "未命中输入",
+      "uncachedTip": "输入 token 减去缓存命中。没有上报缓存命中的请求也记在这里，因此有请求未上报时它是上限。",
+      "uncachedShare": "占输入 {{rate}}",
+      "uncachedUnreported": "含未上报缓存请求的 {{tokens}}",
+      "output": "输出 token",
+      "thinking": "其中思考 {{tokens}}（{{count}} 个请求上报）",
+      "thinkingUnknown": "思考 token 未上报",
+      "noUsage": "无 usage 请求数",
+      "noUsageTip": "报错、客户端中断，或网关尚不识别其 usage 的请求，其 token 未计入。",
+      "noUsageShare": "占请求 {{rate}}"
+    },
+    "chart": {
+      "inputTitle": "输入 token（{{granularity}}）",
+      "outputTitle": "输出 token（{{granularity}}）",
+      "modeIn": "输入",
+      "modeOut": "输出",
+      "metaIn": "输入与输出量级相差大，分两张图展示。",
+      "metaOut": "切换到「输入」查看输入。",
+      "cached": "缓存命中输入",
+      "uncached": "未命中输入",
+      "answer": "输出（非思考）",
+      "thinking": "输出（其中思考）",
+      "aria": "token 用量随时间变化"
+    },
+    "table": {
+      "title": "明细",
+      "hint": "点击表头排序，展开行查看下一级",
+      "group": {
+        "key": "API 令牌",
+        "deployment": "部署",
+        "model": "模型"
+      },
+      "scope": "部署 / 令牌",
+      "more": "等另外 {{count}} 个",
+      "keys": "{{count}} 个 API 令牌",
+      "deploymentsOfModel": "{{count}} 个部署，{{keys}} 个 API 令牌",
+      "requests": "请求数",
+      "input": "输入",
+      "cached": "缓存命中",
+      "hitRate": "命中率",
+      "uncached": "未命中输入",
+      "output": "输出",
+      "reasoning": "其中思考",
+      "noUsage": "无 usage",
+      "span": "首次 / 最近使用"
+    },
+    "export": {
+      "key": "API 令牌名称",
+      "prefix": "前缀",
+      "status": "状态",
+      "deployment": "部署",
+      "model": "模型",
+      "source": "来源",
+      "first": "首次使用",
+      "last": "最近使用"
+    }
+  },
+  "quality": {
+    "cards": {
+      "requests": "请求数",
+      "completed": "正常完成 {{count}}",
+      "successRate": "成功率",
+      "successTip": "成功率 =（请求数 − 出错 − 连接中断）÷ 请求数。客户端主动退出与长度截断不计为失败。",
+      "failures": "出错 + 连接中断 {{count}}",
+      "ttft": "首 token P50 / P95",
+      "ttftTip": "从收到请求到流式回复的第一个 token。分位数由直方图估算（误差约 10%），合并多个小时或天后为近似值。",
+      "percentileSub": "单位：秒",
+      "e2e": "端到端 P50 / P95",
+      "e2eSub": "从收到请求到响应结束",
+      "errors": "出错数",
+      "errorShare": "占请求 {{rate}}"
+    },
+    "chart": {
+      "ttftTitle": "首 token 延迟 P50 / P95（{{granularity}}）",
+      "ttftP50": "首 token P50",
+      "ttftP95": "首 token P95",
+      "seconds": "秒",
+      "ttftAria": "首 token 延迟随时间变化",
+      "resultsTitle": "请求结果（{{granularity}}）",
+      "modeAll": "全部结果",
+      "modeBad": "仅异常",
+      "metaAll": "正常完成占绝大多数，异常结果在此图中很窄，可切换到「仅异常」查看。",
+      "metaBad": "已隐藏「正常完成」，便于查看异常结果的时间分布。",
+      "resultsAria": "请求结果随时间变化"
+    },
+    "outcome": {
+      "completed": "正常完成",
+      "length": "长度截断",
+      "client_closed": "客户端退出",
+      "interrupted": "连接中断",
+      "error": "出错"
+    },
+    "table": {
+      "title": "按部署",
+      "hint": "点击表头排序",
+      "deployment": "部署",
+      "requests": "请求数",
+      "successRate": "成功率",
+      "ttftP50": "首 token P50",
+      "ttftP95": "首 token P95",
+      "e2eP50": "端到端 P50",
+      "e2eP95": "端到端 P95",
+      "speed": "输出速度 tok/s"
+    },
+    "export": {
+      "deployment": "部署",
+      "model": "模型",
+      "ttftP50": "首 token P50（秒）",
+      "ttftP95": "首 token P95（秒）",
+      "e2eP50": "端到端 P50（秒）",
+      "e2eP95": "端到端 P95（秒）"
+    },
+    "foot": "成功率 =（请求数 − 出错 − 连接中断）÷ 请求数。分位数由小时直方图合并估算，为近似值。"
+  },
+  "gpus": {
+    "filters": {
+      "group": "分组",
+      "metric": "指标",
+      "node": "节点",
+      "allNodes": "全部节点",
+      "model": "卡型",
+      "allModels": "全部卡型"
+    },
+    "group": {
+      "model": "按卡型",
+      "node": "按节点",
+      "gpu": "按卡"
+    },
+    "metric": {
+      "util": "利用率",
+      "power": "功耗",
+      "temp": "温度",
+      "mem": "显存"
+    },
+    "tooMany": {
+      "hint": "卡数太多，无法逐卡展示。请先在上方选择节点或卡型，或改为按卡型、按节点分组。",
+      "byModel": "改为按卡型分组",
+      "byNode": "改为按节点分组"
+    },
+    "cards": {
+      "cards": "卡数",
+      "util": "平均利用率",
+      "utilMax": "最高 {{value}}",
+      "mem": "平均显存占用率",
+      "memPerCard": "平均每卡 {{value}}",
+      "power": "总功耗均值",
+      "powerPerCard": "平均每卡 {{value}}",
+      "idle": "长期闲置卡数",
+      "idleSub": "利用率均值 < {{threshold}}%",
+      "idleTip": "统计期内利用率均值低于 {{threshold}}% 的卡，既包括已分配但几乎没有流量的卡，也包括未分配给任何部署的卡。"
+    },
+    "chart": {
+      "title": {
+        "util": "利用率热力图（{{granularity}}，颜色 = 利用率均值）",
+        "power": "功耗热力图（{{granularity}}，颜色 = 功耗均值）",
+        "temp": "温度热力图（{{granularity}}，颜色 = 温度均值）",
+        "mem": "显存热力图（{{granularity}}，颜色 = 显存占用均值）"
+      },
+      "aria": "GPU 热力图"
+    },
+    "table": {
+      "title": {
+        "model": "明细（按卡型）",
+        "node": "明细（按节点）",
+        "gpu": "明细（按卡）"
+      },
+      "hint": "点击表头排序；底色高亮的是利用率均值低于 {{threshold}}% 的闲置卡",
+      "unit": {
+        "model": "卡型",
+        "node": "节点",
+        "gpu": "卡"
+      },
+      "idle": "闲置",
+      "removed": "已移除/离线",
+      "removedCount": "{{count}} 张已移除/离线",
+      "utilAvg": "利用率均值",
+      "utilMax": "利用率最大",
+      "memAvg": "显存占用均值",
+      "memMax": "显存占用最大",
+      "power": "功耗均值",
+      "powerPerCard": "功耗均值（每卡）",
+      "tempMax": "温度最大",
+      "deployments": "所属部署",
+      "unassigned": "未分配"
+    },
+    "export": {
+      "detail": "说明",
+      "memAvgGiB": "显存占用均值（GiB）",
+      "memAvgPct": "显存占用均值（%）",
+      "memMaxGiB": "显存占用最大（GiB）",
+      "memMaxPct": "显存占用最大（%）",
+      "yes": "是"
+    },
+    "foot": "利用率、显存、功耗、温度为采样点在每个时间桶内的均值与最大值，再汇总到统计期。"
+  },
+  "gpuTime": {
+    "note": "卡时 = 占用卡数 × 小时，不涉及价格。",
+    "cards": {
+      "hours": "总卡时",
+      "hoursSub": "各部署占用卡时之和",
+      "hoursTip": "卡时 = 占用卡数 × 小时。dGPU 按份额折算：占用半张卡 1 小时记 0.5 卡时。",
+      "allocation": "分配率",
+      "allocationSub": "已分配 {{allocated}} / 可调度 {{schedulable}} 卡时",
+      "allocationNone": "没有可调度卡的记录",
+      "allocationTip": "已分配卡时 ÷ 可调度卡时（全集群在线卡）。选择单个部署时仍以全集群为分母。",
+      "output": "输出 token",
+      "outputSub": "所列部署的合计",
+      "perMillion": "每百万输出 token 卡时",
+      "perMillionAll": "每百万总 token {{value}} 卡时",
+      "noOutput": "没有输出 token"
+    },
+    "chart": {
+      "title": "各部署卡时（{{granularity}}）",
+      "hours": "{{value}} 卡时",
+      "aria": "各部署卡时随时间变化"
+    },
+    "table": {
+      "title": "按部署",
+      "hint": "点击表头排序；token 为整个部署的合计",
+      "deployment": "部署",
+      "model": "卡型",
+      "instances": "副本数（均值 / 最大）",
+      "avgInstances": "副本数（均值）",
+      "maxInstances": "副本数（最大）",
+      "gpuHours": "卡时",
+      "wholeHours": "整卡口径卡时",
+      "prompt": "输入 token",
+      "output": "输出 token",
+      "perMillionOutput": "每百万输出 token 卡时",
+      "perMillionAll": "每百万总 token 卡时"
+    },
+    "export": {
+      "deployment": "部署",
+      "servedName": "模型"
+    },
+    "foot": "每百万 token 卡时越低，说明同样的卡产出越多；没有流量的部署显示为 —。"
+  }
+}

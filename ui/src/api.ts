@@ -3336,9 +3336,11 @@ export interface MonitorDeployment {
   health: DeploymentHealth;
 }
 
-export type MonitorRange = "15m" | "1h" | "6h" | "24h" | "168h";
+export type { MonitorRange } from "./monitorRange";
+import { rangeParams, type MonitorRange } from "./monitorRange";
 
-async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
+/** getJSON reads a JSON answer, an error answer as a localized Error. */
+export async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(path, { signal, credentials: "include" });
   if (!res.ok)
     throw await localizedResponseError(res, `${path}: ${res.status}`);
@@ -3450,7 +3452,7 @@ export function monitorSeriesURL(params: MonitorSeriesParams): string {
   const q = new URLSearchParams({ metric: params.metric });
   if (params.by) q.set("by", params.by);
   if (params.fn) q.set("fn", params.fn);
-  if (params.range) q.set("range", params.range);
+  if (params.range) for (const [k, v] of Object.entries(rangeParams(params.range))) q.set(k, v);
   if (params.step) q.set("step", params.step);
   return `/api/v1/monitor/series?${q.toString()}`;
 }
@@ -4353,11 +4355,11 @@ export const api = {
 
   monitorOverview: (range: MonitorRange) =>
     getJSON<MonitorOverview>(
-      `/api/v1/monitor/overview?range=${encodeURIComponent(range)}`,
+      `/api/v1/monitor/overview?${new URLSearchParams(rangeParams(range))}`,
     ),
   monitorDeployment: (id: number, range: MonitorRange) =>
     getJSON<MonitorDeployment>(
-      `/api/v1/monitor/deployments/${id}?range=${encodeURIComponent(range)}`,
+      `/api/v1/monitor/deployments/${id}?${new URLSearchParams(rangeParams(range))}`,
     ),
   monitorRequests: (id: number, query: MonitorRequestsQuery, signal?: AbortSignal) =>
     getJSON<MonitorRequests>(monitorRequestsURL(id, query), signal),

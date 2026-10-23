@@ -15,7 +15,13 @@
     "6h": "6h",
     "24h": "24h",
     "168h": "7d",
-    "follow": "Follow latest"
+    "follow": "Follow latest",
+    "custom": "Custom",
+    "pick": "Pick a time range",
+    "pickFrom": "From",
+    "pickTo": "To",
+    "pickedNoFollow": "A past range does not refresh",
+    "pickedNote": "Viewing {{from}} – {{to}}: charts, distributions and latency cover this range; the services, replicas and health are current."
   },
   "overview": {
     "title": "Monitor Center",

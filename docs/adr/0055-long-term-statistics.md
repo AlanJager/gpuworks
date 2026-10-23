@@ -38,4 +38,4 @@
 - 规模目标（1000 节点、500 部署、1000 活跃 key，每个 key 用 3 个部署）下，长期统计约 1.3 GB（用量约 0.5 GB 在主库）；极端组合
   （每个 key 每小时都用全部部署）下用量写入会变大，状态接口报告每次写入的行数与耗时，设置页可见。
 - 网关每个请求多约 200 ns、不分配内存；metrics 入库每个 GPU 样本多一次 map 查找。
-- 文档：[数据保留设置](../reference/api.md#analytics运营分析)、[配置](../reference/configuration.md)。
+- 文档：[查看运营分析](../how-to/analyze-operations.md)、[数据保留设置](../reference/api.md#analytics运营分析)、[配置](../reference/configuration.md)。

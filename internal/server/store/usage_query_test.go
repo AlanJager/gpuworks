@@ -125,3 +125,35 @@ func TestUsageQueriesUseTheirIndexes(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyticsNames(t *testing.T) {
+	st := newTestStore(t)
+	live, _ := st.CreateDeployment(&Deployment{Name: "live", ServedName: "org/live", State: DeployActive})
+	gone, _ := st.CreateDeployment(&Deployment{Name: "gone", ServedName: "org/gone", State: DeployActive})
+	if err := st.DeleteDeployment(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	names, err := st.DeploymentNames([]uint{live.ID, gone.ID, 999})
+	if err != nil || len(names) != 2 || names[live.ID].ServedName != "org/live" || names[live.ID].Deleted || !names[gone.ID].Deleted || names[gone.ID].Name != "gone" {
+		t.Fatalf("names = %+v %v", names, err)
+	}
+	node, _ := st.RegisterNode("uuid-1", HashToken("x"), "host-1")
+	if n, err := st.NodeNamesByUUID([]string{node.UUID, "nope"}); err != nil || len(n) != 1 || n[node.UUID] == "" {
+		t.Fatalf("nodes = %v %v", n, err)
+	}
+	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {
+		t.Fatal(err)
+	}
+	if u, err := st.UserNames([]uint{1, 42}); err != nil || u[1] != "admin" || len(u) != 1 {
+		t.Fatalf("users = %v %v", u, err)
+	}
+	for _, empty := range []func() (int, error){
+		func() (int, error) { m, err := st.DeploymentNames(nil); return len(m), err },
+		func() (int, error) { m, err := st.NodeNamesByUUID(nil); return len(m), err },
+		func() (int, error) { m, err := st.UserNames(nil); return len(m), err },
+	} {
+		if n, err := empty(); n != 0 || err != nil {
+			t.Fatal("empty lookups")
+		}
+	}
+}

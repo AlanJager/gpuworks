@@ -97,10 +97,15 @@ test("request view URLs carry only the set filters", async () => {
     monitorRequestsURL(7, { view: "history", range: "6h", limit: 20, key: 3, instance: "i-1", results: ["length", "error"], minMs: 1500.4, maxMs: 9000, cursor: "a b" }),
     "/api/v1/monitor/deployments/7/requests?view=history&range=6h&limit=20&key=3&instance=i-1&results=length%2Cerror&min_ms=1500&max_ms=9000&cursor=a+b",
   );
-  // An explicit range is sent only when both ends are set.
+  // An explicit range is sent only when both ends are set, and replaces the
+  // preset; a picked page range is sent as from/to.
+  assert.equal(
+    monitorRequestsURL(7, { view: "history", range: "1800000000000~1800003600000" }),
+    "/api/v1/monitor/deployments/7/requests?view=history&from=1800000000000&to=1800003600000",
+  );
   assert.equal(
     monitorRequestsURL(7, { view: "history", range: "1h", from: 1000, to: 2000 }),
-    "/api/v1/monitor/deployments/7/requests?view=history&range=1h&from=1000&to=2000",
+    "/api/v1/monitor/deployments/7/requests?view=history&from=1000&to=2000",
   );
   assert.equal(monitorRequestsURL(7, { view: "history", from: 1000 }), "/api/v1/monitor/deployments/7/requests?view=history");
   assert.equal(monitorDistributionsURL("1h"), "/api/v1/monitor/distributions?range=1h");

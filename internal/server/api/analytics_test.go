@@ -11,15 +11,18 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 type fakeAnalytics struct {
-	view    dto.DataRetentionView
-	set     []dto.DataRetention
-	setErr  error
-	status  dto.DataRetentionStatus
-	statErr error
+	view     dto.DataRetentionView
+	set      []dto.DataRetention
+	setErr   error
+	status   dto.DataRetentionStatus
+	statErr  error
+	queries  []AnalyticsQuery
+	queryErr error
 }
 
 func (f *fakeAnalytics) Retention() dto.DataRetentionView { return f.view }
@@ -35,6 +38,31 @@ func (f *fakeAnalytics) SetRetention(r dto.DataRetention) (dto.DataRetentionView
 
 func (f *fakeAnalytics) RetentionStatus(context.Context) (dto.DataRetentionStatus, error) {
 	return f.status, f.statErr
+}
+
+func (f *fakeAnalytics) Usage(_ context.Context, q AnalyticsQuery) (dto.UsageAnalytics, error) {
+	f.queries = append(f.queries, q)
+	return dto.UsageAnalytics{Range: dto.AnalyticsRange{FromMS: q.FromMS, ToMS: q.ToMS, Granularity: "hour", Buckets: []int64{q.FromMS}},
+		Series: []dto.UsageCounts{{Requests: 1}}, Rows: []dto.UsageRow{}}, f.queryErr
+}
+
+func (f *fakeAnalytics) Quality(_ context.Context, q AnalyticsQuery) (dto.QualityAnalytics, error) {
+	f.queries = append(f.queries, q)
+	return dto.QualityAnalytics{}, f.queryErr
+}
+
+func (f *fakeAnalytics) GPUs(_ context.Context, q AnalyticsQuery) (dto.GPUAnalytics, error) {
+	f.queries = append(f.queries, q)
+	return dto.GPUAnalytics{}, f.queryErr
+}
+
+func (f *fakeAnalytics) GPUTime(_ context.Context, q AnalyticsQuery) (dto.GPUTimeAnalytics, error) {
+	f.queries = append(f.queries, q)
+	return dto.GPUTimeAnalytics{}, f.queryErr
+}
+
+func (f *fakeAnalytics) KeyUsage(context.Context) (dto.KeyUsageList, error) {
+	return dto.KeyUsageList{Items: []dto.KeyUsage{{Prefix: "gw-1", Today: dto.UsageCounts{Requests: 2}}}, TimeZone: "UTC"}, f.queryErr
 }
 
 const retentionBody = `{"metrics_hours":72,"logs_hours":48,"request_log_days":7,"request_log_max_mb":2048,` +
@@ -160,6 +188,88 @@ func TestDataRetentionRoutes(t *testing.T) {
 	} {
 		if rec := telemetryCall(bare, tc.method, tc.path, rig.session, tc.body); rec.Code != http.StatusNotFound {
 			t.Errorf("%s %s without the service = %d", tc.method, tc.path, rec.Code)
+		}
+	}
+}
+
+func TestAnalyticsRoutes(t *testing.T) {
+	fake := &fakeAnalytics{}
+	signer, err := auth.NewTokenSigner("analytics-routes", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := managementSessionTestStore(t)
+	viewer, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 2, Username: "viewer", Role: "viewer"})
+	r := Router(Deps{Store: st, AuthSigner: signer, Analytics: fake})
+	call := func(path, token string) (int, string) {
+		rec := telemetryCall(r, http.MethodGet, path, token, "")
+		return rec.Code, rec.Body.String()
+	}
+	for _, path := range []string{"/api/v1/analytics/usage", "/api/v1/analytics/quality", "/api/v1/analytics/gpus", "/api/v1/analytics/gpu-time", "/api/v1/analytics/key-usage"} {
+		if code, _ := call(path+"?from=1&to=2", ""); code != http.StatusUnauthorized {
+			t.Errorf("anonymous %s = %d", path, code)
+		}
+		if rec := telemetryCall(r, http.MethodPost, path, viewer, ""); rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("post %s = %d", path, rec.Code)
+		}
+	}
+	code, body := call("/api/v1/analytics/usage?from=1000&to=2000&granularity=day&deployment=17&key=3&source=api", viewer)
+	want := `{"range":{"from_ms":1000,"to_ms":2000,"granularity":"hour","time_zone":"","earliest_ms":0,"live_since_ms":0,"buckets":[1000]},` +
+		`"totals":{"requests":0,"no_usage":0,"prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0,"reasoning_reported":0,"cached_tokens":0,"cache_reported":0,"cache_reported_prompt":0},` +
+		`"series":[{"requests":1,"no_usage":0,"prompt_tokens":0,"completion_tokens":0,"reasoning_tokens":0,"reasoning_reported":0,"cached_tokens":0,"cache_reported":0,"cache_reported_prompt":0}],"rows":[]}` + "\n"
+	if code != http.StatusOK || body != want {
+		t.Fatalf("usage = %d\n%s", code, body)
+	}
+	if got := fake.queries[0]; got.FromMS != 1000 || got.ToMS != 2000 || got.Granularity != "day" || got.DeploymentID != 17 || got.APIKeyID != 3 || got.Source != "api" || got.Keyless {
+		t.Fatalf("parsed = %+v", got)
+	}
+	if code, _ := call("/api/v1/analytics/usage?from=1&to=2&key=none", viewer); code != http.StatusOK || !fake.queries[1].Keyless {
+		t.Fatalf("keyless = %d %+v", code, fake.queries[1])
+	}
+	if code, _ := call("/api/v1/analytics/gpus?from=1&to=2&group_by=node&metric=temp&node=n1&model=RTX", viewer); code != http.StatusOK {
+		t.Fatalf("gpus = %d", code)
+	}
+	if got := fake.queries[2]; got.GroupBy != "node" || got.Metric != "temp" || got.NodeUUID != "n1" || got.GPUModel != "RTX" {
+		t.Fatalf("gpu params = %+v", got)
+	}
+	// Malformed parameters are refused before the service.
+	before := len(fake.queries)
+	for _, tc := range []struct{ query, code, field string }{
+		{"", "ANALYTICS_RANGE_INVALID", "from"},
+		{"from=1", "ANALYTICS_RANGE_INVALID", "to"},
+		{"from=x&to=2", "ANALYTICS_RANGE_INVALID", "from"},
+		{"from=1&to=2&deployment=abc", "ANALYTICS_VALUE_INVALID", "deployment"},
+		{"from=1&to=2&key=0", "ANALYTICS_VALUE_INVALID", "key"},
+		{"from=1&to=2&source=cli", "ANALYTICS_VALUE_INVALID", "source"},
+	} {
+		code, body := call("/api/v1/analytics/quality?"+tc.query, viewer)
+		if code != http.StatusBadRequest || !strings.Contains(body, `"code":"`+tc.code+`"`) || !strings.Contains(body, `"field":"`+tc.field+`"`) {
+			t.Errorf("%q: %d %s", tc.query, code, body)
+		}
+	}
+	if len(fake.queries) != before {
+		t.Fatal("malformed queries reached the service")
+	}
+	// The service's refusal is a 400 with its code; a failure a 500.
+	fake.queryErr = messages.NewProductError(messages.ErrorAnalyticsRangeTooLong, "too long", map[string]any{"field": "granularity", "detail": "7 days"})
+	if code, body := call("/api/v1/analytics/gpu-time?from=1&to=2", viewer); code != http.StatusBadRequest || !strings.Contains(body, "ANALYTICS_RANGE_TOO_LONG") {
+		t.Fatalf("refused = %d %s", code, body)
+	}
+	fake.queryErr = errors.New("disk")
+	if code, _ := call("/api/v1/analytics/usage?from=1&to=2", viewer); code != http.StatusInternalServerError {
+		t.Fatalf("failure = %d", code)
+	}
+	if code, _ := call("/api/v1/analytics/key-usage", viewer); code != http.StatusInternalServerError {
+		t.Fatalf("key usage failure = %d", code)
+	}
+	fake.queryErr = nil
+	if code, body := call("/api/v1/analytics/key-usage", viewer); code != http.StatusOK || !strings.Contains(body, `"items":[{"prefix":"gw-1","today":{"requests":2,`) || !strings.Contains(body, `"time_zone":"UTC"`) {
+		t.Fatalf("key usage = %d %s", code, body)
+	}
+	bare := Router(Deps{Store: st, AuthSigner: signer})
+	for _, path := range []string{"/api/v1/analytics/usage?from=1&to=2", "/api/v1/analytics/key-usage"} {
+		if rec := telemetryCall(bare, http.MethodGet, path, viewer, ""); rec.Code != http.StatusNotFound {
+			t.Errorf("%s without the service = %d", path, rec.Code)
 		}
 	}
 }

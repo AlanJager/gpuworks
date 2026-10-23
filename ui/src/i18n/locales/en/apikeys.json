@@ -30,7 +30,9 @@
     "lastUsed": "Last used",
     "name": "Name",
     "prefix": "Prefix",
-    "status": "Status"
+    "status": "Status",
+    "tokensToday": "Tokens today",
+    "tokens7d": "Tokens, last 7 days"
   },
   "title": "API Tokens",
   "usage": "Usage",
@@ -69,5 +71,9 @@
     "revoked": "Revoked",
     "revokedAt": "Revoked {{time}}"
   },
-  "showRevoked": "Show revoked ({{count}})"
+  "showRevoked": "Show revoked ({{count}})",
+  "tokens": {
+    "tooltip": "Input {{input}} (cached {{cached}}) · Output {{output}}",
+    "open": "{{tokens}} tokens of {{name}}, open in Operations analytics"
+  }
 }

@@ -34,6 +34,10 @@
     "switch": "Switch language"
   },
   "apiError": {
+    "ANALYTICS_RANGE_INVALID": "Invalid time range: {{field}} {{detail}}.",
+    "ANALYTICS_RANGE_TOO_LONG": "The time range is too long: {{detail}}. Shorten it, or view it by day.",
+    "ANALYTICS_TOO_MANY_CARDS": "Too many cards to show one by one ({{detail}}). Filter by node or model first, or group by node or model.",
+    "ANALYTICS_VALUE_INVALID": "Invalid {{field}}: {{detail}}.",
     "SETTING_HAS_OWN_ROUTE": "This setting has a card of its own; change it there.",
     "TELEMETRY_ENDPOINT_INVALID": "Invalid collector address: give an http(s) URL such as http://otel-collector:4318, without credentials or a query.",
     "TELEMETRY_HEADER_INVALID": "Header {{name}} cannot be used: the name is invalid, given twice, or one the exporter sets itself (Content-Type and the like).",
@@ -476,6 +480,7 @@
     },
     "dashboard": "Overview",
     "monitor": "Monitor Center",
+    "analytics": "Analytics",
     "publicCloud": "Public Cloud",
     "privateCloud": "Private Cloud",
     "kubernetes": "Kubernetes",

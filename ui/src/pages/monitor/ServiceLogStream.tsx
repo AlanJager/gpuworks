@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { Link } from "react-router-dom";
 import { api, type InstanceEvent, type MonitorRange } from "../../api";
+import { rangeBounds } from "../../monitorRange";
 import { ansiToSegments } from "../logStream";
 import { formatTimeShort } from "../../i18n/datetime";
 import { instanceEventText, phaseSummaryText } from "../instanceEvents";
@@ -21,14 +22,6 @@ const PALETTE = [colors.chartPrimary, colors.chartSecondary, colors.chartTertiar
 // (logstore's own limit is far higher), so this is a genuine request
 // parameter, not a client-side guess.
 const LOG_TAIL_LIMIT = 2000;
-
-const RANGE_MS: Record<MonitorRange, number> = {
-  "15m": 15 * 60_000,
-  "1h": 3_600_000,
-  "6h": 6 * 3_600_000,
-  "24h": 24 * 3_600_000,
-  "168h": 168 * 3_600_000,
-};
 
 interface FetchWindow {
   from: number;
@@ -116,8 +109,7 @@ export default function ServiceLogStream({ logInstances, range }: { logInstances
     let alive = true;
     setLoading(true);
     setError(null);
-    const to = Date.now();
-    const from = to - (RANGE_MS[range] ?? RANGE_MS["1h"]);
+    const { from, to } = rangeBounds(range);
     setFetchWindow({ from, to });
     api.logsSearch({ instances: logInstances, from, to, limit: LOG_TAIL_LIMIT })
       .then((page) => {

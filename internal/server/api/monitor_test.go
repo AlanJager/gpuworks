@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -46,6 +47,14 @@ type fakeMonitorService struct {
 
 	// catalog replaces the default one-entry metric catalog when set.
 	catalog []dto.MonitorMetricSeries
+
+	// ends records the picked ranges' ends asked for through At.
+	ends []time.Time
+}
+
+func (f *fakeMonitorService) At(end time.Time) MonitorService {
+	f.ends = append(f.ends, end)
+	return f
 }
 
 func (f *fakeMonitorService) Overview(_ context.Context, rng time.Duration) (dto.MonitorOverview, error) {
@@ -257,12 +266,16 @@ func TestMonitorDeploymentUpstreamErrorIs500(t *testing.T) {
 	}
 }
 
-func TestDefaultMonitorStepUnknownRangeFallsBackTo30s(t *testing.T) {
-	// parseMonitorRange never hands defaultMonitorStep a range outside its
-	// five known switch cases, but the default branch still has to answer
-	// something sane rather than panic or return zero.
-	if got := defaultMonitorStep(3 * time.Hour); got != 30*time.Second {
-		t.Fatalf("defaultMonitorStep(3h) = %s, want the 30s fallback", got)
+func TestDefaultMonitorStepOfAPickedRange(t *testing.T) {
+	// A picked range (from/to) is any length: about 240 points, in whole
+	// 10 s steps, never under 10 s.
+	for rng, want := range map[time.Duration]time.Duration{
+		3 * time.Hour: 50 * time.Second, time.Minute: 10 * time.Second, 30 * 24 * time.Hour: 3 * time.Hour,
+		2*time.Hour + time.Minute: 40 * time.Second,
+	} {
+		if got := defaultMonitorStep(rng); got != want {
+			t.Errorf("defaultMonitorStep(%s) = %s, want %s", rng, got, want)
+		}
 	}
 }
 
@@ -538,5 +551,64 @@ func TestMonitorSeriesNilServiceReturnsEmptyArray(t *testing.T) {
 	}
 	if got == nil || len(got) != 0 {
 		t.Fatalf("body = %+v, want an empty (non-nil) slice", got)
+	}
+}
+
+// A picked range (from/to) answers from the service as of to, over to-from;
+// presets stay as they were; a mix, a future end or a span out of bounds is
+// refused before the service.
+func TestMonitorPickedRange(t *testing.T) {
+	fake := &fakeMonitorService{}
+	signer, err := auth.NewTokenSigner("monitor-window", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := managementSessionTestStore(t)
+	session, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 2, Username: "viewer", Role: "viewer"})
+	end := time.Now().Add(-time.Hour).Truncate(time.Millisecond)
+	from := end.Add(-3 * time.Hour)
+	q := "from=" + strconv.FormatInt(from.UnixMilli(), 10) + "&to=" + strconv.FormatInt(end.UnixMilli(), 10)
+	router := Router(Deps{Store: st, Monitor: fake, AuthSigner: signer})
+	call := func(path string) (int, string) {
+		rec := telemetryCall(router, http.MethodGet, path, session, "")
+		return rec.Code, rec.Body.String()
+	}
+	for _, path := range []string{"/api/v1/monitor/overview?", "/api/v1/monitor/deployments/7?", "/api/v1/monitor/series?metric=m&", "/api/v1/monitor/deployments/7/latency?", "/api/v1/monitor/distributions?"} {
+		before := len(fake.ends)
+		// The fake's latency knows no deployment: 404, after At.
+		if code, body := call(path + q); code != http.StatusOK && !(strings.Contains(path, "latency") && code == http.StatusNotFound) {
+			t.Fatalf("%s = %d %s", path, code, body)
+		}
+		if len(fake.ends) != before+1 || !fake.ends[before].Equal(end) {
+			t.Fatalf("%s ends = %v, want %v", path, fake.ends, end)
+		}
+	}
+	if got := fake.overviewArgs[len(fake.overviewArgs)-1]; got != 3*time.Hour {
+		t.Fatalf("overview range = %v", got)
+	}
+	if got := fake.seriesArgs[len(fake.seriesArgs)-1]; got.rng != 3*time.Hour || got.step != 50*time.Second {
+		t.Fatalf("series = %+v", got)
+	}
+	// A preset does not go through At.
+	before := len(fake.ends)
+	if code, _ := call("/api/v1/monitor/overview?range=6h"); code != http.StatusOK || len(fake.ends) != before {
+		t.Fatal("a preset went through At")
+	}
+	for _, bad := range []string{
+		q + "&range=1h",
+		"from=" + strconv.FormatInt(from.UnixMilli(), 10),
+		"from=abc&to=1",
+		"from=" + strconv.FormatInt(end.UnixMilli(), 10) + "&to=" + strconv.FormatInt(from.UnixMilli(), 10),
+		"from=" + strconv.FormatInt(end.Add(-30*time.Second).UnixMilli(), 10) + "&to=" + strconv.FormatInt(end.UnixMilli(), 10),
+		"from=" + strconv.FormatInt(end.AddDate(0, 0, -31).UnixMilli(), 10) + "&to=" + strconv.FormatInt(end.UnixMilli(), 10),
+		"from=" + strconv.FormatInt(time.Now().UnixMilli(), 10) + "&to=" + strconv.FormatInt(time.Now().Add(time.Hour).UnixMilli(), 10),
+	} {
+		code, body := call("/api/v1/monitor/overview?" + bad)
+		if code != http.StatusBadRequest || !strings.Contains(body, ErrorMonitorRangeInvalid) {
+			t.Errorf("%s = %d %s", bad, code, body)
+		}
+	}
+	if len(fake.ends) != before {
+		t.Fatal("a refused range reached the service")
 	}
 }

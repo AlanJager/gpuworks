@@ -253,3 +253,17 @@ func scanRows[T any](ctx context.Context, db *sql.DB, q string, args []any, scan
 	}
 	return out, rows.Err()
 }
+
+// Earliest is the oldest hour (Unix ms) and day a kind's tables hold; 0 when
+// that table is empty.
+func (s *Store) Earliest(ctx context.Context, kind Kind) (hourMS int64, day rollup.Day, err error) {
+	hours, days := kind.tables()
+	var h, d sql.NullInt64
+	if err := s.reader.QueryRowContext(ctx, `SELECT MIN(hour_ms) FROM `+hours[0]).Scan(&h); err != nil {
+		return 0, 0, err
+	}
+	if err := s.reader.QueryRowContext(ctx, `SELECT MIN(day) FROM `+days[0]).Scan(&d); err != nil {
+		return 0, 0, err
+	}
+	return h.Int64, rollup.Day(d.Int64), nil
+}

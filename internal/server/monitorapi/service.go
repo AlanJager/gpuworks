@@ -190,6 +190,25 @@ func (s *Service) Series(ctx context.Context, metric, by, fn string, rng, step t
 // fixed "now", so BuildCluster/BuildService and this package's own
 // supplementary queries (the cluster-wide prompt-token series) all see the
 // exact same snapshot instead of racing a live store between reads.
+// At is the service as of end: its charts, distributions and latency cover
+// the range ending there instead of now, for a range the operator picked.
+// What the inventory says now (replicas, health) stays current. Answers are
+// not cached: a picked range is rarely asked twice, and its key would be
+// the end too. A zero end is the service itself.
+func (s *Service) At(end time.Time) *Service {
+	if end.IsZero() {
+		return s
+	}
+	view := *s
+	view.deps.Now = func() time.Time { return end }
+	now := func() time.Time { return end }
+	// TTL 0: every call computes; single-flight still collapses duplicates.
+	view.overview = monitor.NewCached[dto.MonitorOverview](now, 0)
+	view.deployment = monitor.NewCached[dto.MonitorDeployment](now, 0)
+	view.series = monitor.NewCached[[]dto.MonitorSeries](now, 0)
+	return &view
+}
+
 func (s *Service) depsFor(inv monitor.Inventory, now time.Time) monitor.Deps {
 	return monitor.Deps{
 		TSDB:      s.deps.TSDB,

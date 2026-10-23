@@ -174,3 +174,34 @@ func TestBuildSeriesFallsBackWhenSeriesTooLargeUnset(t *testing.T) {
 		t.Fatal("expected an error even with Deps.SeriesTooLarge left nil")
 	}
 }
+
+// A picked range: the service as of its end reads the samples of that
+// window, not of the last hours, and does not share the live cache.
+func TestSeriesAtAPickedEnd(t *testing.T) {
+	ts := newTestStore(t)
+	day := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	if err := ts.WriteBatch([]tsdb.Sample{
+		{Metric: "m", Labels: map[string]string{"node": "a"}, Value: 1, TimeMS: day.Add(-30 * time.Minute).UnixMilli()},
+		{Metric: "m", Labels: map[string]string{"node": "a"}, Value: 2, TimeMS: day.Add(48 * time.Hour).UnixMilli()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now := day.Add(48*time.Hour + time.Minute)
+	live := New(Deps{TSDB: ts, Now: func() time.Time { return now }})
+	got, err := live.Series(context.Background(), "m", "", "avg", time.Hour, time.Minute)
+	if err != nil || len(got) != 1 || len(got[0].Points) != 1 || got[0].Points[0][1] != 2 {
+		t.Fatalf("live = %+v %v", got, err)
+	}
+	past, err := live.At(day).Series(context.Background(), "m", "", "avg", time.Hour, time.Minute)
+	if err != nil || len(past) != 1 || len(past[0].Points) != 1 || past[0].Points[0][1] != 1 {
+		t.Fatalf("at the picked end = %+v %v", past, err)
+	}
+	if live.At(time.Time{}) != live {
+		t.Fatal("a zero end is not the service itself")
+	}
+	// The live cache still answers the live window.
+	again, _ := live.Series(context.Background(), "m", "", "avg", time.Hour, time.Minute)
+	if again[0].Points[0][1] != 2 {
+		t.Fatal("the picked range leaked into the live cache")
+	}
+}

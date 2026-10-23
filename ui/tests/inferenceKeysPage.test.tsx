@@ -11,12 +11,15 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@t
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
+const { analyticsApi } = await import("../src/analyticsApi.ts");
 const { default: APIKeysPage } = await import("../src/pages/APIKeysPage.tsx");
 const k = locale.apikeys;
 const original = { apiKeys: api.apiKeys, platformTokens: api.platformTokens, createApiKey: api.createApiKey, revokeApiKey: api.revokeApiKey };
+const originalKeyUsage = analyticsApi.keyUsage;
 function setup(items: import("../src/api.ts").ApiKey[] = []) {
   api.apiKeys = async () => ({ items, total: items.length });
   api.platformTokens = async () => ({ items: [], total: 0 });
+  analyticsApi.keyUsage = async () => ({ items: [], time_zone: "UTC" });
   const created: string[] = [];
   api.createApiKey = async (name) => {
     created.push(name);
@@ -25,7 +28,7 @@ function setup(items: import("../src/api.ts").ApiKey[] = []) {
   render(<MemoryRouter><I18nextProvider i18n={i18n}><APIKeysPage /></I18nextProvider></MemoryRouter>);
   return { created, user: userEvent.setup() };
 }
-afterEach(() => { cleanup(); Object.assign(api, original); });
+afterEach(() => { cleanup(); Object.assign(api, original); analyticsApi.keyUsage = originalKeyUsage; });
 after(() => closeChannels());
 
 test("empty and whitespace inference token names do not mutate or reject outside the field", async () => {

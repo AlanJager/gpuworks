@@ -1,0 +1,327 @@
+{
+  "title": "Operations analytics",
+  "subtitle": "Long-term statistics: kept {{hourly}} days by hour and {{daily}} days by day (adjust in <settings>Settings › Data retention</settings>)",
+  "zoneNote": "Times are shown in the statistics time zone ({{zone}}).",
+  "tabs": {
+    "usage": "Token usage",
+    "quality": "Service quality",
+    "gpus": "GPU utilization",
+    "gpu-time": "GPU hours"
+  },
+  "granularityName": {
+    "hour": "by hour",
+    "day": "by day"
+  },
+  "table": {
+    "total": "Total"
+  },
+  "chart": {
+    "unavailable": "The chart could not be drawn in this browser."
+  },
+  "toolbar": {
+    "ariaLabel": "Filters",
+    "quickRanges": "Quick ranges",
+    "ranges": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "month": "This month",
+      "lastmonth": "Last month"
+    },
+    "custom": "Custom",
+    "granularity": "Granularity",
+    "hour": "By hour",
+    "day": "By day",
+    "hourDisabled": "Hourly figures cover at most {{days}} days; longer ranges are shown by day",
+    "deployment": "Deployment",
+    "allDeployments": "All deployments",
+    "deploymentNotForGpu": "GPU utilization is not filtered by deployment; use the node and model filters",
+    "refresh": "Refresh",
+    "export": "Export CSV"
+  },
+  "state": {
+    "loadFailed": "Failed to load the statistics",
+    "empty": "No statistics in this range.",
+    "emptyHint": "Statistics start to accumulate after the upgrade that introduced them; try a later range or a different filter.",
+    "noRows": "No matching data"
+  },
+  "backfill": {
+    "label": "Filled in from the request log",
+    "usage": "The shaded part was filled in once from the per-request log: it may contain sampled estimates and does not include /v1/messages or /v1/responses requests. The rest is counted live over every request, without sampling.",
+    "quality": "The shaded part was filled in once from the per-request log and may contain sampled estimates. The rest is counted live over every request, without sampling."
+  },
+  "names": {
+    "deletedKey": "Deleted API token #{{id}}",
+    "playground": "Playground ({{user}})",
+    "playgroundAnonymous": "Playground",
+    "noKey": "No API token",
+    "revoked": "Revoked",
+    "deletedDeployment": "Deleted deployment",
+    "deploymentId": "Deployment #{{id}}"
+  },
+  "usage": {
+    "filters": {
+      "group": "Group by",
+      "key": "API token",
+      "allKeys": "All API tokens",
+      "noKey": "Without an API token",
+      "source": "Source",
+      "allSources": "All sources"
+    },
+    "group": {
+      "key": "By API token",
+      "deployment": "By deployment",
+      "model": "By model"
+    },
+    "source": {
+      "api": "API",
+      "playground": "Playground"
+    },
+    "keyPrefixMissing": "The API token {{prefix}} has no usage in this range, so the list is not filtered. Try a longer range.",
+    "cards": {
+      "requests": "Requests",
+      "withUsage": "With usage: {{count}}",
+      "input": "Input tokens",
+      "inputSub": "Cache hit + miss",
+      "cached": "Cache hits",
+      "hitRate": "Hit rate {{rate}} (of requests that reported it)",
+      "hitUnknown": "No request reported cache hits",
+      "uncached": "Uncached input",
+      "uncachedTip": "Input tokens minus cache hits. Requests that did not report a cache figure are counted here as well, so this is an upper bound when some did not report.",
+      "uncachedShare": "{{rate}} of input",
+      "uncachedUnreported": "Includes {{tokens}} from requests that reported no cache figure",
+      "output": "Output tokens",
+      "thinking": "Thinking {{tokens}} (reported by {{count}} requests)",
+      "thinkingUnknown": "Thinking tokens not reported",
+      "noUsage": "Requests without usage",
+      "noUsageTip": "Errors, clients that left early, or requests whose usage the gateway does not read yet. Their tokens are not counted.",
+      "noUsageShare": "{{rate}} of requests"
+    },
+    "chart": {
+      "inputTitle": "Input tokens ({{granularity}})",
+      "outputTitle": "Output tokens ({{granularity}})",
+      "modeIn": "Input",
+      "modeOut": "Output",
+      "metaIn": "Input and output differ greatly in size, so they are shown on separate charts.",
+      "metaOut": "Switch to Input to see the input side.",
+      "cached": "Cache-hit input",
+      "uncached": "Uncached input",
+      "answer": "Output (answer)",
+      "thinking": "Output (thinking)",
+      "aria": "Token usage over time"
+    },
+    "table": {
+      "title": "Details",
+      "hint": "Click a header to sort; expand a row for the next level",
+      "group": {
+        "key": "API token",
+        "deployment": "Deployment",
+        "model": "Model"
+      },
+      "scope": "Deployments / keys",
+      "more": "+{{count}} more",
+      "keys": "{{count}} API tokens",
+      "deploymentsOfModel": "{{count}} deployments, {{keys}} API tokens",
+      "requests": "Requests",
+      "input": "Input",
+      "cached": "Cache hits",
+      "hitRate": "Hit rate",
+      "uncached": "Uncached input",
+      "output": "Output",
+      "reasoning": "Thinking",
+      "noUsage": "No usage",
+      "span": "First / last used"
+    },
+    "export": {
+      "key": "API token",
+      "prefix": "Prefix",
+      "status": "Status",
+      "deployment": "Deployment",
+      "model": "Model",
+      "source": "Source",
+      "first": "First used",
+      "last": "Last used"
+    }
+  },
+  "quality": {
+    "cards": {
+      "requests": "Requests",
+      "completed": "Completed: {{count}}",
+      "successRate": "Success rate",
+      "successTip": "(Requests - errors - interrupted connections) / requests. A client leaving or a length cut is not counted as a failure.",
+      "failures": "Errors + interrupted: {{count}}",
+      "ttft": "Time to first token P50 / P95",
+      "ttftTip": "From receiving the request to the first token of a streamed reply. Percentiles are estimated from a histogram (about 10% error), so merged hours or days are approximate.",
+      "percentileSub": "Seconds",
+      "e2e": "End-to-end P50 / P95",
+      "e2eSub": "Request received to reply finished",
+      "errors": "Errors",
+      "errorShare": "{{rate}} of requests"
+    },
+    "chart": {
+      "ttftTitle": "Time to first token P50 / P95 ({{granularity}})",
+      "ttftP50": "First token P50",
+      "ttftP95": "First token P95",
+      "seconds": "s",
+      "ttftAria": "Time to first token over time",
+      "resultsTitle": "Request outcomes ({{granularity}})",
+      "modeAll": "All outcomes",
+      "modeBad": "Abnormal only",
+      "metaAll": "Completed requests dominate, so abnormal outcomes are thin here; switch to Abnormal only to see them.",
+      "metaBad": "Completed requests are hidden to show when the abnormal ones happened.",
+      "resultsAria": "Request outcomes over time"
+    },
+    "outcome": {
+      "completed": "Completed",
+      "length": "Cut by length",
+      "client_closed": "Client left",
+      "interrupted": "Interrupted",
+      "error": "Error"
+    },
+    "table": {
+      "title": "By deployment",
+      "hint": "Click a header to sort",
+      "deployment": "Deployment",
+      "requests": "Requests",
+      "successRate": "Success rate",
+      "ttftP50": "First token P50",
+      "ttftP95": "First token P95",
+      "e2eP50": "End-to-end P50",
+      "e2eP95": "End-to-end P95",
+      "speed": "Output tokens/s"
+    },
+    "export": {
+      "deployment": "Deployment",
+      "model": "Model",
+      "ttftP50": "First token P50 (s)",
+      "ttftP95": "First token P95 (s)",
+      "e2eP50": "End-to-end P50 (s)",
+      "e2eP95": "End-to-end P95 (s)"
+    },
+    "foot": "Success rate = (requests - errors - interrupted) / requests. Percentiles are merged from hourly histograms and approximate."
+  },
+  "gpus": {
+    "filters": {
+      "group": "Group by",
+      "metric": "Color by",
+      "node": "Node",
+      "allNodes": "All nodes",
+      "model": "Card model",
+      "allModels": "All card models"
+    },
+    "group": {
+      "model": "By card model",
+      "node": "By node",
+      "gpu": "By card"
+    },
+    "metric": {
+      "util": "Utilization",
+      "power": "Power",
+      "temp": "Temperature",
+      "mem": "Memory"
+    },
+    "tooMany": {
+      "hint": "Too many cards to show one by one. Pick a node or card model above, or group by card model or node.",
+      "byModel": "Group by card model",
+      "byNode": "Group by node"
+    },
+    "cards": {
+      "cards": "Cards",
+      "util": "Average utilization",
+      "utilMax": "Peak {{value}}",
+      "mem": "Average memory use",
+      "memPerCard": "{{value}} per card",
+      "power": "Average total power",
+      "powerPerCard": "{{value}} per card",
+      "idle": "Long-idle cards",
+      "idleSub": "Average utilization < {{threshold}}%",
+      "idleTip": "Cards whose average utilization over the range is below {{threshold}}%: both cards given to a deployment that gets little traffic and cards given to none."
+    },
+    "chart": {
+      "title": {
+        "util": "Utilization heat map ({{granularity}}, mean utilization)",
+        "power": "Power heat map ({{granularity}}, mean watts)",
+        "temp": "Temperature heat map ({{granularity}}, mean °C)",
+        "mem": "Memory heat map ({{granularity}}, mean memory used)"
+      },
+      "aria": "GPU heat map"
+    },
+    "table": {
+      "title": {
+        "model": "Details (by card model)",
+        "node": "Details (by node)",
+        "gpu": "Details (by card)"
+      },
+      "hint": "Click a header to sort; tinted rows average below {{threshold}}% utilization",
+      "unit": {
+        "model": "Card model",
+        "node": "Node",
+        "gpu": "Card"
+      },
+      "idle": "Idle",
+      "removed": "Removed / offline",
+      "removedCount": "{{count}} removed / offline",
+      "utilAvg": "Mean utilization",
+      "utilMax": "Peak utilization",
+      "memAvg": "Mean memory used",
+      "memMax": "Peak memory used",
+      "power": "Mean power",
+      "powerPerCard": "Mean power (per card)",
+      "tempMax": "Peak temperature",
+      "deployments": "Deployments",
+      "unassigned": "Unassigned"
+    },
+    "export": {
+      "detail": "Detail",
+      "memAvgGiB": "Mean memory used (GiB)",
+      "memAvgPct": "Mean memory used (%)",
+      "memMaxGiB": "Peak memory used (GiB)",
+      "memMaxPct": "Peak memory used (%)",
+      "yes": "Yes"
+    },
+    "foot": "Utilization, memory, power and temperature are the means and peaks of the samples in each bucket, then over the range."
+  },
+  "gpuTime": {
+    "note": "GPU hours = cards held × hours. No prices are involved.",
+    "cards": {
+      "hours": "Total GPU hours",
+      "hoursSub": "Held by the deployments",
+      "hoursTip": "GPU hours = cards held × hours. A dGPU counts by its share: half a card for one hour is 0.5.",
+      "allocation": "Allocation rate",
+      "allocationSub": "Allocated {{allocated}} / schedulable {{schedulable}} GPU hours",
+      "allocationNone": "No schedulable cards recorded",
+      "allocationTip": "Allocated GPU hours / schedulable GPU hours of the cluster's cards in the range, whatever the deployment filter.",
+      "output": "Output tokens",
+      "outputSub": "Of the deployments shown",
+      "perMillion": "GPU hours per million output tokens",
+      "perMillionAll": "Per million tokens in total: {{value}}",
+      "noOutput": "No output tokens"
+    },
+    "chart": {
+      "title": "GPU hours by deployment ({{granularity}})",
+      "hours": "{{value}} GPU hours",
+      "aria": "GPU hours by deployment over time"
+    },
+    "table": {
+      "title": "By deployment",
+      "hint": "Click a header to sort. Token figures are the whole deployment's.",
+      "deployment": "Deployment",
+      "model": "Card model",
+      "instances": "Replicas (mean / max)",
+      "avgInstances": "Replicas (mean)",
+      "maxInstances": "Replicas (max)",
+      "gpuHours": "GPU hours",
+      "wholeHours": "Whole-card GPU hours",
+      "prompt": "Input tokens",
+      "output": "Output tokens",
+      "perMillionOutput": "GPU hours per million output tokens",
+      "perMillionAll": "GPU hours per million tokens"
+    },
+    "export": {
+      "deployment": "Deployment",
+      "servedName": "Model"
+    },
+    "foot": "The fewer GPU hours per million tokens, the more the same cards produce; deployments without traffic show a dash."
+  }
+}
