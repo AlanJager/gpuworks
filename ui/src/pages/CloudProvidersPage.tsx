@@ -368,6 +368,7 @@ const PROVIDER_LOGOS: Record<string, string> = {
   aliyun: "/provider-logos/aliyun.webp",
   autodl: "/provider-logos/autodl.webp",
   compshare: "/provider-logos/compshare.webp",
+  digitalocean: "/provider-logos/digitalocean.svg",
   runpod: "/provider-logos/runpod.webp",
   vast: "/provider-logos/vast.webp",
   zstack: "/provider-logos/zstack.svg",
