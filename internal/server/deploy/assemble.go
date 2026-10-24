@@ -39,12 +39,15 @@ type ResolveLaunchInput struct {
 	// ComponentModelMount is the template component's primary mount; it
 	// replaces DefaultModelMount, and an override may not contradict it.
 	ComponentModelMount string
-	Entrypoint          []string
-	PreStartArgv        []string
-	PreStartScript      string
-	RuntimeAssets       []proto.RuntimeAsset
-	ComponentMounts     []proto.MountSpec
-	APIContract         any
+	// Image is the effective runtime image selected for this launch. Fixed
+	// release images can require a runtime-specific compatibility overlay.
+	Image           string
+	Entrypoint      []string
+	PreStartArgv    []string
+	PreStartScript  string
+	RuntimeAssets   []proto.RuntimeAsset
+	ComponentMounts []proto.MountSpec
+	APIContract     any
 	// PlacementVariables are the placement resolver's variables; the launch
 	// adds the facts it owns (launchVariables) before expanding the template.
 	PlacementVariables map[string]any
@@ -173,6 +176,10 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	}
 	if overrides.CmdDisplay != "" {
 		launch.Argv = append([]string(nil), commandArgv...)
+		if mode == CommandManual && manualScript == "" && len(launch.Entrypoint) == 0 && len(commandArgv) > 0 {
+			launch.Entrypoint = append([]string(nil), commandArgv[:1]...)
+			launch.Argv = append([]string(nil), commandArgv[1:]...)
+		}
 	}
 	if mode == CommandEngine && len(finalEntrypoint) > 0 {
 		if overrides.CmdDisplay != "" {
@@ -219,10 +226,17 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 		Template: cloneEnv(built.EnvLayers.Template),
 		User:     cloneEnv(overrides.Env),
 	}
-	launch.DockerArgs = launchDockerArgs(overrides.DockerArgs, params, input.TemplateMemlockUnlimited)
+	commandArgs := append(append([]string(nil), launch.Entrypoint...), launch.Argv...)
+	engramShared := engramSharesHostMemory(commandArgs)
+	launch.DockerArgs = launchDockerArgs(overrides.DockerArgs, params, input.TemplateMemlockUnlimited || engramShared)
+	launch.DockerArgs = withEngramSharedMemoryDockerArgs(launch.DockerArgs, commandArgs)
+	shmDefault := input.Engine.Profile().ShmBytes
+	if engramShared && shmDefault < engramSharedMemoryDefaultBytes {
+		shmDefault = engramSharedMemoryDefaultBytes
+	}
 	// The CPU KV tier lives in /dev/shm, so the size follows the tier the
 	// command was built with; see launchShmBytes for the rule.
-	launch.ShmBytes, err = launchShmBytes(input.Engine.Profile().ShmBytes, input.TemplateShmBytes, overrides,
+	launch.ShmBytes, err = launchShmBytes(shmDefault, input.TemplateShmBytes, overrides,
 		launchKVCPUTierBytes(input.Engine, params.Quick, command, overrides))
 	if err != nil {
 		return ResolvedLaunch{}, fmt.Errorf("resolve launch: %w", err)
@@ -265,6 +279,12 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	// The engine's last word over the fully merged launch, before the merged
 	// result is validated.
 	launch = hooks(input.Engine).FinalizeLaunch(launch)
+	compat := ascendRuntimeCompatFor(input.Engine.Name(), input.Image, params.RuntimeDriver, launch.Env)
+	preCompatScript := launch.PreStartScript
+	launch.PreStartScript = appendAscendRuntimeCompatibilityScript(compat, launch.PreStartScript)
+	if err := preflightResolvedLaunch(launch, params, input.Image, compat, preCompatScript, manualScript); err != nil {
+		return ResolvedLaunch{}, fmt.Errorf("resolve launch: %w", err)
+	}
 	// A create request with automatic placement has no GPU count yet. Validate
 	// the concrete topology after scheduling; applying the temporary builder TP
 	// of one here would reject a valid multi-GPU template before placement.

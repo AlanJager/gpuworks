@@ -77,6 +77,27 @@ const (
 	// smaller than the CPU KV tier it enables. The engine keeps the whole tier
 	// in /dev/shm, so such a container can never start.
 	ErrorShmBelowKVCPUTier = "SHM_BELOW_KV_CPU_TIER"
+	// ErrorAscendV1CompatMultiNode reports the node-local V1 compatibility
+	// rendezvous being asked to coordinate ranks across nodes.
+	ErrorAscendV1CompatMultiNode = "ASCEND_V1_COMPAT_MULTI_NODE"
+	// ErrorAscendV1CompatPreStart reports a preparation hook whose ordering or
+	// image edits cannot be composed safely with the V1 compatibility patch.
+	ErrorAscendV1CompatPreStart = "ASCEND_V1_COMPAT_PRE_START"
+	// ErrorAscendCompatPreStartArgv reports argv preparation on any Ascend
+	// compatibility overlay whose script is the only preparation form it can add.
+	ErrorAscendCompatPreStartArgv = "ASCEND_COMPAT_PRE_START_ARGV"
+	// ErrorPreStartScriptTooLarge reports a merged preparation script above the
+	// agent's 64 KiB wrapper limit.
+	ErrorPreStartScriptTooLarge = "PRE_START_SCRIPT_TOO_LARGE"
+	// ErrorAscendCompatManualUnsupported reports opaque manual shell on an image
+	// whose runner and preparation must be known before applying compatibility.
+	ErrorAscendCompatManualUnsupported = "ASCEND_COMPAT_MANUAL_UNSUPPORTED"
+	// ErrorEngramManualUnsupported reports manual shell containing Engram
+	// configuration whose effective shared-memory requirements cannot be proven.
+	ErrorEngramManualUnsupported = "ENGRAM_MANUAL_UNSUPPORTED"
+	// ErrorEngramSharedMemoryRuntime reports Engram host shared memory on a
+	// runtime that cannot provide the required container semantics.
+	ErrorEngramSharedMemoryRuntime = "ENGRAM_SHARED_MEMORY_RUNTIME_UNSUPPORTED"
 	// ErrorNoStoragePath reports two nodes that share no network allowed to
 	// carry storage sync, so one cannot copy an image or model from the other.
 	ErrorNoStoragePath = "NO_STORAGE_PATH"

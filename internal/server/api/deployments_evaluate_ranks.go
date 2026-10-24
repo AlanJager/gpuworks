@@ -149,7 +149,7 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,
 	}
 	res, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
-		Engine: eng, Params: params,
+		Engine: eng, Params: params, Image: env.rankSelection.Image,
 		Entrypoint:   templateEntrypoint,
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, ComponentMounts: componentMounts, APIContract: selection.APIContract,

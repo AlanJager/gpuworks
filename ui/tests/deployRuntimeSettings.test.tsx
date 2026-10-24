@@ -572,3 +572,34 @@ test("the SHM_BELOW_KV_CPU_TIER message interpolates the params the server sends
   assert.doesNotMatch(text(zhLocale), /\{\{/, "every parameter is interpolated");
   assert.doesNotMatch(text(commonLocale), /\{\{/);
 });
+
+test("Ascend compatibility errors interpolate the params in both locales", () => {
+  const zhLocale = JSON.parse(
+    fs.readFileSync(
+      new URL("../src/i18n/locales/zh/common.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const cases = [
+    { code: "ASCEND_V1_COMPAT_MULTI_NODE", params: { nnodes: 2 } },
+    { code: "ASCEND_V1_COMPAT_PRE_START", params: { field: "pre_start_script" } },
+    { code: "ENGRAM_SHARED_MEMORY_RUNTIME_UNSUPPORTED", params: { runtime: "udocker", flag: "--engram-config" } },
+    { code: "ASCEND_COMPAT_PRE_START_ARGV", params: { field: "pre_start_argv", image: "quay.io/ascend/vllm-ascend:v0.30.0rc2-a3" } },
+    { code: "PRE_START_SCRIPT_TOO_LARGE", params: { bytes: 65537, max_bytes: 65536 } },
+    { code: "ASCEND_COMPAT_MANUAL_UNSUPPORTED", params: { image: "quay.io/ascend/vllm-ascend:v0.30.0rc2-a3", runtime: "udocker" } },
+    { code: "ENGRAM_MANUAL_UNSUPPORTED", params: { flag: "--engram-config" } },
+  ];
+  for (const { code, params } of cases) {
+    for (const locale of [commonLocale, zhLocale]) {
+      let text = locale.apiError[code];
+      assert.ok(text, `${code} must have a localized message`);
+      for (const [key, value] of Object.entries(params)) {
+        text = text.replaceAll(`{{${key}}}`, String(value));
+      }
+      assert.doesNotMatch(text, /\{\{/, `${code} has an unexpanded parameter`);
+      for (const value of Object.values(params)) {
+        assert.ok(text.includes(String(value)), `${code} must include ${value}`);
+      }
+    }
+  }
+});

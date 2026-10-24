@@ -172,7 +172,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 		return plan, err
 	}
 	resolved, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{
-		Engine: engine, Params: params,
+		Engine: engine, Params: params, Image: req.Source.Image,
 		ContainerOverrides: req.Source.Overrides, ComponentModelMount: componentModelMount(req),
 		Entrypoint: req.Selection.Entrypoint, PreStartArgv: req.Selection.PreStartArgv,
 		PreStartScript: req.Selection.PreStartScript, RuntimeAssets: req.Selection.RuntimeAssets,
