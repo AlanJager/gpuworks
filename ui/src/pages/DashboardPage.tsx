@@ -101,7 +101,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <PageHeader title={t("title")} description={t("description")} breadcrumb={[t("title")]} />
+      <PageHeader title={t("title")} description={t("description")} />
       <Alert
         type={issueCount > 0 ? "warning" : "success"}
         showIcon

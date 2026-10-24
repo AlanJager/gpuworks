@@ -120,33 +120,34 @@ export default function AnalyticsPage({ now = Date.now }: { now?: () => number }
   const props: TabProps = { from, to, granularity, deployment, tz, reload, search, setSearch };
   return (
     <div>
-      <PageHeader title={t("title")} breadcrumb={[t("title")]} />
-      <Toolbar
-        range={range}
-        from={from}
-        to={to}
-        tz={tz}
-        granularity={granularity}
-        hourAllowed={hourAllowed}
-        retention={
-          <Trans
-            t={t}
-            i18nKey="subtitle"
-            values={{ hourly: hourDays ?? "—", daily: dailyDays ?? "—" }}
-            components={{ settings: <Link to="/settings#data-retention" /> }}
+      <PageHeader title={t("title")} toolbar={
+          <Toolbar
+            range={range}
+            from={from}
+            to={to}
+            tz={tz}
+            granularity={granularity}
+            hourAllowed={hourAllowed}
+            retention={
+              <Trans
+                t={t}
+                i18nKey="subtitle"
+                values={{ hourly: hourDays ?? "—", daily: dailyDays ?? "—" }}
+                components={{ settings: <Link to="/settings#data-retention" /> }}
+              />
+            }
+            deployments={deployments}
+            deployment={deployment}
+            deploymentDisabled={tab === "gpus"}
+            exportDisabled={!exportModel}
+            onQuick={(key) => { setAnchor(now()); setSearch({ range: key, from: undefined, to: undefined }); }}
+            onCustom={(a, b) => setSearch({ range: "custom", from: String(a), to: String(b) })}
+            onGranularity={(g) => setSearch({ gran: g })}
+            onDeployment={(id) => setSearch({ deployment: id === undefined ? undefined : String(id) })}
+            onExport={exportNow}
+            onRefresh={() => { setAnchor(now()); setReload((n) => n + 1); }}
           />
-        }
-        deployments={deployments}
-        deployment={deployment}
-        deploymentDisabled={tab === "gpus"}
-        exportDisabled={!exportModel}
-        onQuick={(key) => { setAnchor(now()); setSearch({ range: key, from: undefined, to: undefined }); }}
-        onCustom={(a, b) => setSearch({ range: "custom", from: String(a), to: String(b) })}
-        onGranularity={(g) => setSearch({ gran: g })}
-        onDeployment={(id) => setSearch({ deployment: id === undefined ? undefined : String(id) })}
-        onExport={exportNow}
-        onRefresh={() => { setAnchor(now()); setReload((n) => n + 1); }}
-      />
+      } />
       <Tabs activeKey={tab} onChange={changeTab} items={TAB_KEYS.map((key) => ({ key, label: t(`tabs.${key}`) }))} />
       <ExportContext.Provider value={exportRegistration}>
         {!retentionSettled ? <Skeleton active paragraph={{ rows: 8 }} /> : (

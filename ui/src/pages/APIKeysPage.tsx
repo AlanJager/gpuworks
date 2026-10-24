@@ -129,7 +129,6 @@ export default function APIKeysPage() {
       <PageHeader
         title={t("title")}
         description={t("description")}
-        breadcrumb={[t("breadcrumb.platform"), t("title")]}
       />
       <Card
         title={t("gateway.title")}

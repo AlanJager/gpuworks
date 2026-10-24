@@ -109,7 +109,6 @@ function ServiceMonitorPageContent() {
   return (
     <div>
       <PageHeader
-        className="page-header-wrap"
         title={data?.deployment.name ?? `#${deploymentId}`}
         description={
           data
@@ -122,15 +121,15 @@ function ServiceMonitorPageContent() {
               })
             : undefined
         }
-        breadcrumb={[t("overview.title"), data?.deployment.name ?? `#${deploymentId}`]}
+        parents={[<Link key="list" to="/monitor">{t("overview.title")}</Link>]}
+        toolbar={<TimeRangeControl />}
         extra={
-          <Space wrap style={{ justifyContent: "flex-end" }}>
-            <TimeRangeControl />
+          <>
             <Button onClick={() => navigate("/monitor")}>{t("deployment.backToMonitor")}</Button>
             <Link to={`/deployments?deployment=${deploymentId}`}>
               <Button type="primary">{t("deployment.goToDeployment")}</Button>
             </Link>
-          </Space>
+          </>
         }
       />
 

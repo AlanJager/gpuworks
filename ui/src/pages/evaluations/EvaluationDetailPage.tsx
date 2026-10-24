@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftOutlined, CopyOutlined, StopOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Col, Popconfirm, Progress, Row, Segmented, Space, Spin, Typography, message } from "antd";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, useEventPayload, usePolling, type BenchmarkCurveResponse, type BenchmarkCurveSample, type BenchmarkPoint, type BenchmarkRun, type MetricPoint, type MetricSeries } from "../../api";
 import PageHeader from "../../components/PageHeader";
@@ -84,7 +84,7 @@ export default function EvaluationDetailPage() {
 	const reusesSamples = benchmarkReusesSamples(run, datasetProfile);
 
 	return <div>
-		<PageHeader title={run.name || `Run #${run.id}`} description={`${localizedText(meta.modes.find((item) => item.value === run.mode)?.label, language) || run.mode} · ${run.model}`} breadcrumb={[t("list.breadcrumb.services"), t("list.breadcrumb.evaluations"), run.name || `#${run.id}`]} extra={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button><BenchmarkReportMenu runID={run.id} /><Button icon={<CopyOutlined />} onClick={() => setWizardPreset({ sourceRun: run })}>{t("detail.rerun")}</Button>{active && <Popconfirm title={t("detail.cancelTitle")} description={t("detail.cancelDescription")} onConfirm={async () => { try { await api.cancelBenchmark(run.id); await runQuery.refetch(); message.success(t("detail.canceled")); } catch (error) { message.error((error as Error).message); } }}><Button danger icon={<StopOutlined />}>{t("detail.cancel")}</Button></Popconfirm>}</Space>} />
+		<PageHeader title={run.name || `Run #${run.id}`} description={`${localizedText(meta.modes.find((item) => item.value === run.mode)?.label, language) || run.mode} · ${run.model}`} parents={[<Link key="list" to="/evaluations">{t("list.breadcrumb.evaluations")}</Link>]} extra={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button><BenchmarkReportMenu runID={run.id} /><Button icon={<CopyOutlined />} onClick={() => setWizardPreset({ sourceRun: run })}>{t("detail.rerun")}</Button>{active && <Popconfirm title={t("detail.cancelTitle")} description={t("detail.cancelDescription")} onConfirm={async () => { try { await api.cancelBenchmark(run.id); await runQuery.refetch(); message.success(t("detail.canceled")); } catch (error) { message.error((error as Error).message); } }}><Button danger icon={<StopOutlined />}>{t("detail.cancel")}</Button></Popconfirm>}</Space>} />
 			<Space direction="vertical" size={16} style={{ width: "100%" }}>
 				<VerdictCard run={run} meta={meta} onRerun={(maxConcurrency) => setWizardPreset({ sourceRun: run, maxConcurrency })} />
 				{run.warnings?.map((warning) => <Alert key={warning} type="warning" showIcon message={t(`benchmarkWarning.${warning}`, { defaultValue: warning })} />)}

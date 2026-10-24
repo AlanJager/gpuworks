@@ -86,11 +86,11 @@ function MonitorPageContent() {
 
   return (
     <div>
-      <PageHeader className="page-header-wrap" title={t("overview.title")} description={t("overview.description")} breadcrumb={[t("overview.title")]} extra={
-          <Space size={12} wrap style={{ justifyContent: "flex-end" }}>
+      <PageHeader title={t("overview.title")} description={t("overview.description")} toolbar={
+          <>
             <RequestLookup />
             <TimeRangeControl />
-          </Space>
+          </>
         }
       />
 

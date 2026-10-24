@@ -240,10 +240,6 @@ export default function DeployPage() {
             : t("page.title")
         }
         description={t("page.description")}
-        breadcrumb={[
-          t("page.breadcrumb.services"),
-          t("page.breadcrumb.deploy"),
-        ]}
         extra={
           <Segmented
             value={deployMode}
