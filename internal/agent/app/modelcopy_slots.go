@@ -46,7 +46,11 @@ func (n *NodeRuntime) beginModelFileIntent(task proto.ModelFileTask) modelFileIn
 	s := n.storage
 	s.intentMu.Lock()
 	defer s.intentMu.Unlock()
-	if generation, ok := s.latestGeneration[task.Key]; ok && sameModelFileOperation(s.latestTasks[task.Key], task) {
+	s.mu.RLock()
+	generation, ok := s.latestGeneration[task.Key]
+	latestTask := s.latestTasks[task.Key]
+	s.mu.RUnlock()
+	if ok && sameModelFileOperation(latestTask, task) {
 		// A repeated desired-state replay is the same operation, not a new
 		// generation. In particular, it must not silence a transfer in flight.
 		intent.generation = generation
@@ -95,6 +99,29 @@ func (n *NodeRuntime) clearModelFileWaiting(intent modelFileIntent) {
 	s.mu.Unlock()
 }
 
+// dropModelFileWaiting also fences snapshots of the parked generation without
+// fencing a newer operation for the same key.
+func (n *NodeRuntime) dropModelFileWaiting(intent modelFileIntent) {
+	if n.storage == nil || intent.generation == 0 {
+		return
+	}
+	s := n.storage
+	key := intent.task.Key
+	s.mu.Lock()
+	if s.waitingGeneration[key] == intent.generation {
+		delete(s.waiting, key)
+		delete(s.waitingGeneration, key)
+	}
+	if waiting := s.writerWaiting[key]; waiting.generation == intent.generation {
+		delete(s.writerWaiting, key)
+	}
+	if s.latestGeneration[key] == intent.generation {
+		delete(s.latestGeneration, key)
+		delete(s.latestTasks, key)
+	}
+	s.mu.Unlock()
+}
+
 func (n *NodeRuntime) parkStorageModelFile(intent modelFileIntent) bool {
 	if n.storage == nil {
 		return false
@@ -132,6 +159,8 @@ func (n *NodeRuntime) parkWriterModelFile(intent modelFileIntent) bool {
 	}
 	return true
 }
+
+var parkWriterModelFileForIntent = (*NodeRuntime).parkWriterModelFile
 
 func (n *NodeRuntime) reconcileParkedModelFile(ctx context.Context, intent modelFileIntent) {
 	if intent.generation == 0 {
@@ -204,13 +233,13 @@ func (n *NodeRuntime) copyTaskRunningIntent(intent modelFileIntent) bool {
 	active := n.downloading[task.Key]
 	if active != nil && active.copy && active.transferID != task.TransferID {
 		active.cancel()
+		parkWriterModelFileForIntent(n, intent)
 		n.dlMu.Unlock()
-		n.parkWriterModelFile(intent)
 		return true
 	}
 	if active != nil && !active.copy && task.Acquisition == proto.ModelAcquireCopy {
+		parkWriterModelFileForIntent(n, intent)
 		n.dlMu.Unlock()
-		n.parkWriterModelFile(intent)
 		return true
 	}
 	n.dlMu.Unlock()

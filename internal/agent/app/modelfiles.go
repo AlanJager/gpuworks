@@ -135,8 +135,8 @@ func (n *NodeRuntime) reconcileModelFileIntent(ctx context.Context, intent model
 	}
 	copyWriter := mf.Acquisition == proto.ModelAcquireCopy
 	if (copyWriter || mf.Acquisition == proto.ModelAcquireDownload) && !n.writerSlotAvailableLocked(mf.Key, absTarget, copyWriter) {
+		parkWriterModelFileForIntent(n, intent)
 		n.dlMu.Unlock()
-		n.parkWriterModelFile(intent)
 		return
 	}
 	if copyWriter {

@@ -167,6 +167,68 @@ func TestRepeatedIntentKeepsTheActiveGeneration(t *testing.T) {
 	}
 }
 
+func TestCopyStopConcurrentWithStateReplay(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		fullSync bool
+	}{
+		{name: "full sync", fullSync: true},
+		{name: "update"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			r := newStorageTestRuntime(t)
+			task := modelWriterTask("stop-race", "stop/race", proto.ModelAcquireCopy, "", "")
+			task.DesiredState = "absent"
+			raw := mustRaw(t, proto.ModelCopyStopParams{Key: task.Key, TransferID: task.TransferID})
+			const rounds = 500
+			start := make(chan struct{})
+			errs := make(chan error, 1)
+			var wg sync.WaitGroup
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				<-start
+				for i := 0; i < rounds; i++ {
+					if _, err := r.stopModelCopy(context.Background(), raw); err != nil {
+						errs <- fmt.Errorf("stop: %w", err)
+						return
+					}
+				}
+			}()
+			go func() {
+				defer wg.Done()
+				<-start
+				for i := 0; i < rounds; i++ {
+					if test.fullSync {
+						r.OnStateSync(context.Background(), proto.DesiredState{ModelFiles: []proto.ModelFileTask{task}})
+					} else {
+						r.OnStateUpdate(context.Background(), proto.StateUpdate{ModelFiles: []proto.ModelFileTask{task}})
+					}
+				}
+			}()
+			close(start)
+			wg.Wait()
+			select {
+			case err := <-errs:
+				t.Fatal(err)
+			default:
+			}
+
+			r.storage.mu.RLock()
+			generation, hasGeneration := r.storage.latestGeneration[task.Key]
+			latest, hasLatest := r.storage.latestTasks[task.Key]
+			r.storage.mu.RUnlock()
+			if hasGeneration != hasLatest || (hasGeneration && (generation == 0 || latest.Key != task.Key)) {
+				t.Fatalf("inconsistent latest intent: generation=%d/%v task=%+v/%v", generation, hasGeneration, latest, hasLatest)
+			}
+			old := proto.ModelFileTask{Key: task.Key, Acquisition: proto.ModelAcquireCopy, TransferID: task.TransferID}
+			if !r.copyTaskRunning(old) {
+				t.Fatal("stopped transfer lost its fence during concurrent state replay")
+			}
+		})
+	}
+}
+
 func TestCopyReplayUsesTransferIdentity(t *testing.T) {
 	r := newStorageTestRuntime(t)
 	source := filepath.Join(t.TempDir(), "source")

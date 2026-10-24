@@ -162,6 +162,110 @@ func newModelDownloadFixture(t *testing.T) (string, *atomic.Int64) {
 	return server.URL, &requests
 }
 
+func TestContenderRegistrationCannotMissOwnerWake(t *testing.T) {
+	tests := []struct {
+		name      string
+		sameKey   bool
+		ownerCopy bool
+	}{
+		{name: "download to copy", sameKey: true},
+		{name: "new transfer ID", sameKey: true, ownerCopy: true},
+		{name: "overlapping path"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := newStorageTestRuntime(t)
+			source := filepath.Join(t.TempDir(), "source")
+			writeModel(t, source, "weights")
+			task := modelWriterTask("contender", "org/model", proto.ModelAcquireCopy, source, "")
+			ownerKey, ownerTarget := "owner", filepath.Join(r.ModelsRoot(), "org")
+			if test.sameKey {
+				ownerKey = task.Key
+				ownerTarget = filepath.Join(r.ModelsRoot(), "org", "model")
+			}
+			owner := startBlockedModelWriter(t, r, ownerKey, ownerTarget, test.ownerCopy)
+
+			original := parkWriterModelFileForIntent
+			atPark, allowPark := make(chan struct{}), make(chan struct{})
+			var parkOnce, allowOnce sync.Once
+			parkWriterModelFileForIntent = func(n *NodeRuntime, intent modelFileIntent) bool {
+				if intent.task.Key != task.Key {
+					return original(n, intent)
+				}
+				parkOnce.Do(func() { close(atPark) })
+				<-allowPark
+				return original(n, intent)
+			}
+			allow := func() { allowOnce.Do(func() { close(allowPark) }) }
+			t.Cleanup(func() {
+				allow()
+				parkWriterModelFileForIntent = original
+			})
+			reconciled := make(chan struct{})
+			go func() {
+				r.reconcileModelFile(context.Background(), task)
+				close(reconciled)
+			}()
+			select {
+			case <-atPark:
+			case <-time.After(5 * time.Second):
+				t.Fatal("contender did not reach writer registration")
+			}
+
+			// If registration released dlMu, finish the owner and its empty wake
+			// before letting the contender park. Atomic registration instead keeps
+			// the owner blocked until the contender is visible to that wake.
+			ownerCanFinishFirst := r.dlMu.TryLock()
+			if ownerCanFinishFirst {
+				r.dlMu.Unlock()
+			}
+			ownerDone := make(chan struct{})
+			go func() {
+				owner.finish(t)
+				close(ownerDone)
+			}()
+			if ownerCanFinishFirst {
+				select {
+				case <-ownerDone:
+				case <-time.After(5 * time.Second):
+					t.Fatal("owner did not finish before contender registration")
+				}
+			}
+			allow()
+			select {
+			case <-ownerDone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("owner did not finish after contender registration")
+			}
+			select {
+			case <-reconciled:
+			case <-time.After(5 * time.Second):
+				t.Fatal("contender did not return from writer registration")
+			}
+
+			got := r.waitFile(t, task.Key, proto.MFPresent)
+			if got.State != proto.MFPresent {
+				t.Fatalf("contender did not run after its owner returned: %+v", got)
+			}
+			data, err := os.ReadFile(filepath.Join(r.ModelsRoot(), "org", "model", "model.safetensors"))
+			if err != nil || string(data) != "weights" {
+				t.Fatalf("contender contents = %q, err=%v", data, err)
+			}
+			r.dlMu.Lock()
+			active := r.downloading[task.Key]
+			r.dlMu.Unlock()
+			if active != nil {
+				select {
+				case <-active.done:
+				case <-time.After(5 * time.Second):
+					t.Fatal("contender did not unregister")
+				}
+			}
+			assertNoModelTaskWaiting(t, r)
+		})
+	}
+}
+
 func TestReconcileParksOverlappingWriters(t *testing.T) {
 	relations := []struct {
 		name             string

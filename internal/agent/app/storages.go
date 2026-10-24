@@ -53,6 +53,8 @@ type storageRuntime struct {
 	// Owner return retries them directly; non-zero storages are checked again.
 	writerWaiting map[string]modelFileIntent
 	// latestGeneration fences retries from both queues against newer intents.
+	// Both latest maps and nextGeneration are guarded by mu; intentMu serializes
+	// intent replacement and its progress-gate discard.
 	latestGeneration map[string]uint64
 	latestTasks      map[string]proto.ModelFileTask
 	intentMu         sync.Mutex
@@ -202,10 +204,16 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 	}
 	waiting := make([]modelFileIntent, 0, len(s.waiting))
 	for key, task := range s.waiting {
-		if st, ok := s.statuses[task.StorageID]; ok && st.State == storagemount.StateReady {
-			waiting = append(waiting, modelFileIntent{task: task, generation: s.waitingGeneration[key]})
+		generation := s.waitingGeneration[key]
+		if generation != 0 && s.latestGeneration[key] != generation {
 			delete(s.waiting, key)
 			delete(s.waitingGeneration, key)
+			continue
+		}
+		if st, ok := s.statuses[task.StorageID]; ok && st.State == storagemount.StateReady {
+			// Reconcile removes or re-parks the queued intent. Until then it must
+			// remain visible so eviction can fence this snapshot.
+			waiting = append(waiting, modelFileIntent{task: task, generation: generation})
 		}
 	}
 	s.mu.Unlock()
@@ -365,7 +373,7 @@ func (n *NodeRuntime) dropWaitingUnder(target string) {
 			if intent.generation == 0 {
 				n.dropWaiting(task.Key)
 			} else {
-				n.clearModelFileWaiting(intent)
+				n.dropModelFileWaiting(intent)
 			}
 		}
 	}
