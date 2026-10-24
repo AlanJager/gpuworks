@@ -129,3 +129,9 @@ parent traversal, and a trailing slash. Run it on the target architecture;
 an amd64 pass cannot certify the ARM64 syscall-number table. The build runs
 this gate for each variant and records it in the evidence manifest. The
 asset unit test also runs it against the embedded binary on native Linux.
+It probes `faccessat2` directly on the host first: only host `ENOSYS` selects
+`--realpath-only`, so older kernels still exercise guest path resolution.
+If the host supports the syscall, all direct-access assertions remain
+mandatory; an `ENOSYS` from the guest fails the gate. Other host errors fail
+rather than reducing coverage. Per-process seccomp fixtures cover all three
+outcomes without changing the host. The build-time gate remains strict.
