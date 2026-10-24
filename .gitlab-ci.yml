@@ -541,7 +541,23 @@ core-compshare-offline-contracts:
   script:
     # The zstd CLI packs the embedded agents ~10% smaller than the Go
     # encoder make falls back to; a mirror hiccup only costs that, not the build.
-    - (apt-get update -qq && apt-get install -y -qq zstd >/dev/null) || echo "zstd unavailable; embedding the agents with the Go encoder"
+    # The runners reach deb.debian.org so poorly that apt alone took 40 s to
+    # 9 min per job (and usually failed anyway) against a ~15 s build. So the
+    # .deb is kept in the persistent host cache, a miss goes through the Aliyun
+    # mirror, and short timeouts cap a mirror outage at seconds. The pinned
+    # image already ships libzstd/liblz4/liblzma, so the deb installs alone.
+    - |
+      ZSTD_DEBS=/host-go-cache/tools/apt-zstd
+      if ! ls "$ZSTD_DEBS"/zstd_*.deb >/dev/null 2>&1; then
+        sed -i 's|http://deb.debian.org|http://mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+        apt_opts="-qq -o Acquire::http::Timeout=10 -o Acquire::Retries=1"
+        if apt-get $apt_opts update && apt-get $apt_opts install -y --download-only --no-install-recommends zstd >/dev/null; then
+          mkdir -p "$ZSTD_DEBS" && tmp=$(mktemp -d "$ZSTD_DEBS/.tmp.XXXXXX") \
+            && cp /var/cache/apt/archives/zstd_*.deb "$tmp/" \
+            && mv -f "$tmp"/zstd_*.deb "$ZSTD_DEBS/"; rm -rf "$tmp"
+        fi
+      fi
+      dpkg -i "$ZSTD_DEBS"/zstd_*.deb >/dev/null 2>&1 || dpkg -i /var/cache/apt/archives/zstd_*.deb >/dev/null 2>&1 || echo "zstd unavailable; embedding the agents with the Go encoder"
     - make release-packages
   artifacts:
     paths:
