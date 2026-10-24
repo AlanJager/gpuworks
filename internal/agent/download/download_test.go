@@ -253,6 +253,38 @@ func TestResumeMultiConnectionWithState(t *testing.T) {
 	assertCleanedUp(t, dest)
 }
 
+func TestCompletedStateWithoutPartDownloadsEveryByte(t *testing.T) {
+	size := 400 * 1024
+	data := pattern(size)
+	srv := rangeServer(t, data)
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "model.bin")
+	statePath := dest + ".part.state"
+	mid := int64(size / 2)
+	writeState(statePath, downloadState{
+		URL:    srv.URL,
+		Size:   int64(size),
+		Chunks: []int64{mid, int64(size)},
+	})
+
+	if err := Download(context.Background(), Options{
+		URL:         srv.URL,
+		Dest:        dest,
+		Concurrency: 2,
+	}, nil); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum(got) != sum(data) {
+		t.Fatalf("orphaned state produced wrong content, len=%d", len(got))
+	}
+	assertCleanedUp(t, dest)
+}
+
 func TestRateLimit(t *testing.T) {
 	data := pattern(48 * 1024) // 48 KiB
 	srv := rangeServer(t, data)

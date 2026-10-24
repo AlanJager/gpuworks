@@ -47,7 +47,14 @@ type storageRuntime struct {
 	// waiting holds model-file tasks for storages that were not ready yet;
 	// they are retried after every check. A task leaves it when it runs, is
 	// withdrawn or evicted, or when its storage is removed.
-	waiting map[string]proto.ModelFileTask
+	waiting           map[string]proto.ModelFileTask
+	waitingGeneration map[string]uint64
+	// writerWaiting holds tasks blocked by another writer or the copy limit.
+	// Owner return retries them directly; non-zero storages are checked again.
+	writerWaiting map[string]modelFileIntent
+	// latestGeneration fences retries from both queues against newer intents.
+	latestGeneration map[string]uint64
+	nextGeneration   uint64
 	// incomingSwept holds the storages whose leftover upload staging this
 	// process already swept once (sweepIncomingOnce).
 	incomingSwept map[uint]bool
@@ -70,6 +77,7 @@ func newStorageRuntime(stateDir string, busy func(string) bool) *storageRuntime 
 		}),
 		tasks: map[uint]proto.StorageTask{}, statuses: map[uint]storagemount.Status{},
 		heartbeat: map[uint]time.Time{}, hbInvalid: map[uint]bool{}, waiting: map[string]proto.ModelFileTask{},
+		waitingGeneration: map[string]uint64{}, writerWaiting: map[string]modelFileIntent{}, latestGeneration: map[string]uint64{},
 		incomingSwept: map[uint]bool{}, trigger: make(chan bool, 1),
 	}
 }
@@ -112,6 +120,16 @@ func (n *NodeRuntime) applyStorages(tasks []proto.StorageTask) {
 	for key, task := range s.waiting {
 		if _, ok := s.tasks[task.StorageID]; !ok && task.StorageID != 0 {
 			delete(s.waiting, key)
+			delete(s.waitingGeneration, key)
+			delete(s.latestGeneration, key)
+		}
+	}
+	for key, intent := range s.writerWaiting {
+		if _, ok := s.tasks[intent.task.StorageID]; !ok && intent.task.StorageID != 0 {
+			delete(s.writerWaiting, key)
+			if s.latestGeneration[key] == intent.generation {
+				delete(s.latestGeneration, key)
+			}
 		}
 	}
 	for id := range s.hbInvalid {
@@ -178,11 +196,12 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 	if changed {
 		s.reported = report
 	}
-	waiting := make([]proto.ModelFileTask, 0, len(s.waiting))
+	waiting := make([]modelFileIntent, 0, len(s.waiting))
 	for key, task := range s.waiting {
 		if st, ok := s.statuses[task.StorageID]; ok && st.State == storagemount.StateReady {
-			waiting = append(waiting, task)
+			waiting = append(waiting, modelFileIntent{task: task, generation: s.waitingGeneration[key]})
 			delete(s.waiting, key)
+			delete(s.waitingGeneration, key)
 		}
 	}
 	s.mu.Unlock()
@@ -191,8 +210,8 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 	}
 	n.refreshHeartbeats()
 	n.sweepIncomingOnce()
-	for _, task := range waiting {
-		n.reconcileModelFile(ctx, task)
+	for _, intent := range waiting {
+		n.reconcileParkedModelFile(ctx, intent)
 	}
 }
 
@@ -287,8 +306,8 @@ func (n *NodeRuntime) storageDo(storageID uint, op string, timeout time.Duration
 
 // waitForStorage parks a task until its storage is ready and asks for a check
 // now; the check retries it.
-func (n *NodeRuntime) waitForStorage(task proto.ModelFileTask) {
-	if n.parkTask(task) {
+func (n *NodeRuntime) waitForStorage(intent modelFileIntent) {
+	if n.parkStorageModelFile(intent) {
 		select {
 		case n.storage.trigger <- false:
 		default:
@@ -296,17 +315,9 @@ func (n *NodeRuntime) waitForStorage(task proto.ModelFileTask) {
 	}
 }
 
-// parkTask parks a task until a later storage check finds its storage ready,
-// without asking for a check: for tasks that stopped on something a check
-// cannot fix at once, where an immediate retry would only spin.
+// parkTask parks a task until a later storage check finds its storage ready.
 func (n *NodeRuntime) parkTask(task proto.ModelFileTask) bool {
-	if n.storage == nil {
-		return false
-	}
-	n.storage.mu.Lock()
-	n.storage.waiting[task.Key] = task
-	n.storage.mu.Unlock()
-	return true
+	return n.parkStorageModelFile(n.beginModelFileIntent(task))
 }
 
 // dropWaiting forgets a parked task, so it does not run when its storage
@@ -317,6 +328,9 @@ func (n *NodeRuntime) dropWaiting(key string) {
 	}
 	n.storage.mu.Lock()
 	delete(n.storage.waiting, key)
+	delete(n.storage.waitingGeneration, key)
+	delete(n.storage.writerWaiting, key)
+	delete(n.storage.latestGeneration, key)
 	n.storage.mu.Unlock()
 }
 
@@ -327,19 +341,27 @@ func (n *NodeRuntime) dropWaitingUnder(target string) {
 		return
 	}
 	n.storage.mu.RLock()
-	parked := make([]proto.ModelFileTask, 0, len(n.storage.waiting))
-	for _, task := range n.storage.waiting {
-		parked = append(parked, task)
+	parked := make([]modelFileIntent, 0, len(n.storage.waiting)+len(n.storage.writerWaiting))
+	for key, task := range n.storage.waiting {
+		parked = append(parked, modelFileIntent{task: task, generation: n.storage.waitingGeneration[key]})
+	}
+	for _, intent := range n.storage.writerWaiting {
+		parked = append(parked, intent)
 	}
 	n.storage.mu.RUnlock()
-	for _, task := range parked {
+	for _, intent := range parked {
+		task := intent.task
 		root, _, err := n.storageRoot(task)
 		if err != nil {
 			continue
 		}
 		abs, err := resolveStorageTarget(root, taskTarget(task))
 		if err == nil && (pathWithin(target, abs) || pathWithin(abs, target)) {
-			n.dropWaiting(task.Key)
+			if intent.generation == 0 {
+				n.dropWaiting(task.Key)
+			} else {
+				n.clearModelFileWaiting(intent)
+			}
 		}
 	}
 }
@@ -369,6 +391,17 @@ func (n *NodeRuntime) pruneWaiting(desired []proto.ModelFileTask) {
 	for key := range n.storage.waiting {
 		if !listed[key] {
 			delete(n.storage.waiting, key)
+			delete(n.storage.waitingGeneration, key)
+		}
+	}
+	for key := range n.storage.writerWaiting {
+		if !listed[key] {
+			delete(n.storage.writerWaiting, key)
+		}
+	}
+	for key := range n.storage.latestGeneration {
+		if !listed[key] {
+			delete(n.storage.latestGeneration, key)
 		}
 	}
 	n.storage.mu.Unlock()

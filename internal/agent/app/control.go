@@ -116,6 +116,9 @@ func (n *NodeRuntime) reportModelFileContext(ctx context.Context, st proto.Model
 	}
 	epoch := n.captureObservationConnection()
 	n.progress.report(modelFileProgressKey(st.Key), milestone, terminal, func() {
+		if intent, ok := modelFileIntentFromContext(ctx); ok && !n.modelFileIntentCurrent(intent) {
+			return
+		}
 		if ctx.Err() != nil || (st.Acquisition == proto.ModelAcquireCopy && epoch != n.captureObservationConnection()) {
 			return
 		}

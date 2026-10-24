@@ -134,7 +134,7 @@ func TestBlockedCopyRetainsSlotAndRejectsOverlappingTargets(t *testing.T) {
 		t.Fatal("canceled worker lost its slot")
 	}
 	r.dlMu.Lock()
-	available := r.copySlotAvailableLocked(filepath.Join(target, "nested"))
+	available := r.writerSlotAvailableLocked("other", filepath.Join(target, "nested"), true)
 	active := r.downloading["blocked"]
 	r.dlMu.Unlock()
 	if available {
@@ -143,7 +143,7 @@ func TestBlockedCopyRetainsSlotAndRejectsOverlappingTargets(t *testing.T) {
 	close(release)
 	<-active.done
 	r.dlMu.Lock()
-	available = r.copySlotAvailableLocked(target)
+	available = r.writerSlotAvailableLocked("other", target, true)
 	r.dlMu.Unlock()
 	if !available {
 		t.Fatal("returned worker leaked its slot")
