@@ -90,7 +90,7 @@ test("hovering a number breaks it into input, cache hits and output", async () =
   assert.ok(await screen.findByText(text));
 });
 
-test("a number opens that key in Operations analytics over the same period", async () => {
+test("a number opens that key in Usage analytics over the same period", async () => {
   const user = mount(async () => fx.keyUsage);
   await screen.findByText("live-app");
   const week = await within(cell("gw-live00000", k.table.tokens7d)).findByRole("link");

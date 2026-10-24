@@ -55,7 +55,7 @@ type App struct {
 	hub      *hub.Hub
 	ctrl     *controller.Controller
 	obs      *observability
-	ops      *opsStats // operations analytics' long-term statistics
+	ops      *opsStats // usage analytics' long-term statistics
 	recovery *recovery.Recoverer
 	// proxyAcct is proxy request accounting (see accounting.go in the proxy
 	// package).

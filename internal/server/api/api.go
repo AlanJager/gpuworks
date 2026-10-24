@@ -199,7 +199,7 @@ type Deps struct {
 	UsageReport UsageReport
 	Notices     Notices
 
-	// Analytics is operations analytics: the data retention every store is
+	// Analytics is usage analytics: the data retention every store is
 	// kept under (analytics.go). Nil answers 404.
 	Analytics Analytics
 

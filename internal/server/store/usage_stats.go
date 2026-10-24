@@ -14,7 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/rollup"
 )
 
-// The token usage of operations analytics: what every API key used on every
+// The token usage of usage analytics: what every API key used on every
 // deployment, per hour for the recent past and per day for long after
 // (ADR 0055). It is what customers are
 // billed by, so it lives here, backed up and migrated with the platform,

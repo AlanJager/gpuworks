@@ -32,6 +32,7 @@ Object.defineProperties(dom.window.HTMLElement.prototype, {
 class ShimPort {
   onmessage: ((ev: { data: unknown }) => void) | null = null;
   postMessage(data: unknown) { setTimeout(() => this.onmessage?.({ data }), 0); }
+  close() {}
 }
 class ShimMessageChannel { port1 = new ShimPort(); port2 = new ShimPort(); }
 Object.defineProperty(globalThis, "MessageChannel", { value: ShimMessageChannel, configurable: true });

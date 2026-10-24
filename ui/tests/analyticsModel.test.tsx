@@ -6,7 +6,7 @@ import { analyticsQueryString } from "../src/analyticsApi.ts";
 import { buildCsv } from "../src/pages/analytics/csv.ts";
 import { heatData, heatHeight, heatScale, lineOption, shadeArea, stackedBarOption } from "../src/pages/analytics/chartOptions.ts";
 import { DASH, fmtCompact, fmtPct, fmtSeconds, ratio } from "../src/pages/analytics/format.ts";
-import { filterOptions, groupCards, isIdle, mean, memPercent, summarize } from "../src/pages/analytics/gpuModel.ts";
+import { groupCards, groupRows, isIdle, mean, memPercent, summarize, summarizeGroups } from "../src/pages/analytics/gpuModel.ts";
 import { buildUsageTree, hasKeylessRows, hitRate, keyIdentity, keyOptions, uncachedTokens, uncachedUnreported } from "../src/pages/analytics/usageModel.ts";
 import {
   addDays, bucketLabel, compactDate, fullTime, isQuickKey, quickRange, shortTime, spansDays, startOfDay, usableZone, zonedParts, zonedToMs,
@@ -83,10 +83,10 @@ test("an unknown zone name falls back to the browser's zone", () => {
 test("a query string carries only the parameters that are set", () => {
   assert.equal(analyticsQueryString({ from: 1, to: 2 }), "from=1&to=2");
   assert.equal(
-    analyticsQueryString({ from: 1, to: 2, granularity: "day", deployment: 3, key: "none", source: "playground", groupBy: "gpu", metric: "temp", node: "n 1", model: "RTX 6000D" }),
-    "from=1&to=2&granularity=day&deployment=3&key=none&source=playground&group_by=gpu&metric=temp&node=n%201&model=RTX%206000D",
+    analyticsQueryString({ from: 1, to: 2, granularity: "day", deployment: 3, key: "none", source: "playground", groupBy: "gpu", metric: "temp", labels: ["pool=a b", "gpuworks.ai/node=n1"], model: "RTX 6000D" }),
+    "from=1&to=2&granularity=day&deployment=3&key=none&source=playground&group_by=gpu&metric=temp&model=RTX%206000D&label=pool%3Da%20b&label=gpuworks.ai%2Fnode%3Dn1",
   );
-  assert.equal(analyticsQueryString({ from: 1, to: 2, deployment: undefined, key: "", node: "" }), "from=1&to=2");
+  assert.equal(analyticsQueryString({ from: 1, to: 2, deployment: undefined, key: "", labels: [] }), "from=1&to=2");
 });
 
 // ---------------------------------------------------------------------- format
@@ -262,7 +262,7 @@ test("the summary leaves cards without samples out of the means and counts the i
 test("cards group by model or node with the deployments each holds, and count the ones no longer in the inventory", () => {
   const cards = fx.gpusToday().cards;
   const byModel = groupCards(cards, "model");
-  assert.deepEqual(byModel.map((r) => [r.title, r.cards.length, r.removed]), [["RTX 6000D", 3, 1], ["PPU 810E", 1, 0]]);
+  assert.deepEqual(byModel.map((r) => [r.title, r.cardCount, r.unassigned, r.removed]), [["RTX 6000D", 3, 2, 1], ["PPU 810E", 1, 0, 0]]);
   assert.equal(byModel[0].utilAvg, (62.5 + 3.2) / 2);
   assert.equal(byModel[0].utilMax, 97);
   assert.deepEqual(byModel[0].deployments, [{ name: "glm-5-3-flash-nvfp4", cards: 1 }]);
@@ -275,10 +275,23 @@ test("cards group by model or node with the deployments each holds, and count th
   assert.equal(byCard[3].powerAvg, null);
 });
 
-test("the node and model filters list what the cards hold", () => {
-  const { nodes, models } = filterOptions(fx.gpusToday().cards);
-  assert.deepEqual(nodes, [{ value: "node-a", label: "6000*4" }, { value: "node-c", label: "gone-node" }, { value: "node-b", label: "PPU810E*16" }].sort((x, y) => x.label.localeCompare(y.label)));
-  assert.deepEqual(models.map((m) => m.value), ["PPU 810E", "RTX 6000D"]);
+test("an answer without cards takes its rows and summary from the groups, without idle cards", () => {
+  const d = fx.gpusFleet();
+  const byModel = groupRows(d.groups, "model", (count) => `${count} nodes`);
+  assert.deepEqual(byModel.map((r) => [r.title, r.sub, r.cardCount, r.unassigned, r.removed]), [["H100", "118 nodes", 944, 940, 0], ["L40S", "2 nodes", 16, 16, 0]]);
+  assert.equal(byModel[0].utilAvg, 58.5);
+  assert.ok(Math.abs(byModel[0].memAvgPercent! - 50) < 1e-9);
+  assert.deepEqual(byModel[0].deployments, [{ name: "glm-5-3-flash-nvfp4", cards: 4 }]);
+  const byNode = groupRows([{ ...d.groups[0], key: "node-a", label: "gpu-a", models: ["H100", "L40S"] }], "node", () => "");
+  assert.equal(byNode[0].sub, "H100 / L40S");
+  const s = summarizeGroups(d);
+  assert.equal(s.cards, 960);
+  assert.deepEqual(s.byModel, [{ model: "H100", count: 944 }, { model: "L40S", count: 16 }]);
+  assert.equal(s.idle, null);
+  assert.equal(s.measured, null);
+  assert.equal(s.powerTotal, 944 * 300 + 16 * 200);
+  assert.equal(s.powerCards, 960);
+  assert.ok(Math.abs(s.memPercentAvg! - (944 * 50 + 16 * 25) / 960) < 1e-9);
 });
 
 test("buckets before live accumulation count as filled in only when older history exists", async () => {

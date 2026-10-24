@@ -44,7 +44,7 @@ export default function APIKeysPage() {
   const shown = showRevoked ? keys : keys.filter((k) => !k.revoked_at);
 
   // tokensCell is a key's prompt + completion tokens over a period, linking to
-  // that period's usage in Operations analytics; no record at all is a dash.
+  // that period's usage in Usage analytics; no record at all is a dash.
   const tokensCell = (k: ApiKey, counts: UsageCounts | undefined, range: "today" | "7d") => {
     if (!counts) return "—";
     const total = counts.prompt_tokens + counts.completion_tokens;

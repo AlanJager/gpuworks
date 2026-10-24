@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -243,5 +244,66 @@ func TestQualityGPUAndCardTime(t *testing.T) {
 	}
 	if c := gt.Capacity[0]; c.TotalGPUHours != 8 || c.AllocatedGPUHours != 4 {
 		t.Fatalf("capacity = %+v", c)
+	}
+}
+
+// The card time's tokens per deployment are what the usage's groups add up
+// to, over hours and over days rolled up or not, with or without a
+// deployment filter.
+func TestUsageByDeploymentMatchesTheUsageGroups(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	other, err := f.st.CreateDeployment(&store.Deployment{Name: "qwen", ServedName: "Qwen/Qwen3", State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta := map[rollup.UsageKey]rollup.Usage{}
+	for i, at := range []int64{f.at(20, 9), f.at(21, 3), f.at(21, 23), f.at(22, 1), f.at(22, 14)} {
+		for _, dep := range []uint{f.dep, other.ID} {
+			for _, src := range []uxrecord.Source{uxrecord.SourceAPI, uxrecord.SourcePlayground} {
+				for _, key := range []uint{f.key, 0, 4242} {
+					n := int64(i+1) * int64(dep) * int64(key+1)
+					delta[rollup.UsageKey{HourMS: at, APIKeyID: key, UserID: 1, DeploymentID: dep, Source: src}] =
+						rollup.Usage{Requests: 1, PromptTokens: 1000 * n, CompletionTokens: 10 * n, ReasoningTokens: n}
+				}
+			}
+		}
+	}
+	if err := f.st.AddUsage(ctx, delta); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []rollup.Day{20261020, 20261021} { // the 22nd is today, unrolled
+		if err := f.st.RollupUsageDay(ctx, d, f.loc); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []Query{
+		{FromMS: f.at(20, 0), ToMS: f.at(23, 0), Granularity: Day},
+		{FromMS: f.at(21, 12), ToMS: f.at(22, 15), Granularity: Day},
+		{FromMS: f.at(21, 0), ToMS: f.at(22, 15), Granularity: Hour},
+	} {
+		for _, filter := range []UsageFilter{{}, {DeploymentID: other.ID}} {
+			sp, err := f.svc.resolve(q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			groups, err := f.svc.usageData(ctx, sp, filter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[uint]store.UsageCounts{}
+			for k, acc := range groups.groups {
+				cur := want[k.dep]
+				addCounts(&cur, acc.UsageCounts)
+				want[k.dep] = cur
+			}
+			got, err := f.svc.usageByDeployment(ctx, sp, filter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(want) == 0 || fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Fatalf("%+v %+v:\n got %v\nwant %v", q, filter, got, want)
+			}
+		}
 	}
 }

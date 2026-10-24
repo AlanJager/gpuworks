@@ -7,7 +7,7 @@ import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 import * as fx from "./helpers/analyticsFixtures.ts";
 
 const closeChannels = trackMessageChannels();
-const { i18n, locale } = await createI18n(["analytics"]);
+const { i18n, locale } = await createI18n(["analytics", "nodes"]);
 // antd scrolls a sorted table back to the top through the global Document.
 Object.defineProperty(globalThis, "Document", { value: dom.window.Document, configurable: true });
 fx.installCanvas(dom);
@@ -23,13 +23,14 @@ type Params = import("../src/analyticsApi.ts").AnalyticsParams;
 
 const a = locale.analytics;
 const originalAnalytics = { ...analyticsApi };
-const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments };
+const originalApi = { dataRetention: api.dataRetention, deployments: api.deployments, nodeFacets: api.nodeFacets };
 const calls = { usage: [] as Params[], quality: [] as Params[], gpus: [] as Params[], gpuTime: [] as Params[] };
 
 function stub() {
   for (const list of Object.values(calls)) list.length = 0;
   api.dataRetention = (async () => fx.retentionView()) as typeof api.dataRetention;
   api.deployments = (async () => fx.deployments) as unknown as typeof api.deployments;
+  api.nodeFacets = (async () => fx.nodeFacets) as typeof api.nodeFacets;
   analyticsApi.usage = async (p) => { calls.usage.push(p); return fx.usageToday(); };
   analyticsApi.quality = async (p) => { calls.quality.push(p); return fx.qualityToday(); };
   analyticsApi.gpus = async (p) => { calls.gpus.push(p); return fx.gpusToday(); };
@@ -309,26 +310,40 @@ test("the metric and grouping are kept in the URL", async () => {
   assert.ok(screen.getByRole("radio", { name: a.gpus.group.node, checked: true }));
 });
 
-test("too many cards shows the product error with the way out, and a node filter fixes it", async () => {
+test("too many cards shows the product error with the way out, and a node label filter fixes it", async () => {
   stub();
-  const detail = "300 cards; filter by node or model to see at most 256 by card";
+  const detail = "300 cards; filter by node label or model to see at most 256 by card";
   analyticsApi.gpus = async (p) => {
     calls.gpus.push(p);
-    if (p.groupBy === "gpu" && !p.node && !p.model) throw new APIError("ANALYTICS_TOO_MANY_CARDS", { field: "group_by", detail }, "too many cards", 400);
+    if (p.groupBy === "gpu" && !p.labels?.length && !p.model) throw new APIError("ANALYTICS_TOO_MANY_CARDS", { field: "group_by", detail }, "too many cards", 400);
     return fx.gpusToday();
   };
   const user = mount("/analytics/gpus?by=gpu");
   const alert = await screen.findByRole("alert");
   assert.ok(within(alert).getByText(i18n.t("common:apiError.ANALYTICS_TOO_MANY_CARDS", { detail })));
   assert.ok(within(alert).getByText(a.gpus.tooMany.hint));
-  // With no cards to read them from, the filters' lists come from a by-model answer.
+  // With no answer to read them from, the models' list comes from a by-model answer.
   await waitFor(() => assert.ok(calls.gpus.some((p) => p.groupBy === "model")));
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: a.gpus.filters.node }));
-  await waitFor(() => assert.ok(document.querySelector('.ant-select-item-option[title="PPU810E*16"]')));
-  await user.click(document.querySelector('.ant-select-item-option[title="PPU810E*16"]')!);
-  await waitFor(() => assert.equal(last(calls.gpus).node, "node-b"));
+  // The node labels the fleet carries, with the platform's own (shown by name).
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: a.gpus.filters.labels }));
+  await waitFor(() => assert.ok(document.querySelector('.ant-select-item-option[title="pool=inference"]')));
+  assert.ok(document.querySelector(`.ant-select-item-option[title="${locale.nodes.systemLabels.key["gpu-model"]}: RTX 6000D"]`));
+  await user.click(document.querySelector('.ant-select-item-option[title="pool=inference"]')!);
+  await waitFor(() => assert.deepEqual(last(calls.gpus).labels, ["pool=inference"]));
   await waitFor(() => assert.ok(screen.queryByRole("alert") === null));
   assert.ok(document.querySelector('[data-stat="cards"]'));
+});
+
+test("a node an answer named can be picked as a filter, and the labels stay in the URL", async () => {
+  stub();
+  const user = mount("/analytics/gpus?label=pool%3Dtraining");
+  await ready("cards");
+  assert.deepEqual(calls.gpus[0].labels, ["pool=training"]);
+  const nodeOption = `${locale.nodes.systemLabels.key.node}: PPU810E*16`;
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: a.gpus.filters.labels }));
+  await waitFor(() => assert.ok(document.querySelector(`.ant-select-item-option[title="${nodeOption}"]`)));
+  await user.click(document.querySelector(`.ant-select-item-option[title="${nodeOption}"]`)!);
+  await waitFor(() => assert.deepEqual(last(calls.gpus).labels, ["pool=training", "gpuworks.ai/node=node-b"]));
 });
 
 test("too many cards can also be answered by grouping by node", async () => {
@@ -356,9 +371,39 @@ test("an unfiltered answer feeds the node and model filters, which then ask for 
   await waitFor(() => assert.equal(last(calls.gpus).model, "PPU 810E"));
 });
 
+test("a fleet past the cards listed one by one says so, and its table and cards come from the groups", async () => {
+  stub();
+  analyticsApi.gpus = async (p) => { calls.gpus.push(p); return fx.gpusFleet(); };
+  mount("/analytics/gpus");
+  await ready("cards");
+  assert.ok(screen.getByText(i18n.t("analytics:gpus.summaryNote", { count: 960, limit: 256 })));
+  assert.ok(stat("cards").getByText("960"));
+  assert.ok(stat("cards").getByText("H100 × 944 · L40S × 16"));
+  assert.ok(stat("idle").getByText("—"));
+  assert.ok(stat("idle").getByText(i18n.t("analytics:gpus.cards.idleNeedsDetail", { limit: 256 })));
+  assert.ok(stat("power").getByText("286.40 kW"));
+  await waitFor(() => assert.equal(bodyRows().length, 2));
+  const h100 = rowNamed("H100");
+  assert.ok(within(h100).getByText(i18n.t("analytics:gpus.table.nodeCount", { count: 118 })));
+  assert.ok(within(h100).getByText(/× 940/));
+  assert.ok(within(h100).getByText(/glm-5-3-flash-nvfp4/));
+});
+
+test("a node heat map past its rows says it shows the extremes", async () => {
+  stub();
+  analyticsApi.gpus = async (p) => {
+    calls.gpus.push(p);
+    const rows = Array.from({ length: 100 }, (_, i) => ({ key: `n${i}`, label: `gpu-${i}`, values: [i, i, i, i] }));
+    return fx.gpusFleet({ group_by: "node", heat: rows, heat_total: 1000 });
+  };
+  mount("/analytics/gpus?by=node");
+  await ready("cards");
+  assert.ok(screen.getByText(i18n.t("analytics:gpus.chart.extremes", { half: 50, total: 1000, metric: a.gpus.metric.util })));
+});
+
 test("no cards in the range is the empty state", async () => {
   stub();
-  analyticsApi.gpus = async () => ({ ...fx.gpusToday(), cards: [], heat: [] });
+  analyticsApi.gpus = async () => ({ ...fx.gpusToday(), card_count: 0, by_model: [], cards: [], groups: [], heat: [] });
   mount("/analytics/gpus");
   await screen.findByText(a.state.empty);
 });

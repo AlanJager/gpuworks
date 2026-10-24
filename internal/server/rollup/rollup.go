@@ -1,4 +1,4 @@
-// Package rollup accumulates the long-term statistics of operations analytics
+// Package rollup accumulates the long-term statistics of usage analytics
 // as they happen: per hour, the tokens each API key used on each deployment,
 // each deployment's request outcomes and latencies, each card's utilization
 // and the cards each deployment held (ADR 0055).

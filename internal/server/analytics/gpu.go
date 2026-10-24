@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -21,14 +20,25 @@ const (
 	MetricMem   = "mem"
 )
 
-// GPUQuery is a GPU utilization query: the range, what the heat map's rows
-// are, what its colour is, and filters.
+// GPUQuery is a GPU utilization query: the range, what the rows are, what
+// the heat map's colour is, and filters.
 type GPUQuery struct {
 	Query
 	GroupBy string // model | node | gpu
 	Metric  string // util | power | temp | mem
-	statsdb.GPUFilter
+	// NodeUUIDs, when not nil, are the only nodes read (the nodes a label
+	// filter matched); GPUModel, when not empty, the only card model.
+	NodeUUIDs []string
+	GPUModel  string
 }
+
+// maxDetailCards bounds the cards answered one by one: past it the answer
+// holds the models' or nodes' rows only, read from their own statistics.
+const maxDetailCards = 256
+
+// maxHeatNodes bounds a node heat map: past it, the half with the highest
+// metric and the half with the lowest are shown.
+const maxHeatNodes = 100
 
 func gpuFigures(g rollup.GPU) dto.GPUFigures {
 	out := dto.GPUFigures{UtilSamples: g.UtilN, PowerSamples: g.PowerN}
@@ -73,15 +83,10 @@ func metricValue(g rollup.GPU, metric string) *float64 {
 	return nil
 }
 
-type cardKey struct {
-	node  string
-	index int
-	uuid  string
-}
-
-func (k cardKey) group() string { return k.node + "/" + strconv.Itoa(k.index) + "/" + k.uuid }
-
-// GPUs answers the GPU utilization over a range.
+// GPUs answers the GPU utilization over a range. The cards the filter
+// covers now decide the shape: up to maxDetailCards are answered one by one,
+// more only as models' or nodes' rows, which have statistics of their own
+// so a fleet's range never reads every card's.
 func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error) {
 	if q.GroupBy == "" {
 		q.GroupBy = string(statsdb.GPUByModel)
@@ -89,7 +94,8 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 	if q.Metric == "" {
 		q.Metric = MetricUtil
 	}
-	switch statsdb.GPUGroupBy(q.GroupBy) {
+	by := statsdb.GPUGroupBy(q.GroupBy)
+	switch by {
 	case statsdb.GPUByModel, statsdb.GPUByNode, statsdb.GPUByCard:
 	default:
 		return dto.GPUAnalytics{}, queryError(messages.ErrorAnalyticsValueInvalid, "group_by", "model, node or gpu")
@@ -103,39 +109,83 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 	if err != nil {
 		return dto.GPUAnalytics{}, err
 	}
+	sc, err := s.gpuScope(q)
+	if err != nil {
+		return dto.GPUAnalytics{}, err
+	}
+	detail := len(sc.cards) <= maxDetailCards
+	if by == statsdb.GPUByCard && !detail {
+		return dto.GPUAnalytics{}, queryError(messages.ErrorAnalyticsTooManyCards, "group_by",
+			fmt.Sprintf("%d cards; filter by node label or model to see at most %d by card", len(sc.cards), maxDetailCards))
+	}
 	parts, keys, err := s.statsParts(ctx, sp)
 	if err != nil {
 		return dto.GPUAnalytics{}, err
 	}
-	cards := map[cardKey]*statsdb.GPUCard{}
-	for _, part := range parts {
-		rows, err := s.Stats.GPUCards(ctx, part, q.GPUFilter)
-		if err != nil {
-			return dto.GPUAnalytics{}, err
-		}
-		for _, r := range rows {
-			k := cardKey{r.NodeUUID, r.GPUIndex, r.GPUUUID}
-			cur := cards[k]
-			if cur == nil {
-				c := r
-				cards[k] = &c
-				continue
-			}
-			cur.Add(r.GPU)
-			if r.GPUModel != "" {
-				cur.GPUModel = r.GPUModel
-			}
-		}
+	f := statsdb.GPUFilter{NodeUUIDs: q.NodeUUIDs, GPUModel: q.GPUModel}
+	out := dto.GPUAnalytics{Metric: q.Metric, GroupBy: q.GroupBy, CardCount: len(sc.cards), ByModel: sc.byModel(),
+		Detail: detail, Cards: []dto.GPUCardRow{}, Groups: []dto.GPUGroupRow{}, Heat: []dto.GPUHeatRow{}}
+
+	// A few cards of a larger fleet are read on their nodes only.
+	cf := f
+	if detail && cf.NodeUUIDs == nil && len(sc.cards) < sc.fleet {
+		cf.NodeUUIDs = sc.nodes()
 	}
-	if q.GroupBy == string(statsdb.GPUByCard) && len(cards) > maxHeatCardsByGPU {
-		return dto.GPUAnalytics{}, queryError(messages.ErrorAnalyticsTooManyCards, "group_by",
-			fmt.Sprintf("%d cards; filter by node or model to see at most %d by card", len(cards), maxHeatCardsByGPU))
+	var total rollup.GPU
+	if detail {
+		cards, err := s.gpuCards(ctx, parts, cf)
+		if err != nil {
+			return out, err
+		}
+		names, err := s.nodeNames(sc, cards)
+		if err != nil {
+			return out, err
+		}
+		for k, c := range cards {
+			row := dto.GPUCardRow{NodeUUID: k.node, NodeName: names[k.node], GPUIndex: k.index, GPUUUID: k.uuid,
+				GPUModel: c.GPUModel, Present: sc.present[k], Deployments: sc.holders[k], GPUFigures: gpuFigures(c.GPU)}
+			if row.Deployments == nil {
+				row.Deployments = []string{}
+			}
+			out.Cards = append(out.Cards, row)
+			total.Add(c.GPU)
+		}
+		sort.Slice(out.Cards, func(i, j int) bool {
+			a, b := out.Cards[i], out.Cards[j]
+			if a.NodeName != b.NodeName {
+				return a.NodeName < b.NodeName
+			}
+			return a.GPUIndex < b.GPUIndex
+		})
+	}
+	var groups map[string]rollup.GPU
+	if by != statsdb.GPUByCard {
+		if groups, err = s.gpuGroups(ctx, parts, f, by); err != nil {
+			return out, err
+		}
+		if !detail {
+			for _, g := range groups {
+				total.Add(g)
+			}
+		}
+		out.Groups = sc.groupRows(by, groups)
+	}
+	out.Totals = gpuFigures(total)
+
+	// The heat map: every row, or for a fleet's nodes the extremes.
+	var show []string
+	if by == statsdb.GPUByNode && len(groups) > maxHeatNodes {
+		show = extremes(groups, q.Metric, maxHeatNodes)
+	}
+	hf := f
+	if by == statsdb.GPUByCard {
+		hf = cf
 	}
 	heat := map[string][]rollup.GPU{}
 	for i, part := range parts {
-		cells, err := s.Stats.GPUHeat(ctx, part, q.GPUFilter, statsdb.GPUGroupBy(q.GroupBy))
+		cells, err := s.Stats.GPUHeat(ctx, part, hf, by, show)
 		if err != nil {
-			return dto.GPUAnalytics{}, err
+			return out, err
 		}
 		for _, c := range cells {
 			key := c.Bucket
@@ -154,44 +204,12 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 			row[at].Add(c.GPU)
 		}
 	}
-
-	nodes := map[string]bool{}
-	for k := range cards {
-		nodes[k.node] = true
+	out.HeatTotal = len(heat)
+	if groups != nil {
+		out.HeatTotal = len(groups)
 	}
-	nodeList := make([]string, 0, len(nodes))
-	for n := range nodes {
-		nodeList = append(nodeList, n)
-	}
-	nodeNames, err := s.Store.NodeNamesByUUID(nodeList)
-	if err != nil {
-		return dto.GPUAnalytics{}, err
-	}
-	present, holders, err := s.cardsNow()
-	if err != nil {
-		return dto.GPUAnalytics{}, err
-	}
-	out := dto.GPUAnalytics{Metric: q.Metric, GroupBy: q.GroupBy, Cards: []dto.GPUCardRow{}, Heat: []dto.GPUHeatRow{}}
-	var total rollup.GPU
-	for k, c := range cards {
-		total.Add(c.GPU)
-		row := dto.GPUCardRow{NodeUUID: k.node, NodeName: nodeNames[k.node], GPUIndex: k.index, GPUUUID: k.uuid,
-			GPUModel: c.GPUModel, Present: present[k], Deployments: holders[k], GPUFigures: gpuFigures(c.GPU)}
-		if row.Deployments == nil {
-			row.Deployments = []string{}
-		}
-		out.Cards = append(out.Cards, row)
-	}
-	sort.Slice(out.Cards, func(i, j int) bool {
-		a, b := out.Cards[i], out.Cards[j]
-		if a.NodeName != b.NodeName {
-			return a.NodeName < b.NodeName
-		}
-		return a.GPUIndex < b.GPUIndex
-	})
-	out.Totals = gpuFigures(total)
 	for group, cells := range heat {
-		row := dto.GPUHeatRow{Key: group, Label: s.heatLabel(q.GroupBy, group, nodeNames), Values: make([]*float64, len(cells))}
+		row := dto.GPUHeatRow{Key: group, Label: sc.heatLabel(by, group), Values: make([]*float64, len(cells))}
 		for i, c := range cells {
 			row.Values[i] = metricValue(c, q.Metric)
 		}
@@ -206,62 +224,77 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 	return out, nil
 }
 
-func (s *Service) heatLabel(groupBy, group string, nodeNames map[string]string) string {
-	switch statsdb.GPUGroupBy(groupBy) {
-	case statsdb.GPUByNode:
-		if n := nodeNames[group]; n != "" {
-			return n
+// gpuCards sums each card over the parts of a span.
+func (s *Service) gpuCards(ctx context.Context, parts []statsdb.Range, f statsdb.GPUFilter) (map[cardKey]*statsdb.GPUCard, error) {
+	cards := map[cardKey]*statsdb.GPUCard{}
+	for _, part := range parts {
+		rows, err := s.Stats.GPUCards(ctx, part, f)
+		if err != nil {
+			return nil, err
 		}
-	case statsdb.GPUByCard:
-		parts := strings.SplitN(group, "/", 3)
-		if len(parts) == 3 {
-			name := nodeNames[parts[0]]
-			if name == "" {
-				name = parts[0]
+		for _, r := range rows {
+			k := cardKey{r.NodeUUID, r.GPUIndex, r.GPUUUID}
+			cur := cards[k]
+			if cur == nil {
+				c := r
+				cards[k] = &c
+				continue
 			}
-			return name + " #" + parts[1]
-		}
-	case statsdb.GPUByModel:
-		if group == "" {
-			return "?"
+			cur.Add(r.GPU)
+			if r.GPUModel != "" {
+				cur.GPUModel = r.GPUModel
+			}
 		}
 	}
-	return group
+	return cards, nil
 }
 
-// cardsNow are the cards of the online nodes now, and the deployments that
-// hold each.
-func (s *Service) cardsNow() (map[cardKey]bool, map[cardKey][]string, error) {
-	snap, err := s.Store.GPUTimeSnapshot()
-	if err != nil {
-		return nil, nil, err
-	}
-	present := make(map[cardKey]bool, len(snap.Cards))
-	byIdent := map[string]cardKey{}
-	for _, c := range snap.Cards {
-		node := snap.NodeUUIDs[c.NodeID]
-		k := cardKey{node, c.Index, c.UUID}
-		present[k] = true
-		byIdent[strconv.FormatUint(uint64(c.NodeID), 10)+"\x00"+c.Ident] = k
-	}
-	deps := map[uint]bool{}
-	for _, h := range snap.Holdings {
-		deps[h.DeploymentID] = true
-	}
-	names, err := s.deploymentNames(deps)
-	if err != nil {
-		return nil, nil, err
-	}
-	holders := map[cardKey][]string{}
-	for _, h := range snap.Holdings {
-		name := names[h.DeploymentID].Name
-		for _, ident := range h.Idents {
-			if k, ok := byIdent[strconv.FormatUint(uint64(h.NodeID), 10)+"\x00"+ident]; ok && !contains(holders[k], name) {
-				holders[k] = append(holders[k], name)
-			}
+// gpuGroups sums each model or node over the parts of a span.
+func (s *Service) gpuGroups(ctx context.Context, parts []statsdb.Range, f statsdb.GPUFilter, by statsdb.GPUGroupBy) (map[string]rollup.GPU, error) {
+	out := map[string]rollup.GPU{}
+	for _, part := range parts {
+		rows, err := s.Stats.GPUGroups(ctx, part, f, by)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			cur := out[r.Group]
+			cur.Add(r.GPU)
+			out[r.Group] = cur
 		}
 	}
-	return present, holders, nil
+	return out, nil
+}
+
+// extremes are the n/2 groups with the highest metric and the n/2 with the
+// lowest (groups without the metric count as lowest).
+func extremes(groups map[string]rollup.GPU, metric string, n int) []string {
+	type ranked struct {
+		key   string
+		value float64
+	}
+	list := make([]ranked, 0, len(groups))
+	for k, g := range groups {
+		v := -1.0
+		if m := metricValue(g, metric); m != nil {
+			v = *m
+		}
+		list = append(list, ranked{k, v})
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].value != list[j].value {
+			return list[i].value > list[j].value
+		}
+		return list[i].key < list[j].key
+	})
+	out := make([]string, 0, n)
+	for _, r := range list[:n/2] {
+		out = append(out, r.key)
+	}
+	for _, r := range list[len(list)-n/2:] {
+		out = append(out, r.key)
+	}
+	return out
 }
 
 func contains(list []string, s string) bool {
@@ -271,4 +304,17 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// cardLabel names a card: its node and index.
+func cardLabel(group string, names map[string]string) string {
+	parts := strings.SplitN(group, "/", 3)
+	if len(parts) != 3 {
+		return group
+	}
+	name := names[parts[0]]
+	if name == "" {
+		name = parts[0]
+	}
+	return name + " #" + parts[1]
 }

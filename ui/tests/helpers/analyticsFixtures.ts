@@ -5,6 +5,7 @@
 import type {
   AnalyticsRange, GPUAnalytics, GPUCardRow, GPUTimeAnalytics, KeyUsageList, QualityAnalytics, QualityFigures, UsageAnalytics, UsageCounts, UsageRow,
 } from "../../src/analyticsApi.ts";
+import type { NodeFacets } from "../../src/api.ts";
 
 export const ZONE = "Asia/Shanghai";
 /** 2026-10-22 14:30 in Asia/Shanghai. */
@@ -149,11 +150,44 @@ export function gpusToday(over: Partial<GPUAnalytics> = {}): GPUAnalytics {
       util_avg: 22.4, util_max: 97, mem_used_avg_bytes: 70 * 1024 ** 3, mem_used_max_bytes: 76 * 1024 ** 3, mem_total_bytes: 96 * 1024 ** 3,
       power_avg_watts: 160, temp_avg_celsius: 55, temp_max_celsius: 70, util_samples: 15000, power_samples: 15000,
     },
+    card_count: 3,
+    by_model: [{ model: "PPU 810E", cards: 1 }, { model: "RTX 6000D", cards: 2 }],
+    detail: true,
     cards,
+    groups: [],
     heat: [
       { key: "PPU 810E", label: "PPU 810E", values: [1.2, 1.5, null, 2.0] },
       { key: "RTX 6000D", label: "RTX 6000D", values: [10, 40.5, 80, null] },
     ],
+    heat_total: 2,
+    ...over,
+  };
+}
+
+/** gpusFleet is a fleet past the cards answered one by one: 118 H100 nodes and 2 L40S nodes of 8 cards, by model. */
+export function gpusFleet(over: Partial<GPUAnalytics> = {}): GPUAnalytics {
+  const figures = (util: number, memTotal: number, power: number) => ({
+    util_avg: util, util_max: 100, mem_used_avg_bytes: memTotal / 2 * (memTotal === 80e9 ? 1 : 0.5), mem_used_max_bytes: memTotal, mem_total_bytes: memTotal,
+    power_avg_watts: power, temp_avg_celsius: 60, temp_max_celsius: 80, util_samples: 1000, power_samples: 1000,
+  });
+  return {
+    range: range(TODAY_START, 4, "hour"),
+    metric: "util",
+    group_by: "model",
+    totals: { ...figures(57.9, 80e9, 298), mem_used_avg_bytes: 39e9 },
+    card_count: 960,
+    by_model: [{ model: "H100", cards: 944 }, { model: "L40S", cards: 16 }],
+    detail: false,
+    cards: [],
+    groups: [
+      { key: "H100", label: "H100", cards: 944, nodes: 118, models: ["H100"], deployments: [{ name: "glm-5-3-flash-nvfp4", cards: 4 }], unassigned: 940, ...figures(58.5, 80e9, 300) },
+      { key: "L40S", label: "L40S", cards: 16, nodes: 2, models: ["L40S"], deployments: [], unassigned: 16, ...figures(20, 48e9, 200) },
+    ],
+    heat: [
+      { key: "H100", label: "H100", values: [50, 60, 62, 61] },
+      { key: "L40S", label: "L40S", values: [20, 20, 20, 20] },
+    ],
+    heat_total: 2,
     ...over,
   };
 }
@@ -184,4 +218,12 @@ export const keyUsage: KeyUsageList = {
     { prefix: "gw-live00000", today: counts({ requests: 20, prompt_tokens: 1_200_000, cached_tokens: 900_000, completion_tokens: 30_000 }), last_7_days: counts({ requests: 150, prompt_tokens: 9_000_000, cached_tokens: 6_000_000, completion_tokens: 250_000 }) },
     { prefix: "gw-idle00000", today: counts(), last_7_days: counts({ requests: 3, prompt_tokens: 3000, completion_tokens: 500 }) },
   ],
+};
+
+/** nodeFacets is GET /nodes/facets for the fleet: a written pool label and the card model system label. */
+export const nodeFacets: NodeFacets = {
+  total: 3,
+  labels: [{ key: "pool", values: [{ value: "inference", nodes: 2 }, { value: "training", nodes: 1 }] }],
+  system_labels: [{ key: "gpuworks.ai/gpu-model", values: [{ value: "rtx-6000d", display: "RTX 6000D", nodes: 2 }] }],
+  gpus: [],
 };

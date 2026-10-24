@@ -1,6 +1,6 @@
 package store
 
-// Names for operations analytics: the deployments, nodes and users its rows
+// Names for usage analytics: the deployments, nodes and users its rows
 // refer to, read for those IDs only, lean columns, and deployments deleted
 // since from what they left behind.
 
@@ -73,6 +73,46 @@ func (s *Store) UserNames(ids []uint) (map[uint]string, error) {
 	}
 	for _, u := range users {
 		out[u.ID] = u.Username
+	}
+	return out, nil
+}
+
+// InventoryCard is a card the inventory holds now, with its node's identity.
+type InventoryCard struct {
+	NodeUUID string
+	NodeName string
+	Index    int
+	UUID     string
+	Model    string
+}
+
+// CardInventory is every card of every node, in lean columns: the GPU
+// statistics page sizes its answer by the cards a filter covers.
+func (s *Store) CardInventory() ([]InventoryCard, error) {
+	db := s.reader()
+	var nodes []Node
+	if err := db.Select("ID", "UUID", "Name", "Hostname").Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+	byID := make(map[uint]*Node, len(nodes))
+	for i := range nodes {
+		byID[nodes[i].ID] = &nodes[i]
+	}
+	var cards []GPU
+	if err := db.Select("NodeID", "Index", "UUID", "Name").Find(&cards).Error; err != nil {
+		return nil, err
+	}
+	out := make([]InventoryCard, 0, len(cards))
+	for _, c := range cards {
+		n := byID[c.NodeID]
+		if n == nil {
+			continue
+		}
+		name := n.Name
+		if name == "" {
+			name = n.Hostname
+		}
+		out = append(out, InventoryCard{NodeUUID: n.UUID, NodeName: name, Index: c.Index, UUID: c.UUID, Model: c.Name})
 	}
 	return out, nil
 }

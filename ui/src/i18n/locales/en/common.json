@@ -480,7 +480,7 @@
     },
     "dashboard": "Overview",
     "monitor": "Monitor Center",
-    "analytics": "Analytics",
+    "analytics": "Usage analytics",
     "publicCloud": "Public Cloud",
     "privateCloud": "Private Cloud",
     "kubernetes": "Kubernetes",

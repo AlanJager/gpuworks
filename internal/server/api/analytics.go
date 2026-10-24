@@ -16,9 +16,9 @@ import (
 
 // ErrAnalyticsUnavailable answers the analytics routes of a server built
 // without the service (a harness).
-var ErrAnalyticsUnavailable = errors.New("operations analytics is not available")
+var ErrAnalyticsUnavailable = errors.New("usage analytics is not available")
 
-// Analytics is operations analytics as the API sees it: the data retention
+// Analytics is usage analytics as the API sees it: the data retention
 // setting, applied the moment it is saved, and what it keeps.
 type Analytics interface {
 	Retention() dto.DataRetentionView
@@ -48,10 +48,12 @@ type AnalyticsQuery struct {
 	APIKeyID uint
 	Keyless  bool
 	Source   string
-	// The GPU heat map: rows (model, node, gpu), colour (util, power, temp,
-	// mem), and the cards (node UUID, model).
-	GroupBy, Metric    string
-	NodeUUID, GPUModel string
+	// The GPU statistics: rows (model, node, gpu), the heat map's colour
+	// (util, power, temp, mem), and the cards: of the nodes a label filter
+	// matched (NodeUUIDs; nil without one) and of a model.
+	GroupBy, Metric string
+	NodeUUIDs       []string
+	GPUModel        string
 }
 
 func (a *apiHandlers) getDataRetention(w http.ResponseWriter, _ *http.Request) {
@@ -173,8 +175,31 @@ func analyticsQuery(r *http.Request) (AnalyticsQuery, error) {
 		return q, bad("source")
 	}
 	q.GroupBy, q.Metric = v.Get("group_by"), v.Get("metric")
-	q.NodeUUID, q.GPUModel = v.Get("node"), v.Get("model")
+	q.GPUModel = v.Get("model")
 	return q, nil
+}
+
+// labelNodes are the UUIDs of the nodes the request's label filter
+// (label=key=value, repeatable, as the node list takes it) matches now, or
+// nil without one. A node since removed carries no labels, so a label
+// filter leaves its statistics out.
+func (a *apiHandlers) labelNodes(r *http.Request) ([]string, error) {
+	if len(r.URL.Query()["label"]) == 0 {
+		return nil, nil
+	}
+	reqs, err := parseLabelFilter(r)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := a.d.Store.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, n := range a.filterNodes(nodes, listQuery{}, reqs) {
+		out = append(out, n.UUID)
+	}
+	return out, nil
 }
 
 // analyticsRoute serves one statistics route.
@@ -189,8 +214,15 @@ func analyticsRoute[T any](a *apiHandlers, get func(Analytics, context.Context, 
 			writeErr(w, http.StatusBadRequest, err)
 			return
 		}
-		out, err := get(a.d.Analytics, r.Context(), q)
 		var refused *messages.ProductError
+		if q.NodeUUIDs, err = a.labelNodes(r); errors.As(err, &refused) {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		} else if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		out, err := get(a.d.Analytics, r.Context(), q)
 		switch {
 		case errors.As(err, &refused):
 			writeErr(w, http.StatusBadRequest, err)

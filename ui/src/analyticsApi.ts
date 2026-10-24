@@ -1,4 +1,4 @@
-// Client for operations analytics (GET /api/v1/analytics/*, docs/reference/api.md
+// Client for usage analytics (GET /api/v1/analytics/*, docs/reference/api.md
 // "Analytics"). The wire types mirror internal/server/api/dto/analytics.go.
 import { getJSON } from "./api";
 
@@ -122,13 +122,37 @@ export interface GPUHeatRow {
   values: (number | null)[];
 }
 
+/** A model's or a node's cards over the range, from their own statistics. */
+export interface GPUGroupRow extends GPUFigures {
+  /** The model, or the node's UUID. */
+  key: string;
+  label: string;
+  /** The group's cards and their nodes in the inventory now; a node's card models. */
+  cards: number;
+  nodes: number;
+  models: string[];
+  /** Deployments holding the group's cards now, with how many each. */
+  deployments: { name: string; cards: number }[];
+  /** Cards no deployment holds now. */
+  unassigned: number;
+}
+
 export interface GPUAnalytics {
   range: AnalyticsRange;
   metric: GpuMetric;
   group_by: GpuGroupBy;
   totals: GPUFigures;
+  /** The cards the filter covers in the inventory now, and of each model. */
+  card_count: number;
+  by_model: { model: string; cards: number }[];
+  /** cards lists each card only when the filter covers a few hundred at most. */
+  detail: boolean;
   cards: GPUCardRow[];
+  /** The models or nodes (empty by card). */
+  groups: GPUGroupRow[];
   heat: GPUHeatRow[];
+  /** The heat map's rows in all; heat holds the highest and lowest when fewer. */
+  heat_total: number;
 }
 
 export interface GPUTimeRow {
@@ -190,13 +214,14 @@ export interface AnalyticsParams {
   source?: UsageSource;
   groupBy?: GpuGroupBy;
   metric?: GpuMetric;
-  node?: string;
+  /** Node label filter, "key=value" each: values of one key are alternatives, keys all hold. */
+  labels?: string[];
   model?: string;
 }
 
 const KEYS: [keyof AnalyticsParams, string][] = [
   ["from", "from"], ["to", "to"], ["granularity", "granularity"], ["deployment", "deployment"], ["key", "key"],
-  ["source", "source"], ["groupBy", "group_by"], ["metric", "metric"], ["node", "node"], ["model", "model"],
+  ["source", "source"], ["groupBy", "group_by"], ["metric", "metric"], ["model", "model"],
 ];
 
 /** analyticsQueryString is the query string of p: only the parameters that are set. */
@@ -207,6 +232,7 @@ export function analyticsQueryString(p: AnalyticsParams): string {
     if (value === undefined || value === "" || (value === 0 && field !== "from")) continue;
     parts.push(`${name}=${encodeURIComponent(String(value))}`);
   }
+  for (const label of p.labels ?? []) parts.push(`label=${encodeURIComponent(label)}`);
   return parts.join("&");
 }
 

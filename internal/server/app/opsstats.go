@@ -17,7 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
-// opsStats runs the long-term statistics of operations analytics (ADR 0055):
+// opsStats runs the long-term statistics of usage analytics (ADR 0055):
 // it hands every finished request, GPU sample and minute of held cards to
 // rollup's accumulators, writes their deltas out (token usage to the main
 // database every minute, the rest to stats.db every five), rolls finished

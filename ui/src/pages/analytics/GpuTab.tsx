@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Card, Segmented, Select, Space, Typography } from "antd";
+import { Alert, Button, Card, Segmented, Select, Space, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { APIError } from "../../apiError";
 import { analyticsApi, type GpuGroupBy, type GpuMetric, type GPUAnalytics } from "../../analyticsApi";
@@ -9,7 +9,9 @@ import type { CsvModel } from "./csv";
 import EChart from "./EChart";
 import { useExportModel } from "./exportContext";
 import { fmtFixed, fmtInt, fmtPct, fmtWatts } from "./format";
-import { filterOptions, groupCards, summarize, IDLE_UTIL, type FilterOption } from "./gpuModel";
+import { systemLabelName } from "../../components/SystemLabelTags";
+import { useNodeLabelOptions } from "../../nodes/useNodeLabelOptions";
+import { groupCards, groupRows, summarize, summarizeGroups, IDLE_UTIL, type FilterOption } from "./gpuModel";
 import GpuTable from "./GpuTable";
 import QueryState from "./QueryState";
 import StatCards, { type StatItem } from "./StatCards";
@@ -20,6 +22,10 @@ import { bucketLabel, spansDays } from "./zoned";
 const GROUPS: GpuGroupBy[] = ["model", "node", "gpu"];
 const METRICS: GpuMetric[] = ["util", "power", "temp", "mem"];
 const TOO_MANY = "ANALYTICS_TOO_MANY_CARDS";
+/** The system label naming a node itself, which the label facets leave out. */
+const NODE_KEY = "gpuworks.ai/node";
+/** The most cards an answer lists one by one (the server's bound). */
+const DETAIL_CARDS = 256;
 
 function pick<T extends string>(value: string | null, allowed: T[], fallback: T): T {
   return (allowed as string[]).includes(value ?? "") ? (value as T) : fallback;
@@ -36,44 +42,58 @@ function metricFormat(metric: GpuMetric): (v: number) => string {
 
 export default function GpuTab({ from, to, granularity, tz, reload, search, setSearch }: TabProps) {
   const { t } = useTranslation("analytics");
+  const { t: tNodes } = useTranslation("nodes");
   const group = pick(search.get("by"), GROUPS, "model");
   const metric = pick(search.get("metric"), METRICS, "util");
-  const node = search.get("node") ?? "";
+  const labels = search.getAll("label");
+  const labelKey = labels.join("\n");
   const model = search.get("model") ?? "";
-  const [nodes, setNodes] = useState<FilterOption[]>([]);
   const [models, setModels] = useState<FilterOption[]>([]);
+  // A node itself can be picked once an answer named it (by node, or card by card).
+  const [nodes, setNodes] = useState<FilterOption[]>([]);
+  const labelOptions = useNodeLabelOptions();
 
   const query = useAnalyticsData(
-    (signal) => analyticsApi.gpus({ from, to, granularity, groupBy: group, metric, node: node || undefined, model: model || undefined }, signal),
-    [from, to, granularity, group, metric, node, model, reload],
+    (signal) => analyticsApi.gpus({ from, to, granularity, groupBy: group, metric, labels, model: model || undefined }, signal),
+    [from, to, granularity, group, metric, labelKey, model, reload],
   );
   const data = query.data;
   const tooMany = query.error instanceof APIError && query.error.code === TOO_MANY;
 
-  // The node and model filters list what the answer without filters holds; a
-  // filtered answer only holds the chosen one, so it adds to the lists.
-  const adopt = (cards: GPUAnalytics["cards"], replace: boolean) => {
-    const found = filterOptions(cards);
-    const merge = (old: FilterOption[], next: FilterOption[]) => (replace ? next : [...old, ...next.filter((n) => !old.some((o) => o.value === n.value))]);
-    setNodes((old) => merge(old, found.nodes));
-    setModels((old) => merge(old, found.models));
+  // The model filter lists the models the answer without one covers; an
+  // answer for one model only holds it, so it adds to the list.
+  const adopt = (d: GPUAnalytics, replace: boolean) => {
+    const merge = (old: FilterOption[], next: FilterOption[], whole: boolean) => (whole ? next : [...old, ...next.filter((n) => !old.some((o) => o.value === n.value))]);
+    const found = d.by_model.filter((m) => m.model).map((m) => ({ value: m.model, label: m.model }));
+    setModels((old) => merge(old, found, replace));
+    const named = new Map<string, string>();
+    for (const c of d.cards) named.set(c.node_uuid, c.node_name || c.node_uuid);
+    if (d.group_by === "node") for (const g of d.groups) named.set(g.key, g.label);
+    const nodeName = systemLabelName(NODE_KEY, tNodes);
+    const picks = [...named].map(([uuid, name]) => ({ value: `${NODE_KEY}=${uuid}`, label: `${nodeName}: ${name}` }));
+    setNodes((old) => merge(old, picks, false).sort((x, y) => x.label.localeCompare(y.label)));
   };
+  const filterChoices = useMemo(() => [...labelOptions.options, ...nodes], [labelOptions.options, nodes]);
   useEffect(() => {
-    if (data) adopt(data.cards, !node && !model);
+    if (data) adopt(data, !model && labels.length === 0);
   }, [data]);
-  // Asked for every card of a fleet too big for it, the page has no cards to
-  // offer the filters from: ask by model, which always fits.
-  const needOptions = tooMany && nodes.length === 0;
+  // Asked for every card of a fleet too big for it, the page has no answer to
+  // offer the models from: ask by model, which always fits.
+  const needOptions = tooMany && models.length === 0;
   useEffect(() => {
     if (!needOptions) return;
     const control = new AbortController();
     analyticsApi.gpus({ from, to, granularity, groupBy: "model", metric: "util" }, control.signal)
-      .then((d) => { if (!control.signal.aborted) adopt(d.cards, true); })
+      .then((d) => { if (!control.signal.aborted) adopt(d, true); })
       .catch(() => {});
     return () => control.abort();
   }, [needOptions, from, to, granularity]);
 
-  const rows = useMemo(() => (data ? groupCards(data.cards, group) : []), [data, group]);
+  const rows = useMemo(() => {
+    if (!data) return [];
+    if (data.detail) return groupCards(data.cards, group);
+    return groupRows(data.groups, group, (count) => t("gpus.table.nodeCount", { count }));
+  }, [data, group, t]);
 
   const exportModel = useMemo<CsvModel | null>(() => {
     if (!data) return null;
@@ -95,7 +115,7 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
   useExportModel(exportModel);
 
   const cards = (d: GPUAnalytics): StatItem[] => {
-    const s = summarize(d.cards, d.totals);
+    const s = d.detail ? summarize(d.cards, d.totals) : summarizeGroups(d);
     return [
       { key: "cards", title: t("gpus.cards.cards"), value: fmtInt(s.cards), sub: s.byModel.map((m) => `${m.model || "?"} × ${m.count}`).join(" · ") || undefined },
       { key: "util", title: t("gpus.cards.util"), value: fmtPct(s.utilAvg), sub: t("gpus.cards.utilMax", { value: fmtPct(s.utilMax) }) },
@@ -107,7 +127,9 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
         key: "power", title: t("gpus.cards.power"), value: s.powerTotal == null ? "—" : s.powerTotal >= 1000 ? `${(s.powerTotal / 1000).toFixed(2)} kW` : fmtWatts(s.powerTotal),
         sub: s.powerTotal == null ? undefined : t("gpus.cards.powerPerCard", { value: fmtWatts(s.powerTotal / s.powerCards) }),
       },
-      { key: "idle", title: t("gpus.cards.idle"), value: `${s.idle} / ${s.measured}`, tip: t("gpus.cards.idleTip", { threshold: IDLE_UTIL }), sub: t("gpus.cards.idleSub", { threshold: IDLE_UTIL }) },
+      s.idle == null || s.measured == null
+        ? { key: "idle", title: t("gpus.cards.idle"), value: "—", tip: t("gpus.cards.idleTip", { threshold: IDLE_UTIL }), sub: t("gpus.cards.idleNeedsDetail", { limit: DETAIL_CARDS }) }
+        : { key: "idle", title: t("gpus.cards.idle"), value: `${s.idle} / ${s.measured}`, tip: t("gpus.cards.idleTip", { threshold: IDLE_UTIL }), sub: t("gpus.cards.idleSub", { threshold: IDLE_UTIL }) },
     ];
   };
 
@@ -138,17 +160,18 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
           <Segmented value={metric} onChange={(v) => setSearch({ metric: v === "util" ? undefined : String(v) })} options={METRICS.map((m) => ({ value: m, label: t(`gpus.metric.${m}`) }))} />
         </Space>
         <Space size={8}>
-          <Typography.Text type="secondary">{t("gpus.filters.node")}</Typography.Text>
+          <Typography.Text type="secondary" title={t("gpus.filters.labelsHint")}>{t("gpus.filters.labels")}</Typography.Text>
           <Select
+            mode="multiple"
             allowClear
             showSearch
             optionFilterProp="label"
-            style={{ minWidth: 180 }}
-            aria-label={t("gpus.filters.node")}
+            style={{ minWidth: 220, maxWidth: 420 }}
+            aria-label={t("gpus.filters.labels")}
             placeholder={t("gpus.filters.allNodes")}
-            value={node || undefined}
-            options={nodes}
-            onChange={(v) => setSearch({ node: v || undefined })}
+            value={labels}
+            options={filterChoices}
+            onChange={(next: string[]) => setSearch({ label: next })}
           />
         </Space>
         <Space size={8}>
@@ -166,14 +189,20 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
           />
         </Space>
       </Space>
-      <QueryState query={query} isEmpty={(d) => d.cards.length === 0} errorExtra={() => (tooMany ? tooManyHelp() : null)}>
+      <QueryState query={query} isEmpty={(d) => d.cards.length === 0 && d.groups.length === 0} errorExtra={() => (tooMany ? tooManyHelp() : null)}>
         {(d) => (
           <>
+            {!d.detail && <Alert type="info" showIcon style={{ marginBottom: 16 }} message={t("gpus.summaryNote", { count: d.card_count, limit: DETAIL_CARDS })} />}
             <StatCards items={cards(d)} />
             <Card style={{ marginBottom: 16 }}>
               <Typography.Title level={5} style={{ marginTop: 0 }}>
                 {t(`gpus.chart.title.${d.metric}`, { granularity: t(`granularityName.${d.range.granularity}`) })}
               </Typography.Title>
+              {d.heat_total > d.heat.length && (
+                <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+                  {t("gpus.chart.extremes", { half: Math.floor(d.heat.length / 2), total: d.heat_total, metric: t(`gpus.metric.${d.metric}`) })}
+                </Typography.Paragraph>
+              )}
               <EChart option={heat(d)} height={heatHeight(d.heat.length)} label={t("gpus.chart.aria")} />
             </Card>
             <Card styles={{ body: { padding: 0 } }} title={<Space align="baseline"><span>{t(`gpus.table.title.${group}`)}</span><Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>{t("gpus.table.hint", { threshold: IDLE_UTIL })}</Typography.Text></Space>}>
