@@ -1,9 +1,10 @@
-import { Button, Card, Descriptions, Space, Tag, Typography } from "antd";
+import { Button, Descriptions, Space, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { storageTypeInfo, type Storage, type StorageTarget } from "../../storageTypes";
 import { storageTypeLabel } from "../../storageDisplay";
 import { formatBytes } from "../../format";
+import DetailSection from "../../components/detail/DetailSection";
 import StorageCapacity from "./StorageCapacity";
 import StorageControlPlanes from "./StorageControlPlanes";
 import StorageTags from "./StorageTags";
@@ -56,9 +57,9 @@ export default function StorageOverviewTab({ storage, onShowNodes }: { storage: 
   const shared = storageTypeInfo(storage.type).shared;
   const nfs = storageTypeInfo(storage.type).nfs;
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Card title={t("overview.config")} size="small">
-        <Descriptions size="small" column={{ xs: 1, md: 2 }} bordered>
+    <>
+      <DetailSection title={t("overview.config")}>
+        <Descriptions size="small" column={1} bordered>
           <Descriptions.Item label={t("overview.type")}>{storageTypeLabel(t, storage.type)}</Descriptions.Item>
           <Descriptions.Item label={t("overview.state")}>
             <Space size={4} wrap>
@@ -75,34 +76,34 @@ export default function StorageOverviewTab({ storage, onShowNodes }: { storage: 
               <Descriptions.Item label={t("overview.cacheMax")}>{storage.cache_max_bytes ? formatBytes(storage.cache_max_bytes) : t("overview.cacheUnlimited")}</Descriptions.Item>
             </>
           )}
-          <Descriptions.Item label={t("overview.scope")} span={2}>
+          <Descriptions.Item label={t("overview.scope")}>
             <Typography.Text>{t(storage.all_nodes ? "scope.all" : "overview.scopeChosen")}</Typography.Text>
             {storage.targets.length > 0 && <ul className="storage-target-list">{storage.targets.map((x, i) => <TargetLine key={`${x.node_uuid ?? x.label_key}-${i}`} target={x} />)}</ul>}
           </Descriptions.Item>
         </Descriptions>
-      </Card>
-      <Card title={t("overview.capacity")} size="small">
+      </DetailSection>
+      <DetailSection title={t("overview.capacity")}>
         {shared ? (
-          <Space direction="vertical" size={4}>
+          <Space direction="vertical" size={4} style={{ display: "flex" }}>
             <StorageCapacity total={storage.total_bytes} available={storage.available_bytes} label={t("overview.capacity")} />
             <Typography.Text type="secondary">{t("capacity.once")}</Typography.Text>
           </Space>
         ) : <LocalCapacity storage={storage} onShowNodes={onShowNodes} />}
-      </Card>
+      </DetailSection>
       {shared && (
-        <Card title={t("overview.controlPlanes")} size="small">
+        <DetailSection title={t("overview.controlPlanes")}>
           {/* Heartbeats are files on the storage: one this gpuworks cannot
               write carries none of its own and is never deleted from here. */}
           {storage.writable && storage.enabled
             ? <StorageControlPlanes storageId={storage.id} />
             : <Typography.Text type="secondary">{t("controlPlanes.readOnly")}</Typography.Text>}
-        </Card>
+        </DetailSection>
       )}
-      <Card title={t("overview.deployments")} size="small">
+      <DetailSection title={t("overview.deployments")}>
         {storage.deployment_ids.length > 0
           ? <Space size={4} wrap>{storage.deployment_ids.map((id) => <Link key={id} to={`/deployments?deployment=${id}`}>#{id}</Link>)}</Space>
           : <Typography.Text type="secondary">{t("overview.noDeployments")}</Typography.Text>}
-      </Card>
-    </Space>
+      </DetailSection>
+    </>
   );
 }

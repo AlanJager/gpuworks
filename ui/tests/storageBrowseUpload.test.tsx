@@ -1,7 +1,7 @@
 // The browse tab's upload dialog driven end to end through a hand-driven XMLHttpRequest: progress, cancel, an existing target and its overwrite, unpacking, and leaving the tab.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { renderDetail, restoreApi, rtl, s, stubDetail, type BrowseQuery } from "./helpers/storageDetailHarness.tsx";
+import { modals, renderDetail, restoreApi, rtl, s, stubDetail, type BrowseQuery } from "./helpers/storageDetailHarness.tsx";
 import { fileItem, nfsStorage, nodeStatus } from "./helpers/storageFixtures.ts";
 import { FakeXHR, installFakeXHR, lastXHR } from "./helpers/fakeXhr.ts";
 import type { StorageFileList } from "../src/storageTypes";
@@ -49,7 +49,7 @@ test("an upload shows its progress, then the node's turn, and on success closes 
   assert.ok(await within(dialog).findByText(u.processing));
   const before = (calls.storageFiles ?? []).length;
   await act(async () => xhr.respond(200, JSON.stringify({ path: "files/notes.txt", bytes: 4096, files: 1 })));
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
   assert.ok((calls.storageFiles ?? []).length > before, "the directory is read again");
 });
 
@@ -65,7 +65,7 @@ test("cancel aborts the request in flight and lets the same file go again", asyn
   await user.click(startButton(dialog));
   assert.ok(lastXHR() !== first, "a new request");
   await act(async () => lastXHR().respond(200, JSON.stringify({ path: "files/big.bin", bytes: 1000, files: 1 })));
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
 });
 
 test("an existing target is reported; overwrite sends again with overwrite=true", async () => {
@@ -77,7 +77,7 @@ test("an existing target is reported; overwrite sends again with overwrite=true"
   await user.click(within(dialog).getByRole("button", { name: u.overwrite }));
   assert.equal(lastXHR().url, "/api/v1/storages/2/files/upload?path=files%2Fold.txt&overwrite=true");
   await act(async () => lastXHR().respond(200, JSON.stringify({ path: "files/old.txt", bytes: 10, files: 1 })));
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
 });
 
 test("choosing another name after an existing target goes back to a plain upload", async () => {
@@ -103,7 +103,7 @@ test("an archive can be unpacked into a directory named after it", async () => {
   await user.click(startButton(dialog));
   assert.equal(lastXHR().url, "/api/v1/storages/2/files/upload?path=files%2Fgsm8k&extract=tar.gz");
   await act(async () => lastXHR().respond(200, JSON.stringify({ path: "files/gsm8k", bytes: 20, files: 3 })));
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
 });
 
 test("a failure shows the reason; a broken connection says so", async () => {
@@ -123,7 +123,7 @@ test("Esc during an upload cancels it and closes the dialog", async () => {
   const xhr = lastXHR();
   fireEvent.keyDown(dialog, { key: "Escape", code: "Escape", keyCode: 27 });
   await waitFor(() => assert.ok(xhr.aborted));
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
 });
 
 test("leaving the tab cancels a running upload", async () => {

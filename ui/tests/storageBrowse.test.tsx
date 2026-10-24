@@ -1,7 +1,7 @@
 // The storage detail page's browse tab (ADR 0053): choosing a node, walking the tree, what is offered where, and the dialogs.
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { api, confirm, emptyListing, localStorage, nodeStatus, renderDetail, restoreApi, rtl, s, stubDetail, type BrowseQuery } from "./helpers/storageDetailHarness.tsx";
+import { api, confirm, emptyListing, findModal, modals, localStorage, nodeStatus, renderDetail, restoreApi, rtl, s, stubDetail, type BrowseQuery } from "./helpers/storageDetailHarness.tsx";
 import { fileItem, nfsStorage } from "./helpers/storageFixtures.ts";
 import type { StorageFileList } from "../src/storageTypes";
 
@@ -56,6 +56,13 @@ test("a viewer does not get the tab; an admin's tab is labelled Browse", async (
   stubDetail({ storage: shared });
   renderDetail("/storage/2");
   assert.ok(await screen.findByRole("tab", { name: s.detail.tab.browse }));
+});
+
+test("a viewer's ?tab=browse opens the overview instead of an empty tab", async () => {
+  stubDetail({ storage: shared, admin: false });
+  renderDetail("/storage?storage=2&tab=browse");
+  const overview = await screen.findByRole("tab", { name: new RegExp(s.detail.tab.overview) });
+  await waitFor(() => assert.equal(overview.getAttribute("aria-selected"), "true"));
 });
 
 test("a local storage asks for a node first; offline nodes cannot be chosen; choosing one lists its root", async () => {
@@ -121,8 +128,8 @@ test("listing shows a spinner while loading, and a failure with a retry that lis
       return tree(query);
     },
   });
-  const { view } = renderDetail("/storage/2?tab=browse", false);
-  await waitFor(() => assert.ok(view.container.querySelector(".ant-spin-spinning"), "loading"));
+  renderDetail("/storage/2?tab=browse", false);
+  await waitFor(() => assert.ok(document.querySelector(".ant-drawer .ant-spin-spinning"), "loading"));
   release(tree({ path: "" }));
   await open("files");
   assert.ok(await screen.findByText("node gpu-01 is offline"));
@@ -248,14 +255,14 @@ test("new directory opens from the keyboard, creates under the current path, and
   await user.clear(input);
   await user.type(input, "eval sets{Enter}");
   await waitFor(() => assert.deepEqual(calls.storageFilesMkdir?.[0], [2, undefined, "files/eval sets"]));
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
   assert.ok(listed(calls).filter((q) => q.path === "files").length >= 2, "the list is read again");
 
   mkdir.focus();
   await user.keyboard(" ");
-  const again = await screen.findByRole("dialog");
+  const again = await findModal();
   fireEvent.keyDown(within(again).getByLabelText(b.name), { key: "Escape", code: "Escape", keyCode: 27 });
-  await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
+  await waitFor(() => assert.equal(modals().length, 0));
   assert.equal(calls.storageFilesMkdir?.length, 1);
 });
 
@@ -266,7 +273,7 @@ test("a refused new directory keeps the dialog open with the server's reason", a
   await open("files");
   await row("notes&1.txt");
   await user.click(screen.getByRole("button", { name: new RegExp(`${b.mkdir}$`) }));
-  const dialog = await screen.findByRole("dialog");
+  const dialog = await findModal();
   await user.type(within(dialog).getByLabelText(b.name), "x");
   await user.click(within(dialog).getByRole("button", { name: b.mkdirOk }));
   assert.ok(await within(dialog).findByText("files/x already exists as a file"));

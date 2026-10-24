@@ -10,9 +10,19 @@ export const { i18n, locale } = await createI18n(["storage", "models"]);
 const router = await import("react-router-dom");
 const rtl = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
-const { api } = await import("../../src/api.ts");
+const { api, usePolling } = await import("../../src/api.ts");
 const { ConfigProvider } = await import("antd");
-const { default: StorageDetailPage } = await import("../../src/pages/storage/StorageDetailPage.tsx");
+const { default: StorageDetailDrawer } = await import("../../src/pages/storage/StorageDetailDrawer.tsx");
+const { StorageDetailRedirect } = await import("../../src/pages/storage/storageLinks.tsx");
+const { numericDetailID, useDetailParam } = await import("../../src/components/detail/useDetailParam.ts");
+
+// The list page's drawer, without the list: what ?storage= opens, with the
+// nodes the list page reads once and hands down.
+export function DrawerHost() {
+  const detail = useDetailParam("storage");
+  const nodes = usePolling(api.nodes, 0);
+  return <StorageDetailDrawer id={numericDetailID(detail.id)} tab={detail.tab} onTab={detail.setTab} onClose={() => detail.open(null)} onDeleted={() => detail.open(null)} nodes={nodes.data?.items ?? []} />;
+}
 
 export { api, rtl, dom, localStorage, modelFile, node, nodeStatus };
 export const s = locale.storage;
@@ -79,8 +89,9 @@ export function renderDetail(path: string, motion = true) {
     <ConfigProvider theme={{ token: { motion } }}><I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/storage/:id" element={<><StorageDetailPage /><Where /></>} />
-          <Route path="/storage" element={<Where />} />
+          {/* The old detail address redirects to the drawer over the list. */}
+          <Route path="/storage/:id" element={<StorageDetailRedirect />} />
+          <Route path="/storage" element={<><DrawerHost /><Where /></>} />
         </Routes>
       </MemoryRouter>
     </I18nextProvider></ConfigProvider>,
@@ -111,7 +122,8 @@ export async function moreItems(): Promise<string[]> {
   fireEvent.click(more);
   await waitFor(() => { if (screen.queryAllByRole("menuitem").length === 0) throw new Error("menu not open"); });
   const labels = screen.queryAllByRole("menuitem").map((el) => (el.textContent ?? "").trim());
-  fireEvent.keyDown(more, { key: "Escape", code: "Escape", keyCode: 27 });
+  // Closed by its toggle: in the drawer, Escape would close the drawer too.
+  fireEvent.click(more);
   return labels;
 }
 
@@ -140,3 +152,21 @@ export async function confirmDialog(label: string) {
   });
   fireEvent.click(ok);
 }
+
+/** Expands a table row and returns its expanded detail: what moved out of the row. */
+export function detailOf(row: HTMLElement): HTMLElement {
+  const { within, fireEvent } = rtl;
+  const button = within(row).queryByRole("button", { name: s.detail.expand });
+  if (button) fireEvent.click(button);
+  const next = row.nextElementSibling as HTMLElement | null;
+  if (!next || !next.classList.contains("ant-table-expanded-row")) throw new Error("the row has no expanded detail");
+  return next;
+}
+
+/** The open modals: the detail drawer is a dialog too, so a bare dialog query is ambiguous. */
+export const modals = () => rtl.screen.queryAllByRole("dialog").filter((dialog) => !dialog.closest(".ant-drawer"));
+export const findModal = () => rtl.waitFor(() => {
+  const open = modals();
+  if (open.length === 0) throw new Error("no modal is open");
+  return open.at(-1) as HTMLElement;
+});

@@ -137,7 +137,7 @@ export default function StorageBrowseTab({ storage }: { storage: Storage }) {
       key: "name",
       role: "name",
       title: t("browse.column.name"),
-      width: 320,
+      width: 250,
       render: (_, item) => {
         if (item.dir && !item.symlink) {
           return (
@@ -155,8 +155,10 @@ export default function StorageBrowseTab({ storage }: { storage: Storage }) {
         );
       },
     },
-    { key: "size", title: t("browse.column.size"), width: 120, align: "right", render: (_, item) => (item.dir ? "—" : formatBytes(item.size)) },
-    { key: "mtime", title: t("browse.column.mtime"), width: 170, render: (_, item) => formatTime(item.mtime) },
+    { key: "size", title: t("browse.column.size"), width: 100, align: "right", render: (_, item) => (item.dir ? "—" : formatBytes(item.size)) },
+    // The region directories the agent adds itself (files/, .gpuworks/apps/)
+    // carry no time and arrive as Go's zero time, which would read "1-01-01".
+    { key: "mtime", title: t("browse.column.mtime"), width: 150, render: (_, item) => (!item.mtime || item.mtime.startsWith("0001-") ? "—" : formatTime(item.mtime)) },
     {
       key: "actions",
       role: "actions",
@@ -187,8 +189,10 @@ export default function StorageBrowseTab({ storage }: { storage: Storage }) {
           ]}
         />
       </nav>
+      {/* The columns add up to the drawer's width: no settings gear, no sideways scroll. */}
       <ResourceTable<StorageFileItem>
         tableId="storage-browse"
+        columnSettings={false}
         rowKey="path"
         columns={columns}
         data={current?.items ?? []}
@@ -213,7 +217,8 @@ export default function StorageBrowseTab({ storage }: { storage: Storage }) {
           <Typography.Text type="secondary">{t("browse.loaded", { count: current.items.length })}</Typography.Text>
         </Space>
       )}
-      <Typography.Text type="secondary">{t("browse.writableAreas")}</Typography.Text>
+      {/* A read-only place already says where one can write, next to its disabled buttons. */}
+      {!dirReasonText && <Typography.Text type="secondary">{t("browse.writableAreas")}</Typography.Text>}
       {dialog?.kind === "upload" && (
         <StorageUploadDialog
           storageId={storage.id}

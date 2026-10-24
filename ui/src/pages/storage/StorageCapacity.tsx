@@ -21,7 +21,9 @@ export default function StorageCapacity({ total, available, compact = false, lab
   return (
     <div style={{ minWidth: compact ? 140 : 240, maxWidth: compact ? 220 : 400 }}>
       <Progress percent={percent} size="small" showInfo={false} aria-label={label} status={percent >= 90 ? "exception" : "normal"} style={{ margin: 0 }} />
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+      {/* Its own line under the bar, free to wrap: a table cell that keeps to
+          one line would otherwise run it past the column. */}
+      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", whiteSpace: "normal" }}>
         {t("capacity.value", { used: formatBytes(used), total: formatBytes(total), available: formatBytes(available ?? 0) })}
       </Typography.Text>
     </div>

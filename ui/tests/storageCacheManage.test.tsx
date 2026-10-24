@@ -14,6 +14,9 @@ const { MemoryRouter } = await import("react-router-dom");
 const { ConfigProvider } = await import("antd");
 const { api } = await import("../src/api.ts");
 const { default: Nodes } = await import("../src/pages/storage/StorageCacheNodes.tsx");
+// The cache state's explanation, the mount and the cache usage sit in each
+// row's expanded detail; open every row.
+const expandAll = (label: string) => { for (const button of screen.queryAllByRole("button", { name: label })) fireEvent.click(button); };
 const original = {...api};
 const s = locale.storage;
 const GIB = 1024 ** 3;
@@ -129,6 +132,7 @@ test("viewer sees policy and honest unknown state but cannot modify configuratio
   const storage = fixture();
   delete storage.nodes.all![0].cache;
   view(storage, false);
+  expandAll(s.detail.expand);
   assert.ok(screen.getAllByText(s.cacheManage.unknown).length);
   assert.equal(screen.queryByRole("button",{name:s.cacheManage.configure}),null);
   assert.equal(screen.queryByRole("button",{name:s.cacheManage.defaults}),null);
@@ -225,6 +229,14 @@ for (const filter of [
   });
 }
 
+test("following a node's link does not also expand its row", async () => {
+  view(fixture(2));
+  const link = await screen.findByRole("link", { name: "gpu-00" });
+  const row = link.closest("tr") as HTMLElement;
+  fireEvent.click(link);
+  assert.equal(row.nextElementSibling?.classList.contains("ant-table-expanded-row") ?? false, false);
+});
+
 test("cache state reasons render localized explanations instead of machine codes", async () => {
   const reasons = ["directory_unverified", "disk_unverified", "storage_unavailable", "node_offline", "storage_not_ready", "cleanup_required", "cache_full_in_use", "insufficient_disk", "model_exceeds_cache_limit"];
   for (const language of ["en", "zh"] as const) {
@@ -233,6 +245,7 @@ test("cache state reasons render localized explanations instead of machine codes
     const storage = fixture(reasons.length);
     reasons.forEach((reason, index) => { storage.nodes.all![index].cache = { ...storage.nodes.all![index].cache!, state: "pending", reason, message: reason }; });
     render(<ConfigProvider theme={{token:{motion:false}}}><I18nextProvider i18n={localized.i18n}><MemoryRouter><Nodes storage={storage} nodes={[]} files={null} isAdmin={false} onChanged={() => {}} onEditScope={() => {}} /></MemoryRouter></I18nextProvider></ConfigProvider>);
+    expandAll(localized.i18n.t("detail.expand", { ns: "storage" }));
     for (const reason of reasons) {
       assert.ok(screen.queryByText(reason) === null, `${language}: raw ${reason} must not appear`);
       assert.ok(screen.getAllByText(localized.i18n.t(`cacheManage.reason.${reason}`, { ns: "storage" })).length > 0);
@@ -245,6 +258,7 @@ test("cache cleanup failures retain the actual RPC diagnostic", () => {
   const diagnostic = "rpc delete: permission denied for /cache/model/shard-01";
   storage.nodes.all![0].cache = { ...storage.nodes.all![0].cache!, state: "failed", reason: "cleanup_failed", message: diagnostic };
   view(storage);
+  expandAll(s.detail.expand);
   assert.ok(screen.getByText(diagnostic));
   assert.ok(screen.getByRole("button", { name: s.cacheManage.retry }));
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { api, confirm, localStorage, locale, modelFile, nodeStatus, renderDetail, restoreApi, rtl, s, stubDetail } from "./helpers/storageDetailHarness.tsx";
+import { api, confirm, localStorage, locale, modelFile, nodeStatus, renderDetail, restoreApi, rtl, s, stubDetail, detailOf } from "./helpers/storageDetailHarness.tsx";
 import { nfsStorage } from "./helpers/storageFixtures.ts";
 import { list } from "./helpers/listPage.ts";
 
@@ -35,18 +35,22 @@ test("the nodes tab lists every node with its state, mount, writability, capacit
   const row = async (name: string) => (await screen.findByText(name, { selector: ".ant-table-tbody a" })).closest("tr") as HTMLElement;
   const gpu1 = await row("gpu-01");
   assert.ok(within(gpu1).getByText(locale.common.storageNodeState.ready));
-  assert.ok(within(gpu1).getByText("/mnt/gpuworks/team-cache"));
-  assert.ok(within(gpu1).getByText(s.nodes.cacheAt.replace("{{path}}", "/data/cache")));
-  assert.ok(within(gpu1).getByText(s.nodes.yes));
-  assert.ok(within(gpu1).getByText("Used 100.0 GiB of 117.0 GiB, 17.0 GiB available"));
-  assert.ok(within(gpu1).getByText("2 min ago"));
+  // An NFS cache's row keeps the node and both states; the mount and cache
+  // directory, writability, capacity and since when sit in its detail.
+  const gpu1Detail = detailOf(gpu1);
+  assert.ok(within(gpu1Detail).getByText(s.nodes.yes));
+  assert.ok(within(gpu1Detail).getByText("Used 100.0 GiB of 117.0 GiB, 17.0 GiB available"));
+  assert.ok(within(gpu1Detail).getByText("/mnt/gpuworks/team-cache"));
+  assert.ok(within(gpu1Detail).getByText(s.nodes.cacheAt.replace("{{path}}", "/data/cache"), { exact: false }));
+  assert.ok(within(gpu1Detail).getByText("2 min ago"));
 
   const gpu3 = await row("gpu-03");
   assert.ok(within(gpu3).getByText(locale.common.storageNodeState.failed));
-  assert.ok(within(gpu3).getByText(/mount failed/));
-  assert.ok(within(gpu3).getByText(s.nodes.no));
-  assert.equal(within(gpu3).queryByText(/Used .* of/), null, "no capacity reported is a dash, not a made-up bar");
-  assert.ok(within(gpu3).getAllByText("—").length >= 1);
+  const gpu3Detail = detailOf(gpu3);
+  assert.ok(within(gpu3Detail).getByText(/mount failed/));
+  assert.ok(within(gpu3Detail).getByText(s.nodes.no));
+  assert.equal(within(gpu3Detail).queryByText(/Used .* of/), null, "no capacity reported is a dash, not a made-up bar");
+  assert.ok(within(gpu3Detail).getAllByText("—").length >= 1);
 });
 
 test("an offline node is marked and says its figures are the last ones it reported", async () => {
@@ -55,20 +59,23 @@ test("an offline node is marked and says its figures are the last ones it report
   const gpu2 = (await screen.findByText("gpu-02", { selector: ".ant-table-tbody a" })).closest("tr") as HTMLElement;
   assert.ok(gpu2.className.includes("storage-node-offline"));
   assert.ok(within(gpu2).getByText(locale.common.storageNodeState.offline));
-  assert.ok(within(gpu2).getByText(s.nodes.offlineHint));
-  assert.ok(within(gpu2).getByText("2 h ago"));
+  const gpu2Detail = detailOf(gpu2);
+  assert.ok(within(gpu2Detail).getByText(s.nodes.offlineHint));
+  assert.ok(within(gpu2Detail).getByText("2 h ago"));
 });
 
 test("an NFS cache adds the cache disk and the cached models against the node's limit, its own override first", async () => {
   stubDetail({ storage: cacheStorage, files: cacheFiles });
   renderDetail("/storage/3?tab=nodes");
-  assert.ok(await screen.findByRole("columnheader", { name: s.nodes.column.cache }));
+  // The cache disk and the cached models are in each node's detail.
   const gpu1 = (await screen.findByText("gpu-01", { selector: ".ant-table-tbody a" })).closest("tr") as HTMLElement;
-  assert.ok(within(gpu1).getByText("Used 100.0 GiB of 1000.0 GiB, 900.0 GiB available"), "the cache disk");
+  const gpu1Detail = detailOf(gpu1);
+  assert.ok(within(gpu1Detail).getByText(s.nodes.column.cache));
+  assert.ok(within(gpu1Detail).getByText("Used 100.0 GiB of 1000.0 GiB, 900.0 GiB available"), "the cache disk");
   // 30 GiB finished + 70 GiB of the one still syncing, against the 100 GiB override.
-  assert.ok(within(gpu1).getByText("Cached models 100.0 GiB of 100.0 GiB limit"));
+  assert.ok(within(gpu1Detail).getByText("Cached models 100.0 GiB of 100.0 GiB limit"));
   const gpu2 = (await screen.findByText("gpu-02", { selector: ".ant-table-tbody a" })).closest("tr") as HTMLElement;
-  assert.ok(within(gpu2).getByText(s.cacheManage.unknown), "missing cache accounting is unknown, not zero");
+  assert.ok(within(detailOf(gpu2)).getByText(s.cacheManage.unknown), "missing cache accounting is unknown, not zero");
 });
 
 test("a local storage has no cache column; searching narrows the nodes; a storage without nodes says so", async () => {
@@ -92,9 +99,9 @@ test("a node that cannot use the local storage's directory is told to get one of
   ] } }) });
   renderDetail("/storage/1?tab=nodes");
   const row = async (name: string) => (await screen.findByText(name, { selector: ".ant-table-tbody a" })).closest("tr") as HTMLElement;
-  assert.ok(within(await row("rootless")).getByText(s.nodes.ownDirectoryHint));
-  assert.ok(within(await row("read-only-disk")).getByText(s.nodes.ownDirectoryHint));
-  assert.equal(within(await row("gpu-01")).queryByText(s.nodes.ownDirectoryHint), null);
+  assert.ok(within(detailOf(await row("rootless"))).getByText(s.nodes.ownDirectoryHint));
+  assert.ok(within(detailOf(await row("read-only-disk"))).getByText(s.nodes.ownDirectoryHint));
+  assert.equal(within(detailOf(await row("gpu-01"))).queryByText(s.nodes.ownDirectoryHint), null);
 });
 
 test("the files tab shows the shared copy and node caches with model link, place, path, size, state, source, last use and deployments", async () => {
@@ -103,28 +110,32 @@ test("the files tab shows the shared copy and node caches with model link, place
   const shared = (await screen.findAllByRole("link", { name: "Qwen3-8B" }))[0].closest("tr") as HTMLElement;
   assert.equal(within(shared).getByRole("link", { name: "Qwen3-8B" }).getAttribute("href"), "/models?detail=7");
   assert.ok(within(shared).getByText(s.files.shared));
-  assert.ok(within(shared).getByText("Qwen/Qwen3-8B"));
   assert.ok(within(shared).getByText("16.0 GiB"));
   assert.ok(within(shared).getByText(models.presence.present));
-  assert.ok(within(shared).getByText(models.acquisition.registered));
-  assert.equal(within(shared).getByRole("link", { name: "#4" }).getAttribute("href"), "/deployments?deployment=4");
+  // How it got there and who deploys it sit in the row's detail.
+  const sharedDetail = detailOf(shared);
+  assert.ok(within(sharedDetail).getByText("Qwen/Qwen3-8B"), "its path");
+  assert.ok(within(sharedDetail).getByText(models.acquisition.registered));
+  assert.equal(within(sharedDetail).getByRole("link", { name: "#4" }).getAttribute("href"), "/deployments?deployment=4");
 
   const cached = (await screen.findAllByRole("link", { name: "Qwen3-8B" }))[1].closest("tr") as HTMLElement;
   assert.ok(within(cached).getByText("gpu-01"));
   assert.ok(within(cached).getByText(models.files.cache));
   assert.ok(within(cached).getByText("30.0 GiB"));
-  assert.ok(within(cached).getByText(/2026-10-01 /), "last used");
+  assert.ok(within(detailOf(cached)).getByText(/2026-10-01 /), "last used");
 
   const syncing = (await screen.findByRole("link", { name: "Llama-3-70B" })).closest("tr") as HTMLElement;
   assert.ok(within(syncing).getByText(models.presence.syncing));
   assert.equal(within(syncing).getByRole("progressbar").getAttribute("aria-valuenow"), "50");
-  assert.ok(within(syncing).getByText(models.acquisition.peer));
+  assert.ok(within(detailOf(syncing)).getByText(models.acquisition.peer));
 
   const failed = (await screen.findByRole("link", { name: "Broken" })).closest("tr") as HTMLElement;
   assert.ok(within(failed).getByText(models.presence.failed));
-  assert.ok(within(failed).getByText(models.files.writerNode.replace("{{node}}", "gpu-02")));
   assert.equal(within(failed).queryByRole("progressbar"), null);
-  assert.ok(within(failed).getAllByText("—").length >= 2, "unknown size and no deployments are dashes");
+  assert.ok(within(failed).getAllByText("—").length >= 1, "an unknown size is a dash");
+  const failedDetail = detailOf(failed);
+  assert.ok(within(failedDetail).getByText(models.files.writerNode.replace("{{node}}", "gpu-02")));
+  assert.ok(within(failedDetail).getAllByText("—").length >= 1, "no deployments is a dash");
 });
 
 test("a failure's message is in a tooltip on its state", async () => {
@@ -172,8 +183,13 @@ test("an admin deletes the shared copy through the confirmation dialog, then the
   const shared = (await screen.findAllByRole("link", { name: "Qwen3-8B" }))[0].closest("tr") as HTMLElement;
   const before = calls.storageModelFiles.length;
   await user.click(within(shared).getByRole("button", { name: models.action.deleteModelFiles }));
-  const dialog = await screen.findByRole("dialog");
-  assert.ok(within(dialog).getByText(models.storageDelete.impactCache.replace("{{storage}}", "team-cache").replace("{{count}}", "1")), "names the one node cache it feeds");
+  // The detail is a drawer, itself a dialog: the confirmation is the other one.
+  const impact = models.storageDelete.impactCache.replace("{{storage}}", "team-cache").replace("{{count}}", "1");
+  const dialog = await waitFor(() => {
+    const found = screen.getAllByRole("dialog").find((d) => within(d).queryByText(impact));
+    assert.ok(found, "names the one node cache it feeds");
+    return found;
+  });
   await user.click(within(dialog).getByRole("button", { name: models.storageDelete.confirm }));
   await waitFor(() => assert.deepEqual(calls.deleteModelInStorage, [[7, 3, false]]));
   await waitFor(() => assert.ok(calls.storageModelFiles.length > before));

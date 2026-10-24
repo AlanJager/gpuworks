@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Button, Input, Progress, Select, Space, Tag, Tooltip, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { detailExpandable } from "../../components/detail/DetailDrawer";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { formatTime } from "../../i18n/datetime";
 import { formatBytes } from "../../format";
@@ -54,16 +55,19 @@ export default function StorageFilesTab({ storage, files, loading, error, isAdmi
   }, [all]);
   const showUsed = storageTypeInfo(storage.type).cache;
 
+  // The row keeps the model, where it is, how big, its state and the actions;
+  // its path, how it got there, when it was last used and who deploys it sit
+  // one step down so the row fits the 720px detail drawer.
   const columns: ResourceColumn<StorageModelFile>[] = [
     {
       key: "model",
       role: "name",
       title: t("files.column.model"),
-      width: 240,
+      width: 186,
       sortValue: (f) => f.model_name || f.source_id,
       render: (_, f) => (
         <>
-          <Link to={`/models?detail=${f.model_id}`}>{f.model_name || f.source_id}</Link>
+          <Link to={`/models?detail=${f.model_id}`} onClick={(event) => event.stopPropagation()}>{f.model_name || f.source_id}</Link>
           {f.source && <span className="resource-table-sub">{f.source}</span>}
         </>
       ),
@@ -71,7 +75,7 @@ export default function StorageFilesTab({ storage, files, loading, error, isAdmi
     {
       key: "place",
       title: t("files.column.place"),
-      width: 180,
+      width: 140,
       sortValue: (f) => (f.node_uuid ? nodeRowName(f) : ""),
       render: (_, f) => (
         <Space size={4}>
@@ -80,63 +84,64 @@ export default function StorageFilesTab({ storage, files, loading, error, isAdmi
         </Space>
       ),
     },
-    {
-      key: "path",
-      title: t("files.column.path"),
-      width: 280,
-      render: (_, f) => f.path
-        ? <Typography.Text code copyable={{ text: f.path }} ellipsis={{ tooltip: f.path }} style={{ maxWidth: "100%" }}>{f.path}</Typography.Text>
-        : "—",
-    },
-    { key: "size_bytes", title: t("files.column.size"), width: 110, align: "right", sortValue: (f) => f.size_bytes, render: (_, f) => (f.size_bytes ? formatBytes(f.size_bytes) : "—") },
+    { key: "size_bytes", title: t("files.column.size"), width: 90, align: "right", sortValue: (f) => f.size_bytes, render: (_, f) => (f.size_bytes ? formatBytes(f.size_bytes) : "—") },
     {
       key: "state",
       title: t("files.column.state"),
-      width: 150,
+      width: 130,
       ellipsis: false,
       sortValue: (f) => f.state,
       filters: [...new Set(all.map((f) => f.state))].map((state) => ({ value: state, text: presenceVisual[state] ? tModels(presenceVisual[state].labelKey) : state })),
       onFilter: (value, f) => f.state === value,
       render: (_, f) => <FileState file={f} />,
     },
-    {
-      key: "source",
-      title: t("files.column.source"),
-      width: 160,
-      render: (_, f) => (
-        <>
-          <span>{f.acquisition ? (acquisitionLabel[f.acquisition] ? tModels(acquisitionLabel[f.acquisition]) : f.acquisition) : "—"}</span>
-          {f.writer_node && <span className="resource-table-sub">{tModels("files.writerNode", { node: f.writer_node })}</span>}
-        </>
-      ),
-    },
-    ...(showUsed ? [{
-      key: "lastUsed",
-      title: t("files.column.lastUsed"),
-      width: 170,
-      sortValue: (f: StorageModelFile) => (f.cache ? f.last_used_at : undefined),
-      render: (_: unknown, f: StorageModelFile) => (f.cache
-        ? (f.last_used_at ? formatTime(f.last_used_at) : <Typography.Text type="secondary">{tModels("files.neverUsed")}</Typography.Text>)
-        : "—"),
-    }] : []),
-    {
-      key: "deployments",
-      title: t("files.column.deployments"),
-      width: 140,
-      sortValue: (f) => f.deployment_ids.length,
-      render: (_, f) => (f.deployment_ids.length > 0
-        ? <Space size={4}>{f.deployment_ids.map((id) => <Link key={id} to={`/deployments?deployment=${id}`}>#{id}</Link>)}</Space>
-        : <Typography.Text type="secondary">—</Typography.Text>),
-    },
     ...(isAdmin ? [{
       key: "actions",
       role: "actions" as const,
       title: t("files.column.actions"),
-      width: 120,
-      render: (_: unknown, f: StorageModelFile) => <StorageFileActions storage={storage} file={f} files={all} onChanged={onChanged} />,
+      width: 80,
+      render: (_: unknown, f: StorageModelFile) => (
+        <span onClick={(event) => event.stopPropagation()}>
+          <StorageFileActions storage={storage} file={f} files={all} onChanged={onChanged} />
+        </span>
+      ),
     }] : []),
   ];
-
+  const extra = (f: StorageModelFile) => (
+    <dl className="detail-extra">
+      <div style={{ gridColumn: "1 / -1" }}>
+        <dt>{t("files.column.path")}</dt>
+        <dd>{f.path ? <Typography.Text code copyable={{ text: f.path }}>{f.path}</Typography.Text> : "—"}</dd>
+      </div>
+      <div>
+        <dt>{t("files.column.source")}</dt>
+        <dd>
+          {f.acquisition ? (acquisitionLabel[f.acquisition] ? tModels(acquisitionLabel[f.acquisition]) : f.acquisition) : "—"}
+          {f.writer_node && <div>{tModels("files.writerNode", { node: f.writer_node })}</div>}
+        </dd>
+      </div>
+      {showUsed && (
+        <div>
+          <dt>{t("files.column.lastUsed")}</dt>
+          <dd>{f.cache ? (f.last_used_at ? formatTime(f.last_used_at) : tModels("files.neverUsed")) : "—"}</dd>
+        </div>
+      )}
+      <div>
+        <dt>{t("files.column.deployments")}</dt>
+        <dd>
+          {f.deployment_ids.length > 0
+            ? <Space size={4}>{f.deployment_ids.map((id) => <Link key={id} to={`/deployments?deployment=${id}`}>#{id}</Link>)}</Space>
+            : "—"}
+        </dd>
+      </div>
+      {f.message && (
+        <div style={{ gridColumn: "1 / -1" }}>
+          <dt>{t("files.column.state")}</dt>
+          <dd>{f.message}</dd>
+        </div>
+      )}
+    </dl>
+  );
   const empty = all.length === 0
     ? { text: t(shared ? "files.emptyShared" : "files.emptyLocal"), action: shared && isAdmin ? <Button type="primary" onClick={onScan}>{t("actions.scan")}</Button> : undefined }
     : { text: t("files.noMatch"), action: undefined };
@@ -151,20 +156,22 @@ export default function StorageFilesTab({ storage, files, loading, error, isAdmi
       onRefresh={onRefresh}
       emptyDescription={empty.text}
       emptyAction={empty.action}
+      columnSettings={false}
+      expandable={detailExpandable<StorageModelFile>(extra, { expand: t("detail.expand"), collapse: t("detail.collapse") })}
       toolbar={
         <>
           <Select
             aria-label={t("files.filterPlace")}
             value={scope}
             onChange={setScope}
-            style={{ minWidth: 200 }}
+            style={{ minWidth: 160 }}
             options={[
               { value: "all", label: t("files.placeAll") },
               ...(shared ? [{ value: "shared", label: t("files.shared") }] : []),
               ...nodeOptions,
             ]}
           />
-          <Input.Search allowClear aria-label={t("files.search")} placeholder={t("files.search")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 260 }} />
+          <Input.Search allowClear aria-label={t("files.search")} placeholder={t("files.search")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 220 }} />
         </>
       }
     />

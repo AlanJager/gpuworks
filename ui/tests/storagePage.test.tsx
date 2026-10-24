@@ -43,7 +43,7 @@ function renderPage(motion = true) {
   const view = render(
     <ConfigProvider theme={{ token: { motion } }}><I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={["/storage"]}>
-        <Routes><Route path="/storage" element={<StoragePage />} /><Route path="/storage/:id" element={<Where />} /></Routes>
+        <Routes><Route path="/storage" element={<><StoragePage /><Where /></>} /></Routes>
       </MemoryRouter>
     </I18nextProvider></ConfigProvider>,
   );
@@ -95,7 +95,7 @@ test("one row per storage, with name link, tags, type, location, scope, node hea
   renderPage();
   const archive = await rowOf("model-archive");
   assert.equal(screen.getAllByRole("row").length, 1 + 5, "header plus a row per storage");
-  assert.equal(within(archive).getByRole("link", { name: "model-archive" }).getAttribute("href"), "/storage/2");
+  assert.equal(within(archive).getByRole("link", { name: "model-archive" }).getAttribute("href"), "/storage?storage=2");
   assert.ok(within(archive).getByText(locale.common.storageType.nfs));
   assert.ok(within(archive).getByText("nfs.example.internal:/export/models"));
   assert.ok(within(archive).getByText(s.list.mountedAt.replace("{{path}}", "/mnt/gpuworks/model-archive")));
@@ -132,6 +132,17 @@ test("a storage with nodes in trouble shows a warning mark that names them", asy
   assert.equal(within(await rowOf("team-cache")).queryByRole("img", { name: /with problems/ }), null);
 });
 
+test("opening a storage's drawer reads the node list once, with the page", async () => {
+  const calls = stubApi();
+  api.storage = (async () => nfsStorage()) as never;
+  api.storageModelFiles = (async () => ({ items: [] })) as never;
+  const { user } = renderPage(false);
+  const archive = await rowOf("model-archive");
+  await user.click(within(archive).getByRole("button", { name: s.actions.detail }));
+  await screen.findByRole("tab", { name: new RegExp(s.detail.tab.overview) });
+  assert.equal(calls.nodes?.length, 1, "the drawer takes the page's nodes");
+});
+
 test("the default storage's delete control is disabled and explains why", async () => {
   const calls = stubApi();
   renderPage();
@@ -143,14 +154,14 @@ test("the default storage's delete control is disabled and explains why", async 
   assert.equal(calls.deleteStorage, undefined);
 });
 
-test("an admin has Edit and Delete on each row; Details opens the storage's page", async () => {
+test("an admin has Edit and Delete on each row; Details opens the storage's drawer", async () => {
   stubApi();
   const { user } = renderPage();
   const archive = await rowOf("model-archive");
   assert.ok(within(archive).getByRole("button", { name: s.actions.edit }));
   assert.ok(within(archive).getByRole("button", { name: s.actions.delete }));
   await user.click(within(archive).getByRole("button", { name: s.actions.detail }));
-  assert.equal((await screen.findByTestId("where")).textContent, "/storage/2");
+  await waitFor(() => assert.equal(screen.getByTestId("where").textContent, "/storage?storage=2"));
 });
 
 test("a viewer sees the storages and Details, none of the admin actions", async () => {
@@ -199,7 +210,7 @@ test("Edit opens the edit dialog for that storage, and Escape closes it", async 
   await waitFor(() => assert.ok(screen.queryByText(s.form.editTitle.replace("{{name}}", "model-archive")) === null, "closed dialog content must disappear"));
 });
 
-test("adding a storage opens the add dialog, and a created storage opens its page", async () => {
+test("adding a storage opens the add dialog, and a created storage opens its drawer", async () => {
   const calls = stubApi();
   const { user } = renderPage();
   await rowOf("model-archive");
@@ -209,7 +220,7 @@ test("adding a storage opens the add dialog, and a created storage opens its pag
   await user.type(within(dialog).getByLabelText(s.form.path), "/data/fresh");
   await user.click(within(dialog).getByRole("button", { name: new RegExp(`^${s.form.save}$`) }));
   await waitFor(() => assert.equal(calls.createStorage?.length, 1));
-  assert.equal((await screen.findByTestId("where")).textContent, "/storage/9");
+  await waitFor(() => assert.equal(screen.getByTestId("where").textContent, "/storage?storage=9"));
 });
 
 test("Storage settings opens a dialog with the control plane name and reserve, and saves both", async () => {
