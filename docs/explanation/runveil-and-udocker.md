@@ -99,19 +99,29 @@ ioctl 不陷入）都由这一个进程处理。一个 8 卡张量并行的 SGLa
   1900 降到约 700（[对比数据](../../artifacts/work/2026-10-20-runveil-many-threads/plan.md#线程上限对引擎性能的影响2026-10-20vast-8h100-sxm)）。
   CPU 上工作多的配方（如主机内存里的 Engram 表）没有对照数据。
 
-没有加 `TORCH_NCCL_ENABLE_MONITORING=0`。读 PyTorch 源码（v2.4、v2.6、v2.8、main 的 `ProcessGroupNCCL.cpp`）：这个开关
+**没有加 `TORCH_NCCL_ENABLE_MONITORING=0`。** 读 PyTorch 源码（v2.4、v2.6、v2.8、main 的 `ProcessGroupNCCL.cpp`）：这个开关
 在所有版本里都**不会**让 `pt_nccl_heartbt` 线程不创建，线程照常启动，开关只决定监控线程发现 watchdog 卡死后是否
-杀掉进程。关掉它不减少线程，只是让卡死的作业不再被自动终止，改变了故障行为，所以不作为默认值。要用的话在部署的环境变量里自己写。
+杀掉进程。
+
+关掉它不减少线程，只是让卡死的作业不再被自动终止，改变了故障行为，所以不作为默认值。要用的话在部署的环境变量里自己写。
 
 **没有采用的做法：改 PRoot 的事件循环。** 上游每轮只 `waitpid(-1, __WALL)` 取一个事件；Linux 把新被跟踪的线程加到列表头部，
-所以跟踪器忙不过来时，反复拿到的总是最新的忙线程，旧线程饿死，`get_tracee()` 还要线性扫描全部线程。试过一个补丁（每轮用
+所以跟踪器忙不过来时，反复拿到的总是最新的忙线程，旧线程饿死，`get_tracee()` 还要线性扫描全部线程。
+
+试过一个补丁（每轮用
 `WNOHANG` 取尽待处理事件、先被跟踪的先处理、pid 哈希表），本地压力测试里主线程从 0 次提升到约 27 次/秒，真机上初始化也快了
-很多，但 SGLang 权重加载阶段每次都卡住，所以**没有内嵌**。真机对比和对原因的推测见
+很多，但 SGLang 权重加载阶段每次都卡住，所以**没有内嵌**。
+
+真机对比和对原因的推测见
 [计划](../../artifacts/work/2026-10-20-runveil-many-threads/plan.md)；压力测试脚本留在
 [PRoot 构建说明](../../build/runtime-assets/proot/README.md)，改事件循环时可以直接用。
 
 另一个相关的修复：PRoot 进程以前继承 agent 的当前目录。agent 以 root 在 `/root`（权限 700）下启动（例如 SSH 安装后用 nohup
 起的 agent），PRoot 又降权为 `udocker` 用户时，PRoot 删除自己的临时目录后切不回 `/root`，会打出
-`proot error: can't chdir to '/root': Permission denied`。这条报错本身无害（退出码不变），但它常在 PRoot 退出时最后打出，
-容器失败时会被当成失败原因显示，盖住引擎真正的错误。现在 agent 启动的所有 PRoot 和 udocker 进程，以及容器终端、
+`proot error: can't chdir to '/root': Permission denied`。
+
+这条报错本身无害（退出码不变），但它常在 PRoot 退出时最后打出，
+容器失败时会被当成失败原因显示，盖住引擎真正的错误。
+
+现在 agent 启动的所有 PRoot 和 udocker 进程，以及容器终端、
 `gpuworks-agent runveil exec`，工作目录一律是 `/`；容器内的工作目录由 PRoot 的 `-w` 决定，不受影响。

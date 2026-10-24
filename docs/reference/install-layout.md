@@ -41,8 +41,13 @@
 
 `server.yaml` 和安装目录本身是重复安装和升级的输入：
 
-- `upgrade` 直接对 `--dir` 指向的安装目录操作（不给时是执行的二进制所属的安装，否则默认目录）；服务方式看有没有指向本二进制的 systemd 单元或 launchd plist，服务用户看单元的 `User=`（plist 的 `UserName`），当前版本号问已安装的二进制，所以升级不需要重复安装参数。
-- 重复执行 `install` 时保留既有 `server.yaml` 的值（命令行显式给出对应参数才覆盖）；install 不管理的键（如 `ssh_proxy`、`metrics_retention`）原样保留。install 自己只写监听地址、数据目录、日志文件、日志轮转和受信代理这几项。
+- `upgrade` 从既有安装中读取升级所需信息，因此不需要重复提供安装参数：
+  - **安装目录**：使用 `--dir` 指定的目录。未指定时，使用当前执行的二进制所属的安装目录；无法确定时使用默认目录。
+  - **服务方式**：检查是否存在指向本二进制的 systemd 单元或 launchd plist。
+  - **服务用户**：读取 systemd 单元的 `User=` 或 plist 的 `UserName`。
+  - **当前版本号**：查询已安装的二进制。
+- 重复执行 `install` 时保留既有 `server.yaml` 的值，只有命令行显式给出对应参数才覆盖。
+  install 只写监听地址、数据目录、日志文件、日志轮转和受信代理这几项；不管理的键（如 `ssh_proxy`、`metrics_retention`）原样保留。
 
 ## 权限模型
 
@@ -98,7 +103,7 @@ install 时的密码优先级：
 
 ## systemd 单元
 
-单元只指向 `server.yaml`，不含任何设置或密码：
+服务单元通过 `server.yaml` 读取 server 配置，不在单元文件中写入这些配置值或密码：
 
 - `ExecStart=<dir>/gpuworks serve --config <dir>/server.yaml`；nohup 模式跑的是同一条命令行，日志、数据和探活行为一致。
 - `User=` 为 `--service-user` 指定的服务账户；`Restart=always`、`RestartSec=3`；`TimeoutStopSec=30`，给进行中的模型与镜像同步留出优雅退出时间。
@@ -113,7 +118,8 @@ macOS 上 systemd 单元的对应物是 system 域的 launch daemon `/Library/La
 - `ProgramArguments` 与单元的 `ExecStart` 相同；`UserName` 是执行安装的用户（`sudo` 下取 `SUDO_USER`），不是 root，也不建专用账户，`--service-user` 在 macOS 上被忽略（显式给出别的账户时告警）；只有 root 本身执行安装时以 root 运行。
 - `RunAtLoad` + `KeepAlive`：开机即起、退出 3 秒后（`ThrottleInterval`）再拉起，对应单元的 `Restart=always`；`ExitTimeOut` 30 秒对应 `TimeoutStopSec`；不设 `AbandonProcessGroup`，子进程随 server 退出。
 - 环境变量 `GPUWORKS_LAUNCHD=1` 告诉 server 它由 launchd 托管，因此可以在控制台升级、重启（退出后由 launchd 拉起）。
-- `StandardErrorPath` 是 `<dir>/logs/gpuworks-server.stderr.log`，只收 server 日志打开之前的输出和崩溃时运行时打印的内容；记录本身写在轮转的 `gpuworks-server.log` 里，这个文件超过轮转上限时在启动时清空。
+- `StandardErrorPath` 是 `<dir>/logs/gpuworks-server.stderr.log`，只收 server 日志打开之前的输出和崩溃时运行时打印的内容。
+  正常日志记录写在轮转的 `gpuworks-server.log` 里；`gpuworks-server.stderr.log` 超过轮转大小上限时，在启动时清空。
 - 安装树归运行用户（`chown -R <用户>:<其主组>`），不加入任何组。
 
 ## 探活与备份
@@ -125,7 +131,11 @@ macOS 上 systemd 单元的对应物是 system 域的 launch daemon `/Library/La
 
 ## 日志与轮转
 
-server 同时写 stderr 和文件：`<dir>/logs/gpuworks-server.log`，按 10 MB 轮转、保留 20 代（install 的 `--log-max-size` / `--log-keep` 可调；直接跑 `serve` 时对应 `--log-file`，传空串则只写 stderr）。轮转是原生实现，不依赖 logrotate；systemd 部署下 `journalctl -u gpuworks` 也能看到同一份输出。launchd 部署下 stderr 是一个没人轮转的文件，server 发现 stderr 是普通文件时只写日志文件（见上节）。日志目录不可写时退回 stderr，不影响启动。server 因错误退出（如监听地址被占用）时，原因以 `msg="server exited"` 写进同一份日志；nohup 模式的 stderr 指向 `/dev/null`，这是唯一能看到原因的地方。
+server 同时写 stderr 和文件：`<dir>/logs/gpuworks-server.log`，按 10 MB 轮转、保留 20 代（install 的 `--log-max-size` / `--log-keep` 可调；直接跑 `serve` 时对应 `--log-file`，传空串则只写 stderr）。轮转是原生实现，不依赖 logrotate；systemd 部署下 `journalctl -u gpuworks` 也能看到同一份输出。
+
+launchd 部署下，stderr 指向的文件没有轮转机制。server 发现 stderr 是普通文件时，正常日志只写入可轮转的日志文件（见上节）。日志目录不可写时退回 stderr，不影响启动。
+
+server 因错误退出（如监听地址被占用）时，原因以 `msg="server exited"` 写进同一份日志；nohup 模式的 stderr 指向 `/dev/null`，这是唯一能看到原因的地方。
 
 ## agent 配置文件
 

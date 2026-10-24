@@ -1,0 +1,26 @@
+# View Usage Analytics
+
+**Use cases**: When providing inference services to external callers, check token usage and cache hits by API key over any time range, review each deployment's success rate and time to first token this month, find GPUs that have been idle for extended periods, and check GPU hours consumed by each deployment and per million tokens.
+
+**Prerequisites**: Upgrade the server to a version that includes usage analytics. Statistics accumulate live from the time of the upgrade. Earlier token usage and service quality statistics are backfilled once from per-request records, which are retained for 7 days by default. GPU utilization and GPU hours are not backfilled. For the design, see [ADR 0055](../adr/0055-long-term-statistics.md).
+
+## 1. Open the Page
+
+Choose **Usage analytics** under **Overview** in the console sidebar. At the top, select a time range (**Today**, **Yesterday**, **Last 7 days**, **Last 30 days**, **This month**, **Last month**, or **Custom**) and a granularity (**By hour** or **By day**). Hourly views cover at most 7 days and are available only within the hourly data retention period, which defaults to 31 days. Earlier data is available only by day. Day boundaries follow the **Statistics time zone** under **Settings → Data retention**, which defaults to the server's time zone.
+
+The page has four tabs:
+
+- **Token usage**: Shows each API key's request count, total input tokens, cache-hit input tokens, uncached input tokens, and output tokens (including thinking tokens) for each deployment. The cache hit rate includes only requests that report cache hits. SGLang's Anthropic `/v1/messages` endpoint does not report cache usage, so input tokens for those requests count toward total input but not toward the cache hit rate denominator. Requests without usage, such as errors or clients disconnecting early, are counted separately and contribute no tokens. Group by key, deployment, or model, and export the table as CSV. Revoked keys retain their names and are marked **Revoked**; keys deleted before revocation was introduced appear by ID.
+- **Service quality**: Shows request outcomes for each deployment (completed, cut by length, client left, interrupted connection, or error), P50/P95 time to first token and end-to-end duration, and output speed. Percentiles are reconstructed from histogram counts, with approximately 10% error.
+- **GPU utilization**: Shows mean and peak utilization, memory usage, power, and temperature. Heat map rows can represent card models, nodes, or individual cards, with colors representing utilization, power, temperature, or memory usage. Filter by node labels (user-defined and system labels) and card model. Multiple values for one label key are alternatives; all different keys must match. Labels are matched against the node's current labels, so deleted nodes are excluded from label-filtered results. When filters cover at most 256 cards, cards are listed individually, including the **Long-idle cards** count. Above that limit, results are grouped by card model or node, and idle cards are not counted; narrow the filters first to view individual cards. When grouping by node covers more than 100 nodes, the heat map shows only the 50 nodes with the highest and the 50 with the lowest selected metric, while the details table still lists all nodes.
+- **GPU hours**: Shows the number of cards held by each deployment multiplied by hours (dGPUs are weighted by their allocated share of GPU memory), average and maximum replica counts, and **GPU hours per million output tokens**, calculated using tokens from the same period. GPU hours do not include prices.
+
+Periods backfilled from before the upgrade appear with a light background in charts. Backfill uses per-request records, which were sampled under high traffic and are estimated using their weights. At that time, the gateway did not recognize usage from `/v1/messages` or `/v1/responses`, so those requests have no token counts.
+
+## 2. View Each Key's Usage on the API Tokens Page
+
+The API tokens list includes **Tokens today** and **Tokens, last 7 days** columns. Click a number to open that key's details in Usage analytics.
+
+## 3. Adjust Retention
+
+Under **Settings → Data retention**, configure hourly and daily retention separately for token usage and the other statistics (defaults: 31 days and 400 days). The three other statistics categories can each be disabled independently. When retention is shortened, excess data is deleted in batches in the background. The page also shows current space usage for each category. For the API, see the [API Reference](../reference/api.md#analytics用量分析).

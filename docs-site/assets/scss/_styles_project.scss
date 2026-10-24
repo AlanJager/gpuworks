@@ -1,54 +1,213 @@
-// GPUWorks brand layer. OINK supplies the document shell and components;
-// this file only changes the project identity and a few high-level surfaces.
-
-:root,
+// Local documentation style preview; the repository theme is unchanged.
+:root:not([data-bs-theme="dark"]),
 [data-bs-theme="light"] {
-  --bs-primary: #2176ed;
-  --bs-primary-rgb: 33, 118, 237;
-  --bs-link-color: #1559bd;
-  --bs-link-color-rgb: 21, 89, 189;
-  --bs-link-hover-color: #0b4aab;
-  --bs-link-hover-color-rgb: 11, 74, 171;
-  --td-accent: #2176ed;
-  --td-accent-rgb: 33, 118, 237;
-  --td-brand-copper: #2176ed;
-  --td-brand-mark-from: #2176ed;
-  --td-brand-mark-to: #48d7e8;
-  --td-brand-header-bg: rgba(7, 17, 31, .95);
-  --td-brand-shadow-md: 0 12px 34px rgba(14, 48, 92, .12);
+  --bs-body-bg: #fff;
+  --bs-body-bg-rgb: 255, 255, 255;
+  --bs-body-color: #334155;
+  --bs-body-color-rgb: 51, 65, 85;
+  --bs-emphasis-color: #172033;
+  --bs-secondary-color: #536176;
+  --bs-tertiary-color: #66758a;
+  --bs-border-color: #e2e8f0;
+  --bs-primary: #2563eb;
+  --bs-primary-rgb: 37, 99, 235;
+  --bs-link-color: #1454ba;
+  --bs-link-color-rgb: 20, 84, 186;
+  --bs-link-hover-color: #103d88;
+  --bs-link-hover-color-rgb: 16, 61, 136;
+  --td-accent: #2563eb;
+  --td-accent-rgb: 37, 99, 235;
+  --td-shell-card: #f8fafc;
+  --td-shell-primary-dim: #eaf1fc;
+  --td-shell-row-hover: #eef2f7;
+  --td-brand-header-bg: rgba(255, 255, 255, .97);
+  --td-brand-mark-from: #2563eb;
+  --td-brand-mark-to: #2563eb;
+  --td-code-inline-fg: #263f63;
+  --td-code-inline-bg: #e0e7f0;
+  --td-code-strong-fg: #243d64;
+  --td-code-header-bg: #f3f6fa;
+  --td-pre-bg: #f8fafc;
 }
-
 [data-bs-theme="dark"] {
-  --bs-primary: #7eb8ff;
-  --bs-primary-rgb: 126, 184, 255;
-  --bs-link-color: #8bc3ff;
-  --bs-link-color-rgb: 139, 195, 255;
-  --bs-link-hover-color: #b5d9ff;
-  --bs-link-hover-color-rgb: 181, 217, 255;
-  --td-accent: #7eb8ff;
-  --td-accent-rgb: 126, 184, 255;
-  --td-brand-header-bg: rgba(7, 17, 31, .96);
+  --td-brand-header-bg: #111827;
+  --td-shell-card: #141e2c;
+  --td-code-inline-fg: #b9cbea;
+  --td-code-inline-bg: #243044;
+  --td-code-strong-fg: #deebff;
+}
+:root { --td-shell-sidebar-w: 236px; }
+.td-site-header { box-shadow: none; }
+.td-site-header .td-nav-search-box {
+  color: var(--bs-secondary-color);
+  border: 1px solid var(--bs-border-color);
+  background: var(--td-shell-card);
+}
+.td-shell-wordmark, .td-site-header .td-nav-title { letter-spacing: .015em; }
+.td-shell-sidebar__brand-row { gap: 4px; }
+.td-shell-sidebar__brand {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: normal;
+  > img { flex-shrink: 0; }
+  .td-shell-wordmark {
+    min-width: 0;
+    margin-inline-end: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+}
+.td-shell-sidebar__brand-row > .td-shell-iconbtn { flex: 0 0 auto; }
+@media (min-width: 768px) { .td-shell-sidebar__search { display: none; } }
+.td-shell-sidebar__viewport { padding-inline: 12px; }
+.td-shell-tree__row { border-radius: 6px; }
+.td-shell-tree__row.active { background: var(--td-shell-primary-dim); }
+.td-shell-layout { --td-shell-content-top: 2rem; }
+.td-shell-layout .td-shell-article {
+  max-width: 1100px;
+  padding-inline: clamp(20px, 3vw, 48px);
+}
+.td-content {
+  font-size: 16px;
+  line-height: 1.85;
+  overflow-wrap: break-word;
+  h1 { font-size: clamp(1.75rem, 2.5vw, 2.15rem); line-height: 1.4; }
+  h2 { font-size: 1.45rem; line-height: 1.5; }
+  h3 { font-size: 1.15rem; line-height: 1.55; }
+  h1, h2, h3 { letter-spacing: 0; }
+  > h2 { margin-top: 2.5rem; padding-top: .5rem; }
+  > h3 { margin-top: 1.8rem; }
+  p { margin-bottom: 1.1rem; }
+  li { padding-inline-start: .2rem; }
+  ol > li::marker { color: var(--bs-link-color); font-weight: 600; }
+  :not(pre) > code { font-weight: 400; padding: .1em .3em; }
+  strong code { font-weight: 600; }
+  .td-code { border-radius: 8px; box-shadow: none; }
+  pre { font-size: 14px; line-height: 1.7; }
+}
+.td-content .td-table-scroll:not(.td-table-scroll--matrix) {
+  margin-block: 1.25rem 1.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  > table {
+    width: 100%;
+    min-width: 36rem;
+    max-width: none;
+    table-layout: fixed;
+    font-size: 15px;
+    line-height: 1.75;
+    th, td {
+      padding: .8rem 1rem;
+      min-width: 0;
+      border-bottom: 1px solid var(--bs-border-color);
+      vertical-align: top;
+      overflow-wrap: break-word;
+      word-break: normal;
+    }
+    thead th { background: var(--td-shell-card); font-weight: 600; }
+    tbody tr:last-child > td { border-bottom: 0; }
+    tbody tr:hover { background: var(--td-shell-card); }
+    code { overflow-wrap: anywhere; }
+    &[data-gw-columns="2"] th:first-child { width: 30%; }
+    &[data-gw-columns="3"] {
+      min-width: 42rem;
+      th:first-child { width: 25%; }
+    }
+    &[data-gw-columns="4"] { min-width: 50rem; }
+    &[data-gw-columns="5"] { min-width: 62rem; }
+    &[data-gw-columns="6"] { min-width: 72rem; }
+    &[data-gw-columns="7"] { min-width: 80rem; }
+    &[data-gw-columns] th[data-gw-column="#"] { width: 3rem; padding-inline: .6rem; }
+    td[data-gw-column="#"] { text-align: center; padding-inline: .6rem; }
+    th:is([data-gw-column="层"], [data-gw-column="Layer"]) { width: 8rem; }
+    th:is([data-gw-column="贡献什么"], [data-gw-column="Contribution"]) { width: 30%; }
+    th:is([data-gw-column="与其他层的关系"], [data-gw-column="Relationship to Other Layers"]) { width: 26%; }
+    &[data-gw-columns="3"] th:is([data-gw-column="引擎"], [data-gw-column="Engine"]) { width: 6rem; }
+    th[data-gw-column="HTTP"] { width: 5rem; }
+    &:has(th[data-gw-column="Method"]) {
+      th[data-gw-column="Method"] { width: 5.5rem; }
+      th[data-gw-column="Path"] { width: 34%; }
+      th[data-gw-column="鉴权"] { width: 5.5rem; }
+      th[data-gw-column="Authentication"] { width: 10rem; }
+    }
+    &:has(th[data-gw-column="日期"]), &:has(th[data-gw-column="Date"]) {
+      th[data-gw-column="编号"], th[data-gw-column="Number"] { width: 6rem; }
+      th[data-gw-column="日期"], th[data-gw-column="Date"] { width: 8rem; }
+    }
+    &:has(th:is([data-gw-column="单位"], [data-gw-column="Unit"])) {
+      th:is([data-gw-column="短名"], [data-gw-column="Short Name"]) { width: 28%; }
+      th:is([data-gw-column="类型"], [data-gw-column="Type"]) { width: 7.5rem; }
+      th:is([data-gw-column="单位"], [data-gw-column="Unit"]) { width: 8rem; }
+    }
+    &:has(th:is([data-gw-column="成熟度"], [data-gw-column="Maturity"])) {
+      th:is([data-gw-column="厂商"], [data-gw-column="Vendor"]), th[data-gw-column="dGPU"] { width: 7rem; }
+      th:is([data-gw-column="成熟度"], [data-gw-column="Maturity"]) { width: 9rem; }
+    }
+    &:has(th:is([data-gw-column="页面名"], [data-gw-column="Page name"])) {
+      min-width: 62rem;
+      th:is([data-gw-column="页面名"], [data-gw-column="Page name"]) { width: 8rem; }
+      th:is([data-gw-column="路径"], [data-gw-column="Path"]) { width: 14rem; }
+      th:is([data-gw-column="延伸阅读"], [data-gw-column="Further reading"]) { width: 11rem; }
+    }
+    &:has(th:is([data-gw-column="提交"], [data-gw-column="Commit"])) {
+      th:is([data-gw-column="编号"], [data-gw-column="ID"]) { width: 7rem; }
+      th:is([data-gw-column="状态"], [data-gw-column="Status"]) { width: 5rem; }
+      th:is([data-gw-column="提交"], [data-gw-column="Commit"]) { width: 6.5rem; }
+      th:is([data-gw-column="问题"], [data-gw-column="Issue"]) { width: 30%; }
+    }
+    &:has(th[data-gw-column="tested revision"]) {
+      min-width: 88rem;
+      th:is([data-gw-column="模型"], [data-gw-column="Model"]), th[data-gw-column="tested revision"] { width: 14rem; }
+      th[data-gw-column="Hugging Face"] { width: 9rem; }
+      th:is([data-gw-column="状态"], [data-gw-column="Status"]), th[data-gw-column="ModelScope"] { width: 11rem; }
+      th:is([data-gw-column="研究引擎"], [data-gw-column="Research engine"]) { width: 12rem; }
+    }
+    &[data-gw-columns="3"]:has(th:is([data-gw-column="调度"], [data-gw-column="Scheduling"])) {
+      th:is([data-gw-column="级别"], [data-gw-column="Level"]), th:is([data-gw-column="调度"], [data-gw-column="Scheduling"]) { width: 6rem; }
+    }
+    &[data-gw-columns="3"]:has(th:is([data-gw-column="指标"], [data-gw-column="Metric"])) {
+      th:is([data-gw-column="指标"], [data-gw-column="Metric"]) { width: 38%; }
+      th:is([data-gw-column="标签"], [data-gw-column="Labels"]), th:is([data-gw-column="类型"], [data-gw-column="Type"]) { width: 8.5rem; }
+    }
+  }
+}
+.gw-table-hint {
+  margin-block: 1.25rem -.75rem;
+  color: var(--bs-secondary-color);
+  font-size: .8125rem;
+  text-align: right;
+}
+.gw-inline-outline {
+  margin: 1.5rem 0;
+  padding: .5rem .75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 8px;
+  background: var(--td-shell-card);
+  .td-shell-aside-group__rail-toggle { display: none; }
+  .td-shell-aside-group__head { padding: .5rem; }
+  .td-shell-aside-group__title { font-size: 14px; font-weight: 500; }
+  .td-shell-toc__body { padding: .5rem; }
+  &[hidden] { display: none; }
+}
+@media (min-width: 1200px) {
+  .td-shell-toc { width: 210px; flex-basis: 210px; }
+  .td-shell-toc__panel { width: 210px; padding-inline: 12px 20px; }
+  [data-td-shell-toc="collapsed"] .td-shell-toc { width: 0; flex-basis: 0; }
+}
+@media (max-width: 767.98px) {
+  .td-shell-layout .td-shell-article { padding-inline: 20px; }
+}
+@media print {
+  .gw-inline-outline, .gw-table-hint { display: none; }
+  .td-content .td-table-scroll:not(.td-table-scroll--matrix) > table {
+    min-width: 0 !important;
+    table-layout: auto;
+  }
 }
 
-.td-site-header {
-  border-bottom-color: rgba(255, 255, 255, .12);
-}
-
-.td-site-header .navbar-brand {
-  font-weight: 800;
-  letter-spacing: -.02em;
-}
-
-.td-content h1,
-.td-content h2,
-.td-content h3 {
-  letter-spacing: -.025em;
-}
-
-.td-content pre {
-  border-radius: .65rem;
-}
-
-.td-card {
-  border-radius: .8rem;
+@media screen and (max-width: 767px) {
+  .td-content:lang(en) .td-table-scroll > table {
+    min-width: 40rem;
+    overflow-wrap: normal;
+  }
 }

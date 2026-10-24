@@ -7,8 +7,7 @@
 先记住三件事，后面的图都是它们的组合：
 
 - **agent 主动外连 server 是默认方向**（`agent_dial`），节点不需要为控制面开放任何入站端口。每个节点默认
-  建立两条 WebSocket（控制通道 ctrl 与数据通道 data）到同一个 server 地址，网关转发推理请求、日志、模型与
-  镜像传输都走这条连接。
+  建立两条 WebSocket（控制通道 ctrl 与数据通道 data）到同一个 server 地址，承载网关转发的推理请求、日志及模型/镜像读写流。节点间模型与镜像同步使用节点直连（见 b）。
 - **server 有三类监听功能**：控制台（Web UI 与管理 API）、节点接入（`/api/v1/agent/connect`、
   `/install.sh`、`/dl/*`）、推理 API（`/v1`）。默认三者共用一个地址 `<默认路由出口 IP>:8800`，`127.0.0.1`
   常驻；可以在 `server.yaml` 的 `listen.console` / `listen.agent` / `listen.gateway` 里拆开，某个地址
@@ -194,7 +193,7 @@ flowchart LR
 **适用场景**：节点有多张网卡或 RDMA 网卡，想把不同类流量隔离开——模型与镜像大文件同步不挤占业务网络、
 多机推理的集合通信走 RDMA、网关直连实例。只有一张网卡的小集群不需要。
 
-**概念**：网络是一等对象，带**角色**（存储同步、参数、服务，可多选）和**类型**（以太或 RDMA），加载到节点或
+**概念**：网络是一等对象，带**角色**（存储同步、参数、服务，可多选）和**类型**（主机以太网、主机 RDMA 或加速器 RDMA），加载到节点或
 节点标签。每个节点每个角色最终只用一个网络；互通以"是不是同一个网络对象"为准。每个节点还在内置的**管理网**上
 ——节点连 server 所用的本机地址，自动上报，不能删改；某个角色没有独立网络时由管理网承担（服务走 agent 隧道）。
 设计取舍见 [ADR 0030](../adr/0030-network-objects.md)（网络对象）、[ADR 0026](../adr/0026-network-module-boundary.md)
@@ -238,6 +237,8 @@ flowchart LR
   D -.->|"参数网 拉取 KV"| P
   D <-->|"参数网 NCCL"| F
 ```
+
+图中展示的是 `vllm-nixl` 的顺序交接；`sglang-nixl` 会并发发送 prefill 和 decode 请求，见 [ADR 0028](../adr/0028-pd-disaggregated-deployment.md)。
 
 **适用场景**：单节点放不下的模型（多机推理）；提示长、并发高的服务（PD 分离）。两者可以组合：PD 的一个角色实例
 可以自己跨多台节点（leader 对外服务，其余是 follower）。
@@ -292,7 +293,7 @@ ZStack），列出实例并确认型号、卡数、区域、价格后，创建�
 
 **关键约束**：
 
-- `server_url` 必须是云实例能访问到的稳定地址。server 在 NAT 后面时，请提供域名或反代地址（见 d），**不要用**
+- 使用 `agent_dial` 时，`server_url` 必须是云实例能访问到的稳定地址。server 在 NAT 后面时，请提供域名或反代地址（见 d），**不要用**
   quick 临时地址。
 - 云实例是否有 Docker、能否执行宿主机驱动命令由厂商决定：容器形态且没有 Docker 时 agent 使用 runveil，而 RDMA
   参数网络、PPU dGPU 不支持 runveil；矩阵中的 Gitee 昇腾租机环境没有 device-share 权限，dGPU 不可用（Gitee 不在上面的 provider 列表里，只是测试环境）。

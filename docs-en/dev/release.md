@@ -1,0 +1,154 @@
+# Release Guide
+
+## Build Artifacts
+
+Run the following commands from the repository root. Build prerequisite artifacts such as the UI first, then generate the archives for distribution:
+
+```bash
+make build
+make release-packages
+```
+
+`make build` first validates assets and builds the UI and cross-platform agents, then builds the server and the agent for the current platform into
+`bin/`. The server embeds `internal/server/webui/dist` and agents for each target platform through `go:embed`.
+For a release, you cannot simply rebuild the server and skip these prerequisite artifacts. To target only Linux amd64, use
+`make server-linux-amd64`, which still builds the UI and the embedded agents.
+
+`make release-packages` produces four server archives for Linux and macOS on amd64/arm64 (approximately 45 MB each), along with a shared
+`SHA256SUMS`. The three agents embedded in the server are stored with zstd compression (using `-19` when the build machine has the `zstd` command; the release job first tries
+`apt-get install zstd` and falls back to the Go encoder if installation fails, increasing the package size by approximately 1.5 MB). The extracted server binary is approximately 69 MB. The macOS server also embeds the Linux amd64/arm64 agents, so you can run the control plane on a development machine and
+connect Linux GPU nodes. Apple silicon Mac nodes run supported engines as host processes through the `host` runtime; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) for their capability limits.
+
+To avoid the artifact size limit for a single job (each archive is approximately 53 MB after the server embeds the macOS agent,
+so two archives in one job exceed the limit), CI splits the build into four jobs by OS and architecture: `release-build-linux-amd64`,
+`release-build-linux-arm64`, `release-build-macos-amd64`, and `release-build-macos-arm64`.
+Each job builds only one archive. Use `GPUWORKS_RELEASE_OSES=linux|darwin` and
+`GPUWORKS_RELEASE_ARCHES=amd64|arm64` to reproduce the builds locally. The release site only combines the artifacts from all four successful jobs
+in the same pipeline.
+
+Both runtime binaries must keep `CGO_ENABLED=0`. Run these checks before release:
+
+```bash
+make check-assets          # HAMi libvgpu.so glibc baseline; ib_write_bw library/symbol baseline and hashes
+make runtime-assets-verify # Ascend vCANN, PPU HGGC, and partition probe manifest integrity and per-file sha256
+make test
+make vet
+git diff --check
+```
+
+`check-assets` includes `check-libvgpu` and `check-perftest`; it does not validate Ascend, PPU, or partition probe assets.
+You must run `make runtime-assets-verify` separately before release, or missing or tampered assets in these three categories go undetected.
+
+## Distribution Channel
+
+Server versions, the system image catalog, and the built-in inference template catalog are delivered to installed servers through the same distribution channel ([ADR 0040](../adr/0040-signed-multi-source-distribution.md)).
+The three distribution sources host byte-for-byte identical directory trees:
+
+| Source | Address | Purpose |
+|---|---|---|
+| Alibaba Cloud OSS Shanghai `gpuworks-dl` | `https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com` | Mainland China (default domain; no ICP filing required) |
+| Huawei Cloud OBS Shanghai 1 `gpuworks-dl` | `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com` | Mainland China (default domain; no ICP filing required) |
+| Cloudflare R2 `gpuworks-dl` | `https://dl.gpuworks.ai` | Other regions; `image-manifest.gpuworks.ai` is also bound to this bucket |
+
+All three sources use the same directory structure. `<channel>` represents the release channel, `<release_id>` identifies a release,
+and `<sha256>` is the content digest of the corresponding catalog file:
+
+| Path | Contents and Purpose |
+|---|---|
+| `<channel>/index.json` | An ed25519 signature envelope containing the signed release index; the body lists server archives for each platform, the image catalog, and the inference template catalog package, with a path, size, and sha256 for each file |
+| `<channel>/latest` | The release id as plain text, used to locate the version for the initial download |
+| `releases/<release_id>/` | Server archives and `SHA256SUMS` |
+| `catalog/images/<sha256>.json` | The image catalog identified by its content digest |
+| `catalog/templates/<sha256>.tar.gz` | The inference template catalog package identified by its content digest |
+| Root-level `manifest.json` | Read by older versions; the same file as the image catalog |
+
+The `nightly` channel is for every master build; `release` is reserved for `v*` tags. Binaries follow the channel injected at build time (`make CHANNEL=…`, defaulting to `nightly`).
+
+CI's `release-publish` runs `scripts/publish_dist.sh nightly dist` after all four build jobs on master succeed.
+It runs in a separate `publish` stage because GitLab 14.0 allows needs to reference only jobs in earlier stages.
+`make check-ci-yaml` checks this constraint. The script follows this process:
+
+1. A release id always maps to exactly one set of bytes: Files under `releases/` use long-lived immutable caching, so the CDN retains the first copy it sees. Rebuilding the same commit
+   (in a new pipeline or a manual rerun) produces different package bytes because the build time is included in the package. If a source already has `releases/<id>/`, the script copies it back.
+   After `gpuworks-dist adopt` verifies it against `SHA256SUMS`, the script publishes that already-published package with its build time and discards the newly built package;
+2. If any source already serves a build in the same channel with a later creation time, the pipelines have finished out of order, and this run publishes nothing;
+3. `gpuworks-dist assemble` generates the directory tree from these archives and the two catalogs embedded in the current checkout, then signs the index;
+4. rclone pushes immutable files to the three sources with `--immutable`: If an object with the same name has different contents on a source, it exits with an error and never overwrites it (that source requires manual intervention; see below);
+5. Before switching, `gpuworks-dist verify -index` uses the new index to check the size of each file at all three public addresses, including the CDN. If any size differs, it stops and the channel continues to point to the previous version;
+6. It saves the current index, `latest`, and `manifest.json` from each source, switches to the new version, then reads them back from all three public addresses to verify them. If the switch or readback fails, it restores each source's previous pointers and exits;
+7. Each source retains only the most recent 20 version directories, plus the versions referenced by `latest` in the two channels.
+
+If a source's `releases/<id>/` does not match its own `SHA256SUMS` (for example, it was overwritten before this rule existed), publishing fails at step 4 without switching versions. To resolve this, determine which source
+has the correct copy, delete the incorrect copy or replace it with the correct one, clear the CDN cache for `releases/<id>/`, then rerun publishing.
+
+Credentials and the signing private key are protected, masked CI variables: `GPUWORKS_DIST_SIGNING_KEY` (a base64-encoded 32-byte ed25519 seed), `GPUWORKS_DIST_SIGNING_KEY_ID`,
+`GPUWORKS_DIST_OSS_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY`, `GPUWORKS_DIST_OBS_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY`, and
+`GPUWORKS_DIST_R2_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` / `GPUWORKS_DIST_R2_ENDPOINT`. Each of the three sets of storage credentials belongs to a dedicated identity that can only read and write
+objects in `gpuworks-dl` (Alibaba Cloud RAM user and Huawei Cloud IAM user `gpuworks-dist-ci`, with policy `gpuworks-dist-publish`,
+and R2 account token `gpuworks-dist-ci`). These identities cannot create buckets, so both publishing scripts set `no_check_bucket` for rclone.
+
+To publish manually from a local machine, use `make dist-publish CHANNEL=nightly`,
+with credentials in `secrets/dist-publish.env`. To publish a release, run `make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v1.2.3`, then
+`make dist-publish CHANNEL=release`.
+
+Two cache rules are configured in the Cloudflare zone `gpuworks.ai` for `dl.gpuworks.ai` and `image-manifest.gpuworks.ai`: Never cache `*/index.json`, `*/latest`,
+or `/manifest.json`; never cache 404 responses (otherwise, the edge caches the 404 from the pre-publish `newer` check for the default four hours, making a new channel unreadable after its first release).
+Immutable files use long-lived caching according to the origin's `Cache-Control: immutable`. `/notices.json` (publisher notices; see below) must also bypass caching and must be added to the same rule.
+
+Publisher notices ([ADR 0054](../adr/0054-usage-report-and-notices.md)): Edit `build/notices/notices.json` (the unsigned body; see
+`internal/server/distribution/notices.go` for schema and validation: each notice has `id`, `severity`, `kind`, a `title` in at least English, optional `body` and https `url`, and required `expires_at`;
+use `when` to restrict the channel, server build time range, and accelerator vendor), then run `scripts/publish_notices.sh`. It validates the notices using the server's rules, signs them with the release key,
+uploads them to the root of all three sources with `Cache-Control: no-cache`, then reads them back from each public address for verification. Notices are independent of builds and can be published separately at any time. To withdraw a notice, delete its entry and publish again.
+
+The collection endpoint for daily improvement program reports ([ADR 0054](../adr/0054-usage-report-and-notices.md)) is Alibaba Cloud SLS Shanghai project `gpuworks-usage`, logstore `reports`
+(WebTracking enabled; `appendMeta` enabled to record the source IP as `__tag__:__client_ip__`; 180-day retention; analytics indexes on `schema`/`install_id`/`day`/`version`/`report`/`__tag__:__client_ip__`; a 16 KiB limit for `report`).
+Extract fields with SQL such as `json_extract_scalar(report, '$.usage.routes["GET /nodes"]')` and `ip_to_province("__tag__:__client_ip__")`. The fallback is Cloudflare Worker `gpuworks-usage`
+(custom domain `usage.gpuworks.ai`, code in `scripts/usage-collector/`, tests via `node --test scripts/usage-collector/worker.test.mjs`).
+Reports are stored in the private R2 bucket `gpuworks-usage` at `reports/<day>/<install_id>.json`, with the source IP, country, and region in object metadata `client_ip`/`country`/`region`. WebTracking actually accepts only four top-level keys: `__topic__`/`__source__`/`__logs__`/`__tags__`,
+contrary to the `project` and `logstoreName` keys listed in its API documentation.
+
+**Signing key rotation**: Generate a new key, add the new public key alongside the old one in `trustedKeys` in `internal/server/distribution/defaults.go`, and publish a version.
+Wait for installed servers to upgrade before switching to the new private key for signing, then remove the old public key in the following version.
+
+When creating buckets, note that both object storage providers enable bucket-level “Block public access” by default. Disable it and set the bucket to public read.
+
+## Embedded Native Assets
+
+Embedded native assets include the runtime libraries, tools, and probe images listed below. They are not ordinary Go source code,
+so rebuilding only the server does not incorporate updates to them. Validate or rebuild each through its corresponding entry point:
+
+| Asset | File | Platform | Validation/Rebuild |
+|---|---|---|---|
+| NVIDIA HAMi | `internal/assets/bin/libvgpu.so` | One copy, compiled against the oldest supported glibc baseline | `make check-libvgpu` (`scripts/check_libvgpu_compat.sh`) |
+| RDMA bandwidth test tool | `internal/assets/bin/ib_write_bw-{x86_64,arm64}` | x86_64 + arm64; uses the host's RDMA userspace libraries at runtime | `make check-perftest` (`scripts/check_perftest_compat.sh`); see `build/runtime-assets/perftest/README.md` for build instructions |
+| Ascend vCANN | `internal/assets/bin/runtime-assets/ascend/linux-{amd64,arm64}/libvruntime.so` | One copy each for amd64 + arm64 | `make runtime-assets-verify`; rebuild with `make runtime-assets` |
+| PPU HGGC | `internal/assets/bin/runtime-assets/ppu/linux-amd64/hggc-13.0/{hggc_quota.so,hgml_dlsym_hook.so}` | Currently amd64 only | Same as above |
+| partition probe | `internal/assets/bin/runtime-assets/probe/partition-probe-linux-{amd64,arm64}.tar.gz` | amd64 + arm64 | Same as above; rebuild the images separately with `make runtime-assets-probe` |
+| udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | Covered by neither `check-assets` nor `runtime-assets-verify`; verify manually against `internal/assets/bin/manifest.sha256` |
+
+The manifest and hashes for the Ascend and PPU runtime libraries are centralized in `internal/assets/bin/runtime-assets/manifest.json`. Their backend ids
+are `ascend-dgpu` and `ppu-dgpu`, respectively (defined in `internal/accelerator/backend.go`). Partition probe hashes
+are in the `.tar.gz.sha256` files beside each archive. `make runtime-assets-verify` checks the runtime library manifest, probe hashes, and image archive structure together.
+When replacing any asset,
+retain records of its source, architecture, hash, and license, run the corresponding asset checks, and confirm that the release package actually contains the new file.
+Each vendor's release assets support only the declared platform combinations (PPU currently has no arm64 build). For user-facing limitations, see the
+[dGPU Support Matrix](../reference/support-matrix.md).
+
+## Database and Catalog Packages
+
+The server runs versioned migrations at startup. Before release, verify migration markers (which record migration versions), idempotency on repeated execution, and transaction rollback.
+The built-in inference catalog is a content-addressed package, meaning it is identified by its content digest. Release builds must apply the same schema, path, and digest checks to the package. The system image catalog's
+embedded seed is generated from the gpuworks-runner build matrix by `make image-manifest` and enters the [distribution channel](#发布通道) with every release.
+`make image-manifest-publish` also publishes the same file separately to the root of all three distribution sources—OSS, OBS, and R2. R2 exposes
+`https://image-manifest.gpuworks.ai/manifest.json` for older versions to read; see the [CLI Reference](../reference/cli.md#gpuworks-image-manifest).
+Unit tests fail if the embedded seed differs from the matrix.
+
+## Upgrade and Rollback
+
+- Server: `gpuworks upgrade` automatically stops the service, creates a backup (database + `master.key` + old binary), performs an atomic replacement,
+  checks health, and rolls back on failure. For the manual path, back up the data directory and `master.key`, then replace atomically and restart. Before rolling back through either path,
+  confirm whether the database migrations are backward compatible.
+- Agent: Upgrade from the nodes page or rerun `/install.sh`. Downloads go to a temporary file first and replace the executable atomically after success. A failed connection smoke test
+  must not overwrite the current executable.
+- Record the release version, build commit, platform, embedded asset digests, and catalog package digest. Store one-time acceptance results in
+  `artifacts/work/<YYYY-MM-DD>-<topic>/` (move them with the topic into `artifacts/archive/` after completion).

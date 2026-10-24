@@ -5,6 +5,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urljoin, urlparse
 
 import stage_docs
 from stage_docs import how_to_groups
@@ -183,6 +184,79 @@ class HowToGroupsTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "missing.*how-to/unindexed.md"):
                     stage_docs.main()
             self.assertEqual(before, {p: p.read_bytes() for p in output.rglob("*") if p.is_file()})
+
+    def test_download_links_resolve_to_copied_assets_at_each_page_depth(self):
+        self.page("a.md")
+        self.page("nested/b.md")
+        self.index("**组**\n- [A](how-to/a.md)\n- [B](how-to/nested/b.md)\n")
+        asset = self.source / "assets" / "examples" / "prompts.jsonl"
+        asset.parent.mkdir(parents=True)
+        payload = b'{"messages":[{"role":"user","content":"hello"}]}\n'
+        asset.write_bytes(payload)
+        external = "[external](https://example.com/assets/prompts.jsonl)"
+        for name, prefix in (("a.md", "../"), ("nested/b.md", "../../")):
+            path = self.source / "how-to" / name
+            path.write_text(
+                f"# 教程\n\n[下载]({prefix}assets/examples/prompts.jsonl)\n\n{external}\n",
+                encoding="utf-8",
+            )
+        source_before = {p: p.read_bytes() for p in self.source.rglob("*") if p.is_file()}
+
+        with tempfile.TemporaryDirectory() as output:
+            output = Path(output)
+            dest = output / "content"
+            with patch.multiple(
+                stage_docs, SOURCE=self.source, DEST=dest,
+                STATIC_ASSETS=output / "static" / "assets",
+            ), redirect_stdout(io.StringIO()):
+                stage_docs.main()
+
+            for name in ("a.md", "nested/b.md"):
+                with self.subTest(page=name):
+                    staged = (dest / "how-to" / name).read_text()
+                    href = staged.split("[下载](", 1)[1].split(")", 1)[0]
+                    page_url = f"https://example.com/docs/how-to/{name.removesuffix('.md')}/"
+                    resolved = urlparse(urljoin(page_url, href)).path
+                    self.assertEqual(resolved, "/docs/assets/examples/prompts.jsonl")
+                    published = output / "static" / resolved.removeprefix("/docs/")
+                    self.assertEqual(published.read_bytes(), payload)
+                    self.assertIn(external, staged)
+        self.assertEqual(source_before, {p: p.read_bytes() for p in self.source.rglob("*") if p.is_file()})
+
+
+class TutorialOrderTest(unittest.TestCase):
+    def test_index_order_controls_generated_weights_without_rewriting_tutorials(self):
+        with tempfile.TemporaryDirectory() as workspace:
+            root = Path(workspace)
+            source = root / "docs"
+            (source / "tutorials").mkdir(parents=True)
+            (source / "how-to").mkdir()
+            (source / "how-to" / "basic.md").write_text("# 指南\n")
+            for name in ("a", "z"):
+                (source / "tutorials" / f"{name}.md").write_text(f"# {name.upper()} 教程\n\n正文。\n")
+            dest = root / "content"
+            for order in (("z", "a"), ("a", "z")):
+                with self.subTest(order=order):
+                    entries = "".join(f"- [{name}](tutorials/{name}.md)\n" for name in order)
+                    (source / "README.md").write_text(
+                        "# 文档\n\n- [其他入口](tutorials/a.md)\n\n"
+                        "### 教程（tutorials）\n\n" + entries +
+                        "\n### 操作指南（how-to）\n\n**基础**\n- [指南](how-to/basic.md)\n"
+                        "\n## 其他入口\n- [别名](tutorials/z.md)\n",
+                        encoding="utf-8",
+                    )
+                    before = {p: p.read_bytes() for p in source.rglob("*.md")}
+                    with patch.multiple(
+                        stage_docs, SOURCE=source, DEST=dest,
+                        STATIC_ASSETS=root / "static" / "assets",
+                    ), redirect_stdout(io.StringIO()):
+                        stage_docs.main()
+                    for weight, name in enumerate(order, start=1):
+                        front, body = (dest / "tutorials" / f"{name}.md").read_text().split("\n---\n", 1)
+                        self.assertIn(f"weight: {weight}\n", front + "\n")
+                        self.assertIn(f'title: "{name.upper()} 教程"', front)
+                        self.assertEqual(body.strip(), "正文。")
+                    self.assertEqual(before, {p: p.read_bytes() for p in source.rglob("*.md")})
 
 
 if __name__ == "__main__":

@@ -11,8 +11,9 @@ cd gpuworks
 make demo
 ```
 
-`make demo` 会构建 UI、server 和各平台 agent，再启动本地 server 与 fake agent。详细依赖、
-端口和前端联调见[本地搭建](setup.md)。
+`make demo` 会构建 UI、server 和各平台 agent，再启动本地 server 与真实 agent，验证节点接入、
+离线和重连。没有 GPU 的机器也可运行；脚本结束时会清理本次进程与临时目录。
+详细依赖、端口和前端联调见[本地搭建](setup.md)。
 
 ## 仓库地图
 
@@ -21,7 +22,7 @@ make demo
 | `cmd/` | server、agent 与目录维护 CLI |
 | `internal/server/` | REST、控制器、调度、存储、网关和 Web UI 嵌入 |
 | `internal/agent/` | 连接、探测、runtime、采集和传输 |
-| `internal/proto/` | server/agent wire contract |
+| `internal/proto/` | server/agent 通信约定（wire contract），包括消息格式与字段 |
 | `pkg/` | 可复用的估算、模型解析、评测和日志解析库 |
 | `ui/` | React + Vite 前端 |
 | `test/` | fake engine/model 和分层测试资产 |

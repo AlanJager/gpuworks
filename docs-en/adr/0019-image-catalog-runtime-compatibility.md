@@ -1,0 +1,24 @@
+# ADR 0019: Keep Only Runtime Facts in the Image Catalog and Use Compatibility for Ranking and Warnings
+
+Date: 2026-09-14 · Status: Accepted
+
+2026-09-19: [ADR 0022](0022-template-owned-deployment-launch.md) adjusts the default command mode and configuration source for new deployments; existing deployments retain their original semantics.
+
+## Context
+
+The image catalog previously stored vendor, GPU model labels, Variant, compatible models, and GPU support/exclusion lists together.
+These free-text fields frequently disagree with actual node hardware, cannot cover new models, and incorrectly place model knowledge in the image layer.
+Public compatibility information for drivers and CUDA, CANN, DTK, and HGGC also changes continuously, making it impossible for the catalog to enumerate every combination.
+
+## Decision
+
+- Image series and versions describe only framework, framework version, engine, engine version, host architecture, and runtime defaults. The vendor is derived from the framework's unique mapping; old fields remain as compatibility columns but are no longer read, written, or included in wire JSON.
+- Automatic selection first enforces engine, framework, vendor, and host architecture as hard constraints. If the user specifies an engine version, normalize it and require an exact match; otherwise, sort numeric versions in descending order and select the latest enabled version in the series. For now, stable sorting resolves ambiguity within the same candidate set.
+- Driver compatibility only affects candidate ranking and generates Warning. CUDA uses only the minimum driver requirement; the upper bound in the minor version table does not eliminate newer drivers. Unproven CANN, DTK, and HGGC combinations return Unknown. The system does not produce Perfect judgments.
+- An explicitly specified image is always available, with no Blocking result even if it is absent from the catalog or considered questionable. TrustedOverride continues to allow it directly.
+- `turing-no-bf16` applies only to the actual compute capability of NVIDIA nodes, with the condition `cc < 8.0`; it does not affect image candidate eligibility.
+
+## Impact
+
+Node detection and `chipmatch` are the sources of truth for GPU models, architectures, and capabilities; inference templates own model family and model capability constraints.
+Catalog import, API, UI, and seed no longer generate or propagate redundant labels. Non-NVIDIA nodes do not incorrectly use the CUDA profile's default image when the catalog has no candidates.

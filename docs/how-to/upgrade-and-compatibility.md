@@ -1,162 +1,149 @@
 # 升级与版本兼容
 
-**适用场景**：要把已在运行的集群升级到新版本，想提前知道升级会不会影响正在服务的实例、该先升 server 还是先升 agent、server 与 agent 版本不一致时会发生什么，以及出问题怎么回退。
+本文提供控制台、命令行和离线升级方式，并说明版本不一致时的限制与回退方法。
 
-**前置条件**：
-
-- server 已按[安装和升级控制面](install-server.md)用 `gpuworks install` 装好（`gpuworks upgrade` 只认有 `server.yaml` 的安装目录）。
-- 节点已按[接入、升级和卸载节点](connect-nodes.md)接入；升级 agent 需要管理员账号。
-
-## 先看结论
-
-- **先升 server，再升 agent。** 节点页「升级 Agent」让 agent 从它当前连接的 server 的 `/dl/` 下载二进制，而 `/dl/` 里的 agent 是 server 构建时内嵌的、与 server 同一个版本号。没有先升 server，点「升级 Agent」只会下载到旧版本。
-- **升级 server 不会升级任何已接入的 agent**，也不会停掉节点上的推理容器；节点 agent 断线后自动重连。
-- **server 与 agent 之间没有强制的最低版本检查。** 握手只协商协议号区间（当前两端都是 1–1，不会不匹配），不比较发行版本号；老 agent 缺少的能力，由 server 在用到那项能力时逐项降级或拒绝。详见下文[版本不一致时会怎样](#版本不一致时会怎样)。
-- **数据库迁移只向前**，没有 down 迁移；回滚靠升级前自动生成的备份，不靠反向迁移。
+**适用场景**：已部署 GPUWorks 集群，需要更新控制面（server）或已接入的节点（agent），或处理两者版本不一致的情况。首次部署见[安装和升级控制面](install-server.md)。集群升级时，**先升级 server，再逐个升级 agent**。
 
 ## 升级前检查
 
-1. 看有没有新版，不改动任何东西：
-
-   ```bash
-   gpuworks upgrade --check
-   ```
-
-   本地构建（版本号为 `dev` 或带 `-dirty`）没有 release 标识，不加 `--force` 会被拒绝。
-2. 确认安装目录所在磁盘有空间：备份是 `<dir>/backups/` 下的 tar.gz，含整个 `gpuworks.db`（连同 `-wal` / `-shm`）、`master.key`、`server.yaml` 和当前二进制；默认保留最近 3 份，可用 `--keep N` 调整。`logs.db`、`metrics.db`、`ux.db`（逐请求记录）、镜像与目录包缓存**不在**备份里。
-3. 选低峰期。server 重启会断开全部在途的流，已经开始的响应不会重试（见[生产环境部署](deploy-production.md)）；经 server 发压的评测（`load_origin` 为 server）在重启后会被标记为失败，从 agent 发压的评测不受此规则影响。
-4. 避开长动作：模型下载、节点间同步、镜像同步尽量等结束再升级。镜像的节点间传输在 server 或节点重连后会重新协调，Docker 归档从第 0 字节重来。
-5. 多机推理或 PD 分离部署的 agent 一次只升一个节点（原因见[升级 agent](#升级-agent)）。
-6. 记下当前版本：`gpuworks version`，或 `GET /api/v1/healthz` 返回的 `version`。
+- 已安排维护窗口。升级会短暂中断控制台、网关和相应节点的连接，在途请求会断开，节点上的推理容器通常保留。
+- 尽量等模型下载、节点间同步和镜像同步等长动作结束后再升级。
+- 确认评测的发压位置与访问入口。server 重启会将尚未完成的 server 发压评测标为失败；agent 发压不受这条恢复规则影响，但网关、目标节点或发压节点中断仍可能影响评测。
+- 升级 server 时，控制面安装目录需有足够的备份空间。升级会自动备份主数据库、配置、主密钥和二进制，其他数据不全在备份中，详见[备份范围](../reference/install-layout.md#探活与备份)。
 
 ## 升级 server
 
-```bash
-gpuworks upgrade
-```
+使用控制台或命令行在线升级；控制面无法访问发布源时，使用离线包。以下方式任选一种，完成后继续[升级 agent](#升级-agent)。server 已是目标版本时，直接检查 agent。
 
-流程固定为：停服 → 打包备份 → 原子替换二进制 → 重启 → 探活（60 秒）。任何一步失败：
+### 通过控制台升级
 
-- 停服之前的失败（下载、校验、取锁）：不改动任何东西。
-- 停服后备份失败：原版本被重新拉起，不做任何替换。
-- 探活失败或新二进制起不来：自动还原备份、重启旧版本，命令以非零码退出并打印备份路径。
+使用管理员账号登录控制台。
 
-参数：
+1. 打开**设置 → 通用 → 版本与更新**，查看**服务端**的当前版本。
+2. 选择**更新渠道**，点击**检查更新**，核对目标版本。
+3. 点击**服务端**行的**升级**，在确认框核对版本和中断提示，再点击**升级**。
+4. 等待页面恢复，确认**当前**版本与目标一致，再打开**计算节点**，等待原本在线的节点恢复在线。
 
-| 参数 | 用途 |
-|---|---|
-| `--check` | 只报告是否有新版，不改动任何东西 |
-| `--force` | 允许替换没有 release id 的本地构建（`dev` / `-dirty`） |
-| `--keep N` | 保留的备份份数，默认 3 |
-| `--version ID` | 期望的 release id；与发布站当前发布（或发布包里的版本）不一致时报错，不会静默升到别的版本 |
-| `--base-url URL` | 内网镜像站 |
-| `--archive FILE` | 本地发布包，主机访问不到发布站时用，见[离线升级](install-server.md#离线升级) |
+页面提示不支持控制台升级时，按提示处理，或使用下面的命令行方式。
 
-全部参数见[CLI 与安装脚本](../reference/cli.md)。并发升级由 `<dir>/.upgrade.lock` 互斥。每次升级追加一行审计到 `<data>/install-history.jsonl`（动作、结果、新旧 release、备份路径，失败时含错误）。
+### 通过命令行升级
 
-### 数据库迁移
+在控制面主机的**实际安装目录**中，用有权维护该安装的账户执行。systemd 安装先按安装摘要取得组权限，停启服务仍需 sudo；容器主进程场景请先看[容器限制](install-server.md#在容器里运行)，不要在容器内执行升级命令。
 
-迁移随 server 启动自动执行，不需要单独步骤：`serve` 打开 SQLite 时按版本号顺序执行尚未应用的迁移，已应用的版本记录在 `schema_migrations` 表里，下次启动直接跳过。
+1. 检查更新，核对目标安装和版本：
 
-- 每个迁移和它的版本标记在同一个事务里提交；某个迁移出错则该迁移整体回滚，server 带着 `migration N (name): …` 错误退出、不会起来。重启会从失败的那个版本重试。
-- 没有 down 迁移。新版本迁移过的库交给旧二进制，代码不会检查「库比二进制新」，旧二进制只会跳过它不认识的版本；因此**不要**单独换回旧二进制而保留新库，回退一律连同备份里的 `data/` 一起还原。
-- 逐请求记录 `ux.db` 有自己的 schema 版本，同样在启动时自动迁移、与版本号同一事务提交。它**会**检查「库比二进制新」：旧二进制遇到新版本迁移过的 `ux.db` 拒绝启动（`uxstore: file schema version N is newer than M`）。`ux.db` 不在备份里，所以回退到 `ux.db` 迁移之前的版本（包括升级失败后的自动回滚）时，要先把 `data/ux.db`、`ux.db-wal`、`ux.db-shm` 挪走；它只是请求观测数据，旧版本会新建一个空的。版本 2 起（网关耗时与引擎预处理分开记录）无法降级到更早的版本而保留这份数据。
-- `gpuworks migrate [--data DIR] [--db PATH]` 对指定 SQLite 运行同一套迁移与内置目录 seed，并打印当前版本。它会写库，想预演时对备份或拷贝出来的库运行，不要对正在被 server 使用的库运行。
+   ```bash
+   ./gpuworks upgrade --check
+   ```
 
-### 回滚
+2. 确认后执行，等待命令完成：
 
-自动回滚只覆盖升级命令自己发现的失败（二进制起不来、探活超时）。新版本起来了但你发现行为不对，需要手工回退到升级前快照：
+   ```bash
+   ./gpuworks upgrade
+   ```
 
-1. 停服务：`sudo systemctl stop gpuworks`（nohup 模式按 `gpuworks.pid` 结束进程）。
-2. 备份文件名是 `<被替换的 release id>-<UTC时间戳>.tar.gz`，在 `<dir>/backups/`。解到临时目录，成员布局为 `data/gpuworks.db[-wal|-shm]`、`data/master.key`、`server.yaml`、`bin/gpuworks`。
-3. **先删掉当前的 `data/gpuworks.db-wal` 与 `data/gpuworks.db-shm`**，再把 `data/*` 拷回数据目录、`bin/gpuworks` 拷回 `<dir>/gpuworks`、`server.yaml` 拷回 `<dir>`。先删 WAL 是为了避免新版本写下的前滚日志被旧 schema 重放。
-4. 启动服务并检查 `/healthz`。
+3. 访问控制面的 `/healthz`，确认 `version` 为目标版本；命令报错时先检查日志与实际版本，再决定是否重试或[回退](#回滚)。
 
-回滚还原的是升级前快照，升级窗口（约 1 分钟）之后写入的数据会丢。
+更换更新渠道、使用内网发布站或限制目标版本时，按 [CLI 参数](../reference/cli.md#gpuworks-upgrade)设置，检查与执行使用相同参数。从发布渠道降级或替换本地构建时，需明确使用 `--force`；降级前先核对下文的[版本兼容](#版本不一致时会怎样)。
+
+### 使用离线包升级
+
+1. 在可联网的机器上下载匹配控制面系统、架构的发布包及同一版本的 `SHA256SUMS`，核对包的 SHA-256。
+2. 选择一种执行方式：
+   - **控制台上传**：在**设置 → 通用 → 版本与更新 → 服务端**点击**上传升级包**，选择已校验的发布包。**选择文件后即开始上传和升级，没有第二次确认。**
+   - **命令行执行**：将发布包和校验文件传到控制面主机，再次校验成功后，按上节要求进入安装目录。将下列占位符替换为该包的绝对路径，先检查包内版本：
+
+     ```bash
+     ./gpuworks upgrade --archive '<发布包绝对路径>' --check
+     ```
+
+     确认后执行：
+
+     ```bash
+     ./gpuworks upgrade --archive '<发布包绝对路径>'
+     ```
+
+3. 等待服务恢复，在控制台或 `/healthz` 核对运行版本与目标一致。
+
+发布包无需解压；不要用新包中的 `install` 替代升级，否则没有升级备份与回滚。校验命令见[离线安装包校验](install-server.md#离线升级)。
 
 ## 升级 agent
 
-两条路径，效果相同：
+控制面升级不会自动更新 agent。节点页升级支持 Linux 和 macOS，安装的版本取自当前 server。
 
-- **节点页「升级 Agent」**（`POST /api/v1/nodes/{uuid}/upgrade`）：节点须在线，接口立即返回 `upgrading`，仅支持 Linux。按 agent 版本有两种做法：
-  - agent 握手时声明了 `upgrade.push` 能力：server 按节点上报的架构取 `gpuworks-agent-linux-<arch>`，经**节点已有的连接**推过去（附长度与 sha256）。agent 写入 `<bin>.new`、校验长度与 sha256、运行一次 `<bin>.new version` 确认能执行，应答后旧二进制改名 `<bin>.old`、换上新版、原地 `exec`。不需要节点访问 server 的地址，所以 Server 发起连接（`server_dial`）的节点也能这样升级。推送有 10 分钟预算。
-  - 更早的 agent：server 通过 `agent.upgrade` RPC 通知，agent 从 `<server>/dl/gpuworks-agent-linux-<arch>` 下载到 `<bin>.new`，用新二进制对当前 server 跑一次 `smoke`（10 秒，只校验认证与传输）后同样替换并 `exec`。这条路要求节点能访问 server 的地址。
-- **重新运行 `/install.sh`**（Server 发起连接的节点用[离线包](connect-nodes.md#离线包)）：直接替换二进制并 `systemctl restart`，不做 smoke 校验，同时按本次参数重写 `<state>/gpuworks-agent.conf`，较早安装的 agent 借此迁移到配置文件。适合节点已离线、或 agent 版本过旧没有自升级能力的情况。
+**多机推理和 PD 分离的节点逐个升级，每次等待节点恢复在线。** 多机节点离线超过 2 分钟会使当前一代实例整体失败。
 
-结果怎么判断：
+### 通过控制台升级
 
-- 新版本重连后，节点页「Agent」列的版本号变成 server 的版本号；升级失败时 agent 上报 `agent.upgrade.status`，该列显示红色「升级失败」，悬停看原因。下载 404、smoke 失败、server 不是内嵌 agent 的开发构建都属于这一类，此时旧二进制保持不动。
-- 页面自己只等 2 分钟，超时提示「升级未在 2 分钟内完成，请检查 Agent 日志」；agent 侧下载预算是 10 分钟，慢链路上页面超时不代表升级失败，以节点页版本号与 `agent.log` 为准。
-- **启动后自动回滚**：替换时 agent 在 `<bin>.upgrade-pending` 记一个 6 分钟的确认期限（覆盖 server_dial 最长 5 分钟的重拨间隔）。新进程只有和 server 完成一次注册握手才算确认并删掉这个文件；期限内没被连上，或新版本连续启动 3 次都没走到注册（例如启动即崩、被 systemd 反复拉起），就把 `<bin>.old` 放回原位并以原参数 `exec` 旧版本，旧版本连上后上报 `agent.upgrade.status`，节点页显示「升级失败」，原因带 `rolled back:`。server 暂时不可达也会触发回滚，此时旧版本照常工作，server 恢复后重新点升级即可。
-- 没有「新版连上了但行为不对」的自动回滚：确认之后旧二进制仍留在 `<bin>.old`，需要时停止 agent、改名放回、再启动。
+使用管理员账号操作。节点须在线；较早的 agent 还需能访问 server 的下载地址。
 
-**运行中的实例**：自升级是同一进程 `exec`，SSH 或 `install.sh` 安装的 systemd 单元设了 `KillMode=process`，`install.sh` 重启 agent 也不会杀推理容器。agent 重连后 server 发 `state.sync`（全量期望状态），agent 按容器的确定名（`gpuworks-<uuid 前 12 位>`）检查：容器还在运行就**接管**（不重新拉镜像、不重新启动，也不重复 sleep/wake 预热；可休眠实例还会探测 sleep 状态）；容器存在但已停止的先删除再新建，不存在的直接新建。runveil 节点用 pid 文件和进程存活判断，同样接管。孤儿容器清理默认关闭，是设置页可选开启的项目，升级不会误删。
+1. 打开**计算节点**，先选无实例或业务可中断的在线节点，进入详情查看 **Agent 版本**。与 server 相同则跳过；若比 server 新，先确认是否要降级。
+2. 点击**升级 Agent**，等待“Agent 已升级并重新上线”提示；确认节点在线，详情中的 **Agent 版本**与 server 一致。
+3. 当前节点恢复后，再处理下一个节点。
 
-但经该节点隧道转发的流量在 agent 断开期间不可达：断线时该节点上的在途流会被断开，新请求要等重连完成，agent 重连用 1 秒起步、最长 30 秒的退避。多机推理的某个 rank 所在节点离线超过 2 分钟（宽限期）会使这一代（generation）整体失败，所以多机或 PD 分离的节点逐个升级、每升一个等节点回到在线再动下一个。
+### 在节点上重新运行安装脚本
 
-推荐顺序：
+可登录节点时，也可以重新运行 `/install.sh` 更新 agent；节点已离线或旧版不支持自升级时使用此方式。
 
-1. 升级 server，确认节点页恢复在线、`GET /api/v1/healthz` 的版本号是新版本。
-2. 在节点页按「可升级」标签逐个升级 agent；先挑没有实例或可中断的节点验证。
-3. 全部完成后，节点页「Agent」列不再出现橙色「可升级」标签。
+1. 保留旧二进制，核对原节点身份和连接配置。**重装会按传入参数重写配置，没有自升级的自动回滚。**
+2. 按[接入指南](connect-nodes.md#升级)，沿用原接入参数重新运行安装脚本；**Server 发起连接**的节点使用[离线包](connect-nodes.md#离线包)。
+3. 确认节点重新在线、版本与 server 一致，再处理下一个节点。
 
-注意：手工命令 `gpuworks-agent upgrade` 替换完成后会 `exec` 成前台运行的 `run`（按代码推断，未实机验证），不会替你重启 systemd 服务；常驻 agent 已经在运行时，会多出一个使用同一 node token 的进程，而 server 对同一节点只保留最新会话。受 systemd 托管的节点请用节点页按钮或 `install.sh`，手工命令留给没有常驻 agent 的环境。通过 RPC 触发的升级会原样保留启动参数；手工命令在配置记在 `<state>/gpuworks-agent.conf` 里时（较新的安装）只带 `--state`，较早安装、没有这份文件的 agent 则带 `--server`、`--token`、`--connect-mode`、`--state`（`server_dial` 再带 `--listen`）与可选的 `--driver`；都不带 `--data-lane` 与 `--dcgm`。Server 发起连接的 agent 没有 server 地址，手工 `upgrade` 直接拒绝，只能用节点页按钮（server 推送）。
+`gpuworks-agent upgrade` 仅适用于没有常驻 agent 的手工运行环境，参数见 [CLI 参考](../reference/cli.md#gpuworks-agent-upgrade)。它会进入前台运行，不会重启原服务；已有常驻 agent 时不要另起该命令。Server 发起连接的节点不能用它下载升级。
+
+## 验证结果
+
+- 控制面已运行目标版本，原本在线的节点已恢复在线，已升级的 agent 与 server 版本一致。
+- 调用原有模型，确认能正常响应；没有部署模型的环境只核对版本和节点状态。
 
 ## 版本不一致时会怎样
 
-以下全部来自握手与各功能点的代码，而不是发布承诺。
+server 和 agent 目前没有强制的最低发行版本检查，**能连接不代表全部功能兼容**。升级期间可以逐节点处理，完成后应统一到目标版本。
 
-### 握手
+**新 server + 老 agent** 时，各功能按下列条件判断；遇到升级提示，先更新对应节点：
 
-- agent 在 `hello` 里带上 `proto_min`/`proto_max`、自己的 `version` 和能力列表 `caps`（例如 `webterm`、`bench`、`gpu.nvidia-smi`）。server 取两端协议区间的交集；交集为空就回 `reject{reason: proto_mismatch}` 并在节点上记下拒绝原因，agent 隔 5 分钟重试。当前所有构建的区间都是 1–1，所以**现在不会发生** proto_mismatch，这是为将来预留的机制。
-- server 只**记录**agent 的 `version`（`agent_version`）并据此做下面列出的个别判断；server 回给 agent 的 `hello` 里有自己的版本号，但 agent 不读取、不比较。**agent 侧没有「server 太新/太旧」检查。**
-- 任何一端收到自己不认识的消息类型，都是忽略并记一条 debug 日志，不会断连。
+- **Web 终端**：agent 需声明宿主机终端能力；容器终端还需声明对应运行时的容器终端能力。缺少对应能力时，终端无法打开，提示不支持或升级 agent。
+- **拉取镜像、从 URL 加载镜像**：agent 需支持对应操作；不支持时拉取或加载失败，提示升级 agent。
+- **从 HTTP 目录下载模型**：可解析的发行版本需不低于 `1.0.0`；低于该版本时拒绝下载，返回 `MODEL_SOURCE_REQUIRES_NEWER_AGENT`。`dev`、裸 commit 等不可解析版本不按此门槛拒绝，仍以实际下载结果为准。
+- **评测的 tokenizer 文件探测**：agent 不支持文件检查时，仍尝试记录的路径；加载失败时给出 tokenizer 警告，允许估算的负载按估算模式继续。
+- **dGPU**：agent 需上报所需安全能力或当前格式的分区探测结果；缺少所需报告时，dGPU 显示不可用并提示升级 agent。上报后仍须通过对应后端的能力检查。
 
-### 双通道（lane）
+**老 server + 新 agent** 时，新功能未必可用，不建议长期保持；先升级 server。
 
-- 新 agent 默认用 `?lane=ctrl` 连接并期待 `Registered.session_id`，有 session_id 才再开一条数据通道；连到不发 `session_id` 的老 server 时，agent 静默保持单通道，不会报错。
-- 老 agent 不带 `lane` 参数连新 server，server 按单通道处理（所有流都走这一条连接）。`--data-lane=false` 与 `server_dial` 同理。
-- 两种组合都能工作，差别只在吞吐与延迟隔离；数据通道掉线时绝不回退到控制通道，见 [ADR 0024](../adr/0024-data-lane-no-ctrl-fallback.md)。
+节点列表的 **Agent** 列默认隐藏，可在节点详情查看版本。**可升级**标签只表示版本字符串不同，不比较新旧，`dev` 构建不显示该标签；执行升级前仍须核对目标版本。
 
-### 新 server + 老 agent：逐项降级
+数据库迁移随 server 启动自动执行，无需另跑命令。**迁移只向前，不支持反向迁移**；降级需恢复升级前快照，不能仅替换旧二进制。观测库 `ux.db` 不在升级备份中，旧版不兼容时需单独处理，见[回滚](#回滚)。
 
-server 用到某项 agent 能力时才检查，检查方式有四种：
+## 遇到问题时
 
-| 功能 | 怎么判断 | 老 agent 上的表现 |
-|---|---|---|
-| Web 终端 | agent 是否在 `hello.caps` 里声明 `webterm`；容器终端另看 `webterm.container`（runveil/udocker 节点看 `webterm.container.udocker`） | 宿主机终端被拒绝：「this node's agent does not support terminals; upgrade the agent」；容器终端被拒绝：「this node's agent does not support container terminals」（runveil 节点为「runveil container shell is unavailable on this agent」） |
-| 镜像拉取（`image.pull`）、从 URL 加载镜像（`image.load_url`） | 调用 RPC，agent 回 `unknown rpc method` | 返回产品错误 `AGENT_UPGRADE_REQUIRED`（界面：「目标节点的 agent 版本过旧；请先升级 agent，再拉取镜像」）或对应的镜像行置为失败并提示升级 |
-| 从 HTTP 目录下载模型 | 节点记录的 `agent_version` 能解析为 `主.次.修` 且小于 `1.0.0` | 下载被拒绝，返回 `MODEL_SOURCE_REQUIRES_NEWER_AGENT`；版本号解析不出来（如 `dev`、裸 commit）则放行，由 agent 自己报错 |
-| 评测的 tokenizer 探测（`fs.stat`） | 调用 RPC | 老 agent 答不出时当作路径存在继续，最后仍走估算模式并给出 tokenizer 警告 |
-| dGPU 能力 | 节点上报的 dGPU 安全协议号（`partition_safety_protocol`）或分区探测结果是否存在 | 该节点的 dGPU 能力显示为不可用，原因「agent has not reported current dGPU safety capability; upgrade the agent」 |
+| 现象 | 处理 |
+|---|---|
+| 页面提示升级超时 | 先核对实际运行版本、在线状态及日志。server 页面等待 5 分钟，agent 页面等待 2 分钟；页面超时不等于升级失败或已回滚。控制面按[安装篇排查](install-server.md#排查)检查，节点查看 `agent.log` |
+| 升级报错、服务没有恢复，或新版运行异常 | 查看错误与日志，按下面的回退说明处理；不要仅凭“已回滚”提示判断恢复成功 |
 
-以上是 server 代码里明确针对老 agent 做的判断。其余新增字段（例如网络清单）在老 agent 上缺失时，server 按「字段缺失」处理；具体到某个页面缺什么，以当时的界面为准，没有逐项列表。
+### 回滚
 
-### 老 server + 新 agent
+仅在升级失败后服务未恢复，或新版出现问题时使用。**恢复快照会丢失快照之后写入的数据。**
 
-没有检查，也没有承诺：agent 不会拒绝老 server；新 agent 发出的、老 server 不认识的消息被忽略，新 agent 期待的 server 行为（例如新的 RPC 或期望状态字段）老 server 不会提供。不要长期保持这种组合；遇到这种情况的正确做法是把 server 升上去。
+<details>
+<summary>恢复控制面到升级前快照</summary>
 
-### 节点页怎么显示
+以下命令在控制面主机的实际安装目录中执行，使用有权维护该安装的账户。容器主进程场景先看[容器限制](install-server.md#在容器里运行)，不要在容器内执行这里的停服、重启命令。
 
-- 「Agent」列显示 `agent_version`（没有握手过则显示「—」），详情抽屉里是「Agent 版本」；API 对应 `GET /api/v1/nodes` 里每个节点的 `agent_version`（握手过才有），`GET /api/v1/healthz` 的 `version` 是 server 版本。
-- 橙色「可升级」标签的判断是纯字符串不相等：server 与 agent 版本号都不是 `dev`，且二者不同。它**不比较新旧**：比 server 还新的 agent 也会显示「可升级」，此时点「升级 Agent」会下载 server 内嵌的（更旧的）版本，相当于降级。`dev` 构建不显示标签。
-- 升级中显示「升级中」，失败显示「升级失败」。失败记录在 server 内存里（`GET /api/v1/agent/upgrade-errors`），agent 之后用与 server 相同的版本号重连时清除；server 重启会丢掉这份记录。
-- 握手被拒绝时，协议不匹配的原因会记在对应节点上，显示在节点详情的「最近拒绝」里；token 无效这类拒绝不属于任何节点，节点页不显示，见 server 日志或 `GET /api/v1/agent/rejects`。
+1. 执行 `./gpuworks stop`，确认 server 已退出。二进制无法运行或旧版不支持 `stop` 时，按原服务管理方式停服；未确认退出前，不修改数据库。
+2. 从安装目录的 `backups/` 选择目标旧版的备份，解压到临时目录。确认备份属于这套安装，并用其中的 `server.yaml` 核对实际数据目录。
+3. 删除实际数据目录中当前的 `gpuworks.db-wal`、`gpuworks.db-shm`，再将备份的 `data/` 成员恢复到数据目录、`bin/gpuworks` 恢复为安装目录中的 `gpuworks`、`server.yaml` 恢复到安装目录。保留程序执行权限，确保原服务账户能读写恢复的文件。
+4. **只在旧版不支持现有 `ux.db` 时处理观测库。** 若日志提示 `uxstore: file schema version N is newer than M`，在停服状态下把实际数据目录中的 `ux.db` 及存在的 `ux.db-wal`、`ux.db-shm` 移到独立目录保留。它们不在升级备份中，自动回滚也不会处理；旧版将新建空观测库，原有请求观测记录不会显示在新库中。兼容时无需移动。
+5. 执行 `./gpuworks restart`，检查 `/healthz` 的 `version` 为目标旧版；登录控制台，确认节点在线和模型响应恢复。
 
-## 各动作的影响与回滚
+</details>
 
-| 升级动作 | 对运行中实例的影响 | 回滚方式 |
-|---|---|---|
-| `gpuworks upgrade`（server） | 推理容器与模型不动；`/v1` 网关约 1 分钟不可用，在途流断开；server 侧发压的评测被标记失败；各节点 agent 断线后自动重连并重放 `state.sync`，接管原有容器 | 探活失败自动还原；其余情况按上文手工还原备份 |
-| 数据库迁移（随 server 启动） | 无直接影响；迁移失败则 server 起不来，实例照常运行、网关不可用 | 不回滚迁移，还原升级前备份 |
-| 节点页「升级 Agent」 | 容器保留，agent 重连后接管；该节点的流量短暂中断；多机推理节点离线超过 2 分钟会使整组失败 | 下载或 smoke 失败自动保留旧二进制；`exec` 失败自动放回；`exec` 之后出问题手工改回 `<bin>.old` |
-| 重新运行 `/install.sh` | 与上相同，`KillMode=process` 保证容器不被杀；重启 agent 有短暂断线 | 无 smoke、无自动回滚，升级前自行备份旧二进制 |
-| `gpuworks-agent upgrade`（手工） | 见上文注意事项 | 同节点页升级 |
+<details>
+<summary>Agent 的自动回滚和手工回退</summary>
 
-## 相关文档
+- 下载或校验阶段失败时保留旧二进制。新进程超过 6 分钟仍未完成注册，或前三次启动都未注册、到第 4 次启动时，会尝试恢复旧版本。崩溃重启依赖 systemd、launchd 等服务管理器；server 暂时不可达也可能触发回滚。恢复后查看节点失败原因，解决后再重试。
+- 新版本已成功注册后，不再自动回滚。需要手工回退时，停止该节点的 agent，将保留的 `<bin>.old` 恢复为原二进制，再按原服务方式启动，核对版本、在线状态和模型响应。
 
-- [安装和升级控制面](install-server.md)：目录布局、备份内容与 `upgrade` 流程细节。
-- [接入、升级和卸载节点](connect-nodes.md)：agent 接入与卸载。
-- [CLI 与安装脚本](../reference/cli.md)：`upgrade`、`migrate`、`smoke` 的参数与退出码。
-- [生产环境部署](deploy-production.md)：升级时 `/v1` 网关的行为。
-- [架构总览](../explanation/architecture.md)：连接、重连与期望状态重放。
+</details>
+
+参数与备份布局见 [CLI 参考](../reference/cli.md#gpuworks-upgrade)和[安装布局](../reference/install-layout.md)，连接机制见[架构说明](../explanation/architecture.md#连接与流)。

@@ -12,7 +12,7 @@
 |---|---|---|
 | `counter` | 只增的累计值，面板按时间窗求速率 | 引擎侧同名的多行（如按 `model_name` 分开的 `_total`）相加后存一条 |
 | `gauge` | 当前值 | — |
-| `histogram` | Prometheus 直方图族。原始桶不落库：ingest 时按相邻两次的桶增量算出 `<名>{quantile="0.5"\|"0.95"\|"0.99"}` 三条分位数 gauge，另存 `<名>_sum`、`<名>_count` | 用族名（不带 `_bucket`）映射，不能带标签选择器、不能换算 |
+| `histogram` | Prometheus 直方图族。原始桶不落库：采集写入时，按相邻两次的桶增量算出 `<名>{quantile="0.5"\|"0.95"\|"0.99"}` 三条分位数 gauge，另存 `<名>_sum`、`<名>_count` | 用族名（不带 `_bucket`）映射，不能带标签选择器、不能换算 |
 
 单位：`requests` 请求数，`tokens` token 数，`ratio` 0～1 的比例（面板渲染成百分比），`seconds` 秒，`bytes` 字节，`events` 次数。
 
@@ -60,7 +60,9 @@
 
 ## 网关指标
 
-网关对经过它的每个请求自己测量，不依赖引擎导出任何指标，所以每个部署都有，包括没有 `/metrics` 的引擎（如 Strata）。存储名是 `gpuworks_proxy_<短名>`，标签为 `deployment`、`node="server"`（`requests_total` 另带 `class`）；直方图同样按部署算成分位数 gauge 存储。
+网关对经过它的每个请求自行测量，不依赖引擎的 `/metrics`，所以每个部署都有网关指标，包括没有 `/metrics` 的引擎（如 Strata）。
+
+存储名是 `gpuworks_proxy_<短名>`，标签为 `deployment`、`node="server"`（`requests_total` 另带 `class`）；直方图同样按部署算成分位数 gauge 存储。
 
 <!-- 本表由 internal/inferencemetrics 的测试与代码比对，增删指标时同步修改。 -->
 
@@ -79,16 +81,61 @@
 | `ttft_ms` | histogram | milliseconds | 请求交给实例到流式回复第一个生成 token 的耗时 |
 | `usage_missing_total` | counter | requests | 完整收到、但没有带 `usage` 的回复数；token 计数少算的就是这些请求 |
 
-- **token 只取引擎报告的 `usage`**，不按流式 chunk 计数（一个 chunk 可能含多个 token），也不估算。哪种操作的 `usage` 在哪些字段，由协议注册表（`inferenceapi.Usage`）定义；目前是 `openai.chat`、`openai.completions` 与 `openai.embeddings`；补全流的文本在 choice 的 `text` 里（没有 `delta`），首 token 按它计时。只读回复末尾 4 KiB，usage 必须在回复的最后一个事件或 JSON 对象里。
-- **vLLM / SGLang 的流式请求由网关要 usage**：客户端没写 `stream_options` 时，网关替它加上 `include_usage`，再把引擎因此多发的 usage 块从回复里去掉，客户端收到的字节与不加时一致（[ADR 0042](../adr/0042-gateway-request-records.md)）；客户端自己写了 `stream_options` 的请求原样转发。callable 引擎不加，TensorFold、Strata 总是带 usage；其他不带 usage 的回复计入 `usage_missing_total`。客户端中途断开、被截断的回复既不计 token，也不计 `usage_missing_total`；但回复的最后一个事件（`finish_reason`，以及与它同一事件或在它之后的 `usage`）已经到达网关的不算中途断开：客户端拿到最后一个事件就关闭连接、只剩 `data: [DONE]` 没读，回复是完整的，token 照常计入，请求记录的结局也是正常结束。
-- **缓存命中数**取 `usage.prompt_tokens_details.cached_tokens`。SGLang 开着缓存统计（`--enable-cache-report`）时，命中为 0 就不写 `prompt_tokens_details`，网关对这样的部署把缺省读成 0；vLLM 开着 `--enable-prompt-tokens-details` 时 0 也照写。其他情况下没有这个字段就是未知，请求不进「非缓存输入 × TTFT」分布。
-- **网关 TTFT 与引擎 `ttft_seconds` 口径不同**：网关的从请求交给实例开始计，包含排队和网络；首个 token 是流式回复里第一个非空的 `content`、`reasoning_content`、`reasoning` 或 `tool_calls`。网关按 SSE 行读完整个流，超过 64 KiB 的单行不计入。非流式回复不计 TTFT。
+### token 用量的读取与计数
+
+**token 只取引擎报告的 `usage`**，不按流式 chunk（数据块）计数：一个 chunk 可能含多个 token，网关也不估算 token 数。
+
+- 哪种操作的 `usage` 在哪些字段，由协议注册表（`inferenceapi.Usage`）定义；目前支持 `openai.chat`、`openai.completions` 与 `openai.embeddings`。
+- 补全流的文本在 choice 的 `text` 里（没有 `delta`），首 token 按它计时。
+- 网关只读回复末尾 4 KiB，usage 必须在回复的最后一个事件或 JSON 对象里。
 - 被压缩（`Content-Encoding` 非 identity）或非 JSON / SSE 的回复不读 usage。
-- **兜底直方图只为缺这项指标的引擎记录**：`tpot_ms` 与三个 `reported_*_ms` 替引擎的 `tpot_seconds`、`queue_time_seconds`、`prefill_time_seconds`、`decode_time_seconds` 顶位，只在引擎的内置映射没有对应指标时记录（`inferencemetrics.GatewayFallbacksFor`）：vLLM 四项都自己导出，一项不记；SGLang 导出 TPOT 与排队，只记 Prefill、Decode（目前 SGLang 回复里不带逐请求统计，实际为空）；callable 引擎（TensorFold、Strata 等）四项都记。`tpot_ms` 要求流式回复带 `usage` 且输出至少 2 个 token；它从网关看到的第一个生成 token 算到最后一个文本事件，含网络抖动，引擎一次发多个 token（投机解码）也按 token 数平均。`reported_*_ms` 只是把回复里引擎自报的数（[逐请求统计](#逐请求统计)）按部署汇总成分布，回复没带就不记。
+
+**网关只为 vLLM / SGLang 的流式文本请求自动请求 usage**：接口是 `/v1/chat/completions` 或 `/v1/completions`，请求体是网关可读取的 JSON，设置了 `stream: true`，且客户端没写 `stream_options`。
+
+满足这些条件时，网关替客户端加上 `include_usage`，再把引擎因此多发的 usage 块从回复里去掉，客户端收到的字节与不加时一致（[ADR 0042](../adr/0042-gateway-request-records.md)）。客户端自己写了 `stream_options` 的请求原样转发。
+
+callable 引擎不加这项请求参数；TensorFold、Strata 总是带 usage。其他不带 usage 的回复计入 `usage_missing_total`。
+
+### 什么情况下回复算完整
+
+客户端中途断开、被截断的回复既不计 token，也不计 `usage_missing_total`。
+
+如果回复的最后一个事件（`finish_reason`，以及与它同一事件或在它之后的 `usage`）已经到达网关，则不算中途断开：客户端拿到最后一个事件就关闭连接、只剩 `data: [DONE]` 没读时，回复仍是完整的，token 照常计入，请求记录的结局也是正常结束。
+
+### 缓存命中数
+
+缓存命中数取 `usage.prompt_tokens_details.cached_tokens`。字段缺失时，按以下条件判断：
+
+- SGLang 开着缓存统计（`--enable-cache-report`）时，命中为 0 就不写 `prompt_tokens_details`；网关对这样的部署把缺省值读成 0。
+- vLLM 开着 `--enable-prompt-tokens-details` 时，命中为 0 也照写。
+- 其他情况下，没有这个字段就是未知；请求不进「非缓存输入 × TTFT」分布。
+
+### 网关 TTFT 的统计口径
+
+**网关 TTFT（首 token 耗时）与引擎 `ttft_seconds` 口径不同**：网关从请求交给实例开始计时，包含排队和网络。
+
+首个 token 是流式回复里第一个非空的 `content`、`reasoning_content`、`reasoning` 或 `tool_calls`。网关按 SSE 行读完整个流，超过 64 KiB 的单行不计入。非流式回复不计 TTFT。
+
+### 引擎缺少指标时的补充统计
+
+`tpot_ms` 与三个 `reported_*_ms` 分别补充引擎的 `tpot_seconds`、`queue_time_seconds`、`prefill_time_seconds`、`decode_time_seconds`。**只有引擎的内置映射缺少对应指标时，网关才记录这项兜底直方图**（`inferencemetrics.GatewayFallbacksFor`）：
+
+- vLLM 四项都自己导出，网关一项不记。
+- SGLang 导出 TPOT 与排队，网关只记 Prefill、Decode；目前 SGLang 回复里不带逐请求统计，因此这两项实际为空。
+- callable 引擎（TensorFold、Strata 等）四项都记。
+
+`tpot_ms` 要求流式回复带 `usage` 且输出至少 2 个 token。它从网关看到的第一个生成 token 算到最后一个文本事件，含网络抖动；引擎一次发多个 token（投机解码）时，也按 token 数平均。
+
+`reported_*_ms` 把回复里引擎自报的数（[逐请求统计](#逐请求统计)）按部署汇总成分布；回复没带就不记。
 
 ## 逐请求统计
 
-引擎写在每个回复里的、该请求自己的耗时。网关在回复结束时读出，写进该请求的记录（`ux.db`，见[查看指标与检索日志](../how-to/monitor-and-logs.md#2-看请求视图与请求分布)），请求视图用它把已结束的请求拆成排队、Prefill、Decode；引擎自己不导出分段直方图时，网关还把它们汇总成 `reported_*_ms` 直方图，供「分段时长」图使用。读哪些字段由引擎内置声明或模板的 [`api.request_stats`](inference-catalog-spec.md#apirequest_stats回复里的逐请求统计) 决定。
+逐请求统计是引擎在每个回复中报告的该请求耗时。网关在回复结束时读出，写进该请求的记录（`ux.db`，见[查看指标与检索日志](../how-to/monitor-and-logs.md#2-看请求视图与请求分布)）。这些统计有两种用途：
+
+- 请求视图用它把已结束的请求拆成排队、Prefill、Decode。
+- 引擎自己不导出分段直方图时，网关把它们汇总成 `reported_*_ms` 直方图，供「分段时长」图使用。
+
+读哪些字段由引擎内置声明或模板的 [`api.request_stats`](inference-catalog-spec.md#apirequest_stats回复里的逐请求统计) 决定。
 
 | 短名 | 单位 | 含义 |
 |---|---|---|

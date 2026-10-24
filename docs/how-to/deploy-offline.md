@@ -2,7 +2,7 @@
 
 **适用场景**：集群不能访问公网：拉不到 Docker Hub 等镜像仓，也下载不了 Hugging Face / ModelScope 上的模型。
 
-**前置条件**：一台能上网的机器（下文叫「外网机」），下载好的文件用 U 盘、跳板机等任意方式拷进内网；管理员权限。
+**前置条件**：一台能上网的机器（下文叫「外网机」），下载好的文件用 U 盘、跳板机等任意方式拷进内网；管理员权限。已有的目录或节点副本不必重复导入。
 
 ## 推荐流程
 
@@ -71,7 +71,12 @@ gunzip -c gpuworks-runner_<tag>_linux-arm64.tar.gz | nerdctl -n gpuworks load
 - 部署时自动复制：同一[同步组](configure-pull-settings.md#同步组)里有节点已经有这个镜像或模型时，副本启动时自动从它复制。新装的平台默认所有节点在一个组。
 - 提前手动复制：模型页对应行「同步到其他计算节点」；镜像详情页节点行的「获取方式」选「从其他节点同步…」。见[节点间同步](peer-sync-models.md)。
 
-节点间复制要求两台节点之间网络直通。之后照常[部署模型](deploy-models.md)，节点上已有的镜像和模型直接使用，不会再去下载。
+节点间复制要求两台节点之间网络直通。导入或同步完成后，检查目标节点的镜像状态为 `present`、模型副本可用，不要只看传输进度达到 100%。
+
+### 6. 部署并验证
+
+照常[部署模型](deploy-models.md)，选择与模型、节点架构匹配的镜像和模板；节点上已有的镜像和模型直接使用，不会重复下载。
+等待实例就绪后，使用该部署的调用示例，经实际推理接口发送一次请求并确认返回结果；仅访问 `/v1` 前缀不能判断推理成功。
 
 ## 特殊情况
 
@@ -99,7 +104,9 @@ docker save "$REF" | gzip > gpuworks-runner_cuda13.0-sglang0.5.21-r2_linux-amd64
 
 ### 经管理节点中转导入镜像
 
-udocker（runveil）节点，或不方便登录节点时，可以在控制台里导入，节点本身什么都访问不到也能用：
+udocker（runveil）节点，或不方便登录节点时，可以在控制台里导入。节点须保持与 server 连接；即使节点不能访问归档来源，也可由 server 中转。
+
+开始前，确认 server 能读取归档。内网来源须在 `server.yaml` 的 `outbound_allow_private_hosts` 中显式授权，并重启 server；下面的环回地址同样需要授权，见[HTTP 导入前提](import-from-http.md)。
 
 1. 把归档放到管理节点能访问的 HTTP 地址。最简单的是拷到管理节点上，就地起一个临时文件服务：
 
@@ -121,6 +128,11 @@ Docker 与 udocker 节点可以直接用 `.tar.gz`；nerdctl 节点请先解压�
 2. 设置 → 拉取设置 → 来源规则，加一条 `gpuworks/` → `registry.corp.example/gpuworks/`，并关闭「允许回源」，节点就不会再去公网拉。
    仓库要登录时配[凭据](configure-pull-settings.md#凭据)，规则写法见[来源规则](configure-pull-settings.md#来源规则)。
 
+### 模型放在内网 HTTP 目录
+
+模型目录已在 HTTP 文件服务器上时，按[从 HTTP 目录注册模型](import-from-http.md#从-http-目录注册模型)登记并下载。server 需要读取目录进行解析，目标节点也必须能直接访问该目录；内网地址按该指南配置出站授权。
+模型目录下载没有管理节点中转。节点不能直接读取目录时，改用上面的本地复制、NFS 或节点间同步。
+
 ### 节点不能出公网
 
 常见于云上没有公网 IP、也没有 NAT 网关的实例（例如阿里云 VPC 里的 ECS）：节点能连上 server，但拉不到镜像、下载不了模型。
@@ -133,7 +145,8 @@ Docker 与 udocker 节点可以直接用 `.tar.gz`；nerdctl 节点请先解压�
 ### 让缺镜像或模型的部署立刻报原因
 
 整个集群都没有公网时，按[完全离线：两条「禁止」规则](configure-pull-settings.md#完全离线两条禁止规则)给 Hugging Face 与 ModelScope
-各加一条站点规则（无替代地址、关闭回源）。漏导入模型的部署会立即给出 `weights_fetch_forbidden` 原因，不用等公网下载超时。
+各加一条站点规则（无替代地址、关闭回源）。只有下载路径、又被这两条规则禁止的 HF / ModelScope 模型会立即给出 `weights_fetch_forbidden` 原因，不用等公网下载超时。
+这些站点规则不限制 registry、HTTP 目录或其他外部访问。
 镜像对应的做法是关闭「允许回源」的来源规则。
 
 ### 更新镜像目录和推理模板
@@ -141,6 +154,11 @@ Docker 与 udocker 节点可以直接用 `.tar.gz`；nerdctl 节点请先解压�
 想用比内嵌更新的系统镜像目录与推理模板目录时：在外网机上从任一发布源（如 `https://dl.gpuworks.ai`）下载 `manifest.json`
 与 `<channel>/index.json` 里列出的 `catalog/templates/<sha256>.tar.gz`，在设置页「版本与更新」点「上传 manifest」「上传目录包」，
 规则见[镜像目录](../reference/image-families.md#更新目录)。离线环境里「检查更新」会因为发布源不可达返回 502 `UPDATE_SOURCES_UNAVAILABLE`，不改库。
+
+## 离线边界
+
+server 不保存、也不接受镜像 tar 包直接上传；控制台中的管理节点中转从 HTTP 来源读取归档，再流式推给节点。
+配置离线来源不等于操作系统已断网；需要验证无公网访问时，应额外施加网络隔离或检查网络流量。
 
 ## 相关
 

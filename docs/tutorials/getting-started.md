@@ -8,8 +8,6 @@
 
 ## 开始之前
 
-Mac 本地试用见[在 Mac 上运行第一个本地模型](mac-local-model.md)。
-
 | 你需要 | 说明 |
 |---|---|
 | 控制面主机 | Linux x86_64 + systemd；具备 Bash、curl、tar、sha256sum 和 sudo 权限。浏览器与 GPU 节点可访问其 8800 端口；控制面提供资源管理、Web 控制台和推理入口 |
@@ -19,7 +17,7 @@ Mac 本地试用见[在 Mac 上运行第一个本地模型](mac-local-model.md)�
 | 网络 | 控制面主机能下载 GPUWorks 发布包；控制面和节点能访问 ModelScope，节点能访问推理镜像仓库。离线场景改用[离线环境部署](../how-to/deploy-offline.md) |
 
 控制面和 GPU 节点可以同机，命令仍按下文指定的位置执行。模型、镜像的下载时间取决于网络与磁盘速度。
-macOS、无 sudo 或非 systemd 环境见[安装和升级控制面](../how-to/install-server.md)，不与本文安装方式混用。
+Mac 本地试用见[在 Mac 上运行第一个本地模型](mac-local-model.md)；Linux 无 sudo 或非 systemd 环境见[安装和升级控制面](../how-to/install-server.md)。
 
 下文以 `host3` 为节点显示名称，无需修改操作系统主机名；模型、部署及令牌名称在对应步骤填写。
 
@@ -83,7 +81,7 @@ curl -fsSL http://192.0.2.10:8800/install.sh | sh -s -- \
 
 图：来源选 ModelScope，名称填 `dgpu-demo-a-ms`。
 
-注册仅登记信息，权重需另行下载。`dgpu-demo-a-ms` 是名称示例，不会开启 dGPU；下一篇可复用此模型和 vLLM 镜像。
+注册仅登记信息，权重需另行下载。`dgpu-demo-a-ms` 是名称示例，不会开启 dGPU；后续部署可复用此模型和 vLLM 镜像。
 
 ### 下载到节点
 
@@ -119,7 +117,6 @@ curl -fsSL http://192.0.2.10:8800/install.sh | sh -s -- \
 
 4. 在**节点**区域选择**单机**和**手动指定**，选择 `host3` 和空闲的 **GPU 0**，副本数保持 `1`。
    **dGPU 显存（GiB）**留空（使用整卡），关闭**可休眠**；**最大上下文**设为 `2048`，**显存使用率**设为 `0.90`，其余使用模板值。
-   下一篇再配置 dGPU 和休眠。
 
 ![节点选择表单：核对目标节点、GPU 和右侧配置评估](../assets/screenshots/tutorial-deploy-node.png)
 

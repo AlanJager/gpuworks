@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -62,10 +63,62 @@ func TestSearchAPIRanksPathMatchesFirst(t *testing.T) {
 			t.Fatalf("%q listed without matching", l)
 		}
 	}
-	// Descriptions are cut at 600 bytes.
-	if !strings.HasSuffix(ls[0], "…") || len(ls[0]) > len("GET /api/v1/gpus — ")+600+len("…") {
-		t.Fatalf("long description not cut: %d bytes", len(ls[0]))
+}
+
+func TestSearchAPIClipsLongDescriptions(t *testing.T) {
+	const route = "/api/v1/gpus"
+	previous := routeDocs[route]
+	t.Cleanup(func() { routeDocs[route] = previous })
+	routeDocs[route] = strings.Repeat("GPU capacity. ", 100)
+	out := searchAPI([]string{route}, "gpu")
+	const prefix = "GET /api/v1/gpus — "
+	if !strings.HasSuffix(out, "…") || len(out) > len(prefix)+600+len("…") {
+		t.Fatalf("long description not cut: %d bytes", len(out))
 	}
+}
+
+func TestSearchAPIFindsDiagnosticFields(t *testing.T) {
+	cases := []struct {
+		query string
+		route string
+	}{
+		{"foreign_processes", "/api/v1/gpus"},
+		{"retry_exhausted", "/api/v1/deployments/{id}"},
+		{"client_closed", "/api/v1/monitor/deployments/{id}/requests"},
+		{"cached_nodes", "/api/v1/models"},
+		{"NVLink", "/api/v1/ai/models/{id}/fit"},
+	}
+	var routes []string
+	for _, c := range cases {
+		routes = append(routes, c.route)
+	}
+	for _, c := range cases {
+		t.Run(c.query, func(t *testing.T) {
+			out := searchAPI(routes, c.query)
+			for _, line := range lines(out) {
+				if strings.HasPrefix(line, "GET "+c.route+" — ") {
+					return
+				}
+			}
+			t.Fatalf("cannot discover %s by %q: %s", c.route, c.query, out)
+		})
+	}
+}
+
+func TestSearchAPIShowsGPUAllocationFilterValues(t *testing.T) {
+	out := mustCall(t, apiEnv{newFakeAPI()}, "search_api", `{"query":"allocation_state"}`)
+	for _, line := range lines(out) {
+		if !strings.HasPrefix(line, "GET /api/v1/gpus — ") {
+			continue
+		}
+		for _, state := range []string{"available", "partial", "allocated", "unusable", "unknown"} {
+			if !regexp.MustCompile(`\b` + state + `\b`).MatchString(line) {
+				t.Errorf("assistant cannot choose allocation_state=%s from the search result: %s", state, line)
+			}
+		}
+		return
+	}
+	t.Fatalf("GPU allocation filter not discoverable: %s", out)
 }
 
 func TestSearchAPINeverListsDeniedOrUndocumentedRoutes(t *testing.T) {

@@ -1,5 +1,8 @@
 # GPUWorks 工程日志
 
+本文按问题保留修复经过、验证范围和原始证据。阅读时以各条目的状态与日期为边界；
+条目中的“当前”“现在”对应记录形成时的情况，不能单凭历史验收推断后续版本的状态。
+
 ## Playground、网关与 GPUWorks `/v1` 数据面验收
 
 - 状态：部分完成（PARTIAL，Playground 与 GPU3 验收已于 2026-08-20 完成；
@@ -31,8 +34,11 @@ GPU3 上 Qwen3-ASR vLLM 的直接验收记录见
   验收已完成（RunPod/A40，Qwen3.5-0.8B）
 - 发现日期：2026-08-19
 - 范围：`internal/agent/runtime/udocker`
-- 优先级：对于 import 路径会通过 `/proc/self/maps` 暴露的文件名重新打开
+- 优先级：对于在导入模块（import）时，会使用 `/proc/self/maps` 暴露的文件名重新打开
   CUDA 库的 runner 镜像，属于严重问题
+
+本条中的 guest 指容器内部，rootfs 是容器的根文件系统。loopback 映射指在容器内建立符号链接，
+让程序通过 `/proc/self/maps` 读到的宿主机路径也能找到同一个库文件；它不是网络回环。
 
 ### 现象
 
@@ -313,6 +319,7 @@ runtime/nerdctl、agent/engine、assets、engines、catalogasset、enginelog）�
 自引入以来闭包里 48 个提交、资产被改过 20 次（其中 8 次的标题就是"重新生成
 资产"），而且**任何 rebase 都会让提交里那次重新生成失效**，于是每个 MR 都要
 为一个只被 L4 用例使用的产物背一条门禁，历史里还堆了 24 个 blob（约 202 MB）。
+
 现在改为：由 L4 用例在 runner 上从被测 revision 交叉编译
 （`ascendNerdctlVerifyLinuxARM64Gzip`，缓存后 1–2 秒），签入资产、字节比较
 门禁与 `build-asset.sh` 一并删除；core CI 不再校验，L4 lane 新增
@@ -367,7 +374,7 @@ build-matrix 目录；版本号是溯源/校验元数据，不是运行时选择
   `test-l4-ascend-pool-partition-inference`、`.gitlab-ci.yml` 的
   `l4-ascend-pool-partition-inference`
 
-`.31` 与 `.32` 这两台 fixture 不再是一荣俱损（fail-together）的一对。CI 把
+`.31` 与 `.32` 是两台供测试使用的主机（fixture）；其中一台不可用，不再导致整组测试一起失败（fail-together）。CI 把
 它们当作一个按能力选择的资源池：不可达或不合适的成员会被记录下来，然后
 使用第一个同时满足 SSH 可用、有空闲配置好的卡、有本地模型和应用镜像的
 成员。一个当前自包含的 arm64 agent 会被上传到唯一的
@@ -414,15 +421,20 @@ Huawei/Ascend 兼容性面的其余部分：真实 x86_64/CANN9 与 arm64/CANN9 
 Huawei 自己的 SWR registry
 （`swr.cn-south-1.myhuaweicloud.com/gpustack/runner:cann9.0-910b-vllm0.20.2`，
 可从 Gitee 实例的公网出口访问）；模型是 ModelScope 的 `Qwen/Qwen3-0.6B`。
+
 两个完整用例都在各自的外层租用实例内运行一个 CANN9 应用镜像。arm64 用例
 有意租用了合法的 CANN9/910B1 外层镜像：Gitee 的 catalog API 目前列出了一个
 arm64/CANN8.5 的外层镜像，但 Rent 会以 `镜像和主机不匹配` 拒绝这个组合，
-因此把它当作可租用的 fixture 会造成虚假覆盖。同时也测试了在 CANN9 外层的
+因此把它当作可租用的 fixture 会造成虚假覆盖。
+
+同时也测试了在 CANN9 外层的
 PRoot 边界内运行 CANN8.5 应用镜像的情形：容器能够启动，但 CANN FE 无法对
 `aarch64-linux/lib64/../data/platform_config` 做 realpath，torch_npu 会在
 模型权重加载之前就以 `Get ACL JitCompile default value failed` 失败。这与
 上游 CANN8.5 容器本身的路径解析失败问题一致，仍是一个明确的兼容性缺口，
-而不是一个能通过 CI 的结论。能力探针与完整部署使用了各自独立、语义清晰的
+而不是一个能通过 CI 的结论。
+
+能力探针与完整部署使用了各自独立、语义清晰的
 job：`l4-gitee-ascend-partition-capability` 与 `l4-gitee-ascend-deploy-chat`。
 后者仍然是一条明确的低频路径。两个完整部署用例都显式断言
 `runtime_driver=udocker`，证明 Huawei SWR 的应用镜像是内层容器，而不是

@@ -1,9 +1,9 @@
 # 镜像目录与推理镜像家族
 
 GPUWorks 自己组装完整引擎命令，不依赖镜像默认 entrypoint。镜像页按「系列 → 版本 → 节点分布」管理运行镜像，
-版本按来源分三类（同一张表上的标记，不是三种实体）：
+版本按来源分三类。这三类是同一种镜像版本记录上的来源标记，不是三种不同的对象：
 
-| 来源（界面） | 库与 wire 的 `source` | 谁维护 | 能改什么 |
+| 来源（界面） | 数据库与 API 中的 `source` | 谁维护 | 能改什么 |
 |---|---|---|---|
 | 系统镜像 | `official` | GPUWorks 发布的镜像目录 manifest | 元数据只读、不能删除；运维可启用/停用系列与版本，可给版本追加获取地址（如归档 URL）。只会被 manifest 更新删除或弃用 |
 | 社区镜像 | `community` | 用户在社区仓库里挑 tag 添加 | 可编辑；删除在详情抽屉里 |
@@ -45,11 +45,15 @@ framework 版本都从 tag 解析；昇腾型号段（`910b`、`a3`、`310p`、`
 | `vllm` | `vllm serve /model ...` |
 | `sglang` | `python -m sglang.launch_server --model-path /model ...` |
 | `vllm-omni` | omni 多模态专用命令 |
-| `callable` | 目录自带的 Serve Adapter（只有自定义镜像会用到） |
+| `callable` | 目录自带的 Serve Adapter，包括系统 Metal 镜像的适配器 |
 
 ### 启动同步
 
-server 换了构建（升级或重装二进制）后的第一次启动（包括 `gpuworks migrate`）把内嵌种子同步进库（在打开数据库之后、任何组件解析镜像之前），不访问网络，并打一行日志；同一构建再次启动不重放种子，库里保留最后一次导入的目录（检查更新、上传 manifest 或上次重放），日志为 `official catalogs kept from their last import`（[ADR 0040](../adr/0040-signed-multi-source-distribution.md)）：
+内嵌种子是随 server 二进制发布的镜像目录。server 根据构建是否变化，决定是否把这份目录同步进数据库
+（[ADR 0040](../adr/0040-signed-multi-source-distribution.md)）：
+
+- 换了构建（升级或重装二进制）后的第一次启动，包括执行 `gpuworks migrate` 时，会在打开数据库之后、任何组件解析镜像之前同步内嵌种子。不访问网络，并打印下方的同步日志。
+- 同一构建再次启动时不重放种子。数据库保留最后一次导入的目录，无论它来自检查更新、上传 manifest，还是上次重放种子；日志为 `official catalogs kept from their last import`。
 
 ```text
 image catalog synced catalog_version=2026-10-09.f085e40b created=0 updated=25 deleted=0 deprecated=0 skipped=0
@@ -73,7 +77,7 @@ image catalog synced catalog_version=2026-10-09.f085e40b created=0 updated=25 de
 
 两条路径与启动同步共用一套导入规则：
 
-1. 按 `image_ref` upsert 系列与版本；运维对系列、版本的启用开关保留；系统版本上用户登记的归档 URL
+1. 按 `image_ref` 新增或更新（upsert）系列与版本；运维对系列、版本的启用开关保留；系统版本上用户登记的归档 URL
    （`http(s)://` 开头的获取地址）保留。
 2. manifest 里已经没有的系统版本：没有任何引用的直接删除（连同它在各节点的分布记录，系列空了也删）；
    仍有引用的标为弃用，`deprecated_since` 记为本次 `catalog_version`，镜像页显示「已弃用 · N 个引用」。
@@ -189,9 +193,13 @@ tag，不做 semver 过滤，`vllm/vllm-openai:qwen38` 这类 tag 同样可选�
 tag 回规范引用，`image_ref` 语义不变。候选顺序见[排障](../how-to/troubleshooting.md#镜像拉取失败)。
 
 默认的引擎接管命令模式下，Docker、runveil（`udocker` driver）和 nerdctl 都会覆盖镜像默认 entrypoint，
-再拼接实际参数，避免重复执行 vllm serve 或 tini --。命令模式只由部署显式选择（默认引擎接管），不随镜像来源或
+再拼接实际参数，避免重复执行 vllm serve 或 tini --。
+
+命令模式只由部署显式选择（默认引擎接管），不随镜像来源或
 镜像目录变化；镜像目录只提供 framework、版本与获取地址，不承载启动配置（ADR 0031），镜像自带的 ENTRYPOINT/CMD/ENV
-可在镜像详情里对节点检查查看。GPU 型号、compute capability 等事实来自节点探测，不在镜像目录中维护自由文本兼容标签。
+可在镜像详情里对节点检查查看。
+
+GPU 型号、compute capability 等事实来自节点探测，不在镜像目录中维护自由文本兼容标签。
 各启动字段的来源见[部署启动参数来源](deployment-launch-sources.md)。
 
 runveil（`udocker` driver）对所有容器都会创建 canonical ROOT loopback（供 proot 客户机解析 `/proc/self/maps`

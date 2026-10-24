@@ -7,6 +7,8 @@ server 是控制面、Web UI 和 OpenAI 兼容网关；agent 运行在每个 GPU
 
 ## 总览
 
+本页的总览图与生命周期图以容器运行时路径为例；macOS 节点使用 `host` 运行时，以普通主机进程运行引擎，见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md)。
+
 ```mermaid
 flowchart TB
   user["浏览器 / API 客户端"]
@@ -30,14 +32,15 @@ flowchart TB
     eng["vLLM / SGLang 实例"]
     agent --> rt --> eng
   end
-  user -->|"HTTPS /api/v1（JWT）"| api
+  user -->|"HTTPS /api/v1（会话或 API Token）"| api
   app -->|"/v1（API key）"| gw
   agent ==>|"出站 WebSocket + yamux（ctrl 与 data 两条通道）"| ctl
   gw -.->|"经 data 通道隧道转发请求"| eng
 ```
 
-agent 总是主动向 server 发起连接，节点不需要开放入站端口；server 也能通过 `server_dial` 直连节点上 agent 的监听端口（SSH 只用于安装、预检查和带外恢复）。
-所有调用方只与 server 交互：管理面用 JWT，`/v1` 数据面用 API key，请求由网关选出副本后经已建立的连接转发到节点上的实例。
+默认由 agent 主动向 server 发起连接，节点无需开放入站端口。使用 `server_dial` 时，改由 server 连接 agent 的监听端口，该端口必须能从 server 访问。SSH 只用于安装、预检查和带外恢复。
+
+所有调用方只与 server 交互：管理面接受管理会话（网页使用 HttpOnly Cookie，其他客户端可使用绑定会话的 JWT）及平台 API Token，`/v1` 数据面用 API key，请求由网关选出副本后经已建立的连接转发到节点上的实例。
 
 ## 连接与流
 
@@ -94,9 +97,11 @@ CGO_ENABLED=0，也让命令、超时和错误传播可测试。
 
 ## runtime 与镜像
 
-部署快照中的 ResolvedLaunch 由目录 spec、镜像 defaults、用户 overrides 和实际 GPU 选择合并。
-Docker/runveil/nerdctl 覆盖镜像 entrypoint，统一执行 GPUWorks 生成的命令；runveil 额外建立
-canonical ROOT loopback，使 /proc/self/maps 暴露的库路径可在 guest 中重开。模型和镜像内容采用
+最终启动方案合并引擎配置、选定的推理模板 spec、放置结果和部署输入；镜像目录不提供可编辑的启动默认值（[ADR 0031](../adr/0031-image-catalog-carries-no-launch-config.md)）。
+运行时如何使用镜像 entrypoint 由命令模式决定：`engine` 使用生成的引擎命令，`image-entry` 保留镜像 entrypoint 并传入引擎参数，`manual` 使用镜像命令或显式覆盖的命令、不注入引擎参数。runveil 额外建立
+canonical ROOT loopback，使 /proc/self/maps 暴露的库路径可在 guest 中重开。
+
+模型和镜像内容采用
 原子下载/load 与 manifest/presence 校验，避免 partial 目录被当成可用。
 
 ## 存储与事件

@@ -1,10 +1,17 @@
 # A100 验证缺陷状态台账
 
-随提交维护的活文档。记录 `model-inference-validation/.../2026-09-02--gpuworks-a100-validation/evidence/bugs.md` 中平台侧缺陷在 **`feat/a100-p0-remediation` 分支** 的真实状态（`feat/blueprint5-fix` 分支的少量早期修复已合入 `master`，其余本表引用的提交仍只存在于 `feat/a100-p0-remediation`）。bugs.md 里的 "fixed in the working tree" 指验证用旁工作树 `../gpuworks_blueprint5`，不等于本分支已修；本表以本分支源码为准。
+随提交维护的活文档。记录 `model-inference-validation/.../2026-09-02--gpuworks-a100-validation/evidence/bugs.md`
+中平台侧缺陷在 **`feat/a100-p0-remediation` 分支** 的真实状态。
+`feat/blueprint5-fix` 分支的少量早期修复已合入 `master`，其余本表引用的提交仍只存在于 `feat/a100-p0-remediation`。
 
-状态取值：`fixed`（已落库并有测试）、`partial`（部分落库）、`planned`（在 `artifacts/work/2026-09-04-a100-verification/plan-a100-p0-remediation.md` 内有明确方案）、`backlog`（未来修复，暂无方案）、`upstream_blocked`（runner/上游边界）、`semantic`（语义质量问题，不改平台）。
+bugs.md 里的 "fixed in the working tree" 指验证用旁工作树 `../gpuworks_blueprint5`，不等于本分支已修；本表以本分支源码为准。
 
-最后核对：2026-09-04，提交 `4b3dad9`（A/B/C/D/E 本地实现与分层验收；mirror1 L2/L3、gpu3 UDocker 与 provisioning restart 回放已记录）。
+下文“落库”指修复进入该分支的代码库。`fixed` 表示代码已落库并有测试，具体仍待真机复测的范围看各行说明。
+catalog 指推理目录，spec 指目录中的可执行规格；smoke 是最小可用性检查，harness 是组织测试运行的驱动程序。
+
+**状态取值：**`fixed`（已落库并有测试）、`partial`（部分落库）、`planned`（在 `artifacts/work/2026-09-04-a100-verification/plan-a100-p0-remediation.md` 内有明确方案）、`backlog`（未来修复，暂无方案）、`upstream_blocked`（runner/上游边界）、`semantic`（语义质量问题，不改平台）。
+
+**最后核对**：2026-09-04，提交 `4b3dad9`（A/B/C/D/E 本地实现与分层验收；mirror1 L2/L3、gpu3 UDocker 与 provisioning restart 回放已记录）。
 
 ## 1. 已修复（fixed / partial）
 

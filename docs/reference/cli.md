@@ -1,7 +1,29 @@
 # CLI 参考
 
+GPUWorks 提供两个命令行程序：`gpuworks` 用于安装、运行、升级和维护控制面；`gpuworks-agent`
+用于连接 GPU 节点、检查节点环境、排查容器问题和执行评测。
+
 本页按子命令列出 flag、默认值和行为要点；以各命令的 `--help`（`-h`）输出为准，flag 定义分别在
 `cmd/gpuworks`、`cmd/gpuworks-agent`。环境变量见[配置参考](configuration.md)。
+
+## 示例：重启控制面
+
+修改 `server.yaml` 后，在**已安装控制面的机器**上执行以下命令，使配置生效。需要该安装的管理权限；
+命令会短暂停止控制面服务，再按原有服务方式启动并检查是否恢复。
+命令中的 `gpuworks` 需能在当前 `PATH` 中找到；否则使用安装目录里的完整路径，例如 `/opt/gpuworks/server/gpuworks restart`。
+
+```bash
+gpuworks restart
+```
+
+成功时输出类似以下内容，括号内是当前安装的服务方式：
+
+```text
+gpuworks restarted (systemd)
+```
+
+指定其他安装目录时，在命令后加 `--dir /实际安装目录`。全部参数与限制见下文
+[`gpuworks restart`](#gpuworks-restart)；查看命令帮助可执行 `gpuworks restart --help`。
 
 ## 命令总览
 
@@ -67,10 +89,18 @@
 
 - 文件键与 flag 的对应关系、监听规则见[配置参考](configuration.md)；`--recovery-*`、`--stale-*`、`--proxy-max-body-bytes`、`--server-dial-reconnect-interval` 没有文件键，默认值即生产取值。
 - 日志同时写 stderr 和文件，按大小轮转；日志配置只有 flag 和 `server.yaml`，没有环境变量。
-- server 只读一个面向操作员的 `GPUWORKS_*` 变量 `GPUWORKS_ADMIN_PASSWORD`（首次创建 admin 时的初始密码），另有守护进程设给子进程的内部标记 `GPUWORKS_SUPERVISED=1`（server 读后即从自身环境删除，不传给它启动的进程）；`GPUWORKS_ADDR`、`GPUWORKS_DATA_DIR`、`GPUWORKS_TRUSTED_PROXIES` 仅作老单元的兼容桥接，详见配置参考。
+- server 读取面向操作员的 `GPUWORKS_ADMIN_PASSWORD`（首次创建 admin 时的初始密码）和 `GPUWORKS_USAGE_REPORT=off`（强制关闭使用情况上报），另有守护进程设给子进程的内部标记 `GPUWORKS_SUPERVISED=1`（server 读后即从自身环境删除，不传给它启动的进程）；`GPUWORKS_ADDR`、`GPUWORKS_DATA_DIR`、`GPUWORKS_TRUSTED_PROXIES` 仅作老单元的兼容桥接，详见配置参考。
 - 收到 `SIGUSR1` 时临时打开仅回环的 pprof 监听（先试 `127.0.0.1:6060`，被占用则换随机端口），10 分钟后自动关闭；实际地址在日志里。
 - `SIGINT`/`SIGTERM` 触发优雅退出；进程在 systemd 下运行（存在 `INVOCATION_ID`）或由 `--supervise` 启动时，控制台的「立即重启」和控制台升级可以让它自行退出并由 `Restart=always` 或守护进程拉起。
-- `--supervise`：父进程不读配置、不开数据库，只做「启动、等待退出、3 秒后再启动」：每次都按安装路径启动（控制台升级把新二进制 rename 到这个路径上，下一次启动就是新版本，父进程自己保持启动时的版本）；SIGINT/SIGTERM 转给 server，server 退出后以 0 退出；Linux 上 server 带 parent-death 信号，父进程被 SIGKILL 时 server 一起被杀；作为 1 号进程时回收所有孤儿进程。`--config` 指向的目录正是这个二进制所在的安装目录时，把自己的 pid 写进 `<dir>/gpuworks.pid`，干净退出时删除。
+
+### `--supervise` 的进程行为
+
+使用 `--supervise` 时，父进程负责监督 server 子进程，不读配置、不开数据库：
+
+- 平时循环执行「启动 server、等待它退出、3 秒后再启动」。每次都按安装路径启动；控制台升级把新二进制 rename 到这个路径后，下一次启动的是新版本，父进程自己仍保持启动时的版本。
+- 收到 SIGINT/SIGTERM 时把信号转给 server，等待 server 退出后，父进程以 0 退出。
+- Linux 上 server 带 parent-death 信号：父进程被 SIGKILL 时，server 一起被杀。父进程作为 1 号进程时会回收所有孤儿进程。
+- `--config` 指向的目录正是这个二进制所在的安装目录时，父进程把自己的 pid 写进 `<dir>/gpuworks.pid`，干净退出时删除。
 
 ## gpuworks install
 
@@ -231,7 +261,9 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 ## gpuworks-agent configure
 
-把节点的启动配置写进 `<state>/gpuworks-agent.conf`（权限 `0600`，整份文件替换）。安装脚本在放好二进制后调用它；每次启动 agent 的方式（systemd 单元、nohup 与 `agent-restart.sh`、launchd 任务、手工升级后的重启）都只执行 `gpuworks-agent run --state DIR`，其余配置都从这份文件读。节点 token 从标准输入的第一行读取，不作为参数，所以不出现在 `ps`、systemd 单元或 plist 里。文件格式与各字段见[安装布局](install-layout.md#agent-配置文件)。
+把节点的启动配置写进 `<state>/gpuworks-agent.conf`（权限 `0600`，整份文件替换）。安装脚本在放好二进制后调用它；每次启动 agent 的方式（systemd 单元、nohup 与 `agent-restart.sh`、launchd 任务、手工升级后的重启）都只执行 `gpuworks-agent run --state DIR`，其余配置都从这份文件读。
+
+节点 token 从标准输入的第一行读取，不作为参数，所以不出现在 `ps`、systemd 单元或 plist 里。文件格式与各字段见[安装布局](install-layout.md#agent-配置文件)。
 
 | flag | 默认值 | 说明 |
 |---|---|---|
@@ -351,7 +383,9 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `--stream BOOL` | `true` | 使用流式响应 |
 | `--tokenizer REF` | 空 | tokenizer 路径、URL、`hf://` 或 `ms://` 引用 |
 
-- 三个列表取笛卡尔积（给了 `--request-rate-list` 时以到达率代替并发），逐点运行并各打印一行汇总（成功/失败数、输出与总 token 吞吐、单用户输出速度 `1000 / TPOT p50`、TTFT p50/p99、TPOT p50、E2E 延迟 p50/p99）；并发与长度列表元素必须是正整数，到达率是正数。
+- 并发、输入长度、输出长度三个列表逐项组合，运行所有组合（即笛卡尔积）；给了 `--request-rate-list` 时，以到达率列表代替并发列表。
+  每个组合是一个负载点，运行后各打印一行汇总：成功/失败数、输出与总 token 吞吐、单用户输出速度 `1000 / TPOT p50`、TTFT p50/p99、TPOT p50、E2E 延迟 p50/p99。
+  并发与长度列表元素必须是正整数，到达率是正数。
 - 执行与评测页共用同一套引擎，指标口径见[运行评测并解读报告](../how-to/benchmark.md#指标口径)。
 - 给了 `--tokenizer` 是 `exact` 模式，否则是 `estimate`；`agentic` 必须提供 tokenizer，且未给 `--concurrency-list` 时默认并发网格为 `1,2,4,8`，输入/输出长度由预设决定。
 
@@ -467,9 +501,13 @@ framework 版本从 id 解析，架构取自条目的 `platforms`（缺省用矩
 `-verify` 是发布前检查：manifest 先按 server 的规则解析，然后对每个版本的 `image_ref` 与全部
 `registry_sources`，匿名取 tag、index 列出的每个平台 manifest（跳过 `unknown/unknown` 的构建证明），再 HEAD
 每个 config 与层 blob；镜像仓的平台 manifest digest 必须与规范引用一致（SWR 会把 OCI index 改写成 manifest
-list，index digest 不同属正常，平台 digest 不变）。任何一处取不到、不一致或要求凭据，逐条打印 `FAIL <ref>: <原因>`
+list，index digest 不同属正常，平台 digest 不变）。
+
+任何一处取不到、不一致或要求凭据，逐条打印 `FAIL <ref>: <原因>`
 并以 1 退出。拦的是用户拉取时才会撞上的两类事故：镜像仓删掉了某 tag 仍在引用的平台 manifest（SWR 删除共用
-平台 manifest 的另一个 tag 时会这样），以及目录写了一个从没发布或已删除的版次。Docker Hub 的 manifest GET
+平台 manifest 的另一个 tag 时会这样），以及目录写了一个从没发布或已删除的版次。
+
+Docker Hub 的 manifest GET
 计入匿名拉取限额而 HEAD 不计，所以它放在最后、只做 HEAD，内容按 digest 取自其他镜像仓。
 
 三个 make target：

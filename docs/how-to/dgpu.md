@@ -1,34 +1,55 @@
 # 启用和排查 dGPU
 
-**适用场景**：想让多个模型实例共用一张物理卡，按显存上限隔离；或部署带 dGPU 显存限额的请求被拒绝，需要查 `status` / `reason`。
+本文说明怎样确认 GPU 可用的 dGPU 能力、创建带显存上限的部署，以及调整已有部署的配额。
+
+**适用场景**：多个模型实例共用一张物理卡，或带 dGPU 显存限额的部署被拒绝，需要排查原因。
 
 **前置条件**：
 
 - 节点已接入并上报 GPU（见[接入节点](connect-nodes.md)）。
-- NVIDIA：x86_64、glibc ≥ 2.17，宿主机驱动提供动态库（`libcuda.so.1`、`libnvidia-ml.so.1`）；昇腾：宿主机的 device-share 权限满足 vCANN 的要求；PPU：配额语义是显存限额加繁忙时的加权 QoS。各厂商的支持范围见[支持矩阵](../reference/support-matrix.md)。
+- NVIDIA：x86_64、glibc ≥ 2.17，宿主机驱动提供动态库（`libcuda.so.1`、`libnvidia-ml.so.1`）。
+- 昇腾：宿主机的 device-share 权限满足 vCANN 的要求，所选推理镜像提供 glibc ≥ 2.33；能接入并整卡运行，不代表宿主机已允许 dGPU 设备共享。
+- PPU：配额语义是显存限额加繁忙时的加权 QoS。20/80 配置表示繁忙时的相对吞吐权重，不是硬 SM 分区。
 - 想先走一遍完整流程，见[一张 GPU 跑两个模型](../tutorials/one-gpu-two-models.md)；语义与边界见 [dGPU 是什么、又不是什么](../explanation/dgpu.md)。
 
-在部署请求中填写 dGPU 显存上限，平台根据节点硬件自动选择后端（实现分别是 NVIDIA 的 HAMi-core、昇腾的 vCANN 和 PPU 的 HGGC）。
-能力状态由 server 推导，`status` 与 `reason` 是唯一对外来源。`status` 只有两种取值：
+各厂商的支持范围见[支持矩阵](../reference/support-matrix.md)。
+
+## 确认能力并部署
+
+1. 打开**GPU 设备**页，查看目标 GPU 详情中的 **dGPU** 能力及原因。只有状态为 `ready` 的 GPU 才能创建带配额的实例。
+2. 在[部署模型](deploy-models.md)时填写 **dGPU 显存上限**，检查候选节点与显存评估结果，再提交。平台根据节点硬件选择已就绪的后端；NVIDIA 对应 HAMi-core、昇腾对应 vCANN、PPU 对应 HGGC，无需手动指定。
+3. 实例启动后，回到 **GPU 设备 → dGPU**，确认切片所属部署、节点和显存上限。需要验证两个模型共卡时，按[一张 GPU 跑两个模型](../tutorials/one-gpu-two-models.md)完成调用检查。
+
+能力以页面返回的 `status` 和 `reason` 为准：
 
 - `ready`：运行时、dGPU 资产、（非 NVIDIA 后端还需）dGPU 探针条件全部满足，可以创建带配额的实例。
 - `unavailable`：任一条件不满足，`reason` 说明具体原因，例如 agent 版本过旧未上报探针、
-  缺少 dGPU 资产、运行时未验证容器推理、探针尚未完成或探针失败；检查 agent 日志，不要退回
-  整卡模式假装成功。
+  缺少 dGPU 资产、运行时未验证容器推理、探针尚未完成或探针失败。
+
+| 不可用原因 | 处理 |
+|---|---|
+| agent 版本过旧 | [升级 agent](upgrade-and-compatibility.md)，等待重新上报能力 |
+| 缺少 dGPU 资产 | 按原因中列出的资产检查节点安装及 agent 日志 |
+| 探针尚未完成 | 等待探针结果，再查看该 GPU 的状态 |
+| 运行时未通过或探针失败 | 查看原因与 agent 日志，处理后确认恢复为 `ready`；也可选择已就绪的节点 |
 
 非 NVIDIA 后端另有独立的 `probe_status`（`passed`/`skipped`/`failed`），用于诊断 dGPU 探针本身
 的结果，不等同于上面的 `status`。
 
-NVIDIA 需要 x86_64、glibc ≥ 2.17 和驱动动态库；PPU 20/80 是繁忙时加权 QoS；昇腾设备共享
-受宿主机权限影响，Gitee 云实例不能当作 dGPU 通过证据。详情见[支持矩阵](../reference/support-matrix.md)。
+`unavailable` 时改成整卡部署不能作为 dGPU 验证通过的证据。
 
 ## 调整 dGPU 配额
 
-在「GPU 设备」页的「dGPU」标签，切片所在行的「调整配额」按钮修改它所属部署的显存上限（API：
-`PUT /api/v1/deployments/{id}/dgpu`，`{"vram_limit_gib": 12}`）。新上限**保存即生效**：
+此入口调整的是切片**所属部署**的配额，只支持已有 dGPU 配额的单机部署；整卡、多机和 PD 部署不能在这里调整。
+
+1. 在 **GPU 设备 → dGPU** 找到切片，确认它所属的部署，点击**调整配额**。
+2. 填写新的显存上限并保存。API 为 `PUT /api/v1/deployments/{id}/dgpu`，请求示例为 `{"vram_limit_gib": 12}`。
+3. 检查立即生效与待重启的实例数。GPU 页显示**重启后 X GiB**的实例仍使用原上限，按下表处理；不要仅凭“保存成功”认定所有实例已切换。
+
+保存后：
 
 - 部署之后启动的实例按新上限启动。
-- 运行中的实例当场改上限：调度记账按新上限计，agent 把新上限写进实例的 HAMi-core 共享区，HAMi 从下一次分配起按它限制，实例不重启。
+- 支持安全在线调整的运行中实例立即改上限：调度记账按新上限计，HAMi-core 从下一次分配起按新上限限制，实例不重启。
 - 引擎能不能用上新上限取决于引擎：vLLM、SGLang 在启动时按上限切 KV 缓存，到部署页**重启实例**后才会用上；按需分配显存的引擎直接用上。
 
 以下实例保持原上限，到重启时才按新上限运行（GPU 页显示「重启后 X GiB」，返回的 `pending` 列出每个实例与原因）：

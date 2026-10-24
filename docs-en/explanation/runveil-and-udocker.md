@@ -1,0 +1,127 @@
+# runveil and udocker
+
+**In one sentence**: runveil is the container runtime GPUWorks uses on nodes without docker, or where docker cannot expose NVIDIA GPUs to containers. It retains udocker's disk layout and PRoot
+execution model, but the agent handles images and launches containers itself, without the udocker CLI or Python. The UI consistently calls it
+runveil; the name `udocker` remains only in wire values, configuration options, directory names, and compatibility paths.
+
+## Why There Are Two Names
+
+Early nodes without docker, such as cloud container instances on AutoDL, CompShare, and RunPod, called the udocker CLI directly: `udocker pull`,
+`udocker create`, and `udocker run`. Written in Python, udocker uses userspace PRoot to emulate chroot without root or a daemon,
+making it a good fit for these instances. However, it is slow: downloads use a single stream, Python rehashes every layer after the download, and
+unpacking each layer starts two tar subprocesses for single-core decompression. The node also needs a working Python installation.
+
+The agent later replaced these steps one by one with its own implementations, retaining only udocker's **disk layout** and **PRoot execution semantics**.
+This implementation is runveil. The runtime value in node records, APIs, and command-line arguments remains `udocker` to preserve compatibility with existing nodes and callers.
+
+## Which Component Handles Each Step
+
+| Step | Default (runveil) | Code |
+|---|---|---|
+| Runtime selection | Selected automatically when no usable docker or nerdctl is available, or when they cannot expose accelerators to containers on NVIDIA nodes (NVIDIA Container Toolkit is missing or Docker is not configured); you can also force it with `--driver udocker` or `GPUWORKS_RUNTIME_DRIVER=udocker` | `internal/agent/app/runtime_select.go` |
+| Pulling, importing, and exporting images | Native implementation in the agent: concurrent layers, segmented downloads for large layers, and decompression during download | `runtime/udocker/native` |
+| Creating the container rootfs | Native extraction into the udocker-compatible `containers/<name>/ROOT` layout | `runtime/udocker/native` |
+| Launch, exec, terminal, and deletion | The agent calls the embedded patched PRoot directly, constructs arguments and environment variables using udocker P1 semantics, and ports `setup --nvidia` | `runtime/runveil` |
+| Troubleshooting | `gpuworks-agent runveil ps / images / exec / logs` reads state directly from disk without going through the agent | `runveilcli` |
+
+The udocker CLI is still embedded in the agent as an offline package containing the udocker source, englib, and the same patched PRoot. It is extracted on demand
+only in the following cases, which require python3 on the node:
+
+- An image was previously registered by the udocker CLI in the old layout, which the native implementation cannot read.
+- `GPUWORKS_UDOCKER_DISABLE_NATIVE` is set: image handling falls back to the udocker CLI for images the native implementation does not support, such as schema1 manifests.
+- `GPUWORKS_UDOCKER_LAUNCHER=udocker` is set: the launcher also falls back to the udocker CLI.
+
+For these switches, see the [Configuration Reference](../reference/configuration.md). For commands, see the [CLI Reference](../reference/cli.md#gpuworks-agent-runveil).
+
+## Disk Layout
+
+runveil and the udocker CLI read and write the same directory tree under the agent's state directory (installation directory):
+
+```text
+<state>/udocker/                UDOCKER_DIR
+  layers/sha256:<hex>           Image layers and configuration blobs
+  repos/<repository>/<tag>/     Tag registration: manifest and symbolic links to layers
+  containers/<name>/ROOT        Unpacked container root filesystem
+  base/  prepared/              Rootfs cached by manifest to speed up subsequent creation
+  tarcache/                    Large layers pre-decompressed into tar files to speed up creation
+  bin/proot-<arch>              patched PRoot
+<state>/udocker-state/          PIDs, logs, and launch specifications for running containers
+```
+
+The filesystem containing the installation directory must therefore support image contents: filenames must allow colons, as used in image layer names and
+`/var/lib/dpkg/info/<package>:amd64.list` in Debian-based images. It should also allow ownership changes, and performance depends on this storage. See
+[Why the Installation Directory on udocker Nodes Cannot Be on a Network Volume](../how-to/connect-nodes.md#为什么-udockerrunveil节点的安装目录不能放在网络卷上).
+
+## Runtime Identity
+
+udocker refuses to run as root, and runveil follows this convention: an agent running as root creates a dedicated `udocker` account, assigns it ownership of the runtime directory,
+and runs workloads under that account. In the following two cases, workloads run as the agent's own user instead. The reason appears under Runtime identity in node diagnostics:
+
+- The filesystem containing the runtime directory rejects ownership changes, which is common with NFS.
+- With the udocker CLI launcher, the dedicated account cannot run Python, for example when Python is only available under `/root/conda`, which the account cannot access.
+
+A non-root agent runs workloads as itself. Use `gpuworks-agent grant-device-access` to grant the required permissions on accelerator device nodes.
+
+## Workloads with Many Threads
+
+PRoot is a single-threaded ptrace tracer: this one process handles every traced system call from every thread in the container. These are path-related system calls;
+with seccomp acceleration, futex, mmap, and ioctl do not trap. An SGLang instance with 8-way tensor parallelism on an 8×H200 instance creates about 3,100–3,700 threads (360–400
+per rank). The tracer saturates one core for extended periods, and the following behavior has been observed:
+
+- 147 threads remain in `t` (tracing-stop) for over ten minutes, including the main thread of every rank and all `pt_nccl_watchdg` and `pt_nccl_heartbt`
+  threads. Meanwhile, about 90 newer threads cycle repeatedly, all with tids greater than those of the starved threads.
+- Initialization is serialized across ranks, with each successive rank taking about 70 seconds longer than the previous one. Weight loading stalls.
+
+High thread counts are not unique to one engine: SGLang creates scheduler threads based on the host's core count; vLLM only adjusts its own OpenMP thread count and does not manage
+the thread pools controlled by the other variables in the table below (about 157 threads per TP worker on a 240-core host). Initialization of the 8 ranks is also serialized.
+The effective mitigation in both cases is to limit thread pools.
+
+**Default environment variables**: when a deployment runs on a runveil node (runtime `udocker`) and uses SGLang or vLLM,
+the server adds the following variables to the system layer of the launch environment (`internal/server/deploy/runveil_env.go`). Like other
+system-layer variables, they appear in the command/environment variable preview in the deployment form and match what is actually sent to the node:
+
+| Variable | Default |
+|---|---|
+| `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS`, `TORCH_NUM_THREADS` | `4` |
+
+- These variables were validated together on Vast 8×H200 (DeepSeek-V4.1-Flash-1017, SGLang TP8): the thread count per rank dropped from about 390 to 70–100,
+  and weights loaded in about 2 minutes. They were not validated individually, so the validated combination is sent unchanged, without removing variables based on assumptions.
+- Variables of the same name set by the template or deployment take precedence. To exclude a variable, enter its name in Remove variables in the deployment form. System-layer values override
+  variables of the same name supplied by the image; remove the variable from the system layer to retain the image's value as well.
+- vLLM: running Qwen3-32B TP8 on 8×RTX 5090 (240 cores) with runveil reduced the thread count per worker from 157 to 61. Distributed initialization of the 8 ranks
+  dropped from about 145 seconds to about 57 seconds, and the time from startup to readiness improved by about 2.3 minutes. Differences in throughput, TTFT, and TPOT were within measurement variability
+  ([comparison data](../../artifacts/work/2026-10-20-runveil-many-threads/vllm-thread-cap-cuda-ab-2026-10-22.md)).
+  When `OMP_NUM_THREADS` is unset, vLLM reduces torch threads to 1 during serving. When it is set to 4, vLLM keeps 4 and emits a warning.
+  No performance difference was evident in this measurement, and this variable was not responsible for the thread reduction (setting only the other four gave the same result). The full validated combination is still sent.
+  On 910C, worker thread counts for the same Qwen3.8-27B TP2 recipe dropped from 732/730 to 65/64 (the image presets `OMP_NUM_THREADS=1`).
+- These variables are not added on docker or nerdctl nodes: without PRoot, high thread counts do not slow down system calls.
+- Engine performance: when running Qwen3-32B TP8 natively on 8×H100, differences in throughput, TTFT, and TPOT with and without these variables were within measurement variability. The thread count dropped from about
+  1,900 to about 700 ([comparison data](../../artifacts/work/2026-10-20-runveil-many-threads/plan.md#线程上限对引擎性能的影响2026-10-20vast-8h100-sxm)).
+  There is no comparison data for recipes with substantial CPU work, such as Engram tables in host memory.
+
+**`TORCH_NCCL_ENABLE_MONITORING=0` is not added.** Reading the PyTorch source (`ProcessGroupNCCL.cpp` in v2.4, v2.6, v2.8, and main) shows that this switch
+**does not** prevent creation of the `pt_nccl_heartbt` thread in any of these versions. The thread starts as usual; the switch only determines whether the monitoring thread
+kills the process after detecting a stuck watchdog.
+
+Disabling it does not reduce the number of threads. It only prevents automatic termination of stuck jobs, changing failure behavior, so it is not a default. Set it yourself in the deployment's environment variables if you need it.
+
+**An approach not adopted: changing PRoot's event loop.** Upstream retrieves only one event per iteration with `waitpid(-1, __WALL)`. Linux adds newly traced threads to the head of the list,
+so when the tracer cannot keep up, it repeatedly retrieves events from the newest busy threads and starves older ones. `get_tracee()` also scans all threads linearly.
+
+A patch was tested that drains all pending events with
+`WNOHANG` on each iteration, handles threads in the order they were first traced, and uses a pid hash table. In local stress tests, the main thread improved from 0 to about 27 events per second, and initialization on real hardware was
+much faster. However, SGLang consistently stalled during weight loading, so the patch is **not embedded**.
+
+For comparisons on real hardware and hypotheses about the cause, see the
+[plan](../../artifacts/work/2026-10-20-runveil-many-threads/plan.md). The stress test script is retained in the
+[PRoot Build Instructions](../../build/runtime-assets/proot/README.md) for use when changing the event loop.
+
+Another related fix concerns the PRoot process inheriting the agent's working directory. If the agent starts as root in `/root` (permissions 700), for example through nohup after
+SSH installation, and PRoot drops privileges to the `udocker` user, PRoot cannot return to `/root` after deleting its own temporary directory. It then prints
+`proot error: can't chdir to '/root': Permission denied`.
+
+This error is harmless by itself and does not change the exit code, but it is often the last message printed when PRoot exits.
+When a container fails, it can be shown as the failure reason, hiding the engine's actual error.
+
+All PRoot and udocker processes started by the agent, as well as container terminals and
+`gpuworks-agent runveil exec`, now use `/` as their working directory. The working directory inside the container is determined by PRoot's `-w` and is unaffected.

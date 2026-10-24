@@ -1,7 +1,8 @@
 # 部署启动参数来源
 
-一个推理容器最终的 entrypoint、argv、环境变量、挂载、docker 参数、`/dev/shm`、端口、网络与设备，
-每一项从哪一层来、谁覆盖谁、什么条件下生效。术语以 [`CONTEXT.md`](../../CONTEXT.md) 为准
+本文说明推理容器最终的 entrypoint、argv、环境变量、挂载、docker 参数、`/dev/shm`、端口、网络与设备，
+各自从哪一层来、谁覆盖谁、什么条件下生效。entrypoint 是启动入口，argv 是传给入口的参数列表。
+术语以 [`CONTEXT.md`](../../CONTEXT.md) 为准
 （[解析后启动方案]、[容器覆盖]、[命令模式]、[实例期望状态]）。
 
 ## 唯一真相与两个边界
@@ -25,15 +26,16 @@ controller 都经 `planning.PlanLaunch` 调它，产物是 `proto.ResolvedLaunch
 
 ## 各层一览
 
-按合并顺序列出，后面的层覆盖前面的层；「补缺」表示只在前面没人设置时才生效。
+按合并顺序列出。通常后面的层覆盖前面的层；表中标明「补缺」或「平台所有」的项按各自规则处理：
+「补缺」只在该项尚未设置时生效；「平台所有」的覆盖限制以对应行说明为准。
 
 | # | 层 | 贡献什么 | 与其他层的关系 | 代码 |
 |---|---|---|---|---|
 | 1 | 引擎基线 | 可执行文件、模型路径、`--host`/`--port`、`--served-model-name`、TP/PP、基线 env、健康/指标路径、`/dev/shm` 基线（callable 只有可执行文件、基线 env 与路径，不追加参数） | 最底层 | `deploy/vllm.go`、`sglang.go`、`callable.go` |
 | 2 | 参数字典 | 已声明的字典参数（类型化字段）→ flag | 模板 args 与用户 args 里的字典 flag 先被拆成字段（ADR 0020），冲突报 `LAUNCH_CONFIG_CONFLICT` | `deploy/param_specs.go`、`materialize.go`、`args.go` |
-| 3 | GPU/芯片方言 | 少数 vLLM 兼容性修正 | **补缺**：输给字段、模板与用户 | `deploy/quirks.go` |
+| 3 | GPU/芯片方言 | 少数 vLLM 兼容性修正 | **补缺**：字段、模板与用户已设置时不生效 | `deploy/quirks.go` |
 | 4 | 调度推导值 | 分配到的 GPU 数 → TP；放置变量 | 估算器的值**不进** argv | `planning/launch_plan.go` |
-| 5 | 推理模板档位 | 字典外的 args、env、entrypoint、准备脚本、资产、组件、API 契约、`/dev/shm` 下限（`shm_bytes`）、不限锁定内存（`memlock_unlimited`） | 盖过引擎注入，输给用户 | `inferencecatalog/flat.go`、`deploy/catalog_selection.go` |
+| 5 | 推理模板档位 | 字典外的 args、env、entrypoint、准备脚本、资产、组件、API 契约、`/dev/shm` 下限（`shm_bytes`）、不限锁定内存（`memlock_unlimited`） | 覆盖引擎注入的值；用户输入可再覆盖本层 | `inferencecatalog/flat.go`、`deploy/catalog_selection.go` |
 | 6 | 拓扑 | 多机、PD 的角色参数与 env、RDMA docker 参数 | 平台所有，模板与用户不得重写 PD connector | `deploy/pd.go`、`compute_network.go` |
 | 7 | 引擎收尾 | 如 SGLang 日志配置 | **补缺** | `deploy/sglang_logging.go` |
 | 8 | 用户输入 | 字典字段、`extra_args` | 盖过模板 | `api/deployments_launch_config.go` |
@@ -55,7 +57,7 @@ controller 都经 `planning.PlanLaunch` 调它，产物是 `proto.ResolvedLaunch
 
 ## 参数字典
 
-字典（`GET /api/v1/engines` 的 `param_specs`）描述每个参数在各引擎里的 flag 拼写与取值格式。
+参数字典（`GET /api/v1/engines` 的 `param_specs`）列出平台认识的引擎参数，描述每个参数在各引擎里的 flag 拼写与取值格式。
 
 - **只有新请求会写入默认值**。已存部署不补默认值。
 - 默认值写进配置，**不等于出现在 argv 里**：
@@ -82,7 +84,7 @@ argv 层面的硬件规则**只有** vLLM 的三条兼容修正，全部是补�
 判断依据取自分配到的第一张 GPU 的厂商、架构与 compute capability。SGLang 没有这类规则；昇腾、海光、PPU
 在 argv 层没有硬编码规则。厂商差异来自两处：
 
-- **档位选择**：推理模板按 GPU 谓词为每类卡选出不同档位（`chipmatch`），各档位自带 args 与 env；每次重调度都会复查。
+- **档位选择**：推理模板按 GPU 匹配条件（谓词）为每类卡选出不同档位（`chipmatch`），各档位自带 args 与 env；每次重调度都会复查。
 - **agent 设备注入**：见「agent 注入」。
 
 dtype 兼容矩阵只用于准入与告警，不改写 argv。
@@ -213,8 +215,11 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 `HF_HUB_OFFLINE=1` 让自定义镜像联网下载），`env_layers` 仍保留各层原值以便追溯来源；同名键再写进 `env` 则以部署的值为准。
 
 之后还有两类补充：SGLang 日志配置与 agent 的多机网卡填充都是补缺；agent 的设备与 dGPU env 覆盖以上所有层。
+
 镜像内置 ENV 在容器运行时继承，只有被 `-e` 显式设置的键会被替换（例如昇腾 vCANN 会先读出镜像的
-`LD_LIBRARY_PATH` 再追加驱动路径）。udocker 运行时（runveil 与 udocker CLI 两种启动器）在非国产卡上自带
+`LD_LIBRARY_PATH` 再追加驱动路径）。
+
+udocker 运行时（runveil 与 udocker CLI 两种启动器）在非国产卡上自带
 `LD_LIBRARY_PATH=/opt/nvidia-shim:/usr/local/nvidia/lib64:/usr/local/nvidia/lib:/usr/local/cuda/lib64`：部署 env
 未设置该键时，它排在镜像值之前合并（去重、丢弃空段）；部署 env 设置了则原样采用部署值。
 

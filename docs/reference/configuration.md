@@ -4,15 +4,23 @@
 
 server 的配置只有一个来源：安装目录下的 `server.yaml`（`gpuworks install` 写入，单元文件和
 nohup 命令只有 `gpuworks serve --config <dir>/server.yaml`）。放在安装目录而不在数据目录，
-是为了数据库恢复到另一台机器时不会带着旧机器的地址。**环境变量不是配置来源**，server 只读取
-一个 `GPUWORKS_*` 变量：首次创建 admin 账户时的初始密码 `GPUWORKS_ADMIN_PASSWORD`。例外是
+是为了数据库恢复到另一台机器时不会带着旧机器的地址。
+
+**正常安装不通过环境变量配置 server。** 面向运维的例外有
+`GPUWORKS_ADMIN_PASSWORD`（首次创建 admin 账户时提供初始密码）和 `GPUWORKS_USAGE_REPORT=off`（强制关闭使用情况上报）；旧安装另有下述兼容例外。
+
+例外是
 `server.yaml` 之前的老安装：那时的单元用 `GPUWORKS_ADDR`、`GPUWORKS_DATA_DIR`、
 `GPUWORKS_TRUSTED_PROXIES` 三条 Environment 传配置，新版本在命令行与 `server.yaml` 都没有提供
 对应值时仍读这三个变量作桥接，让老版本 `upgrade` 换上来的新二进制照常启动；此后新二进制的
 `upgrade`、`install` 或 `restart` 会把 `install.json` 里的设置转写成 `server.yaml`、重写单元
-并删除 `install.json`，重写后的单元不再携带这些变量。命令行参数可以临时覆盖文件里的对应值（开发、救援用），被覆盖的监听
-地址在控制台里只读并注明原因。能推导的事实不存：服务方式看有没有指向本二进制的 systemd 单元，
-服务用户看单元的 `User=`，版本号问已安装的二进制，安装与升级记录在 `<data>/install-history.jsonl`。
+并删除 `install.json`，重写后的单元不再携带这些变量。
+
+命令行参数可以临时覆盖文件里的对应值（开发、救援用），被覆盖的监听
+地址在控制台里只读并注明原因。
+
+服务方式、服务用户和版本号不重复保存在配置文件中：分别根据是否存在指向本二进制的 systemd 单元、
+单元的 `User=`、已安装二进制的版本输出来确定。安装与升级记录在 `<data>/install-history.jsonl`。
 
 ```yaml
 listen:                    # 示例地址：管理网 192.0.2.10、节点网 198.51.100.10、服务网 203.0.113.10
@@ -37,7 +45,7 @@ udocker_bundle_source: ""
 ssh_proxy: ""              # socks5://host:port，SSH 到节点经此代理
 update_channel: release    # release（正式发布版）/ nightly（滚动预览版）；不写则跟随构建
 auto_check_updates: false  # 关闭自动检测新版本；不写即开启
-usage_report: false        # 退出用户体验改进计划（不发日报，检查更新时不附带规模）；不写即加入
+usage_report: false        # 不发日报，自动检查不带节点数/GPU型号但仍带安装标识与版本；不写即加入
 ```
 
 | 键 | 默认 | 说明 | 覆盖参数 |
@@ -63,7 +71,12 @@ usage_report: false        # 退出用户体验改进计划（不发日报，检
 
 ### 管理会话
 
-管理网页使用服务端持久化会话与 HttpOnly Cookie。真实交互由前端每分钟至多报告一次活动，业务写请求也会保活；只读轮询和 SSE 心跳不延长空闲期限。浏览器休眠后，只要空闲与绝对期限都未到，仍可直接使用会话。修改上述两个配置后重启生效；新的最长期限从新登录起计算。修改或重置密码撤销该用户全部登录会话，退出只撤销所提交的登录凭证。平台 API Token 与推理 API key 按各自的生命周期管理。
+管理网页使用服务端持久化会话与 HttpOnly Cookie。会话是否有效同时受空闲期限和绝对期限约束：
+
+- 真实交互由前端每分钟至多报告一次活动，业务写请求也会保活；只读轮询和 SSE 心跳不延长空闲期限。
+- 浏览器休眠后，只要空闲与绝对期限都未到，仍可直接使用会话。
+- 修改上述两个配置后重启生效；新的最长期限从新登录起计算。
+- 修改或重置密码撤销该用户全部登录会话；退出只撤销所提交的登录凭证。平台 API Token 与推理 API key 按各自的生命周期管理。
 
 HTTPS 由反代终止时，必须在 `trusted_proxies` 中配置实际反代地址，并由反代正确转发 Host 与 Proto；反代监听非默认端口时，还要转发带端口的 Host（Nginx 用 `$http_host`）或 `X-Forwarded-Port`，见[生产环境部署](../how-to/deploy-production.md#反代配置要点控制台)。浏览器管理写请求检查 Origin；受信任的 HTTPS 转发头同时用于设置 Secure Cookie，未受信任的转发头会被忽略。
 
@@ -156,7 +169,8 @@ HTTP/HTTPS 代理需要支持向目标端口的 CONNECT（HTTP 来源也包括 8
 管理节点（server）自己的出站访问使用第一条勾选了「用于管理节点出站访问」的代理：社区镜像 Tag 查询、模型元数据与目录预览、模型图标获取、发布通道检查和下载、目录 URL 登记，以及镜像归档的预览、大小查询和中转与凭据的测试登录。agent 的下载读取该节点自己匹配到的条目。
 修改配置后新请求使用新代理，已开始的传输保留原路线。社区 Tag 的成功结果仍沿用缓存期限。
 
-保存成功表示配置已持久化，节点下发在后台完成；离线节点重连后读取最新配置。控制流单次写入最多等待 30 秒，写入失败只关闭对应节点会话，由重连恢复配置。
+保存成功表示代理配置已持久化，向节点下发配置在后台完成；离线节点重连后读取最新配置。
+向单个节点的控制流写入一次配置时，最多等待 30 秒；写入失败只关闭对应节点会话，由重连恢复配置。
 此限制不包含等待数据库或全局状态构建并发名额的时间。
 
 - HTTP 与 HTTPS 分别使用对应代理；只配置其中一个时，两类请求都使用它。
@@ -180,10 +194,14 @@ daemon 的代理：agent 把节点代理写进 `/etc/systemd/system/docker.servi
 **系统镜像目录与推理模板目录的在线更新**来自发布通道（[ADR 0040](../adr/0040-signed-multi-source-distribution.md)）：发布源是代码里的常量
 （阿里云 OSS `https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com`、华为云 OBS `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`、
 Cloudflare R2 `https://dl.gpuworks.ai`），渠道由 `server.yaml` 的 `update_channel` 决定（见上表，默认跟随构建）。
+
 检查由 server 发起而不是浏览器：打开登录页时浏览器调用 `POST /api/v1/updates/prefetch`（不需登录，不返回结果）让 server 在后台开始检查，
 登录后页头读 `GET /api/v1/updates`；server 对同一渠道最多每小时向外检查一次
-（失败的检查 5 分钟后可重试），设置页「检查更新」立即重新检查；server 启动和后台定时都不联网。server 同时请求三个源的签名索引
+（失败的检查 5 分钟后可重试），设置页「检查更新」立即重新检查；server 启动和后台定时都不联网。
+
+server 同时请求三个源的签名索引
 （每个源连接 10 秒、等响应头 15 秒），用第一个验签通过的；文件按索引的大小与 sha256 校验，失败或 30 秒没有新数据就换源。
+
 请求优先使用管理节点的出站代理（拉取设置里勾选的第一条代理），未配置时继承 `HTTPS_PROXY` / `HTTP_PROXY` 环境变量。不能访问任何源的环境改用「上传 manifest」与「上传目录包」，见
 [镜像目录](image-families.md#更新目录)。
 
@@ -242,7 +260,7 @@ Cloudflare R2 `https://dl.gpuworks.ai`），渠道由 `server.yaml` 的 `update_
 
 ## 环境变量
 
-环境变量只服务于 agent 和安装脚本；server 不把环境变量当作配置来源（只有上文的 `GPUWORKS_ADMIN_PASSWORD` 和老安装桥接变量）。变量分五类：server 读取的变量、面向运维的 agent 变量、其他工具读取的通用变量、测试专用变量、内部实现细节。
+环境变量只服务于 agent 和安装脚本；server 不把环境变量当作配置来源（例外是上文的 `GPUWORKS_ADMIN_PASSWORD`、强制关闭上报的 `GPUWORKS_USAGE_REPORT=off` 和老安装桥接变量）。变量分五类：server 读取的变量、面向运维的 agent 变量、其他工具读取的通用变量、测试专用变量、内部实现细节。
 
 ### Server 读取的变量
 
@@ -253,7 +271,12 @@ Cloudflare R2 `https://dl.gpuworks.ai`），渠道由 `server.yaml` 的 `update_
 
 ### Agent 环境变量
 
-下列变量由 agent 二进制或随它分发的节点安装脚本读取。带「布尔」的变量把 `1`、`true`、`yes`、`on`（不区分大小写）视为开启，其他值视为关闭。agent 的连接配置按 命令行 flag > 环境变量 > `<state>/gpuworks-agent.conf` > 默认值 的顺序取值（文件由 `gpuworks-agent configure` 写，见[安装布局](install-layout.md#agent-配置文件)）：安装脚本把配置写进文件，节点上通常不再设这些变量，下表里 server、token、连接方向、监听地址、driver、mount-root、udocker-bundle 对应的变量只在需要临时覆盖文件时使用。
+下列变量由 agent 二进制或随它分发的节点安装脚本读取。带「布尔」的变量把 `1`、`true`、`yes`、`on`（不区分大小写）视为开启，其他值视为关闭。
+
+agent 的连接配置按 **命令行 flag > 环境变量 > `<state>/gpuworks-agent.conf` > 默认值** 的顺序取值。
+配置文件由 `gpuworks-agent configure` 写入，见[安装布局](install-layout.md#agent-配置文件)。安装脚本会把配置写进文件，
+因此节点上通常不再设置对应的环境变量。下表中 server、token、连接方向、监听地址、driver、mount-root、
+udocker-bundle 对应的变量，只在需要临时覆盖文件中的值时使用。
 
 | 变量 | 默认 | 作用 | 出处或相关命令 |
 |---|---|---|---|

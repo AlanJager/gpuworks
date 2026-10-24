@@ -1,0 +1,112 @@
+# Deploy Models and Understand Scheduling Results
+
+This guide explains how to deploy a model as a callable inference service, check placement results, and adjust the node scope after deployment.
+
+**Prerequisites**:
+
+- At least one online node. See [Connect Nodes](connect-nodes.md).
+- A complete model copy that the target node can read (fully downloaded or registered), or a model that can be downloaded or copied to the target node. See [Download, Cache, and Sync Models Between Nodes](download-and-sync-models.md).
+- The required runtime image can be acquired on the target node. For offline environments, see [Deploy in an Offline Environment](deploy-offline.md).
+
+## Steps
+
+### Select a Model and Runtime Scheme
+
+On the deployment page, select a registered model or search for a specific model in the built-in catalog, then select a runtime scheme. Models and schemes are searched separately; schemes with the same name are distinguished by source and name. If the catalog does not contain the combination you need, use your own image and configuration.
+
+If the form displays **This deployment will expose no inference API**, first set the required APIs on the **Models** page. If neither the model nor the selected template recipe declares any APIs, the deployment does not appear in the Playground and cannot have health checks enabled. APIs declared by the template recipe are assigned to models with no APIs, including models whose API list is `[]`, whose task was not identified at registration, or whose APIs were subsequently cleared. Models that already have APIs remain unchanged.
+
+### Select a Deployment Shape and Nodes
+
+1. Select the chip vendor and replica shape: single-node, multi-node, or PD disaggregation. For multi-node and PD deployments, select nodes for each rank. For configuration details, see [Multi-Node Inference](multi-node-inference.md) and [Deploy with PD Disaggregation](pd-disaggregation.md).
+2. For a single-node deployment, select a placement mode:
+
+   | Mode | How nodes are selected |
+   |---|---|
+   | **Automatic** | Each time a replica starts, select a candidate node with enough resources. You can further restrict the scope under **Only these nodes**. The page shows the candidate count and the current estimated node and GPU selection for the first replica |
+   | **Manual** | Pin the deployment to one node, with optional GPU indexes |
+
+3. Set node labels and **Hardware and network** requirements as needed, including GPU model, architecture, compute network, storage sync network, and serving network. Multiple selections within a category require a match to any one option; different requirements must all be satisfied. Manual selection cannot bypass these requirements. Set parallelism, the dGPU memory limit, and the replica count as needed.
+
+**Placement options** defaults to Spread, preferring nodes with fewer replicas of this deployment. You can also select Binpack to fill nodes with fewer remaining resources first. See [Scheduling and GPU Memory Estimation](../explanation/scheduling-and-estimation.md#单机副本落在哪台节点). Node requirements are rechecked before each replica starts. Changes to labels, GPUs, or networks do not automatically move running instances.
+
+### Confirm the Launch Configuration, Image, and Weights
+
+1. Enter common parameters in **Quick Deploy**, or switch to **Expert Deploy** for all parameters. Both views share the same draft; switching does not reset environment variables, mounts, or manual commands. Unchanged controls use defaults. Enter flags outside the dictionary as custom arguments. For the difference between **Unset** and **Clear**, and how conflicts are handled, see [Deployment Launch Configuration Semantics](../explanation/launch-config.md#未设置与清除).
+2. Confirm the runtime image. You can enter a private or specialized image address directly without first registering it in the image catalog. Changing the image preserves the current parameters and launch mode. By default, the engine generates the command; you can also explicitly select the image entrypoint or a manual command. For the differences, see [Command Modes](../explanation/launch-config.md#命令模式的三档). A notice appears when image compatibility is unknown; known resource and placement conflicts still need to be resolved.
+3. Confirm the weight provider (Hugging Face or ModelScope) and the **Save to** storage. [Pull Settings](configure-pull-settings.md) determine the actual download addresses and peer copying for models and images. If automatic scheduling has not selected a node, the page indicates that acquisition happens after scheduling. Once nodes are specified, review the acquisition estimate for each node. For storage restrictions, see [Select Storage at Deployment](storages.md#部署时选存储).
+4. Set **Health check** and the timeout threshold as needed. Health checks are enabled by default for new deployments that support chat, text completion, or embedding APIs. The default threshold is 60 seconds, configurable from 1–600 seconds.
+
+Health checks send a minimal request through the gateway every minute: chat or completion input of “1” with only 1 generated token, or embedding input of “1”. Checks do not restart or remove replicas and are excluded from the gateway's request, token, and latency statistics. The engine's own metrics may still include these requests.
+
+Check results mean the following:
+
+- **Healthy**: Responded within the threshold.
+- **Timed out**: Exceeded the threshold.
+- **Failed**: Returned an error or could not connect to the replica.
+- **No replica**: No available awake replica; no request is sent.
+
+The three types of information displayed side by side in the deployment list and details serve different purposes:
+
+- **Status** describes how the deployment is running.
+- **Health** is the result of the latest minimal request.
+- **Replicas** shows **running / desired** counts. A single health result cannot represent the readiness of all replicas.
+
+### Evaluate and Deploy
+
+1. Wait for evaluation of the current draft to finish. Resolve errors beside fields or at the page level, and review the GPU memory breakdown, token capacity, and scheduling explanation.
+2. Check the command, configured environment, preparation scripts, mounts, and container arguments. Multi-node commands are displayed and copied by rank; do not concatenate scripts for multiple ranks into one command. After changing the configuration, wait for the new evaluation result before submitting.
+
+   The configured environment in the command preview contains only variables produced by this configuration, not the container's final process environment. The image catalog does not store launch configuration; deployments start from the template and the current inputs. For the relationship between the configured environment and the image's built-in environment, see [Configured Environment and Image Environment](../explanation/launch-config.md#配置环境与镜像环境).
+
+3. Click deploy, then open the details to observe model preparation, image acquisition, and instance startup status. When waiting for nodes, review the reason and closest matching nodes, or click **View candidate nodes** to inspect each node's constraints.
+4. Once the instance is ready, send a request using the call example in the details or the Playground, and confirm that you receive the expected response. If startup fails, use the retained instance and logs to check the image, model files, ports, and runtime, then adjust parameters and retry. See [View Metrics and Search Logs](monitor-and-logs.md).
+
+For parameter sources and SGLang's automatically generated logging environment and preparation scripts, see [Deployment Launch Parameter Sources](../reference/deployment-launch-sources.md) and [SGLang Logging](../explanation/sglang-logging.md), respectively.
+
+**Expose tokenize** is enabled by default in the form. The gateway forwards `/v1/tokenize` and `/v1/detokenize` to the deployment's engine, excluding them from request statistics. You can toggle this in the details at any time without restarting. See [Tokenization API](../reference/openai-gateway.md#分词tokenize).
+
+## Adjust After Deployment
+
+- **Node scope for single-node deployments**: Click **Edit** beside **Node requirements** in the details to change nodes, labels, or the Spread/Binpack strategy. Saving affects only replicas started afterward; restart an existing replica to place it again. If no node can accommodate the deployment under the new requirements, the change is rejected and the original requirements remain. The vendor determined by the image cannot be changed here. For multi-node and PD deployments, use **Edit replicas** to change rank nodes.
+- **Health checks**: Enable, disable, or change the threshold in the details without restarting. The API is `PUT /api/v1/deployments/{id}/health-check`. Deployments that exist before an upgrade have health checks disabled by default.
+- **Routing across replicas**: The default is `least_request`. Use `PUT /api/v1/deployments/{id}/routing` with request `{"routing_policy": "..."}` to change it to `prefix_affinity` or `failover`. The routing policy is not an engine launch parameter; changing it does not restart instances.
+
+## Multiple Deployments for the Same Model Name
+
+All replicas in a deployment have the same shape: tensor parallelism, GPU count per replica, and launch parameters are fixed for the deployment. When scaling out, each node is evaluated against the same configuration. A node with larger GPUs does not get a lower TP value, and a single-node replica is not split across two machines. To run the same model with different configurations on different hardware (for example, tp=2 on RTX 2080 Ti and tp=1 on RTX 8000, or serving on both NVIDIA and Ascend), create a separate deployment for each hardware configuration.
+
+The public model name (`served_name`) is unique across deployments. If an existing deployment (running or stopped) uses a name, creating or cloning with that name returns 409 `SERVED_NAME_IN_USE`, with the deployment using it identified in the parameters. A deployment being deleted no longer reserves its name, so you can immediately recreate it with the same name. The deployment form prefills the public model name with the model name, `-`, and four random lowercase letters or digits (such as `Qwen3-0.6B-x7k2`). You can manually change it. If you leave it empty, the server uses the model name and returns 409 if that name is already in use. A clone also appends a random suffix in the same format to the original name.
+
+Deployments created before this rule that already share a name remain unchanged. The gateway does not distribute traffic among them: requests go to the **most recently created deployment that can currently respond**. Older deployments take over only when all newer deployments cannot respond (all replicas are sleeping, failed, or still starting). Request distribution among replicas within a deployment still follows that deployment's routing policy.
+
+To let several hardware configurations share the traffic for one model name, give each deployment a different model name and place a router in front of the gateway that aggregates multiple backends under one model name, such as [LiteLLM](https://docs.litellm.ai/docs/routing):
+
+```yaml
+model_list:
+  - model_name: qwen3-8b            # Model name exposed to clients
+    litellm_params:
+      model: openai/qwen3-8b-2080   # served_name of the GPUWorks deployment
+      api_base: http://<server>/v1
+      api_key: <gpuworks API key>
+  - model_name: qwen3-8b
+    litellm_params:
+      model: openai/qwen3-8b-rtx8000
+      api_base: http://<server>/v1
+      api_key: <gpuworks API key>
+```
+
+With this arrangement, each deployment still has separate metering, sleep behavior, and scaling. Refer to the router's documentation for distribution policies, weights, and retries.
+
+## Common Issues
+
+If submission fails, the error appears on the page with one of the following stable error codes. For more troubleshooting, see [Troubleshooting](troubleshooting.md).
+
+| Error code | Meaning and action |
+|---|---|
+| `AUTOMATIC_PLACEMENT_STALE` | Resources were taken after evaluation (for example, another deployment filled GPU memory), or a selected node no longer satisfies the node requirements, invalidating automatic placement. The server does not silently choose another node. Return to the deployment page, evaluate again, and resubmit |
+| `ACQUISITION_CANDIDATE_STALE` | The storage specified in the request no longer exists, or the selected weight provider (Hugging Face / ModelScope) is no longer in the template. Evaluate again and resubmit; the server does not substitute another choice |
+| `LAUNCH_CONFIG_CONFLICT` | A form field and extra arguments (`extra_args`) specify different values for the same parameter. The error lists both values; keep only one of them |
+| `LAUNCH_CONFIG_UNSET_CONFLICT` | A parameter is disabled (cleared) in the form but is still specified in extra arguments. Remove that value or enable the parameter again |
+| `NODE_REQUIREMENTS_NOT_EDITABLE` | Multi-node and PD deployments list nodes by rank and have no editable node requirements. Use “Edit replicas” to change their nodes |
+| `NODE_REQUIREMENTS_UNMET` | The selected node does not satisfy the deployment's node requirements (labels, vendor, and so on). Select a matching node or adjust the requirements |
