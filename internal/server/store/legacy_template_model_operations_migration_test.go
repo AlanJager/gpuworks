@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -26,6 +27,7 @@ func legacyTemplateOperationsDB(t *testing.T, name string) *gorm.DB {
 	for _, statement := range []string{
 		`CREATE TABLE models (id INTEGER PRIMARY KEY, operations TEXT)`,
 		`CREATE TABLE deployments (id INTEGER PRIMARY KEY, model_id INTEGER, template_snapshot TEXT)`,
+		`CREATE TABLE inference_specs (id INTEGER PRIMARY KEY, model_id INTEGER, source TEXT, name TEXT, api_contract TEXT)`,
 		`INSERT INTO models(id, operations) VALUES
 			(1, '[{"type":"openai.chat"}]'),
 			(2, '[{"type":"openai.chat"}]'),
@@ -33,7 +35,11 @@ func legacyTemplateOperationsDB(t *testing.T, name string) *gorm.DB {
 			(4, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
 			(5, '[]'),
 			(6, '[{"type":"openai.chat"}]'),
-			(7, '[{"inputs":null,"type":"openai.chat"}]')`,
+			(7, '[{"inputs":null,"type":"openai.chat"}]'),
+			(8, '[{"type":"openai.chat"}]'),
+			(9, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
+			(10, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
+			(11, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]')`,
 		`INSERT INTO deployments(id, model_id, template_snapshot) VALUES
 			(10, 1, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}'),
 			(11, 2, '{"api":{"operations":[{"type":"openai.rerank","endpoint":"/v1/rerank"}]}}'),
@@ -42,7 +48,17 @@ func legacyTemplateOperationsDB(t *testing.T, name string) *gorm.DB {
 			(14, 4, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}'),
 			(15, 5, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}'),
 			(16, 6, '{"api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
-			(17, 7, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}')`,
+			(17, 7, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}'),
+			(18, 6, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}'),
+			(19, 6, '{"api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(20, 8, '{"template_id":20,"spec_name":"embed","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(21, 9, '{"template_id":21,"spec_source":"user","spec_name":"rank","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(22, 10, '{"template_id":22,"spec_name":"chat","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(23, 11, '{"template_id":23,"spec_name":"unknown","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}')`,
+		`INSERT INTO inference_specs(id, model_id, source, name, api_contract) VALUES
+			(1, 20, 'upstream', 'embed', '{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}'),
+			(2, 21, 'user', 'rank', '{"operations":[{"type":"openai.rerank","endpoint":"/v1/rerank"}]}'),
+			(3, 22, 'upstream', 'chat', '{"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}')`,
 	} {
 		if err := db.Exec(statement).Error; err != nil {
 			t.Fatal(err)
@@ -51,7 +67,37 @@ func legacyTemplateOperationsDB(t *testing.T, name string) *gorm.DB {
 	return db
 }
 
-func TestLegacyTemplateModelOperationsMigrationRepairsOnlyTheBackfill(t *testing.T) {
+func TestLegacyTemplateNonChatOperationsUsesCatalogIdentity(t *testing.T) {
+	db := legacyTemplateOperationsDB(t, "legacy_template_catalog_identity")
+	for _, column := range []string{"model_id", "source", "name", "api_contract"} {
+		if !db.Migrator().HasColumn("inference_specs", column) {
+			t.Fatalf("inference_specs.%s is not visible", column)
+		}
+	}
+	var raw string
+	if err := db.Raw(`SELECT api_contract FROM inference_specs WHERE model_id = 20 AND source = 'upstream' AND name = 'embed'`).Scan(&raw).Error; err != nil {
+		t.Fatal(err)
+	}
+	var contract struct {
+		Operations json.RawMessage `json:"operations"`
+	}
+	if err := json.Unmarshal([]byte(raw), &contract); err != nil {
+		t.Fatalf("parse catalog contract: %v", err)
+	}
+	operations := string(contract.Operations)
+	if !legacyOperationsPresent(operations) || legacyChatOnlyOperations(operations) {
+		t.Fatalf("unexpected catalog operations: %q", operations)
+	}
+	declared, ok, err := legacyTemplateNonChatOperations(db, templateSnapshotAPI{TemplateID: 20, SpecName: "embed"})
+	if err != nil || !ok || declared != `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]` {
+		t.Fatalf("catalog operations = %q, ok=%v, err=%v", declared, ok, err)
+	}
+	if !legacyNormalizedChatOperations(`[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`) {
+		t.Fatal("legacy writer's normalized placeholder was not recognized")
+	}
+}
+
+func TestLegacyTemplateModelOperationsMigrationRepairsPlaceholdersWithoutInventingContracts(t *testing.T) {
 	db := legacyTemplateOperationsDB(t, "legacy_template_operations")
 	application := migrationByVersion(t, 172)
 	if err := migrateDB(db, []migration{application}); err != nil {
@@ -64,8 +110,14 @@ func TestLegacyTemplateModelOperationsMigrationRepairsOnlyTheBackfill(t *testing
 		3: `[{"type":"openai.rerank","endpoint":"/v1/rerank"}]`,
 		4: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
 		5: `[]`,
-		6: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
+		6: legacyChatPlaceholderFixture,
 		7: `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]`,
+		8: `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]`,
+		// Old 166 could have produced model 9, but so could an explicit
+		// chat edit. A mutable catalog must not overwrite that choice.
+		9:  `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
+		10: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
+		11: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
 	}
 	for id, operations := range want {
 		if got[id] != operations {
@@ -91,8 +143,19 @@ func TestLegacyTemplateModelOperationsMigrationRollsBackWithItsMarker(t *testing
 	if err := applyMigration(db, application); !errors.Is(err, injected) {
 		t.Fatalf("applyMigration error=%v, want %v", err, injected)
 	}
-	if got := modelOperationsColumn(t, db); got[1] != legacyChatPlaceholderFixture {
-		t.Fatalf("repair survived failed migration: %q", got[1])
+	got := modelOperationsColumn(t, db)
+	for id, want := range map[uint]string{
+		1: legacyChatPlaceholderFixture,
+		8: legacyChatPlaceholderFixture,
+		9: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
+	} {
+		if got[id] != want {
+			t.Fatalf("model %d repair survived failed migration: %q, want %q", id, got[id], want)
+		}
+	}
+	var markers int64
+	if err := db.Model(&SchemaMigration{}).Where("version = ?", 172).Count(&markers).Error; err != nil || markers != 0 {
+		t.Fatalf("migration marker survived rollback: count=%d err=%v", markers, err)
 	}
 }
 

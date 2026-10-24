@@ -11,16 +11,17 @@ func TestLegacyTemplateBranchMarkersUpgradeToMaster(t *testing.T) {
 	db := openUpgradeCompatibilityDB(t,
 		`CREATE TABLE models (id INTEGER PRIMARY KEY, operations TEXT)`,
 		`CREATE TABLE deployments (id INTEGER PRIMARY KEY, model_id INTEGER, template_snapshot TEXT, tokenize_disabled NUMERIC)`,
-		`CREATE TABLE inference_specs (id INTEGER PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE inference_specs (id INTEGER PRIMARY KEY, name TEXT, model_id INTEGER, source TEXT, api_contract TEXT)`,
 		`INSERT INTO models(id, operations) VALUES
 			(1, '[{"type":"openai.chat"}]'),
-			(2, '[{"inputs":[],"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
+			(2, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
 			(3, '[]')`,
 		`INSERT INTO deployments(id, model_id, template_snapshot, tokenize_disabled) VALUES
 			(1, 1, '{"api":{"operations":[{"type":"openai.rerank","endpoint":"/v1/rerank"}]}}', 1),
-			(2, 2, '{"api":{"operations":[{"type":"openai.embeddings"}]}}', 0),
+			(2, 2, '{"template_id":1,"spec_name":"legacy-spec","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}', 0),
 			(3, 3, '{"api":{"operations":[{"type":"openai.embeddings"}]}}', 0)`,
-		`INSERT INTO inference_specs(id, name) VALUES (1, 'legacy-spec')`,
+		`INSERT INTO inference_specs(id, name, model_id, source, api_contract) VALUES
+			(1, 'legacy-spec', 1, 'upstream', '{"operations":[{"type":"openai.embeddings"}]}')`,
 	)
 	for _, m := range migrations {
 		if m.Version > 165 {
@@ -77,8 +78,8 @@ func TestLegacyTemplateBranchMarkersUpgradeToMaster(t *testing.T) {
 	if got, want := operations[1], `[{"type":"openai.rerank","endpoint":"/v1/rerank"}]`; got != want {
 		t.Fatalf("legacy placeholder after upgrade = %q, want %q", got, want)
 	}
-	if got, want := operations[2], `[{"inputs":[],"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`; got != want {
-		t.Fatalf("explicit chat contract changed: %q, want %q", got, want)
+	if got, want := operations[2], `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`; got != want {
+		t.Fatalf("ambiguous normalized-chat contract changed: %q, want %q", got, want)
 	}
 	if operations[3] != `[]` {
 		t.Fatalf("the data repair rewrote an empty array: %q", operations[3])
