@@ -1,6 +1,13 @@
 package store
 
-import "testing"
+import (
+	"path/filepath"
+	"sync"
+	"testing"
+
+	"gorm.io/gorm"
+	"gpuworks.ai/gpuworks/internal/server/bus"
+)
 
 func TestOperationsUnset(t *testing.T) {
 	for raw, want := range map[string]bool{
@@ -68,5 +75,50 @@ func TestInitModelInferenceConfigKeepsNonEmptyOperations(t *testing.T) {
 	}
 	if got.Operations != edited || got.InputModalities != `["text"]` {
 		t.Fatalf("a concurrent value was overwritten: operations=%q modalities=%q", got.Operations, got.InputModalities)
+	}
+}
+
+func TestInitTemplateModelInferenceConfigLetsAConcurrentEditWin(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "template-config-cas.db")
+	st, err := Open(path, bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	other, err := Open(path, bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	model, err := st.UpsertModel(&Model{
+		Source: "modelscope", SourceID: "acme/concurrent", Revision: "main", Name: "concurrent",
+		Operations: legacyChatPlaceholderFixture,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	editedOperations := `[{"inputs":[],"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`
+	var once sync.Once
+	if err := st.db.Callback().Query().After("gorm:query").Register("test:edit_template_config_after_read", func(tx *gorm.DB) {
+		if tx.Statement.Schema == nil || tx.Statement.Schema.Name != "Model" {
+			return
+		}
+		once.Do(func() {
+			// The template read its legacy placeholder; another request commits
+			// before the conditional UPDATE. The exact-old-value guard must lose.
+			if _, err := other.SetModelInferenceConfig(model.ID, editedOperations, `["text"]`); err != nil {
+				tx.AddError(err)
+			}
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	defer st.db.Callback().Query().Remove("test:edit_template_config_after_read")
+	got, err := st.InitTemplateModelInferenceConfig(model.ID, `[{"type":"openai.embeddings"}]`, `["image"]`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Operations != editedOperations || got.InputModalities != `["text"]` {
+		t.Fatalf("concurrent edit was overwritten: operations=%q modalities=%q", got.Operations, got.InputModalities)
 	}
 }

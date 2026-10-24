@@ -1274,6 +1274,7 @@ var migrations = []migration{
 	{Version: 169, Name: "api_key_revoked_at", Apply: addAPIKeyRevokedAt},
 	{Version: 170, Name: "operations_usage", Apply: createOperationsUsage},
 	{Version: 171, Name: "deleted_nodes", Apply: createDeletedNodes},
+	{Version: 172, Name: "legacy_template_model_operations", Apply: repairLegacyTemplateModelOperations},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1536,7 +1537,7 @@ func migrateDB(db *gorm.DB, migrationList []migration) error {
 		err := db.Where("version = ?", m.Version).First(&row).Error
 		if err == nil {
 			if row.Name != m.Name {
-				if repairableLegacyMigration(m) {
+				if repairableLegacyMigration(m, row.Name) {
 					if err := repairLegacyMigration(db, m); err != nil {
 						return fmt.Errorf("repair migration %d (%s): %w", m.Version, m.Name, err)
 					}
