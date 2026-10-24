@@ -192,9 +192,9 @@ func (r *Runner) Run(ctx context.Context) {
 	}
 }
 
-// RunOnce tries every card once, in order, and returns when the round is
-// done. A round already in flight is left to finish and this call does
-// nothing.
+// RunOnce tries cards in order and returns when the round is done or an
+// attempt makes starting another unsafe. A round already in flight is left to
+// finish and this call does nothing.
 func (r *Runner) RunOnce(ctx context.Context) {
 	r.mu.Lock()
 	if r.running {
@@ -220,11 +220,8 @@ func (r *Runner) RunOnce(ctx context.Context) {
 			if ctx.Err() != nil {
 				break
 			}
-			// An attempt that never reached its card has discovered the same
-			// host condition Unavailable reports, so do not repeat it for every
-			// remaining card.
-			if inconclusive := r.try(ctx, card); inconclusive != "" {
-				reason = inconclusive
+			if stopped := r.try(ctx, card); stopped != "" {
+				reason = stopped
 				break
 			}
 		}
@@ -241,21 +238,25 @@ func (r *Runner) RunOnce(ctx context.Context) {
 }
 
 // try asks about one card and records what it answered. It returns why the
-// attempt said nothing about the card, in which case nothing was recorded and
-// the round is over.
+// round must stop: a host-wide inconclusive answer, a timed-out attempt, or an
+// older attempt that has not returned.
 func (r *Runner) try(ctx context.Context, card Card) string {
+	r.mu.Lock()
+	stuck := r.stuck[card.Ident]
+	anyStuck := len(r.stuck) > 0
+	failures := r.outcomes[card.Ident].Failures
+	r.mu.Unlock()
+	if anyStuck {
+		detail := fmt.Sprintf("an earlier runtime check has not returned after more than %s; no new card can be checked", r.cfg.Timeout)
+		if stuck {
+			detail = fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", r.cfg.Timeout)
+			r.record(card.Ident, Outcome{At: r.cfg.Now(), Failures: failures, Detail: detail})
+		}
+		return detail
+	}
 	if r.busy(card) {
 		// Serving work is itself the answer, so the card keeps whatever it
 		// last said rather than being recorded as untried.
-		return ""
-	}
-	r.mu.Lock()
-	stuck := r.stuck[card.Ident]
-	failures := r.outcomes[card.Ident].Failures
-	r.mu.Unlock()
-	if stuck {
-		r.record(card.Ident, Outcome{At: r.cfg.Now(), Failures: failures,
-			Detail: fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", r.cfg.Timeout)})
 		return ""
 	}
 	if r.backingOff(card.Ident) {
@@ -322,6 +323,9 @@ func (r *Runner) try(ctx context.Context, card Card) string {
 	}
 	r.record(card.Ident, outcome)
 	r.scheduleNext(card.Ident, outcome)
+	if err == timeoutErr {
+		return timeoutErr.Error()
+	}
 	return ""
 }
 

@@ -13,12 +13,14 @@ const maxResolvedPreStartScriptBytes = 64 << 10
 // preflightResolvedLaunch checks constraints of the fully merged launch before
 // it can be persisted or sent to an agent. preCompatScript is the preparation
 // present before the platform added its own compatibility script. manualScript
-// is opaque shell; its presence selects explicit, limited support boundaries
-// rather than guesses about the command or assignments it contains.
+// is checked through static words when possible; opaque vLLM and Engram entries
+// fail closed while unrelated preparation remains executable.
 func preflightResolvedLaunch(launch ResolvedLaunch, params Params, image string, compat ascendRuntimeCompat, preCompatScript, manualScript string) error {
-	if script, ok := opaqueShellCommand(launch.Entrypoint, launch.Argv); ok {
-		manualScript = script
+	shell := inspectShellCommand(launch.Entrypoint, launch.Argv)
+	if shell.commandString {
+		manualScript = shell.script
 	}
+	manualEntry := shell.shell && !shell.scriptFile || manualScript != ""
 	if compat == ascendRuntimeCompatV1 && params.NNodes > 1 {
 		return messages.NewProductError(messages.ErrorAscendV1CompatMultiNode,
 			fmt.Sprintf("the vLLM-Ascend rc2 A3 V1 compatibility rendezvous is local to one node and cannot coordinate a %d-node deployment; use the V2 model runner, Docker or nerdctl, or deploy on one node", params.NNodes),
@@ -39,21 +41,29 @@ func preflightResolvedLaunch(launch ResolvedLaunch, params Params, image string,
 			"the vLLM-Ascend rc2 A3 V1 compatibility script cannot be combined with pre_start_script; remove the preparation hook or use the V2 model runner, Docker or nerdctl",
 			map[string]any{"field": "pre_start_script", "image": image})
 	}
-	if compat != ascendRuntimeCompatNone && manualScript != "" {
+	if compat != ascendRuntimeCompatNone && (shell.shell || manualScript != "") {
 		return messages.NewProductError(messages.ErrorAscendCompatManualUnsupported,
 			"manual shell cannot prove which model runner and preparation the Ascend compatibility image will use; use engine mode or a JSON argv, or use Docker or nerdctl",
 			map[string]any{"image": image, "runtime": params.RuntimeDriver})
 	}
-	if manualScript != "" && strings.Contains(manualScript, "--engram-config") {
-		return messages.NewProductError(messages.ErrorEngramManualUnsupported,
-			"manual shell containing --engram-config cannot be checked for the required shared-memory settings; use engine mode or a JSON argv",
-			map[string]any{"flag": "--engram-config"})
+	if manualEntry {
+		words, err := staticShellWords(manualScript)
+		reject := !shell.commandString
+		if shell.commandString {
+			reject = err != nil || hasNestedShellCommand(words) || inspectEngramArguments(words).present
+		}
+		if reject {
+			return messages.NewProductError(messages.ErrorEngramManualUnsupported,
+				"manual shell cannot be checked for Engram and its required shared-memory settings; use engine mode or a JSON argv",
+				map[string]any{"flag": "--engram-config"})
+		}
 	}
 	command := append(append([]string(nil), launch.Entrypoint...), launch.Argv...)
+	engram := inspectEngramArguments(command)
 	runtime := strings.ToLower(strings.TrimSpace(params.RuntimeDriver))
-	if engramSharesHostMemory(command) && (runtime == proto.RuntimePreferenceUdocker || runtime == "runveil") {
+	if (engram.shared || engram.uncertain) && (runtime == proto.RuntimePreferenceUdocker || runtime == "runveil") {
 		return messages.NewProductError(messages.ErrorEngramSharedMemoryRuntime,
-			fmt.Sprintf("Engram cpu_offload with dp_shared_memory requires Docker or nerdctl shared-memory and locked-memory support; %s cannot run it", params.RuntimeDriver),
+			fmt.Sprintf("Engram shared host memory, or a configuration whose shared-memory use cannot be proven, requires Docker or nerdctl; %s cannot run it safely", params.RuntimeDriver),
 			map[string]any{"runtime": params.RuntimeDriver, "flag": "--engram-config"})
 	}
 	if len(launch.PreStartScript) > maxResolvedPreStartScriptBytes {

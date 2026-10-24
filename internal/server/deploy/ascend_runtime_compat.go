@@ -2,6 +2,7 @@ package deploy
 
 import (
 	_ "embed"
+	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -25,8 +26,9 @@ const (
 )
 
 // ascendRuntimeCompatFor selects the image-specific startup fixes only for the
-// PRoot runtime. The effective launch environment, after env_unset and the
-// deployment's own env, decides which model runner the image will actually use.
+// PRoot runtime. The fixed image's Ascend platform patch replaces upstream's
+// automatic runner defaults: unset means V1, and an explicitly set integer is
+// true exactly when bool(int(value)) would be true.
 func ascendRuntimeCompatFor(engineName, image, runtimeDriver string, env map[string]string) ascendRuntimeCompat {
 	image = strings.TrimSpace(image)
 	if engineName != EngineVLLM || !strings.EqualFold(strings.TrimSpace(runtimeDriver), proto.RuntimePreferenceUdocker) {
@@ -35,7 +37,8 @@ func ascendRuntimeCompatFor(engineName, image, runtimeDriver string, env map[str
 	if !strings.Contains(image, "vllm-ascend:v0.30.0rc2-a3") {
 		return ascendRuntimeCompatNone
 	}
-	if strings.TrimSpace(env["VLLM_USE_V2_MODEL_RUNNER"]) == "1" {
+	value, err := strconv.Atoi(strings.TrimSpace(env["VLLM_USE_V2_MODEL_RUNNER"]))
+	if err == nil && value != 0 {
 		return ascendRuntimeCompatV2
 	}
 	return ascendRuntimeCompatV1

@@ -191,17 +191,89 @@ func TestEngramSharedMemoryArgvForms(t *testing.T) {
 		args []string
 		want bool
 	}{
-		"separate value": {args: []string{"--engram-config", engramTestConfig}, want: true},
-		"equals value":   {args: []string{"--engram-config=" + engramTestConfig}, want: true},
-		"disabled DP":    {args: []string{"--engram-config", `{"cpu_offload":true,"dp_shared_memory":false}`}},
-		"malformed JSON": {args: []string{"--engram-config", `{cpu_offload:true}`}},
-		"missing value":  {args: []string{"--engram-config"}},
-		"absent":         {args: []string{"--max-model-len", "4096"}},
+		"separate value":                  {args: []string{"--engram-config", engramTestConfig}, want: true},
+		"equals value":                    {args: []string{"--engram-config=" + engramTestConfig}, want: true},
+		"underscore separate":             {args: []string{"--engram_config", engramTestConfig}, want: true},
+		"underscore equals":               {args: []string{"--engram_config=" + engramTestConfig}, want: true},
+		"raw DP uses CPU offload default": {args: []string{"--engram-config", `{"dp_shared_memory":true}`}, want: true},
+		"dotted separate values": {args: []string{
+			"--engram-config.cpu_offload", "true", "--engram-config.dp_shared_memory", "true",
+		}, want: true},
+		"dotted equals values": {args: []string{
+			"--engram-config.cpu_offload=true", "--engram-config.dp_shared_memory=true",
+		}, want: true},
+		"dotted DP uses CPU offload default": {args: []string{"--engram-config.dp_shared_memory=true"}, want: true},
+		"underscore dotted root":             {args: []string{"--engram_config.dp_shared_memory=true"}, want: true},
+		"disabled DP":                        {args: []string{"--engram-config", `{"cpu_offload":true,"dp_shared_memory":false}`}},
+		"malformed JSON":                     {args: []string{"--engram-config", `{cpu_offload:true}`}},
+		"missing value":                      {args: []string{"--engram-config"}},
+		"null config":                        {args: []string{"--engram-config", "null"}},
+		"absent":                             {args: []string{"--max-model-len", "4096"}},
+		"dotted group replaces earlier raw": {args: []string{
+			"--engram-config", engramTestConfig, "--engram-config.cpu_offload=false",
+		}},
+		"dotted group replaces later raw": {args: []string{
+			"--engram-config.dp_shared_memory=true", "--engram-config", `{"cpu_offload":true,"dp_shared_memory":false}`,
+		}, want: true},
+		"raw CPU false is replaced by dotted group": {args: []string{
+			"--engram-config", `{"cpu_offload":false}`, "--engram-config.dp_shared_memory=true",
+		}, want: true},
+		"last dotted field wins": {args: []string{
+			"--engram-config.dp_shared_memory=true", "--engram_config.dp_shared_memory=false",
+		}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := engramSharesHostMemory(test.args); got != test.want {
 				t.Fatalf("engramSharesHostMemory(%v) = %v, want %v", test.args, got, test.want)
 			}
 		})
+	}
+}
+
+func TestEngramDottedAndUncertainRuntimePreflight(t *testing.T) {
+	for _, runtime := range []string{proto.RuntimePreferenceUdocker, "runveil"} {
+		for name, args := range map[string][]string{
+			"underscore raw":       {"--engram_config", engramTestConfig},
+			"dotted":               {"--engram-config.dp_shared_memory=true"},
+			"underscore dotted":    {"--engram_config.cpu_offload=true", "--engram_config.dp_shared_memory=true"},
+			"malformed raw":        {"--engram-config", `{cpu_offload:true}`},
+			"missing dotted value": {"--engram-config.dp_shared_memory"},
+		} {
+			t.Run(runtime+"/"+name, func(t *testing.T) {
+				input := engramLaunchInput(runtime)
+				input.Params.TemplateArgs = args
+				_, err := ResolveLaunch(input)
+				requireLaunchProductError(t, err, messages.ErrorEngramSharedMemoryRuntime)
+			})
+		}
+	}
+	t.Run("valid disabled dotted config remains allowed", func(t *testing.T) {
+		input := engramLaunchInput(proto.RuntimePreferenceUdocker)
+		input.Params.TemplateArgs = []string{"--engram-config.dp_shared_memory=false"}
+		launch, err := ResolveLaunch(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes || len(launch.DockerArgs) != 0 {
+			t.Fatalf("disabled dotted Engram changed resources: shm=%d args=%v", launch.ShmBytes, launch.DockerArgs)
+		}
+	})
+}
+
+func TestResolveLaunchDottedEngramGetsSharedMemoryResources(t *testing.T) {
+	input := engramLaunchInput(proto.RuntimePreferenceDocker)
+	input.Params.TemplateArgs = []string{"--engram_config.dp_shared_memory=true"}
+	launch, err := ResolveLaunch(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+		t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+	}
+	if got := memlockArgs(launch.DockerArgs); !reflect.DeepEqual(got, []string{"memlock=-1:-1"}) {
+		t.Fatalf("memlock args = %v in %v", got, launch.DockerArgs)
+	}
+	if got := engramCapabilityCount(launch.DockerArgs); got != 1 {
+		t.Fatalf("IPC_LOCK count = %d in %v", got, launch.DockerArgs)
 	}
 }

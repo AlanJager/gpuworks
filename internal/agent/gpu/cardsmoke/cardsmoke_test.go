@@ -198,31 +198,56 @@ func TestAnAnswerSurvivesTheCheckBecomingUnavailable(t *testing.T) {
 	}
 }
 
-// Each attempt is bounded on its own, so one card that hangs cannot stall
-// the round for the rest.
-func TestAnAttemptIsBoundedOnItsOwn(t *testing.T) {
+// An abandoned attempt still owns the driver. Neither the rest of its round
+// nor a later round may start another card until that attempt has returned.
+func TestATimedOutAttemptStopsThisAndLaterRounds(t *testing.T) {
 	now, _ := clock(t)
-	rec := &recorder{block: make(chan struct{}), now: now}
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	returned := make(chan struct{})
+	var mu sync.Mutex
+	var attempted []string
 	r := New(Config{
-		Cards:   func(context.Context) []Card { return cards("a", "b") },
-		Try:     rec.try,
-		Timeout: 50 * time.Millisecond,
+		Cards: func(context.Context) []Card { return cards("a", "b") },
+		Try: func(_ context.Context, card Card) error {
+			mu.Lock()
+			attempted = append(attempted, card.Ident)
+			mu.Unlock()
+			if card.Ident == "a" {
+				<-release
+				close(returned)
+			}
+			return nil
+		},
+		Timeout: 20 * time.Millisecond,
 		Now:     now,
 	})
-	start := time.Now()
-	r.RunOnce(context.Background())
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Fatalf("a round of two hanging cards took %s", elapsed)
-	}
-	if got := rec.idents(); len(got) != 2 {
-		t.Fatalf("attempts = %v, want the hanging card not to stop the next", got)
-	}
-	for _, ident := range []string{"a", "b"} {
-		if o, ok := r.Outcomes()[ident]; !ok || o.OK {
-			t.Fatalf("%s = %+v, want a recorded failure", ident, o)
+	for round := 0; round < 2; round++ {
+		r.RunOnce(context.Background())
+		mu.Lock()
+		got := append([]string(nil), attempted...)
+		mu.Unlock()
+		if len(got) != 1 || got[0] != "a" {
+			t.Fatalf("round %d attempts = %v, want only the original stuck attempt", round+1, got)
+		}
+		if outcome, found := r.Outcomes()["b"]; found {
+			t.Fatalf("round %d gave the untried second card an outcome: %+v", round+1, outcome)
 		}
 	}
-	close(rec.block)
+	if outcome := r.Outcomes()["a"]; outcome.OK || !strings.Contains(outcome.Detail, "has not returned") {
+		t.Fatalf("first card outcome = %+v, want the still-stuck failure", outcome)
+	}
+	if got := r.Skipped(); !strings.Contains(got, "has not returned") {
+		t.Fatalf("skipped = %q, want the reason no second card was tried", got)
+	}
+	unblock()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the original attempt did not return after being released")
+	}
 }
 
 // A cancelled context stops the round rather than working through the rest.

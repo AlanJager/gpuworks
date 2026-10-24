@@ -67,6 +67,18 @@ func TestAscendCompatibilityUsesFinalLaunchEnvironment(t *testing.T) {
 			overrides:  ContainerOverrides{Env: map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "1"}},
 			wantMarker: ascendV030RC2A3V2CompatMarker, wantEnv: "1",
 		},
+		"user nonzero integer selects V2": {
+			overrides:  ContainerOverrides{Env: map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "2"}},
+			wantMarker: ascendV030RC2A3V2CompatMarker, wantEnv: "2",
+		},
+		"user negative integer selects V2": {
+			overrides:  ContainerOverrides{Env: map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "-1"}},
+			wantMarker: ascendV030RC2A3V2CompatMarker, wantEnv: "-1",
+		},
+		"user zero integer selects V1": {
+			overrides:  ContainerOverrides{Env: map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "00"}},
+			wantMarker: ascendV030RC2A3CompatMarker, wantEnv: "00",
+		},
 		"env unset removes template V2": {
 			templateEnv: map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "1"},
 			overrides:   ContainerOverrides{EnvUnset: []string{"VLLM_USE_V2_MODEL_RUNNER"}},
@@ -100,6 +112,30 @@ func TestAscendCompatibilityUsesFinalLaunchEnvironment(t *testing.T) {
 				t.Fatalf("effective V2 env = %q, want %q", got, test.wantEnv)
 			}
 		})
+	}
+}
+
+func TestAscendRC2A3FeaturesDoNotOverrideRunnerEnvironment(t *testing.T) {
+	for feature, args := range map[string][]string{
+		"watermark": {"--watermark-config", `{"algorithm":"dual_key_gumbel","key":42}`},
+		"HiSparse":  {"--attention-config", `{"hisparse_config":{}}`},
+	} {
+		for _, envValue := range []string{"", "0"} {
+			t.Run(feature+"/env="+envValue, func(t *testing.T) {
+				input := ascendCompatLaunchInput(proto.RuntimePreferenceUdocker)
+				input.Params.TemplateArgs = args
+				if envValue != "" {
+					input.ContainerOverrides.Env = map[string]string{"VLLM_USE_V2_MODEL_RUNNER": envValue}
+				}
+				launch, err := ResolveLaunch(input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(launch.PreStartScript, ascendV030RC2A3CompatMarker) || strings.Contains(launch.PreStartScript, ascendV030RC2A3V2CompatMarker) {
+					t.Fatalf("%s with env %q selected the wrong compatibility script", feature, envValue)
+				}
+			})
+		}
 	}
 }
 
