@@ -1,15 +1,15 @@
-import { Layout, Menu, Space, Typography, Button, Tooltip, Drawer, Input, Modal, Empty } from "antd";
+import { Layout, Menu, Space, Typography, Button, Tooltip, Drawer } from "antd";
 import UpdateNotice from "./components/UpdateNotice";
 import NoticeBell from "./components/NoticeBell";
 import AssistantPanel from "./assistant/AssistantPanel";
 import { AssistantProvider, useAssistant } from "./assistant/AssistantContext";
-import { Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CloudServerOutlined, DashboardOutlined, AppstoreOutlined, RocketOutlined,
   UnorderedListOutlined, KeyOutlined, CloudOutlined, SettingOutlined, FileSearchOutlined,
-  LogoutOutlined, SearchOutlined, ApartmentOutlined,
+  LogoutOutlined, ApartmentOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   MenuOutlined, ControlOutlined, ApiOutlined,
   ExperimentOutlined, HeartOutlined, RobotOutlined, BarChartOutlined,
 } from "@ant-design/icons";
@@ -104,10 +104,8 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const branding = useBranding();
   useDocumentBranding(branding);
   const loc = useLocation();
-  const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
   const selected = "/" + (loc.pathname.split("/")[1] || "dashboard");
 
   const menuItems = navGroups.map((group) => ({
@@ -115,57 +113,48 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
     label: t(group.labelKey),
     children: group.items.map((item) => ({ ...item, label: <Link to={item.key}>{t(item.labelKey)}</Link> })),
   }));
-  const searchableItems = navGroups
-    .flatMap((group) => group.items.map((item) => ({ ...item, label: t(item.labelKey), group: t(group.labelKey) })))
-    .filter((item) => !search.trim() || `${item.label} ${item.group}`.toLowerCase().includes(search.trim().toLowerCase()));
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const editable = target?.matches("input, textarea, select, [contenteditable='true']");
-      if ((event.key === "/" && !editable) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) {
-        event.preventDefault();
-        setSearchOpen(true);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  const openDestination = (path: string) => {
-    navigate(path);
-    setSearchOpen(false);
-    setMobileNavOpen(false);
-    setSearch("");
+  const toggleNav = () => {
+    const next = !navCollapsed;
+    setNavCollapsed(next);
+    writeNavCollapsed(next);
   };
 
   return (
     <AssistantProvider>
     <Layout className="app-shell">
-      <Sider theme="light" width={208} className="app-sider desktop-sider">
-        <Brand />
-        <Menu mode="inline" selectedKeys={[selected]} items={menuItems} className="app-nav" />
-      </Sider>
-      <Layout>
-        <Header className="app-header">
-          <Space size={8}>
-            <Tooltip title={t("header.openNavigation")}>
-              <Button className="mobile-menu-button" type="text" icon={<MenuOutlined />} onClick={() => setMobileNavOpen(true)} aria-label={t("header.openNavigation")} />
+      <Header className="app-header">
+        <Space size={8} className="app-header-start">
+          <Tooltip title={t("header.openNavigation")}>
+            <Button className="mobile-menu-button" type="text" icon={<MenuOutlined />} onClick={() => setMobileNavOpen(true)} aria-label={t("header.openNavigation")} />
+          </Tooltip>
+          <Brand title={branding.consoleTitle} />
+        </Space>
+        <Space>
+          <UpdateNotice />
+          <NoticeBell />
+          <AssistantHeaderButton />
+          <LanguageSwitcher light />
+          <Typography.Text className="app-header-user">{t("header.administrator")}</Typography.Text>
+          <Tooltip title={t("header.logout")}><Button type="text" icon={<LogoutOutlined />} onClick={onLogout} aria-label={t("header.logout")} /></Tooltip>
+        </Space>
+      </Header>
+      <Layout hasSider>
+        <Sider theme="light" width={208} collapsedWidth={56} collapsed={navCollapsed} trigger={null} className="app-sider desktop-sider">
+          <Menu mode="inline" selectedKeys={[selected]} items={menuItems} className="app-nav" />
+          <div className="app-nav-toggle">
+            <Tooltip title={navCollapsed ? t("header.expandNavigation") : undefined} placement="right">
+              <Button
+                type="text"
+                icon={navCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={toggleNav}
+                aria-label={t(navCollapsed ? "header.expandNavigation" : "header.collapseNavigation")}
+              >
+                {!navCollapsed && t("header.collapseNavigation")}
+              </Button>
             </Tooltip>
-            <Typography.Text strong className="app-header-title">{branding.consoleTitle}</Typography.Text>
-            <Tooltip title={t("header.search")}>
-              <Button type="text" icon={<SearchOutlined />} onClick={() => setSearchOpen(true)} aria-label={t("header.search")} />
-            </Tooltip>
-          </Space>
-          <Space>
-            <UpdateNotice />
-            <NoticeBell />
-            <AssistantHeaderButton />
-            <LanguageSwitcher light />
-            <Typography.Text className="app-header-user" style={{ color: "rgba(255,255,255,.82)" }}>{t("header.administrator")}</Typography.Text>
-            <Tooltip title={t("header.logout")}><Button type="text" icon={<LogoutOutlined />} onClick={onLogout} aria-label={t("header.logout")} /></Tooltip>
-          </Space>
-        </Header>
+          </div>
+        </Sider>
         <Content className="app-content">
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -217,36 +206,6 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
           onClick={() => setMobileNavOpen(false)}
         />
       </Drawer>
-      <Modal
-        className="global-search"
-        title={t("search.title")}
-        open={searchOpen}
-        onCancel={() => { setSearchOpen(false); setSearch(""); }}
-        footer={null}
-        width={560}
-        afterOpenChange={(open) => { if (!open) setSearch(""); }}
-      >
-        <Input
-          autoFocus
-          allowClear
-          prefix={<SearchOutlined />}
-          className="global-search-input"
-          placeholder={t("search.placeholder")}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          onPressEnter={() => searchableItems[0] && openDestination(searchableItems[0].key)}
-        />
-        <div className="global-search-results">
-          {searchableItems.map((item) => (
-            <button key={item.key} type="button" className="global-search-item" onClick={() => openDestination(item.key)}>
-              <span className="global-search-item-icon">{item.icon}</span>
-              <span>{item.label}</span>
-              <span className="global-search-item-group">{item.group}</span>
-            </button>
-          ))}
-          {searchableItems.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("search.empty")} />}
-        </div>
-      </Modal>
       <AssistantPanel />
     </Layout>
     </AssistantProvider>
@@ -259,19 +218,40 @@ function AssistantHeaderButton() {
   const { open, setOpen } = useAssistant();
   return (
     <Tooltip title={t("panel.headerTooltip")}>
-      <Button type="text" icon={<RobotOutlined />} onClick={() => setOpen(!open)} aria-label={t("title")} style={{ color: "rgba(255,255,255,.88)" }}>
+      <Button type="text" icon={<RobotOutlined />} onClick={() => setOpen(!open)} aria-label={t("title")}>
         <span className="app-header-user">{t("title")}</span>
       </Button>
     </Tooltip>
   );
 }
 
-function Brand() {
+// Brand is the logo, followed by the top bar title when one is set.
+function Brand({ title = "" }: { title?: string }) {
   const { productName, logo } = useBranding();
   return (
     <div className="app-brand">
-      <BrandMark logo={logo} />
-      <span className="app-brand-name">{productName}</span>
+      <BrandMark logo={logo} label={productName} />
+      {title && <span className="app-brand-sep" aria-hidden="true" />}
+      {title && <span className="app-brand-name">{title}</span>}
     </div>
   );
+}
+
+// The collapsed menu is a per-browser preference, like the language.
+const navCollapsedKey = "gpuworks.navCollapsed";
+
+function readNavCollapsed() {
+  try {
+    return localStorage.getItem(navCollapsedKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeNavCollapsed(collapsed: boolean) {
+  try {
+    localStorage.setItem(navCollapsedKey, collapsed ? "1" : "0");
+  } catch {
+    // Storage blocked: the choice lasts until reload.
+  }
 }

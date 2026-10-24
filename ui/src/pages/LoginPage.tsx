@@ -24,8 +24,9 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
       <div className="auth-shell">
         <section className="auth-brand-panel" aria-label={t("productInfo", { product: branding.productName })}>
           <div className="auth-brand-content">
-            <BrandMark logo={branding.logo} />
-            <div className="auth-brand-name">{branding.productName}</div>
+            <BrandMark logo={branding.logo} label={branding.productName} />
+            {/* The built-in wordmark already spells the default name. */}
+            {branding.productNameSet && <div className="auth-brand-name">{branding.productName}</div>}
             <div className="auth-brand-copy">{branding.loginDescription}</div>
           </div>
         </section>

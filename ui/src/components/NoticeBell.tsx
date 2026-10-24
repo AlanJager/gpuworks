@@ -116,8 +116,7 @@ export default function NoticeBell() {
     >
       <Tooltip title={unread > 0 ? t("notices.unread", { count: unread }) : t("notices.title")}>
         <Button type="text" aria-label={unread > 0 ? `${t("notices.title")} (${t("notices.unread", { count: unread })})` : t("notices.title")}
-          style={{ color: "rgba(255,255,255,.88)" }}
-          icon={<Badge count={unread} size="small" offset={[2, -2]}><BellOutlined style={{ color: "rgba(255,255,255,.88)" }} /></Badge>} />
+          icon={<Badge count={unread} size="small" offset={[2, -2]}><BellOutlined /></Badge>} />
       </Tooltip>
     </Popover>
   );

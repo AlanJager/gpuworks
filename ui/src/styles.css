@@ -147,58 +147,64 @@ button, input, textarea, select { letter-spacing: 0; }
   to { transform: translateX(390%); }
 }
 
+/* Shared by the shell and pages that fit the viewport below the top bar. */
+:root { --app-header-height: 44px; }
 .app-shell { min-height: 100vh; background: #f5f7fa; }
-.app-sider {
-  position: sticky !important;
-  top: 0;
-  height: 100vh;
-  overflow: auto;
-  border-right: 1px solid #dbdde0;
-  background: #fff !important;
-}
-.app-brand {
-  display: flex;
-  height: 52px;
-  align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  border-bottom: 1px solid #f0f2f5;
-  color: #181a1d;
-  font-size: 16px;
-  font-weight: 600;
-}
-.app-brand-mark {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 2px;
-  background: #005bd4;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-}
-/* A custom logo keeps its own colors and proportions inside the mark's box. */
-.app-brand-logo { flex: none; background: transparent; object-fit: contain; }
-.app-brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.branding-logo-preview { display: inline-flex; padding: 8px; border: 1px solid #f0f2f5; border-radius: 2px; }
-.app-nav { padding: 8px 0 16px; border-inline-end: 0 !important; }
 .app-header {
   position: sticky;
   top: 0;
   z-index: 50;
   display: flex;
-  height: 52px;
+  height: var(--app-header-height);
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  background: #005bd4;
+  gap: 12px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid #dbdde0;
+  background: #fff;
   line-height: normal;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
 }
-.app-header-title { max-width: 40vw; overflow: hidden; color: #fff !important; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.app-header .ant-btn-text { color: rgba(255, 255, 255, .9); }
-.app-header .ant-btn-text:hover { color: #fff !important; background: rgba(255, 255, 255, .12) !important; }
+/* The title gives way first (ellipsis); the actions on the right never wrap. */
+.app-header-start { flex: 1 1 auto; min-width: 0; }
+.app-header-start > .ant-space-item:last-child { min-width: 0; }
+.app-header > .ant-space:last-child { flex: none; white-space: nowrap; }
+.app-sider {
+  position: sticky !important;
+  top: var(--app-header-height);
+  height: calc(100vh - var(--app-header-height));
+  border-right: 1px solid #dbdde0;
+  background: #fff !important;
+}
+.app-sider > .ant-layout-sider-children { display: flex; flex-direction: column; }
+.app-sider .app-nav { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.app-nav-toggle { display: flex; flex: none; align-items: center; height: 40px; padding: 0 8px; border-top: 1px solid #f0f2f5; }
+.app-nav-toggle .ant-btn { color: #707275; }
+.app-sider.ant-layout-sider-collapsed .app-nav-toggle { justify-content: center; padding: 0; }
+/* Collapsed, the group titles cannot fit: a thin rule separates the groups instead. */
+.app-sider.ant-layout-sider-collapsed .ant-menu-item-group-title { height: 1px; margin: 8px 12px; padding: 0; overflow: hidden; background: #f0f2f5; font-size: 0; }
+.app-sider.ant-layout-sider-collapsed .ant-menu-item-group:first-child > .ant-menu-item-group-title { display: none; }
+.app-brand {
+  display: flex;
+  min-width: 0;
+  height: var(--app-header-height);
+  align-items: center;
+  gap: 12px;
+  color: #181a1d;
+  font-size: 15px;
+  font-weight: 600;
+}
+/* The mobile drawer covers the top bar, so it repeats the brand. */
+.ant-drawer .app-brand { padding: 0 16px; border-bottom: 1px solid #f0f2f5; }
+/* Any logo keeps its proportions and grows until either side reaches the
+   160 x 24 box (LOGO_BOX in branding.tsx): the height is set and the width
+   follows; a logo wider than the box shrinks inside it. Sizing from the
+   height also covers SVGs that declare only a viewBox. */
+.app-brand-logo { display: block; flex: none; width: auto; height: 24px; max-width: 160px; object-fit: contain; object-position: left center; }
+.app-brand-sep { flex: none; width: 1px; height: 16px; background: #dbdde0; }
+.app-brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Shows the logo at its top bar size, inside a top-bar-high strip. */
+.branding-logo-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: 2px; background: #fff; }
+.app-nav { padding: 4px 0 12px; border-inline-end: 0 !important; }
 .mobile-menu-button { display: none; }
 /* Centered so wide viewports split the leftover margin symmetrically instead
    of piling all of it to the right of the 1600px content cap. */
@@ -595,27 +601,6 @@ button, input, textarea, select { letter-spacing: 0; }
 .provider-credential-hint { margin: -4px 0 0 140px; color: #707275; font-size: 12px; line-height: 20px; }
 .provider-install-modal .ant-modal-body { padding-bottom: 28px !important; }
 
-.global-search .ant-modal-body { padding: 16px !important; }
-.global-search-input { margin-bottom: 12px; }
-.global-search-results { display: grid; max-height: 360px; gap: 2px; overflow-y: auto; }
-.global-search-item {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 6px 8px;
-  border: 0;
-  border-radius: 2px;
-  background: #fff;
-  color: #4a4c4f;
-  text-align: left;
-  cursor: pointer;
-}
-.global-search-item:hover, .global-search-item:focus-visible { background: #e6f6ff; color: #005bd4; }
-.global-search-item-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 2px; background: #f5f7fa; }
-.global-search-item-group { color: #96989b; font-size: 12px; }
-
 .auth-page { display: grid; min-height: 100vh; place-items: center; padding: 32px 16px; overflow: hidden; background: #eaf6ff; }
 .auth-language-switcher { position: fixed; top: 20px; right: 20px; z-index: 1; }
 .auth-shell {
@@ -628,12 +613,11 @@ button, input, textarea, select { letter-spacing: 0; }
   background: #fff;
   box-shadow: 0 4px 8px rgba(0, 0, 0, .12);
 }
-.auth-brand-panel { position: relative; padding: 72px 38px; overflow: hidden; background: #005bd4; color: #fff; }
+.auth-brand-panel { position: relative; padding: 72px 38px; overflow: hidden; border-right: 1px solid #f0f2f5; background: #f7faff; color: #181a1d; }
 .auth-brand-content { position: relative; z-index: 1; }
-.auth-brand-name { margin: 12px 0 16px; color: #fff; font-size: 24px; font-weight: 600; overflow-wrap: anywhere; }
-.auth-brand-copy { color: rgba(255, 255, 255, .88); font-size: 14px; line-height: 22px; white-space: pre-line; overflow-wrap: anywhere; }
-/* The panel is brand blue; a white tile keeps any custom logo legible on it. */
-.auth-brand-panel .app-brand-logo { box-sizing: content-box; padding: 4px; background: #fff; }
+.auth-brand-name { margin: 16px 0 0; color: #181a1d; font-size: 24px; font-weight: 600; overflow-wrap: anywhere; }
+.auth-brand-copy { margin-top: 16px; color: #4a4c4f; font-size: 14px; line-height: 22px; white-space: pre-line; overflow-wrap: anywhere; }
+.auth-brand-panel .app-brand-logo { height: 36px; max-width: 240px; }
 .auth-form-panel { display: flex; flex-direction: column; justify-content: center; padding: 48px 60px; }
 .auth-title { margin: 0 0 28px !important; color: #181a1d !important; font-size: 24px !important; line-height: 32px !important; }
 .auth-error-slot { height: 72px; min-height: 72px; overflow: auto; }
@@ -649,7 +633,6 @@ button, input, textarea, select { letter-spacing: 0; }
   .page-header-illustration { display: none; }
 }
 @media (max-width: 767px) {
-  .app-header { padding: 0 12px; }
   .app-header-user { display: none; }
   .page-header { min-height: 80px; align-items: flex-start; padding: 12px; }
   .page-header-icon { width: 36px; height: 36px; font-size: 17px; }
@@ -1097,4 +1080,4 @@ button, input, textarea, select { letter-spacing: 0; }
 /* Logo crop dialog: the image fits the dialog; the preview copies the mark. */
 .logo-crop-stage { display: flex; justify-content: center; padding: 12px; background: repeating-conic-gradient(#f0f2f5 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
 .logo-crop-image { display: block; max-width: 100%; max-height: 360px; }
-.logo-crop-preview { background: transparent; box-shadow: inset 0 0 0 1px #e5e7eb; }
+.logo-crop-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: 2px; background: #fff; }
