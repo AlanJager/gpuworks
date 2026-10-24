@@ -385,6 +385,10 @@ test("the mark beside the picker names the retention of the tab on hover and lin
   assert.equal(link.getAttribute("href"), "/settings#data-retention");
   await waitFor(() => assert.match(link.parentElement!.textContent!, /14 days by hour and 500 days by day/));
   await user.click(screen.getByRole("tab", { name: a.tabs.quality }));
+  // Clicking the tab moves the pointer off the mark, which closes the popover
+  // once its leave motion times out; a slow runner got there before the new
+  // tab rendered, so hover again as a user would.
+  await user.hover(screen.getByRole("img", { name: a.toolbar.retention }));
   await waitFor(() => assert.match(screen.getByRole("link", { name: /Data retention/ }).parentElement!.textContent!, /9 days by hour and 600 days by day/));
 });
 
