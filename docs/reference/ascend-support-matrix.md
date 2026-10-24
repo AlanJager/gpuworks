@@ -18,7 +18,7 @@
 | 自有池 Docker 成员 | arm64 / 910B4 | 9.0/驱动 | 9.0 / Docker | 平台 API 双副本同卡 dGPU、真实推理/chat、超配拒绝、整卡 chat | 支持；完整平台 dGPU 主验收 |
 | 自有池 nerdctl 成员 | arm64 / 910B4 | driver-only | 内嵌 probe / nerdctl | 生产路径加载 2.5 MiB 行为探针，`dsmi_get_hbm_info` 精确返回 4 GiB | 支持节点级 dGPU；无业务镜像、模型或推理引擎 |
 | 自有裸机 runveil（物理卡号 2–7） | arm64 / 910B4 | driver-only，26.0.rc1 | 内嵌 probe v2 / runveil | 生产 Engine + Runner 在物理卡 7 上返回 4 GiB；关闭 DSMI 钩子返回整卡 32 GiB 并判失败 | 节点级 dGPU 探针通过；旧 v1 可复现 `rc=87 total_kb=0` |
-| 同一自有裸机 runveil | arm64 / 910B4 | driver-only，26.0.rc1 | 8.5.1 / vLLM 0.18.0 / runveil | 临时兼容对照通过 8 GiB 配额、9 GiB 分配拒绝及后续真实 chat（HTTP 200） | 默认路径仍未通过。对照额外绑定容器标记，并仅将 TSD 对不存在的卡 0 的芯片型号查询重试到真实卡 7；此诊断 hook 未进入 agent 或镜像，不作为默认支持 |
+| 同一自有裸机 runveil | arm64 / 910B4 | driver-only，26.0.rc1 | 8.5.1 / vLLM 0.18.0 / runveil | 默认 agent 路径：平台 API 同卡双副本 dGPU、网关 chat、逐实例超配拒绝，随后整卡部署及 chat | 已通过；每份配额 8 GiB，9 GiB 申请均拒绝。使用 `gpuworks/gpuworks-runner:cann8.5-910b-vllm0.18.0-r2`，自动兼容仅适用于下述已校验的 ARM64 TSD 库 |
 | 同一自有裸机 runveil | arm64 / 910B4 | driver-only，26.0.rc1 | 9.0 / vLLM 0.20.2 / runveil | 生产 Engine + runveil Driver 自动选卡，Qwen3-0.6B、8 GiB 配额，真实 chat 返回 HTTP 200 | 通过单实例 dGPU 推理；容器报告 8589934592 bytes，9 GiB 申请被拒绝，随后 chat 返回 `Hello! 😊`。本次未走平台 API/调度/网关 |
 
 “外层 8.5、内层 8.5 已测过”指上表的 Gitee x86_64 环境：已有真实平台部署到 healthy 的现场记录，但当前仓库没有保留成功 chat 响应，因此矩阵不会把它写成完整对话通过。下一步应在现有 x86_64/CANN8.5 租机用例内复用同一实例补 chat，避免增加一次租机。
@@ -51,7 +51,13 @@ runveil 保留宿主设备视图，不能沿用 Docker 的紧凑设备号。agen
 
 已补齐系统调用映射并重建 ARM64 内嵌 PRoot。构建门禁验证 guest bind 下的 `faccessat2`、相对 dirfd、缺失路径和带符号链接/父目录/尾斜杠的 `realpath`；原二进制失败，新二进制在 ARM64 真机通过。使用更新后的内嵌资产和自动设备映射，CANN 9.0 / vLLM 0.20.2 的单实例 dGPU 推理、超额分配拒绝及拒绝后的 chat 均通过。范围仍以上表为准。
 
-CANN 8.5.1 另有 TSD 初始化编号顺序问题：runtime 把选中的逻辑卡 7 转成用户设备号 0 后，TSD 在映射回逻辑号前查询芯片型号，因此在缺少逻辑卡 0 的节点上返回 87，最终表现为 `TsdOpen` / `507033`。真实二进制反汇编及单次查询重试对照验证了这一原因；对照返回真实驱动数据，没有伪造设备启动成功。临时容器标记加该诊断 hook 后，Qwen3-0.6B 的配额检查与 chat 均通过，但生产路径仍需解决 DCMI 检测阻塞并修正 TSD 转换顺序。此实验未走平台 API/调度/网关，也未将临时兼容处理加入默认运行时。
+### CANN 8.5.1 的 DCMI 检测与 TSD 设备转换
+
+CANN 8.5.1 在 runveil 下有两个初始化问题。DCMI 在镜像缺少容器标记和 `systemd-detect-virt` 时，检测子进程可能卡在 CANN dump 析构锁；runveil 现在为昇腾工作负载自动绑定 `/.dockerenv`，避免进入该检测分支。
+
+另一个问题出现在 TSD：runtime 把选中的逻辑卡 7 转成用户设备号 0 后，TSD 在映射回逻辑号前查询芯片型号，导致 `TsdOpen` / `507033`。runveil 现在仅为已确认受影响的 ARM64 CANN 8.5.1 `libtsdclient.so`（SHA256 `4f6648daad462247e23782946b1a10b3d224d42d99aa2f468bd6b45c2a08676a`）加载内嵌兼容库，将来自该 TSD 的芯片型号查询按 `ASCEND_RT_VISIBLE_DEVICES` 转换，再调用真实驱动。它不会伪造成功，也不会把所有对卡 0 的查询改写。未知或已修复的库不应用这项转换；“CANN 8.5”版本标签本身不足以判定兼容。
+
+兼容文件位于可删除的容器目录，不修改宿主驱动或共享镜像；既有 `LD_PRELOAD` 保留。启动、交互终端及非交互 `Exec` 均恢复同一工作负载环境和挂载，agent 重启后也从持久化 spec 恢复。使用此修复需要升级 agent 并重新创建工作负载。
 
 ### “没有 runtime”
 

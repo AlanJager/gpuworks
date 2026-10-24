@@ -62,7 +62,7 @@ func TestAscendPoolPlatformPartitionInferenceAndWholeGPU(t *testing.T) {
 		"vram_limit_gib": 8, "partition_backend": accelerator.BackendAscendLogical,
 		"placement":    map[string]any{"tp": 1, "gpus": []int{mustAtoi(t, candidate.card)}},
 		"quick_params": map[string]any{"max_model_len": 2048, "gpu_memory_utilization": 0.8},
-		"extra_args":   "--enforce-eager",
+		"extra_args":   hostEnv("GPUWORKS_ASCEND_L4_EXTRA_ARGS", "--enforce-eager"),
 	}, 2, 10*time.Minute)
 	chatAscendPlatform(t, control, partition.servedName)
 	for _, instance := range partition.instances {
@@ -78,7 +78,7 @@ func TestAscendPoolPlatformPartitionInferenceAndWholeGPU(t *testing.T) {
 		"served_name": "qwen35-08b-ascend-platform-whole", "engine": "vllm", "image": image,
 		"placement":    map[string]any{"tp": 1, "gpus": []int{mustAtoi(t, candidate.card)}},
 		"quick_params": map[string]any{"max_model_len": 2048, "gpu_memory_utilization": 0.8},
-		"extra_args":   "--enforce-eager",
+		"extra_args":   hostEnv("GPUWORKS_ASCEND_L4_EXTRA_ARGS", "--enforce-eager"),
 	}, 1, 8*time.Minute)
 	chatAscendPlatform(t, control, whole.servedName)
 
@@ -128,6 +128,10 @@ elif command -v nerdctl >/dev/null && nerdctl info >/dev/null 2>&1 && nerdctl -n
 else
   fail "acceptance image %s not present in docker, or in nerdctl's gpuworks namespace (the agent runs containers there)"
 fi`, shellQuoteL4(model), shellQuoteL4(model), shellQuoteL4(candidate.card), shellQuoteL4(image), shellQuoteL4(image), shellQuoteL4(image))
+		if os.Getenv("GPUWORKS_ASCEND_L4_RUNTIME") == "udocker" {
+			boundary := strings.Index(command, "if command -v docker")
+			command = command[:boundary] + "test -d " + shellQuoteL4(os.Getenv("GPUWORKS_ASCEND_L4_RUNVEIL_CACHE")+"/repos") + " || fail 'runveil image fixture missing'\necho runtime=udocker\n"
+		}
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		out, err := partitionSSHCommand(ctx, candidate.host, candidate.jump, command).CombinedOutput()
 		cancel()
@@ -144,7 +148,7 @@ fi`, shellQuoteL4(model), shellQuoteL4(model), shellQuoteL4(candidate.card), she
 				candidate.card = value
 			}
 		}
-		if candidate.runtime == "docker" || candidate.runtime == "nerdctl" {
+		if candidate.runtime == "docker" || candidate.runtime == "nerdctl" || candidate.runtime == "udocker" {
 			t.Logf("Ascend pool selected %s (%s, card %s); other members remain eligible for later tests", candidate.host, candidate.runtime, candidate.card)
 			return candidate
 		}
@@ -194,6 +198,9 @@ func attachAscendPoolNode(t *testing.T, control *testenv.Env, candidate ascendPo
 	t.Cleanup(func() { node.cleanup(t) })
 
 	agent, readErr := agentbin.Read("", "gpuworks-agent-linux-arm64")
+	if path := os.Getenv("GPUWORKS_ASCEND_L4_AGENT"); path != "" {
+		agent, readErr = os.ReadFile(path)
+	}
 	if readErr != nil || len(agent) < 1<<20 {
 		t.Fatalf("self-contained arm64 agent asset is missing; run make cross-agents: size=%d err=%v", len(agent), readErr)
 	}
@@ -210,6 +217,9 @@ func attachAscendPoolNode(t *testing.T, control *testenv.Env, candidate ascendPo
 	}
 	if out, err = downloadAscendPoolAgent(t, candidate, remoteDir, compressed.Bytes()); err != nil {
 		t.Fatalf("transfer self-contained compressed pool agent: %v: %s", err, out)
+	}
+	if candidate.runtime == "udocker" {
+		stageAscendRunveilCache(t, node)
 	}
 	start := fmt.Sprintf("chmod +x %s/gpuworks-agent; nohup %s/gpuworks-agent run --server %s --token %s --state %s/state --driver %s --connect-mode server_dial --listen %s >%s/agent.stdout 2>&1 & echo $! >%s/agent.pid", shellQuoteL4(remoteDir), shellQuoteL4(remoteDir), shellQuoteL4(control.URL()), shellQuoteL4(enrolled.Token), shellQuoteL4(remoteDir), shellQuoteL4(candidate.runtime), shellQuoteL4("0.0.0.0:"+remotePort), shellQuoteL4(remoteDir), shellQuoteL4(remoteDir))
 	startCtx, startCancel := context.WithTimeout(t.Context(), time.Minute)
@@ -309,6 +319,16 @@ func ascendPoolHostAddress(target string) string {
 
 func (n *ascendPoolNode) cleanup(t *testing.T) {
 	t.Helper()
+	if t.Failed() && os.Getenv("GPUWORKS_KEEP_ON_FAILURE") == "1" {
+		t.Logf("preserving failed Ascend test state at %s; scoped cleanup required", n.remoteDir)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		command := "test ! -f " + shellQuoteL4(n.remoteDir+"/agent.pid") + " || kill $(cat " + shellQuoteL4(n.remoteDir+"/agent.pid") + ")"
+		if out, err := partitionSSHCommand(ctx, n.candidate.host, n.candidate.jump, command).CombinedOutput(); err != nil {
+			t.Logf("freeze failed agent: %v %s", err, out)
+		}
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	command := fmt.Sprintf(`set +e
@@ -379,7 +399,12 @@ func createAscendPlatformDeployment(t *testing.T, control *testenv.Env, body map
 	if err := json.Unmarshal(data, &created); err != nil || created.ID == 0 {
 		t.Fatalf("decode platform deployment: %v body=%s", err, data)
 	}
-	t.Cleanup(func() { stopAscendPlatformDeployment(t, control, created.ID) })
+	t.Cleanup(func() {
+		if t.Failed() && os.Getenv("GPUWORKS_KEEP_ON_FAILURE") == "1" {
+			return
+		}
+		stopAscendPlatformDeployment(t, control, created.ID)
+	})
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		instances, _ := control.Store().InstancesForDeployment(created.ID)
@@ -430,6 +455,10 @@ func chatAscendPlatform(t *testing.T, control *testenv.Env, servedName string) {
 
 func assertAscendPlatformQuota(t *testing.T, node *ascendPoolNode, containerID string) {
 	t.Helper()
+	if node.candidate.runtime == "udocker" {
+		assertAscendRunveilQuota(t, node, containerID)
+		return
+	}
 	if !regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`).MatchString(containerID) {
 		t.Fatalf("unsafe runtime container id %q", containerID)
 	}
