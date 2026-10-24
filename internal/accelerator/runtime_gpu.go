@@ -11,15 +11,11 @@ import "strings"
 // deployment on the node failing at container start with an error from the
 // runtime that names no cause.
 
-// VendorHasHostRuntimeCheck reports whether this vendor's runtime can be
-// asked on the host whether it can actually use a card. Only NVIDIA's can:
-// its driver ships libcuda on the host, so a context can be created there.
-// The domestic vendors' runtimes (CANN, DTK) live in the images instead, so
-// a driver-only host has nothing to call — their CLIs state a per-card
-// health verdict of their own, which the probe already reports.
-func VendorHasHostRuntimeCheck(vendor string) bool {
-	return NormalizeVendor(vendor) == VendorNVIDIA
-}
+// Whether a vendor's runtime can be asked on the host whether it can
+// actually use a card is not stated here: that depends on which library and
+// CLI the agent would have to call, which is agent mechanism rather than
+// vendor identity. The agent's gpu.HostRuntimeCheckFor is the one place that
+// knows it.
 
 // Why a runtime cannot give a container this node's accelerators. Codes
 // rather than sentences, so the text an operator reads is in their own

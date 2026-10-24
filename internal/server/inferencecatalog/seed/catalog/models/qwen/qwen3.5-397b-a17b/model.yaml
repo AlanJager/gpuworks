@@ -289,4 +289,74 @@ specs:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count != 4: return reject(\"PPU profile requires exactly 4 GPUs\")\n    return\
       \ {\"GPU_COUNT\": 4, \"TP_SIZE\": 4, \"PP_SIZE\": 1, \"SP_DEGREE\": 1}"
+- name: int8-vllm-ascend-a3-w8a8-mtp-99f2a045
+  display_profile: optimized
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend:v0.30.0rc2-a3
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.5-397B-A17B-w8a8-mtp
+        revision: 99f2a04549fc0de1f456a4092efaf70eaff803b3
+  weight_bytes: 447236376010
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --tensor-parallel-size
+  - '16'
+  - --data-parallel-size
+  - '1'
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --max-num-seqs
+  - '128'
+  - --max-model-len
+  - '133000'
+  - --max-num-batched-tokens
+  - '16384'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enable-prefix-caching
+  # rc2 lacks causal_conv1d_update_npu; the PyTorch fallback stalls FULL_DECODE_ONLY
+  # graph capture (upstream issue #18978).
+  - --enforce-eager
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"enable_fused_mc2":1}'
+  env:
+    HCCL_BUFFSIZE: '1024'
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    VLLM_ENGINE_READY_TIMEOUT_S: '36000'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 16:
+              return reject("the A3 recipe requires exactly 16 logical devices")
+          if gpu.min_memory_gib < 64:
+              return reject("each device requires at least 64 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": 16, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]

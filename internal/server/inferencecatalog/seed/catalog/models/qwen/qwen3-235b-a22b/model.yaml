@@ -110,7 +110,7 @@ specs:
   weight_bytes: 236803017357
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --quantization
@@ -122,10 +122,51 @@ specs:
   - --tool-call-parser
   - hermes
   env:
-    GLOO_SOCKET_IFNAME: br_ens3_36
-    HCCL_SOCKET_IFNAME: br_ens3_36
     RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES: '1'
-    TP_SOCKET_IFNAME: br_ens3_36
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 16: return reject(\"at least\
+      \ 16 GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-a3-abf48ff4
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    # The verified run used Modelers_Park/Qwen3-235B-A22B-w8a8 from modelers.cn,
+    # which neither ModelScope nor Hugging Face carries. vllm-ascend's own
+    # w8a8 build has the same 56 shard names and sizes and a byte-identical
+    # quant_model_description.json and config.json, but different shard bytes
+    # (a separate calibration run), so it is not the verified artifact.
+    - modelscope:
+        repo_id: vllm-ascend/Qwen3-235B-A22B-W8A8
+        revision: aa1470b37a666db251ef9bbc76256fa611a1d87c
+  weight_bytes: 236803017357
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  env:
+    RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES: '1'
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 16: return reject(\"at least\

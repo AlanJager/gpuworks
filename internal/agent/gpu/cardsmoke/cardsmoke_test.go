@@ -293,7 +293,7 @@ func TestACheckThatIgnoresItsDeadlineDoesNotStallTheRunner(t *testing.T) {
 // would gain one python process every quarter hour for as long as it
 // stays stuck. Once the first one returns, the card is asked again.
 func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
-	now, _ := clock(t)
+	now, advance := clock(t)
 	release := make(chan struct{})
 	var mu sync.Mutex
 	started := 0
@@ -324,6 +324,9 @@ func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
 	}
 
 	close(release)
+	// The abandoned check counted as a failure, so the card also has to reach
+	// the end of that failure's backoff before it can be asked again.
+	advance(16 * time.Minute)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		r.RunOnce(context.Background())

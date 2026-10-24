@@ -86,7 +86,7 @@ func (ascendPartitionInjector) apply(e *Engine, ctx context.Context, ws *agentru
 		ws.Env = map[string]string{}
 	}
 	ws.Env[accelerator.AscendEnvDSMIHook] = "1"
-	const driverLibraryPath = "/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64"
+	driverLibraryPath := accelerator.AscendDriverLibraryPath
 	if existing := strings.TrimSpace(ws.Env[accelerator.EnvLDLibraryPath]); existing != "" {
 		ws.Env[accelerator.EnvLDLibraryPath] = driverLibraryPath + ":" + existing
 	} else {

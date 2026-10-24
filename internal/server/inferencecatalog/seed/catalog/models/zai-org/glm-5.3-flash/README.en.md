@@ -2,6 +2,16 @@
 
 Original FP8 weights (~328.3 GB). The NVIDIA profiles follow the [SGLang recipe](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash): H200 uses TileLang DSA with a BF16 KV cache, B200/B300 use TRT-LLM DSA with an FP8 KV cache; both accept 4 or 8 GPUs on one node (TP = EP = GPU count). Upstream publishes 8-GPU commands only; the 4-GPU variant follows its GB300 TP4 recipe. 4 MI355X GPUs use the [vLLM ROCm recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) with the ROCm 10 nightly image.
 
+The Ascend profile follows the vLLM-Ascend v0.30.0rc2 A3 recipe: one 16-die
+910C node, TP16, W8A8 weights, and INT8 KV cache. It requires the complete
+ModelScope snapshot pinned by the template. The current A3 image does not
+consistently bind the current NPU device while `NPUModelRunner` initializes,
+so 16 workers intermittently fail with `aclnnInplaceZero/361001`. The template's
+idempotent pre-start step adds `torch.npu.device(device)`. MTP and KDA decode
+graph still depend on unmerged upstream fixes, so the primary 910C profile
+disables speculative decoding and graph compilation. On the tested runveil node,
+the rank/group fixes pass but PRoot thread starvation still prevents weight-load
+completion, so this profile is not recorded as real-node verified.
 ## Measured (4× B200, TP4/EP4, 2026-10-20)
 
 Vast container node, runveil runtime, `gpuworks-runner:cuda13.0-sglang0.5.21-r2`, EAGLE MTP 5/1/6. Chat, thinking, tool calls and image input passed. Each request: ~1.5k input tokens, exactly 512 output tokens, measured against the engine on the node after warm-up:
