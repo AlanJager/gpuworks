@@ -12,7 +12,7 @@
     "upstream": "https://github.com/gpustack/gpustack-operator.git",
 	"commit": "fa399c037a96d2cb3e1e755e0a7dbce65773caeb",
 	"path": "csrc/thead/ppu-slicing-shim",
-    "patches": ["ppu/patches/0001-resolve-hggc-via-explicit-handle.patch"]
+    "patches": ["ppu/patches/0001-resolve-hggc-via-explicit-handle.patch", "ppu/patches/0002-map-hgml-quota-by-uuid.patch"]
   },
   "perftest": {
     "upstream": "https://github.com/linux-rdma/perftest",

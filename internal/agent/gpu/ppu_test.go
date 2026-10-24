@@ -2,8 +2,11 @@ package gpu
 
 import (
 	"context"
+	"fmt"
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -132,19 +135,58 @@ Device Minor: 9
 }
 
 func TestPPURuntimeInjectionFailsClosed(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
 	inj := (&PPUProber{}).RuntimeInjection([]int{7})
 	if inj.UnsupportedReason == "" || len(inj.DockerArgs) != 0 || len(inj.Env) != 0 {
 		t.Fatalf("injection = %+v", inj)
 	}
 }
 
-func TestPPURuntimeInjectionUsesCompactContainerOrdinals(t *testing.T) {
-	// The real host can expose host indexes 0, 2, 7 after VM pass-through. The
-	// backend must still see the selected devices as CUDA ordinals 0, 1, 2.
-	// Device probing is intentionally not performed in this unit test; the
-	// ordinal contract is kept in the pure helper below.
-	if got := ppuContainerVisibleDevices([]int{0, 2, 7}); got != "0,1,2" {
-		t.Fatalf("container visible devices = %q", got)
+func TestPPURuntimeInjectionSelectsUUIDsInRequestedOrder(t *testing.T) {
+	const first = "GPU-011ef111-c280-0918-0000-000020462378"
+	const second = "GPU-019ec20c-0692-0214-0000-0000c0e5b553"
+	p := &PPUProber{lastSeen: map[int]ppuIdentity{8: {uuid: first}, 9: {uuid: second}}}
+	rows := "8, " + first + "\n9, " + second
+	resolve := func(index int, id string) (string, error) {
+		if (index == 8 && id == first) || (index == 9 && id == second) {
+			return fmt.Sprintf("/dev/alixpu_ppu%d", index+1), nil
+		}
+		return "", fmt.Errorf("unknown identity")
+	}
+	for _, tc := range []struct {
+		name                     string
+		indexes                  []int
+		inventory, want, failure string
+	}{
+		{"nonzero device", []int{8}, rows, first, ""},
+		{"reverse order", []int{9, 8}, rows, second + "," + first, ""},
+		{"absent device", []int{0}, rows, "", "not present"},
+		{"renumbered", []int{8}, "8, " + second, "", "changed"},
+		{"invalid UUID", []int{8}, "8, GPU-bad", "", "invalid"},
+		{"duplicate device", []int{8, 8}, rows, "", "duplicate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inj := p.runtimeInjection(tc.indexes, tc.inventory, resolve)
+			if tc.failure != "" {
+				if !strings.Contains(inj.UnsupportedReason, tc.failure) || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
+					t.Fatalf("injection=%+v", inj)
+				}
+				return
+			}
+			if inj.UnsupportedReason != "" || inj.Env[accelerator.EnvCUDAVisibleDevices] != tc.want || inj.Env[accelerator.EnvNVIDIAVisibleDevices] != "void" {
+				t.Fatalf("injection=%+v", inj)
+			}
+			for _, index := range tc.indexes {
+				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)
+				if !strings.Contains(strings.Join(inj.DockerArgs, " "), path+":"+path+":rwm") {
+					t.Fatalf("wrong device mapping: %+v", inj)
+				}
+			}
+		})
+	}
+	inj := p.runtimeInjection([]int{8}, rows, func(int, string) (string, error) { return "", fmt.Errorf("device UUID/minor mismatch") })
+	if !strings.Contains(inj.UnsupportedReason, "mismatch") || len(inj.Env) != 0 {
+		t.Fatalf("injection=%+v", inj)
 	}
 }
 

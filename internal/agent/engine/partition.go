@@ -145,6 +145,9 @@ func (e *Engine) BuildPartitionProbeWorkload(ctx context.Context, backend, image
 	}
 	ws.Env["GPUWORKS_PARTITION_PROBE_BACKEND"] = backend
 	ws.Env["GPUWORKS_PARTITION_PROBE_DEVICE"] = strconv.Itoa(gpuIndex)
+	if backend == accelerator.BackendPPULogical {
+		ws.Env["GPUWORKS_PARTITION_PROBE_UUID"] = ws.Env[accelerator.EnvCUDAVisibleDevices]
+	}
 	ws.Env["GPUWORKS_PARTITION_PROBE_QUOTA_MIB"] = strconv.FormatInt((quotaBytes+(1<<20)-1)/(1<<20), 10)
 	return ws, nil
 }

@@ -169,6 +169,13 @@ func TestPPUPartitionUsesSafePreloadOrderAndQuota(t *testing.T) {
 
 type probeLibraryPPUProber struct{ *gpu.FixedProber }
 
+func (p *probeLibraryPPUProber) RuntimeInjection(indexes []int) gpu.RuntimeInjection {
+	if len(indexes) != 1 || indexes[0] != 7 {
+		return gpu.RuntimeInjection{UnsupportedReason: "device absent"}
+	}
+	return gpu.RuntimeInjection{Env: map[string]string{accelerator.EnvCUDAVisibleDevices: "GPU-011ef111-c280-0918-0000-000020462378"}}
+}
+
 func (p *probeLibraryPPUProber) PartitionProbeLibraries(context.Context) ([]gpu.ProbeLibrary, error) {
 	return []gpu.ProbeLibrary{{Source: "/host/libhgml.so", Name: "libhgml.so"}, {Source: "/host/libuki.so", Name: "libuki.so"}}, nil
 }
@@ -213,6 +220,9 @@ func TestPPUProbeWorkloadMountsDriverLibrariesWithoutHostHGGCVersion(t *testing.
 	workload, err := e.BuildPartitionProbeWorkload(context.Background(), accelerator.BackendPPULogical, "gpuworks/partition-probe:v1", 7, 4<<30, "ppu-probe")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if workload.Env["GPUWORKS_PARTITION_PROBE_UUID"] != "GPU-011ef111-c280-0918-0000-000020462378" {
+		t.Fatalf("missing probe identity: %+v", workload.Env)
 	}
 	wantMounts := map[string]string{
 		"/opt/gpuworks/probe-libs/libhgml.so": "/host/libhgml.so",
