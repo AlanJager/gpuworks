@@ -20,7 +20,7 @@ test("preparation shows real bytes, phase and storage link", async () => {
     show([row()]);
     assert.ok(screen.getByText(labels.phase.copying));
     assert.ok(screen.getByText(/40 B \/ 100 B/));
-    assert.equal(screen.getByRole("link", { name: "NFS" }).getAttribute("href"), "/storage/2");
+    assert.equal(screen.getByRole("link", { name: "NFS" }).getAttribute("href"), "/storage?storage=2");
     const user = userEvent.setup({ document: dom.window.document });
     await user.tab();
     assert.equal(dom.window.document.activeElement, screen.getByRole("link"));

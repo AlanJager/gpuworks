@@ -86,7 +86,11 @@
     "overrides": "覆盖：{{value}}",
     "attachedAt": "加载于 {{time}}",
     "rdmaInferred": "每个节点的 HCA 取已激活、速率最高的一组 RDMA 端口（RoCE 端口要求网卡有 IPv4 地址）；bootstrap 取第一条 HCA 所在网卡的地址，没有 IPoIB 的 InfiniBand 用管理网地址。可以在下表逐个节点增删 HCA 或改 bootstrap。",
-    "acceleratorInferred": "每个节点的 rail 取链路 UP 且配了地址的加速卡；bootstrap 是握手用的主机地址，默认取管理网地址，数据走加速卡网口。可以在下表逐个节点增删加速卡或改 bootstrap。"
+    "acceleratorInferred": "每个节点的 rail 取链路 UP 且配了地址的加速卡；bootstrap 是握手用的主机地址，默认取管理网地址，数据走加速卡网口。可以在下表逐个节点增删加速卡或改 bootstrap。",
+    "title": "网络详情",
+    "retry": "重试",
+    "expand": "展开详情",
+    "collapse": "收起详情"
   },
   "nodeTable": {
     "node": "节点",
@@ -349,7 +353,12 @@
   },
   "management": {
     "name": "管理网",
-    "description": "由每个节点连接 server 所用的地址自动得到，所有节点都在上面，不能编辑、删除或加载。某个角色没有独立网络时由管理网承担；每个节点可以分别关闭它承担的角色，在下表中逐个或批量设置，也可以在节点详情的“网络”页设置。",
+    "intro": {
+      "title": "管理网说明",
+      "source": "来源：由每个节点连接 server 所用的地址自动生成，所有节点都在这个网络上。",
+      "fixed": "不可修改：不能编辑或删除，也无需手动加载到节点。",
+      "roles": "承担角色：某个角色没有独立网络时，由管理网承担；可在下表按节点关闭，也可在节点详情的“网络”页设置。"
+    },
     "selector": "节点连接 server 所用的地址",
     "attachedTo": "全部节点",
     "title": "管理网",
@@ -374,14 +383,28 @@
       "title": "批量设置",
       "selectShown": "选中筛选结果（{{count}}）",
       "selected": "已选 {{count}} 个节点",
-      "keep": "保持不变",
-      "allow": "允许",
-      "deny": "禁止",
-      "apply": "批量设置",
+      "keep": "不修改",
+      "allow": "开启",
+      "deny": "关闭",
+      "apply": "应用",
       "confirm": "修改所选 {{count}} 个节点的管理网角色？只对新实例生效。",
-      "done": "已修改 {{count}} 个节点"
+      "done": "已修改 {{count}} 个节点",
+      "label": "批量设置所选节点"
     },
-    "saved": "已更新管理网角色"
+    "saved": "已更新管理网角色",
+    "carried": "由管理网承担",
+    "roleColumn": {
+      "serving": "推理服务",
+      "storage_sync": "存储同步",
+      "compute": "参数同步"
+    },
+    "roleTip": {
+      "serving": "推理请求经 agent 隧道到达该节点。关闭后，不能在该节点新建实例。",
+      "storage_sync": "节点之间直接传输模型和镜像。关闭后，该节点只从镜像源、模型源下载。",
+      "compute": "多机推理时节点之间的参数流量。关闭后，该节点不参与多机部署。"
+    },
+    "switchIntro": "开关决定：节点没有对应的独立网络时，这类流量是否走管理网",
+    "switchEffect": "修改只影响之后新建的实例，已在运行的实例不受影响。已由独立网络承担的角色会在开关旁标明。"
   },
   "monitor": {
     "scope": "每条线是一个节点；按这个网络在该节点上的网卡和 HCA 统计。",

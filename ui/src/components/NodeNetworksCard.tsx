@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { networkDetailPath } from "../pages/networks/networkLinks";
 import { Card, Descriptions, Empty, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -51,7 +52,7 @@ export default function NodeNetworksCard({ nodeUUID }: { nodeUUID: string }) {
                 dataIndex: "network_name",
                 render: (_, n) => (
                   <span>
-                    <Link to={`/networks/${n.network_id}`}>{networkName(t, { name: n.network_name, builtin: n.source === "management" })}</Link>
+                    <Link to={networkDetailPath(n.network_id)}>{networkName(t, { name: n.network_name, builtin: n.source === "management" })}</Link>
                     <WarningMark warnings={n.warnings} />
                   </span>
                 ),

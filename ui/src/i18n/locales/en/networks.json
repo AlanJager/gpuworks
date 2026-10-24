@@ -86,7 +86,11 @@
     "overrides": "Overrides: {{value}}",
     "attachedAt": "Attached {{time}}",
     "rdmaInferred": "Each node uses its fastest active RDMA ports (a RoCE port needs an IPv4 address on its interface) as HCAs, and the first HCA's interface address as bootstrap; InfiniBand without IPoIB uses the management address. Add or remove HCAs, or change the bootstrap, per node below.",
-    "acceleratorInferred": "Each node's rails are the accelerator cards whose port is up and has an address. The bootstrap is the host address the handshake uses, the management address by default; data moves on the cards' ports. Add or remove cards, or change the bootstrap, per node in the table below."
+    "acceleratorInferred": "Each node's rails are the accelerator cards whose port is up and has an address. The bootstrap is the host address the handshake uses, the management address by default; data moves on the cards' ports. Add or remove cards, or change the bootstrap, per node in the table below.",
+    "title": "Network details",
+    "retry": "Retry",
+    "expand": "Show details",
+    "collapse": "Hide details"
   },
   "nodeTable": {
     "node": "Node",
@@ -349,7 +353,12 @@
   },
   "management": {
     "name": "Management network",
-    "description": "Derived from the address each node reaches the server from. Every node is on it, and it cannot be edited, deleted or attached. It carries a role on a node that has no dedicated network for it; switch the roles it may carry per node below, one by one or in bulk, or on the node's Networks tab.",
+    "intro": {
+      "title": "About the management network",
+      "source": "Source: derived from the address each node reaches the server from; every node is on it.",
+      "fixed": "Fixed: it cannot be edited or deleted, and needs no attaching.",
+      "roles": "Roles: it carries a role on a node that has no dedicated network for it. Switch that off per node in the table below or on the node's Networks tab."
+    },
     "selector": "Address the node reaches the server from",
     "attachedTo": "All nodes",
     "title": "Management network",
@@ -374,14 +383,28 @@
       "title": "Bulk edit",
       "selectShown": "Select filtered ({{count}})",
       "selected": "{{count}} nodes selected",
-      "keep": "Keep",
-      "allow": "Allow",
-      "deny": "Deny",
+      "keep": "No change",
+      "allow": "On",
+      "deny": "Off",
       "apply": "Apply",
       "confirm": "Change the management network roles of the {{count}} selected nodes? Applies to new instances only.",
-      "done": "Updated {{count}} nodes"
+      "done": "Updated {{count}} nodes",
+      "label": "Bulk edit selected nodes"
     },
-    "saved": "Management network roles updated"
+    "saved": "Management network roles updated",
+    "carried": "Carried by the management network",
+    "roleColumn": {
+      "serving": "Serving",
+      "storage_sync": "Storage sync",
+      "compute": "Compute"
+    },
+    "roleTip": {
+      "serving": "Inference requests reach this node over the agent tunnel. When off, no new instance is placed on this node.",
+      "storage_sync": "Nodes copy models and images to each other directly. When off, this node downloads from the image or model source only.",
+      "compute": "Traffic between nodes in multi-node inference. When off, this node is left out of multi-node deployments."
+    },
+    "switchIntro": "Each switch decides whether this traffic takes the management network when the node has no dedicated network for it",
+    "switchEffect": "Changes apply to instances created afterwards; running instances are not affected. A role a dedicated network already carries is marked next to its switch."
   },
   "monitor": {
     "scope": "One line per node, counted on this network's interface and HCAs on that node.",

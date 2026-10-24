@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { storageDetailPath } from "./storage/storageLinks";
 import { launchCommand } from "./deploy/launchCommand";
 import { shellQuote } from "./deploy/shellQuote";
 import { Badge, Button, Checkbox, Collapse, Descriptions, Progress, Space, Tabs, Tag, Tooltip, Typography } from "antd";
@@ -156,7 +157,7 @@ export default function InstancePanel({ inst, params, rank, actions, imageDiffer
               {inst.model_files.map((file) => (
                 <Space key={`${file.model_id}-${file.path}`} size={6} wrap>
                   {file.storage_id ? (
-                    <Link to={`/storage/${file.storage_id}`}>{file.storage_name}</Link>
+                    <Link to={storageDetailPath(file.storage_id)}>{file.storage_name}</Link>
                   ) : (
                     <Typography.Text type="secondary">{t("instance.storageGone")}</Typography.Text>
                   )}
