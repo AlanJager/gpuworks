@@ -64,7 +64,7 @@ for arch in ("amd64", "arm64"):
         if len(manifests) != 1:
             raise SystemExit(f"probe archive for {arch} must contain one image, got {len(manifests)}")
         image = manifests[0]
-        if image.get("RepoTags") != ["gpuworks/partition-probe:v1"]:
+        if image.get("RepoTags") != ["gpuworks/partition-probe:v2"]:
             raise SystemExit(f"probe archive tag mismatch for {arch}: {image.get('RepoTags')}")
         config_name = image.get("Config", "")
         if not config_name.endswith(".json") or config_name not in names:
@@ -102,7 +102,7 @@ for arch in ("amd64", "arm64"):
             if actual_diff != expected_diff:
                 raise SystemExit(f"classic Docker layer content mismatch for {arch}: {actual_diff} != {expected_diff}")
         repositories = json.load(image_tar.extractfile("repositories"))
-        if repositories != {"gpuworks/partition-probe": {"v1": layers[-1].split("/", 1)[0]}}:
+        if repositories != {"gpuworks/partition-probe": {"v2": layers[-1].split("/", 1)[0]}}:
             raise SystemExit(f"probe archive repositories mismatch for {arch}: {repositories}")
 print("runtime asset manifest, architecture assets, probe checksums, and classic Docker archive structure verified")
 PY

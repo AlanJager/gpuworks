@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,14 +34,38 @@ static unsigned long long quota_mib(void) {
 
 static int probe_ascend(unsigned long long quota) {
     typedef int (*get_hbm_fn)(int, struct dsmi_hbm_info *);
+    typedef int (*get_logic_id_fn)(unsigned int, unsigned int *);
+    const char *raw = getenv("GPUWORKS_PARTITION_PROBE_DEVICE");
+    char *end = NULL;
+    errno = 0;
+    unsigned long physical = strtoul(raw ? raw : "", &end, 10);
+    if (!raw || raw[0] < '0' || raw[0] > '9' || errno || *end || physical > INT_MAX) {
+        fprintf(stderr, "invalid GPUWORKS_PARTITION_PROBE_DEVICE=%s\n", raw ? raw : "");
+        return 2;
+    }
+    /* DSMI uses container-local logical IDs. Ask the driver to resolve the
+     * selected physical device: OCI containers can compact IDs, whereas
+     * PRoot retains the host view, including gaps in its device inventory. */
+    get_logic_id_fn get_logic_id = (get_logic_id_fn)dlsym(RTLD_DEFAULT, "dsmi_get_logicid_from_phyid");
+    if (!get_logic_id) {
+        fprintf(stderr, "dsmi_get_logicid_from_phyid unavailable: %s\n", dlerror());
+        return 3;
+    }
+    unsigned int logical = UINT_MAX;
+    int rc = get_logic_id((unsigned int)physical, &logical);
+    if (rc != 0 || logical > INT_MAX) {
+        fprintf(stderr, "Ascend device mapping failed: physical_id=%lu rc=%d logical_id=%u\n", physical, rc, logical);
+        return 4;
+    }
     get_hbm_fn get_hbm = (get_hbm_fn)dlsym(RTLD_DEFAULT, "dsmi_get_hbm_info");
     if (!get_hbm) {
         fprintf(stderr, "dsmi_get_hbm_info unavailable: %s\n", dlerror());
         return 3;
     }
     struct dsmi_hbm_info info = {0};
-    int rc = get_hbm(0, &info);
-    printf("backend=ascend rc=%d total_kb=%llu quota_mib=%llu\n", rc, info.memory_size, quota);
+    rc = get_hbm((int)logical, &info);
+    printf("backend=ascend physical_id=%lu logical_id=%u rc=%d total_kb=%llu quota_mib=%llu\n",
+           physical, logical, rc, info.memory_size, quota);
     if (rc != 0 || info.memory_size != quota * 1024ULL) {
         fprintf(stderr, "Ascend slice view mismatch: got %llu KB, want %llu KB\n",
                 info.memory_size, quota * 1024ULL);

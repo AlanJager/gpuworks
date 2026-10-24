@@ -52,6 +52,16 @@ gcc -c -I. -Ilib/replace -Ibin/default -D__STDC_WANT_LIB_EXT1__=1 -O2 \
 ar rcs "$BUILD_ROOT/talloc/lib/libtalloc.a" "$BUILD_ROOT/talloc.o" "$BUILD_ROOT/replace.o"
 cp talloc.h "$BUILD_ROOT/talloc/include/"
 gcc -static -O2 "$HERE/gate_unix_socket.c" -o "$BUILD_ROOT/gate-unix-socket"
+gcc -static -O2 "$HERE/gate_path_resolution.c" -o "$BUILD_ROOT/gate-path-resolution"
+
+check_path_resolution() {
+	local proot="$1" guest="/gpuworks-proot-path-$$" source="$BUILD_ROOT/path-source"
+	test ! -e "$guest"
+	mkdir -p "$source/data/leaf"
+	test -L "$source/link" || ln -s data "$source/link"
+	"$proot" -0 -k 6.8.0 -r / -b "$source:$guest" -w / \
+	 "$BUILD_ROOT/gate-path-resolution" "$guest" | grep -qx 'path_resolution=pass'
+}
 
 check_unix_socket_isolation() {
 	local proot="$1" name="$2" gate_root ready host_socket guest_socket pid isolated=false
@@ -104,6 +114,7 @@ build_variant() {
 	cd "$tree"
 	patch --batch --forward -p1 < "$patch_file"
 	patch --batch --forward -p1 < "$PATCH_DIR/proot-temp-noise.patch"
+	patch --batch --forward -p1 < "$PATCH_DIR/proot-arm64-faccessat2.patch"
 	make -C src clean >/dev/null 2>&1 || true
 	PKG_CONFIG_PATH="$BUILD_ROOT/talloc/lib/pkgconfig" make -C src \
 		CFLAGS="-O2 -I$BUILD_ROOT/talloc/include" \
@@ -118,6 +129,7 @@ build_variant() {
 		-b /proc:/proc -b /sys:/sys -b /dev:/dev -b /etc/hosts:/etc/hosts \
 		-w / /usr/bin/python3 -c 'import math; print("ok")' | grep -qx ok
 
+	check_path_resolution "$output"
 	if check_unix_socket_isolation "$output" "$name"; then
 		isolation=pass
 	else
@@ -136,6 +148,8 @@ build_variant() {
 		echo "talloc_sha256=$TALLOC_SHA256"
 		echo "variant_patch_sha256=$(sha256sum "$patch_file" | awk '{print $1}')"
 		echo "temp_patch_sha256=$(sha256sum "$PATCH_DIR/proot-temp-noise.patch" | awk '{print $1}')"
+		echo "arm64_faccessat2_patch_sha256=$(sha256sum "$PATCH_DIR/proot-arm64-faccessat2.patch" | awk '{print $1}')"
+		echo "path_resolution_gate=pass"
 		echo "compiler=$(gcc --version | head -n1)"
 		echo "python_k_6_8_gate=pass"
 		echo "af_unix_path_isolation=$isolation"
