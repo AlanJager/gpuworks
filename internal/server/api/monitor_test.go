@@ -612,3 +612,86 @@ func TestMonitorPickedRange(t *testing.T) {
 		t.Fatal("a refused range reached the service")
 	}
 }
+
+// The metric browser's series name their nodes and deployments, live or
+// deleted: a deleted one by the name it left, marked so. A series whose node
+// or deployment neither the store nor the deleted records know keeps its
+// labels as they were.
+func TestMonitorSeriesNamesLiveAndDeletedNodesAndDeployments(t *testing.T) {
+	st, signer, token := monitorTestToken(t)
+	if _, err := st.RegisterNode("node-live", store.HashToken("a"), "host-live"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.RegisterNode("node-gone", store.HashToken("b"), "host-gone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteNode("node-gone"); err != nil {
+		t.Fatal(err)
+	}
+	live, err := st.CreateDeployment(&store.Deployment{Name: "live-svc", ServedName: "org/live", State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone, err := st.CreateDeployment(&store.Deployment{Name: "gone-svc", ServedName: "org/gone", State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteDeployment(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	dep := func(id uint) string { return strconv.FormatUint(uint64(id), 10) }
+	fake := &fakeMonitorService{series: []dto.MonitorSeries{
+		{Labels: map[string]string{"node": "node-live"}, Points: []dto.Point{{1000, 1}}},
+		{Labels: map[string]string{"node": "node-gone"}, Points: []dto.Point{{1000, 2}}},
+		{Labels: map[string]string{"node": "node-unknown"}, Points: []dto.Point{{1000, 3}}},
+		{Labels: map[string]string{"deployment": dep(live.ID)}, Points: []dto.Point{{1000, 4}}},
+		{Labels: map[string]string{"deployment": dep(gone.ID)}, Points: []dto.Point{{1000, 5}}},
+		{Labels: map[string]string{"deployment": "9999"}, Points: []dto.Point{{1000, 6}}},
+	}}
+	r := Router(Deps{Store: st, AuthSigner: signer, Monitor: fake})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/series?metric=gpuworks_gpu_utilization&by=node", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	want := `{"items":[` +
+		`{"labels":{"node":"node-live","node_name":"host-live"},"points":[[1000,1]]},` +
+		`{"labels":{"node":"node-gone","node_deleted":"true","node_name":"host-gone"},"points":[[1000,2]]},` +
+		`{"labels":{"node":"node-unknown"},"points":[[1000,3]]},` +
+		`{"labels":{"deployment":"` + dep(live.ID) + `","deployment_name":"live-svc"},"points":[[1000,4]]},` +
+		`{"labels":{"deployment":"` + dep(gone.ID) + `","deployment_deleted":"true","deployment_name":"gone-svc"},"points":[[1000,5]]},` +
+		`{"labels":{"deployment":"9999"},"points":[[1000,6]]}],"total":6}`
+	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != want {
+		t.Fatalf("series = %d\n got %s\nwant %s", rec.Code, got, want)
+	}
+}
+
+// A deleted deployment's monitor page answers 404 with the names it left, so
+// a link to it reads as what it was; one never known stays a plain 404.
+func TestMonitorDeploymentDeletedIs404WithItsNames(t *testing.T) {
+	st, signer, token := monitorTestToken(t)
+	gone, err := st.CreateDeployment(&store.Deployment{Name: "gone-svc", ServedName: "org/gone", State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteDeployment(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	r := Router(Deps{Store: st, AuthSigner: signer, Monitor: &fakeMonitorService{deploymentErr: ErrMonitorDeploymentNotFound}})
+	get := func(id uint) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/monitor/deployments/"+strconv.FormatUint(uint64(id), 10), nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+	rec := get(gone.ID)
+	id := strconv.FormatUint(uint64(gone.ID), 10)
+	want := `{"code":"MONITOR_DEPLOYMENT_DELETED","error":"deployment gone-svc was deleted","params":{"deployment_id":` + id + `,"name":"gone-svc","served_name":"org/gone"}}`
+	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusNotFound || got != want {
+		t.Fatalf("deleted = %d\n got %s\nwant %s", rec.Code, got, want)
+	}
+	unknown := get(gone.ID + 100)
+	if unknown.Code != http.StatusNotFound || strings.Contains(unknown.Body.String(), ErrorMonitorDeploymentDeleted) {
+		t.Fatalf("unknown = %d %s", unknown.Code, unknown.Body.String())
+	}
+}

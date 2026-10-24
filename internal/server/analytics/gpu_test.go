@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -158,5 +160,98 @@ func TestGPUsNarrowedToAFewCardsAnswerEachCard(t *testing.T) {
 	none, err := f.svc.GPUs(ctx, GPUQuery{Query: q, NodeUUIDs: []string{}})
 	if err != nil || none.CardCount != 0 || len(none.Cards) != 0 || len(none.Groups) != 0 || len(none.Heat) != 0 {
 		t.Fatalf("no nodes = %+v %v", none, err)
+	}
+}
+
+// An offline node's cards are still in the inventory: present, held by no
+// one now. A deleted node's cards keep their history, named by the name the
+// node left and marked; a page narrowed to their model lists them one by
+// one as its groups count them.
+func TestGPUsOfOfflineAndDeletedNodes(t *testing.T) {
+	f, uuids := fleetFixture(t)
+	ctx := context.Background()
+	q := Query{FromMS: f.at(22, 0), ToMS: f.at(23, 0), Granularity: Hour}
+	db := f.st.DB()
+	if err := db.Model(&store.Node{}).Where("uuid = ?", uuids[0]).Update("state", store.NodeStateOffline).Error; err != nil {
+		t.Fatal(err)
+	}
+	offline, err := f.svc.GPUs(ctx, GPUQuery{Query: q, GroupBy: "gpu", NodeUUIDs: []string{uuids[0]}})
+	if err != nil || len(offline.Cards) != 3 {
+		t.Fatalf("offline node = %+v %v", offline.Cards, err)
+	}
+	for _, c := range offline.Cards {
+		if !c.Present || c.NodeDeleted || c.NodeName != "gpu-000" || len(c.Deployments) != 0 {
+			t.Fatalf("offline node's card = %+v", c)
+		}
+	}
+
+	if err := f.st.DeleteNode(uuids[118]); err != nil {
+		t.Fatal(err)
+	}
+	// Deleted within the range.
+	if err := db.Model(&store.DeletedNode{}).Where("uuid = ?", uuids[118]).Update("deleted_at", time.UnixMilli(f.at(22, 30)).UTC()).Error; err != nil {
+		t.Fatal(err)
+	}
+	l40s, err := f.svc.GPUs(ctx, GPUQuery{Query: q, GroupBy: "node", GPUModel: "L40S"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !l40s.Detail || l40s.CardCount != 3 || len(l40s.Cards) != 6 {
+		t.Fatalf("L40S: detail %v count %d cards %d", l40s.Detail, l40s.CardCount, len(l40s.Cards))
+	}
+	gone := 0
+	for _, c := range l40s.Cards {
+		if c.NodeUUID != uuids[118] {
+			if c.NodeDeleted || !c.Present || c.NodeName != "gpu-119" {
+				t.Fatalf("live card = %+v", c)
+			}
+			continue
+		}
+		gone++
+		if !c.NodeDeleted || c.Present || c.NodeName != "gpu-118" || c.GPUModel != "L40S" || *c.UtilAvg != 118 {
+			t.Fatalf("deleted node's card = %+v", c)
+		}
+	}
+	// The listed cards add up to what the groups count: 118% and 119%.
+	if gone != 3 || *l40s.Totals.UtilAvg != 118.5 {
+		t.Fatalf("deleted cards %d, totals %+v", gone, l40s.Totals)
+	}
+	if len(l40s.Groups) != 2 {
+		t.Fatalf("groups = %+v", l40s.Groups)
+	}
+	for _, g := range l40s.Groups {
+		deleted := g.Key == uuids[118]
+		if g.NodeDeleted != deleted || (deleted && (g.Label != "gpu-118" || g.Cards != 0 || g.Nodes != 0)) {
+			t.Fatalf("node row = %+v", g)
+		}
+	}
+	for _, r := range l40s.Heat {
+		if r.NodeDeleted != (r.Key == uuids[118]) || (r.NodeDeleted && r.Label != "gpu-118") {
+			t.Fatalf("heat row = %+v", r)
+		}
+	}
+	byCard, err := f.svc.GPUs(ctx, GPUQuery{Query: q, GroupBy: "gpu", GPUModel: "L40S"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range byCard.Heat {
+		if r.NodeDeleted != strings.HasPrefix(r.Key, uuids[118]+"/") || (r.NodeDeleted && !strings.HasPrefix(r.Label, "gpu-118 #")) {
+			t.Fatalf("card heat row = %+v", r)
+		}
+	}
+
+	// Deleted before the range began, so it can hold none of the range's
+	// samples: its node is not read.
+	if err := db.Model(&store.DeletedNode{}).Where("uuid = ?", uuids[118]).Update("deleted_at", time.UnixMilli(f.at(21, 0)).UTC()).Error; err != nil {
+		t.Fatal(err)
+	}
+	earlier, err := f.svc.GPUs(ctx, GPUQuery{Query: q, GroupBy: "gpu", GPUModel: "L40S"})
+	if err != nil || len(earlier.Cards) != 3 {
+		t.Fatalf("earlier = %+v %v", earlier.Cards, err)
+	}
+	for _, c := range earlier.Cards {
+		if c.NodeUUID == uuids[118] {
+			t.Fatalf("a node deleted before the range is read: %+v", c)
+		}
 	}
 }

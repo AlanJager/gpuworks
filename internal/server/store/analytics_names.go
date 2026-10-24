@@ -1,8 +1,8 @@
 package store
 
 // Names for usage analytics: the deployments, nodes and users its rows
-// refer to, read for those IDs only, lean columns, and deployments deleted
-// since from what they left behind.
+// refer to, read for those IDs only, lean columns, and deployments and nodes
+// deleted since from what they left behind.
 
 // DeploymentName is what a statistic shows for a deployment.
 type DeploymentName struct {
@@ -41,9 +41,16 @@ func (s *Store) DeploymentNames(ids []uint) (map[uint]DeploymentName, error) {
 	return out, nil
 }
 
-// NodeNamesByUUID names the nodes of uuids: the name given, else the host's.
-func (s *Store) NodeNamesByUUID(uuids []string) (map[string]string, error) {
-	out := make(map[string]string, len(uuids))
+// NodeName is what a statistic shows for a node.
+type NodeName struct {
+	Name    string
+	Deleted bool
+}
+
+// NodeNamesByUUID names the nodes of uuids, live or deleted: the name given,
+// else the host's; a UUID neither knows is left out.
+func (s *Store) NodeNamesByUUID(uuids []string) (map[string]NodeName, error) {
+	out := make(map[string]NodeName, len(uuids))
 	if len(uuids) == 0 {
 		return out, nil
 	}
@@ -53,10 +60,23 @@ func (s *Store) NodeNamesByUUID(uuids []string) (map[string]string, error) {
 	}
 	for _, n := range nodes {
 		if n.Name != "" {
-			out[n.UUID] = n.Name
+			out[n.UUID] = NodeName{Name: n.Name}
 		} else {
-			out[n.UUID] = n.Hostname
+			out[n.UUID] = NodeName{Name: n.Hostname}
 		}
+	}
+	var missing []string
+	for _, uuid := range uuids {
+		if _, ok := out[uuid]; !ok {
+			missing = append(missing, uuid)
+		}
+	}
+	gone, err := s.DeletedNodes(missing)
+	if err != nil {
+		return nil, err
+	}
+	for uuid, n := range gone {
+		out[uuid] = NodeName{Name: n.Name, Deleted: true}
 	}
 	return out, nil
 }

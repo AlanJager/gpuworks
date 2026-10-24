@@ -32,9 +32,15 @@ type RequestSource interface {
 	// Lookup finds finished requests by trace id or request id across
 	// deployments (lookup.go).
 	Lookup(ctx context.Context, q LookupQuery) ([]uxrecord.Request, error)
-	// DeploymentNames names deployments by id; one that no longer exists
-	// is left out.
-	DeploymentNames(ids []uint) map[uint]string
+	// DeploymentNames names deployments by id, live or deleted (by the name
+	// a deleted one left); one neither knows is left out.
+	DeploymentNames(ids []uint) map[uint]DeploymentName
+}
+
+// DeploymentName is what a request view shows for a deployment.
+type DeploymentName struct {
+	Name    string
+	Deleted bool
 }
 
 // ErrBadHistoryQuery is what a RequestSource's History wraps when it refuses

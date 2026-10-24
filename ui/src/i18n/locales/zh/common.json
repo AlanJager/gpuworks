@@ -331,6 +331,7 @@
     "MONITOR_RANGE_INVALID": "时间范围必须是 15m、1h、6h、24h 或 7d 之一。",
     "MONITOR_REQUESTS_VIEW_INVALID": "请求视图必须是 live 或 history。",
     "MONITOR_REQUESTS_QUERY_INVALID": "请求列表的查询参数无效：条数须在 1 到 500 之间，key 须为数字，游标须是本列表返回的。",
+    "MONITOR_DEPLOYMENT_DELETED": "服务“{{name}}”已删除。它的历史用量、服务质量与卡时仍可在用量分析中查看。",
     "MONITOR_GROUP_INVALID": "分组字段必须是 node、deployment、instance 或 gpu。",
     "MONITOR_AGGREGATION_INVALID": "聚合方式必须是 avg、sum、max 或 rate。",
     "MONITOR_SERIES_TOO_LARGE": "请求的序列范围过大；请缩小时间范围、增大步长，或减少分组标签数量。",

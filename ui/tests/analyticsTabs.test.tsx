@@ -259,11 +259,47 @@ test("the GPU table groups by card model, tints the idle groups and counts cards
   await choose(user, a.gpus.group.gpu);
   await waitFor(() => assert.equal(last(calls.gpus).groupBy, "gpu"));
   await waitFor(() => assert.equal(bodyRows().length, 4));
+  // A deleted node's card says so, and is neither held nor free now.
   const gone = rowNamed("gone-node #0");
-  assert.ok(within(gone).getByText(a.gpus.table.removed));
-  assert.ok(within(gone).getByText(a.gpus.table.unassigned));
+  assert.ok(within(gone).getByText(a.gpus.table.nodeDeleted));
+  assert.ok(within(gone).queryByText(a.gpus.table.removed) === null);
+  assert.ok(within(gone).queryByText(a.gpus.table.unassigned) === null);
   const idle = rowNamed("6000*4 #1");
   assert.ok(within(idle).getByText(a.gpus.table.idle));
+});
+
+// By node, a deleted node's row is marked in the table and the heat map, and
+// is no choice in the node filter (it matches no label); a card unplugged
+// from a node still there is removed, not deleted.
+test("the GPU tab marks a deleted node's rows and leaves it out of the node filter", async () => {
+  stub();
+  const deleted = { key: "node-c", label: "gone-node", node_deleted: true, cards: 0, nodes: 0, models: [], deployments: [], unassigned: 0, ...fx.gpusToday().totals };
+  const live = { key: "node-a", label: "6000*4", node_deleted: false, cards: 2, nodes: 1, models: ["RTX 6000D"], deployments: [], unassigned: 2, ...fx.gpusToday().totals };
+  analyticsApi.gpus = async (p) => {
+    calls.gpus.push(p);
+    const today = fx.gpusToday();
+    return fx.gpusToday({
+      group_by: "node",
+      cards: [today.cards[0], { ...today.cards[1], present: false }, today.cards[3]],
+      groups: [live, deleted],
+      heat: [
+        { key: "node-a", label: "6000*4", node_deleted: false, values: [1, 2, 3, 4] },
+        { key: "node-c", label: "gone-node", node_deleted: true, values: [5, null, null, null] },
+      ],
+    });
+  };
+  mount("/analytics/gpus?by=node");
+  await ready("cards");
+  await waitFor(() => assert.equal(bodyRows().length, 2));
+  assert.ok(within(rowNamed("gone-node")).getByText(a.gpus.table.nodeDeleted));
+  const kept = rowNamed("6000*4");
+  assert.ok(within(kept).queryByText(a.gpus.table.nodeDeleted) === null);
+  assert.ok(within(kept).getByText(i18n.t("analytics:gpus.table.removedCount", { count: 1 })));
+  assert.deepEqual(option(a.gpus.chart.aria).yAxis[0].data, ["6000*4", i18n.t("analytics:gpus.chart.deletedRow", { label: "gone-node" })]);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: a.gpus.filters.labels }));
+  await waitFor(() => assert.ok(screen.getAllByText(/6000\*4/).length > 1, "the live node is a choice"));
+  assert.ok(!screen.queryAllByRole("option").some((o) => o.textContent?.includes("gone-node")), "the deleted node is no choice");
 });
 
 test("switching the heat map between utilization, power, temperature and memory asks for that metric and rescales the colours", async () => {

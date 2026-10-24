@@ -67,8 +67,9 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
     const found = d.by_model.filter((m) => m.model).map((m) => ({ value: m.model, label: m.model }));
     setModels((old) => merge(old, found, replace));
     const named = new Map<string, string>();
-    for (const c of d.cards) named.set(c.node_uuid, c.node_name || c.node_uuid);
-    if (d.group_by === "node") for (const g of d.groups) named.set(g.key, g.label);
+    // A deleted node matches no label filter, so it is no choice.
+    for (const c of d.cards) if (!c.node_deleted) named.set(c.node_uuid, c.node_name || c.node_uuid);
+    if (d.group_by === "node") for (const g of d.groups) if (!g.node_deleted) named.set(g.key, g.label);
     const nodeName = systemLabelName(NODE_KEY, tNodes);
     const picks = [...named].map(([uuid, name]) => ({ value: `${NODE_KEY}=${uuid}`, label: `${nodeName}: ${name}` }));
     setNodes((old) => merge(old, picks, false).sort((x, y) => x.label.localeCompare(y.label)));
@@ -135,7 +136,8 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
 
   const heat = (d: GPUAnalytics) => {
     const labels = d.range.buckets.map((b) => bucketLabel(b, tz, d.range.granularity, spansDays(d.range.buckets, tz)));
-    return heatmapOption({ labels, rows: d.heat, metric: d.metric, valueFormat: metricFormat(d.metric) });
+    const rows = d.heat.map((r) => (r.node_deleted ? { ...r, label: t("gpus.chart.deletedRow", { label: r.label }) } : r));
+    return heatmapOption({ labels, rows, metric: d.metric, valueFormat: metricFormat(d.metric) });
   };
 
   const tooManyHelp = () => (

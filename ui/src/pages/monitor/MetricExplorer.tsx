@@ -1,8 +1,9 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Collapse, Select, Space, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, monitorSeriesURL, usePolling, type MonitorMetricSource, type MonitorRange, type MonitorSeriesParams } from "../../api";
 import TimeSeriesChart from "../../components/TimeSeriesChart";
+import { explorerSeriesName } from "./monitorSeries";
 
 // The explorer lists the server's metric catalog (GET /api/v1/monitor/metrics)
 // grouped by what measures each series, in this order; it spells no metric
@@ -43,6 +44,7 @@ export default function MetricExplorer({ range }: { range: MonitorRange }) {
   const { data, error } = usePolling(() => api.monitorSeries(params), 0, [metric, by, fn, range]);
   const series = useMemo(() => data?.items ?? [], [data]);
   const url = monitorSeriesURL(params);
+  const seriesName = useCallback((labels: Record<string, string>, index: number) => explorerSeriesName(t, labels, index), [t]);
 
   const metricOptions = useMemo(() => {
     const entries = vocabulary.data?.items ?? [];
@@ -96,7 +98,7 @@ export default function MetricExplorer({ range }: { range: MonitorRange }) {
                   />
                 </Field>
               </Space>
-              <TimeSeriesChart series={series} height={220} />
+              <TimeSeriesChart series={series} height={220} seriesName={seriesName} />
               {quantileFamilies.has(metric) && (
                 <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 6 }}>
                   {t("metricExplorer.quantileFamilyNote")}

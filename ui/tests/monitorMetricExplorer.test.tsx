@@ -259,3 +259,14 @@ test("an empty catalog leaves the explorer without metric options rather than in
   fireEvent.mouseDown(screen.getByRole("combobox", { name: "Metric" }));
   await waitFor(() => assert.equal(document.querySelectorAll(".ant-select-item-option").length, 0));
 });
+
+test("explorer series name their node or deployment, a deleted one marked deleted", async () => {
+  const { explorerSeriesName } = await import("../src/pages/monitor/monitorSeries.ts");
+  const t = i18n.t.bind(i18n);
+  assert.equal(explorerSeriesName(t, { node: "n-1", node_name: "gpu3" }, 0), "gpu3");
+  assert.equal(explorerSeriesName(t, { node: "n-2", node_name: "gpu4", node_deleted: "true" }, 0), "gpu4 (deleted)");
+  assert.equal(explorerSeriesName(t, { node: "n-2", node_name: "gpu4", node_deleted: "true", gpu: "1" }, 0), "gpu4 (deleted) · GPU 1");
+  assert.equal(explorerSeriesName(t, { deployment: "7", deployment_name: "qwen" }, 0), "qwen");
+  assert.equal(explorerSeriesName(t, { deployment: "8", deployment_name: "old", deployment_deleted: "true" }, 0), "old (deleted)");
+  assert.equal(explorerSeriesName(t, { deployment: "9" }, 0), "#9");
+});

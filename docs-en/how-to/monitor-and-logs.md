@@ -13,6 +13,8 @@ After completing this guide, you can find the relevant replica from an incident 
    “No samples yet” means no data has arrived yet. If a node is offline, restore its connection first. Do not use old values to judge its current load.
 3. Open the relevant service's monitoring page to view request reconciliation, latency, throughput, and running requests. For network interface, RDMA port, and role traffic definitions, see the [Network Metrics Reference](../reference/network-metrics.md).
 
+After a service or node is deleted, its raw samples remain until they expire (72 hours by default). The Monitor Center service list and VRAM bars show only existing services and nodes; when the metric explorer groups by node or deployment, deleted ones are still shown by the name they had when deleted and marked “deleted”. Opening a deleted service's monitoring page says it has been deleted and links to Analytics, which keeps its usage, service quality, and GPU hours.
+
 Select a time range at the upper right. Presets from 15 minutes to 7 days end at the current time and refresh automatically with **Follow latest**. You can also use the date picker to select a custom range of up to 30 days that does not extend into the future, subject to the raw metric sample retention configured under [Data retention](../reference/api.md#analytics用量分析). A custom range stops automatic refresh: charts, request distributions, latency breakdowns, and signals use that range, while the service list, replicas, and health checks still show their current states. A message on the page explains this distinction. The selection is stored in the URL (`?from=…&to=…`), so you can share it directly. For longer-term hourly or daily trends in token usage, service quality, GPU utilization, and GPU hours, open **Usage analytics**; see [View Usage Analytics](analyze-operations.md).
 
 Deployment metrics have two sources. Confirm how they are measured before comparing engines:
@@ -48,6 +50,7 @@ Choose an entry point based on the information you have:
 
 - **You have a request ID or trace id**: Paste the ID into the search box at the top right of Monitor Center. A trace id is a 32-character hexadecimal value that can list requests in the same trace across deployments.
   Gateway-generated trace ids directly identify the time. Other IDs are searched within the last 1 hour by default; you can expand this to the last 24 hours.
+  When a request's deployment has been deleted, it is shown by the name it had when deleted and marked “deleted”.
 - **You do not yet know the specific request**: Open **History** on the service page and search in reverse chronological order. Select a time range, then filter by result (Completed, Hit the length limit, Client left, Connection cut, Error) and end-to-end time.
   Each page contains 50 rows. Use **Previous / Next** to continue searching. The total request count at the bottom is unaffected by filters or list sampling.
 

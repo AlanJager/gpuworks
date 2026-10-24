@@ -24,12 +24,13 @@ func lookupRecord(id string, dep uint, trace tracecontext.TraceID) uxrecord.Requ
 }
 
 // A trace's requests come back across deployments with the deployments
-// named; a deleted deployment is listed without a name.
+// named: a deleted one by the name it left, marked deleted; one deleted
+// before names were kept is listed without a name.
 func TestLookupNamesTheDeploymentsOfATrace(t *testing.T) {
 	trace, _ := tracecontext.ParseTraceID(upstreamTrace)
 	src := &fakeRequests{
-		lookups:  [][]uxrecord.Request{{lookupRecord("r2", 9, trace), lookupRecord("r1", 7, trace), lookupRecord("r0", 9, trace)}},
-		depNames: map[uint]string{7: "qwen"},
+		lookups:  [][]uxrecord.Request{{lookupRecord("r2", 9, trace), lookupRecord("r1", 7, trace), lookupRecord("r0", 9, trace), lookupRecord("r3", 5, trace)}},
+		depNames: map[uint]DeploymentName{7: {Name: "qwen"}, 5: {Name: "org/old", Deleted: true}},
 		names:    map[uint]string{},
 	}
 	out, err := requestsService(src).LookupRequests(context.Background(), dto.MonitorRequestLookupQuery{TraceID: strings.ToUpper(upstreamTrace), FromMS: 1000, ToMS: 2000, Limit: 20})
@@ -42,10 +43,10 @@ func TestLookupNamesTheDeploymentsOfATrace(t *testing.T) {
 	if out.Window != "requested" || out.FromMS != 1000 || out.ToMS != 2000 || out.AsOf != requestsNow.UnixMilli() {
 		t.Fatalf("window = %+v", out)
 	}
-	if len(out.Requests) != 3 || out.Requests[0].TraceID != upstreamTrace || out.Requests[1].DeploymentID != 7 || out.Requests[0].Phase != "done" {
+	if len(out.Requests) != 4 || out.Requests[0].TraceID != upstreamTrace || out.Requests[1].DeploymentID != 7 || out.Requests[0].Phase != "done" {
 		t.Fatalf("requests = %+v", out.Requests)
 	}
-	if want := []dto.MonitorLookupDeployment{{ID: 9, Name: ""}, {ID: 7, Name: "qwen"}}; !reflect.DeepEqual(out.Deployments, want) {
+	if want := []dto.MonitorLookupDeployment{{ID: 9, Name: ""}, {ID: 7, Name: "qwen"}, {ID: 5, Name: "org/old", Deleted: true}}; !reflect.DeepEqual(out.Deployments, want) {
 		t.Fatalf("deployments = %+v", out.Deployments)
 	}
 }

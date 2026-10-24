@@ -78,13 +78,21 @@ func (s *requestSource) Lookup(ctx context.Context, q monitorapi.LookupQuery) ([
 }
 
 // DeploymentNames names the deployments of a lookup's requests (a handful)
-// by their served name; a deleted one is left out.
-func (s *requestSource) DeploymentNames(ids []uint) map[uint]string {
-	out := make(map[uint]string, len(ids))
-	for _, id := range ids {
-		if dep, err := s.store.GetDeployment(id); err == nil {
-			out[id] = dep.ServedName
+// by their served name, in one read: a deleted one by the name it left. A
+// failed read names none, as for deployments deleted before names were
+// kept.
+func (s *requestSource) DeploymentNames(ids []uint) map[uint]monitorapi.DeploymentName {
+	out := make(map[uint]monitorapi.DeploymentName, len(ids))
+	names, err := s.store.DeploymentNames(ids)
+	if err != nil {
+		return out
+	}
+	for id, n := range names {
+		name := n.ServedName
+		if name == "" {
+			name = n.Name
 		}
+		out[id] = monitorapi.DeploymentName{Name: name, Deleted: n.Deleted}
 	}
 	return out
 }

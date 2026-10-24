@@ -194,6 +194,11 @@
     },
     "tabs": {
       "overview": "概览"
+    },
+    "deleted": {
+      "title": "服务“{{name}}”已删除",
+      "help": "已删除服务的实时监控不再可用。它的历史用量、服务质量与卡时保留在用量分析中，直到超出数据保留期。",
+      "openAnalytics": "查看用量分析"
     }
   },
   "stage": {
@@ -359,7 +364,8 @@
       "pdQueue": "prefill 实例排队",
       "pdCompute": "prefill 实例计算",
       "pdKV": "KV 传输·排队",
-      "pdFallback": "降级原因"
+      "pdFallback": "降级原因",
+      "deleted": "已删除"
     },
     "pdFallback": {
       "no_prefill": "没有可用的 prefill 实例",
@@ -367,7 +373,8 @@
       "prefill_5xx": "prefill 实例出错（5xx）",
       "prefill_no_kv_params": "prefill 实例没有返回 KV 交接参数",
       "prefill_failed": "prefill 调用失败"
-    }
+    },
+    "deletedName": "{{name}}（已删除）"
   },
   "latency": {
     "title": "端到端延迟拆解",

@@ -345,7 +345,7 @@ func TestMonitorRequestLookupWireJSON(t *testing.T) {
 			ID: "r1", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736", DeploymentID: 7, ReceivedMS: 4000, Phase: "done",
 			Source: "api", Status: &status, Outcome: "ok", Result: "completed", Weight: 1, Segments: []dto.MonitorRequestSegment{},
 		}},
-		Deployments: []dto.MonitorLookupDeployment{{ID: 7, Name: "qwen"}},
+		Deployments: []dto.MonitorLookupDeployment{{ID: 7, Name: "qwen"}, {ID: 8, Name: "org/old", Deleted: true}},
 	}}
 	rec := monitorGet(t, Deps{Store: st, AuthSigner: signer, Monitor: fake}, token,
 		"/api/v1/monitor/requests/lookup?trace_id=4BF92F3577B34DA6A3CE929D0E0E4736&from=1000&to=5000&limit=20")
@@ -358,12 +358,12 @@ func TestMonitorRequestLookupWireJSON(t *testing.T) {
 		`"first_answer_ms":null,"last_chunk_ms":null,"end_ms":null,"events":0,"think_events":0,"max_gap_ms":null,"status":200,` +
 		`"outcome":"ok","finish_reason":"","result":"completed","prompt_tokens":null,"cached_tokens":null,"completion_tokens":null,` +
 		`"reasoning_tokens":null,"engine_queue_ms":null,"engine_prefill_ms":null,"engine_decode_ms":null,"weight":1,"segments":[],"pd":null}],` +
-		`"deployments":[{"id":7,"name":"qwen"}]}`
+		`"deployments":[{"id":7,"name":"qwen","deleted":false},{"id":8,"name":"org/old","deleted":true}]}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Fatalf("body =\n%s\nwant\n%s", got, want)
 	}
 	var back dto.MonitorRequestLookup
-	if err := json.Unmarshal(rec.Body.Bytes(), &back); err != nil || back.Requests[0].TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" || back.Deployments[0].Name != "qwen" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &back); err != nil || back.Requests[0].TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" || back.Deployments[0].Name != "qwen" || !back.Deployments[1].Deleted {
 		t.Fatalf("round trip = %+v, %v", back, err)
 	}
 	// The trace id goes to the service as typed; it parses it.

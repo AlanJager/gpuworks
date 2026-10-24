@@ -67,7 +67,7 @@ const defaultValueFmt = autoValueFmt;
 
 // defaultSeriesName names a line by what tells it apart from its neighbours:
 // the metric it is, the card it is on, the instance it belongs to, and only
-// failing all three the node. It never prints a label's key - a legend
+// failing all three the node or the deployment. It never prints a label's key - a legend
 // reading "metric Running requests" or "node b5070775… · gpu 1 · gpu_uuid
 // GPU-e330…" names the wire format, not the line - and a caller that knows
 // the nodes' names passes its own seriesName.
@@ -80,8 +80,10 @@ export function defaultSeriesName(labels: Record<string, string>, idx: number): 
   if (labels.gpu) parts.push(labels.node_name ? `${labels.node_name} · GPU ${labels.gpu}` : `GPU ${labels.gpu}`);
   if (labels.instance) parts.push(shorten(labels.instance));
   if (!parts.length && labels.node) parts.push(labels.node_name || shorten(labels.node));
+  // deployment_name is the server's display name for the deployment label.
+  if (!parts.length && labels.deployment) parts.push(labels.deployment_name || `#${labels.deployment}`);
   if (parts.length) return parts.join(" · ");
-  const known = new Set(["node", "node_name", "gpu_uuid", "deployment"]);
+  const known = new Set(["node", "node_name", "node_deleted", "gpu_uuid", "deployment", "deployment_name", "deployment_deleted"]);
   const rest = Object.entries(labels).filter(([key]) => !known.has(key)).map(([, value]) => shorten(value));
   return rest.length ? rest.join(" · ") : `series ${idx + 1}`;
 }
