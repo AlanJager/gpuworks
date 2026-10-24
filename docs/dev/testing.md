@@ -25,13 +25,15 @@ make test-integration
 make test-coverage-report
 ```
 
-提交前还要对相关包运行 `go test -race`、对显式 build tag suite 做 compile-only、运行
+提交前还要对相关包运行 `go test -race`、对带显式 build tag 的测试集做 compile-only（只编译、不执行）、运行
 `make vet` 和 `git diff --check`。缺少外部能力时普通测试才可 `t.Skip`；
 `GPUWORKS_TEST_STRICT=1` 下关键依赖缺失应失败。
 
 ## 负载用例（默认 suite 之外）
 
-这些用例测量墙钟和资源，默认 suite 不跑，`GPUWORKS_TEST_PERF=1` 显式开启。CI 引用的两个多进程用例有 Make target；其余直接用 `go test` 跑，完整命令（含 `-tags`、`-timeout`、缩放变量）写在各测试函数的注释里：
+这些用例测量实际经过的时间（墙钟时间）和资源消耗，默认测试集（suite）不跑，`GPUWORKS_TEST_PERF=1` 显式开启。
+下文的 fleet 是批量运行 agent 的测试集群；churn 指反复执行部署、拉镜像、进入 running、删除的循环。
+CI 引用的两个多进程用例有 Make target；其余直接用 `go test` 跑，完整命令（含 `-tags`、`-timeout`、缩放变量）写在各测试函数的注释里：
 
 | 入口 | 用例 | 测什么 |
 |---|---|---|
@@ -42,8 +44,8 @@ make test-coverage-report
 | `make test-fleet-log-scale-processes` | `TestFleetLogCenterScaleAcrossProcesses` | 同一日志中心负载，server 与 fleet 分进程 |
 | `go test`（见测试注释） | `TestFleetGatewayLoadAcrossProcesses` | `/v1` 数据面：server 进程 + 多卡 fleet（流式 fake 引擎）+ 流式客户端群，报告 req/s、TTFT/E2E、server 核数与内存、副本分布；`GPUWORKS_GATEWAY_*` 调形态，基线见 `artifacts/archive/2026-09-24-gateway-load-acceptance/gateway-load-gpu2-2026-09-24/` |
 
-fleet 用例默认 1000 个 agent、其中一半循环 部署→拉镜像→running→删除，落盘数据库
-（`:memory:` 不 fsync，测不出写入代价）。它断言：
+fleet 用例默认 1000 个 agent，其中一半循环执行 部署→拉镜像→running→删除。数据库写入磁盘，
+以测量真实写入代价；`:memory:` 不执行 fsync（把数据同步到磁盘），测不出这部分开销。用例断言：
 
 - 在线节点的心跳不会超过 60 s 不更新（心跳排在进度写入后面，就是本次治理的目标故障）；
 - churn 结束时没有节点仍处于 offline；
@@ -51,7 +53,8 @@ fleet 用例默认 1000 个 agent、其中一半循环 部署→拉镜像→runn
 - 每次部署的事件行 ≤ 20。
 
 另外记录（只报数不断言）：churn 期间掉线又重连的节点数、`GET /deployments` 与事件接口的
-p50/p99、写入静止时的 `GET /deployments` 单次耗时、数据库增长、RSS 与 CPU。
+p50/p99（第 50/99 百分位耗时）、写入静止时的 `GET /deployments` 单次耗时、数据库增长、
+RSS（进程驻留内存）与 CPU。
 
 ### 两种形态，同一套驱动
 
@@ -83,7 +86,8 @@ GPUWORKS_FLEET_WORK_DIR=/path/work make test-fleet-perf-processes
 
 `GPUWORKS_FLEET_WORK_DIR` 把本次运行的数据库、agent 状态与日志放到指定目录（失败后可以现场
 排查）；`GPUWORKS_FLEET_PROCESS_LOGS=1` 另存两个进程的 stdout/stderr。在已经跑着线上服务的
-机器上，用私有 network namespace 隔离端口（引擎端口固定从 30000 开始分配）：
+机器上，用私有 network namespace（独立的网络命名空间）隔离端口（引擎端口固定从 30000 开始分配）。
+下面是命令框架，`...` 要替换为本节所选的实际测试命令：
 
 ```bash
 unshare -n bash -c 'ip link set lo up; ulimit -n 65536; ...'
@@ -91,14 +95,20 @@ unshare -n bash -c 'ip link set lo up; ulimit -n 65536; ...'
 
 ### 掉线重连
 
-掉线重连只报数不断言。之前把它归因为「一个进程同时跑 server 和 1000 个 agent，CPU 不够」，
-实测否定了这个解释：换到 20 核空闲机器上抖动依旧。真正的原因是传输层的一个竞态，已修复在
-`internal/wsconn`——go-yamux 的 send loop 只在过半时才续写连接写超时，而 coder/websocket 的
-`net.Conn` 用一个「已过期」粘滞标志实现写超时，`SetWriteDeadline` 清标志并重排定时器却收不回
-已经放行的回调；回调晚到就会在续期之后重新置位，下一帧在从未碰过 socket 的情况下直接以
-`failed to write: context deadline exceeded` 失败，而 yamux 视 send loop 出错为整个会话致命
-（server 侧即 `deregister` → 节点 offline）。两端的 `laneKeepAliveInterval` 恰好是
+掉线重连只报数不断言。以下保留该指标的故障诊断与修复背景，便于理解当前判定方式。
+之前把掉线归因为「一个进程同时跑 server 和 1000 个 agent，CPU 不够」，
+实测否定了这个解释：换到 20 核空闲机器上抖动依旧。传输层存在一个竞态，`internal/wsconn`
+修复了其中一条触发路径，另一条路径由后文的 keepalive 间隔调整解决。原来的触发过程是：
+
+1. go-yamux 的发送循环（send loop）只在连接写超时周期过半时，才更新写截止时间。
+2. coder/websocket 的 `net.Conn` 用一个「已过期」粘滞标志实现写超时。`SetWriteDeadline`
+   会清标志并重排定时器，却无法撤回已经放行的回调；旧回调晚到，就会在续期之后重新把标志置为已过期。
+3. 下一帧尚未写入 socket，就直接以 `failed to write: context deadline exceeded` 失败。
+   yamux 把发送循环出错视为整个会话的致命错误，server 随即执行 `deregister`，节点变为 offline。
+
+两端的 `laneKeepAliveInterval` 恰好是
 `laneConnWriteTimeout` 的一半，空闲会话的 ping/pong 因此反复落在写超时那一瞬间，命中概率很高。
+
 `internal/wsconn` 的回归用例（`TestLiveWebSocketSurvivesAWriteAtTheDeadlineInstant`）用真实
 WebSocket 复现：未包装时 16/16 连接失败且全部耗时 <5 ms（根本没写 socket），包装后为 0。
 
@@ -106,7 +116,9 @@ WebSocket 复现：未包装时 16/16 连接失败且全部耗时 <5 ms（根本
 cancel 适配器的写 context 且永不更换，coder/websocket 见写 context 被 cancel 就整条关闭连接，
 之后的写也全部失败——这一支无法在包装层补救。线上（mirror1）每个节点每天仍掉线 40–100 次、
 断开时刻严格对齐 15 s 周期、抓包显示关闭方在发出自己的 keepalive ping/pong 后不到 1 ms 就 FIN，
-就是这条路径；本地回环同样复现（17 分钟 7 次）。根治是把两端 `laneKeepAliveInterval` 从 15 s
+就是这条路径；本地回环同样复现（17 分钟 7 次）。
+
+根治是把两端 `laneKeepAliveInterval` 从 15 s
 降到 10 s，让 keepalive 写入总是早于写超时过半点至少 5 s 续期，永远不会踩到到期瞬间；
 `TestLaneYamuxConfig_MatchesPlan`（server）与 `TestLaneYamuxConfig_KeepsKeepAliveClearOfTheWriteDeadline`
 （agent）守住这个余量。改后本地回环 25 分钟零掉线，100 个 web terminal 并发满速刷屏亦零掉线。
@@ -118,7 +130,7 @@ cancel 适配器的写 context 且永不更换，coder/websocket 见写 context 
 
 ### 单进程形态的收尾
 
-单进程形态必须在用例结束时把 fleet 交回去，否则收尾会因为与被测行为无关的原因失败：
+单进程形态必须在用例结束时停止本用例的 agent，并关闭客户端连接，否则收尾会因为与被测行为无关的原因失败：
 
 - `env.StopNodes(t)` 取消全部 agent 并等待 hub 的会话表清空。`AddNode` 的 cleanup 只取消
   context、不等待，server 关停于是和上百个正在拆解的会话抢时间，超出 testenv 的 5 s 关停预算。
@@ -151,17 +163,17 @@ GPUWORKS_FLEET_NODES=200 GPUWORKS_FLEET_CHURN_NODES=100 GPUWORKS_FLEET_ROUNDS=1 
 GPUWORKS_TEST_PERF=1 go test -count=1 -v -timeout 60m ./internal/integrationtest/fleet/ -run '^TestFleet1000NodesRedeployChurn$'
 ```
 
-fd 需求约为 `6 × 节点数`；用例会尝试把 `RLIMIT_NOFILE` 软限额抬到硬限额，抬不上去时
+文件描述符（fd）需求约为 `6 × 节点数`；用例会尝试把 `RLIMIT_NOFILE` 软限额抬到硬限额，抬不上去时
 `GPUWORKS_TEST_STRICT=1` 下失败、否则明确 Skip（不静默跑在不足的限额下）。非 Linux 主机
 直接 Skip：那里的 fd 限额与 RSS 读法不同，数字无法与 CI 对比。
 
 ## 公网入口（expose）
 
 `internal/server/expose` 的测试全部离线：假 cloudflared 通过 `PATH` 提供（`--version` 与注册
-日志都是真实输出形状），网络只有一处例外是可注入的 `HealthChecker`——ready 判定是这功能最
-不能出错的地方，所以它被显式注入而不是靠真实网络。进程相关用例跑真子进程：`connector-host`
+日志都是真实输出形状）。用于判断地址是否 ready 的网络健康检查由可注入的 `HealthChecker` 承担；
+测试替换这一检查，验证 ready 判定，不依赖真实网络。进程相关用例跑真子进程：`connector-host`
 helper 由测试二进制充当，覆盖 Stop 回收、SIGKILL 父进程后无孤儿（含启动竞态，多轮）、退出码
-传递，以及「server 拿不到 hosting 锁时不托管」。上游 wire 形状（cloudflared `/config`、
+传递，以及「server 拿不到 hosting 锁时不托管」。上游通信数据格式（wire 形状，包括 cloudflared `/config`、
 deb 索引、rpm repomirror 元数据）全部用 fixture 覆盖，fixture 用的是实测抓下来的真实报文。
 
 **不新增依赖联网的永久测试**（用户确认）：下载、解包、安装的回归全部走合成包与本地 HTTP
@@ -181,7 +193,9 @@ fixture，不访问真实包源、不调用包管理器、不新增 Make target 
 **named 的真机验收在 2026-09-22 只完成了一半**（用户随后决定暂不开放该提供方，见下）：实机确认了
 连接器自动获取（`pkg.cloudflare.com` 下载 + 不可变版本路径启动）、只给 token 启动、注册成功
 （`Registered tunnel connection`，边缘/协议归观测）、远端未发布路由时的 `awaiting_route` 与指引、
-以及该 tunnel 只有默认 catch-all（`version:-1`、`http_status:503`）时不被误判为可用地址。**未证**：
+以及该 tunnel 只有默认 catch-all（`version:-1`、`http_status:503`）时不被误判为可用地址。
+
+**未证**：
 首次公网可达（`ready` 提升）、SSE 首包/取消、agent 接入、重启后域名不变——这些都需要用户先在自己
 的 Cloudflare 账号里发布一条路由，而 named 现在不对用户开放（`--provider cloudflare-named` 会被
 明确拒绝），所以这几条在放开之前无法验收，也不得写成已通过。
@@ -213,7 +227,7 @@ WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值
 `two-vm-docker-distributed`；`nightly` 和 `manual` 只描述触发策略。
 
 仓库当前提供 RunPod、AutoDL、Vast、CompShare 和昇腾资源池的显式 `make test-l4-*`
-target。先以 `make help`/Makefile 确认目标，再只运行所需 lane。
+target。先以 `make help`/Makefile 确认目标，再只运行所需的测试路径（lane）。
 
 ## 成本和缓存
 
@@ -230,16 +244,21 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需 lane。
   模板里同时存放同一版 NVIDIA 驱动（当前 570.153.02）的开源与闭源两套内核模块，开机时
   `gpuworks-nvidia-kmod.service` 先加载开源版（RTX 5090 等 Blackwell 卡只能用它），没有初始化出 GPU
   时换成闭源版（V100S、P40 这类没有 GSP 的卡只能用它），选中的是哪套写在 `/run/gpuworks-nvidia-kmod`。
+
   工具做完模板后按 `-validate-gpus` 逐个卡型开机验证，也可用 `-validate-image <id>` 只验证已有模板；
   没货或被 CompShare 拒绝的卡型只报告不判失败。工具也会在镜像缺 nvidia-container-toolkit 时装上与华北模板相同的版本并配置 Docker 运行时
-  （上海那条模板线原本没有，容器里拿不到 GPU）。自定义模板按地域隔离，本账号的接口不支持跨地域复制，
+  （上海那条模板线原本没有，容器里拿不到 GPU）。
+
+  自定义模板按地域隔离，本账号的接口不支持跨地域复制，
   各地域要分别以该地域已有的模板为源制作（`-region`/`-zone`/`-source-image`，上海只有 2080Ti×4
   时用 `-gpu-model 2080Ti -gpu-count 4`），结果写入 `COMPSHARE_GOLDEN_IMAGE_ID` 与
-  `COMPSHARE_ZONE_IMAGE_CN_SH2`。CompShare 不允许自定义模板用于 A800、H20
+  `COMPSHARE_ZONE_IMAGE_CN_SH2`。
+
+  CompShare 不允许自定义模板用于 A800、H20
   （`RetCode 226603`），与驱动无关；模板名超过 42 个字符会在建模板时被拒（`RetCode 230`）。
 
-失败时优先冻结现场并查看进程/容器日志：先冻结实例和 run-id，保留 SSH/agent 日志，再用
-scoped cleanup 删除本次资源。云用例可按实现支持设置
+失败时优先冻结现场并查看进程/容器日志：先保留失败实例、记下本次运行的 run-id 和 SSH/agent 日志，
+完成排查后再做 scoped cleanup，即限定本次运行范围的清理。云用例可按实现支持设置
 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1`，之后只用本次 scoped run-id 调用
 `test-l4-cleanup-leaked` 或相应清理入口；禁止无范围清理整个账号。云端 L4 结束后要按 run-id
 确认没有实例、转发或临时文件泄漏。产品侧的租机操作见[租用云 GPU](../how-to/rent-cloud-gpus.md)。

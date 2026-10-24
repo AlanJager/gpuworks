@@ -1,12 +1,13 @@
 # 租用云 GPU
 
-**适用场景**：没有现成的 GPU 主机，想用云厂商（阿里云、RunPod、优云智算 CompShare、AutoDL、Vast.ai）上的 GPU 实例，并一键安装 agent 把它接入 GPUWORKS。
+把阿里云、RunPod、优云智算 CompShare、AutoDL 或 Vast.ai 的 GPU 实例接入 GPUWorks，并在用完后停止或释放云资源。先在厂商控制台租机，再在本平台同步和安装 agent；支持的 REST API 创建方式也在本文列出。
 
 **前置条件**：
 
-- server 已运行（见[安装和升级控制面](install-server.md)），你能登录控制台。
+- server 已运行（见[安装和升级控制面](install-server.md)），使用有云账号和节点管理权限的账户登录控制台，server 能访问所选厂商 API。
 - 有对应云厂商的账号和 API 凭据（凭据字段见下表），账户里有可用余额，并已在云厂商一侧有一台 GPU 实例（或打算用下文的 API 创建）。
-- 云实例要能访问你填写的 `server_url`。server 在 NAT 后面时，请提供稳定的域名或反代地址，不要用 `gpuworks expose` 的 quick 隧道地址（见[给控制台一个公网地址](expose-public-address.md)）。
+- 安装时实例须已运行。Agent 发起连接时，实例要能访问 `server_url`；Server 发起连接时，server 要能访问实例的 agent TCP 端口。SSH 或云助手的安装条件见[安装 agent](#安装-agent让实例出现在计算节点)。
+- Agent 发起连接且 server 在 NAT 后面时，提供实例可达的稳定域名或反代地址，不用 quick 隧道地址（见[公网入口](expose-public-address.md)）。
 
 GPUWORKS 对云实例做的事是：保存云账号凭据（加密存储）→ 同步实例清单 → 经 SSH（阿里云优先经云助手）在实例上安装
 agent → 实例作为“计算节点”上线。**控制台里的“公有云”页不提供“选机型、选区域、下单”的界面**：
@@ -29,7 +30,7 @@ agent → 实例作为“计算节点”上线。**控制台里的“公有云�
 | AutoDL | API Key | API 接口地址、SSH 密码（之后装 agent 时作为默认 SSH 密码） |
 | Vast.ai | API Key | API 接口地址 |
 
-AutoDL 的 API 只列出「容器实例Pro」，其他类型的实例不会出现在实例表里（添加账号的表单里也有这条提示）。AutoDL Pro 实例只开放 HTTP 端口，所以只能用“Agent 发起连接”。
+当前 AutoDL 接口只同步**容器实例Pro**，一键安装只提供**Agent 发起连接**。不要把这一产品限制当作所有 AutoDL 实例的端口能力；需手工配置端口时，以[厂商开放端口说明](https://www.autodl.com/docs/port/)和实例实际配置为准。
 
 RunPod 只支持 Secure Cloud 的 Pod，不支持 Community Cloud（添加账号的表单里也有这条提示）。
 
@@ -39,8 +40,7 @@ RunPod 只支持 Secure Cloud 的 Pod，不支持 Community Cloud（添加账号
 “添加失败：…”，并带上云厂商返回的原因。保存后凭据加密存储，界面不再回显。之后可在列表里点“编辑”
 更新凭据：**没填的字段保留原值**，类型不能改。
 
-ZStack Cloud 不在“公有云”页，而在“专有云”页（路径 `/zstack`）：需要“API 接口地址”和“管理员 Token”，
-当前只做接入和凭据校验，不能同步实例，也不能安装 agent（该页上显示“即将支持”）。
+ZStack Cloud 在**专有云**页（`/zstack`），使用 API Endpoint、AccessKey ID 和 AccessKey Secret，支持同步资源与安装 agent；不通过本页租用公有云实例。凭据条件见[ZStack Cloud 连接凭据](#zstack-cloud-连接凭据)。
 
 ## 同步实例并确认机型、区域和价格
 
@@ -58,26 +58,55 @@ ZStack Cloud 不在“公有云”页，而在“专有云”页（路径 `/zsta
 
 3. 账号状态会随同步结果变化：同步失败会把账号标为“异常”，页面上方出现“存在异常公有云”提示，按提示检查凭据和云厂商 API 可用性，再重新同步。
 
-列表每 15 秒自动刷新一次账号状态，但实例清单来自上一次“同步”的结果，想看云端最新情况请重新点“同步”。“容器”类型的实例没有 root
-和 Docker 守护进程，agent 会自动使用内置的 runveil 运行时。
+列表每 15 秒自动刷新一次账号状态，但实例清单来自上一次“同步”的结果，想看云端最新情况请重新点“同步”。容器实例通常没有可用的 Docker 守护进程，agent 在无法使用 Docker 时使用内置 runveil；即使容器内是 root，也不等于能运行宿主机 Docker。
 
 ## 安装 agent，让实例出现在“计算节点”
 
-1. 在实例表里，找到还没接入的实例，点“一键装 Agent”。已接入的实例显示绿色“已接入”，不会再出现此按钮。
-2. 在“安装 agent”弹窗里填写：
-   - **SSH 凭据默认不用填**：server 用自己的平台密钥登录（见[接入节点](connect-nodes.md)），并按云厂商自动让实例接受它——RunPod 把平台公钥追加到账号 SSH Key（保留你已有的 key；添加 RunPod 账号时、在 server 上新建 Pod 前都会注册；RunPod 只在 Pod 启动时写入，所以对之后启动的 Pod 生效），Vast 经接口挂到实例，CompShare 与 AutoDL 用接口返回的实例 root 密码登录一次再写入平台公钥（AutoDL 凭据里保存的 SSH 密码作为后备）。之后带外恢复只用平台密钥，不保存密码。已在运行、又没拿到平台公钥的 RunPod Pod（用已有凭据登录不了时），接口返回 409 `INSTANCE_RESTART_REQUIRED`（`need` 为 `ssh_key`，同时缺 TCP 端口时为 `ssh_key_port`）、什么也没改，弹窗问“RunPod 只能通过修改 Pod 配置添加公钥，这会重启容器并清空非持久卷”；确认后驱动把平台公钥追加到 Pod 的 `PUBLIC_KEY` 环境变量（需要时同一次修改里加上端口），等 Pod 重启、平台密钥能登录后再安装，检查表里是 `Platform key (pod)` 一行。这种 Pod 的预检查里 `SSH` 一行是警告而不是失败，说明安装时会添加公钥（其余检查要登录后才能跑）。也可以不重启，在「高级设置」里提供一次私钥，登录后同样写入平台公钥。检查表开头的「Platform key (provider)」「Instance password」两行说明 server 为登录做了什么。
-   - **连接方式**：默认“自动选择”：阿里云先用云助手，其余先用直连；失败会自动回退到下一个入口。也可以手动指定某个入口。
-   - **接入方式**：默认“Agent 发起连接”，实例主动连接 server，不需要实例开放入站端口。“Server 发起连接”由 server 拨入实例，此时弹窗不再要求管理节点接入地址（agent 不连接 server），改为要填「Agent 监听地址」（默认 `0.0.0.0:18800`，agent 在实例里监听的地址）和「计算节点接入地址」（server 连这台实例用的地址；只填主机时端口与监听端口相同，平台把端口映射成别的号码时填映射后的 `host:port`）。该方式要求 server 能访问到那个 TCP 端口，实例的安全组或防火墙要放行；一般不建议。各厂商的差别：
-     - **阿里云**：云助手只能让实例自己从 server 下载 agent，而需要 server 拨入的实例通常下载不到，所以“自动选择”时 `server_dial` 直接走 SSH（上传 agent，实例不必能访问 server），不会先试云助手。预检查经 API 只读实例的安全组（不做任何修改），多一行 `Security group`：没有入方向规则放行 server 要拨的 TCP 端口时报失败，并说明去哪个安全组加规则；只对部分来源放行时报警告，因为 server 的出口地址要落在其中。若安装时 server 还连不上，结果会显示“agent 已启动，server 还连不上它”，放行端口后 server 会自动连上，不用重装。
-     - **CompShare**：容器实例（Pod）只经平台转发的 TCP 端口到达，入口是 `…podtcp.compshare.cn` 上的另一个端口号（SSH 也是这样转发的，容器内是 23 端口）。两个地址栏都留空时，驱动先在实例已开放、没有进程监听的 TCP 端口里选（优先「Agent 监听地址」的端口，默认 3389）；一个都没有时经 `UpdateCompShareInstancePorts` 接口给实例加开一个（保留已开放的 HTTP/TCP 端口，立即生效、不重启容器），把监听端口和转发后的地址记到节点上，检查表里多一行 `Server-dial port`。平台每个实例最多开放 10 个 TCP 端口（含 SSH），满了而且都被占用时安装失败，需要在控制台「配置开放端口」里关掉一个，或改用“Agent 发起连接”。虚拟机实例有公网 IP，server 直接拨它的监听端口（默认 `:3389`），安全组要放行。
-     - **AutoDL**：不提供“Server 发起连接”（Pro 实例只开放 HTTP 端口）；要用的话按 AutoDL 的文档开放 TCP 端口，再在“添加计算节点”里手工接入。
-     - **Vast.ai、RunPod**：容器只能经平台映射的 TCP 端口到达，端口号和公网地址由平台决定。两个地址栏都留空时，驱动经 SSH 读 `/proc/net/tcp`，在实例已映射且没有进程监听的 TCP 端口里选一个（SSH 的端口不用），把监听端口和映射后的公网地址记到节点上，检查表里多一行 `Server-dial port`。端口要到安装时才选，所以预检查不拨实例的默认端口，`Server to agent` 一行写明在安装时检查。Vast 的端口在创建实例时就固定了（`vastai` 基础镜像会多映射 `10100`、`10200` 之类的备用端口），实例没有空闲的映射端口就只能用“Agent 发起连接”，或换一个映射了备用端口的模板重租。RunPod 优先用 Pod 已开放的空闲 TCP 端口；一个都没有时接口返回 409 `INSTANCE_RESTART_REQUIRED`、什么也没改，弹窗会问“RunPod 只能通过修改 Pod 配置开放端口，这会重启容器并清空非持久卷。确认自动添加端口？”，确认后（请求带 `allow_instance_restart`）驱动为 Pod 添加一个 TCP 端口，这会重启 Pod 并把所有端口（包括 SSH）重新编号，驱动等到新映射和 SSH 都就绪（最长 5 分钟）再继续装 agent。
-   - **安装目录与「通过 systemd 启动」**（「高级」里，含义同[接入节点](connect-nodes.md)的 SSH 向导）：安装目录留空为 `/opt/gpuworks`，填的话必须是 `/` 开头的绝对路径，例如数据盘 `/data/gpuworks`。「通过 systemd 启动」默认开启，有 systemd 且能用 root 的实例注册 `gpuworks-agent.service`；关闭后 agent 以 nohup 运行、开机不自启，主机上已有的服务和其他目录里的 agent 都不动。容器实例（RunPod、Vast、AutoDL）通常没有 systemd，开不开都走 nohup。
-   - **管理节点接入地址**（`server_url`）：弹窗用浏览器当前访问的地址预填。**它必须是云实例能访问到的稳定地址**，在 NAT 后面时改成域名或反代地址。填了 `*.trycloudflare.com` 会出现“这看起来是 Cloudflare 快速隧道地址”的警告：这种地址在连接器重建后就变，节点之后会连不上。格式必须是不带用户信息、查询和片段的 `http://` 或 `https://` 绝对地址，否则接口返回 `SERVER_URL_REQUIRED` / `SERVER_URL_INVALID`。
-3. 点“安装”。server 先做 SSH 预检查，再经 SSH 在实例上安装并启动 agent，最后检查 agent 是否已建立会话。弹窗下方的检查表列出 `precheck`、`install agent`、`agent_dial` 等项的“通过 / 警告 / 失败”。没有警告和失败时弹窗自动关闭；有警告时保留在弹窗里让你看详情（例如 agent 已启动但还在等第一次连接，稍等片刻再看“计算节点”页即可）。
-4. 打开“计算节点”页：以实例名命名的节点出现并在线后，就可以按[接入、升级和卸载节点](connect-nodes.md)里的流程做后续事情（探测 GPU、部署模型等）。安装失败时，这次创建的待接入节点会被清掉，不留半成品，修好原因后重新点安装即可。
+先确认实例已运行，并按连接方向准备地址：
 
-云一键安装只是[接入节点](connect-nodes.md)的三种方式之一；同样的实例也可以用 SSH 向导或 `/install.sh` 手工装。
+| 接入方式 | 地址与条件 |
+|---|---|
+| **Agent 发起连接**（默认） | **管理节点接入地址**由浏览器地址预填，须改为实例可达的稳定地址；实例不需要 agent 入站端口 |
+| **Server 发起连接** | 填 **Agent 监听地址**（通常默认 `0.0.0.0:18800`，CompShare 默认 `:3389`；端口映射实例可留空自动选择，见下文）和 **计算节点接入地址**；后者使用 server 可达的 IP、域名或映射后的 `host:port`；只填主机时使用 Agent 监听端口。安全组和防火墙须放行相应 TCP 端口。此方式不填写 `server_url` |
+
+`server_url` 必须是无用户信息、查询和片段的 `http://` 或 `https://` 绝对地址。quick 隧道地址会显示临时地址警告，不能作为长期节点地址。
+
+1. 在实例表找到尚未接入的实例，点击**一键装 Agent**。已接入的实例显示**已接入**。
+2. 在弹窗选择**连接方式**和**接入方式**，核对上表地址。**自动选择**会按厂商能力尝试安装通道：阿里云的 Agent 发起连接优先云助手，其余优先 SSH 直连，失败时尝试后续可用入口。也可指定入口；标为**仅终端**的入口不能安装。
+3. 在**高级**中核对安装目录和**通过 systemd 启动**，再核对下面的凭据、端口和重启条件，点击**安装**。无需另行先创建计算节点或取得 Token。
+4. 等待安装结果，展开失败或警告项。出现**agent 已安装并已连接**时点击**完成**；**已安装，有需要留意的项**也要先检查报告。出现**已启动，尚未连上**时，agent 已安装，先修复连接条件，不要重复安装。
+5. 打开**计算节点**，确认该实例对应的节点在线，并核对加速卡型号、数量和运行时。失败时保留报告中的原因，修正后从弹窗**重试**；尚未成功安装的待接入节点会清理。
+
+安装目录留空时为 `/opt/gpuworks`；自定义目录必须以 `/` 开头且不能为根目录，不展开 `~`。填写的目录不可写时安装失败，不会回退到 `/tmp/gpuworks`。
+
+**通过 systemd 启动**默认开启：Linux 实例有 systemd 且能以 root 运行时注册 `gpuworks-agent.service`。关闭后用 nohup，开机不自启，保留主机已有服务和其他目录里的 agent。容器实例通常没有 systemd，开关均走 nohup，详见[启动方式](connect-nodes.md#启动方式与后续重启)。
+
+### 凭据与可能的重启确认
+
+SSH 安装默认使用平台密钥，通常不用手填密码。各厂商的准备方式不同：
+
+| 厂商或场景 | 安装前需要确认什么 |
+|---|---|
+| 阿里云云助手 | 不需要 SSH；实例须能下载 server 的安装脚本和 agent。Server 发起连接时自动选择改走 SSH，细节见[阿里云](#阿里云) |
+| RunPod | 平台公钥追加到账号 SSH Key，保留已有 key；Pod 只在启动时写入账号公钥，因此已运行的 Pod 不会自动获得新 key。已运行 Pod 没有该公钥、且现有凭据不能登录时，安装会请求重启确认；也可在**高级设置**提供一次可用私钥，避免通过修改 Pod 配置加公钥 |
+| Vast.ai | 平台通过厂商接口向实例授权公钥 |
+| CompShare、AutoDL | 尝试用接口返回的实例 root 密码登录并写入平台公钥；AutoDL 账号保存的 SSH 密码作为后备 |
+| 自动认证失败 | 在**高级设置**提供该实例可用的密码或私钥，或按错误提示授权平台公钥，再重试 |
+
+平台公钥写入成功后，后续恢复使用平台密钥；写入失败时可能保留本次有效凭据，实际结果见 `SSH authentication`、`Platform key` 等报告项。预检查提示安装时才会添加公钥时，尚未登录的其他检查会在安装阶段继续。
+
+**RunPod 的公钥或端口变更可能触发重启确认。** 出现 `INSTANCE_RESTART_REQUIRED` 时尚未修改 Pod；确认后才修改配置、重启并继续安装。**重启会清空非持久卷，端口映射（包括 SSH）也可能重新编号**。先保存需保留的数据；不接受重启时取消，改用可登录凭据或其他接入方式。报告中的 `Platform key (pod)` 和 `Server-dial port` 可用于核对处理结果。
+
+### Server 发起连接的厂商差异
+
+- **阿里云**：走 SSH 上传 agent，不要求实例下载 server 的文件。预检查读取安全组，缺少入站放行规则时报告失败，部分来源放行时提示核对 server 出口地址；不自动修改安全组。agent 已启动但 server 尚连不上时，放行后等待自动连接，无需重装。
+- **CompShare**：容器实例（Pod）只经平台转发的 TCP 端口到达，入口是 `…podtcp.compshare.cn` 上的另一个端口号（SSH 也是这样转发的，容器内是 23 端口）。两个地址栏都留空时，驱动先在实例已开放、没有进程监听的 TCP 端口里选（优先「Agent 监听地址」的端口，默认 3389）；一个都没有时经 `UpdateCompShareInstancePorts` 接口给实例加开一个（保留已开放的 HTTP/TCP 端口，立即生效、不重启容器），把监听端口和转发后的地址记到节点上，检查表里多一行 `Server-dial port`。平台每个实例最多开放 10 个 TCP 端口（含 SSH），满了而且都被占用时安装失败，需要在控制台「配置开放端口」里关掉一个，或改用“Agent 发起连接”。虚拟机实例有公网 IP，server 直接拨它的监听端口（默认 `:3389`），安全组要放行。
+- **AutoDL**：一键安装不提供此方向。确有可用 TCP 入口时，可按厂商文档配置后，通过[添加计算节点](connect-nodes.md)手工接入。
+- **Vast.ai、RunPod**：两栏都留空时，安装会从实例已映射、没有进程监听且非 SSH 的 TCP 端口中选择，记录实际监听端口和公网映射地址。预检查仅提示安装时检查，不会误测默认端口。
+- **Vast.ai 没有空闲映射端口**：改用 Agent 发起连接，或选择提供备用映射端口的实例模板。不要假定任意容器端口都能从外部访问。
+- **RunPod 没有空闲映射端口**：请求上述重启确认；同意后添加 TCP 端口，等待新映射和 SSH 可用后再安装（最长等 5 分钟）。等待失败时查看报告和 Pod 实际状态，再重试。
+
+云一键安装是[接入节点](connect-nodes.md)的方式之一；同样的实例也可以用 SSH 向导或 `/install.sh` 手工装。
 
 租来的节点自带系统标签 `gpuworks.ai/provider`（云厂商）和 `gpuworks.ai/region`（区域），可以用它们建[同步组](configure-pull-settings.md#同步组)：不同厂商或区域的云主机通常互不相通，不该互相复制模型和镜像。
 
@@ -85,8 +114,8 @@ ZStack Cloud 不在“公有云”页，而在“专有云”页（路径 `/zsta
 
 在 GPUWORKS 里能做的：
 
-- **关机**：在实例行点“关机”并确认。只有支持电源控制的类型才有这个按钮（优云智算、AutoDL）；“开机”同理。点了之后提示“已发送关机请求”，状态以随后的同步结果为准。
-- **释放（销毁）**：界面上没有释放实例的按钮。RunPod、Vast.ai 不支持电源控制，也就没有关机按钮，要停止计费只能在云厂商控制台销毁实例，或用 REST API 释放。
+- **关机**：在实例行点“关机”并确认。只有支持电源控制的类型才有这个按钮（阿里云、优云智算、AutoDL）；“开机”同理。点了之后提示“已发送关机请求”，状态以随后的同步结果为准。阿里云使用继续计费的**普通停机**，关机不等于释放。
+- **释放（销毁）**：界面上没有释放实例的按钮。RunPod、Vast.ai 不支持电源控制，也就没有关机按钮，需在厂商控制台管理这些实例的停用或销毁，或使用受支持的 REST API 释放；费用是否终止以账单为准。
 - **删除云账号**（列表里的“删除”）只会删除 GPUWORKS 里的账号、凭据和实例记录，**不会**关闭或销毁云上的实例，也不会删除已接入的节点。
 - 用 API 释放成功后，该实例立即从实例列表里消失；释放失败时列表不变。在云厂商控制台销毁或到期回收的实例，下一次同步成功时从列表里移除；同步失败（账号标为“异常”）不改动列表。
 - 实例上已接入的节点不会随之删除：节点保留，带外恢复阶段直接标为 `stopped`（原因 `provider instance no longer exists`），不再尝试 SSH 恢复，见[排障](troubleshooting.md)；确认不再需要后手动删除节点。
@@ -95,7 +124,7 @@ ZStack Cloud 不在“公有云”页，而在“专有云”页（路径 `/zsta
 
 ## 用 API 创建和释放实例
 
-如果想不进云厂商控制台，直接由 GPUWORKS 下单/释放，用 REST API（需要 JWT，字段见 [API 参考](../reference/api.md)）：
+如果想不进云厂商控制台，直接由 GPUWORKS 下单/释放，用 REST API（使用有相应权限的 JWT 或读写平台 API 令牌，字段见 [API 参考](../reference/api.md)）：
 
 - `POST /api/v1/providers/{id}/instances`：创建，请求体为 `name`、`region`、`gpu_model`、`gpu_count`、`image` 和字符串键值的 `extra`，成功返回 201 和实例信息。
 - `DELETE /api/v1/providers/{id}/instances/{externalID}`：释放。
@@ -124,15 +153,40 @@ ZStack Cloud 不在“公有云”页，而在“专有云”页（路径 `/zsta
 还没同步，或云厂商账号下确实没有实例。先点“同步”。
 
 **点“一键装 Agent”失败**
-安装结束后弹窗顶部会有一条结论：绿色“agent 已安装并已连接”、黄色“已安装，有需要留意的项”或“已启动，尚未连上”、红色“安装失败”（后面跟原因）。装好后只剩“完成”按钮，关闭弹窗时实例列表会刷新；失败时表单保留，“重试”前可以改连接方式或在「高级」里填凭据。再往下看弹窗里的检查表和告警：
-- `precheck` 一行只列出没通过的项（全部通过时写“all N checks passed”），完整清单在“预检查明细”里展开。`precheck` 项失败：SSH 入口不可达、用户名/密码/私钥不对，或选了“仅终端”的入口。试试换一个“SSH 连接方式”；自动选择会在直连失败时回退，失败详情会以告警列出每个入口的原因。
-- `precheck` 或安装详情里的 `Install directory …` 项：云一键安装默认装到 `/opt/gpuworks`，可在安装弹窗「高级」里改（必须是 `/` 开头的绝对路径，不展开 `~`），预检查和安装都会检查它背后的文件系统（六个检查项的含义见[接入节点](connect-nodes.md#安装目录检查)）。容器实例（例如 RunPod）上默认目录在容器可写层，实例重建就丢；`Install directory persistence` 会**警告**：这是 agent 在云容器实例上唯一能放的位置，实例删除或重建后要重装；`/workspace` 这类持久卷往往是不支持改属主的网络文件系统，会出现 `ownership` 和 `filesystem` 警告；RunPod 的 `/workspace` 还不允许文件名带冒号，`file names` 项**失败**，udocker 运行时在那里跑不了部署，agent 要装在容器盘上（并在租机时把容器盘开到放得下镜像）。需要把 agent 装进持久卷或数据盘时，在「高级」里填安装目录；填了的目录写不进时安装失败，不会回退到 `/tmp/gpuworks`。`noexec` 的目录会让安装直接失败。
-- `SSH authentication` 失败且只试了平台密钥：实例还没有平台公钥（例如 RunPod 上 server 注册公钥前就已启动的 Pod：从“公有云”页安装时会询问是否重启 Pod 加上公钥），在「高级设置」里提供一次私钥或密码，或按错误里给出的命令在实例上授权。
-- 云厂商没有返回 SSH 入口（列显示“未返回”）：实例可能还在启动，过一会儿再点“同步”。
-- `agent_dial` 项警告：agent 已启动但还没连上 server，多半是 `server_url` 对实例不可达，见下一条。
+
+先看弹窗顶部的安装结论：
+
+- 绿色**agent 已安装并已连接**：安装成功。
+- 黄色**已安装，有需要留意的项**或**已启动，尚未连上**：继续检查报告中的告警，后者还需修复连接条件。
+- 红色**安装失败**：结论后会带失败原因，按对应检查项处理。
+
+装好后只剩**完成**按钮，关闭弹窗时实例列表会刷新。失败时表单保留，点击**重试**前可以改连接方式或在**高级**里填凭据。
+
+**预检查或 SSH 入口失败**
+
+`precheck` 一行只列没通过的项；全部通过时显示 `all N checks passed`。完整清单在**预检查明细**中展开。
+
+SSH 入口不可达、用户名／密码／私钥不对，或选了**仅终端**入口时，检查凭据或换一个**SSH 连接方式**。**自动选择**会在直连失败时回退，失败详情会以告警列出每个入口的原因。
+
+**安装目录相关失败或警告**
+
+云一键安装默认使用 `/opt/gpuworks`，可在安装弹窗**高级**中修改；预检查与安装都会检查它背后的文件系统；六项检查的含义见[安装目录检查](connect-nodes.md#安装目录检查)。按报告中的项目处理：
+
+- **Install directory persistence 警告**：容器实例的默认目录可能位于容器可写层，实例删除或重建后 agent 与缓存会丢失，需要重新安装。租机时给容器盘预留能容纳镜像的容量。
+- **ownership / filesystem 警告**：`/workspace` 这类持久卷往往是不能改属主的网络文件系统，需结合目录权限和文件系统限制判断是否可用。
+- **file names 失败**：RunPod 的 `/workspace` 不允许文件名带冒号，runveil 在那里跑不了部署，agent 需安装在容器盘上；不能仅因目录持久化就选它。
+- **noexec 导致失败**：该目录不能执行程序，安装会直接失败。
+
+需要把 agent 安装到兼容的持久卷或数据盘时，在安装弹窗**高级**里填写安装目录。显式填写的目录不可写时安装失败，不会回退；先处理目录问题，再重试。
+
+**其他安装检查项**
+
+- **SSH authentication 失败且只试了平台密钥**：实例还没有平台公钥。RunPod 上在 server 注册公钥前已启动的 Pod，从**公有云**页安装时会询问是否重启以加入公钥。也可在**高级设置**提供一次私钥或密码，或按错误提示在实例上授权。
+- **云厂商未返回 SSH 入口**：实例可能仍在启动，稍后重新点击**同步**。
+- **agent_dial 警告**：agent 已启动但还没连上 server，通常是 `server_url` 对实例不可达，按下一条处理。
 
 **安装成功，但“计算节点”页没有出现节点，或一直离线**
-最常见的原因是 `server_url` 对云实例不可达（填了内网地址、`localhost`，或 quick 隧道的临时域名）。到实例上看 agent 日志确认连接报错，把 `server_url` 改成稳定的域名或反代地址后重新安装。接入后的被拒、掉线排查见[排障](troubleshooting.md)。
+Agent 发起连接时，检查 `server_url` 是否对实例可达，并查看 agent 日志；地址错误时沿用该节点的身份修正连接配置。Server 发起连接时，检查 server 到实例接入地址的 TCP 连通性、端口映射及安全组，不要填写 `server_url`。接入后的被拒、掉线排查见[排障](troubleshooting.md)。
 
 **误留了实例，产生了费用**
 GPUWORKS 不会自动释放云实例，删除云账号也不会。到云厂商控制台销毁不用的实例，必要时用上文的 API 释放；销毁后在 GPUWORKS 里到“计算节点”页删除对应的离线节点。
@@ -147,9 +201,9 @@ GPUWORKS 不会自动释放云实例，删除云账号也不会。到云厂商�
 
 **凭据**：填 AccessKey ID 和 AccessKey Secret，主账号或 RAM 子账号的 AccessKey 都可以。主账号 AccessKey 拥有账号的全部权限，**建议新建一个只有下面权限的 RAM 子账号**，用它的 AccessKey。
 
-“地域”留空时同步账号所有地域（几十个，并发查询，几秒完成）；只在部分地域有实例时填逗号分隔的地域 ID（如 `cn-shanghai,cn-beijing`）可以减少调用。
+“地域”留空时同步账号所有地域；只在部分地域有实例时填逗号分隔的地域 ID（如 `cn-shanghai,cn-beijing`）可以减少调用。
 
-**需要的权限**（RAM 自定义权限策略。2026-10-15 在真实账号上验证过：只有这些权限的子账号、以及只能扮演角色的子账号加上带这些权限的角色，都能完成同步、安装前检查和开关机，未授予的操作如重启被拒绝）：
+**需要的权限**如下。下方 JSON 和 CLI 示例包含基础同步、安装及开关机权限；使用 Server 发起连接的安全组检查时，再加入 `ecs:DescribeSecurityGroupAttribute`。
 
 | 权限 | 用途 |
 |---|---|
@@ -158,6 +212,7 @@ GPUWORKS 不会自动释放云实例，删除云账号也不会。到云厂商�
 | `ecs:DescribeCloudAssistantStatus` | 判断实例的云助手是否在线 |
 | `ecs:RunCommand`、`ecs:DescribeInvocationResults` | 经云助手执行安装前检查和安装，并读取结果 |
 | `ecs:StartInstance`、`ecs:StopInstance` | 开机、关机；不需要可以去掉 |
+| `ecs:DescribeSecurityGroupAttribute` | Server 发起连接时读取入站安全组规则；不使用此检查时可不授予 |
 
 ```json
 {
@@ -182,14 +237,14 @@ GPUWORKS 不会自动释放云实例，删除云账号也不会。到云厂商�
 
 GPUWORKS 不在阿里云上创建或释放实例，不需要这两类权限。
 
-**在控制台创建子账号**：
+**在控制台创建子账号**（界面步骤参照[阿里云 RAM 用户文档](https://help.aliyun.com/zh/ram/user-guide/create-a-ram-user)）：
 
 1. 打开 [RAM 访问控制](https://ram.console.aliyun.com/)，「权限管理 → 权限策略 → 创建权限策略」，切到「脚本编辑」，粘贴上面的 JSON，命名为 `gpuworks-ecs` 保存。
-2. 「身份管理 → 用户 → 创建用户」，填登录名（如 `gpuworks`），访问方式勾选「使用永久 AccessKey 访问」，确定后**立即保存** AccessKey ID 和 Secret（Secret 只显示这一次）。
+2. 「身份管理 → 用户 → 创建用户」，填登录名（如 `gpuworks`），访问方式勾选「使用永久 AccessKey 访问」，按页面提示确认创建 AccessKey，确定后**立即保存** AccessKey ID 和 Secret（Secret 只显示这一次）。
 3. 在用户列表里给这个用户「添加权限」，选「自定义策略」里的 `gpuworks-ecs`。
 4. 回到 GPUWORKS，用这对 AccessKey 添加阿里云账号。
 
-**用命令行创建**（[阿里云 CLI](https://help.aliyun.com/zh/cli/)，用有 RAM 管理权限的身份执行；也可以把这段交给 agent 执行）：
+**用命令行创建**（[阿里云 CLI](https://help.aliyun.com/zh/cli/)，用有 RAM 管理权限的身份执行）：
 
 ```bash
 POLICY='{"Version":"1","Statement":[{"Effect":"Allow","Action":["ecs:DescribeRegions","ecs:DescribeInstances","ecs:DescribeCloudAssistantStatus","ecs:RunCommand","ecs:DescribeInvocationResults","ecs:StartInstance","ecs:StopInstance"],"Resource":"*"}]}'
@@ -213,11 +268,29 @@ aliyun ram AttachPolicyToUser --PolicyType System --PolicyName AliyunSTSAssumeRo
 
 **同步**：实例表只列出账号在各地域带 GPU 的 ECS 实例（不带 GPU 的实例不显示），GPU 型号与卡数来自实例规格。运行中的实例同时查询云助手是否在线：在线的实例连接方式里出现“云助手”；有公网 IP（含 EIP）的实例还有“直连”（`root@<公网 IP>:22`）。Windows 实例不能安装 agent。
 
-**安装**：“自动选择”时先走云助手（agent 由 server 拨入的 `server_dial` 除外，见上）——server 调 `RunCommand`，让实例以 root 执行与“添加节点”相同的一行安装命令（`curl <server_url>/install.sh | sh -s -- …`），实例自己从 server 下载 agent。这条路不需要 SSH、密码、平台密钥，也不需要公网 IP，但**实例必须能访问 `server_url`**：没有公网出口的实例只能用同一 VPC（或已打通的网络）里能访问到的 server 地址，见[节点与 server 网络不通](connect-nodes.md#节点与-server-网络不通)。安装前的检查同样经云助手执行，并从 server 一侧检查能否反向连到实例。
+**安装通道**
 
-经 SSH 安装（云助手不在线，或 `server_dial`）之前，只要云助手在线，server 先经云助手把平台公钥加进实例 root 的 `~/.ssh/authorized_keys`（已有就不重复加，检查表里是 `Platform key (Cloud Assistant)` 一行），再用平台密钥登录，不需要提供任何凭据。还没有平台公钥的实例，预检查里 `SSH` 一行是警告，说明安装时会经云助手添加（其余检查要登录后才能跑）。云助手不在线时，安装最多等 2 分钟让它上线（刚开机的实例 SSH 先可连，云助手约一分钟后才上报第一次心跳），等到了再加公钥，检查表里写明等了多久。等不到（自定义镜像没有预装云助手）时，阿里云实例没有平台密钥，也不会经接口给出 root 密码，需要在「高级设置」里提供一次密码或私钥。要用云助手，可以在阿里云控制台为实例安装云助手（需要重启实例）。
+使用**自动选择**时，Agent 发起连接优先经云助手安装；Server 发起连接（`server_dial`）或云助手不在线时使用 SSH。
 
-云助手的调用记录（含执行的命令）会在阿里云账号里保留 30 天。命令里带着该节点的接入 token，agent 之后一直用它连接 server，所以有权限查看云助手调用记录（`ecs:DescribeInvocations`）的阿里云用户能读到它；节点删除后 token 随之失效。
+**经云助手安装**
+
+这条路径不需要 SSH、密码、平台密钥或公网 IP，但**实例必须能访问 `server_url`**。没有公网出口时，使用同一 VPC 或已打通网络中可达的 server 地址，见[节点与 server 网络不通](connect-nodes.md#节点与-server-网络不通)。
+
+server 调用 `RunCommand`，让实例以 root 执行与**添加节点**相同的一行安装命令（`curl <server_url>/install.sh | sh -s -- …`），由实例下载 agent。安装前检查同样经云助手执行，并从 server 一侧检查能否反向连到实例。
+
+**经 SSH 安装时的认证回退**
+
+平台会尝试通过云助手把平台公钥追加到实例 root 的 `~/.ssh/authorized_keys`，已有公钥不重复添加，再用平台密钥登录：
+
+- **云助手在线**：可以直接添加公钥，不需要手填凭据。报告中对应 `Platform key (Cloud Assistant)`。
+- **云助手尚未在线**：安装最多等待 2 分钟，上线后再加公钥，报告写明等待时长。刚开机时 SSH 可能先可连，云助手约一分钟后才上报第一次心跳。
+- **等待后仍未在线**：例如自定义镜像没有预装云助手，实例又没有平台密钥时，在**高级设置**提供一次密码或私钥；阿里云接口不会提供 root 密码。需要补装云助手时，按[阿里云安装说明](https://help.aliyun.com/zh/ecs/user-guide/install-the-cloud-assistant-agent)选择匹配系统的方式，并确认该方式是否需要重启。
+
+尚无平台公钥的实例，预检查中的 `SSH` 行显示警告，说明安装时会经云助手添加；其他需要登录的检查会在取得认证后继续。安装后核对报告中的公钥写入与等待结果。
+
+**云助手的命令记录**
+
+云助手会记录执行命令，保留期限以阿里云设置和文档为准。命令包含节点接入 token，agent 之后持续用它连接 server；有权查看调用记录（`ecs:DescribeInvocations`）的阿里云用户能读到 token。节点删除后，该 token 随之失效。
 
 **开关机**：关机使用“普通停机”（继续计费），保留实例的 GPU、固定公网 IP 等资源；“节省停机模式”会释放这些资源，再开机时可能没有库存，GPUWORKS 不使用它。
 
@@ -225,14 +298,14 @@ aliyun ram AttachPolicyToUser --PolicyType System --PolicyName AliyunSTSAssumeRo
 
 添加专有云时填写 API Endpoint、管理员的 AccessKey ID 和 AccessKey Secret。使用 ZStack 的
 本地 AccessKey，无需保存或刷新登录 Session。AccessKey 必须处于启用状态，所属账号须有查询
-物理机、GPU 和资源配置以及执行 GPU 资源联动的权限；ZStack 的 AccessKey 认证要求有效企业版许可证。
+物理机、GPU 和资源配置以及执行 GPU 资源联动的权限；Cloud 的许可证与版本须支持 AccessKey 认证。
 Endpoint 支持包含 `/zstack` 上下文和可选的 `/v1` 后缀。
 
 API 沿用公共凭据字段：`public_key` 保存 AccessKey ID，`private_key` 保存 Secret；两者随整个
 凭据对象加密存储。界面根据服务端字段字典显示 AccessKey 名称，Secret 使用密码输入框。
 已经配置 Session Token 的专有云，需要通过编辑凭据填写这两个字段；原 Session 无法转换为 AccessKey。
 
-请求按 [ZStack AccessKey 协议](https://www.zstack.io/help/dev_manual/dev_guide/v4/3.html) 签名。
+请求使用 ZStack AccessKey 签名。
 GPUWorks 与 Cloud 的系统时间需要同步。旧版 Cloud 配置 `rest.checkTimeZone=false` 时会忽略
 时区偏移，两端系统时区也须一致；签名保留 GPUWorks 进程的本地时区，与 ZStack 官方 SDK 一致。
 查询和资源变更请求都使用 AccessKey，Secret 不随请求发送。

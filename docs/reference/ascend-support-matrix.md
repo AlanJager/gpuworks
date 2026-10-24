@@ -3,8 +3,8 @@
 更新日期：2026-08-28。这里把三件容易混淆的东西分开写：
 
 - **外层 CANN**：节点或云市场租用镜像提供的 toolkit。自有裸机可能只有驱动，记为 `driver-only`，不等于没有容器 runtime。
-- **内层 CANN**：GPUWorks 启动的业务镜像内的 CANN userspace ABI；它影响业务镜像能否运行，但不参与 `libvruntime.so` 资产选择。
-- **runtime**：Docker、nerdctl 或 runveil（`udocker` driver）。它是 PRoot 下的 container-in-container；Gitee 的租机镜像只是外层环境，不是业务镜像。下表中标 `udocker` 的结果是在旧的 udocker CLI 启动器下验证的，runveil 下尚未在昇腾上复测。
+- **内层 CANN**：GPUWorks 启动的业务镜像内的 CANN 用户态二进制接口（userspace ABI）；它影响业务镜像能否运行，但不参与 `libvruntime.so` 资产选择。
+- **runtime（容器运行时）**：Docker、nerdctl 或 runveil（`udocker` driver）。Gitee 的租机镜像只是外层环境，不是业务镜像；表中的 `udocker` 场景通过 PRoot 在外层容器中运行业务容器（container-in-container）。下表中标 `udocker` 的结果是在旧的 udocker CLI 启动器下验证的，runveil 下尚未在昇腾上复测。
 
 ## 当前实测矩阵
 
@@ -34,15 +34,28 @@
 
 ### “没有 runtime”
 
-历史 ARM fixture 报“节点没有可用的 docker/udocker 运行时”，不是 CANN 声明，也不是硬件不支持。该外层镜像的 Python 位于 `/root/miniconda3/bin/python3` 或 `/opt/conda/bin/python3`，不在非交互 shell 的默认 `PATH`，旧探测因此没有启用内嵌 udocker/PRoot。现在探测会检查这些绝对路径，runtime 可正确识别为 `udocker`。这一探测现在只对 `GPUWORKS_UDOCKER_LAUNCHER=udocker` 有意义：默认的 runveil 启动器不需要 Python。
+历史 ARM fixture 报“节点没有可用的 docker/udocker 运行时”，不是 CANN 声明，也不是硬件不支持。该外层镜像的 Python 位于 `/root/miniconda3/bin/python3` 或 `/opt/conda/bin/python3`，不在非交互 shell 的默认 `PATH`，旧探测因此没有启用内嵌 udocker/PRoot。
+
+现在探测会检查这些绝对路径，runtime 可正确识别为 `udocker`。这一探测现在只对 `GPUWORKS_UDOCKER_LAUNCHER=udocker` 有意义：默认的 runveil 启动器不需要 Python。
 
 ### `libvruntime.so` 只按 CPU 架构区分
 
-历史上 CANN 8.5.1 和 9.0.0 目录中的同架构产物字节级相同：arm64 SHA256 均为 `3dbe727a…d3d49`，amd64 均为 `57a9641a…9d010`。它们来自同一固定 ubs-virt 源码和 patch，并不是两套运行时 ABI。仓库现已收敛为 `linux-arm64/libvruntime.so` 与 `linux-amd64/libvruntime.so` 各一份；执行路径只接受这个 canonical 路径，不读取外层或内层 CANN 版本，也不存在跨 CANN 版本回退。agent 升级并成功安装 canonical 资产后，会精确删除旧的 `cann-8.5.1/` 与 `cann-9.0.0/` state 目录。CANN 版本只保留为实测环境记录和兼容警告。
+历史上 CANN 8.5.1 和 9.0.0 目录中的同架构产物字节级相同：arm64 SHA256 均为 `3dbe727a…d3d49`，amd64 均为 `57a9641a…9d010`。它们来自同一固定 ubs-virt 源码和 patch，并不是两套运行时 ABI。
 
-节点行为探针通过只证明“节点 + runtime + 该 SO”的 dGPU 链路可用，不自动证明任意业务镜像可用。业务镜像是否支持应由使用该镜像 userspace 的 image-specific 行为探针判断；现有版本矩阵在完成这层探针前只能标为 warning/unknown，不能作为支持断言。ARM 外 9 + 内 8.5 的 PRoot `platform_config` 失败正说明二者不能混为一个结论。
+仓库现在只保留 `linux-arm64/libvruntime.so` 与 `linux-amd64/libvruntime.so` 各一份，作为各架构唯一的标准路径（canonical 路径）。运行时只接受这两个路径，不读取外层或内层 CANN 版本，也不存在跨 CANN 版本回退。
 
-`PartitionProfile.Verified`（`internal/accelerator/ascend.go` profiles 表中按 backend/framework/版本前缀/架构硬编码的静态布尔位）只表示该组合在代码里被标记为已在预置真机环境验证过——为 false 时 `partitioncap` 会追加”该运行时组合尚未经预置真机环境验证”提示；它是随代码提交手动维护的静态标记，不会随本文档的真机矩阵自动同步（例如 CANN 9.0.x × x86_64 已有完整 chat 记录，但该字段尚未标记为 Verified），也不表示对应 `libvruntime.so` 资产本身经过额外的构建/来源校验（该校验由 `build/runtime-assets/verify.sh` 独立完成）。支持结论以上面的真机矩阵为准。
+agent 升级并成功安装标准路径下的资产后，会精确删除旧的 `cann-8.5.1/` 与 `cann-9.0.0/` state 目录。CANN 版本只保留为实测环境记录和兼容警告。
+
+节点行为探针通过只证明“节点 + runtime + 该 SO（共享库）”的 dGPU 链路可用，不自动证明任意业务镜像可用。业务镜像是否支持，应由使用该镜像用户态环境（userspace）的专用行为探针（image-specific probe）判断；现有版本矩阵在完成这层探针前只能标为 warning/unknown，不能作为支持断言。ARM 外 9 + 内 8.5 的 PRoot `platform_config` 失败正说明二者不能混为一个结论。
+
+`PartitionProfile.Verified` 是代码中的验证标记，不能替代上面的真机矩阵：
+
+- **定义位置**：`internal/accelerator/ascend.go` 的 profiles 表，按 backend/framework/版本前缀/架构硬编码的静态布尔位。
+- **标记含义**：只表示该组合在代码里被标记为已在预置真机环境验证过。为 false 时，`partitioncap` 会追加“该运行时组合尚未经预置真机环境验证”提示。
+- **维护方式**：随代码提交手动维护，不会随本文档的真机矩阵自动同步。例如 CANN 9.0.x × x86_64 已有完整 chat 记录，但该字段尚未标记为 Verified。
+- **校验边界**：不表示对应 `libvruntime.so` 资产本身经过额外的构建/来源校验；该校验由 `build/runtime-assets/verify.sh` 独立完成。
+
+支持结论以上面的真机矩阵为准。
 
 ## CI 归属
 

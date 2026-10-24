@@ -1,0 +1,164 @@
+# Console Page Tour
+
+The web console is a single-page application bundled with the server binary. This page lists all pages by their group in the left menu. The Chinese source uses the Chinese interface labels for page names; this translation uses the English UI labels. Paths are the paths in the browser address bar (frontend routes), and descriptions of content within a page cover tabs and panels at the same path. Routes and menus are defined in `ui/src/App.tsx`, and the Chinese labels are in `ui/src/i18n/locales/zh/`.
+
+Screenshots show the English UI.
+
+Conventions:
+
+- “Page name” uses the menu item label. A page title that differs from the menu label is noted separately.
+- Detail pages have no menu item and are accessible only from a list. They appear under their parent menu here.
+- Path segments containing `:` are variables. The `*` in `/inference-templates/*` is a model ID containing a slash, such as `org/model`.
+- Menu highlighting uses only the first path segment, so `/monitor/d/3` still highlights “Monitor Center”.
+
+## Global Shell
+
+By default, the top bar title combines the product name with “Cluster Management Platform”; the screenshots show “GPUWorks Cluster Management Platform”. You can customize it under **Settings → General → Branding**. The left menu has four groups: “Overview”, “Resources”, “Inference”, and “Platform”.
+
+The four groups follow the workflow from viewing the overall state to managing resources, running inference, and operating the platform. If you are unsure where a feature is, use the global navigation search in the top bar.
+
+| Entry | Location | Purpose |
+|---|---|---|
+| Sign in to the console | Every path displays the sign-in page when you are not signed in; visiting `/login` after signing in redirects to `/dashboard` | Sign in with an administrator account. If you forget your password, see `reset-password` in [Install and Upgrade the Control Plane](../how-to/install-server.md) |
+| Global navigation search | Search icon in the top bar, or press `/` or `Ctrl/⌘ + K` | Enter keywords in “Search pages” to filter menu items by page or group name. Press Enter to open the first result. “No pages found” appears when nothing matches |
+| Switch language | Right side of the top bar | Switch the interface language |
+| Sign out | Icon on the right side of the top bar | End the current session |
+| Page not found | Any undefined path | Displays “No resource matches the address you visited.” |
+| `/` | Root path | Redirects to `/dashboard` |
+| AI Assistant | No separate path: a persistent right sidebar opens through “AI Assistant” in the top bar or ⌘I / Ctrl+I. AI buttons on models, failed instances, unschedulable deployments, and node details start the corresponding task directly in the sidebar | When empty, lists tasks available on the current page and highlights objects that need attention. Shows platform checks first, then streams AI analysis and suggests follow-up questions after the response. Configure “AI Services” in “Settings” before using AI analysis; see [Use the AI Assistant](../how-to/use-ai-helper.md) |
+
+## Overview
+
+See at a glance whether the cluster is healthy and how busy the GPUs are, then drill down from Monitor Center to a service or instance.
+
+![Overview](../assets/screenshots/en/dashboard.png)
+
+| Page name | Path | Purpose | Further reading |
+|---|---|---|---|
+| Overview | `/dashboard` | Cluster overview: “Platform status” (offline compute nodes, abnormal GPUs, abnormal public/private clouds, active agent sessions, and deployments that can sleep), compute node and deployment statistics cards, “Core GPU metrics” (utilization, temperature, power consumption, and GPU memory usage), and capacity distribution by vendor and label | [View Metrics and Search Logs](../how-to/monitor-and-logs.md) |
+| Monitor Center | `/monitor` | Three levels of operational views: cluster, service, and instance. Includes signal cards at the top, the “Service” table, GPU memory by node, “Cluster token throughput”, and the optional “Metric explorer”. Select a shared time range in the upper right, using a preset or a custom range; a custom range does not refresh automatically. The adjacent search box finds requests across deployments by request ID or trace ID. Click a search result or any row in the request view to see its details | [View Metrics and Search Logs](../how-to/monitor-and-logs.md) |
+| Service monitoring (secondary page, titled with the deployment name) | `/monitor/d/:id` | Monitor a single deployment: primary diagnosis, stages in the request path, the “Requests” view (live / historical), “Request accounting (last 5 min)”, TTFT / TPOT and two request distribution charts, the “Replicas” table, and “Logs”. Open it from the service table in “Monitor Center”; “Go to deployment” opens the corresponding deployment | [View Metrics and Search Logs](../how-to/monitor-and-logs.md), [PD Disaggregation Deployment](../how-to/pd-disaggregation.md) |
+| Usage analytics | `/analytics/:tab` | Long-term statistics: “Token usage” (by API key, deployment, or model), “Service quality”, “GPU utilization” (switch the heatmap between utilization, power, temperature, and GPU memory), and “GPU hours”. View any time range by hour or by day, and export to CSV | [View Usage Analytics](../how-to/analyze-operations.md) |
+
+## Resources
+
+Manage what inference needs: cloud accounts, compute nodes, GPUs, models, images, storage, and networks.
+
+![Compute Nodes](../assets/screenshots/en/nodes.png)
+
+![GPU Devices](../assets/screenshots/en/gpus.png)
+
+![Models](../assets/screenshots/en/models.png)
+
+| Page name | Path | Purpose | Further reading |
+|---|---|---|---|
+| Public Cloud | `/providers` | Connect public cloud accounts (credential fields come from the backend schema), use “Sync All” for instances, and “Install Agent” on cloud VMs. The page shows counts of healthy/abnormal connections and the size of the instance fleet | [Rent Cloud GPUs](../how-to/rent-cloud-gpus.md) |
+| Private Cloud | `/zstack` | Uses the same page component as “Public Cloud”, scoped to private clouds (currently only ZStack Cloud is supported) | [Rent Cloud GPUs](../how-to/rent-cloud-gpus.md) |
+| Kubernetes | `/kubernetes` | Placeholder page explaining the current approach: install an agent on Kubernetes worker nodes and manage them as ordinary compute nodes. “Open onboarding wizard” opens “Compute Nodes” and its add drawer; other capabilities are marked as planned | [Connect, Upgrade, and Uninstall Nodes](../how-to/connect-nodes.md) |
+| Compute Nodes (page title “Nodes”) | `/nodes` | Node list and detail drawer: “Add node” (curl installation command or SSH wizard), view hardware/GPU/health, read-only “System labels” generated dynamically by the platform from vendor, model, architecture, and networks for each role, and “Agent” version (including the “Upgrade available” badge and “Upgrade Agent”); edit names and node labels, “Diagnose”, “Terminal”, and delete. The drawer also includes “Out-of-band SSH channel”, “Out-of-band recovery”, and “Pull proxy” (read-only, showing the proxy this node uses and dockerd status; Docker nodes offer “Restart dockerd”), plus “Latest rejection” when the node has a handshake rejection record | [Connect, Upgrade, and Uninstall Nodes](../how-to/connect-nodes.md), [Upgrades and Version Compatibility](../how-to/upgrade-and-compatibility.md), [Configure Node Networks](../how-to/configure-networks.md) |
+| Terminal (secondary page, titled “Terminal · node name”) | `/nodes/:uuid/terminal` | Full-screen terminal in a new tab without the menu shell. Opens the node host shell by default; `?target=container&ref=<container-id>` opens an instance container. Access it through “Terminal” in “Compute Nodes” or the instance panel in “Deployments”. Disable it under “Web Terminal” in “Settings” | [Security Model and Trust Boundaries](../explanation/security-model.md), [Complete REST API Routes](api.md) |
+| GPU Devices | `/gpus` | Cluster accelerator resources, allocation status, and live load, filterable by node, vendor, model, and allocation status. Allocation status represents the card's current allocation workload: “Unknown” when its node is disconnected, “Unavailable for allocation” when it accepts no allocations, and otherwise classified by occupancy; the adjacent health badge explains why a card cannot be used. Two tabs: “Physical GPUs” (the “dGPU” column shows the number of slices created on a card and their combined limits; “Memory allocation” in the details uses scheduler accounting to chart each slice, overhead beyond limits, sleeping residue, and remaining memory, with actual whole-card usage marked) and “dGPU” (each slice holding a memory quota and its deployment/instance, including starting and sleeping instances; actual memory uses HAMi statistics and excludes approximately 0.4 GiB of CUDA context; the SM reference is sampled, and detail charts use 1-minute averages; inline “Change quota” changes the parent deployment's memory limit and applies it to running instances on save, but engines that allocate memory at startup require an instance restart on the deployment page to use it; slices that cannot apply it immediately show “X GiB after restart”) | [Enable and Troubleshoot dGPU](../how-to/dgpu.md), [GPU, Detection, Deployment, and dGPU Support Matrix](support-matrix.md) |
+| Models (page title “Model Repository”) | `/models`, alias `/ai-store/ai-model` | Browse and filter registered models; switch between card and list views. “Register model”, “Refresh models” (reload the list), and per-row actions to download to compute nodes, sync to other compute nodes, “Register an existing path on a node”, and “Delete model” | [Download, Cache, and Sync Models Between Nodes](../how-to/download-and-sync-models.md), [Import Models and Images from an HTTP File Server](../how-to/import-from-http.md) |
+| Inference Templates | `/inference-templates` | Browse deployable model specs in the flat catalog. The page groups them by “Model Organizations” and lists “Weight artifacts”; filtering by “My Chips” starts only after you select chips. “Import Templates” imports your own templates (flat YAML or a `.gpuworks-catalog.tar.gz` catalog package with assets/documentation); “Add Chip” registers chips to filter by. Configure the template catalog source URL and sync under the inference template and default model source settings in “Settings” | [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Executable Inference Catalog Packages](inference-catalog-package.md) |
+| Inference template details (secondary page, titled with the model name) | `/inference-templates/*` | Specs for one model, including scenario, quantization, target hardware, and image. Each spec offers “Deploy” (opens `/deploy?template=…`). Custom specs can be edited or deleted: the server generates the flat YAML in the “Edit” drawer in catalog format, without assembling it in the browser, so saving it unchanged preserves all fields; built-in templates list only their custom specs in this editor. “Clone” copies the template into your own template and opens this YAML directly. “Usage” in a spec's “Details” drawer also includes invocation examples for each API and “Open in Playground” | [Inference Catalog model.yaml Syntax Reference](inference-catalog-spec.md), [Deploy Models, Select GPUs, and Understand Scheduling Results](../how-to/deploy-models.md) |
+| Images | `/images` | Manage runtime images by family, version, and node distribution. Three tabs: “System”, “Community”, and “Custom”. “System” is read-only (no editing or deletion; versions can be enabled or disabled), with “Check for updates” and “Upload manifest”. Versions removed from the manifest but still referenced display “Deprecated · N references”. The “Add Community Image” drawer under “Community” lists built-in community repository cards and can list all upstream tags from any repository, searchable by name. “Custom” offers “Add Custom Image” for arbitrary references, with engines including callable and vllm-omni; the add drawer can also parse a `docker save` archive from a URL. Delete community/custom images in their detail drawers. The node distribution table shows image IDs (12-character digests) and update times. On nodes, pull images, sync them from other nodes, or fetch them from a URL; rolling tags offer “Pull again” | [Image Catalog and Inference Image Families](image-families.md), [Deploy in Offline Environments](../how-to/deploy-offline.md), [Import Models and Images from an HTTP File Server](../how-to/import-from-http.md) |
+| Storage | `/storage` | Add and manage storage (local storage, NFS, NFS with a local cache, and already mounted shared directories): test mounts, node scope and coverage, default and disabled (read-only) settings, per-node mount status, other GPUWorks control planes using the storage, scanning and importing an existing model library, and node cache cleanup. Node disk usage levels and managed usage appear below | [Use Storage](../how-to/storages.md) |
+| Networks | `/networks` | Declare storage sync, compute, and serving networks and apply them to nodes or node labels. The list includes the built-in “Management” network. “Network topology and settings” at the bottom illustrates which network carries each traffic type | [Configure Node Networks](../how-to/configure-networks.md) |
+| Network details (secondary page, titled with the network name) | `/networks/:id` | Three tabs: “Overview” (resolved interfaces/addresses on each node, with edit and delete; the built-in management network is read-only, with roles toggled per node), “Internal test” (TCP tests, plus RDMA bandwidth tests for RDMA networks), and “Monitoring” | [Configure Node Networks](../how-to/configure-networks.md) |
+
+## Inference Services
+
+Create inference services in “Deploy”, manage instances in “Deployments”, verify them in “Playground”, and quantify performance in “Evaluations”.
+
+![Deploy](../assets/screenshots/en/deploy.png)
+
+![Deployments](../assets/screenshots/en/deployments.png)
+
+![Playground](../assets/screenshots/en/playground.png)
+
+| Page name | Path | Purpose | Further reading |
+|---|---|---|---|
+| Deploy | `/deploy` | Select a model and compute nodes, validate GPU memory and network requirements, and create an inference service. Two modes: “Quick Deploy” and “Expert Deploy”. Expert mode has “Model and Context”, “Performance”, “Resource Configuration”, and “Runtime Environment” tabs, with “Configuration Evaluation” on the right. With parameters such as `?template=`, the title becomes “Deploy Template: …” and “Clone Template” is available | [Deploy Models, Select GPUs, and Understand Scheduling Results](../how-to/deploy-models.md), [Multi-Node Inference](../how-to/multi-node-inference.md), [PD Disaggregation Deployment](../how-to/pd-disaggregation.md), [Scheduling and GPU Memory Estimation](../explanation/scheduling-and-estimation.md) |
+| Deployments | `/deployments` | View model services, instance status, and sleep operations in one place. Each row offers “Open Playground”, “Copy curl”, and copying the API endpoint. “More” includes “Clone Deployment”, “Start Benchmark”, “Save as Inference Template”, instance terminals, and deletion. The detail drawer contains “Deployment Details”, instance events and logs, “Environment & Mounts”, “Launch facts”, and “Per-GPU Telemetry” (dGPU instances show their own slice's memory/limit and SM reference; whole-card figures include other instances on the same card and are provided for reference). PD deployments also have “PD Disaggregation” | [Deploy Models, Select GPUs, and Understand Scheduling Results](../how-to/deploy-models.md), [Put Instances to Sleep and Wake Them](../how-to/sleep-wake.md) |
+| Playground | `/playground` (the menu opens `/playground/chat`) | Verify deployed models' inference API capabilities. Shows only APIs actually declared by the selected deployment spec. “Refresh Models” is in the upper right; the chat page offers “View Code”. TTFT, TPOT, TPS (single-request decode speed = 1000 / TPOT, excluding prefill), Prefill, and Token below each response update live during generation. If the endpoint does not report usage with each chunk, token counts are estimated from chunk counts and marked “≈”. “Stream options (stream_options)” in the “Parameters” panel lets you disable `include_usage` and `continuous_usage_stats` | [OpenAI-Compatible Gateway](openai-gateway.md), [Install GPUWorks and Deploy Your First Model](../tutorials/getting-started.md) |
+| Playground · Chat | `/playground/chat` | Chat completions. The conversation list on the left supports creating, switching, renaming, deleting, and collapsing conversations; a comparison is also a conversation. Conversations are stored in this browser's IndexedDB, isolated by account, with the latest 60 retained. Switching models preserves context, and each response identifies the model that answered. Leaving Playground or switching between single chat and comparison does not interrupt generation; refreshing or closing the tab does, and the response is marked “Interrupted” when you return. Up to 4 responses can generate concurrently over HTTP/1.1 and 12 over HTTP/2/3; exceeding the limit rejects the entire generation attempt. “Follow latest reply” at the top is selected by default, clears automatically when you scroll up, and is selected again when you send a message. Copy code blocks or entire responses, including on HTTP deployments. HTML/SVG code blocks offer “Preview”, rendered in an isolated environment in the right drawer with network requests blocked by default | Same as above; for preview isolation, see [Security Model and Trust Boundaries](../explanation/security-model.md) |
+| Playground · Completions | `/playground/completion` | Text completions API (`/v1/completions`): sends the prompt unchanged, without a chat template, and streams the continuation and token count | Same as above |
+| Playground · Audio | `/playground/audio` | Audio APIs | Same as above |
+| Playground · Vector & Rerank | `/playground/vector` | Embedding and reranking APIs | Same as above |
+| Playground · Image | `/playground/image` | Image generation API | Same as above |
+| Playground · Video | `/playground/video` | Video generation API | Same as above |
+| Playground · Realtime | `/playground/realtime` | Realtime API | Same as above |
+| Evaluations | `/evaluations` | Evaluation history list: “New Evaluation” wizard (“Choose Question”, “Set Target”, “Configure Load”); view, “Run Again”, and “Delete” on each row; select multiple evaluations to compare them (up to 5) | [Run Evaluations and Interpret Reports](../how-to/benchmark.md) |
+| Evaluation details (secondary page, titled with the evaluation name) | `/evaluations/:id` | Verdict summary for a single evaluation, “Target Under Test”, the “Point Results” table and curves, and report export | [Run Evaluations and Interpret Reports](../how-to/benchmark.md) |
+| Evaluation comparison | `/evaluations/compare` | Align multiple evaluations across modes by concurrency (arrival rate for open-loop points). Data without shared points remains as isolated points | [Run Evaluations and Interpret Reports](../how-to/benchmark.md) |
+
+## Platform
+
+Manage access credentials, search logs, and configure server-level settings.
+
+![API Tokens](../assets/screenshots/en/apikeys.png)
+
+![Logs](../assets/screenshots/en/logs.png)
+
+| Page name | Path | Purpose | Further reading |
+|---|---|---|---|
+| API Tokens | `/apikeys` | Two cards: “Inference tokens” (`gw-`, for downstream applications to call deployed models) and “Platform API tokens” (`gwp_`, for calling management APIs and MCP as yourself, with read-only or read/write scope, optional expiry, and revocation). Both display the plaintext token only once after creation | [OpenAI-Compatible Gateway](openai-gateway.md), [Connect Through MCP](../how-to/use-mcp.md), [Security Defaults Checklist](security.md) |
+| Logs | `/logs` | Search container and infrastructure logs by keyword, instance, level, and time (“Log search”) | [View Metrics and Search Logs](../how-to/monitor-and-logs.md) |
+
+### Settings
+
+Path: `/settings`. The page has six tabs. URL fragments `#general`, `#pull`, `#nodes`, `#access`, `#integrations`, and `#data` select the corresponding tabs. A card's own fragment (such as `#updates`, `#security`, `#telemetry`, `#pull-settings`, or `#data-retention`) opens the tab containing that card.
+
+#### General
+
+- **Branding**: Set the logo, product name, top bar title, and sign-in page introduction. Leave fields empty to use the built-in defaults. Only administrators can change these settings.
+  - Selecting an image opens a cropping page with the whole image selected by default. Drag, zoom, or select a new crop; select “Crop to a square” to lock a 1:1 ratio and preview the actual sidebar appearance.
+  - After confirmation, the browser resizes the image to within 256 pixels and compresses it. Small, uncropped SVG files are kept unchanged.
+  - **Display locations**: The product name (default `GPUWorks`) appears beside the sidebar logo. The top bar title appears at the upper left (defaults to the product name followed by “Cluster Management Platform”, localized to the interface language). The browser tab title and icon also follow the product name and logo. The left side of the sign-in page displays the logo, product name, and introduction. Custom text appears unchanged and is not translated when the interface language changes.
+- **Version and updates**: View and update the server, system image catalog, and inference template catalog.
+  - Choose the stable release or rolling preview update channel.
+  - “Check for new versions automatically” controls whether the server checks automatically. When enabled, checks report the installation identifier, server version, and agent version distribution to the publisher. They additionally report the node count and GPU models only when the User Experience Improvement Program is enabled. Disabling automatic checks stops these checks and their associated reporting; the program's daily reports are controlled separately.
+  - Current and latest values are displayed separately for the server, system image catalog, and inference template catalog.
+  - Update either catalog with one click or by uploading a file. Upgrade the server from the console or upload an upgrade package; when this is unsupported, an upgrade command is provided.
+  - **Header notification**: When automatic version checks are enabled, opening the sign-in page starts a server update check (the server checks externally at most once per hour per channel; the sign-in page itself does not show the results). After sign-in, “Update available” appears in the header when the server or an official catalog has an update. Click it to open “Version and updates” in Settings.
+- **Listen addresses**: Written to `server.yaml`.
+
+#### Image & Model Pulls
+
+“Pull settings” has four tabs:
+
+- **Source rules**: Image rules and model site rules; the site rule drawer offers “Test connectivity”.
+- **Proxies**: Ordered proxy entries and “Preview the proxy a node uses”.
+- **Sync groups**.
+- **Credentials**: Image registry and model site credentials.
+
+See [Configure Image and Model Pulls](../how-to/configure-pull-settings.md).
+
+#### Nodes & Deployments
+
+- **SSH Key**: The platform SSH key.
+- **Deployment**: Cluster default for the instance startup timeout.
+- **Orphan Container Cleanup**.
+
+#### Security & Access
+
+- **Security**: Whether Playground HTML previews may make network requests. Only administrators can change this.
+- **Web Terminal**: Enable/disable, idle timeout, and concurrency limit.
+- **MCP service**: Enable/disable, endpoint, and connection examples. Only administrators can change the toggle.
+
+#### Integrations
+
+- **AI Services**.
+- **Request trace export (OpenTelemetry)**: Collector address, encrypted headers, sampling ratio, trace links, test spans, and runtime status. Only administrators can change these settings; see [Export Request Traces to OpenTelemetry](../how-to/export-request-traces.md).
+
+#### Data Retention
+
+Set retention periods for raw metric samples, container logs, individual request records, token usage, and long-term statistics. Individual request records also have a storage limit. The page includes toggles for three types of long-term statistics and a statistics time zone, with current storage usage shown beside each item.
+
+Shortening a retention period requires confirmation. Data beyond the new retention period is deleted in the background. Only administrators can change these settings; see [View Usage Analytics](../how-to/analyze-operations.md).
+
+Further reading: [Install and Upgrade the Control Plane](../how-to/install-server.md), [Configure Node Networks](../how-to/configure-networks.md), [Configure Image and Model Pulls](../how-to/configure-pull-settings.md), [Use the AI Assistant](../how-to/use-ai-helper.md), [Connect Through MCP](../how-to/use-mcp.md), and [Configuration and Environment Variables](configuration.md).
+
+## Mapping to the API
+
+Every action on a page uses a REST endpoint under `/api/v1`. See [Complete REST API Routes](api.md) for the full route list. For the fields and decision logic behind upgrade-related UI elements (the “Agent” column and “Upgrade available” badge on the node page), see [Upgrades and Version Compatibility](../how-to/upgrade-and-compatibility.md).

@@ -1,0 +1,171 @@
+# HTTP API Conventions
+
+All endpoints under `/api/v1` follow the conventions in this document. Follow them when adding or modifying endpoints. `make check-api-conventions`
+(`scripts/apiconv`) checks the aspects that can be determined from types. For individual endpoint descriptions, see [api.md](api.md).
+
+## Example: Sign In and Query the Inference Service List
+
+GPUWorks groups inference service configuration and running instances under deployments. Use `GET /api/v1/deployments` to query the deployment list.
+The results also include deployments that are preparing, stopped, or failed. This differs from [`GET /v1/models`](openai-gateway.md), which inference clients use to select models.
+
+Run the following example on a machine that can reach the console. You need **Bash, curl 7.76 or later, jq**, and an account that can sign in to the console.
+The commands use the JWT returned by sign-in (a management session token), not an inference token (for example, `gw-…`).
+
+### 1. Set the address and sign in
+
+Replace the example address with your actual **console address**, keeping the protocol and port. Remove page paths such as `/dashboard` and the trailing `/`.
+The default installation port is `8800`. If you use a custom listen address or reverse proxy, use the address you access in your browser.
+
+```bash
+API_URL='http://192.0.2.10:8800'
+USERNAME='admin'
+read -r -s -p 'GPUWorks password: ' PASSWORD
+printf '\n'
+
+TOKEN=''
+LOGIN_RESPONSE=$(jq -n --arg username "$USERNAME" --arg password "$PASSWORD" \
+  '{username: $username, password: $password}' |
+  curl --fail-with-body -sS "$API_URL/api/v1/auth/login" \
+    -H 'Content-Type: application/json' --data-binary @-) &&
+TOKEN=$(printf '%s' "$LOGIN_RESPONSE" | jq -er '.token')
+unset PASSWORD
+```
+
+Set `USERNAME` to your console username. A successful sign-in returns `token` and `user`. The command stores `token` in a variable for subsequent requests.
+If sign-in fails, run `printf '%s\n' "$LOGIN_RESPONSE"` to inspect `error` and `code` (see [Errors](#错误)). Resolve the error before querying.
+
+### 2. Query the deployment list
+
+After signing in successfully, run the following in the same terminal:
+
+```bash
+curl --fail-with-body -sS \
+  "$API_URL/api/v1/deployments?page=1&page_size=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+A successful response returns HTTP `200`. The following example shows key fields. The actual response also includes fields for the model, node, health status, and more:
+
+```json
+{
+  "items": [
+    {
+      "id": 7,
+      "name": "qwen3-chat",
+      "served_name": "qwen3",
+      "desired_state": "active",
+      "runtime_state": "running",
+      "replicas": 1,
+      "ready_replicas": 1
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+| Field | How to Interpret It |
+|---|---|
+| `items` | Deployment records on this page. `[]` means that the current page has no records. |
+| `page` / `page_size` / `total` | Current page, records per page, and total matching deployments. There is another page when `page × page_size < total`. |
+| `id` | Deployment ID, used to query management endpoints such as `GET /api/v1/deployments/{id}`. |
+| `name` / `served_name` | `name` is the display name in the management UI. `served_name` is the `model` name to specify in inference requests. |
+| `desired_state` / `runtime_state` | Desired state and current runtime state, respectively. To determine whether a deployment can serve requests, also check its ready replicas; do not rely only on `active`. |
+| `replicas` / `ready_replicas` | Target and ready replica counts for regular deployments. Prefill/decode (PD) disaggregation deployments do not return `ready_replicas`. Check the per-role statistics in `pd` in the details response; do not treat an omitted value as `0`. |
+
+`page` starts at `1`, and `page_size` ranges from `1`–`200`. Without pagination parameters, the response returns all matching deployments, with more complete individual records than the paginated list.
+An empty list also returns HTTP `200`. A failed request returns an error object, which must not be treated as an empty list.
+
+### 3. Query deployment details
+
+Replace `7` with an actual `id` from `items` in the previous step:
+
+```bash
+curl --fail-with-body -sS "$API_URL/api/v1/deployments/7" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The details response is the deployment object itself, without an `items` wrapper. It includes the deployment's configuration and instance information. To call the model, use
+`served_name` and follow the authentication and request format in [OpenAI-Compatible Gateway](openai-gateway.md).
+
+## Field Naming
+
+- Use snake_case for all JSON field names: `node_uuid`, `memory_total_bytes`, `time_ms`. Go struct fields must have
+  a `json` tag. Do not rely on the default encoding of field names, which produces names such as `TimeMS` and `Entries`.
+- This restriction does not apply to map keys that represent data, such as label names, environment variable names, or metric labels.
+- Include units in numeric field names: `_bytes`, `_gib`, `_ms`, `_seconds`, `_pct`.
+- End timestamps with `_at` (RFC 3339 string) or `_ms` (Unix milliseconds). Do not mix these two forms for the same type of timestamp within an endpoint.
+
+## Collections
+
+An endpoint that returns a collection of objects of the same type returns an object with the elements in `items`. **Do not return a bare array**:
+
+```json
+{"items": [{"uuid": "…", "name": "gpu3"}], "total": 1}
+```
+
+- `total` is the total number of matches. Without pagination, it equals the length of `items`. With pagination, it is the total number of matches after filtering, not just the count on this page.
+- Paginated responses (`page`/`page_size`) also include `page` and `page_size`, corresponding to `dto.ListPage`. Non-paginated responses correspond to `dto.List`.
+- Cursor pagination (event timelines and log searches) cannot always provide `total`. It can return only `items`, together with the cursor fields or instructions needed to navigate pages.
+- Information related to the entire collection but not to any individual element, such as summaries and filter options, belongs in sibling fields of `items`. Examples include
+  `overview` in `GET /api/v1/gpus` and `labels` in `GET /api/v1/nodes?page=1`.
+- An empty collection is `"items": []`, not `null`, and must not be omitted.
+- Filtering and sorting parameters take effect with or without pagination and **must not be silently ignored**. Return 400 (`LIST_FILTER_INVALID`) for filter values that the endpoint does not support,
+  rather than returning the entire unfiltered collection.
+- The criterion is whether the main response content is a collection of objects of the same type. Arrays within an object's own properties, such as `points` in a curve or
+  `gpus` in a node, are part of that object and are not subject to this restriction.
+
+## Opaque Fields
+
+The check script cannot inspect field names inside response fields typed as `any`, `map[string]any`, or `json.RawMessage`.
+Use these fields only for complete snapshots passed through unchanged, such as a deployment's `catalog_selection_snapshot`. The snapshot itself must also follow snake_case.
+Prefer named DTOs for new endpoints. The existing count is constrained by the `api_opaque_response_fields` budget in `scripts/arch-constraints.txt`, which can only decrease, never increase.
+
+## Errors
+
+A management API error response is a JSON object containing `error`. Product errors also include a stable `code` and optional `params`.
+For example, an incorrect username or password during sign-in returns HTTP `401`:
+
+```json
+{"error": "invalid username or password", "code": "INVALID_CREDENTIALS"}
+```
+
+| Field | Purpose |
+|---|---|
+| `error` | A human-readable error description in English. Do not build handling branches by matching this text. |
+| `code` | A stable error identifier that programs can use to distinguish causes. Not every error has one. |
+| `params` | Context such as the fields and values involved in the error. Clients can use it with `code` for localized messages. Omitted when not provided. |
+
+### Common HTTP Statuses and Error Codes
+
+The following table lists common management API cases. The HTTP status indicates the error category, while `code` indicates the specific cause. They do not have a one-to-one mapping.
+
+| HTTP Status | Common `code` | Meaning and Action |
+|---|---|---|
+| `400` | `FIELD_INVALID` | A request field or the JSON request body does not meet requirements. Check `params.field` and `error`. |
+| `400` | `LIST_PAGE_INVALID` / `LIST_FILTER_INVALID` | Invalid pagination parameters, filter values, or sort fields. Adjust them to the range supported by the endpoint. |
+| `401` | `INVALID_CREDENTIALS` | The sign-in username or password is incorrect. Check the credentials. |
+| `401` | `AUTHENTICATION_REQUIRED` | Management credentials are missing, invalid, or expired. Sign in again or use a valid platform token. |
+| `403` | `ADMINISTRATOR_REQUIRED` | The operation requires the administrator role. Use an account with the required permissions. |
+| `403` | `PLATFORM_TOKEN_READ_ONLY` / `PLATFORM_TOKEN_NOT_ALLOWED` | A read-only platform token cannot write, or this endpoint allows only signed-in sessions. Use credentials that meet the endpoint's requirements. |
+| `403` | `MANAGEMENT_ORIGIN_REJECTED` | Origin validation failed for the management request. Check the browser entry point and reverse proxy configuration. |
+| `404` / `405` | `code` is not guaranteed | The resource or route does not exist / the HTTP method is not supported. Check the address, resource ID, and method. |
+| `409` | Depends on the operation | The resource's current state or a concurrent change prevents the operation. Read the error details first and query the resource state again. |
+| `413` | Endpoints using generic JSON decoding return `FIELD_INVALID` | The request body exceeds the endpoint's limit. The generic management JSON request body limit is 1 MiB. Upload and similar endpoints follow their own limits. |
+| `429` | `LOGIN_THROTTLED` | Sign-in attempts are too frequent. Wait for the number of seconds specified by the `Retry-After` response header before retrying. |
+| `500` / `503` | Depends on the failure; `code` may be absent | An internal service error occurred / the service is currently unavailable. Retain the error content and check the control plane logs. `AUTH_NOT_CONFIGURED` means management authentication is not configured (`503`). |
+
+Clients first check the HTTP status, then read `code` and `params`. If `code` is absent, they must still retain and display `error`.
+These conventions apply to the management API. For the inference gateway's error format, see [OpenAI-Compatible Gateway](openai-gateway.md). Error codes are defined in
+`internal/server/api/errors.go`. Individual endpoints may also return business-specific error codes.
+
+## Checks
+
+`make check-api-conventions` performs type checks on `internal/server/api`, identifies the value written by every `writeJSON` / `writeSSE`
+call, and reports:
+
+- `envelope`: The value written is a slice or array and should be changed to `dto.List` / `dto.ListPage`.
+- `snake_case`: Reachable struct fields or keys in map literals written inline do not encode as snake_case.
+
+This check is included in `make test-unit`.

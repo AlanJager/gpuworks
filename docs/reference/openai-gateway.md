@@ -1,7 +1,6 @@
 # OpenAI 兼容网关
 
-server 的 /v1/* 使用 API key 鉴权；请求体中的 model 选择 served model，server 再解析部署、
-实例和节点，通过 agent tunnel 转发到本地端口。管理 API 使用 JWT，不能用管理 JWT 代替网关 key。
+server 的 `/v1/*` 使用 API key 鉴权。请求体中的 `model` 指定对外提供推理服务的模型名称（served model）；server 据此找到部署、实例和节点，通过 agent tunnel（agent 隧道）转发到本地端口。管理 API 使用 JWT，不能用管理 JWT 代替网关 key。
 
 ## 支持的操作
 
@@ -17,9 +16,20 @@ server 的 /v1/* 使用 API key 鉴权；请求体中的 model 选择 served mod
 | video generation | /v1/videos | JSON 或 multipart；可 async |
 | realtime | /v1/realtime | WebSocket |
 
-每个推理 spec 的 API contract 声明该部署可用的操作和 endpoint。控制台试验场（`/api/v1/playground/v1/*`）按 contract 限定，不在其中的路径返回 404；公网 `/v1` 不做 contract 检查，只按 `model` 选副本并转发，引擎不支持的路径由引擎自己返回（通常是 404）。
-视频异步任务还提供 GET /v1/videos/{id}、GET /v1/videos/{id}/content 和 DELETE /v1/videos/{id}。
-多副本部署默认使用 least-request：网关在内存候选表中按本机在途请求数选择副本，并把新鲜的引擎排队数/KV 使用率作为软惩罚。连接级失败会在请求仍可重放时换副本重试；已经收到上游响应（包括 5xx）不会重试。实例休眠、启动中或 rank 非 0 不可服务时返回 503，并保留重试语义。
+每个档位（spec）的 API contract（接口契约）声明该部署可用的操作和 endpoint（接口路径）。两个入口的检查范围不同：
+
+- 控制台试验场（`/api/v1/playground/v1/*`）按 contract 限定，不在其中的路径返回 404。
+- 公网 `/v1` 不做 contract 检查，只按 `model` 选副本并转发；引擎不支持的路径由引擎自己返回（通常是 404）。
+
+视频异步任务还提供 `GET /v1/videos/{id}`、`GET /v1/videos/{id}/content` 和 `DELETE /v1/videos/{id}`。
+
+## 副本选择与重试
+
+多副本部署默认使用 least-request（优先选择请求较少的副本）：网关在内存候选表中按本网关正在向各副本转发的请求数（在途请求数）选择副本，并参考近期有效的引擎排队数/KV 使用率，对排队较多或 KV 使用率达到阈值的副本降低选择优先级（软惩罚）。
+
+- 连接级失败时，请求仍可重放才会换副本重试。
+- 已经收到上游响应（包括 5xx）时，不会重试。
+- 实例休眠、启动中或 rank 非 0 不可服务时，返回 503，并保留重试语义。
 
 部署可以通过管理 API `PUT /api/v1/deployments/{id}/routing` 选择 `least_request`、`prefix_affinity` 或 `failover`。前缀亲和优先读取 `X-GPUWorks-Affinity-Key`，也支持从 chat messages、prompt 或 input 提取稳定 key；该请求头不会转发给引擎。
 
@@ -37,36 +47,121 @@ server 的 /v1/* 使用 API key 鉴权；请求体中的 model 选择 served mod
 
 ## Trace context
 
-网关为每个转发的请求建立一个 W3C trace context（[ADR 0046](../adr/0046-gateway-request-traces.md)）：
+追踪上下文用于把**同一次调用在不同系统中的记录关联起来**。例如，请求经过上游网关、GPUWorks 和推理引擎时，可以据此查出哪一段耗时或失败。GPUWorks 会为每个转发请求自动建立追踪上下文；普通推理调用不需要手工填写这些信息。
 
-- 请求带合法的 `traceparent` 时，网关接上调用方的 trace：网关自己的 span 以调用方 span 为父，沿用调用方的采样决定与 `tracestate`。上游网关（Higress、Kong、LiteLLM 等）开启 W3C 传播后，平台这一段就接在它的 trace 里。
-- 没带或不合法时，网关新起一个 trace；trace id 的前 6 字节是网关收到请求的毫秒时间（右 7 字节随机，置 Trace Context Level 2 的 random 位）。
-- 转给引擎（含重试、PD 的 prefill 与 decode）的请求带 `traceparent`，父是网关 span（PD 顺序交接发给 prefill 实例的请求以网关的 `pd.prefill` 子 span 为父，见 [ADR 0047](../adr/0047-pd-request-breakdown.md)），`tracestate` 原样转发。引擎自己开了 OTel（例如 vLLM 的 `--otlp-traces-endpoint`）时，它的 span 挂在网关 span 下。
-- 响应头 `X-Request-ID` 是 server 分配的请求 ID，与 trace id 一起记在请求记录里；客户端发来的 `X-Request-ID` 不会替换它，跨系统对应请用 trace id。
-- 把这些 span 导出到外部追踪系统见[导出请求 trace 到 OpenTelemetry](../how-to/export-request-traces.md)；在控制台按 trace id 或请求 ID 查找请求见[查看指标与检索日志](../how-to/monitor-and-logs.md#2-看请求视图与请求分布)。
+### 追踪标识与请求 ID
+
+| 名称 | 含义与用途 |
+|---|---|
+| trace / trace id | 一次完整追踪及其标识。上游网关、GPUWorks 和引擎沿用同一个 trace id，才能在追踪系统中关联各自的记录 |
+| span | 追踪中的一段操作。例如，GPUWorks 转发请求是一段，引擎处理请求是另一段；父子关系表示哪段操作调用了下一段 |
+| 请求 ID / `X-Request-ID` | GPUWorks 为本次请求分配的标识，通过响应头返回，也与 trace id 一起保存在请求记录中。用于在平台内查找请求；跨系统关联使用 trace id |
+
+客户端传入的 `X-Request-ID` 不会替换 server 分配的请求 ID。
+
+### 如何接上调用方的追踪
+
+系统之间通过 W3C 请求头传递追踪上下文：`traceparent` 携带 trace id、调用方的 span id 和采样标记；`tracestate` 携带追踪系统的附加信息。采样标记用于表达该追踪是否被选中记录。
+
+| 调用方的请求 | GPUWorks 的处理 |
+|---|---|
+| 带合法的 `traceparent` | 沿用 trace id，以调用方的 span 为父创建网关 span，并沿用调用方的采样决定与 `tracestate` |
+| 未带 `traceparent`，或其值不合法 | 新建一个 trace 和网关 span |
+
+因此，Higress、Kong、LiteLLM 等上游网关开启 W3C 上下文传播后，GPUWorks 的处理记录就可以接入同一次追踪。
+
+GPUWorks 转发给引擎时，会更新 `traceparent`，让引擎知道这次调用来自哪一个 span，并继续传递有效上游上下文中的 `tracestate`（重复头合并并去除首尾空白，超过 512 字节时丢弃）：
+
+- 普通转发、重试，以及 PD 分离部署的 decode 请求，都以网关 span 为父。
+- PD 分离部署把提示词计算（prefill）和后续内容生成（decode）交给不同实例。顺序交接时，网关另建 `pd.prefill` 子 span，发给 prefill 实例的请求以它为父；并发交接的 prefill 请求仍以网关 span 为父。
+- 引擎启用 OpenTelemetry（OTel，例如 vLLM 的 `--otlp-traces-endpoint`）后，才能生成引擎自己的 span，并按上述父子关系接入追踪。
+
+网关新建的 trace id 为 16 字节：前 6 字节保存建立追踪时的 Unix 毫秒时间，后 10 字节随机。它同时设置 Trace Context Level 2 的 random 位，表示最右侧 7 字节符合随机性要求。设计依据见 [ADR 0046](../adr/0046-gateway-request-traces.md)；PD 子 span 见 [ADR 0047](../adr/0047-pd-request-breakdown.md)。
+
+导出到外部追踪系统见[导出请求 trace 到 OpenTelemetry](../how-to/export-request-traces.md)；在控制台按 trace id 或请求 ID 查找请求见[查看指标与检索日志](../how-to/monitor-and-logs.md#2-看请求视图与请求分布)。
 
 ## 用量（usage）
 
-回复里的 `usage` 原样来自引擎，只有两处不同：
+`usage` 是引擎在响应中提供的用量统计。对文本生成请求，它通常记录输入、输出各使用了多少 token。token 是模型处理文本的计数单位，不等同于字数或字符数。
 
-- 客户端没要求流式 usage（`stream_options.include_usage`）时，网关为自己的统计向引擎要了一份，并从流里删掉它带来的那个 usage 事件，客户端收到的流与没要时一样。
-- Anthropic Messages（`/v1/messages`）与 OpenAI Responses（`/v1/responses`）请求原样转发，网关不往请求里加任何字段（这两个协议流式也总带 usage），只从回复里读平台自己的统计：
-  - 输入统一记为**总输入**：Responses 的 `input_tokens` 本身就是总数，缓存命中取 `input_tokens_details.cached_tokens`；Messages 带 `cache_read_input_tokens` / `cache_creation_input_tokens` 时（vLLM）`input_tokens` 只是未命中部分，总输入 = 三者之和、缓存命中 = `cache_read_input_tokens`；不带时（SGLang）`input_tokens` 就是总数，缓存命中记为未知。
-  - Messages 流式的输入取自 `message_start`（SGLang 最后的 `message_delta` 只有输出），输出取自最后的 `message_delta`；思考 token 数只有 Responses 报（`output_tokens_details.reasoning_tokens`）。
-  - 结束原因归一成 chat 的写法：`max_tokens` / 状态为 `incomplete` 且原因是 `max_output_tokens` 记为长度截断，`end_turn` 与 `completed` 记为正常完成。vLLM 在截断时仍发 `response.completed`，以其中 response 的 `status` 为准。
-- PD 分离部署顺序交接（`vllm-nixl`、`vllm-ascend-mooncake`）的请求，`prompt_tokens_details.cached_tokens` 是 **prefill 实例**回复里的值：decode 实例把从 prefill 实例拉来的 KV 也算作缓存命中，它报的数总等于整个提示；真正省下计算的是 prefill 实例的前缀缓存命中。网关原地替换这个数（不足的位数补空格，`Content-Length` 不变），usage 的其他字段仍是 decode 实例写的。prefill 实例的回复不带这个数、请求降级由 decode 单独完成、或 SGLang 并发交接时，保留 decode 实例的值。平台的请求记录、网关计数与导出的 trace 用的是同一个数。
+| 常见字段 | 含义 |
+|---|---|
+| `prompt_tokens` | 输入提示词的 token 数 |
+| `completion_tokens` | 生成内容的 token 数 |
+| `total_tokens` | 输入与生成内容的 token 总数 |
+| `prompt_tokens_details.cached_tokens` | 输入中命中缓存、无需重复计算的 token 数；它是输入 token 的一部分，不额外加到总数中 |
+
+具体返回哪些字段取决于引擎。网关通常原样转发 `usage`，下面几种情况有额外处理。
+
+### 流式请求如何获取用量
+
+流式响应会分多次发送生成内容，用量统计可能作为流末尾的一个独立事件返回。**平台需要记录用量，但客户端不一定请求了这个事件。**
+
+网关仅在以下条件全部满足时，自动向引擎索取用量：
+
+- 引擎是 vLLM 或 SGLang。
+- 接口是 `/v1/chat/completions` 或 `/v1/completions`。
+- 请求体是网关可读取的 JSON，且设置了 `stream: true`。
+- 客户端没有设置 `stream_options`。
+
+满足条件后，网关在转发的请求中补上 `"stream_options":{"include_usage":true}`。引擎返回用量时，网关先记录统计，再从响应流中移除因此增加的独立 usage 事件，客户端不会额外收到这个事件。
+
+如果客户端希望在响应流中收到用量，可在请求体中加入以下字段：
+
+```text
+"stream_options": {"include_usage": true}
+```
+
+只要客户端已经设置 `stream_options`（包括设置为 `null` 或 `include_usage: false`），网关就不再自动补充或覆盖它；是否返回用量由引擎按客户端的设置处理。
+
+### Messages 与 Responses 的用量
+
+Anthropic Messages（`/v1/messages`）与 OpenAI Responses（`/v1/responses`）请求原样转发。网关不往请求里加任何字段，因为这两个协议的流式响应也总带 usage；网关只从回复里读取平台自己的统计。
+
+输入统一记为**总输入**：
+
+| 协议与引擎返回字段 | 总输入 token 数 | 缓存命中 token 数 |
+|---|---|---|
+| Responses | `input_tokens` | `input_tokens_details.cached_tokens` |
+| Messages 带 `cache_read_input_tokens` / `cache_creation_input_tokens`（vLLM） | `input_tokens` 仅为未命中部分；总输入为这三个字段之和 | `cache_read_input_tokens` |
+| Messages 不带这两个缓存字段（SGLang） | `input_tokens` | 未知 |
+
+Messages 流式的输入取自 `message_start`，输出取自最后的 `message_delta`（SGLang 最后的 `message_delta` 只有输出）。只有 Responses 报告思考 token 数（`output_tokens_details.reasoning_tokens`）。
+
+结束原因归一成 chat 的写法：`max_tokens`，或状态为 `incomplete` 且原因是 `max_output_tokens`，记为长度截断；`end_turn` 与 `completed` 记为正常完成。vLLM 在截断时仍发 `response.completed`，因此以其中 response 的 `status` 为准。
+
+### PD 分离部署的缓存命中数取自哪里
+
+PD 分离将输入提示词计算和后续生成交给不同实例。vLLM 顺序交接成功时，prefill 实例先计算提示词，再把计算结果（KV）交给 decode 实例继续生成内容。decode 把收到的 KV 全部算作缓存命中，因此它报告的 `cached_tokens` 等于整个提示词长度，不能用来判断 prefill 阶段实际复用了多少缓存。
+
+**顺序交接模式 `vllm-nixl`、`vllm-ascend-mooncake` 使用 prefill 实例报告的缓存命中数。** 例如，输入有 1,036 个 token，prefill 实际命中缓存 512 个；即使 decode 报告命中 1,036 个，网关返回的 `cached_tokens` 仍为 512，表示有 512 个输入 token 直接复用了 prefill 的缓存结果。
+
+| 情况 | 返回的 `cached_tokens` |
+|---|---|
+| 顺序交接成功，prefill 回复提供了缓存命中数 | 用 prefill 的值替换 decode 回复中的 `prompt_tokens_details.cached_tokens` |
+| prefill 回复未提供该值 | 保留 decode 的值 |
+| 请求降级，由 decode 独立完成输入计算和内容生成 | 保留 decode 的值 |
+| SGLang 并发交接 | 保留 decode 的值 |
+
+替换只影响这个缓存命中数，`usage` 其他字段仍来自 decode。网关原地改写数字，数字变短时补空格，保持 `Content-Length` 不变；新值需要的位数超过原值时不改写。客户端、平台请求记录、网关计数和导出的 trace 使用同一个数。
 
 ## Playground
 
 模型列表只展示已部署且声明了推理 API 操作的模型；全局设置中的外部模型供 AI 助手使用，不自动加入试验场。
 
-已部署模型可从管理 JWT 保护的 /api/v1/playground/v1/* 调用；外部模型名形如
-external:<config-id>:<model>，仅允许 chat completions。外部 endpoint key 在 server 端加密解密
-后转发，不写入浏览器或实例环境。
+已部署模型可从管理 JWT 保护的 `/api/v1/playground/v1/*` 调用。
+
+外部模型名形如 `external:<config-id>:<model>`，仅允许 chat completions。外部 endpoint key 在 server 端加密解密后转发，不写入浏览器或实例环境。
 
 ## 差异与排查
 
-网关不模拟 OpenAI 的全部产品接口，具体能力以 spec contract 和
-GET /api/v1/playground/openapi.json 为准。收到 401 先检查 Authorization: Bearer <key>；404 检查
-model 名称（试验场还要看 contract）；503 检查实例状态、sleep/wake 和节点在线性；502 查看 tunnel 和引擎日志。
+网关不模拟 OpenAI 的全部产品接口，具体能力以 spec contract 和 `GET /api/v1/playground/openapi.json` 为准。
+
+| 状态码 | 检查项 |
+|---|---|
+| 401 | 先检查 `Authorization: Bearer <key>` |
+| 404 | 检查 `model` 名称；试验场还要看 contract |
+| 503 | 检查实例状态、sleep/wake 和节点是否在线 |
+| 502 | 查看 tunnel 和引擎日志 |
+
 流式 SSE 与二进制（例如 WAV）按原始 content type 转发，不截断响应。

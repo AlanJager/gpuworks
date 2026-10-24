@@ -1,0 +1,59 @@
+{{- $u := urls.Parse .Destination -}}
+{{- $href := .Destination -}}
+{{- $page := .PageInner -}}
+{{- $mapped := "" -}}
+{{- $chinese := false -}}
+{{- if and $page.File (not $u.Scheme) (not $u.Host) -}}
+  {{- if not $u.Path -}}
+    {{- $href = printf "%s%s" $page.RelPermalink .Destination -}}
+  {{- else if not (strings.HasPrefix $u.Path "/") -}}
+    {{- $source := $page.Params.source_path | default $page.File.Path -}}
+    {{- $target := path.Clean (path.Join "docs" (path.Dir $source) $u.Path) -}}
+    {{- if findRE `^(\.\./)*(\./)?assets/` $u.Path -}}
+      {{- $mapped = relURL (replaceRE `^(\.\./)*(\./)?assets/` "assets/" $u.Path) -}}
+    {{- else if or (eq $target "docs") (strings.HasPrefix $target "docs/") -}}
+      {{- $lookup := strings.TrimPrefix "docs" $target -}}
+      {{- if eq (path.Base $lookup) "README.md" -}}
+        {{- $lookup = path.Dir $lookup -}}
+      {{- end -}}
+      {{- $lookup = strings.TrimSuffix ".md" $lookup | default "/" -}}
+      {{- $translated := $page.Site.GetPage $lookup -}}
+      {{- if and (not $translated) (eq $page.Language.Lang "en") -}}
+        {{- range hugo.Sites -}}
+          {{- if eq .Language.Lang "zh" -}}
+            {{- $translated = .GetPage $lookup -}}
+            {{- $chinese = ne $translated nil -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+      {{- with $translated -}}
+        {{- $mapped = .RelPermalink -}}
+      {{- end -}}
+    {{- else if or (eq $target "artifacts") (strings.HasPrefix $target "artifacts/") -}}
+      {{- with $page.Site.Params.artifacts_repo -}}
+        {{- $mapped = printf "%s/-/blob/%s/%s" (strings.TrimSuffix "/" .) ($page.Site.Params.github_branch | default "master") (strings.TrimPrefix "artifacts/" $target) -}}
+        {{- if eq $target "artifacts" -}}
+          {{- $mapped = . -}}
+        {{- end -}}
+      {{- else -}}
+        {{- errorf "Artifact link %q on %s requires params.artifacts_repo" $.Destination $page.File.Path -}}
+      {{- end -}}
+    {{- else if and (ne $target ".") (ne $target "..") (not (strings.HasPrefix $target "../")) -}}
+      {{- with $page.Site.Params.github_repo -}}
+        {{- $mapped = printf "%s/-/blob/%s/%s" (strings.TrimSuffix "/" .) ($page.Site.Params.github_branch | default "master") $target -}}
+      {{- else -}}
+        {{- errorf "Repository link %q on %s requires params.github_repo" $.Destination $page.File.Path -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if not $mapped -}}
+      {{- $lookup := strings.TrimPrefix "./" $u.Path -}}
+      {{- with or ($page.Resources.Get $lookup) (resources.Get $lookup) -}}
+        {{- $mapped = .RelPermalink -}}
+      {{- end -}}
+    {{- end -}}
+    {{- with $mapped -}}
+      {{- $href = printf "%s%s" . (replaceRE `^[^?#]*` "" $.Destination) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+<a href="{{ $href }}"{{ with .Title }} title="{{ . }}"{{ end }}{{ if $chinese }} hreflang="zh-CN"{{ end }}>{{ .Text }}{{ if $chinese }} (Chinese){{ end }}</a>

@@ -1,6 +1,7 @@
 # 推理目录 model.yaml 语法参考
 
-本文是 `models/<model-id>/model.yaml` 的逐字段语法参考，权威定义在代码：
+本文是 `models/<model-id>/model.yaml` 的逐字段语法参考。一个模型可以有多个 spec（档位）；
+每个 spec 描述一套可部署配置，包括适用 GPU、镜像、权重来源和启动参数。权威定义在代码：
 结构体与基础校验在 `internal/server/inferencecatalog/flat.go`，可执行契约
 （assets / placement / api / components）在 `contracts.go`，操作词表在
 `internal/server/inferenceapi`，Starlark 求值器在 `internal/server/placement`，
@@ -107,7 +108,7 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 | `scenario` | `latency` \| `balanced` \| `throughput` | |
 | `engine` | 必填；部署时按注册表解析，合法值 `vllm` / `sglang` / `callable`（`internal/engines` 唯一产地） | `callable` 承载目录自带 Serve Adapter，无日志方言与参数字典；**命令行完全归模板**，引擎不追加任何参数，模型路径、端口、多机 rank 等平台事实由模板用[变量](#变量展开)自己摆放，且必须引用 `${API_PORT}`（ADR 0036） |
 | `image` | 必填 | 镜像引用语法与漂移问题见 [镜像家族](image-families.md) 与 todo.md T2 |
-| `image_sources[]` | 可选；每项 trim 后非空、不含空白、不含 `://`、≤ 512 个字符，不重复；与 `image` 相同的项被丢弃（引用的比较方式见下文） | 模板自己声明的镜像来源，部署页的镜像来源选择器里排在最前，详见 [image_sources](#image_sources模板声明的镜像来源) |
+| `image_sources[]` | 可选；每项 trim 后非空、不含空白、不含 `://`、≤ 512 个字符，不重复；与 `image` 相同的项被丢弃（引用的比较方式见下文） | 模板自己声明的镜像来源，在节点启动副本时作为镜像自身副本参与候选，详见 [image_sources](#image_sources模板声明的镜像来源) |
 | `weights.quantization` | 必填，小写 | |
 | `weights.sources[]` | 至少 1 个 | 见下 |
 | `weight_bytes` / `runtime_weight_bytes` | 非负；后者 ≤ 前者 | 调度与估算输入 |
@@ -125,13 +126,18 @@ models:                       # FlatCatalog：顶层只有一个 models 列表
 
 ### args：字典内拆进字段，字典外逐字透传
 
-作者仍按上游 recipe 原样书写 argv。部署时（ADR 0020）这些 token 走一次拆分：参数字典
-（`internal/server/deploy/param_specs.go`）认识的 flag 被解码成启动配置里的字段，估算、
-调度、表单因此能看见它们；字典不认识的 token 原序保留，作为该部署的模板残余逐字进入引擎
-命令行。一个 flag 被多个 key 共用（vLLM 的 `--speculative-config`、`--kv-transfer-config`）时同样
-留在残余里，不会被猜成某个字段。反过来，只有一个 key 拥有的 flag 若带着字典解不出来的值
+作者按上游提供的启动配方（recipe）原样填写参数列表（argv）。其中每个元素是一个命令行词元（token）。
+部署时（ADR 0020）按参数字典（`internal/server/deploy/param_specs.go`）拆分这份列表：
+
+- 字典认识的 flag 被解码成启动配置字段，供估算、调度和表单读取。
+- 字典不认识的 token 按原顺序保留，作为模板剩余参数逐字进入引擎命令行。
+
+一个 flag 被多个 key 共用（vLLM 的 `--speculative-config`、`--kv-transfer-config`）时同样
+留在模板剩余参数里，不会被猜成某个字段。反过来，只有一个 key 拥有的 flag 若带着字典解不出来的值
 （类型不符、枚举里没有的取值、非法 JSON），这个 spec 在导入时就被拒绝，错误点名 model、
-spec、flag 与原因，而不是把它放进残余蒙混过关。大小写与别名不算解不出来：`--dtype half`
+spec、flag 与原因，不会把它当作未知参数继续透传。
+
+大小写与别名不算解不出来：`--dtype half`
 与 `--speculative-algorithm eagle3` 都接受，入库时归一成字典的写法（`float16`、`EAGLE3`）。
 字典按引擎采用引擎自己的拼写：SGLang 的投机算法是大写的 `EAGLE`/`EAGLE3`/`NEXTN`/`DSPARK`/
 `NGRAM`/`STANDALONE`（其模型 hook 在归一化前就按大写比较），vLLM 是小写的方法名；KV 精度两边
@@ -183,6 +189,7 @@ image_sources:                                    # 按偏好顺序
 **模板写什么就接受什么，平台不替作者判断**：来源不必和 `image` 钉同一个 digest，`image` 钉了 digest 时
 来源也可以是 tag 引用，是否可达也不检查。校验只管语法：每项去首尾空白后不能为空、不含空白、不含
 `://`（镜像归档的下载地址属于镜像目录，不属于模板）、不超过 512 个字符、不重复。
+
 比较两个引用时按 registry 的解析方式：`nginx:1` 与 `docker.io/library/nginx:1` 是同一个，registry 主机名和仓库名
 不区分大小写，tag 区分大小写（`:V1` 与 `:v1` 是两个镜像）。
 与 `image` 相同的项被丢弃——`image` 本来就是候选，排在声明的来源之后，重复写一遍没有信息。导出时同样
@@ -192,7 +199,7 @@ image_sources:                                    # 按偏好顺序
 
 - 部署不选择镜像来源。节点启动副本时，候选先是适用于该节点的[来源规则](../how-to/configure-pull-settings.md#来源规则)产生的替代地址，其后是镜像自己的副本：模板的 `image_sources`（按声明顺序）→ 镜像又恰好登记在镜像目录里时，目录的
   `registry_sources` → `image` 自身，去重；目录里登记的镜像归档地址是要下载的文件，不是候选。这批副本由节点探测 `https://<host>/v2/` 按可达性与延迟排序，前一个失败或下载卡住才试下一个；使用模板声明的来源**不算偏离模板**。
-- 来源规则对所有镜像生效，包括模板声明的来源：规则的替代地址排在最前，关闭回源的规则会让匹配的副本本身被丢弃。除此之外模板声明的来源原样使用，不被改写。节点网络设置里的 `rewrites` 只重定向下载 URL，不改写镜像引用。
+- 来源规则对所有镜像生效，包括模板声明的来源：规则的替代地址排在最前，关闭回源的规则会让匹配的副本本身被丢弃。除此之外模板声明的来源原样使用，不被改写。
 - 只有部署用的镜像等于 spec 的 `image` 时才有这些来源。请求里覆盖了镜像（`image` 字段不同）就是另一个镜像，
   模板的来源不使用。
 - `image` 是 digest 引用（`repo@sha256:…`）时，运行时不能给 digest 引用打 tag，所以节点拉到哪个候选就直接
@@ -235,7 +242,7 @@ entrypoint 文本）或绝对路径供给，否则校验报稳定错误码
    只有开头的可执行 token 被换掉。
 
 在此基础上用户侧还有容器级覆盖（部署表单的 entrypoint/command 编辑、手动命令
-模式），优先级在其后。agent 是哑执行器，**不做任何入口推断**——入口选择只发生在
+模式），优先级更高。agent 按服务端下发的入口执行，**不做任何入口推断**——入口选择只发生在
 server 组装期，不接受运行时对 checkpoint 布局的探测改写（该方案曾作为评审备选，
 2026-09-15 否决）；手动部署（不经目录 spec）不提供非默认入口，需要非默认入口的
 模型应进目录声明 `entrypoint`。
@@ -339,7 +346,7 @@ args: [--model, ${MODEL_PATH}, --host, ${API_HOST}, --port, ${API_PORT}, --adapt
 
 ### 门槛与调度准入的关系
 
-placement 的显存门槛与调度准入是两道独立的门，写 `min_memory_gib` 前先算准入账：每卡
+placement 的显存门槛和调度准入需要分别通过。声明 `min_memory_gib` 前，应先计算调度器的每卡
 准入要求 = `weight_bytes/tp` + 编码器运行时（多模态塔，`pkg/estimate.MMEncoderRuntimeBytes`）
 + `reserve`；**KV 刻意排除在准入外**，只作信息展示。`reserve` 是引擎固定成本、与模型大小
 无关，按架构与 CUDA graph 档位查 `internal/server/estimate/reserve.go`（Ampere piecewise
@@ -387,7 +394,9 @@ api:
 操作词表（`internal/server/inferenceapi` 唯一产地）：`openai.chat`、
 `openai.completions`（`/v1/completions`，原样续写提示词，不套聊天模板）、`openai.embeddings`、`openai.rerank`、`openai.audio.transcribe`、
 `openai.audio.speech`、`openai.image.generate`、`openai.video.generate`、
-`openai.realtime`。同一契约内操作类型不可重复。特例：
+`openai.realtime`。同一契约内操作类型不可重复。
+
+特例：
 `openai.video.generate` 在 `/v1/videos` 上必须 `async`、在 `/v1/videos/sync`
 上必须 `sync`；`openai.audio.speech` 除 `/v1/audio/speech` 外还可声明 `/v1/audio/generate`
 （vllm-omni 给 Stable Audio 这类文生音频模型的路由，请求与响应形状相同，它们的
@@ -399,7 +408,7 @@ api:
 
 模板创建部署时，若部署所用的模型还没有自己的操作，模板声明的操作（以及模型级
 `input_modalities`）写入该模型，作为它的初始操作；部署页、Playground 及其代理只读模型上的
-操作。模型已有的操作——包括在模型页显式清空成的 `[]`——是它的当前契约，后续部署不覆盖。
+操作。模型已有的非空操作不会被后续部署覆盖；空列表（包括在模型页显式清空成的 `[]`）会由下一次部署且声明了操作的模板补齐。
 预览（evaluate）不写模型。
 
 ### api.metrics：引擎指标映射
@@ -469,10 +478,13 @@ CAMPPlus 与 BigVGAN 声码器）：它不是目录里的独立模型，`model_i
 非 primary 组件的 `mount_path` 必须被启动契约文本（args / entrypoint /
 pre_start / env）引用，否则校验失败——挂了不用或拼错路径在导入时暴露。
 被引用为组件的模型自身可以没有 spec（draft 权重单独成行、不可独立部署）。
-`model_id` 引用的模型要么在同一份文档/目录包里，要么已经在 server 上：导入 YAML（包括模板编辑器保存）
-时，server 把已有的组件模型并入校验，但只写入文档自己的模型（模板编辑器里的 YAML 是 server 用同一套目录类型写出的，
-单个模型的文档，不含它引用的组件模型；空字段不写、也不补默认值）；克隆或编辑带说明文档、资产的模板时，
-生成的目录包会把引用的组件模型以无 spec、无文档的条目一并带上。上传的目录包仍须自带它引用的组件模型。
+
+`model_id` 引用的模型要么在同一份文档/目录包里，要么已经在 server 上。不同导入形式的处理如下：
+
+- **导入 YAML，包括模板编辑器保存**：server 把已有的组件模型并入校验，但只写入文档自己的模型。
+  模板编辑器里的 YAML 由 server 用同一套目录类型写出，只含当前模型，不含它引用的组件模型；空字段不写，也不补默认值。
+- **克隆或编辑带说明文档、资产的模板**：生成的目录包会把引用的组件模型一并带上，这些条目不含 spec 和文档。
+- **上传目录包**：包内仍须自带它引用的组件模型。
 
 ## 导入前检查与警告
 

@@ -3,6 +3,92 @@
 `/api/v1` 下的接口都遵守本文的约定。新增或修改接口时照此执行，`make check-api-conventions`
 （`scripts/apiconv`）会对能从类型上读出来的部分做检查。逐个接口的说明见 [api.md](api.md)。
 
+## 示例：登录并查询推理服务列表
+
+GPUWorks 把推理服务的配置和运行实例归在“部署”下。查询部署列表使用 `GET /api/v1/deployments`，
+返回结果也包括准备中、已停止或失败的部署；它与供推理客户端选择模型的 [`GET /v1/models`](openai-gateway.md) 不同。
+
+以下示例在能访问控制台的机器上执行，需要 **Bash、curl 7.76 或更新版本、jq**，以及可登录控制台的账户。
+命令使用登录返回的 JWT（管理会话令牌），不使用推理令牌（例如 `gw-…`）。
+
+### 1. 设置地址并登录
+
+将示例地址替换为实际**控制台地址**，保留协议和端口，去掉 `/dashboard` 等页面路径以及末尾 `/`。
+默认安装端口为 `8800`；使用自定义监听地址或反向代理时，以浏览器访问控制台的地址为准。
+
+```bash
+API_URL='http://192.0.2.10:8800'
+USERNAME='admin'
+read -r -s -p 'GPUWorks 密码：' PASSWORD
+printf '\n'
+
+TOKEN=''
+LOGIN_RESPONSE=$(jq -n --arg username "$USERNAME" --arg password "$PASSWORD" \
+  '{username: $username, password: $password}' |
+  curl --fail-with-body -sS "$API_URL/api/v1/auth/login" \
+    -H 'Content-Type: application/json' --data-binary @-) &&
+TOKEN=$(printf '%s' "$LOGIN_RESPONSE" | jq -er '.token')
+unset PASSWORD
+```
+
+`USERNAME` 填控制台用户名。登录成功返回 `token` 和 `user`，命令将 `token` 存入变量供后续请求使用。
+登录失败时，执行 `printf '%s\n' "$LOGIN_RESPONSE"` 查看 `error`、`code`（见[错误](#错误)），处理后再查询。
+
+### 2. 查询部署列表
+
+登录成功后，在同一终端中执行：
+
+```bash
+curl --fail-with-body -sS \
+  "$API_URL/api/v1/deployments?page=1&page_size=20" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+成功响应为 HTTP `200`。下面是关键字段示意，实际响应还包含模型、节点、健康状态等字段：
+
+```json
+{
+  "items": [
+    {
+      "id": 7,
+      "name": "qwen3-chat",
+      "served_name": "qwen3",
+      "desired_state": "active",
+      "runtime_state": "running",
+      "replicas": 1,
+      "ready_replicas": 1
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 1
+}
+```
+
+| 字段 | 如何读取 |
+|---|---|
+| `items` | 本页部署记录；`[]` 表示当前页没有记录 |
+| `page` / `page_size` / `total` | 当前页、每页条数、匹配的部署总数。`page × page_size < total` 时还有下一页 |
+| `id` | 部署 ID，用于查询 `GET /api/v1/deployments/{id}` 等管理接口 |
+| `name` / `served_name` | `name` 是管理界面显示名；`served_name` 是发起推理请求时填写的 `model` 名称 |
+| `desired_state` / `runtime_state` | 分别是期望状态和当前运行状态；判断能否服务时还要结合就绪副本，不能仅凭 `active` |
+| `replicas` / `ready_replicas` | 普通部署的目标副本数和就绪副本数。预填充/解码分离（PD）部署不返回 `ready_replicas`，需在详情的 `pd` 中查看各角色统计；不能把缺省当作 `0` |
+
+`page` 从 `1` 开始，`page_size` 为 `1`–`200`。不带分页参数时返回全部匹配部署，单条记录也比分页列表更完整。
+空列表同样返回 HTTP `200`；请求失败时返回错误对象，不能把它当作空列表处理。
+
+### 3. 查询一个部署的详情
+
+将 `7` 替换为上一步 `items` 中实际的 `id`：
+
+```bash
+curl --fail-with-body -sS "$API_URL/api/v1/deployments/7" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+详情响应直接是部署对象，不套在 `items` 中，包含该部署的配置和实例信息。需要调用模型时，使用
+`served_name` 并按 [OpenAI 兼容网关](openai-gateway.md) 的鉴权与请求格式调用。
+
 ## 字段命名
 
 - JSON 字段名一律 snake_case：`node_uuid`、`memory_total_bytes`、`time_ms`。Go 结构体字段必须带
@@ -38,8 +124,41 @@
 
 ## 错误
 
-错误响应固定为 `{"error": "<英文说明>"}`。属于产品错误时另带稳定的 `code` 和可选的 `params`，
-客户端据此按 locale 显示文字。定义见 `internal/server/api/errors.go`。
+管理 API 的错误响应是 JSON 对象，包含 `error`；属于产品错误时另带稳定的 `code` 和可选的 `params`。
+例如登录时用户名或密码错误，返回 HTTP `401`：
+
+```json
+{"error": "invalid username or password", "code": "INVALID_CREDENTIALS"}
+```
+
+| 字段 | 用途 |
+|---|---|
+| `error` | 可直接查看的英文错误说明；不应靠匹配这段文字编写处理分支 |
+| `code` | 稳定的错误标识，供程序区分原因；并非每个错误都有 |
+| `params` | 错误涉及的字段、取值等上下文；客户端可与 `code` 一起用于本地化提示，未提供时省略 |
+
+### 常见 HTTP 状态与错误码
+
+以下列出管理 API 中常见的情况。HTTP 状态表示错误类别，`code` 表示具体原因；二者不是一一对应。
+
+| HTTP 状态 | 常见 `code` | 含义与处理 |
+|---|---|---|
+| `400` | `FIELD_INVALID` | 请求字段或 JSON 请求体不符合要求，检查 `params.field` 和 `error` |
+| `400` | `LIST_PAGE_INVALID` / `LIST_FILTER_INVALID` | 分页参数、筛选值或排序字段不合法，按接口支持的范围修改 |
+| `401` | `INVALID_CREDENTIALS` | 登录的用户名或密码错误，核对凭据 |
+| `401` | `AUTHENTICATION_REQUIRED` | 管理凭据缺失、无效或已过期，重新登录或更换有效平台令牌 |
+| `403` | `ADMINISTRATOR_REQUIRED` | 操作需要管理员角色，使用有权限的账户 |
+| `403` | `PLATFORM_TOKEN_READ_ONLY` / `PLATFORM_TOKEN_NOT_ALLOWED` | 只读平台令牌不能写入，或此接口只允许登录会话；按接口要求更换凭据 |
+| `403` | `MANAGEMENT_ORIGIN_REJECTED` | 管理请求的来源校验失败，检查浏览器入口与反向代理配置 |
+| `404` / `405` | 不保证有 `code` | 资源或路由不存在 / HTTP 方法不支持，核对地址、资源 ID 和方法 |
+| `409` | 由具体操作决定 | 资源当前状态或并发变化使操作不能执行，先读错误详情并重新查询资源状态 |
+| `413` | 使用通用 JSON 解码的接口返回 `FIELD_INVALID` | 请求体超过接口限制；通用管理 JSON 请求体上限为 1 MiB，上传等接口以各自约定为准 |
+| `429` | `LOGIN_THROTTLED` | 登录尝试过于频繁，按响应头 `Retry-After` 指定的秒数等待后重试 |
+| `500` / `503` | 由失败原因决定；可能没有 `code` | 服务内部出错 / 当前无法提供服务，保留错误内容并检查控制面日志；`AUTH_NOT_CONFIGURED` 表示管理鉴权未配置（`503`） |
+
+客户端先检查 HTTP 状态，再读取 `code` 和 `params`；没有 `code` 时仍须保留并显示 `error`。
+上述约定针对管理 API，推理网关的错误格式见 [OpenAI 兼容网关](openai-gateway.md)。错误码定义见
+`internal/server/api/errors.go`，具体接口还可能返回业务错误码。
 
 ## 检查
 

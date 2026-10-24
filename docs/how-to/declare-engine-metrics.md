@@ -2,11 +2,13 @@
 
 **适用场景**：你写了一个推理模板（尤其是 `engine: callable` 的自研或第三方引擎），部署后部署抽屉、实例页和服务监控页的推理面板没有数据，或者想让引擎自己的 TTFT、KV 使用率、投机接受率进入平台面板。
 
-**前置条件**：引擎在容器里提供 Prometheus 文本格式的指标端点；你能导入或编辑推理模板（见[推理目录 model.yaml 语法参考](../reference/inference-catalog-spec.md)）。
+完成后，模板的指标映射通过校验，并能在一次实际推理后从平台面板或指标浏览器看到对应数据。
+
+**前置条件**：引擎提供 Prometheus 文本或 JSON 指标端点，节点上的 agent 能通过实例端口访问它；你能登录该节点观察原始响应，并能导入或编辑推理模板（见[推理目录 model.yaml 语法参考](../reference/inference-catalog-spec.md)）。
 
 ## 先判断要不要声明
 
-agent 每 10 秒抓一次每个运行中实例的指标端点（`127.0.0.1:<实例端口><endpoint>`），按模板解析出的映射把引擎指标转成平台指标（[推理指标词表](../reference/inference-metrics.md)）。没有声明 `api.metrics` 时：
+先对照下表，判断是否需要修改模板。agent 每 10 秒从运行中实例的端点采集指标，并按映射转换为[平台指标](../reference/inference-metrics.md)。没有声明 `api.metrics` 时：
 
 | 模板引擎 | 默认行为 | 需要声明吗 |
 |---|---|---|
@@ -23,10 +25,12 @@ agent 每 10 秒抓一次每个运行中实例的指标端点（`127.0.0.1:<实�
 在实例所在的节点上直接请求实例端口（端口见实例详情；agent 抓取用的就是这个地址）：
 
 ```bash
-curl -s http://127.0.0.1:<实例端口>/metrics | grep -v '^#' | sort | head -100
+curl --silent --show-error --include http://127.0.0.1:<实例端口>/metrics
 ```
 
-runveil 节点也一样在宿主机上请求；容器里有 curl 时也可以 `gpuworks-agent runveil exec <容器名前缀> curl -s http://127.0.0.1:<实例端口>/metrics`（见 [CLI 参考](../reference/cli.md#gpuworks-agent-runveil)）。
+如果引擎的端点不在 `/metrics`，先替换为它的实际路径。确认 HTTP 状态为成功，再查看响应头和正文；不要先过滤 `#` 行，后面需要用 `# TYPE` 判断指标类型。
+
+runveil 节点也一样在宿主机上请求；容器里有 curl 时也可以 `gpuworks-agent runveil exec <容器名前缀> curl --silent --show-error --include http://127.0.0.1:<实例端口>/metrics`（见 [CLI 参考](../reference/cli.md#gpuworks-agent-runveil)）。
 
 看一下响应的 `Content-Type`：`application/json` 的是 JSON 端点，按下文 [JSON 端点](#json-端点) 写映射。Prometheus 文本的，对着输出确认三件事：族名（`tensorfold:requests_running`）、类型（`# TYPE` 行；直方图会有 `_bucket` / `_sum` / `_count` 三组行）、标签（同一族是否按 `tier`、`state` 等标签分成多行）。
 
@@ -50,7 +54,7 @@ api:
 
 - **目标写短名**（`ttft_seconds`），不写存储名 `gpuworks_infer_ttft_seconds`；短名必须在[词表](../reference/inference-metrics.md)里。
 - **直方图用族名映射**：写 `tensorfold:time_to_first_token_seconds`，不写 `..._bucket`；agent 会把 `_bucket`、`_sum`、`_count` 一起转过去。直方图不能带标签选择器，不能换算；也不要再单独映射同一族的 `_count` 等行。
-- **按标签挑一行**：键可以带选择器，例如 `'vllm:kv_offload_tiering_chunk_hits_total{tier="1:fs"}': kv_disk_hits_total`，只取标签匹配的行；值必须加引号。
+- **按标签挑一行**：键可以带选择器，例如 `'vllm:kv_offload_tiering_chunk_hits_total{tier="1:fs"}': kv_disk_hits_total`，只取标签匹配的行；选择器内的标签值必须加双引号。
 - **其他标签不保留**：存下来的序列只带平台标签（实例、部署、引擎、节点）。计数器族有多行（例如按 `model_name` 分开）时相加；gauge 族有多行时只取第一行，所以按状态等标签分行的 gauge 要用选择器挑出你要的那一行。
 - **换算**：长写法 `{to: <短名>, scale: <系数>}`，对计数器和 gauge 生效，例如 0～100 的百分比转 0～1 的比例写 `scale: 0.01`、以千 token 计的计数转成 token 写 `scale: 1000`。
 - **继承**：`inherit: vllm` 或 `inherit: sglang` 先套用该引擎的整套内置映射，再应用 `map`；同一个键以 `map` 为准（模板优先）。`vllm` / `sglang` 引擎的模板不写 `inherit` 也会继承自身的映射。
@@ -81,13 +85,19 @@ api:
 
 ## 4. 确认生效
 
-- **新部署**按当前模板的映射采集。
-- **已经在运行的部署不用重启、不用重新部署**：模板保存后，server 重新解析引用该档位的运行中实例的映射，原地推给 agent，下一轮抓取（10 秒内）生效。server 升级带来的内置模板映射变化同样如此。节点当时离线的，重连后拿到。
-- 在部署抽屉或服务监控页看推理面板；或者在指标浏览器里查 `gpuworks_infer_requests_running{deployment="<部署 ID>"}`。
+1. 保存模板后，用引用该档位的部署发起一次实际推理，确保要观察的指标产生样本。
+2. 等待下一轮采集，在部署抽屉或服务监控页查看推理面板；也可在指标浏览器查询自己映射的指标，例如
+   `gpuworks_infer_requests_running{deployment="<部署 ID>"}`。短请求可能在两次采集之间结束，运行中请求数仍为 0；可同时查看已映射的 token 或完成请求计数是否增长。
+3. 没有样本时，按文末排障表对照原始端点、路径和映射名；不要仅以模板保存成功判断采集生效。
+
+新部署直接使用当前映射。已运行的部署不用重启或重新部署：保存模板后映射会推给引用该档位的实例，
+agent 收到后在下一轮采集使用；离线节点重连后才收到。server 升级带来的内置模板映射变化同样如此。
 
 旧版本 agent 只认简单映射：带换算的条目、派生的 KV 使用率和 callable 的自动识别要等节点 agent 升级后才生效。
 
 ## 示例
+
+以下片段都放在模板的 `api` 下；保留已有的 `api.operations` 等配置，不要把 `metrics` 放到模板顶层。
 
 **TensorFold**（内置 GLM-5.3-Flash TensorFold 模板，名字取自 TensorFold 0.6.0 的真实 `/metrics`）：
 
@@ -139,7 +149,7 @@ metrics:
  "totals": {"requests": 13, "prompt_tokens": 2548, "output_tokens": 3356, "drafts_offered": 2645, "drafts_accepted": 1578}}
 ```
 
-声明 `format: json`，`map` 的键写成用点连接的键路径：
+在模板的 `api.metrics` 下声明 `format: json`，`map` 的键写成用点连接的键路径。以下仍是放在 `api` 下的片段：
 
 ```yaml
 metrics:

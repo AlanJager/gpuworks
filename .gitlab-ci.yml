@@ -161,11 +161,13 @@ docs-build:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - docs/**/*
+        - docs-en/**/*
         - docs-site/**/*
         - .gitlab-ci.yml
     - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       changes:
         - docs/**/*
+        - docs-en/**/*
         - docs-site/**/*
         - .gitlab-ci.yml
     - when: never

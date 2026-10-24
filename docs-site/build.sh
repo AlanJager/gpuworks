@@ -21,6 +21,7 @@ if [ ! -d "$site_root/themes/oink" ]; then
 fi
 
 python3 -m unittest discover -s "$site_root" -p 'test_*.py'
+python3 "$site_root/check_translations.py" --require-complete
 python3 "$site_root/stage_docs.py"
 rm -rf "$output_dir"
 mkdir -p "$output_dir"
@@ -63,4 +64,6 @@ EOF
 test -s "$output_dir/index.html"
 test -s "$output_dir/tutorials/getting-started/index.html"
 test -s "$output_dir/offline-search-index.zh."*.json
+test -s "$output_dir/en/index.html"
+test -s "$output_dir/offline-search-index.en."*.json
 printf 'built docs at %s from %s\n' "$output_dir" "$short_commit"

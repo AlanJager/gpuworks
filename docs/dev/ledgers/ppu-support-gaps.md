@@ -3,6 +3,10 @@
 本文件记录 `model-inference-validation/vendors/ppu` 合并账本中已经 `REAL_PASS`、但 gpuworks 尚未具备可部署契约的条目。
 研究通过不等于 gpuworks 已具备可部署契约；无法从公开/仓库证据还原镜像、entrypoint 或原生运行时的条目列在“缺口”状态。
 
+这里的“可部署契约”指 GPUWorks 能据以部署模型的明确约定，包括使用哪个镜像、怎样启动、需要哪些运行时资产、
+提供什么 API，以及适用的拓扑。entrypoint 是启动入口，catalog 是推理目录；spec 是可执行档位，
+profile 保留历史记录的称呼。当前术语定义见 [`CONTEXT.md`](../../../CONTEXT.md)。
+
 下面的表格是 2026-09-08 前后的一次快照（当时账本为 65 个 `REAL_PASS` 唯一模型），保留用于对照历史结论。
 当前口径以 `pipeline/ledger/current/ppu-full-real-validation.json` 为准（2026-09-14 生成：`real_pass_unique_models: 108`、`large_tp_or_pp_real_pass_unique_models: 5`），
 不再用本文件的快照行数代表覆盖率。
@@ -19,10 +23,15 @@
 | `sglang-0.5.12` | `swr.cn-south-1.myhuaweicloud.com/gpustack/runner:hggc13.0-sglang0.5.12` | GPUStack runner 的 SGLang 路径 |
 
 catalog 里每个 PPU spec 的 `image` 必须是它自己那次 PASS 用过的镜像，不能按模型推断；`int4-vllm-ppu-tp2-a6977d07`（Laguna-S-2.1）就是例子：TP2 在 `asllm-1.10.4` 上通过，在 `asllm-2.0.0` 上只有 `COMPAT_FAIL`。
+
 `internal/server/inferencecatalog/seed/ppu_profiles_test.go` 把每个 profile 的 engine / image / tested revision / weight_bytes 一起钉住，改动其中任何一项都会失败。
 
 
 Hugging Face 与 ModelScope 的可用性采用 `pipeline/ledger/current/ppu-full-real-combined-progress.json` 中对应 tested revision 的 `source_availability` 记录；模板只写入已核实可用的 provider。当前工作区对外部 API 的即时 HTTP 请求不可用时，不以网络超时推断仓库不存在。
+
+下表的 tested revision 是该次测试使用的模型版本。`template-generated` 表示已生成模板，`gap` 表示仍缺部署信息；
+来源列中的 `available`、`unavailable (404)`、`not recorded` 分别表示记录为可用、返回 404、未记录。
+这些列分别描述模板准备状态和模型来源可用性，均不能单独代替 GPUWorks 部署验收结果。
 
 | 模型 | 状态 | 研究引擎 | tested revision | Hugging Face | ModelScope | 备注 |
 |---|---|---|---|---|---|---|
@@ -157,7 +166,9 @@ engine 列是研究账本里的引擎标签，与上表的镜像一一对应。
 
 ## 仍需补齐的部署信息
 
-- `Qwen/Qwen3-VL-32B-Instruct-FP8`（PPU profile `fp8-sglang-ppu-4bf2c2f3`）：PASS 只跑过文本探针（sentinel/算术/事实四问），研究 catalog 把它归 `kinds: ["text"]`，通用 worker 因此没有发过图片请求。profile 只声明模型本身的 `input_modalities: [text, image]`，名称不带 `vision` 标记；需要在 PPU 真机上补一次真实图片请求（`image_url.url` 的 base64 data URL 形式，与 Qwen2.5-VL 两个 profile 的验证方式相同）后才能升级为视觉合同。
+- `Qwen/Qwen3-VL-32B-Instruct-FP8`（PPU profile `fp8-sglang-ppu-4bf2c2f3`）：PASS 只跑过文本探针（sentinel/算术/事实四问），研究 catalog 把它归 `kinds: ["text"]`，通用 worker 因此没有发过图片请求。
+
+  profile 只声明模型本身的 `input_modalities: [text, image]`，名称不带 `vision` 标记；需要在 PPU 真机上补一次真实图片请求（`image_url.url` 的 base64 data URL 形式，与 Qwen2.5-VL 两个 profile 的验证方式相同）后才能升级为视觉合同。
 - `Qwen/Qwen2.5-VL-7B-Instruct-AWQ` / `Qwen/Qwen2.5-VL-72B-Instruct-AWQ`：通过时的图片请求是 `image_url.url` 的 base64 data URL，不是 multipart，也没有独立图片字段；补样张时按同一形状构造。
 - `FunAudioLLM/Fun-ASR-Nano-2512-hf`：研究账本为 `transformers-native`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。
 - `Qwen/Qwen3-ASR-0.6B-hf`：研究账本为 `transformers-native`；需要从原始运行记录补齐 callable/native entrypoint、运行时资产、API contract 和镜像 digest 后才能转成正式 gpuworks spec。

@@ -1,12 +1,13 @@
 # 生产环境部署
 
-**适用场景**：server 要面向团队或生产使用：前置反代和 TLS、承载 `/v1` 网关流量、规划容量与主机参数、保护凭证与备份、升级。
+将已安装的 server 配置为团队或生产入口，完成 HTTPS、网关长连接和凭证备份检查。本文适用于原生 TLS 或前置反向代理，两种方式按部署环境选择。
 
 **前置条件**：
 
 - 已按[安装和升级控制面](install-server.md)装好 server。
-- 有 TLS 证书，或使用 Nginx、Caddy、云负载均衡终止 TLS，并有域名或固定入口地址。
-- 对 server 主机有 root 权限，用于调整 `net.core.somaxconn`、文件描述符限制和 service 环境变量。
+- 有覆盖入口域名的 TLS 证书，并能修改 server 或反向代理的配置。使用云负载均衡时，能管理其监听、证书与超时设置。
+- 安排配置生效所需的重启窗口；重启 server 会断开在途请求。
+- 下文主机调优命令仅用于 Linux systemd 安装，执行修改需要 root 或 sudo；仅配置云负载均衡时不需要 server 主机的 root 权限。
 
 ## 反代与 TLS
 
@@ -25,29 +26,39 @@ HTTPS 响应会带 HSTS，登录和退出 Cookie 使用 `Secure`；HTTP 本地�
 
 ### 原生 HTTPS
 
-在 `server.yaml` 配置证书链与私钥，并使用本机具体 IP：
+配置前确认以下条件：
 
-```yaml
-listen:
-  console: [192.0.2.10:8800] # 替换为本机实际地址
-tls_cert_file: /etc/gpuworks/fullchain.pem
-tls_key_file: /etc/gpuworks/privkey.pem
-```
+- 同时准备证书链与私钥，服务账户能读取二者；缺少任一项或读取失败时，server 会拒绝启动。
+- 使用 `listen.console` 和本机具体 IP。TLS 使用通配监听时会拒绝启动；也不要用 `--addr` 覆盖，它不会创建服务自调用所需的本机维护监听，启动时同样会被拒绝。
+- 所有非维护监听（包括节点和推理入口）使用 TLS，公网明文请求不能登录。`127.0.0.1` / `::1` 的本机维护入口仍使用 HTTP，供升级、安装和服务自调用，不能映射给外部用户。
 
-重启后，通过证书覆盖的域名访问 `https://域名:8800`，agent 使用对应 `https://` / `wss://` 地址。
-证书或私钥读取失败、缺一项、或 TLS 使用通配监听时会拒绝启动。
-原生 TLS 必须使用 `listen.console`；不要用 `--addr` 覆盖，它不会创建服务自调用所需的本机维护监听，启动时会被拒绝。
-证书更新后重启生效。所有非维护监听（包括节点和推理入口）使用 TLS，公网明文请求不能登录；
-`127.0.0.1` / `::1` 的本机维护入口仍使用 HTTP，供升级、安装和服务自调用，不能映射给外部用户。
-原生 TLS 不会替你申请证书，也不会自动修改现有 agent 已保存的 server 地址。
+1. 在 server 主机的实际安装目录编辑 `server.yaml`，将地址和文件路径替换为实际值：
+
+   ```yaml
+   listen:
+     console: [192.0.2.10:8800] # 替换为本机实际地址
+   tls_cert_file: /etc/gpuworks/fullchain.pem
+   tls_key_file: /etc/gpuworks/privkey.pem
+   ```
+
+2. 按原服务管理方式重启 server，检查启动日志；随后通过证书覆盖的域名访问 `https://域名:8800` 并登录。
+3. 需要更新 agent 的连接配置时，使用对应 `https://` / `wss://` 地址；server 不会自动修改 agent 已保存的地址。
+
+原生 TLS 不会替你申请证书。证书更新后，需要重启 server 才生效。
 
 ### 反代配置要点（控制台）
 
 浏览器的控制台写请求（登录、退出、各类修改）带 `Origin` 头，server 拿它和自己看到的
 「协议 + 主机 + 端口」比对，不一致就拒绝，返回 403 `MANAGEMENT_ORIGIN_REJECTED`。反代必须把浏览器
-访问用的主机和端口原样转给 server：
+访问用的主机和端口原样转给 server。
+
+1. 在 Nginx 的 `http` 配置中定义后端，并配置下面的 TLS `server`；已有 TLS 虚拟主机时，把对应 `location` 合入现有块，避免重复创建同名入口。下例 `192.0.2.10:8800` 替换为 Nginx 能访问的控制台监听地址：
 
 ```nginx
+upstream gpuworks {
+    server 192.0.2.10:8800;
+}
+
 server {
     listen 443 ssl;
     server_name gpuworks.example.com;             # 替换为实际域名
@@ -55,7 +66,7 @@ server {
     ssl_certificate_key /etc/gpuworks/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     location / {
-        proxy_pass http://<server 地址>:8800;
+        proxy_pass http://gpuworks;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;              # 带端口；$host 不带端口
         proxy_set_header X-Forwarded-Host $http_host;
@@ -71,16 +82,14 @@ server {
 }
 ```
 
-将明文 80 入口重定向到 HTTPS，并用防火墙或本机监听限制外部直接访问反代后的 HTTP 端口。
-Nginx 的 `$host` 不含端口，反代监听非默认 HTTPS 端口（例如 8808）时，浏览器 Origin 是
-`https://<地址>:8808`，转发的 Host 却只有 `<地址>`。反代地址在 `trusted_proxies` 里时，server 会用
-`X-Forwarded-Port` 补回缺掉的端口，所以写 `$host` 也能用；反代不在 `trusted_proxies` 里时，server
-只看 `Host`，必须写 `$http_host`。`trusted_proxies` 只写实际反代的地址，不要写 `0.0.0.0/0`：
-那等于让任何来源都能伪造这些转发头。
+2. 在 GPUWorks 的 `server.yaml` 中把 Nginx 连接 server 时的源地址加入 `trusted_proxies`。同机 Nginx 可填其实际使用的回环地址；远端 Nginx 填其源 IP 或受控网段，不要填用户地址、域名解析地址或 `0.0.0.0/0`。
+3. 将明文 80 入口重定向到 HTTPS，并限制外部直接访问反代后的 HTTP 端口。需要推理入口时，先补齐下节 `/v1/` 配置，再应用和验证。
+
+保留 `$http_host` 可原样转发浏览器使用的端口，特别是 `https://<地址>:8808` 这类非默认端口。可信代理还会使用 `X-Forwarded-Proto`、`X-Forwarded-Port` 还原外部入口；配置错误时，登录或修改操作可能报 `MANAGEMENT_ORIGIN_REJECTED`。
 
 ### 反代配置要点（/v1 网关）
 
-推理请求经过反代时，默认配置会破坏流式输出或截断长请求。以 Nginx 为例，`/v1/` 至少需要：
+推理请求经过反代时，应关闭响应缓冲并允许长请求。将下面的 `location /v1/` 放入**上一节同一个 TLS `server` 块**，与 `location /` 并列；它复用 `upstream gpuworks`。若推理网关使用独立监听地址，则另建 upstream 指向该监听，替换这里的 `proxy_pass`：
 
 ```nginx
 location /v1/ {
@@ -95,6 +104,8 @@ location /v1/ {
 }
 ```
 
+配置完成后，在 Nginx 主机执行 `sudo nginx -t`，确认成功再执行 `sudo nginx -s reload`。修改了 `server.yaml` 的可信代理或 TLS 配置时，还需按原服务方式重启 GPUWorks；随后完成[入口验证](#入口验证)。
+
 server 自身对 HTTP 连接不设读写超时（agent WebSocket 与 SSE 都是长连接），长流只会被中间的
 反代、负载均衡或客户端 SDK 的超时切断。流式请求每个 token 都会重置 `proxy_read_timeout`；
 **非流式**请求在生成结束前没有任何字节，数万 token 的生成需要把超时设到大于最长生成时间，
@@ -104,7 +115,7 @@ server 自身对 HTTP 连接不设读写超时（agent WebSocket 与 SSE 都是�
 
 `/v1` 数据面全部经过 server 进程：鉴权、选副本、经 agent 隧道转发请求体与流式响应。
 容量按下面三项估算（数据来自 [400 实例压测](../../artifacts/archive/2026-09-24-gateway-load-acceptance/gateway-load-gpu2-2026-09-24/README.md)，
-fake 引擎、同机回环，真实网络会更高）：
+fake 引擎、同机回环；真实环境需重新测量）：
 
 | 负载特征 | server CPU | 参考点 |
 |---|---|---|
@@ -115,19 +126,57 @@ fake 引擎、同机回环，真实网络会更高）：
 例：400 个实例、每实例 16 路并发、每路 50 token/s，约 32 万 token/s，需要约 11 个核；
 在此之上再按请求体带宽加核。网卡需要承载请求体的**两倍**流量（客户端进、转发到节点出）。
 
-主机参数（server 所在机器）：
+先按当前并发和观测结果决定是否调优，不必照抄全部参数。以下命令在 **Linux server 主机**执行，systemd unit 名称示例为 `gpuworks`；自定义名称请替换。
 
-- `net.core.somaxconn` 调到 4096 或以上，改后重启 server（监听队列长度在启动时读取）。默认
-  128 时，数千客户端同时建连会溢出监听队列，被丢的 SYN 要 1 s 后重传，表现为一批请求整整
-  慢 1 s（`nstat TcpExtListenOverflows` 可见）。
-- 文件描述符：server 启动时会把软限制提到硬限制（Go 运行时行为），所以要保证**硬限制**至少为
-  「并发客户端数 × 2 + 节点数 × 4」再留余量。`gpuworks install` 生成的 unit 没有设置
-  `LimitNOFILE`，沿用 systemd 默认值；手工部署或默认值偏小时在 unit 里显式设置。每个 `/v1`
-  请求占用一个客户端连接，大请求体再占一个临时文件。
-- 请求体临时文件：超过 1 MiB 或超出进程内 256 MiB 预算的请求体写入系统临时目录（Go 的
-  `os.TempDir()`，即标准的 `TMPDIR` 环境变量，默认 `/tmp`），请求结束后删除。同时在途的大请求
-  会在这里占用「并发数 × 请求体大小」的空间，XFS 对打开中的文件还有预分配，实测约放大到
-  2.5 倍。长上下文业务应在 service 环境里把 `TMPDIR` 指向空间充足的数据盘，不要落在系统盘。
+### 读取当前配置
+
+服务须已启动。读取监听队列和服务进程的实际文件描述符限制，确认 `MainPID` 为非零值：
+
+```bash
+sysctl net.core.somaxconn
+pid=$(systemctl show gpuworks --property MainPID --value)
+cat /proc/$pid/limits
+```
+
+### 按负载选择修改项
+
+**监听队列溢出**
+
+突发建连压测出现监听队列溢出时，可将 `net.core.somaxconn` 调到 4096 或以上。当前值较小（例如 128）时，数千客户端同时建连会丢弃 SYN，1 秒后重传，表现为一批请求慢 1 秒；可用 `nstat TcpExtListenOverflows` 查看。
+
+在 `/etc/sysctl.d/` 配置中设置 `net.core.somaxconn`，执行 `sudo sysctl --system`，再读取确认。server 在启动时读取监听队列长度，最后还需按下节重启并复测。
+
+**文件描述符不足**
+
+server 启动时会把软限制提到硬限制（Go 运行时行为）。硬限制至少为「并发客户端数 × 2 + 节点数 × 4」，再留余量；每个 `/v1` 请求占用一个客户端连接，大请求体还占用一个临时文件。
+
+`gpuworks install` 生成的 unit 没有设置 `LimitNOFILE`，沿用 systemd 默认值。手工部署或默认值偏小时，执行 `sudo systemctl edit gpuworks` 设置，例如：
+
+```ini
+[Service]
+LimitNOFILE=65536
+```
+
+`65536` 只是示例，按上述并发公式确定。
+
+**请求体临时盘空间不足**
+
+超过 1 MiB 或超出进程内 256 MiB 预算的请求体写入系统临时目录，请求结束后删除。目录由 Go 的 `os.TempDir()` 决定，对应 `TMPDIR` 环境变量，默认 `/tmp`。
+
+同时在途的大请求会占用「并发数 × 请求体大小」的空间；XFS 对打开中的文件还有预分配，实测约放大到 2.5 倍。长上下文业务应把 `TMPDIR` 指向空间充足的数据盘，避免使用系统盘。
+
+先准备服务账户可写、容量充足的目录，再通过 `sudo systemctl edit gpuworks` 设置。将示例路径替换为实际目录：
+
+```ini
+[Service]
+Environment="TMPDIR=/srv/gpuworks-tmp"
+```
+
+### 使修改生效并复测
+
+1. 完成所需修改后，执行 `sudo systemctl daemon-reload`，在维护窗口重启服务。
+2. 重复上面的读取命令，取得新进程 PID 并检查 `sysctl` 与 `/proc/$pid/limits`，确认限制已生效；修改了临时目录时，确认目录可写。
+3. 复测原来的负载，观察监听溢出、内存和磁盘占用，确认对应问题已改善。
 
 API key：网关对校验通过的 key 在内存缓存 5 分钟。通过管理 API 吊销 key 立即失效；只有绕过
 server 直接改数据库时才要等缓存过期。每个调用方使用独立的 key，便于吊销和按 `last_used`
@@ -142,19 +191,26 @@ server 直接改数据库时才要等缓存过期。每个调用方使用独立�
 
 ## 凭证与备份
 
-保护 data 目录中的 `master.key`（首次启动生成，权限 0664，与安装树共享给服务账户和操作员）；备份数据库和该 key，二者缺一
-不可。首次输出的 admin 密码/API key 立即轮换，定期使用节点/网关
-页面和 `reset-password` 更换凭证。`gpuworks install` 确定的初始密码记录在
-`<data>/initial-credentials`（0664），改密后删除该文件。
+保护实际 data 目录中的 `master.key` 与数据库，备份时保留二者；单独保存数据库不能恢复其中的加密凭据。默认安装的 `master.key` 和 `initial-credentials` 权限为 `0664`，安装树支持服务账户与操作员组共同维护；应同时控制主机和备份的访问权限。
+
+首次登录后按[安装篇的改密步骤](install-server.md#验证与首次登录)更换初始密码，验证新密码后删除 `<data>/initial-credentials`。推理 API key 按调用方分别创建，需要撤销时从管理接口或控制台吊销旧 key。升级备份范围及恢复限制见[升级与版本兼容](upgrade-and-compatibility.md)。
 
 ## 运行与升级
 
-使用独立 service 用户和持久化 data、模型盘；限制管理 API 与 `/dl/` 的网络访问。默认的
-`gpuworks install` 已经按这个约定落地：专用系统用户 `gpuworks`、`<dir>/data` 持久化数据、
+使用独立 service 用户和持久化 data、模型盘；限制管理 API 与 `/dl/` 的网络访问。Linux systemd 安装的
+`gpuworks install` 使用专用系统用户 `gpuworks`，并创建 `<dir>/data`、
 日志与备份目录齐备。升级走 `gpuworks upgrade`（停服 → 备份数据库/master.key/旧二进制 → 原子
 替换 → 探活，失败自动回滚到快照）；手工部署或需要自定义产物时，按[发布指南](../dev/release.md)
-原子替换并保留回滚二进制。数据库迁移只有前滚、没有 down 迁移，所以升级前一定要有备份：`gpuworks upgrade` 会自动备份，手工替换要自己备份
-`gpuworks.db` 与 `master.key`；手工路径也没有自动探活与回滚。步骤和回滚方式见[升级与版本兼容](upgrade-and-compatibility.md)。
+原子替换并保留回滚二进制。数据库迁移只有前滚、没有 down 迁移，所以升级前一定要有备份：`gpuworks upgrade` 会自动备份，手工替换要按升级指南备份数据库与 `master.key`；手工路径也没有自动探活与回滚。步骤和回滚方式见[升级与版本兼容](upgrade-and-compatibility.md)。
 
 完整的安装、凭证、目录布局和回滚语义见[安装和升级控制面](install-server.md)。
 
+## 入口验证
+
+配置生效后，从实际使用入口的客户端检查：
+
+1. 访问 HTTPS 控制台并登录，确认没有 Origin 拒绝或证书错误。
+2. 在**计算节点**中确认原本在线的节点恢复在线；代理了节点入口时，确认长连接没有反复断开。
+3. 配置了推理入口时，用已部署且支持流式输出的模型调用示例，经新 HTTPS `/v1` 入口发送一次 `stream: true` 请求，确认持续收到输出并正常结束。模型类型、模型名和 API key 使用该部署的实际值；不以页面能打开代替推理验证。
+
+失败时先检查 server 与反代日志，分别核对可信代理地址、转发头、上游监听和超时设置；修正后重复对应检查。

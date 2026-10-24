@@ -8,9 +8,13 @@
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | 需对应资产与真机证据 | 不凭统一模板推断支持 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
 
-能力状态是 ready 或 unavailable（不可用时附带 reason，如"缺少 dGPU 资产""dGPU 探针失败"等），
-由 server 的 partition capability 推导。节点仍可使用整卡部署；不满足 dGPU 条件时不会静默启动
-无限显存实例。昇腾实测组合、CANN 和 runtime 细节见昇腾矩阵；PPU 未完成项见开发台账。
+上表的 dGPU 能力状态由 server 的 partition capability（分区能力判定）推导：
+
+- `ready`：dGPU 可用。
+- `unavailable`：dGPU 不可用，附带 `reason` 说明原因，例如“缺少 dGPU 资产”“dGPU 探针失败”。
+
+dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dGPU 条件的实例静默改成不限制显存的实例来启动。
+昇腾实测组合、CANN 和 runtime 细节见[昇腾矩阵](ascend-support-matrix.md)；PPU 未完成项见[开发台账](../dev/ledgers/ppu-support-gaps.md)。
 
 
 ## GPU 型号与架构

@@ -13,13 +13,22 @@ npm --version
 make demo
 ```
 
-本地 server 默认监听 `:8800`、数据写入 `./data`。并行开发实例依次使用 8800、8802、
-8804、8806；测试密码使用 `password`，不要把测试密码用于生产。
+通过 `make run-server` 启动的本地 server 默认监听 `:8800`、数据写入 `./data`。并行开发实例依次使用 8800、8802、
+8804、8806；手工测试密码使用 `password`，不要把测试密码用于生产。
+`make demo` 使用独立的 `127.0.0.1:8099` 和临时目录，并为本次运行生成管理员密码；
+脚本结束时会清理它创建的进程与临时目录。
 
 ## 分开启动后端与前端
 
+在仓库根目录打开一个终端，启动后端并保持它运行：
+
 ```bash
 make run-server
+```
+
+再打开一个终端，从仓库根目录进入 `ui/`，启动支持热更新的前端开发服务器：
+
+```bash
 cd ui
 npm install
 npm run dev
@@ -40,15 +49,24 @@ npm run dev
 不入仓库。更新这类 server 用 `gpuworks install` 重新安装同一个目录：它会复制自身、重写 service 并探活，
 不需要手写 systemd 单元。
 
+`install` 不做备份（只有 `upgrade` 会备份）。替换前先在验收机上复制一份旧二进制
+`/opt/gpuworks/server/gpuworks`；想回滚时，从目标 commit 重新构建再 install。
+
+构建命令在仓库根目录执行：
+
 ```bash
 make server-linux-amd64          # 带 ui 和内嵌 agent，不要用 go build 代替
+```
+
+安装和探活命令在 Linux amd64 验收机执行。如果在其他机器构建，先把产物复制到验收机，
+并把下面的 `./bin/gpuworks-linux-amd64` 替换为复制后的路径：
+
+```bash
 ./bin/gpuworks-linux-amd64 install --dir /opt/gpuworks/server --addr :8800
 curl --fail http://127.0.0.1:8800/healthz
 ```
 
-注意 `install` 不做备份（只有 `upgrade` 会备份）：替换前先自己复制一份旧二进制
-`/opt/gpuworks/server/gpuworks`，想回滚时从目标 commit 重新构建再 install。部署后若服务启动失败，
-先看 `systemctl status gpuworks` 和 `journalctl -u gpuworks`。
+部署后若服务启动失败，先看 `systemctl status gpuworks` 和 `journalctl -u gpuworks`。
 
 ## 常用检查
 

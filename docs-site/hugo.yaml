@@ -1,7 +1,7 @@
 title: &siteTitle GPUWorks 文档
 baseURL: https://gpuworks.zstack.ai/docs/
 defaultContentLanguage: zh
-disableLanguages: [en, fr]
+disableLanguages: [fr]
 enableGitInfo: true
 enableRobotsTXT: true
 enableEmoji: true
@@ -16,6 +16,15 @@ languages:
     hasCJKLanguage: true
     params:
       description: GPUWorks 控制面、GPU 节点、模型部署与推理服务文档。
+      footer_center_info: 内容来自 GPUWorks 仓库 docs/
+  en:
+    label: English
+    locale: en-US
+    weight: 2
+    title: GPUWorks Documentation
+    params:
+      description: Documentation for the GPUWorks control plane, GPU nodes, model deployment, and inference services.
+      footer_center_info: Translated from the GPUWorks repository docs/
 
 markup:
   goldmark:
@@ -34,6 +43,7 @@ outputs:
   section: [HTML, RSS, print, markdown]
 
 params:
+  page_width: wide
   offline_search: true
   copyright:
     authors: GPUWorks contributors
@@ -41,6 +51,7 @@ params:
   footer_center_info: "内容来自 GPUWorks 仓库 docs/"
   ui:
     dark_mode: true
+    image_zoom: true
     typography: system
     theme_color: '#1559bd'
     section_index: cards
@@ -50,9 +61,12 @@ params:
     docs_sidebar_root: home
     sidebar_icon_policy: groups
     backlinks: true
-    page_width: wide
-  github_repo: https://dev.zstack.io/wei.wang/gpuworks
+    sidebar_width_min: 220
+    sidebar_width_max: 260
+    sidebar_item_overflow: wrap
+  github_repo: http://gitlab.zstack.io/wei.wang/gpuworks
   github_branch: master
+  artifacts_repo: http://gitlab.zstack.io/wei.wang/gpuworks-artifacts
 
 # The theme is fetched by build.sh from the gpuworks_website repository into
 # themes/oink; it needs hugo extended >= 0.160.1.

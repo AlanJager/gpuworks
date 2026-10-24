@@ -2,8 +2,8 @@
 
 这里的文档描述当前代码行为；一次性计划、验收记录和研究材料放在
 [`artifacts/`](../artifacts/)（`work/` 进行中、`archive/` 已收口、`research/` 独立调研，
-索引见 [`artifacts/README.md`](../artifacts/README.md)）。全部现行文档使用中文，代码、命令、HTTP 路径和 API
-字段保留原文。
+索引见 [`artifacts/README.md`](../artifacts/README.md)）。中文原文保存在 `docs/`，英文译文保存在
+`docs-en/`，按相同相对路径对应；命令语法、HTTP 路径和 API 字段保持不变；说明性注释、提示和占位符译为英文。英文翻译分批补齐，站点英文首页显示当前覆盖率。
 
 ## 从哪里开始
 
@@ -22,12 +22,12 @@
 ### 教程（tutorials）
 
 - [从零启动并部署第一个模型](tutorials/getting-started.md)
-- [在 Mac 上运行第一个本地模型](tutorials/mac-local-model.md)
 - [一张 GPU 跑两个模型：dGPU 与 sleep/wake](tutorials/one-gpu-two-models.md)
+- [在 Mac 上运行第一个本地模型](tutorials/mac-local-model.md)
+- [把一个模型服务从一副本扩到两副本](tutorials/scale-model-replicas.md)
 - [部署 PD 服务并观测请求链路](tutorials/first-pd-deployment.md)
 - [运行一次性能评测并读懂报告](tutorials/benchmark-concurrency.md)
 - [定位一次回答慢的请求](tutorials/trace-slow-request.md)
-- [把一个模型服务从一副本扩到两副本](tutorials/scale-model-replicas.md)
 
 ### 操作指南（how-to）
 

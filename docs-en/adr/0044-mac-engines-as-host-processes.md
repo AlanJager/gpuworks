@@ -1,0 +1,32 @@
+# ADR 0044: Engines on Mac Nodes Run as Host Processes; Images Are Darwin Environment Packages
+
+Date: 2026-10-14 · Status: Accepted
+
+Basis: [Apple Silicon Inference Research](../../artifacts/research/2026-10-13-apple-silicon-inference/README.md), [Mac Node Plan](../../artifacts/work/2026-10-13-apple-silicon-nodes/plan.md) (including spike records from real hardware).
+
+## Context
+
+Only processes on the macOS host can use an Apple silicon Mac's GPU through Metal. All Linux containers on macOS (Docker Desktop, OrbStack, apple/container) run in virtual machines without Metal. The only GPU-capable path (Podman + krunkit, translating Vulkan to MoltenVK) halves llama.cpp's decoding speed on an M2 Max. The agent's three existing runtimes (docker, nerdctl, runveil) all operate on Linux images: runveil's execution core is PRoot on Linux ptrace, and the images contain Linux ELF binaries.
+
+## Decision
+
+1. **Add a `host` runtime** (`internal/agent/runtime/hostproc`): engines run as ordinary process groups under the agent's user account, selected ahead of Docker Desktop on macOS (`--driver host` can force this choice). Process management (pid, exit code, group termination, logs) shares `runtime/procgroup` with runveil.
+2. **Images are environment packages**: darwin/arm64 OCI images containing a relocatable root (python-build-standalone, engines installed into its site-packages, and entry points under `/bin`), cross-built on Linux by `build/host-envs` and published as `gpuworks-runner:metal<minimum-macos>-<engine><version>-rN` (the “Built-in Image Naming” section of `CLAUDE.md`). Pulling, offline import, image sources, and the catalog use the existing mechanisms (runveil's native pull, selecting the manifest by OS/architecture).
+3. **Translate paths using container semantics**: unpack each manifest once and share it across all its instances. During unpacking, rebase absolute symlinks in the package and the venv's `pyvenv.cfg`. At startup, replace mount targets (`/model`) in argv, environment variables, `PATH`, and the working directory with host source paths, and replace in-package paths with their unpacked locations. The server continues to send container-shaped startup parameters without knowing whether the node has containers.
+4. **Instance isolation**: each instance gets its own `HOME` and short `TMPDIR` path (`/tmp/gpuworks-host-<uid>/…`, keeping Unix socket paths within macOS's 104-byte limit), while caches are shared per environment package. Do not inherit the agent's `PATH`, `DYLD_*`, or Python variables. Hold `caffeinate -i` while running to prevent idle sleep. Engines bind only to 127.0.0.1, and the gateway accesses them through the hub tunnel.
+5. **Vendor `apple`, framework `metal`**: report one unified-memory GPU, with GPU memory equal to the working set Metal allows to remain resident on the GPU (`iogpu.wired_limit_mb`; when unset, use 2/3 of memory for systems with ≤32 GiB and 3/4 for larger systems). The platform does not change this value. The driver version is the macOS version, and image compatibility is determined by the minimum macOS version.
+6. **Declare platform features by vendor** (`accelerator.Supports`): Apple nodes do not provide engine sleep (vllm-metal's `/sleep` returns 200 but does not release memory), multi-node execution, or the KV disk tier. The scheduler filters nodes by required features.
+7. **Share cards by memory** (`accelerator.SharedByMemory`): a Mac can run multiple instances at once. Account for each instance using its share at admission time (for vLLM/SGLang, the larger of `gpu_memory_utilization × working set` and the startup requirement; for callable engines, the startup requirement). Store the share in `memory_claim_bytes` in the instance's desired state.
+
+## Tradeoffs
+
+- **Host processes vs containers**: give up container isolation (filesystem, network, cgroup) to preserve GPU performance. Isolation relies on instance directories, cleaned environment variables, and loopback-only binding. On a personal computer, the user's own processes share memory with the engine, and the platform cannot constrain them on the user's behalf.
+- **Build environment packages vs rely on user installations (brew, official scripts)**: an extra build pipeline and several hundred MB per package buy pinned versions, one package for M1–M5, access through image sources in China, and no network access at runtime.
+- **Path translation vs server-generated host paths for Mac**: concentrate translation in one agent package so the server, templates, and previews do not diverge. The cost is that translation covers only whole tokens, `--flag=value`, `KEY=value`, colon-separated path lists, and mount targets that appear as words in scripts.
+- **Persist memory shares**: add the single fact `memory_claim_bytes` instead of recalculating estimates on every snapshot—recalculation would drift with templates and estimates, and also violate the scaling constraint against full per-instance computation.
+
+## Consequences
+
+- vLLM reuses the `vllm` engine and parameter dictionary (vllm-metal accepts the `vllm serve` command line); on macOS, a quirk changes gloo's loopback interface to `lo0`. For unsupported capabilities on Mac nodes, the scheduler provides rejection reasons that include the vendor name.
+- Services such as mlx-vlm and mlx-audio that select models per request use callable templates. An adapter layer in the package (`gpuworks_adapters`) pins each instance to `--model`, because the gateway rewrites the request's `model` to the deployment service name.
+- New darwin platform differences (launchd for installation, sysctl for `sysinfo`, and darwin ioctl and `kern.proc` for terminal ptys and process reaping) all remain on the agent side. Instance terminals enter the instance's environment (the environment package's PATH, and the instance's HOME and working directory), not a container. Running the darwin server build on the same machine as the agent gives an “all-in-one single-machine” setup, with the same installation workflow as Linux nodes.

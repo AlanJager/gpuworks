@@ -2,6 +2,8 @@
 
 ## 构建产物
 
+以下命令在仓库根目录执行。先构建 UI 等前置产物，再生成用于分发的压缩包：
+
 ```bash
 make build
 make release-packages
@@ -14,8 +16,9 @@ make release-packages
 
 `make release-packages` 产出 Linux 与 macOS 的 amd64/arm64 四个 server 压缩包（各约 45 MB）和统一的
 `SHA256SUMS`。server 内嵌的三个 agent 以 zstd 压缩存放（构建机有 `zstd` 命令时用 `-19`，release job 会先尝试
-`apt-get install zstd`，失败则退回 Go 编码器，包会大约 1.5 MB），解压后的 server 二进制约 69 MB。macOS server 同样内嵌 Linux amd64/arm64 agent，方便在开发机运行控制面并
-接入 Linux GPU 节点；macOS 不作为 GPU agent 的生产运行平台。
+`apt-get install zstd`，失败则退回 Go 编码器，包会增大约 1.5 MB），解压后的 server 二进制约 69 MB。macOS server 同样内嵌 Linux amd64/arm64 agent，方便在开发机运行控制面并
+接入 Linux GPU 节点；Apple silicon Mac 节点通过 `host` 运行时以宿主机进程运行受支持引擎，能力边界见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md)。
+
 CI 为避开单 job artifact 大小限制（server 内嵌了 macOS agent 后单个压缩包约 53 MB，
 一个 job 放两个就超限），按 OS 与架构拆成四个 job：`release-build-linux-amd64`、
 `release-build-linux-arm64`、`release-build-macos-amd64`、`release-build-macos-arm64`，
@@ -26,14 +29,14 @@ CI 为避开单 job artifact 大小限制（server 内嵌了 macOS agent 后单�
 两个运行二进制必须保持 `CGO_ENABLED=0`。发布前检查：
 
 ```bash
-make check-assets          # 仅 NVIDIA：HAMi libvgpu.so 的 glibc 基线（依赖 check-libvgpu）
+make check-assets          # HAMi libvgpu.so 的 glibc 基线，以及 ib_write_bw 的库/符号基线与哈希
 make runtime-assets-verify # 昇腾 vCANN、PPU HGGC 与 partition probe 的清单完整性 + 逐文件 sha256
 make test
 make vet
 git diff --check
 ```
 
-`check-assets` 目前只包装 `check-libvgpu`，不校验昇腾、PPU 或 partition probe 资产；
+`check-assets` 包含 `check-libvgpu` 和 `check-perftest`，不校验昇腾、PPU 或 partition probe 资产；
 发布前必须单独运行 `make runtime-assets-verify`，否则这三类资产的缺失或篡改不会被发现。
 
 ## 发布通道
@@ -47,17 +50,28 @@ server 版本、系统镜像目录与内置推理模板目录通过同一个发�
 | 华为云 OBS 上海一 `gpuworks-dl` | `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com` | 中国大陆（默认域名，免备案） |
 | Cloudflare R2 `gpuworks-dl` | `https://dl.gpuworks.ai` | 其他地区；`image-manifest.gpuworks.ai` 也绑在这个桶上 |
 
-目录树：`<channel>/index.json`（ed25519 签名信封，正文列出 server 各平台压缩包、镜像目录与推理模板目录包，每个文件带路径、大小与 sha256）、
-`<channel>/latest`（release id 纯文本，给首次下载用）、`releases/<release_id>/`（压缩包与 `SHA256SUMS`）、
-`catalog/images/<sha256>.json`、`catalog/templates/<sha256>.tar.gz`，以及给旧版本用的根目录 `manifest.json`（与镜像目录同一文件）。
+三个源使用相同的目录结构。`<channel>` 表示发布渠道，`<release_id>` 标识一份发布件，
+`<sha256>` 是对应目录文件的内容摘要：
+
+| 路径 | 内容与用途 |
+|---|---|
+| `<channel>/index.json` | ed25519 签名信封，即带签名的发布索引；正文列出 server 各平台压缩包、镜像目录与推理模板目录包，每个文件带路径、大小与 sha256 |
+| `<channel>/latest` | release id 纯文本，供首次下载定位版本 |
+| `releases/<release_id>/` | server 压缩包与 `SHA256SUMS` |
+| `catalog/images/<sha256>.json` | 按内容摘要标识的镜像目录 |
+| `catalog/templates/<sha256>.tar.gz` | 按内容摘要标识的推理模板目录包 |
+| 根目录 `manifest.json` | 供旧版本读取，与镜像目录是同一文件 |
+
 渠道 `nightly` 是每次 master 构建；`release` 留给 `v*` tag。二进制跟随构建时注入的渠道（`make CHANNEL=…`，默认 `nightly`）。
 
-CI 的 `release-publish`（独立的 `publish` 阶段：GitLab 14.0 的 needs 只能指向更早阶段的 job，`make check-ci-yaml` 守护）在 master 的两个构建 job 成功后运行 `scripts/publish_dist.sh nightly dist`：
+CI 的 `release-publish` 在 master 的四个构建 job 全部成功后运行 `scripts/publish_dist.sh nightly dist`。
+它位于独立的 `publish` 阶段，因为 GitLab 14.0 的 needs 只能指向更早阶段的 job；
+`make check-ci-yaml` 检查这一约束。脚本执行以下流程：
 
 1. 一个 release id 永远只对应一份字节：`releases/` 下的文件按 immutable 长缓存，CDN 留着它第一次见到的那份。同一提交再次构建
    （新流水线、手工重跑）产出的包字节不同（构建时间写在包里），所以某个源已有 `releases/<id>/` 时，脚本把它拷回来，
    `gpuworks-dist adopt` 核对与 `SHA256SUMS` 一致后，发布的是这份已发布的包与它的构建时间，丢弃本次构建的包；
-2. 已有某个源在服务创建时间更晚的同渠道构建（流水线乱序完成）时，什么也不发；
+2. 如果某个源已经在提供同一渠道中创建时间更晚的构建，说明流水线乱序完成，本次不再发布任何内容；
 3. `gpuworks-dist assemble` 用这些压缩包和本次检出内嵌的两份目录生成目录树并签名索引；
 4. rclone 以 `--immutable` 把不可变文件推到三个源：源上同名对象内容不同时报错退出，绝不覆盖（这种源要人工处理，见下）；
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
@@ -71,7 +85,9 @@ CI 的 `release-publish`（独立的 `publish` 阶段：GitLab 14.0 的 needs �
 `GPUWORKS_DIST_OSS_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY`、`GPUWORKS_DIST_OBS_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY`、
 `GPUWORKS_DIST_R2_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` / `GPUWORKS_DIST_R2_ENDPOINT`。三组存储凭据各属于一个只能读写
 `gpuworks-dl` 里对象的专用身份（阿里云 RAM 用户与华为云 IAM 用户 `gpuworks-dist-ci`、策略 `gpuworks-dist-publish`，
-R2 账户令牌 `gpuworks-dist-ci`），不能建桶，所以两个发布脚本给 rclone 设了 `no_check_bucket`。本地手工补发用 `make dist-publish CHANNEL=nightly`，
+R2 账户令牌 `gpuworks-dist-ci`），不能建桶，所以两个发布脚本给 rclone 设了 `no_check_bucket`。
+
+本地手工补发用 `make dist-publish CHANNEL=nightly`，
 凭据放 `secrets/dist-publish.env`。发布 release：`make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v1.2.3` 后
 `make dist-publish CHANNEL=release`。
 
@@ -91,31 +107,37 @@ Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 与 `image-manifest.gpuw
 报告存进私有 R2 桶 `gpuworks-usage` 的 `reports/<day>/<install_id>.json`，来源 IP、国家、地区在对象元数据 `client_ip`/`country`/`region`。WebTracking 实际只接受 `__topic__`/`__source__`/`__logs__`/`__tags__`
 四个顶层键，与其 API 文档列出的 `project`、`logstoreName` 不符。
 
-签名密钥轮换：生成新密钥，把新公钥加进 `internal/server/distribution/defaults.go` 的 `trustedKeys`（与旧钥并存）发一个版本，
-等装机量升过来后再改用新私钥签名，下一个版本删掉旧公钥。新建桶时注意两家对象存储默认打开桶级「阻止公共访问」，要关掉并设为公共读。
+**签名密钥轮换**：生成新密钥，把新公钥加进 `internal/server/distribution/defaults.go` 的 `trustedKeys`（与旧钥并存）发一个版本，
+等装机量升过来后再改用新私钥签名，下一个版本删掉旧公钥。
+
+新建桶时注意两家对象存储默认打开桶级「阻止公共访问」，要关掉并设为公共读。
 
 ## 内嵌原生资产
 
-内嵌原生资产不是普通 Go 源码，按厂商分四类，都不能只重编 server 就带上：
+内嵌原生资产包括下表中的运行库、工具和探针镜像。它们不是普通 Go 源码，
+更新后不能只重编 server 就带上，需按各自入口校验或重建：
 
 | 资产 | 文件 | 平台 | 校验/重建 |
 |---|---|---|---|
 | NVIDIA HAMi | `internal/assets/bin/libvgpu.so` | 单份，最老受支持 glibc 基线编译 | `make check-libvgpu`（`scripts/check_libvgpu_compat.sh`） |
+| RDMA 带宽测试工具 | `internal/assets/bin/ib_write_bw-{x86_64,arm64}` | x86_64 + arm64，运行时使用宿主机 RDMA 用户态库 | `make check-perftest`（`scripts/check_perftest_compat.sh`）；构建说明见 `build/runtime-assets/perftest/README.md` |
 | 昇腾 vCANN | `internal/assets/bin/runtime-assets/ascend/linux-{amd64,arm64}/libvruntime.so` | amd64 + arm64 各一份 | `make runtime-assets-verify`；重建用 `make runtime-assets` |
 | PPU HGGC | `internal/assets/bin/runtime-assets/ppu/linux-amd64/hggc-13.0/{hggc_quota.so,hgml_dlsym_hook.so}` | 目前仅 amd64 | 同上 |
 | partition probe | `internal/assets/bin/runtime-assets/probe/partition-probe-linux-{amd64,arm64}.tar.gz` | amd64 + arm64 | 同上；镜像单独用 `make runtime-assets-probe` 重建 |
 | udocker PRoot | `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` | x86_64 + arm64 | `check-assets`/`runtime-assets-verify` 均不覆盖，需按 `internal/assets/bin/manifest.sha256` 人工核对 |
 
-昇腾/PPU/probe 三类的清单和哈希集中在 `internal/assets/bin/runtime-assets/manifest.json`，backend id
-分别是 `ascend-dgpu`、`ppu-dgpu`（定义于 `internal/accelerator/backend.go`）。更换任意资产
+昇腾与 PPU 运行库的清单和哈希集中在 `internal/assets/bin/runtime-assets/manifest.json`，backend id
+分别是 `ascend-dgpu`、`ppu-dgpu`（定义于 `internal/accelerator/backend.go`）。partition probe 的哈希
+在各压缩包旁的 `.tar.gz.sha256` 文件中；`make runtime-assets-verify` 同时检查运行库清单、probe 哈希与镜像归档结构。
+更换任意资产
 都必须保留来源、架构、哈希和许可证记录，运行对应资产检查，并确认 release package 实际包含新文件。
 各厂商发布资产只支持声明过的平台组合（PPU 当前无 arm64 构建）；用户侧限制见
 [dGPU 支持矩阵](../reference/support-matrix.md)。
 
 ## 数据库与目录包
 
-server 启动会执行版本化迁移；发布前必须验证 migration marker、幂等和事务回滚。
-内置推理目录是内容寻址包，发布构建应对包做同一套 schema、路径和摘要校验。系统镜像目录
+server 启动会执行版本化迁移；发布前必须验证 migration marker（记录迁移版本的标记）、重复执行的幂等性和事务回滚。
+内置推理目录是内容寻址包，即以内容摘要标识包；发布构建应对包做同一套 schema、路径和摘要校验。系统镜像目录
 由 `make image-manifest` 从 gpuworks-runner 构建矩阵生成内嵌种子，随每次发布进入[发布通道](#发布通道)；
 `make image-manifest-publish` 还会把同一文件单独发布到 OSS、OBS、R2 三个发布源的根目录，由 R2 对外提供旧版本读取的
 `https://image-manifest.gpuworks.ai/manifest.json`，见 [CLI 参考](../reference/cli.md#gpuworks-image-manifest)；

@@ -1,234 +1,299 @@
 # 安装和升级控制面
 
-**适用场景**：首次在一台 Linux 主机或 Apple silicon Mac 上安装 GPUWorks 控制面（server），或对已装好的控制面做升级、重复安装修复、卸载和排查。
+本文说明如何安装、验证、升级和卸载 GPUWorks 控制面。
 
-**前置条件**：
+**适用场景**：首次部署控制面，或维护已有安装。首次部署从[安装](#安装)开始；已有安装需要更新版本或移除时，直接看[升级](#升级)或[卸载](#卸载)。
 
-- 一台 linux-amd64 主机或 Apple silicon Mac（macOS 15+，见 [macOS](#macos)），能拿到发布包（主机不能访问发布源时，把发布包拷过去即可，升级见[离线升级](#离线升级)）。
-- systemd 模式需要 root 或 sudo；没有 sudo 时改用 `--no-systemd` 装到用户目录，见 [systemd 与 nohup](#systemd-与-nohup)。
-- 装好后接入节点、部署第一个模型，见[从零启动并部署第一个模型](../tutorials/getting-started.md)。
+## 前置条件
 
-控制面是单个静态二进制。`gpuworks install` 把它自己拷到安装目录、写 service、启动并等到
-`/healthz` 应答；`gpuworks upgrade` 从发布通道取当前版本，备份后原地替换，探活失败自动回滚。
-不需要手抄 systemd 单元，也不需要在升级前手工备份。默认值、目录布局、文件权限和凭证文件等查表内容见[控制面安装布局](../reference/install-layout.md)，全部参数见 [CLI 与安装脚本](../reference/cli.md#gpuworks-install)。
+- 安装主机为 linux-amd64，或 Apple silicon Mac（macOS 15+，安装方式见 [macOS](#macos)）。首次安装时，安装目录所在文件系统至少有 2 GiB 空闲，监听端口未被其他进程占用。
+- 安装或升级时需取得发布包。主机不能联网下载时，先从其他机器下载并拷入，升级见[离线升级](#离线升级)。
+- Linux 使用 systemd、Mac 使用 launchd 时需要 root 或 sudo。没有 sudo 时安装到用户目录，见 [systemd 与 nohup](#systemd-与-nohup)。容器环境先看[在容器里运行](#在容器里运行)中的持久化要求。
 
 ## 安装
 
-在目标主机上下载发布包，校验解压后执行。发布包放在三个内容相同的发布源上：中国大陆用阿里云 OSS
-`https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com` 或华为云 OBS `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`，
-其他地区用 `https://dl.gpuworks.ai`。`<channel>/latest` 是该渠道当前的 release id：`release`（正式发布版）是打了版本号的版本，
-`nightly`（滚动预览版）是每次 master 构建：
+以下步骤在 Linux 目标主机的终端执行。
 
-```bash
-src=https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com     # 或另外两个源
-id=$(curl -fsSL $src/nightly/latest)
-curl -fLO $src/releases/$id/gpuworks-$id-linux-amd64.tar.gz
-curl -fLO $src/releases/$id/SHA256SUMS
-sha256sum -c SHA256SUMS --ignore-missing
-tar -xzf gpuworks-$id-linux-amd64.tar.gz
-cd gpuworks-$id-linux-amd64
-./gpuworks install
-```
+1. **下载并校验发布包。**
 
-内网也可以从发布站 `https://gpuworks.zstack.ai/downloads/` 下载同一批发布包。
+   中国大陆可选阿里云 OSS（下例）或华为云 OBS `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com`；其他地区可用 `https://dl.gpuworks.ai`，三个源提供相同发布包。
 
-install 以操作员身份运行，只有需要特权的少数步骤（建 `/opt` 目录、建服务账户、写 systemd 单元、`systemctl`）
-以单独的 `sudo` 命令执行，`sudo` 会在第一次特权命令时问一次密码。随后打印 banner 并逐个提问，**回车即采用括号里的默认值**：
+   下例使用滚动预览版 `nightly`；安装正式发布版时，把命令中的 `nightly` 换成 `release`。`latest` 返回所选渠道当前的 release id。
 
-```
-Press Enter to take the default in brackets, or type your own value and press Enter.
-install directory (default: /opt/gpuworks/server):
-listen address (default: 192.0.2.10:8800):
-start the service automatically (default: yes)? [yes/no]:
-Admin password (default: random):            ← 仅全新安装
-```
+   ```bash
+   src=https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com
+   id=$(curl -fsSL $src/nightly/latest)
+   curl -fLO $src/releases/$id/gpuworks-$id-linux-amd64.tar.gz
+   curl -fLO $src/releases/$id/SHA256SUMS
+   sha256sum -c SHA256SUMS --ignore-missing
+   ```
 
-- 监听地址默认取本机默认路由出口 IP、端口 8800；只输入端口号会保留探测到的地址、只替换端口。
-- 命令行已给出的参数（`--dir`、`--addr`、`--no-systemd`、`--password`）不再提问；`--quiet` 或 stdin 不是终端时不打印 banner、不提问，全部按默认值走。
-- 已有安装时，默认值是 `server.yaml` 里记录的现值，回车等于保持原状；数据库里已有 admin 账户时跳过密码提问。
-- 命令结束时打印访问地址、服务方式、数据/日志/备份目录和管理员凭证。
-- 各提问的默认值与跳过条件见[控制面安装布局 · 交互提问](../reference/install-layout.md#install-的交互提问)。
+   确认对应压缩包的校验结果为 `OK`，再继续。内网也可以从发布站 `https://gpuworks.zstack.ai/downloads/` 下载同一批发布包。
 
-控制面不存储也不推断自己的对外地址（见 [ADR 0025](../adr/0025-server-holds-no-external-address.md)）：
-添加节点等 API 要求调用方显式给出 `server_url`，给节点或用户一个域名或公网入口见[给控制台一个公网地址](expose-public-address.md)。
+2. **在同一终端解压并运行安装程序。**
+
+   ```bash
+   tar -xzf gpuworks-$id-linux-amd64.tar.gz
+   cd gpuworks-$id-linux-amd64
+   ./gpuworks install
+   ```
+
+3. **按提示填写安装信息。**
+
+   安装程序在需要提权时询问 sudo 密码；后续问题按回车采用默认值。下面是交互提示示例，监听地址以主机实际探测结果为准：
+
+   ```text
+   Press Enter to take the default in brackets, or type your own value and press Enter.
+   install directory (default: /opt/gpuworks/server):
+   listen address (default: 192.0.2.10:8800):
+   start the service automatically (default: yes)? [yes/no]:
+   Admin password (default: random):            ← 仅全新安装
+   ```
+
+   - 监听地址默认是主机出口 IP 和端口 `8800`；只填写端口号时保留默认 IP。
+   - 已有安装会沿用现值，已有 admin 账户时不再询问密码。
+   - 命令行已指定的参数不再提问。脚本安装可用 `--quiet`，未指定项采用默认值；详见[交互提问](../reference/install-layout.md#install-的交互提问)。
+
+4. **记录安装摘要。**
+
+   保存摘要中的访问地址、管理员密码和实际安装目录、数据目录，随后完成下节验证。默认安装目录为 `/opt/gpuworks/server`，自定义目录以摘要为准。
 
 ## 验证与首次登录
 
-1. 检查服务已就绪：`curl -fsS http://<监听地址>/healthz`。
-2. 浏览器打开摘要里的访问地址，用用户名 `admin` 和摘要里打印的密码登录。
-3. 登录后修改密码并删除 `<data>/initial-credentials`：它保存的是明文，只用于交付初始密码。
-4. 忘记密码时执行 `gpuworks reset-password --password NEW --data <data目录>`（systemd 模式下需要操作员已在 `gpuworks` 组，见下）。
+本节改密及后续维护命令须使用**已安装的二进制**，在实际安装目录中执行；安装器不会自动把它加入 `PATH`。安装目录和数据目录从安装摘要或该安装的 `server.yaml` 确认。离线升级的示例另行写明执行位置。
 
-密码的选择优先级与 `initial-credentials` 格式见[控制面安装布局 · 凭证文件](../reference/install-layout.md#凭证文件)。
+1. 在控制面主机的终端检查服务，替换 `<监听地址>` 为安装摘要中的 IP 和端口：
+
+   ```bash
+   curl -fsS http://<监听地址>/healthz
+   ```
+
+   确认请求成功，返回的 `status` 为 `ok`、`version` 为运行版本；失败时先按[排查](#排查)检查日志和端口。
+
+2. 浏览器打开摘要中的访问地址，以 `admin` 和摘要中的密码登录，确认可以进入控制台。
+
+3. 在控制面主机的实际安装目录修改初始密码。systemd 安装先按摘要提示执行 `newgrp gpuworks` 或重新登录，取得新组权限，再执行：
+
+   ```bash
+   ./gpuworks reset-password --password '<新密码>' --data '<data目录>'
+   ```
+
+   替换密码和数据目录；该命令不自动读取 `server.yaml`，不要省略 `--data`。不要将真实密码留在命令历史或日志中。
+
+4. 使用新密码重新登录，确认登录成功。
+5. 删除实际数据目录中的 `initial-credentials` 文件。该文件保存明文初始凭据，删除它不会修改账户密码。凭证说明见[控制面安装布局](../reference/install-layout.md#凭证文件)。
+
+接下来可[接入节点并部署第一个模型](../tutorials/getting-started.md)。节点需要能访问控制面；需要域名或公网入口时，见[给控制台一个公网地址](expose-public-address.md)。
 
 ## systemd 与 nohup
 
-有可用 root/sudo、`systemctl` 存在且 `/run/systemd/system` 真的存在时写 systemd 单元；否则回退到
-nohup 后台进程 + PID 文件。`--no-systemd` 可以强制回退。两种方式都只靠 `server.yaml` 启动：systemd 单元执行
-`serve --config <dir>/server.yaml`；nohup 模式在它前面多一层 `serve --supervise`，由这个父进程充当 systemd 的
-`Restart=always`：server 退出（崩溃、在控制台升级或重启）3 秒后用安装目录里的二进制重新拉起，收到 SIGTERM/SIGINT
-时转给 server、等它退出后自己退出；父进程被 SIGKILL 时 server 跟着被杀，不会留下占着端口的孤儿。`gpuworks.pid`
-记的是这个父进程。
+有 root/sudo 且 systemd 正在运行时，安装器配置 systemd 服务；否则使用 nohup 后台进程。需要主动选择后台进程时加 `--no-systemd`。
 
-systemd 模式下 install 会把操作员加入 `gpuworks` 组（摘要里会提示），之后 `reset-password` 和升级时的文件写入都不需要 sudo。**当前终端**
-不会立刻拿到新组，请 `newgrp gpuworks` 或重新登录后再跑 upgrade/reset-password，否则会报权限错误。
+- **没有 sudo 时**：在解压后的发布包目录中安装到可写的用户目录：
 
-nohup 模式没有特权步骤：进程以调用者身份运行，唯一例外是首次创建 `/opt` 目录。sudo 也不可用的精简环境里
-install 会拒绝写 `/opt` 并提示改用用户级目录：
+  ```bash
+  ./gpuworks install --dir ~/gpuworks-server --no-systemd
+  ```
 
-```bash
-./gpuworks install --dir ~/gpuworks-server --no-systemd
-```
+- **nohup 安装后重启了主机**：服务不会自动恢复。在实际安装目录中执行：
 
-nohup 模式没有任何东西会在重启机器或重启容器后拉起它，安装摘要里会写明；重新拉起用
-`gpuworks restart --dir <安装目录>`（会先结束旧进程再重新执行 `serve --supervise --config`，并等待 `/healthz` 恢复）。
-nohup 进程归安装者：root 装的只有 root 能重启。
+  ```bash
+  ./gpuworks restart
+  ```
+
+  等待命令完成并确认 `/healthz` 恢复。root 安装的 nohup 进程须由 root 重启。
+
+服务配置和权限见[安装布局](../reference/install-layout.md#权限模型)，守护进程行为见 [CLI 参考](../reference/cli.md#gpuworks-serve)。
 
 ### macOS
 
-Mac 上用同一个 `gpuworks install`（发布包 `gpuworks-<release_id>-darwin-arm64.tar.gz`）。有 `sudo` 时（Mac 的管理员账户都有）
-它写一个 system 域的 launch daemon `/Library/LaunchDaemons/ai.gpuworks.server.plist`：**以执行安装的用户运行**（不是 root，
-不建专用账户，`--service-user` 被忽略），开机即起，不需要登录；server 退出后由 launchd 拉起，因此控制台升级、重启照常。
-默认目录同样是 `/opt/gpuworks/server`（首次创建 `/opt/gpuworks` 走 `sudo`，之后整棵树归该用户）。
+1. 在发布站选择 `gpuworks-<release_id>-darwin-arm64.tar.gz` 和对应 `SHA256SUMS`，下载到 Mac。
+2. 在 Mac 终端用 `shasum -a 256` 核对压缩包的 SHA-256；与 `SHA256SUMS` 中的值一致后，再解压。
+3. 进入解压目录，执行 `./gpuworks install`，按上面的提示填写，然后完成[验证与首次登录](#验证与首次登录)。
+
+使用有 sudo 权限的账户安装时，服务以安装用户运行并随系统启动。安装默认位于 `/opt/gpuworks/server`；同机 agent 位于 `/opt/gpuworks`，两者互不覆盖。在实际控制面安装目录中按需执行：
 
 ```bash
-./gpuworks install          # 问 sudo 密码一次
-gpuworks restart            # launchctl 重新加载 plist
-gpuworks stop               # 停服；plist 留着，下次开机照常起来
+./gpuworks restart            # 重启服务
+./gpuworks stop               # 停服；launchd 安装会在下次开机时再次启动
 ```
 
-同一台 Mac 再装 agent 时，agent 在 `/opt/gpuworks`，与控制面的 `/opt/gpuworks/server` 互不覆盖。
-`--no-systemd` 在 Mac 上同样表示不用服务管理器，改为 nohup 后台进程。plist 的内容见[控制面安装布局](../reference/install-layout.md#launchd-plistmacos)。
+使用 `--no-systemd` 时改为 nohup，不配置开机自启。launchd 配置见[安装布局](../reference/install-layout.md#launchd-plistmacos)。
 
 ### 在容器里运行
 
-容器里通常没有 systemd，install 会走 nohup 模式。安装目录（二进制、`server.yaml`、数据目录）必须放在持久化存储上：
-控制台升级是原地替换安装目录里的二进制，镜像里另带的二进制不会被升级，容器按旧镜像重建后跑的就是旧版本。
+**先把安装目录及其配置、数据放在持久化存储上。** 控制台升级不会更新容器镜像；按旧镜像重建且未保留安装目录时，会回到旧版本。
 
-- **能决定容器的启动命令时**（自己的 `docker run`、compose、平台的启动命令），把它设为前台运行的守护进程：
+根据容器平台选择一种启动方式：
+
+- **可以设置启动命令**：安装完成后，把容器启动命令设为以下前台守护进程；路径以实际安装目录为准。
 
   ```bash
   /opt/gpuworks/server/gpuworks serve --supervise --config /opt/gpuworks/server/server.yaml
   ```
 
-  它作为容器的 1 号进程会回收孤儿进程，`docker stop` 的 SIGTERM 会转给 server 并在其退出后以 0 退出；容器重启后
-  server 自动回来，控制台升级与回滚照常。路径必须是安装目录里的二进制（`install` 摘要里打印了这条命令）。
-  这种形态下不要在容器里执行 `gpuworks restart` 或 `gpuworks upgrade`：停掉 1 号进程就是停掉容器，二者会直接拒绝
-  并提示改用控制台升级或重启容器；用 `docker run --init` 时守护进程不是 1 号进程，命令不会拒绝，但停掉它同样会让容器退出。
-- **启动命令由平台决定时**（租用的 GPU 容器），在容器里执行 install 即可；容器没重启期间控制台升级与崩溃重启都正常，
-  容器重启后用平台提供的开机脚本或手工执行 `gpuworks restart --dir <安装目录>` 拉起。开机脚本里要后台启动、不能阻塞：
-  `setsid nohup <dir>/gpuworks serve --supervise --config <dir>/server.yaml >/dev/null 2>&1 &`。实测可用的位置：
-  AutoDL 是自建的 `/etc/autodl.sh`（每次开机执行）；Vast.ai 是 `/root/onstart.sh`；RunPod 可以把启动命令改成先起 sshd、
-  再 `exec` 上面的守护进程（修改启动命令会重置 pod，并清空容器盘）。注意哪些目录在重启后保留：RunPod 停止再启动会清空容器盘，
-  只有 `/workspace`（网络卷）保留。
-- Kubernetes 每次重启容器都从镜像重建文件系统，不适合控制台升级；在那里请通过更换镜像升级。
+  容器重启后会重新启动服务，也支持控制台升级。**这种方式不要在容器内执行 `gpuworks restart` 或 `gpuworks upgrade`**，应使用控制台升级或重启容器；停掉容器主进程会使容器退出，使用 `docker run --init` 也存在这个影响。
+
+- **启动命令由平台决定**：先在容器内完成安装，容器重启后用平台开机脚本或在安装目录执行 `./gpuworks restart`。开机脚本必须后台启动，不能阻塞；将 `<dir>` 替换为实际安装目录：
+
+  ```bash
+  setsid nohup <dir>/gpuworks serve --supervise --config <dir>/server.yaml >/dev/null 2>&1 &
+  ```
+
+  AutoDL 可自建 `/etc/autodl.sh`，Vast.ai 使用 `/root/onstart.sh`。RunPod 可把启动命令设为先启动 sshd、再 `exec` 上述前台守护进程；修改启动命令会重置 pod 并清空容器盘。RunPod 停止再启动也会清空容器盘，使用 `/workspace` 网络卷保存安装。
+
+Kubernetes 请通过更换镜像升级，不使用控制台升级。
 
 ## 重复执行 install
 
-再次执行 install 是修复路径，不是重装：保留既有 `server.yaml` 的值（命令行显式给出对应参数才覆盖），替换二进制、
-重建 service、重启并探活，但绝不触碰已有的数据库、`master.key` 和 admin 账户。也可以用来切换服务方式
-（例如从 nohup 切到 systemd）。`--password` 此时会被忽略并提示改用 `gpuworks reset-password`。
+需要修复服务或切换 systemd/nohup 时，可在发布包目录重新执行 `./gpuworks install`，指定原安装目录。它会替换二进制、重建服务并重启，保留已有配置、数据库、主密钥和 admin 账户；只有显式指定的参数会覆盖对应配置。
+
+`--password` 不会修改已有账户密码。需要更换版本时使用下面的升级流程，重复安装不提供升级备份与回滚。
 
 ## 升级
 
-```bash
-gpuworks upgrade            # 升级到所选渠道（server.yaml 的 update_channel，默认跟随构建）的当前版本
-gpuworks upgrade --check    # 只看有没有新版，不改动任何东西
-gpuworks upgrade --base-url https://gpuworks.zstack.ai        # 内网发布站
-gpuworks upgrade --source https://mirror.example.com/gpuworks # 自建的发布通道镜像
-gpuworks upgrade --archive ./gpuworks-<release_id>-linux-amd64.tar.gz   # 本地发布包，见下
-```
+先确认以下影响，再选择控制台、命令行或离线方式：
 
-流程：同时请求三个发布源的签名索引（`<channel>/index.json`），用第一个校验通过的；按当前平台选
-`gpuworks-<release_id>-<os>-<arch>.tar.gz`，从该源下载（失败或 30 秒没有新数据就换源续传），按索引核对大小与 sha256，
-停服，打包备份，原子替换二进制，重启，探活（60 秒）。探活失败时自动还原备份、重启旧版本，以非零码退出，
-同时打印失败原因和备份路径。整个过程用 `<dir>/.upgrade.lock` 互斥，并发升级会直接失败。
-不给 `--dir` 时升级执行的这个二进制所属的安装，同机有多套安装时用哪个目录下的 `gpuworks` 就升级哪一套；
-停服后监听地址仍被别的进程占着（例如另一套安装用了同一端口）时直接失败并报出占用进程，不做任何修改。常用参数：
-`--channel`（`nightly` / `release`）、`--version ID`（期望的 release id，与渠道当前版本不一致时报错）、`--keep N`（备份组数）、
-`--force`（允许替换本地构建）、`--quiet`（无人值守），完整列表见 [CLI 参考](../reference/cli.md#gpuworks-upgrade)。
-
-更新渠道在设置页「版本与更新」里选（正式发布版 / 滚动预览版），保存在 `server.yaml` 的 `update_channel`，命令行与控制台读同一个设置。
-渠道里的版本比当前构建旧（例如从滚动预览版切到正式发布版）时不会降级，需要时加 `--force`。
-
-自建镜像：把任一发布源上的 `<channel>/index.json` 与它引用的 `releases/<release_id>/` 原样拷到自己的 HTTP 服务下即可，
-索引的签名保证镜像内容没有被改动。
-
-- `--dir` 下没有 `server.yaml`、但有 `server.yaml` 之前的版本留下的 `install.json` 时（老版本的 upgrade 只换二进制、不动这套布局），先把其中的监听地址、数据/日志目录、日志轮转和可信代理写成 `server.yaml`，把用环境变量传配置的单元改写成 `serve --config`，删掉 `install.json`，再照常升级；回滚还原的是同一个二进制，同样从 `server.yaml` 启动。这一步只能由已安装的二进制执行（`<dir>/gpuworks upgrade`），换别的二进制会报错退出、不做任何修改；`install` 与 `restart` 遇到这种安装同样先转写。
-- 两者都没有时视为未采纳的安装，报错「no gpuworks installation found at <dir>; run `gpuworks install --dir <dir>` first to adopt it」，不做任何修改。
-- 已是最新版时打印“已是最新”并以 0 退出，可以放进定时任务；本地构建（`dev` 或 `-dirty`）不加 `--force` 会拒绝升级。
-- 升级只重启控制面：节点上的推理容器和模型不受影响，`/v1` 网关会短暂 503。`/dl/` 里的新 agent 只对新接入的节点生效，既有节点不会自动升级，见[接入节点、升级与卸载 agent](connect-nodes.md)。
-- 回滚还原的是升级前快照，升级窗口（约 1 分钟）内的数据变更会丢——此时服务刚重启，几乎没有写入。升级失败后如仍未起来，用备份里的 `bin/gpuworks` 和 `data/` 手工还原。
-- 备份内容、保留策略和每次安装/升级追加的审计记录见[控制面安装布局 · 探活与备份](../reference/install-layout.md#探活与备份)。
+- 控制台和 `/v1` 网关会短暂中断，节点上的推理容器和模型不受影响。
+- 升级前会自动备份，失败时回滚；回滚恢复的是升级前快照，升级期间的数据变更可能丢失。备份范围与兼容性见[升级与版本兼容](upgrade-and-compatibility.md)。
+- 本次只升级控制面，已有节点的 agent 不会自动升级；节点升级见[接入、升级和卸载节点](connect-nodes.md)。
 
 ### 在控制台升级
 
-设置页「版本与更新」显示服务端当前版本与所选渠道的最新版本；「自动检测新版本」开着时（默认），打开登录页 server 就开始检查（登录页不显示结果），并随检查向发布方报告节点数、GPU 型号分布和 agent 版本分布（不含主机名、地址、用户或部署，内容见[配置](../reference/configuration.md#镜像目录与镜像拉取)）；关掉这个开关（`server.yaml` 的 `auto_check_updates: false`）后不再自动检查，也不报告，要查更新就点「检查更新」，登录后有新版本时页头出现「有可用更新」。切换渠道后页面立即显示新渠道并重新检查。读不到渠道时分三种提示：渠道还没有发布任何版本（源都能访问，例如还没有正式版本时的正式发布版渠道）、发布源返回的内容没有通过签名校验（多为需要登录的网关或代理拦截）、连不上发布源（检查出网与代理）。服务端由 systemd 或 `serve --supervise` 托管、运行的是安装目录里的二进制、
-且服务账户能写安装目录时（`gpuworks install` 装出来的默认就是这样），可以直接在这里升级：
+控制面须由 systemd、launchd 或 `serve --supervise` 托管，运行的是安装目录中的二进制，且服务账户可写该目录；不满足时页面会说明原因并给出处理命令。
 
-- **升级**：服务端从发布通道下载本平台的压缩包（按签名索引校验 sha256）；
-- **上传升级包**：上传一个 `gpuworks-<release_id>-linux-<arch>.tar.gz`，用于访问不到发布源的服务端。
+1. 以管理员身份打开**设置 → 通用 → 版本与更新**，查看**服务端**的当前版本。
+2. 在**更新渠道**选择**正式发布版（release）**或**滚动预览版（nightly）**，点击**检查更新**，核对服务端的最新版本。
+3. 点击**服务端**行的**升级**，核对确认框中的目标版本和中断提示，再点击**升级**。
+4. 等待页面恢复，确认提示“服务端已升级到目标版本”，且**当前**版本与目标一致。若 5 分钟内未看到新版本应答，页面会提示异常；按[排查](#排查)确认当前版本和日志，不把等待超时直接当成升级成功或已回滚。
 
-两者流程相同：解出新二进制并试运行 `version`（架构不对、跑不起来、本地构建都在改动前拒绝），再问它是否支持控制台升级
-（`gpuworks console-upgrade-protocol`；控制台升级之前的版本不认识它，不会确认或回滚自己的启动，因此拒绝并提示在主机上用
-`gpuworks upgrade --archive` 安装）→ 用 `VACUUM INTO` 拍下运行中的数据库，
-连同 `master.key`、`server.yaml` 与当前二进制打成和 CLI 相同格式的备份 `<dir>/backups/<release_id>-<时间>.tar.gz` →
-写升级标记 `<dir>/tmp/upgrade-pending.json` → 原子替换二进制 → 退出，由 systemd 或守护进程拉起新版本。新版本启动时先看标记：
-在 15 分钟内健康地以新版本应答就确认升级（写 `install-history.jsonl`、删标记、只保留最近 3 份备份）；连续 3 次启动都没起来，
-或起来了却一直不健康，下一次启动就还原备份（数据库、主密钥、`server.yaml` 与旧二进制）并换回旧版本。页面会等新版本应答后刷新。
-标记写明目标版本：启动的不是该版本（二进制已被 `gpuworks upgrade` 或手工换掉）时，标记作废并删除，不计次、不回滚。
+**服务器不能访问发布源时**，在同一行点击**上传升级包**，选择与服务器系统、架构匹配的 `gpuworks-<release_id>-<os>-<arch>.tar.gz`。**选择文件后即开始上传和升级，不会再出现在线升级的确认框。** 完成后按第 4 步核对结果。
 
-服务端不满足上面的条件时，页面说明原因并给出命令：装好的服务端只是没有被托管（例如手工执行 `serve --config` 跑起来的），页面给出
-`<dir>/gpuworks restart --dir <dir>`（改由守护进程运行，之后就能在页面升级）和容器里应改用的启动命令
-`<dir>/gpuworks serve --supervise --config <dir>/server.yaml`；其他情况（没有安装、运行的不是安装目录里的二进制、安装目录不可写）给出 `sudo gpuworks upgrade`。
+如果页面没有可用的升级操作：
+
+- 提示没有服务管理器时，在主机上执行页面给出的 `restart` 命令；容器使用页面给出的启动命令，具体限制见[在容器里运行](#在容器里运行)。
+- 提示未安装、运行的不是安装目录中的程序或安装目录不可写时，先处理对应条件，或按[命令行方式](#在命令行升级)升级。
+- 上传的包不匹配、无法运行、属于本地构建，或目标版本不支持控制台升级时，会在替换前拒绝。旧版本升级包可改用[离线升级](#离线升级)。
+
+**自动检测新版本**默认开启，检查时会向发布方报告安装规模；关闭后改为手动点击**检查更新**，不再自动检查或报告。报告内容见[配置参考](../reference/configuration.md#镜像目录与镜像拉取)。更新渠道同时用于控制台和命令行。
+
+### 在命令行升级
+
+在控制面主机的**实际安装目录**执行。systemd 安装先按摘要提示取得组权限；同机有多套安装时，进入要升级的那一套目录。旧版只有 `install.json` 的安装也必须使用该目录中已安装的二进制。
+
+1. 检查是否有新版本，并核对目标安装和版本：
+
+   ```bash
+   ./gpuworks upgrade --check
+   ```
+
+2. 确认后执行升级，等待命令完成：
+
+   ```bash
+   ./gpuworks upgrade
+   ```
+
+3. 重新访问控制台，或调用 `/healthz`，确认运行版本与目标一致。命令以非零码退出时按错误提示处理；探活失败会自动恢复旧版本，备份路径会显示在输出中。已是最新版时以 `0` 退出，不会重复升级。
+
+使用其他来源时，按场景选一条命令，替代上述第 1、2 步；先追加 `--check` 核对，再去掉它执行：
+
+```bash
+./gpuworks upgrade --base-url https://gpuworks.zstack.ai        # 内网发布站
+```
+
+```bash
+./gpuworks upgrade --source https://mirror.example.com/gpuworks # 自建发布通道镜像
+```
+
+需要固定版本、调整备份份数或无人值守时，查 [CLI 参数](../reference/cli.md#gpuworks-upgrade)。渠道中的版本比当前版本旧时默认不降级；确认需要降级或替换本地构建后，才使用 `--force`。自建镜像的目录与校验要求也见该参考页。
 
 ### 离线升级
 
-主机访问不到任何发布源时，把新版发布包拷到主机上，用 `--archive` 升级，流程（停服、备份、替换、探活、失败回滚）与在线升级完全相同，不发任何网络请求：
+1. 从可联网的机器下载匹配目标主机系统和架构的发布包、同一版本的 `SHA256SUMS`，一起拷到控制面主机。
+2. 在存放发布包的目录校验，确认对应压缩包显示 `OK`，再检查包内版本。以下示例使用 Linux 默认安装目录，`<release_id>` 替换为下载包名中的版本标识；自定义安装或 Mac 请替换程序路径和包名，Mac 用 `shasum -a 256` 对照 `SHA256SUMS` 校验。
 
-```bash
-sha256sum -c SHA256SUMS --ignore-missing      # 和发布包一起拷来的校验文件
-/opt/gpuworks/server/gpuworks upgrade --archive ./gpuworks-<release_id>-linux-amd64.tar.gz --check
-/opt/gpuworks/server/gpuworks upgrade --archive ./gpuworks-<release_id>-linux-amd64.tar.gz
-```
+   ```bash
+   sha256sum -c SHA256SUMS --ignore-missing
+   /opt/gpuworks/server/gpuworks upgrade --archive ./gpuworks-<release_id>-linux-amd64.tar.gz --check
+   ```
 
-- 不用先解压；目标版本取自包里二进制的 `gpuworks version`，`--version ID` 可以再加一道核对。
-- 包里的二进制跑不起来（架构不对、包损坏）或是本地构建（`dev` / `-dirty`）时，在停服前报错退出，什么都不改。
-- 不要用新包里的 `./gpuworks install` 代替升级：重复 install 虽然也换二进制、不动数据库，但不做备份、也不会回滚。
-- 节点 agent 照常在节点页「升级 Agent」：新 agent 内嵌在 server 二进制里，同样不需要访问发布源。
+3. 确认后执行升级，完成后按[命令行升级](#在命令行升级)第 3 步验证：
+
+   ```bash
+   /opt/gpuworks/server/gpuworks upgrade --archive ./gpuworks-<release_id>-linux-amd64.tar.gz
+   ```
+
+无需解压；该流程不访问发布源，包损坏、架构不匹配或本地构建会在停服前报错。不要用新包中的 `./gpuworks install` 替代升级，否则没有升级备份与回滚。
+
+新 agent 已内嵌在 server 中，仍可在节点页点击**升级 Agent**，不需要访问发布源。
 
 ## 卸载
 
-运行卸载命令后，按提示选择是否清理数据、检查清单，再确认执行：
+需要先预览彻底清理范围时，在实际安装目录执行 `./gpuworks uninstall --purge --dry-run --json`。预览不会停止服务或删除文件；确认清单后再执行以下步骤。
+
+1. 在控制面主机的实际安装目录运行：
+
+   无 sudo、安装到用户目录时，由原安装用户执行 `./gpuworks uninstall`；下方自动化示例也去掉 `sudo`。
+
+   ```bash
+   sudo ./gpuworks uninstall
+   ```
+
+2. 按提示选择是否清理数据，检查清单后确认。systemd、nohup 和 macOS launchd 使用同一命令。
+
+   | 选择 | 结果 |
+   |---|---|
+   | 保留数据（默认） | 停止服务、取消自启并移除程序；保留配置、数据库、主密钥、日志与备份，便于重装 |
+   | 清理数据 | 还会删除本安装已知配置、数据、备份及本服务日志，包括配置指定的外置路径；执行前务必核对清单 |
+
+3. 检查卸载报告。实际卸载返回码为 `0` 表示所选操作完成，`1` 表示失败；检查错误和已完成项目，处理原因后重试。涉及受保护路径、软链接、挂载点或无法确认归属时，命令会报错并拒绝相应清理；检查路径和归属后再处理。
+
+自动化执行时，按需要选一条：
 
 ```bash
-sudo gpuworks uninstall --dir /opt/gpuworks/server
+sudo ./gpuworks uninstall --yes                 # 保留数据
 ```
-
-systemd、nohup、macOS launchd 使用同一命令。卸载会先确认进程退出，再移除所属服务定义、取消自启并清理程序；同安装的 expose 公网入口也会关闭。普通卸载保留配置、数据库、`master.key`、日志与备份，支持重装恢复。
-
-自动化通过显式参数选择范围，不等待输入：
 
 ```bash
-sudo gpuworks uninstall --dir /opt/gpuworks/server --yes
-sudo gpuworks uninstall --dir /opt/gpuworks/server --purge --yes --json
+sudo ./gpuworks uninstall --purge --yes --json   # 清理数据并输出报告
 ```
 
-`--purge` 会删除本安装已知配置、数据、备份和日志，包含配置指定的外置目录；执行前可用 `--purge --dry-run --json` 预览清单。未知文件、服务账号和组保留；互斥锁 `.upgrade.lock` 及其安装目录也保留，避免并发升级/卸载绕开同一把锁。服务账号 home 可能就是安装目录，也可能属于已有账号，不会使用 `userdel -r` 删除。
+非交互执行必须传 `--yes`（预览除外），`--quiet` 不会跳过确认。未知文件、服务账号与组等保留项见 [CLI 卸载说明](../reference/cli.md#gpuworks-uninstall)。
 
-软链接、挂载点、用户 home 和覆盖安装目录的数据路径会拒绝自动清理；非空数据目录需有可识别的 GPUWorks 数据库或 master key。遇到这些情况先检查实际路径和归属，再单独处置相应资源。
-
-非交互运行必须传 `--yes`（预览除外）；`--quiet` 只隐藏说明，不跳过确认。返回码 `0` 表示完成，`1` 表示失败，可修复原因后再次执行。参数与 JSON 字段见 [CLI 参考](../reference/cli.md#gpuworks-uninstall)。
-
-远端 agent、推理服务、云租机以及 Cloudflare tunnel / DNS 需单独处置，卸载控制面不会回收它们，云资源可能继续计费。
+同一安装的 expose 公网入口也会关闭。**远端 agent、推理服务、云租机和 Cloudflare tunnel / DNS 不会随控制面卸载而回收**，仍须单独处理；云资源可能继续计费。
 
 ## 排查
 
-| 现象 | 处理 |
+表中的 `./gpuworks` 在实际安装目录执行；`<data目录>` 和 `<安装目录>` 从安装摘要或该安装的 `server.yaml` 确认。
+
+| 现象 | 检查与处理 |
 |---|---|
-| 安装失败在探活一步 | 看 `<dir>/logs/gpuworks-server.log`（轮转规则见[日志与轮转](../reference/install-layout.md#日志与轮转)）；失败进程已被停掉，可反复重试 |
-| `cannot listen on :8800` | 端口被别的进程占用；确认不是旧安装的残留进程（`systemctl status gpuworks`） |
-| `create /opt/gpuworks/server needs root` | 用 `sudo`，或改 `--dir ~/gpuworks-server --no-systemd` |
-| 忘记密码 | `gpuworks reset-password --password NEW --data <data目录>`（操作员已在 `gpuworks` 组时不需要 sudo） |
-| 升级或 install 报权限错误 | 当前终端还没拿到 `gpuworks` 组：`newgrp gpuworks` 或重新登录 |
-| 升级后节点全部离线 | 多为节点接入监听地址改了但转发（反代/NAT）没跟着改；检查设置页「监听地址」与节点版本，见[配置节点网络](configure-networks.md#监听地址与别人怎么连过来) |
+| 安装或升级后无法访问 | 查看 `<安装目录>/logs/gpuworks-server.log`，修复错误后重试；再次调用 `/healthz` 并核对版本。日志位置自定义时以实际配置为准 |
+| `cannot listen on :8800` | 端口被其他进程占用；先用 `systemctl status gpuworks` 确认是否为旧服务，不要直接重复安装 |
+| `create /opt/gpuworks/server needs root` | 使用有 sudo 权限的账户，或改为 `--dir ~/gpuworks-server --no-systemd` |
+| 修改初始密码或忘记密码 | 执行 `./gpuworks reset-password --password '<新密码>' --data '<data目录>'`，替换密码和数据目录；不要将真实密码留在命令历史或日志中。该命令不自动读取 `server.yaml`，不要省略数据目录。改密后重新登录验证 |
+| 升级或重置密码报权限错误 | 当前终端可能还没取得 `gpuworks` 组权限，执行 `newgrp gpuworks` 或重新登录后重试；数据目录仍不可写时检查其权限 |
+| 控制台提示渠道尚无版本 | 切换到已有发布的渠道，或等待该渠道发布后重新检查 |
+| 发布索引签名校验失败 | 检查服务端出网代理、网关或登录拦截；暂时可用匹配的本地升级包 |
+| 无法连接发布源 | 检查服务端出网与代理；无法联网时采用上传升级包或离线升级 |
+| 控制台升级等待超时或失败 | 查看服务日志与实际数据目录中的 `install-history.jsonl`，再检查 `/healthz` 的运行版本；不能仅凭页面超时判断回滚。回滚后仍无法启动时，按[升级与版本兼容](upgrade-and-compatibility.md)检查并恢复备份 |
+| 升级后节点全部离线 | 检查**设置**页的**监听地址**与反向代理/NAT 是否一致，再检查节点版本，见[配置节点网络](configure-networks.md#监听地址与别人怎么连过来) |
+
+## 补充说明
+
+安装目录、权限、交互默认值和备份文件见[控制面安装布局](../reference/install-layout.md)；参数、升级源选择及旧布局兼容行为见 [CLI 参考](../reference/cli.md#gpuworks-upgrade)。下面的后台机制用于排查，不是需要手工执行的步骤。
+
+<details>
+<summary>控制台升级的校验、确认与回滚机制</summary>
+
+在线升级与上传升级包使用同一流程：先解出新二进制并试运行 `version`，再检查 `console-upgrade-protocol` 支持；不支持确认或回滚自身启动的版本会被拒绝。
+
+校验通过后，用 `VACUUM INTO` 生成数据库快照，连同 `master.key`、`server.yaml` 和当前二进制写入 `<dir>/backups/<release_id>-<时间>.tar.gz`，写入 `<dir>/tmp/upgrade-pending.json`，替换二进制后退出，由服务管理器启动新版本。
+
+- 新版本在 15 分钟内健康应答时，确认升级、记录审计、删除标记，并保留最近 3 份备份。
+- 连续 3 次未能启动，或持续不健康时，在后续启动中恢复数据库、主密钥、配置和旧二进制。
+- 标记中的目标版本与实际启动版本不一致时（例如二进制被其他升级方式替换），删除标记，不累计启动次数，也不据此回滚。
+
+页面只等待 5 分钟，早于服务端的确认期限，因此页面超时后仍需检查实际版本和日志。
+
+</details>
