@@ -1,6 +1,6 @@
 # 昇腾支持矩阵
 
-更新日期：2026-10-24。这里把三件容易混淆的东西分开写：
+更新日期：2026-10-25。这里把三件容易混淆的东西分开写：
 
 - **外层 CANN**：节点或云市场租用镜像提供的 toolkit。自有裸机可能只有驱动，记为 `driver-only`，不等于没有容器 runtime。
 - **内层 CANN**：GPUWorks 启动的业务镜像内的 CANN 用户态二进制接口（userspace ABI）；它影响业务镜像能否运行，但不参与 `libvruntime.so` 资产选择。
@@ -16,6 +16,7 @@
 | Gitee ARM | arm64 / 910B1 | 9.0 | 8.5 / udocker | 容器启动到 CANN FE | 旧 PRoot 下未通过；`platform_config` realpath 失败。ARM64 `faccessat2` 已修复，该云端组合尚未复测 |
 | Gitee ARM 目录项 | arm64 / 910B1 | 8.5 | 未进入内层 | 租机前置校验 | 云市场实际返回“镜像和主机不匹配”，不能作为 CI fixture；这不等于外 8.5 + 内 8.5 已被判定不兼容 |
 | 自有池 Docker 成员 | arm64 / 910B4 | 9.0/驱动 | 9.0 / Docker | 平台 API 双副本同卡 dGPU、真实推理/chat、超配拒绝、整卡 chat | 支持；完整平台 dGPU 主验收 |
+| 自有 910C / Docker | arm64 / 910C | 9.0/驱动 | A3 镜像 / Docker | 下表标明 Docker 的档完成平台部署、health/模型发现和真实 chat | 只支持下表逐项列出的模型、拓扑与运行时；不把结果外推到 runveil 或未测档。`910c_1` 的 Phy-ID 0 已被逐 die 检查排除 |
 | 自有池 nerdctl 成员 | arm64 / 910B4 | driver-only，26.1.1 | 内嵌 probe v2 / nerdctl | 生产 Engine + Driver：物理卡 1→容器逻辑卡 0，精确返回 4 GiB；关闭钩子返回 32 GiB 并判失败 | 节点级 dGPU 探针通过；本次不加载业务镜像、模型或推理引擎 |
 | 自有裸机临时 Docker daemon | arm64 / 910B4 | driver-only，26.1.1 | 内嵌 probe v2 / Docker 27.5.1 + Ascend runtime | 生产 Engine + Driver：物理卡 1→容器逻辑卡 0，4 GiB 配额与关闭钩子的 32 GiB 负向对照均符合预期 | 补验 v2 的容器内 DSMI 映射；本次未重跑平台推理 |
 | 直通 VM / runveil | arm64 / 910B4 | driver-only，25.5.1 | 内嵌 probe v2 / runveil，无 vCANN 钩子 | 物理卡 7→逻辑卡 1，与生产推理注入一致；HBM 查询返回真实整卡 32 GiB，4 GiB 预期判失败 | 仅验证设备映射；device-share 为 False，驱动不支持 VM 开启，不能记为 dGPU 通过 |
@@ -24,6 +25,68 @@
 | 同一自有裸机 runveil | arm64 / 910B4 | driver-only，26.0.rc1 | 9.0 / vLLM 0.20.2 / runveil | 生产 Engine + runveil Driver 自动选卡，Qwen3-0.6B、8 GiB 配额，真实 chat 返回 HTTP 200 | 通过单实例 dGPU 推理；容器报告 8589934592 bytes，9 GiB 申请被拒绝，随后 chat 返回 `Hello! 😊`。本次未走平台 API/调度/网关 |
 
 “外层 8.5、内层 8.5 已测过”指上表的 Gitee x86_64 环境：已有真实平台部署到 healthy 的现场记录，但当前仓库没有保留成功 chat 响应，因此矩阵不会把它写成完整对话通过。下一步应在现有 x86_64/CANN8.5 租机用例内复用同一实例补 chat，避免增加一次租机。
+
+## 910C 目录契约与实测边界
+
+2026-10-22 的复验确认，runner 镜像只携带一个芯片族的算子包：910C die 上运行
+`cann9.0-910b-*` 会在 `AclOpKernelInit` 失败，换用同版本 `cann9.0-a3-*` 才通过。
+因此模板谓词和固定镜像必须描述同一芯片族。代际继承（[ADR 0009](../adr/0009-flat-spec-catalog.md)
+第 10 条）仍然保留，但后继卡使用独立档位和自己的镜像，不再只扩大旧档谓词。
+
+- 当前目录有 **81 个代际继承 A3 档**，共有 **88 个谓词匹配 910C 的档**。契约测试逐档检查
+  910B 原档与 A3 档的参数、权重和镜像关系，以及 910C 档能否解析到 A3 镜像。
+  这些数字只是目录契约计数，**不是逐档真机通过数**；真机结论只按下表逐项记录。
+- 950 不套用这套继承：目前只有 `qwen/qwen3.8-27b` 的单卡 950PR 档使用对应 950 镜像，
+  依据 2026-10-07 的真机测量；没有 950DT 实测档。
+- MiniMax-H3 的 SGLang diffusion 仍受 CUDA full-loop denoise 限制，只声明 910B4，不声称
+  支持 910C。Gemma-3-4B-IT 的 SGLang 档也因 health/warmup 持续失败而撤回了 910C 声明。
+
+### 前沿模型目录与真机状态
+
+“有目录档”表示存在固定权重、镜像和启动参数的规格，不等于已经完成真机验收。
+
+| 模型 | 当前 Ascend 目录 | 910C 实测结论与边界 |
+|---|---|---|
+| GLM-5.3（非 Flash） | **无 Ascend 档** | 上游虽有 A3 配方，但尚缺本档真机依据，因此未发布 A3 spec |
+| GLM-5.3-Flash | A3 TP16/EP16、W8A8、INT8 KV、1M | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；runveil/PRoot 未通过 |
+| DeepSeek-V4.1-Flash | A3 DP4 × TP4、W8A8、150K | 原生 Docker 的 health、模型发现和真实 chat 已通过 |
+| DeepSeek-V4.1-Flash-1017 | 独立 1017 W8A8 权重，A3 DP4 × TP4、150K | 原生 Docker 的 health、模型发现和真实 chat 已通过；不与原版共用权重快照 |
+| DeepSeek-V4-Flash-0731 | A3 DP4 × TP4、W8A8 + DSpark、1M | 原生 Docker 的 health、1M `/v1/models` 和真实 chat 已通过 |
+| MiniMax-M3 | A3 DP4 × TP4、133K | 原生 Docker 的 16/16 worker、health 和真实 chat 已通过 |
+| Qwen3.5-397B-A17B | A3 TP16/EP16、W8A8 + MTP、133K，eager | 原生 Docker 的 health、`/v1/models` 和真实 chat 已通过；eager 避开当前缺失的 `causal_conv1d_update_npu` graph 路径 |
+| Qwen3.8-Flash-Next | 实验性 A3 TP8、W8A8-MTP、135168 上下文 | Docker 的 health、`/v1/models`、真实 chat 和自动选卡已通过 |
+| Qwen3.8-27B | 910B 档与继承的 A3 档 | 两台 910C 的 TP2 真机请求已通过，其中 `910c_k8s` 使用 Docker |
+| Kimi-K3 | 无 | 上游最小配方为 4 台 A3；当前没有目录档 |
+
+DeepSeek-V4.1-Flash 原版与 1017 的 A3 档都显式声明 **512 GiB `/dev/shm`** 和
+`memlock_unlimited: true`，用于两张约 103 GiB 的 Engram 本地 DP 共享表；不要在模板
+`args` 里重复写 Docker memlock 参数。真机验收曾确认 128 GiB 无法完成第二张表注册，
+256 GiB 可以完成，目录采用 512 GiB 隔离 tmpfs 作为统一规格。
+
+启动前校验以最终生效的命令为准：rc2 A3 V1 兼容 rendezvous 仅限单节点，跨节点会在创建前拒绝；compat 不得与 `pre_start_argv` 并存，V1 也不接受额外的 `pre_start_script`，V2 可合并脚本但最终仍受 64 KiB 上限约束。Engram 的 `cpu_offload + dp_shared_memory` 组合只支持 Docker/nerdctl，udocker/runveil 会在创建前拒绝，不再静默忽略共享内存与锁页配置。无法证明实际 runner 或 Engram 配置的手工 shell（包括 JSON 中的 `/bin/sh -c`）也会拒绝；可检查的 JSON argv 则以首个 token 为可执行文件。
+
+另有部分继承档完成了单项真机验证：GLM-4.6V-Flash、Qwen3.6-35B-A3B、
+Qwen3.5-122B-A10B、Qwen3-Next-80B-A3B-Instruct 的 health/chat，以及 Qwen3-TTS 的
+A3 镜像选择、health 和语音请求。这些记录只覆盖对应档位，不能把其余继承档一并写成
+真机通过。
+
+新增 Ascend 模板时必须固定完整不可变权重快照。ModelScope 文件 API 的逐文件
+`Revision` 不一定是完整仓库快照；不能用“某个文件的 revision”冒充整个模型的快照。
+
+### 启动与运行时边界
+
+GLM-5.3-Flash 的 Docker 通过结果只适用于固定 rc2 A3 镜像的原生 Docker 路径。
+runveil/PRoot 下即使绕过 Python 算子和 group 初始化问题，仍会遇到 CANN Fill/Transpose
+tiling 注册失败或线程饥饿，因此该档不把 runveil 写成支持路径；Docker 不注入这套
+PRoot 兼容脚本。MiniMax-M3 的 Docker 结果同样不外推到 runveil。
+
+昇腾容器的共享设备节点（`davinci_manager`、`devmm_svm`、`hisi_hdc`、`ummu`、`uburma`）
+按宿主实际存在与否下发；调度选中的 `/dev/davinciN` 必须交给容器。多机档不在模板里
+写死网卡名，agent 按节点广播 IP 反查网卡并填充集合通信变量，显式设置仍优先。
+
+有宿主 CANN 的节点按 die 做 ACL context 与 4 KiB 分配检查；只有明确归因于该 die 的
+失败才标记 `runtime_unusable`。driver-only 节点缺少 `libascendcl.so` 时跳过，不把缺工具
+当成硬件故障。失败分级、退避和排查见[运行时不可用](../how-to/troubleshooting.md#某张卡运行时不可用或驱动初始化失败)。
 
 ## 覆盖层级
 
@@ -107,8 +170,7 @@ agent 升级并成功安装标准路径下的资产后，会精确删除旧的 `
   910C 的芯片名列写的是 `Ascend910`（不带后缀），每个 NPU 两颗芯片（Chip 0/1）；GPUWorks 把这种卡的芯片记为型号 `910C`。
   初代 910 是同名的一卡一芯片卡，不会被认成 910C。设备编号是芯片的 Phy-ID；没有 Phy-ID 的芯片无法对应设备，不上报。
 
-设备编号统一取 Phy-ID 的依据（2026-10-02 两台 910C 主机只读核实，记录见
-`artifacts/archive/2026-10-02-gpu-identity/evidence/`）：
+设备编号统一取 Phy-ID，依据是 2026-10-02 对两台 910C 主机所做的只读核实：
 
 | 用途 | 编号 |
 |---|---|

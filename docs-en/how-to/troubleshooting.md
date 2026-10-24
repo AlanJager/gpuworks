@@ -260,12 +260,22 @@ Xid / NVRM errors.
 
 ### A Card Is Unusable by the Runtime or Fails Driver Initialization
 
-**`runtime_unusable`: CUDA context creation failed**
+**`runtime_unusable`: accelerator runtime context creation failed**
 
-A card's health is “Runtime cannot use it” (`runtime_unusable`, NVIDIA only): accelerator runtime smoke checks run on each card every 15 minutes
-(targeting only that card, requiring `python3` and `libcuda.so.1`; cards running instances are skipped, and the entire round is skipped if the driver does not respond),
-and creating a CUDA context on this card failed. One card failing to initialize often makes `cuInit` fail for the entire host, so examine findings for the other cards as well.
-The smoke check does not change the node's connection status.
+A card's health is “Runtime cannot use it” (`runtime_unusable`): accelerator runtime smoke checks target each card every 15 minutes.
+Cards running instances are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
+NVIDIA requires `python3` and `libcuda.so.1` and creates a CUDA context on the selected card. One card failing to initialize often makes `cuInit`
+fail for the entire host, so examine findings for the other cards as well. On an Ascend host with CANN installed, the check uses `python3` and
+`libascendcl.so` to create an ACL context and allocate 4 KiB. For example, `aclrtSetDevice=507033` marks that die unusable
+(a die passed through to a VM can return the same code, so first confirm during manual review that nothing else occupies it;
+the smoke check itself only asks about cards owned by this node). A driver-only Ascend node without `libascendcl.so` skips the check rather than reporting a missing tool as a card failure.
+
+A card is marked `runtime_unusable` only when the check explicitly attributes failure to that die. Failure to load the library, a non-CANN library,
+`aclInit` failure, a process crash, or unreadable output is a host-level conclusion (every die on the host would fail identically):
+the round stops without recording a fault on any card, and `gpuworks-agent doctor` explains why. Failures while releasing resources after a successful allocation
+(`aclrtFree`, `aclrtResetDevice`, and so on) are logged but do not mark a fault, because the die has already answered whether it works.
+Retry backoff doubles after consecutive failures (1, 2, 4 rounds, up to 8 rounds, about two hours by default) and resets as soon as the card responds.
+A repaired card can therefore take one backoff window to recover; restart the agent to recheck immediately.
 
 **`driver_init_failed`: the driver did not bring up this card**
 

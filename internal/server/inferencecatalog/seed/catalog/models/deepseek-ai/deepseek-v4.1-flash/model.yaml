@@ -129,6 +129,8 @@ specs:
     vendor: ascend
     name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
     display_target: ascend
+  shm_bytes: 549755813888
+  memlock_unlimited: true
   args:
   - --trust-remote-code
   - --quantization

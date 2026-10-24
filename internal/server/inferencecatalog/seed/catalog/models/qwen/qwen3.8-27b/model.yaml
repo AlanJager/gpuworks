@@ -206,14 +206,11 @@ specs:
   # Measured on a single Ascend950PR (128 GiB) on 2026-10-07, not inherited:
   # the 950 kernel package, the quantization formats and the engine release
   # all differ from the 910B profile above, so the arguments are the ones that
-  # actually ran rather than the 910B ones with another image. Command line,
-  # log readings and the accuracy check are in
-  # artifacts/work/2026-10-03-runner-images/evidence/950-perf/perf-results.md
-  # ("q38-27b-mtp-r2img"). The model's functional arguments (tool call,
-  # reasoning, encoder parallel mode) were not part of that run; they are
-  # carried anyway because they state the model's API surface rather than
-  # anything about the card, and every vendor's profile of a model has to
-  # agree on those
+  # actually ran rather than the 910B ones with another image. The model's
+  # functional arguments (tool call, reasoning, encoder parallel mode) were not
+  # part of that run; they are carried anyway because they state the model's API
+  # surface rather than anything about the card, and every vendor's profile of a
+  # model has to agree on those
   # (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs). 950DT has no
   # measurement at all and is not claimed.
   display_profile: general

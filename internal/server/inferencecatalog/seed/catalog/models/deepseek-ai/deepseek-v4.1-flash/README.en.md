@@ -8,11 +8,14 @@ They require the dedicated dev-dsv41 image. Hopper and Blackwell use different k
 
 The Ascend A3 profile uses `Eco-Tech/DeepSeek-V4.1-Flash-w8a8` (about 797.6 GB) on one
 64 GB × 16-logical-device server with DP4 × TP4. Engram tables stay in host memory and
-the default context is 150K. Because the checkpoint nearly fills the node's HBM, the
-profile allows up to 36,000 seconds for engine readiness.
+the default context is 150K. The profile declares 512 GiB of `/dev/shm` and
+`memlock_unlimited` so both shared Engram tables can be registered and pinned. Because
+the checkpoint nearly fills the node's HBM, it allows up to 36,000 seconds for readiness.
 
 Upstream marks the NVIDIA recipes verified. This platform measured the 4× B200 profile
-(below); the 8× H200 and Ascend A3 profiles still need real deployment and chat runs.
+(below); 8× H200 has not been measured. On 2026-10-23 the A3 profile passed platform
+health, `/v1/models` and a real chat request on 16× 910C with native Docker. That result
+does not extend to runveil.
 
 AMD, Hygon, PPU and Apple are outside this template's coverage.
 
