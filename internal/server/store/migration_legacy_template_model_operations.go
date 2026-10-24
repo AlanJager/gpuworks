@@ -9,10 +9,11 @@ import (
 
 // repairLegacyTemplateModelOperations replaces the chat placeholder migration
 // 80 wrote to every pre-template model when a template snapshot declares a
-// different API. A chat-only snapshot is not independent evidence: the legacy
-// writer could have replaced a non-chat template declaration with the model's
-// normalized placeholder. In that case, the catalog identity in the snapshot
-// must resolve to a non-chat declaration before any write is allowed.
+// different API. A default normalized-chat snapshot does not prove that the
+// template declared that API: the legacy writer could have replaced a non-chat
+// declaration with the model's normalized placeholder. In that case, the
+// catalog identity in the snapshot must resolve to a non-chat declaration
+// before any write is allowed.
 //
 // An already normalized model contract is never rewritten here. It could be
 // the old migration's output, but it could also be an explicit chat choice;
@@ -139,7 +140,7 @@ func legacyTemplateNonChatOperations(db *gorm.DB, snapshot templateSnapshotAPI) 
 		source = "upstream"
 	}
 	var raw string
-	if err := db.Raw("SELECT api_contract FROM inference_specs WHERE model_id = ? AND source = ? AND name = ? LIMIT 1",
+	if err := db.Raw("SELECT COALESCE(api_contract, '') FROM inference_specs WHERE model_id = ? AND source = ? AND name = ? LIMIT 1",
 		snapshot.TemplateID, source, strings.TrimSpace(snapshot.SpecName)).Scan(&raw).Error; err != nil {
 		return "", false, err
 	}

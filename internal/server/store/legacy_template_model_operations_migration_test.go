@@ -39,7 +39,11 @@ func legacyTemplateOperationsDB(t *testing.T, name string) *gorm.DB {
 			(8, '[{"type":"openai.chat"}]'),
 			(9, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
 			(10, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
-			(11, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]')`,
+			(11, '[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]'),
+			(12, '[{"type":"openai.chat"}]'),
+			(13, '[{"type":"openai.chat"}]'),
+			(14, '[{"type":"openai.chat"}]'),
+			(15, '[{"type":"openai.chat"}]')`,
 		`INSERT INTO deployments(id, model_id, template_snapshot) VALUES
 			(10, 1, '{"api":{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}}'),
 			(11, 2, '{"api":{"operations":[{"type":"openai.rerank","endpoint":"/v1/rerank"}]}}'),
@@ -54,11 +58,16 @@ func legacyTemplateOperationsDB(t *testing.T, name string) *gorm.DB {
 			(20, 8, '{"template_id":20,"spec_name":"embed","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
 			(21, 9, '{"template_id":21,"spec_source":"user","spec_name":"rank","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
 			(22, 10, '{"template_id":22,"spec_name":"chat","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
-			(23, 11, '{"template_id":23,"spec_name":"unknown","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}')`,
+			(23, 11, '{"template_id":23,"spec_name":"unknown","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(24, 12, '{"template_id":21,"spec_source":"user","spec_name":"rank","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(25, 13, '{"template_id":22,"spec_name":"chat","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(26, 14, '{"template_id":23,"spec_name":"unknown","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}'),
+			(27, 15, '{"template_id":24,"spec_name":"null-contract","api":{"operations":[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}}')`,
 		`INSERT INTO inference_specs(id, model_id, source, name, api_contract) VALUES
 			(1, 20, 'upstream', 'embed', '{"operations":[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]}'),
 			(2, 21, 'user', 'rank', '{"operations":[{"type":"openai.rerank","endpoint":"/v1/rerank"}]}'),
-			(3, 22, 'upstream', 'chat', '{"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}')`,
+			(3, 22, 'upstream', 'chat', '{"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]}'),
+			(4, 24, 'upstream', 'null-contract', NULL)`,
 	} {
 		if err := db.Exec(statement).Error; err != nil {
 			t.Fatal(err)
@@ -118,6 +127,10 @@ func TestLegacyTemplateModelOperationsMigrationRepairsPlaceholdersWithoutInventi
 		9:  `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
 		10: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
 		11: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
+		12: `[{"type":"openai.rerank","endpoint":"/v1/rerank"}]`,
+		13: legacyChatPlaceholderFixture,
+		14: legacyChatPlaceholderFixture,
+		15: legacyChatPlaceholderFixture,
 	}
 	for id, operations := range want {
 		if got[id] != operations {
