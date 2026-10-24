@@ -116,7 +116,8 @@ func (s *Service) LookupRequests(ctx context.Context, q dto.MonitorRequestLookup
 	}
 	deployments := src.DeploymentNames(ids)
 	for _, id := range ids {
-		out.Deployments = append(out.Deployments, dto.MonitorLookupDeployment{ID: id, Name: deployments[id]})
+		d := deployments[id]
+		out.Deployments = append(out.Deployments, dto.MonitorLookupDeployment{ID: id, Name: d.Name, Deleted: d.Deleted})
 	}
 	return out, nil
 }

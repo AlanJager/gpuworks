@@ -128,7 +128,7 @@ export function qualityToday(): QualityAnalytics {
 
 function card(over: Partial<GPUCardRow>): GPUCardRow {
   return {
-    node_uuid: "node-a", node_name: "6000*4", gpu_index: 0, gpu_uuid: "GPU-a0", gpu_model: "RTX 6000D", deployments: ["glm-5-3-flash-nvfp4"], present: true,
+    node_uuid: "node-a", node_name: "6000*4", node_deleted: false, gpu_index: 0, gpu_uuid: "GPU-a0", gpu_model: "RTX 6000D", deployments: ["glm-5-3-flash-nvfp4"], present: true,
     util_avg: 62.5, util_max: 97, mem_used_avg_bytes: 70 * 1024 ** 3, mem_used_max_bytes: 76 * 1024 ** 3, mem_total_bytes: 84 * 1024 ** 3,
     power_avg_watts: 220, temp_avg_celsius: 61, temp_max_celsius: 70, util_samples: 5000, power_samples: 5000, ...over,
   };
@@ -140,7 +140,7 @@ export function gpusToday(over: Partial<GPUAnalytics> = {}): GPUAnalytics {
     card({}),
     card({ gpu_index: 1, gpu_uuid: "GPU-a1", util_avg: 3.2, util_max: 11, power_avg_watts: 90, deployments: [] }),
     card({ node_uuid: "node-b", node_name: "PPU810E*16", gpu_index: 0, gpu_uuid: "GPU-b0", gpu_model: "PPU 810E", util_avg: 1.5, util_max: 9, mem_used_avg_bytes: 72 * 1024 ** 3, mem_total_bytes: 96 * 1024 ** 3, mem_used_max_bytes: 73 * 1024 ** 3, power_avg_watts: 71, temp_max_celsius: 48, deployments: ["glm53-flash-w8a8"] }),
-    card({ node_uuid: "node-c", node_name: "gone-node", gpu_index: 0, gpu_uuid: "GPU-c0", present: false, util_avg: null, util_max: null, mem_used_avg_bytes: null, mem_used_max_bytes: null, power_avg_watts: null, temp_avg_celsius: null, temp_max_celsius: null, util_samples: 0, power_samples: 0, deployments: [] }),
+    card({ node_uuid: "node-c", node_name: "gone-node", node_deleted: true, gpu_index: 0, gpu_uuid: "GPU-c0", present: false, util_avg: null, util_max: null, mem_used_avg_bytes: null, mem_used_max_bytes: null, power_avg_watts: null, temp_avg_celsius: null, temp_max_celsius: null, util_samples: 0, power_samples: 0, deployments: [] }),
   ];
   return {
     range: r,
@@ -156,8 +156,8 @@ export function gpusToday(over: Partial<GPUAnalytics> = {}): GPUAnalytics {
     cards,
     groups: [],
     heat: [
-      { key: "PPU 810E", label: "PPU 810E", values: [1.2, 1.5, null, 2.0] },
-      { key: "RTX 6000D", label: "RTX 6000D", values: [10, 40.5, 80, null] },
+      { key: "PPU 810E", label: "PPU 810E", node_deleted: false, values: [1.2, 1.5, null, 2.0] },
+      { key: "RTX 6000D", label: "RTX 6000D", node_deleted: false, values: [10, 40.5, 80, null] },
     ],
     heat_total: 2,
     ...over,
@@ -180,12 +180,12 @@ export function gpusFleet(over: Partial<GPUAnalytics> = {}): GPUAnalytics {
     detail: false,
     cards: [],
     groups: [
-      { key: "H100", label: "H100", cards: 944, nodes: 118, models: ["H100"], deployments: [{ name: "glm-5-3-flash-nvfp4", cards: 4 }], unassigned: 940, ...figures(58.5, 80e9, 300) },
-      { key: "L40S", label: "L40S", cards: 16, nodes: 2, models: ["L40S"], deployments: [], unassigned: 16, ...figures(20, 48e9, 200) },
+      { key: "H100", label: "H100", node_deleted: false, cards: 944, nodes: 118, models: ["H100"], deployments: [{ name: "glm-5-3-flash-nvfp4", cards: 4 }], unassigned: 940, ...figures(58.5, 80e9, 300) },
+      { key: "L40S", label: "L40S", node_deleted: false, cards: 16, nodes: 2, models: ["L40S"], deployments: [], unassigned: 16, ...figures(20, 48e9, 200) },
     ],
     heat: [
-      { key: "H100", label: "H100", values: [50, 60, 62, 61] },
-      { key: "L40S", label: "L40S", values: [20, 20, 20, 20] },
+      { key: "H100", label: "H100", node_deleted: false, values: [50, 60, 62, 61] },
+      { key: "L40S", label: "L40S", node_deleted: false, values: [20, 20, 20, 20] },
     ],
     heat_total: 2,
     ...over,

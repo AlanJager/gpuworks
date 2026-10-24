@@ -206,12 +206,16 @@ type GPUFigures struct {
 type GPUCardRow struct {
 	NodeUUID string `json:"node_uuid"`
 	NodeName string `json:"node_name"`
-	GPUIndex int    `json:"gpu_index"`
-	GPUUUID  string `json:"gpu_uuid"`
-	GPUModel string `json:"gpu_model"`
+	// NodeDeleted marks a card of a deleted node, named by the name the node
+	// left.
+	NodeDeleted bool   `json:"node_deleted"`
+	GPUIndex    int    `json:"gpu_index"`
+	GPUUUID     string `json:"gpu_uuid"`
+	GPUModel    string `json:"gpu_model"`
 	// Deployments hold the card now (empty when none, or the card is gone).
 	Deployments []string `json:"deployments"`
-	// Present says the card is in the inventory now.
+	// Present says the card is in the inventory now, whether its node is
+	// online or not.
 	Present bool `json:"present"`
 	GPUFigures
 }
@@ -220,6 +224,8 @@ type GPUCardRow struct {
 type GPUHeatRow struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
+	// NodeDeleted marks the row of a deleted node, or of one of its cards.
+	NodeDeleted bool `json:"node_deleted"`
 	// Values align with the range's buckets; null where the row had no
 	// samples of the metric.
 	Values []*float64 `json:"values"`
@@ -229,6 +235,9 @@ type GPUHeatRow struct {
 type GPUGroupRow struct {
 	Key   string `json:"key"` // the model, or the node's UUID
 	Label string `json:"label"`
+	// NodeDeleted marks a deleted node's row; its cards are no longer in the
+	// inventory, so Cards and Nodes count none.
+	NodeDeleted bool `json:"node_deleted"`
 	// Cards and Nodes count the group's cards and their nodes in the
 	// inventory now; Models are the models of a node's cards.
 	Cards  int      `json:"cards"`

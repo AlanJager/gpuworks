@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Button, Select, Space, Switch, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, usePolling, type MonitorRange, type MonitorReplica } from "../../api";
-import type { MonitorRequest, MonitorRequests } from "../../monitorRequestsApi";
+import type { MonitorLookupDeployment, MonitorRequest, MonitorRequests } from "../../monitorRequestsApi";
 import { colors } from "../../theme/tokens";
 import RequestDetailDrawer from "./RequestDetailDrawer";
 import RequestHistory from "./RequestHistory";
@@ -189,8 +189,8 @@ function LiveRequests({
 }
 
 // RequestList is one request per row; a row opens the request's details.
-// deploymentNames, when given, names each request's deployment in the
-// details (a list across deployments).
+// deploymentNames, when given, names each request's deployment in the row
+// and the details (a list across deployments), a deleted one marked so.
 export function RequestList({
   requests,
   label,
@@ -200,9 +200,15 @@ export function RequestList({
   requests: MonitorRequest[];
   label: string;
   replicas: ReplicaLabels;
-  deploymentNames?: Map<number, string>;
+  deploymentNames?: Map<number, MonitorLookupDeployment>;
 }) {
+  const { t } = useTranslation("monitoring");
   const [open, setOpen] = useState<MonitorRequest | null>(null);
+  const place = (id: number) => {
+    const d = deploymentNames?.get(id);
+    if (!d?.name) return t("requests.drawer.deletedDeployment", { id });
+    return d.deleted ? t("requests.deletedName", { name: d.name }) : d.name;
+  };
   return (
     <>
       <div role="list" aria-label={label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
@@ -211,7 +217,7 @@ export function RequestList({
             key={r.id}
             request={r}
             replica={replicas.get(r.instance_uuid)}
-            place={deploymentNames ? deploymentNames.get(r.deployment_id) || `#${r.deployment_id}` : undefined}
+            place={deploymentNames ? place(r.deployment_id) : undefined}
             onOpen={setOpen}
           />
         ))}
@@ -219,7 +225,7 @@ export function RequestList({
       <RequestDetailDrawer
         request={open}
         replica={open ? replicas.get(open.instance_uuid) : undefined}
-        deploymentName={open && deploymentNames ? (deploymentNames.get(open.deployment_id) ?? "") : undefined}
+        deployment={open && deploymentNames ? (deploymentNames.get(open.deployment_id) ?? { id: open.deployment_id, name: "", deleted: true }) : undefined}
         onClose={() => setOpen(null)}
       />
     </>

@@ -358,6 +358,19 @@ test("a 404 from the server shows the not-found message", async () => {
   await waitFor(() => assert.ok(screen.getByText("This deployment could not be found")));
 });
 
+test("a deleted deployment's page names it, says it was deleted and points at Analytics", async () => {
+  api.monitorDeployment = async () => {
+    throw new APIError("MONITOR_DEPLOYMENT_DELETED", { deployment_id: 102, name: "glm-old", served_name: "org/glm" }, "deployment glm-old was deleted", 404);
+  };
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("The service “glm-old” has been deleted")));
+  assert.ok(screen.getAllByText("glm-old").length > 0, "the header names it by the name it left");
+  assert.equal(screen.queryByText("This deployment could not be found"), null);
+  assert.equal(screen.queryByRole("button", { name: "Go to deployment" }), null, "no deployment page to go to");
+  const link = screen.getByRole("link", { name: "Open Analytics" });
+  assert.equal(link.getAttribute("href"), "/analytics/usage?range=30d&deployment=102");
+});
+
 test("a load failure's action reads the shared Retry label, not the back-to-monitor button's text", async () => {
   api.monitorDeployment = async () => { throw new Error("network down"); };
   renderPage();

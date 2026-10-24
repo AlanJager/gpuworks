@@ -1273,6 +1273,7 @@ var migrations = []migration{
 	{Version: 168, Name: "inference_spec_memlock_unlimited", Apply: addInferenceSpecMemlockUnlimited},
 	{Version: 169, Name: "api_key_revoked_at", Apply: addAPIKeyRevokedAt},
 	{Version: 170, Name: "operations_usage", Apply: createOperationsUsage},
+	{Version: 171, Name: "deleted_nodes", Apply: createDeletedNodes},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1582,7 +1583,7 @@ func (s *Store) AutoMigrateDev() error {
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},
 		&NoticeRead{},
-		&UsageHourly{}, &UsageDaily{}, &UsageRolledDay{}, &UsageRollupState{}, &DeletedDeployment{},
+		&UsageHourly{}, &UsageDaily{}, &UsageRolledDay{}, &UsageRollupState{}, &DeletedDeployment{}, &DeletedNode{},
 	)
 }
 

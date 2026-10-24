@@ -48,6 +48,10 @@ test("default names never print a label's key", async () => {
   assert.equal(defaultSeriesName({ node: "n1" }, 0), "n1");
   assert.equal(defaultSeriesName({ node: "b5070775aaaabbbbcccc", node_name: "gpu3", gpu: "1" }, 0), "gpu3 · GPU 1");
   assert.equal(defaultSeriesName({ node: "b5070775aaaabbbbcccc", node_name: "gpu3" }, 0), "gpu3");
+  assert.equal(defaultSeriesName({ deployment: "12", deployment_name: "qwen" }, 0), "qwen");
+  assert.equal(defaultSeriesName({ deployment: "12" }, 0), "#12");
+  assert.equal(defaultSeriesName({ node: "n1", node_name: "gpu3", node_deleted: "true" }, 0), "gpu3");
+  assert.equal(defaultSeriesName({ deployment_deleted: "true", node_deleted: "true" }, 1), "series 2");
   assert.equal(defaultSeriesName({}, 2), "series 3");
 });
 

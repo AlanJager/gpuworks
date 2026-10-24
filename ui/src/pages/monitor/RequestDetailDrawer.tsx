@@ -1,9 +1,9 @@
-import { Button, Descriptions, Drawer, Typography } from "antd";
+import { Button, Descriptions, Drawer, Tag, Typography } from "antd";
 import { ExportOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { traceLinkFor, type MonitorRequest } from "../../monitorRequestsApi";
+import { traceLinkFor, type MonitorLookupDeployment, type MonitorRequest } from "../../monitorRequestsApi";
 import type { MonitorRequestPD } from "../../monitorRequestsApi";
 import { callerName, replicaText, RequestDetailLines } from "./RequestRow";
 import { formatMS } from "./requestShape";
@@ -13,18 +13,19 @@ const { Text } = Typography;
 
 // RequestDetailDrawer shows one request: its request id and trace id (to
 // copy, and to open in the tracing backend when a trace link is set), who
-// sent it, where it went and the times behind its row. deploymentName, when
-// given, names the deployment and links to its service page (a lookup spans
-// deployments; a service page's own list does not need it).
+// sent it, where it went and the times behind its row. deployment, when
+// given, names the deployment and links to its service page, a deleted one
+// marked so (a lookup spans deployments; a service page's own list does not
+// need it).
 export default function RequestDetailDrawer({
   request: r,
   replica,
-  deploymentName,
+  deployment,
   onClose,
 }: {
   request: MonitorRequest | null;
   replica?: { n: number; node: string };
-  deploymentName?: string;
+  deployment?: MonitorLookupDeployment;
   onClose: () => void;
 }) {
   const { t } = useTranslation("monitoring");
@@ -52,9 +53,16 @@ export default function RequestDetailDrawer({
                 <Text type="secondary">{t("requests.drawer.noTrace")}</Text>
               )}
             </Descriptions.Item>
-            {deploymentName !== undefined && (
+            {deployment !== undefined && (
               <Descriptions.Item label={t("requests.drawer.deployment")}>
-                {deploymentName ? <Link to={`/monitor/d/${r.deployment_id}`}>{deploymentName}</Link> : t("requests.drawer.deletedDeployment", { id: r.deployment_id })}
+                {deployment.name ? (
+                  <>
+                    <Link to={`/monitor/d/${r.deployment_id}`}>{deployment.name}</Link>
+                    {deployment.deleted && <Tag style={{ marginLeft: 8 }}>{t("requests.drawer.deleted")}</Tag>}
+                  </>
+                ) : (
+                  t("requests.drawer.deletedDeployment", { id: r.deployment_id })
+                )}
               </Descriptions.Item>
             )}
             <Descriptions.Item label={t("requests.drawer.caller")}>{callerName(r, t)}</Descriptions.Item>

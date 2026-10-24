@@ -194,6 +194,11 @@
     },
     "tabs": {
       "overview": "Overview"
+    },
+    "deleted": {
+      "title": "The service “{{name}}” has been deleted",
+      "help": "Live monitoring is gone with the service. Its usage, service quality and GPU time stay in Analytics until they pass the data retention.",
+      "openAnalytics": "Open Analytics"
     }
   },
   "stage": {
@@ -359,7 +364,8 @@
       "pdQueue": "Prefill instance queue",
       "pdCompute": "Prefill instance compute",
       "pdKV": "KV transfer & queue",
-      "pdFallback": "Fallback reason"
+      "pdFallback": "Fallback reason",
+      "deleted": "Deleted"
     },
     "pdFallback": {
       "no_prefill": "No prefill instance available",
@@ -367,7 +373,8 @@
       "prefill_5xx": "Prefill instance error (5xx)",
       "prefill_no_kv_params": "Prefill instance returned no KV handoff",
       "prefill_failed": "Prefill call failed"
-    }
+    },
+    "deletedName": "{{name}} (deleted)"
   },
   "latency": {
     "title": "End-to-end latency breakdown",

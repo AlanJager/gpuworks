@@ -3,8 +3,11 @@ package analytics
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -126,10 +129,16 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 	out := dto.GPUAnalytics{Metric: q.Metric, GroupBy: q.GroupBy, CardCount: len(sc.cards), ByModel: sc.byModel(),
 		Detail: detail, Cards: []dto.GPUCardRow{}, Groups: []dto.GPUGroupRow{}, Heat: []dto.GPUHeatRow{}}
 
-	// A few cards of a larger fleet are read on their nodes only.
+	// A few cards of a larger fleet are read on their nodes only, and on
+	// the nodes deleted since the range began: their cards count in the
+	// groups' rows, so they are listed too.
 	cf := f
 	if detail && cf.NodeUUIDs == nil && len(sc.cards) < sc.fleet {
-		cf.NodeUUIDs = sc.nodes()
+		gone, err := s.Store.NodesDeletedSince(time.UnixMilli(sp.fromMS))
+		if err != nil {
+			return out, err
+		}
+		cf.NodeUUIDs = append(sc.nodes(), gone...)
 	}
 	var total rollup.GPU
 	if detail {
@@ -137,12 +146,15 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 		if err != nil {
 			return out, err
 		}
-		names, err := s.nodeNames(sc, cards)
-		if err != nil {
+		nodes := make([]string, 0, len(cards))
+		for k := range cards {
+			nodes = append(nodes, k.node)
+		}
+		if err := s.nameNodes(sc, nodes); err != nil {
 			return out, err
 		}
 		for k, c := range cards {
-			row := dto.GPUCardRow{NodeUUID: k.node, NodeName: names[k.node], GPUIndex: k.index, GPUUUID: k.uuid,
+			row := dto.GPUCardRow{NodeUUID: k.node, NodeName: sc.names[k.node], NodeDeleted: sc.deleted[k.node], GPUIndex: k.index, GPUUUID: k.uuid,
 				GPUModel: c.GPUModel, Present: sc.present[k], Deployments: sc.holders[k], GPUFigures: gpuFigures(c.GPU)}
 			if row.Deployments == nil {
 				row.Deployments = []string{}
@@ -166,6 +178,11 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 		if !detail {
 			for _, g := range groups {
 				total.Add(g)
+			}
+		}
+		if by == statsdb.GPUByNode {
+			if err := s.nameNodes(sc, slices.Collect(maps.Keys(groups))); err != nil {
+				return out, err
 			}
 		}
 		out.Groups = sc.groupRows(by, groups)
@@ -208,8 +225,20 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 	if groups != nil {
 		out.HeatTotal = len(groups)
 	}
+	if by != statsdb.GPUByModel {
+		nodes := make([]string, 0, len(heat))
+		for group := range heat {
+			nodes = append(nodes, heatNode(group))
+		}
+		if err := s.nameNodes(sc, nodes); err != nil {
+			return out, err
+		}
+	}
 	for group, cells := range heat {
 		row := dto.GPUHeatRow{Key: group, Label: sc.heatLabel(by, group), Values: make([]*float64, len(cells))}
+		if by != statsdb.GPUByModel {
+			row.NodeDeleted = sc.deleted[heatNode(group)]
+		}
 		for i, c := range cells {
 			row.Values[i] = metricValue(c, q.Metric)
 		}
@@ -304,6 +333,12 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// heatNode is the node of a node's or a card's heat map row.
+func heatNode(group string) string {
+	node, _, _ := strings.Cut(group, "/")
+	return node
 }
 
 // cardLabel names a card: its node and index.

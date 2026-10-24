@@ -35,7 +35,7 @@ type fakeRequests struct {
 	lookups    [][]uxrecord.Request
 	lookupErr  error
 	lookupArgs []LookupQuery
-	depNames   map[uint]string
+	depNames   map[uint]DeploymentName
 }
 
 func (f *fakeRequests) Lookup(_ context.Context, q LookupQuery) ([]uxrecord.Request, error) {
@@ -47,8 +47,8 @@ func (f *fakeRequests) Lookup(_ context.Context, q LookupQuery) ([]uxrecord.Requ
 	return out, f.lookupErr
 }
 
-func (f *fakeRequests) DeploymentNames(ids []uint) map[uint]string {
-	out := map[uint]string{}
+func (f *fakeRequests) DeploymentNames(ids []uint) map[uint]DeploymentName {
+	out := map[uint]DeploymentName{}
 	for _, id := range ids {
 		if name, ok := f.depNames[id]; ok {
 			out[id] = name

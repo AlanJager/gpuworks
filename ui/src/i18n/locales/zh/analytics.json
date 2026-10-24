@@ -247,7 +247,8 @@
         "mem": "显存热力图（{{granularity}}，颜色 = 显存占用均值）"
       },
       "aria": "GPU 热力图",
-      "extremes": "共 {{total}} 个节点，热力图只显示{{metric}}最高的 {{half}} 个和最低的 {{half}} 个；用节点标签筛选可查看其他节点。"
+      "extremes": "共 {{total}} 个节点，热力图只显示{{metric}}最高的 {{half}} 个和最低的 {{half}} 个；用节点标签筛选可查看其他节点。",
+      "deletedRow": "{{label}}（已删除）"
     },
     "table": {
       "title": {
@@ -262,8 +263,8 @@
         "gpu": "卡"
       },
       "idle": "闲置",
-      "removed": "已移除/离线",
-      "removedCount": "{{count}} 张已移除/离线",
+      "removed": "已移除",
+      "removedCount": "{{count}} 张已移除",
       "utilAvg": "利用率均值",
       "utilMax": "利用率最大",
       "memAvg": "显存占用均值",
@@ -273,7 +274,8 @@
       "tempMax": "温度最大",
       "deployments": "所属部署",
       "unassigned": "未分配",
-      "nodeCount": "{{count}} 个节点"
+      "nodeCount": "{{count}} 个节点",
+      "nodeDeleted": "节点已删除"
     },
     "export": {
       "detail": "说明",

@@ -46,7 +46,7 @@ export default function RequestLookup() {
     void run(TRACE_ID_PATTERN.test(value) ? { traceId: value } : { requestId: value });
   };
 
-  const names = useMemo(() => new Map((state?.result?.deployments ?? []).map((d) => [d.id, d.name])), [state?.result]);
+  const names = useMemo(() => new Map((state?.result?.deployments ?? []).map((d) => [d.id, d])), [state?.result]);
   const result = state?.result;
   const kind = state?.query.traceId ? "trace" : "request";
   const widen = () => {

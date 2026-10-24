@@ -247,7 +247,8 @@
         "mem": "Memory heat map ({{granularity}}, mean memory used)"
       },
       "aria": "GPU heat map",
-      "extremes": "{{total}} nodes; the heat map shows the {{half}} with the highest and the {{half}} with the lowest {{metric}}. Filter by node label to see the others."
+      "extremes": "{{total}} nodes; the heat map shows the {{half}} with the highest and the {{half}} with the lowest {{metric}}. Filter by node label to see the others.",
+      "deletedRow": "{{label}} (deleted)"
     },
     "table": {
       "title": {
@@ -262,8 +263,8 @@
         "gpu": "Card"
       },
       "idle": "Idle",
-      "removed": "Removed / offline",
-      "removedCount": "{{count}} removed / offline",
+      "removed": "Removed",
+      "removedCount": "{{count}} removed",
       "utilAvg": "Mean utilization",
       "utilMax": "Peak utilization",
       "memAvg": "Mean memory used",
@@ -273,7 +274,8 @@
       "tempMax": "Peak temperature",
       "deployments": "Deployments",
       "unassigned": "Unassigned",
-      "nodeCount": "Nodes: {{count}}"
+      "nodeCount": "Nodes: {{count}}",
+      "nodeDeleted": "Node deleted"
     },
     "export": {
       "detail": "Detail",

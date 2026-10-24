@@ -138,7 +138,7 @@ func TestAnalyticsNames(t *testing.T) {
 		t.Fatalf("names = %+v %v", names, err)
 	}
 	node, _ := st.RegisterNode("uuid-1", HashToken("x"), "host-1")
-	if n, err := st.NodeNamesByUUID([]string{node.UUID, "nope"}); err != nil || len(n) != 1 || n[node.UUID] == "" {
+	if n, err := st.NodeNamesByUUID([]string{node.UUID, "nope"}); err != nil || len(n) != 1 || n[node.UUID].Name == "" {
 		t.Fatalf("nodes = %v %v", n, err)
 	}
 	if _, _, _, err := st.EnsureAdmin("admin", "password"); err != nil {

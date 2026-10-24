@@ -76,8 +76,8 @@ test("a trace id finds the trace's requests across deployments, each naming its 
   const calls = stubLookup(async () =>
     answer({
       window: "trace_time",
-      requests: [request({ id: "b", deployment_id: 9 }), request({ id: "a", deployment_id: 7 })],
-      deployments: [{ id: 9, name: "" }, { id: 7, name: "qwen" }],
+      requests: [request({ id: "b", deployment_id: 9 }), request({ id: "a", deployment_id: 7 }), request({ id: "c", deployment_id: 5 })],
+      deployments: [{ id: 9, name: "", deleted: true }, { id: 7, name: "qwen", deleted: false }, { id: 5, name: "org/old", deleted: true }],
     }),
   );
   const user = renderLookup();
@@ -86,21 +86,29 @@ test("a trace id finds the trace's requests across deployments, each naming its 
   assert.deepEqual(calls[0], { traceId: TRACE.toUpperCase() });
   const drawer = await screen.findByRole("dialog");
   assert.ok(within(drawer).getByText((locale.monitoring.lookup.title as Record<string, string>).trace));
-  assert.ok(within(drawer).getByText(/around the time the trace id carries · 2 found/));
+  assert.ok(within(drawer).getByText(/around the time the trace id carries · 3 found/));
   const rows = within(within(drawer).getByRole("list", { name: lk.results })).getAllByRole("listitem");
-  assert.equal(rows.length, 2);
-  assert.ok(within(rows[0]).getByText(/#9/), "a deleted deployment is named by id");
+  assert.equal(rows.length, 3);
+  assert.ok(within(rows[0]).getByText(/#9/), "a deployment deleted before names were kept is named by id");
   assert.ok(within(rows[1]).getByText(/qwen/));
+  assert.ok(within(rows[2]).getByText(/org\/old \(deleted\)/), "a deleted deployment is named by the name it left");
   // A result opens its details, naming the deployment with a link to its page.
   await user.click(rows[1]);
   const details = await screen.findByText("Request details");
   const panel = details.closest(".ant-drawer-content") as HTMLElement;
   const link = within(panel).getByRole("link", { name: "qwen" });
   assert.equal(link.getAttribute("href"), "/monitor/d/7");
+  assert.ok(within(panel).queryByText("Deleted") === null);
+  // A deleted deployment's details name it, marked deleted, still linking to
+  // its page (which says it was deleted).
+  await user.click(rows[2]);
+  await waitFor(() => assert.ok(within(panel).getByRole("link", { name: "org/old" })));
+  assert.equal(within(panel).getByRole("link", { name: "org/old" }).getAttribute("href"), "/monitor/d/5");
+  assert.ok(within(panel).getByText("Deleted"));
 });
 
 test("anything else is looked up as a request id", async () => {
-  const calls = stubLookup(async () => answer({ requests: [request({ id: "gw/req-1" })], deployments: [{ id: 7, name: "qwen" }] }));
+  const calls = stubLookup(async () => answer({ requests: [request({ id: "gw/req-1" })], deployments: [{ id: 7, name: "qwen", deleted: false }] }));
   const user = renderLookup();
   await user.type(box(), "gw/req-1{Enter}");
   await waitFor(() => assert.deepEqual(calls, [{ requestId: "gw/req-1" }]));
@@ -108,7 +116,7 @@ test("anything else is looked up as a request id", async () => {
 });
 
 test("nothing found explains why and widens to the last day", async () => {
-  const calls = stubLookup(async (q) => (q.from ? answer({ window: "requested", from_ms: q.from, to_ms: q.to!, requests: [request({ id: "found-later" })], deployments: [{ id: 7, name: "qwen" }] }) : answer({})));
+  const calls = stubLookup(async (q) => (q.from ? answer({ window: "requested", from_ms: q.from, to_ms: q.to!, requests: [request({ id: "found-later" })], deployments: [{ id: 7, name: "qwen", deleted: false }] }) : answer({})));
   const user = renderLookup();
   await user.type(box(), `${TRACE}{Enter}`);
   assert.ok(await screen.findByText(lk.none));
@@ -124,7 +132,7 @@ test("a failed lookup says why and retries; an empty box does nothing", async ()
   let fail = true;
   const calls = stubLookup(async () => {
     if (fail) throw new APIError("MONITOR_REQUESTS_QUERY_INVALID", undefined, "the window is longer than 24h0m0s", 400);
-    return answer({ requests: [request({})], deployments: [{ id: 7, name: "qwen" }] });
+    return answer({ requests: [request({})], deployments: [{ id: 7, name: "qwen", deleted: false }] });
   });
   const user = renderLookup();
   await user.type(box(), "   {Enter}");

@@ -315,7 +315,8 @@ func TestSimilarMetricsPrefersTheTightestMatch(t *testing.T) {
 
 // A series carrying a node gains that node's display name, read once for the
 // whole answer: a chart of the fleet's cards is read by node name, not UUID.
-// A node the store does not know keeps its labels as they were.
+// A deleted node is named by the name it left, marked so; a node the store
+// does not know keeps its labels as they were.
 func TestMetricsQueryNamesTheNodes(t *testing.T) {
 	st, err := store.Open("file:metrics_query_node_names?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -325,15 +326,22 @@ func TestMetricsQueryNamesTheNodes(t *testing.T) {
 	if _, err := st.RegisterNode("node-a", store.HashToken("t"), "host-a"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := st.RegisterNode("node-deleted", store.HashToken("d"), "host-d"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteNode("node-deleted"); err != nil {
+		t.Fatal(err)
+	}
 	h := &apiHandlers{d: Deps{Store: st, MetricsQuery: func(string, map[string]string, int64, int64, int64) ([]dto.MonitorSeries, error) {
 		return []dto.MonitorSeries{
 			{Labels: map[string]string{"node": "node-a", "gpu": "1"}, Points: []dto.Point{{1000, 1}}},
 			{Labels: map[string]string{"node": "node-gone", "gpu": "0"}, Points: []dto.Point{{1000, 2}}},
+			{Labels: map[string]string{"node": "node-deleted", "gpu": "0"}, Points: []dto.Point{{1000, 3}}},
 		}, nil
 	}}}
 	rec := httptest.NewRecorder()
 	h.metricsQuery(rec, httptest.NewRequest("GET", "/api/v1/metrics/query?metric=gpuworks_gpu_utilization&range=1h", nil))
-	want := `{"items":[{"labels":{"gpu":"1","node":"node-a","node_name":"host-a"},"points":[[1000,1]]},{"labels":{"gpu":"0","node":"node-gone"},"points":[[1000,2]]}],"total":2}`
+	want := `{"items":[{"labels":{"gpu":"1","node":"node-a","node_name":"host-a"},"points":[[1000,1]]},{"labels":{"gpu":"0","node":"node-gone"},"points":[[1000,2]]},{"labels":{"gpu":"0","node":"node-deleted","node_deleted":"true","node_name":"host-d"},"points":[[1000,3]]}],"total":3}`
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != 200 || got != want {
 		t.Fatalf("metrics query = %d\n got %s\nwant %s", rec.Code, got, want)
 	}

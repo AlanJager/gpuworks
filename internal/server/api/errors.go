@@ -309,6 +309,9 @@ const (
 	ErrorMonitorSeriesTooLarge                  = "MONITOR_SERIES_TOO_LARGE"
 	ErrorMonitorRequestsViewInvalid             = "MONITOR_REQUESTS_VIEW_INVALID"
 	ErrorMonitorRequestsQueryInvalid            = "MONITOR_REQUESTS_QUERY_INVALID"
+	// ErrorMonitorDeploymentDeleted: the deployment ({deployment_id}) was
+	// deleted; {name} and {served_name} are the names it left.
+	ErrorMonitorDeploymentDeleted = "MONITOR_DEPLOYMENT_DELETED"
 	// ErrorLaunchConfigConflict is produced by deploy.Materialize, not by this
 	// package. It is spelled out here because this file is the inventory every
 	// client and the locale check read to learn which codes the API can return,

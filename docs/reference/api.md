@@ -1111,20 +1111,20 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 | GET | `/api/v1/logs/context` | 单条命中的上下文窗口（`instance`、`ts`、`id`、`before`/`after` 取值 0–500），等价 grep -C。返回 `{"items": [日志行], "match_index"}` | JWT |
 | GET | `/api/v1/logs/histogram` | 时间桶 × 级别计数（同 search 过滤参数，含 `instances`，+ `bucket` 毫秒，1s–24h）。返回 `{"items": [{"start_ms", "counts": {"error": N, …}}], "total"}`；桶按 UTC 对齐 | JWT |
 | GET | `/api/v1/monitor/overview` | 监控中枢集群层快照（`range` ∈ `15m\|1h\|6h\|24h\|168h`，默认 `1h`，或自选时间段 `from`+`to`（见下文）；信号行（只报事实：数值、明细与近期走势，不带严重程度）、服务表（每行带该部署的 `health` 健康检查，按健康状况排序：失败、超时、无可用副本、检查中、正常、未开启，同档按名称）、显存条、集群 tok/s、容量事件） | JWT |
-| GET | `/api/v1/monitor/deployments/{id}` | 服务监控快照；`range` 为 `15m/1h/6h/24h/168h`（默认 `1h`），也可使用 `from`+`to`。含请求、延迟、副本、`health`、供日志查询的 `log_instances`、指标来源 `sources`（engine/gateway）；PD 另有 `pd` 的降级、Prefill 统计与 `kv_transfer`。未知部署 404。见[服务监控返回值](#服务监控返回值) | JWT |
+| GET | `/api/v1/monitor/deployments/{id}` | 服务监控快照；`range` 为 `15m/1h/6h/24h/168h`（默认 `1h`），也可使用 `from`+`to`。含请求、延迟、副本、`health`、供日志查询的 `log_instances`、指标来源 `sources`（engine/gateway）；PD 另有 `pd` 的降级、Prefill 统计与 `kv_transfer`。未知部署 404；已删除的部署 404 `MONITOR_DEPLOYMENT_DELETED`，`params` 含 `deployment_id`、`name`、`served_name`。见[服务监控返回值](#服务监控返回值) | JWT |
 | GET | `/api/v1/monitor/deployments/{id}/requests` | 逐请求视图：`view=live`（默认）或 `history`；`limit` 1–500（实时默认 50），可按 `key`、`instance` 筛选。历史另支持 `range` 或成对 `from`+`to`（Unix 毫秒）、`cursor`、`min_ms/max_ms`；`results` 为 `completed/length/client_closed/interrupted/error`，多个值用逗号分隔。记录含 `result/segments/pd/trace_id`；用 `next_cursor` 翻页。见[逐请求查询](#逐请求查询) | JWT |
 | GET | `/api/v1/monitor/requests/lookup` | 跨部署查已结束请求；`trace_id`（32 位十六进制）或 `request_id` 必须二选一。可成对传 `from`+`to`（Unix 毫秒，最多 24 小时），`limit` 1–500（默认 100）；返回 `requests/deployments/window`。未传时间时按网关 trace 时间定位或查最近 1 小时；抽样丢弃的请求查不到。见[跨部署查找请求](#跨部署查找请求) | JWT |
 | GET | `/api/v1/monitor/deployments/{id}/latency` | `range` 内完整回复的端到端延迟、阶段耗时与生成速度：`requests` 为数量，`end_to_end`、`segments` 含 `mean_ms/p50_ms/p95_ms`；`speeds` 含 `prefill_tok_s/thinking_tok_s/answering_tok_s/decode_tok_s`。不受日志抽样影响。见[延迟汇总口径](#延迟汇总口径) | JWT |
 | GET | `/api/v1/monitor/distributions` | `range` 内结束的请求分布：`input_output`（输入档 × 输出档）与 `uncached_ttft`（非缓存输入档 × 首 token 时间档）两个网格的 `{x, y, n}`，档位下界 `token_buckets` 与首 token 档上界 `ttft_bounds_ms`，`coverage` 给总请求数、带 usage 的数与报了缓存命中的数；`deployment` 可选，缺省为全集群，未知部署 404 | JWT |
 | GET | `/api/v1/monitor/metrics` | 指标目录，返回 `{items:[{series,name,source,kind,unit,quantiles,labels,description}],total}`。`source` 为 `engine`、`gateway`、`gpu`、`dgpu`、`node`、`network`、`kv_disk` 或 `benchmark`；推理直方图展开为分位数 gauge（`quantiles:true`）及 `_sum`、`_count`。字段口径见[推理指标词表](inference-metrics.md) | JWT |
-| GET | `/api/v1/monitor/series` | 指标浏览器（`metric` 必填，`range` ∈ `15m\|1h\|6h\|24h\|168h`，默认 `1h`，或 `from`+`to`（`step` 默认约 240 个点、取 10 秒整数倍）；`by` ∈ `node\|deployment\|instance\|gpu`，`fn` ∈ `avg\|sum\|max\|rate`，默认 `avg`；`step` 默认按 `range` 推导，且不会低于该推导值；结果超过序列/点数上限时返回 400；未知指标返回 `[]`） | JWT |
+| GET | `/api/v1/monitor/series` | 指标浏览器（`metric` 必填，`range` ∈ `15m\|1h\|6h\|24h\|168h`，默认 `1h`，或 `from`+`to`（`step` 默认约 240 个点、取 10 秒整数倍）；`by` ∈ `node\|deployment\|instance\|gpu`，`fn` ∈ `avg\|sum\|max\|rate`，默认 `avg`；`step` 默认按 `range` 推导，且不会低于该推导值；结果超过序列/点数上限时返回 400；未知指标返回 `[]`）。带 `node` 标签的序列另带只用于显示的 `node_name`，带 `deployment` 标签的另带 `deployment_name`；节点或部署已删除时取删除时的名字，并带 `node_deleted` / `deployment_deleted` 为 `"true"`，两边都不认识的保持原样 | JWT |
 
 监控图表的自选时间段：`overview`、`deployments/{id}`、`deployments/{id}/latency`、`distributions`、`series` 都接受 `from`+`to`（Unix 毫秒，成对给出，与 `range` 互斥），跨度 1 分钟到 30 天、`to` 不能在未来，否则 400 `MONITOR_RANGE_INVALID`（`detail`）。此时图表、分布、延迟拆解与信号按截至 `to` 的这段时间计算，不缓存；服务列表、副本、健康检查等当前状态仍是现在的。
 
 ### 服务监控返回值
 
 `GET /api/v1/monitor/deployments/{id}` 返回请求对账、首 token 拆分、图表与副本信息。
-`range` 支持 `15m`、`1h`（默认）、`6h`、`24h`、`168h`，也可使用成对的 `from`+`to`；未知部署返回 404。
+`range` 支持 `15m`、`1h`（默认）、`6h`、`24h`、`168h`，也可使用成对的 `from`+`to`；未知部署返回 404，已删除的部署返回 404 `MONITOR_DEPLOYMENT_DELETED`（`params`：`deployment_id`、`name`、`served_name`）。
 
 - `log_instances`：存活及窗口内近期停止的副本 UUID，最多 64 个，可用于 `/logs/search?instances=...`。
 - `sources`：`ttft`、`e2e`、`prompt_tokens`、`generation_tokens`、`running` 各取自 `engine` 还是 `gateway`，没有数据的信号省略。口径见[推理指标](inference-metrics.md#网关指标)。
@@ -1149,7 +1149,7 @@ trace id 为 32 位十六进制、不区分大小写，查询该 trace 的全部
 
 返回 `{as_of,from_ms,to_ms,window,requests,deployments}`。
 `window` 标明窗口来源：`requested`、`trace_time` 或 `default`。
-`requests` 与逐请求视图同形，按接收时间倒序；`deployments` 为所属部署的 `{id,name}`，已删除部署的名称为空。
+`requests` 与逐请求视图同形，按接收时间倒序；`deployments` 为所属部署的 `{id,name,deleted}`：`name` 是对外模型名；已删除的部署取删除时的名字，`deleted` 为 `true`；删除时还没有保存名字的旧部署名称为空。
 超出每秒日志预算、被抽样丢弃的正常请求无法查到。参数非法返回 400。
 
 ### 逐请求查询
@@ -1204,7 +1204,7 @@ trace id 为 32 位十六进制、不区分大小写，查询该 trace 的全部
 |---|---|---|---|
 | GET | `/api/v1/analytics/usage` | Token 用量。筛选：`deployment`（部署 id）、`key`（API key id，`none` 为没有 key 的请求）、`source`（`api` / `playground`）。`totals` 与 `series[]` 是计数：`requests`、`no_usage`（没拿到 usage 的请求）、`prompt_tokens`（总输入）、`completion_tokens`、`reasoning_tokens`（`reasoning_reported` 个请求报了）、`cached_tokens`（`cache_reported` 个请求报了缓存命中，命中率 = `cached_tokens` ÷ `cache_reported_prompt`）；`rows[]` 每个「key × 用户 × 部署 × 来源」一行，带 `api_key_name`/`api_key_prefix`/`api_key_revoked`/`api_key_deleted`（吊销改为保留前就删掉的 key）、`user_name`、`deployment_name`/`served_name`/`deployment_deleted`、`source`、`first_ms`/`last_ms`（用到的第一个、最后一个桶） | JWT |
 | GET | `/api/v1/analytics/quality` | 服务质量，`deployment` 可选。`totals`、`series[]`、`rows[]`（按部署）：各结果数（`completed`、`length`、`client_closed`、`interrupted`、`error`）、`ttft_p50_ms`/`ttft_p95_ms`（流式完整回复的首 token）、`e2e_p50_ms`/`e2e_p95_ms`（完整回复的端到端）、`output_tokens_per_sec`；分位数由四分之一倍频程分档还原，误差约 10%，没有数据为 `null` | JWT |
-| GET | `/api/v1/analytics/gpus` | GPU 利用。`group_by` ∈ `model`（默认）/ `node` / `gpu`（表格与热力图的行），`metric` ∈ `util`（默认）/ `power` / `temp` / `mem`（热力图的值，桶内均值），筛选 `label=键=值`（可重复，同节点列表：按节点当前的书写标签与系统标签匹配，已删除的节点不再匹配）、`model`（卡型）。`card_count` 与 `by_model[]{model, cards}` 是筛选覆盖的当前卡数。覆盖不超过 256 张卡时 `detail: true`，`cards[]` 每张卡一行：`node_name`、`gpu_index`、`gpu_uuid`、`gpu_model`、`present`（现在仍在在线节点上）、`deployments`（现在占用它的部署）、`util_avg`/`util_max`、`mem_used_avg_bytes`/`mem_used_max_bytes`/`mem_total_bytes`、`power_avg_watts`、`temp_avg_celsius`/`temp_max_celsius`；超过时 `detail: false`、`cards` 为空。`groups[]`（按型号或节点时）每组一行：`key`、`label`、`cards`、`nodes`、`models[]`、`deployments[]{name, cards}`、`unassigned`（无部署占用的卡数）与同上的统计值，取自按节点、按型号的统计。`heat[]`：`{key, label, values[]}`；按节点且超过 100 个节点时只含该指标最高与最低的各 50 个，`heat_total` 是全部行数。按卡分组而覆盖超过 256 张时 400 `ANALYTICS_TOO_MANY_CARDS` | JWT |
+| GET | `/api/v1/analytics/gpus` | GPU 利用。`group_by` ∈ `model`（默认）/ `node` / `gpu`（表格与热力图的行），`metric` ∈ `util`（默认）/ `power` / `temp` / `mem`（热力图的值，桶内均值），筛选 `label=键=值`（可重复，同节点列表：按节点当前的书写标签与系统标签匹配，已删除的节点不再匹配）、`model`（卡型）。`card_count` 与 `by_model[]{model, cards}` 是筛选覆盖的当前卡数。覆盖不超过 256 张卡时 `detail: true`，`cards[]` 每张卡一行：`node_name`、`node_deleted`（节点已删除，`node_name` 是删除时的名字）、`gpu_index`、`gpu_uuid`、`gpu_model`、`present`（现在仍在库存中，节点离线也算）、`deployments`（现在占用它的部署）、`util_avg`/`util_max`、`mem_used_avg_bytes`/`mem_used_max_bytes`/`mem_total_bytes`、`power_avg_watts`、`temp_avg_celsius`/`temp_max_celsius`；超过时 `detail: false`、`cards` 为空。逐卡列出时也包括时间范围内删除的节点的卡。`groups[]`（按型号或节点时）每组一行：`key`、`label`、`node_deleted`（按节点时，已删除的节点；它的 `cards`、`nodes` 为 0）、`cards`、`nodes`、`models[]`、`deployments[]{name, cards}`、`unassigned`（无部署占用的卡数）与同上的统计值，取自按节点、按型号的统计。`heat[]`：`{key, label, node_deleted, values[]}`；按节点且超过 100 个节点时只含该指标最高与最低的各 50 个，`heat_total` 是全部行数。按卡分组而覆盖超过 256 张时 400 `ANALYTICS_TOO_MANY_CARDS` | JWT |
 | GET | `/api/v1/analytics/gpu-time` | 卡时，`deployment` 可选。`rows[]` 每个「部署 × 卡型」一行：`gpu_hours`（dGPU 按显存份额折算）、`whole_gpu_hours`、`avg_instances`（到现在为止的平均副本数）、`max_instances`、该部署同一时段的 `prompt_tokens`/`completion_tokens`、`gpu_hours_per_million_output`/`gpu_hours_per_million_tokens`（没有 token 为 `null`）；`series[]` 每个部署各桶的卡时；`capacity[]` 每种卡型的 `total_gpu_hours`（在线节点上平台可用的卡）、`schedulable_gpu_hours`、`allocated_gpu_hours` | JWT |
 | GET | `/api/v1/analytics/key-usage` | 每个有用量的 API key 今天与近 7 天（含今天）的计数：`{items:[{prefix, today, last_7_days}], time_zone}`，供 API 令牌页 | JWT |
 
