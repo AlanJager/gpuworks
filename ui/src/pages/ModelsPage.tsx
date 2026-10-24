@@ -262,11 +262,8 @@ export default function ModelsPage() {
   return (
     <div className="model-repository-page">
       <PageHeader
-        className="model-page-header"
         title={t("page.title")}
         description={t("page.description")}
-        breadcrumb={[t("page.platformBreadcrumb"), t("page.title")]}
-        illustration="/assets/empty-models.webp"
         extra={
           <Segmented
             aria-label={t("view.aria")}

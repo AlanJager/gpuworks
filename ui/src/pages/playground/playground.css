@@ -16,23 +16,12 @@
   display: flex;
   flex-direction: column;
 }
-.playground-page--fit .page-header,
-.playground-page--fit .playground-mode-bar { flex: none; }
+.playground-page--fit .page-header { flex: none; }
 
-.playground-page .page-header { margin-bottom: 0; border-radius: 4px 4px 0 0; }
-.playground-mode-bar {
-  display: flex;
-  min-height: 52px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-  padding: 8px 16px;
-  border: 1px solid #dbdde0;
-  border-top: 0;
-  background: #fff;
-}
-.playground-mode-bar .ant-segmented-item-label { min-width: 112px; }
+.playground-mode .ant-segmented-item-label { min-width: 112px; }
+/* Seven modes do not fit a narrow header: they wrap instead of pushing the page sideways. */
+.playground-mode { max-width: 100%; }
+.playground-mode .ant-segmented-group { flex-wrap: wrap; }
 .playground-chat-page { position: relative; display: flex; flex: 1; min-height: 0; gap: 10px; }
 .playground-chat-main { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
 .playground-conversations { display: flex; width: 260px; flex: none; flex-direction: column; min-height: 0; border: 1px solid #dbdde0; background: #fff; }
@@ -252,12 +241,16 @@
   .playground-parameter-aside { position: absolute; top: 48px; right: 0; z-index: 4; width: min(300px, 88%); height: calc(100% - 48px); border-left: 1px solid #dbdde0; box-shadow: -4px 0 12px rgba(0,0,0,.08); }
 }
 
+/* Below 992px the content area pads 16px, not 24px; stretch by that much. */
+@media (max-width: 991px) {
+  .playground-page { margin: -16px -16px -32px; padding: 16px 16px 32px; }
+}
+
 @media (max-width: 768px) {
   .playground-conversations:not(.is-collapsed) { position: absolute; top: 0; bottom: 0; left: 0; z-index: 20; width: min(300px, 88%); box-shadow: 0 4px 18px rgba(24, 26, 29, .14); }
   .playground-page { margin: -16px -12px -24px; padding: 12px 12px 24px; }
-  .playground-mode-bar { align-items: flex-start; flex-direction: column; }
-  .playground-mode-bar .ant-segmented { width: 100%; }
-  .playground-mode-bar .ant-segmented-group { display: grid; grid-template-columns: repeat(2, 1fr); }
+  .playground-mode { width: 100%; }
+  .playground-mode .ant-segmented-group { display: grid; grid-template-columns: repeat(2, 1fr); }
   .playground-chat-grid.columns-2, .playground-chat-grid.columns-3 { grid-template-columns: repeat(var(--playground-columns, 2), minmax(320px, 1fr)); overflow-x: auto; }
   .playground-chat-grid.columns-3 { --playground-columns: 3; }
   .playground-chat-grid { min-height: 560px; }

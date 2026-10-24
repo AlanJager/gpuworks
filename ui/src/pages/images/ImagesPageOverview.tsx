@@ -77,11 +77,6 @@ export default function ImagesPageOverview({
       <PageHeader
         title={t("page.title")}
         description={t("page.description")}
-        breadcrumb={[
-          t("page.breadcrumb.platform"),
-          t("page.breadcrumb.resources"),
-          t("page.breadcrumb.images"),
-        ]}
         extra={
           <Button icon={<ReloadOutlined />} loading={loading} onClick={onRefresh}>
             {t("page.refresh")}

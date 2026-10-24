@@ -16,7 +16,6 @@ export default function PageHeader({
   extra,
   toolbar,
   parents,
-  breadcrumb,
   className,
 }: {
   title: ReactNode;
@@ -28,13 +27,6 @@ export default function PageHeader({
   toolbar?: ReactNode;
   /** Pages between the menu section and this one, e.g. a link back to the list. */
   parents?: ReactNode[];
-  /**
-   * @deprecated The full path as the page used to spell it out; pages move
-   * to `parents`, and the section then comes from the menu.
-   */
-  breadcrumb?: ReactNode[];
-  /** @deprecated No longer shown; pages drop it as they move to `parents`. */
-  illustration?: string;
   className?: string;
 }) {
   const { t } = useTranslation("common");
@@ -42,7 +34,7 @@ export default function PageHeader({
   const group = navGroupForPath(location.pathname);
   const section = group ? t(group.labelKey) : undefined;
   // A section named like the page itself (Overview) says nothing new.
-  const trail = breadcrumb ?? [section !== title ? section : undefined, ...(parents ?? [])].filter((item) => item !== undefined);
+  const trail = [section !== title ? section : undefined, ...(parents ?? [])].filter((item) => item !== undefined);
   return (
     <div className={`page-header${className ? ` ${className}` : ""}`}>
       <div className="page-header-row">
