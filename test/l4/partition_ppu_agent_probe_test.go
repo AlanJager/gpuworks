@@ -125,8 +125,8 @@ case "$dir" in /tmp/gpuworks-ppu-agent-probe-l4-*) rm -rf -- "$dir" ;; *) exit 2
 	remoteRun := fmt.Sprintf(`set -eu
 dir=%s
 server_url=%s
-if docker image inspect gpuworks/partition-probe:v2 >/dev/null 2>&1; then
-  docker image rm gpuworks/partition-probe:v2 >/dev/null
+if docker image inspect gpuworks/partition-probe:v3 >/dev/null 2>&1; then
+  docker image rm gpuworks/partition-probe:v3 >/dev/null
   image_precondition=removed
 else
   image_precondition=absent
@@ -172,7 +172,7 @@ PY
 done
 test "$ready" = 1
 test "$image_precondition" = absent -o "$image_precondition" = removed
-docker image inspect gpuworks/partition-probe:v2 >/dev/null
+docker image inspect gpuworks/partition-probe:v3 >/dev/null
 test -z "$(docker ps -a --format '{{.Names}}' | grep '^gpuworks-partition-probe-ppu-dgpu-' || true)"
 test -z "$(find "$dir/agent-state/dgpu-runtime/instances" -mindepth 1 -maxdepth 1 -name 'probe-ppu-dgpu-*' -print 2>/dev/null || true)"
 test -z "$(find /dev/shm -mindepth 1 -maxdepth 1 -name 'probe-ppu-dgpu-*' -print 2>/dev/null || true)"

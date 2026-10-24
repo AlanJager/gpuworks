@@ -45,7 +45,7 @@ The agent now passes the selected physical device ID through `GPUWORKS_PARTITION
 
 Follow-up checks on 2026-10-24 confirmed that v2 maps physical device 1 to logical device 0 in single-device Docker + Ascend runtime and nerdctl containers, and physical device 7 to logical device 1 under runveil in the passthrough VM. The OCI checks use the production Engine with a 4 GiB partition and an unhooked negative control. The VM check queries whole-card HBM only and does not bypass device-share prerequisites. These results do not establish support for untested drivers or 910C.
 
-The embedded probe image is upgraded to `gpuworks/partition-probe:v2` so that an upgraded agent does not keep using cached v1. This fix covers the node-level behavioral probe; actual inference support remains limited to the tested matrix.
+The embedded probe image is upgraded to `gpuworks/partition-probe:v3` so that an upgraded agent does not keep using cached v1/v2. This fix covers the node-level behavioral probe; actual inference support remains limited to the tested matrix.
 
 ### runveil Inference Device Selection and ARM64 Path Resolution
 

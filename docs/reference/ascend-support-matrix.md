@@ -45,7 +45,7 @@ agent 现在通过 `GPUWORKS_PARTITION_PROBE_DEVICE` 传入所选物理卡号；
 
 2026-10-24 补测确认：Docker + Ascend runtime 与 nerdctl 的单卡容器内，v2 均能将物理卡 1 解析为逻辑卡 0；runveil 直通 VM 内则将物理卡 7 解析为逻辑卡 1。前两者走生产 Engine 的 4 GiB 切分配置并通过关闭钩子的负向对照；VM 只查询整卡 HBM，未绕过 device-share 前置条件。这些结果不外推到未测试的驱动或 910C。
 
-内嵌探针镜像升级为 `gpuworks/partition-probe:v2`，避免升级 agent 后继续命中已缓存的 v1。该修复针对节点级行为探针；真实推理的支持范围仍以实测矩阵为准。
+内嵌探针镜像升级为 `gpuworks/partition-probe:v3`，避免升级 agent 后继续命中已缓存的 v1/v2。该修复针对节点级行为探针；真实推理的支持范围仍以实测矩阵为准。
 
 ### runveil 推理设备选择与 ARM64 路径解析
 

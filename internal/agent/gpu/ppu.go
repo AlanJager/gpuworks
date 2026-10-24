@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -192,17 +193,17 @@ func (p *PPUProber) RuntimeInjection(indexes []int) RuntimeInjection {
 	if len(indexes) == 0 {
 		return RuntimeInjection{}
 	}
-	// HGGC uses CUDA-compatible visibility inside the runner, while the
-	// outer runtime must not let an NVIDIA hook try to manage these devices.
-	// GPUStack's T-Head CDI generator uses the same two common device nodes
-	// and ordinal-named per-card nodes.
-	args := []string{
-		"--device", "/dev/alixpu:/dev/alixpu:rwm",
-		"--device", "/dev/alixpu_ctl:/dev/alixpu_ctl:rwm",
-	}
 	rows, err := runPPU(context.Background(), "--query-ppu=index,uuid", "--format=csv,noheader,nounits")
 	if err != nil {
 		return RuntimeInjection{UnsupportedReason: fmt.Sprintf("cannot verify PPU device inventory: ppu-smi: %v", err)}
+	}
+	return p.runtimeInjection(indexes, rows, resolvePPUDevice)
+}
+
+func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(int, string) (string, error)) RuntimeInjection {
+	args := []string{
+		"--device", "/dev/alixpu:/dev/alixpu:rwm",
+		"--device", "/dev/alixpu_ctl:/dev/alixpu_ctl:rwm",
 	}
 	byIndex := make(map[int]string)
 	for _, row := range parsePPUCSV(rows) {
@@ -214,18 +215,25 @@ func (p *PPUProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			byIndex[index] = strings.TrimSpace(row[1])
 		}
 	}
+	visible := make([]string, 0, len(indexes))
+	selected := make(map[string]bool)
 	for _, index := range indexes {
 		uuid := byIndex[index]
 		if uuid == "" {
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU device %d is not present in ppu-smi inventory", index)}
 		}
+		if !validPPUUUID(uuid) || selected[uuid] {
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU device %d has an invalid or duplicate UUID %q", index, uuid)}
+		}
+		selected[uuid] = true
+		visible = append(visible, uuid)
 		p.mu.RLock()
 		expected, hasExpected := p.lastSeen[index]
 		p.mu.RUnlock()
 		if hasExpected && expected.uuid != uuid {
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU index %d changed from UUID %s to %s since probe", index, expected.uuid, uuid)}
 		}
-		path, err := resolvePPUDevice(index, uuid)
+		path, err := resolve(index, uuid)
 		if err != nil {
 			return RuntimeInjection{UnsupportedReason: err.Error()}
 		}
@@ -234,22 +242,18 @@ func (p *PPUProber) RuntimeInjection(indexes []int) RuntimeInjection {
 	return RuntimeInjection{
 		Env: map[string]string{
 			accelerator.EnvNVIDIAVisibleDevices: "void",
-			accelerator.EnvCUDAVisibleDevices:   ppuContainerVisibleDevices(indexes),
+			accelerator.EnvCUDAVisibleDevices:   strings.Join(visible, ","),
 		},
 		DockerArgs: args,
 	}
 }
 
-func ppuContainerVisibleDevices(indexes []int) string {
-	visible := make([]string, len(indexes))
-	for i := range indexes {
-		// The selected character devices are presented as a compact container
-		// inventory. HGGC/CUDA APIs therefore address them as 0..N-1; using the
-		// host ppu-smi index here breaks as soon as a preceding card is absent.
-		visible[i] = strconv.Itoa(i)
-	}
-	return strings.Join(visible, ",")
-}
+// HGGC accepts full UUIDs in CUDA_VISIBLE_DEVICES and maps them, in order,
+// to compute ordinals 0..N-1. This works with both OCI's filtered inventory
+// and runveil's host inventory. HGML uses the same list to map quota ordinals.
+var ppuUUIDPattern = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+func validPPUUUID(value string) bool { return ppuUUIDPattern.MatchString(value) }
 
 // verifyPPUDevice protects against the observed VFIO/index churn. ppu-smi's
 // minor_number is the character-device minor (reported by stat in decimal),

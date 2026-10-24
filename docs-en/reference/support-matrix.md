@@ -17,6 +17,13 @@ When dGPU is unavailable, the node can still use full-GPU deployment. The platfo
 For tested Ascend combinations, CANN, and runtime details, see the [Ascend Matrix](ascend-support-matrix.md). For outstanding PPU work, see the [Development Ledger](../dev/ledgers/ppu-support-gaps.md).
 
 
+## PPU device identity and dGPU probes
+
+PPU injection uses full UUIDs returned by `ppu-smi` and verified against device nodes, writing them to `CUDA_VISIBLE_DEVICES` in scheduling order. HGGC maps those UUIDs to compute devices `0..N-1`; Docker's filtered inventory and runveil's host inventory need not share indexes. HGML quota queries use the same UUID order to locate quota and memory-ledger slots instead of treating host HGML indexes as compute ordinals.
+
+The embedded `gpuworks/partition-probe:v3` verifies both the selected UUID and its memory quota. Missing, invalid, duplicate or unqueryable identities fail, as does a quota applied only to another card. Recreate existing workloads after upgrading the agent to activate the new selection and slicing libraries. Device visibility under runveil still does not provide kernel device isolation.
+
+
 ## GPU Models and Architectures
 
 When the server receives a node report, it normalizes model names before storing them (`accelerator.NormalizeGPUName`): it removes a leading vendor word
