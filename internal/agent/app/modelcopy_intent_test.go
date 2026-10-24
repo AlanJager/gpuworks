@@ -62,7 +62,9 @@ func TestSupersededCompletionIsNotPublished(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("marker read did not start")
 	}
-	r.beginModelFileIntent(task)
+	next := task
+	next.Revision = "next"
+	r.beginModelFileIntent(next)
 	releaseOnce.Do(func() { close(release) })
 	select {
 	case <-finished:
@@ -116,7 +118,9 @@ func TestNewIntentWaitsForInFlightStatusBeforeFencing(t *testing.T) {
 		t.Fatal("first status was not sent")
 	}
 	secondDone := make(chan modelFileIntent, 1)
-	go func() { secondDone <- r.beginModelFileIntent(task) }()
+	next := task
+	next.Revision = "next"
+	go func() { secondDone <- r.beginModelFileIntent(next) }()
 	select {
 	case <-secondDone:
 		t.Fatal("new intent did not wait for the in-flight status")
@@ -136,5 +140,49 @@ func TestNewIntentWaitsForInFlightStatusBeforeFencing(t *testing.T) {
 	defer sentMu.Unlock()
 	if len(states) != 2 || states[0] != proto.MFDownloading || states[1] != proto.MFPresent {
 		t.Fatalf("status sequence = %v, want downloading then present without a stale completion", states)
+	}
+}
+
+func TestRepeatedIntentKeepsTheActiveGeneration(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	task := modelWriterTask("repeat", "repeat/model", proto.ModelAcquireDownload, "", "")
+	first := r.beginModelFileIntent(task)
+	second := r.beginModelFileIntent(task)
+	if first.generation != second.generation {
+		t.Fatalf("repeated intent changed generation: first=%d second=%d", first.generation, second.generation)
+	}
+	r.reportModelFileWithIntent(context.Background(), second, proto.ModelFileStatus{Key: task.Key, State: proto.MFDownloading})
+	if got := r.lastFile(t, task.Key); got.State != proto.MFDownloading {
+		t.Fatalf("repeated intent suppressed active progress: %+v", got)
+	}
+	changed := task
+	changed.Revision = "next"
+	third := r.beginModelFileIntent(changed)
+	if third.generation == first.generation {
+		t.Fatal("a changed revision did not advance the generation")
+	}
+	r.reportModelFileWithIntent(context.Background(), first, proto.ModelFileStatus{Key: task.Key, State: proto.MFPresent})
+	if got := r.fileStatusCount(task.Key); got != 1 {
+		t.Fatalf("superseded status was published: count=%d", got)
+	}
+}
+
+func TestCopyReplayUsesTransferIdentity(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	source := filepath.Join(t.TempDir(), "source")
+	task := modelWriterTask("copy-replay", "copy/replay", proto.ModelAcquireCopy, source, "")
+	first := r.beginModelFileIntent(task)
+	replay := task
+	replay.SourcePath = filepath.Join(t.TempDir(), "different")
+	replay.RateLimitKBs = 1024
+	second := r.beginModelFileIntent(replay)
+	if first.generation != second.generation {
+		t.Fatalf("same TransferID changed generation: first=%d second=%d", first.generation, second.generation)
+	}
+	changed := replay
+	changed.TransferID = "next-transfer"
+	third := r.beginModelFileIntent(changed)
+	if third.generation == first.generation {
+		t.Fatal("a new TransferID did not advance the generation")
 	}
 }

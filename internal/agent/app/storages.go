@@ -54,6 +54,8 @@ type storageRuntime struct {
 	writerWaiting map[string]modelFileIntent
 	// latestGeneration fences retries from both queues against newer intents.
 	latestGeneration map[string]uint64
+	latestTasks      map[string]proto.ModelFileTask
+	intentMu         sync.Mutex
 	nextGeneration   uint64
 	// incomingSwept holds the storages whose leftover upload staging this
 	// process already swept once (sweepIncomingOnce).
@@ -78,7 +80,7 @@ func newStorageRuntime(stateDir string, busy func(string) bool) *storageRuntime 
 		tasks: map[uint]proto.StorageTask{}, statuses: map[uint]storagemount.Status{},
 		heartbeat: map[uint]time.Time{}, hbInvalid: map[uint]bool{}, waiting: map[string]proto.ModelFileTask{},
 		waitingGeneration: map[string]uint64{}, writerWaiting: map[string]modelFileIntent{}, latestGeneration: map[string]uint64{},
-		incomingSwept: map[uint]bool{}, trigger: make(chan bool, 1),
+		latestTasks: map[string]proto.ModelFileTask{}, incomingSwept: map[uint]bool{}, trigger: make(chan bool, 1),
 	}
 }
 
@@ -122,6 +124,7 @@ func (n *NodeRuntime) applyStorages(tasks []proto.StorageTask) {
 			delete(s.waiting, key)
 			delete(s.waitingGeneration, key)
 			delete(s.latestGeneration, key)
+			delete(s.latestTasks, key)
 		}
 	}
 	for key, intent := range s.writerWaiting {
@@ -129,6 +132,7 @@ func (n *NodeRuntime) applyStorages(tasks []proto.StorageTask) {
 			delete(s.writerWaiting, key)
 			if s.latestGeneration[key] == intent.generation {
 				delete(s.latestGeneration, key)
+				delete(s.latestTasks, key)
 			}
 		}
 	}
@@ -331,6 +335,7 @@ func (n *NodeRuntime) dropWaiting(key string) {
 	delete(n.storage.waitingGeneration, key)
 	delete(n.storage.writerWaiting, key)
 	delete(n.storage.latestGeneration, key)
+	delete(n.storage.latestTasks, key)
 	n.storage.mu.Unlock()
 }
 
@@ -402,6 +407,7 @@ func (n *NodeRuntime) pruneWaiting(desired []proto.ModelFileTask) {
 	for key := range n.storage.latestGeneration {
 		if !listed[key] {
 			delete(n.storage.latestGeneration, key)
+			delete(n.storage.latestTasks, key)
 		}
 	}
 	n.storage.mu.Unlock()

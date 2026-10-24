@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"reflect"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -30,19 +31,35 @@ func (n *NodeRuntime) reportModelFileWithIntent(ctx context.Context, intent mode
 	n.reportModelFileContext(withModelFileIntent(ctx, intent), st)
 }
 
+func sameModelFileOperation(a, b proto.ModelFileTask) bool {
+	if a.TransferID != "" || b.TransferID != "" {
+		return a.TransferID == b.TransferID && a.Acquisition == b.Acquisition && a.DesiredState == b.DesiredState
+	}
+	return reflect.DeepEqual(a, b)
+}
+
 func (n *NodeRuntime) beginModelFileIntent(task proto.ModelFileTask) modelFileIntent {
 	intent := modelFileIntent{task: task}
 	if n.storage == nil {
 		return intent
 	}
+	s := n.storage
+	s.intentMu.Lock()
+	defer s.intentMu.Unlock()
+	if generation, ok := s.latestGeneration[task.Key]; ok && sameModelFileOperation(s.latestTasks[task.Key], task) {
+		// A repeated desired-state replay is the same operation, not a new
+		// generation. In particular, it must not silence a transfer in flight.
+		intent.generation = generation
+		return intent
+	}
 	// discard waits for an in-flight send before the new intent becomes visible;
 	// later callbacks from the old generation are fenced at their actual send.
 	n.progress.discard(modelFileProgressKey(task.Key))
-	s := n.storage
 	s.mu.Lock()
 	s.nextGeneration++
 	intent.generation = s.nextGeneration
 	s.latestGeneration[task.Key] = intent.generation
+	s.latestTasks[task.Key] = task
 	delete(s.waiting, task.Key)
 	delete(s.waitingGeneration, task.Key)
 	delete(s.writerWaiting, task.Key)
