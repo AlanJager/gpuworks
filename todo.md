@@ -588,4 +588,4 @@ dockerd 进独立网络命名空间并启用回环；在命名空间内用与宿
 
 2026-10-24 在 910B4 / driver 26.0.rc1 上补测 `cann8.5-910b-vllm0.18.0-r2`：修复 ARM64 PRoot 路径解析后，引擎仍停在 `set_device`，没有达到 healthy。镜像无 `/.dockerenv` 和 `/usr/bin/systemd-detect-virt`；DCMI 容器检测 fork/exec 失败后调用 `exit`，子进程卡在 CANN dump 析构的锁，父进程等待其退出。CANN 9.0 / vLLM 0.20.2 的同机默认路径已通过。
 
-临时绑定 `/.dockerenv` 的单变量对照绕过了死锁，但随后 `TsdOpen(devId=7)` 返回 31、`set_device` 报 507033，仍未获得 healthy/chat。下一步需分别修正检测阻塞并定位设备启动错误，再在默认生产路径重跑配额与真实推理；不能直接把容器标记写入生产修复。
+临时绑定 `/.dockerenv` 的单变量对照绕过了死锁，但随后 `TsdOpen(devId=7)` 返回 31、`set_device` 报 507033。已通过实际二进制反汇编与查询对照定位：TSD 在将用户设备号 0 映射回逻辑卡 7 之前查询芯片型号，因逻辑卡 0 不存在而返回 87。仅将 TSD 这次失败的型号查询重试到真实卡 7 后，算子、8 GiB 配额、9 GiB 分配拒绝和随后真实 chat（HTTP 200）均通过。该 hook 和容器标记仅用于临时诊断，没有进入 agent 或镜像。下一步需修正检测阻塞及 TSD 转换顺序，并在默认生产路径重新验收，不能将局部兼容对照标为默认支持。
