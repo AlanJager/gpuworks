@@ -3,6 +3,7 @@
 package assets
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -41,8 +42,39 @@ func TestEmbeddedProotResolvesGuestAccessPaths(t *testing.T) {
 	if _, err := os.Lstat(guest); !os.IsNotExist(err) {
 		t.Fatalf("guest path exists on host or cannot be checked: %v", err)
 	}
-	out, err := exec.Command(proot, "-0", "-r", "/", "-b", source+":"+guest, "-w", "/", binary, guest).CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "path_resolution=pass") {
-		t.Fatalf("embedded PRoot path gate: %v\n%s", err, out)
+	t.Run("native", func(t *testing.T) {
+		out, err := runGuestPathGate([]string{proot}, binary, source, guest, nil)
+		if err != nil {
+			t.Fatalf("embedded PRoot path gate: %v\n%s", err, out)
+		}
+		t.Log(strings.TrimSpace(string(out)))
+	})
+	testGuestPathGateSyscallAvailability(t, cc, dir, proot, binary, source, guest)
+}
+
+// Probe outside PRoot first. Only an actual host ENOSYS permits the narrower
+// realpath check; ENOSYS introduced by PRoot on a capable host is a failure.
+func runGuestPathGate(proot []string, binary, source, guest string, launcher []string) ([]byte, error) {
+	run := func(argv ...string) ([]byte, error) {
+		args := append(append([]string(nil), launcher...), argv...)
+		return exec.Command(args[0], args[1:]...).CombinedOutput()
 	}
+	probe, err := run(binary, "--probe-faccessat2")
+	var exit *exec.ExitError
+	unavailable := errors.As(err, &exit) && exit.ExitCode() == 77
+	if err != nil && !unavailable {
+		return probe, fmt.Errorf("probe host faccessat2: %w", err)
+	}
+	args := append(append([]string(nil), proot...), "-0", "-r", "/", "-b", source+":"+guest, "-w", "/", binary, guest)
+	if unavailable {
+		args = append(args, "--realpath-only")
+	}
+	out, err := run(args...)
+	if err != nil {
+		return out, err
+	}
+	if !strings.Contains(string(out), "path_resolution=pass") {
+		return out, fmt.Errorf("missing path gate success marker")
+	}
+	return out, nil
 }

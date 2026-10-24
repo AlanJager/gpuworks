@@ -109,11 +109,16 @@ func (d *Driver) runveilCommand(spec runtime.WorkloadSpec, entrypoint, cmd []str
 	for _, m := range d.workloadMounts(spec) {
 		binds = append(binds, runveil.Bind{Host: m.Source, Guest: m.Target})
 	}
+	env := d.runEnv(spec)
+	binds, err = d.ascendRunveilCompatibility(spec, env, binds)
+	if err != nil {
+		return nil, nil, err
+	}
 	command, err := runveil.Prepare(runveil.Spec{
 		Proot:        d.prootPath,
 		ContainerDir: d.containerDir(spec.Name),
 		Name:         spec.Name,
-		Env:          d.runEnv(spec),
+		Env:          env,
 		Binds:        binds,
 		Entrypoint:   entrypoint,
 		Cmd:          cmd,

@@ -36,8 +36,6 @@
 | T82：PRoot 事件循环在上千线程下饿死旧线程，公平调度补丁在真机上让权重加载卡住 | SGLang TP8 在 runveil 下约 3100 个线程时旧线程长时间 tracing-stop；目前只靠限制 SGLang 线程池缓解，补丁未内嵌 | 按 `artifacts/work/2026-10-20-runveil-many-threads/plan.md` 的区分办法逐项隔离（先只留哈希表、再限批），真机验证后再决定是否重做 |
 | T83：内嵌 PRoot 没有 `proot-temp-noise.patch` 的效果，容器失败时 PRoot 的无害报错盖住引擎真正的错误 | 2026-10-20 本地用 `internal/assets/bin/proot-x86_64-static-nofd` 复现：以 root 在 `/root`（700）下降权运行、绑定到镜像里不存在的路径时，退出前打出 `can't chdir to '/root'`（退出码 0）；该补丁本应让它静默退回 `/`。Vast 上这句成了 stderr 最后一行，部署 26 的失败原因显示成它，真正的 `No accelerator` 被盖住 | 核对内嵌二进制的构建来源，用修好路径的 `build.sh` 重建并过门禁；agent 报容器失败原因时跳过 `proot error:`/`proot warning:` 行，取引擎自己的最后一条错误 |
 | T100：经来源规则拉取的镜像，从节点删除后仍留着替代地址的 tag 与内容 | nerdctl、docker、udocker（native）节点上都要手工删，大镜像占着磁盘 | 删除时一并删掉平台经来源规则留下的替代地址 tag |
-| T105：runveil 非交互 Exec 未恢复工作负载环境与挂载 | 容器已健康，但 Exec 内导入 torch_npu 找不到宿主驱动库；ExecPTY 正常 | 让 Exec 复用持久化 workload spec 并验证环境、挂载和设备选择 |
-| T106：CANN 8.5 runveil 的 DCMI 初始化阻塞 | 镜像缺少容器标记和 systemd-detect-virt，DCMI 失败子进程在 CANN dump 析构中等待 | 修正容器检测阻塞并定位后续 TsdOpen 错误，补默认路径 chat |
 
 ## T2. 目录镜像标签会漂移
 
@@ -577,15 +575,3 @@ dockerd 进独立网络命名空间并启用回环；在命名空间内用与宿
 
 - 经来源规则拉取的镜像从节点删除后，节点上不再有该镜像的任何平台 tag，内容与快照被回收（`df` 与 `nerdctl images` 可见）。
 - 测试覆盖 nerdctl、docker 与 udocker 三种驱动的删除路径，夹具忠实还原替代地址 tag 的存在。
-
-## T105. runveil 非交互 Exec 未恢复工作负载环境与挂载
-
-2026-10-24 在 910B4 dGPU 真机验证中，vLLM 已到 health，但 `Driver.Exec` 执行的 Python 导入 `torch_npu` 报 `libascend_hal.so` 不存在。`Exec` 只向 `runveilCommand` 传入 Name，未恢复运行中的 Env、Mounts、GPUIndexes；改用已恢复持久化 spec 的 `ExecPTY` 后，同一诊断成功看到 8 GiB 配额、拒绝 9 GiB 申请，随后真实 chat 通过。
-
-修复应让非交互 Exec 复用工作负载 spec，并覆盖持久化恢复、缺失 spec、挂载路径、设备选择及命令错误传播。此次未修改该独立执行接口。
-
-## T106. CANN 8.5 runveil 的 DCMI 初始化阻塞
-
-2026-10-24 在 910B4 / driver 26.0.rc1 上补测 `cann8.5-910b-vllm0.18.0-r2`：修复 ARM64 PRoot 路径解析后，引擎仍停在 `set_device`，没有达到 healthy。镜像无 `/.dockerenv` 和 `/usr/bin/systemd-detect-virt`；DCMI 容器检测 fork/exec 失败后调用 `exit`，子进程卡在 CANN dump 析构的锁，父进程等待其退出。CANN 9.0 / vLLM 0.20.2 的同机默认路径已通过。
-
-临时绑定 `/.dockerenv` 的单变量对照绕过了死锁，但随后 `TsdOpen(devId=7)` 返回 31、`set_device` 报 507033。已通过实际二进制反汇编与查询对照定位：TSD 在将用户设备号 0 映射回逻辑卡 7 之前查询芯片型号，因逻辑卡 0 不存在而返回 87。仅将 TSD 这次失败的型号查询重试到真实卡 7 后，算子、8 GiB 配额、9 GiB 分配拒绝和随后真实 chat（HTTP 200）均通过。该 hook 和容器标记仅用于临时诊断，没有进入 agent 或镜像。下一步需修正检测阻塞及 TSD 转换顺序，并在默认生产路径重新验收，不能将局部兼容对照标为默认支持。

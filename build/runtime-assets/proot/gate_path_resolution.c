@@ -19,10 +19,18 @@
 #endif
 
 int main(int argc, char **argv) {
-    if (argc != 2) return 2;
+    if (argc == 2 && strcmp(argv[1], "--probe-faccessat2") == 0) {
+        if (syscall(SYS_faccessat2, AT_FDCWD, "/", F_OK, AT_EACCESS) == 0) return 0;
+        if (errno == ENOSYS) return 77;
+        perror("host faccessat2");
+        return 1;
+    }
+    if (argc != 2 && argc != 3) return 2;
+    int realpath_only = argc == 3 && strcmp(argv[2], "--realpath-only") == 0;
+    if (argc == 3 && !realpath_only) return 2;
     char path[PATH_MAX], canonical[PATH_MAX], expected[PATH_MAX];
     snprintf(path, sizeof(path), "%s/data/leaf/", argv[1]);
-    if (syscall(SYS_faccessat2, AT_FDCWD, path, F_OK, AT_EACCESS) != 0) {
+    if (!realpath_only && syscall(SYS_faccessat2, AT_FDCWD, path, F_OK, AT_EACCESS) != 0) {
         perror("guest faccessat2");
         return 1;
     }
@@ -31,6 +39,11 @@ int main(int argc, char **argv) {
     if (!realpath(path, canonical) || strcmp(canonical, expected) != 0) {
         perror("guest realpath with symlink, parent and trailing slash");
         return 1;
+    }
+    if (realpath_only) {
+        puts("faccessat2=unavailable");
+        puts("path_resolution=pass");
+        return 0;
     }
     int fd = open(argv[1], O_RDONLY | O_DIRECTORY);
     if (fd < 0 || syscall(SYS_faccessat2, fd, "data/leaf", F_OK, AT_EACCESS) != 0) {

@@ -247,7 +247,11 @@ check-doc-links:
 	CGO_ENABLED=0 $(GO) run ./scripts/doclinks
 
 ## check-assets: validate embedded native assets independently of Go tests
-check-assets: check-libvgpu check-perftest
+check-assets: check-libvgpu check-perftest check-ascend-compat
+
+.PHONY: check-ascend-compat
+check-ascend-compat:
+	./scripts/check_ascend_compat.sh
 
 ## runtime-assets: reproducibly rebuild the full partition runtime/probe matrix
 runtime-assets:

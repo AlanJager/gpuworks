@@ -76,6 +76,12 @@ func mapGuest(root string, binds []Bind, guest string) string {
 	return filepath.Join(root, filepath.FromSlash(guest))
 }
 
+// ResolveGuestPath resolves an existing guest path through the same bind and
+// symlink rules used by command preparation. Empty means it cannot be resolved.
+func ResolveGuestPath(root string, binds []Bind, guest string) string {
+	return hostPath(root, binds, guest)
+}
+
 // findExecutable mirrors udocker's pre-flight FileUtil.find_exec: an absolute
 // name is checked as is, "./x" and "../x" are relative to the working
 // directory, and a bare name is searched in the guest PATH.

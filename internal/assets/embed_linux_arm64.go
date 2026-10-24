@@ -9,6 +9,7 @@ import "embed"
 //
 //go:embed bin/proot-arm64-static-nofd
 //go:embed bin/udocker-offline-arm64-v1.1.2.tar.gz
+//go:embed bin/ascend-runveil-compat-arm64.so
 //go:embed bin/manifest.sha256
 //go:embed bin/runtime-assets/manifest.json
 //go:embed bin/runtime-assets/probe/partition-probe-linux-arm64.tar.gz
