@@ -16,7 +16,9 @@
 | Gitee ARM | arm64 / 910B1 | 9.0 | 8.5 / udocker | 容器启动到 CANN FE | 旧 PRoot 下未通过；`platform_config` realpath 失败。ARM64 `faccessat2` 已修复，该云端组合尚未复测 |
 | Gitee ARM 目录项 | arm64 / 910B1 | 8.5 | 未进入内层 | 租机前置校验 | 云市场实际返回“镜像和主机不匹配”，不能作为 CI fixture；这不等于外 8.5 + 内 8.5 已被判定不兼容 |
 | 自有池 Docker 成员 | arm64 / 910B4 | 9.0/驱动 | 9.0 / Docker | 平台 API 双副本同卡 dGPU、真实推理/chat、超配拒绝、整卡 chat | 支持；完整平台 dGPU 主验收 |
-| 自有池 nerdctl 成员 | arm64 / 910B4 | driver-only | 内嵌 probe / nerdctl | 生产路径加载 2.5 MiB 行为探针，`dsmi_get_hbm_info` 精确返回 4 GiB | 支持节点级 dGPU；无业务镜像、模型或推理引擎 |
+| 自有池 nerdctl 成员 | arm64 / 910B4 | driver-only，26.1.1 | 内嵌 probe v2 / nerdctl | 生产 Engine + Driver：物理卡 1→容器逻辑卡 0，精确返回 4 GiB；关闭钩子返回 32 GiB 并判失败 | 节点级 dGPU 探针通过；本次不加载业务镜像、模型或推理引擎 |
+| 自有裸机临时 Docker daemon | arm64 / 910B4 | driver-only，26.1.1 | 内嵌 probe v2 / Docker 27.5.1 + Ascend runtime | 生产 Engine + Driver：物理卡 1→容器逻辑卡 0，4 GiB 配额与关闭钩子的 32 GiB 负向对照均符合预期 | 补验 v2 的容器内 DSMI 映射；本次未重跑平台推理 |
+| 直通 VM / runveil | arm64 / 910B4 | driver-only，25.5.1 | 内嵌 probe v2 / runveil，无 vCANN 钩子 | 物理卡 7→逻辑卡 1，与生产推理注入一致；HBM 查询返回真实整卡 32 GiB，4 GiB 预期判失败 | 仅验证设备映射；device-share 为 False，驱动不支持 VM 开启，不能记为 dGPU 通过 |
 | 自有裸机 runveil（物理卡号 2–7） | arm64 / 910B4 | driver-only，26.0.rc1 | 内嵌 probe v2 / runveil | 生产 Engine + Runner 在物理卡 7 上返回 4 GiB；关闭 DSMI 钩子返回整卡 32 GiB 并判失败 | 节点级 dGPU 探针通过；旧 v1 可复现 `rc=87 total_kb=0` |
 | 同一自有裸机 runveil | arm64 / 910B4 | driver-only，26.0.rc1 | 8.5.1 / vLLM 0.18.0 / runveil | 默认 agent 路径：平台 API 同卡双副本 dGPU、网关 chat、逐实例超配拒绝，随后整卡部署及 chat | 已通过；每份配额 8 GiB，9 GiB 申请均拒绝。使用 `gpuworks/gpuworks-runner:cann8.5-910b-vllm0.18.0-r2`，自动兼容仅适用于下述已校验的 ARM64 TSD 库 |
 | 同一自有裸机 runveil | arm64 / 910B4 | driver-only，26.0.rc1 | 9.0 / vLLM 0.20.2 / runveil | 生产 Engine + runveil Driver 自动选卡，Qwen3-0.6B、8 GiB 配额，真实 chat 返回 HTTP 200 | 通过单实例 dGPU 推理；容器报告 8589934592 bytes，9 GiB 申请被拒绝，随后 chat 返回 `Hello! 😊`。本次未走平台 API/调度/网关 |
@@ -40,6 +42,8 @@
 旧探针固定调用 `dsmi_get_hbm_info(0)`。PRoot 不建立 OCI 设备隔离，DSMI 的编号取决于驱动所见的设备：可能保留宿主编号，也可能将物理卡 5、7 映射为逻辑卡 0、1。固定查 0 可能查询不存在的设备，也可能查询另一张卡；直接使用物理卡号同样可能出错。因此不能仅凭容器运行时名称决定查询编号。
 
 agent 现在通过 `GPUWORKS_PARTITION_PROBE_DEVICE` 传入所选物理卡号；探针先用 `dsmi_get_logicid_from_phyid` 解析当前运行环境中的逻辑号，再查询该设备的 HBM。缺少映射接口、映射失败或显存不等于配额均返回失败，不回退到 0 号卡。诊断输出同时记录物理号和逻辑号。
+
+2026-10-24 补测确认：Docker + Ascend runtime 与 nerdctl 的单卡容器内，v2 均能将物理卡 1 解析为逻辑卡 0；runveil 直通 VM 内则将物理卡 7 解析为逻辑卡 1。前两者走生产 Engine 的 4 GiB 切分配置并通过关闭钩子的负向对照；VM 只查询整卡 HBM，未绕过 device-share 前置条件。这些结果不外推到未测试的驱动或 910C。
 
 内嵌探针镜像升级为 `gpuworks/partition-probe:v2`，避免升级 agent 后继续命中已缓存的 v1。该修复针对节点级行为探针；真实推理的支持范围仍以实测矩阵为准。
 
