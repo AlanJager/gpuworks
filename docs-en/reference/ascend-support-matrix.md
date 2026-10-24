@@ -1,10 +1,10 @@
 # Ascend Support Matrix
 
-Updated: 2026-08-28. This document distinguishes three things that are easy to confuse:
+Updated: 2026-10-24. This document distinguishes three things that are easy to confuse:
 
 - **Outer CANN**: the toolkit provided by the node or rented cloud marketplace image. Self-owned bare-metal machines may have only a driver, recorded as `driver-only`; this does not mean that no container runtime is available.
 - **Inner CANN**: the CANN userspace application binary interface (userspace ABI) in the workload image launched by GPUWorks. It affects whether the workload image can run, but does not participate in `libvruntime.so` asset selection.
-- **Runtime (container runtime)**: Docker, nerdctl, or runveil (`udocker` driver). Gitee rental images provide only the outer environment, not the workload image; the `udocker` scenarios in the table use PRoot to run workload containers inside the outer container (container-in-container). Results marked `udocker` below were verified with the old udocker CLI launcher and have not yet been retested on Ascend with runveil.
+- **Runtime (container runtime)**: Docker, nerdctl, or runveil (`udocker` driver). Gitee rental images provide only the outer environment, not the workload image; the `udocker` scenarios in the table use PRoot to run workload containers inside the outer container (container-in-container). Results marked `udocker` below were verified with the old udocker CLI launcher; runveil results are listed separately.
 
 ## Current Tested Matrix
 
@@ -13,10 +13,13 @@ Updated: 2026-08-28. This document distinguishes three things that are easy to c
 | Gitee x86_64 | x86_64 / 910B2C | 9.0 | 9.0 / udocker | Platform full-GPU deployment + `/v1/chat/completions` | Supported; test explicitly asserts `runtime_driver=udocker` |
 | Gitee x86_64 | x86_64 / 910B2C | 8.5.1 | 8.5 / udocker | Platform deployment reaches healthy; dGPU capability probe correctly reports cloud-side denial | Outer 8.5 + inner 8.5 can start; successful chat evidence reproducible in CI is still missing |
 | Gitee ARM | arm64 / 910B1 | 9.0 | 9.0 / udocker | Platform full-GPU deployment + `/v1/chat/completions` | Supported; actually prefetches arm64 manifest/layers |
-| Gitee ARM | arm64 / 910B1 | 9.0 | 8.5 / udocker | Container starts as far as CANN FE | Unsupported; realpath of `aarch64-linux/lib64/../data/platform_config` fails at the PRoot boundary |
+| Gitee ARM | arm64 / 910B1 | 9.0 | 8.5 / udocker | Container starts as far as CANN FE | Failed with the old PRoot because `platform_config` realpath resolution failed. ARM64 `faccessat2` is now fixed; this cloud combination has not yet been retested |
 | Gitee ARM catalog entry | arm64 / 910B1 | 8.5 | Inner environment not reached | Rental prerequisite validation | The cloud marketplace actually returns “image and host do not match,” so this cannot serve as a CI fixture; this does not establish incompatibility between outer 8.5 and inner 8.5 |
 | Self-owned pool Docker member | arm64 / 910B4 | 9.0/driver | 9.0 / Docker | Platform API dGPU with two replicas on one card, real inference/chat, overcommit rejection, full-GPU chat | Supported; complete primary acceptance for platform dGPU |
 | Self-owned pool nerdctl member | arm64 / 910B4 | driver-only | Embedded probe / nerdctl | Production path loads a 2.5 MiB behavioral probe; `dsmi_get_hbm_info` returns exactly 4 GiB | Node-level dGPU supported; no workload image, model, or inference engine |
+| Self-owned bare-metal runveil (physical device IDs 2–7) | arm64 / 910B4 | driver-only, 26.0.rc1 | Embedded probe v2 / runveil | Production Engine + Runner reports 4 GiB on physical device 7; disabling the DSMI hook reports the full 32 GiB and fails the probe | Node-level dGPU probe passes; old v1 reproduces `rc=87 total_kb=0` |
+| Same self-owned bare-metal runveil | arm64 / 910B4 | driver-only, 26.0.rc1 | 8.5.1 / vLLM 0.18.0 / runveil | Temporary compatibility control passes the 8 GiB quota check, rejection of a 9 GiB allocation, and subsequent real chat (HTTP 200) | Default path still fails. The control additionally binds a container marker and retries only TSD's hardware-version query of missing device 0 against real device 7. This diagnostic hook is not included in the agent or image and does not establish default support |
+| Same self-owned bare-metal runveil | arm64 / 910B4 | driver-only, 26.0.rc1 | 9.0 / vLLM 0.20.2 / runveil | Production Engine + runveil Driver selects the device automatically; Qwen3-0.6B with an 8 GiB quota returns HTTP 200 for real chat | Single-instance dGPU inference passes. The container reports 8589934592 bytes, a 9 GiB allocation is rejected, and subsequent chat returns `Hello! 😊`. This test did not use the platform API, scheduler, or gateway |
 
 “Outer 8.5 and inner 8.5 have been tested” refers to the Gitee x86_64 environment in the table: there is a record of a real platform deployment reaching healthy, but the current repository does not retain a successful chat response, so the matrix does not mark complete chat as passed. The next step is to reuse the same instance in the existing x86_64/CANN8.5 rental test case to add chat verification, avoiding another rental.
 
@@ -30,7 +33,25 @@ Updated: 2026-08-28. This document distinguishes three things that are easy to c
 
 The self-owned pool covers levels 1–5. Because Gitee rental containers cannot run `npu-smi set -t device-share`, they cover only detection and full-GPU container-in-container chat. Cloud-side permission denial must not be presented as a dGPU pass.
 
-## Two Corrected Misdiagnoses
+## Corrected Misdiagnoses
+
+### Behavioral Probe Always Queried Logical Device 0
+
+The old probe always called `dsmi_get_hbm_info(0)`. PRoot does not provide OCI device isolation, and DSMI numbering depends on the devices visible to the driver: it may preserve host IDs or map physical devices 5 and 7 to logical devices 0 and 1. Always querying 0 may target a missing device or a different card; directly using the physical ID can also be wrong. The container runtime name alone therefore cannot determine the query ID.
+
+The agent now passes the selected physical device ID through `GPUWORKS_PARTITION_PROBE_DEVICE`. The probe first resolves the logical ID in the current runtime environment using `dsmi_get_logicid_from_phyid`, then queries that device's HBM. A missing mapping interface, failed mapping, or memory total that differs from the quota causes failure, with no fallback to device 0. Diagnostics record both physical and logical IDs.
+
+The embedded probe image is upgraded to `gpuworks/partition-probe:v2` so that an upgraded agent does not keep using cached v1. This fix covers the node-level behavioral probe; actual inference support remains limited to the tested matrix.
+
+### runveil Inference Device Selection and ARM64 Path Resolution
+
+runveil preserves the host device view and cannot reuse Docker's compact device IDs. The agent now combines physical card/chip addresses from `npu-smi info` with `Chip Logic ID` from `npu-smi info -m` to generate `ASCEND_RT_VISIBLE_DEVICES` and `NPU_VISIBLE_DEVICES`. Missing or conflicting mappings prevent startup, with no fallback to 0. Real-hardware tests verified production injection for physical 7 → logical 7 on bare metal and physical 7 → logical 1 in a passthrough VM.
+
+Previously, the ARM64 PRoot syscall table lacked `faccessat2` (439), causing directory checks from glibc `realpath()` to use host paths and incorrectly report `ENOENT`. CANN consequently could not find platform configuration or operator registration libraries; CANN 9.0 reported `361001` for `ZerosLike` / `aclnnInplaceZero`. The error also reproduced with dGPU disabled, so it did not establish that vCANN was incompatible with runveil.
+
+The syscall mapping is now added and the embedded ARM64 PRoot rebuilt. The build gate checks `faccessat2` through guest binds, relative dirfds, missing paths, and `realpath` with symlinks, parent directories, and trailing slashes. The original binary failed; the new binary passed on real ARM64 hardware. With the updated embedded asset and automatic device mapping, CANN 9.0 / vLLM 0.20.2 passed single-instance dGPU inference, over-quota allocation rejection, and chat after rejection. Coverage remains as listed in the matrix above.
+
+CANN 8.5.1 also has a TSD initialization ordering issue: runtime translates selected logical device 7 into user device 0, but TSD queries the hardware version before mapping it back to a logical ID. On a node without logical device 0, the driver returns 87, ultimately reported as `TsdOpen` / `507033`. Disassembly of the actual binary and a control that retries this single query confirmed the cause. The control returns real driver data and does not fabricate successful device startup. With a temporary container marker and this diagnostic hook, Qwen3-0.6B passes the quota checks and chat. The production path still needs the DCMI detection hang resolved and TSD's conversion order corrected. This experiment did not use the platform API, scheduler, or gateway, and the temporary compatibility handling is not part of the default runtime.
 
 ### “No Runtime”
 

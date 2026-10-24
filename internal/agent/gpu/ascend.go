@@ -286,8 +286,9 @@ var ascendNerdctlDriverMounts = []RuntimeMount{
 }
 
 // RuntimeInjectionForDriver implements DriverAwareInjector. Every driver
-// other than nerdctl keeps using the Ascend Docker Runtime plugin path
-// (RuntimeInjection above). nerdctl has no such plugin
+// other than nerdctl keeps the device-injection shape from RuntimeInjection.
+// Rootless execution resolves host logical IDs for ACL; Docker keeps compact
+// container ordinals. nerdctl has no Ascend Docker Runtime plugin
 // (docs/dev/ledgers/engineering-log.md "Ascend device injection for the nerdctl runtime driver"), so
 // it gets raw device passthrough plus explicit driver/DCMI mounts instead of
 // --runtime ascend. Device paths are passed unrenamed
@@ -296,6 +297,15 @@ var ascendNerdctlDriverMounts = []RuntimeMount{
 // 172.30.8.32.
 func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection {
 	base := p.RuntimeInjection(indexes)
+	if driverName == "udocker" && len(indexes) > 0 {
+		visible, err := p.rootlessVisibleDevices(indexes)
+		if err != nil {
+			return RuntimeInjection{UnsupportedReason: err.Error()}
+		}
+		base.Env[accelerator.AscendEnvRTVisibleDevices] = visible
+		base.Env[accelerator.AscendEnvNPUVisible] = visible
+		return base
+	}
 	if driverName != "nerdctl" || len(indexes) == 0 {
 		return base
 	}
