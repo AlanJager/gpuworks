@@ -142,6 +142,24 @@ test("an old detail address opens the list's drawer on the tab it named", async 
   await waitFor(() => assert.equal(tab.getAttribute("aria-selected"), "true"));
 });
 
+test("detaching in the drawer reads the list again, so its attachments column follows", async () => {
+  let listReads = 0;
+  stub("networks", async () => { listReads++; return { items: [listItem()], roles: ["storage_sync", "compute", "serving"], types: ["host_ethernet", "host_rdma", "accelerator_rdma"], type_roles: typeRoles }; });
+  stub("network", async () => detailFixture);
+  stub("detachNetwork", async () => ({ ...detailFixture, attachments: detailFixture.attachments.slice(1) }));
+  renderAt(`/networks?network=${detailFixture.id}`, <NetworksPage />, "/networks");
+  const detach = (await screen.findAllByRole("button", { name: n.actions.detach }))[0];
+  const before = listReads;
+  fireEvent.click(detach);
+  const ok = await waitFor(() => {
+    const found = [...document.querySelectorAll(".ant-popover:not(.ant-popover-hidden)")].flatMap((pop) => within(pop as HTMLElement).queryAllByRole("button", { name: n.actions.detach }));
+    if (!found.length) throw new Error("no confirm");
+    return found.at(-1) as HTMLElement;
+  });
+  fireEvent.click(ok);
+  await waitFor(() => assert.ok(listReads > before, "the list is read again"));
+});
+
 test("network list surfaces load errors", async () => {
   stub("networks", async () => { throw new Error("boom 500"); });
   renderAt("/networks", <NetworksPage />);

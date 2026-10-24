@@ -77,7 +77,6 @@
     "roleNotOnType": "Accelerator RDMA carries compute traffic only: host processes cannot bind the address of a card's port, so storage sync and serving cannot use it."
   },
   "detail": {
-    "back": "Networks",
     "selector": "Default selector",
     "attachments": "Attached to",
     "resolved": "Resolved nodes ({{count}})",
@@ -393,15 +392,10 @@
     },
     "saved": "Management network roles updated",
     "carried": "Carried by the management network",
-    "roleColumn": {
-      "serving": "Serving",
-      "storage_sync": "Storage sync",
-      "compute": "Compute"
-    },
     "roleTip": {
-      "serving": "Inference requests reach this node over the agent tunnel. When off, no new instance is placed on this node.",
-      "storage_sync": "Nodes copy models and images to each other directly. When off, this node downloads from the image or model source only.",
-      "compute": "Traffic between nodes in multi-node inference. When off, this node is left out of multi-node deployments."
+      "serving": "Inference requests reach this node over the agent tunnel. Where the node has no dedicated serving network, turning this off places no new instance on it.",
+      "storage_sync": "Nodes copy models and images to each other directly. Where the node has no dedicated storage-sync network, turning this off makes it download from the image or model source only.",
+      "compute": "Traffic between nodes in multi-node inference. Where the node has no dedicated compute network, turning this off leaves it out of multi-node deployments."
     },
     "switchIntro": "Each switch decides whether this traffic takes the management network when the node has no dedicated network for it",
     "switchEffect": "Changes apply to instances created afterwards; running instances are not affected. A role a dedicated network already carries is marked next to its switch."
