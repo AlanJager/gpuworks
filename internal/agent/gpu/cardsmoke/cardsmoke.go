@@ -38,6 +38,11 @@ const (
 	// DefaultFirstRound leaves the control plane time to say what this
 	// node runs, so the first round is not skipped for every card.
 	DefaultFirstRound = 30 * time.Second
+	// DefaultRetryAfter is how long after a round that could not ask any
+	// card to try again. It is the one retry: what this node runs arrives
+	// seconds after registration, and a round that still cannot tell is
+	// waiting on something an interval will not fix either.
+	DefaultRetryAfter = time.Minute
 )
 
 // Inconclusive marks an attempt's failure as saying nothing about the card:
@@ -119,11 +124,20 @@ type Config struct {
 	// FirstRound is how long to wait before the first round. A node that
 	// just connected should not wait a quarter hour to learn its cards
 	// cannot be used, but it must wait for the control plane to say what
-	// it is running: Busy calls every card busy until it knows, so a
-	// round fired at registration skipped all of them and the real first
-	// round came an interval later. Measured on gpu3: the desired state
-	// arrived about ten seconds after the agent registered.
+	// it is running: Deferred holds the round back until it knows.
+	// Measured on gpu3: the desired state arrived about ten seconds after
+	// the agent registered; on 192.168.200.29 it took forty-seven.
 	FirstRound time.Duration
+	// Deferred says why no card can be asked yet, or "". It is what this
+	// node runs not being known: asking a card that is serving can disturb
+	// it, so a round that cannot tell asks nothing. Unlike Unavailable it
+	// resolves on its own within seconds, so such a round is retried once
+	// after RetryAfter rather than waited out for a whole interval — until
+	// then every card still carries the vendor tool's verdict, and a card
+	// the runtime cannot use looks schedulable.
+	Deferred func() string
+	// RetryAfter is how long after a deferred round to try again, once.
+	RetryAfter time.Duration
 	Now        func() time.Time
 }
 
@@ -150,6 +164,9 @@ type Runner struct {
 	roundStart time.Time
 	// skipped is why the last round asked no card at all, or "".
 	skipped string
+	// deferred is whether the last round asked no card because what this
+	// node runs was not known yet, which one retry can resolve.
+	deferred bool
 }
 
 func New(cfg Config) *Runner {
@@ -165,6 +182,9 @@ func New(cfg Config) *Runner {
 	if cfg.MaxBackoffRounds <= 0 {
 		cfg.MaxBackoffRounds = DefaultMaxBackoffRounds
 	}
+	if cfg.RetryAfter <= 0 {
+		cfg.RetryAfter = DefaultRetryAfter
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -179,7 +199,7 @@ func (r *Runner) Run(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	case <-first.C:
-		r.RunOnce(ctx)
+		r.runRound(ctx)
 	}
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
@@ -188,9 +208,33 @@ func (r *Runner) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			r.RunOnce(ctx)
+			r.runRound(ctx)
 		}
 	}
+}
+
+// runRound is one scheduled round, plus the single retry a deferred round
+// earns. One retry and no more: a round that still cannot tell what this node
+// runs is waiting on something the next interval will not fix either, and
+// retrying on a timer of its own would ask every card on a busy node.
+func (r *Runner) runRound(ctx context.Context) {
+	r.RunOnce(ctx)
+	if !r.deferredRound() {
+		return
+	}
+	retry := time.NewTimer(r.cfg.RetryAfter)
+	defer retry.Stop()
+	select {
+	case <-ctx.Done():
+	case <-retry.C:
+		r.RunOnce(ctx)
+	}
+}
+
+func (r *Runner) deferredRound() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.deferred
 }
 
 // RunOnce tries cards in order and returns when the round is done or an
@@ -216,6 +260,12 @@ func (r *Runner) RunOnce(ctx context.Context) {
 		return
 	}
 	reason := r.unavailable()
+	deferred := false
+	if reason == "" {
+		if why := r.deferredReason(); why != "" {
+			reason, deferred = why, true
+		}
+	}
 	if reason == "" {
 		for _, card := range cards {
 			if ctx.Err() != nil {
@@ -230,6 +280,7 @@ func (r *Runner) RunOnce(ctx context.Context) {
 	r.mu.Lock()
 	changed := reason != r.skipped
 	r.skipped = reason
+	r.deferred = deferred
 	r.mu.Unlock()
 	if reason != "" && changed {
 		// Once per change: the round is skipped every quarter hour for as
@@ -403,6 +454,13 @@ func (r *Runner) record(ident string, outcome Outcome) {
 
 func (r *Runner) busy(card Card) bool {
 	return r.cfg.Busy != nil && r.cfg.Busy(card)
+}
+
+func (r *Runner) deferredReason() string {
+	if r.cfg.Deferred == nil {
+		return ""
+	}
+	return r.cfg.Deferred()
 }
 
 func (r *Runner) unavailable() string {

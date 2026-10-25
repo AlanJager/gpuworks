@@ -37,10 +37,20 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		Cards: func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
 		Try:   cardSmokeAttempt(check),
 		Busy: func(card cardsmoke.Card) bool {
-			// A card whose owner is not known yet is left alone: creating
-			// a context on a card that is serving can disturb it.
-			ours, known := n.cardsInUse()
-			return !known || ours[card.Ident]
+			ours, _ := n.cardsInUse()
+			return ours[card.Ident]
+		},
+		// Until the control plane says what this node runs, no card can be
+		// told apart from one that is serving, and creating a context on a
+		// card that is serving can disturb it. That is the whole round's
+		// answer rather than each card's, so the round is retried once
+		// instead of leaving every card on the vendor tool's verdict for
+		// an interval.
+		Deferred: func() string {
+			if _, known := n.cardsInUse(); known {
+				return ""
+			}
+			return "what this node runs is not known yet; the runtime check waits for the control plane"
 		},
 		Unavailable: func() string { return smokeUnavailable(check) },
 		Timeout:     check.Timeout,

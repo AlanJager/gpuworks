@@ -364,3 +364,116 @@ func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// A round that fires before the control plane has said what this node runs
+// asks no card at all, which left every card on the vendor tool's verdict
+// for a whole interval: on 192.168.200.29 the desired state arrived
+// forty-seven seconds after the agent registered, seventeen seconds after
+// the first round, and a die the runtime could not use stayed schedulable
+// for the next quarter hour. Such a round is retried once.
+func TestADeferredRoundIsRetriedOnce(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{now: now}
+	var mu sync.Mutex
+	known := false
+	r := New(Config{
+		Cards: func(context.Context) []Card { return cards("a") },
+		Try:   rec.try,
+		Deferred: func() string {
+			mu.Lock()
+			defer mu.Unlock()
+			if known {
+				return ""
+			}
+			return "what this node runs is not known yet"
+		},
+		Interval:   time.Hour,
+		FirstRound: time.Millisecond,
+		RetryAfter: 10 * time.Millisecond,
+		Now:        now,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.Run(ctx)
+
+	// The deferred round says why it asked nothing, and blames no card.
+	deadline := time.Now().Add(2 * time.Second)
+	for r.Skipped() == "" {
+		if time.Now().After(deadline) {
+			t.Fatal("a round that asked no card did not say why")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if got := rec.idents(); len(got) != 0 {
+		t.Fatalf("attempts = %v, want none while what the node runs is unknown", got)
+	}
+	if len(r.Outcomes()) != 0 {
+		t.Fatalf("outcomes = %+v, want none: a deferred round is not a verdict", r.Outcomes())
+	}
+
+	mu.Lock()
+	known = true
+	mu.Unlock()
+	// The retry arrives without waiting out the interval, which is an hour.
+	deadline = time.Now().Add(2 * time.Second)
+	for len(rec.idents()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("a deferred round was not retried before the next interval")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if r.Skipped() != "" {
+		t.Fatalf("skipped = %q, want cleared once a card was asked", r.Skipped())
+	}
+}
+
+// Only one retry: a round that still cannot tell what this node runs is
+// waiting on something the next interval will not fix either, and retrying
+// on a timer of its own would ask every card on a busy node.
+func TestAStillDeferredRetryIsNotRetriedAgain(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{now: now}
+	var mu sync.Mutex
+	rounds := 0
+	r := New(Config{
+		Cards: func(context.Context) []Card { return cards("a") },
+		Try:   rec.try,
+		Deferred: func() string {
+			mu.Lock()
+			defer mu.Unlock()
+			rounds++
+			return "what this node runs is not known yet"
+		},
+		Interval:   time.Hour,
+		FirstRound: time.Millisecond,
+		RetryAfter: 5 * time.Millisecond,
+		Now:        now,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.Run(ctx)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		seen := rounds
+		mu.Unlock()
+		if seen >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rounds = %d, want the scheduled round and its one retry", seen)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Well past several more retry delays, the interval is what comes next.
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	seen := rounds
+	mu.Unlock()
+	if seen != 2 {
+		t.Fatalf("rounds = %d, want exactly the round and one retry", seen)
+	}
+	if got := rec.idents(); len(got) != 0 {
+		t.Fatalf("attempts = %v, want none", got)
+	}
+}
