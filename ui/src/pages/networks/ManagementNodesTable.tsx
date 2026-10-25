@@ -70,7 +70,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
   const roleColumn = (role: NetworkRole) => ({
     title: (
       <Tooltip title={t(`management.roleTip.${role}`)}>
-        <span className="header-help">{t(`management.roleColumn.${role}`)}</span>
+        <span className="header-help">{t(`role.${role}`)}</span>
       </Tooltip>
     ),
     key: role,
@@ -143,7 +143,7 @@ export default function ManagementNodesTable({ nodes, onChanged }: { nodes: Netw
           <Typography.Text>{t("management.bulk.selected", { count: selected.length })}</Typography.Text>
           {ROLES.map((role) => (
             <Space key={role} size={4}>
-              <Typography.Text type="secondary">{t(`management.roleColumn.${role}`)}</Typography.Text>
+              <Typography.Text type="secondary">{t(`role.${role}`)}</Typography.Text>
               <Select
                 size="small"
                 aria-label={`${t("management.bulk.title")} ${t(`role.${role}`)}`}
