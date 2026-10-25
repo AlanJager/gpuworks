@@ -453,9 +453,8 @@ func (a *App) Run(ctx context.Context) error {
 
 	// Background: flip stale-online nodes to offline as a safety net.
 	goBG(func() { a.staleLoop(ctx) })
-	// Background: bound the deployment event timeline.
-	goBG(func() { a.eventRetentionLoop(ctx) })
-	goBG(func() { a.kubeNodeLoop(ctx) })
+	goBG(func() { a.eventRetentionLoop(ctx) }) // Background: bound the deployment event timeline.
+	goBG(func() { a.kubeNodeLoop(ctx) })       // Background: remove Kubernetes nodes that left their cluster.
 	// Background: reconnect nodes that listen for reverse server_dial sessions.
 	goBG(func() { a.hub.RunServerDialReconnect(ctx, a.cfg.ServerDialReconnectInterval) })
 	goBG(func() { a.hub.RunNodeQueues(ctx) }) // persist reports queued off the read loops
