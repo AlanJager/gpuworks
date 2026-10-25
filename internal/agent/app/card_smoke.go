@@ -56,6 +56,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		Unavailable: func() string { return smokeUnavailable(check) },
 		Timeout:     check.Timeout,
 	})
+	n.cardSmokeCtx = ctx
 	go n.cardSmoke.Run(ctx)
 }
 
@@ -153,4 +154,53 @@ func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthFi
 		{Name: "Checked At", Value: at.UTC().Format("2006-01-02 15:04:05Z")},
 		{Name: "Detail", Value: strings.TrimSpace(detail)},
 	}
+}
+
+// recheckCardsAfterStartFailure asks the runtime about the cards an instance
+// just failed on.
+//
+// A periodic round leaves a card an instance holds alone, because asking a
+// card that is serving can disturb it. An instance that could not start is not
+// serving, and the card it failed on would otherwise keep the vendor tool's
+// verdict and stay schedulable — so the next attempt is placed on it again,
+// fails the same way, and holds it for as long as it keeps retrying. Measured
+// on 192.168.200.29: a deployment placed on the one die whose ACL runtime
+// cannot create a context (aclrtSetDevice=507033) failed, restarted, and kept
+// that die marked healthy.
+//
+// Nothing is blamed on a workload's own failure: the check is the vendor's
+// runtime, so a card that answers stays healthy and only the deployment's own
+// error explains it.
+func (n *NodeRuntime) recheckCardsAfterStartFailure(uuid string) {
+	if n.cardSmoke == nil || uuid == "" {
+		return
+	}
+	idents := map[string]bool{}
+	for _, ident := range n.instanceCards(uuid) {
+		if ident != "" {
+			idents[ident] = true
+		}
+	}
+	if len(idents) == 0 {
+		return
+	}
+	ctx := n.cardSmokeCtx
+	if ctx == nil {
+		return
+	}
+	// Off the reporting path: the check shells out per card, and an instance
+	// status must not wait for it.
+	go n.cardSmoke.CheckNow(ctx, idents)
+}
+
+// instanceCards is a seam over the engine, which starts containers and has no
+// business in a test of these rules.
+func (n *NodeRuntime) instanceCards(uuid string) []string {
+	if n.instanceCardIdents != nil {
+		return n.instanceCardIdents(uuid)
+	}
+	if n.engine == nil {
+		return nil
+	}
+	return n.engine.CardIdentsOf(uuid)
 }

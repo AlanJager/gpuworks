@@ -95,7 +95,11 @@ func TestPlatformTokenCreateWireAndValidation(t *testing.T) {
 		} `json:"item"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &week)
-	if rec.Code != http.StatusCreated || week.Item.ExpiresAt.Sub(time.Now().AddDate(0, 0, 7)).Abs() > time.Minute {
+	// The handler counts the days in UTC, and so must this: a local AddDate
+	// over a daylight-saving change lands an hour away from the UTC one, which
+	// made the test fail on a host in such a zone (America/Chicago, a week
+	// before 11-01) while the token was correct.
+	if rec.Code != http.StatusCreated || week.Item.ExpiresAt.Sub(time.Now().UTC().AddDate(0, 0, 7)).Abs() > time.Minute {
 		t.Fatalf("expiring token: %d %s", rec.Code, rec.Body)
 	}
 

@@ -477,3 +477,96 @@ func TestAStillDeferredRetryIsNotRetriedAgain(t *testing.T) {
 		t.Fatalf("attempts = %v, want none", got)
 	}
 }
+
+// A card an instance holds is left alone by a round, so a workload that
+// could not start on a bad card would keep it marked healthy and be placed
+// on it again. CheckNow asks anyway, because a failed start is not serving.
+func TestCheckNowAsksACardAnInstanceHolds(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{fail: map[string]error{"b": errors.New("aclrtSetDevice=507033")}, now: now}
+	r := New(Config{
+		Cards:    func(context.Context) []Card { return cards("a", "b") },
+		Try:      rec.try,
+		Busy:     func(Card) bool { return true },
+		Interval: time.Hour,
+		Now:      now,
+	})
+	// The schedule asks nothing while every card is held.
+	r.RunOnce(context.Background())
+	if got := rec.idents(); len(got) != 0 {
+		t.Fatalf("attempts = %v, want none: a held card is left alone", got)
+	}
+
+	r.CheckNow(context.Background(), map[string]bool{"b": true})
+	if got := rec.idents(); len(got) != 1 || got[0] != "b" {
+		t.Fatalf("attempts = %v, want only the card the instance failed on", got)
+	}
+	outcome, ok := r.Outcomes()["b"]
+	if !ok || outcome.OK || !strings.Contains(outcome.Detail, "507033") {
+		t.Fatalf("outcome = %+v ok=%v, want the vendor failure recorded", outcome, ok)
+	}
+	if _, asked := r.Outcomes()["a"]; asked {
+		t.Fatal("a card the instance did not use was asked")
+	}
+}
+
+// A workload that fails for its own reasons restarts over and over. The card
+// it lands on is asked once, not once per restart.
+func TestCheckNowDoesNotReaskWithinAnInterval(t *testing.T) {
+	now, advance := clock(t)
+	rec := &recorder{now: now}
+	r := New(Config{
+		Cards:    func(context.Context) []Card { return cards("a") },
+		Try:      rec.try,
+		Busy:     func(Card) bool { return true },
+		Interval: time.Hour,
+		Now:      now,
+	})
+	for i := 0; i < 5; i++ {
+		r.CheckNow(context.Background(), map[string]bool{"a": true})
+	}
+	if got := rec.idents(); len(got) != 1 {
+		t.Fatalf("attempts = %v, want one: an answer within the interval stands", got)
+	}
+	// Once the answer is older than an interval it is asked again.
+	advance(time.Hour + time.Minute)
+	r.CheckNow(context.Background(), map[string]bool{"a": true})
+	if got := rec.idents(); len(got) != 2 {
+		t.Fatalf("attempts = %v, want the stale answer refreshed", got)
+	}
+}
+
+// A card that answers is not blamed for the workload's own failure.
+func TestCheckNowLeavesAHealthyCardHealthy(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{now: now}
+	r := New(Config{
+		Cards: func(context.Context) []Card { return cards("a") },
+		Try:   rec.try, Busy: func(Card) bool { return true },
+		Interval: time.Hour, Now: now,
+	})
+	r.CheckNow(context.Background(), map[string]bool{"a": true})
+	if outcome := r.Outcomes()["a"]; !outcome.OK || outcome.Failures != 0 {
+		t.Fatalf("outcome = %+v, want a healthy card", outcome)
+	}
+}
+
+// A host that cannot run the check at all says nothing about any card, the
+// same as a round does.
+func TestCheckNowSaysNothingWhenTheHostCannotBeAsked(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{now: now}
+	r := New(Config{
+		Cards: func(context.Context) []Card { return cards("a") },
+		Try:   rec.try, Busy: func(Card) bool { return true },
+		Unavailable: func() string { return "CANN is not installed on the host" },
+		Interval:    time.Hour, Now: now,
+	})
+	r.CheckNow(context.Background(), map[string]bool{"a": true})
+	if got := rec.idents(); len(got) != 0 {
+		t.Fatalf("attempts = %v, want none on a host that cannot be asked", got)
+	}
+	if len(r.Outcomes()) != 0 {
+		t.Fatalf("outcomes = %+v, want none", r.Outcomes())
+	}
+}

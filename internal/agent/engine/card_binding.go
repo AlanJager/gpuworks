@@ -129,3 +129,17 @@ func (e *Engine) HeldCardIdents() []string {
 	}
 	return idents
 }
+
+// CardIdentsOf is the hardware identity of the cards one instance was given,
+// whatever state it reached. A caller asking after a start failure needs the
+// cards the attempt used, which HeldCardIdents deliberately leaves out: the
+// instance is no longer running.
+func (e *Engine) CardIdentsOf(uuid string) []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	spec, ok := e.desired[uuid]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), spec.GPUIdents...)
+}
