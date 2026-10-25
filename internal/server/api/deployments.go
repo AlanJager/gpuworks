@@ -14,7 +14,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -226,7 +225,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(),
 		AllowUnresolved: true,
 	}
-	if err := preflightCreateRuntimes(preflight, req.ContainerOverrides, selection.Components, modelMount, distNodes, pdReq); err != nil {
+	imageFor := func(node *store.Node) string {
+		return a.rankImage(eng.Name(), selection, req.Image, node).Image
+	}
+	if err := preflightCreateRuntimes(preflight, req.ContainerOverrides, selection.Components, modelMount, profileNode, distNodes, pdReq, imageFor); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -313,10 +315,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err)
 		return
 	}
-	imageTarget := deploymentImageTarget(eng.Name(), "", node)
-	imageTarget.Override = req.Image
-	imageTarget.TrustedOverride = templateOwnsImage(selection, req.Image)
-	imageResolution := imagecatalog.Resolve(a.d.Store, imageTarget)
+	imageResolution := a.rankImage(eng.Name(), selection, req.Image, node)
 	if strings.TrimSpace(imageResolution.Image) == "" {
 		code, params := ErrorAcquisitionImageRequired, map[string]any(nil)
 		if len(imageResolution.Warnings) > 0 {

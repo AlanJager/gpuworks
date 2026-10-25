@@ -8,15 +8,25 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// preflightCreateRuntimes replays the launch shapes that can span nodes before
-// any model, image or deployment write. The controller still performs its own
-// authoritative per-rank check later; this early pass gives each actual runtime
-// the same chance to refuse an invalid launch while the create is atomic.
-func preflightCreateRuntimes(base deploy.ResolveLaunchInput, rawOverrides map[string]any, components []deploy.ComponentBinding, modelMount string, distNodes []*store.Node, pdReq *pdRequest) error {
+// rankImageResolver names the runtime image one node's launch will run, as
+// evaluate shows it and create persists it.
+type rankImageResolver func(*store.Node) string
+
+// preflightCreateRuntimes replays the launch of every rank on its own node
+// before any model, image or deployment write, with the image that rank
+// resolves to. The controller still performs its own authoritative per-rank
+// check later; this early pass lets the refusals that no choice of the user can
+// avoid fail the create atomically. Warnings are for evaluate and are dropped
+// here. An unpinned node (automatic placement) has no runtime yet, so the
+// checks that depend on one wait for the controller.
+func preflightCreateRuntimes(base deploy.ResolveLaunchInput, rawOverrides map[string]any, components []deploy.ComponentBinding, modelMount string, pinned *store.Node, distNodes []*store.Node, pdReq *pdRequest, imageFor rankImageResolver) error {
 	resolve := func(input deploy.ResolveLaunchInput, node *store.Node, context string) error {
 		if node != nil {
 			input.Params.RuntimeDriver = node.RuntimeDriver
 			input.Params.Host = deploy.RuntimeBindHost(node.RuntimeDriver)
+			if image := imageFor(node); image != "" {
+				input.Image = image
+			}
 		}
 		if _, _, err := resolveRequestLaunch(input, rawOverrides, components, modelMount); err != nil {
 			if context == "" {
@@ -30,7 +40,7 @@ func preflightCreateRuntimes(base deploy.ResolveLaunchInput, rawOverrides map[st
 		return preflightCreatePDRuntimes(base, pdReq, resolve)
 	}
 	if len(distNodes) == 0 {
-		return resolve(base, nil, "")
+		return resolve(base, pinned, "")
 	}
 	for rank, node := range distNodes {
 		input := base

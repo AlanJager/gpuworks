@@ -6,7 +6,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -69,11 +68,16 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 		if req.NNodes > 1 {
 			topology = planning.PreviewRankTopology(req.NNodes, rank, group.Ranks[rankNode.ID])
 		}
+		resolution := a.rankImage(eng.Name(), selection, req.Image, rankNode)
+		rankImage := resolution.Image
+		if rankImage == "" {
+			rankImage = resp.Image
+		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
 			Preview: true, Engine: eng.Name(), Model: model, Node: rankNode,
 			Selection: rankSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   topology,
-			Source:     planning.LaunchSourceFromRequest(resp.Image, requestOverrides),
+			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
 			ServedName: servedName, Sleepable: req.Sleepable,
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
@@ -88,10 +92,6 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 		}
 		res := plan.Resolved
 		resp.Warnings = append(resp.Warnings, plan.Warnings...)
-		rankTarget := deploymentImageTarget(eng.Name(), "", rankNode)
-		rankTarget.Override = req.Image
-		rankTarget.TrustedOverride = templateOwnsImage(selection, req.Image)
-		resolution := imagecatalog.Resolve(a.d.Store, rankTarget)
 		if dynamicTPPreview {
 			// No GPU has been chosen yet: the engine builder's single-GPU
 			// default is a placeholder, and the rank that validates the
