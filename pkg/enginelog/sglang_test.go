@@ -15,7 +15,7 @@ func approx(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 // carriage returns.
 func sglangNextNStartup(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile("testdata/sglang-nextn-tp4.log")
+	data, err := os.ReadFile("testdata/sglang-nextn-tp4.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
