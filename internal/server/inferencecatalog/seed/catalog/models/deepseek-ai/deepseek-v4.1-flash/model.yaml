@@ -118,6 +118,8 @@ specs:
   scenario: balanced
   engine: vllm
   image: quay.io/ascend/vllm-ascend:v0.30.0rc2-a3
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend:v0.30.0rc2-a3
   weights:
     quantization: int8
     sources:
