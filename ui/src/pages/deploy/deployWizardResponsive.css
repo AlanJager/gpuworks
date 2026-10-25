@@ -28,7 +28,6 @@
 @media (max-width: 767px) {
   .deploy-catalog-filters, .deploy-catalog-models, .deploy-catalog-scheme-list { grid-template-columns: 1fr; }
   .deploy-catalog-scheme-heading { align-items: flex-start; flex-direction: column; }
-  .deploy-page .page-header,
   .deploy-template-lockbar { align-items: flex-start; flex-direction: column; }
   .deploy-template-lockbar { padding-inline: 13px; }
   .deploy-locked-image { width: 100%; max-width: 100%; flex-basis: 100%; }

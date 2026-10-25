@@ -269,6 +269,9 @@ test("returning without a search term keeps the requested organization while the
   const { container } = renderCatalogFlow("/inference-templates/baai/bge-reranker-v2-m3?from=organization%3Dbaai%26engine%3Dvllm");
 
   await screen.findByText("BGE Reranker");
+  // The breadcrumb returns to the same filtered list as the back button.
+  const crumb = container.querySelector(".page-header-breadcrumb a") as HTMLAnchorElement;
+  assert.equal(crumb.getAttribute("href"), "/inference-templates?organization=baai&engine=vllm");
   await userEvent.setup().click(screen.getByRole("button", { name: /Back to List/ }));
   resolveCatalog({ items: [arcee, baai], page: 1, page_size: 200, total: 2 } as never);
 

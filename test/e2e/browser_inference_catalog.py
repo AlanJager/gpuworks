@@ -17,7 +17,7 @@ from playwright.sync_api import Page, expect, sync_playwright
 
 
 def select_mode(page: Page, label: str) -> None:
-    page.locator(".playground-mode-bar .ant-segmented-item").filter(has_text=label).click()
+    page.locator(".playground-mode .ant-segmented-item").filter(has_text=label).click()
 
 
 def login(page: Page, base_url: str, password: str) -> None:

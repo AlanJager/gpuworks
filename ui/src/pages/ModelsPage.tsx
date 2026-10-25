@@ -260,7 +260,7 @@ export default function ModelsPage() {
   );
 
   return (
-    <div className="model-repository-page">
+    <div>
       <PageHeader
         title={t("page.title")}
         description={t("page.description")}

@@ -68,6 +68,12 @@ export default function App() {
   );
 }
 
+/** Sends the old /ai-store/ai-model address to /models, keeping its query (?detail=). */
+function ModelsAlias() {
+  const { search } = useLocation();
+  return <Navigate replace to={`/models${search}`} />;
+}
+
 function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const { t } = useTranslation();
   const branding = useBranding();
@@ -144,7 +150,8 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/storage/:id" element={<StorageDetailRedirect />} />
             <Route path="/networks" element={<NetworksPage />} />
             <Route path="/networks/:id" element={<NetworkDetailRedirect />} />
-            <Route path="/ai-store/ai-model" element={<ModelsPage />} />
+            {/* The old models address: same page, so the menu and its breadcrumb follow /models. */}
+            <Route path="/ai-store/ai-model" element={<ModelsAlias />} />
             <Route path="/deploy" element={<DeployPage />} />
             <Route path="/deployments" element={<DeploymentsPage />} />
             <Route path="/playground/*" element={<PlaygroundPage />} />
