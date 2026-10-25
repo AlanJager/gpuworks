@@ -97,11 +97,35 @@ func summarizeNodes(nodes []store.Node, wantKey string) dto.DashboardSummary {
 		out.Nodes.UnusableGPUs += c.unusable
 		out.Nodes.VRAMGiB += c.vramGiB
 		out.Nodes.MemoryGiB += float64(n.MemTotalKB) * 1024 / bytesPerGiB
-		vendor := nodeDTOGPUVendor(n)
-		if vendor == "" {
-			vendor = "unknown"
+		owned := n.OwnedGPUs()
+		if len(owned) == 0 {
+			vendor := nodeDTOGPUVendor(n)
+			if vendor == "" {
+				vendor = "unknown"
+			}
+			byVendor.add(dto.CapacityGroup{Key: vendor}, c)
+		} else {
+			vendorCapacity := map[string]nodeCapacity{}
+			for _, gpu := range owned {
+				vendor := gpu.Vendor
+				if vendor == "" {
+					vendor = nodeDTOGPUVendor(n)
+				}
+				if vendor == "" {
+					vendor = "unknown"
+				}
+				card := vendorCapacity[vendor]
+				card.gpus++
+				card.vramGiB += float64(gpu.MemoryTotal) / bytesPerGiB
+				if !gpu.CanTakeWork() {
+					card.unusable++
+				}
+				vendorCapacity[vendor] = card
+			}
+			for vendor, card := range vendorCapacity {
+				byVendor.add(dto.CapacityGroup{Key: vendor}, card)
+			}
 		}
-		byVendor.add(dto.CapacityGroup{Key: vendor}, c)
 		// A node whose labels cannot be read has none, as the DTO shows it.
 		labels[i], _ = store.NodeLabels(n.Labels)
 		for key := range labels[i] {
