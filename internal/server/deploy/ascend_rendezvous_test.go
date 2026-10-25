@@ -31,6 +31,11 @@ func TestAscendV1RendezvousAcrossRealProcesses(t *testing.T) {
 	if start < 0 || end <= start {
 		t.Fatalf("cannot extract the production rendezvous helper: %d, %d", start, end)
 	}
+	coordinateStart := strings.Index(script, "def _gpuworks_coordinate_new_groups(")
+	coordinateEnd := strings.Index(script, "\nif \"_gpuworks_faulthandler_registered\"")
+	if coordinateStart < 0 || coordinateEnd <= coordinateStart {
+		t.Fatalf("cannot extract the production new_group coordinator: %d, %d", coordinateStart, coordinateEnd)
+	}
 	// Keep the socket's parent short: the production identity uses all 64 hex
 	// digits of SHA-256, and macOS has a shorter sockaddr_un path than Linux.
 	root, err := os.MkdirTemp("/tmp", "")
@@ -40,6 +45,7 @@ func TestAscendV1RendezvousAcrossRealProcesses(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	harness := filepath.Join(root, "rendezvous_test.py")
 	source := strings.Replace(ascendRendezvousPythonHarness, "PRODUCTION_RENDEZVOUS_HELPER", script[start:end], 1)
+	source = strings.Replace(source, "PRODUCTION_COORDINATE_HELPER", script[coordinateStart:coordinateEnd], 1)
 	if err := os.WriteFile(harness, []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +91,12 @@ import zlib
 
 PRODUCTION_RENDEZVOUS_HELPER
 
+import types
+
+torch = types.SimpleNamespace()
+
+PRODUCTION_COORDINATE_HELPER
+
 
 def rendezvous_parts(key, phase, generation):
     secret = bytes.fromhex(generation)
@@ -106,6 +118,18 @@ def start_process(rank, world_size, key, phases, generation):
     env["GPUWORKS_V1_RENDEZVOUS_GENERATION"] = generation
     return subprocess.Popen(
         [sys.executable, os.path.abspath(__file__), "worker", str(rank), str(world_size), key] + list(phases),
+        env=env,
+    )
+
+
+def start_coordinated_process(rank, world_size, key, global_rank, global_world, generation):
+    env = os.environ.copy()
+    env["GPUWORKS_V1_RENDEZVOUS_GENERATION"] = generation
+    return subprocess.Popen(
+        [
+            sys.executable, os.path.abspath(__file__), "coordinated-worker",
+            str(rank), str(world_size), key, str(global_rank), str(global_world),
+        ],
         env=env,
     )
 
@@ -308,6 +332,50 @@ def fragmented_client_read(key, phase):
     assert_socket_cleanup()
 
 
+def run_coordinated_worker(rank, world_size, key, global_rank, global_world):
+    # The torch.distributed stand-in answers the global identity, which is
+    # what the production wrapper used to ask for. Asking is now a failure:
+    # the key belongs to one data-parallel group and only that group's
+    # identity may decide who is waited for.
+    calls = []
+
+    def forbidden(name):
+        def fail():
+            raise AssertionError(f"coordinated new_group asked torch.distributed.{name}")
+        return fail
+
+    def new_group(*args, **kwargs):
+        calls.append((args, dict(kwargs)))
+        return ("group", len(calls), kwargs.get("backend", "default"))
+
+    torch.distributed = types.SimpleNamespace(
+        new_group=new_group,
+        get_rank=forbidden("get_rank"),
+        get_world_size=forbidden("get_world_size"),
+    )
+    original = _gpuworks_coordinate_new_groups(key, rank, world_size)
+    if original is not new_group:
+        raise AssertionError("the coordinator did not hand back the original new_group")
+    if torch.distributed.new_group is new_group:
+        raise AssertionError("new_group was not wrapped")
+    first = torch.distributed.new_group(ranks=[0, 1], backend="hccl")
+    second = torch.distributed.new_group(ranks=[0, 1])
+    if first != ("group", 1, "hccl") or second != ("group", 2, "default"):
+        raise AssertionError(f"wrapped new_group changed the result: {first} {second}")
+    if calls != [((), {"ranks": [0, 1], "backend": "hccl"}), ((), {"ranks": [0, 1]})]:
+        raise AssertionError(f"wrapped new_group changed the arguments: {calls}")
+    torch.distributed.new_group = original
+    if torch.distributed.new_group is not new_group:
+        raise AssertionError("restoring the original new_group failed")
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "coordinated-worker":
+    run_coordinated_worker(*(
+        [int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], int(sys.argv[5]), int(sys.argv[6])]
+    ))
+    sys.exit(0)
+
+
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "worker":
     worker_rank = int(sys.argv[2])
     worker_world = int(sys.argv[3])
@@ -338,6 +406,38 @@ if __name__ == "__main__":
         start_group(8, "key-b", ("shared-phase", "b-only"), secrets.token_hex(32)),
         start_group(8, "key-a", ("another-phase",), secrets.token_hex(32)),
     )
+
+    # Data parallelism: each DP group owns its distributed_init_method and
+    # has its own ranks, while torch.distributed counts all of them. Every
+    # group must finish its new_group rendezvous on its own members, long
+    # before the 600 second rendezvous timeout.
+    dp_generation = secrets.token_hex(32)
+    dp_world = 2
+    dp_groups = 2
+    started = time.monotonic()
+    wait_groups(*[
+        [
+            start_coordinated_process(
+                rank, dp_world, f"tcp://127.0.0.1:{29700 + group}",
+                group * dp_world + rank, dp_groups * dp_world, dp_generation,
+            )
+            for rank in range(dp_world)
+        ]
+        for group in range(dp_groups)
+    ])
+    if time.monotonic() - started > 30:
+        raise AssertionError("data-parallel groups did not finish their new_group rendezvous promptly")
+    # The same groups also rendezvous on their phases under the same keys.
+    wait_groups(*[
+        start_group(dp_world, f"tcp://127.0.0.1:{29700 + group}", ("upstream-groups", "ascend-groups"), dp_generation)
+        for group in range(dp_groups)
+    ])
+    # A single group is unchanged.
+    single_generation = secrets.token_hex(32)
+    wait_groups([
+        start_coordinated_process(rank, 4, "tcp://127.0.0.1:29710", rank, 4, single_generation)
+        for rank in range(4)
+    ])
 
     old_phase = "old-tcp-port"
     old_port = 18000 + zlib.crc32(f"{key}:{old_phase}".encode()) % 2000
@@ -386,5 +486,5 @@ if __name__ == "__main__":
     rank_handshake("rank-handshake", "frames")
     owned_socket_cleanup("owned-cleanup", "frames")
     assert_socket_cleanup()
-    print("16-rank, multi-phase, generation-concurrent, repeated, stale, rank, short-frame checks passed")
+    print("16-rank, multi-phase, data-parallel new_group, generation-concurrent, repeated, stale, rank, short-frame checks passed")
 `

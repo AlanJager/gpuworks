@@ -337,7 +337,7 @@ class NPUWorker:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"def _gpuworks_process_rendezvous(", "self._gpuworks_cpu_rendezvous(\"upstream-groups\")", "torch.npu.manual_seed(seed)"} {
+	for _, want := range []string{"def _gpuworks_process_rendezvous(", "self._gpuworks_cpu_rendezvous(\"upstream-groups\")", "self.distributed_init_method, self.rank, self.parallel_config.world_size\n", "torch.npu.manual_seed(seed)"} {
 		haystack := string(patched)
 		if want == "torch.npu.manual_seed(seed)" {
 			raw, readErr := os.ReadFile(torchUtils)

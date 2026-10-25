@@ -210,7 +210,11 @@ def _gpuworks_npu_fill_workaround() -> None:
     print("GPUWorks: installed NPU zeros/ones CPU-copy fallback", flush=True)
 
 
-def _gpuworks_coordinate_new_groups(key: str):
+def _gpuworks_coordinate_new_groups(key: str, rank: int, world_size: int):
+    # rank and world_size are the identity of the group that owns key (its
+    # distributed_init_method), the same one the phase rendezvous uses. The
+    # global torch.distributed rank and size would make each data-parallel
+    # group wait for ranks that belong to other groups.
     original = torch.distributed.new_group
     if getattr(original, "_gpuworks_coordinated", False):
         return original
@@ -219,8 +223,6 @@ def _gpuworks_coordinate_new_groups(key: str):
     def coordinated(*args, **kwargs):
         sequence = state["sequence"]
         state["sequence"] += 1
-        rank = torch.distributed.get_rank()
-        world_size = torch.distributed.get_world_size()
         backend = kwargs.get("backend", "default")
         _gpuworks_process_rendezvous(rank, world_size, key, f"new-group-{sequence}-enter-{backend}")
         group = original(*args, **kwargs)
@@ -303,7 +305,9 @@ phase_before = (
 phase_after = (
     "        print(f\"GPUWorks: rank {self.rank} upstream groups initialized\", flush=True)\n"
     "        self._gpuworks_cpu_rendezvous(\"upstream-groups\")\n"
-    "        _gpuworks_original_new_group = _gpuworks_coordinate_new_groups(self.distributed_init_method)\n"
+    "        _gpuworks_original_new_group = _gpuworks_coordinate_new_groups(\n"
+    "            self.distributed_init_method, self.rank, self.parallel_config.world_size\n"
+    "        )\n"
     "        try:\n"
     "            init_ascend_model_parallel(self.parallel_config, self.vllm_config.engram_config)\n"
     "        finally:\n"
@@ -348,7 +352,10 @@ elif "initializing model runner" not in source:
 if phase_before in source:
     source = source.replace(phase_before, phase_after, 1)
     changed = True
-elif "self._gpuworks_cpu_rendezvous(\"upstream-groups\")" not in source:
+elif (
+    "self._gpuworks_cpu_rendezvous(\"upstream-groups\")" not in source
+    or "self.distributed_init_method, self.rank, self.parallel_config.world_size" not in source
+):
     raise SystemExit("GPUWorks: unsupported distributed phase layout")
 if changed:
     worker.write_text(source, encoding="utf-8")
