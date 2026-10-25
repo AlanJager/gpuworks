@@ -18,9 +18,11 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 	for _, recipe := range []struct {
 		name                     string
 		count, tp, dp, sequences int
+		draftTokens              int
 	}{
-		{"w8a8-vllm-910c-stock-graph-16npu", 16, 2, 8, 4},
-		{"w8a8-vllm-910c-stock-graph-8npu", 8, 4, 2, 4},
+		{"w8a8-vllm-910c-stock-graph-16npu", 16, 2, 8, 4, 0},
+		{"w8a8-vllm-910c-stock-graph-8npu", 8, 4, 2, 4, 0},
+		{"w8a8-vllm-910c-dflash5-16npu", 16, 2, 8, 4, 5},
 	} {
 		t.Run(recipe.name, func(t *testing.T) {
 			_, spec := ppuSpec(t, "gpuworks/glm-5.3-flash-910c", recipe.name)
@@ -72,8 +74,14 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 						t.Errorf("%s=%q, want %q", flag, got, want)
 					}
 				}
-				if len(launch.Entrypoint) != 4 || launch.Entrypoint[0] != "/bin/bash" || !strings.Contains(launch.Entrypoint[2], `exec "$@"`) || len(launch.Argv) < 3 || launch.Argv[0] != "vllm" || launch.Argv[1] != "serve" || launch.Argv[2] != "/model" {
-					t.Fatalf("direct engine/model arguments: %v", launch.Argv)
+				if recipe.draftTokens == 0 {
+					if len(launch.Entrypoint) != 4 || launch.Entrypoint[0] != "/bin/bash" || !strings.Contains(launch.Entrypoint[2], `exec "$@"`) || len(launch.Argv) < 3 || launch.Argv[0] != "vllm" || launch.Argv[1] != "serve" || launch.Argv[2] != "/model" {
+						t.Fatalf("direct engine/model arguments: %v", launch.Argv)
+					}
+				} else {
+					if strings.Join(launch.Entrypoint, " ") != "bash /opt/gpuworks/glm53-910c/serve.sh" || len(launch.Argv) < 5 || strings.Join(launch.Argv[:5], " ") != "1 16 2 serve /model" {
+						t.Fatalf("DFlash launcher topology/model: %v %v", launch.Entrypoint, launch.Argv)
+					}
 				}
 				graph, _ := deploy.LaunchFlag(launch.Argv, "--compilation-config")
 				var compilation struct {
@@ -89,34 +97,48 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 					if size < recipe.tp || size%recipe.tp != 0 {
 						t.Fatalf("graph size %d is not aligned with TP%d", size, recipe.tp)
 					}
-					// Without speculative tokens, larger sizes are excluded from
-					// decode capture by vLLM's scheduler limit.
-					if size > recipe.sequences {
+					// Decode capture must include the speculative verification tokens.
+					if size > recipe.sequences*(recipe.draftTokens+1) {
 						t.Fatalf("graph size %d exceeds the scheduler limit %d", size, recipe.sequences)
 					}
 				}
-				if compilation.Sizes[len(compilation.Sizes)-1] < recipe.sequences {
+				if compilation.Sizes[len(compilation.Sizes)-1] < recipe.sequences*(recipe.draftTokens+1) {
 					t.Fatal("graph sizes do not cover the maximum live batch")
 				}
 				additional, _ := deploy.LaunchFlag(launch.Argv, "--additional-config")
 				var optimizations struct {
-					DSACP *bool `json:"enable_dsa_cp"`
+					DSACP    *bool `json:"enable_dsa_cp"`
+					FusedMC2 int   `json:"enable_fused_mc2"`
 				}
-				// This image's DSA CP path corrupts the long-context known-answer
-				// probe, including cold requests; keep the verified path explicit.
-				if err := json.Unmarshal([]byte(additional), &optimizations); err != nil || optimizations.DSACP == nil || *optimizations.DSACP {
-					t.Fatalf("DSA CP must be explicitly disabled: %s", additional)
+				// The DFlash overlay includes the DSA/cache adaptations; the
+				// stock image requires DSA CP disabled for correct long prompts.
+				if err := json.Unmarshal([]byte(additional), &optimizations); err != nil || optimizations.FusedMC2 != 1 || optimizations.DSACP == nil || *optimizations.DSACP != (recipe.draftTokens > 0) {
+					t.Fatalf("unexpected DSA CP setting: %s", additional)
 				}
-				for _, flag := range []string{"--enforce-eager", "--speculative-config"} {
-					if _, found := deploy.LaunchFlag(launch.Argv, flag); found {
-						t.Fatalf("unexpected runtime option: %s", flag)
+				if _, found := deploy.LaunchFlag(launch.Argv, "--enforce-eager"); found {
+					t.Fatal("decode graph disabled")
+				}
+				speculative, hasDraft := deploy.LaunchFlag(launch.Argv, "--speculative-config")
+				if recipe.draftTokens == 0 {
+					if hasDraft || len(spec.Assets) != 0 || len(spec.PreStartArgv) != 0 || spec.PreStartScript != "" || len(spec.Components) != 1 {
+						t.Fatal("stock graph recipe must run without patch assets, launcher, or draft model")
 					}
-				}
-				if len(spec.Assets) != 0 || len(spec.PreStartArgv) != 0 || spec.PreStartScript != "" || len(spec.Components) != 1 {
-					t.Fatal("stock graph recipe must run without patch assets, launcher, or draft model")
-				}
-				if len(launch.PreStartArgv) != 0 || launch.PreStartScript != "" || len(launch.RuntimeAssets) != 0 {
-					t.Fatal("resolved stock launch must not inject runtime patches")
+					if len(launch.PreStartArgv) != 0 || launch.PreStartScript != "" || len(launch.RuntimeAssets) != 0 {
+						t.Fatal("resolved stock launch must not inject runtime patches")
+					}
+				} else {
+					var draft struct {
+						Method string `json:"method"`
+						Model  string `json:"model"`
+						Tokens int    `json:"num_speculative_tokens"`
+						Eager  bool   `json:"enforce_eager"`
+					}
+					if !hasDraft || json.Unmarshal([]byte(speculative), &draft) != nil || draft.Method != "dflash" || draft.Model != "/draft" || draft.Tokens != 5 || draft.Eager {
+						t.Fatalf("invalid DFlash config: %s", speculative)
+					}
+					if len(spec.Assets) != 1 || spec.Assets[0].UnpackTo != "/opt/gpuworks/glm53-910c" || len(spec.Components) != 2 || spec.Components[1].MountPath != draft.Model || spec.Components[1].Role != "speculative_draft" {
+						t.Fatal("DFlash runtime asset and draft mount must match the launcher")
+					}
 				}
 			}
 			small, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: recipe.count, MinMemoryGiB: 32})

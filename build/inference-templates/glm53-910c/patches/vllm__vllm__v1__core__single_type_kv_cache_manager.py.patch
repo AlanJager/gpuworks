@@ -1,0 +1,11 @@
+--- a/vllm-workspace/vllm/vllm/v1/core/single_type_kv_cache_manager.py
++++ b/vllm-workspace/vllm/vllm/v1/core/single_type_kv_cache_manager.py
+@@ -2639,6 +2639,8 @@
+                 max_model_len=max_model_len,
+             )
+         )
++    from vllm_ascend.patch.platform.prefix_checkpoint_lifetime import prefix_lifetime_manager_class
++    manager_class = prefix_lifetime_manager_class(manager_class)
+     manager = manager_class(kv_cache_spec, **kwargs)
+     return manager
+ 

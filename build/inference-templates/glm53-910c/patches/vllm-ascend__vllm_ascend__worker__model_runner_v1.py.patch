@@ -1,0 +1,12 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py
+@@ -759,6 +759,9 @@
+                     self.use_aux_hidden_state_outputs = True
+                 elif self.speculative_config.use_dspark():
+                     assert isinstance(self.drafter, AscendDSparkProposer)
++                    self.use_aux_hidden_state_outputs = True
++                elif self.speculative_config.use_dflash():
++                    assert isinstance(self.drafter, AscendDflashProposer)
+                     self.use_aux_hidden_state_outputs = True
+                 self.rejection_sampler = AscendRejectionSampler(
+                     self.sampler, self.speculative_config, self.device
