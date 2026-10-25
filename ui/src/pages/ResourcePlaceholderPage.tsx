@@ -11,7 +11,6 @@ export default function ResourcePlaceholderPage({ kind }: { kind: PlaceholderKin
   const prefix = `resourcePlaceholder.${kind}`;
   const cfg = {
     title: t(`${prefix}.title`),
-    breadcrumb: [t("navigation.groups.resources"), t(`${prefix}.title`)],
     description: t(`${prefix}.description`),
     status: t(`${prefix}.status`),
     current: t(`${prefix}.current`),
@@ -24,7 +23,6 @@ export default function ResourcePlaceholderPage({ kind }: { kind: PlaceholderKin
       <PageHeader
         title={cfg.title}
         description={cfg.description}
-        breadcrumb={cfg.breadcrumb}
         extra={<Tag color="gold">{cfg.status}</Tag>}
       />
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) minmax(280px, .8fr)", gap: 16 }}>

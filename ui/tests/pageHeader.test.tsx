@@ -64,8 +64,3 @@ test("actions sit beside the title and page controls in their own row below", ()
   assert.equal(toolbar.previousElementSibling, row, "the toolbar follows the title row");
   assert.ok(within(toolbar).getByRole("textbox", { name: "Request ID" }));
 });
-
-test("a page still spelling out its whole path keeps it until it moves to parents", () => {
-  at("/storage/3", <PageHeader title="nfs" breadcrumb={["Platform", "Resources", "Storage", "nfs"]} />);
-  assert.deepEqual(crumbs(), ["Platform", "Resources", "Storage", "nfs"]);
-});

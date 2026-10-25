@@ -177,7 +177,6 @@ export default function NodesPage() {
       <PageHeader
         title={t("page.title")}
         description={t("page.description")}
-        breadcrumb={[t("page.resourceBreadcrumb"), t("page.title")]}
         extra={
           <Space>
             <Typography.Text type="secondary">

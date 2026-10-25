@@ -101,7 +101,6 @@ export default function StoragePage() {
       <PageHeader
         title={t("page.title")}
         description={t("page.description")}
-        breadcrumb={[t("page.breadcrumb.platform"), t("page.breadcrumb.resources"), t("page.breadcrumb.storage")]}
         extra={<Space>{addButton}<Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>{t("page.settings")}</Button></Space>}
       />
       {runner.error && <Alert type="error" showIcon closable onClose={runner.clearError} message={t("actions.failed")} description={runner.error} style={{ marginBottom: 12 }} />}
