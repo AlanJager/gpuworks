@@ -289,10 +289,58 @@ func (r *Runner) RunOnce(ctx context.Context) {
 	}
 }
 
+// CheckNow asks about the named cards straight away, outside the schedule.
+//
+// It exists for the one case the schedule cannot answer: a workload that could
+// not start on a card. A card an instance holds is skipped by a round (Busy),
+// because asking a card that is serving can disturb it — but an instance that
+// failed to start is not serving, and without this the card it failed on would
+// keep the vendor tool's verdict and stay schedulable, so the next attempt
+// lands on it again. The workload is the better probe anyway: it really tried
+// to open the device.
+//
+// A card whose answer is newer than one interval is left alone, so a workload
+// failing for its own reasons does not re-ask every card it restarts on. The
+// host-level and stuck rules are the round's, because they are about the host
+// rather than this card.
+func (r *Runner) CheckNow(ctx context.Context, idents map[string]bool) {
+	if len(idents) == 0 {
+		return
+	}
+	if reason := r.unavailable(); reason != "" {
+		return
+	}
+	for _, card := range r.cfg.Cards(ctx) {
+		if ctx.Err() != nil {
+			return
+		}
+		if !idents[card.Ident] || r.answeredRecently(card.Ident) {
+			continue
+		}
+		if stopped := r.tryUnlessBusy(ctx, card, false); stopped != "" {
+			return
+		}
+	}
+}
+
+// answeredRecently reports whether this card answered within the last
+// interval, whatever it answered.
+func (r *Runner) answeredRecently(ident string) bool {
+	r.mu.Lock()
+	outcome, ok := r.outcomes[ident]
+	r.mu.Unlock()
+	return ok && r.cfg.Now().Sub(outcome.At) < r.cfg.Interval
+}
+
 // try asks about one card and records what it answered. It returns why the
 // round must stop: a host-wide inconclusive answer, a timed-out attempt, or an
 // older attempt that has not returned.
 func (r *Runner) try(ctx context.Context, card Card) string {
+	return r.tryUnlessBusy(ctx, card, true)
+}
+
+// tryUnlessBusy is try, with whether a card an instance holds is left alone.
+func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) string {
 	r.mu.Lock()
 	stuck := r.stuck[card.Ident]
 	anyStuck := len(r.stuck) > 0
@@ -306,12 +354,12 @@ func (r *Runner) try(ctx context.Context, card Card) string {
 		}
 		return detail
 	}
-	if r.busy(card) {
+	if skipBusy && r.busy(card) {
 		// Serving work is itself the answer, so the card keeps whatever it
 		// last said rather than being recorded as untried.
 		return ""
 	}
-	if r.backingOff(card.Ident) {
+	if skipBusy && r.backingOff(card.Ident) {
 		return ""
 	}
 	attempt, cancel := context.WithTimeout(ctx, r.cfg.Timeout)
