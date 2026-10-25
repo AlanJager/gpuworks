@@ -274,8 +274,13 @@ A card is marked `runtime_unusable` only when the check explicitly attributes fa
 `aclInit` failure, a process crash, or unreadable output is a host-level conclusion (every die on the host would fail identically):
 the round stops without recording a fault on any card, and `gpuworks-agent doctor` explains why. Failures while releasing resources after a successful allocation
 (`aclrtFree`, `aclrtResetDevice`, and so on) are logged but do not mark a fault, because the die has already answered whether it works.
-Retry backoff doubles after consecutive failures (1, 2, 4 rounds, up to 8 rounds, about two hours by default) and resets as soon as the card responds.
-A repaired card can therefore take one backoff window to recover; restart the agent to recheck immediately.
+If `ASCEND_ACL_SMOKE_OK` has already been printed, a non-zero exit afterwards (for example CANN crashing during its exit cleanup) still counts as a pass; the exit status is only written to the agent log.
+Retry backoff doubles after consecutive failures (1, 2, 4 rounds, up to 4 rounds, about one hour by default) and resets as soon as the card responds.
+A repaired card can therefore take one backoff window to recover; restart the agent to recheck immediately. A check in flight when the agent shuts down is discarded: no failure is recorded and no backoff is started.
+
+When a check hangs (for example stuck in the driver and not returning after 30 seconds), checks on the whole node pause until that process returns:
+the agent will not start a second check to queue behind the same driver lock. The stuck card is recorded as failed meanwhile, while the other cards keep their last result
+(a card that was never checked has no conclusion and is not treated as faulty); `gpuworks-agent doctor` shows the reason too.
 
 **`driver_init_failed`: the driver did not bring up this card**
 

@@ -32,8 +32,9 @@ const (
 	// spaced out. A card that answers costs a fraction of a second, but one
 	// that cannot be used spends the whole timeout before saying so, and on
 	// a host with many of them a round would otherwise run almost back to
-	// back.
-	DefaultMaxBackoffRounds = 8
+	// back. Four intervals is about an hour: long enough to spare the host,
+	// short enough that a card repaired out of band is noticed the same day.
+	DefaultMaxBackoffRounds = 4
 	// DefaultFirstRound leaves the control plane time to say what this
 	// node runs, so the first round is not skipped for every card.
 	DefaultFirstRound = 30 * time.Second
@@ -298,6 +299,13 @@ func (r *Runner) try(ctx context.Context, card Card) string {
 	case answer := <-done:
 		err = grade(answer)
 	case <-attempt.Done():
+		if ctx.Err() != nil {
+			// The round was cancelled (agent shutdown), not the card's
+			// deadline. The attempt is discarded: no outcome, no failure
+			// count, no backoff, and nothing is marked stuck because the
+			// runner is going away.
+			return ""
+		}
 		err = timeoutErr
 		r.mu.Lock()
 		r.stuck[card.Ident] = true
@@ -311,6 +319,11 @@ func (r *Runner) try(ctx context.Context, card Card) string {
 			r.mu.Unlock()
 		default:
 		}
+	}
+	if err != nil && ctx.Err() != nil {
+		// A failure that arrived with the round's cancellation is the
+		// shutdown's, not the card's.
+		return ""
 	}
 	if inconclusive := inconclusiveReason(err); inconclusive != "" {
 		// A host failure cannot push a card into a backoff it did not earn.

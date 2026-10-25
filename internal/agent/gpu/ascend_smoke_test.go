@@ -244,6 +244,14 @@ func TestAscendSmokeVerdictGradesTheHostApartFromTheDie(t *testing.T) {
 		name: "the die answered but would not let go",
 		out:  "ASCEND_ACL_SMOKE_CLEANUP: aclrtResetDevice=507015\nASCEND_ACL_SMOKE_OK\n",
 	}, {
+		name: "the die answered and CANN crashed at exit",
+		out:  "ASCEND_ACL_SMOKE_OK\n",
+		err:  errors.New("signal: segmentation fault"),
+	}, {
+		name: "the die answered and the process exited non-zero",
+		out:  "ASCEND_ACL_SMOKE_OK\nterminate called after throwing an instance\n",
+		err:  errors.New("exit status 134"),
+	}, {
 		name:            "the check crashed without saying anything",
 		err:             errors.New("signal: segmentation fault"),
 		wantUnavailable: "segmentation fault",

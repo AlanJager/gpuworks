@@ -3,6 +3,7 @@ package gpu
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -152,7 +153,7 @@ const (
 
 // ascendSmokeVerdict grades what the check printed. A die is only reported as
 // unusable when the check says in so many words that it was the die that
-// failed: a host whose CANN cannot be loaded or initialized, a crash, or
+// failed. The success marker passes the die whatever the exit status. A host whose CANN cannot be loaded or initialized, a crash, or
 // output this agent does not recognize is not evidence about the card.
 func ascendSmokeVerdict(out []byte, err error) error {
 	text := string(out)
@@ -162,7 +163,14 @@ func ascendSmokeVerdict(out []byte, err error) error {
 	if detail, ok := ascendSmokeMarkerDetail(text, ascendSmokeDieMarker); ok {
 		return fmt.Errorf("Ascend ACL runtime smoke failed: %s", detail)
 	}
-	if err == nil && strings.Contains(text, ascendSmokeOKMarker) {
+	if strings.Contains(text, ascendSmokeOKMarker) {
+		// The marker is printed only after the die was taken and given back,
+		// so the question is answered. A non-zero exit after it — CANN has
+		// been seen to crash in its atexit handlers — is the runtime's
+		// teardown, not the die's.
+		if err != nil {
+			slog.Info("Ascend ACL runtime check passed but the process exited abnormally", "exit", err.Error())
+		}
 		return nil
 	}
 	detail := strings.TrimSpace(text)
@@ -274,4 +282,4 @@ for name, call in (
     rc = call()
     if rc:
         print("ASCEND_ACL_SMOKE_CLEANUP: %s=%d" % (name, rc), flush=True)
-print("ASCEND_ACL_SMOKE_OK")`
+print("ASCEND_ACL_SMOKE_OK", flush=True)`
