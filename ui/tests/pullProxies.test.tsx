@@ -41,7 +41,10 @@ function setup(initial: Parameters<typeof installPullFake>[1] = { proxies: PROXI
   render(<I18nextProvider i18n={i18n}><PullProxies /></I18nextProvider>);
   return { fake, user: userEvent.setup({ document: dom.window.document }) };
 }
-const rows = () => within(screen.getByRole("region", { name: text.tableLabel })).getAllByRole("row").slice(1);
+// AntD renders the empty state as a body row (.ant-table-placeholder); it is not an entry, and counting it let
+// a wait for "one entry" pass before the created entry arrived.
+const rows = () => within(screen.getByRole("region", { name: text.tableLabel })).getAllByRole("row").slice(1)
+  .filter((row) => !row.classList.contains("ant-table-placeholder"));
 const rowText = (row: HTMLElement) => row.textContent ?? "";
 const checkbox = (scope: HTMLElement, name: string) => within(scope).getByRole("checkbox", { name }) as HTMLInputElement;
 

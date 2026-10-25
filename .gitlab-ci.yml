@@ -944,11 +944,20 @@ l4-vast-node-onboarding:
 
 # The in-process server dials the agent at the public address Vast maps to
 # its port.
+#
+# Its own environment: this project skips outdated deployment jobs
+# (ci_forward_deployment_enabled), so when two jobs of one pipeline deploy to
+# the same environment the one that starts later fails the one still running
+# ("403 Job is not running", then exit code 128 in the runner's git step, a
+# few seconds in with a trace that stops at "Preparing environment"). Sharing
+# cloud-test/vast/full made l4-vast-node-onboarding fail every night from
+# 2026-10-21, the day this job was added. Keep it under cloud-test/vast/* so
+# the VAST_API_KEY scope still applies, and give every job its own name.
 l4-vast-server-dial-node-onboarding:
   extends: .l4-acceptance
   timeout: 65m
   environment:
-    name: cloud-test/vast/full
+    name: cloud-test/vast/server-dial
   script:
     - make test-l4-vast-server-dial-node-onboarding
 
@@ -959,8 +968,10 @@ l4-runpod-server-dial-node-onboarding:
     GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
   extends: .l4-acceptance
   timeout: 65m
+  # Not cloud-test/runpod/smoke, which l4-runpod-node-onboarding deploys to:
+  # see l4-vast-server-dial-node-onboarding on jobs sharing an environment.
   environment:
-    name: cloud-test/runpod/smoke
+    name: cloud-test/runpod/server-dial
   script:
     - make test-l4-runpod-server-dial-node-onboarding
 

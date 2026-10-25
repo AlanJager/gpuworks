@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"testing"
@@ -282,15 +283,38 @@ func newEnv(t testing.TB, modelEndpoint, dbPath string, allowedPrivateHosts ...s
 			if err != nil {
 				t.Errorf("server shutdown: %v", err)
 			}
-		case <-time.After(15 * time.Second):
-			// A loaded CI runner can starve the graceful drain well past the
-			// old 5s budget (two pipelines share one runner); the embedded
-			// server is not latency-sensitive, so pay the wait instead of
-			// flaking the test that happened to tear down last.
-			t.Error("server shutdown timeout")
+		case <-time.After(serverShutdownBudget):
+			reportShutdownTimeout(t, false)
 		}
 	})
 	return e
+}
+
+// serverShutdownBudget is how long a stopped server may take to return. Run's
+// own graceful path is bounded by 5s for HTTP, 2s for proxy accounting and 2s
+// for the metrics drain, and then waits for its background loops and flushes
+// the request sinks to SQLite; on a loaded CI runner (two pipelines share one)
+// that is well past 9s, so the budget must not be below what Run itself may
+// use. The embedded server is not latency-sensitive: pay the wait instead of
+// failing whichever test tears down last.
+const serverShutdownBudget = 15 * time.Second
+
+// reportShutdownTimeout fails the test for a server that did not return, with
+// the goroutines still running so a hang can be told from a slow drain.
+func reportShutdownTimeout(t testing.TB, fatal bool) {
+	t.Helper()
+	var stacks bytes.Buffer
+	_ = pprof.Lookup("goroutine").WriteTo(&stacks, 1)
+	const limit = 24 << 10
+	dump := stacks.String()
+	if len(dump) > limit {
+		dump = dump[:limit] + "\n... (truncated)"
+	}
+	msg := fmt.Sprintf("server shutdown timeout after %s; goroutines:\n%s", serverShutdownBudget, dump)
+	if fatal {
+		t.Fatal(msg)
+	}
+	t.Error(msg)
 }
 
 // StopServer closes only the control-plane listener; in-process agents keep
@@ -310,8 +334,8 @@ func (e *Env) StopServer(t testing.TB) {
 		if err != nil {
 			t.Fatalf("server shutdown: %v", err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("server shutdown timeout")
+	case <-time.After(serverShutdownBudget):
+		reportShutdownTimeout(t, true)
 	}
 	e.serverMu.Lock()
 	e.serverCancel = nil

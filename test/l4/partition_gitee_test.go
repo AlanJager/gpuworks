@@ -72,7 +72,11 @@ func TestGiteeAscendPartitionCapability(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			probeCtx, probeCancel := context.WithTimeout(t.Context(), 3*time.Minute)
+			// Rent includes waiting for the instance to reach running with SSH:
+			// healthy rentals took up to ~2.5 min on the CANN9 profile, and a 3
+			// minute budget cut one off mid-start (2026-10-25). Two profiles at
+			// 6 minutes plus install and probe stay inside the 25m test timeout.
+			probeCtx, probeCancel := context.WithTimeout(t.Context(), 6*time.Minute)
 			instance, rentErr := provider.Rent(probeCtx, cloudprovider.GPUSpec{GPUModel: entry.model, GPUCount: 1, MinVRAMMB: 32 << 10})
 			probeCancel()
 			if rentErr != nil {

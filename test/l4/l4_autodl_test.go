@@ -8,11 +8,12 @@ import (
 	"gpuworks.ai/gpuworks/internal/testenv/cloudprovider"
 )
 
-// TestAutoDLNodeOnboarding validates the documented Pro lifecycle, password SSH proxy,
+// TestAutoDLNodeOnboarding (GPU "auto": RTX 4080S first, then the other specs
+// when AutoDL reports 暂无库存) validates the documented Pro lifecycle, password SSH proxy,
 // agent connection, and GPU inventory. It intentionally performs no registry
 // pull or model download; those external contracts have dedicated cases.
 func TestAutoDLNodeOnboarding(t *testing.T) {
-	env := setupCloudTest(t, autodlProvider(t), cloudprovider.GPUSpec{GPUModel: "RTX 4080S", GPUCount: 1, MinVRAMMB: 12000})
+	env := setupCloudTest(t, autodlProvider(t), cloudprovider.GPUSpec{GPUModel: "auto", GPUCount: 1, MinVRAMMB: 12000})
 	requireOnlineNode(t, env)
 	node, err := env.Control.Store().NodeWithGPUs(env.NodeUUID)
 	if err != nil {

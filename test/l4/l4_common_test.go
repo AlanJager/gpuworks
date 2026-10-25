@@ -176,6 +176,7 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 	instance := rented
 	if instance == nil {
 		var err error
+		spec.ServerDialPort = setup.serverDial
 		instance, err = p.Rent(setupCtx, spec)
 		if err != nil {
 			if isCloudCapacityError(err) && topologyCloudTest(t) {

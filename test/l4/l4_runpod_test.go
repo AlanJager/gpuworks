@@ -90,8 +90,8 @@ func runpodInferenceTemplateFakeImage() string {
 }
 
 // mirrorFakeEngineThroughQuay registers a quay.io/zstackai mirror for the
-// fake-engine Docker Hub namespace through the operator-facing
-// image_registry_rewrites setting, exactly as a site would. RunPod egress to
+// fake-engine Docker Hub namespace through the operator-facing pull source
+// rules, exactly as a site would. RunPod egress to
 // registry-1.docker.io has been observed answering the manifest path with an
 // HTML page over HTTP 200 (2026-10 L4 failures), which dies in manifest
 // parsing before any layer transfer; quay.io/zstackai/fake-engine is the
@@ -99,26 +99,14 @@ func runpodInferenceTemplateFakeImage() string {
 // (test/fake-engine/IMAGES.md) and carries the same multi-arch index. With
 // this rule the deployment's pull chain becomes
 // [quay.io/zstackai/fake-engine:test, docker.io/wangweinoo1/fake-engine:test]
-// instead of the single direct ref.
+// instead of the single direct ref. The gpustack rule does the same for the
+// engine images, which the built-in catalog does not know at the pinned tags.
 func mirrorFakeEngineThroughQuay(t *testing.T, env *cloudTestEnv) {
 	t.Helper()
-	body := `{"default":"quay","rules":[` +
-		`{"prefix":"gpustack/","mirrors":["quay.io/gpustack","swr.cn-south-1.myhuaweicloud.com/gpustack"]},` +
-		`{"prefix":"docker.io/wangweinoo1","mirrors":["quay.io/zstackai"]}]}`
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPut, env.Control.URL()+"/api/v1/settings/image_registry_rewrites", strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := env.Control.API(t).Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(resp.Body)
-		t.Fatalf("set image_registry_rewrites status=%d body=%s", resp.StatusCode, data)
-	}
+	createPullSourceRules(t, env.Control.API(t),
+		l4PullSourceRule{Match: "docker.io/gpustack", Endpoints: []string{"quay.io/gpustack", "swr.cn-south-1.myhuaweicloud.com/gpustack"}},
+		l4PullSourceRule{Match: "docker.io/wangweinoo1", Endpoints: []string{"quay.io/zstackai"}},
+	)
 }
 
 func deployRunpodModel(t *testing.T, env *cloudTestEnv, model *store.Model, engine, image, servedName string, sleepable bool, timeout time.Duration, extraQuick map[string]any) *runpodDeployment {

@@ -13,9 +13,47 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/testenv"
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
+
+// l4PullSourceRule is a mirror an L4 site would configure as a pull source
+// rule (/api/v1/pull/source-rules): images under Match are tried from
+// Endpoints first, and from their own registry afterwards, so a mirror that
+// cannot be reached degrades to the direct pull instead of failing the case.
+// This is what the removed image_registry_rewrites setting expressed.
+type l4PullSourceRule struct {
+	Match     string
+	Endpoints []string
+}
+
+func (r l4PullSourceRule) request() dto.PullSourceRuleRequest {
+	allowUpstream := true
+	return dto.PullSourceRuleRequest{Match: r.Match, Endpoints: r.Endpoints, AllowUpstream: &allowUpstream}
+}
+
+// createPullSourceRules creates the rules, in order, through the operator API
+// of an in-process control plane; they apply to every node.
+func createPullSourceRules(t *testing.T, api *testenv.APIClient, rules ...l4PullSourceRule) {
+	t.Helper()
+	for _, rule := range rules {
+		body, err := json.Marshal(rule.request())
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := api.PostJSON("/api/v1/pull/source-rules", body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create pull source rule %q status=%d body=%s", rule.Match, resp.StatusCode, data)
+		}
+	}
+}
 
 type cloudDeployment struct {
 	envs         []*cloudTestEnv

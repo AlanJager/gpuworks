@@ -49,19 +49,10 @@ func listenApp(t *testing.T, listen serverconfig.Listen, configPath string, self
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		a.lnMu.RLock()
-		up := a.lns != nil
-		a.lnMu.RUnlock()
-		if up {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("server did not bind")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	// Run opens the database and migrates it before it binds, which a loaded
+	// runner stretches well past a few seconds; wait on the event (the
+	// listeners up, or Run returning with the reason it could not bind)
+	// instead of guessing a short deadline.
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -69,6 +60,24 @@ func listenApp(t *testing.T, listen serverconfig.Listen, configPath string, self
 		case <-time.After(10 * time.Second):
 		}
 	})
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		a.lnMu.RLock()
+		up := a.lns != nil
+		a.lnMu.RUnlock()
+		if up {
+			break
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("server stopped before it bound: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("server did not bind")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	return a, done, cancel
 }
 
