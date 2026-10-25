@@ -48,44 +48,6 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
-- name: bf16-sglang-ascend-a3-4cdeb491
-  display_profile: general
-  scenario: balanced
-  engine: sglang
-  image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
-  weights:
-    quantization: bf16
-    sources:
-    - modelscope:
-        repo_id: google/gemma-3-4b-it
-        revision: 4b66b5f8d3bf66a468c1a755ff93f0ff374beaed
-  weight_bytes: 8639630426
-  gpus:
-    vendor: ascend
-    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
-    display_target: ascend
-  args:
-  - --enable-metrics
-  - --trust-remote-code
-  - --attention-backend
-  - ascend
-  - --mm-attention-backend
-  - ascend_attn
-  - --device
-  - npu
-  - --dtype
-  - bfloat16
-  - --enable-multimodal
-  placement:
-    language: starlark
-    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2 GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each GPU requires at least 32
-      GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
-  api:
-    health_endpoint: /health
-    operations:
-    - type: openai.chat
-      endpoint: /v1/chat/completions
-      mode: stream
 - name: bf16-sglang-nvidia-general
   display_profile: general
   scenario: balanced
