@@ -39,13 +39,20 @@ export interface GpuSummary {
   measured: number | null;
 }
 
+/**
+ * summarize is the cards' figures. The count, the models, the idle cards and
+ * the power added up are of the cards in the inventory now (the answer's
+ * card_count): a card removed, or of a deleted node, keeps its row and its
+ * share of the range's means, but is neither a card there nor one to reclaim.
+ */
 export function summarize(cards: GPUCardRow[], totals: GPUFigures): GpuSummary {
+  const present = cards.filter((c) => c.present);
   const models = new Map<string, number>();
-  for (const c of cards) models.set(c.gpu_model, (models.get(c.gpu_model) ?? 0) + 1);
-  const powers = cards.map((c) => c.power_avg_watts).filter((p): p is number => p != null);
-  const measured = cards.filter((c) => c.util_avg != null);
+  for (const c of present) models.set(c.gpu_model, (models.get(c.gpu_model) ?? 0) + 1);
+  const powers = present.map((c) => c.power_avg_watts).filter((p): p is number => p != null);
+  const measured = present.filter((c) => c.util_avg != null);
   return {
-    cards: cards.length,
+    cards: present.length,
     byModel: [...models].map(([model, count]) => ({ model, count })),
     utilAvg: totals.util_avg,
     utilMax: totals.util_max,
