@@ -17,7 +17,12 @@
 #   builder     缺省为本目录的 buildx 构建。host-env 表示 macOS 宿主环境包：由
 #               build/host-envs/build.sh 构建（框架档 = 最低 macOS），本目录的
 #               build.sh / verify.sh 跳过它，push.sh / publish.py 照常分发
-#   engine      vllm | sglang | callable（目录引擎；仅作说明，generate() 按 id 解析）
+#   engine      vllm | sglang | callable（目录引擎；仅作说明，generate() 按 id 解析）。
+#               build.sh 用它选 Dockerfile（<backend>/Dockerfile.<engine>）：非常规的
+#               构建配方（如 vllm-v100）用带后缀的值指到自己的 Dockerfile
+#   catalog     false = 照常构建、验证、发布，但不写进系统镜像目录（catalog-seed.json）：
+#               产品既不列出它，自动选镜像也看不到它，直到它在真机上跑通、并有推理模板
+#               以 image 引用它。缺省为列出。id 无论如何都按文法校验
 #   platforms   buildx platforms（缺省取 defaults）
 #   base        上游或厂商的公开原件。不用公司内部二次封装的镜像；构建前由
 #               shared/check_vendor_base.sh 拦截带内部封装痕迹的 base
@@ -175,6 +180,47 @@ items:
       SGLANG_VERSION: "0.5.18"
     requires: [engine, engine_import, diffusion, overlays]
     note: CUDA 12.x 的 sglang 档，含 diffusion 依赖。
+
+  # -----------------------------------------------------------------------
+  # NVIDIA Volta（V100 / V100S，sm_70）：1Cat-vLLM
+  # -----------------------------------------------------------------------
+  # 上游 vLLM 的预编译 wheel 与官方镜像不含 sm_70 内核（其 docker/versions.json 的
+  # TORCH_CUDA_ARCH_LIST 从 7.5 起），上面所有 cuda vllm 档在 V100 上都以
+  # "CUDA error: no kernel image is available for execution on the device" 结束
+  # （CompShare V100S x2，l4-compshare-single-vm-tp2-dgpu，2026-10-19、22 三次）。
+  # 1Cat-vLLM 是把 Volta 作为一等目标的 vLLM 分支（Apache-2.0）：自带 sm_70 内核与
+  # FLASH_ATTN_V100 注意力后端，console script 与模块名仍是 vllm，`vllm serve` 用法不变。
+  # 它的发行包名是 1cat-vllm，版本号是它自己的（1.5.1），引擎版本在 id 里写作 1cat1.5.1。
+  #
+  # 为什么 catalog: false：镜像目录的自动选择只看引擎、框架、架构（ADR 0019，不看 GPU 型号），
+  # 把它列进去，V100 以外的节点在更老的框架档上可能被它误选，V100 节点又选不到它。
+  # 正路是真机验证后由推理模板的 spec 以 `gpus: {vendor: nvidia, cc: '7.0'}` + `image:` 引用它；
+  # 在那之前只有 L4 用例按卡型显式指定。
+
+  - id: cuda12.8-v100-vllm1cat1.5.1
+    revision: r1
+    backend: cuda
+    engine: vllm-v100
+    platforms: [linux/amd64]
+    catalog: false
+    base: nvidia/cuda:12.8.1-devel-ubuntu24.04
+    base_note: >-
+      官方 devel 镜像。要 devel 而不是 runtime：1Cat-vLLM 的 TileLang 内核在首次推理时
+      用 nvcc 即时编译，没有 CUDA 12.8 工具链推理直接 500；ubuntu 24.04 满足它要求的
+      GLIBC >= 2.38 与 python3.12。
+    args:
+      ENGINE_VERSION: "1cat1.5.1"
+      FRAMEWORK_VERSION: "12.8"
+      ONECAT_VERSION: "1.5.1"
+      ONECAT_WHEEL_SHA256: "757f2200ba6bd20f7e3e5c8fc68c7e05461df6d284baf676ac0c16ce19434959"
+    requires: [engine]
+    note: >-
+      V100 / V100S（sm_70）专用 vllm 档，引擎是 1Cat-vLLM 1.5.1（PyTorch 2.10.0+cu128，
+      Python 3.12）。驱动要求 >= 570.124.06。不含 omni、mooncake、diffusion。
+      r1 已在 CompShare V100S x2 上由 L4 用例 l4-compshare-single-vm-tp2-dgpu 跑通
+      （TP2 部署 + chat + dGPU 副本共享一张卡，2026-10-25），引擎参数带显式
+      `--attention-backend FLASH_ATTN_V100`；不带该参数时是否自动选对尚未验证。
+      V100 之外的卡请用其它 cuda 档。
 
   # =======================================================================
   # Ascend CANN —— vllm 线（不含 omni）

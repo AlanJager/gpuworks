@@ -465,7 +465,7 @@ prepare-compshare-golden-image:
 	CGO_ENABLED=0 $(GO) run ./test/l4/cmd/prepare-compshare-golden
 
 test-l4-compshare-offline-contracts: server-linux-amd64-prebuilt-ui
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^(TestCurrentCloudStartupAttempt|TestCloudStartupCommandDoesNotExposeProcessArguments|TestHosted.*|TestOneVMLogical.*|TestCompshareDockerInstall.*|TestCompshareGPUSelection.*)$$' -timeout=20m ./test/l4
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^(TestCurrentCloudStartupAttempt|TestCloudStartupCommandDoesNotExposeProcessArguments|TestHosted.*|TestOneVMLogical.*|TestCompshareDockerInstall.*|TestCompshareGPUSelection.*|TestCompshareEngine.*)$$' -timeout=20m ./test/l4
 
 test-l4-compshare-single-vm-tp2-dgpu: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareSingleVMTensorParallelAndDGPU$$' -timeout=180m ./test/l4

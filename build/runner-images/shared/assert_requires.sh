@@ -50,13 +50,20 @@ check_engine() {
     [ "${ENGINE}" = "vllm" ] || [ "${ENGINE}" = "sglang" ] \
         || { FAILED+=("engine: unknown ENGINE='${ENGINE}'"); return; }
 
-    local found; found="$(dist_version "${pkg}" || true)"
+    # 1Cat-vLLM（V100 档）：发行包叫 1cat-vllm、版本是它自己的，id 里写作 1cat<版本>；
+    # 模块名与 console script 仍是 vllm。
+    local dist="${pkg}" want="${ENGINE_VERSION}"
+    if [ "${pkg}" = "vllm" ] && [[ "${ENGINE_VERSION}" == 1cat* ]]; then
+        dist="1cat-vllm"
+        want="${ENGINE_VERSION#1cat}"
+    fi
+    local found; found="$(dist_version "${dist}" || true)"
     if [ -z "${found}" ]; then
-        FAILED+=("engine: no dist metadata for ${pkg}")
+        FAILED+=("engine: no dist metadata for ${dist}")
         return
     fi
-    if [ "${pkg}" = "vllm" ] && [ -n "${ENGINE_VERSION}" ] && [ "${found%%+*}" != "${ENGINE_VERSION}" ]; then
-        FAILED+=("engine: vllm ${found} != expected ${ENGINE_VERSION}")
+    if [ "${pkg}" = "vllm" ] && [ -n "${want}" ] && [ "${found%%+*}" != "${want}" ]; then
+        FAILED+=("engine: ${dist} ${found} != expected ${want}")
     fi
     # find_spec 只定位模块，不执行它的 __init__（所以不会碰宿主驱动库）
     py "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('${pkg}') else 1)" \

@@ -83,8 +83,17 @@ func TestCompshareTwoVMDockerDistributedInference(t *testing.T) {
 // test, not in distributed topology coverage.
 func prepareCompshareDockerImageCache(t *testing.T, envs []*cloudTestEnv) {
 	t.Helper()
-	tar := strings.TrimSpace(os.Getenv("COMPSHARE_DOCKER_IMAGE_TAR"))
-	image := shellQuoteForTest(compshareDistributedTestImage())
+	prepareCompshareImageCache(t, envs, compshareDistributedTestImage(), strings.TrimSpace(os.Getenv("COMPSHARE_DOCKER_IMAGE_TAR")), true)
+}
+
+// prepareCompshareImageCache makes image present on every VM, loading tar
+// when one is named and the VM lacks the image. With required, an image that
+// is neither preloaded nor loadable skips the case (or fails it under strict
+// mode); without it the image is left for the platform to pull and the case
+// only logs that.
+func prepareCompshareImageCache(t *testing.T, envs []*cloudTestEnv, imageRef, tar string, required bool) {
+	t.Helper()
+	image := shellQuoteForTest(imageRef)
 	for rank, env := range envs {
 		var cmd string
 		if tar == "" {
@@ -95,7 +104,11 @@ func prepareCompshareDockerImageCache(t *testing.T, envs []*cloudTestEnv) {
 		out, err := runCloudCommand(t.Context(), env.Instance, cmd)
 		if err != nil {
 			if tar == "" {
-				skipOrFailExternal(t, "CompShare rank %d lacks preloaded image %s and COMPSHARE_DOCKER_IMAGE_TAR is unset", rank, compshareDistributedTestImage())
+				if !required {
+					t.Logf("CompShare rank %d has no preloaded image %s; the platform pulls it during deployment startup", rank, imageRef)
+					continue
+				}
+				skipOrFailExternal(t, "CompShare rank %d lacks preloaded image %s and COMPSHARE_DOCKER_IMAGE_TAR is unset", rank, imageRef)
 			}
 			t.Fatalf("prepare preloaded Docker image %s on %s: %v\n%s", tar, env.Instance.InstanceID, err, strings.TrimSpace(out))
 		}

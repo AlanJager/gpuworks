@@ -240,6 +240,13 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 - CompShare 可通过 `COMPSHARE_GOLDEN_IMAGE_ID` 复用预热 VM 模板，通过
   `COMPSHARE_DOCKER_IMAGE_TAR` 指定 VM 内可见的镜像归档，通过
   `COMPSHARE_PRELOADED_MODEL_PATH` 注册每台节点已存在的完整模型目录。
+- CompShare 的 V100 / V100S（Volta，sm_70）不能用通用的 vLLM 镜像：上游预编译内核不含 sm_70，
+  引擎会以 `no kernel image is available for execution on the device` 退出。`l4-compshare-single-vm-tp2-dgpu`
+  遇到 V100S 时改用 1Cat-vLLM 构建的 `cuda12.8-v100-vllm1cat1.5.1`（`build/runner-images`，矩阵项标
+  `catalog: false`，不进系统镜像目录），并断言实例确实以该镜像启动；`COMPSHARE_V100_TEST_IMAGE` 可换镜像，
+  `COMPSHARE_V100_DOCKER_IMAGE_TAR` 指定 VM 内的镜像归档（没有则由平台在部署启动窗口内拉取）。
+  Pascal（P40，sm_61）没有任何镜像能跑，该用例不再租它。镜像须先构建并发布（`build.sh` 然后 `publish.py`）。
+  `COMPSHARE_GPU_MODELS`（逗号分隔，如 `V100S`）替换租机的卡型候选顺序，用来把一次运行对准某个卡型。
 - `prepare-compshare-golden-image` 创建并验证新模板，但不会删除旧模板或修改 CI 变量。
   模板里同时存放同一版 NVIDIA 驱动（当前 570.153.02）的开源与闭源两套内核模块，开机时
   `gpuworks-nvidia-kmod.service` 先加载开源版（RTX 5090 等 Blackwell 卡只能用它），没有初始化出 GPU

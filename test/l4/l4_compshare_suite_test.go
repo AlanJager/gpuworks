@@ -52,7 +52,10 @@ func TestCompshareSingleVMTensorParallelAndDGPU(t *testing.T) {
 	p := compshareProvider(t)
 	// dGPU replicas take 5GiB and two share one card: 10GiB, which an 11GB
 	// 2080Ti holds.
-	gpuModel, gpuCount, checked := findCompshareShape(t, p, compshareGPUOrder(), 2, 10240, 160)
+	// Only card types an engine image exists for: the generic vLLM image has no
+	// kernels below sm_75, so V100S runs the 1Cat-vLLM Volta image and P40
+	// (Pascal, sm_61) is passed over (see compshareEngineImage).
+	gpuModel, gpuCount, checked := findCompshareShape(t, p, compshareRunnableGPUOrder(), 2, 10240, 160)
 	if gpuModel == "" {
 		skipOrFailExternal(t, "no CompShare VM with two or more GPUs is rentable: %s", strings.Join(checked, "; "))
 	}
@@ -70,24 +73,26 @@ func TestCompshareSingleVMTensorParallelAndDGPU(t *testing.T) {
 	// Fail on a broken golden-image fixture instead of allowing the runtime to
 	// silently fall back to a multi-gigabyte registry pull. The shared helper
 	// may load a docker-save archive already present on the VM, but never pulls.
-	prepareCompshareDockerImageCache(t, []*cloudTestEnv{env})
+	prepareCompshareEngineImage(t, env, gpuModel)
 	model := cloudTestModelSource(t, env, "modelscope", "Qwen/Qwen2-0.5B-Instruct", "master")
 	registerCompsharePreloadedModel(t, env, model)
 	if !t.Run("VLLMTensorParallel2", func(t *testing.T) {
 		// The suite-level timeout covers engine startup and inference; image
 		// acquisition is intentionally completed by the offline cache check.
-		d := createCloudDeploymentWithTimeout(t, []*cloudTestEnv{env}, map[string]any{
+		d := createCloudDeploymentWithTimeout(t, []*cloudTestEnv{env}, withCompshareEngine(map[string]any{
 			"model_id": model.ID, "node_uuid": env.NodeUUID, "served_name": "qwen2-compshare-tp2",
-			"engine": "vllm", "image": compshareTestImage(), "placement": map[string]any{"tp": 2},
+			"placement":    map[string]any{"tp": 2},
 			"quick_params": map[string]any{"max_model_len": 1024},
-		}, 1, 45*time.Minute)
+		}, gpuModel), 1, 45*time.Minute)
+		wantImage, _ := compshareEngineImage(gpuModel)
+		requireInstancesRunImage(t, d.instances, wantImage)
 		d.models(t)
 		d.chat(t)
 		d.stop(t)
 	}) {
 		return
 	}
-	t.Run("DGPUReplicasShareAGPU", func(t *testing.T) { testCompshareDGPUReplicas(t, env, model.ID, gpuCount) })
+	t.Run("DGPUReplicasShareAGPU", func(t *testing.T) { testCompshareDGPUReplicas(t, env, model.ID, gpuCount, gpuModel) })
 }
 
 func registerCompsharePreloadedModel(t *testing.T, env *cloudTestEnv, model *store.Model) {
@@ -162,14 +167,16 @@ func engineCacheGlob(stateDir string) string {
 
 // testCompshareDGPUReplicas starts one dGPU replica more than the node has
 // GPUs, so at least one card must be shared, whatever the scheduler picks.
-func testCompshareDGPUReplicas(t *testing.T, env *cloudTestEnv, modelID uint, gpus int) {
+func testCompshareDGPUReplicas(t *testing.T, env *cloudTestEnv, modelID uint, gpus int, gpuModel string) {
 	replicas := gpus + 1
-	d := createCloudDeployment(t, []*cloudTestEnv{env}, map[string]any{
+	d := createCloudDeployment(t, []*cloudTestEnv{env}, withCompshareEngine(map[string]any{
 		"model_id": modelID, "node_uuid": env.NodeUUID, "served_name": "qwen2-compshare-dgpu",
-		"engine": "vllm", "image": compshareTestImage(), "replicas": replicas,
+		"replicas":  replicas,
 		"placement": map[string]any{"tp": 1}, "vram_limit_gib": 5,
 		"quick_params": map[string]any{"max_model_len": 1024, "gpu_memory_utilization": 0.8},
-	}, replicas)
+	}, gpuModel), replicas)
+	wantImage, _ := compshareEngineImage(gpuModel)
+	requireInstancesRunImage(t, d.instances, wantImage)
 	seenGPU := map[int]int{}
 	for _, instance := range d.instances {
 		var spec proto.InstanceDesiredState
@@ -333,7 +340,18 @@ func belowVRAM(model string, minVRAMMB int) string {
 }
 
 // compshareGPUOrder is the card types a case may run on, cheapest first.
+// COMPSHARE_GPU_MODELS (comma-separated, e.g. "V100S") replaces the list, to
+// aim a run at one card type, such as the Volta image acceptance.
 func compshareGPUOrder() []string {
+	if raw := strings.TrimSpace(os.Getenv("COMPSHARE_GPU_MODELS")); raw != "" {
+		var models []string
+		for _, model := range strings.Split(raw, ",") {
+			if model = strings.TrimSpace(model); model != "" {
+				models = append(models, model)
+			}
+		}
+		return models
+	}
 	// Cheapest first, then wider when both regions are temporarily
 	// exhausted. 2080Ti (11GB, the cn-sh2-02 mainstay) is eligible for every
 	// count: the HAMi case stacks two 5GiB dGPU slices on one card, which it

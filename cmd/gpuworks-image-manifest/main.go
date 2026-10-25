@@ -31,7 +31,7 @@ const DefaultRegistry = "gpuworks/gpuworks-runner"
 // vllm-omni must precede vllm in the alternation, or the omni ids would split
 // into engine=vllm with an engine version of "-omni…". llama.cpp numbers its
 // releases b<build> and is written llama.cpp-b<build>.
-var tagPattern = regexp.MustCompile(`^(?P<backend>cuda|cann|dtk|hggc|metal)(?P<fwver>[0-9]+(\.[0-9]+)*)(-(?P<model>910b|a3|310p|950))?-(?:(?P<engine>` +
+var tagPattern = regexp.MustCompile(`^(?P<backend>cuda|cann|dtk|hggc|metal)(?P<fwver>[0-9]+(\.[0-9]+)*)(-(?P<model>910b|a3|310p|950|v100))?-(?:(?P<engine>` +
 	regexp.QuoteMeta(engines.VLLMOmni) + `|` + regexp.QuoteMeta(engines.VLLM) + `|` + regexp.QuoteMeta(engines.SGLang) +
 	`|mlx-vlm|mlx-audio)(?P<engver>[0-9][0-9A-Za-z.]*)|(?P<llamacpp>llama\.cpp)-(?P<llamabuild>b[0-9]+))$`)
 
@@ -98,6 +98,12 @@ type matrixItem struct {
 	Args      map[string]string `yaml:"args"`
 	Requires  []string          `yaml:"requires"`
 	Note      string            `yaml:"note"`
+	// Catalog false keeps a built image out of the system image catalog: the
+	// recipe is built, verified and published like any other, but the product
+	// does not offer it (and the automatic image pick never sees it) until it
+	// has run on real hardware and an inference template names it. Absent
+	// means listed. The id is still validated either way.
+	Catalog *bool `yaml:"catalog"`
 }
 
 // parsedTag is what an id says about an image. The matrix's own engine and
@@ -137,6 +143,9 @@ func generate(data []byte, opt options) ([]byte, error) {
 		version, tag, err := versionFromItem(item, matrix.Defaults.Platforms, registry)
 		if err != nil {
 			return nil, err
+		}
+		if item.Catalog != nil && !*item.Catalog {
+			continue
 		}
 		name := seriesName(tag.Engine, tag.Backend)
 		series := seriesByName[name]
