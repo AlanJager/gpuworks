@@ -181,7 +181,7 @@ func TestQueryVendorCLIReportsAFinishedFailure(t *testing.T) {
 // binary runs, another query of it waits for its turn instead of joining the
 // driver's queue.
 func TestQueryVendorCLIRunsOneQueryPerBinaryAndKillsAtTheLimit(t *testing.T) {
-	queryTimings(t, 50*time.Millisecond, 300*time.Millisecond, time.Minute)
+	queryTimings(t, 50*time.Millisecond, 500*time.Millisecond, time.Minute)
 	dir, starts := countingCLI(t, "gw-limit-smi")
 	setDelay(t, dir, "5")
 	start := time.Now()
@@ -191,11 +191,20 @@ func TestQueryVendorCLIRunsOneQueryPerBinaryAndKillsAtTheLimit(t *testing.T) {
 	if _, err := QueryVendorCLI(t.Context(), "gw-limit-smi", "b"); !IsCLIUnresponsive(err) {
 		t.Fatalf("b: err = %v", err)
 	}
+	// Starting the fake CLI takes however long a loaded runner needs, so a
+	// has not necessarily run by now; wait for its start, and b, which is
+	// queued behind it, must not have run beside it.
+	deadline := time.Now().Add(5 * time.Second)
+	for starts() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if starts() != 1 {
 		t.Fatalf("starts while a runs = %d; b must wait for the binary's slot", starts())
 	}
 	waitIdle(t, "gw-limit-smi")
-	if took := time.Since(start); took > 3*time.Second {
+	// A kill also waits out the orphaned sleep's hold on the output pipe
+	// (WaitDelay, 1s) per query; without the limit they would take 10s.
+	if took := time.Since(start); took > 8*time.Second {
 		t.Fatalf("queries took %s; the limit must kill them", took)
 	}
 	if starts() != 2 {
@@ -204,7 +213,7 @@ func TestQueryVendorCLIRunsOneQueryPerBinaryAndKillsAtTheLimit(t *testing.T) {
 	vendorQueries.Lock()
 	err := vendorQueries.byKey["gw-limit-smi\x00a"].err
 	vendorQueries.Unlock()
-	if !IsCLIUnresponsive(err) || !strings.Contains(err.Error(), "within 300ms") {
+	if !IsCLIUnresponsive(err) || !strings.Contains(err.Error(), "within 500ms") {
 		t.Fatalf("killed query recorded err = %v", err)
 	}
 }
@@ -232,7 +241,9 @@ func TestQueryVendorCLICallerCancellation(t *testing.T) {
 // it at once instead of waiting out its time for a query that will not end
 // in it; a quick CLI's caller still waits for the fresh answer.
 func TestQueryVendorCLIServesASlowCLIsAnswerWithoutWaiting(t *testing.T) {
-	queryTimings(t, 300*time.Millisecond, 10*time.Second, time.Minute)
+	// The wait is what separates a quick query from a slow one, so it must
+	// leave a loaded runner room to start the quick fake CLI inside it.
+	queryTimings(t, time.Second, 10*time.Second, time.Minute)
 	dir, _ := countingCLI(t, "gw-known-slow-smi")
 	if _, err := QueryVendorCLI(t.Context(), "gw-known-slow-smi", "q"); err != nil {
 		t.Fatal(err)
@@ -240,7 +251,7 @@ func TestQueryVendorCLIServesASlowCLIsAnswerWithoutWaiting(t *testing.T) {
 	if VendorCLISlow("gw-known-slow-smi") {
 		t.Fatal("a quick CLI counts as slow")
 	}
-	setDelay(t, dir, "0.6")
+	setDelay(t, dir, "1.5")
 	if out, err := QueryVendorCLI(t.Context(), "gw-known-slow-smi", "q"); err != nil || out != "answer 1\n" {
 		t.Fatalf("out=%q err=%v", out, err)
 	}
@@ -251,7 +262,7 @@ func TestQueryVendorCLIServesASlowCLIsAnswerWithoutWaiting(t *testing.T) {
 	if out, err := QueryVendorCLI(t.Context(), "gw-known-slow-smi", "q"); err != nil || out != "answer 1\n" {
 		t.Fatalf("out=%q err=%v", out, err)
 	}
-	if took := time.Since(start); took > 100*time.Millisecond {
+	if took := time.Since(start); took > 500*time.Millisecond {
 		t.Fatalf("caller of a known-slow CLI waited %s", took)
 	}
 	waitIdle(t, "gw-known-slow-smi")

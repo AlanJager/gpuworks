@@ -200,8 +200,13 @@ func TestNetworkProxiesCarryOverKeepingEachNodesProxy(t *testing.T) {
 		t.Fatalf("entries = %+v\nwant %+v", got, want)
 	}
 	var row PullProxy
-	if err := st.db.First(&row, proxies[2].ID).Error; err != nil || strings.Contains(row.SecretCipher, "pw") || row.SecretCipher == "" || strings.Contains(row.HTTPProxy, "alice") {
+	// The cipher is random base64, so a substring check for "pw" would match it
+	// by chance now and then; assert it is sealed by opening it instead.
+	if err := st.db.First(&row, proxies[2].ID).Error; err != nil || row.SecretCipher == "" || row.SecretCipher == "pw" || strings.Contains(row.HTTPProxy, "alice") {
 		t.Fatalf("stored entry = %+v, err %v", row, err)
+	}
+	if opened, err := box.Decrypt(row.SecretCipher); err != nil || string(opened) != "pw" {
+		t.Fatalf("stored cipher opens to %q, %v; want the password sealed", opened, err)
 	}
 	var left int64
 	st.db.Model(&Setting{}).Where("key = ? OR key LIKE ?", "network", "network:%").Count(&left)

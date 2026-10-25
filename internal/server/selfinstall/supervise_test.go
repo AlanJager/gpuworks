@@ -68,23 +68,36 @@ func TestSuperviseRetriesABinaryThatCannotStart(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "gpuworks")
 	marker := filepath.Join(dir, "started")
-	var logged []string
+	// Logf runs on the supervisor's goroutine; hand each line over a channel
+	// rather than sharing a slice, and write the binary only after the first
+	// failed start was reported, so the retry is what finds it (a fixed sleep
+	// let a loaded machine write the file before the first attempt).
+	failedStart := make(chan string, 16)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
 		done <- Supervise(ctx, SuperviseOptions{Binary: script, Delay: 10 * time.Millisecond,
-			Logf: func(format string, args ...any) { logged = append(logged, format) }})
+			Logf: func(format string, args ...any) {
+				select {
+				case failedStart <- format:
+				default:
+				}
+			}})
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case first := <-failedStart:
+		if !strings.HasPrefix(first, "supervise: start ") {
+			t.Fatalf("the failed start was not reported: %q", first)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the failed start was never reported")
+	}
 	writeExecutable(t, script, "#!/bin/sh\ntouch "+marker+"\nexec sleep 30\n")
 	waitFor(t, func() bool { _, err := os.Stat(marker); return err == nil })
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("supervise: %v", err)
-	}
-	if len(logged) == 0 || !strings.HasPrefix(logged[0], "supervise: start ") {
-		t.Fatalf("the failed start was not reported: %q", logged)
 	}
 }
 

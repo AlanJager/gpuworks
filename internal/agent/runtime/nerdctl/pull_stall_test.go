@@ -154,10 +154,13 @@ type frameStep struct {
 // and must not be given up on.
 func TestWalkWaitsOutASlowNerdctlDownloadShownInCoarseSteps(t *testing.T) {
 	shortStallWatch(t)
+	// Each step outlasts the plain 150 ms stall timeout (25 frames, 10 ms plus
+	// a process start apiece) yet stays far inside the stretched 1 s window,
+	// which a loaded runner slows the replay toward.
 	installFakeNerdctl(t, frameScript(t,
-		frameStep{coarseFrame("downloading", "  1.1 GiB"), 40},
-		frameStep{coarseFrame("downloading", "  1.2 GiB"), 40},
-		frameStep{coarseFrame("downloading", "  1.3 GiB"), 40},
+		frameStep{coarseFrame("downloading", "  1.1 GiB"), 25},
+		frameStep{coarseFrame("downloading", "  1.2 GiB"), 25},
+		frameStep{coarseFrame("downloading", "  1.3 GiB"), 25},
 		frameStep{coarseFrame("done       ", ""), 3},
 	))
 	_, err := imagepull.New(imagepull.Config{}).Walk(context.Background(), New(),
