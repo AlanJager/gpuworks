@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
@@ -140,10 +141,16 @@ func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUIn
 		if accelerator.MostSevereHealth(card.HealthCode, accelerator.HealthRuntimeUnusable) != accelerator.HealthRuntimeUnusable {
 			continue
 		}
-		gpu.SetCardFinding(card, accelerator.HealthRuntimeUnusable, []accelerator.HealthField{
-			{Name: "Runtime Check", Value: "failed"},
-			{Name: "Checked At", Value: outcome.At.UTC().Format("2006-01-02 15:04:05Z")},
-			{Name: "Detail", Value: strings.TrimSpace(outcome.Detail)},
-		})
+		gpu.SetCardFinding(card, accelerator.HealthRuntimeUnusable, runtimeUnusableEvidence(outcome.At, outcome.Detail))
+	}
+}
+
+// runtimeUnusableEvidence is what a runtime_unusable finding carries, however
+// the failed attempt came about (the periodic check or Doctor).
+func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthField {
+	return []accelerator.HealthField{
+		{Name: "Runtime Check", Value: "failed"},
+		{Name: "Checked At", Value: at.UTC().Format("2006-01-02 15:04:05Z")},
+		{Name: "Detail", Value: strings.TrimSpace(detail)},
 	}
 }

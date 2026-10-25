@@ -132,6 +132,7 @@ var findingSummary = map[string]string{
 	accelerator.HealthPowerCycleRequired:  "the driver reported an event that requires powering the host off and on",
 	accelerator.HealthVendorWarning:       "the vendor tool reports a warning",
 	accelerator.HealthVendorFault:         "the vendor tool reports an alarm or critical fault",
+	accelerator.HealthRuntimeUnusable:     "the card is listed, but the accelerator runtime could not create a context on it; the platform does not schedule it",
 	proto.DoctorDiskLow:                   "less than 10% of the filesystem is free",
 	proto.DoctorRuntimeProvisionFailed:    "the selected runtime could not be set up on this node; every deployment fails until it is",
 	proto.DoctorPathNoExec:                "the runtime executes programs from a filesystem mounted noexec",

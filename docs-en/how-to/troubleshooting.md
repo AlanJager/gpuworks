@@ -247,7 +247,7 @@ NVIDIA queries update at the following intervals; not yet reaching the next inte
 
 Node diagnosis (doctor) also uses only these shared queries: the driver version comes from the inventory (or the kernel module's `/sys/module/nvidia/version` when `nvidia-smi` does not respond), without running `nvidia-smi` separately. If the CUDA runtime check fails,
 it skips the peer access and NCCL checks, which also require driver initialization (showing `SKIP (the CUDA runtime check did not pass)`).
-The server waits for doctor for at most 2 minutes; the agent limits a diagnosis to 100 seconds. Checks still running at the deadline are cut off, and the report is returned as usual.
+The server waits for doctor for at most 2 minutes; the agent limits a diagnosis to 100 seconds. Checks still running at the deadline are cut off, and the report is returned as usual (the Ascend per-die check also keeps 10 seconds for the rest of the report, and dies that do not fit are listed as not checked).
 
 #### Logs Say the Process Has Not Exited After Being Killed
 
@@ -270,9 +270,27 @@ fail for the entire host, so examine findings for the other cards as well. On an
 (a die passed through to a VM can return the same code, so first confirm during manual review that nothing else occupies it;
 the smoke check itself only asks about cards owned by this node). A driver-only Ascend node without `libascendcl.so` skips the check rather than reporting a missing tool as a card failure.
 
+**Diagnose now runs the same per-die check on Ascend, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
+(it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `runtime_unusable` always shows up in the diagnosis.
+A failing die is shown as “Runtime cannot use it” in the accelerator table, and **Action required** lists a `runtime_unusable` item per die (level Error, with the same evidence the periodic check records).
+When the table already carries a more specific vendor verdict for the die (for example `reset_required`), the table keeps that one and `runtime_unusable` is still listed on its own.
+The **Per-card runtime check** entry (`card_runtime`) under Information summarizes how many dies passed, failed and were not checked.
+
+A die that was “not checked” is never omitted and never implied healthy; it is named together with the reason:
+
+- The diagnosis time ran out: dies are checked one after another, the remaining time is examined before each one, a die that does not fit is not started, and all the rest are listed as not checked;
+  a die that the time limit cut off mid-check is also listed as not checked, not as a fault. A healthy die answers in about 1 second and a failing one can wait up to 45 seconds;
+  the agent limits a diagnosis to 100 seconds and keeps 10 seconds for the rest of the report, so with many failing dies the later ones show as not checked. Run Diagnose again, or run `gpuworks-agent doctor` on the node.
+- An instance is running on the die (or it is not yet known which dies are held): like the periodic check, doctor leaves it alone and lists it as not checked.
+- The vendor tool gave no device number for the die: it cannot be named, so it is listed as not checked.
+- The host lacks `python3` or `libascendcl.so` (a driver-only node), the driver does not respond, or the check never reached the die (a host-level conclusion):
+  this is stated once in the information as “not run” or “stopped”, nothing more is tried, and no die is blamed; dies that already have a conclusion keep it.
+
+A die passed through to a virtual machine is not this node's and is not part of this check; the table still shows it as passed through. Run standalone, `gpuworks-agent doctor` has no knowledge of the agent's instances and checks every die.
+
 A card is marked `runtime_unusable` only when the check explicitly attributes failure to that die. Failure to load the library, a non-CANN library,
 `aclInit` failure, a process crash, or unreadable output is a host-level conclusion (every die on the host would fail identically):
-the round stops without recording a fault on any card, and `gpuworks-agent doctor` explains why. Failures while releasing resources after a successful allocation
+the round stops without recording a fault on any card, and the “Per-card runtime check” entry in node diagnosis (or `gpuworks-agent doctor`) explains why. Failures while releasing resources after a successful allocation
 (`aclrtFree`, `aclrtResetDevice`, and so on) are logged but do not mark a fault, because the die has already answered whether it works.
 If `ASCEND_ACL_SMOKE_OK` has already been printed, a non-zero exit afterwards (for example CANN crashing during its exit cleanup) still counts as a pass; the exit status is only written to the agent log.
 Retry backoff doubles after consecutive failures (1, 2, 4 rounds, up to 4 rounds, about one hour by default) and resets as soon as the card responds.
@@ -356,7 +374,7 @@ Each item in “Action required” provides **Evidence** (the command or call us
 An **Action** command, such as a reset command, is provided only when the vendor tool itself gives a recovery method.
 
 Checks include accelerator health (see the next section), disk space below 10% free (root partition, model directory, container data directory, and storage),
-an unresponsive selected container runtime, accelerator tool execution failures, and NVIDIA CUDA initialization failures and multi-card communication check failures.
+an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die runtime check failures (`runtime_unusable`).
 
 There are four additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
 `runtime_provision_failed` (runtime provisioning failed), `path_noexec`, `path_read_only`, and `path_ephemeral`.

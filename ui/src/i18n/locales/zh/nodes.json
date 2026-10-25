@@ -636,6 +636,7 @@
       "cuda_runtime": "CUDA 运行时",
       "peer_access": "GPU 点对点访问",
       "nccl": "NCCL 多卡通信",
+      "card_runtime": "逐卡运行时检查",
       "runtime_identity": "运行身份",
       "network_filesystem": "网络文件系统",
       "metal_working_set": "Metal 可用内存",
