@@ -55,7 +55,9 @@ func TestEveryEmbeddedSpecHasImmutableInputsAndOfflinePreview(t *testing.T) {
 			if spec.Placement != nil {
 				accepted := false
 			vectors:
-				for _, memory := range []float64{64, 96} {
+				// 128 covers the Ascend 950PR class, whose profiles ask for
+				// more than any 64 or 96 GiB card can offer.
+				for _, memory := range []float64{64, 96, 128} {
 					for _, count := range []int{1, 2, 4, 8, 16, 32} {
 						memories := make([]float64, count)
 						names := make([]string, count)
@@ -159,6 +161,9 @@ func TestMiniMaxH3AscendProfileIsExecutableAndKeepsExactArtifactFacts(t *testing
 			}
 			if spec.WeightBytes != 144051182625 || !verified {
 				t.Fatalf("H3 artifact facts=%+v bytes=%d", spec.Weights, spec.WeightBytes)
+			}
+			if regexp.MustCompile(spec.GPUs.Name).MatchString("910C") {
+				t.Fatalf("H3 910B4 profile must not claim 910C: %s", spec.GPUs.Name)
 			}
 			accepted, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: 4, Vendor: "ascend", Names: []string{"910B4", "910B4", "910B4", "910B4"}, MemoriesGiB: []float64{32, 32, 32, 32}, MinMemoryGiB: 32, Indexes: []int{0, 1, 2, 3}})
 			if err != nil || accepted.Reason != "" || accepted.GPUMemoryMiBPerDevice != 29424 || accepted.Variables["TP_SIZE"] != int64(4) {

@@ -57,12 +57,35 @@ func requirementRows(deploymentID uint, reqs nodelabel.Requirements) []Deploymen
 	return rows
 }
 
+// templateInferenceConfig is the source declaration a template create may
+// initialize on its model. It is not a new persisted fact: the two strings go
+// to the existing model columns under the same conditions as a template init.
+type templateInferenceConfig struct {
+	modelID         uint
+	operations      string
+	inputModalities string
+}
+
 // CreateDeploymentWithRequirements persists a new deployment and its node
 // requirements in one transaction, so no reader ever sees the deployment
 // without the requirements that bound where it may run. The requirements are
 // validated and normalized here (nodelabel.NormalizeRequirements); rules that
 // need more than the requirements themselves are the caller's.
 func (s *Store) CreateDeploymentWithRequirements(d *Deployment, reqs nodelabel.Requirements) (*Deployment, error) {
+	return s.createDeploymentWithRequirements(d, reqs, nil)
+}
+
+// CreateDeploymentWithTemplateInferenceConfig also initializes the model's
+// template contract in the deployment transaction. A served-name conflict or a
+// contract write failure therefore leaves neither a partial deployment nor a
+// contract changed by a create that did not happen.
+func (s *Store) CreateDeploymentWithTemplateInferenceConfig(d *Deployment, reqs nodelabel.Requirements, modelID uint, operations, inputModalities string) (*Deployment, error) {
+	return s.createDeploymentWithRequirements(d, reqs, &templateInferenceConfig{
+		modelID: modelID, operations: operations, inputModalities: inputModalities,
+	})
+}
+
+func (s *Store) createDeploymentWithRequirements(d *Deployment, reqs nodelabel.Requirements, config *templateInferenceConfig) (*Deployment, error) {
 	normalized, err := nodelabel.NormalizeRequirements(reqs)
 	if err != nil {
 		return nil, err
@@ -73,6 +96,7 @@ func (s *Store) CreateDeploymentWithRequirements(d *Deployment, reqs nodelabel.R
 	if d.PlacementStrategy == "" {
 		d.PlacementStrategy = PlacementSpread
 	}
+	modelChanged := false
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := servedNameFree(tx, d.ServedName); err != nil {
 			return err
@@ -81,13 +105,23 @@ func (s *Store) CreateDeploymentWithRequirements(d *Deployment, reqs nodelabel.R
 			return err
 		}
 		rows := requirementRows(d.ID, normalized)
-		if len(rows) == 0 {
+		if len(rows) > 0 {
+			if err := tx.Create(&rows).Error; err != nil {
+				return err
+			}
+		}
+		if config == nil {
 			return nil
 		}
-		return tx.Create(&rows).Error
+		var err error
+		modelChanged, err = updateModelInferenceConfig(tx, config.modelID, config.operations, config.inputModalities, true)
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	if modelChanged {
+		s.Bus.PublishChange("model", uintKey(config.modelID), "inference_config")
 	}
 	s.Bus.PublishChange("deployment", uintKey(d.ID), "created")
 	return d, nil

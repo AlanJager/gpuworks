@@ -32,7 +32,7 @@ func (n *NodeRuntime) stopModelCopy(ctx context.Context, raw json.RawMessage) (a
 		active.cancel()
 	}
 	n.dlMu.Unlock()
-	n.dropWaiting(request.Key)
+	n.dropParkedTransfer(request.Key, request.TransferID)
 	if active != nil {
 		select {
 		case <-active.done:

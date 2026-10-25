@@ -28,6 +28,12 @@ const (
 	AscendEnvVisibleDevices   = "ASCEND_VISIBLE_DEVICES"
 	AscendEnvRTVisibleDevices = "ASCEND_RT_VISIBLE_DEVICES"
 	AscendEnvNPUVisible       = "NPU_VISIBLE_DEVICES"
+	// AscendDriverLibraryPath is where the driver's own libraries live, in
+	// the order the dynamic linker should search them. A CANN toolkit links
+	// against them (libascend_hal and the DCMI pair), and an installation
+	// whose ld.so.conf does not already name them resolves nothing without
+	// this on LD_LIBRARY_PATH.
+	AscendDriverLibraryPath = "/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64"
 
 	PPUQuotaLibraryTarget   = "/opt/gpuworks/partition/hggc_quota.so"
 	PPUHookLibraryTarget    = "/opt/gpuworks/partition/hgml_dlsym_hook.so"

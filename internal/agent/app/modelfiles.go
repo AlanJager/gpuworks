@@ -45,13 +45,27 @@ type modelDownload struct {
 // reconcileModelFile ensures a model repo is present at its target path,
 // downloading it (all repo files) in the background if needed and reporting
 // progress. Idempotent: a repo already present short-circuits to "present".
+// A task from the server is the newest word on its key, so whatever was parked
+// for the key is replaced by it.
 func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFileTask) {
+	n.dropWaiting(mf.Key)
+	n.reconcileModelFileTask(ctx, mf, false)
+}
+
+// reconcileModelFileTask is reconcileModelFile for a task that is not already
+// replacing the parked one: retry marks a task run from a queue snapshot, which
+// acts only while it is still the task parked for its key.
+func (n *NodeRuntime) reconcileModelFileTask(ctx context.Context, mf proto.ModelFileTask, retry bool) {
+	fail := func(err error) {
+		if n.settleParkedModelFile(mf, retry) {
+			n.failModelFile(mf, err)
+		}
+	}
 	if mf.DesiredState != "present" {
 		// Withdrawn: a task parked for its storage must not run when the
-		// storage recovers.
-		n.dropWaiting(mf.Key)
+		// storage recovers, and the transfer that was writing for it stops.
 		n.dlMu.Lock()
-		if active := n.downloading[mf.Key]; active != nil && active.copy {
+		if active := n.downloading[mf.Key]; active != nil {
 			active.cancel()
 		}
 		n.dlMu.Unlock()
@@ -64,16 +78,16 @@ func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFile
 	// check instead of writing into a bare mount point.
 	root, ready, err := n.storageRoot(mf)
 	if err != nil {
-		n.failModelFile(mf, err)
+		fail(err)
 		return
 	}
 	if !ready {
-		n.waitForStorage(mf)
+		n.waitForStorage(mf, retry)
 		return
 	}
 	absTarget, err := resolveStorageTarget(root, taskTarget(mf))
 	if err != nil {
-		n.failModelFile(mf, err)
+		fail(err)
 		return
 	}
 	// A write into a shared storage is assembled in a staging directory and
@@ -81,12 +95,12 @@ func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFile
 	workDir := absTarget
 	if strings.TrimSpace(mf.Staging) != "" {
 		if workDir, err = stagingWorkDir(root, mf.Staging); err != nil {
-			n.failModelFile(mf, err)
+			fail(err)
 			return
 		}
 	}
 
-	if n.copyTaskRunning(mf) {
+	if n.copyTaskRunning(mf, retry) {
 		return
 	}
 	// Public downloads are trusted only with a completion marker whose entire
@@ -95,13 +109,16 @@ func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFile
 	// local structural validation while still reporting their real byte size.
 	// The marker lives on the storage, which may be a hung NFS mount: it is read
 	// outside dlMu, which every download and eviction on the node takes.
-	marker, size, complete, err := n.completionOnDisk(mf, absTarget)
+	marker, size, complete, err := completionOnDiskForTask(n, mf, absTarget)
 	if err != nil {
 		n.log.Debug("model file check postponed: the storage did not answer", "key", mf.Key, "path", absTarget, "err", err)
-		n.parkTask(mf) // the next storage check retries it; an immediate retry would only spin
+		n.parkStorageModelFile(mf, retry) // the next storage check retries it; an immediate retry would only spin
 		return
 	}
 	if complete {
+		if !n.settleParkedModelFile(mf, retry) {
+			return
+		}
 		n.reportModelFile(proto.ModelFileStatus{
 			Key: mf.Key, State: proto.MFPresent, Path: absTarget,
 			BytesTotal: size, BytesDone: size,
@@ -111,57 +128,74 @@ func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFile
 		return
 	}
 	n.dlMu.Lock()
+	if retry && !n.modelFileParked(mf) { // evicted or replaced while the marker was read
+		n.dlMu.Unlock()
+		return
+	}
 	if n.downloading[mf.Key] != nil { // started while the marker was read
 		n.dlMu.Unlock()
+		n.settleParkedModelFile(mf, retry)
 		return
 	}
-	if mf.Acquisition == proto.ModelAcquireCopy {
-		if !n.copySlotAvailableLocked(absTarget) {
+	copyWriter := mf.Acquisition == proto.ModelAcquireCopy
+	if (copyWriter || mf.Acquisition == proto.ModelAcquireDownload) && !n.writerSlotAvailableLocked(mf.Key, absTarget, copyWriter) {
+		parkWriterModelFileForTask(n, mf, retry)
+		n.dlMu.Unlock()
+		return
+	}
+	if copyWriter || mf.Acquisition == proto.ModelAcquireDownload {
+		// Claiming the queue entry and registering the writer happen under the
+		// same dlMu hold that checked the slot, so an owner returning cannot
+		// miss this task and eviction cannot slip between the check and the start.
+		if !n.settleParkedModelFile(mf, retry) {
 			n.dlMu.Unlock()
-			n.parkTask(mf)
 			return
 		}
-		n.startTransferLocked(ctx, mf.Key, absTarget, func(ctx context.Context) {
-			n.copyModelDir(ctx, mf, workDir, absTarget)
-		}, mf.TransferID)
-		return
-	}
-	if mf.Acquisition != proto.ModelAcquireDownload {
-		n.dlMu.Unlock()
-		trustedAtomicPeer := mf.Acquisition == proto.ModelAcquirePeer && mf.TransferID != ""
-		if mf.Acquisition == proto.ModelAcquireRegistered || trustedAtomicPeer {
-			if size, err := validateModelDir(absTarget); err == nil {
-				n.reportModelFile(proto.ModelFileStatus{
-					Key: mf.Key, State: proto.MFPresent, Path: absTarget,
-					BytesTotal: size, BytesDone: size,
-					Acquisition: mf.Acquisition, TransferID: mf.TransferID,
-				})
-			} else if mf.Acquisition == proto.ModelAcquireRegistered && os.IsNotExist(err) {
-				n.reportModelFile(proto.ModelFileStatus{
-					Key: mf.Key, State: proto.MFAbsent, Path: absTarget,
-					Acquisition: proto.ModelAcquireRegistered,
-					Message:     "registered model path is absent: " + err.Error(),
-				})
-			}
+		if copyWriter {
+			n.startTransferLocked(ctx, mf.Key, absTarget, true, mf.TransferID, func(ctx context.Context) {
+				n.copyModelDir(ctx, mf, workDir, absTarget)
+			})
+			return
 		}
+		n.startTransferLocked(ctx, mf.Key, absTarget, false, mf.TransferID, func(ctx context.Context) {
+			n.downloadRepo(ctx, mf, workDir, absTarget)
+		})
 		return
 	}
-	n.startTransferLocked(ctx, mf.Key, absTarget, func(ctx context.Context) {
-		n.downloadRepo(ctx, mf, workDir, absTarget)
-	})
+	n.dlMu.Unlock()
+	if !n.settleParkedModelFile(mf, retry) {
+		return
+	}
+	trustedAtomicPeer := mf.Acquisition == proto.ModelAcquirePeer && mf.TransferID != ""
+	if mf.Acquisition == proto.ModelAcquireRegistered || trustedAtomicPeer {
+		if size, err := validateModelDir(absTarget); err == nil {
+			n.reportModelFile(proto.ModelFileStatus{
+				Key: mf.Key, State: proto.MFPresent, Path: absTarget,
+				BytesTotal: size, BytesDone: size,
+				Acquisition: mf.Acquisition, TransferID: mf.TransferID,
+			})
+		} else if mf.Acquisition == proto.ModelAcquireRegistered && os.IsNotExist(err) {
+			n.reportModelFile(proto.ModelFileStatus{
+				Key: mf.Key, State: proto.MFAbsent, Path: absTarget,
+				Acquisition: proto.ModelAcquireRegistered,
+				Message:     "registered model path is absent: " + err.Error(),
+			})
+		}
+	}
 }
 
 // startTransferLocked registers a transfer that writes target under key in
-// n.downloading and runs it in the background; the goroutine unregisters it
-// when run returns, and eviction cancels it through the registered cancel. The
-// caller holds n.dlMu and has checked that nothing is registered under key;
+// n.downloading and runs it in the background. transferID is the server's name
+// for the transfer (empty from a server that predates download IDs); a copy is
+// told apart from a download because only a copy is canceled by a task naming
+// another transfer ID without a new download preparation. When run returns, the
+// goroutine unregisters it and retries writer-waiting tasks after releasing
+// dlMu. Eviction cancels it through the registered cancel. The caller holds
+// n.dlMu and has checked that nothing is registered under key;
 // startTransferLocked releases it.
-func (n *NodeRuntime) startTransferLocked(ctx context.Context, key, target string, run func(ctx context.Context), copyIdentity ...string) {
+func (n *NodeRuntime) startTransferLocked(ctx context.Context, key, target string, copyWriter bool, transferID string, run func(ctx context.Context)) {
 	runCtx, cancel := context.WithCancel(ctx)
-	active := &modelDownload{target: target, cancel: cancel, done: make(chan struct{})}
-	if len(copyIdentity) > 0 {
-		active.copy, active.transferID = true, copyIdentity[0]
-	}
+	active := &modelDownload{target: target, cancel: cancel, done: make(chan struct{}), copy: copyWriter, transferID: transferID}
 	n.downloading[key] = active
 	n.dlMu.Unlock()
 	go func() {
@@ -171,10 +205,15 @@ func (n *NodeRuntime) startTransferLocked(ctx context.Context, key, target strin
 				n.progress.discard(modelFileProgressKey(key))
 			}
 			n.dlMu.Lock()
+			removed := false
 			if n.downloading[key] == active {
 				delete(n.downloading, key)
+				removed = true
 			}
 			n.dlMu.Unlock()
+			if removed {
+				n.wakeModelWriters(ctx)
+			}
 		}()
 		defer cancel()
 		run(runCtx)
@@ -188,7 +227,10 @@ func (n *NodeRuntime) startTransferLocked(ctx context.Context, key, target strin
 func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, absTarget, finalTarget string) {
 	report := func(st proto.ModelFileStatus) {
 		if ctx.Err() == nil {
-			n.reportModelFile(st)
+			// The server names every download it prepares; echoing the name is
+			// what lets it drop the reports of a download it has since replaced.
+			st.TransferID = mf.TransferID
+			n.reportModelFileContext(ctx, st)
 		}
 	}
 	report(proto.ModelFileStatus{Key: mf.Key, State: proto.MFDownloading, Path: absTarget, Acquisition: proto.ModelAcquireDownload})
@@ -514,7 +556,7 @@ func repoFilesPresent(root string, files []modelrepo.File, approximate bool) (bo
 
 // failModelFile reports a task that cannot run at all.
 func (n *NodeRuntime) failModelFile(mf proto.ModelFileTask, err error) {
-	n.reportModelFile(proto.ModelFileStatus{Key: mf.Key, State: proto.MFFailed, Acquisition: mf.Acquisition, Message: err.Error()})
+	n.reportModelFile(proto.ModelFileStatus{Key: mf.Key, State: proto.MFFailed, Acquisition: mf.Acquisition, TransferID: mf.TransferID, Message: err.Error()})
 }
 
 func (n *NodeRuntime) isDownloading(key string) bool {
@@ -522,6 +564,8 @@ func (n *NodeRuntime) isDownloading(key string) bool {
 	defer n.dlMu.Unlock()
 	return n.downloading[key] != nil
 }
+
+var completionOnDiskForTask = (*NodeRuntime).completionOnDisk
 
 // completionOnDisk reports whether dir holds a complete public download of the
 // task's model, with the marker that says so. The read goes through the

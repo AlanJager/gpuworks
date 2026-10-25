@@ -119,7 +119,7 @@ func TestCopyStopWaitsForWorkerAndFencesOldIntent(t *testing.T) {
 	r := newStorageTestRuntime(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	r.dlMu.Lock()
-	r.startTransferLocked(context.Background(), "copy", t.TempDir(), func(ctx context.Context) { close(entered); <-release }, "old")
+	r.startTransferLocked(context.Background(), "copy", t.TempDir(), true, "old", func(ctx context.Context) { close(entered); <-release })
 	<-entered
 	raw, _ := json.Marshal(proto.ModelCopyStopParams{Key: "copy", TransferID: "old"})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -138,10 +138,10 @@ func TestCopyStopWaitsForWorkerAndFencesOldIntent(t *testing.T) {
 	if _, err := r.stopModelCopy(context.Background(), raw); err != nil {
 		t.Fatal(err)
 	}
-	if !r.copyTaskRunning(proto.ModelFileTask{Key: "copy", TransferID: "old"}) {
+	if !r.copyTaskRunning(proto.ModelFileTask{Key: "copy", TransferID: "old"}, false) {
 		t.Fatal("old intent can restart")
 	}
-	if r.copyTaskRunning(proto.ModelFileTask{Key: "copy", TransferID: "new"}) {
+	if r.copyTaskRunning(proto.ModelFileTask{Key: "copy", TransferID: "new"}, false) {
 		t.Fatal("new intent is fenced")
 	}
 }

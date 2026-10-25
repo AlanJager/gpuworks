@@ -3,7 +3,7 @@
 The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes for three engines:
 
 - **SGLang**, from the [SGLang cookbook](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1). It needs the dedicated `lmsysorg/sglang:dev-dsv41` image (CUDA 13); the V4 image or older runners will not work.
-- **vLLM**, from the [vLLM recipe](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml). It needs vLLM 0.31.0 or later.
+- **vLLM (NVIDIA)**, from the [vLLM recipe](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml). It needs vLLM 0.31.0 or later; Ascend uses the separate vLLM-Ascend image below.
 - **DeepInfer**, DeepSeek's open-source inference framework [DeepInfer](https://github.com/deepseek-ai/DeepInfer) at commit `774ce24`. The image `gpuworks/deepinfer:774ce24-r9` adds an OpenAI-compatible HTTP server (DeepSeek's deepseek-recipe protocol layer), a single-node local Engram fetch and a multi-node request relay. It serves text input only; the open-source release has no prefill/decode disaggregation.
 
 ## Profiles
@@ -22,8 +22,19 @@ The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes fo
 | `fp4-vllm-nvidia-blackwell-dep8` | 8× B200/B300 | Upstream single-node DEP command: data parallel 8 with expert parallel, for throughput |
 | `fp4-deepinfer-nvidia-blackwell-ep` | 4 or 8× B200/B300 (one node) | Expert parallel and attention data parallel over every GPU; automatic placement prefers the whole 8-GPU node; no RDMA NIC needed |
 | `fp4-deepinfer-nvidia-blackwell-ep-multinode` | B200/B300, 4 or 8 per node, 2+ nodes | Expert parallel across nodes; needs a host-RDMA compute network |
+| `int8-vllm-ascend-a3-tp4-dp4` | A3/910C × 16 logical dies | 1017 W8A8, DP4 × TP4, 150K context, ~781.5 GB of weights; Engram tables in host memory |
 
 The two 4× H200 SGLang profiles are platform additions; every switch they use comes from the upstream documentation.
+
+## Ascend A3 prerequisites and measurements
+
+The A3 profile uses a complete immutable snapshot of
+`Eco-Tech/DeepSeek-V4.1-Flash-1017-w8a8` and the pinned vLLM-Ascend v0.30.0rc2
+A3 image. It declares 512 GiB of `/dev/shm` and `memlock_unlimited` so both
+shared Engram tables can be registered and pinned; the host needs enough free RAM.
+
+On 2026-10-23 the profile passed platform health, `/v1/models` and a real chat
+request on 16× 910C with native Docker. That result does not extend to runveil.
 
 ## DeepInfer prerequisites
 
@@ -73,4 +84,4 @@ Every request succeeded. On this mixed prefill/decode load the cross-node prefil
 - On runveil (docker-less container nodes) SGLang sizes its thread pool to the host core count; ~3600 threads at TP8 stall PRoot while loading weights. Limit `OMP_NUM_THREADS` and friends to 4 (the platform does this by default for SGLang on runveil).
 - vLLM tunes kernels on its first start, which can take more than 10 minutes; the recipes set `VLLM_ENGINE_READY_TIMEOUT_S` to 3600.
 
-AMD, Ascend, Hygon, PPU and Apple are outside this template's coverage.
+Undeclared AMD, Hygon, PPU and Apple combinations are outside this template's coverage; Ascend is limited to the 910C Docker profile above.

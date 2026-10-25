@@ -92,6 +92,11 @@ func TestLintArgsReportsOnlyValuesTheDictionaryOwnsAndCannotRead(t *testing.T) {
 			want:   []ArgProblem{{Flag: "--kv-cache-dtype", Value: "fp16", Key: "kv_cache_dtype", Reason: "is not one of " + strings.Join(vllmKVCacheDtypes, ", ")}},
 		},
 		{
+			name:   "the Ascend vLLM extension's INT8 cache is accepted",
+			engine: EngineVLLM,
+			args:   []string{"--kv-cache-dtype", "int8"},
+		},
+		{
 			name:   "an enum key given an option this engine dropped",
 			engine: EngineSGLang,
 			args:   []string{"--kv-cache-dtype", "fp8"},

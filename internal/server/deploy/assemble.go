@@ -39,12 +39,15 @@ type ResolveLaunchInput struct {
 	// ComponentModelMount is the template component's primary mount; it
 	// replaces DefaultModelMount, and an override may not contradict it.
 	ComponentModelMount string
-	Entrypoint          []string
-	PreStartArgv        []string
-	PreStartScript      string
-	RuntimeAssets       []proto.RuntimeAsset
-	ComponentMounts     []proto.MountSpec
-	APIContract         any
+	// Image is the effective runtime image selected for this launch. Fixed
+	// release images can require a runtime-specific compatibility overlay.
+	Image           string
+	Entrypoint      []string
+	PreStartArgv    []string
+	PreStartScript  string
+	RuntimeAssets   []proto.RuntimeAsset
+	ComponentMounts []proto.MountSpec
+	APIContract     any
 	// PlacementVariables are the placement resolver's variables; the launch
 	// adds the facts it owns (launchVariables) before expanding the template.
 	PlacementVariables map[string]any
@@ -72,18 +75,26 @@ type ResolveLaunchInput struct {
 // defaults, deployment choices and placement output into an executable launch.
 // Preview and controller must both call it.
 func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
+	launch, _, err := ResolveLaunchWithWarnings(input)
+	return launch, err
+}
+
+// ResolveLaunchWithWarnings is ResolveLaunch plus what the platform cannot
+// prove about the launch: warnings never fail it, and a caller that has
+// somewhere to show them (the evaluation) does.
+func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []messages.Warning, error) {
 	if input.Engine == nil {
-		return ResolvedLaunch{}, fmt.Errorf("resolve launch: engine is required")
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: engine is required")
 	}
 	overrides := input.ContainerOverrides
 	command, err := ResolveEffectiveCommand(overrides, input.Entrypoint)
 	if err != nil {
-		return ResolvedLaunch{}, fmt.Errorf("resolve launch: %w", err)
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 	}
 	modelMount := DefaultModelMount
 	if component := strings.TrimSpace(input.ComponentModelMount); component != "" {
 		if overrides.ModelMountPath != "" && overrides.ModelMountPath != component {
-			return ResolvedLaunch{}, fmt.Errorf("resolve launch: cannot override component primary mount %s with %s", component, overrides.ModelMountPath)
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: cannot override component primary mount %s with %s", component, overrides.ModelMountPath)
 		}
 		modelMount = component
 	}
@@ -97,7 +108,7 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	preStartScript := input.PreStartScript
 	if command.Mode == CommandEngine && strings.TrimSpace(overrides.CmdDisplay) == "" {
 		if err := requireTemplateVariables(input.Engine, params.TemplateArgs, entrypoint, preStartArgv, []string{preStartScript}, envValues(params.TemplateEnv)); err != nil {
-			return ResolvedLaunch{}, fmt.Errorf("resolve launch: %w", err)
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}
 	variables := launchVariables(input.Engine, params, modelMount, input.PlacementVariables, input.AllowUnresolved)
@@ -115,7 +126,7 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 		preStartScript, err = expandScript(preStartScript, variables, input.AllowUnresolved)
 	}
 	if err != nil {
-		return ResolvedLaunch{}, fmt.Errorf("resolve launch variables: %w", err)
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch variables: %w", err)
 	}
 
 	built := input.Engine.Build(params)
@@ -145,7 +156,7 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	if manualScript == "" {
 		commandArgv, err = parseOptionalCommand(overrides.CmdDisplay)
 		if err != nil {
-			return ResolvedLaunch{}, fmt.Errorf("resolve launch command: %w", err)
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch command: %w", err)
 		}
 	}
 
@@ -173,6 +184,10 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	}
 	if overrides.CmdDisplay != "" {
 		launch.Argv = append([]string(nil), commandArgv...)
+		if mode == CommandManual && manualScript == "" && len(launch.Entrypoint) == 0 && len(commandArgv) > 0 {
+			launch.Entrypoint = append([]string(nil), commandArgv[:1]...)
+			launch.Argv = append([]string(nil), commandArgv[1:]...)
+		}
 	}
 	if mode == CommandEngine && len(finalEntrypoint) > 0 {
 		if overrides.CmdDisplay != "" {
@@ -219,13 +234,20 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 		Template: cloneEnv(built.EnvLayers.Template),
 		User:     cloneEnv(overrides.Env),
 	}
-	launch.DockerArgs = launchDockerArgs(overrides.DockerArgs, params, input.TemplateMemlockUnlimited)
+	engram := inspectEngramLaunch(launch.Entrypoint, launch.Argv)
+	engramShared := engram.state.shared
+	launch.DockerArgs = launchDockerArgs(overrides.DockerArgs, params, input.TemplateMemlockUnlimited || engramShared)
+	launch.DockerArgs = withEngramSharedMemoryDockerArgs(launch.DockerArgs, engram.args)
+	shmDefault := input.Engine.Profile().ShmBytes
+	if engramShared && shmDefault < engramSharedMemoryDefaultBytes {
+		shmDefault = engramSharedMemoryDefaultBytes
+	}
 	// The CPU KV tier lives in /dev/shm, so the size follows the tier the
 	// command was built with; see launchShmBytes for the rule.
-	launch.ShmBytes, err = launchShmBytes(input.Engine.Profile().ShmBytes, input.TemplateShmBytes, overrides,
+	launch.ShmBytes, err = launchShmBytes(shmDefault, input.TemplateShmBytes, overrides,
 		launchKVCPUTierBytes(input.Engine, params.Quick, command, overrides))
 	if err != nil {
-		return ResolvedLaunch{}, fmt.Errorf("resolve launch: %w", err)
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 	}
 	launch.Mounts = convertMounts(overrides.ExtraMounts)
 	launch.Mounts = append(launch.Mounts, input.ComponentMounts...)
@@ -238,7 +260,7 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	}
 	launch.Mounts = append(launch.Mounts, computeNetworkMounts(params)...)
 	if err := validateResolvedMounts(launch.Mounts, modelMount); err != nil {
-		return ResolvedLaunch{}, fmt.Errorf("resolve launch mounts: %w", err)
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch mounts: %w", err)
 	}
 	launch.ModelMount = modelMount
 	launch.HealthPath = input.HealthPath
@@ -248,7 +270,7 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	} else if input.APIContract != nil {
 		launch.APIContract, err = json.Marshal(input.APIContract)
 		if err != nil {
-			return ResolvedLaunch{}, fmt.Errorf("resolve launch API contract: %w", err)
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch API contract: %w", err)
 		}
 	}
 	if len(launch.APIContract) > 0 {
@@ -256,7 +278,7 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 			HealthEndpoint string `json:"health_endpoint"`
 		}
 		if err := json.Unmarshal(launch.APIContract, &contract); err != nil {
-			return ResolvedLaunch{}, fmt.Errorf("resolve launch API contract: %w", err)
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch API contract: %w", err)
 		}
 		if strings.TrimSpace(contract.HealthEndpoint) != "" {
 			launch.HealthPath = strings.TrimSpace(contract.HealthEndpoint)
@@ -265,15 +287,21 @@ func ResolveLaunch(input ResolveLaunchInput) (ResolvedLaunch, error) {
 	// The engine's last word over the fully merged launch, before the merged
 	// result is validated.
 	launch = hooks(input.Engine).FinalizeLaunch(launch)
+	compat := ascendRuntimeCompatFor(input.Engine.Name(), input.Image, params.RuntimeDriver, launch.Env)
+	preCompatScript := launch.PreStartScript
+	launch.PreStartScript = appendAscendRuntimeCompatibilityScript(compat, launch.PreStartScript)
+	if err := rejectUnrunnableLaunch(launch, input.Image, compat, preCompatScript); err != nil {
+		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
+	}
 	// A create request with automatic placement has no GPU count yet. Validate
 	// the concrete topology after scheduling; applying the temporary builder TP
 	// of one here would reject a valid multi-GPU template before placement.
 	if !(input.AllowUnresolved && params.AssignedGPUs <= 0 && params.TensorParallel <= 0) {
 		if err := validateEngineTopology(input.Engine, launch, params); err != nil {
-			return ResolvedLaunch{}, fmt.Errorf("resolve launch: %w", err)
+			return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 		}
 	}
-	return launch, nil
+	return launch, launchWarnings(launch, params, input.Image, compat, engram), nil
 }
 
 var manualCommandPortPattern = regexp.MustCompile(`(?m)(^|[ \t])--port(?:[ \t]+|=)[^ \t\r\n;|&]+`)

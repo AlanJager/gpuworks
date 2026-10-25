@@ -507,6 +507,52 @@ func TestDownloadModelRejectsActivePeerSync(t *testing.T) {
 	}
 }
 
+func TestDownloadModelLeavesARunningDownloadAndRestartsAFailedOne(t *testing.T) {
+	st, err := store.Open("file:api_download_running?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	model, _ := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "Qwen/Qwen3", Revision: "main", Name: "Qwen3"})
+	node, _ := st.RegisterNode("node-1", store.HashToken("t"), "node")
+	row, err := st.UpsertModelFile(&store.ModelFile{
+		ModelID: model.ID, NodeID: node.ID, Path: "Qwen3", State: proto.MFDownloading,
+		Acquisition: proto.ModelAcquireDownload, TransferID: "download-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := apiHandlers{d: Deps{Store: st}}
+	download := func() {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/models/1/download", strings.NewReader(`{"node_uuid":"node-1"}`))
+		req = req.WithContext(chiRouteContext(req.Context(), map[string]string{"id": fmt.Sprint(model.ID)}))
+		rec := httptest.NewRecorder()
+		h.downloadModel(rec, req)
+		if rec.Code != http.StatusAccepted || !strings.Contains(rec.Body.String(), `"status":"downloading"`) {
+			t.Fatalf("status/body = %d %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	download()
+	got, _ := st.ModelFileByModelNode(model.ID, node.ID)
+	if got.State != proto.MFDownloading || got.TransferID != "download-1" {
+		t.Fatalf("a running download was restarted: %+v", got)
+	}
+
+	if err := st.UpdateModelFileStatus(node.ID, proto.ModelFileStatus{
+		Key: store.ModelFileKey(row.ID), State: proto.MFFailed, TransferID: "download-1",
+		Acquisition: proto.ModelAcquireDownload, Message: "connection reset",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	download()
+	got, _ = st.ModelFileByModelNode(model.ID, node.ID)
+	if got.State != proto.MFPending || got.TransferID == "" || got.TransferID == "download-1" {
+		t.Fatalf("a failed download was not prepared as a new transfer: %+v", got)
+	}
+}
+
 func TestDownloadModelRejectsLocalSource(t *testing.T) {
 	st, err := store.Open("file:api_download_local_source?mode=memory&cache=shared", bus.New())
 	if err != nil {

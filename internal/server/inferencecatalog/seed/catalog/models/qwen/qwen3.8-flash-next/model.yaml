@@ -176,5 +176,79 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: int8-vllm-ascend-a3-tp8
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  # vLLM-Ascend's own image for this recipe; the runner matrix carries no CANN
+  # build of it. The upstream tag `qwen3.8-next-a3` names no version and is
+  # re-tagged in place, so the spec pins the index digest instead. quay.io is
+  # slow from the mainland, so the deploy page also offers the NJU quay mirror,
+  # which serves the same digest.
+  image: quay.io/ascend/vllm-ascend@sha256:2cbb274af050cb5be7db7318e1c461fe22ec0643c54f1ed32aa7266513a7d421
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:2cbb274af050cb5be7db7318e1c461fe22ec0643c54f1ed32aa7266513a7d421
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-Flash-Next-w8a8-mtp
+        revision: c76aa96a5e730de35211d1b0b3d05cc3c67efae5
+  weight_bytes: 245413330966
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --data-parallel-size
+  - '1'
+  - --data-parallel-size-local
+  - '1'
+  - --data-parallel-start-rank
+  - '0'
+  - --enable-expert-parallel
+  - --max-model-len
+  - '135168'
+  - --max-num-seqs
+  - '8'
+  - --max-num-batched-tokens
+  - '4096'
+  - --gpu-memory-utilization
+  - '0.93'
+  - --enable-prefix-caching
+  - --mamba-cache-mode
+  - align
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_xml
+  - --reasoning-parser
+  - qwen3
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[4,8,12,16,20,24,28,32],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"ascend_compilation_config":{"fuse_norm_quant":false}}'
+  env:
+    VLLM_ASCEND_ENABLE_QSA_E3V: '1'
+    VLLM_ASCEND_ENABLE_QSA_LIGHTNING_INDEXER: '1'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("the A3 recipe requires exactly 8 logical devices")
+          if gpu.min_memory_gib < 64:
+              return reject("each device requires at least 64 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 readme_zh_cn: README.zh-CN.md
 readme_en: README.en.md

@@ -128,13 +128,13 @@ func TestBlockedCopyRetainsSlotAndRejectsOverlappingTargets(t *testing.T) {
 	started, release := make(chan struct{}), make(chan struct{})
 	target := filepath.Join(t.TempDir(), "model")
 	r.dlMu.Lock()
-	r.startTransferLocked(context.Background(), "blocked", target, func(ctx context.Context) { close(started); <-release }, "attempt")
+	r.startTransferLocked(context.Background(), "blocked", target, true, "attempt", func(ctx context.Context) { close(started); <-release })
 	<-started
-	if !r.copyTaskRunning(proto.ModelFileTask{Key: "blocked", TransferID: "replacement"}) {
+	if !r.copyTaskRunning(proto.ModelFileTask{Key: "blocked", TransferID: "replacement"}, false) {
 		t.Fatal("canceled worker lost its slot")
 	}
 	r.dlMu.Lock()
-	available := r.copySlotAvailableLocked(filepath.Join(target, "nested"))
+	available := r.writerSlotAvailableLocked("other", filepath.Join(target, "nested"), true)
 	active := r.downloading["blocked"]
 	r.dlMu.Unlock()
 	if available {
@@ -143,7 +143,7 @@ func TestBlockedCopyRetainsSlotAndRejectsOverlappingTargets(t *testing.T) {
 	close(release)
 	<-active.done
 	r.dlMu.Lock()
-	available = r.copySlotAvailableLocked(target)
+	available = r.writerSlotAvailableLocked("other", target, true)
 	r.dlMu.Unlock()
 	if !available {
 		t.Fatal("returned worker leaked its slot")

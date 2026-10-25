@@ -28,7 +28,52 @@ specs:
   weight_bytes: 32823063513
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --trust-remote-code
+  - --enable-multimodal
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --mm-attention-backend
+  - ascend_attn
+  - --dtype
+  - bfloat16
+  env:
+    GLOO_SOCKET_IFNAME: lo
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-ascend-a3-71f6709d
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: moonshotai/Kimi-VL-A3B-Instruct
+        revision: 398eede0903cd983a2bfa0cc634e9ac1d843f375
+    - modelscope:
+        repo_id: moonshotai/Kimi-VL-A3B-Instruct
+        revision: fd5b8b4c516172318b78a0c2dcbce74ef4f108fc
+  weight_bytes: 32823063513
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --enable-metrics

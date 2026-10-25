@@ -114,6 +114,24 @@ func TestListSkipsFunctionsItCannotIdentify(t *testing.T) {
 	}
 }
 
+// A Kunpeng host presents its SoC compression engines at the same PCI class
+// as the NPU. They are neither cards nor news: 192.168.200.29 has eight ZIP
+// engines beside its fourteen 910C dies.
+func TestListSkipsTheSoCCompressionEngines(t *testing.T) {
+	root := hostTree(t, []pciFunction{
+		{bdf: "0000:85:00.0", vendor: "0x19e5", device: "0xd803", class: "0x120000", driver: "devdrv_device_driver"},
+		{bdf: "0000:31:00.0", vendor: "0x19e5", device: "0xa250", class: "0x120000", driver: "hisi_zip"},
+		{bdf: "0000:33:00.0", vendor: "0x19e5", device: "0xa250", class: "0x120000"},
+	}, "")
+	got, unknown := Scanner{Root: root}.Scan()
+	if len(got) != 1 || got[0].BDF != "0000:85:00.0" {
+		t.Fatalf("cards = %+v, want only the NPU die", got)
+	}
+	if len(unknown) != 0 {
+		t.Fatalf("unknown = %+v, want the ZIP engines reported as neither cards nor unknown", unknown)
+	}
+}
+
 const pciIDsFixture = `# Comment lines and blank lines are skipped.
 
 1002  Advanced Micro Devices, Inc. [AMD/ATI]
@@ -242,8 +260,8 @@ func TestEveryDomesticModelIsVerifiedAndBelongsToASupportedVendor(t *testing.T) 
 		if m.name == "" || m.provenance == "" {
 			t.Errorf("%04x:%04x needs a name and the hardware it was read off", m.vendor, m.device)
 		}
-		if accelerator.VendorForPCI(m.vendor, 0x120000, "") == "" &&
-			accelerator.VendorForPCI(m.vendor, 0x030200, "") == "" {
+		if accelerator.VendorForPCI(m.vendor, m.device, 0x120000, "") == "" &&
+			accelerator.VendorForPCI(m.vendor, m.device, 0x030200, "") == "" {
 			t.Errorf("%04x is not a vendor any rule identifies as an accelerator vendor", m.vendor)
 		}
 	}

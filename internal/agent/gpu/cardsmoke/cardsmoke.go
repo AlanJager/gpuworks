@@ -14,8 +14,10 @@ package cardsmoke
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,10 +28,45 @@ import (
 const (
 	DefaultInterval = 15 * time.Minute
 	DefaultTimeout  = 30 * time.Second
+	// DefaultMaxBackoffRounds caps how far a card that keeps failing is
+	// spaced out. A card that answers costs a fraction of a second, but one
+	// that cannot be used spends the whole timeout before saying so, and on
+	// a host with many of them a round would otherwise run almost back to
+	// back. Four intervals is about an hour: long enough to spare the host,
+	// short enough that a card repaired out of band is noticed the same day.
+	DefaultMaxBackoffRounds = 4
 	// DefaultFirstRound leaves the control plane time to say what this
 	// node runs, so the first round is not skipped for every card.
 	DefaultFirstRound = 30 * time.Second
+	// DefaultRetryAfter is how long after a round that could not ask any
+	// card to try again. It is the one retry: what this node runs arrives
+	// seconds after registration, and a round that still cannot tell is
+	// waiting on something an interval will not fix either.
+	DefaultRetryAfter = time.Minute
 )
+
+// Inconclusive marks an attempt's failure as saying nothing about the card:
+// the attempt never reached it. The card is then left exactly as it was, and
+// the round stops because whatever stopped the attempt would stop every other
+// one in it too.
+func Inconclusive(reason string) error {
+	return inconclusiveError{reason: strings.TrimSpace(reason)}
+}
+
+type inconclusiveError struct{ reason string }
+
+func (e inconclusiveError) Error() string { return e.reason }
+
+func inconclusiveReason(err error) string {
+	var inconclusive inconclusiveError
+	if errors.As(err, &inconclusive) {
+		if inconclusive.reason == "" {
+			return "the runtime check could not be made"
+		}
+		return inconclusive.reason
+	}
+	return ""
+}
 
 // Card is what the runner needs to know about one accelerator: how to name
 // it, how to ask the runtime for it alone, and how a caller refers to it.
@@ -37,8 +74,8 @@ type Card struct {
 	// Ident is the card's stable identity (accelerator.CardIdent), which is
 	// how its answer is remembered and matched back to it.
 	Ident string
-	// Visible is what the vendor runtime wants in order to expose this card
-	// and no other (for NVIDIA, the value of CUDA_VISIBLE_DEVICES).
+	// Visible is how the vendor check identifies this card and no other (for
+	// NVIDIA, the value of CUDA_VISIBLE_DEVICES).
 	Visible string
 }
 
@@ -52,6 +89,9 @@ type Outcome struct {
 	Detail string
 	// At is when this was decided.
 	At time.Time
+	// Failures is how many times in a row this card has failed, which spaces
+	// out the next attempt. It is reset by a card that answers.
+	Failures int
 }
 
 // Config is what a runner needs from its surroundings. Every function is
@@ -72,18 +112,32 @@ type Config struct {
 	// Checked once per round, because it is a property of the host, and
 	// the round is then skipped: a host that cannot be asked says nothing
 	// about any card, and each card keeps whatever the vendor tool said.
+	// Try reports the same discovery through Inconclusive when it can only be
+	// made by attempting the check.
 	Unavailable func() string
 
 	Interval time.Duration
 	Timeout  time.Duration
+	// MaxBackoffRounds caps the per-card failure backoff. One limits the wait
+	// to a single interval.
+	MaxBackoffRounds int
 	// FirstRound is how long to wait before the first round. A node that
 	// just connected should not wait a quarter hour to learn its cards
 	// cannot be used, but it must wait for the control plane to say what
-	// it is running: Busy calls every card busy until it knows, so a
-	// round fired at registration skipped all of them and the real first
-	// round came an interval later. Measured on gpu3: the desired state
-	// arrived about ten seconds after the agent registered.
+	// it is running: Deferred holds the round back until it knows.
+	// Measured on gpu3: the desired state arrived about ten seconds after
+	// the agent registered; on 192.168.200.29 it took forty-seven.
 	FirstRound time.Duration
+	// Deferred says why no card can be asked yet, or "". It is what this
+	// node runs not being known: asking a card that is serving can disturb
+	// it, so a round that cannot tell asks nothing. Unlike Unavailable it
+	// resolves on its own within seconds, so such a round is retried once
+	// after RetryAfter rather than waited out for a whole interval — until
+	// then every card still carries the vendor tool's verdict, and a card
+	// the runtime cannot use looks schedulable.
+	Deferred func() string
+	// RetryAfter is how long after a deferred round to try again, once.
+	RetryAfter time.Duration
 	Now        func() time.Time
 }
 
@@ -103,8 +157,16 @@ type Runner struct {
 	// on the driver; starting another would add a second one to the same
 	// wait every round, which is the pile-up this package exists to avoid.
 	stuck map[string]bool
+	// nextAttempt is when a failed card may be tried again.
+	nextAttempt map[string]time.Time
+	// roundStart is when the round in flight began, so a long round does not
+	// stretch the backoff of cards tried near its end.
+	roundStart time.Time
 	// skipped is why the last round asked no card at all, or "".
 	skipped string
+	// deferred is whether the last round asked no card because what this
+	// node runs was not known yet, which one retry can resolve.
+	deferred bool
 }
 
 func New(cfg Config) *Runner {
@@ -117,10 +179,16 @@ func New(cfg Config) *Runner {
 	if cfg.FirstRound <= 0 {
 		cfg.FirstRound = DefaultFirstRound
 	}
+	if cfg.MaxBackoffRounds <= 0 {
+		cfg.MaxBackoffRounds = DefaultMaxBackoffRounds
+	}
+	if cfg.RetryAfter <= 0 {
+		cfg.RetryAfter = DefaultRetryAfter
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Runner{cfg: cfg, outcomes: map[string]Outcome{}, stuck: map[string]bool{}}
+	return &Runner{cfg: cfg, outcomes: map[string]Outcome{}, stuck: map[string]bool{}, nextAttempt: map[string]time.Time{}}
 }
 
 // Run keeps running rounds until ctx ends.
@@ -131,7 +199,7 @@ func (r *Runner) Run(ctx context.Context) {
 	case <-ctx.Done():
 		return
 	case <-first.C:
-		r.RunOnce(ctx)
+		r.runRound(ctx)
 	}
 	ticker := time.NewTicker(r.cfg.Interval)
 	defer ticker.Stop()
@@ -140,14 +208,38 @@ func (r *Runner) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			r.RunOnce(ctx)
+			r.runRound(ctx)
 		}
 	}
 }
 
-// RunOnce tries every card once, in order, and returns when the round is
-// done. A round already in flight is left to finish and this call does
-// nothing.
+// runRound is one scheduled round, plus the single retry a deferred round
+// earns. One retry and no more: a round that still cannot tell what this node
+// runs is waiting on something the next interval will not fix either, and
+// retrying on a timer of its own would ask every card on a busy node.
+func (r *Runner) runRound(ctx context.Context) {
+	r.RunOnce(ctx)
+	if !r.deferredRound() {
+		return
+	}
+	retry := time.NewTimer(r.cfg.RetryAfter)
+	defer retry.Stop()
+	select {
+	case <-ctx.Done():
+	case <-retry.C:
+		r.RunOnce(ctx)
+	}
+}
+
+func (r *Runner) deferredRound() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.deferred
+}
+
+// RunOnce tries cards in order and returns when the round is done or an
+// attempt makes starting another unsafe. A round already in flight is left to
+// finish and this call does nothing.
 func (r *Runner) RunOnce(ctx context.Context) {
 	r.mu.Lock()
 	if r.running {
@@ -155,6 +247,7 @@ func (r *Runner) RunOnce(ctx context.Context) {
 		return
 	}
 	r.running = true
+	r.roundStart = r.cfg.Now()
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -167,39 +260,59 @@ func (r *Runner) RunOnce(ctx context.Context) {
 		return
 	}
 	reason := r.unavailable()
+	deferred := false
+	if reason == "" {
+		if why := r.deferredReason(); why != "" {
+			reason, deferred = why, true
+		}
+	}
+	if reason == "" {
+		for _, card := range cards {
+			if ctx.Err() != nil {
+				break
+			}
+			if stopped := r.try(ctx, card); stopped != "" {
+				reason = stopped
+				break
+			}
+		}
+	}
 	r.mu.Lock()
 	changed := reason != r.skipped
 	r.skipped = reason
+	r.deferred = deferred
 	r.mu.Unlock()
-	if reason != "" {
-		if changed {
-			// Once per change: the round is skipped every quarter hour for
-			// as long as the cause lasts.
-			slog.Info("accelerator runtime check cannot run", "reason", reason, "cards", len(cards))
-		}
-		return
-	}
-	for _, card := range cards {
-		if ctx.Err() != nil {
-			return
-		}
-		r.try(ctx, card)
+	if reason != "" && changed {
+		// Once per change: the round is skipped every quarter hour for as
+		// long as the cause lasts.
+		slog.Info("accelerator runtime check cannot run", "reason", reason, "cards", len(cards))
 	}
 }
 
-func (r *Runner) try(ctx context.Context, card Card) {
+// try asks about one card and records what it answered. It returns why the
+// round must stop: a host-wide inconclusive answer, a timed-out attempt, or an
+// older attempt that has not returned.
+func (r *Runner) try(ctx context.Context, card Card) string {
+	r.mu.Lock()
+	stuck := r.stuck[card.Ident]
+	anyStuck := len(r.stuck) > 0
+	failures := r.outcomes[card.Ident].Failures
+	r.mu.Unlock()
+	if anyStuck {
+		detail := fmt.Sprintf("an earlier runtime check has not returned after more than %s; no new card can be checked", r.cfg.Timeout)
+		if stuck {
+			detail = fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", r.cfg.Timeout)
+			r.record(card.Ident, Outcome{At: r.cfg.Now(), Failures: failures, Detail: detail})
+		}
+		return detail
+	}
 	if r.busy(card) {
 		// Serving work is itself the answer, so the card keeps whatever it
 		// last said rather than being recorded as untried.
-		return
+		return ""
 	}
-	r.mu.Lock()
-	stuck := r.stuck[card.Ident]
-	r.mu.Unlock()
-	if stuck {
-		r.record(card.Ident, Outcome{At: r.cfg.Now(),
-			Detail: fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", r.cfg.Timeout)})
-		return
+	if r.backingOff(card.Ident) {
+		return ""
 	}
 	attempt, cancel := context.WithTimeout(ctx, r.cfg.Timeout)
 	defer cancel()
@@ -207,42 +320,115 @@ func (r *Runner) try(ctx context.Context, card Card) {
 	// ignores its context — a python stuck in D state on the very driver
 	// this package exists to survive — would otherwise hold the round
 	// open forever, and with it every round after it.
-	done := make(chan error, 1)
+	type attemptAnswer struct {
+		err        error
+		finishedAt time.Time
+	}
+	done := make(chan attemptAnswer, 1)
 	go func() {
+		err := r.cfg.Try(attempt, card)
 		// Sent before the mark is cleared, so the runner either sees the
 		// answer or finds the mark already gone, never a mark left behind.
-		done <- r.cfg.Try(attempt, card)
+		done <- attemptAnswer{err: err, finishedAt: time.Now()}
 		r.mu.Lock()
 		delete(r.stuck, card.Ident)
 		r.mu.Unlock()
 	}()
+	deadline, _ := attempt.Deadline()
+	timeoutErr := fmt.Errorf("the runtime check did not finish within %s", r.cfg.Timeout)
+	// When done and the deadline are both ready, select's random choice must
+	// not decide the verdict. The attempt state and completion timestamp give
+	// both paths the same answer; a returned attempt is never left marked stuck.
+	grade := func(answer attemptAnswer) error {
+		if attempt.Err() != nil || !answer.finishedAt.Before(deadline) {
+			return timeoutErr
+		}
+		return answer.err
+	}
 	var err error
 	select {
-	case err = <-done:
+	case answer := <-done:
+		err = grade(answer)
 	case <-attempt.Done():
-		err = fmt.Errorf("the runtime check did not finish within %s", r.cfg.Timeout)
+		if ctx.Err() != nil {
+			// The round was cancelled (agent shutdown), not the card's
+			// deadline. The attempt is discarded: no outcome, no failure
+			// count, no backoff, and nothing is marked stuck because the
+			// runner is going away.
+			return ""
+		}
+		err = timeoutErr
 		r.mu.Lock()
 		r.stuck[card.Ident] = true
 		r.mu.Unlock()
 		// The check may have returned between the deadline and this mark.
 		select {
-		case <-done:
+		case answer := <-done:
+			err = grade(answer)
 			r.mu.Lock()
 			delete(r.stuck, card.Ident)
 			r.mu.Unlock()
 		default:
 		}
 	}
+	if err != nil && ctx.Err() != nil {
+		// A failure that arrived with the round's cancellation is the
+		// shutdown's, not the card's.
+		return ""
+	}
+	if inconclusive := inconclusiveReason(err); inconclusive != "" {
+		// A host failure cannot push a card into a backoff it did not earn.
+		return inconclusive
+	}
 	outcome := Outcome{OK: err == nil, At: r.cfg.Now()}
 	if err != nil {
 		outcome.Detail = err.Error()
+		outcome.Failures = failures + 1
 	}
 	r.record(card.Ident, outcome)
+	r.scheduleNext(card.Ident, outcome)
+	if err == timeoutErr {
+		return timeoutErr.Error()
+	}
+	return ""
 }
 
-// Skipped is why the last round could not ask any card, or "" when it
-// could. Doctor shows it: a check that has never run says nothing, and an
-// operator has to be told that rather than read the silence as a pass.
+func (r *Runner) backingOff(ident string) bool {
+	r.mu.Lock()
+	due, waiting := r.nextAttempt[ident]
+	r.mu.Unlock()
+	return waiting && r.cfg.Now().Before(due)
+}
+
+// scheduleNext doubles the wait after each consecutive failure up to
+// MaxBackoffRounds intervals. A successful answer clears it.
+func (r *Runner) scheduleNext(ident string, outcome Outcome) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if outcome.OK || outcome.Failures <= 0 {
+		delete(r.nextAttempt, ident)
+		return
+	}
+	rounds := 1
+	for i := 1; i < outcome.Failures && rounds < r.cfg.MaxBackoffRounds; i++ {
+		rounds *= 2
+	}
+	if rounds > r.cfg.MaxBackoffRounds {
+		rounds = r.cfg.MaxBackoffRounds
+	}
+	from := r.roundStart
+	if from.IsZero() {
+		from = outcome.At
+	}
+	// Half an interval of slack, measured from the round rather than the
+	// attempt, keeps a tick that arrives a little early from adding a round.
+	r.nextAttempt[ident] = from.Add(time.Duration(rounds)*r.cfg.Interval - r.cfg.Interval/2)
+}
+
+// Skipped is why the last round could not ask any card or stopped partway,
+// and "" when every card was asked. Doctor shows it: a check that has never
+// run says nothing, and an operator has to be told that rather than read the
+// silence as a pass.
 func (r *Runner) Skipped() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -268,6 +454,13 @@ func (r *Runner) record(ident string, outcome Outcome) {
 
 func (r *Runner) busy(card Card) bool {
 	return r.cfg.Busy != nil && r.cfg.Busy(card)
+}
+
+func (r *Runner) deferredReason() string {
+	if r.cfg.Deferred == nil {
+		return ""
+	}
+	return r.cfg.Deferred()
 }
 
 func (r *Runner) unavailable() string {

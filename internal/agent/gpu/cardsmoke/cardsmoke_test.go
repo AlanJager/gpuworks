@@ -198,31 +198,56 @@ func TestAnAnswerSurvivesTheCheckBecomingUnavailable(t *testing.T) {
 	}
 }
 
-// Each attempt is bounded on its own, so one card that hangs cannot stall
-// the round for the rest.
-func TestAnAttemptIsBoundedOnItsOwn(t *testing.T) {
+// An abandoned attempt still owns the driver. Neither the rest of its round
+// nor a later round may start another card until that attempt has returned.
+func TestATimedOutAttemptStopsThisAndLaterRounds(t *testing.T) {
 	now, _ := clock(t)
-	rec := &recorder{block: make(chan struct{}), now: now}
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	returned := make(chan struct{})
+	var mu sync.Mutex
+	var attempted []string
 	r := New(Config{
-		Cards:   func(context.Context) []Card { return cards("a", "b") },
-		Try:     rec.try,
-		Timeout: 50 * time.Millisecond,
+		Cards: func(context.Context) []Card { return cards("a", "b") },
+		Try: func(_ context.Context, card Card) error {
+			mu.Lock()
+			attempted = append(attempted, card.Ident)
+			mu.Unlock()
+			if card.Ident == "a" {
+				<-release
+				close(returned)
+			}
+			return nil
+		},
+		Timeout: 20 * time.Millisecond,
 		Now:     now,
 	})
-	start := time.Now()
-	r.RunOnce(context.Background())
-	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Fatalf("a round of two hanging cards took %s", elapsed)
-	}
-	if got := rec.idents(); len(got) != 2 {
-		t.Fatalf("attempts = %v, want the hanging card not to stop the next", got)
-	}
-	for _, ident := range []string{"a", "b"} {
-		if o, ok := r.Outcomes()[ident]; !ok || o.OK {
-			t.Fatalf("%s = %+v, want a recorded failure", ident, o)
+	for round := 0; round < 2; round++ {
+		r.RunOnce(context.Background())
+		mu.Lock()
+		got := append([]string(nil), attempted...)
+		mu.Unlock()
+		if len(got) != 1 || got[0] != "a" {
+			t.Fatalf("round %d attempts = %v, want only the original stuck attempt", round+1, got)
+		}
+		if outcome, found := r.Outcomes()["b"]; found {
+			t.Fatalf("round %d gave the untried second card an outcome: %+v", round+1, outcome)
 		}
 	}
-	close(rec.block)
+	if outcome := r.Outcomes()["a"]; outcome.OK || !strings.Contains(outcome.Detail, "has not returned") {
+		t.Fatalf("first card outcome = %+v, want the still-stuck failure", outcome)
+	}
+	if got := r.Skipped(); !strings.Contains(got, "has not returned") {
+		t.Fatalf("skipped = %q, want the reason no second card was tried", got)
+	}
+	unblock()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the original attempt did not return after being released")
+	}
 }
 
 // A cancelled context stops the round rather than working through the rest.
@@ -293,7 +318,7 @@ func TestACheckThatIgnoresItsDeadlineDoesNotStallTheRunner(t *testing.T) {
 // would gain one python process every quarter hour for as long as it
 // stays stuck. Once the first one returns, the card is asked again.
 func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
-	now, _ := clock(t)
+	now, advance := clock(t)
 	release := make(chan struct{})
 	var mu sync.Mutex
 	started := 0
@@ -324,6 +349,9 @@ func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
 	}
 
 	close(release)
+	// The abandoned check counted as a failure, so the card also has to reach
+	// the end of that failure's backoff before it can be asked again.
+	advance(16 * time.Minute)
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		r.RunOnce(context.Background())
@@ -334,5 +362,118 @@ func TestAStuckCheckIsNotJoinedByAnother(t *testing.T) {
 			t.Fatal("the card was never asked again after its stuck check returned")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A round that fires before the control plane has said what this node runs
+// asks no card at all, which left every card on the vendor tool's verdict
+// for a whole interval: on 192.168.200.29 the desired state arrived
+// forty-seven seconds after the agent registered, seventeen seconds after
+// the first round, and a die the runtime could not use stayed schedulable
+// for the next quarter hour. Such a round is retried once.
+func TestADeferredRoundIsRetriedOnce(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{now: now}
+	var mu sync.Mutex
+	known := false
+	r := New(Config{
+		Cards: func(context.Context) []Card { return cards("a") },
+		Try:   rec.try,
+		Deferred: func() string {
+			mu.Lock()
+			defer mu.Unlock()
+			if known {
+				return ""
+			}
+			return "what this node runs is not known yet"
+		},
+		Interval:   time.Hour,
+		FirstRound: time.Millisecond,
+		RetryAfter: 10 * time.Millisecond,
+		Now:        now,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.Run(ctx)
+
+	// The deferred round says why it asked nothing, and blames no card.
+	deadline := time.Now().Add(2 * time.Second)
+	for r.Skipped() == "" {
+		if time.Now().After(deadline) {
+			t.Fatal("a round that asked no card did not say why")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if got := rec.idents(); len(got) != 0 {
+		t.Fatalf("attempts = %v, want none while what the node runs is unknown", got)
+	}
+	if len(r.Outcomes()) != 0 {
+		t.Fatalf("outcomes = %+v, want none: a deferred round is not a verdict", r.Outcomes())
+	}
+
+	mu.Lock()
+	known = true
+	mu.Unlock()
+	// The retry arrives without waiting out the interval, which is an hour.
+	deadline = time.Now().Add(2 * time.Second)
+	for len(rec.idents()) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("a deferred round was not retried before the next interval")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if r.Skipped() != "" {
+		t.Fatalf("skipped = %q, want cleared once a card was asked", r.Skipped())
+	}
+}
+
+// Only one retry: a round that still cannot tell what this node runs is
+// waiting on something the next interval will not fix either, and retrying
+// on a timer of its own would ask every card on a busy node.
+func TestAStillDeferredRetryIsNotRetriedAgain(t *testing.T) {
+	now, _ := clock(t)
+	rec := &recorder{now: now}
+	var mu sync.Mutex
+	rounds := 0
+	r := New(Config{
+		Cards: func(context.Context) []Card { return cards("a") },
+		Try:   rec.try,
+		Deferred: func() string {
+			mu.Lock()
+			defer mu.Unlock()
+			rounds++
+			return "what this node runs is not known yet"
+		},
+		Interval:   time.Hour,
+		FirstRound: time.Millisecond,
+		RetryAfter: 5 * time.Millisecond,
+		Now:        now,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go r.Run(ctx)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		seen := rounds
+		mu.Unlock()
+		if seen >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rounds = %d, want the scheduled round and its one retry", seen)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Well past several more retry delays, the interval is what comes next.
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	seen := rounds
+	mu.Unlock()
+	if seen != 2 {
+		t.Fatalf("rounds = %d, want exactly the round and one retry", seen)
+	}
+	if got := rec.idents(); len(got) != 0 {
+		t.Fatalf("attempts = %v, want none", got)
 	}
 }

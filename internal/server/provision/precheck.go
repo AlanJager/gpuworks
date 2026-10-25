@@ -185,7 +185,7 @@ D=%s
 if [ -e "$D/nvidiactl" ]; then
   set -- nvidiactl nvidia-uvm nvidia-uvm-tools nvidia-modeset 'nvidia[0-9]*'
 elif [ -e "$D/davinci_manager" ]; then
-  set -- 'davinci[0-9]*' davinci_manager devmm_svm hisi_hdc
+  set -- 'davinci[0-9]*' davinci_manager devmm_svm hisi_hdc ummu uburma
 elif [ -e "$D/alixpu_ctl" ]; then
   set -- alixpu alixpu_ctl 'alixpu_ppu[0-9]*'
 elif [ -e "$D/kfd" ] || [ -e "$D/mkfd" ]; then

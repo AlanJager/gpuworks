@@ -27,7 +27,53 @@ specs:
   weight_bytes: 8848245636
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --is-embedding
+  - --chat-template
+  - gme-qwen2-vl
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - float16
+  env:
+    GLOO_SOCKET_IFNAME: lo
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+    - type: openai.embeddings
+      endpoint: /v1/embeddings
+      mode: sync
+- name: fp32-sglang-ascend-a3-8b73223f
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
+  weights:
+    quantization: fp32
+    sources:
+    - huggingface:
+        repo_id: Alibaba-NLP/gme-Qwen2-VL-2B-Instruct
+        revision: 9cfa6413f704a7c1cf5064d240748e10c876b286
+    - modelscope:
+        repo_id: iic/gme-Qwen2-VL-2B-Instruct
+        revision: ba147bc55aa12b1f7d004d08bded3b9a12db4774
+  weight_bytes: 8848245636
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --enable-metrics

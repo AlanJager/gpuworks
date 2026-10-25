@@ -24,7 +24,46 @@ specs:
   weight_bytes: 8887293597
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --attention-backend
+  - ascend
+  - --device
+  - npu
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-ascend-a3-9abd5a3b
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-4B-Instruct
+        revision: ebb281ec70b05090aa6165b016eac8ec08e71b17
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-4B-Instruct
+        revision: 0196dc7bb23f3c742616147c3254d0e4f1207787
+  weight_bytes: 8887293597
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --enable-metrics
@@ -90,7 +129,39 @@ specs:
   weight_bytes: 8887293597
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --trust-remote-code
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ascend-a3-de8534ab
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-VL-4B-Instruct
+        revision: ebb281ec70b05090aa6165b016eac8ec08e71b17
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-4B-Instruct
+        revision: 0196dc7bb23f3c742616147c3254d0e4f1207787
+  weight_bytes: 8887293597
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --trust-remote-code

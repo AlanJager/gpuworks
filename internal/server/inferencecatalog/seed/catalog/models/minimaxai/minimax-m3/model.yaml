@@ -478,4 +478,80 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: int8-vllm-ascend-a3-tp4-dp4
+  display_profile: compatible
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend:v0.30.0rc2-a3
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend:v0.30.0rc2-a3
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/MiniMax-M3-w8a8-0626
+        revision: 6b534846dcf3e767c68a070769e39577f86ef96e
+  weight_bytes: 435699368358
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --tensor-parallel-size
+  - '4'
+  - --data-parallel-size
+  - '4'
+  - --api-server-count
+  - '1'
+  - --max-num-batched-tokens
+  - '32768'
+  - --max-model-len
+  - '133000'
+  - --long-prefill-token-threshold
+  - '4096'
+  - --enable-expert-parallel
+  - --max-num-seqs
+  - '32'
+  - --distributed-executor-backend
+  - mp
+  - --gpu-memory-utilization
+  - '0.92'
+  - --reasoning-parser
+  - minimax_m3
+  - --tool-call-parser
+  - minimax_m3
+  - --enable-auto-tool-choice
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --enable-chunked-prefill
+  - --enable-prefix-caching
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"enable_flashcomm1":true,"ascend_compilation_config":{"fuse_norm_quant":false},"multistream_overlap_shared_expert":true,"enable_shared_expert_dp":true,"weight_nz_mode":2}'
+  # The rc2 A3 image's torch_npu build cannot launch ZerosLike/OnesLike AI-core
+  # tiling on this CANN/driver pair. Build fill tensors on CPU and copy them to
+  # the NPU instead; this wrapper is idempotent and keeps other devices untouched.
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 16:
+              return reject("the A3 recipe requires exactly 16 logical devices")
+          if gpu.min_memory_gib < 64:
+              return reject("each device requires at least 64 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": 4, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]

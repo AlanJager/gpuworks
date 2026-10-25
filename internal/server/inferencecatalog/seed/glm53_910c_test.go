@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/chipmatch"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 )
@@ -23,6 +24,13 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 	} {
 		t.Run(recipe.name, func(t *testing.T) {
 			_, spec := ppuSpec(t, "gpuworks/glm-5.3-flash-910c", recipe.name)
+			predicate := chipmatch.Predicate{Vendor: spec.GPUs.Vendor, Name: spec.GPUs.Name}
+			for _, name := range []string{"Ascend 910C", "Ascend 910C3", "Ascend 910B1", "Ascend 910B2C", "Ascend 310P"} {
+				want := strings.Contains(name, "910C")
+				if got := chipmatch.Evaluate(chipmatch.GPU{Vendor: "ascend", Name: name}, predicate).Matched; got != want {
+					t.Fatalf("card %q matched=%t, want %t", name, got, want)
+				}
+			}
 			for _, count := range []int{1, 2, 4, 8, 16, 32} {
 				resolved, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{
 					Count: count, Vendor: "ascend", MinMemoryGiB: 64,
@@ -41,10 +49,11 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 					t.Fatal(err)
 				}
 				launch, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{
-					Engine: engine, Entrypoint: spec.Entrypoint, APIContract: spec.API, PlacementVariables: resolved.Variables,
+					Engine: engine, Image: spec.Image, Entrypoint: spec.Entrypoint, APIContract: spec.API, PlacementVariables: resolved.Variables,
 					Params: deploy.Params{
 						ModelPath: "/model", APIPort: 31417, NNodes: 1,
-						AssignedGPUs: count, TensorParallel: count,
+						RuntimeDriver: "docker",
+						AssignedGPUs:  count, TensorParallel: count,
 						TemplateArgs: spec.Args, TemplateEnv: spec.Env,
 					},
 				})
@@ -105,6 +114,9 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 				}
 				if len(spec.Assets) != 0 || len(spec.PreStartArgv) != 0 || spec.PreStartScript != "" || len(spec.Components) != 1 {
 					t.Fatal("stock graph recipe must run without patch assets, launcher, or draft model")
+				}
+				if len(launch.PreStartArgv) != 0 || launch.PreStartScript != "" || len(launch.RuntimeAssets) != 0 {
+					t.Fatal("resolved stock launch must not inject runtime patches")
 				}
 			}
 			small, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: recipe.count, MinMemoryGiB: 32})

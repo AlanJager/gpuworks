@@ -28,7 +28,45 @@ specs:
   weight_bytes: 31282343685
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --enable-metrics
+  - --device
+  - npu
+  - --attention-backend
+  - ascend
+  - --dtype
+  - bfloat16
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-sglang-ascend-a3-a46ce418
+  display_profile: general
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cann9.0-a3-sglang0.5.18-r2
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct
+        revision: 761647b6b9af7c5a7073bd7940ec603fea935a13
+    - huggingface:
+        repo_id: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct
+        revision: 553ea250b9a5317231459279d5847d6cf955b9aa
+  weight_bytes: 31282343685
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --enable-metrics

@@ -165,7 +165,7 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 | 部署填了 `shm_bytes` | 用填的值（盖过模板的 `shm_bytes`，即使比它小）；小于 CPU 内存层时 `ResolveLaunch` 就报 `SHM_BELOW_KV_CPU_TIER`（参数 `shm_gib`、`tier_gib`） |
 | 没填 | 「引擎基线 + CPU 内存层」与「模板档位的 `shm_bytes`」中较大的一个；没开内存层、模板也没声明就是引擎基线 |
 
-- 模板档位的 `shm_bytes` 是引擎自己需要的 `/dev/shm` 总量（例如 DeepInfer 把约 400 GB 的 Engram 表放在共享内存里），所以与派生值取较大者，而不是相加；它不属于容器覆盖，镜像目录同样不贡献它（ADR 0031 不受影响）。部署自己填的 `shm_bytes` 永远优先，模板的值不会让一个小于内存层的显式值通过校验。模板声明的值超出节点实际内存时，容器照常启动（`--shm-size` 只是上限，不是预留），写入超限时由引擎报错。
+- 模板档位的 `shm_bytes` 是引擎自己需要的 `/dev/shm` 总量（例如 DeepInfer 把约 400 GB 的 Engram 表放在共享内存里；DeepSeek-V4.1-Flash 原版与 1017 的 A3 档各声明 512 GiB，容纳两张约 103 GiB 的本地 DP 共享表），所以与派生值取较大者，而不是相加；它不属于容器覆盖，镜像目录同样不贡献它（ADR 0031 不受影响）。部署自己填的 `shm_bytes` 永远优先，模板的值不会让一个小于内存层的显式值通过校验。模板声明的值超出节点实际内存时，容器照常启动（`--shm-size` 只是上限，不是预留），写入超限时由引擎报错。
 - 基线保留给 NCCL、torch IPC 等其他共用 `/dev/shm` 的东西：内存层分配失败时 16 GiB 是完全空闲的，所以是相加而不是从中划出。填写的值只要求不小于内存层，要给这些留余量由部署者自己加。
 - 内存层只在引擎能表达该参数、且命令由平台生成时才算。手写命令（`manual`）或完整的 `cmd_display` 覆盖由用户负责自己的命令，平台不按快速参数里残留的内存层推导，也不据此拒绝。
 - PD 分离只有 prefill 角色带内存层（decode 角色的卸载配置被去掉），所以 decode 实例仍是引擎基线；部署级的 `shm_bytes` 对两个角色同样适用，因此必须满足 prefill。预览里每个实例的 `shm_bytes` 各自如实给出。
@@ -174,7 +174,7 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 
 ### 锁定内存（memlock）
 
-有的引擎要把大块主机内存锁页（例如 DeepInfer 用 `cudaHostRegister` 锁住约 197 GB 的 Engram 表），默认的 `memlock` 上限会让它启动失败。模板档位写 `memlock_unlimited: true` 即可只对该部署的容器取消上限，不改宿主机。
+有的引擎要把大块主机内存锁页（例如 DeepInfer 用 `cudaHostRegister` 锁住约 197 GB 的 Engram 表，DeepSeek 的 A3 档用 `aclrtHostRegisterV2` 注册共享 Engram 表），默认的 `memlock` 上限会让它启动失败。模板档位写 `memlock_unlimited: true` 即可只对该部署的容器取消上限，不改宿主机。DeepSeek-V4.1-Flash 原版与 1017 的 A3 档都这样声明，不在模板 `args` 里重复写 Docker 的 memlock 参数。
 
 | 情况 | 最终 docker 参数里的 `memlock` |
 |---|---|

@@ -264,6 +264,7 @@ func (a *apiHandlers) evaluatePD(env evaluatePDEnv) {
 					writeEvaluateFieldErrors(w, resp, env.errs)
 					return
 				}
+				resp.Warnings = append(resp.Warnings, plan.Warnings...)
 				if !preview.Fits {
 					resp.OK = false
 				}

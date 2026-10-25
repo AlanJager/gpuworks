@@ -53,6 +53,13 @@ type pciVendor struct {
 	// drivers are this vendor's own accelerator kernel modules. A function
 	// of this vendor bound to one of them is a card whatever its class.
 	drivers []string
+	// notAccelerators are device ids of this vendor's own fixed-function
+	// engines that report an accelerator class but are not accelerators a
+	// node can run work on. They are named individually because the class
+	// cannot tell them apart from a card, and because a vendor's next
+	// accelerator must still be found by class rather than be excluded by
+	// an allow list that predates it.
+	notAccelerators []uint32
 }
 
 // pciVendors is read-only after init.
@@ -77,6 +84,11 @@ var pciVendors = map[uint32]pciVendor{
 		name:        VendorAscend,
 		baseClasses: []uint32{pciBaseClassAccelerators},
 		drivers:     []string{"devdrv_device_driver"},
+		// Kunpeng builds compression into the SoC: 19e5:a250, the ZIP
+		// engine, reports 0x1200 like the NPU does and binds hisi_zip.
+		// A 910C host presents eight of them (192.168.200.29, measured
+		// 2026-10-25), and nothing can run inference on one.
+		notAccelerators: []uint32{0xa250},
 	},
 	0x1ded: {
 		name:        VendorPPU,
@@ -130,18 +142,21 @@ func IsVendorAcceleratorDriver(vendorID uint32, driver string) bool {
 // HD Audio function at class 0x0403 and two USB controllers at 0x0c03 and
 // 0x0c80 (measured on gpu3). Those are different base classes and are never
 // reached here, which is why the classes above can be widened safely.
-func VendorForPCI(vendorID, class uint32, driver string) string {
+func VendorForPCI(vendorID, deviceID, class uint32, driver string) string {
 	vendor, known := pciVendors[vendorID]
 	if !known {
 		return ""
 	}
-	if vendor.accepts(class, driver) {
+	if vendor.accepts(deviceID, class, driver) {
 		return vendor.name
 	}
 	return ""
 }
 
-func (v pciVendor) accepts(class uint32, driver string) bool {
+func (v pciVendor) accepts(deviceID, class uint32, driver string) bool {
+	if v.isNotAnAccelerator(deviceID) {
+		return false
+	}
 	for _, want := range v.classes {
 		if class>>8 == want {
 			return true
@@ -154,6 +169,15 @@ func (v pciVendor) accepts(class uint32, driver string) bool {
 	}
 	for _, want := range v.drivers {
 		if driver == want {
+			return true
+		}
+	}
+	return false
+}
+
+func (v pciVendor) isNotAnAccelerator(deviceID uint32) bool {
+	for _, want := range v.notAccelerators {
+		if deviceID == want {
 			return true
 		}
 	}
@@ -175,9 +199,14 @@ func (v pciVendor) accepts(class uint32, driver string) bool {
 // A function bound to vfio-pci is not reported either: a host passes all
 // sorts of hardware through to its virtual machines, and the vendor id
 // alone does not make it an accelerator.
-func UnknownAcceleratorFunction(vendorID, class uint32, driver string) bool {
+func UnknownAcceleratorFunction(vendorID, deviceID, class uint32, driver string) bool {
 	vendor, known := pciVendors[vendorID]
-	if !known || driver == PCIDriverVFIO || vendor.accepts(class, driver) {
+	if !known || driver == PCIDriverVFIO || vendor.accepts(deviceID, class, driver) {
+		return false
+	}
+	if vendor.isNotAnAccelerator(deviceID) {
+		// A known fixed-function engine is not news; reporting it would put
+		// a permanent warning on every host that has one.
 		return false
 	}
 	return plausiblyAnAccelerator(class, len(vendor.classes) > 0)

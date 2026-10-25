@@ -300,10 +300,14 @@ func transferReset(path, state, acquisition string, extra map[string]any) map[st
 	return updates
 }
 
-// PrepareModelDownload resets a row to a pending public download.
+// PrepareModelDownload resets a row to a pending public download. Every
+// preparation is a new transfer: its TransferID travels in the task and comes
+// back on each status the agent reports, so UpdateModelFileStatus can drop the
+// reports of a download an earlier preparation left running. An agent that
+// predates download IDs reports none; those reports are still accepted.
 func (s *Store) PrepareModelDownload(ref FileRef, path string) (*ModelFile, error) {
 	return s.prepareModelFile(ref, path, transferReset(path, proto.MFPending, proto.ModelAcquireDownload, map[string]any{
-		"revision": "",
+		"revision": "", "transfer_id": auth.NewUUID(),
 	}))
 }
 

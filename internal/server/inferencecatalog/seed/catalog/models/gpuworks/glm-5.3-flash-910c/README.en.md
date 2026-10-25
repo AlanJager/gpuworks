@@ -13,7 +13,7 @@ The context limit is 139264 tokens, allowing 128K input plus output. Prefill chu
 
 ## Measured scope
 
-Both recipes were validated on one 910C host on 2026-10-25. Each request used 131072 input tokens with 98304 independently primed history tokens and mixed Chinese, English, and code. Each test used one synchronized wave, no retries, and a 1024-token output budget; every request emitted 1024 tokens.
+Both recipes were validated on one 910C host on 2026-10-25. Each request used 131072 input tokens with 98304 independently primed history tokens and mixed Chinese, English, and code. Each test used one synchronized wave, no retries, and a 1024-token output budget; every request emitted 1024 tokens. The benchmark pinned each session's priming and subsequent requests to the same DP rank using `X-data-parallel-rank`; production requests also need to return to the rank holding their prefix to reuse these caches.
 
 | Logical NPUs / concurrency | Per-request decode TPS (min / median / max) | Median time to first token | Total output / test wall time | Actual cached tokens per request |
 | --- | --- | --- | --- | --- |

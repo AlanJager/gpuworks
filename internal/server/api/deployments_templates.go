@@ -164,42 +164,51 @@ func (a *apiHandlers) applyCatalogEstimationConfig(selection *templateSelection,
 	}
 }
 
-// initTemplateModelInferenceConfig gives the model a template deploys the API
-// the template declares, where the model has none of its own. The template is
-// the only place that API is stated - a config.json never names one - and the
-// model row is what the deployment view, the Playground and its proxy read, so
-// a row left empty would hide a running deployment from all three. An empty
-// operations list ([]) counts as none, whether registration found no task or
-// somebody cleared it: a model without operations is unusable, so the
-// template's declaration replaces it. A non-empty list is the model's current
-// contract and stays. Evaluation never calls this: a preview already falls
-// back to the template contract and must not write.
-func (a *apiHandlers) initTemplateModelInferenceConfig(selection *templateSelection, model *store.Model) (*store.Model, error) {
+// initTemplateModelInferenceConfig builds the transient model contract a
+// template create validates. Empty operations ([] included) and the legacy
+// bare-chat placeholder take the template declaration; an explicit non-empty
+// contract stays. The returned declaration is persisted only by the final
+// deployment transaction, so a refused health check or resource plan cannot
+// change the model or emit an inference-config event.
+func (a *apiHandlers) initTemplateModelInferenceConfig(selection *templateSelection, model *store.Model) (*store.Model, templateInferenceConfig, error) {
+	config := templateInferenceConfig{}
 	if selection == nil || selection.Model == nil || model == nil {
-		return model, nil
+		return model, config, nil
 	}
 	operations := ""
 	var contract inferenceapi.Contract
 	if len(selection.APIContract) > 0 && json.Unmarshal(selection.APIContract, &contract) == nil && len(contract.Operations) > 0 {
 		encoded, err := json.Marshal(contract.Operations)
 		if err != nil {
-			return nil, err
+			return nil, config, err
 		}
 		operations = string(encoded)
 	}
 	modalities := strings.TrimSpace(selection.Model.InputModalities)
 	if operations == "" && modalities == "" {
-		return model, nil
+		return model, config, nil
 	}
-	return a.d.Store.InitModelInferenceConfig(model.ID, operations, modalities)
+	config = templateInferenceConfig{modelID: model.ID, operations: operations, inputModalities: modalities}
+	candidate := *model
+	if operations != "" && (store.OperationsUnset(model.Operations) || store.IsDefaultChatOperations(model.Operations)) {
+		candidate.Operations = operations
+	}
+	if modalities != "" && strings.TrimSpace(model.InputModalities) == "" {
+		candidate.InputModalities = modalities
+	}
+	return &candidate, config, nil
 }
 
 // applyCurrentModelAPIContract makes the model row's editable operations the
 // effective contract for this deployment request. Template specs still supply
 // the initial contract when the resolved model predates model-level inference
-// configuration, and for a model whose operations are empty ([] included).
+// configuration, has empty operations ([] included), or holds a legacy bare
+// chat placeholder.
 func applyCurrentModelAPIContract(selection *templateSelection, model *store.Model) {
 	if selection == nil || model == nil || store.OperationsUnset(model.Operations) {
+		return
+	}
+	if selection.Spec != nil && store.IsDefaultChatOperations(model.Operations) {
 		return
 	}
 	contract := inferenceapi.ModelContract(model)
