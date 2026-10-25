@@ -33,7 +33,7 @@ func skipIfNoSecrets(t *testing.T, names ...string) map[string]string {
 
 func readCloudSecrets() map[string]string {
 	values := map[string]string{}
-	for _, name := range []string{"RUNPOD_API_KEY", "RUNPOD_KEY", "RUNPOD_POD_ID", "RUNPOD_PUBLIC_IP", "RUNPOD_SSH_PORT", "RUNPOD_SSH_USER", "RUNPOD_PRIVATE_KEY", "RUNPOD_SSH_PRIVATE_KEY", "COMPSHARE_ACCESS_KEY", "COMPSHARE_SECRET_KEY", "COMPSHARE_KEY", "COMPSHARE_IMAGE_ID", "COMPSHARE_GOLDEN_IMAGE_ID", "VAST_API_KEY", "VAST_SSH_PRIVATE_KEY", "VAST_SSH_KEY_PATH", "VAST_MAX_HOURLY_PRICE", "VAST_TEST_IMAGE", "AUTODL_TOKEN", "AUTODL_IMAGE_UUID", "AUTODL_MAX_HOURLY_PRICE", "GITEE_API_TOKEN", "GITEE_ZONE", "GITEE_IMAGE", "GITEE_GPU_MODEL"} {
+	for _, name := range []string{"RUNPOD_API_KEY", "RUNPOD_KEY", "RUNPOD_POD_ID", "RUNPOD_PUBLIC_IP", "RUNPOD_SSH_PORT", "RUNPOD_SSH_USER", "RUNPOD_PRIVATE_KEY", "RUNPOD_SSH_PRIVATE_KEY", "COMPSHARE_ACCESS_KEY", "COMPSHARE_SECRET_KEY", "COMPSHARE_KEY", "COMPSHARE_IMAGE_ID", "COMPSHARE_GOLDEN_IMAGE_ID", "COMPSHARE_CONTAINER_IMAGE_ID", "VAST_API_KEY", "VAST_SSH_PRIVATE_KEY", "VAST_SSH_KEY_PATH", "VAST_MAX_HOURLY_PRICE", "VAST_TEST_IMAGE", "AUTODL_TOKEN", "AUTODL_IMAGE_UUID", "AUTODL_MAX_HOURLY_PRICE", "GITEE_API_TOKEN", "GITEE_ZONE", "GITEE_IMAGE", "GITEE_GPU_MODEL"} {
 		values[name] = strings.TrimSpace(os.Getenv(name))
 	}
 	// Per-region image variables are open-ended (one per CompShare region).
@@ -188,6 +188,18 @@ func compshareZoneImages(secrets map[string]string) map[string]string {
 		zoneImages[strings.ToLower(strings.ReplaceAll(region, "_", "-"))] = strings.TrimSpace(value)
 	}
 	return zoneImages
+}
+
+// compshareContainerProvider is compshareProvider able to rent the container
+// product, which boots from its own image (COMPSHARE_CONTAINER_IMAGE_ID).
+func compshareContainerProvider(t *testing.T) *cloudprovider.Compshare {
+	t.Helper()
+	p := compshareProvider(t)
+	image := strings.TrimSpace(readCloudSecrets()["COMPSHARE_CONTAINER_IMAGE_ID"])
+	if image == "" {
+		skipOrFailExternal(t, "COMPSHARE_CONTAINER_IMAGE_ID is required to rent a CompShare container instance")
+	}
+	return p.WithContainerImage(image)
 }
 
 func compshareImageID(secrets map[string]string) string {

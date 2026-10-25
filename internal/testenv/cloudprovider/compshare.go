@@ -17,6 +17,10 @@ import (
 	compsharedriver "gpuworks.ai/gpuworks/internal/server/provider/compshare"
 )
 
+// compshareEndpointPoll is how often Rent asks for the SSH endpoint of a
+// new instance; tests shorten it.
+var compshareEndpointPoll = 5 * time.Second
+
 const (
 	compshareRentTimeout    = 5 * time.Minute
 	compshareDestroyTimeout = 2 * time.Minute
@@ -48,13 +52,16 @@ type CapacitySpec struct {
 }
 
 type Compshare struct {
-	driver     compshareDriver
-	creds      serverprovider.Credentials
-	imageID    string
-	zoneImages map[string]string
-	runID      string
-	mu         sync.Mutex
-	placements map[string]serverprovider.Zone
+	driver  compshareDriver
+	creds   serverprovider.Credentials
+	imageID string
+	// containerImageID is the image of container instances, which are not
+	// built from a VM image (see WithContainerImage).
+	containerImageID string
+	zoneImages       map[string]string
+	runID            string
+	mu               sync.Mutex
+	placements       map[string]serverprovider.Zone
 	// imageless holds region/zone pairs where creating a VM with this run's
 	// image failed with RetCode 226641. The capacity API does not check the
 	// image against the zone, so only a create reveals it; SelectPlacement
@@ -86,6 +93,14 @@ func newCompshare(driver compshareDriver, creds serverprovider.Credentials, imag
 		}
 	}
 	return &Compshare{driver: driver, creds: creds, imageID: strings.TrimSpace(imageID), zoneImages: zoneImages, runID: runID, placements: make(map[string]serverprovider.Zone), imageless: make(map[string]bool)}, nil
+}
+
+// WithContainerImage sets the image container instances (GPUSpec.Container)
+// boot from. CompShare's container product has its own image catalog, so the
+// VM golden image cannot be used for it.
+func (p *Compshare) WithContainerImage(imageID string) *Compshare {
+	p.containerImageID = strings.TrimSpace(imageID)
+	return p
 }
 
 func (p *Compshare) imageForZone(region string) string {
@@ -210,7 +225,11 @@ func placementKey(model string, count int) string {
 }
 
 func (p *Compshare) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
-	if p.imageID == "" {
+	if spec.Container {
+		if p.containerImageID == "" {
+			return nil, fmt.Errorf("compshare container image id is required to rent a container instance")
+		}
+	} else if p.imageID == "" {
 		return nil, fmt.Errorf("compshare image id is required for rent")
 	}
 	ctx, cancel := withMaxTimeout(ctx, compshareRentTimeout)
@@ -236,7 +255,11 @@ func (p *Compshare) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 			return nil, fmt.Errorf("compshare: GPU %q has %d MiB VRAM, below requested %d MiB", spec.GPUModel, known, spec.MinVRAMMB)
 		}
 	}
-	extra := map[string]string{"disk_gb": strconv.Itoa(diskGB), "password": password, "instance_kind": "vm"}
+	instanceKind := "vm"
+	if spec.Container {
+		instanceKind = "container"
+	}
+	extra := map[string]string{"disk_gb": strconv.Itoa(diskGB), "password": password, "instance_kind": instanceKind}
 	if spec.Region != "" {
 		extra["region"] = spec.Region
 	}
@@ -246,7 +269,9 @@ func (p *Compshare) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 	p.mu.Lock()
 	placed, hasPlacement := p.placements[placementKey(spec.GPUModel, gpuCount)]
 	p.mu.Unlock()
-	hasPlacement = hasPlacement && spec.Region == "" && spec.Zone == ""
+	// Container zones are not the VM zones SelectPlacement searches; with no
+	// region and zone the driver looks among the container zones itself.
+	hasPlacement = hasPlacement && spec.Region == "" && spec.Zone == "" && !spec.Container
 	var created serverprovider.Instance
 	var rejected []string
 	for {
@@ -254,6 +279,9 @@ func (p *Compshare) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 			extra["region"], extra["zone"] = placed.Region, placed.Zone
 		}
 		image := p.imageForZone(extra["region"])
+		if spec.Container {
+			image = p.containerImageID
+		}
 		created, err = p.driver.CreateInstance(ctx, p.creds, serverprovider.CreateInstanceRequest{Name: TestNamePrefix + p.runID, GPUModel: spec.GPUModel, GPUCount: gpuCount, Image: image, Extra: extra})
 		if err == nil {
 			break
@@ -291,7 +319,7 @@ func (p *Compshare) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("wait for compshare SSH endpoint: %w", ctx.Err())
-		case <-time.After(5 * time.Second):
+		case <-time.After(compshareEndpointPoll):
 		}
 		instances, listErr := p.driver.ListInstances(ctx, p.creds)
 		if listErr != nil {

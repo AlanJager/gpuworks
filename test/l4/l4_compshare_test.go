@@ -5,6 +5,8 @@ package l4
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +113,44 @@ func TestCompshareDirectServerDialOnboarding(t *testing.T) {
 	}
 	if node.ConnectMode != "server_dial" || node.ServerDialAddress == "" {
 		t.Fatalf("direct public server_dial node=%+v", node)
+	}
+}
+
+// TestCompshareServerDialNodeOnboardingContainer rents CompShare's container
+// product, which is reached only through the TCP ports it opens (each
+// forwarded from a shared podtcp host, SSH's included), and installs a
+// server-dialed agent through the provider API, leaving the port and address
+// to the driver: it uses an open port nothing listens on, or opens one with
+// UpdateCompShareInstancePorts. The server must then reach the agent at the
+// forwarded address, not at the SSH entrance. A VM, which has a public
+// address, is covered by TestCompshareDirectServerDialOnboarding.
+//
+// go test -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$' -timeout=55m ./test/l4
+func TestCompshareServerDialNodeOnboardingContainer(t *testing.T) {
+	p := compshareContainerProvider(t)
+	instance, checked := rentCompshareContainer(t, p, cloudprovider.GPUSpec{GPUCount: 1, DiskGB: compshareAcceptanceDiskGB, Container: true})
+	if instance == nil {
+		skipOrFailExternal(t, "no CompShare single-GPU container could be rented: %s", strings.Join(checked, "; "))
+	}
+	if instance.Kind != "container" {
+		t.Fatalf("compshare product kind=%q, want container", instance.Kind)
+	}
+	env := setupCloudNodeWithInstance(t, testenv.New(t), p, cloudprovider.GPUSpec{GPUModel: instance.GPUModel, GPUCount: 1, Container: true}, instance, withServerDial())
+	requireOnlineNode(t, env)
+	node, err := env.Control.Store().NodeWithGPUs(env.NodeUUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.ConnectMode != "server_dial" || node.ServerURL != "" || node.ServerDialListen == "" || node.ServerDialAddress == "" {
+		t.Fatalf("compshare container server_dial node = mode=%q server_url=%q listen=%q address=%q", node.ConnectMode, node.ServerURL, node.ServerDialListen, node.ServerDialAddress)
+	}
+	// The forwarded address is the container's own entrance for the agent's
+	// port, never the SSH one the install went through.
+	if sshEndpoint := net.JoinHostPort(instance.PublicIP, strconv.Itoa(instance.SSHPort)); node.ServerDialAddress == sshEndpoint {
+		t.Fatalf("server_dial address %s is the SSH endpoint; the agent's own forwarded port was not used", node.ServerDialAddress)
+	}
+	if len(node.GPUs) != 1 || node.GPUs[0].MemoryTotal <= 0 {
+		t.Fatalf("compshare container GPU inventory = %+v", node.GPUs)
 	}
 }
 
