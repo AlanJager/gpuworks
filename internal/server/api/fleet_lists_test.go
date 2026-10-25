@@ -275,6 +275,25 @@ func TestDashboardSummaryCountsTheFleet(t *testing.T) {
 	}
 }
 
+func TestDashboardSummaryGroupsMixedNodeCardsByTheirOwnVendor(t *testing.T) {
+	node := store.Node{
+		GPUCount:  2,
+		GPUVendor: "nvidia",
+		GPUs: []store.GPU{
+			{Vendor: "nvidia", MemoryTotal: 24 << 30},
+			{Vendor: "ascend", MemoryTotal: 64 << 30},
+		},
+	}
+	got := summarizeNodes([]store.Node{node}, "")
+	byVendor := make(map[string]dto.CapacityGroup, len(got.ByVendor))
+	for _, row := range got.ByVendor {
+		byVendor[row.Key] = row
+	}
+	if len(byVendor) != 2 || byVendor["nvidia"].GPUs != 1 || byVendor["nvidia"].VRAMGiB != 24 || byVendor["ascend"].GPUs != 1 || byVendor["ascend"].VRAMGiB != 64 {
+		t.Fatalf("mixed node vendor capacity = %+v, want one card and its VRAM under each vendor", got.ByVendor)
+	}
+}
+
 func TestDashboardSummaryOfAnEmptyFleet(t *testing.T) {
 	n := newNetworkAPI(t)
 	raw := n.memberGet("/api/v1/dashboard/summary")

@@ -47,6 +47,7 @@ import "./pages/networks/topology/networkTopology.css";
 import "./pages/inferenceTemplateOrganizationCatalog.css";
 import "./components/detail/detailDrawer.css";
 import "./pages/nodes/nodeDetail.css";
+import "./pages/dashboard.css";
 import "./pages/playground/playground.css";
 
 const { Header, Sider, Content } = Layout;
