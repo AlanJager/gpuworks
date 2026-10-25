@@ -268,6 +268,28 @@ func (p *Vast) finishRent(ctx context.Context, created serverprovider.Instance, 
 	}, nil
 }
 
+// MappedPortHost is the address Vast maps the instance's container ports on
+// (public_ipaddr), which a server-dialed agent is reached at. Rent's
+// Instance.PublicIP is instead the host of the preferred SSH connection, and
+// that may be one of Vast's SSH proxies (sshN.vast.ai) that holds none of the
+// instance's other ports.
+func (p *Vast) MappedPortHost(ctx context.Context, instanceID string) (string, error) {
+	instances, err := p.driver.ListInstances(ctx, p.creds)
+	if err != nil {
+		return "", fmt.Errorf("vast: list instances: %w", err)
+	}
+	for _, instance := range instances {
+		if instance.ExternalID != instanceID {
+			continue
+		}
+		if strings.TrimSpace(instance.PublicIP) == "" {
+			return "", fmt.Errorf("vast: instance %s reports no public address", instanceID)
+		}
+		return instance.PublicIP, nil
+	}
+	return "", fmt.Errorf("vast: instance %s is not listed", instanceID)
+}
+
 func (p *Vast) Destroy(ctx context.Context, instanceID string) error {
 	ctx, cancel := withMaxTimeout(ctx, vastDestroyTimeout)
 	defer cancel()

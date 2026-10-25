@@ -61,7 +61,7 @@ func TestCompshareSingleVMTensorParallelAndDGPU(t *testing.T) {
 	// CompShare's UAAA route is optimized for the domestic SWR mirror. Prefer
 	// it for this live suite so a fresh VM does not spend the acceptance window
 	// waiting on a multi-gigabyte quay.io pull.
-	if err := env.Control.Store().SetSetting("image_registry_rewrites", `{"default":"huaweicloud","rules":[{"prefix":"gpustack/","mirrors":["swr.cn-south-1.myhuaweicloud.com/gpustack","quay.io/gpustack"]}]}`); err != nil {
+	if _, err := env.Control.Store().CreatePullSourceRule(store.PullSourceRuleSpec{Match: "gpustack/", Endpoints: compshareGPUStackMirrorEndpoints, AllowUpstream: true}); err != nil {
 		t.Fatal(err)
 	}
 	if !t.Run("ProvisionAndRuntime", func(t *testing.T) { testCompshareVMAndRuntime(t, env, gpuCount) }) {

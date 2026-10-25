@@ -135,12 +135,18 @@ func (p *Runpod) rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 	if err := p.addSSHKey(ctx, publicKey); err != nil {
 		return nil, err
 	}
+	extra := map[string]string{
+		"disk_gb":           strconv.Itoa(diskGB),
+		"env.GPUWORKS_TEST": "true", "env.GPUWORKS_TEST_RUN_ID": p.runID,
+	}
+	if !spec.ServerDialPort {
+		// SSH only. A server-dialed agent needs a second port, which the
+		// driver exposes by default; adding one to a running pod restarts it.
+		extra["ports"] = "22/tcp"
+	}
 	created, err := p.driver.CreateInstance(ctx, p.creds, serverprovider.CreateInstanceRequest{
 		Name: TestNamePrefix + p.runID, GPUModel: NormalizeGPUModel(spec.GPUModel), GPUCount: gpuCount,
-		Extra: map[string]string{
-			"disk_gb": strconv.Itoa(diskGB), "ports": "22/tcp",
-			"env.GPUWORKS_TEST": "true", "env.GPUWORKS_TEST_RUN_ID": p.runID,
-		},
+		Extra: extra,
 	})
 	if err != nil {
 		_ = p.removeSSHKey(context.Background(), string(publicKey))

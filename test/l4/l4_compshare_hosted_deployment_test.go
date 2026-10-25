@@ -22,7 +22,13 @@ import (
 	"gpuworks.ai/gpuworks/internal/testenv/apiwire"
 )
 
-const hostedRegistryRewrites = `{"default":"huaweicloud","rules":[{"prefix":"gpustack/","mirrors":["swr.cn-south-1.myhuaweicloud.com/gpustack","quay.io/gpustack"]}]}`
+// compshareGPUStackMirrorEndpoints are the replacement addresses of the
+// gpustack/ image source rule that CompShare cases set, the way an operator
+// does under /api/v1/pull/source-rules: CompShare's UAAA route is tuned for the
+// domestic SWR mirror, so a fresh VM does not spend the acceptance window on a
+// multi-gigabyte pull from a far registry. (The retired image_registry_rewrites
+// setting answers 410 SETTING_REMOVED.)
+var compshareGPUStackMirrorEndpoints = []string{"swr.cn-south-1.myhuaweicloud.com/gpustack", "quay.io/gpustack"}
 
 type hostedDeployment struct {
 	harness    *hostedControlPlane
@@ -65,8 +71,10 @@ func registerHostedModel(ctx context.Context, api *hostedAPIClient, input map[st
 
 func hostedPrepareRealModel(t *testing.T, harness *hostedControlPlane) dto.Model {
 	t.Helper()
-	if err := harness.API.PutJSON(t.Context(), "/api/v1/settings/image_registry_rewrites", json.RawMessage(hostedRegistryRewrites), nil); err != nil {
-		t.Fatalf("configure hosted image registry rewrites: %v", err)
+	allowUpstream := true
+	mirror := dto.PullSourceRuleRequest{Match: "gpustack/", Endpoints: compshareGPUStackMirrorEndpoints, AllowUpstream: &allowUpstream}
+	if err := harness.API.PostJSON(t.Context(), "/api/v1/pull/source-rules", mirror, nil); err != nil {
+		t.Fatalf("configure hosted image source rule: %v", err)
 	}
 	var model dto.Model
 	if err := registerHostedModel(t.Context(), harness.API, map[string]any{

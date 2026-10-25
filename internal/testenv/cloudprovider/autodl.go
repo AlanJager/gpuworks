@@ -24,7 +24,17 @@ const (
 	autodlDefaultGPUModel  = "RTX 4080S"
 )
 
+// autodlAutoGPUModels are the specs an unpinned Rent tries, cheapest first;
+// the hourly price cap still applies to whichever one is created.
+var autodlAutoGPUModels = []string{autodlDefaultGPUModel, "RTX 4090D", "RTX 4090", "RTX 3090", "RTX 5090"}
+
 var autodlLedgerMu sync.Mutex
+
+// isAutoDLOutOfStock reports the create refusal AutoDL answers with when a
+// spec has no free machine ("当前算力规格暂无库存, 请修改配置或稍等再试").
+func isAutoDLOutOfStock(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "暂无库存")
+}
 
 type autodlLifecycleDriver interface {
 	ListInstances(context.Context, serverprovider.Credentials) ([]serverprovider.Instance, error)
@@ -85,37 +95,66 @@ func (p *AutoDL) ManagementCredentials() serverprovider.Credentials { return p.c
 func (p *AutoDL) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 	ctx, cancel := withMaxTimeout(ctx, autodlRentTimeout)
 	defer cancel()
-	gpuModel := strings.TrimSpace(spec.GPUModel)
-	if gpuModel == "" || strings.EqualFold(gpuModel, "auto") {
-		gpuModel = autodlDefaultGPUModel
+	requested := strings.TrimSpace(spec.GPUModel)
+	candidates := []string{requested}
+	if requested == "" || strings.EqualFold(requested, "auto") {
+		// No card was asked for: AutoDL's stock of any one spec comes and goes
+		// during the day, so walk the specs this suite can use when a create
+		// is refused for stock. A card the caller named is never swapped.
+		candidates = autodlAutoGPUModels
 	}
 	gpuCount := spec.GPUCount
 	if gpuCount <= 0 {
 		gpuCount = 1
 	}
-	if spec.MinVRAMMB > 0 {
-		known, ok := gpuVRAMMB(gpuModel)
-		if !ok {
-			return nil, fmt.Errorf("autodl: cannot verify MinVRAMMB=%d for GPU %q", spec.MinVRAMMB, gpuModel)
-		}
-		if known < spec.MinVRAMMB {
-			return nil, fmt.Errorf("autodl: GPU %q has %d MiB VRAM, below requested %d MiB", gpuModel, known, spec.MinVRAMMB)
-		}
-	}
 	extraDisk := spec.DiskGB
 	if extraDisk < 0 {
 		extraDisk = 0
 	}
-	created, err := p.driver.CreateInstance(ctx, p.creds, serverprovider.CreateInstanceRequest{
-		Name: TestNamePrefix + p.runID, GPUModel: gpuModel, GPUCount: gpuCount, Image: p.image,
-		Extra: map[string]string{
-			"expand_system_disk_by_gb": strconv.Itoa(extraDisk),
-			"cuda_v_from":              "113",
-			"start_command":            "sleep 1",
-		},
-	})
-	if err != nil {
-		return nil, err
+	var created serverprovider.Instance
+	var gpuModel string
+	var outOfStock []string // candidates passed over, with why
+	for _, candidate := range candidates {
+		if spec.MinVRAMMB > 0 {
+			known, ok := gpuVRAMMB(candidate)
+			var reason error
+			switch {
+			case !ok:
+				reason = fmt.Errorf("autodl: cannot verify MinVRAMMB=%d for GPU %q", spec.MinVRAMMB, candidate)
+			case known < spec.MinVRAMMB:
+				reason = fmt.Errorf("autodl: GPU %q has %d MiB VRAM, below requested %d MiB", candidate, known, spec.MinVRAMMB)
+			}
+			if reason != nil {
+				if len(candidates) > 1 {
+					outOfStock = append(outOfStock, reason.Error())
+					continue
+				}
+				return nil, reason
+			}
+		}
+		instance, err := p.driver.CreateInstance(ctx, p.creds, serverprovider.CreateInstanceRequest{
+			Name: TestNamePrefix + p.runID, GPUModel: candidate, GPUCount: gpuCount, Image: p.image,
+			Extra: map[string]string{
+				"expand_system_disk_by_gb": strconv.Itoa(extraDisk),
+				"cuda_v_from":              "113",
+				"start_command":            "sleep 1",
+			},
+		})
+		if err != nil {
+			if len(candidates) > 1 && isAutoDLOutOfStock(err) {
+				outOfStock = append(outOfStock, candidate+": "+err.Error())
+				continue
+			}
+			if len(outOfStock) > 0 {
+				return nil, fmt.Errorf("%w (out of stock before: %s)", err, strings.Join(outOfStock, "; "))
+			}
+			return nil, err
+		}
+		created, gpuModel = instance, candidate
+		break
+	}
+	if gpuModel == "" {
+		return nil, fmt.Errorf("autodl: no GPU spec could be rented: %s", strings.Join(outOfStock, "; "))
 	}
 	if strings.TrimSpace(created.ExternalID) == "" {
 		return nil, fmt.Errorf("autodl: create returned an empty instance id")

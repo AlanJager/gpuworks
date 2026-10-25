@@ -76,6 +76,10 @@ type GPUSpec struct {
 	// image in the provider's second region); empty lets the provider choose.
 	Region string
 	Zone   string
+	// ServerDialPort asks for an instance whose provider exposes a port for a
+	// server-dialed agent from the start, as the platform's own instances do.
+	// RunPod only opens a port by editing the pod, which restarts it.
+	ServerDialPort bool
 }
 
 type Instance struct {

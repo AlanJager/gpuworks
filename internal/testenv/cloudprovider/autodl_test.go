@@ -19,6 +19,9 @@ type fakeAutoDLDriver struct {
 	deleted     []string
 	deleteErr   error
 	snapshotErr error
+	// createErrs refuses a create by GPU model; tried records every attempt.
+	createErrs map[string]error
+	tried      []string
 }
 
 func (d *fakeAutoDLDriver) ListInstances(context.Context, serverprovider.Credentials) ([]serverprovider.Instance, error) {
@@ -27,6 +30,10 @@ func (d *fakeAutoDLDriver) ListInstances(context.Context, serverprovider.Credent
 
 func (d *fakeAutoDLDriver) CreateInstance(_ context.Context, _ serverprovider.Credentials, req serverprovider.CreateInstanceRequest) (serverprovider.Instance, error) {
 	d.created = req
+	d.tried = append(d.tried, req.GPUModel)
+	if err := d.createErrs[req.GPUModel]; err != nil {
+		return serverprovider.Instance{}, err
+	}
 	return d.create, nil
 }
 
@@ -127,5 +134,64 @@ func TestAutoDLDestroyKeepsLedgerOnFailure(t *testing.T) {
 	ledger, err := readAutoDLLedger()
 	if err != nil || len(ledger) != 1 || ledger[0] != "pro-failed" {
 		t.Fatalf("ledger=%v err=%v", ledger, err)
+	}
+}
+
+func TestAutoDLRentFallsBackWhenSpecIsOutOfStock(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	driver := &fakeAutoDLDriver{
+		createErrs: map[string]error{
+			autodlDefaultGPUModel: errors.New("api error code=InternalError msg=当前算力规格暂无库存, 请修改配置或稍等再试"),
+			"RTX 4090D":           errors.New("api error code=InternalError msg=当前算力规格暂无库存, 请修改配置或稍等再试"),
+		},
+		create: serverprovider.Instance{ExternalID: "pro-fallback"},
+		snapshot: autodldriver.Snapshot{Instance: serverprovider.Instance{
+			ExternalID: "pro-fallback", GPUModel: "NVIDIA RTX 4090", GPUCount: 1, PricePerHr: 2.5,
+			Region: "westDC3", PublicIP: "connect.example", SSHPort: 34222, SSHUser: "root",
+		}, RootPassword: "password"},
+	}
+	p, _ := newAutoDL(driver, serverprovider.Credentials{APIKey: "token"}, "run", "base-image", 5)
+	instance, err := p.Rent(t.Context(), GPUSpec{GPUModel: "auto", GPUCount: 1, MinVRAMMB: 12000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instance.InstanceID != "pro-fallback" || driver.created.GPUModel != "RTX 4090" {
+		t.Fatalf("instance=%+v create request=%+v", instance, driver.created)
+	}
+	if got := strings.Join(driver.tried, ","); got != autodlDefaultGPUModel+",RTX 4090D,RTX 4090" {
+		t.Fatalf("tried = %s", got)
+	}
+}
+
+func TestAutoDLRentNeverSwapsANamedCardOrMasksOtherErrors(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	stock := errors.New("api error code=InternalError msg=当前算力规格暂无库存, 请修改配置或稍等再试")
+	driver := &fakeAutoDLDriver{createErrs: map[string]error{autodlDefaultGPUModel: stock}}
+	p, _ := newAutoDL(driver, serverprovider.Credentials{APIKey: "token"}, "run", "base-image", 5)
+	if _, err := p.Rent(t.Context(), GPUSpec{GPUModel: autodlDefaultGPUModel}); !errors.Is(err, stock) || len(driver.tried) != 1 {
+		t.Fatalf("named card: err=%v tried=%v", err, driver.tried)
+	}
+	// A refusal that is not about stock stops the walk at once.
+	denied := errors.New("api error code=InternalError msg=账户余额不足")
+	driver = &fakeAutoDLDriver{createErrs: map[string]error{autodlDefaultGPUModel: stock, "RTX 4090D": denied}}
+	p, _ = newAutoDL(driver, serverprovider.Credentials{APIKey: "token"}, "run", "base-image", 5)
+	if _, err := p.Rent(t.Context(), GPUSpec{GPUModel: "auto"}); !errors.Is(err, denied) || !strings.Contains(err.Error(), autodlDefaultGPUModel) || len(driver.tried) != 2 {
+		t.Fatalf("other error: err=%v tried=%v", err, driver.tried)
+	}
+	// Every spec out of stock reports all of them.
+	driver = &fakeAutoDLDriver{createErrs: map[string]error{}}
+	for _, m := range autodlAutoGPUModels {
+		driver.createErrs[m] = stock
+	}
+	p, _ = newAutoDL(driver, serverprovider.Credentials{APIKey: "token"}, "run", "base-image", 5)
+	if _, err := p.Rent(t.Context(), GPUSpec{GPUModel: "auto"}); err == nil || len(driver.tried) != len(autodlAutoGPUModels) || !strings.Contains(err.Error(), "RTX 5090") {
+		t.Fatalf("all out of stock: err=%v tried=%v", err, driver.tried)
+	}
+	// A VRAM floor skips smaller specs instead of failing the walk.
+	driver = &fakeAutoDLDriver{createErrs: map[string]error{autodlDefaultGPUModel: stock}}
+	p, _ = newAutoDL(driver, serverprovider.Credentials{APIKey: "token"}, "run", "base-image", 5)
+	_, _ = p.Rent(t.Context(), GPUSpec{GPUModel: "auto", MinVRAMMB: 30000})
+	if got := strings.Join(driver.tried, ","); got != autodlDefaultGPUModel+",RTX 5090" {
+		t.Fatalf("VRAM floor tried = %s", got)
 	}
 }

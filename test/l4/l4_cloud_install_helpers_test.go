@@ -358,14 +358,24 @@ func installCloudAgentViaAPI(ctx context.Context, t *testing.T, env *testenv.Env
 		}
 		return fmt.Errorf("one-click agent install status=%d body=%s; ssh diagnostic=%s", resp.StatusCode, data, strings.TrimSpace(diagnostic))
 	}
+	// An agent the server dials never contacts the server, so the installer
+	// records no server_url for it whatever the caller sent (installServerURL
+	// in internal/server/api); only a dial-out agent has one to verify.
+	wantServerURL := serverURL
+	if connectMode == "server_dial" {
+		wantServerURL = ""
+	}
 	var report provision.SSHInstallReport
 	if err := json.Unmarshal(data, &report); err == nil {
-		if strings.TrimRight(report.ServerURL, "/") != strings.TrimRight(serverURL, "/") {
-			return fmt.Errorf("installer report server_url=%q, want %q", report.ServerURL, serverURL)
+		if strings.TrimRight(report.ServerURL, "/") != strings.TrimRight(wantServerURL, "/") {
+			return fmt.Errorf("installer report server_url=%q, want %q", report.ServerURL, wantServerURL)
 		}
 		for _, check := range report.Checks {
 			t.Logf("one-click install check: %s=%s %s", check.Name, check.Status, check.Detail)
 		}
+	}
+	if connectMode == "server_dial" {
+		return nil
 	}
 	return assertCloudAgentServerURL(ctx, instance, serverURL)
 }

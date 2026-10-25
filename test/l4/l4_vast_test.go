@@ -43,7 +43,18 @@ func TestVastServerDialNodeOnboarding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if node.ConnectMode != "server_dial" || node.ServerURL != "" || node.ServerDialListen != "0.0.0.0:18800" || !strings.HasPrefix(node.ServerDialAddress, env.Instance.PublicIP+":") {
-		t.Fatalf("vast server_dial node = mode=%q server_url=%q listen=%q address=%q (instance %s)", node.ConnectMode, node.ServerURL, node.ServerDialListen, node.ServerDialAddress, env.Instance.PublicIP)
+	// The instance's SSH endpoint may be one of Vast's proxies (sshN.vast.ai),
+	// which holds none of its other ports: the agent is reached at the
+	// address Vast maps the instance's ports on.
+	vast, ok := env.Provider.(*cloudprovider.Vast)
+	if !ok {
+		t.Fatalf("provider is %T, want *cloudprovider.Vast", env.Provider)
+	}
+	host, err := vast.MappedPortHost(t.Context(), env.Instance.InstanceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.ConnectMode != "server_dial" || node.ServerURL != "" || node.ServerDialListen != "0.0.0.0:18800" || !strings.HasPrefix(node.ServerDialAddress, host+":") {
+		t.Fatalf("vast server_dial node = mode=%q server_url=%q listen=%q address=%q (want host %s; SSH endpoint %s)", node.ConnectMode, node.ServerURL, node.ServerDialListen, node.ServerDialAddress, host, env.Instance.PublicIP)
 	}
 }
