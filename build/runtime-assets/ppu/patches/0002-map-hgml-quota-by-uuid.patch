@@ -1,0 +1,89 @@
+diff --git a/hgml/hgml_dlsym_hook.c b/hgml/hgml_dlsym_hook.c
+index bf31487c..4943501f 100644
+--- a/hgml/hgml_dlsym_hook.c
++++ b/hgml/hgml_dlsym_hook.c
+@@ -76,6 +76,7 @@
+ 
+ #include <dlfcn.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ /* hgml.h carries zero #include lines: it provides neither NULL nor the bool its own
+@@ -98,6 +99,53 @@ static hgmlReturn_t (*real_get_memory_info_v2)(hgmlDevice_t device, hgmlMemory_v
+  * applied, and applying one card's figure to every card would be worse than not
+  * intercepting at all. */
+ static hgmlReturn_t (*real_get_index)(hgmlDevice_t device, unsigned int *index);
++static hgmlReturn_t (*real_get_uuid)(hgmlDevice_t device, char *uuid, unsigned int length);
++
++/* New agents select full UUIDs for both OCI and PRoot. HGGC compacts this
++ * ordered list to compute ordinals; HGML retains its own inventory indexes.
++ * Map by identity so reporting and allocation use the same quota/ledger slot.
++ * Numeric visibility is retained only for agents using the older ABI. */
++static bool uuid_visibility(void)
++{
++    const char *visible = getenv("CUDA_VISIBLE_DEVICES");
++    return visible != NULL && !(visible[0] >= '0' && visible[0] <= '9');
++}
++
++static bool valid_uuid(const char *uuid)
++{
++    if (strlen(uuid) != 40 || strncmp(uuid, "GPU-", 4) != 0) return false;
++    for (int i = 4; i < 40; i++) {
++        if (i == 12 || i == 17 || i == 22 || i == 27) {
++            if (uuid[i] != '-') return false;
++        } else if (!((uuid[i] >= '0' && uuid[i] <= '9') || (uuid[i] >= 'a' && uuid[i] <= 'f'))) return false;
++    }
++    return true;
++}
++
++static int uuid_index(hgmlDevice_t device)
++{
++    char uuid[96] = {0};
++    if (real_get_uuid == NULL || real_get_uuid(device, uuid, sizeof(uuid)) != HGML_SUCCESS ||
++        memchr(uuid, 0, sizeof(uuid)) == NULL || !valid_uuid(uuid)) return -1;
++    const char *cursor = getenv("CUDA_VISIBLE_DEVICES");
++    char ids[VPPU_MAX_DEVICES][41];
++    int count = 0, selected = -1;
++    while (cursor != NULL) {
++        const char *end = strchr(cursor, ',');
++        size_t length = end ? (size_t)(end - cursor) : strlen(cursor);
++        if (length != 40 || count >= VPPU_MAX_DEVICES) return -1;
++        memcpy(ids[count], cursor, 40);
++        ids[count][40] = 0;
++        if (!valid_uuid(ids[count])) return -1;
++        for (int i = 0; i < count; i++) {
++            if (strcmp(ids[i], ids[count]) == 0) return -1;
++        }
++        if (strcmp(uuid, ids[count]) == 0) selected = count;
++        count++;
++        cursor = end ? end + 1 : NULL;
++    }
++    return selected;
++}
+ 
+ /* in_dlsym — this thread is already inside an interception.
+  *
+@@ -109,6 +157,7 @@ static __thread bool in_dlsym __attribute__((tls_model("initial-exec")));
+ /* device_index — which card this handle is, or -1 if that cannot be established. */
+ static int device_index(hgmlDevice_t device)
+ {
++    if (uuid_visibility()) return uuid_index(device);
+     if (real_get_index == NULL) {
+         return -1;
+     }
+@@ -243,6 +292,14 @@ static bool is_own_address(void *address)
+  * honest failure, and it says so rather than reporting a plausible wrong figure. */
+ static bool can_intercept(void *handle, const char *symbol)
+ {
++    if (uuid_visibility()) {
++        real_get_uuid = real_dlsym(handle, "hgmlDeviceGetUUID");
++        if (real_get_uuid == NULL) {
++            vppu_log(VPPU_LOG_DENY, "not intercepting %s: hgmlDeviceGetUUID unavailable\n", symbol);
++            return false;
++        }
++        return true;
++    }
+     if (real_get_index == NULL) {
+         real_get_index = real_dlsym(handle, "hgmlDeviceGetIndex");
+     }

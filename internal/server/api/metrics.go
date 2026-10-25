@@ -2,6 +2,7 @@ package api
 
 import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"net/http"
 	"sort"
 	"strconv"
@@ -64,49 +65,103 @@ func (a *apiHandlers) metricsQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.nameNodes(res)
+	a.nameSeries(res)
 	writeJSON(w, http.StatusOK, dto.NewList(res))
 }
 
-// nameNodes adds a display-only node_name label to every series that carries
-// a node: a chart of the fleet's cards cannot be read by node UUID, and a
-// client cannot look up a thousand names one by one. One read of the nodes'
-// identities (no GPU rows) serves the whole answer. node_name is never a
-// matcher; the series are still selected by node.
-func (a *apiHandlers) nameNodes(series []dto.MonitorSeries) {
+// nameSeries adds display-only labels to the series of an answer: node_name
+// to every series that carries a node, deployment_name to every one that
+// carries a deployment, and node_deleted / deployment_deleted = "true" when
+// that name is the one a deleted node or deployment left. A chart of the
+// fleet's cards cannot be read by node UUID, a client cannot look up a
+// thousand names one by one, and samples outlive what they measured. One
+// read of the nodes' identities (no GPU rows) and one of the answer's
+// deployments serve the whole answer. The added labels are never matchers;
+// the series are still selected by node and deployment.
+func (a *apiHandlers) nameSeries(series []dto.MonitorSeries) {
 	if a.d.Store == nil {
 		return
 	}
-	needed := false
+	var nodeUUIDs []string
+	var depIDs []uint
+	seenNode, seenDep := map[string]bool{}, map[uint]bool{}
 	for _, s := range series {
-		if s.Labels["node"] != "" {
-			needed = true
-			break
+		if node := s.Labels["node"]; node != "" && !seenNode[node] {
+			seenNode[node] = true
+			nodeUUIDs = append(nodeUUIDs, node)
+		}
+		if id := parseUint(s.Labels["deployment"]); id != 0 && !seenDep[id] {
+			seenDep[id] = true
+			depIDs = append(depIDs, id)
 		}
 	}
-	if !needed {
-		return
+	nodes := a.seriesNodeNames(nodeUUIDs)
+	deps := map[uint]store.DeploymentName{}
+	if len(depIDs) > 0 {
+		if named, err := a.d.Store.DeploymentNames(depIDs); err == nil {
+			deps = named
+		}
 	}
-	nodes, err := a.d.Store.NodeIdentities()
-	if err != nil {
+	if len(nodes) == 0 && len(deps) == 0 {
 		return
-	}
-	names := make(map[string]string, len(nodes))
-	for i := range nodes {
-		names[nodes[i].UUID] = nodes[i].DisplayName()
 	}
 	for i := range series {
-		name := names[series[i].Labels["node"]]
-		if name == "" {
+		node, nodeOK := nodes[series[i].Labels["node"]]
+		dep, depOK := deps[parseUint(series[i].Labels["deployment"])]
+		nodeOK = nodeOK && node.Name != ""
+		depOK = depOK && dep.Name != ""
+		if !nodeOK && !depOK {
 			continue
 		}
-		labels := make(map[string]string, len(series[i].Labels)+1)
+		labels := make(map[string]string, len(series[i].Labels)+4)
 		for key, value := range series[i].Labels {
 			labels[key] = value
 		}
-		labels["node_name"] = name
+		if nodeOK {
+			labels["node_name"] = node.Name
+			if node.Deleted {
+				labels["node_deleted"] = "true"
+			}
+		}
+		if depOK {
+			labels["deployment_name"] = dep.Name
+			if dep.Deleted {
+				labels["deployment_deleted"] = "true"
+			}
+		}
 		series[i].Labels = labels
 	}
+}
+
+// seriesNodeNames names the nodes of uuids: every live node's display name
+// from one read of their identities, then the names deleted ones left.
+func (a *apiHandlers) seriesNodeNames(uuids []string) map[string]store.NodeName {
+	out := make(map[string]store.NodeName, len(uuids))
+	if len(uuids) == 0 {
+		return out
+	}
+	nodes, err := a.d.Store.NodeIdentities()
+	if err != nil {
+		return out
+	}
+	live := make(map[string]string, len(nodes))
+	for i := range nodes {
+		live[nodes[i].UUID] = nodes[i].DisplayName()
+	}
+	var missing []string
+	for _, uuid := range uuids {
+		if name, ok := live[uuid]; ok {
+			out[uuid] = store.NodeName{Name: name}
+		} else {
+			missing = append(missing, uuid)
+		}
+	}
+	if gone, err := a.d.Store.DeletedNodes(missing); err == nil {
+		for uuid, n := range gone {
+			out[uuid] = store.NodeName{Name: n.Name, Deleted: true}
+		}
+	}
+	return out
 }
 
 func parseDur(s string, def time.Duration) time.Duration {

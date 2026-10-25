@@ -106,18 +106,22 @@ export interface GPUFigures {
 export interface GPUCardRow extends GPUFigures {
   node_uuid: string;
   node_name: string;
+  /** The card's node is deleted; node_name is the name it left. */
+  node_deleted: boolean;
   gpu_index: number;
   gpu_uuid: string;
   gpu_model: string;
   /** Deployments holding the card now. */
   deployments: string[];
-  /** The card is in the inventory now. */
+  /** The card is in the inventory now, whether its node is online or not. */
   present: boolean;
 }
 
 export interface GPUHeatRow {
   key: string;
   label: string;
+  /** The row's node is deleted; label is the name it left. */
+  node_deleted: boolean;
   /** Aligned with the range's buckets; null where there were no samples. */
   values: (number | null)[];
 }
@@ -127,6 +131,8 @@ export interface GPUGroupRow extends GPUFigures {
   /** The model, or the node's UUID. */
   key: string;
   label: string;
+  /** A deleted node's row: label is the name it left, and it counts no cards now. */
+  node_deleted: boolean;
   /** The group's cards and their nodes in the inventory now; a node's card models. */
   cards: number;
   nodes: number;

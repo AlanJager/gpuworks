@@ -7,7 +7,9 @@ import (
 	"runtime"
 )
 
-const PartitionProbeImage = "gpuworks/partition-probe:v1"
+// Version the image when the probe protocol changes: nodes may still cache
+// the previous tag, which ImageExists intentionally avoids importing again.
+const PartitionProbeImage = "gpuworks/partition-probe:v3"
 
 // OpenPartitionProbeImage returns the Docker image archive embedded for the
 // current agent architecture. Docker accepts the gzip-compressed save stream

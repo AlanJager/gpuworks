@@ -249,28 +249,41 @@ test("a card is idle below 5% mean utilization, and a card without a figure is n
 test("the summary leaves cards without samples out of the means and counts the idle among the measured", () => {
   const d = fx.gpusToday();
   const s = summarize(d.cards, d.totals);
-  assert.equal(s.cards, 4);
-  assert.deepEqual(s.byModel, [{ model: "RTX 6000D", count: 3 }, { model: "PPU 810E", count: 1 }]);
+  // The deleted node's card is no card there now: three, as card_count says.
+  assert.equal(s.cards, 3);
+  assert.equal(s.cards, d.card_count);
+  assert.deepEqual(s.byModel, [{ model: "RTX 6000D", count: 2 }, { model: "PPU 810E", count: 1 }]);
   assert.equal(s.powerTotal, 381);
   assert.equal(s.powerCards, 3);
   assert.equal(s.idle, 2);
   assert.equal(s.measured, 3);
   assert.ok(Math.abs(s.memPercentAvg! - (100 * 70 / 84 + 100 * 70 / 84 + 75) / 3) < 1e-9);
   assert.equal(summarize([], d.totals).powerTotal, null);
+  // A gone card with samples over the range still counts in the means, not in
+  // the count, the idle cards or the power drawn now.
+  const gone = { ...d.cards[1], node_uuid: "node-c", node_name: "gone-node", node_deleted: true, present: false, gpu_uuid: "GPU-c1" };
+  const withGone = summarize([...d.cards, gone], d.totals);
+  assert.deepEqual([withGone.cards, withGone.idle, withGone.measured, withGone.powerTotal, withGone.powerCards], [3, 2, 3, 381, 3]);
+  assert.ok(Math.abs(withGone.memPercentAvg! - (100 * 70 / 84 * 3 + 75) / 4) < 1e-9);
 });
 
 test("cards group by model or node with the deployments each holds, and count the ones no longer in the inventory", () => {
   const cards = fx.gpusToday().cards;
   const byModel = groupCards(cards, "model");
-  assert.deepEqual(byModel.map((r) => [r.title, r.cardCount, r.unassigned, r.removed]), [["RTX 6000D", 3, 2, 1], ["PPU 810E", 1, 0, 0]]);
+  // The deleted node's card is removed, not free: one of the three RTX cards is unassigned.
+  assert.deepEqual(byModel.map((r) => [r.title, r.cardCount, r.unassigned, r.removed, r.nodeDeleted]), [["RTX 6000D", 3, 1, 1, false], ["PPU 810E", 1, 0, 0, false]]);
   assert.equal(byModel[0].utilAvg, (62.5 + 3.2) / 2);
   assert.equal(byModel[0].utilMax, 97);
   assert.deepEqual(byModel[0].deployments, [{ name: "glm-5-3-flash-nvfp4", cards: 1 }]);
   const byNode = groupCards(cards, "node");
-  assert.deepEqual(byNode.map((r) => r.title), ["6000*4", "PPU810E*16", "gone-node"]);
+  assert.deepEqual(byNode.map((r) => [r.title, r.nodeDeleted, r.unassigned]), [["6000*4", false, 1], ["PPU810E*16", false, 0], ["gone-node", true, 0]]);
   const byCard = groupCards(cards, "gpu");
   assert.equal(byCard.length, 4);
   assert.equal(byCard[3].title, "gone-node #0");
+  assert.ok(byCard[3].nodeDeleted);
+  // A card gone from a node still there is removed, its node not deleted.
+  const [unplugged] = groupCards([{ ...cards[1], present: false }], "gpu");
+  assert.deepEqual([unplugged.removed, unplugged.nodeDeleted, unplugged.unassigned], [1, false, 0]);
   assert.equal(byCard[3].utilAvg, null);
   assert.equal(byCard[3].powerAvg, null);
 });
@@ -282,8 +295,9 @@ test("an answer without cards takes its rows and summary from the groups, withou
   assert.equal(byModel[0].utilAvg, 58.5);
   assert.ok(Math.abs(byModel[0].memAvgPercent! - 50) < 1e-9);
   assert.deepEqual(byModel[0].deployments, [{ name: "glm-5-3-flash-nvfp4", cards: 4 }]);
-  const byNode = groupRows([{ ...d.groups[0], key: "node-a", label: "gpu-a", models: ["H100", "L40S"] }], "node", () => "");
+  const byNode = groupRows([{ ...d.groups[0], key: "node-a", label: "gpu-a", models: ["H100", "L40S"] }, { ...d.groups[0], key: "node-gone", label: "gpu-gone", node_deleted: true, cards: 0, nodes: 0, models: [], deployments: [], unassigned: 0 }], "node", () => "");
   assert.equal(byNode[0].sub, "H100 / L40S");
+  assert.deepEqual(byNode.map((r) => [r.title, r.nodeDeleted, r.cardCount]), [["gpu-a", false, 944], ["gpu-gone", true, 0]]);
   const s = summarizeGroups(d);
   assert.equal(s.cards, 960);
   assert.deepEqual(s.byModel, [{ model: "H100", count: 944 }, { model: "L40S", count: 16 }]);

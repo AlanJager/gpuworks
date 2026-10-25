@@ -186,7 +186,7 @@ func (a *apiHandlers) monitorDeployment(w http.ResponseWriter, r *http.Request) 
 	out, err := svc.Deployment(r.Context(), id, rng)
 	if err != nil {
 		if errors.Is(err, ErrMonitorDeploymentNotFound) {
-			writeErr(w, http.StatusNotFound, err)
+			a.writeMonitorDeploymentGone(w, id, err)
 			return
 		}
 		writeErr(w, http.StatusInternalServerError, err)
@@ -247,6 +247,7 @@ func (a *apiHandlers) monitorSeries(w http.ResponseWriter, r *http.Request) {
 	if out == nil {
 		out = []dto.MonitorSeries{}
 	}
+	a.nameSeries(out)
 	writeJSON(w, http.StatusOK, dto.NewList(out))
 }
 
@@ -274,4 +275,20 @@ func emptyMonitorOverview() dto.MonitorOverview {
 		},
 		Events: []dto.MonitorEvent{},
 	}
+}
+
+// writeMonitorDeploymentGone answers 404 for a deployment the monitor does
+// not know: MONITOR_DEPLOYMENT_DELETED with the names a deleted one left, so
+// a link to it still reads as what it was; err for one never known.
+func (a *apiHandlers) writeMonitorDeploymentGone(w http.ResponseWriter, id uint, err error) {
+	if a.d.Store != nil {
+		if gone, lookupErr := a.d.Store.DeletedDeployments([]uint{id}); lookupErr == nil {
+			if d, ok := gone[id]; ok {
+				writeProductError(w, http.StatusNotFound, ErrorMonitorDeploymentDeleted, "deployment "+d.Name+" was deleted",
+					map[string]any{"deployment_id": id, "name": d.Name, "served_name": d.ServedName})
+				return
+			}
+		}
+	}
+	writeErr(w, http.StatusNotFound, err)
 }

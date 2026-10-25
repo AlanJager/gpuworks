@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/assets"
 	fakehandler "gpuworks.ai/gpuworks/test/fake-engine/handler"
 )
 
@@ -182,7 +183,7 @@ func (d *FakeDriver) Run(ctx context.Context, s runtime.WorkloadSpec) (string, e
 			return id, err
 		}
 	}
-	if s.Image == "gpuworks/partition-probe:v1" {
+	if s.Image == assets.PartitionProbeImage {
 		d.mu.Lock()
 		d.seq++
 		id := fmt.Sprintf("fake-probe-%d", d.seq)

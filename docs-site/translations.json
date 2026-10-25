@@ -89,7 +89,7 @@
   "how-to/expose-public-address.md": "7adb16504beede11685d4dfd108439934d19a67306b3d3fd562e06a9e0f31360",
   "how-to/import-from-http.md": "e46fe42320a80624aea67d51acb859d96468c44fa2f80a7b8848507375a64d35",
   "how-to/install-server.md": "8b683fa5fb2d4bc34d531751031cc142191519c105e126c390d6c5a586dff05b",
-  "how-to/monitor-and-logs.md": "94d27dd2738e49825355b332ea7b48b88d073e15fe0b94c797027a73bf006812",
+  "how-to/monitor-and-logs.md": "62672b5ed29376051c3c32a2923344f9ce64810d7f4cbbfca8c724f592b3cd5e",
   "how-to/multi-node-inference.md": "874117071e6fa2706d264f83e3f5455c72361ecba2c003d9fd364f04bfa38684",
   "how-to/pd-disaggregation.md": "7510383ffbfb1773b793f65f3912f4b5b713cbeaee2560d96acfed48c079093e",
   "how-to/peer-sync-models.md": "ace1dfa948f94992b4e3abc1331a9829f749a06861286507e848323a5ff6d3ea",
@@ -101,8 +101,8 @@
   "how-to/troubleshooting.md": "5549abdddbb9f02fd58740bd2a5d37ac85b7cdc2cd5e1144305adc04a6a373de",
   "how-to/upgrade-and-compatibility.md": "6bdaf526b14dfa03ca6549be64e17e7aa81ce1fc1b949d5179f27d68cb2a433c",
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
-  "reference/api.md": "513e98f9d2f001302ee608c96ba7c32782f2458547389b735c5072750682a453",
-  "reference/ascend-support-matrix.md": "b937c74b0eff81e0543a531282e7bf3c36523b4cb6a9bab8359838100e051f64",
+  "reference/api.md": "11fcda811a51753bea85ccaaa5459a2d35d195bf07ddb85ade431655c2272539",
+  "reference/ascend-support-matrix.md": "2ac23de1219bcfc1296036d88caf41b0f727c2c6e0562ac40573669ff1382d91",
   "reference/cli.md": "c6822c5a5176acca3cdc41b917f39afef96419e904095b0db0b68cdd6b51ff80",
   "reference/configuration.md": "9216338edef60622fedea6e1f6d510ba2ffe5f4b3e5cd3c9f4be73fb3c2afaec",
   "reference/deployment-launch-sources.md": "8aa8097d261d76c4f62f3584f0a4c5bbfa73a4770ca8982b836712af2ad50512",
@@ -116,9 +116,9 @@
   "reference/openai-gateway.md": "475df11f503418d88f26a3549d1acea209460f3ed964abf31b3d048a6c7344c7",
   "reference/request-timeline.md": "c088d069727f75baf7a252d85a9c4382021df3c97c410a95a8c5dd0db7ad4dbb",
   "reference/security.md": "227d0c0e904ca58f7bdc1127a7582809a6972ad7613111a0ee2e3a5ebce581b6",
-  "reference/support-matrix.md": "8bd54710daf8a7aa48150d77f61ac80491b224669c12fef806a9e6509d7f7f4e",
+  "reference/support-matrix.md": "0fda312c016fc2e5ee5979d3fc63e22a77adfa357c831516fa44f8d99ba73d40",
   "reference/usage-report.md": "29abfa9c5380c8d30616101198ea1fb1433858d84a34c67f500caa960f388a9c",
   "reference/web-ui-tour.md": "bf34ea8cef25ebf1d72872b2670c695616ae60eb91fe6390d98d79c239685a02",
   "adr/0055-long-term-statistics.md": "93c7c3918efd24fdee0dbcc8d7fa4ca52e507f75a3d4469a732acab10c85288f",
-  "how-to/analyze-operations.md": "df579724b1a2c85f879e759bac6ac5ab1ed3ac0947677d62abd933b40227b7a0"
+  "how-to/analyze-operations.md": "65d76cc6ab3bf608fdf25632e1140644811560e66c039e5c4d96dd0bd5a45185"
 }

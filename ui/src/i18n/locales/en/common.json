@@ -331,6 +331,7 @@
     "MONITOR_RANGE_INVALID": "Time range must be one of 15m, 1h, 6h, 24h or 7d.",
     "MONITOR_REQUESTS_VIEW_INVALID": "The request view must be live or history.",
     "MONITOR_REQUESTS_QUERY_INVALID": "The request list query is invalid: the limit must be 1 to 500, the key a number, and the cursor one this list returned.",
+    "MONITOR_DEPLOYMENT_DELETED": "The service “{{name}}” has been deleted. Its usage, service quality and GPU time remain in Analytics.",
     "MONITOR_GROUP_INVALID": "Group by must be node, deployment, instance or gpu.",
     "MONITOR_AGGREGATION_INVALID": "Aggregation must be avg, sum, max or rate.",
     "MONITOR_SERIES_TOO_LARGE": "Requested series range is too large; narrow the range, increase the step, or group by fewer labels.",

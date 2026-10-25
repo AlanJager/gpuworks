@@ -104,7 +104,17 @@ func TestRequestSourceReadsTheRequestStore(t *testing.T) {
 	if _, err := src.Lookup(ctx, monitorapi.LookupQuery{RequestID: "r2"}); !errors.Is(err, monitorapi.ErrBadHistoryQuery) {
 		t.Fatalf("lookup without a window err = %v", err)
 	}
-	if got := src.DeploymentNames([]uint{dep.ID, dep.ID + 100}); len(got) != 1 || got[dep.ID] != dep.ServedName {
+	// A live deployment by its served name, a deleted one by the name it
+	// left, marked deleted; one neither knows is left out.
+	gone, err := st.CreateDeployment(&store.Deployment{Name: "old", ServedName: "old-served", State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteDeployment(gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := src.DeploymentNames([]uint{dep.ID, gone.ID, dep.ID + 100})
+	if len(got) != 2 || got[dep.ID] != (monitorapi.DeploymentName{Name: "chat-served"}) || got[gone.ID] != (monitorapi.DeploymentName{Name: "old-served", Deleted: true}) {
 		t.Fatalf("deployment names = %v", got)
 	}
 

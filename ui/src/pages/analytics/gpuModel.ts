@@ -39,13 +39,20 @@ export interface GpuSummary {
   measured: number | null;
 }
 
+/**
+ * summarize is the cards' figures. The count, the models, the idle cards and
+ * the power added up are of the cards in the inventory now (the answer's
+ * card_count): a card removed, or of a deleted node, keeps its row and its
+ * share of the range's means, but is neither a card there nor one to reclaim.
+ */
 export function summarize(cards: GPUCardRow[], totals: GPUFigures): GpuSummary {
+  const present = cards.filter((c) => c.present);
   const models = new Map<string, number>();
-  for (const c of cards) models.set(c.gpu_model, (models.get(c.gpu_model) ?? 0) + 1);
-  const powers = cards.map((c) => c.power_avg_watts).filter((p): p is number => p != null);
-  const measured = cards.filter((c) => c.util_avg != null);
+  for (const c of present) models.set(c.gpu_model, (models.get(c.gpu_model) ?? 0) + 1);
+  const powers = present.map((c) => c.power_avg_watts).filter((p): p is number => p != null);
+  const measured = present.filter((c) => c.util_avg != null);
   return {
-    cards: cards.length,
+    cards: present.length,
     byModel: [...models].map(([model, count]) => ({ model, count })),
     utilAvg: totals.util_avg,
     utilMax: totals.util_max,
@@ -68,6 +75,8 @@ export interface GpuRow {
   unassigned: number;
   /** Cards in the row no longer in the inventory. */
   removed: number;
+  /** The row is a deleted node's, or one of its cards. */
+  nodeDeleted: boolean;
   utilAvg: number | null;
   utilMax: number | null;
   memAvg: number | null;
@@ -82,7 +91,7 @@ export interface GpuRow {
 
 const cardId = (c: GPUCardRow) => c.gpu_uuid || `${c.node_uuid}:${c.gpu_index}`;
 
-function rowOf(id: string, title: string, sub: string, cards: GPUCardRow[]): GpuRow {
+function rowOf(id: string, title: string, sub: string, cards: GPUCardRow[], nodeDeleted = false): GpuRow {
   const held = new Map<string, number>();
   for (const c of cards) for (const d of c.deployments ?? []) held.set(d, (held.get(d) ?? 0) + 1);
   return {
@@ -90,8 +99,10 @@ function rowOf(id: string, title: string, sub: string, cards: GPUCardRow[]): Gpu
     title,
     sub,
     cardCount: cards.length,
-    unassigned: cards.filter((c) => (c.deployments ?? []).length === 0).length,
+    // A card no longer in the inventory is neither held nor free now.
+    unassigned: cards.filter((c) => c.present && (c.deployments ?? []).length === 0).length,
     removed: cards.filter((c) => !c.present).length,
+    nodeDeleted,
     utilAvg: mean(cards.map((c) => c.util_avg)),
     utilMax: maxOf(cards.map((c) => c.util_max)),
     memAvg: mean(cards.map((c) => c.mem_used_avg_bytes)),
@@ -107,7 +118,7 @@ function rowOf(id: string, title: string, sub: string, cards: GPUCardRow[]): Gpu
 /** groupCards is the table's rows: one per card, or the cards grouped by node or card model. */
 export function groupCards(cards: GPUCardRow[], by: GpuGroupBy): GpuRow[] {
   if (by === "gpu") {
-    return cards.map((c) => rowOf(cardId(c), `${c.node_name || c.node_uuid} #${c.gpu_index}`, c.gpu_model, [c]));
+    return cards.map((c) => rowOf(cardId(c), `${c.node_name || c.node_uuid} #${c.gpu_index}`, c.gpu_model, [c], c.node_deleted));
   }
   const groups = new Map<string, GPUCardRow[]>();
   for (const c of cards) {
@@ -115,7 +126,7 @@ export function groupCards(cards: GPUCardRow[], by: GpuGroupBy): GpuRow[] {
     groups.set(key, [...(groups.get(key) ?? []), c]);
   }
   return [...groups].map(([key, list]) => {
-    if (by === "node") return rowOf(key, list[0].node_name || key, list[0].gpu_model, list);
+    if (by === "node") return rowOf(key, list[0].node_name || key, list[0].gpu_model, list, list[0].node_deleted);
     return rowOf(key, key || "?", [...new Set(list.map((c) => c.node_name || c.node_uuid))].join(" / "), list);
   });
 }
@@ -137,6 +148,7 @@ export function groupRows(groups: GPUGroupRow[], by: GpuGroupBy, nodesLabel: (co
       cardCount: g.cards,
       unassigned: g.unassigned,
       removed: 0,
+      nodeDeleted: g.node_deleted,
       utilAvg: g.util_avg,
       utilMax: g.util_max,
       memAvg: g.mem_used_avg_bytes,

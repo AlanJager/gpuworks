@@ -610,7 +610,8 @@ func (s *Store) SetNodeServerURL(uuid, serverURL string) error {
 	return nil
 }
 
-// DeleteNode removes an idle node and clears records that point at it. Runtime
+// DeleteNode removes an idle node and clears records that point at it; its
+// name stays behind in DeletedNode for the statistics it leaves. Runtime
 // instances must be removed through the deployment/controller path first.
 func (s *Store) DeleteNode(uuid string) error {
 	var nodeID uint
@@ -655,6 +656,9 @@ func (s *Store) DeleteNode(uuid string) error {
 			return err
 		}
 		if err := tx.Where("node_id = ?", n.ID).Delete(&GPU{}).Error; err != nil {
+			return err
+		}
+		if err := rememberDeletedNode(tx, n, time.Now().UTC()); err != nil {
 			return err
 		}
 		if err := tx.Delete(&Node{}, n.ID).Error; err != nil {

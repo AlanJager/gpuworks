@@ -253,11 +253,14 @@ func TestRunveilExecValidatesBeforeLaunch(t *testing.T) {
 	if _, err := d.Exec(context.Background(), "demo", nil); err == nil || !strings.Contains(err.Error(), "requires a command") {
 		t.Fatalf("empty exec: %v", err)
 	}
-	if _, err := d.Exec(context.Background(), "missing", []string{"/bin/sh"}); err == nil || !strings.Contains(err.Error(), "no root filesystem") {
+	if _, err := d.Exec(context.Background(), "missing", []string{"/bin/sh"}); err == nil || !strings.Contains(err.Error(), "workload spec") {
 		t.Fatalf("exec into a missing container: %v", err)
 	}
 	// The proot path does not exist, so the launch itself must fail loudly.
 	runveilContainer(t, d, "demo")
+	if err := d.rememberSpec("demo", runtime.WorkloadSpec{Name: "demo"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := d.Exec(context.Background(), "demo", []string{"/bin/sh"}); err == nil {
 		t.Fatal("exec with a missing proot reported success")
 	}

@@ -213,6 +213,12 @@ export function monitorDistributionsURL(range: MonitorRange, deploymentId?: numb
 
 // GET /api/v1/monitor/requests/lookup: the finished requests of a trace id or
 // a request id, across deployments, newest first.
+export interface MonitorLookupDeployment {
+  id: number;
+  name: string;
+  deleted: boolean;
+}
+
 export interface MonitorRequestLookup {
   as_of: number;
   // The window searched (Unix ms) and where it came from: the query's
@@ -221,8 +227,9 @@ export interface MonitorRequestLookup {
   to_ms: number;
   window: "requested" | "trace_time" | "default";
   requests: MonitorRequest[];
-  // The deployments of the requests; a deleted one has an empty name.
-  deployments: { id: number; name: string }[];
+  // The deployments of the requests by served name; a deleted one by the
+  // name it left (deleted set), or an empty name when none was kept.
+  deployments: MonitorLookupDeployment[];
 }
 
 export interface MonitorRequestLookupQuery {

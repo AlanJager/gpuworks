@@ -19,12 +19,12 @@ docker buildx build \
   --provenance=false \
   --sbom=false \
   --file "${repo_root}/build/runtime-assets/probe/Dockerfile" \
-  --tag gpuworks/partition-probe:v1 \
+  --tag gpuworks/partition-probe:v3 \
   --output "type=oci,dest=${oci_tmp}" \
   "${repo_root}/build/runtime-assets/probe"
 image_id="$(python3 "${repo_root}/build/runtime-assets/probe/oci-to-docker-archive.py" \
   "${oci_tmp}" "${docker_tmp}" \
-  --image gpuworks/partition-probe:v1 \
+  --image gpuworks/partition-probe:v3 \
   --arch "${goarch}")"
 gzip -n -9 < "${docker_tmp}" > "${out_dir}/partition-probe-linux-${goarch}.tar.gz"
 (cd "${out_dir}" && sha256sum "partition-probe-linux-${goarch}.tar.gz" > "partition-probe-linux-${goarch}.tar.gz.sha256")

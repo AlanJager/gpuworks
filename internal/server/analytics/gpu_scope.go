@@ -17,14 +17,19 @@ type cardKey struct {
 }
 
 // gpuScope is what a GPU query covers in the inventory now: the cards its
-// filter matches, which of them online nodes hold, and the deployments on
+// filter matches, every card the inventory holds, and the deployments on
 // them.
 type gpuScope struct {
 	cards []store.InventoryCard
 	// fleet is every card in the inventory.
 	fleet int
-	// names are every node's names, by UUID.
+	// names are every node's names, by UUID; deleted are the nodes among
+	// them that no longer exist.
 	names   map[string]string
+	deleted map[string]bool
+	// present are the inventory's cards, whether their node is online or
+	// not: a card leaves it when its node no longer reports it, or the node
+	// is deleted.
 	present map[cardKey]bool
 	holders map[cardKey][]string
 }
@@ -41,14 +46,15 @@ func (s *Service) gpuScope(q GPUQuery) (*gpuScope, error) {
 			only[n] = true
 		}
 	}
-	sc := &gpuScope{fleet: len(inv), names: map[string]string{}}
+	sc := &gpuScope{fleet: len(inv), names: map[string]string{}, deleted: map[string]bool{}, present: make(map[cardKey]bool, len(inv))}
 	for _, c := range inv {
 		sc.names[c.NodeUUID] = c.NodeName
+		sc.present[cardKey{c.NodeUUID, c.Index, c.UUID}] = true
 		if (only == nil || only[c.NodeUUID]) && (q.GPUModel == "" || c.Model == q.GPUModel) {
 			sc.cards = append(sc.cards, c)
 		}
 	}
-	sc.present, sc.holders, err = s.cardsNow()
+	sc.holders, err = s.holdersNow()
 	return sc, err
 }
 
@@ -79,25 +85,27 @@ func (sc *gpuScope) byModel() []dto.GPUModelCount {
 	return out
 }
 
-// nodeNames names the nodes of cards no longer in the inventory too.
-func (s *Service) nodeNames(sc *gpuScope, cards map[cardKey]*statsdb.GPUCard) (map[string]string, error) {
+// nameNodes names the nodes of uuids the inventory no longer holds too:
+// a deleted node by the name it left, marked deleted.
+func (s *Service) nameNodes(sc *gpuScope, uuids []string) error {
 	var missing []string
-	for k := range cards {
-		if _, ok := sc.names[k.node]; !ok && !contains(missing, k.node) {
-			missing = append(missing, k.node)
+	for _, uuid := range uuids {
+		if _, ok := sc.names[uuid]; !ok && !contains(missing, uuid) {
+			missing = append(missing, uuid)
 		}
 	}
 	if len(missing) == 0 {
-		return sc.names, nil
+		return nil
 	}
 	more, err := s.Store.NodeNamesByUUID(missing)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	for k, v := range more {
-		sc.names[k] = v
+	for uuid, n := range more {
+		sc.names[uuid] = n.Name
+		sc.deleted[uuid] = n.Deleted
 	}
-	return sc.names, nil
+	return nil
 }
 
 // groupRows are the table's rows of the groups' statistics, with the
@@ -135,6 +143,9 @@ func (sc *gpuScope) groupRows(by statsdb.GPUGroupBy, groups map[string]rollup.GP
 	out := make([]dto.GPUGroupRow, 0, len(groups))
 	for key, g := range groups {
 		row := dto.GPUGroupRow{Key: key, Label: sc.heatLabel(by, key), Models: []string{}, Deployments: []dto.GPUHolding{}, GPUFigures: gpuFigures(g)}
+		if by == statsdb.GPUByNode {
+			row.NodeDeleted = sc.deleted[key]
+		}
 		if a := accs[key]; a != nil {
 			row.Cards, row.Nodes, row.Unassigned = a.cards, len(a.nodes), a.free
 			for m := range a.models {
@@ -168,19 +179,17 @@ func (sc *gpuScope) heatLabel(by statsdb.GPUGroupBy, group string) string {
 	return group
 }
 
-// cardsNow are the cards of the online nodes now, and the deployments that
-// hold each.
-func (s *Service) cardsNow() (map[cardKey]bool, map[cardKey][]string, error) {
+// holdersNow are the deployments that hold each card of the online nodes
+// now.
+func (s *Service) holdersNow() (map[cardKey][]string, error) {
 	snap, err := s.Store.GPUTimeSnapshot()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	present := make(map[cardKey]bool, len(snap.Cards))
 	byIdent := map[string]cardKey{}
 	for _, c := range snap.Cards {
 		node := snap.NodeUUIDs[c.NodeID]
 		k := cardKey{node, c.Index, c.UUID}
-		present[k] = true
 		byIdent[strconv.FormatUint(uint64(c.NodeID), 10)+"\x00"+c.Ident] = k
 	}
 	deps := map[uint]bool{}
@@ -189,7 +198,7 @@ func (s *Service) cardsNow() (map[cardKey]bool, map[cardKey][]string, error) {
 	}
 	names, err := s.deploymentNames(deps)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	holders := map[cardKey][]string{}
 	for _, h := range snap.Holdings {
@@ -200,5 +209,5 @@ func (s *Service) cardsNow() (map[cardKey]bool, map[cardKey][]string, error) {
 			}
 		}
 	}
-	return present, holders, nil
+	return holders, nil
 }

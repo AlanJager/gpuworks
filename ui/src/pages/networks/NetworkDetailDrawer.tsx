@@ -77,6 +77,9 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
     );
   }
   const name = current.builtin ? t("management.name") : current.name;
+  // A change made in the drawer can change what the list shows (a network's
+  // attachments, its resolved nodes): the list reads again with it.
+  const updated = (next: NetworkDetail) => { setDetail(next); onChanged(); };
   const testTab = { key: "test", label: t("tabs.test"), children: <NetworkTestPanel network={current} onStarted={load} onChanged={current.builtin ? () => load() : setDetail} /> };
   const monitorTab = { key: "monitor", label: t("tabs.monitor"), children: <NetworkMonitorPanel network={current} /> };
 
@@ -133,7 +136,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
             <NetworkOverview
               detail={current}
               description={current.description}
-              onDetail={setDetail}
+              onDetail={updated}
               onAttach={(attachment) => { setEditingAttachment(attachment); setAttachOpen(true); }}
             />
           ),
@@ -149,7 +152,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
             network={current}
             attachment={editingAttachment}
             onClose={() => setAttachOpen(false)}
-            onSaved={(d) => { setAttachOpen(false); setDetail(d); }}
+            onSaved={(d) => { setAttachOpen(false); updated(d); }}
           />
           <NetworkFormModal
             open={formOpen}
@@ -158,7 +161,7 @@ function OpenNetworkDetail({ id, open, tab: requested, onTab, onClose, onChanged
             typeOptions={current.type_options}
             typeRoles={current.type_roles}
             onClose={() => setFormOpen(false)}
-            onSaved={(d) => { setFormOpen(false); setDetail(d); onChanged(); }}
+            onSaved={(d) => { setFormOpen(false); updated(d); }}
           />
         </>
       )}

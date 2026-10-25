@@ -205,10 +205,13 @@ type MonitorRequestLookup struct {
 	Deployments []MonitorLookupDeployment `json:"deployments"`
 }
 
-// MonitorLookupDeployment names one deployment of a lookup's requests.
+// MonitorLookupDeployment names one deployment of a lookup's requests: by
+// its served name, a deleted one by the name it left (Deleted set); empty
+// for one deleted before deployments' names were kept.
 type MonitorLookupDeployment struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
+	ID      uint   `json:"id"`
+	Name    string `json:"name"`
+	Deleted bool   `json:"deleted"`
 }
 
 // MonitorRequestLookupQuery is the lookup's query, as the API parsed it:

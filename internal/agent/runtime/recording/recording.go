@@ -20,6 +20,7 @@ import (
 	"sync"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/assets"
 )
 
 type Driver struct {
@@ -74,7 +75,7 @@ func (d *Driver) Run(_ context.Context, spec runtime.WorkloadSpec) (string, erro
 		return "", err
 	}
 	id := "recording-" + spec.Name
-	d.running[id] = spec.Image != "gpuworks/partition-probe:v1"
+	d.running[id] = spec.Image != assets.PartitionProbeImage
 	return id, nil
 }
 func (d *Driver) Stop(_ context.Context, id string) error {

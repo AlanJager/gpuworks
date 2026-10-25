@@ -1,6 +1,6 @@
 # Patched PRoot provenance and A/B build
 
-GPUWorks embeds `internal/assets/bin/proot-x86_64-static-nofd` for rootless
+GPUWorks embeds `internal/assets/bin/proot-{x86_64,arm64}-static-nofd` for rootless
 udocker nodes. This directory records the source provenance, patches, and a
 repeatable build for the existing nofd behavior and an experimental
 full-no-socket variant.
@@ -33,6 +33,12 @@ invocation with `libm.so.6: cannot stat shared object: Invalid argument` when
   error in a talloc destructor. It is applied identically to both variants, so
   it is not an A/B variable.
 
+- `patches/proot-arm64-faccessat2.patch` adds syscall 439 to the ARM64
+  translation table. The pinned upstream already handles `faccessat2`, but
+  only its x86 tables assigned the number. Without the ARM64 entry, recent
+  glibc `realpath()` checks access host paths and incorrectly return `ENOENT`
+  for guest directories, preventing CANN platform and operator discovery.
+
 The names are historical. In particular, `nofd` is not a claim that every
 file-descriptor syscall is bypassed.
 
@@ -59,7 +65,7 @@ is the thread-pool caps the server adds for SGLang on runveil nodes
 
 ## Build and mandatory gates
 
-Run the build in a Linux amd64 Ubuntu 24.04 container. The safe nofd variant is
+Run the build in a native Linux Ubuntu 24.04 container of the target architecture (amd64 or arm64). The safe nofd variant is
 the default. The script emits an evidence manifest next to the artifact:
 
 ```bash
@@ -113,3 +119,19 @@ general vLLM/NCCL rollout. A future optimization would need to retain AF_UNIX
 path translation—for example by distinguishing address families safely—then
 pass image pull, unpack, two real vLLM ranks, NCCL, `/v1/models`, gateway chat,
 and exact run-id cleanup.
+
+### Guest path resolution gate
+
+`gate_path_resolution.c` exercises the actual built binary with a directory
+that exists only through a guest bind. It checks `faccessat2(AT_EACCESS)`,
+dirfd-relative access, missing-path errors, and `realpath` with a symlink,
+parent traversal, and a trailing slash. Run it on the target architecture;
+an amd64 pass cannot certify the ARM64 syscall-number table. The build runs
+this gate for each variant and records it in the evidence manifest. The
+asset unit test also runs it against the embedded binary on native Linux.
+It probes `faccessat2` directly on the host first: only host `ENOSYS` selects
+`--realpath-only`, so older kernels still exercise guest path resolution.
+If the host supports the syscall, all direct-access assertions remain
+mandatory; an `ENOSYS` from the guest fails the gate. Other host errors fail
+rather than reducing coverage. Per-process seccomp fixtures cover all three
+outcomes without changing the host. The build-time gate remains strict.

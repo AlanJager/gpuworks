@@ -32,7 +32,8 @@ export default function GpuTable({ rows, group }: { rows: GpuRow[]; group: GpuGr
           sub={r.sub}
           tags={<>
             {isIdle(r.utilAvg) && <Tag color="warning" style={{ marginLeft: 8 }}>{t("gpus.table.idle")}</Tag>}
-            {r.removed > 0 && <Tag style={{ marginLeft: 8 }}>{group === "gpu" ? t("gpus.table.removed") : t("gpus.table.removedCount", { count: r.removed })}</Tag>}
+            {r.nodeDeleted && <Tag color="warning" style={{ marginLeft: 8 }}>{t("gpus.table.nodeDeleted")}</Tag>}
+            {r.removed > 0 && !r.nodeDeleted && <Tag style={{ marginLeft: 8 }}>{group === "gpu" ? t("gpus.table.removed") : t("gpus.table.removedCount", { count: r.removed })}</Tag>}
           </>}
         />
       ),

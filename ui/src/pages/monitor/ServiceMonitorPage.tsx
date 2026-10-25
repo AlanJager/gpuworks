@@ -73,6 +73,10 @@ function ServiceMonitorPageContent() {
     return <Alert type="error" showIcon message={t("deployment.notFound")} />;
   }
   const notFound = error instanceof APIError && error.status === 404;
+  // A deleted deployment's page names it by the name it left and points at
+  // the history Analytics keeps; its live views are gone with it.
+  const deletedName = error instanceof APIError && error.code === "MONITOR_DEPLOYMENT_DELETED" ? String(error.params?.name ?? "") : undefined;
+  const title = data?.deployment.name ?? (deletedName || `#${deploymentId}`);
 
   const renderChart = (key: keyof MonitorDeploymentCharts) => {
     if (!data) return null;
@@ -109,7 +113,7 @@ function ServiceMonitorPageContent() {
   return (
     <div>
       <PageHeader
-        title={data?.deployment.name ?? `#${deploymentId}`}
+        title={title}
         description={
           data
             ? t("deployment.subtitle", {
@@ -126,14 +130,29 @@ function ServiceMonitorPageContent() {
         extra={
           <>
             <Button onClick={() => navigate("/monitor")}>{t("deployment.backToMonitor")}</Button>
-            <Link to={`/deployments?deployment=${deploymentId}`}>
-              <Button type="primary">{t("deployment.goToDeployment")}</Button>
-            </Link>
+            {deletedName === undefined && (
+              <Link to={`/deployments?deployment=${deploymentId}`}>
+                <Button type="primary">{t("deployment.goToDeployment")}</Button>
+              </Link>
+            )}
           </>
         }
       />
 
-      {notFound && <Alert type="error" showIcon message={t("deployment.notFound")} />}
+      {deletedName !== undefined && (
+        <Alert
+          type="info"
+          showIcon
+          message={t("deployment.deleted.title", { name: deletedName || `#${deploymentId}` })}
+          description={t("deployment.deleted.help")}
+          action={
+            <Link to={`/analytics/usage?range=30d&deployment=${deploymentId}`}>
+              <Button size="small">{t("deployment.deleted.openAnalytics")}</Button>
+            </Link>
+          }
+        />
+      )}
+      {notFound && deletedName === undefined && <Alert type="error" showIcon message={t("deployment.notFound")} />}
       {error && !notFound && (
         <Alert
           type="error"
