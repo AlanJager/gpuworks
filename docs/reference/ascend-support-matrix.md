@@ -63,7 +63,11 @@ DeepSeek-V4.1-Flash 原版与 1017 的 A3 档都显式声明 **512 GiB `/dev/shm
 `args` 里重复写 Docker memlock 参数。真机验收曾确认 128 GiB 无法完成第二张表注册，
 256 GiB 可以完成，目录采用 512 GiB 隔离 tmpfs 作为统一规格。
 
-启动前校验以最终生效的命令为准：rc2 A3 V1 兼容 rendezvous 仅限单节点，跨节点会在创建前拒绝；compat 不得与 `pre_start_argv` 并存，V1 也不接受额外的 `pre_start_script`，V2 可合并脚本但最终仍受 64 KiB 上限约束。Engram 的 `cpu_offload + dp_shared_memory` 组合只支持 Docker/nerdctl，udocker/runveil 会在创建前拒绝，不再静默忽略共享内存与锁页配置。无法证明实际 runner 或 Engram 配置的手工 shell（包括 JSON 中的 `/bin/sh -c`）也会拒绝；可检查的 JSON argv 则以首个 token 为可执行文件。
+启动前校验以最终生效的命令为准，只在平台能证明启动必然失败、且用户无法绕过时才拒绝；其余"证明不了"的组合只给提示，部署照常创建。
+
+- **创建前拒绝（400）**：compat 镜像不得与 `pre_start_argv` 并存；V1 也不接受额外的 `pre_start_script`（V2 可合并脚本）；合并后的启动前脚本不得超过 agent 的 64 KiB 上限。这些都发生在 udocker/runveil 节点上（compat 脚本只注入那里），并以该节点解析出的镜像为准；自动放置尚未选定节点时不检查，由 controller 在选定节点后给出明确原因。
+- **评估提示（`warnings[]`，不阻挡创建）**：rc2 A3 V1 兼容 rendezvous 仅限单节点，多节点部署会提示改用 `VLLM_USE_V2_MODEL_RUNNER=1`、Docker/nerdctl 或单节点；V1 与数据并行大于 1 的组合尚未在 runveil 真机上验证；compat 镜像上的手写 shell（包括 JSON 中的 `/bin/sh -c`）平台无法确认实际 runner；Engram 的 `cpu_offload + dp_shared_memory` 组合在 udocker/runveil 上直接使用宿主机的 `/dev/shm` 与 ulimit，平台看不到宿主机是否够用，提示"需要约 512 GiB 共享内存与不限 memlock，建议 Docker/nerdctl"；无法确认的 Engram 配置同理。
+- **静默放行**：与 Engram 无关的手写命令（含变量、`&&`、管道、重定向、`["sh","-c",...]`），在任何厂商上都不检查也不提示。命令文本含 `engram` 且能静态解析时，按与引擎模式相同的规则推导共享内存与 memlock；含 `engram` 却无法解析时只提示，不推导。
 
 另有部分继承档完成了单项真机验证：GLM-4.6V-Flash、Qwen3.6-35B-A3B、
 Qwen3.5-122B-A10B、Qwen3-Next-80B-A3B-Instruct 的 health/chat，以及 Qwen3-TTS 的

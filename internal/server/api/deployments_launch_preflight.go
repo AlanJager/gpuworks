@@ -18,7 +18,7 @@ func preflightCreateRuntimes(base deploy.ResolveLaunchInput, rawOverrides map[st
 			input.Params.RuntimeDriver = node.RuntimeDriver
 			input.Params.Host = deploy.RuntimeBindHost(node.RuntimeDriver)
 		}
-		if _, err := resolveRequestLaunch(input, rawOverrides, components, modelMount); err != nil {
+		if _, _, err := resolveRequestLaunch(input, rawOverrides, components, modelMount); err != nil {
 			if context == "" {
 				return err
 			}

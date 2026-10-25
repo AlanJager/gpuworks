@@ -573,7 +573,7 @@ test("the SHM_BELOW_KV_CPU_TIER message interpolates the params the server sends
   assert.doesNotMatch(text(commonLocale), /\{\{/);
 });
 
-test("Ascend compatibility errors interpolate the params in both locales", () => {
+test("Ascend compatibility refusals interpolate the params in both locales", () => {
   const zhLocale = JSON.parse(
     fs.readFileSync(
       new URL("../src/i18n/locales/zh/common.json", import.meta.url),
@@ -581,13 +581,9 @@ test("Ascend compatibility errors interpolate the params in both locales", () =>
     ),
   );
   const cases = [
-    { code: "ASCEND_V1_COMPAT_MULTI_NODE", params: { nnodes: 2 } },
     { code: "ASCEND_V1_COMPAT_PRE_START", params: { field: "pre_start_script" } },
-    { code: "ENGRAM_SHARED_MEMORY_RUNTIME_UNSUPPORTED", params: { runtime: "udocker", flag: "--engram-config" } },
     { code: "ASCEND_COMPAT_PRE_START_ARGV", params: { field: "pre_start_argv", image: "quay.io/ascend/vllm-ascend:v0.30.0rc2-a3" } },
     { code: "PRE_START_SCRIPT_TOO_LARGE", params: { bytes: 65537, max_bytes: 65536 } },
-    { code: "ASCEND_COMPAT_MANUAL_UNSUPPORTED", params: { image: "quay.io/ascend/vllm-ascend:v0.30.0rc2-a3", runtime: "udocker" } },
-    { code: "ENGRAM_MANUAL_UNSUPPORTED", params: { flag: "--engram-config" } },
   ];
   for (const { code, params } of cases) {
     for (const locale of [commonLocale, zhLocale]) {
@@ -600,6 +596,36 @@ test("Ascend compatibility errors interpolate the params in both locales", () =>
       for (const value of Object.values(params)) {
         assert.ok(text.includes(String(value)), `${code} must include ${value}`);
       }
+    }
+  }
+});
+
+test("Ascend and Engram launch warnings interpolate the params in both locales", () => {
+  const load = (locale: string) =>
+    JSON.parse(
+      fs.readFileSync(
+        new URL(`../src/i18n/locales/${locale}/deploy.json`, import.meta.url),
+        "utf8",
+      ),
+    );
+  const image = "quay.io/ascend/vllm-ascend:v0.30.0rc2-a3";
+  const cases = [
+    { code: "ASCEND_V1_COMPAT_MULTI_NODE", params: { nnodes: 2, runtime: "udocker", image } },
+    { code: "ASCEND_V1_COMPAT_DATA_PARALLEL", params: { dp: 4, runtime: "udocker", image } },
+    { code: "ASCEND_COMPAT_MANUAL_SHELL", params: { runtime: "udocker", image } },
+    { code: "ENGRAM_SHARED_MEMORY_RUNTIME", params: { runtime: "udocker", flag: "--engram-config", shm_gib: 512 } },
+    { code: "ENGRAM_CONFIG_UNCERTAIN", params: { runtime: "udocker", flag: "--engram-config", shm_gib: 512 } },
+    { code: "ENGRAM_MANUAL_UNCHECKED", params: { flag: "--engram-config" } },
+  ];
+  for (const { code, params } of cases) {
+    for (const locale of ["en", "zh"]) {
+      let text: string | undefined = load(locale).warning[code];
+      assert.ok(text, `${locale} ${code} must have a localized warning`);
+      for (const [key, value] of Object.entries(params)) {
+        text = text.replaceAll(`{{${key}}}`, String(value));
+      }
+      assert.doesNotMatch(text, /\{\{/, `${locale} ${code} has an unexpanded parameter`);
+      assert.ok(text.includes(String(params.flag ?? params.dp ?? params.nnodes ?? params.runtime)), `${locale} ${code} must show its key parameter`);
     }
   }
 });

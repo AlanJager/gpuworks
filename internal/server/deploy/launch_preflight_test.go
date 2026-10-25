@@ -21,3 +21,31 @@ func requireLaunchProductError(t *testing.T, err error, code string) *messages.P
 	}
 	return product
 }
+
+// resolveWithWarnings resolves a launch that must succeed and returns the
+// warnings it carries.
+func resolveWithWarnings(t *testing.T, input ResolveLaunchInput) (ResolvedLaunch, []messages.Warning) {
+	t.Helper()
+	launch, warnings, err := ResolveLaunchWithWarnings(input)
+	if err != nil {
+		t.Fatalf("launch must resolve and only warn: %v", err)
+	}
+	return launch, warnings
+}
+
+// requireWarningCodes asserts the exact warning codes, in order.
+func requireWarningCodes(t *testing.T, warnings []messages.Warning, codes ...string) {
+	t.Helper()
+	got := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		got = append(got, warning.Code)
+	}
+	if len(got) != len(codes) {
+		t.Fatalf("warning codes = %v, want %v", got, codes)
+	}
+	for index := range codes {
+		if got[index] != codes[index] {
+			t.Fatalf("warning codes = %v, want %v", got, codes)
+		}
+	}
+}

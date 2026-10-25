@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -77,10 +78,13 @@ type LaunchPlan struct {
 	// projection for callers that need to compare two paths (the preview and the
 	// controller); nobody may edit it and feed it back, or the comparison would
 	// stop describing what the server actually planned.
-	Input     Input
-	Output    Output
-	Params    deploy.Params
-	Resolved  deploy.ResolvedLaunch
+	Input    Input
+	Output   Output
+	Params   deploy.Params
+	Resolved deploy.ResolvedLaunch
+	// Warnings are what the platform cannot prove about the resolved launch.
+	// They are for the preview to show; a plan never fails on them.
+	Warnings  []messages.Warning
 	ImagePull ImagePullPlan
 	Topology  DistTopology
 	// Source is the launch-side half the plan was built from, kept so a caller
@@ -171,7 +175,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	if err != nil {
 		return plan, err
 	}
-	resolved, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{
+	resolved, warnings, err := deploy.ResolveLaunchWithWarnings(deploy.ResolveLaunchInput{
 		Engine: engine, Params: params, Image: req.Source.Image,
 		ContainerOverrides: req.Source.Overrides, ComponentModelMount: componentModelMount(req),
 		Entrypoint: req.Selection.Entrypoint, PreStartArgv: req.Selection.PreStartArgv,
@@ -190,6 +194,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 		return plan, fmt.Errorf("deployment %d resolve launch: %w", req.Source.DeploymentID, err)
 	}
 	plan.Resolved = resolved
+	plan.Warnings = warnings
 	return plan, nil
 }
 

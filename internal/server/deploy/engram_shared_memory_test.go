@@ -140,23 +140,29 @@ func TestEngramKeepsExplicitMemlockAndCapabilitySpellings(t *testing.T) {
 	}
 }
 
-func TestEngramSharedMemoryRuntimePreflight(t *testing.T) {
-	for _, runtime := range []string{proto.RuntimePreferenceUdocker, "runveil"} {
-		t.Run(runtime, func(t *testing.T) {
-			_, err := ResolveLaunch(engramLaunchInput(runtime))
-			product := requireLaunchProductError(t, err, messages.ErrorEngramSharedMemoryRuntime)
-			if product.Params()["runtime"] != runtime || product.Params()["flag"] != "--engram-config" {
-				t.Fatalf("error params = %#v", product.Params())
-			}
+func TestEngramSharedMemoryRuntimeWarns(t *testing.T) {
+	t.Run("udocker warns and still gets the resources", func(t *testing.T) {
+		launch, warnings := resolveWithWarnings(t, engramLaunchInput(proto.RuntimePreferenceUdocker))
+		requireWarningCodes(t, warnings, messages.WarningEngramSharedMemoryRuntime)
+		params := warnings[0].Params
+		if params["runtime"] != proto.RuntimePreferenceUdocker || params["flag"] != "--engram-config" || params["shm_gib"] != int64(512) {
+			t.Fatalf("warning params = %#v", params)
+		}
+		if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+			t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+		}
+	})
+	for _, runtime := range []string{"", proto.RuntimePreferenceDocker, proto.RuntimePreferenceNerdctl} {
+		t.Run("silent on "+runtime, func(t *testing.T) {
+			_, warnings := resolveWithWarnings(t, engramLaunchInput(runtime))
+			requireWarningCodes(t, warnings)
 		})
 	}
 	t.Run("ordinary udocker is unchanged", func(t *testing.T) {
 		input := engramLaunchInput(proto.RuntimePreferenceUdocker)
 		input.Params.TemplateArgs = nil
-		launch, err := ResolveLaunch(input)
-		if err != nil {
-			t.Fatal(err)
-		}
+		launch, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
 		if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes || len(launch.DockerArgs) != 0 {
 			t.Fatalf("ordinary udocker resources changed: shm=%d args=%v", launch.ShmBytes, launch.DockerArgs)
 		}
@@ -181,8 +187,8 @@ func TestEngramDetectionUsesEffectiveArgv(t *testing.T) {
 		input.Params.TemplateArgs = nil
 		input.ContainerOverrides.CommandMode = string(CommandManual)
 		input.ContainerOverrides.CmdDisplay = `["vllm","serve","/model","--engram-config","{\"cpu_offload\":true,\"dp_shared_memory\":true}"]`
-		_, err := ResolveLaunch(input)
-		requireLaunchProductError(t, err, messages.ErrorEngramSharedMemoryRuntime)
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings, messages.WarningEngramSharedMemoryRuntime)
 	})
 }
 
@@ -230,22 +236,23 @@ func TestEngramSharedMemoryArgvForms(t *testing.T) {
 	}
 }
 
-func TestEngramDottedAndUncertainRuntimePreflight(t *testing.T) {
-	for _, runtime := range []string{proto.RuntimePreferenceUdocker, "runveil"} {
-		for name, args := range map[string][]string{
-			"underscore raw":       {"--engram_config", engramTestConfig},
-			"dotted":               {"--engram-config.dp_shared_memory=true"},
-			"underscore dotted":    {"--engram_config.cpu_offload=true", "--engram_config.dp_shared_memory=true"},
-			"malformed raw":        {"--engram-config", `{cpu_offload:true}`},
-			"missing dotted value": {"--engram-config.dp_shared_memory"},
-		} {
-			t.Run(runtime+"/"+name, func(t *testing.T) {
-				input := engramLaunchInput(runtime)
-				input.Params.TemplateArgs = args
-				_, err := ResolveLaunch(input)
-				requireLaunchProductError(t, err, messages.ErrorEngramSharedMemoryRuntime)
-			})
-		}
+func TestEngramDottedAndUncertainRuntimeWarnings(t *testing.T) {
+	for name, test := range map[string]struct {
+		args []string
+		code string
+	}{
+		"underscore raw":       {[]string{"--engram_config", engramTestConfig}, messages.WarningEngramSharedMemoryRuntime},
+		"dotted":               {[]string{"--engram-config.dp_shared_memory=true"}, messages.WarningEngramSharedMemoryRuntime},
+		"underscore dotted":    {[]string{"--engram_config.cpu_offload=true", "--engram_config.dp_shared_memory=true"}, messages.WarningEngramSharedMemoryRuntime},
+		"malformed raw":        {[]string{"--engram-config", `{cpu_offload:true}`}, messages.WarningEngramConfigUncertain},
+		"missing dotted value": {[]string{"--engram-config.dp_shared_memory"}, messages.WarningEngramConfigUncertain},
+	} {
+		t.Run(name, func(t *testing.T) {
+			input := engramLaunchInput(proto.RuntimePreferenceUdocker)
+			input.Params.TemplateArgs = test.args
+			_, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings, test.code)
+		})
 	}
 	t.Run("valid disabled dotted config remains allowed", func(t *testing.T) {
 		input := engramLaunchInput(proto.RuntimePreferenceUdocker)

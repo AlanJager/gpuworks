@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -75,12 +77,48 @@ func requireCreateRefusalWithoutDeployment(t *testing.T, h *apiHandlers, st *sto
 	}
 }
 
-func TestCreateMultiNodePreflightsEveryRuntimeBeforePersistence(t *testing.T) {
+func evaluateWarningCodes(t *testing.T, h *apiHandlers, body string) []string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.evaluate(rec, httptest.NewRequest(http.MethodPost, "/api/v1/evaluate", strings.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("evaluate = %d %s", rec.Code, rec.Body.String())
+	}
+	var response dto.EvaluateResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Errors) != 0 {
+		t.Fatalf("evaluate errors = %+v", response.Errors)
+	}
+	codes := make([]string, 0, len(response.Warnings))
+	for _, warning := range response.Warnings {
+		codes = append(codes, warning.Code)
+	}
+	return codes
+}
+
+func requireCreateSucceeds(t *testing.T, h *apiHandlers, st *store.Store, body string) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h.createDeployment(rec, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s, want 201", rec.Code, rec.Body.String())
+	}
+	deployments, err := st.ListDeployments()
+	if err != nil || len(deployments) == 0 {
+		t.Fatalf("created deployments = %+v, %v", deployments, err)
+	}
+}
+
+// What the platform merely cannot prove is shown by evaluate and never stops
+// the create: the rank on the udocker node warns, the deployment is created.
+func TestCreateWithUnprovenRuntimeCombinationsWarnsAndSucceeds(t *testing.T) {
 	for name, test := range map[string]struct {
 		image, extraArgs, code string
 	}{
-		"V1 on a later udocker rank":     {image: createRuntimeCompatImage, code: messages.ErrorAscendV1CompatMultiNode},
-		"Engram on a later udocker rank": {image: "vllm/vllm-openai:v0.25.1", extraArgs: createRuntimeEngramArgs, code: messages.ErrorEngramSharedMemoryRuntime},
+		"V1 on a later udocker rank":     {image: createRuntimeCompatImage, code: messages.WarningAscendV1CompatMultiNode},
+		"Engram on a later udocker rank": {image: "vllm/vllm-openai:v0.25.1", extraArgs: createRuntimeEngramArgs, code: messages.WarningEngramSharedMemoryRuntime},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h, modelID, st := createRuntimePreflightFixture(t)
@@ -96,22 +134,25 @@ func TestCreateMultiNodePreflightsEveryRuntimeBeforePersistence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			requireCreateRefusalWithoutDeployment(t, h, st, string(raw), test.code)
+			if codes := evaluateWarningCodes(t, h, string(raw)); !slices.Contains(codes, test.code) {
+				t.Fatalf("evaluate warnings = %v, want %s", codes, test.code)
+			}
+			requireCreateSucceeds(t, h, st, string(raw))
 		})
 	}
 }
 
-func TestCreatePDPreflightsEveryRoleAndRankBeforePersistence(t *testing.T) {
+func TestCreatePDWithUnprovenRuntimeCombinationsWarnsAndSucceeds(t *testing.T) {
 	const multiNodeUnit = `{"mode":"vllm-nixl","roles":{"prefill":{"tp":2,"units":[{"node_uuid":"pd-a","gpus":[0],"followers":[{"node_uuid":"pd-b","gpus":[0]}]}]},"decode":{"tp":2,"units":[{"node_uuid":"pd-a","gpus":[1,2]}]}}}`
 	const rolesOnDifferentRuntimes = `{"mode":"vllm-nixl","roles":{"prefill":{"tp":1,"units":[{"node_uuid":"pd-b","gpus":[0]}]},"decode":{"tp":2,"units":[{"node_uuid":"pd-a"}]}}}`
 	for name, test := range map[string]struct {
 		placement, image, extraArgs, code string
 	}{
 		"V1 on a later udocker PD rank": {
-			placement: multiNodeUnit, image: createRuntimeCompatImage, code: messages.ErrorAscendV1CompatMultiNode,
+			placement: multiNodeUnit, image: createRuntimeCompatImage, code: messages.WarningAscendV1CompatMultiNode,
 		},
 		"Engram on a later udocker PD role": {
-			placement: rolesOnDifferentRuntimes, image: "vllm/vllm-openai:v0.25.1", extraArgs: createRuntimeEngramArgs, code: messages.ErrorEngramSharedMemoryRuntime,
+			placement: rolesOnDifferentRuntimes, image: "vllm/vllm-openai:v0.25.1", extraArgs: createRuntimeEngramArgs, code: messages.WarningEngramSharedMemoryRuntime,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -121,7 +162,10 @@ func TestCreatePDPreflightsEveryRoleAndRankBeforePersistence(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := createRuntimeBody(t, modelID, "pd-runtime", test.image, map[string]any{"pd": placement}, test.extraArgs)
-			requireCreateRefusalWithoutDeployment(t, h, st, body, test.code)
+			if codes := evaluateWarningCodes(t, h, body); !slices.Contains(codes, test.code) {
+				t.Fatalf("evaluate warnings = %v, want %s", codes, test.code)
+			}
+			requireCreateSucceeds(t, h, st, body)
 		})
 	}
 }

@@ -10,12 +10,11 @@ type shellCommandShape struct {
 	script        string
 	shell         bool
 	commandString bool
-	scriptFile    bool
 }
 
-// inspectShellCommand recognizes a shell executing a command string from the
-// final argv. shell also reports an opaque shell shape so safety checks can
-// fail closed instead of mistaking an unrecognized wrapper for a direct exec.
+// inspectShellCommand recognizes a sh or bash entrypoint, possibly behind env,
+// and the command string it executes with -c. shell is true for any such
+// wrapper, including one whose command string cannot be read.
 func inspectShellCommand(entrypoint, argv []string) shellCommandShape {
 	if len(entrypoint) == 0 {
 		return shellCommandShape{}
@@ -33,15 +32,7 @@ func inspectShellCommand(entrypoint, argv []string) shellCommandShape {
 		return shellCommandShape{}
 	}
 	script, commandString := shellCommandString(args[1:])
-	return shellCommandShape{
-		script: script, shell: true, commandString: commandString,
-		scriptFile: !commandString && len(args) > 1 && !strings.HasPrefix(args[1], "-"),
-	}
-}
-
-func opaqueShellCommand(entrypoint, argv []string) (string, bool) {
-	shape := inspectShellCommand(entrypoint, argv)
-	return shape.script, shape.shell && shape.commandString
+	return shellCommandShape{script: script, shell: true, commandString: commandString}
 }
 
 func unwrapEnvCommand(args []string) []string {
@@ -175,9 +166,11 @@ func shellShortOption(option byte) bool {
 
 var errDynamicShell = errors.New("shell command is not statically inspectable")
 
-// staticShellWords resolves shell quoting and adjacent literal fragments. It
-// accepts newlines as command separators but rejects constructs whose runtime
-// expansion could introduce or hide engine arguments.
+// staticShellWords resolves shell quoting and adjacent literal fragments into
+// the words a script spells out. Newlines, ;, |, & and parentheses only end a
+// word. It rejects constructs whose runtime expansion could introduce engine
+// arguments ($, backticks, globs, brace and bracket expressions), because the
+// words would then not be what the shell runs.
 func staticShellWords(script string) ([]string, error) {
 	var words []string
 	var word strings.Builder
@@ -253,7 +246,7 @@ func staticShellWords(script string) ([]string, error) {
 		case '\'', '"':
 			quote = char
 			inWord = true
-		case ' ', '\t', '\r', '\n', '<', '>':
+		case ' ', '\t', '\r', '\n', '<', '>', ';', '|', '&', '(', ')':
 			flush()
 		case '#':
 			if inWord {
@@ -273,7 +266,7 @@ func staticShellWords(script string) ([]string, error) {
 				word.WriteByte(next)
 				inWord = true
 			}
-		case '$', '`', ';', '|', '&', '(', ')', '{', '}', '[', ']', '*', '?':
+		case '$', '`', '{', '}', '[', ']', '*', '?':
 			return nil, errDynamicShell
 		default:
 			word.WriteByte(char)
@@ -420,14 +413,4 @@ func shellFileDescriptor(word string) bool {
 		}
 	}
 	return true
-}
-
-func hasNestedShellCommand(args []string) bool {
-	for _, arg := range args {
-		switch path.Base(arg) {
-		case "sh", "bash", "env", "eval", "source", ".", "xargs":
-			return true
-		}
-	}
-	return false
 }

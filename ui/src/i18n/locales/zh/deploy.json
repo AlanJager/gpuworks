@@ -116,7 +116,13 @@
     "PD_UNVERIFIED_COMBINATION": "PD 与 {{feature}} 的组合是允许的，但尚未在真机上验证过。",
     "PD_GPU_MODELS_DIFFER": "PD 各角色使用了不同的 GPU 型号（{{models}}），各角色的吞吐与延迟会有差异。",
     "PD_SAME_NODE_THROUGHPUT": "PD 的全部实例都在同一节点上，这会以部分吞吐换取更低的 decode 延迟。",
-    "PD_KV_OFFLOAD_PREFILL_ONLY": "KV 卸载只作用于 prefill 实例；PD 部署下 decode 实例不会使用 KV 缓存分层。"
+    "PD_KV_OFFLOAD_PREFILL_ONLY": "KV 卸载只作用于 prefill 实例；PD 部署下 decode 实例不会使用 KV 缓存分层。",
+    "ASCEND_V1_COMPAT_MULTI_NODE": "{{runtime}} 上的 vLLM-Ascend rc2 A3 V1 兼容 rendezvous 仅在单节点内有效，无法协调 {{nnodes}} 个节点的部署（{{image}}）。仍可创建；如启动时卡住，请设置 VLLM_USE_V2_MODEL_RUNNER=1、改用 Docker/nerdctl，或改为单节点部署。",
+    "ASCEND_V1_COMPAT_DATA_PARALLEL": "在 {{runtime}} 上，数据并行 {{dp}} 与 vLLM-Ascend rc2 A3 V1 兼容脚本的组合尚未在真机上验证（{{image}}）。仍可创建；如启动时卡住，请改用 Docker/nerdctl，或设置 VLLM_USE_V2_MODEL_RUNNER=1。",
+    "ASCEND_COMPAT_MANUAL_SHELL": "{{image}} 在 {{runtime}} 上的 vLLM-Ascend 兼容脚本会针对其预期的 model runner 打补丁，而手写 shell 命令无法据此校验。仍可创建；请确认命令启动的是你期望的 runner（VLLM_USE_V2_MODEL_RUNNER）。",
+    "ENGRAM_SHARED_MEMORY_RUNTIME": "Engram 的 cpu_offload 与 dp_shared_memory（{{flag}}）需要约 {{shm_gib}} GiB 共享内存和不受限的锁定内存。{{runtime}} 直接使用宿主机的 /dev/shm 与资源限制，平台无法获知其大小。仍可创建；请检查宿主机，或改用 Docker/nerdctl。",
+    "ENGRAM_CONFIG_UNCERTAIN": "无法解析 Engram 配置（{{flag}}），平台无法判断它是否使用共享内存。如果使用，需要约 {{shm_gib}} GiB 共享内存和不受限的锁定内存，而 {{runtime}} 直接使用宿主机的 /dev/shm 与资源限制。仍可创建；请检查配置和宿主机。",
+    "ENGRAM_MANUAL_UNCHECKED": "手写命令中出现了 Engram（{{flag}}），但写法过于动态无法解析，平台没有据此推导共享内存和锁定内存设置。请确认共享内存与 memlock 足够，或改用引擎模式。"
   },
   "warningFeature": {
     "dgpu": "动态 GPU（dGPU）",

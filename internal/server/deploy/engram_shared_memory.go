@@ -10,6 +10,9 @@ import (
 // tier and honors explicit sizes and host IPC first.
 const engramSharedMemoryDefaultBytes = int64(512) << 30
 
+// engramFlag is the engine option that configures Engram.
+const engramFlag = "--engram-config"
+
 type engramValues struct {
 	absent         bool
 	cpuOffload     bool
@@ -97,7 +100,7 @@ func engramArgument(arg string) (root, field, value string, inline, ok bool) {
 		root, field = before, after
 	}
 	root = strings.ReplaceAll(root, "_", "-")
-	if root != "--engram-config" {
+	if root != engramFlag {
 		return "", "", "", false, false
 	}
 	return root, field, value, inline, true
@@ -162,8 +165,8 @@ func engramBool(value any) (bool, bool) {
 }
 
 // engramSharesHostMemory reports only a configuration that can be proven to
-// share host memory. Preflight separately rejects uncertain configurations on
-// runtimes where making the wrong resource decision is unsafe.
+// share host memory. launchWarnings separately flags uncertain configurations
+// on runtimes that use the host's /dev/shm directly.
 func engramSharesHostMemory(args []string) bool {
 	return inspectEngramArguments(args).shared
 }

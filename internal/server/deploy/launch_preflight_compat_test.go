@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
-func TestAscendCompatManualShellPreflight(t *testing.T) {
+func TestAscendCompatManualShellWarns(t *testing.T) {
 	for name, test := range map[string]struct {
 		overrideV2 string
 		scriptV2   string
@@ -23,10 +24,13 @@ func TestAscendCompatManualShellPreflight(t *testing.T) {
 				CmdDisplay: "# environment\nVLLM_USE_V2_MODEL_RUNNER=" + test.scriptV2 + "\n\n# launch\nvllm serve /model --port 30000",
 				Env:        map[string]string{"VLLM_USE_V2_MODEL_RUNNER": test.overrideV2},
 			}
-			_, err := ResolveLaunch(input)
-			product := requireLaunchProductError(t, err, messages.ErrorAscendCompatManualUnsupported)
-			if product.Params()["runtime"] != proto.RuntimePreferenceUdocker || product.Params()["image"] != ascendCompatTestImage {
-				t.Fatalf("error params = %#v", product.Params())
+			launch, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings, messages.WarningAscendCompatManualShell)
+			if warnings[0].Params["runtime"] != proto.RuntimePreferenceUdocker || warnings[0].Params["image"] != ascendCompatTestImage {
+				t.Fatalf("warning params = %#v", warnings[0].Params)
+			}
+			if !strings.Contains(launch.PreStartScript, ascendV030RC2A3V2CompatMarker) {
+				t.Fatal("a warned manual launch must still carry the compatibility script")
 			}
 		})
 	}
@@ -34,9 +38,10 @@ func TestAscendCompatManualShellPreflight(t *testing.T) {
 		input := ascendCompatLaunchInput(proto.RuntimePreferenceDocker)
 		input.ContainerOverrides.CommandMode = string(CommandManual)
 		input.ContainerOverrides.CmdDisplay = "vllm serve /model"
-		launch, err := ResolveLaunch(input)
-		if err != nil || launch.PreStartScript != "" {
-			t.Fatalf("Docker manual = %+v, %v", launch, err)
+		launch, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
+		if launch.PreStartScript != "" {
+			t.Fatalf("Docker manual = %+v", launch)
 		}
 	})
 }
@@ -55,30 +60,71 @@ func TestMergedPreStartScriptLimitIsCheckedBeforeTheAgent(t *testing.T) {
 	}
 }
 
-func TestEngramManualShellPreflight(t *testing.T) {
-	for _, runtime := range []string{proto.RuntimePreferenceDocker, proto.RuntimePreferenceUdocker} {
-		t.Run(runtime, func(t *testing.T) {
-			input := engramLaunchInput(runtime)
-			input.ContainerOverrides = ContainerOverrides{
-				CommandMode: string(CommandManual), CommandIncludesPreparation: true,
-				CmdDisplay: `vllm serve /model --engram-config '{"cpu_offload":true,"dp_shared_memory":true}'`,
+func TestEngramManualShellIsReadStatically(t *testing.T) {
+	const command = "# environment\nVLLM_TEST=1\n\n# launch\nvllm serve /model --engram-config '" + engramTestConfig + "' 2>&1 | tee /tmp/engine.log"
+	manual := func(runtime, cmd string) ResolveLaunchInput {
+		input := engramLaunchInput(runtime)
+		input.Params.TemplateArgs = nil
+		input.ContainerOverrides = ContainerOverrides{
+			CommandMode: string(CommandManual), CommandIncludesPreparation: true, CmdDisplay: cmd,
+		}
+		return input
+	}
+	t.Run("parseable manual command derives shared memory like engine mode", func(t *testing.T) {
+		launch, warnings := resolveWithWarnings(t, manual(proto.RuntimePreferenceDocker, command))
+		requireWarningCodes(t, warnings)
+		if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+			t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+		}
+		if got := memlockArgs(launch.DockerArgs); !reflect.DeepEqual(got, []string{"memlock=-1:-1"}) {
+			t.Fatalf("memlock args = %v in %v", got, launch.DockerArgs)
+		}
+		if got := engramCapabilityCount(launch.DockerArgs); got != 1 {
+			t.Fatalf("IPC_LOCK count = %d in %v", got, launch.DockerArgs)
+		}
+	})
+	t.Run("quote concatenation is resolved", func(t *testing.T) {
+		launch, _ := resolveWithWarnings(t, manual(proto.RuntimePreferenceDocker,
+			`vllm serve /model --engram-confi'g' '`+engramTestConfig+`'`))
+		if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+			t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+		}
+	})
+	t.Run("parseable manual command on udocker warns", func(t *testing.T) {
+		launch, warnings := resolveWithWarnings(t, manual(proto.RuntimePreferenceUdocker, command))
+		requireWarningCodes(t, warnings, messages.WarningEngramSharedMemoryRuntime)
+		if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+			t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+		}
+	})
+	t.Run("disabled shared memory in a manual command is silent", func(t *testing.T) {
+		launch, warnings := resolveWithWarnings(t, manual(proto.RuntimePreferenceUdocker,
+			`vllm serve /model --engram-config '{"cpu_offload":true,"dp_shared_memory":false}'`))
+		requireWarningCodes(t, warnings)
+		if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes {
+			t.Fatalf("shm = %d", launch.ShmBytes)
+		}
+	})
+	for name, cmd := range map[string]string{
+		"variable argument":    `ARGS="--engram-config $CFG"` + "\nvllm serve /model $ARGS",
+		"command substitution": "vllm serve /model --engram-config \"$(cat /etc/engram.json)\"",
+		"nested shell":         `bash -c "vllm serve /model --engram-config '` + engramTestConfig + `'"`,
+	} {
+		t.Run("unreadable "+name+" only warns", func(t *testing.T) {
+			launch, warnings := resolveWithWarnings(t, manual(proto.RuntimePreferenceDocker, cmd))
+			requireWarningCodes(t, warnings, messages.WarningEngramManualUnchecked)
+			if warnings[0].Params["flag"] != "--engram-config" {
+				t.Fatalf("warning params = %#v", warnings[0].Params)
 			}
-			_, err := ResolveLaunch(input)
-			product := requireLaunchProductError(t, err, messages.ErrorEngramManualUnsupported)
-			if product.Params()["flag"] != "--engram-config" {
-				t.Fatalf("error params = %#v", product.Params())
+			if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes {
+				t.Fatalf("an unchecked command must not derive resources: shm=%d", launch.ShmBytes)
 			}
 		})
 	}
 	t.Run("ordinary manual udocker is unchanged", func(t *testing.T) {
-		input := engramLaunchInput(proto.RuntimePreferenceUdocker)
-		input.Params.TemplateArgs = nil
-		input.ContainerOverrides.CommandMode = string(CommandManual)
-		input.ContainerOverrides.CmdDisplay = "vllm serve /model"
-		launch, err := ResolveLaunch(input)
-		if err != nil {
-			t.Fatal(err)
-		}
+		input := manual(proto.RuntimePreferenceUdocker, "vllm serve /model")
+		launch, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
 		if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes || len(launch.DockerArgs) != 0 {
 			t.Fatalf("ordinary manual resources changed: shm=%d args=%v", launch.ShmBytes, launch.DockerArgs)
 		}
@@ -91,20 +137,18 @@ func TestEngramLastValidConfigControlsResourcesAndPreflight(t *testing.T) {
 		first, second string
 		wantShared    bool
 	}{
-		"true then false does not reject": {first: engramTestConfig, second: disabled},
-		"false then true rejects":         {first: disabled, second: engramTestConfig, wantShared: true},
+		"true then false is silent": {first: engramTestConfig, second: disabled},
+		"false then true warns":     {first: disabled, second: engramTestConfig, wantShared: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := engramLaunchInput(proto.RuntimePreferenceUdocker)
 			input.Params.TemplateArgs = []string{"--engram-config", test.first, "--engram-config=" + test.second}
-			launch, err := ResolveLaunch(input)
+			launch, warnings := resolveWithWarnings(t, input)
 			if test.wantShared {
-				requireLaunchProductError(t, err, messages.ErrorEngramSharedMemoryRuntime)
+				requireWarningCodes(t, warnings, messages.WarningEngramSharedMemoryRuntime)
 				return
 			}
-			if err != nil {
-				t.Fatalf("last disabled config was rejected: %v", err)
-			}
+			requireWarningCodes(t, warnings)
 			if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes || len(launch.DockerArgs) != 0 {
 				t.Fatalf("last disabled config kept Engram resources: shm=%d args=%v", launch.ShmBytes, launch.DockerArgs)
 			}
@@ -112,7 +156,7 @@ func TestEngramLastValidConfigControlsResourcesAndPreflight(t *testing.T) {
 	}
 }
 
-func TestOpaqueShellJSONPreflight(t *testing.T) {
+func TestShellJSONCommandsFollowTheSameRules(t *testing.T) {
 	for _, mode := range []string{string(CommandManual), string(CommandEngine)} {
 		t.Run("compat "+mode, func(t *testing.T) {
 			input := ascendCompatLaunchInput(proto.RuntimePreferenceUdocker)
@@ -124,8 +168,8 @@ func TestOpaqueShellJSONPreflight(t *testing.T) {
 				input.Entrypoint = []string{"/bin/sh"}
 				input.ContainerOverrides.CmdDisplay = `["-c","VLLM_USE_V2_MODEL_RUNNER=0 vllm serve /model"]`
 			}
-			_, err := ResolveLaunch(input)
-			requireLaunchProductError(t, err, messages.ErrorAscendCompatManualUnsupported)
+			_, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings, messages.WarningAscendCompatManualShell)
 		})
 		t.Run("engram "+mode, func(t *testing.T) {
 			input := engramLaunchInput(proto.RuntimePreferenceUdocker)
@@ -136,8 +180,11 @@ func TestOpaqueShellJSONPreflight(t *testing.T) {
 				input.Entrypoint = []string{"/bin/sh"}
 				input.ContainerOverrides.CmdDisplay = `["-c","vllm serve /model --engram-config '{\"cpu_offload\":true,\"dp_shared_memory\":true}'"]`
 			}
-			_, err := ResolveLaunch(input)
-			requireLaunchProductError(t, err, messages.ErrorEngramManualUnsupported)
+			launch, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings, messages.WarningEngramSharedMemoryRuntime)
+			if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+				t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+			}
 		})
 	}
 }

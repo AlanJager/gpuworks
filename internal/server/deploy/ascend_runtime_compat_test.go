@@ -175,21 +175,23 @@ func TestAscendCompatibilityPreflightRefusesOnlyUnsupportedLaunches(t *testing.T
 		input.Params.NodeAddress = "10.0.0.2"
 		return input
 	}
-	t.Run("V1 loopback cannot span nodes", func(t *testing.T) {
-		_, err := ResolveLaunch(multiNode(proto.RuntimePreferenceUdocker))
-		product := requireLaunchProductError(t, err, messages.ErrorAscendV1CompatMultiNode)
-		if product.Params()["nnodes"] != 2 || product.Params()["image"] != ascendCompatTestImage {
-			t.Fatalf("error params = %#v", product.Params())
+	t.Run("V1 loopback across nodes warns and still resolves", func(t *testing.T) {
+		launch, warnings := resolveWithWarnings(t, multiNode(proto.RuntimePreferenceUdocker))
+		requireWarningCodes(t, warnings, messages.WarningAscendV1CompatMultiNode)
+		params := warnings[0].Params
+		if params["nnodes"] != 2 || params["image"] != ascendCompatTestImage || params["runtime"] != proto.RuntimePreferenceUdocker {
+			t.Fatalf("warning params = %#v", params)
+		}
+		if !strings.Contains(launch.PreStartScript, ascendV030RC2A3CompatMarker) {
+			t.Fatal("a warned V1 launch must still carry its compatibility script")
 		}
 	})
 	t.Run("V2 can span nodes and compose script preparation", func(t *testing.T) {
 		input := multiNode(proto.RuntimePreferenceUdocker)
 		input.ContainerOverrides.Env = map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "1"}
 		input.PreStartScript = "echo template"
-		launch, err := ResolveLaunch(input)
-		if err != nil {
-			t.Fatal(err)
-		}
+		launch, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
 		if !strings.Contains(launch.PreStartScript, ascendV030RC2A3V2CompatMarker) || !strings.HasSuffix(launch.PreStartScript, "echo template") {
 			t.Fatalf("V2 preparation did not compose: %q", launch.PreStartScript)
 		}
@@ -236,6 +238,47 @@ func TestAscendCompatibilityPreflightRefusesOnlyUnsupportedLaunches(t *testing.T
 		if _, err := ResolveLaunch(input); err != nil {
 			t.Fatalf("ordinary manual launch rejected: %v", err)
 		}
+	})
+}
+
+func TestAscendV1CompatibilityWarnsAboutDataParallel(t *testing.T) {
+	withDP := func(dp int) ResolveLaunchInput {
+		input := ascendCompatLaunchInput(proto.RuntimePreferenceUdocker)
+		input.Params.AssignedGPUs = 4 * dp
+		input.Params.TensorParallel = 4
+		input.Params.Quick = LaunchConfig{DP: dp}
+		return input
+	}
+	t.Run("V1 with DP above one warns", func(t *testing.T) {
+		_, warnings := resolveWithWarnings(t, withDP(4))
+		requireWarningCodes(t, warnings, messages.WarningAscendV1CompatDataParallel)
+		params := warnings[0].Params
+		if params["dp"] != 4 || params["image"] != ascendCompatTestImage || params["runtime"] != proto.RuntimePreferenceUdocker {
+			t.Fatalf("warning params = %#v", params)
+		}
+	})
+	t.Run("a DP written as an extra argument warns too", func(t *testing.T) {
+		input := ascendCompatLaunchInput(proto.RuntimePreferenceUdocker)
+		input.Params.AssignedGPUs, input.Params.TensorParallel = 4, 2
+		input.Params.ExtraArgs = []string{"--data-parallel-size=2"}
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings, messages.WarningAscendV1CompatDataParallel)
+	})
+	t.Run("V1 with DP one is silent", func(t *testing.T) {
+		_, warnings := resolveWithWarnings(t, withDP(1))
+		requireWarningCodes(t, warnings)
+	})
+	t.Run("V2 with DP above one is silent", func(t *testing.T) {
+		input := withDP(4)
+		input.ContainerOverrides.Env = map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "1"}
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
+	})
+	t.Run("Docker with DP above one is silent", func(t *testing.T) {
+		input := withDP(4)
+		input.Params.RuntimeDriver = proto.RuntimePreferenceDocker
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
 	})
 }
 

@@ -19,12 +19,12 @@ func TestEvaluateRankCompatibilityPreflight(t *testing.T) {
 	for name, test := range map[string]struct {
 		runtime      string
 		overrides    string
-		wantCode     string
+		wantWarning  string
 		wantV2Script bool
 	}{
-		"V1 loopback is refused before rank commands": {
-			runtime:  "udocker",
-			wantCode: messages.ErrorAscendV1CompatMultiNode,
+		"V1 loopback across nodes warns once and still previews every rank": {
+			runtime:     "udocker",
+			wantWarning: messages.WarningAscendV1CompatMultiNode,
 		},
 		"final environment selects the multi-node-capable V2 overlay": {
 			runtime:      "udocker",
@@ -69,17 +69,25 @@ func TestEvaluateRankCompatibilityPreflight(t *testing.T) {
 			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 				t.Fatal(err)
 			}
-			if test.wantCode != "" {
-				if resp.OK || len(resp.Errors) != 1 || resp.Errors[0].Code != test.wantCode {
-					t.Fatalf("evaluate response = %+v, want one %s error", resp, test.wantCode)
-				}
-				if got := resp.Errors[0].Params["nnodes"]; got != float64(2) && got != 2 {
-					t.Fatalf("error params = %#v", resp.Errors[0].Params)
-				}
-				return
-			}
 			if !resp.OK || len(resp.RankCommands) != 2 {
 				t.Fatalf("evaluate response = %+v", resp)
+			}
+			var launchWarnings []messages.Warning
+			for _, warning := range resp.Warnings {
+				if warning.Code == messages.WarningAscendV1CompatMultiNode {
+					launchWarnings = append(launchWarnings, warning)
+				}
+			}
+			if test.wantWarning == "" && len(launchWarnings) != 0 {
+				t.Fatalf("unexpected launch warnings: %+v", launchWarnings)
+			}
+			if test.wantWarning != "" {
+				if len(launchWarnings) != 1 {
+					t.Fatalf("launch warnings = %+v, want exactly one %s", launchWarnings, test.wantWarning)
+				}
+				if got := launchWarnings[0].Params["nnodes"]; got != float64(2) && got != 2 {
+					t.Fatalf("warning params = %#v", launchWarnings[0].Params)
+				}
 			}
 			for _, rank := range resp.RankCommands {
 				hasV2 := strings.Contains(rank.PreStartScript, "# GPUWorks: vLLM-Ascend v0.30.0rc2-a3 V2 compatibility")

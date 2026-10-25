@@ -87,6 +87,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			return false
 		}
 		res := plan.Resolved
+		resp.Warnings = append(resp.Warnings, plan.Warnings...)
 		rankTarget := deploymentImageTarget(eng.Name(), "", rankNode)
 		rankTarget.Override = req.Image
 		rankTarget.TrustedOverride = templateOwnsImage(selection, req.Image)
@@ -148,7 +149,7 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 		TemplateEnv: templateEnv, ExtraArgs: userExtraArgs,
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,
 	}
-	res, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
+	res, launchWarnings, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
 		Engine: eng, Params: params, Image: env.rankSelection.Image,
 		Entrypoint:   templateEntrypoint,
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
@@ -164,6 +165,7 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 	if dynamicTPPreview {
 		res = deploy.SymbolizePreviewTP(eng, res, launch.TemplateResidual, launch.UserResidual)
 	}
+	resp.Warnings = append(resp.Warnings, launchWarnings...)
 	setEvaluateLaunch(resp, res)
 	return true
 }

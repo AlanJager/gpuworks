@@ -18,37 +18,44 @@ func commandJSON(t *testing.T, args []string) string {
 	return string(raw)
 }
 
-func TestOpaqueShellCommandForms(t *testing.T) {
+func TestInspectShellCommandForms(t *testing.T) {
 	const script = "vllm serve /model"
 	for name, test := range map[string]struct {
 		entrypoint []string
 		argv       []string
-		wantScript string
-		wantOK     bool
+		want       shellCommandShape
 	}{
 		"sh short option cluster": {
-			entrypoint: []string{"/bin/sh"}, argv: []string{"-ec", script}, wantScript: script, wantOK: true,
+			entrypoint: []string{"/bin/sh"}, argv: []string{"-ec", script},
+			want: shellCommandShape{script: script, shell: true, commandString: true},
 		},
-		"bash short option cluster": {
-			entrypoint: []string{"/bin/bash"}, argv: []string{"-euc", script}, wantScript: script, wantOK: true,
+		"bash login": {
+			entrypoint: []string{"bash"}, argv: []string{"-lc", script},
+			want: shellCommandShape{script: script, shell: true, commandString: true},
 		},
 		"env bash": {
-			entrypoint: []string{"/usr/bin/env"}, argv: []string{"bash", "-c", script}, wantScript: script, wantOK: true,
+			entrypoint: []string{"/usr/bin/env"}, argv: []string{"bash", "-c", script},
+			want: shellCommandShape{script: script, shell: true, commandString: true},
 		},
 		"env options and assignment": {
-			entrypoint: []string{"/usr/bin/env"}, argv: []string{"-i", "FOO=1", "/bin/sh", "-lc", script}, wantScript: script, wantOK: true,
+			entrypoint: []string{"/usr/bin/env"}, argv: []string{"-i", "FOO=1", "/bin/sh", "-lc", script},
+			want: shellCommandShape{script: script, shell: true, commandString: true},
 		},
 		"env split string": {
-			entrypoint: []string{"/usr/bin/env"}, argv: []string{"-S", "bash -ec 'vllm serve /model'"}, wantScript: script, wantOK: true,
+			entrypoint: []string{"/usr/bin/env"}, argv: []string{"-S", "bash -ec 'vllm serve /model'"},
+			want: shellCommandShape{script: script, shell: true, commandString: true},
+		},
+		"shell script file": {
+			entrypoint: []string{"bash"}, argv: []string{"/opt/serve.sh"},
+			want: shellCommandShape{shell: true},
 		},
 		"direct executable": {
 			entrypoint: []string{"vllm"}, argv: []string{"serve", "/model"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			gotScript, gotOK := opaqueShellCommand(test.entrypoint, test.argv)
-			if gotScript != test.wantScript || gotOK != test.wantOK {
-				t.Fatalf("opaqueShellCommand(%v, %v) = %q, %v; want %q, %v", test.entrypoint, test.argv, gotScript, gotOK, test.wantScript, test.wantOK)
+			if got := inspectShellCommand(test.entrypoint, test.argv); got != test.want {
+				t.Fatalf("inspectShellCommand(%v, %v) = %+v; want %+v", test.entrypoint, test.argv, got, test.want)
 			}
 		})
 	}
@@ -92,7 +99,6 @@ func TestStaticShellWordsRejectDynamicShapes(t *testing.T) {
 	for _, script := range []string{
 		"vllm serve /model $ENGRAM_ARGS",
 		"vllm serve /model `cat args`",
-		"vllm serve /model; echo done",
 		"vllm serve /model --engram-confi'g",
 		"vllm serve /model --engram-confi{g,}",
 		"cat <<'JSON'\n{\"unterminated\":true}\n",
@@ -105,7 +111,18 @@ func TestStaticShellWordsRejectDynamicShapes(t *testing.T) {
 	}
 }
 
-func TestAscendCompatRejectsShellOptionAndEnvForms(t *testing.T) {
+func TestStaticShellWordsTreatCommandSeparatorsAsWordBoundaries(t *testing.T) {
+	words, err := staticShellWords("cd /tmp && vllm serve /model --engram-config 'x' | tee out.log; echo done &")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"cd", "/tmp", "vllm", "serve", "/model", "--engram-config", "x", "tee", "out.log", "echo", "done"}
+	if !reflect.DeepEqual(words, want) {
+		t.Fatalf("words = %#v, want %#v", words, want)
+	}
+}
+
+func TestAscendCompatWarnsAboutShellOptionAndEnvForms(t *testing.T) {
 	for name, command := range map[string][]string{
 		"sh cluster":       {"/bin/sh", "-ec", "vllm serve /model"},
 		"bash cluster":     {"/bin/bash", "-euc", "vllm serve /model"},
@@ -119,45 +136,97 @@ func TestAscendCompatRejectsShellOptionAndEnvForms(t *testing.T) {
 				CommandMode: string(CommandManual), CmdDisplay: commandJSON(t, command),
 				Env: map[string]string{"VLLM_USE_V2_MODEL_RUNNER": "1"},
 			}
-			_, err := ResolveLaunch(input)
-			requireLaunchProductError(t, err, messages.ErrorAscendCompatManualUnsupported)
+			_, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings, messages.WarningAscendCompatManualShell)
 		})
 	}
 }
 
-func TestEngramShellPreflightUsesStaticWordsAndFailsClosed(t *testing.T) {
-	t.Run("literal quote concatenation", func(t *testing.T) {
-		input := engramLaunchInput(proto.RuntimePreferenceDocker)
-		input.ContainerOverrides = ContainerOverrides{
-			CommandMode: string(CommandManual), CommandIncludesPreparation: true,
-			CmdDisplay: `vllm serve /model --engram-confi'g' '{"cpu_offload":true,"dp_shared_memory":true}'`,
+// Commands that never mention Engram are not this check's business, whatever
+// shell syntax they use and on whichever vendor they run.
+func TestShellCommandsWithoutEngramPassSilently(t *testing.T) {
+	commands := map[string][]string{
+		"variables":         {"/bin/sh", "-c", `NAME=demo; vllm serve /model --served-model-name "$NAME"`},
+		"and list":          {"/bin/sh", "-c", "cd /tmp && vllm serve /model"},
+		"pipe":              {"/bin/sh", "-c", "vllm serve /model 2>&1 | tee /tmp/engine.log"},
+		"redirect":          {"bash", "-c", "vllm serve /model > /tmp/out.log 2>&1"},
+		"glob":              {"/bin/sh", "-c", "cp /opt/*.json /tmp && vllm serve /model"},
+		"command subst":     {"bash", "-lc", `vllm serve /model --max-model-len "$(cat /tmp/len)"`},
+		"nested shell":      {"/bin/sh", "-ec", "bash -c 'vllm serve /model'"},
+		"eval":              {"/bin/sh", "-ec", "eval 'vllm serve /model'"},
+		"source":            {"/bin/sh", "-ec", ". /tmp/engine-args\nvllm serve /model"},
+		"xargs":             {"/bin/sh", "-ec", "xargs vllm serve </tmp/engine-args"},
+		"env wrapper":       {"/usr/bin/env", "bash", "-euc", "export A=1; vllm serve /model"},
+		"unknown wrapper":   {"/bin/sh", "--unsupported", "-c", "vllm serve /model"},
+		"argument sh value": {"vllm", "serve", "/model", "--chat-template", "sh"},
+	}
+	for _, vendor := range []string{"nvidia", "ppu"} {
+		for name, command := range commands {
+			t.Run(vendor+"/"+name+"/json", func(t *testing.T) {
+				input := engramLaunchInput(proto.RuntimePreferenceDocker)
+				input.Params.Vendor, input.Params.TemplateArgs = vendor, nil
+				input.ContainerOverrides = ContainerOverrides{CommandMode: string(CommandManual), CmdDisplay: commandJSON(t, command)}
+				_, warnings := resolveWithWarnings(t, input)
+				requireWarningCodes(t, warnings)
+			})
 		}
-		_, err := ResolveLaunch(input)
-		requireLaunchProductError(t, err, messages.ErrorEngramManualUnsupported)
-	})
-	for name, command := range map[string][]string{
-		"env wrapper":        {"/usr/bin/env", "bash", "-euc", `vllm serve /model --engram-confi'g' '{"cpu_offload":true,"dp_shared_memory":true}'`},
-		"dynamic expansion":  {"/bin/sh", "-ec", "vllm serve /model $ENGRAM_ARGS"},
-		"dynamic executable": {"/bin/sh", "-ec", "exec $COMMAND $ARGS"},
-		"nested shell":       {"/bin/sh", "-ec", "bash -c 'vllm serve /model'"},
-		"eval":               {"/bin/sh", "-ec", "eval 'vllm serve /model'"},
-		"source":             {"/bin/sh", "-ec", ". /tmp/engine-args\nvllm serve /model"},
-		"xargs":              {"/bin/sh", "-ec", "xargs vllm serve </tmp/engine-args"},
-		"unknown wrapper":    {"/bin/sh", "--unsupported", "-c", "vllm serve /model"},
-	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(vendor+"/manual text", func(t *testing.T) {
 			input := engramLaunchInput(proto.RuntimePreferenceDocker)
-			input.ContainerOverrides = ContainerOverrides{CommandMode: string(CommandManual), CmdDisplay: commandJSON(t, command)}
-			_, err := ResolveLaunch(input)
-			requireLaunchProductError(t, err, messages.ErrorEngramManualUnsupported)
+			input.Params.Vendor, input.Params.TemplateArgs = vendor, nil
+			input.ContainerOverrides = ContainerOverrides{
+				CommandMode: string(CommandManual), CommandIncludesPreparation: true,
+				CmdDisplay: "# environment\nNAME=demo\nexport CUDA_VISIBLE_DEVICES=$(seq -s, 0 3)\n\n# launch\ncd /tmp && vllm serve /model --served-model-name \"$NAME\" 2>&1 | tee /tmp/engine.log",
+			}
+			launch, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings)
+			if launch.ShmBytes != (vLLMEngine{}).Profile().ShmBytes || len(launch.DockerArgs) != 0 {
+				t.Fatalf("unrelated manual command changed resources: shm=%d args=%v", launch.ShmBytes, launch.DockerArgs)
+			}
 		})
 	}
+}
+
+func TestEngramShellCommandsAreReadThroughWrappers(t *testing.T) {
+	t.Run("env wrapper with literal quote concatenation", func(t *testing.T) {
+		input := engramLaunchInput(proto.RuntimePreferenceDocker)
+		input.Params.TemplateArgs = nil
+		input.ContainerOverrides = ContainerOverrides{
+			CommandMode: string(CommandManual),
+			CmdDisplay:  commandJSON(t, []string{"/usr/bin/env", "bash", "-euc", `vllm serve /model --engram-confi'g' '` + engramTestConfig + `'`}),
+		}
+		launch, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
+		if launch.ShmBytes != engramSharedMemoryDefaultBytes {
+			t.Fatalf("shm = %d, want %d", launch.ShmBytes, engramSharedMemoryDefaultBytes)
+		}
+	})
+	for name, command := range map[string][]string{
+		"dynamic expansion": {"/bin/sh", "-ec", "vllm serve /model --engram-config $ENGRAM_CFG"},
+		"glob":              {"/bin/sh", "-ec", "vllm serve /model --engram-config /etc/engram/*.json"},
+		"nested shell":      {"/bin/sh", "-ec", `bash -c "vllm serve /model --engram_config '` + engramTestConfig + `'"`},
+	} {
+		t.Run(name+" only warns", func(t *testing.T) {
+			input := engramLaunchInput(proto.RuntimePreferenceDocker)
+			input.Params.TemplateArgs = nil
+			input.ContainerOverrides = ContainerOverrides{CommandMode: string(CommandManual), CmdDisplay: commandJSON(t, command)}
+			_, warnings := resolveWithWarnings(t, input)
+			requireWarningCodes(t, warnings, messages.WarningEngramManualUnchecked)
+		})
+	}
+	t.Run("a path that merely contains the word is silent", func(t *testing.T) {
+		input := engramLaunchInput(proto.RuntimePreferenceDocker)
+		input.Params.TemplateArgs = nil
+		input.ContainerOverrides = ContainerOverrides{
+			CommandMode: string(CommandManual), CmdDisplay: commandJSON(t, []string{"/bin/sh", "-c", "vllm serve /models/DeepSeek-Engram-Lite"}),
+		}
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
+	})
 	t.Run("engine script file remains allowed", func(t *testing.T) {
 		input := engramLaunchInput(proto.RuntimePreferenceDocker)
 		input.Entrypoint = []string{"bash", "/opt/gpuworks/tensorfold/serve.sh"}
-		if _, err := ResolveLaunch(input); err != nil {
-			t.Fatalf("engine script file was mistaken for an inline manual command: %v", err)
-		}
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
 	})
 	t.Run("static ordinary shell remains allowed", func(t *testing.T) {
 		input := engramLaunchInput(proto.RuntimePreferenceDocker)
@@ -165,8 +234,7 @@ func TestEngramShellPreflightUsesStaticWordsAndFailsClosed(t *testing.T) {
 			CommandMode: string(CommandManual),
 			CmdDisplay:  commandJSON(t, []string{"/usr/bin/env", "bash", "-euc", "# environment\nVLLM_TEST=1\nvllm serve /model"}),
 		}
-		if _, err := ResolveLaunch(input); err != nil {
-			t.Fatalf("static ordinary shell was rejected: %v", err)
-		}
+		_, warnings := resolveWithWarnings(t, input)
+		requireWarningCodes(t, warnings)
 	})
 }
