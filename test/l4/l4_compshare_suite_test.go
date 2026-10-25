@@ -427,7 +427,10 @@ func rentCompshareContainer(t *testing.T, p *cloudprovider.Compshare, spec cloud
 		attempt.GPUModel = model
 		instance, err := p.Rent(t.Context(), attempt)
 		if err != nil {
-			if isCloudCapacityError(err) || cloudprovider.IsImageUnsupportedInZone(err) || cloudprovider.IsGPUTypeUnsupportedByImage(err) || strings.Contains(err.Error(), "RetCode 226604") || strings.Contains(err.Error(), "RetCode 8433") {
+			if isCloudCapacityError(err) || cloudprovider.IsImageUnsupportedInZone(err) || cloudprovider.IsGPUTypeUnsupportedByImage(err) || strings.Contains(err.Error(), "RetCode 226604") || strings.Contains(err.Error(), "RetCode 8433") ||
+				// 230 "machine type not configured for zone": the container
+				// zones carry fewer GPU types than the VM zones.
+				strings.Contains(err.Error(), "RetCode 230") {
 				t.Logf("CompShare container %s x%d could not be created, trying the next type: %v", model, spec.GPUCount, err)
 				checked = append(checked, model+": "+err.Error())
 				continue
