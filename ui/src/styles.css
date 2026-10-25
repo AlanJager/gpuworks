@@ -149,6 +149,9 @@ button, input, textarea, select { letter-spacing: 0; }
 
 /* Shared by the shell and pages that fit the viewport below the top bar. */
 :root { --app-header-height: 44px; }
+/* The corner scale (radius in theme/tokens.ts): hand-written styles use
+   these instead of literal pixels, page by page. */
+:root { --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; }
 .app-shell { min-height: 100vh; background: #f5f7fa; }
 .app-header {
   position: sticky;
@@ -203,7 +206,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .app-brand-sep { flex: none; width: 1px; height: 16px; background: #dbdde0; }
 .app-brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Shows the logo at its top bar size, inside a top-bar-high strip. */
-.branding-logo-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: 2px; background: #fff; }
+.branding-logo-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: var(--radius-md); background: #fff; }
 .app-nav { padding: 4px 0 12px; border-inline-end: 0 !important; }
 .mobile-menu-button { display: none; }
 /* Centered so wide viewports split the leftover margin symmetrically instead
@@ -219,7 +222,7 @@ button, input, textarea, select { letter-spacing: 0; }
   margin-bottom: 12px;
   padding: 16px 20px;
   border: 1px solid #f0f2f5;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
 }
@@ -315,7 +318,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .model-summary-inline { min-height: 0; padding: 0; border-bottom: 0; background: transparent; }
 .model-summary-inline .model-summary-item:last-child { padding-right: 0; border-right: 0; }
 .model-name-link { max-width: 100%; height: auto !important; padding: 0 !important; text-align: left; white-space: normal; }
-.model-row-actions .ant-btn { width: 28px; height: 28px; padding: 0; border-radius: 2px; }
+.model-row-actions .ant-btn { width: 28px; height: 28px; padding: 0; border-radius: var(--radius-sm); }
 .model-row-actions .ant-btn-link { color: #707275; }
 .model-row-actions .ant-btn:hover { color: #005bd4 !important; background: #e6f6ff !important; }
 .model-grid-region { min-height: 260px; padding: 24px; }
@@ -350,7 +353,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .model-tile-tags { display: flex; min-width: 0; gap: 4px; margin-top: 4px; overflow: hidden; }
 .model-tile-actions { display: flex; align-items: center; gap: 2px; opacity: .72; }
 .model-tile:hover .model-tile-actions, .model-tile:focus-within .model-tile-actions { opacity: 1; }
-.model-tile-actions .ant-btn { width: 28px; height: 28px; padding: 0; border-radius: 2px; color: #707275; }
+.model-tile-actions .ant-btn { width: 28px; height: 28px; padding: 0; border-radius: var(--radius-sm); color: #707275; }
 .model-tile-actions .ant-btn:hover { color: #005bd4 !important; background: #e6f6ff !important; }
 .model-tile-footer { display: flex; height: 28px; align-items: center; gap: 8px; padding: 0 16px; background: #f5f7fa; color: #707275; font-size: 12px; white-space: nowrap; }
 .model-tile-divider { width: 1px; height: 12px; background: #dbdde0; }
@@ -519,7 +522,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .ant-modal-content { display: flex; max-height: 80vh; flex-direction: column; padding: 0 !important; overflow: hidden; }
 .ant-modal-header { height: 48px; flex: none; margin: 0 !important; padding: 12px 24px !important; border-bottom: 1px solid #dbdde0 !important; }
 .ant-modal-title { color: #181a1d !important; font-size: 16px !important; font-weight: 400 !important; }
-.ant-modal-close { top: 8px !important; right: 12px !important; border-radius: 2px !important; }
+.ant-modal-close { top: 8px !important; right: 12px !important; border-radius: var(--radius-sm) !important; }
 .ant-modal-body { min-height: 0; max-height: calc(80vh - 108px); flex: 1 1 auto; padding: 24px 24px 40px !important; overflow: auto; overscroll-behavior: contain; }
 .ant-modal-footer { min-height: 60px; flex: none; margin: 0 !important; padding: 14px 24px !important; border-top: 1px solid #dbdde0 !important; }
 
@@ -585,7 +588,7 @@ button, input, textarea, select { letter-spacing: 0; }
   min-height: 496px;
   grid-template-columns: 320px minmax(0, 1fr);
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: var(--radius-lg);
   background: #fff;
   box-shadow: 0 4px 8px rgba(0, 0, 0, .12);
 }
@@ -598,7 +601,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .auth-title { margin: 0 0 28px !important; color: #181a1d !important; font-size: 24px !important; line-height: 32px !important; }
 .auth-error-slot { height: 72px; min-height: 72px; overflow: auto; }
 .auth-submit { width: 100%; height: 40px; font-size: 15px; font-weight: 600; }
-.auth-form-panel .ant-input-affix-wrapper { border-radius: 2px; }
+.auth-form-panel .ant-input-affix-wrapper { border-radius: var(--radius-md); }
 
 @media (max-width: 991px) {
   .desktop-sider { display: none; }
@@ -1051,4 +1054,4 @@ button, input, textarea, select { letter-spacing: 0; }
 /* Logo crop dialog: the image fits the dialog; the preview copies the mark. */
 .logo-crop-stage { display: flex; justify-content: center; padding: 12px; background: repeating-conic-gradient(#f0f2f5 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
 .logo-crop-image { display: block; max-width: 100%; max-height: 360px; }
-.logo-crop-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: 2px; background: #fff; }
+.logo-crop-preview { display: inline-flex; height: var(--app-header-height); align-items: center; padding: 0 12px; border: 1px solid #f0f2f5; border-radius: var(--radius-md); background: #fff; }
