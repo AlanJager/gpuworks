@@ -80,6 +80,10 @@ type GPUSpec struct {
 	// server-dialed agent from the start, as the platform's own instances do.
 	// RunPod only opens a port by editing the pod, which restarts it.
 	ServerDialPort bool
+	// Container asks for the provider's container product instead of its
+	// VM (CompShare only; other providers rent containers anyway). The
+	// provider must be given a container image for it.
+	Container bool
 }
 
 type Instance struct {

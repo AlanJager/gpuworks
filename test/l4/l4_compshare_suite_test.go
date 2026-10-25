@@ -409,6 +409,40 @@ func rentCompshareGPU(t *testing.T, p *cloudprovider.Compshare, spec cloudprovid
 	return nil, checked
 }
 
+// rentCompshareContainer rents a gpuCount container of the first card type
+// that can be created. There is no capacity snapshot to consult: the container
+// zones differ from the VM zones SelectPlacement searches, so the driver
+// places the container itself and a capacity or image refusal moves on to the
+// next type. It returns nil and every type's reason when nothing could be
+// rented.
+func rentCompshareContainer(t *testing.T, p *cloudprovider.Compshare, spec cloudprovider.GPUSpec) (*cloudprovider.Instance, []string) {
+	t.Helper()
+	var checked []string
+	for _, model := range compshareGPUOrder() {
+		if reason := belowVRAM(model, spec.MinVRAMMB); reason != "" {
+			checked = append(checked, reason)
+			continue
+		}
+		attempt := spec
+		attempt.GPUModel = model
+		instance, err := p.Rent(t.Context(), attempt)
+		if err != nil {
+			if isCloudCapacityError(err) || cloudprovider.IsImageUnsupportedInZone(err) || cloudprovider.IsGPUTypeUnsupportedByImage(err) || strings.Contains(err.Error(), "RetCode 226604") || strings.Contains(err.Error(), "RetCode 8433") ||
+				// 230 "machine type not configured for zone": the container
+				// zones carry fewer GPU types than the VM zones.
+				strings.Contains(err.Error(), "RetCode 230") {
+				t.Logf("CompShare container %s x%d could not be created, trying the next type: %v", model, spec.GPUCount, err)
+				checked = append(checked, model+": "+err.Error())
+				continue
+			}
+			t.Fatal(err)
+		}
+		instance.GPUModel = model
+		return instance, nil
+	}
+	return nil, checked
+}
+
 func chooseCompshareGPU(gpuCount int, check func(string) ([]cloudprovider.CapacitySpec, error)) (string, cloudprovider.CapacitySpec, []string) {
 	var checked []string
 	// Prefer the lower-cost 3090 shape and fall back to 4090 when its live

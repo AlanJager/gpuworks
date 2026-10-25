@@ -1018,6 +1018,21 @@ l4-compshare-provisioning-matrix:
   script:
     - make test-l4-compshare-provisioning-matrix
 
+# A server-dialed agent on a CompShare container instance: the server dials
+# the TCP port the driver opened and forwarded. Its own environment, under
+# cloud-test/compshare/* for the credential scope, for the reason given at
+# l4-vast-server-dial-node-onboarding. The VM counterpart runs inside
+# l4-compshare-provisioning-matrix. Same single-instance lane as the other
+# one-VM compshare jobs.
+l4-compshare-server-dial-node-onboarding-container:
+  extends: .l4-acceptance
+  timeout: 65m
+  resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/compshare/server-dial-container
+  script:
+    - make test-l4-compshare-server-dial-node-onboarding-container
+
 l4-compshare-one-vm-two-logical-nodes:
   extends: .l4-acceptance
   timeout: 180m
