@@ -1,0 +1,96 @@
+{
+  "image": "quay.io/ascend/vllm-ascend@sha256:4909659565f15e94ec70c3f8523d9f2ea3dd8a2a04c59b238fbe87f5eacdae36",
+  "image_id": "sha256:81d6ff549b7680eff3109bc0da3acfdfbec58ee5230d5719264e4c7d5b111771",
+  "files": [
+    {
+      "path": "vllm-workspace/vllm/vllm/v1/core/single_type_kv_cache_manager.py",
+      "base_sha256": "0233531d85aeced9e57a38c76d83db970519c92902b7e55484390cb2b64985bf",
+      "sha256": "3d406090330d00f19ce3ef946d5d07a99d681b65b5434c3b002ed651f22a5726",
+      "patch": "patches/vllm__vllm__v1__core__single_type_kv_cache_manager.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/attention/attention_v1.py",
+      "base_sha256": "bea4e410f797557e29cedbb495024147606e74b0e056d725194760ca69296eba",
+      "sha256": "2b2bad830255831ac405db6bdab65503ed3b33bda33cd419873478f13cd843b4",
+      "patch": "patches/vllm-ascend__vllm_ascend__attention__attention_v1.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/cache_config.py",
+      "base_sha256": "00559085edd75a1719254b3f52dedbcd4fb0ce93c511b17c06ab3d975ed2e1e4",
+      "sha256": "6b7a627d227f885f20373fb50f1080471dd1f1104b060d70b22b78232419d98d",
+      "patch": "patches/vllm-ascend__vllm_ascend__models__glm5next__cache_config.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/cache_views.py",
+      "base_sha256": "fc1b5c82a35f7256375b2c74e90f3944250f82a1b8ff834f2a6dc830dd426da6",
+      "sha256": "c3c8e84f63feaef823d798dd8ed90ab1b37615aeebcb1640f4b55b3336058b1a",
+      "patch": "patches/vllm-ascend__vllm_ascend__models__glm5next__cache_views.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/model.py",
+      "base_sha256": "2a9381fa5897578bf4922b4b2bef99635dbc58236cd0f31fe5f93664b7252bbe",
+      "sha256": "7bfe628ded9216d7d67a1c48b35ebc17e0421bfb606437bfd9708a7bf71f9425",
+      "patch": "patches/vllm-ascend__vllm_ascend__models__glm5next__model.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/models/qwen3_dspark.py",
+      "base_sha256": "455174b03eafa3a3389fa7c17f3d228a3817fdd31ff5ec89eab1d60acad3835c",
+      "sha256": "c6e79b0e754fca39b5a63ce1b75058bbd486b688810fe527aeabb10e13c9e66f",
+      "patch": "patches/vllm-ascend__vllm_ascend__models__qwen3_dspark.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/ops/triton/glm5_next_lightning_indexer.py",
+      "base_sha256": "9b74018bcf5f41bc78f0b0099569d799540c6df424fd860a051f94876011bb81",
+      "sha256": "b2c81348a107496dd4d5e35d8f1f2e57df0dec44514df88095767c7e84d8ac85",
+      "patch": "patches/vllm-ascend__vllm_ascend__ops__triton__glm5_next_lightning_indexer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/__init__.py",
+      "base_sha256": "64e4ae9c96beafb61fb19c40b868cd9673c5355a2e4624f3178bca8660fc2027",
+      "sha256": "6c14f29f6301bdccd0f760e66d9498d69b3d7c213644d4ed0a9ad6b9a41ea912",
+      "patch": "patches/vllm-ascend__vllm_ascend__patch__platform____init__.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_kv_cache_coordinator.py",
+      "base_sha256": "828169b4c131a6e42f01be91ce87a36fd1b6025d9f6607eb75e68df9dbf17634",
+      "sha256": "67ff196bd640439eb81d046d0be6c6615fafce94387809ca53064c931ac6342b",
+      "patch": "patches/vllm-ascend__vllm_ascend__patch__platform__patch_kv_cache_coordinator.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_v1_dflash2_support.py",
+      "base_sha256": null,
+      "sha256": "b08334f21224a2a2c804419d4351e274a11f03627a4fe43362c6861415bb9757",
+      "patch": "patches/vllm-ascend__vllm_ascend__patch__platform__patch_v1_dflash2_support.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/prefix_checkpoint_lifetime.py",
+      "base_sha256": null,
+      "sha256": "dff5e809d6ed1cb9d6fcf596daf4254cd5c75bd30fb89d8db110560f9db94491",
+      "patch": "patches/vllm-ascend__vllm_ascend__patch__platform__prefix_checkpoint_lifetime.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/dflash2_proposer.py",
+      "base_sha256": "f46d9d2b2559c5771dc76328002b8d31933308ed1345ea937cf6d8a9f3996f7a",
+      "sha256": "b76d47cebf14c33b647b1f6fc4d8a48653d7b2478876a212918317dc78548539",
+      "patch": "patches/vllm-ascend__vllm_ascend__spec_decode__dflash2_proposer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/dflash_proposer.py",
+      "base_sha256": "f3b736f44a59ec0831aa7f2849e2eae6d709951e955992b8016f49e772fce3ff",
+      "sha256": "00b6084abc80903afa45f8f1ea40949435d5a07f2f09fa93a849665b3848814a",
+      "patch": "patches/vllm-ascend__vllm_ascend__spec_decode__dflash_proposer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/spec_decode/llm_base_proposer.py",
+      "base_sha256": "b4925648562de8cffd7bf678bf695d512c184d70484b949c42a40897793b8b07",
+      "sha256": "93a7ec3cab89e1e6a1591313855c4d441c56c7116b0a6cbb67b27fd9d336788f",
+      "patch": "patches/vllm-ascend__vllm_ascend__spec_decode__llm_base_proposer.py.patch"
+    },
+    {
+      "path": "vllm-workspace/vllm-ascend/vllm_ascend/worker/model_runner_v1.py",
+      "base_sha256": "7fdd01b9e77c69a93282a7ca8e63bd80f30b3781e85a62369264efd5c312f75e",
+      "sha256": "dd6a969fab8e550d0ac89745a424258a4900616ac76feffe662745b7ee86a413",
+      "patch": "patches/vllm-ascend__vllm_ascend__worker__model_runner_v1.py.patch"
+    }
+  ]
+}

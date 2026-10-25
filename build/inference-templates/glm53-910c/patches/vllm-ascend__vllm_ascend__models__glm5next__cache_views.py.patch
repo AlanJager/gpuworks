@@ -1,0 +1,69 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/cache_views.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/models/glm5next/cache_views.py
+@@ -7,7 +7,7 @@
+ import torch
+ from vllm.utils.torch_utils import get_dtype_size
+ from vllm.v1.attention.backend import AttentionBackend
+-from vllm.v1.kv_cache_interface import AttentionSpec, KVCacheSpec
++from vllm.v1.kv_cache_interface import AttentionSpec, FullAttentionSpec, KVCacheSpec, SlidingWindowSpec
+ 
+ from vllm_ascend.core.kv_cache_interface import (
+     AscendIndexerKPoolTailSpec,
+@@ -112,6 +112,48 @@
+     return [k_cache, rope_cache]
+ 
+ 
++def _view_dflash_attention_cache(
++    spec: AttentionSpec,
++    raw_cache: torch.Tensor,
++    attn_backend: AttentionBackend,
++    kernel_block_size: int,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """Keep independent draft K/V inside each shared global block's page."""
++    if not isinstance(raw_cache, torch.Tensor):
++        raise ValueError("GLM-Next draft attention requires one pooled raw tensor.")
++    if spec.block_size % kernel_block_size or raw_cache.numel() % spec.page_size_bytes:
++        raise ValueError("Draft cache blocks must divide the pooled allocation exactly.")
++    num_blocks = raw_cache.numel() // spec.page_size_bytes
++    subblocks = spec.block_size // kernel_block_size
++    typed = raw_cache.view(spec.dtype)
++    page_elements = spec.page_size_bytes // typed.element_size()
++    if page_elements % subblocks:
++        raise ValueError("Draft kernel pages must divide the padded logical page exactly.")
++    kernel_page_elements = page_elements // subblocks
++    key_shape = tuple(attn_backend.get_kv_cache_shape(
++        num_blocks * subblocks, kernel_block_size, spec.num_kv_heads, spec.head_size
++    ))
++    value_shape = tuple(attn_backend.get_kv_cache_shape(
++        num_blocks * subblocks, kernel_block_size, spec.num_kv_heads,
++        getattr(spec, "head_size_v", spec.head_size)
++    ))
++    if len(key_shape) != 5 or key_shape[0] != 2 or len(value_shape) != 5 or value_shape[0] != 2:
++        raise ValueError("GLM-Next draft attention requires a two-component GQA cache layout.")
++    key_shape, value_shape = key_shape[1:], value_shape[1:]
++    key_strides = _row_major_strides(key_shape)
++    value_strides = _row_major_strides(value_shape)
++    key_elements, value_elements = key_strides[0], value_strides[0]
++    if key_elements + value_elements > kernel_page_elements:
++        raise ValueError("Draft K/V payload exceeds its shared pool page.")
++    key_strides[0] = value_strides[0] = kernel_page_elements
++    key = torch.as_strided(typed, key_shape, tuple(key_strides))
++    value = torch.as_strided(
++        typed, value_shape, tuple(value_strides),
++        storage_offset=typed.storage_offset() + key_elements,
++    )
++    return key, value
++
++
+ def view_glm5_next_cache(
+     layer_name: str,
+     kv_cache_spec: KVCacheSpec,
+@@ -138,4 +180,8 @@
+         _k_dim, v_dim = get_kv_cache_dims(layer_name, kv_cache_spec)
+         if v_dim == 0:
+             return _view_nope_main_mla_cache(kv_cache_spec, raw_cache, attn_backend, kernel_block_size)
++    if isinstance(kv_cache_spec, (FullAttentionSpec, SlidingWindowSpec)) and getattr(
++        kv_cache_spec, "model_version", None
++    ) != "glm5_next":
++        return _view_dflash_attention_cache(kv_cache_spec, raw_cache, attn_backend, kernel_block_size)
+     return None

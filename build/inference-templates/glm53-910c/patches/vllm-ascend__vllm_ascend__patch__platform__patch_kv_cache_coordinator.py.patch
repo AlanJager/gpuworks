@@ -1,0 +1,57 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_kv_cache_coordinator.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_kv_cache_coordinator.py
+@@ -29,6 +29,7 @@
+     KVCacheConfig,
+     KVCacheSpec,
+     MambaSpec,
++    SlidingWindowSpec,
+     UniformTypeKVCacheSpecs,
+ )
+ 
+@@ -135,7 +136,11 @@
+         # behavior. The scheduler always supplies the real value at runtime.
+         token_budget = _select_kv_token_budget(max_model_len, max_in_flight_tokens)
+         self.max_in_flight_tokens = token_budget
+-        self.retention_interval = getattr(envs_vllm, "VLLM_PREFIX_CACHE_RETENTION_INTERVAL", None)
++        self.retention_interval = getattr(
++            kv_cache_config,
++            "prefix_cache_retention_interval",
++            getattr(envs_vllm, "VLLM_PREFIX_CACHE_RETENTION_INTERVAL", None),
++        )
+         validate_retention_interval = getattr(
+             vllm_kv_cache_coordinator,
+             "_validate_prefix_cache_retention_interval",
+@@ -187,7 +192,7 @@
+             for i, kv_cache_group in enumerate(self.kv_cache_config.kv_cache_groups)
+         )
+         # vLLM #53614 aligns exported Mamba checkpoints with EAGLE replay.
+-        if use_eagle:
++        if use_eagle and not _skips_eagle_block_drop(getattr(kv_cache_config, "kv_transfer_config", None)):
+             for manager in self.single_type_managers:
+                 if isinstance(manager, MambaManager):
+                     manager.drop_eagle_checkpoint_block = True
+@@ -242,6 +247,24 @@
+         # of typical ~2K prompts, pinning P-side prefix hits to 0.
+         kv_transfer_config = getattr(kv_cache_config, "kv_transfer_config", None)
+         self.skips_eagle_block_drop = _skips_eagle_block_drop(kv_transfer_config)
++
++    def get_replay_boundaries(self, request):
++        # Match the read-side last-block policy. Otherwise sparse retention
++        # keeps a shifted checkpoint that standalone/producer lookups never
++        # select, and the actual replay boundary is discarded.
++        if self.skips_eagle_block_drop:
++            boundary = request.num_prompt_tokens - 1
++            # Mixed Mamba/SWA groups can round the replay point to different
++            # physical pages. Preserve the SWA window at the common page
++            # boundary as well as at a possible fine-grained Mamba tail.
++            specs = [group.spec for group in self.attention_groups]
++            if any(isinstance(spec, MambaSpec) for spec in specs) and any(
++                isinstance(spec, SlidingWindowSpec) for spec in specs
++            ):
++                aligned = boundary // self.lcm_block_size * self.lcm_block_size
++                return (boundary, aligned) if aligned != boundary else (boundary,)
++            return (boundary,)
++        return super().get_replay_boundaries(request)
+ 
+     @property
+     def _cache_hit_alignment_tokens(self) -> int:
