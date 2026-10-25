@@ -19,7 +19,7 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 		count, tp, dp, sequences int
 	}{
 		{"w8a8-vllm-910c-stock-graph-16npu", 16, 2, 8, 4},
-		{"w8a8-vllm-910c-stock-graph-8npu", 8, 4, 2, 2},
+		{"w8a8-vllm-910c-stock-graph-8npu", 8, 4, 2, 4},
 	} {
 		t.Run(recipe.name, func(t *testing.T) {
 			_, spec := ppuSpec(t, "gpuworks/glm-5.3-flash-910c", recipe.name)
@@ -74,15 +74,29 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 				if err := json.Unmarshal([]byte(graph), &compilation); err != nil || compilation.Mode != "FULL_DECODE_ONLY" || len(compilation.Sizes) == 0 {
 					t.Fatalf("decode graph missing or invalid: %s", graph)
 				}
-				// Shared-expert DP and DSA CP require TP-aligned graph sizes.
+				// Shared-expert DP requires TP-aligned graph sizes.
 				// Small live batches must still fit a captured graph after padding.
 				for _, size := range compilation.Sizes {
 					if size < recipe.tp || size%recipe.tp != 0 {
 						t.Fatalf("graph size %d is not aligned with TP%d", size, recipe.tp)
 					}
+					// Without speculative tokens, larger sizes are excluded from
+					// decode capture by vLLM's scheduler limit.
+					if size > recipe.sequences {
+						t.Fatalf("graph size %d exceeds the scheduler limit %d", size, recipe.sequences)
+					}
 				}
 				if compilation.Sizes[len(compilation.Sizes)-1] < recipe.sequences {
 					t.Fatal("graph sizes do not cover the maximum live batch")
+				}
+				additional, _ := deploy.LaunchFlag(launch.Argv, "--additional-config")
+				var optimizations struct {
+					DSACP *bool `json:"enable_dsa_cp"`
+				}
+				// This image's DSA CP path corrupts the long-context known-answer
+				// probe, including cold requests; keep the verified path explicit.
+				if err := json.Unmarshal([]byte(additional), &optimizations); err != nil || optimizations.DSACP == nil || *optimizations.DSACP {
+					t.Fatalf("DSA CP must be explicitly disabled: %s", additional)
 				}
 				for _, flag := range []string{"--enforce-eager", "--speculative-config"} {
 					if _, found := deploy.LaunchFlag(launch.Argv, flag); found {

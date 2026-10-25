@@ -119,7 +119,7 @@ specs:
   - --compilation-config
   - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[2,4]}'
   - --additional-config
-  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":true,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":false,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
   - --language-model-only
   - --data-parallel-size
   - '8'
@@ -199,7 +199,7 @@ specs:
   - --max-model-len
   - '139264'
   - --max-num-seqs
-  - '2'
+  - '4'
   - --enable-prompt-tokens-details
   - --max-num-batched-tokens
   - '2048'
@@ -215,7 +215,7 @@ specs:
   - --compilation-config
   - '{"cudagraph_mode":"FULL_DECODE_ONLY","cudagraph_capture_sizes":[4]}'
   - --additional-config
-  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":true,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
+  - '{"enable_prefill_mc2":true,"enable_fused_mc2":1,"enable_shared_expert_dp":true,"enable_flashcomm1":true,"enable_dsa_cp":false,"ascend_compilation_config":{"fuse_qknorm_rope":false}}'
   - --language-model-only
   - --data-parallel-size
   - '2'
