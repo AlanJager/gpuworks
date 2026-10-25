@@ -129,7 +129,7 @@ i18n-review:
 ## test: build the embedded UI/assets and run the complete untagged Go suite
 ## test-unit: build the embedded UI first, then run the untagged Go suite.
 ## `go test ./...` cannot compile webui without the generated embed tree.
-test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check
+test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations test-host-env-adapters test-inference-template-assets test-e2e-coverage-check
 	CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 	$(MAKE) check-tagged-build
 
@@ -137,6 +137,10 @@ test-unit: ui check-time-policy check-architecture check-api-conventions check-c
 ## (build/host-envs/adapters); standard library only, so no install step
 test-host-env-adapters:
 	cd build/host-envs/adapters && python3 -B -m unittest discover -p 'test_*.py'
+
+.PHONY: test-inference-template-assets
+test-inference-template-assets:
+	python3 -B -m unittest discover -s build/inference-templates/glm53-910c -p 'test_*.py'
 
 ## check-tagged-build: compile every build-tag suite without running it, so a
 ## refactor cannot break an opt-in lane while the untagged suite stays green

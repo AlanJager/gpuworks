@@ -1,0 +1,11 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/ops/triton/kda/conv_state.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/ops/triton/kda/conv_state.py
+@@ -51,7 +51,7 @@
+             values = tl.load(cache_row + cache_offsets, mask=active & in_range, other=0)
+             tl.store(packed + packed_offsets, values, mask=in_range)
+             if row_tile == 0:
+-                tl.store(packed_indices + request, tl.where(active, request, -1))
++                tl.store(packed_indices + request, tl.where(active, request, REQUESTS))
+ 
+ 
+ def copy_conv_state(

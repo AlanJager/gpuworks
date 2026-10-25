@@ -1,0 +1,12 @@
+This template asset contains modified modules from vLLM and vLLM Ascend,
+distributed under Apache License 2.0. Original copyright and SPDX notices
+are retained in the module payload. See LICENSE.txt.
+
+Sources: https://github.com/vllm-project/vllm
+         https://github.com/vllm-project/vllm-ascend
+Base distribution: quay.io/ascend/vllm-ascend:v0.30.0rc2-a3 (ARM64).
+The manifest records the exact image and per-file identities.
+
+Changes cover DFlash causality and cache views, convolution padding,
+query-pair indexer reuse and prefix-checkpoint retention. The patches in
+this directory reconstruct the payload from the pinned base distribution.

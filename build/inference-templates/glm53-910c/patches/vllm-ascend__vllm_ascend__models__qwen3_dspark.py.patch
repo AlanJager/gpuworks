@@ -1,0 +1,10 @@
+--- a/vllm-workspace/vllm-ascend/vllm_ascend/models/qwen3_dspark.py
++++ b/vllm-workspace/vllm-ascend/vllm_ascend/models/qwen3_dspark.py
+@@ -11,6 +11,7 @@
+ )
+ 
+ TARGET_EMBED_WEIGHT_NAMES = (
++    "model.language_model.embed_tokens.weight",
+     "language_model.model.embed_tokens.weight",
+     "model.embed_tokens.weight",
+ )
