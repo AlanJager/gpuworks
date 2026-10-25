@@ -1,0 +1,291 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/proto"
+)
+
+// The Ascend check only Doctor runs on demand: the same per-die runtime check
+// the agent repeats every 15 minutes (internal/agent/gpu HostRuntimeCheck),
+// asked now, so that a user who clicks Diagnose sees every die the automatic
+// check would already have marked runtime_unusable. Doctor is the place a
+// person looks for "what is wrong with this node"; a die the platform has
+// stopped scheduling for that reason must not read as fine there.
+
+// doctorHostRuntimeCheck is gpu.HostRuntimeCheckFor; a test stands in for the
+// host's CANN so no die is touched.
+var doctorHostRuntimeCheck = gpu.HostRuntimeCheckFor
+
+// What a doctor run keeps for the rest of its report, and the least time worth
+// starting a die's check with. A healthy die answers in about a second; a
+// failing one can take its full timeout (45 seconds on Ascend), so a run that
+// finds several of them cannot finish inside doctorBudget. Package vars so a
+// test can shrink them.
+var (
+	doctorAscendReserve    = 10 * time.Second
+	doctorAscendMinAttempt = 5 * time.Second
+)
+
+// doctorCardsInUseKey carries, on the context of a doctor run the agent
+// serves, which dies hold a serving instance. The standalone CLI has no such
+// knowledge and its context carries none.
+type doctorCardsInUseKey struct{}
+
+// withDoctorCardsInUse tells a doctor run how to ask which cards are held by
+// this node's instances (NodeRuntime.cardsInUse).
+func withDoctorCardsInUse(ctx context.Context, held func() (map[string]bool, bool)) context.Context {
+	return context.WithValue(ctx, doctorCardsInUseKey{}, held)
+}
+
+// doctorDie is one die as the check names it.
+type doctorDie struct {
+	gpu     proto.GPUInfo
+	visible string
+	label   string
+}
+
+// doctorDieNotChecked is a die the run did not ask, and why.
+type doctorDieNotChecked struct {
+	die    doctorDie
+	reason string
+}
+
+// doctorDieFailed is a die the runtime said it cannot use.
+type doctorDieFailed struct {
+	die    doctorDie
+	detail string
+	at     time.Time
+}
+
+// doctorAscendChecks asks the host runtime about each of this node's dies in
+// turn and records the answer in the inventory table, as a finding per failing
+// die and as one summary fact.
+func doctorAscendChecks(ctx context.Context, r *proto.DoctorReport, gpus []proto.GPUInfo) {
+	if r.Accelerators == nil {
+		return
+	}
+	if accelerator.NormalizeVendor(r.Accelerators.Vendor) != accelerator.VendorAscend {
+		return
+	}
+	check, ok := doctorHostRuntimeCheck(r.Accelerators.Vendor)
+	if !ok {
+		return
+	}
+	var dies []doctorDie
+	var unnamed []doctorDieNotChecked
+	for _, g := range gpus {
+		if !accelerator.CardUsable(g.Ownership) {
+			// Lent to a virtual machine or let go: not this node's to
+			// state anything about (the table already says so).
+			continue
+		}
+		die := doctorDie{gpu: g, label: dieLabel(g)}
+		visible, named := check.Visible(g)
+		if !named {
+			unnamed = append(unnamed, doctorDieNotChecked{die: die, reason: "the vendor tool gave it no device number"})
+			continue
+		}
+		die.visible = visible
+		dies = append(dies, die)
+	}
+	total := len(dies) + len(unnamed)
+	if total == 0 {
+		return
+	}
+
+	run := doctorDieRun{check: check, notChecked: unnamed}
+	if reason := smokeUnavailable(check); reason != "" {
+		run.stopped = reason
+		run.notChecked = append(run.notChecked, notChecked(dies, "the run did not start")...)
+	} else {
+		run.ask(ctx, dies)
+	}
+	r.Findings = append(r.Findings, run.findings()...)
+	run.markInventory(r.Accelerators)
+	r.Facts = append(r.Facts, proto.DoctorFact{Code: proto.DoctorFactCardRuntime, Value: run.summary(total)})
+}
+
+func notChecked(dies []doctorDie, reason string) []doctorDieNotChecked {
+	out := make([]doctorDieNotChecked, 0, len(dies))
+	for _, die := range dies {
+		out = append(out, doctorDieNotChecked{die: die, reason: reason})
+	}
+	return out
+}
+
+func dieLabel(g proto.GPUInfo) string {
+	if g.Index >= 0 {
+		return strconv.Itoa(g.Index)
+	}
+	return g.PCIeBDF
+}
+
+// doctorDieRun is the outcome of one pass over the dies.
+type doctorDieRun struct {
+	check      gpu.HostRuntimeCheck
+	answered   []doctorDie
+	failed     []doctorDieFailed
+	notChecked []doctorDieNotChecked
+	// stopped is why the run could not go on, said once as a fact about the
+	// host. Nothing in it is a verdict about a die.
+	stopped string
+}
+
+// ask checks the dies one after another. The remaining time is looked at
+// before each: a die that does not fit is left unchecked rather than started
+// and cut off, and the run never leaves the rest of the report less than
+// doctorAscendReserve.
+func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
+	deadline, bounded := ctx.Deadline()
+	if !bounded {
+		// The standalone CLI has no caller waiting; keep it to the same
+		// budget the agent gives the server's request.
+		deadline = time.Now().Add(doctorBudget)
+	}
+	held, holdersKnown := doctorHeldCards(ctx)
+	timeout := run.check.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	for i, die := range dies {
+		if ctx.Err() != nil {
+			run.notChecked = append(run.notChecked, notChecked(dies[i:], "the diagnosis was cancelled")...)
+			return
+		}
+		if !holdersKnown {
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "which instances hold this die is not known yet; a context on a serving die can disturb it"})
+			continue
+		}
+		if held[accelerator.CardIdent(die.gpu.UUID, die.gpu.PCIeBDF)] {
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "an instance is serving on it; a context on a serving die can disturb it"})
+			continue
+		}
+		remaining := time.Until(deadline) - doctorAscendReserve
+		if remaining < doctorAscendMinAttempt {
+			run.notChecked = append(run.notChecked, notChecked(dies[i:], "the diagnosis time budget ran out")...)
+			return
+		}
+		budgetCut := remaining < timeout
+		attemptTimeout := min(timeout, remaining)
+		attempt, cancel := context.WithTimeout(ctx, attemptTimeout)
+		err := run.check.Try(attempt, die.visible)
+		expired := attempt.Err() != nil
+		cancel()
+		at := time.Now()
+		switch {
+		case expired && (budgetCut || ctx.Err() != nil):
+			// Our own cut-off, not the die: it had less time than the
+			// automatic check gives it, so it has no verdict.
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, reason: "the diagnosis time budget ran out while this die was being checked"})
+			run.notChecked = append(run.notChecked, notChecked(dies[i+1:], "the diagnosis time budget ran out")...)
+			return
+		case expired:
+			// The automatic check grades a die that does not answer within
+			// its timeout as failed, and so does this.
+			run.failed = append(run.failed, doctorDieFailed{die: die, at: at,
+				detail: fmt.Sprintf("the runtime check did not finish within %s", attemptTimeout)})
+		default:
+			if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
+				run.stopped = reason
+				run.notChecked = append(run.notChecked, notChecked(dies[i:], "the runtime could not be used on this host")...)
+				return
+			}
+			if err != nil {
+				run.failed = append(run.failed, doctorDieFailed{die: die, at: at, detail: err.Error()})
+				continue
+			}
+			run.answered = append(run.answered, die)
+		}
+	}
+}
+
+// doctorHeldCards is the dies held by serving instances, and whether that is
+// known. A run with no source for it (the standalone CLI, which runs beside
+// whatever the agent is serving) asks every die.
+func doctorHeldCards(ctx context.Context) (map[string]bool, bool) {
+	held, ok := ctx.Value(doctorCardsInUseKey{}).(func() (map[string]bool, bool))
+	if !ok || held == nil {
+		return nil, true
+	}
+	return held()
+}
+
+// findings is one runtime_unusable finding naming each failing die, with the
+// evidence the agent records when its own check fails the die.
+func (run *doctorDieRun) findings() []proto.DoctorFinding {
+	if len(run.failed) == 0 {
+		return nil
+	}
+	finding := proto.DoctorFinding{Code: accelerator.HealthRuntimeUnusable, Level: proto.DoctorLevelError}
+	for _, f := range run.failed {
+		target := proto.DoctorTarget{
+			Index: f.die.gpu.Index, PCIeBDF: f.die.gpu.PCIeBDF,
+			Probe: "python3 + libascendcl.so: aclrtSetDevice, aclrtCreateContext, aclrtMalloc 4 KiB on this die only (ASCEND_RT_VISIBLE_DEVICES=" + f.die.visible + ")",
+		}
+		for _, field := range runtimeUnusableEvidence(f.at, f.detail) {
+			target.Evidence = append(target.Evidence, proto.DoctorField{Name: field.Name, Value: field.Value})
+		}
+		finding.Targets = append(finding.Targets, target)
+	}
+	return []proto.DoctorFinding{finding}
+}
+
+// markInventory puts each failing die's verdict in the table by the rule the
+// agent applies when it reports the die to the server: the most severe of
+// what the vendor tool said and what trying the die said.
+func (run *doctorDieRun) markInventory(a *proto.DoctorAccelerators) {
+	for _, f := range run.failed {
+		for i := range a.GPUs {
+			row := &a.GPUs[i]
+			if row.Index != f.die.gpu.Index || row.PCIeBDF != f.die.gpu.PCIeBDF {
+				continue
+			}
+			if accelerator.MostSevereHealth(row.HealthCode, accelerator.HealthRuntimeUnusable) != accelerator.HealthRuntimeUnusable {
+				break
+			}
+			row.HealthCode = accelerator.HealthRuntimeUnusable
+			row.HealthStatus = accelerator.HealthLevel(accelerator.HealthRuntimeUnusable)
+			break
+		}
+	}
+}
+
+// summary is the one fact: what was asked, what answered and what was not
+// asked. A die is in exactly one of the three, and the lines say which.
+func (run *doctorDieRun) summary(total int) string {
+	checked := len(run.answered) + len(run.failed)
+	if run.stopped != "" && checked == 0 {
+		return fmt.Sprintf("not run: %s. None of the %d dies was checked and no die is blamed; the periodic per-die runtime check does not run under this condition either", run.stopped, total)
+	}
+	lines := []string{fmt.Sprintf("per-die ACL runtime check of the %d dies this node owns: %d passed, %d failed, %d not checked",
+		total, len(run.answered), len(run.failed), len(run.notChecked))}
+	if len(run.failed) > 0 {
+		labels := make([]string, len(run.failed))
+		for i, f := range run.failed {
+			labels[i] = f.die.label
+		}
+		lines = append(lines, "failed: "+strings.Join(labels, ", "))
+	}
+	if run.stopped != "" {
+		lines = append(lines, "stopped: "+run.stopped+"; no die is blamed for it")
+	}
+	byReason := map[string][]string{}
+	var order []string
+	for _, n := range run.notChecked {
+		if _, seen := byReason[n.reason]; !seen {
+			order = append(order, n.reason)
+		}
+		byReason[n.reason] = append(byReason[n.reason], n.die.label)
+	}
+	for _, reason := range order {
+		lines = append(lines, "not checked ("+reason+"): "+strings.Join(byReason[reason], ", "))
+	}
+	return strings.Join(lines, "\n")
+}

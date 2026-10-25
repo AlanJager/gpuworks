@@ -39,7 +39,7 @@ func isDomesticSpec(spec runtime.WorkloadSpec) bool {
 func needsNVIDIASetup(spec runtime.WorkloadSpec) bool { return !isDomesticSpec(spec) }
 
 var ascendSupportPaths = []string{
-	"/dev/davinci_manager", "/dev/devmm_svm", "/dev/hisi_hdc",
+	"/dev/davinci_manager", "/dev/devmm_svm", "/dev/hisi_hdc", "/dev/ummu", "/dev/uburma",
 	"/usr/local/Ascend/driver", "/usr/local/dcmi", "/usr/local/bin/npu-smi",
 	"/etc/ascend_install.info", "/etc/hccn.conf", "/etc/vnpu.cfg",
 }

@@ -158,7 +158,7 @@ func TestQuickRegisteredTemplateWeightsTakeTheTemplateOperations(t *testing.T) {
 // template deployment does not reset them.
 func TestTemplateDeploymentKeepsOperationsSetOnTheModel(t *testing.T) {
 	st, h, templateID := templateOperationsFixture(t, "template_ops_kept")
-	stored := `[{"type":"openai.chat"}]`
+	stored := `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`
 	model, err := st.UpsertModel(&store.Model{Source: "modelscope", SourceID: "Acme/Embed", Revision: "0123456789abcdef0123456789abcdef01234567", Name: "Acme/Embed", Operations: stored})
 	if err != nil {
 		t.Fatal(err)

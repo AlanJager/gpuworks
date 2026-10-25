@@ -2,6 +2,18 @@
 
 原始 FP8 权重约 328.3 GB。NVIDIA 配方参照 [SGLang 配方](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash)：H200 用 TileLang DSA + BF16 KV，B200/B300 用 TRT-LLM DSA + FP8 KV；两者都接受单节点 4 卡或 8 卡（TP = EP = 卡数）。上游只给出 8 卡命令，4 卡由本平台按 GB300 的 TP4 配方补充。MI355X × 4 使用 [vLLM ROCm 配方](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash)，AMD 使用 ROCm 10 nightly 镜像。
 
+昇腾档按 vLLM-Ascend v0.30.0rc2 的 A3 配方：单个 16 die 的 910C 节点、
+TP16/EP16、W8A8 权重、INT8 KV cache 和 1M 上下文。模板固定完整 ModelScope 快照。
+同一镜像的 MTP 和 KDA decode graph 还有未合并的上游修复，因此主模板默认关闭
+speculative decoding 与 graph compilation，以 eager 模式提供基线。
+
+2026-10-23，该档在 910C × 16 的原生 Docker 环境使用镜像原生行为启动，16/16 rank
+完成初始化，平台 health、`/v1/models`（1M 上下文）和真实 chat 均通过。Docker 不注入
+runveil/PRoot 兼容脚本。此结果不代表长上下文、并发、多模态或性能已经验收。
+
+runveil/PRoot 路径尚未通过：兼容修复可推进 rank 与 group 初始化，但当前环境仍出现
+CANN Fill/Transpose tiling 注册失败或 PRoot 线程饥饿，不能记为真机可用。
+
 ## 实测（B200 × 4，TP4/EP4，2026-10-20）
 
 Vast 容器节点、runveil 运行时、`gpuworks-runner:cuda13.0-sglang0.5.21-r2`、EAGLE MTP 5/1/6。对话、思考、工具调用与图像输入均通过。每个请求约 1.5k 输入 token、固定 512 输出 token，在节点本机直连引擎测得（预热后）：
@@ -14,4 +26,4 @@ Vast 容器节点、runveil 运行时、`gpuworks-runner:cuda13.0-sglang0.5.21-r
 
 runveil 下从启动到就绪约 13 分钟；首次遇到新的批形状时还要编译内核，并发 16 的前两轮 TTFT 达 5–10 秒，之后回落。H200 × 4 尚未实测。
 
-已有 GB10 双节点、RTX PRO 6000 四卡 EXL3 方案仍在 `mia-ailab/glm-5.3-flash` 模板中。昇腾需要额外补丁，海光/PPU/Apple 未纳入本模板。
+已有 GB10 双节点、RTX PRO 6000 四卡 EXL3 方案仍在 `mia-ailab/glm-5.3-flash` 模板中。昇腾仅覆盖上述 910C Docker 场景，runveil 尚未通过；海光/PPU/Apple 未纳入本模板。

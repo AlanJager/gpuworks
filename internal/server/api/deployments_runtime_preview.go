@@ -83,17 +83,18 @@ func componentVariableName(value string) string {
 
 // resolveRequestLaunch is the API boundary shared by evaluation and create:
 // the request owns only its container overrides, and the template component's
-// primary mount is applied identically before the deploy resolver runs.
-func resolveRequestLaunch(input deploy.ResolveLaunchInput, raw map[string]any, components []deploy.ComponentBinding, modelMount string) (deploy.ResolvedLaunch, error) {
+// primary mount is applied identically before the deploy resolver runs. The
+// warnings are for the evaluation to show; create ignores them.
+func resolveRequestLaunch(input deploy.ResolveLaunchInput, raw map[string]any, components []deploy.ComponentBinding, modelMount string) (deploy.ResolvedLaunch, []messages.Warning, error) {
 	overrides, err := requestContainerOverrides(raw)
 	if err != nil {
-		return deploy.ResolvedLaunch{}, err
+		return deploy.ResolvedLaunch{}, nil, err
 	}
 	input.ContainerOverrides = overrides
 	if len(components) > 0 {
 		input.ComponentModelMount = modelMount
 	}
-	return deploy.ResolveLaunch(input)
+	return deploy.ResolveLaunchWithWarnings(input)
 }
 
 // requestContainerOverrides decodes and validates a request's

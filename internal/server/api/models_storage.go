@@ -128,9 +128,15 @@ func (a *apiHandlers) downloadModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ref := store.FileRef{ModelID: m.ID, StorageID: storage.ID, NodeID: node.ID}
-		if current, err := a.d.Store.ModelFileAt(ref); err == nil && current.State == proto.MFSyncing {
+		current, err := a.d.Store.ModelFileAt(ref)
+		if err == nil && current.State == proto.MFSyncing {
 			writeProductError(w, http.StatusConflict, ErrorPeerSyncActive, "cancel the active peer sync before starting public download", nil)
 			return
+		}
+		// Every preparation names a new transfer, which would restart a
+		// download already under way; asking again leaves that one running.
+		if err == nil && current.Acquisition == proto.ModelAcquireDownload && store.TransferUnderWay(current) {
+			continue
 		}
 		if _, err := a.d.Store.PrepareModelDownload(ref, relPath(m)); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)

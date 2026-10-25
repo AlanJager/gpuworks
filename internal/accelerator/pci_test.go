@@ -20,13 +20,13 @@ func TestOnlyTheComputeFunctionOfACardCountsAsAnAccelerator(t *testing.T) {
 		{0x0c8000, "", "the card's USB Type-C UCSI controller"},
 		{0x060400, "", "a PCI bridge"},
 	} {
-		if got := VendorForPCI(nvidia, tc.class, ""); got != tc.want {
+		if got := VendorForPCI(nvidia, 0x2204, tc.class, ""); got != tc.want {
 			t.Errorf("class %#06x (%s) = %q, want %q", tc.class, tc.what, got, tc.want)
 		}
 	}
 	// A vendor whose PCI ids this platform has not read off real hardware
 	// is not guessed at: its own prober reports its cards.
-	if got := VendorForPCI(0x1234, 0x030000, ""); got != "" {
+	if got := VendorForPCI(0x1234, 0x0001, 0x030000, ""); got != "" {
 		t.Errorf("an unknown vendor = %q, want no claim", got)
 	}
 }
@@ -36,17 +36,17 @@ func TestOnlyTheComputeFunctionOfACardCountsAsAnAccelerator(t *testing.T) {
 // carries the same vendor id as its NPUs, and would otherwise add a
 // phantom card to every Huawei server.
 func TestADisplayFunctionIsOnlyACardForVendorsThatMakeGPUs(t *testing.T) {
-	if got := VendorForPCI(0x19e5, 0x030000, "hibmc-drm"); got != "" {
+	if got := VendorForPCI(0x19e5, 0xd803, 0x030000, "hibmc-drm"); got != "" {
 		t.Errorf("Huawei's BMC display controller = %q, want it left out", got)
 	}
-	if got := VendorForPCI(0x19e5, 0x120000, "devdrv_device_driver"); got != VendorAscend {
+	if got := VendorForPCI(0x19e5, 0xd803, 0x120000, "devdrv_device_driver"); got != VendorAscend {
 		t.Errorf("a 910B4 = %q, want %q", got, VendorAscend)
 	}
 	// Intel's QAT and DSA sit at the co-processor class, which is Hygon's.
-	if got := VendorForPCI(0x8086, 0x0b4000, ""); got != "" {
+	if got := VendorForPCI(0x8086, 0x0000, 0x0b4000, ""); got != "" {
 		t.Errorf("an Intel QAT = %q, want it left out", got)
 	}
-	if got := VendorForPCI(0x1d94, 0x0b4000, ""); got != VendorHygon {
+	if got := VendorForPCI(0x1d94, 0x6211, 0x0b4000, ""); got != VendorHygon {
 		t.Errorf("a Hygon DCU = %q, want %q", got, VendorHygon)
 	}
 }
@@ -57,12 +57,12 @@ func TestADisplayFunctionIsOnlyACardForVendorsThatMakeGPUs(t *testing.T) {
 // as its other subclasses are CPUs.
 func TestTheAcceleratorBaseClassCountsWholeAndTheProcessorOneDoesNot(t *testing.T) {
 	for _, class := range []uint32{0x120000, 0x120100, 0x127f00} {
-		if got := VendorForPCI(0x19e5, class, ""); got != VendorAscend {
+		if got := VendorForPCI(0x19e5, 0xd803, class, ""); got != VendorAscend {
 			t.Errorf("class %#06x = %q, want %q: the whole base class is accelerators", class, got, VendorAscend)
 		}
 	}
 	for _, class := range []uint32{0x0b0000, 0x0b1000, 0x0b3000} {
-		if got := VendorForPCI(0x1d94, class, ""); got != "" {
+		if got := VendorForPCI(0x1d94, 0x6211, class, ""); got != "" {
 			t.Errorf("class %#06x = %q, want it left out: that subclass is a CPU", class, got)
 		}
 	}
@@ -71,10 +71,10 @@ func TestTheAcceleratorBaseClassCountsWholeAndTheProcessorOneDoesNot(t *testing.
 // A vendor that ships a new product line at a class nobody told us about
 // still has its own kernel module bound to it. That is enough.
 func TestAVendorsOwnDriverIdentifiesACardWhateverItsClass(t *testing.T) {
-	if got := VendorForPCI(0x1ded, 0x138000, "alipci"); got != VendorPPU {
+	if got := VendorForPCI(0x1ded, 0x6001, 0x138000, "alipci"); got != VendorPPU {
 		t.Errorf("a PPU at an unheard-of class, on alipci = %q, want %q", got, VendorPPU)
 	}
-	if got := VendorForPCI(0x1ded, 0x138000, "vfio-pci"); got != "" {
+	if got := VendorForPCI(0x1ded, 0x6001, 0x138000, "vfio-pci"); got != "" {
 		t.Errorf("the same function passed through to a VM = %q, want no claim from the class alone", got)
 	}
 }
@@ -82,17 +82,17 @@ func TestAVendorsOwnDriverIdentifiesACardWhateverItsClass(t *testing.T) {
 // What no rule recognizes is reported rather than dropped, so a card the
 // rules do not know about reaches an operator as something to send us.
 func TestAnUnrecognizedFunctionOfASupportedVendorIsReported(t *testing.T) {
-	if !UnknownAcceleratorFunction(0x1ded, 0x0b8000, "") {
+	if !UnknownAcceleratorFunction(0x1ded, 0x6001, 0x0b8000, "") {
 		t.Error("an unbound PPU-vendor function at a processor subclass was dropped silently")
 	}
 	// Recognized ones are not reported: they are cards.
-	if UnknownAcceleratorFunction(0x1ded, 0x030200, "alipci") {
+	if UnknownAcceleratorFunction(0x1ded, 0x6001, 0x030200, "alipci") {
 		t.Error("a PPU was reported as unrecognized")
 	}
 	// Not Huawei's BMC display controller: every one of its servers has
 	// one, and a permanent warning on every Ascend node is worse than
 	// useless.
-	if UnknownAcceleratorFunction(0x19e5, 0x030000, "hibmc-drm") {
+	if UnknownAcceleratorFunction(0x19e5, 0xd803, 0x030000, "hibmc-drm") {
 		t.Error("the BMC display controller would warn on every Huawei server")
 	}
 	// Nor the rest of a Huawei server, which carries the same vendor id:
@@ -110,22 +110,35 @@ func TestAnUnrecognizedFunctionOfASupportedVendorIsReported(t *testing.T) {
 		{0x020000, "hns3", "a network interface"},
 		{0x118000, "edma_drv", "the DMA engine"},
 	} {
-		if UnknownAcceleratorFunction(0x19e5, fn.class, fn.driver) {
+		if UnknownAcceleratorFunction(0x19e5, 0xd803, fn.class, fn.driver) {
 			t.Errorf("%s was reported as a possible accelerator", fn.what)
 		}
 	}
+	// Nor the SoC's own compression engine, which reports the accelerator
+	// class the NPU reports. A 910C host has eight of them, and neither
+	// listing them as cards nor warning about them helps anyone.
+	if got := VendorForPCI(0x19e5, 0xa250, 0x120000, "hisi_zip"); got != "" {
+		t.Errorf("the ZIP engine was identified as an accelerator of %q", got)
+	}
+	if UnknownAcceleratorFunction(0x19e5, 0xa250, 0x120000, "hisi_zip") {
+		t.Error("the ZIP engine would warn on every Kunpeng server")
+	}
+	// Unbound, it is still the same engine.
+	if got := VendorForPCI(0x19e5, 0xa250, 0x120000, ""); got != "" {
+		t.Errorf("an unbound ZIP engine was identified as an accelerator of %q", got)
+	}
 	// But a base class PCI-SIG has not assigned is exactly the case this
 	// exists for, and is reported.
-	if !UnknownAcceleratorFunction(0x19e5, 0x200000, "some_new_module") {
+	if !UnknownAcceleratorFunction(0x19e5, 0xd803, 0x200000, "some_new_module") {
 		t.Error("a function at an unassigned base class was dropped silently")
 	}
 	// A vendor we do not support at all is none of our business.
-	if UnknownAcceleratorFunction(0x8086, 0x0b4000, "") {
+	if UnknownAcceleratorFunction(0x8086, 0x0000, 0x0b4000, "") {
 		t.Error("an Intel QAT was reported as an unrecognized accelerator")
 	}
 	// Neither is anything handed to a virtual machine: a host passes all
 	// sorts of hardware through, and a vendor id alone proves nothing.
-	if UnknownAcceleratorFunction(0x1ded, 0x0b8000, "vfio-pci") {
+	if UnknownAcceleratorFunction(0x1ded, 0x6001, 0x0b8000, "vfio-pci") {
 		t.Error("a passed-through function was reported as an unrecognized accelerator")
 	}
 }

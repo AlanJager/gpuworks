@@ -46,11 +46,12 @@ const (
 	// at HealthOK.
 	HealthMemoryErrorHistory = "memory_error_history"
 	// HealthRuntimeUnusable: the card is listed and looks well, but the
-	// vendor runtime cannot use it — on NVIDIA, a context cannot be
-	// created on it. One card failing to initialize can do this to every
-	// card of a host (measured on zstone-164: three bad cards, and cuInit
-	// returns 101 for all of them), so the finding is recorded per card
-	// from trying each one rather than inferred from any other.
+	// vendor runtime cannot use it: NVIDIA could not create a CUDA context,
+	// or Ascend could not create an ACL context. One card failing to
+	// initialize can affect every card of a host (measured on zstone-164:
+	// three bad cards, and cuInit returned 101 for all of them), so the
+	// finding is recorded per card from trying each one rather than inferred
+	// from any other.
 	HealthRuntimeUnusable = "runtime_unusable"
 	// HealthDriverInitFailed: the card is present and bound to its vendor
 	// driver, but the driver could not bring it up, so the vendor CLI does

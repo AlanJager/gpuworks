@@ -1565,6 +1565,7 @@
           "nvfp4",
           "nvfp4_4over6",
           "nvfp4_ds_mla",
+          "int8",
           "int8_per_token_head",
           "int4_per_token_head",
           "turboquant_k8v4",
@@ -1656,6 +1657,13 @@
             "label": {
               "en": "NVFP4 DeepSeek MLA",
               "zh": "NVFP4 DeepSeek MLA"
+            }
+          },
+          {
+            "value": "int8",
+            "label": {
+              "en": "INT8",
+              "zh": "INT8"
             }
           },
           {

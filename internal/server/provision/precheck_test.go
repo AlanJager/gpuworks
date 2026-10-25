@@ -305,3 +305,35 @@ func TestDeviceAccessPrecheckNamesTheDevicesARootlessAgentCannotOpen(t *testing.
 		t.Fatalf("device access precheck = %+v, want an advisory check of /dev", check)
 	}
 }
+
+func TestDeviceAccessPrecheckChecksOnlyExistingAscendSharedNodes(t *testing.T) {
+	root := openTempDir(t)
+	device := func(name string, mode os.FileMode) {
+		t.Helper()
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, nil, mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"davinci0", "davinci_manager", "ummu", "uburma"} {
+		device(name, 0o666)
+	}
+	out, err := runDeviceAccess(t, root, 1000, false)
+	if err != nil || !strings.Contains(out, "alice can read and write 4 accelerator device nodes") {
+		t.Fatalf("existing Ascend nodes: err=%v out=%q", err, out)
+	}
+
+	device("ummu", 0o000)
+	out, err = runDeviceAccess(t, root, 1000, false)
+	if err == nil || !strings.Contains(out, "cannot read and write: ummu") {
+		t.Fatalf("unreadable ummu: err=%v out=%q", err, out)
+	}
+	for _, absent := range []string{"devmm_svm", "hisi_hdc"} {
+		if strings.Contains(out, absent) {
+			t.Fatalf("missing shared node %q was reported: %q", absent, out)
+		}
+	}
+}

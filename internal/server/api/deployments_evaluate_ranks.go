@@ -6,7 +6,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -69,11 +68,16 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 		if req.NNodes > 1 {
 			topology = planning.PreviewRankTopology(req.NNodes, rank, group.Ranks[rankNode.ID])
 		}
+		resolution := a.rankImage(eng.Name(), selection, req.Image, rankNode)
+		rankImage := resolution.Image
+		if rankImage == "" {
+			rankImage = resp.Image
+		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
 			Preview: true, Engine: eng.Name(), Model: model, Node: rankNode,
 			Selection: rankSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   topology,
-			Source:     planning.LaunchSourceFromRequest(resp.Image, requestOverrides),
+			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
 			ServedName: servedName, Sleepable: req.Sleepable,
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
@@ -87,10 +91,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			return false
 		}
 		res := plan.Resolved
-		rankTarget := deploymentImageTarget(eng.Name(), "", rankNode)
-		rankTarget.Override = req.Image
-		rankTarget.TrustedOverride = templateOwnsImage(selection, req.Image)
-		resolution := imagecatalog.Resolve(a.d.Store, rankTarget)
+		resp.Warnings = append(resp.Warnings, plan.Warnings...)
 		if dynamicTPPreview {
 			// No GPU has been chosen yet: the engine builder's single-GPU
 			// default is a placeholder, and the rank that validates the
@@ -148,8 +149,8 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 		TemplateEnv: templateEnv, ExtraArgs: userExtraArgs,
 		Arch: arch, ArchID: archID, Vendor: vendor, ModelType: model.Arch,
 	}
-	res, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
-		Engine: eng, Params: params,
+	res, launchWarnings, resolveErr := resolveRequestLaunch(deploy.ResolveLaunchInput{
+		Engine: eng, Params: params, Image: env.rankSelection.Image,
 		Entrypoint:   templateEntrypoint,
 		PreStartArgv: selection.PreStartArgv, PreStartScript: selection.PreStartScript,
 		RuntimeAssets: selection.Assets, ComponentMounts: componentMounts, APIContract: selection.APIContract,
@@ -164,6 +165,7 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 	if dynamicTPPreview {
 		res = deploy.SymbolizePreviewTP(eng, res, launch.TemplateResidual, launch.UserResidual)
 	}
+	resp.Warnings = append(resp.Warnings, launchWarnings...)
 	setEvaluateLaunch(resp, res)
 	return true
 }

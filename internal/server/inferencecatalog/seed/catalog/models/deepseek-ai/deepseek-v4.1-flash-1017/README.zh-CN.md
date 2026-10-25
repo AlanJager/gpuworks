@@ -3,7 +3,7 @@
 原始混合 FP8/FP4 权重约 510.3 GB。本模板提供三种引擎的配方：
 
 - **SGLang**：来自 [SGLang 官方文档](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)，使用专用 `lmsysorg/sglang:dev-dsv41` 镜像（CUDA 13），不能替换成 V4 镜像或普通旧版 runner。
-- **vLLM**：来自 [vLLM 官方配方](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml)，需要 vLLM 0.31.0 及以上。
+- **vLLM（NVIDIA）**：来自 [vLLM 官方配方](https://github.com/vllm-project/recipes/blob/main/models/deepseek-ai/DeepSeek-V4.1-Flash.yaml)，需要 vLLM 0.31.0 及以上；昇腾使用下述独立 vLLM-Ascend 镜像。
 - **DeepInfer**：DeepSeek 开源的推理框架 [DeepInfer](https://github.com/deepseek-ai/DeepInfer)（commit `774ce24`）。镜像 `gpuworks/deepinfer:774ce24-r9` 在其上补了 OpenAI 兼容 HTTP 服务（协议层用 DeepSeek 的 deepseek-recipe）、单机 Engram 本机取数和多机请求中继；只服务文本输入，开源版不含 PD 分离。
 
 ## 配方
@@ -22,8 +22,18 @@
 | `fp4-vllm-nvidia-blackwell-dep8` | B200/B300 × 8 | 上游单机 DEP 命令：数据并行 8 + 专家并行，高吞吐 |
 | `fp4-deepinfer-nvidia-blackwell-ep` | B200/B300 × 4 或 8（单机） | 专家并行 = 卡数，注意力数据并行 = 卡数；自动放置时优先整机 8 卡；不需要 RDMA 网卡 |
 | `fp4-deepinfer-nvidia-blackwell-ep-multinode` | B200/B300，每节点 4 或 8 卡，2 节点及以上 | 专家并行跨节点；需要主机 RDMA 参数网络 |
+| `int8-vllm-ascend-a3-tp4-dp4` | A3/910C × 16 逻辑 die | 1017 W8A8，DP4 × TP4，150K 上下文，约 781.5 GB 权重；Engram 表放主机内存 |
 
 H200 × 4 的两个 SGLang 配方是本平台补充的组合，所用开关均来自上游文档。
+
+## Ascend A3 的部署前提与实测
+
+A3 档使用 `Eco-Tech/DeepSeek-V4.1-Flash-1017-w8a8` 的完整不可变快照和固定的
+vLLM-Ascend v0.30.0rc2 A3 镜像。模板声明 512 GiB `/dev/shm` 和
+`memlock_unlimited`，供两张 Engram 共享表注册与锁页使用；主机需要相应空闲内存。
+
+2026-10-23，该档在 910C × 16 的原生 Docker 环境通过平台 health、`/v1/models`
+和真实 chat；该结果不外推到 runveil。
 
 ## DeepInfer 的部署前提
 
@@ -73,4 +83,4 @@ DSpark 也可以在 1M 上下文下启动，但要把 `--max-running-requests` �
 - runveil（无 docker 的容器节点）上 SGLang 默认按主机核数开线程池，8 卡时约 3600 个线程会让 PRoot 卡死在加载权重；需要把 `OMP_NUM_THREADS` 等限制为 4（平台对 runveil 上的 SGLang 默认设置）。
 - vLLM 首次启动会做算子调优，可能超过 10 分钟；配方已把 `VLLM_ENGINE_READY_TIMEOUT_S` 设为 3600。
 
-未声明的 AMD、昇腾、海光、PPU、Apple 组合不在本模板覆盖范围内。
+未声明的 AMD、海光、PPU、Apple 组合不在本模板覆盖范围内；昇腾仅覆盖上述 910C Docker 档。

@@ -6,11 +6,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// templateSnapshotAPI is the one part of a deployment's template snapshot
-// (template_snapshot, a deploy.CatalogSelection) this migration reads: the API
-// contract the template declared, as snapshots spelled it when it was written.
+// templateSnapshotAPI is the part of a deployment's template snapshot
+// (template_snapshot, a deploy.CatalogSelection) migrations read: the catalog
+// identity and the API contract, as snapshots spelled them when they were written.
 type templateSnapshotAPI struct {
-	API *struct {
+	TemplateID uint   `json:"template_id"`
+	SpecSource string `json:"spec_source"`
+	SpecName   string `json:"spec_name"`
+	API        *struct {
 		Operations json.RawMessage `json:"operations"`
 	} `json:"api"`
 }

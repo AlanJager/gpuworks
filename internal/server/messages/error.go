@@ -77,6 +77,15 @@ const (
 	// smaller than the CPU KV tier it enables. The engine keeps the whole tier
 	// in /dev/shm, so such a container can never start.
 	ErrorShmBelowKVCPUTier = "SHM_BELOW_KV_CPU_TIER"
+	// ErrorAscendV1CompatPreStart reports a preparation hook whose ordering or
+	// image edits cannot be composed safely with the V1 compatibility patch.
+	ErrorAscendV1CompatPreStart = "ASCEND_V1_COMPAT_PRE_START"
+	// ErrorAscendCompatPreStartArgv reports argv preparation on any Ascend
+	// compatibility overlay whose script is the only preparation form it can add.
+	ErrorAscendCompatPreStartArgv = "ASCEND_COMPAT_PRE_START_ARGV"
+	// ErrorPreStartScriptTooLarge reports a merged preparation script above the
+	// agent's 64 KiB wrapper limit.
+	ErrorPreStartScriptTooLarge = "PRE_START_SCRIPT_TOO_LARGE"
 	// ErrorNoStoragePath reports two nodes that share no network allowed to
 	// carry storage sync, so one cannot copy an image or model from the other.
 	ErrorNoStoragePath = "NO_STORAGE_PATH"

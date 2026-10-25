@@ -636,6 +636,7 @@
       "cuda_runtime": "CUDA runtime",
       "peer_access": "GPU peer access",
       "nccl": "NCCL multi-GPU",
+      "card_runtime": "Per-card runtime check",
       "runtime_identity": "Runtime identity",
       "network_filesystem": "Network filesystem",
       "metal_working_set": "Metal memory",

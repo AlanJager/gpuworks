@@ -14,16 +14,26 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
+func hostCheck(t *testing.T, vendor string) gpu.HostRuntimeCheck {
+	t.Helper()
+	check, ok := gpu.HostRuntimeCheckFor(vendor)
+	if !ok {
+		t.Fatalf("vendor %q has no host runtime check", vendor)
+	}
+	return check
+}
+
 // smokeNode is a node runtime whose card check answers as told.
 func smokeNode(t *testing.T, cards []proto.GPUInfo, fail map[string]error) *NodeRuntime {
 	t.Helper()
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: cards}, nil)
+	check := hostCheck(t, "nvidia")
+	answering := check
+	answering.Try = func(_ context.Context, visible string) error { return fail[visible] }
 	n.cardSmoke = cardsmoke.New(cardsmoke.Config{
-		Cards: n.smokeCards,
-		Try: func(_ context.Context, card cardsmoke.Card) error {
-			return fail[card.Visible]
-		},
+		Cards: func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
+		Try:   cardSmokeAttempt(answering),
 	})
 	n.cardSmoke.RunOnce(context.Background())
 	return n
@@ -60,18 +70,18 @@ func TestACardNeverCheckedKeepsItsVerdict(t *testing.T) {
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: cardsOfOneHealthyNode()}, nil)
 	cards := cardsOfOneHealthyNode()
-	n.CardHealthFindings(context.Background(), cards, true) // no runner at all
+	n.CardHealthFindings(context.Background(), cards, true)
 	for _, card := range cards {
 		if card.HealthCode != "" || !card.Healthy {
 			t.Fatalf("card = %+v, want it untouched when nothing was checked", card)
 		}
 	}
 
-	// A runner that could not run the check either.
 	n2 := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: cardsOfOneHealthyNode()}, nil)
+	check := hostCheck(t, "nvidia")
 	n2.cardSmoke = cardsmoke.New(cardsmoke.Config{
-		Cards:       n2.smokeCards,
+		Cards:       func(ctx context.Context) []cardsmoke.Card { return n2.smokeCards(ctx, check) },
 		Try:         func(context.Context, cardsmoke.Card) error { return nil },
 		Unavailable: func() string { return "python3 is not installed" },
 	})
@@ -103,21 +113,26 @@ func TestAVendorFindingOutranksTheRuntimeSymptom(t *testing.T) {
 	}
 }
 
-// Only cards this node owns, and only ones it can name to the runtime, are
-// asked. A card is named by UUID so the runtime cannot be pointed at a
-// different one than the one meant.
 func TestOnlyTheNodesOwnNamedCardsAreAsked(t *testing.T) {
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: []proto.GPUInfo{
 			{Index: 0, UUID: "GPU-3f", Vendor: "nvidia", PCIeBDF: "0000:3f:00.0", Healthy: true},
 			{Index: -1, Vendor: "nvidia", PCIeBDF: "0000:1b:00.0", Ownership: accelerator.CardPassedThrough},
 			{Index: -1, Vendor: "nvidia", PCIeBDF: "0000:1a:00.0", Ownership: accelerator.CardWithoutDriver},
-			// Owned but unnameable: its driver never gave it a UUID.
 			{Index: -1, Vendor: "nvidia", PCIeBDF: "0000:1c:00.0", HealthCode: accelerator.HealthDriverInitFailed},
 		}}, nil)
-	asked := n.smokeCards(context.Background())
+	asked := n.smokeCards(context.Background(), hostCheck(t, "nvidia"))
 	if len(asked) != 1 || asked[0].Visible != "GPU-3f" || asked[0].Ident != "pci:0000:3f:00.0" {
 		t.Fatalf("cards to check = %+v, want only the node's own, named by UUID", asked)
+	}
+
+	ascend := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
+		&gpu.FixedProber{VendorName: "ascend", GPUs: []proto.GPUInfo{
+			{Index: 14, UUID: "ascend-14", Vendor: "ascend", PCIeBDF: "0000:95:00.0", Healthy: true},
+		}}, nil)
+	asked = ascend.smokeCards(context.Background(), hostCheck(t, "ascend"))
+	if len(asked) != 1 || asked[0].Visible != "14" || asked[0].Ident != "pci:0000:95:00.0" {
+		t.Fatalf("Ascend cards to check = %+v, want the physical die identifier", asked)
 	}
 }
 
@@ -142,8 +157,9 @@ func TestACardServingAnInstanceIsNotChecked(t *testing.T) {
 	n.heldCardIdents = func() []string { return []string{accelerator.CardIdent("GPU-40", "0000:40:00.0")} }
 
 	var asked []string
+	check := hostCheck(t, "nvidia")
 	n.cardSmoke = cardsmoke.New(cardsmoke.Config{
-		Cards: n.smokeCards,
+		Cards: func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
 		Try: func(_ context.Context, card cardsmoke.Card) error {
 			asked = append(asked, card.Visible)
 			return nil
@@ -155,7 +171,6 @@ func TestACardServingAnInstanceIsNotChecked(t *testing.T) {
 		t.Fatalf("checked %v, want only the idle card", asked)
 	}
 
-	// With nothing of ours running, every card is asked.
 	n.heldCardIdents = func() []string { return nil }
 	asked = nil
 	n.cardSmoke.RunOnce(context.Background())
@@ -165,9 +180,6 @@ func TestACardServingAnInstanceIsNotChecked(t *testing.T) {
 }
 
 func TestCUDASmokePrerequisiteNamesWhatIsMissing(t *testing.T) {
-	// The host this runs on has python3 (the test harness needs it) but
-	// may well lack a driver library; either answer must name its reason
-	// rather than being empty on a host that cannot run the check.
 	reason := gpu.CUDASmokePrerequisite()
 	if reason != "" && !strings.Contains(reason, "python3") && !strings.Contains(reason, "libcuda") {
 		t.Fatalf("reason = %q, want it to name what is missing", reason)
@@ -175,32 +187,24 @@ func TestCUDASmokePrerequisiteNamesWhatIsMissing(t *testing.T) {
 	_ = time.Now
 }
 
-// Why no card can be checked right now, which is not the same as a card
-// that failed. A driver that is not answering would make every attempt
-// queue on the same lock, and a host without the runtime's prerequisites
-// cannot run the check at all.
 func TestSmokeUnavailableNamesWhyNothingCanBeChecked(t *testing.T) {
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: cardsOfOneHealthyNode()}, nil)
-	reason := n.smokeUnavailable()
-	// On a host with python3 and a driver library there is nothing to
-	// report; on one without either, the reason must name what is missing
-	// rather than being a bare "unavailable".
+	reason := smokeUnavailable(hostCheck(t, n.prober.Vendor()))
 	if reason != "" && !strings.Contains(reason, "python3") && !strings.Contains(reason, "libcuda") && !strings.Contains(reason, "driver") {
 		t.Fatalf("reason = %q, want it to name what is missing", reason)
 	}
 }
 
-// The check is started only where there is one to run.
-func TestCardSmokeStartsOnlyForNVIDIAHardware(t *testing.T) {
+func TestCardSmokeNeverStartsForSyntheticHardware(t *testing.T) {
 	for _, tc := range []struct {
 		vendor string
 		want   bool
 		why    string
 	}{
 		{"nvidia", false, "a synthetic prober describes cards that do not exist"},
-		{"ascend", false, "the Ascend runtime lives in the image, not on the host"},
-		{"hygon", false, "the Hygon runtime lives in the image, not on the host"},
+		{"ascend", false, "a synthetic prober describes cards that do not exist"},
+		{"hygon", false, "a synthetic prober describes cards that do not exist"},
 		{"", false, "a node with no accelerator"},
 	} {
 		n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
@@ -212,5 +216,42 @@ func TestCardSmokeStartsOnlyForNVIDIAHardware(t *testing.T) {
 		if started != tc.want {
 			t.Errorf("%s: started = %v, want %v (%s)", tc.vendor, started, tc.want, tc.why)
 		}
+	}
+}
+
+func TestAscendHostRuntimeFailureDoesNotBlameTheFirstDie(t *testing.T) {
+	cards := []proto.GPUInfo{
+		{Index: 14, UUID: "ascend-14", Vendor: "ascend", PCIeBDF: "0000:95:00.0", Healthy: true},
+		{Index: 15, UUID: "ascend-15", Vendor: "ascend", PCIeBDF: "0000:96:00.0", Healthy: true},
+	}
+	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
+		&gpu.FixedProber{VendorName: "ascend", GPUs: cards}, nil)
+	check := hostCheck(t, "ascend")
+	var attempted []string
+	check.Try = func(_ context.Context, visible string) error {
+		attempted = append(attempted, visible)
+		return &gpu.HostRuntimeUnavailableError{Reason: "the Ascend ACL runtime could not be used on this host: aclInit=100039"}
+	}
+	n.cardSmoke = cardsmoke.New(cardsmoke.Config{
+		Cards: func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
+		Try:   cardSmokeAttempt(check),
+	})
+	n.cardSmoke.RunOnce(context.Background())
+	reported := append([]proto.GPUInfo(nil), cards...)
+	n.CardHealthFindings(context.Background(), reported, true)
+
+	if len(attempted) != 1 || attempted[0] != "14" {
+		t.Fatalf("attempts = %v, want only the first die before the host-level stop", attempted)
+	}
+	for _, card := range reported {
+		if card.HealthCode != "" || !card.Healthy {
+			t.Fatalf("card = %+v, want every die left to the vendor tool's verdict", card)
+		}
+	}
+	if got := n.cardSmoke.Skipped(); !strings.Contains(got, "aclInit=100039") {
+		t.Fatalf("skipped = %q, want the reason no die could be checked", got)
+	}
+	if outcomes := n.cardSmoke.Outcomes(); len(outcomes) != 0 {
+		t.Fatalf("outcomes = %+v, want nothing recorded against a die", outcomes)
 	}
 }

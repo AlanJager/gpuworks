@@ -204,9 +204,9 @@ func (s Scanner) read(dir, name string) (Card, Unknown, bool) {
 	bdf := accelerator.NormalizeBDF(name)
 	driver := s.driver(device)
 	deviceID, _ := s.hex(device, "device")
-	vendor := accelerator.VendorForPCI(vendorID, class, driver)
+	vendor := accelerator.VendorForPCI(vendorID, deviceID, class, driver)
 	if vendor == "" {
-		if accelerator.UnknownAcceleratorFunction(vendorID, class, driver) {
+		if accelerator.UnknownAcceleratorFunction(vendorID, deviceID, class, driver) {
 			return Card{}, Unknown{BDF: bdf, VendorID: vendorID, DeviceID: deviceID, Class: class, Driver: driver}, false
 		}
 		return Card{}, Unknown{}, false

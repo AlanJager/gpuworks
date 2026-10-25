@@ -33,21 +33,6 @@ func TestRuntimeNeedsGPUPluginPerVendorAndRuntime(t *testing.T) {
 	}
 }
 
-// Only NVIDIA's runtime can be asked on the host whether it can use a
-// card: its driver ships libcuda there. Asking any other vendor would be
-// asking something that is not installed and reading the answer as a
-// fault on the card.
-func TestOnlyNVIDIAHasAHostRuntimeToAsk(t *testing.T) {
-	for vendor, want := range map[string]bool{
-		"nvidia": true, "NVIDIA": true,
-		"ascend": false, "hygon": false, "ppu": false, "": false,
-	} {
-		if got := VendorHasHostRuntimeCheck(vendor); got != want {
-			t.Errorf("%q = %v, want %v", vendor, got, want)
-		}
-	}
-}
-
 // Passing a runtime over is only safe where runveil can serve the cards:
 // on an Ascend host it would trade a clear "plugin missing" for a runtime
 // that fails CANN at start.

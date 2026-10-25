@@ -136,6 +136,7 @@
       "nvfp4": "NVFP4",
       "nvfp4_4over6": "NVFP4 4/6",
       "nvfp4_ds_mla": "NVFP4 DeepSeek MLA",
+      "int8": "INT8",
       "int8_per_token_head": "INT8 per-token-head",
       "int4_per_token_head": "INT4 per-token-head",
       "turboquant_k8v4": "TurboQuant K8V4",

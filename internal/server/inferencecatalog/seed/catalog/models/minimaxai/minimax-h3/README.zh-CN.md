@@ -8,6 +8,8 @@ MiniMax H3 是音视频生成模型。GPUWorks 可从 Playground 提交异步视
 
 建议从 512 像素短边开始生成。实测 896×512、约 4 秒视频可完成，单卡峰值显存约 29,424 MiB。
 
+当前档位不支持 910C/A3。上游 MiniMax H3 的 SGLang diffusion full-loop denoise 仍硬依赖 CUDA，替换 attention 后端后也会进入 CUDA JIT；把上下文改为 NPU 不能消除该限制。只有上游提供可用的 NPU denoise 路径并通过真机验证后，才能新增 910C 档位。
+
 ## NVIDIA 档位
 
 NVIDIA 档位使用 GPUWorks 的 vLLM-Omni 0.30 runner（已包含 MiniMax H3 模块化管线），按 vLLM-Omni 官方 MiniMax H3 recipe 配置，每档固定卡数：

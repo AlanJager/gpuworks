@@ -8,6 +8,8 @@ The current Ascend profile was verified on four 910B4 GPUs with 32 GiB each. The
 
 Start with a 512-pixel short edge. A verified 896×512 video of about four seconds completed with approximately 29,424 MiB peak memory per GPU.
 
+The current profile does not support 910C/A3. Upstream MiniMax H3's SGLang diffusion full-loop denoise still requires CUDA, and changing the attention backend only moves the failure into CUDA JIT; changing the context to NPU does not remove that dependency. A 910C profile should be added only after upstream provides a working NPU denoise path and it has been verified on real hardware.
+
 ## NVIDIA profiles
 
 The NVIDIA profiles run the GPUWorks vLLM-Omni 0.30 runner, which already includes the modular MiniMax H3 pipeline, and follow vLLM-Omni's own MiniMax H3 recipes. Each profile pins its GPU count:

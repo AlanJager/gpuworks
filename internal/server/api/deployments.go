@@ -14,7 +14,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -209,7 +208,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		ModelPath: modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
 		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
-		NNodes: nnodes,
+		NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 	}
 	if profileNode != nil {
 		// The bind address the launch will use, so the preflight resolves the
@@ -218,14 +217,18 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		preflightParams.RuntimeDriver = profileNode.RuntimeDriver
 	}
 	pdReq.preflight(&preflightParams)
-	if _, err := resolveRequestLaunch(deploy.ResolveLaunchInput{
-		Engine: eng, Params: preflightParams,
+	preflight := deploy.ResolveLaunchInput{
+		Engine: eng, Params: preflightParams, Image: req.Image,
 		Entrypoint: selection.Entrypoint, PreStartArgv: selection.PreStartArgv,
 		PreStartScript: selection.PreStartScript, RuntimeAssets: selection.Assets,
 		ComponentMounts: componentMounts, APIContract: selection.APIContract,
 		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(),
 		AllowUnresolved: true,
-	}, req.ContainerOverrides, selection.Components, modelMount); err != nil {
+	}
+	imageFor := func(node *store.Node) string {
+		return a.rankImage(eng.Name(), selection, req.Image, node).Image
+	}
+	if err := preflightCreateRuntimes(preflight, req.ContainerOverrides, selection.Components, modelMount, profileNode, distNodes, pdReq, imageFor); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
@@ -248,11 +251,12 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	if !validateTextField(w, "served_name", served, maxNameRunes) || !validateName(w, name) {
 		return
 	}
-	if model, err = a.initTemplateModelInferenceConfig(&selection, model); err != nil {
+	model, templateConfig, err := a.initTemplateModelInferenceConfig(&selection, model)
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// The model's operations are settled now: they say what a check asks.
+	// The candidate's operations say what a check asks.
 	healthCheck, healthThreshold, err := createHealthCheck(&req, model)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -311,10 +315,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err)
 		return
 	}
-	imageTarget := deploymentImageTarget(eng.Name(), "", node)
-	imageTarget.Override = req.Image
-	imageTarget.TrustedOverride = templateOwnsImage(selection, req.Image)
-	imageResolution := imagecatalog.Resolve(a.d.Store, imageTarget)
+	imageResolution := a.rankImage(eng.Name(), selection, req.Image, node)
 	if strings.TrimSpace(imageResolution.Image) == "" {
 		code, params := ErrorAcquisitionImageRequired, map[string]any(nil)
 		if len(imageResolution.Warnings) > 0 {
@@ -390,7 +391,12 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		RoutingPolicy:           req.RoutingPolicy,
 		State:                   store.DeployActive,
 	}
-	created, err := a.d.Store.CreateDeploymentWithRequirements(dep, reqs)
+	var created *store.Deployment
+	if templateConfig.modelID == 0 {
+		created, err = a.d.Store.CreateDeploymentWithRequirements(dep, reqs)
+	} else {
+		created, err = a.d.Store.CreateDeploymentWithTemplateInferenceConfig(dep, reqs, templateConfig.modelID, templateConfig.operations, templateConfig.inputModalities)
+	}
 	if err != nil {
 		writeDeploymentCreateErr(w, err)
 		return

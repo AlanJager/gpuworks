@@ -133,7 +133,7 @@ specs:
   weight_bytes: 32152070926
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --dtype
@@ -153,6 +153,119 @@ specs:
       \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
       \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
       TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-a3-0a447e8a
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - huggingface:
+        repo_id: KingsonHO/Qwen3.8-27B-w8a8
+        revision: 6165ea568f22521fed1978deb153874946ec618e
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-27B-w8a8
+        revision: 6d36d2b4837bec01e552f7dfdd447f1d57652a58
+  weight_bytes: 32152070926
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --quantization
+  - ascend
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-950pr-0a447e8a
+  # Measured on a single Ascend950PR (128 GiB) on 2026-10-07, not inherited:
+  # the 950 kernel package, the quantization formats and the engine release
+  # all differ from the 910B profile above, so the arguments are the ones that
+  # actually ran rather than the 910B ones with another image. The model's
+  # functional arguments (tool call, reasoning, encoder parallel mode) were not
+  # part of that run; they are carried anyway because they state the model's API
+  # surface rather than anything about the card, and every vendor's profile of a
+  # model has to agree on those
+  # (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs). 950DT has no
+  # measurement at all and is not claimed.
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - huggingface:
+        repo_id: KingsonHO/Qwen3.8-27B-w8a8
+        revision: 6165ea568f22521fed1978deb153874946ec618e
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.8-27B-w8a8
+        revision: 6d36d2b4837bec01e552f7dfdd447f1d57652a58
+  weight_bytes: 32152070926
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950PR([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '262144'
+  - --max-num-batched-tokens
+  - '16384'
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.9'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3,"enforce_eager":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 1: return reject(\"this profile\
+      \ was measured on a single card\")\n    if gpu.min_memory_gib < 120: return reject(\"\
+      the card requires at least 120 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : 1, \"SP_DEGREE\": 1}\n"
   api:
     health_endpoint: /health
     operations:

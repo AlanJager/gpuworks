@@ -46,8 +46,14 @@ type storageRuntime struct {
 	hbInvalid map[uint]bool
 	// waiting holds model-file tasks for storages that were not ready yet;
 	// they are retried after every check. A task leaves it when it runs, is
-	// withdrawn or evicted, or when its storage is removed.
+	// withdrawn or evicted, or when its storage is removed. Like writerWaiting
+	// it keeps one task per key: a newer task for the key replaces the parked
+	// one (see modelfile_queue.go).
 	waiting map[string]proto.ModelFileTask
+	// writerWaiting holds tasks blocked by another writer or the copy limit.
+	// Owner return retries them directly; non-zero storages are checked again.
+	// A key is parked in at most one of the two queues.
+	writerWaiting map[string]proto.ModelFileTask
 	// incomingSwept holds the storages whose leftover upload staging this
 	// process already swept once (sweepIncomingOnce).
 	incomingSwept map[uint]bool
@@ -70,7 +76,7 @@ func newStorageRuntime(stateDir string, busy func(string) bool) *storageRuntime 
 		}),
 		tasks: map[uint]proto.StorageTask{}, statuses: map[uint]storagemount.Status{},
 		heartbeat: map[uint]time.Time{}, hbInvalid: map[uint]bool{}, waiting: map[string]proto.ModelFileTask{},
-		incomingSwept: map[uint]bool{}, trigger: make(chan bool, 1),
+		writerWaiting: map[string]proto.ModelFileTask{}, incomingSwept: map[uint]bool{}, trigger: make(chan bool, 1),
 	}
 }
 
@@ -112,6 +118,11 @@ func (n *NodeRuntime) applyStorages(tasks []proto.StorageTask) {
 	for key, task := range s.waiting {
 		if _, ok := s.tasks[task.StorageID]; !ok && task.StorageID != 0 {
 			delete(s.waiting, key)
+		}
+	}
+	for key, task := range s.writerWaiting {
+		if _, ok := s.tasks[task.StorageID]; !ok && task.StorageID != 0 {
+			delete(s.writerWaiting, key)
 		}
 	}
 	for id := range s.hbInvalid {
@@ -179,10 +190,12 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 		s.reported = report
 	}
 	waiting := make([]proto.ModelFileTask, 0, len(s.waiting))
-	for key, task := range s.waiting {
+	for _, task := range s.waiting {
 		if st, ok := s.statuses[task.StorageID]; ok && st.State == storagemount.StateReady {
+			// The retry removes or re-parks the task. Until then it stays queued
+			// so that eviction or a newer task for the key can fence this
+			// snapshot (see retryParkedModelFile).
 			waiting = append(waiting, task)
-			delete(s.waiting, key)
 		}
 	}
 	s.mu.Unlock()
@@ -192,7 +205,7 @@ func (n *NodeRuntime) checkStorages(ctx context.Context, force bool) {
 	n.refreshHeartbeats()
 	n.sweepIncomingOnce()
 	for _, task := range waiting {
-		n.reconcileModelFile(ctx, task)
+		n.retryParkedModelFile(ctx, task)
 	}
 }
 
@@ -287,37 +300,13 @@ func (n *NodeRuntime) storageDo(storageID uint, op string, timeout time.Duration
 
 // waitForStorage parks a task until its storage is ready and asks for a check
 // now; the check retries it.
-func (n *NodeRuntime) waitForStorage(task proto.ModelFileTask) {
-	if n.parkTask(task) {
+func (n *NodeRuntime) waitForStorage(task proto.ModelFileTask, retry bool) {
+	if n.parkStorageModelFile(task, retry) {
 		select {
 		case n.storage.trigger <- false:
 		default:
 		}
 	}
-}
-
-// parkTask parks a task until a later storage check finds its storage ready,
-// without asking for a check: for tasks that stopped on something a check
-// cannot fix at once, where an immediate retry would only spin.
-func (n *NodeRuntime) parkTask(task proto.ModelFileTask) bool {
-	if n.storage == nil {
-		return false
-	}
-	n.storage.mu.Lock()
-	n.storage.waiting[task.Key] = task
-	n.storage.mu.Unlock()
-	return true
-}
-
-// dropWaiting forgets a parked task, so it does not run when its storage
-// recovers after the model was deleted meanwhile.
-func (n *NodeRuntime) dropWaiting(key string) {
-	if n.storage == nil {
-		return
-	}
-	n.storage.mu.Lock()
-	delete(n.storage.waiting, key)
-	n.storage.mu.Unlock()
 }
 
 // dropWaitingUnder forgets the parked tasks whose target is, or lies below or
@@ -326,20 +315,16 @@ func (n *NodeRuntime) dropWaitingUnder(target string) {
 	if n.storage == nil {
 		return
 	}
-	n.storage.mu.RLock()
-	parked := make([]proto.ModelFileTask, 0, len(n.storage.waiting))
-	for _, task := range n.storage.waiting {
-		parked = append(parked, task)
-	}
-	n.storage.mu.RUnlock()
-	for _, task := range parked {
+	for _, task := range n.parkedModelFiles() {
 		root, _, err := n.storageRoot(task)
 		if err != nil {
 			continue
 		}
 		abs, err := resolveStorageTarget(root, taskTarget(task))
 		if err == nil && (pathWithin(target, abs) || pathWithin(abs, target)) {
-			n.dropWaiting(task.Key)
+			// Only the task that was inspected: a newer task parked for the key
+			// meanwhile is not the one that was found under the directory.
+			n.dropParkedModelFile(task)
 		}
 	}
 }
@@ -369,6 +354,11 @@ func (n *NodeRuntime) pruneWaiting(desired []proto.ModelFileTask) {
 	for key := range n.storage.waiting {
 		if !listed[key] {
 			delete(n.storage.waiting, key)
+		}
+	}
+	for key := range n.storage.writerWaiting {
+		if !listed[key] {
+			delete(n.storage.writerWaiting, key)
 		}
 	}
 	n.storage.mu.Unlock()

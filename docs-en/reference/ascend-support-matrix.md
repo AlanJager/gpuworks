@@ -1,6 +1,6 @@
 # Ascend Support Matrix
 
-Updated: 2026-10-24. This document distinguishes three things that are easy to confuse:
+Updated: 2026-10-25. This document distinguishes three things that are easy to confuse:
 
 - **Outer CANN**: the toolkit provided by the node or rented cloud marketplace image. Self-owned bare-metal machines may have only a driver, recorded as `driver-only`; this does not mean that no container runtime is available.
 - **Inner CANN**: the CANN userspace application binary interface (userspace ABI) in the workload image launched by GPUWorks. It affects whether the workload image can run, but does not participate in `libvruntime.so` asset selection.
@@ -16,6 +16,7 @@ Updated: 2026-10-24. This document distinguishes three things that are easy to c
 | Gitee ARM | arm64 / 910B1 | 9.0 | 8.5 / udocker | Container starts as far as CANN FE | Failed with the old PRoot because `platform_config` realpath resolution failed. ARM64 `faccessat2` is now fixed; this cloud combination has not yet been retested |
 | Gitee ARM catalog entry | arm64 / 910B1 | 8.5 | Inner environment not reached | Rental prerequisite validation | The cloud marketplace actually returns “image and host do not match,” so this cannot serve as a CI fixture; this does not establish incompatibility between outer 8.5 and inner 8.5 |
 | Self-owned pool Docker member | arm64 / 910B4 | 9.0/driver | 9.0 / Docker | Platform API dGPU with two replicas on one card, real inference/chat, overcommit rejection, full-GPU chat | Supported; complete primary acceptance for platform dGPU |
+| Self-owned 910C / Docker | arm64 / 910C | 9.0/driver | A3 images / Docker | Rows marked Docker below completed platform deployment, health/model discovery and real chat | Supports only the individually listed model, topology and runtime combinations; results do not extend to runveil or untested specs. Phy-ID 0 on `910c_1` was excluded by per-die checks |
 | Self-owned pool nerdctl member | arm64 / 910B4 | driver-only, 26.1.1 | Embedded probe v2 / nerdctl | Production Engine + Driver maps physical device 1 to container logical device 0 and returns exactly 4 GiB; disabling the hook returns 32 GiB and fails the probe | Node-level dGPU probe passes; this check loads no workload image, model, or inference engine |
 | Temporary Docker daemon on self-owned bare metal | arm64 / 910B4 | driver-only, 26.1.1 | Embedded probe v2 / Docker 27.5.1 + Ascend runtime | Production Engine + Driver maps physical device 1 to container logical device 0; the 4 GiB quota and unhooked 32 GiB negative control both behave as expected | Verifies v2 container-local DSMI mapping; platform inference was not rerun in this check |
 | Passthrough VM / runveil | arm64 / 910B4 | driver-only, 25.5.1 | Embedded probe v2 / runveil, without the vCANN hook | Physical device 7 maps to logical device 1, matching production inference injection; HBM queries report the actual 32 GiB card and fail a 4 GiB expectation | Device mapping only; device-share remains False and the driver cannot enable it in the VM, so this is not a dGPU pass |
@@ -24,6 +25,51 @@ Updated: 2026-10-24. This document distinguishes three things that are easy to c
 | Same self-owned bare-metal runveil | arm64 / 910B4 | driver-only, 26.0.rc1 | 9.0 / vLLM 0.20.2 / runveil | Production Engine + runveil Driver selects the device automatically; Qwen3-0.6B with an 8 GiB quota returns HTTP 200 for real chat | Single-instance dGPU inference passes. The container reports 8589934592 bytes, a 9 GiB allocation is rejected, and subsequent chat returns `Hello! 😊`. This test did not use the platform API, scheduler, or gateway |
 
 “Outer 8.5 and inner 8.5 have been tested” refers to the Gitee x86_64 environment in the table: there is a record of a real platform deployment reaching healthy, but the current repository does not retain a successful chat response, so the matrix does not mark complete chat as passed. The next step is to reuse the same instance in the existing x86_64/CANN8.5 rental test case to add chat verification, avoiding another rental.
+
+## 910C Catalog Contracts and Tested Boundaries
+
+Checks on 2026-10-22 confirmed that a runner image carries operators for only one chip family: running `cann9.0-910b-*` on a 910C die fails in `AclOpKernelInit`, while the corresponding `cann9.0-a3-*` build succeeds. A template's predicate and pinned image must therefore describe the same family. Generational inheritance ([ADR 0009](../adr/0009-flat-spec-catalog.md), item 10) still applies, but the successor has its own spec and image instead of merely broadening the original predicate.
+
+- The catalog currently contains **80 inherited A3 specs** and **87 specs whose predicates match 910C**. Contract tests check the arguments, weights and image relationship between each 910B original and its A3 successor, and verify that every 910C-claiming spec resolves to an A3 image. These are catalog contract counts, **not per-spec real-hardware pass counts**; hardware results are recorded only for the individual rows below.
+- The 950 family does not use this inheritance. The only current 950 spec is the single-card 950PR profile of `qwen/qwen3.8-27b`, using the corresponding 950 image and based on measurements from 2026-10-07. There is no tested 950DT profile.
+- MiniMax-H3's SGLang diffusion path still requires CUDA full-loop denoise, so it declares only 910B4 and does not claim 910C. The Gemma-3-4B-IT SGLang profile also withdrew its 910C claim after persistent health/warmup failures.
+
+### Frontier Model Catalog and Real-Hardware Status
+
+Having a catalog spec means that pinned weights, an image and launch arguments exist; it does not mean that real-hardware acceptance has completed.
+
+| Model | Current Ascend Catalog | 910C Results and Boundaries |
+|---|---|---|
+| GLM-5.3 (non-Flash) | **No Ascend spec** | Upstream has an A3 recipe, but this profile lacks real-hardware evidence, so no A3 spec is published |
+| GLM-5.3-Flash | A3 TP16/EP16, W8A8, INT8 KV, 1M | Health, `/v1/models` and real chat passed with native Docker; runveil/PRoot has not passed |
+| DeepSeek-V4.1-Flash | A3 DP4 × TP4, W8A8, 150K | Health, model discovery and real chat passed with native Docker |
+| DeepSeek-V4.1-Flash-1017 | Independent 1017 W8A8 weights, A3 DP4 × TP4, 150K | Health, model discovery and real chat passed with native Docker; does not share the original version's weight snapshot |
+| DeepSeek-V4-Flash-0731 | A3 DP4 × TP4, W8A8 + DSpark, 1M | Health, 1M `/v1/models` and real chat passed with native Docker |
+| MiniMax-M3 | A3 DP4 × TP4, 133K | All 16 workers, health and real chat passed with native Docker |
+| Qwen3.5-397B-A17B | A3 TP16/EP16, W8A8 + MTP, 133K, eager | Health, `/v1/models` and real chat passed with native Docker; eager mode avoids the currently missing `causal_conv1d_update_npu` graph path |
+| Qwen3.8-Flash-Next | Experimental A3 TP8, W8A8-MTP, 135168 context | Health, `/v1/models`, real chat and automatic placement passed with Docker |
+| Qwen3.8-27B | 910B spec and inherited A3 spec | TP2 requests passed on two 910C hosts; `910c_k8s` used Docker |
+| Kimi-K3 | None | The upstream minimum recipe uses four A3 nodes; there is no catalog spec |
+
+The A3 profiles of DeepSeek-V4.1-Flash and its 1017 variant explicitly declare **512 GiB of `/dev/shm`** and `memlock_unlimited: true` for two approximately 103 GiB local DP shared Engram tables. Do not duplicate a Docker memlock argument in template `args`. Hardware checks confirmed that 128 GiB cannot register the second table and 256 GiB can; the catalog uses a 512 GiB isolated tmpfs as the common specification.
+
+Preflight checks use the final effective command. They reject a launch only when the platform can prove it must fail and the user cannot work around it; combinations the platform merely cannot prove produce a warning and the deployment is still created.
+
+- **Rejected at create (400)**: a compat image cannot be combined with `pre_start_argv`; V1 also rejects an additional `pre_start_script` (V2 may compose scripts); the merged pre-start script cannot exceed the agent's 64 KiB limit. These apply on udocker/runveil nodes (the compat script is injected only there) and are judged with the image resolved for that node. With automatic placement and no node chosen yet, nothing is checked at create; the controller reports a clear reason once it picks a node.
+- **Evaluate warnings (`warnings[]`, never blocking)**: the rc2 A3 V1 compatibility rendezvous is single-node only, so a multi-node deployment is advised to set `VLLM_USE_V2_MODEL_RUNNER=1`, use Docker/nerdctl, or deploy on one node; V1 combined with data parallelism above 1 has not been verified on real runveil hardware; a manual shell on a compat image (including `/bin/sh -c` inside JSON argv) cannot be matched to the actual runner; Engram `cpu_offload + dp_shared_memory` on udocker/runveil uses the host's `/dev/shm` and ulimits directly, which the platform cannot see, so it is advised to provide about 512 GiB of shared memory and unlimited memlock or use Docker/nerdctl; an Engram configuration that cannot be established is treated the same way.
+- **Passed silently**: manual commands that do not involve Engram (variables, `&&`, pipes, redirects, `["sh","-c",...]`) are neither checked nor warned about, on any vendor. When the command text mentions `engram` and can be parsed statically, shared memory and memlock are derived by the same rules as engine mode; when it mentions `engram` but cannot be parsed, only a warning is shown and nothing is derived.
+
+Some inherited specs also have individual hardware results: health/chat for GLM-4.6V-Flash, Qwen3.6-35B-A3B, Qwen3.5-122B-A10B and Qwen3-Next-80B-A3B-Instruct, plus A3 image selection, health and a speech request for Qwen3-TTS. These results cover only the named specs and must not be extended to every inherited spec.
+
+Every new Ascend template must pin a complete immutable weight snapshot. A per-file `Revision` returned by the ModelScope file API is not necessarily a complete repository snapshot; one file's revision must not be presented as the snapshot of the entire model.
+
+### Startup and Runtime Boundaries
+
+The GLM-5.3-Flash Docker result applies only to the pinned rc2 A3 image under native Docker. Under runveil/PRoot, CANN Fill/Transpose tiling registration failures or thread starvation remain even after bypassing the Python operator and group-initialization issues, so this spec does not claim runveil support. Docker does not inject the PRoot compatibility script. The MiniMax-M3 Docker result likewise does not extend to runveil.
+
+Shared Ascend container device nodes (`davinci_manager`, `devmm_svm`, `hisi_hdc`, `ummu` and `uburma`) are passed through only when present on the host; every selected `/dev/davinciN` must be passed to the container. Multi-node specs do not hardcode interface names. The agent discovers the interface from the node's advertised IP and fills the collective-communication variables, while explicit settings retain precedence.
+
+Nodes with host CANN check each die by creating an ACL context and allocating 4 KiB. Only failure explicitly attributable to that die marks it `runtime_unusable`. A driver-only node without `libascendcl.so` skips the check rather than treating a missing tool as a hardware fault. See [Runtime-Unusable Cards](../how-to/troubleshooting.md#某张卡运行时不可用或驱动初始化失败) for failure classification, backoff and diagnosis.
 
 ## Coverage Levels
 
@@ -107,8 +153,7 @@ Card layout is determined from the `npu-smi info` table, consistent with zstack-
   The 910C chip name column shows `Ascend910` (without a suffix), with two chips per NPU (Chip 0/1); GPUWorks records these chips as model `910C`.
   The first-generation 910 is a single-chip card with the same name and is not identified as 910C. The device number is the chip's Phy-ID; chips without a Phy-ID cannot be mapped to a device and are not reported.
 
-Basis for using Phy-ID consistently as the device number (read-only verification on two 910C hosts on 2026-10-02; records at
-`artifacts/archive/2026-10-02-gpu-identity/evidence/`):
+The basis for using Phy-ID consistently as the device number is read-only verification on two 910C hosts on 2026-10-02:
 
 | Use | Numbering |
 |---|---|

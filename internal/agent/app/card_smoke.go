@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"strings"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
@@ -18,51 +19,76 @@ import (
 // vendor's own runtime check says whether a card answers. None of those
 // three knows about the others.
 
-// startCardSmoke runs the periodic per-card runtime check, on the vendors
-// whose runtime can be asked on the host at all
-// (accelerator.VendorHasHostRuntimeCheck). A card on any other vendor keeps
-// the verdict its CLI gave it.
+// startCardSmoke runs the periodic per-card runtime check on vendors with a
+// host runtime check. Other vendors keep the verdict their CLI gave them.
 func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
-	if n.prober == nil || !accelerator.VendorHasHostRuntimeCheck(n.prober.Vendor()) {
+	if n.prober == nil {
+		return
+	}
+	check, ok := gpu.HostRuntimeCheckFor(n.prober.Vendor())
+	if !ok {
 		return
 	}
 	// Hermetic probers describe cards that do not exist; asking the host's
-	// libcuda about them would test the host, not the fixture.
+	// own runtime about them would test the host, not the fixture.
 	if gpu.IsSynthetic(n.prober) {
 		return
 	}
 	n.cardSmoke = cardsmoke.New(cardsmoke.Config{
-		Cards: n.smokeCards,
-		Try:   func(ctx context.Context, card cardsmoke.Card) error { return gpu.CUDARuntimeSmokeOn(ctx, card.Visible) },
+		Cards: func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
+		Try:   cardSmokeAttempt(check),
 		Busy: func(card cardsmoke.Card) bool {
-			// A card whose owner is not known yet is left alone: creating
-			// a context on a card that is serving can disturb it.
-			ours, known := n.cardsInUse()
-			return !known || ours[card.Ident]
+			ours, _ := n.cardsInUse()
+			return ours[card.Ident]
 		},
-		Unavailable: n.smokeUnavailable,
+		// Until the control plane says what this node runs, no card can be
+		// told apart from one that is serving, and creating a context on a
+		// card that is serving can disturb it. That is the whole round's
+		// answer rather than each card's, so the round is retried once
+		// instead of leaving every card on the vendor tool's verdict for
+		// an interval.
+		Deferred: func() string {
+			if _, known := n.cardsInUse(); known {
+				return ""
+			}
+			return "what this node runs is not known yet; the runtime check waits for the control plane"
+		},
+		Unavailable: func() string { return smokeUnavailable(check) },
+		Timeout:     check.Timeout,
 	})
 	go n.cardSmoke.Run(ctx)
 }
 
-// smokeCards are the cards worth asking: this node's own, named by UUID so
-// the runtime cannot be pointed at a different card than the one meant —
-// a device index shifts whenever the set of working cards changes.
-func (n *NodeRuntime) smokeCards(ctx context.Context) []cardsmoke.Card {
+// cardSmokeAttempt translates a runtime that never reached the card into the
+// scheduler's host-level inconclusive answer.
+func cardSmokeAttempt(check gpu.HostRuntimeCheck) func(context.Context, cardsmoke.Card) error {
+	return func(ctx context.Context, card cardsmoke.Card) error {
+		err := check.Try(ctx, card.Visible)
+		if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
+			return cardsmoke.Inconclusive(reason)
+		}
+		return err
+	}
+}
+
+// smokeCards lists only this node's own cards that the vendor check can name
+// without risking another card.
+func (n *NodeRuntime) smokeCards(ctx context.Context, check gpu.HostRuntimeCheck) []cardsmoke.Card {
 	gpus, err := n.prober.Probe(ctx)
 	if err != nil && len(gpus) == 0 {
 		return nil
 	}
 	cards := make([]cardsmoke.Card, 0, len(gpus))
 	for _, g := range gpus {
-		if !accelerator.CardUsable(g.Ownership) || g.UUID == "" {
-			// A card this node does not own cannot be tried, and one with
-			// no UUID cannot be named to the runtime without risking
-			// another card.
+		if !accelerator.CardUsable(g.Ownership) {
+			continue
+		}
+		visible, named := check.Visible(g)
+		if !named {
 			continue
 		}
 		if ident := accelerator.CardIdent(g.UUID, g.PCIeBDF); ident != "" {
-			cards = append(cards, cardsmoke.Card{Ident: ident, Visible: g.UUID})
+			cards = append(cards, cardsmoke.Card{Ident: ident, Visible: visible})
 		}
 	}
 	return cards
@@ -70,15 +96,12 @@ func (n *NodeRuntime) smokeCards(ctx context.Context) []cardsmoke.Card {
 
 // smokeUnavailable says why no card can be tried right now, or "". A driver
 // that is not answering would make every attempt queue on the same lock,
-// and a host without python3 or libcuda cannot run the check at all.
-func (n *NodeRuntime) smokeUnavailable() string {
-	if gpu.VendorCLISlow("nvidia-smi") {
+// and a host without the vendor runtime cannot run the check at all.
+func smokeUnavailable(check gpu.HostRuntimeCheck) string {
+	if gpu.VendorCLISlow(check.CLI) {
 		return "the accelerator driver is not answering; the runtime check waits for it"
 	}
-	if reason := gpu.CUDASmokePrerequisite(); reason != "" {
-		return reason
-	}
-	return ""
+	return check.Prerequisite()
 }
 
 // CardHealthFindings folds this agent's own verdicts into the cards it is
@@ -118,10 +141,16 @@ func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUIn
 		if accelerator.MostSevereHealth(card.HealthCode, accelerator.HealthRuntimeUnusable) != accelerator.HealthRuntimeUnusable {
 			continue
 		}
-		gpu.SetCardFinding(card, accelerator.HealthRuntimeUnusable, []accelerator.HealthField{
-			{Name: "Runtime Check", Value: "failed"},
-			{Name: "Checked At", Value: outcome.At.UTC().Format("2006-01-02 15:04:05Z")},
-			{Name: "Detail", Value: strings.TrimSpace(outcome.Detail)},
-		})
+		gpu.SetCardFinding(card, accelerator.HealthRuntimeUnusable, runtimeUnusableEvidence(outcome.At, outcome.Detail))
+	}
+}
+
+// runtimeUnusableEvidence is what a runtime_unusable finding carries, however
+// the failed attempt came about (the periodic check or Doctor).
+func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthField {
+	return []accelerator.HealthField{
+		{Name: "Runtime Check", Value: "failed"},
+		{Name: "Checked At", Value: at.UTC().Format("2006-01-02 15:04:05Z")},
+		{Name: "Detail", Value: strings.TrimSpace(detail)},
 	}
 }

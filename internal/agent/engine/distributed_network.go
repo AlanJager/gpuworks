@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -12,9 +13,29 @@ import (
 
 const vllmHostIPEnv = "VLLM_HOST_IP"
 
-var distributedSocketInterfaceEnv = [...]string{
-	"GLOO_SOCKET_IFNAME",
-	"NCCL_SOCKET_IFNAME",
+// The socket-interface variables a distributed launch needs pointed at the
+// interface this node is reached on, per accelerator vendor. The collective
+// library is the vendor's: NCCL on NVIDIA, HCCL on Ascend, and vLLM-Ascend
+// additionally reads TP_SOCKET_IFNAME for its tensor-parallel socket.
+//
+// Filling them is what keeps an Ascend template from having to name an
+// interface it cannot know — the name belongs to the node, not to the recipe
+// — but a vendor is only ever given its own variables: naming all of them
+// everywhere would start resolving an interface for NVIDIA launches that
+// never needed one, and inject Ascend variables into CUDA containers.
+var distributedSocketInterfaceEnv = map[string][]string{
+	accelerator.VendorNVIDIA: {"GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME"},
+	accelerator.VendorAscend: {"GLOO_SOCKET_IFNAME", "HCCL_SOCKET_IFNAME", "TP_SOCKET_IFNAME"},
+}
+
+// socketInterfaceEnvFor is the variables to fill on this node. A vendor with
+// no entry keeps the pair vLLM has always needed and nothing else: an unknown
+// accelerator is not a reason to start naming another vendor's collective.
+func socketInterfaceEnvFor(vendor string) []string {
+	if keys, ok := distributedSocketInterfaceEnv[accelerator.NormalizeVendor(vendor)]; ok {
+		return keys
+	}
+	return distributedSocketInterfaceEnv[accelerator.VendorNVIDIA]
 }
 
 // EngineOption customizes an Engine dependency while preserving production
@@ -32,13 +53,15 @@ func WithNetworkInterfaceResolver(resolve func(string) (string, error)) EngineOp
 }
 
 // applyDistributedNetworkInterface replaces vLLM's empty multi-node socket
-// interface markers with the host interface that owns VLLM_HOST_IP. The
-// distributed containers use host networking, so the host interface name is
-// also valid inside Docker and udocker. Explicit user overrides remain
-// authoritative.
+// interface markers with the host interface that owns VLLM_HOST_IP. Which
+// markers those are is the node's accelerator vendor's business
+// (socketInterfaceEnvFor). The distributed containers use host networking, so
+// the host interface name is also valid inside Docker and udocker. Explicit
+// user overrides remain authoritative.
 func applyDistributedNetworkInterface(
 	ws *runtime.WorkloadSpec,
 	spec proto.InstanceDesiredState,
+	vendor string,
 	resolve func(string) (string, error),
 ) error {
 	if spec.NNodes <= 1 || !strings.EqualFold(strings.TrimSpace(spec.Engine), engines.VLLM) {
@@ -54,8 +77,9 @@ func applyDistributedNetworkInterface(
 		ws.Env = map[string]string{}
 	}
 
+	keys := socketInterfaceEnvFor(vendor)
 	needsResolution := false
-	for _, key := range distributedSocketInterfaceEnv {
+	for _, key := range keys {
 		if strings.TrimSpace(ws.Env[key]) == "" {
 			needsResolution = true
 			break
@@ -81,7 +105,7 @@ func applyDistributedNetworkInterface(
 		return fmt.Errorf("resolve interface for %s=%q: empty interface name", vllmHostIPEnv, hostIP)
 	}
 
-	for _, key := range distributedSocketInterfaceEnv {
+	for _, key := range keys {
 		if strings.TrimSpace(ws.Env[key]) == "" {
 			ws.Env[key] = interfaceName
 		}
@@ -134,4 +158,14 @@ func networkInterfaceNameForIP(rawIP string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no active host interface owns IP %s", want)
+}
+
+// proberVendor is this node's accelerator vendor, or "" when there is no
+// prober to ask. It decides which collective library's variables a
+// distributed launch gets.
+func (e *Engine) proberVendor() string {
+	if e.prober == nil {
+		return ""
+	}
+	return e.prober.Vendor()
 }

@@ -2,19 +2,19 @@ package deploy
 
 import "strings"
 
-// memlockUnlimitedArgs lift the container's locked-memory limit entirely. Both
-// sources of the option, the host RDMA network and a template spec's
-// memlock_unlimited, come out as this one pair.
+// memlockUnlimitedArgs lift the container's locked-memory limit entirely. The
+// host RDMA network, a template spec's memlock_unlimited and Engram shared
+// memory all use this one pair.
 var memlockUnlimitedArgs = [2]string{"--ulimit", "memlock=-1:-1"}
 
 // launchDockerArgs is the docker args a launch ends with: the deployment's own
 // args, then the options the platform adds. A memlock ulimit is added at most
 // once, and only when the deployment's own args state none: a deployer who
 // states a locked-memory limit has chosen it, whatever the template spec
-// (memlock_unlimited) or the RDMA network would have asked for.
-func launchDockerArgs(own []string, p Params, templateMemlockUnlimited bool) []string {
+// (memlock_unlimited), RDMA network or Engram shared memory would have asked for.
+func launchDockerArgs(own []string, p Params, memlockUnlimited bool) []string {
 	args := withComputeNetworkDockerArgs(append([]string(nil), own...), p)
-	if templateMemlockUnlimited && !hasMemlockUlimit(args) {
+	if memlockUnlimited && !hasMemlockUlimit(args) {
 		args = append(args, memlockUnlimitedArgs[0], memlockUnlimitedArgs[1])
 	}
 	return args
