@@ -48,7 +48,7 @@
   估算器负责产生数值；OpenAI 兼容 LLM 在预组装上下文上跑只读工具 agent 循环。未配置 LLM 时，规则命中与适配表仍可用。
 
   同一套工具经 MCP 对外提供：协议在叶子包 `mcp`（JSON-RPC、版本协商、方法分发，不认识调用者与工具），`api/mcp.go` 只做开关、限流并以调用者身份运行工具（`aihelper.Tool.Run`，与助手的 agent 循环同一份调用、报错与截断）。鉴权用平台 API 令牌（`api/platform_tokens.go`）：`managementAuth` 识别会话或令牌，令牌范围由路由声明（`sessionOnly`、`readTokensRead`，见 `api/auth.go`）；校验结果在 `store` 里短时缓存，吊销即失效。
-- `provider` / `provision`：云厂商（aliyun/runpod/compshare/autodl/vast/zstack）租机与 SSH 预检查/安装接入。
+- `provider` / `provision`：云厂商（aliyun/digitalocean/runpod/compshare/autodl/vast/zstack）租机与 SSH 预检查/安装接入。
 
   阿里云签 V3 请求、经云助手（`provider.ConnectionCloudAssistant`，一种不走 SSH 的连接方式）安装；`provision/connectivity.go` 是预检查里节点↔server 双向连通判断的唯一实现。SSH 安装（Linux 与 Mac）都是上传 agent 与 `installscript.Script` 后运行它（`provision/install_script.go`，`install_command.go` 生成 curl 与离线包两种手工安装命令），启动配置由脚本经 `gpuworks-agent configure` 记下，不在 provision 里另拼 systemd/nohup 启动命令。
 
@@ -89,7 +89,7 @@
 - `diagnostics`：远程排查。调试采集（server 与所选节点的 debug 会话、所选部署请求原文的记录，一次一个、按时长与大小自动结束）与诊断信息收集（时间范围内的日志、调试采集文件、节点诊断与脱敏的数据库快照打包下载）；数据源由 `app/diagnostics_sources.go` 提供，`gpuworks support-bundle` 走同一套收集。
 - `usagereport`：用户体验改进计划（ADR 0054，字段见 `docs/reference/usage-report.md`）：叶子包，日报结构与裁剪、进程内计数器（API 路由/错误码/panic、登录、agent 连接问题，由 `api.countUsage` 中间件与 hub 写入）、SLS WebTracking 与 Cloudflare 收集端的发送、每日发送时刻，以及检查更新附带的装机规模 `FleetReport`；库侧日汇总是 `store/usage_report.go`，调度与组装在 `app/usage_report.go`，通知铃铛服务在 `app/notices.go`。
 - `kubemanifest`：叶子包，Kubernetes 集群接入 manifest（Namespace、RBAC、Secret、PriorityClass、agent DaemonSet）的纯函数渲染；集群接入与 enroll 接口在 `api/kube.go`，离开集群的节点回收在 `app/kube_nodes.go`（ADR 0052）。
-- `kubeapply`：叶子包，用一份 kubeconfig（只认文件里自带的证书或 token）把 `kubemanifest` 渲染的对象 server-side apply 到 API server 或删除，支持 dry run，返回逐对象结果；kubeconfig 由 `provider.ClusterProvider` 为一次操作现发（ADR 0054）。`provider/cluster.go` 是集群能力：列出云账号的托管集群与 GPU 节点池、签发 kubeconfig、应用与卸载；阿里云实现在 `provider/aliyun/ack.go`。
+- `kubeapply`：叶子包，用一份 kubeconfig（只认文件里自带的证书或 token）把 `kubemanifest` 渲染的对象 server-side apply 到 API server 或删除，支持 dry run，返回逐对象结果；kubeconfig 由 `provider.ClusterProvider` 为一次操作现发（ADR 0062）。`provider/cluster.go` 是集群能力：列出云账号的托管集群与 GPU 节点池、签发 kubeconfig、应用与卸载；阿里云实现在 `provider/aliyun/ack.go`。
 - `bus`：事件发布。**不用 ORM 钩子**，写操作收敛进 `store` 显式方法，事务提交后 publish。
 - `experiencelaunch`：设置页「功能体验模式」开关背后的启动器：在控制台端口 +10 起停独立的 `gpuworks experience` 进程（自己的数据目录与密码），`gpuworks experience` 的命令行契约（子命令与 flag 名）只定义在这里。
 

@@ -397,7 +397,7 @@ macOS 忽略 `no_systemd`。
 - `schedulable`：恢复调度，等待中的副本立即重试。
 
 节点的 `scheduling_by` 说明当前状态是谁设的：`operator`（经这个接口设的）或 `platform`（平台自动停止调度）；可调度或升级前就停止的节点没有这个字段。
-平台只解除自己设的停止调度。`scheduling_by` 为 `platform` 时，`cordon_reason` 给出现在的原因：`runtime_gpu_blocked`（运行时给不了容器加速卡）或 `card_needs_host_reboot`（有卡要重启主机或断电才能恢复）。
+平台只解除自己设的停止调度。`scheduling_by` 为 `platform` 时，`cordon_reason` 给出现在的原因：`runtime_gpu_blocked`（运行时给不了容器加速卡）、`card_needs_host_reboot`（有卡要重启主机或断电才能恢复）或 `kube_unschedulable`（Kubernetes 已 cordon 该节点，Kubernetes 里 uncordon 后平台随之恢复）。
 平台停止调度后，经这个接口设为 `schedulable` 立即生效，原因还在时下一次上报会再次停止。
 
 `PATCH /api/v1/nodes/{uuid}/accelerator` 供一机多厂商选择管理哪家的卡。agent 接受后原地重启，选择才保存。
@@ -447,7 +447,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/kube/clusters` | 创建集群：`{name, server_url, namespace?(gpuworks-system), agent_image?, vendor?(nvidia\|ascend\|hygon\|ppu，默认 nvidia), node_selector?("k=v,k2=v2"), runtime_class?(只对 NVIDIA；空表示各节点自己判断：有 nvidia RuntimeClass 就用，没有用默认运行时), image_pull_secret?(命名空间里 docker-registry Secret 的名称，agent 镜像用它拉取；空表示不用), containerd_socket?(空表示 agent 自己找), state_dir?(/opt/gpuworks), api_server?("https://host:port"，空表示用集群的 kubernetes Service), engine_ports?(40000-42767), idle_return_seconds?(60), provider_id?, provider_cluster_id?(两者同给：从云账号的这个集群接入，见 GET /providers/{id}/clusters)}`，返回 201；参数不可用回 400 `KUBE_CLUSTER_INVALID`（`field`、`reason`），重名回 409 `KUBE_CLUSTER_NAME_TAKEN`；同一来源集群已接入过回 409 `KUBE_CLUSTER_SOURCE_TAKEN`（`cluster`） | JWT(admin) |
 | GET | `/api/v1/kube/clusters/{uuid}/manifest` | 集群的 manifest（`application/yaml`） | JWT(admin) |
 | POST | `/api/v1/kube/clusters/{uuid}/revoke` | 吊销接入令牌：已接入节点不受影响，新节点不能再接入 | JWT(admin) |
-| POST | `/api/v1/kube/clusters/{uuid}/apply` | 把集群的 manifest 应用到它的来源集群：`{dry_run}`（必填，缺省回 400 `KUBE_CLUSTER_INVALID`，不会默认执行）；server 向云账号现取短期 kubeconfig（不保存，ADR 0054），逐个对象 server-side apply，`dry_run` 时只让 API server 检查。返回 `{dry_run, results:[{kind,name,namespace?,action(create\|update\|failed\|not_tried\|dependent),error?}]}`；云账号签不出凭据或集群拒绝时回 424，体内同样带 `results`，另有 `code: KUBE_CLUSTER_OPERATION_FAILED`、`params:{step(kubeconfig\|api_server),reason}`；手动建的条目或云账号已删除回 409 `KUBE_CLUSTER_NO_SOURCE` | JWT(admin) |
+| POST | `/api/v1/kube/clusters/{uuid}/apply` | 把集群的 manifest 应用到它的来源集群：`{dry_run}`（必填，缺省回 400 `KUBE_CLUSTER_INVALID`，不会默认执行）；server 向云账号现取短期 kubeconfig（不保存，ADR 0062），逐个对象 server-side apply，`dry_run` 时只让 API server 检查。返回 `{dry_run, results:[{kind,name,namespace?,action(create\|update\|failed\|not_tried\|dependent),error?}]}`；云账号签不出凭据或集群拒绝时回 424，体内同样带 `results`，另有 `code: KUBE_CLUSTER_OPERATION_FAILED`、`params:{step(kubeconfig\|api_server),reason}`；手动建的条目或云账号已删除回 409 `KUBE_CLUSTER_NO_SOURCE` | JWT(admin) |
 | POST | `/api/v1/kube/clusters/{uuid}/remove` | 从来源集群删除 manifest 的对象（先删 DaemonSet，集群里其他 gpuworks namespace 仍在用的 PriorityClass 保留，`action` 另有 `delete\|absent\|kept`+`reason`）；请求、响应与错误同 apply | JWT(admin) |
 | DELETE | `/api/v1/kube/clusters/{uuid}` | 删除集群，返回 204；仍有节点时回 409 `KUBE_CLUSTER_HAS_NODES` | JWT(admin) |
 | GET | `/kube/manifest.yaml?token=` | 凭接入令牌取 manifest，供 `kubectl apply -f`；令牌未知或已吊销回 404 | 接入令牌 |

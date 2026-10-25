@@ -16,8 +16,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/version"
 )
 
-// Kubernetes clusters join as one DaemonSet (artifacts/work/
-// 2026-10-15-kubernetes-nodes/plan-v3.md): an administrator creates the
+// Kubernetes clusters join as one DaemonSet (docs/adr/0052-kubernetes-nodes.md):
+// an administrator creates the
 // cluster here, applies the manifest it renders, and every selected node's
 // agent trades the cluster's enrollment token for a node token of its own.
 

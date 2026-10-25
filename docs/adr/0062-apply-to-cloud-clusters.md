@@ -2,8 +2,6 @@
 
 日期：2026-10-22 · 状态：已接受（修订 [ADR 0052](0052-kubernetes-nodes.md) 第 2 条"server 不持有 kubeconfig、不连 apiserver"）
 
-依据：[公有云 Kubernetes 计划](../../artifacts/work/2026-10-22-cloud-kubernetes/plan.md)。
-
 ## 背景
 
 托管 Kubernetes（阿里云 ACK、DigitalOcean DOKS）接入时，用户要自己找 GPU 节点标签、执行 `kubectl apply`。而云账号已经在
