@@ -44,7 +44,7 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 					Engine: engine, Entrypoint: spec.Entrypoint, APIContract: spec.API, PlacementVariables: resolved.Variables,
 					Params: deploy.Params{
 						ModelPath: "/model", APIPort: 31417, NNodes: 1,
-						AssignedGPUs: count, TensorParallel: recipe.tp,
+						AssignedGPUs: count, TensorParallel: count,
 						TemplateArgs: spec.Args, TemplateEnv: spec.Env,
 					},
 				})

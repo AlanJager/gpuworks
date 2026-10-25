@@ -9,7 +9,7 @@ Single-node text inference with the official vLLM Ascend image, W8A8 weights, IN
 
 Counts refer to devices visible to the runtime. Eight dual-die physical cards normally expose 16 logical NPUs. Four 64 GiB devices cannot hold the approximately 309 GiB W8A8 weights; there is no four-device recipe.
 
-The context limit is 139264 tokens, allowing 128K input plus output. Prefill chunks are 2048 tokens, with a 512-token long-prefill threshold. Actual prefix hits depend on state-cache alignment and retention: priming 96K history does not guarantee only 32K uncached input on every request. The eight-device recipe does not imply capacity for 32 independent long histories.
+The context limit is 139264 tokens, allowing 128K input plus output. Prefill chunks are 2048 tokens, with a 512-token long-prefill threshold. Actual prefix hits depend on state-cache alignment and retention: priming 96K history does not guarantee only 32K uncached input on every request. Caches are independent across DP ranks; reuse also requires routing a request back to the rank holding its prefix. The eight-device recipe does not imply capacity for 32 independent long histories.
 
 ## Image and graphs
 
