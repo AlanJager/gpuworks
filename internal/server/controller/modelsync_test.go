@@ -311,15 +311,23 @@ func failPeerSync(t *testing.T, st *store.Store, model *store.Model, dst *store.
 func TestAutomaticPeerSyncFailureFallsBackToPublicDownload(t *testing.T) {
 	st, model, _, dst, dstMF := setupModelSyncController(t)
 	got, hub := failPeerSync(t, st, model, dst, dstMF)
-	if got.State != proto.MFPending || got.Acquisition != proto.ModelAcquireDownload ||
-		got.TransferSourceNodeID != 0 || got.TransferID != "" || got.Path != "huggingface/Qwen3" {
-		t.Fatalf("after a failed automatic peer sync = %+v, want a pending public download at the same path", got)
-	}
 	hub.mu.Lock()
 	updates, transferID := len(hub.updates), hub.requests[0].TransferID
+	var pushed []proto.ModelFileTask
+	if updates == 1 {
+		pushed = hub.updates[0].ModelFiles
+	}
 	hub.mu.Unlock()
+	// The fallback is a new transfer of its own, named in the pushed task.
+	if got.State != proto.MFPending || got.Acquisition != proto.ModelAcquireDownload ||
+		got.TransferSourceNodeID != 0 || got.TransferID == "" || got.TransferID == transferID || got.Path != "huggingface/Qwen3" {
+		t.Fatalf("after a failed automatic peer sync = %+v, want a pending public download at the same path", got)
+	}
 	if updates != 1 {
 		t.Fatalf("pushes to the target = %d, want the download pushed once", updates)
+	}
+	if len(pushed) != 1 || pushed[0].Acquisition != proto.ModelAcquireDownload || pushed[0].TransferID != got.TransferID {
+		t.Fatalf("pushed task = %+v, want the download named %q", pushed, got.TransferID)
 	}
 	// The failed transfer's own late report must not undo the fallback.
 	if err := st.UpdateModelFileStatus(dst.ID, proto.ModelFileStatus{

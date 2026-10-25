@@ -140,7 +140,7 @@ func TestExplicitAcquisitionChoiceClearsPeerTransferIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mf.State != proto.MFPending || mf.Acquisition != proto.ModelAcquireDownload || mf.TransferID != "" ||
+	if mf.State != proto.MFPending || mf.Acquisition != proto.ModelAcquireDownload || mf.TransferID == "" || mf.TransferID == "old-transfer" ||
 		mf.TransferSourceNodeID != 0 || mf.Downloaded != 0 || mf.TransferredBytes != 0 || mf.RateBPS != 0 || mf.Message != "" {
 		t.Fatalf("public download preparation = %+v", mf)
 	}
@@ -157,7 +157,7 @@ func TestExplicitAcquisitionChoiceClearsPeerTransferIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ds.ModelFiles) != 1 || ds.ModelFiles[0].Acquisition != proto.ModelAcquireDownload || ds.ModelFiles[0].TransferID != "" {
+	if len(ds.ModelFiles) != 1 || ds.ModelFiles[0].Acquisition != proto.ModelAcquireDownload || ds.ModelFiles[0].TransferID != mf.TransferID {
 		t.Fatalf("download desired state = %+v", ds.ModelFiles)
 	}
 	mf, err = st.RegisterModelFile(FileRef{ModelID: model.ID, NodeID: node.ID}, "/registered/model", 2048)
