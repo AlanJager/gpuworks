@@ -111,15 +111,14 @@ func TestEvictedWriterSnapshotCannotRecreateModel(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "source")
 	writeModel(t, source, "new weights")
 	task := modelWriterTask("snapshot", "org/model", proto.ModelAcquireCopy, source, "")
-	intent := r.beginModelFileIntent(task)
-	if !r.parkWriterModelFile(intent) {
+	if !r.parkWriterModelFile(task, false) {
 		t.Fatal("writer was not parked")
 	}
 	r.storage.mu.RLock()
 	snapshot, ok := r.storage.writerWaiting[task.Key]
 	r.storage.mu.RUnlock()
-	if !ok || snapshot.generation != intent.generation {
-		t.Fatalf("writer snapshot = %+v, %v; want generation %d", snapshot, ok, intent.generation)
+	if !ok || !sameModelFileTask(snapshot, task) {
+		t.Fatalf("writer snapshot = %+v, %v; want %+v", snapshot, ok, task)
 	}
 	target := filepath.Join(r.ModelsRoot(), "org", "model")
 	writeModel(t, target, "old weights")
@@ -127,9 +126,9 @@ func TestEvictedWriterSnapshotCannotRecreateModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// This is the intent wakeModelWriters copied before eviction. Its first
-	// current check must reject it before it can register a new writer.
-	r.reconcileParkedModelFile(context.Background(), snapshot)
+	// This is the task wakeModelWriters copied before eviction. Eviction
+	// forgot it, so the retry must not register a new writer for it.
+	r.retryParkedModelFile(context.Background(), snapshot)
 	r.dlMu.Lock()
 	active := r.downloading[task.Key]
 	r.dlMu.Unlock()
@@ -148,14 +147,14 @@ func TestEvictedWriterSnapshotCannotRecreateModel(t *testing.T) {
 	}
 
 	next := task
-	next.TransferID = "next-generation"
+	next.TransferID = "next-transfer"
 	r.reconcileModelFile(context.Background(), next)
 	if got := r.waitFile(t, task.Key, proto.MFPresent); got.TransferID != next.TransferID {
-		t.Fatalf("new generation status = %+v", got)
+		t.Fatalf("new transfer status = %+v", got)
 	}
 	data, err := os.ReadFile(filepath.Join(target, "model.safetensors"))
 	if err != nil || string(data) != "new weights" {
-		t.Fatalf("new generation contents = %q, err=%v", data, err)
+		t.Fatalf("new transfer contents = %q, err=%v", data, err)
 	}
 	r.dlMu.Lock()
 	active = r.downloading[task.Key]
@@ -164,7 +163,7 @@ func TestEvictedWriterSnapshotCannotRecreateModel(t *testing.T) {
 		select {
 		case <-active.done:
 		case <-time.After(5 * time.Second):
-			t.Fatal("new generation writer did not unregister")
+			t.Fatal("new transfer writer did not unregister")
 		}
 	}
 	assertNoModelTaskWaiting(t, r)
@@ -187,7 +186,7 @@ func TestStorageCheckSnapshotIsFencedByEviction(t *testing.T) {
 	target := filepath.Join(cache, "org", "model")
 	writeModel(t, target, "old weights")
 
-	original := completionOnDiskForIntent
+	original := completionOnDiskForTask
 	started, release := make(chan struct{}), make(chan struct{})
 	released := false
 	releaseRead := func() {
@@ -196,7 +195,7 @@ func TestStorageCheckSnapshotIsFencedByEviction(t *testing.T) {
 			released = true
 		}
 	}
-	completionOnDiskForIntent = func(n *NodeRuntime, mf proto.ModelFileTask, dir string) (modelCompletion, int64, bool, error) {
+	completionOnDiskForTask = func(n *NodeRuntime, mf proto.ModelFileTask, dir string) (modelCompletion, int64, bool, error) {
 		if mf.Key != task.Key {
 			return original(n, mf, dir)
 		}
@@ -206,7 +205,7 @@ func TestStorageCheckSnapshotIsFencedByEviction(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		releaseRead()
-		completionOnDiskForIntent = original
+		completionOnDiskForTask = original
 	})
 	checked := make(chan struct{})
 	go func() {
@@ -228,8 +227,8 @@ func TestStorageCheckSnapshotIsFencedByEviction(t *testing.T) {
 		t.Fatal("storage-check snapshot did not return")
 	}
 
-	// The snapshot was already past its first current check when eviction ran.
-	// Its second check, immediately before active registration, must fence it.
+	// The snapshot was already past its first look at the queue when eviction
+	// ran. The check immediately before active registration must fence it.
 	r.dlMu.Lock()
 	active := r.downloading[task.Key]
 	r.dlMu.Unlock()

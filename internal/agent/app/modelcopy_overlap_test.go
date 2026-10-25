@@ -29,11 +29,11 @@ func startBlockedModelWriter(t *testing.T, r *storageTestRuntime, key, target st
 	started, release := make(chan struct{}), make(chan struct{})
 	run := func(context.Context) { close(started); <-release }
 	r.dlMu.Lock()
+	transferID := ""
 	if copyWriter {
-		r.startTransferLocked(context.Background(), key, target, run, "owner-transfer")
-	} else {
-		r.startTransferLocked(context.Background(), key, target, run)
+		transferID = "owner-transfer"
 	}
+	r.startTransferLocked(context.Background(), key, target, copyWriter, transferID, run)
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):
@@ -185,21 +185,21 @@ func TestContenderRegistrationCannotMissOwnerWake(t *testing.T) {
 			}
 			owner := startBlockedModelWriter(t, r, ownerKey, ownerTarget, test.ownerCopy)
 
-			original := parkWriterModelFileForIntent
+			original := parkWriterModelFileForTask
 			atPark, allowPark := make(chan struct{}), make(chan struct{})
 			var parkOnce, allowOnce sync.Once
-			parkWriterModelFileForIntent = func(n *NodeRuntime, intent modelFileIntent) bool {
-				if intent.task.Key != task.Key {
-					return original(n, intent)
+			parkWriterModelFileForTask = func(n *NodeRuntime, parked proto.ModelFileTask, retry bool) bool {
+				if parked.Key != task.Key {
+					return original(n, parked, retry)
 				}
 				parkOnce.Do(func() { close(atPark) })
 				<-allowPark
-				return original(n, intent)
+				return original(n, parked, retry)
 			}
 			allow := func() { allowOnce.Do(func() { close(allowPark) }) }
 			t.Cleanup(func() {
 				allow()
-				parkWriterModelFileForIntent = original
+				parkWriterModelFileForTask = original
 			})
 			reconciled := make(chan struct{})
 			go func() {
@@ -432,7 +432,7 @@ func TestCopyConcurrencyLimitParksAdditionalWriter(t *testing.T) {
 	}
 }
 
-func TestStaleStorageRetryCannotCancelNewCopyGeneration(t *testing.T) {
+func TestStaleStorageRetryCannotCancelNewCopyTransfer(t *testing.T) {
 	r := newStorageTestRuntime(t)
 	if err := os.MkdirAll(r.ModelsRoot(), 0o755); err != nil {
 		t.Fatal(err)
@@ -466,8 +466,8 @@ func TestStaleStorageRetryCannotCancelNewCopyGeneration(t *testing.T) {
 	r.storage.mu.RLock()
 	b1 := r.storage.writerWaiting[task.Key]
 	r.storage.mu.RUnlock()
-	if b1.generation == 0 {
-		t.Fatal("B1 has no generation")
+	if b1.TransferID != "B1" {
+		t.Fatalf("parked task = %+v, want B1", b1)
 	}
 
 	owner.finish(t)
@@ -502,10 +502,9 @@ func TestStaleStorageRetryCannotCancelNewCopyGeneration(t *testing.T) {
 		}
 	}
 
-	r.storage.mu.Lock()
-	r.storage.waiting[task.Key] = b1.task
-	r.storage.waitingGeneration[task.Key] = b1.generation
-	r.storage.mu.Unlock()
+	// A storage check took its snapshot of B1 before B2 replaced it. By the time
+	// the retry runs, nothing is parked for the key, so B1 has no standing.
+	r.retryParkedModelFile(context.Background(), b1)
 	r.checkStorages(context.Background(), true)
 
 	if got := b2Cancels.Load(); got != 0 {

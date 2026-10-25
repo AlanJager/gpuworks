@@ -45,25 +45,27 @@ type modelDownload struct {
 // reconcileModelFile ensures a model repo is present at its target path,
 // downloading it (all repo files) in the background if needed and reporting
 // progress. Idempotent: a repo already present short-circuits to "present".
+// A task from the server is the newest word on its key, so whatever was parked
+// for the key is replaced by it.
 func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFileTask) {
-	n.reconcileModelFileIntent(ctx, n.beginModelFileIntent(mf))
+	n.dropWaiting(mf.Key)
+	n.reconcileModelFileTask(ctx, mf, false)
 }
 
-func (n *NodeRuntime) reconcileModelFileIntent(ctx context.Context, intent modelFileIntent) {
-	mf := intent.task
-	if !n.modelFileIntentCurrent(intent) {
-		return
-	}
+// reconcileModelFileTask is reconcileModelFile for a task that is not already
+// replacing the parked one: retry marks a task run from a queue snapshot, which
+// acts only while it is still the task parked for its key.
+func (n *NodeRuntime) reconcileModelFileTask(ctx context.Context, mf proto.ModelFileTask, retry bool) {
 	fail := func(err error) {
-		n.clearModelFileWaiting(intent)
-		n.failModelFileIntent(intent, err)
+		if n.settleParkedModelFile(mf, retry) {
+			n.failModelFile(mf, err)
+		}
 	}
 	if mf.DesiredState != "present" {
 		// Withdrawn: a task parked for its storage must not run when the
-		// storage recovers.
-		n.dropWaiting(mf.Key)
+		// storage recovers, and the transfer that was writing for it stops.
 		n.dlMu.Lock()
-		if active := n.downloading[mf.Key]; active != nil && active.copy {
+		if active := n.downloading[mf.Key]; active != nil {
 			active.cancel()
 		}
 		n.dlMu.Unlock()
@@ -80,7 +82,7 @@ func (n *NodeRuntime) reconcileModelFileIntent(ctx context.Context, intent model
 		return
 	}
 	if !ready {
-		n.waitForStorage(intent)
+		n.waitForStorage(mf, retry)
 		return
 	}
 	absTarget, err := resolveStorageTarget(root, taskTarget(mf))
@@ -98,7 +100,7 @@ func (n *NodeRuntime) reconcileModelFileIntent(ctx context.Context, intent model
 		}
 	}
 
-	if n.copyTaskRunningIntent(intent) {
+	if n.copyTaskRunning(mf, retry) {
 		return
 	}
 	// Public downloads are trusted only with a completion marker whose entire
@@ -107,15 +109,17 @@ func (n *NodeRuntime) reconcileModelFileIntent(ctx context.Context, intent model
 	// local structural validation while still reporting their real byte size.
 	// The marker lives on the storage, which may be a hung NFS mount: it is read
 	// outside dlMu, which every download and eviction on the node takes.
-	marker, size, complete, err := completionOnDiskForIntent(n, mf, absTarget)
+	marker, size, complete, err := completionOnDiskForTask(n, mf, absTarget)
 	if err != nil {
 		n.log.Debug("model file check postponed: the storage did not answer", "key", mf.Key, "path", absTarget, "err", err)
-		n.parkStorageModelFile(intent) // the next storage check retries it; an immediate retry would only spin
+		n.parkStorageModelFile(mf, retry) // the next storage check retries it; an immediate retry would only spin
 		return
 	}
 	if complete {
-		n.clearModelFileWaiting(intent)
-		n.reportModelFileWithIntent(context.Background(), intent, proto.ModelFileStatus{
+		if !n.settleParkedModelFile(mf, retry) {
+			return
+		}
+		n.reportModelFile(proto.ModelFileStatus{
 			Key: mf.Key, State: proto.MFPresent, Path: absTarget,
 			BytesTotal: size, BytesDone: size,
 			Revision:    manifestRevision(marker.Files),
@@ -124,73 +128,75 @@ func (n *NodeRuntime) reconcileModelFileIntent(ctx context.Context, intent model
 		return
 	}
 	n.dlMu.Lock()
-	if !n.modelFileIntentCurrent(intent) {
+	if retry && !n.modelFileParked(mf) { // evicted or replaced while the marker was read
 		n.dlMu.Unlock()
 		return
 	}
 	if n.downloading[mf.Key] != nil { // started while the marker was read
 		n.dlMu.Unlock()
-		n.clearModelFileWaiting(intent)
+		n.settleParkedModelFile(mf, retry)
 		return
 	}
 	copyWriter := mf.Acquisition == proto.ModelAcquireCopy
 	if (copyWriter || mf.Acquisition == proto.ModelAcquireDownload) && !n.writerSlotAvailableLocked(mf.Key, absTarget, copyWriter) {
-		parkWriterModelFileForIntent(n, intent)
+		parkWriterModelFileForTask(n, mf, retry)
 		n.dlMu.Unlock()
 		return
 	}
-	if copyWriter {
-		n.startModelFileTransferLocked(ctx, intent, absTarget, func(ctx context.Context) {
-			n.copyModelDir(ctx, mf, workDir, absTarget)
-		}, mf.TransferID)
-		return
-	}
-	if mf.Acquisition != proto.ModelAcquireDownload {
-		n.dlMu.Unlock()
-		trustedAtomicPeer := mf.Acquisition == proto.ModelAcquirePeer && mf.TransferID != ""
-		if mf.Acquisition == proto.ModelAcquireRegistered || trustedAtomicPeer {
-			if size, err := validateModelDir(absTarget); err == nil {
-				n.reportModelFileWithIntent(context.Background(), intent, proto.ModelFileStatus{
-					Key: mf.Key, State: proto.MFPresent, Path: absTarget,
-					BytesTotal: size, BytesDone: size,
-					Acquisition: mf.Acquisition, TransferID: mf.TransferID,
-				})
-			} else if mf.Acquisition == proto.ModelAcquireRegistered && os.IsNotExist(err) {
-				n.reportModelFileWithIntent(context.Background(), intent, proto.ModelFileStatus{
-					Key: mf.Key, State: proto.MFAbsent, Path: absTarget,
-					Acquisition: proto.ModelAcquireRegistered,
-					Message:     "registered model path is absent: " + err.Error(),
-				})
-			}
+	if copyWriter || mf.Acquisition == proto.ModelAcquireDownload {
+		// Claiming the queue entry and registering the writer happen under the
+		// same dlMu hold that checked the slot, so an owner returning cannot
+		// miss this task and eviction cannot slip between the check and the start.
+		if !n.settleParkedModelFile(mf, retry) {
+			n.dlMu.Unlock()
+			return
 		}
-		n.clearModelFileWaiting(intent)
+		if copyWriter {
+			n.startTransferLocked(ctx, mf.Key, absTarget, true, mf.TransferID, func(ctx context.Context) {
+				n.copyModelDir(ctx, mf, workDir, absTarget)
+			})
+			return
+		}
+		n.startTransferLocked(ctx, mf.Key, absTarget, false, mf.TransferID, func(ctx context.Context) {
+			n.downloadRepo(ctx, mf, workDir, absTarget)
+		})
 		return
 	}
-	n.startModelFileTransferLocked(ctx, intent, absTarget, func(ctx context.Context) {
-		n.downloadRepo(ctx, mf, workDir, absTarget)
-	})
+	n.dlMu.Unlock()
+	if !n.settleParkedModelFile(mf, retry) {
+		return
+	}
+	trustedAtomicPeer := mf.Acquisition == proto.ModelAcquirePeer && mf.TransferID != ""
+	if mf.Acquisition == proto.ModelAcquireRegistered || trustedAtomicPeer {
+		if size, err := validateModelDir(absTarget); err == nil {
+			n.reportModelFile(proto.ModelFileStatus{
+				Key: mf.Key, State: proto.MFPresent, Path: absTarget,
+				BytesTotal: size, BytesDone: size,
+				Acquisition: mf.Acquisition, TransferID: mf.TransferID,
+			})
+		} else if mf.Acquisition == proto.ModelAcquireRegistered && os.IsNotExist(err) {
+			n.reportModelFile(proto.ModelFileStatus{
+				Key: mf.Key, State: proto.MFAbsent, Path: absTarget,
+				Acquisition: proto.ModelAcquireRegistered,
+				Message:     "registered model path is absent: " + err.Error(),
+			})
+		}
+	}
 }
 
 // startTransferLocked registers a transfer that writes target under key in
-// n.downloading and runs it in the background. When run returns, the goroutine
-// unregisters it and retries writer-waiting tasks after releasing dlMu. Eviction
-// cancels it through the registered cancel. The caller holds n.dlMu and has
-// checked that nothing is registered under key; startTransferLocked releases it.
-func (n *NodeRuntime) startTransferLocked(ctx context.Context, key, target string, run func(ctx context.Context), copyIdentity ...string) {
-	intent := modelFileIntent{task: proto.ModelFileTask{Key: key}}
-	n.startModelFileTransferLocked(ctx, intent, target, run, copyIdentity...)
-}
-
-func (n *NodeRuntime) startModelFileTransferLocked(ctx context.Context, intent modelFileIntent, target string, run func(ctx context.Context), copyIdentity ...string) {
-	key := intent.task.Key
+// n.downloading and runs it in the background. transferID is the server's name
+// for the transfer (empty from a server that predates download IDs); a copy is
+// told apart from a download because only a copy is canceled by a task naming
+// another transfer ID without a new download preparation. When run returns, the
+// goroutine unregisters it and retries writer-waiting tasks after releasing
+// dlMu. Eviction cancels it through the registered cancel. The caller holds
+// n.dlMu and has checked that nothing is registered under key;
+// startTransferLocked releases it.
+func (n *NodeRuntime) startTransferLocked(ctx context.Context, key, target string, copyWriter bool, transferID string, run func(ctx context.Context)) {
 	runCtx, cancel := context.WithCancel(ctx)
-	runCtx = withModelFileIntent(runCtx, intent)
-	active := &modelDownload{target: target, cancel: cancel, done: make(chan struct{})}
-	if len(copyIdentity) > 0 {
-		active.copy, active.transferID = true, copyIdentity[0]
-	}
+	active := &modelDownload{target: target, cancel: cancel, done: make(chan struct{}), copy: copyWriter, transferID: transferID}
 	n.downloading[key] = active
-	n.clearModelFileWaiting(intent)
 	n.dlMu.Unlock()
 	go func() {
 		defer close(active.done)
@@ -221,6 +227,9 @@ func (n *NodeRuntime) startModelFileTransferLocked(ctx context.Context, intent m
 func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, absTarget, finalTarget string) {
 	report := func(st proto.ModelFileStatus) {
 		if ctx.Err() == nil {
+			// The server names every download it prepares; echoing the name is
+			// what lets it drop the reports of a download it has since replaced.
+			st.TransferID = mf.TransferID
 			n.reportModelFileContext(ctx, st)
 		}
 	}
@@ -547,13 +556,7 @@ func repoFilesPresent(root string, files []modelrepo.File, approximate bool) (bo
 
 // failModelFile reports a task that cannot run at all.
 func (n *NodeRuntime) failModelFile(mf proto.ModelFileTask, err error) {
-	n.reportModelFile(proto.ModelFileStatus{Key: mf.Key, State: proto.MFFailed, Acquisition: mf.Acquisition, Message: err.Error()})
-}
-
-func (n *NodeRuntime) failModelFileIntent(intent modelFileIntent, err error) {
-	n.reportModelFileWithIntent(context.Background(), intent, proto.ModelFileStatus{
-		Key: intent.task.Key, State: proto.MFFailed, Acquisition: intent.task.Acquisition, Message: err.Error(),
-	})
+	n.reportModelFile(proto.ModelFileStatus{Key: mf.Key, State: proto.MFFailed, Acquisition: mf.Acquisition, TransferID: mf.TransferID, Message: err.Error()})
 }
 
 func (n *NodeRuntime) isDownloading(key string) bool {
@@ -562,7 +565,7 @@ func (n *NodeRuntime) isDownloading(key string) bool {
 	return n.downloading[key] != nil
 }
 
-var completionOnDiskForIntent = (*NodeRuntime).completionOnDisk
+var completionOnDiskForTask = (*NodeRuntime).completionOnDisk
 
 // completionOnDisk reports whether dir holds a complete public download of the
 // task's model, with the marker that says so. The read goes through the

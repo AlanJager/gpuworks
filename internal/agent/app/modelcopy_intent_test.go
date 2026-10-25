@@ -36,25 +36,30 @@ func TestDownloadToCopyStartsAfterDownloadReturns(t *testing.T) {
 	assertNoModelTaskWaiting(t, r)
 }
 
-func TestSupersededCompletionIsNotPublished(t *testing.T) {
+func TestSupersededRetryCompletionIsNotPublished(t *testing.T) {
 	r := newStorageTestRuntime(t)
 	task := modelWriterTask("fenced", "fenced/model", proto.ModelAcquireDownload, "", "")
 	started, release := make(chan struct{}), make(chan struct{})
 	var startedOnce, releaseOnce sync.Once
-	original := completionOnDiskForIntent
-	completionOnDiskForIntent = func(_ *NodeRuntime, _ proto.ModelFileTask, _ string) (modelCompletion, int64, bool, error) {
+	original := completionOnDiskForTask
+	completionOnDiskForTask = func(_ *NodeRuntime, _ proto.ModelFileTask, _ string) (modelCompletion, int64, bool, error) {
 		startedOnce.Do(func() { close(started) })
 		<-release
 		return modelCompletion{}, 0, true, nil
 	}
 	t.Cleanup(func() {
-		completionOnDiskForIntent = original
+		completionOnDiskForTask = original
 		releaseOnce.Do(func() { close(release) })
 	})
 
+	// A parked task is retried from a snapshot; a newer task replaces it while
+	// the retry reads the completion marker.
+	if !r.parkStorageModelFile(task, false) {
+		t.Fatal("task was not parked")
+	}
 	finished := make(chan struct{})
 	go func() {
-		r.reconcileModelFile(context.Background(), task)
+		r.retryParkedModelFile(context.Background(), task)
 		close(finished)
 	}()
 	select {
@@ -64,106 +69,25 @@ func TestSupersededCompletionIsNotPublished(t *testing.T) {
 	}
 	next := task
 	next.Revision = "next"
-	r.beginModelFileIntent(next)
+	r.parkStorageModelFile(next, false)
 	releaseOnce.Do(func() { close(release) })
 	select {
 	case <-finished:
 	case <-time.After(5 * time.Second):
-		t.Fatal("superseded completion did not return")
+		t.Fatal("superseded retry did not return")
 	}
 
 	if got := r.fileStatusCount(task.Key); got != 0 {
-		t.Fatalf("superseded completion published %d statuses", got)
+		t.Fatalf("superseded retry published %d statuses", got)
 	}
 	r.dlMu.Lock()
 	active := len(r.downloading)
 	r.dlMu.Unlock()
 	if active != 0 {
-		t.Fatalf("superseded completion started %d writers", active)
+		t.Fatalf("superseded retry started %d writers", active)
 	}
-}
-
-func TestNewIntentWaitsForInFlightStatusBeforeFencing(t *testing.T) {
-	r := newStorageTestRuntime(t)
-	task := modelWriterTask("fenced", "fenced/model", proto.ModelAcquireDownload, "", "")
-	first := r.beginModelFileIntent(task)
-	started, release := make(chan struct{}), make(chan struct{})
-	var startedOnce, releaseOnce sync.Once
-	var sentMu sync.Mutex
-	var states []string
-	r.Bind(func(kind string, value any) error {
-		if kind != proto.TStatusModelFile {
-			return nil
-		}
-		st := value.(proto.ModelFileStatus)
-		if st.Key == task.Key {
-			startedOnce.Do(func() { close(started) })
-			select {
-			case <-release:
-			case <-time.After(5 * time.Second):
-				return fmt.Errorf("timed out waiting to release test status")
-			}
-			sentMu.Lock()
-			states = append(states, st.State)
-			sentMu.Unlock()
-		}
-		return nil
-	})
-	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
-
-	go r.reportModelFileWithIntent(context.Background(), first, proto.ModelFileStatus{Key: task.Key, State: proto.MFDownloading})
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		t.Fatal("first status was not sent")
-	}
-	secondDone := make(chan modelFileIntent, 1)
-	next := task
-	next.Revision = "next"
-	go func() { secondDone <- r.beginModelFileIntent(next) }()
-	select {
-	case <-secondDone:
-		t.Fatal("new intent did not wait for the in-flight status")
-	case <-time.After(50 * time.Millisecond):
-	}
-	releaseOnce.Do(func() { close(release) })
-	var second modelFileIntent
-	select {
-	case second = <-secondDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("new intent remained blocked after the status completed")
-	}
-
-	r.reportModelFileWithIntent(context.Background(), first, proto.ModelFileStatus{Key: task.Key, State: proto.MFPresent})
-	r.reportModelFileWithIntent(context.Background(), second, proto.ModelFileStatus{Key: task.Key, State: proto.MFPresent})
-	sentMu.Lock()
-	defer sentMu.Unlock()
-	if len(states) != 2 || states[0] != proto.MFDownloading || states[1] != proto.MFPresent {
-		t.Fatalf("status sequence = %v, want downloading then present without a stale completion", states)
-	}
-}
-
-func TestRepeatedIntentKeepsTheActiveGeneration(t *testing.T) {
-	r := newStorageTestRuntime(t)
-	task := modelWriterTask("repeat", "repeat/model", proto.ModelAcquireDownload, "", "")
-	first := r.beginModelFileIntent(task)
-	second := r.beginModelFileIntent(task)
-	if first.generation != second.generation {
-		t.Fatalf("repeated intent changed generation: first=%d second=%d", first.generation, second.generation)
-	}
-	r.reportModelFileWithIntent(context.Background(), second, proto.ModelFileStatus{Key: task.Key, State: proto.MFDownloading})
-	if got := r.lastFile(t, task.Key); got.State != proto.MFDownloading {
-		t.Fatalf("repeated intent suppressed active progress: %+v", got)
-	}
-	changed := task
-	changed.Revision = "next"
-	third := r.beginModelFileIntent(changed)
-	if third.generation == first.generation {
-		t.Fatal("a changed revision did not advance the generation")
-	}
-	r.reportModelFileWithIntent(context.Background(), first, proto.ModelFileStatus{Key: task.Key, State: proto.MFPresent})
-	if got := r.fileStatusCount(task.Key); got != 1 {
-		t.Fatalf("superseded status was published: count=%d", got)
+	if parked, ok := r.parkedModelFile(task.Key); !ok || parked.Revision != "next" {
+		t.Fatalf("the newer task lost its place in the queue: %+v, %v", parked, ok)
 	}
 }
 
@@ -214,18 +138,41 @@ func TestCopyStopConcurrentWithStateReplay(t *testing.T) {
 			default:
 			}
 
-			r.storage.mu.RLock()
-			generation, hasGeneration := r.storage.latestGeneration[task.Key]
-			latest, hasLatest := r.storage.latestTasks[task.Key]
-			r.storage.mu.RUnlock()
-			if hasGeneration != hasLatest || (hasGeneration && (generation == 0 || latest.Key != task.Key)) {
-				t.Fatalf("inconsistent latest intent: generation=%d/%v task=%+v/%v", generation, hasGeneration, latest, hasLatest)
-			}
+			assertNoModelTaskWaiting(t, r)
 			old := proto.ModelFileTask{Key: task.Key, Acquisition: proto.ModelAcquireCopy, TransferID: task.TransferID}
-			if !r.copyTaskRunning(old) {
+			if !r.copyTaskRunning(old, false) {
 				t.Fatal("stopped transfer lost its fence during concurrent state replay")
 			}
 		})
+	}
+}
+
+func TestStopOfEarlierTransferKeepsTheParkedReplacement(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	owner := startBlockedModelWriter(t, r, "owner", filepath.Join(r.ModelsRoot(), "owner"), false)
+	source := filepath.Join(t.TempDir(), "source")
+	writeModel(t, source, "weights")
+	task := modelWriterTask("replaced", "owner/model", proto.ModelAcquireCopy, source, "")
+	task.TransferID = "T2"
+	reconcileModelFileWithoutBlocking(t, r, task)
+	assertModelTaskParked(t, r, task.Key)
+
+	// The server stopped T1 before it replaced it with T2; the stop arrives late.
+	raw := mustRaw(t, proto.ModelCopyStopParams{Key: task.Key, TransferID: "T1"})
+	if _, err := r.stopModelCopy(context.Background(), raw); err != nil {
+		t.Fatal(err)
+	}
+	assertModelTaskParked(t, r, task.Key)
+
+	// Stopping the parked transfer itself does withdraw it.
+	raw = mustRaw(t, proto.ModelCopyStopParams{Key: task.Key, TransferID: "T2"})
+	if _, err := r.stopModelCopy(context.Background(), raw); err != nil {
+		t.Fatal(err)
+	}
+	assertNoModelTaskWaiting(t, r)
+	owner.finish(t)
+	if got := r.fileStatusCount(task.Key); got != 0 {
+		t.Fatalf("withdrawn copy reported %d statuses", got)
 	}
 }
 
@@ -233,18 +180,26 @@ func TestCopyReplayUsesTransferIdentity(t *testing.T) {
 	r := newStorageTestRuntime(t)
 	source := filepath.Join(t.TempDir(), "source")
 	task := modelWriterTask("copy-replay", "copy/replay", proto.ModelAcquireCopy, source, "")
-	first := r.beginModelFileIntent(task)
+	owner := startBlockedModelWriter(t, r, task.Key, filepath.Join(r.ModelsRoot(), "copy", "replay"), true)
+	r.dlMu.Lock()
+	owner.active.transferID = task.TransferID
+	r.dlMu.Unlock()
+
 	replay := task
 	replay.SourcePath = filepath.Join(t.TempDir(), "different")
 	replay.RateLimitKBs = 1024
-	second := r.beginModelFileIntent(replay)
-	if first.generation != second.generation {
-		t.Fatalf("same TransferID changed generation: first=%d second=%d", first.generation, second.generation)
+	reconcileModelFileWithoutBlocking(t, r, replay)
+	if got := owner.cancels.Load(); got != 0 {
+		t.Fatalf("replay of the same transfer canceled it %d times", got)
 	}
+	assertNoModelTaskWaiting(t, r)
+
 	changed := replay
 	changed.TransferID = "next-transfer"
-	third := r.beginModelFileIntent(changed)
-	if third.generation == first.generation {
-		t.Fatal("a new TransferID did not advance the generation")
+	reconcileModelFileWithoutBlocking(t, r, changed)
+	if got := owner.cancels.Load(); got != 1 {
+		t.Fatalf("a new TransferID canceled the running copy %d times, want 1", got)
 	}
+	assertModelTaskParked(t, r, task.Key)
+	r.dropWaiting(task.Key) // the replacement would otherwise start while the test cleans up
 }

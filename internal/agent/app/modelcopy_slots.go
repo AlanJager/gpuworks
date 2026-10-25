@@ -1,9 +1,6 @@
 package app
 
 import (
-	"context"
-	"reflect"
-
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -11,193 +8,9 @@ import (
 // returns. writerSlotAvailableLocked also caps blocked copy workers per node.
 const maxConcurrentModelCopies = 4
 
-type modelFileIntent struct {
-	task       proto.ModelFileTask
-	generation uint64
-}
-
-type modelFileIntentContextKey struct{}
-
-func withModelFileIntent(ctx context.Context, intent modelFileIntent) context.Context {
-	return context.WithValue(ctx, modelFileIntentContextKey{}, intent)
-}
-
-func modelFileIntentFromContext(ctx context.Context) (modelFileIntent, bool) {
-	intent, ok := ctx.Value(modelFileIntentContextKey{}).(modelFileIntent)
-	return intent, ok
-}
-
-func (n *NodeRuntime) reportModelFileWithIntent(ctx context.Context, intent modelFileIntent, st proto.ModelFileStatus) {
-	n.reportModelFileContext(withModelFileIntent(ctx, intent), st)
-}
-
-func sameModelFileOperation(a, b proto.ModelFileTask) bool {
-	if a.TransferID != "" || b.TransferID != "" {
-		return a.TransferID == b.TransferID && a.Acquisition == b.Acquisition && a.DesiredState == b.DesiredState
-	}
-	return reflect.DeepEqual(a, b)
-}
-
-func (n *NodeRuntime) beginModelFileIntent(task proto.ModelFileTask) modelFileIntent {
-	intent := modelFileIntent{task: task}
-	if n.storage == nil {
-		return intent
-	}
-	s := n.storage
-	s.intentMu.Lock()
-	defer s.intentMu.Unlock()
-	s.mu.RLock()
-	generation, ok := s.latestGeneration[task.Key]
-	latestTask := s.latestTasks[task.Key]
-	s.mu.RUnlock()
-	if ok && sameModelFileOperation(latestTask, task) {
-		// A repeated desired-state replay is the same operation, not a new
-		// generation. In particular, it must not silence a transfer in flight.
-		intent.generation = generation
-		return intent
-	}
-	// discard waits for an in-flight send before the new intent becomes visible;
-	// later callbacks from the old generation are fenced at their actual send.
-	n.progress.discard(modelFileProgressKey(task.Key))
-	s.mu.Lock()
-	s.nextGeneration++
-	intent.generation = s.nextGeneration
-	s.latestGeneration[task.Key] = intent.generation
-	s.latestTasks[task.Key] = task
-	delete(s.waiting, task.Key)
-	delete(s.waitingGeneration, task.Key)
-	delete(s.writerWaiting, task.Key)
-	s.mu.Unlock()
-	return intent
-}
-
-func (n *NodeRuntime) modelFileIntentCurrent(intent modelFileIntent) bool {
-	if n.storage == nil || intent.generation == 0 {
-		return true
-	}
-	s := n.storage
-	s.mu.RLock()
-	current := s.latestGeneration[intent.task.Key] == intent.generation
-	s.mu.RUnlock()
-	return current
-}
-
-func (n *NodeRuntime) clearModelFileWaiting(intent modelFileIntent) {
-	if n.storage == nil || intent.generation == 0 {
-		return
-	}
-	s := n.storage
-	key := intent.task.Key
-	s.mu.Lock()
-	if s.waitingGeneration[key] == intent.generation {
-		delete(s.waiting, key)
-		delete(s.waitingGeneration, key)
-	}
-	if waiting := s.writerWaiting[key]; waiting.generation == intent.generation {
-		delete(s.writerWaiting, key)
-	}
-	s.mu.Unlock()
-}
-
-// dropModelFileWaiting also fences snapshots of the parked generation without
-// fencing a newer operation for the same key.
-func (n *NodeRuntime) dropModelFileWaiting(intent modelFileIntent) {
-	if n.storage == nil || intent.generation == 0 {
-		return
-	}
-	s := n.storage
-	key := intent.task.Key
-	s.mu.Lock()
-	if s.waitingGeneration[key] == intent.generation {
-		delete(s.waiting, key)
-		delete(s.waitingGeneration, key)
-	}
-	if waiting := s.writerWaiting[key]; waiting.generation == intent.generation {
-		delete(s.writerWaiting, key)
-	}
-	if s.latestGeneration[key] == intent.generation {
-		delete(s.latestGeneration, key)
-		delete(s.latestTasks, key)
-	}
-	s.mu.Unlock()
-}
-
-func (n *NodeRuntime) parkStorageModelFile(intent modelFileIntent) bool {
-	if n.storage == nil {
-		return false
-	}
-	s := n.storage
-	key := intent.task.Key
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if intent.generation != 0 && s.latestGeneration[key] != intent.generation {
-		return false
-	}
-	s.waiting[key] = intent.task
-	s.waitingGeneration[key] = intent.generation
-	if waiting := s.writerWaiting[key]; waiting.generation == intent.generation {
-		delete(s.writerWaiting, key)
-	}
-	return true
-}
-
-func (n *NodeRuntime) parkWriterModelFile(intent modelFileIntent) bool {
-	if n.storage == nil {
-		return false
-	}
-	s := n.storage
-	key := intent.task.Key
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if intent.generation != 0 && s.latestGeneration[key] != intent.generation {
-		return false
-	}
-	s.writerWaiting[key] = intent
-	if s.waitingGeneration[key] == intent.generation {
-		delete(s.waiting, key)
-		delete(s.waitingGeneration, key)
-	}
-	return true
-}
-
-var parkWriterModelFileForIntent = (*NodeRuntime).parkWriterModelFile
-
-func (n *NodeRuntime) reconcileParkedModelFile(ctx context.Context, intent modelFileIntent) {
-	if intent.generation == 0 {
-		n.reconcileModelFile(ctx, intent.task)
-		return
-	}
-	n.reconcileModelFileIntent(ctx, intent)
-}
-
-func (n *NodeRuntime) wakeModelWriters(ctx context.Context) {
-	if n.storage == nil || ctx.Err() != nil {
-		return
-	}
-	s := n.storage
-	s.mu.Lock()
-	waiting := make([]modelFileIntent, 0, len(s.writerWaiting))
-	for key, intent := range s.writerWaiting {
-		if intent.generation != 0 && s.latestGeneration[key] != intent.generation {
-			delete(s.writerWaiting, key)
-			continue
-		}
-		waiting = append(waiting, intent)
-	}
-	s.mu.Unlock()
-	if len(waiting) == 0 {
-		return
-	}
-	go func() {
-		for _, intent := range waiting {
-			if ctx.Err() != nil {
-				return
-			}
-			n.reconcileParkedModelFile(ctx, intent)
-		}
-	}()
-}
-
+// writerSlotAvailableLocked reports whether a writer for key may start at
+// target: no other writer owns an overlapping path and, for a copy, the node is
+// below the copy limit. n.dlMu is held.
 func (n *NodeRuntime) writerSlotAvailableLocked(key, target string, copyWriter bool) bool {
 	copies := 0
 	for otherKey, active := range n.downloading {
@@ -211,40 +24,46 @@ func (n *NodeRuntime) writerSlotAvailableLocked(key, target string, copyWriter b
 	return !copyWriter || copies < maxConcurrentModelCopies
 }
 
-func (n *NodeRuntime) copyTaskRunning(task proto.ModelFileTask) bool {
-	return n.copyTaskRunningIntent(n.beginModelFileIntent(task))
+// supersedes reports whether task replaces the transfer that is running
+// under its key. The identity of a transfer is its TransferID: a copy with
+// another ID, or a download the server prepared anew (a new TransferID), is a
+// different transfer. A download whose ID is the same or unknown (a server that
+// predates download IDs sends none) is the running one, whatever else about the
+// task changed: its rate limit and addresses are read when it starts, and
+// restarting a download for them would only throw away its progress.
+func supersedes(active *modelDownload, task proto.ModelFileTask) bool {
+	if active.copy {
+		return active.transferID != task.TransferID
+	}
+	return task.Acquisition == proto.ModelAcquireDownload && task.TransferID != "" && active.transferID != task.TransferID
 }
 
-func (n *NodeRuntime) copyTaskRunningIntent(intent modelFileIntent) bool {
-	task := intent.task
+// copyTaskRunning reports whether the key already has a writer that decides
+// task: the task is then neither started nor reported here. A writer of
+// another transfer is canceled and the task waits for it to return; a copy
+// waits behind a download of the same key without canceling it.
+func (n *NodeRuntime) copyTaskRunning(task proto.ModelFileTask, retry bool) bool {
 	n.dlMu.Lock()
-	if !n.modelFileIntentCurrent(intent) {
-		n.dlMu.Unlock()
-		return true
-	}
 	if stopped, ok := n.stoppedCopies[task.Key]; ok {
 		if stopped == task.TransferID {
 			n.dlMu.Unlock()
-			n.clearModelFileWaiting(intent)
+			n.settleParkedModelFile(task, retry)
 			return true
 		}
 		delete(n.stoppedCopies, task.Key)
 	}
 	active := n.downloading[task.Key]
-	if active != nil && active.copy && active.transferID != task.TransferID {
-		active.cancel()
-		parkWriterModelFileForIntent(n, intent)
-		n.dlMu.Unlock()
-		return true
-	}
-	if active != nil && !active.copy && task.Acquisition == proto.ModelAcquireCopy {
-		parkWriterModelFileForIntent(n, intent)
+	if active != nil && (supersedes(active, task) || (!active.copy && task.Acquisition == proto.ModelAcquireCopy)) {
+		if supersedes(active, task) {
+			active.cancel()
+		}
+		parkWriterModelFileForTask(n, task, retry)
 		n.dlMu.Unlock()
 		return true
 	}
 	n.dlMu.Unlock()
 	if active != nil {
-		n.clearModelFileWaiting(intent)
+		n.settleParkedModelFile(task, retry)
 	}
 	return active != nil
 }
