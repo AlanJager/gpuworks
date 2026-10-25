@@ -231,12 +231,13 @@ test("the outcome chart sits above the first-token chart, which leaves a gap whe
 
 // ------------------------------------------------------------------------ gpus
 
-test("GPU cards: card count by model, mean memory use per card, the cards' power added up and the idle count", async () => {
+test("GPU cards: the cards there now by model, mean memory use per card, the cards' power added up and the idle count", async () => {
   stub();
   mount("/analytics/gpus");
   await ready("cards");
-  assert.ok(stat("cards").getByText("4"));
-  assert.ok(stat("cards").getByText("RTX 6000D × 3 · PPU 810E × 1"));
+  // The deleted node's card keeps its row but is not counted: three cards there now.
+  assert.ok(stat("cards").getByText("3"));
+  assert.ok(stat("cards").getByText("RTX 6000D × 2 · PPU 810E × 1"));
   assert.ok(stat("util").getByText("22.4%"));
   // (70/84 + 70/84 + 72/96) / 3: the card with no samples is left out of the mean.
   assert.ok(stat("mem").getByText("80.6%"));

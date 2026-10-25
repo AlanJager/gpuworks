@@ -249,14 +249,22 @@ test("a card is idle below 5% mean utilization, and a card without a figure is n
 test("the summary leaves cards without samples out of the means and counts the idle among the measured", () => {
   const d = fx.gpusToday();
   const s = summarize(d.cards, d.totals);
-  assert.equal(s.cards, 4);
-  assert.deepEqual(s.byModel, [{ model: "RTX 6000D", count: 3 }, { model: "PPU 810E", count: 1 }]);
+  // The deleted node's card is no card there now: three, as card_count says.
+  assert.equal(s.cards, 3);
+  assert.equal(s.cards, d.card_count);
+  assert.deepEqual(s.byModel, [{ model: "RTX 6000D", count: 2 }, { model: "PPU 810E", count: 1 }]);
   assert.equal(s.powerTotal, 381);
   assert.equal(s.powerCards, 3);
   assert.equal(s.idle, 2);
   assert.equal(s.measured, 3);
   assert.ok(Math.abs(s.memPercentAvg! - (100 * 70 / 84 + 100 * 70 / 84 + 75) / 3) < 1e-9);
   assert.equal(summarize([], d.totals).powerTotal, null);
+  // A gone card with samples over the range still counts in the means, not in
+  // the count, the idle cards or the power drawn now.
+  const gone = { ...d.cards[1], node_uuid: "node-c", node_name: "gone-node", node_deleted: true, present: false, gpu_uuid: "GPU-c1" };
+  const withGone = summarize([...d.cards, gone], d.totals);
+  assert.deepEqual([withGone.cards, withGone.idle, withGone.measured, withGone.powerTotal, withGone.powerCards], [3, 2, 3, 381, 3]);
+  assert.ok(Math.abs(withGone.memPercentAvg! - (100 * 70 / 84 * 3 + 75) / 4) < 1e-9);
 });
 
 test("cards group by model or node with the deployments each holds, and count the ones no longer in the inventory", () => {
