@@ -208,12 +208,16 @@ func (e *Engine) exitMessage(ctx context.Context, id, base string) string {
 // memory breakdown for estimate calibration. Unsupported log formats are
 // intentionally silent.
 func (e *Engine) collectMeasured(ctx context.Context, spec proto.InstanceDesiredState, id string) json.RawMessage {
-	rc, err := e.Driver().Logs(ctx, id, false, 400)
+	// The window must reach back to the start of the launch: the SGLang parser
+	// reports no memory sums from a tail that has lost it, and an engine on
+	// many GPUs logs dozens of lines per GPU before it is healthy. This runs
+	// once per healthy transition, so the larger read is not on a hot path.
+	rc, err := e.Driver().Logs(ctx, id, false, 4000)
 	if err != nil {
 		return nil
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(io.LimitReader(rc, 512*1024))
+	data, err := io.ReadAll(io.LimitReader(rc, 4<<20))
 	if err != nil {
 		return nil
 	}
