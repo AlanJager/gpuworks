@@ -127,10 +127,18 @@ i18n-review:
 	node scripts/i18n-pipeline.mjs review
 
 ## test: build the embedded UI/assets and run the complete untagged Go suite
+## UNIT_TIMEOUT replaces `go test`'s 10m default, which the untagged suite has
+## outgrown on its slowest package: `internal/server/api` measured 433s and
+## then 600s on the same host, so the default killed a suite that was still
+## passing and reported whichever case was in flight. A real hang still fails
+## here, well inside the job's own limit. (`-race` needs much more again, see
+## known-issues T54.)
+UNIT_TIMEOUT ?= 30m
+
 ## test-unit: build the embedded UI first, then run the untagged Go suite.
 ## `go test ./...` cannot compile webui without the generated embed tree.
 test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check
-	CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
+	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	$(MAKE) check-tagged-build
 
 ## test-host-env-adapters: the serve adapters macOS environment packages ship
@@ -205,7 +213,7 @@ test-fleet-log-scale-processes:
 
 ## test-integration: fast product-level tests that use fake agents/runtimes.
 test-integration: ui
-	CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./internal/integrationtest/... ./internal/testenv/...
+	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./internal/integrationtest/... ./internal/testenv/...
 
 ## test-coverage-report: emit a machine-readable coverage profile for the
 ## untagged suite. Tagged suites have separate CI jobs and reports.
