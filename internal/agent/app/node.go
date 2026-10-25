@@ -46,6 +46,12 @@ type NodeRuntime struct {
 	// cardSmoke asks each card whether the runtime can use it, on its own
 	// schedule (see card_smoke.go). Nil where there is no check to run.
 	cardSmoke *cardsmoke.Runner
+	// cardSmokeCtx is the runner's own lifetime, so a check asked for
+	// outside the schedule ends when the agent does.
+	cardSmokeCtx context.Context
+	// instanceCardIdents is a seam beside heldCardIdents: the cards one
+	// instance was given, whatever state it reached.
+	instanceCardIdents func(uuid string) []string
 	// heldCardIdents overrides where cardsInUse reads this agent's own
 	// placements, so the card occupancy rules can be tested without an
 	// engine starting containers. Nil means ask the engine.

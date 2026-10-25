@@ -255,3 +255,64 @@ func TestAscendHostRuntimeFailureDoesNotBlameTheFirstDie(t *testing.T) {
 		t.Fatalf("outcomes = %+v, want nothing recorded against a die", outcomes)
 	}
 }
+
+// An instance that could not start makes its cards answer, even though the
+// agent still holds them for it: a failed start is not serving work, and
+// without this the card it failed on stays schedulable and takes the next
+// attempt. 192.168.200.29 looped this way on its one unusable die.
+func TestAFailedInstanceMakesItsCardsAnswer(t *testing.T) {
+	cards := cardsOfOneHealthyNode()
+	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
+		&gpu.FixedProber{VendorName: "nvidia", GPUs: cards}, nil)
+	bad := accelerator.CardIdent("GPU-40", "0000:40:00.0")
+	// Held for the instance, as the agent holds a card it placed work on.
+	n.heldCardIdents = func() []string { return []string{bad} }
+	n.instanceCardIdents = func(uuid string) []string {
+		if uuid == "inst-1" {
+			return []string{bad}
+		}
+		return nil
+	}
+	check := hostCheck(t, "nvidia")
+	answering := check
+	answering.Try = func(_ context.Context, visible string) error {
+		if visible == "GPU-40" {
+			return errors.New("cuInit=101")
+		}
+		return nil
+	}
+	n.cardSmoke = cardsmoke.New(cardsmoke.Config{
+		Cards:    func(ctx context.Context) []cardsmoke.Card { return n.smokeCards(ctx, check) },
+		Try:      cardSmokeAttempt(answering),
+		Busy:     func(card cardsmoke.Card) bool { ours, _ := n.cardsInUse(); return ours[card.Ident] },
+		Interval: time.Hour,
+	})
+	n.cardSmokeCtx = context.Background()
+
+	// The schedule leaves the held card alone, so nothing is known about it.
+	n.cardSmoke.RunOnce(context.Background())
+	if _, asked := n.cardSmoke.Outcomes()[bad]; asked {
+		t.Fatal("a round asked a card an instance holds")
+	}
+
+	n.reportInstance(proto.InstanceStatus{UUID: "inst-1", State: proto.InstFailed, Message: "container exited (code 1)"})
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		outcome, ok := n.cardSmoke.Outcomes()[bad]
+		if ok && !outcome.OK {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the card the instance failed on was never asked: %+v", n.cardSmoke.Outcomes())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	report := cardsOfOneHealthyNode()
+	n.CardHealthFindings(context.Background(), report, true)
+	if report[1].HealthCode != accelerator.HealthRuntimeUnusable || report[1].Healthy {
+		t.Fatalf("the failed card = %+v, want it reported unusable and unschedulable", report[1])
+	}
+	if report[0].HealthCode != "" {
+		t.Fatalf("the other card = %+v, want it untouched", report[0])
+	}
+}

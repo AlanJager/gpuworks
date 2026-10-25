@@ -93,6 +93,9 @@ func (n *NodeRuntime) reportInstance(st proto.InstanceStatus) {
 		return
 	}
 	terminal := st.State == proto.InstFailed || st.State == proto.InstStopped
+	if st.State == proto.InstFailed {
+		n.recheckCardsAfterStartFailure(st.UUID)
+	}
 	n.progress.report("instance\x00"+st.UUID, st.State+"\x00"+st.Phase, terminal, func() {
 		n.emit(proto.TStatusInstance, st)
 	})
