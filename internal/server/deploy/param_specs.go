@@ -123,11 +123,12 @@ func options(values ...string) []ParamOption {
 	return out
 }
 
-// vllmKVCacheDtypes is vLLM's CacheDType (vllm/config/cache.py) in full: the
-// engine decides which of them a model, GPU and attention backend can run.
+// vllmKVCacheDtypes is vLLM's CacheDType (vllm/config/cache.py) plus the
+// Ascend extension's int8 cache. The engine decides which of them a model,
+// accelerator and attention backend can run.
 var vllmKVCacheDtypes = []string{
 	"auto", "float16", "bfloat16", "fp8", "fp8_e4m3", "fp8_e5m2", "fp8_inc", "fp8_per_token_head", "fp8_ds_mla",
-	"nvfp4", "nvfp4_4over6", "nvfp4_ds_mla", "int8_per_token_head", "int4_per_token_head",
+	"nvfp4", "nvfp4_4over6", "nvfp4_ds_mla", "int8", "int8_per_token_head", "int4_per_token_head",
 	"turboquant_k8v4", "turboquant_4bit_nc", "turboquant_k3v4_nc", "turboquant_3bit_nc", "ultraquant_4bit",
 }
 

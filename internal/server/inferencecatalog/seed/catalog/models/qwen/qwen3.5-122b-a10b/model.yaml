@@ -191,7 +191,55 @@ specs:
   weight_bytes: 134131212322
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  env:
+    GLOO_SOCKET_IFNAME: lo
+    HCCL_SOCKET_IFNAME: lo
+    TP_SOCKET_IFNAME: lo
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count < 8: return reject(\"at least 8\
+      \ GPUs are required\")\n    if gpu.min_memory_gib < 32: return reject(\"each\
+      \ GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count, \"\
+      TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-a3-631c173c
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - huggingface:
+        repo_id: KingsonHO/Qwen3.5-122B-A10B-w8a8-mtp
+        revision: acf8b6927563db989512429b9e3b500a0ab17090
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.5-122B-A10B-w8a8-mtp
+        revision: e2622762e5d36e6558281d7810c430f9154c1f4a
+  weight_bytes: 134131212322
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --quantization

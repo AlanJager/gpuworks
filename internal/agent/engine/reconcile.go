@@ -297,7 +297,7 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		return
 	}
 	ws := toWorkloadSpec(spec, name)
-	if err := applyDistributedNetworkInterface(&ws, spec, e.networkInterfaceName); err != nil {
+	if err := applyDistributedNetworkInterface(&ws, spec, e.proberVendor(), e.networkInterfaceName); err != nil {
 		e.reportState(spec, proto.InstFailed, "", "", "distributed network interface selection failed: "+err.Error())
 		return
 	}

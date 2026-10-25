@@ -40,6 +40,37 @@ const (
 	WarningPlanningKVBelowContext = "PLANNING_KV_BELOW_CONTEXT"
 )
 
+// Launch warnings: the platform cannot prove a launch will work, or knows it
+// depends on host conditions it cannot see. Evaluate reports them; create and
+// the controller never fail on them (the engine log and instance state carry a
+// real failure).
+const (
+	// WarningAscendV1CompatMultiNode: the node-local V1 rendezvous of the
+	// vLLM-Ascend rc2 A3 compatibility script cannot coordinate ranks on
+	// several nodes. Params: nnodes, runtime, image.
+	WarningAscendV1CompatMultiNode = "ASCEND_V1_COMPAT_MULTI_NODE"
+	// WarningAscendV1CompatDataParallel: the V1 rendezvous with a data-parallel
+	// degree above one has not been verified on real hardware. Params: dp,
+	// runtime, image.
+	WarningAscendV1CompatDataParallel = "ASCEND_V1_COMPAT_DATA_PARALLEL"
+	// WarningAscendCompatManualShell: a manual shell command runs next to the
+	// compatibility script, so the platform cannot tell which model runner the
+	// script patched for. Params: image, runtime.
+	WarningAscendCompatManualShell = "ASCEND_COMPAT_MANUAL_SHELL"
+	// WarningEngramSharedMemoryRuntime: Engram shared host memory on a runtime
+	// that uses the host /dev/shm and ulimits directly. Params: runtime, flag,
+	// shm_gib.
+	WarningEngramSharedMemoryRuntime = "ENGRAM_SHARED_MEMORY_RUNTIME"
+	// WarningEngramConfigUncertain: an Engram configuration whose shared-memory
+	// use cannot be proven, on a runtime that uses the host /dev/shm. Params:
+	// runtime, flag, shm_gib.
+	WarningEngramConfigUncertain = "ENGRAM_CONFIG_UNCERTAIN"
+	// WarningEngramManualUnchecked: a manual shell command mentions Engram but
+	// cannot be read statically, so its shared-memory settings are not derived.
+	// Params: flag.
+	WarningEngramManualUnchecked = "ENGRAM_MANUAL_UNCHECKED"
+)
+
 // NewWarning constructs a warning while keeping empty parameter maps off the
 // wire. It is intentionally small so domain packages do not need API helpers.
 func NewWarning(code string, params map[string]any) Warning {

@@ -116,7 +116,13 @@
     "PD_UNVERIFIED_COMBINATION": "PD combined with {{feature}} is allowed but has not been verified on real hardware yet.",
     "PD_GPU_MODELS_DIFFER": "The PD roles run on different GPU models ({{models}}); throughput and latency will differ by role.",
     "PD_SAME_NODE_THROUGHPUT": "Every PD instance is on the same node, which trades some throughput for lower decode latency compared with spreading them across nodes.",
-    "PD_KV_OFFLOAD_PREFILL_ONLY": "KV offload only runs on the prefill instances; decode instances never carry a KV cache tier in a PD deployment."
+    "PD_KV_OFFLOAD_PREFILL_ONLY": "KV offload only runs on the prefill instances; decode instances never carry a KV cache tier in a PD deployment.",
+    "ASCEND_V1_COMPAT_MULTI_NODE": "The vLLM-Ascend rc2 A3 V1 compatibility rendezvous on {{runtime}} only works within one node, so it cannot coordinate a {{nnodes}}-node deployment ({{image}}). The deployment can still be created; if it hangs at startup, set VLLM_USE_V2_MODEL_RUNNER=1, use Docker or nerdctl, or deploy on one node.",
+    "ASCEND_V1_COMPAT_DATA_PARALLEL": "Data parallel size {{dp}} with the vLLM-Ascend rc2 A3 V1 compatibility script on {{runtime}} has not been verified on real hardware ({{image}}). The deployment can still be created; if it hangs at startup, use Docker or nerdctl, or set VLLM_USE_V2_MODEL_RUNNER=1.",
+    "ASCEND_COMPAT_MANUAL_SHELL": "The vLLM-Ascend compatibility script for {{image}} on {{runtime}} patches the model runner it expects, and a manual shell command cannot be checked against it. The deployment can still be created; make sure the command starts the runner you intend (VLLM_USE_V2_MODEL_RUNNER).",
+    "ENGRAM_SHARED_MEMORY_RUNTIME": "Engram cpu_offload with dp_shared_memory ({{flag}}) needs about {{shm_gib}} GiB of shared memory and unlimited locked memory. {{runtime}} uses the host's /dev/shm and limits directly, which the platform cannot see. The deployment can still be created; check the host, or use Docker or nerdctl.",
+    "ENGRAM_CONFIG_UNCERTAIN": "The Engram configuration ({{flag}}) cannot be read, so the platform cannot tell whether it shares memory. If it does, it needs about {{shm_gib}} GiB of shared memory and unlimited locked memory, and {{runtime}} uses the host's /dev/shm and limits directly. The deployment can still be created; check the configuration and the host.",
+    "ENGRAM_MANUAL_UNCHECKED": "The manual command mentions Engram ({{flag}}) but is too dynamic to read, so the platform did not derive shared-memory and locked-memory settings from it. Make sure the shared memory and memlock are sufficient, or use engine mode."
   },
   "warningFeature": {
     "dgpu": "dynamic GPU (dGPU)",

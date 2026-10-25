@@ -1,12 +1,24 @@
 # DeepSeek-V4.1-Flash
 
-配方来源：[SGLang 官方文档](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)。
+配方来源：[SGLang 官方文档](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)
+与 [vLLM-Ascend DeepSeek-V4.1-Flash 教程](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4.1-Flash.html)。
 
-单节点：H200 × 8，或 B200/B300/GB300 × 4。原始混合 FP8/FP4 权重约 510.3 GB；需要额外显存、主机内存和下载空间。使用专用 dev-dsv41 镜像；不能替换成 V4 镜像或普通旧版 runner。Hopper 使用不同 MoE 内核，Blackwell 配方启用内置 DSpark。
+单节点：H200 × 8，或 B200/B300/GB300 × 4。原始混合 FP8/FP4 权重约
+510.3 GB；需要额外显存、主机内存和下载空间。使用专用 dev-dsv41 镜像；不能替换成
+V4 镜像或普通旧版 runner。Hopper 使用不同 MoE 内核，Blackwell 配方启用内置
+DSpark。
 
-上游已标记这些配方验证通过；本平台已实测 B200 × 4 配方（见下），H200 × 8 配方尚未实测。
+昇腾 A3 单机使用 `Eco-Tech/DeepSeek-V4.1-Flash-w8a8`，权重约 797.6 GB。
+模板在一台 64 GB × 16 逻辑 die 的 A3/910C 上运行 DP4 × TP4，Engram 表放主机内存；
+默认上下文 150K。模板声明 512 GiB `/dev/shm` 和 `memlock_unlimited`，供两张 Engram
+共享表注册与锁页使用。权重体积接近整机 HBM 容量，启动可能持续数十分钟，因此环境把
+引擎就绪超时设为 36,000 秒。
 
-未声明的 AMD、昇腾、海光、PPU、Apple 组合不在本模板覆盖范围内。
+上游已标记 NVIDIA 配方验证通过；本平台已实测 B200 × 4 配方（见下），H200 × 8 尚未实测。
+2026-10-23，A3 档已在 910C × 16 的原生 Docker 环境通过平台 health、`/v1/models`
+和真实 chat；该结果不外推到 runveil。
+
+未声明的 AMD、海光、PPU、Apple 组合不在本模板覆盖范围内。
 
 ## 实测（B200 × 4，TP4，DSPARK，2026-10-19）
 

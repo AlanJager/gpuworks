@@ -125,34 +125,6 @@ var vllmPatterns = []pattern{
 	},
 }
 
-var sglangPatterns = []pattern{
-	{
-		name: "load-weight-end",
-		re:   regexp.MustCompile(`(?i)Load weight end.*?(?:weight\s+memory|weight\s+mem)[:=]?\s*` + num + `\s*GiB`),
-		set:  setFloat(func(m *Measured) *float64 { return &m.ModelWeightsGiB }),
-	},
-	{
-		name: "load-weight-memory",
-		re:   regexp.MustCompile(`(?i)load weight.*?(?:weights?|model).*?(?:memory|mem).*?` + num + `\s*GiB`),
-		set:  setFloat(func(m *Measured) *float64 { return &m.ModelWeightsGiB }),
-	},
-	{
-		name: "kv-cache-allocated",
-		re:   regexp.MustCompile(`(?i)KV Cache is allocated.*?` + num + `\s*GiB`),
-		set:  setFloat(func(m *Measured) *float64 { return &m.KVCacheGiB }),
-	},
-	{
-		name: "kv-cache-tokens",
-		re:   regexp.MustCompile(`(?i)KV Cache is allocated.*?(?:#\s*tokens|tokens)[:=]?\s*` + num),
-		set:  setInt(func(m *Measured) *int { return &m.KVCacheTokens }),
-	},
-	{
-		name: "capture-cuda-graph",
-		re:   regexp.MustCompile(`(?i)Capture cuda graph.*?` + num + `\s*GiB`),
-		set:  setFloat(func(m *Measured) *float64 { return &m.GraphCaptureGiB }),
-	},
-}
-
 var glibcMissingRE = regexp.MustCompile("(?i)(?:version [`']?)?(GLIBC_[0-9]+(?:\\.[0-9]+)+)(?:[`']? not found|[^\\n]*required)")
 
 // HumanizeStartupFailure maps dynamic-loader failures that otherwise look like
@@ -247,16 +219,10 @@ func Parse(logText string) Measured {
 // ParseDialect scans log text using a dialect-specific table. Unknown dialects
 // fall back to vLLM for backward compatibility with older specs.
 func ParseDialect(dialect, logText string) Measured {
-	var patterns []pattern
-	switch strings.ToLower(strings.TrimSpace(dialect)) {
-	case "", DialectVLLM:
-		patterns = vllmPatterns
-	case DialectSGLang:
-		patterns = sglangPatterns
-	default:
-		patterns = vllmPatterns
+	if strings.ToLower(strings.TrimSpace(dialect)) == DialectSGLang {
+		return parseSGLang(logText)
 	}
-	return parseWith(patterns, logText)
+	return parseWith(vllmPatterns, logText)
 }
 
 func parseWith(patterns []pattern, logText string) Measured {

@@ -49,10 +49,7 @@ func (a *apiHandlers) evaluateImageFacts(env evaluateImageEnv) evaluateImageResu
 		out.arch = arch.Family
 		out.archID = arch.ID
 		out.vendor = node.VendorOf(g)
-		nodeTarget := deploymentImageTarget(eng.Name(), "", node)
-		nodeTarget.Override = req.Image
-		nodeTarget.TrustedOverride = templateOwnsImage(selection, req.Image)
-		resolution := imagecatalog.Resolve(a.d.Store, nodeTarget)
+		resolution := a.rankImage(eng.Name(), selection, req.Image, node)
 		resp.Image = resolution.Image
 		resp.Warnings = append(resp.Warnings, resolution.Warnings...)
 		if resolution.Blocking {

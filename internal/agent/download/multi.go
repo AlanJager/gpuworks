@@ -42,6 +42,13 @@ func multiDownload(ctx context.Context, opts Options, size int64, partPath, stat
 		n = 1
 	}
 
+	// A sidecar describes offsets in one concrete part file. If that file was
+	// deleted or truncated, trusting the sidecar would let every "completed"
+	// chunk skip its request and rename an empty sparse file into the model.
+	resumable := partHasExpectedSize(partPath, size)
+	if !resumable {
+		_ = os.Remove(statePath)
+	}
 	f, err := os.OpenFile(partPath, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return err
@@ -52,7 +59,9 @@ func multiDownload(ctx context.Context, opts Options, size int64, partPath, stat
 	}
 
 	chunks := splitChunks(n, size)
-	loadState(statePath, opts.resumeKey(), size, chunks)
+	if resumable {
+		loadState(statePath, opts.resumeKey(), size, chunks)
+	}
 
 	// Aggregate counter seeded with any already-completed bytes from resume.
 	var agg int64
@@ -94,6 +103,11 @@ func multiDownload(ctx context.Context, opts Options, size int64, partPath, stat
 		return err
 	}
 	return finalize(f, partPath, opts.Dest, statePath)
+}
+
+func partHasExpectedSize(partPath string, size int64) bool {
+	info, err := os.Stat(partPath)
+	return err == nil && info.Mode().IsRegular() && info.Size() == size
 }
 
 // splitChunks divides [0,size) into n contiguous chunks.

@@ -25,7 +25,7 @@ specs:
   weight_bytes: 144051182625
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])910[BC][A-Za-z0-9]*([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   entrypoint:
   - sglang

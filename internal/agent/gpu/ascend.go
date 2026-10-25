@@ -270,6 +270,27 @@ func (p *AscendProber) RuntimeInjection(indexes []int) RuntimeInjection {
 	}
 }
 
+// ascendSharedDeviceNodes are the per-host device nodes an Ascend container
+// needs beyond its own /dev/davinciN. Which of them a host has depends on its
+// driver generation, so each is passed only when it is there: asking a
+// runtime for a device node that does not exist fails the container outright.
+// The davinciN nodes themselves are not optional: a card the scheduler chose
+// has to be handed over or the launch is wrong.
+var ascendSharedDeviceNodes = []string{
+	"/dev/davinci_manager",
+	"/dev/devmm_svm",
+	"/dev/hisi_hdc",
+	"/dev/ummu",
+	"/dev/uburma",
+}
+
+// deviceNodeExists is the test seam for the check above; the offline suite
+// must not depend on what the build host happens to have under /dev.
+var deviceNodeExists = func(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // ascendNerdctlDriverMounts are the host driver/DCMI paths that the Ascend
 // Docker Runtime plugin normally injects implicitly. nerdctl/containerd has
 // no equivalent plugin, so they must be bind-mounted explicitly. Real-machine
@@ -310,15 +331,15 @@ func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName strin
 		return base
 	}
 	containerDevices := compactVisibleDevices(len(indexes))
-	args := make([]string, 0, len(indexes)*2+6)
+	args := make([]string, 0, len(indexes)*2+len(ascendSharedDeviceNodes)*2)
 	for _, idx := range indexes {
 		args = append(args, "--device", fmt.Sprintf("/dev/davinci%d", idx))
 	}
-	args = append(args,
-		"--device", "/dev/davinci_manager",
-		"--device", "/dev/devmm_svm",
-		"--device", "/dev/hisi_hdc",
-	)
+	for _, node := range ascendSharedDeviceNodes {
+		if deviceNodeExists(node) {
+			args = append(args, "--device", node)
+		}
+	}
 	return RuntimeInjection{
 		Env: map[string]string{
 			// No Ascend Docker Runtime plugin reads ASCEND_VISIBLE_DEVICES

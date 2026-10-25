@@ -39,28 +39,6 @@ func TestParseVLLMDialect(t *testing.T) {
 	}
 }
 
-func TestParseSGLangDialect(t *testing.T) {
-	log := `INFO scheduler.py:100 Load weight end. type=Qwen, avail mem=62.10 GiB, weight memory=14.50 GiB
-INFO radix_cache.py:88 KV Cache is allocated. #tokens: 524,288, memory: 49.75 GiB
-INFO cuda_graph_runner.py:61 Capture cuda graph end, took 0.62 GiB`
-	m := ParseDialect("sglang", log)
-	if !m.Found {
-		t.Fatal("Found = false, want true")
-	}
-	if m.ModelWeightsGiB != 14.50 {
-		t.Errorf("ModelWeightsGiB = %v, want 14.50", m.ModelWeightsGiB)
-	}
-	if m.KVCacheGiB != 49.75 {
-		t.Errorf("KVCacheGiB = %v, want 49.75", m.KVCacheGiB)
-	}
-	if m.KVCacheTokens != 524288 {
-		t.Errorf("KVCacheTokens = %v, want 524288", m.KVCacheTokens)
-	}
-	if m.GraphCaptureGiB != 0.62 {
-		t.Errorf("GraphCaptureGiB = %v, want 0.62", m.GraphCaptureGiB)
-	}
-}
-
 func TestParseUnknownDialectFallsBackToVLLM(t *testing.T) {
 	m := ParseDialect("unknown", `Model loading took 8.5 GiB and 2.10 seconds`)
 	if !m.Found || m.ModelWeightsGiB != 8.5 {

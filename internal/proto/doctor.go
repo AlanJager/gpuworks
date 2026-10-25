@@ -193,6 +193,9 @@ const (
 	DoctorFactCUDARuntime     = "cuda_runtime"
 	DoctorFactPeerAccess      = "peer_access"
 	DoctorFactNCCL            = "nccl"
+	// DoctorFactCardRuntime: what asking the host runtime about each of the
+	// node's dies on demand found (passed, failed, not checked and why).
+	DoctorFactCardRuntime = "card_runtime"
 	// DoctorFactRuntimeIdentity: the identity the runtime's workloads run as
 	// and why. DoctorFactNetworkFilesystem: a path on a network filesystem
 	// (a supported setup, stated, not judged).

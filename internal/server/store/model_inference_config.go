@@ -2,7 +2,10 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
+
+	"gorm.io/gorm"
 )
 
 // OperationsUnset reports whether a model's stored operations declare nothing:
@@ -33,6 +36,35 @@ const operationsUnsetSQL = "REPLACE(REPLACE(REPLACE(TRIM(COALESCE(operations, ''
 // that lands a non-empty value always wins. Input modalities are filled only
 // from an empty column. An empty argument leaves its column alone.
 func (s *Store) InitModelInferenceConfig(id uint, operations, inputModalities string) (*Model, error) {
+	return s.initModelInferenceConfig(id, operations, inputModalities, false)
+}
+
+// InitTemplateModelInferenceConfig also replaces a bare chat contract nobody
+// chose (IsDefaultChatOperations) with the one the template declares.
+func (s *Store) InitTemplateModelInferenceConfig(id uint, operations, inputModalities string) (*Model, error) {
+	return s.initModelInferenceConfig(id, operations, inputModalities, true)
+}
+
+func (s *Store) initModelInferenceConfig(id uint, operations, inputModalities string, repairLegacyOperations bool) (*Model, error) {
+	changed, err := updateModelInferenceConfig(s.db, id, operations, inputModalities, repairLegacyOperations)
+	if err != nil {
+		return nil, err
+	}
+	if changed {
+		s.Bus.PublishChange("model", uintKey(id), "inference_config")
+	}
+	return s.GetModel(id)
+}
+
+// updateModelInferenceConfig performs the conditional writes on tx. A template
+// placeholder is replaced only under the exact bytes that identified it, so an
+// edit that lands after that read still wins. No event is published here: the
+// caller owns the transaction boundary and publishes after its commit.
+func updateModelInferenceConfig(tx *gorm.DB, id uint, operations, inputModalities string, repairLegacyOperations bool) (bool, error) {
+	replaced, replaceLegacy, err := legacyOperationsToReplace(tx, id, repairLegacyOperations)
+	if err != nil {
+		return false, err
+	}
 	changed := false
 	for _, column := range []struct{ name, value, unset string }{
 		{"operations", operations, operationsUnsetSQL},
@@ -41,16 +73,37 @@ func (s *Store) InitModelInferenceConfig(id uint, operations, inputModalities st
 		if strings.TrimSpace(column.value) == "" {
 			continue
 		}
-		result := s.db.Model(&Model{}).
-			Where("id = ? AND "+column.unset, id).
-			Update(column.name, column.value)
+		query := tx.Model(&Model{}).Where("id = ?", id)
+		if column.name == "operations" && replaceLegacy {
+			query = query.Where("operations = ?", replaced)
+		} else {
+			query = query.Where(column.unset)
+		}
+		result := query.Update(column.name, column.value)
 		if result.Error != nil {
-			return nil, result.Error
+			return false, result.Error
 		}
 		changed = changed || result.RowsAffected > 0
 	}
-	if changed {
-		s.Bus.PublishChange("model", uintKey(id), "inference_config")
+	return changed, nil
+}
+
+// legacyOperationsToReplace returns the stored operations value when it is the
+// migration-80 placeholder and this caller is allowed to replace it. Reading
+// through the caller's transaction also makes a disappeared model fail the
+// surrounding create rather than leaving a deployment without its model.
+func legacyOperationsToReplace(tx *gorm.DB, id uint, repair bool) (string, bool, error) {
+	if !repair {
+		return "", false, nil
 	}
-	return s.GetModel(id)
+	var stored Model
+	if err := tx.Select("operations").First(&stored, id).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, ErrNotFound
+	} else if err != nil {
+		return "", false, err
+	}
+	if !IsDefaultChatOperations(stored.Operations) {
+		return "", false, nil
+	}
+	return stored.Operations, true, nil
 }

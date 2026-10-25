@@ -83,7 +83,74 @@ specs:
   weight_bytes: 4520219726
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])(?:910[BC][A-Za-z0-9]*|950DT|950PR)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --omni
+  env:
+    VLLM_WORKER_MULTIPROC_METHOD: spawn
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.min_memory_gib < 32: return reject(\"\
+      each GPU requires at least 32 GiB\")\n    return {\"GPU_COUNT\": gpu.count,\
+      \ \"TP_SIZE\": gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.audio.speech
+      endpoint: /v1/audio/speech
+      mode: sync
+      request_defaults:
+        response_format: wav
+      inputs:
+      - name: voice
+        kind: select
+        options: []
+        required: true
+        label:
+          en: Voice
+          zh-CN: 音色
+      - name: instructions
+        kind: text
+        label:
+          en: Style or emotion instructions
+          zh-CN: 风格或情绪说明
+      - name: language
+        kind: select
+        options:
+        - Auto
+        - Chinese
+        - English
+        - Japanese
+        - Korean
+        - German
+        - French
+        - Russian
+        - Portuguese
+        - Spanish
+        - Italian
+        default: Auto
+        label:
+          en: Language
+          zh-CN: 语言
+- name: bf16-vllm-ascend-a3-760501dc
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.0-a3-vllm-omni0.23.0rc1-r1
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+        revision: 0c0e3051f131929182e2c023b9537f8b1c68adfe
+    - modelscope:
+        repo_id: Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+        revision: 54dfa57e196341bfa4994c97ad1f0f874964eeab
+  weight_bytes: 4520219726
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --omni

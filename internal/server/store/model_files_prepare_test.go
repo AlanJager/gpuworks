@@ -8,7 +8,7 @@ import (
 
 // Each Prepare* puts a row into a fresh state. They share the columns every
 // one of them resets; the ones only some reset stay as they were for the
-// others: a public download clears the resolved revision, a peer sync clears
+// others: a public download clears the resolved revision and names a new transfer, a peer sync clears
 // the rate limit, and a copy and a registration clear neither.
 func TestPrepareModelFileResetsExactlyItsColumns(t *testing.T) {
 	f := newStorageFixture(t)
@@ -54,7 +54,8 @@ func TestPrepareModelFileResetsExactlyItsColumns(t *testing.T) {
 			got.SizeBytes != tc.want.size || got.Downloaded != tc.want.downloaded {
 			t.Errorf("%s: row = %+v, want %+v", tc.name, got, tc.want)
 		}
-		if (tc.name == "copy" && (got.TransferID == "" || got.TransferID == "t-1")) || (tc.name != "copy" && got.TransferID != "") || got.TransferSourceNodeID != 0 || got.TransferredBytes != 0 || got.RateBPS != 0 || got.Message != "" {
+		mintsTransfer := tc.name == "copy" || tc.name == "download"
+		if (mintsTransfer && (got.TransferID == "" || got.TransferID == "t-1")) || (!mintsTransfer && got.TransferID != "") || got.TransferSourceNodeID != 0 || got.TransferredBytes != 0 || got.RateBPS != 0 || got.Message != "" {
 			t.Errorf("%s: the previous transfer's leftovers survived: %+v", tc.name, got)
 		}
 	}

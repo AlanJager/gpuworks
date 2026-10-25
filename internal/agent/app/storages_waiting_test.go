@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/storagemount"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -103,6 +104,148 @@ func TestParkedTaskIsDroppedWhenTheModelIsEvicted(t *testing.T) {
 	if got := r.waitingKeys(); len(got) != 1 || got[0] != "f10" {
 		t.Fatalf("parked after evicting one model: %v", got)
 	}
+}
+
+func TestEvictedWriterSnapshotCannotRecreateModel(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	source := filepath.Join(t.TempDir(), "source")
+	writeModel(t, source, "new weights")
+	task := modelWriterTask("snapshot", "org/model", proto.ModelAcquireCopy, source, "")
+	if !r.parkWriterModelFile(task, false) {
+		t.Fatal("writer was not parked")
+	}
+	r.storage.mu.RLock()
+	snapshot, ok := r.storage.writerWaiting[task.Key]
+	r.storage.mu.RUnlock()
+	if !ok || !sameModelFileTask(snapshot, task) {
+		t.Fatalf("writer snapshot = %+v, %v; want %+v", snapshot, ok, task)
+	}
+	target := filepath.Join(r.ModelsRoot(), "org", "model")
+	writeModel(t, target, "old weights")
+	if _, err := r.rpcModelEvict(context.Background(), evictParams(target)); err != nil {
+		t.Fatal(err)
+	}
+
+	// This is the task wakeModelWriters copied before eviction. Eviction
+	// forgot it, so the retry must not register a new writer for it.
+	r.retryParkedModelFile(context.Background(), snapshot)
+	r.dlMu.Lock()
+	active := r.downloading[task.Key]
+	r.dlMu.Unlock()
+	if active != nil {
+		select {
+		case <-active.done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("evicted snapshot writer did not return")
+		}
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("evicted snapshot recreated its target: %v", err)
+	}
+	if got := r.fileStatusCount(task.Key); got != 0 {
+		t.Fatalf("evicted snapshot reported %d statuses", got)
+	}
+
+	next := task
+	next.TransferID = "next-transfer"
+	r.reconcileModelFile(context.Background(), next)
+	if got := r.waitFile(t, task.Key, proto.MFPresent); got.TransferID != next.TransferID {
+		t.Fatalf("new transfer status = %+v", got)
+	}
+	data, err := os.ReadFile(filepath.Join(target, "model.safetensors"))
+	if err != nil || string(data) != "new weights" {
+		t.Fatalf("new transfer contents = %q, err=%v", data, err)
+	}
+	r.dlMu.Lock()
+	active = r.downloading[task.Key]
+	r.dlMu.Unlock()
+	if active != nil {
+		select {
+		case <-active.done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("new transfer writer did not unregister")
+		}
+	}
+	assertNoModelTaskWaiting(t, r)
+}
+
+func TestStorageCheckSnapshotIsFencedByEviction(t *testing.T) {
+	r := newStorageTestRuntime(t)
+	shared, cache := t.TempDir(), filepath.Join(t.TempDir(), "cache")
+	r.fs.mountNFS(t, shared)
+	r.applyStorages([]proto.StorageTask{{ID: 3, Name: "c", Type: proto.StorageNFSCache, Path: shared, Existing: true, CachePath: cache}})
+	<-r.storage.trigger
+	source := filepath.Join(t.TempDir(), "source")
+	writeModel(t, source, "weights")
+	task := modelWriterTask("storage-snapshot", "org/model", proto.ModelAcquireCopy, source, "")
+	task.StorageID, task.Cache = 3, true
+	r.reconcileModelFile(context.Background(), task)
+	if got := r.waitingKeys(); len(got) != 1 {
+		t.Fatalf("task was not parked for its storage: %v", got)
+	}
+	target := filepath.Join(cache, "org", "model")
+	writeModel(t, target, "old weights")
+
+	original := completionOnDiskForTask
+	started, release := make(chan struct{}), make(chan struct{})
+	released := false
+	releaseRead := func() {
+		if !released {
+			close(release)
+			released = true
+		}
+	}
+	completionOnDiskForTask = func(n *NodeRuntime, mf proto.ModelFileTask, dir string) (modelCompletion, int64, bool, error) {
+		if mf.Key != task.Key {
+			return original(n, mf, dir)
+		}
+		close(started)
+		<-release
+		return modelCompletion{}, 0, false, nil
+	}
+	t.Cleanup(func() {
+		releaseRead()
+		completionOnDiskForTask = original
+	})
+	checked := make(chan struct{})
+	go func() {
+		r.checkStorages(context.Background(), true)
+		close(checked)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("storage-check snapshot did not reach its marker read")
+	}
+	if _, err := r.rpcModelEvict(context.Background(), evictParams(target)); err != nil {
+		t.Fatal(err)
+	}
+	releaseRead()
+	select {
+	case <-checked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("storage-check snapshot did not return")
+	}
+
+	// The snapshot was already past its first look at the queue when eviction
+	// ran. The check immediately before active registration must fence it.
+	r.dlMu.Lock()
+	active := r.downloading[task.Key]
+	r.dlMu.Unlock()
+	if active != nil {
+		select {
+		case <-active.done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("storage-check snapshot writer did not return")
+		}
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("storage-check snapshot recreated its target: %v", err)
+	}
+	if got := r.fileStatusCount(task.Key); got != 0 {
+		t.Fatalf("storage-check snapshot reported %d statuses", got)
+	}
+	assertNoModelTaskWaiting(t, r)
 }
 
 func TestParkedTaskIsDroppedWhenItsStorageIsRemoved(t *testing.T) {

@@ -339,7 +339,21 @@ func TestRuntimeInjection(t *testing.T) {
 	}
 }
 
+// withDeviceNodes makes the per-host device nodes a fact of the test rather
+// than of the build host's /dev.
+func withDeviceNodes(t *testing.T, present ...string) {
+	t.Helper()
+	previous := deviceNodeExists
+	t.Cleanup(func() { deviceNodeExists = previous })
+	set := make(map[string]bool, len(present))
+	for _, path := range present {
+		set[path] = true
+	}
+	deviceNodeExists = func(path string) bool { return set[path] }
+}
+
 func TestRuntimeInjectionForDriverNerdctl(t *testing.T) {
+	withDeviceNodes(t, "/dev/davinci_manager", "/dev/devmm_svm", "/dev/hisi_hdc")
 	asc := (&AscendProber{}).RuntimeInjectionForDriver([]int{2, 4}, "nerdctl")
 	if _, ok := asc.Env[accelerator.AscendEnvVisibleDevices]; ok {
 		t.Fatalf("nerdctl injection must not set %s (no plugin reads it): %+v", accelerator.AscendEnvVisibleDevices, asc.Env)
@@ -443,5 +457,25 @@ func TestParseAscendMetrics26TwoLineRows(t *testing.T) {
 	second := metrics[1].Values
 	if second["gpuworks_gpu_utilization"] != 0 || second["gpuworks_gpu_memory_used_bytes"] != 4096<<20 {
 		t.Fatalf("second metrics = %+v", second)
+	}
+}
+
+func TestNerdctlInjectionPassesOnlyTheDeviceNodesTheHostHas(t *testing.T) {
+	withDeviceNodes(t, "/dev/davinci_manager", "/dev/ummu", "/dev/uburma")
+	asc := (&AscendProber{}).RuntimeInjectionForDriver([]int{3}, "nerdctl")
+	want := []string{
+		"--device", "/dev/davinci3",
+		"--device", "/dev/davinci_manager",
+		"--device", "/dev/ummu",
+		"--device", "/dev/uburma",
+	}
+	if strings.Join(asc.DockerArgs, ",") != strings.Join(want, ",") {
+		t.Fatalf("device args = %+v, want %+v", asc.DockerArgs, want)
+	}
+
+	withDeviceNodes(t)
+	asc = (&AscendProber{}).RuntimeInjectionForDriver([]int{3}, "nerdctl")
+	if strings.Join(asc.DockerArgs, ",") != "--device,/dev/davinci3" {
+		t.Fatalf("device args without any shared node = %+v", asc.DockerArgs)
 	}
 }
