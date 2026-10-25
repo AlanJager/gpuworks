@@ -1,8 +1,0 @@
---- a/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/__init__.py
-+++ b/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/__init__.py
-@@ -128,3 +128,5 @@
- #    Future Plan:
- #       Remove this patch when upstream supports per-group or backend-defined
- #       prefill boundaries.
-+
-+import vllm_ascend.patch.platform.patch_v1_dflash2_support  # noqa

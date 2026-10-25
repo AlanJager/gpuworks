@@ -1,40 +1,24 @@
-# GLM-5.3-Flash / Ascend 910C
+# GLM-5.3-Flash · Ascend 910C · Graph
 
-本模板运行一体 vLLM、W8A8 主模型和 Modal DFlash5 草稿，针对中文、英文及代码混合的长上下文。优先选择 **16 个逻辑 NPU** 的优化档位；8 设备档位用于资源较少时的兼容部署。均要求单节点、ARM64、每个逻辑设备至少 64 GiB。
+单机文本推理模板，使用官方 vLLM Ascend 镜像、W8A8 权重与 INT8 KV cache，开启 decode graph。直接启动 `vllm serve`，不安装自定义补丁，不下载草稿模型。
 
-| 逻辑 NPU | 档位 | 引擎并行 | 每 DP 运行序列上限 | 建议用途 |
-| --- | --- | --- | --- | --- |
-| 16（8 张双芯卡） | optimized / throughput | TP2、DP8、EP16 | 4，总计 32 | 已测试方案中的持续长上下文性能推荐 |
-| 8（4 张双芯卡） | compatible / balanced | TP4、DP2、EP8 | 2，总计 4 | 减少设备数量、降低并发 |
-| 4（2 张双芯卡） | 不支持当前权重 | — | — | 256 GiB 总显存小于约 309 GiB 的 W8A8 权重，不含 KV 与工作区 |
+| 逻辑 NPU | TP / DP | 每个 DP 的最大序列数 | 用途 |
+| --- | --- | --- | --- |
+| 16 × 至少 64 GiB | TP2 / DP8 | 4 | 优先匹配的吞吐配置 |
+| 8 × 至少 64 GiB | TP4 / DP2 | 2 | 使用较少设备 |
 
-4 设备需要另外验证 W4 量化或 CPU 卸载方案；不能通过把 TP 改成 4 就复用本模板。当前模板没有对应权重与性能证据。8 设备档位也不承诺 32 路长上下文，更不能沿用 16 设备的性能数字。
+这里按运行时可见的逻辑设备计数。8 张双芯片物理卡通常对应 16 个逻辑 NPU。4 × 64 GiB 的总显存不足以容纳约 309 GiB 的 W8A8 权重，因此不提供 4 设备配置。
 
-## 部署
+上下文上限为 139264 token，覆盖 128K 输入及输出余量；prefill chunk 为 2048 token，长请求阈值为 512 token。缓存命中取决于状态缓存对齐及实际保留情况，不能仅凭预热了 96K 历史就假定每次只需计算 32K 新输入。8 设备配置也不表示支持 32 路独立长历史驻留。
 
-选择整机独占设备、单副本，服务模型名填写 **`glm53-flash-910c-dflash`**，与模板的 `--served-model-name` 相同。平台分配监听地址和端口。冷启动需要数分钟，建议启动超时至少 1800 秒。
+## 镜像与 graph
 
-平台引擎显示为 callable（自定义启动），实际进程是 vLLM。通用 vLLM 字典尚不接受此昇腾版本的 `int8` KV cache，因此由模板持有完整启动命令；健康、聊天和 vLLM 指标接口均已声明。资源计划中的设备数不等于引擎 TP，运行参数见上表和生成的命令。不要增加 `--enforce-eager` 或覆盖并行、图捕获、推测解码配置。
+固定使用官方 `nightly-releases-v0.30.0-a3` 在 2026-10-24 构建的 ARM64 镜像，镜像摘要见 `model.yaml`。这是 release 分支 nightly，包含 CANN 9.2.0；宿主驱动和固件须与其匹配。模板使用 V1 model runner 和 `FULL_DECODE_ONLY`，没有 `--enforce-eager`。镜像已包含 GLM5Next graph 补齐请求的卷积状态越界修复。
 
-两个档位均限制上下文为 139264 token，支持 131072 输入加最多 8192 输出；共享内存为 128 GiB。每设备调度预算 57672 MiB 来自 64 GiB × 0.88 向上取整，不是额外的显存实测。设备、驱动和通信挂载由平台准备。仅支持文本、一体推理，不支持本模板的跨节点或 PD 分离。
+官方单机指南使用 TP16/DP1，并给出 MTP graph 配置；本模板采用不同的 TP/DP 拓扑，且未开启 MTP 或 DFlash。过去自定义 DFlash 补丁版的性能数据不适用于本模板。
 
-## 固定依赖
+- [官方 GLM-5.3-Flash 部署指南](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/GLM5.3-Flash.html)
+- [官方版本兼容矩阵](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html)
+- [graph 补齐请求修复](https://github.com/vllm-project/vllm-ascend/pull/18878)
 
-- 主权重：ModelScope `Eco-Tech/GLM-5.3-Flash-w8a8`，版本 `fce3173cef79062469745b520c6742883e60a166`，约 331.8 GB，挂载到 `/model`。
-- 草稿：Hugging Face `modal-labs/GLM-5.3-Flash-DFlash`，版本 `dae6d319510889a7f1ac5242d5b7fb2d5d95eb05`，约 2.78 GB，作为模型组件挂载到 `/draft`。
-- 底座：`quay.io/ascend/vllm-ascend@sha256:89f41d4b45df14461cb861e8844cc3ae2945295f1e4ca3888ec8a4725d792f93`，即 v0.30.0rc2-a3 的 ARM64 manifest。
-- 模板资产：17 个适配模块和启动入口随完整目录包分发，启动时验证底座文件和补丁结果校验值，再安装到当前容器的可写层。重启允许相同补丁已存在；不同底座拒绝启动。只复制 YAML 不足以携带资产。
-
-仓库 `build/inference-templates/glm53-910c/` 包含补丁、校验清单和确定性资产重建入口。无需替换或发布底座镜像。
-
-## 历史缓存与性能口径
-
-每个会话的预热和后续请求应保持同一 DP rank。实测使用 HTTP 头 `X-Data-Parallel-Rank`，16 设备填 0–7，8 设备填 0–1，并在每个 rank 内均分会话。经过网关时须确认该头透传；模板不增加会话路由能力。
-
-实际缓存以服务端 `usage.prompt_tokens_details.cached_tokens` 为准。16 设备实测名义 98304 历史复用 95744 token，131072 输入实际重算 35328 token，不能写成精确的 96K 缓存命中。所有 TPS 统计包括 reasoning token。
-
-16 设备的既有实测为单机直连、32 路独立历史、中英文和代码混合、采样输出：同批每路 4096 输出，32/32 请求缓存与协议合格，逐请求解码最低/中位/最高 **35.96/41.50/50.90 TPS**，21/32 达到 40 TPS；包含预填充的墙钟总吞吐 **853.21 TPS**。32 路共同解码窗口为 1352.11 TPS，分母不同，不能与墙钟吞吐混用。
-
-持续会话采用首轮错峰 60 秒、每会话两轮、每轮 2048 输出：64/64 缓存合格，逐请求最低/中位/最高 **14.78/20.48/40.31 TPS**，完整墙钟吞吐 **470.91 TPS**。两种负载均无抢占、后置已知答案检查通过。默认分块 2048 的持续吞吐优于已测分块 4096 方案的 450.27 TPS，因此保留为推荐；不能把同批次的峰值外推为持续服务速度。
-
-32 路每路稳定 40 TPS 的目标尚未达到。这些数字不是生产网关性能承诺，也不是不同业务内容、输出长度或请求到达节奏的速度保证。
+模板使用 `callable` 启动方式传递 Ascend 专用 INT8 KV 参数，实际推理进程仍为 vLLM。提供 `/health`、OpenAI chat streaming 和 `/metrics`；服务模型名为 `glm53-flash-910c-stock-graph`。

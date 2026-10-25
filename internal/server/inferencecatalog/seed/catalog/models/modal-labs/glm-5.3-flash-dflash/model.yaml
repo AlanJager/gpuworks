@@ -1,6 +1,0 @@
-model_id: modal-labs/glm-5.3-flash-dflash
-source: upstream
-display_title: GLM-5.3-Flash Modal DFlash draft
-input_modalities:
-- text
-specs: []
