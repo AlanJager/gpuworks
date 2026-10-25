@@ -15,9 +15,8 @@ import (
 // catalog identity in the snapshot must resolve to a non-chat declaration
 // before any write is allowed.
 //
-// An already normalized model contract is never rewritten here. It could be
-// the old migration's output, but it could also be an explicit chat choice;
-// the current catalog cannot prove which history produced it.
+// An already normalized model contract is never rewritten here: it may be an
+// explicit chat choice, and the current catalog cannot prove otherwise.
 func repairLegacyTemplateModelOperations(db *gorm.DB) error {
 	if !db.Migrator().HasTable("models") || !db.Migrator().HasTable("deployments") ||
 		!db.Migrator().HasColumn("deployments", "model_id") ||

@@ -122,8 +122,8 @@ func TestLegacyTemplateModelOperationsMigrationRepairsPlaceholdersWithoutInventi
 		6: legacyChatPlaceholderFixture,
 		7: `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]`,
 		8: `[{"type":"openai.embeddings","endpoint":"/v1/embeddings"}]`,
-		// Old 166 could have produced model 9, but so could an explicit
-		// chat edit. A mutable catalog must not overwrite that choice.
+		// Model 9 may be an explicit chat edit; a mutable catalog must not
+		// overwrite that choice.
 		9:  `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
 		10: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,
 		11: `[{"inputs":[],"request_encoding":"json","type":"openai.chat","endpoint":"/v1/chat/completions","mode":"stream"}]`,

@@ -1537,7 +1537,7 @@ func migrateDB(db *gorm.DB, migrationList []migration) error {
 		err := db.Where("version = ?", m.Version).First(&row).Error
 		if err == nil {
 			if row.Name != m.Name {
-				if repairableLegacyMigration(m, row.Name) {
+				if repairableLegacyMigration(m) {
 					if err := repairLegacyMigration(db, m); err != nil {
 						return fmt.Errorf("repair migration %d (%s): %w", m.Version, m.Name, err)
 					}

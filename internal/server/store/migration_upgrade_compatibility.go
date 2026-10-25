@@ -8,11 +8,8 @@ import (
 
 // repairableLegacyMigration lists additive schema changes whose numbers were
 // occupied by other historical branches. Replaying arbitrary renamed migrations
-// could repeat destructive cutovers, so the repair is deliberately bounded. The
-// newest collisions also name the one recorded migration they supersede: an
-// unrelated branch marker at the same version must still be warned about and
-// skipped, not rewritten as though its schema were understood.
-func repairableLegacyMigration(m migration, recordedName string) bool {
+// could repeat destructive cutovers, so the repair is deliberately bounded.
+func repairableLegacyMigration(m migration) bool {
 	switch m.Version {
 	case 27:
 		return m.Name == "terminal_sessions"
@@ -20,10 +17,6 @@ func repairableLegacyMigration(m migration, recordedName string) bool {
 		return m.Name == "deployment_dgpu_quota_fields"
 	case 40:
 		return m.Name == "instance_image_digest_snapshot"
-	case 166:
-		return m.Name == "notice_reads" && recordedName == "legacy_template_model_operations"
-	case 167:
-		return m.Name == "inference_spec_shm_bytes" && recordedName == "deployment_tokenize_disabled"
 	}
 	return false
 }
