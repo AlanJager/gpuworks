@@ -257,6 +257,7 @@
     "STORAGE_FILE_OPERATION_FAILED": "The operation failed on {{node}}: {{detail}}",
     "BENCHMARK_GPU_COUNT_NEGATIVE": "The benchmark GPU count cannot be negative.",
     "BENCHMARK_DETAIL_CAP_TOO_LARGE": "The benchmark detail limit cannot exceed {{maximum}} MiB.",
+    "BENCHMARK_CHAT_REQUIRED": "Performance evaluation requires a model that declares Chat Completions. Select a compatible inference service.",
     "BENCHMARK_TARGET_INACTIVE": "The target deployment is not active.",
     "BENCHMARK_LEADER_NOT_RUNNING": "The target deployment leader is not awake and running.",
     "BENCHMARK_EXTERNAL_URL_REQUIRED": "Enter the external benchmark target URL.",

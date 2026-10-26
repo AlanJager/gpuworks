@@ -40,7 +40,7 @@ func newTokenizerFixture(t *testing.T, dsn string) *tokenizerFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, err := admission.store.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/model", Revision: "main", Name: "model"})
+	model, err := admission.store.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/model", Revision: "main", Name: "model", Operations: `[{"type":"openai.chat"}]`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +503,7 @@ func TestCreateBenchmarkTokenizerSourceContract(t *testing.T) {
 // user can still fix it, rather than at execution where it is fatal.
 func TestCreateBenchmarkAgenticRequiresAResolvableTokenizer(t *testing.T) {
 	f := newTokenizerFixture(t, "benchmark_tokenizer_agentic_required")
-	local, err := f.admission.store.UpsertModel(&store.Model{Source: "local", SourceID: "gguf-only", Revision: "main", Name: "local"})
+	local, err := f.admission.store.UpsertModel(&store.Model{Source: "local", SourceID: "gguf-only", Revision: "main", Name: "local", Operations: `[{"type":"openai.chat"}]`})
 	if err != nil {
 		t.Fatal(err)
 	}
