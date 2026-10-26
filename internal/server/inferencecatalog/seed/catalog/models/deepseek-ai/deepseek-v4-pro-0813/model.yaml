@@ -43,4 +43,53 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: fp8-sglang-ppu-m890p-tp8-256k
+  display_profile: compatible
+  scenario: balanced
+  engine: sglang
+  image: reg.docker.alibaba-inc.com/ai_container/asllm:1.10.16-890P-pytorch2.10.0-ubuntu24.04-sail2.1.0-cuda13.0-sglang0.5.13-vllm0.23.0-py312
+  weights:
+    quantization: fp8
+    sources:
+    - huggingface:
+        repo_id: deepseek-ai/DeepSeek-V4-Pro-0813
+        revision: 72e1d3230f6c080a530b0a1d46f8eb4602340597
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V4-Pro-0813
+        revision: c19f08944616649991e431f9127009f6ce1918b5
+  weight_bytes: 892762497859
+  gpus:
+    vendor: ppu
+    name: (^|[^A-Za-z0-9])(?:ZW[ _-]?)?M890P([^A-Za-z0-9]|$)
+    display_target: ppu
+  args:
+  - --trust-remote-code
+  - --tp-size
+  - '${TP_SIZE}'
+  - --pp-size
+  - '${PP_SIZE}'
+  - --context-length
+  - '262144'
+  - --mem-fraction-static
+  - '0.9'
+  - --host
+  - 0.0.0.0
+  - --enable-metrics
+  - --enable-cache-report
+  env:
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("M890P profile requires exactly 8 GPUs")
+          return {"GPU_COUNT": 8, "TP_SIZE": 8, "PP_SIZE": 1, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]
