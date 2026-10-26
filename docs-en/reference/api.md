@@ -396,7 +396,7 @@ the endpoint returns 409 and does not replace the existing registration. Errors 
 | GET | `/api/v1/storages/{id}` | Get a single storage; `?all_nodes=1` returns the status of each node | JWT |
 | POST | `/api/v1/storages` | Add storage; NFS types are test-mounted on one node first, and storage that cannot be written to is saved as disabled (read-only) | admin |
 | PATCH | `/api/v1/storages/{id}` | Update the name, enabled status, default status, node scope, path, mount options, cache directory and limit, or `nfs`↔`nfs_cache` type. Include `expected_updated_at` from the read response to prevent overwriting concurrent changes; a version change returns 409 `STORAGE_CONFIG_CHANGED` | admin |
-| DELETE | `/api/v1/storages/{id}` | Remove a storage object (without deleting files); returns 409 `STORAGE_IN_USE` if deployments are bound to it | admin |
+| DELETE | `/api/v1/storages/{id}` | Remove a storage object (without deleting files) and remove models stored only in it from the model list; returns 409 `STORAGE_IN_USE` if deployments are bound to it or a deployment's model is stored only in it | admin |
 | POST | `/api/v1/storages/probe` | Test-mount a storage definition on one node without leaving it mounted | admin |
 | GET | `/api/v1/storages/{id}/control-planes` | Get other gpuworks control planes using the shared storage (heartbeats) | JWT |
 | PATCH | `/api/v1/storages/{id}/node-overrides` | Atomically update cache overrides for fixed `node_uuids`; omitted `cache_path`/`cache_max_bytes` remain unchanged, null inherits, and a limit of 0 means unlimited. New overrides do not expand the node scope | admin |

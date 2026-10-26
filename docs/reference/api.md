@@ -396,7 +396,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/storages/{id}` | 单个存储；`?all_nodes=1` 返回每个节点的状态 | JWT |
 | POST | `/api/v1/storages` | 添加存储；NFS 类先在一台节点上试挂，写不进去的保存为停用（只读） | admin |
 | PATCH | `/api/v1/storages/{id}` | 修改名称、启用、默认、节点范围、路径、挂载选项、缓存目录与上限、`nfs`↔`nfs_cache` 类型；可带读取时的 `expected_updated_at` 防止覆盖并发修改，版本变化返回409 `STORAGE_CONFIG_CHANGED` | admin |
-| DELETE | `/api/v1/storages/{id}` | 移除存储对象（不删文件）；有部署绑定时 409 `STORAGE_IN_USE` | admin |
+| DELETE | `/api/v1/storages/{id}` | 移除存储对象（不删文件），并从模型列表移除只存放在此存储上的模型；有部署绑定、或部署所用模型只存放在此存储上时 409 `STORAGE_IN_USE` | admin |
 | POST | `/api/v1/storages/probe` | 在一台节点上试挂一个存储定义，不留下挂载 | admin |
 | GET | `/api/v1/storages/{id}/control-planes` | 共享存储上还有哪些 gpuworks 在用（心跳） | JWT |
 | PATCH | `/api/v1/storages/{id}/node-overrides` | 原子修改固定 `node_uuids` 的缓存例外；`cache_path`/`cache_max_bytes` 缺省保持、null继承，限额0表示不限；新例外不扩大节点范围 | admin |
