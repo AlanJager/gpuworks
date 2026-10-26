@@ -41,7 +41,7 @@
       "component": "Multi-select fed by node facets",
       "request": "GET /nodes?label=team%3Dalpha",
       "persisted": "N/A: ephemeral filter",
-      "covered": ["selecting team=alpha keeps the labeled node and excludes the other", "GET /nodes?label=team%3Dalpha returns exactly the target with total=1", "deselecting restores both rows and total=2"],
+      "covered": ["selecting team=alpha keeps the labeled node and excludes the other", "GET /nodes?label=team%3Dalpha returns exactly the target with total=1", "the clear control removes team=alpha, both rows return, and the independent GET total is 2"],
       "missing": ["clearing the selector search restores all candidates", "multiple label AND semantics", "a combination whose individual filters match but whose intersection is empty", "facet values changing after another edit"]
     },
     {
@@ -54,13 +54,29 @@
     }
   ],
   "checklist_items": {
-    "1.12": "Partial: add a label to an existing node; editing/removing labels and preservation of every unrelated field remain MISSING",
+    "1.1": "A new label row shows two textboxes. The key textbox's accessible name is the key label, its placeholder is that label, it is required, its value is empty, it has no unit, and its maximum length is 128. The value textbox's accessible name is the value label, its placeholder is that label, it is not required, its value is empty, it has no unit, and its maximum length is 256. Both stay visible and the row has no other field. Reading them sends no request. The save request's only field is labels, and the independent GET persists that labels map",
+    "1.2": "The first open is not loading and Save is enabled. The new key and value are empty, and the dialog has no secret field. An empty key shows the field error and sends no request. After team=alpha is saved, reopening the dialog shows that key and that value in full, and the dialog still has no secret field",
+    "1.7": "Submitting a label with only the required key pool and the value left empty sends PUT to that node's labels path with body {\"labels\":{\"pool\":\"\"}} and the response is 200. The list row shows pool=. The node detail shows pool=. After refresh the list still shows pool= and the independent GET returns {\"pool\":\"\"}",
+    "1.8": "The add-label control is one dashed button. Filling the required key team and the optional value alpha sends PUT to that node's labels path with body {\"labels\":{\"team\":\"alpha\"}} and the response is 200. The list row shows team=alpha. After refresh the list still shows team=alpha and the independent GET returns {\"team\":\"alpha\"}. Leaving the optional value empty and filling only the required key pool sends PUT with body {\"labels\":{\"pool\":\"\"}} and the response is 200. The list row shows pool=. The node detail shows pool=. After refresh the list still shows pool= and the independent GET returns {\"pool\":\"\"}.",
+    "1.9": "While the label PUT is held the footer Save stays loading and a second click sends no further save. The later 200 is the only stored label change",
+    "1.10": "The 502 keeps the labels dialog and the team and alpha draft, shows the server reason, and the independent node GET keeps empty labels. The retry 200 matches the reloaded row",
+    "1.11": "Cancel, the close button, Escape, and a mask click each close the node labels dialog after the key team and the value draft are typed. None of those dismissals sends a label PUT. The independent GET stays {}",
+    "1.12": "Changing only the saved value from alpha to beta keeps the key team. The save returns 200 with body {\"labels\":{\"team\":\"beta\"}} and the independent GET returns that map. The node name and server url stay. The label dialog has no switch. Clearing that value keeps the key team. The save returns 200 with body {\"labels\":{\"team\":\"\"}} and the independent GET returns {\"team\":\"\"}. The node name and server url stay. Restoring the value to alpha keeps the key team. Adding site=east keeps team=alpha. Changing only that key from site to zone keeps the value east and team=alpha. Removing that row leaves team=alpha. Each of those saves returns 200, each independent GET matches the saved map, and the node name and server url stay. The open label row is one baseline-aligned space.",
+    "1.13": "While the label dialog is open on team=alpha, another session's PUT of {labels:{room:east}} returns 200 and the independent GET is {room:east}. The dialog still shows team and alpha. Saving that draft returns 200 with body {labels:{team:alpha}}, the dialog closes, and the independent GET returns {team:alpha}. There is no conflict status. A node deleted while a new label draft is open makes that save return 404 with body {labels:{gone:1}}, the dialog stays open and shows the save failure, cancel sends no further save, and the independent GET stays 404.",
     "1.14": "Refresh and independent GET preserve the saved label",
+    "1.15": "Tab from the key field reaches the value field. Save can be focused. Enter in the empty key sends no label PUT and leaves the key empty. Enter in the filled key pool and value edge sends no label PUT and leaves both values. Enter on Save with an empty key shows the key-required error, marks the key invalid, and sends no label PUT. At 1440×900 the key, value, Save, and Cancel each stay inside the viewport, and the key and the value do not overlap Save or Cancel.",
+    "2.2": "An empty label key shows the field error and sends no request. A whitespace-only key and a key with surrounding spaces are submitted unchanged, the server rejects both, and the independent GET stays empty. An empty value, a whitespace-only value, and a value with surrounding spaces are each saved as typed. The request body and the independent GET keep those characters. The key is not trimmed into acceptance and the value is not trimmed",
+    "2.3": "The label value's shortest stored value is empty, and nothing is shorter. 256 ASCII characters are 256 bytes and save; the control stops at 256. A direct PUT of 257 bytes returns NODE_LABELS_INVALID and the independent GET keeps the 256-byte value. 85 Chinese characters are 255 bytes and save. 86 Chinese characters remain in the control, the save returns NODE_LABELS_INVALID, and the independent GET keeps the 85-character value, so the limit counts bytes. The label key's shortest value is one character. Empty is one shorter: the field error shows and no request is sent. 128 ASCII characters are 128 bytes and save; the control stops at 128. A direct PUT of 129 bytes returns NODE_LABELS_INVALID and the independent GET keeps the 128-byte key. The key grammar is single-byte, so its character count and its byte count are the same",
     "2.4": "A reserved gpuworks.ai/ key (a product-forbidden character/value class) is rejected by the real server, the modal and stored labels stay unchanged, and the corrected save succeeds",
+    "2.6": "The label value accepts a pasted 粘A1., a keyboard clear back to empty, and keyboard editing back to alpha. Paste, clear and typing send no request. Pasting text that contains a newline leaves no newline in the control. A direct PUT of a value that contains a newline returns NODE_LABELS_INVALID and the independent GET stays team=alpha. Saving the keyboard-typed alpha and reopening the dialog shows alpha",
     "2.5": "MISSING: no real uniqueness/duplicate-name conflict is constructed for labels",
     "5.3": "The multi-select search filters candidates to team=alpha, reports the no-result state for a missing term, selector search restoration after clearing remains MISSING",
+    "5.4": "The label filter has a clear control. After team=alpha is selected, Escape closes the menu and the labeled node stays the only row. Hovering the filter shows the clear control. Clicking it removes team=alpha, the selection is empty, both rows return, and the independent GET /api/v1/nodes returns both nodes",
     "10.2": "Search covers partial, exact, missing and cleared queries with independent hit/exclusion sets and totals",
-    "12.2": "The row menu and labels modal open inside the 1440x900 viewport; the modal container and Save button are reachable"
+    "12.1": "Edit labels on the node row opens one dialog named by the labels title, and the add-label control is the visible business control",
+    "12.2": "The row menu and labels modal open inside the 1440x900 viewport; the modal container and Save button are reachable",
+    "12.3": "Default focus is inside the labels dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+    "12.6": "covered: While the label PUT is held the footer Save shows the loading state and a second click sends no further save; the 502 keeps the team and alpha draft and shows the server reason; the later 200 matches the reloaded row and the independent GET"
   },
   "missing": [
     "MISSING: checklist 10.4 (column sorting) — no sort interaction is exercised",
@@ -69,7 +85,7 @@
     "MISSING: renaming a node",
     "MISSING: online, reconnect and terminal behavior",
     "MISSING: scheduling, eviction and management roles",
-    "MISSING: duplicate keys, empty keys, removing labels and length boundaries",
+    "MISSING: duplicate keys and removing labels",
     "MISSING: multiple label filters and their AND semantics",
     "MISSING: search by hostname or UUID, special characters and pagination"
   ],
