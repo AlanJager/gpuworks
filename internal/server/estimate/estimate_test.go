@@ -1,6 +1,8 @@
 package estimate
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/pkg/modelconfig"
@@ -63,6 +65,101 @@ func TestComputeUsesGPUCapacityAndDoesNotClaimFitWhenCapacityUnknown(t *testing.
 	unknown := Compute(Params{WeightBytes: testGiB, TP: 1})
 	if unknown.CapacityBytes != 0 || unknown.Fits {
 		t.Fatalf("unknown capacity must not claim the model fits: %+v", unknown)
+	}
+}
+
+// Qwen3-VL-Embedding-2B on a 24 GiB card at 0.9, and Qwen3-Reranker-8B on the
+// same card: startup memory fits, one request of the model's own context does
+// not, and the concurrency of that context is a real zero that has to be on
+// the wire. A short context of the same model still fits, and a model with no
+// measured KV cost does not invent a zero.
+func TestComputeRefusesAFullContextTheKVPoolCannotHold(t *testing.T) {
+	const gib = int64(1) << 30
+	util := 0.9
+	capacity := int64(float64(24*gib) * util)
+	const perToken = 114688.0
+	const maxLen = 262144
+	const wantTokens = 146340
+	pool := int64(wantTokens * perToken)
+	embedding := Breakdown{
+		WeightBytes:     capacity - pool,
+		KVBytesPerToken: perToken,
+		MaxModelLen:     maxLen,
+		TensorParallel:  1,
+		CapacityBytes:   capacity,
+		Grade:           GradeMeasured,
+	}
+	Finalize(&embedding)
+	if embedding.EstimatedKVTokens != wantTokens {
+		t.Fatalf("tokens = %d, want %d", embedding.EstimatedKVTokens, wantTokens)
+	}
+	if embedding.Fits || embedding.MaxConcurrency == nil || *embedding.MaxConcurrency != 0 {
+		t.Fatalf("embedding breakdown = %+v, want fits false and concurrency 0", embedding)
+	}
+	if !embedding.ContextExceedsKVPool() {
+		t.Fatal("embedding context was not reported as exceeding the pool")
+	}
+	raw, err := json.Marshal(embedding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"max_concurrency":0`) {
+		t.Fatalf("wire hid a computed zero: %s", raw)
+	}
+
+	// Reranker: pool 4.36 GiB against 5.62 GiB for a 40960 context.
+	gibf := float64(gib)
+	reranker := Breakdown{
+		WeightBytes:     int64(17.24 * gibf),
+		KVBytesPerToken: (5.62 * gibf) / 40960,
+		MaxModelLen:     40960,
+		TensorParallel:  1,
+		CapacityBytes:   int64(21.60 * gibf),
+		Grade:           GradeMeasured,
+	}
+	Finalize(&reranker)
+	if reranker.Fits || reranker.MaxConcurrency == nil || *reranker.MaxConcurrency != 0 || reranker.EstimatedKVTokens >= 40960 || reranker.EstimatedKVTokens <= 0 {
+		t.Fatalf("reranker breakdown = %+v", reranker)
+	}
+	if reranker.KVPoolBytes >= int64(5.62*gibf) {
+		t.Fatalf("reranker pool = %d, want it under one full context", reranker.KVPoolBytes)
+	}
+	suggested := 1
+	for suggested<<1 > 0 && suggested<<1 <= reranker.EstimatedKVTokens {
+		suggested <<= 1
+	}
+	if suggested != 16384 {
+		t.Fatalf("reranker tokens = %d, largest power of two = %d, want 16384", reranker.EstimatedKVTokens, suggested)
+	}
+
+	short := embedding
+	short.MaxModelLen = 1024
+	short.MaxConcurrency = nil
+	Finalize(&short)
+	if !short.Fits || short.MaxConcurrency == nil || *short.MaxConcurrency < 1 || short.ContextExceedsKVPool() {
+		t.Fatalf("short context = %+v", short)
+	}
+
+	unknown := Compute(Params{WeightBytes: gib, TP: 1, GPUMemUtil: 0.9, GPUCapacityBytes: 24 * gib, MaxModelLen: maxLen})
+	if unknown.MaxConcurrency != nil || unknown.ContextExceedsKVPool() || !unknown.Fits {
+		t.Fatalf("unmeasured KV must not refuse or invent a concurrency: %+v", unknown)
+	}
+	raw, err = json.Marshal(unknown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "max_concurrency") {
+		t.Fatalf("unmeasured breakdown invented a concurrency: %s", raw)
+	}
+
+	startupUtil := 0.8
+	startup := Breakdown{
+		WeightBytes: 20 * gib, KVBytesPerToken: perToken, MaxModelLen: 8192,
+		TensorParallel: 1, CapacityBytes: int64(float64(16*gib) * startupUtil), Grade: GradeMeasured,
+	}
+	Finalize(&startup)
+	if startup.Fits || startup.ContextExceedsKVPool() || startup.KVEstimateReason != KVReasonStartupExceedsCapacity {
+		t.Fatalf("startup failure became a context refusal: %+v", startup)
 	}
 }
 

@@ -21,6 +21,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import traceback
 from urllib.parse import urlsplit
@@ -36,12 +37,105 @@ PREVIEW = MODELS + "/preview-url"
 REGISTER = MODELS + "/register-url"
 
 
+def model_db(server):
+    conn = sqlite3.connect(server.work / "server-data" / "gpuworks.db", timeout=5)
+    conn.execute("PRAGMA busy_timeout=5000")
+    return conn
+
+
+def model_db_count(server, sql, args):
+    conn = model_db(server)
+    try:
+        return conn.execute(sql, args).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def place_model_reference(server, model_id):
+    # DeleteModel counts deployment rows for this model before it removes anything.
+    conn = model_db(server)
+    try:
+        name = "e2e-ref-" + str(model_id)
+        conn.execute(
+            "INSERT INTO deployments (name, model_id, served_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (name, model_id, name, "2026-10-24 00:00:00", "2026-10-24 00:00:00"))
+        conn.commit()
+        left = conn.execute("SELECT COUNT(*) FROM deployments WHERE model_id = ?", (model_id,)).fetchone()[0]
+        check(left == 1, "deployment reference missing after insert")
+        return name
+    finally:
+        conn.close()
+
+
+def clear_model_reference(server, model_id):
+    conn = model_db(server)
+    try:
+        cur = conn.execute("DELETE FROM deployments WHERE model_id = ?", (model_id,))
+        conn.commit()
+        check(cur.rowcount == 1, "deployment reference was not the one inserted")
+    finally:
+        conn.close()
+
+
+def place_deleting_file(server, model_id):
+    # A file still awaiting deletion acknowledgement refuses model removal.
+    conn = model_db(server)
+    try:
+        conn.execute(
+            "INSERT INTO model_files (model_id, state, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (model_id, "deleting", "2026-10-24 00:00:00", "2026-10-24 00:00:00"))
+        conn.commit()
+        left = conn.execute(
+            "SELECT COUNT(*) FROM model_files WHERE model_id = ? AND state = ?",
+            (model_id, "deleting")).fetchone()[0]
+        check(left == 1, "deleting file row missing after insert")
+    finally:
+        conn.close()
+
+
+def clear_deleting_file(server, model_id):
+    conn = model_db(server)
+    try:
+        cur = conn.execute("DELETE FROM model_files WHERE model_id = ? AND state = ?", (model_id, "deleting"))
+        conn.commit()
+        check(cur.rowcount == 1, "deleting file row was not the one inserted")
+    finally:
+        conn.close()
+
+
 def model_list(page, server):
     response = page.request.get(server.base + MODELS)
     check(response.status == 200, "independent model GET failed")
     data = response.json()
     check(set(data) == {"items", "total"} and data["total"] == len(data["items"]), "model page envelope drift")
     return data["items"]
+
+
+def exercise_register_dialog(page, trigger, title, parent_name, field_label, save_label, cancel_label, mutations, evidence):
+    """Dialog identity, layout, focus, and dismissals. No model write."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    parent = page.get_by_role("heading", name=parent_name, exact=True)
+    baseline = len(mutations)
+
+    def open_dialog():
+        trigger.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_dialog()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(field_label, exact=True), button(dialog, save_label))
+    dialog = assert_nested_dismissals(
+        dialog, parent, open_dialog,
+        [("cancel", cancel_button(cancel_label)), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        lambda: len(mutations), trigger)
+    check(len(mutations) == baseline, "register dialog dismissal sent a write")
+    evidence.append({"layer": "ui", "register_dialog": title,
+                     "dismissals": ["cancel", "escape", "close", "mask"], "write_requests": 0})
+    return dialog
 
 
 # Contract: gpuworks/models/http-register; gpuworks/models/http-register-recovery
@@ -76,13 +170,22 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     expect(page.get_by_role("radio", name=k["view"]["list"], exact=True)).to_be_checked()
     # Empty state repeats the same action; the header's first occurrence is stable document order.
     trigger = button(page, k["action"]["register"]).first
-    trigger.click()
-    dialog = page.get_by_role("dialog", name=k["action"]["register"], exact=True)
+    expect(trigger).to_be_visible()
+    dialog = exercise_register_dialog(
+        page, trigger, k["action"]["register"], k["page"]["title"],
+        k["column"]["source"], k["register"]["confirm"], k["action"]["cancel"],
+        mutations, report["evidence"])
     source = dialog.get_by_label(k["column"]["source"], exact=True)
     source.click()
     page.get_by_text(k["source"]["url"], exact=True).click()
+    report["last_step"] = "register-modal-width"
+    expect(dialog).to_have_css("width", "720px", timeout=12000)
+    report["register_modal_width"] = True
     url = dialog.get_by_label(k["register"]["directoryURL"], exact=True)
     expect(url).to_have_value("")
+    from http_register_inventory import exercise_http_register_inventory
+    report["register_inventory"] = exercise_http_register_inventory(dialog, k)
+    report["evidence"].append({"layer": "ui", "register_inventory": report["register_inventory"]})
     parse = button(dialog, k["register"]["parseDirectory"])
     parse.click()
     expect(dialog.get_by_text(k["register"]["directoryURLRequired"], exact=True)).to_be_visible()
@@ -111,6 +214,14 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     check(preview.status == 200 and preview.request.post_data_json == {"url": fixture.url + "/"}
           and not urlsplit(preview.url).query and preview.json() == expected_preview, "preview request/metadata mismatch")
     expect(dialog.get_by_text(k["register"]["urlParsed"], exact=True)).to_be_visible()
+    report["last_step"] = "register-parsed-columns"
+    parsed = dialog.locator(".ant-alert-success .ant-descriptions")
+    expect(parsed).to_have_count(1, timeout=12000)
+    arch_row = parsed.locator(".ant-descriptions-row").filter(has_text="Qwen3ForCausalLM")
+    expect(arch_row).to_have_count(1, timeout=12000)
+    expect(arch_row).to_contain_text("bfloat16", timeout=12000)
+    expect(arch_row).not_to_contain_text(fixture.url, timeout=12000)
+    report["register_parsed_columns"] = True
     expect(dialog.get_by_text("Qwen3ForCausalLM", exact=True)).to_be_visible()
     expect(dialog.get_by_text("bfloat16", exact=True)).to_be_visible()
     expect(dialog.get_by_text("40,960", exact=True)).to_be_visible()
@@ -146,8 +257,23 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     if scenario == "recovery":
         report["active_evidence_layer"] = "recovery"
         fixture.set_available(False)
+        held = []
+
+        def hold_first(route):
+            if route.request.method == "POST":
+                held.append(route)
+                return
+            route.continue_()
+
+        page.route("**" + REGISTER, hold_first)
+        submit.click()
+        inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+        expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+        inflight.click()
+        check(len(held) == 1, "a second click sent another register POST")
         with page.expect_response(lambda r: urlsplit(r.url).path == REGISTER and r.request.method == "POST") as rejected:
-            submit.click()
+            held[0].continue_()
+        page.unroute("**" + REGISTER, hold_first)
         rejection = rejected.value
         check(rejection.status == 502 and rejection.request.post_data_json == submitted
               and rejection.json()["code"] == "HTTP_DIRECTORY_UNREACHABLE", "stale preview was trusted or wrong error contract")
@@ -160,6 +286,7 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
         failed_reads = fixture.audit()[len(before_submit):]
         check(failed_reads and all(r["status"] == 503 for r in failed_reads), "registration did not re-read unavailable directory")
         report["evidence"].append({"layer": "recovery", "status": 502, "body": rejection.json(), "fixture_requests": failed_reads,
+            "inflight_posts": 1, "confirm_loading": True,
             "draft": "URL, source ID and name unchanged; zero model records"})
         fixture.set_available(True)
     report["active_evidence_layer"] = "request-and-persistence"
@@ -193,6 +320,11 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     check(detail_response.value.status == 200, "browser detail GET failed")
     detail = page.get_by_role("dialog", name=target_name, exact=True)
     expect(detail).to_be_in_viewport()
+    report["last_step"] = "register-detail-heading"
+    heading = detail.locator("h4.ant-typography")
+    expect(heading).to_have_count(1, timeout=12000)
+    expect(heading).to_have_text(target_name, timeout=12000)
+    report["register_detail_heading"] = True
     expect(detail.get_by_text("Qwen3ForCausalLM", exact=True)).to_be_visible()
     expect(detail.get_by_text("bfloat16", exact=True)).to_be_visible()
     expect(detail.get_by_text("40,960", exact=True)).to_be_visible()
@@ -204,18 +336,56 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
         {"layer": "persistence", "detail": persisted, "reload": "one row; detail architecture/precision/context match"},
         {"layer": "source", "fixture_requests": final_reads, "limit": "Directory metadata read; no agent/download/GPU execution"}])
     report["active_evidence_layer"] = "cleanup"
-    button(row, k["action"]["more"]).click()
-    page.get_by_role("menu").get_by_text(k["action"]["deleteModel"], exact=True).click()
     confirmation = k["delete"]["confirm"].replace("{{name}}", target_name)
-    deletion = page.get_by_role("dialog", name=confirmation, exact=True)
+
+    def open_model_delete():
+        button(row, k["action"]["more"]).click()
+        page.get_by_role("menu").get_by_text(k["action"]["deleteModel"], exact=True).click()
+        deletion = page.get_by_role("dialog", name=confirmation, exact=True)
+        expect(deletion).to_be_visible()
+        expect(deletion.get_by_text(k["delete"]["listDescription"], exact=True)).to_be_visible()
+        return deletion
+
+    deletion = open_model_delete()
     modal_geometry(deletion, button(deletion, k["action"]["delete"]))
-    expect(deletion.get_by_text(k["delete"]["listDescription"], exact=True)).to_be_visible()
     button(deletion, k["action"]["cancel"]).click()
     expect(deletion).not_to_be_visible()
     check(not any(m["method"] == "DELETE" for m in mutations), "cancel sent DELETE")
     check(page.request.get(server.base + path).status == 200, "cancel removed model")
-    button(row, k["action"]["more"]).click()
-    page.get_by_role("menu").get_by_text(k["action"]["deleteModel"], exact=True).click()
+    place_model_reference(server, created["id"])
+    deletion = open_model_delete()
+    with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as blocked:
+        button(deletion, k["action"]["delete"]).click()
+    blocked_response = blocked.value
+    check(blocked_response.status == 409, f"reference block status {blocked_response.status} {blocked_response.text()}")
+    blocked_body = blocked_response.json()
+    check(blocked_body.get("code") == "MODEL_IN_USE", f"reference block code {blocked_body}")
+    check(blocked_response.request.post_data is None and not urlsplit(blocked_response.url).query,
+          "reference block sent a body or query")
+    blocked_reason = common["apiError"]["MODEL_IN_USE"].split("{{")[0].strip()
+    expect(page.get_by_text(re.compile(re.escape(blocked_reason))).first).to_be_visible()
+    expect(deletion).not_to_be_visible()
+    check(page.request.get(server.base + path).status == 200, "reference block deleted the model")
+    check(model_db_count(server, "SELECT COUNT(*) FROM deployments WHERE model_id = ?", (created["id"],)) == 1,
+          "reference block removed the deployment")
+    report["last_step"] = "model-delete-reference-block"
+    clear_model_reference(server, created["id"])
+    place_deleting_file(server, created["id"])
+    deletion = open_model_delete()
+    with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as pending:
+        button(deletion, k["action"]["delete"]).click()
+    pending_response = pending.value
+    pending_body = pending_response.json()
+    check(pending_response.status == 409 and "cache deletion is awaiting confirmation" in pending_body.get("error", ""),
+          f"deleting file did not keep the model {pending_response.status} {pending_body}")
+    expect(page.get_by_text(re.compile(r"cache deletion is awaiting confirmation")).first).to_be_visible()
+    expect(deletion).not_to_be_visible()
+    check(page.request.get(server.base + path).status == 200, "cache-deletion refusal removed the model")
+    check(model_db_count(server, "SELECT COUNT(*) FROM model_files WHERE model_id = ? AND state = ?",
+                         (created["id"], "deleting")) == 1, "cache-deletion refusal removed the file")
+    report["last_step"] = "model-delete-cache-pending"
+    clear_deleting_file(server, created["id"])
+    deletion = open_model_delete()
     with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as deleted:
         button(deletion, k["action"]["delete"]).click()
     check(deleted.value.status == 204 and deleted.value.request.post_data is None and not urlsplit(deleted.value.url).query, "delete contract mismatch")
@@ -223,10 +393,80 @@ def test_model_registration(page, context, server, fixture, artifacts, report, l
     check(page.request.get(server.base + path).status == 404 and model_list(page, server) == [], "deleted resource remains reachable")
     page.reload()
     expect(page.get_by_role("row").filter(has_text=target_name)).to_have_count(0)
-    check(mutations == [{"method": "POST", "path": PREVIEW}] + [{"method": "POST", "path": REGISTER}] * (2 if scenario == "recovery" else 1) + [{"method": "DELETE", "path": path}], "unexpected/duplicate mutation")
-    expected_failures = [{"path": REGISTER, "status": 502}] if scenario == "recovery" else []
+    report["last_step"] = "register-minimum-create"
+    trigger = button(page, k["action"]["register"]).first
+    trigger.click()
+    dialog = page.get_by_role("dialog", name=k["action"]["register"], exact=True)
+    expect(dialog).to_be_visible()
+    dialog.get_by_label(k["column"]["source"], exact=True).click()
+    page.get_by_text(k["source"]["url"], exact=True).click()
+    expect(dialog).to_have_css("width", "720px", timeout=12000)
+    url = dialog.get_by_label(k["register"]["directoryURL"], exact=True)
+    url.fill(fixture.url + "/")
+    with page.expect_response(lambda r: urlsplit(r.url).path == PREVIEW and r.request.method == "POST") as minimum_preview:
+        button(dialog, k["register"]["parseDirectory"]).click()
+    check(minimum_preview.value.status == 200, "minimum preview failed")
+    name = dialog.get_by_label(k["column"]["name"], exact=True)
+    source_id = dialog.get_by_label(k["register"]["modelID"], exact=True)
+    expect(name).to_have_value("tiny-model")
+    expect(source_id).to_have_value(expected_preview["source_id"])
+    name.fill("")
+    expect(name).to_have_value("")
+    minimum_body = {"source_url": fixture.url, "source_id": expected_preview["source_id"], "name": ""}
+    submit = dialog.get_by_role("button").filter(has_text=re.compile("^" + re.escape(k["register"]["confirm"]) + "$"))
+    with page.expect_response(lambda r: urlsplit(r.url).path == REGISTER and r.request.method == "POST") as minimum_registration:
+        submit.click()
+    minimum_response = minimum_registration.value
+    check(minimum_response.status == 201 and minimum_response.request.post_data_json == minimum_body, "minimum registration body mismatch")
+    created_min = minimum_response.json()
+    min_path = MODELS + "/" + str(created_min["id"])
+    report["owned_model_id"] = created_min["id"]
+    minimum_read = page.request.get(server.base + min_path)
+    persisted_min = minimum_read.json()
+    check(minimum_read.status == 200 and persisted_min.get("name") == "tiny-model" and created_min.get("name") == "tiny-model", "minimum name default mismatch")
+    for key, value in {"source": "url", "source_url": fixture.url, "source_id": expected_preview["source_id"], "revision": "",
+                       "arch": "Qwen3ForCausalLM", "precision": "bfloat16", "context_length": 40960,
+                       "weight_gib": len(fixture.files["model.safetensors"]) / (1024 ** 3)}.items():
+        check(persisted_min.get(key) == value and created_min.get(key) == value, f"minimum persisted {key} differs")
+    check(not persisted_min.get("nodes") and not persisted_min.get("storages"), "minimum registration invented a local copy")
+    page.reload()
+    minimum_row = page.get_by_role("row").filter(has_text="tiny-model")
+    expect(minimum_row).to_have_count(1)
+    detail_trigger = button(minimum_row, "tiny-model")
+    with page.expect_response(lambda r: urlsplit(r.url).path == min_path and r.request.method == "GET") as minimum_detail:
+        detail_trigger.click()
+    check(minimum_detail.value.status == 200 and minimum_detail.value.json().get("name") == "tiny-model", "minimum detail mismatch")
+    detail = page.get_by_role("dialog", name="tiny-model", exact=True)
+    expect(detail.locator("h4.ant-typography")).to_have_text("tiny-model", timeout=12000)
+    expect(detail.get_by_text("Qwen3ForCausalLM", exact=True)).to_be_visible()
+    page.wait_for_function("el => el.contains(document.activeElement)", arg=detail.element_handle())
+    page.keyboard.press("Escape")
+    expect(detail).not_to_be_visible()
+    confirmation = k["delete"]["confirm"].replace("{{name}}", "tiny-model")
+    button(minimum_row, k["action"]["more"]).click()
+    page.get_by_role("menu").get_by_text(k["action"]["deleteModel"], exact=True).click()
+    deletion = page.get_by_role("dialog", name=confirmation, exact=True)
+    with page.expect_response(lambda r: urlsplit(r.url).path == min_path and r.request.method == "DELETE") as minimum_deleted:
+        button(deletion, k["action"]["delete"]).click()
+    check(minimum_deleted.value.status == 204, "minimum delete failed")
+    page.reload()
+    expect(page.get_by_role("row").filter(has_text="tiny-model")).to_have_count(0)
+    check(page.request.get(server.base + min_path).status == 404, "minimum model remains")
+    report["owned_model_id"] = None
+    report["register_minimum_create"] = True
+    check(mutations == [{"method": "POST", "path": PREVIEW}] + [{"method": "POST", "path": REGISTER}] * (2 if scenario == "recovery" else 1) + [{"method": "DELETE", "path": path}] * 3 + [{"method": "POST", "path": PREVIEW}, {"method": "POST", "path": REGISTER}, {"method": "DELETE", "path": min_path}], "unexpected/duplicate mutation")
+    refused = [{"path": path, "status": 409}, {"path": path, "status": 409}]
+    expected_failures = ([{"path": REGISTER, "status": 502}] if scenario == "recovery" else []) + refused
     check(failures == expected_failures and not errors, "unexpected browser request failure or exception")
-    check((len(console_errors) == 1 and console_errors[0]["path"] == REGISTER and "502" in console_errors[0]["text"]) if scenario == "recovery" else not console_errors, "unexpected browser console error")
+    if scenario == "recovery":
+        check(len(console_errors) == 3 and console_errors[0]["path"] == REGISTER and "502" in console_errors[0]["text"],
+              f"unexpected browser console error {console_errors}")
+        delete_console = console_errors[1:]
+    else:
+        delete_console = console_errors
+        check(len(delete_console) == 2, f"unexpected browser console error {console_errors}")
+    check(all(item["path"] == path and "409" in item["text"] for item in delete_console),
+          f"delete console errors {delete_console}")
     check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), "page has horizontal overflow")
     report["browser_errors"] = {"pageerrors": errors, "responses": failures, "console": console_errors}
     report["owned_model_id"] = None
@@ -250,7 +490,8 @@ def run_case(args, scenario):
         "timezone": "UTC", "viewport": {"width": 1440, "height": 900}, "retries": 0, "evidence": [],
         "not_covered": manifest["missing"], "command": ["python3", "test/e2e/http_model_registration.py", "--case", scenario, "--locale", args.locale],
         "source_hashes": {name: digest(ROOT / name) for name in ["test/e2e/http_model_registration.py", "test/e2e/http_model_fixture.py",
-            "test/e2e/local_browser_fixture.py", "test/e2e/platform_token_read_revoke.py", "test/e2e/coverage/http-model-registration.json"]}}
+            "test/e2e/local_browser_fixture.py", "test/e2e/platform_token_read_revoke.py", "test/e2e/dialog_checks.py",
+            "test/e2e/coverage/http-model-registration.json", "test/e2e/http_register_inventory.py"]}}
     try:
         report["binary_sha256"] = digest(args.server_bin)
         report["health"] = server.start()

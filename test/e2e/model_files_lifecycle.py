@@ -20,7 +20,8 @@ CASES = {'download-delete': exercise_download_delete,
          'interrupted-recovery': exercise_interrupted_recovery}
 HELPERS = ('test/e2e/model_files_fixture.py', 'test/e2e/model_download_fixture.py',
            'test/e2e/platform_token_read_revoke.py', 'test/e2e/test_model_files_fixture.py',
-           'test/e2e/test_model_files_runner.py', 'test/e2e/test_model_download_fixture.py')
+           'test/e2e/test_model_files_runner.py', 'test/e2e/test_model_download_fixture.py',
+           'test/e2e/model_file_delete_blocks.py')
 
 
 def main():

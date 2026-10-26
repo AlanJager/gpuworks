@@ -25,7 +25,13 @@ from urllib.parse import parse_qs, quote, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
+from dialog_checks import assert_dialog_shell
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
+from nodes_label_edit import exercise_label_edit_changes
+from nodes_label_lengths import (
+    exercise_label_dismissals, exercise_label_edit_backfill, exercise_label_field_inventory,
+    exercise_label_conflict, exercise_label_filter_clear, exercise_label_lengths,
+    exercise_label_text_edit, exercise_label_keyboard, exercise_minimal_label)
 from platform_token_read_revoke import button, check
 
 CONTRACT = "gpuworks/node/labels-search-filter"
@@ -195,6 +201,11 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     page.get_by_role("menuitem").filter(has_text=ui["labels"]["edit"]).click()
     modal = page.get_by_role("dialog")
     expect(modal).to_be_visible()
+    add_label = action(modal, ui["labels"]["add"])
+    assert_dialog_shell(page, modal, add_label, modal.locator(".ant-modal-footer .ant-btn-primary"))
+    modal = exercise_label_dismissals(page, modal, name_a, node_a["uuid"], server.base, ui, requests, report)
+    report["evidence"].append({
+        "layer": "ui", "dialog_shell": ui["labels"]["title"], "viewport": "1440x900"})
     viewport = page.viewport_size
     box = modal.bounding_box()
     check(box and box["x"] >= 0 and box["y"] >= 0
@@ -205,9 +216,44 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     check(save_box and save_box["y"] + save_box["height"] <= viewport["height"] + 1,
           f"labels Save is outside the viewport: {save_box}")
     action(modal, ui["labels"]["add"]).click()
-    modal.get_by_label(ui["labels"]["key"], exact=True).fill("team")
-    modal.get_by_label(ui["labels"]["value"], exact=True).fill("alpha")
+    report["label_inventory"] = exercise_label_field_inventory(modal, ui, requests)
+    report["last_step"] = "label-field-inventory"
+    report["label_keyboard"] = exercise_label_keyboard(page, modal, ui, requests)
+    report["last_step"] = "label-keyboard"
     labels_path = NODES + f"/{node_a['uuid']}/labels"
+    key_input = modal.get_by_label(ui["labels"]["key"], exact=True)
+    value_input = modal.get_by_label(ui["labels"]["value"], exact=True)
+    save_button = modal.locator(".ant-modal-footer .ant-btn-primary")
+    # 2.2: an empty key never leaves the browser. A whitespace-only key and a
+    # key with surrounding spaces are rejected by the server and are not trimmed
+    # into a stored key. The value field is still "alpha" and is not saved.
+    puts_before_keys = len(requests)
+    key_input.fill("")
+    value_input.fill("alpha")
+    save_button.click()
+    expect(modal.get_by_text(ui["labels"]["keyRequired"], exact=True)).to_be_visible()
+    check(len(requests) == puts_before_keys, "an empty label key was submitted")
+    untouched = page.request.get(server.base + NODES + f"/{node_a['uuid']}")
+    check(untouched.json()["labels"] == {}, "an empty label key changed stored labels")
+
+    def reject_key(text):
+        key_input.fill(text)
+        value_input.fill("alpha")
+        with page.expect_response(lambda r: urlsplit(r.url).path == labels_path
+                                  and r.request.method == "PUT") as rejected_key:
+            save_button.click()
+        check(rejected_key.value.status == 400, f"label key {text!r} was accepted")
+        check(rejected_key.value.request.post_data_json == {"labels": {text: "alpha"}},
+              f"label key request was rewritten: {rejected_key.value.request.post_data_json}")
+        expect(modal).to_be_visible()
+        stayed = page.request.get(server.base + NODES + f"/{node_a['uuid']}")
+        check(stayed.json()["labels"] == {}, f"label key {text!r} changed stored labels")
+
+    reject_key("   ")
+    reject_key(" team ")
+    key_input.fill("team")
+    value_input.fill("alpha")
+    report["last_step"] = "label-key-whitespace"
 
     # A reserved gpuworks.ai/ key is a real server-side constraint. The UI
     # must report it, keep the modal and the stored labels unchanged, and
@@ -234,6 +280,48 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     expect(save_button).to_be_enabled()
     report["last_step"] = "reserved-label-rejected"
 
+    # The corrected row is still only a draft. Hold its PUT: Save shows the
+    # loading state, a second click sends nothing, and a 502 keeps the row.
+    reason = "upstream fixture is unreachable"
+    held = []
+
+    def hold_put(route):
+        if route.request.method != "PUT" or urlsplit(route.request.url).path != labels_path:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + labels_path, hold_put)
+    save_button.click()
+    expect(save_button).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    save_button.click()
+    check(len(held) == 1, "duplicate label save while the first request is held")
+    check(held[0].request.post_data_json == {"labels": {"team": "alpha"}}, "held label body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == labels_path
+                              and r.request.method == "PUT") as failed_save:
+        held[0].fulfill(status=502, content_type="application/json",
+                        body=json.dumps({"message": reason}))
+    page.unroute("**" + labels_path, hold_put)
+    check(failed_save.value.status == 502, "forced label failure did not surface")
+    expect(modal).to_be_visible()
+    expect(modal.get_by_label(ui["labels"]["key"], exact=True)).to_have_value("team")
+    expect(modal.get_by_label(ui["labels"]["value"], exact=True)).to_have_value("alpha")
+    expect(page.get_by_text(re.compile(
+        re.escape(ui["labels"]["failed"].split("{{")[0].strip()))).first).to_be_visible()
+    expect(page.get_by_text(reason).first).to_be_visible()
+    after_hold = page.request.get(server.base + NODES + f"/{node_a['uuid']}")
+    check(after_hold.json()["labels"] == {}, "the refused label save changed stored labels")
+    check(any(item.get("path") == labels_path and item.get("status") == 502 for item in bad_responses),
+          "502 was not recorded")
+    check(any("502" in text for text in console_errors), "502 console line absent: " + str(console_errors))
+    bad_responses[:] = [item for item in bad_responses if item.get("status") != 502]
+    console_errors[:] = [text for text in console_errors if "502" not in text]
+    expect(save_button).to_be_enabled()
+    report["last_step"] = "labels-inflight-rejected"
+    report["evidence"].append({"layer": "ui", "inflight_puts": 1, "confirm_loading": True,
+                               "failure_status": 502, "draft_retained": True,
+                               "failure_reason_visible": True})
+
     with page.expect_response(lambda r: urlsplit(r.url).path == labels_path
                               and r.request.method == "PUT") as saved:
         save_button.click()
@@ -252,6 +340,79 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     check(independent.status == 200, f"independent node GET HTTP {independent.status}")
     check(independent.json()["labels"] == {"team": "alpha"},
           "independent node read differs from the saved labels")
+    saved_fields = list(saved.value.request.post_data_json)
+    check(saved_fields == ["labels"], f"label save fields {saved_fields}")
+    check(independent.json()["labels"] == saved.value.request.post_data_json["labels"],
+          "the independent labels field differs from the save request")
+    report["label_inventory"]["request_fields"] = saved_fields
+    report["label_inventory"]["persisted_field"] = "labels"
+    report["label_inventory"]["persisted"] = independent.json()["labels"]
+
+    def open_labels():
+        page.get_by_role("row").filter(has_text=name_a).get_by_role(
+            "button", name=ui["action"]["more"], exact=True).click()
+        page.get_by_role("menuitem").filter(has_text=ui["labels"]["edit"]).click()
+        dialog = page.get_by_role("dialog")
+        expect(dialog).to_be_visible()
+        return dialog
+
+    reopened = open_labels()
+    report["label_backfill"] = exercise_label_edit_backfill(reopened, ui)
+    report["last_step"] = "label-edit-backfill"
+    report["label_conflict"] = exercise_label_conflict(page, server.base, node_a, ui, console_errors, bad_responses, artifacts)
+
+    def save_label_value(value):
+        dialog = open_labels()
+        dialog.get_by_label(ui["labels"]["value"], exact=True).fill(value)
+        with page.expect_response(lambda r: urlsplit(r.url).path == labels_path
+                                  and r.request.method == "PUT") as saved_value:
+            dialog.locator(".ant-modal-footer .ant-btn-primary").click()
+        body = {"labels": {"team": value}}
+        check(saved_value.value.status == 200, f"label value {value!r} HTTP {saved_value.value.status}")
+        check(saved_value.value.request.post_data_json == body,
+              f"label value request {saved_value.value.request.post_data_json}")
+        expect(dialog).not_to_be_visible()
+        readback = page.request.get(server.base + NODES + f"/{node_a['uuid']}")
+        check(readback.status == 200 and readback.json()["labels"] == {"team": value},
+              f"label value readback {readback.json().get('labels')!r}")
+        return value
+
+    report["last_step"] = "label-value-whitespace"
+    report["label_whitespace"] = {
+        "empty_key_submitted": False,
+        "rejected_keys": ["   ", " team "],
+        "empty_value": save_label_value(""),
+        "blank_value": save_label_value("   "),
+        "padded_value": save_label_value(" alpha "),
+        "restored": save_label_value("alpha"),
+    }
+
+    report["last_step"] = "label-edit-changes"
+    edited = exercise_label_edit_changes(page, server.base, node_a, ui, open_labels)
+    report["label_edit"] = {key: value for key, value in edited.items() if key != "puts"}
+    report["label_edit_puts"] = edited["puts"]
+
+    # 2.3: key length is 1..128 bytes. Value length is 0..256 bytes.
+    # 86 CJK characters fit in the control and the server still rejects them.
+    length = exercise_label_lengths(
+        page, server.base, node_a["uuid"], ui, open_labels, requests)
+    report["label_length"] = length["observed"]
+    report["label_length_puts"] = length["extra_puts"]
+    report["last_step"] = "label-length"
+    expect(page.get_by_role("row").filter(has_text=name_a).get_by_text(
+        "team=alpha", exact=True)).to_be_visible()
+
+    # 2.6: paste, keyboard clear and keyboard edit. A newline is not stored.
+    edited = exercise_label_text_edit(
+        page, context, server.base, node_a["uuid"], ui, open_labels, requests)
+    report["label_text_edit"] = edited["observed"]
+    report["label_text_puts"] = edited["extra_puts"]
+    report["last_step"] = "label-text-edit"
+    expect(page.get_by_role("row").filter(has_text=name_a).get_by_text(
+        "team=alpha", exact=True)).to_be_visible()
+
+    minimal = exercise_minimal_label(page, server.base, node_b, ui)
+    report.update(label_minimal=minimal["observed"], label_minimal_puts=minimal["extra_requests"], last_step="label-minimal")
 
     filter_select = page.get_by_role("combobox", name=ui["labelFilter"]["aria"], exact=True)
     filter_select.click()
@@ -279,18 +440,12 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     query_evidence.append({"query": "label=team=alpha",
                            "names": sorted(got[0]), "total": got[1]})
     report["last_step"] = "label-filter-selected"
-    clean_before_label_clear = len(clean_queries())
-    option.click()
-    page.keyboard.press("Escape")
-    expect(row_b).to_have_count(1)
-    check(len(clean_queries()) > clean_before_label_clear,
-          "the browser did not re-query the list after clearing the label filter")
-    cleared = page.request.get(server.base + NODES)
-    got = names(cleared)
-    check(cleared.status == 200 and got == ({name_a, name_b}, 2),
-          f"cleared label filter returned {got}")
-    query_evidence.append({"query": "label cleared", "names": sorted(got[0]),
-                           "total": got[1]})
+    cleared_filter = exercise_label_filter_clear(
+        page, server.base, filter_select, row_a, row_b, name_a, name_b, clean_queries)
+    report["label_filter_clear"] = {
+        key: cleared_filter[key] for key in (
+            "escape_kept_filter", "clear_control", "selection_after_clear", "names", "total")}
+    query_evidence.append(cleared_filter["query"])
     report["last_step"] = "label-filter-cleared"
 
     for node in (node_a, node_b):
@@ -303,11 +458,11 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
     expected_reject = {"method": "PUT", "path": labels_path, "status": 400}
     unexpected = [item for item in bad_responses if item != expected_reject]
     check(not unexpected, "unexpected browser HTTP errors: " + str(unexpected))
-    # The rejected reserved-key save is the one expected 400; Chrome logs one
-    # matching resource error. Any other console error still fails the case.
+    # Four resource-400 lines: two whitespace keys, the reserved key, and the
+    # 86-character value. Any other console error still fails the case.
     allowed_console = [item for item in console_errors
                        if "400" in item and ("load resource" in item or "加载资源" in item)]
-    check(len(allowed_console) <= 1
+    check(len(allowed_console) == 4
           and len(allowed_console) == len(console_errors) and not page_errors,
           f"browser errors: {page_errors}, {console_errors}")
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"),
@@ -316,10 +471,20 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
 
     rejected_body = {"labels": {"team": "alpha", "gpuworks.ai/reserved": "true"}}
     saved_body = {"labels": {"team": "alpha"}}
+    held_body = {"labels": {"team": "alpha"}}
     check(requests == [
+        {"method": "PUT", "path": labels_path, "body": {"labels": {"   ": "alpha"}}},
+        {"method": "PUT", "path": labels_path, "body": {"labels": {" team ": "alpha"}}},
         {"method": "PUT", "path": labels_path, "body": rejected_body},
-        {"method": "PUT", "path": labels_path, "body": saved_body},
-    ], f"unexpected label PUTs: {requests}")
+        {"method": "PUT", "path": labels_path, "body": held_body},
+        {"method": "PUT", "path": labels_path, "body": saved_body}] + report["label_conflict"]["puts"] + [
+        {"method": "PUT", "path": labels_path, "body": {"labels": {"team": ""}}},
+        {"method": "PUT", "path": labels_path, "body": {"labels": {"team": "   "}}},
+        {"method": "PUT", "path": labels_path, "body": {"labels": {"team": " alpha "}}},
+        {"method": "PUT", "path": labels_path, "body": {"labels": {"team": "alpha"}}},
+    ] + report["label_edit_puts"] + [{"method": "PUT", "path": labels_path, "body": body}
+         for body in report["label_length_puts"] + report["label_text_puts"]] + report["label_minimal_puts"],
+          f"unexpected label PUTs: {requests}")
 
     report["evidence"].extend([
         {"layer": "ui", "page": "/nodes", "rows": [name_a, name_b],
@@ -327,6 +492,9 @@ def test_node_labels_search(page, context, server, artifacts, report, locale):
                     "cleared": 2},
          "labels_modal": ui["labels"]["title"], "modal_inside_viewport": True,
          "reserved_label_rejected": True,
+         "label_inventory": report["label_inventory"],
+         "label_backfill": report["label_backfill"],
+         "label_length": report["label_length"],
          "label_filter": "target only, clear restores both"},
         {"layer": "request", "fixture_nodes": [{"name": name_a}, {"name": name_b}],
          "list_queries": query_evidence,
@@ -364,11 +532,13 @@ def main():
         "coverage_manifest_sha256": digest(manifest_path),
         "test_sha256": digest(Path(__file__)),
         "helper_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
+        "label_lengths_sha256": digest(ROOT / "test/e2e/nodes_label_lengths.py"),
+        "label_edit_sha256": digest(ROOT / "test/e2e/nodes_label_edit.py"),
         "execution": "N/A: the two nodes are offline definitions; no agent or workload is involved",
         "runtime": "N/A: no agent, container, GPU or engine",
         "not_covered": ["the add-node drawer and SSH installation",
                         "renaming a node", "online/reconnect behavior",
-                        "scheduling and eviction", "duplicate or empty label validation",
+                        "scheduling and eviction", "duplicate label keys",
                         "column sorting and pagination", "multiple label filters and their AND semantics",
                         "search by hostname or UUID, special characters and case/whitespace rules",
                         "the other locale (each run covers one --locale)"],

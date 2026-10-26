@@ -354,6 +354,8 @@ A card marked “In use outside the platform” has compute processes that the p
 The card does not participate in scheduling until these processes exit; hover to see process names and GPU memory usage. The agent does not make this determination just after restarting, before it receives
 which instances it should run—otherwise its own instances would be treated as external processes. It also skips this check if probing failed in the current round;
 if the vendor tool just failed to return the inventory, asking it for processes would only incur another timeout.
+The platform recognizes its own instances by each card's hardware identity. An instance started by an older version, whose desired state records only device indexes,
+gets its identities filled in by a migration when the server is upgraded, and the agent also maps those indexes to cards through the latest probe, so it still counts as the platform's own.
 
 ### Diagnosis Finds an Unrecognized Accelerator
 

@@ -1891,6 +1891,8 @@ export interface ProviderCredentialField {
   required: boolean;
   placeholder?: LocalizedText;
   default_value?: string;
+  // Editable creation hint that must be changed before submission.
+  default_template?: string;
   extra?: boolean;
 }
 

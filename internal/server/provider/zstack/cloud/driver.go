@@ -23,6 +23,7 @@ type Driver struct {
 	installer      provision.Installer
 	resourceClaims *resourceclaim.Service
 	clientOptions  []apiclient.ClientOption
+	diagnostics    *endpointDiagnostics
 }
 
 // New returns a ZStack Cloud driver.
@@ -55,10 +56,31 @@ func (d *Driver) ValidateCredentials(ctx context.Context, creds provider.Credent
 	if err != nil {
 		return err
 	}
-	ctx, cancel := client.OperationContext(ctx)
+	apiCtx, cancel := client.OperationContext(ctx)
 	defer cancel()
-	_, err = queryAll[hostInventory](ctx, client, "/hosts")
-	return err
+	_, err = queryAll[hostInventory](apiCtx, client, "/hosts")
+	return d.validationResult(ctx, creds.Endpoint, err)
+}
+
+func (d *Driver) validationResult(ctx context.Context, endpoint string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	var diagnosis *endpointDiagnosis
+	if needsEndpointDiagnosis(err) {
+		checks := d.diagnostics
+		if checks == nil {
+			checks = defaultEndpointDiagnostics()
+		}
+		diagnosis = checks.run(ctx, endpoint)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return credentialError(err, diagnosis)
 }
 
 func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) ([]provider.Instance, error) {

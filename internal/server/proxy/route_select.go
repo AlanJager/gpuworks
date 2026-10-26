@@ -147,7 +147,31 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	if anyAsleep {
 		return target{}, http.StatusServiceUnavailable, "model is asleep; wake it first", true
 	}
+	if instancesGaveUp(insts) {
+		return target{}, http.StatusServiceUnavailable, "deployment for " + modelName + " failed to start; see the deployment list", false
+	}
 	return target{}, http.StatusServiceUnavailable, "no running instance for " + modelName + " (still starting?)", false
+}
+
+// instancesGaveUp reports that this deployment stopped retrying. A pending,
+// pulling, or starting replacement is still live, so an old failed row does
+// not by itself mean the launch is over. The same split is used when the API
+// derives a deployment's runtime state.
+func instancesGaveUp(insts []store.Instance) bool {
+	if len(insts) == 0 {
+		return false
+	}
+	hasFailed := false
+	for _, in := range insts {
+		switch in.State {
+		case proto.InstFailed:
+			hasFailed = true
+		case proto.InstStopped, proto.InstPendingRemoval:
+		default:
+			return false
+		}
+	}
+	return hasFailed
 }
 
 // selectDistributedInstance picks a multi-node replica to serve the request:

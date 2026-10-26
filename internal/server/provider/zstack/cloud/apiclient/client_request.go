@@ -28,9 +28,10 @@ type cloudReply struct {
 
 func (c *APIClient) request(ctx context.Context, policy clientPolicy, method, path string, body []byte, jobID string) (cloudReply, error) {
 	delay := policy.retryInitial
+	var lastErr *APIError
 	for attempt := 0; ; attempt++ {
 		if err := ctx.Err(); err != nil {
-			return cloudReply{}, transportError(err)
+			return cloudReply{}, interruptedRequestError(err, lastErr)
 		}
 		started := time.Now()
 		reply, err := c.requestOnce(ctx, policy, method, path, body, jobID)
@@ -49,8 +50,9 @@ func (c *APIClient) request(ctx context.Context, policy clientPolicy, method, pa
 			!errors.As(err, &apiErr) || !apiErr.retryable {
 			return reply, err
 		}
+		lastErr = apiErr
 		if err := waitForCloud(ctx, max(delay, reply.retryAfter)); err != nil {
-			return reply, transportError(err)
+			return reply, interruptedRequestError(err, lastErr)
 		}
 		if delay > policy.retryMax/2 {
 			delay = policy.retryMax
@@ -81,12 +83,15 @@ func (c *APIClient) requestOnce(ctx context.Context, policy clientPolicy, method
 		}
 		req.Header.Set("X-API-Timeout", strconv.FormatInt(int64(seconds), 10))
 	}
+	req, phase := traceConnection(req)
+	viaProxy := requestUsesProxy(c.http, req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			err = ctx.Err()
+			err = errors.Join(err, ctx.Err())
 		}
 		apiErr := transportError(err)
+		apiErr.Phase, apiErr.ViaProxy = phase(), viaProxy
 		apiErr.OutcomeUnknown = method != http.MethodGet
 		return reply, apiErr
 	}
@@ -96,9 +101,10 @@ func (c *APIClient) requestOnce(ctx context.Context, policy clientPolicy, method
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxCloudResponseBytes+1))
 	if readErr != nil {
 		if ctx.Err() != nil {
-			readErr = ctx.Err()
+			readErr = errors.Join(readErr, ctx.Err())
 		}
 		apiErr := transportError(readErr)
+		apiErr.Phase, apiErr.ViaProxy = PhaseResponse, viaProxy
 		apiErr.StatusCode, apiErr.OutcomeUnknown = reply.status, method != http.MethodGet
 		return reply, apiErr
 	}
@@ -118,13 +124,16 @@ func (c *APIClient) requestOnce(ctx context.Context, policy clientPolicy, method
 func (r cloudReply) responseError(valid bool) *APIError {
 	hasError := valid && len(r.Error) > 0 && string(r.Error) != "null"
 	code := ""
+	authReason := AuthenticationReason("")
 	cloudFailure := false
 	if hasError {
 		var detail struct {
-			Code string `json:"code"`
+			Code    string `json:"code"`
+			Details string `json:"details"`
 		}
 		cloudFailure = json.Unmarshal(r.Error, &detail) == nil && detail.Code != ""
 		code = detail.Code
+		authReason = authenticationReason(detail.Details)
 	}
 	if valid && code == "" && r.Diagnostic != nil {
 		code = r.Diagnostic.Code
@@ -136,6 +145,7 @@ func (r cloudReply) responseError(valid bool) *APIError {
 	switch {
 	case r.status == http.StatusUnauthorized || r.status == http.StatusForbidden:
 		err.Kind, err.definitive = ErrorAuthentication, true
+		err.AuthReason = authReason
 	case cloudFailure:
 		err.Kind, err.definitive = ErrorOperation, true
 		if r.status >= http.StatusBadRequest && r.status < http.StatusInternalServerError {

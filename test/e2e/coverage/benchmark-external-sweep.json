@@ -1,6 +1,6 @@
 {
   "contract_id": "gpuworks/benchmark/external-endpoint-sweep",
-  "name": "\u8bc4\u6d4b / \u5916\u90e8 OpenAI \u7aef\u70b9\u53c2\u6570\u626b\u63cf / UI \u63a2\u6d4b\u6a21\u578b\u3001\u771f\u5b9e\u6d41\u5f0f\u8bf7\u6c42\u3001\u5b8c\u6210\u56de\u8bfb\u4e0e\u5220\u9664",
+  "name": "评测 / 外部 OpenAI 端点参数扫描 / UI 探测模型、真实流式请求、完成回读与删除",
   "test_file": "test/e2e/evaluation_external.py",
   "test_function": "test_external_endpoint_sweep",
   "command": "make test-e2e-benchmark-external",
@@ -148,16 +148,17 @@
   "checklist_items": {
     "1.5": "The Parameter Sweep mode card is selected through the real wizard",
     "1.7": "Minimum creation through the real wizard and exact request body",
+    "1.9": "The target field is one solid radio group. While the evaluation create POST is held the start button stays loading, a second click sends no further create, and Enter sends no further create. That held request is the only create, it returns 202, and the independent GET of that run matches the submitted target.",
     "1.14": "Refresh and independent GET preserve the saved result",
+    "1.15": "The API key field shows one visibility icon. Tab from the evaluation name reaches the selected target, then the endpoint URL, then the API key. Next can be focused. Enter in the empty API key sends no evaluation create. Leaving the endpoint URL empty and choosing Next shows a field error and sends no evaluation create. At 1440x900 the name, the endpoint URL, the API key, Previous, and Next are each inside the viewport, and the name does not overlap Next.",
     "3.1": "Concurrency, ISL, OSL and sample count use their real units",
     "5.5": "External Endpoint selection reveals the endpoint fields and replaces the managed-instance selector",
     "17.1": "Persisted verdict plus actual point-table lengths, throughput and latency cells/units match independent GET; other metric columns and loading/empty/error/stale states remain MISSING"
   },
   "missing": [
-    "MISSING: checklist 1.9 (duplicate Start submission) \u2014 only one Start click is exercised",
-    "MISSING: checklist 5.3 \u2014 model and load-origin Select search, no-result and clearing recovery are not exercised; only mode cards and target radios have no search",
-    "MISSING: checklist 10.6 (list pagination) \u2014 the row is checked but page sizes and boundaries are not",
-    "N/A: checklist 18.7 (log viewer) \u2014 this contract has no log stream",
+    "MISSING: checklist 5.3 — model and load-origin Select search, no-result and clearing recovery are not exercised; only mode cards and target radios have no search",
+    "MISSING: checklist 10.6 (list pagination) — the row is checked but page sizes and boundaries are not",
+    "N/A: checklist 18.7 (log viewer) — this contract has no log stream",
     "MISSING: managed-instance target, deployment/node selection and gateway versus direct entry",
     "MISSING: saturation and SLA questions, adaptive concurrency and objective constraints",
     "MISSING: open-loop arrival rates, burstiness, point duration and max in-flight",

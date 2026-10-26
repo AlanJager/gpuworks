@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -35,6 +36,35 @@ import (
 type cardOccupancy struct {
 	mu   sync.Mutex
 	last map[string][]proto.CardProcess
+	// identOfIndex is each card's identity by the device index it carried
+	// in the last probe that listed the cards. It names the cards of an
+	// instance whose desired state binds none (see engine.HeldCards).
+	identOfIndex map[int]string
+}
+
+// learnCards records which card each device index names in a probe that
+// listed the cards.
+func (o *cardOccupancy) learnCards(gpus []proto.GPUInfo) {
+	byIndex := make(map[int]string, len(gpus))
+	for _, card := range gpus {
+		if card.Index < 0 {
+			continue
+		}
+		if ident := accelerator.CardIdent(card.UUID, card.PCIeBDF); ident != "" {
+			byIndex[card.Index] = ident
+		}
+	}
+	o.mu.Lock()
+	o.identOfIndex = byIndex
+	o.mu.Unlock()
+}
+
+// identOf is the card a device index named in the last probe, if any.
+func (o *cardOccupancy) identOf(index int) (string, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	ident, ok := o.identOfIndex[index]
+	return ident, ok
 }
 
 // remember records a round that did find out, and reports which cards'
@@ -150,24 +180,38 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 // one of them foreign — measured on gpu3, where both cards were reported
 // as used outside the platform for one report after an agent upgrade.
 //
-// heldCardIdents is a seam: the engine starts containers, which a test of
+// An instance whose desired state binds no identity is named by its device
+// indexes through the last probe. Leaving it out is the same mistake: a
+// server that launched instances before cards were bound replayed them
+// without identities, and every card serving one of them was reported as
+// held outside the platform and stopped being scheduled. Until a probe has
+// named those indexes, the answer is not known.
+//
+// heldCards is a seam: the engine starts containers, which a test of
 // these rules has no business doing.
 func (n *NodeRuntime) cardsInUse() (cards map[string]bool, known bool) {
+	var held engine.HeldCards
+	switch {
+	case n.heldCards != nil:
+		held, known = n.heldCards(), true
+	case n.engine == nil:
+		return map[string]bool{}, false
+	default:
+		held, known = n.engine.HeldCards(), n.engine.DesiredKnown()
+	}
 	ours := map[string]bool{}
-	add := func(idents []string) {
-		for _, ident := range idents {
-			if ident != "" {
-				ours[ident] = true
-			}
+	for _, ident := range held.Idents {
+		if ident != "" {
+			ours[ident] = true
 		}
 	}
-	if held := n.heldCardIdents; held != nil {
-		add(held())
-		return ours, true
+	for _, index := range held.Indexes {
+		ident, ok := n.occupancy.identOf(index)
+		if !ok {
+			known = false
+			continue
+		}
+		ours[ident] = true
 	}
-	if n.engine == nil {
-		return ours, false
-	}
-	add(n.engine.HeldCardIdents())
-	return ours, n.engine.DesiredKnown()
+	return ours, known
 }

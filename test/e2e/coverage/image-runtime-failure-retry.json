@@ -80,14 +80,18 @@
   "checklist_items": {
     "partial": [
       "5.1",
-      "12.1",
-      "12.2",
       "16.3",
       "16.4",
       "16.6",
       "16.7"
     ],
-    "reason": "Only explicit direct HTTP archive recovery branches; full component states not claimed"
+    "reason": "Only explicit direct HTTP archive recovery branches; full component states not claimed",
+    "12.1": "Pull from URL on the node row opens one dialog named by the archive title, and the archive URL field is the visible business control",
+    "12.2": "Archive dialog at 1440x900: the dialog and footer Pull stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
+    "12.3": "Default focus is inside the archive dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+    "12.4": "Cancel, Escape, the close button and the mask each return focus to the row Get from URL button and send no transfer. The node stays absent",
+    "12.5": "Archive dialog over the image detail drawer: Cancel, Escape, close and mask each hide the child, leave the drawer open, and hide the child buttons. Reopen uses the archive-title dialog",
+    "12.6": "covered: While the archive pull is held the confirm button shows the loading state and a second click sends no further sync; the continued 202 is followed by the real archive 503 which keeps the failed row, the archive URL and the 503 reason, and leaves no image; the later retry 202 matches the independent detail GET and the reloaded present row"
   },
   "product_contracts": [
     "ui/src/pages/ImagesPage.tsx",

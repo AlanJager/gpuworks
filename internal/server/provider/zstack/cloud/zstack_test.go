@@ -2,12 +2,15 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/provider"
+	"gpuworks.ai/gpuworks/internal/server/provider/zstack/cloud/apiclient"
 	"gpuworks.ai/gpuworks/pkg/localization"
 )
 
@@ -103,7 +106,9 @@ func TestValidateCredentialsRequiresEndpointAndAccessKey(t *testing.T) {
 		{Endpoint: server.URL, PublicKey: "test-access-key", PrivateKey: "wrong-secret"},
 		{Endpoint: server.URL, PublicKey: "wrong-key", PrivateKey: "test-access-secret"},
 	} {
-		if err := drv.ValidateCredentials(t.Context(), creds); err == nil || !strings.Contains(err.Error(), "403") {
+		err := drv.ValidateCredentials(t.Context(), creds)
+		var apiErr *apiclient.APIError
+		if validationErrorCode(t, err) != messages.ErrorZStackAuthRejected || !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusForbidden {
 			t.Fatalf("invalid AccessKey must be rejected by Cloud: %v", err)
 		}
 	}

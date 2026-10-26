@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -154,7 +155,9 @@ func TestASyntheticProberIsNeverChecked(t *testing.T) {
 func TestACardServingAnInstanceIsNotChecked(t *testing.T) {
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: cardsOfOneHealthyNode()}, nil)
-	n.heldCardIdents = func() []string { return []string{accelerator.CardIdent("GPU-40", "0000:40:00.0")} }
+	n.heldCards = func() engine.HeldCards {
+		return engine.HeldCards{Idents: []string{accelerator.CardIdent("GPU-40", "0000:40:00.0")}}
+	}
 
 	var asked []string
 	check := hostCheck(t, "nvidia")
@@ -171,7 +174,7 @@ func TestACardServingAnInstanceIsNotChecked(t *testing.T) {
 		t.Fatalf("checked %v, want only the idle card", asked)
 	}
 
-	n.heldCardIdents = func() []string { return nil }
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{} }
 	asked = nil
 	n.cardSmoke.RunOnce(context.Background())
 	if len(asked) != 2 {
@@ -266,7 +269,7 @@ func TestAFailedInstanceMakesItsCardsAnswer(t *testing.T) {
 		&gpu.FixedProber{VendorName: "nvidia", GPUs: cards}, nil)
 	bad := accelerator.CardIdent("GPU-40", "0000:40:00.0")
 	// Held for the instance, as the agent holds a card it placed work on.
-	n.heldCardIdents = func() []string { return []string{bad} }
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Idents: []string{bad}} }
 	n.instanceCardIdents = func(uuid string) []string {
 		if uuid == "inst-1" {
 			return []string{bad}

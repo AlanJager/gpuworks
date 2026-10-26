@@ -12,10 +12,13 @@ Evidence lives in secrets/e2e/<runId>; remove private state within seven days.
 """
 from pathlib import Path
 from urllib.parse import urlsplit
+import re
 import threading
 import time
 
 from playwright.sync_api import expect
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from image_catalog import button, cleanup, observe, open_custom, read_detail, strings
 from image_runtime_runner import run
 from platform_token_read_revoke import check, collection
@@ -56,7 +59,8 @@ def read_state(page, series, version, node, state):
 def open_row(page, text, name, fixture):
     open_custom(page, text)
     button(page, name).click()
-    detail = page.get_by_role("dialog", name=text["detail"]["title"].replace("{{name}}", name), exact=True)
+    # The drawer accessible name is the series name plus its engine.
+    detail = page.get_by_role("dialog", name=f"{name} callable", exact=True)
     expect(detail).to_be_in_viewport(ratio=1)
     detail.get_by_role("link", name=fixture.image_ref, exact=True).click()
     return detail.get_by_role("row").filter(has_text=fixture.node_name)
@@ -75,6 +79,41 @@ def open_archive(page, row, text, fixture):
         button(row, text["nodeTable"]["pullFromURL"]).click()
     title = text["nodeTable"]["archiveDialog"]["title"].replace("{{ref}}", fixture.image_ref).replace("{{node}}", fixture.node_name)
     return page.get_by_role("dialog", name=title, exact=True), preview.value
+
+
+def dismiss_archive(page, row, text, fixture, name, series, version, path, report):
+    """Cancel, close, Escape and the mask return to Get from URL and start no transfer."""
+    transfers = []
+
+    def seen(request):
+        if request.method == "POST" and urlsplit(request.url).path.startswith(path):
+            transfers.append(urlsplit(request.url).path)
+
+    page.on("request", seen)
+    parent = page.get_by_role("dialog", name=f"{name} callable", exact=True)
+    pull = button(row, text["nodeTable"]["pullFromURL"])
+    title = text["nodeTable"]["archiveDialog"]["title"].replace("{{ref}}", fixture.image_ref).replace("{{node}}", fixture.node_name)
+    last = {}
+
+    def reopen():
+        opened, preview = open_archive(page, row, text, fixture)
+        expect(opened).to_be_visible()
+        last["dialog"] = opened
+        last["preview"] = preview
+        return opened
+
+    dialog = assert_nested_dismissals(
+        reopen(), parent, reopen,
+        [("cancel", cancel_button(text["common"]["cancel"])),
+         ("escape", escape), ("close", close_button), ("mask", mask)],
+        lambda: len(transfers), pull)
+    check(transfers == [], "archive dialog dismissal started a transfer")
+    stayed = read_state(page, series, version, fixture.node_uuid, "absent")
+    report.setdefault("evidence", []).append({
+        "layer": "ui", "archive_dialog": title, "parent": f"{name} callable",
+        "dismissals": ["cancel", "escape", "close", "mask"],
+        "focus_returned": True, "transfer_posts": 0, "node_state": stayed["node"]["state"]})
+    return dialog, last["preview"]
 
 
 def observe_navigation(page):
@@ -125,6 +164,36 @@ def wait_staging_clean(fixture, *, require_directory=False):
     raise AssertionError("owned agent left incomplete archive staging: " + ", ".join(p.name for p in remaining))
 
 
+def hold_archive_sync(page, ok_button, path, expected, report):
+    # setStarting runs before syncImage, so the confirm button is loading
+    # while the first POST /sync is still held.
+    held = []
+    sync = path + "/sync"
+    pattern = re.compile(re.escape(sync) + r"(?:\?|$)")
+
+    def hold_post(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != sync:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route(pattern, hold_post)
+    ok_button.click()
+    report["last_step"] = "archive-sync-inflight"
+    expect(ok_button).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    ok_button.click()
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not held:
+        page.wait_for_timeout(100)
+    check(len(held) == 1, "duplicate archive sync while the first request is held")
+    check(held[0].request.post_data_json == expected, "held archive sync body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == sync and r.request.method == "POST") as started:
+        held[0].continue_()
+    page.unroute(pattern, hold_post)
+    report["evidence"].append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True})
+    return started.value
+
+
 # Contract: gpuworks/image-runtime/url-failure-retry
 # Mainline: 自有CPU agent与可预览归档 → UI确认URL获取后真实上游503 → UI/GET失败原因503、无镜像与残留 → 恢复上游并UI重试 → 新transfer、刷新present、精确digest且真实容器输出marker → 清理自有目录/节点/进程。
 def test_url_failure_retry(page, server, fixture, artifacts, report, locale):
@@ -141,24 +210,32 @@ def test_url_failure_retry(page, server, fixture, artifacts, report, locale):
     reload_page()
     row = open_row(page, text, name, fixture)
     choose_url(page, row, text, fixture)
-    dialog, preview = open_archive(page, row, text, fixture)
+    dialog, preview = dismiss_archive(page, row, text, fixture, name, series, version, path, report)
     expect(dialog).to_be_in_viewport(ratio=1)
-    expect(dialog.get_by_label(text["import"]["url"]["label"], exact=True)).to_have_value(fixture.archive_url)
+    url_field = dialog.get_by_label(text["import"]["url"]["label"], exact=True)
+    expect(url_field).to_have_value(fixture.archive_url)
     check(preview.status == 200 and preview.request.post_data_json == {"url": fixture.archive_url}, "preview request differs")
     check(preview.json()["repo_tags"] == [fixture.image_ref], "preview did not inspect owned archive")
+    # Archive URL confirm is an antd Modal. Identity, 1440x900 stacking, and the focus trap.
+    submit = dialog.locator(".ant-modal-footer .ant-btn-primary")
+    assert_dialog_shell(page, dialog, url_field, submit)
+    title = text["nodeTable"]["archiveDialog"]["title"].replace("{{ref}}", fixture.image_ref).replace("{{node}}", fixture.node_name)
+    report.setdefault("evidence", []).append({"layer": "ui", "dialog_shell": title, "viewport": "1440x900"})
     # Change the actual external server only after successful browser preview.
     first_audit_start = len(fixture.archive.snapshot())
     fixture.archive.failure_status = 503
-    with page.expect_response(lambda r: urlsplit(r.url).path == path + "/sync" and r.request.method == "POST") as started:
-        button(dialog, text["nodeTable"]["pull"]).click()
-    first = started.value
+    first = hold_archive_sync(page, submit, path, expected, report)
     check(first.status == 202 and first.request.post_data_json == expected, "initial acquisition request differs")
     first_id = first.json()["transfer_id"]
     check(first_id and not urlsplit(first.url).query, "initial transfer identity/query differs")
     failed = read_state(page, series, version, fixture.node_uuid, "failed")
     check("503" in failed["node"]["message"] and failed["node"]["source"] == "url", "real download rejection reason lost")
     expect(row.get_by_text(text["state"]["failed"], exact=True)).to_be_visible(timeout=30000)
-    expect(row.get_by_text(failed["node"]["message"], exact=True)).to_be_visible()
+    # The failure reason is the expanded node detail, not a cell of the node row.
+    expand = row.get_by_role("button", name=text["nodeTable"]["expand"], exact=True)
+    if expand.count():
+        expand.click()
+    expect(page.get_by_role("dialog", name=f"{name} callable", exact=True).get_by_text(failed["node"]["message"], exact=True)).to_be_visible()
     check(fixture.docker(["image", "inspect", fixture.image_ref], check=False).returncode != 0, "failed download created an image")
     wait_staging_clean(fixture)
     failed_audit = fixture.archive.snapshot()[first_audit_start:]
@@ -223,12 +300,41 @@ def test_url_cancel_retry(page, server, fixture, artifacts, report, locale):
     reload_page()
     row = open_row(page, text, name, fixture)
     choose_url(page, row, text, fixture)
-    dialog, preview = open_archive(page, row, text, fixture)
+    dialog, preview = dismiss_archive(page, row, text, fixture, name, series, version, path, report)
     expect(dialog).to_be_in_viewport(ratio=1)
+    url_field = dialog.get_by_label(text["import"]["url"]["label"], exact=True)
+    expect(url_field).to_have_value(fixture.archive_url)
     check(preview.status == 200 and preview.json()["repo_tags"] == [fixture.image_ref], "preview did not read owned archive")
+    # Archive URL confirm is an antd Modal. Identity, 1440x900 stacking, and the focus trap.
+    submit = dialog.locator(".ant-modal-footer .ant-btn-primary")
+    assert_dialog_shell(page, dialog, url_field, submit)
+    title = text["nodeTable"]["archiveDialog"]["title"].replace("{{ref}}", fixture.image_ref).replace("{{node}}", fixture.node_name)
+    report.setdefault("evidence", []).append({"layer": "ui", "dialog_shell": title, "viewport": "1440x900"})
+    # Same held-confirm family as the failure case: 503 keeps the URL and reason, then this case continues.
+    fixture.archive.failure_status = 503
+    refused = hold_archive_sync(page, submit, path, expected, report)
+    check(refused.status == 202 and refused.request.post_data_json == expected, "refused acquisition request differs")
+    refused_row = read_state(page, series, version, fixture.node_uuid, "failed")
+    check("503" in refused_row["node"]["message"] and refused_row["node"]["source"] == "url", "503 reason lost")
+    expect(row.get_by_text(text["state"]["failed"], exact=True)).to_be_visible(timeout=30000)
+    expand = row.get_by_role("button", name=text["nodeTable"]["expand"], exact=True)
+    if expand.count():
+        expand.click()
+    expect(page.get_by_role("dialog", name=f"{name} callable", exact=True).get_by_text(
+        refused_row["node"]["message"], exact=True)).to_be_visible()
+    check(fixture.docker(["image", "inspect", fixture.image_ref], check=False).returncode != 0, "503 download created an image")
+    wait_staging_clean(fixture)
+    fixture.archive.failure_status = None
+    reload_page()
+    row = open_row(page, text, name, fixture)
+    expect(row.get_by_text(text["state"]["failed"], exact=True)).to_be_visible()
+    choose_url(page, row, text, fixture)
+    dialog, preview = open_archive(page, row, text, fixture)
+    expect(dialog.get_by_label(text["import"]["url"]["label"], exact=True)).to_have_value(fixture.archive_url)
+    check(preview.status == 200 and preview.json()["repo_tags"] == [fixture.image_ref], "archive preview after 503 failed")
     first_audit_start = len(fixture.archive.snapshot())
     fixture.archive.hold_partial_downloads()
-    with page.expect_response(lambda r: urlsplit(r.url).path == path + "/sync" and r.request.method == "POST") as started:
+    with page.expect_response(lambda r: urlsplit(r.url).path == path + "/sync/retry" and r.request.method == "POST") as started:
         button(dialog, text["nodeTable"]["pull"]).click()
     first = started.value
     check(first.status == 202 and first.request.post_data_json == expected, "acquisition request differs")
@@ -285,14 +391,16 @@ def test_url_cancel_retry(page, server, fixture, artifacts, report, locale):
     wait_staging_clean(fixture, require_directory=True)
     check(not errors and not failures and not transport_failures, "unexpected browser errors")
     check([m for m in mutations if "/nodes/" in m["path"]] == [
-        {"method": "POST", "path": path + "/sync"}, {"method": "POST", "path": path + "/cancel"},
-        {"method": "POST", "path": path + "/sync/retry"}], "unexpected or duplicate transfer mutation")
+        {"method": "POST", "path": path + "/sync"}, {"method": "POST", "path": path + "/sync/retry"},
+        {"method": "POST", "path": path + "/cancel"}, {"method": "POST", "path": path + "/sync/retry"}],
+        "unexpected or duplicate transfer mutation")
     retry_audit = fixture.archive.snapshot()[retry_audit_start:]
     downloaded_bytes = sum(r["bytes_sent"] for r in retry_audit if r["method"] == "GET"
         and r["status"] == 206 and r["range"] != "bytes=0-0")
     check(downloaded_bytes == fixture.archive_size, "runtime retry did not deliver exact archive bytes independently of preview")
     report["evidence"].extend([
-        {"layer": "ui", "syncing_cancel_available": True, "cancelled_reload_failed": True, "retry_reload_present": True},
+        {"layer": "ui", "syncing_cancel_available": True, "cancelled_reload_failed": True, "retry_reload_present": True,
+         "failure_status": 503, "failure_message": refused_row["node"]["message"], "archive_url_retained": fixture.archive_url},
         {"layer": "request", "initial": first.json(), "cancel": response.json(), "retry": second.json(), "acquisition_body": expected},
         {"layer": "persistence", "cancelled": failed["detail"], "recovered": persisted},
         {"layer": "runtime", "cancelled_requests": cancelled_audit, "four_partial_connections_disconnected": True,

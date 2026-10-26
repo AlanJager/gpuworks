@@ -27,6 +27,7 @@ func TestProviderCredentialDefaultsWireContract(t *testing.T) {
 	}
 	expected := map[string]string{"autodl": "https://api.autodl.com", "compshare": "https://api.compshare.cn", "runpod": "https://api.runpod.io/v2", "vast": "https://console.vast.ai/api/v0"}
 	seen := map[string]bool{}
+	seenTemplate := false
 	for _, kind := range response.Items {
 		for _, field := range kind.Fields {
 			var name string
@@ -36,6 +37,16 @@ func TestProviderCredentialDefaultsWireContract(t *testing.T) {
 			}
 			if err := json.Unmarshal(field["secret"], &secret); err != nil {
 				t.Fatal(err)
+			}
+			if kind.Kind == "zstack" && name == "endpoint" {
+				template := field["default_template"]
+				if string(template) != `"http://MANAGEMENT_NODE_IP:8080/zstack"` {
+					t.Errorf("ZStack endpoint template = %s", template)
+				}
+				if secret {
+					t.Error("ZStack endpoint template must not be secret")
+				}
+				seenTemplate = true
 			}
 			value, hasDefault := field["default_value"]
 			want, hasEndpoint := expected[kind.Kind]
@@ -51,6 +62,9 @@ func TestProviderCredentialDefaultsWireContract(t *testing.T) {
 				t.Errorf("%s.%s must not invent a default: %s", kind.Kind, name, value)
 			}
 		}
+	}
+	if !seenTemplate {
+		t.Error("missing ZStack endpoint template")
 	}
 	for kind := range expected {
 		if !seen[kind] {

@@ -23,6 +23,9 @@
       "id": "gpuworks/models/http-register-recovery",
       "plan_id": "NEXT-09",
       "name": "模型管理 / 预览后上游目录失效 / 注册拒绝且修复后成功",
+      "checklist_items": {
+        "1.9": "While the register POST is held the confirm button stays loading and a second click sends no further registration. The later 201 is the only stored model"
+      },
       "required_evidence": [
         "ui",
         "preview",
@@ -125,9 +128,13 @@
       "status": "MISSING",
       "reason": "Model inference configuration editing is a separate exposed function, not tested here"
     },
-    "delete": "UI named confirmation cancel/no mutation then DELETE204, independent404 and refreshed empty list"
+    "delete": "UI named confirmation cancel, deployment reference 409, deleting-file 409, then DELETE204, independent404 and refreshed empty list"
   },
   "checklist_items": {
+    "1.1": "After the register dialog source is the HTTP directory, the dialog shows one combobox, two textboxes, one parse button, and one form extra. There is no spinbutton, no unit, no checkbox, and no alert. Source is a required combobox and its selected text is the localized HTTP directory label. Directory URL is an empty required textbox. Its placeholder is https://hf-mirror.example.com/Qwen/Qwen3-0.6B. It has no maximum length. Its form extra is the localized directory-listing sentence. Name is an empty textbox, is not marked required, has no maximum length, and its placeholder is the localized optional display name. Model directory, node, model ID, revision, and advanced options are absent. The same run rejects an empty directory URL with the directory URL error and sends no preview. The preview POST sends the typed directory URL. The register POST sends the normalized source URL, the typed model ID, and the typed name. The independent GET stores source url, those three fields, an empty revision, architecture Qwen3ForCausalLM, precision bfloat16, context length 40960, and the fixture weight, with no node copy and no storage copy.",
+    "1.7": "The register dialog is 720 pixels wide after the HTTP directory source is selected. The minimum registration selects that source, fills only the required directory URL, parses the directory, leaves the required model ID at the preview value, and clears the optional name. That submits one POST to /api/v1/models/register-url whose body is the normalized directory URL, the preview model ID, and an empty name. The 201 response and the independent GET store the name tiny-model, source url, that model ID, an empty revision, architecture Qwen3ForCausalLM, precision bfloat16, and context length 40960. The reloaded list shows tiny-model. Opening it shows that architecture, and that detail matches the independent GET. The model is registration metadata. It does not deploy, schedule, authorize, or mount, and there is no agent and no workload.",
+    "1.8": "After the HTTP directory parses, architecture Qwen3ForCausalLM and precision bfloat16 sit on the same description row, and that row does not contain the directory URL. The complete registration fills the only optional field, the display name, and replaces the required model ID. That submits one POST to /api/v1/models/register-url whose body is the normalized directory URL, the typed model ID, and the typed name. The 201 response and the independent GET store that name, source url, that model ID, an empty revision, architecture Qwen3ForCausalLM, precision bfloat16, context length 40960, and the fixture weight, with no node copy and no storage copy. The reloaded list shows the typed name and the typed model ID. Opening it shows that architecture, that precision, and that context length. A registration that clears the optional name and leaves the model ID at the preview value submits the normalized directory URL, that preview model ID, and an empty name. Its 201 response and independent GET store the name tiny-model, source url, that model ID, an empty revision, the same architecture, precision, context length, and fixture weight, with no node copy and no storage copy. The reloaded list shows tiny-model. Opening it shows that architecture, and that detail matches the independent GET. These models are registration metadata. They do not deploy, schedule, authorize, or mount, and there is no agent and no workload.",
+    "1.14": "After reload, the stored model detail heading is one level-4 title whose text is the stored display name. The reloaded list shows that name and the typed model ID. Opening the row returns a browser GET 200, and the detail shows architecture Qwen3ForCausalLM, precision bfloat16, and context length 40960. That detail agrees with the independent GET and the 201 response: source url, the typed model ID, the typed name, an empty revision, that architecture, that precision, that context length, and the fixture weight, with no node copy and no storage copy. A registration that clears the optional name stores the name tiny-model. After reload, its list row is tiny-model, its detail heading is one level-4 title whose text is tiny-model, the browser detail GET stores the name tiny-model, and the detail shows architecture Qwen3ForCausalLM. The independent GET stores source url, the preview model ID, the name tiny-model, an empty revision, architecture Qwen3ForCausalLM, precision bfloat16, context length 40960, and the fixture weight, with no node copy and no storage copy. These models are registration metadata. They do not deploy, schedule, authorize, or mount, and there is no agent and no workload.",
     "covered_in_this_scenario": [
       "1.10",
       "4.3"
@@ -135,14 +142,19 @@
     "partial": {
       "1.2": "HTTP defaults only",
       "1.3": "empty URL only; other field boundaries missing",
-      "1.8": "all HTTP registration fields; no other source modes",
-      "1.11": "Esc and delete Cancel only",
-      "1.14": "registration metadata/readback; not agent download",
       "1.15": "Tab, focus border, named modal/footer viewport; other states missing",
       "5.2": "HTTP option only",
-      "12.7": "unreferenced model cancel/delete; referenced deletion missing",
       "16.5": "no background task: registration fetches metadata synchronously"
-    }
+    },
+    "1.11": "covered: Cancel, close and Escape each close the register dialog immediately, with no unsaved-changes prompt and no model write, so the stored models stay unchanged",
+    "12.1": "covered: Register model on the models page opens the dialog named by the register action",
+    "12.2": "covered: Register dialog at 1440x900: the dialog and footer Confirm registration stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
+    "12.3": "covered: Default focus is inside the register dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+    "12.4": "covered: Cancel, Escape, close and mask each return focus to the Register model button and send no model write",
+    "12.5": "N/A: the register dialog has no nested child layer",
+    "12.6": "covered: While the register POST is held the footer confirm shows the loading state and a second click sends no further register request; the 502 keeps the URL, source ID and name and shows the unreachable reason; the later 201 matches the independent detail GET and the reloaded row",
+    "12.7": "Delete confirmation names the model and says node copy records are removed and a deployment reference blocks deletion. A deployment row blocks deletion with 409 MODEL_IN_USE and the model and deployment stay. A model file whose state is deleting keeps the model on 409 and the file stays. After both rows are cleared, delete returns 204, the independent GET is 404, and the reloaded list is empty",
+    "12.8": "MISSING: the revision field is not exercised by this register dialog"
   },
   "missing": [
     "download to node, content verification on agent and real GPU inference",
@@ -152,7 +164,6 @@
     "duplicate submission/in-flight barrier",
     "all text/URL boundaries",
     "upstream malformed config/metadata changes",
-    "referenced deletion",
     "full style/loading/empty/error geometry matrix",
     "MISSING: the default refusal of a private or loopback source URL (outbound URL is not permitted); the isolated server allows only 127.0.0.1, where this case's fixture listens"
   ],

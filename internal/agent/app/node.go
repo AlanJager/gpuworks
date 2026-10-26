@@ -49,13 +49,13 @@ type NodeRuntime struct {
 	// cardSmokeCtx is the runner's own lifetime, so a check asked for
 	// outside the schedule ends when the agent does.
 	cardSmokeCtx context.Context
-	// instanceCardIdents is a seam beside heldCardIdents: the cards one
+	// instanceCardIdents is a seam beside heldCards: the cards one
 	// instance was given, whatever state it reached.
 	instanceCardIdents func(uuid string) []string
-	// heldCardIdents overrides where cardsInUse reads this agent's own
+	// heldCards overrides where cardsInUse reads this agent's own
 	// placements, so the card occupancy rules can be tested without an
 	// engine starting containers. Nil means ask the engine.
-	heldCardIdents                func() []string
+	heldCards                     func() engine.HeldCards
 	partitionProbeStateMu         sync.Mutex
 	partitionProbeInputsSeen      bool
 	partitionProbeFingerprintSeen string

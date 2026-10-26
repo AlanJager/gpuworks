@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import traceback
@@ -26,6 +27,73 @@ CASE = "推理令牌 / UI 创建复制并删除 / 刷新回读、真实网关鉴
 KEY_PATH = "/api/v1/apikeys"
 DENIED = {"error": {"message": "invalid or missing API key", "type": "gpuworks_proxy"}}
 MODELS = {"object": "list", "data": []}
+
+
+def exercise_create_dialog(page, create, k, mutations, report):
+    """Create dialog identity, layout, focus, and dismissals. No key POST."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    title = k["create"]["title"]
+    card = page.locator(".ant-card").filter(has_text=k["gateway"]["title"]).first
+
+    def writes():
+        return sum(1 for item in mutations if item["path"].startswith(KEY_PATH))
+
+    def open_create():
+        create.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_create()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(k["table"]["name"], exact=True),
+                        button(dialog, k["actions"]["create"]))
+    dialog = assert_nested_dismissals(
+        dialog, card, open_create,
+        [("cancel", cancel_button(k["actions"]["cancel"])), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        writes, create)
+    cancel_button(k["actions"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(card).to_be_visible()
+    check(writes() == 0, "create dialog dismissal sent a key mutation")
+    report["evidence"].append({"layer": "ui", "create_dialog": title,
+        "dismissals": ["cancel", "escape", "close", "mask"], "key_mutations": 0})
+
+
+def exercise_key_field_inventory(dialog, k, mutations):
+    """Register the only create-dialog field before a name is typed.
+
+    Name is a required textbox. It opens empty, with no unit and no control
+    range. No other field is shown. Reading it sends no key write. The later
+    submit in this run is the request and the persisted record: POST body
+    name only, then a list row of name, prefix and created_at.
+    """
+    before = len(mutations)
+    name_label = k["table"]["name"]
+    name = dialog.get_by_label(name_label, exact=True)
+    expect(dialog.get_by_role("textbox")).to_have_count(1)
+    expect(name).to_have_count(1)
+    expect(name).to_have_value("")
+    expect(name).to_have_attribute("placeholder", k["create"]["namePlaceholder"])
+    expect(name).to_have_attribute("aria-required", "true")
+    check(name.get_attribute("maxlength") is None, "name field exposes a control range")
+    required = dialog.locator("label.ant-form-item-required")
+    expect(required).to_have_count(1)
+    expect(required).to_have_text(name_label)
+    expect(dialog.locator(".ant-input-suffix, .ant-input-number")).to_have_count(0)
+    expect(dialog.get_by_role("radio")).to_have_count(0)
+    expect(dialog.get_by_role("combobox")).to_have_count(0)
+    expect(dialog.get_by_role("switch")).to_have_count(0)
+    expect(dialog.locator(".ant-form-item")).to_have_count(1)
+    expect(dialog.locator(".ant-form-item-hidden")).to_have_count(0)
+    check(len(mutations) == before, "reading the create field sent a key write")
+    return {
+        "fields": [{"label": name_label, "type": "textbox", "required": True, "value": "", "unit": None, "range": None}],
+        "hidden": 0,
+        "writes": 0,
+    }
 
 
 # Contract: gpuworks/inference-key/create-copy-delete
@@ -91,12 +159,17 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
                          "reason": "Keep authentication enabled while proving target-key revocation; zero keys allows anonymous development access"}
     artifacts.start_trace(context)
     create = button(page, k["create"]["button"])
+    expect(create).to_be_visible()
+    report["step"] = "create dialog over the inference token card"
+    exercise_create_dialog(page, create, k, mutations, report)
+
     create.click()
     dialog = page.get_by_role("dialog", name=k["create"]["title"], exact=True)
     submit = button(dialog, k["actions"]["create"])
     field = dialog.get_by_label(k["table"]["name"], exact=True)
     modal_geometry(dialog, submit)
     expect(field).to_have_value("")
+    report["key_inventory"] = exercise_key_field_inventory(dialog, k, mutations)
     for invalid in ["", "   "]:
         field.fill(invalid)
         submit.click()
@@ -121,6 +194,38 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     page.screenshot(path=artifacts.directory / "create-form.png")
     report["evidence"].append({"layer": "ui", "checks": ["empty/whitespace rejected without POST", "Tab trapped inside modal", "Esc without POST and focus return", "named dialog and footer in viewport", "focus border inherits theme.primary"]})
     artifacts.stop_trace(context)
+    held = []
+
+    def hold_create(route):
+        if route.request.method != "POST":
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + KEY_PATH, hold_create)
+    writes_before = len(mutations)
+    submit.click()
+    inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+    expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    inflight.click()
+    field.press("Enter")
+    check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+    reason = "upstream fixture is unreachable"
+    with page.expect_response(lambda r: urlsplit(r.url).path == KEY_PATH and r.request.method == "POST") as failed:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute("**" + KEY_PATH, hold_create)
+    check(failed.value.status == 502, "forced create failure did not surface")
+    expect(dialog).to_be_visible()
+    expect(field).to_have_value(name)
+    expect(page.get_by_text(k["create"]["failed"].replace("{{detail}}", reason), exact=True)).to_be_visible()
+    check(bad_responses == [{"path": KEY_PATH, "status": 502}], "forced create failure was not the only HTTP error")
+    bad_responses.clear()
+    check(len(console_errors) == 1 and "502" in console_errors[0],
+          "forced create failure console: " + str(console_errors))
+    console_errors.clear()
+    del mutations[writes_before:]
+    report["evidence"].append({"layer": "ui", "inflight_posts": len(held), "confirm_loading": True,
+        "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
     report["sensitive_phase"] = True
     with page.expect_response(lambda r: urlsplit(r.url).path == KEY_PATH and r.request.method == "POST") as created:
         field.press("Enter")
@@ -227,6 +332,7 @@ def main():
         "coverage_manifest_sha256": digest(manifest_path), "test_sha256": digest(Path(__file__)),
         "fixture_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
         "helper_sha256": digest(ROOT / "test/e2e/platform_token_read_revoke.py"),
+        "dialog_checks_sha256": digest(ROOT / "test/e2e/dialog_checks.py"),
         "execution": "N/A: gateway key authorization requires no agent; model inventory is empty",
         "not_covered": manifest["missing"], "command": ["python3", "test/e2e/inference_key_lifecycle.py", *sys.argv[1:]]}
     try:

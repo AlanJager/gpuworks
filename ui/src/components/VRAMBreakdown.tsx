@@ -91,6 +91,11 @@ export default function VRAMBreakdown({
       {showEstimated && <Typography.Text type={fitSummary.tone} strong style={{ display: "block", marginBottom: 8 }}>
 		  {fitSummary.text}
 		</Typography.Text>}
+      {showEstimated && typeof breakdown.max_concurrency === "number" && (
+        <Typography.Text type={breakdown.max_concurrency < 1 ? "danger" : "secondary"} style={{ display: "block", marginBottom: 8 }}>
+          {t("vram.maxConcurrency", { value: breakdown.max_concurrency })}
+        </Typography.Text>
+      )}
 
       {showEstimated && <Bar label={t("vram.estimated")} segs={estSegs} denom={denom} total={displayEstimateTotal} capacity={capacityGiB} utilizationLabel={(value) => t("vram.utilization", { value })} />}
       {hasMeasured && (

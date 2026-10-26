@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import expect
 
+from dialog_checks import assert_drawer_shell
 from image_catalog import button, cleanup, observe, open_custom, read_detail, strings
 from image_catalog_runner import run
 from platform_token_read_revoke import check, collection
@@ -50,13 +51,26 @@ def test_image_enable_cycle(page, server, artifacts, report, locale):
     def series_switch():
         return page.get_by_role("switch", name=text["seriesTable"]["enabledLabel"].replace("{{name}}", name), exact=True)
 
+    shell_checked = {"done": False}
+
     def open_detail():
         open_custom(page, text)
         with page.expect_response(lambda r: urlsplit(r.url).path == series_path and r.request.method == "GET") as read:
             button(page, name).click()
         check(read.value.status == 200, "browser detail read failed")
-        dialog = page.get_by_role("dialog", name=text["detail"]["title"].replace("{{name}}", name), exact=True)
+        # The accessible name joins the series and engine with a space. The
+        # title node is a flex row, so its inner text keeps those parts on two lines.
+        dialog_name = f"{name} vllm · cuda"
+        dialog = page.get_by_role("dialog", name=dialog_name, exact=True)
         expect(dialog).to_be_in_viewport(ratio=1)
+        if not shell_checked["done"]:
+            evidence = assert_drawer_shell(
+                page, dialog, f"{name}\nvllm · cuda",
+                version_switch(dialog, 0),
+                page.get_by_role("dialog", name=text["import"]["title"]["custom"], exact=True))
+            evidence["accessible_name"] = dialog_name
+            report["evidence"].append(evidence)
+            shell_checked["done"] = True
         return dialog
 
     def close_detail(dialog):

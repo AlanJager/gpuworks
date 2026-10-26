@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -53,6 +52,12 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		candidates = append(candidates, candidate)
 	}
 	for _, candidate := range candidates {
+		// The page treats catalog length as the number of available models.
+		// Score 0 cannot serve and cannot be woken, so a failed deployment
+		// or one that is still starting must not be counted.
+		if candidate.score == 0 {
+			continue
+		}
 		dep := candidate.deployment
 		model, err := a.d.Store.GetModel(dep.ModelID)
 		if err != nil {
@@ -131,24 +136,16 @@ func playgroundOperations(contract inferenceapi.Contract, model string) []dto.Pl
 
 // omitUnservedTranscription drops openai.audio.transcribe when a running
 // replica has published an OpenAPI document that does not list
-// /v1/audio/transcriptions. An empty observation means the document was not
-// read, and the declared contract stays.
+// /v1/audio/transcriptions. An unknown observation leaves the declared
+// contract unchanged.
 func omitUnservedTranscription(operations []inferenceapi.Operation, instances []store.Instance) []inferenceapi.Operation {
 	known, present := false, false
 	for _, instance := range instances {
-		if instance.Headless || instance.State != proto.InstRunning || strings.TrimSpace(instance.OpenAPIPaths) == "" {
-			continue
-		}
-		var paths []string
-		if json.Unmarshal([]byte(instance.OpenAPIPaths), &paths) != nil {
+		if instance.Headless || instance.State != proto.InstRunning || instance.TranscriptionServed == nil {
 			continue
 		}
 		known = true
-		for _, path := range paths {
-			if path == "/v1/audio/transcriptions" {
-				present = true
-			}
-		}
+		present = present || *instance.TranscriptionServed
 	}
 	if !known || present {
 		return operations

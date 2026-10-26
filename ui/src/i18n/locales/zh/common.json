@@ -437,7 +437,24 @@
     "REPLICAS_REMOVE_TOO_MANY": "指定了 {{count}} 个实例，但只减少 {{maximum}} 个副本。",
     "BENCHMARK_INSTANCE_ORIGIN": "单个实例只能从它所在的节点发起压测；请选择该节点，或改为经网关。",
     "MODEL_CACHE_RETRY_BLOCKED": "缓存复制暂不能重启。请检查节点连接、释放缓存空间，并等待旧 I/O 退出。",
-    "STORAGE_CONFIG_CHANGED": "存储配置已被修改，请重新加载后再试。"
+    "STORAGE_CONFIG_CHANGED": "存储配置已被修改，请重新加载后再试。",
+    "ZSTACK_REQUEST_FAILED": "ZStack API 校验失败，请检查访问地址、服务状态及 API 权限。",
+    "ZSTACK_DNS_FAILED": "ZStack 主机名解析失败，请检查地址和 DNS 配置。",
+    "ZSTACK_IP_UNREACHABLE": "GPUWorks 无法到达 ZStack IP，请检查地址及网络路由。",
+    "ZSTACK_PORT_REFUSED": "ZStack 端口连接被拒绝，请检查端口及服务是否已启动。",
+    "ZSTACK_ACCESS_KEY_INVALID": "ZStack AK 不存在或已禁用，请检查 AccessKey ID 及其状态。",
+    "ZSTACK_SIGNATURE_INVALID": "ZStack AK/SK 签名校验失败，请检查 AccessKey ID 与 Secret 是否匹配。",
+    "ZSTACK_LICENSE_REQUIRED": "ZStack AccessKey 认证需要有效的企业版许可证。",
+    "ZSTACK_CLOCK_SKEW": "ZStack 拒绝了请求时间，请同步 GPUWorks 与 ZStack 服务器的时钟。",
+    "ZSTACK_AUTH_REJECTED": "ZStack 拒绝访问，请检查 AK/SK、账号权限及认证配置。",
+    "ZSTACK_PROXY_CONNECTION_FAILED": "ZStack 请求通过代理连接时失败，请检查代理及其网络路由。",
+    "ZSTACK_TLS_FAILED": "ZStack TLS 握手失败，请检查 HTTPS 配置及服务端证书。",
+    "ZSTACK_RESPONSE_TIMEOUT": "已连接到 ZStack，但 API 响应超时，请检查服务负载及响应链路。",
+    "ZSTACK_CONNECTION_RECOVERED": "ZStack API 连接失败，但补充探测时端口已可连接，请重试以校验 API 和 AK/SK。",
+    "ZSTACK_PORT_UNREACHABLE": "ZStack IP 有响应，但目标端口无法连接，请检查端口、服务及防火墙。",
+    "ZSTACK_NETWORK_UNCONFIRMED": "ZStack IP 探测无响应，目标端口也无法连接，请检查地址、端口及防火墙；目前无法确定具体原因。",
+    "ZSTACK_NETWORK_DIAGNOSTIC_UNAVAILABLE": "ZStack 连接失败，且 IP 探测无法执行，请检查地址、端口及防火墙。",
+    "ZSTACK_REQUEST_TIMEOUT": "ZStack API 请求超时，请检查网络连通性及服务响应。"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"

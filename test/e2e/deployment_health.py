@@ -9,14 +9,18 @@ allow about eight minutes. GPU facts are synthetic; GPU compute is not tested.
 """
 import json
 import math
+import re
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect
-from local_browser_fixture import ROOT
+from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import button, check
 import deployment_health_fixture as fixture
 import deployment_replica_fixture as replicas
+from dialog_checks import (
+    assert_drawer_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_business_runner import case_parser, run_case
 
 CONTRACT = "gpuworks/deployment/health-check-configuration-runtime"
@@ -75,10 +79,101 @@ def assert_health(document, entry, mode, status, after, expected_identity):
     return {"health": health, "probe": probe}
 
 
+UNCHECKABLE_DETAIL = "the health check sends a chat or an embedding request; this model serves neither"
+
+
+def health_save_button(drawer, enable_label):
+    # The loading icon's aria-label is "loading", so the accessible name is no
+    # longer the save label while the write is held. The button beside the
+    # threshold is the save control in either locale.
+    editor = drawer.get_by_role("switch", name=enable_label, exact=True).locator(
+        'xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " ant-space ")][1]')
+    return editor.locator("button").last
+
+
+def prove_inflight_health_save(page, drawer, server, token, report, text, common, path, requests, expected_requests, target):
+    """Hold the save PUT: loading, no second write, real 400, draft kept."""
+    model_id = report["owned_model_id"]
+    model_path = f"/api/v1/models/{model_id}"
+    report["step"] = "health-save-uncheckable"
+    code, model = http(server.base, "GET", model_path, token)
+    check(code == 200 and model.get("operations"), f"health model read HTTP {code}")
+    original = {"operations": model["operations"], "input_modalities": model.get("input_modalities") or []}
+    served = {item.get("type") for item in original["operations"]}
+    check(served & {"openai.chat", "openai.completions", "openai.embeddings"}, "fixture model cannot be health-checked")
+    patched_away = False
+    try:
+        code, patched = http(server.base, "PATCH", model_path + "/inference-config", token,
+                             {"operations": [{"type": "openai.rerank"}], "input_modalities": original["input_modalities"]})
+        check(code == 200, f"uncheckable model patch HTTP {code}")
+        patched_away = True
+        check({item.get("type") for item in patched.get("operations", [])} == {"openai.rerank"},
+              "model did not become rerank-only")
+        threshold = drawer.get_by_role("spinbutton", name=text["threshold"], exact=True)
+        threshold.fill("6")
+        expect(threshold).to_have_value("6")
+        save = health_save_button(drawer, text["enable"])
+        expect(save).to_have_text(re.compile(r"^\s*" + r"\s*".join(re.escape(ch) for ch in text["save"]) + r"\s*$"))
+        expect(save).to_be_enabled()
+        held = []
+        pattern = re.compile(re.escape(path + "/health-check") + r"(?:\?|$)")
+
+        def hold_put(route):
+            if route.request.method != "PUT" or urlsplit(route.request.url).path != path + "/health-check":
+                route.continue_()
+                return
+            held.append(route)
+
+        page.route(pattern, hold_put)
+        try:
+            save.click()
+            report["step"] = "health-save-inflight"
+            report["last_step"] = "health-save-inflight"
+            expect(save).to_have_class(re.compile(r"\bant-btn-loading\b"))
+            save.click()
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline and not held:
+                page.wait_for_timeout(100)
+            check(len(held) == 1, "duplicate health save while the first request is held")
+            with page.expect_response(lambda response: urlsplit(response.url).path == path + "/health-check"
+                                      and response.request.method == "PUT") as received:
+                held[0].continue_()
+            refused = received.value
+        finally:
+            page.unroute(pattern, hold_put)
+        check(refused.status == 400, f"uncheckable health save HTTP {refused.status}")
+        body = refused.json()
+        replicas.strict(body.get("code"), "FIELD_INVALID", "uncheckable health error code")
+        replicas.strict(body.get("params"), {"field": "health_check", "detail": UNCHECKABLE_DETAIL},
+                        "uncheckable health error parameters")
+        replicas.strict(refused.request.post_data_json, {"enabled": True, "threshold_sec": 6}, "refused health draft")
+        expect(threshold).to_have_value("6")
+        error = common["apiError"]["FIELD_INVALID"].replace("{{detail}}", UNCHECKABLE_DETAIL)
+        expect(page.get_by_text(error, exact=True)).to_be_visible()
+        independent = fixture.document(server, token, target, report)
+        replicas.strict(independent["health"]["threshold_sec"], 5, "refused save persisted a threshold")
+        check(independent["health"]["status"] != "off", "refused save turned the check off")
+        expected = {"method": "PUT", "path": path + "/health-check", "query": "",
+                    "body": {"enabled": True, "threshold_sec": 6}}
+        expected_requests.append(expected)
+        replicas.strict(requests, expected_requests, "held health save is the only health PUT so far")
+        report["evidence"].append({"layer": "ui", "inflight_puts": 1, "confirm_loading": True, "draft_threshold_sec": 6})
+        report["evidence"].append({"layer": "request", **expected, "status": 400})
+        report["evidence"].append({"layer": "persistence", "enabled": True, "threshold_sec": 5,
+                                   "draft_threshold_sec": 6, "independent_get": path})
+    finally:
+        if patched_away:
+            code, restored = http(server.base, "PATCH", model_path + "/inference-config", token, original)
+            check(code == 200, f"health model operation restore HTTP {code}")
+            replicas.strict([item.get("type") for item in restored.get("operations", [])],
+                            [item.get("type") for item in original["operations"]], "restored health model operations")
+
+
 # Mainline: 真server/agent/Docker→开着的健康探针→UI阈值1→真实2s上游超时取消→UI阈值3后恢复
 # →外部503→恢复→UI关→guard下一轮证明无目标探针→UI开恢复；全程相同容器/PID且不自动重启。
 def test_deployment_health(page, context, server, artifacts, report, locale, data, token, holder):
-    text = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/common.json").read_text())["healthCheck"]
+    common = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/common.json").read_text())
+    text = common["healthCheck"]
     auth = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/auth.json").read_text())
     deployments = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/deployments.json").read_text())
     target, guard = data["target"], data["guard"]
@@ -116,6 +211,44 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
         replicas.strict(docker_identities[entry["role"]]["image_id"], report["fake_engine_image_id"], "unchanged engine image")
     report["health_initial_instances"] = identities
     report["health_initial_docker"] = docker_identities
+    page.goto(server.base + f"/deployments?deployment={target['id']}")
+    drawer = page.get_by_role("dialog", name=target["name"], exact=True)
+    expect(drawer).to_be_visible()
+    deletes = []
+
+    def on_delete(request):
+        if request.method == "DELETE" and urlsplit(request.url).path == path:
+            deletes.append(request.method)
+
+    page.on("request", on_delete)
+    delete_title = deployments["delete"]["title"].replace("{{name}}", target["name"])
+    # The header Delete button includes the icon's accessible name, so the
+    # exact button-text helper does not match it.
+    remove = drawer.locator(".ant-drawer-extra").get_by_role(
+        "button", name=deployments["delete"]["button"])
+
+    def open_delete():
+        remove.click()
+        dialog = page.get_by_role("dialog", name=delete_title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = assert_nested_dismissals(
+        open_delete(), drawer, open_delete,
+        [("cancel", cancel_button(deployments["delete"]["cancel"])),
+         ("escape", escape), ("close", close_button), ("mask", mask)],
+        lambda: len(deletes), remove)
+    cancel_button(deployments["delete"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(drawer).to_be_visible()
+    check(deletes == [], "delete dialog dismissal removed the deployment")
+    stayed = page.request.get(server.base + path)
+    check(stayed.status == 200 and stayed.json().get("name") == target["name"],
+          "delete dialog dismissal changed the stored deployment")
+    report["evidence"].append({
+        "layer": "ui", "delete_dialog": delete_title, "parent": target["name"],
+        "dismissals": ["cancel", "escape", "close", "mask"],
+        "focus_returned": True, "delete_requests": 0, "stored_name": target["name"]})
 
     def unchanged():
         for entry in (target, guard):
@@ -153,6 +286,10 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
     first = status_after(target, "ok", "ok", 0)
     status_after(guard, "slow", "ok", 0)
     drawer = show("ok", first)
+    report["evidence"].append(assert_drawer_shell(
+        page, drawer, target["name"],
+        drawer.get_by_role("switch", name=text["enable"], exact=True),
+        page.get_by_role("dialog", name=deployments["replica"]["restartTitle"], exact=True)))
     switch = drawer.get_by_role("switch", name=text["enable"], exact=True)
     threshold = drawer.get_by_role("spinbutton", name=text["threshold"], exact=True)
     expect(switch).to_be_checked()
@@ -180,6 +317,8 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
     expect(save).to_be_disabled()
 
     expected_requests = []
+    prove_inflight_health_save(page, drawer, server, token, report, text, common, path,
+                               requests, expected_requests, target)
     def update(enabled, seconds):
         nonlocal drawer
         report["step"] = f"health-config-{enabled}-{seconds}"
@@ -206,6 +345,12 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
         return independent
 
     update(True, 1)
+    page.goto(server.base + f"/deployments?deployment={target['id']}")
+    drawer = page.get_by_role("dialog", name=target["name"], exact=True)
+    expect(drawer).to_be_visible()
+    expect(drawer.get_by_role("switch", name=text["enable"], exact=True)).to_be_checked()
+    expect(drawer.get_by_role("spinbutton", name=text["threshold"], exact=True)).to_have_value("1")
+    report["evidence"].append({"layer": "ui", "reloaded_threshold_sec": 1, "reloaded_enabled": True})
     fixture.write_control(target["directory"], "slow")
     timeout = status_after(target, "slow", "timeout", first["health"]["last"]["at_ms"])
     drawer = show("timeout")
@@ -241,7 +386,7 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
     expect(drawer.get_by_role("spinbutton", name=text["threshold"], exact=True)).to_have_value("3")
     expect(button(drawer, text["save"])).to_be_disabled()
     unchanged()
-    replicas.strict(requests, expected_requests, "final exactly four UI health mutations")
+    replicas.strict(requests, expected_requests, "final health PUT ledger")
     check(not page_errors, f"health page errors: {page_errors}")
     report["evidence"].extend([
         {"layer": "ui", "enabled_states": [True, False, True], "thresholds": [5, 1, 3],
