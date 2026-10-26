@@ -4,11 +4,14 @@ Run: make test-e2e-instance-diagnostics E2E_LOCALE=en
 Synthetic GPU facts schedule a real Alpine/fake-engine container; no GPU claim.
 """
 import json
+import re
 import shlex
 import time
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import button, check
 import instance_diagnostics_fixture as fixture
@@ -56,6 +59,120 @@ def open_instance(page, server, data, report):
     panel = drawer.locator('[id="instance-' + instance["uuid"] + '"]')
     expect(panel).to_be_visible()
     return drawer, panel
+
+
+def prove_refused_delete(page, dialog, server, dep_id, delete, report):
+    """Hold Delete: loading, no second write, a 502 keeps the dialog and the deployment."""
+    reason = "upstream fixture is unreachable"
+    path = "/api/v1/deployments/" + str(dep_id)
+    held = []
+
+    def hold_delete(route):
+        if route.request.method != "DELETE" or urlsplit(route.request.url).path != path:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + path, hold_delete)
+    refused = None
+    try:
+        ok = dialog.locator(".ant-modal-footer .ant-btn-primary")
+        ok.click()
+        expect(ok).to_have_class(re.compile(r"\bant-btn-loading\b"))
+        ok.click()
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not held:
+            page.wait_for_timeout(100)
+        check(len(held) == 1, "duplicate delete while the first request is held")
+        check(urlsplit(held[0].request.url).query == "", "held delete changed the force query")
+        with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as failed:
+            held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+        refused = failed.value
+    finally:
+        page.unroute("**" + path, hold_delete)
+    check(refused.status == 502, f"refused delete HTTP {refused.status}")
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_role("checkbox", name=delete["force"], exact=True)).not_to_be_checked()
+    expect(page.get_by_text(delete["failed"].replace("{{detail}}", reason), exact=True)).to_be_visible()
+    stayed = page.request.get(server.base + path)
+    body = stayed.json()
+    check(stayed.status == 200 and body.get("id") == dep_id and body.get("desired_state") != "deleting",
+          "refused delete changed the deployment")
+    report["evidence"].append({"layer": "ui", "inflight_deletes": 1, "confirm_loading": True,
+        "failure_status": 502, "force_checked": False, "failure_reason_visible": True, "dialog_open": True})
+    report["evidence"].append({"layer": "request", "method": "DELETE", "path": path, "query": "",
+        "status": 502, "body": {"message": reason}})
+    report["evidence"].append({"layer": "persistence", "independent_get": path,
+        "desired_state": body.get("desired_state"), "unchanged": True})
+    cancel_button(delete["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+
+
+def prove_force_delete(page, server, name, dep_id, text, report):
+    """Later force delete matches an independent 404 and the reloaded empty row."""
+    delete = text["delete"]
+    page.goto(server.base + "/deployments")
+    row = page.get_by_role("row").filter(has_text=name)
+    expect(row).to_have_count(1)
+    row.get_by_role("button", name=name, exact=True).click()
+    drawer = page.get_by_role("dialog", name=name, exact=True)
+    expect(drawer).to_be_visible()
+    drawer.get_by_role("button", name=re.compile(re.escape(delete["button"]) + "$")).click()
+    dialog = page.get_by_role("dialog", name=delete["title"].replace("{{name}}", name), exact=True)
+    expect(dialog).to_be_visible()
+    dialog.get_by_role("checkbox", name=delete["force"], exact=True).check()
+    path = "/api/v1/deployments/" + str(dep_id)
+    with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as deleted:
+        button(dialog, delete["forceButton"]).click()
+    check(deleted.value.status == 200 and urlsplit(deleted.value.url).query == "force=true",
+          f"force delete HTTP {deleted.value.status} {deleted.value.url}")
+    expect(page.get_by_text(delete["forced"], exact=True).first).to_be_visible()
+    gone = page.request.get(server.base + path)
+    check(gone.status == 404, f"force-deleted deployment GET HTTP {gone.status}")
+    page.reload()
+    expect(page.get_by_role("heading", name=text["page"]["title"], exact=True)).to_be_visible()
+    expect(page.get_by_role("row").filter(has_text=name)).to_have_count(0)
+    report["evidence"].append({"layer": "ui", "force_delete_reloaded_row": 0})
+    report["evidence"].append({"layer": "request", "method": "DELETE", "path": path,
+        "query": "force=true", "status": 200})
+    report["evidence"].append({"layer": "persistence", "independent_get": path, "status": 404})
+
+
+def exercise_delete_dialog(page, drawer, server, data, text, report):
+    """Delete confirm over the detail drawer: identity, layout, focus, and dismissals."""
+    name = data["name"]
+    delete = text["delete"]
+    title = delete["title"].replace("{{name}}", name)
+    requests = []
+
+    def seen(request):
+        path = urlsplit(request.url).path
+        if request.method == "DELETE" and path.startswith("/api/v1/deployments/"):
+            requests.append(path)
+
+    page.on("request", seen)
+    trigger = drawer.get_by_role("button", name=re.compile(re.escape(delete["button"]) + "$"))
+    expect(trigger).to_be_visible()
+
+    def open_delete():
+        trigger.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_delete()
+    assert_dialog_shell(page, dialog, dialog.get_by_text(delete["description"], exact=True),
+                        button(dialog, delete["button"]))
+    dialog = assert_nested_dismissals(
+        dialog, drawer, open_delete,
+        [("cancel", cancel_button(delete["cancel"])), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        lambda: len(requests), trigger)
+    check(requests == [], "delete dialog dismissal sent DELETE")
+    report["evidence"].append({"layer": "ui", "delete_dialog": title,
+        "dismissals": ["cancel", "escape", "close", "mask"], "delete_requests": 0})
+    prove_refused_delete(page, dialog, server, data["deployment"]["id"], delete, report)
+    expect(drawer).to_be_visible()
 
 
 def request_contract(response, path, query, method="GET", body=None):
@@ -121,10 +238,12 @@ def gauges(page, drawer, panel, server, data, report, text):
     # It legitimately polls the same instance gauges. Move its own control to
     # the annual window (30-minute cadence), so its default 15m timer cannot
     # be mistaken for an extra request from the instance control under test.
-    all_controls = drawer.get_by_role("combobox", name=text["timeRange"]["ariaLabel"], exact=True)
-    expect(all_controls).to_have_count(2)
-    outer = all_controls.first
-    check(outer.get_attribute("id") != panel.get_by_role("combobox", name=text["timeRange"]["ariaLabel"], exact=True).get_attribute("id"),
+    # A replaced attempt stays on the logs tab and keeps its own range control.
+    # The deployment header is the first range control in the drawer.
+    panel_control = panel.get_by_role("combobox", name=text["timeRange"]["ariaLabel"], exact=True)
+    expect(panel_control).to_have_count(1)
+    outer = drawer.get_by_role("combobox", name=text["timeRange"]["ariaLabel"], exact=True).first
+    check(outer.get_attribute("id") != panel_control.get_attribute("id"),
           "deployment and instance range controls must remain distinct")
     outer_replies = fixture.capture_gauges(page, inst["uuid"], RANGES["1y"],
         lambda: select_control(page, outer, text["timeRange"]["1y"]))
@@ -220,6 +339,8 @@ def test_instance_diagnostics(page, context, server, artifacts, report, locale, 
     page.on("pageerror", lambda error: errors.append(str(error)))
     login(page, context, server, artifacts, report, locale)
     drawer, panel = open_instance(page, server, data, report)
+    report["step"] = "delete dialog over the detail drawer"
+    exercise_delete_dialog(page, drawer, server, data, text, report)
     inst = data["instance"]
     report["step"] = "real stdout marker through browser SSE"
     lower = int(time.time() * 1000)
@@ -293,6 +414,8 @@ def test_instance_diagnostics(page, context, server, artifacts, report, locale, 
     check([x for x in recent.value.json()["items"] if x["line"] == line] == [hit],
           "stopped log center reload lost or changed the stored marker")
     expect(page.get_by_test_id("log-row").filter(has_text=line)).to_have_count(1)
+    report["step"] = "force delete after the diagnostic"
+    prove_force_delete(page, server, data["name"], data["deployment"]["id"], text, report)
     check(errors == [], "diagnostics page JS errors: " + str(errors))
     report["evidence"].extend([
         {"layer": "ui", "stdout_marker": line, "metric_card_values": [2, 3, "37%"],
