@@ -71,6 +71,20 @@ func transportError(err error) *APIError {
 	return &APIError{Kind: kind, cause: err, retryable: retryable && kind != ErrorCanceled}
 }
 
+// A stopped retry loop must retain the last attempt's diagnostic evidence,
+// while cancellation or the total deadline remains the terminal error kind.
+func interruptedRequestError(stop error, last *APIError) *APIError {
+	terminal := transportError(stop)
+	if last == nil {
+		return terminal
+	}
+	copy := *last
+	copy.Kind = terminal.Kind
+	copy.cause = errors.Join(last, stop)
+	copy.retryable = false
+	return &copy
+}
+
 func jobError(err error, jobID string) error {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) {

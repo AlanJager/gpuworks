@@ -66,7 +66,7 @@ for (const language of ["en", "zh"] as const) {
     await waitFor(() => assert.ok(screen.getByText(language === "zh" ? "请输入 API 接口地址" : "Enter API Endpoint")));
     assert.equal(requests.length, 0, "clearing the required endpoint cannot bypass validation");
 
-    const endpoint = "http://192.0.2.10:8080/zstack";
+    const endpoint = "https://192.0.2.10:8443/zstack";
     fireEvent.change(input("endpoint"), { target: { value: endpoint } });
     fireEvent.click(addButton());
     await waitFor(() => assert.equal(saved, 1));

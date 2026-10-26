@@ -2,6 +2,8 @@ package cloud
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -81,4 +83,56 @@ func TestCloudValidationPortRefusalAndResponseTimeout(t *testing.T) {
 			t.Fatal(got)
 		}
 	})
+}
+
+func TestCloudValidationHTTPS(t *testing.T) {
+	for _, tc := range []struct {
+		name, accessKey, want string
+		trusted               bool
+	}{
+		{"trusted HTTPS", "test-access-key", "", true},
+		{"invalid AK over HTTPS", "invalid-key", "ZSTACK_ACCESS_KEY_INVALID", true},
+		{"untrusted certificate", "test-access-key", "ZSTACK_TLS_FAILED", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !tc.trusted {
+					t.Error("untrusted peer received credentials")
+				}
+				if r.TLS == nil || r.URL.Path != "/zstack/v1/hosts" {
+					t.Error("validation did not use the configured HTTPS API")
+				}
+				if !validTestAccessKey(r) {
+					w.WriteHeader(http.StatusForbidden)
+					fmt.Fprint(w, `{"error":{"code":"SYS.1006","details":"access key id: invalid-key does not existed or disabled"}}`)
+					return
+				}
+				fmt.Fprint(w, `{"inventories":[]}`)
+			}))
+			defer server.Close()
+			// The driver uses the default transport. Supply fixture trust here
+			// without disabling verification or adding a production test hook.
+			transport := server.Client().Transport.(*http.Transport).Clone()
+			if !tc.trusted {
+				transport.TLSClientConfig = &tls.Config{RootCAs: x509.NewCertPool()}
+			}
+			previous := http.DefaultTransport
+			http.DefaultTransport = transport
+			defer func() { http.DefaultTransport = previous; transport.CloseIdleConnections() }()
+			d := New()
+			d.diagnostics = &endpointDiagnostics{timeout: time.Second,
+				tcp: func(context.Context, string) error { t.Error("unexpected TCP probe"); return nil },
+				ip:  func(context.Context, string) ipProbeResult { t.Error("unexpected IP probe"); return ipResponded },
+			}
+			err := d.ValidateCredentials(t.Context(), provider.Credentials{Endpoint: server.URL + "/zstack",
+				PublicKey: tc.accessKey, PrivateKey: "test-access-secret"})
+			if tc.want == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if got := validationErrorCode(t, err); got != tc.want {
+				t.Fatalf("got %s, want %s", got, tc.want)
+			}
+		})
+	}
 }

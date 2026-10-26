@@ -32,8 +32,12 @@ func traceConnection(req *http.Request) (*http.Request, func() RequestPhase) {
 		ConnectStart:      func(string, string) { set(PhaseConnect) },
 		TLSHandshakeStart: func() { set(PhaseTLS) },
 		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
-			if err == nil {
-				set(PhaseResponse)
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil && phase != PhaseResponse {
+				// This may only be the HTTPS proxy handshake. CONNECT and a
+				// second TLS handshake can follow; GotConn confirms readiness.
+				phase = PhaseConnect
 			}
 		},
 		GotConn: func(httptrace.GotConnInfo) { set(PhaseResponse) },

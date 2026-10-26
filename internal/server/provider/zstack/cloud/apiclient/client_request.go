@@ -28,9 +28,10 @@ type cloudReply struct {
 
 func (c *APIClient) request(ctx context.Context, policy clientPolicy, method, path string, body []byte, jobID string) (cloudReply, error) {
 	delay := policy.retryInitial
+	var lastErr *APIError
 	for attempt := 0; ; attempt++ {
 		if err := ctx.Err(); err != nil {
-			return cloudReply{}, transportError(err)
+			return cloudReply{}, interruptedRequestError(err, lastErr)
 		}
 		started := time.Now()
 		reply, err := c.requestOnce(ctx, policy, method, path, body, jobID)
@@ -49,8 +50,9 @@ func (c *APIClient) request(ctx context.Context, policy clientPolicy, method, pa
 			!errors.As(err, &apiErr) || !apiErr.retryable {
 			return reply, err
 		}
+		lastErr = apiErr
 		if err := waitForCloud(ctx, max(delay, reply.retryAfter)); err != nil {
-			return reply, transportError(err)
+			return reply, interruptedRequestError(err, lastErr)
 		}
 		if delay > policy.retryMax/2 {
 			delay = policy.retryMax

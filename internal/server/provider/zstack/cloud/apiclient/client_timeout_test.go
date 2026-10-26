@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptrace"
+	"net/url"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -98,8 +102,76 @@ func TestCloudCancellationInterruptsRetryBackoff(t *testing.T) {
 		go func() { var out any; finished <- c.Get(ctx, "/hosts", &out) }()
 		synctest.Wait()
 		cancel()
-		if err := <-finished; !errors.Is(err, context.Canceled) || calls != 1 {
+		if err := <-finished; !errors.Is(err, context.Canceled) || !errors.Is(err, io.EOF) || calls != 1 {
 			t.Fatalf("cancellation waited for backoff: calls=%d err=%v", calls, err)
+		}
+	})
+}
+
+func TestCloudRetryBudgetPreservesLastAttempt(t *testing.T) {
+	for _, duringAttempt := range []bool{true, false} {
+		synctest.Test(t, func(t *testing.T) {
+			c := clientForTest(t, WithReadRetries(1), WithRequestTimeout(time.Second),
+				WithOperationTimeout(time.Second), WithRetryBackoff(time.Hour, time.Hour))
+			cause := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ETIMEDOUT}
+			calls := 0
+			c.http.Transport = cloudTransportFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				httptrace.ContextClientTrace(r.Context()).ConnectStart("tcp", "127.0.0.1:8080")
+				if duringAttempt {
+					<-r.Context().Done()
+				}
+				return nil, cause
+			})
+			var out any
+			err := c.Get(t.Context(), "/hosts", &out)
+			apiErr := clientError(t, err, ErrorTimeout)
+			if calls != 1 || apiErr.Phase != PhaseConnect || !errors.Is(err, cause) || !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("retry discarded attempt evidence: duringAttempt=%v calls=%d phase=%s cause=%v deadline=%v",
+					duringAttempt, calls, apiErr.Phase, errors.Is(err, cause), errors.Is(err, context.DeadlineExceeded))
+			}
+		})
+	}
+}
+
+func TestCloudProxyFailureKeepsEvidenceWhenRetryBudgetExpires(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	proxy, err := url.Parse("http://" + address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := clientForTest(t, WithReadRetries(1), WithOperationTimeout(time.Second),
+		WithRetryBackoff(time.Hour, time.Hour))
+	transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
+	defer transport.CloseIdleConnections()
+	c.http.Transport = transport
+	var out any
+	err = c.Get(t.Context(), "/hosts", &out)
+	apiErr := clientError(t, err, ErrorTimeout)
+	if !apiErr.ViaProxy || apiErr.Phase != PhaseConnect || !errors.Is(err, syscall.ECONNREFUSED) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("retry lost proxy evidence: proxy=%v phase=%s refused=%v deadline=%v",
+			apiErr.ViaProxy, apiErr.Phase, errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, context.DeadlineExceeded))
+	}
+}
+
+func TestCloudRetryBudgetPreservesLastHTTPResponse(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		c := clientForTest(t, WithReadRetries(1), WithOperationTimeout(time.Second),
+			WithRetryBackoff(time.Hour, time.Hour))
+		c.http.Transport = cloudTransportFunc(func(r *http.Request) (*http.Response, error) {
+			return cloudResponse(r, http.StatusServiceUnavailable, `{"diagnostic":{"code":"retry-later"}}`), nil
+		})
+		var out any
+		err := c.Get(t.Context(), "/hosts", &out)
+		apiErr := clientError(t, err, ErrorTimeout)
+		if apiErr.StatusCode != http.StatusServiceUnavailable || apiErr.Code != "retry-later" ||
+			apiErr.DiagnosticCode != "retry-later" || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("retry lost the last HTTP response: %+v", apiErr)
 		}
 	})
 }
