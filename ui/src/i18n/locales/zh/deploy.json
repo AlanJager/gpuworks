@@ -242,7 +242,9 @@
     "onNodes": "{{count}} 个节点",
     "onStorages": "{{count}} 个共享存储",
     "noFiles": "暂无就位的模型文件",
-    "locationUnknown": "文件位置未知"
+    "locationUnknown": "文件位置未知",
+    "revision": "版本：{{revision}}",
+    "revisionUnknown": "版本未知"
   },
   "action": {
     "autoImage": "将使用 {{image}} {{version}}（{{framework}} {{frameworkVersion}}）— 节点 {{nodeFramework}} {{nodeVersion}}",

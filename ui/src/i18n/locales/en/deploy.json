@@ -242,7 +242,9 @@
     "onNodes": "{{count}} node(s)",
     "onStorages": "{{count}} shared storage(s)",
     "noFiles": "No model files in place yet",
-    "locationUnknown": "File location unknown"
+    "locationUnknown": "File location unknown",
+    "revision": "Revision: {{revision}}",
+    "revisionUnknown": "Revision unknown"
   },
   "action": {
     "autoImage": "Will use {{image}} {{version}} ({{framework}} {{frameworkVersion}}) — node {{nodeFramework}} {{nodeVersion}}",
