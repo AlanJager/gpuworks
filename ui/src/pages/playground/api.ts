@@ -12,6 +12,7 @@ import type {
 } from "./types";
 
 const ROOT = "/api/v1/playground";
+export const STREAM_INTERRUPTED_ERROR = "__playground_stream_interrupted__";
 
 export async function getPlaygroundCatalog(signal?: AbortSignal): Promise<PlaygroundCatalog> {
   const response = await fetch(`${ROOT}/models`, { credentials: "include", signal });
@@ -135,12 +136,13 @@ export async function streamChat(
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n");
-    if (!data || data === "[DONE]") return;
+    if (!data) return false;
+    if (data === "[DONE]") return true;
     let frame: Record<string, unknown>;
     try {
       frame = JSON.parse(data) as Record<string, unknown>;
     } catch {
-      return;
+      return false;
     }
     if (frame.error) {
       const error = frame.error as { message?: string };
@@ -159,22 +161,37 @@ export async function streamChat(
       usage = frame.usage as Usage;
       callbacks.onUsage(usage);
     }
+    return false;
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
-    let boundary = buffer.indexOf("\n\n");
-    while (boundary >= 0) {
-      const event = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      consumeEvent(event);
-      boundary = buffer.indexOf("\n\n");
+  let failed = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      // Normalize after joining: CR and LF may arrive in different reads.
+      buffer = (buffer + decoder.decode(value, { stream: !done })).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        const event = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (consumeEvent(event)) return { usage };
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) {
+        if (buffer.trim() && consumeEvent(buffer)) return { usage };
+        throw new Error(STREAM_INTERRUPTED_ERROR);
+      }
     }
-    if (done) break;
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    let cleanupError: unknown;
+    try { await reader.cancel(); } catch (error) { cleanupError = error; }
+    try { reader.releaseLock(); } catch (error) { cleanupError ??= error; }
+    // A reader cleanup failure must not replace the upstream/abort error.
+    if (cleanupError && !failed) throw cleanupError;
   }
-  if (buffer.trim()) consumeEvent(buffer);
-  return { usage };
 }
 
 
