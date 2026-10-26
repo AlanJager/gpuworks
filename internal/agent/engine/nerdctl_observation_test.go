@@ -19,7 +19,7 @@ func TestNerdctlObservationUsesRecordedImageIdentity(t *testing.T) {
 		containerStatus, imageStatus                     string
 	}{
 		{"recorded image", target, target, oldImageID, "", proto.ObservationObserved, proto.ObservationObserved},
-		{"legacy name only", "", target, oldImageID, "", proto.ObservationUnknown, proto.ObservationUnknown},
+		{"legacy name only", "", target, oldImageID, "", proto.ObservationObserved, proto.ObservationUnknown},
 		{"image unavailable", target, target, "", "image metadata unavailable", proto.ObservationObserved, proto.ObservationUnknown},
 		{"mismatched target", target, newImageID, oldImageID, "", proto.ObservationObserved, proto.ObservationUnknown},
 	} {

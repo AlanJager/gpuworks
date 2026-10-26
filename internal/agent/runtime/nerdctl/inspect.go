@@ -64,17 +64,11 @@ func parseWorkloadInspection(data []byte) (runtime.WorkloadInspection, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return runtime.WorkloadInspection{}, fmt.Errorf("decode nerdctl container inspect: %w", err)
 	}
-	target := raw.Config.Labels[imageTargetLabel]
-	// Even an immutable raw.Image is a lookup reference, not necessarily a
-	// config digest. Resolve the recorded target before reporting ImageID.
-	if strings.TrimSpace(raw.ID) == "" || !imageDigestPattern.MatchString(target) {
-		return runtime.WorkloadInspection{}, fmt.Errorf("nerdctl container inspect missing immutable identity")
-	}
-	if imageDigestPattern.MatchString(raw.Image) && raw.Image != target {
-		return runtime.WorkloadInspection{}, fmt.Errorf("nerdctl container image target disagrees with recorded label")
+	if strings.TrimSpace(raw.ID) == "" || strings.TrimSpace(raw.Image) == "" {
+		return runtime.WorkloadInspection{}, fmt.Errorf("nerdctl container inspect missing container id or image")
 	}
 	result := runtime.WorkloadInspection{
-		ImageLookupRef: target,
+		ImageLookupRef: recordedImageTarget(raw.Image, raw.Config.Labels[imageTargetLabel]),
 
 		ContainerID: raw.ID, Entrypoint: nonNilStrings(raw.Config.Entrypoint),
 		Cmd: nonNilStrings(raw.Config.Cmd), Path: raw.Path, Args: nonNilStrings(raw.Args),
@@ -94,6 +88,22 @@ func parseWorkloadInspection(data []byte) (runtime.WorkloadInspection, error) {
 		result.Devices = append(result.Devices, string(request))
 	}
 	return result, nil
+}
+
+// recordedImageTarget returns the image target recorded at launch, or "" when
+// the container cannot prove one: created before the label existed, or with a
+// label that is not a digest or disagrees with an immutable raw.Image. The
+// container itself is still observed; only its image identity stays unknown.
+// Even an immutable raw.Image is a lookup reference, not necessarily a config
+// digest, so it is never reported as ImageID directly.
+func recordedImageTarget(image, target string) string {
+	if !imageDigestPattern.MatchString(target) {
+		return ""
+	}
+	if imageDigestPattern.MatchString(image) && image != target {
+		return ""
+	}
+	return target
 }
 
 func parseEnv(entries []string) map[string]string {

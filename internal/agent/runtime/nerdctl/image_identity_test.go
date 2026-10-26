@@ -53,9 +53,14 @@ esac`)
 }
 
 func TestWorkloadInspectionDoesNotTreatMutableNameAsIdentity(t *testing.T) {
-	_, err := parseWorkloadInspection([]byte(`{"Id":"container-id","Image":"docker.io/gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2","Config":{}}`))
-	if err == nil {
-		t.Fatal("a legacy container with only an image name cannot prove its original image identity")
+	// A legacy container with only an image name cannot prove its original
+	// image, but the container itself is still observable.
+	got, err := parseWorkloadInspection([]byte(`{"Id":"container-id","Image":"docker.io/gpuworks/gpuworks-runner:cann9.1-910b-vllm0.27.1rc1-r2","Config":{"Env":["A=B"]}}`))
+	if err != nil || got.ContainerID != "container-id" || got.ImageID != "" || got.ImageLookupRef != "" || got.Env["A"] != "B" {
+		t.Fatalf("inspection=%+v err=%v", got, err)
+	}
+	if _, err := parseWorkloadInspection([]byte(`{"Image":"runner:v1","Config":{}}`)); err == nil {
+		t.Fatal("accepted an inspection without a container id")
 	}
 }
 
@@ -150,17 +155,16 @@ esac`)
 
 func TestWorkloadImageLabelValidation(t *testing.T) {
 	for _, tc := range []struct {
-		name, image, target string
-		wantError           bool
+		name, image, target, wantRef string
 	}{
-		{"recorded", "runner:v1", testTargetDigest, false},
-		{"digest launch reference", testTargetDigest, testTargetDigest, false},
-		{"conflicting target", "sha256:" + strings.Repeat("d", 64), testTargetDigest, true},
-		{"legacy name", "runner:v1", "", true},
-		{"legacy digest", testTargetDigest, "", true},
-		{"target is name", "runner:v1", "runner:v1", true},
-		{"truncated", "runner:v1", "sha256:1234", true},
-		{"nonhex", "runner:v1", "sha256:" + strings.Repeat("z", 64), true},
+		{"recorded", "runner:v1", testTargetDigest, testTargetDigest},
+		{"digest launch reference", testTargetDigest, testTargetDigest, testTargetDigest},
+		{"conflicting target", "sha256:" + strings.Repeat("d", 64), testTargetDigest, ""},
+		{"legacy name", "runner:v1", "", ""},
+		{"legacy digest", testTargetDigest, "", ""},
+		{"target is name", "runner:v1", "runner:v1", ""},
+		{"truncated", "runner:v1", "sha256:1234", ""},
+		{"nonhex", "runner:v1", "sha256:" + strings.Repeat("z", 64), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			raw, err := json.Marshal(map[string]any{"Id": "container-id", "Image": tc.image, "Config": map[string]any{"Labels": map[string]string{"gpuworks.image-target": tc.target}}})
@@ -168,7 +172,9 @@ func TestWorkloadImageLabelValidation(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := parseWorkloadInspection(raw)
-			if (err != nil) != tc.wantError || (!tc.wantError && (got.ImageID != "" || got.ImageLookupRef != testTargetDigest)) {
+			// An unproven label leaves only the image identity unknown; the
+			// container is still observed.
+			if err != nil || got.ContainerID != "container-id" || got.ImageID != "" || got.ImageLookupRef != tc.wantRef {
 				t.Fatalf("inspection=%+v err=%v", got, err)
 			}
 		})
