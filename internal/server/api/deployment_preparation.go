@@ -102,7 +102,7 @@ func recordedModelProgress(rows dtoLookup, dep *store.Deployment) []dto.ModelNod
 func modelPreparationPresence(rows dtoLookup, node *store.Node, modelID uint, rules store.SourceRules) (dto.ModelNodePresence, bool) {
 	source := rows.modelSource(modelID, node, rules)
 	storage := source.Location.Storage
-	file := source.Location.File
+	file := planning.ModelPreparationFile(source)
 	exists := file != nil
 	if !exists {
 		file = &store.ModelFile{ModelID: modelID, NodeID: node.ID, StorageID: storage.ID, State: proto.MFPending}

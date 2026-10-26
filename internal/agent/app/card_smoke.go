@@ -111,6 +111,11 @@ func smokeUnavailable(check gpu.HostRuntimeCheck) string {
 // what the card carries (accelerator.MostSevereHealth), because a card the
 // tool calls healthy and the runtime cannot use is not healthy.
 func (n *NodeRuntime) CardHealthFindings(ctx context.Context, gpus []proto.GPUInfo, probeOK bool) {
+	if probeOK {
+		// Every vendor's, whether or not it can list processes: the
+		// runtime check asks which cards are ours too (cardsInUse).
+		n.occupancy.learnCards(gpus)
+	}
 	n.applyForeignProcesses(ctx, gpus, probeOK)
 	if n.cardSmoke == nil {
 		return

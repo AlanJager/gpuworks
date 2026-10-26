@@ -1,10 +1,25 @@
 package app
 
 import (
+	"log/slog"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
+
+func TestHygonReportsPartitionFactsWithoutRuntime(t *testing.T) {
+	if !hasPartitionBackendForVendor("hygon") {
+		t.Fatal("Hygon backend was not recognized by vendor")
+	}
+	n := newNodeRuntime(slog.Default(), nil, t.TempDir(), "none", &gpu.HygonProber{}, nil)
+	if n.partitionProbe == nil {
+		t.Fatal("missing runtime must still produce explicit Hygon probe results")
+	}
+	if reports := n.PartitionAssets(t.Context()); reports == nil {
+		t.Fatal("Hygon asset observations must be an explicit empty list")
+	}
+}
 
 func TestPartitionProbeRefreshesWhenObservedAssetsChange(t *testing.T) {
 	n := &NodeRuntime{}

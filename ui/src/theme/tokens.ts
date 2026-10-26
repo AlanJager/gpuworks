@@ -1,5 +1,13 @@
 import type { ThemeConfig } from "antd";
 
+/**
+ * radius is the corner scale: sm for small parts (tags, checkboxes, menu
+ * items, small buttons), md for controls (buttons, inputs, selects,
+ * tooltips), lg for containers (cards, dialogs, alerts, the page header).
+ * styles.css mirrors it as --radius-sm/md/lg for hand-written styles.
+ */
+export const radius = { sm: 4, md: 6, lg: 8 };
+
 export const colors = {
   primary: "#005bd4",
   primaryHover: "#0043b1",
@@ -55,9 +63,9 @@ export const themeConfig: ThemeConfig = {
     colorBorder: colors.border,
     colorBorderSecondary: colors.borderSoft,
     controlOutline: colors.primarySoft,
-    borderRadius: 2,
-    borderRadiusLG: 4,
-    borderRadiusSM: 2,
+    borderRadius: radius.md,
+    borderRadiusLG: radius.lg,
+    borderRadiusSM: radius.sm,
     controlHeight: 32,
     controlHeightLG: 40,
     controlHeightSM: 28,
@@ -70,9 +78,10 @@ export const themeConfig: ThemeConfig = {
     motionDurationMid: "0.2s",
   },
   components: {
-    Alert: { borderRadiusLG: 2, withDescriptionPadding: "10px 12px" },
+    Alert: { borderRadiusLG: radius.lg, withDescriptionPadding: "10px 12px" },
     Button: {
-      borderRadius: 2,
+      borderRadius: radius.md,
+      borderRadiusSM: radius.sm,
       primaryShadow: "none",
       defaultShadow: "none",
       dangerShadow: "none",
@@ -80,14 +89,14 @@ export const themeConfig: ThemeConfig = {
       paddingInline: 12,
     },
     Card: {
-      borderRadiusLG: 4,
+      borderRadiusLG: radius.lg,
       headerHeight: 40,
       headerFontSize: 14,
       headerFontSizeSM: 14,
       bodyPadding: 16,
       bodyPaddingSM: 12,
     },
-    Drawer: { borderRadiusLG: 2 },
+    Drawer: { borderRadiusLG: radius.lg },
     Form: {
       itemMarginBottom: 16,
       labelColor: colors.text,
@@ -109,7 +118,7 @@ export const themeConfig: ThemeConfig = {
     },
     Menu: {
       itemHeight: 32,
-      itemBorderRadius: 2,
+      itemBorderRadius: radius.sm,
       itemMarginInline: 8,
       itemMarginBlock: 2,
       itemSelectedBg: colors.primarySoft,
@@ -120,7 +129,7 @@ export const themeConfig: ThemeConfig = {
       groupTitleColor: colors.weak,
     },
     Modal: {
-      borderRadiusLG: 2,
+      borderRadiusLG: radius.lg,
       titleFontSize: 16,
       titleLineHeight: 1.5,
       headerBg: colors.white,
@@ -161,8 +170,8 @@ export const themeConfig: ThemeConfig = {
       itemSelectedColor: colors.primary,
       inkBarColor: colors.primary,
     },
-    Tag: { borderRadiusSM: 2, defaultBg: colors.canvas, defaultColor: colors.text },
-    Tooltip: { borderRadius: 2 },
+    Tag: { borderRadiusSM: radius.sm, defaultBg: colors.canvas, defaultColor: colors.text },
+    Tooltip: { borderRadius: radius.md },
   },
 };
 

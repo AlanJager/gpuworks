@@ -21,7 +21,7 @@ await i18n.use(initReactI18next).init({
 		tokenizerSource: "Tokenizer 来源", tokenizerEstimate: "估算", tokenizerAuto: "自动（模型仓库 / 目标机）", uploadFile: "上传文件",
 		tokenizerAutoHelp: "优先使用目标机上已有的 tokenizer.json；发压点选 server 时经数据通道取回，两者都没有再回落到模型仓库。",
 		tokenizerAgenticHelp: "Agentic 的多轮长度和设计前缀复用率都按 token 计算；估算误差会逐轮累积，并可能使长上下文超限，因此必须使用 tokenizer。",
-		tokenizerManagedHelp: "托管模型帮助", tokenizerHelp: "普通帮助", tokenizerRequired: "请上传 tokenizer.json",
+		tokenizerControlledHelp: "按 token 长度必须提供可加载 tokenizer", tokenizerManagedHelp: "托管模型帮助", tokenizerHelp: "普通帮助", tokenizerRequired: "请上传 tokenizer.json",
 		tokenizerRepositoryRequired: "请输入模型仓库", currentTokenizerFile: "当前文件：{{name}}",
 		uploadTokenizer: "上传 tokenizer.json", modelRepository: "模型仓库", modelRepositoryPlaceholder: "例如 Qwen/Qwen3-8B",
 	} } } },
@@ -71,13 +71,13 @@ test("Agentic offers every source, disables estimation, and explains why", () =>
 	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "huggingface" }}><TokenizerSourceFields source="huggingface" dataset="agentic" targetKind="external" onUpload={() => {}} /></Form></I18nextProvider>);
 	assert.equal(screen.getAllByRole("radio").length, 5);
 	assert.equal((screen.getByRole("radio", { name: "估算" }) as HTMLInputElement).disabled, true);
-	assert.ok(screen.getByText(/估算误差会逐轮累积/));
+	assert.ok(screen.getByText(/按 token 长度必须提供可加载/));
 });
 
 test("a managed target offers the automatic source, an external endpoint does not", () => {
 	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "auto" }}><TokenizerSourceFields source="auto" dataset="random" targetKind="instance" onUpload={() => {}} /></Form></I18nextProvider>);
 	assert.equal((screen.getByRole("radio", { name: "自动（模型仓库 / 目标机）" }) as HTMLInputElement).disabled, false);
-	assert.equal((screen.getByRole("radio", { name: "估算" }) as HTMLInputElement).disabled, false);
+	assert.equal((screen.getByRole("radio", { name: "估算" }) as HTMLInputElement).disabled, true);
 	assert.ok(screen.getByText(/优先使用目标机上已有的 tokenizer/));
 	// Nothing to type: the source is resolved rather than entered.
 	assert.equal(screen.queryByLabelText("模型仓库"), null);
@@ -97,3 +97,10 @@ test("an uploaded tokenizer remains visible when rerunning", () => {
 	render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "upload", tokenizer_ref: "/var/lib/gpuworks/tokenizer-123.json" }}><TokenizerSourceFields source="upload" dataset="random" targetKind="external" tokenizerRef="/var/lib/gpuworks/tokenizer-123.json" onUpload={() => {}} /></Form></I18nextProvider>);
 	assert.ok(screen.getByText("当前文件：tokenizer-123.json"));
 });
+
+ test("random token-length workloads disable estimation and require an uploaded tokenizer", () => {
+ render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: "upload" }}><TokenizerSourceFields source="upload" dataset="random" targetKind="external" onUpload={() => {}} /></Form></I18nextProvider>);
+ assert.equal((screen.getByRole("radio", { name: "估算" }) as HTMLInputElement).disabled, true);
+ assert.ok(screen.getByText(/按 token 长度必须提供可加载/));
+ assert.equal(tokenizerSourceOrDefault(false, true, undefined, false), "huggingface");
+ });

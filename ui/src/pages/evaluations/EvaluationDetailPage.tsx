@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftOutlined, CopyOutlined, StopOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Col, Popconfirm, Progress, Row, Segmented, Space, Spin, Typography, message } from "antd";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api, useEventPayload, usePolling, type BenchmarkCurveResponse, type BenchmarkCurveSample, type BenchmarkPoint, type BenchmarkRun, type MetricPoint, type MetricSeries } from "../../api";
 import PageHeader from "../../components/PageHeader";
@@ -84,7 +84,7 @@ export default function EvaluationDetailPage() {
 	const reusesSamples = benchmarkReusesSamples(run, datasetProfile);
 
 	return <div>
-		<PageHeader title={run.name || `Run #${run.id}`} description={`${localizedText(meta.modes.find((item) => item.value === run.mode)?.label, language) || run.mode} · ${run.model}`} breadcrumb={[t("list.breadcrumb.services"), t("list.breadcrumb.evaluations"), run.name || `#${run.id}`]} extra={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button><BenchmarkReportMenu runID={run.id} /><Button icon={<CopyOutlined />} onClick={() => setWizardPreset({ sourceRun: run })}>{t("detail.rerun")}</Button>{active && <Popconfirm title={t("detail.cancelTitle")} description={t("detail.cancelDescription")} onConfirm={async () => { try { await api.cancelBenchmark(run.id); await runQuery.refetch(); message.success(t("detail.canceled")); } catch (error) { message.error((error as Error).message); } }}><Button danger icon={<StopOutlined />}>{t("detail.cancel")}</Button></Popconfirm>}</Space>} />
+		<PageHeader title={run.name || `Run #${run.id}`} description={`${localizedText(meta.modes.find((item) => item.value === run.mode)?.label, language) || run.mode} · ${run.model}`} parents={[<Link key="list" to="/evaluations">{t("list.breadcrumb.evaluations")}</Link>]} extra={<Space><Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button><BenchmarkReportMenu runID={run.id} /><Button icon={<CopyOutlined />} onClick={() => setWizardPreset({ sourceRun: run })}>{t("detail.rerun")}</Button>{active && <Popconfirm title={t("detail.cancelTitle")} description={t("detail.cancelDescription")} onConfirm={async () => { try { await api.cancelBenchmark(run.id); await runQuery.refetch(); message.success(t("detail.canceled")); } catch (error) { message.error((error as Error).message); } }}><Button danger icon={<StopOutlined />}>{t("detail.cancel")}</Button></Popconfirm>}</Space>} />
 			<Space direction="vertical" size={16} style={{ width: "100%" }}>
 				<VerdictCard run={run} meta={meta} onRerun={(maxConcurrency) => setWizardPreset({ sourceRun: run, maxConcurrency })} />
 				{run.warnings?.map((warning) => <Alert key={warning} type="warning" showIcon message={t(`benchmarkWarning.${warning}`, { defaultValue: warning })} />)}
@@ -98,7 +98,7 @@ export default function EvaluationDetailPage() {
 				</Row>
 			</Card>
 			<Row gutter={[16, 16]}>
-					<Col xs={24} xl={12}><Card title={t("detail.curve")} extra={<Segmented size="small" value={chartMetric} onChange={(value) => setChartMetric(String(value))} options={curveMetrics.map(({ value, label }) => ({ value, label }))} />}><BenchmarkCurveNotice active={active} loading={curve.loading} hasResponse={curve.data != null} hasSamples={curveHasSamples} runState={run.state} completed={run.progress?.completed ?? 0} runError={run.error} error={curve.error} onRetry={() => { void curve.refetch(); }} />{!(curve.loading && curve.data == null) && <TimeSeriesChart series={chart} height={280} unit={curveMetrics.find((item) => item.value === chartMetric)?.unit} seriesName={curveSeriesName} resetKey={`${id}:${chartMetric}`} />}</Card></Col>
+					<Col xs={24} xl={12}><Card title={t("detail.curve")} extra={<Segmented size="small" value={chartMetric} onChange={(value) => setChartMetric(String(value))} options={curveMetrics.map(({ value, label }) => ({ value, label }))} />}><BenchmarkCurveNotice warmup={run.progress?.current_point?.warmup} active={active} loading={curve.loading} hasResponse={curve.data != null} hasSamples={curveHasSamples} runState={run.state} completed={run.progress?.completed ?? 0} runError={run.error} error={curve.error} onRetry={() => { void curve.refetch(); }} />{!(curve.loading && curve.data == null) && <TimeSeriesChart series={chart} height={280} unit={curveMetrics.find((item) => item.value === chartMetric)?.unit} seriesName={curveSeriesName} resetKey={`${id}:${chartMetric}`} />}</Card></Col>
 				<Col xs={24} xl={12}><Card title={<MetricLabel label={t("detail.pareto")} help="pareto" />}><ParetoChart points={run.points || []} selectedSeq={selected?.seq} onSelect={(point) => setSelectedSeq(point.seq)} /></Card></Col>
 			</Row>
 			<PointResultsTable run={run} selectedSeq={selected?.seq} onSelect={(point) => setSelectedSeq(point.seq)} />

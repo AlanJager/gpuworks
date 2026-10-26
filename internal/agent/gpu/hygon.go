@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -43,6 +44,21 @@ type HygonProber struct {
 }
 
 func (p *HygonProber) Vendor() string { return accelerator.VendorHygon }
+
+// PartitionProbeLibraries supplies the host ABI dependencies needed when the
+// intentionally small probe image loads this node's DTK and HYHAL libraries.
+func (p *HygonProber) PartitionProbeLibraries(ctx context.Context) ([]ProbeLibrary, error) {
+	names := []string{"libz.so.1", "libtinfo.so.5", "libelf.so.1"}
+	libraries := make([]ProbeLibrary, 0, len(names))
+	for _, name := range names {
+		path, err := sharedLibraryPath(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		libraries = append(libraries, ProbeLibrary{Source: path, Name: name})
+	}
+	return libraries, nil
+}
 
 func (p *HygonProber) Available() bool {
 	if _, err := p.lookup("hy-smi"); err != nil {
@@ -159,12 +175,14 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		byIndex[gpu.Index] = gpu
 	}
 
-	args := make([]string, 0, 10+len(indexes)*4)
+	args := make([]string, 0, 14+len(indexes)*4)
+	devices := []string{}
 	for _, path := range []string{"/dev/kfd", "/dev/mkfd"} {
 		if err := p.requireDevice(path); err != nil {
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("required Hygon device is unavailable: %s: %v", path, err)}
 		}
 		args = append(args, "--device", path+":"+path+":rwm")
+		devices = append(devices, path)
 	}
 	if info, err := p.inspect("/opt/hyhal"); err != nil || !info.IsDir() {
 		return RuntimeInjection{UnsupportedReason: "required Hygon driver directory is unavailable: /opt/hyhal"}
@@ -192,15 +210,39 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		}
 		for _, path := range nodes {
 			args = append(args, "--device", path+":"+path+":rwm")
+			devices = append(devices, path)
 		}
 	}
-	args = append(args, "--volume", "/opt/hyhal:/opt/hyhal:ro", "--group-add", "video")
+	args = append(args, "--volume", "/opt/hyhal:/opt/hyhal:ro")
+	// Docker resolves named supplementary groups inside the image. Minimal
+	// probe images have no group database, so pass host device GIDs as numbers.
+	groups := map[uint32]bool{}
+	for _, path := range devices {
+		info, err := p.inspect(path)
+		if err != nil {
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("inspect Hygon device %s group: %v", path, err)}
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("cannot determine Hygon device %s group", path)}
+		}
+		groups[stat.Gid] = true
+	}
+	groupIDs := make([]int, 0, len(groups))
+	for group := range groups {
+		groupIDs = append(groupIDs, int(group))
+	}
+	sort.Ints(groupIDs)
+	for _, group := range groupIDs {
+		args = append(args, "--group-add", strconv.Itoa(group))
+	}
 	visible := joinDeviceIndexes(indexes)
+	// Ray in Hygon vLLM images rejects ROCR_VISIBLE_DEVICES when
+	// HIP_VISIBLE_DEVICES is also set. HIP alone restricts the visible cards.
 	return RuntimeInjection{
 		Env: map[string]string{
 			"HYGON_VISIBLE_DEVICES": visible,
 			"HIP_VISIBLE_DEVICES":   visible,
-			"ROCR_VISIBLE_DEVICES":  visible,
 		},
 		DockerArgs: args,
 	}
@@ -348,7 +390,7 @@ func parseHygonInventory(out string, readFile func(string) ([]byte, error)) []pr
 	return gpus
 }
 
-var hygonFieldRE = regexp.MustCompile(`(?i)^HCU\[([0-9]+)]\s*:\s*([^:]+):\s*(.*?)\s*$`)
+var hygonFieldRE = regexp.MustCompile(`(?i)^(?:HCU|DCU)\[([0-9]+)]\s*:\s*([^:]+):\s*(.*?)\s*$`)
 var hygonNumberRE = regexp.MustCompile(`[-+]?[0-9]+(?:\.[0-9]+)?`)
 
 func parseHygonFields(out string) map[int]map[string]string {
@@ -381,6 +423,8 @@ func normalizeHygonSKU(raw string) string {
 		return "BW1000"
 	case "K100AI":
 		return "K100AI"
+	case "Z100":
+		return "Z100"
 	case "BW1101":
 		return "BW1101"
 	case "BW150":
@@ -454,15 +498,33 @@ func (p *HygonProber) run(ctx context.Context, args ...string) (string, error) {
 	if p.command != nil {
 		return p.command(ctx, args...)
 	}
-	// Every hy-smi call is a read-only query.
-	return queryLogged(ctx, accelerator.VendorHygon, "hy-smi", args...)
+	// Keep the normal CLI name for shared query health tracking. Some DTK
+	// installations expose hy-smi only under their installation directory.
+	command := "hy-smi"
+	if _, err := exec.LookPath(command); err != nil {
+		var lookupErr error
+		command, lookupErr = p.lookup(command)
+		if lookupErr != nil {
+			return "", lookupErr
+		}
+	}
+	return queryLogged(ctx, accelerator.VendorHygon, command, args...)
 }
 
 func (p *HygonProber) lookup(name string) (string, error) {
 	if p.lookPath != nil {
 		return p.lookPath(name)
 	}
-	return exec.LookPath(name)
+	command, err := exec.LookPath(name)
+	if err == nil || name != "hy-smi" {
+		return command, err
+	}
+	for _, candidate := range []string{"/opt/dtk/bin/hy-smi", "/opt/hyhal/bin/hy-smi"} {
+		if command, err := exec.LookPath(candidate); err == nil {
+			return command, nil
+		}
+	}
+	return "", err
 }
 
 func (p *HygonProber) read(path string) ([]byte, error) {

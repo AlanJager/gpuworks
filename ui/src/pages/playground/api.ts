@@ -1,3 +1,5 @@
+import enPlayground from "../../i18n/locales/en/playground.json";
+import zhPlayground from "../../i18n/locales/zh/playground.json";
 import { notifySessionExpired } from "../../session";
 import type {
   Attachment,
@@ -297,13 +299,40 @@ function operationURL(endpoint: string): string {
 }
 
 async function responseError(response: Response): Promise<string> {
-  const fallback = `Request failed (${response.status})`;
+  const raw = await response.text();
+  if (response.status === 401) {
+    try {
+      const parsed = JSON.parse(raw) as { code?: string };
+      if (parsed.code === "AUTHENTICATION_REQUIRED") notifySessionExpired();
+    } catch {
+      // A non-JSON 401 still uses the fallback text below.
+    }
+  }
+  return playgroundErrorText(response.status, raw);
+}
+
+// routeMissingText reads the language the app already published on <html>.
+// The i18n module sets that attribute, and importing it here would touch
+// document while the node tests load this file.
+function routeMissingText(): string {
+  const lang = globalThis.document?.documentElement?.lang ?? "";
+  const pack = lang.toLowerCase().startsWith("zh") ? zhPlayground : enPlayground;
+  return pack.request.routeMissing;
+}
+
+// playgroundErrorText turns an inference response into the text the playground
+// shows. A FastAPI 404 is {"detail":"Not Found"}; that body is the engine
+// saying the route is not mounted, so the toast uses the product sentence
+// instead of the raw JSON.
+export function playgroundErrorText(status: number, raw: string): string {
+  const fallback = `Request failed (${status})`;
   try {
-    const raw = await response.text();
-    const parsed = JSON.parse(raw) as { error?: { message?: string } | string; message?: string; code?: string };
-    if (response.status === 401 && parsed.code === "AUTHENTICATION_REQUIRED") notifySessionExpired();
-    if (typeof parsed.error === "string") return parsed.error;
-    return parsed.error?.message || parsed.message || raw || fallback;
+    const parsed = JSON.parse(raw) as { error?: { message?: string } | string; message?: string; detail?: unknown };
+    if (typeof parsed.error === "string" && parsed.error) return parsed.error;
+    if (parsed.error && typeof parsed.error === "object" && parsed.error.message) return parsed.error.message;
+    if (typeof parsed.message === "string" && parsed.message) return parsed.message;
+    if (status === 404 && parsed.detail === "Not Found") return routeMissingText();
+    return raw || fallback;
   } catch {
     return fallback;
   }

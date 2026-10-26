@@ -107,7 +107,12 @@ export default function ProviderConfigModal({
 
   const submit = async () => {
     if (!editReady || loadError || submitting) return;
-    const v = await form.validateFields();
+    let v;
+    try {
+      v = await form.validateFields();
+    } catch {
+      return;
+    }
     setSubmitting(true);
     try {
       if (provider) {
@@ -159,7 +164,7 @@ export default function ProviderConfigModal({
           <div className="provider-modal-section-title">{t("config.basic")}</div>
           {provider ? (
             <Form.Item label={t("config.type")}>
-              <Input value={t(`kind.${provider.kind}`, { defaultValue: provider.kind })} disabled />
+              <Input aria-label={t("config.type")} value={t(`kind.${provider.kind}`, { defaultValue: provider.kind })} disabled />
             </Form.Item>
           ) : (
             <Form.Item label={t("config.type")} name="kind" rules={[{ required: true, message: t("config.typeRequired") }]}>
@@ -224,7 +229,16 @@ function CredentialFieldInput({ field, editing }: { field: ProviderCredentialFie
       label={label}
       name={field.extra ? ["extra", field.name] : field.name}
       preserve={false}
-      rules={!editing && field.required ? [{ required: true, message: t("config.fieldRequired", { field: label }) }] : undefined}
+      rules={[
+        { required: !editing && field.required, message: t("config.fieldRequired", { field: label }) },
+        {
+          validator: async (_, value: unknown) => {
+            if (field.default_template !== undefined && typeof value === "string" && value.trim() === field.default_template.trim()) {
+              throw new Error(t("config.templateUnchanged", { field: label }));
+            }
+          },
+        },
+      ]}
     >
       {input}
     </Form.Item>
@@ -235,9 +249,11 @@ function credentialDefaults(info?: ProviderKindInfo): Record<string, unknown> {
   const values: Record<string, unknown> = {};
   const extra: Record<string, string> = {};
   for (const field of info?.credential_fields ?? []) {
-    if (field.secret || field.default_value === undefined) continue;
-    if (field.extra) extra[field.name] = field.default_value;
-    else values[field.name] = field.default_value;
+    if (field.secret) continue;
+    const value = field.default_template ?? field.default_value;
+    if (value === undefined) continue;
+    if (field.extra) extra[field.name] = value;
+    else values[field.name] = value;
   }
   return { ...values, extra };
 }

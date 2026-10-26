@@ -139,7 +139,7 @@ func sharedLibraryPath(ctx context.Context, name string) (string, error) {
 		}
 		return candidate, nil
 	}
-	return "", fmt.Errorf("PPU probe dependency %s was not found on the host", name)
+	return "", fmt.Errorf("probe dependency %s was not found on the host", name)
 }
 
 func parseLdconfigLibraryPath(output, name string) string {

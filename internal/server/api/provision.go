@@ -28,10 +28,16 @@ func (a *apiHandlers) precheckNode(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Precheck is advisory. Keep transport/authentication failures visible as
 		// a structured check so the user can still continue with installation.
-		writeJSON(w, http.StatusOK, provision.SSHPrecheckReport{
+		failed := provision.SSHPrecheckReport{
 			Target: req.Target,
 			Checks: []provision.CheckResult{{Name: "SSH", Status: "error", Detail: err.Error()}},
-		})
+		}
+		// A dial error used to leave these zero, and the form printed @:0.
+		// Keep the identity when the target parses; otherwise leave it blank.
+		if user, host, port, parseErr := provision.ParseTarget(req.Target, req.User, req.Port); parseErr == nil {
+			failed.User, failed.Host, failed.Port = user, host, port
+		}
+		writeJSON(w, http.StatusOK, failed)
 		return
 	}
 	if a.d.Store != nil {

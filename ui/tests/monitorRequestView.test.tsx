@@ -35,6 +35,7 @@ await i18n.use(initReactI18next).init({
 const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
+const { RequestDetailLines } = await import("../src/pages/monitor/RequestRow.tsx");
 const { default: RequestView } = await import("../src/pages/monitor/RequestView.tsx");
 const { default: DistributionHeatmap } = await import("../src/pages/monitor/DistributionHeatmap.tsx");
 import type { MonitorRequest, MonitorRequests, MonitorRequestsQuery } from "../src/monitorRequestsApi";
@@ -397,4 +398,36 @@ test("history: a PD fallback names its reason, and an ordinary legend has no PD 
   await userEvent.setup().click(within(list).getAllByRole("listitem")[0]);
   const drawer = await screen.findByRole("dialog");
   assert.ok(within(drawer).getByText("Prefill instance error (5xx)"));
+});
+
+
+for (const queue of [null, 0, 20300]) {
+  test(`request details distinguish unreported queue from measured ${queue}`, () => {
+    const wait = (queue ?? 150) + 350;
+    const row = request({
+      engine_queue_ms: queue, engine_prefill_ms: 350,
+      first_answer_ms: 2 + wait, last_chunk_ms: 1002 + wait, end_ms: 1002 + wait,
+      segments: [{ kind: "gateway", ms: 2 }, { kind: queue == null ? "waiting" : "queue", ms: queue ?? 150 }, { kind: "prefill", ms: 350 }, { kind: "answering", ms: 1000 }],
+    });
+    render(<I18nextProvider i18n={i18n}><RequestDetailLines r={row} replica="" /></I18nextProvider>);
+    if (queue == null) {
+      assert.ok(screen.getByText(/Engine queue time unavailable/));
+      assert.equal(screen.queryByText("Queue 0 ms"), null);
+    } else {
+      assert.ok(screen.getByText(queue === 0 ? "Queue 0 ms" : "Queue 20 s"));
+      assert.equal(screen.queryByText(/Engine queue time unavailable/), null);
+    }
+  });
+}
+
+
+test("request details do not invent zero prefill for a queue-only report", () => {
+  const row = request({
+    engine_queue_ms: 20300, engine_prefill_ms: null,
+    first_answer_ms: 20602, last_chunk_ms: 21602, end_ms: 21602,
+    segments: [{ kind: "gateway", ms: 2 }, { kind: "queue", ms: 20300 }, { kind: "waiting", ms: 300 }, { kind: "answering", ms: 1000 }],
+  });
+  render(<I18nextProvider i18n={i18n}><RequestDetailLines r={row} replica="" /></I18nextProvider>);
+  assert.ok(screen.getByText("Queue 20 s"));
+  assert.equal(screen.queryByText("Prefill 0 ms"), null);
 });

@@ -107,7 +107,6 @@ export default function NetworksPage() {
       <PageHeader
         title={t("title")}
         description={t("description")}
-        breadcrumb={[t("breadcrumb.resources"), t("title")]}
         extra={<Button type="primary" onClick={() => { setEditing(null); setFormOpen(true); }}>{t("actions.create")}</Button>}
       />
       <Card>

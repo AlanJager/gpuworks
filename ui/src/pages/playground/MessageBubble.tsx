@@ -31,7 +31,7 @@ const MessageBubble = memo(function MessageBubble({ message: item }: { message: 
         </div>
       )}
       {!!item.attachments?.length && <Space size={[4, 4]} wrap>{item.attachments.map((attachment) => <Tag key={attachment.id}>{attachment.type === "image" ? t("pane.image") : t("pane.audio")} · {attachment.name}</Tag>)}</Space>}
-      {item.reasoning && <Collapse ghost size="small" items={[{ key: "reasoning", label: t("pane.reasoning"), children: <MarkdownContent content={item.reasoning} /> }]} />}
+      {item.reasoning && <Collapse ghost size="small" defaultActiveKey={["reasoning"]} items={[{ key: "reasoning", label: t("pane.reasoning"), children: <MarkdownContent content={item.reasoning} /> }]} />}
       {item.content ? (
         <MarkdownContent
           content={item.content}

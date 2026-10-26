@@ -15,6 +15,7 @@ func TestRegistryExhaustive(t *testing.T) {
 		{BackendNVIDIALogical, VendorNVIDIA, MaturityStable, []string{"libvgpu.so"}},
 		{BackendAscendLogical, VendorAscend, MaturityExperimental, []string{"libvruntime.so"}},
 		{BackendPPULogical, VendorPPU, MaturityExperimental, []string{"hggc_quota.so", "hgml_dlsym_hook.so"}},
+		{BackendHygonLogical, VendorHygon, MaturityExperimental, []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so", "gpuworks-hygon-vdev-helper"}},
 	}
 	all := All()
 	if len(all) != len(want) {
@@ -25,7 +26,11 @@ func TestRegistryExhaustive(t *testing.T) {
 		if got.ID() != expected.id || got.Metadata().Vendor != expected.vendor || got.Maturity() != expected.maturity || !reflect.DeepEqual(got.RequiredAssets(), expected.assets) {
 			t.Fatalf("backend[%d] = id=%q vendor=%q maturity=%q assets=%v", i, got.ID(), got.Metadata().Vendor, got.Maturity(), got.RequiredAssets())
 		}
-		if !got.Matches(expected.vendor, "") || !got.NeedsInstanceTeardown() {
+		arch := ""
+		if expected.id == BackendHygonLogical {
+			arch = "Z100"
+		}
+		if !got.Matches(expected.vendor, arch) || !got.NeedsInstanceTeardown() {
 			t.Fatalf("backend[%d] incomplete: %+v", i, got)
 		}
 		if lookedUp, ok := Lookup(expected.id); !ok || lookedUp.ID() != expected.id {
@@ -66,8 +71,8 @@ func TestMatchProfileUnknownBackendAndProfilelessBackend(t *testing.T) {
 
 func TestProfilesAreOwnedByTheirBackend(t *testing.T) {
 	got := PartitionProfiles()
-	if len(got) != 5 {
-		t.Fatalf("PartitionProfiles() has %d rows, want 5 (4 Ascend + 1 PPU)", len(got))
+	if len(got) != 6 {
+		t.Fatalf("PartitionProfiles() has %d rows, want 6 (4 Ascend + 1 PPU + 1 Hygon)", len(got))
 	}
 	for _, profile := range got {
 		if profile.Backend == BackendAscendLogical && profile.Framework != "cann" {
@@ -76,6 +81,9 @@ func TestProfilesAreOwnedByTheirBackend(t *testing.T) {
 		if profile.Backend == BackendPPULogical && profile.Framework != "hggc" {
 			t.Fatalf("PPU profile carries framework %q", profile.Framework)
 		}
+		if profile.Backend == BackendHygonLogical && (profile.Framework != "dtk" || profile.Verified) {
+			t.Fatalf("Hygon profile must be advisory and unverified: %+v", profile)
+		}
 	}
 }
 
@@ -83,12 +91,13 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 	nvidia, _ := Lookup(BackendNVIDIALogical)
 	ascend, _ := Lookup(BackendAscendLogical)
 	ppu, _ := Lookup(BackendPPULogical)
+	hygon, _ := Lookup(BackendHygonLogical)
 
 	if !SkipsBehaviorProbe(nvidia) {
 		t.Fatal("NVIDIA must skip the behavior probe")
 	}
-	if SkipsBehaviorProbe(ascend) || SkipsBehaviorProbe(ppu) {
-		t.Fatal("Ascend and PPU must run the behavior probe")
+	if SkipsBehaviorProbe(ascend) || SkipsBehaviorProbe(ppu) || SkipsBehaviorProbe(hygon) {
+		t.Fatal("Ascend, PPU, and Hygon must run the behavior probe")
 	}
 
 	if why := RuntimeConstraint(ppu, "docker"); why != "" {
@@ -96,6 +105,14 @@ func TestOptionalCapabilitiesAreBackendScoped(t *testing.T) {
 	}
 	if why := RuntimeConstraint(ppu, "udocker"); why == "" {
 		t.Fatal("PPU under udocker must report a runtime constraint")
+	}
+	if why := RuntimeConstraint(hygon, "docker"); why != "" {
+		t.Fatalf("Hygon under docker constrained: %q", why)
+	}
+	for _, driver := range []string{"", "udocker", "nerdctl"} {
+		if why := RuntimeConstraint(hygon, driver); why == "" {
+			t.Errorf("Hygon under %q must report a runtime constraint", driver)
+		}
 	}
 	if why := RuntimeConstraint(ascend, "udocker"); why != "" || RuntimeConstraint(nvidia, "nerdctl") != "" {
 		t.Fatal("Ascend and NVIDIA must be runtime-unconstrained")
@@ -113,6 +130,7 @@ func TestSupportsFrameworkFollowsBackendProfiles(t *testing.T) {
 	ascend, _ := Lookup(BackendAscendLogical)
 	ppu, _ := Lookup(BackendPPULogical)
 	nvidia, _ := Lookup(BackendNVIDIALogical)
+	hygon, _ := Lookup(BackendHygonLogical)
 	if !SupportsFramework(ascend, "CANN") || SupportsFramework(ascend, "hggc") {
 		t.Fatal("Ascend framework support mismatch")
 	}
@@ -121,5 +139,34 @@ func TestSupportsFrameworkFollowsBackendProfiles(t *testing.T) {
 	}
 	if SupportsFramework(nvidia, "cuda") {
 		t.Fatal("NVIDIA has no profiles and must not claim framework support")
+	}
+	if !SupportsFramework(hygon, "DTK") || SupportsFramework(hygon, "rocm") {
+		t.Fatal("Hygon framework support mismatch")
+	}
+}
+
+func TestHygonBackendMatchesOnlyKnownZ100(t *testing.T) {
+	hygon, ok := Lookup(BackendHygonLogical)
+	if !ok {
+		t.Fatal("Hygon backend is not registered")
+	}
+	for _, tc := range []struct {
+		vendor, arch string
+		want         bool
+	}{
+		{VendorHygon, "Z100", true},
+		{" DCU ", " z100 ", true},
+		{VendorHygon, "", false},
+		{VendorHygon, "UNKNOWN_HYGON_SKU", false},
+		{VendorHygon, "K100AI", false},
+		{VendorAMD, "Z100", false},
+	} {
+		if got := hygon.Matches(tc.vendor, tc.arch); got != tc.want {
+			t.Errorf("Matches(%q, %q) = %v, want %v", tc.vendor, tc.arch, got, tc.want)
+		}
+	}
+	profile, err := MatchProfile(BackendHygonLogical, "dtk", "26.04.1", "amd64")
+	if err != nil || profile.Verified {
+		t.Fatalf("Hygon Z100 profile = %+v, %v; want unverified advisory profile", profile, err)
 	}
 }

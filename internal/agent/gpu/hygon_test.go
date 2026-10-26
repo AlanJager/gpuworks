@@ -3,13 +3,45 @@ package gpu
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
+
+func TestHygonProbeLibrariesResolveHostDTKClosure(t *testing.T) {
+	dir := t.TempDir()
+	names := []string{"libz.so.1", "libtinfo.so.5", "libelf.so.1"}
+	var listing strings.Builder
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&listing, "%s (libc6,x86-64) => %s\n", name, path)
+	}
+	ldconfig := filepath.Join(dir, "ldconfig")
+	if err := os.WriteFile(ldconfig, []byte("#!/bin/sh\n/bin/cat <<'LIBS'\n"+listing.String()+"LIBS\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	got, err := (&HygonProber{}).PartitionProbeLibraries(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(names) {
+		t.Fatalf("probe libraries = %+v", got)
+	}
+	for i, name := range names {
+		if got[i] != (ProbeLibrary{Source: filepath.Join(dir, name), Name: name}) {
+			t.Fatalf("probe library %d = %+v", i, got[i])
+		}
+	}
+}
 
 func TestParseHygonInventoryFromRealK100Capture(t *testing.T) {
 	raw := readHygonFixture(t)
@@ -73,6 +105,8 @@ func TestNormalizeHygonSKUUsesExactAliasesOnly(t *testing.T) {
 	tests := map[string]string{
 		"K100_AI": "K100AI",
 		"K100 AI": "K100AI",
+		"Z100":    "Z100",
+		"Z-100":   "Z100",
 		"BW1000":  "BW1000",
 		"BW1101":  "BW1101",
 		"K100":    "K100_FAMILY_AMBIGUOUS",
@@ -83,6 +117,14 @@ func TestNormalizeHygonSKUUsesExactAliasesOnly(t *testing.T) {
 		if got := normalizeHygonSKU(raw); got != want {
 			t.Errorf("normalizeHygonSKU(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+func TestParseHygonZ100Inventory(t *testing.T) {
+	raw := "DCU[0]: Card Series: Z100\nDCU[0]: PCI Bus: 0000:1a:00.0\nDCU[0]: vram Total Memory (MiB): 32752\n"
+	gpus := parseHygonInventory(raw, nil)
+	if len(gpus) != 1 || gpus[0].ArchID != "Z100" || gpus[0].MemoryTotalBytes != 32752*1024*1024 {
+		t.Fatalf("Z100 inventory = %+v", gpus)
 	}
 }
 
@@ -135,7 +177,6 @@ func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 	wantEnv := map[string]string{
 		"HYGON_VISIBLE_DEVICES": "1",
 		"HIP_VISIBLE_DEVICES":   "1",
-		"ROCR_VISIBLE_DEVICES":  "1",
 	}
 	if !reflect.DeepEqual(inj.Env, wantEnv) {
 		t.Fatalf("env = %+v, want %+v", inj.Env, wantEnv)
@@ -146,7 +187,8 @@ func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 		"--device", "/dev/dri/card2:/dev/dri/card2:rwm",
 		"--device", "/dev/dri/renderD129:/dev/dri/renderD129:rwm",
 		"--volume", "/opt/hyhal:/opt/hyhal:ro",
-		"--group-add", "video",
+		"--group-add", "39",
+		"--group-add", "998",
 	}
 	if !reflect.DeepEqual(inj.DockerArgs, wantArgs) {
 		t.Fatalf("docker args = %#v, want %#v", inj.DockerArgs, wantArgs)
@@ -266,7 +308,11 @@ func testHygonProber(t *testing.T, inventory string) *HygonProber {
 				return hygonFakeFileInfo{name: "hyhal", dir: true}, nil
 			}
 			if path == "/dev/kfd" || path == "/dev/mkfd" || strings.HasPrefix(path, "/dev/dri/") {
-				return hygonFakeFileInfo{name: filepath.Base(path), mode: os.ModeDevice}, nil
+				gid := uint32(998)
+				if strings.HasPrefix(filepath.Base(path), "card") {
+					gid = 39
+				}
+				return hygonFakeFileInfo{name: filepath.Base(path), mode: os.ModeDevice, gid: gid}, nil
 			}
 			return nil, os.ErrNotExist
 		},
@@ -286,6 +332,7 @@ type hygonFakeFileInfo struct {
 	name string
 	dir  bool
 	mode os.FileMode
+	gid  uint32
 }
 
 func (f hygonFakeFileInfo) Name() string       { return f.name }
@@ -293,4 +340,17 @@ func (f hygonFakeFileInfo) Size() int64        { return 0 }
 func (f hygonFakeFileInfo) Mode() os.FileMode  { return f.mode }
 func (f hygonFakeFileInfo) ModTime() time.Time { return time.Time{} }
 func (f hygonFakeFileInfo) IsDir() bool        { return f.dir }
-func (f hygonFakeFileInfo) Sys() any           { return nil }
+func (f hygonFakeFileInfo) Sys() any           { return &syscall.Stat_t{Gid: f.gid} }
+
+func TestHygonQueriesResolvedCLIWhenAbsentFromPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "hy-smi")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf 'DCU[0]: Card Series: Z100\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", t.TempDir())
+	p := &HygonProber{lookPath: func(name string) (string, error) { return path, nil }}
+	out, err := p.run(t.Context(), hygonInventoryArgs()...)
+	if err != nil || !strings.Contains(out, "Card Series: Z100") {
+		t.Fatalf("resolved query = %q, %v", out, err)
+	}
+}

@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -29,7 +32,7 @@ func occupancyNode(t *testing.T, cards []proto.GPUInfo, procs []gpu.ComputeProce
 	t.Helper()
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		&occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: cards}, procs: procs, err: err}, nil)
-	n.heldCardIdents = func() []string { return nil }
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{} }
 	return n
 }
 
@@ -133,7 +136,9 @@ func TestACardRunningOurOwnInstanceHasNoForeignProcesses(t *testing.T) {
 	}, nil)
 	// The card at 3f runs one of ours, named by its identity rather than
 	// by a device index that drifts.
-	n.heldCardIdents = func() []string { return []string{accelerator.CardIdent("", "0000:3f:00.0")} }
+	n.heldCards = func() engine.HeldCards {
+		return engine.HeldCards{Idents: []string{accelerator.CardIdent("", "0000:3f:00.0")}}
+	}
 
 	cards := twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
@@ -153,7 +158,7 @@ func TestARoundThatCannotFindOutRestatesTheLastAnswer(t *testing.T) {
 	prober := &occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()},
 		procs: []gpu.ComputeProcess{{PID: 4242, Name: "python3", PCIeBDF: "0000:40:00.0"}}}
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none", prober, nil)
-	n.heldCardIdents = func() []string { return nil }
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{} }
 	cards := twoOwnedCards()
 	n.CardHealthFindings(context.Background(), cards, true)
 	if len(cards[1].ForeignProcesses) != 1 {
@@ -192,5 +197,128 @@ func TestARoundThatCannotFindOutRestatesTheLastAnswer(t *testing.T) {
 	n.CardHealthFindings(context.Background(), cards, true)
 	if len(cards[1].ForeignProcesses) != 0 {
 		t.Fatalf("a later failed round brought back %+v", cards[1].ForeignProcesses)
+	}
+}
+
+// The shape seen on a live node: a vLLM instance launched after cards were
+// bound by identity on device 0, and a callable engine (strata) launched
+// before, whose desired state names only device 1. Both cards were in use
+// by the platform, yet the second was reported as held outside it — with
+// strata's own processes as the culprits — and stopped being scheduled.
+func TestAnInstanceWithoutACardBindingStillOwnsItsCard(t *testing.T) {
+	cards := func() []proto.GPUInfo {
+		return []proto.GPUInfo{
+			{Index: 0, UUID: "GPU-b1b4", Vendor: "nvidia", PCIeBDF: "00000000:32:00.0", Healthy: true},
+			{Index: 1, UUID: "GPU-1863", Vendor: "nvidia", PCIeBDF: "00000000:4B:00.0", Healthy: true},
+		}
+	}
+	n := occupancyNode(t, cards(), []gpu.ComputeProcess{
+		{PID: 900, Name: "python3", PCIeBDF: "00000000:32:00.0", MemoryBytes: 8 << 30},
+		{PID: 1744, Name: "/opt/strata/engine/strata-vision", PCIeBDF: "00000000:4B:00.0", MemoryBytes: 1 << 30},
+		{PID: 1750, Name: "/opt/strata/engine/strata", PCIeBDF: "00000000:4B:00.0", MemoryBytes: 21 << 30},
+	}, nil)
+	n.heldCards = func() engine.HeldCards {
+		return engine.HeldCards{Idents: []string{accelerator.CardIdent("GPU-b1b4", "00000000:32:00.0")}, Indexes: []int{1}}
+	}
+	got := cards()
+	n.CardHealthFindings(context.Background(), got, true)
+	for _, card := range got {
+		if len(card.ForeignProcesses) != 0 {
+			t.Fatalf("card %s = %+v, want the platform's own instances not called foreign", card.PCIeBDF, card.ForeignProcesses)
+		}
+	}
+	// And the card it does not hold is still examined.
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{1}} }
+	got = cards()
+	n.CardHealthFindings(context.Background(), got, true)
+	if p := got[0].ForeignProcesses; len(p) != 1 || p[0].PID != 900 {
+		t.Fatalf("the card nothing of ours holds = %+v, want its process named", p)
+	}
+	if len(got[1].ForeignProcesses) != 0 {
+		t.Fatalf("the unbound instance's card = %+v", got[1].ForeignProcesses)
+	}
+}
+
+// Naming an unbound instance's card needs a probe that listed the cards.
+// Before one has (or when its index is not among them) which card it holds
+// is not known, and not knowing is not the same as "not ours": the last
+// answer is restated rather than its processes called foreign.
+func TestAnUnboundInstanceWhoseCardIsNotNamedYetClaimsNothing(t *testing.T) {
+	n := occupancyNode(t, twoOwnedCards(), []gpu.ComputeProcess{
+		{PID: 7001, Name: "vllm", PCIeBDF: "0000:3f:00.0"},
+	}, nil)
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{0}} }
+	if ours, known := n.cardsInUse(); known || len(ours) != 0 {
+		t.Fatalf("before any probe cardsInUse = %v known=%v, want not known", ours, known)
+	}
+	cards := twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if ours, known := n.cardsInUse(); !known || !ours[accelerator.CardIdent("GPU-3f", "0000:3f:00.0")] {
+		t.Fatalf("after a probe cardsInUse = %v known=%v, want device 0's card", ours, known)
+	}
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatalf("card 0 = %+v", cards[0].ForeignProcesses)
+	}
+
+	// An index the probe did not list: restated, not claimed.
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{5}} }
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	for _, card := range cards {
+		if len(card.ForeignProcesses) != 0 {
+			t.Fatalf("card %s = %+v, want nothing claimed while an instance's card cannot be named", card.PCIeBDF, card.ForeignProcesses)
+		}
+	}
+	if _, known := n.cardsInUse(); known {
+		t.Fatal("an index no probe named read as known")
+	}
+}
+
+// End to end through the engine: the control plane replays a desired state
+// without identities (an instance launched before cards were bound), the
+// recording runtime "runs" it, and the occupancy report does not call its
+// card foreign — nor the headless follower's of a two-node unit.
+func TestAReplayedSpecWithoutIdentitiesKeepsItsCardThroughTheEngine(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		spec proto.InstanceDesiredState
+	}{
+		{"single node", proto.InstanceDesiredState{UUID: "strata", DesiredState: "running", Engine: "callable", Image: "strata:0.1", GPUIndexes: []int{1}, APIPort: 30001}},
+		{"headless follower", proto.InstanceDesiredState{UUID: "follower", DesiredState: "running", Engine: "callable", Image: "glm:1", GPUIndexes: []int{1}, Headless: true, DistRole: "follower", NNodes: 2, NodeRank: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prober := &occupiedProber{FixedProber: gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()},
+				procs: []gpu.ComputeProcess{{PID: 1750, Name: "/opt/strata/engine/strata", PCIeBDF: "0000:40:00.0", MemoryBytes: 21 << 30}}}
+			n := newNodeRuntime(slog.New(slog.DiscardHandler), recording.New(filepath.Join(t.TempDir(), "rec.jsonl")),
+				filepath.Join(t.TempDir(), "models"), "", prober, nil, engine.WithNetworkInterfaceResolver(nil))
+			n.engine.SetDesiredFull(context.Background(), []proto.InstanceDesiredState{tc.spec})
+
+			cards := twoOwnedCards()
+			n.CardHealthFindings(context.Background(), cards, true)
+			if len(cards[1].ForeignProcesses) != 0 {
+				t.Fatalf("the instance's own card = %+v, want it not called foreign", cards[1].ForeignProcesses)
+			}
+			// Withdrawn by the control plane: the same process is now
+			// somebody else's.
+			n.engine.SetDesiredFull(context.Background(), nil)
+			cards = twoOwnedCards()
+			n.CardHealthFindings(context.Background(), cards, true)
+			if p := cards[1].ForeignProcesses; len(p) != 1 || p[0].PID != 1750 {
+				t.Fatalf("after the instance was withdrawn = %+v, want the process named", p)
+			}
+		})
+	}
+}
+
+// A prober that cannot list processes still names the cards: the runtime
+// check asks which cards are ours as well, and an unbound instance's card
+// that never got a name would hold it back as "not known yet" forever.
+func TestCardsAreNamedEvenWhenTheProberCannotListProcesses(t *testing.T) {
+	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
+		&gpu.FixedProber{VendorName: "nvidia", GPUs: twoOwnedCards()}, nil)
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Indexes: []int{1}} }
+	n.CardHealthFindings(context.Background(), twoOwnedCards(), true)
+	if ours, known := n.cardsInUse(); !known || !ours[accelerator.CardIdent("GPU-40", "0000:40:00.0")] {
+		t.Fatalf("cardsInUse = %v known=%v, want device 1's card", ours, known)
 	}
 }

@@ -34,7 +34,7 @@ func TestSLARunWithHugeConcurrencyAndSmallSessions(t *testing.T) {
 			rec := &recorder{}
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			Execute(ctx, Run{ID: 1, Model: "m", Mode: "sla", NoStream: true, Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(raw)}, rec.hooks())
+			Execute(ctx, Run{TokenizerRef: testTokenizerRef(t), ID: 1, Model: "m", Mode: "sla", NoStream: true, Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(raw)}, rec.hooks())
 			if last := rec.last(); last.State != "done" || last.StopReason != proto.BenchmarkStopHitMaxConcurrency {
 				t.Fatalf("terminal=%+v", last)
 			}

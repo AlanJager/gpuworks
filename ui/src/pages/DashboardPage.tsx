@@ -179,7 +179,7 @@ export default function DashboardPage() {
   const modelVramGiB = modelVramKnown ? ownedGpus!.reduce((sum, gpu) => sum + gpu.memory_total_bytes / GIB, 0) : undefined;
 
   return <div className="dashboard-overview">
-    <PageHeader className="page-header-wrap" title={t("title")} description={t("overview.description")} breadcrumb={[t("title")]} />
+    <PageHeader title={t("title")} description={t("overview.description")} />
     {attentionEntries.length > 0 && <AttentionBanner entries={attentionEntries} grouped={groupedAttention} count={groupedAttention ? attentionGroups.length : attentionCount} />}
     {partial && <Alert type="warning" showIcon message={t("overview.unavailable")} className="dashboard-overview-alert" />}
     <section className="dashboard-overview-summary" aria-label={t("overview.platformSummary")}>

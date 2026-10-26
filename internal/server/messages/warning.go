@@ -31,13 +31,6 @@ const (
 	// their own, but not all share it, so the group runs over the management
 	// network.
 	WarningComputeNetworkFallback = "COMPUTE_NETWORK_FALLBACK"
-	// WarningPlanningKVBelowContext: the deployment starts, but the KV pool
-	// it is estimated to get holds fewer tokens than one request of the
-	// maximum context - vLLM refuses to start on exactly that (the estimate is
-	// conservative, so near the line it may still start). A dGPU slice
-	// sized for the weights with the model's default context is the usual
-	// way here.
-	WarningPlanningKVBelowContext = "PLANNING_KV_BELOW_CONTEXT"
 )
 
 // Launch warnings: the platform cannot prove a launch will work, or knows it

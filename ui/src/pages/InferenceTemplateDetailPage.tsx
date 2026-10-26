@@ -3,7 +3,7 @@ import { Component, Suspense, lazy, useEffect, useMemo, useRef, useState, type R
 import { Alert, Button, Descriptions, Drawer, Empty, Input, Modal, Popconfirm, Segmented, Space, Spin, Tabs, Tag, Typography, message } from "antd";
 import type { TextAreaRef } from "antd/es/input/TextArea";
 import { ArrowLeftOutlined, CloseCircleOutlined, CopyOutlined, DeleteOutlined, EditOutlined, RocketOutlined, SaveOutlined, UndoOutlined } from "@ant-design/icons";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { api, type DetectedTemplateChip, type EvaluateResponse, type InferenceSpec, type InferenceTemplate, type InferenceTemplateIssue } from "../api";
@@ -42,6 +42,10 @@ export default function InferenceTemplateDetailPage() {
   const navigate = useNavigate();
   const params = useParams();
   const [search, setSearch] = useSearchParams();
+  // The list this detail was opened from, with its filters (?from=): the
+  // breadcrumb, the back button and leaving after a delete all return to it.
+  const fromList = search.get("from");
+  const listURL = `/inference-templates${fromList ? `?${fromList}` : ""}`;
   const modelID = params["*"] || "";
   const [model, setModel] = useState<InferenceTemplate>();
   // The route model_id `model` was fetched for. Clone navigates in place, so
@@ -211,8 +215,7 @@ export default function InferenceTemplateDetailPage() {
       const result = await api.deleteInferenceTemplateSpec(model.model_id, spec.name);
       message.success(t(result.model_deleted ? "editor.modelDeleted" : "editor.specDeleted", { name: result.model_deleted ? model.model_id : spec.name }));
       if (result.model_deleted) {
-        const from = search.get("from");
-        navigate(`/inference-templates${from ? `?${from}` : ""}`);
+        navigate(listURL);
         return;
       }
       await load();
@@ -224,7 +227,7 @@ export default function InferenceTemplateDetailPage() {
   if (!model) return <Empty description={t("detail.notFound")} />;
 
   return <div className="resource-page inference-template-detail-page">
-    <PageHeader title={model.display_title || model.model_id} description={compactModelMetadata(model)} breadcrumb={[t("breadcrumb.services"), t("breadcrumb.templates"), model.model_id]} extra={<Space wrap><Button icon={<ArrowLeftOutlined />} onClick={() => { const from = search.get("from"); navigate(`/inference-templates${from ? `?${from}` : ""}`); }}>{t("detail.back")}</Button><Button icon={<CopyOutlined />} onClick={() => void clone()}>{t("detail.clone")}</Button>{model.specs.some((spec) => spec.source === "user") && <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>{t("flat.edit")}</Button>}</Space>} />
+    <PageHeader title={model.display_title || model.model_id} description={compactModelMetadata(model)} parents={[<Link key="list" to={listURL}>{t("breadcrumb.templates")}</Link>]} extra={<Space wrap><Button icon={<ArrowLeftOutlined />} onClick={() => navigate(listURL)}>{t("detail.back")}</Button><Button icon={<CopyOutlined />} onClick={() => void clone()}>{t("detail.clone")}</Button>{model.specs.some((spec) => spec.source === "user") && <Button icon={<EditOutlined />} onClick={() => setEditing(true)}>{t("flat.edit")}</Button>}</Space>} />
     <TemplateWarnings warnings={saveWarnings} onClose={() => setSaveWarnings([])} />
     <Descriptions bordered size="small" column={{ xs: 1, md: 4 }}><Descriptions.Item label={t("detail.modelID")}><Typography.Text copyable>{model.model_id}</Typography.Text></Descriptions.Item><Descriptions.Item label={t("detail.source")}><Tag color={model.source === "user" ? "purple" : "blue"}>{t(model.source === "user" ? "flat.userSource" : "flat.builtInSource")}</Tag></Descriptions.Item><Descriptions.Item label={t("flat.context")}>{model.context_length || "-"}</Descriptions.Item><Descriptions.Item label={t("flat.specCount")}>{model.specs.length}</Descriptions.Item><Descriptions.Item label={t("detail.operations")} span={2}>{operationTypesOf(model.specs.flatMap((spec) => spec.api?.operations ?? [])).map((value) => <Tag color="blue" key={value}>{t(operationLabelKey[value])}</Tag>)}</Descriptions.Item><Descriptions.Item label={t("detail.inputModalities")} span={2}>{inputModalitiesOf(model.input_modalities).map((value) => <Tag key={value}>{t(inputModalityLabelKey[value])}</Tag>)}</Descriptions.Item></Descriptions>
     {engines.length >= 2 && <Segmented className="template-engine-switch" value={engine} options={engines.map((value) => ({ value, label: engineOptionLabel(value) }))} onChange={(value) => setEngine(String(value))} />}

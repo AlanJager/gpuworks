@@ -1,10 +1,11 @@
 import { useCallback } from "react";
-import { api, useEvents, usePolling, type MonitorDeployment, type MonitorOverview, type MonitorRange } from "../../api";
+import { api, useEvents, type MonitorDeployment, type MonitorOverview, type MonitorRange } from "../../api";
 import type { MonitorDistributions } from "../../monitorRequestsApi";
+import { useMonitorPolling } from "./useMonitorPolling";
 import { useTimeRange } from "./TimeRangeContext";
 
 // Both hooks poll every 10s while "follow latest" is on (interval 0 disables
-// the timer entirely, per usePolling's contract) and additionally refetch the
+// the timer entirely, per the monitor polling contract) and additionally refetch the
 // instant a relevant SSE event arrives, so a state change shows up without
 // waiting for the next tick.
 const POLL_MS = 10000;
@@ -12,13 +13,13 @@ const POLL_MS = 10000;
 export function useMonitorOverview(range: MonitorRange) {
   const { follow } = useTimeRange();
   const fetcher = useCallback(() => api.monitorOverview(range), [range]);
-  const { data, error, loading, updatedAt, refetch } = usePolling<MonitorOverview>(
+  const { data, error, loading, updatedAt, refetch, refresh } = useMonitorPolling<MonitorOverview>(
     fetcher,
     follow ? POLL_MS : 0,
-    [range, follow],
+    range,
   );
-  useEvents("deployment", refetch);
-  useEvents("instance", refetch);
+  useEvents("deployment", refresh);
+  useEvents("instance", refresh);
   return { data, error, loading, updatedAt, refetch };
 }
 
@@ -38,13 +39,13 @@ export function useMonitorDeployment(id: number, range: MonitorRange) {
     () => (skip ? Promise.resolve(null as unknown as MonitorDeployment) : api.monitorDeployment(id, range)),
     [id, range, skip],
   );
-  const { data, error, loading, updatedAt, refetch } = usePolling<MonitorDeployment>(
+  const { data, error, loading, updatedAt, refetch, refresh } = useMonitorPolling<MonitorDeployment>(
     fetcher,
     !skip && follow ? POLL_MS : 0,
-    [id, range, follow, skip],
+    `${id}:${range}`,
   );
-  useEvents("deployment", refetch);
-  useEvents("instance", refetch);
+  useEvents("deployment", refresh);
+  useEvents("instance", refresh);
   return { data, error, loading, updatedAt, refetch };
 }
 
@@ -60,5 +61,5 @@ export function useMonitorDistributions(range: MonitorRange, deploymentId = 0) {
     () => (skip ? Promise.resolve(null as unknown as MonitorDistributions) : api.monitorDistributions(range, deploymentId || undefined)),
     [range, deploymentId, skip],
   );
-  return usePolling<MonitorDistributions>(fetcher, !skip && follow ? DISTRIBUTIONS_POLL_MS : 0, [range, deploymentId, follow, skip]);
+  return useMonitorPolling<MonitorDistributions>(fetcher, !skip && follow ? DISTRIBUTIONS_POLL_MS : 0, `${deploymentId}:${range}`);
 }

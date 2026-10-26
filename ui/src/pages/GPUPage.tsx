@@ -89,7 +89,6 @@ export default function GPUPage() {
       <PageHeader
         title={t("page.title")}
         description={t("page.description")}
-        breadcrumb={[t("page.resourceBreadcrumb"), t("page.title")]}
         extra={<Typography.Text type="secondary">{t("page.physicalCount", { count: physical.data?.overview.total ?? 0 })}</Typography.Text>}
       />
       <Tabs

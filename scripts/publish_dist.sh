@@ -20,7 +20,9 @@
 # 5. Each source's <channel>/index.json, <channel>/latest and manifest.json
 #    are switched, and the channel is read back from every public URL; when
 #    that fails, every source is put back on its previous pointers.
-# 6. Release directories beyond the newest $GPUWORKS_DIST_KEEP are removed,
+# 6. scripts/get.sh, the one-line installer, is copied to the root of every
+#    source as get.sh.
+# 7. Release directories beyond the newest $GPUWORKS_DIST_KEEP are removed,
 #    except the ones either channel's latest names.
 #
 # Credentials come from the environment (protected CI variables) or from
@@ -159,6 +161,10 @@ if ! $switched || ! "$work/gpuworks-dist" verify -channel "$channel" -release-id
   echo "the channel did not switch to $release_id cleanly; every source is back on its previous pointers" >&2
   exit 1
 fi
+
+for remote in $remotes; do
+  "$rclone" copyto scripts/get.sh "$remote/get.sh" --header-upload "$pointer"
+done
 
 for remote in $remotes; do
   set --

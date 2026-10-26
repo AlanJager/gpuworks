@@ -124,8 +124,13 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
     expect(statistic(ui["stats"]["nodesTotal"])).to_have_text("3")
     expect(statistic(ui["stats"]["nodesOnline"])).to_have_text("0")
     expect(statistic(ui["stats"]["gpusTotal"])).to_have_text("0")
-    expect(page.get_by_text(format_text(ui["situation"]["offlineNodes"], count=0),
-                            exact=True)).to_be_visible()
+    for label in (ui["stats"]["nodesTotal"], ui["stats"]["nodesOnline"], ui["stats"]["gpusTotal"]):
+        expect(page.locator(".ant-card").filter(has_text=label).first.locator(".ant-statistic-content-suffix")).to_have_count(0)
+    expect(page.get_by_role("spinbutton")).to_have_count(0)
+    offline_text = format_text(ui["situation"]["offlineNodes"], count=0)
+    offline_tag = page.locator(".ant-tag").filter(has_text=offline_text)
+    expect(offline_tag).to_have_count(1)
+    expect(offline_tag).to_have_class(re.compile(r"\bant-tag-green\b"))
     expect(page.get_by_text(ui["health"]["normal"], exact=True)).to_be_visible()
 
     def group_row(name):
@@ -150,13 +155,17 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
     expect(group_row("team=alpha").get_by_text(node_count(2), exact=True)).to_be_visible()
     expect(group_row("team=beta").get_by_text(node_count(1), exact=True)).to_be_visible()
     expect(label_card.locator(".ant-select-selection-item").first).to_have_text("team")
+    label_key = label_card.get_by_role("combobox", name=ui["capacity"]["labelKeyAria"], exact=True)
+    expect(label_key).to_have_count(1)
+    check(label_key.get_attribute("aria-required") != "true", "the label key is marked required")
     report["last_step"] = "default-groups-verified"
 
     # The search input is covered by the selected item; open the control from
     # its selector surface.
     label_card.locator(".ant-select-selector").click()
-    option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
-        has_text=re.compile(r"^rack$"))
+    dropdown = page.locator(".ant-select-dropdown:visible .ant-select-item-option")
+    expect(dropdown.filter(has_text=re.compile(r"^team$"))).to_be_visible()
+    option = dropdown.filter(has_text=re.compile(r"^rack$"))
     expect(option).to_be_visible()
     with page.expect_response(lambda r: urlsplit(r.url).path == SUMMARY
                               and "label_key=rack" in r.url) as switched:
@@ -203,6 +212,7 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
     expect(groups).to_have_text(["team=alpha", "team=beta"])
     expect(group_row("team=alpha").get_by_text(node_count(2), exact=True)).to_be_visible()
     expect(group_row("team=beta").get_by_text(node_count(1), exact=True)).to_be_visible()
+    expect(label_card.locator(".ant-select-selection-item").first).to_have_text("team")
     reloaded_response = page.request.get(server.base + SUMMARY)
     reloaded = reloaded_response.json()
     reloaded_groups = {(group.get("key", ""), bool(group.get("unlabeled"))): group["nodes"]
@@ -229,7 +239,9 @@ def test_dashboard_fleet(page, context, server, artifacts, report, locale):
 
     report["evidence"].extend([
         {"layer": "ui", "page": "/dashboard", "nodes_total": 3, "nodes_online": 0,
-         "gpus_total": 0, "offline_tag": format_text(ui["situation"]["offlineNodes"], count=0),
+         "gpus_total": 0, "statistic_suffixes": 0, "spinbuttons": 0, "offline_tag_green": True,
+         "offline_tag": format_text(ui["situation"]["offlineNodes"], count=0),
+         "label_key_required": False, "label_key_persisted": False,
          "health": ui["health"]["normal"],
          "default_groups": {"team=alpha": 2, "team=beta": 1},
          "switched_groups": {"rack=r1": 2, ui["capacity"]["unlabeled"]: 1}},

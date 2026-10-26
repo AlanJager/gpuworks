@@ -15,9 +15,12 @@ import time
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import ROOT, http
 from local_business_runner import unattributed_console_errors
 from platform_token_read_revoke import button, check
+from deploy_submit_hold import hold_deploy_create
 from deployment_wizard_create import select
 import deployment_container_fixture as containers
 from deployment_acquisition_fixture import IMAGE, SPEC, TEMPLATES
@@ -145,6 +148,11 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
         expect(popup.get_by_text(value, exact=True).filter(visible=True)).to_have_count(1)
     selected_label = provider_labels[0 if data['provider'] == 'huggingface' else 1]
     popup.get_by_text(selected_label, exact=True).filter(visible=True).click()
+    expect(submit_source).to_be_enabled()
+    # Weight-source confirm is an antd Modal. Identity, 1440x900 stacking, and the focus trap.
+    assert_dialog_shell(page, modal, choice, submit_source)
+    report.setdefault('evidence', []).append({
+        'layer': 'ui', 'dialog_shell': labels['action']['selectWeightSource'], 'viewport': '1440x900'})
     path = containers.MODELS + '/quick-register'
     with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == 'POST') as registered:
         submit_source.click()
@@ -224,14 +232,12 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
                                                if data['provider'] not in source]
     replace_owned_template(server, token, data, changed)
     try:
-        with page.expect_response(lambda r: urlsplit(r.url).path == containers.DEPLOYMENTS
-                                  and r.request.method == 'POST') as stale:
-            deploy.click()
-        same(stale.value.status, 400, 'expired selected provider HTTP')
-        rejected = stale.value.json()
+        stale = hold_deploy_create(page, report)
+        same(stale.status, 400, 'expired selected provider HTTP')
+        rejected = stale.json()
         same(rejected['code'], 'ACQUISITION_CANDIDATE_STALE', 'expired provider error code')
         same(rejected['params'], {'provider': data['provider']}, 'expired provider error parameters')
-        same(stale.value.request.post_data_json, expected_body(data), 'expired provider original full draft')
+        same(stale.request.post_data_json, expected_body(data), 'expired provider original full draft')
         expect(name).to_have_value(data['name'])
         expect(route).to_have_value(data['served_name'])
         error = labels['action']['createFailed'].replace('{{detail}}', common['apiError']['ACQUISITION_CANDIDATE_STALE'])
@@ -305,6 +311,44 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
     drawer = page.get_by_role('dialog').last
     expect(drawer.get_by_text(data['served_name'], exact=True)).to_be_visible()
     expect(drawer.get_by_text(IMAGE, exact=True).first).to_be_visible()
+    listings = texts(locale, 'deployments')
+    parent = page.get_by_role('dialog', name=data['name'], exact=True)
+    expect(parent).to_be_visible()
+    delete_title = listings['delete']['title'].replace('{{name}}', data['name'])
+    # The header Delete button includes the icon's accessible name.
+    remove = parent.locator('.ant-drawer-extra').get_by_role(
+        'button', name=listings['delete']['button'])
+    dep_path = containers.DEPLOYMENTS + '/' + str(dep_id)
+    deletes = []
+
+    def on_delete(request):
+        if request.method == 'DELETE' and urlsplit(request.url).path == dep_path:
+            deletes.append(request.method)
+
+    page.on('request', on_delete)
+
+    def open_delete():
+        remove.click()
+        dialog = page.get_by_role('dialog', name=delete_title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = assert_nested_dismissals(
+        open_delete(), parent, open_delete,
+        [('cancel', cancel_button(listings['delete']['cancel'])),
+         ('escape', escape), ('close', close_button), ('mask', mask)],
+        lambda: len(deletes), remove)
+    cancel_button(listings['delete']['cancel'])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(parent).to_be_visible()
+    check(deletes == [], 'delete dialog dismissal removed the deployment')
+    stayed = page.request.get(server.base + dep_path)
+    check(stayed.status == 200 and stayed.json().get('name') == data['name'],
+          'delete dialog dismissal changed the stored deployment')
+    report['evidence'].append({
+        'layer': 'ui', 'delete_dialog': delete_title, 'parent': data['name'],
+        'dismissals': ['cancel', 'escape', 'close', 'mask'],
+        'focus_returned': True, 'delete_requests': 0, 'stored_name': data['name']})
     same(requests, [{'method': 'POST', 'path': path, 'query': '', 'body': expected_register},
                    *[{'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '', 'body': expected_body(data)}] * 2],
          'browser mutation full bodies/count/order')

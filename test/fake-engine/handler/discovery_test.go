@@ -30,8 +30,30 @@ func TestDiscoveryServesCapturedSchemaAndConfiguredVoices(t *testing.T) {
 		}
 		response = httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest("GET", "/openapi.json", nil))
-		if response.Code != 200 || response.Body.String() != string(openAPIDocument) {
-			t.Fatal("captured schema changed")
+		if response.Code != 200 {
+			t.Fatalf("schema status=%d", response.Code)
+		}
+		var captured, published map[string]any
+		if err := json.Unmarshal(openAPIDocument, &captured); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &published); err != nil {
+			t.Fatal(err)
+		}
+		for key, value := range captured {
+			if key != "paths" && !reflect.DeepEqual(value, published[key]) {
+				t.Fatalf("captured %s changed", key)
+			}
+		}
+		capturedPaths := captured["paths"].(map[string]any)
+		publishedPaths := published["paths"].(map[string]any)
+		for path, value := range capturedPaths {
+			if !reflect.DeepEqual(value, publishedPaths[path]) {
+				t.Fatalf("captured route %s changed", path)
+			}
+		}
+		if len(publishedPaths) != len(capturedPaths)+1 {
+			t.Fatalf("published %d paths, want captured routes and transcription", len(publishedPaths))
 		}
 		var schema struct {
 			Components struct {

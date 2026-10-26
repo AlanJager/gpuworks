@@ -22,7 +22,7 @@ from playground_manifest import ManifestLoader, NAVIGATION_PAGES, case_gaps, val
 
 
 def select_playground_mode(page: Page, label: str) -> None:
-    page.locator(".playground-mode-bar .ant-segmented-item").filter(has_text=label).click()
+    page.locator(".playground-mode .ant-segmented-item").filter(has_text=label).click()
 
 
 def check_existing_deployment(page: Page, base: str, deployment_name: str, model: str, audio_file: Path | None) -> list[dict[str, Any]]:

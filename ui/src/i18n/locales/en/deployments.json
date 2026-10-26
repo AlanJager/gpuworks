@@ -125,6 +125,7 @@
       "failed": "Retry failed: {{detail}}"
     },
     "placement": {
+      "preparingModel": "Preparing model; {{count}} replica(s) have not started",
       "waiting": "{{count}} replica(s) are waiting for a node",
       "candidates": "Candidate nodes",
       "requirements": "Node requirements",
@@ -579,6 +580,8 @@
   },
   "preparation": {
     "phase": {
+      "downloading": "Downloading model",
+      "syncing": "Syncing model",
       "waiting": "Waiting for preparation update",
       "checking": "Checking model source",
       "copying": "Copying to local cache",

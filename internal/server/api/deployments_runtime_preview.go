@@ -120,7 +120,21 @@ func imagePartitionCompatibilityWarnings(image *store.Image, node *store.Node) [
 	// its own unbuilt/unverified warning; backends without profiles (NVIDIA)
 	// and frameworks a backend does not serve stay silent.
 	for _, backend := range accelerator.All() {
-		if !backend.Matches(accelerator.NormalizeVendor(node.GPUVendor), "") || !accelerator.SupportsFramework(backend, image.Framework) {
+		if !accelerator.SupportsFramework(backend, image.Framework) {
+			continue
+		}
+		matchedGPU := false
+		for _, gpu := range node.GPUs {
+			gpuVendor := gpu.Vendor
+			if gpuVendor == "" {
+				gpuVendor = node.GPUVendor
+			}
+			if backend.Matches(gpuVendor, gpu.ArchID) {
+				matchedGPU = true
+				break
+			}
+		}
+		if !matchedGPU {
 			continue
 		}
 		profile, warning := accelerator.ProfileCompatibility(backend.ID(), image.Framework, image.FrameworkVersion, node.Arch)

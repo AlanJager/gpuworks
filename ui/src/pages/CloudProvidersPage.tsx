@@ -209,7 +209,6 @@ export default function CloudProvidersPage({ scope = "public" }: { scope?: Provi
       <PageHeader
         title={copy.title}
         description={copy.description}
-        breadcrumb={[t("page.resourceBreadcrumb"), copy.title]}
         extra={
           <>
             <Typography.Text type="secondary">{t("page.count", { count: data.length, scope: copy.title })}</Typography.Text>

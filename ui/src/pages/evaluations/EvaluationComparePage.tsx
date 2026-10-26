@@ -1,7 +1,7 @@
 import { Alert, Button, Card, Col, Row, Segmented, Space, Spin, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { api, usePolling, type BenchmarkPoint, type BenchmarkRun } from "../../api";
@@ -34,7 +34,7 @@ export default function EvaluationComparePage() {
 	const diff = parameterDiff(series, t);
 
 	return <div>
-		<PageHeader title={t("compare.title")} description={t("compare.description")} breadcrumb={[t("list.breadcrumb.services"), t("list.breadcrumb.evaluations"), t("compare.breadcrumb")]} extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button>} />
+		<PageHeader title={t("compare.title")} description={t("compare.description")} parents={[<Link key="list" to="/evaluations">{t("list.breadcrumb.evaluations")}</Link>]} extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate("/evaluations")}>{t("common.back")}</Button>} />
 		{selectedCount < 2 || selectedCount > 5 ? <Alert type="warning" showIcon message={t("compare.selectCount")} /> : <Space direction="vertical" size={16} style={{ width: "100%" }}>
 			{unknownGPU && <Alert type="warning" showIcon message={t("compare.unknownGpu")} />}
 			<Row gutter={[12, 12]}>{series.map((item) => <Col xs={24} md={12} xl={Math.max(6, Math.floor(24 / series.length))} key={item.key}><Card title={<Space><Tag color={item.color}>●</Tag>{item.name}</Space>} style={{ height: "100%" }}><Typography.Title level={5}>{verdictPresentation(item.run, t).title}</Typography.Title><Typography.Text type="secondary">{verdictPresentation(item.run, t).description}</Typography.Text></Card></Col>)}</Row>

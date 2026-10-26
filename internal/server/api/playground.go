@@ -52,6 +52,12 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		candidates = append(candidates, candidate)
 	}
 	for _, candidate := range candidates {
+		// The page treats catalog length as the number of available models.
+		// Score 0 cannot serve and cannot be woken, so a failed deployment
+		// or one that is still starting must not be counted.
+		if candidate.score == 0 {
+			continue
+		}
 		dep := candidate.deployment
 		model, err := a.d.Store.GetModel(dep.ModelID)
 		if err != nil {
@@ -66,6 +72,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, candidate.instances)
+		contract.Operations = omitUnservedTranscription(contract.Operations, candidate.instances)
 		if len(contract.Operations) == 0 {
 			// An explicitly empty or invalid model operation configuration has no
 			// callable Playground entry. Do not synthesize Chat as a fallback.
@@ -125,4 +132,30 @@ func playgroundOperations(contract inferenceapi.Contract, model string) []dto.Pl
 		result = append(result, operationView)
 	}
 	return result
+}
+
+// omitUnservedTranscription drops openai.audio.transcribe when a running
+// replica has published an OpenAPI document that does not list
+// /v1/audio/transcriptions. An unknown observation leaves the declared
+// contract unchanged.
+func omitUnservedTranscription(operations []inferenceapi.Operation, instances []store.Instance) []inferenceapi.Operation {
+	known, present := false, false
+	for _, instance := range instances {
+		if instance.Headless || instance.State != proto.InstRunning || instance.TranscriptionServed == nil {
+			continue
+		}
+		known = true
+		present = present || *instance.TranscriptionServed
+	}
+	if !known || present {
+		return operations
+	}
+	kept := make([]inferenceapi.Operation, 0, len(operations))
+	for _, operation := range operations {
+		if operation.Type == inferenceapi.OperationAudioTranscribe {
+			continue
+		}
+		kept = append(kept, operation)
+	}
+	return kept
 }

@@ -1051,7 +1051,7 @@ func TestProbeAndReportPrewarmsOnceAndSkipsWhenDesiredSleepNonzero(t *testing.T)
 	if first.State != proto.InstOptimizing || second.State != proto.InstRunning {
 		t.Fatalf("prewarm reports = %+v, %+v", first, second)
 	}
-	if len(h.calls) != 3 || h.calls[0] != "GET /health" || h.calls[1] != "POST /sleep?level=1" || h.calls[2] != "POST /wake_up" {
+	if len(h.calls) != 4 || h.calls[0] != "GET /health" || h.calls[1] != "POST /sleep?level=1" || h.calls[2] != "POST /wake_up" || h.calls[3] != "GET /openapi.json" {
 		t.Fatalf("first prewarm calls = %+v", h.calls)
 	}
 
@@ -1059,7 +1059,7 @@ func TestProbeAndReportPrewarmsOnceAndSkipsWhenDesiredSleepNonzero(t *testing.T)
 	if st := <-reported; st.State != proto.InstRunning {
 		t.Fatalf("second probe report = %+v", st)
 	}
-	if len(h.calls) != 4 || h.calls[3] != "GET /health" {
+	if len(h.calls) != 6 || h.calls[4] != "GET /health" || h.calls[5] != "GET /openapi.json" {
 		t.Fatalf("prewarm repeated unexpectedly: calls=%+v", h.calls)
 	}
 

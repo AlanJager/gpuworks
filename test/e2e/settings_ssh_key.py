@@ -28,8 +28,12 @@ from urllib.parse import urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from platform_token_read_revoke import button, check
+from settings_ssh_key_inventory import (
+    exercise_ssh_import_conflict, exercise_ssh_import_inventory, exercise_ssh_rotate_minimum)
 
 CONTRACT = "gpuworks/settings/platform-ssh-key-rotate-import"
 CASE = "设置 / 平台 SSH 密钥 / 重新生成、拒绝损坏私钥、导入既有私钥并刷新回读"
@@ -51,6 +55,37 @@ def generate_key(directory: Path, comment: str):
     fingerprint = subprocess.check_output(
         ["ssh-keygen", "-lf", str(key) + ".pub"], text=True).split()[1]
     return key.read_text(), {"type": public[0], "blob": public[1], "fingerprint": fingerprint}
+
+
+def exercise_import_dialog(page, card, ssh, ui, mutations, report):
+    """Import dialog identity, layout, focus, and dismissals. No key PUT."""
+    title = ssh["importTitle"]
+    trigger = button(card, ssh["import"])
+    expect(trigger).to_be_visible()
+
+    def puts():
+        return sum(1 for item in mutations if item["method"] == "PUT" and item["path"] == KEY_PATH)
+
+    def open_import():
+        trigger.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_import()
+    assert_dialog_shell(page, dialog, dialog.get_by_text(ssh["importHelp"], exact=True),
+                        button(dialog, ssh["import"]))
+    dialog = assert_nested_dismissals(
+        dialog, card, open_import,
+        [("cancel", cancel_button(ui["common"]["cancel"])), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        puts, trigger)
+    cancel_button(ui["common"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(card).to_be_visible()
+    check(puts() == 0, "import dialog dismissal sent PUT")
+    report["evidence"].append({"layer": "ui", "import_dialog": title,
+        "dismissals": ["cancel", "escape", "close", "mask"], "put_requests": 0})
 
 
 # Contract: gpuworks/settings/platform-ssh-key-rotate-import
@@ -103,9 +138,40 @@ def test_platform_ssh_key(page, context, server, artifacts, report, locale,
     authenticated = True
     report["preflight"] = "PASS"
     nodes_tab = page.get_by_role("tab", name=ui["page"]["tabs"]["nodes"], exact=True)
+    held_load = []
+
+    def hold_get(route):
+        if route.request.method != "GET" or urlsplit(route.request.url).path != KEY_PATH:
+            route.continue_()
+            return
+        held_load.append(route)
+
+    page.route("**" + KEY_PATH, hold_get)
     nodes_tab.click()
     expect(nodes_tab).to_have_attribute("aria-selected", "true")
     report["last_step"] = "nodes-tab-selected"
+    card = page.locator(".ant-card").filter(has_text=ssh["title"]).first
+    expect(card.get_by_text(ssh["title"], exact=True)).to_be_visible()
+    for _ in range(50):
+        if held_load:
+            break
+        page.wait_for_timeout(100)
+    check(len(held_load) >= 1, f"ssh key load did not start ({len(held_load)})")
+    expect(card.get_by_text(ssh["fingerprint"], exact=True)).to_have_count(0)
+    button(card, ssh["import"]).click()
+    modal = page.get_by_role("dialog", name=ssh["importTitle"], exact=True)
+    expect(modal).to_be_visible()
+    expect(modal.get_by_label(ssh["privateKey"], exact=True)).to_have_value("")
+    expect(button(modal, ssh["import"])).to_be_disabled()
+    report["ssh_import_inventory"] = exercise_ssh_import_inventory(modal, ssh, mutations)
+    from settings_ssh_keyboard import exercise_ssh_keyboard
+    report["ssh_keyboard"] = exercise_ssh_keyboard(page, modal, ssh, ui)
+    report["last_step"] = "ssh-keyboard"
+    button(modal, ui["common"]["cancel"]).click()
+    expect(modal).to_be_hidden()
+    for route in held_load:
+        route.continue_()
+    page.unroute("**" + KEY_PATH, hold_get)
 
     initial_response = page.request.get(server.base + KEY_PATH)
     check(initial_response.status == 200, f"SSH key GET HTTP {initial_response.status}")
@@ -118,27 +184,12 @@ def test_platform_ssh_key(page, context, server, artifacts, report, locale,
     expect(card.get_by_text(initial["fingerprint"], exact=True)).to_be_visible()
     expect(card.get_by_text(initial["authorize_command"], exact=True)).to_be_visible()
 
-    button(card, ssh["rotate"]).click()
-    popconfirm = page.locator(".ant-popconfirm")
-    expect(popconfirm).to_be_visible(timeout=5000)
-    expect(popconfirm).to_contain_text(ssh["rotateConfirm"])
-    expect(popconfirm).to_contain_text(ssh["rotateWarning"])
-    popconfirm.locator(".ant-btn-primary").click()
-    expect(page.get_by_text(ssh["rotated"], exact=True).first).to_be_visible()
-    rotated_response = page.request.get(server.base + KEY_PATH)
-    check(rotated_response.status == 200, f"rotated GET HTTP {rotated_response.status}")
-    rotated = rotated_response.json()
-    check(rotated["fingerprint"] != initial["fingerprint"], "rotation kept the same fingerprint")
-    check(rotated["public_key"] != initial["public_key"], "rotation kept the same public key")
-    check(rotated["authorize_command"] != initial["authorize_command"],
-          "rotation kept the same authorize command")
-    page.reload()
-    expect(page.get_by_role("tab", name=ui["page"]["tabs"]["nodes"], exact=True)
-           ).to_have_attribute("aria-selected", "true")
+    rotated, report["rotate_minimum"] = exercise_ssh_rotate_minimum(
+        page, card, ssh, initial, ui["page"]["tabs"]["nodes"], server.base, KEY_PATH, ROTATE_PATH)
     card = page.locator(".ant-card").filter(has_text=ssh["title"]).first
-    expect(card.get_by_text(rotated["fingerprint"], exact=True)).to_be_visible()
-    expect(card.get_by_text(rotated["authorize_command"], exact=True)).to_be_visible()
     report["last_step"] = "rotation-persisted"
+    report["step"] = "import dialog over the settings card"
+    exercise_import_dialog(page, card, ssh, ui, mutations, report)
 
     report["sensitive_phase"] = "import dialog accepts a private key"
     button(card, ssh["import"]).click()
@@ -161,7 +212,33 @@ def test_platform_ssh_key(page, context, server, artifacts, report, locale,
     report["sensitive_phase"] = "import dialog accepts a private key"
     try:
         modal.get_by_label(ssh["privateKey"], exact=True).fill(private_pem)
+        report["last_step"] = "ssh-import-conflict"
+        report["ssh_import_conflict"] = exercise_ssh_import_conflict(
+            page, modal, card, ssh, server.base, KEY_PATH, ROTATE_PATH,
+            private_pem, rotated["fingerprint"], public["fingerprint"])
+        held = []
+
+        def hold_put(route):
+            if route.request.method != "PUT" or urlsplit(route.request.url).path != KEY_PATH:
+                route.continue_()
+                return
+            held.append(route)
+
+        page.route("**" + KEY_PATH, hold_put)
         button(modal, ssh["import"]).click()
+        inflight = modal.locator(".ant-modal-footer button.ant-btn-primary")
+        expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+        inflight.click()
+        modal.get_by_label(ssh["privateKey"], exact=True).press("Enter")
+        check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+        body = held[0].request.post_data_json
+        check(set(body) == {"private_key_pem"} and body["private_key_pem"] == private_pem,
+              "the import body is not only the typed private key")
+        report["ssh_import_inventory"]["submitted_field"] = "private_key_pem"
+        with page.expect_response(lambda r: urlsplit(r.url).path == KEY_PATH and r.request.method == "PUT") as imported_put:
+            held[0].continue_()
+        page.unroute("**" + KEY_PATH, hold_put)
+        check(imported_put.value.ok, "valid import was not stored")
         expect(page.get_by_text(ssh["imported"], exact=True).first).to_be_visible()
         expect(modal).not_to_be_visible()
     except Exception:
@@ -186,6 +263,7 @@ def test_platform_ssh_key(page, context, server, artifacts, report, locale,
           "the imported authorize command does not embed the new public key")
     check("PRIVATE KEY" not in imported_response.text(),
           "the SSH key response contains private-key material")
+    report["ssh_import_inventory"]["persisted_fields"] = sorted(imported)
     check("PRIVATE KEY" not in page.locator("body").inner_text(),
           "the settings page renders private-key material")
 
@@ -285,6 +363,9 @@ def main():
         "coverage_manifest_sha256": digest(manifest_path),
         "test_sha256": digest(Path(__file__)),
         "helper_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
+        "dialog_checks_sha256": digest(ROOT / "test/e2e/dialog_checks.py"),
+        "keyboard_sha256": digest(ROOT / "test/e2e/settings_ssh_keyboard.py"),
+        "inventory_sha256": digest(ROOT / "test/e2e/settings_ssh_key_inventory.py"),
         "execution": "N/A: the platform key pair is a control-plane artifact; no agent or workload is involved",
         "runtime": "N/A: no agent, container, GPU or engine",
         "not_covered": ["authorizing the key on a real sshd and using it for node operations",

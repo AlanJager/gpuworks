@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -32,6 +33,15 @@ type DetachedRun struct {
 	// container as success. It reclaims what an abandoned run leaves behind.
 	Remove func(ctx context.Context, idOrName string) error
 
+	// CreatedID consumes a per-run creation record after the CLI exits. When
+	// supplied, failed runs are reclaimed only by that ID, never by name.
+	// It also releases any temporary recording resources on success or failure.
+	CreatedID func() (string, error)
+	// OnComplete runs after the CLI and any cleanup finish, including in the
+	// background. A cleanup error retains the created ID for a later retry;
+	// an empty ID with an error means creation could not be ruled out.
+	OnComplete func(createdID string, cleanupErr error)
+
 	Timeout      time.Duration // zero means DefaultRunTimeout
 	AbandonGrace time.Duration // zero means defaultAbandonGrace
 }
@@ -56,7 +66,20 @@ func RunDetached(ctx context.Context, r DetachedRun) (string, error) {
 	var stdout, stderr lockedBuffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if err := ctx.Err(); err != nil {
+		if r.CreatedID != nil {
+			_, recordErr := r.CreatedID()
+			err = errors.Join(err, recordErr)
+		}
+		r.complete("", nil)
+		return "", fmt.Errorf("%s run: %w", r.CLI, err)
+	}
 	if err := cmd.Start(); err != nil {
+		if r.CreatedID != nil {
+			_, recordErr := r.CreatedID()
+			err = errors.Join(err, recordErr)
+		}
+		r.complete("", nil)
 		return "", fmt.Errorf("%s run: %w", r.CLI, err)
 	}
 	done := make(chan error, 1)
@@ -65,15 +88,29 @@ func RunDetached(ctx context.Context, r DetachedRun) (string, error) {
 	defer timer.Stop()
 	select {
 	case err := <-done:
+		createdID := ""
+		var recordErr error
+		if r.CreatedID != nil {
+			createdID, recordErr = r.CreatedID()
+			err = errors.Join(err, recordErr)
+		}
 		if err != nil {
 			message := strings.TrimSpace(stderr.String())
 			slog.Warn("runtime command failed", "runtime", r.CLI, "args", loggedArgs, "err", err, "stderr_tail", tailText(message, 400))
-			return "", fmt.Errorf("%s run: %w: %s", r.CLI, err, message)
+			cleanupErr := errors.Join(recordErr, removeCreatedRun(r, createdID))
+			if r.CreatedID != nil && createdID == "" && runWasKilled(err) {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("%s run client was killed before container creation could be confirmed", r.CLI))
+			}
+			r.complete(createdID, cleanupErr)
+			return "", errors.Join(fmt.Errorf("%s run: %w: %s", r.CLI, err, message), cleanupErr)
 		}
 		id := strings.TrimSpace(stdout.String())
 		if id == "" {
-			return "", fmt.Errorf("%s run returned an empty container id", r.CLI)
+			cleanupErr := removeCreatedRun(r, createdID)
+			r.complete(createdID, cleanupErr)
+			return "", errors.Join(fmt.Errorf("%s run returned an empty container id", r.CLI), cleanupErr)
 		}
+		r.complete("", nil)
 		return id, nil
 	case <-timer.C:
 		slog.Warn("runtime run timed out; reclaiming its container in the background", "runtime", r.CLI, "container", r.Name, "timeout", timeout)
@@ -92,10 +129,12 @@ func reapAbandonedRun(r DetachedRun, cmd *exec.Cmd, done <-chan error, stdout *l
 		grace = defaultAbandonGrace
 	}
 	target := r.Name
+	killed := false
 	select {
 	case err := <-done:
 		// The id is exact; the name could in principle already belong to a
 		// newer container, so it is only the fallback when no id was printed.
+		killed = runWasKilled(err)
 		if id := strings.TrimSpace(stdout.String()); err == nil && id != "" {
 			target = id
 		}
@@ -103,15 +142,62 @@ func reapAbandonedRun(r DetachedRun, cmd *exec.Cmd, done <-chan error, stdout *l
 		slog.Warn("abandoned runtime run still has not returned; killing it", "runtime", r.CLI, "container", r.Name, "grace", grace)
 		_ = cmd.Process.Kill()
 		<-done
+		killed = true
+	}
+	if r.CreatedID != nil {
+		createdID, err := r.CreatedID()
+		if err != nil {
+			slog.Warn("could not read the abandoned run's creation record", "runtime", r.CLI, "container", r.Name, "err", err)
+			r.complete("", err)
+			return
+		}
+		// A failed name collision did not create a container. Never let a
+		// delayed cleanup remove the existing owner of that name.
+		if createdID != "" {
+			target = createdID
+		} else if target == r.Name {
+			if killed {
+				r.complete("", fmt.Errorf("%s run client was killed before container creation could be confirmed", r.CLI))
+			} else {
+				r.complete("", nil)
+			}
+			return
+		}
 	}
 	if r.Remove == nil {
+		r.complete("", nil)
 		return
 	}
 	if err := r.Remove(context.Background(), target); err != nil {
+		r.complete(target, err)
 		slog.Warn("could not remove the container of an abandoned run; it may remain", "runtime", r.CLI, "container", r.Name, "target", target, "err", err)
 		return
 	}
+	r.complete("", nil)
 	slog.Info("removed the container of an abandoned run", "runtime", r.CLI, "container", r.Name, "target", target)
+}
+
+func runWasKilled(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ProcessState != nil && exitErr.ProcessState.ExitCode() < 0
+}
+
+func (r DetachedRun) complete(id string, err error) {
+	if r.OnComplete != nil {
+		r.OnComplete(id, err)
+	}
+}
+
+func removeCreatedRun(r DetachedRun, id string) error {
+	if id == "" || r.Remove == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := r.Remove(ctx, id); err != nil {
+		return fmt.Errorf("remove failed %s container %s: %w", r.CLI, id, err)
+	}
+	return nil
 }
 
 // lockedBuffer lets the reaper read the CLI's output while exec's copy

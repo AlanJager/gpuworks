@@ -9,7 +9,7 @@ from local_business_runner import case_parser, run_case
 from instance_diagnostics_browser import test_instance_diagnostics
 from instance_diagnostics_fixture import prepare, cleanup
 
-HELPERS = ("test/e2e/instance_diagnostics_fixture.py", "test/e2e/deployment_override_fixture.py",
+HELPERS = ("test/e2e/dialog_checks.py", "test/e2e/instance_diagnostics_fixture.py", "test/e2e/deployment_override_fixture.py",
            "test/e2e/deployment_wizard_fixture.py", "test/e2e/deployment_container_fixture.py",
            "test/e2e/deployment_sleep_wake.py", "test/e2e/deployment_lifecycle.py",
            "test/e2e/platform_token_read_revoke.py", "test/fake-engine/main.go",

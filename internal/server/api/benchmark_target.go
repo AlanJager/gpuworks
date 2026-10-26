@@ -7,6 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -60,6 +61,13 @@ func (a *apiHandlers) resolveManagedBenchmarkTarget(r *http.Request, deploymentI
 	dep, err := a.d.Store.GetDeployment(deploymentID)
 	if err != nil || dep.State != store.DeployActive {
 		return managedBenchmarkTarget{}, &benchmarkTargetError{http.StatusBadRequest, ErrorBenchmarkTargetInactive, "target deployment is not active"}
+	}
+	// Both the gateway and direct benchmark paths send Chat Completions.
+	// Use the model's current contract just as the proxy does; a ready HTTP
+	// container does not imply that it exposes this operation.
+	contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, nil)
+	if !inferenceapi.AllowsContractRequest(contract, http.MethodPost, "/v1/chat/completions") {
+		return managedBenchmarkTarget{}, &benchmarkTargetError{http.StatusBadRequest, ErrorBenchmarkChatRequired, "benchmark target must declare the Chat Completions operation"}
 	}
 	insts, _ := a.d.Store.InstancesForDeployment(dep.ID)
 	target := managedBenchmarkTarget{deployment: dep, instances: insts, model: dep.ServedName}

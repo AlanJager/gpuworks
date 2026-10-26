@@ -36,6 +36,7 @@ await i18n.use(initReactI18next).init({
     kvPoolUnavailable: "KV pool {{value}} GiB · token capacity unavailable ({{reason}})",
     kvPoolNotApplicable: "KV pool {{value}} GiB · this model keeps no KV cache",
     context: "Context {{value}}",
+    maxConcurrency: "Estimated maximum concurrency: {{value}}",
     utilization: "{{value}}% used",
     confidence: "{{value}}",
     partitionCapacity: "{{value}} GiB partition",
@@ -113,6 +114,14 @@ test("renders the estimate when no measurement is available", () => {
   assert.equal(screen.queryByText(/reported by the engine/), null,
     "an instance with no measurement must not claim one");
   assert.ok(screen.getByText(/estimated 187,245 tokens/), "estimated KV line missing");
+});
+
+test("a computed concurrency of zero is shown, and an uncomputed one stays absent", () => {
+  renderBreakdown({ ...breakdown, fits: false, max_concurrency: 0 });
+  assert.ok(screen.getByText("Estimated maximum concurrency: 0"));
+  cleanup();
+  renderBreakdown(breakdown);
+  assert.equal(screen.queryByText(/maximum concurrency/), null);
 });
 
 test("an engine that reported no token count is not rendered as zero", () => {

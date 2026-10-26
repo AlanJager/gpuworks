@@ -25,7 +25,11 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask,
+)
 from platform_token_read_revoke import button, check
+from deploy_submit_hold import hold_deploy_create
 import deployment_container_fixture as container_fixture
 import deployment_wizard_fixture as wizard_fixture
 
@@ -91,7 +95,9 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     report["http_errors"] = http_errors
     evaluation_responses = []
     deployment_requests = []
+    delete_requests = []
     report["deployment_post_requests"] = deployment_requests
+    report["deployment_delete_requests"] = delete_requests
     authenticated = False
     def console_seen(message):
         if message.type == "error":
@@ -104,6 +110,8 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
         if path == DEPLOYMENTS and request.method == "POST":
             deployment_requests.append({"method": request.method, "path": path,
                 "query": urlsplit(request.url).query, "body": request.post_data_json})
+        if request.method == "DELETE" and path.startswith(DEPLOYMENTS + "/"):
+            delete_requests.append(path)
     page.on("request", request_seen)
     page.on("console", console_seen)
     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -166,9 +174,10 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     expect(scheme).to_have_count(1)
     scheme.click()
     expect(scheme).to_have_class(re.compile("is-selected"))
-    weights = page.get_by_role("dialog", name=labels["weightSourceModal"]["confirmTitle"])
-    expect(weights).to_be_in_viewport(ratio=1)
-    expect(weights.get_by_role("radio", name=re.compile(re.escape(model["name"])))).to_be_checked()
+    weights = page.get_by_role("dialog", name=labels["weightSourceModal"]["confirmTitle"], exact=True)
+    marker = weights.get_by_role("radio", name=re.compile(re.escape(model["name"])))
+    expect(marker).to_be_checked()
+    assert_dialog_shell(page, weights, marker, button(weights, labels["weightSourceModal"]["useModel"]))
     button(weights, labels["weightSourceModal"]["useModel"]).click()
     expect(weights).not_to_be_visible()
     page.get_by_text(labels["workbench"]["node"]["manual"], exact=True).click()
@@ -212,13 +221,11 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     # runes. A 257-rune name exercises backend refusal without any mocking.
     invalid = "x" * 257
     name_input.fill(invalid)
-    with page.expect_response(lambda r: urlsplit(r.url).path == DEPLOYMENTS
-                              and r.request.method == "POST") as rejected:
-        deploy.click()
-    record_create(rejected.value)
-    check(rejected.value.status == 400, f"overlong name HTTP {rejected.value.status}")
+    rejected = hold_deploy_create(page, report)
+    record_create(rejected)
+    check(rejected.status == 400, f"overlong name HTTP {rejected.status}")
     detail = "must contain valid text without control characters and at most 256 characters"
-    assert_json(rejected.value.json(), {"code": "FIELD_INVALID", "error": "name " + detail,
+    assert_json(rejected.json(), {"code": "FIELD_INVALID", "error": "name " + detail,
           "params": {"field": "name", "detail": detail}}, "wrong server validation wire")
     assert_json(creates[0]["body"], expected_body(fixture, invalid), "rejected create body differs")
     error_text = common["apiError"]["FIELD_INVALID"].replace("{{field}}", "name").replace("{{detail}}", detail)
@@ -289,13 +296,25 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     row = page.get_by_role("row").filter(has_text=fixture["name"])
     expect(row).to_have_count(1)
     row.get_by_role("button", name=fixture["name"], exact=True).click()
-    drawer = page.get_by_role("dialog").last
+    drawer = page.get_by_role("dialog").filter(has_text=fixture["served_name"])
     expect(drawer.get_by_text(fixture["served_name"], exact=True)).to_be_visible()
     expect(drawer.get_by_text(IMAGE, exact=True).first).to_be_visible()
-    drawer.get_by_role("button", name=re.compile(r"\s*".join(re.escape(char) for char in deployments["delete"]["button"]) + "$")).click()
-    confirm = page.get_by_role("dialog").last
-    expect(confirm.get_by_text(deployments["delete"]["title"].replace("{{name}}", fixture["name"]), exact=True)).to_be_visible()
-    expect(confirm.get_by_text(deployments["delete"]["description"], exact=True)).to_be_visible()
+    delete_title = deployments["delete"]["title"].replace("{{name}}", fixture["name"])
+    def open_delete():
+        # The drawer button's icon contributes an accessible name prefix.
+        drawer.get_by_role("button", name=re.compile(re.escape(deployments["delete"]["button"]) + "$")).click()
+        dialog = page.get_by_role("dialog", name=delete_title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+    confirm = open_delete()
+    assert_dialog_shell(
+        page, confirm, confirm.get_by_text(deployments["delete"]["description"], exact=True),
+        button(confirm, deployments["delete"]["button"]))
+    confirm = assert_nested_dismissals(
+        confirm, drawer, open_delete,
+        [("cancel", cancel_button(deployments["delete"]["cancel"])),
+         ("escape", escape), ("close", close_button), ("mask", mask)],
+        lambda: len(delete_requests))
     with page.expect_response(lambda r: urlsplit(r.url).path == DEPLOYMENTS + f"/{dep_id}"
                               and r.request.method == "DELETE") as deleted:
         button(confirm, deployments["delete"]["button"]).click()

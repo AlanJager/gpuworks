@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import traceback
@@ -35,6 +36,15 @@ CONTRACT = "gpuworks/session/two-tab-logout-relogin"
 LOGIN, LOGOUT, ME = ("/api/v1/auth/" + name for name in ("login", "logout", "me"))
 COOKIE = "gpuworks_session"
 DENIED = {"code": "AUTHENTICATION_REQUIRED", "error": "authentication required"}
+
+
+def exercise_login_prefix(page, auth):
+    """The username affix wrapper carries the input-prefix class."""
+    username = page.get_by_role("textbox", name=auth["username"], exact=True)
+    affix = username.locator(
+        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-input-affix-wrapper ')][1]")
+    expect(affix.locator(".ant-input-prefix")).to_have_count(1, timeout=12000)
+    return username
 
 
 def cookie_identity(play, base, value):
@@ -60,6 +70,7 @@ def capture_credentials(response, context, artifacts, body):
           and cookies[0]["sameSite"] == "Lax" and cookies[0]["path"] == "/", "session cookie contract differs")
     check(isinstance(token, str) and token.count(".") == 2, "login bearer missing")
     check(body["user"]["username"] == "admin" and body["user"]["role"] == "admin", "unexpected login identity")
+    check(set(body["user"]) == {"id", "username", "role"}, "login identity fields differ")
     check(response.headers.get("cache-control") == "no-store", "login response must not be cached")
     return cookies[0]["value"], token, body["user"]
 
@@ -141,7 +152,14 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     expect(page.get_by_role("heading", name=auth["title"], exact=True)).to_be_visible()
     expect(page).to_have_url(server.base + "/networks")
     report["preflight"] = "PASS"
-    username = page.get_by_role("textbox", name=auth["username"], exact=True)
+    # requiredMark={false} puts this class on the form. The accessible name of
+    # the textbox changes when the mark is shown, so this check comes first.
+    login_form = page.locator("form.ant-form")
+    expect(login_form).to_have_count(1, timeout=12000)
+    expect(login_form).to_have_class(re.compile(r"\bant-form-hide-required-mark\b"), timeout=12000)
+    username = exercise_login_prefix(page, auth)
+    from login_inventory import exercise_login_inventory
+    report["login_inventory"] = exercise_login_inventory(page, auth)
     secret = page.get_by_label(auth["password"], exact=True)
     expect(username).to_be_empty()
     expect(secret).to_be_empty()
@@ -160,41 +178,74 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
           {"code": "INVALID_CREDENTIALS", "error": "invalid username or password"}, "invalid login not rejected precisely")
     check(rejected.value.request.post_data_json == {"username": "admin", "password": invalid}, "incorrect invalid-login request")
     expect(page.get_by_role("alert")).to_have_text(auth["invalidCredentials"])
+    # requiredMark={false} hides the asterisk. The class lives on the form.
+    login_form = page.locator("form.ant-form")
+    expect(login_form).to_have_count(1, timeout=12000)
+    expect(login_form).to_have_class(re.compile(r"\bant-form-hide-required-mark\b"), timeout=12000)
+    for label in (auth["username"], auth["password"]):
+        marked = page.locator("label").filter(has_text=re.compile("^" + re.escape(label) + "$"))
+        expect(marked).to_have_count(1, timeout=12000)
+        expect(marked).to_have_class(re.compile(r"\bant-form-item-required-mark-hidden\b"), timeout=12000)
     expect(username).to_have_value("admin")
+    expect(secret).to_have_value(invalid)
+    expect(page.get_by_role("heading", name=auth["title"], exact=True)).to_be_visible()
+    expect(page).to_have_url(server.base + "/networks")
+    expect(page.get_by_role("dialog")).to_have_count(0)
     check(not any(c["name"] == COOKIE for c in context.cookies()), "failed login created a cookie")
     check(http(server.base, "GET", ME) == (401, DENIED), "failed login made anonymous client authorized")
+    report["login_hide_required_mark"] = True
     report["evidence"].append({"layer": "ui", "empty_required_no_post": True, "secret_masked": True,
         "wrong_credential": "401 INVALID_CREDENTIALS; field retained; actionable translated alert"})
 
     # 正确登录后，两标签刷新保留深链；独立客户端证明原 Cookie/Bearer 均可用。
+    # 提交挂起时再点一次并按 Enter，仍只有这一次登录。
     secret.fill("password")
     expect(page.get_by_role("alert")).to_have_count(0)
-    with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as accepted:
-        secret.press("Enter")
-    check(accepted.value.request.post_data_json == {"username": "admin", "password": "password"}
-          and not urlsplit(accepted.value.url).query, "incorrect successful login request")
+    held_logins = []
+
+    def hold_login(route):
+        if route.request.method == "POST" and urlsplit(route.request.url).path == LOGIN:
+            held_logins.append(route)
+            return
+        route.continue_()
+
+    page.route("**/api/v1/auth/login", hold_login)
+    submit = page.locator("button.auth-submit")
+    expect(submit).to_have_count(1, timeout=12000)
+    submit.click()
+    for _ in range(40):
+        if held_logins:
+            break
+        page.wait_for_timeout(50)
+    check(len(held_logins) == 1, "sign-in did not stay in flight")
+    expect(submit).to_have_class(re.compile(r"\bant-btn-loading\b"), timeout=12000)
+    submit.click(timeout=12000)
+    secret.press("Enter")
+    page.wait_for_timeout(500)
+    check(len(held_logins) == 1, "duplicate login while the first request is held")
+    try:
+        with page.expect_response(lambda r: urlsplit(r.url).path == LOGIN and r.request.method == "POST") as accepted:
+            held_logins[0].continue_()
+        check(accepted.value.request.post_data_json == {"username": "admin", "password": "password"}
+              and not urlsplit(accepted.value.url).query, "incorrect successful login request")
+    finally:
+        page.unroute("**/api/v1/auth/login", hold_login)
     expect(page.get_by_role("heading", name=networks["title"], exact=True)).to_be_visible()
     expect(page.get_by_label(auth["password"], exact=True)).to_have_count(0)
     old_cookie, old_bearer, identity = capture_credentials(accepted.value, context, artifacts, auth_body(page, LOGIN))
     check(cookie_identity(play, server.base, old_cookie) == (200, identity), "original cookie is not usable before logout")
     check(http(server.base, "GET", ME, old_bearer) == (200, identity), "original login bearer is not usable before logout")
+    report["login_single_submit"] = True
     report["evidence"].append({"layer": "request", "path": LOGIN, "method": "POST", "status": 200,
         "body": {"username": "admin", "password": "[REDACTED]"}, "identity": identity,
         "cookie": "opaque, HttpOnly, SameSite=Lax, Path=/", "cache_control": "no-store"})
     artifacts.start_trace(context)
-    page.reload()
-    expect(page).to_have_url(server.base + "/networks")
-    expect(page.get_by_role("heading", name=networks["title"], exact=True)).to_be_visible()
-    peer = context.new_page()
-    observe(peer)
-    peer.goto(server.base + "/settings")
-    expect(peer.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
-    peer.reload()
-    expect(peer).to_have_url(server.base + "/settings")
-    expect(peer.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
-    check(peer.request.get(server.base + ME).json() == identity, "peer tab identity differs")
+    from session_persistence import exercise_session_persistence
+    peer, report["session_persistence"] = exercise_session_persistence(
+        page, context, play, server, identity, networks, settings, auth, observe, old_cookie, old_bearer)
     report["evidence"].append({"layer": "persistence", "paths_after_reload": ["/networks", "/settings"],
-        "original_credentials_before_logout": {"cookie": 200, "login_bearer": 200}, "identity": identity})
+        "original_credentials_before_logout": {"cookie": 200, "login_bearer": 200}, "identity": identity,
+        "reentered_page_matches_independent_get": True})
 
     # UI 注销撤销原会话；第二标签要求重登，原 Cookie/Bearer 必须真实返回 401。
     with page.expect_response(lambda r: urlsplit(r.url).path == LOGOUT and r.request.method == "POST") as logged_out:
@@ -279,6 +330,8 @@ def main():
         "lane": "local-real-server-sqlite", "identity": "admin browser; independent original cookie and login bearer clients",
         "locale": args.locale, "viewport": {"width": 1440, "height": 900}, "timezone": "UTC",
         "selection": [CONTRACT], "retries": 0, "evidence": [], "test_sha256": digest(Path(__file__)),
+        "persistence_sha256": digest(ROOT / "test/e2e/session_persistence.py"),
+        "login_inventory_sha256": digest(ROOT / "test/e2e/login_inventory.py"),
         "fixture_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
         "helper_sha256": digest(ROOT / "test/e2e/platform_token_read_revoke.py"),
         "coverage_manifest_sha256": digest(manifest_path),

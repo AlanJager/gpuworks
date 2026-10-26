@@ -49,7 +49,9 @@
   ],
   "checklist_items": {
     "partial": ["6.1", "6.2", "6.4", "10.10", "12.2", "12.4", "22.5", "22.6"],
-    "reason": "Only named switch state, keyboard Space activation, dependency reasons, detail viewport/Esc focus return and reload are asserted; each locale requires its own passing report."
+    "reason": "Only named switch state, keyboard Space activation, dependency reasons, detail viewport/Esc focus return and reload are asserted; each locale requires its own passing report.",
+    "12.1": "Opened from the series name on the custom images page as the only dialog. The role is dialog, the accessible name is the series name plus vllm · cuda, the component is ant-drawer-content, and the first step is the version enabled switch. The custom import drawer count is 0",
+    "12.3": "Default focus is the drawer panel. Tab and Shift+Tab cycle the controls inside the drawer. The drawer is aria-modal, so focus does not reach the page"
   },
   "missing": [
     "switch mutation failure/recovery, in-flight duplicate-submit barrier and non-admin permissions",

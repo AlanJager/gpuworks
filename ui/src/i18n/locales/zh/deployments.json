@@ -125,6 +125,7 @@
       "failed": "重试失败：{{detail}}"
     },
     "placement": {
+      "preparingModel": "正在准备模型，{{count}} 个副本尚未启动",
       "waiting": "{{count}} 个副本正在等待节点",
       "candidates": "候选节点",
       "requirements": "节点条件",
@@ -579,6 +580,8 @@
   },
   "preparation": {
     "phase": {
+      "downloading": "下载模型中",
+      "syncing": "同步模型中",
       "waiting": "等待准备进度更新",
       "checking": "检查模型来源",
       "copying": "复制到本地缓存",

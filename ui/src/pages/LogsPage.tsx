@@ -338,7 +338,7 @@ export default function LogsPage() {
 
   return (
     <div>
-      <PageHeader title={t("title")} description={t("description")} breadcrumb={[t("breadcrumb.platform"), t("title")]} />
+      <PageHeader title={t("title")} description={t("description")} />
       <Card
         title={t("search.title")}
         extra={

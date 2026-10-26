@@ -61,6 +61,7 @@ server 版本、系统镜像目录与内置推理模板目录通过同一个发�
 | `catalog/images/<sha256>.json` | 按内容摘要标识的镜像目录 |
 | `catalog/templates/<sha256>.tar.gz` | 按内容摘要标识的推理模板目录包 |
 | 根目录 `manifest.json` | 供旧版本读取，与镜像目录是同一文件 |
+| 根目录 `get.sh` | 一键安装脚本（源文件 `scripts/get.sh`）：挑最快的源，下载本机平台的压缩包、按 `SHA256SUMS` 校验后运行 `gpuworks install` |
 
 渠道 `nightly` 是每次 master 构建；`release` 留给 `v*` tag。二进制跟随构建时注入的渠道（`make CHANNEL=…`，默认 `nightly`）。
 
@@ -76,7 +77,8 @@ CI 的 `release-publish` 在 master 的四个构建 job 全部成功后运行 `s
 4. rclone 以 `--immutable` 把不可变文件推到三个源：源上同名对象内容不同时报错退出，绝不覆盖（这种源要人工处理，见下）；
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
 6. 先存下各源当前的索引、`latest` 与 `manifest.json`，再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
-7. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
+7. 把 `scripts/get.sh` 以 `Cache-Control: no-cache` 传到每个源的根目录 `get.sh`；
+8. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
 
 源上的 `releases/<id>/` 与它自己的 `SHA256SUMS` 对不上（例如本规则之前被覆盖过）时，发布会在第 4 步失败而不切换。处理方式：确认哪个源上的
 那份是对的，把错的那份删掉或换成对的，并清掉 CDN 上 `releases/<id>/` 的缓存，再重跑发布。
@@ -93,7 +95,7 @@ R2 账户令牌 `gpuworks-dist-ci`），不能建桶，所以两个发布脚本�
 
 Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 与 `image-manifest.gpuworks.ai` 配了两条缓存规则：`*/index.json`、`*/latest`、
 `/manifest.json` 一律不缓存；404 不缓存（否则发布前 `newer` 检查拿到的 404 会被边缘按默认 4 小时缓存，新渠道首次发布后读不到）。
-不可变文件按来源的 `Cache-Control: immutable` 长缓存。`/notices.json`（发布方通知，见下）也必须不缓存，需要在同一条规则里加上。
+不可变文件按来源的 `Cache-Control: immutable` 长缓存。`/notices.json`（发布方通知，见下）与 `/get.sh` 也必须不缓存，需要在同一条规则里加上。
 
 发布方通知（[ADR 0054](../adr/0054-usage-report-and-notices.md)）：编辑 `build/notices/notices.json`（未签名的正文，schema 与校验见
 `internal/server/distribution/notices.go`：每条有 `id`、`severity`、`kind`、至少英文的 `title`、可选 `body` 与 https `url`、必填 `expires_at`，

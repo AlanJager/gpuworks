@@ -181,3 +181,29 @@ func TestRunDetachedCancellationReclaimsTheContainer(t *testing.T) {
 		t.Fatalf("removed %q", got)
 	}
 }
+
+// A timeout can hide a name collision until the CLI returns. A recorded-ID
+// runtime must not reclaim the pre-existing container under that name.
+func TestRunDetachedTimedOutNameCollisionDoesNotRemoveExistingContainer(t *testing.T) {
+	release := filepath.Join(t.TempDir(), "release")
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
+	cli := fakeRunCLI(t, waitForRelease(release)+"echo 'container name already in use' >&2; exit 125")
+	rec := newRemoveRecorder(nil)
+	consumed := make(chan struct{})
+	_, err := RunDetached(context.Background(), DetachedRun{
+		CLI: cli, Name: "existing-container", Remove: rec.remove, Timeout: 50 * time.Millisecond,
+		CreatedID: func() (string, error) { close(consumed); return "", nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := os.WriteFile(release, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-consumed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("creation record was never consumed")
+	}
+	rec.none(t, 100*time.Millisecond)
+}

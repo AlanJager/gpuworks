@@ -28,7 +28,8 @@ test("preparation shows real bytes, phase and storage link", async () => {
 test("old agent, unknown total and checking have no invented percentage", () => {
     show([row({ rate_bps: 0, preparation: { phase: "checking", total_known: false, idle_seconds: 0 } })]);
     assert.ok(screen.getByText(labels.phase.checking));
-    assert.ok(screen.getByText(labels.unknownTotal));
+    assert.ok(screen.getByText(new RegExp(labels.unknownTotal)));
+    assert.ok(screen.getByText(/40 B/));
     assert.equal(screen.queryByRole("progressbar"), null);
     cleanup();
     show([row({ rate_bps: 0, preparation: undefined })]);
@@ -90,4 +91,19 @@ test("failed retry preserves the failed row and permits a new attempt", async ()
     assert.equal(changed, 0);
     assert.ok(screen.getByText("copy failed"));
     assert.ok(await screen.findByText("previous copy still running"));
+});
+
+test("shared storage downloads expose their phase and bytes before a total is known", () => {
+    show([row({ cache: false, acquisition: "download", downloaded: 4096, size_bytes: 0, rate_bps: 2048, preparation: { phase: "downloading", total_known: false, idle_seconds: 0 } })]);
+    assert.ok(screen.getByText("Downloading model"));
+    assert.ok(screen.getByText(/4.0 KiB/));
+    assert.ok(screen.getByText(new RegExp(labels.unknownTotal)));
+    assert.ok(screen.getByText(/\/s/));
+    assert.equal(screen.queryByRole("progressbar"), null);
+});
+
+test("shared model sync progress keeps the server phase", () => {
+    show([row({ cache: false, acquisition: "peer", preparation: { phase: "syncing", total_known: true, idle_seconds: 0 } })]);
+    assert.ok(screen.getByText("Syncing model"));
+    assert.ok(screen.getByText(/40 B \/ 100 B/));
 });

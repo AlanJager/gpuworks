@@ -19,7 +19,7 @@ type cachedProbeDriver struct {
 }
 
 func (d *cachedProbeDriver) ImageExists(_ context.Context, image string) (bool, error) {
-	return image == "gpuworks/partition-probe:v1" || image == "gpuworks/partition-probe:v2" || image == d.loaded, nil
+	return image == "gpuworks/partition-probe:v1" || image == "gpuworks/partition-probe:v2" || image == "gpuworks/partition-probe:v3" || image == d.loaded, nil
 }
 
 func (d *cachedProbeDriver) LoadImage(_ context.Context, image string, archive io.Reader) error {
@@ -54,7 +54,7 @@ func TestRunnerReplacesCachedProbeProtocol(t *testing.T) {
 	runner := New(driver, &fakeBuilder{}, "ascend")
 	reports, gpus := ascendFacts()
 	results := runner.Results(context.Background(), reports, gpus)
-	if len(results) != 1 || results[0].Status != proto.PartitionProbePassed || driver.loaded != assets.PartitionProbeImage || driver.loaded == "gpuworks/partition-probe:v2" {
+	if len(results) != 1 || results[0].Status != proto.PartitionProbePassed || driver.loaded != assets.PartitionProbeImage || driver.loaded == "gpuworks/partition-probe:v3" {
 		t.Fatalf("old cached image bypassed the upgrade: loaded=%q results=%+v", driver.loaded, results)
 	}
 	if len(driver.runs) != 1 || driver.runs[0].Image != driver.loaded {

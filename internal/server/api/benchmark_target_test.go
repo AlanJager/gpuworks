@@ -28,7 +28,7 @@ func TestBenchmarkEntryDefaultsToGatewayAndNamesInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dep, err := st.CreateDeployment(&store.Deployment{Name: "pd", ServedName: "pd-model", State: "active"})
+	dep, err := st.CreateDeployment(&store.Deployment{Name: "pd", ModelID: benchmarkChatModel(t, st, "pd").ID, ServedName: "pd-model", State: "active"})
 	if err != nil {
 		t.Fatal(err)
 	}

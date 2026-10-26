@@ -54,3 +54,11 @@ python3 docs-site/check_translations.py --require-complete
 Mermaid 图的可见文字、纯文本公式、写作模板和目录说明也可翻译；
 逐块复核结构、路径及技术标识后，将原块与英文块的 SHA-256 登记到 `localized-code-blocks.json`。
 检查只接受已复核的精确内容组合，后续修改任一块都需重新复核，不能用刷新哈希代替内容审阅。
+
+## Read the Docs 私有托管
+
+仓库根目录的 `.readthedocs.yaml` 让 readthedocs.com 上的私有项目复用 `build.sh` 构建：下载 Hugo extended 0.165.0，用 `DOCS_BASE_URL` 把 baseURL 换成项目根地址（`hugo.yaml` 中的 `/docs/` 不变），输出到 `$READTHEDOCS_OUTPUT/html`。Read the Docs 访问不到内网主题仓库，需要在项目环境变量中设置私有的 `WEBSITE_REPO`，值为它能访问的只读克隆地址；本地验证同样的构建：
+
+```bash
+DOCS_BASE_URL=https://<项目>.readthedocs-hosted.com/ HUGO_BIN=/path/to/hugo bash docs-site/build.sh
+```

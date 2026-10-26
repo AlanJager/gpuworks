@@ -127,3 +127,31 @@ func TestABindingToAnUnlistedCardFailsRatherThanResolvingToMinusOne(t *testing.T
 		}
 	}
 }
+
+// What the running instances hold: bound ones by identity, ones whose spec
+// binds no identity (a server that predates the binding) by their device
+// indexes so the caller can still name them — never dropped, since a card
+// left out reads as somebody else's.
+func TestHeldCardsKeepsInstancesWithoutABinding(t *testing.T) {
+	e := &Engine{desired: map[string]proto.InstanceDesiredState{
+		"bound":    {UUID: "bound", DesiredState: "running", GPUIndexes: []int{0}, GPUIdents: []string{"pci:0000:32:00.0"}},
+		"legacy":   {UUID: "legacy", DesiredState: "running", GPUIndexes: []int{1}},
+		"headless": {UUID: "headless", DesiredState: "running", GPUIndexes: []int{2}, Headless: true},
+		"partial":  {UUID: "partial", DesiredState: "running", GPUIndexes: []int{3, 4}, GPUIdents: []string{"pci:0000:9a:00.0"}},
+		"stopped":  {UUID: "stopped", DesiredState: "stopped", GPUIndexes: []int{5}, GPUIdents: []string{"pci:0000:b1:00.0"}},
+		"stopping": {UUID: "stopping", DesiredState: "stopped", GPUIndexes: []int{6}},
+	}}
+	held := e.HeldCards()
+	if len(held.Idents) != 1 || held.Idents[0] != "pci:0000:32:00.0" {
+		t.Fatalf("idents = %v", held.Idents)
+	}
+	got := map[int]bool{}
+	for _, index := range held.Indexes {
+		got[index] = true
+	}
+	// A partial binding is not trusted, the same as at launch: its indexes
+	// are the complete statement of the selection.
+	if len(got) != 4 || !got[1] || !got[2] || !got[3] || !got[4] {
+		t.Fatalf("indexes = %v, want 1 2 3 4", held.Indexes)
+	}
+}

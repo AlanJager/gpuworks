@@ -54,23 +54,26 @@ export default function PlaygroundPage() {
         title={t("page.title")}
         description={t("page.description")}
         extra={<Space><Tag color="blue">{t("page.modelCount", { count: catalog?.models.length ?? 0 })}</Tag><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()} aria-label={t("page.refresh")} /></Space>}
+        toolbar={
+          <>
+            <Segmented
+              className="playground-mode"
+              value={mode}
+              options={[
+                { value: "chat", label: <span><MessageOutlined /> {t("page.chat")}</span> },
+                { value: "completion", label: <span><EditOutlined /> {t("page.completion")}</span> },
+                { value: "audio", label: <span><AudioOutlined /> {t("page.audio")}</span> },
+                { value: "vector", label: <span># {t("page.vector")}</span> },
+                { value: "image", label: <span><FileImageOutlined /> {t("page.image")}</span> },
+                { value: "video", label: <span><VideoCameraOutlined /> {t("page.video")}</span> },
+                { value: "realtime", label: <span><ThunderboltOutlined /> {t("page.realtime")}</span> },
+              ]}
+              onChange={(value) => navigate(`/playground/${value}`)}
+            />
+            <Typography.Text type="secondary">{t("page.parameterNotice")}</Typography.Text>
+          </>
+        }
       />
-      <div className="playground-mode-bar">
-        <Segmented
-          value={mode}
-          options={[
-            { value: "chat", label: <span><MessageOutlined /> {t("page.chat")}</span> },
-            { value: "completion", label: <span><EditOutlined /> {t("page.completion")}</span> },
-            { value: "audio", label: <span><AudioOutlined /> {t("page.audio")}</span> },
-            { value: "vector", label: <span># {t("page.vector")}</span> },
-            { value: "image", label: <span><FileImageOutlined /> {t("page.image")}</span> },
-            { value: "video", label: <span><VideoCameraOutlined /> {t("page.video")}</span> },
-            { value: "realtime", label: <span><ThunderboltOutlined /> {t("page.realtime")}</span> },
-          ]}
-          onChange={(value) => navigate(`/playground/${value}`)}
-        />
-        <Typography.Text type="secondary">{t("page.parameterNotice")}</Typography.Text>
-      </div>
       {error && <Alert type="error" showIcon message={t("page.loadFailed")} description={error} action={<Button onClick={() => void load()}>{t("page.retry")}</Button>} />}
       {!catalog && loading ? <Skeleton active paragraph={{ rows: 8 }} /> : catalog && ({
         chat: <ChatPage catalog={catalog} onCatalogChanged={load} />,

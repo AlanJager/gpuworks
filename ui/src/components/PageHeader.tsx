@@ -1,65 +1,56 @@
-import { Breadcrumb, Space, Typography } from "antd";
-import {
-  ApiOutlined,
-  AppstoreOutlined,
-  CloudOutlined,
-  CloudServerOutlined,
-  DashboardOutlined,
-  FileSearchOutlined,
-  HeartOutlined,
-  KeyOutlined,
-  RocketOutlined,
-  SettingOutlined,
-  UnorderedListOutlined,
-} from "@ant-design/icons";
+import { Breadcrumb, Typography } from "antd";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { sectionLabelKey } from "../navigation";
 
+/**
+ * PageHeader is the title block every page starts with. The breadcrumb names
+ * the menu section the page sits in (plus any parents), so it can never
+ * disagree with the menu; the description, the actions and a toolbar row are
+ * optional. Narrow, the parts stack in reading order instead of drifting.
+ */
 export default function PageHeader({
   title,
   description,
   extra,
-  breadcrumb,
+  toolbar,
+  parents,
   className,
-  illustration,
 }: {
   title: ReactNode;
+  /** One sentence on what the page is for; kept to a line. */
   description?: string;
+  /** Actions beside the title, the primary one last. */
   extra?: ReactNode;
-  /** Plain text, or a node such as a link to the parent page. */
-  breadcrumb?: ReactNode[];
+  /** Page-wide controls — filters, a time range, mode tabs — in a row under the title. */
+  toolbar?: ReactNode;
+  /** Pages between the menu section and this one, e.g. a link back to the list. */
+  parents?: ReactNode[];
   className?: string;
-  illustration?: string;
 }) {
+  const { t } = useTranslation("common");
   const location = useLocation();
+  // The menu entry decides. Comparing this title to the section text would
+  // follow whichever translation happens to match.
+  const sectionKey = sectionLabelKey(location.pathname);
+  const section = sectionKey ? t(sectionKey) : undefined;
+  const trail = [section, ...(parents ?? [])].filter((item) => item !== undefined);
   return (
     <div className={`page-header${className ? ` ${className}` : ""}`}>
-      <div className="page-header-main">
-        <span className="page-header-icon" aria-hidden="true">{pageIcon(location.pathname)}</span>
+      <div className="page-header-row">
         <div className="page-header-copy">
-          {breadcrumb && breadcrumb.length > 0 && (
-            <Breadcrumb className="page-header-breadcrumb" items={breadcrumb.map((item) => ({ title: item }))} />
+          {trail.length > 0 && (
+            <Breadcrumb className="page-header-breadcrumb" items={trail.map((item) => ({ title: item }))} />
           )}
-          <Typography.Title level={2} className="page-header-title">{title}</Typography.Title>
-          {description && <Typography.Paragraph className="page-header-description">{description}</Typography.Paragraph>}
+          <Typography.Title level={2} className="page-header-title">
+            <span className="page-header-title-text">{title}</span>
+          </Typography.Title>
+          {description && <Typography.Paragraph className="page-header-description" title={description}>{description}</Typography.Paragraph>}
         </div>
+        {extra && <div className="page-header-extra">{extra}</div>}
       </div>
-      {illustration && <img className="page-header-illustration" src={illustration} alt="" aria-hidden="true" />}
-      {extra && <Space className="page-header-extra">{extra}</Space>}
+      {toolbar && <div className="page-header-toolbar">{toolbar}</div>}
     </div>
   );
-}
-
-function pageIcon(pathname: string) {
-  if (pathname.startsWith("/dashboard")) return <DashboardOutlined />;
-  if (pathname.startsWith("/monitor")) return <HeartOutlined />;
-  if (pathname.startsWith("/nodes")) return <CloudServerOutlined />;
-  if (pathname.startsWith("/providers") || pathname.startsWith("/zstack")) return <CloudOutlined />;
-  if (pathname.startsWith("/deployments")) return <UnorderedListOutlined />;
-  if (pathname.startsWith("/deploy")) return <RocketOutlined />;
-  if (pathname.startsWith("/evaluations") || pathname.startsWith("/logs")) return <FileSearchOutlined />;
-  if (pathname.startsWith("/apikeys")) return <KeyOutlined />;
-  if (pathname.startsWith("/settings")) return <SettingOutlined />;
-  if (pathname.startsWith("/networks") || pathname.includes("connect")) return <ApiOutlined />;
-  return <AppstoreOutlined />;
 }

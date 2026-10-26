@@ -115,13 +115,13 @@
     },
     {
       "item": "1.9",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "While the restart POST is held the confirm button stays loading and a second click sends no further restart. That held request is the only restart until the later 202"
     },
     {
       "item": "1.10",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "The real 409 DEPLOYMENT_NOT_ACTIVE keeps the restart dialog and the checked drain choice, shows the not-active reason, and the independent GET keeps the same instances. The retry 202 is accepted"
     },
     {
       "item": "1.11",
@@ -275,33 +275,33 @@
     },
     {
       "item": "12.1",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Restart on the replica row opens one dialog named by the restart title, and the restart description is the visible business control"
     },
     {
       "item": "12.2",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Restart dialog at 1440x900: the dialog and footer Restart stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"
     },
     {
       "item": "12.3",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Default focus is inside the restart dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"
     },
     {
       "item": "12.4",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Cancel, Escape, the close button and the mask each return focus to the replica Restart button and send no restart. The independent deployment GET keeps the same instances"
     },
     {
       "item": "12.5",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Restart confirm over the deployment detail drawer: Cancel, Escape, close and mask each hide the child, leave the drawer open, and hide the child buttons. Reopen uses the restart-title dialog"
     },
     {
       "item": "12.6",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "While the replica restart POST is held the confirm button shows the loading state and a second click sends no further restart; the real 409 keeps the drain choice and shows the inactive deployment reason, and the instances stay unchanged; the later 202 matches the independent detail GET and the reloaded ready count"
     },
     {
       "item": "12.7",

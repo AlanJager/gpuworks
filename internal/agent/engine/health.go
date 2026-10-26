@@ -34,6 +34,8 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 	client := &http.Client{Timeout: 3 * time.Second}
 	healthStarted := time.Now()
 	nextHealthReport := 10 * time.Second
+	loadRequested := false
+	var loadResult <-chan string
 
 	for time.Now().Before(deadline) {
 		if st, err := driver.Status(ctx, id); err == nil && st.Exists && !st.Running {
@@ -44,11 +46,37 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 			e.failAfterContainer(ctx, spec, msg)
 			return false
 		}
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			e.failAfterContainer(ctx, spec, "invalid engine health endpoint: "+err.Error())
+			return false
+		}
 		resp, err := client.Do(req)
 		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
+			readiness, decodeErr := readEngineReadiness(resp)
+			ready := resp.StatusCode == http.StatusOK
+			if ready && readiness.Service == "strata" {
+				ready = decodeErr == nil && readiness.Loaded != nil && *readiness.Loaded
+				if decodeErr == nil && !ready && readiness.Loaded != nil && readiness.APIKey != nil && !*readiness.APIKey {
+					modelsReq, modelsErr := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/v1/models", spec.APIPort), nil)
+					var modelsResp *http.Response
+					if modelsErr == nil {
+						modelsResp, modelsErr = client.Do(modelsReq)
+					}
+					if modelsErr == nil {
+						models, valid := readStrataModels(modelsResp)
+						if valid {
+							ready = intentionallyUnloaded(models)
+							if len(models) == 0 && !loadRequested {
+								loadRequested = true
+								e.reportStateProgress(spec, proto.InstStarting, id, "", "engine child is not loaded; recovering", proto.PhaseHealthCheck, 0, 0, 0, 0)
+								loadResult = requestStrataLoad(ctx, client, spec.APIPort)
+							}
+						}
+					}
+				}
+			}
+			if ready {
 				// A healthy answer on the port may come from someone else's
 				// engine while ours is still loading weights.
 				if err := checkServesOwnModel(ctx, client, spec); err != nil {
@@ -76,8 +104,19 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 					UUID: spec.UUID, State: proto.InstRunning, ContainerID: id,
 					Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
 					Measured: e.collectMeasured(ctx, spec, id), SleepLevel: actualSleep,
+					OpenAPIPaths: readOpenAPIPaths(ctx, client, spec.APIPort),
 				})
 				return true
+			}
+		}
+		if loadResult != nil {
+			select {
+			case detail := <-loadResult:
+				loadResult = nil
+				if detail != "" && ctx.Err() == nil {
+					e.reportStateProgress(spec, proto.InstStarting, id, "", detail, proto.PhaseHealthCheck, 0, 0, 0, 0)
+				}
+			default:
 			}
 		}
 		select {

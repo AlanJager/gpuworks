@@ -111,6 +111,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Local Setup](dev/setup.md)
 - [Testing Guide and Cloud Test Tiers](dev/testing.md)
 - [Benchmark Information and Reporting Standards](dev/benchmark-reporting-standard.md)
+- [Observability Limits of Per-Request Engine Queue Time](dev/engine-queue-observation.md)
 - [Browser E2E Testing Standards](../test/e2e/browser-e2e-testing-standard.md)
 - [Releases and Embedded Assets](dev/release.md)
 - [Contributing and Document Placement](dev/contributing.md)

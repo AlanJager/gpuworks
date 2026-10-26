@@ -84,6 +84,9 @@ const ChatPane = memo(function ChatPane({
   useFollowScroll(viewportRef, follow, onScrollAway, messages);
 
   const selectedModel = chatModels.find((model) => model.id === column.model);
+  const unavailableOption = column.model && !selectedModel
+    ? [{ value: column.model, label: t(models.some((model) => model.id === column.model) ? "pane.unsupportedSelection" : "pane.unavailableSelection", { model: column.model }), disabled: true }]
+    : [];
   const codeBody = useMemo(() => {
     const history = historyMessages(column);
     try {
@@ -116,7 +119,7 @@ const ChatPane = memo(function ChatPane({
           value={column.model || undefined}
           placeholder={t("pane.modelPlaceholder")}
           onChange={(value) => store.setModel(column.id, value)}
-          options={chatModels.map((model) => ({ value: model.id, label: model.label }))}
+          options={[...unavailableOption, ...chatModels.map((model) => ({ value: model.id, label: model.label }))]}
           showSearch
           optionFilterProp="label"
         />

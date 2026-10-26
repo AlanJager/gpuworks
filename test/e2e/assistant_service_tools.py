@@ -79,6 +79,82 @@ def cluster_inventory_answer(tool_fact, inventory):
             f"attention includes {expected_names[0]}.")
 
 
+def exercise_add_dialog(page, trigger, title, parent_name, field_label, save_label, cancel_label, evidence):
+    """Dialog identity, layout, focus, and dismissals. No AI config write."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    writes = []
+
+    def on_request(request):
+        path = urlsplit(request.url).path
+        if path.startswith(CONFIGS) and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            writes.append(request.method)
+
+    page.on("request", on_request)
+    parent = page.get_by_role("heading", name=parent_name, exact=True)
+    baseline = len(writes)
+
+    def open_dialog():
+        trigger.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_dialog()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(field_label, exact=True), button(dialog, save_label))
+    dialog = assert_nested_dismissals(
+        dialog, parent, open_dialog,
+        [("cancel", cancel_button(cancel_label)), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        lambda: len(writes), trigger)
+    check(len(writes) == baseline, "add dialog dismissal sent a write")
+    evidence.append({"layer": "ui", "add_dialog": title,
+                     "dismissals": ["cancel", "escape", "close", "mask"], "write_requests": 0})
+    return dialog
+
+
+def exercise_add_inflight(page, modal, settings, name, base, model, api_key, bad_responses, console_errors, evidence):
+    """One held create, a swallowed second click, then a 502 that keeps the draft."""
+    reason = "upstream fixture is unreachable"
+    held = []
+
+    def hold_create(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != CONFIGS:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + CONFIGS, hold_create)
+    button(modal, settings["common"]["add"]).click()
+    inflight = modal.locator(".ant-modal-footer button.ant-btn-primary")
+    expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    inflight.click()
+    modal.get_by_label(settings["ai"]["name"], exact=True).press("Enter")
+    check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+    body = held[0].request.post_data_json
+    check(body == {"name": name, "preset": "custom", "base_url": base, "api_key": api_key,
+                   "model": model, "is_default": True}, "held create body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == CONFIGS and r.request.method == "POST") as failed:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute("**" + CONFIGS, hold_create)
+    check(failed.value.status == 502, "forced create failure did not surface")
+    expect(modal).to_be_visible()
+    expect(modal.get_by_label(settings["ai"]["name"], exact=True)).to_have_value(name)
+    expect(modal.get_by_label(settings["ai"]["baseUrl"], exact=True)).to_have_value(base)
+    expect(modal.get_by_label(settings["ai"]["model"], exact=True)).to_have_value(model)
+    expect(modal.get_by_label(settings["ai"]["upstreamKey"], exact=True)).to_have_value(api_key)
+    expect(modal.locator(".ant-select-selection-item").first).to_have_text(settings["ai"]["presetName"]["custom"])
+    expect(modal.get_by_role("switch")).to_be_checked()
+    expect(page.get_by_text(reason)).to_be_visible()
+    check(any(item["path"] == CONFIGS and item["status"] == 502 for item in bad_responses), "502 was not recorded")
+    check(any("502" in text for text in console_errors), "502 console line absent: " + str(console_errors))
+    bad_responses[:] = [item for item in bad_responses if item.get("status") != 502]
+    console_errors[:] = [text for text in console_errors if "502" not in text]
+    evidence.append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True,
+                     "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
+
+
 # Contract: gpuworks/assistant/service-tool-read-stream
 # Mainline: 独立 server/SQLite + 可审计 LLM fixture → 设置页新增并设为默认 AI 服务
 #           → 助手面板提问 → fixture 请求 cluster_overview → server 执行只读工具并回传
@@ -160,9 +236,20 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     expect(card.get_by_text(settings["ai"]["empty"], exact=True)).to_be_visible()
     report["last_step"] = "no-config-assistant-state"
 
-    button(card, settings["common"]["add"]).click()
-    modal = page.get_by_role("dialog")
-    expect(modal).to_be_visible()
+    trigger = button(card, settings["common"]["add"])
+    expect(trigger).to_be_visible()
+    modal = exercise_add_dialog(
+        page, trigger, settings["ai"]["addService"], settings["page"]["title"],
+        settings["ai"]["name"], settings["common"]["add"], settings["common"]["cancel"],
+        report["evidence"])
+    report["last_step"] = "add-switch"
+    add_switch = modal.locator(".ant-switch")
+    expect(add_switch).to_have_count(1, timeout=12000)
+    expect(add_switch).not_to_have_class(re.compile(r"\bant-switch-small\b"), timeout=12000)
+    expect(add_switch).to_be_checked()
+    report["add_switch"] = {"count": 1, "small": False, "checked": True}
+    from assistant_add_inventory import exercise_add_inventory
+    report["add_inventory"] = exercise_add_inventory(modal, settings)
     expect(modal.get_by_text(settings["ai"]["addService"], exact=True)).to_be_visible()
     modal.locator(".ant-select-selector").first.click()
     custom = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
@@ -175,6 +262,11 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
     upstream_key = modal.get_by_label(settings["ai"]["upstreamKey"], exact=True)
     expect(upstream_key).to_have_attribute("type", "password")
     upstream_key.fill(fixture.api_key)
+    from assistant_add_keyboard import exercise_add_keyboard
+    report["add_keyboard"] = exercise_add_keyboard(page, modal, settings, config_name)
+    report["last_step"] = "add-keyboard"
+    exercise_add_inflight(page, modal, settings, config_name, fixture.base, fixture.model,
+                           fixture.api_key, bad_responses, console_errors, report["evidence"])
     with page.expect_response(lambda r: urlsplit(r.url).path == CONFIGS
                               and r.request.method == "POST") as created:
         button(modal, settings["common"]["add"]).click()
@@ -300,6 +392,140 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
           f"AI config readback differs: {rows}")
     check("api_key" not in rows[0], "the AI config response exposed the upstream key")
 
+    off_name = config_name + "-off"
+    button(card, settings["common"]["add"]).click()
+    off_modal = page.get_by_role("dialog", name=settings["ai"]["addService"], exact=True)
+    expect(off_modal).to_be_visible()
+    off_switch = off_modal.locator(".ant-switch")
+    expect(off_switch).to_have_count(1, timeout=12000)
+    expect(off_switch).not_to_have_class(re.compile(r"\bant-switch-small\b"), timeout=12000)
+    expect(off_switch).to_be_checked()
+    off_switch.click()
+    expect(off_switch).not_to_be_checked()
+    off_modal.locator(".ant-select-selector").first.click()
+    off_custom = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+        has_text=re.compile(r"^" + re.escape(settings["ai"]["presetName"]["custom"]) + r"$"))
+    expect(off_custom).to_be_visible()
+    off_custom.click()
+    expect(off_switch).not_to_be_checked()
+    off_modal.get_by_label(settings["ai"]["name"], exact=True).fill(off_name)
+    off_modal.get_by_label(settings["ai"]["baseUrl"], exact=True).fill(fixture.base)
+    off_modal.get_by_label(settings["ai"]["model"], exact=True).fill(fixture.model)
+    off_modal.get_by_label(settings["ai"]["upstreamKey"], exact=True).fill(fixture.api_key)
+    with page.expect_response(lambda r: urlsplit(r.url).path == CONFIGS
+                              and r.request.method == "POST") as off_created:
+        button(off_modal, settings["common"]["add"]).click()
+    check(off_created.value.status == 201, f"off-switch AI config HTTP {off_created.value.status}")
+    off_body = off_created.value.request.post_data_json
+    check(set(off_body) == {"name", "preset", "base_url", "api_key", "model", "is_default"},
+          "off-switch create body keys differ")
+    check(off_body["name"] == off_name and off_body["preset"] == "custom"
+          and off_body["base_url"] == fixture.base and off_body["model"] == fixture.model
+          and off_body["is_default"] is False,
+          "off-switch create fields differ")
+    check(off_body.get("api_key") == fixture.api_key,
+          "off-switch create key differs from the configured fixture key")
+    off_created_doc = off_created.value.json()
+    check(set(off_created_doc) == {"id"}, "off-switch create response was not an id")
+    page.reload()
+    expect(page.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
+    card = page.locator(".ant-card").filter(has_text=settings["ai"]["service"]).first
+    expect(card.get_by_text(off_name, exact=True)).to_be_visible()
+    expect(card.get_by_text(config_name, exact=True)).to_be_visible()
+    off_row = card.locator("tr.ant-table-row").filter(has_text=off_name)
+    first_row = card.locator("tr.ant-table-row").filter(
+        has_text=re.compile(re.escape(config_name) + r"(?!-)"))
+    expect(off_row.locator(".ant-tag")).to_have_count(0, timeout=12000)
+    expect(off_row.get_by_text("—", exact=True)).to_be_visible()
+    expect(first_row.locator(".ant-tag")).to_have_count(1, timeout=12000)
+    expect(first_row.get_by_text(settings["ai"]["default"], exact=True)).to_be_visible()
+    both = page.request.get(server.base + CONFIGS)
+    check(both.status == 200, f"off-switch AI config GET HTTP {both.status}")
+    both_rows = {row["name"]: row for row in both.json()["items"]}
+    check(set(both_rows) == {config_name, off_name}, "off-switch create did not leave both services")
+    check(both_rows[config_name]["is_default"] is True
+          and both_rows[config_name]["preset"] == "custom"
+          and both_rows[config_name]["base_url"] == fixture.base
+          and both_rows[config_name]["model"] == fixture.model
+          and "api_key" not in both_rows[config_name],
+          "the first service changed after the off-switch create")
+    check(both_rows[off_name]["is_default"] is False
+          and both_rows[off_name]["preset"] == "custom"
+          and both_rows[off_name]["base_url"] == fixture.base
+          and both_rows[off_name]["model"] == fixture.model
+          and "api_key" not in both_rows[off_name],
+          "the off-switch service was not stored")
+    button(off_row, settings["common"]["delete"]).click()
+    confirm_popconfirm(page)
+    expect(off_row).to_have_count(0, timeout=12000)
+    after_off = page.request.get(server.base + CONFIGS)
+    check(after_off.status == 200, f"AI config GET after off-switch delete HTTP {after_off.status}")
+    after_off_rows = after_off.json()["items"]
+    check(len(after_off_rows) == 1 and after_off_rows[0]["name"] == config_name
+          and after_off_rows[0]["is_default"] is True,
+          "deleting the off-switch service did not leave the first default")
+
+    omit_name = config_name + "-omit"
+    omit_payload = {"name": omit_name, "preset": "custom", "base_url": fixture.base,
+                    "api_key": fixture.api_key, "model": fixture.model}
+    check("is_default" not in omit_payload, "the omitted-default payload includes is_default")
+    with page.expect_request(lambda r: urlsplit(r.url).path == CONFIGS
+                             and r.method == "POST") as omit_posted:
+        omit_result = page.evaluate(
+            """async ({url, body}) => {
+                const response = await fetch(url, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    credentials: "same-origin",
+                    body: JSON.stringify(body),
+                });
+                return {status: response.status, json: await response.json()};
+            }""",
+            {"url": server.base + CONFIGS, "body": omit_payload})
+    omit_body = omit_posted.value.post_data_json
+    check(omit_result["status"] == 201, f"omitted-default AI config HTTP {omit_result['status']}")
+    check("is_default" not in omit_body and set(omit_body) ==
+          {"name", "preset", "base_url", "api_key", "model"},
+          "omitted-default create body keys differ")
+    check(omit_body["name"] == omit_name and omit_body["preset"] == "custom"
+          and omit_body["base_url"] == fixture.base and omit_body["model"] == fixture.model,
+          "omitted-default create fields differ")
+    check(omit_body.get("api_key") == fixture.api_key,
+          "omitted-default create key differs from the configured fixture key")
+    check(set(omit_result["json"]) == {"id"}, "omitted-default create response was not an id")
+    omitted = page.request.get(server.base + CONFIGS)
+    check(omitted.status == 200, f"omitted-default AI config GET HTTP {omitted.status}")
+    omitted_rows = {row["name"]: row for row in omitted.json()["items"]}
+    check(set(omitted_rows) == {config_name, omit_name},
+          "omitted-default create did not leave both services")
+    check(omitted_rows[config_name]["is_default"] is True
+          and omitted_rows[omit_name]["is_default"] is False
+          and omitted_rows[omit_name]["preset"] == "custom"
+          and omitted_rows[omit_name]["base_url"] == fixture.base
+          and omitted_rows[omit_name]["model"] == fixture.model
+          and "api_key" not in omitted_rows[omit_name]
+          and "api_key" not in omitted_rows[config_name],
+          "omitted is_default was not stored as false beside the existing default")
+    page.reload()
+    expect(page.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
+    card = page.locator(".ant-card").filter(has_text=settings["ai"]["service"]).first
+    omit_row = card.locator("tr.ant-table-row").filter(has_text=omit_name)
+    expect(omit_row).to_have_count(1, timeout=12000)
+    expect(omit_row.locator(".ant-tag")).to_have_count(0, timeout=12000)
+    button(omit_row, settings["common"]["delete"]).click()
+    confirm_popconfirm(page)
+    expect(omit_row).to_have_count(0, timeout=12000)
+    after_omit = page.request.get(server.base + CONFIGS)
+    check(after_omit.status == 200, f"AI config GET after omitted-default delete HTTP {after_omit.status}")
+    after_omit_rows = after_omit.json()["items"]
+    check(len(after_omit_rows) == 1 and after_omit_rows[0]["name"] == config_name
+          and after_omit_rows[0]["is_default"] is True,
+          "deleting the omitted-default service did not leave the first default")
+    report["off_switch_create"] = {"name": off_name, "is_default": False, "first_remains_default": True}
+    report["omitted_default"] = {"name": omit_name, "request_has_is_default": False,
+                                 "stored_is_default": False, "first_remains_default": True}
+    report["last_step"] = "optional-default-persisted"
+
     button(card, settings["common"]["delete"]).click()
     popconfirm = page.locator(".ant-popconfirm")
     expect(popconfirm).to_contain_text(settings["ai"]["deleteConfirm"])
@@ -360,6 +586,9 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
         {"layer": "persistence", "reload": "config row and default flag remain",
          "independent_get": {k: rows[0][k] for k in
                              ("name", "preset", "base_url", "model", "is_default")},
+         "off_switch": {"name": off_name, "is_default": False, "first_remains_default": True},
+         "omitted_is_default": {"name": omit_name, "stored_is_default": False,
+                                "first_remains_default": True},
          "assistant_answer_streamed": True},
         {"layer": "execution", "fixture_requests": [item["kind"] for item in
          denied_snapshot["requests"]],
@@ -401,6 +630,9 @@ def main():
         "test_sha256": digest(Path(__file__)),
         "fixture_sha256": digest(ROOT / "test/e2e/assistant_fixture.py"),
         "helper_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
+        "dialog_checks_sha256": digest(ROOT / "test/e2e/dialog_checks.py"),
+        "keyboard_sha256": digest(ROOT / "test/e2e/assistant_add_keyboard.py"),
+        "inventory_sha256": digest(ROOT / "test/e2e/assistant_add_inventory.py"),
         "execution": "real server-side read-only tool loop against an audited local LLM fixture; no GPU claim",
         "runtime": "N/A: no agent, container, GPU or real model",
         "not_covered": ["real vendor model quality", "all read-only tools",

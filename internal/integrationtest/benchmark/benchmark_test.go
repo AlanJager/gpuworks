@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -39,7 +40,7 @@ func TestAgentBenchmarkMultiPointRunPersistsMetrics(t *testing.T) {
 		"base_url":      engine.URL,
 		"model":         "fake-model",
 		"load_origin":   node.UUID,
-		"dataset":       map[string]any{"kind": "random", "input_tokens": 8, "output_tokens": 4},
+		"tokenizer_ref": benchmarkTestTokenizer(t), "dataset": map[string]any{"kind": "random", "input_tokens": 8, "output_tokens": 4},
 		"mode":          "grid",
 		"search":        map[string]any{"concurrency": []int{1, 2}, "isl": []int{8}, "osl": []int{4}, "requests_per_point_multiplier": 2},
 		"keep_detail":   true,
@@ -157,7 +158,7 @@ func TestServerBenchmarkStoresBoundedDetailArtifact(t *testing.T) {
 	env := testenv.NewWithPrivateHTTPHosts(t, "127.0.0.1")
 	body, _ := json.Marshal(map[string]any{
 		"name": "server detail smoke", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": "server",
-		"dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "grid",
+		"tokenizer_ref": benchmarkTestTokenizer(t), "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "grid",
 		"search":      map[string]any{"concurrency": []int{1, 2}, "isl": []int{4}, "osl": []int{2}, "requests_per_point_multiplier": 2},
 		"keep_detail": true, "detail_cap_mb": 1,
 	})
@@ -206,7 +207,7 @@ func TestAgentSaturationSearchStopsBeforeMaximumOnPlateau(t *testing.T) {
 	env := testenv.New(t)
 	node := env.AddNode("saturation-node", testenv.WithGPUs(1, testenv.GPUSpec{Model: "A100"}), testenv.WithDriverName("fake"))
 	env.WaitNodeOnline(t, "saturation-node")
-	body, _ := json.Marshal(map[string]any{"name": "adaptive saturation", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": node.UUID, "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "saturation", "search": map[string]any{"concurrency": 1, "max_concurrency": 32, "isl": []int{4}, "osl": []int{2}, "min_throughput_gain": 100.0, "requests_per_point_multiplier": 2}})
+	body, _ := json.Marshal(map[string]any{"name": "adaptive saturation", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": node.UUID, "tokenizer_ref": benchmarkTestTokenizer(t), "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "saturation", "search": map[string]any{"concurrency": 1, "max_concurrency": 32, "isl": []int{4}, "osl": []int{2}, "min_throughput_gain": 100.0, "requests_per_point_multiplier": 2}})
 	resp, err := env.API(t).PostJSON("/api/v1/benchmarks", body)
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +244,7 @@ func TestAgentBenchmarkStatusRecoversAfterServerRestart(t *testing.T) {
 	env := testenv.New(t)
 	node := env.AddNode("benchmark-reconnect-node", testenv.WithGPUs(1, testenv.GPUSpec{Model: "A100"}), testenv.WithDriverName("fake"))
 	env.WaitNodeOnline(t, "benchmark-reconnect-node")
-	body, _ := json.Marshal(map[string]any{"name": "agent reconnect", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": node.UUID, "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "grid", "search": map[string]any{"concurrency": []int{1}, "isl": []int{4}, "osl": []int{2}, "requests_per_point_multiplier": 4}})
+	body, _ := json.Marshal(map[string]any{"name": "agent reconnect", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": node.UUID, "tokenizer_ref": benchmarkTestTokenizer(t), "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "grid", "search": map[string]any{"concurrency": []int{1}, "isl": []int{4}, "osl": []int{2}, "requests_per_point_multiplier": 4}})
 	resp, err := env.API(t).PostJSON("/api/v1/benchmarks", body)
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +314,7 @@ func TestAgentBenchmarkCancelStopsDesiredWork(t *testing.T) {
 	env := testenv.New(t)
 	node := env.AddNode("benchmark-cancel-node", testenv.WithGPUs(1, testenv.GPUSpec{Model: "A100"}), testenv.WithDriverName("fake"))
 	env.WaitNodeOnline(t, "benchmark-cancel-node")
-	body, _ := json.Marshal(map[string]any{"name": "agent cancel", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": node.UUID, "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "grid", "search": map[string]any{"concurrency": []int{1}, "isl": []int{4}, "osl": []int{2}, "requests_per_point_multiplier": 10}})
+	body, _ := json.Marshal(map[string]any{"name": "agent cancel", "target_kind": "external", "base_url": engine.URL, "model": "fake-model", "load_origin": node.UUID, "tokenizer_ref": benchmarkTestTokenizer(t), "dataset": map[string]any{"kind": "random", "input_tokens": 4, "output_tokens": 2}, "mode": "grid", "search": map[string]any{"concurrency": []int{1}, "isl": []int{4}, "osl": []int{2}, "requests_per_point_multiplier": 10}})
 	api := env.API(t)
 	resp, err := api.PostJSON("/api/v1/benchmarks", body)
 	if err != nil {
@@ -401,4 +402,13 @@ func TestAgentBenchmarkCancelStopsDesiredWork(t *testing.T) {
 	if err := json.Unmarshal([]byte(points[0].Curve), &curve); err != nil || len(curve) == 0 {
 		t.Fatalf("cancellation lost the actual load curve: %q err=%v", points[0].Curve, err)
 	}
+}
+
+func benchmarkTestTokenizer(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "tokenizer.json")
+	if err := os.WriteFile(path, []byte(`{"model":{"vocab":{"a":0,"b":1}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

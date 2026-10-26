@@ -1,0 +1,18 @@
+# Read the Docs build for the documentation site (docs-site/, Hugo + OINK).
+# Read the Docs has no Hugo tool, so the build downloads Hugo extended from
+# the upstream release and reuses docs-site/build.sh unchanged. The OINK theme
+# lives in a private repository: set WEBSITE_REPO in the Read the Docs project
+# environment variables (private, not exposed to pull-request builds) to a
+# clone URL that carries a read-only token.
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.12"
+  commands:
+    - test -n "${WEBSITE_REPO:-}" || { echo "WEBSITE_REPO is not set in the project environment" >&2; exit 1; }
+    - mkdir -p "$HOME/bin"
+    - curl -fsSL --retry 5 "https://github.com/gohugoio/hugo/releases/download/v0.165.0/hugo_extended_0.165.0_linux-amd64.tar.gz" | tar -xz -C "$HOME/bin" hugo
+    # Read the Docs serves the site from the project root, not /docs/.
+    - HUGO_BIN="$HOME/bin/hugo" DOCS_BASE_URL="$READTHEDOCS_CANONICAL_URL" HUGO_DEST="$READTHEDOCS_OUTPUT/html" bash docs-site/build.sh

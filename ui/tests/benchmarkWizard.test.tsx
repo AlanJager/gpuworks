@@ -49,7 +49,7 @@ const meta: BenchmarkMeta = {
 	detail_cap_mb: { default: 64, min: 1, max: 512, unit: "MB" },
 	load_defaults: { warmup_requests: 1, max_warmup_requests: 1000, burstiness: 1, point_duration_s: 60, min_point_duration_s: 5, max_point_duration_s: 3600, min_open_loop_requests: 20, max_request_rate: 10000, max_request_rates: 32, max_burstiness: 100, max_in_flight: 100000, ignore_eos: true, ignore_eos_datasets: ["random", "agentic"] },
 };
-const deployment = { id: 7, name: "Test service", node_uuid: "node-1", model_id: 1, served_name: "served", engine: "vllm", desired_state: "active", runtime_state: "running", sleepable: false, replicas: 1, template_deviated: false, created_at: "2026-10-21T00:00:00Z", operations: [] } satisfies import("../src/api.ts").DeploymentListItem;
+const deployment = { id: 7, name: "Test service", node_uuid: "node-1", model_id: 1, served_name: "served", engine: "vllm", desired_state: "active", runtime_state: "running", sleepable: false, replicas: 1, template_deviated: false, created_at: "2026-10-21T00:00:00Z", operations: [{ type: "openai.chat", endpoint: "/v1/chat/completions", renderer: "chat" }] } satisfies import("../src/api.ts").DeploymentListItem;
 
 function wizard(preset?: WizardPreset, open = true) {
 	return <I18nextProvider i18n={i18n}><BenchmarkWizard open={open} meta={meta} deployments={[deployment]} nodes={[]} preset={preset} onClose={() => {}} onCreated={() => {}} /></I18nextProvider>;

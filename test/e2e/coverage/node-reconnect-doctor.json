@@ -56,6 +56,10 @@
   "checklist_items": {
     "1.14": "A page reload and an independent GET preserve the online→offline→online transition on the same UUID",
     "10.9": "The row action opens the node detail drawer inside the 1440x900 viewport",
+    "12.1": "Opened from the node name on the nodes page as the only dialog. The role is dialog, the accessible name is the node name plus the host name, the component is ant-drawer-content, and the first step is the Diagnose action. The rename dialog count is 0",
+    "12.3": "Default focus is the drawer panel. Tab and Shift+Tab cycle the controls inside the drawer. The drawer is aria-modal, so focus does not reach the page",
+    "12.4": "Cancel, Escape, the close button and the mask each return focus to the name Edit button and send no name change. The independent node GET keeps the same name",
+    "12.5": "The rename dialog over the node detail drawer: Cancel, Escape, close and mask each hide the rename dialog, leave the drawer open, and hide the rename buttons. Reopen uses the Edit node name dialog",
     "12.2": "The drawer and Diagnose action fit the viewport and the appended doctor report does not overflow the drawer horizontally"
   },
   "missing": [

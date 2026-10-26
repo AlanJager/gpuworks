@@ -19,9 +19,10 @@ import (
 // streams three content chunks and reports usage, the shape vLLM and SGLang
 // produce with stream_options.include_usage. fail makes it answer 503.
 type fakeEndpoint struct {
-	mu     sync.Mutex
-	bodies []map[string]any
-	fail   bool
+	mu            sync.Mutex
+	bodies        []map[string]any
+	fail          bool
+	failureStatus int
 }
 
 func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
@@ -34,7 +35,11 @@ func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
 		fail := f.fail
 		f.mu.Unlock()
 		if fail {
-			http.Error(w, `{"error":{"message":"overloaded"}}`, http.StatusServiceUnavailable)
+			status := f.failureStatus
+			if status == 0 {
+				status = http.StatusServiceUnavailable
+			}
+			http.Error(w, `{"error":{"message":"overloaded"}}`, status)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -112,7 +117,7 @@ func TestClosedLoopGridWithWarmupReportsEveryPoint(t *testing.T) {
 	endpoint := &fakeEndpoint{}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
-	Execute(context.Background(), Run{
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
 		ID: 9, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random","ignore_eos":true}`),
 		Search:  json.RawMessage(`{"concurrency":[1,2],"isl":[8],"osl":[3],"requests_per_point_multiplier":1,"warmup_requests":2}`),
@@ -162,7 +167,7 @@ func TestRandomDatasetWithoutIgnoreEOSChoiceKeepsLegacyBehaviour(t *testing.T) {
 	endpoint := &fakeEndpoint{}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
-	Execute(context.Background(), Run{
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
 		ID: 1, Model: "m", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":1,"isl":[8],"osl":[3],"requests_per_point_multiplier":1}`),
 	}, rec.hooks())
@@ -180,7 +185,7 @@ func TestOpenLoopGridReportsRatePoints(t *testing.T) {
 	endpoint := &fakeEndpoint{}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
-	Execute(context.Background(), Run{
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
 		ID: 2, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random","ignore_eos":true}`),
 		Search:  json.RawMessage(`{"request_rates":[400,800],"max_in_flight":4,"point_duration_s":0.05,"isl":[8],"osl":[3]}`),
@@ -211,15 +216,15 @@ func TestOpenLoopGridReportsRatePoints(t *testing.T) {
 }
 
 func TestWarmupFailureFailsTheRunBeforeAnyPoint(t *testing.T) {
-	endpoint := &fakeEndpoint{fail: true}
+	endpoint := &fakeEndpoint{fail: true, failureStatus: http.StatusBadRequest}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
-	Execute(context.Background(), Run{
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
 		ID: 3, Model: "m", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":4,"isl":[8],"osl":[3],"warmup_requests":3}`),
 	}, rec.hooks())
 	last := rec.last()
-	if last.State != "failed" || last.StopReason != proto.BenchmarkStopFatal || !strings.Contains(last.Message, "all 3 warmup requests failed") || !strings.Contains(last.Message, "503") {
+	if last.State != "failed" || last.StopReason != proto.BenchmarkStopFatal || !strings.Contains(last.Message, "all 3 warmup requests failed") || !strings.Contains(last.Message, "400") {
 		t.Fatalf("terminal = %+v", last)
 	}
 	if len(rec.points(t)) != 0 || len(endpoint.requests()) != 3 {
@@ -231,7 +236,7 @@ func TestFailedRequestsInAPointAreCountedNotFatal(t *testing.T) {
 	endpoint := &fakeEndpoint{fail: true}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
-	Execute(context.Background(), Run{
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
 		ID: 4, Model: "m", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":2,"isl":[8],"osl":[3],"requests_per_point_multiplier":2}`),
 	}, rec.hooks())
@@ -275,7 +280,7 @@ func TestCanceledRunPreservesPartialPointWithoutTakingRunTerminalOwnership(t *te
 			cancel()
 		}
 	}
-	Execute(ctx, Run{
+	Execute(ctx, Run{TokenizerRef: testTokenizerRef(t),
 		ID: 8, Model: "m", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":[1,2,4],"isl":[8],"osl":[3],"requests_per_point_multiplier":3}`),
 	}, hooks)
@@ -311,7 +316,7 @@ func TestAdaptiveRunFeedsObservationsWithMedianTPOT(t *testing.T) {
 	rec := &recorder{}
 	// An unreachable interactivity floor fails the first SLA point, so the
 	// search stops after it: the observation carried P50 TPOT.
-	Execute(context.Background(), Run{
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t),
 		ID: 10, Model: "m", Mode: "sla", Client: loadgen.Client{BaseURL: srv.URL},
 		Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":1,"max_concurrency":8,"isl":[8],"osl":[3],"requests_per_point_multiplier":1,"min_interactivity":1000000}`),
 	}, rec.hooks())

@@ -111,6 +111,7 @@
 - [本地搭建](dev/setup.md)
 - [测试指南与云端分层](dev/testing.md)
 - [评测信息与报告规范](dev/benchmark-reporting-standard.md)
+- [逐请求引擎排队耗时的观测边界](dev/engine-queue-observation.md)
 - [浏览器 E2E 测试规范](../test/e2e/browser-e2e-testing-standard.md)
 - [发布与内嵌资产](dev/release.md)
 - [贡献与文档落位](dev/contributing.md)

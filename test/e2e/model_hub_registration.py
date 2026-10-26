@@ -28,7 +28,8 @@ def main():
         test_file="test/e2e/model_hub_registration.py", prepare=prepare, exercise=exercise, cleanup=cleanup,
         docker_required=False, helpers=("test/e2e/model_hub_fixture.py", "test/e2e/model_hub_fixture_setup.py",
         "test/e2e/platform_token_read_revoke.py", "test/e2e/deployment_replicas.py",
-        "test/e2e/deployment_replica_fixture.py", "test/e2e/deployment_container_fixture.py"))
+        "test/e2e/deployment_replica_fixture.py", "test/e2e/deployment_container_fixture.py",
+        "test/e2e/model_hub_register_inventory.py", "test/e2e/model_hub_quick_inventory.py"))
 
 
 if __name__ == "__main__":

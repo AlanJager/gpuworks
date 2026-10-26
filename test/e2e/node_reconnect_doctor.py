@@ -27,6 +27,8 @@ from urllib.parse import urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
+from dialog_checks import (
+    assert_drawer_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
 from platform_token_read_revoke import button, check
 
@@ -186,6 +188,49 @@ def test_node_reconnect_doctor(page, context, server, artifacts, report, locale,
 
     wait_inside(drawer, "node detail drawer")
     wait_inside(button(drawer, nodes["action"]["doctor"]), "the Diagnose action")
+    # DetailDrawer puts the hostname on a second title line. The accessible name joins it with a space.
+    accessible = f"{node['name']} {socket.gethostname()}"
+    expect(page.get_by_role("dialog", name=accessible, exact=True)).to_be_visible()
+    evidence = assert_drawer_shell(
+        page, drawer, f"{node['name']}\n{socket.gethostname()}",
+        button(drawer, nodes["action"]["doctor"]),
+        page.get_by_role("dialog", name=nodes["rename"]["title"], exact=True))
+    evidence["accessible_name"] = accessible
+    report["evidence"].append(evidence)
+    # Rename is a modal over this drawer. Cancel, Escape, close and mask leave the drawer up.
+    rename_writes = []
+
+    def on_rename(request):
+        if (request.method == "PATCH"
+                and urlsplit(request.url).path == NODES + f"/{node['uuid']}/name"):
+            rename_writes.append(request.method)
+
+    page.on("request", on_rename)
+    parent = page.get_by_role("dialog", name=accessible, exact=True)
+    edit = button(parent, nodes["action"]["edit"])
+
+    def open_rename():
+        edit.click()
+        dialog = page.get_by_role("dialog", name=nodes["rename"]["title"], exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = assert_nested_dismissals(
+        open_rename(), parent, open_rename,
+        [("cancel", cancel_button(nodes["action"]["cancel"])),
+         ("escape", escape), ("close", close_button), ("mask", mask)],
+        lambda: len(rename_writes), edit)
+    cancel_button(nodes["action"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(parent).to_be_visible()
+    check(rename_writes == [], "rename dialog dismissal changed the node name")
+    named = page.request.get(server.base + NODES + f"/{node['uuid']}")
+    check(named.status == 200 and named.json().get("name") == node["name"],
+          "rename dialog dismissal changed the stored name")
+    report["evidence"].append({
+        "layer": "ui", "rename_dialog": nodes["rename"]["title"], "parent": accessible,
+        "dismissals": ["cancel", "escape", "close", "mask"],
+        "focus_returned": True, "rename_patches": 0, "stored_name": node["name"]})
     with page.expect_response(lambda r: urlsplit(r.url).path == NODES + f"/{node['uuid']}/doctor"
                               and r.request.method == "POST", timeout=60000) as doctor:
         button(drawer, nodes["action"]["doctor"]).click()

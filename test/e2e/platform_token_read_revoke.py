@@ -9,7 +9,8 @@ Requires the existing Python Playwright installation and system Chrome.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 import json
 import os
 import re
@@ -74,6 +75,39 @@ def modal_geometry(dialog, submit):
     }""", arg={"dialog": dialog.element_handle(), "submit": submit.element_handle()}, timeout=5000)
 
 
+def exercise_create_dialog(page, create, platform, k, mutations, report):
+    """Create dialog identity, layout, focus, and dismissals. No token POST."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    title = platform["createTitle"]
+    card = page.locator(".ant-card").filter(has_text=platform["title"]).first
+
+    def posts():
+        return sum(1 for item in mutations if item["method"] == "POST" and item["path"] == TOKEN_PATH)
+
+    def open_create():
+        create.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_create()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(k["table"]["name"], exact=True),
+                        button(dialog, k["actions"]["create"]))
+    dialog = assert_nested_dismissals(
+        dialog, card, open_create,
+        [("cancel", cancel_button(k["actions"]["cancel"])), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        posts, create)
+    cancel_button(k["actions"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(card).to_be_visible()
+    check(posts() == 0, "create dialog dismissal sent POST")
+    report["evidence"].append({"layer": "ui", "create_dialog": title,
+        "dismissals": ["cancel", "escape", "close", "mask"], "post_requests": 0})
+
+
 def theme_color(locator, property_name, token_name):
     source = (ROOT / "ui/src/theme/tokens.ts").read_text()
     match = re.search(rf'^  {re.escape(token_name)}: "(#[0-9a-fA-F]{{6}})"', source, re.M)
@@ -91,6 +125,95 @@ def theme_color(locator, property_name, token_name):
 # Contract: gpuworks/platform-token/read-create-revoke
 # Mainline: 独立真实 server/SQLite → UI 校验、取消并创建默认只读令牌 → 真实复制且刷新/GET脱敏回读
 #           → 无Cookie调用读取200、写入403且无副作用 → UI取消吊销仍可用、确认吊销 → 刷新消失且旧令牌401
+def exercise_complete_token(page, context, server, artifacts, report, k, platform, mutations):
+    """Fill both optional fields, then read back every stored field."""
+    from platform_token_options import select_expiry
+
+    name = f"e2e-{report['run_id']}-write30"
+    before = len(mutations)
+    create = button(page, platform["create"])
+    create.click()
+    dialog = page.get_by_role("dialog", name=platform["createTitle"], exact=True)
+    expect(dialog).to_be_visible()
+    dialog.get_by_label(k["table"]["name"], exact=True).fill(name)
+    write = dialog.get_by_role("radio", name=platform["scopes"]["write"], exact=True)
+    write.check()
+    expect(write).to_be_checked()
+    labels = [platform["noExpiry"] if value == 0 else platform["days"].replace("{{count}}", str(value))
+              for value in (0, 30, 90, 365)]
+    chosen = labels[1]
+    select_expiry(page, dialog, platform["expiresAt"], chosen, labels)
+    expect(dialog.get_by_role("radio", name=platform["scopes"]["read"], exact=True)).not_to_be_checked()
+    clock = page.request.get(server.base + TOKEN_PATH)
+    collection(clock)
+    t0 = parsedate_to_datetime(clock.headers["date"])
+    artifacts.stop_trace(context)
+    report["sensitive_phase"] = True
+    report["last_step"] = "complete-token-submit"
+    with page.expect_response(lambda r: urlsplit(r.url).path == TOKEN_PATH and r.request.method == "POST") as created:
+        button(dialog, k["actions"]["create"]).click()
+    response = created.value
+    check(response.status == 201, f"complete create HTTP {response.status}")
+    check(response.request.post_data_json == {"name": name, "scope": "write", "expires_in_days": 30},
+          "complete create body differs")
+    check(not urlsplit(response.url).query, "complete create sent a query")
+    payload = response.json()
+    check(set(payload) == {"token", "item"}, "complete create envelope differs")
+    secret, item = payload["token"], payload["item"]
+    artifacts.remember(secret)
+    check(isinstance(secret, str) and secret.startswith("gwp_"), "complete create returned no token")
+    check(set(item) == ITEM_FIELDS, "complete create item fields differ")
+    check(item["name"] == name and item["scope"] == "write", "complete create did not store the chosen name and scope")
+    check(item["prefix"] == secret[:12] and isinstance(item["id"], int), "complete create prefix differs")
+    expiry = datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00"))
+    t1 = parsedate_to_datetime(response.headers["date"]) + timedelta(seconds=1)
+    check(t0 + timedelta(days=30) <= expiry < t1 + timedelta(days=30), "stored expiry is not 30 UTC days")
+    rendered_expiry = expiry.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    secret_dialog = page.get_by_role("dialog", name=k["secret"]["title"], exact=True)
+    expect(secret_dialog).to_be_visible()
+    button(secret_dialog, k["secret"]["saved"]).click()
+    expect(secret_dialog).not_to_be_visible()
+    page.wait_for_function("secret => !document.documentElement.outerHTML.includes(secret)", arg=secret, timeout=5000)
+    report["sensitive_phase"] = False
+    artifacts.start_trace(context)
+    report["last_step"] = "complete-token-persisted"
+    page.reload()
+    row = page.get_by_role("row").filter(has_text=name)
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text(platform["scopes"]["write"])
+    expect(row).to_contain_text(item["prefix"])
+    expect(row).to_contain_text(rendered_expiry)
+    persisted = collection(page.request.get(server.base + TOKEN_PATH))
+    check(persisted == [item], "independent GET differs from the complete token")
+    check(secret not in page.content() and secret not in json.dumps(persisted), "complete token secret leaked")
+    tag = row.locator(".ant-tag-orange")
+    expect(tag).to_have_count(1, timeout=12000)
+    expect(tag).to_have_text(platform["scopes"]["write"])
+    report["last_step"] = "complete-token-tag"
+    report["complete_token"] = {"method": "POST", "path": TOKEN_PATH,
+        "body": {"name": name, "scope": "write", "expires_in_days": 30}, "status": 201,
+        "stored": {"name": item["name"], "scope": item["scope"], "expires_at": item["expires_at"],
+                   "prefix": item["prefix"]},
+        "tag": "ant-tag-orange", "ui_expiry_utc": rendered_expiry}
+    confirmation = platform["revokeConfirm"].replace("{{name}}", name)
+    button(row, platform["revoke"]).click()
+    popup = page.get_by_role("tooltip").filter(has_text=confirmation)
+    expect(popup).to_be_visible()
+    delete_path = f"{TOKEN_PATH}/{item['id']}"
+    with page.expect_response(lambda r: urlsplit(r.url).path == delete_path and r.request.method == "DELETE") as deleted:
+        button(popup, platform["revoke"]).click()
+    check(deleted.value.status == 204, f"complete token revoke HTTP {deleted.value.status}")
+    expect(row).to_have_count(0)
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "complete token remained after revoke")
+    check(mutations[before:] == [{"method": "POST", "path": TOKEN_PATH}, {"method": "DELETE", "path": delete_path}],
+          "complete token mutations differ")
+    report["evidence"].append({"layer": "request", "method": "POST", "path": TOKEN_PATH,
+        "body": {"name": name, "scope": "write", "expires_in_days": 30}, "status": 201,
+        "expires_at": item["expires_at"], "scope": "write", "tag": "ant-tag-orange"})
+    report["evidence"].append({"layer": "cleanup", "method": "DELETE", "path": delete_path, "status": 204,
+        "refresh_and_get": "empty"})
+
+
 def test_read_token_create_revoke(page, context, server, artifacts, report, locale):
     k, auth = strings(locale)
     platform = k["platform"]
@@ -139,14 +262,20 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     artifacts.start_trace(context)
 
     create = button(page, platform["create"])
+    expect(create).to_be_visible()
+    report["step"] = "create dialog over the platform token card"
+    exercise_create_dialog(page, create, platform, k, mutations, report)
+
     create.click()
     dialog = page.get_by_role("dialog", name=platform["createTitle"], exact=True)
     submit = button(dialog, k["actions"]["create"])
     name = dialog.get_by_label(k["table"]["name"], exact=True)
     modal_geometry(dialog, submit)
     expect(name).to_have_value("")
+    from platform_token_options import exercise_token_field_inventory
+    report["token_inventory"] = exercise_token_field_inventory(page, dialog, k, platform, mutations)
     expect(dialog.get_by_role("radio", name=platform["scopes"]["read"], exact=True)).to_be_checked()
-    expect(dialog.get_by_text(platform["noExpiry"], exact=True)).to_be_visible()
+    expect(dialog.locator(".ant-select-selection-item")).to_have_text(platform["noExpiry"])
     for invalid in ["", "   "]:
         name.fill(invalid)
         submit.click()
@@ -173,6 +302,38 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     expect(name).to_be_focused()
     theme_color(name, "borderColor", "primary")
     page.screenshot(path=artifacts.directory / "create-form.png")
+    held = []
+
+    def hold_create(route):
+        if route.request.method != "POST":
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + TOKEN_PATH, hold_create)
+    writes_before = len(mutations)
+    submit.click()
+    inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+    expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    inflight.click()
+    name.press("Enter")
+    check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+    reason = "upstream fixture is unreachable"
+    with page.expect_response(lambda r: urlsplit(r.url).path == TOKEN_PATH and r.request.method == "POST") as failed:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute("**" + TOKEN_PATH, hold_create)
+    check(failed.value.status == 502, "forced create failure did not surface")
+    expect(dialog).to_be_visible()
+    expect(name).to_have_value(resource_name)
+    expect(page.get_by_text(reason, exact=True)).to_be_visible()
+    check(bad_responses == [{"path": TOKEN_PATH, "status": 502}], "forced create failure was not the only HTTP error")
+    bad_responses.clear()
+    check(len(console_errors) == 1 and "502" in console_errors[0],
+          "forced create failure console: " + str(console_errors))
+    console_errors.clear()
+    del mutations[writes_before:]
+    report["evidence"].append({"layer": "ui", "inflight_posts": len(held), "confirm_loading": True,
+        "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
     # Stop recording BEFORE the POST or the one-time secret reaches the DOM.
     artifacts.stop_trace(context)
     report["sensitive_phase"] = True
@@ -273,6 +434,7 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     check(mutations == [{"method": "POST", "path": TOKEN_PATH}, {"method": "DELETE", "path": delete_path}], "extra token mutations")
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "page has horizontal overflow")
     page.screenshot(path=artifacts.directory / "revoked.png")
+    exercise_complete_token(page, context, server, artifacts, report, k, platform, mutations)
     check(not page_errors, "unhandled browser errors: " + str(page_errors))
     check(not console_errors, "unexpected browser console errors: " + str(console_errors))
     check(not bad_responses, "unexpected browser HTTP errors: " + str(bad_responses))
@@ -305,8 +467,9 @@ def main():
         "coverage_manifest_sha256": digest(manifest_path),
         "test_sha256": digest(Path(__file__)),
         "fixture_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
+        "dialog_checks_sha256": digest(ROOT / "test/e2e/dialog_checks.py"),
         "execution": "N/A: platform authorization has no agent/workload",
-        "not_covered": ["write scope", "expiry options/boundaries", "full field/list matrix", "non-admin owner isolation", "service-failure recovery"],
+        "not_covered": ["expiry options other than 30 days", "full field/list matrix", "non-admin owner isolation", "service-failure recovery"],
         "command": ["python3", "test/e2e/platform_token_read_revoke.py", *sys.argv[1:]]}
     try:
         report["binary_sha256"] = digest(args.server_bin)

@@ -6,6 +6,13 @@ repo_root=$(cd "$site_root/.." && pwd)
 hugo_bin=${HUGO_BIN:-hugo}
 output_dir=${HUGO_DEST:-"$site_root/public"}
 theme_repo=${WEBSITE_REPO:-http://dev.zstack.io:9080/wei.wang/gpuworks_website.git}
+# DOCS_BASE_URL overrides hugo.yaml's baseURL for the production build only
+# (Read the Docs serves the site from the project root instead of /docs/). It
+# is not exported as HUGO_BASEURL because the site tests run their own Hugo.
+base_url_args=()
+if [ -n "${DOCS_BASE_URL:-}" ]; then
+	base_url_args=(--baseURL "$DOCS_BASE_URL")
+fi
 
 # The oink theme lives in the gpuworks_website repository; this repository
 # carries no theme files. Fetch it once when it is missing. The internal
@@ -27,7 +34,7 @@ rm -rf "$output_dir"
 mkdir -p "$output_dir"
 "$hugo_bin" --source "$site_root" --destination "$output_dir" \
   --cleanDestinationDir --gc --minify --environment production \
-  --printPathWarnings --panicOnWarning
+  --printPathWarnings --panicOnWarning ${base_url_args[@]+"${base_url_args[@]}"}
 
 # The generated pages are staged under docs-site/content so Hugo can publish
 # them below /docs/ when the artifact is copied to the existing site root.

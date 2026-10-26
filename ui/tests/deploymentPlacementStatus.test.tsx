@@ -138,3 +138,20 @@ test("an empty page and a failed load say so", async () => {
   await user.click(screen.getByRole("button", { name: locale.view }));
   await screen.findByText(new RegExp(i18n.t("detail.placement.loadFailed", { detail: "" }).trim()));
 });
+
+
+test("replicas preparing a shared model do not claim they are waiting for nodes", () => {
+  show(deployment({ model_progress: [{ node_uuid: "n-1", state: "downloading", preparation: { phase: "downloading", total_known: true, idle_seconds: 0 } }] }));
+  assert.ok(screen.getByText("Preparing model; 2 replica(s) have not started"));
+  assert.ok(screen.getByText("Downloading model"));
+  assert.equal(screen.queryByText(i18n.t("detail.placement.waiting", { count: 2 })), null);
+  assert.equal(screen.queryByText(locale.closest), null, "old scheduler refusals must not describe an active download");
+});
+
+
+test("failed cache cleanup does not masquerade as active model preparation", () => {
+  show(deployment({ model_progress: [{ node_uuid: "n-1", state: "failed", preparation: { phase: "eviction_failed", reason: "MODEL_CACHE_EVICTION_FAILED", total_known: false, idle_seconds: 0 } }] }));
+  assert.ok(screen.getByText(i18n.t("detail.placement.waiting", { count: 2 })));
+  assert.ok(screen.getByText(locale.closest));
+  assert.equal(screen.queryByText("Preparing model; 2 replica(s) have not started"), null);
+});

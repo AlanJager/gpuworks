@@ -72,9 +72,9 @@ function renderApp(initialEntry: string) {
   );
 }
 
-test("defaults to 1h range with follow on when the URL carries neither", () => {
+test("defaults to 1h range with follow off when the URL carries neither", () => {
   renderApp("/monitor");
-  assert.equal(screen.getByTestId("value").textContent, "1h:on");
+  assert.equal(screen.getByTestId("value").textContent, "1h:off");
 });
 
 test("reads range and follow back out of the URL", () => {
@@ -84,18 +84,18 @@ test("reads range and follow back out of the URL", () => {
 
 test("an unknown range value in the URL falls back to the default", () => {
   renderApp("/monitor?range=3d");
-  assert.equal(screen.getByTestId("value").textContent, "1h:on");
+  assert.equal(screen.getByTestId("value").textContent, "1h:off");
 });
 
 test("picking a range writes it to the URL search params", async () => {
   renderApp("/monitor?range=1h");
   await userEvent.setup().click(screen.getByText("24h"));
-  assert.equal(screen.getByTestId("value").textContent, "24h:on");
+  assert.equal(screen.getByTestId("value").textContent, "24h:off");
   assert.equal(seenLocation, "/monitor?range=24h");
 });
 
 test("toggling follow writes follow=0 to the URL and back to follow=1", async () => {
-  renderApp("/monitor?range=1h");
+  renderApp("/monitor?range=1h&follow=1");
   const toggle = screen.getByRole("switch", { name: "Follow latest" });
   await userEvent.setup().click(toggle);
   assert.equal(screen.getByTestId("value").textContent, "1h:off");
@@ -121,12 +121,12 @@ test("picking writes from/to and drops the preset; a preset drops from/to", asyn
   assert.equal(seenLocation, "/monitor?from=1800000000000&to=1800003600000");
   await user.click(screen.getByText("24h"));
   assert.equal(seenLocation, "/monitor?range=24h");
-  assert.equal(screen.getByTestId("value").textContent, "24h:on");
+  assert.equal(screen.getByTestId("value").textContent, "24h:off");
 });
 
 test("a malformed from/to falls back to the preset", () => {
   renderApp("/monitor?range=6h&from=9&to=3");
-  assert.equal(screen.getByTestId("value").textContent, "6h:on");
+  assert.equal(screen.getByTestId("value").textContent, "6h:off");
   assert.equal(screen.queryByText(/services, replicas and health are current/), null, "a preset needs no note");
 });
 
@@ -145,4 +145,23 @@ test("a range becomes the API's parameters and its window", () => {
   assert.deepEqual(rangeBounds(customRange(1000, 5000)), { from: 1000, to: 5000 });
   assert.equal(pickedBounds("5000~1000"), null);
   assert.equal(pickedBounds("1h"), null);
+});
+
+for (const value of ["1", "true"]) {
+  test(`preserves explicit follow=${value} links`, () => {
+    renderApp(`/monitor?follow=${value}`);
+    assert.equal(screen.getByRole("switch", { name: "Follow latest" }).getAttribute("aria-checked"), "true");
+  });
+}
+
+test("follow can be enabled and disabled with the keyboard", async () => {
+  renderApp("/monitor");
+  const toggle = screen.getByRole("switch", { name: "Follow latest" });
+  toggle.focus();
+  await userEvent.setup().keyboard(" ");
+  assert.equal(toggle.getAttribute("aria-checked"), "true");
+  assert.equal(seenLocation, "/monitor?follow=1");
+  await userEvent.setup().keyboard(" ");
+  assert.equal(toggle.getAttribute("aria-checked"), "false");
+  assert.equal(seenLocation, "/monitor?follow=0");
 });

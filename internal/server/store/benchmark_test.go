@@ -186,3 +186,73 @@ func TestDeleteBenchmarkRunCascadesPointsAndRejectsActive(t *testing.T) {
 		t.Fatalf("orphan points=%+v", points)
 	}
 }
+
+func TestCanceledBenchmarkRetainsWarmupDiagnosticWithoutReopening(t *testing.T) {
+	st, err := Open("file:benchmark_warmup_cancel?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	run, err := st.CreateBenchmarkRun(&BenchmarkRun{Name: "warmup", LoadOrigin: "server"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ApplyBenchmarkStatus(0, proto.BenchmarkStatus{ID: run.ID, State: "running", CurrentPoint: &proto.BenchmarkCurrentPoint{Warmup: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CancelBenchmarkRun(run.ID, "user canceled"); err != nil {
+		t.Fatal(err)
+	}
+	raw := json.RawMessage(`[{"version":1,"point_seq":0,"session_id":"warmup-1","attempt":1,"http_status":503,"error_text":"engine restarting"}]`)
+	if err := st.ApplyBenchmarkStatus(0, proto.BenchmarkStatus{ID: run.ID, State: "running", Warmup: raw, Message: "must not replace cancellation"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetBenchmarkRun(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var progress proto.BenchmarkStatus
+	if json.Unmarshal([]byte(got.Progress), &progress) != nil || string(progress.Warmup) != string(raw) || got.State != "canceled" || got.Error != "user canceled" {
+		t.Fatalf("cancellation metadata=%+v progress=%s", got, got.Progress)
+	}
+	points, err := st.ListBenchmarkPoints(run.ID)
+	if err != nil || len(points) != 0 {
+		t.Fatalf("warmup became measured point: %+v %v", points, err)
+	}
+}
+
+func TestBenchmarkWarmupEvidenceSurvivesMeasuredProgress(t *testing.T) {
+	st, err := Open("file:benchmark_warmup_progress?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	run, err := st.CreateBenchmarkRun(&BenchmarkRun{Name: "recovered", LoadOrigin: "server"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := json.RawMessage(`[{"version":1,"point_seq":0,"session_id":"warmup-1","attempt":1,"http_status":503,"error_text":"engine restarting"},{"version":1,"point_seq":0,"session_id":"warmup-1","attempt":2,"http_status":200}]`)
+	if err := st.ApplyBenchmarkStatus(0, proto.BenchmarkStatus{ID: run.ID, State: "running", Warmup: raw, CurrentPoint: &proto.BenchmarkCurrentPoint{Warmup: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ApplyBenchmarkStatus(0, proto.BenchmarkStatus{ID: run.ID, State: "running", PointIndex: 1, CurrentPoint: &proto.BenchmarkCurrentPoint{Seq: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetBenchmarkRun(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var progress proto.BenchmarkStatus
+	if json.Unmarshal([]byte(got.Progress), &progress) != nil || string(progress.Warmup) != string(raw) || progress.CurrentPoint == nil || progress.CurrentPoint.Warmup {
+		t.Fatalf("measured progress lost recovery evidence: %s", got.Progress)
+	}
+}
+
+func TestCanceledWarmupEvidenceRejectsDelayedShorterHistory(t *testing.T) {
+	previous := json.RawMessage(`[{"attempt":1},{"attempt":2}]`)
+	for _, incoming := range []json.RawMessage{nil, json.RawMessage(`[{"attempt":1}]`), json.RawMessage(`{"unexpected":"object"}`)} {
+		if got := retainBenchmarkWarmup(previous, incoming); string(got) != string(previous) {
+			t.Fatalf("delayed history discarded attempts: %s", got)
+		}
+	}
+}

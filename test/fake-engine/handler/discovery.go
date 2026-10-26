@@ -25,7 +25,7 @@ func registerDiscovery(mux *http.ServeMux, opts Options) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(openAPIDocument)
+		_, _ = w.Write(discoveryDocument)
 	})
 	mux.HandleFunc("/v1/realtime", func(w http.ResponseWriter, r *http.Request) {
 		if !requireMethod(w, r, http.MethodGet) {

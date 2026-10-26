@@ -85,6 +85,7 @@ func (e *Engine) checkLiveness(ctx context.Context) {
 			return
 		}
 		if running[containerName(serving.spec.UUID)] {
+			e.checkEngineReadiness(ctx, serving)
 			continue
 		}
 		e.checkServing(ctx, serving.spec, serving.epoch)
