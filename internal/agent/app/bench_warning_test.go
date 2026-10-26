@@ -8,13 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func TestAgentBenchmarkReportsTokenizerFallbackWarning(t *testing.T) {
+func TestAgentBenchmarkFailsBeforeInferenceWhenTokenizerCannotLoad(t *testing.T) {
+	var calls atomic.Int32
 	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		if r.URL.Path != "/v1/chat/completions" {
 			http.NotFound(w, r)
 			return
@@ -33,7 +36,7 @@ func TestAgentBenchmarkReportsTokenizerFallbackWarning(t *testing.T) {
 		Dataset:      json.RawMessage(`{"kind":"random","input_tokens":2,"output_tokens":1}`),
 		TokenizerRef: filepath.Join(t.TempDir(), "missing-tokenizer.json"),
 	})
-	if len(statuses) < 3 || statuses[len(statuses)-1].State != "done" {
+	if len(statuses) != 1 || statuses[len(statuses)-1].State != "failed" || calls.Load() != 0 {
 		t.Fatalf("statuses = %+v", statuses)
 	}
 	for _, status := range statuses {

@@ -162,45 +162,6 @@ func TestBenchmarkDatasetImportReturnsProfileAndPreservesSampleShape(t *testing.
 	}
 }
 
-func TestServerBenchmarkPersistsTokenizerFallbackWarning(t *testing.T) {
-	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1}}\n\ndata: [DONE]\n\n"))
-	}))
-	t.Cleanup(fixture.Close)
-	st, err := store.Open("file:benchmark_tokenizer_warning?mode=memory&cache=shared", bus.New())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	run, err := st.CreateBenchmarkRun(&store.BenchmarkRun{
-		Name: "tokenizer warning", BaseURL: fixture.URL, Model: "m", LoadOrigin: "server",
-		Dataset: `{"kind":"random","input_tokens":2,"output_tokens":1}`,
-		Mode:    "grid", Search: `{"concurrency":[1],"isl":[2],"osl":[1],"requests_per_point_multiplier":1}`,
-		TokenizerRef: filepath.Join(t.TempDir(), "missing-tokenizer.json"),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &apiHandlers{d: Deps{Outside: OutsideSources{AllowPrivateHosts: []string{"127.0.0.1"}}, Store: st}}
-	h.runServerBenchmark(context.Background(), run)
-	persisted, err := st.GetBenchmarkRun(run.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if persisted.State != "done" || !strings.Contains(persisted.Warnings, proto.BenchmarkWarningTokenizerLoad) {
-		t.Fatalf("run after tokenizer fallback = %+v", persisted)
-	}
-	points, err := st.ListBenchmarkPoints(run.ID)
-	if err != nil || len(points) != 1 || points[0].Curve == "" {
-		t.Fatalf("server-origin curve points=%+v err=%v", points, err)
-	}
-}
-
 func TestBenchmarkAPIExternalCreateAndConflict(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -229,7 +190,7 @@ func TestBenchmarkAPIExternalCreateAndConflict(t *testing.T) {
 	signer, _ := auth.NewTokenSigner("benchmark-api-test", time.Hour)
 	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
 	h := Router(Deps{Outside: OutsideSources{AllowPrivateHosts: []string{"127.0.0.1"}}, Store: st, Bus: bus.New(), AuthSigner: signer})
-	body := `{"name":"x","target_kind":"external","base_url":"` + fixture.URL + `","model":"m","load_origin":"server","num_gpus":4,"dataset":{"kind":"random"}}`
+	body := `{"name":"x","target_kind":"external","base_url":"` + fixture.URL + `","tokenizer_ref":"` + benchmarkTestTokenizer(t) + `","model":"m","load_origin":"server","num_gpus":4,"dataset":{"kind":"random"}}`
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/benchmarks", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+token)
@@ -366,7 +327,7 @@ func TestCancelServerBenchmarkWaitsForInFlightRequestToStop(t *testing.T) {
 	signer, _ := auth.NewTokenSigner("benchmark-cancel-server", time.Hour)
 	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
 	h := Router(Deps{Outside: OutsideSources{AllowPrivateHosts: []string{"127.0.0.1"}}, Store: st, Bus: bus.New(), AuthSigner: signer})
-	createBody := fmt.Sprintf(`{"name":"cancel-server","target_kind":"external","base_url":%q,"model":"m","load_origin":"server","dataset":{"kind":"random","input_tokens":8,"output_tokens":4},"mode":"grid","search":{"concurrency":1,"requests_per_point_multiplier":3}}`, fixture.URL)
+	createBody := fmt.Sprintf(`{"name":"cancel-server","target_kind":"external","base_url":%q,"tokenizer_ref":%q,"model":"m","load_origin":"server","dataset":{"kind":"random","input_tokens":8,"output_tokens":4},"mode":"grid","search":{"concurrency":1,"requests_per_point_multiplier":3}}`, fixture.URL, benchmarkTestTokenizer(t))
 	create := httptest.NewRequest(http.MethodPost, "/api/v1/benchmarks", strings.NewReader(createBody))
 	create.Header.Set("Authorization", "Bearer "+token)
 	create.Header.Set("Content-Type", "application/json")
