@@ -803,7 +803,9 @@ l4-runpod-vllm-sglang-lifecycle:
 
 l4-autodl-node-onboarding:
   extends: .l4-acceptance
-  timeout: 65m
+  # go test -timeout is 85m: up to 30m (AUTODL_STOCK_WAIT) waiting out a
+  # sold-out Pro spec list, plus the 55m a rented node needs.
+  timeout: 95m
   environment:
     name: cloud-test/autodl/full
   script:
@@ -814,7 +816,10 @@ l4-autodl-node-onboarding:
 # covered by l4-ascend-pool-partition-inference; see the dated limitation artifact.
 l4-gitee-ascend-partition-capability:
   extends: .l4-acceptance
-  timeout: 110m
+  # go test -timeout is 55m, of which up to 30m (GITEE_STOCK_WAIT) is spent
+  # retrying while every profile reports no available host; the rest of the
+  # 140m is runner queueing and job setup headroom as before.
+  timeout: 140m
   environment:
     name: cloud-test/gitee-capability
   script:

@@ -86,6 +86,18 @@ func newGitee(token, zone, image, runID, endpoint string, client *http.Client) (
 	}, nil
 }
 
+// giteeNoHostMarker is what the create call answers when every host matching
+// the profile is rented out ("no qualifying available host found"). Gitee has
+// no stock API: /compute/specs keeps listing sold-out models, so only a create
+// reveals supply. A refused create produces no instance.
+const giteeNoHostMarker = "没有找到符合条件的可用主机"
+
+// IsGiteeNoHost reports whether err is Gitee's create refusal for lack of an
+// available host, the only Rent failure worth waiting out and retrying.
+func IsGiteeNoHost(err error) bool {
+	return err != nil && strings.Contains(err.Error(), giteeNoHostMarker)
+}
+
 func (p *Gitee) Name() string  { return "gitee" }
 func (p *Gitee) RunID() string { return p.runID }
 

@@ -3,6 +3,7 @@ package cloudprovider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,13 +20,16 @@ const (
 	autodlRentTimeout      = 8 * time.Minute
 	autodlEndpointTimeout  = 5 * time.Minute
 	autodlDestroyTimeout   = 3 * time.Minute
-	autodlDefaultMaxPrice  = 5.0 // CNY/hour; snapshot payg_price is milli-CNY/hour.
+	autodlDefaultMaxPrice  = 10.0 // CNY/hour; snapshot payg_price is milli-CNY/hour.
 	autodlDefaultImageUUID = "base-image-l2t43iu6uk"
 	autodlDefaultGPUModel  = "RTX 4080S"
 )
 
 // autodlAutoGPUModels are the specs an unpinned Rent tries, cheapest first;
-// the hourly price cap still applies to whichever one is created.
+// the hourly price cap still applies to whichever one is created. The Pro
+// pro6000-p and h800 specs are deliberately absent: their Pro hourly price is
+// not confirmed to stay under the cap, and the price check runs only after
+// the create, so a wrong guess would create and destroy an expensive instance.
 var autodlAutoGPUModels = []string{autodlDefaultGPUModel, "RTX 4090D", "RTX 4090", "RTX 3090", "RTX 5090"}
 
 var autodlLedgerMu sync.Mutex
@@ -50,6 +54,9 @@ type AutoDL struct {
 	runID    string
 	image    string
 	maxPrice float64
+	// stockWait is the budget for retrying after every spec is out of stock;
+	// zero (the default of newAutoDL) fails on the first walk.
+	stockWait StockWait
 }
 
 func NewAutoDL(token, runID string) (*AutoDL, error) {
@@ -65,7 +72,16 @@ func NewAutoDL(token, runID string) (*AutoDL, error) {
 		}
 		maxPrice = value
 	}
-	return newAutoDL(autodldriver.New(), serverprovider.Credentials{APIKey: strings.TrimSpace(token)}, runID, image, maxPrice)
+	wait, err := StockWaitFromEnv("AUTODL_STOCK_WAIT", DefaultStockWait)
+	if err != nil {
+		return nil, fmt.Errorf("autodl: %w", err)
+	}
+	p, err := newAutoDL(autodldriver.New(), serverprovider.Credentials{APIKey: strings.TrimSpace(token)}, runID, image, maxPrice)
+	if err != nil {
+		return nil, err
+	}
+	p.stockWait = wait
+	return p, nil
 }
 
 func newAutoDL(driver autodlLifecycleDriver, creds serverprovider.Credentials, runID, image string, maxPrice float64) (*AutoDL, error) {
@@ -92,9 +108,21 @@ func (p *AutoDL) Name() string { return "autodl" }
 
 func (p *AutoDL) ManagementCredentials() serverprovider.Credentials { return p.creds }
 
+// errAutoDLNoSpecInStock marks the aggregated refusal after every candidate
+// spec reported 暂无库存. Only this error is waited out and retried: nothing was
+// created, so no instance exists while waiting.
+var errAutoDLNoSpecInStock = errors.New("autodl: no GPU spec could be rented")
+
+// StockWait is how long Rent keeps retrying after every candidate spec is out
+// of stock (see AUTODL_STOCK_WAIT); zero means it fails on the first walk.
+func (p *AutoDL) StockWait() time.Duration { return p.stockWait.Max }
+
+type autodlCreated struct {
+	instance serverprovider.Instance
+	gpuModel string
+}
+
 func (p *AutoDL) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
-	ctx, cancel := withMaxTimeout(ctx, autodlRentTimeout)
-	defer cancel()
 	requested := strings.TrimSpace(spec.GPUModel)
 	candidates := []string{requested}
 	if requested == "" || strings.EqualFold(requested, "auto") {
@@ -111,51 +139,24 @@ func (p *AutoDL) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 	if extraDisk < 0 {
 		extraDisk = 0
 	}
-	var created serverprovider.Instance
-	var gpuModel string
-	var outOfStock []string // candidates passed over, with why
-	for _, candidate := range candidates {
-		if spec.MinVRAMMB > 0 {
-			known, ok := gpuVRAMMB(candidate)
-			var reason error
-			switch {
-			case !ok:
-				reason = fmt.Errorf("autodl: cannot verify MinVRAMMB=%d for GPU %q", spec.MinVRAMMB, candidate)
-			case known < spec.MinVRAMMB:
-				reason = fmt.Errorf("autodl: GPU %q has %d MiB VRAM, below requested %d MiB", candidate, known, spec.MinVRAMMB)
-			}
-			if reason != nil {
-				if len(candidates) > 1 {
-					outOfStock = append(outOfStock, reason.Error())
-					continue
-				}
-				return nil, reason
-			}
-		}
-		instance, err := p.driver.CreateInstance(ctx, p.creds, serverprovider.CreateInstanceRequest{
-			Name: TestNamePrefix + p.runID, GPUModel: candidate, GPUCount: gpuCount, Image: p.image,
-			Extra: map[string]string{
-				"expand_system_disk_by_gb": strconv.Itoa(extraDisk),
-				"cuda_v_from":              "113",
-				"start_command":            "sleep 1",
-			},
+	wait := p.stockWait
+	if len(candidates) < 2 {
+		wait.Max = 0 // a named card is neither swapped nor waited for
+	}
+	// The stock wait runs on the caller's context; the rent budget below only
+	// starts once a create succeeded.
+	won, err := RetryOnStockOut(ctx, wait, "autodl", func(err error) bool { return errors.Is(err, errAutoDLNoSpecInStock) },
+		func(ctx context.Context) (autodlCreated, error) {
+			walkCtx, cancel := withMaxTimeout(ctx, autodlRentTimeout)
+			defer cancel()
+			return p.createFirstInStock(walkCtx, spec, candidates, gpuCount, extraDisk)
 		})
-		if err != nil {
-			if len(candidates) > 1 && isAutoDLOutOfStock(err) {
-				outOfStock = append(outOfStock, candidate+": "+err.Error())
-				continue
-			}
-			if len(outOfStock) > 0 {
-				return nil, fmt.Errorf("%w (out of stock before: %s)", err, strings.Join(outOfStock, "; "))
-			}
-			return nil, err
-		}
-		created, gpuModel = instance, candidate
-		break
+	if err != nil {
+		return nil, err
 	}
-	if gpuModel == "" {
-		return nil, fmt.Errorf("autodl: no GPU spec could be rented: %s", strings.Join(outOfStock, "; "))
-	}
+	created, gpuModel := won.instance, won.gpuModel
+	ctx, cancel := withMaxTimeout(ctx, autodlRentTimeout)
+	defer cancel()
 	if strings.TrimSpace(created.ExternalID) == "" {
 		return nil, fmt.Errorf("autodl: create returned an empty instance id")
 	}
@@ -199,6 +200,56 @@ func (p *AutoDL) Rent(ctx context.Context, spec GPUSpec) (*Instance, error) {
 		PublicIP: snapshot.Instance.PublicIP, SSHPort: snapshot.Instance.SSHPort,
 		Username: firstNonEmpty(snapshot.Instance.SSHUser, "root"), Password: snapshot.RootPassword,
 	}, nil
+}
+
+// createFirstInStock walks the candidate specs once and creates the first one
+// AutoDL has stock for. It creates nothing when it returns an error.
+func (p *AutoDL) createFirstInStock(ctx context.Context, spec GPUSpec, candidates []string, gpuCount, extraDisk int) (autodlCreated, error) {
+	var outOfStock []string // candidates passed over, with why
+	sawStockOut := false
+	for _, candidate := range candidates {
+		if spec.MinVRAMMB > 0 {
+			known, ok := gpuVRAMMB(candidate)
+			var reason error
+			switch {
+			case !ok:
+				reason = fmt.Errorf("autodl: cannot verify MinVRAMMB=%d for GPU %q", spec.MinVRAMMB, candidate)
+			case known < spec.MinVRAMMB:
+				reason = fmt.Errorf("autodl: GPU %q has %d MiB VRAM, below requested %d MiB", candidate, known, spec.MinVRAMMB)
+			}
+			if reason != nil {
+				if len(candidates) > 1 {
+					outOfStock = append(outOfStock, reason.Error())
+					continue
+				}
+				return autodlCreated{}, reason
+			}
+		}
+		instance, err := p.driver.CreateInstance(ctx, p.creds, serverprovider.CreateInstanceRequest{
+			Name: TestNamePrefix + p.runID, GPUModel: candidate, GPUCount: gpuCount, Image: p.image,
+			Extra: map[string]string{
+				"expand_system_disk_by_gb": strconv.Itoa(extraDisk),
+				"cuda_v_from":              "113",
+				"start_command":            "sleep 1",
+			},
+		})
+		if err != nil {
+			if len(candidates) > 1 && isAutoDLOutOfStock(err) {
+				sawStockOut = true
+				outOfStock = append(outOfStock, candidate+": "+err.Error())
+				continue
+			}
+			if len(outOfStock) > 0 {
+				return autodlCreated{}, fmt.Errorf("%w (out of stock before: %s)", err, strings.Join(outOfStock, "; "))
+			}
+			return autodlCreated{}, err
+		}
+		return autodlCreated{instance: instance, gpuModel: candidate}, nil
+	}
+	if sawStockOut {
+		return autodlCreated{}, fmt.Errorf("%w: %s", errAutoDLNoSpecInStock, strings.Join(outOfStock, "; "))
+	}
+	return autodlCreated{}, fmt.Errorf("autodl: no GPU spec could be rented: %s", strings.Join(outOfStock, "; "))
 }
 
 func (p *AutoDL) Destroy(ctx context.Context, instanceID string) error {

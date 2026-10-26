@@ -171,7 +171,14 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 	}
 	lifetimeCtx, lifetimeCancel := context.WithTimeout(context.Background(), cloudTestLifetime)
 	t.Cleanup(lifetimeCancel)
-	setupCtx, setupCancel := context.WithTimeout(lifetimeCtx, cloudSetupTimeout)
+	// A provider that waits out a stock-out inside Rent (nothing is rented
+	// meanwhile) gets that wait on top of the setup budget, so waiting for
+	// capacity never eats the time the rented machine needs to come up.
+	setupBudget := cloudSetupTimeout
+	if waiter, ok := p.(cloudprovider.StockWaiter); ok && rented == nil {
+		setupBudget += waiter.StockWait()
+	}
+	setupCtx, setupCancel := context.WithTimeout(lifetimeCtx, setupBudget)
 	defer setupCancel()
 	instance := rented
 	if instance == nil {
