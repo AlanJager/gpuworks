@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -451,7 +452,9 @@ func TestDoctorRPCLeavesServingAscendDiesAlone(t *testing.T) {
 	dies := ascendDies(3)
 	n := newNodeRuntime(slog.New(slog.DiscardHandler), nil, t.TempDir(), "none",
 		realAscendProber{&gpu.FixedProber{VendorName: "ascend", GPUs: dies}}, nil)
-	n.heldCardIdents = func() []string { return []string{accelerator.CardIdent(dies[1].UUID, dies[1].PCIeBDF)} }
+	n.heldCards = func() engine.HeldCards {
+		return engine.HeldCards{Idents: []string{accelerator.CardIdent(dies[1].UUID, dies[1].PCIeBDF)}}
+	}
 
 	out, err := n.OnRPC(context.Background(), proto.RPCNodeDoctor, nil)
 	if err != nil {
