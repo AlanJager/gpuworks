@@ -115,24 +115,28 @@ func (c *Controller) pushImageRefs() {
 }
 
 func (c *Controller) releaseTerminalModelSync(key string) {
-	mf, err := c.store.ResolveModelFileKey(key)
-	if err != nil || mf.State == proto.MFSyncing {
-		return
-	}
+	// Keep the database observation and map ownership in the same critical
+	// section: a delayed terminal observation must not remove a replacement.
 	c.syncMu.Lock()
 	run := c.modelSyncs[key]
-	if run != nil {
-		delete(c.modelSyncs, key)
+	if run == nil {
+		c.syncMu.Unlock()
+		return
 	}
+	mf, err := c.store.ResolveModelFileKey(key)
+	if err != nil || mf.State == proto.MFSyncing || mf.State == proto.MFPending || mf.State == proto.MFDownloading || mf.TransferID != run.transferID {
+		// Admission registers its run before BeginModelSync changes pending to
+		// syncing. Neither a preparation event nor another attempt's terminal
+		// state is a reason to interrupt that new run.
+		c.syncMu.Unlock()
+		return
+	}
+	delete(c.modelSyncs, key)
 	c.syncMu.Unlock()
-	if run != nil {
-		// A target can publish its terminal present status just before the
-		// source-side RPC response reaches the coordinator. Do not cancel that
-		// successful in-flight response: doing so turns a completed transfer
-		// into a spurious context-canceled failure. Failed/canceled terminal
-		// states still need to interrupt any remaining transfer work.
-		if mf.State != proto.MFPresent && mf.State != proto.MFRegistered {
-			run.cancel()
-		}
+	// A target can finish before the source-side RPC response reaches the
+	// coordinator. Let that successful response finish; failed or withdrawn
+	// terminal states must still interrupt their remaining transfer work.
+	if !proto.ModelFileStateReady(mf.State) {
+		run.cancel()
 	}
 }

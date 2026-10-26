@@ -75,11 +75,13 @@ func TestWarmupRecoveryPermanentExhaustionAndCancel(t *testing.T) {
 				}
 			}
 			e := &execution{run: Run{ID: 98, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}}, hooks: hooks, dc: dataset.Config{Kind: "random"}, doc: search.Document{WarmupRequests: 1}}
-			window := time.Minute
+			window, interval := time.Minute, 5*time.Millisecond
 			if tc.name == "exhaustion" {
-				window = time.Second
+				// Exercise exhaustion while waiting to retry, with exactly one
+				// completed HTTP diagnostic. In-flight expiry has its own case.
+				window, interval = time.Second, time.Minute
 			}
-			err := e.warmupRecovery(ctx, search.Point{Concurrency: 1, ISL: 8, OSL: 1}, window, 5*time.Millisecond)
+			err := e.warmupRecovery(ctx, search.Point{Concurrency: 1, ISL: 8, OSL: 1}, window, interval)
 			if err == nil {
 				t.Fatal("expected warmup failure")
 			}
@@ -92,7 +94,7 @@ func TestWarmupRecoveryPermanentExhaustionAndCancel(t *testing.T) {
 					t.Fatalf("calls=%d err=%v", calls.Load(), err)
 				}
 			case "exhaustion":
-				if calls.Load() < 1 || !strings.Contains(err.Error(), "exhausted") || !strings.Contains(err.Error(), "engine unavailable") {
+				if calls.Load() != 1 || !strings.Contains(err.Error(), "exhausted") || !strings.Contains(err.Error(), "HTTP 503, stage http: engine unavailable") {
 					t.Fatalf("calls=%d err=%v", calls.Load(), err)
 				}
 			case "cancel":
@@ -103,6 +105,9 @@ func TestWarmupRecoveryPermanentExhaustionAndCancel(t *testing.T) {
 			var attempts []loadgen.DetailRecord
 			if json.Unmarshal(rec.last().Warmup, &attempts) != nil || len(attempts) == 0 || attempts[0].HTTPStatus != tc.status || attempts[0].ErrorText == "" {
 				t.Fatalf("lost non-measured warmup diagnostic: %+v", rec.last())
+			}
+			if tc.name == "exhaustion" && len(attempts) != 1 {
+				t.Fatalf("timer exhaustion started another attempt: %+v", attempts)
 			}
 			if attempts[0].PointSeq != 0 || attempts[0].Text != "" || attempts[0].Usage != nil {
 				t.Fatalf("warmup leaked body or fake point: %+v", attempts[0])
@@ -227,5 +232,45 @@ func TestWarmupCancellationRetainsCanceledAttemptOutcome(t *testing.T) {
 	var attempts []loadgen.DetailRecord
 	if !strings.Contains(string(rec.last().Warmup), `"canceled":true`) || json.Unmarshal(rec.last().Warmup, &attempts) != nil || len(attempts) != 1 || !attempts[0].Canceled || attempts[0].ErrorStage != "transport" {
 		t.Fatalf("lost canceled attempt/source: %s", rec.last().Warmup)
+	}
+}
+
+func TestWarmupExhaustionDuringRetryRetainsAttemptDiagnostics(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"message":"engine unavailable"}}`))
+			return
+		}
+		// Hold the retry until its own recovery context expires: no sleep and no
+		// assumed ordering between the last network response and the deadline.
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	rec := &recorder{}
+	e := &execution{run: Run{ID: 98, Model: "m", Client: loadgen.Client{BaseURL: server.URL}}, hooks: rec.hooks(), dc: dataset.Config{Kind: "random"}, doc: search.Document{WarmupRequests: 1}}
+	err := e.warmupRecovery(context.Background(), search.Point{Concurrency: 1, ISL: 8, OSL: 1}, time.Second, time.Millisecond)
+	if err == nil || calls.Load() != 2 || !strings.Contains(err.Error(), "exhausted") || !strings.Contains(err.Error(), "HTTP unknown, stage transport:") || !strings.Contains(err.Error(), "context deadline exceeded") {
+		t.Fatalf("calls=%d err=%v", calls.Load(), err)
+	}
+	var attempts []loadgen.DetailRecord
+	if json.Unmarshal(rec.last().Warmup, &attempts) != nil || len(attempts) != 2 {
+		t.Fatalf("lost attempt history: %s", rec.last().Warmup)
+	}
+	if attempts[0].HTTPStatus != http.StatusServiceUnavailable || attempts[0].ErrorStage != "http" || !strings.Contains(attempts[0].ErrorText, "engine unavailable") {
+		t.Fatalf("lost original endpoint diagnostic: %+v", attempts[0])
+	}
+	if attempts[1].HTTPStatus != 0 || attempts[1].ErrorStage != "transport" || !strings.Contains(attempts[1].ErrorText, "context deadline exceeded") || attempts[0].SessionID == "" || attempts[0].SessionID != attempts[1].SessionID || attempts[0].Attempt != 1 || attempts[1].Attempt != 2 {
+		t.Fatalf("lost in-flight deadline or retry identity: %+v", attempts)
+	}
+	if len(rec.results) != 0 || len(rec.points(t)) != 0 {
+		t.Fatal("warmup created measured evidence")
+	}
+	for _, attempt := range attempts {
+		if attempt.PointSeq != 0 || attempt.Text != "" || attempt.Usage != nil {
+			t.Fatalf("warmup leaked body or fake point: %+v", attempt)
+		}
 	}
 }

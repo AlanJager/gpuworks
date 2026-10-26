@@ -101,7 +101,11 @@ read_stat() {
   [ "$#" -ge 20 ] || { echo 'incomplete process stat' >&2; return 2; }
   seen_parent=$2; seen_group=$3; seen_session=$4
   shift 19; seen_start=$1
-  for number in "$seen_parent" "$seen_group" "$seen_session" "$seen_start"; do
+  case "$seen_start" in ''|*[!0-9]*) echo 'invalid process identity' >&2; return 2;; esac
+  # Linux can lose sighand during exit after sampling state. Its default
+  # PPID/PGID/SID are then 0/-1/-1: retry, never infer absence or signal it.
+  [ "$seen_parent:$seen_group:$seen_session" != '0:-1:-1' ] || return 75
+  for number in "$seen_parent" "$seen_group" "$seen_session"; do
    case "$number" in ''|*[!0-9]*) echo 'invalid process identity' >&2; return 2;; esac
   done
   return 0
