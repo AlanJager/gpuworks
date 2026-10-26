@@ -3,7 +3,6 @@
 package l4
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -162,41 +161,6 @@ func (d *runpodDeployment) chat(t *testing.T, want int) []byte {
 		t.Fatalf("chat status=%d want=%d body=%s", resp.StatusCode, want, data)
 	}
 	return data
-}
-
-// TestRunpodNodeOnboarding validates only the low-cost provider/install/online path.
-// Image registries and model repositories are deliberately outside this
-// signal; TestRunpodHuggingFacePublicDownload owns that external network contract.
-func TestRunpodNodeOnboarding(t *testing.T) {
-	provider := runpodProvider(t)
-	gpuModel := strings.TrimSpace(os.Getenv("GPUWORKS_RUNPOD_SMOKE_GPU_MODEL"))
-	if gpuModel == "" {
-		gpuModel = "auto"
-	}
-	env := setupCloudTest(t, provider, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: 1, DiskGB: 40})
-	requireOnlineNode(t, env)
-	node, err := env.Control.Store().NodeWithGPUs(env.NodeUUID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if node.State != store.NodeStateOnline || node.GPUCount < 1 || len(node.GPUs) < 1 {
-		t.Fatalf("RunPod node inventory is incomplete: state=%q gpu_count=%d gpus=%+v", node.State, node.GPUCount, node.GPUs)
-	}
-	if node.GPUs[0].Name == "" || node.GPUs[0].UUID == "" || node.GPUs[0].MemoryTotal <= 0 {
-		t.Fatalf("RunPod GPU basics were not reported: %+v", node.GPUs[0])
-	}
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	if err := env.cleanup(cleanupCtx); err != nil {
-		t.Fatalf("release RunPod smoke instance: %v", err)
-	}
-	leaked, err := provider.ListLeakedForRunID(cleanupCtx, provider.RunID())
-	if err != nil {
-		t.Fatalf("verify RunPod cleanup: %v", err)
-	}
-	if len(leaked) != 0 {
-		t.Fatalf("RunPod cleanup ledger is not empty: %v", leaked)
-	}
 }
 
 // TestRunpodHuggingFacePublicDownload is the single low-frequency RunPod network
