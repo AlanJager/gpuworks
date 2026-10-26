@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -436,10 +437,24 @@ func rentCompshareGPU(t *testing.T, p *cloudprovider.Compshare, spec cloudprovid
 // cn-sh2-03, and any other zone answers RetCode 230). A type no zone can host
 // moves on to the next one. It returns nil and, per type, every zone's reason
 // when nothing could be rented.
+// compshareContainerGPUOrder puts the GpuTypes the container zones carry
+// first: a 2026-10-26 sweep of cn-bj2-03, cn-sh2-01 and cn-sh2-03 found only
+// 4090, 4090_48G and 5090, every other type answering RetCode 230. The rest of
+// the VM order follows in case the catalog grows.
+func compshareContainerGPUOrder() []string {
+	order := []string{"4090", "4090_48G", "5090"}
+	for _, model := range compshareGPUOrder() {
+		if !slices.Contains(order, model) {
+			order = append(order, model)
+		}
+	}
+	return order
+}
+
 func rentCompshareContainer(t *testing.T, p *cloudprovider.Compshare, spec cloudprovider.GPUSpec) (*cloudprovider.Instance, []string) {
 	t.Helper()
 	var checked []string
-	for _, model := range compshareGPUOrder() {
+	for _, model := range compshareContainerGPUOrder() {
 		if reason := belowVRAM(model, spec.MinVRAMMB); reason != "" {
 			checked = append(checked, reason)
 			continue
