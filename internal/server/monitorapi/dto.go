@@ -189,15 +189,19 @@ func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.Instance
 // deploymentState rolls a deployment's instances up into the single
 // running|starting|stopped|failed|asleep state the wire contract's
 // services[].state carries (replicaState below is its per-instance
-// sibling for replicas[].state). Failed outranks everything else (a
-// service with any failed replica needs attention regardless of how many
-// others are healthy); running outranks starting/stopped; a deployment
-// whose only running replicas are all asleep (SleepLevel > 0) reports
-// asleep rather than running, since "asleep" is the operationally relevant
-// fact there.
-func deploymentState(instances []monitor.InstanceRef) string {
+// sibling for replicas[].state). Serving replicas outrank retired failures
+// and warming replacements; deployment policy supplies the state before an
+// instance exists. An explicitly stopped deployment stays stopped while its
+// containers are being reclaimed.
+func deploymentState(deployment monitor.DeploymentRef, instances []monitor.InstanceRef) string {
+	if deployment.RuntimeState == "stopped" {
+		return "stopped"
+	}
 	hasFailed, hasStarting, running, awake := false, false, 0, 0
 	for _, inst := range instances {
+		if inst.Headless {
+			continue
+		}
 		switch inst.State {
 		case proto.InstFailed:
 			hasFailed = true
@@ -211,13 +215,15 @@ func deploymentState(instances []monitor.InstanceRef) string {
 		}
 	}
 	switch {
-	case hasFailed:
-		return "failed"
 	case running > 0 && awake == 0:
 		return "asleep"
 	case running > 0:
 		return "running"
 	case hasStarting:
+		return "starting"
+	case deployment.RuntimeState == "failed" || hasFailed:
+		return "failed"
+	case deployment.RuntimeState == "pending", deployment.RuntimeState == "pulling", deployment.RuntimeState == "starting", deployment.RuntimeState == "running":
 		return "starting"
 	default:
 		return "stopped"

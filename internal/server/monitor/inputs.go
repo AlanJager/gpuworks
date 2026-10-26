@@ -22,6 +22,9 @@ type DeploymentRef struct {
 	NodeNames       []string
 	ServedName      string
 	SleepDesired    int
+	// RuntimeState is derived by the deployment read policy before adapting
+	// the inventory, including preparation failures and scheduling timeouts.
+	RuntimeState string
 	// PD marks a PD disaggregated deployment (window_pd.go);
 	// PDTransferMetrics says its PD mode's engine exports KV transfer
 	// metrics (pdmode.Mode.TransferBytesMetric: NIXL does, vllm-ascend's
