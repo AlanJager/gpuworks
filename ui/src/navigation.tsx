@@ -37,8 +37,32 @@ export const navGroups = [
   ] },
 ];
 
-/** navGroupForPath returns the menu section a path belongs to, by its first segment. */
-export function navGroupForPath(pathname: string) {
-  const section = pathname.split("/")[1];
-  return navGroups.find((group) => group.items.some((item) => item.key.split("/")[1] === section));
+function pathSection(pathname: string) {
+  return pathname.split("/")[1] || "";
+}
+
+/** navItemForPath returns the menu entry a path belongs to, by its first segment. */
+export function navItemForPath(pathname: string) {
+  const section = pathSection(pathname);
+  for (const group of navGroups) {
+    const item = group.items.find((entry) => entry.key.split("/")[1] === section);
+    if (item) return { group, item };
+  }
+  return undefined;
+}
+
+/** sectionLabelKey is the breadcrumb's section, absent when the entry is the group. */
+export function sectionLabelKey(pathname: string) {
+  const placed = navItemForPath(pathname);
+  // /dashboard is the group itself, so a section crumb would repeat the page.
+  if (!placed || placed.item.key === "/dashboard") return undefined;
+  return placed.group.labelKey;
+}
+
+/**
+ * selectedNavKey is the menu item key for a path. A nested entry such as
+ * /playground/chat still matches /playground/audio, so the item highlights.
+ */
+export function selectedNavKey(pathname: string) {
+  return navItemForPath(pathname)?.item.key ?? `/${pathSection(pathname) || "dashboard"}`;
 }

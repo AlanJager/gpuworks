@@ -2,7 +2,7 @@ import { Breadcrumb, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
-import { navGroupForPath } from "../navigation";
+import { sectionLabelKey } from "../navigation";
 
 /**
  * PageHeader is the title block every page starts with. The breadcrumb names
@@ -31,10 +31,11 @@ export default function PageHeader({
 }) {
   const { t } = useTranslation("common");
   const location = useLocation();
-  const group = navGroupForPath(location.pathname);
-  const section = group ? t(group.labelKey) : undefined;
-  // A section named like the page itself (Overview) says nothing new.
-  const trail = [section !== title ? section : undefined, ...(parents ?? [])].filter((item) => item !== undefined);
+  // The menu entry decides. Comparing this title to the section text would
+  // follow whichever translation happens to match.
+  const sectionKey = sectionLabelKey(location.pathname);
+  const section = sectionKey ? t(sectionKey) : undefined;
+  const trail = [section, ...(parents ?? [])].filter((item) => item !== undefined);
   return (
     <div className={`page-header${className ? ` ${className}` : ""}`}>
       <div className="page-header-row">

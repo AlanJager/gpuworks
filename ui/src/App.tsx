@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, RobotOutlined,
 } from "@ant-design/icons";
-import { navGroups } from "./navigation";
+import { navGroups, selectedNavKey } from "./navigation";
 import NodesPage from "./pages/NodesPage";
 import DashboardPage from "./pages/DashboardPage";
 import MonitorPage from "./pages/monitor/MonitorPage";
@@ -81,7 +81,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
   const loc = useLocation();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(readNavCollapsed);
-  const selected = "/" + (loc.pathname.split("/")[1] || "dashboard");
+  const selected = selectedNavKey(loc.pathname);
 
   const menuItems = navGroups.map((group) => ({
     type: "group" as const,
