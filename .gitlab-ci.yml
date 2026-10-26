@@ -199,6 +199,7 @@ core-ui-test:
   script:
     # The macOS serve adapters' tests need only the image's python3.
     - make test-host-env-adapters
+    - make test-strata-queue-assets
     - cd ui
     # See core-ui: registry.npmmirror.com occasionally stalls mid-transfer and
     # resets the connection instead of failing fast, so retry the install.

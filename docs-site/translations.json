@@ -110,7 +110,7 @@
   "reference/image-families.md": "6e43e994672478a63298de049d90479725a2b986a0c97fbfa37b82268a4c6ce6",
   "reference/inference-catalog-package.md": "edf23a76ba3258b02d64e678c5817ab9824f60a3c4c6fbcf99c5599b8da7dcf9",
   "reference/inference-catalog-spec.md": "151882407fd5f36c292a96d8de69accb2dcb1fc00bb94a10dce13d99b489b97c",
-  "reference/inference-metrics.md": "7dd3af29d93a55bd1e22125955838c4f373060e6bf2da5f2a9609c18757bc07d",
+  "reference/inference-metrics.md": "be00fc3b3f6bb2df9695fd07be840093e889ecd61a994cfc0fb860d02b7b2704",
   "reference/install-layout.md": "b16b74174fbf8f13df50a93de51c16b7d21f292e83948da712e9a431444317ed",
   "reference/network-metrics.md": "c0738811e1db07438a70b886d25262bdf7029d77e123fb0ff4c4b5cc768d2370",
   "reference/openai-gateway.md": "475df11f503418d88f26a3549d1acea209460f3ed964abf31b3d048a6c7344c7",
@@ -121,5 +121,5 @@
   "reference/web-ui-tour.md": "bf34ea8cef25ebf1d72872b2670c695616ae60eb91fe6390d98d79c239685a02",
   "adr/0055-long-term-statistics.md": "93c7c3918efd24fdee0dbcc8d7fa4ca52e507f75a3d4469a732acab10c85288f",
   "how-to/analyze-operations.md": "65d76cc6ab3bf608fdf25632e1140644811560e66c039e5c4d96dd0bd5a45185",
-  "dev/engine-queue-observation.md": "fd35e69b596e31a320247052ba620f7dab28be7f942ca4dfaee5a4c0d2767278"
+  "dev/engine-queue-observation.md": "178a2b29a515f01f6856c133aa0810b3b0be5d95b3a38ea07ccd7d3486474cd0"
 }
