@@ -25,7 +25,7 @@ import traceback
 from urllib.parse import urlsplit
 import uuid
 
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect, sync_playwright
 from benchmark_fixture import BenchmarkEndpoint
 from benchmark_evidence import validate_csv, validate_usage
 from benchmark_support import (strings, format_text, action, confirm_popconfirm,
@@ -39,6 +39,72 @@ CANCEL_CONTRACT = "gpuworks/benchmark/cancel-upstream-termination"
 CANCEL_CASE = "评测 / 运行中取消 / UI 取消、执行器停止、上游连接终止与取消状态回读"
 BENCHMARKS = "/api/v1/benchmarks"
 INJECT = {"held_failure": False}
+
+
+def _box(locator):
+    return locator.evaluate("""element => {
+        const rect = element.getBoundingClientRect();
+        return {left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+                width: rect.width, height: rect.height};
+    }""")
+
+
+def _separated(first, second):
+    return (first["right"] <= second["left"] or second["right"] <= first["left"]
+            or first["bottom"] <= second["top"] or second["bottom"] <= first["top"])
+
+
+def _no_benchmark_create(page, action):
+    submitted = False
+    try:
+        with page.expect_request(lambda request: urlsplit(request.url).path == BENCHMARKS
+                                  and request.method == "POST", timeout=1000):
+            action()
+        submitted = True
+    except PlaywrightTimeout:
+        submitted = False
+    return submitted
+
+
+def exercise_benchmark_target_keyboard(page, drawer, wizard, external):
+    """API key visibility icon, Tab, Enter, a visible field error, and the footer."""
+    api_key = drawer.get_by_label("API Key", exact=True)
+    wrapper = api_key.locator(
+        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-input-password ')][1]")
+    expect(wrapper.locator(".ant-input-password-icon")).to_have_count(1, timeout=12000)
+    name_input = drawer.get_by_label(wizard["name"], exact=True)
+    base_url = drawer.get_by_label(wizard["baseUrl"], exact=True)
+    target = drawer.get_by_role("radio", name=external, exact=True)
+    name_input.focus()
+    expect(name_input).to_be_focused()
+    name_input.press("Tab")
+    expect(target).to_be_focused()
+    target.press("Tab")
+    expect(base_url).to_be_focused()
+    base_url.press("Tab")
+    expect(api_key).to_be_focused()
+    previous = button(drawer, wizard["previous"])
+    nxt = button(drawer, wizard["next"])
+    nxt.focus()
+    expect(nxt).to_be_focused()
+    api_key.focus()
+    check(not _no_benchmark_create(page, lambda: api_key.press("Enter")),
+          "Enter in the empty API key sent an evaluation create")
+    expect(api_key).to_have_value("")
+    drawer.scroll_into_view_if_needed()
+    view = page.viewport_size
+    check(view == {"width": 1440, "height": 900}, f"viewport {view}")
+    for locator in (name_input, base_url, api_key, previous, nxt):
+        expect(locator).to_be_in_viewport(ratio=1)
+    name_box, next_box = _box(name_input), _box(nxt)
+    check(name_box["width"] > 0 and next_box["width"] > 0, "name or Next has no box")
+    check(_separated(name_box, next_box), "name overlaps Next")
+    base_item = base_url.locator(
+        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-form-item ')][1]")
+    check(not _no_benchmark_create(page, lambda: nxt.click(timeout=12000)),
+          "Next with an empty endpoint sent an evaluation create")
+    expect(base_item.locator(".ant-form-item-explain-error")).to_be_visible(timeout=12000)
+    return True
 
 
 # Contract: gpuworks/benchmark/external-endpoint-sweep
@@ -103,9 +169,16 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
     expect(drawer).to_be_visible()
     drawer.get_by_text(grid, exact=True).click()
     button(drawer, wizard["next"]).click()
+    target_group = drawer.locator(".ant-radio-group").filter(has_text=external)
+    expect(target_group).to_have_count(1, timeout=12000)
+    expect(target_group).to_be_visible(timeout=12000)
+    expect(target_group).to_have_class(re.compile(r"\bant-radio-group-solid\b"), timeout=12000)
+    report["target_radio_solid"] = True
 
     drawer.get_by_label(wizard["name"], exact=True).fill(name)
     drawer.get_by_text(external, exact=True).click()
+    report["benchmark_target_keyboard"] = exercise_benchmark_target_keyboard(
+        page, drawer, wizard, external)
     drawer.get_by_label(wizard["baseUrl"], exact=True).fill(fixture.base)
     drawer.get_by_label("API Key", exact=True).fill(fixture.api_key)
     action(drawer, wizard["probe"]).click()
@@ -122,10 +195,36 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
     drawer.get_by_text(wizard["advanced"], exact=True).click()
     drawer.get_by_label(wizard["warmupRequests"], exact=True).fill("0")
 
-    with page.expect_response(lambda r: urlsplit(r.url).path == BENCHMARKS
-                              and r.request.method == "POST") as created:
-        button(drawer, wizard["start"]).click()
-    check(created.value.status == 202, f"create HTTP {created.value.status}")
+    held_creates = []
+
+    def hold_create(route):
+        if route.request.method == "POST" and urlsplit(route.request.url).path == BENCHMARKS:
+            held_creates.append(route)
+            return
+        route.continue_()
+
+    page.route("**/api/v1/benchmarks", hold_create)
+    start = drawer.locator(".ant-drawer-footer button.ant-btn-primary")
+    expect(start).to_have_count(1, timeout=12000)
+    expect(start).to_contain_text(wizard["start"], timeout=12000)
+    start.click(timeout=12000)
+    for _ in range(40):
+        if held_creates:
+            break
+        page.wait_for_timeout(50)
+    check(len(held_creates) == 1, "evaluation create did not stay in flight")
+    expect(start).to_have_class(re.compile(r"\bant-btn-loading\b"), timeout=12000)
+    start.click(timeout=12000)
+    start.press("Enter")
+    page.wait_for_timeout(500)
+    check(len(held_creates) == 1, "duplicate evaluation create while the first request is held")
+    try:
+        with page.expect_response(lambda r: urlsplit(r.url).path == BENCHMARKS
+                                  and r.request.method == "POST") as created:
+            held_creates[0].continue_()
+        check(created.value.status == 202, f"create HTTP {created.value.status}")
+    finally:
+        page.unroute("**/api/v1/benchmarks", hold_create)
     created_body = created.value.json()
     run_id = created_body["id"]
     create_body = created.value.request.post_data_json
@@ -158,6 +257,7 @@ def test_external_endpoint_sweep(page, context, server, artifacts, report, local
           "persisted target differs")
     check(run["model"] == fixture.model and run["load_origin"] == "server",
           "persisted model/origin differs")
+    report["benchmark_single_submit"] = True
     check(run["verdict"]["kind"] == "grid_done", "grid run did not persist the grid verdict")
     check(len(run.get("points") or []) == 1, "expected exactly one completed point")
     point = run["points"][0]
