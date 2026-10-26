@@ -152,3 +152,16 @@ agent 每次抓取后，对没有被引擎直接报告的指标按下表计算�
 | 目标 | 输入 | 计算 |
 |---|---|---|
 | `gpu_cache_usage_percent` | `kv_capacity_tokens`、`kv_free_tokens` | `(capacity − free) / capacity`；容量 ≤ 0 或空闲量不在 `[0, capacity]` 时不出值 |
+
+### 排队请求数与逐请求排队耗时
+
+`requests_waiting`（例如 Strata `/metrics` 的 `live.queued`）是采样时刻的排队请求数，
+不是毫秒数，也不能用它或服务级直方图给某一个请求补写 `engine_queue_ms`。
+请求记录里的该字段只来自同一个回复的 `queue_seconds`；未上报或显式 `null` 均为未知，
+显式 `0` 才表示已测得零排队。只有排队耗时而没有 Prefill 耗时时，时间条保留已知的排队，
+剩余时间继续标为未拆分的等待。
+
+Strata 0.1.38 的标准回复只有 `timings.prompt_ms` 和 `timings.predicted_ms`，因此排队耗时未知，
+等待中还可能包含预处理及网络耗时，不能直接把全部等待改名为引擎排队。
+可选内部监控接口也不能稳定关联到网关请求；具体源码证据及接入边界见
+[逐请求引擎排队耗时的观测边界](../dev/engine-queue-observation.md)。

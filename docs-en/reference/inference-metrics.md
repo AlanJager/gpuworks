@@ -152,3 +152,16 @@ After each scrape, the agent calculates metrics not directly reported by the eng
 | Target | Inputs | Calculation |
 |---|---|---|
 | `gpu_cache_usage_percent` | `kv_capacity_tokens`, `kv_free_tokens` | `(capacity − free) / capacity`; no value is produced if capacity ≤ 0 or free capacity is outside `[0, capacity]` |
+
+### Queued Request Counts and Per-Request Queue Duration
+
+`requests_waiting` (for example, Strata's `/metrics` field `live.queued`) counts queued requests at the sampling instant.
+It is not a millisecond duration. Neither this gauge nor a service histogram can populate an individual request's `engine_queue_ms`.
+That field comes only from `queue_seconds` reported in the same response. Missing fields and explicit `null` mean unknown;
+an explicit `0` means measured zero queue time. If queue timing is available without Prefill timing, retain the known queue
+segment and leave the remainder as unsplit waiting.
+
+Strata 0.1.38 standard responses contain only `timings.prompt_ms` and `timings.predicted_ms`, so queue duration remains unknown.
+Waiting may also include preprocessing and network time; renaming all waiting to engine queueing would be inaccurate.
+The optional internal monitor cannot be stably correlated to gateway requests either. For pinned source evidence and integration
+constraints, see [Observability Limits of Per-Request Engine Queue Time](../dev/engine-queue-observation.md).

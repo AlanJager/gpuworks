@@ -301,6 +301,7 @@
       "gateway": "Gateway {{time}}",
       "preprocess": "Engine preprocessing {{time}} (not in the engine's account: tokenizing, waiting for the current step, the first token's trip back)",
       "queue": "Queue {{time}}",
+      "queueUnavailable": "Engine queue time unavailable: this reply did not report a per-request duration. Waiting includes unreported queue, preprocessing and network time; a queued-request count cannot separate them.",
       "prefill": "Prefill {{time}}",
       "prefillSpeed": "Prefill {{time}} · {{speed}} tok/s",
       "firstToken": "First token after {{time}}",
