@@ -111,6 +111,8 @@
     "quantileFamilyNote": "This metric carries p50/p95/p99 as a \"quantile\" label - /monitor/series has no per-label filter yet, so \"by\"/\"aggregation\" combine every quantile together rather than isolating one."
   },
   "deployment": {
+    "noReadyReplicas": "No replica is ready to serve requests",
+    "noReadyReplicasDetail": "Replicas may be starting or recovering, or may have failed. Check their states and logs below, or open the deployment for the failure reason. Requests cannot be served until a replica is ready.",
     "backToMonitor": "Back to Monitor Center",
     "goToDeployment": "Go to deployment",
     "subtitle": "{{engine}} · {{placement}} · {{ready}}/{{desired}} replicas · deployment #{{id}}",

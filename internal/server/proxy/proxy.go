@@ -72,8 +72,9 @@ type Proxy struct {
 	transport http.RoundTripper
 	// live is the in-flight table (inflight.go); sink, when set, receives
 	// each forwarded request's record as its reply ends (ADR 0042).
-	live liveTable
-	sink func(uxrecord.Request)
+	live  liveTable
+	guard *instanceGuard
+	sink  func(uxrecord.Request)
 	// sampleRoot decides whether a trace the gateway starts is sampled
 	// (request_identity.go); nil samples none.
 	sampleRoot func(tracecontext.TraceID) bool
@@ -174,7 +175,12 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			log.Warn("record serving forward status", "node", nodeUUID, "err", err)
 		}
 	})
-	p.routes.setOnRebuild(p.balancer.gc)
+	p.guard = &instanceGuard{store: st}
+	p.routes.setOnRebuild(func(active map[string]bool) {
+		p.balancer.gc(active)
+		p.guard.checkMissing(active)
+	})
+	p.routes.setOnInstanceChange(p.guard.check)
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			t, ok := ctx.Value(targetKey).(target)
@@ -221,7 +227,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			setTraceHeaders(r.Context(), r.Header)
 		},
 		FlushInterval: -1,
-		Transport:     &retryTransport{base: transport, balancer: p.balancer, hub: p.hub, awake: p.awake},
+		Transport:     &retryTransport{base: transport, balancer: p.balancer, hub: p.hub, awake: p.awake, guard: p.guard},
 		BufferPool:    nil,
 		// ModifyResponse runs after the upstream status/headers arrive but before
 		// the body is copied. It records the declared framing and wraps the body
@@ -281,7 +287,7 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 			// (which already treats every tunnelOpenError as retryable) still gets
 			// first chance to switch to another instance when one exists.
 			status := http.StatusBadGateway
-			if errors.Is(err, hubpkg.ErrDataLaneUnavailable) {
+			if errors.Is(err, hubpkg.ErrDataLaneUnavailable) || errors.Is(err, errInstanceUnavailable) {
 				status = http.StatusServiceUnavailable
 				w.Header().Set("Retry-After", strconv.Itoa(dataLaneUnavailableRetryAfterSeconds))
 			}

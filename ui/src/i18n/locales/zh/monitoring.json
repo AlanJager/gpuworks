@@ -111,6 +111,8 @@
     "quantileFamilyNote": "该指标以“quantile”标签区分 p50/p95/p99——/monitor/series 目前不支持按额外标签过滤，所选“分组”/“聚合方式”会把各分位数合并在一起，而不是只取某一个。"
   },
   "deployment": {
+    "noReadyReplicas": "当前没有可接收请求的就绪副本",
+    "noReadyReplicasDetail": "副本可能正在启动、恢复或已经失败。请查看下方副本状态和日志，或打开部署查看失败原因。副本就绪前服务无法接收请求。",
     "backToMonitor": "返回监控中心",
     "goToDeployment": "去部署",
     "subtitle": "{{engine}} · {{placement}} · {{ready}}/{{desired}} 副本 · 部署 #{{id}}",

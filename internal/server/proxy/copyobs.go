@@ -120,8 +120,10 @@ func (o *copyObservation) finish(readErr error) {
 	switch {
 	// A client that leaves once it has the reply's last event, before the
 	// stream's terminator, received the whole reply.
-	case stats.ended && writeErr == nil && errors.Is(copyErr, context.Canceled):
+	case stats.ended && writeErr == nil && (errors.Is(copyErr, context.Canceled) || errors.Is(copyErr, errInstanceUnavailable)):
 		truncated = false
+	case errors.Is(copyErr, errInstanceUnavailable):
+		outcome = uxrecord.OutcomeUpstreamError
 	// A client that leaves cancels the request's context, so the read of the
 	// upstream body usually fails before any write to the client does.
 	case o.upstreamFailed && o.clientGone, writeErr != nil, errors.Is(copyErr, context.Canceled):
