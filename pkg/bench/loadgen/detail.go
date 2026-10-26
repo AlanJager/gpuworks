@@ -21,6 +21,7 @@ type DetailRecord struct {
 	Usage        json.RawMessage `json:"usage,omitempty"`
 	FinishReason string          `json:"finish_reason,omitempty"`
 	ErrorText    string          `json:"error_text,omitempty"`
+	Canceled     bool            `json:"canceled,omitempty"`
 	ErrorStage   string          `json:"error_stage,omitempty"`
 	HTTPStatus   int             `json:"http_status,omitempty"`
 	LocalInput   *int            `json:"local_input"`
@@ -51,7 +52,7 @@ type DetailMetrics struct {
 func NewDetailRecord(r Result) DetailRecord {
 	m := r.Metrics
 	d := DetailRecord{Version: 1, SessionID: m.SessionID, Turn: m.Turn, PlannedTurns: m.PlannedTurns, Attempt: 1,
-		Usage: r.UsageJSON, FinishReason: m.FinishReason, ErrorStage: m.ErrorStage, HTTPStatus: m.HTTPStatus,
+		Usage: r.UsageJSON, FinishReason: m.FinishReason, ErrorStage: m.ErrorStage, HTTPStatus: m.HTTPStatus, Canceled: m.Canceled,
 		LocalInput: m.LocalInputTokens, LocalOutput: m.LocalOutputTokens, InputSource: m.InputSource, OutputSource: m.OutputSource,
 		OutputBudget: r.OutputBudget, Stream: r.Stream, Text: r.Text}
 	if m.Error != nil {

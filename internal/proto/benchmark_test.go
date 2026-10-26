@@ -33,3 +33,28 @@ func TestBenchmarkStatusProgressWireIncludesCurrentPointAndOutcomeSample(t *test
 		}
 	}
 }
+
+func TestWarmupAttemptEvidenceHasSeparateStableWireField(t *testing.T) {
+	const wire = `{"id":98,"state":"failed","warmup":[{"version":1,"run_id":98,"point_seq":0,"session_id":"warmup-1","attempt":2,"http_status":503,"error_stage":"http","error_text":"engine restarting"}],"message":"warmup failed"}`
+	var status BenchmarkStatus
+	if err := json.Unmarshal([]byte(wire), &status); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(status)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fields["point"]; ok {
+		t.Fatal("warmup synthesized a measured point")
+	}
+	if _, ok := fields["result"]; ok {
+		t.Fatal("warmup synthesized measured aggregate")
+	}
+	if string(fields["warmup"]) != string(status.Warmup) || !strings.Contains(string(raw), `"attempt":2`) {
+		t.Fatalf("warmup wire=%s", raw)
+	}
+}

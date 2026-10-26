@@ -20,7 +20,7 @@ await i18n.use(initReactI18next).init({
 		detail: {
 			curveLoading: "正在读取过程曲线…", curveLoadFailed: "过程曲线读取失败",
 			curveRefreshFailed: "最新曲线刷新失败，当前显示上次成功读取的数据",
-			curveNoRequests: "本次 Run 在首个请求发出前已失败，因此没有运行过程曲线",
+			curveNoRequests: "本次 Run 在正式采样开始前已失败，因此没有运行过程曲线",
 			curveLegacyMissing: "该历史 Run 未记录过程曲线",
 		},
 	} } },
@@ -33,7 +33,7 @@ afterEach(() => cleanup());
 
 test("a Run that failed before sending requests is not labeled as lost historical data", () => {
 	render(<I18nextProvider i18n={i18n}><BenchmarkCurveNotice active={false} loading={false} hasResponse hasSamples={false} runState="failed" completed={0} runError="agentic workload requires an exact tokenizer" onRetry={() => {}} /></I18nextProvider>);
-	assert.ok(screen.getByText(/首个请求发出前已失败/));
+	assert.ok(screen.getByText(/正式采样开始前已失败/));
 	assert.ok(screen.getByText("agentic workload requires an exact tokenizer"));
 	assert.equal(screen.queryByText(/历史 Run/), null);
 });
@@ -50,3 +50,14 @@ test("loading and endpoint failures are distinct from an empty historical curve"
 function renderError(rerender: (ui: React.ReactNode) => void) {
 	rerender(<I18nextProvider i18n={i18n}><BenchmarkCurveNotice active={false} loading={false} hasResponse={false} hasSamples={false} completed={0} error={new Error("network down")} onRetry={() => {}} /></I18nextProvider>);
 }
+
+test("warmup recovery shows readable progress without claiming measured requests", () => {
+ i18n.addResource("zh", "evaluations", "detail.warmupRecovery", "正在预热，尚未开始正式采样");
+ const {rerender}=render(<I18nextProvider i18n={i18n}><BenchmarkCurveNotice active warmup loading hasResponse={false} hasSamples={false} completed={0} runError="HTTP 503, stage http: engine restarting; retrying in 5s" onRetry={()=>{}} /></I18nextProvider>);
+ assert.ok(screen.getByText("正在预热，尚未开始正式采样"));
+ assert.ok(screen.getByText(/engine restarting; retrying/));
+ assert.equal(screen.queryByText("正在读取过程曲线…"),null);
+ rerender(<I18nextProvider i18n={i18n}><BenchmarkCurveNotice active={false} warmup loading={false} hasResponse hasSamples={false} completed={0} runState="failed" runError="warmup recovery exhausted: engine restarting" onRetry={()=>{}} /></I18nextProvider>);
+ assert.ok(screen.getByText("warmup recovery exhausted: engine restarting"));
+ assert.equal(screen.queryByText("正在预热，尚未开始正式采样"),null);
+});

@@ -2,6 +2,7 @@ package report
 
 import (
 	"encoding/csv"
+	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 	"strings"
 	"testing"
 	"time"
@@ -230,5 +231,66 @@ func TestReportOpenLoopPointsShowRateAndCap(t *testing.T) {
 	html, _ := Render("html", run)
 	if !strings.Contains(string(html.Body), ">R=2.5<") {
 		t.Fatalf("html chart labels:\n%s", html.Body)
+	}
+}
+
+func TestWarmupFailureWithoutMeasuredPointsHasDiagnosticReport(t *testing.T) {
+	run := Run{ID: 98, Name: "warmup failure", State: "failed", Error: "warmup recovery exhausted: engine restarting", Warmup: []loadgen.DetailRecord{{Version: 1, RunID: 98, PointSeq: 0, SessionID: "warmup-1", Attempt: 2, HTTPStatus: 503, ErrorStage: "http", ErrorText: `{"error":{"message":"engine restarting https:\/\/report-user:report-password@host.test\/?access_token=REPORT_SECRET"}}`, Text: "BODY_MUST_NOT_BE_EXPORTED"}}}
+	for _, format := range []string{"markdown", "html", "csv"} {
+		t.Run(format, func(t *testing.T) {
+			document, err := Render(format, run)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(document.Body)
+			if !strings.Contains(text, "engine restarting") || strings.Contains(text, "REPORT_SECRET") || strings.Contains(text, "report-user") || strings.Contains(text, "report-password") || strings.Contains(text, "BODY_MUST_NOT_BE_EXPORTED") {
+				t.Fatalf("missing or unsafe diagnostic: %s", text)
+			}
+			if format == "csv" {
+				rows, err := csv.NewReader(strings.NewReader(text)).ReadAll()
+				if err != nil || len(rows) != 2 {
+					t.Fatalf("rows=%v err=%v", rows, err)
+				}
+				for _, cell := range rows[1][:len(rows[1])-2] {
+					if cell != "" {
+						t.Fatalf("warmup invented point measurement: %v", rows[1])
+					}
+				}
+				if !strings.Contains(rows[1][len(rows[1])-1], `"point_seq":0`) {
+					t.Fatal("warmup lost separate phase evidence")
+				}
+			} else if !strings.Contains(text, "Warmup recovery evidence") || !strings.Contains(text, "excluded from measured requests") {
+				t.Fatal("warmup not clearly separate from measurements")
+			}
+		})
+	}
+}
+
+func TestLegacyWarmupErrorIsDecodedBeforeExportRedaction(t *testing.T) {
+	run := Run{ID: 98, Name: "historical warmup failure", State: "failed", Error: `all 1 warmup requests failed: endpoint returned 400: {"error":{"message":"earlier engine failure https:\/\/history-user:history-password@host.test\/?access_token=HISTORY_QUERY_SECRET"}}`}
+	for _, format := range []string{"markdown", "html", "csv"} {
+		document, err := Render(format, run)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(document.Body)
+		for _, secret := range []string{"history-user", "history-password", "HISTORY_QUERY_SECRET"} {
+			if strings.Contains(text, secret) {
+				t.Fatalf("historical run.Error leaked through %s", format)
+			}
+		}
+		if !strings.Contains(text, "earlier engine failure") {
+			t.Fatalf("legacy diagnostic lost useful cause: %s", text)
+		}
+	}
+}
+
+func TestWarmupReportDistinguishesCanceledAttemptFromFailure(t *testing.T) {
+	document, err := Render("markdown", Run{State: "canceled", Warmup: []loadgen.DetailRecord{{SessionID: "warmup-1", Attempt: 1, Canceled: true, ErrorStage: "transport", ErrorText: "context canceled"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(document.Body), "| canceled | unknown | transport |") {
+		t.Fatalf("cancellation misreported as failure: %s", document.Body)
 	}
 }

@@ -19,9 +19,10 @@ import (
 // streams three content chunks and reports usage, the shape vLLM and SGLang
 // produce with stream_options.include_usage. fail makes it answer 503.
 type fakeEndpoint struct {
-	mu     sync.Mutex
-	bodies []map[string]any
-	fail   bool
+	mu            sync.Mutex
+	bodies        []map[string]any
+	fail          bool
+	failureStatus int
 }
 
 func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
@@ -34,7 +35,11 @@ func (f *fakeEndpoint) serve(t *testing.T) *httptest.Server {
 		fail := f.fail
 		f.mu.Unlock()
 		if fail {
-			http.Error(w, `{"error":{"message":"overloaded"}}`, http.StatusServiceUnavailable)
+			status := f.failureStatus
+			if status == 0 {
+				status = http.StatusServiceUnavailable
+			}
+			http.Error(w, `{"error":{"message":"overloaded"}}`, status)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -211,7 +216,7 @@ func TestOpenLoopGridReportsRatePoints(t *testing.T) {
 }
 
 func TestWarmupFailureFailsTheRunBeforeAnyPoint(t *testing.T) {
-	endpoint := &fakeEndpoint{fail: true}
+	endpoint := &fakeEndpoint{fail: true, failureStatus: http.StatusBadRequest}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
 	Execute(context.Background(), Run{
@@ -219,7 +224,7 @@ func TestWarmupFailureFailsTheRunBeforeAnyPoint(t *testing.T) {
 		Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":4,"isl":[8],"osl":[3],"warmup_requests":3}`),
 	}, rec.hooks())
 	last := rec.last()
-	if last.State != "failed" || last.StopReason != proto.BenchmarkStopFatal || !strings.Contains(last.Message, "all 3 warmup requests failed") || !strings.Contains(last.Message, "503") {
+	if last.State != "failed" || last.StopReason != proto.BenchmarkStopFatal || !strings.Contains(last.Message, "all 3 warmup requests failed") || !strings.Contains(last.Message, "400") {
 		t.Fatalf("terminal = %+v", last)
 	}
 	if len(rec.points(t)) != 0 || len(endpoint.requests()) != 3 {
