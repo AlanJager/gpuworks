@@ -240,6 +240,14 @@ Confirm the targets with `make help`/Makefile first, then run only the required 
 - CompShare can reuse a prewarmed VM template through `COMPSHARE_GOLDEN_IMAGE_ID`, specify an image archive visible inside the VM through
   `COMPSHARE_DOCKER_IMAGE_TAR`, and register a complete model directory already present on each node through
   `COMPSHARE_PRELOADED_MODEL_PATH`.
+- CompShare V100 / V100S (Volta, sm_70) cannot use the generic vLLM image: upstream's prebuilt kernels do not include sm_70,
+  and the engine exits with `no kernel image is available for execution on the device`. When `l4-compshare-single-vm-tp2-dgpu`
+  gets a V100S it uses `cuda12.8-v100-vllm1cat1.5.1`, built from 1Cat-vLLM (`build/runner-images`, the matrix item is marked
+  `catalog: false` and stays out of the system image catalog), and asserts that the instances really started from that image.
+  `COMPSHARE_V100_TEST_IMAGE` swaps the image, and `COMPSHARE_V100_DOCKER_IMAGE_TAR` names an image archive inside the VM (without one the platform
+  pulls the image during the deployment startup window). Pascal (P40, sm_61) has no image that can run on it, so this case no longer rents it.
+  The image must be built and published first (`build.sh`, then `publish.py`).
+  `COMPSHARE_GPU_MODELS` (comma-separated, e.g. `V100S`) replaces the candidate card order the case rents from, to aim a run at one card type.
 - `prepare-compshare-golden-image` creates and validates a new template, but does not delete old templates or change CI variables.
   The template contains both open-source and proprietary kernel modules for the same NVIDIA driver version (currently 570.153.02). At boot,
   `gpuworks-nvidia-kmod.service` loads the open-source modules first (Blackwell GPUs such as the RTX 5090 require them). If no GPU is initialized,

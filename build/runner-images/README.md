@@ -8,6 +8,11 @@
 
 - `matrix.yaml` — 目标矩阵（厂商 × 框架档 × 引擎 × 架构 × base × requires × 版次）
 - `cuda/` `cann/` `dtk/` `hggc/` — 各后端 `Dockerfile.{vllm,sglang}`（ARG 驱动，base 由矩阵注入）
+  另有 `cuda/Dockerfile.vllm-v100`：V100 / V100S（sm_70）专用线，装 1Cat-vLLM 发行 wheel，不以上游
+  vllm 镜像为 base（上游预编译内核不含 sm_70）；矩阵项标 `catalog: false`，只构建、验证、发布，
+  不进系统镜像目录，由 L4 用例按卡型显式引用
+  构建机到不了 GitHub 时，把发行 wheel 放到本机 HTTP 目录（`<url>/v1.5.1/1cat_vllm-1.5.1-cp312-cp312-linux_x86_64.whl`），
+  用构建机本地的 matrix 副本给该项加 `ONECAT_RELEASE_URL` 指过去；SHA-256 校验仍照常生效
 - `shared/` — 构建与验证共用的脚本
   - `assert_requires.sh` — 「requires 的含义」的唯一实现：构建末尾与 verify 都用它
   - `apply_patches.sh` — 严格打补丁（先 dry-run、不给 fuzz、不留 .rej/.orig）

@@ -35,6 +35,18 @@ Apache License 2.0 全文见 licenses/Apache-2.0.txt。按该许可第 4 条，�
 tag 命名风格与上游 `gpustack/runner` 保持可比（`<backend><框架档>[-<型号>]-<engine><版本>`），
 目的是推理目录（seed catalog）的 image 字段平移成本低。
 
+随镜像分发的第三方组件
+----------------------
+
+`cuda/Dockerfile.vllm-v100` 构建的镜像（`cuda12.8-v100-vllm1cat1.5.1`）在构建期下载并安装
+1Cat-vLLM 的发行 wheel，不修改其内容：
+
+    1Cat-vLLM
+    https://github.com/1CatAI/1Cat-vLLM
+    Licensed under the Apache License, Version 2.0
+
+许可副本随镜像放在 `/opt/gpuworks/licenses/1Cat-vLLM.Apache-2.0.txt`（内容同 licenses/Apache-2.0.txt）。
+
 镜像标签（label）与用户可见字符串
 ---------------------------------
 

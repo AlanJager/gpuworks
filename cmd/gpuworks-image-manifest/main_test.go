@@ -245,3 +245,98 @@ func TestMetalFrameworkVersionIsTheMinimumMacOS(t *testing.T) {
 		t.Fatalf("build.sh MACOS_TARGET = %q, want %s", m, want)
 	}
 }
+
+// The V100 line carries a model slot of its own and an engine version that is
+// the fork's: 1Cat-vLLM numbers its releases itself.
+func TestParseTagReadsTheVoltaLine(t *testing.T) {
+	tag, err := parseTag("cuda12.8-v100-vllm1cat1.5.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag != (parsedTag{Backend: "cuda", FrameworkVersion: "12.8", Model: "v100", Engine: "vllm", EngineVersion: "1cat1.5.1"}) {
+		t.Fatalf("tag = %+v", tag)
+	}
+}
+
+// catalog: false builds an image without offering it: the automatic image pick
+// sees only the catalog, and it never looks at the GPU model (ADR 0019), so a
+// Volta-only image listed there would be chosen (or missed) for the wrong
+// nodes. The id is still validated, so a typo cannot hide behind the flag.
+func TestGenerateLeavesUnlistedItemsOutOfTheCatalog(t *testing.T) {
+	const listed = "  - id: cuda12.9-vllm0.31.0\n    revision: r2\n"
+	const unlisted = "  - id: cuda12.8-v100-vllm1cat1.5.1\n    revision: r1\n    catalog: false\n    args:\n      ENGINE_VERSION: \"1cat1.5.1\"\n      FRAMEWORK_VERSION: \"12.8\"\n"
+	head := "defaults:\n  platforms: [linux/amd64]\nitems:\n"
+	with, err := generate([]byte(head+listed+unlisted), options{Date: "2026-10-08"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	without, err := generate([]byte(head+listed), options{Date: "2026-10-08"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(with, without) {
+		t.Fatalf("an unlisted item changed the catalog:\n%s\nvs\n%s", with, without)
+	}
+	if bytes.Contains(with, []byte("v100")) {
+		t.Fatalf("an unlisted item reached the catalog: %s", with)
+	}
+	// Listed explicitly, the same item is a catalog entry in the vLLM CUDA series.
+	explicit := strings.Replace(unlisted, "catalog: false", "catalog: true", 1)
+	out, err := generate([]byte(head+listed+explicit), options{Date: "2026-10-08"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := manifest.Parse(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, series := range parsed.Series {
+		for _, version := range series.Versions {
+			if version.Name == "cuda12.8-v100-vllm1cat1.5.1-r1" {
+				found = version.EngineVersion == "1cat1.5.1" && version.FrameworkVersion == "12.8" && series.Name == "vLLM · CUDA" && strings.HasSuffix(version.Notes, "model: v100")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("catalog: true did not list the V100 item: %s", out)
+	}
+	_, err = generate([]byte(head+"  - id: cuda12.8-v200-vllm1cat1.5.1\n    revision: r1\n    catalog: false\n"), options{Date: "2026-10-08"})
+	if err == nil || !strings.Contains(err.Error(), "v200") {
+		t.Fatalf("an unlisted item with a bad id was accepted: %v", err)
+	}
+}
+
+// The checked-in matrix declares the V100 line and keeps it out of the seed.
+func TestMatrixDeclaresTheVoltaImageUnlisted(t *testing.T) {
+	data, err := os.ReadFile(matrixPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matrix matrixFile
+	if err := yaml.Unmarshal(data, &matrix); err != nil {
+		t.Fatal(err)
+	}
+	var found *matrixItem
+	for i := range matrix.Items {
+		if matrix.Items[i].ID == "cuda12.8-v100-vllm1cat1.5.1" {
+			found = &matrix.Items[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("the matrix has no V100 item")
+	}
+	if found.Catalog == nil || *found.Catalog {
+		t.Fatalf("the V100 item must stay unlisted until it has run on hardware: %+v", found.Catalog)
+	}
+	if found.Args["ENGINE_VERSION"] != "1cat1.5.1" || found.Args["ONECAT_VERSION"] != "1.5.1" || len(found.Args["ONECAT_WHEEL_SHA256"]) != 64 {
+		t.Fatalf("args = %v", found.Args)
+	}
+	seed, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(seed, []byte("v100")) {
+		t.Fatal("the seed lists the V100 image")
+	}
+}

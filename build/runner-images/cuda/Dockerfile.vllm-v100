@@ -1,0 +1,141 @@
+# gpuworks-runner: NVIDIA Volta（V100 / V100S，sm_70）vLLM 线 —— 1Cat-vLLM
+#
+# 为什么单独一条线：上游 vLLM 的官方镜像与预编译 wheel 不含 sm_70 内核，以
+# vllm/vllm-openai 为 base 的 cuda/Dockerfile.vllm 在 V100 上必然以 "no kernel image is
+# available for execution on the device" 结束。1Cat-vLLM（https://github.com/1CatAI/1Cat-vLLM，
+# Apache-2.0，见 ../NOTICE）把 Volta 当一等目标：sm_70 内核、FLASH_ATTN_V100 注意力后端。
+# 它的 console script 与模块名仍是 vllm（发行包名是 1cat-vllm），所以 `vllm serve` 不变。
+#
+# 内容 = nvidia/cuda devel（要 nvcc：TileLang 内核首次推理时即时编译，没有 CUDA 12.8 工具链
+#          推理直接 500；Ubuntu 24.04 满足它要求的 GLIBC >= 2.38 与 Python 3.12）
+#       + Python 3.12 venv（/opt/venv 在 PATH 上）
+#       + torch 2.10.0+cu128（先单独装并断言 CUDA 版本；之后装 1Cat 发行 wheel 不许改动它）
+#       + 1Cat-vLLM 发行 wheel（按 SHA-256 校验）
+#
+# 刻意没有：omni、mooncake、diffusion、补丁层、离线审计门。这是只服务 V100 的最小线；
+# 要把它推进产品目录，先在真机上跑通，再补它需要的断言（见 matrix.yaml 里的 catalog: false）。
+#
+# 不改 ENTRYPOINT：引擎命令模式下 gpuworks 自己给出完整的 `vllm serve ...`（见
+# internal/server/deploy），镜像默认值只在 image-entry 模式下才用到。
+ARG BASE_IMAGE=nvidia/cuda:12.8.1-devel-ubuntu24.04
+FROM ${BASE_IMAGE}
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
+ARG ENGINE_VERSION=1cat1.5.1
+ARG FRAMEWORK_VERSION=12.8
+# 1Cat-vLLM 发行版本与其 wheel 的 SHA-256（发布页 SHA256SUMS）。两者必须同时更新。
+ARG ONECAT_VERSION=1.5.1
+ARG ONECAT_WHEEL_SHA256=
+ARG ONECAT_RELEASE_URL=https://github.com/1CatAI/1Cat-vLLM/releases/download
+# 1Cat wheel 对 torch 的 pin 是 ==2.10.0；先装 CUDA 12.8 构建，pip 之后只会认为它已满足。
+ARG TORCH_VERSION=2.10.0
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG IMAGE_ID=unknown
+ARG IMAGE_REVISION=unknown
+ARG REQUIRES="engine"
+# 构建期源：ARG 而非 ENV，不写进运行期镜像（理由同 Dockerfile.vllm）。
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_DEFAULT_TIMEOUT=60
+ARG APT_MIRROR=mirrors.aliyun.com
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    CUDA_HOME=/usr/local/cuda
+
+## 工具层
+#
+# gcc/g++/ninja 是 TileLang 即时编译所需（README: CUDA 12.8 Toolkit + C++ compiler + ninja）。
+# apt 源的镜像改写只在构建期生效：装完还原，不把镜像源留给用户。
+RUN <<EOF
+    set -eux
+    mkdir -p /tmp/apt-backup
+    cp -a /etc/apt/sources.list /tmp/apt-backup/ 2>/dev/null || true
+    cp -a /etc/apt/sources.list.d /tmp/apt-backup/ 2>/dev/null || true
+    sed -i \
+        -e "s|archive.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+        -e "s|security.ubuntu.com/ubuntu|${APT_MIRROR}/ubuntu|g" \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+    apt-get update -y
+    apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv python3.12-dev \
+        gcc g++ ninja-build \
+        tini jq curl wget ca-certificates less \
+        iproute2 iputils-ping net-tools dnsutils procps \
+        libgl1 libglib2.0-0
+    rm -rf /etc/apt/sources.list /etc/apt/sources.list.d
+    cp -a /tmp/apt-backup/sources.list /etc/apt/ 2>/dev/null || true
+    cp -a /tmp/apt-backup/sources.list.d /etc/apt/ 2>/dev/null || true
+    rm -rf /tmp/apt-backup /var/lib/apt/lists/* /var/cache/apt /var/tmp/* /tmp/*
+EOF
+
+RUN python3.12 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:${PATH}
+
+## torch：先单独装 CUDA 12.8 构建，并当场断言
+RUN <<EOF
+    set -eux
+    pip install --no-cache-dir -i "${PIP_INDEX_URL}" -U pip
+    pip install --no-cache-dir --index-url "${TORCH_INDEX_URL}" "torch==${TORCH_VERSION}"
+    python -c "
+import torch
+assert torch.__version__.split('+')[0] == '${TORCH_VERSION}', torch.__version__
+assert torch.version.cuda == '${FRAMEWORK_VERSION}', torch.version.cuda
+print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+    pip freeze | grep -E '^(torch|triton|nvidia-[^=]*)==' | sort > /opt/venv/torch-stack.txt
+EOF
+
+## 1Cat-vLLM 发行 wheel：必须带 SHA-256，没有就不出镜像
+RUN <<EOF
+    set -eux
+    test -n "${ONECAT_WHEEL_SHA256}" || { echo "ONECAT_WHEEL_SHA256 is required" >&2; exit 1; }
+    wheel="1cat_vllm-${ONECAT_VERSION}-cp312-cp312-linux_x86_64.whl"
+    curl -fsSL --retry 5 --retry-delay 5 -o "/tmp/${wheel}" "${ONECAT_RELEASE_URL}/v${ONECAT_VERSION}/${wheel}"
+    echo "${ONECAT_WHEEL_SHA256}  /tmp/${wheel}" | sha256sum -c -
+    pip install --no-cache-dir -i "${PIP_INDEX_URL}" "/tmp/${wheel}"
+    rm -f "/tmp/${wheel}"
+    # 装 wheel 不许把 torch 栈换掉（依赖解析可能悄悄换 torch / triton / nvidia-*）：
+    # 之前钉住的每一行都必须原样还在。wheel 自己多带的包（torchvision、torchaudio、
+    # nvidia-cuda-nvcc-cu12、nvidia-cutlass-dsl 等）是新增而非替换，不拦。
+    pip freeze | grep -E '^(torch|triton|nvidia-[^=]*)==' | sort > /tmp/torch-stack.after
+    changed="$(comm -23 /opt/venv/torch-stack.txt /tmp/torch-stack.after)"
+    test -z "${changed}" || { echo "1Cat wheel changed the pinned torch stack:" >&2; echo "${changed}" >&2; exit 1; }
+    rm -f /tmp/torch-stack.after
+    rm -f /opt/venv/torch-stack.txt
+    python -c "import importlib.metadata as m; assert m.version('1cat-vllm') == '${ONECAT_VERSION}', m.version('1cat-vllm')"
+    command -v vllm
+EOF
+
+## 许可与来源：1Cat-vLLM 是 Apache-2.0，随镜像带上许可副本
+COPY licenses/Apache-2.0.txt /opt/gpuworks/licenses/1Cat-vLLM.Apache-2.0.txt
+
+## 自描述清单 + requires 断言
+COPY shared/assert_requires.sh /opt/gpuworks/shared/assert_requires.sh
+RUN <<EOF
+    set -eux
+    python - <<'PY' > /opt/gpuworks/image.json
+import json, os
+json.dump({
+    "id": os.environ["IMAGE_ID"],
+    "revision": os.environ["IMAGE_REVISION"],
+    "engine": "vllm",
+    "engine_version": os.environ["ENGINE_VERSION"],
+    "framework": "cuda",
+    "framework_version": os.environ["FRAMEWORK_VERSION"],
+    "requires": os.environ["REQUIRES"].split(),
+    "omni": None,
+    "mooncake": None,
+}, open("/dev/stdout", "w"), indent=2, sort_keys=True)
+PY
+    REQUIRES="${REQUIRES}" ENGINE=vllm ENGINE_VERSION="${ENGINE_VERSION}" \
+        bash /opt/gpuworks/shared/assert_requires.sh
+EOF
+
+LABEL org.opencontainers.image.title="gpuworks-runner" \
+      org.opencontainers.image.vendor="gpuworks" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      io.gpuworks.image.id="${IMAGE_ID}" \
+      io.gpuworks.engine="vllm" \
+      io.gpuworks.engine.version="${ENGINE_VERSION}" \
+      io.gpuworks.framework="cuda" \
+      io.gpuworks.framework.version="${FRAMEWORK_VERSION}" \
+      io.gpuworks.requires="${REQUIRES}"
