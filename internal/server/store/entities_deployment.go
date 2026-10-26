@@ -138,19 +138,23 @@ type Instance struct {
 	Measured                     string `gorm:"type:text"` // JSON enginelog.Measured, parsed from the engine log
 	ScheduleExpl                 string `gorm:"type:text"` // JSON planning.ScheduleRecord
 	DirectAddr                   string `gorm:"size:128"`
-	Message                      string `gorm:"size:512"`
-	Phase                        string `gorm:"size:32"`
-	Progress                     float64
-	BytesDone                    int64
-	BytesTotal                   int64
-	RateBPS                      int64
-	SleepLevel                   int
-	DistGroup                    string `gorm:"size:64;index"`
-	DistRole                     string `gorm:"size:16"` // leader | follower
-	NNodes                       int
-	NodeRank                     int
-	Headless                     bool
-	DistAttempt                  int
+	// OpenAPIPaths is the JSON array of paths from the engine's OpenAPI
+	// document. Empty means the agent has not read one. "[]" means it did
+	// and the document listed no paths.
+	OpenAPIPaths string `gorm:"column:openapi_paths;type:text"`
+	Message      string `gorm:"size:512"`
+	Phase        string `gorm:"size:32"`
+	Progress     float64
+	BytesDone    int64
+	BytesTotal   int64
+	RateBPS      int64
+	SleepLevel   int
+	DistGroup    string `gorm:"size:64;index"`
+	DistRole     string `gorm:"size:16"` // leader | follower
+	NNodes       int
+	NodeRank     int
+	Headless     bool
+	DistAttempt  int
 	// Role is the instance's role in a PD disaggregated deployment
 	// (pdmode.Role*); empty for every other deployment. It is independent of
 	// DistRole, which ranks a multi-node group.

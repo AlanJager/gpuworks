@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -66,6 +67,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, candidate.instances)
+		contract.Operations = omitUnservedTranscription(contract.Operations, candidate.instances)
 		if len(contract.Operations) == 0 {
 			// An explicitly empty or invalid model operation configuration has no
 			// callable Playground entry. Do not synthesize Chat as a fallback.
@@ -125,4 +127,38 @@ func playgroundOperations(contract inferenceapi.Contract, model string) []dto.Pl
 		result = append(result, operationView)
 	}
 	return result
+}
+
+// omitUnservedTranscription drops openai.audio.transcribe when a running
+// replica has published an OpenAPI document that does not list
+// /v1/audio/transcriptions. An empty observation means the document was not
+// read, and the declared contract stays.
+func omitUnservedTranscription(operations []inferenceapi.Operation, instances []store.Instance) []inferenceapi.Operation {
+	known, present := false, false
+	for _, instance := range instances {
+		if instance.Headless || instance.State != proto.InstRunning || strings.TrimSpace(instance.OpenAPIPaths) == "" {
+			continue
+		}
+		var paths []string
+		if json.Unmarshal([]byte(instance.OpenAPIPaths), &paths) != nil {
+			continue
+		}
+		known = true
+		for _, path := range paths {
+			if path == "/v1/audio/transcriptions" {
+				present = true
+			}
+		}
+	}
+	if !known || present {
+		return operations
+	}
+	kept := make([]inferenceapi.Operation, 0, len(operations))
+	for _, operation := range operations {
+		if operation.Type == inferenceapi.OperationAudioTranscribe {
+			continue
+		}
+		kept = append(kept, operation)
+	}
+	return kept
 }

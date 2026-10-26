@@ -662,6 +662,13 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 	if len(st.Measured) > 0 {
 		updates["measured"] = measuredAfterReport(inst, st)
 	}
+	if st.OpenAPIPaths != nil {
+		raw, err := json.Marshal(*st.OpenAPIPaths)
+		if err != nil {
+			return err
+		}
+		updates["openapi_paths"] = string(raw)
+	}
 	if st.RuntimeObservation != nil {
 		observation, err := json.Marshal(st.RuntimeObservation)
 		if err != nil {

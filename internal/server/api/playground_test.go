@@ -167,3 +167,69 @@ func TestPlaygroundCatalogDeduplicatesRolloutsAndPrefersServingDeployment(t *tes
 		t.Fatalf("catalog contract came from pending rollout: %+v", catalog.Models[0].Operations)
 	}
 }
+
+func TestPlaygroundCatalogDropsTranscriptionTheEngineDoesNotServe(t *testing.T) {
+	st, err := store.Open("file:playground_openapi_paths?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := st.RegisterNode("openapi-node", store.HashToken("token"), "openapi-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(name, operations, paths string) {
+		t.Helper()
+		model, err := st.UpsertModel(&store.Model{
+			Source: "huggingface", SourceID: "acme/" + name, Revision: "main", Name: name,
+			Operations: operations, InputModalities: `["audio","text"]`,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dep, err := st.CreateDeployment(&store.Deployment{ModelID: model.ID, NodeID: node.ID, ServedName: name, State: "active", Engine: "vllm"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.CreateInstance(&store.Instance{
+			UUID: name, DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000, OpenAPIPaths: paths,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("asr-only", `[{"type":"openai.audio.transcribe"}]`, `["/v1/chat/completions","/v1/models"]`)
+	add("asr-and-chat", `[{"type":"openai.chat"},{"type":"openai.audio.transcribe"}]`, `["/v1/chat/completions"]`)
+	add("asr-served", `[{"type":"openai.audio.transcribe"}]`, `["/v1/audio/transcriptions"]`)
+	add("asr-unknown", `[{"type":"openai.audio.transcribe"}]`, "")
+
+	signer, _ := auth.NewTokenSigner("openapi-paths-secret", time.Hour)
+	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/playground/models", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	Router(Deps{Store: st, AuthSigner: signer}).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var catalog dto.PlaygroundCatalog
+	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	for _, model := range catalog.Models {
+		for _, operation := range model.Operations {
+			got[model.ID] = append(got[model.ID], operation.Type)
+		}
+	}
+	if _, ok := got["asr-only"]; ok {
+		t.Fatalf("transcription-only model stayed listed: %+v", got)
+	}
+	if strings.Join(got["asr-and-chat"], ",") != inferenceapi.OperationChat {
+		t.Fatalf("chat model = %v", got["asr-and-chat"])
+	}
+	if strings.Join(got["asr-served"], ",") != inferenceapi.OperationAudioTranscribe {
+		t.Fatalf("served asr = %v", got["asr-served"])
+	}
+	if strings.Join(got["asr-unknown"], ",") != inferenceapi.OperationAudioTranscribe {
+		t.Fatalf("unknown observation = %v", got["asr-unknown"])
+	}
+}
