@@ -81,6 +81,7 @@ func (d *Driver) InstallAgentWithReport(ctx context.Context, creds provider.Cred
 	// A pod edit (key or port) renumbers SSH: record where the install
 	// actually logged in.
 	out.SSHHost, out.SSHPort = instance.PublicIP, instance.SSHPort
+	out.PlatformKeyVolatile = d.platformKeyVolatile(ctx, creds, req, out)
 	if keyCheck.Name != "" {
 		out.Checks = append([]provider.InstallCheck{keyCheck}, out.Checks...)
 	}
@@ -106,4 +107,18 @@ func providerInstallListen(listen string) string {
 		return provision.DefaultServerDialListen
 	}
 	return listen
+}
+
+// platformKeyVolatile reports whether the platform key the install authorized
+// will be gone after the pod restarts. A pod's keys are the PUBLIC_KEY it was
+// created (or last edited) with; a key the install appended to the pod's
+// authorized_keys lives on the container disk, which an edit of the pod
+// clears. When the pod cannot be read, assume the key is volatile: keeping the
+// credential that logged in costs nothing.
+func (d *Driver) platformKeyVolatile(ctx context.Context, creds provider.Credentials, req provider.InstallRequest, report provider.InstallReport) bool {
+	if !report.PlatformKeyAuthorized || req.PlatformKey == nil {
+		return false
+	}
+	p, err := d.getPod(ctx, creds, req.Instance.ExternalID)
+	return err != nil || !p.hasPublicKey(req.PlatformKey.PublicKey)
 }
