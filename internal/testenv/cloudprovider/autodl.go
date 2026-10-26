@@ -26,11 +26,12 @@ const (
 )
 
 // autodlAutoGPUModels are the specs an unpinned Rent tries, cheapest first;
-// the hourly price cap still applies to whichever one is created. The Pro
-// pro6000-p and h800 specs are deliberately absent: their Pro hourly price is
-// not confirmed to stay under the cap, and the price check runs only after
-// the create, so a wrong guess would create and destroy an expensive instance.
-var autodlAutoGPUModels = []string{autodlDefaultGPUModel, "RTX 4090D", "RTX 4090", "RTX 3090", "RTX 5090"}
+// the hourly price cap still applies to whichever one is created. PRO6000
+// (pro6000-p) and H800 (h800) close the walk: they are the dearest Pro specs
+// (about 7 and 10 CNY/h, at the cap), so they are tried only when every
+// cheaper one is sold out; the price check after the create still releases
+// one that comes in above the cap.
+var autodlAutoGPUModels = []string{autodlDefaultGPUModel, "RTX 4090D", "RTX 4090", "RTX 3090", "RTX 5090", "PRO6000", "H800"}
 
 var autodlLedgerMu sync.Mutex
 

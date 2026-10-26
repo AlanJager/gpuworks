@@ -383,6 +383,11 @@ func gpuVRAMMB(model string) (int, bool) {
 	case "P40", "NVIDIATESLAP40", "TESLAP40":
 		// P40 only exists as a 24 GiB board; exactly meets the 24 GiB floor.
 		return 24576, true
+	case "PRO6000", "PRO600096G":
+		// AutoDL's pro6000-p specification: an RTX PRO 6000 with 96 GiB.
+		return 98304, true
+	case "H800", "H80080G", "NVIDIAH800":
+		return 81920, true
 	case "A800", "NVIDIAA800":
 		return 81920, true
 	case "H20", "NVIDIAH20":
