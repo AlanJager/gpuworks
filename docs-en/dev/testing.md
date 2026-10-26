@@ -294,7 +294,7 @@ to confirm that no instances, forwarding resources, or temporary files remain. F
 The Aliyun cases cover every CompShare VM scenario: `l4-aliyun-provisioning-matrix` (agent_dial onboarding, direct server_dial onboarding,
 capacity shapes, two-GPU shape), `l4-aliyun-single-vm-tp2-dgpu`, `l4-aliyun-one-vm-two-logical-nodes`,
 `l4-aliyun-two-vm-docker-distributed`, `l4-aliyun-pd-deploy-chat-two-vm-docker`,
-`l4-aliyun-two-vm-udocker-distributed`, and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
+`l4-aliyun-two-vm-udocker-distributed` (not yet passing live, so not scheduled; runs only with `CLOUD_ALIYUN_UDOCKER=1`), and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
 They rent ECS GPU instances
 and share their scenario implementations with CompShare (`vmBackend`: the provider supplies renting, card-type selection, Docker and image, and where the model comes from).
 

@@ -291,7 +291,7 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 阿里云用例覆盖 CompShare 的全部 VM 场景：`l4-aliyun-provisioning-matrix`（agent_dial 接入、直连 server_dial 接入、
 库存形状、双卡规格）、`l4-aliyun-single-vm-tp2-dgpu`、`l4-aliyun-one-vm-two-logical-nodes`、
 `l4-aliyun-two-vm-docker-distributed`、`l4-aliyun-pd-deploy-chat-two-vm-docker`、
-`l4-aliyun-two-vm-udocker-distributed` 与低频的 `l4-aliyun-modelscope-public-download`（`CLOUD_DOWNLOAD=1` 才跑）。
+`l4-aliyun-two-vm-udocker-distributed`（尚未在真机通过，不进定时任务，`CLOUD_ALIYUN_UDOCKER=1` 才跑）与低频的 `l4-aliyun-modelscope-public-download`（`CLOUD_DOWNLOAD=1` 才跑）。
 它们租 ECS GPU 实例，并与 CompShare 共用同一套场景实现（`vmBackend`：租机、选卡型、Docker 与镜像、模型从哪来由 provider 提供）。
 
 - **抢占式优先，没货回落按量**：先用 `SpotAsPriceGo` 下抢占式实例；库存快照与创建之间被别人买走、

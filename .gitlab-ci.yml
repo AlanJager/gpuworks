@@ -1139,6 +1139,18 @@ l4-aliyun-two-vm-udocker-distributed:
     name: cloud-test/aliyun/udocker-nnode2
   script:
     - make test-l4-aliyun-two-vm-udocker-distributed
+  # Not scheduled yet: its first live run (job 258223) ran the udocker store
+  # out of system disk (the 30 GiB runner image is pulled again, the golden
+  # image's Docker copy is not usable), hit a PRoot fork/exec failure and lost
+  # a spot VM. Opt in with CLOUD_ALIYUN_UDOCKER=1 until it passes live.
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CLOUD_ALIYUN_UDOCKER == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
 
 # The runner must expose an explicitly provisioned read-only NFS fixture.
 # Never points at a production export by default; no network disruption.
