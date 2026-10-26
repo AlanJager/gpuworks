@@ -10,6 +10,8 @@ const fallbackT = (key: string, params?: Record<string, unknown>) => {
     return `This instance requires about ${required} GiB per GPU. Capacity is unknown.`;
   if (key === "vram.fits")
     return `Startup memory is about ${required} / ${capacity} GiB per GPU.`;
+  if (key === "vram.contextExceeds")
+    return `One request of the maximum context does not fit in the KV cache. Startup memory is about ${required} / ${capacity} GiB per GPU.`;
   return `Insufficient VRAM for startup: about ${required} GiB required, exceeding the ${capacity} GiB available limit.`;
 };
 
@@ -30,6 +32,23 @@ export function formatVRAMFitSummary(
     return {
       tone: "success",
       text: t("vram.fits", {
+        required: required.toFixed(1),
+        capacity: capacity.toFixed(1),
+      }),
+    };
+  }
+  // Startup can fit while one full context does not. That is not the
+  // startup-shortfall sentence.
+  const startupFits = breakdown.per_gpu_bytes <= (breakdown.capacity_bytes || 0);
+  if (
+    startupFits &&
+    (breakdown.max_model_len || 0) > 0 &&
+    typeof breakdown.max_concurrency === "number" &&
+    breakdown.max_concurrency < 1
+  ) {
+    return {
+      tone: "danger",
+      text: t("vram.contextExceeds", {
         required: required.toFixed(1),
         capacity: capacity.toFixed(1),
       }),

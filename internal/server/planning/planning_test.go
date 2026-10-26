@@ -10,7 +10,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/sleep"
@@ -88,11 +87,11 @@ func TestLedgerChargesADGPUInstanceItsBackendOverhead(t *testing.T) {
 	}
 }
 
-// A slice sized for the weights with the model's default context starts on
-// paper and then refuses to: vLLM will not start with a KV pool smaller than
-// one request of the maximum context. The evaluation says so before the
-// deploy, and stays quiet once the context fits.
-func TestEvaluateWarnsWhenTheKVPoolCannotHoldTheContext(t *testing.T) {
+// A slice sized for the weights with the model's default context used to be
+// admitted and then fail in the engine: one request of that context does not
+// fit in the KV pool. Evaluation refuses that launch, names a shorter context,
+// and stays quiet once the context fits. A weight shortfall keeps its own reason.
+func TestEvaluateRefusesWhenTheKVPoolCannotHoldTheContext(t *testing.T) {
 	st, err := store.Open("file:planning_kv_below_context?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -104,29 +103,43 @@ func TestEvaluateWarnsWhenTheKVPoolCannotHoldTheContext(t *testing.T) {
 	}
 	node.GPUs = []store.GPU{{Index: 0, MemoryTotal: 24 << 30, Vendor: "nvidia", ArchID: "sm_80", ComputeCapability: "8.0"}}
 	model := &store.Model{ID: 1, Name: "kv-model", WeightBytes: 1 << 30}
-	warned := func(maxLen int) bool {
+	evaluate := func(weight int64, maxLen int) Output {
 		quick := launchConfig(t, deploy.EngineVLLM)
 		quick.MaxModelLen = maxLen
-		out := (Input{Model: model, Node: node, Engine: deploy.EngineVLLM, Quick: quick, KVBytesPerToken: 114688,
-			VRAMLimitBytes: 4 << 30, PartitionBackend: accelerator.BackendNVIDIALogical}).Evaluate(st)
-		if !out.Breakdown.Fits {
-			t.Fatalf("max_model_len=%d: the slice does not start at all: %+v", maxLen, out.Breakdown)
-		}
-		for _, warning := range out.Warnings {
-			if warning.Code == messages.WarningPlanningKVBelowContext {
-				if warning.Params["max_model_len"] != maxLen || warning.Params["kv_tokens"] != out.Breakdown.EstimatedKVTokens {
-					t.Fatalf("warning params = %+v, breakdown = %+v", warning.Params, out.Breakdown)
-				}
-				return true
-			}
-		}
-		return false
+		return (Input{Model: &store.Model{ID: model.ID, Name: model.Name, WeightBytes: weight}, Node: node, Engine: deploy.EngineVLLM, Quick: quick, KVBytesPerToken: 114688}).Evaluate(st)
 	}
-	if !warned(40960) {
-		t.Fatal("a 4 GiB slice with a 40960 context was not warned about")
+	// 262144 is the context Qwen3-VL-Embedding-2B launches with when the form
+	// leaves max model len unset. Startup memory fits on 24 GiB; one request does not.
+	long := evaluate(1<<30, 262144)
+	if long.Result.OK || long.Result.Plan != nil || long.Breakdown.Fits {
+		t.Fatalf("262144 context was admitted: ok=%v plan=%v fits=%v", long.Result.OK, long.Result.Plan != nil, long.Breakdown.Fits)
 	}
-	if warned(1024) {
-		t.Fatal("a context the pool holds was warned about")
+	if long.Result.Message.Code != scheduler.ReasonKVContextExceedsPool {
+		t.Fatalf("reason = %+v, want %s", long.Result.Message, scheduler.ReasonKVContextExceedsPool)
+	}
+	if long.Result.Message.Params["kv_tokens"] != long.Breakdown.EstimatedKVTokens || long.Result.Message.Params["max_model_len"] != 262144 {
+		t.Fatalf("params = %+v, breakdown = %+v", long.Result.Message.Params, long.Breakdown)
+	}
+	if got := long.Result.Message.Params["suggested_max_model_len"]; got != suggestedContextLen(long.Breakdown.EstimatedKVTokens) || suggestedContextLen(long.Breakdown.EstimatedKVTokens) > long.Breakdown.EstimatedKVTokens {
+		t.Fatalf("suggested = %v, tokens = %d", got, long.Breakdown.EstimatedKVTokens)
+	}
+	for _, warning := range long.Warnings {
+		if warning.Code == "PLANNING_KV_BELOW_CONTEXT" {
+			t.Fatalf("context refusal is still a warning: %+v", warning)
+		}
+	}
+	short := evaluate(1<<30, 1024)
+	if !short.Result.OK || !short.Breakdown.Fits || short.Result.Message.Code == scheduler.ReasonKVContextExceedsPool {
+		t.Fatalf("a context the pool holds was refused: %+v fits=%v", short.Result.Message, short.Breakdown.Fits)
+	}
+	heavy := evaluate(40<<30, 40960)
+	if heavy.Result.OK || heavy.Result.Message.Code != scheduler.ReasonNoFit {
+		t.Fatalf("weight shortfall = %+v, want %s", heavy.Result.Message, scheduler.ReasonNoFit)
+	}
+	// The two reported shapes: 146340 tokens suggests 131072, and a pool that
+	// holds about 31750 of a 40960 context suggests 16384.
+	if suggestedContextLen(146340) != 131072 || suggestedContextLen(31750) != 16384 || suggestedContextLen(0) != 0 {
+		t.Fatalf("suggested = %d %d", suggestedContextLen(146340), suggestedContextLen(31750))
 	}
 }
 

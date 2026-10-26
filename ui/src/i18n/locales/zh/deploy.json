@@ -110,7 +110,6 @@
     "PLANNING_ENGINE_UNAVAILABLE": "推理引擎 {{engine}} 的配置不可用：{{detail}}；请重新选择引擎。",
     "PLANNING_GPU_ARCH_CAUTION": "GPU 架构注意事项：{{detail}}；请核对所选精度与镜像版本。",
     "PLANNING_MODEL_WEIGHT_UNKNOWN": "模型权重大小未知，当前显存估算不完整；请刷新模型元数据后重试。",
-    "PLANNING_KV_BELOW_CONTEXT": "预计 KV 缓存约 {{kv_tokens}} 个 token，少于最大上下文 {{max_model_len}}；按这个估算 vLLM 可能拒绝启动（KV 放不下一次最大上下文的请求时它会直接报错）。可以调小最大上下文长度，或调大 dGPU 显存 / 显存使用率。",
     "IMAGE_PARTITION_PROFILE_UNBUILT": "镜像 CANN {{framework_version}} × {{arch}} 不在内嵌 dGPU 资产的已构建组合内；探针验证的是节点执行路径，镜像仍可能不兼容。",
     "IMAGE_PARTITION_PROFILE_UNVERIFIED": "镜像 CANN {{framework_version}} × {{arch}} 的 dGPU 资产尚未经预置真机环境验证。",
     "PD_UNVERIFIED_COMBINATION": "PD 与 {{feature}} 的组合是允许的，但尚未在真机上验证过。",
@@ -164,6 +163,7 @@
     "weights_fetch_forbidden": "节点 {{node}} 适用的来源规则禁止了模型 {{model}} 的所有下载地址（没有替代地址又关闭了回源），也没有可复制的节点或共享存储，副本无法启动；请在设置 → 拉取设置 → 来源规则里调整，或在已有该模型的节点上登记路径、放进共享存储。",
     "filters_passed": "节点运行时、精度兼容性和磁盘检查均已通过。",
     "no_fit": "启动固定需求不足：本节点需要 {{gpus}} 张 GPU（TP {{tp}} × PP {{pp}}），候选 GPU {{gpu_count}} 张，每卡需要 {{required_gib}} GiB，按当前显存利用率每卡可用 {{available_gib}} GiB。",
+    "kv_context_exceeds_pool": "预计 KV 缓存约 {{kv_tokens}} 个 token，少于最大上下文 {{max_model_len}}，一次请求放不下，引擎无法启动。请把最大上下文长度降到 {{suggested_max_model_len}} 或更小，或调大 dGPU 显存 / 显存使用率。",
     "sleep_residue_blocks_startup": "休眠残留显存阻止引擎启动：启动需要 {{startup_gib}} GiB，但保留 {{sleeping_gib}} GiB 残留后实际只有 {{available_gib}} GiB 空闲。",
     "tp_head_count_not_divisible": "张量并行度 tp={{tp}} 不能整除 {{head_count}} 个注意力头；请改用可整除的并行度。",
     "insufficient_shared_gpus": "本节点需要 {{gpus}} 张 GPU（TP {{tp}} × PP {{pp}}），每卡需要 {{required_gib}} GiB，但只有 {{available}} 张 GPU 可用；请降低显存需求或释放 GPU。",
@@ -524,6 +524,7 @@
     "fitUnknown": "本实例每卡约需 {{required}} GiB，容量未知",
     "fits": "本实例启动固定需求每卡约 {{required}} / {{capacity}} GiB",
     "insufficient": "启动显存不足：本实例约需 {{required}} GiB，超过可用上限 {{capacity}} GiB",
+    "contextExceeds": "按最大上下文，一次请求放不进 KV 缓存。启动固定需求每卡约 {{required}} / {{capacity}} GiB。",
     "grade": {
       "rough": "粗估",
       "notApplicable": "不适用",
