@@ -26,7 +26,7 @@ var credentialLocales = func() map[string]map[string]credentialText {
 
 func (d *Driver) CredentialFields() []provider.CredentialField {
 	fields := []provider.CredentialField{
-		{Name: "endpoint", Required: true},
+		{Name: "endpoint", Required: true, DefaultTemplate: "http://MANAGEMENT_NODE_IP:8080/zstack"},
 		{Name: "public_key", Required: true},
 		{Name: "private_key", Required: true, Secret: true},
 	}

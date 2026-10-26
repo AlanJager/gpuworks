@@ -84,7 +84,10 @@ type CredentialField struct {
 	Required     bool              `json:"required"`
 	Placeholder  localization.Text `json:"placeholder,omitempty"`
 	DefaultValue string            `json:"default_value,omitempty"`
-	Extra        bool              `json:"extra,omitempty"`
+	// DefaultTemplate is an editable creation hint, not a valid credential.
+	// It takes precedence over DefaultValue and must be changed before submission.
+	DefaultTemplate string `json:"default_template,omitempty"`
+	Extra           bool   `json:"extra,omitempty"`
 }
 
 // KindInfo is the public schema for one registered provider kind.
