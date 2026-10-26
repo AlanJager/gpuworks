@@ -11,10 +11,12 @@ PYTHONPATH=test/e2e python3 -m unittest test_provider_endpoint_cleanup -v
 from __future__ import annotations
 
 import json
+import re
+import time
 import traceback
 from urllib.parse import urlsplit
 
-from playwright.sync_api import expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import button, check, collection
 from provider_endpoint_fixture import RunPodFixture
@@ -39,6 +41,115 @@ def copy_server_log(artifacts):
     log = artifacts.private / "server.log"
     if log.exists():
         (artifacts.directory / "server.log").write_text(artifacts.redact(log.read_text()))
+
+
+def _box(locator):
+    return locator.evaluate("""element => {
+        const rect = element.getBoundingClientRect();
+        return {left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom,
+                width: rect.width, height: rect.height};
+    }""")
+
+
+def _separated(first, second):
+    return (first["right"] <= second["left"] or second["right"] <= first["left"]
+            or first["bottom"] <= second["top"] or second["bottom"] <= first["top"])
+
+
+def exercise_provider_label_keyboard(page, dialog, copy, label):
+    """Left label column, Tab through the add dialog, Enter sends no POST."""
+    name_input = dialog.get_by_label(copy["config"]["name"], exact=True)
+    endpoint_input = dialog.get_by_label(label("endpoint"), exact=True)
+    key_input = dialog.get_by_label(label("api_key"), exact=True)
+    name_item = name_input.locator(
+        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-form-item ')][1]")
+    label_col = name_item.locator(".ant-form-item-label")
+    expect(label_col).to_have_class(re.compile(r"\bant-form-item-label-left\b"), timeout=12000)
+    align = label_col.evaluate("element => getComputedStyle(element).textAlign")
+    check(align == "start", f"name label alignment is {align}")
+    kind = dialog.get_by_role("combobox")
+    kind.focus()
+    expect(kind).to_be_focused()
+    kind.press("Tab")
+    expect(name_input).to_be_focused()
+    name_input.press("Tab")
+    expect(key_input).to_be_focused()
+    key_input.press("Tab")
+    expect(endpoint_input).to_be_focused()
+    add = button(dialog, copy["config"]["add"])
+    cancel = button(dialog, copy["config"]["cancel"])
+    add.focus()
+    expect(add).to_be_focused()
+    name_input.focus()
+    expect(name_input).to_be_focused()
+    submitted = False
+    try:
+        with page.expect_request(lambda request: urlsplit(request.url).path == "/api/v1/providers"
+                                  and request.method == "POST", timeout=1000):
+            name_input.press("Enter")
+        submitted = True
+    except PlaywrightTimeout:
+        submitted = False
+    check(not submitted, "Enter in the empty name submitted a provider")
+    expect(name_input).to_have_value("")
+    dialog.scroll_into_view_if_needed()
+    view = page.viewport_size
+    check(view == {"width": 1440, "height": 900}, f"viewport {view}")
+    for locator in (name_input, endpoint_input, key_input, cancel, add):
+        expect(locator).to_be_in_viewport(ratio=1)
+    name_box, add_box = _box(name_input), _box(add)
+    check(name_box["width"] > 0 and add_box["width"] > 0, "name or Add has no box")
+    check(_separated(name_box, add_box), "name overlaps Add")
+    return {"label_class": "ant-form-item-label-left", "text_align": align,
+            "tab": ["type", "name", "api key", "endpoint"], "add_focused": True,
+            "enter_submitted": False, "viewport": view, "overlaps_add": False}
+
+
+def _provider_mutation(page, action):
+    submitted = False
+    try:
+        with page.expect_request(lambda request: urlsplit(request.url).path.startswith("/api/v1/providers")
+                                  and request.method in {"POST", "PUT", "DELETE"}, timeout=1000):
+            action()
+        submitted = True
+    except PlaywrightTimeout:
+        submitted = False
+    return submitted
+
+
+def exercise_provider_no_colon_dismiss(page, dialog, copy, label, locale, edit, read, endpoint, saved_name):
+    """No-colon name label, then Escape, close, and Cancel each leave the saved account."""
+    name_input = dialog.get_by_label(copy["config"]["name"], exact=True)
+    name_item = name_input.locator(
+        "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-form-item ')][1]")
+    name_label = name_item.locator("label")
+    expect(name_label).to_have_class(re.compile(r"\bant-form-item-no-colon\b"), timeout=12000)
+    endpoint_input = dialog.get_by_label(label("endpoint"), exact=True)
+    # rc-dialog keeps aria-label "Close" on the button. The localized word sits on the icon wrapper.
+    close = dialog.locator("button.ant-modal-close")
+    close_label = "关闭" if locale == "zh" else "Close"
+    expect(close.locator(".ant-modal-close-x")).to_have_attribute("aria-label", close_label, timeout=12000)
+    cancel = button(dialog, copy["config"]["cancel"])
+    discarded = "https://discarded.invalid/v2"
+
+    def dismiss(prepare, action):
+        endpoint_input.fill(discarded)
+        expect(endpoint_input).to_have_value(discarded)
+        prepare()
+        check(not _provider_mutation(page, action), "dismiss sent a provider mutation")
+        expect(dialog).not_to_be_visible(timeout=12000)
+        read(endpoint, saved_name)
+
+    dismiss(lambda: None, lambda: page.keyboard.press("Escape"))
+    edit(endpoint, saved_name)
+    dismiss(lambda: expect(close.locator(".ant-modal-close-x")).to_have_attribute(
+                "aria-label", close_label, timeout=12000),
+            lambda: close.click(timeout=12000))
+    edit(endpoint, saved_name)
+    dismiss(lambda: expect(cancel).to_be_visible(timeout=12000),
+            lambda: cancel.click(timeout=12000))
+    return {"label_class": "ant-form-item-no-colon", "close_label": close_label,
+            "dismissed": ["escape", "close", "cancel"], "mutation": False}
 
 
 # Mainline: UI新建自定义代理账号 → 刷新/独立GET → 编辑回显且密钥空白 → 仅改名称仍用原代理与密钥
@@ -80,11 +191,42 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
         add = copy["page"]["addKind"].replace("{{kind}}", copy["kind"]["runpod"])
         button(page, add).click()
         dialog = page.get_by_role("dialog")
+        endpoint_default = fields["endpoint"]["default_value"]
+        report["provider_label_keyboard"] = exercise_provider_label_keyboard(
+            page, dialog, copy, label)
+        from provider_create_inventory import exercise_provider_create_inventory
+        report["provider_create_inventory"] = exercise_provider_create_inventory(
+            dialog, copy, label, endpoint_default,
+            fields["endpoint"]["placeholder"][locale], fields["api_key"]["placeholder"][locale])
+        expect(dialog.locator(".ant-select-selection-item")).to_have_text(copy["kind"]["runpod"])
+        expect(dialog.get_by_label(copy["config"]["name"], exact=True)).to_have_value("")
+        expect(dialog.get_by_label(label("endpoint"), exact=True)).to_have_value(endpoint_default)
+        expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
+        report["evidence"].append({"layer": "ui", "first_open": {"kind": "runpod", "name_empty": True,
+            "endpoint_default": endpoint_default, "api_key_empty": True}})
         dialog.get_by_label(copy["config"]["name"], exact=True).fill(name)
         dialog.get_by_label(label("endpoint"), exact=True).fill(endpoints[0])
         dialog.get_by_label(label("api_key"), exact=True).fill(secret)
+        expected_create = {"name": name, "kind": "runpod", "endpoint": endpoints[0], "api_key": secret}
+        held = []
+
+        def hold_post(route):
+            if route.request.method != "POST" or urlsplit(route.request.url).path != "/api/v1/providers":
+                route.continue_()
+                return
+            held.append(route)
+
+        page.route("**/api/v1/providers", hold_post)
+        button(dialog, copy["config"]["add"]).click()
+        inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+        expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+        inflight.click()
+        dialog.get_by_label(copy["config"]["name"], exact=True).press("Enter")
+        check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+        check(held[0].request.post_data_json == expected_create, "held provider body differs")
         with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/providers" and r.request.method == "POST") as created:
-            button(dialog, copy["config"]["add"]).click()
+            held[0].continue_()
+        page.unroute("**/api/v1/providers", hold_post)
         check(created.value.status == 201, f"POST /api/v1/providers: expected 201, received {created.value.status}")
         provider_id = created.value.json()["id"]
         report["remaining_resources"] = [{"kind": "provider", "id": provider_id,
@@ -106,14 +248,40 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
         def edit(endpoint, expected_name):
             page.reload()
             row = page.get_by_role("row").filter(has=page.get_by_text(expected_name, exact=True))
-            with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "GET") as loaded:
+            gate = {"held": None}
+
+            def hold_get(route):
+                if route.request.method == "GET" and urlsplit(route.request.url).path == path and gate["held"] is None:
+                    gate["held"] = route
+                    return
+                route.continue_()
+
+            page.route("**/api/v1/providers/*", hold_get)
+            try:
                 button(row, copy["table"]["edit"]).click()
-            check(loaded.value.status == 200, "edit configuration read failed")
-            expect(dialog.get_by_label(label("endpoint"), exact=True)).to_have_value(endpoint)
-            expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
-            expect(dialog.get_by_label(copy["config"]["name"], exact=True)).to_have_value(expected_name)
-            expect(button(dialog, copy["config"]["save"])).to_be_enabled()
-            report["evidence"].append({"layer": "ui", "reload_edit_endpoint": endpoint, "secret_empty": True})
+                deadline = time.monotonic() + 5
+                while gate["held"] is None:
+                    if time.monotonic() > deadline:
+                        raise AssertionError("edit configuration read did not start")
+                    page.wait_for_timeout(50)
+                expect(dialog.get_by_label(label("endpoint"), exact=True)).to_have_value("")
+                expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
+                held_save = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+                expect(held_save).to_be_disabled()
+                with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "GET") as loaded:
+                    gate["held"].continue_()
+                    gate["held"] = None
+                check(loaded.value.status == 200, "edit configuration read failed")
+                expect(dialog.get_by_label(label("endpoint"), exact=True)).to_have_value(endpoint)
+                expect(dialog.get_by_label(label("api_key"), exact=True)).to_have_value("")
+                expect(dialog.get_by_label(copy["config"]["name"], exact=True)).to_have_value(expected_name)
+                expect(button(dialog, copy["config"]["save"])).to_be_enabled()
+                report["evidence"].append({"layer": "ui", "reload_edit_endpoint": endpoint, "secret_empty": True,
+                                           "save_disabled_until_edit_get": True})
+            finally:
+                if gate["held"] is not None:
+                    gate["held"].continue_()
+                page.unroute("**/api/v1/providers/*", hold_get)
 
         def save(endpoint, expected_name, status):
             with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "PUT") as updated:
@@ -137,6 +305,9 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
                            .replace("{{operation}}", copy["config"]["operation"]["update"])
                            .replace("{{detail}}", reason))
                 expect(page.get_by_text(message, exact=True)).to_be_visible()
+                # Left labels, Tab, Enter and viewport already passed. The visible
+                # rejection is the remaining 1.15 clause.
+                report["provider_label_left"] = True
                 report["evidence"].append({"layer": "ui", "validation_failure": response.json(),
                                            "localized_operation_error": message, "draft_endpoint": endpoint})
 
@@ -155,9 +326,9 @@ def test_provider_endpoint_edit(page, context, server, artifacts, report, locale
         save(endpoints[1], renamed, 200)
         read(endpoints[1], renamed)
         edit(endpoints[1], renamed)
-        dialog.get_by_label(label("endpoint"), exact=True).press("Tab")
-        button(dialog, copy["config"]["cancel"]).click()
-        expect(dialog).not_to_be_visible()
+        report["provider_dismiss"] = exercise_provider_no_colon_dismiss(
+            page, dialog, copy, label, locale, edit, read, endpoints[1], renamed)
+        report["provider_no_colon"] = True
         row = page.get_by_role("row").filter(has=page.get_by_text(renamed, exact=True))
         button(row, copy["table"]["delete"]).click()
         with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "DELETE") as deleted:
@@ -220,6 +391,7 @@ def main():
         "fixture_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
         "helper_sha256": digest(ROOT / "test/e2e/platform_token_read_revoke.py"),
         "provider_fixture_sha256": digest(ROOT / "test/e2e/provider_endpoint_fixture.py"),
+        "provider_inventory_sha256": digest(ROOT / "test/e2e/provider_create_inventory.py"),
         "coverage_manifest_sha256": digest(manifest_path),
         "command": ["python3", "test/e2e/provider_endpoint_edit.py", *sys.argv[1:]],
     }
