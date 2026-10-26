@@ -146,7 +146,7 @@ Top-level shared packages in `internal/`:
 
 - `l2/` (`-tags=multiproc`, multiple processes using real server/agent binaries),
 - `l3/` (`-tags=docker`, container-level),
-- `l4/` (`-tags=cloudgpu,<provider>`, cloud/physical machines; `l4/cmd/` includes `cleanup-leaked`, `prepare-compshare-golden`, and `ascend-nerdctl-verify`),
+- `l4/` (`-tags=cloudgpu,<provider>`, cloud/physical machines; `l4/cmd/` includes `cleanup-leaked`, `prepare-compshare-golden`, `prepare-aliyun-golden`, and `ascend-nerdctl-verify`),
 - `fake-engine/` / `fake-model/` (fake engine images and tiny models),
 - `ocifixture` (deterministic synthetic OCI images covering edge cases that Dockerfiles cannot express, such as hard links/symbolic links/whiteouts/opaque directories/large layers),
 - `runtime-wrapper-*` (runtime wrapper images),

@@ -3,12 +3,14 @@
 package l4
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/testenv/cloudprovider"
 )
@@ -33,12 +35,13 @@ func skipIfNoSecrets(t *testing.T, names ...string) map[string]string {
 
 func readCloudSecrets() map[string]string {
 	values := map[string]string{}
-	for _, name := range []string{"RUNPOD_API_KEY", "RUNPOD_KEY", "RUNPOD_POD_ID", "RUNPOD_PUBLIC_IP", "RUNPOD_SSH_PORT", "RUNPOD_SSH_USER", "RUNPOD_PRIVATE_KEY", "RUNPOD_SSH_PRIVATE_KEY", "COMPSHARE_ACCESS_KEY", "COMPSHARE_SECRET_KEY", "COMPSHARE_KEY", "COMPSHARE_IMAGE_ID", "COMPSHARE_GOLDEN_IMAGE_ID", "COMPSHARE_CONTAINER_IMAGE_ID", "VAST_API_KEY", "VAST_SSH_PRIVATE_KEY", "VAST_SSH_KEY_PATH", "VAST_MAX_HOURLY_PRICE", "VAST_TEST_IMAGE", "AUTODL_TOKEN", "AUTODL_IMAGE_UUID", "AUTODL_MAX_HOURLY_PRICE", "GITEE_API_TOKEN", "GITEE_ZONE", "GITEE_IMAGE", "GITEE_GPU_MODEL"} {
+	for _, name := range []string{"RUNPOD_API_KEY", "RUNPOD_KEY", "RUNPOD_POD_ID", "RUNPOD_PUBLIC_IP", "RUNPOD_SSH_PORT", "RUNPOD_SSH_USER", "RUNPOD_PRIVATE_KEY", "RUNPOD_SSH_PRIVATE_KEY", "COMPSHARE_ACCESS_KEY", "COMPSHARE_SECRET_KEY", "COMPSHARE_KEY", "COMPSHARE_IMAGE_ID", "COMPSHARE_GOLDEN_IMAGE_ID", "COMPSHARE_CONTAINER_IMAGE_ID", "VAST_API_KEY", "VAST_SSH_PRIVATE_KEY", "VAST_SSH_KEY_PATH", "VAST_MAX_HOURLY_PRICE", "VAST_TEST_IMAGE", "AUTODL_TOKEN", "AUTODL_IMAGE_UUID", "AUTODL_MAX_HOURLY_PRICE", "GITEE_API_TOKEN", "GITEE_ZONE", "GITEE_IMAGE", "GITEE_GPU_MODEL", "ALIYUN_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_SECRET", "ALIYUN_REGIONS", "ALIYUN_INGRESS_CIDR", "ALIYUN_NO_SPOT", "ALIYUN_NO_ON_DEMAND", "ALIYUN_TEST_IMAGE", "ALIYUN_PRELOADED_MODEL_PATH", "ALIYUN_MODEL_ENDPOINT"} {
 		values[name] = strings.TrimSpace(os.Getenv(name))
 	}
-	// Per-region image variables are open-ended (one per CompShare region).
+	// Per-region image variables are open-ended (one per CompShare region, one
+	// per Aliyun region).
 	for _, kv := range os.Environ() {
-		if name, value, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(name, "COMPSHARE_ZONE_IMAGE_") {
+		if name, value, ok := strings.Cut(kv, "="); ok && (strings.HasPrefix(name, "COMPSHARE_ZONE_IMAGE_") || strings.HasPrefix(name, "ALIYUN_IMAGE_")) {
 			values[name] = strings.TrimSpace(value)
 		}
 	}
@@ -209,6 +212,57 @@ func compshareImageID(secrets map[string]string) string {
 	return strings.TrimSpace(secrets["COMPSHARE_IMAGE_ID"])
 }
 
+// aliyunProvider builds the Aliyun adapter from ALIYUN_ACCESS_KEY_ID/SECRET
+// and the per-region golden images (ALIYUN_IMAGE_<REGION>). A case runs only
+// in regions that have a golden image: custom images are region-scoped.
+func aliyunProvider(t *testing.T) *cloudprovider.Aliyun {
+	t.Helper()
+	secrets := skipIfNoSecrets(t, "ALIYUN_ACCESS_KEY_ID", "ALIYUN_ACCESS_KEY_SECRET")
+	images := aliyunImages(secrets)
+	if len(images) == 0 {
+		skipOrFailExternal(t, "no ALIYUN_IMAGE_<REGION> golden image is configured; build one with make prepare-aliyun-golden-image")
+	}
+	runID, err := cloudProviderRunID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The golden image of a region decides which cards can work; the IDs are not secret.
+	t.Logf("Aliyun golden images: %v", images)
+	p, err := cloudprovider.NewAliyun(cloudprovider.AliyunConfig{
+		AccessKeyID: secrets["ALIYUN_ACCESS_KEY_ID"], AccessKeySecret: secrets["ALIYUN_ACCESS_KEY_SECRET"],
+		Images: images, Regions: splitCSV(secrets["ALIYUN_REGIONS"]), IngressCIDR: secrets["ALIYUN_INGRESS_CIDR"],
+		NoSpot: secrets["ALIYUN_NO_SPOT"] == "1", NoOnDemand: secrets["ALIYUN_NO_ON_DEMAND"] == "1",
+	}, runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// aliyunImages turns ALIYUN_IMAGE_<REGION> secrets (ALIYUN_IMAGE_CN_HANGZHOU)
+// into a region→image map.
+func aliyunImages(secrets map[string]string) map[string]string {
+	images := map[string]string{}
+	for name, value := range secrets {
+		region, ok := strings.CutPrefix(name, "ALIYUN_IMAGE_")
+		if !ok || strings.TrimSpace(value) == "" {
+			continue
+		}
+		images[strings.ToLower(strings.ReplaceAll(region, "_", "-"))] = strings.TrimSpace(value)
+	}
+	return images
+}
+
+func splitCSV(value string) []string {
+	var out []string
+	for _, part := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 func vastProvider(t *testing.T) *cloudprovider.Vast {
 	t.Helper()
 	secrets := skipIfNoSecrets(t, "VAST_API_KEY")
@@ -259,6 +313,22 @@ func cloudProviderRunID() (string, error) {
 	return cloudprovider.NewRunID()
 }
 
+// reportInterruption says so when a failed case ran on capacity the provider
+// took back (a reclaimed spot VM), which is not a product defect. It never
+// changes the verdict; it only names the likely cause in the log.
+func reportInterruption(t *testing.T, provider cloudprovider.CloudProvider, instance *cloudprovider.Instance) {
+	t.Helper()
+	checker, ok := provider.(cloudprovider.InterruptionChecker)
+	if !ok || !t.Failed() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if interrupted, why := checker.Interrupted(ctx, instance.InstanceID); interrupted {
+		t.Logf("SPOT INTERRUPTION: %s; the failure above is probably a consequence, rerun the case", why)
+	}
+}
+
 func vastPrivateKey(secrets map[string]string) ([]byte, error) {
 	value := strings.TrimSpace(secrets["VAST_SSH_PRIVATE_KEY"])
 	if value == "" {
@@ -300,5 +370,28 @@ func TestReadCloudSecretsPicksUpZoneImagesFromEnvironment(t *testing.T) {
 	zoneImages := compshareZoneImages(readCloudSecrets())
 	if got := zoneImages["cn-sh2"]; got != "compshareImage-sh2-from-env" {
 		t.Fatalf("zone image for cn-sh2 = %q, want the environment value (all: %v)", got, zoneImages)
+	}
+}
+
+func TestAliyunImagesMapRegionsFromSecretNames(t *testing.T) {
+	images := aliyunImages(map[string]string{
+		"ALIYUN_IMAGE_CN_HANGZHOU": " m-hz ", "ALIYUN_IMAGE_CN_BEIJING": "m-bj", "ALIYUN_IMAGE_CN_SHENZHEN": "  ",
+		"ALIYUN_ACCESS_KEY_ID": "id", "COMPSHARE_ZONE_IMAGE_CN_SH2": "other",
+	})
+	if len(images) != 2 || images["cn-hangzhou"] != "m-hz" || images["cn-beijing"] != "m-bj" {
+		t.Fatalf("images = %v, want exactly cn-hangzhou and cn-beijing", images)
+	}
+}
+
+// CI passes per-region images as plain environment variables, not a secrets file.
+func TestReadCloudSecretsPicksUpAliyunImagesFromEnvironment(t *testing.T) {
+	t.Setenv("ALIYUN_IMAGE_CN_GUANGZHOU", " m-gz ")
+	t.Setenv("ALIYUN_ACCESS_KEY_ID", "AK")
+	secrets := readCloudSecrets()
+	if got := aliyunImages(secrets)["cn-guangzhou"]; got != "m-gz" {
+		t.Fatalf("guangzhou image = %q, want the environment value", got)
+	}
+	if secrets["ALIYUN_ACCESS_KEY_ID"] != "AK" {
+		t.Fatal("ALIYUN_ACCESS_KEY_ID is not read from the environment")
 	}
 }

@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -38,15 +38,20 @@ type compshareOneVMLogicalNode struct {
 // The GPUWorks server also runs on this VM; both agents use its private address,
 // while the workstation SSH forward carries only REST/gateway requests.
 func TestCompshareOneVMTwoLogicalNodeDistributedInference(t *testing.T) {
+	runOneVMTwoLogicalNodes(t, compshareBackend(t))
+}
+
+// runOneVMTwoLogicalNodes is the provider-neutral body of the case.
+func runOneVMTwoLogicalNodes(t *testing.T, b *vmBackend) {
 	var physical []compsharePhysicalGPU
 	harness := newHostedControlPlane(t, hostedControlPlaneConfig{
 		RunID: cloudTestRunID(), VMCount: 1, SkipAgents: true,
-		ModelEndpoint: compshareModelEndpoint(),
+		Backend: b,
 		PrepareVMs: func(t *testing.T, envs []*cloudTestEnv) {
-			installCompshareDocker29OnNodes(t, envs)
-			prepareCompshareDockerImageCache(t, envs)
+			b.EnsureDocker(t, envs)
+			b.EnsureImage(t, envs)
 			installDistributedVLLMFix(t, envs)
-			if !t.Run("DockerNCCL", func(t *testing.T) { testCompshareDockerNCCL(t, envs[0]) }) {
+			if !t.Run("DockerNCCL", func(t *testing.T) { testDockerNCCL(t, envs[0], b.dockerTestImage()) }) {
 				t.FailNow()
 			}
 			physical = readCompsharePhysicalGPUs(t, envs[0])
@@ -106,8 +111,8 @@ func TestCompshareOneVMTwoLogicalNodeDistributedInference(t *testing.T) {
 	d := createHostedDeployment(t, harness, map[string]any{
 		"model_id": model.ID, "node_uuid": nodes[0].UUID,
 		"node_uuids":  []string{nodes[0].UUID, nodes[1].UUID},
-		"served_name": "qwen2-compshare-onevm-nnode2", "engine": "vllm",
-		"image": compshareDistributedTestImage(), "nnodes": 2,
+		"served_name": b.servedName("onevm-nnode2"), "engine": "vllm",
+		"image": b.DistributedImage, "nnodes": 2,
 		"master_addr": directAddress, "master_port": 29500,
 		"placement":           map[string]any{"tp": 1, "pp": 2},
 		"quick_params":        map[string]any{"max_model_len": 1024},

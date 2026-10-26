@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -36,15 +36,19 @@ const (
 type hostedControlPlaneConfig struct {
 	RunID          string
 	RuntimeDrivers [2]string
-	ModelEndpoint  string
-	ServerBinary   string
-	AgentBinary    string
-	VMCount        int
-	SkipAgents     bool
-	PrepareVMs     func(*testing.T, []*cloudTestEnv)
+	// Backend is the VM provider; nil means CompShare.
+	Backend *vmBackend
+	// ModelEndpoint overrides the backend's model mirror.
+	ModelEndpoint string
+	ServerBinary  string
+	AgentBinary   string
+	VMCount       int
+	SkipAgents    bool
+	PrepareVMs    func(*testing.T, []*cloudTestEnv)
 }
 
 type hostedControlPlane struct {
+	backend    *vmBackend
 	VMs        []*cloudTestEnv
 	PrivateURL string
 	RemoteRoot string
@@ -66,7 +70,10 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 	if err != nil {
 		t.Fatalf("hosted control-plane binaries: %v", err)
 	}
-	provider := compshareProvider(t)
+	backend := config.Backend
+	if backend == nil {
+		backend = compshareBackend(t)
+	}
 	vmCount := config.VMCount
 	if vmCount == 0 {
 		vmCount = 2
@@ -74,7 +81,7 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 	if vmCount < 1 || (!config.SkipAgents && vmCount != 2) {
 		t.Fatalf("hosted control-plane VM count=%d skip_agents=%t is unsupported", vmCount, config.SkipAgents)
 	}
-	gpuModel, gpusPerVM, VMs := rentHostedControlVMs(t, provider, vmCount)
+	gpuModel, gpusPerVM, VMs := rentHostedControlVMs(t, backend, vmCount)
 	for rank, vm := range VMs {
 		if vm.Instance.Kind != "vm" || net.ParseIP(vm.Instance.PrivateIP) == nil {
 			t.Fatalf("rank %d is not a VM with a valid private address", rank)
@@ -88,7 +95,7 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 		t.Fatal(err)
 	}
 	root := "/tmp/gpuworks-hosted-control-" + hostedRunID(config.RunID)
-	harness := &hostedControlPlane{gpuModel: gpuModel, gpusPerVM: gpusPerVM, VMs: VMs, PrivateURL: privateURL, RemoteRoot: root}
+	harness := &hostedControlPlane{backend: backend, gpuModel: gpuModel, gpusPerVM: gpusPerVM, VMs: VMs, PrivateURL: privateURL, RemoteRoot: root}
 	t.Cleanup(func() { harness.Close() })
 	// Keep the hosted server log available for every subsequent test failure.
 	// This cleanup is registered after harness.Close above, so cleanup runs it
@@ -149,7 +156,11 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 	if err := harness.API.GetJSON(t.Context(), "/api/v1/healthz", &health); err != nil || health.Status != "ok" {
 		t.Fatalf("authenticate hosted control plane: health=%+v err=%v", health, err)
 	}
-	if endpoint := strings.TrimSpace(config.ModelEndpoint); endpoint != "" {
+	endpoint := strings.TrimSpace(config.ModelEndpoint)
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(backend.ModelEndpoint)
+	}
+	if endpoint != "" {
 		// A model mirror is a site rule, set the way an operator does.
 		allowUpstream := true
 		rule := dto.PullSourceRuleRequest{Match: "https://huggingface.co", Endpoints: []string{strings.TrimRight(endpoint, "/")}, AllowUpstream: &allowUpstream}
@@ -207,17 +218,17 @@ func hostedPrivatePeerRanks(vmCount int) []int {
 // capacity: the stock check that picked the shape is only a snapshot, and
 // both VMs have to come from the same shape. VMs already rented for a shape
 // that then runs out are destroyed before the next one is tried.
-func rentHostedControlVMs(t *testing.T, provider *cloudprovider.Compshare, vmCount int) (string, int, []*cloudTestEnv) {
+func rentHostedControlVMs(t *testing.T, backend *vmBackend, vmCount int) (string, int, []*cloudTestEnv) {
 	t.Helper()
 	var (
 		gpuModel string
 		gpus     int
 		rented   []*cloudTestEnv
 	)
-	checked := eachCompshareShape(t, provider, hostedCompshareGPUModels, 2, hostedMinVRAMMB, 160, func(model string, count int) bool {
+	checked := backend.EachShape(t, true, 2, hostedMinVRAMMB, func(model string, count int) bool {
 		var envs []*cloudTestEnv
 		for len(envs) < vmCount {
-			env, err := rentHostedControlVM(t, provider, model, count)
+			env, err := rentHostedControlVM(t, backend, model, count)
 			if err == nil {
 				envs = append(envs, env)
 				continue
@@ -225,7 +236,7 @@ func rentHostedControlVMs(t *testing.T, provider *cloudprovider.Compshare, vmCou
 			if !isCloudCapacityError(err) {
 				t.Fatal(err)
 			}
-			t.Logf("CompShare %s x%d ran out after %d of %d VMs, trying the next shape: %v", model, count, len(envs), vmCount, err)
+			t.Logf("%s %s x%d ran out after %d of %d VMs, trying the next shape: %v", backend.Name, model, count, len(envs), vmCount, err)
 			for _, env := range envs {
 				destroyCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 				if err := env.cleanup(destroyCtx); err != nil {
@@ -239,7 +250,7 @@ func rentHostedControlVMs(t *testing.T, provider *cloudprovider.Compshare, vmCou
 		return true
 	})
 	if rented == nil {
-		t.Fatalf("check CompShare capacity for two or more GPUs across %v: %s", hostedCompshareGPUModels, strings.Join(checked, "; "))
+		t.Fatalf("check %s capacity for two or more GPUs: %s", backend.Name, strings.Join(checked, "; "))
 	}
 	return gpuModel, gpus, rented
 }
@@ -247,15 +258,16 @@ func rentHostedControlVMs(t *testing.T, provider *cloudprovider.Compshare, vmCou
 // rentHostedControlVM rents one VM of the shape and waits for SSH. A refused
 // create comes back as an error for the caller to judge; the VM, once rented,
 // is destroyed when the test ends.
-func rentHostedControlVM(t *testing.T, provider cloudprovider.CloudProvider, gpuModel string, gpus int) (*cloudTestEnv, error) {
+func rentHostedControlVM(t *testing.T, backend *vmBackend, gpuModel string, gpus int) (*cloudTestEnv, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), cloudSetupTimeout)
 	defer cancel()
-	instance, err := provider.Rent(ctx, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: gpus, MinVRAMMB: hostedMinVRAMMB, DiskGB: 160})
+	instance, err := backend.Provider.Rent(ctx, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: gpus, MinVRAMMB: hostedMinVRAMMB, DiskGB: backend.DiskGB})
 	if err != nil {
 		return nil, err
 	}
-	env := &cloudTestEnv{Provider: provider, Instance: instance}
+	logRentedInstance(t, backend, instance)
+	env := &cloudTestEnv{Provider: backend.Provider, Instance: instance}
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cleanupCancel()
@@ -263,6 +275,9 @@ func rentHostedControlVM(t *testing.T, provider cloudprovider.CloudProvider, gpu
 			t.Errorf("destroy hosted control-plane VM: %v", err)
 		}
 	})
+	// Registered after the destroy above so it runs first: a reclaimed spot VM
+	// must be named as such before the instance is gone for good.
+	t.Cleanup(func() { reportInterruption(t, backend.Provider, instance) })
 	if err := waitCloudSSH(ctx, instance); err != nil {
 		t.Fatal(err)
 	}

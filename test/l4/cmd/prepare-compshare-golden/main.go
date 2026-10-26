@@ -5,8 +5,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,22 +15,18 @@ import (
 	serverprovider "gpuworks.ai/gpuworks/internal/server/provider"
 	compsharedriver "gpuworks.ai/gpuworks/internal/server/provider/compshare"
 	"gpuworks.ai/gpuworks/internal/testenv/cloudprovider"
+	"gpuworks.ai/gpuworks/internal/testenv/goldenimage"
 	"gpuworks.ai/gpuworks/internal/testenv/sshutil"
-	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
+// The model fixture and its checks are shared with the other providers'
+// golden-image builders.
 const (
-	defaultModelRepo   = "Qwen/Qwen2-0.5B-Instruct"
-	defaultModelRev    = "master"
-	defaultModelPath   = "/opt/gpuworks/test-fixtures/models/qwen2-0.5b"
-	defaultDockerImage = "gpustack/runner:cuda12.8-vllm0.17.1"
+	defaultModelPath   = goldenimage.DefaultModelPath
+	defaultDockerImage = goldenimage.DefaultDockerImage
 )
 
-type remoteFile struct {
-	Path string `json:"path"`
-	URL  string `json:"url"`
-	Size int64  `json:"size"`
-}
+type remoteFile = goldenimage.File
 
 func main() {
 	var (
@@ -287,28 +281,7 @@ func printGPUChecks(results []gpuCheck) {
 	}
 }
 
-func modelFiles(ctx context.Context) ([]remoteFile, error) {
-	listed, err := modelrepo.ListFiles(ctx, modelrepo.SourceMS, defaultModelRepo, defaultModelRev, "", nil)
-	if err != nil {
-		return nil, fmt.Errorf("list ModelScope files: %w", err)
-	}
-	var total int64
-	files := make([]remoteFile, 0, len(listed))
-	for _, file := range listed {
-		if strings.TrimSpace(file.Path) == "" || file.Size < 0 {
-			return nil, fmt.Errorf("invalid ModelScope file metadata: %+v", file)
-		}
-		total += file.Size
-		files = append(files, remoteFile{
-			Path: file.Path, Size: file.Size,
-			URL: modelrepo.ResolveURL(modelrepo.SourceMS, defaultModelRepo, file.Revision, file.Path, ""),
-		})
-	}
-	if total < 100<<20 || total > 3<<30 {
-		return nil, fmt.Errorf("refusing unexpected model size %d bytes", total)
-	}
-	return files, nil
-}
+func modelFiles(ctx context.Context) ([]remoteFile, error) { return goldenimage.ModelFiles(ctx) }
 
 func waitSSH(ctx context.Context, instance *cloudprovider.Instance) error {
 	if len(instance.PrivateKey) > 0 {
@@ -358,63 +331,14 @@ func waitImageWithInterval(ctx context.Context, driver customImageClient, creds 
 }
 
 func remotePrepareCommand(modelPath, dockerImage string, files []remoteFile) string {
-	manifest, _ := json.Marshal(files)
-	script := `import base64, hashlib, json, os, pathlib, shutil, sys, time, urllib.request
-target = pathlib.Path(sys.argv[1])
-files = json.loads(base64.b64decode(sys.argv[2]))
-staging = target.with_name(target.name + ".partial")
-if staging.exists(): shutil.rmtree(staging)
-staging.mkdir(parents=True, exist_ok=True)
-for item in files:
-    rel = pathlib.PurePosixPath(item["path"])
-    if rel.is_absolute() or ".." in rel.parts: raise RuntimeError("unsafe model path: " + item["path"])
-    dest = staging.joinpath(*rel.parts)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    last = None
-    for attempt in range(5):
-        try:
-            req = urllib.request.Request(item["url"], headers={"User-Agent": "gpuworks-golden-image/1"})
-            with urllib.request.urlopen(req, timeout=120) as src, open(str(dest) + ".part", "wb") as out:
-                shutil.copyfileobj(src, out, 8 * 1024 * 1024)
-            os.replace(str(dest) + ".part", dest)
-            if item["size"] and dest.stat().st_size != item["size"]:
-                raise RuntimeError("size mismatch for %s: %d != %d" % (rel, dest.stat().st_size, item["size"]))
-            last = None
-            break
-        except Exception as exc:
-            last = exc
-            try: os.unlink(str(dest) + ".part")
-            except FileNotFoundError: pass
-            time.sleep(2 ** attempt)
-    if last is not None: raise last
-if not (staging / "config.json").is_file(): raise RuntimeError("model config is missing")
-if not any(p.stat().st_size > 0 for p in staging.glob("*.safetensors")): raise RuntimeError("model weights are missing")
-with open(staging / "SHA256SUMS", "w", encoding="utf-8") as sums:
-    for path in sorted(p for p in staging.rglob("*") if p.is_file() and p.name != "SHA256SUMS"):
-        digest = hashlib.sha256()
-        with open(path, "rb") as stream:
-            for block in iter(lambda: stream.read(8 * 1024 * 1024), b""): digest.update(block)
-        sums.write(digest.hexdigest() + "  " + path.relative_to(staging).as_posix() + "\n")
-if target.exists(): shutil.rmtree(target)
-os.replace(staging, target)
-`
-	encodedScript := base64.StdEncoding.EncodeToString([]byte(script))
-	encodedManifest := base64.StdEncoding.EncodeToString(manifest)
-	return "set -eu; sudo -n docker image inspect " + shellQuote(dockerImage) + " >/dev/null; " +
-		"printf %s " + shellQuote(encodedScript) + " | base64 -d >/tmp/gpuworks-prepare-model.py; " +
-		"sudo -n python3 /tmp/gpuworks-prepare-model.py " + shellQuote(modelPath) + " " + shellQuote(encodedManifest) + "; " +
-		"rm -f /tmp/gpuworks-prepare-model.py; sudo -n sync"
+	return goldenimage.PrepareModelCommand(modelPath, dockerImage, files, "sudo -n ")
 }
 
 func remoteValidationCommand(modelPath, dockerImage string) string {
-	checks := "set -eu; test -s " + shellQuote(strings.TrimRight(modelPath, "/")+"/config.json") + "; " +
-		"find " + shellQuote(modelPath) + " -maxdepth 1 -name '*.safetensors' -type f -size +0c | grep -q .; " +
-		"cd " + shellQuote(modelPath) + " && sha256sum -c SHA256SUMS >/dev/null; " +
-		"docker image inspect " + shellQuote(dockerImage) + " >/dev/null"
-	return "sudo -n sh -c " + shellQuote(checks)
+	return goldenimage.ValidationCommand(modelPath, dockerImage, "sudo -n ")
 }
 
-func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+func shellQuote(value string) string { return goldenimage.ShellQuote(value) }
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
