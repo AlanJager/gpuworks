@@ -128,6 +128,10 @@ func TestReplicaWaitsForACopyFromASyncGroupPeer(t *testing.T) {
 	if len(launched(t, st, dep)) != 0 {
 		t.Fatal("the replica started before the copy arrived")
 	}
+	waitingEvent, found, err := st.LatestScheduleEvent(dep.ID)
+	if err != nil || !found || !strings.Contains(waitingEvent.Data, "image_delivery_waiting") {
+		t.Fatalf("image-copy wait has no actionable scheduling reason: event=%+v found=%v err=%v", waitingEvent, found, err)
+	}
 	if len(hub.copies) != 1 || hub.copies[0] != (imageCopyCall{image.ID, target.UUID, holder.UUID, 0}) {
 		t.Fatalf("copies = %+v, want one from the holder", hub.copies)
 	}
