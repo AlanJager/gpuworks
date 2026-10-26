@@ -301,6 +301,7 @@
       "gateway": "网关 {{time}}",
       "preprocess": "引擎预处理 {{time}}（引擎未计入：分词、等当前步结束、首字回传）",
       "queue": "排队 {{time}}",
+      "queueUnavailable": "引擎排队耗时未知：该回复未上报逐请求耗时。等待仍包含未拆分的排队、预处理及网络耗时；排队请求数不能换算成此请求的排队时间。",
       "prefill": "Prefill {{time}}",
       "prefillSpeed": "Prefill {{time}} · {{speed}} tok/s",
       "firstToken": "{{time}} 后出首个 token",

@@ -2,6 +2,7 @@ package monitorapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -187,9 +188,8 @@ func TestRequestsHistoryMapsRecords(t *testing.T) {
 	if out.Requests[0].Result != "client_closed" || out.Requests[1].Result != "error" {
 		t.Fatalf("results = %q %q", out.Requests[0].Result, out.Requests[1].Result)
 	}
-	// The row's bar is the server's split: no engine queue and prefill pair,
-	// so the wait stays whole.
-	if fmt.Sprint(out.Requests[0].Segments) != "[{gateway 2} {waiting 29} {thinking 369} {answering 500} {tail 1}]" {
+	// A queue-only report splits off its known queue; the remainder stays waiting.
+	if fmt.Sprint(out.Requests[0].Segments) != "[{gateway 2} {queue 5} {waiting 24} {thinking 369} {answering 500} {tail 1}]" {
 		t.Fatalf("segments = %v", out.Requests[0].Segments)
 	}
 
@@ -347,5 +347,26 @@ func TestLatencyBreakdown(t *testing.T) {
 	}
 	if _, err := requestsService(src).Latency(context.Background(), 8, time.Hour); err != errRequestsNotFound {
 		t.Fatalf("unknown deployment: %v", err)
+	}
+}
+
+func TestRequestQueueTimingWirePreservesUnknownZeroAndMeasured(t *testing.T) {
+	for _, queue := range []int32{uxrecord.Unknown, 0, 20300} {
+		record := uxrecord.Request{EngineQueueMS: queue, EnginePrefillMS: uxrecord.Unknown, EngineDecodeMS: uxrecord.Unknown}
+		body, err := json.Marshal(recordDTO(record, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(body, &fields); err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprint(queue)
+		if queue == uxrecord.Unknown {
+			want = "null"
+		}
+		if string(fields["engine_queue_ms"]) != want || string(fields["engine_prefill_ms"]) != "null" {
+			t.Fatalf("queue %d: wire queue=%s prefill=%s", queue, fields["engine_queue_ms"], fields["engine_prefill_ms"])
+		}
 	}
 }

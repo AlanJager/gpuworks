@@ -178,6 +178,13 @@ func split(t timeline) []Segment {
 			push(SegmentWaiting, rest)
 		}
 		push(SegmentPrefill, prefill)
+	} else if known(t.queueMS) && wait > 0 {
+		// A reply may report only its queue. Keep that measured duration;
+		// preprocessing and prefill remain an unsplit wait, not zero prefill.
+		queue := min(float64(t.queueMS), wait)
+		pushGateway()
+		push(SegmentQueue, queue)
+		push(SegmentWaiting, wait-queue)
 	} else {
 		pushGateway()
 		push(SegmentWaiting, wait)
