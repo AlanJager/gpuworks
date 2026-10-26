@@ -48,7 +48,7 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
         {measurable && <Progress aria-label={t("preparation.progress")} percent={Math.min(100, Math.round(item.progress * 100))} size="small" />}
         <div><Typography.Text type="secondary">
           {origin ? `${"node" in origin ? t("detail.modelFromNode", { node: origin.node }) : t("detail.modelFromHost", { host: origin.host })} · ` : ""}
-          {measurable ? `${formatBytes(item.downloaded)} / ${formatBytes(item.size_bytes)}` : t("preparation.unknownTotal")}
+          {measurable ? `${formatBytes(item.downloaded)} / ${formatBytes(item.size_bytes)}` : `${formatBytes(item.downloaded)} · ${t("preparation.unknownTotal")}`}
           {item.rate_bps > 0 ? ` · ${rateLabel(item.rate_bps)}` : ""}
           {view?.eta_seconds ? ` · ${t("preparation.eta", { seconds: view.eta_seconds })}` : ""}
           {view?.reason === "MODEL_COPY_STALLED" ? ` · ${t("preparation.idle", { seconds: view.idle_seconds })}` : ""}

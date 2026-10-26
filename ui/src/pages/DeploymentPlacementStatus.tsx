@@ -14,6 +14,8 @@ import {
 import { apiErrorText } from "../apiError";
 import { systemLabelName, systemLabelValue } from "../components/SystemLabelTags";
 import { scheduleText } from "./deploy/deploySchedule";
+import { PreparationLabel } from "./DeploymentPreparation";
+import { isModelFileReady } from "../storageTypes";
 
 const PAGE_SIZE = 50;
 
@@ -67,19 +69,21 @@ export function PlacementStatusAlert({ dep }: { dep: Deployment }) {
   const [open, setOpen] = useState(false);
   const status = dep.placement_status;
   if (!status || status.unscheduled <= 0 || dep.pd) return null;
+  const preparing = dep.model_progress?.find((item) => !isModelFileReady(item.state) && item.preparation && ["downloading", "syncing", "checking", "copying", "verifying", "installing", "evicting"].includes(item.preparation.phase));
   const render = (value: ScheduleMessage) => scheduleText(tDeploy, value);
-  const reason = status.reason ? render(reasonWithFirst(status.reason, render)) : "";
-  const closest = (status.reason?.params?.closest as ClosestNode[] | undefined) ?? [];
-  const at = status.at ? new Date(status.at).toLocaleString(i18n.language) : "";
+  const reason = !preparing && status.reason ? render(reasonWithFirst(status.reason, render)) : "";
+  const closest = preparing ? [] : (status.reason?.params?.closest as ClosestNode[] | undefined) ?? [];
+  const at = !preparing && status.at ? new Date(status.at).toLocaleString(i18n.language) : "";
   return (
     <>
       <Alert
-        type="warning"
+        type={preparing && !preparing.preparation?.reason ? "info" : "warning"}
         showIcon
         style={{ marginTop: 16 }}
-        message={t("detail.placement.waiting", { count: status.unscheduled })}
+        message={t(preparing ? "detail.placement.preparingModel" : "detail.placement.waiting", { count: status.unscheduled })}
         description={
           <Space direction="vertical" size={4} style={{ width: "100%" }}>
+            {preparing && <Typography.Text><PreparationLabel item={preparing} /></Typography.Text>}
             {reason && <Typography.Text>{reason}</Typography.Text>}
             {closest.length > 0 && (
               <div>
