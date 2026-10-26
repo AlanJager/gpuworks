@@ -16,7 +16,7 @@ import (
 // LoadRef loads a tokenizer from a local path, an HTTP(S) URL, or a compact
 // repository reference (hf://org/model[@revision], ms://org/model[@revision]).
 // It deliberately returns an error rather than hiding failures so callers can
-// apply the product's estimate-mode fallback and expose that mode in results.
+// decide whether estimation is allowed for the workload without hiding failures.
 func LoadRef(ctx context.Context, ref string) (*Tokenizer, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {

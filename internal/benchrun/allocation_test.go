@@ -26,7 +26,7 @@ func TestStoredRunRejectsImpossibleAllocations(t *testing.T) {
 			endpoint := &fakeEndpoint{}
 			srv := endpoint.serve(t)
 			rec := &recorder{}
-			Execute(context.Background(), Run{ID: 1, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(raw)}, rec.hooks())
+			Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t), ID: 1, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(raw)}, rec.hooks())
 			if last := rec.last(); last.State != "failed" || last.StopReason != proto.BenchmarkStopFatal || last.Message == "" {
 				t.Fatalf("terminal=%+v", last)
 			}
@@ -47,7 +47,7 @@ func TestStoredRunUsesGridConcurrencyAndBoundsWorkersBySessions(t *testing.T) {
 			endpoint := &fakeEndpoint{}
 			srv := endpoint.serve(t)
 			rec := &recorder{}
-			Execute(context.Background(), Run{ID: 1, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(raw)}, rec.hooks())
+			Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t), ID: 1, Model: "m", Mode: "grid", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(raw)}, rec.hooks())
 			if last := rec.last(); last.State != "done" {
 				t.Fatalf("terminal=%+v", last)
 			}
@@ -77,7 +77,7 @@ func TestStoredRunsUseSharedAllocationBound(t *testing.T) {
 					config = fmt.Sprintf(`{"concurrency":1,"isl":[1],"warmup_requests":%d}`, count)
 				}
 				rec := &recorder{}
-				Execute(context.Background(), Run{ID: 1, Model: "m", Mode: "grid", Dataset: raw, Search: json.RawMessage(config)}, rec.hooks())
+				Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t), ID: 1, Model: "m", Mode: "grid", Dataset: raw, Search: json.RawMessage(config)}, rec.hooks())
 				if last := rec.last(); last.State != "failed" || last.StopReason != proto.BenchmarkStopFatal || last.Message != want.Error() {
 					t.Fatalf("%s terminal=%+v want=%v", field, last, want)
 				}

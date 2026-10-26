@@ -51,7 +51,7 @@ func TestCanceledBenchmarkCSVRetainsReportContext(t *testing.T) {
 		handler.ServeHTTP(response, request)
 		return response
 	}
-	body := fmt.Sprintf(`{"name":"cancel-report-context","target_kind":"external","base_url":%q,"model":"test-model","load_origin":"server","tokenizer_source":"estimate","dataset":{"kind":"random","input_tokens":8,"output_tokens":4,"seed":42},"mode":"grid","search":{"concurrency":1,"isl":[8],"osl":[4],"requests_per_point_multiplier":3,"warmup_requests":0}}`, fixture.URL)
+	body := fmt.Sprintf(`{"name":"cancel-report-context","target_kind":"external","base_url":%q,"model":"test-model","load_origin":"server","tokenizer_source":"upload","tokenizer_ref":%q,"dataset":{"kind":"random","input_tokens":8,"output_tokens":4,"seed":42},"mode":"grid","search":{"concurrency":1,"isl":[8],"osl":[4],"requests_per_point_multiplier":3,"warmup_requests":0}}`, fixture.URL, benchmarkTestTokenizer(t))
 	created := call(http.MethodPost, "/api/v1/benchmarks", body)
 	if created.Code != http.StatusAccepted {
 		t.Fatalf("create: %d %s", created.Code, created.Body.String())

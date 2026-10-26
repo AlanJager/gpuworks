@@ -100,7 +100,7 @@ func TestServerExternalBenchmarkExecutionUsesHTTPPolicy(t *testing.T) {
 	defer fixture.Close()
 	for _, allowed := range []bool{false, true} {
 		st := urlModelStore(t, fmt.Sprintf("benchmark_http_execution_%v", allowed))
-		run, err := st.CreateBenchmarkRun(&store.BenchmarkRun{Name: "policy", TargetKind: "external", BaseURL: fixture.URL, Model: "m", LoadOrigin: "server", Dataset: `{"kind":"random","input_tokens":2,"output_tokens":1}`, Mode: "grid", Search: `{"concurrency":[1],"isl":[2],"osl":[1],"requests_per_point_multiplier":1}`})
+		run, err := st.CreateBenchmarkRun(&store.BenchmarkRun{TokenizerRef: benchmarkTestTokenizer(t), Name: "policy", TargetKind: "external", BaseURL: fixture.URL, Model: "m", LoadOrigin: "server", Dataset: `{"kind":"random","input_tokens":2,"output_tokens":1}`, Mode: "grid", Search: `{"concurrency":[1],"isl":[2],"osl":[1],"requests_per_point_multiplier":1}`})
 		if err != nil {
 			t.Fatal(err)
 		}

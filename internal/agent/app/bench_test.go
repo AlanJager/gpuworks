@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -125,7 +127,7 @@ func TestBenchmarkCancelRPCWaitsForAgentExecutionToStop(t *testing.T) {
 	}, slog.Default())
 	node := &NodeRuntime{bench: engine}
 	engine.ApplyUpdate(context.Background(), []proto.BenchmarkSpec{{
-		ID: 41, TargetURL: fixture.URL, Model: "m", Mode: "grid",
+		TokenizerRef: agentBenchmarkTestTokenizer(t), ID: 41, TargetURL: fixture.URL, Model: "m", Mode: "grid",
 		Dataset: json.RawMessage(`{"kind":"random","input_tokens":8,"output_tokens":4}`),
 		Search:  json.RawMessage(`{"concurrency":1,"requests_per_point_multiplier":3}`),
 	}}, nil)
@@ -175,7 +177,7 @@ func TestBenchmarkDesiredRemovalCancelsAgentExecution(t *testing.T) {
 	defer fixture.Close()
 	e := newBenchEngine(func(proto.BenchmarkStatus) {}, slog.Default())
 	e.ApplyUpdate(context.Background(), []proto.BenchmarkSpec{{
-		ID: 42, TargetURL: fixture.URL, Model: "m", Mode: "grid",
+		TokenizerRef: agentBenchmarkTestTokenizer(t), ID: 42, TargetURL: fixture.URL, Model: "m", Mode: "grid",
 		Dataset: json.RawMessage(`{"kind":"random","input_tokens":8,"output_tokens":4}`),
 		Search:  json.RawMessage(`{"concurrency":1}`),
 	}}, nil)
@@ -190,4 +192,13 @@ func TestBenchmarkDesiredRemovalCancelsAgentExecution(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("full desired-state removal did not cancel the in-flight request")
 	}
+}
+
+func agentBenchmarkTestTokenizer(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "tokenizer.json")
+	if err := os.WriteFile(path, []byte(`{"model":{"vocab":{"a":0,"b":1}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

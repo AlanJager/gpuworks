@@ -82,17 +82,8 @@ func (e *execution) execute(ctx context.Context) error {
 		return fmt.Errorf("invalid search config: %w", err)
 	}
 	e.doc = doc
-	e.dc.Mode = "estimate"
-	if e.run.TokenizerRef != "" {
-		if loaded, loadErr := tokenizer.LoadRef(ctx, e.run.TokenizerRef); loadErr == nil {
-			e.tok = loaded
-			e.dc.Mode = "exact"
-		} else {
-			e.hooks.Warn(proto.BenchmarkWarningTokenizerLoad)
-		}
-	}
-	if e.dc.Kind == "agentic" && e.tok == nil {
-		return errors.New("agentic workload requires an exact tokenizer")
+	if err := e.loadTokenizer(ctx); err != nil {
+		return err
 	}
 
 	var points []search.Point
