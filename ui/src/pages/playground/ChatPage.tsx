@@ -126,6 +126,8 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
     return <div className="playground-chat-page"><Skeleton active paragraph={{ rows: 6 }} /></div>;
   }
   const compare = current.mode === "compare";
+  const selectedModels = current.columns.map((column) => column.model).filter(Boolean);
+  const duplicateModels = compare && new Set(selectedModels).size < selectedModels.length;
   const columns = current.columns.length;
   const lastColumn = current.columns[columns - 1];
   return (
@@ -200,6 +202,15 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
               />
             ))}
           </div>
+          {duplicateModels && (
+            <Alert
+              className="playground-limit-alert"
+              type="warning"
+              showIcon
+              message={t("chat.sharedModelTitle")}
+              description={t("chat.sharedModelDescription")}
+            />
+          )}
           {limited && (
             <Alert
               className="playground-limit-alert"
