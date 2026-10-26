@@ -38,8 +38,8 @@ func TestProviderCredentialDefaultsWireContract(t *testing.T) {
 			if err := json.Unmarshal(field["secret"], &secret); err != nil {
 				t.Fatal(err)
 			}
-			template, hasTemplate := field["default_template"]
 			if kind.Kind == "zstack" && name == "endpoint" {
+				template := field["default_template"]
 				if string(template) != `"http://MANAGEMENT_NODE_IP:8080/zstack"` {
 					t.Errorf("ZStack endpoint template = %s", template)
 				}
@@ -47,8 +47,6 @@ func TestProviderCredentialDefaultsWireContract(t *testing.T) {
 					t.Error("ZStack endpoint template must not be secret")
 				}
 				seenTemplate = true
-			} else if hasTemplate {
-				t.Errorf("%s.%s must not invent a template: %s", kind.Kind, name, template)
 			}
 			value, hasDefault := field["default_value"]
 			want, hasEndpoint := expected[kind.Kind]

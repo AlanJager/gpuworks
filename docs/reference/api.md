@@ -919,7 +919,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/providers/kinds` | 支持的云厂商种类，含各自的凭据字段（`credential_fields[].default_value` 为可选的非敏感字段创建默认值；`default_template` 为可选的可编辑创建模板，优先于 `default_value`，仅预填非敏感字段，UI 拦截去除首尾空白后仍与模板相同的提交；`placeholder` 仅为提示）、默认 `server_dial` 监听地址，以及 `server_dial_supported`（AutoDL 为 false：Pro 实例只开放 HTTP 端口）与 `server_dial_auto_port`（Vast、RunPod 为 true：驱动按平台的端口映射自选监听端口与接入地址） | JWT |
+| GET | `/api/v1/providers/kinds` | 支持的云厂商种类，含各自的凭据字段（`credential_fields[].default_value` 为可选的非敏感字段创建默认值，`placeholder` 仅为提示）、默认 `server_dial` 监听地址，以及 `server_dial_supported`（AutoDL 为 false：Pro 实例只开放 HTTP 端口）与 `server_dial_auto_port`（Vast、RunPod 为 true：驱动按平台的端口映射自选监听端口与接入地址） | JWT |
 | GET | `/api/v1/providers` | 已配置的云厂商账号列表 | JWT |
 | POST | `/api/v1/providers` | 新增云厂商账号 | JWT |
 | GET | `/api/v1/providers/{id}` | 编辑回读：已保存的 endpoint/public_key 及字典声明的非 secret extra；不回填厂商默认值，不返回密钥。读取凭据失败返回 500，列表仍可用 | 登录会话（平台令牌及 AI/MCP 不可读） |
