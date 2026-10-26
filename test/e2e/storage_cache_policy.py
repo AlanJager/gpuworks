@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
-"""Storage / NFS cache node policy against an isolated real server/SQLite.
+"""NFS cache node policy on an isolated server and SQLite.
 
-E2E standard: test/e2e/browser-e2e-testing-standard.md
-Run: make test-e2e-storage-nfs-cache-policy [E2E_LOCALE=zh]
-After build: python3 test/e2e/storage_cache_policy.py --locale en
-Requires Python Playwright and system Chrome. Fixture: 25 offline node records,
-an existing NFS-cache definition and a non-admin account seeded into the
-isolated database; no agent, mount, GPU or RPC success is simulated. Successful
-creation is covered separately by storage_cache_create.py with a real agent and
-NFS export.
-Artifacts: secrets/e2e/<runId>; the runner stops its own server and retains the
-private database/logs for scoped diagnosis (seven days).
+Run: python3 test/e2e/storage_cache_policy.py --locale en
+Fixture: 25 offline nodes, one nfs_cache storage, one non-admin user. No agent.
 """
 from __future__ import annotations
 
@@ -31,39 +23,18 @@ from playwright.sync_api import expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from network_storage_lifecycle import locale_strings, read
 from platform_token_read_revoke import button, check
+from storage_cache_policy_inventory import exercise_node_path_required, exercise_node_policy_inventory
+from storage_cache_policy_dialogs import (
+    GIB, exercise_cache_limit_bounds, exercise_cache_limit_defaults, exercise_cache_limit_steps,
+    exercise_defaults_conflict,
+    exercise_defaults_dialog,
+    exercise_editor_dismissals,
+    exercise_node_editor_keyboard,
+    exercise_defaults_inflight, mutate)
 
 CONTRACT = 'gpuworks/storage/nfs-cache-node-policy'
 CASE = '存储 / NFS Cache 节点缓存策略 / 单节点与跨页批量覆盖、默认值继承、离线重试、搜索筛选与只读账号'
 VIEWPORT = {'width': 1440, 'height': 900}
-GIB = 1024 ** 3
-
-
-def mutate(page, action, method, path, body, status, evidence):
-    """Record the observed wire contract before checking it, including failures."""
-    observation = {'layer': 'request', 'method': method, 'path': path,
-                   'expected_body': body, 'expected_status': status, 'status': None, 'sent': []}
-    evidence.append(observation)
-    def sent(request):
-        if request.method == method and urlsplit(request.url).path == path:
-            observation['sent'].append({'query': urlsplit(request.url).query, 'raw_body': request.post_data})
-    page.on('request', sent)
-    try:
-        with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == method) as received:
-            action()
-    finally:
-        page.remove_listener('request', sent)
-    response = received.value
-    observation.update(status=response.status, query=urlsplit(response.url).query,
-                       raw_body=response.request.post_data, response_text=response.text())
-    observation['body'] = response.request.post_data_json if response.request.post_data is not None else None
-    check(response.status == status, f'{method} {path}: expected {status}, received {response.status}')
-    check(not observation['query'], f'{method} {path}: unexpected query {observation["query"]!r}')
-    check(observation['body'] == body,
-          f'{method} {path}: expected body {body!r}, received {observation["body"]!r}')
-    result = response.json() if status != 204 else None
-    observation['response'] = result
-    return result
-
 
 def cleanup_stage(report, name, action):
     """Run one cleanup stage on its own: a failure is recorded and never skips the next stage."""
@@ -150,6 +121,7 @@ def login(page, server, artifacts, locale, username='admin'):
     check(read(page, server.base, '/api/v1/auth/me')['username'] == username, 'identity mismatch')
 
 
+
 def test_storage_cache_policy(page, server, artifacts, report, storage_id, storage_name, locale):
     t = locale_strings(locale, 'storage')
     cm, cp, draft, form = (t[key] for key in ('cacheManage', 'cachePolicy', 'cacheDraft', 'form'))
@@ -161,6 +133,12 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
         return value
     def targets():
         return {x['node_uuid']: x for x in saved()['targets'] if x.get('node_uuid')}
+    def policy_snapshot():
+        body = read(page, server.base, path + '?all_nodes=1')
+        by_node = {x.get('node_uuid'): (x.get('cache_max_bytes'), x.get('cache_path'))
+                   for x in body.get('targets') or [] if x.get('node_uuid')}
+        return (body.get('cache_max_bytes'), body.get('cache_path'),
+                by_node.get('cache-node-01'), by_node.get('cache-node-02'))
     def nodes():
         page.goto(server.base + f'/storage/{storage_id}')
         page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True).click()
@@ -188,18 +166,43 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     check(retry_button.evaluate('el => el.scrollWidth <= el.clientWidth'), 'retry label clipped inside button')
     shot('01-node-management')
     report['last_step'] = 'table-loaded'
+    expect(page.locator('.storage-cache-management .ant-btn-block')).to_have_count(5, timeout=12000)
+    report['cache_metric_blocks'] = True
     button(row('Cache node 01'), cm['configure']).click()
     dialog = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
+    report['node_inventory'] = exercise_node_policy_inventory(dialog, cm, cp)
+    evidence.append({'layer': 'ui', 'node_inventory': report['node_inventory']})
+
+    def reopen_node():
+        button(row('Cache node 01'), cm['configure']).click()
+        opened = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
+        expect(opened).to_be_visible()
+        return opened
+
+    dialog = exercise_editor_dismissals(
+        page, dialog, reopen_node, '.ant-drawer-close', t['actions']['cancel'],
+        policy_snapshot, evidence, 'node')
+    report['node_editor_dismissals'] = True
+    report['node_editor_keyboard'] = exercise_node_editor_keyboard(
+        page, dialog, cm, cp, t['actions']['cancel'], policy_snapshot, evidence)
+    report['path_required'] = exercise_node_path_required(
+        page, dialog, cm, cp, saved)
+    evidence.append({'layer': 'ui', 'path_required': report['path_required']})
     expect(dialog.get_by_role('radio', name=cp['unlimited'], exact=True)).to_be_checked()
     # Native radio arrow behavior and keyboard focus, not DOM mutation.
     dialog.get_by_role('radio', name=cp['unlimited'], exact=True).focus()
     page.keyboard.press('ArrowLeft')
     expect(dialog.get_by_role('radio', name=cp['custom'], exact=True)).to_be_checked()
     limit_input = dialog.get_by_role('spinbutton', name=cm['limit'], exact=True)
-    limit_input.fill('-1')
-    button(dialog, cm['save']).click()
-    expect(dialog.get_by_role('alert').filter(has_text=cm['invalidLimit'])).to_be_visible()
-    check(targets()['cache-node-01']['cache_max_bytes'] == 0, 'negative input changed persisted policy')
+    report['limit_defaults'] = exercise_cache_limit_defaults(
+        page, dialog, limit_input, cp['unit'],
+        lambda: targets()['cache-node-01']['cache_max_bytes'])
+    report['limit_bounds'] = exercise_cache_limit_bounds(
+        page, dialog, limit_input, cm['save'], cm['invalidLimit'],
+        lambda: targets()['cache-node-01']['cache_max_bytes'])
+    report['limit_steps'] = exercise_cache_limit_steps(
+        page, dialog, limit_input, cp['unit'],
+        lambda: targets()['cache-node-01']['cache_max_bytes'])
     limit_input.fill('32')
     expect(dialog.get_by_text(cm['unknownImpact'].replace('{{count}}', '1'), exact=True)).to_be_visible()
     mutate(page, button(dialog, cm['save']).click, 'PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': 32 * GIB}, 200, evidence)
@@ -232,6 +235,18 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     expect(batch).to_be_focused()
     page.keyboard.press('Enter')
     bulk = page.get_by_role('dialog', name=cm['batchTitle'].replace('{{count}}', '2'), exact=True)
+    expect(bulk).to_be_visible()
+
+    def reopen_batch():
+        button(page, cm['batch']).click()
+        opened = page.get_by_role('dialog', name=cm['batchTitle'].replace('{{count}}', '2'), exact=True)
+        expect(opened).to_be_visible()
+        return opened
+
+    bulk = exercise_editor_dismissals(
+        page, bulk, reopen_batch, '.ant-modal-close', t['actions']['cancel'],
+        policy_snapshot, evidence, 'batch')
+    report['batch_editor_dismissals'] = True
     bulk.get_by_role('checkbox', name=cm['changeLimit'], exact=True).check()
     radio(bulk, cp['custom'])
     bulk.get_by_role('spinbutton', name=cm['limit'], exact=True).fill('16')
@@ -254,8 +269,27 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     expect(row('Cache node 01')).to_contain_text(effective('128.0 GiB'))
     report['last_step'] = 'batch-and-restore'
     # Defaults change and independent node exception survive full edit+refresh.
-    button(page, cm['defaults']).click()
+    trigger = button(page, cm['defaults'])
+    expect(trigger).to_be_visible()
+    parent = page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True)
+    before_defaults = policy_snapshot()
+    default_dialog = exercise_defaults_dialog(
+        page, trigger, cm['defaults'], parent, cm['pathValue'], cm['save'], t['actions']['cancel'], evidence)
+    check(policy_snapshot() == before_defaults, 'defaults dismissal changed the saved cache policy')
+    report['defaults_editor_dismissals'] = True
+    radio(default_dialog, cp['unlimited'])
+    before = saved()
+    exercise_defaults_inflight(
+        page, default_dialog, cm, cp, str(server.storage_root / 'cache'), path,
+        {'cache_max_bytes': 0, 'expected_updated_at': before['updated_at']},
+        report['browser_errors'][-1], evidence)
+    exercise_defaults_conflict(
+        page, server.base, default_dialog, cm, cp, str(server.storage_root / 'cache'), path, before['updated_at'],
+        locale_strings(locale, 'common')['apiError']['STORAGE_CONFIG_CHANGED'], report['browser_errors'][-1], evidence)
+    nodes()
+    trigger.click()
     default_dialog = page.get_by_role('dialog', name=cm['defaults'], exact=True)
+    expect(default_dialog).to_be_visible()
     radio(default_dialog, cp['unlimited'])
     before = saved()
     mutate(page, button(default_dialog, cm['save']).click, 'PATCH', path, {'cache_max_bytes': 0, 'expected_updated_at': before['updated_at']}, 200, evidence)
@@ -335,7 +369,10 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     button(page, cm['clearFilters']).click()
     expect(search).to_have_value('')
     shown(range(1, 21))
-    evidence.append({'layer': 'ui', 'checks': ['negative-limit-rejected', 'three-state-zero-refresh', 'default-inheritance-effective-limit', 'search-exact-partial-none-clear', 'mode-filter-keyboard', 'retry-action-not-clipped', 'cross-page-fixed-selection', 'keyboard-space-enter-radio-arrows', 'independent-limit-survives-default', 'edit-roundtrip', 'offline-capacity-unknown', 'offline-retry', 'search-and-mode-filter-intersection']})
+    evidence.append({'layer': 'ui', 'checks': ['cache-limit-defaults', 'cache-limit-bounds', 'three-state-zero-refresh', 'default-inheritance-effective-limit', 'search-exact-partial-none-clear', 'mode-filter-keyboard', 'retry-action-not-clipped', 'cross-page-fixed-selection', 'keyboard-space-enter-radio-arrows', 'independent-limit-survives-default', 'edit-roundtrip', 'offline-capacity-unknown', 'offline-retry', 'search-and-mode-filter-intersection'],
+                     'limit_defaults': report.get('limit_defaults'),
+                     'limit_bounds': report.get('limit_bounds'),
+                     'limit_steps': report.get('limit_steps')})
     shot('04-management-complete')
 
 
@@ -416,6 +453,9 @@ def main():
               'timezone': 'UTC', 'viewport': VIEWPORT, 'selection': [CONTRACT], 'retries': 0, 'evidence': [],
               'coverage_manifest_sha256': digest(manifest_path), 'test_sha256': digest(Path(__file__)),
               'helper_sha256': digest(ROOT / 'test/e2e/local_browser_fixture.py'),
+              'dialog_checks_sha256': digest(ROOT / 'test/e2e/dialog_checks.py'),
+              'dialogs_sha256': digest(ROOT / 'test/e2e/storage_cache_policy_dialogs.py'),
+              'policy_inventory_sha256': digest(ROOT / 'test/e2e/storage_cache_policy_inventory.py'),
               'execution': 'N/A: no connected agent; no mount, eviction or capacity is claimed',
               'runtime': 'N/A: no agent, container, GPU or engine',
               'limits': ['No connected agent: no mount/eviction/runtime success claim.',
