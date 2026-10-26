@@ -1,0 +1,37 @@
+{
+  "post": {
+    "summary": "Transcribe audio with the fake engine",
+    "operationId": "fake_audio_transcription",
+    "requestBody": {
+      "required": true,
+      "content": {
+        "multipart/form-data": {
+          "schema": {
+            "type": "object",
+            "required": ["model", "file"],
+            "properties": {
+              "model": {"type": "string"},
+              "file": {"type": "string", "format": "binary"}
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "200": {
+        "description": "Transcribed text",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["text"],
+              "properties": {"text": {"type": "string"}}
+            }
+          }
+        }
+      },
+      "400": {"description": "Multipart model and file are required"},
+      "405": {"description": "Only POST is supported"}
+    }
+  }
+}

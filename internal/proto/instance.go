@@ -284,6 +284,10 @@ type InstanceStatus struct {
 	// actually created. It may be reported without State so observation refresh
 	// does not manufacture a lifecycle transition.
 	RuntimeObservation *InstanceRuntimeObservation `json:"runtime_observation,omitempty"`
+	// OpenAPIPaths is set only when the agent parsed an OpenAPI document from
+	// the engine. Nil means the document was not read. An empty slice means the
+	// document listed no paths.
+	OpenAPIPaths *[]string `json:"openapi_paths,omitempty"`
 }
 
 const (
