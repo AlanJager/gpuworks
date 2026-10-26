@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 struct dsmi_hbm_info {
     unsigned long long memory_size; /* KB */
@@ -144,6 +145,90 @@ static int probe_ppu(unsigned long long quota) {
     return 0;
 }
 
+static int probe_hygon(unsigned long long quota) {
+    typedef int (*get_count_fn)(int *);
+    typedef int (*set_device_fn)(int);
+    typedef int (*mem_info_fn)(size_t *, size_t *);
+    typedef int (*malloc_fn)(void **, size_t);
+    typedef int (*free_fn)(void *);
+    const unsigned long long mib = 1024ULL * 1024ULL;
+    if (quota >= SIZE_MAX / mib) {
+        fprintf(stderr, "Hygon quota is too large for allocation probe\n");
+        return 8;
+    }
+    void *lib = dlopen("libamdhip64.so", RTLD_NOW | RTLD_LOCAL);
+    if (!lib) {
+        fprintf(stderr, "libamdhip64.so unavailable: %s\n", dlerror());
+        return 8;
+    }
+    get_count_fn get_count = (get_count_fn)dlsym(lib, "hipGetDeviceCount");
+    set_device_fn set_device = (set_device_fn)dlsym(lib, "hipSetDevice");
+    mem_info_fn mem_info = (mem_info_fn)dlsym(lib, "hipMemGetInfo");
+    malloc_fn allocate = (malloc_fn)dlsym(lib, "hipMalloc");
+    free_fn release = (free_fn)dlsym(lib, "hipFree");
+    if (!get_count || !set_device || !mem_info || !allocate || !release) {
+        fprintf(stderr, "required HIP memory symbols unavailable\n");
+        dlclose(lib);
+        return 9;
+    }
+    int count = 0;
+    int rc = get_count(&count);
+    if (rc != 0 || count != 1) {
+        fprintf(stderr, "Hygon visible device count mismatch: rc=%d count=%d, want one\n", rc, count);
+        dlclose(lib);
+        return 10;
+    }
+    rc = set_device(0);
+    if (rc != 0) {
+        fprintf(stderr, "hipSetDevice(0) failed: rc=%d\n", rc);
+        dlclose(lib);
+        return 11;
+    }
+    size_t free_bytes = 0, total_bytes = 0;
+    rc = mem_info(&free_bytes, &total_bytes);
+    printf("backend=hygon rc=%d count=%d total_bytes=%zu quota_mib=%llu\n",
+           rc, count, total_bytes, quota);
+    if (rc != 0 || total_bytes != quota * mib) {
+        fprintf(stderr, "Hygon slice view mismatch: got %zu bytes, want %llu bytes\n",
+                total_bytes, quota * mib);
+        dlclose(lib);
+        return 12;
+    }
+    /* Prove that the allocator works before interpreting an OOM as quota
+     * enforcement. free_bytes is not a stable quota signal on this driver. */
+    void *small = NULL;
+    rc = allocate(&small, (size_t)mib);
+    if (rc != 0 || !small) {
+        fprintf(stderr, "Hygon 1 MiB allocation failed: rc=%d\n", rc);
+        dlclose(lib);
+        return 13;
+    }
+    int free_rc = release(small);
+    if (free_rc != 0) {
+        fprintf(stderr, "Hygon 1 MiB free failed: rc=%d\n", free_rc);
+        dlclose(lib);
+        return 14;
+    }
+    void *over_limit = NULL;
+    rc = allocate(&over_limit, (size_t)((quota + 1ULL) * mib));
+    if (rc == 0 || over_limit) {
+        if (over_limit) release(over_limit);
+        fprintf(stderr, "Hygon over-quota allocation unexpectedly succeeded: rc=%d\n", rc);
+        dlclose(lib);
+        return 15;
+    }
+    /* HIP's public hipErrorOutOfMemory value is 2. Other errors do not prove
+     * quota enforcement (e.g. a broken device or inaccessible driver). */
+    if (rc != 2) {
+        fprintf(stderr, "Hygon over-quota allocation failed for another reason: rc=%d, want OOM(2)\n", rc);
+        dlclose(lib);
+        return 16;
+    }
+    printf("backend=hygon quota_enforced=true over_limit_mib=%llu allocation_rc=%d\n", quota + 1ULL, rc);
+    dlclose(lib);
+    return 0;
+}
+
 int main(void) {
     const char *backend = getenv("GPUWORKS_PARTITION_PROBE_BACKEND");
     unsigned long long quota = quota_mib();
@@ -152,6 +237,7 @@ int main(void) {
      * probe image baked from the other era. */
     if (backend && (strcmp(backend, "ascend-vcann-logical") == 0 || strcmp(backend, "ascend-dgpu") == 0)) return probe_ascend(quota);
     if (backend && (strcmp(backend, "ppu-logical") == 0 || strcmp(backend, "ppu-dgpu") == 0)) return probe_ppu(quota);
+    if (backend && strcmp(backend, "hygon-dgpu") == 0) return probe_hygon(quota);
     fprintf(stderr, "unsupported probe backend: %s\n", backend ? backend : "");
     return 2;
 }

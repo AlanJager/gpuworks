@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # Keep the probe runtime independent from the builder host. In particular,
 # Ascend nodes can have an old host glibc even though libvruntime requires
 # GLIBC_2.33/2.34 inside the workload container.
@@ -11,13 +9,21 @@
 ARG GPUWORKS_PROBE_BASE_IMAGE=tx0axs7hravg1ta0ch.xuanyuan.run/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
 FROM ${GPUWORKS_PROBE_BASE_IMAGE} AS build
 
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y gcc libc6-dev \
+RUN sed -i -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+           -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+           -e 's|http://ports.ubuntu.com/ubuntu-ports|http://mirrors.aliyun.com/ubuntu-ports|g' \
+           -e 's|^Components:.*|Components: main|' \
+           /etc/apt/sources.list.d/ubuntu.sources \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      gcc libc6-dev libstdc++6 libgcc-s1 libnuma1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 COPY probe.c ./probe.c
+COPY lsmod.c ./lsmod.c
 RUN cc -O2 -Wall -Wextra probe.c -ldl -o /probe
+RUN cc -O2 -Wall -Wextra -static lsmod.c -o /lsmod
 
 # libvruntime and vendor driver libraries are injected only when the probe is
 # run, so ldd(1) on /probe cannot discover their compatibility dependencies.
@@ -25,7 +31,7 @@ RUN cc -O2 -Wall -Wextra probe.c -ldl -o /probe
 # closure. On glibc >= 2.34 several of these are compatibility stubs, but their
 # SONAMEs are still required by vendor libraries built against older releases.
 RUN set -eu; \
-    mkdir -p /probe-rootfs; \
+    mkdir -p /probe-rootfs/etc /probe-rootfs/usr/sbin; \
     copy_library() { \
         name="$1"; \
         path="$(ldconfig -p | awk -v name="${name}" '$1 == name { print $NF; exit }')"; \
@@ -34,7 +40,10 @@ RUN set -eu; \
         cp -L "${path}" "/probe-rootfs${path}"; \
     }; \
     cp /probe /probe-rootfs/probe; \
-    for name in libc.so.6 libpthread.so.0 libdl.so.2 libm.so.6 librt.so.1; do \
+    cp /lsmod /probe-rootfs/usr/sbin/lsmod; \
+    printf 'root:x:0:0:root:/root:/bin/sh\n' > /probe-rootfs/etc/passwd; \
+    for name in libc.so.6 libpthread.so.0 libdl.so.2 libm.so.6 librt.so.1 \
+                libstdc++.so.6 libgcc_s.so.1 libnuma.so.1; do \
         copy_library "${name}"; \
     done; \
     loader="$(ldd /probe | awk '/ld-linux|ld-musl/ { for (i=1;i<=NF;i++) if ($i ~ /^\//) { print $i; exit } }')"; \

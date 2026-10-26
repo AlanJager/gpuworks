@@ -145,6 +145,36 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+- name: bf16-vllm-hygon-z100
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: harbor.sourcefind.cn:5443/hcu/admin/base/vllm:0.8.5-ubuntu22.04-dtk25.04.1-py3.10
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: Qwen/Qwen3-0.6B
+        revision: 09b42cad3d112e832108974449ccb5e8e0f5b5d1
+  weight_bytes: 1519209873
+  gpus:
+    vendor: hygon
+    name: (^|[^A-Za-z0-9])Z100([^A-Za-z0-9_-]|$)
+    display_target: hygon
+  args:
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    return {\"GPU_COUNT\": gpu.count, \"TP_SIZE\"\
+      : gpu.count, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: fp8-sglang-nvidia-general
   display_profile: compatible
   scenario: balanced

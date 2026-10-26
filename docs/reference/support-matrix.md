@@ -5,7 +5,7 @@
 | NVIDIA / CUDA | nvidia-smi、sysfs | Docker、runveil、nerdctl | HAMi libvgpu.so（x86_64，glibc ≥ 2.17） | 支持 CUDA/NCCL 拓扑；驱动库由宿主机提供 |
 | 昇腾 / CANN | npu-smi、驱动和 CANN 事实 | Docker + Ascend runtime；部分环境 runveil | vCANN；能力取决于宿主机 device-share 权限 | 外层/内层 CANN 版本不能混为一个结论 |
 | PPU / HGGC | ppu-smi | provider/runtime 依赖 | HGGC 显存与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
-| 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | 需对应资产与真机证据 | 不凭统一模板推断支持 |
+| 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 原生 vdev（实验性，x86_64 + Docker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
 
 上表的 dGPU 能力状态由 server 的 partition capability（分区能力判定）推导：
@@ -21,7 +21,15 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 
 PPU 注入使用 `ppu-smi` 返回并经设备节点核对的完整 UUID，按调度顺序写入 `CUDA_VISIBLE_DEVICES`。HGGC 将这些 UUID 映射为计算设备 `0..N-1`；Docker 的可见设备列表与 runveil 的宿主设备列表不必有相同编号。HGML 配额查询按同一 UUID 顺序定位配额与显存账本，不把 HGML 的宿主编号直接当作计算设备编号。
 
-内嵌探针 `gpuworks/partition-probe:v3` 同时检查目标 UUID 和显存配额。缺失、无效、重复或不可查询的身份，以及只有其他卡显示配额的情况都不能通过。升级 agent 后需重新创建已有工作负载，新的设备选择与切分库才会生效；runveil 的设备可见性仍不等于内核设备隔离。
+内嵌探针 `gpuworks/partition-probe:v4` 同时检查目标 UUID 和显存配额。缺失、无效、重复或不可查询的身份，以及只有其他卡显示配额的情况都不能通过。升级 agent 后需重新创建已有工作负载，新的设备选择与切分库才会生效；runveil 的设备可见性仍不等于内核设备隔离。
+
+## 海光 Z100 dGPU
+
+Z100 使用 `hygon-dgpu` 后端，按显存比例分配 CU。启用前，在节点构建并安装可选的 `gpuworks-hygon-vdev-helper`（构建步骤见源码的 `build/runtime-assets/hygon-vdev-helper/README.md`），并提供宿主 DTK、HYHAL 和 DCGM 库。agent 本身仍是静态二进制。仅 x86_64 + Docker 路径受支持；K100 等其他型号不会获得此能力。
+
+逐卡探针必须确认 HIP 看到请求的显存配额、可分配 1 MiB，并拒绝超额 1 MiB 的分配。探针通过后才能调度 dGPU 实例。推理容器使用自己的 DTK；宿主 DTK 与 ABI 补充库只供轻量探针使用。内置 Qwen3-0.6B 的 `bf16-vllm-hygon-z100` spec 使用经过 Z100 验证的 SourceFind 镜像。
+
+helper 在宿主锁下创建 vdev，并保存配置快照和归属令牌，阻止旧请求释放后来复用相同 ID 的 gpuworks vdev。容器移除成功后才释放 vdev；清理失败时保留记录，实例维持 `removing`，同一实例不会启动替代容器。agent 重启后不会自动扫描遗留记录，需人工核查；同机其他 vdev 管理工具若绕过 helper 的锁与令牌，不受此归属保护。
 
 ## GPU 型号与架构
 

@@ -84,6 +84,7 @@ var partitionInjectors = map[string]partitionInjector{
 	accelerator.BackendNVIDIALogical: nvidiaPartitionInjector{},
 	accelerator.BackendAscendLogical: ascendPartitionInjector{},
 	accelerator.BackendPPULogical:    ppuPartitionInjector{},
+	accelerator.BackendHygonLogical:  hygonPartitionInjector{},
 }
 
 func (e *Engine) applyPartition(ctx context.Context, ws *agentruntime.WorkloadSpec, spec proto.InstanceDesiredState) (bool, string) {
@@ -112,6 +113,11 @@ func (e *Engine) BuildPartitionProbeWorkload(ctx context.Context, backend, image
 	spec := proto.InstanceDesiredState{
 		UUID: probeID, Image: image, GPUIndexes: []int{gpuIndex},
 		VRAMLimitBytes: quotaBytes, SMLimitPct: 25, PartitionBackend: backend,
+	}
+	if backend == accelerator.BackendHygonLogical {
+		// The deployment API currently exposes Hygon memory slicing only.
+		// Exercise its actual shared-compute path in the behavior probe.
+		spec.SMLimitPct = 0
 	}
 	ws := toWorkloadSpec(spec, "gpuworks-partition-probe-"+sanitizeID(backend)+"-"+strconv.Itoa(gpuIndex))
 	if err := e.applyDeviceInjection(&ws, spec.GPUIndexes); err != nil {
@@ -171,7 +177,7 @@ func (e *Engine) cleanupPartitionState(uuid string) error {
 func (e *Engine) PartitionAssetReports(ctx context.Context) []proto.AssetReport {
 	reports := []proto.AssetReport{}
 	for _, backend := range accelerator.All() {
-		if e.prober == nil || !backend.Matches(e.prober.Vendor(), "") {
+		if e.prober == nil || accelerator.NormalizeVendor(backend.Metadata().Vendor) != accelerator.NormalizeVendor(e.prober.Vendor()) {
 			continue
 		}
 		injector, ok := partitionInjectors[backend.ID()]
@@ -312,6 +318,9 @@ func writePrivateFile(path string, data []byte, mode os.FileMode) error {
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, mode); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

@@ -5,7 +5,7 @@
 | NVIDIA / CUDA | nvidia-smi, sysfs | Docker, runveil, nerdctl | HAMi libvgpu.so (x86_64, glibc ≥ 2.17) | Supports CUDA/NCCL topology; driver libraries are supplied by the host |
 | Ascend / CANN | npu-smi, driver and CANN facts | Docker + Ascend runtime; runveil in some environments | vCANN; capability depends on host device-share permissions | Host and container CANN versions must not be conflated into one conclusion |
 | PPU / HGGC | ppu-smi | Depends on provider/runtime | HGGC GPU memory and weighted QoS | Sustained 20/80 workloads have demonstrated throughput weighting under load, not hard SM partitioning |
-| Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Requires corresponding assets and evidence from real hardware | Do not infer support from a unified template |
+| Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Native Z100 vdev (experimental, x86_64 + Docker) | Requires the optional native helper, host libraries and a per-GPU behavioral probe; other models remain full-GPU only |
 | Apple / Metal | sysctl, ioreg (macOS 15+, Apple silicon) | host (the engine is a host process; the image is a darwin environment package) | None; a Mac runs multiple instances concurrently using unified memory | One unified-memory card; GPU memory is the Metal working set; engine sleep, multi-node operation, and the KV disk tier are unsupported; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
 
 The dGPU capability status in the table above is derived from the server's partition capability assessment:
@@ -21,8 +21,16 @@ For tested Ascend combinations, CANN, and runtime details, see the [Ascend Matri
 
 PPU injection uses full UUIDs returned by `ppu-smi` and verified against device nodes, writing them to `CUDA_VISIBLE_DEVICES` in scheduling order. HGGC maps those UUIDs to compute devices `0..N-1`; Docker's filtered inventory and runveil's host inventory need not share indexes. HGML quota queries use the same UUID order to locate quota and memory-ledger slots instead of treating host HGML indexes as compute ordinals.
 
-The embedded `gpuworks/partition-probe:v3` verifies both the selected UUID and its memory quota. Missing, invalid, duplicate or unqueryable identities fail, as does a quota applied only to another card. Recreate existing workloads after upgrading the agent to activate the new selection and slicing libraries. Device visibility under runveil still does not provide kernel device isolation.
+The embedded `gpuworks/partition-probe:v4` verifies both the selected UUID and its memory quota. Missing, invalid, duplicate or unqueryable identities fail, as does a quota applied only to another card. Recreate existing workloads after upgrading the agent to activate the new selection and slicing libraries. Device visibility under runveil still does not provide kernel device isolation.
 
+
+## Hygon Z100 dGPU
+
+Z100 uses the `hygon-dgpu` backend, assigning CUs in proportion to the memory quota. Build and install the optional `gpuworks-hygon-vdev-helper` on the node (see `build/runtime-assets/hygon-vdev-helper/README.md` in the source tree), and provide the host DTK, HYHAL and DCGM libraries. The agent itself remains a static binary. Only x86_64 + Docker is supported; other models, including K100, do not receive this capability.
+
+The per-GPU probe must confirm that HIP reports the requested memory quota, permits a 1 MiB allocation, and rejects an allocation exceeding the quota by 1 MiB. dGPU scheduling requires a passing probe. Inference containers use their own DTK; host DTK and supplementary ABI libraries are used only by the small probe. The built-in Qwen3-0.6B `bf16-vllm-hygon-z100` spec uses the SourceFind image tested on Z100.
+
+Under a host lock, the helper creates a vdev and saves a configuration snapshot and owner token, preventing stale requests from releasing a later gpuworks allocation that reuses the same ID. The vdev is released only after its container has been removed. Failed cleanup retains the record and the instance stays `removing`; no replacement container starts for that instance. After an agent restart, orphaned records require manual inspection and are not scanned automatically. Other vdev managers that bypass the helper lock and tokens are outside this ownership protection.
 
 ## GPU Models and Architectures
 

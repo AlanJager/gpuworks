@@ -137,6 +137,20 @@ func ascendFacts() ([]proto.AssetReport, []proto.GPUInfo) {
 		[]proto.GPUInfo{{Index: 4, Vendor: "ascend", Healthy: true}}
 }
 
+func TestRunnerOnlyProbesSupportedHygonGPU(t *testing.T) {
+	driver, builder := &fakeDriver{logs: "backend=hygon quota_enforced=true"}, &fakeBuilder{}
+	runner := New(driver, builder, "hygon")
+	assets := []proto.AssetReport{{Backend: accelerator.BackendHygonLogical, Files: []string{"libamdhip64.so", "libhydmi.so", "libhydmi_mig.so", "librocm_smi64.so", "gpuworks-hygon-vdev-helper"}}}
+	gpus := []proto.GPUInfo{
+		{Index: 0, Vendor: "hygon", ArchID: "Z100"},
+		{Index: 1, Vendor: "hygon", ArchID: "unknown"},
+	}
+	got := runner.Results(context.Background(), assets, gpus)
+	if len(got) != 1 || got[0].GPUIndex == nil || *got[0].GPUIndex != 0 || got[0].Status != proto.PartitionProbePassed || len(driver.runs) != 1 {
+		t.Fatalf("Hygon probe results = %+v, runs = %+v", got, driver.runs)
+	}
+}
+
 func TestRunnerPassedUsesRealBuilderAndCaches(t *testing.T) {
 	driver, builder := &fakeDriver{logs: "quota=4096MiB"}, &fakeBuilder{}
 	runner := New(driver, builder, "ascend")

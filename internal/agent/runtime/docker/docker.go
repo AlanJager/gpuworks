@@ -16,13 +16,17 @@ import (
 	hostruntime "runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 // Driver runs containers via `docker`.
-type Driver struct{}
+type Driver struct {
+	runMu       sync.Mutex
+	pendingRuns map[string]*pendingRun
+}
 
 // New returns a docker driver.
 func New() *Driver { return &Driver{} }
@@ -315,19 +319,6 @@ func (d *Driver) RunningContainers(ctx context.Context) ([]string, error) {
 	return splitOutputLines(out), nil
 }
 
-// Run starts a detached container and returns its id. A run that outlives
-// runtime.DefaultRunTimeout fails the launch; its container is removed once the
-// CLI returns (see runtime.RunDetached).
-func (d *Driver) Run(ctx context.Context, spec runtime.WorkloadSpec) (string, error) {
-	return runtime.RunDetached(ctx, runtime.DetachedRun{
-		CLI: "docker", Args: buildRunArgs(spec), Name: spec.Name, Remove: d.Remove,
-		Timeout: runTimeout, AbandonGrace: abandonGrace,
-	})
-}
-
-// Overridden by tests; zero selects the runtime package defaults.
-var runTimeout, abandonGrace time.Duration
-
 func buildRunArgs(spec runtime.WorkloadSpec) []string {
 	args := []string{"run", "-d", "--name", spec.Name, "--restart", "no"}
 
@@ -378,6 +369,13 @@ func (d *Driver) Stop(ctx context.Context, id string) error {
 
 // Remove force-deletes a container.
 func (d *Driver) Remove(ctx context.Context, id string) error {
+	if err := d.checkPendingRun(ctx, id); err != nil {
+		return err
+	}
+	return d.remove(ctx, id)
+}
+
+func (d *Driver) remove(ctx context.Context, id string) error {
 	// The daemon's "No such container" is in the CLI output, not in err.
 	out, err := outputMutating(ctx, 30*time.Second, "rm", "-f", id)
 	if err != nil && strings.Contains(out, "No such container") {
@@ -388,6 +386,9 @@ func (d *Driver) Remove(ctx context.Context, id string) error {
 
 // Status inspects a container.
 func (d *Driver) Status(ctx context.Context, id string) (runtime.Status, error) {
+	if err := d.checkPendingRun(ctx, id); err != nil {
+		return runtime.Status{}, err
+	}
 	format := "{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{if .State.Health}}{{.State.Health.Status}}{{end}}"
 	out, err := output(ctx, 10*time.Second, "inspect", "--format", format, id)
 	if err != nil {

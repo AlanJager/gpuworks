@@ -270,7 +270,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 		options = append(options, engine.WithLogDrain(n.drainInstanceLogs))
 		n.engine = engine.NewWithProber(driver, n.reportInstance, log, filepath.Dir(modelsDir), prober, options...)
 		n.partitionProbe = partitionprobe.New(driver, n.engine, prober.Vendor())
-	} else if accelerator.IsDomestic(prober.Vendor()) {
+	} else if hasPartitionBackendForVendor(prober.Vendor()) {
 		// A runner without a driver reports an explicit skipped result, which is
 		// distinct from an old agent that did not know probes at all.
 		n.partitionProbe = partitionprobe.New(nil, nil, prober.Vendor())
@@ -384,10 +384,22 @@ func (n *NodeRuntime) PartitionAssets(ctx context.Context) []proto.AssetReport {
 		}
 		return []proto.AssetReport{}
 	}
-	if accelerator.IsDomestic(vendor) {
+	if hasPartitionBackendForVendor(vendor) {
 		return engine.ObservedPartitionAssets(ctx, n.stateDir, n.prober)
 	}
 	return []proto.AssetReport{}
+}
+
+// Asset and probe reporting is vendor-wide; SKU admission happens later for
+// each card. A strict backend match must not hide observations for that vendor.
+func hasPartitionBackendForVendor(vendor string) bool {
+	vendor = accelerator.NormalizeVendor(vendor)
+	for _, backend := range accelerator.All() {
+		if backend.Metadata().Vendor == vendor {
+			return true
+		}
+	}
+	return false
 }
 
 func (n *NodeRuntime) PartitionProbes(ctx context.Context, reports []proto.AssetReport, gpus []proto.GPUInfo) []proto.PartitionProbeResult {
