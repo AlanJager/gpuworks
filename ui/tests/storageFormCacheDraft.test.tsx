@@ -54,6 +54,24 @@ test("policy controls preserve explicit zero, inheritance and custom TiB values"
   assert.equal(value, undefined);
 });
 
+test("a fractional TiB limit displays the typed number", async () => {
+  let value: number | undefined;
+  function Harness() {
+    const [current, setCurrent] = useState<number | undefined>(undefined);
+    value = current;
+    return <PolicyFields value={current} onChange={setCurrent} />;
+  }
+  render(<I18nextProvider i18n={i18n}><Harness /></I18nextProvider>);
+  const user = userEvent.setup({ document: dom.window.document });
+  fireEvent.click(screen.getByRole("radio", { name: s.cachePolicy.custom }));
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: s.cachePolicy.unit }));
+  await user.click((await screen.findAllByText("TiB")).at(-1)!);
+  const input = screen.getByRole("spinbutton", { name: s.cachePolicy.limit }) as HTMLInputElement;
+  await user.type(input, "1.2");
+  assert.equal(input.value, "1.2");
+  assert.equal(value, Math.round(1.2 * 1024 ** 4));
+});
+
 test("batch selection spans pages and modifies only the chosen field while preserving membership", async () => {
   const nodes = Array.from({ length: 26 }, (_, i) => node(`n${i}`, `gpu-${i.toString().padStart(2, "0")}`)) as Node[];
   const initial: StorageFormValues = { ...emptyForm("nfs_cache"), scope: "nodes", cacheMaxGiB: 200,
