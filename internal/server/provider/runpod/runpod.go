@@ -237,11 +237,23 @@ func firstNonEmpty(values ...string) string {
 
 // do performs an authenticated request against the RunPod API.
 func (d *Driver) apiBaseURL(creds provider.Credentials) string {
-	baseURL := strings.TrimRight(strings.TrimSpace(creds.Endpoint), "/")
-	if baseURL == "" {
+	baseURL := strings.TrimSpace(creds.Endpoint)
+	if strings.Trim(baseURL, "/") == "" {
 		baseURL = d.baseURL
 	}
-	return baseURL
+	endpoint, err := url.Parse(baseURL)
+	if err != nil {
+		return baseURL // The request builder reports the malformed endpoint.
+	}
+	// Only literal path separators are trimmed: a trailing slash in a query
+	// value or an escaped slash inside a proxy path segment is data.
+	escapedPath := strings.TrimRight(endpoint.EscapedPath(), "/")
+	endpoint.Path, err = url.PathUnescape(escapedPath)
+	if err != nil {
+		return baseURL
+	}
+	endpoint.RawPath = escapedPath
+	return endpoint.String()
 }
 
 func (d *Driver) do(ctx context.Context, creds provider.Credentials, method, path string) (*http.Response, error) {
@@ -256,7 +268,18 @@ func (d *Driver) do(ctx context.Context, creds provider.Credentials, method, pat
 const requestAttempts = 3
 
 func (d *Driver) doJSON(ctx context.Context, creds provider.Credentials, method, path string, body any) (*http.Response, error) {
-	baseURL := d.apiBaseURL(creds)
+	endpoint, err := url.Parse(d.apiBaseURL(creds))
+	if err != nil {
+		return nil, err
+	}
+	// Keep the endpoint's query attached to the resulting operation URL. Both
+	// the proxy prefix and escaped instance IDs retain their path encoding.
+	escapedPath := endpoint.EscapedPath() + path
+	endpoint.Path, err = url.PathUnescape(escapedPath)
+	if err != nil {
+		return nil, err
+	}
+	endpoint.RawPath = escapedPath
 	var payload []byte
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -275,7 +298,7 @@ func (d *Driver) doJSON(ctx context.Context, creds provider.Credentials, method,
 		if payload != nil {
 			reader = bytes.NewReader(payload)
 		}
-		req, err := http.NewRequestWithContext(ctx, method, baseURL+path, reader)
+		req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), reader)
 		if err != nil {
 			return nil, err
 		}

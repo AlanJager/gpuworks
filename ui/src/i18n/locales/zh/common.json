@@ -257,6 +257,7 @@
     "STORAGE_FILE_OPERATION_FAILED": "在节点 {{node}} 上操作失败：{{detail}}",
     "BENCHMARK_GPU_COUNT_NEGATIVE": "压测 GPU 数不能为负数。",
     "BENCHMARK_DETAIL_CAP_TOO_LARGE": "压测详情上限不能超过 {{maximum}} MiB。",
+    "BENCHMARK_CHAT_REQUIRED": "性能评测需要模型声明 Chat Completions 接口，请选择支持聊天接口的推理服务。",
     "BENCHMARK_TARGET_INACTIVE": "目标部署未处于活跃状态。",
     "BENCHMARK_LEADER_NOT_RUNNING": "目标部署的 leader 尚未唤醒并运行。",
     "BENCHMARK_EXTERNAL_URL_REQUIRED": "请输入外部压测目标 URL。",

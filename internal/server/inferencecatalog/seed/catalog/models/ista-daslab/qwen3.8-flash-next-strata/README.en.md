@@ -2,6 +2,8 @@
 
 [Strata](https://github.com/Niko1221/Strata) keeps the MoE experts tiered across VRAM, RAM and SSD, so a single NVIDIA card with 12 GiB or more runs the 125B Qwen3.8-Flash-Next (IQ2_XS, about 68 GB of weights). The template uses the callable engine: the image entrypoint `/opt/strata/gpuworks-entrypoint.sh` turns the platform's model path, address, port and assigned GPUs into Strata's setup arguments and starts the server.
 
+The catalog carries a hash-checked queue-timing patch. Its launcher applies the patch before entering the original image entrypoint, preserving the base image, model arguments and GPU assignment flow. Only the pinned 0.1.38 source is accepted; other versions fail startup explicitly. `timings.queue_ms` in the same response measures FIFO waiting before initial model loading and first-generation admission, excluding model loading, tool execution and later MCP rounds without enabling body monitoring. Update old deployments to this catalog configuration and recreate their instances to emit the field; running instances are not patched live.
+
 ## Image input
 
 On by default. The image carries Strata's image encoder `strata-vision` and the vision projector `mmproj-Qwen3.8-Flash-Next-BF16.gguf` at the weights' revision (the file sits at the repository root while the template downloads only `IQ2_XS/`, so the image supplies it; a copy of the same name inside the model directory takes precedence). The entrypoint installs with `--vision gpu`: the encoder shares the engine's card, and the engine shrinks its expert cache by what the encoder holds. Measured on one RTX 4090D at a 128K context: the encoder holds about 1.4 GB of VRAM and decoding runs at about 51–55 tok/s, on par with image input off.

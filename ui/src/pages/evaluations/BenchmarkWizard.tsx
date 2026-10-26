@@ -12,6 +12,7 @@ import {
 	agenticSessionsPerPoint,
 	summarizeAgenticLoad,
 } from "./agenticWorkload";
+import { hasOperation } from "../../modelInference";
 import AgenticLoadSummary from "./AgenticLoadSummary";
 import TokenizerSourceFields from "./TokenizerSourceFields";
 import type { TokenizerSource } from "./tokenizerSource";
@@ -136,7 +137,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 		// a rerun restores it from the reference the previous run resolved to,
 		// and a fresh managed run starts on the automatic source.
 		const sourceTokenizer = tokenizerFormState(source?.tokenizer_ref, managedTarget);
-		const initialTokenizerSource = tokenizerSourceOrDefault(managedTarget, initialDataset === "agentic", source?.tokenizer_ref, !!source);
+		const initialTokenizerSource = tokenizerSourceOrDefault(managedTarget, (initialDataset === "agentic" || initialDataset === "random"), source?.tokenizer_ref, !!source);
 		const initialMode = preset?.mode || source?.mode || "saturation";
 		const defaults = modeFormReset(meta, initialMode);
 		const sourceSearch = { ...(source?.search || {}) };
@@ -219,7 +220,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 	}, [open, targetNodeUUID, knownNodes]);
 	const deploymentOptions = useMemo(() => {
 		const shown = selectedDeployment && !deployments.some((item) => item.id === selectedDeployment.id) ? [selectedDeployment, ...deployments] : deployments;
-		return shown.map((deployment) => ({ value: deployment.id, label: deployment.name }));
+		return shown.map((deployment) => ({ value: deployment.id, label: deployment.name, disabled: !hasOperation(deployment.operations, "openai.chat") }));
 	}, [deployments, selectedDeployment]);
 	const loadOrigin = Form.useWatch("load_origin", form);
 	const originOptions = useMemo(() => {
@@ -366,9 +367,12 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 						if (event.target.value === "external") form.setFieldValue("load_origin", "server");
 						// The automatic tokenizer source reads the target machine, which an
 						// external endpoint does not have.
-						if (event.target.value === "external" && form.getFieldValue("tokenizer_source") === "auto") form.setFieldValue("tokenizer_source", "estimate");
+						if (event.target.value === "external" && form.getFieldValue("tokenizer_source") === "auto") form.setFieldValue("tokenizer_source", dataset === "random" || dataset === "agentic" ? "huggingface" : "estimate");
 					}} /></Form.Item>
-					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }]}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
+					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }, { validator: async (_, id) => {
+						const selected = knownDeployments.get(id) || deployments.find((item) => item.id === id);
+						if (selected && !hasOperation(selected.operations, "openai.chat")) throw new Error(t("wizard.chatRequired"));
+					} }]} extra={t("wizard.chatRequired")}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
 						<Form.Item name="base_url" label={t("wizard.baseUrl")} rules={[{ required: true }]} extra={t("wizard.baseUrlHelp")}><Input placeholder={t("wizard.baseUrlPlaceholder")} /></Form.Item>
 						<Form.Item name="api_key" label="API Key"><Input.Password /></Form.Item>
 					</>}
@@ -385,7 +389,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 							form.setFieldsValue({ agentic_preset: meta.agentic_defaults.preset, agentic_mean_input: selected?.mean_input_tokens, agentic_turns: meta.agentic_defaults.turns, concurrency: meta.agentic_defaults.concurrency.join(", "), max_concurrency: Math.max(...meta.agentic_defaults.concurrency), tokenizer_source: tokenizerSource === "estimate" ? (targetKind === "instance" ? "auto" : "huggingface") : tokenizerSource });
 						} else if (value === "random") {
 							const defaults = modeFormReset(meta, mode);
-							form.setFieldsValue({ concurrency: defaults.concurrency, max_concurrency: defaults.max_concurrency, isl: defaults.isl, osl: defaults.osl });
+							form.setFieldsValue({ concurrency: defaults.concurrency, max_concurrency: defaults.max_concurrency, isl: defaults.isl, osl: defaults.osl, tokenizer_source: tokenizerSource === "estimate" ? (targetKind === "instance" ? "auto" : "huggingface") : tokenizerSource });
 						}
 					}} options={meta.datasets.map((item) => ({ ...item, label: localizedText(item.label, language) }))} /></Form.Item>
 					{dataset === "agentic" && <AgenticLoadSummary summary={agenticSummary} meta={meta} onPresetChange={(value) => {

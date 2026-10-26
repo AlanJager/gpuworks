@@ -20,12 +20,12 @@ export function tokenizerFormState(reference?: string, managedTarget = false): T
 }
 
 // tokenizerSourceOrDefault is the source a form starts on: the one a rerun is
-// restored to, or the managed-target default for a fresh run. Agentic workloads
+// restored to, or the managed-target default for a fresh run. Token-length workloads
 // cannot estimate, so a source that would leave the tokenizer unresolved is
 // replaced by one that resolves it.
-export function tokenizerSourceOrDefault(managedTarget: boolean, agentic: boolean, reference?: string, rerun = true): TokenizerSource {
+export function tokenizerSourceOrDefault(managedTarget: boolean, tokenLengthControlled: boolean, reference?: string, rerun = true): TokenizerSource {
 	const source = rerun ? tokenizerFormState(reference, managedTarget).source : managedTarget ? "auto" : "estimate";
-	if (agentic && source === "estimate") return managedTarget ? "auto" : "huggingface";
+	if (tokenLengthControlled && source === "estimate") return managedTarget ? "auto" : "huggingface";
 	return source;
 }
 

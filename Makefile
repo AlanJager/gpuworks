@@ -137,7 +137,7 @@ UNIT_TIMEOUT ?= 30m
 
 ## test-unit: build the embedded UI first, then run the untagged Go suite.
 ## `go test ./...` cannot compile webui without the generated embed tree.
-test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets
+test-unit: ui check-time-policy check-architecture check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations test-host-env-adapters test-e2e-coverage-check test-inference-template-assets test-strata-queue-assets
 	CGO_ENABLED=0 $(GO) test -timeout $(UNIT_TIMEOUT) $(GO_TEST_FLAGS) ./...
 	cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) ./...
 	$(MAKE) check-tagged-build
@@ -150,6 +150,11 @@ test-host-env-adapters:
 .PHONY: test-inference-template-assets
 test-inference-template-assets:
 	python3 -B -m unittest discover -s build/inference-templates/glm53-910c -p 'test_*.py'
+
+.PHONY: test-strata-queue-assets
+test-strata-queue-assets:
+	python3 -B build/strata-queue/test_strata_queue.py
+	python3 -B build/strata-queue/build.py --check
 
 ## check-tagged-build: compile every build-tag suite without running it, so a
 ## refactor cannot break an opt-in lane while the untagged suite stays green
@@ -254,7 +259,7 @@ check-ci-yaml:
 check-artifacts:
 	CGO_ENABLED=0 $(GO) run ./scripts/artifactsindex
 
-## check-doc-links: verify relative Markdown links (and #anchors) in docs/, README.md,
+## check-doc-links: verify relative Markdown links (and #anchors) in docs/, README*.md,
 ## CONTEXT.md and CLAUDE.md, and reject [[wiki]] references under docs/.
 check-doc-links:
 	CGO_ENABLED=0 $(GO) run ./scripts/doclinks

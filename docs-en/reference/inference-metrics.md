@@ -161,7 +161,9 @@ That field comes only from `queue_seconds` reported in the same response. Missin
 an explicit `0` means measured zero queue time. If queue timing is available without Prefill timing, retain the known queue
 segment and leave the remainder as unsplit waiting.
 
-Strata 0.1.38 standard responses contain only `timings.prompt_ms` and `timings.predicted_ms`, so queue duration remains unknown.
+Unmodified Strata 0.1.38 standard responses contain only `timings.prompt_ms` and `timings.predicted_ms`, so queue duration remains unknown.
 Waiting may also include preprocessing and network time; renaming all waiting to engine queueing would be inaccurate.
-The optional internal monitor cannot be stably correlated to gateway requests either. For pinned source evidence and integration
+The updated built-in Strata catalog carries a source-hash-checked runtime patch that reports initial-generation admission
+waiting as `timings.queue_ms` in the same response. It excludes model loading and later MCP rounds without enabling body
+monitoring. Update the deployment and recreate old instances to emit the field. For pinned source evidence and integration
 constraints, see [Observability Limits of Per-Request Engine Queue Time](../dev/engine-queue-observation.md).

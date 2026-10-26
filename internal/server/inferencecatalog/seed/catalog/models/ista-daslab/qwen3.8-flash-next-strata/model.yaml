@@ -71,8 +71,16 @@ specs:
   - ${API_HOST}
   - --port
   - ${API_PORT}
+  # Pinned HTTP-handler queue timing, delivered with the catalog rather than
+  # guessed from the service's queued-request count. The launcher checks the
+  # source hash and then execs the image's original entrypoint unchanged.
+  assets:
+  - file: assets/strata-queue-runtime.tar.gz
+    sha256: 8949a31ba1300b39dd3f12e91b7c0d344957251c9a41e30dcdadff7d453255e6
+    unpack_to: /opt/gpuworks/strata-queue
   entrypoint:
-  - /opt/strata/gpuworks-entrypoint.sh
+  - /opt/strata/.venv/bin/python
+  - /opt/gpuworks/strata-queue/strata_queue.py
   # Strata runs on the cards the platform assigns: one when placement picks,
   # or every card the deployment selects (Strata splits the layers across
   # them and caches more experts). Neither the count nor the indexes appear
@@ -129,6 +137,7 @@ specs:
     # usage: prompt_ms is the prompt's processing, predicted_ms the generation
     # (artifacts/work/2026-10-10-inference-metrics-sources/evidence/strata-stream.sse).
     request_stats:
+      timings.queue_ms: {to: queue_seconds, scale: 0.001}
       timings.prompt_ms: {to: prefill_seconds, scale: 0.001}
       timings.predicted_ms: {to: decode_seconds, scale: 0.001}
 # The gw6 entrypoint serves the vision encoder by default (--vision gpu).

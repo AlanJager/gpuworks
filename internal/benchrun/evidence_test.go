@@ -27,7 +27,7 @@ func TestOverflowingPointRetainsRealRequestLedgerAndFailsWithoutNumericSamples(t
 	}))
 	defer srv.Close()
 	var statuses []proto.BenchmarkStatus
-	Execute(context.Background(), Run{ID: 1, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random","seed":42}`), Search: json.RawMessage(`{"concurrency":[1],"isl":[1],"osl":[1],"requests_per_point_multiplier":2}`)}, Hooks{Warn: func(string) {}, Report: func(st proto.BenchmarkStatus) { statuses = append(statuses, st) }})
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t), ID: 1, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random","seed":42}`), Search: json.RawMessage(`{"concurrency":[1],"isl":[1],"osl":[1],"requests_per_point_multiplier":2}`)}, Hooks{Warn: func(string) {}, Report: func(st proto.BenchmarkStatus) { statuses = append(statuses, st) }})
 	last := statuses[len(statuses)-1]
 	if last.State != "failed" || !strings.Contains(last.Message, "token totals exceed") {
 		t.Fatalf("terminal status: %+v", last)
@@ -157,7 +157,7 @@ func TestCancellationDuringHTTPPreservesAttemptAndUnstartedCounts(t *testing.T) 
 	rec := &recorder{}
 	done := make(chan struct{})
 	go func() {
-		Execute(ctx, Run{ID: 21, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":1,"isl":[8],"osl":[3],"requests_per_point_multiplier":3}`)}, rec.hooks())
+		Execute(ctx, Run{TokenizerRef: testTokenizerRef(t), ID: 21, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":1,"isl":[8],"osl":[3],"requests_per_point_multiplier":3}`)}, rec.hooks())
 		close(done)
 	}()
 	<-started
@@ -181,7 +181,7 @@ func TestEvidenceRecordsSuccessfulWarmupAndResolvedRandomSeed(t *testing.T) {
 	endpoint := &fakeEndpoint{}
 	srv := endpoint.serve(t)
 	rec := &recorder{}
-	Execute(context.Background(), Run{ID: 22, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":1,"isl":[8],"osl":[3],"requests_per_point_multiplier":1,"warmup_requests":2}`)}, rec.hooks())
+	Execute(context.Background(), Run{TokenizerRef: testTokenizerRef(t), ID: 22, Model: "m", Client: loadgen.Client{BaseURL: srv.URL}, Dataset: json.RawMessage(`{"kind":"random"}`), Search: json.RawMessage(`{"concurrency":1,"isl":[8],"osl":[3],"requests_per_point_multiplier":1,"warmup_requests":2}`)}, rec.hooks())
 	points := rec.points(t)
 	if len(points) != 1 {
 		t.Fatalf("points=%d", len(points))

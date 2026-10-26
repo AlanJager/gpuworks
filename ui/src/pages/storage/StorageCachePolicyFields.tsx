@@ -3,6 +3,18 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatBytes } from "../../format";
 
+// Keep the shortest display that converts back to the same integer bytes.
+// A fixed decimal scale can turn a small limit into zero in a larger unit.
+function displayLimit(bytes: number | undefined, unit: number): number | null {
+  if (!Number.isFinite(bytes)) return null;
+  const converted = bytes! / unit;
+  for (let places = 0; places <= Math.ceil(Math.log10(unit)); places++) {
+    const rounded = Number(converted.toFixed(places));
+    if (Math.round(rounded * unit) === bytes) return rounded;
+  }
+  return converted;
+}
+
 /** Wire semantics are shared by creation, defaults and node policy editing. */
 export default function StorageCachePolicyFields({ value, onChange, allowInherit = false, defaultBytes = 0, label, id }: {
   value: number | undefined;
@@ -16,8 +28,7 @@ export default function StorageCachePolicyFields({ value, onChange, allowInherit
   const [unit, setUnit] = useState(1024 ** 3);
   const mode = value === undefined && allowInherit ? "inherit" : value === 0 || value === undefined ? "unlimited" : "custom";
   const name = label ?? t("cachePolicy.limit");
-  // Bytes are an integer. Dividing them back does not restore 1.2, so show two places.
-  const shown = Number.isFinite(value) ? Number((value! / unit).toFixed(2)) : null;
+  const shown = displayLimit(value, unit);
   return <Space direction="vertical">
     <div role="radiogroup" aria-label={name}><Radio.Group value={mode} onChange={(e) => onChange(e.target.value === "inherit" ? undefined : e.target.value === "unlimited" ? 0 : NaN)}>
       {allowInherit && <Radio value="inherit">{t("cachePolicy.inherit")}</Radio>}
