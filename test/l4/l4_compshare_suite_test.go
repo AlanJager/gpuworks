@@ -231,7 +231,7 @@ func TestCompshareTwoVMUdockerDistributedInference(t *testing.T) {
 func runTwoVMUdockerDistributed(t *testing.T, b *vmBackend) {
 	harness := newHostedControlPlane(t, hostedControlPlaneConfig{
 		RunID: cloudTestRunID(), RuntimeDrivers: [2]string{"udocker", "udocker"},
-		Backend:    b,
+		Backend: b, DiskGB: b.UdockerDiskGB, OnDemand: b.UdockerOnDemand,
 		PrepareVMs: installDistributedVLLMFix,
 	})
 	for rank, node := range harness.Nodes {

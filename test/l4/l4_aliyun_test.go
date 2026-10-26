@@ -39,6 +39,12 @@ func aliyunBackend(t *testing.T) *vmBackend {
 			return eachAliyunShape(t, p, cards, minVRAMMB, try)
 		},
 		ModelEndpoint: modelEndpoint, Image: image, DistributedImage: image,
+		// 300 GiB: the udocker case pulls the 50 GB runner image into its own
+		// store (a second copy next to the golden Docker one) and unpacks a
+		// container from it; the 160 GiB disk had 3.1 GiB left after one pull.
+		UdockerDiskGB: 300, UdockerOnDemand: true,
+		// The login is root: keep agent state off /tmp (see newHostedControlPlane).
+		HostedRoot: "/opt",
 		// Only the udocker case pulls (it imports the image into its own store);
 		// Docker cases find the image already on the VM and never pull.
 		PullMirror: gpustackMirrorEndpoints,

@@ -266,7 +266,7 @@ func (p *Aliyun) placementsToTry(ctx context.Context, model string, gpuCount int
 	if hasPinned && spec.Region == "" && spec.Zone == "" {
 		var out []AliyunPlacement
 		for _, spot := range []bool{pinned.Spot, !pinned.Spot} {
-			if (spot && p.cfg.NoSpot) || (!spot && p.cfg.NoOnDemand) {
+			if (spot && (p.cfg.NoSpot || spec.OnDemand)) || (!spot && p.cfg.NoOnDemand) {
 				continue
 			}
 			again := pinned
@@ -285,6 +285,9 @@ func (p *Aliyun) placementsToTry(ctx context.Context, model string, gpuCount int
 	}
 	var out []AliyunPlacement
 	for _, candidate := range list {
+		if candidate.Spot && spec.OnDemand {
+			continue
+		}
 		if spec.Region != "" && candidate.Region != spec.Region {
 			continue
 		}
@@ -294,7 +297,7 @@ func (p *Aliyun) placementsToTry(ctx context.Context, model string, gpuCount int
 		out = append(out, candidate)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no placement matches region=%q zone=%q", spec.Region, spec.Zone)
+		return nil, fmt.Errorf("no aliyun capacity: no placement matches region=%q zone=%q on-demand=%t", spec.Region, spec.Zone, spec.OnDemand)
 	}
 	return out, nil
 }

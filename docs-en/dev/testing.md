@@ -294,7 +294,7 @@ to confirm that no instances, forwarding resources, or temporary files remain. F
 The Aliyun cases cover every CompShare VM scenario: `l4-aliyun-provisioning-matrix` (agent_dial onboarding, direct server_dial onboarding,
 capacity shapes, two-GPU shape), `l4-aliyun-single-vm-tp2-dgpu`, `l4-aliyun-one-vm-two-logical-nodes`,
 `l4-aliyun-two-vm-docker-distributed`, `l4-aliyun-pd-deploy-chat-two-vm-docker`,
-`l4-aliyun-two-vm-udocker-distributed` (not yet passing live, so not scheduled; runs only with `CLOUD_ALIYUN_UDOCKER=1`), and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
+`l4-aliyun-two-vm-udocker-distributed`, and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
 They rent ECS GPU instances
 and share their scenario implementations with CompShare (`vmBackend`: the provider supplies renting, card-type selection, Docker and image, and where the model comes from).
 
@@ -330,6 +330,13 @@ and share their scenario implementations with CompShare (`vmBackend`: the provid
   The multi-VM cases therefore warm up in `EnsureDocker` first: they run a CUDA check on every card the way the agent does (`--gpus "device=N"`), with retries,
   and log `GPUs ready for containers after N warm-up tries`. While waiting for a deployment to run they count live ranks only (failed, stopped and removing rows do not count),
   and every failed attempt writes its engine log to the case log at once. Before this, the PD case counted the failed row as a rank and kept waiting until the timeout even though the deployment was already running 2/2.
+
+- **udocker case**: it needs three things. Agent state must not live under `/tmp` (so the Aliyun backend's `HostedRoot` is `/opt`): udocker binds a private directory over the guest's `/tmp`,
+  which hides the loopback link `ensureHostRootLoopback` puts under `ROOT/tmp/...`, so an engine that dlopens `libcudart` by the host path `/proc/self/maps` shows cannot find it (measured: the file is in ROOT, unresolvable in the guest).
+  A root login's agent runs workloads as the dedicated `udocker` user, so `$root` is `chmod 711`; without it PRoot fails with `fork/exec .../proot-x86_64: permission denied`.
+  The runner image is pulled again into udocker's own store (about 30 GiB to unpack, and with the pull a 160 GiB system disk was down to 3.1 GiB), so this case uses a 300 GiB system disk,
+  and because the case runs half an hour to an hour it rents on-demand instead of spot (`GPUSpec.OnDemand`) so a reclaim cannot end it. The pull comes from the SWR mirror and now and then restarts from another source near the end, which costs another dozen minutes.
+  On failure `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` now works for the multi-VM cases too: the failed VM is kept and a credentials file written.
 
 The golden image is built by `make prepare-aliyun-golden-image`: it starts a T4 instance from Alibaba Cloud's public image
 `ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*` (driver and CUDA preinstalled),

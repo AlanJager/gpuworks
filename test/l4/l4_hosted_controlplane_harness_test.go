@@ -43,8 +43,14 @@ type hostedControlPlaneConfig struct {
 	ServerBinary  string
 	AgentBinary   string
 	VMCount       int
-	SkipAgents    bool
-	PrepareVMs    func(*testing.T, []*cloudTestEnv)
+	// DiskGB overrides the backend's system disk for cases that unpack a large
+	// image on the VM itself (udocker keeps a 30+ GiB copy per container).
+	DiskGB int
+	// OnDemand rents on-demand instead of spot for a case long enough that a
+	// reclaim mid-run is likely.
+	OnDemand   bool
+	SkipAgents bool
+	PrepareVMs func(*testing.T, []*cloudTestEnv)
 }
 
 type hostedControlPlane struct {
@@ -81,7 +87,7 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 	if vmCount < 1 || (!config.SkipAgents && vmCount != 2) {
 		t.Fatalf("hosted control-plane VM count=%d skip_agents=%t is unsupported", vmCount, config.SkipAgents)
 	}
-	gpuModel, gpusPerVM, VMs := rentHostedControlVMs(t, backend, vmCount)
+	gpuModel, gpusPerVM, VMs := rentHostedControlVMs(t, backend, vmCount, config.DiskGB, config.OnDemand)
 	for rank, vm := range VMs {
 		if vm.Instance.Kind != "vm" || net.ParseIP(vm.Instance.PrivateIP) == nil {
 			t.Fatalf("rank %d is not a VM with a valid private address", rank)
@@ -94,7 +100,13 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := "/tmp/gpuworks-hosted-control-" + hostedRunID(config.RunID)
+	// Where the server data and every agent's state live. Not under /tmp for a
+	// root login: the udocker runtime binds a private directory over the guest's
+	// /tmp, which hides the "host path" loopback that lets CUDA consumers find
+	// libraries by the host path /proc/self/maps shows, so an engine whose state
+	// is under /tmp dies in dlopen of libcudart (see udocker ensureHostRootLoopback).
+	// Production state is under /opt/gpuworks, never /tmp.
+	root := backend.hostedRoot() + "/gpuworks-hosted-control-" + hostedRunID(config.RunID)
 	harness := &hostedControlPlane{backend: backend, gpuModel: gpuModel, gpusPerVM: gpusPerVM, VMs: VMs, PrivateURL: privateURL, RemoteRoot: root}
 	t.Cleanup(func() { harness.Close() })
 	// Keep the hosted server log available for every subsequent test failure.
@@ -218,7 +230,7 @@ func hostedPrivatePeerRanks(vmCount int) []int {
 // capacity: the stock check that picked the shape is only a snapshot, and
 // both VMs have to come from the same shape. VMs already rented for a shape
 // that then runs out are destroyed before the next one is tried.
-func rentHostedControlVMs(t *testing.T, backend *vmBackend, vmCount int) (string, int, []*cloudTestEnv) {
+func rentHostedControlVMs(t *testing.T, backend *vmBackend, vmCount, diskGB int, onDemand bool) (string, int, []*cloudTestEnv) {
 	t.Helper()
 	var (
 		gpuModel string
@@ -228,7 +240,7 @@ func rentHostedControlVMs(t *testing.T, backend *vmBackend, vmCount int) (string
 	checked := backend.EachShape(t, true, 2, hostedMinVRAMMB, func(model string, count int) bool {
 		var envs []*cloudTestEnv
 		for len(envs) < vmCount {
-			env, err := rentHostedControlVM(t, backend, model, count)
+			env, err := rentHostedControlVM(t, backend, model, count, diskGB, onDemand)
 			if err == nil {
 				envs = append(envs, env)
 				continue
@@ -258,17 +270,28 @@ func rentHostedControlVMs(t *testing.T, backend *vmBackend, vmCount int) (string
 // rentHostedControlVM rents one VM of the shape and waits for SSH. A refused
 // create comes back as an error for the caller to judge; the VM, once rented,
 // is destroyed when the test ends.
-func rentHostedControlVM(t *testing.T, backend *vmBackend, gpuModel string, gpus int) (*cloudTestEnv, error) {
+func rentHostedControlVM(t *testing.T, backend *vmBackend, gpuModel string, gpus, diskGB int, onDemand bool) (*cloudTestEnv, error) {
+	if diskGB <= 0 {
+		diskGB = backend.DiskGB
+	}
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), cloudSetupTimeout)
 	defer cancel()
-	instance, err := backend.Provider.Rent(ctx, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: gpus, MinVRAMMB: hostedMinVRAMMB, DiskGB: backend.DiskGB})
+	instance, err := backend.Provider.Rent(ctx, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: gpus, MinVRAMMB: hostedMinVRAMMB, DiskGB: diskGB, OnDemand: onDemand})
 	if err != nil {
 		return nil, err
 	}
 	logRentedInstance(t, backend, instance)
 	env := &cloudTestEnv{Provider: backend.Provider, Instance: instance}
 	t.Cleanup(func() {
+		if t.Failed() && os.Getenv("GPUWORKS_CLOUD_KEEP_ON_FAILURE") == "1" {
+			// Same contract as the single-VM cases: leave the failed VM for
+			// investigation and say how to get in and how to release it.
+			path, credentialErr := saveCloudDebugCredential(backend.Provider, instance)
+			t.Logf("GPUWORKS_CLOUD_KEEP_ON_FAILURE=1: leaving VM %s (%s) running; SSH %s@%s:%d, credentials file %s (0600, err %v); release it with cleanup-leaked --run-id %s",
+				instance.InstanceID, backend.Name, instance.Username, instance.PublicIP, instance.SSHPort, path, credentialErr, cloudProviderDebugRunID(backend.Provider))
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cleanupCancel()
 		if err := env.cleanup(cleanupCtx); err != nil {
@@ -584,6 +607,11 @@ set -eu
 root=%s
 state=%s
 mkdir -p "$state" "$root/log"
+# Upload creates $root with umask 077. An agent that logs in as root runs udocker
+# workloads as the dedicated runtime user, which must be able to traverse the
+# directory above its state to reach the PRoot binary ("fork/exec .../proot-x86_64:
+# permission denied" on Aliyun otherwise). Traverse only: nothing is listable.
+chmod 711 "$root"
 if [ -s "$root/agent-rank%d.pid" ]; then kill "$(cat "$root/agent-rank%d.pid")" 2>/dev/null || true; fi
 export GPUWORKS_SERVER=%s
 export GPUWORKS_TOKEN=%s

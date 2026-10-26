@@ -47,6 +47,16 @@ type vmBackend struct {
 	// present on the VM before the expensive part of a single-VM case.
 	Engine            func(gpuModel string) (image, extraArgs string, ok bool)
 	EnsureEngineImage func(t *testing.T, env *cloudTestEnv, gpuModel string)
+	// HostedRoot is the directory the hosted control plane and agents keep their
+	// state in; empty means /tmp (a non-root login cannot write elsewhere).
+	HostedRoot string
+	// UdockerDiskGB is the system disk of the VMs of the udocker case, which
+	// keeps the runner image twice (layers, then an unpacked container: 30+ GiB
+	// each way) on the VM itself; zero means DiskGB. UdockerOnDemand rents that
+	// case on-demand because it runs over an hour, long enough that a spot
+	// reclaim is likely.
+	UdockerDiskGB   int
+	UdockerOnDemand bool
 	// DockerTestImage is the image the Docker NCCL probe starts; empty means
 	// DistributedImage.
 	DockerTestImage string
@@ -74,6 +84,13 @@ func (b *vmBackend) withEngine(body map[string]any, gpuModel string) map[string]
 		body["extra_args"] = args
 	}
 	return body
+}
+
+func (b *vmBackend) hostedRoot() string {
+	if b.HostedRoot != "" {
+		return strings.TrimRight(b.HostedRoot, "/")
+	}
+	return "/tmp"
 }
 
 func (b *vmBackend) dockerTestImage() string {

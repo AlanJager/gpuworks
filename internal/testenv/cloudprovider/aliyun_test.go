@@ -241,6 +241,39 @@ func TestAliyunRentFallsBackToOnDemandWhenSpotIsRefused(t *testing.T) {
 	}
 }
 
+func TestAliyunRentOnDemandNeverBuysSpotEvenWhenSpotIsCheaperAndInStock(t *testing.T) {
+	f := newFakeECS(t)
+	f.stock("cn-alpha", true, stockWithStock, "cn-alpha-a|"+t4Dual)
+	f.stock("cn-alpha", false, stockWithStock, "cn-alpha-b|"+t4Dual)
+	p := newTestAliyun(t, f, nil)
+	first, err := p.Rent(testCtx(t), GPUSpec{GPUModel: "T4", GPUCount: 2, DiskGB: 160, OnDemand: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := p.Rent(testCtx(t), GPUSpec{GPUModel: "T4", GPUCount: 2, DiskGB: 160, OnDemand: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Billing != "on-demand" || second.Billing != "on-demand" || first.Zone != "cn-alpha-b" || second.Zone != first.Zone {
+		t.Fatalf("a long case must get on-demand VMs in one zone: %+v %+v", first, second)
+	}
+	for _, run := range f.callsOf("RunInstances") {
+		if run.Params.Get("SpotStrategy") != "" {
+			t.Fatalf("RunInstances asked for spot: %v", run.Params)
+		}
+	}
+	// With on-demand stock gone the answer is a stock-out, not a spot VM.
+	f2 := newFakeECS(t)
+	f2.stock("cn-alpha", true, stockWithStock, "cn-alpha-a|"+t4Dual)
+	p2 := newTestAliyun(t, f2, nil)
+	if _, err := p2.Rent(testCtx(t), GPUSpec{GPUModel: "T4", GPUCount: 2, OnDemand: true}); err == nil || !strings.Contains(err.Error(), "no aliyun capacity") {
+		t.Fatalf("on-demand rental with spot-only stock = %v, want a no-capacity error", err)
+	}
+	if len(f2.callsOf("RunInstances")) != 0 {
+		t.Fatal("nothing may be bought when only spot is in stock and on-demand was required")
+	}
+}
+
 func TestAliyunRentDoesNotSwallowAccountErrors(t *testing.T) {
 	for _, code := range []string{"InvalidAccountStatus.NotEnoughBalance", "InvalidAccessKeyId.NotFound", "Forbidden.RAM"} {
 		t.Run(code, func(t *testing.T) {
