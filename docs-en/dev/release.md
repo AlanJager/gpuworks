@@ -61,6 +61,7 @@ and `<sha256>` is the content digest of the corresponding catalog file:
 | `catalog/images/<sha256>.json` | The image catalog identified by its content digest |
 | `catalog/templates/<sha256>.tar.gz` | The inference template catalog package identified by its content digest |
 | Root-level `manifest.json` | Read by older versions; the same file as the image catalog |
+| Root-level `get.sh` | One-line installer (source: `scripts/get.sh`): picks the fastest source, downloads the archive for the local platform, verifies it against `SHA256SUMS`, and runs `gpuworks install` |
 
 The `nightly` channel is for every master build; `release` is reserved for `v*` tags. Binaries follow the channel injected at build time (`make CHANNEL=…`, defaulting to `nightly`).
 
@@ -76,7 +77,8 @@ It runs in a separate `publish` stage because GitLab 14.0 allows needs to refere
 4. rclone pushes immutable files to the three sources with `--immutable`: If an object with the same name has different contents on a source, it exits with an error and never overwrites it (that source requires manual intervention; see below);
 5. Before switching, `gpuworks-dist verify -index` uses the new index to check the size of each file at all three public addresses, including the CDN. If any size differs, it stops and the channel continues to point to the previous version;
 6. It saves the current index, `latest`, and `manifest.json` from each source, switches to the new version, then reads them back from all three public addresses to verify them. If the switch or readback fails, it restores each source's previous pointers and exits;
-7. Each source retains only the most recent 20 version directories, plus the versions referenced by `latest` in the two channels.
+7. Upload `scripts/get.sh` to the root of every source as `get.sh` with `Cache-Control: no-cache`.
+8. Each source retains only the most recent 20 version directories, plus the versions referenced by `latest` in the two channels.
 
 If a source's `releases/<id>/` does not match its own `SHA256SUMS` (for example, it was overwritten before this rule existed), publishing fails at step 4 without switching versions. To resolve this, determine which source
 has the correct copy, delete the incorrect copy or replace it with the correct one, clear the CDN cache for `releases/<id>/`, then rerun publishing.
@@ -93,7 +95,7 @@ with credentials in `secrets/dist-publish.env`. To publish a release, run `make 
 
 Two cache rules are configured in the Cloudflare zone `gpuworks.ai` for `dl.gpuworks.ai` and `image-manifest.gpuworks.ai`: Never cache `*/index.json`, `*/latest`,
 or `/manifest.json`; never cache 404 responses (otherwise, the edge caches the 404 from the pre-publish `newer` check for the default four hours, making a new channel unreadable after its first release).
-Immutable files use long-lived caching according to the origin's `Cache-Control: immutable`. `/notices.json` (publisher notices; see below) must also bypass caching and must be added to the same rule.
+Immutable files use long-lived caching according to the origin's `Cache-Control: immutable`. `/notices.json` (publisher notices; see below) and `/get.sh` must also bypass caching and must be added to the same rule.
 
 Publisher notices ([ADR 0054](../adr/0054-usage-report-and-notices.md)): Edit `build/notices/notices.json` (the unsigned body; see
 `internal/server/distribution/notices.go` for schema and validation: each notice has `id`, `severity`, `kind`, a `title` in at least English, optional `body` and https `url`, and required `expires_at`;

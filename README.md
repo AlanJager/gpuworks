@@ -1,69 +1,226 @@
-# GPUWorks
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/gpuworks-wordmark-dark.svg">
+    <img src="docs/assets/brand/gpuworks-wordmark.svg" alt="GPUWorks" width="360">
+  </picture>
+</p>
 
-轻量易用的 GPU 集群管理平台：把一批 GPU 主机接进来，在网页上部署 vLLM / SGLang 推理服务，
-通过 OpenAI 兼容网关对外提供调用。
+<p align="center">
+  <b>A 40 MB MaaS platform: one cluster across public and private clouds, on any mix of accelerators.</b>
+</p>
 
-![概览](docs/assets/screenshots/dashboard.png)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/go-1.26-00ADD8.svg" alt="Go 1.26">
+  <img src="https://img.shields.io/badge/accelerators-NVIDIA%20%7C%20Ascend%20%7C%20PPU%20%7C%20Hygon%20%7C%20Apple%20Silicon-76B900.svg" alt="Accelerators">
+</p>
 
-## 它能做什么
+<p align="center">
+  English | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-- **节点接入**：一条 `curl | sh` 命令接入 GPU 节点，agent 主动外连，节点无需开放入站端口；出站受限的节点可改由 server 直连 agent 的监听端口（`server_dial`）。
-- **GPU 探测与拓扑**：NVIDIA、昇腾、平头哥 PPU、海光；不依赖 NVML，不需要 cgo。
-- **模型部署**：内置推理模板目录，部署前估算显存，由调度器选卡并解释选择理由；支持多副本、多机推理和 PD 分离。
-- **dGPU**：给整张卡加显存（部分厂商含算力）配额，让多个实例共用一张卡；sleep/wake 让多个模型轮流使用同一张卡。
-- **OpenAI 兼容网关**：`/v1/chat/completions`、embeddings、rerank、音频、图像等，带负载均衡与失败重试。
-- **运维**：指标与日志检索、内置压测与评测报告、Web 终端、AI 助手。
-- **云与离线**：接入 RunPod、优云智算（CompShare）、AutoDL、Vast.ai 账号，同步云主机并一键安装 agent；离线环境支持镜像包与 HTTP 文件服务器导入。
-- **单文件部署**：server 与 agent 都是静态单二进制（`CGO_ENABLED=0`），server 内嵌前端和各平台 agent。
+<p align="center">
+  <img src="docs/assets/screenshots/readme/tour.gif" alt="GPUWorks tour: overview, GPUs, deployment wizard, Playground" width="900">
+</p>
 
-## 5 分钟体验
+GPUWorks is an ultra-lightweight GPU management and Model-as-a-Service (MaaS) platform. The whole control plane, web
+UI included, is a 40 MB download. Join your own GPU servers, rented cloud instances or containers, or a Mac with one
+command, pick a model, and GPUWorks estimates the memory it needs, picks the GPUs, starts vLLM, SGLang or any engine
+an inference template defines (Strata, ninfer, …), and serves it behind one OpenAI-compatible endpoint.
+NVIDIA, Huawei Ascend, T-Head PPU, Hygon DCU and Apple Silicon run side by side in the same cluster.
 
-没有 GPU 也可以先看一眼完整的接入流程（构建需要 Go 和 Node.js）：
+The pool of capacity is the core: bare-metal servers, public cloud instances and private cloud VMs today, with
+Kubernetes clusters and Slurm partitions joining next. On top of it, GPUWorks serves models now and will run
+fine-tuning and training jobs on the same accelerators.
+
+## Highlights
+
+- **Verified model × accelerator combinations deploy in one click.** The built-in catalog ships 1,224 launch specs
+  for 390 models: image, engine, flags and pinned weight revisions for each GPU type. The combinations we have run
+  on real NVIDIA, Ascend, PPU and Apple hardware come with launch settings that are known to work, so you pick a
+  model and press deploy instead of hunting for flags. Qwen, DeepSeek, GLM, Kimi, MiniMax, Llama, Gemma, gpt-oss,
+  plus embedding, rerank, speech, image and video models.
+- **Heterogeneous accelerators, one scheduler.** NVIDIA, Ascend, PPU, Hygon and Apple Silicon nodes join the same
+  cluster; the scheduler matches each deployment to hardware its launch spec supports.
+- **Public and private cloud in one pool.** Sync instances from RunPod, CompShare, AutoDL, Vast.ai and Alibaba Cloud,
+  or VMs from ZStack Cloud, install the agent in one click, and schedule them together with your own servers.
+- **Ultra-lightweight.** The server and the agent are each one static binary (`CGO_ENABLED=0`); the server embeds the
+  web UI (English / 中文) and the agents for every platform, and keeps its state in one SQLite file. The agent dials
+  out over WebSocket, so nodes need no inbound ports (or the server dials in, for nodes that cannot reach out). The
+  scheduler and APIs are load-tested with 1,000 simulated nodes and 3,000 instances.
+- **Memory estimate and explained placement.** Before anything starts, you see how much GPU memory weights, KV
+  cache and engine overhead need, which GPUs the scheduler picked and why the others were rejected.
+- **Share a GPU between models.** dGPU puts a hard memory quota on each instance so several models fit on one card
+  (NVIDIA via HAMi-core; Ascend and PPU experimental). Sleep/wake lets vLLM models take turns on the same GPU.
+- **Scale out.** Replicas across nodes, multi-node tensor/pipeline parallel, and prefill/decode disaggregation
+  (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend).
+- **OpenAI-compatible gateway.** Chat, completions, embeddings, rerank, audio, images, video and realtime under
+  `/v1`; `/v1/messages` and `/v1/responses` pass through. Least-request, prefix-affinity or failover routing, API
+  keys, per-key token usage.
+- **See what is going on.** GPU and engine metrics, searchable logs, per-request traces with a timeline (OTLP export),
+  a web terminal into hosts and containers, and a built-in benchmark that sweeps concurrency and finds the SLA limit.
+- **AI assistant and MCP.** Ask questions about the cluster in the UI, or connect Claude Code / any MCP client to the
+  read-only MCP endpoint.
+- **Air-gapped ready.** Import images and models from archives or an HTTP file server, and sync models between nodes.
+
+## Quick start
+
+**1. Install the server** on a Linux host (x86_64 or arm64) or an Apple Silicon Mac:
 
 ```bash
-make build   # 构建前端、server 和 agent 到 ./bin
-make demo    # 起一个临时 server，接入一个无 GPU 的 agent，验证接入、掉线、自动重连
+bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
 ```
 
-构建完成后，运行 `./bin/gpuworks serve --addr :8800 --data ./data`，然后在浏览器打开
-`http://localhost:8800`，admin 的初始密码记录在 `data/initial-credentials`。真正部署第一个模型请看
-[从零启动并部署第一个模型](docs/tutorials/getting-started.md)。
+The script picks the fastest download source (including mirrors in mainland China), verifies the checksum and runs
+the installer, which sets up a service on port 8800 and prints the URL and the admin password. Add `--quiet` to
+accept every default. To check each step yourself, follow the [manual install](docs-en/how-to/install-server.md).
 
-## 支持的硬件
+**2. Add a GPU node.** Open the web UI, go to **Compute nodes → Add node**, and run the generated command on the GPU
+host:
 
-| 厂商 | 整卡部署 | dGPU |
-|---|---|---|
-| NVIDIA / CUDA | Docker、内置 runveil、nerdctl | 支持（x86_64，glibc ≥ 2.17） |
-| 昇腾 / CANN | Docker + Ascend runtime | 取决于宿主机 device-share 权限 |
-| 平头哥 PPU | 依赖 runtime | 显存限额 + 繁忙时加权 QoS |
-| 海光 / DTK | 由推理模板和 runtime 决定 | 需资产与真机证据 |
+```bash
+curl -fsSL http://<server>:8800/install.sh | sh -s -- --server http://<server>:8800 --token <node-token>
+```
 
-细节与各组合的验证状态见[厂商支持矩阵](docs/reference/support-matrix.md)和[昇腾 CANN 矩阵](docs/reference/ascend-support-matrix.md)。
+**3. Deploy a model.** Open **Deploy**, pick a model such as `Qwen/Qwen3-1.7B` and a recommended inference template,
+review the configuration evaluation (memory estimate and placement), and deploy. Then create an inference token under
+**API Tokens** and call the model by its public model name:
 
-## 文档
+```bash
+curl http://<server>:8800/v1/chat/completions \
+  -H "Authorization: Bearer gw-..." -H "Content-Type: application/json" \
+  -d '{"model": "qwen3-1.7b", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
 
-| 我想…… | 去这里 |
+The full walkthrough is in [Getting started](docs-en/tutorials/getting-started.md). For a Mac, see
+[Run your first local model on a Mac](docs-en/tutorials/mac-local-model.md); for air-gapped sites, see
+[Offline deployment](docs-en/how-to/deploy-offline.md).
+
+### Install with an AI coding agent
+
+Paste this into Claude Code, Codex, Cursor or a similar agent that has shell access to your server:
+
+```text
+Install the GPUWorks control plane on this host and verify it.
+1. Run `bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet`. It downloads the latest build, verifies its
+   checksum and installs a service on port 8800 (use sudo when asked). If I have no sudo or no systemd, append
+   `--dir ~/gpuworks-server --no-systemd` instead.
+2. Verify with `curl -fsS http://<listen-address>/healthz` (expect "status":"ok") and show me the install summary:
+   URL, install directory, data directory and the initial admin password location.
+3. Do not open firewall ports, change other services, or join GPU nodes. Tell me which address GPU nodes should
+   use to reach the server; I will add nodes from the web UI.
+```
+
+## Supported hardware
+
+| Accelerator | Whole-GPU deploy | dGPU (shared GPU) | Sleep/wake | Multi-node | PD disaggregation |
+|---|---|---|---|---|---|
+| **NVIDIA** (CUDA) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | ✅ vLLM | ✅ | ✅ vLLM + NIXL |
+| **Huawei Ascend** (CANN) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | — | ✅ | ✅ vLLM-Ascend + Mooncake |
+| **T-Head PPU** (HGGC) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | — | — | — |
+| **Hygon DCU** (DTK) | ✅ Docker, containerd or runveil (built-in rootless runtime) | ✅ memory quota at MiB granularity | — | — | — |
+| **Apple Silicon** (M1–M5, macOS 15+) | ✅ vllm-metal, MLX, llama.cpp as native processes | — | — | — | — |
+
+✅ verified on real hardware · 🧪 experimental · — not supported or not validated.
+GPUs are detected with the vendor CLIs (`nvidia-smi`, `npu-smi`, `ppu-smi`, `hy-smi`), so there is no NVML or cgo
+dependency. Per-combination status lives in the [support matrix](docs-en/reference/support-matrix.md) and the
+[Ascend matrix](docs-en/reference/ascend-support-matrix.md).
+
+**Engines:** vLLM (incl. vLLM-Ascend and vLLM-Omni), SGLang, and on Mac vllm-metal, MLX-VLM, MLX-Audio and
+llama.cpp. Built-in images are published as `gpuworks/gpuworks-runner` on Docker Hub, Quay and Huawei SWR
+([image families](docs-en/reference/image-families.md)); you can also bring your own image.
+
+## Model catalog
+
+The built-in catalog pins every model to fixed Hugging Face and ModelScope revisions and ships launch specs per
+engine and accelerator. The deploy page recommends the specs that match the model and the target accelerator.
+
+| Type | Examples |
 |---|---|
-| 第一次跑起来 | [从零启动并部署第一个模型](docs/tutorials/getting-started.md) |
-| 完成某个具体任务（装 server、接节点、部署、多机、PD、监控……） | [操作指南](docs/README.md#操作指南how-to) |
-| 出了问题 | [排障指南](docs/how-to/troubleshooting.md) |
-| 决定用哪些特性 | [怎么选：dGPU、sleep/wake、多机、副本、PD](docs/explanation/choosing-features.md) |
-| 查 API、CLI、配置 | [参考](docs/README.md#参考reference) |
-| 理解为什么这样设计 | [架构说明](docs/explanation/architecture.md) 与 [ADR](docs/adr/README.md) |
-| 参与开发 | [开发者文档](docs/dev/README.md)、开发规约 [CLAUDE.md](CLAUDE.md)、领域词汇 [CONTEXT.md](CONTEXT.md) |
+| Chat / reasoning / code | Qwen3 / 3.5 / 3.6 / 3.8, Qwen3-Coder, DeepSeek R1 / V3.2 / V4, GLM-4.5 – 5.3, Kimi K2 – K3, MiniMax M2 – M3, Llama 3.x / 4, Gemma 3 / 4, gpt-oss, Mistral Large 3, ERNIE 4.5, Step-3.5, MiMo, Seed-OSS, Nemotron |
+| Vision-language / OCR | Qwen3-VL, Qwen3-Omni, GLM-4.xV, Kimi-VL, DeepSeek-OCR, PaddleOCR-VL, GLM-OCR |
+| Embedding / rerank | Qwen3-Embedding, Qwen3-Reranker, bge-m3, bge-reranker-v2-m3, Jina v5, EmbeddingGemma |
+| Speech | Qwen3-ASR, Whisper large-v3, Qwen3-TTS, GLM-TTS, Voxtral, FishAudio S2-Pro |
+| Image / video | Qwen-Image, GLM-Image, Stable Diffusion 3.5, Wan 2.1 / 2.2, LTX-2.5, Cosmos3 |
 
-全部文档的索引见 [docs/README.md](docs/README.md)。待办见 [todo.md](todo.md)。
+Catalog totals: 390 models from 76 organizations, 1,224 launch specs (775 NVIDIA, 196 PPU, 173 Ascend, 42 Hygon,
+9 Apple). Models outside the catalog can be registered from Hugging Face, ModelScope, a local directory, NFS or an
+HTTP file server and deployed with your own arguments.
 
-## 构建与测试
+## Screenshots
 
-```bash
-make build            # 完整构建：跨编译 agent（内嵌）+ UI + server + agent 到 ./bin
-make ui               # 只构建前端到 internal/server/webui/dist（含 i18n 检查）
-make run-server       # 本地起 server
-make test             # 完整单元测试：UI 构建 + 各项静态检查 + go test + 前端测试
-make test-l2          # 多进程测试（真实 server/agent 二进制，假 GPU）
-make test-l3          # 容器级测试（需要本地 Docker daemon）
+| | |
+|---|---|
+| ![GPUs](docs/assets/screenshots/readme/gpus.webp) **GPUs** across nodes and vendors | ![Templates](docs/assets/screenshots/readme/templates.webp) **Model catalog** with launch specs per vendor and engine |
+| ![Deployment](docs/assets/screenshots/readme/deployment-detail.webp) **Deployment** replicas, status and metrics | ![Playground](docs/assets/screenshots/readme/playground.webp) **Playground** against any deployment |
+| ![Monitor](docs/assets/screenshots/readme/monitor.webp) **Monitoring**: GPU, engine and gateway metrics | ![Benchmark](docs/assets/screenshots/readme/benchmark.webp) **Benchmark** report: throughput, TTFT, latency |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  user["Browser / CLI / MCP client"] -->|"Web UI, REST API"| server
+  app["Apps (OpenAI SDK)"] -->|"/v1/* + API key"| server
+  subgraph server["gpuworks server (one binary)"]
+    direction TB
+    gw["OpenAI gateway"]
+    ctl["Controller + scheduler<br/>memory estimate"]
+    db[("SQLite<br/>metrics · logs · traces")]
+  end
+  subgraph node1["GPU node"]
+    a1["gpuworks-agent"] --> e1["vLLM / SGLang<br/>Docker · nerdctl · runveil"]
+  end
+  subgraph node2["Mac"]
+    a2["gpuworks-agent"] --> e2["vllm-metal / MLX / llama.cpp"]
+  end
+  a1 -->|"outbound WebSocket + yamux<br/>ctrl lane / data lane"| server
+  a2 -->|"outbound WebSocket"| server
 ```
 
-`make test` 不包含 L2/L3；改动涉及调度、部署、agent 运行时或容器行为时必须显式再跑。分层和云端测试策略见
-[测试指南](docs/dev/testing.md)。
+- The **server** is the control plane: REST API and web UI, the OpenAI-compatible gateway, a controller that
+  reconciles desired state, the scheduler, and storage for metrics, logs and request traces.
+- An **agent** runs on each GPU node. It probes the accelerators, runs engines through Docker, nerdctl, the built-in
+  rootless runtime (runveil) or as host processes on macOS, and reports metrics and logs.
+- Agents connect out to the server and multiplex everything over two lanes: `ctrl` for commands, metrics and
+  terminals, `data` for inference traffic, logs and model/image transfer. Inference requests reach the engine
+  through that tunnel, so nodes never expose ports.
+
+More in [Architecture](docs-en/explanation/architecture.md) and the [ADRs](docs-en/adr/README.md).
+
+## Documentation
+
+| I want to… | Go to |
+|---|---|
+| Get it running | [Getting started](docs-en/tutorials/getting-started.md) · [Install the server](docs-en/how-to/install-server.md) · [Connect nodes](docs-en/how-to/connect-nodes.md) |
+| Fit more on my GPUs | [Choosing features](docs-en/explanation/choosing-features.md) · [dGPU](docs-en/how-to/dgpu.md) · [Sleep/wake](docs-en/how-to/sleep-wake.md) · [Two models on one GPU](docs-en/tutorials/one-gpu-two-models.md) |
+| Serve bigger models or more traffic | [Multi-node inference](docs-en/how-to/multi-node-inference.md) · [PD disaggregation](docs-en/how-to/pd-disaggregation.md) · [Scale replicas](docs-en/tutorials/scale-model-replicas.md) |
+| Measure and debug | [Benchmark](docs-en/how-to/benchmark.md) · [Monitoring and logs](docs-en/how-to/monitor-and-logs.md) · [Trace a slow request](docs-en/tutorials/trace-slow-request.md) · [Troubleshooting](docs-en/how-to/troubleshooting.md) |
+| Integrate | [OpenAI gateway](docs-en/reference/openai-gateway.md) · [REST API](docs-en/reference/api.md) · [MCP](docs-en/how-to/use-mcp.md) · [CLI](docs-en/reference/cli.md) |
+| Run it in production | [Production checklist](docs-en/how-to/deploy-production.md) · [Offline](docs-en/how-to/deploy-offline.md) · [Upgrades](docs-en/how-to/upgrade-and-compatibility.md) · [Security](docs-en/reference/security.md) |
+
+Everything else: [documentation index](docs-en/README.md).
+
+## Build from source
+
+Requires Go 1.26 and Node.js.
+
+```bash
+make build      # web UI + server + agents into ./bin
+make demo       # throwaway server + a GPU-less agent: onboarding, heartbeat, reconnect
+make test       # static checks + Go unit tests + UI tests
+make test-l2    # multi-process tests with real binaries and fake GPUs
+```
+
+See the [developer docs](docs-en/dev/README.md) and [testing guide](docs-en/dev/testing.md). Contributor
+conventions are in [CLAUDE.md](CLAUDE.md) (Chinese) and domain terms in [CONTEXT.md](CONTEXT.md).
+
+## Usage report
+
+Production installations send one anonymous usage report per day (hardware and engine mix, task counts, error
+categories; never hostnames, IPs, prompts or your own model names). Turn it off in **Settings → General** or with
+`usage_report: false` in `server.yaml`. Every field is listed in [Usage report](docs-en/reference/usage-report.md).
+
+## License
+
+GPUWorks is licensed under the [Apache License 2.0](LICENSE). Bundled third-party components keep their own
+licenses; see [NOTICE](NOTICE).

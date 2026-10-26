@@ -254,7 +254,7 @@ check-ci-yaml:
 check-artifacts:
 	CGO_ENABLED=0 $(GO) run ./scripts/artifactsindex
 
-## check-doc-links: verify relative Markdown links (and #anchors) in docs/, README.md,
+## check-doc-links: verify relative Markdown links (and #anchors) in docs/, README*.md,
 ## CONTEXT.md and CLAUDE.md, and reject [[wiki]] references under docs/.
 check-doc-links:
 	CGO_ENABLED=0 $(GO) run ./scripts/doclinks

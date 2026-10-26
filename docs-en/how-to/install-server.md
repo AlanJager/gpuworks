@@ -12,7 +12,20 @@ This guide explains how to install, verify, upgrade, and uninstall the GPUWorks 
 
 ## Installation
 
-Run the following steps in a terminal on the target Linux host.
+### One-Line Install
+
+Run the following in a terminal on the target host (Linux or an Apple silicon Mac):
+
+```bash
+bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
+```
+
+The script picks the source that responds fastest (in mainland China usually Alibaba Cloud OSS or Huawei Cloud OBS), downloads the release package for the local platform, verifies it against `SHA256SUMS`, and then runs `./gpuworks install`; the interactive prompts that follow are the same as steps 3 and 4 below. If no `release` build exists yet, it installs `nightly` instead.
+Arguments after the script are passed to `gpuworks install` unchanged, for example `bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet`. Set `GPUWORKS_CHANNEL=nightly` to choose the channel and `GPUWORKS_SOURCE=<source URL>` to choose the source. The script source is `scripts/get.sh` in the repository.
+
+### Manual Install
+
+To check each step yourself, or when the host can only receive a copied release package, run the following steps in a terminal on the target Linux host.
 
 1. **Download and verify the release package.**
 
