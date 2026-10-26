@@ -50,8 +50,10 @@ func sentenceTransformerModuleClass(name string) string {
 	return name[strings.LastIndexByte(name, '.')+1:]
 }
 
+var diffusersManifestNames = []string{"modular_model_index.json", "model_index.json"}
+
 func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, error) {
-	for _, name := range []string{"modular_model_index.json", "model_index.json"} {
+	for index, name := range diffusersManifestNames {
 		var manifest map[string]json.RawMessage
 		ok, err := readJSON(ctx, files, path.Join(in.Path, name), &manifest)
 		if err != nil {
@@ -122,10 +124,94 @@ func parseDiffusers(ctx context.Context, in Input, files FileView) (RuleResult, 
 		if len(r.Components) == 0 {
 			return RuleResult{}, errors.New(name + ": no components")
 		}
+		components, issues, err := readAdditionalDiffusersComponents(ctx, in, files, diffusersManifestNames[index+1:])
+		if err != nil {
+			return RuleResult{}, err
+		}
+		for _, ref := range components {
+			if !slices.ContainsFunc(r.Components, func(existing Reference) bool { return existing.Path == ref.Path }) {
+				r.Components = append(r.Components, ref)
+			}
+		}
+		r.Issues = append(r.Issues, issues...)
 		r.Entries = []Entry{e}
 		return r, nil
 	}
 	return RuleResult{}, nil
+}
+
+// Other pipeline manifests can own local components the selected entry does
+// not use. Their declarations do not add requirements to that entry.
+func readAdditionalDiffusersComponents(ctx context.Context, in Input, files FileView, names []string) ([]Reference, []Issue, error) {
+	var refs []Reference
+	var issues []Issue
+	for _, name := range names {
+		manifestPath := path.Join(in.Path, name)
+		var manifest map[string]json.RawMessage
+		ok, err := readJSON(ctx, files, manifestPath, &manifest)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, nil, err
+		}
+		if err != nil {
+			issues = append(issues, issue(manifestPath, "metadata_unreadable", err))
+			continue
+		}
+		if !ok {
+			continue
+		}
+		var class string
+		if json.Unmarshal(manifest["_class_name"], &class) != nil || class == "" {
+			issues = append(issues, issue(manifestPath, "invalid_metadata", errors.New("missing _class_name")))
+			continue
+		}
+		keys := make([]string, 0, len(manifest))
+		for key := range manifest {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		for _, key := range keys {
+			if strings.HasPrefix(key, "_") {
+				continue
+			}
+			var spec []json.RawMessage
+			if json.Unmarshal(manifest[key], &spec) != nil || len(spec) < 2 {
+				continue
+			}
+			if string(spec[0]) == "null" || string(spec[1]) == "null" {
+				continue
+			}
+			var library, componentClass string
+			if json.Unmarshal(spec[0], &library) != nil || json.Unmarshal(spec[1], &componentClass) != nil || library == "" || componentClass == "" {
+				issues = append(issues, issue(manifestPath, "invalid_metadata", errors.New(key+": component library and class must be non-empty strings")))
+				continue
+			}
+			localPath := key
+			if len(spec) > 2 {
+				var location struct {
+					Repo       string `json:"repo"`
+					Pretrained string `json:"pretrained_model_name_or_path"`
+					Subfolder  string `json:"subfolder"`
+				}
+				if err := json.Unmarshal(spec[2], &location); err != nil {
+					issues = append(issues, issue(manifestPath, "invalid_metadata", err))
+					continue
+				}
+				if location.Repo != "" || location.Pretrained != "" {
+					continue
+				}
+				if location.Subfolder != "" {
+					localPath = location.Subfolder
+				}
+			}
+			componentPath, err := childPath(in.Path, localPath)
+			if err != nil || componentPath == in.Path || (in.Path != "." && !strings.HasPrefix(componentPath, in.Path+"/")) {
+				issues = append(issues, issue(manifestPath, "invalid_metadata", errors.New(key+": component path must stay within the model directory")))
+				continue
+			}
+			refs = append(refs, Reference{Path: componentPath, Role: "component", Source: name})
+		}
+	}
+	return refs, issues, nil
 }
 
 // Export layouts need their surrounding contract. A random .onnx/.pb file is
