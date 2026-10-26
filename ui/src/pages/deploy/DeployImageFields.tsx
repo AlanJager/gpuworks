@@ -66,7 +66,7 @@ export default function DeployImageFields({
   const { t, i18n } = useTranslation("deploy");
   const language = i18n.resolvedLanguage || i18n.language;
   const form = Form.useFormInstance();
-  const watchedEngine = Form.useWatch("engine", form);
+  const watchedEngine = Form.useWatch("engine", { form, preserve: true });
   const addCommonArg = (flag: string, value?: string) => {
     const token = [flag, value].filter(Boolean).join(" ");
     const current = String(form.getFieldValue("extra_args") || "").trim();
