@@ -16,6 +16,7 @@ func (d *Driver) NewDriver(st *store.Store, providers *provider.Service, install
 		store: st, installer: installer,
 		resourceClaims: resourceclaim.New(st, providers),
 		clientOptions:  d.clientOptions,
+		diagnostics:    d.diagnostics,
 	}
 }
 

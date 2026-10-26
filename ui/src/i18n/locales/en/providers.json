@@ -58,7 +58,8 @@
     "namePlaceholder": "For example, My {{kind}}",
     "credentials": "Credentials",
     "credentialsRetained": "Credential fields left blank will retain their current values.",
-    "fieldRequired": "Enter {{field}}"
+    "fieldRequired": "Enter {{field}}",
+    "templateUnchanged": "Replace the placeholder in {{field}} with an actual value"
   },
   "install": {
     "autoAuth": {

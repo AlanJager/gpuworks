@@ -437,7 +437,24 @@
     "REPLICAS_REMOVE_TOO_MANY": "{{count}} instances were named, but only {{maximum}} replicas are removed.",
     "BENCHMARK_INSTANCE_ORIGIN": "A single instance is measured from its own node; choose that node or the gateway.",
     "MODEL_CACHE_RETRY_BLOCKED": "Cache copy cannot restart yet. Check node connectivity, free cache space, and wait for the previous I/O to exit.",
-    "STORAGE_CONFIG_CHANGED": "Storage configuration changed; reload and try again."
+    "STORAGE_CONFIG_CHANGED": "Storage configuration changed; reload and try again.",
+    "ZSTACK_REQUEST_FAILED": "ZStack API validation failed. Check the endpoint, service and API permissions.",
+    "ZSTACK_DNS_FAILED": "The ZStack hostname could not be resolved. Check the address and DNS configuration.",
+    "ZSTACK_IP_UNREACHABLE": "GPUWorks cannot reach the ZStack IP. Check the address and network route.",
+    "ZSTACK_PORT_REFUSED": "The ZStack port refused the connection. Check the port and whether the service is running.",
+    "ZSTACK_ACCESS_KEY_INVALID": "The ZStack AK does not exist or is disabled. Check the AccessKey ID and its state.",
+    "ZSTACK_SIGNATURE_INVALID": "ZStack rejected the AK/SK signature. Check that the AccessKey ID and Secret match.",
+    "ZSTACK_LICENSE_REQUIRED": "ZStack AccessKey authentication requires a valid Enterprise license.",
+    "ZSTACK_CLOCK_SKEW": "ZStack rejected the request time. Synchronize the GPUWorks and ZStack server clocks.",
+    "ZSTACK_AUTH_REJECTED": "ZStack rejected access. Check the AK/SK, account permissions and authentication configuration.",
+    "ZSTACK_PROXY_CONNECTION_FAILED": "The ZStack request failed while connecting through a proxy. Check the proxy and its network route.",
+    "ZSTACK_TLS_FAILED": "The ZStack TLS handshake failed. Check HTTPS and the server certificate.",
+    "ZSTACK_RESPONSE_TIMEOUT": "Connected to ZStack, but the API response timed out. Check the service load and response path.",
+    "ZSTACK_CONNECTION_RECOVERED": "The ZStack API connection failed, but a follow-up TCP connection succeeded. Retry to validate the API and AK/SK.",
+    "ZSTACK_PORT_UNREACHABLE": "The ZStack IP responded, but the port could not be connected. Check the port, service and firewall.",
+    "ZSTACK_NETWORK_UNCONFIRMED": "The ZStack IP probe received no reply and the port could not be connected. Check the address, port and firewall; the cause is not yet determined.",
+    "ZSTACK_NETWORK_DIAGNOSTIC_UNAVAILABLE": "The ZStack connection failed and the IP probe could not run. Check the address, port and firewall.",
+    "ZSTACK_REQUEST_TIMEOUT": "The ZStack API request timed out. Check network connectivity and the service response."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
