@@ -45,8 +45,14 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+# The menu moved from App.tsx into its own module; a tree from before the
+# move still has it in App.tsx.
+NAVIGATION_SOURCES = ("ui/src/navigation.tsx", "ui/src/App.tsx")
+
+
 def _modules(root: Path, warnings: list[str]) -> list[dict]:
-    app = _safe_file(root, "ui/src/App.tsx")
+    source_name = next((name for name in NAVIGATION_SOURCES if _safe_file(root, name)), NAVIGATION_SOURCES[0])
+    app = _safe_file(root, source_name)
     locale = _safe_file(root, "ui/src/i18n/locales/zh/common.json")
     navigation = {}
     if locale:
@@ -70,9 +76,9 @@ def _modules(root: Path, warnings: list[str]) -> list[dict]:
                 else:
                     next(item for item in modules if item["id"] == module_id)["paths"].append(path)
         if not modules:
-            warnings.append("Cannot derive navigation modules from ui/src/App.tsx navGroups")
+            warnings.append(f"Cannot derive navigation modules from {source_name} navGroups")
     else:
-        warnings.append("Navigation source ui/src/App.tsx is absent")
+        warnings.append(f"Navigation source {source_name} is absent")
     for module_id, name, path in [
         ("login", "登录与会话", "/login"),
         ("terminal", "终端", "/terminal"),

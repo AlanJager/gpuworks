@@ -239,7 +239,7 @@ export default function InferenceTemplatesPage() {
   };
 
   return <div className="resource-page inference-template-page inference-templates-page">
-    <PageHeader title={t("page.title")} description={t("flat.description")} breadcrumb={[t("breadcrumb.services"), t("breadcrumb.templates")]} extra={<Space wrap>
+    <PageHeader title={t("page.title")} description={t("flat.description")} extra={<Space wrap>
       <input ref={fileRef} aria-label={t("flat.importTemplates")} hidden type="file" accept={inferenceCatalogFileAccept} onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCatalog(file); event.target.value = ""; }} />
       <Tooltip title={t("flat.importHint")}><Button icon={<UploadOutlined />} onClick={() => fileRef.current?.click()}>{t("flat.importTemplates")}</Button></Tooltip>
       <Button icon={<PlusOutlined />} onClick={() => setAddingChip(true)}>{t("chips.add")}</Button>

@@ -50,6 +50,24 @@ class InventoryTest(unittest.TestCase):
         self.assertFalse(any("percent" in key or key == "status" for row in result["contracts"] for key in row))
         self.assertEqual(result["warnings"], [])
 
+    def test_nav_modules_come_from_the_navigation_module_when_it_exists(self):
+        # The menu now lives in ui/src/navigation.tsx; App.tsx no longer has it.
+        (self.root / "ui/src/App.tsx").write_text("export default function App() { return null; }\n")
+        self.write("ui/src/navigation.tsx", '''export const navGroups = [
+          { key: "overview", labelKey: "navigation.groupOverview", items: [
+            { key: "/monitor", icon: <X />, labelKey: "navigation.monitor" },
+          ] },
+          { key: "resources", labelKey: "navigation.groupResources", items: [
+            { key: "/gpus", icon: <X />, labelKey: "navigation.gpus" },
+          ] },
+        ];''')
+        self.manifest("single", page_id="gpus")
+        result = inventory(self.root)
+        self.assertEqual(result["warnings"], [])
+        ids = [module["id"] for module in result["modules"]]
+        self.assertIn("monitor", ids)
+        self.assertIn("gpus", ids)
+
     def test_cases_inherit_execution_and_preserve_parent_missing(self):
         self.manifest("nested", contract_id="gpuworks/model/umbrella", lane="offline-test",
                       required_evidence=["request", "persistence"], missing=["parent gap"],

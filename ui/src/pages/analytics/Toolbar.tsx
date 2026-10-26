@@ -49,7 +49,7 @@ function fromPicker(value: Dayjs, tz: string): number {
 export default function Toolbar(p: Props) {
   const { t } = useTranslation("analytics");
   return (
-    <section aria-label={t("toolbar.ariaLabel")} className="analytics-toolbar" style={{ background: "#fff", border: "1px solid #dbdde0", borderRadius: 4, padding: 16, marginBottom: 16 }}>
+    <section aria-label={t("toolbar.ariaLabel")} className="analytics-toolbar" style={{ width: "100%" }}>
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Space wrap size={[16, 8]}>
           <Space wrap size={8} role="group" aria-label={t("toolbar.quickRanges")}>

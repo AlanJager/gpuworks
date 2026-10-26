@@ -7,12 +7,9 @@ import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  CloudServerOutlined, DashboardOutlined, AppstoreOutlined, RocketOutlined,
-  UnorderedListOutlined, KeyOutlined, CloudOutlined, SettingOutlined, FileSearchOutlined,
-  LogoutOutlined, ApartmentOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  MenuOutlined, ControlOutlined, ApiOutlined,
-  ExperimentOutlined, HeartOutlined, RobotOutlined, BarChartOutlined,
+  LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MenuOutlined, RobotOutlined,
 } from "@ant-design/icons";
+import { navGroups } from "./navigation";
 import NodesPage from "./pages/NodesPage";
 import DashboardPage from "./pages/DashboardPage";
 import MonitorPage from "./pages/monitor/MonitorPage";
@@ -55,35 +52,6 @@ import "./pages/playground/playground.css";
 
 const { Header, Sider, Content } = Layout;
 
-const navGroups = [
-  { labelKey: "navigation.groups.overview", items: [
-    { key: "/dashboard", icon: <DashboardOutlined />, labelKey: "navigation.dashboard" },
-    { key: "/monitor", icon: <HeartOutlined />, labelKey: "navigation.monitor" },
-    { key: "/analytics", icon: <BarChartOutlined />, labelKey: "navigation.analytics" },
-  ] },
-  { labelKey: "navigation.groups.resources", items: [
-    { key: "/providers", icon: <CloudOutlined />, labelKey: "navigation.publicCloud" },
-    { key: "/zstack", icon: <ApartmentOutlined />, labelKey: "navigation.privateCloud" },
-    { key: "/nodes", icon: <CloudServerOutlined />, labelKey: "navigation.nodes" },
-    { key: "/gpus", icon: <ControlOutlined />, labelKey: "navigation.gpus" },
-    { key: "/models", icon: <AppstoreOutlined />, labelKey: "navigation.models" },
-	{ key: "/inference-templates", icon: <AppstoreOutlined />, labelKey: "navigation.inferenceTemplates" },
-    { key: "/images", icon: <CloudOutlined />, labelKey: "navigation.images" },
-    { key: "/storage", icon: <CloudServerOutlined />, labelKey: "navigation.storage" },
-    { key: "/networks", icon: <ApiOutlined />, labelKey: "navigation.networks" },
-  ] },
-  { labelKey: "navigation.groups.inference", items: [
-    { key: "/deploy", icon: <RocketOutlined />, labelKey: "navigation.deploy" },
-    { key: "/deployments", icon: <UnorderedListOutlined />, labelKey: "navigation.deployments" },
-    { key: "/playground/chat", icon: <ExperimentOutlined />, labelKey: "navigation.playground" },
-    { key: "/evaluations", icon: <FileSearchOutlined />, labelKey: "navigation.evaluations" },
-  ] },
-  { labelKey: "navigation.groups.platform", items: [
-    { key: "/apikeys", icon: <KeyOutlined />, labelKey: "navigation.apiKeys" },
-    { key: "/logs", icon: <FileSearchOutlined />, labelKey: "navigation.logs" },
-    { key: "/settings", icon: <SettingOutlined />, labelKey: "navigation.settings" },
-  ] },
-];
 
 export default function App() {
   return (
@@ -98,6 +66,12 @@ export default function App() {
       </AppErrorBoundary>}
     </SessionBoundary>
   );
+}
+
+/** Sends the old /ai-store/ai-model address to /models, keeping its query (?detail=). */
+function ModelsAlias() {
+  const { search } = useLocation();
+  return <Navigate replace to={`/models${search}`} />;
 }
 
 function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
@@ -176,7 +150,8 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             <Route path="/storage/:id" element={<StorageDetailRedirect />} />
             <Route path="/networks" element={<NetworksPage />} />
             <Route path="/networks/:id" element={<NetworkDetailRedirect />} />
-            <Route path="/ai-store/ai-model" element={<ModelsPage />} />
+            {/* The old models address: same page, so the menu and its breadcrumb follow /models. */}
+            <Route path="/ai-store/ai-model" element={<ModelsAlias />} />
             <Route path="/deploy" element={<DeployPage />} />
             <Route path="/deployments" element={<DeploymentsPage />} />
             <Route path="/playground/*" element={<PlaygroundPage />} />

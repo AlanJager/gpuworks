@@ -98,7 +98,7 @@ export default function SettingsPage() {
   }, [hash]);
   return (
     <>
-      <PageHeader title={t("page.title")} description={t("page.description")} breadcrumb={[t("page.breadcrumb.platform"), t("page.breadcrumb.settings")]} />
+      <PageHeader title={t("page.title")} description={t("page.description")} />
       <Tabs
         className="settings-tabs"
         activeKey={active}

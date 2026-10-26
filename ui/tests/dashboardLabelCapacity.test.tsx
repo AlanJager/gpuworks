@@ -414,7 +414,8 @@ test("attention stays below the page header and keeps direct links when more iss
   const strip = document.querySelector(".dashboard-overview-attention");
   assert.ok(strip);
   assert.ok(strip.classList.contains("ant-alert-warning"));
-  assert.ok(strip.previousElementSibling?.classList.contains("page-header-wrap"));
+  // The shared page header's root is .page-header (page-header-wrap went with the old header).
+  assert.ok(strip.previousElementSibling?.classList.contains("page-header"));
   assert.deepEqual([...strip.querySelectorAll<HTMLAnchorElement>("a")].map((link) => link.getAttribute("href")), ["/nodes", "/gpus?gpu=gpu-1"]);
   assert.equal(document.querySelectorAll(".dashboard-overview-issues").length, 0);
   fireEvent.click(screen.getByRole("button", { name: "1 more" }));

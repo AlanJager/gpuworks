@@ -193,7 +193,7 @@ export default function DeploymentsPage() {
   return (
     <>
       {copyHolder}
-      <PageHeader title={t("page.title")} description={t("page.description")} breadcrumb={[t("page.breadcrumb.services"), t("page.breadcrumb.deployments")]} extra={<Typography.Text type="secondary">{t("page.count", { count: data?.total ?? 0 })}</Typography.Text>} />
+      <PageHeader title={t("page.title")} description={t("page.description")} extra={<Typography.Text type="secondary">{t("page.count", { count: data?.total ?? 0 })}</Typography.Text>} />
       <Card>
         <ResourceTable<DeploymentListItem>
           tableId={DEPLOYMENT_TABLE_ID}
