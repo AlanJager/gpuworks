@@ -1,3 +1,5 @@
+import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import type { RefSelectProps } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { EligibleNode, Node } from "../../api";
@@ -19,20 +21,7 @@ function eligibility(t: TFunction<"deploy">, eligibleNodes: EligibleNode[] | und
   return { eligible: judged ? judged.eligible : true, reasons };
 }
 
-/**
- * EligibleNodePicker picks online nodes for a deployment draft, searched on
- * the server, rendering evaluate's eligibility answer: an ineligible node is
- * listed but disabled, its reasons in the option's title. A multi-node rank
- * (rankAddress) must also advertise an address the group can reach - its
- * compute network's IP, else its direct address.
- *
- * It works as an antd Form control.
- */
-export default function EligibleNodePicker({
-  eligibleNodes,
-  rankAddress,
-  ...control
-}: {
+type Props = {
   eligibleNodes?: EligibleNode[];
   rankAddress?: { suffix: string; hint?: string };
   value?: string | string[];
@@ -43,11 +32,27 @@ export default function EligibleNodePicker({
   placeholder?: string;
   style?: React.CSSProperties;
   "aria-label"?: string;
-}) {
+} & Pick<ComponentPropsWithoutRef<typeof NodePicker>, "id" | "aria-invalid" | "aria-describedby" | "aria-required">;
+
+/**
+ * EligibleNodePicker picks online nodes for a deployment draft, searched on
+ * the server, rendering evaluate's eligibility answer: an ineligible node is
+ * listed but disabled, its reasons in the option's title. A multi-node rank
+ * (rankAddress) must also advertise an address the group can reach - its
+ * compute network's IP, else its direct address.
+ *
+ * It works as an antd Form control.
+ */
+const EligibleNodePicker = forwardRef<RefSelectProps, Props>(function EligibleNodePicker({
+  eligibleNodes,
+  rankAddress,
+  ...control
+}, ref) {
   const { t } = useTranslation("deploy");
   const reachable = (node: Node) => !rankAddress || Boolean(nodeRankAddress(node));
   return (
     <NodePicker
+      ref={ref}
       {...control}
       onChange={(value) => control.onChange?.(value)}
       filter={ONLINE}
@@ -63,4 +68,6 @@ export default function EligibleNodePicker({
       }}
     />
   );
-}
+});
+
+export default EligibleNodePicker;

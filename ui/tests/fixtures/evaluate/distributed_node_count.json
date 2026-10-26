@@ -1,0 +1,113 @@
+{
+  "request": {
+    "model_id": 7,
+    "served_name": "node-contract",
+    "template_id": 11,
+    "template_spec_source": "user",
+    "template_spec_name": "node-contract",
+    "scenario": "balanced",
+    "target_vendor": "nvidia",
+    "engine": "vllm",
+    "image": "gpuworks/fake-engine:test",
+    "quick_params": {
+      "dtype": "float16",
+      "performance_mode": "balanced",
+      "gpu_memory_utilization": 0.9,
+      "enable_cache_report": true,
+      "kv_cache_dtype": "auto",
+      "kv_offloading_size": 1,
+      "kv_disk_offload": true,
+      "shared_kv_dir": "/contract/cache",
+      "kv_offload_read_threads": 16,
+      "kv_offload_write_threads": 16
+    },
+    "nnodes": 2,
+    "replicas": 1,
+    "dist_role": "leader",
+    "container_overrides": {
+      "env": {
+        "CONTRACT_MARKER": "nodes"
+      }
+    },
+    "placement_mode": "manual"
+  },
+  "response": {
+    "schema_version": 1,
+    "errors": [
+      {
+        "field": "node_uuids",
+        "code": "DISTRIBUTED_NODE_COUNT",
+        "params": {
+          "actual": 0,
+          "required": 2
+        }
+      }
+    ],
+    "replicas": 1,
+    "plan_scope": "per_replica",
+    "ok": false,
+    "template_spec_source": "user",
+    "template_spec_name": "node-contract",
+    "template_match": "spec-name",
+    "matched_by": "spec-name",
+    "template_deviated": true,
+    "argv": null,
+    "image": "gpuworks/fake-engine:test",
+    "warnings": [],
+    "preflight": {
+      "ok": false,
+      "checks": [
+        {
+          "code": "PREFLIGHT_MINIMUM_NODES",
+          "params": {
+            "minimum": 2
+          },
+          "message": "at least two nodes are required"
+        }
+      ]
+    },
+    "eligible_nodes": [
+      {
+        "uuid": "node-contract-1",
+        "name": "node-contract-1",
+        "eligible": true
+      }
+    ],
+    "form_values": {
+      "dtype": "float16",
+      "enable_cache_report": true,
+      "extra_args": "",
+      "gpu_memory_utilization": 0.9,
+      "kv_cache_dtype": "auto",
+      "kv_disk_offload": true,
+      "kv_offload_read_threads": 16,
+      "kv_offload_write_threads": 16,
+      "kv_offloading_size": 1,
+      "performance_mode": "balanced",
+      "shared_kv_dir": "/contract/cache"
+    },
+    "defaults": {
+      "model_mount": "/model",
+      "master_port": 29500,
+      "engine": "vllm"
+    },
+    "effective_params": {
+      "dtype": "float16",
+      "enable_cache_report": true,
+      "gpu_memory_utilization": 0.9,
+      "kv_cache_dtype": "auto",
+      "kv_disk_offload": true,
+      "kv_offload_read_threads": 16,
+      "kv_offload_write_threads": 16,
+      "kv_offloading_size": 1,
+      "performance_mode": "balanced",
+      "shared_kv_dir": "/contract/cache"
+    },
+    "template_params": {
+      "dtype": "float16"
+    },
+    "engine_decides_param_keys": [
+      "enable_request_metrics"
+    ]
+  }
+}

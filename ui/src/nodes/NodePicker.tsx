@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Select } from "antd";
+import { forwardRef, useMemo, useState, type ReactNode } from "react";
+import { Select, type RefSelectProps, type SelectProps } from "antd";
 import { api, usePolling, type Node, type NodeFilter } from "../api";
 import { nodeDisplayName } from "../nodeDisplay";
 import { useNodeLookup } from "./useNodeLookup";
@@ -9,33 +9,7 @@ export const NODE_PICKER_PAGE_SIZE = 50;
 
 type Value = string | string[] | undefined;
 
-/**
- * NodePicker selects nodes by searching them on the server (GET /nodes with
- * page parameters) instead of listing the fleet: it offers one page of the
- * nodes `filter` matches, narrowed by what the user types. Chosen nodes keep
- * their names when a later search leaves them out, and a chosen uuid that no
- * longer names a node is still shown (unknownLabel) so it can be removed.
- *
- * It works as an antd Form control (value/onChange).
- */
-export default function NodePicker({
-  value,
-  onChange,
-  mode,
-  filter = {},
-  optionLabel = nodeDisplayName,
-  optionDisabled,
-  optionTitle,
-  unknownLabel = (uuid) => uuid,
-  placeholder,
-  disabled,
-  allowClear,
-  style,
-  notFoundContent,
-  maxCount,
-  "aria-label": ariaLabel,
-  id,
-}: {
+type Props = {
   value?: Value;
   onChange?: (value: Value, nodes: Node[]) => void;
   mode?: "multiple";
@@ -52,7 +26,38 @@ export default function NodePicker({
   maxCount?: number;
   "aria-label"?: string;
   id?: string;
-}) {
+} & Pick<SelectProps, "aria-invalid" | "aria-describedby" | "aria-required">;
+
+/**
+ * NodePicker selects nodes by searching them on the server (GET /nodes with
+ * page parameters) instead of listing the fleet: it offers one page of the
+ * nodes `filter` matches, narrowed by what the user types. Chosen nodes keep
+ * their names when a later search leaves them out, and a chosen uuid that no
+ * longer names a node is still shown (unknownLabel) so it can be removed.
+ *
+ * It works as an antd Form control (value/onChange).
+ */
+const NodePicker = forwardRef<RefSelectProps, Props>(function NodePicker({
+  value,
+  onChange,
+  mode,
+  filter = {},
+  optionLabel = nodeDisplayName,
+  optionDisabled,
+  optionTitle,
+  unknownLabel = (uuid) => uuid,
+  placeholder,
+  disabled,
+  allowClear,
+  style,
+  notFoundContent,
+  maxCount,
+  "aria-label": ariaLabel,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
+  "aria-required": ariaRequired,
+  id,
+}, ref) {
   const [search, setSearch] = useState("");
   const filterKey = JSON.stringify([filter.state ?? [], filter.label ?? [], filter.q ?? ""]);
   const page = usePolling(
@@ -80,6 +85,7 @@ export default function NodePicker({
   }, [items, known, selectedKey, optionLabel, optionDisabled, optionTitle, unknownLabel]);
   return (
     <Select
+      ref={ref}
       id={id}
       mode={mode}
       showSearch
@@ -100,6 +106,11 @@ export default function NodePicker({
       notFoundContent={notFoundContent}
       maxCount={maxCount}
       aria-label={ariaLabel}
+      aria-invalid={ariaInvalid}
+      aria-describedby={ariaDescribedBy}
+      aria-required={ariaRequired}
     />
   );
-}
+});
+
+export default NodePicker;
