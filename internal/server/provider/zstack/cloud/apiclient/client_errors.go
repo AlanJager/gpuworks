@@ -27,6 +27,9 @@ const (
 // merely because the caller stopped waiting. Remote descriptions are omitted.
 type APIError struct {
 	Kind           ErrorKind
+	Phase          RequestPhase
+	ViaProxy       bool
+	AuthReason     AuthenticationReason
 	StatusCode     int
 	Code           string
 	DiagnosticCode string
