@@ -237,6 +237,13 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 - 公网下载只由 `test-l4-runpod-huggingface-public-download` 和
   `test-l4-compshare-modelscope-public-download` 等显式低频 `public-download` case 验证，
   避免每次租机都重复拉镜像和模型。
+- AutoDL Pro 与 Gitee 昇腾库存有限，夜间高峰（15:00 Asia/Shanghai）常整体售罄。两者都只在“全部候选都报告
+  无库存”时等待并重试：AutoDL 为每个候选规格都返回「暂无库存」，Gitee 为每个 profile 的创建都返回
+  「没有找到符合条件的可用主机」（它没有库存接口，只有创建才能探知）。重试每 5 分钟一轮，总等待默认 30 分钟，
+  由 `AUTODL_STOCK_WAIT` / `GITEE_STOCK_WAIT` 覆盖（Go 时长如 `45m`，`0` 关闭）。等待期间没有创建任何实例，
+  其它错误（余额不足、鉴权、价格超限等）不重试；AutoDL 指定了具体卡型时不换卡也不等待。等待时间叠加在用例
+  的 setup 预算之上，所以 `test-l4-autodl-node-onboarding` 与 `test-l4-gitee-ascend-partition-capability`
+  的 `go test -timeout` 与 CI `timeout` 都已各加 30 分钟。AutoDL 每小时价格上限默认 10 元（`AUTODL_MAX_HOURLY_PRICE`）。
 - CompShare 可通过 `COMPSHARE_GOLDEN_IMAGE_ID` 复用预热 VM 模板，通过
   `COMPSHARE_DOCKER_IMAGE_TAR` 指定 VM 内可见的镜像归档，通过
   `COMPSHARE_PRELOADED_MODEL_PATH` 注册每台节点已存在的完整模型目录。

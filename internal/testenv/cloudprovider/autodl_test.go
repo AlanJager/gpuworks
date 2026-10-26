@@ -195,3 +195,13 @@ func TestAutoDLRentNeverSwapsANamedCardOrMasksOtherErrors(t *testing.T) {
 		t.Fatalf("VRAM floor tried = %s", got)
 	}
 }
+
+// A candidate whose VRAM is unknown is skipped as "cannot verify" whenever a
+// case sets MinVRAMMB, so every spec the walk tries must have an entry.
+func TestAutoDLAutoGPUModelsHaveKnownVRAM(t *testing.T) {
+	for _, model := range autodlAutoGPUModels {
+		if mb, ok := gpuVRAMMB(model); !ok || mb <= 0 {
+			t.Errorf("gpuVRAMMB(%q) = %d, %v; want a known size", model, mb, ok)
+		}
+	}
+}

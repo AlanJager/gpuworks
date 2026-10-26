@@ -237,6 +237,15 @@ Confirm the targets with `make help`/Makefile first, then run only the required 
 - Public downloads are verified only by explicit, low-frequency `public-download` cases such as
   `test-l4-runpod-huggingface-public-download` and `test-l4-compshare-modelscope-public-download`,
   to avoid downloading images and models again for every rental.
+- AutoDL Pro and Gitee Ascend have limited stock and are often sold out at the nightly peak (15:00 Asia/Shanghai). Both
+  wait and retry only when every candidate reports no stock: for AutoDL every candidate spec returns "暂无库存", for Gitee
+  every profile's create returns "没有找到符合条件的可用主机" (it has no stock API; only a create reveals supply).
+  Retries run every 5 minutes with a default total wait of 30 minutes, overridden by `AUTODL_STOCK_WAIT` /
+  `GITEE_STOCK_WAIT` (a Go duration such as `45m`; `0` disables). Nothing is created while waiting, and other errors
+  (insufficient balance, authentication, price cap exceeded, and so on) are not retried; when AutoDL is asked for a
+  specific card it neither swaps nor waits. The wait is added on top of the case's setup budget, so the `go test -timeout`
+  and CI `timeout` of `test-l4-autodl-node-onboarding` and `test-l4-gitee-ascend-partition-capability` each grew by
+  30 minutes. The AutoDL hourly price cap defaults to 10 CNY (`AUTODL_MAX_HOURLY_PRICE`).
 - CompShare can reuse a prewarmed VM template through `COMPSHARE_GOLDEN_IMAGE_ID`, specify an image archive visible inside the VM through
   `COMPSHARE_DOCKER_IMAGE_TAR`, and register a complete model directory already present on each node through
   `COMPSHARE_PRELOADED_MODEL_PATH`.
