@@ -10,6 +10,7 @@ It does not virtualize the GPU into two PCIe devices with independent failure do
   is idle, so this is not fixed SM partitioning.
 - Ascend vCANN/device-share depends on the combination of host permissions and runtime. The current Gitee cloud environment proves only node
   probes or full GPU chat; a cloud-side rejection cannot be reported as a dGPU pass.
+- Hygon Z100 uses native vdevs (experimental), with one GPU per instance. The memory quota also determines the CU allocation; compute cannot be adjusted independently, and inference throughput is not guaranteed to scale with the memory quota. Only x86_64 + Docker is supported; other models, including K100, are outside this scope.
 
 The server derives partition capability status/reason from hardware facts, assets, and behavioral probes; the agent does not declare
 ready on its own. When the capability requirements are not met, full GPU deployment remains available, but a request with a dGPU memory limit must fail explicitly (for example, the scheduler returns
@@ -25,14 +26,14 @@ vLLM and SGLang size the KV cache once at startup based on the limit they see, s
 would cause its next allocation to fail and the engine to exit, so such instances retain their original limit until they restart with the new one.
 
 Ascend vCANN and PPU HGGC read the limit only when the container
-starts, so their instances also require a restart.
+starts, so their instances also require a restart. Hygon Z100 also requires an instance restart, releasing the old vdev before creating one with the new memory quota and CU count.
 
 ## How Scheduling Accounts for a dGPU Instance
 
 A dGPU instance is charged against the physical GPU as "GPU memory limit + the portion the backend allows outside the limit." Scheduling admission and
 allocated GPU memory on the GPU page use the same number. NVIDIA HAMi-core changes the total GPU memory visible to the engine to the limit, so the engine's own
 reservations (CUDA graphs, activations, and so on) all come from within that limit. Only the CUDA context, which HAMi cannot see, remains outside it: measurements show about
-400 MiB per process, accounted as 512 MiB. Backends that have not yet been measured (Ascend and PPU) still use the engine reservation for full GPU deployments, preferring
+400 MiB per process, accounted as 512 MiB. Backends whose overhead outside the quota has not yet been measured (Ascend, PPU, and Hygon) still use the engine reservation for full GPU deployments, preferring
 a slightly larger deduction over overselling a GPU.
 
 If the request does not specify a backend, the selected node uses its own ready backend (preferring its vendor's backend when both that and the NVIDIA backend are available).
