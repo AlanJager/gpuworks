@@ -699,7 +699,9 @@ func responseStatus(resp *http.Response) any {
 // go test -tags=cloudgpu,runpod -run '^TestRunpodServerDialNodeOnboarding$' -timeout=55m ./test/l4
 func TestRunpodServerDialNodeOnboarding(t *testing.T) {
 	provider := runpodProvider(t)
-	env := setupCloudTest(t, provider, cloudprovider.GPUSpec{GPUModel: "auto", GPUCount: 1, DiskGB: 40}, withServerDial())
+	// Recovery is what brings the node back after the edit, so the harness
+	// runs with it on, as a default server does.
+	env := setupCloudNodeWithInstance(t, testenv.NewWithRecovery(t), provider, cloudprovider.GPUSpec{GPUModel: "auto", GPUCount: 1, DiskGB: 40}, nil, withServerDial())
 	requireOnlineNode(t, env)
 	before, err := env.Control.Store().NodeByUUID(env.NodeUUID)
 	if err != nil {

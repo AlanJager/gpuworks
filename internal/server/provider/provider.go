@@ -263,6 +263,12 @@ type InstallReport struct {
 	AuthUsed string `json:"auth_used,omitempty"`
 	// PlatformKeyAuthorized: the instance now accepts the platform key.
 	PlatformKeyAuthorized bool `json:"platform_key_authorized,omitempty"`
+	// PlatformKeyVolatile: the platform key was authorized only where the
+	// instance loses it when it restarts (a RunPod pod re-reads its keys from
+	// the PUBLIC_KEY it was created with and starts from a clean container
+	// disk), so the credential that logged in stays on the node: recovery
+	// has nothing else to log in with after such a restart.
+	PlatformKeyVolatile bool `json:"-"`
 	// InstallDir is where the install put the agent, "" when the driver
 	// used the install script's default.
 	InstallDir string `json:"-"`

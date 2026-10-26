@@ -108,6 +108,16 @@ func (r *Recoverer) refreshSSHEndpoint(ctx context.Context, node *store.Node, li
 	if inst == nil {
 		return nil
 	}
+	// The listing may omit the connection data (a RunPod pod's list carries
+	// no direct SSH endpoint at all), so what the provider says about this
+	// instance itself decides where it is reached.
+	if detail, err := r.providers.InstanceDetail(ctx, linked.ProviderID, linked.ExternalID); err == nil {
+		if _, err := provider.SSHInstallCandidates(detail, "auto"); err == nil {
+			inst = &detail
+		}
+	} else if !errors.Is(err, provider.ErrUnsupported) {
+		r.log.Warn("read provider instance detail failed", "node", node.UUID, "err", err)
+	}
 	credential, secrets, err := r.store.GetNodeSSHCredential(node.UUID)
 	if err != nil {
 		return err

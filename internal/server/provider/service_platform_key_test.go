@@ -271,3 +271,31 @@ func TestCloudInstallRecordsTheSSHEndpointTheDriverLoggedInTo(t *testing.T) {
 		t.Fatalf("credential = %+v, %v; want the renumbered port", cred, err)
 	}
 }
+
+// An instance that forgets the keys added to it when it restarts (a RunPod
+// pod) keeps the credential that logged in: recovery after the restart has
+// nothing else, since the platform key is gone with the container disk.
+func TestVolatilePlatformKeyKeepsTheInstallCredential(t *testing.T) {
+	d := &keyTestDriver{name: "key-test-volatile", host: "203.0.113.23", port: 22,
+		report: InstallReport{AuthUsed: provision.AuthPrivateKey, PlatformKeyAuthorized: true, PlatformKeyVolatile: true}}
+	svc, st, providerID, _ := newKeyService(t, d, true)
+	result, err := svc.Install(t.Context(), providerID, "inst-1", "https://server.example", InstallOptions{SSHKeyPEM: "RENT-KEY"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, secrets, err := st.GetNodeSSHCredential(result.NodeUUID); err != nil || secrets.PrivateKeyPEM != "RENT-KEY" || secrets.Password != "" {
+		t.Fatalf("secrets = %+v err=%v", secrets, err)
+	}
+
+	// Durably authorized: only the platform key stays, nothing of the operator's.
+	d2 := &keyTestDriver{name: "key-test-durable", host: "203.0.113.24", port: 22,
+		report: InstallReport{AuthUsed: provision.AuthPrivateKey, PlatformKeyAuthorized: true}}
+	svc2, st2, id2, _ := newKeyService(t, d2, true)
+	result2, err := svc2.Install(t.Context(), id2, "inst-1", "https://server.example", InstallOptions{SSHKeyPEM: "RENT-KEY"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, secrets, err := st2.GetNodeSSHCredential(result2.NodeUUID); err != nil || !secrets.Empty() {
+		t.Fatalf("secrets = %+v err=%v", secrets, err)
+	}
+}
