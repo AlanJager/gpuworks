@@ -31,6 +31,11 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
   const voices = useDiscovery<{ voices?: string[] }>(models.find((item) => item.id === model), operation?.discovery?.find((route) => route.name === "voices"));
   const declaredInputs = (operation?.inputs || []).map((field) => field.name === "voice" && voices.data?.voices?.length ? { ...field, options: voices.data.voices } : field);
   const [recording, setRecording] = useState(false);
+  const [requestingMicrophone, setRequestingMicrophone] = useState(false);
+  const recordingUnavailable = window.isSecureContext === false
+    ? "audio.recordInsecure"
+    : typeof navigator.mediaDevices?.getUserMedia !== "function" || typeof MediaRecorder !== "function"
+      ? "audio.recordUnsupported" : undefined;
   const [recordedSeconds, setRecordedSeconds] = useState(0);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<unknown>();
@@ -39,6 +44,7 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
   const [rawRequest, setRawRequest] = useState<string>();
   const [audioURL, setAudioURL] = useState("");
+  const mountedRef = useRef(true);
   const recorderRef = useRef<MediaRecorder>();
   const streamRef = useRef<MediaStream>();
   const timerRef = useRef<number>();
@@ -61,12 +67,22 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
     if (model) next.set("model", model); else next.delete("model");
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
   }, [model, operationType, searchParams, setSearchParams]);
-  useEffect(() => () => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    if (timerRef.current) window.clearInterval(timerRef.current);
-    abortRef.current?.abort();
-    if (audioURL) URL.revokeObjectURL(audioURL);
-  }, [audioURL]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const recorder = recorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      abortRef.current?.abort();
+    };
+  }, []);
+  useEffect(() => () => { if (audioURL) URL.revokeObjectURL(audioURL); }, [audioURL]);
 
   const selectModel = (value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -74,9 +90,15 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
     setSearchParams(next, { replace: true });
   };
   const startRecording = async () => {
+    if (recordingUnavailable || requestingMicrophone) return;
+    setRequestingMicrophone(true);
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Microphone access is unavailable in this browser context");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
       const chunks: Blob[] = [];
       const recorder = new MediaRecorder(stream);
       recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
@@ -87,15 +109,30 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
         setElapsedMS(undefined);
         stream.getTracks().forEach((track) => track.stop());
         streamRef.current = undefined;
+        recorderRef.current = undefined;
       };
-      streamRef.current = stream;
       recorderRef.current = recorder;
       setRecordedSeconds(0);
       setRecording(true);
       recorder.start(250);
       timerRef.current = window.setInterval(() => setRecordedSeconds((value) => value + 1), 1000);
     } catch (error) {
-      message.error(t("audio.recordFailed", { detail: (error as Error).message }));
+      const recorder = recorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+        if (recorder.state !== "inactive") recorder.stop();
+      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = undefined;
+      recorderRef.current = undefined;
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      if (mountedRef.current) {
+        setRecording(false);
+        message.error(t("audio.recordFailed", { detail: (error as Error).message }));
+      }
+    } finally {
+      if (mountedRef.current) setRequestingMicrophone(false);
     }
   };
   const stopRecording = () => {
@@ -165,11 +202,12 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
                 {recording ? (
                   <Button danger icon={<PauseOutlined />} onClick={stopRecording}>{t("audio.stopRecording")}</Button>
                 ) : (
-                  <Button icon={<PlayCircleOutlined />} onClick={startRecording}>{t("audio.startRecording")}</Button>
+                  <Button icon={<PlayCircleOutlined />} disabled={Boolean(recordingUnavailable)} loading={requestingMicrophone} onClick={startRecording}>{t("audio.startRecording")}</Button>
                 )}
                 {file && <Button type="text" danger icon={<DeleteOutlined />} onClick={() => { setFile(undefined); setResult(undefined); setElapsedMS(undefined); }}>{t("audio.remove")}</Button>}
               </Space>
             </div>
+            {recordingUnavailable && <Alert type="warning" showIcon message={t(recordingUnavailable)} />}
             <Button type="primary" size="large" disabled={!file || !model} loading={loading} onClick={() => void submit()}>
               {t("audio.start")}
             </Button>
