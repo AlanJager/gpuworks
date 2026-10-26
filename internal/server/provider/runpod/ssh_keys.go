@@ -20,8 +20,8 @@ func (d *Driver) ListSSHKeys(ctx context.Context, creds provider.Credentials) ([
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("runpod: list SSH keys: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("runpod: list SSH keys: status %d", resp.StatusCode)
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -82,8 +82,8 @@ func (d *Driver) ReplaceSSHKeys(ctx context.Context, creds provider.Credentials,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("runpod: replace SSH keys: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("runpod: replace SSH keys: status %d", resp.StatusCode)
 	}
 	return nil
 }

@@ -326,7 +326,8 @@ func (d *Driver) ValidateCredentials(ctx context.Context, creds provider.Credent
 	}
 }
 
-// ListInstances implements provider.Driver.
+// ListInstances implements provider.Driver. Error bodies are untrusted and may
+// echo credentials; return operation/status only, as for other failed requests.
 func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) ([]provider.Instance, error) {
 	resp, err := d.do(ctx, creds, http.MethodGet, "/pods")
 	if err != nil {
@@ -334,8 +335,8 @@ func (d *Driver) ListInstances(ctx context.Context, creds provider.Credentials) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("runpod: list pods: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("runpod: list pods: status %d", resp.StatusCode)
 	}
 	pods, err := decodePods(resp.Body)
 	if err != nil {
@@ -457,8 +458,8 @@ func (d *Driver) CreateInstance(ctx context.Context, creds provider.Credentials,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return provider.Instance{}, fmt.Errorf("runpod: create pod: status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return provider.Instance{}, fmt.Errorf("runpod: create pod: status %d", resp.StatusCode)
 	}
 	p, err := decodePod(resp.Body)
 	if err != nil {
@@ -483,8 +484,8 @@ func (d *Driver) DeleteInstance(ctx context.Context, creds provider.Credentials,
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
 		return nil
 	}
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	return fmt.Errorf("runpod: delete pod %q: status %d: %s", externalID, resp.StatusCode, strings.TrimSpace(string(data)))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	return fmt.Errorf("runpod: delete pod %q: status %d", externalID, resp.StatusCode)
 }
 
 func decodePod(r io.Reader) (pod, error) {
