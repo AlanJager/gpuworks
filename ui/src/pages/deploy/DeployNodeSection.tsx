@@ -269,7 +269,7 @@ export default function NodeSection({
               <Space size={8}>
                 <span>{t("workbench.node.nodeCount")}</span>
                 <Form.Item name="nnodes" noStyle>
-                  <InputNumber min={2} max={16} size="small" />
+                  <InputNumber min={2} max={16} size="small" aria-label={t("workbench.node.nodeCount")} />
                 </Form.Item>
               </Space>
             </div>

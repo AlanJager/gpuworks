@@ -468,9 +468,11 @@ export default function DeployQuickForm({
       <Form.Item name="node_selection_mode" hidden>
         <Input />
       </Form.Item>
-      <Form.Item name="nnodes" hidden={nodeMode !== "multi"}>
-        <InputNumber />
-      </Form.Item>
+      {nodeMode !== "multi" && (
+        <Form.Item name="nnodes" hidden>
+          <InputNumber />
+        </Form.Item>
+      )}
     </section>
   );
 }
