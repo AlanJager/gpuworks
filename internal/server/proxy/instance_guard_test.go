@@ -25,13 +25,14 @@ func TestKnownInstanceFailureEndsWaitingRequest(t *testing.T) {
 			name = "after_headers"
 		}
 		t.Run(name, func(t *testing.T) {
+			const partialFrame = "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"
 			started := make(chan struct{})
 			stop := make(chan struct{})
 			var logs syncBuffer
 			p, key, closeUpstream := newObservedProxy(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if headers {
 					w.Header().Set("Content-Type", "text/event-stream")
-					io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
+					io.WriteString(w, partialFrame)
 					w.(http.Flusher).Flush()
 				}
 				close(started)
@@ -59,6 +60,7 @@ func TestKnownInstanceFailureEndsWaitingRequest(t *testing.T) {
 				err    error
 			}
 			done := make(chan result, 1)
+			partialReceived := make(chan struct{})
 			go func() {
 				resp, err := http.DefaultClient.Do(req)
 				if err != nil {
@@ -66,13 +68,30 @@ func TestKnownInstanceFailureEndsWaitingRequest(t *testing.T) {
 					return
 				}
 				defer resp.Body.Close()
+				var prefix []byte
+				if headers {
+					prefix = make([]byte, len(partialFrame))
+					n, err := io.ReadFull(resp.Body, prefix)
+					prefix = prefix[:n]
+					if resp.StatusCode != http.StatusOK || err != nil || string(prefix) != partialFrame {
+						done <- result{status: resp.StatusCode, body: string(prefix), err: err}
+						return
+					}
+					close(partialReceived)
+				}
 				body, err := io.ReadAll(resp.Body)
-				done <- result{status: resp.StatusCode, retry: resp.Header.Get("Retry-After"), body: string(body), err: err}
+				done <- result{status: resp.StatusCode, retry: resp.Header.Get("Retry-After"), body: string(append(prefix, body...)), err: err}
 			}()
+			ready := started
+			if headers {
+				ready = partialReceived
+			}
 			select {
-			case <-started:
+			case <-ready:
+			case got := <-done:
+				t.Fatalf("request ended before failure trigger: %+v", got)
 			case <-time.After(5 * time.Second):
-				t.Fatal("upstream not started")
+				t.Fatal("request did not reach failure trigger phase")
 			}
 			if err := p.store.SetInstanceState("omni-instance", proto.InstFailed, "container exited (code -6)"); err != nil {
 				t.Fatal(err)
