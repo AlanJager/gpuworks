@@ -112,10 +112,107 @@ def test_deployment_start_timeout(page, context, server, artifacts, report, loca
     check(initial_policy["start_timeout_sec"] == initial, "initial GET differs from the form")
     report["last_step"] = "initial-policy-read"
 
+    # 1.1: one spinbutton, the seeded default, seconds, and the server range.
+    # Same field-inventory family as the label dialog. No second product mutant.
+    expect(page.get_by_role("spinbutton", name=label, exact=True)).to_have_count(1)
+    check(initial == 1800, f"default timeout {initial} is not the seeded 1800 seconds")
+    check(field.get_attribute("aria-required") != "true", "start timeout is marked required")
+    expect(field).to_have_attribute("aria-valuemin", str(MIN_SECONDS))
+    expect(field).to_have_attribute("aria-valuemax", str(MAX_SECONDS))
+    expect(field).to_have_attribute("step", "60")
+    expect(card.locator(".ant-input-number-suffix")).to_have_text(ui["deployment"]["seconds"])
+    check(card.get_by_role("switch").count() == 0, "the timeout card hides the field behind a switch")
+    check(card.get_by_role("spinbutton").count() == 1, "the timeout card has another field")
+    check(puts == [], "reading the timeout submitted a deployment policy")
+    report["timeout_inventory"] = {
+        "role": "spinbutton", "name": label, "required": False, "default": initial,
+        "unit": ui["deployment"]["seconds"], "min": MIN_SECONDS, "max": MAX_SECONDS,
+        "step": 60, "conditional": False, "fields": 1, "requests": len(puts),
+        "request_field": "start_timeout_sec",
+        "persisted": initial_policy["start_timeout_sec"],
+    }
+    report["last_step"] = "timeout-inventory"
+    from settings_deployment_keyboard import exercise_timeout_keyboard
+    report["timeout_keyboard"] = exercise_timeout_keyboard(page, card, field, save, puts, initial)
+
     field.fill("")
     expect(save).to_be_disabled()
     check(puts == [], "clearing the field submitted a deployment policy")
+    cleared = page.request.get(server.base + SETTINGS)
+    check(cleared.status == 200, f"cleared GET HTTP {cleared.status}")
+    cleared_policy = cleared.json()["deployment"]
+    check(cleared_policy["start_timeout_sec"] == initial, "clearing the timeout stored an empty value")
+    for policy_name in POLICY_FIELDS:
+        check(cleared_policy[policy_name] == initial_policy[policy_name],
+              f"clearing the timeout changed {policy_name}")
+    report["edit_cycle_clear"] = {"stored": initial, "save_disabled": True, "puts": 0,
+                                  "switch": False, "binding": False,
+                                  "other_fields": list(POLICY_FIELDS)}
     report["last_step"] = "empty-disables-save"
+
+    # 3.2: blur clamps to the real min and max. Precision 0 rounds .5 and up.
+    # Empty already left Save disabled. A non-numeric entry restores the last number.
+    def commit_number(text):
+        field.fill(text)
+        field.blur()
+
+    clamped = (("0", str(MIN_SECONDS)), ("30", str(MIN_SECONDS)), ("-1", str(MIN_SECONDS)),
+               (str(MAX_SECONDS + 1), str(MAX_SECONDS)), ("60.4", "60"), ("60.6", "61"),
+               ("abc", "61"))
+    for typed, shown in clamped:
+        commit_number(typed)
+        expect(field).to_have_value(shown)
+        expect(save).to_be_enabled()
+    check(puts == [], "a clamped or rejected number submitted a deployment policy")
+    after_bounds = page.request.get(server.base + SETTINGS)
+    check(after_bounds.status == 200, f"bounds GET HTTP {after_bounds.status}")
+    check(after_bounds.json()["deployment"]["start_timeout_sec"] == initial,
+          "clamped numbers changed the stored timeout")
+    report["last_step"] = "number-bounds"
+    report["number_bounds"] = [{"typed": typed, "shown": shown} for typed, shown in clamped]
+
+    # 3.3: keyboard and the step buttons change the shown value by 60.
+    # This control has no slider and no second linked input. A step at either
+    # bound stays on that bound. Stepping does not submit.
+    stepped_from = int(field.input_value())
+    check(stepped_from == 61, f"step start {stepped_from} is not the rounded bound")
+    field.press("ArrowUp")
+    expect(field).to_have_value(str(stepped_from + 60))
+    field.press("ArrowDown")
+    expect(field).to_have_value(str(stepped_from))
+    increase = card.get_by_role("button", name="Increase Value", exact=True)
+    decrease = card.get_by_role("button", name="Decrease Value", exact=True)
+    expect(increase).to_have_count(1)
+    # The handlers stay at width 0 until the control is hovered.
+    def click_step(target):
+        card.locator(".ant-input-number-affix-wrapper").hover()
+        target.click(force=True)
+
+    click_step(increase)
+    expect(field).to_have_value(str(stepped_from + 60))
+    click_step(decrease)
+    expect(field).to_have_value(str(stepped_from))
+    check(card.locator(".ant-slider").count() == 0, "the start timeout rendered a slider")
+    check(card.get_by_role("spinbutton").count() == 1, "the start timeout has a second linked input")
+    field.fill(str(MIN_SECONDS))
+    expect(field).to_have_value(str(MIN_SECONDS))
+    click_step(decrease)
+    field.press("ArrowDown")
+    expect(field).to_have_value(str(MIN_SECONDS))
+    field.fill(str(MAX_SECONDS))
+    expect(field).to_have_value(str(MAX_SECONDS))
+    click_step(increase)
+    field.press("ArrowUp")
+    expect(field).to_have_value(str(MAX_SECONDS))
+    check(puts == [], "stepping the timeout submitted a deployment policy")
+    after_steps = page.request.get(server.base + SETTINGS)
+    check(after_steps.status == 200, f"steps GET HTTP {after_steps.status}")
+    check(after_steps.json()["deployment"]["start_timeout_sec"] == initial,
+          "stepping changed the stored timeout")
+    report["last_step"] = "number-steps"
+    report["number_steps"] = {"from": stepped_from, "keyboard": stepped_from + 60,
+                              "button": stepped_from + 60, "at_min": MIN_SECONDS,
+                              "at_max": MAX_SECONDS, "slider": False, "linked_inputs": 1}
 
     invalid = page.request.put(server.base + SETTINGS_PATH,
                                data={"start_timeout_sec": MIN_SECONDS - 30})
@@ -125,12 +222,60 @@ def test_deployment_start_timeout(page, context, server, artifacts, report, loca
           "an out-of-range request changed the stored policy")
     report["last_step"] = "server-rejects-below-floor"
 
+    # 1.13: another session's PUT is the last write. Same family as node labels.
+    # No second product mutant. The open draft stays, and Save writes it back.
+    other_timeout = 2400
+    other = page.request.put(server.base + SETTINGS_PATH, data={"start_timeout_sec": other_timeout})
+    check(other.status == 200, f"the other session was rejected: HTTP {other.status}")
+    other_read = page.request.get(server.base + SETTINGS)
+    check(other_read.status == 200
+          and other_read.json()["deployment"]["start_timeout_sec"] == other_timeout,
+          f"the other session was not stored: {other_read.status}")
+    expect(field).to_have_value(str(MAX_SECONDS))
+    with page.expect_response(lambda r: urlsplit(r.url).path == SETTINGS_PATH
+                              and r.request.method == "PUT") as kept_draft:
+        save.click()
+    check(kept_draft.value.status == 200, f"draft save HTTP {kept_draft.value.status}")
+    check(kept_draft.value.request.post_data_json == {"start_timeout_sec": MAX_SECONDS},
+          f"draft save body {kept_draft.value.request.post_data_json}")
+    kept_get = page.request.get(server.base + SETTINGS)
+    check(kept_get.json()["deployment"]["start_timeout_sec"] == MAX_SECONDS,
+          "saving the open draft did not replace the other session")
+    report["timeout_conflict"] = {"other_session": 200, "other_read": other_timeout,
+                                  "draft": MAX_SECONDS, "saved_status": 200,
+                                  "saved_read": MAX_SECONDS, "conflict_status": False}
+    report["last_step"] = "timeout-conflict"
+    expect(page.get_by_text(saved_text, exact=True).first).to_be_visible()
+    expect(page.locator(".ant-message-notice")).to_have_count(0)
+
     saved_values = []
     for value in (MIN_SECONDS, MAX_SECONDS):
         field.fill(str(value))
-        with page.expect_response(lambda r: urlsplit(r.url).path == SETTINGS_PATH
-                                  and r.request.method == "PUT") as saved:
+        held = []
+
+        def hold_put(route):
+            if route.request.method != "PUT" or urlsplit(route.request.url).path != SETTINGS_PATH:
+                route.continue_()
+                return
+            held.append(route)
+
+        if value == MIN_SECONDS:
+            page.route("**" + SETTINGS_PATH, hold_put)
             save.click()
+            inflight = card.locator("button.ant-btn-primary")
+            expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+            inflight.click()
+            field.press("Enter")
+            check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+            check(held[0].request.post_data_json == {"start_timeout_sec": value}, "held policy body differs")
+            with page.expect_response(lambda r: urlsplit(r.url).path == SETTINGS_PATH
+                                      and r.request.method == "PUT") as saved:
+                held[0].continue_()
+            page.unroute("**" + SETTINGS_PATH, hold_put)
+        else:
+            with page.expect_response(lambda r: urlsplit(r.url).path == SETTINGS_PATH
+                                      and r.request.method == "PUT") as saved:
+                save.click()
         check(saved.value.status == 200, f"save HTTP {saved.value.status}")
         check(saved.value.request.post_data_json == {"start_timeout_sec": value},
               f"save body differs: {saved.value.request.post_data_json}")
@@ -142,8 +287,12 @@ def test_deployment_start_timeout(page, context, server, artifacts, report, loca
         expect(field).to_have_value(str(value))
         independent = page.request.get(server.base + SETTINGS)
         check(independent.status == 200, f"independent GET HTTP {independent.status}")
-        check(independent.json()["deployment"]["start_timeout_sec"] == value,
+        saved_policy = independent.json()["deployment"]
+        check(saved_policy["start_timeout_sec"] == value,
               "refresh and independent GET differ")
+        for policy_name in POLICY_FIELDS:
+            check(saved_policy[policy_name] == initial_policy[policy_name],
+                  f"saving the timeout changed {policy_name}")
         saved_values.append(value)
         report["last_step"] = f"saved-{value}-and-reloaded"
 
@@ -163,9 +312,13 @@ def test_deployment_start_timeout(page, context, server, artifacts, report, loca
     for name in POLICY_FIELDS:
         check(final_policy[name] == initial_policy[name],
               f"editing the start timeout changed {name}")
+    report["edit_cycle"] = {"from": initial, "values": [MIN_SECONDS, MAX_SECONDS, initial],
+                            "switch": False, "binding": False, "empty_stored": False,
+                            "other_fields_unchanged": list(POLICY_FIELDS)}
     report["last_step"] = "original-policy-restored"
 
-    check(puts == [{"start_timeout_sec": MIN_SECONDS},
+    check(puts == [{"start_timeout_sec": MAX_SECONDS},
+                   {"start_timeout_sec": MIN_SECONDS},
                    {"start_timeout_sec": MAX_SECONDS},
                    {"start_timeout_sec": initial}], f"unexpected PUT bodies: {puts}")
     expected_invalid = {"method": "PUT", "path": SETTINGS_PATH, "status": 400}
@@ -184,6 +337,7 @@ def test_deployment_start_timeout(page, context, server, artifacts, report, loca
         {"layer": "ui", "page": "/settings", "tab": ui["page"]["tabs"]["nodes"],
          "card": ui["deployment"]["title"],
          "field": label, "initial": initial, "cleared_save_disabled": True,
+         "bounds": report.get("number_bounds"), "steps": report.get("number_steps"),
          "saved": saved_values, "restored": initial},
         {"layer": "request", "puts": puts,
          "invalid": {"method": "PUT", "path": SETTINGS_PATH, "body": {"start_timeout_sec": MIN_SECONDS - 30},
@@ -221,6 +375,7 @@ def main():
         "coverage_manifest_sha256": digest(manifest_path),
         "test_sha256": digest(Path(__file__)),
         "helper_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
+        "keyboard_sha256": digest(ROOT / "test/e2e/settings_deployment_keyboard.py"),
         "execution": "N/A: a cluster-wide setting; no agent or workload is involved",
         "runtime": "N/A: no agent, container, GPU or engine",
         "not_covered": ["administrator-only authorization with a non-admin session",

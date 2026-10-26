@@ -62,12 +62,25 @@
     }
   ],
   "checklist_items": {
+    "1.1": "The import dialog has one textbox. Its accessible name is the private-key label. It is not marked required. It opens empty, with the OpenSSH private-key header as its placeholder, with no unit and no maximum length, and it stays visible. The import button stays disabled while the text is empty and while it is only whitespace. Reading it and typing that whitespace send no PUT. The import body has only private_key_pem. The independent GET returns authorize_command, created_at, fingerprint, and public_key, and it does not return the private key",
+    "1.2": "covered: While the SSH key GET is held the import dialog opens with an empty private key and a disabled submit, and the card shows no fingerprint; after the load the generated fingerprint is shown, and a later reload shows the imported fingerprint without echoing the private key",
+    "1.7": "Rotating the platform SSH key fills no fields. The regenerate control is one dangerous button. Confirming it sends one POST to /api/v1/ssh-key/rotate with an empty body and a 200 response whose fingerprint, public key, and authorize command match the independent GET and differ from the key shown before the rotate. The success sentence is visible. After reload the card shows that same fingerprint and authorize command.",
+    "1.11": "covered: Cancel, close and Escape each close the import dialog immediately, with no unsaved-changes prompt and no key write, so the stored platform key stays unchanged",
+    "1.13": "While the import dialog is open on the typed private key, another session's rotate returns 200. The independent GET fingerprint changes. The dialog stays open on that typed key and shows no conflict. The card still shows the previous fingerprint. Saving the import returns success, and the independent GET fingerprint is the imported key, not the other session's fingerprint",
+    "1.9": "covered: While the import PUT is held a second click and Enter send no further import, and the later success is the only stored key",
     "1.10": "Invalid private-key content is rejected without changing the stored key; the modal remains usable and a later valid import succeeds",
     "1.14": "Reload and independent GET preserve the rotated and imported key",
+    "1.15": "Tab from the private key reaches Cancel, then Import once the key is filled. Import can be focused. Enter in the empty key inserts a newline, sends no key PUT, and leaves Import disabled. Enter in the filled key ssh-probe inserts a newline, sends no key PUT, and leaves the dialog open on that value. At 1440×900 the key, Import, and Cancel each stay inside the viewport, and the key does not overlap Import or Cancel.",
     "7.3": "N/A: the private key is supplied by the user, not a one-time plaintext credential issued by the platform",
     "7.6": "GET and the page contain no private-key material; the import dialog reopens empty; secret-bearing failures omit screenshots and reports are redacted",
+    "12.1": "covered: Import key on the SSH card opens the dialog named by the import title",
+    "12.2": "covered: Import dialog at 1440x900: the dialog and footer Import stay inside the viewport, and the title, help text, body and footer sit inside the dialog without overlap",
+    "12.3": "covered: Default focus is inside the import dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+    "12.4": "covered: Cancel, Escape, close and mask each return focus to the card Import button and send no PUT",
+    "12.5": "N/A: the import dialog has no nested child layer",
     "12.6": "Rejected import preserves the modal and stored key; successful import is independently read back",
     "12.7": "N/A: the platform key has no deletion operation; rotation warning text is separately asserted by the case",
+    "12.8": "N/A: the platform key has no delete preview, revision or compare-and-swap",
     "16.1": "N/A: import uses a text area, not a file uploader; malformed and valid key content are exercised through the import form"
   },
 
