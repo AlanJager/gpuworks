@@ -215,3 +215,14 @@ test("create defaults do not fill an edit form with a vendor endpoint", async ()
   await waitFor(() => assert.ok(screen.getByDisplayValue("saved-proxy")));
   assert.equal(endpointInput().value, "", "edit values must come from saved configuration, not create defaults");
 });
+
+test("the fixed edit kind is a labeled disabled textbox after saved config loads", async () => {
+  api.provider = async () => ({ id: 7, kind: "runpod", name: "loaded-account", endpoint: "https://proxy.example.test/v2", public_key: "", extra: {} });
+  render(page(kindInfos));
+  act(() => controls.openEdit({ id: 7, kind: "runpod", name: "list-account" }));
+  await waitFor(() => assert.equal((screen.getByLabelText("Name") as HTMLInputElement).value, "loaded-account"));
+  const kind = screen.getByRole("textbox", { name: "Type", exact: true }) as HTMLInputElement;
+  assert.equal(screen.getByLabelText("Type", { exact: true }), kind);
+  assert.equal(kind.disabled, true);
+  assert.equal(kind.value, "RunPod");
+});
