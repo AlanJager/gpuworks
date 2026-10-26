@@ -10,9 +10,12 @@ Only GPU facts are synthetic. No real GPU inference is claimed.
 import json
 import os
 import re
+import time
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import button, check
 import deployment_container_fixture as containers
@@ -36,6 +39,36 @@ def expected_requests(fixture, deleted_id=None):
     if deleted_id is not None:
         expected.append({"method": "DELETE", "path": containers.DEPLOYMENTS + f"/{deleted_id}", "query": "", "body": None})
     return expected
+
+
+def hold_deploy_create(page, report):
+    # setSubmitting runs before createDeployment, so Deploy is loading while
+    # the first POST is still held. Continue into the real server response.
+    path = containers.DEPLOYMENTS
+    held = []
+    pattern = re.compile(re.escape(path) + r"(?:\?|$)")
+    ok = page.locator(".deploy-submit-bar .ant-btn-primary")
+
+    def hold_post(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != path:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route(pattern, hold_post)
+    ok.click()
+    report["last_step"] = "deploy-create-inflight"
+    expect(ok).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    ok.click()
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not held:
+        page.wait_for_timeout(100)
+    check(len(held) == 1, "duplicate deployment create while the first request is held")
+    with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == "POST") as received:
+        held[0].continue_()
+    page.unroute(pattern, hold_post)
+    report["evidence"].append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True})
+    return received.value
 
 
 def remember_created(response, report):
@@ -154,8 +187,14 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     expect(deploy).to_be_enabled(timeout=30000)
     page.get_by_role("button").filter(has_text=fixture["template"]["display_title"]).click()
     weights = page.get_by_role("dialog", name=labels["weightSourceModal"]["confirmTitle"])
-    expect(weights.get_by_role("radio", name=re.compile(re.escape(fixture["model"]["name"])))).to_be_checked()
-    button(weights, labels["weightSourceModal"]["useModel"]).click()
+    source = weights.get_by_role("radio", name=re.compile(re.escape(fixture["model"]["name"])))
+    expect(source).to_be_checked()
+    use_model = button(weights, labels["weightSourceModal"]["useModel"])
+    # Weight-source confirm is an antd Modal. Identity, 1440x900 stacking, and the focus trap.
+    assert_dialog_shell(page, weights, source, use_model)
+    report.setdefault("evidence", []).append({
+        "layer": "ui", "dialog_shell": labels["weightSourceModal"]["confirmTitle"], "viewport": "1440x900"})
+    use_model.click()
     page.get_by_text(labels["workbench"]["node"]["manual"], exact=True).click()
     wizard.select(page, page.get_by_text(labels["workbench"]["node"]["selectNodeAndGpu"], exact=True)
         .locator("..").locator("..").get_by_role("combobox"), fixture["node"]["name"] + " · 1 GPU")
@@ -172,9 +211,8 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     report["last_step"] = "overrides-draft-configured"
     invalid = "x" * 257
     name.fill(invalid)
-    with page.expect_response(lambda r: urlsplit(r.url).path == containers.DEPLOYMENTS and r.request.method == "POST") as rejected:
-        deploy.click()
-    report["rejection"] = {"status": rejected.value.status, "body": rejected.value.json()}
+    rejected = hold_deploy_create(page, report)
+    report["rejection"] = {"status": rejected.status, "body": rejected.json()}
     detail = "must contain valid text without control characters and at most 256 characters"
     wizard.assert_json(report["rejection"], {"status": 400, "body": {
         "code": "FIELD_INVALID", "error": "name " + detail,
@@ -236,15 +274,39 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     stored = fixture_tools.stored_overrides(server, dep_id)
     wizard.assert_json(stored, fixture_tools.expected_overrides(fixture), "refreshed raw container overrides")
     assert_resolved(refreshed, fixture)
-    delete = drawer.get_by_role("button", name=re.compile(r"\s*".join(re.escape(c) for c in listings["delete"]["button"]) + "$"))
-    delete.click()
-    confirm = page.get_by_role("dialog", name=listings["delete"]["title"].replace("{{name}}", fixture["name"]), exact=True)
-    expect(confirm.get_by_text(listings["delete"]["title"].replace("{{name}}", fixture["name"]), exact=True)).to_be_visible()
-    wizard.assert_json(requests, expected_requests(fixture), "unexpected mutation before cancel")
-    button(confirm, listings["delete"]["cancel"]).click()
-    expect(confirm).not_to_be_visible()
-    wizard.assert_json(requests, expected_requests(fixture), "cancel emitted mutation")
-    delete.click()
+    parent = page.get_by_role("dialog", name=fixture["name"], exact=True)
+    expect(parent).to_be_visible()
+    delete_title = listings["delete"]["title"].replace("{{name}}", fixture["name"])
+    # The header Delete button includes the icon's accessible name.
+    remove = parent.locator(".ant-drawer-extra").get_by_role(
+        "button", name=listings["delete"]["button"])
+    dep_path = containers.DEPLOYMENTS + f"/{dep_id}"
+
+    def open_delete():
+        remove.click()
+        dialog = page.get_by_role("dialog", name=delete_title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    before_delete = len(requests)
+    dialog = assert_nested_dismissals(
+        open_delete(), parent, open_delete,
+        [("cancel", cancel_button(listings["delete"]["cancel"])),
+         ("escape", escape), ("close", close_button), ("mask", mask)],
+        lambda: len(requests), remove)
+    cancel_button(listings["delete"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(parent).to_be_visible()
+    check(len(requests) == before_delete, "delete dialog dismissal removed the deployment")
+    stayed = page.request.get(server.base + dep_path)
+    check(stayed.status == 200 and stayed.json().get("name") == fixture["name"],
+          "delete dialog dismissal changed the stored deployment")
+    report["evidence"].append({
+        "layer": "ui", "delete_dialog": delete_title, "parent": fixture["name"],
+        "dismissals": ["cancel", "escape", "close", "mask"],
+        "focus_returned": True, "delete_requests": 0, "stored_name": fixture["name"]})
+    confirm = page.get_by_role("dialog", name=delete_title, exact=True)
+    remove.click()
     expect(confirm.get_by_text(listings["delete"]["description"], exact=True)).to_be_visible()
     with page.expect_response(lambda r: urlsplit(r.url).path == containers.DEPLOYMENTS + f"/{dep_id}" and r.request.method == "DELETE") as removed:
         button(confirm, listings["delete"]["button"]).click()

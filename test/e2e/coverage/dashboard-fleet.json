@@ -54,6 +54,7 @@
     }
   ],
   "checklist_items": {
+    "1.1": "The overview inventories the fleet counts and the label-key control. Total compute nodes is 3, online compute nodes is 0, and managed GPUs is 0. Those three statistics have no unit suffix, and the page has no spinbutton. The localized platform-operating-normally sentence is visible. With zero offline nodes, the offline-nodes sentence is one green tag and it is not a required field. The label-key combobox is named by the localized group-by sentence, is not marked required, has no unit, and shows team. Its options are team and rack. Choosing rack sends GET /api/v1/dashboard/summary?label_key=rack and the response is 200. The independent GET without a label key stores label_key team, label keys team and rack, node counts total 3, online 0, offline 0, and connecting 3, and groups team=alpha with 2 nodes and team=beta with 1 node. The independent GET with label_key=rack stores the unlabeled group with 1 node and rack=r1 with 2 nodes. Reloading the overview shows team again, so the chosen key is not persisted.",
     "1.14": "Refresh keeps the fleet counts and default grouping",
     "5.3": "N/A: the label-key Select has no search input (no showSearch); the option is chosen from the visible list",
     "10.11": "A2+B1 grouping: per-group node counts, exact group sets, totals and key-switch consistency in the UI and summary",

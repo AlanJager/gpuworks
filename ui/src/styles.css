@@ -520,10 +520,13 @@ button, input, textarea, select { letter-spacing: 0; }
 }
 .ant-modal-mask { background: rgba(24, 26, 29, .3) !important; }
 .ant-modal-content { display: flex; max-height: 80vh; flex-direction: column; padding: 0 !important; overflow: hidden; }
-.ant-modal-header { height: 48px; flex: none; margin: 0 !important; padding: 12px 24px !important; border-bottom: 1px solid #dbdde0 !important; }
-.ant-modal-title { color: #181a1d !important; font-size: 16px !important; font-weight: 400 !important; }
+/* A fixed 48px header painted a wrapped title over the body. The content's
+   80vh cap and the body's flex shrink replace the old body max-height, which
+   assumed this header stayed 48px. */
+.ant-modal-header { min-height: 48px; height: auto; flex: none; margin: 0 !important; padding: 12px 24px !important; border-bottom: 1px solid #dbdde0 !important; }
+.ant-modal-title { color: #181a1d !important; font-size: 16px !important; font-weight: 400 !important; line-height: 24px !important; }
 .ant-modal-close { top: 8px !important; right: 12px !important; border-radius: var(--radius-sm) !important; }
-.ant-modal-body { min-height: 0; max-height: calc(80vh - 108px); flex: 1 1 auto; padding: 24px 24px 40px !important; overflow: auto; overscroll-behavior: contain; }
+.ant-modal-body { min-height: 0; flex: 1 1 auto; padding: 24px 24px 40px !important; overflow: auto; overscroll-behavior: contain; }
 .ant-modal-footer { min-height: 60px; flex: none; margin: 0 !important; padding: 14px 24px !important; border-top: 1px solid #dbdde0 !important; }
 
 .provider-config-modal .ant-modal-body { padding: 20px 24px 28px !important; }

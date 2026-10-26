@@ -28,8 +28,10 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
+from dialog_checks import assert_drawer_identity, assert_yaml_drawer_focus
 from platform_token_read_revoke import button, check, modal_geometry
 from template_catalog_fixture import catalog_package
+from template_spec_delete_blocks import exercise_spec_delete_blocks
 
 API = "/api/v1/inference-templates"
 CASES = {
@@ -144,6 +146,10 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
     dialog, editor = editor_ready(page, t["flat"]["editYAML"])
     save = action(dialog, t["flat"]["save"])
     modal_geometry(dialog, save)
+    report["evidence"].append(assert_drawer_identity(
+        page, dialog, t["flat"]["editYAML"], editor,
+        page.get_by_role("dialog", name=t["editor"]["discardTitle"], exact=True)))
+    report["evidence"].append(assert_yaml_drawer_focus(page, dialog, save, editor))
     expect(editor).to_have_text(original_yaml, use_inner_text=True)
     expect(action(dialog, t["editor"]["reset"])).to_be_disabled()
     save.press("Tab")
@@ -182,15 +188,35 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
     updated = baseline_yaml.replace('- "4096"', '- "2048"')
     replace_editor(editor, updated)
     expect(action(dialog, t["editor"]["reset"])).to_be_enabled()
-    page.keyboard.press("Escape")
-    discard = page.get_by_role("dialog", name=t["editor"]["discardTitle"], exact=True)
-    expect(discard).to_be_in_viewport(ratio=1)
+    def open_discard():
+        page.keyboard.press("Escape")
+        opened = page.get_by_role("dialog", name=t["editor"]["discardTitle"], exact=True)
+        expect(opened).to_be_visible()
+        return opened
+
+    def escape_discard(child):
+        # Confirm has no close icon. Focus its cancel control so Escape hits
+        # the child dialog and not the YAML editor behind it.
+        action(child, t["editor"]["keepEditing"]).focus()
+        child.page.keyboard.press("Escape")
+
+    from dialog_checks import assert_nested_dismissals
+    discard = assert_nested_dismissals(
+        open_discard(), dialog, open_discard,
+        [("keep editing", lambda child: action(child, t["editor"]["keepEditing"]).click()),
+         ("escape", escape_discard)],
+        lambda: len(mutations))
     action(discard, t["editor"]["keepEditing"]).click()
     expect(discard).not_to_be_visible()
+    expect(dialog).to_be_visible()
     expect(editor).to_have_text(updated, use_inner_text=True)
     check(read_yaml(page, server.base, target) == baseline_yaml, "cancel dialog modified persisted YAML")
     expected_before = 1 if case == "clone" else 0
     check(len(mutations) == expected_before, "cancel/keep editing sent mutation")
+    report["evidence"].append({
+        "layer": "ui", "nested_dialog": t["editor"]["discardTitle"],
+        "parent": t["flat"]["editYAML"], "dismissals": ["keep editing", "escape"],
+        "draft_kept": True})
 
     if case != "clone":
         report["evidence_layer"] = "error recovery"
@@ -219,6 +245,53 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
         page.screenshot(path=artifacts.directory / "validation-error.png")
         report["evidence"].append({"layer": "recovery", "status": 400, "case": case, "draft_retained": True, "baseline_unchanged": True})
         replace_editor(editor, updated)
+
+    # Hold the corrected import. Save shows the loading state, a second click
+    # sends nothing, and a 502 keeps the draft and the stored YAML.
+    report["evidence_layer"] = "inflight save"
+    reason = "upstream fixture is unreachable"
+    held = []
+    import_path = API + "/import"
+
+    def hold_import(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != import_path:
+            route.continue_()
+            return
+        held.append(route)
+
+    import_route = re.compile(re.escape(import_path) + r"(?:\?|$)")
+    page.route(import_route, hold_import)
+    save.click()
+    report["last_step"] = "yaml-inflight-loading"
+    expect(save).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    save.click()
+    check(len(held) == 1, "duplicate YAML import while the first request is held")
+    check(parse_qs(urlsplit(held[0].request.url).query) == {"overwrite": ["true"]}, "held import query differs")
+    post = held[0].request.post_data
+    if not post:
+        check(imports, "held import was not observed on the network")
+        post = cdp.send("Network.getRequestPostData", {"requestId": imports[-1]})["postData"]
+    check(post == updated, "held import body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == import_path and r.request.method == "POST") as failed_save:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute(import_route, hold_import)
+    check(failed_save.value.status == 502, "forced YAML import failure did not surface")
+    expect(dialog).to_be_visible()
+    expect(editor).to_have_text(updated, use_inner_text=True)
+    alert = dialog.get_by_role("alert")
+    expect(alert).to_contain_text(t["editor"]["saveFailed"])
+    expect(alert).to_contain_text(reason)
+    check(read_model(page, server.base, target) == baseline, "refused import changed the model")
+    check(read_yaml(page, server.base, target) == baseline_yaml, "refused import changed YAML")
+    check(any(item.get("path") == import_path and item.get("status") == 502 for item in bad), "502 was not recorded")
+    check(any("502" in text for text in console_errors), "502 console line absent: " + str(console_errors))
+    bad[:] = [item for item in bad if item.get("status") != 502]
+    console_errors[:] = [text for text in console_errors if "502" not in text]
+    expect(save).to_be_enabled()
+    expect(save).not_to_have_class(re.compile(r"\bant-btn-loading\b"))
+    report["last_step"] = "yaml-inflight-rejected"
+    report["evidence"].append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True,
+                               "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
 
     report["evidence_layer"] = "save request"
     modal_geometry(dialog, save)
@@ -259,20 +332,30 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
     page.screenshot(path=artifacts.directory / "saved-detail.png")
 
     report["evidence_layer"] = "cleanup"
+    blocks_done = False
     for owned in list(reversed(report["owned_models"])):
         page.goto(server.base + "/inference-templates/" + owned)
         delete = page.get_by_role("button", name=t["editor"]["deleteSpec"].replace("{{name}}", spec_name), exact=True)
-        delete.click()
-        confirm = page.get_by_role("tooltip")
-        expect(confirm).to_contain_text(t["editor"]["deleteSpecTitle"])
-        expect(confirm).to_contain_text(spec_name)
-        expect(confirm).to_be_in_viewport(ratio=1)
+
+        def open_confirm():
+            delete.click()
+            opened = page.get_by_role("tooltip")
+            expect(opened).to_contain_text(t["editor"]["deleteSpecTitle"])
+            expect(opened).to_contain_text(t["editor"]["deleteSpecBody"].replace("{{name}}", spec_name))
+            expect(opened).to_be_in_viewport(ratio=1)
+            return opened
+
+        confirm = open_confirm()
         before = len(mutations)
         button(confirm, t["flat"]["cancel"]).click()
         expect(confirm).not_to_be_visible()
         check(len(mutations) == before, "cancel delete sent mutation")
         check(read_model(page, server.base, owned)["model_id"] == owned, "cancel delete lost model")
-        delete.click()
+        if not blocks_done:
+            report["evidence"].append(exercise_spec_delete_blocks(
+                page, server, t["editor"], spec_name, lambda: read_model(page, server.base, owned), open_confirm))
+            blocks_done = True
+        confirm = open_confirm()
         with page.expect_response(lambda r: urlsplit(r.url).path == API + "/spec" and r.request.method == "DELETE") as deleted:
             button(confirm, t["editor"]["deleteSpecOk"]).click()
         response = deleted.value
@@ -284,13 +367,15 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
         page.get_by_placeholder(t["flat"]["search"], exact=True).fill(owned)
         expect(page.get_by_text(t["flat"]["empty"], exact=True)).to_be_visible()
         report["owned_models"].remove(owned)
-    expected_bad = [] if case == "clone" else [{"path": API + "/import", "status": 400}]
+    refused = [{"path": API + "/spec", "status": 409}, {"path": API + "/spec", "status": 409}]
+    expected_bad = refused if case == "clone" else [{"path": API + "/import", "status": 400}] + refused
     check(bad == expected_bad and not errors, "unexpected browser request failure or exception")
+    console_errors[:] = [text for text in console_errors if "409" not in text]
     check(not console_errors if case == "clone" else len(console_errors) == 1 and "400" in console_errors[0], "unexpected console errors")
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "horizontal overflow")
     expected_mutations = ([{"method": "POST", "path": API + "/clone"}] if case == "clone" else [])
-    expected_mutations += [{"method": "POST", "path": API + "/import"}] * (1 if case == "clone" else 2)
-    expected_mutations += [{"method": "DELETE", "path": API + "/spec"}] * (2 if case == "clone" else 1)
+    expected_mutations += [{"method": "POST", "path": API + "/import"}] * (2 if case == "clone" else 3)
+    expected_mutations += [{"method": "DELETE", "path": API + "/spec"}] * (4 if case == "clone" else 3)
     check(mutations == expected_mutations, "duplicate/unexpected mutation")
     report["evidence"].append({"layer": "cleanup", "owned_models": [], "ui_delete": True, "independent_404": True, "mutations": mutations})
 
@@ -305,6 +390,7 @@ def run_case(args, case):
               "source_sha256": {str(path.relative_to(ROOT)): digest(path) for path in [
                   ROOT / "test/e2e/template_edit.py", manifest, ROOT / "test/e2e/local_browser_fixture.py",
                   ROOT / "test/e2e/platform_token_read_revoke.py", ROOT / "test/e2e/template_catalog_fixture.py",
+                  ROOT / "test/e2e/template_spec_delete_blocks.py",
                   ROOT / "ui/src/pages/yamlEditor.tsx", ROOT / "ui/src/pages/InferenceTemplateDetailPage.tsx",
                   ROOT / "ui/src/i18n/locales/en/inferenceTemplates.json", ROOT / "ui/src/i18n/locales/zh/inferenceTemplates.json"]},
               "binary_sha256": digest(ROOT / "bin/gpuworks"), "viewport": {"width": 1440, "height": 900},

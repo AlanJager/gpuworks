@@ -235,6 +235,44 @@ class AcquisitionOwnership(unittest.TestCase):
                 self.assertEqual(report['cleanup_steps'][4]['ok'], not raises)
                 self.assertEqual(report['cleanup_steps'][5]['ok'], not raises)
 
+    def test_owned_storage_delete_returns_default_to_seeded_row_first(self):
+        report = {'remaining_resources': [], 'cleanup_steps': [],
+                  'owned_acquisition_storages': [
+                      {'name': 'store-a', 'id': 2}, {'name': 'store-b', 'id': 3}]}
+        rows = [{'id': 1, 'name': 'default', 'is_default': False},
+                {'id': 2, 'name': 'store-a', 'is_default': True},
+                {'id': 3, 'name': 'store-b', 'is_default': False}]
+        calls = []
+
+        def request(base, method, path, token=None, body=None):
+            calls.append((method, path, body))
+            if method == 'GET' and path == fixture.STORAGES:
+                return 200, {'items': rows}
+            if method == 'PATCH' and path == fixture.STORAGES + '/1':
+                self.assertEqual(body, {'is_default': True})
+                self.assertNotIn(('DELETE', fixture.STORAGES + '/2', None), calls)
+                rows[0]['is_default'] = True
+                rows[1]['is_default'] = False
+                return 200, {'id': 1, 'is_default': True}
+            if method == 'DELETE' and path in (fixture.STORAGES + '/2', fixture.STORAGES + '/3'):
+                self.assertTrue(rows[0]['is_default'])
+                self.assertFalse(rows[1]['is_default'])
+                return 204, {}
+            if method == 'GET' and path in (fixture.STORAGES + '/2', fixture.STORAGES + '/3'):
+                return 404, {}
+            self.fail(f'unexpected {method} {path}')
+
+        with patch.object(fixture, 'http', side_effect=request), \
+             patch.object(fixture.containers, 'cleanup', return_value=True):
+            result = fixture.cleanup(SimpleNamespace(base='http://local'), 'admin', report, {})
+        self.assertTrue(result)
+        self.assertEqual(report['remaining_resources'], [])
+        self.assertEqual([step['stage'] for step in report['cleanup_steps']
+                          if step['stage'].startswith('acquisition-storage')],
+                         ['acquisition-storage-default', 'acquisition-storage', 'acquisition-storage'])
+        self.assertTrue(all(step['ok'] for step in report['cleanup_steps']
+                            if step['stage'].startswith('acquisition-storage')))
+
     def test_unknown_case_rejected_before_external_setup(self):
         with patch.object(fixture, 'ModelDownload') as source:
             with self.assertRaisesRegex(AssertionError, 'unknown acquisition'):

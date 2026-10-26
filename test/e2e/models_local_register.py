@@ -22,10 +22,12 @@ import subprocess
 import sys
 import time
 import traceback
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
+from dialog_checks import (
+    assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
 from platform_token_read_revoke import button, check
 
@@ -65,8 +67,40 @@ def wait_online(base, token, node_uuid, agent):
 # Mainline: 独立 server/SQLite + 真实本机 agent → UI 登记模型并选择本地路径
 #           → 预览经 agent 读取 config/权重大小 → 确认模型 ID 并登记
 #           → 刷新/独立 GET 回读 → 删除模型、停止 agent、强制删除节点
+def hold_local_register(page, ok_button, report, body):
+    # setSubmitting runs immediately before the local register POST, so the
+    # loading class is on while that request is held.
+    held = []
+    pattern = re.compile(re.escape(LOCAL_REGISTER) + r"(?:\?|$)")
+
+    def hold_post(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != LOCAL_REGISTER:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route(pattern, hold_post)
+    ok_button.click()
+    report["last_step"] = "local-register-inflight"
+    expect(ok_button).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    ok_button.click()
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not held:
+        page.wait_for_timeout(100)
+    check(len(held) == 1, "duplicate local registration while the first request is held")
+    sent = held[0].request.post_data_json
+    check(all(sent.get(key) == body[key] for key in body), "held local registration body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == LOCAL_REGISTER and r.request.method == "POST") as response:
+        held[0].fulfill(status=502, content_type="application/json",
+                        body=json.dumps({"message": "upstream fixture is unreachable"}))
+    page.unroute(pattern, hold_post)
+    check(response.value.status == 502, "local registration failure was not a 502")
+    report["evidence"].append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True,
+        "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
+
+
 def test_models_local_register(page, context, server, artifacts, report, locale,
-                               node, agent, agent_log):
+                               node, agent, agent_log, token):
     models, auth = strings(locale)
     source_id = f"e2e/{report['run_id']}-fake"
     display_name = f"e2e-{report['run_id']}-local"
@@ -90,8 +124,15 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
             bad_responses.append({"method": response.request.method, "path": path,
                                   "status": response.status})
 
+    register_writes = []
+
+    def request_seen(request):
+        if request.method == "POST" and urlsplit(request.url).path in {PREVIEW, LOCAL_REGISTER}:
+            register_writes.append(urlsplit(request.url).path)
+
     page.on("console", console_seen)
     page.on("response", response_seen)
+    page.on("request", request_seen)
 
     page.goto(server.base + "/models")
     page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
@@ -106,16 +147,80 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
     authenticated = True
     report["preflight"] = "PASS"
     report["last_step"] = "models-page-loaded"
+    heading = page.get_by_role("heading", name=models["page"]["title"], exact=True)
+    register = action(page, models["action"]["register"])
+    before_models = page.request.get(server.base + MODELS)
+    check(before_models.status == 200, f"models GET before dismissals HTTP {before_models.status}")
+    baseline_models = before_models.json()
 
-    action(page, models["action"]["register"]).click()
-    modal = page.get_by_role("dialog")
-    expect(modal).to_be_visible()
+    def open_register():
+        register.click()
+        opened = page.get_by_role("dialog", name=models["action"]["register"], exact=True)
+        expect(opened).to_be_visible()
+        return opened
+
+    # Cancel, close, Escape and the mask each apply. The register button stays mounted.
+    modal = assert_nested_dismissals(
+        open_register(), heading, open_register,
+        [("cancel", cancel_button(models["action"]["cancel"])),
+         ("escape", escape), ("close", close_button), ("mask", mask)],
+        lambda: len(register_writes), register)
+    after_models = page.request.get(server.base + MODELS)
+    check(after_models.status == 200 and after_models.json() == baseline_models,
+          "register dialog dismissal changed stored models")
+    check(register_writes == [], "register dialog dismissal sent a preview or registration write")
+    report["evidence"].append({
+        "layer": "ui", "register_dialog": models["action"]["register"],
+        "dismissals": ["cancel", "escape", "close", "mask"],
+        "focus_returned": True, "register_writes": 0})
+    report["last_step"] = "register-dialog-dismissals"
     modal.get_by_label(models["column"]["source"], exact=True).click()
     local_option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
         has_text=re.compile(r"^" + re.escape(models["register"]["localPath"]) + r"$"))
     expect(local_option).to_be_visible()
     local_option.click()
-    modal.get_by_role("combobox", name=models["detail"]["node"], exact=True).click()
+    report["last_step"] = "local-node-show-search"
+    # The combobox is the search input inside the select. Ancestor walk reaches
+    # the root that carries ant-select-show-search. A has= filter built from the
+    # dialog-scoped combobox looks for that dialog inside .ant-select.
+    select_root = "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' ant-select ')][1]"
+    node_box = modal.get_by_role("combobox", name=models["detail"]["node"], exact=True)
+    node_select = node_box.locator(select_root)
+    expect(node_select).to_have_count(1, timeout=12000)
+    expect(node_select).to_have_class(re.compile(r"\bant-select-show-search\b"), timeout=12000)
+    expect(node_select.locator(".ant-select-selection-placeholder")).to_have_text(
+        models["register"]["selectOnlineNode"], timeout=12000)
+    expect(node_select.locator(".ant-select-selection-item")).to_have_count(0)
+    expect(modal.locator("label.ant-form-item-required").filter(
+        has_text=re.compile("^" + re.escape(models["detail"]["node"]) + "$"))).to_have_count(1, timeout=12000)
+    # The source select is not searchable, so its selected label is the only
+    # selection item in the dialog. The search input's ancestor does not expose it.
+    selected = modal.locator(".ant-select-selection-item")
+    expect(selected).to_have_count(1, timeout=12000)
+    expect(selected).to_have_text(models["register"]["localPath"], timeout=12000)
+    expect(modal.locator("label.ant-form-item-required").filter(
+        has_text=re.compile("^" + re.escape(models["column"]["source"]) + "$"))).to_have_count(1, timeout=12000)
+    directory_field = modal.get_by_label(models["register"]["modelDirectory"], exact=True)
+    expect(directory_field).to_have_value("")
+    expect(directory_field).to_have_attribute("placeholder", "/models/Qwen/Qwen3-8B", timeout=12000)
+    check(directory_field.get_attribute("maxlength") is None, "model directory has a maximum length")
+    expect(modal.locator("label.ant-form-item-required").filter(
+        has_text=re.compile("^" + re.escape(models["register"]["modelDirectory"]) + "$"))).to_have_count(1, timeout=12000)
+    expect(modal.get_by_text(models["register"]["modelDirectoryHelp"], exact=True)).to_be_visible()
+    name_box = modal.get_by_label(models["column"]["name"], exact=True)
+    expect(name_box).to_have_value("")
+    expect(name_box).to_have_attribute("placeholder", models["register"]["displayNamePlaceholder"], timeout=12000)
+    expect(modal.locator("label.ant-form-item-required").filter(
+        has_text=re.compile("^" + re.escape(models["column"]["name"]) + "$"))).to_have_count(0)
+    expect(modal.get_by_role("textbox")).to_have_count(2)
+    expect(modal.get_by_role("combobox")).to_have_count(2)
+    expect(modal.get_by_label(models["register"]["storage"], exact=True)).to_have_count(0)
+    expect(modal.get_by_label(models["register"]["modelID"], exact=True)).to_have_count(0)
+    expect(modal.get_by_label(models["register"]["directoryURL"], exact=True)).to_have_count(0)
+    expect(modal.get_by_label(models["detail"]["revision"], exact=True)).to_have_count(0)
+    expect(modal.get_by_role("spinbutton")).to_have_count(0)
+    report["local_node_show_search"] = True
+    node_box.click()
     node_option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
         has_text=re.compile("^" + re.escape(node["name"]) + r"$"))
     expect(node_option).to_be_visible()
@@ -138,10 +243,40 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
     check(preview["arch"] == "Qwen2ForCausalLM" and preview["weight_bytes"] == expected_bytes,
           f"preview read differs: {preview}")
     expect(modal.get_by_text(models["register"]["localParsed"], exact=True)).to_be_visible()
+    report["last_step"] = "local-preview-alert"
+    preview_alert = modal.locator(".ant-alert-success")
+    expect(preview_alert).to_have_count(1, timeout=12000)
+    expect(preview_alert).to_contain_text(models["register"]["localParsed"], timeout=12000)
+    report["local_preview_alert"] = True
     report["last_step"] = "preview-read"
+    expect(modal.get_by_label(models["column"]["name"], exact=True)).to_have_value(
+        MODEL_DIR.name, timeout=12000)
 
     modal.get_by_label(models["register"]["modelID"], exact=True).fill(source_id)
     modal.get_by_label(models["column"]["name"], exact=True).fill(display_name)
+    directory = modal.get_by_label(models["register"]["modelDirectory"], exact=True)
+    # Register confirm is an antd Modal. Identity, 1440x900 stacking, and the focus trap.
+    assert_dialog_shell(page, modal, directory, ok_button)
+    report["evidence"].append({
+        "layer": "ui", "dialog_shell": models["action"]["register"], "viewport": "1440x900"})
+    hold_local_register(page, ok_button, report, {
+        "node_uuid": node["uuid"], "path": str(MODEL_DIR),
+        "source_id": source_id, "name": display_name})
+    expect(modal).to_be_visible()
+    expect(modal.get_by_label(models["register"]["modelID"], exact=True)).to_have_value(source_id)
+    expect(modal.get_by_label(models["column"]["name"], exact=True)).to_have_value(display_name)
+    expect(modal.get_by_label(models["register"]["modelDirectory"], exact=True)).to_have_value(str(MODEL_DIR))
+    expect(page.locator(".ant-message")).to_contain_text(models["register"]["failed"].split("{{detail}}")[0].strip())
+    expect(page.locator(".ant-message")).to_contain_text("upstream fixture is unreachable")
+    listing = page.request.get(server.base + MODELS + "?source_id=" + quote(source_id, safe=""))
+    check(listing.status == 200 and listing.json()["items"] == [], "failed local registration stored a model")
+    check(bad_responses == [{"method": "POST", "path": LOCAL_REGISTER, "status": 502}],
+          "unexpected browser HTTP errors during the held registration: " + str(bad_responses))
+    check(console_errors and all("502" in text for text in console_errors),
+          "unexpected console errors during the held registration: " + str(console_errors))
+    bad_responses.clear()
+    console_errors.clear()
+    expect(ok_button).not_to_have_class(re.compile(r"\bant-btn-loading\b"))
     with page.expect_response(lambda r: urlsplit(r.url).path == LOCAL_REGISTER
                               and r.request.method == "POST") as registered:
         ok_button.click()
@@ -200,12 +335,87 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
     files.locator(".ant-modal-close").click()
     expect(files).not_to_be_visible()
     report["last_step"] = "model-files-visible"
+    page.get_by_role("img", name=models["view"]["list"], exact=True).click()
+    expect(page.get_by_role("radio", name=models["view"]["list"], exact=True)).to_be_checked()
 
-    deleted = page.request.delete(server.base + MODELS + f"/{model['id']}")
-    check(deleted.status in (200, 204), f"model delete HTTP {deleted.status}")
+    before_bad, before_console = len(bad_responses), len(console_errors)
+    from model_hub_registration_browser import delete_ui
+    delete_ui(page, server, models, {"name": display_name, "repo": source_id}, model["id"], token, report, locale)
+    path = MODELS + f"/{model['id']}"
+    refused = bad_responses[before_bad:]
+    check(refused == [{"method": "DELETE", "path": path, "status": 409},
+                      {"method": "DELETE", "path": path, "status": 409}],
+          f"model delete refusals {refused}")
+    echoed = console_errors[before_console:]
+    check(echoed and all("409" in text for text in echoed), f"model delete console {echoed}")
+    del bad_responses[before_bad:]
+    del console_errors[before_console:]
     report["owned_model_id"] = None
-    check(page.request.get(server.base + MODELS + f"/{model['id']}").status == 404,
-          "the deleted model is still readable")
+
+    omit_id = f"e2e/{report['run_id']}-omit"
+    report["last_step"] = "omit-name-register"
+    register.click()
+    omit_modal = page.get_by_role("dialog", name=models["action"]["register"], exact=True)
+    expect(omit_modal).to_be_visible()
+    omit_modal.get_by_label(models["column"]["source"], exact=True).click()
+    omit_local = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+        has_text=re.compile(r"^" + re.escape(models["register"]["localPath"]) + r"$"))
+    expect(omit_local).to_be_visible()
+    omit_local.click()
+    omit_node = omit_modal.get_by_role("combobox", name=models["detail"]["node"], exact=True)
+    omit_node.click()
+    omit_option = page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter(
+        has_text=re.compile("^" + re.escape(node["name"]) + r"$"))
+    expect(omit_option).to_be_visible()
+    omit_option.click()
+    omit_modal.get_by_label(models["register"]["modelDirectory"], exact=True).fill(str(MODEL_DIR))
+    omit_ok = omit_modal.locator(".ant-modal-footer .ant-btn-primary")
+    with page.expect_response(lambda r: urlsplit(r.url).path == PREVIEW
+                              and r.request.method == "POST") as omit_preview:
+        omit_ok.click()
+    check(omit_preview.value.status == 200, f"omit preview HTTP {omit_preview.value.status}")
+    expect(omit_modal.get_by_text(models["register"]["localParsed"], exact=True)).to_be_visible()
+    expect(omit_modal.locator(".ant-alert-success")).to_have_count(1, timeout=12000)
+    omit_name = omit_modal.get_by_label(models["column"]["name"], exact=True)
+    expect(omit_name).to_have_value(MODEL_DIR.name, timeout=12000)
+    omit_name.fill("")
+    expect(omit_name).to_have_value("")
+    omit_modal.get_by_label(models["register"]["modelID"], exact=True).fill(omit_id)
+    expect(omit_name).to_have_value("")
+    with page.expect_response(lambda r: urlsplit(r.url).path == LOCAL_REGISTER
+                              and r.request.method == "POST") as omitted:
+        omit_ok.click()
+    check(omitted.value.status == 201, f"omit register HTTP {omitted.value.status}")
+    omit_body = omitted.value.request.post_data_json
+    check(omit_body["node_uuid"] == node["uuid"]
+          and omit_body["path"] == str(MODEL_DIR)
+          and omit_body["source_id"] == omit_id
+          and omit_body["name"] == "",
+          "omit register body differs")
+    omit_model = omitted.value.json()
+    report["owned_model_id"] = omit_model["id"]
+    expect(page.get_by_text(models["register"]["registered"], exact=True).first).to_be_visible()
+    expect(page.get_by_text(MODEL_DIR.name, exact=True).first).to_be_visible()
+    omit_get = page.request.get(server.base + MODELS + f"/{omit_model['id']}")
+    check(omit_get.status == 200, f"omit model GET HTTP {omit_get.status}")
+    omit_saved = omit_get.json()
+    check(omit_saved["source"] == "local"
+          and omit_saved["source_id"] == omit_id
+          and omit_saved["name"] == MODEL_DIR.name
+          and omit_saved["name"] != omit_id
+          and omit_saved["arch"] == "Qwen2ForCausalLM",
+          "omitted display name was not stored as the directory basename")
+    page.reload()
+    expect(page.get_by_role("heading", name=models["page"]["title"], exact=True)).to_be_visible()
+    expect(page.get_by_text(MODEL_DIR.name, exact=True).first).to_be_visible()
+    omit_deleted = page.request.delete(server.base + MODELS + f"/{omit_model['id']}")
+    check(omit_deleted.status == 204, f"omit model delete HTTP {omit_deleted.status}")
+    check(page.request.get(server.base + MODELS + f"/{omit_model['id']}").status == 404,
+          "the omitted-name model is still readable")
+    report["owned_model_id"] = None
+    report["omitted_name"] = {"source_id": omit_id, "stored_name": MODEL_DIR.name,
+                              "request_name_empty": True}
+    report["last_step"] = "omit-name-stored"
 
     agent.terminate()
     try:
@@ -237,9 +447,11 @@ def test_models_local_register(page, context, server, artifacts, report, locale,
          "register": {"path": LOCAL_REGISTER, "status": 201, "body": register_body}},
         {"layer": "persistence", "refresh": display_name,
          "independent_get": {"source": saved["source"], "source_id": saved["source_id"],
-                             "arch": saved["arch"],
+                             "name": saved["name"], "arch": saved["arch"],
                              "weight_bytes": round(saved["weight_gib"] * 1024 ** 3),
-                             "node_presence": presence}},
+                             "node_presence": presence},
+         "omitted_name": {"source_id": omit_id, "request_name": "",
+                          "stored_name": omit_saved["name"]}},
         {"layer": "execution", "agent_pid": agent.pid,
          "agent_read_path": preview["path"], "arch": preview["arch"],
          "weight_bytes": preview["weight_bytes"],
@@ -344,7 +556,7 @@ def main():
             page.set_default_timeout(10000)
             try:
                 test_models_local_register(page, context, server, artifacts, report,
-                                           args.locale, node, agent, agent_log)
+                                           args.locale, node, agent, agent_log, admin_token)
                 layers = {item["layer"] for item in report["evidence"]}
                 check(set(manifest["required_evidence"]) <= layers,
                       "required evidence is missing")

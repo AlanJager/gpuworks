@@ -119,8 +119,8 @@
     },
     {
       "item": "1.9",
-      "status": "MISSING",
-      "assertion": "MISSING: **防重复提交**：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"
+      "status": "covered",
+      "assertion": "While the download POST is held the confirm button stays loading and a second click sends no further download. That held request is the only download POST"
     },
     {
       "item": "1.10",
@@ -129,8 +129,8 @@
     },
     {
       "item": "1.11",
-      "status": "MISSING",
-      "assertion": "MISSING: **取消退出**：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"
+      "status": "covered",
+      "assertion": "Cancel, the close button and Escape each close the download dialog immediately, with no unsaved-changes prompt and no download POST. The independent model GET keeps no file row for that storage"
     },
     {
       "item": "1.12",
@@ -294,23 +294,23 @@
     },
     {
       "item": "12.1",
-      "status": "partial",
-      "assertion": "page opens the named DownloadModal and exact model detail"
+      "status": "covered",
+      "assertion": "Download to node on the model row opens one dialog named by the download title, and the node field is the visible business control"
     },
     {
       "item": "12.2",
-      "status": "partial",
-      "assertion": "download modal viewport geometry only; full popup/detail layout matrix missing"
+      "status": "covered",
+      "assertion": "Download dialog at 1440x900: the dialog and footer Download stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"
     },
     {
       "item": "12.3",
-      "status": "MISSING",
-      "assertion": "MISSING: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"
+      "status": "covered",
+      "assertion": "Default focus is inside the download dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"
     },
     {
       "item": "12.4",
-      "status": "MISSING",
-      "assertion": "MISSING: 分别关闭按钮、取消、Esc 及适用的遮罩关闭；焦点返回触发器，取消不产生 mutation。"
+      "status": "covered",
+      "assertion": "Cancel, Escape, the close button and the mask each return focus to the row Download to button and send no download. The independent model GET keeps no file row for that storage"
     },
     {
       "item": "12.5",
@@ -319,13 +319,13 @@
     },
     {
       "item": "12.6",
-      "status": "MISSING",
-      "assertion": "MISSING: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"
+      "status": "covered",
+      "assertion": "While the download is held the confirm button shows the loading state and a second click sends no further POST; the real weight 503 keeps the chosen storage, node and path, shows the 503 reason, and leaves no complete file; the later retry 202 matches the independent file row and the reloaded present detail"
     },
     {
       "item": "12.7",
-      "status": "MISSING",
-      "assertion": "MISSING: 删除确认包含名称及实际影响；引用阻止、允许清理和失败无部分修改分别验证。"
+      "status": "covered",
+      "assertion": "Delete confirmation names the node and says deployments that use these files must be stopped first. An active deployment on that node blocks deletion with 409 MODEL_IN_USE and the file, its bytes, and the deployment stay. A model file whose state is deleting keeps the file on 409 and the bytes stay. After the deployment is removed and the state is present again, delete returns 200, the file row is gone, and the reloaded list is empty."
     },
     {
       "item": "12.8",

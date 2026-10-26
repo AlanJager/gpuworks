@@ -175,13 +175,13 @@
     },
     {
       "item": "1.9",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "covered",
+      "reason": "While the health PUT is held the save button stays loading and a second click sends no further save. That held request is the only health PUT until the later successful saves"
     },
     {
       "item": "1.10",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "covered",
+      "reason": "The real 400 FIELD_INVALID keeps the health drawer and the threshold draft of 6, shows the uncheckable reason, and the independent GET stays at threshold 5. The corrected save of 1 returns 200 and matches the independent GET"
     },
     {
       "item": "1.11",
@@ -280,23 +280,23 @@
     },
     {
       "item": "12.3",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "covered",
+      "reason": "Default focus is the drawer panel. Tab and Shift+Tab cycle the controls inside the drawer. The drawer is aria-modal, so focus does not reach the page"
     },
     {
       "item": "12.4",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "covered",
+      "reason": "Cancel, Escape, the close button and the mask each return focus to the drawer Delete button and send no delete. The independent deployment GET keeps the same name"
     },
     {
       "item": "12.5",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "covered",
+      "reason": "The delete dialog over the deployment detail drawer: Cancel, Escape, close and mask each hide the delete dialog, leave the drawer open, and hide the delete dialog buttons. Reopen uses the Delete deployment dialog"
     },
     {
       "item": "12.6",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "covered",
+      "reason": "While the health save PUT is held the Save button shows the loading state and a second click sends no further health write; the real 400 keeps the threshold draft and shows the invalid value reason, and the stored threshold stays unchanged; the later 200 matches the independent detail GET and the reloaded threshold"
     },
     {
       "item": "12.7",

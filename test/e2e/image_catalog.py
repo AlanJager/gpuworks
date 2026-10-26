@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 from playwright.sync_api import expect
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import check, collection
+from dialog_checks import assert_drawer_shell
 from image_catalog_runner import run
 
 
@@ -68,6 +69,129 @@ def cleanup(page, base, series_id, report):
     report["evidence"].append({"layer": "cleanup", "series_id": series_id, "remaining_owned_series": 0, "remaining_owned_versions": 0})
 
 
+def exercise_register_full(page, server, text, form, report):
+    """Create one custom image with every optional field set, then read it back."""
+    report["last_step"] = "register-full-create"
+    series_name, source = "register-full", "custom"
+    ref = "registry.example/team/register-full:v9.9.9"
+    address = "https://containerimages.example/register-full.tar"
+    button(page, text["page"]["addCustom"]).click()
+    dialog = page.get_by_role("dialog")
+    expect(dialog).to_be_visible()
+    dialog.get_by_label(form["seriesName"], exact=True).fill(series_name)
+    dialog.get_by_label(form["imageRef"], exact=True).fill(ref)
+    options = collection(page.request.get(server.base + "/api/v1/images/engines"))
+    select(dialog.get_by_label(form["engine"], exact=True), next(item["label"] for item in options if item["name"] == "vllm"))
+    dialog.get_by_label(form["engineVersion"], exact=True).fill("9.9.9")
+    select(dialog.get_by_label(form["framework"], exact=True), "CUDA")
+    dialog.get_by_label(form["frameworkVersion"], exact=True).fill("12.8")
+    arch = dialog.get_by_label(form["hostArch"], exact=True)
+    arch.focus()
+    arch.press("ArrowDown")
+    expect(arch).to_have_attribute("aria-expanded", "true")
+    page.get_by_text("amd64", exact=True).filter(visible=True).click()
+    expect(arch).to_have_attribute("aria-expanded", "false")
+    rolling = dialog.get_by_role("switch", name=form["rollingTag"], exact=True)
+    expect(rolling).not_to_be_checked()
+    rolling.click()
+    expect(rolling).to_be_checked()
+    sources = dialog.get_by_label(form["registrySources"], exact=True)
+    sources.click()
+    sources.fill(address)
+    sources.press("Enter")
+    expect(dialog.get_by_text(address, exact=True)).to_be_visible()
+    expected = {"series": [{"name": series_name, "engine": "vllm", "framework": "cuda", "source": source, "versions": [
+        {"engine_version": "9.9.9", "framework_version": "12.8", "arch": "amd64", "image_ref": ref, "source": source,
+         "rolling_tag": True, "registry_sources": [address]}]}]}
+    import_path = "/api/v1/images/import"
+    with page.expect_response(lambda response: urlsplit(response.url).path == import_path and response.request.method == "POST") as imported:
+        button(dialog, form["addImage"]).click()
+    check(imported.value.status == 200, "full import failed")
+    check(imported.value.request.post_data_json == expected, "full import body differs")
+    created = collection(imported.value)
+    check(len(created) == 1, "full import must create one series")
+    series = created[0]
+    check(series["name"] == series_name and series["purpose"] == "inference" and series["enabled"] is True
+          and series["engine"] == "vllm" and series["framework"] == "cuda" and series["source"] == source
+          and series["present_nodes"] == 0, "full response differs")
+    detail = read_detail(page, server.base, series["id"])
+    saved = detail["versions"][0]
+    check(detail["name"] == series_name and detail["purpose"] == "inference" and detail["enabled"] is True
+          and detail["present_nodes"] == 0 and saved["image_ref"] == ref and saved["engine_version"] == "9.9.9"
+          and saved["framework_version"] == "12.8" and saved["arch"] == "amd64" and saved["rolling_tag"] is True
+          and saved.get("registry_sources") == [address], "full detail differs")
+    listed = collection(page.request.get(server.base + "/api/v1/images?source=" + source))
+    check(any(row["id"] == series["id"] and row["name"] == series_name for row in listed), "full series missing from the list")
+    expect(button(page, series_name)).to_be_visible()
+    button(page, series_name).click()
+    opened = page.get_by_role("dialog", name=f"{series_name} vllm · cuda", exact=True)
+    expect(opened.get_by_role("link", name=ref, exact=True)).to_be_visible()
+    page.reload()
+    page.get_by_role("tab", name=text["page"]["tab"][source], exact=True).click()
+    expect(button(page, series_name)).to_be_visible()
+    button(page, series_name).click()
+    reopened = page.get_by_role("dialog", name=f"{series_name} vllm · cuda", exact=True)
+    expect(reopened.get_by_role("link", name=ref, exact=True)).to_be_visible()
+    check(read_detail(page, server.base, series["id"]) == detail, "full reload differs")
+    reopened.locator(".ant-drawer-close").click()
+    expect(reopened).to_be_hidden()
+    report["register_full_create"] = True
+    return series["id"]
+
+
+def exercise_register_minimum(page, server, text, form, report):
+    """Create one custom image from the required fields only, then read it back."""
+    report["last_step"] = "register-minimum-create"
+    ref, derived, source = "registry.example/team/minimum:v1.2.3", "team/minimum", "custom"
+    button(page, text["page"]["addCustom"]).click()
+    dialog = page.get_by_role("dialog")
+    expect(dialog).to_be_visible()
+    dialog.get_by_label(form["imageRef"], exact=True).fill(ref)
+    options = collection(page.request.get(server.base + "/api/v1/images/engines"))
+    select(dialog.get_by_label(form["engine"], exact=True), next(item["label"] for item in options if item["name"] == "vllm"))
+    select(dialog.get_by_label(form["framework"], exact=True), "CUDA")
+    dialog.get_by_label(form["frameworkVersion"], exact=True).fill("12.8")
+    expect(dialog.get_by_label(form["seriesName"], exact=True)).to_have_value("")
+    expect(dialog.get_by_label(form["engineVersion"], exact=True)).to_have_value("")
+    rolling = dialog.get_by_role("switch")
+    expect(rolling).to_have_count(1)
+    expect(rolling).not_to_be_checked()
+    expected = {"series": [{"engine": "vllm", "framework": "cuda", "source": source, "versions": [
+        {"engine_version": "", "framework_version": "12.8", "arch": "multi", "image_ref": ref, "source": source,
+         "rolling_tag": False, "registry_sources": []}]}]}
+    import_path = "/api/v1/images/import"
+    with page.expect_response(lambda response: urlsplit(response.url).path == import_path and response.request.method == "POST") as imported:
+        button(dialog, form["addImage"]).click()
+    check(imported.value.status == 200, "minimum import failed")
+    check(imported.value.request.post_data_json == expected, "minimum import body differs")
+    created = collection(imported.value)
+    check(len(created) == 1, "minimum import must create one series")
+    series = created[0]
+    check(series["name"] == derived and series["purpose"] == "inference" and series["enabled"] is True
+          and series["engine"] == "vllm" and series["framework"] == "cuda" and series["source"] == source
+          and series["present_nodes"] == 0, "minimum response differs")
+    listed = collection(page.request.get(server.base + "/api/v1/images?source=" + source))
+    check(any(row["id"] == series["id"] and row["name"] == derived for row in listed), "minimum series missing from the list")
+    expect(button(page, derived)).to_be_visible()
+    button(page, derived).click()
+    details = page.get_by_role("dialog", name=f"{derived} vllm · cuda", exact=True)
+    expect(details.get_by_role("link", name=ref, exact=True)).to_be_visible()
+    detail = read_detail(page, server.base, series["id"])
+    saved = detail["versions"][0]
+    check(detail["name"] == derived and detail["purpose"] == "inference" and detail["enabled"] is True
+          and detail["present_nodes"] == 0 and saved["image_ref"] == ref and saved["engine_version"] == "1.2.3"
+          and saved["framework_version"] == "12.8" and saved["arch"] == "multi" and saved["rolling_tag"] is False
+          and not saved.get("registry_sources"), "minimum detail differs")
+    page.reload()
+    page.get_by_role("tab", name=text["page"]["tab"][source], exact=True).click()
+    expect(button(page, derived)).to_be_visible()
+    button(page, derived).click()
+    expect(page.get_by_role("dialog", name=f"{derived} vllm · cuda", exact=True).get_by_role("link", name=ref, exact=True)).to_be_visible()
+    check(read_detail(page, server.base, series["id"]) == detail, "minimum reload differs")
+    report["register_minimum_create"] = True
+    return series["id"]
+
+
 def observe(page):
     errors, failures, mutations = [], [], []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -87,6 +211,15 @@ def test_image_registration(page, server, artifacts, report, locale):
     ref = f"registry.example/{name}/runner:v1"
     errors, failures, mutations = observe(page)
     open_custom(page, text)
+    report["last_step"] = "register-header-strong"
+    common = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/common.json").read_text())
+    title = common["branding"]["defaultConsoleTitle"].replace("{{product}}", "GPUWorks")
+    header = page.locator(".app-header-title")
+    expect(header).to_have_count(1, timeout=12000)
+    strong = header.locator("strong")
+    expect(strong).to_have_count(1, timeout=12000)
+    expect(strong).to_have_text(title)
+    report["register_header_strong"] = True
     check(collection(page.request.get(server.base + "/api/v1/images?source=custom")) == [], "custom fixture must start empty")
     create = button(page, text["page"]["addCustom"])
     report["active_evidence_layer"] = "ui"
@@ -94,11 +227,47 @@ def test_image_registration(page, server, artifacts, report, locale):
         create.click()
     engines = collection(engines_response.value)
     engine = next(item for item in engines if item["name"] == "vllm")
-    dialog = page.get_by_role("dialog", name=form["title"]["custom"], exact=True)
+    dialog = page.get_by_role("dialog")
     expect(dialog).to_be_in_viewport(ratio=1)
+    report["last_step"] = "register-engine-column"
+    engine_field = dialog.get_by_label(form["engine"], exact=True)
+    column = engine_field.locator("xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' ant-col-sm-12 ')][1]")
+    expect(column).to_have_count(1, timeout=12000)
+    expect(column).to_have_class(re.compile(r"\bant-col-sm-12\b"), timeout=12000)
+    report["register_engine_column"] = True
+    report["last_step"] = "register-drawer-width"
+    wrapper = dialog.locator("xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' ant-drawer-content-wrapper ')][1]")
+    expect(wrapper).to_have_count(1, timeout=12000)
+    expect(wrapper).to_have_css("width", "640px", timeout=12000)
+    report["register_drawer_width"] = True
+    report["last_step"] = "register-drawer-gap"
+    space = dialog.locator(".ant-drawer-body > .ant-space-vertical")
+    expect(space).to_have_count(1, timeout=12000)
+    expect(space).to_have_css("row-gap", "20px", timeout=12000)
+    report["register_drawer_gap"] = True
+    report["evidence"].append(assert_drawer_shell(
+        page, dialog, form["title"]["custom"],
+        dialog.get_by_text(form["url"]["title"], exact=True),
+        dialog.get_by_text(form["community"]["title"], exact=True)))
+    dialog.locator(".ant-drawer-close").focus()
+    from image_register_inventory import exercise_register_inventory
+    report["register_inventory"] = exercise_register_inventory(page, dialog, form, mutations)
     expect(dialog.get_by_role("textbox", name=form["seriesName"], exact=True)).to_have_value("")
     reference = dialog.get_by_label(form["imageRef"], exact=True)
     submit = button(dialog, form["addImage"])
+    report["last_step"] = "register-enter-reference"
+    reference.press("Enter")
+    expect(reference).to_have_value("")
+    expect(dialog).to_be_visible()
+    check(not mutations, "enter in the empty image reference sent an import")
+    reference.fill("registry.example/team/enter:v1")
+    reference.press("Enter")
+    expect(dialog).to_be_visible()
+    expect(reference).to_have_value("registry.example/team/enter:v1")
+    check(not mutations, "enter in the filled image reference sent an import")
+    reference.fill("")
+    expect(reference).to_have_value("")
+    report["register_enter_reference"] = True
     # Real Tab navigation must reach the scrollable drawer action and remain modal.
     submit_reached = False
     hidden_focus_stops = 0
@@ -118,10 +287,26 @@ def test_image_registration(page, server, artifacts, report, locale):
             expect(submit).to_be_in_viewport(ratio=1)
             submit_reached = True
     check(submit_reached, "submit is not keyboard reachable")
+    report["last_step"] = "register-keyboard-layout"
+    submit.scroll_into_view_if_needed()
+    expect(reference).to_be_in_viewport(ratio=1)
+    expect(submit).to_be_in_viewport(ratio=1)
+    ref_box, submit_box = reference.bounding_box(), submit.bounding_box()
+    separated = (ref_box["y"] + ref_box["height"] <= submit_box["y"] or ref_box["y"] >= submit_box["y"] + submit_box["height"]
+                 or ref_box["x"] + ref_box["width"] <= submit_box["x"] or ref_box["x"] >= submit_box["x"] + submit_box["width"])
+    check(separated, "image reference overlaps Add Image")
+    report["register_keyboard_layout"] = True
     dialog.press("Escape")
     expect(dialog).not_to_be_visible()
     expect(create).to_be_focused()
     check(not mutations, "cancel must not send a mutation")
+    create.click()
+    expect(dialog).to_be_visible()
+    from image_selection import exercise_required_fields
+    exercise_required_fields(page, dialog, form, mutations, report, server.base, "register")
+    dialog.locator(".ant-drawer-close").click()
+    expect(dialog).not_to_be_visible()
+    check(not mutations, "required-field rejection sent an image import")
     create.click()
     expect(reference).to_have_value("")
     for value, message in [("", form["imageRefRequired"]), ("   ", form["tagRequired"]),
@@ -143,22 +328,59 @@ def test_image_registration(page, server, artifacts, report, locale):
     expect(dialog.get_by_role("combobox", name=form["hostArch"], exact=True)).to_have_attribute("aria-expanded", "false")
     expect(dialog.get_by_text("multi", exact=True)).to_be_visible()
     report["active_evidence_layer"] = "request"
-    with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/images/import" and r.request.method == "POST") as imported:
-        submit.click()
-    response = imported.value
     expected = {"series": [{"name": name, "engine": "vllm", "framework": "cuda", "source": "custom", "versions": [{
         "engine_version": "0.10.2", "framework_version": "12.8", "arch": "multi", "image_ref": ref,
         "source": "custom", "rolling_tag": False, "registry_sources": []}]}]}
+    reason = "upstream fixture is unreachable"
+    held = []
+    import_path = "/api/v1/images/import"
+    import_route = re.compile(re.escape(import_path) + r"(?:\?|$)")
+
+    def hold_import(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != import_path:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route(import_route, hold_import)
+    submit.click()
+    report["last_step"] = "register-import-inflight"
+    expect(submit).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    submit.click()
+    check(len(held) == 1, "duplicate image import while the first request is held")
+    check(held[0].request.post_data_json == expected, "held import body differs")
+    check(urlsplit(held[0].request.url).query == "", "unexpected import query")
+    with page.expect_response(lambda r: urlsplit(r.url).path == import_path and r.request.method == "POST") as refused:
+        held[0].fulfill(status=502, content_type="application/json", body='{"message":"%s"}' % reason)
+    page.unroute(import_route, hold_import)
+    check(refused.value.status == 502, "forced image import failure did not surface")
+    expect(dialog).to_be_visible()
+    expect(page.locator(".ant-message").get_by_text(reason, exact=True)).to_be_visible()
+    expect(reference).to_have_value("  " + ref + "  ")
+    expect(dialog.get_by_role("textbox", name=form["seriesName"], exact=True)).to_have_value(name)
+    expect(dialog.get_by_label(form["frameworkVersion"], exact=True)).to_have_value("12.8")
+    expect(dialog.get_by_role("textbox", name=form["engineVersion"], exact=True)).to_have_value("0.10.2")
+    check(collection(page.request.get(server.base + "/api/v1/images?source=custom")) == [], "refused import persisted a series")
+    check(any("502" in text for text in errors), "502 console line absent: " + str(errors))
+    check(failures == [{"path": import_path, "status": 502}], "unexpected HTTP failure before the refused import")
+    errors[:] = [text for text in errors if "502" not in text]
+    failures[:] = [item for item in failures if item.get("status") != 502]
+    expect(submit).not_to_have_class(re.compile(r"\bant-btn-loading\b"))
+    with page.expect_response(lambda r: urlsplit(r.url).path == import_path and r.request.method == "POST") as imported:
+        submit.click()
+    response = imported.value
     check(urlsplit(response.url).query == "", "import query must be empty")
     check(response.request.post_data_json == expected, "import wire body differs")
     series = collection(response)
     check(len(series) == 1, "import must return one series")
     series_id = series[0]["id"]
-    check(mutations == [{"method": "POST", "path": "/api/v1/images/import"}], "unexpected mutations")
+    check(mutations == [{"method": "POST", "path": import_path}, {"method": "POST", "path": import_path}], "unexpected mutations")
     expect(dialog).not_to_be_visible()
     expect(button(page, name)).to_be_visible()
     report["evidence"].extend([{"layer": "ui", "invalid": ["empty", "whitespace", "missing tag", "missing framework version"],
-        "cancel_no_mutation": True, "keyboard_submit_and_modal_focus": True, "engine_catalog": engines}, {"layer": "request", "method": "POST", "path": "/api/v1/images/import", "status": response.status, "body": expected}])
+        "cancel_no_mutation": True, "keyboard_submit_and_modal_focus": True, "engine_catalog": engines,
+        "inflight_posts": 1, "confirm_loading": True, "failure_status": 502, "draft_retained": True, "failure_reason_visible": True},
+        {"layer": "request", "method": "POST", "path": import_path, "status": response.status, "body": expected}])
     report["active_evidence_layer"] = "persistence"
     detail = read_detail(page, server.base, series_id)
     check(detail["name"] == name and detail["engine"] == "vllm" and detail["framework"] == "cuda" and detail["source"] == "custom", "series persistence differs")
@@ -173,18 +395,28 @@ def test_image_registration(page, server, artifacts, report, locale):
     page.reload()
     open_custom(page, text)
     button(page, name).click()
-    details = page.get_by_role("dialog", name=text["detail"]["title"].replace("{{name}}", name), exact=True)
+    # DetailDrawer names the dialog from the series plus its engine and framework.
+    details = page.get_by_role("dialog", name=f"{name} vllm · cuda", exact=True)
     expect(details).to_be_in_viewport(ratio=1)
     expect(details.get_by_role("link", name=ref, exact=True)).to_be_visible()
+    report["last_step"] = "register-reference-code"
+    code = details.get_by_role("link", name=ref, exact=True).locator("code")
+    expect(code).to_have_count(1, timeout=12000)
+    expect(code).to_have_text("v1")
+    report["register_reference_code"] = True
     check(read_detail(page, server.base, series_id) == detail, "reload changed saved metadata")
     details.press("Escape")
     expect(details).not_to_be_visible()
     expect(button(page, name)).to_be_focused()
     report["evidence"].append({"layer": "persistence", "series": detail, "version_collection_match": True, "reload": True})
+    full_id = exercise_register_full(page, server, text, form, report)
+    minimum_id = exercise_register_minimum(page, server, text, form, report)
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "page overflows horizontally")
     check(not errors and not failures, "browser errors or unexpected HTTP failures")
     artifacts.write_json("browser-observations.json", {"errors": errors, "failures": failures, "mutations": mutations})
     report["active_evidence_layer"] = "cleanup"
+    cleanup(page, server.base, full_id, report)
+    cleanup(page, server.base, minimum_id, report)
     cleanup(page, server.base, series_id, report)
 
 
@@ -263,4 +495,6 @@ def test_delete_sibling_version(page, server, artifacts, report, locale):
 
 
 if __name__ == "__main__":
-    raise SystemExit(run({"register": test_image_registration, "delete-version": test_delete_sibling_version}))
+    raise SystemExit(run({"register": test_image_registration, "delete-version": test_delete_sibling_version},
+        product_sources=("test/e2e/image_register_inventory.py", "ui/src/pages/images/ImageArchiveURLImport.tsx",
+            "ui/src/pages/images/ImageVersionColumns.tsx", "ui/src/App.tsx")))

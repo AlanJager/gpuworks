@@ -10,17 +10,19 @@
   "fields": [{"field_id": "node.delete.force", "component": "Checkbox", "default": false,
     "request": "force=true query only when selected; otherwise omitted", "persistence": "not persisted: request option",
     "covered": ["default false", "keyboard off/on/off/on", "warning visibility", "exact query and response"]}],
-  "crud": {"create": "fixture only", "read": "GET and reload after failure and deletion", "update": "out of scope", "delete": "cancel, normal rejection, explicit force success"},
+  "crud": {"create": "fixture only", "read": "GET and reload after failure and deletion", "update": "out of scope", "delete": "cancel, instance reference block, uninstall rejection, explicit force success"},
   "checklist_items": {
     "covered_in_this_scenario": ["6.2", "6.4", "6.5", "12.1"],
     "partial": {"6.1": "default and accessible label; loading/disabled tested by RTL",
-      "12.2": "dialog and submit within 1440x900 viewport", "12.4": "Esc only",
-      "12.6": "failure recovery and persistence; loading barrier covered by RTL",
-      "12.7": "name/impact, failure retains node; busy-node rejection covered by Go API tests"}
+      "12.4": "Esc only"},
+    "12.2": "Delete confirmation at 1440x900: the dialog and footer Delete stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
+    "12.3": "Default focus is inside the delete confirmation. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+    "12.6": "covered: While the delete is held the footer Delete shows the loading state and a second click sends no further delete; the 409 keeps the dialog and the unchecked force box and shows the uninstall reason; the later force delete matches the independent 404 and the reloaded empty row",
+    "12.7": "Delete confirmation shows the node name and the stop-instances and uninstall impact. A running instance blocks deletion with 409 NODE_DELETE_HAS_INSTANCES and the node and instance stay. After that instance is gone, the uninstall 409 keeps the node unchanged, and the force delete removes the management record, matching the independent 404 and the reloaded empty row"
   },
   "required_evidence": ["ui", "request", "persistence", "cleanup"],
   "execution_evidence": {"status": "N/A", "reason": "force removal touches management records only; pending node fixture has no running agent"},
-  "missing": ["browser normal SSH success (separate Go process/container tests)", "real macOS/systemd host", "full focus and closure matrix", "browser loading barrier"],
+  "missing": ["browser normal SSH success (separate Go process/container tests)", "real macOS/systemd host", "full focus and closure matrix"],
   "result": "NOT_RUN until a matching run report records PASS",
   "artifact": "secrets/e2e/<runId>/report.json and redacted trace",
   "cleanup": "tested UI action removes the node; only the owned server stops; private fixture files retained for diagnosis"

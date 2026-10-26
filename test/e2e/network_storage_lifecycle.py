@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import traceback
@@ -20,6 +21,37 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from platform_token_read_revoke import button, check, modal_geometry, theme_color
+from storage_delete_blocks import (
+    allow_http_status, clear_storage_deleting_file, clear_storage_reference, place_storage_deleting_file,
+    place_storage_reference, refuse_storage_delete, storage_count)
+from storage_local import exercise_edit_conflict
+
+
+def exercise_create_dialog(page, trigger, title, parent_name, field_label, save_label, cancel_label, events, evidence):
+    """Dialog identity, layout, focus, and dismissals. No write."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    parent = page.get_by_role('heading', name=parent_name, exact=True)
+    baseline = len(events)
+
+    def open_dialog():
+        trigger.click()
+        dialog = page.get_by_role('dialog', name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_dialog()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(field_label, exact=True), button(dialog, save_label))
+    dialog = assert_nested_dismissals(
+        dialog, parent, open_dialog,
+        [('cancel', cancel_button(cancel_label)), ('escape', escape),
+         ('close', close_button), ('mask', mask)],
+        lambda: len(events), trigger)
+    check(len(events) == baseline, 'create dialog dismissal sent a write')
+    evidence.append({'layer': 'ui', 'create_dialog': title,
+                     'dismissals': ['cancel', 'escape', 'close', 'mask'], 'write_requests': 0})
+    return dialog
 
 
 def locale_strings(locale, namespace):
@@ -65,7 +97,43 @@ def mutations_on(page, prefix):
 # Mainline: gpuworks/network/ethernet-resource-lifecycle; 空库 → UI拒绝空名称/角色并取消 → 创建Ethernet serving定义
 # → 刷新+独立GET → 编辑名称/CIDR并清空描述/接口 → 刷新回填 → 取消删除不修改 → UI删除、GET404和列表消失。
 # 无绑定节点，执行和流量效果N/A；本case不声称网络连通性或agent配置生效。
-def test_network_lifecycle(page, server, report, locale):
+def exercise_network_inflight(page, dialog, t, body, bad_http, console_errors, evidence):
+    """One held create, a swallowed second click, then a 502 that keeps the draft."""
+    reason = 'upstream fixture is unreachable'
+    held = []
+    prefix = '/api/v1/networks'
+
+    def hold_create(route):
+        if route.request.method != 'POST' or urlsplit(route.request.url).path != prefix:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route('**' + prefix, hold_create)
+    button(dialog, t['actions']['save']).click()
+    inflight = dialog.locator('.ant-modal-footer button.ant-btn-primary')
+    expect(inflight).to_have_class(re.compile(r'\bant-btn-loading\b'))
+    inflight.click()
+    check(len(held) == 1, 'duplicate create while the first request is held')
+    check(held[0].request.post_data_json == body, 'held create body differs')
+    with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'POST') as failed:
+        held[0].fulfill(status=502, content_type='application/json', body=json.dumps({'message': reason}))
+    page.unroute('**' + prefix, hold_create)
+    check(failed.value.status == 502, 'forced create failure did not surface')
+    expect(dialog).to_be_visible()
+    for field in ['name', 'description', 'cidr', 'interface']:
+        expect(dialog.get_by_label(t['form'][field], exact=True)).to_have_value(body[field])
+    expect(dialog.get_by_role('checkbox', name=t['role']['serving'], exact=True)).to_be_checked()
+    expect(page.get_by_text(reason)).to_be_visible()
+    check(any(item['path'] == prefix and item['status'] == 502 for item in bad_http), '502 was not recorded')
+    check(any('502' in text for text in console_errors), '502 console line absent: ' + str(console_errors))
+    bad_http[:] = [item for item in bad_http if item.get('status') != 502]
+    console_errors[:] = [text for text in console_errors if '502' not in text]
+    evidence.append({'layer': 'ui', 'inflight_posts': 1, 'confirm_loading': True,
+                     'failure_status': 502, 'draft_retained': True, 'failure_reason_visible': True})
+
+
+def test_network_lifecycle(page, server, report, locale, bad_http, console_errors):
     t = locale_strings(locale, 'networks')
     evidence = report['evidence']
     prefix = '/api/v1/networks'
@@ -78,8 +146,14 @@ def test_network_lifecycle(page, server, report, locale):
     draft = {'name': name, 'description': 'E2E control-plane definition', 'roles': ['serving'],
              'type': 'host_ethernet', 'cidr': '10.77.0.0/16', 'interface': 'ens*'}
     trigger = button(page, t['actions']['create'])
-    trigger.click()
-    dialog = page.get_by_role('dialog', name=t['form']['createTitle'], exact=True)
+    expect(trigger).to_be_visible()
+    dialog = exercise_create_dialog(page, trigger, t['form']['createTitle'], t['title'],
+                                    t['form']['name'], t['actions']['save'], t['actions']['cancel'], events, evidence)
+    from network_selector_note import exercise_selector_note
+    from network_create_inventory import exercise_network_create_inventory
+    report['selector_note'] = exercise_selector_note(dialog, t['form']['selectorNote'])
+    report['create_inventory'] = exercise_network_create_inventory(dialog, t)
+    evidence.append({'layer': 'ui', 'selector_note': report['selector_note'], 'create_inventory': report['create_inventory']})
     save = button(dialog, t['actions']['save'])
     modal_geometry(dialog, save)
     name_input = dialog.get_by_label(t['form']['name'], exact=True)
@@ -107,6 +181,7 @@ def test_network_lifecycle(page, server, report, locale):
     for field in ['name', 'description', 'cidr', 'interface']:
         dialog.get_by_label(t['form'][field], exact=True).fill(draft[field])
     dialog.get_by_role('checkbox', name=t['role']['serving'], exact=True).check()
+    exercise_network_inflight(page, dialog, t, draft, bad_http, console_errors, evidence)
     created = mutate(page, save.click, 'POST', prefix, draft, 201, evidence)
     path = f"{prefix}/{created['id']}"
     expect(page).to_have_url(server.base + f"/networks/{created['id']}")
@@ -124,7 +199,7 @@ def test_network_lifecycle(page, server, report, locale):
     dialog.get_by_label(t['form']['name'], exact=True).fill(name + '-cancelled')
     button(dialog, t['actions']['cancel']).click()
     expect(dialog).not_to_be_visible()
-    check(len(events) == 1, 'cancel edit sent mutation')
+    check(len(events) == 2, 'cancel edit sent mutation')
     persisted(page, server.base, path, draft, evidence)
     button(page, t['actions']['edit']).click()
     changed = {**draft, 'name': name + '-edited', 'description': '', 'cidr': '10.78.0.0/16', 'interface': ''}
@@ -146,7 +221,7 @@ def test_network_lifecycle(page, server, report, locale):
     expect(popup).to_be_in_viewport(ratio=1)
     button(popup, t['actions']['cancel']).click()
     expect(popup).not_to_be_visible()
-    check(len(events) == 2, 'cancel delete sent mutation')
+    check(len(events) == 3, 'cancel delete sent mutation')
     persisted(page, server.base, path, changed, evidence)
     button(page, t['actions']['delete']).click()
     result = mutate(page, button(popup, t['actions']['delete']).click, 'DELETE', path, None, 200, evidence)
@@ -157,7 +232,7 @@ def test_network_lifecycle(page, server, report, locale):
     expect(page.get_by_role('row').filter(has_text=changed['name'])).to_have_count(0)
     check(read(page, server.base, path, 404)['code'] == 'NETWORK_NOT_FOUND', 'deleted network GET contract differs')
     check(read(page, server.base, prefix) == baseline, 'network deletion did not restore baseline')
-    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'PUT', 'path': path}, {'method': 'DELETE', 'path': path}], 'unexpected network mutation')
+    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix}, {'method': 'PUT', 'path': path}, {'method': 'DELETE', 'path': path}], 'unexpected network mutation')
     evidence.extend([{'layer': 'ui', 'checks': ['empty/whitespace/roles validation', 'dialog viewport', 'keyboard focus border=theme.primary', 'Tab focus trap', 'cancel/create/edit/delete', 'refresh fields', 'clear optional fields']},
                      {'layer': 'cleanup', 'detail_status': 404, 'list_restored': True, 'mutations': events}])
 
@@ -165,7 +240,43 @@ def test_network_lifecycle(page, server, report, locale):
 # Mainline: gpuworks/storage/local-resource-lifecycle; 空库 → UI校验名称与绝对路径并取消 → UI登记local/all_nodes
 # → GET/刷新回填 → UI编辑名称/目录 → GET/刷新 → UI停用再启用且布尔值持久化 → 取消删除 → UI删除、GET404/列表消失。
 # 没有agent；只证明存储定义及启停期望值，不证明节点目录创建、挂载、容量或模型读写。
-def test_storage_lifecycle(page, server, report, locale):
+def exercise_storage_inflight(page, dialog, t, typed_name, typed_path, body, bad_http, console_errors, evidence):
+    """One held create. Save is disabled, a forced second click sends nothing, and a 502 keeps the draft."""
+    reason = 'upstream fixture is unreachable'
+    held = []
+    prefix = '/api/v1/storages'
+
+    def hold_create(route):
+        if route.request.method != 'POST' or urlsplit(route.request.url).path != prefix:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route('**' + prefix, hold_create)
+    button(dialog, t['form']['save']).click()
+    inflight = dialog.locator('.ant-modal-footer button.ant-btn-primary')
+    expect(inflight).to_be_disabled()
+    inflight.click(force=True)
+    check(len(held) == 1, 'duplicate create while the first request is held')
+    check(held[0].request.post_data_json == body, 'held create body differs')
+    with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'POST') as failed:
+        held[0].fulfill(status=502, content_type='application/json', body=json.dumps({'message': reason}))
+    page.unroute('**' + prefix, hold_create)
+    check(failed.value.status == 502, 'forced create failure did not surface')
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_label(t['form']['name'], exact=True)).to_have_value(typed_name)
+    expect(dialog.get_by_label(t['form']['path'], exact=True)).to_have_value(typed_path)
+    expect(page.get_by_text(reason)).to_be_visible()
+    expect(button(dialog, t['form']['save'])).to_be_enabled()
+    check(any(item['path'] == prefix and item['status'] == 502 for item in bad_http), '502 was not recorded')
+    check(any('502' in text for text in console_errors), '502 console line absent: ' + str(console_errors))
+    bad_http[:] = [item for item in bad_http if item.get('status') != 502]
+    console_errors[:] = [text for text in console_errors if '502' not in text]
+    evidence.append({'layer': 'ui', 'inflight_posts': 1, 'save_disabled': True,
+                     'failure_status': 502, 'draft_retained': True, 'failure_reason_visible': True})
+
+
+def test_storage_lifecycle(page, server, report, locale, bad_http, console_errors):
     t = locale_strings(locale, 'storage')
     evidence = report['evidence']
     prefix = '/api/v1/storages'
@@ -178,8 +289,13 @@ def test_storage_lifecycle(page, server, report, locale):
     draft = {'name': name, 'type': 'local', 'path': str(server.storage_root / name), 'all_nodes': True, 'targets': []}
     # The installation seeds its default storage, so the header action is unique.
     trigger = page.get_by_role('button').filter(has=page.get_by_text(t['page']['add'], exact=True))
-    trigger.click()
-    dialog = page.get_by_role('dialog', name=t['form']['addTitle'], exact=True)
+    expect(trigger).to_be_visible()
+    dialog = exercise_create_dialog(page, trigger, t['form']['addTitle'], t['page']['title'],
+                                    t['form']['name'], t['form']['save'], t['form']['cancel'], events, evidence)
+    from storage_create_inventory import exercise_storage_create_inventory
+    report['create_inventory'] = exercise_storage_create_inventory(
+        dialog, t, locale_strings(locale, 'common')['storageType'])
+    evidence.append({'layer': 'ui', 'create_inventory': report['create_inventory']})
     save = button(dialog, t['form']['save'])
     modal_geometry(dialog, save)
     name_input = dialog.get_by_label(t['form']['name'], exact=True)
@@ -208,8 +324,11 @@ def test_storage_lifecycle(page, server, report, locale):
     expect(trigger).to_be_focused()
     check(events == [], 'cancel storage create sent mutation')
     trigger.click()
-    dialog.get_by_label(t['form']['name'], exact=True).fill(' ' + name + ' ')
-    dialog.get_by_label(t['form']['path'], exact=True).fill(' ' + draft['path'] + ' ')
+    typed_name = ' ' + name + ' '
+    typed_path = ' ' + draft['path'] + ' '
+    dialog.get_by_label(t['form']['name'], exact=True).fill(typed_name)
+    dialog.get_by_label(t['form']['path'], exact=True).fill(typed_path)
+    exercise_storage_inflight(page, dialog, t, typed_name, typed_path, draft, bad_http, console_errors, evidence)
     created = mutate(page, save.click, 'POST', prefix, draft, 201, evidence)
     path = f"{prefix}/{created['id']}"
     expect(page).to_have_url(server.base + f"/storage/{created['id']}")
@@ -225,8 +344,12 @@ def test_storage_lifecycle(page, server, report, locale):
     page.keyboard.press('Escape')
     expect(dialog).not_to_be_visible()
     expect(button(page, t['actions']['edit'])).to_be_focused()
-    check(len(events) == 1, 'cancel storage edit sent mutation')
-    persisted(page, server.base, path, draft, evidence)
+    check(len(events) == 2, 'cancel storage edit sent mutation')
+    stored = persisted(page, server.base, path, draft, evidence)
+    common = locale_strings(locale, 'common')
+    exercise_edit_conflict(
+        page, server, t, common, created['id'], name, draft['path'], stored['updated_at'],
+        bad_http, console_errors, evidence)
     button(page, t['actions']['edit']).click()
     changed = {'name': name + '-edited', 'path': draft['path'] + '-edited', 'all_nodes': True, 'targets': []}
     dialog.get_by_label(t['form']['name'], exact=True).fill(changed['name'])
@@ -255,17 +378,41 @@ def test_storage_lifecycle(page, server, report, locale):
     expect(popup.get_by_text(t['actions']['deleteHelp'], exact=True)).to_be_visible()
     button(popup, t['actions']['cancel']).click()
     expect(popup).not_to_be_visible()
-    check(len(events) == 4, 'cancel storage delete sent mutation')
+    check(len(events) == 6, 'cancel storage delete sent mutation')
     persisted(page, server.base, path, changed, evidence)
+    dep_id = place_storage_reference(server, created['id'])
+    blocked = refuse_storage_delete(page, row, t, changed['name'], path, 'reference block')
+    check(blocked.get('code') == 'STORAGE_IN_USE', f"reference block code {blocked.get('code')}")
+    expect(page.get_by_role('alert')).to_contain_text(common['apiError']['STORAGE_IN_USE'])
+    expect(page.get_by_role('alert')).to_contain_text(f'#{dep_id}')
+    persisted(page, server.base, path, changed, evidence)
+    expect(row).to_be_visible()
+    check(storage_count(server, 'SELECT COUNT(*) FROM deployment_node_requirements WHERE "key" = ? AND value = ?',
+                        ('gpuworks.ai/storage', str(created['id']))) == 1, 'storage reference disappeared')
+    allow_http_status(bad_http, console_errors, 409)
+    clear_storage_reference(server, created['id'], dep_id)
+    place_storage_deleting_file(server, created['id'])
+    pending = refuse_storage_delete(page, row, t, changed['name'], path, 'cache deletion')
+    check('cache deletion is awaiting confirmation' in pending.get('error', ''),
+          f"cache deletion error {pending.get('error')}")
+    expect(page.get_by_role('alert')).to_contain_text('cache deletion is awaiting confirmation')
+    persisted(page, server.base, path, changed, evidence)
+    expect(row).to_be_visible()
+    check(storage_count(server, 'SELECT COUNT(*) FROM model_files WHERE storage_id = ? AND state = ?',
+                        (created['id'], 'deleting')) == 1, 'deleting storage file disappeared')
+    allow_http_status(bad_http, console_errors, 409)
+    clear_storage_deleting_file(server, created['id'])
     delete.click()
     mutate(page, button(popup, t['actions']['delete']).click, 'DELETE', path, None, 204, evidence)
+    evidence.append({'layer': 'ui', 'delete_dialog': confirmation, 'impact': t['actions']['deleteHelp'],
+                     'reference_block_code': 'STORAGE_IN_USE', 'cache_deletion_status': 409, 'delete_status': 204})
     expect(row).to_have_count(0)
     page.reload()
     expect(page.get_by_role('heading', name=t['page']['title'], exact=True)).to_be_visible()
     expect(row).to_have_count(0)
     check(read(page, server.base, path, 404) == {'error': 'not found'}, 'deleted storage GET contract differs')
     check(read(page, server.base, prefix) == baseline, 'storage deletion did not restore baseline')
-    check(events == [{'method': 'POST', 'path': prefix}] + [{'method': 'PATCH', 'path': path}] * 3 + [{'method': 'DELETE', 'path': path}], 'unexpected storage mutation')
+    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix}] + [{'method': 'PATCH', 'path': path}] * 4 + [{'method': 'DELETE', 'path': path}] * 3, 'unexpected storage mutation')
     evidence.extend([{'layer': 'ui', 'checks': ['empty/whitespace/invalid name', 'relative path validation', 'trim', 'dialog viewport', 'keyboard focus border=theme.primary', 'Tab focus trap', 'cancel/create/edit/delete', 'refresh fields', 'enabled false/true']},
                      {'layer': 'cleanup', 'detail_status': 404, 'list_restored': True, 'mutations': events}])
 
@@ -294,7 +441,11 @@ def main():
               'viewport': {'width': 1440, 'height': 900}, 'retries': 0, 'cases': [],
               'selection': [contracts[key][0] for key in selected_keys],
               'test_sha256': digest(Path(__file__)), 'fixture_sha256': digest(ROOT / 'test/e2e/local_browser_fixture.py'),
-              'helper_sha256': digest(ROOT / 'test/e2e/platform_token_read_revoke.py'), 'manifest_sha256': digest(manifest_path),
+              'helper_sha256': digest(ROOT / 'test/e2e/platform_token_read_revoke.py'),
+              'dialog_checks_sha256': digest(ROOT / 'test/e2e/dialog_checks.py'), 'manifest_sha256': digest(manifest_path),
+              'selector_note_sha256': digest(ROOT / 'test/e2e/network_selector_note.py'),
+              'create_inventory_sha256': digest(ROOT / 'test/e2e/network_create_inventory.py'),
+              'storage_inventory_sha256': digest(ROOT / 'test/e2e/storage_create_inventory.py'),
               'command': ['python3', 'test/e2e/network_storage_lifecycle.py', *sys.argv[1:]]}
     try:
         check(manifest['test_file'] == 'test/e2e/network_storage_lifecycle.py', 'manifest test file mismatch')
@@ -336,7 +487,7 @@ def main():
                     page.on('response', lambda r: bad_http.append({'path': urlsplit(r.url).path, 'status': r.status}) if r.status >= 400 else None)
                     page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
                     artifacts.start_trace(context)
-                    contracts[case['case_id']][1](page, server, result, args.locale)
+                    contracts[case['case_id']][1](page, server, result, args.locale, bad_http, console_errors)
                     check(not errors and not bad_http and not console_errors, f'unexpected browser errors: {errors}, {bad_http}, {console_errors}')
                     check(page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'page horizontal overflow')
                     check(set(case['required_evidence']) <= {e['layer'] for e in result['evidence']}, 'missing required evidence')

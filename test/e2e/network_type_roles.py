@@ -13,16 +13,17 @@ import itertools
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import traceback
 from urllib.parse import urlsplit
 import uuid
 
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from network_storage_lifecycle import locale_strings, mutate, mutations_on, persisted, read
-from platform_token_read_revoke import button, check, modal_geometry
+from platform_token_read_revoke import button, check
 
 PREFIX = '/api/v1/networks'
 ROLES = ['storage_sync', 'compute', 'serving']
@@ -57,13 +58,46 @@ def role_control(dialog, t, role):
     return dialog.get_by_role('checkbox', name=t['role'][role], exact=True)
 
 
-def open_create(page, server, t):
+def exercise_create_dialog(page, create, t, evidence):
+    """Create dialog identity, layout, focus, and dismissals. No network write."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    title = t['form']['createTitle']
+    parent = page.get_by_role('heading', name=t['title'], exact=True)
+    writes = []
+
+    def on_request(request):
+        if urlsplit(request.url).path.startswith(PREFIX) and request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+            writes.append(request.method)
+
+    def open_dialog():
+        create.click()
+        dialog = form(page, t)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    page.on('request', on_request)
+    dialog = open_dialog()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(t['form']['name'], exact=True),
+                        button(dialog, t['actions']['save']))
+    dialog = assert_nested_dismissals(
+        dialog, parent, open_dialog,
+        [('cancel', cancel_button(t['actions']['cancel'])), ('escape', escape),
+         ('close', close_button), ('mask', mask)],
+        lambda: len(writes), create)
+    check(not writes, 'create dialog dismissal sent a network write')
+    evidence.append({'layer': 'ui', 'create_dialog': title,
+                     'dismissals': ['cancel', 'escape', 'close', 'mask'], 'write_requests': 0})
+    return dialog
+
+
+def open_create(page, server, t, evidence):
     page.goto(server.base + '/networks')
     expect(page.get_by_role('heading', name=t['title'], exact=True)).to_be_visible()
-    button(page, t['actions']['create']).click()
-    dialog = form(page, t)
-    modal_geometry(dialog, button(dialog, t['actions']['save']))
-    return dialog
+    create = button(page, t['actions']['create'])
+    expect(create).to_be_visible()
+    return exercise_create_dialog(page, create, t, evidence)
 
 
 def delete_owned(page, server, t, path, name, baseline, evidence):
@@ -81,19 +115,317 @@ def delete_owned(page, server, t, path, name, baseline, evidence):
     evidence.append({'layer': 'cleanup', 'path': path, 'detail_status': 404, 'list_restored': True})
 
 
+def _posts(page, action):
+    try:
+        with page.expect_request(
+                lambda request: request.method == "POST" and urlsplit(request.url).path == PREFIX,
+                timeout=1000):
+            action()
+        return True
+    except PlaywrightTimeout:
+        return False
+
+
+def _box(locator):
+    return locator.evaluate("""el => {
+      const r = el.getBoundingClientRect();
+      return {left: r.left, top: r.top, right: r.right, bottom: r.bottom,
+              width: r.width, height: r.height,
+              pageLeft: r.left + window.scrollX, pageTop: r.top + window.scrollY};
+    }""")
+
+
+def _overlaps(a, b):
+    return not (a["pageLeft"] + a["width"] <= b["pageLeft"]
+                or b["pageLeft"] + b["width"] <= a["pageLeft"]
+                or a["pageTop"] + a["height"] <= b["pageTop"]
+                or b["pageTop"] + b["height"] <= a["pageTop"])
+
+
+def exercise_create_keyboard(page, dialog, t):
+    """Tab reaches the next field. Enter on an empty name shows the name error and does not create."""
+    name = dialog.get_by_label(t["form"]["name"], exact=True)
+    description = dialog.get_by_label(t["form"]["description"], exact=True)
+    footer = dialog.locator(".ant-modal-footer")
+    save = button(footer, t["actions"]["save"])
+    cancel = button(footer, t["actions"]["cancel"])
+    expect(name).to_have_value("")
+    name.focus()
+    expect(name).to_be_focused()
+    name.press("Tab")
+    expect(description).to_be_focused()
+    name.focus()
+    check(not _posts(page, lambda: name.press("Enter")), "Enter on an empty name sent a network create")
+    expect(dialog).to_be_visible()
+    expect(name).to_have_value("")
+    expect(dialog.get_by_text(t["form"]["nameRequired"], exact=True)).to_be_visible()
+    expect(name).to_have_attribute("aria-invalid", "true")
+    view = page.viewport_size
+    check(view == {"width": 1440, "height": 900}, f"viewport {view}")
+    boxes = {label: _box(locator) for label, locator in (
+        ("name", name), ("save", save), ("cancel", cancel))}
+    for label, box in boxes.items():
+        check(box["width"] > 0 and box["height"] > 0, f"{label} has no box")
+        check(-1 <= box["left"] and box["right"] <= view["width"] + 1
+              and -1 <= box["top"] and box["bottom"] <= view["height"] + 1,
+              f"{label} is outside the viewport {box}")
+    check(not _overlaps(boxes["name"], boxes["save"]), "the name overlaps Save")
+    check(not _overlaps(boxes["name"], boxes["cancel"]), "the name overlaps Cancel")
+    return {"tab": ["name", "description"], "enter_submitted": False,
+            "empty_name_error": True, "viewport": view}
+
+
+def exercise_network_required(page, dialog, t):
+    """Name rejects empty and whitespace. Roles reject an empty selection. No create."""
+    name = dialog.get_by_label(t["form"]["name"], exact=True)
+    save = button(dialog, t["actions"]["save"])
+
+    def save_posts():
+        try:
+            with page.expect_request(
+                    lambda request: request.method == "POST" and urlsplit(request.url).path == PREFIX,
+                    timeout=1000):
+                save.click()
+            return True
+        except PlaywrightTimeout:
+            return False
+
+    name.fill("")
+    check(not save_posts(), "empty name sent a network create")
+    expect(dialog.get_by_text(t["form"]["nameRequired"], exact=True)).to_be_visible()
+    expect(name).to_have_attribute("aria-invalid", "true")
+    name.fill("   ")
+    check(not save_posts(), "whitespace name sent a network create")
+    expect(dialog.get_by_text(t["form"]["nameRequired"], exact=True)).to_be_visible()
+    expect(name).to_have_attribute("aria-invalid", "true")
+    name.fill("role-probe")
+    for role in ROLES:
+        expect(role_control(dialog, t, role)).not_to_be_checked()
+    check(not save_posts(), "Save with no role sent a network create")
+    expect(dialog.get_by_text(t["form"]["rolesRequired"], exact=True)).to_be_visible()
+    expect(name).not_to_have_attribute("aria-invalid", "true")
+    name.fill("")
+    return {"empty_name": True, "whitespace_name": True, "empty_roles": True, "creates": 0}
+
+
+def exercise_create_inflight(page, dialog, t, name, roles, body, bad_http, console_errors, evidence):
+    """One held create, a swallowed second click, then a 502 that keeps the draft."""
+    reason = "upstream fixture is unreachable"
+    held = []
+
+    def hold_create(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != PREFIX:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + PREFIX, hold_create)
+    button(dialog, t["actions"]["save"]).click()
+    inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+    expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    inflight.click()
+    check(len(held) == 1, "duplicate create while the first request is held")
+    check(held[0].request.post_data_json == body, "held create body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == PREFIX and r.request.method == "POST") as failed:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute("**" + PREFIX, hold_create)
+    check(failed.value.status == 502, "forced create failure did not surface")
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_label(t["form"]["name"], exact=True)).to_have_value(name)
+    for role in roles:
+        expect(role_control(dialog, t, role)).to_be_checked()
+    expect(page.get_by_text(reason)).to_be_visible()
+    check(any(item["path"] == PREFIX and item["status"] == 502 for item in bad_http), "502 was not recorded")
+    check(any("502" in text for text in console_errors), "502 console line missing: " + str(console_errors))
+    bad_http.clear()
+    console_errors.clear()
+    evidence.append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True,
+                     "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
+
+
 # Mainline: gpuworks/network/type-role/<type--roles>; 空库字典固定三类型/三角色 → UI逐项选择指定非空角色组合
 # → 精确POST+独立GET → 刷新打开编辑确认类型/角色回填 → UI删除+GET404+列表恢复；仅定义，无网络运行时声明。
-def test_type_role_combination(page, server, result, locale, key, baseline):
+def exercise_minimum_network(page, server, t, name, network_id, result):
+    """Minimum host-ethernet create: empty optionals, list row, and one small attach button."""
+    resolved_title = t['detail']['resolved'].replace('{{count}}', '0')
+    resolved = page.locator('.ant-card').filter(
+        has=page.locator('.ant-card-head-title', has_text=re.compile(rf'^{re.escape(resolved_title)}$')))
+    expect(resolved).to_have_count(1)
+    table = resolved.locator('.ant-table')
+    expect(table).to_have_count(1)
+    expect(table).to_have_class(re.compile(r'\bant-table-middle\b'))
+    attach = button(page, t['actions']['attach'])
+    expect(attach).to_have_count(1)
+    expect(attach).to_have_class(re.compile(r'\bant-btn-sm\b'))
+    cidr = page.locator('.ant-descriptions-item').filter(has_text=t['selector']['cidr'])
+    interface = page.locator('.ant-descriptions-item').filter(has_text=t['selector']['interface'])
+    expect(cidr).to_have_count(1)
+    expect(interface).to_have_count(1)
+    expect(cidr).to_contain_text('—')
+    expect(interface).to_contain_text('—')
+    expect(page.get_by_text(t['detail']['noAttachments'], exact=True)).to_be_visible()
+    result['last_step'] = 'selector-descriptions'
+    descriptions = page.locator('.ant-descriptions').filter(has=cidr)
+    expect(descriptions).to_have_count(1)
+    expect(descriptions).to_have_class(re.compile(r'\bant-descriptions-small\b'))
+    page.goto(server.base + '/networks')
+    expect(page.get_by_role('heading', name=t['title'], exact=True)).to_be_visible()
+    row = page.get_by_role('row').filter(has_text=name)
+    expect(row).to_have_count(1)
+    expect(row.get_by_role('link', name=name, exact=True)).to_be_visible()
+    expect(row.get_by_text(t['selector']['none'], exact=True)).to_be_visible()
+    edit = button(row, t['actions']['edit'])
+    expect(edit).to_have_count(1)
+    expect(edit).to_have_class(re.compile(r'\bant-btn-text\b'))
+    edit.click()
+    editing = form(page, t, True)
+    expect(editing.get_by_label(t['form']['name'], exact=True)).to_have_value(name)
+    expect(editing.get_by_label(t['form']['description'], exact=True)).to_have_value('')
+    expect(editing.get_by_label(t['form']['cidr'], exact=True)).to_have_value('')
+    expect(editing.get_by_label(t['form']['interface'], exact=True)).to_have_value('')
+    expect(type_control(editing, t, 'host_ethernet')).to_be_checked()
+    expect(role_control(editing, t, 'compute')).to_be_checked()
+    expect(role_control(editing, t, 'storage_sync')).not_to_be_checked()
+    expect(role_control(editing, t, 'serving')).not_to_be_checked()
+    expect(editing.locator('input[type=password]')).to_have_count(0)
+    button(editing, t['actions']['cancel']).click()
+    expect(editing).not_to_be_visible()
+    page.goto(server.base + '/networks/' + str(network_id))
+    expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
+    return {
+        'attach_button_small': True,
+        'list_name': True,
+        'list_selector_empty': True,
+        'detail_cidr_empty': True,
+        'detail_interface_empty': True,
+        'not_attached': True,
+        'edit_button_text': True,
+        'edit_backfill': True,
+        'edit_password_fields': 0,
+        'resolved_table_middle': True,
+        'selector_descriptions_small': True,
+    }
+
+
+def exercise_full_optional(page, server, t, name, evidence):
+    """Second host-ethernet create with description, CIDR, interface, and every role."""
+    full_name = name + '-full'
+    body = {
+        'name': full_name,
+        'description': 'east lane',
+        'roles': list(ROLES),
+        'type': 'host_ethernet',
+        'cidr': '10.77.0.0/16',
+        'interface': 'ens*',
+    }
+    page.goto(server.base + '/networks')
+    expect(page.get_by_role('heading', name=t['title'], exact=True)).to_be_visible()
+    button(page, t['actions']['create']).click()
+    dialog = form(page, t)
+    expect(dialog).to_be_visible()
+    expect(type_control(dialog, t, 'host_ethernet')).to_be_checked()
+    dialog.get_by_label(t['form']['name'], exact=True).fill(full_name)
+    dialog.get_by_label(t['form']['description'], exact=True).fill(body['description'])
+    dialog.get_by_label(t['form']['cidr'], exact=True).fill(body['cidr'])
+    dialog.get_by_label(t['form']['interface'], exact=True).fill(body['interface'])
+    for role in ROLES:
+        role_control(dialog, t, role).check()
+        expect(role_control(dialog, t, role)).to_be_checked()
+    created = mutate(page, button(dialog, t['actions']['save']).click, 'POST', PREFIX, body, 201, evidence)
+    path = PREFIX + '/' + str(created['id'])
+    expect(page).to_have_url(server.base + '/networks/' + str(created['id']))
+    stored = persisted(page, server.base, path, body, evidence)
+    expect(page.get_by_text(body['description'], exact=True).first).to_be_visible()
+    expect(page.get_by_text(body['cidr'], exact=True).first).to_be_visible()
+    expect(page.get_by_text(body['interface'], exact=True).first).to_be_visible()
+    button(page, t['actions']['delete']).click()
+    popup = page.get_by_role('tooltip').filter(has_text=t['actions']['confirmDelete'].replace('{{name}}', full_name))
+    expect(popup).to_be_in_viewport(ratio=1)
+    deleted = mutate(page, button(popup, t['actions']['delete']).click, 'DELETE', path, None, 200, evidence)
+    check(deleted == {'status': 'deleted'}, 'full network delete envelope differs')
+    check(read(page, server.base, path, 404)['code'] == 'NETWORK_NOT_FOUND', 'full network remains readable')
+    return {
+        'name': full_name,
+        'path': path,
+        'description': body['description'],
+        'cidr': body['cidr'],
+        'interface': body['interface'],
+        'roles': stored['roles'],
+        'status': 201,
+    }
+
+
+def exercise_role_tooltip(page, dialog, t):
+    """One tooltip on a role Accelerator RDMA cannot carry, then restore ethernet."""
+    reason = t['form']['roleNotOnType']
+    label = t['role']['storage_sync']
+    choose_type(dialog, t, 'accelerator_rdma')
+    span = dialog.get_by_label(f'{label}: {reason}', exact=True)
+    expect(span).to_be_visible()
+    span.hover()
+    tip = page.locator('.ant-tooltip')
+    expect(tip).to_have_count(1, timeout=12000)
+    expect(tip).to_be_visible()
+    expect(tip).to_contain_text(reason)
+    choose_type(dialog, t, 'host_ethernet')
+    dialog.get_by_label(t['form']['name'], exact=True).focus()
+    for role in ROLES:
+        box = role_control(dialog, t, role)
+        expect(box).to_be_enabled()
+        expect(box).not_to_be_checked()
+    expect(type_control(dialog, t, 'host_ethernet')).to_be_checked()
+    return {'tooltips': 1, 'reason': True, 'restored_type': 'host_ethernet'}
+
+
+def exercise_network_edit_conflict(page, dialog, server, t, path, body, events, posts, evidence):
+    """Another session writes the description. The open edit keeps its draft and save writes that draft back."""
+    check(events == [{'method': 'POST', 'path': PREFIX}] * posts, 'read/cancel unexpectedly mutated resource')
+    other = {**body, 'description': 'Other session'}
+    written = page.request.put(server.base + path, data=other)
+    check(written.status == 200, f'the other network session was rejected: HTTP {written.status}')
+    persisted(page, server.base, path, other, evidence)
+    expect(dialog.get_by_label(t['form']['description'], exact=True)).to_have_value('')
+    expect(dialog.get_by_label(t['form']['name'], exact=True)).to_have_value(body['name'])
+    expect(type_control(dialog, t, body['type'])).to_be_checked()
+    expect(role_control(dialog, t, 'storage_sync')).to_be_checked()
+    expect(role_control(dialog, t, 'compute')).not_to_be_checked()
+    expect(role_control(dialog, t, 'serving')).not_to_be_checked()
+    check(dialog.locator('.ant-alert-error').count() == 0, 'the edit dialog shows a conflict')
+    check(events == [{'method': 'POST', 'path': PREFIX}] * posts, 'the other network session was counted as a page save')
+    mutate(page, button(dialog, t['actions']['save']).click, 'PUT', path, body, 200, evidence)
+    expect(dialog).not_to_be_visible()
+    persisted(page, server.base, path, body, evidence)
+    return {
+        'other_session': 200,
+        'other_description': 'Other session',
+        'draft_description': '',
+        'saved_status': 200,
+        'conflict_status': False,
+    }
+
+
+def test_type_role_combination(page, server, result, locale, key, baseline, bad_http=None, console_errors=None):
     t, evidence = locale_strings(locale, 'networks'), result['evidence']
     kind, roles = COMBINATIONS[key]
     result['mainline'] = f'空库 → UI选择 {kind} / {roles} 创建 → GET及刷新编辑回填 → UI删除和GET404/列表恢复'
     events = mutations_on(page, PREFIX)
-    dialog = open_create(page, server, t)
+    dialog = open_create(page, server, t, evidence)
+    if key == 'host_ethernet--storage_sync':
+        result['last_step'] = 'role-tooltip'
+        result['role_tooltip'] = exercise_role_tooltip(page, dialog, t)
+    from network_create_inventory import exercise_network_create_inventory
+    result["create_inventory"] = exercise_network_create_inventory(dialog, t)
+    evidence.append({"layer": "ui", "create_inventory": result["create_inventory"]})
     expect(type_control(dialog, t, TYPES[0])).to_be_checked()
     expect(dialog.get_by_role('radio')).to_have_count(3)
     expect(dialog.get_by_role('checkbox')).to_have_count(3)
     for role in ROLES:
         expect(role_control(dialog, t, role)).not_to_be_checked()
+    result["required_fields"] = exercise_network_required(page, dialog, t)
+    result["last_step"] = "network-required"
+    if key == 'host_ethernet--compute':
+        result["create_keyboard"] = exercise_create_keyboard(page, dialog, t)
+        result["last_step"] = "create-keyboard"
     choose_type(dialog, t, kind)
     expect(type_control(dialog, t, kind)).to_be_checked()
     for role in ROLES:
@@ -112,6 +444,15 @@ def test_type_role_combination(page, server, result, locale, key, baseline):
         expect(dialog.get_by_label(t['form']['bootstrapCidr'], exact=True)).not_to_be_visible()
         expect(dialog.get_by_role('button').filter(has_text=t['form']['advanced'])).to_have_attribute('aria-expanded', 'false')
     body = {'name': name, 'description': '', 'roles': roles, 'type': kind, 'cidr': '', 'interface': ''}
+    if key == 'host_ethernet--compute':
+        check(not _posts(page, lambda: dialog.get_by_label(t['form']['name'], exact=True).press('Enter')),
+              'Enter on the minimum form sent a network create')
+        expect(dialog).to_be_visible()
+        expect(dialog.get_by_label(t['form']['name'], exact=True)).to_have_value(name)
+        expect(role_control(dialog, t, 'compute')).to_be_checked()
+        result['create_keyboard']['enter_on_minimum'] = False
+    if key == 'host_ethernet--storage_sync':
+        exercise_create_inflight(page, dialog, t, name, roles, body, bad_http, console_errors, evidence)
     created = mutate(page, button(dialog, t['actions']['save']).click, 'POST', PREFIX, body, 201, evidence)
     path = PREFIX + '/' + str(created['id'])
     expect(page).to_have_url(server.base + '/networks/' + str(created['id']))
@@ -119,6 +460,9 @@ def test_type_role_combination(page, server, result, locale, key, baseline):
     check(actual['type_roles'] == TYPE_ROLES, 'detail type_roles differs')
     page.reload()
     expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
+    if key == 'host_ethernet--compute':
+        result['minimum_create'] = exercise_minimum_network(page, server, t, name, created['id'], result)
+        result['last_step'] = 'minimum-create'
     button(page, t['actions']['edit']).click()
     dialog = form(page, t, True)
     expect(type_control(dialog, t, kind)).to_be_checked()
@@ -130,12 +474,37 @@ def test_type_role_combination(page, server, result, locale, key, baseline):
             expect(role_control(dialog, t, role)).to_be_disabled()
     if kind != 'host_ethernet':
         expect(dialog.get_by_role('button').filter(has_text=t['form']['advanced'])).to_have_attribute('aria-expanded', 'false')
-    button(dialog, t['actions']['cancel']).click()
-    expect(dialog).not_to_be_visible()
-    check(events == [{'method': 'POST', 'path': PREFIX}], 'read/cancel unexpectedly mutated resource')
+    posts = 2 if key == 'host_ethernet--storage_sync' else 1
+    if key == 'host_ethernet--storage_sync':
+        result['last_step'] = 'edit-conflict'
+        result['edit_conflict'] = exercise_network_edit_conflict(
+            page, dialog, server, t, path, body, events, posts, evidence)
+    else:
+        button(dialog, t['actions']['cancel']).click()
+        expect(dialog).not_to_be_visible()
+        check(events == [{'method': 'POST', 'path': PREFIX}] * posts, 'read/cancel unexpectedly mutated resource')
     evidence.append({'layer': 'ui', 'type': kind, 'selected_roles': roles, 'disabled_roles': [r for r in ROLES if r not in TYPE_ROLES[kind]], 'refresh_edit_backfill': True})
+    full_path = None
+    if key == 'host_ethernet--compute':
+        result['last_step'] = 'full-optional'
+        result['full_optional'] = exercise_full_optional(page, server, t, name, evidence)
+        full_path = result['full_optional']['path']
+        page.goto(server.base + '/networks/' + str(created['id']))
+        expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
     delete_owned(page, server, t, path, name, baseline, evidence)
-    check(events == [{'method': 'POST', 'path': PREFIX}, {'method': 'DELETE', 'path': path}], 'unexpected mutation sequence')
+    expected = [{'method': 'POST', 'path': PREFIX}] * posts + [{'method': 'DELETE', 'path': path}]
+    if key == 'host_ethernet--storage_sync':
+        expected = [{'method': 'POST', 'path': PREFIX}] * posts + [
+            {'method': 'PUT', 'path': path},
+            {'method': 'DELETE', 'path': path},
+        ]
+    if full_path is not None:
+        expected = [{'method': 'POST', 'path': PREFIX}] * posts + [
+            {'method': 'POST', 'path': PREFIX},
+            {'method': 'DELETE', 'path': full_path},
+            {'method': 'DELETE', 'path': path},
+        ]
+    check(events == expected, 'unexpected mutation sequence')
 
 
 # Mainline: gpuworks/network/type-role/<to-RDMA-and-back>; UI创建含全部角色/CIDR/接口Ethernet → UI切RDMA
@@ -148,7 +517,7 @@ def test_type_transition(page, server, result, locale, key, baseline):
     events = mutations_on(page, PREFIX)
     name = 'e2e-' + result['run_id'] + '-' + str(CASES.index(key))
     body = {'name': name, 'description': 'type transition', 'type': 'host_ethernet', 'roles': ROLES, 'cidr': '10.77.0.0/16', 'interface': 'ens*'}
-    dialog = open_create(page, server, t)
+    dialog = open_create(page, server, t, evidence)
     for field in ['name', 'description', 'cidr', 'interface']:
         dialog.get_by_label(t['form'][field], exact=True).fill(body[field])
     for role in ROLES:
@@ -235,7 +604,7 @@ def main():
               'lane': 'local-real-server-sqlite', 'identity': 'admin', 'locale': args.locale, 'timezone': 'UTC',
               'viewport': {'width': 1440, 'height': 900}, 'retries': 0, 'cases': [], 'selection': selected,
               'source_digests': {str(p.relative_to(ROOT)): digest(p) for p in [Path(__file__).resolve(), manifest_path,
-                  ROOT / 'test/e2e/local_browser_fixture.py', ROOT / 'test/e2e/network_storage_lifecycle.py', ROOT / 'test/e2e/platform_token_read_revoke.py', ROOT / 'ui/src/pages/networks/NetworkFormModal.tsx']},
+                  ROOT / 'test/e2e/local_browser_fixture.py', ROOT / 'test/e2e/network_storage_lifecycle.py', ROOT / 'test/e2e/platform_token_read_revoke.py', ROOT / 'test/e2e/dialog_checks.py', ROOT / 'test/e2e/network_create_inventory.py', ROOT / 'ui/src/pages/networks/NetworkFormModal.tsx', ROOT / 'ui/src/pages/networks/NetworkDetailPage.tsx', ROOT / 'ui/src/pages/networks/NetworksPage.tsx']},
               'command': ['python3', 'test/e2e/network_type_roles.py', *sys.argv[1:]]}
     try:
         check(manifest['test_file'] == 'test/e2e/network_type_roles.py', 'manifest file mismatch')
@@ -281,7 +650,10 @@ def main():
                     page.on('console', lambda message: console_errors.append(message.text) if message.type == 'error' else None)
                     artifacts.start_trace(context)
                     function = test_type_role_combination if key in COMBINATIONS else test_type_transition
-                    function(page, server, result, args.locale, key, baseline)
+                    if key in COMBINATIONS:
+                        function(page, server, result, args.locale, key, baseline, bad_http, console_errors)
+                    else:
+                        function(page, server, result, args.locale, key, baseline)
                     check(not errors and not bad_http and not console_errors, f'browser errors: {errors}, {bad_http}, {console_errors}')
                     check(page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'page horizontal overflow')
                     check(set(indexed[key]['required_evidence']) <= {e['layer'] for e in result['evidence']}, 'missing required evidence')

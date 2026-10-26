@@ -53,10 +53,273 @@ def action(scope, label):
     return scope.get_by_role("button", name=re.compile(accessible)).first
 
 
+def exercise_add_dialog(page, add, storage, posts, report):
+    """Add dialog identity, layout, focus, and dismissals. No storage POST."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    title = storage["form"]["addTitle"]
+    parent = page.get_by_role("heading", name=storage["page"]["title"], exact=True)
+
+    def writes():
+        return len(posts)
+
+    def open_add():
+        add.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_add()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(storage["form"]["name"], exact=True),
+                        button(dialog, storage["form"]["save"]))
+    dialog = assert_nested_dismissals(
+        dialog, parent, open_add,
+        [("cancel", cancel_button(storage["form"]["cancel"])), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        writes, add)
+    cancel_button(storage["form"]["cancel"])(dialog)
+    expect(dialog).to_be_hidden()
+    expect(parent).to_be_visible()
+    check(writes() == 0, "add dialog dismissal sent POST")
+    report["evidence"].append({"layer": "ui", "add_dialog": title,
+        "dismissals": ["cancel", "escape", "close", "mask"], "post_requests": 0})
+
+
 def confirm_popconfirm(page):
     popconfirm = page.locator(".ant-popconfirm")
     expect(popconfirm).to_be_visible(timeout=5000)
     popconfirm.locator(".ant-btn-primary").click()
+
+
+def exercise_full_local(page, server, storage, name, directory, report):
+    """Second local create that fills the label optional. The label row is start-aligned."""
+    full_name = name + "-full"
+    full_path = directory + "-full"
+    scope = storage["form"]["scope"]
+    page.goto(server.base + "/storage")
+    expect(page.get_by_role("heading", name=storage["page"]["title"], exact=True)).to_be_visible()
+    action(page, storage["page"]["add"]).click()
+    dialog = page.get_by_role("dialog", name=storage["form"]["addTitle"], exact=True)
+    expect(dialog).to_be_visible()
+    dialog.get_by_label(storage["form"]["name"], exact=True).fill(full_name)
+    dialog.get_by_label(storage["form"]["path"], exact=True).fill(full_path)
+    dialog.get_by_text(scope["labels"], exact=True).click()
+    expect(dialog.get_by_role("radio", name=scope["labels"], exact=True)).to_be_checked()
+    key = dialog.get_by_label(scope["labelKey"], exact=True)
+    expect(key).to_be_visible()
+    row = key.locator(
+        "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' ant-space ')][1]")
+    report["last_step"] = "label-row-align"
+    expect(row).to_have_count(1)
+    expect(row).to_have_class(re.compile(r"\bant-space-align-start\b"))
+    key.fill("team")
+    dialog.get_by_label(scope["labelValue"], exact=True).fill("alpha")
+    body = {
+        "name": full_name,
+        "type": "local",
+        "all_nodes": False,
+        "targets": [{"label_key": "team", "label_value": "alpha"}],
+        "path": full_path,
+    }
+    report["last_step"] = "full-save"
+    with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES
+                              and r.request.method == "POST") as created:
+        button(dialog, storage["form"]["save"]).click()
+    check(created.value.status == 201, f"full storage create HTTP {created.value.status}")
+    sent = created.value.request.post_data_json
+    check(sent == body, "full storage create body differs")
+    storage_id = created.value.json()["id"]
+    page.wait_for_url(re.compile(rf".*/storage/{storage_id}$"), timeout=15000)
+    expect(page.get_by_text(full_path, exact=True).first).to_be_visible()
+    expect(page.get_by_text(storage["overview"]["scopeChosen"], exact=True).first).to_be_visible()
+    expect(page.get_by_text("team=alpha", exact=True).first).to_be_visible()
+    stored = page.request.get(server.base + STORAGES + f"/{storage_id}")
+    check(stored.status == 200, f"full storage GET HTTP {stored.status}")
+    doc = stored.json()
+    labels = [item for item in doc.get("targets") or [] if item.get("label_key")]
+    check(doc["name"] == full_name and doc["type"] == "local" and doc["path"] == full_path
+          and doc["all_nodes"] is False and labels == body["targets"],
+          "full storage GET differs")
+    report["last_step"] = "full-deleted"
+    page.goto(server.base + "/storage")
+    row = page.locator("tr").filter(has=page.get_by_text(full_name, exact=True))
+    expect(row).to_have_count(1)
+    row.get_by_role("button", name=storage["actions"]["delete"], exact=True).click()
+    expect(page.locator(".ant-popconfirm")).to_contain_text(
+        format_text(storage["actions"]["deleteConfirm"], name=full_name))
+    with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES + f"/{storage_id}"
+                              and r.request.method == "DELETE") as deleted:
+        confirm_popconfirm(page)
+    check(deleted.value.status in (200, 204), f"full storage delete HTTP {deleted.value.status}")
+    expect(row).to_have_count(0, timeout=15000)
+    check(page.request.get(server.base + STORAGES + f"/{storage_id}").status == 404,
+          "the full storage remains readable")
+    return {
+        "name": full_name,
+        "path": full_path,
+        "label": "team=alpha",
+        "status": 201,
+        "all_nodes": False,
+        "label_row_align": "start",
+    }
+
+
+def exercise_local_inflight(page, modal, storage, name, path, body, bad_responses, console_errors, evidence):
+    """One held create. Save is disabled, a forced second click sends nothing, and a 502 keeps the draft."""
+    reason = "upstream fixture is unreachable"
+    held = []
+
+    def hold_create(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != STORAGES:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + STORAGES, hold_create)
+    button(modal, storage["form"]["save"]).click()
+    inflight = modal.locator(".ant-modal-footer button.ant-btn-primary")
+    expect(inflight).to_be_disabled()
+    inflight.click(force=True)
+    modal.get_by_label(storage["form"]["name"], exact=True).focus()
+    page.keyboard.press("Enter")
+    check(len(held) == 1, "duplicate create while the first request is held")
+    check(held[0].request.post_data_json == body, "held create body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES and r.request.method == "POST") as failed:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute("**" + STORAGES, hold_create)
+    check(failed.value.status == 502, "forced create failure did not surface")
+    expect(modal).to_be_visible()
+    expect(modal.get_by_label(storage["form"]["name"], exact=True)).to_have_value(name)
+    expect(modal.get_by_label(storage["form"]["path"], exact=True)).to_have_value(path)
+    expect(page.get_by_text(reason)).to_be_visible()
+    expect(button(modal, storage["form"]["save"])).to_be_enabled()
+    check(any(item.get("path") == STORAGES and item.get("status") == 502 for item in bad_responses), "502 was not recorded")
+    check(any("502" in text for text in console_errors), "502 console line absent: " + str(console_errors))
+    bad_responses[:] = [item for item in bad_responses if item.get("status") != 502]
+    console_errors[:] = [text for text in console_errors if "502" not in text]
+    evidence.append({"layer": "ui", "inflight_posts": 1, "save_disabled": True,
+                     "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
+
+
+def exercise_edit_conflict(page, server, storage, common, storage_id, name, path_value, stale,
+                           bad_responses, console_errors, evidence, report):
+    """The open edit dialog sends its previewed revision. Another writer advances it first."""
+    page.goto(server.base + f"/storage/{storage_id}")
+    button(page, storage["actions"]["edit"]).click()
+    scope = storage["form"]["scope"]
+    dialog = page.get_by_role("dialog", name=storage["form"]["editTitle"].replace("{{name}}", name), exact=True)
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_label(storage["form"]["name"], exact=True)).to_have_value(name)
+    expect(dialog.get_by_label(storage["form"]["path"], exact=True)).to_have_value(path_value)
+    expect(dialog.get_by_role("radio", name=scope["all"], exact=True)).to_be_checked()
+    expect(dialog.get_by_text(common["storageType"]["local"], exact=True)).to_be_visible()
+    expect(dialog.locator("input[type=password]")).to_have_count(0)
+    dialog.get_by_text(scope["labels"], exact=True).click()
+    expect(dialog.get_by_role("radio", name=scope["labels"], exact=True)).to_be_checked()
+    dialog.get_by_label(scope["labelKey"], exact=True).fill("team")
+    dialog.get_by_label(scope["labelValue"], exact=True).fill("alpha")
+    api_path = STORAGES + f"/{storage_id}"
+    moved = page.request.fetch(server.base + api_path, method="PATCH",
+                               headers={"content-type": "application/json"},
+                               data=json.dumps({"expected_updated_at": stale}))
+    preview = moved.json()
+    check(moved.status == 200 and preview.get("updated_at") not in (None, stale),
+          f"revision move HTTP {moved.status} {preview!r}")
+    with page.expect_response(lambda r: urlsplit(r.url).path == api_path and r.request.method == "PATCH") as conflicted:
+        button(dialog, storage["form"]["save"]).click()
+    result = conflicted.value
+    body = result.json()
+    sent = result.request.post_data_json
+    check(result.status == 409 and body.get("code") == "STORAGE_CONFIG_CHANGED",
+          f"stale edit HTTP {result.status} {body!r}")
+    check(sent.get("expected_updated_at") == stale and sent.get("all_nodes") is False
+          and sent.get("targets") == [{"label_key": "team", "label_value": "alpha"}],
+          f"stale edit body differs: {sent}")
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_role("radio", name=scope["labels"], exact=True)).to_be_checked()
+    expect(dialog.get_by_label(scope["labelKey"], exact=True)).to_have_value("team")
+    expect(dialog.get_by_label(scope["labelValue"], exact=True)).to_have_value("alpha")
+    report["last_step"] = "conflict-alert-icon"
+    alert = dialog.get_by_role("alert").filter(has_text=common["apiError"]["STORAGE_CONFIG_CHANGED"])
+    expect(alert).to_be_visible()
+    expect(alert.locator(".ant-alert-icon")).to_have_count(1)
+    expect(alert).not_to_have_class(re.compile(r"\bant-alert-no-icon\b"))
+    report["conflict_alert_icon"] = True
+    stayed = page.request.get(server.base + api_path)
+    stored = stayed.json()
+    check(stayed.status == 200 and stored.get("all_nodes") is True and stored.get("name") == name
+          and stored.get("path") == path_value and stored.get("updated_at") == preview["updated_at"]
+          and all(not item.get("label_key") for item in stored.get("targets") or []),
+          f"stale edit changed the stored storage: {stored}")
+    check(any(item.get("path") == api_path and item.get("status") == 409 for item in bad_responses),
+          "409 was not recorded")
+    check(any("409" in text for text in console_errors), "409 console line absent")
+    bad_responses[:] = [item for item in bad_responses if not (item.get("path") == api_path and item.get("status") == 409)]
+    console_errors[:] = [item for item in console_errors if "409" not in item]
+    evidence.append({"layer": "request", "method": "PATCH", "path": api_path, "status": 409,
+                     "code": "STORAGE_CONFIG_CHANGED", "body": sent})
+    evidence.append({"layer": "persistence", "conflict": "STORAGE_CONFIG_CHANGED",
+                     "updated_at": stored.get("updated_at"), "all_nodes": True, "label_targets": []})
+    evidence.append({"layer": "ui", "conflict_code": "STORAGE_CONFIG_CHANGED", "draft_retained": True,
+                     "dialog_open": True, "teardown_asserted": False})
+    button(dialog, storage["form"]["cancel"]).click()
+    expect(dialog).to_be_hidden()
+    report["last_step"] = "conflict-reopen"
+    page.reload()
+    expect(page.get_by_text(name, exact=True).first).to_be_visible()
+    expect(button(page, storage["actions"]["edit"])).to_be_visible()
+    reopened = page.get_by_role("dialog", name=storage["form"]["editTitle"].replace("{{name}}", name), exact=True)
+    button(page, storage["actions"]["edit"]).click()
+    expect(reopened).to_be_visible()
+    expect(reopened.get_by_role("radio", name=scope["all"], exact=True)).to_be_checked()
+    expect(reopened.get_by_label(scope["labelKey"], exact=True)).to_have_count(0)
+    reopened.get_by_text(scope["labels"], exact=True).click()
+    expect(reopened.get_by_role("radio", name=scope["labels"], exact=True)).to_be_checked()
+    reopened.get_by_label(scope["labelKey"], exact=True).fill("team")
+    reopened.get_by_label(scope["labelValue"], exact=True).fill("alpha")
+    recovered_targets = [{"label_key": "team", "label_value": "alpha"}]
+    report["last_step"] = "conflict-retry"
+    with page.expect_response(lambda r: urlsplit(r.url).path == api_path and r.request.method == "PATCH") as retried:
+        button(reopened, storage["form"]["save"]).click()
+    retry = retried.value
+    retry_sent = retry.request.post_data_json
+    check(retry.status == 200, f"reloaded edit HTTP {retry.status}")
+    check(retry_sent == {"all_nodes": False, "targets": recovered_targets,
+                         "expected_updated_at": preview["updated_at"]},
+          f"reloaded edit body differs: {retry_sent}")
+    expect(reopened).to_be_hidden()
+    expect(page.get_by_text("team=alpha", exact=True).first).to_be_visible()
+    recovered = page.request.get(server.base + api_path)
+    recovered_doc = recovered.json()
+    recovered_labels = [item for item in recovered_doc.get("targets") or [] if item.get("label_key")]
+    check(recovered.status == 200 and recovered_doc.get("all_nodes") is False
+          and recovered_doc.get("name") == name and recovered_doc.get("path") == path_value
+          and recovered_labels == recovered_targets,
+          f"reloaded edit GET differs: {recovered_doc}")
+    report["last_step"] = "conflict-restored"
+    button(page, storage["actions"]["edit"]).click()
+    restoring = page.get_by_role("dialog", name=storage["form"]["editTitle"].replace("{{name}}", name), exact=True)
+    expect(restoring).to_be_visible()
+    expect(restoring.get_by_label(scope["labelKey"], exact=True)).to_have_value("team")
+    restoring.get_by_text(scope["all"], exact=True).click()
+    expect(restoring.get_by_role("radio", name=scope["all"], exact=True)).to_be_checked()
+    with page.expect_response(lambda r: urlsplit(r.url).path == api_path and r.request.method == "PATCH") as restored:
+        button(restoring, storage["form"]["save"]).click()
+    restore = restored.value
+    restore_sent = restore.request.post_data_json
+    check(restore.status == 200, f"restore all-nodes HTTP {restore.status}")
+    check(restore_sent == {"all_nodes": True, "targets": [],
+                           "expected_updated_at": recovered_doc["updated_at"]},
+          f"restore all-nodes body differs: {restore_sent}")
+    expect(restoring).to_be_hidden()
+    final = page.request.get(server.base + api_path)
+    final_doc = final.json()
+    check(final.status == 200 and final_doc.get("all_nodes") is True and final_doc.get("name") == name
+          and final_doc.get("path") == path_value
+          and all(not item.get("label_key") for item in final_doc.get("targets") or []),
+          f"restore changed the stored storage: {final_doc}")
+    report["conflict_recovered"] = True
 
 
 # Contract: gpuworks/storage/local-create-delete
@@ -115,10 +378,19 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     report["preflight"] = "PASS"
     report["last_step"] = "storage-page-loaded"
 
-    action(page, storage["page"]["add"]).click()
+    add = action(page, storage["page"]["add"])
+    expect(add).to_be_visible()
+    report["last_step"] = "add dialog over the storage page"
+    exercise_add_dialog(page, add, storage, posts, report)
+
+    add.click()
     modal = page.get_by_role("dialog")
     expect(modal).to_be_visible()
     expect(modal.get_by_text(storage["form"]["addTitle"], exact=True)).to_be_visible()
+    from storage_local_inventory import exercise_local_inventory
+    report["local_inventory"] = exercise_local_inventory(modal, storage, common, posts)
+    expect(modal.locator("input[type=password]")).to_have_count(0)
+    report["create_secret_inputs"] = 0
     save = button(modal, storage["form"]["save"])
     local = modal.get_by_role("radio", name=common["storageType"]["local"], exact=True)
     nfs = modal.get_by_role("radio", name=common["storageType"]["nfs"], exact=True)
@@ -139,6 +411,9 @@ def test_storage_local(page, context, server, artifacts, report, locale):
 
     name_input = modal.get_by_label(storage["form"]["name"], exact=True)
     path_input = modal.get_by_label(storage["form"]["path"], exact=True)
+    from storage_local_required import exercise_storage_required
+    report["required_fields"] = exercise_storage_required(page, modal, storage, path)
+    report["last_step"] = "storage-required"
     name_input.fill("Bad Name")
     path_input.fill(path)
     save.click()
@@ -189,6 +464,10 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     expect(name_input).to_have_value("")
     name_input.fill(name)
     path_input.fill(path)
+    exercise_local_inflight(
+        page, modal, storage, name, path,
+        {"name": name, "type": "local", "all_nodes": True, "targets": [], "path": path},
+        bad_responses, console_errors, report["evidence"])
     with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES
                               and r.request.method == "POST") as created:
         save.click()
@@ -205,6 +484,17 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     expect(page.get_by_text(common["storageType"]["local"], exact=True).first).to_be_visible()
     expect(page.get_by_text(path, exact=True).first).to_be_visible()
     expect(page.get_by_text(storage["scope"]["all"], exact=True).first).to_be_visible()
+    config_title = storage["overview"]["config"]
+    config_card = page.locator(".ant-card").filter(
+        has=page.locator(".ant-card-head-title", has_text=re.compile(rf"^{re.escape(config_title)}$")))
+    expect(config_card).to_have_count(1)
+    expect(config_card).to_have_class(re.compile(r"\bant-card-small\b"))
+    report["config_card_small"] = True
+    report["last_step"] = "show-nodes-link"
+    show_nodes = page.get_by_role("button", name=storage["overview"]["showNodes"], exact=True)
+    expect(show_nodes).to_have_count(1)
+    expect(show_nodes).to_have_class(re.compile(r"\bant-btn-link\b"))
+    report["show_nodes_link"] = True
     page.goto(server.base + "/storage")
     row = page.get_by_role("row").filter(has_text=name)
     expect(row).to_have_count(1)
@@ -219,6 +509,21 @@ def test_storage_local(page, context, server, artifacts, report, locale):
           f"persisted storage differs: {saved}")
     check(saved["all_nodes"] is True, "the storage did not persist the all-nodes scope")
     report["last_step"] = "storage-persisted"
+    exercise_edit_conflict(page, server, storage, common, storage_id, name, path, saved["updated_at"],
+                           bad_responses, console_errors, report["evidence"], report)
+    report["edit_backfill"] = True
+    report["edit_secret_inputs"] = 0
+    report["last_step"] = "storage-edit-conflict"
+    from storage_local_edit import exercise_local_edit_changes
+    report["last_step"] = "local-edit-changes"
+    report["local_edit"] = exercise_local_edit_changes(
+        page, server, storage, storage_id, name, path)
+    report["local_edit_sha256"] = digest(ROOT / "test/e2e/storage_local_edit.py")
+    report["last_step"] = "full-optional"
+    report["full_optional"] = exercise_full_local(page, server, storage, name, path, report)
+    page.goto(server.base + "/storage")
+    row = page.get_by_role("row").filter(has_text=name)
+    expect(row).to_have_count(1)
 
     row.get_by_role("button", name=storage["actions"]["delete"], exact=True).click()
     popconfirm = page.locator(".ant-popconfirm")
@@ -290,13 +595,16 @@ def main():
         "selection": [CONTRACT], "retries": 0, "evidence": [],
         "coverage_manifest_sha256": digest(manifest_path),
         "test_sha256": digest(Path(__file__)),
+        "required_sha256": digest(ROOT / "test/e2e/storage_local_required.py"),
+        "inventory_sha256": digest(ROOT / "test/e2e/storage_local_inventory.py"),
         "helper_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
+        "dialog_checks_sha256": digest(ROOT / "test/e2e/dialog_checks.py"),
         "execution": "N/A: a local storage record; no agent trial mount or model-file access",
         "runtime": "N/A: no agent, container, GPU or engine",
         "not_covered": ["agent trial mount and capacity",
                         "creating shared_dir, NFS or NFS-cache storage (only local is created)",
-                        "cancel/close/Esc and the unsaved draft",
-                        "node and label scopes", "editing a storage", "in-use deletion",
+                        "unsaved draft left in the add dialog",
+                        "one-by-one node scope", "in-use deletion",
                         "duplicate names and exports", "non-admin permissions",
                         "model files and scans", "the other locale (each run covers one --locale)"],
         "command": ["python3", "test/e2e/storage_local.py", *sys.argv[1:]]}

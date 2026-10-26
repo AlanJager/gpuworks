@@ -254,7 +254,23 @@ def cleanup(server, token, report, holder):
             report['owned_template_model_id'] = None
             return True
         stage('template', model_id, 'DELETE only owned template spec', delete_template)
-    for owned in report.get('owned_acquisition_storages', []):
+    owned_storages = report.get('owned_acquisition_storages', [])
+    if owned_storages:
+        def restore_seeded_default():
+            # The default storage cannot be deleted. The seeded row takes the
+            # default back so both owned stores are ordinary and removable.
+            code, listed = http(server.base, 'GET', STORAGES, token)
+            check(code == 200, 'storage discovery failed')
+            owned_names = {owned['name'] for owned in owned_storages}
+            seeded = [row for row in listed['items'] if row['name'] not in owned_names]
+            check(len(seeded) == 1, 'isolated seeded storage is not unique')
+            code, changed = http(server.base, 'PATCH', STORAGES + '/' + str(seeded[0]['id']), token,
+                                 {'is_default': True})
+            check(code == 200 and changed.get('is_default') is True, f'seeded default restore HTTP {code}')
+            return True
+        stage('acquisition-storage-default', 'seeded',
+              'PATCH the seeded storage back to default before deleting owned stores', restore_seeded_default)
+    for owned in owned_storages:
         def delete_storage(owned=owned):
             code, listed = http(server.base, 'GET', STORAGES, token)
             check(code == 200, 'storage discovery failed')

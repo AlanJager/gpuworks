@@ -89,10 +89,16 @@
   ],
   "checklist_items": {
     "partial": {
-      "12.1-12.7": "named drawer/viewport, header Tab to editor, Esc focus return, dirty keep, save/failure, named delete cancel; not every keyboard/style/close variant",
+      "12.2": "viewport non-overlap of the drawer title, explanation, editor and bottom action remains unasserted",
+      "12.4": "Esc focus return, dirty keep, save/failure, named delete cancel; not every keyboard/style/close variant",
       "15.1-15.3": "initial actual editor, syntax/schema unknown field, numeric line button/reason and editor focus, corrected save/reopen; exact error-line/cursor location remains MISSING and authoritative validation is server-side",
       "15.7": "user-source original package/specs unchanged by clone/edit; upstream read-only lane missing"
     },
+    "12.1": "Opened from the Edit control as the only dialog. The role is dialog, the accessible name is the drawer title, the component is ant-drawer-content, and the first step is the YAML editor. The discard dialog count is 0",
+    "12.3": "Default focus is the drawer panel. Shift+Tab from Save stays inside the drawer. Tab from Save focuses the YAML editor and stays inside the drawer. The drawer is aria-modal, so focus does not reach the page",
+    "12.5": "Discard dialog over the YAML editor: Keep editing and Escape each hide the child, leave the editor open with the unsaved draft, hide the child buttons, and send no import. Reopen uses the discard-title dialog.",
+    "12.6": "covered: While the YAML import is held the Save button shows the loading state and a second click sends no further import; the 502 keeps the edited YAML and shows the server reason; the later 200 matches the reloaded editor and the independent YAML GET",
+    "12.7": "Delete confirmation names the user spec and says that spec is removed from the template, built-in specs stay, and deleting the last user spec removes the template. A deployment that pins the spec returns 409 and the independent model GET is unchanged. A component reference returns 409 and the spec stays. After that deployment is deleting and the component reference is cleared, delete returns 200, the independent GET is 404, and the filtered list is empty",
     "not_applicable": {
       "15.4-15.5": "this template page has no form/text toggle"
     },

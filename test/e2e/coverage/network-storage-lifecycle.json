@@ -119,9 +119,20 @@
         }
       ],
       "checklist_items": {
-        "1": "PARTIAL: validation, cancel, create/update and refresh",
+        "1.1": "On first open the new-network dialog shows four textboxes, three checkboxes, three button radios, and one info alert. There is no spinbutton, no combobox, and no unit. Name is an empty required textbox with maximum length 64 and no placeholder. Description is an empty textbox with maximum length 256, is not required, and has no placeholder. Roles is one required checkbox group. Its three localized role checkboxes are enabled and unchecked. Type is one radio group and is not required. Its three localized type labels are visible button radios, and host_ethernet is checked. With that default the default CIDR and the default interface are visible empty textboxes, are not required, and have no maximum length. The CIDR placeholder is 10.20.0.0/16. The interface placeholder is the localized glob example. Bootstrap CIDR and the advanced section are absent. The info alert message is the localized selector note. The create POST sends the typed name, description E2E control-plane definition, role serving, type host_ethernet, cidr 10.77.0.0/16, and interface ens*. The independent GET stores those same fields.",
+        "1.2/1.3/1.4/1.5/1.6/1.7/1.8/1.12/1.13/1.14/1.15": "PARTIAL: validation, create/update and refresh",
+        "1.9": "While the create POST is held the save button stays loading and a second click sends no further create. The later 201 is the only stored network",
+        "1.10": "The 502 keeps the create dialog and the name, description, CIDR, interface and serving role, shows upstream fixture is unreachable, and stores no network. The retry 201 matches the independent detail GET",
+        "1.11": "covered: Cancel, close and Escape each close the create dialog immediately, with no unsaved-changes prompt and no network write, so the stored networks stay unchanged",
         "10": "PARTIAL: owned row and deletion; no full list matrix",
-        "12": "PARTIAL: named dialog, viewport, cancel/Esc, focus return; no complete keyboard/style matrix"
+        "12.1": "covered: New network on the networks page opens the dialog named by the create title",
+        "12.2": "covered: Create dialog at 1440x900: the dialog and footer Save stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
+        "12.3": "covered: Default focus is inside the create dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+        "12.4": "covered: Cancel, Escape, close and mask each return focus to the New network button and send no network write",
+        "12.5": "N/A: the network create dialog has no nested child layer",
+        "12.6": "covered: While the create POST is held the footer Save shows the loading state and a second click sends no further create request; the 502 keeps the name, description, CIDR, interface and serving role and shows the server reason; the later 201 matches the independent detail GET and the refreshed fields",
+        "12.7": "MISSING: delete names the network; reference-block, allow-cleanup, and failed delete without a partial change are not exercised",
+        "12.8": "N/A: the network create and edit dialogs have no delete preview, revision, or compare-and-swap"
       },
       "runtime": {
         "status": "N/A for resource registration contract",
@@ -254,9 +265,20 @@
         {"id": "probe", "component": "Button and conditional result panel", "request": "POST /api/v1/storages/probe from type/export/path/mount options/selected probe node", "persisted": "N/A: transient result gates shared-storage creation", "covered": [], "missing": ["MISSING: probe required before shared create; changes to probe-signature inputs invalidate the prior result and block save until reprobed", "MISSING: readable-only result changes save action and enabled=false; request failure/retry and stale async responses after close/reopen", "MISSING: per-type field omission/defaults and probe node/path override request assertions; real mount/read/write evidence remains in the separate runtime gap"]}
       ],
       "checklist_items": {
-        "1": "PARTIAL: validation, cancel, create/update and refresh",
+        "1.1": "On first open the add-storage dialog shows one secondary type-help paragraph, two button radio groups, and seven button radios. There is no spinbutton and no unit. Type is a button radio group labeled with the type label and is not marked required. Its four localized type labels are visible button radios, and local is checked. The type-help paragraph text is the localized local directory sentence. Name is an empty textbox, is not marked required, has no maximum length and no placeholder, and shows the localized 1-to-63 help. Directory is an empty textbox, is not marked required, has no maximum length, and shows the localized directory help. Export, mount options, cache directory, cache limit, shared directory, mount point, steps, the trial-mount button, checkboxes, label rows, and alerts are absent. Scope is a button radio group labeled with the scope title and is not marked required. Its three localized scope labels are visible button radios, and all nodes is checked. The scope help is the localized every-node sentence. One empty combobox offers optional per-node directories. The same run rejects an empty name, a whitespace name, and INVALID_NAME with the name error and sends no storage request, and rejects a relative directory with the absolute-path error and sends no storage request. The create POST body is the trimmed name, type local, the absolute directory, all_nodes true, and targets []. The independent GET stores those fields and enabled true.",
+        "1.2/1.3/1.4/1.5/1.6/1.7/1.8/1.12/1.13/1.14/1.15": "PARTIAL: validation, create/update and refresh",
+        "1.9": "While the create POST is held the footer Save stays disabled and a forced second click sends no further create. The later 201 is the only stored storage",
+        "1.10": "The 502 keeps the add dialog and the typed name and path, shows upstream fixture is unreachable, and stores no storage. The retry 201 matches the independent detail GET",
+        "1.11": "covered: Cancel, close and Escape each close the add dialog immediately, with no unsaved-changes prompt and no storage write, so the stored storages stay unchanged",
         "10": "PARTIAL: owned row and deletion; no full list matrix",
-        "12": "PARTIAL: named dialog, viewport, cancel/Esc, focus return; no complete keyboard/style matrix"
+        "12.1": "covered: Add storage on the storage page opens the dialog named by the add title",
+        "12.2": "covered: Add dialog at 1440x900: the dialog and footer Save stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
+        "12.3": "covered: Default focus is inside the add dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+        "12.4": "covered: Cancel, Escape, close and mask each return focus to the Add storage button and send no storage write",
+        "12.5": "N/A: the local add dialog has no nested child layer",
+        "12.6": "covered: While the create POST is held the footer Save is disabled and a forced second click sends no further create request; the 502 keeps the typed name and path and shows the server reason; the later 201 matches the independent detail GET and the refreshed path",
+        "12.7": "Delete confirmation names the storage and says model files stay on the nodes while a deployment that uses the storage cannot be removed. A deployment node requirement blocks deletion with 409 STORAGE_IN_USE and the storage and requirement stay. A model file whose state is deleting keeps the storage on 409 and the file stays. After both rows are cleared, delete returns 204, the independent GET is 404, and the reloaded list is empty",
+        "12.8": "The edit dialog sends the previewed expected_updated_at. After another writer advances the revision, Save returns 409 STORAGE_CONFIG_CHANGED, the label draft stays in the open dialog, and the independent GET keeps all nodes, the original path and the other writer's revision. Teardown is not the assertion"
       },
       "runtime": {
         "status": "N/A for resource registration contract",

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 
 from local_browser_fixture import ROOT
-from local_business_runner import final_status, source_identity
+from local_business_runner import final_status, source_identity, unattributed_console_errors
 from model_files_browser import finish, watch, wire_proof
 from model_files_lifecycle import CASES, HELPERS
 
@@ -124,6 +124,22 @@ class ModelFilesRunnerTests(unittest.TestCase):
         self.assertEqual(report['http_errors'], [{'method': 'GET', 'path': '/api/v1/auth/me', 'status': 401}])
         with self.assertRaisesRegex(AssertionError, 'browser console errors'):
             finish(None, None, report, None, None)
+
+    def test_allowed_download_refusal_is_not_an_http_error(self):
+        page, report = FakePage(), {'allowed_http': [('POST', '/api/v1/models/7/download', 409)]}
+        session = watch(page, report)
+        session['authenticated'] = True
+        page.handlers['response'][0](SimpleNamespace(
+            url='http://local/api/v1/models/7/download', status=409,
+            request=SimpleNamespace(method='POST')))
+        page.handlers['console'][0](SimpleNamespace(type='error',
+            text='Failed to load resource: the server responded with a status of 409 (Conflict)',
+            location={'url': 'http://local/api/v1/models/7/download'}))
+        self.assertEqual(report['http_errors'], [])
+        self.assertEqual(report['attributed_responses'],
+                         [{'path': '/api/v1/models/7/download', 'status': 409}])
+        self.assertEqual(unattributed_console_errors(
+            report['console_errors'], report['attributed_responses']), [])
 
     def test_console_resource_echo_needs_an_attributed_response(self):
         # This contract declares no expected >=400, so a resource echo can never
