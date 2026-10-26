@@ -93,6 +93,7 @@
     "delete": "Covered in the named case: cancel + confirmed revoke + immediate bearer 401"
   },
   "checklist_items": {
+    "1.1": "The create dialog shows three fields and none is hidden. Name is a required textbox, its value is empty, it has no unit and no control range. Scope is a radio that is not required, its default is read, and the other option is write. Expiry is a select that is not required, its default is no expiry, it has no unit, and its options are no expiry, 30 days, 90 days and 365 days. Reading the fields sends no token write. The submit sends POST /api/v1/platform-tokens with name and scope read and omits expires_in_days. The 201 item and the independent GET keep that name, scope read, and expires_at null",
     "covered_in_this_scenario": [
       "1.3",
       "1.7",
@@ -103,15 +104,21 @@
     ],
     "partial": {
       "1.2": "default read/no expiry only; no edit form exists",
-      "1.11": "Esc cancellation only; cancel/close button branches missing",
       "7.4": "read/revoke only; wrong scope and expiry matrix not complete",
       "7.6": "list/DOM and produced artifact checks; not every response/download surface",
-      "12.1": "create/secret dialog identities; no multi-step wizard applicable",
-      "12.2": "dialog/footer viewport and containment; full spacing/overlap matrix missing",
-      "12.3": "Tab stays inside create modal; explicit default-focus and reverse-cycle matrix missing",
-      "12.4": "Esc with focus return; all closure methods not covered",
       "12.7": "token name/impact and cancel/revoke; other referenced-resource deletion contracts not applicable"
-    }
+    },
+    "1.10": "covered: A real 502 keeps the create dialog and the name, shows the server reason, stores no token, and the retry 201 is the only stored token on the independent GET",
+    "1.11": "covered: Cancel, close and Escape each close the create dialog immediately, with no unsaved-changes prompt and no token write, so the stored tokens stay unchanged",
+    "1.8": "The minimum create leaves scope at read and expiry at no expiry. That POST carries the typed name and scope read, and omits expires_in_days. The 201 item and the independent GET store that name, scope read, and expires_at null. A second create selects scope write and expiry 30 days. That POST carries the typed name, scope write, and expires_in_days 30. The 201 item and the independent GET store that name, scope write, and an expires_at 30 UTC days after creation. After reload the write row shows that prefix, that expiry, and one orange tag whose text is the write scope label. Revoking that token leaves the independent GET empty.",
+    "1.9": "covered: While the create POST is held a second click and Enter send no further create, and the later 201 is the only stored token",
+    "12.1": "covered: Create platform token on the platform token card opens the dialog named by the create title",
+    "12.2": "covered: Create dialog at 1440x900: the dialog and footer Create stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
+    "12.3": "covered: Default focus is inside the create dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
+    "12.4": "covered: Cancel, Escape, close and mask each return focus to the card Create platform token button and send no POST",
+    "12.5": "N/A: the create dialog has no nested child layer; the one-time secret dialog opens only after create closes",
+    "12.6": "covered: While the create POST is held the footer Create shows the loading state and a second click sends no further create request; the 502 keeps the name and shows the failure reason; the later 201 matches the reloaded row and the independent token list",
+    "12.8": "N/A: platform token create and revoke have no delete preview, revision or compare-and-swap"
   },
   "missing": [
     "complete list matrix and 10/30/100 volumes",

@@ -19,6 +19,7 @@ from email.utils import parsedate_to_datetime
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import traceback
@@ -28,7 +29,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
 from platform_token_read_revoke import (
-    ITEM_FIELDS, TOKEN_PATH, button, check, collection, modal_geometry, strings,
+    ITEM_FIELDS, TOKEN_PATH, button, check, collection, strings,
 )
 
 CASES = {
@@ -77,6 +78,220 @@ def select_expiry(page, dialog, label, selected, all_labels):
 
 # Contract: gpuworks/platform-token/options/<case>; each parameter Mainline is above.
 # Mainline: 独立真实SQLite→UI选scope/expiry并创建复制→刷新GET核对期限→无cookie真实权限→UI吊销并回读失效。
+def exercise_create_dialog(page, create, k, platform, mutations, report):
+    """Create dialog identity, layout, focus, and dismissals. No token write."""
+    from dialog_checks import (
+        assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
+
+    title = platform["createTitle"]
+    parent = page.get_by_role("heading", name=k["title"], exact=True)
+
+    def open_dialog():
+        create.click()
+        dialog = page.get_by_role("dialog", name=title, exact=True)
+        expect(dialog).to_be_visible()
+        return dialog
+
+    dialog = open_dialog()
+    assert_dialog_shell(page, dialog, dialog.get_by_label(k["table"]["name"], exact=True),
+                        button(dialog, k["actions"]["create"]))
+    dialog = assert_nested_dismissals(
+        dialog, parent, open_dialog,
+        [("cancel", cancel_button(k["actions"]["cancel"])), ("escape", escape),
+         ("close", close_button), ("mask", mask)],
+        lambda: len(mutations), create)
+    check(not mutations, "create dialog dismissal sent a token write")
+    report["evidence"].append({"layer": "ui", "create_dialog": title,
+        "dismissals": ["cancel", "escape", "close", "mask"], "write_requests": 0})
+    return dialog
+
+
+def exercise_token_field_inventory(page, dialog, k, platform, mutations):
+    """Register every create-dialog field before a name is typed.
+
+    Name is the only required text field and it opens empty, with no unit and
+    no control range. Scope is a radio whose default is read. Expiry is a
+    select whose default is no expiry and whose options are 0, 30, 90 and 365
+    days. All three stay visible. Reading them sends no token write. The
+    following minimal create is the request and the persisted record: name and
+    scope, with expires_in_days omitted and expires_at null.
+    """
+    before = len(mutations)
+    name_label = k["table"]["name"]
+    scope_label = platform["scope"]
+    expiry_label = platform["expiresAt"]
+    name = dialog.get_by_label(name_label, exact=True)
+    expect(dialog.get_by_role("textbox")).to_have_count(1)
+    expect(name).to_have_count(1)
+    expect(name).to_have_value("")
+    expect(name).to_have_attribute("placeholder", platform["namePlaceholder"])
+    expect(name).to_have_attribute("aria-required", "true")
+    check(name.get_attribute("maxlength") is None, "name field exposes a control range")
+    required = dialog.locator("label.ant-form-item-required")
+    expect(required).to_have_count(1)
+    expect(required).to_have_text(name_label)
+    expect(dialog.locator(".ant-input-suffix, .ant-input-number")).to_have_count(0)
+    read = dialog.get_by_role("radio", name=platform["scopes"]["read"], exact=True)
+    write = dialog.get_by_role("radio", name=platform["scopes"]["write"], exact=True)
+    expect(dialog.get_by_role("radio")).to_have_count(2)
+    expect(read).to_be_checked()
+    expect(write).not_to_be_checked()
+    expect(read).not_to_have_attribute("aria-required", "true")
+    expect(dialog.get_by_text(scope_label, exact=True)).to_be_visible()
+    expiry = dialog.get_by_role("combobox", name=expiry_label, exact=True)
+    expect(expiry).to_have_count(1)
+    expect(expiry).not_to_have_attribute("aria-required", "true")
+    day = platform["days"].replace("{{count}}", "{}")
+    option_labels = [platform["noExpiry"], day.format(30), day.format(90), day.format(365)]
+    expiry.press("ArrowDown")
+    controlled = expiry.get_attribute("aria-controls")
+    check(bool(controlled), "expiry control has no associated listbox")
+    popup = page.locator('[id="' + controlled + '"]')
+    expect(popup).to_have_attribute("role", "listbox")
+    for text in option_labels:
+        expect(page.get_by_text(text, exact=True).filter(visible=True).first).to_be_visible()
+    expiry.press("Escape")
+    expect(expiry).to_have_attribute("aria-expanded", "false")
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".ant-select-selection-item")).to_have_text(platform["noExpiry"])
+    expect(dialog.locator(".ant-form-item")).to_have_count(3)
+    expect(dialog.locator(".ant-form-item-hidden")).to_have_count(0)
+    check(len(mutations) == before, "reading the create fields sent a token write")
+    return {
+        "fields": [
+            {"label": name_label, "type": "textbox", "required": True, "value": "", "unit": None, "range": None},
+            {"label": scope_label, "type": "radio", "required": False, "value": "read", "unit": None,
+             "options": ["read", "write"]},
+            {"label": expiry_label, "type": "select", "required": False, "value": "no-expiry", "unit": None,
+             "options": option_labels},
+        ],
+        "hidden": 0,
+        "writes": 0,
+    }
+
+
+def exercise_required_name(dialog, k, mutations):
+    """The only required field rejects an empty name and a whitespace-only name on that field."""
+    label = k["table"]["name"]
+    message = k["create"]["nameRequired"]
+    required = dialog.locator("label.ant-form-item-required")
+    expect(required).to_have_count(1)
+    expect(required).to_have_text(label)
+    name = dialog.get_by_label(label, exact=True)
+    expect(name).to_have_attribute("aria-required", "true")
+    expect(dialog.locator("[aria-required='true']")).to_have_count(1)
+    expect(name).to_have_value("")
+    submit = button(dialog, k["actions"]["create"])
+    before = list(mutations)
+
+    def reject(value):
+        if value:
+            name.fill(value)
+        submit.click()
+        expect(name).to_have_attribute("aria-invalid", "true")
+        described = (name.get_attribute("aria-describedby") or "").split()
+        help_id = next((part for part in described if part.endswith("_help")), "")
+        check(bool(help_id), "name error is not associated with the field")
+        expect(dialog.locator("[id='" + help_id + "'] .ant-form-item-explain-error")).to_have_text(message)
+
+    reject("")
+    reject("   ")
+    expect(name).to_have_value("   ")
+    check(mutations == before, "empty or whitespace name sent a token write")
+    return {"required_fields": [label], "empty": "", "whitespace": "   ",
+            "field_error": message, "writes": 0}
+
+
+def exercise_minimal_token(page, context, server, artifacts, dialog, k, platform, report):
+    """Submit only the required name. Scope and expiry stay on their defaults."""
+    min_name = f"e2e-{report['run_id']}-min"
+    dialog.get_by_label(k["table"]["name"], exact=True).fill(min_name)
+    expect(dialog.get_by_role("radio", name=platform["scopes"]["read"], exact=True)).to_be_checked()
+    expect(dialog.locator(".ant-select-selection-item")).to_have_text(platform["noExpiry"])
+    body = {"name": min_name, "scope": "read"}
+    artifacts.stop_trace(context)
+    report["sensitive_phase"] = True
+    with page.expect_response(lambda r: urlsplit(r.url).path == TOKEN_PATH and r.request.method == "POST") as created:
+        button(dialog, k["actions"]["create"]).click()
+    response = created.value
+    check(response.status == 201 and response.request.method == "POST" and urlsplit(response.url).path == TOKEN_PATH
+          and not urlsplit(response.url).query, "minimal create request differs")
+    check(response.request.post_data_json == body, "minimal create body differs")
+    payload = response.json()
+    check(set(payload) == {"token", "item"}, "minimal creation envelope differs")
+    secret, item = payload["token"], payload["item"]
+    artifacts.remember(secret)
+    check(set(item) == ITEM_FIELDS and item["name"] == min_name and item["scope"] == "read" and item["expires_at"] is None,
+          "minimal item differs")
+    secret_dialog = page.get_by_role("dialog", name=k["secret"]["title"], exact=True)
+    expect(secret_dialog).to_be_visible()
+    button(secret_dialog, k["secret"]["saved"]).click()
+    expect(secret_dialog).not_to_be_visible()
+    page.wait_for_function("secret => !document.documentElement.outerHTML.includes(secret)", arg=secret)
+    report["sensitive_phase"] = False
+    artifacts.start_trace(context)
+    page.reload()
+    row = page.get_by_role("row").filter(has_text=min_name)
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text(item["prefix"])
+    expect(row).to_contain_text(platform["scopes"]["read"])
+    expect(row).to_contain_text(platform["noExpiry"])
+    stored = collection(page.request.get(server.base + TOKEN_PATH))
+    check(stored == [item], "minimal GET differs")
+    check(secret not in page.content() and secret not in json.dumps(stored), "minimal secret leaked")
+    button(row, platform["revoke"]).click()
+    popup = page.get_by_role("tooltip").filter(has_text=platform["revokeConfirm"].replace("{{name}}", min_name))
+    delete_path = f"{TOKEN_PATH}/{item['id']}"
+    with page.expect_response(lambda r: urlsplit(r.url).path == delete_path and r.request.method == "DELETE") as deleted:
+        button(popup, platform["revoke"]).click()
+    check(deleted.value.status == 204, "minimal revoke failed")
+    expect(row).to_have_count(0)
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "minimal token remained")
+    report["minimal_create"] = {"method": "POST", "path": TOKEN_PATH, "body": body, "status": 201,
+        "list": [min_name, item["prefix"], "read", platform["noExpiry"]],
+        "stored": {"name": item["name"], "scope": item["scope"], "expires_at": item["expires_at"], "fields": sorted(ITEM_FIELDS)},
+        "delete_path": delete_path}
+    button(page, platform["create"]).click()
+    reopened = page.get_by_role("dialog", name=platform["createTitle"], exact=True)
+    expect(reopened).to_be_visible()
+    return reopened
+
+
+def exercise_token_inflight(page, dialog, k, platform, name, scope, chosen, body, errors, evidence):
+    """One held create, a swallowed second click, then a 502 that keeps the draft."""
+    reason = "upstream fixture is unreachable"
+    held = []
+
+    def hold_create(route):
+        if route.request.method != "POST" or urlsplit(route.request.url).path != TOKEN_PATH:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route("**" + TOKEN_PATH, hold_create)
+    button(dialog, k["actions"]["create"]).click()
+    inflight = dialog.locator(".ant-modal-footer button.ant-btn-primary")
+    expect(inflight).to_have_class(re.compile(r"\bant-btn-loading\b"))
+    inflight.click()
+    dialog.get_by_label(k["table"]["name"], exact=True).press("Enter")
+    check(len(held) == 1, "duplicate create from a second click or Enter while the first request is held")
+    check(held[0].request.post_data_json == body, "held create body differs")
+    with page.expect_response(lambda r: urlsplit(r.url).path == TOKEN_PATH and r.request.method == "POST") as failed:
+        held[0].fulfill(status=502, content_type="application/json", body=json.dumps({"message": reason}))
+    page.unroute("**" + TOKEN_PATH, hold_create)
+    check(failed.value.status == 502, "forced create failure did not surface")
+    expect(dialog).to_be_visible()
+    expect(dialog.get_by_label(k["table"]["name"], exact=True)).to_have_value(name)
+    expect(dialog.get_by_role("radio", name=platform["scopes"][scope], exact=True)).to_be_checked()
+    expect(dialog.get_by_title(chosen, exact=True)).to_be_visible()
+    expect(page.get_by_text(reason)).to_be_visible()
+    check(any(item.get("path") == TOKEN_PATH and item.get("status") == 502 for item in errors), "502 was not recorded")
+    check(any("502" in item.get("console", "") for item in errors), "502 console line absent: " + str(errors))
+    errors[:] = [item for item in errors if item.get("status") != 502 and "502" not in item.get("console", "")]
+    evidence.append({"layer": "ui", "inflight_posts": 1, "confirm_loading": True,
+                     "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
+
+
 def test_platform_token_option(page, context, server, artifacts, report, locale, case):
     scope, days = CASES[case]
     k, _ = strings(locale)
@@ -91,13 +306,19 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "fixture tokens not empty")
     keys_path = "/api/v1/apikeys"
     initial_keys = collection(page.request.get(server.base + keys_path))
-    button(page, platform["create"]).click()
-    dialog = page.get_by_role("dialog", name=platform["createTitle"], exact=True)
+    create = button(page, platform["create"])
+    expect(create).to_be_visible()
+    dialog = exercise_create_dialog(page, create, k, platform, mutations, report)
+    report["token_inventory"] = exercise_token_field_inventory(page, dialog, k, platform, mutations)
+    report["name_required"] = exercise_required_name(dialog, k, mutations)
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "rejected name wrote a token")
+    report["name_required"]["stored"] = []
+    dialog = exercise_minimal_token(page, context, server, artifacts, dialog, k, platform, report)
     submit = button(dialog, k["actions"]["create"])
-    modal_geometry(dialog, submit)
     expect(dialog.get_by_role("radio")).to_have_count(2)
     expect(dialog.get_by_role("radio", name=platform["scopes"]["read"], exact=True)).to_be_checked()
     dialog.get_by_label(k["table"]["name"], exact=True).fill(name)
+    recorded = list(mutations)
     # Choose the opposite first so returning to read and no-expiry is exercised
     # through real interactions, rather than only accepting their defaults.
     for selected_scope in ["write" if scope == "read" else "read", scope]:
@@ -112,10 +333,15 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     select_expiry(page, dialog, platform["expiresAt"], chosen, labels)
     expect(dialog.get_by_role("radio", name=platform["scopes"][scope], exact=True)).to_be_checked()
     expect(dialog.get_by_title(chosen, exact=True)).to_be_visible()
-    check(not mutations, "option selection unexpectedly mutated a token")
+    check(mutations == recorded, "option selection unexpectedly mutated a token")
     report["evidence"].append({"layer": "ui", "scope": scope, "expiry_days": days,
         "visible_expiry_options": labels, "selected": chosen, "default_return": days == 0})
     page.screenshot(path=artifacts.directory / "selected-form.png")
+    expected_body = {"name": name, "scope": scope}
+    if days:
+        expected_body["expires_in_days"] = days
+    if case == "read-0":
+        exercise_token_inflight(page, dialog, k, platform, name, scope, chosen, expected_body, errors, report["evidence"])
     # HTTP Date from the same server brackets creation in server UTC, avoiding
     # dependence on runner clock/latency. Header granularity is one second.
     before = page.request.get(server.base + TOKEN_PATH)
@@ -127,9 +353,6 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
         submit.click()
     response = created.value
     check(response.status == 201, f"token create HTTP {response.status}")
-    expected_body = {"name": name, "scope": scope}
-    if days:
-        expected_body["expires_in_days"] = days
     check(response.request.post_data_json == expected_body and not urlsplit(response.url).query, "incorrect scope/expiry POST")
     payload = response.json()
     check(set(payload) == {"token", "item"}, "unexpected creation envelope")
@@ -219,7 +442,11 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     expect(page.get_by_text(platform["empty"], exact=True)).to_be_visible()
     expect(row).to_have_count(0)
     check(collection(page.request.get(server.base + keys_path)) == initial_keys, "revoked write had side effects")
-    check(mutations == [{"method": "POST", "path": TOKEN_PATH}, {"method": "DELETE", "path": delete_path}], "extra token mutations")
+    posts = 2 if case == "read-0" else 1
+    minimal_delete = report["minimal_create"]["delete_path"]
+    check(mutations == [{"method": "POST", "path": TOKEN_PATH}, {"method": "DELETE", "path": minimal_delete}]
+          + [{"method": "POST", "path": TOKEN_PATH}] * posts + [{"method": "DELETE", "path": delete_path}],
+          "extra token mutations")
     check(not errors, "browser errors: " + str(errors))
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "horizontal overflow")
     page.screenshot(path=artifacts.directory / "revoked.png")
@@ -253,6 +480,7 @@ def main():
         "execution": "N/A: platform authorization has no agent/GPU workload",
         "source_hashes": {str(path.relative_to(ROOT)): digest(path) for path in [Path(__file__).resolve(), manifest_path,
             ROOT / "test/e2e/local_browser_fixture.py", ROOT / "test/e2e/platform_token_read_revoke.py",
+            ROOT / "test/e2e/dialog_checks.py",
             ROOT / "ui/src/pages/apikeys/PlatformTokensCard.tsx", ROOT / "internal/server/api/platform_tokens.go",
             ROOT / "internal/server/store/platform_tokens.go"]}}
     try:
