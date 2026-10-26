@@ -51,18 +51,11 @@ export function navItemForPath(pathname: string) {
   return undefined;
 }
 
-/** navGroupForPath returns the menu section a path belongs to, by its first segment. */
-export function navGroupForPath(pathname: string) {
-  return navItemForPath(pathname)?.group;
-}
-
-// These entries are the group itself. A section crumb would only repeat the page.
-const bareSectionKeys = new Set(["/dashboard"]);
-
 /** sectionLabelKey is the breadcrumb's section, absent when the entry is the group. */
 export function sectionLabelKey(pathname: string) {
   const placed = navItemForPath(pathname);
-  if (!placed || bareSectionKeys.has(placed.item.key)) return undefined;
+  // /dashboard is the group itself, so a section crumb would repeat the page.
+  if (!placed || placed.item.key === "/dashboard") return undefined;
   return placed.group.labelKey;
 }
 
