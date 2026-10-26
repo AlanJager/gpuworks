@@ -100,6 +100,22 @@ type fakeProviders struct {
 	// provider.ErrUnsupported.
 	address    string
 	addressErr error
+	// detail is the provider's description of the instance; nil answers
+	// provider.ErrUnsupported, as a provider whose listing is complete does.
+	detail    *provider.Instance
+	detailErr error
+	details   int
+}
+
+func (f *fakeProviders) InstanceDetail(context.Context, uint, string) (provider.Instance, error) {
+	f.details++
+	if f.detailErr != nil {
+		return provider.Instance{}, f.detailErr
+	}
+	if f.detail == nil {
+		return provider.Instance{}, provider.ErrUnsupported
+	}
+	return *f.detail, nil
 }
 
 func (f *fakeProviders) ServerDialAddress(context.Context, uint, string, string) (string, error) {
