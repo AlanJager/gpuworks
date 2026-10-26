@@ -57,7 +57,8 @@ await i18n.use(initReactI18next).init({
 });
 
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, render, screen, waitFor } = await import("@testing-library/react");
+const { cleanup, render, screen, waitFor, act } = await import("@testing-library/react");
+const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { formatTimeSec } = await import("../src/i18n/datetime.ts");
 const { default: MonitorPage } = await import("../src/pages/monitor/MonitorPage.tsx");
@@ -65,6 +66,7 @@ import type { MonitorOverview } from "../src/api";
 
 const overview = JSON.parse(fs.readFileSync(new URL("./fixtures/monitor-overview.json", import.meta.url), "utf8")) as MonitorOverview;
 const originalOverview = api.monitorOverview;
+const originalFetch = globalThis.fetch;
 const distributionCalls: Array<[string, number | undefined]> = [];
 const DISTRIBUTIONS: typeof api.monitorDistributions = async (range, deploymentId) => {
   distributionCalls.push([range, deploymentId]);
@@ -79,6 +81,7 @@ api.monitorDistributions = DISTRIBUTIONS;
 afterEach(() => {
   cleanup();
   api.monitorOverview = originalOverview;
+  globalThis.fetch = originalFetch;
   api.monitorDistributions = DISTRIBUTIONS;
   distributionCalls.length = 0;
 });
@@ -282,4 +285,85 @@ test("the cluster input/output card shows an error with a retry when the distrib
   renderPage();
   await waitFor(() => assert.ok(screen.getByText("Failed to load the request distribution")));
   assert.ok(screen.getByText("ux.db unavailable"));
+});
+
+function emitInstanceChange() {
+  for (const listener of Events.listeners.get("instance") ?? []) {
+    listener(new dom.window.MessageEvent("change", { data: JSON.stringify({ resource: "instance" }) }));
+  }
+}
+
+test("keeps existing services usable without a loading mask during a slow event refresh", async () => {
+  let calls = 0;
+  let resolve!: (value: MonitorOverview) => void;
+  api.monitorOverview = () => ++calls === 1 ? Promise.resolve(overview) : new Promise((r) => { resolve = r; });
+  const { container } = renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  await act(async () => emitInstanceChange());
+  assert.equal(calls, 2);
+  assert.ok(screen.getByText("Qwen3-32B"));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+  assert.equal(container.querySelector(".ant-spin-spinning"), null);
+  assert.equal(container.querySelector(".ant-spin-blur"), null);
+  await act(async () => resolve(overview));
+});
+
+test("enabling follow keeps the current services visible without a loading mask", async () => {
+  let calls = 0;
+  api.monitorOverview = () => ++calls === 1 ? Promise.resolve(overview) : new Promise(() => {});
+  const { container } = renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  await userEvent.setup().click(screen.getByRole("switch", { name: "Follow latest" }));
+  assert.equal(calls, 2);
+  assert.ok(screen.getByText("Qwen3-32B"));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+  assert.equal(container.querySelector(".ant-spin-spinning"), null);
+});
+
+test("changing range hides previous data and ignores an old in-flight refresh", async () => {
+  let oldResolve!: (value: MonitorOverview) => void;
+  let nextResolve!: (value: MonitorOverview) => void;
+  let calls = 0;
+  api.monitorOverview = (range) => {
+    if (range === "24h") return new Promise((r) => { nextResolve = r; });
+    return ++calls === 1 ? Promise.resolve(overview) : new Promise((r) => { oldResolve = r; });
+  };
+  const { container } = renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  await act(async () => emitInstanceChange());
+  await userEvent.setup().click(screen.getByText("24h"));
+  assert.ok(screen.getByText("Qwen3-32B").closest("[hidden]"));
+  assert.ok(container.querySelector(".ant-skeleton"));
+  await act(async () => oldResolve(overview));
+  assert.ok(screen.getByText("Qwen3-32B").closest("[hidden]"));
+  await act(async () => nextResolve({ ...overview, services: [] }));
+  await waitFor(() => assert.ok(screen.getByText("No deployments to monitor yet")));
+});
+
+
+test("changing range preserves the selected service filter", async () => {
+  api.monitorOverview = async () => overview;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  await userEvent.setup().click(screen.getByRole("button", { name: "Timed out 1" }));
+  await userEvent.setup().click(screen.getByText("24h"));
+  await waitFor(() => assert.ok(screen.getByText("Clear filter")));
+  assert.ok(screen.getByText("Qwen2.5-7B-Instruct"));
+  assert.equal(screen.queryByText("Qwen3-32B"), null);
+});
+
+
+test("changing range preserves the open metric explorer and its aggregation", async () => {
+  api.monitorOverview = async () => overview;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ items: [], total: 0 }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("Qwen3-32B")));
+  const user = userEvent.setup();
+  await user.click(screen.getByText("Metric explorer"));
+  await user.click(screen.getByRole("combobox", { name: "Aggregation" }));
+  await user.click(screen.getByText("max", { selector: ".ant-select-item-option-content" }));
+  await waitFor(() => assert.ok(screen.getByText(/fn=max/)));
+  await user.click(screen.getByText("24h"));
+  await waitFor(() => assert.ok(screen.getByRole("combobox", { name: "Aggregation" })));
+  assert.ok(screen.getByText(/fn=max/));
 });

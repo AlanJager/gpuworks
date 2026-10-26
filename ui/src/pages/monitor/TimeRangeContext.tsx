@@ -36,10 +36,9 @@ export function TimeRangeProvider({ children }: { children: ReactNode }) {
   const range: MonitorRange = pickedParam
     ? customRange(pickedParam.from, pickedParam.to)
     : isPreset(rangeParam) ? rangeParam : DEFAULT_RANGE;
-  // Follow defaults on: a monitor page that does not refresh itself defeats
-  // its own purpose. ?follow=0 (or =false) is the only way to turn it off;
-  // a picked range is in the past and has nothing to follow.
-  const follow = !pickedParam && followParam !== "0" && followParam !== "false";
+  // Refreshing is opt-in; explicit links keep their chosen follow setting.
+  // A picked range is in the past and has nothing to follow.
+  const follow = !pickedParam && (followParam === "1" || followParam === "true");
 
   const setRange = (next: MonitorPreset) => {
     const params = new URLSearchParams(searchParams);
