@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -25,16 +25,22 @@ const compshareTwoVMDockerDeploymentTimeout = 75 * time.Minute
 // VM1 and both agents connect over the cloud private network, so neither runtime
 // group depends on a workstation-hosted SSH reverse forward.
 func TestCompshareTwoVMDockerDistributedInference(t *testing.T) {
+	runTwoVMDockerDistributed(t, compshareBackend(t))
+}
+
+// runTwoVMDockerDistributed is the provider-neutral body of the case: the
+// backend rents the VMs and supplies Docker, the image cache and the model.
+func runTwoVMDockerDistributed(t *testing.T, b *vmBackend) {
 	testStarted := time.Now()
 	provisionStarted := time.Now()
 	var dockerInstallDuration time.Duration
 	harness := newHostedControlPlane(t, hostedControlPlaneConfig{
 		RunID: cloudTestRunID(), RuntimeDrivers: [2]string{"docker", "docker"},
-		ModelEndpoint: compshareModelEndpoint(),
+		Backend: b,
 		PrepareVMs: func(t *testing.T, envs []*cloudTestEnv) {
 			started := time.Now()
-			installCompshareDocker29OnNodes(t, envs)
-			prepareCompshareDockerImageCache(t, envs)
+			b.EnsureDocker(t, envs)
+			b.EnsureImage(t, envs)
 			installDistributedVLLMFix(t, envs)
 			dockerInstallDuration = time.Since(started)
 		},
@@ -55,8 +61,8 @@ func TestCompshareTwoVMDockerDistributedInference(t *testing.T) {
 	d := createHostedDeployment(t, harness, map[string]any{
 		"model_id": model.ID, "node_uuid": harness.Nodes[0].UUID,
 		"node_uuids":  []string{harness.Nodes[0].UUID, harness.Nodes[1].UUID},
-		"served_name": "qwen2-compshare-twovm-docker-nnode2",
-		"engine":      "vllm", "image": compshareDistributedTestImage(),
+		"served_name": b.servedName("twovm-docker-nnode2"),
+		"engine":      "vllm", "image": b.DistributedImage,
 		"nnodes": 2, "master_addr": harness.VMs[0].Instance.PrivateIP, "master_port": 29500,
 		"placement":           map[string]any{"tp": 2, "pp": 2},
 		"quick_params":        map[string]any{"max_model_len": 1024},
@@ -71,7 +77,7 @@ func TestCompshareTwoVMDockerDistributedInference(t *testing.T) {
 	chatStarted := time.Now()
 	d.chat(t)
 	t.Logf("TIMING gateway chat=%s", time.Since(chatStarted).Round(time.Millisecond))
-	t.Log("two real CompShare VMs completed gpuworks Docker nnodes=2 gateway chat")
+	t.Logf("two real %s VMs completed gpuworks Docker nnodes=2 gateway chat", b.Name)
 	d.stop(t)
 	t.Logf("TIMING complete two-VM Docker case=%s", time.Since(testStarted).Round(time.Second))
 }

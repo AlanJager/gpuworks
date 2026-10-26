@@ -126,6 +126,12 @@ func installCloudAgentViaProviderAPI(ctx context.Context, t *testing.T, env *tes
 		// port nothing on the instance holds.
 		delete(install, "server_url")
 		install["connect_mode"] = "server_dial"
+		if p.Name() == "aliyun" {
+			// The product dials an ECS instance's private address unless told
+			// otherwise (the server is expected inside the VPC). This server runs
+			// outside it, so the operator gives the public one.
+			install["host_address"] = instance.PublicIP
+		}
 	}
 	installBody, err := json.Marshal(install)
 	if err != nil {
@@ -209,13 +215,22 @@ ls -l /usr/bin/python* /usr/local/bin/python* /root/miniconda3/bin/python* 2>&1 
 	// there (provider API, or written after a password / harness-key login):
 	// out-of-band recovery relies on nothing else.
 	var platformKey *provision.CheckResult
+	assistantInstall := false
 	for i := range result.Details {
 		t.Logf("provider install detail: %s=%s %s", result.Details[i].Name, result.Details[i].Status, result.Details[i].Detail)
 		if result.Details[i].Name == "Platform key" {
 			platformKey = &result.Details[i]
 		}
+		if result.Details[i].Name == "Cloud Assistant" && result.Details[i].Status == "ok" {
+			assistantInstall = true
+		}
 	}
-	if platformKey == nil || platformKey.Status != "ok" {
+	// An install Cloud Assistant ran as root on the instance never opens an SSH
+	// session, so no platform key is added; the instance stays manageable
+	// through Cloud Assistant, which is how that connection recovers it.
+	if platformKey == nil && assistantInstall {
+		t.Log("agent installed through Cloud Assistant: no SSH platform key was added, by design")
+	} else if platformKey == nil || platformKey.Status != "ok" {
 		return "", fmt.Errorf("provider install did not authorize the platform key: %+v", platformKey)
 	}
 	if serverDial {
@@ -270,6 +285,8 @@ func isCloudCapacityError(err error) bool {
 		"no longer any instances available",
 		"no preferred gpu candidate available",
 		"requested capacity unavailable",
+		// Aliyun: no spot or on-demand placement had stock (adapter message).
+		"no aliyun capacity",
 		// Gitee lists a model in /compute/specs but still rejects the create
 		// with this message when every matching host is rented out.
 		"没有找到符合条件的可用主机",

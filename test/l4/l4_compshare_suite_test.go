@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -50,42 +50,51 @@ func compshareDistributedTestImage() string {
 // GPUs, preloaded model and image cache across the expensive inference and
 // dGPU partitioning acceptance cases.
 func TestCompshareSingleVMTensorParallelAndDGPU(t *testing.T) {
-	p := compshareProvider(t)
+	runSingleVMTensorParallelAndDGPU(t, compshareBackend(t))
+}
+
+// runSingleVMTensorParallelAndDGPU is the provider-neutral body of the case.
+func runSingleVMTensorParallelAndDGPU(t *testing.T, b *vmBackend) {
 	// dGPU replicas take 5GiB and two share one card: 10GiB, which an 11GB
 	// 2080Ti holds.
-	// Only card types an engine image exists for: the generic vLLM image has no
-	// kernels below sm_75, so V100S runs the 1Cat-vLLM Volta image and P40
-	// (Pascal, sm_61) is passed over (see compshareEngineImage).
-	gpuModel, gpuCount, checked := findCompshareShape(t, p, compshareRunnableGPUOrder(), 2, 10240, 160)
+	var gpuModel string
+	var gpuCount int
+	checked := b.EachShape(t, false, 2, 10240, func(model string, count int) bool {
+		gpuModel, gpuCount = model, count
+		return true
+	})
 	if gpuModel == "" {
-		skipOrFailExternal(t, "no CompShare VM with two or more GPUs is rentable: %s", strings.Join(checked, "; "))
+		skipOrFailExternal(t, "no %s VM with two or more GPUs is rentable: %s", b.Name, strings.Join(checked, "; "))
 	}
-	env := setupCloudNode(t, testenv.NewWithModelEndpoint(t, compshareModelEndpoint()), p, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: gpuCount, MinVRAMMB: 10240, DiskGB: 160})
+	env := setupCloudNode(t, testenv.NewWithModelEndpoint(t, b.ModelEndpoint), b.Provider, cloudprovider.GPUSpec{GPUModel: gpuModel, GPUCount: gpuCount, MinVRAMMB: 10240, DiskGB: b.DiskGB})
+	logRentedInstance(t, b, env.Instance)
 	requireOnlineNode(t, env)
 	// CompShare's UAAA route is optimized for the domestic SWR mirror. Prefer
 	// it for this live suite so a fresh VM does not spend the acceptance window
 	// waiting on a multi-gigabyte quay.io pull.
-	if _, err := env.Control.Store().CreatePullSourceRule(store.PullSourceRuleSpec{Match: "gpustack/", Endpoints: compshareGPUStackMirrorEndpoints, AllowUpstream: true}); err != nil {
-		t.Fatal(err)
+	if len(b.PullMirror) > 0 {
+		if _, err := env.Control.Store().CreatePullSourceRule(store.PullSourceRuleSpec{Match: "gpustack/", Endpoints: b.PullMirror, AllowUpstream: true}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if !t.Run("ProvisionAndRuntime", func(t *testing.T) { testCompshareVMAndRuntime(t, env, gpuCount) }) {
+	if !t.Run("ProvisionAndRuntime", func(t *testing.T) { testVMAndRuntime(t, env, gpuCount) }) {
 		return
 	}
 	// Fail on a broken golden-image fixture instead of allowing the runtime to
 	// silently fall back to a multi-gigabyte registry pull. The shared helper
 	// may load a docker-save archive already present on the VM, but never pulls.
-	prepareCompshareEngineImage(t, env, gpuModel)
+	b.EnsureEngineImage(t, env, gpuModel)
 	model := cloudTestModelSource(t, env, "modelscope", "Qwen/Qwen2-0.5B-Instruct", "master")
-	registerCompsharePreloadedModel(t, env, model)
+	registerPreloadedModel(t, b, env, model)
 	if !t.Run("VLLMTensorParallel2", func(t *testing.T) {
 		// The suite-level timeout covers engine startup and inference; image
 		// acquisition is intentionally completed by the offline cache check.
-		d := createCloudDeploymentWithTimeout(t, []*cloudTestEnv{env}, withCompshareEngine(map[string]any{
-			"model_id": model.ID, "node_uuid": env.NodeUUID, "served_name": "qwen2-compshare-tp2",
+		d := createCloudDeploymentWithTimeout(t, []*cloudTestEnv{env}, b.withEngine(map[string]any{
+			"model_id": model.ID, "node_uuid": env.NodeUUID, "served_name": b.servedName("tp2"),
 			"placement":    map[string]any{"tp": 2},
 			"quick_params": map[string]any{"max_model_len": 1024},
 		}, gpuModel), 1, 45*time.Minute)
-		wantImage, _ := compshareEngineImage(gpuModel)
+		wantImage, _, _ := b.Engine(gpuModel)
 		requireInstancesRunImage(t, d.instances, wantImage)
 		d.models(t)
 		d.chat(t)
@@ -93,15 +102,12 @@ func TestCompshareSingleVMTensorParallelAndDGPU(t *testing.T) {
 	}) {
 		return
 	}
-	t.Run("DGPUReplicasShareAGPU", func(t *testing.T) { testCompshareDGPUReplicas(t, env, model.ID, gpuCount, gpuModel) })
+	t.Run("DGPUReplicasShareAGPU", func(t *testing.T) { testDGPUReplicas(t, b, env, model.ID, gpuCount, gpuModel) })
 }
 
-func registerCompsharePreloadedModel(t *testing.T, env *cloudTestEnv, model *store.Model) {
+func registerPreloadedModel(t *testing.T, b *vmBackend, env *cloudTestEnv, model *store.Model) {
 	t.Helper()
-	path := strings.TrimSpace(os.Getenv("COMPSHARE_PRELOADED_MODEL_PATH"))
-	if path == "" {
-		skipOrFailExternal(t, "COMPSHARE_PRELOADED_MODEL_PATH is required for CompShare deployment cases; use TestCompshareModelScopePublicDownload for public download acceptance")
-	}
+	path := b.PreloadedModelPath(t)
 	if out, err := runCloudCommand(t.Context(), env.Instance, "test -d "+shellQuoteForTest(path)); err != nil {
 		t.Fatalf("preloaded model path is unavailable: %v (%s)", err, strings.TrimSpace(out))
 	}
@@ -114,7 +120,7 @@ func registerCompsharePreloadedModel(t *testing.T, env *cloudTestEnv, model *sto
 	}
 }
 
-func testCompshareVMAndRuntime(t *testing.T, env *cloudTestEnv, wantGPUs int) {
+func testVMAndRuntime(t *testing.T, env *cloudTestEnv, wantGPUs int) {
 	if env.Instance.Kind != "vm" {
 		t.Fatalf("provider product kind=%q, want vm", env.Instance.Kind)
 	}
@@ -123,11 +129,11 @@ func testCompshareVMAndRuntime(t *testing.T, env *cloudTestEnv, wantGPUs int) {
 		t.Fatal(err)
 	}
 	if node.RuntimeDriver != "docker" && node.RuntimeDriver != "udocker" {
-		t.Fatalf("CompShare VM runtime=%q, want docker or udocker", node.RuntimeDriver)
+		t.Fatalf("VM runtime=%q, want docker or udocker", node.RuntimeDriver)
 	}
 	ready := partitioncap.ReadyBackendIDs(node)
 	if len(ready) != 1 || ready[0] != accelerator.BackendNVIDIALogical {
-		t.Fatalf("CompShare VM ready partition backends=%v, want %s", ready, accelerator.BackendNVIDIALogical)
+		t.Fatalf("VM ready partition backends=%v, want %s", ready, accelerator.BackendNVIDIALogical)
 	}
 	// Keep the probes independent. A long compound command can return an
 	// empty SSH buffer on some cloud images even though the agent is healthy;
@@ -148,12 +154,12 @@ func testCompshareVMAndRuntime(t *testing.T, env *cloudTestEnv, wantGPUs int) {
 		time.Sleep(time.Duration(attempt+1) * time.Second)
 	}
 	if gpuErr != nil || gpuCount != wantGPUs {
-		t.Fatalf("CompShare GPU evidence=%q count=%d want=%d err=%v", strings.TrimSpace(gpuOutput), gpuCount, wantGPUs, gpuErr)
+		t.Fatalf("GPU evidence=%q count=%d want=%d err=%v", strings.TrimSpace(gpuOutput), gpuCount, wantGPUs, gpuErr)
 	}
 	if strings.EqualFold(strings.TrimSpace(virt), "none") {
-		t.Fatalf("CompShare VM reports no virtualization: %q", strings.TrimSpace(virt))
+		t.Fatalf("VM reports no virtualization: %q", strings.TrimSpace(virt))
 	}
-	t.Logf("CompShare VM evidence: virt=%s docker=%s runtime=%s gpu_count=%d", strings.TrimSpace(virt), strings.TrimSpace(docker), node.RuntimeDriver, gpuCount)
+	t.Logf("VM evidence: virt=%s docker=%s runtime=%s gpu_count=%d", strings.TrimSpace(virt), strings.TrimSpace(docker), node.RuntimeDriver, gpuCount)
 }
 
 // engineCacheGlob returns the glob for libvgpu usage-cache files the agent
@@ -166,17 +172,17 @@ func engineCacheGlob(stateDir string) string {
 	return filepath.Join(filepath.Dir(e.DGPUCachePath("probe")), "*.cache")
 }
 
-// testCompshareDGPUReplicas starts one dGPU replica more than the node has
+// testDGPUReplicas starts one dGPU replica more than the node has
 // GPUs, so at least one card must be shared, whatever the scheduler picks.
-func testCompshareDGPUReplicas(t *testing.T, env *cloudTestEnv, modelID uint, gpus int, gpuModel string) {
+func testDGPUReplicas(t *testing.T, b *vmBackend, env *cloudTestEnv, modelID uint, gpus int, gpuModel string) {
 	replicas := gpus + 1
-	d := createCloudDeployment(t, []*cloudTestEnv{env}, withCompshareEngine(map[string]any{
-		"model_id": modelID, "node_uuid": env.NodeUUID, "served_name": "qwen2-compshare-dgpu",
+	d := createCloudDeployment(t, []*cloudTestEnv{env}, b.withEngine(map[string]any{
+		"model_id": modelID, "node_uuid": env.NodeUUID, "served_name": b.servedName("dgpu"),
 		"replicas":  replicas,
 		"placement": map[string]any{"tp": 1}, "vram_limit_gib": 5,
 		"quick_params": map[string]any{"max_model_len": 1024, "gpu_memory_utilization": 0.8},
 	}, gpuModel), replicas)
-	wantImage, _ := compshareEngineImage(gpuModel)
+	wantImage, _, _ := b.Engine(gpuModel)
 	requireInstancesRunImage(t, d.instances, wantImage)
 	seenGPU := map[int]int{}
 	for _, instance := range d.instances {
@@ -218,10 +224,15 @@ func testCompshareDGPUReplicas(t *testing.T, env *cloudTestEnv, modelID uint, gp
 // two GPUs per VM, bidirectional private-network bandwidth, and a real vLLM
 // request served by a two-rank/four-GPU distributed deployment.
 func TestCompshareTwoVMUdockerDistributedInference(t *testing.T) {
+	runTwoVMUdockerDistributed(t, compshareBackend(t))
+}
+
+// runTwoVMUdockerDistributed is the provider-neutral body of the case.
+func runTwoVMUdockerDistributed(t *testing.T, b *vmBackend) {
 	harness := newHostedControlPlane(t, hostedControlPlaneConfig{
 		RunID: cloudTestRunID(), RuntimeDrivers: [2]string{"udocker", "udocker"},
-		ModelEndpoint: compshareModelEndpoint(),
-		PrepareVMs:    installDistributedVLLMFix,
+		Backend:    b,
+		PrepareVMs: installDistributedVLLMFix,
 	})
 	for rank, node := range harness.Nodes {
 		if node.State != "online" || node.GPUCount != harness.gpusPerVM || node.ManagementAddress != harness.VMs[rank].Instance.PrivateIP ||
@@ -247,7 +258,7 @@ func TestCompshareTwoVMUdockerDistributedInference(t *testing.T) {
 	d := createHostedDeployment(t, harness, map[string]any{
 		"model_id": model.ID, "node_uuid": harness.Nodes[0].UUID,
 		"node_uuids":  []string{harness.Nodes[0].UUID, harness.Nodes[1].UUID},
-		"served_name": "qwen2-compshare-dist4", "engine": "vllm", "image": compshareDistributedTestImage(),
+		"served_name": b.servedName("dist4"), "engine": "vllm", "image": b.DistributedImage,
 		"nnodes": 2, "master_addr": harness.VMs[0].Instance.PrivateIP, "master_port": 29500,
 		"placement": map[string]any{"tp": 2, "pp": 2}, "quick_params": map[string]any{"max_model_len": 1024},
 		"container_overrides": distributedVLLMContainerOverrides(),
@@ -545,7 +556,7 @@ func testCompsharePreflight(t *testing.T, first, second *cloudTestEnv) error {
 // one-VM/two-logical-node product acceptance case. The caller already owns the
 // VM and installed the pinned Docker/toolkit, so the probe's runner image cache
 // is reused by the subsequent GPUWorks deployment.
-func testCompshareDockerNCCL(t *testing.T, env *cloudTestEnv) {
+func testDockerNCCL(t *testing.T, env *cloudTestEnv, image string) {
 	t.Helper()
 	const dockerCLI = "docker"
 	if out, err := runCloudCommand(t.Context(), env.Instance, dockerCLI+" info --format '{{.ServerVersion}}'"); err != nil {
@@ -557,10 +568,6 @@ func testCompshareDockerNCCL(t *testing.T, env *cloudTestEnv) {
 	cleanupProbe := func() { _, _ = runCloudCommand(context.Background(), env.Instance, cleanup) }
 	defer cleanupProbe()
 	t.Cleanup(cleanupProbe)
-	image := strings.TrimSpace(os.Getenv("COMPSHARE_DOCKER_TEST_IMAGE"))
-	if image == "" {
-		image = compshareDistributedTestImage()
-	}
 	setup := compshareDockerNCCLSetupCommand(dockerCLI, network, image)
 	if out, err := runCloudCommand(t.Context(), env.Instance, setup); err != nil {
 		t.Fatalf("require cached Docker rank image=%q: %v\n%s", image, err, strings.TrimSpace(out))

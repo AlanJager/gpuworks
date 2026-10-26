@@ -1050,6 +1050,108 @@ l4-compshare-pd-deploy-chat-two-vm-docker:
   script:
     - make test-l4-compshare-pd-deploy-chat-two-vm-docker
 
+# Aliyun ECS: spot-first VMs with an on-demand fallback, booted from the golden
+# image (driver, Docker 29, NVIDIA toolkit, vLLM runner image and test model
+# preloaded; see make prepare-aliyun-golden-image). The jobs need these CI
+# variables, scoped to cloud-test/aliyun/*:
+#   ALIYUN_ACCESS_KEY_ID, ALIYUN_ACCESS_KEY_SECRET  a RAM user limited to ECS and VPC
+#   ALIYUN_IMAGE_<REGION>                            golden image ID per region
+#                                                    (ALIYUN_IMAGE_CN_HANGZHOU, ...)
+# Optional: ALIYUN_REGIONS (narrow leak scans), GPUWORKS_SSH_PROXY (SOCKS5 for
+# the cases' SSH when the runner cannot reach the VMs directly), ALIYUN_INGRESS_CIDR (who may
+# reach SSH and the agent port; default anywhere), ALIYUN_NO_SPOT=1,
+# ALIYUN_NO_ON_DEMAND=1.
+# Same per-pipeline lanes as CompShare: at most one single-VM case and the
+# two-VM case run at once per pipeline. Every job has its own environment (see
+# l4-vast-server-dial-node-onboarding on why jobs must not share one).
+l4-aliyun-provisioning-matrix:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/provisioning
+  script:
+    - make test-l4-aliyun-provisioning-matrix
+
+# One 8 MiB shard from ModelScope over the VM's public egress; same rules as
+# l4-compshare-modelscope-public-download.
+l4-aliyun-modelscope-public-download:
+  extends: .l4-acceptance
+  timeout: 40m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/download-modelscope
+  script:
+    - make test-l4-aliyun-modelscope-public-download
+  rules:
+    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+l4-aliyun-single-vm-tp2-dgpu:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/suite
+  script:
+    - make test-l4-aliyun-single-vm-tp2-dgpu
+
+l4-aliyun-one-vm-two-logical-nodes:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/onevm-nnode2
+  script:
+    - make test-l4-aliyun-one-vm-two-logical-nodes
+
+l4-aliyun-two-vm-docker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/docker-nnode2
+  script:
+    - make test-l4-aliyun-two-vm-docker-distributed
+
+l4-aliyun-pd-deploy-chat-two-vm-docker:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/pd-two-vm
+  script:
+    - make test-l4-aliyun-pd-deploy-chat-two-vm-docker
+
+# Low-frequency: the udocker runtime variant of the two-VM case (CompShare ran
+# it as an explicit target only, not in a job; this one is a manual MR job and
+# part of the full scheduled run like its Docker sibling).
+l4-aliyun-two-vm-udocker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/udocker-nnode2
+  script:
+    - make test-l4-aliyun-two-vm-udocker-distributed
+  # Not scheduled yet: its first live run (job 258223) ran the udocker store
+  # out of system disk (the 30 GiB runner image is pulled again, the golden
+  # image's Docker copy is not usable), hit a PRoot fork/exec failure and lost
+  # a spot VM. Opt in with CLOUD_ALIYUN_UDOCKER=1 until it passes live.
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api") && $CLOUD_ALIYUN_UDOCKER == "1"'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
 # The runner must expose an explicitly provisioned read-only NFS fixture.
 # Never points at a production export by default; no network disruption.
 l4-storage-model-cache-copy-nfs:

@@ -99,6 +99,19 @@ type Instance struct {
 	PrivateKey   []byte
 	Password     string
 	DataDiskPath string // optional: writable data disk (e.g. /data) to prefer for agent state
+	// Zone, InstanceType and Billing describe where and how a VM was bought
+	// where the provider lets the adapter choose (Aliyun: Billing is "spot"
+	// or "on-demand"); they are evidence for logs, not inputs.
+	Zone         string
+	InstanceType string
+	Billing      string
+}
+
+// InterruptionChecker is implemented by adapters whose instances can be
+// reclaimed by the provider mid-test (spot/preemptible capacity). Cases call
+// it on failure to tell a reclaimed machine from a product defect.
+type InterruptionChecker interface {
+	Interrupted(ctx context.Context, instanceID string) (bool, string)
 }
 
 func NewRunID() (string, error) {

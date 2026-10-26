@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -109,25 +108,6 @@ func prepareCompshareEngineImage(t *testing.T, env *cloudTestEnv, gpuModel strin
 		return
 	}
 	prepareCompshareImageCache(t, []*cloudTestEnv{env}, compshareV100TestImage(), strings.TrimSpace(os.Getenv("COMPSHARE_V100_DOCKER_IMAGE_TAR")), false)
-}
-
-// requireInstancesRunImage asserts that every instance of a deployment was
-// launched with the engine image the case chose for its card type, so a
-// fallback to a different image cannot pass as the Volta run.
-func requireInstancesRunImage(t *testing.T, instances []store.Instance, want string) {
-	t.Helper()
-	if len(instances) == 0 {
-		t.Fatal("deployment has no instances to check the engine image of")
-	}
-	for _, instance := range instances {
-		var spec proto.InstanceDesiredState
-		if err := json.Unmarshal([]byte(instance.DesiredStateJSON), &spec); err != nil {
-			t.Fatalf("instance %s desired state: %v", instance.UUID, err)
-		}
-		if !pullref.SameRef(spec.Image, want) {
-			t.Fatalf("instance %s runs image %q, want %q", instance.UUID, spec.Image, want)
-		}
-	}
 }
 
 func TestCompshareEngineImageFollowsTheCardGeneration(t *testing.T) {
