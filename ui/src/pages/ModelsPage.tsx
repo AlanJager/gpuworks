@@ -91,7 +91,7 @@ export default function ModelsPage() {
     if (modelfileRefreshTimer.current != null) clearTimeout(modelfileRefreshTimer.current);
   }, []);
   useEvents("node", () => {
-    refetch();
+    void refresh();
   });
 
   const [registerOpen, setRegisterOpen] = useState(false);
