@@ -857,6 +857,19 @@ test("VRAM summary uses backend fit and capacity without recomputing segments", 
   );
 });
 
+test("VRAM summary names a context that does not fit when startup memory does", () => {
+  const summary = formatVRAMFitSummary({
+    per_gpu_bytes: 6 * 1024 ** 3,
+    capacity_bytes: 21.6 * 1024 ** 3,
+    fits: false,
+    max_model_len: 262144,
+    max_concurrency: 0,
+  } as never);
+  assert.equal(summary.tone, "danger");
+  assert.match(summary.text, /maximum context/);
+  assert.doesNotMatch(summary.text, /Insufficient VRAM for startup/);
+});
+
 test("the front end no longer judges performance rules of its own", async () => {
   // ADR 0020: R1-R6 and W1-W10 were a copy of internal/server/deploy/params.go.
   // The evaluation response is the only source of those errors and warnings

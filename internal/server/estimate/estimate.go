@@ -66,7 +66,11 @@ type Breakdown struct {
 	KVEstimateConfidence     string  `json:"kv_estimate_confidence,omitempty"`
 	KVEstimateReason         string  `json:"kv_estimate_reason,omitempty"`
 	Fits                     bool    `json:"fits"`
-	MaxConcurrency           int     `json:"max_concurrency,omitempty"`
+	// MaxConcurrency is how many requests of MaxModelLen fit in the KV pool.
+	// Nil was not computed (no measured KV cost, or no context length). A
+	// pointer to zero is a real zero and has to stay on the wire: omitempty
+	// on a plain int hid the deployments that cannot serve even one request.
+	MaxConcurrency *int `json:"max_concurrency,omitempty"`
 }
 
 // Params are the estimation inputs.
@@ -229,7 +233,7 @@ func Finalize(b *Breakdown) {
 	b.ActualTotalBytes = b.TotalBytes
 	b.KVPoolBytes = 0
 	b.Fits = false
-	b.MaxConcurrency = 0
+	b.MaxConcurrency = nil
 	b.EstimatedKVTokens = 0
 	if b.CapacityBytes <= 0 {
 		return
@@ -258,7 +262,8 @@ func Finalize(b *Breakdown) {
 			b.EstimatedKVTokens = int(float64(b.KVPoolBytes) / perGPUBytesPerToken)
 			if b.MaxModelLen > 0 {
 				perRequest := perGPUBytesPerToken * float64(b.MaxModelLen)
-				b.MaxConcurrency = int(float64(b.KVPoolBytes) / perRequest)
+				n := int(float64(b.KVPoolBytes) / perRequest)
+				b.MaxConcurrency = &n
 			}
 		}
 		b.KVEstimateConfidence = b.Grade
@@ -269,6 +274,25 @@ func Finalize(b *Breakdown) {
 	} else if b.KVEstimateReason == "" {
 		b.KVEstimateReason = KVReasonNoMeasurement
 	}
+	// Startup memory fitting is not enough to start: the engine refuses when
+	// one request of the configured maximum context does not fit in the pool.
+	if b.ContextExceedsKVPool() {
+		b.Fits = false
+	}
+}
+
+// ContextExceedsKVPool reports that one request of the configured maximum
+// context needs more KV cache than the pool holds. An unknown KV cost, an
+// unknown capacity, and a startup that already does not fit are other
+// failures and keep their own reasons.
+func (b Breakdown) ContextExceedsKVPool() bool {
+	if b.KVBytesPerToken <= 0 || b.MaxModelLen <= 0 || b.CapacityBytes <= 0 {
+		return false
+	}
+	if b.KVEstimateReason == KVReasonStartupExceedsCapacity {
+		return false
+	}
+	return b.EstimatedKVTokens < b.MaxModelLen
 }
 
 // HeadCount returns the attention head count for tp divisibility (0 if unknown).
