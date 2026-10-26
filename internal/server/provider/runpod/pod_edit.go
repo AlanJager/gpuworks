@@ -98,10 +98,10 @@ func (d *Driver) editPod(ctx context.Context, creds provider.Credentials, p pod,
 	if err != nil {
 		return pod{}, err
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 	resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		return pod{}, fmt.Errorf("runpod: edit pod %s: status %d: %s", p.ID, resp.StatusCode, strings.TrimSpace(string(body)))
+		return pod{}, fmt.Errorf("runpod: edit pod %s: status %d", p.ID, resp.StatusCode)
 	}
 	deadline := time.Now().Add(d.portWait())
 	var last error
