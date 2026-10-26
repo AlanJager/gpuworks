@@ -247,8 +247,35 @@ func TestManagedBenchmarkKeepsServerOriginAndTargetInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &apiHandlers{d: Deps{Outside: OutsideSources{AllowPrivateHosts: []string{"127.0.0.1"}}, Store: st, AuthSigner: signer, AISecretbox: box, Server: StaticServerSettings{Loopback: "http://127.0.0.1:1"}}, benchmarkExecutions: map[uint]*benchmarkExecution{}}
-	body := fmt.Sprintf(`{"name":"managed-server","target_kind":"instance","deployment_id":%d,"load_origin":"server","dataset":{"kind":"random","input_tokens":8,"output_tokens":4},"mode":"grid","search":{"concurrency":[1],"isl":[8],"osl":[4],"requests_per_point_multiplier":1}}`, dep.ID)
+	type gatewayRequest struct {
+		method, path, authorization string
+		body                        struct {
+			Model     string            `json:"model"`
+			Stream    bool              `json:"stream"`
+			MaxTokens int               `json:"max_tokens"`
+			Messages  []json.RawMessage `json:"messages"`
+		}
+		decodeError error
+	}
+	observed := make(chan gatewayRequest, 1)
+	var requests atomic.Int32
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		got := gatewayRequest{method: r.Method, path: r.URL.Path, authorization: r.Header.Get("Authorization")}
+		got.decodeError = json.NewDecoder(r.Body).Decode(&got.body)
+		select {
+		case observed <- got:
+		default:
+		}
+		// Permanent gateway errors must stop warmup; connection refusal is
+		// transient and intentionally retried by the production runner.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"synthetic invalid request","type":"invalid_request_error"}}`))
+	}))
+	defer gateway.Close()
+	h := &apiHandlers{d: Deps{Outside: OutsideSources{AllowPrivateHosts: []string{"127.0.0.1"}}, Store: st, AuthSigner: signer, AISecretbox: box, Server: StaticServerSettings{Loopback: gateway.URL}}, benchmarkExecutions: map[uint]*benchmarkExecution{}}
+	body := fmt.Sprintf(`{"name":"managed-server","target_kind":"instance","deployment_id":%d,"load_origin":"server","tokenizer_ref":%q,"dataset":{"kind":"random","input_tokens":8,"output_tokens":4},"mode":"grid","search":{"concurrency":[1],"isl":[8],"osl":[4],"requests_per_point_multiplier":1,"warmup_requests":1}}`, dep.ID, benchmarkTestTokenizer(t))
 	req := httptest.NewRequest(http.MethodPost, "http://gpuworks.example/api/v1/benchmarks", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
@@ -261,7 +288,7 @@ func TestManagedBenchmarkKeepsServerOriginAndTargetInstance(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created.LoadOrigin != "server" || created.InstanceUUID != inst.UUID || created.BaseURL != "http://127.0.0.1:1/api/v1/playground" {
+	if created.LoadOrigin != "server" || created.InstanceUUID != inst.UUID || created.BaseURL != gateway.URL+"/api/v1/playground" {
 		t.Fatalf("created=%+v", created)
 	}
 	persisted, err := st.GetBenchmarkRun(created.ID)
@@ -281,11 +308,34 @@ func TestManagedBenchmarkKeepsServerOriginAndTargetInstance(t *testing.T) {
 		running := len(h.benchmarkExecutions)
 		h.benchmarkMu.Unlock()
 		if running == 0 {
-			return
+			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("server benchmark execution did not stop after the internal gateway connection failed")
+	h.benchmarkMu.Lock()
+	running := len(h.benchmarkExecutions)
+	h.benchmarkMu.Unlock()
+	if running != 0 {
+		t.Fatal("server benchmark execution did not stop after the permanent internal gateway error")
+	}
+	select {
+	case got := <-observed:
+		if got.decodeError != nil || got.method != http.MethodPost || got.path != "/api/v1/playground/v1/chat/completions" || got.body.Model != dep.ServedName || !got.body.Stream || got.body.MaxTokens != 4 || len(got.body.Messages) == 0 {
+			t.Fatalf("unexpected gateway request method=%s path=%s body=%+v decodeError=%v", got.method, got.path, got.body, got.decodeError)
+		}
+		if got.authorization != "Bearer "+internalToken {
+			t.Fatal("internal gateway did not receive the persisted platform authorization")
+		}
+	default:
+		t.Fatal("server benchmark never reached the internal gateway")
+	}
+	if requests.Load() != 1 {
+		t.Fatalf("permanent gateway error retried: requests=%d", requests.Load())
+	}
+	terminal, err := st.GetBenchmarkRun(created.ID)
+	if err != nil || terminal.State != "failed" || !strings.Contains(terminal.Error, "synthetic invalid request") {
+		t.Fatalf("terminal state=%+v err=%v", terminal, err)
+	}
 }
 
 func TestCancelServerBenchmarkWaitsForInFlightRequestToStop(t *testing.T) {
