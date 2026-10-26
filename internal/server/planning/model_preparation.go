@@ -9,8 +9,10 @@ import (
 // Preparation phases beyond the agent's copy phases (proto.ModelPhase*) and
 // the controller's eviction phases (prepobs.Phase*).
 const (
-	PreparationWaiting = "waiting"
-	PreparationReady   = "ready"
+	PreparationWaiting     = "waiting"
+	PreparationReady       = "ready"
+	PreparationDownloading = "downloading"
+	PreparationSyncing     = "syncing"
 )
 
 // Preparation reasons: stable codes the UI localizes.
@@ -51,6 +53,17 @@ func CacheCopyRetryable(storage *store.Storage, file *store.ModelFile) bool {
 		(file.State == proto.MFFailed || file.State == proto.MFInsufficientDisk)
 }
 
+// ModelPreparationFile is the transfer a deployment is waiting for. Before
+// a shared model is complete, the shared row holds that transfer, even when
+// an nfs_cache storage retains an older node-cache row. Once it is complete,
+// preparation follows the node's own cache copy instead.
+func ModelPreparationFile(source store.ModelSource) *store.ModelFile {
+	if source.Location.Shared != nil && (source.Action == store.SourceWaitShared || source.Location.Reason == store.LocationModelMissingInStore) {
+		return source.Location.Shared
+	}
+	return source.Location.File
+}
+
 // PrepareModelView reduces a node's source for one model, the agent's latest
 // copy observation (nil when none is fresh) and the controller's cache phase
 // to what the deployment shows.
@@ -59,16 +72,16 @@ func PrepareModelView(node *store.Node, source store.ModelSource, observation *p
 		return ModelPreparation{Phase: PreparationReady}
 	}
 	view := ModelPreparation{Phase: PreparationWaiting, Reason: PreparationReasonWaiting}
-	file := source.Location.File
+	file := ModelPreparationFile(source)
 	// A download or peer sync reports its bytes on the row itself.
 	rowTransfer := file != nil && (file.Acquisition == proto.ModelAcquireDownload || file.Acquisition == proto.ModelAcquirePeer)
 	if node.State == store.NodeStateOffline {
 		view.Reason = PreparationReasonNodeOffline
 		return view
 	}
-	view.TotalKnown = rowTransfer
+	view.TotalKnown = rowTransfer && file.SizeBytes > 0
 	if file != nil {
-		view.Retryable = CacheCopyRetryable(&source.Location.Storage, file)
+		view.Retryable = file == source.Location.File && CacheCopyRetryable(&source.Location.Storage, file)
 		switch file.State {
 		case proto.MFInsufficientDisk:
 			view.Reason = PreparationReasonCacheDiskFull
@@ -98,6 +111,18 @@ func PrepareModelView(node *store.Node, source store.ModelSource, observation *p
 		case prepobs.PhaseEvictionFailed:
 			return ModelPreparation{Phase: prepobs.PhaseEvictionFailed, Reason: PreparationReasonEvictionFailed}
 		}
+	}
+	if rowTransfer {
+		switch file.State {
+		case proto.MFDownloading:
+			view.Phase, view.Reason = PreparationDownloading, ""
+			if file.Acquisition == proto.ModelAcquirePeer {
+				view.Phase = PreparationSyncing
+			}
+		case proto.MFSyncing:
+			view.Phase, view.Reason = PreparationSyncing, ""
+		}
+		return view
 	}
 	p := knownCopyPhase(observation)
 	if p == nil {
