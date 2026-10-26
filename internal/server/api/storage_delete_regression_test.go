@@ -1,11 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -90,7 +92,9 @@ func TestStorageDeleteIdentityFailure(t *testing.T) {
 	for _, operation := range []string{"read", "write"} {
 		t.Run(operation, func(t *testing.T) {
 			var calls, syncs int
+			var logs bytes.Buffer
 			f := newStorageDeleteFixture(t, func(d *Deps) {
+				d.Log = slog.New(slog.NewTextHandler(&logs, nil))
 				d.CallNode = func(context.Context, string, string, any) (json.RawMessage, error) {
 					calls++
 					return json.RawMessage(`{"peers":[]}`), nil
@@ -117,9 +121,9 @@ func TestStorageDeleteIdentityFailure(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			body := f.request(http.MethodDelete, fmt.Sprintf("/api/v1/storages/%d", f.target.ID), http.StatusInternalServerError)
-			if !strings.Contains(string(body), failure) {
-				t.Errorf("delete response lost identity failure: %s", body)
+			body := f.request(http.MethodDelete, fmt.Sprintf("/api/v1/storages/%d", f.target.ID), http.StatusNoContent)
+			if len(body) != 0 || !strings.Contains(logs.String(), failure) || !strings.Contains(logs.String(), fmt.Sprintf("storage_id=%d", f.target.ID)) {
+				t.Errorf("committed delete must log identity failure and return empty 204: body=%s log=%s", body, logs.String())
 			}
 			if operation == "read" {
 				if err := f.st.DB().Callback().Query().Remove("test:identity-read"); err != nil {
@@ -310,12 +314,14 @@ func TestStorageDeleteTriesAvailableWriters(t *testing.T) {
 		wantCalls  int
 	}{
 		{"first_disconnect", "", errors.New("disconnected"), nil, http.StatusNoContent, 2},
-		{"first_bad_reply", `{"peers":`, nil, nil, http.StatusInternalServerError, 1},
-		{"all_fail", "", errors.New("first disconnected"), errors.New("second disconnected"), http.StatusInternalServerError, 2},
+		{"first_bad_reply", `{"peers":`, nil, nil, http.StatusNoContent, 1},
+		{"all_fail", "", errors.New("first disconnected"), errors.New("second disconnected"), http.StatusNoContent, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls []string
+			var logs bytes.Buffer
 			f := newStorageDeleteFixture(t, func(d *Deps) {
+				d.Log = slog.New(slog.NewTextHandler(&logs, nil))
 				d.CallNode = func(_ context.Context, node, method string, params any) (json.RawMessage, error) {
 					calls = append(calls, node)
 					if method != proto.RPCStoragePeers || !params.(proto.StoragePeersParams).Remove {
@@ -340,6 +346,16 @@ func TestStorageDeleteTriesAvailableWriters(t *testing.T) {
 			f.expectModel(model, false)
 			if !slices.Equal(calls, []string{f.node.UUID, second.UUID}[:tc.wantCalls]) {
 				t.Fatalf("attempted writers %v", calls)
+			}
+			if tc.name == "first_disconnect" && logs.Len() != 0 {
+				t.Errorf("successful fallback reported cleanup failure: %s", logs.String())
+			}
+			if tc.lastError != nil {
+				for _, text := range []string{tc.firstError.Error(), tc.lastError.Error(), f.node.UUID, second.UUID} {
+					if !strings.Contains(logs.String(), text) {
+						t.Errorf("all-writer failure lost %q: %s", text, logs.String())
+					}
+				}
 			}
 		})
 	}

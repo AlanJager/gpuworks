@@ -112,7 +112,7 @@ func (a *apiHandlers) storageDTO(row *store.Storage, nodes []store.Node, all boo
 		}
 	}
 	out.ModelCount, _ = a.d.Store.CountModelsInStorage(row.ID)
-	if _, inUse, err := a.storageRemovalScope(row.ID); err == nil {
+	if inUse, err := a.d.Store.StorageUsers(row.ID, storageRemovalExcludedStates); err == nil {
 		out.DeploymentIDs = append(out.DeploymentIDs, inUse.DeploymentIDs...)
 	}
 	a.fillStorageCaches(&out, row, nodes)
@@ -515,24 +515,27 @@ func (a *apiHandlers) deleteStorage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if cleanupErr != nil {
-		writeErr(w, http.StatusInternalServerError, cleanupErr)
-		return
+	if cleanupErr != nil && a.d.Log != nil {
+		a.d.Log.Warn("storage node cleanup failed", "storage_id", id, "error", cleanupErr)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// These states provide neither a readable copy nor an unfinished operation to
+// preserve. Display and deletion pass the same source policy to their queries.
+var storageRemovalExcludedStates = []string{
+	proto.MFMissing, proto.MFAbsent, proto.MFFailed,
+	proto.MFDownloadRequired, proto.MFInsufficientDisk,
+}
+
 func (a *apiHandlers) storageRemovalScope(id uint) ([]uint, *store.StorageInUseError, error) {
-	refs, err := a.d.Store.StorageModelReferences(id)
+	refs, err := a.d.Store.StorageModelReferences(id, storageRemovalExcludedStates)
 	if err != nil {
 		return nil, nil, err
 	}
 	keep := make(map[uint]bool)
-	for _, file := range refs.OtherFiles {
-		// Keep unfinished operations without treating them as readable copies.
-		if proto.ModelFileStateReady(file.State) || store.TransferUnderWay(&file) || file.State == proto.MFDeleting {
-			keep[file.ModelID] = true
-		}
+	for _, modelID := range refs.OtherModelIDs {
+		keep[modelID] = true
 	}
 	models := slices.DeleteFunc(refs.ModelIDs, func(id uint) bool { return keep[id] })
 	inUse := refs.DirectUsers

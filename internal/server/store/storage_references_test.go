@@ -21,10 +21,12 @@ import (
 type storageReadCounter struct {
 	logger.Interface
 	fileRows int64
+	queries  []string
 }
 
 func (l *storageReadCounter) Trace(ctx context.Context, begin time.Time, query func() (string, int64), err error) {
 	statement, rows := query()
+	l.queries = append(l.queries, statement)
 	if strings.Contains(statement, "model_files") {
 		l.fileRows += rows
 	}
@@ -87,7 +89,7 @@ func TestStorageReferencesUseReaderAndDistinctProjection(t *testing.T) {
 	}
 	reads := &storageReadCounter{Interface: logger.Discard}
 	st.readDB = st.readDB.Session(&gorm.Session{Logger: reads})
-	refs, err := st.StorageModelReferences(target.ID)
+	refs, err := st.StorageModelReferences(target.ID, []string{proto.MFFailed})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,19 +99,18 @@ func TestStorageReferencesUseReaderAndDistinctProjection(t *testing.T) {
 	if !slices.Equal(refs.DirectUsers.DeploymentIDs, []uint{dep.ID}) || !slices.Equal(refs.DirectUsers.InstanceUUIDs, []string{"reader"}) {
 		t.Fatalf("explicit readers and pinned requirements: %+v", refs.DirectUsers)
 	}
-	var states []string
-	for _, file := range refs.OtherFiles {
-		if file.ModelID != model.ID || file.ID != 0 || file.NodeID != 0 || file.Path != "" {
-			t.Fatalf("expected only model/state projection: %+v", file)
-		}
-		states = append(states, file.State)
+	if !slices.Equal(refs.OtherModelIDs, []uint{model.ID}) {
+		t.Fatalf("expected one model with another source: %v", refs.OtherModelIDs)
 	}
-	slices.Sort(states)
-	if !slices.Equal(states, []string{proto.MFFailed, proto.MFPresent}) {
-		t.Fatalf("source states must be distinct and unfiltered: %v", states)
+	// One target model, one model with another source, one direct reader.
+	if reads.fileRows != 3 {
+		t.Fatalf("reference queries materialized %d file rows, want 3 projections", reads.fileRows)
 	}
-	// One model ID, two source states, one direct reader; not six file rows.
-	if reads.fileRows != 4 {
-		t.Fatalf("reference queries materialized %d file rows, want 4 projections", reads.fileRows)
+	users, err := st.StorageUsers(target.ID, []string{proto.MFFailed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(users.DeploymentIDs, refs.DirectUsers.DeploymentIDs) || !slices.Equal(users.InstanceUUIDs, refs.DirectUsers.InstanceUUIDs) {
+		t.Fatalf("display must include stopped readers and pinned services: %+v", users)
 	}
 }

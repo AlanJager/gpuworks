@@ -1,12 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -147,7 +151,7 @@ func TestStorageDeleteFileFailurePreservesStorageTransaction(t *testing.T) {
 	}
 }
 
-func TestStorageDeleteNodeErrorsReturnFailure(t *testing.T) {
+func TestStorageDeleteNodeErrorsLogAfterCommit(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		reply     string
@@ -158,10 +162,13 @@ func TestStorageDeleteNodeErrorsReturnFailure(t *testing.T) {
 		{name: "empty_reply"},
 		{name: "malformed_reply", reply: `{"peers":`},
 		{name: "sync_failure", reply: `{"peers":[]}`, syncError: errors.New("sync disconnected")},
+		{name: "rpc_and_sync_failure", rpcError: errors.New("heartbeat permission denied"), syncError: errors.New("sync disconnected")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls, syncs int
+			var logs bytes.Buffer
 			f := newStorageDeleteFixture(t, func(d *Deps) {
+				d.Log = slog.New(slog.NewTextHandler(&logs, nil))
 				d.CallNode = func(_ context.Context, _ string, method string, params any) (json.RawMessage, error) {
 					calls++
 					p, ok := params.(proto.StoragePeersParams)
@@ -173,12 +180,26 @@ func TestStorageDeleteNodeErrorsReturnFailure(t *testing.T) {
 				d.NodeSync = nodeSyncCallbacks{full: func(string) error { syncs++; return tc.syncError }}
 			})
 			m := f.model("only", f.target)
-			f.delete(http.StatusInternalServerError)
+			body := f.request(http.MethodDelete, fmt.Sprintf("/api/v1/storages/%d", f.target.ID), http.StatusNoContent)
+			if len(body) != 0 {
+				t.Fatalf("successful delete must have an empty body: %s", body)
+			}
+			for _, text := range []string{"level=WARN", "node cleanup failed", fmt.Sprintf("storage_id=%d", f.target.ID), f.node.UUID} {
+				if !strings.Contains(logs.String(), text) {
+					t.Errorf("cleanup log lacks %q: %s", text, logs.String())
+				}
+			}
+			for _, cause := range []error{tc.rpcError, tc.syncError} {
+				if cause != nil && !strings.Contains(logs.String(), cause.Error()) {
+					t.Errorf("cleanup log lost cause %q: %s", cause, logs.String())
+				}
+			}
 			f.expectStorage(f.target, http.StatusNotFound)
 			f.expectModel(m, false)
 			if calls != 1 || syncs != 1 {
 				t.Fatalf("cleanup calls/syncs = %d/%d, want one attempt each", calls, syncs)
 			}
+			f.delete(http.StatusNotFound)
 		})
 	}
 }
