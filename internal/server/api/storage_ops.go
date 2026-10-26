@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -179,7 +180,17 @@ func (a *apiHandlers) storagePeersOn(ctx context.Context, row *store.Storage, re
 	if a.d.CallNode == nil {
 		return nil, productError(ErrorNodeRPCUnavailable, "node RPC is not configured", nil)
 	}
-	identity := a.d.Store.ControlPlaneIdentity()
+	var identity store.ControlPlaneIdentity
+	if remove {
+		var err error
+		identity, err = a.d.Store.EnsureControlPlaneIdentity()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		identity = a.d.Store.ControlPlaneIdentity()
+	}
+	var removalErrors error
 	for _, node := range writers {
 		callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		raw, err := a.d.CallNode(callCtx, node.UUID, proto.RPCStoragePeers, proto.StoragePeersParams{
@@ -188,10 +199,16 @@ func (a *apiHandlers) storagePeersOn(ctx context.Context, row *store.Storage, re
 		})
 		cancel()
 		if err != nil {
+			if remove {
+				removalErrors = errors.Join(removalErrors, fmt.Errorf("remove storage heartbeat through node %s: %w", node.UUID, err))
+			}
 			continue
 		}
 		var result proto.StoragePeersResult
 		if err := json.Unmarshal(raw, &result); err != nil {
+			if remove {
+				return nil, errors.Join(removalErrors, fmt.Errorf("decode storage heartbeat removal from node %s: %w", node.UUID, err))
+			}
 			return nil, err
 		}
 		out := make([]dto.StorageControlPlane, 0, len(result.Peers))
@@ -199,6 +216,9 @@ func (a *apiHandlers) storagePeersOn(ctx context.Context, row *store.Storage, re
 			out = append(out, dto.StorageControlPlane{ID: peer.ID, Name: peer.Name, Version: peer.Version, LastSeenSeconds: peer.LastSeenSeconds, Fresh: peer.Fresh})
 		}
 		return out, nil
+	}
+	if removalErrors != nil {
+		return nil, removalErrors
 	}
 	return nil, productError(ErrorStorageNotWritable, "no online node can write to this storage", nil)
 }
