@@ -38,7 +38,7 @@
   "adr/0031-image-catalog-carries-no-launch-config.md": "061989069dc11f77358967ca6d44f2089521cf6bfc73d4164b7ce1774e2702bc",
   "adr/0032-typed-columns-json-as-opaque-snapshot.md": "16653121ca8612b634913cfd885e4ebf86ab6f24947375866ad1ee9c067024d3",
   "adr/0033-replica-level-lifecycle.md": "82dd17d7efba24387286f0d4dff957a8f63548a38d70a3ca9aff6e8b792a9c60",
-  "dev/code-map.md": "9fad7e4e10935ee779daf420a385586eb14e3e70adf1bb6a4da9d6e4e9209ddc",
+  "dev/code-map.md": "b5968bae6cf3d866f0c72ef470ca88c827b97ca3cfccce303caa244ebda45f37",
   "adr/0034-model-files-belong-to-storages.md": "3e52d25acef16469d0a046750f981c88600219188952c45a17aa8279b5b96dec",
   "adr/0035-platform-ssh-key.md": "86b9686f878e171501fd7bf8432f9302d6848b7445c7e0364b492f0f3e3a1105",
   "adr/0036-callable-command-owned-by-template.md": "cbae84292f573126fc66cc70f86110b341dca3c9d605236ff16ab00b62f1ef55",
