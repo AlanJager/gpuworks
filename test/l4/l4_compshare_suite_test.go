@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -428,15 +429,32 @@ func rentCompshareGPU(t *testing.T, p *cloudprovider.Compshare, spec cloudprovid
 }
 
 // rentCompshareContainer rents a gpuCount container of the first card type
-// that can be created. There is no capacity snapshot to consult: the container
-// zones differ from the VM zones SelectPlacement searches, so the driver
-// places the container itself and a capacity or image refusal moves on to the
-// next type. It returns nil and every type's reason when nothing could be
-// rented.
+// that can be created in any container zone. There is no capacity snapshot to
+// consult: the container zones differ from the VM zones SelectPlacement
+// searches, so the driver places the container itself, walking every pod zone
+// for each type (CompShare configures each GpuType in only some of them: on
+// 2026-10-26 4090 only in cn-bj2-03, 5090 only in cn-sh2-01, 4090_48G only in
+// cn-sh2-03, and any other zone answers RetCode 230). A type no zone can host
+// moves on to the next one. It returns nil and, per type, every zone's reason
+// when nothing could be rented.
+// compshareContainerGPUOrder puts the GpuTypes the container zones carry
+// first: a 2026-10-26 sweep of cn-bj2-03, cn-sh2-01 and cn-sh2-03 found only
+// 4090, 4090_48G and 5090, every other type answering RetCode 230. The rest of
+// the VM order follows in case the catalog grows.
+func compshareContainerGPUOrder() []string {
+	order := []string{"4090", "4090_48G", "5090"}
+	for _, model := range compshareGPUOrder() {
+		if !slices.Contains(order, model) {
+			order = append(order, model)
+		}
+	}
+	return order
+}
+
 func rentCompshareContainer(t *testing.T, p *cloudprovider.Compshare, spec cloudprovider.GPUSpec) (*cloudprovider.Instance, []string) {
 	t.Helper()
 	var checked []string
-	for _, model := range compshareGPUOrder() {
+	for _, model := range compshareContainerGPUOrder() {
 		if reason := belowVRAM(model, spec.MinVRAMMB); reason != "" {
 			checked = append(checked, reason)
 			continue
@@ -449,8 +467,8 @@ func rentCompshareContainer(t *testing.T, p *cloudprovider.Compshare, spec cloud
 				// 230 "machine type not configured for zone": the container
 				// zones carry fewer GPU types than the VM zones.
 				strings.Contains(err.Error(), "RetCode 230") {
-				t.Logf("CompShare container %s x%d could not be created, trying the next type: %v", model, spec.GPUCount, err)
-				checked = append(checked, model+": "+err.Error())
+				t.Logf("CompShare container %s x%d could not be created in any container zone, trying the next type: %v", model, spec.GPUCount, err)
+				checked = append(checked, "container "+model+" (every container zone): "+err.Error())
 				continue
 			}
 			t.Fatal(err)
