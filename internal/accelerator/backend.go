@@ -9,6 +9,7 @@ const (
 	BackendNVIDIALogical = "nvidia-dgpu"
 	BackendAscendLogical = "ascend-dgpu"
 	BackendPPULogical    = "ppu-dgpu"
+	BackendHygonLogical  = "hygon-dgpu"
 
 	EnvLDPreload            = "LD_PRELOAD"
 	EnvLDLibraryPath        = "LD_LIBRARY_PATH"
@@ -79,6 +80,7 @@ var registry = []Backend{
 	nvidiaLogicalBackend{},
 	ascendLogicalBackend{},
 	ppuLogicalBackend{},
+	hygonLogicalBackend{},
 }
 
 func All() []Backend { return append([]Backend(nil), registry...) }

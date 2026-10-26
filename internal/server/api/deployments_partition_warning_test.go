@@ -60,3 +60,16 @@ func TestImagePartitionCompatibilityWarningIsBackendDriven(t *testing.T) {
 		t.Errorf("cuda image on NVIDIA produced warnings %v, want none", warnings)
 	}
 }
+
+func TestImagePartitionCompatibilityWarningRequiresSupportedHygonSKU(t *testing.T) {
+	image := &store.Image{Framework: "dtk", FrameworkVersion: "26.04.1"}
+	node := &store.Node{GPUVendor: "hygon", Arch: "x86_64", GPUs: []store.GPU{{Vendor: "hygon", ArchID: "Z100"}}}
+	warnings := imagePartitionCompatibilityWarnings(image, node)
+	if len(warnings) != 1 || warnings[0].Code != messages.WarningImagePartitionProfileUnverified {
+		t.Fatalf("Z100 warnings = %+v", warnings)
+	}
+	node.GPUs[0].ArchID = "K100AI"
+	if warnings := imagePartitionCompatibilityWarnings(image, node); len(warnings) != 0 {
+		t.Fatalf("unsupported Hygon SKU warnings = %+v", warnings)
+	}
+}

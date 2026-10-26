@@ -208,3 +208,28 @@ func TestUnprobedCapabilityHasNoCheckTime(t *testing.T) {
 		t.Fatalf("a probe result without a time = %+v, want no check time", got)
 	}
 }
+
+func TestHygonZ100RequiresDockerAssetsAndPerGPUProbe(t *testing.T) {
+	node := &store.Node{
+		PartitionSafetyProtocol: 1, GPUVendor: "hygon", Arch: "amd64", Framework: "dtk", FrameworkVersion: "26.04", RuntimeDriver: "docker",
+		PartitionAssets: `[ {"backend":"hygon-dgpu","root":"/opt","files":["libamdhip64.so","libhydmi.so","libhydmi_mig.so","librocm_smi64.so","gpuworks-hygon-vdev-helper"]} ]`,
+		PartitionProbes: `[ {"backend":"hygon-dgpu","gpu_index":0,"status":"passed"} ]`,
+	}
+	node.GPUs = []store.GPU{{Index: 0, Vendor: "hygon", ArchID: "Z100"}, {Index: 1, Vendor: "hygon", ArchID: "K100"}}
+	ready := ForGPU(node, &node.GPUs[0])
+	if len(ready) != 1 || ready[0].Backend != accelerator.BackendHygonLogical || ready[0].Status != StatusReady {
+		t.Fatalf("Z100 capability = %+v", ready)
+	}
+	if got := ForGPU(node, &node.GPUs[1]); len(got) != 0 {
+		t.Fatalf("unverified K100 capability = %+v", got)
+	}
+	node.RuntimeDriver = "nerdctl"
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || !strings.Contains(got[0].Reason, "Docker") {
+		t.Fatalf("nerdctl capability = %+v", got)
+	}
+	node.RuntimeDriver = "docker"
+	node.PartitionProbes = `[]`
+	if got := ForGPU(node, &node.GPUs[0]); len(got) != 1 || got[0].Status != StatusUnavailable || got[0].ProbeStatus == proto.PartitionProbePassed {
+		t.Fatalf("missing probe capability = %+v", got)
+	}
+}
