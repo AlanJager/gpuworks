@@ -321,7 +321,7 @@
       "sources": [
         {
           "file": "test/e2e/deployment_acquisition_fixture.py",
-          "sha256": "e50aa51c5506ddcab160606e0c492a0a40a807b3f81222c0346b5a5e6062be7d"
+          "sha256": "d4f2256f92a3866df1a755e22e2206b5923b5ceead0c171d479dfd6687a88dea"
         }
       ],
       "covered": {
@@ -485,8 +485,8 @@
     {"item": "1.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 条件字段：切换控制项，验证显隐、首次默认值、隐藏值的提交规则、重新显示后的保留或重置规则。"},
     {"item": "1.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 最小创建：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"},
     {"item": "1.8", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 完整创建：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"},
-    {"item": "1.9", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 防重复提交：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"},
-    {"item": "1.10", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: Real FIELD_INVALID 400, exact localized notice, unchanged image/name draft, independent total=0, corrected 201."},
+    {"item": "1.9", "status": "covered", "assertion": "While the create POST is held the deploy button stays loading and a second click sends no further create. That held request is the only create until the later 201"},
+    {"item": "1.10", "status": "covered", "assertion": "The real 400 ACQUISITION_CANDIDATE_STALE keeps the name and served-name draft, shows the stale-source reason, and the independent deployment list stays empty. Restoring the provider and submitting again returns 201"},
     {"item": "1.11", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 取消退出：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"},
     {"item": "1.12", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 编辑变更：分别覆盖 A→B、开→关→开、有值→空、绑定 A→B→无；仅改一个字段时其他字段保持原值。"},
     {"item": "1.13", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 并发与失效：编辑期间资源被删除或被另一个会话更新，按真实 API 合同验证冲突或最后写入结果及恢复入口。"},
@@ -539,12 +539,12 @@
     {"item": "10.11", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"},
     {"item": "10.12", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"},
     {"item": "10.13", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 按主规范的组合查询合同，逐条验证相互影响的控件路径：同时命中、单项命中、交集为空、"},
-    {"item": "12.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 从真实页面入口打开，验证角色、可访问名称、业务组件种类与首个步骤，防止误打开另一个正常组件。"},
-    {"item": "12.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 打开即检查容器和关键操作在当前视口；1440×900 下标题、说明、内容与底部操作不重叠。"},
-    {"item": "12.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"},
-    {"item": "12.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别关闭按钮、取消、Esc 及适用的遮罩关闭；焦点返回触发器，取消不产生 mutation。"},
-    {"item": "12.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 嵌套弹层关闭不误关父层，关闭后残留 portal 不可交互，定位当前实际受控弹层。"},
-    {"item": "12.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"},
+    {"item": "12.1", "status": "covered", "assertion": "Deploy on the template opens one dialog named by the weight-source title, and the source field is the visible business control"},
+    {"item": "12.2", "status": "covered", "assertion": "Weight-source dialog at 1440x900: the dialog and footer Register model and deploy stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"},
+    {"item": "12.3", "status": "covered", "assertion": "Default focus is inside the weight-source dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"},
+    {"item": "12.4", "status": "covered", "assertion": "Cancel, Escape, the close button and the mask each return focus to the drawer Delete button and send no delete. The independent deployment GET keeps the same name"},
+    {"item": "12.5", "status": "covered", "assertion": "The delete dialog over the deployment detail drawer: Cancel, Escape, close and mask each hide the delete dialog, leave the drawer open, and hide the delete dialog buttons. Reopen uses the Delete deployment dialog"},
+    {"item": "12.6", "status": "covered", "assertion": "While the create POST is held the Deploy button shows the loading state and a second click sends no further create; the real 400 keeps the name and served name and shows the stale provider reason, and stores no deployment; the later 201 matches the independent detail GET and the reloaded row"},
     {"item": "12.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 删除确认包含名称及实际影响；引用阻止、允许清理和失败无部分修改分别验证。"},
     {"item": "12.8", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 仅产品实际提供删除预览/revision/CAS 时验证预览变化冲突；teardown 不充当删除业务断言。"},
     {"item": "13.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证触发器可访问名称，鼠标和适用键盘操作可打开、选择和关闭，禁用项不可执行。"},

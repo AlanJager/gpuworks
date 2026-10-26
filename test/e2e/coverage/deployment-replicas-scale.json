@@ -113,13 +113,13 @@
     },
     {
       "item": "1.9",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "While the replica PUT is held the apply button stays loading and a second click sends no further scale. That held request is the only replica write until the later 200"
     },
     {
       "item": "1.10",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "The real 409 DEPLOYMENT_DELETING keeps the replica drawer and the draft of 2, shows the deleting reason, and the independent GET stays at 1 replica. The retry 200 matches the independent ready set"
     },
     {
       "item": "1.11",
@@ -273,8 +273,8 @@
     },
     {
       "item": "12.1",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Opened from the deployment name on the deployments page as the only dialog. The role is dialog, the accessible name is the deployment name, the component is ant-drawer-content, and the first step is the replica count. The restart dialog count is 0"
     },
     {
       "item": "12.2",
@@ -283,23 +283,23 @@
     },
     {
       "item": "12.3",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Default focus is the drawer panel. Tab and Shift+Tab cycle the controls inside the drawer. The drawer is aria-modal, so focus does not reach the page"
     },
     {
       "item": "12.4",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Cancel, Escape, the close button and the mask each return focus to the drawer Delete button and send no delete. The independent deployment GET keeps the same name"
     },
     {
       "item": "12.5",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "The delete dialog over the deployment detail drawer: Cancel, Escape, close and mask each hide the delete dialog, leave the drawer open, and hide the delete dialog buttons. Reopen uses the Delete deployment dialog"
     },
     {
       "item": "12.6",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "While the replica Apply PUT is held the Apply button shows the loading state and a second click sends no further replica write; the real 409 keeps the replica draft and shows the deleting reason, and the stored replica count stays unchanged; the later 200 matches the independent detail GET and the reloaded count"
     },
     {
       "item": "12.7",
