@@ -264,15 +264,14 @@ func deriveRuntimeState(desired store.DeploymentState, instances []store.Instanc
 	}
 	if len(instances) == 0 {
 		// No instance can exist yet until every required model file is
-		// present on the target node. MFFailed and MFDownloadRequired are
-		// both states that will never resolve on their own — the former is a
-		// definitive download/sync failure, the latter awaits an explicit
-		// operator action (start a public download or retry peer sync,
+		// present on the target node. Failed downloads, insufficient disk,
+		// and required downloads need operator action before they can proceed
+		// (free disk space, start a public download or retry peer sync,
 		// internal/server/controller/modelsync.go) — so without this check a
 		// permanently-blocked deployment looks identical to one that is
 		// merely queued and about to schedule normally.
 		for _, mp := range modelProgress {
-			if mp.State == proto.MFFailed || mp.State == proto.MFDownloadRequired {
+			if mp.State == proto.MFFailed || mp.State == proto.MFDownloadRequired || mp.State == proto.MFInsufficientDisk {
 				return "failed"
 			}
 		}
