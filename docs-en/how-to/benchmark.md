@@ -29,6 +29,12 @@ For external endpoints, prepare the address, model name, and required API key. S
    The Agentic dataset requires a tokenizer. For managed models, select **Automatic**, specify a model repository, or upload `tokenizer.json`.
    External endpoints cannot automatically read the tokenizer on the target machine, so you must specify a source.
 4. Review warmup, output policy, experience thresholds, and per-request details in **Advanced Settings**. To view individual timelines in the report, enable **Keep per-request details** and set the capacity.
+   If every warmup request fails transiently (network interruption, 408/429, or recoverable 5xx),
+   recovery waits up to 6 minutes, sending one probe every 5 seconds. Authentication and parameter errors stop immediately.
+   Cancellation stops both waiting and in-flight requests. Warmup attempts and retries never count as measured points,
+   throughput, or latency. Reports retain attempt counts, HTTP statuses, stages, and diagnostics even before any measured
+   point exists; warmup diagnostics do not retain request or reply bodies.
+
    `estimate` generates approximate lengths. With a tokenizer, `exact` samples from the vocabulary but still does not guarantee that server-reported usage matches local counts; the chat template also adds input.
 5. Click **Start Evaluation** and view progress, errors, and results for each point in the details. If a warning says that an evaluation is already running on the target or load origin, assess whether resource contention affects the comparison before deciding to wait or continue.
    You can cancel long-running tasks; completed points are retained. A node can take over a task after reconnecting. Successful creation or a finished Run does not mean that every request succeeded.

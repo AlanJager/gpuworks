@@ -56,7 +56,7 @@ type Hooks struct {
 func Execute(ctx context.Context, run Run, hooks Hooks) {
 	e := &execution{run: run, hooks: hooks}
 	if err := e.execute(ctx); err != nil && ctx.Err() == nil {
-		hooks.Report(proto.BenchmarkStatus{ID: run.ID, State: "failed", Message: err.Error(), StopReason: proto.BenchmarkStopFatal})
+		e.report(proto.BenchmarkStatus{ID: run.ID, State: "failed", Message: err.Error(), StopReason: proto.BenchmarkStopFatal})
 	}
 }
 
@@ -67,6 +67,7 @@ type execution struct {
 	dc              dataset.Config
 	tok             *tokenizer.Tokenizer
 	warmupSucceeded int
+	warmupRecords   []loadgen.DetailRecord
 }
 
 func (e *execution) execute(ctx context.Context) error {
@@ -131,7 +132,7 @@ func (e *execution) execute(ctx context.Context) error {
 	if adaptive != nil {
 		stopReason = adaptive.StopReason()
 	}
-	e.hooks.Report(proto.BenchmarkStatus{ID: e.run.ID, State: "done", PointIndex: len(points), PointTotal: len(points), PointCount: len(points), StopReason: stopReason})
+	e.report(proto.BenchmarkStatus{ID: e.run.ID, State: "done", PointIndex: len(points), PointTotal: len(points), PointCount: len(points), StopReason: stopReason})
 	return nil
 }
 
@@ -195,56 +196,6 @@ func (e *execution) runner(point search.Point, seed int64) loadgen.Runner {
 	return r
 }
 
-// warmup sends the configured warmup requests at the first point's load and
-// discards them. Only the first turn of a multi-turn sample is sent: warmup
-// exists to take the cold start out of the first point, not to replay whole
-// sessions. If every warmup request fails the run fails, so a broken endpoint
-// or configuration surfaces before any point is measured.
-func (e *execution) warmup(ctx context.Context, first search.Point) error {
-	n := e.doc.WarmupRequests
-	if n <= 0 {
-		return nil
-	}
-	dc := e.dc
-	if dc.Kind != "agentic" {
-		dc.InputTokens, dc.OutputTokens = first.ISL, first.OSL
-	}
-	// A distinct seed keeps warmup prompts from priming the prefix cache with
-	// the first point's own prompts.
-	dc.Seed += 7_919
-	reqs, err := e.requests(dc, n)
-	if err != nil {
-		return err
-	}
-	for i := range reqs {
-		reqs[i].FollowUps, reqs[i].DelayBefore = nil, 0
-	}
-	concurrency := n
-	if first.Concurrency > 0 && first.Concurrency < concurrency {
-		concurrency = first.Concurrency
-	}
-	current := &proto.BenchmarkCurrentPoint{Concurrency: concurrency, TargetISL: first.ISL, TargetOSL: first.OSL, RequestTotal: n, Warmup: true}
-	e.hooks.Report(proto.BenchmarkStatus{ID: e.run.ID, State: "running", CurrentPoint: current})
-	results := loadgen.Runner{Client: e.run.Client, Concurrency: concurrency}.Run(ctx, reqs)
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	var firstErr error
-	for _, r := range results {
-		if r.Metrics.Error == nil {
-			e.warmupSucceeded++
-			continue
-		}
-		if firstErr == nil {
-			firstErr = r.Metrics.Error
-		}
-	}
-	if e.warmupSucceeded > 0 {
-		return nil
-	}
-	return fmt.Errorf("all %d warmup requests failed: %w", n, firstErr)
-}
-
 func (e *execution) point(ctx context.Context, index int, point *search.Point, planned int) (search.Observation, error) {
 	seq := index + 1
 	dc := e.pointDataset(index, point)
@@ -273,7 +224,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	status := func(completed int, sample json.RawMessage) proto.BenchmarkStatus {
 		return proto.BenchmarkStatus{ID: e.run.ID, State: "running", PointIndex: seq, PointTotal: planned, PointCount: planned, Completed: completed, CurrentPoint: current, Sample: sample}
 	}
-	e.hooks.Report(status(0, sample()))
+	e.report(status(0, sample()))
 	runner := e.runner(*point, dc.Seed)
 	runner.OnResult = func(r loadgen.Result) {
 		acc.Add(r.Metrics)
@@ -281,7 +232,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 			e.hooks.Result(seq, r)
 		}
 	}
-	runner.OnProgress = func(done, _ int) { e.hooks.Report(status(done, sample())) }
+	runner.OnProgress = func(done, _ int) { e.report(status(done, sample())) }
 	started := time.Now().UTC()
 	results := runner.Run(ctx, reqs)
 	ended := time.Now().UTC()
@@ -324,7 +275,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	})
 	done := status(snapshot.Count, final)
 	done.Result, done.Point = result, pointJSON
-	e.hooks.Report(done)
+	e.report(done)
 	if e.hooks.PointReported != nil {
 		e.hooks.PointReported(seq, results)
 	}

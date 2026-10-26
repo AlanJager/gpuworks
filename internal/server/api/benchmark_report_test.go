@@ -1,8 +1,13 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
+	"gpuworks.ai/gpuworks/internal/proto"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -81,5 +86,83 @@ func TestBenchmarkReportDownloadAPI(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("invalid format status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBenchmarkWarmupFailureReportWithoutPoints(t *testing.T) {
+	st, err := store.Open("file:benchmark_report_warmup_failure?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	run, err := st.CreateBenchmarkRun(&store.BenchmarkRun{Name: "warmup-only failure", LoadOrigin: "server", Model: "m", Dataset: `{"kind":"random"}`, Search: `{"warmup_requests":1}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ApplyBenchmarkStatus(0, proto.BenchmarkStatus{ID: run.ID, State: "failed", Message: "warmup recovery exhausted: engine restarting", StopReason: proto.BenchmarkStopFatal, Warmup: json.RawMessage(`[{"version":1,"point_seq":0,"session_id":"warmup-1","attempt":2,"http_status":503,"error_stage":"http","error_text":"engine restarting"}]`)}); err != nil {
+		t.Fatal(err)
+	}
+	signer, _ := auth.NewTokenSigner("warmup-report-api", time.Hour)
+	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
+	handler := Router(Deps{Store: st, Bus: bus.New(), AuthSigner: signer})
+	for _, format := range []string{"markdown", "html", "csv"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/benchmarks/"+strconv.Itoa(int(run.ID))+"/report?format="+format, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != 200 || !strings.Contains(response.Body.String(), "engine restarting") || !strings.Contains(response.Body.String(), "warmup-1") {
+			t.Fatalf("%s report missing real failure evidence: %d %s", format, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestWarmupEscapedErrorIsSafeInPersistedAPIAndExports(t *testing.T) {
+	fixture := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"error":{"message":"engine failed https:\/\/api-user:api-password@host.test\/?access_token=API_QUERY_SECRET"}}`))
+	}))
+	defer fixture.Close()
+	st, err := store.Open("file:benchmark_warmup_safe_api?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	tokenizerPath := filepath.Join(t.TempDir(), "tokenizer.json")
+	if err := os.WriteFile(tokenizerPath, []byte(`{"model":{"vocab":{"a":0,"b":1}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run, err := st.CreateBenchmarkRun(&store.BenchmarkRun{Name: "safe warmup", LoadOrigin: "server", Model: "m", BaseURL: fixture.URL, TokenizerRef: tokenizerPath, Dataset: `{"kind":"random"}`, Search: `{"concurrency":1,"warmup_requests":1,"isl":[8],"osl":[1]}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handlers := &apiHandlers{d: Deps{Store: st, Outside: OutsideSources{AllowPrivateHosts: []string{"127.0.0.1"}}}}
+	handlers.runServerBenchmark(context.Background(), run)
+	persisted, err := st.GetBenchmarkRun(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.State != "failed" || !strings.Contains(persisted.Error, "HTTP 400, stage http: engine failed") {
+		t.Fatalf("safe failure lost diagnostic: %s", persisted.Error)
+	}
+	texts := []string{persisted.Error, persisted.Progress}
+	signer, _ := auth.NewTokenSigner("warmup-safe-api", time.Hour)
+	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
+	handler := Router(Deps{Store: st, Bus: bus.New(), AuthSigner: signer})
+	for _, suffix := range []string{"", "/report?format=markdown", "/report?format=html", "/report?format=csv"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/benchmarks/"+strconv.Itoa(int(run.ID))+suffix, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != 200 {
+			t.Fatalf("%s returned %d", suffix, response.Code)
+		}
+		texts = append(texts, response.Body.String())
+	}
+	for _, text := range texts {
+		for _, secret := range []string{"api-user", "api-password", "API_QUERY_SECRET"} {
+			if strings.Contains(text, secret) {
+				t.Fatal("decoded warmup diagnostic leaked across persistence/API/export")
+			}
+		}
 	}
 }

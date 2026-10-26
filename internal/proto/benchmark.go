@@ -23,15 +23,17 @@ type BenchmarkSpec struct {
 }
 
 type BenchmarkStatus struct {
-	ID           uint                   `json:"id"`
-	State        string                 `json:"state"`
-	PointIndex   int                    `json:"point_index,omitempty"`
-	PointTotal   int                    `json:"point_total,omitempty"`
-	PointCount   int                    `json:"point_count,omitempty"`
-	Completed    int                    `json:"completed,omitempty"`
-	Errors       int                    `json:"errors,omitempty"`
-	Point        json.RawMessage        `json:"point,omitempty"`
-	Result       json.RawMessage        `json:"result,omitempty"`
+	ID         uint            `json:"id"`
+	State      string          `json:"state"`
+	PointIndex int             `json:"point_index,omitempty"`
+	PointTotal int             `json:"point_total,omitempty"`
+	PointCount int             `json:"point_count,omitempty"`
+	Completed  int             `json:"completed,omitempty"`
+	Errors     int             `json:"errors,omitempty"`
+	Point      json.RawMessage `json:"point,omitempty"`
+	Result     json.RawMessage `json:"result,omitempty"`
+	// Warmup retains non-measured attempts as loadgen DetailRecord JSON; no prompt/reply text.
+	Warmup       json.RawMessage        `json:"warmup,omitempty"`
 	Sample       json.RawMessage        `json:"sample,omitempty"`
 	CurrentPoint *BenchmarkCurrentPoint `json:"current_point,omitempty"`
 	Message      string                 `json:"message,omitempty"`

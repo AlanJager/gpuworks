@@ -39,6 +39,7 @@ func htmlReport(run Run, dataset datasetConfig, target targetSnapshot, rows []po
 		out.WriteString("</tr>")
 	}
 	out.WriteString("</tbody></table>")
+	writeWarmupHTML(&out, run)
 	writeEvidenceHTML(&out, rows)
 	targetRows := targetProperties(target)
 	if len(targetRows) > 0 || len(target.Env) > 0 {

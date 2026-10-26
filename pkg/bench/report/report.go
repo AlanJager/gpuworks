@@ -20,6 +20,8 @@ import (
 )
 
 type Run struct {
+	Error          string
+	Warmup         []loadgen.DetailRecord
 	ID             uint
 	Name           string
 	EvaluationURL  string
@@ -100,6 +102,8 @@ var sensitiveEnv = regexp.MustCompile(`(?i)(secret|password|passwd|token|api[_-]
 
 func Render(format string, run Run) (Document, error) {
 	run.Points = sanitizedDetailPoints(run.Points)
+	run.Error = loadgen.ResponseErrorText(run.Error)
+	run.Warmup = safeWarmup(run.Warmup)
 	run.TargetSnapshot = sanitizedSnapshot(run.TargetSnapshot)
 	datasetConfig, search, target := decodeConfig(run)
 	run.Warnings = effectiveWarnings(run, datasetConfig)
@@ -110,7 +114,7 @@ func Render(format string, run Run) (Document, error) {
 	case "md", "markdown":
 		return Document{Body: markdown(run, datasetConfig, target, rows), ContentType: "text/markdown; charset=utf-8", Filename: base + ".md"}, nil
 	case "csv":
-		body, err := csvReport(rows)
+		body, err := csvReport(run, rows)
 		return Document{Body: body, ContentType: "text/csv; charset=utf-8", Filename: base + ".csv"}, err
 	case "html":
 		return Document{Body: htmlReport(run, datasetConfig, target, rows), ContentType: "text/html; charset=utf-8", Filename: base + ".html"}, nil
@@ -237,11 +241,19 @@ var metricDefinitions = []string{
 	"CSV evidence_json and report_context_json preserve omitted grouped facts and configuration; request bodies and timeline records are only retained when detail collection is enabled.",
 }
 
-func csvReport(rows []pointRow) ([]byte, error) {
+func csvReport(run Run, rows []pointRow) ([]byte, error) {
 	var out bytes.Buffer
 	w := csv.NewWriter(&out)
 	if err := w.Write(append(append([]string{}, columns...), "evidence_json", "report_context_json")); err != nil {
 		return nil, err
+	}
+	if len(rows) == 0 && (run.Error != "" || len(run.Warmup) > 0) {
+		// Context-only row: empty measured cells are unknown, not a fake point.
+		fields := make([]string, len(columns)+2)
+		fields[len(fields)-1] = reportContext(run, "", nil)
+		if err := w.Write(fields); err != nil {
+			return nil, err
+		}
 	}
 	for _, row := range rows {
 		if err := w.Write(append(rowValues(row), evidenceJSON(row), row.ContextJSON)); err != nil {
@@ -318,6 +330,7 @@ func markdown(run Run, dataset datasetConfig, target targetSnapshot, rows []poin
 		}
 		out.WriteByte('\n')
 	}
+	writeWarmupMarkdown(&out, run)
 	writeEvidenceMarkdown(&out, rows)
 	writeTargetMarkdown(&out, target)
 	out.WriteString("\n## Metric definitions\n\n")
@@ -391,6 +404,9 @@ func runProperties(run Run, dataset datasetConfig, target targetSnapshot) [][2]s
 	properties := [][2]string{
 		{"State", run.State}, {"Mode", run.Mode}, {"Model", first(target.ServedName, target.Model, run.Model)},
 		{"Created", run.CreatedAt.UTC().Format(time.RFC3339)}, {"Workload", dataset.Kind},
+	}
+	if run.Error != "" {
+		properties = append(properties, [2]string{"Failure diagnostic", run.Error})
 	}
 	switch dataset.Kind {
 	case "agentic":

@@ -173,6 +173,17 @@ func (s *Store) ApplyBenchmarkStatus(nodeID uint, st proto.BenchmarkStatus) erro
 		}
 	}
 	if terminalBenchmarkState(run.State) {
+		if run.State == "canceled" && len(st.Warmup) > 0 {
+			// Enrich cancellation with completed warmup attempts without reopening the
+			// run or replacing the user's cancellation diagnostic and measured points.
+			var retained proto.BenchmarkStatus
+			if json.Unmarshal([]byte(run.Progress), &retained) == nil {
+				retained.Warmup = retainBenchmarkWarmup(retained.Warmup, st.Warmup)
+				if err := s.db.Model(&BenchmarkRun{}).Where("id = ? AND state = ? AND progress = ?", run.ID, "canceled", run.Progress).Update("progress", string(mustJSON(retained))).Error; err != nil {
+					return err
+				}
+			}
+		}
 		// Cancellation is persisted before the executor is stopped. Accept only
 		// its final canceled point evidence without reopening the run or
 		// overwriting an already retained point.
@@ -183,6 +194,14 @@ func (s *Store) ApplyBenchmarkStatus(nodeID uint, st proto.BenchmarkStatus) erro
 	}
 	if !validBenchmarkTransition(run.State, st.State) {
 		return fmt.Errorf("invalid benchmark state transition %q -> %q", run.State, st.State)
+	}
+	if run.Progress != "" {
+		// Measured progress omits the unchanged warmup payload on the control lane.
+		// Keep the earlier diagnostic in the existing progress document.
+		var previous proto.BenchmarkStatus
+		if json.Unmarshal([]byte(run.Progress), &previous) == nil {
+			st.Warmup = retainBenchmarkWarmup(previous.Warmup, st.Warmup)
+		}
 	}
 	now := time.Now().UTC()
 	updates := map[string]any{"state": st.State, "progress": string(mustJSON(st)), "error": st.Message, "updated_at": now}
