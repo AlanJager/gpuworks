@@ -96,8 +96,8 @@
   "component_checklist": [
     {
       "item": "1.1",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **字段盘点**：逐个登记标签、组件类型、必填性、默认值、单位、合法范围、条件显示、请求字段和持久化字段。"
+      "status": "covered",
+      "assertion": "On first open, when no registered model matches, the weight-source dialog shows the localized choose-where sentence, one outlined select, and one empty combobox named by the localized choose-a-source sentence. The combobox is not marked required and has no maximum length. The register-and-deploy button stays disabled. There is no spinbutton, no unit, no checkbox, no radio, and no alert. The outlined select lists Hugging Face and ModelScope, each joined to the fixture repository. After ModelScope is selected, the successful create POST to /api/v1/models/quick-register sends source modelscope, the fixture repository, revision main, the repository as the name, the fixture weight in bytes, quantization fp16, architecture Qwen2ForCausalLM, and context length 4096, and the response is 201. The independent GET stores source modelscope, the fixture repository, revision master, that name, architecture Qwen2ForCausalLM, precision float16, context length 4096, the fixture readme, and the fixture weight, with no node copy and no storage copy."
     },
     {
       "item": "1.2",
@@ -126,8 +126,8 @@
     },
     {
       "item": "1.7",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **最小创建**：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"
+      "status": "covered",
+      "assertion": "The weight source dialog is not centered. The minimal registration fills only the source choice. That POST carries revision main and the repository id as the name. The independent GET stores revision master and that repository id as the name. The model list contains that one model, and the reloaded detail shows the repository id and revision master."
     },
     {
       "item": "1.8",
@@ -136,18 +136,18 @@
     },
     {
       "item": "1.9",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **防重复提交**：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"
+      "status": "covered",
+      "assertion": "While the quick-register POST is held the confirm button stays loading and a second click sends no further registration. The later 201 is the only stored model"
     },
     {
       "item": "1.10",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **失败恢复**：真实服务端拒绝时保留草稿和弹窗，显示可操作原因；修正或重试后成功，失败时没有部分写入。"
+      "status": "covered",
+      "assertion": "The 502 keeps the weight-source dialog and the selected source, shows the register-failed prefix and upstream fixture is unreachable, and the model list stays empty. The retry 201 matches the independent GET"
     },
     {
       "item": "1.11",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **取消退出**：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"
+      "status": "covered",
+      "assertion": "Cancel, the close control, and Escape each close the weight-source dialog and leave the deploy page. None of those dismissals sends a registration, and the model list stays empty. No unsaved prompt appears. Each reopened dialog still has an empty source and a disabled confirm."
     },
     {
       "item": "1.12",
@@ -166,8 +166,8 @@
     },
     {
       "item": "1.15",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **键盘与布局**：Tab 可达、Enter 不误提交、错误可感知，1440×900 下字段与底部操作可达且不重叠。"
+      "status": "covered",
+      "assertion": "Tab and Shift+Tab stay inside the weight-source dialog. With a source selected, Enter on the source field sends no registration, the dialog stays open, and the confirm button is not loading. The failed registration shows the register-failed prefix and upstream fixture is unreachable. At 1440 by 900 the source field is visible, the dialog and the confirm button sit inside the viewport, and the title, body, and footer do not overlap."
     },
     {
       "item": "2.1",
@@ -306,18 +306,18 @@
     },
     {
       "item": "12.1",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 从真实页面入口打开，验证角色、可访问名称、业务组件种类与首个步骤，防止误打开另一个正常组件。"
+      "status": "covered",
+      "assertion": "Deploy on the template opens one dialog named by the weight-source title, and the source field is the visible business control"
     },
     {
       "item": "12.2",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 打开即检查容器和关键操作在当前视口；1440×900 下标题、说明、内容与底部操作不重叠。"
+      "status": "covered",
+      "assertion": "Weight-source dialog at 1440x900: the dialog and footer Register model and deploy stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"
     },
     {
       "item": "12.3",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"
+      "status": "covered",
+      "assertion": "Default focus is inside the weight-source dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"
     },
     {
       "item": "12.4",
@@ -331,13 +331,13 @@
     },
     {
       "item": "12.6",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"
+      "status": "covered",
+      "assertion": "covered: While the quick registration is held the Register model and deploy button shows the loading state and a second click sends no further POST; the 502 keeps the selected source, shows the register-failed prefix and upstream fixture is unreachable, and stores nothing; the later 201 matches the independent GET and the reloaded detail"
     },
     {
       "item": "12.7",
-      "status": "MISSING",
-      "assertion": "Partial: named model deletion + exact impact description and GET404; referenced deletion/refusal and cancellation remain MISSING."
+      "status": "covered",
+      "assertion": "Delete confirmation names the model and says node copy records are removed and a deployment reference blocks deletion. A deployment row blocks deletion with 409 MODEL_IN_USE and the model and deployment stay. A model file whose state is deleting keeps the model on 409 and the file stays. After both rows are cleared, delete returns 204, the independent GET is 404, and the reloaded list is empty"
     },
     {
       "item": "12.8",

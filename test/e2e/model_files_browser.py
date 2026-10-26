@@ -1,11 +1,13 @@
 """Three public file lifecycle contracts, driven through real browser controls.
 
-No management route interception. Expected file bytes come from the external
-repository, not a product DTO. CLI: model_files_lifecycle.py --case CASE --locale en|zh.
+The download confirm is held, then continued into the real server. No management
+status is fulfilled. Expected file bytes come from the external repository, not
+a product DTO. CLI: model_files_lifecycle.py --case CASE --locale en|zh.
 """
 import hashlib
 import json
 import re
+import sqlite3
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -13,6 +15,7 @@ from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect
 from local_browser_fixture import ROOT, http
 from local_business_runner import checked, unattributed_console_errors
+from dialog_checks import assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask
 from platform_token_read_revoke import button, modal_geometry
 from model_files_fixture import MODELS, file_facts, payload_facts
 
@@ -75,6 +78,9 @@ def watch(page, report):
         report['console_errors'].append({'path': path, 'text': message.text})
     def responded(response):
         path = urlsplit(response.url).path
+        if (response.request.method, path, response.status) in (report.get('allowed_http') or []):
+            report.setdefault('attributed_responses', []).append({'path': path, 'status': response.status})
+            return
         if response.status >= 400 and not (not session['authenticated']
                                            and path == '/api/v1/auth/me' and response.status == 401):
             report['http_errors'].append({'method': response.request.method, 'path': path,
@@ -143,6 +149,140 @@ def select_node(page, dialog, labels, data):
     expect(dialog.locator('.ant-select-selection-item').filter(has_text=data['node']['name'])).to_have_count(1)
 
 
+def _files_db(server):
+    conn = sqlite3.connect(server.work / 'server-data' / 'gpuworks.db', timeout=5)
+    conn.execute('PRAGMA busy_timeout=5000')
+    return conn
+
+
+def drop_storage_target(server, storage_id, node_uuid):
+    # downloadModel rejects STORAGE_UNAVAILABLE_ON_NODE before it writes a file
+    # row. The membership row is the only switch, and it is put back before return.
+    conn = _files_db(server)
+    try:
+        node = conn.execute('SELECT id FROM nodes WHERE uuid = ?', (node_uuid,)).fetchone()
+        checked(node is not None, 'owned node row missing')
+        cols = [info[1] for info in conn.execute('PRAGMA table_info(storage_nodes)')]
+        rows = conn.execute(
+            f"SELECT {', '.join(cols)} FROM storage_nodes WHERE storage_id = ? AND node_id = ?",
+            (storage_id, node[0])).fetchall()
+        checked(len(rows) == 1, f'storage target rows {len(rows)}')
+        cur = conn.execute('DELETE FROM storage_nodes WHERE storage_id = ? AND node_id = ?',
+                           (storage_id, node[0]))
+        conn.commit()
+        checked(cur.rowcount == 1, f'storage target delete updated {cur.rowcount} rows')
+        return {'cols': cols, 'row': rows[0]}
+    finally:
+        conn.close()
+
+
+def restore_storage_target(server, saved):
+    cols, row = saved['cols'], saved['row']
+    conn = _files_db(server)
+    try:
+        conn.execute(
+            f"INSERT INTO storage_nodes ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+            row)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def prove_refused_model_download(page, dialog, server, token, path, body, report, labels, data, storage):
+    """Hold Download: loading, no second write, real 409, storage and node kept."""
+    ok = dialog.locator('.ant-modal-footer .ant-btn-primary')
+    expect(ok).to_be_enabled()
+    held = []
+    pattern = re.compile(re.escape(path) + r'(?:\?|$)')
+
+    def hold_post(route):
+        if route.request.method != 'POST' or urlsplit(route.request.url).path != path:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route(pattern, hold_post)
+    dropped = None
+    try:
+        ok.click()
+        report['last_step'] = 'model-download-refused-inflight'
+        expect(ok).to_have_class(re.compile(r'\bant-btn-loading\b'))
+        ok.click()
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not held:
+            page.wait_for_timeout(100)
+        checked(len(held) == 1, 'duplicate model download while the refusal is held')
+        dropped = drop_storage_target(server, storage['id'], data['node']['uuid'])
+        report.setdefault('allowed_http', []).append(('POST', path, 409))
+        with page.expect_response(lambda response: urlsplit(response.url).path == path
+                                   and response.request.method == 'POST') as received:
+            held[0].continue_()
+        refused = received.value
+    finally:
+        try:
+            page.unroute(pattern, hold_post)
+        except Exception:
+            pass
+        if dropped is not None:
+            restore_storage_target(server, dropped)
+    checked(refused.status == 409, f'refused download HTTP {refused.status}')
+    payload = refused.json()
+    strict(payload.get('code'), 'STORAGE_UNAVAILABLE_ON_NODE', 'refused download error code')
+    strict(refused.request.post_data_json, body, 'refused download draft')
+    expect(dialog).to_be_visible()
+    expect(dialog.locator('.ant-select-selection-item').filter(has_text=storage['name'])).to_have_count(1)
+    expect(dialog.locator('.ant-select-selection-item').filter(has_text=data['node']['name'])).to_have_count(1)
+    shown = labels['download']['failed'].replace(
+        '{{detail}}', strings(report['locale'], 'common')['apiError']['STORAGE_UNAVAILABLE_ON_NODE'])
+    expect(page.get_by_text(shown, exact=True)).to_be_visible()
+    model = document(server, token, data)
+    checked(presence(model, data, storage) is None, 'refused download persisted a file row')
+    report.setdefault('evidence', []).append({'layer': 'ui', 'inflight_posts': 1, 'confirm_loading': True,
+        'draft_storage': storage['name'], 'draft_node': data['node']['name']})
+    report.setdefault('evidence', []).append({'layer': 'request', 'method': 'POST', 'path': path,
+        'body': body, 'status': 409})
+    report.setdefault('evidence', []).append({'layer': 'persistence', 'file_row': None,
+        'independent_get': MODELS + '/' + str(data['model']['id'])})
+    report['last_step'] = 'model-download-refused'
+    return refused
+
+
+def hold_model_download(page, dialog, path, body, report):
+    # setSubmitting runs before the download POST. Continue the real request;
+    # the later 503 is the fixture weight server, not a fulfilled status.
+    held = []
+    pattern = re.compile(re.escape(path) + r'(?:\?|$)')
+    ok = dialog.locator('.ant-modal-footer .ant-btn-primary')
+
+    def hold_post(route):
+        if route.request.method != 'POST' or urlsplit(route.request.url).path != path:
+            route.continue_()
+            return
+        held.append(route)
+
+    page.route(pattern, hold_post)
+    ok.click()
+    report['last_step'] = 'model-download-inflight'
+    expect(ok).to_have_class(re.compile(r'\bant-btn-loading\b'))
+    ok.click()
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not held:
+        page.wait_for_timeout(100)
+    checked(len(held) == 1, 'duplicate model download while the first request is held')
+    strict(held[0].request.post_data_json, body, 'held model download body differs')
+    with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == 'POST') as received:
+        held[0].continue_()
+    page.unroute(pattern, hold_post)
+    response = received.value
+    checked(response.status == 202, f'POST {path}: HTTP {response.status}; {response.text()}')
+    strict(response.request.post_data_json if response.request.post_data else None, body, 'actual browser mutation body')
+    strict(parse_qs(urlsplit(response.url).query), {}, 'actual browser mutation query')
+    report.setdefault('browser_responses', []).append({'method': 'POST', 'path': path,
+        'query': {}, 'body': body, 'status': response.status})
+    report.setdefault('evidence', []).append({'layer': 'ui', 'inflight_posts': 1, 'confirm_loading': True})
+    return response
+
+
 def mutation(page, report, action, method, path, body, status, query=None):
     with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == method) as received:
         action()
@@ -169,12 +309,32 @@ def close_detail(page, labels, data):
     expect(dialog).not_to_be_visible()
 
 
-def download(page, labels, data, storage, report):
+def download(page, labels, data, storage, report, server=None, token=None, refuse=False, shell=False):
     report['step'] = 'UI select explicit non-default storage and target node'
     row = page.get_by_role('row').filter(has=page.get_by_role('button', name=data['name'], exact=True))
-    row.get_by_role('button', name=labels['action']['downloadToNode'], exact=True).click()
+    trigger = row.get_by_role('button', name=labels['action']['downloadToNode'], exact=True)
     title = labels['download']['title'].replace('{{name}}', data['name'])
-    dialog = page.get_by_role('dialog', name=title, exact=True)
+    path = MODELS + '/' + str(data['model']['id']) + '/download'
+    posts = []
+    page.on('request', lambda request: posts.append(path)
+            if request.method == 'POST' and urlsplit(request.url).path == path else None)
+
+    def reopen():
+        trigger.click()
+        opened = page.get_by_role('dialog', name=title, exact=True)
+        expect(opened).to_be_visible()
+        return opened
+
+    # The list table stays mounted. This dialog is not nested in another dialog.
+    dialog = assert_nested_dismissals(reopen(), page.locator('.ant-table').first, reopen, [
+        ('cancel', cancel_button(labels['action']['cancel'])), ('escape', escape),
+        ('close', close_button), ('mask', mask)], lambda: len(posts), trigger)
+    checked(posts == [], 'download dialog dismissal started a download')
+    if server is not None and token is not None:
+        checked(presence(document(server, token, data), data, storage) is None,
+                'download dialog dismissal created a file row')
+    report.setdefault('evidence', []).append({'layer': 'ui', 'download_dialog': title,
+        'dismissals': ['cancel', 'escape', 'close', 'mask'], 'focus_returned': True, 'download_posts': 0})
     submit = button(dialog, labels['download']['action'])
     expect(submit).to_be_disabled()
     storage_control = dialog.get_by_role('combobox', name=labels['download']['storage'], exact=True)
@@ -182,10 +342,19 @@ def download(page, labels, data, storage, report):
     choose(page, storage_control, storage['name'] + ' · ' + common['storageType']['local'])
     select_node(page, dialog, labels, data)
     expect(submit).to_be_enabled()
-    modal_geometry(dialog, submit)
-    path = MODELS + '/' + str(data['model']['id']) + '/download'
+    if shell:
+        # Same dialog shell as the landed modal header fix: identity, 1440x900
+        # stacking, and the focus trap. Geometry stays inside that check.
+        report['last_step'] = 'model-download-dialog-shell'
+        assert_dialog_shell(page, dialog, dialog.get_by_role(
+            'combobox', name=labels['download']['nodes'], exact=True), submit)
+        report.setdefault('evidence', []).append({'layer': 'ui', 'dialog_shell': title, 'viewport': '1440x900'})
+    else:
+        modal_geometry(dialog, submit)
     body = {'storage_id': storage['id'], 'node_uuids': [data['node']['uuid']]}
-    mutation(page, report, submit.click, 'POST', path, body, 202)
+    if refuse:
+        prove_refused_model_download(page, dialog, server, token, path, body, report, labels, data, storage)
+    hold_model_download(page, dialog, path, body, report)
     expect(dialog).not_to_be_visible()
 
 
@@ -273,10 +442,9 @@ def wire_proof(data, start):
 
 def finish(page, artifacts, report, data, source):
     checked(not report['page_errors'], 'browser page errors: ' + repr(report['page_errors']))
-    # This contract has no deliberate >=400, so no response is attributed; the
-    # cross-attribution mechanism matches acquisition's conclude, so a future
-    # expected error response can silence exactly its own console echo.
-    rest = unattributed_console_errors(report['console_errors'], [])
+    # A deliberate 409 is recorded in attributed_responses. Every other console
+    # error and every other >=400 still fail the case.
+    rest = unattributed_console_errors(report['console_errors'], report.get('attributed_responses') or [])
     checked(not rest, 'browser console errors: ' + repr(rest))
     checked(not report['http_errors'], 'unexpected browser HTTP errors: ' + repr(report['http_errors']))
     artifacts.write_json('repository-wire.json', source)
@@ -295,8 +463,9 @@ def finish(page, artifacts, report, data, source):
 def exercise_download_delete(page, context, server, artifacts, report, locale, data, token, holder):
     labels = begin(page, context, server, artifacts, report, locale, data)
     start = len(data['hub'].audit())
-    for storage in data['storages']:
-        download(page, labels, data, storage, report)
+    for index, storage in enumerate(data['storages']):
+        download(page, labels, data, storage, report, server=server, token=token,
+                 refuse=index == 0, shell=index == 0)
         assert_ready(page, server, token, labels, data, storage, report)
         close_detail(page, labels, data)
     source = wire_proof(data, start)
@@ -316,8 +485,13 @@ def exercise_download_delete(page, context, server, artifacts, report, locale, d
     expect(popup).not_to_be_visible()
     strict(report['mutations'], before_mutations, 'cancel must send no mutation')
     file_facts(target['payload_path'], data['hub'].files)
-    remove.click()
     path = f"{MODELS}/{data['model']['id']}/nodes/{data['node']['uuid']}"
+    from model_file_delete_blocks import exercise_node_delete_blocks
+    exercise_node_delete_blocks(page, report, server, token, labels, locale, data, target, remove, path,
+                                document, presence)
+    remove.click()
+    popup = page.locator('.ant-popconfirm').filter(has=page.get_by_text(title, exact=True))
+    expect(popup.get_by_text(title, exact=True)).to_be_visible()
     mutation(page, report, button(popup, labels['action']['delete']).click,
              'DELETE', path, None, 200, {'storage_id': [str(target['id'])]})
     poll(page, lambda: not Path(target['payload_path']).exists(), 'target directory absent')
@@ -342,7 +516,7 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     hub, target = data['hub'], data['storages'][0]
     hub.set_weight_failure(True)
     start = len(hub.audit())
-    download(page, labels, data, target, report)
+    download(page, labels, data, target, report, server=server, token=token, shell=True)
     failed = wait_state(page, server, token, data, target, 'failed', report)
     checked(failed['state'] == 'failed', 'source503 reaches actual failed file state')
     checked(failed['acquisition'] == 'download' and failed['path'] == target['payload_path'], 'failed row lost download identity')
@@ -369,6 +543,9 @@ def exercise_failure_retry(page, context, server, artifacts, report, locale, dat
     strict(report['mutations'][before:], [{'method': 'POST', 'path': path, 'query': '', 'body': body}], 'exactly one same-row public Retry request')
     assert_ready(page, server, token, labels, data, target, report)
     report['failure_recovery'] = {'failed': failed, 'retry_body': body, 'same_row': True}
+    from model_file_delete_blocks import delete_present_node_copy
+    delete_present_node_copy(page, report, server, token, labels, locale, data, target, document, presence,
+                             lambda *args: mutation(page, report, *args))
     finish(page, artifacts, report, data, wire_proof(data, start))
 
 
@@ -379,7 +556,7 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     hub, target = data['hub'], data['storages'][0]
     hub.interrupt_next_weight(65536, hold=True)
     start = len(hub.audit())
-    download(page, labels, data, target, report)
+    download(page, labels, data, target, report, server=server, token=token, refuse=True, shell=True)
     poll(page, lambda: hub.wait_interrupted(0), 'real partial-send barrier')
     interrupted = next(r for r in hub.audit()[start:] if r['interrupted'])
     checked(interrupted['bytes_sent'] == 65536 and not interrupted['complete'], 'partial response not held inside file')
@@ -409,8 +586,11 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     checked(any(r['target'] == broken['target'] and r['range'] == expected_range and r['complete']
                 and r['status'] == 206 for r in records[broken_index+1:]),
             'automatic resume did not request the exact next unsent byte to the same chunk end')
-    checked(len(report['mutations']) == 1, 'automatic recovery unexpectedly required another UI mutation')
+    checked(len(report['mutations']) == 2, 'resume added a mutation or the refused download was not sent')
     report['interrupted_recovery'] = {'held_state': moving, 'interrupted': broken,
         'resumed_range': expected_range, 'automatic': True, 'part_removed': not part.exists()}
     checked(not part.exists() and not Path(str(part) + '.state').exists(), 'successful download left partial/state')
+    from model_file_delete_blocks import delete_present_node_copy
+    delete_present_node_copy(page, report, server, token, labels, locale, data, target, document, presence,
+                             lambda *args: mutation(page, report, *args))
     finish(page, artifacts, report, data, source)

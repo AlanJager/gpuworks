@@ -116,8 +116,8 @@
   "component_checklist": [
     {
       "item": "1.1",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **字段盘点**：逐个登记标签、组件类型、必填性、默认值、单位、合法范围、条件显示、请求字段和持久化字段。"
+      "status": "covered",
+      "assertion": "On first open the register dialog shows one vertical form, one required combobox, two textboxes, and one small ghost collapse. There is no spinbutton, no unit, no checkbox, and no alert. Source is empty and its placeholder is the localized select-a-repository sentence. Source ID is an empty required textbox of type text. Its placeholder is Qwen/Qwen3-8B and it has no maximum length. Name is an empty textbox of type text, is not marked required, has no maximum length, and its placeholder is the localized optional display name. The collapse header is the localized advanced-options sentence, aria-expanded is false, and revision is not visible. Directory URL, model directory, node, model ID, and parse are absent. After ModelScope is selected the combobox text is ModelScope, and source ID, name, and the collapsed revision stay unchanged. The create POST to /api/v1/models sends source modelscope, the fixture repository, revision main, and the typed name, and the response is 201. The independent GET before metadata recovery stores source modelscope, the fixture repository, revision master, the typed name, an empty architecture, and weight 0, and it omits context length, precision, and readme, with no node copy and no storage copy. After recovery the independent GET stores the same identity with architecture Qwen2ForCausalLM, precision float16, context length 4096, the fixture readme, and the fixture weight."
     },
     {
       "item": "1.2",
@@ -146,28 +146,28 @@
     },
     {
       "item": "1.7",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **最小创建**：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"
+      "status": "covered",
+      "assertion": "The register dialog has one visible mask. The minimal registration fills only the source and the repository id. That POST omits the name and carries an empty revision. The response is 201. The reloaded detail shows the repository id, the fixture commit, Qwen2ForCausalLM, float16, and context length 4,096. The model list contains that one model. After a page reload the list still contains that one model. The independent GET stores the repository id as the name and stores that commit."
     },
     {
       "item": "1.8",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **完整创建**：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"
+      "status": "covered",
+      "assertion": "The advanced section icon sits at the start of the header. The complete registration fills both optional fields, the display name and the revision. That POST carries the typed name and revision master. The independent GET stores that typed name and revision master. After that model is deleted, a second registration clears the display name and leaves the revision empty. That POST omits the name and carries an empty revision. The independent GET stores the repository id as the name and stores the fixture commit."
     },
     {
       "item": "1.9",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **防重复提交**：在确定的提交中状态重复点击或按 Enter，只产生一次创建/更新，不生成重复资源。"
+      "status": "covered",
+      "assertion": "While the metadata refresh POST is held the refresh button stays loading and a second click sends no further refresh. The independent GET keeps the same model row"
     },
     {
       "item": "1.10",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **失败恢复**：真实服务端拒绝时保留草稿和弹窗，显示可操作原因；修正或重试后成功，失败时没有部分写入。"
+      "status": "covered",
+      "assertion": "The register failure uses the error notice. A 257-character name is rejected with 400 FIELD_INVALID on the name field. The dialog stays open and keeps the repository id, revision main, and that name. The notice shows the registration-failed prefix and the 256-character limit. The model list stays empty. Replacing the name and submitting again returns 201, and the independent GET stores the corrected name and revision master."
     },
     {
       "item": "1.11",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: **取消退出**：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"
+      "status": "covered",
+      "assertion": "Cancel, the close button and Escape each close the register dialog immediately, with no unsaved-changes prompt and no registration write. The independent model list GET stays unchanged"
     },
     {
       "item": "1.12",
@@ -326,23 +326,23 @@
     },
     {
       "item": "12.1",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 从真实页面入口打开，验证角色、可访问名称、业务组件种类与首个步骤，防止误打开另一个正常组件。"
+      "status": "covered",
+      "assertion": "Register on the models page opens one dialog named by the register title, and the source field is the visible business control"
     },
     {
       "item": "12.2",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 打开即检查容器和关键操作在当前视口；1440×900 下标题、说明、内容与底部操作不重叠。"
+      "status": "covered",
+      "assertion": "Register dialog at 1440x900: the dialog and footer Confirm registration stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"
     },
     {
       "item": "12.3",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 验证默认焦点、Tab/Shift+Tab；modal 限制背景焦点，非 modal 按自身交互合同验证。"
+      "status": "covered",
+      "assertion": "Default focus is inside the register dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"
     },
     {
       "item": "12.4",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 分别关闭按钮、取消、Esc 及适用的遮罩关闭；焦点返回触发器，取消不产生 mutation。"
+      "status": "covered",
+      "assertion": "Cancel, Escape, the close button and the mask each return focus to the Register model button and send no registration. The independent model list GET stays unchanged"
     },
     {
       "item": "12.5",
@@ -351,13 +351,13 @@
     },
     {
       "item": "12.6",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 提交中按钮状态和重复操作正确；服务端失败保留内容并给出原因，成功后详情与刷新回读一致。"
+      "status": "covered",
+      "assertion": "covered: While the metadata refresh is held the Fetch metadata again button shows the loading state and a second click sends no further POST; the real 502 keeps the same model row and shows the refresh-failed prefix; the later 200 matches the independent GET and the reloaded detail"
     },
     {
       "item": "12.7",
-      "status": "MISSING",
-      "assertion": "Partial: named model deletion + exact impact description and GET404; referenced deletion/refusal and cancellation remain MISSING."
+      "status": "covered",
+      "assertion": "Delete confirmation names the model and says node copy records are removed and a deployment reference blocks deletion. A deployment row blocks deletion with 409 MODEL_IN_USE and the model and deployment stay. A model file whose state is deleting keeps the model on 409 and the file stays. After both rows are cleared, delete returns 204, the independent GET is 404, and the reloaded list is empty"
     },
     {
       "item": "12.8",
