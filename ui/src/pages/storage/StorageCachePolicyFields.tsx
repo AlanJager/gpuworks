@@ -16,6 +16,8 @@ export default function StorageCachePolicyFields({ value, onChange, allowInherit
   const [unit, setUnit] = useState(1024 ** 3);
   const mode = value === undefined && allowInherit ? "inherit" : value === 0 || value === undefined ? "unlimited" : "custom";
   const name = label ?? t("cachePolicy.limit");
+  // Bytes are an integer. Dividing them back does not restore 1.2, so show two places.
+  const shown = Number.isFinite(value) ? Number((value! / unit).toFixed(2)) : null;
   return <Space direction="vertical">
     <div role="radiogroup" aria-label={name}><Radio.Group value={mode} onChange={(e) => onChange(e.target.value === "inherit" ? undefined : e.target.value === "unlimited" ? 0 : NaN)}>
       {allowInherit && <Radio value="inherit">{t("cachePolicy.inherit")}</Radio>}
@@ -23,7 +25,7 @@ export default function StorageCachePolicyFields({ value, onChange, allowInherit
       <Radio value="unlimited">{t("cachePolicy.unlimited")}</Radio>
     </Radio.Group></div>
     {mode === "custom" && <Space>
-      <InputNumber id={id} aria-label={name} min={0} value={Number.isFinite(value) ? value! / unit : null} onChange={(next) => onChange(next == null || next <= 0 ? NaN : Math.round(next * unit))} />
+      <InputNumber id={id} aria-label={name} min={0} value={shown} onChange={(next) => onChange(next == null || next <= 0 ? NaN : Math.round(next * unit))} />
       <Select aria-label={t("cachePolicy.unit")} value={unit} onChange={setUnit} options={[{ value: 1024 ** 3, label: "GiB" }, { value: 1024 ** 4, label: "TiB" }]} />
     </Space>}
     {mode === "inherit" && <Typography.Text type="secondary">{t("cachePolicy.effective", { value: defaultBytes === 0 ? t("cachePolicy.unlimited") : formatBytes(defaultBytes) })}</Typography.Text>}
