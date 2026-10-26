@@ -74,7 +74,7 @@ All code from “all nodes online” to “churn complete” lives in `internal/
 and its measurements are more stable. The single-process configuration remains available for quick, small-scale trial runs. Neither is part of default CI. In GitLab,
 the `l2-fleet-redeploy-churn` job runs the multi-process configuration and appears only in schedule / web / api
 pipelines with `FLEET_REDEPLOY_CHURN=1` (the nightly schedule includes this variable). The job runs with `GPUWORKS_TEST_STRICT=1`, so an insufficient file descriptor limit
-causes a failure rather than a skip. Logs from both processes are retained as artifacts for 14 days. Disconnect/reconnect counts and endpoint p99 are currently reported without assertions;
+causes a failure rather than a skip. Logs from both processes are compressed into a single tar.gz (the 40 separate per-process log files were once rejected by the gateway with 413 on upload) and retained as artifacts for 14 days. Disconnect/reconnect counts and endpoint p99 are currently reported without assertions;
 thresholds will be set after enough nightly runs have accumulated to establish trends.
 
 The multi-process configuration can run with prebuilt binaries. **This is the only way to run it on machines without the Go toolchain**:
@@ -228,6 +228,15 @@ and CI jobs. Verifiable behaviors use `node-onboarding`, `public-download`,
 
 The repository currently provides explicit `make test-l4-*` targets for RunPod, AutoDL, Vast, CompShare, and Ascend resource pools.
 Confirm the targets with `make help`/Makefile first, then run only the required test lanes.
+
+Trigger policy for the schedules (`CLOUD_FULL=1`, twice a day at 03:00 and 15:00 Asia/Shanghai):
+
+- The CompShare VM cases (`l4-compshare-provisioning-matrix`, `single-vm-tp2-dgpu`,
+  `one-vm-two-logical-nodes`, `two-vm-docker-distributed`, `pd-deploy-chat-two-vm-docker`, and
+  `modelscope-public-download`) are **not scheduled**: that pool almost never has capacity, and the
+  Aliyun cases replace them. Start them on demand from a web/api pipeline with `COMPSHARE_VM=1`, or as an
+  MR manual action. The CompShare container case (`l4-compshare-server-dial-node-onboarding-container`)
+  and the offline contracts (`core-compshare-offline-contracts`) run as before.
 
 ## Cost and Caching
 

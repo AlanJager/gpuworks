@@ -74,7 +74,7 @@ RSS（进程驻留内存）与 CPU。
 数字也更稳定；单进程形态保留作小规模快速试跑。两者都不进默认 CI。GitLab 里由
 `l2-fleet-redeploy-churn` job 跑多进程形态，只在 `FLEET_REDEPLOY_CHURN=1` 的 schedule / web / api
 流水线里出现（每晚定时任务带这个变量）；job 以 `GPUWORKS_TEST_STRICT=1` 运行，文件描述符上限不够
-会失败而不是跳过，两个进程的日志作为 artifact 保留 14 天。掉线重连数与接口 p99 目前只报数不断言，
+会失败而不是跳过，两个进程的日志压缩成一个 tar.gz（按进程拆开的 40 个日志文件曾因上传体积被网关以 413 拒绝）作为 artifact 保留 14 天。掉线重连数与接口 p99 目前只报数不断言，
 看 nightly 的趋势，积累足够运行后再定阈值。
 
 多进程形态可用预编译二进制运行，**没有 Go 工具链的机器只能这样跑**：
@@ -228,6 +228,15 @@ WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值
 
 仓库当前提供 RunPod、AutoDL、Vast、CompShare 和昇腾资源池的显式 `make test-l4-*`
 target。先以 `make help`/Makefile 确认目标，再只运行所需的测试路径（lane）。
+
+定时（`CLOUD_FULL=1`，每天 03:00 与 15:00 Asia/Shanghai 各一次）的触发策略：
+
+- CompShare 的 VM 用例（`l4-compshare-provisioning-matrix`、`single-vm-tp2-dgpu`、
+  `one-vm-two-logical-nodes`、`two-vm-docker-distributed`、`pd-deploy-chat-two-vm-docker` 和
+  `modelscope-public-download`）**不进定时任务**：这个资源池几乎排不到机器，阿里云用例接替它们。
+  需要时从 web/api 流水线带 `COMPSHARE_VM=1` 手动触发，或在 MR 里手动点。CompShare 的容器用例
+  （`l4-compshare-server-dial-node-onboarding-container`）和离线契约
+  （`core-compshare-offline-contracts`）照常运行。
 
 ## 成本和缓存
 
