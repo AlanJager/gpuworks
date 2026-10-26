@@ -84,13 +84,14 @@ type NodeRuntime struct {
 	progress *progressGate
 
 	// model-file download bookkeeping
-	dlMu          sync.Mutex
-	downloading   map[string]*modelDownload
-	stoppedCopies map[string]string
-	syncMu        sync.Mutex
-	modelSyncs    map[string]*activeModelSync
-	imageSyncs    map[string]*activeImageSync
-	imageSyncMu   sync.Mutex
+	dlMu           sync.Mutex
+	downloading    map[string]*modelDownload
+	stoppedCopies  map[string]string
+	syncMu         sync.Mutex
+	modelSyncs     map[string]*activeModelSync
+	imageSyncs     map[string]*activeImageSync
+	imageSyncMu    sync.Mutex
+	imageSyncSends map[string]context.CancelFunc // source runtime calls, keyed by transfer id
 
 	// netcfg is the effective network/accelerator configuration from the
 	// server. The node owns it - downloads, model sync and image pulls all read

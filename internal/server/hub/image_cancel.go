@@ -37,6 +37,16 @@ func (h *Hub) cancelImageTransferRow(ctx context.Context, image *store.Image, ta
 	if row.State != store.ImageStatePulling && row.State != store.ImageStateSyncing {
 		return row, nil // nothing is running; there is nothing to stop
 	}
+	h.stopImageTransfer(ctx, image, target, row)
+	if _, failErr := h.store.CancelImageNodeTransfer(image.ID, target.ID, message); failErr != nil {
+		return nil, failErr
+	}
+	return h.store.ImageNode(image.ID, target.ID)
+}
+
+// stopImageTransfer addresses both ends of a peer copy by attempt id. Closing
+// only the receiver cannot interrupt a source runtime stuck before its next write.
+func (h *Hub) stopImageTransfer(ctx context.Context, image *store.Image, target *store.Node, row *store.ImageNode) {
 	if h.Online(target.UUID) {
 		// The id names the attempt: the same image can have a stuck transfer and
 		// a queued retry at the same time.
@@ -51,12 +61,15 @@ func (h *Hub) cancelImageTransferRow(ctx context.Context, image *store.Image, ta
 		}
 		_, callErr := h.CallNode(ctx, target.UUID, method, params)
 		if callErr != nil {
-			h.log.Warn("image cancel rpc failed; failing the row anyway",
+			h.log.Warn("image cancellation RPC failed",
 				"image", image.ImageRef, "node", target.UUID, "err", callErr)
 		}
 	}
-	if _, failErr := h.store.CancelImageNodeTransfer(image.ID, target.ID, message); failErr != nil {
-		return nil, failErr
+	if row.Source == "peer" && row.SourceNodeID != 0 && row.TransferID != "" {
+		if source, err := h.store.NodeByID(row.SourceNodeID); err == nil && h.Online(source.UUID) {
+			if _, err := h.CallNode(ctx, source.UUID, proto.RPCImageSyncStop, proto.ImageSyncStopParams{TransferID: row.TransferID}); err != nil {
+				h.log.Warn("image source cancellation failed", "image", image.ImageRef, "node", source.UUID, "transfer", row.TransferID, "err", err)
+			}
+		}
 	}
-	return h.store.ImageNode(image.ID, target.ID)
 }

@@ -122,7 +122,11 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 			c.imageWaits.clear(dep.ID)
 			return imageDelivery{present: true}
 		case store.ImageStateSyncing, store.ImageStatePulling:
+			if watcher, ok := c.hub.(interface{ WatchImageTransfer(uint, uint) }); ok {
+				watcher.WatchImageTransfer(image.ID, node.ID)
+			}
 			c.imageWaits.set(dep.ID, image.ID)
+			c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonImageDeliveryWaiting, Params: map[string]any{"node": node.DisplayName(), "image": image.ImageRef}})
 			return imageDelivery{}
 		case store.ImageStateFailed:
 			if row.Source == "peer" && row.SourceNodeID != 0 {
@@ -143,6 +147,7 @@ func (c *Controller) deploymentImageDelivery(ctx context.Context, dep *store.Dep
 		return imageDelivery{present: true}
 	}
 	c.imageWaits.set(dep.ID, image.ID)
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonImageDeliveryWaiting, Params: map[string]any{"node": node.DisplayName(), "image": image.ImageRef}})
 	return imageDelivery{}
 }
 
