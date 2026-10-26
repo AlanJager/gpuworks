@@ -52,6 +52,12 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 		candidates = append(candidates, candidate)
 	}
 	for _, candidate := range candidates {
+		// The page treats catalog length as the number of available models.
+		// Score 0 cannot serve and cannot be woken, so a failed deployment
+		// or one that is still starting must not be counted.
+		if candidate.score == 0 {
+			continue
+		}
 		dep := candidate.deployment
 		model, err := a.d.Store.GetModel(dep.ModelID)
 		if err != nil {
