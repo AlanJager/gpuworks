@@ -49,11 +49,11 @@ func TestDetectAndImageExistsUseGPUWorksNamespace(t *testing.T) {
 }
 
 func TestInspectImageParsesJSONAndRunReportsErrors(t *testing.T) {
-	inspect := `{"Id":"sha256:x","Config":{"Entrypoint":["vllm","serve"],"Cmd":["/model"],"Env":["A=B","EMPTY="],"Volumes":{"/cache":{}}}}`
+	inspect := `{"Image":{"Target":{"digest":"` + testTargetDigest + `"}},"ImageConfigDesc":{"digest":"` + testImageDigest + `"},"ImageConfig":{"config":{"Entrypoint":["vllm","serve"],"Cmd":["/model"],"Env":["A=B","EMPTY="],"Volumes":{"/cache":{}}}}}`
 	installFakeNerdctl(t, "case \"$4\" in inspect) printf '%s\\n' '"+inspect+"';; esac; case \"$3\" in run) echo run-id;; esac")
 	d := New()
 	got, err := d.InspectImage(context.Background(), "img")
-	if err != nil || got.ID != "sha256:x" || got.Env["A"] != "B" || len(got.Volumes) != 1 {
+	if err != nil || got.ID != testImageDigest || got.Env["A"] != "B" || len(got.Volumes) != 1 {
 		t.Fatalf("inspect=%+v err=%v", got, err)
 	}
 	id, err := d.Run(context.Background(), runtime.WorkloadSpec{Name: "x", Image: "img"})
@@ -64,13 +64,13 @@ func TestInspectImageParsesJSONAndRunReportsErrors(t *testing.T) {
 
 func TestInspectWorkloadUsesNamespaceAndReturnsImmutableIdentities(t *testing.T) {
 	argsFile := filepath.Join(t.TempDir(), "args")
-	raw := `{"Id":"container-full-id","Image":"sha256:image-old","Path":"vllm","Args":["serve"],"Config":{"Entrypoint":[],"Cmd":[],"Env":[]},"HostConfig":{"Runtime":"io.containerd.runc.v2","NetworkMode":"bridge"},"Mounts":[]}`
+	raw := `{"Id":"container-full-id","Image":"runner:v1","Path":"vllm","Args":["serve"],"Config":{"Entrypoint":[],"Cmd":[],"Env":[],"Labels":{"gpuworks.image-target":"` + testTargetDigest + `"}},"HostConfig":{"Runtime":"io.containerd.runc.v2","NetworkMode":"bridge"},"Mounts":[]}`
 	installFakeNerdctl(t, "printf '%s\\n' \"$*\" > '"+argsFile+"'; case \"$3 $4\" in 'container inspect') printf '%s\\n' '"+raw+"';; esac")
 	got, err := New().InspectWorkload(context.Background(), "gpuworks-name")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ContainerID != "container-full-id" || got.ImageID != "sha256:image-old" || got.Env == nil || got.Mounts == nil {
+	if got.ContainerID != "container-full-id" || got.ImageID != "" || got.ImageLookupRef != testTargetDigest || got.Env == nil || got.Mounts == nil {
 		t.Fatalf("inspection=%+v", got)
 	}
 	args, err := os.ReadFile(argsFile)
@@ -246,11 +246,11 @@ func TestStatusReportsOnlyWhatTheCLIProves(t *testing.T) {
 }
 
 func TestInspectImageAcceptsMultipleObjectsFirstLine(t *testing.T) {
-	raw := map[string]any{"Id": "first", "Config": map[string]any{}}
+	raw := map[string]any{"Image": map[string]any{"Target": map[string]any{"digest": testImageDigest}}, "ImageConfigDesc": map[string]any{"digest": testImageDigest}, "ImageConfig": map[string]any{}}
 	b, _ := json.Marshal(raw)
 	installFakeNerdctl(t, "case \"$4\" in inspect) printf '%s\\nsecond\\n' '"+string(b)+"';; esac")
 	got, err := New().InspectImage(context.Background(), "img")
-	if err != nil || got.ID != "first" {
+	if err != nil || got.ID != testImageDigest {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
 }
