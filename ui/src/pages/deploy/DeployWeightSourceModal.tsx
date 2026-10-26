@@ -4,16 +4,7 @@ import type { WeightSource } from "../../api";
 import { ModelSourceTag } from "../ModelsPageParts";
 import type { TemplateSpecSelection } from "./deployHelpers";
 import type { WeightModel } from "./useTemplateWeightSource";
-
-// Where a registered model's files are, from the list row's presence summary.
-function locationText(model: WeightModel, t: (key: string, options?: Record<string, unknown>) => string): string {
-  const presence = model.presence;
-  if (!presence) return t("weightSourceModal.locationUnknown");
-  const parts: string[] = [];
-  if (presence.ready_nodes > 0) parts.push(t("weightSourceModal.onNodes", { count: presence.ready_nodes }));
-  if (presence.ready_storages > 0) parts.push(t("weightSourceModal.onStorages", { count: presence.ready_storages }));
-  return parts.length ? parts.join(" · ") : t("weightSourceModal.noFiles");
-}
+import ModelRegistrationDetails from "./ModelRegistrationDetails";
 
 export default function DeployWeightSourceModal({
   open,
@@ -84,7 +75,7 @@ export default function DeployWeightSourceModal({
                     <Typography.Text strong>{model.name || model.source_id}</Typography.Text>
                     <ModelSourceTag source={model.source} />
                     <Typography.Text type="secondary">{model.source_id}</Typography.Text>
-                    <Typography.Text type="secondary">{locationText(model, t)}</Typography.Text>
+                    <ModelRegistrationDetails model={model} />
                   </Space>
                 </Radio>
               ))}
