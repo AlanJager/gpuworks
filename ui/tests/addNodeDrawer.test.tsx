@@ -388,6 +388,37 @@ test("the precheck sends the install directory and lists each directory verdict"
   }
 });
 
+test("a failed precheck echoes a parsed target and hides an empty one", async () => {
+  const refused = stubAPI("precheckNode", {
+    target: "root@203.0.113.7", user: "", host: "", port: 0,
+    checks: [{ name: "SSH", status: "error", detail: "connection refused" }],
+  });
+  try {
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@203.0.113.7" } });
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.startPrecheck }));
+    await screen.findByText("connection refused");
+    assert.equal(screen.queryByText("@:0"), null);
+  } finally {
+    refused.restore();
+    cleanup();
+  }
+
+  const parsed = stubAPI("precheckNode", {
+    target: "root@203.0.113.7", user: "root", host: "203.0.113.7", port: 22,
+    checks: [{ name: "SSH", status: "error", detail: "connection refused" }],
+  });
+  try {
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@203.0.113.7" } });
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.startPrecheck }));
+    await screen.findByText("root@203.0.113.7:22");
+    assert.equal(screen.queryByText("@:0"), null);
+  } finally {
+    parsed.restore();
+  }
+});
+
 test("a blank install directory is left out of the precheck request", async () => {
   const precheck = stubAPI("precheckNode", { target: "root@203.0.113.7", user: "root", host: "203.0.113.7", port: 22, checks: [] });
   try {

@@ -366,7 +366,7 @@ export default function AddNodeDrawer({
                 <Button loading={installing} disabled={installing || checking || !!pendingNodeUUID} onClick={() => void runInstall()}>
                   {t("add.installAgent")}
                 </Button>
-                {report && (
+                {report?.host && (
                   <Text type="secondary">
                     {report.user}@{report.host}:{report.port}
                   </Text>

@@ -392,7 +392,21 @@ func TestPrecheckNodeEndpointReportsCallErrorAsAdvisoryCheck(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.Target != "root@example.com" || len(report.Checks) != 1 || report.Checks[0].Name != "SSH" || report.Checks[0].Status != "error" {
+	if report.Target != "root@example.com" || report.User != "root" || report.Host != "example.com" || report.Port != 22 || len(report.Checks) != 1 || report.Checks[0].Name != "SSH" || report.Checks[0].Status != "error" {
 		t.Fatalf("advisory precheck report = %+v", report)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/nodes/precheck", bytes.NewReader([]byte(`{"target":"not-a-target"}`)))
+	rec = httptest.NewRecorder()
+	h.precheckNode(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unparsed target status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	report = provision.SSHPrecheckReport{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.User != "" || report.Host != "" || report.Port != 0 || len(report.Checks) != 1 || report.Checks[0].Status != "error" {
+		t.Fatalf("unparsed advisory report = %+v", report)
 	}
 }
