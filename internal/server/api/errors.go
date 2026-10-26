@@ -259,6 +259,7 @@ const (
 	ErrorBenchmarkGPUCountNegative              = "BENCHMARK_GPU_COUNT_NEGATIVE"
 	ErrorBenchmarkDetailCapTooLarge             = "BENCHMARK_DETAIL_CAP_TOO_LARGE"
 	ErrorBenchmarkTargetInactive                = "BENCHMARK_TARGET_INACTIVE"
+	ErrorBenchmarkChatRequired                  = "BENCHMARK_CHAT_REQUIRED"
 	ErrorBenchmarkLeaderNotRunning              = "BENCHMARK_LEADER_NOT_RUNNING"
 	ErrorBenchmarkInstanceOrigin                = "BENCHMARK_INSTANCE_ORIGIN"
 	ErrorBenchmarkExternalURLRequired           = "BENCHMARK_EXTERNAL_URL_REQUIRED"

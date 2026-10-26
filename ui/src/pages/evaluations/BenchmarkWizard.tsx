@@ -12,6 +12,7 @@ import {
 	agenticSessionsPerPoint,
 	summarizeAgenticLoad,
 } from "./agenticWorkload";
+import { hasOperation } from "../../modelInference";
 import AgenticLoadSummary from "./AgenticLoadSummary";
 import TokenizerSourceFields from "./TokenizerSourceFields";
 import type { TokenizerSource } from "./tokenizerSource";
@@ -219,7 +220,7 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 	}, [open, targetNodeUUID, knownNodes]);
 	const deploymentOptions = useMemo(() => {
 		const shown = selectedDeployment && !deployments.some((item) => item.id === selectedDeployment.id) ? [selectedDeployment, ...deployments] : deployments;
-		return shown.map((deployment) => ({ value: deployment.id, label: deployment.name }));
+		return shown.map((deployment) => ({ value: deployment.id, label: deployment.name, disabled: !hasOperation(deployment.operations, "openai.chat") }));
 	}, [deployments, selectedDeployment]);
 	const loadOrigin = Form.useWatch("load_origin", form);
 	const originOptions = useMemo(() => {
@@ -368,7 +369,10 @@ export default function BenchmarkWizard({ open, meta, deployments, nodes, onSear
 						// external endpoint does not have.
 						if (event.target.value === "external" && form.getFieldValue("tokenizer_source") === "auto") form.setFieldValue("tokenizer_source", dataset === "random" || dataset === "agentic" ? "huggingface" : "estimate");
 					}} /></Form.Item>
-					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }]}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
+					{targetKind === "instance" ? <Form.Item name="deployment_id" label={t("wizard.service")} rules={[{ required: true, message: t("wizard.serviceRequired") }, { validator: async (_, id) => {
+						const selected = knownDeployments.get(id) || deployments.find((item) => item.id === id);
+						if (selected && !hasOperation(selected.operations, "openai.chat")) throw new Error(t("wizard.chatRequired"));
+					} }]} extra={t("wizard.chatRequired")}><Select showSearch {...(onSearchDeployments ? { filterOption: false, onSearch: onSearchDeployments } : { optionFilterProp: "label" })} options={deploymentOptions} /></Form.Item> : <>
 						<Form.Item name="base_url" label={t("wizard.baseUrl")} rules={[{ required: true }]} extra={t("wizard.baseUrlHelp")}><Input placeholder={t("wizard.baseUrlPlaceholder")} /></Form.Item>
 						<Form.Item name="api_key" label="API Key"><Input.Password /></Form.Item>
 					</>}

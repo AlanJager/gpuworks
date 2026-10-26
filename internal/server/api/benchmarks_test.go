@@ -227,7 +227,7 @@ func TestManagedBenchmarkKeepsServerOriginAndTargetInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dep, err := st.CreateDeployment(&store.Deployment{Name: "managed", ServedName: "managed-model", State: "active"})
+	dep, err := st.CreateDeployment(&store.Deployment{Name: "managed", ModelID: benchmarkChatModel(t, st, "managed").ID, ServedName: "managed-model", State: "active"})
 	if err != nil {
 		t.Fatal(err)
 	}
