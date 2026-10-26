@@ -56,10 +56,20 @@ func CacheCopyRetryable(storage *store.Storage, file *store.ModelFile) bool {
 // ModelPreparationFile is the transfer a deployment is waiting for. Before
 // a shared model is complete, the shared row holds that transfer, even when
 // an nfs_cache storage retains an older node-cache row. Once it is complete,
-// preparation follows the node's own cache copy instead.
+// preparation follows the node's own cache copy instead. Inactive missing
+// rows do not represent a transfer; only a shared transfer failure is retained
+// when the source refuses to proceed.
 func ModelPreparationFile(source store.ModelSource) *store.ModelFile {
-	if source.Location.Shared != nil && (source.Action == store.SourceWaitShared || source.Location.Reason == store.LocationModelMissingInStore) {
-		return source.Location.Shared
+	if shared := source.Location.Shared; shared != nil {
+		if source.Action == store.SourceWaitShared {
+			return shared
+		}
+		if source.Location.Reason == store.LocationModelMissingInStore {
+			switch shared.State {
+			case proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk:
+				return shared
+			}
+		}
 	}
 	return source.Location.File
 }
