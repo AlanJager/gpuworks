@@ -12,7 +12,22 @@
 
 ## 安装
 
-以下步骤在 Linux 目标主机的终端执行。
+### 一键安装
+
+在目标主机（Linux 或 Apple 芯片 Mac）的终端执行：
+
+```bash
+bash <(curl -fsSL https://dl.gpuworks.ai/get.sh)
+```
+
+脚本挑选响应最快的发布源（中国大陆通常是阿里云 OSS 或华为云 OBS），下载本机平台的发布包并按 `SHA256SUMS` 校验，
+再运行 `./gpuworks install`，之后的交互提问与下文第 3、4 步相同。还没有 `release` 版本时自动改装 `nightly`。
+脚本后面的参数原样传给 `gpuworks install`，例如 `bash <(curl -fsSL https://dl.gpuworks.ai/get.sh) --quiet`；
+用环境变量 `GPUWORKS_CHANNEL=nightly` 指定渠道，`GPUWORKS_SOURCE=<源地址>` 指定发布源。脚本源码见仓库 `scripts/get.sh`。
+
+### 手动安装
+
+需要自己核对每一步，或主机只能离线拷入发布包时，按以下步骤在 Linux 目标主机的终端执行。
 
 1. **下载并校验发布包。**
 

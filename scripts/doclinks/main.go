@@ -1,5 +1,5 @@
 // Command doclinks checks that relative Markdown links in the user-facing
-// docs (docs/**, README.md, CONTEXT.md, CLAUDE.md) resolve to real files and,
+// docs (docs/**, README.md, README.zh-CN.md, CONTEXT.md, CLAUDE.md) resolve to real files and,
 // when they carry a #fragment, to a real heading in the target file. Under
 // docs/ it also rejects [[wiki]] style cross references, which neither GitHub
 // nor the Hugo site renders as links. CONTEXT.md is exempt: it is the domain
@@ -52,7 +52,7 @@ func main() {
 
 func scope(repo string) ([]string, error) {
 	files := []string{}
-	for _, f := range []string{"README.md", "CONTEXT.md", "CLAUDE.md"} {
+	for _, f := range []string{"README.md", "README.zh-CN.md", "CONTEXT.md", "CLAUDE.md"} {
 		if _, err := os.Stat(filepath.Join(repo, f)); err == nil {
 			files = append(files, f)
 		}
