@@ -55,6 +55,7 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
   const chatModels = useMemo(() => catalog.models.filter((model) => model.operations.some((operation) => operation.type === "openai.chat")), [catalog.models]);
   const current = state.conversations.find((conversation) => conversation.id === state.currentID);
   const firstModel = current?.columns[0]?.model;
+  const modelsAvailable = !!current?.columns.every((column) => chatModels.some((model) => model.id === column.model));
 
   useEffect(() => {
     let alive = true;
@@ -89,8 +90,7 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
   };
   const submit = () => {
     if (!prompt.trim() && !attachments.length) return;
-    // A column on a model without chat shows why; nothing is sent.
-    if (!current?.columns.every((column) => chatModels.some((model) => model.id === column.model))) return;
+    if (!modelsAvailable) { message.warning(t("chat.selectAvailableModel")); return; }
     const result = store.send(prompt, attachments, streamOptions);
     if (result.status === "limited") { setLimited(result); return; }
     if (result.status === "busy") { message.warning(t("chat.busyElsewhere")); return; }
@@ -248,7 +248,7 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
                     {t("chat.generatingCount", { running: state.running, limit: state.limit.limit })}
                   </Tag>
                 )}
-                <Button type="primary" icon={<SendOutlined />} disabled={!prompt.trim() && !attachments.length} onClick={submit}>
+                <Button type="primary" icon={<SendOutlined />} disabled={!modelsAvailable || (!prompt.trim() && !attachments.length)} onClick={submit}>
                   {t("chat.send")}
                 </Button>
               </Space>
