@@ -144,7 +144,7 @@ func buildMonitorFixture(t *testing.T) monitorFixture {
 
 func TestMonitorServiceOverviewEndToEnd(t *testing.T) {
 	fx := buildMonitorFixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	out, err := svc.Overview(context.Background(), time.Hour)
 	if err != nil {
@@ -209,7 +209,7 @@ func TestMonitorServiceOverviewEndToEnd(t *testing.T) {
 
 func TestMonitorServiceDeploymentEndToEnd(t *testing.T) {
 	fx := buildMonitorFixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	out, err := svc.Deployment(context.Background(), fx.dep.ID, time.Hour)
 	if err != nil {
@@ -266,7 +266,7 @@ func TestMonitorServiceReportsTheDeploymentHealthCheck(t *testing.T) {
 		}
 	}
 	newSvc := func() *monitorapi.Service {
-		return newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, health)
+		return newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, health, nil)
 	}
 
 	off, err := newSvc().Overview(context.Background(), time.Hour)

@@ -32,7 +32,7 @@ import (
 // deleted since.
 func TestMonitorServiceDeploymentNotFoundAcrossTheSeam(t *testing.T) {
 	fx := buildMonitorFixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	if _, err := svc.Deployment(context.Background(), fx.dep.ID+999, time.Hour); !errors.Is(err, api.ErrMonitorDeploymentNotFound) {
 		t.Fatalf("err = %v, want errors.Is(err, api.ErrMonitorDeploymentNotFound) for a never-existed id", err)
@@ -68,7 +68,7 @@ func TestMonitorServiceHeadlessFollowerExcluded(t *testing.T) {
 		t.Fatalf("create follower instance: %v", err)
 	}
 
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	overview, err := svc.Overview(context.Background(), time.Hour)
 	if err != nil {
@@ -125,7 +125,7 @@ func TestMonitorServiceDeploymentChartLabelVocabularyMatchesUIFixture(t *testing
 	writeMonitorSample(t, fx.ts, "gpuworks_infer_generation_tokens_total", depLabels, 50, fx.now.Add(-time.Second))
 	writeMonitorSample(t, fx.ts, "gpuworks_infer_generation_tokens_total", depLabels, 90, fx.now)
 
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 	server, err := svc.Deployment(context.Background(), fx.dep.ID, time.Hour)
 	if err != nil {
 		t.Fatalf("Deployment: %v", err)
@@ -223,7 +223,7 @@ func (c *countingTSDB) QueryRange(metric string, matchers map[string]string, sta
 func TestMonitorServiceOverviewDoesNotRecomputeWindowPerService(t *testing.T) {
 	fx := buildMonitorFixture(t)
 	counting := &countingTSDB{Store: fx.ts}
-	svc := newMonitorAPIService(fx.st, counting, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, counting, func() time.Time { return fx.now }, nil, nil, nil)
 
 	if _, err := svc.Overview(context.Background(), time.Hour); err != nil {
 		t.Fatalf("Overview: %v", err)
@@ -254,7 +254,7 @@ func TestMonitorServiceOverviewDoesNotRecomputeWindowPerService(t *testing.T) {
 func TestMonitorServiceOverviewConcurrentCallsShareOneComputation(t *testing.T) {
 	fx := buildMonitorFixture(t)
 	counting := &countingTSDB{Store: fx.ts}
-	svc := newMonitorAPIService(fx.st, counting, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, counting, func() time.Time { return fx.now }, nil, nil, nil)
 
 	const n = 8
 	var wg sync.WaitGroup
@@ -277,7 +277,7 @@ func TestMonitorServiceOverviewConcurrentCallsShareOneComputation(t *testing.T) 
 	// Establish the per-computation query count with one solo call against
 	// an unshared cache key (a distinct range), then compare.
 	solo := &countingTSDB{Store: fx.ts}
-	soloSvc := newMonitorAPIService(fx.st, solo, func() time.Time { return fx.now }, nil, nil)
+	soloSvc := newMonitorAPIService(fx.st, solo, func() time.Time { return fx.now }, nil, nil, nil)
 	if _, err := soloSvc.Overview(context.Background(), 24*time.Hour); err != nil {
 		t.Fatalf("solo Overview: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestMonitorServiceOverviewConcurrentCallsShareOneComputation(t *testing.T) 
 // leader/waiter race this same fix covers at the Service level.
 func TestMonitorServiceOverviewCancelledCallStillSucceeds(t *testing.T) {
 	fx := buildMonitorFixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	cancelledCtx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -322,7 +322,7 @@ func TestMonitorServiceOverviewCancelledCallStillSucceeds(t *testing.T) {
 
 func TestMonitorServiceSeriesGroupsByNode(t *testing.T) {
 	fx := buildMonitorFixture(t)
-	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
 
 	out, err := svc.Series(context.Background(), "gpuworks_gpu_memory_used_bytes", "node", "avg", time.Hour, 30*time.Second)
 	if err != nil {

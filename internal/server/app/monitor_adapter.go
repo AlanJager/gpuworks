@@ -26,14 +26,15 @@ import (
 // /gpus - and deliberately reuses that same allocation ledger, so a
 // deployment's VRAM claim agrees between the two endpoints.
 type monitorInventoryAdapter struct {
-	store *store.Store
+	store       *store.Store
+	preparation api.ModelPreparation
 }
 
 // newMonitorAPIService builds the monitorapi.Service app.go wires into
 // api.Deps.Monitor. now defaults to time.Now (nil is only ever passed by
 // tests that want a fixed clock).
-func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health) *monitorapi.Service {
-	a := &monitorInventoryAdapter{store: st}
+func newMonitorAPIService(st *store.Store, ts tsdb.Store, now func() time.Time, requests monitorapi.RequestSource, health func(uint) healthcheck.Health, preparation api.ModelPreparation) *monitorapi.Service {
+	a := &monitorInventoryAdapter{store: st, preparation: preparation}
 	return monitorapi.New(monitorapi.Deps{
 		TSDB:             ts,
 		Inventory:        a.inventory,
@@ -73,6 +74,10 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 	if err != nil {
 		return monitor.Inventory{}, err
 	}
+	states, err := api.DeploymentRuntimeStates(a.store, a.preparation, deployments, instances)
+	if err != nil {
+		return monitor.Inventory{}, err
+	}
 
 	inv := monitor.Inventory{
 		Deployments: make([]monitor.DeploymentRef, 0, len(deployments)),
@@ -80,7 +85,9 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 		Nodes:       make([]monitor.NodeRef, 0, len(nodes)),
 	}
 	for i := range deployments {
-		inv.Deployments = append(inv.Deployments, deploymentRef(&deployments[i]))
+		ref := deploymentRef(&deployments[i])
+		ref.RuntimeState = states[ref.ID]
+		inv.Deployments = append(inv.Deployments, ref)
 	}
 
 	nodeUUIDByID := make(map[uint]string, len(nodes))
