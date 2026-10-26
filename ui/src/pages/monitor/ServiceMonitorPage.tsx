@@ -174,6 +174,16 @@ function ServiceMonitorPageContent() {
           <AsOfCaption asOf={layoutData.as_of} stale={layoutData.stale} />
           <PickedRangeNote />
 
+          {layoutData.deployment.replicas.ready === 0 && layoutData.deployment.replicas.desired > 0 &&
+            (layoutData.replicas.length === 0 || layoutData.replicas.some((replica) => replica.state !== "asleep" && replica.state !== "stopped")) && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={t("deployment.noReadyReplicas")}
+              description={t("deployment.noReadyReplicasDetail")}
+            />
+          )}
           {layoutData.pd && <PdCard pd={layoutData.pd} />}
 
           <div className="monitor-service-top">

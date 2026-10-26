@@ -3,6 +3,8 @@ package proxy
 import (
 	"maps"
 
+	"gpuworks.ai/gpuworks/internal/proto"
+
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 )
@@ -38,14 +40,15 @@ func leaseUntil(pick func(excluded map[string]bool) *lease, excluded map[string]
 	}
 }
 
-// awake reports whether a leased instance may still take the request: not
-// ordered to sleep since its candidate was read. A sleep order takes effect
+// awake reports whether a leased instance may still take the request: still
+// running on the same port and not ordered to sleep since its candidate was read. A sleep order takes effect
 // for routing at once, before the engine reports the new level, and a route
 // snapshot is refreshed only asynchronously; this is one keyed read of the
 // leased instance.
 func (p *Proxy) awake(l *lease) bool {
 	in, err := p.store.InstanceByUUID(l.c.instanceUUID)
-	return err != nil || !planning.InstanceAsleep(in)
+	return err == nil && in.State == proto.InstRunning && !in.Headless && in.APIPort > 0 &&
+		in.APIPort == l.c.port && !planning.InstanceAsleep(in)
 }
 
 // pickAwake leases an awake candidate by the routing policy. Candidates built

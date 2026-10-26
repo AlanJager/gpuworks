@@ -399,6 +399,29 @@ test("the tabs below the breakdown switch between the overview and the request l
   await waitFor(() => assert.ok(screen.getByText("Page 1")));
 });
 
+test("a service with no ready replicas explains recovery without inventing a crash diagnosis", async () => {
+  api.monitorDeployment = async () => ({
+    ...deployment,
+    deployment: { ...deployment.deployment, replicas: { ready: 0, desired: 2 } },
+    replicas: deployment.replicas.map((replica) => ({ ...replica, state: "starting" })),
+  });
+  renderPage();
+  assert.ok(await screen.findByText("No replica is ready to serve requests"));
+  assert.ok(screen.getByText(/starting or recovering/));
+  assert.ok(screen.getByRole("link", { name: "Go to deployment" }));
+});
+
+test("a healthy or intentionally stopped service does not show a recovery warning", async () => {
+  api.monitorDeployment = async () => ({
+    ...deployment,
+    deployment: { ...deployment.deployment, replicas: { ready: 0, desired: 0 } },
+    replicas: [],
+  });
+  renderPage();
+  await screen.findByRole("heading", { name: deployment.deployment.name });
+  assert.equal(screen.queryByText("No replica is ready to serve requests"), null);
+});
+
 test("keeps replicas visible without a loading mask when follow is enabled during a slow refresh", async () => {
   let calls = 0;
   api.monitorDeployment = () => ++calls === 1 ? Promise.resolve(deployment) : new Promise(() => {});
