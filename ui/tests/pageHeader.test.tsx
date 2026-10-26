@@ -26,6 +26,7 @@ await i18n.use(initReactI18next).init({
 const { MemoryRouter, Link } = await import("react-router-dom");
 const { cleanup, render, screen, within } = await import("@testing-library/react");
 const { default: PageHeader } = await import("../src/components/PageHeader.tsx");
+const { selectedNavKey } = await import("../src/navigation.tsx");
 
 afterEach(() => cleanup());
 
@@ -50,9 +51,24 @@ test("a detail page adds its parents after the section, as links back", () => {
   assert.equal(screen.getByRole("link", { name: "Monitor Center" }).getAttribute("href"), "/monitor");
 });
 
-test("a section named like the page is not repeated above it", () => {
-  at("/dashboard", <PageHeader title="Overview" />);
+test("the overview entry omits its section even when the title text differs", () => {
+  at("/dashboard", <PageHeader title="Fleet" />);
   assert.deepEqual(crumbs(), []);
+});
+
+test("a title that happens to equal a section name still shows that section", () => {
+  at("/nodes", <PageHeader title="Resources" />);
+  assert.deepEqual(crumbs(), ["Resources"]);
+});
+
+test("a nested route selects the menu item key, not the first path segment", () => {
+  assert.equal(selectedNavKey("/playground/chat"), "/playground/chat");
+  assert.equal(selectedNavKey("/playground/audio"), "/playground/chat");
+  assert.equal(selectedNavKey("/playground"), "/playground/chat");
+  assert.equal(selectedNavKey("/nodes"), "/nodes");
+  assert.equal(selectedNavKey("/deploy"), "/deploy");
+  assert.equal(selectedNavKey("/deployments/3"), "/deployments");
+  assert.equal(selectedNavKey("/"), "/dashboard");
 });
 
 test("actions sit beside the title and page controls in their own row below", () => {
