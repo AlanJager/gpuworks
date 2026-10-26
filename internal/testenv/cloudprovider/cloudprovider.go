@@ -76,6 +76,10 @@ type GPUSpec struct {
 	// image in the provider's second region); empty lets the provider choose.
 	Region string
 	Zone   string
+	// OnDemand asks for non-preemptible capacity where the provider sells both
+	// (Aliyun spot vs pay-as-you-go), for cases long enough that a reclaim
+	// mid-run is likely. Providers without the distinction ignore it.
+	OnDemand bool
 	// ServerDialPort asks for an instance whose provider exposes a port for a
 	// server-dialed agent from the start, as the platform's own instances do.
 	// RunPod only opens a port by editing the pod, which restarts it.

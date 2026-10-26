@@ -36,6 +36,7 @@
 | T82：PRoot 事件循环在上千线程下饿死旧线程，公平调度补丁在真机上让权重加载卡住 | SGLang TP8 在 runveil 下约 3100 个线程时旧线程长时间 tracing-stop；目前只靠限制 SGLang 线程池缓解，补丁未内嵌 | 按 `artifacts/work/2026-10-20-runveil-many-threads/plan.md` 的区分办法逐项隔离（先只留哈希表、再限批），真机验证后再决定是否重做 |
 | T83：内嵌 PRoot 没有 `proot-temp-noise.patch` 的效果，容器失败时 PRoot 的无害报错盖住引擎真正的错误 | 2026-10-20 本地用 `internal/assets/bin/proot-x86_64-static-nofd` 复现：以 root 在 `/root`（700）下降权运行、绑定到镜像里不存在的路径时，退出前打出 `can't chdir to '/root'`（退出码 0）；该补丁本应让它静默退回 `/`。Vast 上这句成了 stderr 最后一行，部署 26 的失败原因显示成它，真正的 `No accelerator` 被盖住 | 核对内嵌二进制的构建来源，用修好路径的 `build.sh` 重建并过门禁；agent 报容器失败原因时跳过 `proot error:`/`proot warning:` 行，取引擎自己的最后一条错误 |
 | T100：经来源规则拉取的镜像，从节点删除后仍留着替代地址的 tag 与内容 | nerdctl、docker、udocker（native）节点上都要手工删，大镜像占着磁盘 | 删除时一并删掉平台经来源规则留下的替代地址 tag |
+| T108：agent 状态目录在宿主 `/tmp` 下时，udocker 工作负载找不到宿主路径下的库 | runveil 给容器私有 `/tmp` 的绑定盖住了 `ensureHostRootLoopback` 放在 `ROOT/tmp/...` 下的回环链接，引擎按 `/proc/self/maps` 里的宿主路径打开 `libcudart` 时失败 | 生产默认 `/opt/gpuworks` 不受影响；待决策：拒绝把状态目录装在 `/tmp` 下，或让回环链接避开被绑定的目录 |
 
 ## T2. 目录镜像标签会漂移
 
@@ -575,3 +576,20 @@ dockerd 进独立网络命名空间并启用回环；在命名空间内用与宿
 
 - 经来源规则拉取的镜像从节点删除后，节点上不再有该镜像的任何平台 tag，内容与快照被回收（`df` 与 `nerdctl images` 可见）。
 - 测试覆盖 nerdctl、docker 与 udocker 三种驱动的删除路径，夹具忠实还原替代地址 tag 的存在。
+
+## T108. agent 状态目录在宿主 `/tmp` 下时，udocker 工作负载找不到宿主路径下的库
+
+**来源**：2026-10-26 阿里云 L4 `TestAliyunTwoVMUdockerDistributedInference` 真机排查。托管控制面夹具原先把 agent 状态放在 `/tmp/gpuworks-hosted-control-<run>/agent-rankN`，引擎报 `libcudart.so.12.8.90: No such file`。
+
+- runveil/udocker 给容器绑定一个私有目录作为 guest 的 `/tmp`（`workload_tmp.go`）。
+- `ensureHostRootLoopback` 在容器 `ROOT` 下按宿主绝对路径建回环链接，状态目录在宿主 `/tmp` 下时，链接就落在 `ROOT/tmp/...`，被上面的绑定盖住。
+- 引擎按 `/proc/self/maps` 里的宿主路径打开库时解析不到。文件在容器 `ROOT` 里存在，只是 guest 看不到。
+- 生产安装的状态目录默认是 `/opt/gpuworks`，不受影响；只要有人把状态目录装在 `/tmp` 下就会触发。测试夹具已改为在阿里云上用 `/opt`。
+
+### 建议
+
+- 二选一：安装与 agent 启动时拒绝（或警告）位于 `/tmp` 下的状态目录；或让回环链接避开被私有绑定覆盖的目录。
+
+### 验收条件
+
+- 状态目录位于宿主 `/tmp` 下时，要么安装前明确报错，要么 udocker 工作负载能正常打开宿主路径下的库；有对应的离线测试。

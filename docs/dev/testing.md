@@ -291,7 +291,7 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 阿里云用例覆盖 CompShare 的全部 VM 场景：`l4-aliyun-provisioning-matrix`（agent_dial 接入、直连 server_dial 接入、
 库存形状、双卡规格）、`l4-aliyun-single-vm-tp2-dgpu`、`l4-aliyun-one-vm-two-logical-nodes`、
 `l4-aliyun-two-vm-docker-distributed`、`l4-aliyun-pd-deploy-chat-two-vm-docker`、
-`l4-aliyun-two-vm-udocker-distributed`（尚未在真机通过，不进定时任务，`CLOUD_ALIYUN_UDOCKER=1` 才跑）与低频的 `l4-aliyun-modelscope-public-download`（`CLOUD_DOWNLOAD=1` 才跑）。
+`l4-aliyun-two-vm-udocker-distributed`与低频的 `l4-aliyun-modelscope-public-download`（`CLOUD_DOWNLOAD=1` 才跑）。
 它们租 ECS GPU 实例，并与 CompShare 共用同一套场景实现（`vmBackend`：租机、选卡型、Docker 与镜像、模型从哪来由 provider 提供）。
 
 - **抢占式优先，没货回落按量**：先用 `SpotAsPriceGo` 下抢占式实例；库存快照与创建之间被别人买走、
@@ -326,6 +326,13 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
   所以多机用例在 `EnsureDocker` 里先用 agent 同样的方式（`--gpus "device=N"`）在每张卡上跑一次 CUDA 预热并重试，
   日志里记 `GPUs ready for containers after N warm-up tries`；等待部署运行时只数存活的 rank（失败/停止/移除中的行不算），
   每个失败的尝试会立刻把引擎日志写进用例日志。此前 PD 用例因为把失败行也算进 rank 数，部署明明已经 2/2 运行也一直等到超时。
+
+- **udocker 用例**：这个用例要求三件事。agent 状态不能放在 `/tmp` 下（所以阿里云 backend 的 `HostedRoot` 是 `/opt`）：udocker 把一个私有目录绑到 guest 的 `/tmp`，
+  盖住了 `ensureHostRootLoopback` 在 `ROOT/tmp/...` 下放的回环链接，引擎按 `/proc/self/maps` 里的宿主路径 dlopen `libcudart` 就找不到（实测文件在 ROOT 里，guest 里解析不到）。
+  root 登录的 agent 以专用用户 `udocker` 跑工作负载，所以 `$root` 要 `chmod 711`，否则 PRoot 报 `fork/exec .../proot-x86_64: permission denied`。
+  runner 镜像在 udocker 自己的存储里再拉一份（约 30 GiB 解包，加上拉取，160 GiB 系统盘只剩 3.1 GiB），所以这个用例的系统盘是 300 GiB，
+  并且整个用例约半小时到一小时，用按量实例而不是抢占式（`GPUSpec.OnDemand`），避免中途被回收。拉取走 SWR 镜像，偶尔拉到末尾换源重来，要多等十几分钟。
+  失败时 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` 现在对多机用例也生效：失败的 VM 会保留并写出凭据文件。
 
 黄金镜像由 `make prepare-aliyun-golden-image` 制作：以阿里云公共镜像
 `ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*`（驱动与 CUDA 已装）起一台 T4 实例，

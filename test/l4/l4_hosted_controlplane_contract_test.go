@@ -62,6 +62,9 @@ func TestHostedControlPlaneCommandsStayOnPrivateNetwork(t *testing.T) {
 		"--connect-mode agent_dial",
 		"GPUWORKS_RUNTIME_DRIVER='udocker'",
 		"agent-rank1",
+		// Upload makes the root 0700; the dedicated udocker user of a root agent
+		// must be able to traverse it to reach PRoot.
+		`chmod 711 "$root"`,
 	} {
 		if !strings.Contains(agent, required) {
 			t.Fatalf("agent launcher missing %q:\n%s", required, agent)
@@ -469,6 +472,15 @@ func TestGPUWarmupCommandUsesTheAgentsLaunchShape(t *testing.T) {
 	}
 	if strings.Contains(command, "docker pull") {
 		t.Error("the warm-up must never pull an image")
+	}
+}
+
+func TestHostedRootStaysOffTmpWhereTheBackendSaysSo(t *testing.T) {
+	if got := (&vmBackend{}).hostedRoot(); got != "/tmp" {
+		t.Fatalf("default hosted root = %q, want /tmp (a non-root login cannot write elsewhere)", got)
+	}
+	if got := (&vmBackend{HostedRoot: "/opt/"}).hostedRoot(); got != "/opt" {
+		t.Fatalf("hosted root = %q, want /opt without a trailing slash", got)
 	}
 }
 
