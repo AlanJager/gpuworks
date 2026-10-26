@@ -57,8 +57,8 @@ await i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
-const { MemoryRouter, Route, Routes } = await import("react-router-dom");
-const { cleanup, render, screen, waitFor } = await import("@testing-library/react");
+const { MemoryRouter, Route, Routes, Link } = await import("react-router-dom");
+const { cleanup, render, screen, waitFor, act } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
@@ -115,6 +115,7 @@ function renderPage(entry = "/monitor/d/102") {
   return render(
     <I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={[entry]}>
+        <Link to="/monitor/d/103">Next deployment</Link>
         <Routes>
           <Route path="/monitor/d/:id" element={<ServiceMonitorPage />} />
         </Routes>
@@ -396,4 +397,59 @@ test("the tabs below the breakdown switch between the overview and the request l
   assert.ok(screen.getByText("Health"));
   await userEvent.setup().click(screen.getByRole("tab", { name: "History" }));
   await waitFor(() => assert.ok(screen.getByText("Page 1")));
+});
+
+test("keeps replicas visible without a loading mask when follow is enabled during a slow refresh", async () => {
+  let calls = 0;
+  api.monitorDeployment = () => ++calls === 1 ? Promise.resolve(deployment) : new Promise(() => {});
+  const { container } = renderPage();
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" })));
+  await userEvent.setup().click(screen.getByRole("switch", { name: "Follow latest" }));
+  assert.equal(calls, 2);
+  assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" }));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 600)); });
+  assert.equal(container.querySelector(".ant-spin-spinning"), null);
+});
+
+test("switching deployment ignores a pending old response and clears old metrics", async () => {
+  let oldResolve!: (value: MonitorDeployment) => void;
+  let nextResolve!: (value: MonitorDeployment) => void;
+  let calls = 0;
+  api.monitorDeployment = (id) => {
+    if (id === 103) return new Promise((r) => { nextResolve = r; });
+    return ++calls === 1 ? Promise.resolve(deployment) : new Promise((r) => { oldResolve = r; });
+  };
+  const { container } = renderPage();
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" })));
+  await userEvent.setup().click(screen.getByRole("switch", { name: "Follow latest" }));
+  await userEvent.setup().click(screen.getByRole("link", { name: "Next deployment" }));
+  assert.equal(screen.queryByRole("heading", { name: "Qwen2.5-7B-Instruct" }), null);
+  assert.ok(container.querySelector(".ant-skeleton"));
+  await act(async () => oldResolve(deployment));
+  assert.equal(screen.queryByRole("heading", { name: "Qwen2.5-7B-Instruct" }), null);
+  await act(async () => nextResolve({ ...deployment, deployment: { ...deployment.deployment, id: 103, name: "Next service" } }));
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Next service" })));
+});
+
+
+test("changing range preserves the selected requests tab", async () => {
+  api.monitorDeployment = async () => deployment;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" })));
+  await userEvent.setup().click(screen.getByRole("tab", { name: "In flight" }));
+  await userEvent.setup().click(screen.getByText("24h"));
+  await waitFor(() => assert.ok(screen.getByRole("tab", { name: "In flight", selected: true })));
+  assert.ok(screen.getByText("No requests in flight"));
+});
+
+
+test("changing range preserves the history latency filter", async () => {
+  api.monitorDeployment = async () => deployment;
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByRole("heading", { name: "Qwen2.5-7B-Instruct" })));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("tab", { name: "History" }));
+  await user.type(screen.getByRole("spinbutton", { name: "End-to-end ≥" }), "12");
+  await user.click(screen.getByText("24h"));
+  await waitFor(() => assert.equal((screen.getByRole("spinbutton", { name: "End-to-end ≥" }) as HTMLInputElement).value, "12"));
 });
