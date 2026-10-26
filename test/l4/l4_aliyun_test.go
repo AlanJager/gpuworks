@@ -55,8 +55,11 @@ func aliyunBackend(t *testing.T) *vmBackend {
 		EnsureEngineImage: func(t *testing.T, env *cloudTestEnv, _ string) {
 			requireAliyunGoldenImage(t, []*cloudTestEnv{env}, image)
 		},
-		EnsureDocker: func(t *testing.T, envs []*cloudTestEnv) { requireAliyunGoldenDocker(t, envs) },
-		EnsureImage:  func(t *testing.T, envs []*cloudTestEnv) { requireAliyunGoldenImage(t, envs, image) },
+		EnsureDocker: func(t *testing.T, envs []*cloudTestEnv) {
+			requireAliyunGoldenDocker(t, envs)
+			waitGPUsReady(t, envs, image)
+		},
+		EnsureImage: func(t *testing.T, envs []*cloudTestEnv) { requireAliyunGoldenImage(t, envs, image) },
 	}
 }
 

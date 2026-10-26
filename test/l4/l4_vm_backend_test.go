@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
@@ -177,5 +178,53 @@ func requireInstancesRunImage(t *testing.T, instances []store.Instance, want str
 		if !pullref.SameRef(spec.Image, want) {
 			t.Fatalf("instance %s runs image %q, want %q", instance.UUID, spec.Image, want)
 		}
+	}
+}
+
+// gpuWarmupCommand starts the engine image on every GPU of the VM the way the
+// agent does (--gpus "device=N", CUDA_VISIBLE_DEVICES=0) and creates a CUDA
+// context in it. A fresh VM's first container is sometimes started before the
+// GPU stack serves containers: on Aliyun 2026-10-27 the first vLLM start on a
+// new A10 VM died inside torch._C._cuda_init() with "No CUDA GPUs are
+// available" (and once with NVMLError_Unknown), and the platform's retry then
+// started the identical container fine. Running this first, with retries,
+// absorbs that instead of leaving it to a deployment's retry budget.
+func gpuWarmupCommand(image string) string {
+	return `set -u
+n=$(nvidia-smi -L | wc -l)
+[ "$n" -ge 1 ] || { echo "no GPU listed" >&2; exit 1; }
+i=0
+while [ "$i" -lt "$n" ]; do
+  docker run --rm --gpus "\"device=$i\"" -e CUDA_VISIBLE_DEVICES=0 --entrypoint python ` + shellQuoteForTest(image) + ` -c 'import torch; assert torch.cuda.is_available(); torch.zeros(1, device="cuda"); print("GPUWORKS_GPU_READY")' 2>&1 | tail -3 | grep -q GPUWORKS_GPU_READY || exit 1
+  i=$((i + 1))
+done
+echo "GPUWORKS_GPUS_READY $n"`
+}
+
+// waitGPUsReady runs the warm-up on every VM until it passes, within a few
+// minutes, and logs how many tries the VM needed (the evidence for how often
+// a cold VM's first container fails). A VM that never gets there fails the case.
+func waitGPUsReady(t *testing.T, envs []*cloudTestEnv, image string) {
+	t.Helper()
+	for rank, env := range envs {
+		var out string
+		var err error
+		tries := 0
+		for deadline := time.Now().Add(4 * time.Minute); time.Now().Before(deadline); {
+			tries++
+			out, err = runCloudCommand(t.Context(), env.Instance, gpuWarmupCommand(image))
+			if err == nil && strings.Contains(out, "GPUWORKS_GPUS_READY") {
+				break
+			}
+			select {
+			case <-t.Context().Done():
+				t.Fatalf("rank %d GPU warm-up canceled: %v", rank, t.Context().Err())
+			case <-time.After(10 * time.Second):
+			}
+		}
+		if err != nil || !strings.Contains(out, "GPUWORKS_GPUS_READY") {
+			t.Fatalf("rank %d: containers cannot use the GPUs after %d tries: %v\n%s", rank, tries, err, strings.TrimSpace(out))
+		}
+		t.Logf("rank %d GPUs ready for containers after %d warm-up tr%s", rank, tries, map[bool]string{true: "y", false: "ies"}[tries == 1])
 	}
 }

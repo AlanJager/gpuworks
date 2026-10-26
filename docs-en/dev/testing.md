@@ -295,7 +295,6 @@ The Aliyun cases cover every CompShare VM scenario: `l4-aliyun-provisioning-matr
 capacity shapes, two-GPU shape), `l4-aliyun-single-vm-tp2-dgpu`, `l4-aliyun-one-vm-two-logical-nodes`,
 `l4-aliyun-two-vm-docker-distributed`, `l4-aliyun-pd-deploy-chat-two-vm-docker`,
 `l4-aliyun-two-vm-udocker-distributed`, and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
-The PD case has not passed live yet (its first prefill/decode engine starts failed with vLLM `Failed to infer device type`), so it is not scheduled: in CI it runs only as a manual MR job or from a web/api pipeline with `CLOUD_ALIYUN_PD=1`.
 They rent ECS GPU instances
 and share their scenario implementations with CompShare (`vmBackend`: the provider supplies renting, card-type selection, Docker and image, and where the model comes from).
 
@@ -325,6 +324,12 @@ and share their scenario implementations with CompShare (`vmBackend`: the provid
   The leak scan lists instances region by region: over `ALIYUN_REGIONS`, or if unset over the regions that have a golden image (`ALIYUN_IMAGE_<REGION>`),
   and a failure to list one of those regions is an error; with neither it scans every region the account can see and skips the ones the key cannot list (stating so on stderr).
   When a spot instance is reclaimed, the log of the failed case contains `SPOT INTERRUPTION`, which says the failure is most likely a consequence and the case can simply be rerun.
+
+- **First container on a fresh VM, and retries**: on a newly booted A10 VM the first vLLM container sometimes fails to start (`torch._C._cuda_init()` reports
+  `No CUDA GPUs are available`; `NVMLError_Unknown` was seen once), and the platform's retry of the identical container then succeeds; the failed row stays in the deployment's instance list.
+  The multi-VM cases therefore warm up in `EnsureDocker` first: they run a CUDA check on every card the way the agent does (`--gpus "device=N"`), with retries,
+  and log `GPUs ready for containers after N warm-up tries`. While waiting for a deployment to run they count live ranks only (failed, stopped and removing rows do not count),
+  and every failed attempt writes its engine log to the case log at once. Before this, the PD case counted the failed row as a rank and kept waiting until the timeout even though the deployment was already running 2/2.
 
 The golden image is built by `make prepare-aliyun-golden-image`: it starts a T4 instance from Alibaba Cloud's public image
 `ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*` (driver and CUDA preinstalled),

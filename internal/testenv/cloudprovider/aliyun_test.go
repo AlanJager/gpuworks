@@ -168,6 +168,21 @@ func TestAliyunRentBuysSpotAndCreatesTheSharedNetworkOnce(t *testing.T) {
 	}
 }
 
+func TestAliyunNetworkSetupRidesOutAConcurrentCreateWithTheSameToken(t *testing.T) {
+	f := newFakeECS(t)
+	f.stock("cn-alpha", true, stockWithStock, "cn-alpha-a|"+t4Small)
+	f.mu.Lock()
+	f.tokenBusy = 3
+	f.mu.Unlock()
+	p := newTestAliyun(t, f, nil)
+	if _, err := p.Rent(testCtx(t), GPUSpec{GPUModel: "T4", GPUCount: 1, DiskGB: 160}); err != nil {
+		t.Fatalf("a create that races another job's must be retried, not failed: %v", err)
+	}
+	if got := len(f.callsOf("CreateVSwitch")); got != 4 {
+		t.Fatalf("CreateVSwitch calls = %d, want 3 busy answers then one success", got)
+	}
+}
+
 func TestAliyunRentReusesExistingNetworkAndRules(t *testing.T) {
 	f := newFakeECS(t)
 	f.stock("cn-alpha", true, stockWithStock, "cn-alpha-a|"+t4Small)

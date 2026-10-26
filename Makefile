@@ -500,8 +500,8 @@ test-l4-compshare-one-vm-two-logical-nodes: server-linux-amd64-prebuilt-ui
 ## Docker 29, NVIDIA toolkit, vLLM runner image, test model) that
 ## prepare-aliyun-golden-image builds and copies to every region; cases
 ## install and download nothing. See docs/dev/testing.md.
-## Cross-VM udocker, public download and PD (not yet passing live on Aliyun) stay explicit targets outside this aggregate.
-test-l4-aliyun: test-l4-aliyun-provisioning-matrix test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed
+## Cross-VM udocker and public download stay explicit low-frequency targets, as for CompShare.
+test-l4-aliyun: test-l4-aliyun-provisioning-matrix test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker
 
 ## Explicit, mutating maintenance operation: builds a new golden image in the
 ## cheapest region with stock, copies it to the other regions and validates it

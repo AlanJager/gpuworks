@@ -436,6 +436,42 @@ func TestHostedDeploymentExhaustionRequiresNoViableRanks(t *testing.T) {
 	}
 }
 
+// A decode engine that dies at start on a cold VM is retried; the dead attempt's
+// row stays beside the replacement. The wait must count live ranks only, or a
+// deployment that is fully running never completes (seen on Aliyun, 2026-10-27:
+// two running ranks and one failed row looped until the 75-minute timeout).
+func TestHostedActiveInstancesIgnoreDeadAttempts(t *testing.T) {
+	rows := []dto.Instance{
+		{UUID: "a", State: proto.InstRunning, Role: "prefill"},
+		{UUID: "b", State: proto.InstFailed, Role: "decode"},
+		{UUID: "c", State: proto.InstRunning, Role: "decode"},
+		{UUID: "d", State: proto.InstStopped},
+		{UUID: "e", State: proto.InstRemoving},
+	}
+	active := hostedActiveInstances(rows)
+	if len(active) != 2 || active[0].UUID != "a" || active[1].UUID != "c" {
+		t.Fatalf("active = %+v, want only the two running ranks", active)
+	}
+	if len(hostedActiveInstances(nil)) != 0 {
+		t.Fatal("no rows must give no active instances")
+	}
+}
+
+func TestGPUWarmupCommandUsesTheAgentsLaunchShape(t *testing.T) {
+	command := gpuWarmupCommand("gpustack/runner:cuda12.8-vllm0.17.1")
+	for _, want := range []string{
+		`--gpus "\"device=$i\""`, "CUDA_VISIBLE_DEVICES=0", "--entrypoint python", "'gpustack/runner:cuda12.8-vllm0.17.1'",
+		"torch.cuda.is_available()", "GPUWORKS_GPU_READY", "GPUWORKS_GPUS_READY $n", "nvidia-smi -L",
+	} {
+		if !strings.Contains(command, want) {
+			t.Errorf("warm-up command lacks %q:\n%s", want, command)
+		}
+	}
+	if strings.Contains(command, "docker pull") {
+		t.Error("the warm-up must never pull an image")
+	}
+}
+
 func TestHostedInstanceProgressIsConcise(t *testing.T) {
 	long := strings.Repeat("x", 200)
 	got := hostedInstanceProgress([]dto.Instance{

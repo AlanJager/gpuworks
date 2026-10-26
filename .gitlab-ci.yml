@@ -1119,10 +1119,6 @@ l4-aliyun-two-vm-docker-distributed:
   script:
     - make test-l4-aliyun-two-vm-docker-distributed
 
-# NOT scheduled: this case has not passed live on Aliyun yet (2026-10-26: the
-# first prefill/decode engine starts failed with vLLM "Failed to infer device
-# type" and the deployment never completed). It runs only as a manual MR job or
-# from a web/api pipeline that sets CLOUD_ALIYUN_PD=1, until it is investigated.
 l4-aliyun-pd-deploy-chat-two-vm-docker:
   extends: .l4-acceptance
   timeout: 180m
@@ -1131,14 +1127,6 @@ l4-aliyun-pd-deploy-chat-two-vm-docker:
     name: cloud-test/aliyun/pd-two-vm
   script:
     - make test-l4-aliyun-pd-deploy-chat-two-vm-docker
-  rules:
-    - if: '$CLOUD_ALIYUN_PD == "1" && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: manual
-      allow_failure: true
-    - when: never
 
 # Low-frequency: the udocker runtime variant of the two-VM case (CompShare ran
 # it as an explicit target only, not in a job; this one is a manual MR job and

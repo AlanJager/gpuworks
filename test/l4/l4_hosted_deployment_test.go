@@ -192,6 +192,10 @@ func hostedWaitDeploymentRunning(t *testing.T, harness *hostedControlPlane, depl
 	var lastErr error
 	var failedSince time.Time
 	seenInstances := make(map[string]struct{})
+	// A failed attempt that the platform replaces leaves no trace once the case
+	// passes, so its engine log is written to the case log the moment the row
+	// shows up: a transient start failure is otherwise undiagnosable.
+	reportedFailures := make(map[string]struct{})
 	for time.Now().Before(deadline) {
 		lastErr = harness.API.GetJSON(t.Context(), fmt.Sprintf("/api/v1/deployments/%d", deploymentID), &last)
 		if lastErr == nil {
@@ -204,8 +208,20 @@ func hostedWaitDeploymentRunning(t *testing.T, harness *hostedControlPlane, depl
 					running++
 				}
 			}
-			if running == expected && len(last.Instances) == expected {
-				return last.Instances
+			for _, instance := range last.Instances {
+				if instance.State != proto.InstFailed || instance.UUID == "" {
+					continue
+				}
+				if _, done := reportedFailures[instance.UUID]; done {
+					continue
+				}
+				reportedFailures[instance.UUID] = struct{}{}
+				t.Logf("hosted deployment %d: attempt %s (role=%q node=%s) failed; engine log:\n%s", deploymentID, instance.UUID, instance.Role, instance.NodeUUID, hostedDeploymentLogDiagnostics(t.Context(), harness, map[string]struct{}{instance.UUID: {}}))
+			}
+			// A failed first attempt stays in the deployment's instance list next
+			// to its replacement, so the rows to count are the live ones.
+			if active := hostedActiveInstances(last.Instances); running == expected && len(active) == expected {
+				return active
 			}
 			if hostedDeploymentExhausted(last) {
 				if failedSince.IsZero() {
@@ -225,6 +241,22 @@ func hostedWaitDeploymentRunning(t *testing.T, harness *hostedControlPlane, depl
 	}
 	t.Fatalf("hosted deployment %d did not reach %d running ranks within %s: deployment=%+v err=%v\n%s\n%s", deploymentID, expected, timeout, last, lastErr, hostedDeploymentLogDiagnostics(t.Context(), harness, seenInstances), harness.Diagnostics(t.Context()))
 	return nil
+}
+
+// hostedActiveInstances drops the instances of failed or stopped attempts: the
+// platform retries an engine that dies at start and keeps the dead attempt's row
+// beside the replacement (a vLLM start can fail transiently on a cold VM, and
+// the retry then succeeds, leaving more rows than ranks).
+func hostedActiveInstances(instances []dto.Instance) []dto.Instance {
+	active := make([]dto.Instance, 0, len(instances))
+	for _, instance := range instances {
+		switch instance.State {
+		case proto.InstFailed, proto.InstStopped, proto.InstRemoving, "pending-removal":
+		default:
+			active = append(active, instance)
+		}
+	}
+	return active
 }
 
 // hostedDeploymentLogDiagnostics reads the server-side logstore before test

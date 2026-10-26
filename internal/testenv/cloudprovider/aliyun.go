@@ -309,6 +309,29 @@ func (p *Aliyun) network(ctx context.Context, region, zone string) (aliyunNetwor
 	if ok {
 		return cached, nil
 	}
+	// Concurrent jobs of one account share this network and create it with the
+	// same idempotency tokens: the loser of a race gets
+	// OperationFailed.IdempotentTokenProcessing while the winner's create is
+	// still running. Looking again a moment later finds the finished resource.
+	var network aliyunNetwork
+	for attempt := 0; ; attempt++ {
+		var err error
+		if network, err = p.buildNetwork(ctx, region, zone); err == nil {
+			break
+		} else if aliyundriver.ErrorCode(err) != "OperationFailed.IdempotentTokenProcessing" || attempt >= 10 {
+			return aliyunNetwork{}, err
+		}
+		if sleepErr := p.sleep(ctx, 3*p.poll); sleepErr != nil {
+			return aliyunNetwork{}, sleepErr
+		}
+	}
+	p.mu.Lock()
+	p.networks[cacheKey] = network
+	p.mu.Unlock()
+	return network, nil
+}
+
+func (p *Aliyun) buildNetwork(ctx context.Context, region, zone string) (aliyunNetwork, error) {
 	vpcID, err := p.api.ensureVPC(ctx, region)
 	if err != nil {
 		return aliyunNetwork{}, err
@@ -321,11 +344,7 @@ func (p *Aliyun) network(ctx context.Context, region, zone string) (aliyunNetwor
 	if err != nil {
 		return aliyunNetwork{}, err
 	}
-	network := aliyunNetwork{VPCID: vpcID, VSwitchID: vswitchID, SecurityGroupID: groupID}
-	p.mu.Lock()
-	p.networks[cacheKey] = network
-	p.mu.Unlock()
-	return network, nil
+	return aliyunNetwork{VPCID: vpcID, VSwitchID: vswitchID, SecurityGroupID: groupID}, nil
 }
 
 // create buys one VM at a placement and waits for it to be reachable.

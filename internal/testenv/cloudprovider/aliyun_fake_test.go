@@ -40,6 +40,9 @@ type fakeECS struct {
 	// state
 	seq     int
 	created int
+	// tokenBusy makes the next CreateVSwitch calls fail the way the service does
+	// while another caller's create with the same ClientToken is still running.
+	tokenBusy int
 	// refuseDeletes makes the next DeleteInstance calls fail as Initializing.
 	refuseDeletes int
 	leakDisks     bool // a released instance leaves its system disk behind
@@ -313,6 +316,11 @@ func (f *fakeECS) createVSwitch(w http.ResponseWriter, q url.Values, region stri
 	}
 	if !strings.HasPrefix(q.Get("CidrBlock"), "172.30.") || !strings.HasSuffix(q.Get("CidrBlock"), ".0/24") {
 		apiFail(w, 400, "InvalidCidrBlock.NotSubnet", "The specified CIDR block is not within the VPC CIDR block.")
+		return
+	}
+	if f.tokenBusy > 0 {
+		f.tokenBusy--
+		apiFail(w, 400, "OperationFailed.IdempotentTokenProcessing", "Action is processing.")
 		return
 	}
 	if id, ok := f.tokens["vsw/"+q.Get("ClientToken")]; ok {

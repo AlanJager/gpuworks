@@ -292,7 +292,6 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 库存形状、双卡规格）、`l4-aliyun-single-vm-tp2-dgpu`、`l4-aliyun-one-vm-two-logical-nodes`、
 `l4-aliyun-two-vm-docker-distributed`、`l4-aliyun-pd-deploy-chat-two-vm-docker`、
 `l4-aliyun-two-vm-udocker-distributed` 与低频的 `l4-aliyun-modelscope-public-download`（`CLOUD_DOWNLOAD=1` 才跑）。
-PD 用例尚未在线通过（首批 prefill/decode 引擎启动报 vLLM `Failed to infer device type`），所以不进定时流水线：CI 里只在 MR 手动或 web/api 流水线设 `CLOUD_ALIYUN_PD=1` 时运行。
 它们租 ECS GPU 实例，并与 CompShare 共用同一套场景实现（`vmBackend`：租机、选卡型、Docker 与镜像、模型从哪来由 provider 提供）。
 
 - **抢占式优先，没货回落按量**：先用 `SpotAsPriceGo` 下抢占式实例；库存快照与创建之间被别人买走、
@@ -321,6 +320,12 @@ PD 用例尚未在线通过（首批 prefill/decode 引擎启动报 vLLM `Failed
   泄漏扫描逐个地域列实例，范围是 `ALIYUN_REGIONS`，没设就取有黄金镜像（`ALIYUN_IMAGE_<REGION>`）的地域，这些地域列不出来
   就报错；两者都没有时扫账号可见的全部地域，并跳过 key 列不出的地域（会在 stderr 说明）。
   抢占式实例被回收时，失败用例的日志会出现 `SPOT INTERRUPTION`，提示失败多半是回收的后果，重跑即可。
+
+- **新机首个容器与重试**：新开机的 A10 虚机上，第一个 vLLM 容器偶发启动失败（`torch._C._cuda_init()` 报
+  `No CUDA GPUs are available`，也见过 `NVMLError_Unknown`），平台重试同样的容器就成功了；失败那一行会留在部署的实例列表里。
+  所以多机用例在 `EnsureDocker` 里先用 agent 同样的方式（`--gpus "device=N"`）在每张卡上跑一次 CUDA 预热并重试，
+  日志里记 `GPUs ready for containers after N warm-up tries`；等待部署运行时只数存活的 rank（失败/停止/移除中的行不算），
+  每个失败的尝试会立刻把引擎日志写进用例日志。此前 PD 用例因为把失败行也算进 rank 数，部署明明已经 2/2 运行也一直等到超时。
 
 黄金镜像由 `make prepare-aliyun-golden-image` 制作：以阿里云公共镜像
 `ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*`（驱动与 CUDA 已装）起一台 T4 实例，
