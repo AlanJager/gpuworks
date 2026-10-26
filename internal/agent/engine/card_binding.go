@@ -105,8 +105,8 @@ func describeCards(gpus []proto.GPUInfo) string {
 	return strings.Join(parts, ", ")
 }
 
-// HeldCardIdents is the hardware identity of every card this agent's
-// instances occupy, including the ones no metrics are scraped from.
+// HeldCards are the cards this agent's instances occupy, including the ones
+// no metrics are scraped from.
 //
 // It is deliberately not MetricSpecs: that drops headless workers and
 // instances with no API port, and RunningSpecs drops sleepers. A sleeping
@@ -114,25 +114,39 @@ func describeCards(gpus []proto.GPUInfo) string {
 // computing, so leaving either out told the agent those cards were idle —
 // their own processes then read as somebody else's, and the runtime check
 // would create a context on a card that is serving.
-//
-// Identities, not device indexes: e.desired carries the indexes placement
-// chose, which drift, and the identity is what survives that.
-func (e *Engine) HeldCardIdents() []string {
+type HeldCards struct {
+	// Idents are hardware identities: e.desired carries the indexes
+	// placement chose, which drift, and the identity is what survives that.
+	Idents []string
+	// Indexes are the device indexes of instances whose spec binds no
+	// identity (a server that predates the binding, or a partial one; see
+	// resolveBoundCards). They are still this agent's cards: the caller
+	// names them from the cards it probed, rather than reading "no identity"
+	// as "no card".
+	Indexes []int
+}
+
+// HeldCards is what the running instances occupy.
+func (e *Engine) HeldCards() HeldCards {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	var idents []string
+	var held HeldCards
 	for _, s := range e.desired {
 		if s.DesiredState != "running" {
 			continue
 		}
-		idents = append(idents, s.GPUIdents...)
+		if len(s.GPUIdents) > 0 && len(s.GPUIdents) == len(s.GPUIndexes) {
+			held.Idents = append(held.Idents, s.GPUIdents...)
+			continue
+		}
+		held.Indexes = append(held.Indexes, s.GPUIndexes...)
 	}
-	return idents
+	return held
 }
 
 // CardIdentsOf is the hardware identity of the cards one instance was given,
 // whatever state it reached. A caller asking after a start failure needs the
-// cards the attempt used, which HeldCardIdents deliberately leaves out: the
+// cards the attempt used, which HeldCards deliberately leaves out: the
 // instance is no longer running.
 func (e *Engine) CardIdentsOf(uuid string) []string {
 	e.mu.Lock()
