@@ -64,8 +64,13 @@ func (d *Driver) UseDataDir(dir string) error {
 	return nil
 }
 
-// setBaseURL overrides the API endpoint (used by tests).
-func (d *Driver) setBaseURL(u string) { d.baseURL = u }
+// setBaseURL overrides the API endpoint (used by tests). A fake endpoint has
+// no zone catalog unless the test serves one, so discovery is switched off;
+// a test that serves DescribeCompShareSupportZone sets zoneDiscovery again.
+func (d *Driver) setBaseURL(u string) {
+	d.baseURL = u
+	d.zoneDiscovery = false
+}
 
 func (d *Driver) Name() string { return "compshare" }
 
@@ -285,7 +290,7 @@ func (d *Driver) CreateInstance(ctx context.Context, creds provider.Credentials,
 	zone := firstNonEmpty(req.Extra["zone"], defaultZone)
 	instanceKind := strings.ToLower(firstNonEmpty(req.Extra["instance_kind"], "vm"))
 	placements := []provider.Zone{{Region: region, Zone: zone}}
-	if d.zoneDiscovery && d.baseURL == defaultBaseURL && (req.Region == "" || req.Extra["region"] == "" || req.Extra["zone"] == "") {
+	if d.zoneDiscovery && (req.Region == "" || req.Extra["region"] == "" || req.Extra["zone"] == "") {
 		if zones, err := d.SupportedZones(ctx, creds); err == nil {
 			wantPod := instanceKind == "pod" || instanceKind == "container"
 			placements = placements[:0]
@@ -322,7 +327,7 @@ func (d *Driver) CreateInstance(ctx context.Context, creds provider.Credentials,
 		params["LoginMode"] = "Password"
 		params["Password"] = base64.StdEncoding.EncodeToString([]byte(password))
 	}
-	var lastErr error
+	var placementErrs placementErrors
 	for _, placement := range placements {
 		region, zone = placement.Region, placement.Zone
 		params["Region"], params["Zone"] = region, zone
@@ -331,12 +336,12 @@ func (d *Driver) CreateInstance(ctx context.Context, creds provider.Credentials,
 			diskGB: diskGB, chargeType: params["ChargeType"], cpuPlatform: cpuPlatform,
 		}))
 		if capacityErr != nil {
-			lastErr = fmt.Errorf("compshare: check resource capacity in %s/%s: %w", region, zone, capacityErr)
+			placementErrs = append(placementErrs, fmt.Errorf("compshare: check resource capacity in %s/%s: %w", region, zone, capacityErr))
 			continue
 		}
 		selected, ok := selectCapacitySpec(capacity.Specs, gpuCount, cpu, memoryMB, cpuExplicit, memoryExplicit)
 		if !ok {
-			lastErr = fmt.Errorf("compshare: requested capacity unavailable in %s/%s: gpu=%s x%d", region, zone, params["GpuType"], gpuCount)
+			placementErrs = append(placementErrs, fmt.Errorf("compshare: requested capacity unavailable in %s/%s: gpu=%s x%d", region, zone, params["GpuType"], gpuCount))
 			continue
 		}
 		params["CPU"] = strconv.Itoa(selected.CPU)
@@ -356,11 +361,11 @@ func (d *Driver) CreateInstance(ctx context.Context, creds provider.Credentials,
 			}
 		}
 		if createErr != nil {
-			lastErr = fmt.Errorf("compshare: create in %s/%s: %w", region, zone, createErr)
+			placementErrs = append(placementErrs, fmt.Errorf("compshare: create in %s/%s: %w", region, zone, createErr))
 			continue
 		}
 		if len(resp.UHostIds) == 0 {
-			lastErr = fmt.Errorf("compshare: create returned no instance id")
+			placementErrs = append(placementErrs, fmt.Errorf("compshare: create in %s/%s returned no instance id", region, zone))
 			continue
 		}
 		kind := "vm"
@@ -373,11 +378,31 @@ func (d *Driver) CreateInstance(ctx context.Context, creds provider.Credentials,
 		}
 		return provider.Instance{ExternalID: resp.UHostIds[0], Name: req.Name, GPUModel: normalizeGPUType(req.GPUModel), GPUCount: gpuCount, Power: provider.PowerUnknown, Region: region, Zone: zone, SSHPort: port, SSHUser: "root", Kind: kind}, nil
 	}
-	if lastErr != nil {
-		return provider.Instance{}, lastErr
+	if len(placementErrs) == 1 {
+		return provider.Instance{}, placementErrs[0]
+	}
+	if len(placementErrs) > 1 {
+		return provider.Instance{}, placementErrs
 	}
 	return provider.Instance{}, fmt.Errorf("compshare: no supported placement for %s", req.GPUModel)
 }
+
+// placementErrors is why every candidate zone refused a create, in the order
+// the zones were tried. Reporting only the last zone's refusal hid the others:
+// a container whose 4090 capacity sat in an earlier zone looked like it had
+// only ever been tried in the last one. Unwrap exposes each cause so callers'
+// errors.Is/As checks and substring matches see them all.
+type placementErrors []error
+
+func (e placementErrors) Error() string {
+	parts := make([]string, len(e))
+	for i, err := range e {
+		parts[i] = err.Error()
+	}
+	return fmt.Sprintf("compshare: no placement could create the instance (%d zones tried): %s", len(e), strings.Join(parts, "; "))
+}
+
+func (e placementErrors) Unwrap() []error { return e }
 
 func isCreateTransientError(err error) bool {
 	if err == nil {
