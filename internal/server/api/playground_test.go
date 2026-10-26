@@ -167,3 +167,76 @@ func TestPlaygroundCatalogDeduplicatesRolloutsAndPrefersServingDeployment(t *tes
 		t.Fatalf("catalog contract came from pending rollout: %+v", catalog.Models[0].Operations)
 	}
 }
+
+func TestPlaygroundCatalogOmitsDeploymentsThatCannotServe(t *testing.T) {
+	st, err := store.Open("file:playground_unservable_catalog_test?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ops := `[{"type":"openai.embeddings"}]`
+	model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "acme/embed", Revision: "main", Name: "embed", Operations: ops, InputModalities: `["text"]`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := st.RegisterNode("catalog-node", store.HashToken("token"), "catalog-node")
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(name, uuid, state string, sleep, port int) *store.Deployment {
+		t.Helper()
+		dep, err := st.CreateDeployment(&store.Deployment{ModelID: model.ID, NodeID: node.ID, ServedName: name, State: "active", Engine: "vllm"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.CreateInstance(&store.Instance{UUID: uuid, DeploymentID: dep.ID, NodeID: node.ID, State: state, SleepLevel: sleep, APIPort: port}); err != nil {
+			t.Fatal(err)
+		}
+		return dep
+	}
+	running := add("running-model", "running-instance", proto.InstRunning, 0, 30000)
+	add("sleeping-model", "sleeping-instance", proto.InstRunning, 1, 30001)
+	add("failed-model", "failed-instance", proto.InstFailed, 0, 0)
+	add("starting-model", "starting-instance", proto.InstStarting, 0, 0)
+	// A newer failed rollout of a name that is already serving must not
+	// replace that serving deployment, and must not add a second entry.
+	failedRollout := &store.Deployment{ModelID: model.ID, NodeID: node.ID, ServedName: "running-model", State: "active", Engine: "vllm"}
+	if err := st.DB().Create(failedRollout).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateInstance(&store.Instance{UUID: "failed-rollout", DeploymentID: failedRollout.ID, NodeID: node.ID, State: proto.InstFailed}); err != nil {
+		t.Fatal(err)
+	}
+
+	signer, _ := auth.NewTokenSigner("unservable-catalog-secret", time.Hour)
+	token, _ := managementSessionTestToken(t, st, signer, auth.Claims{UserID: 1, Username: "admin", Role: "admin"})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/playground/models", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	Router(Deps{Store: st, AuthSigner: signer}).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var catalog dto.PlaygroundCatalog
+	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]dto.PlaygroundModel{}
+	for _, model := range catalog.Models {
+		got[model.ID] = model
+	}
+	if len(got) != 2 {
+		t.Fatalf("models=%v, want running and sleeping only", got)
+	}
+	if got["running-model"].DeploymentID != running.ID || got["running-model"].Sleeping {
+		t.Fatalf("running model=%+v, want serving deployment %d", got["running-model"], running.ID)
+	}
+	if !got["sleeping-model"].Sleeping {
+		t.Fatalf("sleeping model=%+v", got["sleeping-model"])
+	}
+	if _, ok := got["failed-model"]; ok {
+		t.Fatal("failed deployment was listed as available")
+	}
+	if _, ok := got["starting-model"]; ok {
+		t.Fatal("starting deployment was listed as available")
+	}
+}
