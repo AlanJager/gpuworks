@@ -63,13 +63,18 @@ export default function DeployWeightSourceFields({
   // until they choose again; once nothing is asked, the answer is forgotten.
   useEffect(() => {
     if (!acquisition || evaluating) return;
-    const wantedProvider = resolveProvider(acquisition, modelSource, provider);
-    if (wantedProvider !== provider)
+    // Watchers notify changes, but start undefined when the quick form mounts
+    // again. Resolve against the preserved form store before writing defaults.
+    const currentProvider = form.getFieldValue(PROVIDER_FIELD);
+    const currentStorageId = form.getFieldValue(STORAGE_FIELD);
+    const currentStoragePicked = form.getFieldValue(STORAGE_PICKED) === true;
+    const wantedProvider = resolveProvider(acquisition, modelSource, currentProvider);
+    if (wantedProvider !== currentProvider)
       form.setFieldValue(PROVIDER_FIELD, wantedProvider);
-    const wantedStorage = resolveSaveTo(acquisition, storageId, storagePicked);
-    if (wantedStorage !== storageId)
+    const wantedStorage = resolveSaveTo(acquisition, currentStorageId, currentStoragePicked);
+    if (wantedStorage !== currentStorageId)
       form.setFieldValue(STORAGE_FIELD, wantedStorage);
-    if (wantedStorage === undefined && storagePicked)
+    if (wantedStorage === undefined && currentStoragePicked)
       form.setFieldValue(STORAGE_PICKED, false);
   }, [acquisition, evaluating, form, modelSource, provider, storageId, storagePicked]);
 
