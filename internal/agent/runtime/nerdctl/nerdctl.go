@@ -95,6 +95,11 @@ func (d *Driver) InspectImage(ctx context.Context, image string) (runtime.ImageI
 }
 
 // inspectImage keeps the config identity separate from nerdctl's lookup digest.
+// No --platform is passed: nerdctl/containerd selects the host's default platform.
+// For a multi-platform index, ImageConfigDesc and ImageConfig describe that
+// selected platform; Image.Target can still identify the whole index. nerdctl's
+// dockercompat mode converts this same selected config, so native mode does not
+// change the platform selection. A Run --platform override is not applied here.
 func (d *Driver) inspectImage(ctx context.Context, image string) (runtime.ImageInspection, string, error) {
 	out, err := output(ctx, 10*time.Second, "image", "inspect", "--mode=native", "--format", "{{json .}}", image)
 	if err != nil {
