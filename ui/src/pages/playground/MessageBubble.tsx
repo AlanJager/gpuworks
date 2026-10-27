@@ -8,11 +8,15 @@ import { STREAM_INTERRUPTED_ERROR } from "./api";
 import { PreviewAction } from "./HtmlPreview";
 import { looksLikeHTMLDocument, PREVIEW_LANGUAGES } from "./previewSandbox";
 import type { ChatMessage } from "./types";
+import { assistantText } from "./assistantText";
 
 // Memoized: while a reply streams only its own bubble re-renders.
 const MessageBubble = memo(function MessageBubble({ message: item }: { message: ChatMessage }) {
   const { t } = useTranslation("playground");
   const metrics = item.metrics;
+  const { content, reasoning } = item.role === "assistant"
+    ? assistantText(item.content, item.reasoning, item.streaming)
+    : item;
   const errorText = item.error === ABORTED_ERROR
     ? t("pane.generationStopped")
     : item.error === STREAM_INTERRUPTED_ERROR ? t("pane.streamInterrupted") : item.error;
@@ -29,16 +33,16 @@ const MessageBubble = memo(function MessageBubble({ message: item }: { message: 
         <div className="playground-message-meta">
           <Typography.Text strong>{item.model || t("pane.model")}</Typography.Text>
           <Space size={2}>
-            {looksLikeHTMLDocument(item.content) && <PreviewAction previewKey={`${item.id}:document`} language="html" code={item.content} complete={!item.streaming} />}
-            {item.streaming ? <Spin size="small" /> : item.content && <CopyButton size="small" label={t("pane.copyReply")} text={item.content} />}
+            {looksLikeHTMLDocument(content) && <PreviewAction previewKey={`${item.id}:document`} language="html" code={content} complete={!item.streaming} />}
+            {item.streaming ? <Spin size="small" /> : content && <CopyButton size="small" label={t("pane.copyReply")} text={content} />}
           </Space>
         </div>
       )}
       {!!item.attachments?.length && <Space size={[4, 4]} wrap>{item.attachments.map((attachment) => <Tag key={attachment.id}>{attachment.type === "image" ? t("pane.image") : t("pane.audio")} · {attachment.name}</Tag>)}</Space>}
-      {item.reasoning && <Collapse ghost size="small" defaultActiveKey={["reasoning"]} items={[{ key: "reasoning", label: t("pane.reasoning"), children: <MarkdownContent content={item.reasoning} /> }]} />}
-      {item.content ? (
+      {reasoning && <Collapse ghost size="small" defaultActiveKey={["reasoning"]} items={[{ key: "reasoning", label: t("pane.reasoning"), children: <MarkdownContent content={reasoning} /> }]} />}
+      {content ? (
         <MarkdownContent
-          content={item.content}
+          content={content}
           codeBlockActions={(block) => PREVIEW_LANGUAGES.has(block.language) && (
             <PreviewAction previewKey={`${item.id}:${block.startOffset}`} language={block.language} code={block.code} complete={block.closed || !item.streaming} />
           )}

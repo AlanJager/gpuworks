@@ -1,4 +1,5 @@
 import { userContent } from "../api";
+import { assistantText } from "../assistantText";
 import type { CompletionMessage } from "../types";
 import type { ConversationColumn } from "./model";
 
@@ -11,7 +12,7 @@ export function historyMessages(column: ConversationColumn): CompletionMessage[]
   if (column.parameters.systemPrompt.trim()) out.push({ role: "system", content: column.parameters.systemPrompt.trim() });
   for (const message of column.messages) {
     if (message.error || message.interrupted || message.streaming) continue;
-    out.push({ role: message.role, content: message.role === "user" ? userContent(message.content, message.attachments || []) : message.content });
+    out.push({ role: message.role, content: message.role === "user" ? userContent(message.content, message.attachments || []) : assistantText(message.content).content });
   }
   return out;
 }
