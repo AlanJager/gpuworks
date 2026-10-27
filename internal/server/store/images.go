@@ -582,7 +582,7 @@ func (s *Store) UpsertImageNode(row *ImageNode) (*ImageNode, error) {
 	err := s.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "image_version_id"}, {Name: "node_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
-			"state", "size_bytes", "transferred_bytes", "rate_bps",
+			"state", "size_bytes", "runtime_size_bytes", "transferred_bytes", "rate_bps",
 			"transfer_id", "source_node_id", "source", "message", "rate_limit_kib", "updated_at",
 		}),
 	}).Create(row).Error
@@ -638,7 +638,7 @@ func (s *Store) MarkImageNodeAbsent(imageID, nodeID uint, message string) error 
 	res := s.db.Model(&ImageNode{}).
 		Where("image_version_id = ? AND node_id = ?", imageID, nodeID).
 		Updates(map[string]any{
-			"state": ImageStateAbsent, "size_bytes": int64(0),
+			"state": ImageStateAbsent, "size_bytes": int64(0), "runtime_size_bytes": nil,
 			"transferred_bytes": int64(0), "rate_bps": int64(0),
 			"transfer_id": "", "message": message,
 		})
@@ -744,7 +744,7 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 		st.State != ImageStatePresent && st.State != ImageStateFailed {
 		return nil
 	}
-	updates := map[string]any{"state": st.State, "message": st.Message}
+	updates := map[string]any{"state": st.State, "message": st.Message, "runtime_size_bytes": nil}
 	if st.ImageID != "" {
 		updates["image_digest_id"] = st.ImageID
 	}

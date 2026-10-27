@@ -1277,6 +1277,7 @@ var migrations = []migration{
 	{Version: 172, Name: "legacy_template_model_operations", Apply: repairLegacyTemplateModelOperations},
 	{Version: 173, Name: "instance_spec_gpu_idents", Apply: copyInstanceGPUIdentsIntoSpec},
 	{Version: 174, Name: "instance_transcription_served", Apply: addInstanceTranscriptionServed},
+	{Version: 175, Name: "image_node_runtime_size", Apply: addImageNodeRuntimeSize},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

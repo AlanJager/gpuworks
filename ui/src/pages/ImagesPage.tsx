@@ -87,14 +87,16 @@ export default function ImagesPage() {
     (sum, item) => sum + (item.present_nodes || 0),
     0,
   );
-  const catalogBytes = allVersions.reduce(
-    (sum, item) => sum + (item.size_bytes || 0),
-    0,
-  );
-  const localBytes = allVersions.reduce(
-    (sum, item) => sum + (item.present_nodes || 0) * (item.size_bytes || 0),
-    0,
-  );
+  const sizesAvailable = versions.data !== undefined && versions.data !== null && !versions.error;
+  const catalogUnknown = allVersions.filter((item) => item.size_bytes == null).length;
+  const catalogBytes = sizesAvailable && (allVersions.length === 0 || catalogUnknown < allVersions.length)
+    ? allVersions.reduce((sum, item) => sum + (item.size_bytes ?? 0), 0)
+    : undefined;
+  const localKnown = allVersions.reduce((sum, item) => sum + (item.local_size_known_nodes ?? 0), 0);
+  const localUnknown = distributed - localKnown;
+  const localBytes = sizesAvailable && (distributed === 0 || localKnown > 0)
+    ? allVersions.reduce((sum, item) => sum + (item.local_runtime_size_bytes ?? 0), 0)
+    : undefined;
   // "Check for updates" and a manifest upload change the system catalog the
   // same way, so both report the same four counts.
   const applyCatalog = async (
@@ -423,7 +425,7 @@ export default function ImagesPage() {
         }}
         series={series}
         loading={loading}
-        error={error}
+        error={error || versions.error}
         updatedAt={updatedAt}
         catalogVersion={catalogVersion}
         syncingCatalog={syncingCatalog}
@@ -437,6 +439,8 @@ export default function ImagesPage() {
         distributed={distributed}
         catalogBytes={catalogBytes}
         localBytes={localBytes}
+        catalogUnknown={sizesAvailable ? catalogUnknown : 0}
+        localUnknown={sizesAvailable ? localUnknown : 0}
         sourceError={sourceError}
         onDismissSourceError={() => setSourceError(null)}
         onRefresh={() => {

@@ -32,8 +32,11 @@
       "series": "镜像系列",
       "images": "镜像总数",
       "distributed": "已分发数量",
-      "catalogSize": "镜像总体积",
-      "localSize": "本地拉取镜像总体积"
+      "catalogSize": "目录声明归档体积",
+      "localSize": "本地镜像上报体积",
+      "catalogSizeHint": "已知归档体积小计",
+      "localSizeHint": "最近上报小计；共享层按每个镜像重复计入",
+      "unknownSizes": "{{count}} 个体积未知"
     },
     "operationNotice": "镜像操作提示",
     "loadFailed": "镜像加载失败",

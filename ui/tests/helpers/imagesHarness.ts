@@ -78,6 +78,7 @@ export const systemVersion = {
   framework: "cuda", framework_version: "13.0", arch: "multi", image_ref: "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2",
   source: "official", deprecated: false, enabled: true, rolling_tag: false, upstream_gone: false, effective_enabled: true,
   reference_count: 0, present_nodes: 1, total_nodes: 3, size_bytes: 1024 * 1024 * 1024,
+  local_runtime_size_bytes: 2 * 1024 * 1024 * 1024, local_size_known_nodes: 1,
   registry_sources: ["quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"],
 };
 export const legacyVersion = {

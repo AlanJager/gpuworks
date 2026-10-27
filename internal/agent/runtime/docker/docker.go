@@ -123,10 +123,11 @@ func (d *Driver) InspectImage(ctx context.Context, image string) (runtime.ImageI
 	// and the template engine treats a missing map key as an error.
 	out, err := output(ctx, 10*time.Second, "image", "inspect", "--format", "{{json .}}", image)
 	if err != nil {
-		return runtime.ImageInspection{}, err
+		return runtime.ImageInspection{}, fmt.Errorf("docker image inspect: %w: %s", err, strings.TrimSpace(out))
 	}
 	var raw struct {
 		ID     string `json:"Id"`
+		Size   *int64 `json:"Size"`
 		Config struct {
 			Entrypoint []string       `json:"Entrypoint"`
 			Cmd        []string       `json:"Cmd"`
@@ -147,7 +148,10 @@ func (d *Driver) InspectImage(ctx context.Context, image string) (runtime.ImageI
 	for v := range raw.Config.Volumes {
 		vols = append(vols, v)
 	}
-	return runtime.ImageInspection{ID: raw.ID, Entrypoint: raw.Config.Entrypoint, Cmd: raw.Config.Cmd, Env: env, Volumes: vols}, nil
+	if raw.Size != nil && *raw.Size < 0 {
+		raw.Size = nil
+	}
+	return runtime.ImageInspection{RuntimeSizeBytes: raw.Size, ID: raw.ID, Entrypoint: raw.Config.Entrypoint, Cmd: raw.Config.Cmd, Env: env, Volumes: vols}, nil
 }
 
 // PullImage pulls an image, streaming progress lines to onLine.

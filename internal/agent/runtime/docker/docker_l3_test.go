@@ -5,6 +5,9 @@ package docker
 import (
 	"context"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -32,6 +35,19 @@ func TestDockerInspectL3(t *testing.T) {
 	}
 	if inspection.ID == "" {
 		t.Fatalf("inspect %s returned empty image ID", image)
+	}
+	// Compare the reported observation with the daemon, not archive length:
+	// those measurements serve different purposes in image distribution.
+	rawSize, err := exec.Command("docker", "image", "inspect", "--format", "{{.Size}}", image).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSize, err := strconv.ParseInt(strings.TrimSpace(string(rawSize)), 10, 64)
+	if err != nil || wantSize <= 0 {
+		t.Fatalf("fixture image must have a positive daemon size: %q, error %v", rawSize, err)
+	}
+	if inspection.RuntimeSizeBytes == nil || *inspection.RuntimeSizeBytes != wantSize {
+		t.Fatalf("runtime size = %v, want daemon observation %d", inspection.RuntimeSizeBytes, wantSize)
 	}
 	if tarPath := os.Getenv("GPUWORKS_TEST_IMAGE_TAR"); tarPath != "" {
 		f, openErr := os.Open(tarPath)

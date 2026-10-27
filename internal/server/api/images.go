@@ -269,6 +269,10 @@ func (a *apiHandlers) imageDTOs(images []store.Image, withNodes bool) []dto.Imag
 		for _, row := range rowsByImage[image.ID] {
 			if row.State == store.ImageStatePresent {
 				item.PresentNodes++
+				if row.RuntimeSizeBytes != nil && *row.RuntimeSizeBytes >= 0 {
+					item.LocalRuntimeSizeBytes += *row.RuntimeSizeBytes
+					item.LocalSizeKnownNodes++
+				}
 			}
 		}
 		if withNodes {

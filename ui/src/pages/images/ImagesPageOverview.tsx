@@ -37,8 +37,10 @@ type Props = {
   onOpenImport: () => void;
   totalVersions: number;
   distributed: number;
-  catalogBytes: number;
-  localBytes: number;
+  catalogBytes?: number;
+  localBytes?: number;
+  catalogUnknown: number;
+  localUnknown: number;
   sourceError: string | null;
   onDismissSourceError: () => void;
   onRefresh: () => void;
@@ -64,6 +66,8 @@ export default function ImagesPageOverview({
   distributed,
   catalogBytes,
   localBytes,
+  catalogUnknown,
+  localUnknown,
   sourceError,
   onDismissSourceError,
   onRefresh,
@@ -132,7 +136,17 @@ export default function ImagesPageOverview({
           ["localSize", bytes(localBytes)],
         ].map(([key, value], index) => (
           <Col key={key} xs={24} sm={12} md={8} lg={index === 4 ? 4 : 5}>
-            <Card><Statistic title={t(`page.summary.${key}`)} value={value} /></Card>
+            <Card>
+              <Statistic title={t(`page.summary.${key}`)} value={value} />
+              {(key === "catalogSize" || key === "localSize") && (
+                <Text type="secondary">
+                  {t(`page.summary.${key}Hint`)}
+                  {(key === "catalogSize" ? catalogUnknown : localUnknown) > 0 && (
+                    <> · {t("page.summary.unknownSizes", { count: key === "catalogSize" ? catalogUnknown : localUnknown })}</>
+                  )}
+                </Text>
+              )}
+            </Card>
           </Col>
         ))}
       </Row>

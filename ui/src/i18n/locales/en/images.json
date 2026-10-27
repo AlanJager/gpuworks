@@ -32,8 +32,11 @@
       "series": "Image Series",
       "images": "Total Images",
       "distributed": "Distributed Copies",
-      "catalogSize": "Total Image Size",
-      "localSize": "Total Locally Pulled Size"
+      "catalogSize": "Declared Archive Size",
+      "localSize": "Reported Local Image Size",
+      "catalogSizeHint": "Known archive subtotal",
+      "localSizeHint": "Last reported subtotal; shared layers counted per image",
+      "unknownSizes": "Unknown sizes: {{count}}"
     },
     "operationNotice": "Image operation notice",
     "loadFailed": "Failed to load images",
