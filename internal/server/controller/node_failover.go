@@ -196,7 +196,7 @@ func (c *Controller) failoverNamedUnits(ctx context.Context, deployment *unitDep
 	for _, move := range plan.moves {
 		move.MovedAt = now
 		moves = append(moves, move)
-		params := map[string]any{"from": nodeName(deployment, move.From), "to": nodeName(deployment, move.To), "after_sec": dep.NodeReplaceAfterSec, "unit": move.Unit + 1, "rank": move.Rank}
+		params := map[string]any{"from": c.nodeName(deployment, move.From), "to": c.nodeName(deployment, move.To), "after_sec": dep.NodeReplaceAfterSec, "unit": move.Unit + 1, "rank": move.Rank}
 		if move.Role != "" {
 			params["role"] = move.Role
 		}
@@ -250,7 +250,7 @@ func (c *Controller) revertFailovers(dep *store.Deployment, deployment *unitDepl
 		return false, nil
 	}
 	for _, move := range reverted {
-		params := map[string]any{"from": nodeName(deployment, move.To), "to": nodeName(deployment, move.From), "unit": move.Unit + 1, "rank": move.Rank}
+		params := map[string]any{"from": c.nodeName(deployment, move.To), "to": c.nodeName(deployment, move.From), "unit": move.Unit + 1, "rank": move.Rank}
 		if move.Role != "" {
 			params["role"] = move.Role
 		}
@@ -302,7 +302,7 @@ func (c *Controller) recordNoCandidate(dep *store.Deployment, lost map[string]bo
 	c.failover.mu.Unlock()
 	var names []string
 	for uuid := range lost {
-		names = append(names, nodeName(deployment, uuid))
+		names = append(names, c.nodeName(deployment, uuid))
 	}
 	c.store.AddDeploymentEventCode(dep.ID, nodeReplaceEventKind, EventNodeReplaceNoCandidate, map[string]any{"nodes": names})
 	c.q.addAfter(depKey(dep.ID), time.Minute)
@@ -317,8 +317,12 @@ func deploymentNodeOrder(deployment *unitDeployment) []string {
 	return out
 }
 
-func nodeName(deployment *unitDeployment, uuid string) string {
+func (c *Controller) nodeName(deployment *unitDeployment, uuid string) string {
 	if node := deployment.nodes[uuid]; node != nil {
+		return node.DisplayName()
+	}
+	// A replacement node is usually not one the deployment already ran on.
+	if node, err := c.store.NodeByUUID(uuid); err == nil {
 		return node.DisplayName()
 	}
 	return uuid

@@ -40,7 +40,8 @@ func newFailoverFixture(t *testing.T, name string, count int) *failoverFixture {
 	f := &failoverFixture{st: st, model: model, hub: &distributedTestHub{online: map[string]bool{}, updates: map[string][]proto.StateUpdate{}}}
 	for i := 0; i < count; i++ {
 		uuid := fmt.Sprintf("%s-%c", name, 'a'+i)
-		node, err := st.RegisterNode(uuid, store.HashToken(uuid), uuid)
+		// A hostname apart from the UUID, so an event naming a node by UUID shows.
+		node, err := st.RegisterNode(uuid, store.HashToken(uuid), uuid+"-host")
 		if err != nil {
 			t.Fatal(err)
 		}
