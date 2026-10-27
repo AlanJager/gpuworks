@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/agent/connbudget"
 )
 
 // blobServer is a registry with one blob and a hook into every blob request,
@@ -112,7 +114,37 @@ func (s *blobServer) downloaderFor(t *testing.T, parts int, rangeMin int64) *Dow
 	t.Helper()
 	client := NewClient()
 	client.HTTP = s.server.Client()
-	return &Downloader{Client: client, Dir: t.TempDir(), Workers: 2, RangeParts: parts, RangeMin: rangeMin}
+	return &Downloader{Client: client, Dir: t.TempDir(), Workers: 2, RangeParts: parts, RangeMin: rangeMin, Tune: instantWaits(nil)}
+}
+
+// instantWaits makes the budget's pauses (a registry's Retry-After, or the
+// default after a 429/503) cost no real time, and records them.
+func instantWaits(record *waitLog) func(*connbudget.SessionConfig) {
+	return func(cfg *connbudget.SessionConfig) {
+		cfg.Wait = func(ctx context.Context, d time.Duration) error {
+			if record != nil {
+				record.add(d)
+			}
+			return ctx.Err()
+		}
+	}
+}
+
+type waitLog struct {
+	mu sync.Mutex
+	d  []time.Duration
+}
+
+func (w *waitLog) add(d time.Duration) {
+	w.mu.Lock()
+	w.d = append(w.d, d)
+	w.mu.Unlock()
+}
+
+func (w *waitLog) all() []time.Duration {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]time.Duration(nil), w.d...)
 }
 
 // fetch runs FetchAll for the one blob and returns the bytes reported, the
@@ -307,15 +339,28 @@ func TestDownloadResumeAgainstARegistryThatIgnoresRange(t *testing.T) {
 }
 
 // A split blob whose registry ignores Range is not resumed per part (the other
-// parts would duplicate the transfer); it falls back to retrying the blob.
-func TestDownloadSplitBlobFallsBackWhenRangeIsIgnored(t *testing.T) {
+// parts would duplicate the transfer): the first part that is answered with the
+// whole blob teaches the pull the registry cannot do ranges, and the blob is
+// read again over one plain connection, at once.
+func TestDownloadSplitBlobFallsBackToOneConnectionWhenRangeIsIgnored(t *testing.T) {
 	quickRecovery(t)
 	s := newBlobServer(t, 1<<20)
 	s.ignoreRange = true
 	d := s.downloaderFor(t, 4, 1)
-	_, _, err := s.fetch(t, d)
-	if err == nil || !strings.Contains(err.Error(), "ignored range request") {
-		t.Fatalf("err = %v, want the registry's refusal of Range to surface", err)
+	began := time.Now()
+	_, restarts, err := s.fetch(t, d)
+	if err != nil {
+		t.Fatalf("a registry without Range must still serve the blob whole: %v", err)
+	}
+	if restarts != 1 {
+		t.Fatalf("restarts = %d, want the one that switched to a plain read", restarts)
+	}
+	if took := time.Since(began); took > 800*time.Millisecond {
+		t.Fatalf("took %s: the fallback should not wait out a retry pause", took)
+	}
+	seen := s.seen()
+	if last := seen[len(seen)-1]; last.ranged {
+		t.Fatalf("the blob was asked for with Range after the registry showed it ignores it: %+v", seen)
 	}
 }
 
@@ -325,15 +370,53 @@ func TestDownloadGivesUpAfterConnectionsThatDeliverNothing(t *testing.T) {
 	quickRecovery(t)
 	s := newBlobServer(t, 1<<20)
 	s.misbehave = func(_ int, _ blobRequest, w http.ResponseWriter, _ *http.Request) bool {
-		w.WriteHeader(http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusInternalServerError)
 		return true
 	}
 	_, _, err := s.fetch(t, s.downloaderFor(t, 1, 0))
-	if err == nil || !strings.Contains(err.Error(), "503") {
-		t.Fatalf("err = %v, want the 503", err)
+	if err == nil || !strings.Contains(err.Error(), "500") {
+		t.Fatalf("err = %v, want the 500", err)
 	}
 	if got := len(s.seen()); got != blobAttempts*blobAttempts {
 		t.Fatalf("%d requests; want %d (%d resumes for each of %d blob attempts)", got, blobAttempts*blobAttempts, blobAttempts, blobAttempts)
+	}
+}
+
+// A registry that keeps saying "slow down" (503) is waited on, not hammered:
+// each answer makes the next request wait (a doubling pause when the registry
+// names no time), and after throttleAttempts the pull gives up without
+// restarting the blob, which would only ask again sooner than it said.
+func TestDownloadGivesUpOnARegistryThatKeepsSayingSlowDown(t *testing.T) {
+	quickRecovery(t)
+	s := newBlobServer(t, 1<<20)
+	s.misbehave = func(_ int, _ blobRequest, w http.ResponseWriter, _ *http.Request) bool {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return true
+	}
+	var waits waitLog
+	d := s.downloaderFor(t, 1, 0)
+	d.Tune = instantWaits(&waits)
+	_, restarts, err := s.fetch(t, d)
+	if err == nil || !strings.Contains(err.Error(), "503") {
+		t.Fatalf("err = %v, want the 503", err)
+	}
+	if got := len(s.seen()); got != throttleAttempts {
+		t.Fatalf("%d requests, want %d", got, throttleAttempts)
+	}
+	if restarts != 0 {
+		t.Fatalf("the blob was restarted %d times after a throttled answer", restarts)
+	}
+	got := waits.all()
+	if len(got) != throttleAttempts-1 {
+		t.Fatalf("waited %d times (%v), want %d: one before each request after the first", len(got), got, throttleAttempts-1)
+	}
+	for i := 1; i < len(got); i++ {
+		if got[i] < got[i-1] {
+			t.Fatalf("pauses shrank: %v", got)
+		}
+	}
+	if got[0] <= 0 {
+		t.Fatalf("the first retry did not wait: %v", got)
 	}
 }
 
@@ -377,12 +460,13 @@ func TestDownloadStopsWhenCancelled(t *testing.T) {
 }
 
 // The crawl floor is judged per connection, and a pull runs up to
-// DefaultWorkers x DefaultRangeParts connections at once; their floors added
-// up must stay below what a merely slow link delivers, or every connection on
-// such a node is recycled every window.
+// DefaultMaxConnections at once; their floors added up must stay below what a
+// merely slow link delivers, or every connection on such a node is recycled
+// every window (the budget's quota keeps it from being all of them at once,
+// but a floor that high would still churn half of them).
 func TestSlowMinRateStaysBelowASlowLinkAcrossAllConnections(t *testing.T) {
 	const slowLink = 400 << 10 // bytes/s: mainland to an overseas CDN at peak
-	if total := slowMinRate * int64(DefaultWorkers*DefaultRangeParts); total > slowLink {
-		t.Fatalf("slowMinRate %d B/s x %d connections = %d B/s, above a slow link's %d B/s", slowMinRate, DefaultWorkers*DefaultRangeParts, total, slowLink)
+	if total := slowMinRate * int64(DefaultMaxConnections); total > slowLink {
+		t.Fatalf("slowMinRate %d B/s x %d connections = %d B/s, above a slow link's %d B/s", slowMinRate, DefaultMaxConnections, total, slowLink)
 	}
 }
