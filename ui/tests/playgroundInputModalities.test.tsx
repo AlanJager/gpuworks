@@ -1,0 +1,83 @@
+import assert from "node:assert/strict";
+import { afterEach, test } from "node:test";
+import { chatCatalog, dom, locale, originalFetch, renderChat, serveStreams } from "./helpers/playgroundChat.tsx";
+const { message } = await import("antd");
+const { cleanup, screen } = await import("@testing-library/react");
+afterEach(() => { cleanup(); message.destroy(); dom.window.sessionStorage.clear(); dom.window.localStorage.clear(); globalThis.fetch = originalFetch; });
+test("text-only model disables image and audio input before a file can be read", async () => {
+    serveStreams([]);
+    const model = { ...chatCatalog().models[0], input_modalities: ["text"] };
+    await renderChat(chatCatalog({ models: [model] }));
+    for (const title of [locale.playground.chat.addImage, locale.playground.chat.addAudio])
+        assert.equal((screen.getByRole("button", { name: title }) as HTMLButtonElement).disabled, true);
+});
+const { fireEvent, waitFor } = await import("@testing-library/react");
+const { controllableSSE, testStore } = await import("./helpers/playgroundChat.tsx");
+const { newColumn, newConversation } = await import("../src/pages/playground/conversations/model.ts");
+const { openConversationDB } = await import("../src/pages/playground/conversations/db.ts");
+const parameters = { enabled: {}, values: {}, systemPrompt: "", extraJSON: "" };
+const audio = { id: "audio", name: "question.wav", type: "audio" as const, dataURL: "data:audio/wav;base64,UklGRPRIVATE" };
+test("stored audio history blocks all comparison requests when one model is text-only", async () => {
+    const bodies = serveStreams([]);
+    const { store, idb } = testStore();
+    const base = chatCatalog().models[0];
+    const audioModel = { ...base, id: "audio-model", label: "audio-model", input_modalities: ["text", "audio"] };
+    const textModel = { ...base, input_modalities: ["text"] };
+    const conversation = newConversation(1, "compare", [newColumn(audioModel.id, parameters), newColumn(textModel.id, parameters)], Date.now());
+    for (const column of conversation.columns)
+        column.messages = [{ id: `user-${column.id}`, role: "user", content: "saved audio", attachments: [audio] }];
+    await (await openConversationDB(idb)).put(conversation);
+    const user = await renderChat(chatCatalog({ models: [audioModel, textModel] }), { store });
+    await user.type(screen.getByRole("textbox", { name: locale.playground.chat.inputAria }), "continue{Enter}");
+    assert.equal(bodies.length, 0);
+    assert.equal(store.current()!.columns[0].messages.length, 1);
+    assert.ok((screen.getByRole("textbox", { name: locale.playground.chat.inputAria }) as HTMLTextAreaElement).value.includes("continue"));
+    await screen.findByText(/does not support audio input/);
+});
+test("queued attachment is checked again after the selected model changes", async () => {
+    Object.defineProperty(globalThis, "FileReader", { configurable: true, value: dom.window.FileReader });
+    const stream = controllableSSE();
+    const bodies = serveStreams([stream]);
+    const { store } = testStore();
+    const base = chatCatalog().models[0];
+    const audioModel = { ...base, input_modalities: ["text", "audio"] };
+    const textModel = { ...base, id: "text-model", label: "text-model", input_modalities: ["text"] };
+    const user = await renderChat(chatCatalog({ models: [audioModel, textModel] }), { store });
+    const picker = document.querySelector('input[accept="audio/*"]') as HTMLInputElement;
+    await user.upload(picker, new dom.window.File(["RIFF"], "question.wav", { type: "audio/wav" }));
+    await screen.findByText(/question.wav/);
+    store.setModel(store.current()!.columns[0].id, textModel.id);
+    await waitFor(() => assert.equal((screen.getByRole("button", { name: locale.playground.chat.addAudio }) as HTMLButtonElement).disabled, true));
+    await user.type(screen.getByRole("textbox", { name: locale.playground.chat.inputAria }), "translate{Enter}");
+    assert.equal(bodies.length, 0);
+    assert.ok(screen.getByText(/question.wav/));
+    store.setModel(store.current()!.columns[0].id, audioModel.id);
+    await waitFor(() => assert.equal((screen.getByRole("button", { name: locale.playground.chat.addAudio }) as HTMLButtonElement).disabled, false));
+    fireEvent.keyDown(screen.getByRole("textbox", { name: locale.playground.chat.inputAria }), { key: "Enter" });
+    await waitFor(() => assert.equal(bodies.length, 1));
+    assert.match(JSON.stringify(bodies[0]), /input_audio/);
+    stream.end();
+});
+test("unknown declarations retain compatibility and restored errors stay bounded", async () => {
+    serveStreams([]);
+    const { store, idb } = testStore();
+    const conversation = newConversation(1, "single", [newColumn("chat-model", parameters)], Date.now());
+    conversation.columns[0].messages = [{ id: "failure", role: "assistant", content: "", error: "Invalid audio input_value={'data':'" + "A".repeat(100000) + "'}" }];
+    await (await openConversationDB(idb)).put(conversation);
+    await renderChat(chatCatalog(), { store });
+    assert.equal((screen.getByRole("button", { name: locale.playground.chat.addAudio }) as HTMLButtonElement).disabled, false);
+    const alert = screen.getByRole("alert");
+    assert.ok((alert.textContent?.length || 0) < 2048);
+    assert.doesNotMatch(alert.textContent || "", /AAAA|input_value/);
+});
+test("keyboard focus explains why audio upload is disabled", async () => {
+    serveStreams([]);
+    await renderChat(chatCatalog({ models: [{ ...chatCatalog().models[0], input_modalities: ["text"] }] }));
+    const reason = screen.getByRole("group", { name: /does not support audio input/ });
+    assert.equal(reason.tabIndex, 0);
+    reason.focus();
+    fireEvent.focus(reason);
+    const tooltip = await screen.findByRole("tooltip");
+    assert.match(tooltip.textContent || "", /supported: text/);
+    assert.match(tooltip.textContent || "", /model that supports it/);
+});

@@ -80,14 +80,14 @@ func TestAProbeReportsAnErrorReplyATimeoutAndNoReplica(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = io.WriteString(w, `{"error":{"message":"`+strings.Repeat("x", 400)+`"}}`)
+		_, _ = io.WriteString(w, `{"error":{"message":"`+strings.Repeat("engine unavailable. ", 30)+`"}}`)
 	})
 	p, acct, _, depID, closeUpstream := newAccountingProxy(t, upstream)
 	defer closeUpstream()
 	defer close(slow)
 
 	reply := p.Probe(context.Background(), depID, chatPath, map[string]any{"input": "1"})
-	if reply.HTTPStatus != http.StatusInternalServerError || reply.InstanceUUID != "omni-instance" || !strings.HasPrefix(reply.Message, `{"error":{"message":"xxx`) || len(reply.Message) > probeMessageMax+len("…") {
+	if reply.HTTPStatus != http.StatusInternalServerError || reply.InstanceUUID != "omni-instance" || !strings.HasPrefix(reply.Message, `{"error":{"message":"engine unavailable.`) || len(reply.Message) > probeMessageMax+len("…") {
 		t.Fatalf("error reply = %+v", reply)
 	}
 

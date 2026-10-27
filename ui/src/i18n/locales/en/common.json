@@ -456,7 +456,8 @@
     "ZSTACK_PORT_UNREACHABLE": "The ZStack IP responded, but the port could not be connected. Check the port, service and firewall.",
     "ZSTACK_NETWORK_UNCONFIRMED": "The ZStack IP probe received no reply and the port could not be connected. Check the address, port and firewall; the cause is not yet determined.",
     "ZSTACK_NETWORK_DIAGNOSTIC_UNAVAILABLE": "The ZStack connection failed and the IP probe could not run. Check the address, port and firewall.",
-    "ZSTACK_REQUEST_TIMEOUT": "The ZStack API request timed out. Check network connectivity and the service response."
+    "ZSTACK_REQUEST_TIMEOUT": "The ZStack API request timed out. Check network connectivity and the service response.",
+    "MODEL_INPUT_MODALITY_UNSUPPORTED": "This model does not support {{modality}} input (supported: {{supported}}). Remove the attachment or select a compatible model."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."

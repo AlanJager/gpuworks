@@ -1,5 +1,5 @@
-import enPlayground from "../../i18n/locales/en/playground.json";
-import zhPlayground from "../../i18n/locales/zh/playground.json";
+import { playgroundErrorText, readErrorBody, safeErrorText } from "./errors";
+export { playgroundErrorText } from "./errors";
 import { notifySessionExpired } from "../../session";
 import type {
   Attachment,
@@ -146,7 +146,7 @@ export async function streamChat(
     }
     if (frame.error) {
       const error = frame.error as { message?: string };
-      throw new Error(error.message || "The upstream service returned a streaming error");
+      throw new Error(safeErrorText(typeof error.message === "string" ? error.message : "The upstream service returned a streaming error"));
     }
     const choice = Array.isArray(frame.choices) ? frame.choices[0] as Record<string, unknown> | undefined : undefined;
     const delta = choice?.delta as Record<string, unknown> | undefined;
@@ -231,7 +231,7 @@ export async function streamCompletion(
     }
     if (frame.error) {
       const error = frame.error as { message?: string };
-      throw new Error(error.message || "The upstream service returned a streaming error");
+      throw new Error(safeErrorText(typeof error.message === "string" ? error.message : "The upstream service returned a streaming error"));
     }
     const choice = Array.isArray(frame.choices) ? frame.choices[0] as Record<string, unknown> | undefined : undefined;
     if (typeof choice?.text === "string" && choice.text) onText(choice.text);
@@ -316,8 +316,8 @@ function operationURL(endpoint: string): string {
 }
 
 async function responseError(response: Response): Promise<string> {
-  const raw = await response.text();
-  if (response.status === 401) {
+  const raw = await readErrorBody(response);
+  if (response.status === 401 && raw !== undefined) {
     try {
       const parsed = JSON.parse(raw) as { code?: string };
       if (parsed.code === "AUTHENTICATION_REQUIRED") notifySessionExpired();
@@ -326,31 +326,4 @@ async function responseError(response: Response): Promise<string> {
     }
   }
   return playgroundErrorText(response.status, raw);
-}
-
-// routeMissingText reads the language the app already published on <html>.
-// The i18n module sets that attribute, and importing it here would touch
-// document while the node tests load this file.
-function routeMissingText(): string {
-  const lang = globalThis.document?.documentElement?.lang ?? "";
-  const pack = lang.toLowerCase().startsWith("zh") ? zhPlayground : enPlayground;
-  return pack.request.routeMissing;
-}
-
-// playgroundErrorText turns an inference response into the text the playground
-// shows. A FastAPI 404 is {"detail":"Not Found"}; that body is the engine
-// saying the route is not mounted, so the toast uses the product sentence
-// instead of the raw JSON.
-export function playgroundErrorText(status: number, raw: string): string {
-  const fallback = `Request failed (${status})`;
-  try {
-    const parsed = JSON.parse(raw) as { error?: { message?: string } | string; message?: string; detail?: unknown };
-    if (typeof parsed.error === "string" && parsed.error) return parsed.error;
-    if (parsed.error && typeof parsed.error === "object" && parsed.error.message) return parsed.error.message;
-    if (typeof parsed.message === "string" && parsed.message) return parsed.message;
-    if (status === 404 && parsed.detail === "Not Found") return routeMissingText();
-    return raw || fallback;
-  } catch {
-    return fallback;
-  }
 }

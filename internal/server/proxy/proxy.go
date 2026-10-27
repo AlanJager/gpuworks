@@ -236,11 +236,15 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 		// gap ErrorHandler cannot cover because it only fires before headers.
 		ModifyResponse: func(resp *http.Response) error {
 			ob, _ := resp.Request.Context().Value(obsKey).(*copyObservation)
+			if ob != nil {
+				ob.status, ob.declaredLen = resp.StatusCode, resp.ContentLength
+			}
+			if err := boundUpstreamError(resp); err != nil {
+				return err
+			}
 			if ob == nil {
 				return nil
 			}
-			ob.status = resp.StatusCode
-			ob.declaredLen = resp.ContentLength
 			// A 101 upgrade hands the raw connection to handleUpgradeResponse,
 			// which type-asserts the body to io.ReadWriteCloser. Never wrap it,
 			// or WebSocket/h2c upgrades break. There is no later hook for an
@@ -449,7 +453,8 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 			out.Header.Set("Authorization", "Bearer "+key)
 			out.Header.Set("Content-Type", "application/json")
 		},
-		FlushInterval: -1,
+		FlushInterval:  -1,
+		ModifyResponse: boundUpstreamError,
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			p.log.Warn("external playground upstream error", "err", err)
 			writeErr(w, http.StatusBadGateway, "external upstream error: "+err.Error())
@@ -512,6 +517,9 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 		status := statusForExtractError(err)
 		p.acctFor(r.Context()).RecordImmediate(deploymentID, status, false)
 		writeErr(w, status, err.Error())
+	}
+	if p.rejectChatInput(w, r, tgt, deploymentID) {
+		return
 	}
 	if tgt.modelName != "" && tgt.modelName != publicName {
 		cleanup, err := rewriteModel(r, tgt.modelName, p.maxBodyBytes)

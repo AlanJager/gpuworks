@@ -16,6 +16,6 @@ test("a FastAPI 404 is a product sentence, not the raw body", () => {
     else Object.defineProperty(globalThis, "document", { configurable: true, value: previous });
   }
   assert.equal(playgroundErrorText(400, `{"error":{"message":"bad input"}}`), "bad input");
-  assert.equal(playgroundErrorText(404, `{"detail":"Model not found"}`), `{"detail":"Model not found"}`);
-  assert.equal(playgroundErrorText(502, "upstream"), "Request failed (502)");
+  assert.equal(playgroundErrorText(404, `{"detail":"Model not found"}`), "Model not found");
+  assert.equal(playgroundErrorText(502, "upstream"), "upstream");
 });

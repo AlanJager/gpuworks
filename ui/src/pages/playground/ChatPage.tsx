@@ -1,3 +1,6 @@
+import { supportsChatInput, unsupportedChatInput } from "./inputModalities";
+import { historyMessages } from "./conversations/history";
+import { userContent } from "./api";
 import {
   AudioOutlined,
   CloseOutlined,
@@ -88,9 +91,26 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
     setCollapsed(next);
     try { localStorage.setItem(COLLAPSED_KEY, next ? "1" : "0"); } catch { /* only the preference is lost */ }
   };
+  const supportsInput = (modality: string) => !!current?.columns.every((column) =>
+    supportsChatInput(chatModels.find((model) => model.id === column.model), modality));
+  const inputWarning = (modelID: string, modality: string) => {
+    const model = chatModels.find((entry) => entry.id === modelID);
+    return t("chat.unsupportedInput", { model: model?.label || modelID, modality,
+      supported: model?.input_modalities?.join(", ") || "?" });
+  };
+  const disabledInputReason = (modality: string) => {
+    const column = current?.columns.find((item) => !supportsChatInput(chatModels.find((model) => model.id === item.model), modality));
+    return column ? inputWarning(column.model, modality) : undefined;
+  };
   const submit = () => {
     if (!prompt.trim() && !attachments.length) return;
     if (!modelsAvailable) { message.warning(t("chat.selectAvailableModel")); return; }
+    for (const column of current?.columns || []) {
+      const modality = unsupportedChatInput(chatModels.find((model) => model.id === column.model), [
+        ...historyMessages(column), { role: "user", content: userContent(prompt, attachments) },
+      ]);
+      if (modality) { message.warning(inputWarning(column.model, modality)); return; }
+    }
     const result = store.send(prompt, attachments, streamOptions);
     if (result.status === "limited") { setLimited(result); return; }
     if (result.status === "busy") { message.warning(t("chat.busyElsewhere")); return; }
@@ -104,6 +124,11 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
   };
   const addFiles = async (files: FileList | null, type: "image" | "audio") => {
     if (!files?.length) return;
+    if (!supportsInput(type)) {
+      const column = current?.columns.find((item) => !supportsChatInput(chatModels.find((model) => model.id === item.model), type));
+      if (column) message.warning(inputWarning(column.model, type));
+      return;
+    }
     try {
       const next = await Promise.all(Array.from(files).map(async (file) => ({
         id: `${Date.now()}-${file.name}-${Math.random()}`,
@@ -250,8 +275,8 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
             />
             <div className="playground-composer-actions">
               <Space size={2}>
-                <FilePicker accept="image/*" title={t("chat.addImage")} icon={<FileImageOutlined />} onFiles={(files) => addFiles(files, "image")} />
-                <FilePicker accept="audio/*" title={t("chat.addAudio")} icon={<AudioOutlined />} onFiles={(files) => addFiles(files, "audio")} />
+                <FilePicker disabled={!supportsInput("image")} disabledReason={disabledInputReason("image")} accept="image/*" title={t("chat.addImage")} icon={<FileImageOutlined />} onFiles={(files) => addFiles(files, "image")} />
+                <FilePicker disabled={!supportsInput("audio")} disabledReason={disabledInputReason("audio")} accept="audio/*" title={t("chat.addAudio")} icon={<AudioOutlined />} onFiles={(files) => addFiles(files, "audio")} />
               </Space>
               <Space size={10}>
                 {!!state.running && (
@@ -271,9 +296,23 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
   );
 }
 
-function FilePicker({ accept, title, icon, onFiles }: { accept: string; title: string; icon: React.ReactNode; onFiles: (files: FileList | null) => void }) {
+function FilePicker({ accept, title, icon, onFiles, disabled, disabledReason }: {
+  disabled: boolean;
+  disabledReason?: string;
+  accept: string;
+  title: string;
+  icon: React.ReactNode;
+  onFiles: (files: FileList | null) => void;
+}) {
   const ref = useRef<HTMLInputElement>(null);
-  return <><input ref={ref} className="playground-hidden-input" type="file" accept={accept} multiple onChange={(event) => { onFiles(event.target.files); event.target.value = ""; }} /><Tooltip title={title}><Button type="text" icon={icon} onClick={() => ref.current?.click()} aria-label={title} /></Tooltip></>;
+  return <>
+    <input ref={ref} className="playground-hidden-input" type="file" disabled={disabled} accept={accept} multiple onChange={(event) => { onFiles(event.target.files); event.target.value = ""; }} />
+    <Tooltip title={disabled ? disabledReason : title} trigger={["hover", "focus"]}>
+      <span tabIndex={disabled ? 0 : undefined} role={disabled ? "group" : undefined} aria-label={disabled ? disabledReason : undefined}>
+        <Button type="text" disabled={disabled} icon={icon} onClick={() => ref.current?.click()} aria-label={title} />
+      </span>
+    </Tooltip>
+  </>;
 }
 
 function readDataURL(file: File, errorMessage: string): Promise<string> {
