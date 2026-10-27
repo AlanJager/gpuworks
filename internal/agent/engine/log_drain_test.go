@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -138,5 +139,44 @@ func TestRemoveContainerWithoutLogDrain(t *testing.T) {
 	}
 	if driver.exists(containerName("no-drain")) {
 		t.Fatal("the container was not removed")
+	}
+}
+
+// Even a CLI/model inspection failure before the first health check must have
+// its full diagnostic drained before runtime removal destroys the output.
+func TestStartupFailureDrainsDiagnosticBeforeRemoval(t *testing.T) {
+	driver := newLivenessDriver()
+	e, log := newLivenessEngine(t, driver)
+	spec := runningSpec("startup-pooling-failure", 1)
+	name := containerName(spec.UUID)
+	driver.containers[name] = &livenessContainer{exitCode: 1}
+	driver.logs = "Traceback: model registry inspection\nValueError: Model architectures failed to be inspected\n"
+	var drained string
+	released := false
+	WithLogDrain(func(ctx context.Context, uuid string, exited bool) func() {
+		if uuid != spec.UUID || !exited || !driver.exists(name) {
+			t.Errorf("drain did not see the exited startup container")
+		}
+		output, err := driver.Logs(ctx, name, false, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(output)
+		output.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		drained = string(data)
+		return func() { released = true }
+	})(e)
+	if e.probeAndReport(t.Context(), spec, name) {
+		t.Fatal("failed startup marked ready")
+	}
+	if drained != driver.logs || !released || driver.exists(name) {
+		t.Fatalf("startup diagnostic not retained before removal: %q released=%v", drained, released)
+	}
+	states := log.states(proto.InstFailed)
+	if len(states) != 1 || !strings.Contains(states[0].Message, "failed to be inspected") {
+		t.Fatalf("failed startup status: %+v", states)
 	}
 }

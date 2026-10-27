@@ -162,7 +162,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	if targetVendor == "" {
 		targetVendor = planning.RequirementVendor(reqs)
 	}
-	launch, err := materializeDeployRequest(eng.Name(), &req, selection, deployTargetCards(profileNode, req.Placement), a.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	launch, err := a.materializeCreateLaunch(eng.Name(), &req, selection, deployTargetCards(profileNode, req.Placement), a.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -173,8 +173,6 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	quick := launch.Quick
-	userExtraArgs := deploy.FormatArgsText(launch.UserResidual)
 	// Resolve request-owned command, environment and mounts before template
 	// model registration or image acquisition can mutate persistent state.
 	modelMount, componentMounts := previewComponentMounts(a.d.Store, selection.Components, profileNode)
@@ -206,7 +204,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	preflightParams := deploy.Params{
 		ModelPath: modelMount, ServedName: req.ServedName, APIPort: planning.PreviewAPIPort,
-		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: quick,
+		AssignedGPUs: perNode, TensorParallel: parallel.TP, PipelineParallel: parallel.PP, Sleepable: req.Sleepable, Quick: launch.Quick,
 		TemplateArgs: launch.TemplateResidual, TemplateEnv: selection.Env, ExtraArgs: launch.UserResidual,
 		NNodes: nnodes, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 	}
@@ -232,14 +230,18 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	// The snapshot carries what the template contributed that the dictionary
-	// does not describe; its dictionary values now live in the configuration.
-	selection.ExtraArgs = launch.TemplateResidual
 	model, err := a.resolveDeploymentModelFromTemplate(r.Context(), req.ModelID, &selection, req.TemplateID)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	launch, err = materializeDeployRequest(eng.Name(), &req, selection, deployTargetCards(profileNode, req.Placement), a.requestEngineVersion(eng.Name(), &req, selection, targetVendor, profileNode))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	selection.ExtraArgs = launch.TemplateResidual
+	quick, userExtraArgs := launch.Quick, deploy.FormatArgsText(launch.UserResidual)
 	served := req.ServedName
 	if served == "" {
 		served = model.Name
