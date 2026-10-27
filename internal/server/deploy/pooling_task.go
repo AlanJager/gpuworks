@@ -26,7 +26,9 @@ func PoolingTaskArgs(engine, version string, contract json.RawMessage, layers ..
 		if op.Type != inferenceapi.OperationEmbeddings && op.Type != inferenceapi.OperationRerank {
 			return nil
 		}
-		if operation != "" && operation != op.Type {
+		// Current releases select the same runner for every pooling task.
+		// Legacy --task can express only one, so a mixed contract is ambiguous.
+		if operation != "" && operation != op.Type && compareVersion(version, "0.10.0") < 0 {
 			return nil
 		}
 		operation = op.Type

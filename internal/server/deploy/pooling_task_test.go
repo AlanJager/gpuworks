@@ -21,6 +21,7 @@ func TestPoolingTaskArgsUseExplicitContractAndVersion(t *testing.T) {
 		{name: "other engine", engine: "sglang", version: "0.23.0", operations: `[{"type":"openai.embeddings"}]`},
 		{name: "chat contract", engine: "vllm", version: "0.23.0", operations: `[{"type":"openai.chat"}]`},
 		{name: "mixed contract", engine: "vllm", version: "0.23.0", operations: `[{"type":"openai.chat"},{"type":"openai.rerank"}]`},
+		{name: "two pooling operations share current runner", engine: "vllm", version: "0.23.0", operations: `[{"type":"openai.embeddings"},{"type":"openai.rerank"}]`, want: []string{"--runner", "pooling"}},
 		{name: "two pooling operations ambiguous on old releases", engine: "vllm", version: "0.9.0", operations: `[{"type":"openai.embeddings"},{"type":"openai.rerank"}]`},
 		{name: "no operation", engine: "vllm", version: "0.23.0", operations: `[]`},
 		{name: "explicit user runner", engine: "vllm", version: "0.23.0", operations: `[{"type":"openai.rerank"}]`, extra: []string{"--runner=generate"}},

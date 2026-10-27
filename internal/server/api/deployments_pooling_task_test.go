@@ -19,6 +19,7 @@ func TestRawPoolingDeploymentMaterializesTask(t *testing.T) {
 	for _, tc := range []struct{ operation, version, flag, value string }{
 		{"openai.rerank", "0.23.0", "--runner", "pooling"},
 		{"openai.embeddings", "0.30.0", "--runner", "pooling"},
+		{"openai.embeddings,openai.rerank", "0.23.0", "--runner", "pooling"},
 		{"openai.rerank", "0.9.0", "--task", "score"},
 		{"openai.embeddings", "0.9.0", "--task", "embed"},
 	} {
@@ -28,7 +29,12 @@ func TestRawPoolingDeploymentMaterializesTask(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = st.Close() })
-			model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "fixture/opaque-model", Revision: "main", Name: "opaque-model", WeightBytes: 1 << 30, Operations: fmt.Sprintf(`[{"type":%q}]`, tc.operation)})
+			var operations []map[string]string
+			for _, operation := range strings.Split(tc.operation, ",") {
+				operations = append(operations, map[string]string{"type": operation})
+			}
+			encodedOperations, _ := json.Marshal(operations)
+			model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "fixture/opaque-model", Revision: "main", Name: "opaque-model", WeightBytes: 1 << 30, Operations: string(encodedOperations)})
 			if err != nil {
 				t.Fatal(err)
 			}
