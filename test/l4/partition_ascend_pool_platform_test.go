@@ -113,13 +113,8 @@ command -v gzip >/dev/null || fail "gzip missing"
 command -v curl >/dev/null || fail "curl missing"
 test -f %s/config.json || fail "model fixture missing at %s"
 info=$(npu-smi info) || fail "npu-smi info failed"
-preferred=%s
-if printf '%%s\n' "$info" | grep -Fq "No running processes found in NPU $preferred"; then
-  selected=$preferred
-else
-  selected=$(printf '%%s\n' "$info" | sed -n 's/.*No running processes found in NPU \([0-9][0-9]*\).*/\1/p' | head -n 1)
-fi
-test -n "$selected" || fail "no idle NPU: preferred $preferred is busy and no card reports 'No running processes'"
+%s
+test -n "$selected" || fail "no idle NPU: preferred %s and every other card either runs a process or holds more than %d MB of HBM (container/vNPU tenants hold HBM without listing a process)"
 echo card="$selected"
 if command -v docker >/dev/null && docker info >/dev/null 2>&1 && docker image inspect %s >/dev/null 2>&1; then
   echo runtime=docker
@@ -127,7 +122,7 @@ elif command -v nerdctl >/dev/null && nerdctl info >/dev/null 2>&1 && nerdctl -n
   echo runtime=nerdctl
 else
   fail "acceptance image %s not present in docker, or in nerdctl's gpuworks namespace (the agent runs containers there)"
-fi`, shellQuoteL4(model), shellQuoteL4(model), shellQuoteL4(candidate.card), shellQuoteL4(image), shellQuoteL4(image), shellQuoteL4(image))
+fi`, shellQuoteL4(model), shellQuoteL4(model), ascendIdleCardSelection(candidate.card), candidate.card, ascendPoolMaxIdleHBMMB(), shellQuoteL4(image), shellQuoteL4(image), shellQuoteL4(image))
 		if os.Getenv("GPUWORKS_ASCEND_L4_RUNTIME") == "udocker" {
 			boundary := strings.Index(command, "if command -v docker")
 			command = command[:boundary] + "test -d " + shellQuoteL4(os.Getenv("GPUWORKS_ASCEND_L4_RUNVEIL_CACHE")+"/repos") + " || fail 'runveil image fixture missing'\necho runtime=udocker\n"
