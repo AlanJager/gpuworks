@@ -58,10 +58,14 @@ func (c *Controller) poolOf(deployment *unitDeployment, model *store.Model) (*un
 	// Unresolvable networks or unreadable storages leave their requirements
 	// unmet.
 	facts := planning.LoadNodeFacts(c.store, c.networks.Resolve, nodes, deployment.requirements)
+	placement, err := planning.ParsePlacement(dep.Placement)
+	if err != nil {
+		return nil, err
+	}
 	need := planning.ReplicaGPUNeed(dep)
 	pool := &unitPool{nodes: len(nodes) + others, need: need, Pool: planning.BuildPool(planning.PoolFacts{
 		Nodes: nodes, Held: held, Files: files, Facts: facts, Instances: deployment.insts,
-		Online: c.hub.Online, Requirements: deployment.requirements, Strategy: dep.PlacementStrategy, Need: need,
+		Online: c.hub.Online, Requirements: deployment.requirements, Strategy: dep.PlacementStrategy, Need: need, Placement: placement,
 	})}
 	if others > 0 {
 		// The nodes left unread fail the node requirement, as BuildPool would
