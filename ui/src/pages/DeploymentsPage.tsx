@@ -60,11 +60,11 @@ export function containerTerminalURL(instance: Instance): string {
   return `/nodes/${encodeURIComponent(instance.node_uuid)}/terminal?target=container&ref=${encodeURIComponent(instance.container_id || "")}`;
 }
 
-// replicaCount is a list row's replicas: running of desired, or the desired
-// count alone where the row has no running count (PD).
+// The list carries ready/desired totals for ordinary and PD deployments.
+// Missing readiness stays unknown rather than looking like a ready count.
 function replicaCount(d: DeploymentListItem): string {
   const desired = d.replicas ?? 0;
-  return d.ready_replicas != null ? `${d.ready_replicas}/${desired}` : String(desired);
+  return `${d.ready_replicas ?? "—"}/${desired}`;
 }
 
 export default function DeploymentsPage() {
@@ -168,7 +168,7 @@ export default function DeploymentsPage() {
     },
     { key: "health", title: <Space size={0}>{t("page.column.health")}<HealthCheckHelp /></Space>, width: 140, render: (_: unknown, d: DeploymentListItem) => <HealthTag health={d.health} /> },
     // A list row carries the replica counts; the detail lists the instances.
-    { key: "replicas", title: t("page.column.instances"), width: 100, align: "right", serverSort: true, render: (_: unknown, d: DeploymentListItem) => replicaCount(d) },
+    { key: "replicas", title: t("page.column.instances"), width: 160, align: "right", serverSort: true, render: (_: unknown, d: DeploymentListItem) => replicaCount(d) },
     { key: "created_at", title: t("page.column.createdAt"), width: 180, serverSort: true, render: (_: unknown, d: DeploymentListItem) => formatTime(d.created_at) },
     {
       key: "action",

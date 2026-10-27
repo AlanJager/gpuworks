@@ -177,3 +177,18 @@ test("a failed page load shows the error and retries on request", async () => {
   fireEvent.click(screen.getByRole("button", { name: commonLocale.actions.retry }));
   await screen.findByText("svc-45");
 });
+
+
+test("replica column labels ready versus desired for PD and ordinary rows, preserving unknown readiness", async () => {
+  renderPage(fakeServer([
+    { ...fleet[0], id: 101, name: "pd-ready", replicas: 2, ready_replicas: 2 },
+    { ...fleet[0], id: 102, name: "pd-partial", replicas: 3, ready_replicas: 1 },
+    { ...fleet[0], id: 103, name: "ordinary-pending", replicas: 1, ready_replicas: 0 },
+    { ...fleet[0], id: 104, name: "unknown-readiness", replicas: 2, ready_replicas: undefined },
+  ]).serve);
+  await screen.findByText("pd-ready");
+  assert.ok(screen.getByRole("columnheader", { name: /Ready \/ desired replicas/ }));
+  for (const [name, count] of [["pd-ready", "2/2"], ["pd-partial", "1/3"], ["ordinary-pending", "0/1"], ["unknown-readiness", "—/2"]]) {
+    assert.ok(within(screen.getByText(name).closest("tr")!).getByRole("cell", { name: count }));
+  }
+});

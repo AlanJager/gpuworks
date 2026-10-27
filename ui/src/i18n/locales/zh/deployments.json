@@ -33,7 +33,7 @@
       "node": "计算节点",
       "state": "状态",
       "health": "健康",
-      "instances": "副本",
+      "instances": "就绪 / 期望副本",
       "createdAt": "创建时间"
     },
     "autoImage": "自动解析",

@@ -71,7 +71,8 @@ type DeploymentListItem struct {
 	RuntimeState     string             `json:"runtime_state"`
 	Sleepable        bool               `json:"sleepable"`
 	Replicas         int                `json:"replicas"`
-	// ReadyReplicas and Health are as on Deployment.
+	// Replicas and ReadyReplicas total both roles for PD deployments;
+	// ordinary deployments use the same counts as Deployment.
 	ReadyReplicas *int                  `json:"ready_replicas,omitempty"`
 	Health        DeploymentHealth      `json:"health"`
 	Operations    []DeploymentOperation `json:"operations"`

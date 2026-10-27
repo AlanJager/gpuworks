@@ -33,7 +33,7 @@
       "node": "Compute Node",
       "state": "State",
       "health": "Health",
-      "instances": "Replicas",
+      "instances": "Ready / desired replicas",
       "createdAt": "Created"
     },
     "autoImage": "Resolved automatically",
