@@ -2,6 +2,7 @@ package inferencecatalog
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
@@ -77,5 +78,53 @@ func TestCatalogWarningsCoverEverySpecInOrder(t *testing.T) {
 	}
 	if want := []any{"bf16-balanced", "bf16-balanced", "second", "second"}; !reflect.DeepEqual(specs, want) {
 		t.Fatalf("specs=%v, want %v", specs, want)
+	}
+}
+
+// The gateway rewrites the request's model to the engine's own name only for
+// vLLM and SGLang. A callable spec that pins --served-model-name to a literal
+// answers under a name no deployment is sent, so it is flagged - in args or in
+// the entrypoint, in either flag form - while one that places the platform's
+// variable, or names no model at all, is not. vLLM and SGLang specs are never
+// flagged: their name is rewritten.
+func TestCatalogWarningsFlagCallableFixedServedName(t *testing.T) {
+	api := &APIContract{Operations: []APIOperation{{Type: "openai.chat"}}, HealthEndpoint: "/health", Metrics: &inferenceapi.Metrics{Endpoint: "/metrics"}}
+	for _, test := range []struct {
+		name       string
+		engine     string
+		args       []string
+		entrypoint []string
+		want       string
+	}{
+		{name: "literal in args", engine: "callable", args: []string{"--port", "${API_PORT}", "--served-model-name", "glm53"}, want: "glm53"},
+		{name: "literal with equals", engine: "callable", args: []string{"--port", "${API_PORT}", "--served-model-name=glm53"}, want: "glm53"},
+		{name: "literal in entrypoint", engine: "callable", args: []string{"--port", "${API_PORT}"},
+			entrypoint: []string{"vllm", "serve", "--served-model-name", "glm53"}, want: "glm53"},
+		{name: "platform variable", engine: "callable", args: []string{"--port", "${API_PORT}", "--served-model-name", "${SERVED_MODEL_NAME}"}},
+		{name: "no model name", engine: "callable", args: []string{"--port", "${API_PORT}"}},
+		{name: "vllm rewrites", engine: "vllm", args: []string{"--served-model-name", "glm53"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			catalog := flatFixture()
+			spec := &catalog.Models[0].Specs[0]
+			spec.Engine, spec.Args, spec.Entrypoint, spec.API = test.engine, test.args, test.entrypoint, api
+			if err := ValidateFlatCatalog(&catalog); err != nil {
+				t.Fatal(err)
+			}
+			warnings := CatalogWarnings(catalog)
+			if test.want == "" {
+				if len(warnings) != 0 {
+					t.Fatalf("codes=%v, want none", warningCodes(warnings))
+				}
+				return
+			}
+			if len(warnings) != 1 || warnings[0].Code() != messages.WarningCatalogCallableServedNameFixed {
+				t.Fatalf("codes=%v, want [%s]", warningCodes(warnings), messages.WarningCatalogCallableServedNameFixed)
+			}
+			want := map[string]any{"model_id": catalog.Models[0].ModelID, "spec": "bf16-balanced", "name": test.want}
+			if !reflect.DeepEqual(warnings[0].Params(), want) || !strings.Contains(warnings[0].Error(), "${SERVED_MODEL_NAME}") {
+				t.Fatalf("params=%v error=%q, want params %v and an English fallback naming the variable", warnings[0].Params(), warnings[0].Error(), want)
+			}
+		})
 	}
 }

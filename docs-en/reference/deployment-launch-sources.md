@@ -226,8 +226,8 @@ does not set this key, this value is merged before the image's value (deduplicat
 ## Variable Expansion
 
 Variables expand at every launch, in template args, env, entrypoint, and preparation scripts; user input is **never expanded**.
-Available variables are resolver outputs plus the platform-provided `GPU_COUNT`, `TP_SIZE`, `MODEL_PATH`, `API_HOST`, `API_PORT`, `NNODES`,
-`NODE_RANK`, and `HEADLESS`, with `MASTER_ADDR` and `MASTER_PORT` additionally available for multi-node deployments; `PP_SIZE` has no default.
+Available variables are resolver outputs plus the platform-provided `GPU_COUNT`, `TP_SIZE`, `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_HOST`, `API_PORT`,
+`NNODES`, `NODE_RANK`, and `HEADLESS`, with `NODE_ADDR`, `MASTER_ADDR`, and `MASTER_PORT` additionally available for multi-node deployments; `PP_SIZE` has no default.
 The syntax is `${NAME}`, where the name consists of uppercase letters, digits, and underscores. For the full vocabulary, availability conditions, and error rules, see
 [Inference Catalog Syntax](inference-catalog-spec.md#变量展开).
 

@@ -53,7 +53,7 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 				launch, err := deploy.ResolveLaunch(deploy.ResolveLaunchInput{
 					Engine: engine, Image: spec.Image, Entrypoint: spec.Entrypoint, APIContract: spec.API, PlacementVariables: resolved.Variables,
 					Params: deploy.Params{
-						ModelPath: "/model", APIPort: 31417, NNodes: 1,
+						ModelPath: "/model", ServedName: "GLM-5.3-Flash-W8A8-tdxi", APIPort: 31417, NNodes: 1,
 						RuntimeDriver: "docker",
 						AssignedGPUs:  count, TensorParallel: count,
 						TemplateArgs: spec.Args, TemplateEnv: spec.Env,
@@ -68,6 +68,8 @@ func TestGLM53AscendRecipesPlaceAndLaunchTheirOwnParallelism(t *testing.T) {
 					"--data-parallel-size-local": strconv.Itoa(recipe.dp),
 					"--max-num-seqs":             strconv.Itoa(recipe.sequences),
 					"--max-model-len":            "139264", "--port": "31417", "--kv-cache-dtype": "int8",
+					// The gateway sends a callable engine the served name as is.
+					"--served-model-name": "GLM-5.3-Flash-W8A8-tdxi",
 				} {
 					got, found := deploy.LaunchFlag(launch.Argv, flag)
 					if !found || got != want {

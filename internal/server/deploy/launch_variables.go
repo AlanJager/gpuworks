@@ -16,10 +16,16 @@ import (
 //
 // An unresolved preview has no GPU count or degree yet: those two stay absent
 // so the preview shows them symbolically instead of a placeholder value. The
-// master address and port exist only for a distributed launch; a template
-// that references them on a single node fails rather than dialing nothing.
+// master address and port, and this rank's own address, exist only for a
+// distributed launch; a template that references them on a single node fails
+// rather than dialing nothing.
+//
+// SERVED_MODEL_NAME is the name the gateway and the health check send as the
+// request's model. Only vLLM and SGLang have that request rewritten to the
+// engine's own name, so a callable adapter that checks the model has to
+// answer under exactly this name.
 func launchVariables(engine Engine, params Params, modelMount string, placement map[string]any, allowUnresolved bool) map[string]any {
-	variables := make(map[string]any, len(placement)+10)
+	variables := make(map[string]any, len(placement)+12)
 	for name, value := range placement {
 		variables[name] = value
 	}
@@ -44,6 +50,9 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 		headless = 1
 	}
 	variables[placementeval.VarModelPath] = modelMount
+	if params.ServedName != "" {
+		variables[placementeval.VarServedModelName] = params.ServedName
+	}
 	variables[placementeval.VarAPIHost] = host
 	// A headless rank serves no API; zero says so instead of a port nobody
 	// reserved for it.
@@ -52,6 +61,9 @@ func launchVariables(engine Engine, params Params, modelMount string, placement 
 	variables[placementeval.VarNodeRank] = int64(params.NodeRank)
 	variables[placementeval.VarHeadless] = headless
 	if nnodes > 1 {
+		if params.NodeAddress != "" {
+			variables[placementeval.VarNodeAddr] = params.NodeAddress
+		}
 		if params.MasterAddr != "" {
 			variables[placementeval.VarMasterAddr] = params.MasterAddr
 		}

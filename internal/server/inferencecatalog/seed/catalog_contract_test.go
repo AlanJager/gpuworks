@@ -10,6 +10,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 )
 
@@ -471,4 +472,19 @@ func TestMingTTSVoiceCloningCanLoadItsAuxiliarySnapshot(t *testing.T) {
 		return
 	}
 	t.Fatal("Ming-omni-tts model is absent from embedded catalog")
+}
+
+// The gateway and the health check send a callable engine the deployment's
+// served name as is. A built-in callable spec that pins --served-model-name
+// to a literal rejects every request a deployment of it receives.
+func TestBuiltInCallableSpecsAnswerUnderTheServedName(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, warning := range inferencecatalog.CatalogWarnings(catalog) {
+		if warning.Code() == messages.WarningCatalogCallableServedNameFixed {
+			t.Errorf("%v: %s", warning.Params(), warning.Error())
+		}
+	}
 }

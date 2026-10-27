@@ -80,17 +80,18 @@ func TestCallableTemplateOwnsItsCommandLine(t *testing.T) {
 // template decides which of them its launcher takes and in what shape.
 func TestCallableDistributedRanksReadTheirFactsFromVariables(t *testing.T) {
 	args := []string{"--model", "${MODEL_PATH}", "--port", "${API_PORT}", "--tp", "${TP_SIZE}", "--gpus", "${GPU_COUNT}",
-		"--rank", "${NODE_RANK}/${NNODES}", "--master", "${MASTER_ADDR}:${MASTER_PORT}", "--headless", "${HEADLESS}"}
+		"--rank", "${NODE_RANK}/${NNODES}", "--master", "${MASTER_ADDR}:${MASTER_PORT}", "--headless", "${HEADLESS}", "--advertise", "${NODE_ADDR}"}
 	for _, test := range []struct {
 		name   string
 		params Params
 		want   []string
 	}{
-		{"leader", Params{APIPort: 19001, NNodes: 2, NodeRank: 0, MasterAddr: "192.168.100.10", MasterPort: 29501},
-			[]string{"--model", "/model", "--port", "19001", "--tp", "2", "--gpus", "1", "--rank", "0/2", "--master", "192.168.100.10:29501", "--headless", "0"}},
-		// A headless rank was reserved no port; it says so with zero.
-		{"follower", Params{APIPort: 0, NNodes: 2, NodeRank: 1, MasterAddr: "192.168.100.10", MasterPort: 29501, Headless: true},
-			[]string{"--model", "/model", "--port", "0", "--tp", "2", "--gpus", "1", "--rank", "1/2", "--master", "192.168.100.10:29501", "--headless", "1"}},
+		{"leader", Params{APIPort: 19001, NNodes: 2, NodeRank: 0, MasterAddr: "192.168.100.10", MasterPort: 29501, NodeAddress: "192.168.100.10"},
+			[]string{"--model", "/model", "--port", "19001", "--tp", "2", "--gpus", "1", "--rank", "0/2", "--master", "192.168.100.10:29501", "--headless", "0", "--advertise", "192.168.100.10"}},
+		// A headless rank was reserved no port; it says so with zero. Its own
+		// address is its own, never the leader's.
+		{"follower", Params{APIPort: 0, NNodes: 2, NodeRank: 1, MasterAddr: "192.168.100.10", MasterPort: 29501, Headless: true, NodeAddress: "192.168.100.11"},
+			[]string{"--model", "/model", "--port", "0", "--tp", "2", "--gpus", "1", "--rank", "1/2", "--master", "192.168.100.10:29501", "--headless", "1", "--advertise", "192.168.100.11"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			params := test.params
@@ -139,6 +140,13 @@ func TestSingleNodeLaunchHasNoMasterVariables(t *testing.T) {
 	if _, err := callableLaunch(t, params, ResolveLaunchInput{}); err == nil || !strings.Contains(err.Error(), "MASTER_ADDR is unresolved") {
 		t.Fatalf("ResolveLaunch() = %v, want MASTER_ADDR unresolved", err)
 	}
+	// The node's own address is a distributed fact too, even when the
+	// planner knows it for a single-node launch.
+	params.NodeAddress = "192.168.100.10"
+	params.TemplateArgs = append(append([]string(nil), callableServeArgs...), "--advertise", "${NODE_ADDR}")
+	if _, err := callableLaunch(t, params, ResolveLaunchInput{}); err == nil || !strings.Contains(err.Error(), "NODE_ADDR is unresolved") {
+		t.Fatalf("ResolveLaunch() = %v, want NODE_ADDR unresolved", err)
+	}
 	params.TemplateArgs = append(append([]string(nil), callableServeArgs...), "--nnodes", "${NNODES}", "--rank", "${NODE_RANK}", "--headless", "${HEADLESS}")
 	launch, err := callableLaunch(t, params, ResolveLaunchInput{})
 	if err != nil {
@@ -146,6 +154,35 @@ func TestSingleNodeLaunchHasNoMasterVariables(t *testing.T) {
 	}
 	if want := []string{"--nnodes", "1", "--rank", "0", "--headless", "0"}; !slices.Equal(launch.Argv[len(callableServeArgs):], want) {
 		t.Fatalf("argv=%v want suffix %v", launch.Argv, want)
+	}
+}
+
+// The gateway and the health check send the deployment's served name as the
+// request's model and rewrite it only for vLLM and SGLang. A callable adapter
+// that checks the model answers under the name the template hands it, so the
+// served name reaches argv, env and the entrypoint alike.
+func TestCallableTemplateReceivesTheServedName(t *testing.T) {
+	launch, err := callableLaunch(t, Params{
+		ModelPath: "/model", ServedName: "GLM-5.3-Flash-W8A8-tdxi", APIPort: 19001, AssignedGPUs: 1, TensorParallel: 1,
+		TemplateArgs: append(append([]string(nil), callableServeArgs...), "--served-model-name", "${SERVED_MODEL_NAME}"),
+		TemplateEnv:  map[string]string{"ADAPTER_MODEL_NAME": "${SERVED_MODEL_NAME}"},
+	}, ResolveLaunchInput{Entrypoint: []string{"bash", "-c", `exec serve --name "${SERVED_MODEL_NAME}" "$@"`, "--"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"--served-model-name", "GLM-5.3-Flash-W8A8-tdxi"}; !slices.Equal(launch.Argv[len(callableServeArgs):], want) {
+		t.Fatalf("argv=%v want suffix %v", launch.Argv, want)
+	}
+	if launch.Env["ADAPTER_MODEL_NAME"] != "GLM-5.3-Flash-W8A8-tdxi" {
+		t.Fatalf("env=%v", launch.Env)
+	}
+	if want := `exec serve --name "GLM-5.3-Flash-W8A8-tdxi" "$@"`; launch.Entrypoint[2] != want {
+		t.Fatalf("entrypoint=%v want %q", launch.Entrypoint, want)
+	}
+	// The platform reads the name back from the launch, as it does for vLLM,
+	// so the agent's port identity probe asks for the name the engine serves.
+	if got := ServedModelName(launch); got != "GLM-5.3-Flash-W8A8-tdxi" {
+		t.Fatalf("ServedModelName()=%q", got)
 	}
 }
 

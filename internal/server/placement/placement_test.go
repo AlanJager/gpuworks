@@ -159,7 +159,7 @@ func TestRuntimeVariablesLeavePipelineParallelToItsOwner(t *testing.T) {
 // guessed value can never shadow the fact; GPU_COUNT and TP_SIZE stay
 // returnable as they always were.
 func TestResolverCannotReturnLaunchOwnedVariables(t *testing.T) {
-	for _, name := range []string{VarModelPath, VarAPIHost, VarAPIPort, VarNNodes, VarNodeRank, VarHeadless, VarMasterAddr, VarMasterPort} {
+	for _, name := range []string{VarModelPath, VarServedModelName, VarAPIHost, VarAPIPort, VarNNodes, VarNodeRank, VarHeadless, VarNodeAddr, VarMasterAddr, VarMasterPort} {
 		for _, body := range []string{
 			fmt.Sprintf(`return {%q: 1}`, name),
 			fmt.Sprintf(`return accept(gpu_memory_mib_per_device=1024, variables={%q: 1})`, name),

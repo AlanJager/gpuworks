@@ -93,7 +93,7 @@ specs:
   - --port
   - ${API_PORT}
   - --served-model-name
-  - glm53-flash-910c-stock-graph
+  - ${SERVED_MODEL_NAME}
   - --tensor-parallel-size
   - ${TP_SIZE}
   - --enable-expert-parallel
@@ -189,7 +189,7 @@ specs:
   - --port
   - ${API_PORT}
   - --served-model-name
-  - glm53-flash-910c-stock-graph
+  - ${SERVED_MODEL_NAME}
   - --tensor-parallel-size
   - ${TP_SIZE}
   - --enable-expert-parallel
@@ -286,7 +286,7 @@ specs:
   - --port
   - ${API_PORT}
   - --served-model-name
-  - glm53-flash-910c-dflash
+  - ${SERVED_MODEL_NAME}
   - --tensor-parallel-size
   - ${TP_SIZE}
   - --enable-expert-parallel
