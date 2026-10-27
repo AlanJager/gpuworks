@@ -53,3 +53,17 @@ test("literal delimiters in indented code and blockquotes are not removed from a
   assert.deepEqual(assistantText(`${thought}</think>Answer`), { content: "Answer", reasoning: thought });
   assert.deepEqual(assistantText(`<think>${thought}</think>Answer`), { content: "Answer", reasoning: thought });
 });
+
+test("list-contained fences preserve literal markers and end before genuine reasoning delimiters", () => {
+  for (const [start, indent] of [["- ", "  "], ["+ ", "  "], ["* ", "  "], ["1. ", "   "], ["12) ", "    "], ["- 1. ", "     "], ["  - ", "    "]]) {
+    for (const fence of ["~~~", "```", "~~~~"]) {
+      const example = `Example:\n\n${start}${fence}xml\n${indent}</think>\n${indent}${fence}\n\nKeep this answer.`;
+      assert.deepEqual(assistantText(example), { content: example, reasoning: "" });
+      const thought = `${example}\n\nThe actual thought`;
+      assert.deepEqual(assistantText(`${thought}</think>Answer`), { content: "Answer", reasoning: thought });
+      assert.deepEqual(assistantText(`<think>${thought}</think>Answer`), { content: "Answer", reasoning: thought });
+      const unclosed = `Example:\n\n${start}${fence}xml\n${indent}</think>\n\nOutside the list`;
+      assert.deepEqual(assistantText(`${unclosed}</think>Answer`), { content: "Answer", reasoning: unclosed });
+    }
+  }
+});

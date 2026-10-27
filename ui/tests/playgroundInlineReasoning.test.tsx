@@ -75,12 +75,12 @@ test("stopping an unfinished inline thought preserves it in reasoning without in
   assert.ok(screen.queryByRole("button", { name: locale.playground.pane.copyReply }) === null);
 });
 
-test("indented and quoted code delimiters survive copying and subsequent conversation history", async () => {
+test("indented, quoted and list code delimiters survive copying and subsequent conversation history", async () => {
   const stream = controllableSSE();
   const followup = controllableSSE();
   const bodies = serveStreams([stream, followup]);
   const user = await renderChat();
-  const content = "Literal examples:\n\n    </think>\n\n> ~~~xml\n> </think>\n> ~~~\n\nKeep this answer.";
+  const content = "Literal examples:\n\n    </think>\n\n> ~~~xml\n> </think>\n> ~~~\n\n- ~~~xml\n  </think>\n  ~~~\n\n12. ```xml\n    </think>\n    ```\n\nKeep this answer.";
   const copied: string[] = [];
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { copied.push(text); } } });
   await sendPrompt(user, "Explain the delimiters");
@@ -89,7 +89,7 @@ test("indented and quoted code delimiters survive copying and subsequent convers
   const copy = await screen.findByRole("button", { name: locale.playground.pane.copyReply });
   assert.ok(screen.queryByRole("button", { name: reasoningName }) === null);
   assert.ok(screen.getByText("Literal examples:"));
-  assert.equal(screen.getAllByText("</think>").length, 2);
+  assert.equal(screen.getAllByText("</think>").length, 4);
   await user.click(copy);
   await waitFor(() => assert.deepEqual(copied, [content]));
   await sendPrompt(user, "Continue");

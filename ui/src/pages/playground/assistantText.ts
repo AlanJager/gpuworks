@@ -30,26 +30,42 @@ export function assistantText(content: string, reasoning = "", streaming = false
 // Ignore markers shown as Markdown code or quotations.
 function closingTag(text: string): number {
   let fence = "";
+  let fenceIndent = 0;
   let inline = 0;
   for (let i = 0; i < text.length; i++) {
     if (i === 0 || text[i - 1] === "\n") {
+      const end = text.indexOf("\n", i);
+      const line = text.slice(i, end < 0 ? text.length : end);
+      // A fence in a list ends with its containing item, even without an
+      // explicit closing fence. Root-level fences continue across blank lines.
+      if (fenceIndent && line.trim() && !line.startsWith(" ".repeat(fenceIndent))) {
+        fence = "";
+        fenceIndent = 0;
+      }
       // Indented code and quoted examples retain their literal delimiters.
-      if (!fence && /^(?: {4}| {0,3}\t| {0,3}>)/.test(text.slice(i))) {
-        const end = text.indexOf("\n", i);
+      if (!fence && /^(?: {4}| {0,3}\t| {0,3}>)/.test(line)) {
         if (end < 0) return -1;
         i = end;
         continue;
       }
-      const match = /^ {0,3}(`{3,}|~{3,})([^\n]*)/.exec(text.slice(i));
+      let offset = fence ? fenceIndent : 0;
+      if (!fence) {
+        // Fences may start on an ordered/unordered item, including nesting.
+        let item: RegExpExecArray | null;
+        while ((item = /^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/.exec(line.slice(offset)))) offset += item[0].length;
+      }
+      const match = /^ {0,3}(`{3,}|~{3,})([^\n]*)/.exec(line.slice(offset));
       if (match) {
         const marker = match[1];
         if (!fence) {
           fence = marker;
+          fenceIndent = offset;
           inline = 0;
         } else if (marker[0] === fence[0] && marker.length >= fence.length && !match[2].trim()) {
           fence = "";
+          fenceIndent = 0;
         }
-        i += match[0].length - 1;
+        i += line.length - 1;
         continue;
       }
     }
