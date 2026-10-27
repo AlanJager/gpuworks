@@ -3,7 +3,6 @@ package provision
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -122,6 +121,16 @@ if command -v docker >/dev/null 2>&1; then
   if $limit docker info >/dev/null 2>&1 || { [ -n "$priv" ] && $priv $limit docker info >/dev/null 2>&1; }; then docker=yes; fi
 fi
 printf 'docker=%s\n' "$docker"
+# The agent takes the first runtime that answers (docker, then nerdctl, then
+# runveil), so a containerd node without docker runs nerdctl, not runveil.
+nerdctl=no
+if command -v nerdctl >/dev/null 2>&1; then
+  limit=""
+  command -v timeout >/dev/null 2>&1 && limit="timeout 5"
+  if $limit nerdctl -n gpuworks ps >/dev/null 2>&1 || { [ -n "$priv" ] && $priv $limit nerdctl -n gpuworks ps >/dev/null 2>&1; }; then nerdctl=yes; fi
+fi
+printf 'nerdctl=%s\n' "$nerdctl"
+printf 'arch=%s\n' "$(uname -m 2>/dev/null)"
 ud=""
 pd=""
 cleanup() {
@@ -160,17 +169,32 @@ anc=skipped
 if [ "$chown_state" != refused ] && { [ "$uid" = 0 ] || [ "$sudo" = yes ]; }; then
   ruid=$(id -u udocker 2>/dev/null) || ruid=-1
   rgid=$(id -g udocker 2>/dev/null) || rgid=-1
+  # Supplementary groups (the device groups grant-device-access adds): the
+  # kernel counts them as the group class too.
+  rgids=" $(id -G udocker 2>/dev/null) "
   printf 'runtime_uid=%s\n' "$ruid"
+  # The agent creates a missing account with useradd; without one it runs
+  # workloads as itself.
+  useradd=no
+  if $priv sh -c 'command -v useradd' >/dev/null 2>&1; then useradd=yes; fi
+  printf 'useradd=%s\n' "$useradd"
   if [ "$exists" = yes ]; then p=$(dirname -- "$resolved"); else p=$resolved; fi
   anc=ok
   while :; do
     if ! st=$($priv stat -c '%a %u %g' -- "$p" 2>/dev/null); then anc=unknown; break; fi
     set -- $st
     m=$((0$1))
-    if [ "$2" = "$ruid" ]; then b=$((m / 64 % 8)); elif [ "$3" = "$rgid" ]; then b=$((m / 8 % 8)); else b=$((m % 8)); fi
+    if [ "$2" = "$ruid" ]; then b=$((m / 64 % 8)); elif [ "$3" = "$rgid" ]; then b=$((m / 8 % 8)); else
+      case "$rgids" in *" $3 "*) b=$((m / 8 % 8)) ;; *) b=$((m % 8)) ;; esac
+    fi
     if [ $((b % 2)) = 0 ]; then
       anc=blocked
       printf 'ancestor_dir=%s\nancestor_mode=%s\nancestor_uid=%s\nancestor_gid=%s\n' "$p" "$1" "$2" "$3"
+      # The mode bits are the whole story only without an ACL (ls marks one
+      # with a trailing +): an entry naming the user could still let it in.
+      lsl=$($priv ls -ld -- "$p" 2>/dev/null)
+      case "${lsl%% *}" in "") acl=unknown ;; *+) acl=yes ;; *) acl=no ;; esac
+      printf 'ancestor_acl=%s\n' "$acl"
       break
     fi
     next=$(dirname -- "$p")
@@ -194,146 +218,6 @@ fi
 printf 'names=%s\n' "$names"
 exit 0
 `
-
-// installDirFacts is the parsed probe output.
-type installDirFacts struct {
-	requested, exists, probed string
-	uid, user                 string
-	mount, fstype, options    string
-	statfs                    string
-	totalKiB, availKiB        int64
-	haveSpace                 bool
-	container, sudo           bool
-	writable, privWritable    bool
-	chown, chownErr           string
-	// ancestors is the verdict on the directories above the install directory
-	// for the dedicated runtime user: ok, blocked (the ancestor* fields name
-	// the first one), unknown or skipped; runtimeUID is that user's uid, -1
-	// while the account does not exist.
-	ancestors                 string
-	runtimeUID                string
-	ancestorDir, ancestorMode string
-	ancestorUID, ancestorGID  string
-	names, namesErr           string
-	docker                    bool
-	// mac is a Mac install; macAdmin means its installer runs with
-	// administrator rights, which may come from sudo with the SSH password
-	// rather than the passwordless sudo the probe itself can use.
-	mac, macAdmin bool
-}
-
-func parseInstallDirFacts(out string) (installDirFacts, error) {
-	var f installDirFacts
-	seen := map[string]bool{}
-	for _, line := range strings.Split(out, "\n") {
-		key, value, ok := strings.Cut(strings.TrimRight(line, "\r"), "=")
-		if !ok {
-			continue
-		}
-		seen[key] = true
-		switch key {
-		case "requested":
-			f.requested = value
-		case "exists":
-			f.exists = value
-		case "probed":
-			f.probed = value
-		case "uid":
-			f.uid = strings.TrimSpace(value)
-		case "user":
-			f.user = strings.TrimSpace(value)
-		case "mount":
-			f.mount = value
-		case "fstype":
-			f.fstype = strings.TrimSpace(value)
-		case "options":
-			f.options = strings.TrimSpace(value)
-		case "statfs":
-			f.statfs = strings.TrimSpace(value)
-		case "total_kib":
-			f.totalKiB, _ = strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-		case "avail_kib":
-			n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-			f.availKiB, f.haveSpace = n, err == nil
-		case "container":
-			f.container = value == "yes"
-		case "sudo":
-			f.sudo = value == "yes"
-		case "writable":
-			f.writable = value == "yes"
-		case "priv_writable":
-			f.privWritable = value == "yes"
-		case "chown":
-			f.chown = value
-		case "ancestors":
-			f.ancestors = strings.TrimSpace(value)
-		case "runtime_uid":
-			f.runtimeUID = strings.TrimSpace(value)
-		case "ancestor_dir":
-			f.ancestorDir = value
-		case "ancestor_mode":
-			f.ancestorMode = strings.TrimSpace(value)
-		case "ancestor_uid":
-			f.ancestorUID = strings.TrimSpace(value)
-		case "ancestor_gid":
-			f.ancestorGID = strings.TrimSpace(value)
-		case "chown_err":
-			f.chownErr = strings.TrimSpace(value)
-		case "names":
-			f.names = value
-		case "names_err":
-			f.namesErr = strings.TrimSpace(value)
-		case "docker":
-			f.docker = value == "yes"
-		}
-	}
-	if !seen["probed"] || !seen["chown"] {
-		return f, fmt.Errorf("incomplete probe output: %q", sanitizeProbeOutput(out))
-	}
-	return f, nil
-}
-
-func (f installDirFacts) root() bool { return f.uid == "0" }
-
-// filesystem is the mount's own type name (nfs4 rather than the nfs that
-// statfs(2) reports for both NFS versions), falling back to statfs.
-func (f installDirFacts) filesystem() string {
-	if f.fstype != "" {
-		return f.fstype
-	}
-	return f.statfs
-}
-
-func (f installDirFacts) noexec() bool {
-	for _, opt := range strings.Split(f.options, ",") {
-		if opt == "noexec" {
-			return true
-		}
-	}
-	return false
-}
-
-func (f installDirFacts) onNetworkFilesystem() bool {
-	switch fs := f.filesystem(); fs {
-	case "nfs", "nfs4", "cifs", "smb3", "smbfs", "ceph", "glusterfs", "lustre", "beegfs", "gpfs", "afs", "9p", "virtiofs", "fuse":
-		return true
-	default:
-		// fuse.overlayfs is a local layered filesystem; every other FUSE
-		// filesystem (sshfs, s3fs, juicefs, rclone...) is remote or
-		// userspace-backed.
-		return strings.HasPrefix(fs, "fuse.") && fs != "fuse.overlayfs"
-	}
-}
-
-func (f installDirFacts) onOverlay() bool {
-	fs := f.filesystem()
-	return fs == "overlay" || fs == "overlayfs" || fs == "fuse.overlayfs"
-}
-
-func (f installDirFacts) onMemory() bool {
-	fs := f.filesystem()
-	return fs == "tmpfs" || fs == "ramfs"
-}
 
 func gib(kib int64) string { return fmt.Sprintf("%.1f GiB", float64(kib)/(1<<20)) }
 
@@ -515,6 +399,44 @@ type InstallDirOutcome struct {
 	// Noexec: the directory is on a noexec mount, so nothing installed there
 	// can run. The install stops on it; every other verdict only reports.
 	Noexec bool
+	// Untraversable: a directory above the install directory is closed to the
+	// dedicated runtime user, and the probe established that the agent will
+	// run as root with the runveil runtime and that user, so every launch
+	// would fail. The install stops on it, like Noexec.
+	Untraversable bool
+	// untraversable is the error an install stops with when Untraversable.
+	untraversable *InstallDirUntraversableError
+}
+
+// blockingError is why an install must not go ahead on this directory, nil
+// when nothing found stops it.
+func (o InstallDirOutcome) blockingError() error {
+	switch {
+	case o.Noexec:
+		return noexecInstallError(o)
+	case o.Untraversable && o.untraversable != nil:
+		return o.untraversable
+	}
+	return nil
+}
+
+// keepUntraversable is the outcome for a reinstall of an agent that already
+// runs from this directory (out-of-band recovery): refusing would leave the
+// node offline, which is worse than workloads that cannot launch, so the
+// closed ancestor stays a warning.
+func (o InstallDirOutcome) keepUntraversable() InstallDirOutcome {
+	if !o.Untraversable {
+		return o
+	}
+	checks := append([]CheckResult(nil), o.Checks...)
+	for i := range checks {
+		if checks[i].Name == checkInstallDirTraversal {
+			checks[i].Status = "warn"
+			checks[i].Detail += "; not stopping the reinstall of an agent that already runs from here"
+		}
+	}
+	o.Checks, o.Untraversable, o.untraversable = checks, false, nil
+	return o
 }
 
 // ProbeInstallDir inspects the install directory over SSH. dir is used as
@@ -522,7 +444,14 @@ type InstallDirOutcome struct {
 // is reported as a warning rather than an error: it says nothing about the
 // directory, and must not stop an install that would otherwise work.
 func ProbeInstallDir(ctx context.Context, client *ssh.Client, dir, instanceKind, providerKind string) InstallDirOutcome {
-	return probeInstallDir(ctx, client, dir, instanceKind, providerKind, nil)
+	return ProbeInstallDirForRuntime(ctx, client, dir, instanceKind, providerKind, "")
+}
+
+// ProbeInstallDirForRuntime is ProbeInstallDir for an install that names its
+// runtime driver (docker, nerdctl, udocker; "" lets the agent pick), which
+// decides whether the runveil runtime will be used at all.
+func ProbeInstallDirForRuntime(ctx context.Context, client *ssh.Client, dir, instanceKind, providerKind, runtimeDriver string) InstallDirOutcome {
+	return probeInstallDir(ctx, client, dir, instanceKind, providerKind, func(f *installDirFacts) { f.runtimeDriver = strings.ToLower(strings.TrimSpace(runtimeDriver)) })
 }
 
 func probeInstallDir(ctx context.Context, client *ssh.Client, dir, instanceKind, providerKind string, adjust func(*installDirFacts)) InstallDirOutcome {
@@ -546,7 +475,12 @@ func probeInstallDir(ctx context.Context, client *ssh.Client, dir, instanceKind,
 		adjust(&facts)
 	}
 	checks, noexec := installDirChecks(facts, instanceKind, providerKind)
-	return InstallDirOutcome{Checks: checks, Noexec: noexec}
+	outcome := InstallDirOutcome{Checks: checks, Noexec: noexec}
+	if v := installDirTraversalVerdict(facts); v.blocks {
+		outcome.Untraversable = true
+		outcome.untraversable = &InstallDirUntraversableError{InstallDir: facts.requested, Ancestor: facts.ancestorDir, Mode: facts.ancestorMode, Detail: v.detail}
+	}
+	return outcome
 }
 
 // ProbeMacInstallDir probes an install directory on a Mac. admin says whether

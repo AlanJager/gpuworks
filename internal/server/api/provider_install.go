@@ -87,6 +87,11 @@ func (a *apiHandlers) installAgentOnInstance(w http.ResponseWriter, r *http.Requ
 		writeErr(w, http.StatusConflict, wrapProductError(ErrorInstanceRestartRequired, err.Error(), params, err))
 		return
 	}
+	if blocked, ok := untraversableInstallDirError(err); ok {
+		// Not the vendor's failure: the operator can fix the path.
+		writeErr(w, http.StatusBadRequest, blocked)
+		return
+	}
 	if err != nil {
 		writeErr(w, statusProviderFailed, err)
 		return

@@ -344,7 +344,7 @@ func (r *Recoverer) recoverNode(ctx context.Context, node *store.Node, force boo
 		ServerURL: node.ServerURL, Token: node.Token, ConnectMode: node.ConnectMode,
 		ServerDialListen: node.ServerDialListen, HostAddress: credential.Host, InstallDir: node.InstallDir,
 		RuntimeDriver:  restartRuntimeDriver(node),
-		KeepSupervisor: true,
+		KeepSupervisor: true, KeepUntraversableInstallDir: true,
 		OnPhase: func(phase string) error {
 			installPhase = phase
 			out.Phase = phase

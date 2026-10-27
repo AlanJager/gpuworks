@@ -509,6 +509,7 @@ if one of them does not let `udocker` enter (typically an installation under `/r
 - Or reinstall the agent with an installation directory outside that directory (for example `/opt/gpuworks`).
 
 Before installation, the SSH precheck reports the same condition as a failure or warning in `Install directory path access` (see [Installation Directory Checks](connect-nodes.md#安装目录检查)).
+It is a failure when the probe can establish that the SSH user is root, that the agent will use runveil and the dedicated user, and that the directory really is closed to that user. SSH installation and cloud one-click installation then stop before uploading the agent (400 `NODE_INSTALL_DIR_UNTRAVERSABLE`), and the error names the blocked directory and the `chmod o+x` command. Uncertain cases, such as a non-root SSH user, docker or nerdctl on the host, an install that explicitly selects another runtime, or a directory with an ACL, are only warnings and the installation continues.
 The node page diagnostics, the agent's runtime log warning, and the CLI `gpuworks-agent doctor --state <directory>` (when that directory already contains a `udocker` directory) use the same verdict.
 After the fix, run the diagnosis again; restarting the agent is unnecessary.
 

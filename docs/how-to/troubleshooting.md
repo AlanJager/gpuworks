@@ -510,6 +510,7 @@ root agent 以专用用户 `udocker` 启动工作负载。agent 会自己开放�
 - 或把 agent 重装到不在该目录之下的安装目录（如 `/opt/gpuworks`）。
 
 安装前，SSH 预检查的 `Install directory path access` 对同一条件给出失败或警告（见[安装目录检查](connect-nodes.md#安装目录检查)）。
+探测能确定 SSH 用户是 root、会用 runveil 和专用用户、且目录确实对该用户关闭时为失败，此时 SSH 安装和云主机一键安装在上传 agent 前停止（400 `NODE_INSTALL_DIR_UNTRAVERSABLE`），并在报错中给出被挡住的目录和 `chmod o+x` 命令；SSH 用户不是 root、本机有 docker 或 nerdctl、安装显式选了其他运行时、目录带 ACL 等不确定的情况只是警告，安装继续。
 节点页的诊断、agent 的运行日志告警和 CLI `gpuworks-agent doctor --state <目录>`（该目录下已有 `udocker` 目录时）使用同一份判断。
 修复后重新诊断即可，不必重启 agent。
 

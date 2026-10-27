@@ -45,6 +45,7 @@ const (
 	ErrorNodeInstallExistingAgentUnknown        = "NODE_INSTALL_EXISTING_AGENT_UNKNOWN"
 	ErrorNodeInstallExistingAgentSelf           = "NODE_INSTALL_EXISTING_AGENT_SELF"
 	ErrorNodeInstallExistingAgentSameDir        = "NODE_INSTALL_EXISTING_AGENT_SAME_DIR"
+	ErrorNodeInstallDirUntraversable            = "NODE_INSTALL_DIR_UNTRAVERSABLE"
 	ErrorNodeStoreUnavailable                   = "NODE_STORE_UNAVAILABLE"
 	ErrorNodeRecoveryUnavailable                = "NODE_RECOVERY_UNAVAILABLE"
 	ErrorPlatformSSHKeyMissing                  = "PLATFORM_SSH_KEY_MISSING"

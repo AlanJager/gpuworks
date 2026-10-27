@@ -176,6 +176,7 @@ SSH 入口不可达、用户名／密码／私钥不对，或选了**仅终端**
 - **ownership / filesystem 警告**：`/workspace` 这类持久卷往往是不能改属主的网络文件系统，需结合目录权限和文件系统限制判断是否可用。
 - **file names 失败**：RunPod 的 `/workspace` 不允许文件名带冒号，runveil 在那里跑不了部署，agent 需安装在容器盘上；不能仅因目录持久化就选它。
 - **noexec 导致失败**：该目录不能执行程序，安装会直接失败。
+- **Install directory path access 失败**：安装目录位于 `/root` 或私有主目录等专用运行用户 `udocker` 进不去的上级目录之下，且探测确定 agent 以 root 运行、会用 runveil（实例上没有可用的 docker 或 nerdctl）和专用用户，之后每次启动都会 `permission denied`，因此安装在上传 agent 前停止（400 `NODE_INSTALL_DIR_UNTRAVERSABLE`），报错给出被挡住的目录；执行 `chmod o+x <目录>` 或改用其他安装目录后重试。实例上有 docker 或 nerdctl 等无法确定会用 runveil 的情况只显示警告，安装继续。
 
 需要把 agent 安装到兼容的持久卷或数据盘时，在安装弹窗**高级**里填写安装目录。显式填写的目录不可写时安装失败，不会回退；先处理目录问题，再重试。
 
