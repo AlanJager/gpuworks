@@ -1,5 +1,5 @@
 import { GlobalOutlined } from "@ant-design/icons";
-import { Button, Dropdown, Tooltip, type MenuProps } from "antd";
+import { Button, Dropdown, type MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 
 export default function LanguageSwitcher({ light = false }: { light?: boolean }) {
@@ -25,15 +25,14 @@ export default function LanguageSwitcher({ light = false }: { light?: boolean })
       placement="bottomRight"
       trigger={["click"]}
     >
-      <Tooltip title={t("language.switch")}>
-        <Button
-          type={light ? "text" : "default"}
-          icon={<GlobalOutlined />}
-          aria-label={t("language.switch")}
-        >
-          {compactLabels[current]}
-        </Button>
-      </Tooltip>
+      <Button
+        type={light ? "text" : "default"}
+        icon={<GlobalOutlined />}
+        aria-label={t("language.switch")}
+        title={t("language.switch")}
+      >
+        {compactLabels[current]}
+      </Button>
     </Dropdown>
   );
 }
