@@ -316,3 +316,24 @@ func TestLegacyDesiredStateIsPulledAsListed(t *testing.T) {
 		t.Fatal("a legacy list must not be probed")
 	}
 }
+
+func TestLocalDiskExhaustionDoesNotFallBackOrBlameImageSources(t *testing.T) {
+	driver := &imageToleranceDriver{present: map[string]bool{}, pullErrs: map[string]error{"a.example/r:1": errTest("write /var/lib/docker/tmp/blob: no space left on device")}}
+	statuses := startWith(t, driver, proto.InstanceDesiredState{
+		Image:               "a.example/r:1",
+		ImagePullCandidates: []proto.ImagePullCandidate{{Ref: "a.example/r:1"}, {Ref: "b.example/r:1"}},
+	})
+	msg := failedMessage(statuses)
+	if !strings.Contains(msg, "insufficient disk space") || !strings.Contains(msg, "no space left on device") {
+		t.Fatalf("failure = %q, want actionable disk space error", msg)
+	}
+	if strings.Contains(msg, "image source failed") || strings.Contains(msg, "all image sources failed") {
+		t.Fatalf("failure misdiagnoses node disk exhaustion as source failure: %q", msg)
+	}
+	if got := driver.pullRefs; !reflect.DeepEqual(got, []string{"a.example/r:1"}) {
+		t.Fatalf("pulled %v, want no fallback source", got)
+	}
+	if driver.runCalls != 0 {
+		t.Fatalf("run called %d times after image pull exhausted disk", driver.runCalls)
+	}
+}

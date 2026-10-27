@@ -631,3 +631,52 @@ func TestUnmaskedLeavesPlainValuesAlone(t *testing.T) {
 		}
 	}
 }
+
+func TestWalkStopsWhenPullExhaustsLocalDisk(t *testing.T) {
+	p, _ := newPuller(t, newClock(), nil, Config{})
+	d := newDriver("docker", map[string]pullStep{
+		"a.example/x:1": fail("write /var/lib/docker/tmp/blob: no space left on device"),
+		"b.example/x:1": ok,
+	})
+	failedCalls := 0
+	_, err := p.Walk(context.Background(), d, cands("a.example/x:1", "b.example/x:1"), Options{}, Hooks{
+		Failed: func(string, error) { failedCalls++ },
+	})
+	var diskErr *DiskSpaceError
+	if !errors.As(err, &diskErr) {
+		t.Fatalf("error = %v, want DiskSpaceError", err)
+	}
+	if !strings.Contains(err.Error(), "insufficient disk space") || !strings.Contains(err.Error(), "no space left on device") {
+		t.Fatalf("error should explain local storage exhaustion: %v", err)
+	}
+	if got := d.order(); len(got) != 1 || got[0] != "a.example/x:1" {
+		t.Fatalf("pull attempts = %v, want only the first source", got)
+	}
+	if failedCalls != 0 {
+		t.Fatalf("source failure hook called %d times for a node storage failure", failedCalls)
+	}
+}
+
+func TestDiskSpaceFailureIsDetectedCaseInsensitively(t *testing.T) {
+	p, _ := newPuller(t, newClock(), nil, Config{})
+	d := newDriver("docker", map[string]pullStep{"a.example/x:1": fail("write failed: INSUFFICIENT DISK SPACE")})
+	_, err := p.Walk(context.Background(), d, cands("a.example/x:1", "b.example/x:1"), Options{}, Hooks{})
+	var diskErr *DiskSpaceError
+	if !errors.As(err, &diskErr) || len(d.order()) != 1 {
+		t.Fatalf("error=%v pulls=%v, want disk error and no fallback", err, d.order())
+	}
+}
+
+func TestWalkAcceptsAnImageRecoveredAfterDiskSpaceFailure(t *testing.T) {
+	p, _ := newPuller(t, newClock(), nil, Config{})
+	d := newDriver("docker", map[string]pullStep{"a.example/x:1": fail("write failed: no space left on device")})
+	res, err := p.Walk(context.Background(), d, cands("a.example/x:1", "b.example/x:1"), Options{}, Hooks{
+		Recovered: func(context.Context) (string, bool) { return "a.example/x:1", true },
+	})
+	if err != nil || !res.Recovered || res.Ref != "a.example/x:1" {
+		t.Fatalf("result=%+v error=%v, want the already-available image", res, err)
+	}
+	if got := d.order(); len(got) != 1 {
+		t.Fatalf("pull attempts = %v, want no fallback after recovery", got)
+	}
+}

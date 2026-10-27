@@ -48,6 +48,22 @@ var (
 	ErrCrawling = errors.New("download too slow")
 )
 
+// DiskSpaceError marks a pull failure caused by local storage exhaustion.
+// Trying another registry cannot help because every source is unpacked onto
+// the same node filesystem.
+type DiskSpaceError struct{ Err error }
+
+func (e *DiskSpaceError) Error() string { return "insufficient disk space: " + e.Err.Error() }
+func (e *DiskSpaceError) Unwrap() error { return e.Err }
+
+func diskSpaceFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no space left on device") || strings.Contains(message, "insufficient disk space")
+}
+
 // Config wires a Puller to the node. Every field is optional.
 type Config struct {
 	Log *slog.Logger
@@ -191,6 +207,14 @@ func (p *Puller) Walk(ctx context.Context, driver runtime.Driver, cands []proto.
 		}
 		err := p.pullOne(ctx, driver, c.Ref, opts, h, i < len(cands)-1)
 		if err != nil {
+			if diskSpaceFailure(err) {
+				if h.Recovered != nil {
+					if ref, ok := h.Recovered(ctx); ok {
+						return Result{Ref: ref, Recovered: true}, nil
+					}
+				}
+				return Result{}, &DiskSpaceError{Err: err}
+			}
 			if errors.Is(err, runtime.ErrRuntimeUnavailable) {
 				// The other sources fail the same way, and blaming this
 				// registry would send the reader to the wrong place.
