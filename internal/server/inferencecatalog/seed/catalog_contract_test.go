@@ -446,3 +446,29 @@ func TestDeclaredInputModalitiesCoverEveryConfigTower(t *testing.T) {
 		t.Fatal("no model carried a model_config; the rule would silently stop applying")
 	}
 }
+func TestMingTTSVoiceCloningCanLoadItsAuxiliarySnapshot(t *testing.T) {
+	catalog, err := Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range catalog.Models {
+		if model.ModelID != "inclusionai/ming-omni-tts-0.5b" {
+			continue
+		}
+		for _, spec := range model.Specs {
+			if spec.API == nil || len(spec.API.Operations) == 0 {
+				continue
+			}
+			for _, operation := range spec.API.Operations {
+				if operation.Type != inferenceapi.OperationAudioSpeech {
+					continue
+				}
+				if spec.Env["HF_HUB_OFFLINE"] != "0" || spec.Env["TRANSFORMERS_OFFLINE"] != "0" {
+					t.Errorf("%s voice-clone environment=%v; online auxiliary snapshot loading must be explicitly enabled", spec.Name, spec.Env)
+				}
+			}
+		}
+		return
+	}
+	t.Fatal("Ming-omni-tts model is absent from embedded catalog")
+}
