@@ -39,15 +39,20 @@ func aliyunBackend(t *testing.T) *vmBackend {
 			return eachAliyunShape(t, p, cards, minVRAMMB, try)
 		},
 		ModelEndpoint: modelEndpoint, Image: image, DistributedImage: image,
-		// 300 GiB: the udocker case pulls the 50 GB runner image into its own
-		// store (a second copy next to the golden Docker one) and unpacks a
-		// container from it; the 160 GiB disk had 3.1 GiB left after one pull.
+		// 300 GiB: the udocker case keeps the runner image four times on the VM
+		// at once while it imports: the golden Docker store, the saved tar it
+		// serves, the tar the node downloads, and udocker's own layers (the tar
+		// copies are deleted as soon as they are loaded); the container it then
+		// unpacks is a fifth. The 160 GiB disk had 3.1 GiB left after a pull.
 		UdockerDiskGB: 300, UdockerOnDemand: true,
+		// The golden image carries the runner in Docker only, and udocker has its
+		// own store: the case saves it and imports it through the platform's
+		// "import from URL" path instead of pulling ~30 GiB from a registry per
+		// rank. No pull mirror is set, so an import that failed cannot be hidden
+		// by a deployment that quietly pulls.
+		UdockerImageFromURL: true,
 		// The login is root: keep agent state off /tmp (see newHostedControlPlane).
 		HostedRoot: "/opt",
-		// Only the udocker case pulls (it imports the image into its own store);
-		// Docker cases find the image already on the VM and never pull.
-		PullMirror: gpustackMirrorEndpoints,
 		PreloadedModelPath: func(*testing.T) string {
 			if path := strings.TrimSpace(secrets["ALIYUN_PRELOADED_MODEL_PATH"]); path != "" {
 				return path

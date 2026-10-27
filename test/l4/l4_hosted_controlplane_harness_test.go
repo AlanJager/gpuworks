@@ -51,6 +51,10 @@ type hostedControlPlaneConfig struct {
 	OnDemand   bool
 	SkipAgents bool
 	PrepareVMs func(*testing.T, []*cloudTestEnv)
+	// ArchiveFromVMs lets the control plane read image archives that the VMs
+	// serve on their private addresses (outbound_allow_private_hosts), for the
+	// case that imports an image from a URL instead of pulling it.
+	ArchiveFromVMs bool
 }
 
 type hostedControlPlane struct {
@@ -65,6 +69,9 @@ type hostedControlPlane struct {
 	gpuModel  string
 	gpusPerVM int
 	cleanup   sync.Once
+	// archiveDirs maps a VM rank to the directory it serves an image archive
+	// from (see l4_hosted_image_archive_test.go); Close removes them.
+	archiveDirs sync.Map
 }
 
 func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hostedControlPlane {
@@ -136,9 +143,15 @@ func newHostedControlPlane(t *testing.T, config hostedControlPlaneConfig) *hoste
 	if err != nil {
 		t.Fatal(err)
 	}
+	var allowPrivateHosts []string
+	if config.ArchiveFromVMs {
+		if allowPrivateHosts, err = hostedPrivateAddresses(VMs); err != nil {
+			t.Fatal(err)
+		}
+	}
 	serverScript, err := hostedServerLaunchScript(hostedServerLaunch{
 		Root: root, PrivateIP: VMs[0].Instance.PrivateIP, Port: hostedControlPlanePort,
-		AdminPassword: adminPassword,
+		AdminPassword: adminPassword, OutboundAllowPrivateHosts: allowPrivateHosts,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -396,6 +409,7 @@ func (h *hostedControlPlane) Close() {
 		if h.API != nil {
 			h.API.Close()
 		}
+		h.cleanupArchives(context.Background())
 		for rank, vm := range h.VMs {
 			if vm == nil || vm.Instance == nil {
 				continue
@@ -560,12 +574,24 @@ func hostedRepoRoot() (string, error) {
 type hostedServerLaunch struct {
 	Root, PrivateIP, AdminPassword string
 	Port                           int
+	// OutboundAllowPrivateHosts, when set, starts the server with a server.yaml
+	// that lets it read HTTP sources at these private addresses.
+	OutboundAllowPrivateHosts []string
 }
 
 func hostedServerLaunchScript(config hostedServerLaunch) (string, error) {
 	privateURL, err := hostedPrivateURL(config.PrivateIP, config.Port)
 	if err != nil || strings.TrimSpace(config.Root) == "" || strings.TrimSpace(config.AdminPassword) == "" {
 		return "", errors.New("invalid hosted server launch configuration")
+	}
+	configFlag, configFile := "", ""
+	if len(config.OutboundAllowPrivateHosts) > 0 {
+		yaml, err := hostedServerConfigYAML(config.OutboundAllowPrivateHosts)
+		if err != nil {
+			return "", err
+		}
+		configFile = "printf '%s' " + shellQuoteForTest(yaml) + ` >"$root/server.yaml"` + "\n"
+		configFlag = ` --config "$root/server.yaml"`
 	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
@@ -575,7 +601,7 @@ if [ -s "$root/server.pid" ]; then kill "$(cat "$root/server.pid")" 2>/dev/null 
 # The first start creates the admin account from this file, as after an install.
 umask 077
 printf '{"user":"admin","password":"%%s"}\n' %s >"$root/data/initial-credentials"
-nohup "$root/bin/gpuworks" serve --addr %s --data "$root/data" --recovery-enabled=false >"$root/log/server.log" 2>&1 </dev/null &
+%snohup "$root/bin/gpuworks" serve --addr %s --data "$root/data" --recovery-enabled=false%s >"$root/log/server.log" 2>&1 </dev/null &
 pid=$!
 printf '%%s\n' "$pid" > "$root/server.pid"
 for attempt in $(seq 1 120); do
@@ -584,7 +610,7 @@ for attempt in $(seq 1 120); do
   sleep 1
 done
 exit 1
-`, shellQuoteForTest(config.Root), shellQuoteForTest(config.AdminPassword), shellQuoteForTest(net.JoinHostPort(config.PrivateIP, strconv.Itoa(config.Port))), privateURL), nil
+`, shellQuoteForTest(config.Root), shellQuoteForTest(config.AdminPassword), configFile, shellQuoteForTest(net.JoinHostPort(config.PrivateIP, strconv.Itoa(config.Port))), configFlag, privateURL), nil
 }
 
 type hostedAgentLaunch struct {

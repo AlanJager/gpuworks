@@ -57,6 +57,12 @@ type vmBackend struct {
 	// reclaim is likely.
 	UdockerDiskGB   int
 	UdockerOnDemand bool
+	// UdockerImageFromURL gives the udocker nodes the runner image from the
+	// VM's own Docker store instead of a registry pull: each VM saves it as an
+	// archive, serves it on its private address, and the platform imports it to
+	// the node from that URL (see l4_hosted_image_archive_test.go). For
+	// providers whose golden image carries the image in Docker.
+	UdockerImageFromURL bool
 	// DockerTestImage is the image the Docker NCCL probe starts; empty means
 	// DistributedImage.
 	DockerTestImage string

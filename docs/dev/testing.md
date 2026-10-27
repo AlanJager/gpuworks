@@ -330,8 +330,14 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 - **udocker 用例**：这个用例要求三件事。agent 状态不能放在 `/tmp` 下（所以阿里云 backend 的 `HostedRoot` 是 `/opt`）：udocker 把一个私有目录绑到 guest 的 `/tmp`，
   盖住了 `ensureHostRootLoopback` 在 `ROOT/tmp/...` 下放的回环链接，引擎按 `/proc/self/maps` 里的宿主路径 dlopen `libcudart` 就找不到（实测文件在 ROOT 里，guest 里解析不到）。
   root 登录的 agent 以专用用户 `udocker` 跑工作负载，所以 `$root` 要 `chmod 711`，否则 PRoot 报 `fork/exec .../proot-x86_64: permission denied`。
-  runner 镜像在 udocker 自己的存储里再拉一份（约 30 GiB 解包，加上拉取，160 GiB 系统盘只剩 3.1 GiB），所以这个用例的系统盘是 300 GiB，
-  并且整个用例约半小时到一小时，用按量实例而不是抢占式（`GPUSpec.OnDemand`），避免中途被回收。拉取走 SWR 镜像，偶尔拉到末尾换源重来，要多等十几分钟。
+  udocker 有自己的镜像存储，黄金镜像里 Docker 存的 runner 镜像它用不上；该用例不去 registry 拉（每个 rank 拉一遍要 25 到 40 分钟，偶尔拉到末尾换源重来），
+  而是走平台的「从 URL 导入」：每台 VM 上 `docker save` 出未压缩的归档（约 14 GiB，约 4 分钟），用一个支持 HEAD 与 Range 的小文件服务（`python3` 脚本，只绑私网地址 18881，只服务这一个文件）发布，
+  server 以 `outbound_allow_private_hosts` 放行两台 VM 的私网地址，用例再像运维一样调管理 API：`POST /images/preview-archive-url` 解析归档、
+  把两个归档 URL 登记到 runner 镜像的获取地址（目录没有该镜像时按控制台的自定义镜像表单新建）、对每个节点 `POST /images/{id}/nodes/{uuid}/sync`（`source=url`）让节点从**自己所在 VM** 直连下载并 load，
+  等到节点镜像行为 `present` 才创建部署，部署之后还会确认镜像行仍是 `present`、来源仍是 `url`。归档与文件服务在导入完成后立即删除/停止。
+  用例日志记录每个 rank 的 `save`、`download`、`load` 与合计耗时（下载与 load 的分界取自镜像行的消息，精度为轮询间隔）；2026-10-27 实测 save 约 4 分钟，下载约 1 分钟、load 约 15 秒，整个用例约 11 分钟。
+  系统盘仍是 300 GiB：导入期间同一块盘上同时有 Docker 存储、待发布的归档、节点下载的归档和 udocker 层（两份归档在 load 后即删），之后还要解包容器。
+  整个用例用按量实例而不是抢占式（`GPUSpec.OnDemand`），避免中途被回收。
   失败时 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` 现在对多机用例也生效：失败的 VM 会保留并写出凭据文件。
 
 黄金镜像由 `make prepare-aliyun-golden-image` 制作：以阿里云公共镜像

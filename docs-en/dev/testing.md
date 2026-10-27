@@ -334,8 +334,14 @@ and share their scenario implementations with CompShare (`vmBackend`: the provid
 - **udocker case**: it needs three things. Agent state must not live under `/tmp` (so the Aliyun backend's `HostedRoot` is `/opt`): udocker binds a private directory over the guest's `/tmp`,
   which hides the loopback link `ensureHostRootLoopback` puts under `ROOT/tmp/...`, so an engine that dlopens `libcudart` by the host path `/proc/self/maps` shows cannot find it (measured: the file is in ROOT, unresolvable in the guest).
   A root login's agent runs workloads as the dedicated `udocker` user, so `$root` is `chmod 711`; without it PRoot fails with `fork/exec .../proot-x86_64: permission denied`.
-  The runner image is pulled again into udocker's own store (about 30 GiB to unpack, and with the pull a 160 GiB system disk was down to 3.1 GiB), so this case uses a 300 GiB system disk,
-  and because the case runs half an hour to an hour it rents on-demand instead of spot (`GPUSpec.OnDemand`) so a reclaim cannot end it. The pull comes from the SWR mirror and now and then restarts from another source near the end, which costs another dozen minutes.
+  udocker has its own image store and cannot use the runner image the golden image keeps in Docker. The case does not pull it from a registry (a pull takes 25 to 40 minutes per rank and now and then restarts from another source near the end).
+  It goes through the platform's "import from URL" instead: each VM runs `docker save` to an uncompressed archive (about 14 GiB, about 4 minutes) and publishes it with a small file server that answers HEAD and Range (a `python3` script bound only to the private address, port 18881, serving that one file);
+  the server allows both VMs' private addresses through `outbound_allow_private_hosts`; and the case then calls the management API the way an operator does: `POST /images/preview-archive-url` to read the archive,
+  record both archive URLs on the runner image's fetch addresses (a custom image is created from the console's form when the catalog lacks it), and `POST /images/{id}/nodes/{uuid}/sync` (`source=url`) per node so the node downloads directly from **its own VM** and loads it.
+  The deployment is created only once the node image row is `present`, and after it the case checks the row is still `present` from `url`. The archives and file servers are deleted/stopped as soon as the import finishes.
+  The case log records each rank's `save`, `download`, `load` and total times (the download/load boundary is read from the image row's message, so it is as fine as the polling interval); measured on 2026-10-27: save about 4 minutes, download about 1 minute, load about 15 seconds, the whole case about 11 minutes.
+  The system disk stays 300 GiB: during the import the same disk holds the Docker store, the archive being served, the archive the node downloaded and udocker's layers (both archives are deleted after the load), and the container still has to be unpacked afterwards.
+  The case rents on-demand instead of spot (`GPUSpec.OnDemand`) so a reclaim cannot end it.
   On failure `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` now works for the multi-VM cases too: the failed VM is kept and a credentials file written.
 
 The golden image is built by `make prepare-aliyun-golden-image`: it starts a T4 instance from Alibaba Cloud's public image
