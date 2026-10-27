@@ -1,0 +1,160 @@
+# Merge-request gates on GitHub-hosted runners: the same checks as the core
+# stage of .gitlab-ci.yml (UI build and tests, unit suite, vet, the strict
+# L2/L3 Docker suites and the offline CompShare contracts). Hosted runners are
+# fresh VMs with a local Docker daemon, so L2/L3 run directly against it
+# instead of the per-job DinD the shared GitLab shell runners need, and reach
+# Docker Hub, quay.io, proxy.golang.org and npmjs without mainland mirrors.
+#
+# Nothing here uses a secret or a self-hosted runner, so a pull request from a
+# fork runs with the same read-only token as any other. Cloud and hardware
+# acceptance (L4), release publishing and the docs build stay in GitLab.
+name: ci
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
+  # Servers started by CI jobs never send usage reports (ADR 0054).
+  GPUWORKS_USAGE_REPORT: "off"
+
+jobs:
+  ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: node scripts/i18n-check.mjs
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui
+      - run: npm run lint:i18n
+        working-directory: ui
+      - run: npm run build
+        working-directory: ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webui-dist
+          # Vite writes directly to the directory embedded by the Go server.
+          path: internal/server/webui/dist/
+          retention-days: 1
+
+  ui-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      # The macOS serve adapters' tests need only python3.
+      - run: make test-host-env-adapters
+      - run: make test-strata-queue-assets
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui
+      - run: npm run test:coverage
+        working-directory: ui
+
+  test:
+    needs: ui
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # check_architecture.sh compares scripts/arch-constraints.txt with
+          # its copy at the merge base with origin/master.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: webui-dist
+          path: internal/server/webui/dist/
+      - run: ./scripts/check_time_policy.sh
+      - run: ./scripts/check_architecture.sh
+      - run: ./scripts/check_ci_yaml.sh
+      - run: CGO_ENABLED=0 go run ./scripts/artifactsindex
+      - run: make test-e2e-coverage-check
+      - run: (cd build/runtime-assets/hygon-vdev-helper && CGO_ENABLED=0 go test -timeout 5m ./...)
+      - run: CGO_ENABLED=0 go test -timeout 30m -coverprofile=coverage-core.out ./...
+      # Build-tag suites run in their own jobs; compile them here so a
+      # refactor cannot silently break an opt-in lane.
+      - run: make check-tagged-build
+
+  vet:
+    needs: ui
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: webui-dist
+          path: internal/server/webui/dist/
+      - run: CGO_ENABLED=0 go vet ./...
+
+  compshare-offline-contracts:
+    needs: ui
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: webui-dist
+          path: internal/server/webui/dist/
+      - run: make test-l4-compshare-offline-contracts
+
+  docker-suite:
+    needs: ui
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [l2, l3]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # A missing Docker daemon or fixture image must fail, not skip.
+      GPUWORKS_TEST_STRICT: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: webui-dist
+          path: internal/server/webui/dist/
+      - run: docker info
+      - run: make test-${{ matrix.suite }} GO_TEST_FLAGS=-v COVERPROFILE=coverage-${{ matrix.suite }}.out
+      - name: Count skipped cases
+        if: always()
+        run: grep -c -- '--- SKIP' .testlogs/${{ matrix.suite }}.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ${{ matrix.suite }}-log
+          path: .testlogs/
+          retention-days: 14
