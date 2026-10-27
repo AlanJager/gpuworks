@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -93,12 +94,23 @@ func deploymentListSorters(rows dtoLookup) listSorters[*store.Deployment] {
 		return states[d.ID]
 	}
 	return listSorters[*store.Deployment]{
-		"name":       func(a, b *store.Deployment) int { return compareText(a.Name, b.Name) },
-		"model":      func(a, b *store.Deployment) int { return compareText(modelName(a), modelName(b)) },
-		"state":      func(a, b *store.Deployment) int { return cmp.Compare(state(a), state(b)) },
-		"replicas":   func(a, b *store.Deployment) int { return cmp.Compare(a.Replicas, b.Replicas) },
+		"name":  func(a, b *store.Deployment) int { return compareText(a.Name, b.Name) },
+		"model": func(a, b *store.Deployment) int { return compareText(modelName(a), modelName(b)) },
+		"state": func(a, b *store.Deployment) int { return cmp.Compare(state(a), state(b)) },
+		"replicas": func(a, b *store.Deployment) int {
+			return cmp.Compare(deploymentListReplicas(a), deploymentListReplicas(b))
+		},
 		"created_at": func(a, b *store.Deployment) int { return a.CreatedAt.Compare(b.CreatedAt) },
 	}
+}
+
+// deploymentListReplicas counts requested service replicas, including both PD
+// roles. The stored Replicas field only configures ordinary deployments.
+func deploymentListReplicas(d *store.Deployment) int {
+	if pd, err := planning.PDOf(d.Placement); err == nil && pd != nil {
+		return pd.InstanceCount()
+	}
+	return d.Replicas
 }
 
 // deploymentMatches applies a list query's filters to one deployment.
@@ -120,6 +132,16 @@ func deploymentMatches(rows dtoLookup, d *store.Deployment, query listQuery) boo
 // deploymentListItem is the list row of a deployment DTO; preparation is the
 // one line it shows of the DTO's model progress.
 func deploymentListItem(d dto.Deployment, preparation *dto.ModelNodePresence) dto.DeploymentListItem {
+	// PD readiness already accounts for sleeping instances and incomplete
+	// multi-node groups. Reuse the role summary rather than count containers.
+	if d.PD != nil {
+		desired, ready := 0, 0
+		for _, role := range d.PD.Roles {
+			desired += role.Desired
+			ready += role.Ready
+		}
+		d.Replicas, d.ReadyReplicas = desired, &ready
+	}
 	return dto.DeploymentListItem{
 		Preparation: preparation, ID: d.ID, Name: d.Name, TemplateID: d.TemplateID, TemplateDeviated: d.TemplateDeviated,
 		Engine: d.Engine, Image: d.Image, ModelID: d.ModelID, ModelName: d.ModelName, ServedName: d.ServedName,

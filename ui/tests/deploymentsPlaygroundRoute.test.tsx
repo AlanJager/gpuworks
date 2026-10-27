@@ -237,7 +237,7 @@ test("deployment list keeps template, served name and endpoint off the row and d
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><Routes><Route path="/deployments" element={<DeploymentsPage />} /></Routes></MemoryRouter></I18nextProvider>);
   await screen.findByRole("button", { name: "templated" });
   const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-  assert.deepEqual(headers.filter(Boolean), ["Name", "Model", "Engine / Image", "Compute Node", "State", "Health", "Replicas", "Created", "Actions"]);
+  assert.deepEqual(headers.filter(Boolean), ["Name", "Model", "Engine / Image", "Compute Node", "State", "Health", "Ready / desired replicas", "Created", "Actions"]);
   assert.equal(screen.queryByText("public-name"), null, "the served name lives in the detail, not the row");
   assert.equal(screen.queryByText(/Inference Template/), null, "the template badge no longer crowds the name");
   assert.equal(screen.queryByRole("button", { name: /Delete/ }), null, "delete sits behind the more menu");

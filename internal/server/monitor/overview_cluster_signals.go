@@ -186,12 +186,13 @@ func resolveNodeNames(dep DeploymentRef, instances []InstanceRef, nodeNames map[
 	return out
 }
 
-// countRunning counts running, API-facing replicas. A headless distributed
-// worker (InstanceRef.Headless) is a process-group participant, not a
-// replica the product presents to users, so it never contributes to
-// ready/desired counts - counting a leader-plus-followers TP/PP group as N
-// replicas would overstate capacity by exactly the follower count.
-func countRunning(instances []InstanceRef) int {
+// ReadyReplicas uses the domain readiness count when supplied; otherwise it
+// counts running API-facing leaders. Headless workers never count as replicas.
+// Both the cluster overview and deployment detail use this policy.
+func ReadyReplicas(dep DeploymentRef, instances []InstanceRef) int {
+	if dep.ReplicasReady != nil {
+		return *dep.ReplicasReady
+	}
 	n := 0
 	for _, inst := range instances {
 		if inst.Headless {
