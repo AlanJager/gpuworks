@@ -705,10 +705,10 @@ nerdctl 上超过 1 GiB 的层按 0.1 GiB 显示进度，卡住时限相应放�
 
 runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`）会记录连接预算的决定。出现下列情况，先判断是仓库在限制连接，而不是网络慢：
 
-- 日志里反复出现 `download connections backed off`，原因是 `throttled`（仓库回 429/503 或拒绝连接）或 `connection resets`（连接被重置）：仓库或代理在限制来源地址，agent 已自动减半连接并等待。通常无需处理；拉取明显变慢但持续有进展，说明预算已降到仓库能接受的水平。
-- 拉取报错含 `429` 或 `503`，且重试几次后失败：仓库持续拒绝。确认私有仓库（Harbor、SWR、ACR）或代理对每个来源地址的连接数、请求频率限制，必要时调高，或用 `--image-pull-max-connections 2` 给节点封顶后重启 agent；多个候选来源时，失败后会换下一个来源。
-- 日志出现 `download connections limited to one: the server ignores ranges`：仓库或代理不支持 Range 请求，这一层改用单连接，速度受单连接限制；换用支持 Range 的来源或调整代理。
-- 日志出现 `download connection recycled` 且原因是 `far below its siblings`、`collapsed from its own peak` 或 `below the absolute floor`：某条连接明显慢于同一次拉取里的其他连接，已换新连接并从原位置继续，属于正常自愈。整条链路都慢不会触发更换；此时拉取慢是链路本身的速度，见[候选为何切换，何时判定卡住](#候选为何切换何时判定卡住)。
+- 日志里反复出现 `download connections backed off`，原因是 `throttled`（仓库回 429/503 或拒绝连接，拒绝连接会等待后重试）或 `connection resets`（连接被重置）：仓库或代理在限制来源地址，agent 已自动减半连接并等待。通常无需处理；拉取明显变慢但持续有进展，说明预算已降到仓库能接受的水平。
+- 拉取报错含 `429` 或 `503`，且重试几次后失败：仓库持续拒绝。确认私有仓库（Harbor、SWR、ACR）或代理对每个来源地址的连接数、请求频率限制，必要时调高，或用 `--image-pull-max-connections 2` 给节点封顶后重启 agent（范围 0 到 32）；多个候选来源时，失败后会换下一个来源。
+- 日志出现 `registry ignores Range: reading the layer whole`：仓库或代理对这一层不支持 Range 请求，这一层改用单连接整块读取，速度受单连接限制；换用支持 Range 的来源或调整代理。
+- 日志出现 `download connection recycled`（同一原因连续两个窗口才会换）且原因是 `far below its siblings`、`collapsed from its own peak` 或 `below the absolute floor`：某条连接明显慢于同一次拉取里的其他连接，已换新连接并从原位置继续，属于正常自愈。整条链路都慢不会触发更换；此时拉取慢是链路本身的速度，见[候选为何切换，何时判定卡住](#候选为何切换何时判定卡住)。
 
 ### digest 引用需要额外核对什么
 

@@ -77,7 +77,7 @@
   "explanation/topologies.md": "5f6c2683cfbdd6f259aa39a9baf9a75b6d76586ddf2738bae6647a23fdb326d2",
   "how-to/benchmark.md": "dc634b5782e0612b9be813e8ead3a6753a46ec6d9d6707bba52e528a907f1f67",
   "how-to/configure-networks.md": "2ea7bdc81e68818ace96e9d304c9e6494bfb936e0e5b81f7337d8f80bc849e12",
-  "how-to/configure-pull-settings.md": "909c1226cee42e8dc710019818c5d8734125f44c0e197c9e972734953db252fa",
+  "how-to/configure-pull-settings.md": "4b91525ac8010d426a08f7595071b7c7e17f7be334331a96200f8183f9e9f18d",
   "how-to/connect-nodes.md": "06c10e6d88b8ccc0c5114dc8b131d0347563926e9f020458ae244fc79c48ac6f",
   "how-to/declare-engine-metrics.md": "be1fb8eef925f9a4b1fbc20d8dbf3bc4eef9ba3b4ddb4ebc98e0581ff0ca8a49",
   "how-to/dgpu.md": "9559f1e3ddaa9f96be99c5a403ffc5c448b114606f01aeedf166b6dee9010fe1",
@@ -98,12 +98,12 @@
   "how-to/sleep-wake.md": "16dee67872ff223da6a2a6f28af60c6959d9647aadfb641e92a13e999966d9cb",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "reference/api-conventions.md": "a40ef7cc9dbfcf2cf050845693243fb8ccd9bd21b071b891d7afe6361873d482",
-  "how-to/troubleshooting.md": "cfbeb711604ec6dfc371ff62760b4d8013024cb775e2e68491fa31fe2ec26dd0",
+  "how-to/troubleshooting.md": "bada909900cecc939fd0ffed7580a9a0a4834b064072682140c8bd38a4158878",
   "how-to/upgrade-and-compatibility.md": "6bdaf526b14dfa03ca6549be64e17e7aa81ce1fc1b949d5179f27d68cb2a433c",
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
   "reference/api.md": "697232443e75f26272f1af3d82188a5736f56ec19e0c33ab56b6a91ea152966e",
   "reference/ascend-support-matrix.md": "78bb969b8b0686f0884ef68c070f875351febbf6a42e038e92ef7c99d4422fef",
-  "reference/cli.md": "618accd9e1026c2eccb5b39dc512f3919d8db618ddad6ac5be1eb9aee4be0fdb",
+  "reference/cli.md": "c356ae28933b5297c6cfee39409d1046bbfa15970e02bbc4dc1995086e3d1c83",
   "reference/configuration.md": "9216338edef60622fedea6e1f6d510ba2ffe5f4b3e5cd3c9f4be73fb3c2afaec",
   "reference/deployment-launch-sources.md": "b9601e10fb3cb2e9a2f4bb7f90aa4c8315ee1ece7fcd8aff767c246acff945aa",
   "reference/glossary.md": "d5cc6029e2baa7ab7c33d87cb58817397dc1c5daa636c69eef10475e52ab13a2",
@@ -122,5 +122,5 @@
   "adr/0055-long-term-statistics.md": "93c7c3918efd24fdee0dbcc8d7fa4ca52e507f75a3d4469a732acab10c85288f",
   "how-to/analyze-operations.md": "65d76cc6ab3bf608fdf25632e1140644811560e66c039e5c4d96dd0bd5a45185",
   "dev/engine-queue-observation.md": "178a2b29a515f01f6856c133aa0810b3b0be5d95b3a38ea07ccd7d3486474cd0",
-  "adr/0056-image-pull-connection-budget.md": "674ba2925e140a538caa968311bb57d0b9948ecfc369b51095a96cc84f3cf9a5"
+  "adr/0056-image-pull-connection-budget.md": "ccaf291f99ca23252c8247cba90dca621ad8a22db0502035cbae2879423ada24"
 }

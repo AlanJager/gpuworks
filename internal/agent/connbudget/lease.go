@@ -21,7 +21,7 @@ type Lease struct {
 	judged   bool
 	lastRate float64
 	peak     float64
-	strikes  int // consecutive windows judged slow by comparison
+	strikes  int // consecutive windows judged slow
 }
 
 // Release gives the token back; it is safe to call more than once and on a
@@ -54,10 +54,10 @@ func (l *Lease) Release() {
 //   - below SlowRatio of its own best window, while most siblings kept their
 //     own: a connection that was fine and collapsed.
 //
-// A comparison must hold in two windows in a row before it recycles a
+// Any of them must hold in two windows in a row before it recycles a
 // connection (the siblings' windows end at other moments, so one window can
-// compare against a link that has since changed); the floor acts at once.
-// However many connections qualify, no more than half of the session's open
+// compare against a link that has since changed, and one slow window can be a
+// hiccup). However many connections qualify, no more than half of the session's open
 // connections are replaced within one window, so a pull is never torn down all
 // at once; the rest are judged again at their next window.
 func (l *Lease) Observe(n int64) (crawling bool) {
@@ -102,28 +102,25 @@ func (s *Session) judge(l *Lease, now time.Time, rate float64) bool {
 	}
 	median := medianOf(siblings)
 	var reason string
-	relative := false
 	switch {
 	case rate < float64(s.cfg.SlowFloor):
 		reason = "below the absolute floor"
 	case len(siblings) >= 2 && rate < median*s.cfg.SlowRatio:
-		reason, relative = "far below its siblings", true
+		reason = "far below its siblings"
 	case rate < l.peak*s.cfg.SlowRatio && (len(siblings) == 0 || healthy*2 >= len(siblings)):
-		reason, relative = "collapsed from its own peak", true
+		reason = "collapsed from its own peak"
 	default:
 		l.strikes = 0
 		return false
 	}
 	// A comparison is only as good as the siblings' last windows, which end at
 	// other moments than this one: when the whole link slumps, the first
-	// connection to close a window still sees siblings from before it. So a
-	// connection that is slow by comparison must be so in two windows in a row,
-	// by which time the siblings' windows have caught up. The absolute floor
-	// needs no comparison and acts at once.
-	if relative {
-		if l.strikes++; l.strikes < 2 {
-			return false
-		}
+	// connection to close a window still sees siblings from before it. And a
+	// single window below the floor can be a stall in the middle of a healthy
+	// transfer (a retransmission timeout, a CDN hiccup). So a connection must be
+	// judged slow in two windows in a row before it is replaced.
+	if l.strikes++; l.strikes < 2 {
+		return false
 	}
 	// Never recycle the whole pull at once: at most half of the open
 	// connections (one, when there is only one) per window.

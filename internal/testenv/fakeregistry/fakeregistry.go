@@ -52,8 +52,15 @@ type Options struct {
 	RetryAfter     int
 	ResetOverLimit bool
 
-	// IgnoreRange answers every request with the whole blob and status 200.
+	// IgnoreRange answers every request with the whole blob and status 200;
+	// Registry.IgnoreRangeFor does the same for chosen blobs only.
 	IgnoreRange bool
+
+	// Latency delays every blob request before its answer starts (the round
+	// trip); ConnectLatency is added to the first request on a connection (TCP
+	// and TLS set-up, slow start). A link with latency is where a new
+	// connection's first moments deliver little.
+	Latency, ConnectLatency time.Duration
 }
 
 // Fault is what a request is made to suffer instead of being served.
@@ -110,16 +117,24 @@ type Registry struct {
 	opts  Options
 	serve *host
 
-	mu    sync.Mutex
-	blobs map[string][]byte
-	fault func(Request) *Fault
-	seen  []Request
+	mu          sync.Mutex
+	blobs       map[string][]byte
+	fault       func(Request) *Fault
+	seen        []Request
+	ignoreRange map[string]bool
+
+	refuseMu   sync.Mutex
+	serving    *httptest.Server
+	refusing   bool
+	refuseAddr string
+	reopened   net.Listener
 }
 
 type connInfo struct {
 	id     int
 	bucket *bucket
 	busy   int // requests in flight on this connection
+	served int // requests answered on this connection so far
 }
 
 type connKey struct{}
@@ -143,7 +158,7 @@ func New(t interface {
 	Cleanup(func())
 }, opts Options) *Registry {
 	t.Helper()
-	r := &Registry{opts: opts, blobs: map[string][]byte{}}
+	r := &Registry{opts: opts, blobs: map[string][]byte{}, ignoreRange: map[string]bool{}}
 	newServer := func(h http.Handler, tracked *host) *httptest.Server {
 		s := httptest.NewUnstartedServer(h)
 		s.TLS = &tls.Config{NextProtos: []string{"http/1.1"}} // HTTP/1.1 only
@@ -163,9 +178,18 @@ func New(t interface {
 	if opts.Redirect {
 		r.CDN = newServer(http.HandlerFunc(r.serveCDN), content)
 		r.Server = newServer(http.HandlerFunc(r.serveRegistry), nil)
+		r.serving = r.CDN
 	} else {
 		r.Server = newServer(http.HandlerFunc(r.serveRegistry), content)
+		r.serving = r.Server
 	}
+	t.Cleanup(func() {
+		r.refuseMu.Lock()
+		defer r.refuseMu.Unlock()
+		if r.reopened != nil {
+			r.reopened.Close()
+		}
+	})
 	return r
 }
 
@@ -181,6 +205,47 @@ func (r *Registry) AddBlob(content []byte) string {
 
 // Host is the registry's host:port, as an image reference names it.
 func (r *Registry) Host() string { return strings.TrimPrefix(r.Server.URL, "https://") }
+
+// IgnoreRangeFor makes the registry answer requests for this blob with the whole
+// blob and status 200, as one served through a path without Range support does.
+func (r *Registry) IgnoreRangeFor(digest string) {
+	r.mu.Lock()
+	r.ignoreRange[digest] = true
+	r.mu.Unlock()
+}
+
+// SetRefusing closes the serving host's listener (true) so that new
+// connections are refused at TCP level, the way a host over its connection
+// limit, or one that is down, refuses them, and listens again on the same
+// address (false). Connections already open are not touched.
+func (r *Registry) SetRefusing(refuse bool) {
+	r.refuseMu.Lock()
+	defer r.refuseMu.Unlock()
+	if refuse == r.refusing {
+		return
+	}
+	srv := r.serving
+	if refuse {
+		r.refuseAddr = srv.Listener.Addr().String()
+		_ = srv.Listener.Close()
+		r.refusing = true
+		return
+	}
+	var ln net.Listener
+	var err error
+	for i := 0; i < 50; i++ { // the port may linger for a moment
+		if ln, err = net.Listen("tcp", r.refuseAddr); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err != nil {
+		panic(fmt.Sprintf("fakeregistry: cannot listen again on %s: %v", r.refuseAddr, err))
+	}
+	r.reopened = tls.NewListener(ln, srv.TLS)
+	go func() { _ = srv.Config.Serve(r.reopened) }()
+	r.refusing = false
+}
 
 // SetFault installs a function consulted for every blob request that reaches
 // the serving host; nil removes it. It may return nil to serve normally.
@@ -369,6 +434,22 @@ func (r *Registry) content(w http.ResponseWriter, req *http.Request, digest stri
 	if info != nil {
 		conn = info.id
 	}
+	var delay time.Duration = r.opts.Latency
+	if info != nil {
+		h.mu.Lock()
+		if info.served == 0 {
+			delay += r.opts.ConnectLatency
+		}
+		info.served++
+		h.mu.Unlock()
+	}
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-req.Context().Done():
+			return
+		}
+	}
 	rq := Request{Digest: digest, Range: req.Header.Get("Range"), N: n, Conn: conn}
 	r.mu.Lock()
 	r.seen = append(r.seen, rq)
@@ -393,7 +474,10 @@ func (r *Registry) content(w http.ResponseWriter, req *http.Request, digest stri
 
 	size := int64(len(data))
 	start, end, partial, ok := parseRange(req.Header.Get("Range"), size)
-	if r.opts.IgnoreRange {
+	r.mu.Lock()
+	ignore := r.opts.IgnoreRange || r.ignoreRange[digest]
+	r.mu.Unlock()
+	if ignore {
 		start, end, partial, ok = 0, size-1, false, true
 	}
 	if !ok {
@@ -468,75 +552,4 @@ func (h *host) delay(info *connInfo, n int) time.Duration {
 		wait = max(wait, h.agg.reserve(n))
 	}
 	return wait
-}
-
-// parseRange reads "bytes=a-b", "bytes=a-" and "bytes=-n". partial is false
-// when there is no Range header at all.
-func parseRange(spec string, size int64) (start, end int64, partial, ok bool) {
-	if spec == "" {
-		return 0, size - 1, false, true
-	}
-	value, found := strings.CutPrefix(spec, "bytes=")
-	if !found || strings.Contains(value, ",") {
-		return 0, 0, false, false
-	}
-	first, last, found := strings.Cut(value, "-")
-	if !found {
-		return 0, 0, false, false
-	}
-	if first == "" {
-		suffix, err := strconv.ParseInt(last, 10, 64)
-		if err != nil || suffix <= 0 {
-			return 0, 0, false, false
-		}
-		start, end = max(0, size-suffix), size-1
-	} else {
-		var err error
-		if start, err = strconv.ParseInt(first, 10, 64); err != nil {
-			return 0, 0, false, false
-		}
-		end = size - 1
-		if last != "" {
-			if end, err = strconv.ParseInt(last, 10, 64); err != nil {
-				return 0, 0, false, false
-			}
-			end = min(end, size-1)
-		}
-	}
-	if start < 0 || start >= size || end < start {
-		return 0, 0, false, false
-	}
-	return start, end, true, true
-}
-
-// bucket is a rate limit that tells a writer how long to wait.
-type bucket struct {
-	mu   sync.Mutex
-	rate float64
-	free time.Time
-}
-
-func newBucket(rate int64) *bucket { return &bucket{rate: float64(rate)} }
-
-// reserve books n bytes and returns how long to wait before sending them.
-func (b *bucket) reserve(n int) time.Duration {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	now := time.Now()
-	if b.free.Before(now) {
-		b.free = now
-	}
-	wait := b.free.Sub(now)
-	b.free = b.free.Add(time.Duration(float64(n) / b.rate * float64(time.Second)))
-	return wait
-}
-
-// Pattern is n deterministic bytes that differ between seeds, so a blob written
-// at the wrong offset or from the wrong blob does not match.
-func Pattern(seed, n int) []byte {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = byte((i*31 + seed*131 + i>>8*7) % 251)
-	}
-	return b
 }

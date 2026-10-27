@@ -25,6 +25,10 @@ const (
 	// while more connections raise the pull's rate, so this is a ceiling, not
 	// a target.
 	DefaultMaxConnections = 16
+	// MaxConnectionsLimit is the most a configuration may ask for: the HTTP
+	// client keeps this many idle connections per host, so a larger ceiling
+	// would open connections it then cannot keep for reuse.
+	MaxConnectionsLimit = 32
 	// startConnections is where a pull's climb begins: what one large blob
 	// used before the budget, and a handful of small layers' worth.
 	startConnections = 4
@@ -34,11 +38,11 @@ const (
 	MaxConnectionsEnv = "GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS"
 )
 
-// MaxConnectionsFromEnv is the ceiling MaxConnectionsEnv asks for, or
-// DefaultMaxConnections.
+// MaxConnectionsFromEnv is the ceiling MaxConnectionsEnv asks for (at most
+// MaxConnectionsLimit), or DefaultMaxConnections.
 func MaxConnectionsFromEnv() int {
 	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(MaxConnectionsEnv))); err == nil && n > 0 {
-		return n
+		return min(n, MaxConnectionsLimit)
 	}
 	return DefaultMaxConnections
 }
@@ -99,10 +103,13 @@ func throttles(status int) bool {
 	return status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable
 }
 
-// isThrottled reports whether err is a registry asking the client to slow down.
+// isThrottled reports whether err is the registry (or a proxy) pushing back: a
+// 429/503 asking the client to slow down, or a connection refused, which is
+// what a per-address connection limit looks like from the client. Both are
+// waited out with the budget's pause, not retried at once and not failed.
 func isThrottled(err error) bool {
 	var status *statusError
-	return errors.As(err, &status) && throttles(status.status)
+	return (errors.As(err, &status) && throttles(status.status)) || errors.Is(err, syscall.ECONNREFUSED)
 }
 
 // parseRetryAfter reads a Retry-After header: delay seconds or an HTTP date.

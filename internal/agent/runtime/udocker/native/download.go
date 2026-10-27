@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +208,11 @@ func (d *Downloader) FetchAll(ctx context.Context, ref Ref, descs []Descriptor, 
 
 func (d *Downloader) fetch(ctx context.Context, sess *connbudget.Session, ref Ref, desc Descriptor, progress func(string, int64), restart func(string)) error {
 	var lastErr error
+	// whole is set once this blob's registry answered a range request with the
+	// whole blob: this blob is then read over one plain connection. It is the
+	// blob that is learned about, not the pull: a registry that serves some
+	// content through a Range-less path need not serve all of it that way.
+	whole := false
 	for attempt := 1; attempt <= blobAttempts; attempt++ {
 		if attempt > 1 {
 			if restart != nil {
@@ -222,9 +228,13 @@ func (d *Downloader) fetch(ctx context.Context, sess *connbudget.Session, ref Re
 				}
 			}
 		}
-		lastErr = d.fetchOnce(ctx, sess, ref, desc, progress)
+		lastErr = d.fetchOnce(ctx, sess, ref, desc, whole, progress)
 		if lastErr == nil || ctx.Err() != nil || !retryable(lastErr) {
 			return lastErr
+		}
+		if errors.Is(lastErr, errRangeIgnored) && !whole {
+			whole = true
+			slog.Info("registry ignores Range: reading the layer whole", "layer", shortDigest(desc.Digest), "registry", ref.Registry)
 		}
 		if isThrottled(lastErr) {
 			// The spans already waited out the registry's pauses; starting the
@@ -235,7 +245,7 @@ func (d *Downloader) fetch(ctx context.Context, sess *connbudget.Session, ref Re
 	return lastErr
 }
 
-func (d *Downloader) fetchOnce(ctx context.Context, sess *connbudget.Session, ref Ref, desc Descriptor, progress func(string, int64)) error {
+func (d *Downloader) fetchOnce(ctx context.Context, sess *connbudget.Session, ref Ref, desc Descriptor, whole bool, progress func(string, int64)) error {
 	tmp, err := os.CreateTemp(d.Dir, ".blob-*")
 	if err != nil {
 		return err
@@ -253,7 +263,7 @@ func (d *Downloader) fetchOnce(ctx context.Context, sess *connbudget.Session, re
 		}
 	}
 	// A registry found to ignore Range is read whole, over one connection.
-	ranged := d.RangeMin > 0 && desc.Size >= d.RangeMin && d.RangeParts > 1 && !sess.RangesIgnored()
+	ranged := d.RangeMin > 0 && desc.Size >= d.RangeMin && d.RangeParts > 1 && !whole
 	parts, chunk := 1, desc.Size
 	if ranged {
 		parts = d.partsFor(desc.Size)

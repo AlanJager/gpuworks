@@ -42,9 +42,6 @@ const (
 	DefaultCeiling = 32
 	// DefaultStart is how many connections a climbing download starts with.
 	DefaultStart = 2
-	// TodayConnections is the fixed level of a download that must not climb
-	// (a rate limit is set, or the caller wants the old behaviour).
-	TodayConnections = 4
 
 	defaultWindow     = 3 * time.Second
 	defaultMinGain    = 0.15
@@ -55,6 +52,10 @@ const (
 	holdMax           = 8 * time.Minute
 	recoverAfter      = 2 * time.Minute
 	resetsPerBackoff  = 3
+	// resetHoldMax bounds how long repeated resets keep a download from
+	// climbing: a reset is weaker evidence of a limit than a 429, and a hold
+	// that long would leave a large download at a fraction of its speed.
+	resetHoldMax = time.Minute
 
 	// MaxPause bounds how long one answer can make a download wait.
 	MaxPause = 2 * time.Minute
@@ -185,9 +186,10 @@ type Session struct {
 	recycled  []time.Time
 	closed    bool
 	fixed     bool // the target does not climb
-	noRange   bool // the server ignores ranges: one connection, for good
 	saturated bool
 	warmed    bool // the first measured window has been set aside
+	ramping   bool // the window after a trial's change is set aside: its new connections are still starting
+	retried   bool // the failed doubling at this level has had its second try
 
 	winStart  time.Time
 	winBytes  int64
@@ -199,7 +201,6 @@ type Session struct {
 	nextProbe time.Time
 
 	holdUntil   time.Time
-	pauseUntil  time.Time
 	lastBackoff time.Time
 	lastRecover time.Time
 	backoffs    int
@@ -297,14 +298,6 @@ func (s *Session) Close() {
 	p.mu.Unlock()
 }
 
-// AddBytes counts received bytes toward the measured rate. A caller that holds
-// a Lease counts through Lease.Observe instead.
-func (s *Session) AddBytes(n int) {
-	if s != nil && n > 0 {
-		s.bytes.Add(int64(n))
-	}
-}
-
 // Bytes is how many bytes the session's connections have reported so far. A
 // connection that fails can tell whether the others still made headway by
 // comparing it before and after.
@@ -325,15 +318,15 @@ func (s *Session) Target() int {
 	return s.effectiveLocked()
 }
 
-// Cap is the most connections the session may ever use at its current
-// address.
-func (s *Session) Cap() int {
+// Ceiling is the pool's limit on requests in flight to the upstream, which a
+// download may use as the number of workers it starts: the target and the
+// pauses decide how many of them run, and a worker count frozen at a moment of
+// backoff would stay low for a whole large download.
+func (s *Session) Ceiling() int {
 	if s == nil {
-		return 0
+		return 1
 	}
-	s.pool.mu.Lock()
-	defer s.pool.mu.Unlock()
-	return s.limitLocked()
+	return s.pool.Ceiling()
 }
 
 // InUse is how many tokens the session holds.
@@ -344,16 +337,6 @@ func (s *Session) InUse() int {
 	s.pool.mu.Lock()
 	defer s.pool.mu.Unlock()
 	return s.inUse
-}
-
-// RangesIgnored reports whether the server was found to ignore byte ranges.
-func (s *Session) RangesIgnored() bool {
-	if s == nil {
-		return false
-	}
-	s.pool.mu.Lock()
-	defer s.pool.mu.Unlock()
-	return s.noRange
 }
 
 // Acquire blocks until the session may open one more request and returns its
@@ -436,15 +419,12 @@ func (s *Session) wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// pauseDeadline is when the upstream's last "come back later" runs out, for
-// this session or any other on the same pool.
+// pauseDeadline is when the upstream's last "come back later" runs out. The
+// pause belongs to the pool: every download of the same address waits it out.
 func (s *Session) pauseDeadline() time.Time {
 	s.pool.mu.Lock()
 	defer s.pool.mu.Unlock()
-	if s.pool.pauseUntil.After(s.pauseUntil) {
-		return s.pool.pauseUntil
-	}
-	return s.pauseUntil
+	return s.pool.pauseUntil
 }
 
 func (s *Session) removeWaiterLocked(w *waiter) {

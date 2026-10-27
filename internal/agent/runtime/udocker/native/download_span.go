@@ -27,6 +27,9 @@ const (
 	// elsewhereAttempts bounds failures of a span that delivered nothing while
 	// the pull's other connections made headway.
 	elsewhereAttempts = 6 * blobAttempts
+	// slowAttempts bounds consecutive connections recycled for crawling before
+	// they added a byte.
+	slowAttempts = 5
 )
 
 // partsFor is how many spans a blob of size is cut into: at least RangeParts,
@@ -37,6 +40,14 @@ func (d *Downloader) partsFor(size int64) int {
 		parts = min(n, maxRangeParts)
 	}
 	return parts
+}
+
+// rangeWorkers is how many workers read a layer's spans: as many as the pool
+// could ever run. The budget's target and its pauses decide how many of them
+// hold a connection, and a count fixed here from the target of the moment (a
+// backoff, a climb not yet made) would stay low for the whole of a large layer.
+func rangeWorkers(parts int, sess *connbudget.Session) int {
+	return min(parts, max(1, sess.Ceiling()))
 }
 
 // fetchRanged splits one blob into parts spans written at their own offsets in
@@ -52,7 +63,7 @@ func (d *Downloader) fetchRanged(ctx context.Context, sess *connbudget.Session, 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	workers := min(parts, max(1, sess.Cap()))
+	workers := rangeWorkers(parts, sess)
 	var next atomic.Int64
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -98,7 +109,7 @@ func (d *Downloader) fetchRanged(ctx context.Context, sess *connbudget.Session, 
 // descriptor) and nothing is resumed.
 func (d *Downloader) fetchSpan(ctx context.Context, sess *connbudget.Session, ref Ref, url string, dst *os.File, start, end int64, ranged bool, report func(int64), advance func(int64)) error {
 	var got int64
-	stuck, throttled, elsewhere := 0, 0, 0
+	stuck, throttled, elsewhere, slowStuck := 0, 0, 0, 0
 	for {
 		before := sess.Bytes()
 		n, err := d.spanOnce(ctx, sess, ref, url, dst, start, end, got, ranged, report, advance)
@@ -112,10 +123,17 @@ func (d *Downloader) fetchSpan(ctx context.Context, sess *connbudget.Session, re
 		var pause time.Duration
 		switch {
 		case n > 0:
-			stuck, throttled = 0, 0
+			stuck, throttled, slowStuck = 0, 0, 0
 		case errors.Is(err, errSlow):
 			// A recycled connection that moved nothing at all is no worse than
-			// the others; the next one may be better.
+			// the others; the next one may be better. But a replacement that
+			// is recycled again before it added a byte (a resume answered with
+			// the whole blob spends its windows skipping the part already held)
+			// is not going to get anywhere: the blob is given up on, and the
+			// caller tries another way.
+			if slowStuck++; slowStuck >= slowAttempts {
+				return err
+			}
 		case errors.Is(err, errRangeIgnored):
 			// Not a failure of the connection: the blob is retried whole.
 			return err
@@ -188,7 +206,6 @@ func (d *Downloader) spanOnce(ctx context.Context, sess *connbudget.Session, ref
 				// whole blob. Only the part that starts at zero can use it;
 				// the others would duplicate the transfer, so fail and let the
 				// retry read the blob over one connection.
-				sess.NoRange()
 				return 0, errRangeIgnored
 			}
 			skip = offset
@@ -219,8 +236,12 @@ func (d *Downloader) spanOnce(ctx context.Context, sess *connbudget.Session, ref
 			report(counted)
 		}
 	})
+	// Reading until an error stops the idle timer; a span that ends short of
+	// the end of the body must not leave it running.
+	defer reader.stop()
 	if skip > 0 {
 		if _, err := io.CopyN(io.Discard, reader, skip); err != nil {
+			reportFailure(sess, ctx, err)
 			return 0, err
 		}
 	}

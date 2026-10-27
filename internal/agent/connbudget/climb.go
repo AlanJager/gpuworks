@@ -23,7 +23,9 @@ func (s *Session) Tick(now time.Time) {
 	}
 	bytes := s.bytes.Load()
 	rate := float64(bytes-s.winBytes) / dt.Seconds()
-	saturated := s.saturated
+	// Demand that outran the target at any point of the window, or that is
+	// still queued behind a full target as the window ends.
+	saturated := s.saturated || (len(s.waiters) > 0 && s.inUse >= s.effectiveLocked())
 	s.winStart, s.winBytes, s.saturated, s.resets = now, bytes, false, 0
 	if rate > 0 && now.Sub(s.lastBackoff) > 2*s.cfg.Window {
 		s.throttles = 0 // the server answers again: the next refusal starts small
@@ -50,21 +52,38 @@ func (s *Session) evaluateLocked(now time.Time, rate float64) {
 		return
 	}
 	limit := s.limitLocked()
+	if s.trial && s.ramping {
+		// The window right after the change measures connections that are still
+		// being opened (TCP, TLS, redirects, slow start). Judging a doubling on
+		// it makes every link with some latency look like "no gain"; the next
+		// window, with the new connections at speed, is the one that counts.
+		s.ramping = false
+		return
+	}
 	if s.trial {
 		s.trial = false
 		if s.ref <= 0 || rate >= s.ref*(1+s.required) {
+			s.retried = false
 			s.logf("download connections kept", "session", s.cfg.Name, "connections", s.target, "rate_bytes_per_s", int64(rate), "previous_bytes_per_s", int64(s.ref))
 			s.ref, s.refTarget = rate, s.target
 			if !s.settled && s.target < limit {
 				s.setTargetLocked(now, min(limit, s.target*2))
-				s.trial, s.required = true, s.cfg.MinGain
+				s.trial, s.ramping, s.required = true, true, s.cfg.MinGain
 				return
 			}
 			s.settleLocked(now)
 			return
 		}
 		s.logf("download connections reverted: no gain", "session", s.cfg.Name, "tried", s.target, "back_to", s.refTarget, "rate_bytes_per_s", int64(rate), "previous_bytes_per_s", int64(s.ref))
+		doubling := s.required == s.cfg.MinGain
 		s.setTargetLocked(now, s.refTarget)
+		if doubling && !s.retried {
+			// One noisy window must not end the climb for minutes: the
+			// doubling gets a second try before the level is settled.
+			s.retried = true
+			return
+		}
+		s.retried = false
 		s.settleLocked(now)
 		return
 	}
@@ -78,7 +97,7 @@ func (s *Session) evaluateLocked(now time.Time, rate float64) {
 			return
 		}
 		s.setTargetLocked(now, min(limit, max(s.target+1, s.target*5/4)))
-		s.trial, s.required = true, probeGain
+		s.trial, s.ramping, s.required = true, true, probeGain
 		return
 	}
 	if s.target >= limit {
@@ -86,7 +105,7 @@ func (s *Session) evaluateLocked(now time.Time, rate float64) {
 		return
 	}
 	s.setTargetLocked(now, min(limit, s.target*2))
-	s.trial, s.required = true, s.cfg.MinGain
+	s.trial, s.ramping, s.required = true, true, s.cfg.MinGain
 }
 
 func (s *Session) settleLocked(now time.Time) {
@@ -123,10 +142,11 @@ func (s *Session) recoverLocked(now time.Time) {
 	s.softCap *= 2
 	if s.softCap >= s.cap {
 		s.softCap = 0
+		s.backoffs = 0 // fully recovered: the next backoff starts with the shortest hold
 	}
-	s.settled, s.trial = false, false
+	s.settled, s.trial, s.ramping, s.retried = false, false, false, false
 	s.logf("download connections ceiling relaxed", "session", s.cfg.Name, "ceiling", s.limitLocked())
-	if s.fixed && !s.noRange {
+	if s.fixed {
 		s.setTargetLocked(now, min(s.cfg.Fixed, s.limitLocked()))
 	}
 }
@@ -136,7 +156,9 @@ func (s *Session) recoverLocked(now time.Time) {
 // pool waits retryAfter before it is made: a server that said "come back in N
 // seconds" is not asked again sooner by any connection to it. An answer that
 // names no time gets a short, doubling pause of its own, so "too many" is never
-// answered by reconnecting at once.
+// answered by reconnecting at once. The pause only escalates when the answer is
+// a new event: a burst of simultaneous refusals is one event and shares the
+// pause of the first.
 func (s *Session) Throttled(retryAfter time.Duration) {
 	if s == nil {
 		return
@@ -144,22 +166,28 @@ func (s *Session) Throttled(retryAfter time.Duration) {
 	s.pool.mu.Lock()
 	defer s.pool.mu.Unlock()
 	now := s.now()
+	fresh := s.freshEventLocked(now)
 	if retryAfter <= 0 {
-		retryAfter = min(throttleBase<<min(s.throttles, 4), throttleMax)
+		streak := s.throttles
+		if !fresh {
+			streak = max(streak-1, 0) // the burst's own level, not the next one
+		}
+		retryAfter = min(throttleBase<<min(streak, 4), throttleMax)
+	}
+	if fresh {
 		s.throttles++
 	}
 	retryAfter = min(retryAfter, MaxPause)
-	if until := now.Add(retryAfter); until.After(s.pauseUntil) {
-		s.pauseUntil = until
-	}
 	if until := now.Add(retryAfter); until.After(s.pool.pauseUntil) {
 		s.pool.pauseUntil = until
 	}
-	s.backoffLocked(now, "throttled")
+	s.backoffLocked(now, "throttled", holdMax)
 }
 
 // Reset reports a connection reset or a truncated body. One is routine on a
-// long download; three within a window back the download off.
+// long download, and so are a few in a window when many connections are open:
+// the download backs off only when resets in one window reach three or half of
+// its open connections, and holds the lower level for at most a minute.
 func (s *Session) Reset() {
 	if s == nil {
 		return
@@ -167,67 +195,37 @@ func (s *Session) Reset() {
 	s.pool.mu.Lock()
 	defer s.pool.mu.Unlock()
 	s.resets++
-	if s.resets >= resetsPerBackoff {
+	if s.resets >= max(resetsPerBackoff, s.inUse/2) {
 		s.resets = 0
-		s.backoffLocked(s.now(), "connection resets")
+		s.backoffLocked(s.now(), "connection resets", resetHoldMax)
 	}
 }
 
-func (s *Session) backoffLocked(now time.Time, why string) {
-	if !s.lastBackoff.IsZero() && now.Sub(s.lastBackoff) < s.cfg.BackoffGuard {
+// freshEventLocked reports whether a failure at now starts a new backoff event
+// rather than belonging to the burst the last backoff answered.
+func (s *Session) freshEventLocked(now time.Time) bool {
+	return s.lastBackoff.IsZero() || now.Sub(s.lastBackoff) >= s.cfg.BackoffGuard
+}
+
+func (s *Session) backoffLocked(now time.Time, why string, maxHold time.Duration) {
+	if !s.freshEventLocked(now) {
 		return // one burst of failures is one event
 	}
 	s.lastBackoff = now
 	current := s.effectiveLocked()
 	next := max(1, current/2)
 	s.backoffs++
-	hold := holdBase << min(s.backoffs-1, 4)
-	if hold > holdMax {
-		hold = holdMax
-	}
+	hold := min(holdBase<<min(s.backoffs-1, 4), maxHold)
 	s.holdUntil = now.Add(hold)
 	s.softCap = next
-	s.trial, s.settled = false, true
+	s.trial, s.ramping, s.settled = false, false, true
 	s.nextProbe = s.holdUntil
 	s.logf("download connections backed off", "session", s.cfg.Name, "reason", why, "from", current, "to", next, "hold", hold.String())
 	s.setTargetLocked(now, next)
-}
-
-// NoRange reports a server that ignores byte ranges: one connection, always.
-func (s *Session) NoRange() {
-	if s == nil {
-		return
-	}
-	s.pool.mu.Lock()
-	defer s.pool.mu.Unlock()
-	if s.noRange {
-		return
-	}
-	s.cap, s.fixed, s.noRange = 1, true, true
-	s.logf("download connections limited to one: the server ignores ranges", "session", s.cfg.Name)
-	s.setTargetLocked(s.now(), 1)
 }
 
 func (s *Session) logf(msg string, kv ...any) {
 	if s.cfg.Log != nil {
 		s.cfg.Log(msg, kv...)
 	}
-}
-
-// SetCap changes the most connections the session may use (the download moved
-// to another address, which may take more or fewer).
-func (s *Session) SetCap(limit int) {
-	if s == nil {
-		return
-	}
-	s.pool.mu.Lock()
-	defer s.pool.mu.Unlock()
-	if limit < 1 {
-		limit = 1
-	}
-	if s.noRange {
-		return // a server that ignores ranges stays at one
-	}
-	s.cap = limit
-	s.pool.dispatchLocked()
 }

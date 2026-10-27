@@ -294,7 +294,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `--listen ADDR` | `$GPUWORKS_SERVER_DIAL_LISTEN`，`server_dial` 时默认 `0.0.0.0:18800` | `server_dial` 模式的监听地址 |
 | 无 | `$GPUWORKS_RUNTIME_MOUNT_ROOT`、`$GPUWORKS_UDOCKER_BUNDLE` | 只能来自环境变量或配置文件的 `MOUNT_ROOT`、`UDOCKER_BUNDLE`，agent 启动时设给运行时 |
 | `--data-lane BOOL` | 无 | 默认 `true`。开专用高吞吐数据通道；只能走单连接的代理后面设为 `false` |
-| `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | runveil（udocker）节点拉取镜像时，到每个仓库 host（经代理时为代理）同时打开的连接数上限；`0` 或不设为自动（最多 16），`1` 为只用一条连接。应对只允许少量连接或对多连接限流的仓库与代理，不是日常设置，见[限制镜像拉取的连接数](../how-to/configure-pull-settings.md#限制镜像拉取的连接数runveil-节点) |
+| `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | runveil（udocker）节点拉取镜像时，到每个仓库 host（经代理时为代理）同时打开的连接数上限；`0` 或不设为自动（最多 16），`1` 为只用一条连接，最大 32，超出范围启动失败。应对只允许少量连接或对多连接限流的仓库与代理，不是日常设置，见[限制镜像拉取的连接数](../how-to/configure-pull-settings.md#限制镜像拉取的连接数runveil-节点) |
 | `--dcgm MODE` | `$GPUWORKS_DCGM`，默认 `off` | 可选 DCGM SM 占用探针：`off` / `auto`（仅当 `dcgmi` 在 PATH 上才启用） |
 
 - `--state` 默认：`$GPUWORKS_STATE_DIR`，否则 `/opt/gpuworks`（存在时），否则用户配置目录下的 `gpuworks`，最后 `./gpuworks-state`。

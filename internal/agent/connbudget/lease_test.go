@@ -58,10 +58,22 @@ func count(flags []bool) (n int) {
 	return n
 }
 
-func TestAConnectionUnderTheAbsoluteFloorIsRecycled(t *testing.T) {
+func TestAConnectionUnderTheAbsoluteFloorIsRecycledAfterTwoWindows(t *testing.T) {
 	clock, leases, _ := crawlSession(t, 1)
+	if got := round(clock, leases, []int64{8 * kib}); got[0] {
+		t.Fatal("one window under the floor recycled the connection: it can be a hiccup in a healthy transfer")
+	}
 	if got := round(clock, leases, []int64{8 * kib}); !got[0] {
-		t.Fatal("a lone connection at 8 KiB/s was left alone")
+		t.Fatal("a lone connection at 8 KiB/s for two windows was left alone")
+	}
+}
+
+func TestAHiccupBelowTheFloorIsForgottenByAHealthyWindow(t *testing.T) {
+	clock, leases, _ := crawlSession(t, 1)
+	round(clock, leases, []int64{8 * kib})
+	round(clock, leases, []int64{2 << 20})
+	if got := round(clock, leases, []int64{8 * kib}); got[0] {
+		t.Fatal("two slow windows with a healthy one between them were counted as in a row")
 	}
 }
 
@@ -88,6 +100,7 @@ func TestANodeWhoseWholeLinkCrawlsNeverLosesAllConnectionsAtOnce(t *testing.T) {
 		clock, leases, _ := crawlSession(t, n)
 		// Every connection is under the floor: the link, not a connection, is
 		// the problem. Replacements may be tried, but never all at once.
+		round(clock, leases, uniform(n, 8*kib)) // the first window: a strike each
 		got := round(clock, leases, uniform(n, 8*kib))
 		if recycled := count(got); recycled > n/2 {
 			t.Fatalf("%d connections: %d recycled in one window, at most %d allowed", n, recycled, n/2)
@@ -100,8 +113,9 @@ func TestANodeWhoseWholeLinkCrawlsNeverLosesAllConnectionsAtOnce(t *testing.T) {
 
 func TestTheQuotaRefreshesWithTheNextWindow(t *testing.T) {
 	clock, leases, _ := crawlSession(t, 4)
+	round(clock, leases, uniform(4, 8*kib)) // a strike each
 	if got := count(round(clock, leases, uniform(4, 8*kib))); got != 2 {
-		t.Fatalf("first window recycled %d, want 2 of 4", got)
+		t.Fatalf("first window to recycle recycled %d, want 2 of 4", got)
 	}
 	if got := count(round(clock, leases, uniform(4, 8*kib))); got != 2 {
 		t.Fatalf("second window recycled %d, want 2 of 4", got)
