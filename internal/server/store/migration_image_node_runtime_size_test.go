@@ -9,11 +9,25 @@ import (
 )
 
 func TestImageNodeRuntimeSizeMigration(t *testing.T) {
+	closeAfterTest := func(db *gorm.DB) {
+		t.Helper()
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := sqlDB.Close(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+
 	open := func(name string) *gorm.DB {
 		db, err := gorm.Open(sqlite.Open("file:"+name+"?mode=memory&cache=shared"), &gorm.Config{})
 		if err != nil {
 			t.Fatal(err)
 		}
+		closeAfterTest(db)
 		if err := db.AutoMigrate(&SchemaMigration{}); err != nil {
 			t.Fatal(err)
 		}
@@ -78,6 +92,7 @@ func TestImageNodeRuntimeSizeMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	closeAfterTest(empty)
 	if err := empty.AutoMigrate(&SchemaMigration{}); err != nil {
 		t.Fatal(err)
 	}
