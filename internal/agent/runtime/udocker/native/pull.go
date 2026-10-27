@@ -1,6 +1,7 @@
 package native
 
 import (
+	"gpuworks.ai/gpuworks/internal/agent/connbudget"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 
 	"context"
@@ -36,6 +37,10 @@ type Engine struct {
 	RangeMin   int64 // blobs at least this large are split into parts
 	Unpackers  int   // concurrent layer unpackers (0 = one per core)
 
+	// Budget is the per-registry-host connection budget every pull on this
+	// engine shares (see Downloader.Budget).
+	Budget *connbudget.Hosts
+
 	// Sidecars holds plain-tar copies of large layers, inflated during the
 	// pull so the create that follows does not have to. Nil disables it.
 	Sidecars *sidecarStore
@@ -50,10 +55,11 @@ type Engine struct {
 	prepared  preparedJobs
 }
 
-// Defaults sized for the nodes this driver targets: enough download
-// concurrency to fill a throttled link without tripping registry rate limits,
-// and a range split that only kicks in for the multi-gigabyte layers where a
-// single stream is the limit.
+// Defaults sized for the nodes this driver targets: enough layers in flight to
+// keep a throttled link busy, and a range split that only kicks in for the
+// multi-gigabyte layers where a single stream is the limit. How many
+// connections that really opens is the connection budget's call (see
+// DefaultMaxConnections), so neither number multiplies into a connection count.
 const (
 	DefaultWorkers    = 6
 	DefaultRangeParts = 4
@@ -84,6 +90,7 @@ func NewEngine(udockerDir string, owner *Owner) *Engine {
 		Workers:    DefaultWorkers,
 		RangeParts: DefaultRangeParts,
 		RangeMin:   DefaultRangeMin,
+		Budget:     connbudget.NewHosts(MaxConnectionsFromEnv()),
 	}
 	if !envTrue(disableSidecarEnv) {
 		// Kept outside layers/ so nothing here can be mistaken for a blob by
@@ -106,6 +113,7 @@ func (e *Engine) downloader() *Downloader {
 		Workers:    e.Workers,
 		RangeParts: e.RangeParts,
 		RangeMin:   e.RangeMin,
+		Budget:     e.Budget,
 		Chown:      e.Layout.Owner,
 	}
 }

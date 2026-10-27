@@ -5,12 +5,14 @@ import (
 	"io"
 	"sync/atomic"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/agent/connbudget"
 )
 
 // idleReader watches one response body. It aborts the transfer when the
-// connection delivers nothing for idleTimeout, or crawls (averages under
-// slowMinRate over a slowWindow), and reports bytes as they arrive so progress
-// reflects the network rather than the writer.
+// connection delivers nothing for idleTimeout, or its budget lease judges it
+// to be crawling (see slowMinRate), and reports bytes as they arrive so
+// progress reflects the network rather than the writer.
 //
 // Aborting means cancelling the request itself: a Read blocked on a silent
 // connection returns only once that context is cancelled, so the cancel passed
@@ -22,14 +24,11 @@ type idleReader struct {
 	timer  *time.Timer
 	cancel context.CancelFunc
 	idle   atomic.Bool
-
-	// Only Read touches the slow-window state.
-	windowStart time.Time
-	windowBytes int64
+	lease  *connbudget.Lease
 }
 
-func newIdleReader(parent context.Context, cancel context.CancelFunc, inner io.Reader, report func(int64)) *idleReader {
-	r := &idleReader{inner: inner, parent: parent, report: report, cancel: cancel, windowStart: time.Now()}
+func newIdleReader(parent context.Context, cancel context.CancelFunc, inner io.Reader, lease *connbudget.Lease, report func(int64)) *idleReader {
+	r := &idleReader{inner: inner, parent: parent, report: report, cancel: cancel, lease: lease}
 	r.timer = time.AfterFunc(idleTimeout, func() {
 		r.idle.Store(true)
 		cancel()
@@ -48,7 +47,7 @@ func (r *idleReader) Read(p []byte) (int, error) {
 		if r.report != nil {
 			r.report(int64(n))
 		}
-		if err == nil && r.crawling(int64(n)) {
+		if r.lease.Observe(int64(n)) && err == nil {
 			err = errSlow
 		}
 	}
@@ -61,18 +60,4 @@ func (r *idleReader) Read(p []byte) (int, error) {
 		r.stop()
 	}
 	return n, err
-}
-
-// crawling counts n more bytes and reports whether the window they close
-// averaged under slowMinRate. A window is judged when it ends, so a connection
-// is never recycled for the slow start of a transfer that then picks up.
-func (r *idleReader) crawling(n int64) bool {
-	r.windowBytes += n
-	elapsed := time.Since(r.windowStart)
-	if elapsed < slowWindow {
-		return false
-	}
-	slow := float64(r.windowBytes) < float64(slowMinRate)*elapsed.Seconds()
-	r.windowStart, r.windowBytes = time.Now(), 0
-	return slow
 }

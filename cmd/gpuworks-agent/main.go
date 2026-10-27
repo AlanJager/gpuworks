@@ -35,6 +35,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	recordingruntime "gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
+	udockernative "gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
 	"gpuworks.ai/gpuworks/internal/agent/runveilcli"
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/benchrun"
@@ -186,7 +187,15 @@ func run(log *slog.Logger, args []string) error {
 	launch := newLaunchFlags(fs)
 	fs.BoolVar(&cfg.DataLane, "data-lane", true, "open a dedicated high-throughput data lane (disable for single-connection proxies)")
 	fs.StringVar(&cfg.DCGM, "dcgm", cfg.DCGM, "optional DCGM SM-occupancy probe: off (default) | auto (opt in; enables only when dcgmi is on PATH)")
+	imagePullMaxConns := fs.Int("image-pull-max-connections", 0, "most simultaneous connections a runveil (udocker) image pull may open to one registry host (0 = automatic, up to "+strconv.Itoa(udockernative.DefaultMaxConnections)+"; 1 = one connection; at most "+strconv.Itoa(udockernative.MaxConnectionsLimit)+")")
 	_ = fs.Parse(args)
+	if *imagePullMaxConns < 0 || *imagePullMaxConns > udockernative.MaxConnectionsLimit {
+		return fmt.Errorf("--image-pull-max-connections must be between 0 (automatic) and %d, got %d", udockernative.MaxConnectionsLimit, *imagePullMaxConns)
+	}
+	if *imagePullMaxConns > 0 {
+		// The native image puller reads it where it builds its connection budget.
+		_ = os.Setenv(udockernative.MaxConnectionsEnv, strconv.Itoa(*imagePullMaxConns))
+	}
 
 	conf, stateDir, _, err := launch.resolve(os.Getenv)
 	if err != nil {

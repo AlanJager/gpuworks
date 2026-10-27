@@ -36,8 +36,10 @@ var (
 	// still bounds it). A runtime that shows a layer's bytes only in coarse
 	// steps is not judged this way: its counter cannot tell a crawl from the
 	// gap between two steps (see StallMinRate).
+	// The floor is the whole pull's rate: 64 KiB/s keeps a node whose link to
+	// the source is merely slow from abandoning a source that works.
 	CrawlWindow        = 5 * time.Minute
-	CrawlMinRate int64 = 512 << 10
+	CrawlMinRate int64 = 64 << 10
 )
 
 var (

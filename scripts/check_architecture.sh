@@ -559,6 +559,7 @@ tree_forbids ./internal/agent/... 'gpuworks/internal/server' 'agent does not imp
 tree_forbids ./internal/proto 'gpuworks/' 'proto has no in-repo imports'
 tree_forbids ./internal/platformmetrics 'gpuworks/' 'platformmetrics has no in-repo imports (agent and server share it)'
 tree_forbids ./internal/launchd 'gpuworks/' 'launchd has no in-repo imports (agent and server share it)'
+tree_forbids ./internal/agent/connbudget 'gpuworks/' 'connbudget imports nothing from this repository (a leaf: image pulls and model downloads share it)'
 tree_forbids ./internal/server/mcp 'gpuworks/' 'mcp speaks the protocol only: it knows neither callers nor tools'
 tree_forbids ./internal/agent/gpu/cardsmoke 'gpuworks/' 'cardsmoke schedules attempts and knows no vendor'
 tree_forbids ./internal/agent/gpu/pcicards 'gpuworks/internal/agent' 'pcicards reads sysfs and knows nothing of the agent'

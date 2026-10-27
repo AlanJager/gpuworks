@@ -91,7 +91,7 @@ func NewClient() *Client {
 func NewClientForPlatform(goos, goarch string) *Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = RequestProxy
-	transport.MaxIdleConnsPerHost = 32
+	transport.MaxIdleConnsPerHost = MaxConnectionsLimit
 	transport.ResponseHeaderTimeout = 60 * time.Second
 	// HTTP/1.1 only. Over HTTP/2 every request to a host shares one TCP
 	// connection, so the range parts of a blob (and every layer in flight)

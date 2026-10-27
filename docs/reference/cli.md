@@ -294,10 +294,11 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `--listen ADDR` | `$GPUWORKS_SERVER_DIAL_LISTEN`，`server_dial` 时默认 `0.0.0.0:18800` | `server_dial` 模式的监听地址 |
 | 无 | `$GPUWORKS_RUNTIME_MOUNT_ROOT`、`$GPUWORKS_UDOCKER_BUNDLE` | 只能来自环境变量或配置文件的 `MOUNT_ROOT`、`UDOCKER_BUNDLE`，agent 启动时设给运行时 |
 | `--data-lane BOOL` | 无 | 默认 `true`。开专用高吞吐数据通道；只能走单连接的代理后面设为 `false` |
+| `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | runveil（udocker）节点拉取镜像时，到每个仓库 host（经代理时为代理）同时打开的连接数上限；`0` 或不设为自动（最多 16），`1` 为只用一条连接，最大 32，超出范围启动失败。应对只允许少量连接或对多连接限流的仓库与代理，不是日常设置，见[限制镜像拉取的连接数](../how-to/configure-pull-settings.md#限制镜像拉取的连接数runveil-节点) |
 | `--dcgm MODE` | `$GPUWORKS_DCGM`，默认 `off` | 可选 DCGM SM 占用探针：`off` / `auto`（仅当 `dcgmi` 在 PATH 上才启用） |
 
 - `--state` 默认：`$GPUWORKS_STATE_DIR`，否则 `/opt/gpuworks`（存在时），否则用户配置目录下的 `gpuworks`，最后 `./gpuworks-state`。
-- `--data-lane`、`--dcgm` 不属于配置文件，不被 `configure` 记录。
+- `--data-lane`、`--dcgm`、`--image-pull-max-connections` 不属于配置文件，不被 `configure` 记录。
 - `--driver udocker` 选择 runveil：`udocker` 是保留的 driver 名（节点记录与 API 沿用），实现是 native 镜像处理加直接调用内嵌 PRoot 的启动器，界面显示为 runveil。
 - `--driver host` 把引擎作为宿主机进程运行，用于 macOS（Apple silicon）节点：Linux 容器在 macOS 上跑在虚拟机里，拿不到 Metal GPU。镜像是 darwin/arm64 的环境包，解包后由 agent 直接启动。
 - 不指定 driver 时，macOS 上直接选 host（即使 Docker Desktop 可用）；其他系统按 docker（daemon 可用）> nerdctl > runveil 的顺序探测；都不可用则该节点禁用部署。`--driver` 给了未知值，或给了当前系统用不了的运行时（Linux 上的 `host`、macOS 上的 `udocker`），会记录错误并且不启用任何运行时。
@@ -328,7 +329,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 - 仅支持 Linux；从 `<server>/dl/gpuworks-agent-linux-<arch>` 下载到 `<bin>.new`，10 秒内 `smoke` 通过后才把旧二进制改名 `<bin>.old` 并换上新版本，smoke 失败则旧二进制保持原样。
 - `server_dial` 的 agent 不知道 server 地址，也无从下载：手工 `upgrade` 直接拒绝，提示它由 server 推送升级，在节点页「升级 Agent」操作。
-- 替换后的 `run` 在配置来自文件时只带 `--state <dir>`；没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
+- 替换后的 `run` 在配置来自文件时只带 `--state <dir>`；没有配置文件的老 agent 则带 `--server --token --connect-mode --state`，`server_dial` 再加 `--listen`，有 driver 时加 `--driver`。都不携带 `--data-lane`、`--dcgm`、`--image-pull-max-connections`：替换后的进程继承当前环境变量，所以 `--dcgm` 可改用 `GPUWORKS_DCGM`、`--image-pull-max-connections` 可改用 `GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` 保留；`--data-lane` 没有对应环境变量，手工升级后恢复默认值 `true`。
 - 整个过程有 10 分钟预算；同一时刻只允许一个升级。替换后的进程同样要在确认期限内注册成功，否则回滚到 `<bin>.old`。节点页「升级 Agent」对支持推送的 agent 改由 server 经连接推送二进制，不经 `/dl/` 与 `smoke`，见[升级与版本兼容](../how-to/upgrade-and-compatibility.md)。
 
 ## gpuworks-agent doctor
