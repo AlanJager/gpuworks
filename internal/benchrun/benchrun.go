@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -205,7 +206,7 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 	requestTotal := loadgen.TotalRequests(reqs)
 	current := &proto.BenchmarkCurrentPoint{Seq: seq, Concurrency: point.Concurrency, TargetISL: point.ISL, TargetOSL: point.OSL, RequestTotal: requestTotal, RequestRate: point.RequestRate}
 	sample := func() json.RawMessage {
-		snapshot := acc.Snapshot(time.Now().UTC())
+		snapshot := acc.ProgressSnapshot(time.Now().UTC())
 		if snapshot.AggregationError != "" {
 			return nil
 		}
@@ -223,10 +224,15 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 			e.hooks.Result(seq, r)
 		}
 	}
-	runner.OnProgress = func(done, _ int) { e.report(status(done, sample())) }
+	var completed atomic.Int64
+	runner.OnProgress = func(done, _ int) { completed.Store(int64(done)) }
+	stopProgress := e.reportProgress(func() {
+		e.report(status(int(completed.Load()), sample()))
+	}, func() int64 { return completed.Load() })
 	started := time.Now().UTC()
 	results := runner.Run(ctx, reqs)
 	ended := time.Now().UTC()
+	stopProgress()
 	snapshot := acc.Snapshot(ended)
 	requests := acc.Requests()
 	peak := metrics.RollingPeakThroughput(requests, ended, 10*time.Second)
@@ -283,6 +289,39 @@ func (e *execution) point(ctx context.Context, index int, point *search.Point, p
 		AvgTPOT: averages.TPOT, P50TPOT: ms(snapshot.TPOT[50]), P99TPOT: ms(snapshot.TPOT[99]),
 		AvgLatency: averages.Latency, P99Latency: ms(snapshot.Latency[99]),
 	}, longTail), nil
+}
+
+// progressInterval paces a point's running statuses. A request's completion
+// only records the count; one reporter publishes the count and a live sample
+// at most this often. Sampling on every completion summarizes every request
+// so far each time: at hundreds of completions a second that outgrows the
+// host's cores, and the samples piling up in the request goroutines exhausted
+// the server's memory.
+var progressInterval = time.Second
+
+// reportProgress runs report every progressInterval while done has moved
+// since the last report, until the returned stop is called; stop waits for a
+// report in flight so none lands after the point's own result.
+func (e *execution) reportProgress(report func(), done func() int64) (stop func()) {
+	quit, exited := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(exited)
+		ticker := time.NewTicker(progressInterval)
+		defer ticker.Stop()
+		var last int64
+		for {
+			select {
+			case <-quit:
+				return
+			case <-ticker.C:
+				if n := done(); n != last {
+					last = n
+					report()
+				}
+			}
+		}
+	}()
+	return func() { close(quit); <-exited }
 }
 
 // LongTailDoc is a benchmark point's long_tail document as stored in

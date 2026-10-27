@@ -273,12 +273,10 @@ func TestCanceledRunPreservesPartialPointWithoutTakingRunTerminalOwnership(t *te
 	ctx, cancel := context.WithCancel(context.Background())
 	rec := &recorder{}
 	hooks := rec.hooks()
-	report := hooks.Report
-	hooks.Report = func(st proto.BenchmarkStatus) {
-		report(st)
-		if st.Completed > 0 {
-			cancel()
-		}
+	result := hooks.Result
+	hooks.Result = func(seq int, r loadgen.Result) {
+		result(seq, r)
+		cancel()
 	}
 	Execute(ctx, Run{TokenizerRef: testTokenizerRef(t),
 		ID: 8, Model: "m", Client: loadgen.Client{BaseURL: srv.URL},
