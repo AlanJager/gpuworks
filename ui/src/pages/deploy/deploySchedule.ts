@@ -41,6 +41,15 @@ export function placementRefusalText(
 ): string {
   const code = value && typeof value !== "string" ? value.code?.trim() ?? "" : "";
   if (code && value && typeof value !== "string") {
+    if ((code === "chip_mismatch" || code === "vendor_mismatch") && Array.isArray(value.params?.actual_gpus)) {
+      const facts = value.params.actual_gpus as Array<{ name?: string; vendor?: string; cc?: string }>;
+      const actual = [...new Set(facts.map((gpu) => [gpu.name || t("placementReason.gpuUnknown"), gpu.vendor,
+        (gpu.vendor === "nvidia" || gpu.cc) ? t("placementReason.gpuCC", { value: gpu.cc || t("placementReason.gpuUnknown") }) : ""].filter(Boolean).join(" · ")))].join("; ") || t("placementReason.noReportedGPU");
+      const required = [value.params.required_vendor || value.params.vendor,
+        value.params.required_cc ? t("placementReason.gpuCC", { value: value.params.required_cc }) : "",
+        value.params.required_name ? t("placementReason.gpuNamePattern", { value: value.params.required_name }) : ""].filter(Boolean).join(" · ");
+      return t("placementReason.hardwareDifference", { required, actual });
+    }
     const key = `placementReason.${code}`;
     const translated = t(key, { ...value.params, defaultValue: "" });
     if (translated && translated !== key) return translated + scheduleNote(t, value);

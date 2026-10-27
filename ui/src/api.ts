@@ -2707,6 +2707,8 @@ export interface EvictionSuggestion {
 }
 
 export interface EligibleNode {
+  // Explicit node conditions, independently of vendor/chip/state checks.
+  requirements_match?: boolean;
   uuid: string;
   name: string;
   eligible: boolean;

@@ -187,7 +187,12 @@
     "node_requirements_invalid": "无法读取部署的节点要求：{{detail}}",
     "vendor_mismatch": "该节点没有本部署所需的 {{vendor}} GPU。",
     "chip_mismatch": "该节点上没有与推理模板芯片（{{predicate}}）匹配的 GPU。",
-    "plan_failed": "无法在该节点上为本部署制定方案。请检查节点或选择其他节点。"
+    "plan_failed": "无法在该节点上为本部署制定方案。请检查节点或选择其他节点。",
+    "gpuUnknown": "未知",
+    "gpuCC": "CC {{value}}",
+    "gpuNamePattern": "名称模式 {{value}}",
+    "noReportedGPU": "未上报 GPU",
+    "hardwareDifference": "要求：{{required}}；实际：{{actual}}。没有 GPU 通过部署硬件检查。"
   },
   "scheduleNote": {
     "sleeping_residue": "休眠实例需保留 {{sleeping_gib}} GiB 常驻显存。",
@@ -699,7 +704,13 @@
       "preflightFailed": "预检未通过",
       "chooseModelFirst": "选择模型和目标加速卡后，这里会显示调度器选中的节点。",
       "noRankAddress": "无互联地址",
-      "noRankAddressHint": "节点还没有管理网地址（升级 agent 后上报），也没有加载参数网络（资源 → 网络），其他 rank 连不到它。"
+      "noRankAddressHint": "节点还没有管理网地址（升级 agent 后上报），也没有加载参数网络（资源 → 网络），其他 rank 连不到它。",
+      "conditionFunnel": "集群 {{total}} 台 → 节点条件匹配 {{matched}} 台 → 硬件及调度条件通过 {{eligible}} 台",
+      "conditionsEmpty": "没有节点匹配节点条件，请检查标签、网络与限定节点。",
+      "conditionsHardwareRejected": "节点条件（标签、网络与限定节点）已生效；匹配节点因硬件条件被拒绝。",
+      "conditionsFurtherRejected": "节点条件已匹配。已评估的节点未通过后续检查或资源规划，具体原因如下。",
+      "otherRefused": "展开其他 {{count}} 个被拒绝节点",
+      "evaluating": "正在评估当前节点条件…"
     },
     "nodeAcquisition": {
       "title": "获取方式",

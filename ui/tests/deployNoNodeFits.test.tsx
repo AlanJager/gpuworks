@@ -11,7 +11,7 @@ import { createI18n, dom } from "./helpers/dom.ts";
 // instead of "no online node matches the chip" or "wait for re-evaluation".
 
 const { i18n, locale } = await createI18n(["deploy", "nodes"], "en");
-const { cleanup, render, renderHook, act, screen, waitFor } = await import("@testing-library/react");
+const { cleanup, render, renderHook, act, screen, waitFor, fireEvent } = await import("@testing-library/react");
 const { Form, message } = await import("antd");
 const NodeSection = (await import("../src/pages/deploy/DeployNodeSection.tsx")).default;
 const { default: useDeploySubmit } = await import("../src/pages/deploy/useDeploySubmit.ts");
@@ -89,8 +89,9 @@ test("a long list of refusals shows the first few and counts the rest", async ()
   const many = Array.from({ length: 8 }, (_, index) => ({ ...diskRefused, node_uuid: `n${index}`, node_name: `node-${index}` }));
   await renderCard(evaluated({ candidates: many }));
   const items = [...document.querySelectorAll(".deploy-node-refusals li")].map((li) => li.textContent ?? "");
-  assert.equal(items.length, 6);
-  assert.equal(items[5], workbench.moreRefused.replace("{{count}}", "3"));
+  assert.equal(items.length, 5);
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(workbench.moreRefused.replace("{{count}}", "3")) }));
+  assert.equal(document.querySelectorAll(".deploy-node-refusals li").length, 8);
 });
 
 test("a selected node still renders as before, with no refusal list", async () => {

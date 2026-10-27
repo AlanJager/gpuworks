@@ -220,10 +220,14 @@ type PreflightSummary struct {
 // same schedule-reason vocabulary the plan explains itself with. The node
 // dropdown renders this list instead of running predicates of its own.
 type EligibleNode struct {
-	UUID     string           `json:"uuid"`
-	Name     string           `json:"name"`
-	Eligible bool             `json:"eligible"`
-	Reasons  []ScheduleReason `json:"reasons,omitempty"`
+	// RequirementsMatch is the independent result of explicit node conditions
+	// (labels, networks and node selections), before vendor/chip/state checks.
+	// Omitted when none were stated or the requirements could not be decoded.
+	RequirementsMatch *bool            `json:"requirements_match,omitempty"`
+	UUID              string           `json:"uuid"`
+	Name              string           `json:"name"`
+	Eligible          bool             `json:"eligible"`
+	Reasons           []ScheduleReason `json:"reasons,omitempty"`
 }
 
 // ScheduleReason is the wire form of one scheduler explanation: the stable code

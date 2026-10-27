@@ -187,7 +187,12 @@
     "node_requirements_invalid": "The deployment's node requirements could not be read: {{detail}}",
     "vendor_mismatch": "The node has no {{vendor}} GPU, which this deployment needs.",
     "chip_mismatch": "No GPU on the node matches the inference template chip ({{predicate}}).",
-    "plan_failed": "The node could not be planned for this deployment. Check the node or select another one."
+    "plan_failed": "The node could not be planned for this deployment. Check the node or select another one.",
+    "gpuUnknown": "unknown",
+    "gpuCC": "CC {{value}}",
+    "gpuNamePattern": "name pattern {{value}}",
+    "noReportedGPU": "no reported GPUs",
+    "hardwareDifference": "Required: {{required}}. Reported: {{actual}}. No GPU passed the deployment hardware checks."
   },
   "scheduleNote": {
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
@@ -699,7 +704,13 @@
       "preflightFailed": "Preflight Failed",
       "chooseModelFirst": "Choose a model and a target accelerator to see which node the scheduler picks.",
       "noRankAddress": "no interconnect address",
-      "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Resources → Networks), so other ranks cannot reach it."
+      "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Resources → Networks), so other ranks cannot reach it.",
+      "conditionFunnel": "Cluster: {{total}} → Node conditions: {{matched}} → Hardware and scheduling conditions: {{eligible}}",
+      "conditionsEmpty": "No nodes matched the node conditions. Check the labels, networks and selected nodes.",
+      "conditionsHardwareRejected": "Node conditions matched; hardware requirements rejected the matching nodes.",
+      "conditionsFurtherRejected": "Node conditions matched. The evaluated nodes failed subsequent checks or resource planning; see the reasons below.",
+      "otherRefused": "Expand {{count}} other rejected nodes",
+      "evaluating": "Evaluating the current node conditions…"
     },
     "nodeAcquisition": {
       "title": "Fetching",
