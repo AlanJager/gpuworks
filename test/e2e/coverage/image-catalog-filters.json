@@ -16,13 +16,13 @@
   ],
   "runtime_evidence": {
     "status": "N/A",
-    "reason": "Read-only catalog predicates; no image pull, agent or container claim."
+    "reason": "Catalogue metadata and its real table actions only; no image pull, agent, container or inference claim."
   },
   "crud": {
     "create": "MISSING: fixture only",
-    "read": "PARTIAL: filter rows, counts, source isolation and refresh",
+    "read": "PARTIAL: filter rows, counts, source isolation and refresh; plus real owned ten/thirty/hundred-row table paging and details; other loading/error/sort/combined-query states remain separate.",
     "update": "MISSING",
-    "delete": "MISSING: cleanup only"
+    "delete": "PARTIAL: real UI delete of the sole last-page row in the owned twenty-one-row corpus, exact request204 and independent absence/page-clamp checks; broader deletion cancel/denial/concurrency cases remain separate."
   },
   "components": [
     {
@@ -82,11 +82,15 @@
       "10.1",
       "10.3",
       "10.10",
-      "10.12",
       "22.2",
       "22.5"
     ],
-    "reason": "List enum predicates only; form selection persistence and other component states are independent."
+    "reason": "The remaining partial entries cover the original enum predicates only; the explicit table items have separate real metadata-volume and mutation proof. Form selection persistence and other states remain independent.",
+    "10.5": "covered: The sole ImageSeriesTable authority starts at the original page-size20 before any size edit, with exact ten-row IDs. Its menu contains exactly10/20/50/100. Each real10/30/100 corpus is independently traversed at every actual size; reload retains selected100, and final restoration to20 survives another reload. The same table is not duplicated under the enable-cycle contract.",
+    "10.6": "covered: Actual Next/Previous clicks traverse every page forward and backward for each real10/30/100 corpus at10/20/50/100 per page. Every visible row name and stable ID matches the independent declared order, with no duplicates or omissions. Active page, exact translated total and first/last boundary disabling are checked on every page; numbered last-page controls are also used for the actual cross-page details.",
+    "10.7": "covered: On the real100-row table, page10 at size10 changes to page1 at size20 with the first20 exact IDs. From page5, the Enabled filter returns the first20 of50 independently declared enabled rows; resetting restores total100 and the first20 exact IDs on page1. On a separate21-row corpus, UI deletion of the sole page3 row returns204 and independently removes its series/version/detail; total20, active page2 and the final ten exact remaining IDs are checked. This page has no keyword-search control.",
+    "10.8": "covered: Three separately owned real metadata corpora of exactly10,30,100 series and one version each are imported through the real API and verified by independent complete list/detail GETs before UI paging. Each uses every actual page-size and complete forward/backward traversal; actual Details actions on pages1/3/10 open the declared last row with matching browser and independent GET IDs. A fourth21-row corpus exercises real last-page deletion. All161 created series/versions are scoped-cleaned with detail404 checks and the full original collection restored. This is catalogue metadata, without image pull, agent, container or inference claims.",
+    "10.12": "covered: With the real100-row corpus, forty native ArrowRight presses expand the series column from240 to880 and create table-internal horizontal overflow. Native wheel scrolling reaches both right and left extremes; the actual Details control remains fully inside the1440-wide viewport while document width stays within the viewport. Clicking that control opens the correct declared metadata row; forty ArrowLeft presses restore240. The assertion targets the real button and viewport geometry, rather than a fixed-column CSS class."
   },
   "not_applicable": {
     "keyword_search": "Series table has no search control",
@@ -99,8 +103,7 @@
     "MISSING: source-scoped summary cards (series/images/distributed/catalogSize/localSize) versus client-filtered table totals; independently derive each scope instead of assuming equality",
     "MISSING: image-series ResourceTable column width/visibility/order/reset and preference isolation; detail versions have separate page size 8 and node table its own pagination",
     "official catalog full predicate matrix",
-    "sorting and page-size matrix",
-    "10/30/100 record volumes and cross-page operations",
+    "other sortable-column/direction and stable-tie matrices (all actual page-size options and full ID traversals are covered separately)",
     "loading/error recovery",
     "keyboard and computed styles",
     "non-admin permissions",

@@ -120,8 +120,8 @@
     },
     {
       "item": "1.10",
-      "status": "covered",
-      "reason": "The real 409 DEPLOYMENT_NOT_ACTIVE keeps the restart dialog and the checked drain choice, shows the not-active reason, and the independent GET keeps the same instances. The retry 202 is accepted"
+      "status": "partial",
+      "reason": "Partial: refusal/retry observations rely on direct SQLite desired_state UPDATE in deployment_replica_browser.flip_desired, bypassing the real control-plane lifecycle. Existing hold/continue and runtime observations are retained; complete error recovery needs a real API state transition, product-mutation FAIL and restored en/zh PASS."
     },
     {
       "item": "1.11",
@@ -300,8 +300,8 @@
     },
     {
       "item": "12.6",
-      "status": "covered",
-      "reason": "While the replica restart POST is held the confirm button shows the loading state and a second click sends no further restart; the real 409 keeps the drain choice and shows the inactive deployment reason, and the instances stay unchanged; the later 202 matches the independent detail GET and the reloaded ready count"
+      "status": "partial",
+      "reason": "Partial: refusal/retry observations rely on direct SQLite desired_state UPDATE in deployment_replica_browser.flip_desired, bypassing the real control-plane lifecycle. Existing hold/continue and runtime observations are retained; complete error recovery needs a real API state transition, product-mutation FAIL and restored en/zh PASS."
     },
     {
       "item": "12.7",

@@ -4,7 +4,9 @@ Primary contract (checked 2026-10-21):
 https://github.com/runpod/docs/blob/main/api-reference-v2/openapi.json
 GET /v2/pods: ListPodsResponse; GET/PUT /v2/account/ssh-keys: SshKeys,
 UpdateSshKeysRequest; bearerAuth and ErrorResponse (application/problem+json).
-The proxy prefixes are fixture-owned routes. Other routes/methods/queries fail
+The proxy prefixes and optional exact raw query are fixture-owned routes,
+not claims about native RunPod query parameters. By default every query is
+rejected; a declared query must match byte-for-byte. Other routes/methods fail
 closed; this fixture does not claim the remaining RunPod API or pod execution.
 """
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,7 +16,10 @@ import threading
 
 
 class RunPodFixture:
-    def __init__(self, api_key, keys=()):
+    def __init__(self, api_key, keys=(), *, query=None):
+        if query is not None and (not isinstance(query, str) or not query
+                                  or any(character in query for character in ('#', '?', '\r', '\n'))):
+            raise ValueError('query must be None or one nonempty raw query without delimiters')
         self.api_key, self.requests = api_key, []
         self.reject = self.forbidden = False
         self.keys = list(keys)
@@ -25,8 +30,10 @@ class RunPodFixture:
 
             def respond(self):
                 authorized = self.headers.get("Authorization") == "Bearer " + fixture.api_key
-                route = next((self.path[len(prefix):] for prefix in ("/proxy-a/v2", "/proxy-b/v2")
-                              if self.path in (prefix + "/pods", prefix + "/account/ssh-keys")), None)
+                path, separator, raw_query = self.path.partition('?')
+                query_matches = (not separator if query is None else separator and raw_query == query)
+                route = next((path[len(prefix):] for prefix in ("/proxy-a/v2", "/proxy-b/v2")
+                              if query_matches and path in (prefix + "/pods", prefix + "/account/ssh-keys")), None)
                 body, status, result = None, 200, None
                 title, detail = "", ""
                 if route is None:

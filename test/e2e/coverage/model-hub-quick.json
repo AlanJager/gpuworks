@@ -161,8 +161,8 @@
     },
     {
       "item": "1.14",
-      "status": "MISSING",
-      "assertion": "Partial: independent source-wire facts -> GET metadata/identity + fresh page detail; saved form editor and every metadata field UI are not claimed."
+      "status": "covered",
+      "assertion": "After a page reload the model list still has one row. Opening the detail again shows the repository id, revision master, Qwen2ForCausalLM, float16, context length 4,096, and the fixture README. The independent GET stores the same repository id, revision master, and that README."
     },
     {
       "item": "1.15",

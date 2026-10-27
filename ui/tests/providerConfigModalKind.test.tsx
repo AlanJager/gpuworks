@@ -104,6 +104,52 @@ test("the chosen kind and typed credentials are what the dialog submits", async 
   assert.equal(body.endpoint, "https://api.runpod.io/v2");
 });
 
+test("required fields refuse submission inline and a corrected form can be submitted", async () => {
+  const sent: unknown[] = [];
+  api.addProvider = async (body) => { sent.push(body); return { id: 1, kind: "runpod", name: body.name }; };
+  mount("runpod");
+  await waitFor(() => assert.equal(selectedLabel(), "RunPod"));
+
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => {
+    assert.ok(screen.getByText("Enter a name"));
+    assert.ok(screen.getByText("Enter RunPod API Key"));
+  });
+  assert.equal(sent.length, 0);
+  assert.equal((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled, false);
+
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "corrected" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => assert.ok(screen.getByText("Enter RunPod API Key")));
+  assert.equal(sent.length, 0);
+  fireEvent.change(screen.getByLabelText("RunPod API Key"), { target: { value: "valid-key" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => assert.equal(sent.length, 1));
+  assert.deepEqual(sent[0], { kind: "runpod", name: "corrected", api_key: "valid-key", endpoint: "https://api.runpod.io/v2" });
+});
+
+test("an API refusal stays visible and preserves the form for a successful retry", async () => {
+  let attempts = 0;
+  let saved = 0;
+  api.addProvider = async (body) => {
+    attempts++;
+    if (attempts === 1) throw new Error("provider credential rejected");
+    return { id: 1, kind: "runpod", name: body.name };
+  };
+  render(<I18nextProvider i18n={i18n}><ProviderConfigModal open defaultKind="runpod" kindInfos={kindInfos} providerLabel="Public Cloud" onClose={() => {}} onSaved={() => { saved++; }} /></I18nextProvider>);
+  await waitFor(() => assert.equal(selectedLabel(), "RunPod"));
+  fireEvent.change(screen.getByLabelText("Name"), { target: { value: "retry" } });
+  fireEvent.change(screen.getByLabelText("RunPod API Key"), { target: { value: "key" } });
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => assert.ok(screen.getByText("Add failed: provider credential rejected")));
+  assert.equal(saved, 0);
+  assert.equal((screen.getByLabelText("Name") as HTMLInputElement).value, "retry");
+  assert.equal((screen.getByLabelText("RunPod API Key") as HTMLInputElement).value, "key");
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  await waitFor(() => assert.equal(saved, 1));
+  assert.equal(attempts, 2);
+});
+
 // The page opens one dialog for Add (optionally preselecting a kind) and Edit,
 // and closes it by resetting all three props together, as CloudProvidersPage
 // does. These cases drive the dialog through that lifecycle.

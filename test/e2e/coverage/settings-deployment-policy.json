@@ -55,6 +55,7 @@
   ],
   "checklist_items": {
     "1.1": "The start-timeout control is one spinbutton named by the start-timeout label. It is not marked required. Its default value is 1800. Its unit is the seconds suffix. Its minimum is 60, its maximum is 86400, and its step is 60. It stays visible with no control that hides it, and the card has no other field. Reading it sends no request. The save request's only field is start_timeout_sec, and the independent GET persists that start_timeout_sec.",
+    "1.12": "The start timeout changes from 1800 to 60, then to 86400, then back to 1800. Each save returns 200 and the body carries only start_timeout_sec. After each reload the spinbutton shows that timeout and the independent GET matches. The card has one spinbutton and no switch, so there is no on/off cycle and no binding control. Clearing the timeout disables Save and sends no request, and the independent GET keeps 1800. pending_timeout_sec, event_retention_days, and event_retention_bytes stay at their stored values after every save.",
     "1.13": "While the start-timeout card shows 86400, another session's PUT of start_timeout_sec 2400 returns 200 and the independent GET is 2400. The card still shows 86400. There is no conflict status. Saving that draft returns 200 with body start_timeout_sec 86400, and the independent GET is 86400.",
     "1.2": "The stored value is shown after load and after reload",
     "1.9": "covered: While the policy PUT is held a second click and Enter send no further save, and the later 200 is the only stored timeout",

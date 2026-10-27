@@ -16,6 +16,7 @@ from platform_token_read_revoke import check
 from deployment_sleep_wake import wait_online
 import deployment_container_fixture as containers
 from model_download_fixture import ModelDownload, REVISION
+from deployment_batch_checks import DISPLAY_SUFFIX
 
 IMAGE = 'gpuworks/fake-engine:test'
 SPEC = 'browser-public-acquisition'
@@ -83,7 +84,7 @@ def prepare(server, token, run_id, report, holder, agent_bin, artifacts, *, case
     prefix = 'e2e-' + run_id.lower()
     report['owned_model_repo'] = repo = prefix + '/weights'
     report['owned_source_rule_note'] = prefix + '-acquisition'
-    report['owned_deployment_name'] = prefix + '-deployment'
+    report['owned_deployment_name'] = prefix + '-deployment' + DISPLAY_SUFFIX
     hub = holder['acquisition_hub'] = ModelDownload(run_id, repo)
     hub.start()
     report['fixture_origins'] = {'huggingface': hub.base + '/hf', 'modelscope': hub.base + '/ms'}

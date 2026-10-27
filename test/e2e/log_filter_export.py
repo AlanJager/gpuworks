@@ -32,6 +32,8 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
 from platform_token_read_revoke import button, check
+from log_filter_export_checks import (
+    exercise_inclusive_boundaries, exercise_text_inputs, option_inventory, text_inventory)
 
 CONTRACT = 'gpuworks/logs/server-warning-filter-export'
 SEARCH = '/api/v1/logs/search'
@@ -118,6 +120,10 @@ def test_log_filter_export(page, context, server, artifacts, report, locale):
         artifacts.remember(cookie['value'])
     expect(page.get_by_role('heading', name=logs['title'], exact=True)).to_be_visible()
     report['preflight'] = 'PASS'
+    if report.get('check_family', 'all') in ('all', 'text-inventory'):
+        text_inventory(page, logs, report)
+    if report.get('check_family', 'all') in ('all', 'selector-inventory'):
+        option_inventory(page, logs, report)
 
     # Fixture traffic is outside the browser and tracing; expected 400 is not a UI failure.
     target_marker = 'e2e-' + report['run_id'] + '-target'
@@ -214,6 +220,23 @@ def test_log_filter_export(page, context, server, artifacts, report, locale):
     quick_result(error_chip.click, or_query, [target], 'clearing chips restores original free-text OR')
     quick_result(lambda: search.fill(query), query, [target], 'restore quoted text before export')
 
+    # Reverse the input order: chips first, then text. Each observation uses
+    # the same independently collected row and fixed window, not merely q.
+    if report.get('check_family', 'all') in ('all', 'composition'):
+        report['last_step'] = 'logs-chip-first-composition'
+        result(lambda: search.fill(''), {k: v for k, v in selected_query.items() if k != 'q'},
+               [target], 'clear text before chip-first path')
+        quick_result(warning_chip.click, 'WARNING', [target], 'warning chip before free text')
+        quick_result(error_chip.click, '(WARNING OR ERROR)', [target], 'two OR chips before free text')
+        quick_result(lambda: search.fill(or_query), '(' + or_query + ') AND (WARNING OR ERROR)',
+                     [target], 'chip-first free-text OR grouped before chip AND')
+        quick_result(warning_chip.click, '(' + or_query + ') AND ERROR', [],
+                     'chip-first removing matching warning leaves the error-only intersection empty')
+        quick_result(error_chip.click, or_query, [target], 'chip-first clear chips restores text query')
+        quick_result(lambda: search.fill(query), query, [target], 'restore target after both input orders')
+        report['chip_input_orders'] = {'text_first': True, 'chips_first': True,
+                                      'empty_and_known_hit_asserted': True, 'remove_and_clear': True}
+
     # Each empty intersection disables export; restoring that filter recovers the same fact.
     result(lambda: choose(page, logs['search']['sourceLabel'], logs['search']['sourceAgent']),
         {**selected_query, 'source': 'agent'}, [], 'wrong source excludes target')
@@ -249,6 +272,10 @@ def test_log_filter_export(page, context, server, artifacts, report, locale):
     check(restored == loaded, 'refresh/reapply changed authoritative log identity')
     report['evidence'].append({'layer': 'persistence', 'refresh_resets_unstored_filters': True,
         'custom_url_preserved': True, 'reapplied_response': restored})
+    if report.get('check_family', 'all') in ('all', 'text-inputs', 'whitespace', 'clipboard'):
+        exercise_text_inputs(page, context, server, logs, report, selected_query, target, result)
+    if report.get('check_family', 'all') in ('all', 'time-boundaries'):
+        exercise_inclusive_boundaries(page, server, logs, report, target, query, result, choose)
     check(len(downloads) == 1, 'unexpected downloads')
     check(not errors and not console_errors and not bad_http, f'browser errors: {errors}, {console_errors}, {bad_http}')
     check(page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'logs page overflows horizontally')
@@ -262,6 +289,10 @@ def main():
     parser.add_argument("--server-bin", type=Path, default=ROOT / "bin/gpuworks")
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--locale", choices=["en", "zh"], default="en")
+    parser.add_argument('--check-family', default='all', choices=(
+        'all', 'text-inventory', 'selector-inventory', 'text-inputs', 'whitespace', 'clipboard',
+        'time-boundaries', 'composition'),
+        help='Isolate a new-check family for product-mutation diagnostics. Formal en/zh evidence must use all.')
     args = parser.parse_args()
     os.umask(0o077)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
@@ -275,8 +306,10 @@ def main():
         "working_tree": "dirty" if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT) else "clean",
         "lane": "local-real-server-sqlite", "identity": "admin browser / real server warning collector", "locale": args.locale,
         "viewport": {"width": 1440, "height": 900}, "timezone": "UTC", "selection": [CONTRACT], "retries": 0, "evidence": [],
+        "check_family": args.check_family, "probe_only": args.check_family != 'all',
         "test_sha256": digest(Path(__file__)), "fixture_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
         "helper_sha256": digest(ROOT / "test/e2e/platform_token_read_revoke.py"), "coverage_manifest_sha256": digest(manifest_path),
+        "batch_checks_sha256": digest(ROOT / "test/e2e/log_filter_export_checks.py"),
         "product_sha256": {name: digest(ROOT / name) for name in PRODUCT_FILES},
         "command": ["python3", "test/e2e/log_filter_export.py", *sys.argv[1:]]}
     try:
@@ -293,6 +326,7 @@ def main():
                 test_log_filter_export(page, context, server, artifacts, report, args.locale)
                 check(set(manifest["required_evidence"]) <= {e["layer"] for e in report["evidence"]}, "missing required evidence")
                 check(report["test_sha256"] == digest(Path(__file__)) and report["coverage_manifest_sha256"] == digest(manifest_path), "test or manifest changed during execution")
+                check(report['batch_checks_sha256'] == digest(ROOT / 'test/e2e/log_filter_export_checks.py'), 'batch checks changed during execution')
                 check(report["product_sha256"] == {name: digest(ROOT / name) for name in PRODUCT_FILES}, "product source changed during execution")
                 report["status"] = "PASS"
             except Exception:

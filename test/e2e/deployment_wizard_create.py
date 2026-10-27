@@ -30,8 +30,13 @@ from dialog_checks import (
 )
 from platform_token_read_revoke import button, check
 from deploy_submit_hold import hold_deploy_create
+from deployment_batch_checks import created_notice, rejected_notice, open_deployment_row, delete_name_preview
+import deployment_launch_checks as launch_checks
 import deployment_container_fixture as container_fixture
 import deployment_wizard_fixture as wizard_fixture
+from deployment_selector_checks import (
+    watch_weight_lookups, choose_registered_model, assert_weight_match, choose_manual_node)
+from deployment_wizard_fixture import expected_body
 
 CONTRACT = "gpuworks/deployment/wizard-create"
 CASE = "部署 / 页面创建 / 自有模型与 spec、手工节点、本地权重镜像、真实启动和网关"
@@ -65,18 +70,6 @@ def assert_json(actual, expected, label):
     check(canonical(actual) == canonical(expected), f"{label}: expected {expected!r}; actual {actual!r}")
 
 
-def expected_body(fixture, name):
-    return {"model_id": fixture["model"]["id"], "served_name": fixture["served_name"],
-        "template_id": fixture["template"]["id"], "template_spec_source": "user",
-        "template_spec_name": wizard_fixture.SPEC, "scenario": "balanced",
-        "target_vendor": "nvidia", "node_uuid": fixture["node"]["uuid"],
-        "engine": "vllm", "image": IMAGE,
-        "quick_params": {"dtype": "auto", "performance_mode": "balanced",
-                         "gpu_memory_utilization": 0.9, "enable_cache_report": True, "enable_request_metrics": True,
-                         "kv_cache_dtype": "auto"},
-        "placement_strategy": "spread",
-        "container_overrides": {"env": {"E2E_WIZARD": fixture["run_id"]}},
-        "nnodes": 1, "replicas": 1, "placement_mode": "manual", "name": name}
 
 
 # Mainline: browser selects own model, vendor, recommended running spec, exact
@@ -89,6 +82,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     deployments = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/deployments.json").read_text())
     auth = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/auth.json").read_text())
     common = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/common.json").read_text())
+    weight_lookups = watch_weight_lookups(page)
     errors, creates, console_errors, http_errors, create_responses = [], [], [], [], []
     report["page_errors"] = errors
     report["console_errors"] = console_errors
@@ -154,15 +148,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     name_input = page.get_by_role("textbox", name=re.compile(re.escape(labels["basic"]["name"]) + "$"))
     route_input = page.get_by_role("textbox", name=labels["basic"]["servedName"], exact=True)
     model = fixture["model"]
-    # The page searches registered models using a real selector request.
-    with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/models"
-                              and "q=" in r.url and model["name"] in r.url) as searched:
-        page.locator("#model_id").fill(model["name"])
-    check(searched.value.status == 200, "model selector request failed")
-    check(searched.value.json()["items"][0]["id"] == model["id"], "wrong model selector result")
-    model_control = page.locator("#model_id")
-    popup = page.locator("[id=" + json.dumps(model_control.get_attribute("aria-controls")) + "]").locator("..")
-    popup.get_by_text(model["name"], exact=True).filter(visible=True).click()
+    choose_registered_model(page, fixture, locale, report)
     with page.expect_response(lambda response: urlsplit(response.url).path == "/api/v1/evaluate"
                               and response.request.method == "POST") as initial_evaluation:
         select(page, page.locator("#target_vendor"), labels["basic"]["vendor"]["nvidia"])
@@ -177,13 +163,11 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     weights = page.get_by_role("dialog", name=labels["weightSourceModal"]["confirmTitle"], exact=True)
     marker = weights.get_by_role("radio", name=re.compile(re.escape(model["name"])))
     expect(marker).to_be_checked()
+    assert_weight_match(page, marker, fixture, locale, report, weight_lookups)
     assert_dialog_shell(page, weights, marker, button(weights, labels["weightSourceModal"]["useModel"]))
     button(weights, labels["weightSourceModal"]["useModel"]).click()
     expect(weights).not_to_be_visible()
-    page.get_by_text(labels["workbench"]["node"]["manual"], exact=True).click()
-    select(page, page.get_by_text(labels["workbench"]["node"]["selectNodeAndGpu"], exact=True)
-           .locator("..").locator("..").get_by_role("combobox"),
-           fixture["node"]["name"] + " · 1 GPU")
+    choose_manual_node(page, fixture, labels, report)
     image = page.get_by_role("combobox", name=labels["workbench"]["acquisition"]["imageOptions"])
     image.fill(IMAGE)
     image.press("Tab")
@@ -207,6 +191,8 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
                 observed["parse_error"] = artifacts.redact(str(error))
             report["last_evaluations"].append(observed)
         raise
+    launch_preview = launch_checks.draft_checks(
+        page, labels, expected_body(fixture, fixture["name"]), report, token=token)
     report["last_step"] = "draft-selected"
     # Exact local cache forecast: both image and weights are on the chosen node.
     forecast = page.get_by_role("table").filter(has=page.get_by_text(labels["workbench"]["nodeAcquisition"]["forecastNote"], exact=True))
@@ -229,7 +215,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
           "params": {"field": "name", "detail": detail}}, "wrong server validation wire")
     assert_json(creates[0]["body"], expected_body(fixture, invalid), "rejected create body differs")
     error_text = common["apiError"]["FIELD_INVALID"].replace("{{field}}", "name").replace("{{detail}}", detail)
-    expect(page.get_by_text(labels["action"]["createFailed"].replace("{{detail}}", error_text), exact=True)).to_be_visible()
+    rejected_notice(page, labels["action"]["createFailed"].replace("{{detail}}", error_text), labels, report)
     expect(name_input).to_have_value(invalid)
     expect(image).to_have_value(IMAGE)
     status, empty = http(server.base, "GET", DEPLOYMENTS, token=token)
@@ -240,6 +226,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
         deploy.click()
     record_create(created.value)
     check(created.value.status == 201, f"browser create HTTP {created.value.status}: {created.value.text()}")
+    created_notice(page, labels, report)
     check(len(creates) == 2 and [c["status"] for c in creates] == [400, 201], "unexpected mutation count/order")
     assert_json(creates[1]["body"], expected_body(fixture, fixture["name"]), "successful create body differs")
     dep_id = report["owned_deployment_id"]
@@ -279,6 +266,9 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     check(len(current) == 1 and current[0]["state"] == "running",
           f"expected exactly one running current replica, got {current}")
     instance = current[0]
+    launch_checks.snapshot_checks(saved, expected_body(fixture, fixture["name"]), report)
+    launch_checks.runtime_checks(instance, expected_body(fixture, fixture["name"]),
+                                 launch_preview, fixture["model_dir"], report)
     container = instance["container_id"]
     check(instance["node_uuid"] == fixture["node"]["uuid"], "agent used another node")
     check(container_fixture.docker_running(container) == "true", "Docker container is not running")
@@ -295,8 +285,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     page.reload()
     row = page.get_by_role("row").filter(has_text=fixture["name"])
     expect(row).to_have_count(1)
-    row.get_by_role("button", name=fixture["name"], exact=True).click()
-    drawer = page.get_by_role("dialog").filter(has_text=fixture["served_name"])
+    drawer = open_deployment_row(page, row, fixture["name"], dep_id, report)
     expect(drawer.get_by_text(fixture["served_name"], exact=True)).to_be_visible()
     expect(drawer.get_by_text(IMAGE, exact=True).first).to_be_visible()
     delete_title = deployments["delete"]["title"].replace("{{name}}", fixture["name"])
@@ -307,6 +296,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
         expect(dialog).to_be_visible()
         return dialog
     confirm = open_delete()
+    delete_name_preview(confirm, delete_title, report)
     assert_dialog_shell(
         page, confirm, confirm.get_by_text(deployments["delete"]["description"], exact=True),
         button(confirm, deployments["delete"]["button"]))
@@ -360,6 +350,7 @@ def main(*, manifest_path=None, exercise=None, fixture_module=None):
     parser.add_argument("--agent-bin", type=Path, default=ROOT / "bin/gpuworks-agent")
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--locale", choices=["en", "zh"], default="en")
+    parser.add_argument("--check-family", choices=launch_checks.FAMILIES, default="all")
     parser.add_argument("--mutation", help="Product mutation label recorded in evidence")
     args = parser.parse_args()
     os.umask(0o077)
@@ -389,6 +380,10 @@ def main(*, manifest_path=None, exercise=None, fixture_module=None):
         "helper_sha256": digest(ROOT / "test/e2e/local_browser_fixture.py"),
         "container_fixture_sha256": digest(ROOT / "test/e2e/deployment_container_fixture.py"),
         "wizard_fixture_sha256": digest(ROOT / "test/e2e/deployment_wizard_fixture.py"),
+        "batch_checks_sha256": digest(ROOT / "test/e2e/deployment_batch_checks.py"),
+        "selector_checks_sha256": digest(ROOT / "test/e2e/deployment_selector_checks.py"),
+        "boolean_checks_sha256": digest(ROOT / "test/e2e/deployment_boolean_checks.py"),
+        "boolean_contracts_sha256": digest(ROOT / "test/e2e/deployment_boolean_contracts.py"),
         "case_fixture_file": str(Path(fixture_module.__file__).relative_to(ROOT)),
         "case_fixture_sha256": digest(Path(fixture_module.__file__)),
         "target_sha": subprocess.check_output(["git", "rev-parse", "wei/master"], cwd=ROOT, text=True).strip(),
@@ -396,6 +391,7 @@ def main(*, manifest_path=None, exercise=None, fixture_module=None):
         "runtime": "real engine and gateway requests; no real GPU compute or vendor driver",
         "not_covered": manifest["missing"],
         "command": ["python3", manifest["test_file"], *sys.argv[1:]]}
+    launch_checks.freeze(report, args.check_family)
     server = LocalServer(args.server_bin, artifacts.private)
     holder = {"agent": None, "log": None}
     token = None
@@ -458,6 +454,7 @@ def main(*, manifest_path=None, exercise=None, fixture_module=None):
                 layers = {item["layer"] for item in report["evidence"]}
                 check(set(manifest["required_evidence"]) <= layers,
                       "required evidence is missing")
+                launch_checks.frozen(report)
                 report["case_completed"] = True
             except Exception:
                 report["status"] = "FAIL_TEST"

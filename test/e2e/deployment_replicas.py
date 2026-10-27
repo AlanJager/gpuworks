@@ -30,6 +30,7 @@ from platform_token_read_revoke import check
 import deployment_container_fixture as container_fixture
 import deployment_replica_fixture as replica_fixture
 from deployment_replica_browser import test_replicas
+from deployment_replica_checks import FAMILIES
 IMAGE = "gpuworks/fake-engine:test"
 
 def require_dedicated_daemon(host, context=""):
@@ -49,6 +50,8 @@ def main():
     parser.add_argument("--locale", choices=["en", "zh"], default="en")
     parser.add_argument("--case", choices=["scale", "drain", "immediate"], required=True)
     parser.add_argument("--mutation", help="Product mutation label recorded in evidence")
+    parser.add_argument("--check-family", choices=FAMILIES, default="all",
+                        help="Isolate new checks for mutation diagnostics; formal en/zh must use all")
     args = parser.parse_args()
     require_dedicated_daemon(os.environ.get("DOCKER_HOST"), os.environ.get("DOCKER_CONTEXT", ""))
     os.umask(0o077)
@@ -71,6 +74,7 @@ def main():
         "working_tree": "dirty" if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT) else "clean",
         "lane": "local-real-agent-docker-fake-gpu-facts", "identity": "admin browser / node agent / Docker",
         "product_mutation": args.mutation,
+        "check_family": args.check_family, "probe_only": args.check_family != "all",
         "locale": args.locale, "timezone": "UTC", "viewport": {"width": 1440, "height": 900},
         "selection": [contract], "retries": 0, "evidence": [],
         "coverage_manifest_sha256": digest(manifest_path),
@@ -80,6 +84,7 @@ def main():
         "container_fixture_sha256": digest(ROOT / "test/e2e/deployment_container_fixture.py"),
         "replica_fixture_sha256": digest(ROOT / "test/e2e/deployment_replica_fixture.py"),
         "browser_case_sha256": digest(ROOT / "test/e2e/deployment_replica_browser.py"),
+        "batch_checks_sha256": digest(ROOT / "test/e2e/deployment_replica_checks.py"),
         "target_sha": subprocess.check_output(["git", "rev-parse", "wei/master"], cwd=ROOT, text=True).strip(),
         "execution": "API creates the initial fixture deployment; browser mutates replicas; real agent and Docker launch the audited fake-engine; synthetic GPU facts only",
         "runtime": "real engine and gateway requests; no real GPU compute or vendor driver",
@@ -153,6 +158,10 @@ def main():
                 layers = {item["layer"] for item in report["evidence"]}
                 check(set(manifest["required_evidence"]) - {"cleanup"} <= layers,
                       "required evidence is missing")
+                check(report["batch_checks_sha256"] == digest(ROOT / "test/e2e/deployment_replica_checks.py"),
+                      "replica checks changed during execution")
+                check(report["browser_case_sha256"] == digest(ROOT / "test/e2e/deployment_replica_browser.py"),
+                      "replica browser changed during execution")
                 report["case_completed"] = True
             except Exception:
                 report["status"] = "FAIL_TEST"

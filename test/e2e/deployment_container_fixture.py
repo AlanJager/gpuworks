@@ -7,6 +7,7 @@ import re
 import subprocess
 import time
 import traceback
+from datetime import datetime, timezone
 
 DEPLOYMENTS = "/api/v1/deployments"
 MODELS = "/api/v1/models"
@@ -169,10 +170,25 @@ def cleanup(server, token, report, holder, *, request, inspect,
                                                token=token)
                     if after_status != 200:
                         return False
-                    gone = all(entry.get("name") != key_name
-                               for entry in after.get("items") or [])
+                    matches = [entry for entry in after.get("items") or []
+                               if entry.get("name") == key_name]
+                    gone = not matches
                     report["cleanup_key_gone"] = gone
-                    return gone
+                    # Revoke retains the audit row. Observe its UTC marker;
+                    # a successful DELETE alone does not establish revocation.
+                    revoked = bool(matches)
+                    for entry in matches:
+                        marker = entry.get("revoked_at")
+                        try:
+                            valid = (entry.get("prefix") == item["prefix"]
+                                     and isinstance(marker, str) and marker.endswith("Z")
+                                     and datetime.fromisoformat(marker).utcoffset()
+                                     == timezone.utc.utcoffset(None))
+                        except ValueError:
+                            valid = False
+                        revoked = revoked and valid
+                    report["cleanup_key_revoked"] = revoked
+                    return code == 200 and (gone or revoked)
             report["cleanup_key_gone"] = True
             return True
 

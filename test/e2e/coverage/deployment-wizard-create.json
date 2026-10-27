@@ -168,14 +168,14 @@
         "extra_args",
         "start_timeout_sec"
       ],
-      "contract": "only spec-provided E2E_WIZARD environment reaches Docker; all browser override and manual-command branches MISSING"
+      "contract": "Spec-provided E2E_WIZARD environment reaches real Docker. Structured custom args/form-to-manual-text-to-form draft preservation and explicit discard warning are checked; other browser override controls and manual-mode workload execution remain MISSING"
     },
     {
       "component": "Quick/Expert Segmented + expert Tabs",
       "fields": [
         "deployMode"
       ],
-      "contract": "quick retained; switch preservation and model/performance/resource/runtime tabs MISSING"
+      "contract": "Quick/Expert default, explicit false and Auto-unset roundtrips preserve the complete draft on real evaluate; complete model/performance/resource/runtime tab inventory remains MISSING"
     },
     {
       "component": "Evaluation and runtime preview",
@@ -185,7 +185,7 @@
         "mount preview",
         "estimated VRAM"
       ],
-      "contract": "settled evaluation enables submit; numerical estimate and command-preview equality MISSING"
+      "contract": "Settled evaluation enables submit; full displayed launch command/env/runtime JSON, persisted snapshot and actual single-rank dispatch agree with the evaluated launch. Numerical estimate validation remains MISSING"
     },
     {
       "component": "DeploySubmitBar / Button",
@@ -271,7 +271,7 @@
   "missing": [
     "Real GPU inference, GPU memory release, dGPU quota and vendor driver behavior",
     "Remote weight/image download, peer copy, storage and provider choices, acquisition candidate expiry",
-    "All engine dictionary parameter options, numeric boundaries, mode preservation, estimates and command preview equality",
+    "All engine dictionary parameter options, numeric boundaries and numerical estimates remain MISSING; mode preservation and complete evaluated/instance/runtime launch consistency are checked for this one-rank contract",
     "Auto placement, multihost, PD, replica scaling and execution failure/cancellation",
     "Non-admin permissions, authentication expiry and reconnect",
     "Full keyboard/focus/layout and 10/30/100 candidate/list matrices",
@@ -312,8 +312,8 @@
     {"item": "2.4", "status": "MISSING", "assertion": "Not fully exercised: 输入中文、英文、数字、标点、换行及产品禁止字符，验证接受或具体错误，不能以浏览器输入成功代替保存成功。"},
     {"item": "2.5", "status": "MISSING", "assertion": "Not fully exercised: 对名称唯一性等服务端约束构造真实冲突；失败后原值保留，修改后错误消失且可重新提交。"},
     {"item": "2.6", "status": "MISSING", "assertion": "Not fully exercised: 验证文本粘贴、清空、键盘编辑；多行内容换行在保存与重进后保持合同语义。"},
-    {"item": "2.7", "status": "MISSING", "assertion": "Not fully exercised: 在列表、详情和预览显示带 HTML 字符的文本，确认按该字段合同转义，不能执行非预期脚本。"},
-    {"item": "3.1", "status": "MISSING", "assertion": "Not fully exercised: 检查默认值、单位、step、上下限；区分 GPU 数量、MiB/GiB、百分比、时间与并发数量。"},
+    {"item": "2.7", "status": "covered", "assertion": "The fixture-owned display name contains literal <b> markup, Chinese, ampersand and quoted text. The exact browser create body and independent deployment GET retain those bytes. After page reload the list button, the actual detail drawer title and the named delete preview display the complete literal name and contain no b element. The real runtime and cleanup still complete; this checks these display surfaces, not a comprehensive XSS audit."},
+    {"item": "3.1", "status": "covered", "assertion": "All reachable numeric and slider controls across the reviewed Quick/Expert surfaces are matched to the independently frozen dictionary/hardware contract: unique controls, actual defaults or explicit empty automatic values, accessible labels, help/units, min/max/step and conditional required/disabled states; GPU/rank counts, GiB/MiB-derived memory, percentage, seconds and concurrency stay distinct. Exact complete surface multisets include partition, multi-node, PD and KV-tier branches. Real dictionary API is verified against the frozen snapshot. Slider step is verified through the dictionary and product binding; interaction remains3.3. Preserves the entire original real400/recovery/create/persistence/container/gateway/delete mainline in both locales. Does not claim3.2–3.6 or a new topology/runtime."},
     {"item": "3.2", "status": "MISSING", "assertion": "Not fully exercised: 分别验证 0、最小、最大、上下越界；负数、小数、空值和非数字按真实字段合同接受或拒绝。"},
     {"item": "3.3", "status": "MISSING", "assertion": "Not fully exercised: 使用键盘、加减按钮和滑块实际改变值；有联动输入框时值与限制一致。"},
     {"item": "3.4", "status": "MISSING", "assertion": "Not fully exercised: 检查 JSON 数值类型，不得把字符串、空字符串、null、0 和省略混为一谈。"},
@@ -326,13 +326,13 @@
     {"item": "5.5", "status": "MISSING", "assertion": "Not fully exercised: 切换选项触发的区域、默认值及隐藏字段提交规则正确；切回原选项后没有错误的陈旧值。"},
     {"item": "5.6", "status": "MISSING", "assertion": "Not fully exercised: 验证键盘打开、移动、选择和关闭；菜单 portal 关闭后焦点回到合理触发位置。"},
     {"item": "5.7", "status": "MISSING", "assertion": "Not fully exercised: 异步选项加载失败、重试或选项失效时，不得提交看似有效但实际不存在的值。"},
-    {"item": "6.1", "status": "MISSING", "assertion": "Not fully exercised: 验证默认态、可访问名称、禁用态及原因。"},
+    {"item": "6.1", "status": "COVERED", "assertion": "当前fixture逐项核对引擎完整布尔字典及Quick白名单、Quick/Expert默认态、精确可访问名称、禁用态及具体原因；区分Auto、显式布尔、静态开关、未提供字段与辅助能力按钮。固定注册/有效API及公开GPU事实独立核验；原挂载行与独立页新行的read-only默认值均实查，独立页零创建并观察关闭，原草稿完整wire恢复后完成原真实创建、运行、刷新与删除。"},
     {"item": "6.2", "status": "MISSING", "assertion": "Not fully exercised: 分别完成关→开、开→关并检查精确布尔请求值及刷新回读。"},
-    {"item": "6.3", "status": "MISSING", "assertion": "Not fully exercised: 三态引擎参数分别验证“由引擎决定”、显式 true、显式 false，确认省略与显式 false 不混用。"},
+    {"item": "6.3", "status": "COVERED", "assertion": "真实 Quick/Expert 检查当前引擎完整三态参数集合及 Quick 白名单缺席项；逐项选择由引擎决定/显式 true/显式 false，以独立完整 evaluate wire 严格区分省略、JSON 布尔与 null/0/1/字符串，并恢复原始草稿后完成原创建、运行与删除流程。"},
     {"item": "6.4", "status": "MISSING", "assertion": "Not fully exercised: 控制项影响其他字段时验证显隐、禁用、默认值与陈旧值提交规则。"},
     {"item": "6.5", "status": "MISSING", "assertion": "Not fully exercised: 保存失败时按产品合同恢复原态或保留待保存态，不能显示成功而后端未改变。"},
     {"item": "6.6", "status": "MISSING", "assertion": "Not fully exercised: 涉及运行时能力的开关通过真实 workload/调用观察效果；disabled 不一律等同于现有资源立即不可读。"},
-    {"item": "8.1", "status": "MISSING", "assertion": "Not fully exercised: 候选展示可读名称和必要辨识信息，通过真实 selector API 选择，不能要求用户输入内部 ID。"},
+    {"item": "8.1", "status": "covered", "assertion": "Real paged model selector and weight-source lookup return the fixture id/name/local source/repository exactly; visible options show readable model name/source/repository. Actual online-node selector returns exact fixture UUID/name/GPU count and localized full option. Browser choice, exact create request, independent GET and real container/gateway prove those identities."},
     {"item": "8.2", "status": "MISSING", "assertion": "Not fully exercised: 验证搜索、无结果、清空搜索、候选加载失败与重试，精确检查 query 和候选集合。"},
     {"item": "8.3", "status": "MISSING", "assertion": "Not fully exercised: 验证选中值回填；候选因新搜索不在当前集合时，已选资源名称仍正确。"},
     {"item": "8.4", "status": "MISSING", "assertion": "Not fully exercised: 分别绑定 A、换绑 B、移除/清空，刷新查询正向关系；有反向查询能力时同时验证旧关系已解除。"},
@@ -348,7 +348,7 @@
     {"item": "10.6", "status": "MISSING", "assertion": "Not fully exercised: 验证首页、上一页、下一页、末页及边界禁用；逐页收集稳定 ID，无重复无遗漏，返回顺序一致。"},
     {"item": "10.7", "status": "MISSING", "assertion": "Not fully exercised: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"},
     {"item": "10.8", "status": "MISSING", "assertion": "Not fully exercised: 分别准备总量 10、30、100 的真实归属数据，验证跨页查询与操作；page-size 选项不能代替总量证据。"},
-    {"item": "10.9", "status": "MISSING", "assertion": "Not fully exercised: 逐行按唯一业务文本定位操作，验证详情/编辑/诊断在当前视口打开；不依赖自动滚动掩盖页面问题。"},
+    {"item": "10.9", "status": "partial", "assertion": "PARTIAL: the unique run-owned row name is checked without scrolling; its name button is completely in the viewport before the real click, and the resulting browser GET and detail drawer id/name match the fixture. The other applicable row menu/terminal/diagnostic entry paths are not fully exercised."},
     {"item": "10.10", "status": "MISSING", "assertion": "Not fully exercised: 修改后手动刷新与后台更新按合同保留筛选；轮询不能覆盖未保存草稿或让已删除对象重新出现。"},
     {"item": "10.11", "status": "MISSING", "assertion": "Not fully exercised: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"},
     {"item": "10.12", "status": "MISSING", "assertion": "Not fully exercised: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"},
@@ -365,22 +365,22 @@
     {"item": "13.2", "status": "MISSING", "assertion": "Not fully exercised: 长列表末行及屏幕边缘打开时浮层在视口内、不遮挡必要操作，关闭后焦点合理返回。"},
     {"item": "13.3", "status": "MISSING", "assertion": "Not fully exercised: 菜单项权限、状态条件与真实 API 一致；隐藏按钮之外还需后端权限拒绝证据。"},
     {"item": "13.4", "status": "MISSING", "assertion": "Not fully exercised: Tooltip 只补充说明，不作为唯一可达操作或唯一错误信息；有键盘触发能力时必须验证。"},
-    {"item": "13.5", "status": "MISSING", "assertion": "Not fully exercised: 成功通知对应真实持久化结果，错误通知包含操作与具体原因；消失不能替代后端恢复证明。"},
+    {"item": "13.5", "status": "covered", "assertion": "Real FIELD_INVALID name rejection shows exactly one visible error notification containing the localized create operation and concrete server reason, with no false create-success notification. Correcting the draft produces a real 201 and exactly one visible localized success notification. Independent GET, actual container/gateway execution and refreshed UI prove the stored result; notification disappearance is not used as recovery evidence."},
     {"item": "13.6", "status": "MISSING", "assertion": "Not fully exercised: 连续事件或轮询不产生无限重复通知，不遮挡后续重试、取消或编辑入口。"},
     {"item": "14.1", "status": "MISSING", "assertion": "Not fully exercised: 检查步骤名、初始步骤、前进/返回及每步校验；非法输入不能绕过必需步骤提交。"},
     {"item": "14.2", "status": "MISSING", "assertion": "Not fully exercised: 前后切换保持同一草稿；取消整个向导不创建半成品，已创建的异步资源按产品合同处理。"},
-    {"item": "14.3", "status": "MISSING", "assertion": "Not fully exercised: 快捷/专家模式来回切换，默认值、显式值和 unset 语义保持一致。"},
+    {"item": "14.3", "status": "covered", "assertion": "Quick-to-Expert and back preserve the entire fixture quick_params object, stable deployment/source/storage/placement fields and unset list on genuine evaluate POSTs. Untouched defaults, explicit cache-report false, explicit prefix-cache false and return-to-Auto omission are checked with actual controls. A reversible served-name textbox edit triggers evaluation when a mode switch correctly sends none; the original draft is restored before normal creation."},
     {"item": "14.4", "status": "MISSING", "assertion": "Not fully exercised: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"},
     {"item": "14.5", "status": "MISSING", "assertion": "Not fully exercised: 更换模型、引擎、spec 或硬件时验证兼容性、模板锁定/偏离、依赖字段更新和失效选择提示。"},
     {"item": "14.6", "status": "MISSING", "assertion": "Not fully exercised: 获取来源由用户明确选择；候选过期须展示真实拒绝，不得静默替换模型/镜像来源。"},
-    {"item": "14.7", "status": "MISSING", "assertion": "Not fully exercised: 预览、创建快照与 instance 启动配置一致；分配后端口等差异需有明确合同，测试不能另拼一份命令充当权威。"},
+    {"item": "14.7", "status": "covered", "assertion": "The real rendered full command, environment and resolved-runtime JSON agree with the evaluated one-rank launch. Engine/image/node, known utilization and complete fixture/system environment have independent fixture oracles. Independent GET checks persisted quick parameters and original template selection/env/residual arguments/entrypoint; the actual instance must retain the complete evaluated entrypoint/argv/env/mounts/docker arguments/shm/model mount. The only permitted normalization is the unique preview API port30000 to the assigned instance port. No second engine-command builder or general token/path filter is used."},
     {"item": "14.8", "status": "covered", "assertion": "Browser POST continues through real server reconcile, WS agent and Docker fake-engine; exact gateway output and observed deletion."},
-    {"item": "15.1", "status": "MISSING", "assertion": "Not fully exercised: 验证初始内容、只读/可编辑状态、格式说明及键盘编辑，编辑器不能吞掉必要导航键。"},
+    {"item": "15.1", "status": "COVERED", "assertion": "真实 shell 命令 textarea 验证完整生成初值、结构化预览只读及完整命令、pending 时禁止编辑、格式与动态绑定说明；实际键盘验证导航/选择/Tab/换行/撤销/删除和完整 evaluate wire，恢复原草稿且不产生额外 deployment POST；不声明 YAML/schema 编辑能力。"},
     {"item": "15.2", "status": "MISSING", "assertion": "Not fully exercised: 输入语法错误、schema 错误、未知字段和缺必填字段，验证具体位置/原因及不发送非法 mutation。"},
     {"item": "15.3", "status": "MISSING", "assertion": "Not fully exercised: 格式化、复制、保存和重开后语义一致；敏感字段遵守 secret 合同。"},
-    {"item": "15.4", "status": "MISSING", "assertion": "Not fully exercised: 表单与文本模式切换不丢值；无法无损转换时按产品合同提示，不能静默丢弃自定义参数。"},
+    {"item": "15.4", "status": "covered", "assertion": "Structured custom arguments are entered through the actual form and captured in a real evaluate request. Canceling text-mode entry retains them; confirmed entry produces a complete shell script whose set/export/exec tokens and environment match the evaluated launch. Edited manual text reaches evaluate; canceling return retains it. The exact localized discard warning is checked and confirmed return must reproduce the complete earlier structured request and visible custom arguments without manual-only keys. The original empty draft is restored. This tests roundtrip preservation, not manual-mode workload execution."},
     {"item": "15.5", "status": "MISSING", "assertion": "Not fully exercised: 手工命令模式禁用应禁用的字段，placement 等仍可编辑项保持有效；切回表单恢复参数来源合同。"},
-    {"item": "15.6", "status": "MISSING", "assertion": "Not fully exercised: 验证最终 argv、env、mount 与各 role/rank 的派发配置；预览字符串相同不等于命令实际正确执行。"},
+    {"item": "15.6", "status": "covered", "assertion": "For the one actual standalone rank0 of this contract, real Docker inspect verifies complete image/Entrypoint+Cmd, environment including independently inspected OCI defaults, bind-mount set and RO/RW flags, and shm bytes. Actual fake-engine process argv is read from the running container and compared with persisted dispatch and evaluated launch, with only the documented API-port rebinding. Fixture-owned model paths, and applicable acquired/override files, remain independently checked. This proves actual fake-engine dispatch, not real GPU inference, PD or multiple roles/ranks."},
     {"item": "15.7", "status": "MISSING", "assertion": "Not fully exercised: 系统模板只读与克隆后可编辑边界正确，失败不修改原模板。"},
     {"item": "17.1", "status": "MISSING", "assertion": "Not fully exercised: 分别验证 loading、empty、error、数据与陈旧数据，缺失值和真实零值必须可区分。"},
     {"item": "17.2", "status": "MISSING", "assertion": "Not fully exercised: 用已知样本检查查询参数、时间范围、聚合、单位与精度；canvas 存在或截图相似不足以证明数据正确。"},
@@ -396,5 +396,303 @@
     {"item": "22.5", "status": "MISSING", "assertion": "Not fully exercised: zh/en 分别检查导航、首屏、表单、错误、空态及实际动态文本，内部字段名不能代替翻译。"},
     {"item": "22.6", "status": "MISSING", "assertion": "Not fully exercised: 真实键盘操作验证 focus-visible；颜色、间距和禁用态使用浏览器 computed style 与主题 token 语义比较。"},
     {"item": "22.7", "status": "MISSING", "assertion": "Not fully exercised: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"}
-  ]
+  ],
+  "selector_evidence": {
+    "contract": "gpuworks/deployment/wizard-create",
+    "mutation": {
+      "run_id": "20261026T083435Z-8ad46d1d",
+      "report": "secrets/e2e/20261026T083435Z-8ad46d1d/report.json",
+      "last_step": "selector-model-readable-identity",
+      "status": "FAIL_TEST",
+      "test_sha256": "ab74289b6af5b156a888246a61fcecf37e6b719502af784a89823271608ee02e"
+    },
+    "restored": {
+      "en": {
+        "run_id": "20261026T091825Z-8a7776cb",
+        "report": "secrets/e2e/20261026T091825Z-8a7776cb/report.json",
+        "status": "PASS",
+        "test_sha256": "ab74289b6af5b156a888246a61fcecf37e6b719502af784a89823271608ee02e",
+        "binary_sha256": "2087023dee0f35ca81ee92bfb3ac046d28935e200e90b7a8dad8a338455cfaf2"
+      },
+      "zh": {
+        "run_id": "20261026T091828Z-201e9edf",
+        "report": "secrets/e2e/20261026T091828Z-201e9edf/report.json",
+        "status": "PASS",
+        "test_sha256": "ab74289b6af5b156a888246a61fcecf37e6b719502af784a89823271608ee02e",
+        "binary_sha256": "2087023dee0f35ca81ee92bfb3ac046d28935e200e90b7a8dad8a338455cfaf2"
+      }
+    },
+    "selector_helper_sha256": "be1d8ee73006edea1b3a4606923418cf3d408d128d807bbd16083d2d79e28613"
+  },
+  "batch_c_evidence": {
+    "items": [
+      "14.3",
+      "15.4",
+      "14.7",
+      "15.6"
+    ],
+    "normal_binary_sha256": "671e93a1b3783695f799ffd494ca2e2d0801c374f69374f5413236e177125e1b",
+    "input_manifest_sha256": "9416117b300a71d86b04392d6286172f5f4312d5520d078099461268b4f42f2b",
+    "deployment_helper_sha256": "44a51cdc08a077912964551ac5d7e4def958c5aa93c91c4607dd414a7271f374",
+    "frozen_consumed_test_sources": {
+      "deployment_launch_checks.py": "44a51cdc08a077912964551ac5d7e4def958c5aa93c91c4607dd414a7271f374",
+      "deployment_batch_checks.py": "e080d6b710dc05b0b6740d696d914a7db6c780be93d5656c0993db8cdb77fc42",
+      "deployment_selector_checks.py": "be1d8ee73006edea1b3a4606923418cf3d408d128d807bbd16083d2d79e28613",
+      "deployment_wizard_create.py": "5463121061331a3668457529ffcc5480948feb64400353711c2da31d1c1e0cac",
+      "deployment_wizard_fixture.py": "2e37f51b650b2515e76fdc93e21f91592ec950ff8251ec016483cc22c96c8f4b",
+      "deployment_override_create.py": "8bb5323012e2a0b5b65d93e053952977cc88f26ccac26db610e74ba392d64868",
+      "deployment_override_fixture.py": "a19d81692c51cae80bd4d2192c158d17018e6affc58c5b23ea7a8091d0453c92",
+      "deployment_acquisition.py": "6649ca31132499be2a003021d16bd7d55d0523ffc1f12f1ac0fef789d5fbcd5d",
+      "deployment_acquisition_browser.py": "5d95f087f36803a6df82f7b285f2be7878eab682eaa6dd3d2b253575a6bc22b5",
+      "deployment_acquisition_fixture.py": "b024d2238a9928107c958c87520adfe3212bc193146cd8daba37cabd8cca09f6",
+      "deployment_acquisition_oracles.py": "935f270a663eb45abd233bc12ddbcf5383891efd022b04d54aa2b5384b15ab94"
+    },
+    "restored_all": [
+      {
+        "locale": "en",
+        "run_id": "20261026T161042Z-a7a8f45d",
+        "report": "secrets/e2e/20261026T161042Z-a7a8f45d/report.json",
+        "report_sha256": "233bf34a2b95d5732abf7478aebcd7b590b4129a08eb4416b479261f7ad1a9e4"
+      },
+      {
+        "locale": "zh",
+        "run_id": "20261026T161201Z-329d42a8",
+        "report": "secrets/e2e/20261026T161201Z-329d42a8/report.json",
+        "report_sha256": "02a301ea272d14b3c5c3d8586cdf5bd712cdced0eaeceb2f8046c36ba7a2342a"
+      }
+    ],
+    "mutations": [
+      {
+        "locale": "en",
+        "run_id": "20261026T154743Z-b30f02af",
+        "report": "secrets/e2e/20261026T154743Z-b30f02af/report.json",
+        "report_sha256": "8cafb87d33db59da0329e10b6930678114aae6a96fbd50b4920771781d017a3d",
+        "family": "quick-expert",
+        "expected_failure_step": "quick-expert-false-quick"
+      },
+      {
+        "locale": "en",
+        "run_id": "20261026T155536Z-7d520333",
+        "report": "secrets/e2e/20261026T155536Z-7d520333/report.json",
+        "report_sha256": "b54bc3162f27caaacb353b9494a6cff12877e2b6ca3c83990e8611666b9a1313",
+        "family": "manual-roundtrip",
+        "expected_failure_step": "manual-roundtrip-explicit-discard"
+      },
+      {
+        "locale": "en",
+        "run_id": "20261026T155911Z-79ba6d36",
+        "report": "secrets/e2e/20261026T155911Z-79ba6d36/report.json",
+        "report_sha256": "b703d938221ac3b430ac4cf0f3b688765f645a9944702b80c22737df28343cbc",
+        "family": "launch-contract",
+        "expected_failure_step": "launch-contract-real-process"
+      }
+    ],
+    "positive_archive_index": "secrets/mr-validation-20261026/batch-c-final-deployments-persisted.json",
+    "negative_archive_index": "secrets/mr-validation-20261026/batch-c-post-css-negatives-persisted.json",
+    "scope": "All one actual standalone rank0 for this contract; no PD, multi-node or GPU inference claim. Only planning.PreviewAPIPort to allocated instance API port is normalized.",
+    "note": "Supersedes earlier partial statements only for these four items; earlier selector/batch evidence retained as historical."
+  },
+  "batch_d_editor_boolean_evidence": {
+    "items": [
+      "6.3",
+      "15.1"
+    ],
+    "input_manifest_sha256": "2890e8d93df68980d4b9a582074f58eca1979de596a63d40aa8334c35a84670b",
+    "normal_binary_sha256": "e595a7ac1f9a3a10c5c453a74432cbb40290f158a38f17dc7cecc299544c538f",
+    "frozen_consumed_test_sources": {
+      "deployment_editor_checks.py": "6120e5f62236feed3baca78e18598bceb1a77b61b29cc2bf3ec23129e9ceee80",
+      "deployment_launch_checks.py": "49d91b81981d6870a73a388838972e4d180c4c3bdbadfeb94370dc7620417be8",
+      "deployment_batch_checks.py": "e080d6b710dc05b0b6740d696d914a7db6c780be93d5656c0993db8cdb77fc42",
+      "deployment_selector_checks.py": "be1d8ee73006edea1b3a4606923418cf3d408d128d807bbd16083d2d79e28613",
+      "deployment_wizard_create.py": "49f61bfbec95823eecd0588925f6328798b007495b80c67790a720a67226f78b",
+      "deployment_wizard_fixture.py": "2e37f51b650b2515e76fdc93e21f91592ec950ff8251ec016483cc22c96c8f4b",
+      "deployment_override_create.py": "8bb5323012e2a0b5b65d93e053952977cc88f26ccac26db610e74ba392d64868",
+      "deployment_override_fixture.py": "a19d81692c51cae80bd4d2192c158d17018e6affc58c5b23ea7a8091d0453c92",
+      "deployment_acquisition.py": "577c773673c18dce925a3da29212491a6e151cce76a29334650a0b46720c4581",
+      "deployment_acquisition_browser.py": "5d95f087f36803a6df82f7b285f2be7878eab682eaa6dd3d2b253575a6bc22b5",
+      "deployment_acquisition_fixture.py": "b024d2238a9928107c958c87520adfe3212bc193146cd8daba37cabd8cca09f6",
+      "deployment_acquisition_oracles.py": "935f270a663eb45abd233bc12ddbcf5383891efd022b04d54aa2b5384b15ab94",
+      "deployment_boolean_checks.py": "38d5884d7553a30dfee4078092c94380b3e6340b1b6359179c48d8cf74241ef4",
+      "deployment_boolean_contracts.py": "a0dcd67fcf0313a8233a0a487fc24a4f094419e5f957c8da4649daa57fb848fa"
+    },
+    "restored_all": [
+      {
+        "run_id": "20261026T181029Z-b7de52db",
+        "locale": "en",
+        "phase": "restored",
+        "persisted_report": "secrets/e2e/20261026T181029Z-b7de52db/report.json",
+        "report_sha256": "73d8ac36e7330fef34980075b006bb0954c9d32ffdd1bb87fe84f919b658b914",
+        "binary_sha256": "e595a7ac1f9a3a10c5c453a74432cbb40290f158a38f17dc7cecc299544c538f",
+        "last_step": "deletion-observed"
+      },
+      {
+        "run_id": "20261026T182126Z-83c88c06",
+        "locale": "zh",
+        "phase": "restored",
+        "persisted_report": "secrets/e2e/20261026T182126Z-83c88c06/report.json",
+        "report_sha256": "83b7e5bd267943d1d95f42cae9eaa22405c5ac3c21618b8234053bc141d57018",
+        "binary_sha256": "e595a7ac1f9a3a10c5c453a74432cbb40290f158a38f17dc7cecc299544c538f",
+        "last_step": "deletion-observed"
+      }
+    ],
+    "product_mutations": [
+      {
+        "run_id": "20261026T175841Z-9ae2482c",
+        "locale": "en",
+        "phase": "editor-negative",
+        "persisted_report": "secrets/e2e/20261026T175841Z-9ae2482c/report.json",
+        "report_sha256": "2ef4d3b8a38be2dda9204b33e769b468f3a28ee369eebf69f76eabc8530644e9",
+        "binary_sha256": "6a937a89c88e7826e23e7e71f6248ccb1663cb3bc01c14aa905afe40f9895bbd",
+        "last_step": "manual-editor-initial-content"
+      },
+      {
+        "run_id": "20261026T180623Z-191848a8",
+        "locale": "en",
+        "phase": "boolean-negative",
+        "persisted_report": "secrets/e2e/20261026T180623Z-191848a8/report.json",
+        "report_sha256": "ba601b8a4549604d05613d1f8ebbaf760076032b3e8f7f9dab5e936f335e50a2",
+        "binary_sha256": "5a085af31d18fed3b354b2768df6832ae0d3a36d9120eda59680629d3eba5be3",
+        "last_step": "boolean-tristate-enable_prefix_caching-on-quick"
+      }
+    ],
+    "archive_index": "secrets/mr-validation-20261026/next-editor-boolean-persisted.json",
+    "scope": "Current fixture engine tri-state universe on Quick and Expert, native shell textarea only; each complete original create, real standalone rank0 runtime and delete flow retained. No YAML/schema, multi-node or GPU inference claim."
+  },
+  "batch_e_boolean_inventory_evidence": {
+    "items": [
+      "6.1"
+    ],
+    "input_manifest_sha256": "2c8a49088dc8cde6e954a6bb07337485b7343e403c6fac7cd9926e7f7a87d6fb",
+    "refreshed_enum_snapshot_manifest_sha256": "2c8a49088dc8cde6e954a6bb07337485b7343e403c6fac7cd9926e7f7a87d6fb",
+    "source_snapshot_refresh_receipt": "secrets/mr-validation-20261026/enum-source-refresh-audit/applied-refresh.json",
+    "normal_binary_sha256": "1db9e6ab539cad1cb5f6292ac2efffa036a7f4c7d7ec8cb5a089a14274cfcb81",
+    "frozen_consumed_test_sources": {
+      "deployment_editor_checks.py": "6120e5f62236feed3baca78e18598bceb1a77b61b29cc2bf3ec23129e9ceee80",
+      "deployment_launch_checks.py": "17432e5c6054f39def4e333cf07235694ed10289bd638094f5222c22d3430b4a",
+      "deployment_batch_checks.py": "e080d6b710dc05b0b6740d696d914a7db6c780be93d5656c0993db8cdb77fc42",
+      "deployment_selector_checks.py": "be1d8ee73006edea1b3a4606923418cf3d408d128d807bbd16083d2d79e28613",
+      "deployment_wizard_create.py": "3ec4390ee8acdc70b0adcfca9b7279d0ce899bcd3a533c2b50cafaa8f8d45f9e",
+      "deployment_wizard_fixture.py": "2e37f51b650b2515e76fdc93e21f91592ec950ff8251ec016483cc22c96c8f4b",
+      "deployment_override_create.py": "6d6e822e8d60a1c59ef867f56fb2fed02ae0f301827c9b8fb4ef5c30833ef80d",
+      "deployment_override_fixture.py": "a19d81692c51cae80bd4d2192c158d17018e6affc58c5b23ea7a8091d0453c92",
+      "deployment_acquisition.py": "a6d23addb25a94faff5034458ec1d1e230054d20ac3099dad6869468a922cb59",
+      "deployment_acquisition_browser.py": "8a79c9f3fe7e7226d920577a654832c74147b91311008e349d4995f4a128c042",
+      "deployment_acquisition_fixture.py": "b024d2238a9928107c958c87520adfe3212bc193146cd8daba37cabd8cca09f6",
+      "deployment_acquisition_oracles.py": "935f270a663eb45abd233bc12ddbcf5383891efd022b04d54aa2b5384b15ab94",
+      "deployment_boolean_checks.py": "38d5884d7553a30dfee4078092c94380b3e6340b1b6359179c48d8cf74241ef4",
+      "deployment_boolean_contracts.py": "a0dcd67fcf0313a8233a0a487fc24a4f094419e5f957c8da4649daa57fb848fa",
+      "deployment_boolean_inventory.py": "e958a02d6143f09af35158c9e6f021d0ab10ac85d7eed5757bbb057501a200af",
+      "deployment_boolean_inventory_contracts.py": "658833066643f648c6804772bcdb1db1a83d1716deb19cd2cf5f956ae8eacaba",
+      "deployment_boolean_inventory_probe.py": "293f7117ed1eadb09d7449d255be2cdf592669365fe5c8330065a57315c3c289"
+    },
+    "restored_all": [
+      {
+        "run_id": "20261026T190252Z-239c81a9",
+        "locale": "en",
+        "phase": "restored",
+        "persisted_report": "secrets/e2e/20261026T190252Z-239c81a9/report.json",
+        "report_sha256": "97082ea03d768798ca8319899adee73ef80837c20bf80226829eef06b77568c0",
+        "binary_sha256": "1db9e6ab539cad1cb5f6292ac2efffa036a7f4c7d7ec8cb5a089a14274cfcb81",
+        "last_step": "deletion-observed"
+      },
+      {
+        "run_id": "20261026T191521Z-61da19de",
+        "locale": "zh",
+        "phase": "restored",
+        "persisted_report": "secrets/e2e/20261026T191521Z-61da19de/report.json",
+        "report_sha256": "eb213bc6dc20d73992b71125d67eafddeb81ffd2e6b65ff821bf22a75c557424",
+        "binary_sha256": "1db9e6ab539cad1cb5f6292ac2efffa036a7f4c7d7ec8cb5a089a14274cfcb81",
+        "last_step": "deletion-observed"
+      }
+    ],
+    "known_unfixed_counterexamples": [
+      {
+        "run_id": "20261026T184941Z-12e53f25",
+        "locale": "en",
+        "phase": "unfixed",
+        "persisted_report": "secrets/e2e/20261026T184941Z-12e53f25/report.json",
+        "report_sha256": "a533758fbc48466a927c2d12e64a96cb36c6d9b8fd09e6130f6e60a80df0f1c4",
+        "binary_sha256": "48c8cd641ea1356ed9f4567bb271a0ae8d860e1f0bd112919b46d9e8f596def3",
+        "last_step": "boolean-inventory-complete-contract"
+      }
+    ],
+    "source_difference_receipt": "secrets/mr-validation-20261026/next-product-fixes/inventory-fixed-unfixed-binaries-and-source.json",
+    "archive_index": "secrets/mr-validation-20261026/next-boolean-inventory-persisted.json",
+    "scope": "Full current-fixture dictionary and static/conditional field/surface matrices: vLLM30 entries, SGLang24 entries, including explicit unavailable controls and typed auxiliary buttons. The independent conditional mount page creates no deployment; original lifecycle retains sole actual standalone rank0 creation/runtime/refresh/deletion. Synthetic GPU facts establish UI capability readiness, not GPU enforcement."
+  },
+  "numeric31_inventory_evidence": {
+    "items": [
+      "3.1"
+    ],
+    "normal_binary_sha256": "dd3b3e5dd9acca2c3179e9a79cd1936bffba0bd403130b1cad6bd983c92cf0c5",
+    "agent_binary_sha256": "0ff06d0af402ef1da40777cca67399266d98ee93f2f03d6f7fa9eadd7c3a4920",
+    "test_closure_freeze": "secrets/recovery-20261027/numeric-sglang-normal-cohort-v2/source-freeze.json",
+    "dictionary_contract_sha256": "b46a634fbceb945df7f2f438c1047fee8c95bb2fbcf844fc364ffc319c96040e",
+    "numeric_checks_sha256": "b85d059abe700a183079bf5d4d9a39218d7f0f144f8b8d93b14573d3b98ccd3f",
+    "numeric_checks_old_helper_sha256": "23713b5c9d30c34818bab2c7836c609cd6b58afd96af52ef6137ab9f9932dfe7",
+    "source_bridge": "secrets/recovery-20261027/numeric-sglang-pd-correction-v1/source-bridge.json",
+    "source_bridge_sha256": "c4a852710a2c146980fb9bb4747571e52a98ce93c84f6e0a808f4bab3f403548",
+    "combined_evidence_index": "secrets/recovery-20261027/numeric31-combined-evidence-v2/index.json",
+    "combined_evidence_index_sha256": "ad82b66628c3d5d86c3cddbc9b2dad4263f96c1590e7a6a2b9171b2a79f8352e",
+    "restored_complete_runs": [
+      {
+        "locale": "en",
+        "run_id": "20261027T051813Z-d903a1b2",
+        "cohort": "numeric-normal-cohort-v1",
+        "report": "secrets/e2e/numeric3.1-normal-all-20261027-wizard-en/report.json",
+        "report_sha256": "0b7e9b581ca71a0c594b62b61638f4fe446246733b92a416a2246fcbc9870296",
+        "archive": "secrets/recovery-20261027/numeric-normal-cohort-v1/wizard-en-raw.tar.gz",
+        "archive_sha256": "ec21a1692bd38737ee4d80f3b839f546a6dabcc5238bd9952e1b2efc71e7d48b",
+        "archive_files_verified": 449,
+        "family": "all",
+        "surfaces": 11,
+        "numeric_checks_sha256": "23713b5c9d30c34818bab2c7836c609cd6b58afd96af52ef6137ab9f9932dfe7",
+        "helper_identity": "old"
+      },
+      {
+        "locale": "zh",
+        "run_id": "20261027T052017Z-7a0e5928",
+        "cohort": "numeric-normal-cohort-v1",
+        "report": "secrets/e2e/numeric3.1-normal-all-20261027-wizard-zh/report.json",
+        "report_sha256": "20f6d9c71ffa6ef7b405ad7f6e01b674fa7defb4006eec02375a0c826c811492",
+        "archive": "secrets/recovery-20261027/numeric-normal-cohort-v1/wizard-zh-raw.tar.gz",
+        "archive_sha256": "1d277e6e6e9c5a29f44562008eb29b2965f6c4d33024084372b05cd3d70d1bf2",
+        "archive_files_verified": 449,
+        "family": "all",
+        "surfaces": 11,
+        "numeric_checks_sha256": "23713b5c9d30c34818bab2c7836c609cd6b58afd96af52ef6137ab9f9932dfe7",
+        "helper_identity": "old"
+      }
+    ],
+    "single_source_mutation": {
+      "binary_sha256": "57a204e9f214f0663001b9a32dcf9d3c2f69f026c56e43200271db3976867934",
+      "source_delta": [
+        "ui/src/pages/deploy/DeployQuickForm.tsx"
+      ],
+      "raw_status": "FAIL_TEST",
+      "run_id": "20261027T051200Z-8c151bc9",
+      "report_sha256": "e45c8714a24c76d5c3ce111ec70452eb1a3b33eab61b4be1d544d9e49965113b",
+      "assertion": "visible nnodes count expected1 actual2 in quick-multi",
+      "archive_sha256": "1e936c8c39360e5b02536d6d6ef8d6d702779ef8949f7689ace8e69c36cb2f9c",
+      "helper_identity": "old"
+    },
+    "sglang_v1_failure_preserved": {
+      "run_id": "20261027T053917Z-66204f10",
+      "status": "FAIL_TEST",
+      "report": "secrets/e2e/numeric3.1-normal-all-20261027-sglang-huggingface-en/report.json",
+      "report_sha256": "63237b5c9f43038a2a0432dd4230623a60a6a90149207b7a342dbe66bdfbd41e",
+      "last_step": "numeric-inventory-pd-empty-nodes",
+      "failure_archive": "secrets/recovery-20261027/numeric-normal-cohort-v1/sglang-huggingface-en-pd-expectation-failure.tar.gz",
+      "failure_archive_sha256": "c9bd4bf4cb9b6fce307eb0775ba0cc111751586198985a99cd634ecc735eb690",
+      "used_as_expected_oracle": false
+    },
+    "independent_review": "secrets/recovery-20261027/numeric3.1-independent-review.md",
+    "limits": [
+      "3.2–3.6 remain unchanged",
+      "matrix rows are not numerator units",
+      "old VLLM reports keep old helper identity per the scoped bridge; no report rewritten or falsified as a new-source rerun",
+      "input manifests/raw report not_covered remain their prepublication snapshots",
+      "existing broad numerical missing text refers to remaining boundary/interaction/wire/estimate gaps"
+    ]
+  }
 }
