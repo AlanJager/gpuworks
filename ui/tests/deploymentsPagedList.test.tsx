@@ -89,6 +89,17 @@ function renderPage(serve: (query: ListQuery) => Promise<DeploymentPage>) {
 
 const rowNames = () => screen.getAllByRole("row").slice(1).map((row) => within(row).getAllByRole("cell")[0].textContent);
 
+test("a legacy empty served name stays empty rather than copying the model name", async () => {
+  const server = fakeServer([{ ...fleet[0], served_name: "" }]);
+  renderPage(server.serve);
+  const name = await screen.findByText("svc-45");
+  const headers = screen.getAllByRole("columnheader");
+  const index = headers.indexOf(screen.getByRole("columnheader", { name: "Served name" }));
+  const cell = within(name.closest("tr")!).getAllByRole("cell")[index];
+  assert.equal(cell.textContent, "—");
+  assert.equal(within(cell).queryByRole("button"), null);
+});
+
 test("the list asks the server for one page and shows the total", async () => {
   const server = fakeServer(fleet);
   renderPage(server.serve);

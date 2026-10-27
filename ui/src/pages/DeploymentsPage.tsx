@@ -140,6 +140,7 @@ export default function DeploymentsPage() {
       serverSort: true,
       render: (_: unknown, d: DeploymentListItem) => <Button type="link" onClick={() => openDetail(d.id)}>{d.name}</Button>,
     },
+    { key: "served_name", title: t("page.column.servedName"), width: 220, render: (_: unknown, d: DeploymentListItem) => d.served_name ? <Typography.Text copyable>{d.served_name}</Typography.Text> : "—" },
     { key: "model", title: t("page.column.model"), width: 220, serverSort: true, render: (_: unknown, d: DeploymentListItem) => d.model_name || "—" },
     {
       key: "runtime",

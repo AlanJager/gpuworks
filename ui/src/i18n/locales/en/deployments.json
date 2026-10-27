@@ -28,6 +28,7 @@
     "curlCopied": "curl copied",
     "column": {
       "name": "Name",
+      "servedName": "Served name",
       "model": "Model",
       "runtime": "Engine / Image",
       "node": "Compute Node",
