@@ -383,8 +383,8 @@ func TestDownloadGivesUpAfterConnectionsThatDeliverNothing(t *testing.T) {
 }
 
 // A registry that keeps saying "slow down" (503) is waited on, not hammered:
-// each answer makes the next request wait (a doubling pause when the registry
-// names no time), and after throttleAttempts the pull gives up without
+// each answer makes the next request wait (a pause that doubles between separate
+// events when the registry names no time), and after throttleAttempts the pull gives up without
 // restarting the blob, which would only ask again sooner than it said.
 func TestDownloadGivesUpOnARegistryThatKeepsSayingSlowDown(t *testing.T) {
 	quickRecovery(t)
@@ -410,9 +410,12 @@ func TestDownloadGivesUpOnARegistryThatKeepsSayingSlowDown(t *testing.T) {
 	if len(got) != throttleAttempts-1 {
 		t.Fatalf("waited %d times (%v), want %d: one before each request after the first", len(got), got, throttleAttempts-1)
 	}
-	for i := 1; i < len(got); i++ {
-		if got[i] < got[i-1] {
-			t.Fatalf("pauses shrank: %v", got)
+	// The answers arrive without any real time passing between them (the waits
+	// are instant), so they are one burst to the budget and share one pause; the
+	// doubling of the pause between separate events is pinned in connbudget.
+	for _, d := range got {
+		if d < time.Second || d > 30*time.Second {
+			t.Fatalf("a pause of %v after a 503 that named no time: %v", d, got)
 		}
 	}
 	if got[0] <= 0 {
