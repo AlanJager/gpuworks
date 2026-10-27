@@ -48,7 +48,7 @@ def http(base: str, method: str, path: str, token: str = "", body=None):
         return response.status, json.loads(raw) if raw else None
 
 
-def write_server_config(work: Path, storage_root: Path, listen: str) -> Path:
+def write_server_config(work: Path, storage_root: Path, listen: str, *, auto_check_updates=None) -> Path:
     """server.yaml that makes the isolated server a self-contained installation.
 
     The product refuses storage paths outside storage_probe_roots and refuses
@@ -63,7 +63,12 @@ def write_server_config(work: Path, storage_root: Path, listen: str) -> Path:
     non-overridden listen configuration. With --config the server also treats
     the private directory as its install directory: listen and update settings
     become editable and only ever rewrite this file.
+    auto_check_updates optionally sets the product's per-installation switch;
+    None leaves the existing configuration bytes and default behavior intact.
     """
+    if auto_check_updates is not None and type(auto_check_updates) is not bool:
+        raise ValueError('auto_check_updates must be bool or None')
+
     def quoted(value: str) -> str:
         # Go's YAML decoder rejects raw DEL/C1 controls and the surrogate-pair
         # escapes json.dumps emits for non-BMP text; printable text written
@@ -76,16 +81,20 @@ def write_server_config(work: Path, storage_root: Path, listen: str) -> Path:
     text = "\n".join(["listen:", "  console:", "    - " + quoted(listen),
                       "storage_probe_roots:", "  - " + quoted(str(storage_root)),
                       "outbound_allow_private_hosts:", "  - " + quoted("127.0.0.1"), ""])
+    if auto_check_updates is not None:
+        text += "auto_check_updates: " + str(auto_check_updates).lower() + "\n"
     with os.fdopen(os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as handle:
         handle.write(text)
     return config
 
 
 class LocalServer:
-    def __init__(self, binary: Path, work: Path):
+    def __init__(self, binary: Path, work: Path, *, env_overrides=None, auto_check_updates=None):
         # Resolved once: storage roots compare lexically cleaned paths, so cases
         # must build their paths from the same spelling the root uses.
         self.binary, self.work = binary.resolve(), work.resolve()
+        self.env_overrides = dict(env_overrides or {})
+        self.auto_check_updates = auto_check_updates
         # The only storage root; cases put every storage path below it.
         self.storage_root = self.work / "storage"
         self.environment = {}
@@ -116,13 +125,20 @@ class LocalServer:
         credentials.write_text(json.dumps({"user": "admin", "password": "password"}))
         credentials.chmod(0o600)
         self.storage_root.mkdir(mode=0o700)
-        config = write_server_config(self.work, self.storage_root, self.base.removeprefix("http://"))
+        config = write_server_config(self.work, self.storage_root, self.base.removeprefix("http://"),
+                                     auto_check_updates=self.auto_check_updates)
         self.environment = {"config": "private/server.yaml", "listen": [self.base.removeprefix("http://")],
                             "storage_probe_roots": [str(self.storage_root)],
                             "outbound_allow_private_hosts": ["127.0.0.1"]}
+        child_env = {**os.environ, "GPUWORKS_ADMIN_PASSWORD": "password"}
+        for name, value in self.env_overrides.items():
+            if value is None:
+                child_env.pop(name, None)
+            else:
+                child_env[name] = value
         self.process = subprocess.Popen([str(self.binary), "serve", "--config", str(config),
             "--data", str(data), "--log-level", "info"],
-            cwd=ROOT, env={**os.environ, "GPUWORKS_ADMIN_PASSWORD": "password"},
+            cwd=ROOT, env=child_env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         ready = threading.Event()
         listening = []

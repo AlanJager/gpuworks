@@ -30,7 +30,7 @@ from storage_cache_policy_dialogs import (
     exercise_defaults_dialog,
     exercise_editor_dismissals,
     exercise_node_editor_keyboard,
-    exercise_defaults_inflight, mutate)
+    mutate)
 
 CONTRACT = 'gpuworks/storage/nfs-cache-node-policy'
 CASE = '存储 / NFS Cache 节点缓存策略 / 单节点与跨页批量覆盖、默认值继承、离线重试、搜索筛选与只读账号'
@@ -141,11 +141,20 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
                 by_node.get('cache-node-01'), by_node.get('cache-node-02'))
     def nodes():
         page.goto(server.base + f'/storage/{storage_id}')
-        page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True).click()
+        page.get_by_role('tab', name=re.compile(r'^' + re.escape(t['detail']['tab']['nodes']) + r'\s*25$')).click()
         page.get_by_role('columnheader', name=t['nodes']['column']['node'], exact=True).click()
         expect(page.get_by_role('link', name='Cache node 01', exact=True)).to_be_visible()
     def row(name):
         return page.get_by_role('row').filter(has=page.get_by_role('link', name=name, exact=True))
+    def policy_details(name):
+        record = row(name)
+        toggle = button(record, t['detail']['expand'])
+        if toggle.count():
+            toggle.click()
+        expect(button(record, t['detail']['collapse'])).to_be_visible()
+        detail = record.locator('xpath=following-sibling::tr[1]')
+        expect(detail).to_have_class(re.compile(r'\bant-table-expanded-row\b'))
+        return detail
     node_links = page.get_by_role('link', name=re.compile(r'^Cache node \d\d$'))
     def effective(limit):
         return cm['effectiveLimit'].replace('{{value}}', limit)
@@ -156,12 +165,13 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
         page.screenshot(path=artifacts.directory / (name + '.png'), full_page=True)
     # Mainline: existing offline NFS definition -> real node overrides -> refresh -> defaults -> cross-page batch -> inheritance.
     nodes()
-    expect(row('Cache node 01')).to_contain_text(cm['mode']['unlimited'])
-    expect(row('Cache node 02')).to_contain_text('64.0 GiB')
-    expect(row('Cache node 03')).to_contain_text(cm['mode']['inherit'])
+    expect(policy_details('Cache node 01')).to_contain_text(cm['mode']['unlimited'])
+    expect(policy_details('Cache node 02')).to_contain_text('64.0 GiB')
+    expect(policy_details('Cache node 03')).to_contain_text(cm['mode']['inherit'])
     # An inheriting node's effective limit is the storage default (128 GiB seeded).
-    expect(row('Cache node 03')).to_contain_text(effective('128.0 GiB'))
+    expect(policy_details('Cache node 03')).to_contain_text(effective('128.0 GiB'))
     retry_button = button(row('Cache node 01'), cm['retry'])
+    retry_button.scroll_into_view_if_needed()
     expect(retry_button).to_be_in_viewport()
     check(retry_button.evaluate('el => el.scrollWidth <= el.clientWidth'), 'retry label clipped inside button')
     shot('01-node-management')
@@ -200,16 +210,19 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     report['limit_bounds'] = exercise_cache_limit_bounds(
         page, dialog, limit_input, cm['save'], cm['invalidLimit'],
         lambda: targets()['cache-node-01']['cache_max_bytes'])
+    report['last_step'] = 'cache-capacity-unit-precision'
     report['limit_steps'] = exercise_cache_limit_steps(
         page, dialog, limit_input, cp['unit'],
-        lambda: targets()['cache-node-01']['cache_max_bytes'])
+        lambda: targets()['cache-node-01']['cache_max_bytes'],
+        precision=report.get('check_family', 'all') != 'wire')
+    report['last_step'] = 'cache-json-wire-types'
     limit_input.fill('32')
     expect(dialog.get_by_text(cm['unknownImpact'].replace('{{count}}', '1'), exact=True)).to_be_visible()
     mutate(page, button(dialog, cm['save']).click, 'PATCH', path + '/node-overrides', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': 32 * GIB}, 200, evidence)
     expect(dialog).not_to_be_visible()
     check(targets()['cache-node-01']['cache_max_bytes'] == 32 * GIB, 'custom limit not persisted')
     nodes()
-    expect(row('Cache node 01')).to_contain_text('32.0 GiB')
+    expect(policy_details('Cache node 01')).to_contain_text('32.0 GiB')
     button(row('Cache node 01'), cm['configure']).click()
     expect(dialog.get_by_role('spinbutton', name=cm['limit'], exact=True)).to_have_value('32')
     radio(dialog, cp['unlimited'])
@@ -217,15 +230,15 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     expect(dialog).not_to_be_visible()
     check(targets()['cache-node-01']['cache_max_bytes'] == 0, 'explicit zero lost')
     nodes()
-    expect(row('Cache node 01')).to_contain_text(cm['mode']['unlimited'])
-    expect(row('Cache node 01')).to_contain_text(effective(unlimited_text))
+    expect(policy_details('Cache node 01')).to_contain_text(cm['mode']['unlimited'])
+    expect(policy_details('Cache node 01')).to_contain_text(effective(unlimited_text))
     report['last_step'] = 'single-node-overrides'
     # Cross-page selection uses real pagination and retains exact identities.
     checkbox = page.get_by_role('checkbox', name=cm['selectNode'].replace('{{node}}', 'Cache node 01'), exact=True)
     checkbox.focus()
     page.keyboard.press('Space')
     expect(checkbox).to_be_checked()
-    page.get_by_title('2', exact=True).click()
+    page.locator('.storage-cache-management').get_by_title('2', exact=True).click()
     expect(page.get_by_role('link', name='Cache node 25', exact=True)).to_be_visible()
     page.get_by_role('checkbox', name=cm['selectNode'].replace('{{node}}', 'Cache node 25'), exact=True).check()
     batch = button(page, cm['batch'])
@@ -265,13 +278,13 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     button(page, cm['deselect']).click()
     expect(button(page, cm['batch'])).to_be_disabled()
     nodes()
-    expect(row('Cache node 01')).to_contain_text(cm['mode']['inherit'])
-    expect(row('Cache node 01')).to_contain_text(effective('128.0 GiB'))
+    expect(policy_details('Cache node 01')).to_contain_text(cm['mode']['inherit'])
+    expect(policy_details('Cache node 01')).to_contain_text(effective('128.0 GiB'))
     report['last_step'] = 'batch-and-restore'
     # Defaults change and independent node exception survive full edit+refresh.
     trigger = button(page, cm['defaults'])
     expect(trigger).to_be_visible()
-    parent = page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True)
+    parent = page.get_by_role('tab', name=re.compile(r'^' + re.escape(t['detail']['tab']['nodes']) + r'\s*25$'))
     before_defaults = policy_snapshot()
     default_dialog = exercise_defaults_dialog(
         page, trigger, cm['defaults'], parent, cm['pathValue'], cm['save'], t['actions']['cancel'], evidence)
@@ -279,27 +292,49 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     report['defaults_editor_dismissals'] = True
     radio(default_dialog, cp['unlimited'])
     before = saved()
-    exercise_defaults_inflight(
-        page, default_dialog, cm, cp, str(server.storage_root / 'cache'), path,
-        {'cache_max_bytes': 0, 'expected_updated_at': before['updated_at']},
-        report['browser_errors'][-1], evidence)
+    report['last_step'] = 'defaults-concurrent-conflict'
     exercise_defaults_conflict(
         page, server.base, default_dialog, cm, cp, str(server.storage_root / 'cache'), path, before['updated_at'],
-        locale_strings(locale, 'common')['apiError']['STORAGE_CONFIG_CHANGED'], report['browser_errors'][-1], evidence)
+        locale_strings(locale, 'common')['apiError']['STORAGE_CONFIG_CHANGED'], report['browser_errors'][-1], evidence, locale)
+    # Recover through the page's existing reopen action, rather than silently
+    # replacing the frozen revision of an editor that still holds a draft.
+    after_conflict = saved()
+    check(policy_snapshot() == before_defaults, 'conflicting save partially changed the policy')
+    report['last_step'] = 'defaults-conflict-recovery'
     nodes()
     trigger.click()
     default_dialog = page.get_by_role('dialog', name=cm['defaults'], exact=True)
     expect(default_dialog).to_be_visible()
+    expect(default_dialog.get_by_role('radio', name=cp['custom'], exact=True)).to_be_checked()
+    expect(default_dialog.get_by_role('spinbutton')).to_have_value('128')
+    expect(default_dialog.get_by_label(cm['pathValue'], exact=True)).to_have_value(str(server.storage_root / 'cache'))
+    expect(default_dialog.get_by_role('alert').filter(has_text=
+           locale_strings(locale, 'common')['apiError']['STORAGE_CONFIG_CHANGED'])).to_have_count(0)
     radio(default_dialog, cp['unlimited'])
     before = saved()
+    check(before['updated_at'] == after_conflict['updated_at'], 'reopening changed the revision')
     mutate(page, button(default_dialog, cm['save']).click, 'PATCH', path, {'cache_max_bytes': 0, 'expected_updated_at': before['updated_at']}, 200, evidence)
     expect(default_dialog).not_to_be_visible()
+    recovered = saved()
+    check(recovered['updated_at'] != after_conflict['updated_at'], 'retry did not advance the revision')
+    for key in ('id', 'name', 'type', 'enabled', 'is_default', 'all_nodes', 'path', 'export', 'cache_path', 'targets'):
+        check(recovered.get(key) == after_conflict.get(key), f'recovered save changed unrelated {key}')
     # The DTO omits a zero default (omitempty), so absence and 0 both mean unlimited.
     check(saved().get('cache_max_bytes', 0) == 0 and targets()['cache-node-02']['cache_max_bytes'] == 64 * GIB, 'default zero changed custom node')
     nodes()
-    expect(row('Cache node 03')).to_contain_text(effective(unlimited_text))
-    expect(row('Cache node 02')).to_contain_text(effective('64.0 GiB'))
-    button(page, t['actions']['edit']).click()
+    expect(policy_details('Cache node 03')).to_contain_text(effective(unlimited_text))
+    expect(policy_details('Cache node 02')).to_contain_text(effective('64.0 GiB'))
+    report['defaults_conflict_recovery'] = {
+        'status': 409, 'code': 'STORAGE_CONFIG_CHANGED', 'draft_retained': True,
+        'failed_write_unchanged': True, 'reopened_limit_gib': 128,
+        'reopened_error_cleared': True, 'retry_status': 200,
+        'retry_revision': before['updated_at'], 'saved_revision': recovered['updated_at'],
+        'saved_bytes': recovered.get('cache_max_bytes', 0),
+        'unrelated_fields_unchanged': True, 'refreshed_inherit_unlimited': True,
+        'refreshed_exception_gib': 64,
+    }
+    evidence.append({'layer': 'ui', 'defaults_conflict_recovery': report['defaults_conflict_recovery']})
+    button(page.get_by_role('dialog'), t['actions']['edit']).click()
     edit = page.get_by_role('dialog', name=form['editTitle'].replace('{{name}}', storage_name), exact=True)
     expect(edit.get_by_role('radio', name=cp['unlimited'], exact=True)).to_be_checked()
     edit.get_by_role('searchbox', name=t['nodes']['search'], exact=True).fill('Cache node 02')
@@ -359,9 +394,9 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     expect(picker).to_have_attribute('aria-expanded', 'false')
     expect(picker).to_be_focused()
     shown([1, *range(3, 22)])
-    page.get_by_title('2', exact=True).click()
+    page.locator('.storage-cache-management').get_by_title('2', exact=True).click()
     shown(range(22, 26))  # 24 inheriting nodes in all
-    page.get_by_title('1', exact=True).click()
+    page.locator('.storage-cache-management').get_by_title('1', exact=True).click()
     search.fill('Cache node 02')  # each condition alone matches; their intersection is empty
     shown([])
     search.fill('cache NODE 2')
@@ -387,7 +422,8 @@ def viewer_read_only(browser, server, artifacts, report, storage_id, locale):
         errors = observe_browser(page, report, 'user')
         t = locale_strings(locale, 'storage')
         page.goto(server.base + f'/storage/{storage_id}')
-        page.get_by_role('tab', name=t['detail']['tab']['nodes'].replace('{{count}}', '25'), exact=True).click()
+        page.get_by_role('tab', name=re.compile(r'^' + re.escape(t['detail']['tab']['nodes']) + r'\s*25$')).click()
+        page.get_by_role('searchbox', name=t['nodes']['search'], exact=True).fill('Cache node 25')
         expect(page.get_by_role('link', name='Cache node 25', exact=True)).to_be_visible()
         for key in ['configure', 'batch', 'restore', 'retry', 'defaults', 'clear', 'editScope']:
             expect(button(page, t['cacheManage'][key])).to_have_count(0)
@@ -437,12 +473,14 @@ def main():
     parser.add_argument('--server-bin', type=Path, default=ROOT / 'bin/gpuworks')
     parser.add_argument('--artifact-dir', type=Path)
     parser.add_argument('--locale', choices=['en', 'zh'], default='en')
+    parser.add_argument('--check-family', choices=['all', 'precision', 'wire'], default='all')
     args = parser.parse_args()
     os.umask(0o077)
     run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
     artifacts = Artifacts(args.artifact_dir or ROOT / 'secrets/e2e' / run_id)
     manifest_path = ROOT / 'test/e2e/coverage/storage-nfs-cache-policy.json'
     manifest = json.loads(manifest_path.read_text())
+    products = {name: ROOT / name.split(' (', 1)[0] for name in manifest.get('product_contracts', [])}
     bound = manifest['contract_id'] == CONTRACT and manifest['test_function'] == test_storage_cache_policy.__name__
     report = {'contract': CONTRACT, 'case': CASE, 'run_id': run_id, 'status': 'NOT_RUN',
               'source_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
@@ -451,6 +489,8 @@ def main():
               'target_sha': subprocess.check_output(['git', 'rev-parse', 'wei/master'], cwd=ROOT, text=True).strip(),
               'lane': 'local-real-server-sqlite', 'identity': 'admin; role=user for the read-only phase', 'locale': args.locale,
               'timezone': 'UTC', 'viewport': VIEWPORT, 'selection': [CONTRACT], 'retries': 0, 'evidence': [],
+              'check_family': args.check_family, 'probe_only': args.check_family != 'all',
+              'product_sha256': {name: digest(path) for name, path in products.items()},
               'coverage_manifest_sha256': digest(manifest_path), 'test_sha256': digest(Path(__file__)),
               'helper_sha256': digest(ROOT / 'test/e2e/local_browser_fixture.py'),
               'dialog_checks_sha256': digest(ROOT / 'test/e2e/dialog_checks.py'),
@@ -506,6 +546,19 @@ def main():
         report['failure'] = artifacts.redact(traceback.format_exc())
     finally:
         report['server_stopped'] = cleanup_stage(report, 'server', server.stop)
+        def frozen_sources():
+            sources = {'test_sha256': Path(__file__), 'helper_sha256': ROOT / 'test/e2e/local_browser_fixture.py',
+                       'dialog_checks_sha256': ROOT / 'test/e2e/dialog_checks.py',
+                       'dialogs_sha256': ROOT / 'test/e2e/storage_cache_policy_dialogs.py',
+                       'policy_inventory_sha256': ROOT / 'test/e2e/storage_cache_policy_inventory.py'}
+            check(all(digest(path) == report[name] for name, path in sources.items()), 'storage runner/helper changed')
+            check({name: digest(path) for name, path in products.items()} == report['product_sha256'],
+                  'storage product source changed during execution')
+            check(digest(manifest_path) == report['coverage_manifest_sha256'], 'storage manifest changed')
+            if 'binary_sha256' in report:
+                check(digest(args.server_bin) == report['binary_sha256'], 'storage server binary changed')
+            report['source_hashes_unchanged'] = True
+        cleanup_stage(report, 'frozen-sources', frozen_sources)
         cleanup_stage(report, 'server-log', lambda: copy_redacted(artifacts, 'server.log'))
         if report['status'] == 'PASS' and any(v != 'ok' for v in report['cleanup_stages'].values()):
             report['status'] = 'FAIL_TEST'

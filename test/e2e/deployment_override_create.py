@@ -18,9 +18,12 @@ from dialog_checks import (
     assert_dialog_shell, assert_nested_dismissals, cancel_button, close_button, escape, mask)
 from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import button, check
+from deployment_batch_checks import created_notice, rejected_notice, open_deployment_row, delete_name_preview
 import deployment_container_fixture as containers
 import deployment_override_fixture as fixture_tools
 import deployment_wizard_create as wizard
+from deployment_selector_checks import (
+    watch_weight_lookups, choose_registered_model, assert_weight_match, choose_manual_node)
 
 CONTRACT = "gpuworks/deployment/container-overrides"
 CASE = "部署 / 容器覆盖 / 环境设置与删除、只读可写挂载、共享内存与真实网关"
@@ -138,6 +141,7 @@ def assert_resolved(document, fixture):
 
 
 def test_deployment_container_overrides(page, context, server, artifacts, report, locale, fixture, token):
+    weight_lookups = watch_weight_lookups(page)
     labels = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/deploy.json").read_text())
     listings = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/deployments.json").read_text())
     auth = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/auth.json").read_text())
@@ -175,11 +179,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
         artifacts.remember(cookie["value"])
     expect(page.get_by_role("heading", name=labels["page"]["title"], exact=True)).to_be_visible()
     authenticated = True
-    with page.expect_response(lambda r: urlsplit(r.url).path == containers.MODELS and "q=" in r.url):
-        page.locator("#model_id").fill(fixture["model"]["name"])
-    model = page.locator("#model_id")
-    popup = page.locator("[id=" + json.dumps(model.get_attribute("aria-controls")) + "]").locator("..")
-    popup.get_by_text(fixture["model"]["name"], exact=True).filter(visible=True).click()
+    choose_registered_model(page, fixture, locale, report)
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/evaluate") as evaluated:
         wizard.select(page, page.locator("#target_vendor"), labels["basic"]["vendor"]["nvidia"])
     check(evaluated.value.status == 200, "registered-model evaluation failed")
@@ -189,15 +189,14 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     weights = page.get_by_role("dialog", name=labels["weightSourceModal"]["confirmTitle"])
     source = weights.get_by_role("radio", name=re.compile(re.escape(fixture["model"]["name"])))
     expect(source).to_be_checked()
+    assert_weight_match(page, source, fixture, locale, report, weight_lookups)
     use_model = button(weights, labels["weightSourceModal"]["useModel"])
     # Weight-source confirm is an antd Modal. Identity, 1440x900 stacking, and the focus trap.
     assert_dialog_shell(page, weights, source, use_model)
     report.setdefault("evidence", []).append({
         "layer": "ui", "dialog_shell": labels["weightSourceModal"]["confirmTitle"], "viewport": "1440x900"})
     use_model.click()
-    page.get_by_text(labels["workbench"]["node"]["manual"], exact=True).click()
-    wizard.select(page, page.get_by_text(labels["workbench"]["node"]["selectNodeAndGpu"], exact=True)
-        .locator("..").locator("..").get_by_role("combobox"), fixture["node"]["name"] + " · 1 GPU")
+    choose_manual_node(page, fixture, labels, report)
     image = page.get_by_role("combobox", name=labels["workbench"]["acquisition"]["imageOptions"])
     image.fill(fixture["image"])
     image.press("Tab")
@@ -208,6 +207,8 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     assert_draft(page, fixture)
     expect(deploy).to_be_enabled(timeout=30000)
     check(requests == [], "editing draft emitted deployment mutation")
+    launch_preview = wizard.launch_checks.draft_checks(
+        page, labels, expected_body(fixture, fixture["name"]), report, token=token)
     report["last_step"] = "overrides-draft-configured"
     invalid = "x" * 257
     name.fill(invalid)
@@ -218,7 +219,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
         "code": "FIELD_INVALID", "error": "name " + detail,
         "params": {"field": "name", "detail": detail}}}, "backend refusal differs")
     reason = common["apiError"]["FIELD_INVALID"].replace("{{field}}", "name").replace("{{detail}}", detail)
-    expect(page.get_by_text(labels["action"]["createFailed"].replace("{{detail}}", reason), exact=True)).to_be_visible()
+    rejected_notice(page, labels["action"]["createFailed"].replace("{{detail}}", reason), labels, report)
     expect(name).to_have_value(invalid)
     expect(image).to_have_value(fixture["image"])
     assert_draft(page, fixture)
@@ -239,6 +240,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
         deploy.click()
     check(created.value.status == 201, f"override create HTTP {created.value.status}: {created.value.text()}")
     dep_id = remember_created(created.value, report)
+    created_notice(page, labels, report)
     wizard.assert_json(requests, expected_requests(fixture), "full create mutation count/query/body differs")
     report["last_step"] = "browser-created"
     def running():
@@ -251,7 +253,11 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     wizard.assert_json(fixture_tools.stored_overrides(server, dep_id), fixture_tools.expected_overrides(fixture), "persisted raw container overrides")
     for field in ("name", "image", "model_id", "node_uuid", "served_name"):
         wizard.assert_json(saved[field], expected_body(fixture, fixture["name"])[field], "persisted " + field)
-    container = assert_resolved(saved, fixture)["container_id"]
+    instance = assert_resolved(saved, fixture)
+    wizard.launch_checks.snapshot_checks(saved, expected_body(fixture, fixture["name"]), report)
+    wizard.launch_checks.runtime_checks(instance, expected_body(fixture, fixture["name"]),
+                                        launch_preview, fixture["model_dir"], report)
+    container = instance["container_id"]
     runtime = fixture_tools.verify_runtime(container, fixture, report)
     response = page.request.post(server.base + "/v1/chat/completions",
         headers={"Authorization": "Bearer " + fixture["key"]["key"]},
@@ -266,8 +272,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     page.reload()
     row = page.get_by_role("row").filter(has_text=fixture["name"])
     expect(row).to_have_count(1)
-    row.get_by_role("button", name=fixture["name"], exact=True).click()
-    drawer = page.get_by_role("dialog").last
+    drawer = open_deployment_row(page, row, fixture["name"], dep_id, report)
     expect(drawer.get_by_text(fixture["image"], exact=True).first).to_be_visible()
     status, refreshed = http(server.base, "GET", containers.DEPLOYMENTS + f"/{dep_id}", token=token)
     check(status == 200, "reload independent GET failed")
@@ -286,6 +291,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
         remove.click()
         dialog = page.get_by_role("dialog", name=delete_title, exact=True)
         expect(dialog).to_be_visible()
+        delete_name_preview(dialog, delete_title, report)
         return dialog
 
     before_delete = len(requests)

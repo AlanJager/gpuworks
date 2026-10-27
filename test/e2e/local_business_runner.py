@@ -105,7 +105,8 @@ def final_status(report, required):
 
 
 def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, cleanup,
-             helpers=(), docker_required=True, image='gpuworks/fake-engine:test'):
+             helpers=(), docker_required=True, image='gpuworks/fake-engine:test',
+             check_family=None, server_options=None, post_exercise=None):
     """test_file names the CLI driver; manifest test_file binds exercise itself.
 
     prepare(server, token, run_id, report, holder, agent_bin, artifacts) -> data
@@ -127,7 +128,11 @@ def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, clean
         'not_covered': manifest.get('missing', []),
         'command': [sys.executable, str(test_file), *sys.argv[1:]],
         'browser_close_ok': False, 'environment_cleanup_ok': False}
-    server = LocalServer(args.server_bin, artifacts.private)
+    if check_family is not None:
+        report['check_family'] = check_family
+    if server_options is not None:
+        report['server_options'] = server_options
+    server = LocalServer(args.server_bin, artifacts.private, **(server_options or {}))
     holder = {'agent': None, 'log': None}
     token = None
 
@@ -182,6 +187,8 @@ def run_case(args, *, contract_id, manifest, test_file, prepare, exercise, clean
                 page = context.new_page()
                 page.set_default_timeout(10000)
                 exercise(page, context, server, artifacts, report, args.locale, data, token, holder)
+                if post_exercise is not None:
+                    post_exercise(page, context, server, artifacts, report, args.locale, data, token, holder)
                 checked(set(required) - {'cleanup'} <= {e['layer'] for e in report['evidence']},
                         'browser did not record required evidence layers')
                 report['case_completed'] = True

@@ -8,66 +8,424 @@
   "command": "make test-e2e-provider-endpoint-edit",
   "lane": "local-real-server-sqlite",
   "identity": "admin browser; local RunPod REST fixture",
-  "product_contracts": ["ui/src/components/ProviderConfigModal.tsx", "internal/server/api/provider.go", "internal/server/provider/service.go", "internal/server/provider/platform_key.go", "internal/server/provider/runpod/runpod.go", "internal/server/provider/runpod/ssh_keys.go"],
+  "product_contracts": [
+    "ui/src/components/ProviderConfigModal.tsx",
+    "internal/server/api/provider.go",
+    "internal/server/provider/service.go",
+    "internal/server/provider/platform_key.go",
+    "internal/server/provider/runpod/runpod.go",
+    "internal/server/provider/runpod/ssh_keys.go",
+    "ui/src/pages/CloudProvidersPage.tsx",
+    "internal/server/api/request_validation.go"
+  ],
   "external_fixture": {
     "file": "test/e2e/provider_endpoint_fixture.py",
     "self_test": "PYTHONPATH=test/e2e python3 -m unittest test_provider_endpoint_fixture -v",
     "primary_source": "https://github.com/runpod/docs/blob/main/api-reference-v2/openapi.json",
     "verified_on": "2026-10-21",
-    "contract": "Selected v2 GET /pods and GET/PUT /account/ssh-keys through proxy-a/proxy-b; bearer authentication, v2 pods/pagination envelope, keys object, full key-list replacement and problem+json errors. Self-tests cover missing/malformed/invalid authentication, forced 401/403, invalid JSON and key-list types/format/extra fields, empty account defaults and fail-closed unknown calls. The browser case checks the exact six upstream requests and preservation of a preexisting account key when the platform key is appended.",
-    "missing": ["MISSING: pod listing filters, pagination and nonempty pods", "MISSING: live RunPod, rate limiting, transport interruption and held-handler cancellation", "MISSING: browser UI and recovery for account-key authorization failure (the product treats this registration as best effort)"]
+    "contract": "Selected v2 GET /pods and GET/PUT /account/ssh-keys through declared proxy prefixes, strict bearer authentication, exact pods/pagination and key-list envelopes, full replacement and problem+json errors. The original account chain retains its exact19-call oracle; added URL, whitespace and key-rotation chains each have independent exact ordered method/path/query/auth/body/response ledgers. Optional raw query is a fixture-owned reverse-proxy identity and must match byte-for-byte. Default HTTPS uses an offline CONNECT/TLS fixture restricted to api.runpod.io:443 with private CA, matching SNI and HTTP/1.1 ALPN; expected GET/PUT counts follow the known existing-key state without resetting it. Unrelated auto-update/usage activity is disabled by real installation controls. No live cloud provisioning or literal optional endpoint omission is claimed.",
+    "missing": [
+      "MISSING: pod listing filters, pagination and nonempty pods",
+      "MISSING: live RunPod, rate limiting, transport interruption and held-handler cancellation",
+      "MISSING: browser UI and recovery for account-key authorization failure (the product treats this registration as best effort)"
+    ],
+    "default_endpoint_file": "test/e2e/provider_default_endpoint_fixture.py",
+    "default_endpoint_self_test": "PYTHONPATH=test/e2e python3 -m unittest test_provider_default_endpoint_fixture test_local_browser_fixture_env -v"
   },
-  "required_evidence": ["ui", "request", "persistence", "runtime", "cleanup"],
-  "jira": ["ZSTAC-89799"],
-  "fields": [
-    {"field_id": "providers.kind", "component": "Select / disabled Input in edit", "required": true, "request": "kind on create; fixed on edit", "persistence": "providers.kind", "covered": ["create sends kind=runpod; edit bodies omit kind and detail GET retains runpod"], "missing": ["edit kind input's disabled rendering", "other providers' edit browser roundtrips"]},
-    {"field_id": "providers.name", "component": "Input", "required": true, "request": "name", "persistence": "providers.name", "covered": ["create", "name-only update preserves endpoint and API key", "refresh"], "missing": ["empty validation", "concurrent rename"]},
-    {"field_id": "providers.endpoint", "component": "Input", "required": false, "default": "edit uses stored value without default substitution", "request": "endpoint", "persistence": "providers.creds_cipher encrypted Credentials.Endpoint", "covered": ["stored proxy actual input value", "port and path retained", "name-only retention", "A->B", "upstream validation rejection does not persist B", "retry preserves draft", "independent GET and refreshed edit"], "missing": ["browser legacy empty endpoint", "query/userinfo variants", "create default prefilling: ZSTAC-89797 separate case"]},
-    {"field_id": "providers.api_key", "component": "Input.Password", "required": "create only", "request": "api_key; omitted while editing", "persistence": "providers.creds_cipher encrypted Credentials.APIKey", "covered": ["create", "secret absent in detail response", "edit empty", "retained API key authenticates real server requests to fixture on name/endpoint updates"], "missing": ["browser explicit key replacement"]},
-    {"field_id": "providers.public_key", "component": "Input", "request": "public_key", "persistence": "encrypted Credentials.PublicKey", "covered": [], "missing": ["CompShare/Alibaba/ZStack browser roundtrip; API/RTL coverage is not E2E"]},
-    {"field_id": "providers.private_key", "component": "Input.Password", "request": "private_key", "persistence": "encrypted Credentials.PrivateKey", "covered": [], "missing": ["CompShare/Alibaba/ZStack browser credential replacement"]},
-    {"field_id": "providers.extra", "component": "schema Input / Input.Password", "request": "extra fields declared by provider", "persistence": "encrypted Credentials.Extra", "covered": [], "missing": ["Alibaba role_arn/regions and AutoDL ssh_password browser cycles"]}
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
   ],
-  "crud": {"create": "UI creates scoped RunPod proxy fixture account", "read": "independent GET and refreshed edit", "update": "name-only and endpoint replacement, upstream rejection and retry", "delete": "UI deletes only current run account and verifies list absence"},
+  "jira": [
+    "ZSTAC-89799"
+  ],
+  "fields": [
+    {
+      "field_id": "providers.kind",
+      "component": "Select / disabled Input in edit",
+      "required": true,
+      "request": "kind on create; fixed on edit",
+      "persistence": "providers.kind",
+      "covered": [
+        "create sends kind=runpod; edit bodies omit kind and detail GET retains runpod",
+        "fixed RunPod edit kind has its own accessible label, actual value and disabled state; every public-schema conditional transition resets drafts before final RunPod POST"
+      ],
+      "missing": [
+        "other providers' edit browser roundtrips"
+      ]
+    },
+    {
+      "field_id": "providers.name",
+      "component": "Input",
+      "required": true,
+      "request": "name",
+      "persistence": "providers.name",
+      "covered": [
+        "create",
+        "name-only update preserves endpoint and API key",
+        "refresh",
+        "required empty edit refusal without mutation",
+        "real Unicode1/255/256/257 boundary and FIELD_INVALID checks",
+        "literal HTML-character list/edit name",
+        "two-context last-writer-wins rename",
+        "empty, purewhite, leading/trailing/both-padded create/edit values with raw-create versus trim/retain-edit wire and independent readback"
+      ],
+      "missing": [
+        "duplicate/conflict scenarios beyond this RunPod contract are not claimed; no nonexistent provider-name uniqueness constraint is invented"
+      ]
+    },
+    {
+      "field_id": "providers.endpoint",
+      "component": "Input",
+      "required": false,
+      "default": "edit uses stored value without default substitution",
+      "request": "endpoint",
+      "persistence": "providers.creds_cipher encrypted Credentials.Endpoint",
+      "covered": [
+        "stored proxy actual input value",
+        "port and path retained",
+        "name-only retention",
+        "A->B",
+        "upstream validation rejection does not persist B",
+        "retry preserves draft",
+        "independent GET and refreshed edit",
+        "untouched create default persists and drives exact TLS-authority calls",
+        "clipboard/keyboard editing",
+        "empty edit retains the existing override",
+        "raw query/trailing-slash/padded URL exact wire, stored value, refreshed edit and normalized outbound ledger",
+        "FTP/missing-host/invalid-port/repeated-prefix refusal and corrected recovery",
+        "empty/purewhite create stores raw input and uses default TLS; blank edit retains override"
+      ],
+      "missing": [
+        "literal optional-field omission/backend default",
+        "userinfo URL matrix"
+      ]
+    },
+    {
+      "field_id": "providers.api_key",
+      "component": "Input.Password",
+      "required": "create only",
+      "request": "api_key; omitted while editing",
+      "persistence": "providers.creds_cipher encrypted Credentials.APIKey",
+      "covered": [
+        "create",
+        "secret absent in detail response",
+        "edit empty",
+        "retained API key authenticates real server requests to fixture on name/endpoint updates",
+        "empty-required and whitespace-create rejection",
+        "real masking/show/hide",
+        "clipboard/keyboard editing and clipboard cleanup",
+        "whitespace edit retains the stored secret",
+        "independently issued A-to-B replacement and retained B proven by actual UI Sync",
+        "complete RunPod create/edit whitespace boundaries and invalid NUL-header rejection with clear-and-Sync recovery"
+      ],
+      "missing": []
+    },
+    {
+      "field_id": "providers.public_key",
+      "component": "Input",
+      "request": "public_key",
+      "persistence": "encrypted Credentials.PublicKey",
+      "covered": [],
+      "missing": [
+        "CompShare/Alibaba/ZStack browser roundtrip; API/RTL coverage is not E2E"
+      ]
+    },
+    {
+      "field_id": "providers.private_key",
+      "component": "Input.Password",
+      "request": "private_key",
+      "persistence": "encrypted Credentials.PrivateKey",
+      "covered": [],
+      "missing": [
+        "CompShare/Alibaba/ZStack browser credential replacement"
+      ]
+    },
+    {
+      "field_id": "providers.extra",
+      "component": "schema Input / Input.Password",
+      "request": "extra fields declared by provider",
+      "persistence": "encrypted Credentials.Extra",
+      "covered": [],
+      "missing": [
+        "Alibaba role_arn/regions and AutoDL ssh_password browser cycles"
+      ]
+    }
+  ],
+  "crud": {
+    "create": "UI creates separate scoped default-HTTPS and custom-proxy RunPod accounts; exact wire, saved projection and authenticated external calls agree",
+    "read": "independent GET and refreshed edit",
+    "update": "Name-only and endpoint replacement, name boundaries, two-context last-writer-wins, blank/whitespace retention, real upstream rejection and retry",
+    "delete": "UI deletes each owned account; default-account detail404 and both account list absences independently confirm cleanup"
+  },
   "cleanup": "Trace, browser context, browser, server, log copy, report write and artifact scan are guarded independently. PASS is aggregated only after business success and successful teardown/scan. Unresolved provider IDs stay scoped to the isolated private database; an unconfirmed server exit retains its PID/reclaim entry. test_provider_endpoint_cleanup.py drives the actual main through normal success and trace/context/browser/server/log/report/scan/business failures, proves later closes still run and an earlier failure never becomes PASS.",
-  "components": [{"component": "Form/Input/URL/Secret/Modal", "checklist": ["1.14", "4.5", "7.2"], "covered_by": "test_provider_endpoint_edit"}],
+  "components": [
+    {
+      "component": "Form/Input/URL/Secret/Modal",
+      "checklist": [
+        "1.7",
+        "1.13",
+        "1.14",
+        "2.3",
+        "2.6",
+        "2.7",
+        "4.5",
+        "7.1",
+        "7.2",
+        "2.1",
+        "1.6",
+        "4.1",
+        "4.2",
+        "4.3",
+        "2.2",
+        "1.12",
+        "7.6",
+        "1.4"
+      ],
+      "covered_by": "test_provider_endpoint_edit"
+    }
+  ],
   "checklist_items": {
-    "1.1": "On first open the RunPod add dialog shows the RunPod type in its only combobox. Name is an empty required textbox with no maximum length. Its placeholder is the localized example that includes RunPod. API endpoint is a textbox whose value and placeholder are https://api.runpod.io/v2. It is not required and has no maximum length. API key is an empty password textbox, required, with no maximum length, placeholder API Key, and one visibility control. There is no spinbutton and there are three textboxes. The create POST sends kind runpod, the typed name, that endpoint, and the API key. The independent GET stores the id, kind runpod, the name, the endpoint, an empty public key, and an empty extra object, and it omits the API key.",
+    "1.1": "On first open the RunPod add dialog shows the RunPod type in its only combobox. Name is an empty required textbox without an HTML maxlength; the real API bounds it at 256 Unicode code points. Its placeholder is the localized example that includes RunPod. API endpoint is a textbox whose value and placeholder are https://api.runpod.io/v2. It is not required and has no maximum length. API key is an empty password textbox, required, with no maximum length, placeholder API Key, and one visibility control. There is no spinbutton and there are three textboxes. The create POST sends kind runpod, the typed name, that endpoint, and the API key. The independent GET stores the id, kind runpod, the name, the endpoint, an empty public key, and an empty extra object, and it omits the API key.",
     "1.2": "On first open the RunPod dialog shows the RunPod type, an empty name, the endpoint default from the kind catalog, and an empty API key. While the saved-account GET is held, Save stays disabled and the endpoint is still empty, so the incomplete form cannot be submitted. After that GET the saved name and endpoint are backfilled and the API key stays empty.",
-    "1.3": "MISSING: empty and whitespace validation for each required field and proof of no mutation.",
-    "1.4": "MISSING: text and endpoint minimum/maximum/invalid boundary matrix.",
+    "1.3": "PARTIAL: empty name edit and empty API-key create show field errors with no mutation or page error. Whitespace name still sends an update retaining the saved name, and whitespace create key reaches real server400; the complete per-required-field empty/whitespace front-refusal matrix is absent.",
+    "1.4": "Within the actual RunPod name/endpoint/API-key form, name boundaries exercise1/255/256 Unicode code points,257 rejection and a browser-preserved prohibited control, with exact FIELD_INVALID error, unchanged GET and no external validation on rejection; empty required names are frontend-refused and whitespace follows create-preserve/edit-trim-or-retain semantics. Optional endpoint boundaries cover empty/whitespace defaults or retention, FTP, hostless URL, invalid ports, repeated prefix, valid port/path/query and correction. Key boundaries cover empty/whitespace/authentication errors and an actual UI-entered NUL rejected before any external request with the exact Authorization-header error; clearing that draft saves successfully and UI Sync still authenticates B. Endpoint/key have no invented field-length maximum. Length/control-name cases use edit, not a create/edit Cartesian matrix; no all-character or other-driver credential-boundary claim is made.",
     "1.5": "MISSING: provider kind enumeration; this case selects RunPod only.",
-    "1.6": "MISSING: kind-dependent credential visibility/defaults/hidden-value submission and switching back.",
-    "1.7": "MISSING: required-fields-only creation; this case explicitly fills the optional endpoint override.",
+    "1.6": "Every directed transition among the real public provider schemas is selected through the UI after filling old credential drafts. Schema-derived API-key, public/private-key, extra and endpoint controls have exact visibility, type, required flags and first defaults; absent controls unmount, old secrets/reset fields disappear and the name stays unchanged. Returning to pristine RunPod is followed by its actual exact create POST, which omits all hidden credential roots. This proves switching and final RunPod submission, not successful creation or persistence for every other driver.",
+    "1.7": "Covered: a separate browser-created RunPod account fills only required name and API key, leaving the actual optional endpoint prefill https://api.runpod.io/v2 untouched. Exact POST201 body, independent detail GET, refreshed list/edit with empty secret, default-authority CONNECT/SNI/TLS and exact authenticated pods/key-registration calls agree; browser DELETE is followed by independent404 and empty list. The endpoint is present in wire JSON; this is not an omission claim.",
     "1.8": "PARTIAL: all RunPod create inputs used here (name, API key and optional endpoint) reach the exact POST and independent detail GET; omitted optional endpoint/backend defaults are MISSING.",
     "1.9": "covered: While the create POST is held a second click and Enter send no further create, and the later 201 is the only stored provider",
     "1.10": "covered: The upstream 401 becomes HTTP 400 and the localized update-failed reason stays visible. The dialog and endpoint draft remain, the independent GET keeps endpoint A, and the later retry stores endpoint B",
     "1.11": "The name label has the no-colon class. On a freshly opened edit dialog, Escape closes it after the endpoint draft changes and sends no provider POST, PUT, or DELETE. The dialog is opened again, and the close button does the same. It is opened again, and Cancel does the same. After each of those dismissals the independent GET still has the saved name and endpoint.",
-    "1.12": "PARTIAL: name-only update keeps endpoint/API key; endpoint A-to-B keeps the name/key. Clearing values and other provider binding/state combinations are MISSING.",
-    "1.13": "MISSING: concurrent edits and deletion while an edit dialog is open.",
+    "1.12": "On actual RunPod accounts, name-only and endpoint A-to-B edits preserve other configuration and authenticated key use. Empty/whitespace endpoint edits retain the old override according to merge semantics. A separately issued key B replaces A through the real UI; unchanged public GET configuration and actual UI Sync prove persisted B is used. Omitted, explicitly cleared and whitespace key edits retain B, including successful recovery after an invalid-header draft. This form has no account on/off or binding selector; no unsupported secret-clear or revoke/expiry/scope lifecycle is claimed.",
+    "1.13": "Covered: two independent browser contexts open the same saved account. One writes another name; the original editor retains its stale draft and then writes last. Exact PUT bodies, independent GET after each write and the other session refresh prove the actual last-writer-wins contract. Deletion during an open editor remains outside this scenario.",
     "1.14": "Covered in this scenario: refreshed edit and independent GET match saved name/endpoint; real authenticated driver requests use the saved proxy and key.",
     "1.15": "The name label column has the left-label class and its text alignment is start. Tab from the type combobox reaches the name, then the API key, then the API endpoint. Add can be focused. Enter in the empty name sends no provider POST and the name stays empty. The upstream rejection shows the localized update-failed sentence. At 1440×900 the name, the API key, the API endpoint, Cancel, and Add are each inside the viewport, and the name does not overlap Add.",
-    "2.1": "PARTIAL: name/endpoint/API-key controls have usable labels and saved edit values/empty secret are checked; explanations, placeholders, create defaults and disabled states are MISSING.",
-    "2.2": "MISSING: empty/whitespace and trim-versus-preserve behavior for text fields.",
-    "2.3": "MISSING: documented text length boundaries and character/byte counting.",
-    "2.4": "MISSING: Chinese/punctuation/newline/prohibited-character input matrix.",
+    "2.1": "For the actual RunPod create/edit name, endpoint and API-key controls, accessible labels, localized hints/placeholders, input types, required flags and actual default/refilled values are checked. Held edit-detail loading disables incomplete fields and Save; after the real GET they are enabled, secrets stay blank, and the fixed RunPod kind has its own exact accessible label, disabled state and actual value. Untouched endpoint creation is checked through exact wire/GET and the default HTTPS boundary.",
+    "2.2": "The actual RunPod name, endpoint and API key each exercise create/edit empty, pure whitespace, leading, trailing and both-sided spaces with exact browser JSON, independent GET/reopen and correction. Name create preserves raw spaces; edit trims nonblank names or retains the prior name. Endpoint create preserves raw empty/whitespace while using default HTTPS; blank edit retains the override and padded overrides persist raw. Create-empty key is frontend-refused; whitespace/leading/both-padded invalid credentials produce real401-to400 rejection without persistence, while trailing-only header whitespace follows real HTTP serialization. Blank/whitespace edits retain the stored key, proven by authenticated UI Sync; secrets are never returned by GET. No other-driver credential whitespace matrix is claimed.",
+    "2.3": "Covered for the actual bounded display-name field: empty edit is refused inline without mutation; the owned account accepts one Unicode code point, 255 Chinese code points and 256 supplementary-Unicode code points, with exact PUT/GET/refreshed text and retained-key runtime validation. 257 code points receive exact FIELD_INVALID400 with the maximum256 reason, preserved draft, zero external calls and unchanged saved name. The original run-scoped name is restored. Counting is Unicode code points, not UTF-8 bytes or UTF-16 units; endpoint/API key have no invented string-length maximum.",
+    "2.4": "PARTIAL: the display-name scenario persists Chinese/English/digits/punctuation, compares native-versus-product CRLF clipboard normalization and rejects a retained control character through real FIELD_INVALID. The complete field-by-field character matrix is not claimed.",
     "2.5": "MISSING: real duplicate-name conflict and correction.",
-    "2.6": "MISSING: paste/clear/keyboard editing; multiline roundtrips are N/A because the RunPod controls are single-line inputs.",
-    "2.7": "MISSING: HTML-character display/escaping in provider names or details.",
-    "4.1": "PARTIAL: custom HTTP host, ephemeral port and proxy path are sent and reread; HTTPS, query, trailing slash and endpoint defaults are MISSING.",
-    "4.2": "MISSING: invalid protocol/host/port/path-prefix and empty endpoint validation.",
-    "4.3": "PARTIAL: exact input/request/saved HTTP port and path survive; valid query and normalization variants are MISSING.",
+    "2.6": "Covered: actual clipboard permissions and Control+V paste the fixture name, custom endpoint and API key into all three real controls. Control+A/Backspace clear each; keyboard deletion/replacement restores exact values and sends zero management mutations. The secret is removed from clipboard. Multiline preservation is inapplicable to these single-line RunPod fields.",
+    "2.7": "Covered in the available account-name surfaces: the scoped name includes literal <b>中文 & \"quoted\"</b>; the saved list cell must have its exact original text and no b descendants, and refreshed edit input retains the same literal value. A product innerHTML mutant fails this family. This is literal escaping evidence, not a comprehensive XSS audit.",
+    "4.1": "RunPod endpoints exercise supported HTTP proxy host, actual ephemeral port, path, escaped raw query and trailing path slashes, plus untouched and empty-input default HTTPS. Exact outbound routes/query and default CONNECT authority api.runpod.io:443, SNI and TLS/ALPN are checked. Query is declared reverse-proxy routing identity, not a native RunPod query option.",
+    "4.2": "Actual UI saves reject FTP, hostless URL, nonnumeric and out-of-range ports and duplicated operation prefix with exact management errors. Malformed transport targets send no external request; the duplicated prefix reaches the strict fixture and gets404. Failed drafts and independent saved values remain unchanged, and corrected saves recover. Optional empty create uses the real default HTTPS endpoint, while empty edit retains its saved override.",
+    "4.3": "For padded HTTP proxy URLs with actual port, path slashes and escaped query bytes, the real input value, exact browser JSON, independent stored GET and refreshed edit input preserve the raw endpoint. Driver-normalized outbound method/path/query is checked separately by the strict fixture; effective port/path/query cannot silently disappear. Empty endpoint storage remains distinct from runtime default fallback.",
     "4.4": "N/A: this form's endpoint is HTTP, not a node address, image reference or filesystem path.",
     "4.5": "Covered in this scenario: reopening and refreshing preserve each manually configured proxy endpoint.",
     "4.6": "N/A: the provider endpoint input does not offer a copied executable address; actual driver access is covered by 1.14.",
-    "7.1": "MISSING: required/optional, blank/whitespace, masking and show/hide matrix.",
+    "7.1": "Covered: schema/API key is required only on create; empty create is refused at the field without a mutation or page error, while pure whitespace reaches the real external401 and server400 without an account write. The draft remains. Password masking, real show/hide with unchanged value and zero mutations are checked before tracing secrets. Edit secret is optional, stays blank and omitted, and explicit whitespace retains the stored key as proved by actual authenticated validation calls.",
     "7.2": "Covered in this scenario: edit API key stays empty and omitted from the PUT body; authenticated upstream requests prove the stored value is retained.",
     "7.3": "N/A: the provider API key is supplied by the user, not an application-issued one-time credential.",
     "7.4": "PARTIAL: a fresh API key authenticates actual provider validation; forced 401 rejects an update. Revocation, permission scopes and expiry are MISSING.",
     "7.5": "N/A: this case uses vendor credentials, not platform or inference token controls.",
-    "7.6": "PARTIAL: exact ordinary GET and controlled validation-error bodies omit secrets; collection starts tracing only after secret entry and artifacts are redacted/scanned. Product log/download leakage and adversarial secret-bearing error responses are MISSING.",
+    "7.6": "Ordinary raw provider list/detail GETs, a real secret-bearing upstream SSH400 error reaching the best-effort WARN/logstore boundary and a secret-bearing pod403 error reaching Sync HTTP424 are scanned before artifact redaction. Exact safe operation/status errors and actual raw HTTP/WARN log records are required; empty logs cannot pass. Secret entry and hostile responses occur with tracing stopped; tracing resumes only after raw response/log checks. Final raw logs, DOM/clipboard and artifacts are checked. Provider-account credential download/export is absent by UI/API source audit, not treated as an unexecuted successful download.",
     "7.7": "N/A: no management password change or platform-token revocation is performed."
   },
-  "gaps": ["MISSING: browser detail GET loading/failure/cancel race (covered by RTL/API only)", "MISSING: provider instance expansion, sync, install and account kind matrix are outside this targeted account-edit case", "MISSING: full keyboard traversal, responsive layout and concurrent edit/delete browser cases"],
-  "limitations": ["Local fixture verifies real driver's HTTP authentication/path and server persistence; does not prove public RunPod availability, provisioning, GPU or cloud compatibility.", "Pass/fail evidence belongs to the SHA/run_id report, not this coverage declaration."]
+  "gaps": [
+    "MISSING: browser edit-detail GET failure and close/late-response race",
+    "MISSING: nonempty provider instance sync/install and account-kind persistence matrix outside this targeted RunPod account case",
+    "MISSING: full per-field character matrix, literal optional omission and deletion during editing"
+  ],
+  "limitations": [
+    "Local fixture verifies real driver's HTTP authentication/path and server persistence; does not prove public RunPod availability, provisioning, GPU or cloud compatibility.",
+    "Pass/fail evidence belongs to the SHA/run_id report, not this coverage declaration."
+  ],
+  "batch_evidence": {
+    "contract": "gpuworks/providers/endpoint-edit-roundtrip",
+    "items": [
+      "1.7",
+      "1.13",
+      "2.3",
+      "2.6",
+      "2.7",
+      "7.1"
+    ],
+    "mutations": {
+      "default-endpoint": {
+        "run_id": "20261026T102546Z-6c841959",
+        "report": "secrets/e2e/20261026T102546Z-6c841959/report.json",
+        "report_sha256": "8bf764bad0c9c40214682648571b701c575b8dcb15658efdb304aad61bbfe439",
+        "status": "FAIL_TEST",
+        "check_family": "default-endpoint",
+        "last_step": "provider-default-required-fields-only",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102546Z-6c841959/private.tar.gz",
+        "private_archive_sha256": "b8d28634cbc1a246da58949194ae448d14e0fa151fbb1110d8336b84af429a83"
+      },
+      "clipboard": {
+        "run_id": "20261026T102600Z-1d3819c4",
+        "report": "secrets/e2e/20261026T102600Z-1d3819c4/report.json",
+        "report_sha256": "79fefed923b3c895d7680d4f6c45794e8dc5f16e9538cdadac0dc8e4dadf6aa2",
+        "status": "FAIL_TEST",
+        "check_family": "clipboard",
+        "last_step": "provider-text-clipboard-keyboard",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102600Z-1d3819c4/private.tar.gz",
+        "private_archive_sha256": "edef9e74310a1e8dd749975695f116a5391a6cf7646ed04f7667e7862ef4ed7d"
+      },
+      "literal-name": {
+        "run_id": "20261026T102615Z-d6719451",
+        "report": "secrets/e2e/20261026T102615Z-d6719451/report.json",
+        "report_sha256": "a63fb162030227c8db3768703fcda13a3aed3bc31f632334280d94d7ab1bd616",
+        "status": "FAIL_TEST",
+        "check_family": "literal-name",
+        "last_step": "provider-name-escaped",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102615Z-d6719451/private.tar.gz",
+        "private_archive_sha256": "2e491805ef536a5aa515fd92d8a32e505563493c30ac22b17d5fb7ca984fa0fa"
+      },
+      "secret": {
+        "run_id": "20261026T102627Z-9d0b3012",
+        "report": "secrets/e2e/20261026T102627Z-9d0b3012/report.json",
+        "report_sha256": "589a4900fccbc39c64453783cc613a01db086d5c73995b92e441afe24f0b4136",
+        "status": "FAIL_TEST",
+        "check_family": "secret",
+        "last_step": "provider-secret-whitespace-create-rejected",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102627Z-9d0b3012/private.tar.gz",
+        "private_archive_sha256": "658a577b608e7729aa9305111f9115299e8ebafb7371134b247c9e59dede363b"
+      },
+      "concurrent": {
+        "run_id": "20261026T102641Z-faae15fe",
+        "report": "secrets/e2e/20261026T102641Z-faae15fe/report.json",
+        "report_sha256": "7e5802b137aa8adbb8231c6cb918baf8fecf4edee09a8c6317f1c8b4c23c996b",
+        "status": "FAIL_TEST",
+        "check_family": "concurrent",
+        "last_step": "provider-concurrent-last-writer",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102641Z-faae15fe/private.tar.gz",
+        "private_archive_sha256": "f1ec49b9f76672dc5b66f5391cee6f5b449f25530400fa4fcdf82d15062e4201"
+      },
+      "boundaries": {
+        "run_id": "20261026T102642Z-142fc647",
+        "report": "secrets/e2e/20261026T102642Z-142fc647/report.json",
+        "report_sha256": "c08f57f86c250e109b0e214200c73f80c68365e3e855d7d5d7fc38dd64ab9608",
+        "status": "FAIL_TEST",
+        "check_family": "boundaries",
+        "last_step": "provider-name-length-256-code-points",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102642Z-142fc647/private.tar.gz",
+        "private_archive_sha256": "0afbea6ec4590874e9f4ef6ec44f337391aa090c68cd3231e44317e7efa893e9"
+      }
+    },
+    "restored": {
+      "en": {
+        "run_id": "20261026T103705Z-438b4a14",
+        "report": "secrets/e2e/20261026T103705Z-438b4a14/report.json",
+        "report_sha256": "fe268f63a7229d32601b57b90f6bffdb0a451c6b10d054f834ed3b28b438b390",
+        "status": "PASS",
+        "check_family": "all",
+        "last_step": "provider-name-escaped",
+        "binary_sha256": "6ad4be45db83c15733ccae0e3522eb42b852ea64ae0808bfea966bd3cdad8453",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T103705Z-438b4a14/private.tar.gz",
+        "private_archive_sha256": "879b8e19d4734326736c0e7cb8dc644c74f11e060057e4594e6f2ed55670a401"
+      },
+      "zh": {
+        "run_id": "20261026T103705Z-1ee6fa32",
+        "report": "secrets/e2e/20261026T103705Z-1ee6fa32/report.json",
+        "report_sha256": "fe632c06a01da97d360f9955f81389cc2b56a5a2b3b61d1dfffae98db68e3cd2",
+        "status": "PASS",
+        "check_family": "all",
+        "last_step": "provider-name-escaped",
+        "binary_sha256": "6ad4be45db83c15733ccae0e3522eb42b852ea64ae0808bfea966bd3cdad8453",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T103705Z-1ee6fa32/private.tar.gz",
+        "private_archive_sha256": "115191247da9bdf76d9d8c1f0b0c5b157d9cb72318a9255f8bc4efa5edc67c2a"
+      }
+    },
+    "frozen_hashes": {
+      "test_sha256": "2b5cd5919439d90dd461c6993d56ff6fb7fa9bc5bc8b0399e52e1e8d65ff8a5d",
+      "fixture_sha256": "6f6460de9b5266d5d0d360d2f296eedb66032b734f0d72863a8c3b286a123194",
+      "helper_sha256": "4bcca33ee91450a6004d8ce09b070ce6bf47dbde6c3ef2292c57d150615de50b",
+      "provider_fixture_sha256": "6fde7f46ef03d3779c07ef8700aa452f12d5cd6abf446d404bcd51d0596ae952",
+      "provider_inventory_sha256": "f72418e6c69439e75c9e1e919b6e9d8ad77ac37f0762ea2b7ef3e5017b6f9057",
+      "provider_form_checks_sha256": "fd64ddf5022ab8f512e0b7c1d58f6a2eb9874e92f996b81d3dc3aece5a3e91c7",
+      "provider_default_checks_sha256": "363c8f866e4fa816bdbc803f4f528c8db25eb7e229606b46325ebdb9dff687b6",
+      "provider_default_fixture_sha256": "bae2ca41420b81d51c383da00420a5dd34e8d20efdcd1552e14733659d2074da",
+      "provider_boundary_checks_sha256": "145621d572f358902d65eee6ff9dc9fb6081b8bb08e08c67ca9d36466aa13e2f"
+    },
+    "source_sha": "08816c8d7a6a1445eb21b1918a378225ef09f01c",
+    "target_sha": "9acadf628ed3020a50ed96ef390c359ea2ffc214",
+    "input_manifest_sha256": "55c3bf849ce05ac64f215ea4baea390c2fc434c2ab70df09981b933f5556dbaa",
+    "restored_product_sha256": {
+      "ui/src/components/ProviderConfigModal.tsx": "fb379f0179492db3f2aa09676d254cabbb2209eea04ee73a7250a907ef5098f7",
+      "internal/server/api/provider.go": "a60a084833d7a3409f2419b23d95f31467b752549baedb28433936c270cfb597",
+      "internal/server/provider/service.go": "a1c7029427d237caa70b90a525b4c22b48f4a7118a7b2c216bc5cf61f3f633ec",
+      "internal/server/provider/platform_key.go": "9e2075e1cfb0beb8b06373960f96f99025307c73d629534255b485808f38524a",
+      "internal/server/provider/runpod/runpod.go": "c77b47cd6bfcb0e85c4560e9cfbde2cda5a29afe61026b4fccfed4f48ee7d0f0",
+      "internal/server/provider/runpod/ssh_keys.go": "4a34bf83cf6797ee10310a4d92056d8327c61fa68530e9e72d1025745e800390",
+      "ui/src/pages/CloudProvidersPage.tsx": "6f50edcbe18c8cae1689bb6050df4a70c5e78933c1f127f65b8f3c252df71bcd",
+      "internal/server/api/request_validation.go": "db29f51cb6d08f59b18637816fbfa31b4deba3047b975d8d456160a1bf8d9ea4"
+    },
+    "mutant_product_sha256": {
+      "ui/src/components/ProviderConfigModal.tsx": "e8332e95a5a4ae91675d78caecab3c5e5c38b29b42d1344b954e18f10b095bc3",
+      "internal/server/api/provider.go": "a60a084833d7a3409f2419b23d95f31467b752549baedb28433936c270cfb597",
+      "internal/server/provider/service.go": "416fb920eab58072df4c6c60c0f6f2835542c3e25451b19e5af29bcfc1f7f3e2",
+      "internal/server/provider/platform_key.go": "9e2075e1cfb0beb8b06373960f96f99025307c73d629534255b485808f38524a",
+      "internal/server/provider/runpod/runpod.go": "c77b47cd6bfcb0e85c4560e9cfbde2cda5a29afe61026b4fccfed4f48ee7d0f0",
+      "internal/server/provider/runpod/ssh_keys.go": "4a34bf83cf6797ee10310a4d92056d8327c61fa68530e9e72d1025745e800390",
+      "ui/src/pages/CloudProvidersPage.tsx": "4e409bc4d9c6be7b5e603074e6840ccd6f11ce7b95a5298e9679604365c988e4",
+      "internal/server/api/request_validation.go": "12e130408dc5bd67bf0aec2767e644a49d26f3ba1ab8e81579aa343a9af6c61a"
+    },
+    "uncredited_mutation": {
+      "text-contract": {
+        "run_id": "20261026T102546Z-1878c8ed",
+        "report": "secrets/e2e/20261026T102546Z-1878c8ed/report.json",
+        "report_sha256": "3b1dd1ae5f1badd935e90f261a3241eb8f37eced0c112805c451c64ec05ddf82",
+        "status": "FAIL_TEST",
+        "check_family": "text-contract",
+        "last_step": "provider-text-field-contract",
+        "binary_sha256": "2a7a1079514dc5d032a7c7b3b4ffb3cd1cdc647ff0ed8e0015ad1243301f18b5",
+        "server_stopped": true,
+        "private_archive": "secrets/e2e/20261026T102546Z-1878c8ed/private.tar.gz",
+        "private_archive_sha256": "49b5a04bb0766efd4ebe86fbf78c4475969e247d6e73414ae3c46122f43a6529"
+      }
+    },
+    "artifact_retention": "Reports/logs/traces copied byte-for-byte into gitignored secrets/e2e/run_id. Private state is losslessly archived with per-member hashes and restore instructions; all original RAM evidence and failure residual records remain untouched.",
+    "note": "Six items only. 2.1 remains partial because the fixed edit-kind input lacks an accessible label. Diagnostic mutation lanes are expected FAIL; formal en/zh restored runs use all checks with identical frozen test/helper hashes. No management API mock, retry/timeout inflation, commit or push."
+  },
+  "batch_c_evidence": {
+    "items": [
+      "2.1",
+      "1.6",
+      "4.1",
+      "4.2",
+      "4.3",
+      "2.2",
+      "1.12",
+      "7.6",
+      "1.4"
+    ],
+    "normal_binary_sha256": "671e93a1b3783695f799ffd494ca2e2d0801c374f69374f5413236e177125e1b",
+    "input_manifest_sha256": "966512da70753ba8eb44f35e54885db50a6902005a1b766b53b6e5daf6361737",
+    "restored_all": [
+      {
+        "locale": "zh",
+        "run_id": "20261026T153403Z-18ec5494",
+        "report": "secrets/e2e/20261026T153403Z-18ec5494/report.json",
+        "report_sha256": "828cdef4502324164af604e0659c0b488c936004afa503cb55a182da17909da6"
+      },
+      {
+        "locale": "en",
+        "run_id": "20261026T153403Z-41e1dc3d",
+        "report": "secrets/e2e/20261026T153403Z-41e1dc3d/report.json",
+        "report_sha256": "67401e36542523838c368a86438d06c4adf9bf1f221253fc1535610bbba1c22b"
+      }
+    ],
+    "mutant_index": "secrets/mr-validation-20261026/batch-c-mutants-persisted.json",
+    "restored_index": "secrets/mr-validation-20261026/batch-c-provider-storage-restored-persisted.json",
+    "source_guard": "All consumed test helpers unchanged; only unrelated deployment_launch_checks.py changed after these completed runs. Compiled production source matches the recorded normal build exactly.",
+    "note": "Supersedes earlier partial claims only for these listed items; historical batch_evidence remains historical and is not rewritten."
+  }
 }

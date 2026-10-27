@@ -39,7 +39,7 @@ def login(page, context, server, artifacts, report, locale):
     artifacts.start_trace(context)
 
 
-def run(cases, *, entry_path=None, product_sources=()):
+def run(cases, *, entry_path=None, product_sources=(), metadata_offline=False):
     parser = argparse.ArgumentParser(description="Real local image catalog browser contracts")
     parser.add_argument("--case", choices=list(cases), required=True)
     parser.add_argument("--server-bin", type=Path, default=ROOT / "bin/gpuworks")
@@ -49,7 +49,8 @@ def run(cases, *, entry_path=None, product_sources=()):
     os.umask(0o077)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     artifacts = Artifacts(args.artifact_dir or ROOT / "secrets/e2e" / run_id)
-    server = LocalServer(args.server_bin, artifacts.private)
+    server_options = {"auto_check_updates": False, "env_overrides": {"GPUWORKS_USAGE_REPORT": "off"}} if metadata_offline else {}
+    server = LocalServer(args.server_bin, artifacts.private, **server_options)
     manifest_path = ROOT / f"test/e2e/coverage/image-catalog-{args.case}.json"
     manifest = json.loads(manifest_path.read_text())
     case = cases[args.case]
@@ -73,6 +74,13 @@ def run(cases, *, entry_path=None, product_sources=()):
     try:
         report["binary_sha256"] = digest(args.server_bin)
         report["health"] = server.start()
+        if metadata_offline:
+            child_env = dict(part.split(b"=", 1) for part in Path(f"/proc/{server.process.pid}/environ").read_bytes().split(b"\0") if b"=" in part)
+            report["metadata_offline"] = {"child_usage_report": child_env.get(b"GPUWORKS_USAGE_REPORT", b"").decode(),
+                "auto_check_updates": server.auto_check_updates, "child_args": server.process.args,
+                "config_auto_check_updates_false": "auto_check_updates: false" in (artifacts.private / "server.yaml").read_text()}
+            check(report["metadata_offline"]["child_usage_report"] == "off" and
+                  report["metadata_offline"]["config_auto_check_updates_false"], "offline child startup contract differs")
         report["base_url"] = server.base
         report["owned_server_pid"] = server.process.pid
         with sync_playwright() as play:

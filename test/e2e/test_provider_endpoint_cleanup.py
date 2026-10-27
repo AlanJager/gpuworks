@@ -29,6 +29,9 @@ class ProviderEntryCleanupTest(unittest.TestCase):
                     server.stop.side_effect = RuntimeError("injected-server-stop")
                 browser, context = mock.Mock(version="test-browser"), mock.Mock()
                 browser.new_context.return_value = context
+                # The failure diagnostic evaluates a JSON array of footer
+                # actions; this stub has no rendered controls.
+                context.new_page.return_value.locator.return_value.evaluate_all.return_value = []
                 browser.close.return_value = context.close.return_value = None
                 if stage in ("context", "browser"):
                     getattr(context if stage == "context" else browser, "close").side_effect = RuntimeError("injected-close")

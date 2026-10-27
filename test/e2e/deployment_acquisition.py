@@ -7,18 +7,32 @@ Requires built binaries, Python Playwright/Chrome, a dedicated Docker daemon wit
 fake-engine:test. No cloud/GPU inference. Each run is isolated and never retries.
 """
 from functools import partial
+import deployment_launch_checks as launch_checks
 from local_business_runner import case_parser, run_case
 import deployment_acquisition_fixture as fixture
 from deployment_acquisition_browser import exercise
 
 
 def main(argv=None):
-    args = case_parser(__doc__, fixture.CASES).parse_args(argv)
+    parser = case_parser(__doc__, fixture.CASES)
+    parser.add_argument("--check-family", choices=launch_checks.FAMILIES, default="all")
+    args = parser.parse_args(argv)
+    def prepare(*values, case):
+        launch_checks.freeze(values[3], args.check_family)
+        return fixture.prepare(*values, case=case)
     return run_case(args, contract_id='gpuworks/deployment/acquisition-' + args.case,
         manifest='test/e2e/coverage/deployment-acquisition-' + args.case + '.json',
         test_file='test/e2e/deployment_acquisition.py',
-        prepare=partial(fixture.prepare, case=args.case), exercise=exercise, cleanup=fixture.cleanup,
-        helpers=('test/e2e/deploy_submit_hold.py',
+        prepare=partial(prepare, case=args.case), exercise=exercise, cleanup=fixture.cleanup,
+        helpers=('test/e2e/deployment_launch_checks.py',
+                 'test/e2e/deployment_boolean_checks.py',
+                 'test/e2e/deployment_boolean_contracts.py',
+                 'test/e2e/deployment_boolean_inventory.py',
+                 'test/e2e/deployment_boolean_inventory_contracts.py',
+                 'test/e2e/deployment_boolean_inventory_probe.py',
+                 'test/e2e/deploy_submit_hold.py',
+                 'test/e2e/deployment_batch_checks.py',
+                 'test/e2e/deployment_selector_checks.py',
                  'test/e2e/deployment_acquisition_fixture.py',
                  'test/e2e/deployment_acquisition_oracles.py',
                  'test/e2e/model_download_fixture.py',

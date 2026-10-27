@@ -12,9 +12,25 @@ from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import check
 from deployment_sleep_wake import wait_online
 import deployment_container_fixture as containers
+from deployment_batch_checks import DISPLAY_SUFFIX
 
 IMAGE = "gpuworks/fake-engine:test"
 SPEC = "browser-vllm"
+
+
+def expected_body(fixture, name):
+    return {"model_id": fixture["model"]["id"], "served_name": fixture["served_name"],
+        "template_id": fixture["template"]["id"], "template_spec_source": "user",
+        "template_spec_name": SPEC, "scenario": "balanced",
+        "target_vendor": "nvidia", "node_uuid": fixture["node"]["uuid"],
+        "engine": "vllm", "image": IMAGE,
+        "quick_params": {"dtype": "auto", "performance_mode": "balanced",
+                         "gpu_memory_utilization": 0.9, "enable_cache_report": True, "enable_request_metrics": True,
+                         "kv_cache_dtype": "auto"},
+        "placement_strategy": "spread",
+        "container_overrides": {"env": {"E2E_WIZARD": fixture["run_id"]}},
+        "nnodes": 1, "replicas": 1, "placement_mode": "manual", "name": name}
+
 
 
 def prepare(server, token, run_id, report, holder, agent_bin, remember):
@@ -80,9 +96,9 @@ def prepare(server, token, run_id, report, holder, agent_bin, remember):
           "inference key response changed the run-owned name")
     check(isinstance(inference_key, str) and bool(inference_key.strip()),
           "inference key fixture returned no valid key")
-    report["owned_deployment_name"] = name + "-deployment"
+    report["owned_deployment_name"] = name + "-deployment" + DISPLAY_SUFFIX
     return {"run_id": run_id, "node": node, "model": model, "template": template, "key": key,
-            "model_dir": str(model_dir), "name": name + "-deployment",
+            "model_dir": str(model_dir), "name": report["owned_deployment_name"],
             "served_name": name + "-route"}
 
 

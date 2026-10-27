@@ -8,6 +8,46 @@ import deployment_container_fixture as fixture
 
 
 class DeploymentCleanupTest(unittest.TestCase):
+    def test_revoked_key_can_remain_in_the_audit_list(self):
+        report = {"owned_key_name": "owned-key"}
+        revoked = [False]
+
+        def request(base, method, path, **kwargs):
+            if method == "GET" and path == fixture.APIKEYS:
+                item = {"name": "owned-key", "prefix": "owned-prefix"}
+                if revoked[0]:
+                    item["revoked_at"] = "2026-10-26T06:00:00Z"
+                return 200, {"items": [item]}
+            if method == "DELETE" and path == fixture.APIKEYS + "/owned-prefix":
+                revoked[0] = True
+                return 200, {"status": "revoked"}
+            raise AssertionError(f"unexpected request {method} {path}")
+
+        self.assertTrue(fixture.cleanup(SimpleNamespace(base="http://local"), "token", report,
+                                        {}, request=request, inspect=mock.Mock()))
+        self.assertIsNone(report["owned_key_name"])
+        self.assertEqual(report["remaining_resources"], [])
+        self.assertTrue(report["cleanup_key_revoked"])
+        self.assertFalse(report["cleanup_key_gone"])
+
+    def test_invalid_revocation_marker_retains_key_ownership(self):
+        for marker in (None, "", True, "yesterday"):
+            with self.subTest(marker=marker):
+                report = {"owned_key_name": "owned-key"}
+
+                def request(base, method, path, **kwargs):
+                    if method == "GET" and path == fixture.APIKEYS:
+                        return 200, {"items": [{"name": "owned-key", "prefix": "owned-prefix",
+                                                "revoked_at": marker}]}
+                    if method == "DELETE" and path == fixture.APIKEYS + "/owned-prefix":
+                        return 200, {"status": "revoked"}
+                    raise AssertionError(f"unexpected request {method} {path}")
+
+                self.assertFalse(fixture.cleanup(SimpleNamespace(base="http://local"), "token", report,
+                                                 {}, request=request, inspect=mock.Mock()))
+                self.assertEqual(report["owned_key_name"], "owned-key")
+                self.assertEqual(report["remaining_resources"][0]["kind"], "inference-key")
+
     def test_preparing_container_is_observed_before_a_delete_failure(self):
         report = {"owned_deployment_id": 7, "owned_node_uuid": "owned-node"}
         agent = mock.Mock(pid=101)

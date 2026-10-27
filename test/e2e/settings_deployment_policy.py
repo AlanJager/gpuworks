@@ -290,9 +290,11 @@ def test_deployment_start_timeout(page, context, server, artifacts, report, loca
         saved_policy = independent.json()["deployment"]
         check(saved_policy["start_timeout_sec"] == value,
               "refresh and independent GET differ")
+        report["last_step"] = "policy-other-fields"
         for policy_name in POLICY_FIELDS:
             check(saved_policy[policy_name] == initial_policy[policy_name],
                   f"saving the timeout changed {policy_name}")
+        report["other_fields_unchanged"] = True
         saved_values.append(value)
         report["last_step"] = f"saved-{value}-and-reloaded"
 
