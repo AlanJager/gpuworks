@@ -74,17 +74,6 @@ func reasonMemoryShortfall(req Request, gpus []GPU, tp int, need int64) Reason {
 	return Reason{Code: ReasonNoFit, Params: params}
 }
 
-// ReasonContextExceedsKV refuses a launch whose KV pool cannot hold one
-// request of the configured maximum context. suggested is the longest
-// power-of-two context the estimate says the pool can hold.
-func ReasonContextExceedsKV(kvTokens, maxModelLen, suggested int) Reason {
-	return Reason{Code: ReasonKVContextExceedsPool, Params: map[string]any{
-		"kv_tokens":               kvTokens,
-		"max_model_len":           maxModelLen,
-		"suggested_max_model_len": suggested,
-	}}
-}
-
 // reasonSleepResidueBlocksStartup explains the distinct whole-GPU failure
 // where the request itself fits the utilization capacity, but the engine cannot
 // reserve that capacity while a sleeping instance still owns its residue.

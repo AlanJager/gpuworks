@@ -73,7 +73,7 @@ func TestComputeUsesGPUCapacityAndDoesNotClaimFitWhenCapacityUnknown(t *testing.
 // not, and the concurrency of that context is a real zero that has to be on
 // the wire. A short context of the same model still fits, and a model with no
 // measured KV cost does not invent a zero.
-func TestComputeRefusesAFullContextTheKVPoolCannotHold(t *testing.T) {
+func TestComputeKeepsStartupFitWhenEstimatedKVPoolCannotHoldContext(t *testing.T) {
 	const gib = int64(1) << 30
 	util := 0.9
 	capacity := int64(float64(24*gib) * util)
@@ -93,8 +93,8 @@ func TestComputeRefusesAFullContextTheKVPoolCannotHold(t *testing.T) {
 	if embedding.EstimatedKVTokens != wantTokens {
 		t.Fatalf("tokens = %d, want %d", embedding.EstimatedKVTokens, wantTokens)
 	}
-	if embedding.Fits || embedding.MaxConcurrency == nil || *embedding.MaxConcurrency != 0 {
-		t.Fatalf("embedding breakdown = %+v, want fits false and concurrency 0", embedding)
+	if !embedding.Fits || embedding.MaxConcurrency == nil || *embedding.MaxConcurrency != 0 {
+		t.Fatalf("embedding breakdown = %+v, want startup fits true and estimated concurrency 0", embedding)
 	}
 	if !embedding.ContextExceedsKVPool() {
 		t.Fatal("embedding context was not reported as exceeding the pool")
@@ -118,20 +118,12 @@ func TestComputeRefusesAFullContextTheKVPoolCannotHold(t *testing.T) {
 		Grade:           GradeMeasured,
 	}
 	Finalize(&reranker)
-	if reranker.Fits || reranker.MaxConcurrency == nil || *reranker.MaxConcurrency != 0 || reranker.EstimatedKVTokens >= 40960 || reranker.EstimatedKVTokens <= 0 {
+	if !reranker.Fits || reranker.MaxConcurrency == nil || *reranker.MaxConcurrency != 0 || reranker.EstimatedKVTokens >= 40960 || reranker.EstimatedKVTokens <= 0 {
 		t.Fatalf("reranker breakdown = %+v", reranker)
 	}
 	if reranker.KVPoolBytes >= int64(5.62*gibf) {
 		t.Fatalf("reranker pool = %d, want it under one full context", reranker.KVPoolBytes)
 	}
-	suggested := 1
-	for suggested<<1 > 0 && suggested<<1 <= reranker.EstimatedKVTokens {
-		suggested <<= 1
-	}
-	if suggested != 16384 {
-		t.Fatalf("reranker tokens = %d, largest power of two = %d, want 16384", reranker.EstimatedKVTokens, suggested)
-	}
-
 	short := embedding
 	short.MaxModelLen = 1024
 	short.MaxConcurrency = nil

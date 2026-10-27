@@ -136,6 +136,8 @@ func (in Input) Evaluate(st *store.Store) Output {
 
 	maxLen := in.Quick.MaxModelLen
 	if maxLen <= 0 && cfg != nil {
+		// Estimate an unset context from the model limit; the engine's effective
+		// default may differ. This is not a node-sized context recommendation.
 		maxLen = cfg.MaxPositionEmbeddings
 	}
 	kvDtype := in.Quick.KVCacheDtype
@@ -280,33 +282,23 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningModelWeightUnknown, nil))
 	}
 	// No fit → suggest sleeping sleepable instances to free room (confirm-based;
-	// the platform never sleeps silently). A context the pool cannot hold is
-	// applied after this: sleeping another deployment does not grow the card.
+	// the platform never sleeps silently).
 	if !out.Result.OK {
 		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable)
 	}
 	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {
-		out.Breakdown.Fits = false
-		out.Result.OK = false
-		out.Result.Plan = nil
+		// Deliberately non-blocking (GWKS-79): new attention layouts and engine
+		// versions can make the KV estimate wrong. Keep Fits, OK and the plan
+		// from startup/resource admission so evaluate, create and controller
+		// retries all allow the same operator-selected configuration. Do not
+		// turn this warning back into a rejection or silently clamp max_model_len;
+		// only the actual engine launch can settle the KV capacity question.
 		b := out.Breakdown
-		out.Result.Message = scheduler.ReasonContextExceedsKV(b.EstimatedKVTokens, b.MaxModelLen, suggestedContextLen(b.EstimatedKVTokens))
+		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningKVBelowContext, map[string]any{
+			"kv_tokens": b.EstimatedKVTokens, "max_model_len": b.MaxModelLen,
+		}))
 	}
 	return out
-}
-
-// suggestedContextLen is the longest power of two that does not exceed the
-// estimated token pool. The launch is not clamped to it: the estimate runs a
-// little ahead of the engine, so the operator picks the length.
-func suggestedContextLen(tokens int) int {
-	if tokens <= 0 {
-		return 0
-	}
-	n := 1
-	for n<<1 > 0 && n<<1 <= tokens {
-		n <<= 1
-	}
-	return n
 }
 
 // modelDiskNeed returns only the bytes that still have to arrive on the

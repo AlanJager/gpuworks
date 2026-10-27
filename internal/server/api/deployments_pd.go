@@ -265,6 +265,7 @@ func (a *apiHandlers) evaluatePD(env evaluatePDEnv) {
 					return
 				}
 				resp.Warnings = append(resp.Warnings, plan.Warnings...)
+				resp.Warnings = append(resp.Warnings, plan.Output.Warnings...)
 				if !preview.Fits {
 					resp.OK = false
 				}

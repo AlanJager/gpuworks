@@ -92,6 +92,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 		}
 		res := plan.Resolved
 		resp.Warnings = append(resp.Warnings, plan.Warnings...)
+		resp.Warnings = append(resp.Warnings, plan.Output.Warnings...)
 		if dynamicTPPreview {
 			// No GPU has been chosen yet: the engine builder's single-GPU
 			// default is a placeholder, and the rank that validates the
