@@ -333,3 +333,10 @@ export function targetLabel(run: BenchmarkRun, deploymentName?: string, t?: TFun
 	if (run.target_kind === "instance") return deploymentName || tr(t, "utility.targetDeployment", "Deployment #{{id}}", { id: run.deployment_id });
 	try { return new URL(run.base_url || "").host || run.base_url || tr(t, "common.external", "External endpoint"); } catch { return run.base_url || tr(t, "common.external", "External endpoint"); }
 }
+
+export function deletedTargetLabelKeys(run: BenchmarkRun): Array<"detail.target.deleted" | "detail.target.instanceDeleted"> {
+	const labels: Array<"detail.target.deleted" | "detail.target.instanceDeleted"> = [];
+	if (run.deployment_deleted) labels.push("detail.target.deleted");
+	if (run.instance_deleted) labels.push("detail.target.instanceDeleted");
+	return labels;
+}

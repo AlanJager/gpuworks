@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { benchmarkSeriesName, bestPoint, estimateOpenLoop, estimateRequests, initialBenchmarkDataset, interactivity, metricCardState, modeFormReset, normalizeEndpointURL, parseNumbers, parseRates, pointLoadLabel, pointMeetsSLA, pointParameterLabel, pointSLAValues, pointSLAViolations, pointTimingValue, verdictPresentation } from "../src/pages/evaluations/evaluationUtils.ts";
+import { benchmarkSeriesName, bestPoint, deletedTargetLabelKeys, estimateOpenLoop, estimateRequests, initialBenchmarkDataset, interactivity, metricCardState, modeFormReset, normalizeEndpointURL, parseNumbers, parseRates, pointLoadLabel, pointMeetsSLA, pointParameterLabel, pointSLAValues, pointSLAViolations, pointTimingValue, verdictPresentation } from "../src/pages/evaluations/evaluationUtils.ts";
 import type { BenchmarkMeta, BenchmarkPoint, BenchmarkRun } from "../src/api.ts";
 
 test("parseNumbers accepts Chinese separators and rejects invalid values", () => {
@@ -339,4 +339,10 @@ test("running SLA excludes invalid persisted points from both feasible and close
 	assert.equal(bestPoint(run)?.seq, 5);
 	assert.equal(bestPoint({ ...run, points: invalid as BenchmarkPoint[] }), undefined);
 	assert.equal(bestPoint({ ...run, search: { ...run.search, max_p99_ttft: 100 }, points: [...invalid, completed[0]] as BenchmarkPoint[] })?.seq, 4);
+});
+
+test("historical evaluation target labels distinguish deleted deployments and instances", () => {
+	assert.deepEqual(deletedTargetLabelKeys({ deployment_deleted: true } as BenchmarkRun), ["detail.target.deleted"]);
+	assert.deepEqual(deletedTargetLabelKeys({ instance_deleted: true } as BenchmarkRun), ["detail.target.instanceDeleted"]);
+	assert.deepEqual(deletedTargetLabelKeys({ deployment_deleted: true, instance_deleted: true } as BenchmarkRun), ["detail.target.deleted", "detail.target.instanceDeleted"]);
 });
