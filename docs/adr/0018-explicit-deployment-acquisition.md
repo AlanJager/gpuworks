@@ -45,6 +45,8 @@ engine profile 的单值默认镜像只用于旧环境目录缺失时的兼容�
 
 2026-09-08 补充：空 revision 在来源选择入口解析一次，按 provider、repo、subfolder 查找已有 identity，优先目标节点已就位的行，再按 ID 确定顺序；没有匹配时才创建空 revision 行。精确匹配与跨源等价函数不引入通配语义。新目录条目允许省略 revision，既有条目的 revision 保留：批量删除会降低复现能力，且公网兜底可能让不同节点在同一 model ID 下取得不同上游版本；未来若要删除，须先设计多机版本收敛机制。
 
+2026-10-27 补充：显式 provider 也复用同一 provider、同一 repo 下 revision 为空、目标节点已能使用、且体积与 spec `weight_bytes` 相差不超过 0.1%（至少 1 MiB）的副本。这类条目多来自共享存储扫描导入（例如 provider CLI 下载的目录，没有 commit 信息），空 revision 表示未知而非另一版本；不复用时会在同一存储上按 `<repo>-<revision>` 再下载一份完整权重。该复用不跨 provider，也不复用 revision 已知且不同的条目；部署快照记录实际挂载的条目。
+
 来源候选保留 spec 声明的完整列表，本地副本只影响默认建议。显式公网 provider 约束实际下载 identity，避免跨源等价复用把请求转到另一个 provider。镜像目录查询先精确匹配，再查声明的 registry_sources；缓存查询独立按 ref 询问节点，失败原因通过 cache_reason 暴露。
 
 - 新包 `internal/server/acquisition` 只产候选、不做选择，输入是显式 facts 结构体。

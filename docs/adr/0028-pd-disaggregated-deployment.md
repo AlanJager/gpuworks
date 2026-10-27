@@ -56,7 +56,9 @@ TP 规则违反时报与规则对应的错误码。引擎档位按 `pdmode.ForEn
 `VLLM_NIXL_SIDE_CHANNEL_HOST` 为该节点在参数网络上的地址，`VLLM_NIXL_SIDE_CHANNEL_PORT` 为分配到的端口，
 `UCX_NET_DEVICES` 在 RDMA 网络下取第一个 HCA、在以太网络下取参数网络网卡并同时设
 `UCX_TCP_BRIDGE_ENABLE=y`（UCX 默认过滤网桥，指定网桥时 NIXL 创建后端失败）。RDMA 网络下注入的容器参数与多机
-推理相同，并把 `UCX_TLS` 限定为 RDMA 与 CUDA 传输，配错即启动失败。所有 PD 实例用 host 网络。
+推理相同，并把 `UCX_TLS` 限定为 RDMA 与 CUDA 传输，配错即启动失败。`vllm-nixl` 实例另设
+`VLLM_SSM_CONV_STATE_LAYOUT=DS`：NixlConnector 只按 dim-first 布局传输 Mamba 类层（gated delta net、KDA、short conv）
+的 conv 状态，其他布局下拒绝启动，而该变量对没有这类层的模型不生效；模板或部署显式设置的值优先。所有 PD 实例用 host 网络。
 
 **端口一次分配、全部落库。** controller 为一个实例一次取齐 API 端口与 side channel 端口块，全部写进
 `Instance.Ports`，后续分配据此避让。

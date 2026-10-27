@@ -159,6 +159,9 @@ type Mode struct {
 	// InterfaceEnv to the network interface holding it (HCCL handshakes).
 	AddressEnv   []string
 	InterfaceEnv []string
+	// Env is fixed environment every instance of the mode needs; a template
+	// or the deployment may still set another value.
+	Env map[string]string
 	// Transport is what carries the KV.
 	Transport Transport
 	// ConnectorPortKey names the connector config field that takes the base
@@ -192,7 +195,13 @@ var modes = map[string]Mode{
 		KVLoadFailures:      []string{KVLoadFail, KVLoadRecompute},
 		ExtraPortsPerTP:     map[string]int{RolePrefill: 1, RoleDecode: 1},
 		SideChannel:         SideChannelNIXL,
-		Transport:           TransportUCX,
+		// NixlConnector transfers a Mamba-style layer's conv state (gated
+		// delta net, KDA, short conv) only in the dim-first layout and refuses
+		// to start otherwise; vLLM's default is state-first. The variable means
+		// nothing to a model without such layers, which is why vLLM's own CPU
+		// platform sets it whenever a NIXL connector is configured.
+		Env:       map[string]string{"VLLM_SSM_CONV_STATE_LAYOUT": "DS"},
+		Transport: TransportUCX,
 	},
 	// vllm-ascend with its MooncakeConnectorV1: the same kv_transfer_params
 	// wire as NIXL, KV over the NPUs' RoCE ports (HCCL), handshakes on the
