@@ -47,6 +47,7 @@ function useNarrow(breakpointPx = NARROW_BREAKPOINT): boolean {
 
 const STATE_BADGE: Record<string, "success" | "processing" | "default" | "error" | "warning"> = {
   running: "success",
+  offline: "warning",
   starting: "processing",
   stopped: "default",
   failed: "error",

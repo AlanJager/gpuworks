@@ -168,15 +168,15 @@ func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.Instance
 }
 
 // deploymentState rolls a deployment's instances up into the single
-// running|starting|stopped|failed|asleep state the wire contract's
+// running|starting|stopped|failed|asleep|offline state the wire contract's
 // services[].state carries (replicaState below is its per-instance
 // sibling for replicas[].state). Serving replicas outrank retired failures
 // and warming replacements; deployment policy supplies the state before an
 // instance exists. An explicitly stopped deployment stays stopped while its
 // containers are being reclaimed.
 func deploymentState(deployment monitor.DeploymentRef, instances []monitor.InstanceRef) string {
-	if deployment.RuntimeState == "stopped" {
-		return "stopped"
+	if deployment.RuntimeState == "stopped" || deployment.RuntimeState == "offline" {
+		return deployment.RuntimeState
 	}
 	hasFailed, hasStarting, running, awake := false, false, 0, 0
 	for _, inst := range instances {

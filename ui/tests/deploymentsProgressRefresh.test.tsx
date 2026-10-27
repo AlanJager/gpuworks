@@ -84,6 +84,11 @@ test("the deployment list reloads for state changes and not for progress notices
 
   Events.emit("modelfile", "present");
   await waitFor(() => assert.equal(calls, afterLoad + 2, "a model file state change did not reload the list"));
+
+  Events.emit("node", "state:offline");
+  await waitFor(() => assert.equal(calls, afterLoad + 3, "a node disconnect did not reload readiness"));
+  Events.emit("node", "state:online");
+  await waitFor(() => assert.equal(calls, afterLoad + 4, "a node reconnect did not reload readiness"));
 });
 
 test("the deployment list displays the instance node when scheduling chose a different node", async () => {

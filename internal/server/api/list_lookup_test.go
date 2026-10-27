@@ -42,6 +42,7 @@ func newListFixture(t *testing.T, extraDeployments int) listFixture {
 	node := func(name string) *store.Node {
 		n, err := st.RegisterNode(name, store.HashToken(name), name)
 		must(err)
+		must(st.SetNodeState(n.UUID, store.NodeStateOnline))
 		return n
 	}
 	a, b, gone := node("list-a"), node("list-b"), node("list-gone")

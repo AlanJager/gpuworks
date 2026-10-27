@@ -7,6 +7,7 @@
     "starting": "启动中",
     "stopped": "已停止",
     "failed": "失败",
+    "offline": "离线",
     "asleep": "睡眠中"
   },
   "range": {

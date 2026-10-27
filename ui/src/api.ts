@@ -1618,7 +1618,7 @@ export interface Deployment {
   // start_timeout_sec is the deployment's own instance health budget; absent
   // when it follows the cluster default (settings, deployment group).
   start_timeout_sec?: number;
-  // ready_replicas counts the replicas running now (every rank); absent for a
+  // ready_replicas counts the connected, awake replicas running now (every rank); absent for a
   // PD deployment, whose roles count their own.
   ready_replicas?: number;
   // health is the deployment's health check (dto/deployment_health.go).
@@ -3130,7 +3130,7 @@ export interface MonitorService {
   engine: string;
   placement: string;
   replicas: MonitorReplicaCount;
-  state: "running" | "starting" | "stopped" | "failed" | "asleep";
+  state: "running" | "starting" | "stopped" | "failed" | "asleep" | "offline";
   request_rate: number | null;
   ttft_p95_ms: number | null;
   running: number | null;

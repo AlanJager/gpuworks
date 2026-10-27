@@ -306,3 +306,35 @@ func TestMonitorServiceReportsTheDeploymentHealthCheck(t *testing.T) {
 		t.Fatalf("deployment health = %+v, want the same ok reading as the overview row", dep.Health)
 	}
 }
+
+func TestMonitorDisconnectedReplicaRetainsObservation(t *testing.T) {
+	fx := newMonitorFixtureBase(t)
+	svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil).At(fx.now)
+	for _, tc := range []struct {
+		nodeState, state string
+		ready            int
+	}{
+		{store.NodeStateOnline, "running", 1},
+		{store.NodeStateOffline, "offline", 0},
+		{store.NodeStateOnline, "running", 1},
+	} {
+		if err := fx.st.SetNodeState(fx.node.UUID, tc.nodeState); err != nil {
+			t.Fatal(err)
+		}
+		got, err := svc.Deployment(context.Background(), fx.dep.ID, time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		overview, err := svc.Overview(context.Background(), time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(overview.Services) != 1 || overview.Services[0].State != tc.state || got.Deployment.Replicas.Ready != tc.ready {
+			t.Fatalf("deployment = %+v", got.Deployment)
+		}
+		inst, err := fx.st.InstanceByUUID(fx.inst.UUID)
+		if err != nil || inst.State != proto.InstRunning {
+			t.Fatalf("observation = %+v, %v", inst, err)
+		}
+	}
+}

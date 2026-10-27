@@ -144,7 +144,7 @@ func deploymentPDDTO(rows dtoLookup, d *store.Deployment, insts []store.Instance
 	for _, slot := range match.Slots {
 		slots[fmt.Sprintf("%s/%d", slot.Unit.Role, slot.Unit.Index)] = slot
 	}
-	status := planning.PDStatusOf(pd, insts)
+	status := planning.PDStatusOf(pd, onlineInstances(rows, insts))
 	out := &dto.DeploymentPD{Mode: pd.Mode, Fallback: pd.EffectiveFallback(), KVLoadFailure: pd.EffectiveKVLoadFailure(), State: status.State, Short: status.Short,
 		Roles: []dto.DeploymentPDRole{}}
 	for _, role := range status.Roles {

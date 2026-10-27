@@ -573,3 +573,15 @@ test("a suggested multi-node replica is appended for the operator to check, and 
   await within(again).findByText(i18n.t("replica.suggest.noFit", { node: "Node C", reason: i18n.t("deploy:schedule.no_free_gpu") }));
   assert.equal(within(again).queryByText("Replica 2"), null, "nothing is appended when nothing fits");
 });
+
+
+test("an offline deployment shows no ready replicas and disables inference", async () => {
+  const offline = deployment({ runtime_state: "offline", ready_replicas: 0, replicas: 1 });
+  stub("deploymentsPage", async () => listPage([offline]));
+  stub("deployment", async () => offline);
+  await openDetail();
+  assert.ok(screen.getAllByText(i18n.t("common:states.offline")).length > 0);
+  assert.ok(screen.getAllByText("0/1").length > 0);
+  const playground = screen.getAllByRole("button", { name: locale.page.openPlayground });
+  assert.ok(playground.every((button) => (button as HTMLButtonElement).disabled));
+});
