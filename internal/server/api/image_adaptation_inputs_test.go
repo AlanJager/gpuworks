@@ -149,9 +149,14 @@ func TestImageWritePathsIgnoreLegacyAdaptationKeys(t *testing.T) {
 			custom = version
 		}
 	}
-	versionKeys := []string{"deprecated", "driver_requirement", "effective_enabled", "enabled", "engine", "engine_version", "framework", "framework_version", "id", "image_ref", "name", "present_nodes", "purpose", "reference_count", "rolling_tag", "series_id", "source", "total_nodes", "upstream_gone"}
+	versionKeys := []string{"deprecated", "driver_requirement", "effective_enabled", "enabled", "engine", "engine_version", "framework", "framework_version", "id", "image_ref", "local_runtime_size_bytes", "local_size_known_nodes", "name", "present_nodes", "purpose", "reference_count", "rolling_tag", "series_id", "source", "total_nodes", "upstream_gone"}
 	if !reflect.DeepEqual(keys(custom), versionKeys) {
 		t.Fatalf("version keys = %q", keys(custom))
+	}
+	for _, key := range []string{"local_runtime_size_bytes", "local_size_known_nodes"} {
+		if custom[key] != float64(0) {
+			t.Fatalf("unobserved image %s = %v, want 0", key, custom[key])
+		}
 	}
 	series := map[string]any{}
 	if err := json.Unmarshal([]byte(legacy.send(httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/images/%v", custom["series_id"]), nil))), &series); err != nil {
