@@ -141,8 +141,8 @@ func TestParsePrometheusOmitsDeploymentLabelWhenZero(t *testing.T) {
 
 func TestParsePrometheusUsesEnginePrefix(t *testing.T) {
 	body := strings.NewReader(`
-sglang:num_requests_running 4
-sglang:gpu_cache_usage_perc 0.75
+sglang:num_running_reqs 4
+sglang:token_usage 0.75
 vllm:num_requests_running 99
 `)
 	samples := parsePrometheus(body, RunningInstance{UUID: "i-2", Engine: "sglang", MetricPrefix: "sglang"}, "node-1", 123, slog.Default(), nil)
