@@ -86,6 +86,9 @@ const notices: string[] = [];
 	return {} as never;
 }) as never;
 
+let detailDeployment = deployment;
+(await import("../src/api.ts")).api.deployment = async () => ({ ...detailDeployment, instances: [{ uuid: "leader-1", deployment_id: deployment.id, node_uuid: "node-1", state: "running", sleep_level: 0, node_rank: 0, api_port: 8000 } as import("../src/api.ts").Instance] });
+
 const originalCreateBenchmark = (await import("../src/api.ts")).api.createBenchmark;
 (await import("../src/api.ts")).api.createBenchmark = (async (body: unknown) => {
 	calls.push(body as Record<string, unknown>);
@@ -117,6 +120,7 @@ afterEach(() => {
 	document.body.querySelectorAll(".ant-modal-root, .ant-message").forEach((node) => node.remove());
 	notices.length = 0;
 	calls.length = 0;
+	detailDeployment = deployment;
 	respond = async () => created;
 });
 
@@ -221,6 +225,7 @@ test("an automatic source reports what it resolved to", async () => {
 
 test("a transcription-only preset cannot start a chat benchmark", async () => {
 	const asr = { ...deployment, operations: [{ type: "openai.audio.transcribe", endpoint: "/v1/audio/transcriptions", renderer: "audio" }] } as typeof deployment;
+	detailDeployment = asr;
 	const user = userEvent.setup();
 	render(<I18nextProvider i18n={i18n}><BenchmarkWizard open meta={meta} deployments={[asr]} nodes={nodes} preset={{ deploymentID: asr.id }} onClose={() => {}} onCreated={() => {}} /></I18nextProvider>);
 	await user.click(await screen.findByRole("button", { name: "下一步" }));

@@ -85,10 +85,14 @@ const run = {
 
 let deploymentQueries: ListQuery[] = [];
 let nodeQueries: ListQuery[] = [];
+let detailQueries: number[] = [];
+let nodeDetailQueries: string[] = [];
 const originals = { ...api };
 function stubApi() {
   deploymentQueries = [];
   nodeQueries = [];
+  detailQueries = [];
+  nodeDetailQueries = [];
   api.deployments = async () => { throw new Error("fetched every deployment"); };
   api.nodes = async () => { throw new Error("fetched every node"); };
   api.benchmarks = async () => list([run]);
@@ -105,8 +109,11 @@ function stubApi() {
     nodeQueries.push(query);
     return { items: [node("node-2", "bench-box")], page: 1, page_size: query.page_size, total: 1, all: 2, labels: [] };
   };
-  api.deployment = async (id: number) => ({ ...item(id, `svc-${id}`, "node-1"), instances: [] }) as never;
-  api.node = async (uuid: string) => node(uuid, "target-box");
+  api.deployment = async (id: number) => {
+    detailQueries.push(id);
+    return { ...item(id, `svc-${id}`, "node-1"), instances: [{ uuid: `leader-${id}`, deployment_id: id, node_uuid: "runtime-node", state: "running", sleep_level: 0, node_rank: 0, headless: false, api_port: 8000 }] } as never;
+  };
+  api.node = async (uuid: string) => { nodeDetailQueries.push(uuid); return node(uuid, "target-box"); };
 }
 afterEach(() => { cleanup(); Object.assign(api, originals); });
 
@@ -138,8 +145,8 @@ test("the wizard offers one page of running deployments and online nodes and sea
   fireEvent.change(service, { target: { value: "svc-5" } });
   await waitFor(() => assert.equal(deploymentQueries.at(-1)?.q, "svc-5"));
 
-	// The load origin lists the target deployment's node first even though the
-	// node page does not hold it, then the page's online nodes.
+	// The actual runtime leader is pinned even when its node is outside the
+	// searched page. Unrelated online nodes cannot generate managed direct load.
 	const origin = screen.getByRole("combobox", { name: evaluations.wizard.loadOrigin });
 	// The server is the default origin: a managed deployment is measured
 	// through the gateway, which is also the only end-to-end path for
@@ -147,7 +154,11 @@ test("the wizard offers one page of running deployments and online nodes and sea
 	assert.ok(within(origin.closest(".ant-select") as HTMLElement).getByText("Server"));
 	fireEvent.mouseDown(origin);
   await waitFor(() => assert.ok(document.querySelector(`.ant-select-item-option[title="${evaluations.wizard.targetNode} · target-box"]`)));
-  assert.ok(document.querySelector(`.ant-select-item-option[title="${evaluations.wizard.computeNode} · bench-box"]`));
+  assert.equal(document.querySelector(`.ant-select-item-option[title="${evaluations.wizard.computeNode} · bench-box"]`), null);
+  assert.ok(detailQueries.length > 0);
+  assert.deepEqual([...new Set(detailQueries)], [7], "detail refreshes never scan the deployment fleet");
+  assert.ok(nodeDetailQueries.length > 0);
+  assert.deepEqual([...new Set(nodeDetailQueries)], ["runtime-node"], "metadata lookups use actual eligible runtime nodes");
   fireEvent.change(origin, { target: { value: "bench" } });
   await waitFor(() => assert.equal(nodeQueries.at(-1)?.q, "bench"));
 });

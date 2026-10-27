@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, mock, test } from "node:test";
+import { afterEach, beforeEach, mock, test } from "node:test";
 import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
@@ -54,6 +54,7 @@ const deployment = { id: 7, name: "Test service", node_uuid: "node-1", model_id:
 function wizard(preset?: WizardPreset, open = true) {
 	return <I18nextProvider i18n={i18n}><BenchmarkWizard open={open} meta={meta} deployments={[deployment]} nodes={[]} preset={preset} onClose={() => {}} onCreated={() => {}} /></I18nextProvider>;
 }
+beforeEach(() => { mock.method(api, "deployment", async () => ({ ...deployment, instances: [{ uuid: "leader-1", deployment_id: deployment.id, node_uuid: "node-1", state: "running", sleep_level: 0, node_rank: 0, api_port: 8000 }] })); });
 afterEach(() => { cleanup(); mock.restoreAll(); });
 
 function page(entry = "/evaluations") {
