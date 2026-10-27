@@ -7,7 +7,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/chipmatch"
-	"gpuworks.ai/gpuworks/internal/server/nodelabel"
 	"gpuworks.ai/gpuworks/internal/server/partitioncap"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -69,7 +68,7 @@ func (a *apiHandlers) evaluateEligibleNodes(selection templateSelection, reqs ma
 	// so a vendor failure cannot mask a later label mismatch.
 	explicit := make(map[string][]string, len(reqs))
 	for key, values := range reqs {
-		if key != nodelabel.KeyVendor {
+		if !planning.IsVendorRequirement(&planning.UnmetRequirement{Key: key}) {
 			explicit[key] = values
 		}
 	}
