@@ -266,6 +266,13 @@
       "forbidden": {}
     },
     {
+      "term_en": "Image Size",
+      "translations": {
+        "zh": "镜像体积"
+      },
+      "forbidden": {}
+    },
+    {
       "term_en": "Image Catalog",
       "translations": {
         "zh": "镜像目录"
