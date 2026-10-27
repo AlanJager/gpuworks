@@ -11,12 +11,12 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-type scheduleRig struct {
+type replacementRig struct {
 	*tokenRig
 	plain, multi *store.Deployment
 }
 
-func newScheduleRig(t *testing.T) *scheduleRig {
+func newReplacementRig(t *testing.T) *replacementRig {
 	t.Helper()
 	rig := newTokenRig(t)
 	t.Cleanup(func() { _ = rig.st.Close() })
@@ -28,7 +28,7 @@ func newScheduleRig(t *testing.T) *scheduleRig {
 		}
 		return created
 	}
-	return &scheduleRig{
+	return &replacementRig{
 		tokenRig: rig,
 		plain:    create(&store.Deployment{Name: "plain", ServedName: "plain", Engine: "vllm", Replicas: 1}),
 		multi:    create(&store.Deployment{Name: "multi", ServedName: "multi", Engine: "vllm", Sleepable: true, NNodes: 2, Replicas: 1}),
@@ -49,7 +49,7 @@ func decodeBody(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 }
 
 // deploymentWire reads the deployment as the API serves it.
-func (r *scheduleRig) deploymentWire(t *testing.T, dep *store.Deployment) map[string]any {
+func (r *replacementRig) deploymentWire(t *testing.T, dep *store.Deployment) map[string]any {
 	t.Helper()
 	rec := r.do(r.session, http.MethodGet, fmt.Sprintf("/api/v1/deployments/%d", dep.ID), "")
 	if rec.Code != http.StatusOK {
@@ -68,7 +68,7 @@ func jsonOf(t *testing.T, v any) string {
 }
 
 func TestNodeReplacementRouteAuthAndTarget(t *testing.T) {
-	rig := newScheduleRig(t)
+	rig := newReplacementRig(t)
 	path := schedPath(rig.plain, "node-replacement")
 	const body = `{"after_sec":120}`
 
@@ -99,7 +99,7 @@ func TestNodeReplacementRouteAuthAndTarget(t *testing.T) {
 }
 
 func TestNodeReplacementSetting(t *testing.T) {
-	rig := newScheduleRig(t)
+	rig := newReplacementRig(t)
 	path := schedPath(rig.plain, "node-replacement")
 
 	if got := rig.deploymentWire(t, rig.plain)["node_replacement"]; jsonOf(t, got) != `{"after_sec":600}` {

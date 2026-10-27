@@ -29,8 +29,8 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 	// No replica runs, and the check is off.
 	const ready = `"ready_replicas":0,`
 	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,` +
-		// A new deployment has idle sleep off (at level 2) and moves a replica off a node offline for ten minutes.
-		`"idle_sleep":{"after_sec":0,"level":2},"node_replacement":{"after_sec":600},`
+		// A new deployment moves a replica off a node offline for ten minutes.
+		`"node_replacement":{"after_sec":600},`
 	for _, tc := range []struct {
 		name         string
 		nodeIDs      string
