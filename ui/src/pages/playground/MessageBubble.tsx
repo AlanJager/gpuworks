@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import CopyButton from "../../components/CopyButton";
 import MarkdownContent from "../../components/MarkdownContent";
 import { ABORTED_ERROR } from "./conversations/streams";
+import { STREAM_INTERRUPTED_ERROR } from "./api";
 import { PreviewAction } from "./HtmlPreview";
 import { looksLikeHTMLDocument, PREVIEW_LANGUAGES } from "./previewSandbox";
 import type { ChatMessage } from "./types";
@@ -12,6 +13,9 @@ import type { ChatMessage } from "./types";
 const MessageBubble = memo(function MessageBubble({ message: item }: { message: ChatMessage }) {
   const { t } = useTranslation("playground");
   const metrics = item.metrics;
+  const errorText = item.error === ABORTED_ERROR
+    ? t("pane.generationStopped")
+    : item.error === STREAM_INTERRUPTED_ERROR ? t("pane.streamInterrupted") : item.error;
   // Token-based values estimated from chunk counts carry a ≈.
   const approx = (value: string) => metrics?.approximate && value !== "—" ? `≈${value}` : value;
   const cachedTokens = item.usage?.prompt_tokens_details?.cached_tokens;
@@ -41,7 +45,7 @@ const MessageBubble = memo(function MessageBubble({ message: item }: { message: 
         />
       ) : item.streaming ? <span className="playground-stream-cursor" /> : null}
       {item.interrupted && <Alert type="info" showIcon message={t("pane.interrupted")} />}
-      {item.error && <Alert type={item.error === ABORTED_ERROR ? "info" : "error"} showIcon message={item.error === ABORTED_ERROR ? t("pane.generationStopped") : item.error} />}
+      {item.error && <Alert type={item.error === ABORTED_ERROR ? "info" : "error"} showIcon message={errorText} />}
       {metrics && (
         <div className="playground-metrics">
           <Metric label="TTFT" help={t("metrics.ttft")} value={formatMS(metrics.ttftMS)} />
