@@ -27,6 +27,9 @@ type SSHPrecheckRequest struct {
 	ServerDialListen string `json:"server_dial_listen,omitempty"`
 	InstanceKind     string `json:"instance_kind,omitempty"`
 	ProviderKind     string `json:"provider_kind,omitempty"`
+	// RuntimeDriver is the runtime the install will name (docker, nerdctl,
+	// udocker); empty lets the agent pick, as the wizard does.
+	RuntimeDriver string `json:"runtime_driver,omitempty"`
 	// InstallDir is the directory the agent will be installed into; empty
 	// means the install default. The precheck inspects the filesystem behind it.
 	InstallDir string `json:"install_dir,omitempty"`
@@ -125,7 +128,7 @@ func (p *SSHPrechecker) PrecheckSSH(ctx context.Context, req SSHPrecheckRequest)
 		dir := macInstallDir(ctx, client, requested, admin)
 		report.Checks = append(report.Checks, ProbeMacInstallDir(ctx, client, dir, admin).Checks...)
 	} else {
-		report.Checks = append(report.Checks, ProbeInstallDir(ctx, client, installDir(requested), req.InstanceKind, req.ProviderKind).Checks...)
+		report.Checks = append(report.Checks, ProbeInstallDirForRuntime(ctx, client, installDir(requested), req.InstanceKind, req.ProviderKind, req.RuntimeDriver).Checks...)
 	}
 	report.Checks = append(report.Checks, existingAgentCheck(ctx, client, req.ServerURL))
 	if req.ProviderChoosesPort {

@@ -756,3 +756,24 @@ test("a nohup install into an agent's directory asks without mentioning the serv
     api.installNode = original;
   }
 });
+
+// A closed ancestor of the install directory stops the install: the toast
+// gives the reason in the reader's language, with the repair command.
+test("an install stopped by a closed ancestor of the install directory says why and how to fix it", async () => {
+  const { APIError } = await import("../src/apiError");
+  const api = apiModule.api as Record<string, unknown>;
+  const original = api.installNode;
+  api.installNode = async () => {
+    throw new APIError("NODE_INSTALL_DIR_UNTRAVERSABLE", { dir: "/root", mode: "700", install_dir: "/root/gpuworks", fix: "chmod o+x /root" },
+      "the dedicated runtime user cannot reach the install directory: Install directory path access: /root (mode 700, owner 0:0) cannot be searched", 400);
+  };
+  try {
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@172.24.0.210" } });
+    fireEvent.click(screen.getByRole("button", { name: nodes.add.installAgent }));
+    const reason = common.apiError.NODE_INSTALL_DIR_UNTRAVERSABLE.replace("{{dir}}", "/root").replace("{{mode}}", "700").replace("{{fix}}", "chmod o+x /root");
+    await screen.findByText(nodes.add.message.installFailed.replace("{{detail}}", reason));
+  } finally {
+    api.installNode = original;
+  }
+});

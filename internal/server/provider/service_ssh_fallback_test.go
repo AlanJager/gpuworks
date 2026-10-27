@@ -3,10 +3,13 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/provision"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/pkg/localization"
 )
@@ -111,6 +114,27 @@ func TestServiceInstallCommandFailureDoesNotFallback(t *testing.T) {
 	}
 	if len(driver.attempts) != 1 {
 		t.Fatalf("attempts = %v", driver.attempts)
+	}
+}
+
+// A one-click install the installer blocks because the dedicated runtime user
+// cannot reach the install directory fails with that reason intact, is not
+// retried on another connection, and leaves no node behind.
+func TestServiceInstallBlockedByAnUntraversableInstallDirectoryKeepsTheReason(t *testing.T) {
+	blocked := fmt.Errorf("runpod: upload/install agent on 203.0.113.10:2222: %w",
+		&provision.InstallDirUntraversableError{InstallDir: "/root/gpuworks", Ancestor: "/root", Mode: "700", Detail: "/root (mode 700, owner 0:0) cannot be searched; run `chmod o+x /root`"})
+	driver := &fallbackTestDriver{name: "fallback-untraversable", failures: map[string]error{"203.0.113.10": blocked}}
+	svc, providerID := newFallbackService(t, driver)
+	_, err := svc.Install(t.Context(), providerID, "inst-fallback", "https://server.example", InstallOptions{InstallDir: "/root/gpuworks"})
+	if !errors.Is(err, provision.ErrInstallDirUntraversable) || !strings.Contains(err.Error(), "chmod o+x /root") {
+		t.Fatalf("install error = %v", err)
+	}
+	if len(driver.attempts) != 1 {
+		t.Fatalf("a blocked install was retried: %v", driver.attempts)
+	}
+	nodes, listErr := svc.store.ListNodes()
+	if listErr != nil || len(nodes) != 0 {
+		t.Fatalf("nodes = %+v, err = %v", nodes, listErr)
 	}
 }
 

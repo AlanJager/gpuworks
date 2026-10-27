@@ -264,6 +264,7 @@ The requirements and error codes for `server_url` and `server_dial_listen` are t
 - Register `gpuworks-agent.service` by default.
 - `no_systemd: true` uses nohup, does not modify existing services or agents in other directories, and does not reject installation merely because the host is already connected.
   Only an agent already running in the installation directory causes 409 `NODE_INSTALL_EXISTING_AGENT_SAME_DIR` (`dir`); after confirming replacement, retry with `replace_existing_agent`.
+  When a directory above the installation directory is closed to the dedicated runtime user `udocker` and the probe establishes that the node will run a root agent with runveil and that user, it answers 400 `NODE_INSTALL_DIR_UNTRAVERSABLE` (`dir`, `mode`, `install_dir`, `fix`) and uploads nothing; `POST /api/v1/providers/{id}/install` answers the same. The precheck request may carry `runtime_driver` so that its row matches the install.
 
 macOS ignores `no_systemd`.
 

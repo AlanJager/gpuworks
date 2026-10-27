@@ -248,7 +248,7 @@ export default function AddNodeDrawer({
           onOk: () => version === requestVersion.current ? runInstall(true) : undefined,
         });
       } else {
-        message.error(t("add.message.installFailed", { detail: (e as Error).message }));
+        message.error(t("add.message.installFailed", { detail: apiErrorText(tCommon, e) }));
       }
     } finally {
       installInFlight.current = false;

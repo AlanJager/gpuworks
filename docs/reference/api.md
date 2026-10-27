@@ -264,6 +264,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 - 默认注册 `gpuworks-agent.service`。
 - `no_systemd: true` 使用 nohup，不改已有服务或其他目录的 agent，也不因主机已经接入而拒绝安装。
   只有安装目录内已有 agent 运行时，返回 409 `NODE_INSTALL_EXISTING_AGENT_SAME_DIR`（`dir`）；确认替换后带 `replace_existing_agent` 重试。
+  安装目录的某级上级目录对专用运行用户 `udocker` 关闭、且探测确定该节点会以 root agent + runveil + 专用用户运行时，返回 400 `NODE_INSTALL_DIR_UNTRAVERSABLE`（`dir`、`mode`、`install_dir`、`fix`），不上传 agent；`POST /api/v1/providers/{id}/install` 同样返回。预检查请求可带 `runtime_driver`，使该行判断与安装一致。
 
 macOS 忽略 `no_systemd`。
 

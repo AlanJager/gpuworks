@@ -267,6 +267,11 @@ func TestRestartWithoutReconnectEscalatesToIdentityPreservingReinstall(t *testin
 	if !fake.installReq.KeepSupervisor {
 		t.Fatalf("reinstall does not keep the host's supervisor: %+v", fake.installReq)
 	}
+	// The agent already runs from there: a path the runtime user cannot reach
+	// must not keep a recovering node offline.
+	if !fake.installReq.KeepUntraversableInstallDir {
+		t.Fatalf("reinstall would stop on an untraversable install directory: %+v", fake.installReq)
+	}
 	// A host may run several agents: every step reaches this node's own.
 	if fake.probeReq.InstallDir != "/data/agent2" || fake.restartReq.InstallDir != "/data/agent2" || fake.installReq.InstallDir != "/data/agent2" {
 		t.Fatalf("install dir probe=%q restart=%q install=%q, want /data/agent2", fake.probeReq.InstallDir, fake.restartReq.InstallDir, fake.installReq.InstallDir)
