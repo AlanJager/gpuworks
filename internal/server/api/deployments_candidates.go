@@ -108,9 +108,13 @@ func (a *apiHandlers) deploymentPool(dep *store.Deployment) (*planning.Pool, int
 			return false
 		}
 	}
+	placement, err := planning.ParsePlacement(dep.Placement)
+	if err != nil {
+		return nil, 0, err
+	}
 	return planning.BuildPool(planning.PoolFacts{
 		Nodes: nodes, Held: held, Files: files, Facts: facts, Instances: instances,
-		Online: online, Requirements: reqs, Strategy: dep.PlacementStrategy, Need: planning.ReplicaGPUNeed(dep),
+		Online: online, Requirements: reqs, Strategy: dep.PlacementStrategy, Need: planning.ReplicaGPUNeed(dep), Placement: placement,
 	}), len(nodes), nil
 }
 

@@ -98,6 +98,9 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// This records desired state, including for stopped deployments. Capacity
+	// is checked by the controller for each launch: pinned cards remain pinned,
+	// and a replica waiting for them is explained by placement_status/events.
 	err = a.d.Store.ScaleDeploymentReplicas(dep.ID, dep.Replicas, replicas, req.Remove)
 	if errors.Is(err, store.ErrStateChanged) {
 		writeProductError(w, http.StatusConflict, ErrorReplicasChanged, "the replicas changed since the request was read; read them again", nil)
