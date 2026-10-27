@@ -51,7 +51,7 @@
 - [官方版本兼容矩阵](https://docs.vllm.ai/projects/ascend/en/latest/community/versioning_policy.html)
 - [graph 补齐请求修复](https://github.com/vllm-project/vllm-ascend/pull/18878)
 
-模板使用 `callable` 启动方式传递 Ascend 专用 INT8 KV 参数，实际推理进程仍为 vLLM。提供 `/health`、OpenAI chat streaming 和 `/metrics`；原版配置的服务模型名为 `glm53-flash-910c-stock-graph`，高性能配置为 `glm53-flash-910c-dflash`。
+模板使用 `callable` 启动方式传递 Ascend 专用 INT8 KV 参数，实际推理进程仍为 vLLM。提供 `/health`、OpenAI chat streaming 和 `/metrics`；vLLM 以部署的服务名（`${SERVED_MODEL_NAME}`）对外应答。
 
 ## DFlash 补丁与历史测量
 

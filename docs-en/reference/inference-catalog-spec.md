@@ -315,21 +315,26 @@ the vocabulary in `internal/server/placement/expand.go` and `internal/server/dep
 | `TP_SIZE` | Tensor parallelism for the entire deployment; a resolver-returned value takes precedence | Placement is determined |
 | `PP_SIZE` | **Intentionally has no default**: multi-node pipeline parallelism already has a single owner (the engine injects it based on node count); it can only be returned by the resolver | Only when returned by the resolver |
 | `MODEL_PATH` | Mount path of the primary weights in the container (including a primary component or deployment override) | Always |
+| `SERVED_MODEL_NAME` | The deployment's served name, which the gateway and the health check send to the engine as `model` | Always |
 | `API_HOST` | Address the service binds to: `0.0.0.0` for callable, `127.0.0.1` for other engines | Always |
 | `API_PORT` | Port the platform reserves for this instance, accessed by the gateway and health checks; `0` for a headless rank | Always |
 | `NNODES` / `NODE_RANK` | Number of nodes and index of this rank; `1` / `0` for a single node | Always |
 | `HEADLESS` | `1` if this rank does not serve external requests; otherwise `0` | Always |
+| `NODE_ADDR` | Routable address of the node this rank runs on (not rank 0's) | Multi-node only |
 | `MASTER_ADDR` / `MASTER_PORT` | Address and rendezvous port of rank 0 in a multi-node deployment | Multi-node only |
 
 Rules:
 
-- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, or `MASTER_*`
+- **The resolver cannot return platform facts**: returning `MODEL_PATH`, `SERVED_MODEL_NAME`, `API_*`, `NNODES`, `NODE_RANK`, `HEADLESS`, `NODE_ADDR`, or `MASTER_*`
   in resolver results causes an immediate error—the node, port, and rank are not yet available when the resolver runs.
 - **Missing variables cause failure**: unresolved names in args / env / entrypoint / `pre_start_argv` cause deployment errors. A spec without a resolver
   that references a name outside the vocabulary (such as the typo `${NODE_RNAK}` or `${PP_SIZE}` without a resolver) is rejected during import. A single-node deployment
   that references `${MASTER_ADDR}` also fails instead of receiving an empty string.
 - **`pre_start_script` is a shell script**: names outside the vocabulary (`${HOME}`, `${PATH}`) are left unchanged for the shell; names in the vocabulary but unavailable
   for the current startup still cause an error, because the shell would silently expand them to empty strings.
+- **Served name**: the gateway rewrites the request's `model` to the engine's own name only for `vllm` / `sglang`; a `callable` engine receives the deployment's
+  served name as is. An engine that checks the model (such as vLLM running under callable) therefore needs `--served-model-name ${SERVED_MODEL_NAME}`; a literal
+  name makes every request and health check return 404. The value is arbitrary user text, so quote it inside shell strings (`bash -c`, `pre_start_script`).
 - **Preview**: when placement is not yet determined, `GPU_COUNT`, `TP_SIZE`, and resolver variables remain as `$NAME` symbols. Other platform facts expand normally
   (the port is fixed at `30000` for preview).
 - Mount paths for additional components (such as a DFlash draft) are determined by the spec's own `components[].mount_path`. Write the literal path directly;
@@ -502,6 +507,7 @@ Warnings do not block import. A successful import response includes the same `wa
 |---|---|---|
 | `CATALOG_CALLABLE_METRICS_UNDECLARED` | `engine: callable` without `api.metrics` | Monitoring has no engine metrics for this spec unless the engine's `/metrics` happens to use vLLM / SGLang metric names (see [Declare Engine Metrics for an Inference Template](../how-to/declare-engine-metrics.md)) |
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` without `api.health_endpoint` | Readiness probes use the default `/health`; no warning is shown for `vllm` / `sglang`, whose engines provide `/health` natively |
+| `CATALOG_CALLABLE_SERVED_NAME_FIXED` | In an `engine: callable` spec, the `--served-model-name` value in `args` / `entrypoint` does not use `${SERVED_MODEL_NAME}` (`params.name` is the literal) | An engine that checks the model accepts only that literal, so requests and health checks return 404 whenever the deployment's served name differs; ignore it if the adapter ignores the model or the name is pinned on purpose |
 
 ## Validation Entry Points and Tools
 

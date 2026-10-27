@@ -111,6 +111,11 @@ const (
 	// WarningCatalogHealthEndpointUndeclared: a callable spec declares no
 	// api.health_endpoint, so readiness is probed on the default /health.
 	WarningCatalogHealthEndpointUndeclared = "CATALOG_HEALTH_ENDPOINT_UNDECLARED"
+	// WarningCatalogCallableServedNameFixed: a callable spec passes a literal
+	// --served-model-name instead of ${SERVED_MODEL_NAME}, so an engine that
+	// checks the request's model rejects the deployment's served name. Params
+	// also carry name, the literal it passes.
+	WarningCatalogCallableServedNameFixed = "CATALOG_CALLABLE_SERVED_NAME_FIXED"
 )
 
 // NewProductError constructs a structured product error while keeping empty

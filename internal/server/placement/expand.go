@@ -14,16 +14,18 @@ var variablePattern = regexp.MustCompile(`\$\{([A-Z][A-Z0-9_]*)\}`)
 // process is - anywhere in its own command, instead of an engine adapter
 // appending them in a fixed shape the template cannot see.
 const (
-	VarGPUCount   = "GPU_COUNT"
-	VarTPSize     = "TP_SIZE"
-	VarModelPath  = "MODEL_PATH"
-	VarAPIHost    = "API_HOST"
-	VarAPIPort    = "API_PORT"
-	VarNNodes     = "NNODES"
-	VarNodeRank   = "NODE_RANK"
-	VarHeadless   = "HEADLESS"
-	VarMasterAddr = "MASTER_ADDR"
-	VarMasterPort = "MASTER_PORT"
+	VarGPUCount        = "GPU_COUNT"
+	VarTPSize          = "TP_SIZE"
+	VarModelPath       = "MODEL_PATH"
+	VarServedModelName = "SERVED_MODEL_NAME"
+	VarAPIHost         = "API_HOST"
+	VarAPIPort         = "API_PORT"
+	VarNNodes          = "NNODES"
+	VarNodeRank        = "NODE_RANK"
+	VarHeadless        = "HEADLESS"
+	VarNodeAddr        = "NODE_ADDR"
+	VarMasterAddr      = "MASTER_ADDR"
+	VarMasterPort      = "MASTER_PORT"
 )
 
 // launchOwned are the variables only the launch can know. A placement resolver
@@ -32,8 +34,8 @@ const (
 // GPU_COUNT and TP_SIZE are not here: resolvers have always been allowed to
 // return them (TP_SIZE pins a degree, GPU_COUNT is overwritten by the count).
 var launchOwned = map[string]struct{}{
-	VarModelPath: {}, VarAPIHost: {}, VarAPIPort: {}, VarNNodes: {}, VarNodeRank: {},
-	VarHeadless: {}, VarMasterAddr: {}, VarMasterPort: {},
+	VarModelPath: {}, VarServedModelName: {}, VarAPIHost: {}, VarAPIPort: {}, VarNNodes: {}, VarNodeRank: {},
+	VarHeadless: {}, VarNodeAddr: {}, VarMasterAddr: {}, VarMasterPort: {},
 }
 
 // LaunchOwned reports whether name is a variable only the launch states.

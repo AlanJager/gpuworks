@@ -315,21 +315,26 @@ placement:
 | `TP_SIZE` | 整个部署的张量并行度；resolver 返回则以它为准 | 放置已确定 |
 | `PP_SIZE` | **故意无默认**：多机流水线并行已有唯一 owner（引擎按节点数注入），只能由 resolver 返回 | 仅 resolver 返回时 |
 | `MODEL_PATH` | 主权重在容器里的挂载路径（含 primary 组件或部署覆盖） | 总是 |
+| `SERVED_MODEL_NAME` | 部署的服务名，即网关与健康检查发给引擎的 `model` | 总是 |
 | `API_HOST` | 服务应绑定的地址：callable 为 `0.0.0.0`，其他引擎 `127.0.0.1` | 总是 |
 | `API_PORT` | 平台为本实例保留、网关与健康检查会访问的端口；headless rank 为 `0` | 总是 |
 | `NNODES` / `NODE_RANK` | 节点数与本 rank 序号；单机为 `1` / `0` | 总是 |
 | `HEADLESS` | 本 rank 不对外服务时为 `1`，否则 `0` | 总是 |
+| `NODE_ADDR` | 本 rank 所在节点的可路由地址（不是 rank 0 的） | 仅多机 |
 | `MASTER_ADDR` / `MASTER_PORT` | 多机 rank 0 的地址与 rendezvous 端口 | 仅多机 |
 
 规则：
 
-- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`MASTER_*`
+- **平台事实不能由 resolver 返回**：`MODEL_PATH`、`SERVED_MODEL_NAME`、`API_*`、`NNODES`、`NODE_RANK`、`HEADLESS`、`NODE_ADDR`、`MASTER_*`
   出现在 resolver 结果里直接报错——resolver 运行时还没有节点、端口和 rank。
 - **缺变量即失败**：args / env / entrypoint / `pre_start_argv` 里未解析的名字在部署时报错；没有 resolver 的
   spec 引用词表外的名字（如拼错的 `${NODE_RNAK}`、无 resolver 的 `${PP_SIZE}`）在导入时就被拒绝。单机部署
   引用 `${MASTER_ADDR}` 同样失败，而不是拿到空串。
 - **`pre_start_script` 是 shell 脚本**：词表外的名字（`${HOME}`、`${PATH}`）原样留给 shell；词表内但本次
   启动没有的名字仍然报错，因为 shell 会把它静默展开成空串。
+- **服务名**：网关只对 `vllm` / `sglang` 把请求里的 `model` 改写成引擎自己的名字；`callable` 收到的就是部署的服务名，
+  所以会校验模型名的引擎（如 callable 里跑的 vLLM）要写 `--served-model-name ${SERVED_MODEL_NAME}`，写死一个名字会让
+  所有请求和健康检查 404。值是用户填的任意文本，放进 shell 字符串（`bash -c`、`pre_start_script`）时要加引号。
 - **预览**：放置未确定时 `GPU_COUNT`、`TP_SIZE` 与 resolver 变量保留为 `$NAME` 符号，其余平台事实照常展开
   （端口为预览固定的 `30000`）。
 - 附加组件（如 DFlash draft）的挂载路径由 spec 自己的 `components[].mount_path` 决定，直接写字面路径即可，
@@ -502,6 +507,7 @@ pre_start / env）引用，否则校验失败——挂了不用或拼错路径�
 |---|---|---|
 | `CATALOG_CALLABLE_METRICS_UNDECLARED` | `engine: callable` 且没有 `api.metrics` | 监控中心没有该档位的引擎指标，除非引擎的 `/metrics` 恰好用 vLLM / SGLang 的指标名（见[为推理模板声明引擎指标](../how-to/declare-engine-metrics.md)） |
 | `CATALOG_HEALTH_ENDPOINT_UNDECLARED` | `engine: callable` 且没有 `api.health_endpoint` | 就绪探测用默认的 `/health`；`vllm` / `sglang` 的 `/health` 是引擎自带的，不提示 |
+| `CATALOG_CALLABLE_SERVED_NAME_FIXED` | `engine: callable` 的 `args` / `entrypoint` 里 `--served-model-name` 的值没有用 `${SERVED_MODEL_NAME}`（`params.name` 是写死的值） | 会校验模型名的引擎只认这个写死的名字，部署的服务名与它不同时请求和健康检查都会 404；adapter 不看模型名或作者有意固定时可以忽略 |
 
 ## 校验入口与工具
 
