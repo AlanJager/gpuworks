@@ -649,6 +649,8 @@
     "recheck": "复核",
     "abnormal": "异常值",
     "copyCommand": "复制命令",
+    "expandCommand": "展开全部 {{count}} 行",
+    "collapseCommand": "收起",
     "copied": "命令已复制",
     "legacyEvidence": "原始信息",
     "unknownSummary": "代理报告了该状态，详见原始信息。",

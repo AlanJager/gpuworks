@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -15,8 +16,13 @@ import (
 // driver API smoke, peer access and an NCCL all-reduce. They are explicit and
 // manual because the multi-GPU ones take tens of seconds.
 
-// cudaRecheck initialises the CUDA driver the way the smoke does; it prints 0
-// when the driver initialises.
+// cudaInitProbe is the whole-node CUDA check as a command: the same script
+// the check itself runs (accelerator.CUDASmokeScript), with every card
+// visible to it, which is what makes it the node's answer rather than one
+// card's. cudaRecheck is the one-line version for a reader who only wants to
+// see whether the driver initialises at all; it prints 0 when it does.
+var cudaInitProbe = "python3 -c " + accelerator.ShellSingleQuote(accelerator.CUDASmokeScript)
+
 const cudaRecheck = `python3 -c 'import ctypes; print(ctypes.CDLL("libcuda.so.1").cuInit(0))'`
 
 func doctorNVIDIAChecks(ctx context.Context, r *proto.DoctorReport, gpuCount int) {
@@ -51,14 +57,17 @@ printf 'fabric_manager=%s fabric_manager_version=%s\n' "$fm" "$fmver"`)
 		// reported on its own.
 		r.Findings = append(r.Findings, proto.DoctorFinding{
 			Code: proto.DoctorCUDAInitFailed, Level: proto.DoctorLevelError,
-			Probe:    "libcuda.so.1: cuInit, cuDeviceGet, cuCtxCreate, cuMemAlloc",
+			Probe:    cudaInitProbe,
 			Evidence: []proto.DoctorField{{Name: "result", Value: cuda}, {Name: "driver/fabric", Value: fabric}},
 			Recheck:  cudaRecheck,
 		})
 	}
 	for _, check := range []struct{ probe, result string }{
-		{"libcuda.so.1: cuDeviceCanAccessPeer", peer},
-		{"torch.distributed all_reduce (backend nccl)", nccl},
+		{"python3 -c " + accelerator.ShellSingleQuote(peerAccessScript), peer},
+		// mp.spawn needs the script to be an importable __main__, so this
+		// one runs from a file; the check does the same (runPythonFileDiagnostic).
+		{"f=$(mktemp /tmp/gpuworks-doctor-XXXXXX.py) && cat > \"$f\" <<'GPUWORKS_NCCL'\n" +
+			ncclScript + "\nGPUWORKS_NCCL\npython3 \"$f\"; rm -f \"$f\"", nccl},
 	} {
 		if diagnosticFailed(check.result) {
 			r.Findings = append(r.Findings, proto.DoctorFinding{
@@ -109,11 +118,7 @@ func diagnosticCUDA(ctx context.Context) string {
 	return "PASS cuInit=ok cuDeviceGet=ok cuCtxCreate=ok cuMemAlloc=4096B cuMemFree=ok cuCtxDestroy=ok"
 }
 
-func diagnosticPeerAccess(ctx context.Context, count int) string {
-	if count < 2 {
-		return "SKIP (fewer than 2 GPUs)"
-	}
-	const script = `import ctypes
+const peerAccessScript = `import ctypes
 lib=ctypes.CDLL("libcuda.so.1")
 lib.cuInit.argtypes=[ctypes.c_uint]; lib.cuInit.restype=ctypes.c_int
 lib.cuDeviceGetCount.argtypes=[ctypes.POINTER(ctypes.c_int)]; lib.cuDeviceGetCount.restype=ctypes.c_int
@@ -136,18 +141,19 @@ for i,a in enumerate(devs):
         can=ctypes.c_int(); call("cuDeviceCanAccessPeer", lib.cuDeviceCanAccessPeer, ctypes.byref(can), a, b)
         pairs.append("%d->%d:%d" % (i,j,can.value))
 print("PASS pairs=" + ",".join(pairs))`
-	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	return runPythonDiagnostic(probeCtx, script)
-}
 
-func diagnosticNCCL(ctx context.Context, count int) string {
+func diagnosticPeerAccess(ctx context.Context, count int) string {
 	if count < 2 {
 		return "SKIP (fewer than 2 GPUs)"
 	}
-	// A node without torch cannot run this check; that is a skip, not a
-	// failed check.
-	const script = `import os, socket, sys
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return runPythonDiagnostic(probeCtx, peerAccessScript)
+}
+
+// ncclScript runs on every visible card. A node without torch cannot run it;
+// that is a skip, not a failed check.
+const ncclScript = `import os, socket, sys
 try:
     import torch
 except ImportError:
@@ -169,9 +175,14 @@ if __name__ == "__main__":
     s=socket.socket(); s.bind(("127.0.0.1",0)); port=s.getsockname()[1]; s.close()
     mp.spawn(worker, args=(n,port), nprocs=n, join=True)
     print("PASS world_size=%d all_reduce=ok" % n)`
+
+func diagnosticNCCL(ctx context.Context, count int) string {
+	if count < 2 {
+		return "SKIP (fewer than 2 GPUs)"
+	}
 	probeCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	return runPythonFileDiagnostic(probeCtx, script)
+	return runPythonFileDiagnostic(probeCtx, ncclScript)
 }
 
 func runPythonDiagnostic(ctx context.Context, script string) string {

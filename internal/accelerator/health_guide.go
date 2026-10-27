@@ -48,29 +48,93 @@ type HealthGuide struct {
 	Actions []string `json:"actions,omitempty"`
 }
 
-// HealthGuideFor returns the commands for a card's finding. target addresses the
-// card for the vendor tool: its PCI address, or its index when the address is
-// unknown. ok is false when there is nothing reliable to show (no finding, an
-// unknown code, or a vendor without a health interface).
-func HealthGuideFor(vendor, code, target string, evidence []HealthField) (HealthGuide, bool) {
-	if code == "" || target == "" {
+// HealthCard is the card a guide is wanted for. Three ways of naming it,
+// because the vendors' interfaces want different ones: the vendor tools take
+// the PCI address (or the index, when the address is unknown), while the
+// runtime check names the card the way its own runtime does — a UUID for
+// CUDA, the die index for Ascend.
+type HealthCard struct {
+	Vendor string
+	Code   string
+	BDF    string
+	Index  int
+	UUID   string
+}
+
+// HealthGuideFor returns the commands for a card's finding. ok is false when
+// there is nothing reliable to show (no finding, an unknown code, or a vendor
+// without a health interface).
+func HealthGuideFor(card HealthCard, evidence []HealthField) (HealthGuide, bool) {
+	if card.Code == "" {
 		return HealthGuide{}, false
 	}
-	switch vendor {
+	// A card the runtime could not use is every vendor's finding, and the
+	// check behind it is this platform's own rather than the vendor tool's,
+	// so it is answered here instead of in each vendor's rules.
+	if card.Code == HealthRuntimeUnusable {
+		return runtimeUnusableGuide(card)
+	}
+	target := HealthTarget(card.BDF, card.Index)
+	if target == "" {
+		return HealthGuide{}, false
+	}
+	switch card.Vendor {
 	case VendorPPU:
-		return ppuHealthGuide(code, target, evidence)
+		return ppuHealthGuide(card.Code, target, evidence)
 	case VendorNVIDIA:
-		return nvidiaHealthGuide(code, target, evidence)
+		return nvidiaHealthGuide(card.Code, target, evidence)
 	case VendorAscend:
-		return ascendHealthGuide(code, evidence)
+		return ascendHealthGuide(card.Code, evidence)
 	}
 	return HealthGuide{}, false
 }
 
-// HealthTarget picks the address the vendor tools accept for a card.
+// runtimeUnusableGuide is what to run for a card the host runtime could not
+// use: the check itself, which is the only thing that shows the failure, and
+// the vendor tool's view of the same card, which on such a card typically
+// reports it as healthy — that disagreement is the finding.
+//
+// Only the vendors whose runtime can be asked on the host have one
+// (gpu.HostRuntimeCheckFor). For the rest the verdict came from their CLI,
+// and their own code's guide covers it.
+func runtimeUnusableGuide(card HealthCard) (HealthGuide, bool) {
+	switch card.Vendor {
+	case VendorNVIDIA:
+		if card.UUID == "" {
+			// Without the UUID the command could only name an index, which
+			// addresses a different card once the driver drops one — the
+			// mistake the check itself avoids by using UUIDs.
+			return HealthGuide{}, false
+		}
+		guide := HealthGuide{Probe: CUDARuntimeSmokeCommand(card.UUID)}
+		if target := HealthTarget(card.BDF, card.Index); target != "" {
+			guide.Recheck = "nvidia-smi -q -i " + target
+		}
+		return guide, true
+	case VendorAscend:
+		if card.Index < 0 {
+			return HealthGuide{}, false
+		}
+		return HealthGuide{
+			Probe: AscendRuntimeSmokeCommand(strconv.Itoa(card.Index)),
+			// npu-smi addresses the chip, not the die index; the die's own
+			// row is what `npu-smi info` prints for it.
+			Recheck: "npu-smi info -m; npu-smi info",
+		}, true
+	}
+	return HealthGuide{}, false
+}
+
+// HealthTarget picks the address the vendor tools accept for a card, and ""
+// for one that cannot be addressed. A card the vendor tool never enumerated
+// carries no index of its own (it is reported as -1), and naming it "-1"
+// would hand the reader a command for a card that does not exist.
 func HealthTarget(bdf string, index int) string {
 	if bdf = strings.TrimSpace(bdf); bdf != "" {
 		return bdf
+	}
+	if index < 0 {
+		return ""
 	}
 	return strconv.Itoa(index)
 }

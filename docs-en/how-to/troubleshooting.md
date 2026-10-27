@@ -276,6 +276,18 @@ A failing die is shown as “Runtime cannot use it” in the accelerator table, 
 When the table already carries a more specific vendor verdict for the die (for example `reset_required`), the table keeps that one and `runtime_unusable` is still listed on its own.
 The **Per-card runtime check** entry (`card_runtime`) under Information summarizes how many dies passed, failed and were not checked.
 
+**The evidence is a command you can paste, not a description of one.** Every finding's evidence is a whole command: copy it onto the node and it
+reaches the same verdict. The script the command carries is the very one the check runs (single source in `internal/accelerator`), so the two
+cannot drift apart. The Ascend command locates the host CANN installation itself and uses `npu-smi info -m` to resolve the die index into the
+**logical ACL device id** that `ASCEND_RT_VISIBLE_DEVICES` takes (the two differ on a host whose ids are remapped by passthrough); the NVIDIA
+command names the card by UUID, because an index addresses a different card once the driver drops one. In the UI a command longer than 4 lines is
+collapsed and can be expanded, and the copy button always copies the whole command (over plain HTTP, where the clipboard API is unavailable, a
+box opens with the text ready to select). To find out why `aclrtSetDevice=507033` happens, prefix the command with
+`ASCEND_SLOG_PRINT_TO_STDOUT=1 ASCEND_GLOBAL_LOG_LEVEL=1` and CANN prints the runtime and driver errors straight to the terminal; without it they
+land under `~/ascend/log/debug/plog/`. **A die that cannot initialize itself may leave nothing in `dmesg` at all, and `npu-smi info -t health`
+still reports OK** — reset that die directly (`npu-smi set -t reset -i <npu> -c <chip>`, which affects the other die on the same card), and
+reboot the host if that does not help.
+
 A die that was “not checked” is never omitted and never implied healthy; it is named together with the reason:
 
 - The diagnosis time ran out: dies are checked one after another, the remaining time is examined before each one, a die that does not fit is not started, and all the rest are listed as not checked;

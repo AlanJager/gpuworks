@@ -649,6 +649,8 @@
     "recheck": "Recheck",
     "abnormal": "abnormal",
     "copyCommand": "Copy command",
+    "expandCommand": "Show all {{count}} lines",
+    "collapseCommand": "Collapse",
     "copied": "Command copied",
     "legacyEvidence": "Raw message",
     "unknownSummary": "The agent reported this state; see the raw message.",

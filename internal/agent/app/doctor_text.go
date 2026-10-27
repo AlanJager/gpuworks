@@ -169,24 +169,24 @@ func renderFinding(b *strings.Builder, f proto.DoctorFinding) {
 		line("  %s", summary)
 	}
 	if f.Probe != "" {
-		line("  evidence  %s", f.Probe)
+		line("  evidence  %s", indentCommand(f.Probe, "            "))
 	}
 	for _, e := range f.Evidence {
 		line("            %s", fieldText(e))
 	}
 	if f.Recheck != "" {
-		line("  recheck   %s", f.Recheck)
+		line("  recheck   %s", indentCommand(f.Recheck, "            "))
 	}
 	for _, t := range f.Targets {
 		line("  accelerator %d  %s", t.Index, t.PCIeBDF)
 		if t.Probe != "" {
-			line("    evidence  %s", t.Probe)
+			line("    evidence  %s", indentCommand(t.Probe, "              "))
 		}
 		for _, e := range t.Evidence {
 			line("              %s", fieldText(e))
 		}
 		if t.Recheck != "" {
-			line("    recheck   %s", t.Recheck)
+			line("    recheck   %s", indentCommand(t.Recheck, "              "))
 		}
 		for _, action := range t.Actions {
 			line("    action    %s  (when the card is idle)", action)
@@ -195,6 +195,13 @@ func renderFinding(b *strings.Builder, f proto.DoctorFinding) {
 			line("    running   pid %d %s: stop it before the action", proc.PID, proc.Name)
 		}
 	}
+}
+
+// indentCommand lines a multi-line command up under its label. A runtime
+// check's command carries the script it runs, and left unindented its lines
+// read as further findings rather than as one command the reader can copy.
+func indentCommand(command, indent string) string {
+	return strings.ReplaceAll(command, "\n", "\n"+indent)
 }
 
 func fieldText(f proto.DoctorField) string {

@@ -70,7 +70,7 @@ func AscendCLSmokePrerequisite() string {
 }
 
 func runAscendSmokeCommand(ctx context.Context, visible string, target ascendSmokeTarget) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "python3", "-c", ascendACLSmokeScript)
+	cmd := exec.CommandContext(ctx, "python3", "-c", accelerator.AscendACLSmokeScript)
 	cmd.Env = ascendSmokeEnv(os.Environ(), visible, target)
 	cmd.WaitDelay = 5 * time.Second
 	return cmd.CombinedOutput()
@@ -116,22 +116,25 @@ func ascendSmokeEnv(base []string, visible string, target ascendSmokeTarget) []s
 	})
 }
 
+// findAscendSmokeTarget looks where accelerator.AscendToolkitHomes says, in
+// that order, so this and the command a person is shown
+// (accelerator.AscendRuntimeSmokeCommand) cannot settle on different
+// installations.
 func findAscendSmokeTarget() (ascendSmokeTarget, bool) {
 	var homes []string
 	if home := strings.TrimSpace(os.Getenv("ASCEND_HOME_PATH")); home != "" {
 		homes = append(homes, home)
 	}
-	homes = append(homes, "/usr/local/Ascend/ascend-toolkit/latest")
-	if matches, _ := filepath.Glob("/usr/local/Ascend/cann-*"); len(matches) > 0 {
+	for _, candidate := range accelerator.AscendToolkitHomes {
+		if !strings.ContainsRune(candidate, '*') {
+			homes = append(homes, candidate)
+			continue
+		}
+		matches, _ := filepath.Glob(candidate)
 		homes = append(homes, matches...)
 	}
 	for _, home := range homes {
-		for _, relative := range []string{
-			"lib64/libascendcl.so",
-			"aarch64-linux/lib64/libascendcl.so",
-			"arm64-linux/lib64/libascendcl.so",
-			"x86_64-linux/lib64/libascendcl.so",
-		} {
+		for _, relative := range accelerator.AscendACLLibraryPaths {
 			library := filepath.Join(home, relative)
 			if info, err := os.Stat(library); err == nil && !info.IsDir() {
 				return ascendSmokeTarget{Home: home, Library: library}, true
@@ -211,75 +214,3 @@ func environmentWith(base []string, overrides map[string]string) []string {
 	}
 	return out
 }
-
-// The check uses ctypes so the static agent does not link CANN and does not
-// add a build-time dependency. The allocation proves a context on this die is
-// usable, not merely that npu-smi can print its health.
-//
-// Every failure is graded where it happens. A failure before the die is named
-// is the host's and says nothing about this die. A failure while taking the
-// die is the die's. A failure while giving it back is neither: the die has
-// already answered the question.
-const ascendACLSmokeScript = `import ctypes, os
-
-
-def report(marker, detail, code):
-    print("%s: %s" % (marker, detail), flush=True)
-    raise SystemExit(code)
-
-
-def unavailable(detail):
-    report("ASCEND_ACL_SMOKE_UNAVAILABLE", detail, 10)
-
-
-def die_failed(detail):
-    report("ASCEND_ACL_SMOKE_DIE_FAILED", detail, 1)
-
-
-library = os.environ["ASCEND_ACL_LIBRARY"]
-try:
-    lib = ctypes.CDLL(library)
-except OSError as exc:
-    unavailable("%s did not load: %s" % (library, exc))
-
-for name, argtypes in (
-    ("aclInit", [ctypes.c_char_p]),
-    ("aclrtSetDevice", [ctypes.c_int32]),
-    ("aclrtCreateContext", [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int32]),
-    ("aclrtMalloc", [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t, ctypes.c_int]),
-    ("aclrtFree", [ctypes.c_void_p]),
-    ("aclrtDestroyContext", [ctypes.c_void_p]),
-    ("aclrtResetDevice", [ctypes.c_int32]),
-    ("aclFinalize", []),
-):
-    try:
-        entry = getattr(lib, name)
-    except AttributeError:
-        unavailable("%s has no %s" % (library, name))
-    entry.argtypes = argtypes
-    entry.restype = ctypes.c_int
-
-rc = lib.aclInit(None)
-if rc:
-    unavailable("aclInit=%d" % rc)
-rc = lib.aclrtSetDevice(0)
-if rc:
-    die_failed("aclrtSetDevice=%d" % rc)
-context = ctypes.c_void_p()
-rc = lib.aclrtCreateContext(ctypes.byref(context), 0)
-if rc:
-    die_failed("aclrtCreateContext=%d" % rc)
-allocation = ctypes.c_void_p()
-rc = lib.aclrtMalloc(ctypes.byref(allocation), 4096, 0)
-if rc:
-    die_failed("aclrtMalloc=%d" % rc)
-for name, call in (
-    ("aclrtFree", lambda: lib.aclrtFree(allocation)),
-    ("aclrtDestroyContext", lambda: lib.aclrtDestroyContext(context)),
-    ("aclrtResetDevice", lambda: lib.aclrtResetDevice(0)),
-    ("aclFinalize", lambda: lib.aclFinalize()),
-):
-    rc = call()
-    if rc:
-        print("ASCEND_ACL_SMOKE_CLEANUP: %s=%d" % (name, rc), flush=True)
-print("ASCEND_ACL_SMOKE_OK", flush=True)`

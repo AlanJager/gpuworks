@@ -131,7 +131,7 @@ function NodeFinding({ finding }: { finding: DoctorFinding }) {
         {(finding.probe || !!finding.evidence?.length) && (
           <div className="gpu-health-section">
             <Typography.Text type="secondary" strong>{t("doctor.evidence")}</Typography.Text>
-            {finding.probe && <Typography.Text code style={{ overflowWrap: "anywhere" }}>{finding.probe}</Typography.Text>}
+            {finding.probe && <HealthCommand command={finding.probe} />}
             <HealthEvidence fields={finding.evidence} />
           </div>
         )}

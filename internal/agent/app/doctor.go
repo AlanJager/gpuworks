@@ -301,7 +301,8 @@ func doctorAccelerators(ctx context.Context, r *proto.DoctorReport, p gpu.Prober
 		for _, f := range evidence {
 			target.Evidence = append(target.Evidence, proto.DoctorField{Name: f.Name, Value: f.Value})
 		}
-		if guide, ok := accelerator.HealthGuideFor(vendor, g.HealthCode, accelerator.HealthTarget(g.PCIeBDF, g.Index), evidence); ok {
+		card := accelerator.HealthCard{Vendor: vendor, Code: g.HealthCode, BDF: g.PCIeBDF, Index: g.Index, UUID: g.UUID}
+		if guide, ok := accelerator.HealthGuideFor(card, evidence); ok {
 			target.Probe, target.Recheck, target.Actions = guide.Probe, guide.Recheck, guide.Actions
 		}
 		finding.Targets = append(finding.Targets, target)

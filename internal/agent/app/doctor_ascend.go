@@ -225,9 +225,15 @@ func (run *doctorDieRun) findings() []proto.DoctorFinding {
 	}
 	finding := proto.DoctorFinding{Code: accelerator.HealthRuntimeUnusable, Level: proto.DoctorLevelError}
 	for _, f := range run.failed {
-		target := proto.DoctorTarget{
-			Index: f.die.gpu.Index, PCIeBDF: f.die.gpu.PCIeBDF,
-			Probe: "python3 + libascendcl.so: aclrtSetDevice, aclrtCreateContext, aclrtMalloc 4 KiB on this die only (ASCEND_RT_VISIBLE_DEVICES=" + f.die.visible + ")",
+		target := proto.DoctorTarget{Index: f.die.gpu.Index, PCIeBDF: f.die.gpu.PCIeBDF}
+		// The same guide the card carries when the periodic check failed it,
+		// so Diagnose and the card's own detail name one command rather than
+		// two spellings of it.
+		if guide, ok := accelerator.HealthGuideFor(accelerator.HealthCard{
+			Vendor: accelerator.VendorAscend, Code: accelerator.HealthRuntimeUnusable,
+			BDF: f.die.gpu.PCIeBDF, Index: f.die.gpu.Index,
+		}, nil); ok {
+			target.Probe, target.Recheck, target.Actions = guide.Probe, guide.Recheck, guide.Actions
 		}
 		for _, field := range runtimeUnusableEvidence(f.at, f.detail) {
 			target.Evidence = append(target.Evidence, proto.DoctorField{Name: field.Name, Value: field.Value})

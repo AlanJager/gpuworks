@@ -276,6 +276,18 @@ NVIDIA 需要 `python3` 和 `libcuda.so.1`，在这张卡上创建 CUDA 上下�
 表里已有更具体的厂商结论（如 `reset_required`）时，表中仍显示那一条，`runtime_unusable` 照样单独列出。
 「信息」里的 **逐卡运行时检查**（`card_runtime`）给出汇总：通过、失败、未检查各几张。
 
+**依据里给的是可直接粘贴的命令**：每条发现的「依据」都是一条完整命令，不是对命令的描述，
+复制粘贴到节点上就能看到同一个结论。命令里嵌的脚本就是检查自己跑的那一份（唯一来源在
+`internal/accelerator`），所以两者不会漂移。昇腾那条会自己定位主机 CANN 安装位置，并用
+`npu-smi info -m` 把 die 索引换算成 `ASCEND_RT_VISIBLE_DEVICES` 需要的**逻辑 ACL 设备号**
+（两者在直通场景下并不相同）；NVIDIA 那条用 UUID 点名，索引会随驱动丢卡而指向别的卡。
+界面上超过 4 行的命令默认折叠，可展开，复制按钮始终复制完整命令（明文 HTTP 下复制 API
+不可用时会弹出可手动选中的文本框）。排查 `aclrtSetDevice=507033` 的原因时，在命令前加
+`ASCEND_SLOG_PRINT_TO_STDOUT=1 ASCEND_GLOBAL_LOG_LEVEL=1`，CANN 会把 runtime 与驱动的报错
+直接打到终端；不加时这些报错在 `~/ascend/log/debug/plog/` 下。**die 自身无法初始化时 `dmesg`
+里可能什么都没有，`npu-smi info -t health` 也照样报 OK**，此时直接尝试复位该 die
+（`npu-smi set -t reset -i <npu> -c <chip>`，会影响同卡的另一张 die），不行再重启主机。
+
 「未检查」的 die 不会被省略，也不表示正常，都点名写出并附原因：
 
 - 诊断时间用完：逐张顺序检查，每张开始前先看剩余时间，放不下的不启动，剩下的全部列为未检查；

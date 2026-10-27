@@ -155,6 +155,20 @@ func TestDoctorAscendReportsTheDieTheRuntimeCannotUse(t *testing.T) {
 	if evidence["Runtime Check"] != "failed" || !strings.Contains(evidence["Detail"], "aclrtSetDevice=507033") || evidence["Checked At"] == "" {
 		t.Fatalf("evidence = %+v, want what the agent records for the same failure", target.Evidence)
 	}
+	// The evidence is a command, not a description of one: the reader has to
+	// be able to paste it and watch the same die fail. Measured on
+	// 192.168.200.29, where npu-smi calls die 0 healthy and dmesg says
+	// nothing about it, so running the check by hand is the only way to see
+	// the failure.
+	if !strings.Contains(target.Probe, accelerator.AscendACLSmokeScript) {
+		t.Errorf("probe does not carry the script the check ran: %q", target.Probe)
+	}
+	if !strings.Contains(target.Probe, "die='0'") {
+		t.Errorf("probe does not name the die it failed on: %q", target.Probe)
+	}
+	if target.Recheck == "" {
+		t.Error("no command for the vendor tool's view of the same die")
+	}
 	fact := cardRuntimeFact(r)
 	for _, want := range []string{"14 dies", "13 passed", "1 failed", "0 not checked", "failed: 0"} {
 		if !strings.Contains(fact, want) {

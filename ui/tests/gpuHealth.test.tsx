@@ -178,3 +178,51 @@ test("cards sharing a finding get its explanation once, and their own commands e
   assert.ok(within(findings).getByText("ppu-smi -r -i 0001:0b:00.0"));
   assert.ok(within(findings).getByText("加速卡 6（0001:0b:00.0）"));
 });
+
+// A runtime check's command carries the script it runs, which is dozens of
+// lines. Shown in full it buries the evidence; truncated silently it would be
+// pasted and fail. So it is collapsed, said to be collapsed, and the copy
+// button still hands over the whole thing.
+const runtimeUnusableGPU = {
+  schedulable: false,
+  health_status: "Error",
+  health_code: "runtime_unusable",
+  health_evidence: [{ name: "Runtime Check", value: "failed" }, { name: "Detail", value: "Ascend ACL runtime smoke failed: aclrtSetDevice=507033" }],
+  health_guide: {
+    probe: ["die='0'", "", "# the logical ACL device id of this die", "acl_id=\"$(npu-smi info -m | awk -v d=\"$die\" '...')\"", "python3 -c 'import ctypes, os'", "print(1)"].join("\n"),
+    recheck: "npu-smi info -m; npu-smi info",
+  },
+};
+
+test("a long runtime-check command is collapsed, and the whole of it is what gets copied", async () => {
+  const copied: string[] = [];
+  const clipboard = { writeText: async (text: string) => void copied.push(text) };
+  Object.defineProperty(globalThis.navigator, "clipboard", { value: clipboard, configurable: true });
+
+  wrap(<GPUHealthTag gpu={runtimeUnusableGPU} />);
+  fireEvent.click(screen.getByRole("button", { name: "查看健康详情" }));
+
+  const lines = runtimeUnusableGPU.health_guide.probe.split("\n");
+  await waitFor(() => assert.ok(screen.getByText(/die='0'/), "the command's first line is shown"));
+  // The tail is withheld until asked for, so the evidence stays readable.
+  assert.equal(screen.queryByText(/print\(1\)/), null, "the whole command is shown without being asked");
+  const expand = screen.getByRole("button", { name: `展开全部 ${lines.length} 行` });
+
+  // Copying does not depend on expanding: a reader who only wants to paste it
+  // gets the command entire.
+  fireEvent.click(screen.getAllByRole("button", { name: "复制命令" })[0]);
+  await waitFor(() => assert.equal(copied[0], runtimeUnusableGPU.health_guide.probe));
+
+  fireEvent.click(expand);
+  await waitFor(() => assert.ok(screen.getByText(/print\(1\)/), "expanding shows the rest"));
+  assert.ok(screen.getByRole("button", { name: "收起" }));
+});
+
+// The vendor tool's own view is short and stays whole: only a command that
+// does not fit is collapsed.
+test("a short command is shown in full with no expander", async () => {
+  wrap(<GPUHealthTag gpu={runtimeUnusableGPU} />);
+  fireEvent.click(screen.getByRole("button", { name: "查看健康详情" }));
+  await waitFor(() => assert.ok(screen.getByText("npu-smi info -m; npu-smi info")));
+  assert.equal(screen.queryByRole("button", { name: "收起" }), null);
+});

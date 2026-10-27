@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/accelerator"
 )
 
 // cudaSmokeCommand runs the check, with only one card visible to it when
@@ -34,7 +36,7 @@ var cudaSmokeCommand = func(ctx context.Context, visible string, name string, ar
 // working card, including one whose memory is 99% spoken for by a running
 // engine (measured on gpu3).
 func CUDARuntimeSmokeOn(ctx context.Context, visible string) error {
-	out, err := cudaSmokeCommand(ctx, visible, "python3", "-c", cudaSmokeScript)
+	out, err := cudaSmokeCommand(ctx, visible, "python3", "-c", accelerator.CUDASmokeScript)
 	return cudaSmokeVerdict(out, err)
 }
 
@@ -44,32 +46,9 @@ func CUDARuntimeSmokeOn(ctx context.Context, visible string) error {
 func CUDARuntimeSmoke(ctx context.Context) error {
 	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out, err := cudaSmokeCommand(probeCtx, "", "python3", "-c", cudaSmokeScript)
+	out, err := cudaSmokeCommand(probeCtx, "", "python3", "-c", accelerator.CUDASmokeScript)
 	return cudaSmokeVerdict(out, err)
 }
-
-// cudaSmokeScript creates a context on the first visible device and makes a
-// tiny allocation on it. Which device that is depends on what the caller
-// made visible.
-const cudaSmokeScript = `import ctypes
-lib=ctypes.CDLL("libcuda.so.1")
-for n in ("cuInit", "cuDeviceGet", "cuCtxCreate_v2", "cuMemAlloc_v2", "cuMemFree_v2", "cuCtxDestroy_v2"):
-    if not hasattr(lib, n): raise RuntimeError("missing " + n)
-lib.cuInit.argtypes=[ctypes.c_uint]; lib.cuInit.restype=ctypes.c_int
-lib.cuDeviceGet.argtypes=[ctypes.POINTER(ctypes.c_int),ctypes.c_int]; lib.cuDeviceGet.restype=ctypes.c_int
-lib.cuCtxCreate_v2.argtypes=[ctypes.POINTER(ctypes.c_void_p),ctypes.c_uint,ctypes.c_int]; lib.cuCtxCreate_v2.restype=ctypes.c_int
-lib.cuMemAlloc_v2.argtypes=[ctypes.POINTER(ctypes.c_uint64),ctypes.c_size_t]; lib.cuMemAlloc_v2.restype=ctypes.c_int
-lib.cuMemFree_v2.argtypes=[ctypes.c_uint64]; lib.cuMemFree_v2.restype=ctypes.c_int
-lib.cuCtxDestroy_v2.argtypes=[ctypes.c_void_p]; lib.cuCtxDestroy_v2.restype=ctypes.c_int
-def call(name, fn, *args):
-    rc=fn(*args)
-    if rc: raise RuntimeError("%s=%d" % (name, rc))
-call("cuInit", lib.cuInit, 0)
-dev=ctypes.c_int(); call("cuDeviceGet", lib.cuDeviceGet, ctypes.byref(dev), 0)
-ctx=ctypes.c_void_p(); call("cuCtxCreate", lib.cuCtxCreate_v2, ctypes.byref(ctx), 0, dev)
-ptr=ctypes.c_uint64(); call("cuMemAlloc", lib.cuMemAlloc_v2, ctypes.byref(ptr), 4096)
-call("cuMemFree", lib.cuMemFree_v2, ptr.value); call("cuCtxDestroy", lib.cuCtxDestroy_v2, ctx)
-print("CUDA_RUNTIME_SMOKE_OK")`
 
 // cudaSmokeVerdict reads the attempt's output. It is shared so a per-card
 // check and the whole-node one cannot disagree about what counts as a pass.
