@@ -170,11 +170,14 @@ type Status struct {
 // immutable image id after pull/load, and the OCI config runtime observation
 // and on-demand inspection report.
 type ImageInspection struct {
-	ID         string
-	Entrypoint []string
-	Cmd        []string
-	Env        map[string]string
-	Volumes    []string
+	// RuntimeSizeBytes is the runtime-reported per-image size, including shared layers.
+	// It is neither transfer archive bytes nor uniquely allocated disk space.
+	RuntimeSizeBytes *int64
+	ID               string
+	Entrypoint       []string
+	Cmd              []string
+	Env              map[string]string
+	Volumes          []string
 }
 
 // ImageInspector is optional so older/custom runtime drivers remain source
@@ -459,4 +462,10 @@ func loadedImageRefName(ref string) string {
 		}
 	}
 	return host + "/" + path
+}
+
+// ImagePresenceReporter reads presence and size in one runtime operation.
+// A nil size means this runtime cannot measure it. Errors are not absence.
+type ImagePresenceReporter interface {
+	ImagePresence(context.Context, string) (bool, *int64, error)
 }

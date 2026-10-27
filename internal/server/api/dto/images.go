@@ -28,9 +28,13 @@ type Image struct {
 	// PresentNodes and TotalNodes summarize presence. Nodes, one row per
 	// node, is filled only where one version is shown (the series detail and
 	// the responses of per-version writes), never on the catalog-wide list.
-	PresentNodes int         `json:"present_nodes"`
-	TotalNodes   int         `json:"total_nodes"`
-	Nodes        []ImageNode `json:"nodes,omitempty"`
+	// LocalRuntimeSizeBytes is a subtotal of measured present copies.
+	// LocalSizeKnownNodes distinguishes a complete total from partial/unknown sizes.
+	LocalRuntimeSizeBytes int64       `json:"local_runtime_size_bytes"`
+	LocalSizeKnownNodes   int         `json:"local_size_known_nodes"`
+	PresentNodes          int         `json:"present_nodes"`
+	TotalNodes            int         `json:"total_nodes"`
+	Nodes                 []ImageNode `json:"nodes,omitempty"`
 }
 
 // ImageSeries is the list/detail representation used by the image catalog.
