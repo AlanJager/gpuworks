@@ -177,6 +177,11 @@ test-ui:
 test-ui-motion:
 	python3 ui/tests/browser/reduced_motion.py
 
+.PHONY: test-ui-playground-layout
+## Real Chromium component geometry; no live server or GPU required.
+test-ui-playground-layout:
+	python3 -B ui/tests/browser/playground_layout.py
+
 .PHONY: test-e2e-platform-token
 ## test-e2e-platform-token: real Chrome + isolated server/SQLite; no GPU required
 test-e2e-platform-token: build
