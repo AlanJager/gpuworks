@@ -54,7 +54,7 @@ export default function NodesPage() {
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [states, setStates] = useState<string[]>([]);
   const [sort, setSort] = useState<ServerSort | null>(null);
-  const { data, refetch, loading, error, updatedAt, pagination } = usePagedList(api.nodesPage, {
+  const { data, refetch, refresh, loading, error, updatedAt, pagination } = usePagedList(api.nodesPage, {
     filters: { q: search, label: labelFilter, state: states, ...(sort ? { sort: `${sort.order === "desc" ? "-" : ""}${sort.key}` } : {}) },
     pageSize: storedPageSize(NODE_TABLE_ID, NODE_PAGE_SIZE),
     intervalMs: 8000,
@@ -65,7 +65,9 @@ export default function NodesPage() {
   // Engine profiles are static server configuration; one load feeds the detail
   // drawer's kernel check, which is why they are fetched here and not per node.
   const engines = usePolling<List<EngineProfile>>(api.engines, 0);
-  useEvents("node", refetch);
+  // Node events refresh in the background: with a fleet reporting status
+  // every minute a foreground reload would keep the table spinning.
+  useEvents("node", refresh);
   const [detail, setDetail] = useState<Node | null>(null);
   const [scheduling, setScheduling] = useState<Node | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<Node | null>(null);

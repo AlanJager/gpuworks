@@ -148,7 +148,7 @@
 
 - `l2/`（`-tags=multiproc`，真实 server/agent 二进制多进程）、
 - `l3/`（`-tags=docker`，容器级）、
-- `l4/`（`-tags=cloudgpu,<provider>`，云/真机；`l4/cmd/` 含 `cleanup-leaked`、`prepare-compshare-golden`、`ascend-nerdctl-verify`）、
+- `l4/`（`-tags=cloudgpu,<provider>`，云/真机；`l4/cmd/` 含 `cleanup-leaked`、`prepare-compshare-golden`、`prepare-aliyun-golden`、`ascend-nerdctl-verify`）、
 - `fake-engine/` / `fake-model/`（fake 引擎镜像与 tiny 模型）、
 - `ocifixture`（确定性合成 OCI 镜像，覆盖硬链接/软链接/whiteout/opaque dir/大 layer 等 Dockerfile 表达不了的边界）、
 - `runtime-wrapper-*`（runtime 包装镜像）、

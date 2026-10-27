@@ -76,6 +76,10 @@ type GPUSpec struct {
 	// image in the provider's second region); empty lets the provider choose.
 	Region string
 	Zone   string
+	// OnDemand asks for non-preemptible capacity where the provider sells both
+	// (Aliyun spot vs pay-as-you-go), for cases long enough that a reclaim
+	// mid-run is likely. Providers without the distinction ignore it.
+	OnDemand bool
 	// ServerDialPort asks for an instance whose provider exposes a port for a
 	// server-dialed agent from the start, as the platform's own instances do.
 	// RunPod only opens a port by editing the pod, which restarts it.
@@ -99,6 +103,19 @@ type Instance struct {
 	PrivateKey   []byte
 	Password     string
 	DataDiskPath string // optional: writable data disk (e.g. /data) to prefer for agent state
+	// Zone, InstanceType and Billing describe where and how a VM was bought
+	// where the provider lets the adapter choose (Aliyun: Billing is "spot"
+	// or "on-demand"); they are evidence for logs, not inputs.
+	Zone         string
+	InstanceType string
+	Billing      string
+}
+
+// InterruptionChecker is implemented by adapters whose instances can be
+// reclaimed by the provider mid-test (spot/preemptible capacity). Cases call
+// it on failure to tell a reclaimed machine from a product defect.
+type InterruptionChecker interface {
+	Interrupted(ctx context.Context, instanceID string) (bool, string)
 }
 
 func NewRunID() (string, error) {

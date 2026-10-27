@@ -226,7 +226,7 @@ and CI jobs. Verifiable behaviors use `node-onboarding`, `public-download`,
 `deploy-chat`, `provisioning-matrix`, `one-vm-two-logical-nodes`, or
 `two-vm-docker-distributed`; `nightly` and `manual` describe only trigger policies.
 
-The repository currently provides explicit `make test-l4-*` targets for RunPod, AutoDL, Vast, CompShare, and Ascend resource pools.
+The repository currently provides explicit `make test-l4-*` targets for RunPod, AutoDL, Vast, CompShare, Alibaba Cloud ECS, and Ascend resource pools.
 Confirm the targets with `make help`/Makefile first, then run only the required test lanes.
 
 Trigger policy for the schedules (`CLOUD_FULL=1`, twice a day at 03:00 and 15:00 Asia/Shanghai):
@@ -288,6 +288,72 @@ and perform scoped cleanup limited to this run only after completing the investi
 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1`. Afterward, invoke
 `test-l4-cleanup-leaked` or the corresponding cleanup entry point using only this run's scoped run-id. Account-wide cleanup without a scope is prohibited. After cloud L4 tests, use the run-id
 to confirm that no instances, forwarding resources, or temporary files remain. For the product's rental workflow, see [Rent Cloud GPUs](../how-to/rent-cloud-gpus.md).
+
+### Alibaba Cloud ECS
+
+The Aliyun cases cover every CompShare VM scenario: `l4-aliyun-provisioning-matrix` (agent_dial onboarding, direct server_dial onboarding,
+capacity shapes, two-GPU shape), `l4-aliyun-single-vm-tp2-dgpu`, `l4-aliyun-one-vm-two-logical-nodes`,
+`l4-aliyun-two-vm-docker-distributed`, `l4-aliyun-pd-deploy-chat-two-vm-docker`,
+`l4-aliyun-two-vm-udocker-distributed`, and the low-frequency `l4-aliyun-modelscope-public-download` (runs only with `CLOUD_DOWNLOAD=1`).
+They rent ECS GPU instances
+and share their scenario implementations with CompShare (`vmBackend`: the provider supplies renting, card-type selection, Docker and image, and where the model comes from).
+
+- **Spot first, on-demand when there is no stock**: a spot instance (`SpotAsPriceGo`) is requested first. If the stock snapshot goes stale before the create,
+  or the request is refused (`OperationDenied.NoStock`, `QuotaExceed.*`, `InvalidResourceType.NotSupported`, and so on), the same case
+  requests a pay-as-you-go (PostPaid) instance instead, and then moves on to the next zone or card type if there is still no stock. Account or
+  fixture problems such as an insufficient balance, an invalid AccessKey, or a missing image are not swallowed and fail the case at once. Every attempt and its reason are written to the case log (`rental attempt:`),
+  as are the billing mode, zone, and instance type of the instance. `ALIYUN_NO_SPOT=1` / `ALIYUN_NO_ON_DEMAND=1` remove one billing mode.
+- **Candidates come from live stock**: `DescribeAvailableResource` is queried per region for spot and for on-demand stock; card types go from cheapest to most expensive (T4, A10, L20)
+  and the GPU count must match exactly (`internal/testenv/cloudprovider/aliyun_shapes.go`); spot comes first across card types too: cards whose best placement is spot are tried first,
+  and cards with only on-demand stock (such as 2xA10) come after. V100 is excluded: the PyTorch in the cuda12.8 runner
+  has no sm_70 kernels. 2xT4 (gn6i) is not used for tensor-parallel cases: vLLM 0.17.1 measurably fails TP=2 there (CUDA graph capture reports `CUDA error: out of memory`,
+  and with the agent's `CUDA_VISIBLE_DEVICES=0,1` the workers cannot initialise NVML); the shape remains usable for onboarding and provisioning cases.
+- **Two-VM cases stay in one zone**: once the first VM is bought, later rentals of the same card type and GPU count stay in the same region, zone, and instance type (the same billing mode is tried first, then the other if it is refused),
+  so both VMs reach each other over the private network of one VPC. Instances in one normal security group reach each other by default, so no self-referencing rule is needed (the API rejects one).
+- **The network is long-lived**: each region gets one VPC `gpuworks-test-infra` (172.30.0.0/16), one vSwitch per zone, and one security group,
+  each created only if missing and reused afterward; the security group opens 22 and the agent port 18800 (source `ALIYUN_INGRESS_CIDR`, anywhere by default).
+  This network belongs to no single run, run-scoped cleanup never deletes it, and VPCs that already exist in the account are never touched.
+- **Product path**: the agent is installed through the product's own Aliyun provider driver. `DirectServerDialOnboarding` uses `server_dial` (an ECS instance has a public IP,
+  so the server dials the agent directly); the product dials an ECS instance's private address by default, so the case passes the public `host_address` explicitly); the other three cases use `agent_dial` over an SSH reverse forward,
+  where Cloud Assistant is online and installs the agent as root without opening an SSH session, so no platform SSH key is written
+  (the cases do not require a `Platform key` on that path). If the runner's direct path to the cloud addresses is tampered with by a network device (locally some public IPs answered any port with
+  `HTTP 403`), set `GPUWORKS_SSH_PROXY=socks5://host:port` and the cases' SSH goes through that proxy (the TCP of `server_dial` does not). The product driver still does not create or release instances;
+  creating and releasing exist only in the test ECS client (`aliyun.RPC` reuses the driver's V3 signing, retries, and STS).
+- **Cleanup**: instances are named `gpuworks-test-<run-id>` and tagged `gpuworks-test-run`; `DeleteInstance` uses `Force`,
+  and the instance counts as released only once it disappears from the listing. The system disk goes with the instance, and `cleanup-leaked --run-id` also finds and deletes leftover disks by tag.
+  The leak scan lists instances region by region: over `ALIYUN_REGIONS`, or if unset over the regions that have a golden image (`ALIYUN_IMAGE_<REGION>`),
+  and a failure to list one of those regions is an error; with neither it scans every region the account can see and skips the ones the key cannot list (stating so on stderr).
+  When a spot instance is reclaimed, the log of the failed case contains `SPOT INTERRUPTION`, which says the failure is most likely a consequence and the case can simply be rerun.
+
+- **First container on a fresh VM, and retries**: on a newly booted A10 VM the first vLLM container sometimes fails to start (`torch._C._cuda_init()` reports
+  `No CUDA GPUs are available`; `NVMLError_Unknown` was seen once), and the platform's retry of the identical container then succeeds; the failed row stays in the deployment's instance list.
+  The multi-VM cases therefore warm up in `EnsureDocker` first: they run a CUDA check on every card the way the agent does (`--gpus "device=N"`), with retries,
+  and log `GPUs ready for containers after N warm-up tries`. While waiting for a deployment to run they count live ranks only (failed, stopped and removing rows do not count),
+  and every failed attempt writes its engine log to the case log at once. Before this, the PD case counted the failed row as a rank and kept waiting until the timeout even though the deployment was already running 2/2.
+
+- **udocker case**: it needs three things. Agent state must not live under `/tmp` (so the Aliyun backend's `HostedRoot` is `/opt`): udocker binds a private directory over the guest's `/tmp`,
+  which hides the loopback link `ensureHostRootLoopback` puts under `ROOT/tmp/...`, so an engine that dlopens `libcudart` by the host path `/proc/self/maps` shows cannot find it (measured: the file is in ROOT, unresolvable in the guest).
+  A root login's agent runs workloads as the dedicated `udocker` user, so `$root` is `chmod 711`; without it PRoot fails with `fork/exec .../proot-x86_64: permission denied`.
+  The runner image is pulled again into udocker's own store (about 30 GiB to unpack, and with the pull a 160 GiB system disk was down to 3.1 GiB), so this case uses a 300 GiB system disk,
+  and because the case runs half an hour to an hour it rents on-demand instead of spot (`GPUSpec.OnDemand`) so a reclaim cannot end it. The pull comes from the SWR mirror and now and then restarts from another source near the end, which costs another dozen minutes.
+  On failure `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` now works for the multi-VM cases too: the failed VM is kept and a credentials file written.
+
+The golden image is built by `make prepare-aliyun-golden-image`: it starts a T4 instance from Alibaba Cloud's public image
+`ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*` (driver and CUDA preinstalled),
+installs Docker 29 and the NVIDIA container toolkit (through `mirrors.aliyun.com`), pulls the vLLM runner image (the Huawei Cloud SWR mirror first,
+then quay.io and Docker Hub; the final tag is `gpustack/runner:cuda12.8-vllm0.17.1`), downloads Qwen2-0.5B-Instruct to
+`/opt/gpuworks/test-fixtures/models/qwen2-0.5b` with checksums, stops Docker, syncs, and calls `CreateImage`, then `CopyImage`
+to every region in `-regions` (by default East China 1, North China 2, South China 1, and South China 3) and boots a new instance in the source region to validate it (validation comes before copying, so a broken image is not copied to four regions).
+The image is about 50 GB (the runner image dominates); the first full snapshot of the 150 GiB system disk takes about 90 minutes and the cross-region copies about another hour, so plan for two to three hours.
+Custom images are isolated by region, so there is one ID per region; the printed `ALIYUN_IMAGE_CN_HANGZHOU=` and similar lines go into `secrets/cloud-providers.env`
+or the CI environment variables, and cases rent only in regions that have an image. The tool deletes no older image and changes no CI variable;
+with `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` a failed source instance is kept and a 0600 credentials file is written,
+and `-resume-credentials` continues from it. The image already carries Docker and the model, so the cases only verify them and neither install nor download
+(a missing piece means the image is broken and the case fails at once).
+
+Variables CI needs (scoped to `cloud-test/aliyun/*`): `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`
+(preferably a RAM user limited to ECS and VPC), and one `ALIYUN_IMAGE_<REGION>` per region; optionally `ALIYUN_REGIONS`,
+`ALIYUN_INGRESS_CIDR`, `ALIYUN_NO_SPOT`, and `ALIYUN_NO_ON_DEMAND`.
 
 ## Evidence
 

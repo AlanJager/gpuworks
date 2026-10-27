@@ -194,6 +194,7 @@ func setupCloudNodeWithInstance(t *testing.T, env *testenv.Env, p cloudprovider.
 	}
 	state := &cloudTestEnv{Control: env, Provider: p, Instance: instance}
 	t.Cleanup(func() {
+		reportInterruption(t, p, instance)
 		if t.Failed() && os.Getenv("GPUWORKS_CLOUD_KEEP_ON_FAILURE") == "1" {
 			credentialPath, credentialErr := saveCloudDebugCredential(p, instance)
 			if credentialErr != nil {

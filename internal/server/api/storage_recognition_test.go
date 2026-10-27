@@ -37,6 +37,12 @@ func TestStorageImportReparsesMetadataAndKeepsEntryDirectoryIdentity(t *testing.
 	write("org/pipeline/model_index.json", `{"_class_name":"ExamplePipeline","encoder":["transformers","Encoder"]}`)
 	write("org/pipeline/encoder/config.json", `{"architectures":["ExampleModel"]}`)
 	write("org/pipeline/encoder/model.safetensors", "weights")
+	write("org/dual/modular_model_index.json", `{"_class_name":"ExampleModularPipeline","backbone":["transformers","ExampleModel"]}`)
+	write("org/dual/backbone/config.json", `{"architectures":["ExampleModel"]}`)
+	write("org/dual/backbone/model.safetensors", "weights")
+	write("org/dual/model_index.json", `{"_class_name":"ExamplePipeline","vision_encoder":["transformers","Qwen3VLVisionModel"]}`)
+	write("org/dual/vision_encoder/config.json", `{"architectures":["Qwen3VLVisionModel"],"model_type":"qwen3_vl"}`)
+	write("org/dual/vision_encoder/model.safetensors", "weights")
 	st, err := store.Open(filepath.Join(t.TempDir(), "db"), bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -124,9 +130,14 @@ func TestStorageImportReparsesMetadataAndKeepsEntryDirectoryIdentity(t *testing.
 	if _, err := h.importOne(context.Background(), shared, node, root, dto.StorageImportItem{RelPath: "org/model/a", ModelID: remoteSub.ID, Subfolder: "a"}); err == nil {
 		t.Fatal("standalone directory bound to a repository-preserving artifact")
 	}
+	parent, err := h.importOne(context.Background(), shared, node, root, dto.StorageImportItem{RelPath: "org/dual", Source: "local", SourceID: "org/dual"})
+	if err != nil || !parent.Created {
+		t.Fatalf("dual-manifest parent must remain importable: %+v %v", parent, err)
+	}
 	before, _ := st.ListModels()
 	for _, item := range []dto.StorageImportItem{
 		{RelPath: "org/pipeline/encoder", Source: "local", SourceID: "component"},
+		{RelPath: "org/dual/vision_encoder", Source: "local", SourceID: "vision-component"},
 		{RelPath: "../escape", Source: "local", SourceID: "outside"},
 		{RelPath: "gone", Source: "local", SourceID: "gone"},
 	} {

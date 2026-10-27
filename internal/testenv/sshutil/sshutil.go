@@ -337,7 +337,7 @@ func dialAuth(ctx context.Context, host string, port int, username string, auth 
 	}
 	config := &ssh.ClientConfig{User: username, Auth: auth, HostKeyCallback: ssh.InsecureIgnoreHostKey(), Timeout: 15 * time.Second}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", addr)
+	conn, err := dialTCP(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial SSH %s: %w", addr, err)
 	}

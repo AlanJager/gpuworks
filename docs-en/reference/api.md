@@ -109,6 +109,8 @@ It also has its own hardware and text filters. `GET /api/v1/models` and `GET /ap
 `GET /api/v1/events` and `GET /api/v1/instances/{uuid}/logs` use SSE, a continuous stream of server-sent events,
 with `Content-Type: text/event-stream`. Do not read them as a single JSON response.
 `/api/v1/events` only indicates which resources have changed; it does not carry resource objects. After receiving a notification, clients fetch the corresponding resources again.
+Every agent reports its status once a minute, which arrives as a `node` event with `reason` `status`; one stream forwards at most one such event every 5 seconds:
+the first in a window goes out at once and the rest collapse into one event, with an empty `key`, at the window's end. Other node changes (going online or offline, scheduling, deletion) are never coalesced.
 
 For regular management resource endpoints that return `Content-Type: application/json`, send `Accept-Encoding: gzip` to enable gzip compression.
 Event streams, log streams, file transfers, and image transfers remain unchanged. WebSocket upgrades are unaffected.

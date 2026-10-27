@@ -158,6 +158,7 @@
     "node_cordoned": "Node {{node}} is cordoned; the replica starts once scheduling resumes there, or pick another node under Adjust replicas.",
     "pool_no_fit": "None of the {{tried}} best of {{candidates}} candidate nodes has room for a replica. The best, {{node}}, refused: {{first}}. Free resources there, scale down another deployment, or add nodes.",
     "model_unavailable": "Model {{model}} could not be acquired on node {{node}}, or waits for a source to be chosen, so no replica starts there. Retry the sync for that node on the models page, or use the public download instead.",
+    "image_delivery_waiting": "Waiting for image {{image}} to arrive on node {{node}}. Check its transfer progress on the images page; a stalled peer transfer is cancelled so it can be retried.",
     "image_delivery_failed": "Pre-pulling image {{image}} on node {{node}} failed, so the multi-node deployment cannot start. The platform keeps retrying; check the reason on the images page or review the pull settings.",
     "image_source_forbidden": "The pull source rules that apply to node {{node}} forbid every source of image {{image}} (no endpoint and pulling from its own registry is off), so the replica cannot start. Adjust them under Settings → Pull settings → Source rules.",
     "weights_fetch_forbidden": "The pull source rules that apply to node {{node}} forbid every address model {{model}} could be downloaded from (no endpoint and downloading from its own site is off), and no peer or storage can provide it, so the replica cannot start. Adjust them under Settings → Pull settings → Source rules, or register the model's path on a node that has it, or put it on a shared storage.",
@@ -241,7 +242,9 @@
     "onNodes": "{{count}} node(s)",
     "onStorages": "{{count}} shared storage(s)",
     "noFiles": "No model files in place yet",
-    "locationUnknown": "File location unknown"
+    "locationUnknown": "File location unknown",
+    "revision": "Revision: {{revision}}",
+    "revisionUnknown": "Revision unknown"
   },
   "action": {
     "autoImage": "Will use {{image}} {{version}} ({{framework}} {{frameworkVersion}}) — node {{nodeFramework}} {{nodeVersion}}",

@@ -71,7 +71,11 @@ func (a *apiHandlers) resolveBenchmarkTokenizer(ctx context.Context, req benchma
 		// estimating — and would send the node to the network for it.
 		return "", nil
 	case benchmarkTokenizerSourceHuggingFace, benchmarkTokenizerSourceModelScope, benchmarkTokenizerSourceUpload:
-		return strings.TrimSpace(req.Reference), nil
+		reference := strings.TrimSpace(req.Reference)
+		if reference == "" {
+			return "", benchmarkParameterError("tokenizer_ref", "the selected tokenizer source requires a repository or uploaded tokenizer reference")
+		}
+		return reference, nil
 	case benchmarkTokenizerSourceAuto:
 		if req.TargetKind != "instance" {
 			return "", productError(ErrorBenchmarkTokenizerSourceInvalid,

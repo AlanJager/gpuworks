@@ -14,6 +14,7 @@ import {
 } from "antd";
 import type {
   EligibleNode,
+  EngineProfile,
   EvaluateResponse,
   Node,
   PartitionCapability as Capability,
@@ -33,12 +34,14 @@ const ONLINE = { state: ["online"] };
 // eligibility answer (EligibleNodePicker): ineligible ones carry their
 // reasons. Before the first evaluation every online node is optionable.
 export default function DeployResourceStep({
+  profile,
   eligibleNodes,
   selectedNode,
   capability,
   preflight,
   result,
 }: {
+  profile?: EngineProfile;
   eligibleNodes?: EligibleNode[];
   selectedNode?: Node;
   capability?: Capability;
@@ -153,8 +156,9 @@ export default function DeployResourceStep({
             label={t("resource.sleepable")}
             name="sleepable"
             valuePropName="checked"
+            extra={!profile?.sleep.supported ? t("workbench.engineUnsupported") : undefined}
           >
-            <Switch />
+            <Switch disabled={!profile?.sleep.supported} />
           </Form.Item>
         </Col>
         <Form.Item name="partition_backend" hidden>

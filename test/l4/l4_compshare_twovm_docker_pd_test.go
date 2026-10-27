@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -22,19 +22,24 @@ const compsharePDDeploymentTimeout = 75 * time.Minute
 // records a TCP transfer, a chat through /v1 is decoded from transferred KV,
 // and the gateway falls back to the decoder when the prefill engine is gone.
 func TestCompsharePDDeployChatTwoVMDocker(t *testing.T) {
+	runPDDeployChatTwoVMDocker(t, compshareBackend(t))
+}
+
+// runPDDeployChatTwoVMDocker is the provider-neutral body of the case.
+func runPDDeployChatTwoVMDocker(t *testing.T, b *vmBackend) {
 	harness := newHostedControlPlane(t, hostedControlPlaneConfig{
 		RunID: cloudTestRunID(), RuntimeDrivers: [2]string{"docker", "docker"},
-		ModelEndpoint: compshareModelEndpoint(),
+		Backend: b,
 		PrepareVMs: func(t *testing.T, envs []*cloudTestEnv) {
-			installCompshareDocker29OnNodes(t, envs)
-			prepareCompshareDockerImageCache(t, envs)
+			b.EnsureDocker(t, envs)
+			b.EnsureImage(t, envs)
 		},
 	})
 	model := hostedPrepareRealModel(t, harness)
 	prefillNode, decodeNode := harness.Nodes[0], harness.Nodes[1]
 	d := createHostedDeployment(t, harness, map[string]any{
-		"model_id": model.ID, "served_name": "qwen2-compshare-pd",
-		"engine": "vllm", "image": compshareDistributedTestImage(),
+		"model_id": model.ID, "served_name": b.servedName("pd"),
+		"engine": "vllm", "image": b.DistributedImage,
 		"quick_params": map[string]any{"max_model_len": 4096},
 		"placement": map[string]any{"pd": map[string]any{"mode": "vllm-nixl", "roles": map[string]any{
 			"prefill": map[string]any{"tp": 1, "units": []any{map[string]any{"node_uuid": prefillNode.UUID, "gpus": []int{0}}}},

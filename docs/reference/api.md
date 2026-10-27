@@ -109,6 +109,8 @@ JSON 字段按 [API 规范](api-conventions.md) 使用 snake_case，例如 `node
 `GET /api/v1/events` 和 `GET /api/v1/instances/{uuid}/logs` 是 SSE，即服务器持续推送的事件流，
 使用 `Content-Type: text/event-stream`，不能按一次性 JSON 响应读取。
 其中 `/api/v1/events` 只通知哪些资源发生了变化，不携带资源对象；客户端收到通知后重新拉取相应资源。
+每个 agent 每分钟上报一次状态，对应 `node` 事件的 `reason` 为 `status`；同一条连接上这类事件每 5 秒最多推送一次：
+窗口内第一条立即推送，其余合并为窗口结束时的一条，`key` 为空。节点的其他变化（上下线、调度、删除等）不合并。
 
 常规管理资源接口返回 `Content-Type: application/json` 时，请求带 `Accept-Encoding: gzip` 可启用 gzip 压缩。
 事件流、日志流、文件与镜像传输保持原样，WebSocket 升级不受影响。

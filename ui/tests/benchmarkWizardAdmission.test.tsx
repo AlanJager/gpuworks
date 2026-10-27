@@ -228,3 +228,27 @@ test("a transcription-only preset cannot start a chat benchmark", async () => {
 	assert.equal(screen.queryByRole("button", { name: /^开\s*始$/ }), null);
 	assert.equal(calls.length, 0);
 });
+
+for (const [source, label, scheme] of [["huggingface", "Hugging Face", "hf"], ["modelscope", "ModelScope", "ms"]] as const) {
+	test(`managed ${source} cannot create a run until its repository is supplied`, async () => {
+		const createdRuns: BenchmarkRun[] = [];
+		const { user, run } = await openWizard(createdRuns);
+		await user.click(screen.getByText("高级"));
+		await user.click(screen.getByRole("radio", { name: label }));
+		await user.click(run);
+		assert.ok(await screen.findByText("请输入模型仓库"));
+		assert.equal(calls.length, 0);
+		assert.equal(createdRuns.length, 0);
+		const repository = screen.getByRole("textbox", { name: "模型仓库" });
+		await user.type(repository, "   ");
+		await user.click(run);
+		assert.ok(await screen.findByText("请输入模型仓库"));
+		assert.equal(calls.length, 0);
+		await user.clear(repository);
+		await user.type(repository, " Qwen/Qwen3-8B ");
+		await user.click(run);
+		await until(() => calls.length === 1, "the validated create request");
+		assert.equal(calls[0].tokenizer_source, source);
+		assert.equal(calls[0].tokenizer_ref, `${scheme}://Qwen/Qwen3-8B`);
+	});
+}
