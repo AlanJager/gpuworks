@@ -31,7 +31,7 @@ These capabilities do not imply that every inference image has been verified; av
 
 ## PPU device identity and dGPU probes
 
-PPU injection uses full UUIDs returned by `ppu-smi` and verified against device nodes, writing them to `CUDA_VISIBLE_DEVICES` in scheduling order. HGGC maps those UUIDs to compute devices `0..N-1`; Docker's filtered inventory and runveil's host inventory need not share indexes. HGML quota queries use the same UUID order to locate quota and memory-ledger slots instead of treating host HGML indexes as compute ordinals.
+PPU queries `ppu-smi` and verifies identities against device nodes, then injects two ordered lists: numeric device selectors in `CUDA_VISIBLE_DEVICES` for compute, and full UUIDs in `GPUWORKS_PPU_DEVICE_UUIDS` for the probe and HGML quota library. Docker/nerdctl selectors use the filtered inventory; udocker/runveil selectors use host indexes. Both lists preserve selection order. vLLM and SGLang share numeric visibility without engine-specific dispatch. HGML reuses UUID-order quota and ledger lookup, falling back to the older agent visibility variable only when the separate UUID variable is absent.
 
 The embedded `gpuworks/partition-probe:v4` verifies both the selected UUID and its memory quota. Missing, invalid, duplicate or unqueryable identities fail, as does a quota applied only to another card. Recreate existing workloads after upgrading the agent to activate the new selection and slicing libraries. Device visibility under runveil still does not provide kernel device isolation.
 

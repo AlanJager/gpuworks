@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,6 +36,8 @@ type ppuIdentity struct {
 	uuid string
 	bdf  string
 }
+
+var _ DriverAwareInjector = (*PPUProber)(nil)
 
 func (p *PPUProber) Vendor() string { return accelerator.VendorPPU }
 
@@ -190,6 +193,10 @@ func (p *PPUProber) Metrics(ctx context.Context) ([]Metric, error) {
 }
 
 func (p *PPUProber) RuntimeInjection(indexes []int) RuntimeInjection {
+	return p.RuntimeInjectionForDriver(indexes, "")
+}
+
+func (p *PPUProber) RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection {
 	if len(indexes) == 0 {
 		return RuntimeInjection{}
 	}
@@ -197,10 +204,10 @@ func (p *PPUProber) RuntimeInjection(indexes []int) RuntimeInjection {
 	if err != nil {
 		return RuntimeInjection{UnsupportedReason: fmt.Sprintf("cannot verify PPU device inventory: ppu-smi: %v", err)}
 	}
-	return p.runtimeInjection(indexes, rows, resolvePPUDevice)
+	return p.runtimeInjection(indexes, rows, resolvePPUDevice, driverName)
 }
 
-func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(int, string) (string, error)) RuntimeInjection {
+func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(int, string) (string, error), driverName string) RuntimeInjection {
 	args := []string{
 		"--device", "/dev/alixpu:/dev/alixpu:rwm",
 		"--device", "/dev/alixpu_ctl:/dev/alixpu_ctl:rwm",
@@ -215,7 +222,7 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 			byIndex[index] = strings.TrimSpace(row[1])
 		}
 	}
-	visible := make([]string, 0, len(indexes))
+	deviceUUIDs := make([]string, 0, len(indexes))
 	selected := make(map[string]bool)
 	for _, index := range indexes {
 		uuid := byIndex[index]
@@ -226,7 +233,6 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU device %d has an invalid or duplicate UUID %q", index, uuid)}
 		}
 		selected[uuid] = true
-		visible = append(visible, uuid)
 		p.mu.RLock()
 		expected, hasExpected := p.lastSeen[index]
 		p.mu.RUnlock()
@@ -238,19 +244,51 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 			return RuntimeInjection{UnsupportedReason: err.Error()}
 		}
 		args = append(args, "--device", path+":"+path+":rwm")
+		deviceUUIDs = append(deviceUUIDs, uuid)
+	}
+	// Driver-independent diagnostics keep the existing UUID contract. Actual
+	// workloads select their numeric view through DriverAwareInjector.
+	visible := strings.Join(deviceUUIDs, ",")
+	if driverName != "" {
+		var err error
+		visible, err = ppuVisibleDeviceIndexes(indexes, driverName)
+		if err != nil {
+			return RuntimeInjection{UnsupportedReason: err.Error()}
+		}
 	}
 	return RuntimeInjection{
 		Env: map[string]string{
 			accelerator.EnvNVIDIAVisibleDevices: "void",
-			accelerator.EnvCUDAVisibleDevices:   strings.Join(visible, ","),
+			accelerator.EnvCUDAVisibleDevices:   visible,
+			accelerator.PPUEnvDeviceUUIDs:       strings.Join(deviceUUIDs, ","),
 		},
 		DockerArgs: args,
 	}
 }
 
-// HGGC accepts full UUIDs in CUDA_VISIBLE_DEVICES and maps them, in order,
-// to compute ordinals 0..N-1. This works with both OCI's filtered inventory
-// and runveil's host inventory. HGML uses the same list to map quota ordinals.
+// OCI exposes only the selected devices, retaining their driver enumeration
+// order. PRoot exposes the host inventory. Keep the requested compute order in
+// either view, using numeric selectors understood by HGGC and inference engines.
+func ppuVisibleDeviceIndexes(indexes []int, driverName string) (string, error) {
+	visibleIndexes := append([]int(nil), indexes...)
+	switch driverName {
+	case "docker", "nerdctl":
+		inventory := append([]int(nil), indexes...)
+		sort.Ints(inventory)
+		for i, index := range indexes {
+			visibleIndexes[i] = sort.SearchInts(inventory, index)
+		}
+	case "udocker":
+	default:
+		return "", fmt.Errorf("PPU device visibility is not supported for runtime %q", driverName)
+	}
+	visible := make([]string, len(visibleIndexes))
+	for i, index := range visibleIndexes {
+		visible[i] = strconv.Itoa(index)
+	}
+	return strings.Join(visible, ","), nil
+}
+
 var ppuUUIDPattern = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 func validPPUUUID(value string) bool { return ppuUUIDPattern.MatchString(value) }
