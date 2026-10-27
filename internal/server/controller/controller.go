@@ -53,7 +53,12 @@ type Controller struct {
 	cacheQ       *workq
 	retryBackoff time.Duration
 	offlineGrace time.Duration
-	maxAttempts  int
+	// watchingSince is when this server began watching its nodes (Run). A
+	// node last seen before then counts as seen then: how long it was gone
+	// while the server itself was down is unknown, and its agent has not had
+	// the chance to reconnect yet.
+	watchingSince time.Time
+	maxAttempts   int
 	// enginePorts is the host-port range engine instances are allocated
 	// from. The hub reads it through EnginePorts to tell agents which
 	// listeners to report, so it is atomic.
@@ -183,6 +188,7 @@ func (c *Controller) SetStartTimeout(seconds int) {
 // Run subscribes to change events and processes the reconcile queue until ctx
 // is cancelled.
 func (c *Controller) Run(ctx context.Context) {
+	c.watchingSince = c.now()
 	// A server App may be stopped and started again in-process (and embedders
 	// commonly do this during graceful restarts). The previous worker closes its
 	// queue on shutdown; replace that closed queue before priming persisted

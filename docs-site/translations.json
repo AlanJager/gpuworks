@@ -123,5 +123,5 @@
   "how-to/analyze-operations.md": "65d76cc6ab3bf608fdf25632e1140644811560e66c039e5c4d96dd0bd5a45185",
   "dev/engine-queue-observation.md": "178a2b29a515f01f6856c133aa0810b3b0be5d95b3a38ea07ccd7d3486474cd0",
   "adr/0056-image-pull-connection-budget.md": "ccaf291f99ca23252c8247cba90dca621ad8a22db0502035cbae2879423ada24",
-  "how-to/node-failover.md": "3ea1f11dc7d09e3667fe68d55069d3c6b08f02883fe6758c2ea2dca3a4d63821"
+  "how-to/node-failover.md": "b007734ab8105c554a5d93e9b9dcd09e6b2c7e6e4c8f881b0e25504f725586d6"
 }

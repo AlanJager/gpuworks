@@ -96,8 +96,8 @@ func (c *Controller) failoverPoolReplicas(deployment *unitDeployment, insts []st
 		if c.hub.Online(node.UUID) {
 			continue
 		}
-		if !planning.NodeLost(node, false, after, now) {
-			if at := planning.LostSince(node, after); !at.IsZero() {
+		if seen := c.sighted(node); !planning.NodeLost(seen, false, after, now) {
+			if at := planning.LostSince(seen, after); !at.IsZero() {
 				c.q.addAfter(depKey(dep.ID), at.Sub(now))
 			}
 			continue
@@ -175,9 +175,10 @@ func (c *Controller) failoverNamedUnits(ctx context.Context, deployment *unitDep
 		if c.hub.Online(uuid) {
 			continue
 		}
-		if planning.NodeLost(node, false, after, now) {
+		seen := c.sighted(node)
+		if planning.NodeLost(seen, false, after, now) {
 			lost[uuid] = true
-		} else if at := planning.LostSince(node, after); !at.IsZero() {
+		} else if at := planning.LostSince(seen, after); !at.IsZero() {
 			c.q.addAfter(depKey(dep.ID), at.Sub(now))
 		}
 	}

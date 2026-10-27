@@ -11,7 +11,7 @@ This guide explains how the platform moves the replicas of an offline node to ot
 
 ## When a Node Is Replaced
 
-A node counts as lost when it has been offline (counted from when the server last saw its agent) for the deployment's **node replacement wait**. The default is 10 minutes, adjustable per deployment, and 0 means never. Nothing moves during the wait: if the node comes back soon, its replicas simply carry on.
+A node counts as lost when it has been offline (counted from when the server last saw its agent) for the deployment's **node replacement wait**. The default is 10 minutes, adjustable per deployment, and 0 means never. Nothing moves during the wait: if the node comes back soon, its replicas simply carry on. The server's own downtime does not count: after a restart, offline time is counted from the server's start at the earliest, giving agents the chance to reconnect; the same holds for a multi-node unit's reconnect grace.
 
 Change it under **Node replacement wait** in deployment details, or through the API:
 

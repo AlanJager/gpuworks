@@ -579,3 +579,88 @@ func TestALostPDUnitMovesToASpareNode(t *testing.T) {
 		t.Fatalf("NODE_REPLACED events = %v", events)
 	}
 }
+
+// A server that has just started has not seen its agents reconnect yet: a
+// node it last saw before it went down counts as seen when it started, so
+// neither node replacement nor a multi-node unit's reconnect grace acts on
+// the downtime.
+func TestAServerJustStartedDoesNotCountItsOwnDowntime(t *testing.T) {
+	f := newFailoverFixture(t, "failover-restart", 2)
+	dep, err := createTestDeploymentWithRequirements(t, f.st, &store.Deployment{
+		Name: "failover-restart", ModelID: f.model.ID, NodeID: f.nodes[0].ID, ServedName: "failover-restart", Engine: "vllm", State: "active", Replicas: 1,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile(t, dep.ID)
+	f.reconcile(t, dep.ID)
+	insts, _ := f.st.InstancesForDeployment(dep.ID)
+	if len(insts) != 1 {
+		t.Fatalf("initial replica = %+v", insts)
+	}
+	first := insts[0]
+	if err := f.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: first.UUID, State: proto.InstRunning}); err != nil {
+		t.Fatal(err)
+	}
+	lostNode := f.nodes[0]
+	if first.NodeID == f.nodes[1].ID {
+		lostNode = f.nodes[1]
+	}
+	// The server was down for eleven minutes and has just started.
+	f.lose(t, lostNode, 11*time.Minute)
+	f.c.watchingSince = f.at
+	f.settle(t, dep.ID, 4)
+	if events := eventCodes(t, f.st, dep.ID, EventNodeReplaced); len(events) != 0 {
+		t.Fatalf("moved on the server's own downtime: %v", events)
+	}
+	if got, _ := f.st.InstanceByUUID(first.UUID); got.State != proto.InstRunning {
+		t.Fatalf("the replica = %s, want it left running", got.State)
+	}
+	// Ten minutes after the start the node has had its chance.
+	f.at = f.c.watchingSince.Add(10*time.Minute + time.Second)
+	f.settle(t, dep.ID, 8)
+	if events := eventCodes(t, f.st, dep.ID, EventNodeReplaced); len(events) != 1 {
+		t.Fatalf("NODE_REPLACED events after the wait = %v", events)
+	}
+}
+
+func TestAMultiNodeUnitsGraceStartsWithTheServer(t *testing.T) {
+	f := newFailoverFixture(t, "grace-restart", 2)
+	dep := f.multiNode(t, "grace-restart")
+	// Replacement off: only the reconnect grace acts on the lost rank.
+	if err := f.st.SetDeploymentNodeReplaceAfter(dep.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile(t, dep.ID)
+	f.reconcile(t, dep.ID)
+	insts, _ := f.st.InstancesForDeployment(dep.ID)
+	if len(insts) != 2 {
+		t.Fatalf("initial generation = %+v", insts)
+	}
+	for _, inst := range insts {
+		if err := f.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: inst.UUID, State: proto.InstRunning}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	failed := func() int {
+		insts, _ := f.st.InstancesForDeployment(dep.ID)
+		n := 0
+		for _, inst := range insts {
+			if inst.State == proto.InstFailed {
+				n++
+			}
+		}
+		return n
+	}
+	f.lose(t, f.nodes[1], 5*time.Minute)
+	f.c.watchingSince = f.at
+	f.reconcile(t, dep.ID)
+	if n := failed(); n != 0 {
+		t.Fatalf("%d ranks failed on the server's own downtime", n)
+	}
+	f.at = f.c.watchingSince.Add(f.c.offlineGrace + time.Second)
+	f.reconcile(t, dep.ID)
+	if n := failed(); n == 0 {
+		t.Fatal("the generation outlived the reconnect grace counted from the start")
+	}
+}
