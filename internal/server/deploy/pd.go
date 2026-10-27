@@ -90,6 +90,9 @@ func vllmPDEnv(p Params, env map[string]string) {
 		return
 	}
 	mode := p.PD.mode()
+	for key, value := range mode.Env {
+		env[key] = value
+	}
 	if mode.SideChannel == pdmode.SideChannelNIXL {
 		if p.PD.SideChannelHost != "" {
 			env["VLLM_NIXL_SIDE_CHANNEL_HOST"] = p.PD.SideChannelHost

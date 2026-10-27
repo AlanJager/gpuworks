@@ -36,6 +36,13 @@ func (a *apiHandlers) resolveTemplateWeightModelForNode(source weightSource, ori
 		return existing, nil
 	}
 	if len(explicitProvider) > 0 && explicitProvider[0] {
+		unknown, err := a.unknownRevisionCopyOnNode(source, weightBytes, nodeID, pinned)
+		if err != nil {
+			return nil, err
+		}
+		if unknown != nil {
+			return unknown, nil
+		}
 		if findErr == nil {
 			return existing, nil
 		}
@@ -84,6 +91,49 @@ func (a *apiHandlers) resolveTemplateWeightModelForNode(source weightSource, ori
 		return existing, nil
 	}
 	return a.createTemplateWeightModel(source, original, engine, quantization, weightBytes)
+}
+
+// unknownRevisionCopyOnNode is a copy of the selected repository, registered
+// at the same provider without a revision, that the target node can already
+// use and whose size matches the pinned revision. A directory imported from a
+// storage (one a provider CLI downloaded, say) carries no commit, so the pinned
+// identity never matches it; an empty revision means unknown, not different,
+// and the size check keeps a copy of other weights from standing in. Without
+// this, a request that chose the provider would download the whole repository
+// again beside the copy it already has (ADR 0018).
+func (a *apiHandlers) unknownRevisionCopyOnNode(source weightSource, weightBytes int64, nodeID uint, pinned []uint) (*store.Model, error) {
+	if nodeID == 0 || weightBytes <= 0 || strings.TrimSpace(source.Revision) == "" {
+		return nil, nil
+	}
+	model, err := a.d.Store.FindModelArtifact(source.RepoID, source.Provider, "", source.Subfolder)
+	if err == store.ErrNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !sameWeightSize(model.WeightBytes, weightBytes) {
+		return nil, nil
+	}
+	ready, err := a.modelHasReadyArtifact(model, nodeID, pinned)
+	if err != nil || !ready {
+		return nil, err
+	}
+	return model, nil
+}
+
+// sameWeightSize accepts sizes that differ by provider bookkeeping files
+// (manifests, checksums): at most 0.1% of the expected size, and never less
+// than 1 MiB.
+func sameWeightSize(actual, expected int64) bool {
+	if actual <= 0 || expected <= 0 {
+		return false
+	}
+	diff := actual - expected
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= max(expected/1000, 1<<20)
 }
 
 func (a *apiHandlers) modelHasReadyArtifact(model *store.Model, nodeID uint, pinned []uint) (bool, error) {
