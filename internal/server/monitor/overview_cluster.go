@@ -361,7 +361,7 @@ func BuildCluster(ctx context.Context, deps Deps, rng time.Duration) (ClusterSna
 			Name:            dep.Name,
 			Engine:          dep.Engine,
 			NodeNames:       resolveNodeNames(dep, instances, nodeNames),
-			ReplicasReady:   countRunning(instances),
+			ReplicasReady:   ReadyReplicas(dep, instances),
 			ReplicasDesired: dep.ReplicasDesired,
 
 			HasRunning: w.HasRunning,

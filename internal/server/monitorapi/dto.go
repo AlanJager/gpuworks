@@ -15,7 +15,7 @@ import (
 // This file holds the small monitor.* -> dto.* conversion helpers shared by
 // overview.go and deployment.go: null-vs-value pointer helpers,
 // timestamp/point conversion, and the derived-display-field functions
-// (deploymentPlacement, deploymentState/replicaState, countReadyReplicas)
+// (deploymentPlacement, deploymentState/replicaState)
 // that need the raw Inventory neither monitor.ClusterSnapshot nor
 // ServiceSnapshot carries in full.
 
@@ -124,25 +124,6 @@ func mergeDetail(maps ...map[string]any) map[string]any {
 		}
 	}
 	return out
-}
-
-// countReadyReplicas counts running, non-headless instances - the same rule
-// monitor.countRunning applies for ServiceRow.ReplicasReady: a headless
-// distributed worker is a process-group participant with no API endpoint of
-// its own, not a replica, so buildDeployment's own deployment-summary ready
-// count has to apply the same exclusion monitor already applies for the
-// cluster-layer one.
-func countReadyReplicas(instances []monitor.InstanceRef) int {
-	n := 0
-	for _, inst := range instances {
-		if inst.Headless {
-			continue
-		}
-		if inst.State == proto.InstRunning {
-			n++
-		}
-	}
-	return n
 }
 
 // deploymentPlacement renders the "TP4 · gpu3, gpu4" summary the wire

@@ -95,7 +95,7 @@ func TestCountReadyReplicasExcludesHeadless(t *testing.T) {
 		{State: proto.InstRunning, Headless: true},
 		{State: proto.InstFailed},
 	}
-	if got := countReadyReplicas(instances); got != 1 {
+	if got := monitor.ReadyReplicas(monitor.DeploymentRef{}, instances); got != 1 {
 		t.Fatalf("countReadyReplicas = %d, want 1 (the headless follower must not count)", got)
 	}
 }

@@ -84,8 +84,12 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 		Instances:   make([]monitor.InstanceRef, 0, len(instances)),
 		Nodes:       make([]monitor.NodeRef, 0, len(nodes)),
 	}
+	instancesByDeployment := make(map[uint][]store.Instance)
+	for _, inst := range instances {
+		instancesByDeployment[inst.DeploymentID] = append(instancesByDeployment[inst.DeploymentID], inst)
+	}
 	for i := range deployments {
-		ref := deploymentRef(&deployments[i])
+		ref := deploymentRef(&deployments[i], instancesByDeployment[deployments[i].ID])
 		ref.RuntimeState = states[ref.ID]
 		inv.Deployments = append(inv.Deployments, ref)
 	}
@@ -130,16 +134,22 @@ func (a *monitorInventoryAdapter) deploymentEvents(_ context.Context, deployment
 	return out, nil
 }
 
-func deploymentRef(d *store.Deployment) monitor.DeploymentRef {
+func deploymentRef(d *store.Deployment, instances []store.Instance) monitor.DeploymentRef {
+	var ready *int
 	desired, pd, transfer := d.Replicas, false, false
 	if placement := pdPlacement(d.Placement); placement != nil {
 		// A PD deployment's desired instances are its units, every role.
 		desired, pd = placement.InstanceCount(), true
+		count := 0
+		for _, role := range planning.PDStatusOf(placement, instances).Roles {
+			count += role.Ready
+		}
+		ready = &count
 		mode, _ := pdmode.Lookup(placement.Mode)
 		transfer = mode.TransferBytesMetric != ""
 	}
 	return monitor.DeploymentRef{
-		ID: d.ID, Name: d.Name, Engine: d.Engine, ReplicasDesired: desired,
+		ID: d.ID, Name: d.Name, Engine: d.Engine, ReplicasDesired: desired, ReplicasReady: ready,
 		ServedName: d.ServedName, SleepDesired: d.DesiredSleep,
 		PD: pd, PDTransferMetrics: transfer, HealthCheck: d.HealthCheck, HealthCheckThresholdSec: d.HealthCheckThresholdSec,
 		// NodeNames is left empty: DeploymentRef.NodeNames is only a

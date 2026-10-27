@@ -157,7 +157,7 @@ func BuildService(ctx context.Context, deps Deps, deploymentID uint, rng time.Du
 	// Headless distributed workers (InstanceRef.Headless) never get their
 	// own replica row: they are process-group participants with no API
 	// endpoint of their own, not a unit of capacity the replica table
-	// presents (see InstanceRef.Headless's doc comment and countRunning,
+	// presents (see InstanceRef.Headless's doc comment and ReadyReplicas,
 	// its cluster-layer sibling).
 	for _, inst := range instances {
 		if inst.Headless {

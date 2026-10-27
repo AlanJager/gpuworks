@@ -19,9 +19,13 @@ type DeploymentRef struct {
 	Name            string
 	Engine          string
 	ReplicasDesired int
-	NodeNames       []string
-	ServedName      string
-	SleepDesired    int
+	// ReplicasReady is the domain-derived count when readiness needs facts
+	// absent from InstanceRef (PD distributed-group completeness).
+	// Nil keeps ordinary deployments counted from their running leaders.
+	ReplicasReady *int
+	NodeNames     []string
+	ServedName    string
+	SleepDesired  int
 	// RuntimeState is derived by the deployment read policy before adapting
 	// the inventory, including preparation failures and scheduling timeouts.
 	RuntimeState string

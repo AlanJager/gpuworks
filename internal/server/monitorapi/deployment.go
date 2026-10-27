@@ -72,7 +72,7 @@ func (s *Service) buildDeployment(ctx context.Context, id uint, rng time.Duratio
 		Stale: snap.Stale,
 		Deployment: dto.MonitorDeploymentSummary{
 			ID: dep.ID, Name: dep.Name, Engine: dep.Engine, Placement: deploymentPlacement(dep, instances, nodeNames),
-			Replicas: dto.MonitorReplicaCount{Ready: countReadyReplicas(instances), Desired: dep.ReplicasDesired},
+			Replicas: dto.MonitorReplicaCount{Ready: monitor.ReadyReplicas(dep, instances), Desired: dep.ReplicasDesired},
 		},
 		Alignment:     alignment,
 		TTFTBreakdown: ttftBreakdownDTO(snap.Window),
