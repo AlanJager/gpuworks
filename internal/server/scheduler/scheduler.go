@@ -232,17 +232,12 @@ const (
 	// no card of its own (none at all, or all lent to virtual machines or
 	// held by another driver), its cards are held by processes outside the
 	// platform, or none is at a health level that serves.
-	ReasonNoOwnedGPU              = "no_owned_gpu"
-	ReasonGPUsHeldOutsidePlatform = "gpus_held_outside_platform"
-	ReasonNoHealthyGPU            = "no_healthy_gpu"
-	ReasonNoFreeGPU               = "no_free_gpu"
-	ReasonFiltersPassed           = "filters_passed"
-	ReasonNoFit                   = "no_fit"
-	// ReasonKVContextExceedsPool: startup memory fits, but one request of the
-	// configured maximum context needs more KV cache than the pool holds, so
-	// the engine will not start. Params: kv_tokens, max_model_len,
-	// suggested_max_model_len.
-	ReasonKVContextExceedsPool      = "kv_context_exceeds_pool"
+	ReasonNoOwnedGPU                = "no_owned_gpu"
+	ReasonGPUsHeldOutsidePlatform   = "gpus_held_outside_platform"
+	ReasonNoHealthyGPU              = "no_healthy_gpu"
+	ReasonNoFreeGPU                 = "no_free_gpu"
+	ReasonFiltersPassed             = "filters_passed"
+	ReasonNoFit                     = "no_fit"
 	ReasonSleepResidueBlocksStartup = "sleep_residue_blocks_startup"
 	ReasonTPHeadCountNotDivisible   = "tp_head_count_not_divisible"
 	ReasonInsufficientSharedGPUs    = "insufficient_shared_gpus"

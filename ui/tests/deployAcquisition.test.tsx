@@ -111,6 +111,41 @@ test("an uncertain KV estimate stays a successful startup evaluation", () => {
   assert.equal(screen.queryByRole("alert"), null);
 });
 
+for (const language of ["en", "zh"] as const) {
+  test(`a KV context warning leaves a successful plan visible in ${language}`, async () => {
+    const locale = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${language}/deploy.json`, import.meta.url), "utf8"));
+    const localized = createInstance();
+    await localized.use(initReactI18next).init({
+      lng: language, fallbackLng: language,
+      resources: { [language]: { deploy: locale } }, defaultNS: "deploy",
+      interpolation: { escapeValue: false },
+    });
+    render(<I18nextProvider i18n={localized}><Form><DeployStepSummary result={{
+      ok: true,
+      plan: { ok: true, plan: { tp: 1, gpu_indexes: [0] } },
+      warnings: [{ code: "PLANNING_KV_BELOW_CONTEXT", params: { kv_tokens: 1024, max_model_len: 262144 } }],
+      breakdown: {
+        weight_bytes: 2 * 1024 ** 3, kv_bytes_per_token: 2048, kv_total_bytes: 512 * 1024 ** 2,
+        reserve_bytes: 1536 * 1024 ** 2, mm_encoder_bytes: 0,
+        per_gpu_bytes: 4.4 * 1024 ** 3, total_bytes: 4.4 * 1024 ** 3,
+        grade: "measured", tensor_parallel: 1, max_model_len: 262144,
+        capacity_bytes: 4.402 * 1024 ** 3, kv_pool_bytes: 2 * 1024 ** 2,
+        estimated_kv_tokens: 1024, max_concurrency: 0,
+        kv_estimate_confidence: "measured", fits: true,
+      },
+    } as never} error={null} loading={false} /></Form></I18nextProvider>);
+    assert.ok(screen.getByText(locale.summary.risk));
+    const warning = screen.getByRole("alert");
+    assert.ok(warning.classList.contains("ant-alert-warning"), "KV estimate must render as a warning");
+    assert.match(warning.textContent ?? "", /1024/);
+    assert.match(warning.textContent ?? "", /262144/);
+    assert.match(warning.textContent ?? "", language === "en" ? /continue with the current settings/ : /按当前配置继续部署/);
+    assert.doesNotMatch(warning.textContent ?? "", /PLANNING_KV_BELOW_CONTEXT|\{\{/);
+    assert.equal(document.querySelector(".ant-alert-error"), null, "successful startup planning must not show a blocking alert");
+    assert.equal(screen.queryByText(locale.summary.passed), null, "a KV risk must remain visible instead of claiming all checks passed");
+  });
+}
+
 test("a failed evaluation states the scheduler's reason, not a generic memory verdict", () => {
   // The summary used to announce a "startup memory check" for every failure,
   // including ones that have nothing to do with memory. The reason the server

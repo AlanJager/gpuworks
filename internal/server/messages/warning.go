@@ -31,6 +31,9 @@ const (
 	// their own, but not all share it, so the group runs over the management
 	// network.
 	WarningComputeNetworkFallback = "COMPUTE_NETWORK_FALLBACK"
+	// WarningPlanningKVBelowContext is an uncertain KV capacity prediction,
+	// not a startup/resource refusal. Params: kv_tokens, max_model_len.
+	WarningPlanningKVBelowContext = "PLANNING_KV_BELOW_CONTEXT"
 )
 
 // Launch warnings: the platform cannot prove a launch will work, or knows it
