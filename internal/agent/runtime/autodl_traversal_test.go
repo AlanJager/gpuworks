@@ -60,3 +60,23 @@ func TestAutoDLTraversalRepairsRootOnly(t *testing.T) {
 	}
 	assertDirMode(t, root, 0o700)
 }
+
+func TestAutoDLTraversalRepairsConfiguredSymlinkUnderRoot(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root to verify root-owned directory repair")
+	}
+	root := stateDir(t, 0o700)
+	target := stateDir(t, 0o755)
+	link := filepath.Join(root, "state-link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareAutoDLRootTraversal(link, MountOwner{UID: 1000, GID: 1000}, "autodl-container-abc", root, 0); err != nil {
+		t.Fatal(err)
+	}
+	assertDirMode(t, root, 0o701)
+	assertDirMode(t, target, 0o755)
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("configured state symlink was replaced")
+	}
+}

@@ -50,7 +50,7 @@ agent 每次使用 runtime 前会检查专用用户能否“穿越”（x）stat
 | 组没有任何权限，或已是专用用户主组 | 改属专用用户主组并加 g+x；agent 自建的目录从 0700 变为 0710 |
 | 组已有自己的权限，且不是专用用户主组 | 不动组、只加 o+x；0750 变为 0751 |
 
-上层目录属于运维，只检查不修改。不可穿越时，udocker 初始化只记 warning：镜像管理与 runveil 排障命令照常可用，启动 workload 会失败；准备 runtime-mounts 时则报错。
+上层目录通常属于运维，只检查不修改。AutoDL 容器有一个例外：root agent 为非 root 的 runtime 用户准备路径时，若配置路径或符号链接解析后的路径位于 `/root` 下，且 `/root` 属于 root、不能被组或其他用户写入，agent 只给 `/root` 补所需的穿越权限（g+x 或 o+x）；不授予列目录或写入权限，也不修改其他上层目录。其余不可穿越的上层目录仍只记录 warning：镜像管理与 runveil 排障命令照常可用，启动 workload 会失败；准备 runtime-mounts 时则报错。
 
 私有文件保持自身的 0600。
 

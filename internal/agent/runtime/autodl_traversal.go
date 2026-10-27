@@ -26,8 +26,18 @@ func prepareAutoDLRootTraversal(name string, owner MountOwner, hostname, rootDir
 	if err != nil {
 		return fmt.Errorf("resolve AutoDL runtime path: %w", err)
 	}
-	rel, err := filepath.Rel(rootDir, resolved)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	insideRoot := func(path string) bool {
+		rel, err := filepath.Rel(rootDir, path)
+		return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	}
+	if !insideRoot(name) && !insideRoot(resolved) {
+		return nil
+	}
+	rootInfo, err := os.Lstat(rootDir)
+	if err != nil {
+		return fmt.Errorf("stat AutoDL root directory: %w", err)
+	}
+	if rootInfo.Mode()&os.ModeSymlink != 0 {
 		return nil
 	}
 	// Do not follow a replaced /root or chmod a different object after checking.

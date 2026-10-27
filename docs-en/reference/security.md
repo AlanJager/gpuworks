@@ -50,7 +50,7 @@ Only when traversal is unavailable and extra permissions are needed does the age
 | The group has no permissions, or is already the dedicated user's primary group | Change the group to the dedicated user's primary group and add g+x; directories created by the agent change from 0700 to 0710 |
 | The group already has its own permissions and is not the dedicated user's primary group | Keep the group unchanged and add only o+x; 0750 becomes 0751 |
 
-Parent directories are managed by operations staff; the agent checks them but does not modify them. If they are not traversable, udocker initialization logs only a warning: image management and runveil troubleshooting commands remain available, but starting a workload fails. Preparing runtime-mounts, however, reports an error.
+Parent directories are normally managed by operations staff; the agent checks them but does not modify them. AutoDL containers have one exception: when a root agent prepares a path for a non-root runtime user, and either the configured path or its resolved symlink target lies under `/root`, the agent may add only the required search bit (g+x or o+x) to `/root`, provided it is root-owned and not writable by group or others. This does not grant directory listing or write access, and other parent directories remain unchanged. For other parent directories that cannot be traversed, udocker initialization logs only a warning: image management and runveil troubleshooting commands remain available, but starting a workload fails. Preparing runtime-mounts, however, reports an error.
 
 Private files retain their own 0600 permissions.
 
