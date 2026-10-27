@@ -97,7 +97,7 @@ func TestWalkMovesOnFromASourceThatCrawls(t *testing.T) {
 	if len(failures) != 1 || !errors.Is(failures[0], ErrCrawling) || errors.Is(failures[0], ErrStalled) {
 		t.Fatalf("failures = %v, want one crawl", failures)
 	}
-	if msg := failures[0].Error(); !strings.Contains(msg, "KiB/s over 5m0s, below 512 KiB/s") {
+	if msg := failures[0].Error(); !strings.Contains(msg, "KiB/s over 5m0s, below 64 KiB/s") {
 		t.Fatalf("the failure does not say how slow it was: %q", msg)
 	}
 	if !p.prober.Cooled("a.example") {

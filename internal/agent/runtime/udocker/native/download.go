@@ -28,11 +28,16 @@ var (
 	// average over slowWindow. A CDN connection that degrades to tens of KB/s
 	// rarely recovers on its own, while a fresh one usually runs at line rate
 	// again, so waiting for the idle timeout (which a trickle never trips) is
-	// the wrong call. The floor is far below any link worth using, so a node
-	// that really is slow only pays a reconnect per window, and the transfer
-	// resumes where it stopped (see fetchSpan), so recycling loses nothing.
+	// the wrong call. The floor is per connection, and a pull runs up to
+	// Workers x RangeParts connections at once (24 by default), so it has to
+	// sit far below a slow link's share: 16 KiB/s each is still under
+	// 400 KiB/s in total, which keeps a node that is merely slow (mainland to
+	// an overseas CDN at peak is tens to hundreds of KB/s) from recycling
+	// every connection every window, while a connection that has collapsed to
+	// a trickle is still replaced. The transfer resumes where it stopped (see
+	// fetchSpan), so recycling loses nothing.
 	slowWindow  = 30 * time.Second
-	slowMinRate = int64(128 << 10)
+	slowMinRate = int64(16 << 10)
 	// retryPause is the unit of the pause before a reconnect that follows a
 	// failure which delivered nothing; it grows with consecutive such failures.
 	retryPause = time.Second

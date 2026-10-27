@@ -375,3 +375,14 @@ func TestDownloadStopsWhenCancelled(t *testing.T) {
 		t.Fatal("a cancelled download reported success")
 	}
 }
+
+// The crawl floor is judged per connection, and a pull runs up to
+// DefaultWorkers x DefaultRangeParts connections at once; their floors added
+// up must stay below what a merely slow link delivers, or every connection on
+// such a node is recycled every window.
+func TestSlowMinRateStaysBelowASlowLinkAcrossAllConnections(t *testing.T) {
+	const slowLink = 400 << 10 // bytes/s: mainland to an overseas CDN at peak
+	if total := slowMinRate * int64(DefaultWorkers*DefaultRangeParts); total > slowLink {
+		t.Fatalf("slowMinRate %d B/s x %d connections = %d B/s, above a slow link's %d B/s", slowMinRate, DefaultWorkers*DefaultRangeParts, total, slowLink)
+	}
+}
