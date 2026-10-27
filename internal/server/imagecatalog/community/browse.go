@@ -51,10 +51,14 @@ type Repo struct {
 }
 
 type Tag struct {
-	Tag           string `json:"tag"`
-	EngineVersion string `json:"engine_version,omitempty"`
-	RollingTag    bool   `json:"rolling_tag,omitempty"`
-	UpstreamGone  bool   `json:"upstream_gone,omitempty"`
+	Tag              string `json:"tag"`
+	Engine           string `json:"engine,omitempty"`
+	EngineVersion    string `json:"engine_version,omitempty"`
+	Framework        string `json:"framework,omitempty"`
+	FrameworkVersion string `json:"framework_version,omitempty"`
+	Arch             string `json:"arch,omitempty"`
+	RollingTag       bool   `json:"rolling_tag,omitempty"`
+	UpstreamGone     bool   `json:"upstream_gone,omitempty"`
 	// LastUpdated is the registry's own timestamp for the tag, when its API
 	// reports one (Docker Hub and quay do, the OCI tag list does not).
 	LastUpdated string `json:"last_updated,omitempty"`
@@ -67,10 +71,6 @@ type Catalog struct {
 	CatalogVersion string `json:"catalog_version,omitempty"`
 	Repos          []Repo `json:"repos"`
 }
-
-var engineVersionPattern = regexp.MustCompile(`(?:^|[-_])(?:vllm(?:-omni)?|sglang)[-_]?v?([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:\.post[0-9]+|\.dev[0-9]+)?(?:rc[0-9]+)?)`)
-
-var versionPattern = regexp.MustCompile(`(?:^|[^0-9])v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:[^0-9]|$)`)
 
 // IsRollingTag identifies tags whose content moves upstream without the tag
 // changing. Numbered and release-candidate tags stay immutable-looking entries.
@@ -85,25 +85,6 @@ func IsRollingTag(tagOrRef string) bool {
 	default:
 		return false
 	}
-}
-
-// InferEngineVersion prefers an explicit engine version over a backend prefix
-// such as cuda13.0, then extracts the first release-like version from a community
-// tag. It is intentionally conservative: mutable names and hash-only tags
-// return an empty value and remain valid imports without an engine version.
-func InferEngineVersion(tagOrRef string) string {
-	value := strings.TrimSpace(tagOrRef)
-	if colon := strings.LastIndex(value, ":"); colon >= 0 && colon+1 < len(value) {
-		value = value[colon+1:]
-	}
-	if match := engineVersionPattern.FindStringSubmatch(value); len(match) == 2 {
-		return match[1]
-	}
-	match := versionPattern.FindStringSubmatch(value)
-	if len(match) != 2 {
-		return ""
-	}
-	return match[1]
 }
 
 //go:embed catalog.json
@@ -296,12 +277,9 @@ func mergeTags(previous []Tag, upstream []upstreamTag) []Tag {
 			continue
 		}
 		seen[name] = true
-		merged = append(merged, Tag{
-			Tag:           name,
-			EngineVersion: InferEngineVersion(name),
-			RollingTag:    IsRollingTag(name),
-			LastUpdated:   item.LastUpdated,
-		})
+		tag := inferTagMetadata(name)
+		tag.LastUpdated = item.LastUpdated
+		merged = append(merged, tag)
 	}
 	for _, tag := range previous {
 		name := strings.TrimSpace(tag.Tag)

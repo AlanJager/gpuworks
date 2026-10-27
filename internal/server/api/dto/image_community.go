@@ -17,9 +17,13 @@ type CommunityRepo struct {
 // CommunityTag is one upstream tag. Every tag the registry lists is
 // included; rolling ones (latest, nightly, ...) are marked.
 type CommunityTag struct {
-	Tag           string `json:"tag"`
-	EngineVersion string `json:"engine_version,omitempty"`
-	RollingTag    bool   `json:"rolling_tag,omitempty"`
+	Tag              string `json:"tag"`
+	Engine           string `json:"engine,omitempty"`
+	EngineVersion    string `json:"engine_version,omitempty"`
+	Framework        string `json:"framework,omitempty"`
+	FrameworkVersion string `json:"framework_version,omitempty"`
+	Arch             string `json:"arch,omitempty"`
+	RollingTag       bool   `json:"rolling_tag,omitempty"`
 	// UpstreamGone marks a tag listed before that the registry no longer has.
 	UpstreamGone bool `json:"upstream_gone,omitempty"`
 	// LastUpdated is the registry's timestamp for the tag, when it has one.

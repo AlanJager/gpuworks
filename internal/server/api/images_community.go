@@ -77,7 +77,11 @@ func (a *apiHandlers) browseCommunityImages(w http.ResponseWriter, r *http.Reque
 	}
 	out := dto.CommunityRepo{Repo: row.Repo, Registry: row.Registry, Engine: row.Engine, Framework: row.Framework, Siblings: row.Siblings, Tags: make([]dto.CommunityTag, 0, len(row.Tags))}
 	for _, tag := range row.Tags {
-		out.Tags = append(out.Tags, dto.CommunityTag{Tag: tag.Tag, EngineVersion: tag.EngineVersion, RollingTag: tag.RollingTag, UpstreamGone: tag.UpstreamGone, LastUpdated: tag.LastUpdated})
+		out.Tags = append(out.Tags, dto.CommunityTag{
+			Tag: tag.Tag, Engine: tag.Engine, EngineVersion: tag.EngineVersion,
+			Framework: tag.Framework, FrameworkVersion: tag.FrameworkVersion, Arch: tag.Arch,
+			RollingTag: tag.RollingTag, UpstreamGone: tag.UpstreamGone, LastUpdated: tag.LastUpdated,
+		})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
