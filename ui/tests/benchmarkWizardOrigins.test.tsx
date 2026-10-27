@@ -13,7 +13,7 @@ Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element
 Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) });
 Object.defineProperty(globalThis, "ResizeObserver", { value: class { observe() {} unobserve() {} disconnect() {} }, configurable: true });
 
-const { cleanup, render, screen, fireEvent, within, waitFor } = await import("@testing-library/react");
+const { cleanup, render, screen, fireEvent, within, waitFor, act } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { default: BenchmarkWizard } = await import("../src/pages/evaluations/BenchmarkWizard.tsx");
 const { MemoryRouter } = await import("react-router-dom");
@@ -80,7 +80,9 @@ test("managed origin uses actual running leaders instead of historical or unrela
 	await screen.findByText("Target node · leader");
 	assert.equal(screen.queryByText("Target node · historical"), null);
 	assert.equal(screen.queryByText("Compute node · unrelated"), null);
-	assert.deepEqual(detailCalls, [7]); // Known list rows still require one selected detail request.
+	// Rendering on a busy runner may span a legitimate refresh interval.
+	assert.ok(detailCalls.length > 0);
+	assert.deepEqual([...new Set(detailCalls)], [7], "only the selected deployment is fetched");
 	await user.keyboard("{ArrowDown}{Enter}");
 	assert.ok(screen.getByText("Target node · leader"));
 });
@@ -100,7 +102,8 @@ test("missing leader metadata is fetched only for eligible runtime nodes", async
 	render(wizard({ nodes: [node("historical")] }));
 	await originChoices();
 	await screen.findByText("Target node · leader");
-	assert.deepEqual(nodeCalls, ["leader"]);
+	assert.ok(nodeCalls.length > 0);
+	assert.deepEqual([...new Set(nodeCalls)], ["leader"], "refreshes only look up eligible runtime nodes");
 });
 
 test("managed origins wait for selected detail and safely fall back after a load error", async () => {
@@ -164,4 +167,43 @@ test("a valid rerun node stays selected while missing node metadata loads", asyn
 	resolveNode(node("leader"));
 	await screen.findByText("Target node · leader");
 	assert.match(origin.textContent || "", /Target node · leader/);
+});
+
+test("selected-origin polling makes one detail request per tick and stops when closed", async () => {
+	const realSetInterval = globalThis.setInterval;
+	let refresh!: () => void;
+	let pollTimer!: ReturnType<typeof setInterval>;
+	mock.method(globalThis, "setInterval", (callback: () => void, delay?: number, ...args: unknown[]) => {
+		if (delay !== 10000) return realSetInterval(callback, delay, ...args);
+		refresh = callback;
+		// Control just the wizard's polling clock, leaving RTL and React timers real.
+		pollTimer = realSetInterval(() => {}, 2 ** 30);
+		return pollTimer;
+	});
+	const clearIntervalSpy = mock.method(globalThis, "clearInterval");
+	const deployments = [deployment, { ...deployment, id: 8, name: "Other service" }];
+	const nodes = [node("historical"), node("unrelated")];
+	const view = render(wizard({ deployments, nodes }));
+	const user = await originChoices();
+	await user.click(await screen.findByText("Target node · leader"));
+	assert.deepEqual(detailCalls, [7], "one initial selected-target request");
+	assert.deepEqual(nodeCalls, ["leader"], "one initial eligible-node lookup");
+
+	details = { ...deployment, instances: [instance("leader", { state: "stopped" })] };
+	await act(async () => { refresh(); });
+	const origin = screen.getByRole("combobox", { name: locale.wizard.loadOrigin }).closest(".ant-select")!;
+	await waitFor(() => assert.match(origin.textContent || "", /Server/));
+	assert.deepEqual(detailCalls, [7, 7], "one selected-target request on the first tick");
+	assert.deepEqual(nodeCalls, ["leader"], "a stopped instance triggers no node lookup");
+
+	details = { ...deployment, instances: [instance("leader")] };
+	await act(async () => { refresh(); });
+	await originChoices();
+	await screen.findByText("Target node · leader");
+	assert.deepEqual(detailCalls, [7, 7, 7], "one selected-target request on the second tick");
+	assert.deepEqual(nodeCalls, ["leader", "leader"], "the restored leader refreshes only its own node");
+
+	view.rerender(wizard({ deployments, nodes, open: false }));
+	assert.ok(clearIntervalSpy.mock.calls.some((call) => call.arguments[0] === pollTimer), "closing clears the polling timer");
+	assert.deepEqual(detailCalls, [7, 7, 7], "closing does not fetch another deployment");
 });
