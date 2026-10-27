@@ -580,6 +580,11 @@
         "summary": "The container runtime could not be set up on this node. Its last attempt failed with the error below.",
         "impact": "Every deployment on this node fails until the cause is fixed. The agent tries again by itself, waiting 30 seconds after the first failure and up to 5 minutes later on."
       },
+      "runtime_state_untraversable": {
+        "label": "Runtime user cannot reach the agent directory",
+        "summary": "{{directory}} is not searchable by {{user}}, the user workloads run as, so it cannot reach the agent directory {{stateDir}}.",
+        "impact": "Every workload launch on this node fails with permission denied on the runtime's own files. Open the directory with `{{fix}}`, which grants search only, no listing or writing, or reinstall the agent with an install directory outside it."
+      },
       "path_noexec": {
         "label": "Path mounted noexec",
         "summary": "{{path}} is on {{point}} ({{fstype}}), which is mounted noexec.",

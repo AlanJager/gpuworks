@@ -378,8 +378,8 @@ An **Action** command, such as a reset command, is provided only when the vendor
 Checks include accelerator health (see the next section), disk space below 10% free (root partition, model directory, container data directory, and storage),
 an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die runtime check failures (`runtime_unusable`).
 
-There are four additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
-`runtime_provision_failed` (runtime provisioning failed), `path_noexec`, `path_read_only`, and `path_ephemeral`.
+There are five additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
+`runtime_provision_failed` (runtime provisioning failed), `runtime_state_untraversable` (the dedicated runtime user cannot reach the agent directory), `path_noexec`, `path_read_only`, and `path_ephemeral`.
 
 **Other sections**
 
@@ -437,7 +437,8 @@ replace `0000:7e:00.0` with your card's address.
 
 **Symptoms**: All deployments fail with `runveil runtime unavailable: <reason>`; earlier versions may show
 `udocker runtime unavailable` or `prepare udocker ownership`. Node diagnostics may also report
-`runtime_provision_failed`, `path_noexec`, `path_read_only`, or `path_ephemeral`.
+`runtime_provision_failed`, `runtime_state_untraversable`, `path_noexec`, `path_read_only`, or `path_ephemeral`.
+If launch logs or instances report `fork/exec …/udocker/bin/proot-…: permission denied`, check `runtime_state_untraversable` first.
 
 ### Identify the Affected Path First
 
@@ -483,6 +484,21 @@ If the filesystem refuses to change ownership of new files, such as when NFSv4 o
 
 The log message `dedicated runtime user is unusable; running as the agent's own user` and the `runtime_identity` diagnostic record this fallback and its reason.
 This message is not a fault in itself. When the agent runs as root, files written to the model directory also belong to root.
+
+**The dedicated user cannot reach the agent directory**
+
+An agent running as root starts workloads as the dedicated `udocker` user. The agent opens its own state directory (0711 or 0710), but the directories **above** it belong to the operator:
+if one of them does not let `udocker` enter (typically an installation under `/root/…` or a private 0700 home), every launch fails with
+`fork/exec …/udocker/bin/proot-…: permission denied`, while everything else (image management, `runveil ps`) keeps working, so the cause is hard to see.
+
+`runtime_state_untraversable` (error) gives the first blocking directory, its permissions and owner, the runtime user it was judged for, and the fix. To resolve it:
+
+- Run the `chmod o+x <directory>` shown in the evidence: it grants search only, no listing or writing.
+- Or reinstall the agent with an installation directory outside that directory (for example `/opt/gpuworks`).
+
+Before installation, the SSH precheck reports the same condition as a failure or warning in `Install directory path access` (see [Installation Directory Checks](connect-nodes.md#安装目录检查)).
+The node page diagnostics, the agent's runtime log warning, and the CLI `gpuworks-agent doctor --state <directory>` (when that directory already contains a `udocker` directory) use the same verdict.
+After the fix, run the diagnosis again; restarting the agent is unnecessary.
 
 **Other initialization failures**
 

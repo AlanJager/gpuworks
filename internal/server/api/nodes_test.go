@@ -605,6 +605,13 @@ const runtimeAndMountsReport = `{"report":"text\n","host":{"hostname":"pod","os"
 	`{"code":"path_ephemeral","level":"warning","disk":{"kind":"models","path":"/opt/gpuworks/models","total_bytes":100,"avail_bytes":50,"mount":{"point":"/","fs_type":"overlay","ephemeral":true}},"probe":"/proc/self/mountinfo","recheck":"findmnt -T /opt/gpuworks/models"}],` +
 	`"facts":[{"code":"runtime_identity","value":"the agent's own user (uid 0)"},{"code":"network_filesystem","value":"/workspace is nfs4"}]}`
 
+// A root agent whose state directory is under /root: the runtime user cannot
+// search it, so every launch fails with permission denied.
+const stateUntraversableReport = `{"report":"text\n","host":{"hostname":"gpu1","os":"linux","arch":"amd64","kernel":"5.15","cpu_model":"EPYC","cpu_cores":8,"mem_total_bytes":1,"mem_avail_bytes":1,"disks":[{"kind":"root","path":"/","total_bytes":100,"avail_bytes":50}]},` +
+	`"findings":[{"code":"runtime_state_untraversable","level":"error","probe":"search permission on every directory above /root/gpuworks for udocker (uid 1001, gid 1001)",` +
+	`"evidence":[{"name":"directory","value":"/root"},{"name":"mode","value":"0700"},{"name":"owner","value":"0:0"},{"name":"user","value":"udocker"},{"name":"state_dir","value":"/root/gpuworks"},{"name":"fix","value":"chmod o+x /root"}],` +
+	`"recheck":"namei -m /root/gpuworks"}]}`
+
 // The structured report reaches the client as the agent sent it, and a report
 // from an agent that predates it still carries its text.
 func TestNodeDoctorEndpointPassesStructuredReportThrough(t *testing.T) {
@@ -618,6 +625,7 @@ func TestNodeDoctorEndpointPassesStructuredReportThrough(t *testing.T) {
 		{"structured", structured, structured},
 		{"legacy agent", `{"report":"== gpuworks agent doctor ==\n"}`, `{"report":"== gpuworks agent doctor ==\n"}`},
 		{"runtime setup and mounts", runtimeAndMountsReport, runtimeAndMountsReport},
+		{"state directory under a private ancestor", stateUntraversableReport, stateUntraversableReport},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := apiHandlers{d: Deps{CallNode: func(context.Context, string, string, any) (json.RawMessage, error) {

@@ -70,7 +70,7 @@ function AcceleratorFinding({ finding }: { finding: DoctorFinding }) {
 }
 
 const nodeFindingCodes = new Set([
-  "disk_low", "runtime_unavailable", "runtime_provision_failed", "path_noexec", "path_read_only", "path_ephemeral",
+  "disk_low", "runtime_unavailable", "runtime_provision_failed", "runtime_state_untraversable", "path_noexec", "path_read_only", "path_ephemeral",
   "accelerator_probe_failed", "accelerator_unrecognized", "cuda_init_failed", "multi_gpu_check_failed", "macos_unsupported", "macos_idle_sleep",
 ]);
 
@@ -89,9 +89,19 @@ function MountTags({ mount }: { mount?: DoctorMount }) {
   );
 }
 
-/** The minimum macOS major version the agent reports as evidence; empty when absent. */
-function requiredMajor(finding: DoctorFinding): string {
-  return finding.evidence?.find((field) => field.name === "required")?.value ?? "";
+function evidenceValue(finding: DoctorFinding, name: string): string {
+  return finding.evidence?.find((field) => field.name === name)?.value ?? "";
+}
+
+/** Values a finding's sentence interpolates from its evidence rather than a disk. */
+function evidenceParams(finding: DoctorFinding) {
+  return {
+    required: evidenceValue(finding, "required"),
+    directory: evidenceValue(finding, "directory"),
+    user: evidenceValue(finding, "user"),
+    stateDir: evidenceValue(finding, "state_dir"),
+    fix: evidenceValue(finding, "fix"),
+  };
 }
 
 function NodeFinding({ finding }: { finding: DoctorFinding }) {
@@ -109,13 +119,13 @@ function NodeFinding({ finding }: { finding: DoctorFinding }) {
             {t(`${key}.summary`, disk ? {
               path: disk.path, avail: gib(disk.avail_bytes), total: gib(disk.total_bytes), percent: percent(disk.avail_bytes, disk.total_bytes),
               fstype: disk.mount?.fs_type ?? "", point: disk.mount?.point ?? "",
-            } : { required: requiredMajor(finding) })}
+            } : evidenceParams(finding))}
           </Typography.Text>
         )}
         {key && (
           <div className="gpu-health-section">
             <Typography.Text type="secondary" strong>{t("doctor.impact")}</Typography.Text>
-            <Typography.Text>{t(`${key}.impact`)}</Typography.Text>
+            <Typography.Text>{t(`${key}.impact`, evidenceParams(finding))}</Typography.Text>
           </div>
         )}
         {(finding.probe || !!finding.evidence?.length) && (
