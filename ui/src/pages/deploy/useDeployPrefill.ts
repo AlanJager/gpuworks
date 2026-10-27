@@ -6,7 +6,9 @@ import { api } from "../../api";
 // scheme (model, template, spec), the automatic-mode clearing, and the server
 // defaults that land after the first evaluation. What a template contributes
 // to the launch configuration is NOT prefilled - evaluate's form_values is
-// that answer.
+// that answer. A form opened from a deployment's draft (edit, clone) is
+// already complete: with `fromDraft` the placement clearing is skipped, since
+// it would erase the draft's parallelism.
 export default function useDeployPrefill({
   form,
   queryModelID,
@@ -17,6 +19,7 @@ export default function useDeployPrefill({
   selectedTemplateSpec,
   nodeSelectionMode,
   defaultsEngine,
+  fromDraft = false,
 }: {
   form: FormInstance;
   queryModelID?: number;
@@ -34,6 +37,7 @@ export default function useDeployPrefill({
   };
   nodeSelectionMode: string;
   defaultsEngine?: string;
+  fromDraft?: boolean;
 }) {
   const schemeRef = useRef("");
   // The URL's model is filled only once it is known to exist.
@@ -53,6 +57,7 @@ export default function useDeployPrefill({
     };
   }, [form, queryModelID]);
   useEffect(() => {
+    if (fromDraft) return;
     if (queryTemplateID && !form.getFieldValue("template_id")) {
       form.setFieldsValue({
         template_id: queryTemplateID,
@@ -87,6 +92,7 @@ export default function useDeployPrefill({
     schemeRef.current = key;
   }, [
     form,
+    fromDraft,
     nodeSelectionMode,
     queryModelID,
     querySpecName,

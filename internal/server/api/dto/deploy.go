@@ -401,6 +401,10 @@ type ModelSource struct {
 // can never go missing from the preview.
 type EvaluateRequest struct {
 	DeployRequest
+	// DeploymentID previews the draft as an edit of that deployment: the GPU
+	// memory its own instances hold now is left out of the plan, since the
+	// edit replaces them. Zero previews a new deployment.
+	DeploymentID uint `json:"deployment_id,omitempty"`
 }
 
 // DeploymentCandidates is GET /deployments/{id}/candidates: every node of

@@ -197,6 +197,11 @@ go list -e -f '{{join .Imports "\n"}}' ./internal/server/api \
 CGO_ENABLED=0 go run ./scripts/apiconv -opaque      # 加 -v 列出字段
 ```
 
+2026-10-26：编辑部署（`docs/reference/api.md#编辑部署`）40→43：`GET /deployments/{id}/draft` 把部署读回成创建请求
+`dto.DeployRequest` 本身，创建请求里原有的三个开放字段（按服务端参数字典取键的 `quick_params`、`placement`、
+`container_overrides`）因此也出现在响应里。它们是同一个请求契约，不是新加的不透明字段；编辑计划里逐字段的变化
+（`DeploymentChange.from/to`）用字符串而不是 `any`。
+
 排除：带 `MarshalJSON`/`MarshalText` 的类型自己决定编码，不计入。初值来自 API 规范统一时的实测：
 统一前 42，把节点拓扑、benchmark `long_tail`、agent 拒绝记录、终端会话改为具名 DTO 后为 40。
 

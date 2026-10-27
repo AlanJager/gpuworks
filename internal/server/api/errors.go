@@ -368,6 +368,19 @@ func writeProductError(w http.ResponseWriter, status int, code, fallback string,
 	writeErr(w, status, productError(code, fallback, params))
 }
 
+// Deployment edit codes (GET /deployments/{id}/draft, PUT /deployments/{id}).
+const (
+	// ErrorDeploymentFieldNotEditable: an edit changes a field an existing
+	// deployment cannot change ({field}); cloning the deployment changes it.
+	ErrorDeploymentFieldNotEditable = "DEPLOYMENT_FIELD_NOT_EDITABLE"
+	// ErrorDeploymentChanged: the deployment's configuration changed since
+	// the draft the edit was made on was read.
+	ErrorDeploymentChanged = "DEPLOYMENT_CHANGED"
+	// ErrorDeploymentEditApplyInvalid: the edit asks to reach the instances
+	// in a way ({apply}) its plan does not offer ({options}).
+	ErrorDeploymentEditApplyInvalid = "DEPLOYMENT_EDIT_APPLY_INVALID"
+)
+
 // dGPU quota codes: why a deployment's dGPU quota could not be changed
 // (PUT /deployments/{id}/dgpu).
 const (

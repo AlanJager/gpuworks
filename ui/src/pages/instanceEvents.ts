@@ -17,7 +17,8 @@ const knownInstanceEventCodes = new Set<string>(instanceEventCodes);
 /**
  * Deployment lifecycle timeline entries: the server's own PD handoff check on
  * a prefill instance (ADR 0028), an operator's restart of the deployment or
- * of one replica, a change of its dGPU memory limit, a replica giving up
+ * of one replica, an edit of its configuration, a change of its dGPU memory
+ * limit, a replica giving up
  * after its retry budget or being retried (ADR 0029), and a rolling restart waiting on a replica that gave
  * up, and the shared storage the deployment reads its weights from becoming
  * unavailable on an instance's node or recovering. PD_GROUP_RESTARTED is
@@ -32,6 +33,7 @@ export const lifecycleEventCodes = [
   "DEPLOYMENT_ROLLING_RESTARTED",
   "DEPLOYMENT_ROLLING_STALLED",
   "DEPLOYMENT_DGPU_QUOTA_CHANGED",
+  "DEPLOYMENT_EDITED",
   "REPLICA_RESTARTED",
   "UNIT_RETRY_EXHAUSTED",
   "UNIT_RETRIED",
@@ -64,6 +66,9 @@ function lifecycleEventText(t: TFunction<"deployments">, event: InstanceEvent, c
     attempts: numberParam(event, "attempts") ?? "",
     storage: paramText(event, "storage"),
     node: paramText(event, "node"),
+    fields: paramText(event, "fields"),
+    count: numberParam(event, "count") ?? "",
+    apply: paramText(event, "apply") ? t(`instance.editApply.${paramText(event, "apply")}`, { defaultValue: paramText(event, "apply") }) : "",
     state: storageStateLabel(t as unknown as TFunction, paramText(event, "state")),
     defaultValue: "",
   });

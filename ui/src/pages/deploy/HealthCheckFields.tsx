@@ -21,17 +21,21 @@ function HealthCheckBox({
   value,
   onChange,
   checkable,
+  modelKnown,
 }: {
   value?: boolean;
   onChange?: (value: boolean | undefined) => void;
   checkable: boolean;
+  // The model has been read: until then "not checkable" only means unknown,
+  // and a choice already in the form (a deployment's own) must stay.
+  modelKnown: boolean;
 }) {
   const { t } = useTranslation("common");
   useEffect(() => {
     // A choice made for a model that could be checked does not carry over
     // to one that cannot.
-    if (!checkable && value === true) onChange?.(undefined);
-  }, [checkable, value, onChange]);
+    if (modelKnown && !checkable && value === true) onChange?.(undefined);
+  }, [checkable, modelKnown, value, onChange]);
   return (
     <Checkbox
       checked={checkable && (value ?? true)}
@@ -70,7 +74,7 @@ export default function HealthCheckFields({
     >
       <Space wrap size={12}>
         <Form.Item name="health_check" noStyle>
-          <HealthCheckBox checkable={checkable} />
+          <HealthCheckBox checkable={checkable} modelKnown={selectedModel !== undefined} />
         </Form.Item>
         <Form.Item name="health_check_threshold_sec" noStyle>
           <InputNumber

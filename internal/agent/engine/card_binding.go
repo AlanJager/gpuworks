@@ -126,20 +126,31 @@ type HeldCards struct {
 	Indexes []int
 }
 
-// HeldCards is what the running instances occupy.
+// HeldCards is what the running instances occupy, and what the instances
+// being torn down still do: an instance ordered away keeps its engine on the
+// card until its container is gone (cleanupRequired), and reading that
+// engine as somebody else's process marked our own card as held outside the
+// platform - the replacement then waited on it as on a stranger's.
 func (e *Engine) HeldCards() HeldCards {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var held HeldCards
-	for _, s := range e.desired {
-		if s.DesiredState != "running" {
-			continue
-		}
+	add := func(s proto.InstanceDesiredState) {
 		if len(s.GPUIdents) > 0 && len(s.GPUIdents) == len(s.GPUIndexes) {
 			held.Idents = append(held.Idents, s.GPUIdents...)
-			continue
+			return
 		}
 		held.Indexes = append(held.Indexes, s.GPUIndexes...)
+	}
+	for _, s := range e.desired {
+		if s.DesiredState == "running" {
+			add(s)
+		}
+	}
+	// A same-UUID replacement waiting on its old generation holds both: the
+	// cards the old one has not let go of and the ones the new one wants.
+	for _, s := range e.cleanupRequired {
+		add(s)
 	}
 	return held
 }

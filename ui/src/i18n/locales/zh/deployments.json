@@ -43,6 +43,8 @@
     "runtimeUnavailable": "运行时就绪后才能使用",
     "more": "更多操作",
     "clone": "克隆部署",
+    "edit": "编辑参数",
+    "cloneModify": "克隆并修改",
     "benchmark": "发起压测",
     "saveInferenceTemplate": "存为推理模板",
     "empty": "暂无部署，请先创建一个推理服务",
@@ -99,6 +101,9 @@
   },
   "detail": {
     "title": "部署详情",
+    "edit": "编辑",
+    "editHint": "编辑该部署的启动参数",
+    "cloneModify": "克隆并修改",
     "stopConfirm": "确认停止该部署？",
     "stop": "停止",
     "cancel": "取消",
@@ -123,6 +128,7 @@
     "retry": {
       "exhausted": "有一个副本连续失败 {{attempts}} 次，已停止重建：{{reason}}",
       "action": "重试",
+      "editAndRetry": "修改参数并重试",
       "failed": "重试失败：{{detail}}"
     },
     "placement": {
@@ -336,6 +342,7 @@
       "DEPLOYMENT_ROLLING_RESTARTED": "已请求滚动重启，共 {{replicas}} 个副本",
       "DEPLOYMENT_ROLLING_STALLED": "滚动重启暂停：副本 {{replica}} 连续失败 {{attempts}} 次已放弃，重试该副本后继续",
       "DEPLOYMENT_DGPU_QUOTA_CHANGED": "dGPU 显存上限 {{from}} → {{to}}：{{live}} 个实例立即生效，{{pending}} 个重启后生效",
+      "DEPLOYMENT_EDITED": "配置已修改（{{count}} 项：{{fields}}）；生效方式：{{apply}}",
       "REPLICA_RESTARTED": "已请求重启实例 {{instance}} 所在的副本",
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",
       "UNIT_RETRIED": "已请求重试：清除了 {{attempts}} 次失败记录",
@@ -466,6 +473,11 @@
     "phaseSummary": {
       "done": "{{phase}}用时 {{duration}}",
       "transfer": "{{bytes}}，{{rate}}/s"
+    },
+    "editApply": {
+      "none": "仅保存，下次重启时生效",
+      "rolling": "滚动替换",
+      "all": "全部立即重建"
     }
   },
   "instanceMetrics": {

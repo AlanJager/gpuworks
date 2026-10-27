@@ -18,6 +18,7 @@ type evaluateRankEnv struct {
 	ctx                context.Context
 	writer             http.ResponseWriter
 	request            *dto.DeployRequest
+	excludeDeployment  uint
 	response           *dto.EvaluateResponse
 	engine             deploy.Engine
 	model              *store.Model
@@ -74,7 +75,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			rankImage = resp.Image
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, Engine: eng.Name(), Model: model, Node: rankNode,
+			Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: eng.Name(), Model: model, Node: rankNode,
 			Selection: rankSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   topology,
 			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),

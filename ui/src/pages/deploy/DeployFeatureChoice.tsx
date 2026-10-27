@@ -16,8 +16,11 @@ export default function FeatureChoice({
 }) {
   const { t, i18n } = useTranslation("deploy");
   const form = Form.useFormInstance();
-  const value = Form.useWatch(spec.key, { form, preserve: true });
+  const watched = Form.useWatch(spec.key, { form, preserve: true });
   const boolean = spec.type === "boolean" || spec.control === "switch";
+  // A key a deployment left unstated is "cleared" ("") in a form opened from
+  // its draft; a boolean card shows that as its unstated position.
+  const value = boolean && watched === "" ? undefined : watched;
   // A boolean the dictionary gives no default, or whose default this launch
   // leaves to the engine, is the engine's to decide, so the card carries a
   // third position: auto leaves the key off the wire and the engine keeps —

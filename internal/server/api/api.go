@@ -420,6 +420,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/deployments", a.createDeployment)
 			r.Get("/deployments/{id}", a.getDeployment)
 			r.Get("/deployments/{id}/candidates", a.deploymentCandidates)
+			r.Get("/deployments/{id}/draft", a.getDeploymentDraft)
+			r.Put("/deployments/{id}", a.editDeployment)
 			r.Put("/deployments/{id}/requirements", a.setDeploymentRequirements)
 			r.Put("/deployments/{id}/routing", a.setRoutingPolicy)
 			r.Put("/deployments/{id}/health-check", a.setHealthCheck)

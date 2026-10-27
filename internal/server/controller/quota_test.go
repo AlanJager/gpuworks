@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -182,5 +183,52 @@ func TestPartitionBackendDriftTriggersInstanceReplacement(t *testing.T) {
 	rows, err := st.InstancesForDeployment(dep.ID)
 	if err != nil || len(rows) != 1 || rows[0].State != proto.InstRemoving {
 		t.Fatalf("stale backend generation should await teardown: %+v err=%v", rows, err)
+	}
+}
+
+// While a partition change waits for its node to confirm the old
+// generation's teardown, every retry finds the instance already marked:
+// the timeline gets one entry for it, not one per retry.
+func TestPartitionChangeMarksRemovalOnce(t *testing.T) {
+	st, err := store.Open("file:controller_partition_once_"+t.Name()+"?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	node, err := st.RegisterNode("partition-once-node", store.HashToken("token"), "host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The deployment now runs on whole cards; its instance still holds a slice.
+	dep, err := createTestDeployment(t, st, &store.Deployment{NodeID: node.ID, State: "active", Replicas: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slice, _ := json.Marshal(proto.InstanceDesiredState{UUID: "slice-instance", VRAMLimitBytes: 4 << 30, PartitionBackend: "nvidia-dgpu"})
+	if _, err := st.CreateInstance(&store.Instance{UUID: "slice-instance", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, DesiredStateJSON: string(slice)}); err != nil {
+		t.Fatal(err)
+	}
+	hub := &distributedTestHub{online: map[string]bool{node.UUID: true}, updates: map[string][]proto.StateUpdate{}}
+	c := New(st, hub, nil)
+	for range 5 {
+		if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := st.DeploymentEvents(dep.ID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := 0
+	for _, event := range events {
+		if strings.Contains(event.Data, quotaChangeRemovalPending) {
+			marked++
+		}
+	}
+	if marked != 1 {
+		t.Fatalf("the removal was recorded %d times over 5 retries, want once", marked)
+	}
+	if rows, _ := st.InstancesForDeployment(dep.ID); len(rows) != 1 || rows[0].State != proto.InstRemoving {
+		t.Fatalf("instance = %+v, want removing", rows)
 	}
 }

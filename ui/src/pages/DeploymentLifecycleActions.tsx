@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button, Popconfirm, Radio, Space, Tag, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, type Deployment } from "../api";
@@ -8,9 +9,12 @@ import { useOrder } from "./useOrder";
 // DeploymentLifecycleActions are the drawer header's start, restart and stop
 // actions; they apply to every deployment shape. A stopped deployment offers
 // only Start. Restart asks how (rolling by default); stop keeps the
-// deployment (and the drawer) so it can be started again.
+// deployment (and the drawer) so it can be started again. Edit and Clone and
+// modify open the deploy page on the deployment's configuration; a deployment
+// being deleted can only be cloned.
 export default function DeploymentLifecycleActions({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
+  const navigate = useNavigate();
   const { busy, run } = useOrder();
   const [restartOpen, setRestartOpen] = useState(false);
   const deleting = dep.desired_state === "deleting";
@@ -25,15 +29,27 @@ export default function DeploymentLifecycleActions({ dep, onChanged }: { dep: De
     onChanged();
   };
 
+  const editActions = (
+    <>
+      <Button disabled={deleting} title={t("detail.editHint")} onClick={() => navigate(`/deploy?edit=${dep.id}`)}>
+        {t("detail.edit")}
+      </Button>
+      <Button onClick={() => navigate(`/deploy?from=${dep.id}`)}>{t("detail.cloneModify")}</Button>
+    </>
+  );
   if (dep.desired_state === "stopped") {
     return (
-      <Button type="primary" loading={busy} onClick={() => void order("start")}>
-        {t("detail.start")}
-      </Button>
+      <>
+        <Button type="primary" loading={busy} onClick={() => void order("start")}>
+          {t("detail.start")}
+        </Button>
+        {editActions}
+      </>
     );
   }
   return (
     <>
+      {editActions}
       {dep.restart_requested_at && <Tag color="processing">{t("detail.restart.rolling")}</Tag>}
       <Button disabled={deleting} onClick={() => setRestartOpen(true)}>
         {t("detail.restart.action")}
@@ -93,6 +109,7 @@ export function ReplicaRetryAlert({ dep, onChanged }: { dep: Deployment; onChang
       message={t("detail.retry.exhausted", { attempts: exhausted.failed_attempts, reason: exhausted.last_failure ?? "" })}
       retry={() => api.retryDeploymentUnit(dep.id, { role: "", index: exhausted.index })}
       onDone={onChanged}
+      editHref={`/deploy?edit=${dep.id}`}
     />
   );
 }

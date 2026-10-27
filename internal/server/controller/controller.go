@@ -133,6 +133,10 @@ type modelSyncRun struct {
 
 const modelSyncConfirmationTimeout = 2 * time.Minute
 
+// quotaChangeRemovalPending is what an instance retired for a partition
+// change says while it waits for its node to confirm the teardown.
+const quotaChangeRemovalPending = "quota change removal pending"
+
 // New builds a Controller.
 func New(st *store.Store, hub HubPusher, log *slog.Logger) *Controller {
 	if log == nil {
@@ -368,8 +372,13 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 				c.q.add(depKey(id))
 				return nil
 			}
-			for _, uuid := range waiting {
-				if err := c.store.SetInstanceState(uuid, proto.InstRemoving, "quota change removal pending"); err != nil {
+			for _, inst := range insts {
+				// Each retry while the old generation exits finds it already
+				// marked; writing it again only repeats the same timeline entry.
+				if !slices.Contains(waiting, inst.UUID) || (inst.State == proto.InstRemoving && inst.Message == quotaChangeRemovalPending) {
+					continue
+				}
+				if err := c.store.SetInstanceState(inst.UUID, proto.InstRemoving, quotaChangeRemovalPending); err != nil {
 					return err
 				}
 			}

@@ -31,6 +31,7 @@ import {
   quickParamSpecs,
 } from "./deployHelpers";
 import { capabilityAllowsPartition } from "../../components/partitionCapabilities";
+import { LockedGroup, LockedHint, useControlLocked } from "./DeployEditContext";
 import { defaultPdMode, defaultPdRoles, pdModeOf, pdPolicyValue } from "./deployPd";
 
 type Props = {
@@ -87,6 +88,8 @@ export default function DeployQuickForm({
     Form.useWatch("node_selection_mode", { form, preserve: true }) || "auto",
   );
   const pdMode = nodeMode === "pd";
+  const replicasLocked = useControlLocked("replicas");
+  const vramLocked = useControlLocked("vram_limit");
   const selectedTemplate = templates.find(
     (template) => template.id === templateID,
   );
@@ -254,11 +257,13 @@ export default function DeployQuickForm({
         images={images}
         warnings={result?.warnings}
       />
-      <DeployWeightSourceFields
-        acquisition={result?.acquisition}
-        modelSource={selectedModel?.source}
-        evaluating={loading}
-      />
+      <LockedGroup controls={["model_source"]} hint={false}>
+        <DeployWeightSourceFields
+          acquisition={result?.acquisition}
+          modelSource={selectedModel?.source}
+          evaluating={loading}
+        />
+      </LockedGroup>
       <DeployNodeAcquisition
         acquisition={result?.acquisition}
         automatic={nodeMode === "auto"}
@@ -293,7 +298,7 @@ export default function DeployQuickForm({
               <InputNumber
                 min={1}
                 max={nodeMode === "multi" || pdMode ? 1 : 32}
-                disabled={pdMode}
+                disabled={pdMode || replicasLocked}
               />
             </Form.Item>
             {nodeMode !== "multi" && !pdMode && (
@@ -352,17 +357,18 @@ export default function DeployQuickForm({
                     ? t("workbench.resource.dgpuUnavailablePool")
                     : t("workbench.resource.dgpuUnavailable")
               }
-              disabled={!capabilityAllowsPartition(partitionCapability)}
+              disabled={!capabilityAllowsPartition(partitionCapability) || vramLocked}
               onClick={() =>
                 form.setFieldValue("vram_limit_gib", partition ? undefined : 16)
               }
             />
             {partition && (
               <Form.Item name="vram_limit_gib" noStyle>
-                <InputNumber min={1} addonAfter="GiB" />
+                <InputNumber min={1} addonAfter="GiB" disabled={vramLocked} />
               </Form.Item>
             )}
           </div>
+          <LockedHint controls={["replicas", "vram_limit"]} />
         </div>
       </div>
 

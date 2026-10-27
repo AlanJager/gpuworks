@@ -1660,6 +1660,62 @@ export interface Deployment {
   placement_status?: DeploymentPlacementStatus;
 }
 
+// DeploymentDraft is GET /deployments/{id}/draft: the deployment read back as
+// the create request that would make it (the deploy form fills itself from
+// it), the revision an edit sends back, and the request fields an edit cannot
+// change for this deployment's shape (the server's list, never a literal here).
+export interface DeploymentDraft {
+  deployment: Record<string, unknown>;
+  revision: string;
+  locked: string[];
+}
+
+// live applies to the deployment at once; restart is read by a launch, so a
+// running instance keeps the old value until it is replaced.
+export type DeploymentChangeLayer = "live" | "restart";
+
+export interface DeploymentChange {
+  field: string;
+  layer: DeploymentChangeLayer;
+  // from and to are always present: a string value as itself, any other value
+  // as its JSON text, an absent value as "".
+  from: string;
+  to: string;
+  // masked: the value is withheld (an environment variable's value); from and
+  // to are "" then.
+  masked?: boolean;
+}
+
+export type DeploymentEditApply = "rolling" | "all" | "none";
+
+// DeploymentEditPlan is what an edit does: PUT /deployments/{id}?dry_run=1
+// answers it without writing, and the edit itself returns it.
+export interface DeploymentEditPlan {
+  changes: DeploymentChange[];
+  restart: boolean;
+  apply_options: DeploymentEditApply[];
+  default_apply: DeploymentEditApply;
+  can_start: boolean;
+  can_wake: boolean;
+  // apply_note names why the apply options are narrower than the state
+  // alone allows: "partition_change" (dGPU on/off or another backend).
+  apply_note?: "partition_change";
+  revision: string;
+}
+
+export interface DeploymentEditBody {
+  deployment: Record<string, unknown>;
+  base_revision: string;
+  apply?: DeploymentEditApply;
+  start?: boolean;
+  wake?: boolean;
+}
+
+export interface DeploymentEditResult {
+  plan: DeploymentEditPlan;
+  deployment: Deployment;
+}
+
 export interface DeploymentPlacementStatus {
   unscheduled: number;
   // reason is pool_empty or pool_no_fit; its params carry the counts and
@@ -3416,6 +3472,16 @@ async function sendJSON<T>(
   return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
+// editDeployment saves a draft edit; with dryRun it answers the plan (changes
+// with their layers, the ways to apply) and writes nothing.
+function editDeployment(id: number, body: DeploymentEditBody, opts: { dryRun: true }): Promise<DeploymentEditPlan>;
+function editDeployment(id: number, body: DeploymentEditBody, opts?: { dryRun?: false }): Promise<DeploymentEditResult>;
+function editDeployment(id: number, body: DeploymentEditBody, opts: { dryRun?: boolean } = {}) {
+  return opts.dryRun
+    ? sendJSON<DeploymentEditPlan>("PUT", `/api/v1/deployments/${id}?dry_run=1`, body)
+    : sendJSON<DeploymentEditResult>("PUT", `/api/v1/deployments/${id}`, body);
+}
+
 // The inference catalog import and the remote sync take the same two shapes: a
 // flat YAML document (JSON is YAML too), or a .gpuworks-catalog.tar.gz package,
 // which a template with assets or documentation needs. The server tells them
@@ -4009,6 +4075,9 @@ export const api = {
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/health-check`, { enabled, threshold_sec }),
   setDeploymentTokenize: (id: number, enabled: boolean) =>
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/tokenize`, { enabled }),
+  deploymentDraft: (id: number) =>
+    getJSON<DeploymentDraft>(`/api/v1/deployments/${id}/draft`),
+  editDeployment,
   cloneDeployment: (id: number, name?: string) =>
     sendJSON<Deployment>(
       "POST",

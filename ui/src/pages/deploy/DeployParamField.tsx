@@ -108,7 +108,10 @@ export default function DeployParamField({
   // the engine's to decide: the control gets an unstated position it submits,
   // instead of showing a default the command would not carry.
   const engineDecides = useEngineDecides(spec);
-  const value = Form.useWatch(spec.key, { form, preserve: true });
+  const watched = Form.useWatch(spec.key, { form, preserve: true });
+  // A key a deployment left unstated is "cleared" ("") in a form opened from
+  // its draft; a switch or slider shows that as its unstated position.
+  const value = (isSwitch || spec.control === "slider") && watched === "" ? undefined : watched;
   const language = i18n.resolvedLanguage || i18n.language;
   if (spec.key === "enable_metrics") return <DeployMetricsField spec={spec} />;
   if (spec.key === "log_level")

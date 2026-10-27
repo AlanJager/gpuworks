@@ -192,9 +192,9 @@ make test-l2    # 多进程测试：真实二进制 + 假 GPU
 
 见[开发者文档](docs/dev/README.md)和[测试指南](docs/dev/testing.md)，开发规约在 [CLAUDE.md](CLAUDE.md)，领域词汇在 [CONTEXT.md](CONTEXT.md)。
 
-## 使用情况报告
+## 请帮助我们一起优化产品
 
-正式安装的 server 每天发送一份匿名使用报告（硬件与引擎构成、任务计数、错误类别；不含主机名、IP、提示词和你自己的模型名）。
+正式安装的 server 每天发送一份匿名使用报告（硬件与引擎构成、任务计数、错误类别；不含主机名、模型输入输出等任何敏感信息）。
 可在**设置 → 通用**里关闭，或在 `server.yaml` 里写 `usage_report: false`。全部字段见[用户体验改进计划](docs/reference/usage-report.md)。
 
 ## 许可证
