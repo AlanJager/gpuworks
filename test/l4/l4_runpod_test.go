@@ -100,10 +100,15 @@ func runpodInferenceTemplateFakeImage() string {
 // [quay.io/zstackai/fake-engine:test, docker.io/wangweinoo1/fake-engine:test]
 // instead of the single direct ref. The gpustack rule does the same for the
 // engine images, which the built-in catalog does not know at the pinned tags.
+// It names quay.io only (no swr.cn-south-1.myhuaweicloud.com): RunPod pods run
+// outside China, where a China-hosted mirror is the slowest source, and a
+// source that is merely slow would cost a full
+// crawl-detection window (imagepull.CrawlWindow) before the walk reaches the
+// upstream registry behind it.
 func mirrorFakeEngineThroughQuay(t *testing.T, env *cloudTestEnv) {
 	t.Helper()
 	createPullSourceRules(t, env.Control.API(t),
-		l4PullSourceRule{Match: "docker.io/gpustack", Endpoints: []string{"quay.io/gpustack", "swr.cn-south-1.myhuaweicloud.com/gpustack"}},
+		l4PullSourceRule{Match: "docker.io/gpustack", Endpoints: []string{"quay.io/gpustack"}},
 		l4PullSourceRule{Match: "docker.io/wangweinoo1", Endpoints: []string{"quay.io/zstackai"}},
 	)
 }

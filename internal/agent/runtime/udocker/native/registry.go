@@ -3,6 +3,7 @@ package native
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -92,6 +93,23 @@ func NewClientForPlatform(goos, goarch string) *Client {
 	transport.Proxy = RequestProxy
 	transport.MaxIdleConnsPerHost = 32
 	transport.ResponseHeaderTimeout = 60 * time.Second
+	// HTTP/1.1 only. Over HTTP/2 every request to a host shares one TCP
+	// connection, so the range parts of a blob (and every layer in flight)
+	// would be streams of a single connection: the split would add no
+	// parallelism a link could use, and when that connection degrades -- a CDN
+	// edge throttling it to a trickle -- reconnecting a stream would join the
+	// same bad connection instead of getting a new one.
+	//
+	// An empty TLSNextProto alone is not enough: the cloned TLS config can
+	// already offer "h2" through ALPN (http.DefaultTransport fills it in on its
+	// first use), and a server that picks it would then be spoken to in
+	// HTTP/1.1.
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	return &Client{
 		HTTP:     &http.Client{Transport: transport},
 		Platform: Platform{OS: goos, Architecture: goarch},
