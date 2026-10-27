@@ -65,6 +65,8 @@ type Deployment struct {
 	NodeUUIDs []string `json:"node_uuids,omitempty"`
 	// NodeNames name NodeUUIDs, rank by rank.
 	NodeNames []string `json:"node_names,omitempty"`
+	// RuntimeNodeNames are the distinct nodes hosting active instances now.
+	RuntimeNodeNames []string `json:"runtime_node_names,omitempty"`
 	// NodeRequirements is where the deployment may run, as DeployRequest
 	// states it: always present, {} when it names nothing. A deployment
 	// pinned to nodes names them under gpuworks.ai/node.

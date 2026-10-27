@@ -85,3 +85,11 @@ test("the deployment list reloads for state changes and not for progress notices
   Events.emit("modelfile", "present");
   await waitFor(() => assert.equal(calls, afterLoad + 2, "a model file state change did not reload the list"));
 });
+
+test("the deployment list displays the instance node when scheduling chose a different node", async () => {
+  api.deploymentsPage = async () => listPage([{ ...row, node_name: "target-node", runtime_node_names: ["actual-node"] }]) as never;
+  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><DeploymentsPage /></MemoryRouter></I18nextProvider>);
+  await screen.findByText("qwen-prod");
+  assert.ok(screen.getByText("actual-node"));
+  assert.equal(screen.queryByText("target-node"), null);
+});

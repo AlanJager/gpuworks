@@ -430,7 +430,8 @@ function DeploymentDetail({
 
 // A multi-node deployment runs on every rank's node; name them all, in rank
 // order, instead of only the leader the row is keyed by.
-export function deploymentNodesLabel(d: Pick<Deployment, "node_name" | "node_names">, leaderUUID?: string): string {
+export function deploymentNodesLabel(d: Pick<Deployment, "node_name" | "node_names" | "runtime_node_names">, leaderUUID?: string): string {
+  if ((d.runtime_node_names?.length ?? 0) > 0) return d.runtime_node_names!.join(", ");
   if ((d.node_names?.length ?? 0) > 1) return d.node_names!.join(", ");
   return d.node_name || (leaderUUID ? leaderUUID.slice(0, 8) : "—");
 }
