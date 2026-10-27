@@ -418,6 +418,16 @@
       "open": "Connected",
       "exited": "Ended",
       "error": "Unavailable"
+    },
+    "preflight": {
+      "unavailable": "terminal streaming is not available",
+      "disabled": "web terminal is disabled in platform settings",
+      "nodeOffline": "node is not connected",
+      "agentUnsupported": "this node's agent does not support terminals; upgrade the agent",
+      "nodeLimit": "too many terminal sessions on this node",
+      "globalLimit": "too many terminal sessions on this platform",
+      "containerUnsupported": "this node's agent does not support container terminals",
+      "runveilUnavailable": "runveil container shell is unavailable on this agent"
     }
   },
   "labels": {

@@ -418,6 +418,16 @@
       "open": "已连接",
       "exited": "已结束",
       "error": "不可用"
+    },
+    "preflight": {
+      "unavailable": "终端服务不可用。",
+      "disabled": "平台设置已禁用 Web 终端。",
+      "nodeOffline": "节点未连接。",
+      "agentUnsupported": "此节点的代理不支持终端，请升级代理。",
+      "nodeLimit": "此节点的终端会话数已达上限。",
+      "globalLimit": "平台终端会话数已达上限。",
+      "containerUnsupported": "此节点的代理不支持容器终端。",
+      "runveilUnavailable": "此节点的代理无法使用 runveil 容器 Shell。"
     }
   },
   "labels": {
