@@ -74,6 +74,10 @@ func newListFixture(t *testing.T, extraDeployments int) listFixture {
 	multi := deployment(store.Deployment{Name: "multi", ModelID: model.ID, NodeID: a.ID, NodeIDs: fmt.Sprintf("[%d,%d]", a.ID, b.ID), NNodes: 2})
 	instance(multi, a.ID, "inst-multi-0")
 	instance(multi, b.ID, "inst-multi-1")
+	scheduledAway := deployment(store.Deployment{Name: "scheduled-away", ModelID: model.ID, NodeID: a.ID, Replicas: 1})
+	instance(scheduledAway, b.ID, "inst-scheduled-away")
+	_, err = st.CreateInstance(&store.Instance{UUID: "inst-scheduled-away-stopped", DeploymentID: scheduledAway.ID, NodeID: a.ID, State: proto.InstStopped})
+	must(err)
 	waiting := deployment(store.Deployment{Name: "waiting", ModelID: model.ID, NodeID: b.ID})
 	st.AddDeploymentEventCode(waiting.ID, store.EventKindSchedule, "DEPLOYMENT_UNSCHEDULABLE", map[string]any{"reason": "no_gpu"})
 	must(st.DB().Model(&store.InstanceEvent{}).Where("deployment_id = ?", waiting.ID).
@@ -114,8 +118,8 @@ func TestDeploymentListMatchesTheSingleDeploymentPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != len(deps) || len(deps) != 6 {
-		t.Fatalf("listed %d deployments, store has %d, fixture seeds 6", len(listed), len(deps))
+	if len(listed) != len(deps) || len(deps) != 7 {
+		t.Fatalf("listed %d deployments, store has %d, fixture seeds 7", len(listed), len(deps))
 	}
 	states := map[string]string{}
 	for i := range deps {
@@ -136,9 +140,16 @@ func TestDeploymentListMatchesTheSingleDeploymentPath(t *testing.T) {
 			if len(row.NodeUUIDs) != 2 || len(row.ModelProgress) != 2 {
 				t.Errorf("multi: node_uuids=%v model_progress=%d, want 2 and 2", row.NodeUUIDs, len(row.ModelProgress))
 			}
+			if len(row.RuntimeNodeNames) != 2 || row.RuntimeNodeNames[0] != "list-a" || row.RuntimeNodeNames[1] != "list-b" {
+				t.Errorf("multi: runtime nodes=%v, want list-a and list-b", row.RuntimeNodeNames)
+			}
 		case "single":
 			if row.ModelName != "org/list" || row.NodeName != "list-a" || len(row.Operations) != 1 || len(row.ModelProgress) != 1 || row.ModelProgress[0].Message != "shard 2/5" {
 				t.Errorf("single: joined fields are wrong: %s", listed[i])
+			}
+		case "scheduled-away":
+			if row.NodeName != "list-a" || len(row.RuntimeNodeNames) != 1 || row.RuntimeNodeNames[0] != "list-b" {
+				t.Errorf("scheduled-away should preserve target node and report actual runtime node: %s", listed[i])
 			}
 		case "node-gone":
 			if row.NodeUUID != "" || row.NodeName != "" {
@@ -166,8 +177,8 @@ func TestInstanceListMatchesTheSingleInstancePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != len(insts) || len(insts) != 4 {
-		t.Fatalf("listed %d instances, store has %d, fixture seeds 4", len(listed), len(insts))
+	if len(listed) != len(insts) || len(insts) != 6 {
+		t.Fatalf("listed %d instances, store has %d, fixture seeds 6", len(listed), len(insts))
 	}
 	for i := range insts {
 		single, err := json.Marshal(f.handler.instanceDTO(&insts[i]))
@@ -211,7 +222,7 @@ func TestListQueryCountDoesNotGrowWithTheFleet(t *testing.T) {
 		t.Fatalf("the query counter saw nothing (deployments=%d instances=%d)", smallDeps, smallInsts)
 	}
 	if largeDeps != smallDeps {
-		t.Errorf("GET /deployments: %d queries for 6 rows, %d for 206", smallDeps, largeDeps)
+		t.Errorf("GET /deployments: %d queries for 7 rows, %d for 207", smallDeps, largeDeps)
 	}
 	if largeInsts != smallInsts {
 		t.Errorf("GET /instances: %d queries for 4 rows, %d for 204", smallInsts, largeInsts)

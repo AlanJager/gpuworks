@@ -957,6 +957,7 @@ export type DeploymentListItem = Pick<
   | "node_uuid"
   | "node_name"
   | "node_names"
+  | "runtime_node_names"
   | "desired_state"
   | "runtime_state"
   | "sleepable"
@@ -1599,6 +1600,8 @@ export interface Deployment {
   node_uuids?: string[];
   /** Display names of node_uuids, rank by rank. */
   node_names?: string[];
+  /** Distinct nodes hosting active instances now. */
+  runtime_node_names?: string[];
   partition_backend?: string;
   /** The dGPU memory limit each replica runs under per card; absent on whole cards. */
   vram_limit_bytes?: number;

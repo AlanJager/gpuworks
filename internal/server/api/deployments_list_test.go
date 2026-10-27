@@ -76,13 +76,13 @@ func TestDeploymentPageSlicesTheListNewestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(deps) != 9 {
-		t.Fatalf("fixture seeds %d deployments, want 9", len(deps))
+	if len(deps) != 10 {
+		t.Fatalf("fixture seeds %d deployments, want 10", len(deps))
 	}
 	body := f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=2&page_size=4")
 	page := decodeDeploymentPage(t, body)
-	if page.Page != 2 || page.PageSize != 4 || page.Total != 9 || len(page.Items) != 4 {
-		t.Fatalf("page = page %d size %d total %d items %d, want 2/4/9/4", page.Page, page.PageSize, page.Total, len(page.Items))
+	if page.Page != 2 || page.PageSize != 4 || page.Total != 10 || len(page.Items) != 4 {
+		t.Fatalf("page = page %d size %d total %d items %d, want 2/4/10/4", page.Page, page.PageSize, page.Total, len(page.Items))
 	}
 	for i, item := range page.Items {
 		full := f.handler.deploymentDTO(&deps[4+i], false)
@@ -106,15 +106,15 @@ func TestDeploymentPageSlicesTheListNewestFirst(t *testing.T) {
 	}
 
 	last := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=3&page_size=4"))
-	if last.Total != 9 || len(last.Items) != 1 || last.Items[0].ID != deps[8].ID {
-		t.Fatalf("last page = %+v, want the oldest deployment alone", pageNames(last))
+	if last.Total != 10 || len(last.Items) != 2 || last.Items[1].ID != deps[9].ID {
+		t.Fatalf("last page = %+v, want the oldest deployments on the last page", pageNames(last))
 	}
 	past := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=9&page_size=4"))
-	if past.Total != 9 || past.Items == nil || len(past.Items) != 0 {
+	if past.Total != 10 || past.Items == nil || len(past.Items) != 0 {
 		t.Fatalf("a page past the end = %+v, want no rows and the total", past)
 	}
 	defaults := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1"))
-	if defaults.PageSize != listDefaultPageSize || len(defaults.Items) != 9 {
+	if defaults.PageSize != listDefaultPageSize || len(defaults.Items) != 10 {
 		t.Fatalf("page without a size = size %d, %d rows", defaults.PageSize, len(defaults.Items))
 	}
 }
@@ -140,8 +140,8 @@ func TestDeploymentPageSearch(t *testing.T) {
 		}
 	}
 	served := decodeDeploymentPage(t, f.get(t, f.handler.listDeployments, "/api/v1/deployments?page=1&page_size=200&q=org/list"))
-	if served.Total != 16 {
-		t.Errorf("q=org/list (model name) matched %d, want the 16 deployments of that model", served.Total)
+	if served.Total != 17 {
+		t.Errorf("q=org/list (model name) matched %d, want the 17 deployments of that model", served.Total)
 	}
 }
 
@@ -327,7 +327,7 @@ func TestDeploymentPageQueryCountDoesNotGrowWithTheFleet(t *testing.T) {
 	}
 	small, large := count(0), count(200)
 	if small == 0 || small != large {
-		t.Fatalf("paged GET /deployments: %d queries for 6 rows, %d for 206", small, large)
+		t.Fatalf("paged GET /deployments: %d queries for 7 rows, %d for 207", small, large)
 	}
 }
 

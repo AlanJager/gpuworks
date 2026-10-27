@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -150,6 +151,21 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	if primaryNode != nil {
 		out.NodeName = nodeDisplayName(primaryNode)
 	}
+	seenRuntimeNodes := map[string]struct{}{}
+	for _, instance := range insts {
+		switch instance.State {
+		case proto.InstPulling, proto.InstStarting, proto.InstOptimizing, proto.InstRunning:
+		default:
+			continue
+		}
+		if node := rows.node(instance.NodeID); node != nil {
+			if _, seen := seenRuntimeNodes[node.UUID]; !seen {
+				seenRuntimeNodes[node.UUID] = struct{}{}
+				out.RuntimeNodeNames = append(out.RuntimeNodeNames, nodeDisplayName(node))
+			}
+		}
+	}
+	sort.Strings(out.RuntimeNodeNames)
 	out.RuntimeState = deploymentRuntimeState(rows, d, insts, recorded)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
