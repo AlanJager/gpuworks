@@ -494,7 +494,7 @@ test-l4-compshare-provisioning-matrix: cross-agents
 ## TCP port the driver opens and forwards. Needs COMPSHARE_CONTAINER_IMAGE_ID;
 ## the VM counterpart is TestCompshareDirectServerDialOnboarding in the matrix.
 test-l4-compshare-server-dial-node-onboarding-container: cross-agents
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$$' -timeout=55m ./test/l4
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$$' -timeout=85m ./test/l4
 
 test-l4-compshare-two-vm-udocker-distributed: server-linux-amd64-prebuilt-ui
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareTwoVMUdockerDistributedInference$$' -timeout=180m ./test/l4

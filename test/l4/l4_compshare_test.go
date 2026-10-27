@@ -120,7 +120,11 @@ func TestCompshareDirectServerDialOnboarding(t *testing.T) {
 // forwarded address, not at the SSH entrance. A VM, which has a public
 // address, is covered by TestCompshareDirectServerDialOnboarding.
 //
-// go test -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$' -timeout=55m ./test/l4
+// Stock-out handling: when every card type is refused for lack of supply the
+// whole walk is retried every 5 minutes for COMPSHARE_STOCK_WAIT (default 30m,
+// "0" disables); nothing is rented while waiting.
+//
+// go test -tags=cloudgpu,compshare -run '^TestCompshareServerDialNodeOnboardingContainer$' -timeout=85m ./test/l4
 func TestCompshareServerDialNodeOnboardingContainer(t *testing.T) {
 	p := compshareContainerProvider(t)
 	instance, checked := rentCompshareContainer(t, p, cloudprovider.GPUSpec{GPUCount: 1, DiskGB: compshareAcceptanceDiskGB, Container: true})
