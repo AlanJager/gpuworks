@@ -125,8 +125,8 @@ export default function ImageCommunityBrowser({ onPick }: Props) {
                     </Button>
                   ))}
                   <Space size={4}>
-                    <Tag color="blue">{card.engine}</Tag>
-                    <Tag>{card.framework}</Tag>
+                    {card.engine && <Tag color="blue">{card.engine}</Tag>}
+                    {card.framework && <Tag>{card.framework}</Tag>}
                   </Space>
                 </Space>
               </Card>
