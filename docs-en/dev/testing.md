@@ -238,6 +238,14 @@ Trigger policy for the schedules (`CLOUD_FULL=1`, twice a day at 03:00 and 15:00
   MR manual action. The CompShare container case (`l4-compshare-server-dial-node-onboarding-container`)
   and the offline contracts (`core-compshare-offline-contracts`) run as before.
 
+The cloud L4 CI jobs all carry `environment: {name: cloud-test/<provider>/<lane>, action: prepare}`:
+environment-scoped variables (the credentials under `cloud-test/<provider>/*`) are injected as usual, but
+`action: prepare` creates no deployment. The project has "Skip outdated deployment jobs"
+(`ci_forward_deployment_enabled`) on; once a job creates a deployment, the job that starts later in the same
+environment fails the earlier one that is still running (truncated trace, `403 Job is not running`), so the
+scheduled master pipeline and an MR manual run of the same job would kill each other. A new cloud L4 job must
+use `action: prepare` too; mutual exclusion comes from `resource_group`, not from the environment.
+
 ## Cost and Caching
 
 - Regular provider tests verify only machine rental, SSH, agent connectivity, and GPU inventory. API fields, regional constraints, and cleanup behavior for RunPod, CompShare, AutoDL,
