@@ -55,7 +55,10 @@ type NodeRuntime struct {
 	// heldCards overrides where cardsInUse reads this agent's own
 	// placements, so the card occupancy rules can be tested without an
 	// engine starting containers. Nil means ask the engine.
-	heldCards                     func() engine.HeldCards
+	heldCards func() engine.HeldCards
+	// sleepingCards overrides where sleepingCardPIDs reads the cards of ours
+	// whose instances all sleep, for the same tests. Nil means ask the engine.
+	sleepingCards                 func() map[string]map[int]bool
 	partitionProbeStateMu         sync.Mutex
 	partitionProbeInputsSeen      bool
 	partitionProbeFingerprintSeen string

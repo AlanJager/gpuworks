@@ -6,8 +6,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"gpuworks.ai/gpuworks/internal/proto"
-
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -102,73 +100,26 @@ func (a *apiHandlers) suggestUnit(w http.ResponseWriter, r *http.Request) {
 	}}})
 }
 
-// unitSuggestFacts reads what a suggestion is decided from in bulk. The
-// listed replicas' leaders cannot lead another; the cards of a listed rank
-// no instance of the deployment holds yet are claimed.
+// unitSuggestFacts reads what a suggestion is decided from in bulk
+// (planning.LoadUnitSuggestFacts): the listed replicas' leaders cannot lead
+// another, and the cards of a listed rank no instance of the deployment holds
+// yet are claimed.
 func (a *apiHandlers) unitSuggestFacts(dep *store.Deployment, listed []dto.UnitInput, perRank int) (planning.UnitSuggestFacts, error) {
-	nodes, err := a.d.Store.ListNodes()
-	if err != nil {
-		return planning.UnitSuggestFacts{}, err
-	}
-	held, err := a.d.Store.AwakeGPUHolders()
-	if err != nil {
-		return planning.UnitSuggestFacts{}, err
-	}
-	files, err := a.d.Store.ModelFilesForModel(dep.ModelID)
-	if err != nil {
-		return planning.UnitSuggestFacts{}, err
-	}
 	reqs, err := a.d.Store.DeploymentRequirements(dep.ID)
 	if err != nil {
 		return planning.UnitSuggestFacts{}, err
 	}
-	resolved, err := a.networks().Resolve(nodes)
-	if err != nil {
-		return planning.UnitSuggestFacts{}, err
-	}
-	// Groups follow compute networks, so the networks are always resolved;
-	// the storages only when a requirement names one.
-	facts := planning.LoadNodeFacts(a.d.Store, nil, nodes, reqs)
-	facts.Networks = resolved
-	// A rank this deployment already runs holds its cards in held; one it
-	// does not - a replica only listed so far, or any replica of a stopped
-	// deployment - takes them when it starts, so the suggestion must leave
-	// them. Counting per node, not per replica, keeps a new replica that
-	// shares a node with a running one honest.
-	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
-	if err != nil {
-		return planning.UnitSuggestFacts{}, err
-	}
-	uuidByID := make(map[uint]string, len(nodes))
-	for i := range nodes {
-		uuidByID[nodes[i].ID] = nodes[i].UUID
-	}
-	holding := map[string]int{}
-	for _, inst := range insts {
-		if inst.State != proto.InstStopped && inst.State != proto.InstFailed && inst.SleepLevel == 0 {
-			holding[uuidByID[inst.NodeID]]++
-		}
-	}
-	leaders, claimed := map[string]bool{}, map[string]int{}
+	var ranks []planning.ListedRank
 	for _, unit := range listed {
-		if unit.NodeUUID != "" {
-			leaders[unit.NodeUUID] = true
-		}
-		for _, uuid := range append([]string{unit.NodeUUID}, followerUUIDs(unit)...) {
-			if uuid == "" {
-				continue
-			}
-			if holding[uuid] > 0 {
-				holding[uuid]--
-				continue
-			}
-			claimed[uuid] += perRank
+		for i, uuid := range append([]string{unit.NodeUUID}, followerUUIDs(unit)...) {
+			ranks = append(ranks, planning.ListedRank{NodeUUID: uuid, GPUs: perRank, Leader: i == 0})
 		}
 	}
-	return planning.UnitSuggestFacts{
-		Nodes: nodes, Held: held, Claimed: claimed, Leaders: leaders, Files: files, Facts: facts,
-		Online: a.onlineOf(nodes), Requirements: reqs, Ranks: dep.NNodes, PerRank: perRank,
-	}, nil
+	nodes, err := a.d.Store.ListNodes()
+	if err != nil {
+		return planning.UnitSuggestFacts{}, err
+	}
+	return planning.LoadUnitSuggestFacts(a.d.Store, a.networks().Resolve, dep, reqs, ranks, a.onlineOf(nodes), dep.NNodes, perRank)
 }
 
 // trialUnit plans every rank of a proposed replica as the controller would

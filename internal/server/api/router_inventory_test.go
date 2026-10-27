@@ -337,6 +337,7 @@ PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
+PUT /api/v1/deployments/{id}/node-replacement
 PUT /api/v1/deployments/{id}/pd
 PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements

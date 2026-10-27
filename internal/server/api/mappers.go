@@ -73,6 +73,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.ExtraArgs = d.ExtraArgs
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
+	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
 	if strings.TrimSpace(d.QuickParams) != "" {
 		_ = json.Unmarshal([]byte(d.QuickParams), &out.QuickParams)
 	}
@@ -351,14 +352,17 @@ func deriveRuntimeState(desired store.DeploymentState, instances []store.Instanc
 		}
 	}
 	for _, instance := range instances {
-		// A draining instance is leaving while the rest serve; it does not
-		// make a running deployment read as starting.
-		if instance.State != proto.InstRunning && instance.State != proto.InstDraining && instance.State != proto.InstFailed && instance.State != proto.InstStopped && instance.State != proto.InstPendingRemoval {
+		// A draining or removing instance is leaving while the rest serve; it
+		// does not make a running deployment read as starting. A replica
+		// moved off an offline node stays removing until the node returns.
+		if instance.State != proto.InstRunning && instance.State != proto.InstDraining && instance.State != proto.InstRemoving && instance.State != proto.InstFailed && instance.State != proto.InstStopped && instance.State != proto.InstPendingRemoval {
 			return "starting"
 		}
 	}
-	if hasLive {
-		return "running"
+	for _, instance := range instances {
+		if instance.State == proto.InstRunning || instance.State == proto.InstDraining {
+			return "running"
+		}
 	}
 	return "starting"
 }

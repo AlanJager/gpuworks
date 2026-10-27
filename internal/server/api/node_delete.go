@@ -43,7 +43,15 @@ func (a *apiHandlers) deleteNode(w http.ResponseWriter, r *http.Request) {
 		a.writeNodeDeleteError(w, err)
 		return
 	}
-	if len(instances) != 0 {
+	// A row only waiting to be removed (a replica moved away while the node
+	// was offline) does not keep the node: it goes with it.
+	running := 0
+	for _, inst := range instances {
+		if inst.State != proto.InstRemoving && inst.State != proto.InstPendingRemoval {
+			running++
+		}
+	}
+	if running != 0 {
 		writeProductError(w, http.StatusConflict, ErrorNodeDeleteHasInstances, "stop deployments before deleting the node", nil)
 		return
 	}

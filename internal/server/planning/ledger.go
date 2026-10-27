@@ -42,6 +42,7 @@ func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, s
 		capacity[g.Index] = g.MemoryTotal
 	}
 	evicted := map[string]bool{}
+	residue := newResidues(st)
 	var sugg []EvictSuggestion
 	for i := range insts {
 		in := &insts[i]
@@ -61,7 +62,7 @@ func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, s
 				held = capacity[gi]
 			}
 			// Sleeping releases the claim down to the residue the sleeper keeps.
-			if released := held - sleep.ResidentBytes; released > 0 {
+			if released := held - residue.of(in); released > 0 {
 				frees += released
 			}
 		}
@@ -103,8 +104,9 @@ func NeedsRoomToWake(st *store.Store, in *store.Instance) bool {
 // wake (wakeClaims of each).
 func claimsFor(st *store.Store, node *store.Node, insts []store.Instance) []sleep.Claim {
 	var claims []sleep.Claim
+	residue := newResidues(st)
 	for i := range insts {
-		claims = append(claims, wakeClaims(st, node, &insts[i])...)
+		claims = append(claims, wakeClaims(st, node, &insts[i], residue)...)
 	}
 	return claims
 }
@@ -206,7 +208,7 @@ func wakeStates(st *store.Store, node *store.Node) []sleep.GPUState {
 	var states []sleep.GPUState
 	for _, g := range node.OwnedGPUs() {
 		a := allocations[g.Index]
-		state := sleep.GPUState{Index: g.Index, MemoryTotal: g.MemoryTotal, AwakeBytes: a.AllocatedBytes, SleepingBytes: a.SleepingBytes}
+		state := sleep.GPUState{Index: g.Index, MemoryTotal: g.MemoryTotal, AwakeBytes: a.AllocatedBytes, SleepingBytes: a.SleepingBytes, HeldOutside: g.HeldOutsidePlatform()}
 		for i := range a.Instances {
 			if chargesResidue(st, &a.Instances[i]) {
 				continue
@@ -224,7 +226,7 @@ func wakeStates(st *store.Store, node *store.Node) []sleep.GPUState {
 
 // wakeClaims is the GPU memory a sleeper takes back when it wakes; none for
 // an instance that does not need room (NeedsRoomToWake).
-func wakeClaims(st *store.Store, node *store.Node, in *store.Instance) []sleep.Claim {
+func wakeClaims(st *store.Store, node *store.Node, in *store.Instance, residue *residues) []sleep.Claim {
 	if !NeedsRoomToWake(st, in) {
 		return nil
 	}
@@ -241,7 +243,7 @@ func wakeClaims(st *store.Store, node *store.Node, in *store.Instance) []sleep.C
 			// A whole-GPU engine reclaims its utilization share of the card.
 			bytes = int64(float64(capacity[gi]) * instanceGPUMemUtil(st, in, ledgerFactsOf(in).Engine))
 		}
-		claims = append(claims, sleep.Claim{GPUIndex: gi, Bytes: bytes})
+		claims = append(claims, sleep.Claim{GPUIndex: gi, Bytes: bytes, ResidueBytes: residue.of(in)})
 	}
 	return claims
 }
@@ -441,6 +443,7 @@ func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]
 	// The node is homogeneous, so one architecture describes every claim on it.
 	_, _, archFamily, _ := nodeGPUProfile(node)
 	instances, _ := st.InstancesForNode(node.ID)
+	residue := newResidues(st)
 	for _, instance := range instances {
 		// A failed non-sleep generation is handled by the controller's removing
 		// flow and follows the master ledger: it is not a live claim. A failed
@@ -460,7 +463,7 @@ func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]
 			case asleep:
 				// A sleeper has given the card up down to its residue, whether it
 				// held the whole GPU or a memory-limited slice of it.
-				allocation.SleepingBytes += sleep.ResidentBytes
+				allocation.SleepingBytes += residue.of(&instance)
 			case claim > 0:
 				allocation.AllocatedBytes += claim
 			default:

@@ -53,6 +53,11 @@ type Engine struct {
 	pending         map[string]pendingEnsure
 	sleepLevel      map[string]int  // uuid → actual sleep level
 	prewarmed       map[string]bool // uuid → sleep prewarm done
+	// sleepPIDs is, per sleeping instance, the process its engine keeps on
+	// each of its cards (by card identity), learned when its residue was
+	// measured: the card then held that one process only. It lets the node
+	// report a process somebody else starts on a sleeper's card.
+	sleepPIDs map[string]map[string]int
 	// runtimeEpoch identifies the one serialized start/adopt attempt allowed to
 	// publish a runtime observation for an instance. Removal invalidates it
 	// before teardown, so a slow inspect cannot publish after replacement.
@@ -67,6 +72,10 @@ type Engine struct {
 	// epoch again without holding Engine.mu before doing any network I/O.
 	captureObservationConnection func() uint64
 	reportRuntimeObservation     func(uint64, proto.InstanceStatus) bool
+
+	// residueSettle is the wait between a sleep order and the card memory
+	// reading taken as the instance's residue; 0 reads at once.
+	residueSettle time.Duration
 
 	headlessProbeInterval time.Duration
 	headlessStableChecks  int
@@ -132,8 +141,10 @@ func NewWithProber(driver runtime.Driver, report Reporter, log *slog.Logger, sta
 		pending:               map[string]pendingEnsure{},
 		sleepLevel:            map[string]int{},
 		prewarmed:             map[string]bool{},
+		sleepPIDs:             map[string]map[string]int{},
 		runtimeEpoch:          map[string]uint64{},
 		servingEpoch:          map[string]uint64{},
+		residueSettle:         defaultResidueSettle,
 		headlessProbeInterval: time.Second,
 		headlessStableChecks:  3,
 		livenessInterval:      defaultLivenessInterval,

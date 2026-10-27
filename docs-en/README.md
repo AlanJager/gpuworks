@@ -57,6 +57,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [PD Disaggregation Deployment](how-to/pd-disaggregation.md)
 - [Enable and Troubleshoot dGPU](how-to/dgpu.md)
 - [Put Instances to Sleep and Wake Them](how-to/sleep-wake.md)
+- [Replace Lost Nodes Automatically](how-to/node-failover.md)
 
 **Operations and Benchmarking**
 

@@ -13,19 +13,6 @@ package sleep
 
 import "gpuworks.ai/gpuworks/internal/server/deploy"
 
-// ResidentBytes is what a sleeping vLLM instance still holds on each of its
-// GPUs after it has offloaded (L1) or discarded (L2) its weights and KV cache:
-// the CUDA context, allocator pools and the engine's small standing buffers.
-//
-// It is a per-GPU constant rather than a measurement because the ledger charges
-// it before the instance has finished sleeping. Measured residues so far:
-// ~4 GB per GPU for DeepSeek-V4-Flash on 4×H200 (2026-08 sleep-mode
-// evaluation), 561 MiB (eager) to 995 MiB (CUDA graphs) for a 0.5B model on
-// the 2026-09 checkpoint spike host. 1.5 GiB is the agreed middle: charging
-// less risks admitting a co-tenant the engine then cannot start, charging more
-// wastes memory on every card that hosts a sleeper.
-const ResidentBytes int64 = 3 << 29
-
 // Stable error codes for a sleep or wake order the server refuses. They are
 // part of the API wire contract; api/errors.go lists the same strings in its
 // inventory and asserts they match.
@@ -68,4 +55,15 @@ func Declarable(d Deployment) string {
 		return ""
 	}
 	return Eligible(d)
+}
+
+// CodeHostMemoryInsufficient refuses an L1 sleep whose weights the node's host
+// memory cannot hold: L1 moves the weights into host RAM, L2 discards them.
+const CodeHostMemoryInsufficient = "SLEEP_HOST_MEMORY_INSUFFICIENT"
+
+// HostMemoryHeadroom is the host memory an L1 sleep must leave free on top of
+// the weights it moves there, so the node keeps room for the system, the
+// agent and the engines' own host buffers: 5% of the host, at least 4 GiB.
+func HostMemoryHeadroom(totalBytes int64) int64 {
+	return max(totalBytes/20, 4*gib)
 }

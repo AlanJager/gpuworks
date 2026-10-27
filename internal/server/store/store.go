@@ -624,12 +624,25 @@ func (s *Store) DeleteNode(uuid string) error {
 		if err != nil {
 			return err
 		}
+		// Rows only waiting to be removed from the node (a replica moved
+		// away while it was offline keeps its row until the node confirms)
+		// go with it; any other instance means a deployment still runs here.
+		leaving := []string{proto.InstRemoving, proto.InstPendingRemoval}
 		var instanceCount int64
-		if err := tx.Model(&Instance{}).Where("node_id = ?", n.ID).Count(&instanceCount).Error; err != nil {
+		if err := tx.Model(&Instance{}).Where("node_id = ? AND state NOT IN ?", n.ID, leaving).Count(&instanceCount).Error; err != nil {
 			return err
 		}
 		if instanceCount > 0 {
 			return fmt.Errorf("node %s has %d instance(s); stop deployments before deleting the node", uuid, instanceCount)
+		}
+		var gone []Instance
+		if err := tx.Where("node_id = ? AND state IN ?", n.ID, leaving).Find(&gone).Error; err != nil {
+			return err
+		}
+		for i := range gone {
+			if err := deleteInstanceRecords(tx, &gone[i]); err != nil {
+				return err
+			}
 		}
 		if err := checkNoCacheDeletion(tx.Where("node_id = ?", n.ID)); err != nil {
 			return err

@@ -909,6 +909,11 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `PD_SLEEP_RDMA_UNSUPPORTED` | 400 | 可休眠的 PD 部署不能让 KV 走主机 RDMA 网络：关闭可休眠，或让节点改用以太网参数网络 |
 | `SLEEP_INVALID_LEVEL` / `SLEEP_INVALID_MODE` | 400 | `level` 只能 `1` 或 `2`，`mode` 只能 `wait` 或 `abort` |
 | `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | 卡已被占用，放不回休眠实例；`params` 含 `gpu_indexes`、`shortfall_gib`、`occupants`，先停止或休眠占用者 |
+| `WAKE_GPU_HELD_OUTSIDE` | 409 | 卡被平台外的进程占着，平台看不到占用量，不允许唤醒；`params` 同上，`refused[].held_outside` 为 true。在节点上释放该进程后重试，见[卡被平台外进程占用](#卡被平台外进程占用) |
+| `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | L1 休眠需要把权重搬进主机内存，可用内存减去余量（总量的 5% 与 4 GiB 中较大者）放不下；`params` 含 `node`、`need_gib`、`available_gib`，改用 L2 |
+| `NODE_REPLACEMENT_INVALID` | 400 | 换节点等待时间要是 0（从不）或 60–604800 秒 |
+| `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
+| `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下） |
 
 **可能原因（agent 侧失败）**
 
@@ -918,6 +923,18 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
    `sleep level uncertain after …`，保留完整显存占用并禁止网关转发，controller 会重建这一代实例。
 3. 可确认的失败：保留已确认的实际休眠级别；如果期望仍对应这次失败命令，再将期望回退到该实际级别（也适用于 L1 / L2 切换失败），事件 `INSTANCE_SLEEP_RESULT`，
    `params.result` 为 `failed_rollback`（成功为 `applied`）。失败不会自动重试。
+
+### 节点离线后副本没有换到别的节点
+
+**现象**：节点离线很久，副本仍留在原处。
+
+**怎么确认与处理**：
+
+1. 部署详情的**换节点等待时间**是否为 0（从不）或还没到点；默认 10 分钟，从 server 最后一次见到节点算起。
+2. 时间线有 `NODE_REPLACE_NO_CANDIDATE`：没有节点能接手。多机与 PD 副本要求替换节点在线、可调度、满足节点条件、与其余 rank 同计算网络、同 GPU 厂商和架构、卡空闲且试算放得下；补齐其中缺的一项即可，平台每分钟重试。
+3. 钉在这台节点上的单机副本（节点条件只允许这一台）不会换，等节点回来，或编辑节点条件。
+
+换节点的规则和撤回见[节点失联时自动换节点](node-failover.md)。
 
 ## 多机、NCCL 或 RDMA 网络不通
 

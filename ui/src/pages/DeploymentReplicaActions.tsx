@@ -3,7 +3,8 @@ import { Alert, Button, Checkbox, InputNumber, Modal, Popconfirm, Space, Typogra
 import { useTranslation } from "react-i18next";
 import { api, type Deployment, type Instance, type Node, type PdScaleUnitInput, type ScheduleMessage } from "../api";
 import NodePicker from "../nodes/NodePicker";
-import { apiErrorText } from "../apiError";
+import type { TFunction } from "i18next";
+import { APIError, apiErrorText } from "../apiError";
 import { scheduleText } from "./deploy/deploySchedule";
 import SleepModeDialog, { type SleepMode } from "../components/SleepModeDialog";
 import { ConfirmOrderModal } from "./OrderDialogs";
@@ -132,7 +133,10 @@ function unitInputs(dep: Deployment): PdScaleUnitInput[] {
 // replicas go to the server: not yet ready first, then the newest.
 export function ReplicasEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
+  const { t: tDeploy } = useTranslation("deploy");
+  const { t: tCommon } = useTranslation("common");
   const [value, setValue] = useState<number | null>(dep.replicas);
+  const [firstNodes, setFirstNodes] = useState<string[]>([]);
   const { busy, run } = useOrder();
   const [listOpen, setListOpen] = useState(false);
   const ranks = dep.nnodes ?? 1;
@@ -146,9 +150,18 @@ export function ReplicasEditor({ dep, onChanged }: { dep: Deployment; onChanged:
       </Space>
     );
   }
+  const added = value != null && value > dep.replicas ? value - dep.replicas : 0;
   const apply = async () => {
     if (value == null || value === dep.replicas) return;
-    const refused = await run(() => api.scaleReplicas(dep.id, { replicas: value }));
+    // Only as many first-placement nodes as replicas are added count.
+    const placeOn = added > 0 ? firstNodes.slice(0, added) : [];
+    const refused = await run(async () => {
+      try {
+        await api.scaleReplicas(dep.id, placeOn.length > 0 ? { replicas: value, place_on: placeOn } : { replicas: value });
+      } catch (e) {
+        throw placeOnRefusal(e, t, tDeploy, tCommon) ?? e;
+      }
+    });
     if (refused !== null) {
       message.error(t("replica.scaleFailed", { detail: refused }));
       return;
@@ -156,12 +169,42 @@ export function ReplicasEditor({ dep, onChanged }: { dep: Deployment; onChanged:
     message.success(t("replica.scaled", { count: value }));
     onChanged();
   };
+  // A node that is offline or cordoned is listed but cannot take a replica.
+  const unpickable = (node: Node) => node.state !== "online" || (node.scheduling ?? "schedulable") !== "schedulable";
   return (
-    <Space size={8}>
+    <Space size={8} wrap>
       <InputNumber id="deployment-replicas" size="small" min={1} max={dep.max_replicas} value={value} onChange={(next) => setValue(next)} aria-label={t("detail.replicas")} />
+      {added > 0 && (
+        <NodePicker
+          mode="multiple"
+          style={{ minWidth: 220 }}
+          size="small"
+          maxCount={added}
+          placeholder={t("replica.placeOn.placeholder", { count: added })}
+          aria-label={t("replica.placeOn.label")}
+          value={firstNodes.slice(0, added)}
+          optionDisabled={unpickable}
+          onChange={(next) => setFirstNodes(Array.isArray(next) ? next : [])}
+        />
+      )}
       <Button size="small" loading={busy} disabled={value == null || value === dep.replicas} onClick={() => void apply()}>{t("replica.apply")}</Button>
+      {added > 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("replica.placeOn.hint")}</Typography.Text>}
     </Space>
   );
+}
+
+// placeOnRefusal words a refused first placement (REPLICAS_PLACE_ON_REFUSED):
+// the node, why it cannot take the new replica (the scheduler's own reason
+// when it has no room), and the detail the server gave.
+function placeOnRefusal(e: unknown, t: TFunction<"deployments">, tDeploy: TFunction<"deploy">, tCommon: TFunction<"common">): Error | null {
+  if (!(e instanceof APIError) || e.code !== "REPLICAS_PLACE_ON_REFUSED") return null;
+  const params = e.params ?? {};
+  const reason = String(params.reason ?? "");
+  const detail = reason === "no_room" && params.code
+    ? scheduleText(tDeploy, { code: String(params.code), params: params.params as Record<string, unknown> | undefined })
+    : String(params.detail ?? "");
+  const text = t(`replica.placeOn.refused.${reason}`, { node: params.node, detail, defaultValue: "" });
+  return new Error(text || apiErrorText(tCommon, e));
 }
 
 // MultiNodeReplicasDialog edits a multi-node deployment's replica list: each

@@ -213,14 +213,15 @@ For rollback boundaries before and after the new process registers, failure hand
 Before upgrading drivers, replacing cards, or decommissioning a node, use **More → Scheduling and drain** for that node in the node list:
 
 - **Cordon**: Stops new replicas from starting on this node. Existing replicas continue serving. Use this for brief maintenance or observation.
-- **Drain**: Cordons the node and moves replicas placed here from the candidate pool to other nodes, one at a time per deployment. A replacement replica starts elsewhere first;
-  the original replica retires only after the replacement is running, so the number of serving replicas never drops below the count before the drain. The page lists the replicas remaining on the node and how the drain handles each, refreshing every 5 seconds.
-- **Evict now**: Deployments pinned to this node and multi-node or PD ranks are not moved by a drain. To clear the node immediately, click “Evict now”.
-  They are removed immediately (without counting against retries). Those eligible for other nodes are recreated elsewhere; those that specify this node wait until it becomes schedulable again. You can also first use
-  “Edit” in deployment details to change the node requirements, or change nodes under “Edit replicas”, so they move normally.
+- **Drain**: Cordons the node and moves the replicas on it to other nodes, one at a time per deployment. A replacement replica starts elsewhere first;
+  the original replica retires only after the replacement is running, so the number of serving replicas never drops below the count before the drain. Single-node replicas are replaced by the candidate pool. Multi-node and PD replicas move too:
+  the replacement goes on a node with the same compute network, the same GPU architecture, and free cards, and the placement is rewritten onto it only once it runs; with no node to move to, the replica stays and waits. The page lists the replicas remaining on the node and how the drain handles each, refreshing every 5 seconds.
+- **Evict now**: A single-node deployment pinned to this node is not moved by a drain. To clear the node immediately, click “Evict now”.
+  It does not wait for replacements: everything is removed immediately (without counting against retries). Those eligible for other nodes are recreated elsewhere; those that specify this node wait until it becomes schedulable again. You can also first use
+  “Edit” in deployment details to change the node requirements, so the pinned replicas move normally.
 - **Make schedulable**: Restore scheduling after maintenance. Waiting replicas retry immediately.
 
-Taking a node offline also recreates replicas elsewhere, but this is failover: replicas fail first and consume retries, and serving capacity drops in the meantime. Use drain for planned maintenance.
+When a node goes offline unexpectedly, its replicas move to other nodes automatically once it has been offline longer than the deployment's node replacement wait (default 10 minutes), without consuming retries. See [Replace Lost Nodes Automatically](node-failover.md). Serving capacity drops during the wait. Use drain for planned maintenance.
 
 ## Uninstall
 

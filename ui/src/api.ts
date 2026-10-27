@@ -581,11 +581,13 @@ export interface EngineProfile {
 }
 
 // WakeResult is a wake order's answer; a partial wake lists what it woke and
-// the sleepers whose cards could not take them back.
+// the sleepers whose cards could not take them back. held_outside says a
+// process outside the platform holds one of those cards, which no sleep order
+// of ours can free.
 export interface WakeResult {
   status: string;
   woken?: string[];
-  refused?: Array<{ instances: string[]; node?: string; gpu_indexes?: number[]; occupants?: string[]; shortfall_gib?: string }>;
+  refused?: Array<{ instances: string[]; node?: string; gpu_indexes?: number[]; occupants?: string[]; shortfall_gib?: string; held_outside?: boolean }>;
 }
 
 // PdModeProfile is one PD mode as the server's catalog states it.
@@ -1658,6 +1660,13 @@ export interface Deployment {
   // placement_status is set while replicas of an ordinary deployment wait
   // for a node: how many, and the controller's latest reason.
   placement_status?: DeploymentPlacementStatus;
+  // node_replacement moves a replica off a node that stays offline for
+  // after_sec (0 never moves it).
+  node_replacement?: NodeReplacement;
+}
+
+export interface NodeReplacement {
+  after_sec: number;
 }
 
 // DeploymentDraft is GET /deployments/{id}/draft: the deployment read back as
@@ -4117,6 +4126,10 @@ export const api = {
     sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/sleep?level=${level}&mode=${mode}`),
   wakeInstance: (uuid: string) =>
     sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake`),
+  // setNodeReplacement sets how long a node running a replica may stay offline
+  // before the replica moves (0 never moves it).
+  setNodeReplacement: (id: number, body: NodeReplacement) =>
+    sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   // updateDeploymentPd rescales a PD deployment's role units and/or fallback
   // policy (ADR 0028); mode, TP and kv_load_failure are fixed once instances
   // start, so the request never carries them.
@@ -4158,9 +4171,10 @@ export const api = {
   suggestUnit: (id: number, units: PdScaleUnitInput[]) =>
     sendJSON<UnitSuggestion>("POST", `/api/v1/deployments/${id}/units/suggest`, { units }),
   // scaleReplicas sets an ordinary single-node deployment's replica count
-  // (remove names the instances whose replicas go when it shrinks), or lists
-  // a multi-node deployment's replicas.
-  scaleReplicas: (id: number, body: { replicas: number; remove?: string[] } | { units: PdScaleUnitInput[] }) =>
+  // (remove names the instances whose replicas go when it shrinks; place_on
+  // names nodes the added replicas start on first, at most as many as are
+  // added), or lists a multi-node deployment's replicas.
+  scaleReplicas: (id: number, body: { replicas: number; remove?: string[]; place_on?: string[] } | { units: PdScaleUnitInput[] }) =>
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/replicas`, body),
   // restartInstance replaces the replica an instance fills (a follower names
   // its whole generation); drain lets it finish its requests first.

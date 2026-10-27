@@ -8,7 +8,7 @@ This guide explains how to put an entire deployment, selected replicas, or a PD 
 
 - The deployment uses vLLM and has **Sleep Capable** enabled at creation. Single-node and regular multi-node replicas are supported; SGLang is not.
 - A PD deployment can sleep when KV transfer uses Ethernet. If KV transfer uses host RDMA networking, sleep capability cannot be enabled (`PD_SLEEP_RDMA_UNSUPPORTED`). This restriction does not apply to regular multi-node deployments using RDMA for collective communication.
-- L1 requires enough host memory to hold the offloaded weights. If host memory is insufficient, choose L2 and ensure that the original model directory remains readable when waking.
+- L1 requires enough host memory to hold the offloaded weights. If the available host memory minus headroom cannot hold them, the platform refuses L1 (409 `SLEEP_HOST_MEMORY_INSUFFICIENT`); choose L2 instead and ensure that the original model directory remains readable when waking.
 - For the complete procedure for deploying multiple models on the same GPU, see [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md). For boundaries such as custom images, see [Limitations](#限制).
 
 ## Two Levels
@@ -29,7 +29,7 @@ Choose an option in the sleep confirmation page:
 - **Finish in-flight requests first (recommended)** (default): the engine finishes requests it is processing before sleeping. Long requests delay sleep; the agent allows up to 10 minutes per command.
 - **Abort in-flight requests now**: requests being processed immediately receive an error.
 
-Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 and `model is asleep; wake it first`.
+Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with `model is asleep; wake it first`.
 
 ## Put an Entire Deployment to Sleep
 
@@ -57,11 +57,24 @@ Sleep state after recreation depends on the sleep scope:
 - **Entire deployment asleep**: newly created instances and instances recreated after failure also start at that level.
 - **Individual replica or role asleep**: they are awake after recreation.
 
+## Host Memory Check Before L1 Sleep
+
+L1 moves weights into host memory. Before sleeping, the platform estimates the weights to move for the instances about to sleep on each node (each rank of a multi-node replica counts its share) and compares them with the node's most recently reported available memory. If the need exceeds the available memory minus the headroom, it refuses; the headroom is the larger of 5% of total host memory and 4 GiB. The refusal is 409 `SLEEP_HOST_MEMORY_INSUFFICIENT` with the parameters `node`, `need_gib`, and `available_gib`; use L2 instead. A node with no recent host memory observation is not judged, and the decision is left to you.
+
 ## What the GPU Can Do After Sleep
 
-The scheduler accounts for a sleeping instance as retaining approximately 1.5 GiB per GPU; the remaining GPU memory is available to new deployments. This is a scheduling estimate, not a guarantee of actual usage. Followers in a multi-node replica are accounted for according to the leader's sleep state.
+A sleeping instance holds only its **residue** on each GPU (the CUDA context, allocator pools, the CUDA graph pool, and communication buffers on multiple GPUs); the rest of the GPU memory can go to other deployments. The residue is recorded per instance and is no longer a fixed constant:
 
-If deployment evaluation finds insufficient space, follow the page's GPU memory release suggestion and click **Sleep and Reevaluate**. Available GPU memory in the evaluation already subtracts the residual usage and identifies its source.
+- **Measured**: when the instance is alone on its cards and no process outside the platform is on them, the agent reads the card's used memory about 1 second after a successful sleep and uses it as this instance's residue.
+- **Estimated**: when the card is shared with other instances, or nothing can be read, the platform estimates from the model. A model of up to 3B, 30B, 200B parameters, or larger takes 0.75, 1, 1.5, or 2.5 GiB; add 0.5 GiB for the CUDA graph pool (assumed on); add 0.5 GiB when the engine spans more than 1 card, or 1 GiB from 8 cards; the result is limited to 0.75–4 GiB. An unknown model size counts as 1.5 GiB. The parameter count is derived from the weight bytes and the stored precision.
+
+Without a measurement the estimate is used; the residue is never treated as 0. A measurement is kept until the instance's next sleep measures again. Followers in a multi-node replica are accounted for according to the leader's sleep state.
+
+If deployment evaluation finds insufficient space, follow the page's GPU memory release suggestion and click **Sleep and Reevaluate**. Available GPU memory in the evaluation already subtracts the residue.
+
+The capacity released is really released: once another deployment fills the card, a sleeping instance may not fit back when it wakes. This is stated behavior (409 `WAKE_INSUFFICIENT_GPU_MEMORY`), not a defect.
+
+Why a sleeping instance does not keep its original allocation: sleep would then be pointless for several models taking turns on one card, and the memory you meant to hand over would stay locked. The price is that a wake is not guaranteed; if you need that, give those deployments cards of their own. A measurement reads the whole card's used memory, which runs high, so it errs on the safe side; an estimate is only a rule of thumb and may be high or low; a sleeping instance that shares its cards with other instances always uses the estimate.
 
 ## Wake
 
@@ -70,6 +83,7 @@ If deployment evaluation finds insufficient space, follow the page's GPU memory 
    Waking any replica revokes the deployment-wide sleep command. Other sleeping replicas remain asleep.
 
 2. If you receive 409 `WAKE_INSUFFICIENT_GPU_MEMORY`, inspect the GPU index, shortfall in GiB, and occupants shown in the message. Stop or put those occupants to sleep before retrying. By default, a deployment-level wake proceeds only if all replicas fit. After a wake request for multiple sleeping replicas is rejected, you can choose **Wake what fits** (`?partial=true`). A multi-node replica is evaluated as a whole: if any rank cannot fit back into memory, the entire replica remains asleep.
+   When a process outside the platform holds the card (the platform cannot see how much it uses), the wake is refused with 409 `WAKE_GPU_HELD_OUTSIDE`, with the same parameters as above and `refused[].held_outside` set to true. Release that process on the node first, then wake. The agent also examines cards whose platform instances all sleep: when the sleeping engine's own process IDs are known, it can tell them apart from processes outside the platform.
 3. Wait for `sleep_level` to return to 0 for the selected replicas, then retry a `/v1` request to confirm service recovery. For a partial wake, also check the remaining replicas' GPU memory shortfalls. One successful request does not establish that all replicas are awake.
 
 Waking instances are already accounted for at their full GPU memory usage to prevent allocating the same GPU memory twice while waiting for the agent's report.

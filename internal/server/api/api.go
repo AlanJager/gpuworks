@@ -438,6 +438,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Delete("/deployments/{id}", a.deleteDeployment)
 			r.Post("/deployments/{id}/sleep", a.sleepDeployment)
 			r.Post("/deployments/{id}/wake", a.wakeDeployment)
+			r.Put("/deployments/{id}/node-replacement", a.setNodeReplacement)
 			// A deployment's own timeline, including scheduling outcomes
 			// recorded before any instance existed.
 			r.Get("/deployments/{id}/events", a.deploymentEvents)
@@ -622,7 +623,6 @@ type apiHandlers struct {
 	sessionPolicy       auth.SessionPolicy
 	loginThrottle       loginThrottle
 	d                   Deps
-	sleepMu             sync.Mutex // serializes sleep and wake orders: admission and role checks read what they then write
 	gpuCacheMu          sync.Mutex
 	gpuCacheAt          time.Time
 	gpuCache            *gpuInventoryCache

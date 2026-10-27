@@ -34,6 +34,9 @@ func (c *Controller) launchPDGeneration(ctx context.Context, deployment *unitDep
 	dep, pd := deployment.dep, deployment.pd
 	role := slot.Unit.Role
 	units := pd.placement.Units(role)
+	if surges := deployment.surgeUnits[role]; len(surges) > 0 {
+		units = append(append([]planning.PDUnit(nil), units...), surges...)
+	}
 	if slot.Unit.Index >= len(units) {
 		return false, fmt.Errorf("deployment %d: %s unit %d is not in the placement", dep.ID, role, slot.Unit.Index)
 	}

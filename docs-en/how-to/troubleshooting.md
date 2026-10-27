@@ -908,6 +908,11 @@ See [Sleep / Wake](sleep-wake.md).
 | `PD_SLEEP_RDMA_UNSUPPORTED` | 400 | A sleep-enabled PD deployment cannot send KV traffic over the host RDMA network: disable sleep, or switch the nodes to an Ethernet compute network |
 | `SLEEP_INVALID_LEVEL` / `SLEEP_INVALID_MODE` | 400 | `level` must be `1` or `2`; `mode` must be `wait` or `abort` |
 | `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | The GPUs are occupied, so the sleeping instance cannot fit back on them. `params` contains `gpu_indexes`, `shortfall_gib`, and `occupants`; stop or put the occupants to sleep first |
+| `WAKE_GPU_HELD_OUTSIDE` | 409 | A process outside the platform holds the card, so the platform cannot see its usage and does not allow the wake. `params` as above, and `refused[].held_outside` is true. Release that process on the node and retry; see [Card Is in Use by Processes Outside the Platform](#卡被平台外进程占用) |
+| `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | An L1 sleep moves the weights into host memory, and the available memory minus the headroom (the larger of 5% of total memory and 4 GiB) cannot hold them. `params` contains `node`, `need_gib`, and `available_gib`; use L2 |
+| `NODE_REPLACEMENT_INVALID` | 400 | The node replacement wait must be 0 (never) or 60–604800 seconds |
+| `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` names more nodes than the replicas being added |
+| `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit) |
 
 **Possible causes (agent-side failures)**
 
@@ -917,6 +922,18 @@ See [Sleep / Wake](sleep-wake.md).
    `sleep level uncertain after …`. Its full GPU memory allocation is retained and gateway forwarding is blocked. The controller recreates this generation of instances.
 3. A failure with a confirmed state: the confirmed actual sleep level is retained. If the desired state still corresponds to the failed command, it is rolled back to that actual level (also applies to failed L1 / L2 transitions). The event is `INSTANCE_SLEEP_RESULT`,
    with `params.result` set to `failed_rollback` (`applied` on success). Failures are not retried automatically.
+
+### Replicas Were Not Moved to Another Node After a Node Went Offline
+
+**Symptom**: a node has been offline for a long time, yet its replicas stay where they are.
+
+**How to confirm and handle it**:
+
+1. Check whether the deployment's **node replacement wait** is 0 (never) or has not elapsed; the default is 10 minutes, counted from when the server last saw the node.
+2. The timeline shows `NODE_REPLACE_NO_CANDIDATE`: no node can take over. A replacement for a multi-node or PD replica must be online, schedulable, satisfy the node requirements, share the compute network of the other ranks, have the same GPU vendor and architecture, and have free cards and pass the trial plan; fill in whatever is missing, and the platform retries every minute.
+3. A single-node replica pinned to this node (its node requirements allow only this one) does not move; wait for the node to return, or edit the node requirements.
+
+For the rules and the undo, see [Replace Lost Nodes Automatically](node-failover.md).
 
 ## Multi-Node, NCCL, or RDMA Network Connectivity Failure
 

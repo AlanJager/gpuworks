@@ -97,6 +97,7 @@ func (e *Engine) reconcileSleep(ctx context.Context, spec proto.InstanceDesiredS
 			e.report(proto.InstanceStatus{
 				UUID: spec.UUID, State: proto.InstRunning, ContainerID: containerName(spec.UUID),
 				Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort), SleepLevel: target, SleepTarget: &target,
+				SleepResidueBytes: e.measureSleepResidue(ctx, spec),
 			})
 			return
 		}
@@ -111,13 +112,21 @@ func (e *Engine) reconcileSleep(ctx context.Context, spec proto.InstanceDesiredS
 
 	e.mu.Lock()
 	e.sleepLevel[spec.UUID] = spec.DesiredSleep
+	if spec.DesiredSleep == 0 {
+		delete(e.sleepPIDs, spec.UUID)
+	}
 	e.mu.Unlock()
 	target := spec.DesiredSleep
 
+	// Only a completed sleep has a residue; a wake or a failed order reports none.
+	var residue int64
+	if target > 0 {
+		residue = e.measureSleepResidue(ctx, spec)
+	}
 	e.report(proto.InstanceStatus{
 		UUID: spec.UUID, State: proto.InstRunning, ContainerID: containerName(spec.UUID),
 		Ports: spec.Ports, DirectAddr: fmt.Sprintf("127.0.0.1:%d", spec.APIPort),
-		SleepLevel: spec.DesiredSleep, SleepTarget: &target,
+		SleepLevel: spec.DesiredSleep, SleepTarget: &target, SleepResidueBytes: residue,
 	})
 	e.log.Info("instance sleep level applied", "uuid", spec.UUID, "level", spec.DesiredSleep)
 }
@@ -251,6 +260,7 @@ func (e *Engine) forgetSleepState(uuid string) {
 	e.mu.Lock()
 	delete(e.sleepLevel, uuid)
 	delete(e.prewarmed, uuid)
+	delete(e.sleepPIDs, uuid)
 	e.mu.Unlock()
 }
 

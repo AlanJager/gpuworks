@@ -1536,7 +1536,9 @@
     },
     { "term_en": "Request Success Rate", "translations": { "zh": "请求成功率" } },
     { "term_en": "Session Completion Rate", "translations": { "zh": "会话完成率" } },
-    { "term_en": "Cache Report Coverage", "translations": { "zh": "缓存上报覆盖率" } }
+    { "term_en": "Cache Report Coverage", "translations": { "zh": "缓存上报覆盖率" } },
+    { "term_en": "Node Replacement", "translations": { "zh": "节点失联 / 换节点" }, "forbidden": { "zh": ["故障转移"] } },
+    { "term_en": "Sleep Residue", "translations": { "zh": "休眠残留" } }
   ],
   "do_not_translate": [
     "GPUWorks",
