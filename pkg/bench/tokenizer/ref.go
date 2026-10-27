@@ -3,18 +3,17 @@ package tokenizer
 import (
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
 // LoadRef loads a tokenizer from a local path, an HTTP(S) URL, or a compact
 // repository reference (hf://org/model[@revision], ms://org/model[@revision]).
+// Valid HTTP downloads are reused for up to 24 hours from the OS user cache
+// directory (gpuworks/tokenizers); local files are always read directly.
 // It deliberately returns an error rather than hiding failures so callers can
 // decide whether estimation is allowed for the workload without hiding failures.
 func LoadRef(ctx context.Context, ref string) (*Tokenizer, error) {
@@ -54,22 +53,4 @@ func loadRepoRef(ctx context.Context, ref string) (*Tokenizer, error) {
 		revision = strings.TrimSpace(parts[1])
 	}
 	return loadHTTP(ctx, modelrepo.ResolveURL(source, repo, revision, "tokenizer.json", ""))
-}
-
-func loadHTTP(parent context.Context, rawURL string) (*Tokenizer, error) {
-	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("tokenizer download returned %s", resp.Status)
-	}
-	return Load(io.LimitReader(resp.Body, 64<<20))
 }

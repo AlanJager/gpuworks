@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 
@@ -39,11 +40,22 @@ func tokenizerLoadError(err error) error {
 	if errors.As(err, &transport) {
 		cause = transport.Err
 	}
-	if errors.Is(cause, context.Canceled) {
+	if errors.Is(err, context.Canceled) {
 		return fmt.Errorf("tokenizer loading canceled: %w", context.Canceled)
 	}
-	if errors.Is(cause, context.DeadlineExceeded) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("tokenizer loading timed out: %w", context.DeadlineExceeded)
+	}
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return fmt.Errorf("DNS resolution failed while downloading tokenizer; evaluation was not started: %s", loadgen.RedactErrorText(dns.Error()))
+	}
+	var network net.Error
+	if errors.As(cause, &network) {
+		return fmt.Errorf("network connection failed while downloading tokenizer; evaluation was not started: %s", loadgen.RedactErrorText(network.Error()))
+	}
+	if errors.Is(err, tokenizer.ErrDownload) {
+		return fmt.Errorf("tokenizer download failed; evaluation was not started: %s", loadgen.RedactErrorText(cause.Error()))
 	}
 	return fmt.Errorf("tokenizer could not be loaded; evaluation was not started: %s", loadgen.RedactErrorText(cause.Error()))
 }
