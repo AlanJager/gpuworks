@@ -246,14 +246,19 @@ Trigger policy for the schedules (`CLOUD_FULL=1`, twice a day at 03:00 and 15:00
 - Public downloads are verified only by explicit, low-frequency `public-download` cases such as
   `test-l4-runpod-huggingface-public-download` and `test-l4-compshare-modelscope-public-download`,
   to avoid downloading images and models again for every rental.
-- AutoDL Pro and Gitee Ascend have limited stock and are often sold out at the nightly peak (15:00 Asia/Shanghai). Both
-  wait and retry only when every candidate reports no stock: for AutoDL every candidate spec returns "暂无库存", for Gitee
-  every profile's create returns "没有找到符合条件的可用主机" (it has no stock API; only a create reveals supply).
-  Retries run every 5 minutes with a default total wait of 30 minutes, overridden by `AUTODL_STOCK_WAIT` /
-  `GITEE_STOCK_WAIT` (a Go duration such as `45m`; `0` disables). Nothing is created while waiting, and other errors
-  (insufficient balance, authentication, price cap exceeded, and so on) are not retried; when AutoDL is asked for a
-  specific card it neither swaps nor waits. The wait is added on top of the case's setup budget, so the `go test -timeout`
-  and CI `timeout` of `test-l4-autodl-node-onboarding` and `test-l4-gitee-ascend-partition-capability` each grew by
+- AutoDL Pro, Gitee Ascend and CompShare containers have limited stock and are often sold out at the nightly peak (15:00
+  Asia/Shanghai). All three wait and retry only when every candidate reports no stock: for AutoDL every candidate spec
+  returns "暂无库存", for Gitee every profile's create returns "没有找到符合条件的可用主机" (it has no stock API; only a
+  create reveals supply), and for CompShare containers every card type (4090 / 4090_48G / 5090, ...) is refused in every
+  container zone with a supply error (capacity unavailable, `RetCode 226604` out of resources, `8433` service blip,
+  `230` machine type not configured for the zone, `226641` / `226603` image not supported). Retries re-walk the whole
+  candidate list every 5 minutes with a default total wait of 30 minutes, overridden by `AUTODL_STOCK_WAIT` /
+  `GITEE_STOCK_WAIT` / `COMPSHARE_STOCK_WAIT` (a Go duration such as `45m`; `0` disables). Nothing is created while
+  waiting, and other errors (insufficient balance, authentication, price cap exceeded, a card type skipped for a
+  non-supply reason such as a missing SSH endpoint, and so on) are not retried; when AutoDL is asked for a specific
+  card it neither swaps nor waits. The wait is added on top of the case's setup budget (a CompShare container is rented
+  before setup, so it adds the wait too), so the `go test -timeout` and CI `timeout` of `test-l4-autodl-node-onboarding`,
+  `test-l4-gitee-ascend-partition-capability` and `test-l4-compshare-server-dial-node-onboarding-container` each grew by
   30 minutes. The AutoDL hourly price cap defaults to 10 CNY (`AUTODL_MAX_HOURLY_PRICE`).
 - CompShare can reuse a prewarmed VM template through `COMPSHARE_GOLDEN_IMAGE_ID`, specify an image archive visible inside the VM through
   `COMPSHARE_DOCKER_IMAGE_TAR`, and register a complete model directory already present on each node through

@@ -1016,7 +1016,10 @@ l4-compshare-provisioning-matrix:
 # one-VM compshare jobs.
 l4-compshare-server-dial-node-onboarding-container:
   extends: .l4-acceptance
-  timeout: 65m
+  # go test -timeout is 85m: up to 30m (COMPSHARE_STOCK_WAIT) waiting out a
+  # container walk where every card type is refused for lack of supply, plus
+  # the 55m a rented container needs.
+  timeout: 95m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/server-dial-container
