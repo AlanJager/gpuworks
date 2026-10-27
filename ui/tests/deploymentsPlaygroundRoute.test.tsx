@@ -229,7 +229,7 @@ test("copied curl carries the API key header the gateway requires", () => {
   assert.match(deploymentCurl("http://gw", { served_name: "api", model_name: "m" }), /"model":"api"/);
 });
 
-test("deployment list keeps template, served name and endpoint off the row and deletes from the more menu", async () => {
+test("deployment list exposes the copyable served name and deletes from the more menu", async () => {
   const deployment = { id: 7, name: "templated", model_name: "model", model_id: 1, served_name: "public-name", engine: "vllm", node_uuid: "node", node_name: "gpu3", desired_state: "active", runtime_state: "running", sleepable: false, health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] }, replicas: 1, template_id: "tpl", template_deviated: true, created_at: "2026-09-05T00:00:00Z", operations: [] } as const;
   api.deploymentsPage = async () => listPage([deployment]);
   const deleted: Array<[number, boolean | undefined]> = [];
@@ -237,12 +237,27 @@ test("deployment list keeps template, served name and endpoint off the row and d
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><Routes><Route path="/deployments" element={<DeploymentsPage />} /></Routes></MemoryRouter></I18nextProvider>);
   await screen.findByRole("button", { name: "templated" });
   const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-  assert.deepEqual(headers.filter(Boolean), ["Name", "Model", "Engine / Image", "Compute Node", "State", "Health", "Ready / desired replicas", "Created", "Actions"]);
-  assert.equal(screen.queryByText("public-name"), null, "the served name lives in the detail, not the row");
+  assert.deepEqual(headers.filter(Boolean), ["Name", "Served name", "Model", "Engine / Image", "Compute Node", "State", "Health", "Ready / desired replicas", "Created", "Actions"]);
+  const servedName = screen.getByText("public-name");
+  assert.ok(servedName.closest("td"), "the wire served_name is visible in the list without opening details");
   assert.equal(screen.queryByText(/Inference Template/), null, "the template badge no longer crowds the name");
   assert.equal(screen.queryByRole("button", { name: /Delete/ }), null, "delete sits behind the more menu");
 
   const user = userEvent.setup();
+  // Typography uses the browser's selection/execCommand fallback on HTTP.
+  const originalExecCommand = document.execCommand;
+  let copied = "";
+  document.execCommand = (command) => {
+    assert.equal(command, "copy");
+    copied = window.getSelection()?.toString() || "";
+    return true;
+  };
+  try {
+    await user.click(within(servedName.closest("td")!).getByRole("button", { name: "Copy" }));
+    assert.equal(copied, "public-name");
+  } finally {
+    document.execCommand = originalExecCommand;
+  }
   await user.click(screen.getByRole("button", { name: "Copy curl" }));
   assert.match(await navigator.clipboard.readText(), /-H "Authorization: Bearer <key>"/);
 

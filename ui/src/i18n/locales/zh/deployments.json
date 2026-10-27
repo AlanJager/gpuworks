@@ -28,6 +28,7 @@
     "curlCopied": "curl 已复制",
     "column": {
       "name": "名称",
+      "servedName": "调用名",
       "model": "模型",
       "runtime": "引擎 / 镜像",
       "node": "计算节点",
