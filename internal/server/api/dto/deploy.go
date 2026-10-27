@@ -100,7 +100,7 @@ type Deployment struct {
 	// StartTimeoutSec is the deployment's own instance health budget; absent
 	// when it states none and its launches take the cluster default.
 	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
-	// ReadyReplicas counts the replicas running now (every rank of a
+	// ReadyReplicas counts the connected, awake replicas running now (every rank of a
 	// multi-node one); absent for a PD deployment, whose roles count their
 	// own (PD).
 	ReadyReplicas *int `json:"ready_replicas,omitempty"`

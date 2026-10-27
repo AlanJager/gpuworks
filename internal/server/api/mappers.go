@@ -102,7 +102,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	if viewErr == nil {
 		out.PD = deploymentPDDTO(rows, d, insts, view)
 		if out.PD == nil {
-			ready := readyReplicas(view)
+			ready := readyReplicas(rows, view)
 			out.ReadyReplicas = &ready
 			out.RetryExhausted = ordinaryRetryExhausted(rows, view)
 			out.PlacementStatus = placementStatus(rows, d, view)
@@ -182,7 +182,24 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 
 // deploymentRuntimeState is the runtime_state the deployment DTO reports.
 func deploymentRuntimeState(rows dtoLookup, d *store.Deployment, insts []store.Instance, progress []dto.ModelNodePresence) string {
-	return deriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts)))
+	state := deriveRuntimeState(d.State, insts, progress, scheduleStalled(rows, d.ID, len(insts)))
+	if state != "running" {
+		return state
+	}
+	connected := onlineInstances(rows, insts)
+	incomplete := planning.GroupsIncomplete(connected)
+	for _, inst := range connected {
+		// Sleeping engines retain their runtime state; sleep is presented separately.
+		if inst.State == proto.InstRunning && !inst.Headless && !incomplete[inst.UUID] {
+			return state
+		}
+	}
+	for _, inst := range insts {
+		if inst.State == proto.InstRunning && !instanceNodeOnline(rows, inst.NodeID) {
+			return "offline"
+		}
+	}
+	return state
 }
 
 // effectiveDeploymentState is the one state a list shows for a deployment: a
@@ -198,7 +215,7 @@ func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
 const deploymentStateDeleting = "deleting"
 
 // deploymentListStates are the states a deployment list can be filtered by.
-var deploymentListStates = []string{"pending", "pulling", "starting", "running", "failed", "stopped", deploymentStateDeleting}
+var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting}
 
 // redactAcquisitionSecrets prevents credentials embedded in an explicit proxy
 // URL from being returned by deployment read APIs or persisted snapshots.

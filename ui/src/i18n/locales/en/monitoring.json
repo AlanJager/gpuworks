@@ -7,6 +7,7 @@
     "starting": "Starting",
     "stopped": "Stopped",
     "failed": "Failed",
+    "offline": "Offline",
     "asleep": "Asleep"
   },
   "range": {

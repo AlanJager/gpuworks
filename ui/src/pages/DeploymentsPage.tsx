@@ -50,7 +50,7 @@ import { TokenizeHelp } from "../components/DeploymentTokenize";
 
 const DEPLOYMENT_PAGE_SIZE = 20;
 const DEPLOYMENT_TABLE_ID = "deployments";
-const DEPLOYMENT_LIST_STATES = ["running", "starting", "pulling", "pending", "failed", "stopped", "deleting"];
+const DEPLOYMENT_LIST_STATES = ["running", "offline", "starting", "pulling", "pending", "failed", "stopped", "deleting"];
 
 export function deploymentTerminalInstances(deployment: Deployment): Instance[] {
   return (deployment.instances || []).filter((instance) => ["starting", "optimizing", "running"].includes(instance.state) && Boolean(instance.node_uuid && instance.container_id));
@@ -105,6 +105,7 @@ export default function DeploymentsPage() {
   useEvents("deployment", eventRefresh.trigger);
   useEventPayload("instance", refreshUnlessProgress);
   useEventPayload("modelfile", refreshUnlessProgress);
+  useEventPayload("node", (event) => { if (event.reason?.startsWith("state:")) eventRefresh.trigger(); });
   useEffect(() => {
     const requested = Number(searchParams.get("deployment"));
     if (Number.isInteger(requested) && requested > 0) setDetailId(requested);
@@ -365,6 +366,7 @@ function DeploymentDetail({
   useEvents("instance", eventRefresh.trigger);
   useEvents("deployment", eventRefresh.trigger);
   useEvents("modelfile", eventRefresh.trigger);
+  useEventPayload("node", (event) => { if (event.reason?.startsWith("state:")) eventRefresh.trigger(); });
 
   const changeRouting = async (routing_policy: string) => {
     if (!dep || dep.replicas <= 1) return;

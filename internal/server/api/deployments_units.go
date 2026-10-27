@@ -152,15 +152,15 @@ func ordinaryRetryExhausted(rows dtoLookup, view replicaView) *dto.DeploymentRet
 
 // readyReplicas counts the replicas whose leader and every follower rank
 // are running.
-func readyReplicas(view replicaView) int {
+func readyReplicas(rows dtoLookup, view replicaView) int {
 	n := 0
 	for _, slot := range view.match.Slots {
-		if slot.Inst == nil || slot.Inst.State != proto.InstRunning {
+		if slot.Inst == nil || slot.Inst.State != proto.InstRunning || slot.Inst.SleepLevel != 0 || !instanceNodeOnline(rows, slot.Inst.NodeID) {
 			continue
 		}
 		ready := true
 		for _, f := range slot.Followers {
-			if f == nil || f.State != proto.InstRunning {
+			if f == nil || f.State != proto.InstRunning || !instanceNodeOnline(rows, f.NodeID) {
 				ready = false
 				break
 			}
@@ -170,4 +170,14 @@ func readyReplicas(view replicaView) int {
 		}
 	}
 	return n
+}
+
+// Read connection facts separately from the agent's last runtime observation.
+func instanceNodeOnline(rows dtoLookup, nodeID uint) bool {
+	n := rows.node(nodeID)
+	return n != nil && n.State == store.NodeStateOnline
+}
+
+func onlineInstances(rows dtoLookup, instances []store.Instance) []store.Instance {
+	return planning.OnlineInstances(instances, func(id uint) bool { return instanceNodeOnline(rows, id) })
 }

@@ -67,12 +67,12 @@ func TestDeploymentRuntimeStatesMatchesListWithoutPerDeploymentQueries(t *testin
 	}
 }
 
-func TestDeploymentRuntimeStatesNeedsNoReadsForLoadedInstancesOrStoppedIntent(t *testing.T) {
+func TestDeploymentRuntimeStatesNeedsNoReadsForStartingInstancesOrStoppedIntent(t *testing.T) {
 	states, err := DeploymentRuntimeStates(nil, nil,
 		[]store.Deployment{{ID: 1, State: store.DeployActive}, {ID: 2, State: store.DeployStopped}},
-		[]store.Instance{{DeploymentID: 1, State: proto.InstRunning}, {DeploymentID: 2, State: proto.InstRunning}},
+		[]store.Instance{{DeploymentID: 1, State: proto.InstStarting}, {DeploymentID: 2, State: proto.InstRunning}},
 	)
-	if err != nil || states[1] != "running" || states[2] != "stopped" {
+	if err != nil || states[1] != "starting" || states[2] != "stopped" {
 		t.Fatalf("states = %v, error = %v", states, err)
 	}
 }

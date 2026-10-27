@@ -84,8 +84,12 @@ func (a *monitorInventoryAdapter) inventory(ctx context.Context) (monitor.Invent
 		Instances:   make([]monitor.InstanceRef, 0, len(instances)),
 		Nodes:       make([]monitor.NodeRef, 0, len(nodes)),
 	}
+	online := make(map[uint]bool, len(nodes))
+	for _, node := range nodes {
+		online[node.ID] = node.State == store.NodeStateOnline
+	}
 	instancesByDeployment := make(map[uint][]store.Instance)
-	for _, inst := range instances {
+	for _, inst := range planning.OnlineInstances(instances, func(id uint) bool { return online[id] }) {
 		instancesByDeployment[inst.DeploymentID] = append(instancesByDeployment[inst.DeploymentID], inst)
 	}
 	for i := range deployments {
@@ -135,12 +139,23 @@ func (a *monitorInventoryAdapter) deploymentEvents(_ context.Context, deployment
 }
 
 func deploymentRef(d *store.Deployment, instances []store.Instance) monitor.DeploymentRef {
-	var ready *int
+	count := 0
+	incomplete := planning.GroupsIncomplete(instances)
+	for _, inst := range instances {
+		headless := inst.Headless
+		if spec, ok := desiredState(inst.DesiredStateJSON); ok {
+			headless = headless || spec.Headless
+		}
+		if inst.State == proto.InstRunning && inst.SleepLevel == 0 && !headless && !incomplete[inst.UUID] {
+			count++
+		}
+	}
+	ready := &count
 	desired, pd, transfer := d.Replicas, false, false
 	if placement := pdPlacement(d.Placement); placement != nil {
 		// A PD deployment's desired instances are its units, every role.
 		desired, pd = placement.InstanceCount(), true
-		count := 0
+		count = 0
 		for _, role := range planning.PDStatusOf(placement, instances).Roles {
 			count += role.Ready
 		}

@@ -34,11 +34,17 @@ func TestMonitorPDReadyReplicasMatchRoleSummary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if err := st.SetNodeState(node.UUID, store.NodeStateOnline); err != nil {
+				t.Fatal(err)
+			}
 			placement := `{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"pd-node"}]},"decode":{"units":[{"node_uuid":"pd-node"}]}}}}`
 			followerNodeID := node.ID
 			if tc.distributed {
 				followerNode, err := st.RegisterNode("pd-follower", store.HashToken("follower-token"), "pd-follower")
 				if err != nil {
+					t.Fatal(err)
+				}
+				if err := st.SetNodeState(followerNode.UUID, store.NodeStateOnline); err != nil {
 					t.Fatal(err)
 				}
 				followerNodeID = followerNode.ID

@@ -13,6 +13,7 @@ const table: Record<string, { status: BadgeStatus; key: string }> = {
   draining: { status: "warning", key: "states.draining" },
   removing: { status: "warning", key: "states.removing" },
   deleting: { status: "processing", key: "states.deleting" },
+  offline: { status: "warning", key: "states.offline" },
   running: { status: "success", key: "states.running" },
   stopped: { status: "default", key: "states.stopped" },
   failed: { status: "error", key: "states.failed" },

@@ -49,6 +49,8 @@ func TestDeploymentStateRollup(t *testing.T) {
 		{"stopped intent overrides old running snapshot", "stopped", []monitor.InstanceRef{{State: proto.InstRunning}}, "stopped"},
 		{"one starting", "", []monitor.InstanceRef{{State: proto.InstPulling}}, "starting"},
 		{"one running awake", "", []monitor.InstanceRef{{State: proto.InstRunning}}, "running"},
+		{"disconnected observed running", "offline", []monitor.InstanceRef{{State: proto.InstRunning}}, "offline"},
+		{"disconnected observed asleep", "offline", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}}, "offline"},
 		{"one running asleep", "", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}}, "asleep"},
 		{"mixed asleep and awake running", "running", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}, {State: proto.InstRunning}}, "running"},
 		{"serving replica outranks historical failure", "running", []monitor.InstanceRef{{State: proto.InstRunning}, {State: proto.InstFailed}}, "running"},
