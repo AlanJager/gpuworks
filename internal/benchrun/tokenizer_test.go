@@ -2,8 +2,12 @@ package benchrun
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,10 +15,12 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
+	"gpuworks.ai/gpuworks/pkg/bench/tokenizer"
 )
 
 func testTokenizerRef(t *testing.T) string {
@@ -30,6 +36,7 @@ func TestControlledLengthsRequireTokenizerBeforeAnyInference(t *testing.T) {
 	for _, kind := range []string{"random", "agentic"} {
 		for _, source := range []string{"missing", "download failure", "invalid file"} {
 			t.Run(kind+"/"+source, func(t *testing.T) {
+				t.Setenv("XDG_CACHE_HOME", t.TempDir())
 				var inference atomic.Int32
 				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "/tokenizer.json" {
@@ -72,6 +79,7 @@ func TestNaturalImportedWorkloadCanRunWithoutTokenizer(t *testing.T) {
 }
 
 func TestTokenizerTransportFailureDoesNotPublishCredentials(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	server.Close()
 	ref := strings.Replace(server.URL, "http://", "http://tokenizer-user:tokenizer-password@", 1) + "/tokenizer.json?access_token=tokenizer-query-secret"
@@ -89,6 +97,7 @@ func TestTokenizerTransportFailureDoesNotPublishCredentials(t *testing.T) {
 }
 
 func TestTokenizerCancellationPreservesContextSemantics(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	e := &execution{run: Run{TokenizerRef: "http://example.invalid/tokenizer.json"}, hooks: Hooks{Warn: func(string) {}}}
@@ -114,6 +123,66 @@ func TestTokenizerNestedTransportErrorsAreSafeAndKeepCancellation(t *testing.T) 
 		}
 		if (cause == context.Canceled || cause == context.DeadlineExceeded) && !errors.Is(safe, cause) {
 			t.Fatalf("lost sentinel %v", cause)
+		}
+	}
+}
+
+func TestTokenizerFailureDiagnosticDistinguishesNetworkAndContent(t *testing.T) {
+	for _, tt := range []struct {
+		cause error
+		want  string
+	}{
+		{&net.DNSError{Err: "temporary failure in name resolution", Name: "mirror.invalid", IsTemporary: true}, "DNS resolution failed"},
+		{&net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}, "network connection failed"},
+		{fmt.Errorf("%w: HTTP 404 Not Found", tokenizer.ErrDownload), "tokenizer download failed"},
+		{errors.New("tokenizer.json has no BPE vocab"), "tokenizer could not be loaded"},
+	} {
+		message := tokenizerLoadError(tt.cause).Error()
+		if !strings.Contains(message, tt.want) || !strings.Contains(message, "evaluation was not started") {
+			t.Fatalf("diagnostic=%q want=%q", message, tt.want)
+		}
+	}
+}
+
+type tokenizerRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f tokenizerRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestTransientTokenizerDNSDoesNotFailBenchmark(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	endpoint := &fakeEndpoint{}
+	server := endpoint.serve(t)
+	original := http.DefaultClient
+	defer func() { http.DefaultClient = original }()
+	attempts := 0
+	http.DefaultClient = &http.Client{Transport: tokenizerRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "tokenizer.invalid" {
+			attempts++
+			if attempts == 1 {
+				return nil, &net.DNSError{Err: "temporary failure in name resolution", Name: r.URL.Host, IsTemporary: true}
+			}
+			return &http.Response{StatusCode: 200, Status: "200 OK", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"model":{"vocab":{"a":0,"b":1}}}`))}, nil
+		}
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	rec := &recorder{}
+	Execute(context.Background(), Run{ID: 101, Model: "m", TokenizerRef: "https://tokenizer.invalid/tokenizer.json", Client: loadgen.Client{BaseURL: server.URL}, Dataset: json.RawMessage(`{"kind":"random","input_tokens":2,"output_tokens":3}`), Search: json.RawMessage(`{"concurrency":[1],"isl":[2],"osl":[3],"requests_per_point_multiplier":1}`)}, rec.hooks())
+	if rec.last().State != "done" || attempts != 2 || len(endpoint.requests()) != 1 {
+		t.Fatalf("terminal=%+v attempts=%d inference=%d", rec.last(), attempts, len(endpoint.requests()))
+	}
+}
+
+func TestTokenizerWrappedTransportFailuresKeepDownloadClassification(t *testing.T) {
+	for _, cause := range []error{io.EOF, tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}} {
+		wrapped := fmt.Errorf("%w: %w", tokenizer.ErrDownload, &url.Error{Op: "Get", URL: "https://private-user:private-password@tokenizer.invalid/tokenizer.json?access_token=private-token", Err: cause})
+		message := tokenizerLoadError(wrapped).Error()
+		if !strings.Contains(message, "tokenizer download failed") || !strings.Contains(message, cause.Error()) {
+			t.Fatalf("download misclassified: %s", message)
+		}
+		for _, secret := range []string{"private-user", "private-password", "private-token", "access_token"} {
+			if strings.Contains(message, secret) {
+				t.Fatalf("diagnostic exposed %s", secret)
+			}
 		}
 	}
 }
