@@ -169,6 +169,14 @@ jobs:
           docker logs "$DIND"
           echo "isolated Docker test daemon did not become ready" >&2
           exit 1
+      # The fixtures expect their base images already present (the GitLab
+      # lanes seed them from a host cache): `docker run -d` output is read as
+      # the container ID, so an in-test pull's progress lines corrupt it.
+      - name: Seed the fixture base images
+        run: |
+          for image in busybox:1.36 python:3.12 alpine:3.20 quay.io/libpod/registry:2.8.2; do
+            docker exec "$DIND" docker pull -q "$image"
+          done
       - name: make test-${{ matrix.suite }}
         run: |
           docker run --rm \
