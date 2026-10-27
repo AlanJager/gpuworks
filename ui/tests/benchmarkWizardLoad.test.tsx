@@ -47,6 +47,7 @@ const nodes = [{ uuid: "node-1", name: "节点一", hostname: "node-1", state: "
 
 const calls: Array<Record<string, any>> = [];
 const apiModule = await import("../src/api.ts");
+apiModule.api.deployment = async () => ({ ...deployment, instances: [{ uuid: "leader-1", deployment_id: deployment.id, node_uuid: "node-1", state: "running", sleep_level: 0, node_rank: 0, api_port: 8000 } as import("../src/api.ts").Instance] });
 apiModule.api.createBenchmark = (async (body: unknown) => {
 	calls.push(body as Record<string, any>);
 	return { id: 1, name: "created", load_origin: "server" } as BenchmarkRun;
