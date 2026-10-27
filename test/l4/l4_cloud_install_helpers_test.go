@@ -195,6 +195,14 @@ func installCloudAgentViaProviderAPI(ctx context.Context, t *testing.T, env *tes
 			// node to become online, and the suite subsequently requires GPUs.
 			statusOK = true
 			wantStatus = "ok/warn(waiting for first session)"
+		} else if want == "server_dial" && result.Checks[i].Status == "warn" && strings.HasPrefix(result.Checks[i].Detail, "queued for reconnection: ") {
+			// The install tries the first dial a few times and otherwise hands
+			// the node to the server's reconnect loop (provision.go). A freshly
+			// mapped pod port can take longer to answer; setupCloudNode still
+			// waits for this exact node to come online, so an address that never
+			// works still fails the case.
+			statusOK = true
+			wantStatus = "ok/warn(queued for reconnection)"
 		}
 		if checkErr == nil && (result.Checks[i].Name != want || !statusOK) {
 			checkErr = fmt.Errorf("provider install check %d=%+v, want %s=%s", i, result.Checks[i], want, wantStatus)
