@@ -17,6 +17,18 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 昇腾实测组合、CANN 和 runtime 细节见[昇腾矩阵](ascend-support-matrix.md)；PPU 未完成项见[开发台账](../dev/ledgers/ppu-support-gaps.md)。
 
 
+## dGPU 能力对比
+
+| 后端 | 显存限制 | 算力语义 | 修改显存配额 | 行为探针 |
+|---|---|---|---|---|
+| NVIDIA HAMi-core | 硬显存上限 | 平台不开放算力上限；CUDA graph、cuBLAS 不受 HAMi 发射限流约束 | 支持安全在线调整；引擎可能仍需重启才能利用新额度 | 依赖内嵌资产校验与准入检查，豁免行为探针 |
+| 昇腾 vCANN | 显存配额，依赖宿主 device-share 权限 | 受 vCANN 与宿主组合影响，不据此承诺固定吞吐比例 | 重启实例生效 | 必须逐卡通过 |
+| PPU HGGC | 显存配额 | 繁忙时加权 QoS，空闲时可借用余量；非硬 SM 分区 | 重启实例生效 | 必须逐卡通过；当前仅 Docker |
+| 海光 Z100 原生 vdev（实验性） | 原生 vdev 显存配额；每实例一张卡 | CU 随显存比例分配，不支持独立设置算力配额 | 重启实例生效，并按新显存配额重建 vdev | 必须逐卡通过；仅 x86_64 + Docker |
+
+在线调整的安全条件与待重启原因见[调整 dGPU 配额](../how-to/dgpu.md#调整-dgpu-配额)。
+表中能力不代表任意推理镜像均已验证；节点是否可用仍以该卡的 `status` / `reason` 为准。
+
 ## PPU 设备身份与 dGPU 探针
 
 PPU 注入使用 `ppu-smi` 返回并经设备节点核对的完整 UUID，按调度顺序写入 `CUDA_VISIBLE_DEVICES`。HGGC 将这些 UUID 映射为计算设备 `0..N-1`；Docker 的可见设备列表与 runveil 的宿主设备列表不必有相同编号。HGML 配额查询按同一 UUID 顺序定位配额与显存账本，不把 HGML 的宿主编号直接当作计算设备编号。
@@ -26,6 +38,10 @@ PPU 注入使用 `ppu-smi` 返回并经设备节点核对的完整 UUID，按调
 ## 海光 Z100 dGPU
 
 Z100 使用 `hygon-dgpu` 后端，按显存比例分配 CU。启用前，在节点构建并安装可选的 `gpuworks-hygon-vdev-helper`（构建步骤见源码的 `build/runtime-assets/hygon-vdev-helper/README.md`），并提供宿主 DTK、HYHAL 和 DCGM 库。agent 本身仍是静态二进制。仅 x86_64 + Docker 路径受支持；K100 等其他型号不会获得此能力。
+
+每个 dGPU 实例只能使用一张 Z100。请求显存向上取整到 MiB 后必须大于零且严格小于该卡物理显存；CU 数按 `ceil(配额 MiB × 60 / 物理显存 MiB)` 分配，不提供独立算力配额，也不承诺同等比例的推理吞吐。修改配额后需重启实例，释放旧 vdev 后按新配额重新创建。
+
+当前兼容性配置列出 DTK 26.04.x × x86_64，但该配置尚未标记为整套真机验证通过，版本信息仅作兼容性提示，不能替代逐卡探针。
 
 逐卡探针必须确认 HIP 看到请求的显存配额、可分配 1 MiB，并拒绝超额 1 MiB 的分配。探针通过后才能调度 dGPU 实例。推理容器使用自己的 DTK；宿主 DTK 与 ABI 补充库只供轻量探针使用。内置 Qwen3-0.6B 的 `bf16-vllm-hygon-z100` spec 使用经过 Z100 验证的 SourceFind 镜像。
 

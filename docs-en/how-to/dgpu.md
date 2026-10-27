@@ -10,6 +10,7 @@ This guide explains how to check a GPU's available dGPU capabilities, create a d
 - NVIDIA: x86_64, glibc ≥ 2.17, and shared libraries provided by the host driver (`libcuda.so.1`, `libnvidia-ml.so.1`).
 - Ascend: host device-share permissions meet vCANN requirements, and the selected inference image provides glibc ≥ 2.33. Being able to connect the node and run on a whole card does not mean the host permits dGPU device sharing.
 - PPU: quotas combine a GPU memory limit with weighted QoS under contention. A 20/80 configuration specifies relative throughput weights under contention, not hard SM partitions.
+- Hygon Z100: experimental, x86_64 + Docker only, with one GPU per instance. Install the native helper and host DTK/HYHAL/DCGM libraries, and pass the per-GPU probe. CUs follow the memory ratio; there is no independent compute quota. Other models, including K100, remain full-GPU only. See [Hygon Z100 dGPU](../reference/support-matrix.md#海光-z100-dgpu).
 - For a complete walkthrough first, see [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md); for semantics and boundaries, see [What dGPU Is and Is Not](../explanation/dgpu.md).
 
 For each vendor's supported scope, see the [Support Matrix](../reference/support-matrix.md).
@@ -17,7 +18,7 @@ For each vendor's supported scope, see the [Support Matrix](../reference/support
 ## Check Capabilities and Deploy
 
 1. Open **GPU Devices** and check the **dGPU** capability and reason in the target GPU's details. Only GPUs with a status of `ready` can run newly created instances with quotas.
-2. When [deploying a model](deploy-models.md), enter the **dGPU Memory (GiB)** limit, check the candidate nodes and GPU memory estimate, and submit. The platform selects a ready backend based on the node hardware: HAMi-core for NVIDIA, vCANN for Ascend, and HGGC for PPU. You do not need to specify one manually.
+2. When [deploying a model](deploy-models.md), enter the **dGPU Memory (GiB)** limit, check the candidate nodes and GPU memory estimate, and submit. The platform selects a ready backend based on the node hardware: HAMi-core for NVIDIA, vCANN for Ascend, HGGC for PPU, and native vdev for Hygon Z100. You do not need to specify one manually.
 3. After the instance starts, return to **GPU Devices → dGPU** and confirm the slice's deployment, node, and GPU memory limit. To verify that two models share one card, follow the request checks in [Run Two Models on One GPU](../tutorials/one-gpu-two-models.md).
 
 The `status` and `reason` returned on the page determine capability:
@@ -56,7 +57,7 @@ The following instances keep their original limits and use the new limit only af
 
 | `reason` | Condition |
 |---|---|
-| `backend` | The dGPU backend reads the limit only at startup (Ascend vCANN, PPU HGGC) |
+| `backend` | The backend requires an instance restart to apply the new limit (Ascend vCANN, PPU HGGC, Hygon Z100 native vdev) |
 | `in_use` | When lowering the limit, the instance already uses more GPU memory than the new limit—lowering it immediately would cause the engine's next allocation to fail and the engine to exit |
 | `starting` / `asleep` | When lowering the limit, the instance is starting or asleep and may need more GPU memory later than it does now |
 | `no_usage` | When lowering the limit, the instance has not reported GPU memory usage |

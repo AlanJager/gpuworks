@@ -17,6 +17,18 @@ When dGPU is unavailable, the node can still use full-GPU deployment. The platfo
 For tested Ascend combinations, CANN, and runtime details, see the [Ascend Matrix](ascend-support-matrix.md). For outstanding PPU work, see the [Development Ledger](../dev/ledgers/ppu-support-gaps.md).
 
 
+## dGPU Capability Comparison
+
+| Backend | GPU memory limit | Compute semantics | Memory quota changes | Behavioral probe |
+|---|---|---|---|---|
+| NVIDIA HAMi-core | Hard memory limit | The platform does not expose a compute cap; CUDA graphs and cuBLAS bypass HAMi launch throttling | Supports safe live adjustment; the engine may still need a restart to use the new quota | Uses embedded asset validation and admission checks; exempt from behavioral probes |
+| Ascend vCANN | Memory quota, subject to host device-share permissions | Depends on the vCANN and host combination; does not promise a fixed throughput ratio | Requires an instance restart | Must pass per GPU |
+| PPU HGGC | Memory quota | Weighted QoS under contention, borrowing spare capacity when idle; not hard SM partitioning | Requires an instance restart | Must pass per GPU; currently Docker only |
+| Hygon Z100 native vdev (experimental) | Native vdev memory quota; one GPU per instance | CUs are allocated in proportion to memory; no independently configurable compute quota | Requires an instance restart, recreating the vdev with the new memory quota | Must pass per GPU; x86_64 + Docker only |
+
+For safe live adjustment conditions and reasons a restart is pending, see [Adjust dGPU Quotas](../how-to/dgpu.md#调整-dgpu-配额).
+These capabilities do not imply that every inference image has been verified; availability still depends on the GPU's `status` / `reason`.
+
 ## PPU device identity and dGPU probes
 
 PPU injection uses full UUIDs returned by `ppu-smi` and verified against device nodes, writing them to `CUDA_VISIBLE_DEVICES` in scheduling order. HGGC maps those UUIDs to compute devices `0..N-1`; Docker's filtered inventory and runveil's host inventory need not share indexes. HGML quota queries use the same UUID order to locate quota and memory-ledger slots instead of treating host HGML indexes as compute ordinals.
@@ -27,6 +39,10 @@ The embedded `gpuworks/partition-probe:v4` verifies both the selected UUID and i
 ## Hygon Z100 dGPU
 
 Z100 uses the `hygon-dgpu` backend, assigning CUs in proportion to the memory quota. Build and install the optional `gpuworks-hygon-vdev-helper` on the node (see `build/runtime-assets/hygon-vdev-helper/README.md` in the source tree), and provide the host DTK, HYHAL and DCGM libraries. The agent itself remains a static binary. Only x86_64 + Docker is supported; other models, including K100, do not receive this capability.
+
+Each dGPU instance can use only one Z100. The requested memory quota, rounded up to MiB, must be positive and strictly below the card's physical memory. The CU count is `ceil(quota MiB × 60 / physical memory MiB)`; there is no separate compute quota or promise of proportional inference throughput. Quota changes require an instance restart, releasing the old vdev before creating one with the new quota.
+
+The current compatibility profile lists DTK 26.04.x × x86_64, but the profile is not marked as fully verified on real hardware. Version information is advisory and cannot replace the per-GPU probe.
 
 The per-GPU probe must confirm that HIP reports the requested memory quota, permits a 1 MiB allocation, and rejects an allocation exceeding the quota by 1 MiB. dGPU scheduling requires a passing probe. Inference containers use their own DTK; host DTK and supplementary ABI libraries are used only by the small probe. The built-in Qwen3-0.6B `bf16-vllm-hygon-z100` spec uses the SourceFind image tested on Z100.
 
