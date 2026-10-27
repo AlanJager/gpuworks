@@ -61,7 +61,8 @@
   border-bottom: 0;
   background: #fff;
 }
-.playground-chat-grid { display: grid; width: 100%; flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); gap: 10px; }
+/* At very short heights the page grows instead of clipping the message list. */
+.playground-chat-grid { display: grid; width: 100%; flex: 1; min-height: 180px; grid-template-rows: minmax(0, 1fr); gap: 10px; }
 .playground-chat-grid.columns-1 { grid-template-columns: minmax(0, 1fr); }
 .playground-chat-grid.columns-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .playground-chat-grid.columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

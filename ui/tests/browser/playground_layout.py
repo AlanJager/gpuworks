@@ -119,6 +119,9 @@ class PlaygroundLayout(unittest.TestCase):
                 # after the textarea has grown, then reveal the reply's tail.
                 page.wait_for_function("document.querySelector('textarea').clientHeight > 100")
                 page.locator(".playground-message-list").evaluate("el => el.scrollTop = el.scrollHeight")
+            # Very short viewports may scroll the document, but the composer
+            # must remain reachable without covering any of the message pane.
+            page.locator(".playground-composer").scroll_into_view_if_needed()
             # Capture even the failing baseline for a visual diagnosis.
             if directory := os.environ.get("PLAYGROUND_SCREENSHOTS"):
                 Path(directory).mkdir(parents=True, exist_ok=True)
@@ -157,6 +160,12 @@ class PlaygroundLayout(unittest.TestCase):
 
     def test_sleep_alert(self):
         self.exercise(1280, 720, sleeping=True)
+
+    def test_short_window(self):
+        self.exercise(1280, 480)
+
+    def test_small_phone(self):
+        self.exercise(390, 640)
 
 
 if __name__ == "__main__":
