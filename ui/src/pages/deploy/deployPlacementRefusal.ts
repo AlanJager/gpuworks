@@ -65,5 +65,13 @@ export function nodeConditionSummary(result: EvaluateResponse | null | undefined
   const matched = nodes.filter((node) => node.requirements_match);
   const hardwareOnly = matched.length > 0 && matched.every((node) => !node.eligible && node.reasons?.length && node.reasons.every((reason) =>
     typeof reason !== "string" && (reason.code === "chip_mismatch" || reason.code === "vendor_mismatch")));
-  return { total: nodes.length, matched, eligible: matched.filter((node) => node.eligible).length, hardwareOnly };
+  const eligible = new Set(matched.filter((node) => node.eligible).map((node) => node.uuid));
+  // Placement can stop at its trial budget or first success. An absent
+  // candidate was not evaluated, so it cannot count as a failed plan.
+  const planned = new Map((result?.candidates ?? []).filter((node) => eligible.has(node.node_uuid)).map((node) => [node.node_uuid, node]));
+  return {
+    total: nodes.length, matched, eligible: eligible.size, hardwareOnly,
+    tried: planned.size, passed: [...planned.values()].filter((node) => node.ok).length,
+    untried: eligible.size - planned.size,
+  };
 }

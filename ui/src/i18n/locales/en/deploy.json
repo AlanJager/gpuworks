@@ -705,6 +705,7 @@
       "chooseModelFirst": "Choose a model and a target accelerator to see which node the scheduler picks.",
       "noRankAddress": "no interconnect address",
       "noRankAddressHint": "The node has neither a management address (reported by an up-to-date agent) nor a compute network (Resources → Networks), so other ranks cannot reach it.",
+      "planningFunnel": "Resource planning: {{passed}} passed / {{tried}} evaluated; {{untried}} not evaluated",
       "conditionFunnel": "Cluster: {{total}} → Node conditions: {{matched}} → Hardware and scheduling conditions: {{eligible}}",
       "conditionsEmpty": "No nodes matched the node conditions. Check the labels, networks and selected nodes.",
       "conditionsHardwareRejected": "Node conditions matched; hardware requirements rejected the matching nodes.",

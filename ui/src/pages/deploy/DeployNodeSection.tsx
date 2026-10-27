@@ -137,6 +137,11 @@ export default function NodeSection({
                   : t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
               </Typography.Paragraph>
             )}
+            {conditions && conditions.eligible > 0 && mode === "auto" && (
+              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+                {t("workbench.node.planningFunnel", { passed: conditions.passed, tried: conditions.tried, untried: conditions.untried })}
+              </Typography.Paragraph>
+            )}
             {mode === "auto" && (
               <Form.Item name="pool_nodes" label={t("workbench.node.poolNodes")} extra={t("workbench.node.poolNodesHelp")} style={{ margin: "8px 0 0" }}>
                 <NodePicker
