@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -85,6 +86,11 @@ func (f *failoverFixture) reconcile(t *testing.T, depID uint) {
 func (f *failoverFixture) lose(t *testing.T, node *store.Node, ago time.Duration) {
 	t.Helper()
 	f.hub.online[node.UUID] = false
+	// As the real hub: nothing can be pushed to a node that is not connected.
+	if f.hub.pushFails == nil {
+		f.hub.pushFails = map[string]error{}
+	}
+	f.hub.pushFails[node.UUID] = errors.New("node not connected: " + node.UUID)
 	if err := f.st.SetNodeState(node.UUID, store.NodeStateOffline); err != nil {
 		t.Fatal(err)
 	}
@@ -129,6 +135,7 @@ func (f *failoverFixture) settle(t *testing.T, depID uint, passes int) {
 func (f *failoverFixture) restore(t *testing.T, node *store.Node) {
 	t.Helper()
 	f.hub.online[node.UUID] = true
+	delete(f.hub.pushFails, node.UUID)
 	if err := f.st.SetNodeState(node.UUID, store.NodeStateOnline); err != nil {
 		t.Fatal(err)
 	}
@@ -753,5 +760,48 @@ func TestAMultiNodeUnitsGraceStartsWithTheServer(t *testing.T) {
 	f.reconcile(t, dep.ID)
 	if n := failed(); n == 0 {
 		t.Fatal("the generation outlived the reconnect grace counted from the start")
+	}
+}
+
+// A failed attempt on a node that has gone offline does not hold its unit's
+// retry: the retry starts on another node, and the offline agent drops the
+// container when it reconnects.
+func TestARetryDoesNotWaitForAFailedAttemptsOfflineNode(t *testing.T) {
+	f := newFailoverFixture(t, "retry-offline", 2)
+	dep, err := createTestDeploymentWithRequirements(t, f.st, &store.Deployment{
+		Name: "retry-offline", ModelID: f.model.ID, NodeID: f.nodes[0].ID, ServedName: "retry-offline", Engine: "vllm", State: "active", Replicas: 1,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile(t, dep.ID)
+	insts, _ := f.st.InstancesForDeployment(dep.ID)
+	if len(insts) != 1 {
+		t.Fatalf("initial replica = %+v", insts)
+	}
+	first := insts[0]
+	if err := f.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: first.UUID, State: proto.InstFailed, Message: "engine exited"}); err != nil {
+		t.Fatal(err)
+	}
+	gone, other := f.nodes[0], f.nodes[1]
+	if first.NodeID == f.nodes[1].ID {
+		gone, other = f.nodes[1], f.nodes[0]
+	}
+	// Offline a minute: well inside the replacement wait, so only the retry acts.
+	f.lose(t, gone, time.Minute)
+	f.at = f.at.Add(time.Minute)
+	for i := 0; i < 4; i++ {
+		f.reconcile(t, dep.ID)
+		f.at = f.at.Add(20 * time.Second)
+	}
+	insts, _ = f.st.InstancesForDeployment(dep.ID)
+	var retried bool
+	for _, inst := range insts {
+		if inst.UUID != first.UUID && inst.NodeID == other.ID {
+			retried = true
+		}
+	}
+	if !retried {
+		t.Fatalf("instances = %+v; want the retry on the online node", insts)
 	}
 }

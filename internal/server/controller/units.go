@@ -154,12 +154,14 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 			// budget is exhausted. This comes before a node is picked: a
 			// failed attempt whose engine still holds its card (an uncertain
 			// sleep transition) makes that card read as taken, and the retry
-			// would wait for a node forever.
+			// would wait for a node forever. An attempt on an offline node
+			// does not hold the retry up: its agent drops the container with
+			// the full desired state it gets on reconnect.
 			var old []string
 			for _, inst := range attempts {
 				old = append(old, inst.UUID)
 			}
-			if err := c.pushRemoveByNode(insts, old); err != nil {
+			if err := c.pushRemoveOnline(insts, old); err != nil {
 				c.q.addAfter(depKey(dep.ID), c.retryBackoff)
 				return fmt.Errorf("remove failed attempts before retry: %w", err)
 			}
