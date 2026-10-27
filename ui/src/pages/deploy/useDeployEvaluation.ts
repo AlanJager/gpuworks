@@ -159,8 +159,16 @@ export default function useDeployEvaluation({
           flaggedFieldsRef.current = [...flagged];
           if (fields.length) form.setFields(fields);
           if (unattributed.length) setError(unattributed.join(" · "));
-          applyEvaluateFormValues(form, response, previousKeys);
-          appliedKeysRef.current = Object.keys(response.form_values ?? {});
+          // A manual command owns its launch. Its evaluated defaults describe
+          // that command, not the structured draft restored by explicit discard.
+          // Keep the last structured keys so its next answer can clear stale ones.
+          const overrides = payload.container_overrides as
+            | { command_mode?: string }
+            | undefined;
+          if (overrides?.command_mode !== "manual") {
+            applyEvaluateFormValues(form, response, previousKeys);
+            appliedKeysRef.current = Object.keys(response.form_values ?? {});
+          }
         })
         .catch((reason: Error) => {
           if (
