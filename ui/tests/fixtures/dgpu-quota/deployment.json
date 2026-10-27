@@ -16,6 +16,9 @@
   "node_names": [
     "quota-node"
   ],
+  "runtime_node_names": [
+    "quota-node"
+  ],
   "node_requirements": {
     "gpuworks.ai/node": [
       "quota-node"

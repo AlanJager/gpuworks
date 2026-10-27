@@ -177,8 +177,8 @@ func TestInstanceListMatchesTheSingleInstancePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != len(insts) || len(insts) != 4 {
-		t.Fatalf("listed %d instances, store has %d, fixture seeds 4", len(listed), len(insts))
+	if len(listed) != len(insts) || len(insts) != 6 {
+		t.Fatalf("listed %d instances, store has %d, fixture seeds 6", len(listed), len(insts))
 	}
 	for i := range insts {
 		single, err := json.Marshal(f.handler.instanceDTO(&insts[i]))
