@@ -6,7 +6,7 @@ import { numericDetailID, useDetailParam } from "../../components/detail/useDeta
 import NetworkDetailDrawer from "./NetworkDetailDrawer";
 import { networkDetailPath } from "./networkLinks";
 import { useTranslation } from "react-i18next";
-import { api, usePolling } from "../../api";
+import { api, useEventPayload, useEvents, usePolling } from "../../api";
 import type { Network, NetworkList } from "../../networkTypes";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import PageHeader from "../../components/PageHeader";
@@ -30,10 +30,22 @@ export function AttachmentTags({ network }: { network: Network }) {
   );
 }
 
+// The node event reason of an agent's routine status report
+// (store.NodeChangeStatus on the server).
+const NODE_STATUS_REPORT = "status";
+
 export default function NetworksPage() {
   const { t } = useTranslation("networks");
   const detail = useDetailParam("network");
-  const { data, refetch, loading, error, updatedAt } = usePolling<NetworkList>(api.networks, 15000);
+  // The list changes when a network or a node it resolves against does, so
+  // it reads again on those events instead of on a timer. A node's routine
+  // status report, which every agent sends once a minute, is left out: the
+  // list would otherwise be read again every few seconds on a large fleet.
+  const { data, refetch, refresh, loading, error, updatedAt } = usePolling<NetworkList>(api.networks, 0);
+  useEvents("network", refresh);
+  useEventPayload("node", (event) => {
+    if (event.reason !== NODE_STATUS_REPORT) void refresh();
+  });
   const [editing, setEditing] = useState<Network | null>(null);
   const [formOpen, setFormOpen] = useState(false);
 
