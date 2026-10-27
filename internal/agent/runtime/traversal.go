@@ -24,12 +24,15 @@ import (
 //     to the runtime: others gain x instead (0750 -> 0751).
 //
 // dir must belong to the agent and not be writable by group or others;
-// anything else is reported, not repaired. Ancestors are the operator's and are
-// left to CheckAncestorTraversal: whether an untraversable one is fatal depends
+// anything else is reported, not repaired. Except for AutoDL's /root search
+// permission, ancestors are left to CheckAncestorTraversal: whether one is fatal depends
 // on what the caller is about to do. Callers run this before each use so that a
 // state directory reset after provisioning is repaired again; the traversable
 // case costs a stat.
 func PrepareTraversal(dir string, owner MountOwner) error {
+	if err := PrepareAutoDLTraversal(dir, owner); err != nil {
+		return err
+	}
 	// The state path is agent configuration and may itself be a symlink:
 	// resolve it, then change only the opened directory.
 	resolved, err := filepath.EvalSymlinks(dir)
