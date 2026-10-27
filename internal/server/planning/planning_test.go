@@ -506,7 +506,7 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 		t.Fatal(err)
 	}
 	req := scheduler.Request{WeightBytes: 8 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	suggestions := suggestEviction(st, node, req, false)
+	suggestions := suggestEviction(st, node, req, false, ledgerView{})
 	// Sleeping releases the whole card down to the residue the sleeper keeps.
 	wantFrees := float64((16<<30)-sleep.ResidentBytes) / (1 << 30)
 	if len(suggestions) != 1 || suggestions[0].InstanceUUID != "sleep-a" || suggestions[0].Deployment != "sleepable-a" || suggestions[0].FreesGiB != wantFrees {
@@ -524,7 +524,7 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 	if err := st.SetDeploymentSleep(dep.ID, 1); err != nil {
 		t.Fatal(err)
 	}
-	if got := suggestEviction(st, node, req, false); got != nil {
+	if got := suggestEviction(st, node, req, false, ledgerView{}); got != nil {
 		t.Fatalf("already-sleeping instance suggested again: %+v", got)
 	}
 	snap := NodeSnapshot(st, node, true, "")
@@ -757,7 +757,7 @@ func TestAReplicaSleepingAloneIsChargedItsResidue(t *testing.T) {
 		t.Fatalf("awake replica's card = %+v, want its full claim", allocations[1])
 	}
 	req := scheduler.Request{WeightBytes: 30 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
-	for _, suggestion := range suggestEviction(st, node, req, false) {
+	for _, suggestion := range suggestEviction(st, node, req, false, ledgerView{}) {
 		if suggestion.InstanceUUID == "replica-0" {
 			t.Fatalf("the sleeping replica was suggested for eviction: %+v", suggestion)
 		}
@@ -903,5 +903,55 @@ func TestAMacHostsSeveralInstancesByTheirMemoryClaims(t *testing.T) {
 	out = (Input{Model: model, Node: mac, Engine: deploy.EngineCallable, Quick: launchConfig(t, deploy.EngineCallable)}).Evaluate(st)
 	if !out.Result.OK || out.Result.Plan.ClaimBytes <= 0 || out.Result.Plan.ClaimBytes > 16<<30 {
 		t.Fatalf("callable beside a 40 GiB claim: %+v", out.Result.Plan)
+	}
+}
+
+// An edit of a deployment is previewed as the launch that replaces its
+// instances: their claims leave the ledger, and so do they as sleep
+// candidates. Every other deployment's claims stay.
+func TestLedgerViewExcludesTheEditedDeployment(t *testing.T) {
+	st, err := store.Open("file:planning_exclude_deployment?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	node, err := st.RegisterNode("exclude-dep", store.HashToken("token"), "exclude-dep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	node.GPUs = []store.GPU{
+		{Index: 0, UUID: "gpu-0", NodeID: node.ID, Vendor: "nvidia", ArchID: "sm_80", ComputeCapability: "8.0", MemoryTotal: 16 << 30},
+		{Index: 1, UUID: "gpu-1", NodeID: node.ID, Vendor: "nvidia", ArchID: "sm_80", ComputeCapability: "8.0", MemoryTotal: 16 << 30},
+	}
+	edited, err := st.CreateDeployment(&store.Deployment{Name: "edited", NodeID: node.ID, Engine: "vllm", Sleepable: true, State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := st.CreateDeployment(&store.Deployment{Name: "other", NodeID: node.ID, Engine: "vllm", State: "active"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range []store.Instance{
+		{UUID: "edited-0", DeploymentID: edited.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", DesiredStateJSON: sleepSpec("edited-0", 0)},
+		{UUID: "other-0", DeploymentID: other.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[1]", DesiredStateJSON: `{"engine":"vllm"}`},
+	} {
+		if _, err := st.CreateInstance(&inst); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plain := nodeSnapshot(st, node, true, "", ledgerView{})
+	if plain.GPUs[0].AllocatedBytes == 0 || plain.GPUs[1].AllocatedBytes == 0 {
+		t.Fatalf("plain ledger = %+v, want both cards claimed", plain.GPUs)
+	}
+	view := ledgerView{excludeDeployment: edited.ID}
+	snap := nodeSnapshot(st, node, true, "", view)
+	if snap.GPUs[0].AllocatedBytes != 0 || snap.GPUs[0].SleepingBytes != 0 {
+		t.Fatalf("edited deployment's card = %+v, want free", snap.GPUs[0])
+	}
+	if snap.GPUs[1].AllocatedBytes != plain.GPUs[1].AllocatedBytes {
+		t.Fatalf("another deployment's claim changed: %+v", snap.GPUs[1])
+	}
+	req := scheduler.Request{WeightBytes: 30 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
+	if got := suggestEviction(st, node, req, false, view); got != nil {
+		t.Fatalf("the edited deployment's own instance suggested for sleep: %+v", got)
 	}
 }

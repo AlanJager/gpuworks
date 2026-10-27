@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
@@ -298,13 +299,21 @@ func TestAReplayedSpecWithoutIdentitiesKeepsItsCardThroughTheEngine(t *testing.T
 			if len(cards[1].ForeignProcesses) != 0 {
 				t.Fatalf("the instance's own card = %+v, want it not called foreign", cards[1].ForeignProcesses)
 			}
-			// Withdrawn by the control plane: the same process is now
-			// somebody else's.
+			// Withdrawn by the control plane: once its teardown is over, a
+			// process still on the card is somebody else's. (While the
+			// teardown runs the card stays ours - engine.HeldCards.)
 			n.engine.SetDesiredFull(context.Background(), nil)
+			deadline := time.Now().Add(10 * time.Second)
+			for held := n.engine.HeldCards(); len(held.Idents)+len(held.Indexes) > 0; held = n.engine.HeldCards() {
+				if time.Now().After(deadline) {
+					t.Fatalf("the withdrawn instance's teardown never finished: %+v", held)
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
 			cards = twoOwnedCards()
 			n.CardHealthFindings(context.Background(), cards, true)
 			if p := cards[1].ForeignProcesses; len(p) != 1 || p[0].PID != 1750 {
-				t.Fatalf("after the instance was withdrawn = %+v, want the process named", p)
+				t.Fatalf("after the instance was withdrawn and torn down = %+v, want the process named", p)
 			}
 		})
 	}

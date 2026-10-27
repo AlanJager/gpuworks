@@ -32,6 +32,9 @@ type LaunchRequest struct {
 	Preview bool
 	// Unloaded previews the node as if nothing ran on it (Input.Unloaded).
 	Unloaded bool
+	// ExcludeDeploymentID previews the node without that deployment's
+	// instances (Input.ExcludeDeploymentID).
+	ExcludeDeploymentID uint
 	// APIPort is the reserved host port of a real launch; a preview passes zero
 	// and gets PreviewAPIPort.
 	APIPort int
@@ -213,6 +216,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		RuntimeImageBytes:    CatalogImageBytes(st, req.Source.Image),
 		RuntimeImageCached:   runtimeImageCached(st, req),
 		Unloaded:             req.Unloaded,
+		ExcludeDeploymentID:  req.ExcludeDeploymentID,
 		Parallel:             req.Placement.Parallelism(req.Topology.NNodes),
 		GPUIndexes:           req.Placement.GPUIndexes,
 		VRAMLimitBytes:       req.VRAMLimitBytes,

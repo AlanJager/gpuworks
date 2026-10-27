@@ -13,6 +13,7 @@ export default function useDeployNodeSync({
   nodes,
   nnodes,
   distributedNodes,
+  enabled = true,
 }: {
   form: FormInstance;
   mode: string;
@@ -20,6 +21,8 @@ export default function useDeployNodeSync({
   nodes: Node[];
   nnodes: unknown;
   distributedNodes: unknown;
+  // An edit of a deployment keeps the leader address and backend it has.
+  enabled?: boolean;
 }) {
   const leaderUUID = Array.isArray(distributedNodes)
     ? (distributedNodes as string[])[0]
@@ -28,6 +31,7 @@ export default function useDeployNodeSync({
     (node) => node.uuid === leaderUUID,
   )?.management_address;
   useEffect(() => {
+    if (!enabled) return;
     if (
       mode === "manual" &&
       capability?.status === "ready" &&
@@ -51,6 +55,7 @@ export default function useDeployNodeSync({
     capability?.backend,
     capability?.status,
     distributedNodes,
+    enabled,
     form,
     leaderAddress,
     leaderUUID,

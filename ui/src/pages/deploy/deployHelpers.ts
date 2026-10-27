@@ -204,6 +204,9 @@ export function buildPayload(
   if (v.model_id != null) payload.model_id = v.model_id;
   if (v.served_name != null) payload.served_name = v.served_name;
   if (v.template_id != null) payload.template_id = v.template_id;
+  // The routing policy of a deployment with several replicas; an edit that
+  // left it out would reset it to the default.
+  if (v.routing_policy) payload.routing_policy = v.routing_policy;
   if (v.template_spec_source)
     payload.template_spec_source = v.template_spec_source;
   if (v.template_spec_name) payload.template_spec_name = v.template_spec_name;
@@ -395,20 +398,32 @@ export function applyEvaluateFormValues(
 }
 
 // deploymentQuery reads the URL scheme a deploy link carries: which template,
-// spec and model the link names.
+// spec and model the link names, and whether it opens an existing deployment
+// to edit (edit=<id>, with focus=<field>[,<field>] naming the controls to
+// bring into view) or to clone and modify (from=<id>).
 export function deploymentQuery(search: string) {
   const query = new URLSearchParams(search);
   const positiveID = (key: string) => {
     const value = Number(query.get(key));
     return Number.isInteger(value) && value > 0 ? value : undefined;
   };
+  const queryEditID = positiveID("edit");
   return {
     queryTemplateID: positiveID("template"),
     querySpecName: query.get("spec") || undefined,
     querySpecSource: query.get("spec_source") || undefined,
     queryModelID: positiveID("model"),
+    queryEditID,
+    // An edit link wins over a clone link.
+    queryFromID: queryEditID ? undefined : positiveID("from"),
+    queryFocus: (query.get("focus") || "")
+      .split(",")
+      .map((field) => field.trim())
+      .filter(Boolean),
   };
 }
+
+export { draftToFormValues } from "./deployDraftValues";
 
 export function nodePartitionCapability(
   node?: Node | null,

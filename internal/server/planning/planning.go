@@ -72,6 +72,10 @@ type Input struct {
 	// is - its cards, their memory, the dtypes they run, whether it may serve
 	// - so a refusal here is one no amount of waiting fixes (CanEverFit).
 	Unloaded bool
+	// ExcludeDeploymentID previews the node without that deployment's
+	// instances: an edit of the deployment replaces them, so what they hold
+	// now is not in the way of the launch being previewed. Zero excludes none.
+	ExcludeDeploymentID uint
 	// ModelRules are the deployment's model source rules (store.SourceRules).
 	ModelRules store.SourceRules
 }
@@ -172,7 +176,8 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningGPUArchCaution, map[string]any{"detail": q}))
 	}
 
-	snap := NodeSnapshot(st, in.Node, dtypeOK, dtypeReason)
+	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID}
+	snap := nodeSnapshot(st, in.Node, dtypeOK, dtypeReason, view)
 	snap.ServingUnavailable = in.ServingUnavailable
 	if in.Unloaded {
 		// A card that is busy or unhealthy now is a reason to wait, not to
@@ -284,7 +289,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 	// No fit → suggest sleeping sleepable instances to free room (confirm-based;
 	// the platform never sleeps silently).
 	if !out.Result.OK {
-		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable)
+		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
 	}
 	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {
 		// Deliberately non-blocking (GWKS-79): new attention layouts and engine

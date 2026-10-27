@@ -214,11 +214,12 @@ make test-l2    # multi-process tests with real binaries and fake GPUs
 See the [developer docs](docs-en/dev/README.md) and [testing guide](docs-en/dev/testing.md). Contributor
 conventions are in [CLAUDE.md](CLAUDE.md) (Chinese) and domain terms in [CONTEXT.md](CONTEXT.md).
 
-## Usage report
+## Help us improve the product
 
 Production installations send one anonymous usage report per day (hardware and engine mix, task counts, error
-categories; never hostnames, IPs, prompts or your own model names). Turn it off in **Settings → General** or with
-`usage_report: false` in `server.yaml`. Every field is listed in [Usage report](docs-en/reference/usage-report.md).
+categories; no hostnames, model inputs or outputs, or any other sensitive information). Turn it off in
+**Settings → General** or with `usage_report: false` in `server.yaml`. Every field is listed in
+[User Experience Improvement Program](docs-en/reference/usage-report.md).
 
 ## License
 

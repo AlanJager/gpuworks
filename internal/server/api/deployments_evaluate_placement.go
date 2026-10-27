@@ -22,7 +22,7 @@ import (
 // create repeating the draft re-validates the selection and answers
 // AUTOMATIC_PLACEMENT_STALE when the world moved - nothing is silently
 // re-placed.
-func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName, image string, requestOverrides deploy.ContainerOverrides, eligible []dto.EligibleNode) (*dto.PlacementNode, []dto.PlacementCandidate) {
+func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.DeployRequest, engine deploy.Engine, model *store.Model, selection templateSelection, placement planning.Placement, quick deploy.LaunchConfig, userExtraArgs []string, servedName, image string, requestOverrides deploy.ContainerOverrides, eligible []dto.EligibleNode, excludeDeployment uint) (*dto.PlacementNode, []dto.PlacementCandidate) {
 	if len(eligible) == 0 {
 		return nil, nil
 	}
@@ -59,7 +59,7 @@ func (a *apiHandlers) evaluateAutomaticPlacement(ctx context.Context, req *dto.D
 			continue
 		}
 		plan, planErr := planning.PlanLaunch(ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, Engine: engine.Name(), Model: model, Node: node,
+			Preview: true, ExcludeDeploymentID: excludeDeployment, Engine: engine.Name(), Model: model, Node: node,
 			Selection: previewSelection, Placement: placement, Quick: quick, ExtraArgs: userExtraArgs,
 			Topology:   planning.DistTopology{NNodes: 1, Role: "standalone"},
 			Source:     planning.LaunchSourceFromRequest(image, requestOverrides),

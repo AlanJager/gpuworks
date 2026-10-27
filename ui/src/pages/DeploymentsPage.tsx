@@ -18,7 +18,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, ExperimentOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
+import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
 import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Deployment, type DeploymentListItem, type Instance, type RoutingPolicyOption } from "../api";
 import { DeploymentPreparation, PreparationLabel } from "./DeploymentPreparation";
 import DeploymentMetricsPanel from "../components/DeploymentMetricsPanel";
@@ -182,11 +182,13 @@ export default function DeploymentsPage() {
       <Tooltip title={effectiveDeploymentState(d) === "running" ? t("page.copyCurl") : t("page.runtimeUnavailable")}><Button disabled={effectiveDeploymentState(d) !== "running"} type="text" size="small" icon={<ApiOutlined />} onClick={() => void copyCurl(d)} aria-label={t("page.copyCurl")} /></Tooltip>
       <Dropdown trigger={["click"]} menu={{ items: [
       { key: "terminal", icon: <CodeOutlined />, disabled: !["starting", "optimizing", "running"].includes(effectiveDeploymentState(d)), label: t("instanceTerminal.open") },
+      { key: "edit", icon: <EditOutlined />, disabled: d.desired_state === "deleting", label: t("page.edit") },
       { key: "clone", icon: <CopyOutlined />, label: t("page.clone") },
+      { key: "cloneModify", icon: <CopyOutlined />, label: t("page.cloneModify") },
       { key: "benchmark", icon: <ExperimentOutlined />, disabled: effectiveDeploymentState(d) !== "running", label: t("page.benchmark") },
       { type: "divider" },
       { key: "delete", icon: <DeleteOutlined />, danger: true, label: t("delete.button") },
-      ], onClick: ({ key }) => { if (key === "terminal") void openTerminal(d); else if (key === "clone") void clone(d); else if (key === "benchmark") void benchmark(d); else if (key === "delete") setDeleting(d); } }}><Tooltip title={t("page.more")}><Button type="text" size="small" icon={<MoreOutlined />} aria-label={t("page.more")} /></Tooltip></Dropdown>
+      ], onClick: ({ key }) => { if (key === "terminal") void openTerminal(d); else if (key === "edit") navigate(`/deploy?edit=${d.id}`); else if (key === "clone") void clone(d); else if (key === "cloneModify") navigate(`/deploy?from=${d.id}`); else if (key === "benchmark") void benchmark(d); else if (key === "delete") setDeleting(d); } }}><Tooltip title={t("page.more")}><Button type="text" size="small" icon={<MoreOutlined />} aria-label={t("page.more")} /></Tooltip></Dropdown>
         </Space>;
     },
     },

@@ -499,6 +499,8 @@ This endpoint does not check whether a user spec with the same name already exis
 | POST | `/api/v1/deployments/preflight` | Run preflight checks for multi-node inference deployment (rank assignment and network probing) | JWT |
 | POST | `/api/v1/deployments` | Create a deployment (`model_source` contains only `{storage_id, provider}`: where to store the model and which provider's weights to run; it does not accept an image acquisition method. `placement.pd` specifies a PD disaggregated deployment; see below). Returns 409 `SERVED_NAME_IN_USE` if the served model name is occupied by a deployment that is not being deleted; `params` includes `served_name`, `deployment`, and `deployment_id`. When omitted, the name defaults to the model name and undergoes the same validation | JWT |
 | GET | `/api/v1/deployments/{id}/candidates` | Query the candidate pool for the next replica; `status` is `room/busy/unmet/cordoned/offline`. Supports `offset` and `limit` (1–200, default 50). Returns overall `counts`, `unmet_by_key`, and one page of `items`; `room` does not guarantee that the model fits. Check the deployment's `placement_status` as well. See [Query the Candidate Pool](#候选池查询) | JWT |
+| GET | `/api/v1/deployments/{id}/draft` | Read the deployment back as the request that creates it (`deployment`), with `revision` and the non-editable fields `locked`. The deploy page fills its edit and "Clone and modify" forms from it. See [Edit a Deployment](#编辑部署) | JWT |
+| PUT | `/api/v1/deployments/{id}` | Edit a deployment: submit the modified draft with `base_revision`; `?dry_run=1` returns only the change plan. Launch configuration changes replace instances according to `apply` (`rolling`/`all`/`none`). See [Edit a Deployment](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/requirements` | Replace the node requirements and placement strategy of a regular single-node deployment and return its details. Affects only replicas started afterward; running replicas are not migrated. See [Modify Node Requirements](#修改节点条件) | JWT |
 | GET | `/api/v1/deployments/{id}` | Get deployment details. Takes no query parameters; returns the deployment object directly, or 404 if not found. Includes `instances`, `node_requirements`, `node_requirement_labels`, `placement_strategy`, `ready_replicas` (check each role for PD), `health`, `tokenize_enabled`, and `max_replicas`; `placement_status` gives scheduling failure reasons, `retry_exhausted` identifies replicas that have exhausted their retries, and `restart_requested_at` identifies a rolling restart. See `units` for multi-node replicas. See [Query Deployment Details](#查询部署详情) | JWT |
 | PUT | `/api/v1/deployments/{id}/routing` | Change the routing policy (`least_request`, `prefix_affinity`, or `failover`) | JWT + administrator |
@@ -613,6 +615,65 @@ Provides the deployment candidate pool's live state. From the perspective of the
 `items` contains one page of details (candidates include `rank` in replica attempt order, followed by nodes with unmet requirements and offline nodes). Filter with `?status=` and paginate with `?offset=` and `?limit=` (1–200, default 50). Invalid parameters return 400 `FIELD_INVALID`.
 
 This endpoint does not simulate placement. Whether nodes that "appear to have free GPUs" actually have enough capacity is determined by the controller's simulation; see `placement_status` in deployment details.
+
+### Edit a Deployment
+
+`GET /api/v1/deployments/{id}/draft` returns `{"deployment": {...}, "revision": "...", "locked": [...]}`:
+
+- `deployment` has the same shape as the `POST /api/v1/deployments` request. `quick_params` is the complete launch configuration the deployment stores. A manual placement of a single-node deployment is written as `placement_mode: "manual"` with `node_uuid`, and the vendor as `target_vendor`; neither appears in `node_requirements`.
+- `revision` identifies the configuration the draft was read from. Send it back as `base_revision` when editing.
+- `locked` lists the request fields this deployment cannot edit: model, template, engine, vendor, name and served model name, weight source, and node count. Multi-node and PD deployments also lock the per-rank nodes, replica count, dGPU quota, and related fields (change them with [Replica Adjustment for Regular Deployments](#普通部署的副本调整) and the PD API); a PD deployment's `placement` is locked too. To change these fields, clone the deployment.
+
+`PUT /api/v1/deployments/{id}` request body:
+
+```json
+{"deployment": {...}, "base_revision": "...", "apply": "rolling", "start": false, "wake": false}
+```
+
+`deployment` is the modified draft. A `locked` field, when stated, must match the draft (omitted means unchanged); otherwise the response is 400 `DEPLOYMENT_FIELD_NOT_EDITABLE` (`params.field`). Other fields are validated by the create rules (parameter dictionary, node requirements, health checks, the "never fits" check `DEPLOYMENT_NEVER_FITS`, and so on).
+
+The launch configuration starts from the configuration the deployment stores and does not reapply the template: values sent back unchanged from the draft stay as they are, and only changed values are checked against the parameter dictionary's ranges. Template changes made after the deployment are not brought in by an edit, and dictionary defaults the deployment never had are not added.
+
+`?dry_run=1` returns only the plan and writes nothing:
+
+| Field | Description |
+|---|---|
+| `changes[]` | Per-field changes `{field, layer, from, to}`, named as in the request (launch parameters are `quick_params.<key>`, container parameters `container_overrides.<key>`). Environment variables are listed one by one as `container_overrides.env.<NAME>` with only `masked: true` and no values |
+| `changes[].layer` | `live`: takes effect at once (replica count, routing, health check, tokenize, start timeout, node requirements and placement strategy); `restart`: read when an instance starts (launch parameters, extra arguments, image, container parameters, parallelism, sleep capability, dGPU quota), so running instances keep the old value until they are replaced |
+| `restart` | Whether any change is in the `restart` layer |
+| `apply_options`, `default_apply` | The apply modes available in the current state and the default; see the table below |
+| `can_start` | The deployment is stopped and can be started with the edit (`start: true`) |
+| `can_wake` | The deployment is under a sleep order that `apply: "all"` can withdraw at the same time (`wake: true`), so the replacement instances start awake |
+| `apply_note` | Why the apply modes are fewer than the deployment's state alone allows; `partition_change` is described below |
+| `revision` | The configuration the plan was judged against |
+
+| Deployment state | `apply_options` | Default |
+|---|---|---|
+| Partition shape changes (dGPU turned on or off, another partition backend), `apply_note` is `partition_change` | `all`, `none` | `all` (`none` under a sleep order) |
+| Running with at least two replicas, at least one serving | `rolling`, `all`, `none` | `rolling` |
+| One replica, or no replica serving (starting, failed) | `all`, `none` | `all` |
+| Under a sleep order | `none`, `all` | `none` |
+| Stopped | `none` | `none` |
+
+- `rolling` is the rolling restart of [Restart Strategies](#重启策略): replicas are replaced one at a time, failed attempts are retired, and retry counts are reset.
+- `all` replaces every instance at once and interrupts service; failed attempts are also retired.
+- `none` only writes the configuration, which takes effect the next time an instance starts.
+- When the partition shape changes, every old instance must exit before the new ones start (dGPU caches and card claims are recorded per instance, so the old and new generations cannot coexist). The replicas therefore cannot be replaced one at a time, and service is interrupted until the new instances are ready. Resizing a dGPU slice alone does not change the partition shape and can roll.
+- When only `live` changes are present, no instance restarts, and `apply` must be omitted or `none`.
+
+An `apply` not in `apply_options`, `start` on a deployment that is not stopped, or `wake` without a sleep order or without `all` returns 400 `DEPLOYMENT_EDIT_APPLY_INVALID` (`params.apply`, `params.options`).
+
+Without `dry_run`, the configuration, node requirements, and apply mode are written in one transaction, and the response is 200 `{"plan": {...}, "deployment": {...}}`, where `plan.revision` is the new revision after the edit. When nothing changes, the response returns at once without writing or recording anything.
+
+Conflicts and limits:
+
+- A missing `base_revision` returns 400 `FIELD_INVALID`. A `base_revision` that does not match the current configuration (the deployment changed after the draft was read), or a configuration, node requirement, or desired state that changed while writing, returns 409 `DEPLOYMENT_CHANGED`. State the controller advances on its own, such as rolling restart progress or the sleep level, is not a conflict.
+- When a restart is needed, shared storage is checked as by the restart API; unreachable storage returns 409.
+- A deployment being deleted returns 409 `DEPLOYMENT_DELETING`; a missing one returns 404.
+
+The timeline records `DEPLOYMENT_EDITED` with `fields` (the changed fields, comma-separated), `count`, and `apply`.
+
+`POST /api/v1/evaluate` accepts `deployment_id`: the evaluation is treated as an edit of that deployment, so placement does not count the GPU memory its existing instances hold, and its own instances are not suggested for sleep.
 
 ### Modify Node Requirements
 

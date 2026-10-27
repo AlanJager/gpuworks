@@ -34,7 +34,7 @@ type EvictSuggestion struct {
 // that the current preview can use to make room, or nil if sleeping would not
 // help. Instances already asleep are not candidates: their memory is already
 // released down to the residue, so sleeping them again frees nothing.
-func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, servingUnavailable bool) []EvictSuggestion {
+func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, servingUnavailable bool, view ledgerView) []EvictSuggestion {
 	insts, _ := st.InstancesForNode(node.ID)
 	_, _, archFamily, _ := nodeGPUProfile(node)
 	capacity := map[int]int64{}
@@ -45,7 +45,7 @@ func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, s
 	var sugg []EvictSuggestion
 	for i := range insts {
 		in := &insts[i]
-		if in.State != proto.InstRunning && in.State != proto.InstStarting {
+		if in.State != proto.InstRunning && in.State != proto.InstStarting || view.excludes(in) {
 			continue
 		}
 		dep, err := st.GetDeployment(in.DeploymentID)
@@ -76,7 +76,8 @@ func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, s
 	}
 	// Re-run the scheduler with those instances asleep: their claims become
 	// residue, exactly as the ledger will charge them once they have slept.
-	snap := nodeSnapshot(st, node, true, "", func(in *store.Instance) bool { return evicted[in.UUID] })
+	view.alsoAsleep = func(in *store.Instance) bool { return evicted[in.UUID] }
+	snap := nodeSnapshot(st, node, true, "", view)
 	snap.ServingUnavailable = servingUnavailable
 	if scheduler.Schedule(req, snap).OK {
 		return sugg
@@ -310,18 +311,33 @@ func instanceGPUMemUtil(st *store.Store, inst *store.Instance, engine string) fl
 // Whether the node may serve is a network decision the caller adds
 // (Input.ServingUnavailable).
 func NodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason string) scheduler.NodeSnapshot {
-	return nodeSnapshot(st, node, dtypeOK, dtypeReason, nil)
+	return nodeSnapshot(st, node, dtypeOK, dtypeReason, ledgerView{})
 }
 
-// nodeSnapshot is NodeSnapshot with an optional override that treats further
-// instances as asleep, which is how the eviction suggestion previews the ledger
-// after the instances it proposes have slept.
-func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason string, alsoAsleep func(*store.Instance) bool) scheduler.NodeSnapshot {
+// ledgerView adjusts how the ledger reads a node's instances for one preview.
+// The zero value reads them as they are.
+type ledgerView struct {
+	// alsoAsleep treats further instances as asleep, which is how the
+	// eviction suggestion previews the ledger after the instances it proposes
+	// have slept.
+	alsoAsleep func(*store.Instance) bool
+	// excludeDeployment leaves that deployment's instances out entirely: an
+	// edit of a deployment is previewed as the launch that replaces them, so
+	// the memory they hold now is not counted against it (Input.ExcludeDeploymentID).
+	excludeDeployment uint
+}
+
+func (v ledgerView) excludes(in *store.Instance) bool {
+	return v.excludeDeployment != 0 && in.DeploymentID == v.excludeDeployment
+}
+
+// nodeSnapshot is NodeSnapshot read through view.
+func nodeSnapshot(st *store.Store, node *store.Node, dtypeOK bool, dtypeReason string, view ledgerView) scheduler.NodeSnapshot {
 	// Derived per-GPU allocation ledger (K8s model, no stored allocated table):
 	// a whole-GPU instance claims the full memory; a dGPU memory-limited instance
 	// claims its limit + context reserve, so several can share one GPU; a
 	// sleeping instance of either kind keeps only its residue.
-	allocations := gpuAllocations(st, node, alsoAsleep)
+	allocations := gpuAllocations(st, node, view)
 	partitionReports := partitioncap.Decode(node)
 	var gpus []scheduler.GPU
 	for _, g := range node.OwnedGPUs() {
@@ -410,10 +426,10 @@ type GPUAllocation struct {
 // GPUAllocations derives per-GPU claims from non-terminal instances. It is the
 // shared source for scheduling and the read-only GPU inventory API.
 func GPUAllocations(st *store.Store, node *store.Node) map[int]GPUAllocation {
-	return gpuAllocations(st, node, nil)
+	return gpuAllocations(st, node, ledgerView{})
 }
 
-func gpuAllocations(st *store.Store, node *store.Node, alsoAsleep func(*store.Instance) bool) map[int]GPUAllocation {
+func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]GPUAllocation {
 	result := map[int]GPUAllocation{}
 	if st == nil || node == nil {
 		return result
@@ -430,13 +446,13 @@ func gpuAllocations(st *store.Store, node *store.Node, alsoAsleep func(*store.In
 		// flow and follows the master ledger: it is not a live claim. A failed
 		// sleep report is different—its engine may still own the card—so retain
 		// that claim until the agent confirms stopped.
-		if instance.State == proto.InstStopped || (instance.State == proto.InstFailed && instance.Phase != proto.PhaseSleep) {
+		if instance.State == proto.InstStopped || (instance.State == proto.InstFailed && instance.Phase != proto.PhaseSleep) || view.excludes(&instance) {
 			continue
 		}
 		// A wake order is conservative until the agent reports awake: the
 		// instance's intent is already zero while the observed level may still
 		// be L1/L2, so the full claim remains reserved.
-		asleep := (alsoAsleep != nil && alsoAsleep(&instance)) || chargesResidue(st, &instance)
+		asleep := (view.alsoAsleep != nil && view.alsoAsleep(&instance)) || chargesResidue(st, &instance)
 		claim := instanceClaim(st, &instance, archFamily)
 		for _, gpuIndex := range parseInts(instance.GPUIndexes) {
 			allocation := result[gpuIndex]

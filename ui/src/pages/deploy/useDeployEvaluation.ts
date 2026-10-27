@@ -55,12 +55,17 @@ export default function useDeployEvaluation({
   signal,
   buildPayload,
   translate,
+  applyFormValues = () => true,
 }: {
   form: FormInstance;
   // The watched form values: one identity per draft, driving the debounce.
   signal: unknown;
   buildPayload: () => Record<string, unknown> | null;
   translate: APIErrorTranslator;
+  // Whether the answer's form_values may be written onto the form. A form
+  // opened from a deployment's draft already holds the deployment's values,
+  // and an answer built from dictionary defaults must not replace them.
+  applyFormValues?: () => boolean;
 }) {
   const [result, setResult] = useState<EvaluateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +170,7 @@ export default function useDeployEvaluation({
           const overrides = payload.container_overrides as
             | { command_mode?: string }
             | undefined;
-          if (overrides?.command_mode !== "manual") {
+          if (overrides?.command_mode !== "manual" && applyFormValues()) {
             applyEvaluateFormValues(form, response, previousKeys);
             appliedKeysRef.current = Object.keys(response.form_values ?? {});
           }

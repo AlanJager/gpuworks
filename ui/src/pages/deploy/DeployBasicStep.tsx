@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import ModelPicker from "./ModelPicker";
 import DeployServedNameField from "./DeployServedNameField";
 import TemplateRecommendations from "./TemplateRecommendations";
+import { LockedGroup } from "./DeployEditContext";
 
 export default function DeployBasicStep({
   templateIndex,
@@ -72,6 +73,7 @@ export default function DeployBasicStep({
   return (
     <div>
       <Typography.Title level={4}>{t("basic.title")}</Typography.Title>
+      <LockedGroup controls={["model_id", "template", "target_vendor", "name", "served_name"]}>
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
@@ -147,6 +149,7 @@ export default function DeployBasicStep({
           <DeployServedNameField model={selectedModel} />
         </Col>
       </Row>
+      </LockedGroup>
     </div>
   );
 }

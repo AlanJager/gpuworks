@@ -133,6 +133,7 @@ GET /api/v1/data-retention/status
 GET /api/v1/deployments
 GET /api/v1/deployments/{id}
 GET /api/v1/deployments/{id}/candidates
+GET /api/v1/deployments/{id}/draft
 GET /api/v1/deployments/{id}/events
 GET /api/v1/dgpus
 GET /api/v1/engines
@@ -333,6 +334,7 @@ POST /api/v1/updates/prefetch
 POST /api/v1/updates/server
 POST /api/v1/updates/server/upload
 PUT /api/v1/data-retention
+PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
 PUT /api/v1/deployments/{id}/pd

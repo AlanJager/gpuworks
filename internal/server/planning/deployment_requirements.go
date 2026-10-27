@@ -62,6 +62,25 @@ func RequestRequirements(r RequirementsRequest) (nodelabel.Requirements, error) 
 	return normalized, nil
 }
 
+// RequirementsOfDeployment is RequestRequirements read backwards: the
+// request that states a stored deployment's requirements. The vendor
+// requirement is the request's TargetVendor; on a single-node deployment a
+// node requirement naming exactly one node is its manual placement
+// (ManualNode), and one naming several is a pool, which stays stated.
+func RequirementsOfDeployment(reqs map[string][]string, perRank bool) RequirementsRequest {
+	out := RequirementsRequest{Stated: map[string][]string{}, TargetVendor: RequirementVendor(reqs), PerRank: perRank}
+	for key, values := range reqs {
+		if key != nodelabel.KeyVendor {
+			out.Stated[key] = append([]string(nil), values...)
+		}
+	}
+	if pinned, ok := PinnedNode(reqs); ok && !perRank {
+		out.ManualNode = pinned
+		delete(out.Stated, nodelabel.KeyNode)
+	}
+	return out
+}
+
 // EditedRequirements are the requirements a stored single-node deployment
 // takes from an edit, normalized. The vendor is the one thing an edit cannot
 // change: the deployment carries one image, built for that vendor. An edit

@@ -43,6 +43,8 @@
     "runtimeUnavailable": "Unavailable until the runtime is running",
     "more": "More Actions",
     "clone": "Clone Deployment",
+    "edit": "Edit Parameters",
+    "cloneModify": "Clone and Modify",
     "benchmark": "Start Benchmark",
     "saveInferenceTemplate": "Save as Inference Template",
     "empty": "No deployments yet. Create an inference service first.",
@@ -99,6 +101,9 @@
   },
   "detail": {
     "title": "Deployment Details",
+    "edit": "Edit",
+    "editHint": "Edit this deployment's launch parameters",
+    "cloneModify": "Clone and modify",
     "stopConfirm": "Stop this deployment?",
     "stop": "Stop",
     "cancel": "Cancel",
@@ -123,6 +128,7 @@
     "retry": {
       "exhausted": "A replica stopped being rebuilt after {{attempts}} failed attempts: {{reason}}",
       "action": "Retry",
+      "editAndRetry": "Edit parameters and retry",
       "failed": "Retry failed: {{detail}}"
     },
     "placement": {
@@ -336,6 +342,7 @@
       "DEPLOYMENT_ROLLING_RESTARTED": "Rolling restart requested for {{replicas}} replicas",
       "DEPLOYMENT_ROLLING_STALLED": "Rolling restart waits: replica {{replica}} gave up after {{attempts}} failed attempts; retry it to continue",
       "DEPLOYMENT_DGPU_QUOTA_CHANGED": "dGPU memory limit {{from}} → {{to}}: {{live}} instances took it at once, {{pending}} take it at restart",
+      "DEPLOYMENT_EDITED": "Configuration edited ({{count}}: {{fields}}); applied: {{apply}}",
       "REPLICA_RESTARTED": "Restart requested for the replica of instance {{instance}}",
       "UNIT_RETRY_EXHAUSTED": "Gave up after {{attempts}} failed attempts ({{reason}})",
       "UNIT_RETRIED": "Retry requested: {{attempts}} failed attempts cleared",
@@ -466,6 +473,11 @@
     "phaseSummary": {
       "done": "{{phase}} took {{duration}}",
       "transfer": "{{bytes}} at {{rate}}/s"
+    },
+    "editApply": {
+      "none": "saved, takes effect at the next restart",
+      "rolling": "rolling replacement",
+      "all": "all instances replaced at once"
     }
   },
   "instanceMetrics": {

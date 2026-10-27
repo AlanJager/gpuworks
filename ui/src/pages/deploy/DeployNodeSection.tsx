@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 import { Alert, Collapse, Form, InputNumber, Radio, Segmented, Space, Tag, Typography } from "antd";
 import type { EligibleNode, EngineProfile, EvaluateResponse, Node, NodeFacets } from "../../api";
 import NodePlacementLabels from "../../components/NodePlacementLabels";
@@ -14,6 +14,7 @@ import { gpuModelSummary } from "../../nodes/cardIdentity";
 import EligibleNodePicker from "./EligibleNodePicker";
 import { nodeRefusals, nodeConditionSummary } from "./deployPlacementRefusal";
 import DeployNodeRefusals from "./DeployNodeRefusals";
+import { DeployEditContext, LockedGroup } from "./DeployEditContext";
 
 const ONLINE = { state: ["online"] };
 
@@ -43,6 +44,8 @@ export default function NodeSection({
   onNodeMode: (mode: "auto" | "manual" | "multi" | "pd") => void;
 }) {
   const { t } = useTranslation("deploy");
+  // A form opened from a draft already holds the deployment's strategy.
+  const fromDraft = useContext(DeployEditContext).mode !== "create";
   const form = Form.useFormInstance();
   const mode = (Form.useWatch("node_selection_mode", {
     form,
@@ -79,8 +82,11 @@ export default function NodeSection({
     <div className="deploy-workbench-row">
       <div className="deploy-workbench-label">{t("workbench.node.title")}</div>
       <div className="deploy-workbench-body">
-        <NodePlacementLabels scope={ONLINE} />
-        <SystemLabelConditions facets={fleet?.system_labels} />
+        <LockedGroup controls={["node_requirements"]} hint={false}>
+          <NodePlacementLabels scope={ONLINE} />
+          <SystemLabelConditions facets={fleet?.system_labels} />
+        </LockedGroup>
+        <LockedGroup controls={["topology"]}>
         <div className="deploy-choice-strip">
           <ChoiceCard
             active={single}
@@ -116,17 +122,20 @@ export default function NodeSection({
             onClick={() => onNodeMode("pd")}
           />
         </div>
+        </LockedGroup>
         {single && (
           <div className="deploy-node-pool">
-            <Segmented
-              disabled={!ready}
-              value={mode}
-              onChange={(value) => onNodeMode(value as "auto" | "manual")}
-              options={[
-                { value: "auto", label: t("workbench.node.auto") },
-                { value: "manual", label: t("workbench.node.manual") },
-              ]}
-            />
+            <LockedGroup controls={["placement_mode"]} hint={false}>
+              <Segmented
+                disabled={!ready}
+                value={mode}
+                onChange={(value) => onNodeMode(value as "auto" | "manual")}
+                options={[
+                  { value: "auto", label: t("workbench.node.auto") },
+                  { value: "manual", label: t("workbench.node.manual") },
+                ]}
+              />
+            </LockedGroup>
             <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0" }}>
               {mode === "auto" ? t("workbench.node.autoPoolDescription") : t("workbench.node.manualPoolDescription")}
             </Typography.Paragraph>
@@ -143,18 +152,21 @@ export default function NodeSection({
               </Typography.Paragraph>
             )}
             {mode === "auto" && (
-              <Form.Item name="pool_nodes" label={t("workbench.node.poolNodes")} extra={t("workbench.node.poolNodesHelp")} style={{ margin: "8px 0 0" }}>
-                <NodePicker
-                  mode="multiple"
-                  allowClear
-                  disabled={!ready}
-                  filter={vendorPool}
-                  placeholder={t("workbench.node.poolNodesPlaceholder")}
-                  aria-label={t("workbench.node.poolNodes")}
-                />
-              </Form.Item>
+              <LockedGroup controls={["node_requirements"]} hint={false}>
+                <Form.Item name="pool_nodes" label={t("workbench.node.poolNodes")} extra={t("workbench.node.poolNodesHelp")} style={{ margin: "8px 0 0" }}>
+                  <NodePicker
+                    mode="multiple"
+                    allowClear
+                    disabled={!ready}
+                    filter={vendorPool}
+                    placeholder={t("workbench.node.poolNodesPlaceholder")}
+                    aria-label={t("workbench.node.poolNodes")}
+                  />
+                </Form.Item>
+              </LockedGroup>
             )}
             {mode === "auto" && (
+              <LockedGroup controls={["placement_strategy"]} hint={false}>
               <Collapse
                 ghost
                 size="small"
@@ -163,7 +175,7 @@ export default function NodeSection({
                   label: t("workbench.node.placementOptions"),
                   forceRender: true,
                   children: (
-                    <Form.Item name="placement_strategy" label={t("workbench.node.strategy")} initialValue="spread">
+                    <Form.Item name="placement_strategy" label={t("workbench.node.strategy")} initialValue={fromDraft ? undefined : "spread"}>
                       <Radio.Group>
                         <Radio value="spread">
                           {t("workbench.node.strategySpread")}
@@ -178,6 +190,7 @@ export default function NodeSection({
                   ),
                 }]}
               />
+              </LockedGroup>
             )}
           </div>
         )}
@@ -251,6 +264,7 @@ export default function NodeSection({
           </div>
         )}
         {mode === "multi" && (
+          <LockedGroup controls={["nodes", "topology"]}>
           <div className="deploy-node-card">
             <div className="deploy-node-card-head">
               <strong>{t("workbench.node.selectMulti")}</strong>
@@ -305,14 +319,17 @@ export default function NodeSection({
               )}
             </Space>
           </div>
+          </LockedGroup>
         )}
         {mode === "pd" && (
-          <DeployPdSection
-            eligibleNodes={eligibleNodes}
-            result={result}
-            loading={loading}
-            profile={profile}
-          />
+          <LockedGroup controls={["pd_placement"]}>
+            <DeployPdSection
+              eligibleNodes={eligibleNodes}
+              result={result}
+              loading={loading}
+              profile={profile}
+            />
+          </LockedGroup>
         )}
       </div>
     </div>

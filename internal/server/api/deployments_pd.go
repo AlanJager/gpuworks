@@ -173,17 +173,18 @@ func unitAttempts(rows dtoLookup, item *dto.DeploymentPDUnit, slot planning.Unit
 
 // evaluatePDEnv is what the PD preview needs from the evaluate handler.
 type evaluatePDEnv struct {
-	ctx              context.Context
-	writer           http.ResponseWriter
-	request          *dto.DeployRequest
-	response         *dto.EvaluateResponse
-	engine           deploy.Engine
-	model            *store.Model
-	selection        templateSelection
-	launch           deploy.Materialized
-	requestOverrides deploy.ContainerOverrides
-	servedName       string
-	errs             *evaluateFieldErrors
+	ctx               context.Context
+	writer            http.ResponseWriter
+	request           *dto.DeployRequest
+	excludeDeployment uint
+	response          *dto.EvaluateResponse
+	engine            deploy.Engine
+	model             *store.Model
+	selection         templateSelection
+	launch            deploy.Materialized
+	requestOverrides  deploy.ContainerOverrides
+	servedName        string
+	errs              *evaluateFieldErrors
 	// targetVendor and profileNode feed the image and acquisition facts, as
 	// on the ordinary path; the profile node is the placement's first node.
 	targetVendor string
@@ -311,7 +312,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	}
 	modelMount, componentMounts := previewComponentMounts(a.d.Store, env.selection.Components, target)
 	launch := planning.LaunchRequest{
-		Preview: true, Engine: env.engine.Name(), Model: env.model, Node: target,
+		Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: target,
 		Selection: rankSelection, Quick: env.launch.Quick, ExtraArgs: env.launch.UserResidual,
 		Source:     planning.LaunchSourceFromRequest(env.response.Image, env.requestOverrides),
 		ModelMount: modelMount, ComponentMounts: componentMounts,

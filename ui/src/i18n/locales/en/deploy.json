@@ -928,5 +928,72 @@
     "readOnly": "Read-only",
     "deleteMountAria": "Delete mount",
     "addMount": "Add Mount"
+  },
+  "edit": {
+    "loading": "Loading the deployment...",
+    "loadFailed": "The deployment could not be opened",
+    "notFound": "This deployment no longer exists",
+    "backToList": "Back to deployments",
+    "title": "Edit deployment: {{name}}",
+    "cloneTitle": "Clone deployment: {{name}}",
+    "description": {
+      "edit": "Change the launch parameters of this deployment. What it is (model, engine, template, names) stays fixed.",
+      "from": "A copy of the deployment's configuration. Change what you need, then create it as a new deployment."
+    },
+    "back": "Back to deployment",
+    "backSource": "Back to the source deployment",
+    "locked": "Cannot change in an edit.",
+    "lockedClone": "Clone and modify",
+    "review": "Review changes",
+    "changeCount_one": "{{count}} change",
+    "changeCount_other": "{{count}} changes",
+    "reviewFailed": "The changes could not be checked: {{detail}}",
+    "saved": "Deployment saved",
+    "layer": {
+      "live": "Takes effect now",
+      "restart": "Replaces instances"
+    },
+    "apply": {
+      "rolling": {
+        "label": "Rolling update",
+        "help": "Replaces one replica at a time while the others keep serving."
+      },
+      "all": {
+        "label": "Restart all",
+        "help": "Replaces every instance at once; the service is interrupted until they are ready."
+      },
+      "none": {
+        "label": "Save only",
+        "help": "Takes effect at the next restart; running instances keep the old values."
+      },
+      "wake": {
+        "label": "Wake and apply",
+        "help": "Wakes the deployment and replaces all its instances with the new configuration."
+      }
+    },
+    "ok": {
+      "rolling": "Save and roll out",
+      "all": "Save and restart all",
+      "wake": "Save and wake",
+      "save": "Save",
+      "startSave": "Save and start"
+    },
+    "confirm": {
+      "title": "Review changes",
+      "cancel": "Cancel",
+      "field": "Field",
+      "from": "Was",
+      "to": "Now",
+      "layer": "Takes effect",
+      "apply": "How to apply",
+      "noChanges": "Nothing changes.",
+      "startAfter": "Start the deployment after saving",
+      "conflict": "The deployment was changed by someone else",
+      "conflictHelp": "Reload it to see the current configuration. Your own changes are kept.",
+      "reload": "Reload"
+    },
+    "applyNote": {
+      "partition_change": "Turning dGPU on or off, or changing its partition backend, retires every old instance before the new ones start: the replicas cannot be replaced one at a time, and the service is interrupted until they are ready."
+    }
   }
 }

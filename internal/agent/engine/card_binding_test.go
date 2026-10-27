@@ -2,10 +2,13 @@ package engine
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
+	"gpuworks.ai/gpuworks/internal/agent/runtime/recording"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -153,5 +156,50 @@ func TestHeldCardsKeepsInstancesWithoutABinding(t *testing.T) {
 	// are the complete statement of the selection.
 	if len(got) != 4 || !got[1] || !got[2] || !got[3] || !got[4] {
 		t.Fatalf("indexes = %v, want 1 2 3 4", held.Indexes)
+	}
+}
+
+// gatedStopDriver holds every stop until release is closed, the way a busy
+// container runtime keeps an engine on its card while it shuts down.
+type gatedStopDriver struct {
+	*recording.Driver
+	stopping chan struct{}
+	release  chan struct{}
+}
+
+func (d *gatedStopDriver) Status(context.Context, string) (runtime.Status, error) {
+	return runtime.Status{Exists: true, Running: true}, nil
+}
+
+func (d *gatedStopDriver) Stop(ctx context.Context, id string) error {
+	close(d.stopping)
+	<-d.release
+	return d.Driver.Stop(ctx, id)
+}
+
+// An instance ordered away still has its engine on the card until its
+// container is gone. Until then the card is this agent's: reading that
+// engine as a stranger's process marked our own card as held outside the
+// platform, and the replacement waited on it. Once the teardown is done the
+// card is let go.
+func TestHeldCardsKeepsAnInstanceUntilItsTeardownEnds(t *testing.T) {
+	driver := &gatedStopDriver{Driver: recording.New(t.TempDir() + "/calls.json"), stopping: make(chan struct{}), release: make(chan struct{})}
+	e := New(driver, func(proto.InstanceStatus) {}, slog.New(slog.DiscardHandler), t.TempDir())
+	e.desired["leaving"] = proto.InstanceDesiredState{UUID: "leaving", DesiredState: "running", GPUIndexes: []int{0}, GPUIdents: []string{"pci:0000:17:00.0"}}
+	e.desiredKnown = true
+
+	done := make(chan struct{})
+	go func() {
+		e.ApplyUpdate(context.Background(), nil, []string{"leaving"})
+		close(done)
+	}()
+	<-driver.stopping
+	if held := e.HeldCards(); len(held.Idents) != 1 || held.Idents[0] != "pci:0000:17:00.0" {
+		t.Fatalf("while its container stops, the card is not ours: %+v", held)
+	}
+	close(driver.release)
+	<-done
+	if held := e.HeldCards(); len(held.Idents) != 0 || len(held.Indexes) != 0 {
+		t.Fatalf("after the teardown the card is still held: %+v", held)
 	}
 }

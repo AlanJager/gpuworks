@@ -60,6 +60,14 @@ type MaterializeInput struct {
 	// against them (capDefaultsToCards). Empty leaves every default as the
 	// dictionary states it, which is what a caller with no node yet must get.
 	Cards []CardFacts
+	// Base is the stored configuration an edit of a deployment starts from,
+	// nil for a new request. Its values rank below the request's fields and
+	// extra_args and above the template's arguments; a field that restates
+	// its base value is the deployment's own, not something the edit states,
+	// so only what the edit changed is held to the dictionary's bounds. No
+	// dictionary default is added to an edit: a stored row never gains one
+	// it did not have (applyDictionaryDefaults).
+	Base *LaunchConfig
 }
 
 // MovedFlag records a dictionary flag that was written in extra_args and now
@@ -123,8 +131,17 @@ func materialize(in MaterializeInput, legacy bool) (Materialized, error) {
 		unset[key] = struct{}{}
 	}
 
+	base, baseOther, err := baseValues(params, in.Base)
+	if err != nil {
+		return Materialized{}, err
+	}
 	explicit := map[string]any{}
 	values := map[string]any{}
+	for key, value := range baseOther {
+		if _, restated := in.Raw[key]; !restated {
+			values[key] = value
+		}
+	}
 	for key, raw := range in.Raw {
 		if _, disabled := unset[key]; disabled && raw != nil {
 			return Materialized{}, unsetConflict(key, params[key].Flag, "quick_params", raw)
@@ -212,6 +229,10 @@ func materialize(in MaterializeInput, legacy bool) (Materialized, error) {
 		}
 		spec := params[key]
 		value, source, stated := resolveValue(key, explicit, extraParams, templateParams, legacy)
+		if baseValue, kept := base[key]; kept && (!stated || source == sourceTemplate || sameValue(value, baseValue)) {
+			// The edit left this key as the deployment has it.
+			value, source, stated = baseValue, sourceStored, true
+		}
 		if !stated {
 			continue
 		}
@@ -226,7 +247,7 @@ func materialize(in MaterializeInput, legacy bool) (Materialized, error) {
 		}
 		values[key] = wireValue(spec, value)
 	}
-	if !legacy {
+	if !legacy && in.Base == nil {
 		applyDictionaryDefaults(params, unset, engineDecides, values)
 	}
 
@@ -394,7 +415,41 @@ type valueSource int
 const (
 	sourceRequest valueSource = iota
 	sourceTemplate
+	// sourceStored is the deployment's stored configuration an edit keeps
+	// (MaterializeInput.Base).
+	sourceStored
 )
+
+// baseValues reads the stored configuration an edit starts from: its
+// dictionary keys as canonical values, and apart from them the keys this
+// engine's dictionary does not describe. Those are kept as they are - the row
+// runs with them, and an edit that did not touch one must not drop it.
+func baseValues(params map[string]engineParam, base *LaunchConfig) (dictionary, other map[string]any, err error) {
+	if base == nil {
+		return nil, nil, nil
+	}
+	encoded, err := json.Marshal(base)
+	if err != nil {
+		return nil, nil, fmt.Errorf("stored quick_params: %w", err)
+	}
+	raw := map[string]any{}
+	if err := json.Unmarshal(encoded, &raw); err != nil {
+		return nil, nil, fmt.Errorf("stored quick_params: %w", err)
+	}
+	dictionary, other = map[string]any{}, map[string]any{}
+	for key, value := range raw {
+		spec, known := params[key]
+		if !known {
+			other[key] = value
+			continue
+		}
+		if canonical, ok := canonicalValue(spec, value); ok {
+			value = canonical
+		}
+		dictionary[key] = value
+	}
+	return dictionary, other, nil
+}
 
 // resolveValue answers with the value the highest-precedence source stated, who
 // stated it, and whether anyone did.

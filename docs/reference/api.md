@@ -499,6 +499,8 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/preflight` | 多机推理部署前置检查（rank 分配、网络探测） | JWT |
 | POST | `/api/v1/deployments` | 创建部署（`model_source` 只有 `{storage_id, provider}`：保存模型的存储与运行哪家权重来源，不接受镜像获取方式；`placement.pd` 为 PD 分离部署，见下）。对外模型名被未在删除的部署占用时返回 409 `SERVED_NAME_IN_USE`，`params` 包含 `served_name`、`deployment`、`deployment_id`；不填写时取模型名，同样校验 | JWT |
 | GET | `/api/v1/deployments/{id}/candidates` | 查询下一个副本的候选池；`status` 为 `room/busy/unmet/cordoned/offline`，支持 `offset`、`limit`（1–200，默认 50）。返回全量 `counts`、`unmet_by_key` 与一页 `items`；`room` 不保证能放下模型，需结合部署的 `placement_status` 判断。见[候选池查询](#候选池查询) | JWT |
+| GET | `/api/v1/deployments/{id}/draft` | 把部署读回成创建它的请求（`deployment`），附 `revision` 与不可编辑字段 `locked`；部署页的编辑与「克隆并修改」由此回填。见[编辑部署](#编辑部署) | JWT |
+| PUT | `/api/v1/deployments/{id}` | 编辑部署：提交改过的 draft 与 `base_revision`，`?dry_run=1` 只返回变更计划。启动配置的变化按 `apply`（`rolling`/`all`/`none`）替换实例。见[编辑部署](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/requirements` | 替换普通单机部署的节点条件与放置策略，返回详情；只影响之后启动的副本，运行中副本不迁移；见[修改节点条件](#修改节点条件) | JWT |
 | GET | `/api/v1/deployments/{id}` | 部署详情，无查询参数；直接返回部署对象，未找到 404。含 `instances`、`node_requirements`、`node_requirement_labels`、`placement_strategy`、`ready_replicas`（PD 看各角色）、`health`、`tokenize_enabled`、`max_replicas`；`placement_status` 给出调度失败原因，`retry_exhausted` 标识耗尽重试次数的副本，`restart_requested_at` 标识滚动重启，多机副本见 `units`。见[查询部署详情](#查询部署详情) | JWT |
 | PUT | `/api/v1/deployments/{id}/routing` | 修改路由策略（`least_request`、`prefix_affinity` 或 `failover`） | JWT + 管理员 |
@@ -613,6 +615,65 @@ macOS 忽略 `no_systemd`。
 `items` 是一页明细（候选按副本尝试顺序带 `rank`，其后是不满足的与离线的），`?status=` 过滤，`?offset=`、`?limit=`（1–200，默认 50）分页，参数不合法 400 `FIELD_INVALID`。
 
 本接口不做放置试算：「看上去有空卡」的是否真放得下以控制器的试算为准，见部署详情的 `placement_status`。
+
+### 编辑部署
+
+`GET /api/v1/deployments/{id}/draft` 返回 `{"deployment": {...}, "revision": "...", "locked": [...]}`：
+
+- `deployment` 与 `POST /api/v1/deployments` 的请求同形。`quick_params` 是部署保存的完整启动配置；单机部署的手动放置写成 `placement_mode: "manual"` 加 `node_uuid`，厂商写在 `target_vendor`，二者不出现在 `node_requirements` 里。
+- `revision` 标识读出 draft 时的配置，编辑时作为 `base_revision` 送回。
+- `locked` 是该部署不能编辑的请求字段：模型、模板、引擎、厂商、名称与对外模型名、权重来源、节点数；多机与 PD 部署另有按 rank 给出的节点、副本数、dGPU 配额等（用[普通部署的副本调整](#普通部署的副本调整)与 PD 接口修改），PD 部署的 `placement` 也不可编辑。要改这些字段，克隆部署。
+
+`PUT /api/v1/deployments/{id}` 请求体：
+
+```json
+{"deployment": {...}, "base_revision": "...", "apply": "rolling", "start": false, "wake": false}
+```
+
+`deployment` 是改过的 draft。`locked` 字段写了就必须与 draft 一致（不写则保持），否则 400 `DEPLOYMENT_FIELD_NOT_EDITABLE`（`params.field`）。其余字段按创建的规则校验（参数字典、节点条件、健康检查、「永远放不下」检查 `DEPLOYMENT_NEVER_FITS` 等）。
+
+启动配置从部署保存的配置出发，不重新套用模板：draft 里原样送回的值保持不变，只有改过的值才按参数字典的取值范围检查；模板在部署之后的修改不会经编辑带进部署，也不会补上部署原本没有的字典默认值。
+
+`?dry_run=1` 只返回计划，不写入：
+
+| 字段 | 说明 |
+|---|---|
+| `changes[]` | 逐字段的变化 `{field, layer, from, to}`，字段名同请求（启动参数为 `quick_params.<key>`，容器参数为 `container_overrides.<key>`）。环境变量逐个列出为 `container_overrides.env.<NAME>`，只带 `masked: true`，不带取值 |
+| `changes[].layer` | `live`：立即生效（副本数、路由、健康检查、分词、启动超时、节点条件与放置策略）；`restart`：实例启动时读取（启动参数、额外参数、镜像、容器参数、并行度、休眠能力、dGPU 配额），运行中的实例在被替换前保持旧值 |
+| `restart` | 是否有 `restart` 层的变化 |
+| `apply_options`、`default_apply` | 当前状态下可选的生效方式与默认值，见下表 |
+| `can_start` | 部署已停止，可随编辑启动（`start: true`） |
+| `can_wake` | 部署处于睡眠命令下，可随 `apply: "all"` 一并撤销（`wake: true`），替换出的实例醒着启动 |
+| `apply_note` | 生效方式比部署状态本身允许的更少时给出原因；`partition_change` 见下 |
+| `revision` | 计划所依据的配置 |
+
+| 部署状态 | `apply_options` | 默认 |
+|---|---|---|
+| 改变分区形态（开关 dGPU、换分区后端），`apply_note` 为 `partition_change` | `all`、`none` | `all`（处于睡眠命令下为 `none`） |
+| 运行中，至少两个副本且至少一个在服务 | `rolling`、`all`、`none` | `rolling` |
+| 单副本，或没有副本在服务（启动中、失败） | `all`、`none` | `all` |
+| 处于睡眠命令下 | `none`、`all` | `none` |
+| 已停止 | `none` | `none` |
+
+- `rolling` 同[重启策略](#重启策略)的滚动重启：逐个替换副本，失败的尝试退役、重试次数重置。
+- `all` 立即替换全部实例，期间服务中断，失败的尝试同样退役。
+- `none` 只写入配置，实例下次启动时生效。
+- 改变分区形态时，旧实例要全部退出后新实例才能启动（dGPU 的缓存与卡上占用按实例记录，新旧两代不能同时存在），所以不能滚动替换，服务会中断到新实例就绪；只调整 dGPU 显存大小不算改变分区形态，可以滚动。
+- 只有 `live` 层变化时不重启任何实例，`apply` 只能省略或为 `none`。
+
+`apply` 不在 `apply_options` 中、`start` 用于未停止的部署、`wake` 不在睡眠命令下或未配合 `all`，均 400 `DEPLOYMENT_EDIT_APPLY_INVALID`（`params.apply`、`params.options`）。
+
+不带 `dry_run` 时在一个事务里写入配置、节点条件和生效方式，返回 200 `{"plan": {...}, "deployment": {...}}`，`plan.revision` 为编辑后的新 revision。没有任何变化时直接返回，不写入、不记录。
+
+冲突与限制：
+
+- `base_revision` 缺省 400 `FIELD_INVALID`；与当前配置不符（部署在读出 draft 后被改过），或写入时配置、节点条件、期望状态已变化，409 `DEPLOYMENT_CHANGED`。滚动重启进度、睡眠级别等控制器自己推进的状态不算冲突。
+- 需要重启时与重启接口同样检查共享存储，存储不可达 409。
+- 部署删除中 409 `DEPLOYMENT_DELETING`，不存在 404。
+
+时间线记录 `DEPLOYMENT_EDITED`，含 `fields`（改动的字段，逗号分隔）、`count` 与 `apply`。
+
+`POST /api/v1/evaluate` 可带 `deployment_id`：评估把它当作该部署的编辑，计算放置时不计入这个部署现有实例占用的显存，也不建议休眠它自己的实例。
 
 ### 修改节点条件
 

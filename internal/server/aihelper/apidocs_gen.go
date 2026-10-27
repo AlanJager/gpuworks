@@ -30,6 +30,7 @@ var routeDocs = map[string]string{
 	"/api/v1/deployments":                       "部署列表；带 `page`/`page_size` 时分页返回列表列并可按 `q`/`state` 筛选（见“错误与响应约定”）",
 	"/api/v1/deployments/{}":                    "部署详情，无查询参数；直接返回部署对象，未找到 404。含 `instances`、`node_requirements`、`node_requirement_labels`、`placement_strategy`、`ready_replicas`（PD 看各角色）、`health`、`tokenize_enabled`、`max_replicas`；`placement_status` 给出调度失败原因，`retry_exhausted` 标识耗尽重试次数的副本，`restart_requested_at` 标识滚动重启，多机副本见 `units`。见[查询部署详情](#查询部署详情)",
 	"/api/v1/deployments/{}/candidates":         "查询下一个副本的候选池；`status` 为 `room/busy/unmet/cordoned/offline`，支持 `offset`、`limit`（1–200，默认 50）。返回全量 `counts`、`unmet_by_key` 与一页 `items`；`room` 不保证能放下模型，需结合部署的 `placement_status` 判断。见[候选池查询](#候选池查询)",
+	"/api/v1/deployments/{}/draft":              "把部署读回成创建它的请求（`deployment`），附 `revision` 与不可编辑字段 `locked`；部署页的编辑与「克隆并修改」由此回填。见[编辑部署](#编辑部署)",
 	"/api/v1/deployments/{}/events":             "部署事件时间线（最新优先、游标分页、读取时折叠）",
 	"/api/v1/dgpus":                             "dGPU 实例清单",
 	"/api/v1/engines":                           "引擎参数字典（前端渲染表单用）",

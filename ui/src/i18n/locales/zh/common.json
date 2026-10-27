@@ -457,7 +457,10 @@
     "ZSTACK_NETWORK_UNCONFIRMED": "ZStack IP 探测无响应，目标端口也无法连接，请检查地址、端口及防火墙；目前无法确定具体原因。",
     "ZSTACK_NETWORK_DIAGNOSTIC_UNAVAILABLE": "ZStack 连接失败，且 IP 探测无法执行，请检查地址、端口及防火墙。",
     "ZSTACK_REQUEST_TIMEOUT": "ZStack API 请求超时，请检查网络连通性及服务响应。",
-    "MODEL_INPUT_MODALITY_UNSUPPORTED": "该模型不支持 {{modality}} 输入（支持：{{supported}}）。请移除附件或选择兼容的模型。"
+    "MODEL_INPUT_MODALITY_UNSUPPORTED": "该模型不支持 {{modality}} 输入（支持：{{supported}}）。请移除附件或选择兼容的模型。",
+    "DEPLOYMENT_FIELD_NOT_EDITABLE": "已有部署不能修改 {{field}}，请克隆部署后修改。",
+    "DEPLOYMENT_CHANGED": "部署在你打开之后已被修改，请重新载入后再核对变更。",
+    "DEPLOYMENT_EDIT_APPLY_INVALID": "这次变更不能以 {{apply}} 方式生效，可选：{{options}}。"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"

@@ -73,6 +73,7 @@ function PdExhaustedUnits({ dep, onChanged }: { dep: Deployment; onChanged: () =
           })}
           retry={() => api.retryDeploymentUnit(dep.id, { role, index })}
           onDone={onChanged}
+          editHref={`/deploy?edit=${dep.id}`}
         />
       ))}
     </>

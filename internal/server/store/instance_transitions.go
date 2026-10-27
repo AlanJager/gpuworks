@@ -109,20 +109,8 @@ const deploymentRestartMessage = "deployment restart"
 func (s *Store) RestartDeploymentNow(id uint) (int, error) {
 	var rows []Instance
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&Deployment{}).Where("id = ? AND desired_state = ?", id, string(DeployActive)).Update("restart_requested_at", nil)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ErrStateChanged
-		}
-		var uuids []string
-		if err := tx.Model(&Instance{}).Where("deployment_id = ? AND state NOT IN ?", id, []string{proto.InstStopped, proto.InstRemoving, proto.InstPendingRemoval}).Pluck("uuid", &uuids).Error; err != nil {
-			return err
-		}
-		from := append(ReplicaFillingStates(), proto.InstFailed, proto.InstDraining)
 		var err error
-		rows, err = transitionInstances(tx, id, uuids, from, proto.InstRemoving, deploymentRestartMessage)
+		rows, err = restartDeploymentNowTx(tx, id)
 		return err
 	})
 	if err != nil {
@@ -131,6 +119,24 @@ func (s *Store) RestartDeploymentNow(id uint) (int, error) {
 	s.announceTransition(rows, proto.InstRemoving, deploymentRestartMessage)
 	s.Bus.PublishChange("deployment", uintKey(id), "restart")
 	return len(rows), nil
+}
+
+// restartDeploymentNowTx is RestartDeploymentNow inside tx, for the writes
+// that restart a deployment as part of a larger change (an edit).
+func restartDeploymentNowTx(tx *gorm.DB, id uint) ([]Instance, error) {
+	result := tx.Model(&Deployment{}).Where("id = ? AND desired_state = ?", id, string(DeployActive)).Update("restart_requested_at", nil)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrStateChanged
+	}
+	var uuids []string
+	if err := tx.Model(&Instance{}).Where("deployment_id = ? AND state NOT IN ?", id, []string{proto.InstStopped, proto.InstRemoving, proto.InstPendingRemoval}).Pluck("uuid", &uuids).Error; err != nil {
+		return nil, err
+	}
+	from := append(ReplicaFillingStates(), proto.InstFailed, proto.InstDraining)
+	return transitionInstances(tx, id, uuids, from, proto.InstRemoving, deploymentRestartMessage)
 }
 
 // RequestRollingRestart records a rolling restart of an active deployment
@@ -142,19 +148,8 @@ func (s *Store) RestartDeploymentNow(id uint) (int, error) {
 func (s *Store) RequestRollingRestart(id uint, at time.Time) error {
 	var rows []Instance
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&Deployment{}).Where("id = ? AND desired_state = ?", id, string(DeployActive)).Update("restart_requested_at", at)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ErrStateChanged
-		}
-		var failed []string
-		if err := tx.Model(&Instance{}).Where("deployment_id = ? AND state = ?", id, proto.InstFailed).Pluck("uuid", &failed).Error; err != nil {
-			return err
-		}
 		var err error
-		rows, err = transitionInstances(tx, id, failed, []string{proto.InstFailed}, proto.InstRemoving, deploymentRestartMessage)
+		rows, err = requestRollingRestartTx(tx, id, at)
 		return err
 	})
 	if err != nil {
@@ -163,4 +158,20 @@ func (s *Store) RequestRollingRestart(id uint, at time.Time) error {
 	s.announceTransition(rows, proto.InstRemoving, deploymentRestartMessage)
 	s.Bus.PublishChange("deployment", uintKey(id), "restart")
 	return nil
+}
+
+// requestRollingRestartTx is RequestRollingRestart inside tx.
+func requestRollingRestartTx(tx *gorm.DB, id uint, at time.Time) ([]Instance, error) {
+	result := tx.Model(&Deployment{}).Where("id = ? AND desired_state = ?", id, string(DeployActive)).Update("restart_requested_at", at)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrStateChanged
+	}
+	var failed []string
+	if err := tx.Model(&Instance{}).Where("deployment_id = ? AND state = ?", id, proto.InstFailed).Pluck("uuid", &failed).Error; err != nil {
+		return nil, err
+	}
+	return transitionInstances(tx, id, failed, []string{proto.InstFailed}, proto.InstRemoving, deploymentRestartMessage)
 }

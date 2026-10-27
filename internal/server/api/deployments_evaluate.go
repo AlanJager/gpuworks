@@ -228,7 +228,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	resp.TemplateResidualArgs = launch.TemplateResidual
 	if placement.PD != nil {
 		requestOverrides, _ := requestContainerOverrides(req.ContainerOverrides)
-		a.evaluatePD(evaluatePDEnv{ctx: r.Context(), writer: w, request: req, response: &resp, engine: eng, model: model,
+		a.evaluatePD(evaluatePDEnv{ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
 			selection: selection, launch: launch, requestOverrides: requestOverrides, servedName: servedName, errs: errs,
 			targetVendor: targetVendor, profileNode: profileNode})
 		return
@@ -308,7 +308,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	if isAutomaticPlacement(req) && req.NNodes <= 1 {
 		requestOverrides, overrideErr := requestContainerOverrides(req.ContainerOverrides)
 		if overrideErr == nil {
-			selected, candidates := a.evaluateAutomaticPlacement(r.Context(), req, eng, model, selection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes)
+			selected, candidates := a.evaluateAutomaticPlacement(r.Context(), req, eng, model, selection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes, evaluateReq.DeploymentID)
 			resp.SelectedNode = selected
 			resp.Candidates = candidates
 			if selected != nil {
@@ -389,7 +389,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	previewModelMount, previewMounts := previewComponentMounts(a.d.Store, selection.Components, node)
 	plan, ok := a.evaluatePlan(evaluatePlanEnv{
-		ctx: r.Context(), writer: w, request: req, response: &resp, engine: eng, model: model,
+		ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model,
 		node: node, nodeFound: nodeFound, profileNode: profileNode, imageCached: imageCached,
 		nodeImageCached: nodeImageCached, selection: selection, placement: placement, quick: quick,
 		userExtraArgs: userExtraArgs, servedName: servedName, requestOverrides: requestOverrides,
@@ -412,7 +412,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// happens to name one is what the stored row no longer carries either.
 	rankSelection.ExtraArgs = launch.TemplateResidual
 	if !a.evaluateRanks(evaluateRankEnv{
-		ctx: r.Context(), writer: w, request: req, response: &resp, engine: eng, model: model, launch: launch,
+		ctx: r.Context(), writer: w, request: req, excludeDeployment: evaluateReq.DeploymentID, response: &resp, engine: eng, model: model, launch: launch,
 		selection: selection, rankSelection: rankSelection, rankNodes: rankNodes, placement: placement,
 		quick: quick, userExtraArgs: userExtraArgs, dynamicTPPreview: dynamicTPPreview,
 		nodeImageCached: nodeImageCached, requestOverrides: requestOverrides,

@@ -14,29 +14,30 @@ import (
 
 // evaluatePlanEnv is the state the preview's single plan call reads.
 type evaluatePlanEnv struct {
-	ctx              context.Context
-	writer           http.ResponseWriter
-	request          *dto.DeployRequest
-	response         *dto.EvaluateResponse
-	engine           deploy.Engine
-	model            *store.Model
-	node             *store.Node
-	nodeFound        bool
-	profileNode      *store.Node
-	imageCached      *bool
-	nodeImageCached  *bool
-	selection        templateSelection
-	placement        planning.Placement
-	quick            deploy.LaunchConfig
-	userExtraArgs    []string
-	servedName       string
-	requestOverrides deploy.ContainerOverrides
-	modelMount       string
-	componentMounts  []proto.MountSpec
-	gpuCount         int
-	resolver         string
-	templateResidual []string
-	errs             *evaluateFieldErrors
+	ctx               context.Context
+	writer            http.ResponseWriter
+	request           *dto.DeployRequest
+	excludeDeployment uint
+	response          *dto.EvaluateResponse
+	engine            deploy.Engine
+	model             *store.Model
+	node              *store.Node
+	nodeFound         bool
+	profileNode       *store.Node
+	imageCached       *bool
+	nodeImageCached   *bool
+	selection         templateSelection
+	placement         planning.Placement
+	quick             deploy.LaunchConfig
+	userExtraArgs     []string
+	servedName        string
+	requestOverrides  deploy.ContainerOverrides
+	modelMount        string
+	componentMounts   []proto.MountSpec
+	gpuCount          int
+	resolver          string
+	templateResidual  []string
+	errs              *evaluateFieldErrors
 }
 
 // evaluatePlanResult is what the plan leaves behind: the pieces of handler
@@ -73,7 +74,7 @@ func (a *apiHandlers) evaluatePlan(env evaluatePlanEnv) (evaluatePlanResult, boo
 		previewSelection := snapshotTemplateSelection(env.selection, resp.Image)
 		previewSelection.ExtraArgs = env.templateResidual
 		previewPlan, planErr := planning.PlanLaunch(env.ctx, a.d.Store, a.networks(), planning.LaunchRequest{
-			Preview: true, Engine: env.engine.Name(), Model: env.model, Node: node,
+			Preview: true, ExcludeDeploymentID: env.excludeDeployment, Engine: env.engine.Name(), Model: env.model, Node: node,
 			Selection: previewSelection, Placement: env.placement, Quick: env.quick, ExtraArgs: env.userExtraArgs,
 			// Rank zero's share of a multi-node group: the node count decides
 			// how many of the TP×PP GPUs land here.

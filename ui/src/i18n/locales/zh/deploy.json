@@ -933,5 +933,72 @@
     "readOnly": "只读",
     "deleteMountAria": "删除挂载",
     "addMount": "添加挂载"
+  },
+  "edit": {
+    "loading": "正在载入部署……",
+    "loadFailed": "无法打开该部署",
+    "notFound": "该部署已不存在",
+    "backToList": "返回部署列表",
+    "title": "编辑部署：{{name}}",
+    "cloneTitle": "克隆部署：{{name}}",
+    "description": {
+      "edit": "修改该部署的启动参数。模型、引擎、模板、名称等决定它是什么的字段不可更改。",
+      "from": "这是该部署配置的副本。改好需要的内容后，作为新部署创建。"
+    },
+    "back": "返回部署",
+    "backSource": "返回原部署",
+    "locked": "编辑时不可更改，需克隆后修改。",
+    "lockedClone": "克隆并修改",
+    "review": "检查变更",
+    "changeCount_one": "{{count}} 项变更",
+    "changeCount_other": "{{count}} 项变更",
+    "reviewFailed": "无法检查变更：{{detail}}",
+    "saved": "部署已保存",
+    "layer": {
+      "live": "立即生效",
+      "restart": "重建副本"
+    },
+    "apply": {
+      "rolling": {
+        "label": "滚动更新",
+        "help": "一次替换一个副本，其余副本继续提供服务。"
+      },
+      "all": {
+        "label": "全部重启",
+        "help": "同时替换所有实例，就绪前服务会中断。"
+      },
+      "none": {
+        "label": "仅保存",
+        "help": "下次重启时生效，运行中的实例保持旧参数。"
+      },
+      "wake": {
+        "label": "唤醒并应用",
+        "help": "唤醒部署，并用新配置重建全部实例。"
+      }
+    },
+    "ok": {
+      "rolling": "保存并滚动更新",
+      "all": "保存并全部重启",
+      "wake": "保存并唤醒",
+      "save": "保存",
+      "startSave": "保存并启动"
+    },
+    "confirm": {
+      "title": "检查变更",
+      "cancel": "取消",
+      "field": "字段",
+      "from": "原值",
+      "to": "新值",
+      "layer": "生效方式",
+      "apply": "生效方式选择",
+      "noChanges": "没有任何变更。",
+      "startAfter": "保存后启动部署",
+      "conflict": "部署已被他人修改",
+      "conflictHelp": "重新载入以查看当前配置，你自己的修改会保留。",
+      "reload": "重新载入"
+    },
+    "applyNote": {
+      "partition_change": "开启或关闭 dGPU、更换分区后端时，旧实例要全部退出后新实例才能启动，无法逐个替换，服务会中断到新实例就绪。"
+    }
   }
 }
