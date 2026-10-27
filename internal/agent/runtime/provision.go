@@ -61,3 +61,15 @@ type ProvisionState struct {
 type ProvisionReporter interface {
 	ProvisionState() ProvisionState
 }
+
+// StateAccessReporter is implemented by a runtime that launches workloads as
+// an identity other than the agent, from files under the agent's state
+// directory. StateAccessProblem returns the state directory and the first
+// directory above it that identity cannot search; a nil result means every
+// ancestor is open to it, or the workloads run as the agent. Reading it never
+// changes anything. The runtime's own launch-time warning uses the same
+// verdict, so the node's doctor cannot show OK for what the agent already
+// judged bad.
+type StateAccessReporter interface {
+	StateAccessProblem() (stateDir string, blocked *TraversalError)
+}

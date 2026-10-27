@@ -123,6 +123,7 @@ SSH 向导上传 agent 和安装脚本，不要求 Mac 从 server 下载。预�
 |---|---|---|
 | Install directory | 通过 / 警告 / 失败 | **失败**：路径不是绝对路径、已存在但不是目录、不可写或挂载为 `noexec`。`noexec` 会使 SSH 安装在上传前失败；只有目录留空、默认目录不可写时才回退到 `/tmp/gpuworks`，需核对最终目录及重启后丢失数据的风险；显式填写的目录不可写时安装失败，不会换目录。**警告**：探测未完成，先查看报告原因 |
 | Install directory ownership | 通过 / 警告 | **警告**：文件系统拒绝 `chown`，udocker 工作负载会改用 agent 自身的用户运行。无 root 或免密 sudo 时不做此项检查；Mac 无需此项检查 |
+| Install directory path access | 通过 / 警告 / 失败 | root agent 以专用用户 `udocker` 运行 runveil 工作负载，该用户必须能进入安装目录的每一级上级目录（`o+x`，或其所属组带 `x`）。某级上级目录不允许时（如安装在 `/root` 或 0700 的私有主目录下），每次启动都会以 `permission denied` 失败：无可用 Docker 为**失败**，有可用 Docker 为**警告**。详情给出第一个挡住的目录及其权限和属主，处理方式是执行 `chmod o+x <目录>`（只授予进入权限，不能列目录或写入），或改用其他安装目录（如 `/opt/gpuworks`）。安装目录自身由安装脚本开放（0711），不在检查范围内；无 root 或免密 sudo、文件系统拒绝 `chown`（工作负载以 agent 自身用户运行）时不做此项检查；Mac 无需此项检查。装好之后节点诊断用 `runtime_state_untraversable` 报告同一问题 |
 | Install directory filesystem | 通过 / 警告 | **警告**：网络或用户态文件系统，模型加载和引擎启动受其吞吐、延迟影响 |
 | Install directory free space | 通过 / 警告 | **警告**：剩余空间低于 50 GiB。按镜像解包体积和模型大小预留空间，50 GiB 不是所有部署的容量保证 |
 | Install directory file names | 通过 / 警告 / 失败 | 不允许文件名含 `:` 时，无可用 Docker 为**失败**，需换目录才能部署；有可用 Docker 为**警告**，镜像由 Docker 保存。不可写时不检查 |

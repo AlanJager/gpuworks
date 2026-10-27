@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,6 +186,45 @@ func TestCheckAncestorTraversalReportsWithoutChanges(t *testing.T) {
 	}
 	if err := CheckAncestorTraversal(dir, runtimeIn(true)); err != nil {
 		t.Fatalf("traversable chain reported: %v", err)
+	}
+}
+
+// The blocking directory is a typed result, not only text: the doctor reads
+// the directory, its mode and owner and the fix from it.
+func TestCheckAncestorTraversalReturnsATypedVerdict(t *testing.T) {
+	base, err := os.MkdirTemp("/tmp", "traversal-typed-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+	if err := os.Chmod(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	private := filepath.Join(base, "my home")
+	state := filepath.Join(private, "gpuworks")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(private, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	owner := runtimeIn(false)
+	err = CheckAncestorTraversal(filepath.Dir(state), owner)
+	var blocked *TraversalError
+	if !errors.As(err, &blocked) {
+		t.Fatalf("err = %v, want *TraversalError", err)
+	}
+	if blocked.Dir != private || blocked.Mode != 0o700 || blocked.DirUID != os.Geteuid() || blocked.Owner != owner {
+		t.Fatalf("verdict = %+v", blocked)
+	}
+	if got, want := blocked.FixCommand(), "chmod o+x '"+private+"'"; got != want {
+		t.Fatalf("fix = %q, want %q", got, want)
+	}
+	// A directory that does not exist is a stat failure, not a closed directory.
+	err = CheckAncestorTraversal(filepath.Join(base, "missing", "deeper"), owner)
+	var typed *TraversalError
+	if err == nil || errors.As(err, &typed) || !strings.Contains(err.Error(), "stat parent") {
+		t.Fatalf("a stat failure must stay a plain error: %v", err)
 	}
 }
 

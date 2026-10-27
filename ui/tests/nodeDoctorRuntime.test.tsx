@@ -186,3 +186,36 @@ test("a Mac that sleeps when idle is explained with the command that keeps it aw
   assert.ok(within(enFindings).getByText("sw_vers"));
   assert.ok(within(screen.getByRole("region", { name: "Information" })).getByText("Power and sleep"));
 });
+
+// A root agent whose state directory sits under /root: the runtime user
+// cannot search /root, so every launch fails with permission denied.
+const untraversable: ReportT = {
+  ...runpod,
+  findings: [{
+    code: "runtime_state_untraversable", level: "error",
+    probe: "search permission on every directory above /root/gpuworks for udocker (uid 1001, gid 1001)",
+    evidence: [
+      { name: "directory", value: "/root" }, { name: "mode", value: "0700" }, { name: "owner", value: "0:0" },
+      { name: "user", value: "udocker" }, { name: "state_dir", value: "/root/gpuworks" }, { name: "fix", value: "chmod o+x /root" },
+    ],
+    recheck: "namei -m /root/gpuworks",
+  }],
+};
+
+test("an untraversable ancestor of the agent directory names the blocking directory and the fix in both languages", async () => {
+  wrap(<NodeDoctorReport report={untraversable} />);
+  const findings = screen.getByRole("region", { name: "需要处理" });
+  assert.ok(within(findings).getByText("运行时用户无法访问代理目录"));
+  assert.ok(within(findings).getByText("/root 不允许工作负载的运行用户 udocker 进入，因此它无法访问代理目录 /root/gpuworks。"));
+  assert.ok(within(findings).getByText(/请执行 `chmod o\+x \/root` 开放该目录/));
+  assert.ok(within(findings).getByText("0700"));
+  assert.ok(within(findings).getByText("namei -m /root/gpuworks"));
+  cleanup();
+
+  const en = (await createI18n(["nodes"], "en")).i18n;
+  wrap(<NodeDoctorReport report={untraversable} />, en);
+  const enFindings = screen.getByRole("region", { name: "Action required" });
+  assert.ok(within(enFindings).getByText("Runtime user cannot reach the agent directory"));
+  assert.ok(within(enFindings).getByText("/root is not searchable by udocker, the user workloads run as, so it cannot reach the agent directory /root/gpuworks."));
+  assert.ok(within(enFindings).getByText(/Open the directory with `chmod o\+x \/root`/));
+});

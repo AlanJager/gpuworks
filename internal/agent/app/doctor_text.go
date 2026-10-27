@@ -135,6 +135,7 @@ var findingSummary = map[string]string{
 	accelerator.HealthRuntimeUnusable:     "the card is listed, but the accelerator runtime could not create a context on it; the platform does not schedule it",
 	proto.DoctorDiskLow:                   "less than 10% of the filesystem is free",
 	proto.DoctorRuntimeProvisionFailed:    "the selected runtime could not be set up on this node; every deployment fails until it is",
+	proto.DoctorRuntimeStateUntraversable: "a directory above the agent's state directory is closed to the user workloads run as, so every launch fails with permission denied; run the fix command or move the state directory",
 	proto.DoctorPathNoExec:                "the runtime executes programs from a filesystem mounted noexec",
 	proto.DoctorPathReadOnly:              "the agent writes to a filesystem mounted read-only",
 	proto.DoctorPathEphemeral:             "the path is on the container's own layer and is lost when the container is recreated; keep it on a persistent volume",

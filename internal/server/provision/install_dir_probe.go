@@ -22,6 +22,7 @@ import (
 const (
 	checkInstallDir            = "Install directory"
 	checkInstallDirOwnership   = "Install directory ownership"
+	checkInstallDirTraversal   = "Install directory path access"
 	checkInstallDirFilesystem  = "Install directory filesystem"
 	checkInstallDirPersistence = "Install directory persistence"
 	checkInstallDirSpace       = "Install directory free space"
@@ -148,6 +149,36 @@ if [ "$uid" = 0 ] || [ "$sudo" = yes ]; then
   fi
 fi
 printf 'chown=%s\n' "$chown_state"
+# A root agent launches workloads as the dedicated runtime user, which has to
+# search every directory above the state directory (the install directory
+# unless --state says otherwise; the installer opens that one itself). Judge
+# the user, its primary group or others the way the kernel picks one class,
+# exactly as the agent does: the account may not exist yet, and then only the
+# others bits can let it through. stat runs with the agent's privileges, since
+# the SSH user may be unable to look inside a private home.
+anc=skipped
+if [ "$chown_state" != refused ] && { [ "$uid" = 0 ] || [ "$sudo" = yes ]; }; then
+  ruid=$(id -u udocker 2>/dev/null) || ruid=-1
+  rgid=$(id -g udocker 2>/dev/null) || rgid=-1
+  printf 'runtime_uid=%s\n' "$ruid"
+  if [ "$exists" = yes ]; then p=$(dirname -- "$resolved"); else p=$resolved; fi
+  anc=ok
+  while :; do
+    if ! st=$($priv stat -c '%a %u %g' -- "$p" 2>/dev/null); then anc=unknown; break; fi
+    set -- $st
+    m=$((0$1))
+    if [ "$2" = "$ruid" ]; then b=$((m / 64 % 8)); elif [ "$3" = "$rgid" ]; then b=$((m / 8 % 8)); else b=$((m % 8)); fi
+    if [ $((b % 2)) = 0 ]; then
+      anc=blocked
+      printf 'ancestor_dir=%s\nancestor_mode=%s\nancestor_uid=%s\nancestor_gid=%s\n' "$p" "$1" "$2" "$3"
+      break
+    fi
+    next=$(dirname -- "$p")
+    [ "$next" = "$p" ] && break
+    p=$next
+  done
+fi
+printf 'ancestors=%s\n' "$anc"
 names=skipped
 nd=""
 nw=""
@@ -175,6 +206,14 @@ type installDirFacts struct {
 	container, sudo           bool
 	writable, privWritable    bool
 	chown, chownErr           string
+	// ancestors is the verdict on the directories above the install directory
+	// for the dedicated runtime user: ok, blocked (the ancestor* fields name
+	// the first one), unknown or skipped; runtimeUID is that user's uid, -1
+	// while the account does not exist.
+	ancestors                 string
+	runtimeUID                string
+	ancestorDir, ancestorMode string
+	ancestorUID, ancestorGID  string
 	names, namesErr           string
 	docker                    bool
 	// mac is a Mac install; macAdmin means its installer runs with
@@ -226,6 +265,18 @@ func parseInstallDirFacts(out string) (installDirFacts, error) {
 			f.privWritable = value == "yes"
 		case "chown":
 			f.chown = value
+		case "ancestors":
+			f.ancestors = strings.TrimSpace(value)
+		case "runtime_uid":
+			f.runtimeUID = strings.TrimSpace(value)
+		case "ancestor_dir":
+			f.ancestorDir = value
+		case "ancestor_mode":
+			f.ancestorMode = strings.TrimSpace(value)
+		case "ancestor_uid":
+			f.ancestorUID = strings.TrimSpace(value)
+		case "ancestor_gid":
+			f.ancestorGID = strings.TrimSpace(value)
 		case "chown_err":
 			f.chownErr = strings.TrimSpace(value)
 		case "names":
@@ -323,6 +374,7 @@ func installDirChecks(f installDirFacts, instanceKind, providerKind string) (che
 	checks = append(checks,
 		installDirAccessCheck(f, noexec),
 		installDirOwnershipCheck(f),
+		installDirTraversalCheck(f),
 		installDirFilesystemCheck(f),
 		installDirSpaceCheck(f),
 		installDirPersistenceCheck(f, instanceKind, providerKind),

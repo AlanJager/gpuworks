@@ -79,12 +79,13 @@ func main() {
 		}
 	case "doctor":
 		fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+		stateDir := fs.String("state", defaultStateDir(), "agent state directory")
 		_ = fs.Parse(os.Args[2:])
 		if fs.NArg() != 0 {
 			fmt.Fprintf(os.Stderr, "doctor: unexpected argument %q\n", fs.Arg(0))
 			os.Exit(2)
 		}
-		agentapp.Doctor(context.Background(), os.Stdout)
+		agentapp.DoctorForState(context.Background(), os.Stdout, *stateDir)
 	case "grant-device-access":
 		if err := grantDeviceAccess(os.Args[2:]); err != nil && !errors.Is(err, flag.ErrHelp) {
 			fmt.Fprintf(os.Stderr, "gpuworks-agent grant-device-access: %v\n", err)
@@ -378,7 +379,7 @@ usage:
   gpuworks-agent run [--state DIR]   (flags --server, --token, ... override DIR/gpuworks-agent.conf)
   gpuworks-agent smoke [--state DIR] [--server URL --token TOKEN]
   gpuworks-agent upgrade [--state DIR] [--server URL --token TOKEN]
-  gpuworks-agent doctor
+  gpuworks-agent doctor [--state DIR]
   gpuworks-agent grant-device-access --user USER [--create-user] [--state DIR]
   gpuworks-agent runveil [--state DIR] ps|images|exec|logs ...
   gpuworks-agent bench --url http://127.0.0.1:8000 --model MODEL [--concurrency 1] [--isl 128] [--osl 32]

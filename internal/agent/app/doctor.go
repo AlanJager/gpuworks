@@ -51,6 +51,13 @@ const diskLowPercent = 10
 // the node depends on (models root, container data, storages); the CLI has
 // none to offer.
 func buildDoctorReport(ctx context.Context, p gpu.Prober, disks []proto.PathUsage, drivers ...runtime.Driver) proto.DoctorReport {
+	return buildDoctorReportWith(ctx, p, disks, nil, drivers...)
+}
+
+// buildDoctorReportWith is buildDoctorReport with an explicit source for the
+// state-directory access check, for callers that have no running driver (the
+// CLI): nil means the selected driver is asked.
+func buildDoctorReportWith(ctx context.Context, p gpu.Prober, disks []proto.PathUsage, access runtime.StateAccessReporter, drivers ...runtime.Driver) proto.DoctorReport {
 	var r proto.DoctorReport
 	var driver runtime.Driver
 	if len(drivers) > 0 {
@@ -63,6 +70,10 @@ func buildDoctorReport(ctx context.Context, p gpu.Prober, disks []proto.PathUsag
 	doctorHost(&r, disks, runtimeName)
 	doctorRuntimes(ctx, &r, driver)
 	doctorProvision(&r, driver)
+	if access == nil {
+		access, _ = driver.(runtime.StateAccessReporter)
+	}
+	doctorStateAccess(&r, access)
 	if p == nil {
 		p = gpu.New()
 	}

@@ -379,8 +379,8 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 检查项目包括加速卡健康（见下一节）、磁盘可用空间不足 10%（根分区、模型目录、容器数据目录、存储）、
 已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及昇腾逐 die 运行时检查失败（`runtime_unusable`）。
 
-运行时与文件系统方面另有四项（见[运行时初始化失败与容器节点的文件系统](#运行时初始化失败与容器节点的文件系统)）：
-`runtime_provision_failed`（运行时初始化失败）、`path_noexec`、`path_read_only`、`path_ephemeral`。
+运行时与文件系统方面另有五项（见[运行时初始化失败与容器节点的文件系统](#运行时初始化失败与容器节点的文件系统)）：
+`runtime_provision_failed`（运行时初始化失败）、`runtime_state_untraversable`（专用运行用户进不了 agent 目录）、`path_noexec`、`path_read_only`、`path_ephemeral`。
 
 **其他栏目**
 
@@ -438,7 +438,8 @@ API 的 `schedulable` 字段就是它，界面与调度都读这一个字段，�
 
 **现象**：所有部署都失败，出现 `runveil runtime unavailable: <原因>`；较早版本可能显示
 `udocker runtime unavailable` 或 `prepare udocker ownership`。节点诊断也可能报告
-`runtime_provision_failed`、`path_noexec`、`path_read_only`、`path_ephemeral`。
+`runtime_provision_failed`、`runtime_state_untraversable`、`path_noexec`、`path_read_only`、`path_ephemeral`。
+启动日志或实例报 `fork/exec …/udocker/bin/proot-…: permission denied` 时，先看 `runtime_state_untraversable`。
 
 ### 先确认出问题的路径
 
@@ -484,6 +485,21 @@ root agent 默认让 runveil（udocker）的工作负载使用专用用户 `udoc
 
 日志 `dedicated runtime user is unusable; running as the agent's own user` 及诊断信息 `runtime_identity` 记录这一回退和原因。
 这条信息本身不是故障；agent 为 root 时，写入模型目录的文件也属于 root。
+
+**专用用户进不了 agent 目录**
+
+root agent 以专用用户 `udocker` 启动工作负载。agent 会自己开放状态目录（0711 或 0710），但状态目录**之上**的目录属于运维：
+若其中某一级不允许 `udocker` 进入（典型是装在 `/root/…` 或 0700 的私有主目录下），每次启动都会报
+`fork/exec …/udocker/bin/proot-…: permission denied`，而其他功能（镜像管理、`runveil ps`）照常，不易看出原因。
+
+`runtime_state_untraversable`（错误）给出第一个挡住的目录、它的权限和属主、判断所用的运行用户，以及修复命令。处理：
+
+- 执行证据里的 `chmod o+x <目录>`：只授予进入权限，不能列目录或写入；
+- 或把 agent 重装到不在该目录之下的安装目录（如 `/opt/gpuworks`）。
+
+安装前，SSH 预检查的 `Install directory path access` 对同一条件给出失败或警告（见[安装目录检查](connect-nodes.md#安装目录检查)）。
+节点页的诊断、agent 的运行日志告警和 CLI `gpuworks-agent doctor --state <目录>`（该目录下已有 `udocker` 目录时）使用同一份判断。
+修复后重新诊断即可，不必重启 agent。
 
 **其他初始化失败**
 

@@ -128,6 +128,11 @@ const (
 	// DoctorRuntimeProvisionFailed: the selected runtime could not be set up
 	// on this node (evidence: the error of its last attempt).
 	DoctorRuntimeProvisionFailed = "runtime_provision_failed"
+	// DoctorRuntimeStateUntraversable: a directory above the agent's state
+	// directory is closed to the dedicated user the runtime launches workloads
+	// as, so every launch fails with "permission denied". Evidence: the
+	// blocking directory, its mode and owner, the identity, and the fix.
+	DoctorRuntimeStateUntraversable = "runtime_state_untraversable"
 	// DoctorPathNoExec and DoctorPathReadOnly: a path the agent or runtime
 	// executes from, or writes to, is on a mount that forbids it.
 	DoctorPathNoExec   = "path_noexec"

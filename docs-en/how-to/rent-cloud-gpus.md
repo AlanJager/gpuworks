@@ -170,7 +170,7 @@ If the SSH endpoint is unreachable, the username/password/private key is incorre
 
 **Installation directory failures or warnings**
 
-Cloud one-click installation defaults to `/opt/gpuworks`. Change it under **Advanced Settings** in the installation page. Both precheck and installation check its underlying filesystem. For the six checks, see [Installation Directory Checks](connect-nodes.md#安装目录检查). Address the items in the report:
+Cloud one-click installation defaults to `/opt/gpuworks`. Change it under **Advanced Settings** in the installation page. Both precheck and installation check its underlying filesystem. For the seven checks, see [Installation Directory Checks](connect-nodes.md#安装目录检查). Address the items in the report:
 
 - **Install directory persistence warning**: the default directory on a container instance may be on the container's writable layer. Deleting or recreating the instance loses the agent and cache, requiring reinstallation. When renting an instance, reserve enough container disk capacity for images.
 - **ownership / filesystem warning**: persistent volumes such as `/workspace` are often network filesystems that do not allow ownership changes. Determine suitability from directory permissions and filesystem restrictions.
