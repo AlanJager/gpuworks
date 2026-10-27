@@ -50,9 +50,15 @@ jobs:
           path: internal/server/webui/dist/
           retention-days: 1
 
+  # The suite runs one test file at a time on a 2-core runner and takes
+  # over an hour unsplit; four shards each finish in about a quarter.
   ui-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -62,11 +68,15 @@ jobs:
           cache-dependency-path: ui/package-lock.json
       # The macOS serve adapters' tests need only python3.
       - run: make test-host-env-adapters
+        if: matrix.shard == 1
       - run: make test-strata-queue-assets
+        if: matrix.shard == 1
       - run: npm ci --no-audit --no-fund
         working-directory: ui
       - run: npm run test:coverage
         working-directory: ui
+        env:
+          TEST_SHARD: ${{ matrix.shard }}/4
 
   test:
     needs: ui
