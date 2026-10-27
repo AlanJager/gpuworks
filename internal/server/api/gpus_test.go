@@ -87,7 +87,7 @@ func TestGPUInventoryDerivesPhysicalAndVGPUAllocation(t *testing.T) {
 	if len(inventory.dgpu.Items) != 1 || inventory.dgpu.Items[0].MemoryUsed == nil || *inventory.dgpu.Items[0].MemoryUsed != 7<<30 {
 		t.Fatalf("vgpus = %+v", inventory.dgpu.Items)
 	}
-	if inventory.physical.Overview.Total != 1 || inventory.physical.Overview.Health.OK != 1 || inventory.physical.Overview.Allocation.Allocated != 1 {
+	if inventory.physical.Overview.Total != 1 || inventory.physical.Overview.Health.OK != 1 || inventory.physical.Overview.Allocation.Allocated != 0 || inventory.physical.Overview.Allocation.Allocatable != 1 {
 		t.Fatalf("overview = %+v", inventory.physical.Overview)
 	}
 	if physical.AllocationState != "partial" {

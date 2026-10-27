@@ -114,7 +114,8 @@
     "attention": "Needs attention",
     "issueNode": "Compute node",
     "issueService": "Inference service",
-    "unknownGpu": "Unidentified"
+    "unknownGpu": "Unidentified",
+    "gpuAllocationHint": "Allocatable includes partially allocated GPUs."
   },
   "health": {
     "attention": "The platform has {{count}} item requiring attention",

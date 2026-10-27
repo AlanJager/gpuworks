@@ -65,7 +65,7 @@ beforeEach(() => {
     const start = (query.page - 1) * query.page_size;
     return {
       items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length,
-      overview: { total: 30, health: { ok: 24, warning: 0, error: 6 }, allocation: { allocated: 0, allocatable: 30, unusable: 6 } },
+      overview: { total: 30, health: { ok: 24, warning: 0, error: 6 }, allocation: { allocated: 0, allocatable: 24, unusable: 6, unknown: 0 } },
       facets: { nodes: [0, 1, 2, 3].map((n) => ({ uuid: `node-${n}`, name: `gpu-${n}` })), models: ["NVIDIA H100"], vendors: ["nvidia"] },
     };
   };
@@ -93,12 +93,18 @@ test("a card on an unreachable node is listed as unknown and offers nothing", as
   };
   api.gpusPage = originals.gpusPage;
   renderPage();
-  const unknown = await screen.findByText("Unknown");
+  const unknown = await waitFor(() => {
+    const value = screen.getAllByText("Unknown").find((el) => el.closest("tr"));
+    assert.ok(value);
+    return value;
+  });
   const row = unknown.closest("tr")!;
   assert.ok(!within(row).queryByText("Available"));
   assert.ok(!within(row).queryByText("Unavailable for allocation"), "an unreachable card is not known to be unusable");
   assert.equal(screen.getByText("Available").parentElement?.querySelector("strong")?.textContent, "0");
   assert.ok(within(row).getByText("H100"));
+  const legend = document.querySelectorAll(".gpu-overview-legend")[1];
+  assert.ok(legend.textContent?.includes("Unknown1"), "allocation summary must include offline devices exactly once");
 });
 
 test("the GPU list asks the server for one page; the overview counts the fleet", async () => {

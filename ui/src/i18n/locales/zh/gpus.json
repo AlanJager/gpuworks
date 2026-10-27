@@ -57,7 +57,8 @@
   },
   "overview": {
     "allocationState": "分配状态",
-    "health": "健康状况"
+    "health": "健康状况",
+    "allocationHint": "部分分配的 GPU 计入可分配数量。"
   },
   "dgpu": {
     "note": "列出所有持有显存配额的 dGPU 切片，包括启动中与休眠中的；SM 利用率为采样参考值。"

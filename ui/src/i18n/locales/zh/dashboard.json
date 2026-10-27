@@ -114,7 +114,8 @@
     "attention": "需要关注",
     "issueNode": "计算节点",
     "issueService": "推理服务",
-    "unknownGpu": "未识别"
+    "unknownGpu": "未识别",
+    "gpuAllocationHint": "部分分配的 GPU 计入可分配数量。"
   },
   "health": {
     "attention": "平台有 {{count}} 项需要关注",

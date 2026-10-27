@@ -117,13 +117,7 @@ export default function DashboardPage() {
   const publicClouds = cloudList.filter((cloud) => cloud.kind !== "zstack");
   const privateClouds = cloudList.filter((cloud) => cloud.kind === "zstack");
   const invalidClouds = cloudList.filter((cloud) => cloud.state === "invalid");
-  const gpuStates = gpus.data?.items.reduce((counts, gpu) => {
-    if (gpu.allocation_state === "available" || gpu.allocation_state === "partial") counts.allocatable++;
-    else if (gpu.allocation_state === "allocated") counts.allocated++;
-    else if (gpu.allocation_state === "unusable") counts.unusable++;
-    else counts.unknown++;
-    return counts;
-  }, { allocatable: 0, allocated: 0, unusable: 0, unknown: 0 });
+  const gpuStates = gpus.data?.overview.allocation;
   const otherNodes = fleet ? Math.max(0, fleet.nodes.total - fleet.nodes.online - fleet.nodes.connecting - fleet.nodes.offline) : undefined;
   const otherServices = fleet ? Math.max(0, fleet.deployments.total - fleet.deployments.running - fleet.deployments.warming) : undefined;
   const replicaSignal = monitor.data?.signals?.find((signal) => signal.key === "ready_replicas");
@@ -184,7 +178,7 @@ export default function DashboardPage() {
     {partial && <Alert type="warning" showIcon message={t("overview.unavailable")} className="dashboard-overview-alert" />}
     <section className="dashboard-overview-summary" aria-label={t("overview.platformSummary")}>
       <ResourceCard icon={<CloudServerOutlined />} title={t("overview.nodes")} value={fmt(fleet?.nodes.total)} unit={t("overview.nodeUnit")} to="/nodes" facts={<><StatusCount count={fleet?.nodes.online} label={t("overview.online", { count: fmt(fleet?.nodes.online) })} tone="success" /><StatusCount count={fleet?.nodes.connecting} label={t("overview.connecting", { count: fmt(fleet?.nodes.connecting) })} tone="warning" /><StatusCount count={fleet?.nodes.offline} label={t("overview.offlineCount", { count: fmt(fleet?.nodes.offline) })} tone="danger" /><StatusCount count={otherNodes} label={t("overview.otherStates", { count: fmt(otherNodes) })} tone="neutral" /></>} />
-      <ResourceCard icon={<ControlOutlined />} title={t("overview.gpuResources")} value={fmt(gpus.data?.overview.total)} unit={t("overview.gpuUnit")} to="/gpus" facts={<><StatusCount count={gpuStates?.allocatable} label={t("overview.allocatable", { count: fmt(gpuStates?.allocatable) })} tone="success" /><StatusCount count={gpuStates?.allocated} label={t("overview.allocated", { count: fmt(gpuStates?.allocated) })} tone="info" /><StatusCount count={gpuStates?.unusable} label={t("overview.unavailableGpuCount", { count: fmt(gpuStates?.unusable) })} tone="danger" /><StatusCount count={gpuStates?.unknown} label={t("overview.unknownGpuCount", { count: fmt(gpuStates?.unknown) })} tone="neutral" /></>} />
+      <ResourceCard icon={<ControlOutlined />} title={t("overview.gpuResources")} value={fmt(gpus.data?.overview.total)} unit={t("overview.gpuUnit")} to="/gpus" facts={<><StatusCount count={gpuStates?.allocatable} label={t("overview.allocatable", { count: fmt(gpuStates?.allocatable) })} tone="success" /><StatusCount count={gpuStates?.allocated} label={t("overview.allocated", { count: fmt(gpuStates?.allocated) })} tone="info" /><StatusCount count={gpuStates?.unusable} label={t("overview.unavailableGpuCount", { count: fmt(gpuStates?.unusable) })} tone="danger" /><StatusCount count={gpuStates?.unknown} label={t("overview.unknownGpuCount", { count: fmt(gpuStates?.unknown) })} tone="neutral" /><small style={{ flexBasis: "100%" }}>{t("overview.gpuAllocationHint")}</small></>} />
       <ResourceCard icon={<RocketOutlined />} title={t("overview.deployments")} value={fmt(fleet?.deployments.total)} unit={t("overview.deploymentUnit")} to="/deployments" detail={fleet ? t("overview.sleepableCount", { count: fmt(fleet.deployments.sleepable) }) : undefined} facts={<><StatusCount count={fleet?.deployments.running} label={t("overview.running", { count: fmt(fleet?.deployments.running) })} tone="success" /><StatusCount count={fleet?.deployments.warming} label={t("overview.warming", { count: fmt(fleet?.deployments.warming) })} tone="warning" /><StatusCount count={otherServices} label={t("overview.otherStates", { count: fmt(otherServices) })} tone="neutral" /></>} />
       <ResourceCard icon={<CloudOutlined />} title={t("overview.clouds")} value={fmt(providers.data?.total)} unit={t("overview.cloudUnit")} entry={<CloudModuleArrow />} facts={<><StatusCount count={providers.data ? publicClouds.length : undefined} label={t("overview.publicClouds", { count: publicClouds.length })} /><StatusCount count={providers.data ? privateClouds.length : undefined} label={t("overview.privateClouds", { count: privateClouds.length })} /></>} />
     </section>

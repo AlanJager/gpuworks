@@ -280,7 +280,8 @@ function GPUOverviewCards({ overview }: { overview?: GPUListResponse["overview"]
       </Card>
       <Card title={<Space><DatabaseOutlined />{t("overview.allocationState")}</Space>} className="gpu-overview-card">
         <OverviewDonut total={total} value={allocation.allocated} color="#0076f7" label={t("allocation.allocated")} />
-        <OverviewLegend items={[{ label: t("allocation.allocated"), value: allocation.allocated, color: "#0076f7" }, { label: t("allocation.available"), value: allocation.allocatable, color: "#3ab333" }, { label: t("allocation.unusable"), value: allocation.unusable, color: "#db2e43" }]} />
+        <OverviewLegend items={[{ label: t("allocation.allocated"), value: allocation.allocated, color: "#0076f7" }, { label: t("allocation.available"), value: allocation.allocatable, color: "#3ab333" }, { label: t("allocation.unusable"), value: allocation.unusable, color: "#db2e43" }, { label: t("allocation.unknown"), value: allocation.unknown, color: "#8c8c8c" }]} />
+        <Typography.Text type="secondary" style={{ gridColumn: "1 / -1" }}>{t("overview.allocationHint")}</Typography.Text>
       </Card>
     </div>
   );

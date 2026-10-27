@@ -57,7 +57,8 @@
   },
   "overview": {
     "allocationState": "Allocation state",
-    "health": "Health"
+    "health": "Health",
+    "allocationHint": "Allocatable includes partially allocated GPUs."
   },
   "dgpu": {
     "note": "Every dGPU slice that holds a memory quota, starting and sleeping ones included; SM utilization is a sampled reference."

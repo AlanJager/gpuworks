@@ -277,8 +277,7 @@ func accumulateGPUOverview(overview *dto.GPUOverview, gpu *store.GPU, item *dto.
 		overview.Allocation.Unusable++
 	case "available", "partial":
 		overview.Allocation.Allocatable++
-	}
-	if item.AllocatedBytes > 0 {
+	case "allocated":
 		overview.Allocation.Allocated++
 	}
 }
