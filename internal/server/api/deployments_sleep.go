@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -25,8 +26,7 @@ import (
 // agent. ?role= orders only a PD deployment's instances of that role; the
 // deployment as a whole is then not under the order.
 func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
-	a.sleepMu.Lock()
-	defer a.sleepMu.Unlock()
+	defer planning.LockLifecycle()()
 	level, mode, ok := sleepOrderParams(w, r)
 	if !ok {
 		return
@@ -37,6 +37,17 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	role := r.URL.Query().Get("role")
 	if role == "" {
+		if level == proto.SleepLevelL1 {
+			insts, err := a.d.Store.InstancesForDeployment(dep.ID)
+			if err != nil {
+				writeErr(w, http.StatusInternalServerError, err)
+				return
+			}
+			if refusal := planning.L1HostMemoryRefusal(a.d.Store, dep, planning.Sleepers(insts), a.hostMemory); refusal != nil {
+				writeSleepRefusal(w, http.StatusConflict, refusal)
+				return
+			}
+		}
 		if err := a.d.Store.OrderDeploymentSleep(dep.ID, level, mode); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
@@ -47,6 +58,12 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 	named, ok := a.roleSleepTargets(w, dep, role, true)
 	if !ok {
 		return
+	}
+	if level == proto.SleepLevelL1 {
+		if refusal := planning.L1HostMemoryRefusal(a.d.Store, dep, named, a.hostMemory); refusal != nil {
+			writeSleepRefusal(w, http.StatusConflict, refusal)
+			return
+		}
 	}
 	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(named), level, mode); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -101,8 +118,7 @@ func parseSleepOrder(rawLevel, rawMode string) (level int, mode string, code str
 // shortfall instead of refusing them all. Any wake withdraws a deployment-wide
 // sleep order.
 func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
-	a.sleepMu.Lock()
-	defer a.sleepMu.Unlock()
+	defer planning.LockLifecycle()()
 	partial := false
 	if raw := r.URL.Query().Get("partial"); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
@@ -117,39 +133,29 @@ func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := r.URL.Query().Get("role")
-	var named []store.Instance
+	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	named := planning.Sleepers(insts)
 	if role != "" {
 		if named, ok = a.roleSleepTargets(w, dep, role, false); !ok {
 			return
 		}
-	} else {
-		insts, err := a.d.Store.InstancesForDeployment(dep.ID)
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err)
-			return
-		}
-		for i := range insts {
-			if store.HoldsSleepIntent(&insts[i]) {
-				named = append(named, insts[i])
-			}
-		}
 	}
-	woken, refused, err := a.admitWake(dep, named, partial)
+	match, err := a.deploymentUnitMatch(dep, insts)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	if len(refused) > 0 && (!partial || len(woken) == 0) {
+	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, named, partial, role == "")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if len(woken) == 0 && len(refused) > 0 {
 		writeWakeRefusal(w, refused)
-		return
-	}
-	if role == "" && len(refused) == 0 {
-		err = a.d.Store.SetDeploymentSleep(dep.ID, 0)
-	} else {
-		err = a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(woken), 0, "")
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	result := dto.WakeResult{Status: "waking"}
@@ -211,6 +217,8 @@ func sleepRefusalFallback(code string) string {
 		return "the instance fills no replica: it failed, is draining or is being removed"
 	case ErrorSleepRoleCannotEmpty:
 		return "the role cannot be left without an awake instance; sleep the whole deployment instead"
+	case ErrorSleepHostMemoryInsufficient:
+		return "the node's host memory cannot hold the weights an L1 sleep moves there; sleep at L2 instead"
 	case messages.ErrorPDNotPD:
 		return "deployment is not PD disaggregated"
 	case messages.ErrorPDRoleUnknown:
@@ -226,4 +234,20 @@ func appendUnique(values []string, more ...string) []string {
 		}
 	}
 	return values
+}
+
+// hostMemory is a node's host memory as its agent last reported it (within
+// two minutes).
+func (a *apiHandlers) hostMemory(nodeUUID string) (available, total int64, ok bool) {
+	if a.d.MetricsLatest == nil {
+		return 0, 0, false
+	}
+	since := time.Now().UTC().Add(-2 * time.Minute).UnixMilli()
+	return planning.HostMemoryFromMetrics(func(metric, node string) (float64, bool) {
+		rows, err := a.d.MetricsLatest(metric, map[string]string{"node": node}, since)
+		if err != nil || len(rows) == 0 {
+			return 0, false
+		}
+		return rows[0].Value, true
+	})(nodeUUID)
 }

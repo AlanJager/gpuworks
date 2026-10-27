@@ -202,7 +202,8 @@ type NodeReplicas struct {
 // replicas are replaced on another node; a "pinned" deployment names only
 // this node, so its replica waits until the node is schedulable or the
 // deployment's node requirements change; a "named" one is a multi-node or PD
-// rank that names its node and moves only when evicted.
+// rank that names its node: a drain starts its unit on other nodes first and
+// moves it once that runs, or it waits when no node fits.
 type NodeReplica struct {
 	Instance     string `json:"instance"`
 	DeploymentID uint   `json:"deployment_id"`

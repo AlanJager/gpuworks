@@ -1278,6 +1278,8 @@ var migrations = []migration{
 	{Version: 173, Name: "instance_spec_gpu_idents", Apply: copyInstanceGPUIdentsIntoSpec},
 	{Version: 174, Name: "instance_transcription_served", Apply: addInstanceTranscriptionServed},
 	{Version: 175, Name: "image_node_runtime_size", Apply: addImageNodeRuntimeSize},
+	{Version: 176, Name: "instance_sleep_residue", Apply: addInstanceSleepResidue},
+	{Version: 177, Name: "deployment_node_replace_after", Apply: addDeploymentNodeReplaceAfter},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

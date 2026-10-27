@@ -57,6 +57,7 @@
 - [PD 分离部署](how-to/pd-disaggregation.md)
 - [启用和排查 dGPU](how-to/dgpu.md)
 - [让实例 sleep / wake](how-to/sleep-wake.md)
+- [节点失联时自动换节点](how-to/node-failover.md)
 
 **运维与评测**
 

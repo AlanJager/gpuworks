@@ -24,6 +24,7 @@ type Props = {
   style?: React.CSSProperties;
   notFoundContent?: ReactNode;
   maxCount?: number;
+  size?: "small" | "middle" | "large";
   "aria-label"?: string;
   id?: string;
 } & Pick<SelectProps, "aria-invalid" | "aria-describedby" | "aria-required">;
@@ -52,6 +53,7 @@ const NodePicker = forwardRef<RefSelectProps, Props>(function NodePicker({
   style,
   notFoundContent,
   maxCount,
+  size,
   "aria-label": ariaLabel,
   "aria-invalid": ariaInvalid,
   "aria-describedby": ariaDescribedBy,
@@ -105,6 +107,7 @@ const NodePicker = forwardRef<RefSelectProps, Props>(function NodePicker({
       style={style}
       notFoundContent={notFoundContent}
       maxCount={maxCount}
+      size={size}
       aria-label={ariaLabel}
       aria-invalid={ariaInvalid}
       aria-describedby={ariaDescribedBy}

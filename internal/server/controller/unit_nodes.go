@@ -22,10 +22,8 @@ func (c *Controller) offlineGraceRemaining(node *store.Node, now time.Time) time
 }
 
 // pushRemoveOnline asks the online nodes to remove these instances and skips
-// the offline ones: an offline node cannot acknowledge a removal, and
-// settleRetiring drops its rows instead. That is safe: on reconnect the agent
-// receives a full desired-state sync and CleanupOrphans removes the
-// now-absent container before a replacement is scheduled.
+// the offline ones: an offline node cannot acknowledge a removal, so its rows
+// stay removing (settleRetiring) and are pushed again once it reconnects.
 func (c *Controller) pushRemoveOnline(insts []store.Instance, removed []string) error {
 	byNode := map[string][]string{}
 	for _, uuid := range removed {

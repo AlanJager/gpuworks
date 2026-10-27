@@ -84,8 +84,9 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
       }
     }, "sleep.wakeFailed");
     if (!woke) {
-      // Cards that cannot take every sleeper back may still take some.
-      setWakeRefused(!partial && summary.asleep > 1 && code === "WAKE_INSUFFICIENT_GPU_MEMORY");
+      // Cards that cannot take every sleeper back (or one a process outside
+      // the platform holds) may still leave room for the others.
+      setWakeRefused(!partial && summary.asleep > 1 && (code === "WAKE_INSUFFICIENT_GPU_MEMORY" || code === "WAKE_GPU_HELD_OUTSIDE"));
       return;
     }
     // Counted in replicas, as the summary is: the server lists every rank of

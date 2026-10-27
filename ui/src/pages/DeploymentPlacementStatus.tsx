@@ -23,7 +23,7 @@ type ClosestNode = { node?: string; name?: string; reason?: ScheduleMessage };
 
 // The controller's reason with the refusal it names already rendered: the
 // translation interpolates {{first}}, which the server sends as a code.
-function reasonWithFirst(reason: ScheduleMessage, render: (value: ScheduleMessage) => string): ScheduleMessage {
+export function reasonWithFirst(reason: ScheduleMessage, render: (value: ScheduleMessage) => string): ScheduleMessage {
   const first = reason.params?.first_reason as ScheduleMessage | undefined;
   if (!first) return reason;
   return { ...reason, params: { ...reason.params, first: render(first) } };

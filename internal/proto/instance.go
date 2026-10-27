@@ -277,6 +277,11 @@ type InstanceStatus struct {
 	// it to roll the deployment intent back only when the failed order is still
 	// the current intent.
 	SleepTarget *int `json:"sleep_target,omitempty"`
+	// SleepResidueBytes is the largest per-GPU memory the engine still held on
+	// its cards right after a sleep it applied, read when the instance had
+	// those cards to itself; 0 when it was not measured. The server's ledger
+	// charges it instead of an estimate while the instance sleeps.
+	SleepResidueBytes int64 `json:"sleep_residue_bytes,omitempty"`
 	// RuntimeAssetDigests acknowledges assets that were verified and published
 	// into the local content-addressed cache before container creation.
 	RuntimeAssetDigests []string `json:"runtime_asset_digests,omitempty"`

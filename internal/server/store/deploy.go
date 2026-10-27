@@ -655,6 +655,11 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 		if st.State == proto.InstRunning || st.Phase == proto.PhaseSleep {
 			updates["sleep_level"] = st.SleepLevel
 		}
+		// A sleep the agent measured replaces the last measurement; a report
+		// without one (a later probe, an older agent) keeps it.
+		if st.SleepLevel > 0 && st.SleepResidueBytes > 0 {
+			updates["sleep_residue_bytes"] = st.SleepResidueBytes
+		}
 	}
 	if len(st.Ports) > 0 {
 		updates["ports"] = jsonStr(st.Ports)
@@ -690,6 +695,22 @@ func (s *Store) updateInstanceStatus(inst *Instance, st proto.InstanceStatus) er
 		}
 	}
 	if len(updates) == 0 {
+		return nil
+	}
+	// A failed sleep transition keeps its full GPU claim until the agent
+	// confirms the engine is gone (the ledger cannot tell how much it still
+	// holds). The failed row itself stays - it is a spent attempt of its unit -
+	// so the confirmation is recorded by ending its sleep phase, which is what
+	// releases the claim.
+	if inst.State == proto.InstFailed && inst.Phase == proto.PhaseSleep && st.State == proto.InstStopped {
+		res := s.db.Model(&Instance{}).Where("id = ? AND state = ? AND phase = ?", inst.ID, proto.InstFailed, proto.PhaseSleep).Update("phase", "")
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected > 0 {
+			s.Bus.PublishChange("instance", inst.UUID, "status")
+			s.Bus.PublishChange("deployment", uintKey(inst.DeploymentID), "status")
+		}
 		return nil
 	}
 	prev, prevPhase, prevSleep := inst.State, inst.Phase, inst.SleepLevel

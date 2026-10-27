@@ -145,13 +145,22 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		n.occupancy.restate(gpus)
 		return
 	}
+	sleeping := n.sleepingCardPIDs()
 	for i := range gpus {
 		card := &gpus[i]
-		if !accelerator.CardUsable(card.Ownership) || ours[accelerator.CardIdent(card.UUID, card.PCIeBDF)] {
+		ident := accelerator.CardIdent(card.UUID, card.PCIeBDF)
+		if !accelerator.CardUsable(card.Ownership) {
+			continue
+		}
+		// A card of ours is examined only when every instance on it sleeps
+		// and its engines' own processes are known: any other process there
+		// is somebody else's, and the server must refuse a wake onto it.
+		own, examine := sleeping[ident]
+		if ours[ident] && !examine {
 			continue
 		}
 		for _, proc := range procs {
-			if !gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) {
+			if !gpu.SameBDF(proc.PCIeBDF, card.PCIeBDF) || own[proc.PID] {
 				continue
 			}
 			card.ForeignProcesses = append(card.ForeignProcesses, proto.CardProcess{
@@ -163,6 +172,19 @@ func (n *NodeRuntime) applyForeignProcesses(ctx context.Context, gpus []proto.GP
 		slog.Info("card is in use outside the platform",
 			"card", card.PCIeBDF, "processes", len(card.ForeignProcesses))
 	}
+}
+
+// sleepingCardPIDs are the cards of ours on which every instance sleeps and
+// its engine's process is known (engine.SleepingCardPIDs), with those
+// processes. sleepingCards is the seam tests use.
+func (n *NodeRuntime) sleepingCardPIDs() map[string]map[int]bool {
+	if n.sleepingCards != nil {
+		return n.sleepingCards()
+	}
+	if n.engine == nil {
+		return nil
+	}
+	return n.engine.SleepingCardPIDs()
 }
 
 // cardsInUse are the hardware identities this agent's own instances

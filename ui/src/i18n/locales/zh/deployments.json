@@ -280,7 +280,19 @@
     "followerHint": "这是 follower rank：随所在副本的 leader 一起重启、移除、休眠和唤醒。",
     "apply": "应用",
     "scaled": "副本数已改为 {{count}}",
-    "scaleFailed": "修改副本数失败：{{detail}}"
+    "scaleFailed": "修改副本数失败：{{detail}}",
+    "placeOn": {
+      "label": "首次放置节点",
+      "placeholder": "首次放置节点（可选，最多 {{count}} 个）",
+      "hint": "可选：新增副本先放在这些节点上，之后重启不再受限。",
+      "refused": {
+        "unknown": "节点 {{node}} 不存在。",
+        "offline": "节点 {{node}} 离线。",
+        "cordoned": "节点 {{node}} 已停止调度，不接收新副本。",
+        "requirements": "节点 {{node}} 不满足部署的节点要求：{{detail}}",
+        "no_room": "节点 {{node}} 放不下新副本：{{detail}}"
+      }
+    }
   },
   "instance": {
     "field": {
@@ -347,7 +359,11 @@
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",
       "UNIT_RETRIED": "已请求重试：清除了 {{attempts}} 次失败记录",
       "STORAGE_UNAVAILABLE": "存储 {{storage}} 在节点 {{node}} 上不可用（{{state}}）：运行中的实例继续用显存里的权重服务，正在加载的实例会等它恢复",
-      "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复"
+      "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
+      "NODE_REPLACED": "节点 {{from}} 离线超过 {{after}}：{{what}} {{target}}",
+      "NODE_REPLACE_REVERTED": "{{what}} 在 {{from}} 上跑起来前节点 {{to}} 已恢复，换节点已撤回",
+      "NODE_REPLACE_NO_CANDIDATE": "节点 {{nodes}} 持续离线，但没有别的节点能接收它们的副本",
+      "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走"
     },
     "pdTransport": {
       "rdma": "RDMA",
@@ -619,5 +635,31 @@
     "idle": "已 {{seconds}} 秒无进展",
     "waitForIO": "当前 I/O 返回前不能启动另一个写入任务。恢复存储连接后可安全续传。",
     "retry": "重试缓存复制"
+  },
+  "nodeReplacement": {
+    "title": "节点失联换节点",
+    "hint": "运行副本的节点离线超过换节点等待后，副本会换到别的节点。",
+    "hintSingle": "单机部署由候选池在别处补位。",
+    "hintMulti": "多机或 PD 副本迁到同一计算网络、同 GPU 架构且有空闲卡的节点。",
+    "hintRevert": "新节点上的副本还没跑起来时原节点就回来，换节点会撤回；跑起来之后不再换回。钉在节点上的副本不换。",
+    "after": "等待",
+    "minutes": "节点离线多少分钟后换节点",
+    "unit": "分钟",
+    "zeroNever": "0 表示从不换",
+    "save": "保存",
+    "saved": "已保存换节点等待",
+    "saveFailed": "保存换节点等待失败：{{detail}}",
+    "duration": {
+      "seconds": "{{value}} 秒",
+      "minutes": "{{value}} 分钟",
+      "hours": "{{value}} 小时",
+      "days": "{{value}} 天"
+    },
+    "movedTo": "已换到 {{node}}",
+    "movedElsewhere": "正在别的节点重建",
+    "what": {
+      "replica": "一个副本",
+      "unit": "副本 {{label}}"
+    }
   }
 }

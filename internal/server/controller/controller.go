@@ -96,6 +96,8 @@ type Controller struct {
 	// (image_acquisition.go).
 	peerCool   pairCooldown
 	imageWaits imageWaits
+	// failover is node replacement's memory (node_failover.go).
+	failover nodeFailover
 }
 
 func (c *Controller) SetInferenceNodeLifecycleHandler(handler provider.InferenceNodeLifecycleHandler) {

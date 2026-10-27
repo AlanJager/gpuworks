@@ -190,3 +190,45 @@ func TestScaleReplicasChecksTheNodesTheListNames(t *testing.T) {
 		}
 	}
 }
+
+// A growing single-node deployment may name where its new replicas first
+// start; the names are checked before anything is written.
+func TestScaleReplicasPlaceOnRefusals(t *testing.T) {
+	h, st, plain, multi := replicaFixture(t)
+	for _, tc := range []struct {
+		name, body string
+		depID      uint
+		status     int
+		code       string
+	}{
+		{"more nodes than replicas added", `{"replicas":3,"place_on":["pd-a","pd-b"]}`, plain.ID, http.StatusBadRequest, ErrorReplicasPlaceOnTooMany},
+		{"naming nodes while shrinking", `{"replicas":1,"place_on":["pd-a"]}`, plain.ID, http.StatusBadRequest, ErrorReplicasPlaceOnTooMany},
+		{"a multi-node deployment", `{"replicas":2,"place_on":["pd-a"]}`, multi.ID, http.StatusBadRequest, ErrorReplicasBodyShape},
+		{"an unknown node", `{"replicas":3,"place_on":["no-such-node"]}`, plain.ID, http.StatusConflict, ErrorReplicasPlaceOnRefused},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := pdOpsRequest(h.scaleReplicas, http.MethodPut, tc.depID, tc.body)
+			var body map[string]any
+			_ = json.Unmarshal(rec.Body.Bytes(), &body)
+			if rec.Code != tc.status || body["code"] != tc.code {
+				t.Fatalf("PUT %s = %d %s, want %d %s", tc.body, rec.Code, rec.Body.String(), tc.status, tc.code)
+			}
+			if dep := mustDeployment(t, st, plain.ID); dep.Replicas != 2 {
+				t.Fatalf("a refused request changed the count to %d", dep.Replicas)
+			}
+		})
+	}
+	// An offline node is named in the refusal with its reason.
+	if err := st.SetNodeState("pd-b", store.NodeStateOffline); err != nil {
+		t.Fatal(err)
+	}
+	rec := pdOpsRequest(h.scaleReplicas, http.MethodPut, plain.ID, `{"replicas":3,"place_on":["pd-b"]}`)
+	var body struct {
+		Code   string         `json:"code"`
+		Params map[string]any `json:"params"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if rec.Code != http.StatusConflict || body.Code != ErrorReplicasPlaceOnRefused || body.Params["reason"] != "offline" {
+		t.Fatalf("offline node = %d %s", rec.Code, rec.Body.String())
+	}
+}

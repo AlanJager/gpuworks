@@ -508,7 +508,7 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 	req := scheduler.Request{WeightBytes: 8 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm")}
 	suggestions := suggestEviction(st, node, req, false, ledgerView{})
 	// Sleeping releases the whole card down to the residue the sleeper keeps.
-	wantFrees := float64((16<<30)-sleep.ResidentBytes) / (1 << 30)
+	wantFrees := float64((16<<30)-sleep.UnknownResidueBytes) / (1 << 30)
 	if len(suggestions) != 1 || suggestions[0].InstanceUUID != "sleep-a" || suggestions[0].Deployment != "sleepable-a" || suggestions[0].FreesGiB != wantFrees {
 		t.Fatalf("eviction suggestions = %+v, want frees %.1f", suggestions, wantFrees)
 	}
@@ -528,14 +528,14 @@ func TestEvaluateSuggestsSleepingInstanceWhenMemoryIsInsufficient(t *testing.T) 
 		t.Fatalf("already-sleeping instance suggested again: %+v", got)
 	}
 	snap := NodeSnapshot(st, node, true, "")
-	if snap.GPUs[0].AllocatedBytes != 0 || snap.GPUs[0].SleepingBytes != sleep.ResidentBytes {
+	if snap.GPUs[0].AllocatedBytes != 0 || snap.GPUs[0].SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("ledger for a sleeping whole-GPU instance = %+v, want residue only", snap.GPUs[0])
 	}
 	if res := scheduler.Schedule(req, snap); !res.OK {
 		t.Fatalf("request no longer fits after the sleeper released the card: %+v", res.Message)
 	}
 	allocation := GPUAllocations(st, node)[0]
-	if allocation.SleepingBytes != sleep.ResidentBytes || len(allocation.Instances) != 1 {
+	if allocation.SleepingBytes != sleep.UnknownResidueBytes || len(allocation.Instances) != 1 {
 		t.Fatalf("GPUAllocations = %+v", allocation)
 	}
 }
@@ -575,7 +575,7 @@ func TestWakingInstanceIsChargedItsFullClaimBeforeItReportsAwake(t *testing.T) {
 	}
 	_ = inst
 	allocation = GPUAllocations(st, node)[0]
-	if allocation.AllocatedBytes != 0 || allocation.SleepingBytes != sleep.ResidentBytes {
+	if allocation.AllocatedBytes != 0 || allocation.SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("sleeping allocation = %+v, want residue only", allocation)
 	}
 }
@@ -750,7 +750,7 @@ func TestAReplicaSleepingAloneIsChargedItsResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	allocations := GPUAllocations(st, node)
-	if allocations[0].AllocatedBytes != 0 || allocations[0].SleepingBytes != sleep.ResidentBytes {
+	if allocations[0].AllocatedBytes != 0 || allocations[0].SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("sleeping replica's card = %+v, want residue only", allocations[0])
 	}
 	if allocations[1].AllocatedBytes != 16<<30 {

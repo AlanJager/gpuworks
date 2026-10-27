@@ -197,7 +197,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes/{uuid}/doctor` | 触发节点自检 RPC | JWT |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级 | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | 设置 `scheduling` 为 `cordoned`、`draining` 或 `schedulable`，返回节点；非法值 400 `FIELD_INVALID`。各状态的影响见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
-| GET | `/api/v1/nodes/{uuid}/replicas` | 节点上仍在运行的实例与驱逐对它的处理：`{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank，只有强制驱逐才撤下）；已停止、已失败的实例不列 | JWT |
+| GET | `/api/v1/nodes/{uuid}/replicas` | 节点上仍在运行的实例与驱逐对它的处理：`{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank：驱逐时先在别的节点起替代，运行后切过去，没有节点可去则等待；强制驱逐才立即撤下）；已停止、已失败的实例不列 | JWT |
 | POST | `/api/v1/nodes/{uuid}/evict` | 强制驱逐：不等替代副本，把节点上每个副本立即撤下（所在副本的 leader 进入排空，follower 随之），副本在能放的地方重建，不计入重试次数；返回 `{"evicted": [leader UUID…]}`（202）。节点仍可调度时 409 `NODE_SCHEDULABLE` | JWT |
 | PUT | `/api/v1/nodes/{uuid}/labels` | 替换节点标签（key/value；空对象清空）。键名不得使用平台保留的 `gpuworks.ai/` 命名空间及其子域 | JWT |
 | PATCH | `/api/v1/nodes/{uuid}/name` | 重命名节点 | JWT |
@@ -275,7 +275,7 @@ macOS 忽略 `no_systemd`。
 `PUT /api/v1/nodes/{uuid}/scheduling` 的三个取值影响如下：
 
 - `cordoned`：不再启动新副本，已有副本继续服务。候选池单列为 `cordoned`；指定该节点的多机或 PD rank 等待，原因为 `node_cordoned`。
-- `draining`：同时逐个迁走候选池调度来的副本；先在其他节点启动替代副本，运行后再排空原副本，每个部署一次一个。
+- `draining`：同时逐个迁走这台节点上的副本；先在其他节点启动替代副本，运行后再排空原副本，每个部署一次一个。多机与 PD 副本同样先起后切（替代节点同计算网络、同 GPU 架构、卡空闲，运行后放置才改写，时间线 `NODE_DRAIN_MOVED`），没有节点可去时留在原处等待。钉在这台节点上的单机部署不迁。
 - `schedulable`：恢复调度，等待中的副本立即重试。
 
 `PATCH /api/v1/nodes/{uuid}/accelerator` 供一机多厂商选择管理哪家的卡。agent 接受后原地重启，选择才保存。
@@ -512,11 +512,12 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/{id}/stop` | 停止部署：删除全部实例，保留配置 | JWT |
 | POST | `/api/v1/deployments/{id}/start` | 启动已停止的部署，按保留的配置重新调度（每个副本的重试次数重新计）；已在运行则不做任何事；删除中的部署 409 `DEPLOYMENT_DELETING` | JWT |
 | DELETE | `/api/v1/deployments/{id}` | 删除部署 | JWT |
-| POST | `/api/v1/deployments/{id}/sleep` | 休眠部署（`?level=1\|2`，默认 1；`?mode=wait\|abort`，默认 wait）：睡眠意图写进每个活跃实例的期望状态，网关立即不再派发给它们，部署记为"整体处于睡眠命令下"（此后新起的实例也按此睡眠）。`?role=prefill` 只睡 PD 部署该角色的实例（响应带 `role`、`instances`），部署整体不算在睡眠命令下；非 PD 400 `PD_NOT_PD`，不是该部署模式的角色 400 `PD_ROLE_UNKNOWN`，模式不允许为空的角色（如 decode）400 `SLEEP_ROLE_CANNOT_EMPTY` | JWT |
-| POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令 | JWT |
+| POST | `/api/v1/deployments/{id}/sleep` | 休眠部署（`?level=1\|2`，默认 1；`?mode=wait\|abort`，默认 wait）：睡眠意图写进每个活跃实例的期望状态，网关立即不再派发给它们，部署记为"整体处于睡眠命令下"（此后新起的实例也按此睡眠）。`?role=prefill` 只睡 PD 部署该角色的实例（响应带 `role`、`instances`），部署整体不算在睡眠命令下；非 PD 400 `PD_NOT_PD`，不是该部署模式的角色 400 `PD_ROLE_UNKNOWN`，模式不允许为空的角色（如 decode）400 `SLEEP_ROLE_CANNOT_EMPTY`。`level=1` 时本节点主机内存放不下将卸载的权重（可用内存减去 max(总量 5%, 4 GiB) 余量）409 `SLEEP_HOST_MEMORY_INSUFFICIENT`（`params.node`、`need_gib`、`available_gib`），改用 L2；节点没有最近的主机内存观测时不拦 | JWT |
+| POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE`（参数同上，`refused[].held_outside` 为 true） | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | 为多机部署推荐一个副本的节点；请求体 `{"units":[...]}` 为已选副本，返回推荐 `unit` 或无法放置的原因，不保存；见[推荐多机副本节点](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | 让一个副本重新获得重试次数：请求体 `{"role","index"}`（普通部署 `role` 为空），该副本的失败尝试被移除（容器清理、时间线保留），控制器随后重建它，其他副本不受影响；没有该副本 404 `UNIT_UNKNOWN`，没有失败尝试或仍有实例 409 `UNIT_NOT_FAILED`，部署非运行中 409 `UNIT_RETRY_NOT_ACTIVE` | JWT |
-| PUT | `/api/v1/deployments/{id}/replicas` | 单机部署修改副本数，多机部署修改副本节点列表；完整字段与条件见[普通部署的副本调整](#普通部署的副本调整) | JWT |
+| PUT | `/api/v1/deployments/{id}/replicas` | 单机部署修改副本数（增加时可加 `place_on` 指定新副本首次启动的节点），多机部署修改副本节点列表；完整字段与条件见[普通部署的副本调整](#普通部署的副本调整) | JWT |
+| PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联后换节点的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联时自动换节点](../how-to/node-failover.md) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，以及请求指定了节点时的 `nodes[]`（见「评估请求与获取预估」） | JWT |
@@ -526,7 +527,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/instances/{uuid}/launch-facts` | 实例启动事实三层投影（intent/resolved/runtime observation，unknown 不降级，敏感文本脱敏） | JWT |
 | GET | `/api/v1/instances/{uuid}/logs` | 实例容器日志（SSE，经 agent logtail 隧道） | JWT |
 | POST | `/api/v1/instances/{uuid}/sleep` | 只睡该实例所在的副本（`?level=`、`?mode=` 同部署级）；多机副本的任一 rank 都代表整个副本，意图写在它的全部实例上，由 leader 的引擎带着 follower 一起睡，响应的 `instances` 列出全部 rank。部署其余副本照常服务，部署不算整体睡眠（该副本被重建时新实例醒着）。部署不可睡 400（同部署级的码）；实例没有在承担副本 409 `INSTANCE_NOT_SERVING`；PD 模式不允许为空的角色的最后一个醒着的副本 409 `SLEEP_ROLE_CANNOT_EMPTY` | JWT |
-| POST | `/api/v1/instances/{uuid}/wake` | 唤醒该实例所在的副本（多机副本同上，按整个副本），只检查这个副本放不放得回原卡（409 `WAKE_INSUFFICIENT_GPU_MEMORY`）；部署整体的睡眠命令随之撤销，其余睡着的副本保持睡眠 | JWT |
+| POST | `/api/v1/instances/{uuid}/wake` | 唤醒该实例所在的副本（多机副本同上，按整个副本），只检查这个副本放不放得回原卡（409 `WAKE_INSUFFICIENT_GPU_MEMORY`）；部署整体的睡眠命令随之撤销，其余睡着的副本保持睡眠。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE` | JWT |
 | POST | `/api/v1/instances/{uuid}/restart` | 重启该实例所在的副本（follower 代表它所在的整代）：默认让副本的 leader 进入 `draining`（网关不再派发新请求，处理完手上的请求后退役），同时启动替换实例；`?drain=false` 立即移除整代；不占用副本的重试次数；记部署事件 `REPLICA_RESTARTED{instance,drain}`；部署非 active 409 `DEPLOYMENT_NOT_ACTIVE`，实例没有在承担副本（失败、排空中、移除中）409 `INSTANCE_NOT_SERVING` | JWT |
 
 实例启动事实接口的三层信息分别是：部署意图（intent）、解析后启动方案（resolved）和运行时观测（runtime observation）。
@@ -593,6 +594,7 @@ macOS 忽略 `no_systemd`。
 | `model_progress`（可选） | 对象数组 | 模型文件的准备状态；`state` 是文件状态，`progress` 为 0–1 的进度，`message` 为相关说明 |
 | `quick_params`、`extra_args`（可选） | 对象、字符串 | 已保存的启动配置与额外参数，见[部署启动参数来源](deployment-launch-sources.md) |
 | `pd`（可选） | 对象 | PD 部署的模式、各角色副本数和状态，见 [PD 分离部署](#pd-分离部署placementpd) |
+| `node_replacement` | 对象 | 节点失联后换节点的等待时间 `{after_sec}`，默认 600，0 表示从不 |
 
 `active` 表示期望运行，不代表已经能够服务；还需结合运行状态、就绪副本和健康检查判断。
 可选字段未返回时，不能一律按 `0` 或空数组处理。以下字段用于判断放置与重试状态：
@@ -741,6 +743,7 @@ macOS 忽略 `no_systemd`。
 
 **单机部署**提交副本数：`{"replicas":N,"remove":["<uuid>"]}`。
 
+- `place_on` 可选，仅增加副本时使用：节点 UUID 列表，新副本先在这些节点启动，只管第一次放置，提示保存在 server 内存里。个数多于新增的副本数 400 `REPLICAS_PLACE_ON_TOO_MANY`（`params.count`、`maximum`）；某节点不可用 409 `REPLICAS_PLACE_ON_REFUSED`（`params.node`、`reason`：`unknown`、`offline`、`cordoned`、`requirements`、`no_room`，视情况带 `detail` 或 `code` / `params`）。
 - `remove` 可选，指定缩容时移除哪些实例的副本。这些副本进入 `draining`，处理完请求后退役；不指定时由服务端选择，先选未就绪的，再选最新创建的。
 - 数量必须满足 1 ≤ N ≤ 部署的 `max_replicas`（当前 32），否则报 `REPLICAS_TOO_FEW` / `REPLICAS_TOO_MANY`。
 - `remove` 多于减少的副本数时返回 400 `REPLICAS_REMOVE_TOO_MANY`；指定的实例没有在承担本部署的副本时返回 400 `REPLICAS_REMOVE_INVALID`。
@@ -748,7 +751,7 @@ macOS 忽略 `no_systemd`。
 
 **两种请求共用的错误条件：**
 
-- 请求体与部署形态不符（PD、多机传数量、单机传列表）：400 `REPLICAS_BODY_SHAPE`。
+- 请求体与部署形态不符（PD、多机传数量、单机传列表、多机带 `place_on`）：400 `REPLICAS_BODY_SHAPE`。
 - 部署正在删除：409 `DEPLOYMENT_DELETING`。
 
 ### 评估与创建的配置字段

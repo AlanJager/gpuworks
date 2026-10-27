@@ -148,6 +148,18 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 		order = append(order, index)
 	}
 	order = append(order, refusedRecently...)
+	// A replica an operator asked to start on a named node tries it first,
+	// once (planning.HintPlacement).
+	hinted, hasHint := planning.NextPlacementHint(dep.ID)
+	if hasHint {
+		for i, index := range order {
+			if pool.Ranked[index].Node.UUID == hinted {
+				order = append(append([]int{index}, order[:i]...), order[i+1:]...)
+				break
+			}
+		}
+		planning.ConsumePlacementHint(dep.ID, hinted)
+	}
 	tried := 0
 	// closest are the candidates refused this pass, best first: what the
 	// deployment's status shows as the nodes nearest to running a replica.

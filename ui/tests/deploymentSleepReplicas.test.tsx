@@ -249,6 +249,29 @@ test("a wake the cards cannot take all at once offers to wake what fits", async 
   await screen.findByText(i18n.t("sleep.partialWoken", { woken: 1, refused: 1 }));
 });
 
+test("a GPU held by a process outside the platform is named, and waking what fits stays on offer", async () => {
+  const asleep = sleepable({ instances: [
+    instance("inst-a", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 0 }, ...alone }),
+    instance("inst-b", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 1 }, ...alone }),
+    instance("inst-c", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 2 }, ...alone }),
+  ] });
+  stub("deploymentsPage", async () => listPage([asleep]));
+  stub("deployment", async () => asleep);
+  const wakes: unknown[] = [];
+  stub("wakeDeployment", async (_id: number, opts: { partial?: boolean }) => {
+    wakes.push(opts);
+    if (!opts.partial) throw new APIError("WAKE_GPU_HELD_OUTSIDE", { node: "n1", gpu_indexes: [1], shortfall_gib: "0.0", occupants: [] }, "GPU [1] is held outside", 409);
+    return { status: "waking", woken: ["inst-a"], refused: [{ instances: ["inst-b"], node: "n1", gpu_indexes: [1], occupants: [], shortfall_gib: "0.0", held_outside: true }, { instances: ["inst-c"], node: "n1", gpu_indexes: [1], occupants: [], shortfall_gib: "0.0", held_outside: true }] };
+  });
+  await openDetail();
+  fireEvent.click(within(drawer()).getByRole("button", { name: locale.sleep.wake }));
+  const reason = i18n.t("apiError.WAKE_GPU_HELD_OUTSIDE", { ns: "common", node: "n1", gpu_indexes: [1] });
+  await screen.findByText((text) => text.includes(reason));
+  fireEvent.click(await within(drawer()).findByRole("button", { name: locale.sleep.wakeWhatFits }));
+  await waitFor(() => assert.deepEqual(wakes, [{ partial: false }, { partial: true }]));
+  await screen.findByText(i18n.t("sleep.partialWoken", { woken: 1, refused: 2 }));
+});
+
 test("waking what fits counts replicas: a multi-node replica's ranks count once", async () => {
   const rank = (uuid: string, index: number, extra: Record<string, unknown>) =>
     instance(uuid, { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index }, ...alone, ...extra });

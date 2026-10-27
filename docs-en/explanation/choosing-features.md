@@ -90,14 +90,14 @@ They **never silently fall back to unlimited GPU memory**.
 ## Sleep/Wake: Models Take Turns on One GPU
 
 **What it solves**: An instance you do not currently need releases GPU memory through the engine's sleep mode, while its container keeps running and its state remains
-`running`. Wake it when needed. A sleeping instance retains only about 1.5 GiB in the scheduling ledger; the rest of the GPU memory can be used to deploy other models.
+`running`. Wake it when needed. A sleeping instance retains only its own residue in the scheduling ledger (measured, or estimated from the model when it cannot be read; roughly 0.75–4 GiB); the rest of the GPU memory can be used to deploy other models.
 
 **How it differs from dGPU**:
 
 | | dGPU | sleep/wake |
 |---|---|---|
 | Online simultaneously | Yes, each with a fixed quota | No; sleeping instances do not serve requests |
-| GPU memory usage | Quota remains allocated | Only about 1.5 GiB of residual memory while sleeping |
+| GPU memory usage | Quota remains allocated | Only the residue while sleeping (measured or estimated per instance) |
 | Switching cost | None | Waking takes time (see below) |
 | Dependency | Each vendor's dGPU backend | vLLM sleep mode |
 
@@ -108,7 +108,7 @@ They **never silently fall back to unlimited GPU memory**.
 - If a sleeping instance receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`) and **does not wake it automatically**.
   Automatic switching on demand is currently unavailable.
 - Waking requires admission first: if a new deployment occupies the GPU, it returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY`. Stop or
-  sleep the occupying instance first.
+  sleep the occupying instance first; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
 - When putting an instance to sleep, choose "Finish in-flight requests first (recommended)" (default; finishes in-flight requests first) or "Abort in-flight requests now."
 - Only **vLLM** is supported. SGLang deployments cannot declare sleep capability (rejected at creation with `SLEEP_ENGINE_UNSUPPORTED`). Enable
   "Sleep Capable" when creating the deployment. Multi-node deployments can sleep: the command goes to the leader, whose engine puts followers to sleep and wakes them together. PD
@@ -147,7 +147,7 @@ GPU interconnect bandwidth depends on hardware (such as NVLink), which is the ma
 - **Vendor boundaries**: Compute networks come in three types: host Ethernet, host RDMA (NVIDIA, NCCL/UCX), and accelerator RDMA (Ascend, HCCL).
   Ascend multi-node deployments must share one accelerator RDMA network (`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`). Host RDMA compute networks cannot be used on runveil
   (`udocker` driver) nodes (`COMPUTE_NETWORK_RUNTIME`). Multi-node inference on other vendors has no validation result.
-- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points.
+- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points. Once the node has been offline longer than the deployment's node replacement wait (default 10 minutes), the platform replaces only the lost rank without spending retries; see [Replace Lost Nodes Automatically](../how-to/node-failover.md).
 
 **When not to use multiple nodes**: The model fits on one machine. Cross-machine deployment is appropriate only when GPU memory or compute capacity is genuinely insufficient.
 

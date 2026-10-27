@@ -83,7 +83,7 @@ var routeDocs = map[string]string{
 	"/api/v1/nodes/{}/network":                  "已删除：410 `SETTING_REMOVED`（`route` 指向 `/api/v1/pull/proxies`）。节点的代理与站点地址都在拉取设置里按节点标签配置（`/nodes/{uuid}/pull-proxy` 给出节点使用哪一条）",
 	"/api/v1/nodes/{}/networks":                 "节点每个角色解析到的网络（网卡/IP/HCA/提示）、管理网（地址、NAT、关闭的角色）与上报的网卡、RDMA 端口清单（带最近两分钟的收发速率）和加速卡网口清单（`accelerator_ports`）",
 	"/api/v1/nodes/{}/pull-proxy":               "节点使用的代理：`proxy`（首个选中它的代理条目，形同 `/pull/proxies` 的一项；没有条目选中时为 `null`，节点 agent 用自身环境）与 `runtime`：运行时类型，docker 节点另有 dockerd 实际使用的代理、与该条目是否一致（`applied`；节点没有代理时比较 systemd 当前加载的配置 `configured_*` 与实际值）、live-restore、`daemon.json` 是否也配了代理，以及 agent 的权限（`root` / `sudo` / `none`）",
-	"/api/v1/nodes/{}/replicas":                 "节点上仍在运行的实例与驱逐对它的处理：`{\"scheduling\", \"items\": [{\"instance\", \"deployment_id\", \"deployment\", \"state\", \"kind\"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank，只有强制驱逐才撤下）；已停止、已失败的实例不列",
+	"/api/v1/nodes/{}/replicas":                 "节点上仍在运行的实例与驱逐对它的处理：`{\"scheduling\", \"items\": [{\"instance\", \"deployment_id\", \"deployment\", \"state\", \"kind\"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank：驱逐时先在别的节点起替代，运行后切过去，没有节点可去则等待；强制驱逐才立即撤下）；已停止、已失败的实例不列",
 	"/api/v1/nodes/{}/ssh":                      "查看节点 SSH 凭据配置（不含明文密钥）",
 	"/api/v1/nodes/{}/terminal":                 "打开 Web 终端会话（WS upgrade；host 或 container target）",
 	"/api/v1/nodes/{}/terminal/settings":        "该节点终端能力与限制（kill switch、并发上限等）",

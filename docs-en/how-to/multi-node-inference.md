@@ -50,4 +50,6 @@ For all creation fields, see the [API Reference](../reference/api.md).
 Nodes in a recommended group must be online, schedulable, satisfy node requirements, and share the same compute network and GPU architecture. Each node must have enough free cards for one rank.
 The platform evaluates placement rank by rank using the deployment configuration, then populates the list. A leader does not share a node with another replica's leader.
 
-Recommendations still require your confirmation. The platform does not select nodes automatically for multi-node replicas because crossing switches or unavailable RDMA connectivity can affect the entire replica group.
+Recommendations still require your confirmation. **When you create a deployment or add replicas**, the platform does not select nodes automatically for multi-node replicas because crossing switches or unavailable RDMA connectivity can affect the entire replica group.
+
+**When a node is lost or drained**, the platform does replace nodes automatically: only the affected rank moves, and the replacement is chosen by the same rules (same compute network, same GPU vendor and architecture, free cards, trial plan fits) without spending retries. For the wait, selection rules, and undo, see [Replace Lost Nodes Automatically](node-failover.md).

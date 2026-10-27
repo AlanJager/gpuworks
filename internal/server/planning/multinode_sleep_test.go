@@ -68,7 +68,7 @@ func multiNodeSleepFixture(t *testing.T, leaderLevel int) (*store.Store, *store.
 // without a running leader, the follower keeps its full claim.
 func TestAFollowerGivesItsCardUpWithItsLeader(t *testing.T) {
 	st, _, nodeB, rows := multiNodeSleepFixture(t, 1)
-	if got := GPUAllocations(st, nodeB)[0]; got.AllocatedBytes != 0 || got.SleepingBytes != sleep.ResidentBytes {
+	if got := GPUAllocations(st, nodeB)[0]; got.AllocatedBytes != 0 || got.SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("follower of an asleep leader = %+v, want residue only", got)
 	}
 	follower := rows["g1-follower"]
@@ -158,7 +158,7 @@ func TestAFailedWakeRollsTheWholeReplicaBack(t *testing.T) {
 			t.Fatalf("%s intent after the failed wake = %d, want 1", uuid, got)
 		}
 	}
-	if got := GPUAllocations(st, nodeB)[0]; got.AllocatedBytes != 0 || got.SleepingBytes != sleep.ResidentBytes {
+	if got := GPUAllocations(st, nodeB)[0]; got.AllocatedBytes != 0 || got.SleepingBytes != sleep.UnknownResidueBytes {
 		t.Fatalf("follower card after the failed wake = %+v, want residue only", got)
 	}
 	leader, _ := st.InstanceByUUID("g1-leader")

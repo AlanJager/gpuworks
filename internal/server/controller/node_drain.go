@@ -20,9 +20,8 @@ const drainMessage = "its node is draining; replaced on another node"
 //
 // It returns the units to reconcile - the deployment's own, plus a surge unit
 // while a replacement is needed - and insts with any released instance marked
-// draining. Multi-node and PD replicas name their nodes and are not moved
-// here; a cordon keeps new ones off the node, and evicting them is the
-// operator's (POST /nodes/{uuid}/evict).
+// draining. Multi-node and PD replicas name their nodes: drainNamedUnits
+// moves them (node_failover_drain.go).
 func (c *Controller) nodeDrain(dep *store.Deployment, units []planning.Unit, insts []store.Instance) ([]planning.Unit, []store.Instance, error) {
 	if len(units) == 0 || !units[0].Pool() {
 		return units, insts, nil

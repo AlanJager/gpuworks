@@ -331,3 +331,32 @@ func TestCardsAreNamedEvenWhenTheProberCannotListProcesses(t *testing.T) {
 		t.Fatalf("cardsInUse = %v known=%v, want device 1's card", ours, known)
 	}
 }
+
+// A card whose only instances of ours all sleep is examined after all: the
+// sleeping engine's own process is known, and anything else there is
+// somebody else's — a wake onto the card would run out of memory. Without a
+// known process for the sleeper the card is left alone, as before.
+func TestASleepersCardReportsAProcessThatIsNotItsEngine(t *testing.T) {
+	ident := accelerator.CardIdent("", "0000:3f:00.0")
+	n := occupancyNode(t, twoOwnedCards(), []gpu.ComputeProcess{
+		{PID: 7001, Name: "vllm", PCIeBDF: "0000:3f:00.0", MemoryBytes: 600 << 20},
+		{PID: 4242, Name: "python3", PCIeBDF: "00000000:3f:00.0", MemoryBytes: 4 << 30},
+	}, nil)
+	n.heldCards = func() engine.HeldCards { return engine.HeldCards{Idents: []string{ident}} }
+	n.sleepingCards = func() map[string]map[int]bool { return map[string]map[int]bool{ident: {7001: true}} }
+
+	cards := twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if got := cards[0].ForeignProcesses; len(got) != 1 || got[0].PID != 4242 || got[0].MemoryBytes != 4<<30 {
+		t.Fatalf("the sleeper's card = %+v, want only the process that is not its engine", got)
+	}
+
+	// The sleeper's process unknown (its residue was not measured): the card
+	// is not examined.
+	n.sleepingCards = func() map[string]map[int]bool { return nil }
+	cards = twoOwnedCards()
+	n.CardHealthFindings(context.Background(), cards, true)
+	if len(cards[0].ForeignProcesses) != 0 {
+		t.Fatalf("a card of ours with unknown processes = %+v, want it left alone", cards[0].ForeignProcesses)
+	}
+}

@@ -68,6 +68,10 @@ type Deployment struct {
 	// /v1/detokenize for the deployment. It is stored inverted so the zero
 	// value (and every row from before the column) means they are open.
 	TokenizeDisabled bool `gorm:"not null;default:false"`
+	// NodeReplaceAfterSec is how long a node that runs one of the
+	// deployment's replicas may stay offline before the replica is moved to
+	// another node; 0 never moves it.
+	NodeReplaceAfterSec int `gorm:"not null;default:600"`
 
 	// State is the internal Go name; the persisted column is desired_state.
 	// The column type is unchanged: DeploymentState is a string alias.
@@ -149,12 +153,17 @@ type Instance struct {
 	BytesTotal          int64
 	RateBPS             int64
 	SleepLevel          int
-	DistGroup           string `gorm:"size:64;index"`
-	DistRole            string `gorm:"size:16"` // leader | follower
-	NNodes              int
-	NodeRank            int
-	Headless            bool
-	DistAttempt         int
+	// SleepResidueBytes is the per-GPU memory the agent measured the engine
+	// still holding after its last sleep, 0 when it could not measure (the
+	// card was shared, or the agent predates the measurement): the ledger
+	// then charges an estimate (sleep.ResidueBytes).
+	SleepResidueBytes int64
+	DistGroup         string `gorm:"size:64;index"`
+	DistRole          string `gorm:"size:16"` // leader | follower
+	NNodes            int
+	NodeRank          int
+	Headless          bool
+	DistAttempt       int
 	// Role is the instance's role in a PD disaggregated deployment
 	// (pdmode.Role*); empty for every other deployment. It is independent of
 	// DistRole, which ranks a multi-node group.

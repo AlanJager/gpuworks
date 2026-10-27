@@ -60,12 +60,25 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 		return err
 	}
 
+	insts, err = c.failoverPoolReplicas(deployment, insts)
+	if err != nil {
+		return err
+	}
 	units, insts, err := c.nodeDrain(dep, deployment.units, insts)
 	if err != nil {
 		return err
 	}
+	if units, err = c.drainNamedUnits(ctx, deployment, units); err != nil {
+		return err
+	}
 	deployment.insts = insts
 	match := planning.MatchUnits(units, insts, deployment.nodeUUIDs, dep.PlacementStrategy)
+	if moved, err := c.failoverNamedUnits(ctx, deployment, match); moved || err != nil {
+		return err
+	}
+	if moved, err := c.completeDrainSurge(deployment, match); moved || err != nil {
+		return err
+	}
 	if err := c.retire(dep, insts, match.Orphans, "unit generation has no leader any more"); err != nil {
 		return err
 	}
@@ -130,23 +143,14 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 			c.q.addAfter(depKey(dep.ID), wait)
 			continue
 		}
-		nodes, ready := c.unitNodes(ctx, dep, deployment, model, slot.Unit)
-		if !ready {
-			placementResolved = false
-			continue
-		}
-		if leaving := masterPortHolder(dep, insts, nodes[0]); leaving != nil {
-			placementResolved = false
-			// The generation it replaces still listens on the master port;
-			// its retirement requeues the deployment.
-			c.log.Info("replica waits for the generation it replaces to leave its leader node", "dep", dep.ID, "unit", slot.Key, "leaving", leaving.UUID)
-			continue
-		}
 		if len(attempts) > 0 && !cleaned[slot.Key] {
 			// A retry gets fresh UUIDs; remove the failed attempts' containers
 			// first so they do not leak. The rows stay: they are the unit's
 			// spent attempts, and the last one is the evidence once the
-			// budget is exhausted.
+			// budget is exhausted. This comes before a node is picked: a
+			// failed attempt whose engine still holds its card (an uncertain
+			// sleep transition) makes that card read as taken, and the retry
+			// would wait for a node forever.
 			var old []string
 			for _, inst := range attempts {
 				old = append(old, inst.UUID)
@@ -159,6 +163,18 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 				return err
 			}
 			cleaned[slot.Key] = true
+		}
+		nodes, ready := c.unitNodes(ctx, dep, deployment, model, slot.Unit)
+		if !ready {
+			placementResolved = false
+			continue
+		}
+		if leaving := masterPortHolder(dep, insts, nodes[0]); leaving != nil {
+			placementResolved = false
+			// The generation it replaces still listens on the master port;
+			// its retirement requeues the deployment.
+			c.log.Info("replica waits for the generation it replaces to leave its leader node", "dep", dep.ID, "unit", slot.Key, "leaving", leaving.UUID)
+			continue
 		}
 		for _, node := range nodes {
 			preparing = append(preparing, node.ID)
@@ -264,10 +280,12 @@ func (c *Controller) prepareUnits(dep *store.Deployment, pd *planning.PDPlacemen
 // settleRetiring finishes what earlier passes retired: a row the agent
 // confirmed stopped is deleted, and a row still being removed is pushed
 // again and waited for, so a unit is never rebuilt while its previous
-// generation still holds GPUs. A node that cannot confirm (offline) does not
-// keep its rows: they are deleted, and its agent's orphan reconciliation
-// removes the containers when it reconnects. It reports whether rows are
-// still being removed.
+// generation still holds GPUs. A row on an offline node keeps waiting for
+// its node without holding the deployment up: the replica it leaves has
+// already been moved (or will be), and when the node reconnects the removal
+// is pushed and confirmed like any other - an agent restarted meanwhile no
+// longer knows the container, and orphan cleanup is off by default. It
+// reports whether rows on online nodes are still being removed.
 func (c *Controller) settleRetiring(ctx context.Context, dep *store.Deployment, insts []store.Instance) (bool, error) {
 	var retiring []string
 	for _, inst := range insts {
@@ -279,10 +297,14 @@ func (c *Controller) settleRetiring(ctx context.Context, dep *store.Deployment, 
 			}
 		case proto.InstRemoving, proto.InstPendingRemoval:
 			node, err := c.store.NodeByID(inst.NodeID)
-			if err != nil || !c.hub.Online(node.UUID) {
+			if err != nil {
+				// The node is gone from the cluster: nothing is left to confirm.
 				if err := c.store.DeleteInstance(inst.UUID); err != nil {
 					return false, err
 				}
+				continue
+			}
+			if !c.hub.Online(node.UUID) {
 				continue
 			}
 			retiring = append(retiring, inst.UUID)
@@ -299,8 +321,9 @@ func (c *Controller) settleRetiring(ctx context.Context, dep *store.Deployment, 
 }
 
 // retire marks instances removing and asks their nodes to stop them;
-// settleRetiring confirms or, for an offline node, drops them. A failed push
-// leaves the rows removing, and the next pass pushes again.
+// settleRetiring confirms them, keeping a row on an offline node until it
+// reconnects. A failed push leaves the rows removing, and the next pass
+// pushes again.
 func (c *Controller) retire(dep *store.Deployment, insts []store.Instance, remove []store.Instance, message string) error {
 	if len(remove) == 0 {
 		return nil

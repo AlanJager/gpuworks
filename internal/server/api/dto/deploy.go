@@ -109,7 +109,10 @@ type Deployment struct {
 	Health DeploymentHealth `json:"health"`
 	// TokenizeEnabled says whether the gateway forwards /v1/tokenize and
 	// /v1/detokenize to the deployment's engine.
-	TokenizeEnabled bool                `json:"tokenize_enabled"`
+	TokenizeEnabled bool `json:"tokenize_enabled"`
+	// NodeReplacement is how long a node may stay offline before its
+	// replicas move (after_sec 0 never moves them).
+	NodeReplacement NodeReplacement     `json:"node_replacement"`
 	DistGroup       string              `json:"dist_group,omitempty"`
 	DistRole        string              `json:"dist_role,omitempty"`
 	NNodes          int                 `json:"nnodes,omitempty"`

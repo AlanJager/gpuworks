@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 
 import type { InstanceEvent } from "../api";
+import { isNodeReplacementEvent, nodeReplacementEventText } from "./nodeReplacementEvents.ts";
 import { stateLabel } from "./state.ts";
 import { formatBytes as formatSize } from "../format";
 import { storageStateLabel } from "../storageDisplay";
@@ -147,6 +148,7 @@ export function instanceEventText(
 ): string {
   const code = event.code?.trim() ?? "";
   if (knownLifecycleEventCodes.has(code)) return lifecycleEventText(t, event, code);
+  if (isNodeReplacementEvent(code)) return nodeReplacementEventText(t, event, code);
   if (!knownInstanceEventCodes.has(code)) return event.message?.trim() || code;
 
   const rawState = paramText(event, "state");
