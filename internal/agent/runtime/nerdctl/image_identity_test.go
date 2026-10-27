@@ -16,23 +16,21 @@ const testImageDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const testTargetDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 func TestInspectImagePreservesConfigIdentityForNameAndTargetLookup(t *testing.T) {
-	target := "sha256:" + strings.Repeat("a", 64)
-	config := "sha256:" + strings.Repeat("b", 64)
 	// nerdctl 1.7.6 looks up target digests, not the config digest returned
 	// by dockercompat image inspect. Replay both distinct native descriptors.
-	raw := `{"Image":{"Name":"docker.io/example/runner:v1","Target":{"digest":"` + target + `"}},"ImageConfigDesc":{"digest":"` + config + `"},"ImageConfig":{"config":{"Entrypoint":["vllm"],"Cmd":["serve"],"Env":["LD_LIBRARY_PATH=/usr/local/lib","EMPTY="],"Volumes":{"/cache":{}}}}}`
+	raw := `{"Image":{"Name":"docker.io/example/runner:v1","Target":{"digest":"` + testTargetDigest + `"}},"ImageConfigDesc":{"digest":"` + testImageDigest + `"},"ImageConfig":{"config":{"Entrypoint":["vllm"],"Cmd":["serve"],"Env":["LD_LIBRARY_PATH=/usr/local/lib","EMPTY="],"Volumes":{"/cache":{}}}}}`
 	installFakeNerdctl(t, `
 case "$*" in
-  '-n gpuworks image inspect --mode=native --format {{json .}} docker.io/example/runner:v1'|'-n gpuworks image inspect --mode=native --format {{json .}} `+target+`')
+  '-n gpuworks image inspect --mode=native --format {{json .}} docker.io/example/runner:v1'|'-n gpuworks image inspect --mode=native --format {{json .}} `+testTargetDigest+`')
     printf '%s\n' '`+raw+`' ;;
-  '-n gpuworks image inspect --format {{json .}} docker.io/example/runner:v1'|'-n gpuworks image inspect --format {{json .}} `+target+`')
-    printf '%s\n' '{"Id":"`+config+`","Config":{"Entrypoint":["vllm"],"Cmd":["serve"],"Env":["LD_LIBRARY_PATH=/usr/local/lib"],"Volumes":{"/cache":{}}}}' ;;
+  '-n gpuworks image inspect --format {{json .}} docker.io/example/runner:v1'|'-n gpuworks image inspect --format {{json .}} `+testTargetDigest+`')
+    printf '%s\n' '{"Id":"`+testImageDigest+`","Config":{"Entrypoint":["vllm"],"Cmd":["serve"],"Env":["LD_LIBRARY_PATH=/usr/local/lib"],"Volumes":{"/cache":{}}}}' ;;
   *) echo 'unexpected command or unresolvable config digest' >&2; exit 1 ;;
 esac`)
 	// The same platform image must retain Docker's config identity in catalog
 	// reports and after an agent upgrade, independently of its lookup reference.
 	dockerDir := t.TempDir()
-	dockerScript := "#!/bin/sh\nprintf '%s\\n' '{\"Id\":\"" + config + "\",\"Config\":{}}'\n"
+	dockerScript := "#!/bin/sh\nprintf '%s\\n' '{\"Id\":\"" + testImageDigest + "\",\"Config\":{}}'\n"
 	if err := os.WriteFile(filepath.Join(dockerDir, "docker"), []byte(dockerScript), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -41,14 +39,62 @@ esac`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, ref := range []string{"docker.io/example/runner:v1", target} {
+	for _, ref := range []string{"docker.io/example/runner:v1", testTargetDigest} {
 		got, err := New().InspectImage(context.Background(), ref)
 		if err != nil {
 			t.Fatalf("InspectImage(%q): %v", ref, err)
 		}
-		if got.ID != config || got.ID != dockerImage.ID || got.Env["LD_LIBRARY_PATH"] != "/usr/local/lib" || len(got.Entrypoint) != 1 || got.Entrypoint[0] != "vllm" || len(got.Cmd) != 1 || got.Cmd[0] != "serve" || len(got.Volumes) != 1 || got.Volumes[0] != "/cache" {
+		if got.ID != testImageDigest || got.ID != dockerImage.ID || got.Env["LD_LIBRARY_PATH"] != "/usr/local/lib" || len(got.Entrypoint) != 1 || got.Entrypoint[0] != "vllm" || len(got.Cmd) != 1 || got.Cmd[0] != "serve" || len(got.Volumes) != 1 || got.Volumes[0] != "/cache" {
 			t.Fatalf("InspectImage(%q) lost identity or runtime config: %+v", ref, got)
 		}
+	}
+}
+
+// These fixtures replay native output after nerdctl has selected a platform.
+// They verify our parsing, not containerd's platform selection or emulation.
+func TestInspectImageUsesSelectedConfigFromMultiPlatformIndex(t *testing.T) {
+	platforms := []struct {
+		arch, manifest, config string
+	}{
+		{"amd64", "sha256:" + strings.Repeat("d", 64), testImageDigest},
+		{"arm64", "sha256:" + strings.Repeat("e", 64), "sha256:" + strings.Repeat("b", 64)},
+	}
+	var manifests []any
+	for _, platform := range platforms {
+		manifests = append(manifests, map[string]any{
+			"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": platform.manifest,
+			"platform": map[string]string{"os": "linux", "architecture": platform.arch},
+		})
+	}
+	for _, selected := range platforms {
+		t.Run(selected.arch, func(t *testing.T) {
+			libraryPath := "/image/" + selected.arch + "/lib"
+			raw, err := json.Marshal(map[string]any{
+				"Image": map[string]any{"Target": map[string]string{
+					"mediaType": "application/vnd.oci.image.index.v1+json", "digest": testTargetDigest,
+				}},
+				"Index":           map[string]any{"schemaVersion": 2, "manifests": manifests},
+				"ManifestDesc":    map[string]string{"digest": selected.manifest},
+				"ImageConfigDesc": map[string]string{"digest": selected.config},
+				"ImageConfig": map[string]any{
+					"os": "linux", "architecture": selected.arch,
+					"config": map[string]any{"Env": []string{"LD_LIBRARY_PATH=" + libraryPath}, "Cmd": []string{selected.arch}},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			installFakeNerdctl(t, "printf '%s\\n' '"+string(raw)+"'")
+			for _, ref := range []string{"example/multiplatform:v1", testTargetDigest} {
+				got, err := New().InspectImage(context.Background(), ref)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.ID != selected.config || got.Env["LD_LIBRARY_PATH"] != libraryPath || len(got.Cmd) != 1 || got.Cmd[0] != selected.arch {
+					t.Fatalf("InspectImage(%q) used the index, a manifest, or another platform's config: %+v", ref, got)
+				}
+			}
+		})
 	}
 }
 
