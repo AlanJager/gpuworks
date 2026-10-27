@@ -17,6 +17,9 @@ type GPUHealthOverview struct {
 	Error   int `json:"error"`
 }
 
+// GPUAllocationOverview partitions physical devices by AllocationState.
+// Allocatable includes available and partial devices; Allocated includes only
+// allocated devices, never partial, unusable, or unreachable reservations.
 type GPUAllocationOverview struct {
 	Allocated   int `json:"allocated"`
 	Allocatable int `json:"allocatable"`

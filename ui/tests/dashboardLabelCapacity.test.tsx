@@ -277,7 +277,7 @@ test("mixed vendors and models retain every capacity group and each GPU allocati
     { uuid: "n2", name: "L40", vendor: "nvidia", memory_total_bytes: 40 * 1024 ** 3, allocation_state: "allocated" },
     { uuid: "a1", name: "Ascend 910B", vendor: "ascend", memory_total_bytes: 64 * 1024 ** 3, allocation_state: "unusable" },
     { uuid: "m1", name: "MI210", vendor: "amd", memory_total_bytes: 16 * 1024 ** 3, allocation_state: "unknown" },
-  ], overview: { total: 4 } }) as never;
+  ], overview: { total: 4, allocation: { allocated: 1, allocatable: 1, unusable: 1, unknown: 1 } } }) as never;
   renderPage();
   await waitFor(() => assert.ok(document.querySelector(".dashboard-overview-composition-grid")?.textContent?.includes("Ascend 910B")));
   const vendorRows = document.querySelectorAll(".dashboard-overview-composition-grid > .dashboard-overview-distribution:first-child .dashboard-overview-distribution-row");
@@ -623,4 +623,19 @@ test("GPU status counts remain independent of missing telemetry readings", async
   await waitFor(() => assert.ok(gpu.textContent?.includes("Allocatable 1")));
   assert.ok(!gpu.textContent?.includes("Utilization"));
   assert.ok(!document.querySelector(".dashboard-overview-posture")?.textContent?.includes("Utilization"));
+});
+
+
+test("GPU resource counts use the shared fleet overview with partial devices counted only as allocatable", async () => {
+  stub();
+  const items = Array.from({ length: 71 }, (_, index) => ({
+    uuid: `allocation-${index}`, name: "H100", vendor: "nvidia", memory_total_bytes: 80 * 1024 ** 3,
+    allocation_state: index < 5 ? "allocated" : index < 7 ? "partial" : index < 30 ? "unusable" : "available",
+  }));
+  api.gpus = async () => ({ items, overview: { total: 71, allocation: { allocated: 5, allocatable: 43, unusable: 23, unknown: 0 } } }) as never;
+  renderPage();
+  await screen.findByText("Allocatable 43");
+  const gpu = document.querySelectorAll(".dashboard-overview-resource")[1];
+  assert.deepEqual([...gpu.querySelectorAll(".dashboard-overview-status")].map((status) => status.textContent), ["Allocatable 43", "Allocated 5", "Unavailable 23"]);
+  assert.ok(gpu.textContent?.includes("Allocatable includes partially allocated GPUs."));
 });
