@@ -127,3 +127,68 @@ func TestRecoveryListsAProviderOncePerRound(t *testing.T) {
 		t.Fatalf("listed %d times", providers.calls)
 	}
 }
+
+// A running RunPod pod as its list reports it (GET /v2/pods, 2026-10-26):
+// no runtime and no direct SSH, only the interactive proxy, whatever the
+// pod's ports are. The single-pod read carries the direct endpoint.
+func listedRunpodPod() provider.Instance {
+	return provider.Instance{ExternalID: "pod-1", Power: provider.PowerRunning, SSHConnections: []provider.SSHConnection{
+		{ID: "proxy", Type: "proxy", Host: "ssh.runpod.io", Port: 22, User: "pod-1-64410f3e", InstallSupported: false},
+	}}
+}
+
+func describedRunpodPod() provider.Instance {
+	pod := renumberedPod()
+	pod.SSHConnections = append(pod.SSHConnections, provider.SSHConnection{ID: "proxy", Type: "proxy", Host: "ssh.runpod.io", Port: 22, User: "pod-1-64410f3e", InstallSupported: false})
+	return pod
+}
+
+// The pod list says nothing of SSH, so the renumbered endpoint comes from the
+// pod's own description; without it recovery kept probing the old port, where
+// the restarted pod answers nothing, and never reinstalled the agent.
+func TestRecoveryReadsTheRenumberedSSHEndpointFromTheInstanceDetail(t *testing.T) {
+	r, st, _, fake := newRecoveryHarness(t)
+	detail := describedRunpodPod()
+	providers := &fakeProviders{instances: []provider.Instance{listedRunpodPod()}, detail: &detail}
+	r.providers = providers
+	fake.probeResult = provision.ProbeResult{Reachable: true, AgentInstalled: false}
+	node := serverDialNode(t, st)
+	if _, err := r.recoverNode(context.Background(), node, false); err != nil {
+		t.Fatal(err)
+	}
+	if fake.probes.Load() != 1 || fake.probeReq.Port != 15755 || fake.probeReq.Host != "203.0.113.158" {
+		t.Fatalf("probes = %d at %s:%d, want one at 203.0.113.158:15755", fake.probes.Load(), fake.probeReq.Host, fake.probeReq.Port)
+	}
+	credential, _, err := st.GetNodeSSHCredential(node.UUID)
+	if err != nil || credential.Port != 15755 || credential.User != "root" {
+		t.Fatalf("SSH credential = %+v, %v", credential, err)
+	}
+}
+
+// The listing alone cannot move the credential to the proxy, and a pod that
+// is restarting (no direct endpoint in its description yet) leaves it as it
+// was; so does a detail endpoint that cannot be read.
+func TestRecoveryKeepsTheSSHEndpointWithoutAnInstallableOneInTheDetail(t *testing.T) {
+	restarting := listedRunpodPod()
+	for name, providers := range map[string]*fakeProviders{
+		"restarting pod": {instances: []provider.Instance{listedRunpodPod()}, detail: &restarting},
+		"detail error":   {instances: []provider.Instance{listedRunpodPod()}, detailErr: errors.New("api down")},
+		"no detail":      {instances: []provider.Instance{listedRunpodPod()}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, st, _, fake := newRecoveryHarness(t)
+			r.providers = providers
+			fake.probeResult = provision.ProbeResult{Reachable: false}
+			node := serverDialNode(t, st)
+			if _, err := r.recoverNode(context.Background(), node, false); err != nil {
+				t.Fatal(err)
+			}
+			if fake.probes.Load() != 1 || fake.probeReq.Port != 10033 {
+				t.Fatalf("probes = %d at port %d, want one at the stored port 10033", fake.probes.Load(), fake.probeReq.Port)
+			}
+			if providers.details != 1 {
+				t.Fatalf("instance detail read %d times", providers.details)
+			}
+		})
+	}
+}

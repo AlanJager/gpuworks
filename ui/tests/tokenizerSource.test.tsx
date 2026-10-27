@@ -28,7 +28,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { Form } = await import("antd");
-const { cleanup, render, screen } = await import("@testing-library/react");
+const { cleanup, render, screen, waitFor } = await import("@testing-library/react");
 const { default: TokenizerSourceFields } = await import("../src/pages/evaluations/TokenizerSourceFields.tsx");
 
 afterEach(() => cleanup());
@@ -104,3 +104,66 @@ test("an uploaded tokenizer remains visible when rerunning", () => {
  assert.ok(screen.getByText(/按 token 长度必须提供可加载/));
  assert.equal(tokenizerSourceOrDefault(false, true, undefined, false), "huggingface");
  });
+
+const userEvent = (await import("@testing-library/user-event")).default;
+
+for (const targetKind of ["instance", "external"] as const) {
+	for (const source of ["huggingface", "modelscope"] as const) {
+		test(`${targetKind} ${source} requires a nonblank repository before submission`, async () => {
+			const sent: string[] = [];
+			render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: source }} onFinish={(values) => sent.push(tokenizerReference(source, values.tokenizer_repo, undefined, { huggingface: "hf", modelscope: "ms" })!)}>
+				<TokenizerSourceFields source={source} dataset="random" targetKind={targetKind} onUpload={() => {}} />
+				<button type="submit">开始评测</button>
+			</Form></I18nextProvider>);
+			const user = userEvent.setup({ document: dom.window.document });
+			await user.click(screen.getByRole("button", { name: "开始评测" }));
+			assert.ok(await screen.findByText("请输入模型仓库"));
+			assert.deepEqual(sent, []);
+			const repository = screen.getByRole("textbox", { name: "模型仓库" });
+			await user.type(repository, "   ");
+			await user.click(screen.getByRole("button", { name: "开始评测" }));
+			assert.ok(await screen.findByText("请输入模型仓库"));
+			assert.deepEqual(sent, []);
+			await user.clear(repository);
+			await user.type(repository, " Qwen/Qwen3-8B ");
+			await user.click(screen.getByRole("button", { name: "开始评测" }));
+			await waitFor(() => assert.deepEqual(sent, [`${source === "huggingface" ? "hf" : "ms"}://Qwen/Qwen3-8B`]));
+		});
+	}
+	for (const dataset of ["random", "agentic", "multiturn"]) {
+		test(`${targetKind} ${dataset} upload requires a file and shows a visible validation error`, async () => {
+			const sent: string[] = [];
+			function Harness() {
+				const [form] = Form.useForm();
+				const reference = Form.useWatch("tokenizer_ref", form);
+				return <Form form={form} initialValues={{ tokenizer_source: "upload", tokenizer_ref: "  " }} onFinish={(values) => sent.push(values.tokenizer_ref)}>
+					<TokenizerSourceFields source="upload" dataset={dataset} targetKind={targetKind} tokenizerRef={reference} onUpload={(file) => form.setFieldValue("tokenizer_ref", `/tmp/${file.name}`)} />
+					<button type="submit">开始评测</button>
+				</Form>;
+			}
+			const { container } = render(<I18nextProvider i18n={i18n}><Harness /></I18nextProvider>);
+			const user = userEvent.setup({ document: dom.window.document });
+			await user.click(screen.getByRole("button", { name: "开始评测" }));
+			assert.ok(await screen.findByText("请上传 tokenizer.json"));
+			assert.deepEqual(sent, []);
+			const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+			await user.upload(input, new dom.window.File(["{}"], "selected.json", { type: "application/json" }));
+			assert.ok(await screen.findByText("当前文件：selected.json"));
+			await user.click(screen.getByRole("button", { name: "开始评测" }));
+			await waitFor(() => assert.deepEqual(sent, ["/tmp/selected.json"]));
+		});
+	}
+}
+
+test("automatic managed resolution and natural-text estimation need no explicit reference", async () => {
+	for (const [targetKind, source] of [["instance", "auto"], ["external", "estimate"]] as const) {
+		let submitted = false;
+		render(<I18nextProvider i18n={i18n}><Form initialValues={{ tokenizer_source: source }} onFinish={() => { submitted = true; }}>
+			<TokenizerSourceFields source={source} dataset="multiturn" targetKind={targetKind} onUpload={() => {}} />
+			<button type="submit">开始评测</button>
+		</Form></I18nextProvider>);
+		await userEvent.setup({ document: dom.window.document }).click(screen.getByRole("button", { name: "开始评测" }));
+		await waitFor(() => assert.equal(submitted, true));
+		cleanup();
+	}
+});

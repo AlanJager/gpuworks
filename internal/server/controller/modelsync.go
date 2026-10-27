@@ -530,12 +530,8 @@ func (c *Controller) runModelSync(ctx context.Context, key string, run *modelSyn
 		return
 	}
 	if result.InProgress {
-		if result.TransferID != "" && result.TransferID != run.transferID {
-			run.transferID = result.TransferID
-			if err := c.store.BeginModelSync(refOf(dstMF), src.node.ID, result.TransferID, src.sizeBytes); err != nil {
-				c.log.Warn("adopt active target model sync failed", "model_file", key, "transfer", result.TransferID, "err", err)
-				return
-			}
+		if !c.adoptActiveModelSync(key, run, src, dstMF, result.TransferID) {
+			return
 		}
 		c.log.Info("model sync already active on target", "model_file", key, "transfer", result.TransferID)
 	} else {

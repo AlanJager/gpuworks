@@ -561,3 +561,49 @@ func TestEndpointQueryAppliesToPodAndAccountKeyPaths(t *testing.T) {
 		})
 	}
 }
+
+// A pod's keys are the PUBLIC_KEY it was created with (an edit keeps it); a key
+// the install appends to authorized_keys sits on the container disk the edit
+// clears (observed 2026-10-26: the platform key added at install was gone
+// after a ports edit, the rented key in PUBLIC_KEY still logged in).
+func TestPlatformKeyVolatileUnlessThePodEnvCarriesIt(t *testing.T) {
+	const platform = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlatformKeyMaterial gpuworks@server"
+	const rented = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIRentedKeyMaterial rent@test"
+	for _, tc := range []struct {
+		name       string
+		env        string
+		status     int
+		authorized bool
+		noKey      bool
+		want       bool
+	}{
+		{name: "key appended to authorized_keys only", env: rented, status: 200, authorized: true, want: true},
+		{name: "key in PUBLIC_KEY", env: rented + "\n" + platform, status: 200, authorized: true, want: false},
+		{name: "same key with another comment", env: strings.Replace(platform, "gpuworks@server", "other", 1), status: 200, authorized: true, want: false},
+		{name: "pod unreadable", status: 500, authorized: true, want: true},
+		{name: "platform key not authorized", env: rented, status: 200, authorized: false, want: false},
+		{name: "no platform key", env: rented, status: 200, authorized: true, noKey: true, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newTestDriver(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/pods/pod-1" {
+					t.Errorf("path = %q", r.URL.Path)
+				}
+				if tc.status != 200 {
+					w.WriteHeader(tc.status)
+					return
+				}
+				body, _ := json.Marshal(map[string]any{"id": "pod-1", "status": "RUNNING", "env": map[string]string{"PUBLIC_KEY": tc.env, "GPUWORKS_TEST": "1"}})
+				_, _ = w.Write(body)
+			})
+			req := provider.InstallRequest{Instance: provider.Instance{ExternalID: "pod-1"}}
+			if !tc.noKey {
+				req.PlatformKey = &provider.PlatformKey{PublicKey: platform}
+			}
+			got := d.platformKeyVolatile(context.Background(), provider.Credentials{APIKey: "k"}, req, provider.InstallReport{PlatformKeyAuthorized: tc.authorized})
+			if got != tc.want {
+				t.Fatalf("platformKeyVolatile = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -31,13 +31,13 @@ export default function TokenizerSourceFields({ source, dataset, targetKind, tok
 				{ value: "upload", label: t("wizard.uploadFile") },
 			]} />
 		</Form.Item>
-		<Form.Item name="tokenizer_ref" hidden rules={source === "upload" ? [{ required: tokenLengthControlled, message: t("wizard.tokenizerRequired") }] : undefined}><Input /></Form.Item>
+		<Form.Item name="tokenizer_ref" hidden={source !== "upload"} style={{ marginBottom: 0 }} rules={source === "upload" ? [{ required: true, whitespace: true, message: t("wizard.tokenizerRequired") }] : undefined}><Input style={{ display: "none" }} /></Form.Item>
 		{source === "upload" ? <Space direction="vertical" size={8}>
 			{currentFile && <Typography.Text type="secondary">{t("wizard.currentTokenizerFile", { name: currentFile })}</Typography.Text>}
 			<Upload accept=".json" showUploadList={false} beforeUpload={(file) => { onUpload(file); return false; }}>
 				<Button icon={<UploadOutlined />}>{t("wizard.uploadTokenizer")}</Button>
 			</Upload>
-		</Space> : repository ? <Form.Item name="tokenizer_repo" label={t("wizard.modelRepository")} rules={targetKind === "external" ? [{ required: true, message: t("wizard.tokenizerRepositoryRequired") }] : undefined}>
+		</Space> : repository ? <Form.Item name="tokenizer_repo" label={t("wizard.modelRepository")} rules={[{ required: true, whitespace: true, message: t("wizard.tokenizerRepositoryRequired") }]}>
 			<Input placeholder={t("wizard.modelRepositoryPlaceholder")} />
 		</Form.Item> : null}
 	</>;

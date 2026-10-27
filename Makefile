@@ -29,7 +29,7 @@ BIN       := bin
 TEST_LOG_DIR ?= .testlogs
 PLATFORMS := linux/amd64 linux/arm64 darwin/arm64
 
-.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-node-onboarding test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify image-manifest-publish fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish
+.PHONY: all build test-host-env-adapters server server-linux-amd64 server-linux-amd64-prebuilt-ui server-linux-arm64 server-linux-arm64-prebuilt-ui server-darwin-amd64-prebuilt-ui server-darwin-arm64-prebuilt-ui agent ui test test-unit test-ui test-integration test-fleet-perf-processes test-fleet-log-scale-processes test-coverage-report test-l2 test-l3 test-l4 test-l4-runpod-server-dial-node-onboarding test-l4-runpod-huggingface-public-download test-l4-runpod-vllm-sglang-lifecycle test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-vast-server-dial-node-onboarding test-l4-gitee-ascend-partition-capability test-l4-gitee-ascend-deploy-chat test-l4-ascend-pool-partition-inference test-l4-ascend-primary test-l4-ascend-preflight test-l4-ascend-nerdctl-devinject test-l4-compshare-modelscope-public-download test-l4-compshare-offline-contracts test-l4-compshare-single-vm-tp2-dgpu test-l4-compshare-provisioning-matrix test-l4-compshare-server-dial-node-onboarding-container test-l4-compshare-two-vm-udocker-distributed test-l4-compshare-two-vm-docker-distributed test-l4-compshare-one-vm-two-logical-nodes test-l4-compshare-pd-deploy-chat-two-vm-docker prepare-compshare-golden-image test-l4-runpod test-l4-compshare test-l4-cleanup-leaked vet check-assets check-libvgpu check-perftest check-time-policy check-architecture check-tagged-build check-api-conventions check-ci-yaml check-artifacts check-doc-links check-translations i18n-check i18n-translate i18n-review runtime-assets runtime-assets-probe runtime-assets-verify image-manifest image-manifest-verify image-manifest-publish fake-engine fake-engine-image fake-model clean demo run-server tidy cross release-packages dist-publish test-l4-runpod-node-onboarding test-l4-aliyun test-l4-aliyun-provisioning-matrix test-l4-aliyun-modelscope-public-download test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-two-vm-udocker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker prepare-aliyun-golden-image
 
 all: build
 
@@ -164,6 +164,7 @@ check-tagged-build:
 	CGO_ENABLED=0 $(GO) test -tags='docker' ./test/l3 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,runpod' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,compshare' ./test/l4 -run '^$$'
+	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,aliyun' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,autodl' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,vast' ./test/l4 -run '^$$'
 	CGO_ENABLED=0 $(GO) test -tags='cloudgpu,partition' ./test/l4 -run '^$$'
@@ -384,9 +385,6 @@ test-l3:
 		if [ "$$status" != 0 ]; then echo "l3 failed (status $$status); full output: $$log"; exit "$$status"; fi; \
 	fi
 
-test-l4-runpod-node-onboarding: cross-agents
-	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodNodeOnboarding$$' -timeout=25m ./test/l4
-
 ## Server-dialed agent on a pod, then a pod edit that renumbers its ports.
 test-l4-runpod-server-dial-node-onboarding: cross-agents
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -tags=cloudgpu,runpod -run '^TestRunpodServerDialNodeOnboarding$$' -timeout=55m ./test/l4
@@ -497,9 +495,47 @@ test-l4-compshare-pd-deploy-chat-two-vm-docker: server-linux-amd64-prebuilt-ui
 test-l4-compshare-one-vm-two-logical-nodes: server-linux-amd64-prebuilt-ui
 	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,compshare -run '^TestCompshareOneVMTwoLogicalNodeDistributedInference$$' -timeout=180m ./test/l4
 
+## Aliyun ECS L4. VMs are rented spot-first, falling back to on-demand when
+## spot has no stock or is refused, from a golden custom image (NVIDIA driver,
+## Docker 29, NVIDIA toolkit, vLLM runner image, test model) that
+## prepare-aliyun-golden-image builds and copies to every region; cases
+## install and download nothing. See docs/dev/testing.md.
+## Cross-VM udocker and public download stay explicit low-frequency targets, as for CompShare.
+test-l4-aliyun: test-l4-aliyun-provisioning-matrix test-l4-aliyun-single-vm-tp2-dgpu test-l4-aliyun-one-vm-two-logical-nodes test-l4-aliyun-two-vm-docker-distributed test-l4-aliyun-pd-deploy-chat-two-vm-docker
+
+## Explicit, mutating maintenance operation: builds a new golden image in the
+## cheapest region with stock, copies it to the other regions and validates it
+## from a fresh VM. It prints the ALIYUN_IMAGE_<REGION> lines, changes no CI
+## variable and deletes no older image.
+prepare-aliyun-golden-image:
+	CGO_ENABLED=0 $(GO) run ./test/l4/cmd/prepare-aliyun-golden
+
+test-l4-aliyun-provisioning-matrix: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^(TestAliyunNodeOnboarding|TestAliyunDirectServerDialOnboarding|TestAliyunCapacityShapes|TestAliyunTwoGPUProvisioning)$$' -timeout=180m ./test/l4
+
+## Explicit low-frequency public download acceptance (the only Aliyun case that
+## downloads a model; the others use the golden image's preloaded one).
+test-l4-aliyun-modelscope-public-download: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunModelScopePublicDownload$$' -timeout=40m ./test/l4
+
+test-l4-aliyun-single-vm-tp2-dgpu: cross-agents
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunSingleVMTensorParallelAndDGPU$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-one-vm-two-logical-nodes: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunOneVMTwoLogicalNodeDistributedInference$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-two-vm-docker-distributed: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunTwoVMDockerDistributedInference$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-two-vm-udocker-distributed: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunTwoVMUdockerDistributedInference$$' -timeout=180m ./test/l4
+
+test-l4-aliyun-pd-deploy-chat-two-vm-docker: server-linux-amd64-prebuilt-ui
+	GPUWORKS_TEST_STRICT=1 CGO_ENABLED=0 $(GO) test $(GO_TEST_FLAGS) -v -count=1 -tags=cloudgpu,aliyun -run '^TestAliyunPDDeployChatTwoVMDocker$$' -timeout=180m ./test/l4
+
 test-l4-runpod: test-l4-runpod-vllm-sglang-lifecycle
 
-test-l4: test-l4-runpod test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-compshare
+test-l4: test-l4-runpod test-l4-autodl-node-onboarding test-l4-vast-node-onboarding test-l4-compshare test-l4-aliyun
 
 test-l4-cleanup-leaked:
 	@test -n "$(GPUWORKS_CLOUD_TEST_RUN_ID)" || (echo "GPUWORKS_CLOUD_TEST_RUN_ID is required for scoped cleanup" >&2; exit 2)

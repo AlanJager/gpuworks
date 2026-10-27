@@ -182,19 +182,19 @@ func harnessLogger(t testing.TB) *slog.Logger {
 }
 
 func New(t testing.TB) *Env {
-	return newEnv(t, "", "")
+	return newEnv(t, "", "", false)
 }
 
 // NewWithPrivateHTTPHosts explicitly trusts only the private HTTP fixtures
 // named by a case; ordinary harnesses retain production outbound restrictions.
 func NewWithPrivateHTTPHosts(t testing.TB, hosts ...string) *Env {
-	return newEnv(t, "", "", hosts...)
+	return newEnv(t, "", "", false, hosts...)
 }
 
 // NewWithModelEndpoint is the same real app wiring as New, with an explicit
 // offline HF/ModelScope endpoint used by model registration tests.
 func NewWithModelEndpoint(t testing.TB, endpoint string) *Env {
-	return newEnv(t, endpoint, "")
+	return newEnv(t, endpoint, "", false)
 }
 
 // NewOnDisk puts the control-plane database on a real file instead of in
@@ -203,7 +203,15 @@ func NewWithModelEndpoint(t testing.TB, endpoint string) *Env {
 // The returned Env exposes the file path through DBPath.
 func NewOnDisk(t testing.TB) *Env {
 	t.Helper()
-	return newEnv(t, "", filepath.Join(t.TempDir(), "gpuworks.db"))
+	return newEnv(t, "", filepath.Join(t.TempDir(), "gpuworks.db"), false)
+}
+
+// NewWithRecovery is New with out-of-band recovery switched on, as it is in a
+// default server: an offline node with an SSH credential is probed and, if its
+// agent is gone, reinstalled. Other harnesses leave it off so a node a test
+// stops on purpose stays down.
+func NewWithRecovery(t testing.TB) *Env {
+	return newEnv(t, "", "", true)
 }
 
 // DBPath is the control-plane database file, empty for an in-memory harness.
@@ -214,7 +222,7 @@ func (e *Env) DBPath() string { return e.dbPath }
 // instance), as opposed to the database the API exposes.
 func (e *Env) DataDir() string { return e.dataDir }
 
-func newEnv(t testing.TB, modelEndpoint, dbPath string, allowedPrivateHosts ...string) *Env {
+func newEnv(t testing.TB, modelEndpoint, dbPath string, recovery bool, allowedPrivateHosts ...string) *Env {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	dir := t.TempDir()
@@ -232,7 +240,7 @@ func newEnv(t testing.TB, modelEndpoint, dbPath string, allowedPrivateHosts ...s
 	}
 	a, err := serverapp.New(serverapp.Config{Addr: "127.0.0.1:0", DataDir: dir, DBPath: dsn, AdminUser: "admin", AdminPassword: "password", ModelEndpoint: modelEndpoint, OutboundAllowPrivateHosts: allowedPrivateHosts,
 		// CI routes SSH to cloud nodes through a SOCKS proxy (.gitlab-ci.yml).
-		SSHProxy: os.Getenv("GPUWORKS_SSH_PROXY")}, harnessLogger(t))
+		SSHProxy: os.Getenv("GPUWORKS_SSH_PROXY"), RecoveryEnabled: recovery}, harnessLogger(t))
 	if err != nil {
 		cancel()
 		t.Fatalf("server app: %v", err)

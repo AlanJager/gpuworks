@@ -108,7 +108,7 @@ export default function DashboardPage() {
     const to = Date.now();
     return analyticsApi.usage({ from: to - DAY, to, granularity: "hour" });
   }, 30000);
-  useEvents("node", () => { health.refetch(); summary.refetch(); gpus.refetch(); offlineNodes.refetch(); storageUsage.refetch(); });
+  useEvents("node", () => { void health.refresh(); void summary.refresh(); void gpus.refresh(); void offlineNodes.refresh(); void storageUsage.refresh(); });
   useEvents("deployment", () => { summary.refetch(); monitor.refetch(); });
   useEvents("provider", () => providers.refetch());
 

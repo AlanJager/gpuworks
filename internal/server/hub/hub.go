@@ -69,7 +69,8 @@ type Hub struct {
 	pushLimiter chan struct{}
 
 	mu            sync.RWMutex
-	sessions      map[string]*Session // keyed by node UUID
+	sessions      map[string]*Session             // keyed by node UUID
+	imageWatches  map[[2]uint]map[string]struct{} // active image/node watchers, owned by transfer id
 	rejectMu      sync.Mutex
 	rejects       []RejectEvent
 	upgradeMu     sync.RWMutex

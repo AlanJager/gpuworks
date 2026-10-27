@@ -1,4 +1,4 @@
-//go:build cloudgpu && compshare
+//go:build cloudgpu && (compshare || aliyun)
 
 package l4
 
@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -22,13 +21,13 @@ import (
 	"gpuworks.ai/gpuworks/internal/testenv/apiwire"
 )
 
-// compshareGPUStackMirrorEndpoints are the replacement addresses of the
+// gpustackMirrorEndpoints are the replacement addresses of the
 // gpustack/ image source rule that CompShare cases set, the way an operator
 // does under /api/v1/pull/source-rules: CompShare's UAAA route is tuned for the
 // domestic SWR mirror, so a fresh VM does not spend the acceptance window on a
 // multi-gigabyte pull from a far registry. (The retired image_registry_rewrites
 // setting answers 410 SETTING_REMOVED.)
-var compshareGPUStackMirrorEndpoints = []string{"swr.cn-south-1.myhuaweicloud.com/gpustack", "quay.io/gpustack"}
+var gpustackMirrorEndpoints = []string{"swr.cn-south-1.myhuaweicloud.com/gpustack", "quay.io/gpustack"}
 
 type hostedDeployment struct {
 	harness    *hostedControlPlane
@@ -71,10 +70,13 @@ func registerHostedModel(ctx context.Context, api *hostedAPIClient, input map[st
 
 func hostedPrepareRealModel(t *testing.T, harness *hostedControlPlane) dto.Model {
 	t.Helper()
-	allowUpstream := true
-	mirror := dto.PullSourceRuleRequest{Match: "gpustack/", Endpoints: compshareGPUStackMirrorEndpoints, AllowUpstream: &allowUpstream}
-	if err := harness.API.PostJSON(t.Context(), "/api/v1/pull/source-rules", mirror, nil); err != nil {
-		t.Fatalf("configure hosted image source rule: %v", err)
+	backend := harness.backend
+	if len(backend.PullMirror) > 0 {
+		allowUpstream := true
+		mirror := dto.PullSourceRuleRequest{Match: "gpustack/", Endpoints: backend.PullMirror, AllowUpstream: &allowUpstream}
+		if err := harness.API.PostJSON(t.Context(), "/api/v1/pull/source-rules", mirror, nil); err != nil {
+			t.Fatalf("configure hosted image source rule: %v", err)
+		}
 	}
 	var model dto.Model
 	if err := registerHostedModel(t.Context(), harness.API, map[string]any{
@@ -84,12 +86,9 @@ func hostedPrepareRealModel(t *testing.T, harness *hostedControlPlane) dto.Model
 		t.Fatalf("register hosted model: %v", err)
 	}
 	// Distributed acceptance is intentionally hermetic with respect to model
-	// repositories. A separate TestCompshareModelScopePublicDownload owns the public
-	// ModelScope contract, so a missing template cache is a fixture error.
-	preloaded := strings.TrimSpace(os.Getenv("COMPSHARE_PRELOADED_MODEL_PATH"))
-	if preloaded == "" {
-		skipOrFailExternal(t, "COMPSHARE_PRELOADED_MODEL_PATH is required for CompShare deployment cases; use TestCompshareModelScopePublicDownload for public download acceptance")
-	}
+	// repositories: each provider's public-download case owns the ModelScope
+	// contract, so a missing preloaded model is a fixture error.
+	preloaded := backend.PreloadedModelPath(t)
 	for vmIndex, vm := range harness.VMs {
 		if out, err := runCloudCommand(t.Context(), vm.Instance, "test -d "+shellQuoteForTest(preloaded)); err != nil {
 			t.Fatalf("preloaded model path on VM %d is unavailable: %v (%s)", vmIndex, err, strings.TrimSpace(out))
@@ -193,6 +192,10 @@ func hostedWaitDeploymentRunning(t *testing.T, harness *hostedControlPlane, depl
 	var lastErr error
 	var failedSince time.Time
 	seenInstances := make(map[string]struct{})
+	// A failed attempt that the platform replaces leaves no trace once the case
+	// passes, so its engine log is written to the case log the moment the row
+	// shows up: a transient start failure is otherwise undiagnosable.
+	reportedFailures := make(map[string]struct{})
 	for time.Now().Before(deadline) {
 		lastErr = harness.API.GetJSON(t.Context(), fmt.Sprintf("/api/v1/deployments/%d", deploymentID), &last)
 		if lastErr == nil {
@@ -205,8 +208,20 @@ func hostedWaitDeploymentRunning(t *testing.T, harness *hostedControlPlane, depl
 					running++
 				}
 			}
-			if running == expected && len(last.Instances) == expected {
-				return last.Instances
+			for _, instance := range last.Instances {
+				if instance.State != proto.InstFailed || instance.UUID == "" {
+					continue
+				}
+				if _, done := reportedFailures[instance.UUID]; done {
+					continue
+				}
+				reportedFailures[instance.UUID] = struct{}{}
+				t.Logf("hosted deployment %d: attempt %s (role=%q node=%s) failed; engine log:\n%s", deploymentID, instance.UUID, instance.Role, instance.NodeUUID, hostedDeploymentLogDiagnostics(t.Context(), harness, map[string]struct{}{instance.UUID: {}}))
+			}
+			// A failed first attempt stays in the deployment's instance list next
+			// to its replacement, so the rows to count are the live ones.
+			if active := hostedActiveInstances(last.Instances); running == expected && len(active) == expected {
+				return active
 			}
 			if hostedDeploymentExhausted(last) {
 				if failedSince.IsZero() {
@@ -226,6 +241,22 @@ func hostedWaitDeploymentRunning(t *testing.T, harness *hostedControlPlane, depl
 	}
 	t.Fatalf("hosted deployment %d did not reach %d running ranks within %s: deployment=%+v err=%v\n%s\n%s", deploymentID, expected, timeout, last, lastErr, hostedDeploymentLogDiagnostics(t.Context(), harness, seenInstances), harness.Diagnostics(t.Context()))
 	return nil
+}
+
+// hostedActiveInstances drops the instances of failed or stopped attempts: the
+// platform retries an engine that dies at start and keeps the dead attempt's row
+// beside the replacement (a vLLM start can fail transiently on a cold VM, and
+// the retry then succeeds, leaving more rows than ranks).
+func hostedActiveInstances(instances []dto.Instance) []dto.Instance {
+	active := make([]dto.Instance, 0, len(instances))
+	for _, instance := range instances {
+		switch instance.State {
+		case proto.InstFailed, proto.InstStopped, proto.InstRemoving, "pending-removal":
+		default:
+			active = append(active, instance)
+		}
+	}
+	return active
 }
 
 // hostedDeploymentLogDiagnostics reads the server-side logstore before test

@@ -73,7 +73,7 @@ await i18n.use(initReactI18next).init({
 });
 
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
 const { default: NodesPage } = await import("../src/pages/NodesPage.tsx");
@@ -705,4 +705,39 @@ test("a diagnosis opens its own tab", async () => {
   assert.equal(drawer.queryByRole("tab", { name: "Diagnosis" }), null);
   fireEvent.click(drawer.getByRole("button", { name: "Diagnose" }));
   await waitFor(() => assert.equal(drawer.getByRole("tab", { name: "Diagnosis" }).getAttribute("aria-selected"), "true"));
+});
+
+test("a node event reloads the list in the background, without the table's loading spinner", async () => {
+  stubApi([onlineNode]);
+  // The page keeps the fetcher it rendered with, so the stub decides per call.
+  let serve = nodesServer([onlineNode]);
+  api.nodesPage = (query) => serve(query);
+  renderPage();
+  await waitFor(() => assert.ok(screen.getByText("gpu-a100-node-01")));
+  await waitFor(() => assert.equal(document.querySelector(".ant-spin-spinning"), null));
+  const grown = nodesServer([onlineNode, offlineNode]);
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let reloads = 0;
+  serve = async (query) => { reloads++; await held; return grown(query); };
+
+  // Watch the whole reload, not one moment of it: a spinner that comes and
+  // goes between two checks is still the flicker this guards against.
+  let spun = false;
+  const watcher = new dom.window.MutationObserver(() => {
+    if (document.querySelector(".ant-spin-spinning")) spun = true;
+  });
+  watcher.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  // Every agent's once-a-minute status report reaches the page as one of these.
+  for (const listener of Events.listeners.get("node") ?? []) {
+    listener(new dom.window.MessageEvent("node", { data: JSON.stringify({ key: onlineNode.uuid, reason: "status" }) }) as unknown as Event);
+  }
+  await waitFor(() => assert.equal(reloads, 1, "the event did not reload the list"));
+  await act(async () => {}); // commit whatever the event's reload rendered
+  assert.ok(screen.getByText("gpu-a100-node-01"), "the current rows stay while the reload runs");
+
+  release();
+  await waitFor(() => assert.ok(screen.getByText("k8s-3-910c-host")));
+  watcher.disconnect();
+  assert.equal(spun, false, "the background reload spun the table");
 });

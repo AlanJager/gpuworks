@@ -133,10 +133,10 @@ func authorizeBeforeCreate(ctx context.Context, s *Service, drv Driver, creds Cr
 }
 
 // installedSecrets is what out-of-band recovery keeps after a cloud install:
-// nothing once the instance accepts the platform key, otherwise the
+// nothing once the instance durably accepts the platform key, otherwise the
 // credential that worked.
 func installedSecrets(report InstallReport, opts InstallOptions, access sshAccess) store.NodeSSHSecrets {
-	if report.PlatformKeyAuthorized {
+	if report.PlatformKeyAuthorized && !report.PlatformKeyVolatile {
 		return store.NodeSSHSecrets{}
 	}
 	switch report.AuthUsed {

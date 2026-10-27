@@ -264,6 +264,7 @@ const (
 	ReasonPlacementRejected    = "placement_rejected"
 	ReasonEnginePortsExhausted = "engine_ports_exhausted"
 	ReasonImageDeliveryFailed  = "image_delivery_failed"
+	ReasonImageDeliveryWaiting = "image_delivery_waiting"
 	// ReasonImageSourceForbidden: the pull source rules that apply to the
 	// node ({node}) leave it nothing to pull the image ({image}) from.
 	ReasonImageSourceForbidden = "image_source_forbidden"

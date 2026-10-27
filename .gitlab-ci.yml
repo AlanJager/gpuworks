@@ -3,7 +3,6 @@ stages:
   - core
   - release
   - publish
-  - l4-smoke
   - l4-acceptance
 
 default:
@@ -498,12 +497,24 @@ l2-fleet-redeploy-churn:
     - make test-fleet-log-scale-processes > fleet-log-scale.log 2>&1 || status=$?
     - cat fleet-log-scale.log
     - exit "$status"
+  # The per-process logs are 40 files and the upload failed with 413 Request
+  # Entity Too Large even on green runs, so they ship as one compressed
+  # archive. after_script runs whatever the script's outcome and must not turn
+  # a missing log directory into a failure.
+  after_script:
+    - |
+      if [ -d "$GPUWORKS_FLEET_WORK_DIR" ] && [ -n "$(find "$GPUWORKS_FLEET_WORK_DIR" -name '*.log' -print -quit)" ]; then
+        find "$GPUWORKS_FLEET_WORK_DIR" -name '*.log' -print0 | tar --null -T - -czf fleet-process-logs.tar.gz || true
+        rm -rf "$GPUWORKS_FLEET_WORK_DIR"
+      fi
+      gzip -f fleet-redeploy-churn.log fleet-log-scale.log 2>/dev/null || true
+      true
   artifacts:
     when: always
     paths:
-      - fleet-redeploy-churn.log
-      - fleet-log-scale.log
-      - .tmp/fleet/**/*.log
+      - fleet-redeploy-churn.log.gz
+      - fleet-log-scale.log.gz
+      - fleet-process-logs.tar.gz
     expire_in: 14 days
   rules:
     - if: '$FLEET_REDEPLOY_CHURN == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
@@ -701,44 +712,6 @@ release-publish:
       when: on_success
       allow_failure: false
     - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_FULL == "1"'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: manual
-      allow_failure: true
-    - when: never
-
-l4-runpod-node-onboarding:
-# The runner egress to RunPod/HuggingFace sags during business hours (TLS
-# handshake timeouts against api.runpod.io were part of the 2026-09-20
-# incident); routing the provider HTTPS through the internal proxy measured
-# 20-50% faster cold connections. The provider HTTP client uses the default
-# transport, so it honors these without code changes; loopback and the
-# domestic module/GitLab hosts stay direct.
-  variables:
-    HTTPS_PROXY: "http://zstack.one:7890"
-    HTTP_PROXY: "http://zstack.one:7890"
-    NO_PROXY: "localhost,127.0.0.1,::1,dev.zstack.io,goproxy.cn"
-    # The HTTP proxy refuses CONNECT to port 22, but the SOCKS listener on
-    # 7891 tunnels arbitrary TCP (verified from the runners), so the SSH
-    # agent upload rides it: the in-process test server passes this into its ssh_proxy setting.
-    GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
-  extends: .l4-acceptance
-  stage: l4-smoke
-  timeout: 30m
-  environment:
-    name: cloud-test/runpod/smoke
-  allow_failure: true
-  script:
-    - make test-l4-runpod-node-onboarding
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_SMOKE == "1"'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "web" && $CLOUD_SMOKE == "1"'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "api" && $CLOUD_SMOKE == "1"'
       when: on_success
       allow_failure: false
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -975,15 +948,33 @@ l4-runpod-server-dial-node-onboarding:
     GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
   extends: .l4-acceptance
   timeout: 65m
-  # Not cloud-test/runpod/smoke, which l4-runpod-node-onboarding deploys to:
-  # see l4-vast-server-dial-node-onboarding on jobs sharing an environment.
+  # Its own environment: see l4-vast-server-dial-node-onboarding on jobs
+  # sharing an environment.
   environment:
     name: cloud-test/runpod/server-dial
   script:
     - make test-l4-runpod-server-dial-node-onboarding
 
-l4-compshare-modelscope-public-download:
+# CompShare VM jobs (everything that allocates a VM; the container job
+# l4-compshare-server-dial-node-onboarding-container is not one of them) are
+# off the nightly schedules: the pool almost never has capacity for them, and
+# the Aliyun spot cases replace them there. They stay runnable on demand from
+# a web/api pipeline with COMPSHARE_VM=1, or as an MR manual action. Each job
+# still extends this template for its own timeout, resource_group and
+# environment.
+.l4-compshare-vm:
   extends: .l4-acceptance
+  rules:
+    - if: '$COMPSHARE_VM == "1" && ($CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+l4-compshare-modelscope-public-download:
+  extends: .l4-compshare-vm
   timeout: 30m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
@@ -991,14 +982,6 @@ l4-compshare-modelscope-public-download:
     name: cloud-test/compshare/download-modelscope
   script:
     - make test-l4-compshare-modelscope-public-download
-  rules:
-    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
-      when: on_success
-      allow_failure: false
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      when: manual
-      allow_failure: true
-    - when: never
 
 # CompShare allows 20 VMs and normal development has at most three concurrent
 # pipelines. Use two per-pipeline lanes: a pipeline occupies at most three VMs
@@ -1008,7 +991,7 @@ l4-compshare-modelscope-public-download:
 # exact cleanup; the pipeline IID suffix prevents unrelated pipelines from
 # serializing each other.
 l4-compshare-single-vm-tp2-dgpu:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
@@ -1017,7 +1000,7 @@ l4-compshare-single-vm-tp2-dgpu:
     - make test-l4-compshare-single-vm-tp2-dgpu
 
 l4-compshare-provisioning-matrix:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
@@ -1041,7 +1024,7 @@ l4-compshare-server-dial-node-onboarding-container:
     - make test-l4-compshare-server-dial-node-onboarding-container
 
 l4-compshare-one-vm-two-logical-nodes:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
@@ -1050,7 +1033,7 @@ l4-compshare-one-vm-two-logical-nodes:
     - make test-l4-compshare-one-vm-two-logical-nodes
 
 l4-compshare-two-vm-docker-distributed:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
   environment:
@@ -1059,13 +1042,103 @@ l4-compshare-two-vm-docker-distributed:
     - make test-l4-compshare-two-vm-docker-distributed
 
 l4-compshare-pd-deploy-chat-two-vm-docker:
-  extends: .l4-acceptance
+  extends: .l4-compshare-vm
   timeout: 180m
   resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/pd-two-vm
   script:
     - make test-l4-compshare-pd-deploy-chat-two-vm-docker
+
+# Aliyun ECS: spot-first VMs with an on-demand fallback, booted from the golden
+# image (driver, Docker 29, NVIDIA toolkit, vLLM runner image and test model
+# preloaded; see make prepare-aliyun-golden-image). The jobs need these CI
+# variables, scoped to cloud-test/aliyun/*:
+#   ALIYUN_ACCESS_KEY_ID, ALIYUN_ACCESS_KEY_SECRET  a RAM user limited to ECS and VPC
+#   ALIYUN_IMAGE_<REGION>                            golden image ID per region
+#                                                    (ALIYUN_IMAGE_CN_HANGZHOU, ...)
+# Optional: ALIYUN_REGIONS (narrow leak scans), GPUWORKS_SSH_PROXY (SOCKS5 for
+# the cases' SSH when the runner cannot reach the VMs directly), ALIYUN_INGRESS_CIDR (who may
+# reach SSH and the agent port; default anywhere), ALIYUN_NO_SPOT=1,
+# ALIYUN_NO_ON_DEMAND=1.
+# Same per-pipeline lanes as CompShare: at most one single-VM case and the
+# two-VM case run at once per pipeline. Every job has its own environment (see
+# l4-vast-server-dial-node-onboarding on why jobs must not share one).
+l4-aliyun-provisioning-matrix:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/provisioning
+  script:
+    - make test-l4-aliyun-provisioning-matrix
+
+# One 8 MiB shard from ModelScope over the VM's public egress; same rules as
+# l4-compshare-modelscope-public-download.
+l4-aliyun-modelscope-public-download:
+  extends: .l4-acceptance
+  timeout: 40m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/download-modelscope
+  script:
+    - make test-l4-aliyun-modelscope-public-download
+  rules:
+    - if: '$CLOUD_DOWNLOAD == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
+      when: on_success
+      allow_failure: false
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
+    - when: never
+
+l4-aliyun-single-vm-tp2-dgpu:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/suite
+  script:
+    - make test-l4-aliyun-single-vm-tp2-dgpu
+
+l4-aliyun-one-vm-two-logical-nodes:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/onevm-nnode2
+  script:
+    - make test-l4-aliyun-one-vm-two-logical-nodes
+
+l4-aliyun-two-vm-docker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/docker-nnode2
+  script:
+    - make test-l4-aliyun-two-vm-docker-distributed
+
+l4-aliyun-pd-deploy-chat-two-vm-docker:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/pd-two-vm
+  script:
+    - make test-l4-aliyun-pd-deploy-chat-two-vm-docker
+
+# The udocker runtime variant of the two-VM case. It runs about half an hour to
+# an hour on on-demand VMs with a 300 GiB disk (each rank pulls the runner image
+# into udocker's own store); see docs/dev/testing.md.
+l4-aliyun-two-vm-udocker-distributed:
+  extends: .l4-acceptance
+  timeout: 180m
+  resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
+  environment:
+    name: cloud-test/aliyun/udocker-nnode2
+  script:
+    - make test-l4-aliyun-two-vm-udocker-distributed
 
 # The runner must expose an explicitly provisioned read-only NFS fixture.
 # Never points at a production export by default; no network disruption.

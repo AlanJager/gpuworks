@@ -64,7 +64,7 @@ func TestBenchmarkReportDownloadAPI(t *testing.T) {
 		if strings.Contains(rec.Body.String(), "secret") {
 			t.Fatalf("format=%s leaked sensitive environment value", tc.format)
 		}
-		if tc.format != "csv" && !strings.Contains(rec.Body.String(), "/evaluations/"+strconv.FormatUint(uint64(run.ID), 10)) {
+		if tc.format != "csv" && !strings.Contains(rec.Body.String(), "http://example.com/evaluations/"+strconv.FormatUint(uint64(run.ID), 10)) {
 			t.Fatalf("format=%s is missing the evaluation link: %s", tc.format, rec.Body.String())
 		}
 		if strings.Contains(rec.Body.String(), "BENCHMARK_AGENTIC_LENGTH_DRIFT") {

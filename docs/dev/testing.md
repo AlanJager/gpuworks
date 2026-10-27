@@ -74,7 +74,7 @@ RSS（进程驻留内存）与 CPU。
 数字也更稳定；单进程形态保留作小规模快速试跑。两者都不进默认 CI。GitLab 里由
 `l2-fleet-redeploy-churn` job 跑多进程形态，只在 `FLEET_REDEPLOY_CHURN=1` 的 schedule / web / api
 流水线里出现（每晚定时任务带这个变量）；job 以 `GPUWORKS_TEST_STRICT=1` 运行，文件描述符上限不够
-会失败而不是跳过，两个进程的日志作为 artifact 保留 14 天。掉线重连数与接口 p99 目前只报数不断言，
+会失败而不是跳过，两个进程的日志压缩成一个 tar.gz（按进程拆开的 40 个日志文件曾因上传体积被网关以 413 拒绝）作为 artifact 保留 14 天。掉线重连数与接口 p99 目前只报数不断言，
 看 nightly 的趋势，积累足够运行后再定阈值。
 
 多进程形态可用预编译二进制运行，**没有 Go 工具链的机器只能这样跑**：
@@ -226,8 +226,17 @@ WARNING（不失败），提示在同一个 MR 里把限额收紧到新实测值
 `deploy-chat`、`provisioning-matrix`、`one-vm-two-logical-nodes` 或
 `two-vm-docker-distributed`；`nightly` 和 `manual` 只描述触发策略。
 
-仓库当前提供 RunPod、AutoDL、Vast、CompShare 和昇腾资源池的显式 `make test-l4-*`
+仓库当前提供 RunPod、AutoDL、Vast、CompShare、阿里云 ECS 和昇腾资源池的显式 `make test-l4-*`
 target。先以 `make help`/Makefile 确认目标，再只运行所需的测试路径（lane）。
+
+定时（`CLOUD_FULL=1`，每天 03:00 与 15:00 Asia/Shanghai 各一次）的触发策略：
+
+- CompShare 的 VM 用例（`l4-compshare-provisioning-matrix`、`single-vm-tp2-dgpu`、
+  `one-vm-two-logical-nodes`、`two-vm-docker-distributed`、`pd-deploy-chat-two-vm-docker` 和
+  `modelscope-public-download`）**不进定时任务**：这个资源池几乎排不到机器，阿里云用例接替它们。
+  需要时从 web/api 流水线带 `COMPSHARE_VM=1` 手动触发，或在 MR 里手动点。CompShare 的容器用例
+  （`l4-compshare-server-dial-node-onboarding-container`）和离线契约
+  （`core-compshare-offline-contracts`）照常运行。
 
 ## 成本和缓存
 
@@ -276,6 +285,71 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1`，之后只用本次 scoped run-id 调用
 `test-l4-cleanup-leaked` 或相应清理入口；禁止无范围清理整个账号。云端 L4 结束后要按 run-id
 确认没有实例、转发或临时文件泄漏。产品侧的租机操作见[租用云 GPU](../how-to/rent-cloud-gpus.md)。
+
+### 阿里云 ECS
+
+阿里云用例覆盖 CompShare 的全部 VM 场景：`l4-aliyun-provisioning-matrix`（agent_dial 接入、直连 server_dial 接入、
+库存形状、双卡规格）、`l4-aliyun-single-vm-tp2-dgpu`、`l4-aliyun-one-vm-two-logical-nodes`、
+`l4-aliyun-two-vm-docker-distributed`、`l4-aliyun-pd-deploy-chat-two-vm-docker`、
+`l4-aliyun-two-vm-udocker-distributed`与低频的 `l4-aliyun-modelscope-public-download`（`CLOUD_DOWNLOAD=1` 才跑）。
+它们租 ECS GPU 实例，并与 CompShare 共用同一套场景实现（`vmBackend`：租机、选卡型、Docker 与镜像、模型从哪来由 provider 提供）。
+
+- **抢占式优先，没货回落按量**：先用 `SpotAsPriceGo` 下抢占式实例；库存快照与创建之间被别人买走、
+  或被拒绝（`OperationDenied.NoStock`、`QuotaExceed.*`、`InvalidResourceType.NotSupported` 等）时，同一用例内
+  改下按量付费（PostPaid）实例，仍无货再换下一个可用区或下一种卡型。余额不足、AccessKey 无效、镜像不存在这类账号或
+  夹具问题不会被吞掉，直接失败。每次尝试及原因写入用例日志（`rental attempt:`），实例的计费方式、可用区和规格
+  也会记录。`ALIYUN_NO_SPOT=1` / `ALIYUN_NO_ON_DEMAND=1` 可去掉一种计费方式。
+- **候选来自实时库存**：`DescribeAvailableResource` 按地域分别查抢占式与按量库存；卡型按 T4、A10、L20 由便宜到贵，
+  GPU 张数精确匹配（`internal/testenv/cloudprovider/aliyun_shapes.go`）；跨卡型也是抢占式优先：先试最佳放置是抢占式的卡型，
+  只有按量库存的卡型（如 2×A10）排在后面。V100 不在其中：cuda12.8 runner 的 PyTorch 没有 sm_70 内核。
+  2×T4（gn6i）不用于张量并行用例：实测 vLLM 0.17.1 在其上 TP=2 的 CUDA graph 捕获报 `CUDA error: out of memory`，
+  agent 注入 `CUDA_VISIBLE_DEVICES=0,1` 时 worker 还初始化不了 NVML；该规格仍可用于接入与规格类用例。
+- **双机用例同可用区**：第一台买下后，同一卡型与张数的后续租机固定在同一地域、可用区和规格（先试同样的计费方式，被拒再换另一种），
+  两台才在同一 VPC 内用私网互通。普通安全组内的实例默认互通，不需要自引用规则（接口会拒绝）。
+- **网络长期保留**：每个地域一套 VPC `gpuworks-test-infra`（172.30.0.0/16）、按可用区的 vSwitch 与安全组，
+  缺什么建什么，之后复用；安全组放行 22 与 agent 端口 18800（来源 `ALIYUN_INGRESS_CIDR`，默认任意）。
+  这套网络不属于任何一次运行，run 级清理不会删，也不会碰账号里已有的 VPC。
+- **产品路径**：agent 经产品自己的阿里云 provider driver 安装。`DirectServerDialOnboarding` 走 `server_dial`（ECS 有公网 IP，
+  server 直接拨 agent；产品对 ECS 默认拨私网地址，所以用例显式给出公网 `host_address`），另外三个用例走 SSH 反向转发的
+  `agent_dial`，此时 Cloud Assistant 在线，agent 由 Cloud Assistant 以 root 安装，不开 SSH 会话，也就不写入平台 SSH key
+  （用例对这条路径不要求 `Platform key`）。若 runner 直连云主机地址被网络设备劫持（本地曾对个别公网 IP 的任意端口回
+  `HTTP 403`），设 `GPUWORKS_SSH_PROXY=socks5://host:port`，用例的 SSH 会走该代理（`server_dial` 的 TCP 不走代理）。产品 driver 仍不创建、不释放实例；
+  创建与释放只在测试用的 ECS 客户端里（`aliyun.RPC` 复用 driver 的 V3 签名、重试与 STS）。
+- **清理**：实例名为 `gpuworks-test-<run-id>` 并带标签 `gpuworks-test-run`，`DeleteInstance` 带 `Force`，
+  等实例从列表里消失才算释放；系统盘随实例释放，`cleanup-leaked --run-id` 还会按标签找并删除残留云盘。
+  泄漏扫描逐个地域列实例，范围是 `ALIYUN_REGIONS`，没设就取有黄金镜像（`ALIYUN_IMAGE_<REGION>`）的地域，这些地域列不出来
+  就报错；两者都没有时扫账号可见的全部地域，并跳过 key 列不出的地域（会在 stderr 说明）。
+  抢占式实例被回收时，失败用例的日志会出现 `SPOT INTERRUPTION`，提示失败多半是回收的后果，重跑即可。
+
+- **新机首个容器与重试**：新开机的 A10 虚机上，第一个 vLLM 容器偶发启动失败（`torch._C._cuda_init()` 报
+  `No CUDA GPUs are available`，也见过 `NVMLError_Unknown`），平台重试同样的容器就成功了；失败那一行会留在部署的实例列表里。
+  所以多机用例在 `EnsureDocker` 里先用 agent 同样的方式（`--gpus "device=N"`）在每张卡上跑一次 CUDA 预热并重试，
+  日志里记 `GPUs ready for containers after N warm-up tries`；等待部署运行时只数存活的 rank（失败/停止/移除中的行不算），
+  每个失败的尝试会立刻把引擎日志写进用例日志。此前 PD 用例因为把失败行也算进 rank 数，部署明明已经 2/2 运行也一直等到超时。
+
+- **udocker 用例**：这个用例要求三件事。agent 状态不能放在 `/tmp` 下（所以阿里云 backend 的 `HostedRoot` 是 `/opt`）：udocker 把一个私有目录绑到 guest 的 `/tmp`，
+  盖住了 `ensureHostRootLoopback` 在 `ROOT/tmp/...` 下放的回环链接，引擎按 `/proc/self/maps` 里的宿主路径 dlopen `libcudart` 就找不到（实测文件在 ROOT 里，guest 里解析不到）。
+  root 登录的 agent 以专用用户 `udocker` 跑工作负载，所以 `$root` 要 `chmod 711`，否则 PRoot 报 `fork/exec .../proot-x86_64: permission denied`。
+  runner 镜像在 udocker 自己的存储里再拉一份（约 30 GiB 解包，加上拉取，160 GiB 系统盘只剩 3.1 GiB），所以这个用例的系统盘是 300 GiB，
+  并且整个用例约半小时到一小时，用按量实例而不是抢占式（`GPUSpec.OnDemand`），避免中途被回收。拉取走 SWR 镜像，偶尔拉到末尾换源重来，要多等十几分钟。
+  失败时 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` 现在对多机用例也生效：失败的 VM 会保留并写出凭据文件。
+
+黄金镜像由 `make prepare-aliyun-golden-image` 制作：以阿里云公共镜像
+`ubuntu_22_04_x64_100G_with_gpu_driver_and_cuda_alibase_*`（驱动与 CUDA 已装）起一台 T4 实例，
+装 Docker 29 与 NVIDIA container toolkit（走 `mirrors.aliyun.com`）、拉取 vLLM runner 镜像（优先华为云 SWR 镜像，
+再 quay.io、Docker Hub，最终标签 `gpustack/runner:cuda12.8-vllm0.17.1`）、下载 Qwen2-0.5B-Instruct 到
+`/opt/gpuworks/test-fixtures/models/qwen2-0.5b` 并写校验和，停掉 Docker、同步后 `CreateImage`，再 `CopyImage`
+到 `-regions`（默认华东1、华北2、华南1、华南3）并在源地域开一台新机验证（先验证再复制，坏镜像不会白白复制到四个地域）。镜像约 50 GB（runner 镜像占大头），
+150 GiB 系统盘的首个整盘快照约 90 分钟，跨地域复制再约一小时，整个过程要预留两到三小时。自定义镜像按地域隔离，
+所以每个地域一个 ID，输出的 `ALIYUN_IMAGE_CN_HANGZHOU=` 等行写进 `secrets/cloud-providers.env`
+或 CI 环境变量；用例只在有镜像的地域租机。工具不删旧镜像、不改 CI 变量；
+`GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` 时失败的源机保留并写出 0600 凭据文件，
+可用 `-resume-credentials` 接着做。镜像里已有 Docker 与模型，用例只验证、不安装、不下载
+（缺了就是镜像坏了，直接失败）。
+
+CI 需要的变量（作用域 `cloud-test/aliyun/*`）：`ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET`
+（建议只授 ECS 与 VPC 权限的 RAM 用户）、每个地域的 `ALIYUN_IMAGE_<REGION>`；可选 `ALIYUN_REGIONS`、
+`ALIYUN_INGRESS_CIDR`、`ALIYUN_NO_SPOT`、`ALIYUN_NO_ON_DEMAND`。
 
 ## 证据
 

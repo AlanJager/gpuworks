@@ -4,14 +4,16 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { api, usePolling, type ModelCore } from "../../api";
 import { ModelSourceTag } from "../ModelsPageParts";
+import ModelRegistrationDetails from "./ModelRegistrationDetails";
 
 /** How many models one search offers; typing narrows the list on the server. */
 export const MODEL_PICKER_PAGE_SIZE = 50;
 
 const modelLabel = (model: ModelCore): ReactNode => (
-  <Space size={6}>
+  <Space size={6} wrap>
     <span>{model.name || model.source_id}</span>
     <ModelSourceTag source={model.source} />
+    <ModelRegistrationDetails model={model} />
   </Space>
 );
 
