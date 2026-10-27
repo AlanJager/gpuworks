@@ -1,6 +1,8 @@
 /** Derive display/history text without changing the original persisted response. */
 export function assistantText(content: string, reasoning = "", streaming = false) {
-  const trimmed = content.trimStart();
+  // Four spaces or a tab introduce Markdown code, not a reasoning prefix.
+  const prefix = /^(?:[ \t]*\r?\n)* {0,3}/.exec(content)![0];
+  const trimmed = content.slice(prefix.length);
   const opening = "<think>";
   const closing = "</think>";
   if (streaming && trimmed && opening.startsWith(trimmed)) return { content: "", reasoning };
@@ -25,12 +27,19 @@ export function assistantText(content: string, reasoning = "", streaming = false
 }
 
 // A model can inherit <think> from its chat template and emit only </think>.
-// Ignore markers shown as Markdown code, including variable-length fences.
+// Ignore markers shown as Markdown code or quotations.
 function closingTag(text: string): number {
   let fence = "";
   let inline = 0;
   for (let i = 0; i < text.length; i++) {
     if (i === 0 || text[i - 1] === "\n") {
+      // Indented code and quoted examples retain their literal delimiters.
+      if (!fence && /^(?: {4}| {0,3}\t| {0,3}>)/.test(text.slice(i))) {
+        const end = text.indexOf("\n", i);
+        if (end < 0) return -1;
+        i = end;
+        continue;
+      }
       const match = /^ {0,3}(`{3,}|~{3,})([^\n]*)/.exec(text.slice(i));
       if (match) {
         const marker = match[1];

@@ -74,3 +74,27 @@ test("stopping an unfinished inline thought preserves it in reasoning without in
   assert.ok(screen.getByText("Unfinished thought").closest(".ant-collapse"));
   assert.ok(screen.queryByRole("button", { name: locale.playground.pane.copyReply }) === null);
 });
+
+test("indented and quoted code delimiters survive copying and subsequent conversation history", async () => {
+  const stream = controllableSSE();
+  const followup = controllableSSE();
+  const bodies = serveStreams([stream, followup]);
+  const user = await renderChat();
+  const content = "Literal examples:\n\n    </think>\n\n> ~~~xml\n> </think>\n> ~~~\n\nKeep this answer.";
+  const copied: string[] = [];
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text: string) => { copied.push(text); } } });
+  await sendPrompt(user, "Explain the delimiters");
+  stream.push(content);
+  stream.end();
+  const copy = await screen.findByRole("button", { name: locale.playground.pane.copyReply });
+  assert.ok(screen.queryByRole("button", { name: reasoningName }) === null);
+  assert.ok(screen.getByText("Literal examples:"));
+  assert.equal(screen.getAllByText("</think>").length, 2);
+  await user.click(copy);
+  await waitFor(() => assert.deepEqual(copied, [content]));
+  await sendPrompt(user, "Continue");
+  assert.deepEqual((bodies[1].messages as { role: string; content: string }[]).find((message) => message.role === "assistant"), { role: "assistant", content });
+  followup.push("Done");
+  followup.end();
+  await screen.findByText("Done");
+});
