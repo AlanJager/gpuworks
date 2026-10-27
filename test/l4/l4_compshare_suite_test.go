@@ -232,7 +232,7 @@ func runTwoVMUdockerDistributed(t *testing.T, b *vmBackend) {
 	harness := newHostedControlPlane(t, hostedControlPlaneConfig{
 		RunID: cloudTestRunID(), RuntimeDrivers: [2]string{"udocker", "udocker"},
 		Backend: b, DiskGB: b.UdockerDiskGB, OnDemand: b.UdockerOnDemand,
-		PrepareVMs: installDistributedVLLMFix,
+		PrepareVMs: installDistributedVLLMFix, ArchiveFromVMs: b.UdockerImageFromURL,
 	})
 	for rank, node := range harness.Nodes {
 		if node.State != "online" || node.GPUCount != harness.gpusPerVM || node.ManagementAddress != harness.VMs[rank].Instance.PrivateIP ||
@@ -252,9 +252,16 @@ func runTwoVMUdockerDistributed(t *testing.T, b *vmBackend) {
 	}
 	hostedRequireDistributedPreflight(t, harness, 29500)
 	model := hostedPrepareRealModel(t, harness)
-	// Each VM imports the large udocker image independently. Keep the same
-	// startup allowance as the single-node CompShare real-model path so a slow
-	// registry layer on either rank does not make the distributed case stricter.
+	// udocker has its own image store. A backend whose VMs already hold the
+	// runner image in Docker hands it over as an archive the platform imports
+	// from a URL, so the deployment below finds the image present and never
+	// pulls; otherwise each VM pulls the large image independently, with the
+	// same startup allowance as the single-node CompShare real-model path so a
+	// slow registry layer on either rank does not make the case stricter.
+	var imported hostedImportedImage
+	if b.UdockerImageFromURL {
+		imported = hostedImportRunnerImageFromArchive(t, harness, b.DistributedImage)
+	}
 	d := createHostedDeployment(t, harness, map[string]any{
 		"model_id": model.ID, "node_uuid": harness.Nodes[0].UUID,
 		"node_uuids":  []string{harness.Nodes[0].UUID, harness.Nodes[1].UUID},
@@ -267,6 +274,9 @@ func runTwoVMUdockerDistributed(t *testing.T, b *vmBackend) {
 	sort.Ints(ranks)
 	if ranks[0] != 0 || ranks[1] != 1 {
 		t.Fatalf("distributed ranks=%v, want [0 1]", ranks)
+	}
+	if b.UdockerImageFromURL {
+		hostedRequireImportedImageStillPresent(t, harness, imported)
 	}
 	d.models(t)
 	d.chat(t)
