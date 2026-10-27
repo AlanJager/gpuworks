@@ -101,6 +101,12 @@ func (e *benchEngine) run(ctx context.Context, s proto.BenchmarkSpec) {
 		status.Warnings = warnings
 		e.report(status)
 	}
+	// Only a run that keeps its detail needs a point's results back; without
+	// it the point keeps none (see benchrun.Hooks.PointReported).
+	var pointDetail func(int, []loadgen.Result)
+	if s.KeepDetail {
+		pointDetail = func(seq int, results []loadgen.Result) { e.reportDetail(s.ID, seq, s.DetailCapMB, results) }
+	}
 	benchrun.Execute(ctx, benchrun.Run{
 		ID: s.ID, Model: s.Model, Mode: s.Mode, Dataset: s.Dataset, Search: s.Search, TokenizerRef: s.TokenizerRef,
 		Client: loadgen.Client{HTTP: &http.Client{Timeout: 5 * time.Minute}, BaseURL: s.TargetURL, APIKey: s.APIKey},
@@ -111,11 +117,7 @@ func (e *benchEngine) run(ctx context.Context, s proto.BenchmarkSpec) {
 				warnings = append(warnings, code)
 			}
 		},
-		PointReported: func(seq int, results []loadgen.Result) {
-			if s.KeepDetail {
-				e.reportDetail(s.ID, seq, s.DetailCapMB, results)
-			}
-		},
+		PointReported: pointDetail,
 	})
 	if ctx.Err() != nil {
 		report(proto.BenchmarkStatus{ID: s.ID, State: "canceled", Message: ctx.Err().Error(), StopReason: proto.BenchmarkStopCanceled})

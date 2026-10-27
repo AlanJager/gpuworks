@@ -468,19 +468,20 @@ core-l3:
       - coverage-l3.out
     expire_in: 14 days
 
-# Control-plane scale cases, both gated by FLEET_REDEPLOY_CHURN=1 from a
+# Control-plane scale cases, all gated by FLEET_REDEPLOY_CHURN=1 from a
 # nightly schedule (or an operator via web/api), never on merge requests: the
 # redeploy churn (real server binary as one process, 1000 real agents in a
 # second one, half of them redeploying) and the log-center read budget case
 # (every instance streaming at the target aggregate ~2000 lines/s while half
 # the fleet redeploys; asserts the p95 budgets from
-# artifacts/archive/2026-09-19-log-center/plan.md). Both are measurements of a loaded
-# host and need no Docker and no GPU. Strict mode turns a too-low descriptor
+# artifacts/archive/2026-09-19-log-center/plan.md), plus a server-origin
+# saturation evaluation under the server's RSS budget. All are measurements of
+# a loaded host and need no Docker and no GPU. Strict mode turns a too-low descriptor
 # limit into a failure instead of a skip that would read as green.
 l2-fleet-redeploy-churn:
   extends: .go-core
   stage: core
-  timeout: 55m
+  timeout: 75m
   variables:
     GPUWORKS_TEST_STRICT: "1"
     GPUWORKS_FLEET_PROCESS_LOGS: "1"
@@ -496,6 +497,8 @@ l2-fleet-redeploy-churn:
     - cat fleet-redeploy-churn.log
     - make test-fleet-log-scale-processes > fleet-log-scale.log 2>&1 || status=$?
     - cat fleet-log-scale.log
+    - make test-fleet-benchmark-processes > fleet-benchmark.log 2>&1 || status=$?
+    - cat fleet-benchmark.log
     - exit "$status"
   # The per-process logs are 40 files and the upload failed with 413 Request
   # Entity Too Large even on green runs, so they ship as one compressed
@@ -507,13 +510,14 @@ l2-fleet-redeploy-churn:
         find "$GPUWORKS_FLEET_WORK_DIR" -name '*.log' -print0 | tar --null -T - -czf fleet-process-logs.tar.gz || true
         rm -rf "$GPUWORKS_FLEET_WORK_DIR"
       fi
-      gzip -f fleet-redeploy-churn.log fleet-log-scale.log 2>/dev/null || true
+      gzip -f fleet-redeploy-churn.log fleet-log-scale.log fleet-benchmark.log 2>/dev/null || true
       true
   artifacts:
     when: always
     paths:
       - fleet-redeploy-churn.log.gz
       - fleet-log-scale.log.gz
+      - fleet-benchmark.log.gz
       - fleet-process-logs.tar.gz
     expire_in: 14 days
   rules:

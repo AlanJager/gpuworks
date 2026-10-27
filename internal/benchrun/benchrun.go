@@ -47,7 +47,8 @@ type Hooks struct {
 	// reported; it returns the stored per-request detail, if any.
 	DetailPath func(seq int) string
 	// PointReported is called after point seq's result has been reported,
-	// with that point's requests.
+	// with that point's requests. Without it the point keeps no results: each
+	// one only passes through Result.
 	PointReported func(seq int, results []loadgen.Result)
 }
 
@@ -177,7 +178,7 @@ func (e *execution) requests(dc dataset.Config, n int) ([]loadgen.Request, error
 // closed loop at the point's concurrency. The resolved point seed must match
 // the dataset and evidence, including when the run requested a random seed.
 func (e *execution) runner(point search.Point, seed int64) loadgen.Runner {
-	r := loadgen.Runner{Client: e.run.Client, Concurrency: max(1, point.Concurrency)}
+	r := loadgen.Runner{Client: e.run.Client, Concurrency: max(1, point.Concurrency), DiscardResults: e.hooks.PointReported == nil}
 	if e.tok != nil {
 		r.CountTokens = e.tok.Count
 	}
