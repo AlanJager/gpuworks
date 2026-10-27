@@ -1,3 +1,4 @@
+import { safeErrorText } from "./errors";
 import { Alert, Collapse, Space, Spin, Tag, Tooltip, Typography } from "antd";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,7 +20,7 @@ const MessageBubble = memo(function MessageBubble({ message: item }: { message: 
     : item;
   const errorText = item.error === ABORTED_ERROR
     ? t("pane.generationStopped")
-    : item.error === STREAM_INTERRUPTED_ERROR ? t("pane.streamInterrupted") : item.error;
+    : item.error === STREAM_INTERRUPTED_ERROR ? t("pane.streamInterrupted") : item.error ? safeErrorText(item.error) : undefined;
   // Token-based values estimated from chunk counts carry a ≈.
   const approx = (value: string) => metrics?.approximate && value !== "—" ? `≈${value}` : value;
   const cachedTokens = item.usage?.prompt_tokens_details?.cached_tokens;
