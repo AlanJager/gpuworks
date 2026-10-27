@@ -16,6 +16,8 @@ Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element
 Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) });
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub, configurable: true });
+class EventSourceStub { addEventListener() {} removeEventListener() {} close() {} }
+Object.defineProperty(globalThis, "EventSource", { value: EventSourceStub, configurable: true });
 
 const load = (ns: string) => JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/en/${ns}.json`, import.meta.url), "utf8"));
 const networksLocale = load("networks");

@@ -16,6 +16,22 @@ Object.defineProperty(globalThis, "getComputedStyle", { value: (element: Element
 Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }) });
 class ResizeObserverStub { observe() {} unobserve() {} disconnect() {} }
 Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserverStub, configurable: true });
+// The list reads again on server events; this stands in for the shared
+// stream so a test can send one.
+class Events {
+  static listeners = new Map<string, Set<EventListener>>();
+  static emit(type: string, data: Record<string, string>) {
+    for (const listener of Events.listeners.get(type) ?? []) listener(new dom.window.MessageEvent(type, { data: JSON.stringify(data) }) as unknown as Event);
+  }
+  addEventListener(type: string, listener: EventListener) {
+    const listeners = Events.listeners.get(type) ?? new Set<EventListener>();
+    listeners.add(listener);
+    Events.listeners.set(type, listeners);
+  }
+  removeEventListener(type: string, listener: EventListener) { Events.listeners.get(type)?.delete(listener); }
+  close() {}
+}
+Object.defineProperty(globalThis, "EventSource", { value: Events, configurable: true });
 
 const load = (ns: string) => JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/en/${ns}.json`, import.meta.url), "utf8"));
 const networksLocale = load("networks");
@@ -158,6 +174,23 @@ test("detaching in the drawer reads the list again, so its attachments column fo
   });
   fireEvent.click(ok);
   await waitFor(() => assert.ok(listReads > before, "the list is read again"));
+});
+
+test("the list reads again on network and node changes but not on a node's routine status report", async () => {
+  let listReads = 0;
+  stub("networks", async () => { listReads++; return { items: [listItem()], roles: ["storage_sync", "compute", "serving"], types: ["host_ethernet", "host_rdma", "accelerator_rdma"], type_roles: typeRoles }; });
+  renderAt("/networks", <NetworksPage />);
+  await screen.findByRole("link", { name: detailFixture.name });
+  await waitFor(() => assert.equal(listReads, 1));
+
+  Events.emit("node", { key: "", reason: "status" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(listReads, 1, "a status report does not read the list");
+
+  Events.emit("node", { key: "n1", reason: "labels" });
+  await waitFor(() => assert.equal(listReads, 2, "a node change reads the list"));
+  Events.emit("network", { key: "1", reason: "attached" });
+  await waitFor(() => assert.equal(listReads, 3, "a network change reads the list"));
 });
 
 test("network list surfaces load errors", async () => {
