@@ -514,6 +514,97 @@ func TestAHintedReplicaStartsOnItsNamedNodeOnce(t *testing.T) {
 
 // A PD unit whose node is lost moves to a node of the same network and
 // architecture; the other units stay where they are.
+// A PD role on a draining node starts on a spare node first and moves once
+// that runs; the launch finds the replacement although the placement does not
+// name it yet.
+func TestADrainingNodesPDRoleMovesAfterItsReplacementRuns(t *testing.T) {
+	f := newPDFixture(t, "drain-pd", twoPrefillOneDecode)
+	// A spare node like the decode's: one RTX 4090 on the same network.
+	spare, err := f.st.RegisterNode("drain-pd-n3", store.HashToken("token-n3"), "drain-pd-n3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.st.DB().Create(&store.GPU{NodeID: spare.ID, Index: 0, UUID: "drain-pd-n3-gpu0", Name: "NVIDIA GeForce RTX 4090", Vendor: "nvidia", ArchID: "sm_89", ComputeCapability: "8.9", MemoryTotal: 24 << 30}).Error; err != nil {
+		t.Fatal(err)
+	}
+	model, _ := f.st.GetModel(f.dep.ModelID)
+	if _, err := f.st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, NodeID: spare.ID, State: proto.MFPresent, Path: "/models/pd"}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	for _, node := range []*store.Node{f.nodes["n1"], f.nodes["n2"], spare} {
+		updates := map[string]any{"state": store.NodeStateOnline, "last_seen_at": now}
+		if node.ID == spare.ID {
+			updates["network_inventory"] = `{"interfaces":[{"name":"eth0","addrs":["10.0.0.3/24"]}],"rdma_ports":[],"management":{"interface":"eth0","ip":"10.0.0.3"}}`
+			updates["gpu_count"] = 1
+		}
+		if err := f.st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Updates(updates).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, key := range []string{"n1", "n2"} {
+		count := 2
+		if key == "n2" {
+			count = 1
+		}
+		if err := f.st.DB().Model(&store.Node{}).Where("id = ?", f.nodes[key].ID).Update("gpu_count", count).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.hub.online[spare.UUID] = true
+	f.reconcile(t)
+	f.reconcile(t)
+
+	running := func() {
+		insts, _ := f.st.InstancesForDeployment(f.dep.ID)
+		for _, inst := range insts {
+			if inst.State == proto.InstPending || inst.State == proto.InstStarting {
+				if err := f.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: inst.UUID, State: proto.InstRunning}); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	running()
+	decode := f.nodes["n2"]
+	if err := f.st.DB().Model(&store.Node{}).Where("id = ?", decode.ID).Update("scheduling", store.NodeDraining).Error; err != nil {
+		t.Fatal(err)
+	}
+	f.reconcile(t)
+	f.reconcile(t)
+	insts, _ := f.st.InstancesForDeployment(f.dep.ID)
+	var onSpare []store.Instance
+	for _, inst := range insts {
+		if inst.NodeID == spare.ID {
+			onSpare = append(onSpare, inst)
+		}
+		if inst.NodeID == decode.ID && inst.State != proto.InstRunning {
+			t.Fatalf("the decode stopped serving before its replacement ran: %+v", inst)
+		}
+	}
+	if len(onSpare) != 1 || onSpare[0].Role != "decode" {
+		t.Fatalf("replacement on the spare = %+v, want one decode", onSpare)
+	}
+	running()
+	for i := 0; i < 4; i++ {
+		f.reconcile(t)
+	}
+	dep, err := f.st.GetDeployment(f.dep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pd, err := planning.PDOf(dep.Placement)
+	if err != nil || pd == nil {
+		t.Fatalf("placement = %s err=%v", dep.Placement, err)
+	}
+	if got := pd.Units("decode"); len(got) != 1 || got[0].NodeUUID != spare.UUID {
+		t.Fatalf("decode units after the move = %+v, want only the spare %s", got, spare.UUID)
+	}
+	if events := eventCodes(t, f.st, f.dep.ID, EventNodeDrainMoved); len(events) != 1 || events[0]["role"] != "decode" {
+		t.Fatalf("NODE_DRAIN_MOVED events = %v", events)
+	}
+}
+
 func TestALostPDUnitMovesToASpareNode(t *testing.T) {
 	f := newPDFixture(t, "failover-pd", twoPrefillOneDecode)
 	// A spare node like the decode's: one RTX 4090 on the same network.

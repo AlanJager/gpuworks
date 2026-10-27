@@ -88,11 +88,19 @@ func (c *Controller) drainNamedUnits(ctx context.Context, deployment *unitDeploy
 			deployment.nodes[node.UUID] = node
 			deployment.nodeUUIDs[node.ID] = node.UUID
 		}
-		unit := planning.Unit{Role: surge.Role, Index: len(current[surge.Role])}
+		unit := planning.Unit{Role: surge.Role, Index: len(current[surge.Role]) + len(deployment.surgeUnits[surge.Role])}
 		for _, rank := range surge.To.Ranks() {
 			unit.Ranks = append(unit.Ranks, planning.UnitRank{Nodes: []string{rank.NodeUUID}, GPUs: rank.GPUIndexes})
 		}
 		out = append(out, unit)
+		if deployment.pd != nil {
+			// A PD launch reads the unit it starts from the placement; the
+			// replacement is not in it until the move is written.
+			if deployment.surgeUnits == nil {
+				deployment.surgeUnits = map[string][]planning.PDUnit{}
+			}
+			deployment.surgeUnits[surge.Role] = append(deployment.surgeUnits[surge.Role], surge.To)
+		}
 	}
 	return out, nil
 }

@@ -35,6 +35,10 @@ type unitDeployment struct {
 	// candidate pool, read when a pool replica first needs a node.
 	insts []store.Instance
 	pool  *unitPool
+	// surgeUnits are, by role, the PD units a drain starts on other nodes
+	// this pass: they follow the placement's own units until the move is
+	// written (drainNamedUnits).
+	surgeUnits map[string][]planning.PDUnit
 }
 
 // pdDeployment is what a PD deployment adds: its mode, its placement and the
