@@ -12,11 +12,8 @@ import { nodeDisplayName } from "../../nodeDisplay";
 import NodePicker from "../../nodes/NodePicker";
 import { gpuModelSummary } from "../../nodes/cardIdentity";
 import EligibleNodePicker from "./EligibleNodePicker";
-import { nodeRefusals } from "./deployPlacementRefusal";
-
-// How many refused nodes the scheduler card spells out; a fleet can turn
-// down hundreds, and the first few say what to fix.
-const REFUSALS_SHOWN = 5;
+import { nodeRefusals, nodeConditionSummary } from "./deployPlacementRefusal";
+import DeployNodeRefusals from "./DeployNodeRefusals";
 
 const ONLINE = { state: ["online"] };
 
@@ -73,6 +70,7 @@ export default function NodeSection({
   // Nodes the scheduler judged and turned down: with them, "nothing
   // matches" would hide the reasons the deployer can act on.
   const refusals = autoSelected ? [] : nodeRefusals(t, result);
+  const conditions = !loading ? nodeConditionSummary(result) : null;
   const vendorPool = useMemo(
     () => ({ ...ONLINE, label: targetVendor ? [`gpuworks.ai/vendor=${targetVendor}`] : [] }),
     [targetVendor],
@@ -132,9 +130,16 @@ export default function NodeSection({
             <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0" }}>
               {mode === "auto" ? t("workbench.node.autoPoolDescription") : t("workbench.node.manualPoolDescription")}
             </Typography.Paragraph>
-            {eligibleNodes && (
+            {eligibleNodes && !loading && (
               <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                {t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
+                {conditions
+                  ? t("workbench.node.conditionFunnel", { total: conditions.total, matched: conditions.matched.length, eligible: conditions.eligible })
+                  : t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
+              </Typography.Paragraph>
+            )}
+            {conditions && conditions.eligible > 0 && mode === "auto" && (
+              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+                {t("workbench.node.planningFunnel", { passed: conditions.passed, tried: conditions.tried, untried: conditions.untried })}
               </Typography.Paragraph>
             )}
             {mode === "auto" && (
@@ -201,30 +206,13 @@ export default function NodeSection({
                 />
               </div>
             ) : (
-              ready && refusals.length > 0 ? (
-                <Alert
-                  type="warning"
-                  showIcon
-                  message={t("workbench.node.noNodeFits")}
-                  description={
-                    <ul className="deploy-node-refusals" style={{ margin: 0, paddingInlineStart: 18 }}>
-                      {refusals.slice(0, REFUSALS_SHOWN).map((refusal) => (
-                        <li key={refusal.uuid}>
-                          <strong>{refusal.name}</strong>
-                          {refusal.reason ? `: ${refusal.reason}` : ""}
-                        </li>
-                      ))}
-                      {refusals.length > REFUSALS_SHOWN && (
-                        <li>{t("workbench.node.moreRefused", { count: refusals.length - REFUSALS_SHOWN })}</li>
-                      )}
-                    </ul>
-                  }
-                />
+              ready && !loading && refusals.length > 0 ? (
+                <DeployNodeRefusals refusals={refusals} conditions={conditions} />
               ) : (
                 <Alert
                   type="info"
                   showIcon
-                  message={ready ? t("workbench.node.noCompatibleOnline") : t("workbench.node.chooseModelFirst")}
+                  message={loading ? t("workbench.node.evaluating") : ready ? t("workbench.node.noCompatibleOnline") : t("workbench.node.chooseModelFirst")}
                 />
               )
             )}
