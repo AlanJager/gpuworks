@@ -173,7 +173,7 @@ func (p *probeLibraryPPUProber) RuntimeInjection(indexes []int) gpu.RuntimeInjec
 	if len(indexes) != 1 || indexes[0] != 7 {
 		return gpu.RuntimeInjection{UnsupportedReason: "device absent"}
 	}
-	return gpu.RuntimeInjection{Env: map[string]string{accelerator.EnvCUDAVisibleDevices: "GPU-011ef111-c280-0918-0000-000020462378"}}
+	return gpu.RuntimeInjection{Env: map[string]string{accelerator.EnvCUDAVisibleDevices: "0", accelerator.PPUEnvDeviceUUIDs: "GPU-011ef111-c280-0918-0000-000020462378"}}
 }
 
 func (p *probeLibraryPPUProber) PartitionProbeLibraries(context.Context) ([]gpu.ProbeLibrary, error) {

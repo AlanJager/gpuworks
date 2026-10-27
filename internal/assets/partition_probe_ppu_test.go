@@ -92,7 +92,7 @@ func TestPartitionProbePPUDeviceIdentity(t *testing.T) {
 	}
 }
 
-func TestEmbeddedPPUHGMLQuotaUsesComputeUUIDOrder(t *testing.T) {
+func TestEmbeddedPPUHGMLQuotaUsesSelectedUUIDOrder(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
 		t.Skip("PPU asset is amd64 only")
 	}
@@ -144,6 +144,13 @@ int main(void) {
 		{"UUID error", ppuTestUUID8, "UUID_FAIL=1", dir, "0=96/1/95\n8=96/1/95\n9=96/1/95"},
 		{"UUID symbol missing", ppuTestUUID8, "", filepath.Join(dir, "missing"), "0=96/1/95\n8=96/1/95\n9=96/1/95"},
 		{"legacy agent numeric", "0", "", dir, "0=4/0/4\n8=96/1/95\n9=96/1/95"},
+		{"separate UUID nonzero card", "8", "GPUWORKS_PPU_DEVICE_UUIDS=" + ppuTestUUID8, dir, "0=96/1/95\n8=4/0/4\n9=96/1/95"},
+		{"separate UUID reverse order", "9,8", "GPUWORKS_PPU_DEVICE_UUIDS=" + ppuTestUUID9 + "," + ppuTestUUID8, dir, "0=96/1/95\n8=8/0/8\n9=4/0/4"},
+		{"empty identity does not fall back", ppuTestUUID8, "GPUWORKS_PPU_DEVICE_UUIDS=", dir, "0=96/1/95\n8=96/1/95\n9=96/1/95"},
+		{"numeric identity rejected", ppuTestUUID8, "GPUWORKS_PPU_DEVICE_UUIDS=8", dir, "0=96/1/95\n8=96/1/95\n9=96/1/95"},
+		{"duplicate separate identity", "9,8", "GPUWORKS_PPU_DEVICE_UUIDS=" + ppuTestUUID8 + "," + ppuTestUUID8, dir, "0=96/1/95\n8=96/1/95\n9=96/1/95"},
+		{"separate identity trailing comma", "8", "GPUWORKS_PPU_DEVICE_UUIDS=" + ppuTestUUID8 + ",", dir, "0=96/1/95\n8=96/1/95\n9=96/1/95"},
+		{"separate identity symbol missing", "8", "GPUWORKS_PPU_DEVICE_UUIDS=" + ppuTestUUID8, filepath.Join(dir, "missing"), "0=96/1/95\n8=96/1/95\n9=96/1/95"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command(binary)

@@ -37,7 +37,7 @@
         },
         {
           "path": "ppu/linux-amd64/hggc-13.0/hgml_dlsym_hook.so",
-          "sha256": "25a177249f74044a4bdc2ba533950e7b47c9a6190c5cfdb6aaf7fdcfaf0b387d"
+          "sha256": "7383be2a836567d0cfab58a51cca9c8a27a5fd8c68cb5bfed55455444cbd456f"
         }
       ]
     }

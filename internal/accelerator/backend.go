@@ -41,6 +41,9 @@ const (
 	PPUEnvMemoryLimitPrefix = "HGGC_DEVICE_MEMORY_LIMIT_"
 	PPUEnvSMLimitPrefix     = "HGGC_DEVICE_SM_LIMIT_"
 	PPUEnvLedgerPath        = "HGGC_LEDGER_PATH"
+	// PPUEnvDeviceUUIDs preserves selected physical identities in compute order,
+	// independently of the numeric selectors consumed by inference engines.
+	PPUEnvDeviceUUIDs = "GPUWORKS_PPU_DEVICE_UUIDS"
 )
 
 type Maturity string

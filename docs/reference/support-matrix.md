@@ -31,7 +31,7 @@ dGPU 不可用时，节点仍可使用整卡部署；平台不会把不满足 dG
 
 ## PPU 设备身份与 dGPU 探针
 
-PPU 注入使用 `ppu-smi` 返回并经设备节点核对的完整 UUID，按调度顺序写入 `CUDA_VISIBLE_DEVICES`。HGGC 将这些 UUID 映射为计算设备 `0..N-1`；Docker 的可见设备列表与 runveil 的宿主设备列表不必有相同编号。HGML 配额查询按同一 UUID 顺序定位配额与显存账本，不把 HGML 的宿主编号直接当作计算设备编号。
+PPU 使用 `ppu-smi` 查询并经设备节点校验的身份，按选卡顺序分别注入两份数据：`CUDA_VISIBLE_DEVICES` 为计算程序使用的数字设备编号，`GPUWORKS_PPU_DEVICE_UUIDS` 为探针和 HGML 配额库使用的完整 UUID 列表。Docker/nerdctl 的数字编号来自过滤后的设备视图，udocker/runveil 使用宿主编号；两份列表的顺序一致。vLLM 和 SGLang 共用数字选择，不增加引擎判断。HGML 复用 UUID 顺序定位配额与显存账本；新 UUID 变量缺省时兼容旧 Agent 的设备选择变量。
 
 内嵌探针 `gpuworks/partition-probe:v4` 同时检查目标 UUID 和显存配额。缺失、无效、重复或不可查询的身份，以及只有其他卡显示配额的情况都不能通过。升级 agent 后需重新创建已有工作负载，新的设备选择与切分库才会生效；runveil 的设备可见性仍不等于内核设备隔离。
 

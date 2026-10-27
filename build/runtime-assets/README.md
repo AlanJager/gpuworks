@@ -31,9 +31,10 @@ The historical ubs-virt pin is fetched from AtomGit's advertised
 `refs/keep-around/<commit>` because the Gitee project migrated and no longer
 serves that commit from its branch history.
 
-The PPU HGML hook maps full UUIDs in `CUDA_VISIBLE_DEVICES` to the same
-compact quota/ledger ordinals that HGGC uses for compute. Unselected devices
-retain their vendor memory figures; missing or invalid identity information
-cannot acquire another device's quota. Numeric visibility retains the legacy
-agent ABI. The v3 behavioral probe independently locates the requested UUID
-and checks its quota, so a quota on another card cannot produce a pass.
+The PPU HGML hook maps `GPUWORKS_PPU_DEVICE_UUIDS` to the selected compute
+quota/ledger order. Inference engines receive numeric `CUDA_VISIBLE_DEVICES`;
+probe identity and quota reporting use the separate verified UUID list.
+An absent UUID variable preserves the older agent ABI via
+`CUDA_VISIBLE_DEVICES`; an explicitly empty, invalid or duplicate UUID list
+never falls back to another identity. The v4 behavioral probe independently
+locates the requested UUID and checks its quota.
