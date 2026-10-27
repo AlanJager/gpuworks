@@ -123,6 +123,11 @@ type Runner struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// CountTokens counts local text without a chat template; it is an estimate.
 	CountTokens func(string) int
+	// DiscardResults makes Run return no results: each one still reaches
+	// OnResult, but none is kept. A result carries the whole answer text and
+	// per-chunk timings, so keeping every one for a long point grows with the
+	// request count when nothing reads them back.
+	DiscardResults bool
 }
 
 // TotalRequests returns the number of HTTP requests a run will issue. A
@@ -257,15 +262,22 @@ func (r Runner) Run(ctx context.Context, requests []Request) []Result {
 		}
 	}
 	total := TotalRequests(requests)
-	results := make([]Result, 0, total)
+	var results []Result
+	if !r.DiscardResults {
+		results = make([]Result, 0, total)
+	}
 	var mu sync.Mutex
+	done := 0
 	record := func(res Result) {
 		if r.OnResult != nil {
 			r.OnResult(res)
 		}
 		mu.Lock()
-		results = append(results, res)
-		done := len(results)
+		if !r.DiscardResults {
+			results = append(results, res)
+		}
+		done++
+		done := done
 		mu.Unlock()
 		if r.OnProgress != nil {
 			r.OnProgress(done, total)

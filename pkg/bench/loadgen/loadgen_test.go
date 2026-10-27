@@ -3,9 +3,12 @@ package loadgen
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -253,5 +256,46 @@ func TestClientParsesNonStreamingCachedTokens(t *testing.T) {
 	}
 	if !res.Metrics.CachedTokensAvailable || res.Metrics.CachedTokens != 2 || res.Metrics.ApproximateTokens {
 		t.Fatalf("unexpected metrics: %+v", res.Metrics)
+	}
+}
+
+// A runner told to discard results keeps none, yet every result still reaches
+// OnResult, progress still counts each one, and a follow-up turn still carries
+// the previous answer: only the point-long retention goes away.
+func TestRunnerDiscardResultsKeepsNoneButDeliversEach(t *testing.T) {
+	var mu sync.Mutex
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, string(raw))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"answer-one"}}]}`+"\n\n"+
+			`data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":1}}`+"\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	var delivered int
+	var progress []int
+	results := Runner{
+		Client: Client{BaseURL: srv.URL}, Concurrency: 1, DiscardResults: true,
+		OnResult:   func(Result) { mu.Lock(); delivered++; mu.Unlock() },
+		OnProgress: func(done, total int) { mu.Lock(); progress = append(progress, done*10+total); mu.Unlock() },
+	}.Run(context.Background(), []Request{
+		{Model: "m", Stream: true, Messages: []Message{{Role: "user", Content: "q1"}}, FollowUps: []Message{{Role: "user", Content: "q2"}}},
+		{Model: "m", Stream: true, Messages: []Message{{Role: "user", Content: "q3"}}},
+	})
+	if results != nil {
+		t.Fatalf("discarding runner returned %d results", len(results))
+	}
+	if delivered != 3 {
+		t.Fatalf("OnResult saw %d results, want 3", delivered)
+	}
+	if want := []int{13, 23, 33}; fmt.Sprint(progress) != fmt.Sprint(want) {
+		t.Fatalf("progress (done*10+total) = %v, want %v", progress, want)
+	}
+	if len(bodies) != 3 || !strings.Contains(bodies[1], `"answer-one"`) || !strings.Contains(bodies[1], `"q2"`) {
+		t.Fatalf("follow-up turn body = %q, want the previous answer and the next question", bodies)
 	}
 }
