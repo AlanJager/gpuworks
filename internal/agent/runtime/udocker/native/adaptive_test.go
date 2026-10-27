@@ -384,7 +384,10 @@ func TestPullResumesBrokenAndStalledConnectionsWithoutLosingTokens(t *testing.T)
 // One connection that crawls far below its siblings is replaced even though it
 // is above the absolute floor, and the replacement resumes where it stopped.
 func TestPullRecyclesAConnectionFarBehindItsSiblings(t *testing.T) {
-	f := newRegFixture(t, fakeregistry.Options{Redirect: true, PerConnRate: 4 * miB}, 8, 24*miB)
+	f := newRegFixture(t, fakeregistry.Options{Redirect: true, PerConnRate: 4 * miB}, 8, 32*miB)
+	// Long spans, so that the siblings the crawler is compared with live
+	// through several of its windows even on a loaded machine.
+	rangeSpanTarget = 4 * miB
 	var crawled atomic.Int64
 	f.reg.SetFault(func(r fakeregistry.Request) *fakeregistry.Fault {
 		if r.N == 2 && crawled.Add(1) == 1 {
