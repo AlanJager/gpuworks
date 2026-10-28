@@ -1,10 +1,14 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -364,4 +368,81 @@ func TestDeploymentUncertainSleepStillReadsAsleep(t *testing.T) {
 	if row.AsleepReplicas != 0 {
 		t.Fatalf("asleep_replicas = %d with a failed instance", row.AsleepReplicas)
 	}
+}
+
+// A PD deployment's detail response must describe its replicas the way its
+// list row does. The stored Replicas field only configures an ordinary
+// deployment (PD creation forces it to 1), so reporting it on the detail made
+// the drawer pair a unit-counted numerator with a denominator of 1: the
+// fixture below put asleep_replicas at 2 over replicas at 1, and the drawer
+// printed "Partly asleep · 2/1 replicas". One number has to mean one thing on
+// both surfaces, and the denominator must never be smaller than its numerator.
+func TestDeploymentPDDetailReplicasMatchTheListRow(t *testing.T) {
+	f := newPDStateFixture(t)
+	f.sleepRole(t, "prefill", 1)
+	f.reported(t, "prefill-0", 1)
+	f.reported(t, "prefill-1", 1)
+
+	detail := f.handlers.deploymentDTO(mustDeployment(t, f.store, f.id), true)
+	if detail.AsleepReplicas != 2 {
+		t.Fatalf("asleep_replicas = %d, want both prefill units", detail.AsleepReplicas)
+	}
+	// The detail's own replica counts add up to the units the mode has, and
+	// ready_replicas is filled rather than omitted: the drawer prints the pair.
+	if detail.ReadyReplicas == nil {
+		t.Fatal("ready_replicas absent on a PD detail, want the count the drawer pairs with asleep_replicas")
+	}
+	units := 0
+	if detail.PD != nil {
+		for _, role := range detail.PD.Roles {
+			units += role.Desired
+		}
+	}
+	if units == 0 {
+		t.Fatal("no PD roles to count")
+	}
+	if *detail.ReadyReplicas+detail.AsleepReplicas != units {
+		t.Fatalf("ready+asleep = %d, want %d units", *detail.ReadyReplicas+detail.AsleepReplicas, units)
+	}
+	// The denominator the drawer prints is this field, so it must be the unit
+	// total rather than the stored 1 that PD creation writes.
+	if detail.Replicas != units {
+		t.Fatalf("detail replicas = %d, want the %d units the mode has", detail.Replicas, units)
+	}
+	if detail.Replicas < detail.AsleepReplicas {
+		t.Fatalf("detail replicas = %d < asleep_replicas = %d: the drawer would print a numerator over a smaller denominator",
+			detail.Replicas, detail.AsleepReplicas)
+	}
+	// The row the operator sees in the table describes the same deployment, so
+	// its replicas must equal the unit total rather than the stored 1.
+	row := f.listRow(t)
+	if row.AsleepReplicas != detail.AsleepReplicas {
+		t.Fatalf("list asleep_replicas = %d, detail = %d, want the same walk", row.AsleepReplicas, detail.AsleepReplicas)
+	}
+	if row.Replicas != units {
+		t.Fatalf("list replicas = %d, want the %d units the mode has", row.Replicas, units)
+	}
+}
+
+// listRow reads this PD deployment from the list the way the table does.
+func (f pdStateFixture) listRow(t *testing.T) dto.DeploymentListItem {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	f.handlers.listDeployments(rec, httptest.NewRequest(http.MethodGet, "/api/v1/deployments?page=1&page_size=100", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list = %d: %s", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Items []dto.DeploymentListItem `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+		t.Fatalf("page: %v", err)
+	}
+	for _, row := range page.Items {
+		if row.ID == f.id {
+			return row
+		}
+	}
+	t.Fatalf("deployment %d absent from the list: %s", f.id, rec.Body.String())
+	return dto.DeploymentListItem{}
 }

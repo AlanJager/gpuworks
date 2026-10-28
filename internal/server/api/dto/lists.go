@@ -191,6 +191,14 @@ type DashboardNodes struct {
 }
 
 // DashboardDeployments counts deployments by their effective state.
+//
+// Total does not equal Running+Warming, and the difference is deliberate: a
+// sleeping or asleep deployment serves nothing, so it is counted as running
+// only when it can serve, and it is not warming either. Sleeping deployments
+// therefore fall into neither bucket and read as another state, exactly as a
+// stopped, failed or offline one does. Sleepable counts the deployments that
+// could sleep at all, so a client that wants a sleep total reads
+// Total-Running-Warming rather than inventing a bucket the wire does not carry.
 type DashboardDeployments struct {
 	Total   int `json:"total"`
 	Running int `json:"running"`
