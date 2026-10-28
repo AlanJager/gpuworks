@@ -122,7 +122,12 @@ func parseRepository(ctx context.Context, in Input, files FileView) (RuleResult,
 		r.Prune = true
 		r.Issues = append(r.Issues, issue(in.Path, "hf_hub_cache_layout", nil))
 	}
-	for _, name := range []string{".gpuworks-model-complete.json", ".msc", ".mv"} {
+	// The completion marker counts too: a gpuworks download is a whole
+	// repository. The ModelScope names come from markers.go, which owns that
+	// vocabulary; internal/agent/modelscan/identity.go recognizes a ModelScope
+	// download by them, and internal/agent/app/modelcopy.go skips them when it
+	// copies a model from a shared storage.
+	for _, name := range append([]string{".gpuworks-model-complete.json"}, SourceMarkers...) {
 		if hasName(items, name) {
 			r.Repository = true
 		}

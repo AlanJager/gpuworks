@@ -161,3 +161,33 @@ func TestGGUFReadFailureIsNotMissingShard(t *testing.T) {
 		t.Fatalf("limit reported as corrupt metadata: %+v", r.Issues)
 	}
 }
+
+// TestSourceMarkersAreTheReaderVocabulary pins the one owner of the ModelScope
+// source-marker names. internal/agent/modelscan/identity.go recognizes a
+// ModelScope download by these names and internal/agent/app/modelcopy.go skips
+// them when copying a model from a shared storage; every reader must see the
+// same set, which is why it lives here and not in any of them.
+func TestSourceMarkersAreTheReaderVocabulary(t *testing.T) {
+	want := []string{".msc", ".mv"}
+	if !slices.Equal(SourceMarkers, want) {
+		t.Fatalf("SourceMarkers = %v, want %v", SourceMarkers, want)
+	}
+	for _, marker := range SourceMarkers {
+		if !IsSourceMarker(marker) {
+			t.Fatalf("IsSourceMarker(%q) = false", marker)
+		}
+		// A marker alone makes the directory a repository, not model content.
+		r, err := Parse(context.Background(), Input{Path: "."}, memory(map[string]string{marker: "modelscope"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !r.Repository {
+			t.Fatalf("%s did not mark the directory a repository: %+v", marker, r)
+		}
+	}
+	for _, name := range []string{"", ".msc.txt", "msc", "model.safetensors", ".part"} {
+		if IsSourceMarker(name) {
+			t.Fatalf("IsSourceMarker(%q) = true", name)
+		}
+	}
+}

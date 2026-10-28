@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/pkg/model/modelmetadata"
 	"gpuworks.ai/gpuworks/pkg/modelrepo"
 )
 
@@ -27,9 +28,28 @@ type copyFile struct {
 	modTime time.Time
 }
 
+// copySkipName reports whether a file directly under a model directory is task
+// metadata rather than model content, so a copy must not carry it over.
+//
+// The ModelScope names are the same set internal/agent/modelscan/identity.go
+// recognizes a ModelScope download by and pkg/model/modelmetadata/parser.go
+// marks a repository by; modelmetadata owns it, and this function must not
+// grow its own copy of those names. The completion marker and the copy's own
+// source snapshot are written by this agent for this transfer.
+func copySkipName(name string) bool {
+	return name == modelCompleteMarker || name == copySourceMarker ||
+		modelmetadata.IsSourceMarker(name) ||
+		strings.HasSuffix(name, ".part") || strings.HasSuffix(name, ".part.state")
+}
+
 // listCopySource lists a model directory's regular files, skipping dot
-// directories (tool metadata) and the completion marker, which the copy
-// writes for itself.
+// directories (tool metadata) and the names copySkipName classifies as task
+// metadata.
+//
+// Both the listing that starts a copy and the one that verifies its source did
+// not change come through here, so the two always see one file set: a resumed
+// copy compares snapshot against listing, and a skip applied on only one side
+// would make every resume decide the source had changed and start over.
 func listCopySource(root string) ([]copyFile, error) {
 	var files []copyFile
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
@@ -43,7 +63,7 @@ func listCopySource(root string) ([]copyFile, error) {
 			}
 			return nil
 		}
-		if name == modelCompleteMarker || name == copySourceMarker || strings.HasSuffix(name, ".part") || strings.HasSuffix(name, ".part.state") {
+		if copySkipName(name) {
 			return nil
 		}
 		info, err := os.Stat(path) // follow file symlinks
