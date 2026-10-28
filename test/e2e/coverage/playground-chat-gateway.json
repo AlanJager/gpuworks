@@ -111,13 +111,11 @@
   ],
   "partial_checklist": {
     "20.6": "A fresh browser context (separate storage) shows no conversations. Two accounts in the same browser profile, re-login isolation and the retention cap are not covered.",
-    "20.9": "Only the session path /api/v1/playground/v1/* is covered; the public /v1/* inference-key path is not exercised.",
     "20.3": "Chunking, the terminal [DONE] event, error events and usage are now asserted separately from the reply text, and the reply shows the reported token count exactly instead of an approximation, so a reply that ignores its usage event is caught (killed by dropping the recorded usage: the metric turns into ≈1). What still holds the item at partial is cancellation: at this stream shape the stop control is gone before it can be clicked, and holding the reply open changed the timing the completed-reply assertions depend on."
   },
   "missing": [
     "Streaming cancellation, upstream termination and interrupted-reply marking",
     "Gateway error paths (unknown model, unauthorized key, engine failure/429)",
-    "Public /v1 inference-key parity with the Playground session path",
     "Conversation rename/delete, retention cap and multi-account isolation",
     "Markdown/HTML preview and CSP behavior",
     "Non-admin authorization",
@@ -160,7 +158,8 @@
   },
   "checklist_items": {
     "20.1": "The deployment declares chat, embeddings and rerank; opening an operation the model does not declare lists the declared ones, and each link opens its own renderer: chat -> /playground/chat, embeddings and rerank -> /playground/vector. Nothing degrades to chat. Verified en+zh; killed by routing every operation to chat, after which embeddings arrives at /playground/chat instead of /playground/vector.",
-    "20.2": "Each declared operation sends its own method, path and body and returns its own business result: chat streams SSE to [DONE] with the engine marker, embeddings POSTs {input} to the gateway's /v1/embeddings and returns one numeric vector, rerank POSTs {query, documents} to /v1/rerank and returns indexed relevance scores in descending order with no chat wire reuse. Verified en+zh."
+    "20.2": "Each declared operation sends its own method, path and body and returns its own business result: chat streams SSE to [DONE] with the engine marker, embeddings POSTs {input} to the gateway's /v1/embeddings and returns one numeric vector, rerank POSTs {query, documents} to /v1/rerank and returns indexed relevance scores in descending order with no chat wire reuse. Verified en+zh.",
+    "20.9": "Both credential planes are exercised and proved not to substitute for each other. An inference key copied from the UI reaches the public /v1/models with Bearer only and no cookies (200), while the signed-in browser session gets 401 there and the inference key gets 401 on the session path /api/v1/playground/models; the key keeps authenticating its own path afterwards. Revoking the key returns it to 401 while the guard key still authenticates. Verified en+zh; killed by letting the public gateway accept the session cookie, after which the session reached /v1/models with 200."
   },
   "stream_evidence": {
     "normal_binary_sha256": "897a9c2b366f7692a9925153886ca8a29d49b114d8c6e3716e71501f4d55f3b5",
@@ -194,6 +193,41 @@
           "source_restored": true
         },
         "review_note": "Killed at the token metric: the reply shows ≈1 instead of the reported 8, so a reply that ignores its usage event cannot pass. Mutating the gateway's include_usage injection instead did NOT kill anything, because the fake engine reports usage unconditionally; that attempt is recorded as an equivalent mutation rather than counted."
+      }
+    ]
+  },
+  "credential_plane_evidence": {
+    "normal_binary_sha256": "38cc94f8896803ee67c2d0f40c85cc4463a09fd8b51365ec062e711302095835",
+    "runs": {
+      "en": {
+        "run_id": "20261028T075909Z-b7a82857",
+        "report_sha256": "55d0bdb4674f2a6f7fb1c379204192e1aa84bb5a9c10e32704436d3e5809deed"
+      },
+      "zh": {
+        "run_id": "20261028T075936Z-56cbe823",
+        "report_sha256": "6ca239c12419b6eaf517d915cda8a53d4ca2bd0d175f046b71451d80b2e1b8f5"
+      },
+      "mutant": {
+        "run_id": "20261028T075753Z-1b326df0",
+        "report_sha256": "408ff275c86c217953a10034110e5066e30054123f34a91fb0a455a27d11e42c"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "20.9",
+        "name": "gateway-accepts-session-cookie",
+        "cohort": "playground-credentials-cohort-v1",
+        "run_id": "20261028T075753Z-1b326df0",
+        "report_sha256": "408ff275c86c217953a10034110e5066e30054123f34a91fb0a455a27d11e42c",
+        "binary_sha256": "967b183106df359901cdf91af88592eb822d076926ba99eb00a166f34b56b310",
+        "mutation": {
+          "sites": [
+            "internal/server/proxy/proxy.go"
+          ],
+          "intent": "let a signed-in browser session authenticate the public Bearer path",
+          "source_restored": true
+        },
+        "review_note": "Killed at the plane-separation assertion: the browser session got 200 on /v1/models, so one credential standing in for the other cannot pass."
       }
     ]
   }
