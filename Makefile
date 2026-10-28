@@ -433,7 +433,12 @@ test-l4-gitee-ascend-deploy-chat: cross-agents
 ## capability-selected fixture pool. The platform test uploads the checked
 ## current arm64 agent, starts it under an isolated /tmp state directory, then
 ## verifies two same-card partition replicas + real chat + quota denial and a
-## whole-GPU deployment through the public platform APIs. The nerdctl checks
+## whole-GPU deployment through the public platform APIs. Runtime is chosen per
+## member: docker/nerdctl when it holds the image, else runveil (udocker driver)
+## when the member has a prepared image cache at
+## GPUWORKS_ASCEND_L4_RUNVEIL_CACHE (default /opt/gpuworks-l4-runveil-cache,
+## udocker store layout: repos/ + layers/); its run directories go to
+## <cache>-run so they stay on disk and hard-link the cache. The nerdctl checks
 ## independently select any pool member with nerdctl + the cached CANN image:
 ## one verifies raw device injection and one runs the embedded 2.5 MiB
 ## behavioral probe against a real 4 GiB vCANN slice (no serving image/model).

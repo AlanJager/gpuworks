@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,7 +30,7 @@ import (
 )
 
 type ascendPoolCandidate struct {
-	host, jump, card, runtime string
+	host, jump, card, runtime, model string
 }
 
 type ascendPoolNode struct {
@@ -51,8 +52,7 @@ func TestAscendPoolPlatformPartitionInferenceAndWholeGPU(t *testing.T) {
 	node := attachAscendPoolNode(t, control, candidate)
 	waitAscendPoolCapability(t, control, node.uuid)
 
-	modelDir := hostEnv("GPUWORKS_ASCEND_L4_MODEL", "/opt/gpuworks/models/qwen3.5-0.8b")
-	modelID := registerAscendPoolModel(t, control, node.uuid, modelDir)
+	modelID := registerAscendPoolModel(t, control, node.uuid, candidate.model)
 	image := hostEnv("GPUWORKS_ASCEND_L4_IMAGE", "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
 
 	partition := createAscendPlatformDeployment(t, control, map[string]any{
@@ -97,36 +97,16 @@ func selectAscendPoolCandidate(t *testing.T) ascendPoolCandidate {
 	t.Helper()
 	image := hostEnv("GPUWORKS_ASCEND_L4_IMAGE", "172.20.9.4:10043/ai-model-registry/vllm-ascend:0.26.0rc1")
 	model := hostEnv("GPUWORKS_ASCEND_L4_MODEL", "/opt/gpuworks/models/qwen3.5-0.8b")
+	cache := ascendRunveilCachePath()
+	if err := validateAscendRunveilCache(cache); err != nil {
+		t.Fatal(err)
+	}
 	var diagnostics []string
 	for _, candidate := range ascendPoolCandidates() {
 		if candidate.host == "" {
 			continue
 		}
-		// Every check reports which condition failed on stderr: a bare
-		// `set -eu` script exits silently and the CI log only shows the login
-		// banner plus "exit status 1", which is what hid the September
-		// fixture/Image degradation for days.
-		command := fmt.Sprintf(`fail() { echo "ascend-pool preflight: $1" >&2; exit 1; }
-test "$(uname -m)" = aarch64 || fail "arch is $(uname -m), want aarch64"
-command -v npu-smi >/dev/null || fail "npu-smi missing"
-command -v gzip >/dev/null || fail "gzip missing"
-command -v curl >/dev/null || fail "curl missing"
-test -f %s/config.json || fail "model fixture missing at %s"
-info=$(npu-smi info) || fail "npu-smi info failed"
-%s
-test -n "$selected" || fail "no idle NPU: preferred %s and every other card either runs a process or holds more than %d MB of HBM (container/vNPU tenants hold HBM without listing a process)"
-echo card="$selected"
-if command -v docker >/dev/null && docker info >/dev/null 2>&1 && docker image inspect %s >/dev/null 2>&1; then
-  echo runtime=docker
-elif command -v nerdctl >/dev/null && nerdctl info >/dev/null 2>&1 && nerdctl -n gpuworks image inspect %s >/dev/null 2>&1; then
-  echo runtime=nerdctl
-else
-  fail "acceptance image %s not present in docker, or in nerdctl's gpuworks namespace (the agent runs containers there)"
-fi`, shellQuoteL4(model), shellQuoteL4(model), ascendIdleCardSelection(candidate.card), candidate.card, ascendPoolMaxIdleHBMMB(), shellQuoteL4(image), shellQuoteL4(image), shellQuoteL4(image))
-		if os.Getenv("GPUWORKS_ASCEND_L4_RUNTIME") == "udocker" {
-			boundary := strings.Index(command, "if command -v docker")
-			command = command[:boundary] + "test -d " + shellQuoteL4(os.Getenv("GPUWORKS_ASCEND_L4_RUNVEIL_CACHE")+"/repos") + " || fail 'runveil image fixture missing'\necho runtime=udocker\n"
-		}
+		command := ascendPoolPreflightScript(candidate.card, model, ascendRunveilModelPath(model, cache), image, cache)
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		out, err := partitionSSHCommand(ctx, candidate.host, candidate.jump, command).CombinedOutput()
 		cancel()
@@ -134,21 +114,15 @@ fi`, shellQuoteL4(model), shellQuoteL4(model), ascendIdleCardSelection(candidate
 			diagnostics = append(diagnostics, fmt.Sprintf("%s unavailable: %v: %s", candidate.host, err, strings.TrimSpace(string(out))))
 			continue
 		}
-		for _, line := range strings.Split(string(out), "\n") {
-			line = strings.TrimSpace(line)
-			if value, ok := strings.CutPrefix(line, "runtime="); ok {
-				candidate.runtime = value
-			}
-			if value, ok := strings.CutPrefix(line, "card="); ok {
-				candidate.card = value
-			}
+		if card, runtime, fixture := parseAscendPoolPreflight(string(out)); card != "" {
+			candidate.card, candidate.runtime, candidate.model = card, runtime, fixture
 		}
 		if candidate.runtime == "docker" || candidate.runtime == "nerdctl" || candidate.runtime == "udocker" {
 			t.Logf("Ascend pool selected %s (%s, card %s); other members remain eligible for later tests", candidate.host, candidate.runtime, candidate.card)
 			return candidate
 		}
 	}
-	message := "no Ascend pool member currently has SSH, an idle configured card, model fixture, and application image"
+	message := "no Ascend pool member currently has SSH, an idle configured card, model fixture, and application image (in docker, nerdctl or the runveil cache)"
 	if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
 		t.Fatalf("%s:\n%s", message, strings.Join(diagnostics, "\n"))
 	}
@@ -182,9 +156,10 @@ func attachAscendPoolNode(t *testing.T, control *testenv.Env, candidate ascendPo
 		t.Fatalf("decode temporary pool node: %v body=%s", err, data)
 	}
 
-	remoteDir := "/tmp/gpuworks-ascend-pool-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	remoteRoot := ascendPoolRemoteRoot(candidate.runtime, ascendRunveilCachePath())
+	remoteDir := remoteRoot + "/gpuworks-ascend-pool-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	prepareCtx, cancel := context.WithTimeout(t.Context(), time.Minute)
-	out, err := partitionSSHCommand(prepareCtx, candidate.host, candidate.jump, "mkdir "+shellQuoteL4(remoteDir)).CombinedOutput()
+	out, err := partitionSSHCommand(prepareCtx, candidate.host, candidate.jump, "mkdir -p "+shellQuoteL4(remoteRoot)+" && mkdir "+shellQuoteL4(remoteDir)).CombinedOutput()
 	cancel()
 	if err != nil {
 		t.Fatalf("prepare isolated pool agent: %v: %s", err, out)
@@ -341,7 +316,7 @@ func (n *ascendPoolNode) cleanup(t *testing.T) {
 	command := fmt.Sprintf(`set +e
 dir=%s
 if test -f "$dir/agent.pid"; then kill "$(cat "$dir/agent.pid")" 2>/dev/null || true; fi
-case "$dir" in /tmp/gpuworks-ascend-pool-*) rm -rf -- "$dir" ;; *) exit 2 ;; esac`, shellQuoteL4(n.remoteDir))
+case "$dir" in %s/gpuworks-ascend-pool-*) rm -rf -- "$dir" ;; *) exit 2 ;; esac`, shellQuoteL4(n.remoteDir), path.Dir(n.remoteDir))
 	if out, err := partitionSSHCommand(ctx, n.candidate.host, n.candidate.jump, command).CombinedOutput(); err != nil {
 		t.Errorf("cleanup isolated Ascend pool agent: %v: %s", err, out)
 	}
