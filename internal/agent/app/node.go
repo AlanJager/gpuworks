@@ -383,7 +383,7 @@ func (n *NodeRuntime) PartitionAssets(ctx context.Context) []proto.AssetReport {
 	}
 	vendor := accelerator.NormalizeVendor(n.prober.Vendor())
 	if vendor == accelerator.VendorNVIDIA {
-		if assets.LibvgpuAvailable() {
+		if assets.LibvgpuAvailable() || gpu.SimulatesPartitioning(n.prober) {
 			return []proto.AssetReport{{Backend: accelerator.BackendNVIDIALogical, Root: "embedded://dgpu", Files: []string{"libvgpu.so"}}}
 		}
 		return []proto.AssetReport{}

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/agent/conn"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
 	"gpuworks.ai/gpuworks/internal/commandlog"
@@ -211,7 +212,9 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 			n.log.Warn("orphan container cleanup failed; leaked containers may remain", "driver", n.RuntimeDriverName(), "err", err)
 		}
 	}
-	if n.bench != nil {
+	// A simulated node runs no evaluation load: its host is not the machine
+	// it stands for, and the load would leave from the real one.
+	if n.bench != nil && !gpu.SimulatesHost(n.prober) {
 		n.bench.SetDesiredFull(ctx, ds.Benchmarks)
 	}
 	// After the desired instances are known: a differing accelerator
@@ -247,7 +250,7 @@ func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) b
 		n.engine.ApplyUpdate(ctx, su.Instances, su.RemovedInstances)
 		n.engine.UpdateObservations(su.Observations)
 	}
-	if n.bench != nil {
+	if n.bench != nil && !gpu.SimulatesHost(n.prober) {
 		n.bench.ApplyUpdate(ctx, su.Benchmarks, su.RemovedBenchmarks)
 	}
 	for _, mf := range su.ModelFiles {
@@ -308,6 +311,9 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 
 // OnRPC handles short-action RPCs.
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
+	if err := n.simulatedHostRefusal(method, params); err != nil {
+		return nil, err
+	}
 	switch method {
 	case proto.RPCNodeDoctor:
 		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
@@ -501,6 +507,12 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 		n.lockImageOperation(p.CanonicalRef, "pulling")
 		defer n.imagePullMu.Unlock()
 		n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: "pulling " + p.EffectiveRef})
+		if gpu.SimulatesHost(n.prober) {
+			// Every image is on a simulated node; asking a registry would
+			// reach the network from the real host.
+			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image present"})
+			return
+		}
 		d := n.runtimeDriver()
 		if d == nil {
 			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime driver is unavailable"})

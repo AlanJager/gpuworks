@@ -375,7 +375,7 @@ func (c *Conn) handshake() error {
 		hello.NodeUUID = c.creds.NodeUUID
 		hello.NodeToken = c.creds.NodeToken
 	}
-	hello.Hostname = sysinfo.Collect().Hostname
+	hello.Hostname = gpu.HostInfo(c.prober, sysinfo.Collect()).Hostname
 	if h, ok := c.handlers.(interface{ OwnModelsDir() string }); ok {
 		hello.OwnModelsDir = h.OwnModelsDir()
 	}
@@ -449,14 +449,15 @@ func helloCapabilitiesForRuntime(prober gpu.Prober, runtimeDriver string) []stri
 	// advertised independently of the prober. The server greys out the terminal
 	// entry point for agents that do not claim it, instead of opening a session
 	// that can only go blank.
-	if terminal.Supported() {
+	simulated := prober != nil && gpu.SimulatesHost(prober)
+	if terminal.Supported() && !simulated {
 		caps = append(caps, proto.CapWebterm)
 		// Container capabilities are intentionally not inferred from a runtime
 		// name; the handler must provide the concrete PTY implementation.
 	}
 	caps = append(caps, proto.CapNetworkUpdate, proto.CapBench, proto.CapBenchWarmup, proto.CapBenchArrival, proto.CapBenchInteractivity, proto.CapBenchEvidence, proto.CapImagePullCandidates,
 		proto.CapStorageFiles)
-	if upgradeSupported() {
+	if upgradeSupported() && !simulated {
 		caps = append(caps, proto.CapUpgradePush)
 	}
 	if prober == nil {
@@ -578,7 +579,7 @@ func (c *Conn) statusLoop(ctx context.Context) {
 
 // reportStatus collects sysinfo + GPUs and sends a status.node envelope.
 func (c *Conn) reportStatus(ctx context.Context) {
-	sys := sysinfo.Collect()
+	sys := gpu.HostInfo(c.prober, sysinfo.Collect())
 	gpus, probeErr := c.prober.Probe(ctx)
 	// Whether the vendor CLI answered, and whether that leaves the node's
 	// accelerators unknown, are two questions. The optional queries below
@@ -658,6 +659,9 @@ func (c *Conn) reportStatus(ctx context.Context) {
 	var network proto.NetInventory
 	if h, ok := c.handlers.(interface{ NetworkInventory() proto.NetInventory }); ok {
 		network = h.NetworkInventory()
+		if _, simulated := c.prober.(gpu.ListenerReporter); simulated {
+			network.EnginePortListeners = c.enginePortListeners()
+		}
 	} else {
 		network = netinfo.Collect()
 		// A simulated inventory brings its own management address; the
@@ -738,6 +742,10 @@ type rpcRespBody struct {
 	Error  string `json:"error,omitempty"`
 }
 
+// errSimulatedHost refuses, on a simulated node, what would reach the real
+// host its agent runs on.
+var errSimulatedHost = errors.New("not available on a simulated node")
+
 func (c *Conn) handleRPC(ctx context.Context, env proto.Envelope) {
 	var req rpcReqBody
 	if err := json.Unmarshal(env.D, &req); err != nil {
@@ -745,6 +753,10 @@ func (c *Conn) handleRPC(ctx context.Context, env proto.Envelope) {
 		return
 	}
 	if req.Method == proto.RPCAgentUpgrade {
+		if gpu.SimulatesHost(c.prober) {
+			_ = c.send(proto.TRPCResp, env.ID, rpcRespBody{Error: errSimulatedHost.Error()})
+			return
+		}
 		c.handleUpgradeRPC(env.ID)
 		return
 	}

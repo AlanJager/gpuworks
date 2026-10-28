@@ -29,7 +29,11 @@ func (n *NodeRuntime) StartBackground(ctx context.Context, nodeUUID string) {
 	if n.journal == nil {
 		n.journal = journald{}
 	}
-	go n.shipNodeLogs(ctx)
+	// A simulated node's host is not the machine it stands for: its logs
+	// are not that machine's to ship.
+	if !gpu.SimulatesHost(n.prober) {
+		go n.shipNodeLogs(ctx)
+	}
 	go n.shipSelfLogs(ctx)
 	if n.engine != nil {
 		go n.shipLogs(ctx)

@@ -111,9 +111,14 @@ func (c *Collector) SetDCGMProbe(p *gpu.DCGMProbe) {
 	c.dcgm = p
 }
 
-// Run collects every 10s until ctx is cancelled.
+// Run collects every 10s until ctx is cancelled; a simulated node every
+// 30s, which keeps the experience environment's metrics small.
 func (c *Collector) Run(ctx context.Context) {
-	t := time.NewTicker(10 * time.Second)
+	interval := 10 * time.Second
+	if gpu.SimulatesHost(c.prober) {
+		interval = 30 * time.Second
+	}
+	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
 		select {
@@ -261,14 +266,16 @@ func gpuMetricSamples(metrics []gpu.Metric, nodeUUID string, now int64) []proto.
 // instantaneous gauge; CPU/disk/network are rates that need two ticks, so the
 // first call after a Collector is created emits none of those three.
 func (c *Collector) hostSamples(now int64) []proto.MetricSample {
-	sys := sysinfo.Collect()
+	sys := gpu.HostInfo(c.prober, sysinfo.Collect())
 	lbl := map[string]string{"node": c.nodeUUID}
 	used := (sys.MemTotalKB - sys.MemAvailKB) * 1024
 	samples := []proto.MetricSample{
 		{Metric: "gpuworks_node_mem_used_bytes", Labels: lbl, Value: float64(used), TimeMS: now},
 		{Metric: "gpuworks_node_mem_total_bytes", Labels: lbl, Value: float64(sys.MemTotalKB * 1024), TimeMS: now},
 	}
-	if c.hostSample != nil {
+	if sim, ok := c.prober.(gpu.HostSampler); ok {
+		samples = append(samples, sim.HostSamples(c.nodeUUID, now)...)
+	} else if c.hostSample != nil {
 		samples = append(samples, c.hostSample.sample(c.nodeUUID, c.modelsRoot, now)...)
 	}
 	return samples

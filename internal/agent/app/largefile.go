@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -20,6 +21,9 @@ func (n *NodeRuntime) StreamLargeFile(ctx context.Context, path string, w io.Wri
 	path = strings.TrimSpace(path)
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("large file read requires an absolute path: %s", path)
+	}
+	if gpu.SimulatesHost(n.prober) && !insideDir(n.stateDir, path) {
+		return fmt.Errorf("%s outside the node's directory: %w", path, errSimulatedHost)
 	}
 	info, err := os.Stat(path)
 	if err != nil {

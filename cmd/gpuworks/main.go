@@ -108,6 +108,11 @@ func run(log *slog.Logger, args []string, stderr io.Writer) int {
 			log.Error("expose failed", "err", err)
 			return 1
 		}
+	case "experience":
+		if err := experienceCommand(rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("experience environment exited", "err", err)
+			return 1
+		}
 	case "help", "-h", "--help":
 		usageTo(stderr)
 	default:

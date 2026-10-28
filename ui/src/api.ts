@@ -1936,6 +1936,16 @@ export interface DataRetention {
   time_zone: string;
 }
 
+/** The experience environment beside this server: a separate console holding only simulated data. */
+export interface ExperienceStatus {
+  enabled: boolean;
+  ready: boolean;
+  port: number;
+  user: string;
+  password?: string;
+  error?: string;
+}
+
 export interface DataRetentionView {
   value: DataRetention;
   /** Bounds of every numeric value, by field name. */
@@ -4499,6 +4509,10 @@ export const api = {
 
   settings: () => getJSON<Record<string, any>>("/api/v1/settings"),
   dataRetention: () => getJSON<DataRetentionView>("/api/v1/data-retention"),
+  experience: () => getJSON<ExperienceStatus>("/api/v1/experience"),
+  setExperienceEnabled: (enabled: boolean) => sendJSON<ExperienceStatus>("PUT", "/api/v1/experience/enabled", { enabled }),
+  resetExperience: () => sendJSON<ExperienceStatus>("POST", "/api/v1/experience/reset"),
+  rotateExperiencePassword: () => sendJSON<ExperienceStatus>("POST", "/api/v1/experience/password"),
   putDataRetention: (value: DataRetention) => sendJSON<DataRetentionView>("PUT", "/api/v1/data-retention", value),
   dataRetentionStatus: () => getJSON<DataRetentionStatus>("/api/v1/data-retention/status"),
   putSetting: (key: string, value: unknown) =>
