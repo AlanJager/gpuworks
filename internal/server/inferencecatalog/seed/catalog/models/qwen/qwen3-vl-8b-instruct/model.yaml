@@ -108,6 +108,9 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Upstream's shared A2/A3 recipe for this model, minus its `--max-model-len
+# 32768`: this profile served the model's full context before the rest of the
+# tuning was added, and pinning upstream's figure would take that away.
 - name: bf16-vllm-ascend-4eac0a8b
   display_profile: general
   scenario: balanced
@@ -134,8 +137,6 @@ specs:
   - --no-enable-prefix-caching
   - --max-num-seqs
   - '128'
-  - --max-model-len
-  - '32768'
   - --max-num-batched-tokens
   - '16384'
   - --gpu-memory-utilization
@@ -186,8 +187,6 @@ specs:
   - --no-enable-prefix-caching
   - --max-num-seqs
   - '128'
-  - --max-model-len
-  - '32768'
   - --max-num-batched-tokens
   - '16384'
   - --gpu-memory-utilization

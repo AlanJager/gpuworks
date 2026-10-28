@@ -116,6 +116,11 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# The arguments are the vendor's published A2/A3 recipe, with one deliberate
+# omission: that recipe pins `--max-model-len 133120`, and pinning it here would
+# halve what this profile served before - without it the engine takes the
+# model's own 262144, which is what ran on a 910C under this image. A deployment
+# that needs the published figure can set it.
 - name: int8-vllm-ascend-0a447e8a
   display_profile: general
   scenario: balanced
@@ -142,8 +147,6 @@ specs:
   - ascend
   - --max-num-seqs
   - '32'
-  - --max-model-len
-  - '133120'
   - --max-num-batched-tokens
   - '16384'
   - --trust-remote-code
@@ -208,8 +211,6 @@ specs:
   - ascend
   - --max-num-seqs
   - '32'
-  - --max-model-len
-  - '133120'
   - --max-num-batched-tokens
   - '16384'
   - --trust-remote-code
@@ -254,7 +255,7 @@ specs:
 # series. No 950DT hardware was available, so these arguments are the published
 # recipe, not a measured one; the 950PR profile below is the measured one and
 # uses the plain W8A8 weights.
-- name: mxfp8-vllm-ascend-950dt-9754c9eb
+- name: mxfp8-vllm-ascend-950-9754c9eb
   display_profile: general
   scenario: balanced
   engine: vllm
@@ -268,7 +269,7 @@ specs:
   weight_bytes: 31585344616
   gpus:
     vendor: ascend
-    name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])950(?:DT|PR)([^A-Za-z0-9]|$)
     display_target: ascend
   args:
   - --quantization

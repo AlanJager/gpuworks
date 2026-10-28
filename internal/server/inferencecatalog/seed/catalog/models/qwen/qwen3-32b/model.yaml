@@ -311,9 +311,11 @@ specs:
       mode: stream
 # This model only had sglang profiles on Ascend. Upstream's Qwen3-Dense page
 # publishes a vLLM recipe for the W8A8 checkpoint on four devices, shared
-# between A2 and A3, and this is it. `--max-model-len 5500` is upstream's own
-# value and is a throughput-run setting rather than the model's capability; a
-# deployment can raise it. The Qwen3-Dense page states it passes no tool or
+# between A2 and A3, and this is it, minus its `--max-model-len 5500`. That
+# figure is a throughput-run setting, not the model's capability: this model's
+# sglang profiles pin nothing and serve its full 40960, and a vLLM profile that
+# served an eighth of that would be the worse choice for no stated reason. The
+# Qwen3-Dense page states it passes no tool or
 # reasoning parser at all; the parsers are carried here anyway because they
 # state this model's API surface rather than anything about the card, and every
 # vendor's profile of a model has to agree on them
@@ -340,8 +342,6 @@ specs:
   - --trust-remote-code
   - --distributed-executor-backend
   - mp
-  - --max-model-len
-  - '5500'
   - --max-num-batched-tokens
   - '40960'
   - --gpu-memory-utilization
@@ -387,8 +387,6 @@ specs:
   - --trust-remote-code
   - --distributed-executor-backend
   - mp
-  - --max-model-len
-  - '5500'
   - --max-num-batched-tokens
   - '40960'
   - --gpu-memory-utilization
