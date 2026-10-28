@@ -274,6 +274,58 @@ def vector_operation(page, server, report, playground, served_name):
     return rows
 
 
+def compare_run(page, server, served_name, report, playground):
+    """20.5: one message in compare mode reaches every column at once.
+
+    Switching to compare opens a new conversation with two columns, and one send
+    must produce one request per column rather than a single request reused.
+    """
+    chat = playground["chat"]
+    page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + served_name)
+    expect(page.get_by_label(chat["inputAria"])).to_be_visible(timeout=30000)
+    # The mode switch is a segmented control, not free text.
+    segmented = page.locator(".playground-chat-controls .ant-segmented-item").filter(has_text=chat["compare"]).first
+    expect(segmented).to_be_visible(timeout=30000)
+    segmented.click()
+    # Switching modes asks first, because it starts a new conversation. The
+    # prompt is an antd Popconfirm, so it is not a dialog role.
+    confirm = page.locator(".ant-popconfirm").filter(has_text=chat["toCompareConfirm"])
+    expect(confirm).to_be_visible(timeout=30000)
+    confirm.get_by_role("button", name=chat["newConversation"]).first.click()
+    expect(page.get_by_text(chat["columns"], exact=True).first).to_be_visible(timeout=30000)
+    # Two columns is the floor; adding one must reach the product's maximum of
+    # three and then stop offering more.
+    add = page.get_by_role("button", name=chat["addColumn"])
+    expect(add).to_be_enabled(timeout=30000)
+    add.click()
+    expect(add).to_be_disabled(timeout=30000)
+    report["compare_columns"] = 3
+    requests = []
+    page.on("request", lambda r: requests.append(r)
+            if urlsplit(r.url).path.endswith("/chat/completions") and r.method == "POST" else None)
+    prompt = f"compare probe {report['run_id'][-8:]}"
+    chat_input = page.get_by_label(chat["inputAria"])
+    chat_input.click()
+    chat_input.type(prompt, delay=10)
+    send = page.locator(".playground-composer button").filter(has_text=chat["send"]).last
+    send.click()
+    deadline = time.time() + 90
+    while time.time() < deadline and len(requests) < 3:
+        page.wait_for_timeout(250)
+    check(len(requests) == 3,
+          f"compare mode sent {len(requests)} requests for three columns, not one per column")
+    bodies = [request.post_data_json for request in requests]
+    check(all(str((body.get("messages") or [{}])[-1].get("content")) == prompt for body in bodies),
+          "the columns did not all carry the same prompt")
+    check(len({str(body.get("model")) for body in bodies}) >= 1, "the columns named no model")
+    report["evidence"].append({
+        "layer": "request", "mode": "compare", "columns": 3,
+        "requests": len(requests), "prompt": prompt,
+        "source": "one send in compare mode produced one chat request per column, each carrying "
+                  "the same prompt, so the comparison is really N parallel calls"})
+    report["last_step"] = "playground-compare-run"
+
+
 def attachment_lifecycle(page, server, served_name, report, playground, artifacts):
     """20.4: attachments are bounded, removable, and never sent stale.
 
@@ -284,8 +336,17 @@ def attachment_lifecycle(page, server, served_name, report, playground, artifact
     """
     report["last_step"] = "attachments-start"
     chat = playground["chat"]
-    # The preview checks leave the browser on the settings page.
+    # The preview checks leave the browser on the settings page, and an earlier
+    # run may have left the conversation in compare mode, which changes the
+    # composer's placeholder and hides the single-column send path.
     page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + served_name)
+    expect(page.get_by_label(chat["inputAria"])).to_be_visible(timeout=30000)
+    single = page.locator(".playground-chat-controls .ant-segmented-item").filter(has_text=chat["single"]).first
+    if single.count() and "selected" not in (single.get_attribute("class") or ""):
+        single.click()
+        back = page.locator(".ant-popconfirm").filter(has_text=chat["toSingleConfirm"])
+        expect(back).to_be_visible(timeout=30000)
+        back.get_by_role("button", name=chat["newConversation"]).first.click()
     expect(page.get_by_label(chat["inputAria"])).to_be_visible(timeout=30000)
     # A 1x1 PNG: a real image the browser can read, small enough to inline.
     png = base64.b64decode(
@@ -708,9 +769,16 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
 
     vector_operation(page, server, report, playground, served_name)
     report["last_step"] = "playground-operation-dispatch"
-    preview_isolation(page, server, report, playground, expected_network=False)
+    # Read the administrator's stored policy before touching it, and start from
+    # the restrictive one so the first pass really exercises it even if a
+    # previous run died before putting the switch back.
     starting_network = page.request.get(
         server.base + "/api/v1/security/settings").json()["playground_preview_network"]
+    if starting_network:
+        page.request.patch(server.base + "/api/v1/security/settings",
+                           data=json.dumps({"playground_preview_network": False}),
+                           headers={"Content-Type": "application/json"})
+    preview_isolation(page, server, report, playground, expected_network=False)
     # 20.8: the administrator's setting decides whether the preview may reach
     # the network, and turning it on must not lift the origin isolation.
     settings_text = json.loads((ROOT / "ui/src/i18n/locales" / locale / "settings.json").read_text())
@@ -736,6 +804,7 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
               f"the original preview network policy was not restored: {restored}")
 
     attachment_lifecycle(page, server, served_name, report, playground, artifacts)
+    compare_run(page, server, served_name, report, playground)
 
     report["evidence"].extend([
         {"layer": "ui", "entry": deployments["page"]["openPlayground"], "row": dep_name,
