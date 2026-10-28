@@ -25,6 +25,7 @@ type automationAdapter struct {
 	store   *store.Store
 	acct    *proxy.Accountant
 	metrics tsdb.Store
+	scale   func(deploymentID uint, replicas int) error
 	log     *slog.Logger
 	now     func() time.Time
 }
@@ -34,8 +35,8 @@ type automationAdapter struct {
 // nudges it, since a waiting wake may fit once another instance sleeps or
 // goes; a request the gateway holds for a sleeping deployment asks it to wake
 // that one.
-func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, log *slog.Logger) {
-	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, log: log, now: time.Now}
+func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, replicas int) error, log *slog.Logger) {
+	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, scale: scale, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
 	if px != nil {
 		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory}
@@ -265,21 +266,13 @@ func (a *automationAdapter) EndWaiting(deploymentID uint, uuids []string) error 
 	return a.store.EndWakeWaiting(deploymentID, uuids)
 }
 
-// ScaleReplicas sets a single-node deployment's replica count; a multi-node or
-// PD deployment's replicas name their nodes, which a schedule does not.
+// ScaleReplicas sets the deployment's replica count through the API's own
+// path (api.ReplicaScaler): a multi-node deployment the platform places gets
+// its nodes picked as an operator's request would, and a refusal (a
+// deployment placed by hand, a PD deployment, no room for a replica) comes
+// back as the product error the failure event records.
 func (a *automationAdapter) ScaleReplicas(deploymentID uint, replicas int) error {
-	dep, err := a.store.GetDeployment(deploymentID)
-	if err != nil {
-		return err
-	}
-	if pd, _ := planning.PDOf(dep.Placement); pd != nil || dep.NNodes > 1 {
-		return messages.NewProductError(messages.ErrorScheduleReplicasShape, "only a single-node deployment's replica count can be scheduled", nil)
-	}
-	replicas = min(max(replicas, 1), planning.MaxReplicas)
-	if max(dep.Replicas, 1) == replicas {
-		return nil
-	}
-	return a.store.ScaleDeploymentReplicas(dep.ID, dep.Replicas, replicas, nil)
+	return a.scale(deploymentID, replicas)
 }
 
 func (a *automationAdapter) MarkFired(scheduleID uint, at time.Time) error {

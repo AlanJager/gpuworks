@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -9,8 +10,10 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -170,5 +173,33 @@ func TestAutomationAdapterWakeWaitsAndWakesWhenItFits(t *testing.T) {
 	schedules, err := adapter.Schedules()
 	if err != nil || len(schedules) != 1 || schedules[0].Location.String() != "Asia/Shanghai" || schedules[0].LastFiredAt.IsZero() {
 		t.Fatalf("schedules = %+v err=%v (an unknown zone is skipped)", schedules, err)
+	}
+}
+
+// A replica schedule goes through the API's own scaling: a single-node
+// deployment records the count, and a multi-node deployment whose replicas the
+// operator placed by hand is refused with the code the failure event carries,
+// leaving the deployment as it was.
+func TestAutomationAdapterScalesThroughTheAPIsPath(t *testing.T) {
+	adapter, st, dep := automationFixture(t)
+	adapter.scale = api.ReplicaScaler(api.Deps{Store: st})
+	if err := adapter.ScaleReplicas(dep.ID, 3); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.GetDeployment(dep.ID); got.Replicas != 3 {
+		t.Fatalf("replicas = %d, want 3", got.Replicas)
+	}
+
+	multi, err := st.CreateDeployment(&store.Deployment{Name: "multi", ServedName: "multi", Engine: "vllm", State: store.DeployActive, NNodes: 2, Replicas: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = adapter.ScaleReplicas(multi.ID, 2)
+	var coded interface{ Code() string }
+	if !errors.As(err, &coded) || coded.Code() != messages.ErrorScheduleReplicasManualPlacement {
+		t.Fatalf("manual placement: err = %v, want a product error %s", err, messages.ErrorScheduleReplicasManualPlacement)
+	}
+	if got, _ := st.GetDeployment(multi.ID); got.Replicas != 1 {
+		t.Fatalf("replicas = %d after a refused order, want 1", got.Replicas)
 	}
 }

@@ -82,6 +82,9 @@ type App struct {
 	// notices the console's notice bell.
 	usage   *usageReporter
 	notices *noticeService
+	// scaleReplicas sets a deployment's replica count as the API does, for
+	// the scheduling automation's replica schedules.
+	scaleReplicas func(deploymentID uint, replicas int) error
 }
 
 // proxyMetricsSink adapts an Accountant flush batch to observability's tsdb
@@ -298,7 +301,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	a.recovery = recoverer
 
 	metadataClient := &http.Client{Transport: outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, cfg.OutboundAllowPrivateHosts...)}
-	handler := api.Router(api.Deps{
+	apiDeps := api.Deps{
 		Store:         st,
 		Bus:           b,
 		Log:           log,
@@ -366,7 +369,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
-	}, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
+	}
+	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
+	a.scaleReplicas = api.ReplicaScaler(apiDeps)
 	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(handler)))
 
 	a.http = &http.Server{
@@ -442,7 +447,7 @@ func (a *App) Run(ctx context.Context) error {
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
 	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })                     // Background: verify each PD prefill instance's KV handoff once.
-	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.log) }) // Background: schedules, idle sleep, waiting wakes, residency.
+	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) }) // Background: schedules, idle sleep, waiting wakes, residency.
 	goBG(func() { a.health.Run(ctx) })                                                    // Background: the deployments' health checks.
 	goBG(func() { a.usage.Run(ctx) })                                                     // Background: the daily usage report.
 	goBG(func() { a.notices.Run(ctx) })                                                   // Background: the notices' refresh.
@@ -553,48 +558,5 @@ func (a *App) Run(ctx context.Context) error {
 		a.stopMetricsIngest(metricsCancel, metricsDone)
 		bg.wait()
 		return err
-	}
-}
-
-// eventRetentionLoop bounds the deployment event timeline. Events are history
-// and are deliberately kept when their deployment is deleted, so this is what
-// stops the table growing for the life of the installation. The bounds (180
-// days / 50 GiB by default) are operator-tunable in settings.
-func (a *App) eventRetentionLoop(ctx context.Context) {
-	const interval = 6 * time.Hour
-	sweep := func() {
-		n, err := a.store.SweepEventRetention(time.Now())
-		if err != nil {
-			a.log.Warn("event retention sweep failed", "err", err)
-			return
-		}
-		if n > 0 {
-			a.log.Info("event retention sweep", "removed", n)
-		}
-	}
-	sweep()
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			sweep()
-		}
-	}
-}
-
-func (a *App) staleLoop(ctx context.Context) {
-	t := time.NewTicker(a.cfg.StaleCheckInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			// Nodes with a live session heartbeat within 90s stay online.
-			_ = a.store.MarkStaleOffline(ctx, a.cfg.StaleAfter)
-		}
 	}
 }

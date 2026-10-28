@@ -520,7 +520,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | PUT | `/api/v1/deployments/{id}/placement-mode` | Switch a multi-node or PD deployment between placement modes: body `{"mode":"auto"}` or `{"mode":"manual"}`. Instances are not restarted and units keep their current nodes; switching to `auto` also drops the cards PD units were pinned to. 200 returns the deployment detail (`placement_mode` has the new value). A `mode` other than these two returns 400 `FIELD_INVALID` (`params.field` is `mode`), a single-node deployment returns 400 `PLACEMENT_MODE_SHAPE`, and an unknown deployment returns 404; see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署) | JWT |
 | DELETE | `/api/v1/deployments/{id}/wake-waiting` | Cancel every waiting wake of the deployment; returns `{"items":[instance UUIDs],"total":n}` | JWT |
 | GET | `/api/v1/deployments/{id}/schedule` | The deployment's schedule, `{"items":[schedules],"total":n}`; see [Schedules](#定时计划) | JWT |
-| POST | `/api/v1/deployments/{id}/schedule` | Create a schedule entry; 201 returns it. Validation failures return 400 `SCHEDULE_INVALID`, `SCHEDULE_TIMEZONE_UNKNOWN`, `SCHEDULE_REPLICAS_SHAPE`, `SLEEP_NOT_ENABLED`, or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
+| POST | `/api/v1/deployments/{id}/schedule` | Create a schedule entry; 201 returns it. Validation failures return 400 `SCHEDULE_INVALID`, `SCHEDULE_TIMEZONE_UNKNOWN`, `SCHEDULE_REPLICAS_SHAPE` (PD), `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` (a multi-node deployment placed by hand), `SLEEP_NOT_ENABLED`, or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
 | PUT | `/api/v1/deployments/{id}/schedule/{sid}` | Replace one entry; the body is the same as for creating it, 200; an entry that does not belong to the deployment returns 404 | JWT |
 | DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | Delete one entry, 204; a missing one returns 404 | JWT |
 | PUT | `/api/v1/deployments/{id}/idle-sleep` | Set idle sleep `{"after_sec":900,"level":2}`; `after_sec` is 0 (off) or 60–604800 and `level` is 1 or 2. 200 returns the same body; out of range returns 400 `IDLE_SLEEP_INVALID`, and `after_sec` above 0 on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
@@ -768,7 +768,7 @@ A wake without these parameters behaves as before. For usage see [Sleep and Wake
 | `time` | `HH:MM`, 24-hour |
 | `timezone` | An IANA time zone name; an empty string uses the server's time zone |
 | `sleep_level` | Required for `sleep`, 1 or 2; not accepted for other actions |
-| `replicas` | Required for `replicas`, 1 to `max_replicas`; single-node deployments only; not accepted for other actions |
+| `replicas` | Required for `replicas`, 1 to `max_replicas`; single-node deployments and automatically placed multi-node deployments (not PD); not accepted for other actions |
 | `enabled` | May be omitted in a request, default true |
 | `next_at` | Response field, the next time it runs; omitted when disabled |
 

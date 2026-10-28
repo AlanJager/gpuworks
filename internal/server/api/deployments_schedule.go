@@ -171,8 +171,8 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		if req.SleepLevel != nil {
 			return invalid("sleep_level", "only a sleep order sets a level")
 		}
-		if pd, _ := planning.PDOf(dep.Placement); pd != nil || dep.NNodes > 1 {
-			writeProductError(w, http.StatusBadRequest, messages.ErrorScheduleReplicasShape, "only a single-node deployment's replica count can be scheduled", nil)
+		if err := scheduledReplicasRefusal(dep); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
 			return nil, false
 		}
 		if req.Replicas == nil || *req.Replicas < 1 || *req.Replicas > planning.MaxReplicas {

@@ -15,7 +15,7 @@ import (
 
 type scheduleRig struct {
 	*tokenRig
-	sleepable, plain, multi *store.Deployment
+	sleepable, plain, multi, multiAuto, pd *store.Deployment
 }
 
 func newScheduleRig(t *testing.T) *scheduleRig {
@@ -35,6 +35,9 @@ func newScheduleRig(t *testing.T) *scheduleRig {
 		sleepable: create(&store.Deployment{Name: "sleepy", ServedName: "sleepy", Engine: "vllm", Sleepable: true, Replicas: 1}),
 		plain:     create(&store.Deployment{Name: "plain", ServedName: "plain", Engine: "vllm", Replicas: 1}),
 		multi:     create(&store.Deployment{Name: "multi", ServedName: "multi", Engine: "vllm", Sleepable: true, NNodes: 2, Replicas: 1}),
+		multiAuto: create(&store.Deployment{Name: "multi-auto", ServedName: "multi-auto", Engine: "vllm", Sleepable: true, NNodes: 2, Replicas: 1, UnitsAuto: true}),
+		pd: create(&store.Deployment{Name: "pd", ServedName: "pd", Engine: "vllm", Sleepable: true, Replicas: 1, UnitsAuto: true,
+			Placement: `{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"n1"}]},"decode":{"units":[{"node_uuid":"n2"}]}}}}`}),
 	}
 }
 
@@ -184,7 +187,8 @@ func TestScheduleValidation(t *testing.T) {
 		{name: "replicas 33", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":33}`, dep: rig.plain, field: "replicas"},
 		{name: "replicas negative", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":-1}`, dep: rig.plain, field: "replicas"},
 		{name: "unknown time zone", body: `{"action":"wake","weekdays":[1],"time":"21:00","timezone":"Mars/Base"}`, status: 400, code: "SCHEDULE_TIMEZONE_UNKNOWN"},
-		{name: "multi-node replicas", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.multi, status: 400, code: "SCHEDULE_REPLICAS_SHAPE"},
+		{name: "replicas of a multi-node deployment placed by hand", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.multi, status: 400, code: "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"},
+		{name: "replicas of a PD deployment", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.pd, status: 400, code: "SCHEDULE_REPLICAS_SHAPE"},
 		{name: "sleep on a deployment without sleep mode", body: base(``), dep: rig.plain, status: 400, code: "SLEEP_NOT_ENABLED"},
 		{name: "wake on a deployment without sleep mode", body: `{"action":"wake","weekdays":[1],"time":"21:00"}`, dep: rig.plain, status: 400, code: "SLEEP_NOT_ENABLED"},
 		{name: "unknown JSON field", body: `{"action":"wake","weekdays":[1],"time":"21:00","force":true}`, status: 400},
@@ -252,7 +256,7 @@ func TestScheduleValidation(t *testing.T) {
 		})
 	}
 	// None of the refusals stored an order.
-	for _, dep := range []*store.Deployment{rig.sleepable, rig.plain, rig.multi} {
+	for _, dep := range []*store.Deployment{rig.sleepable, rig.plain, rig.multi, rig.pd} {
 		rows, err := rig.st.LifecycleSchedules(dep.ID)
 		if err != nil {
 			t.Fatal(err)
@@ -262,5 +266,25 @@ func TestScheduleValidation(t *testing.T) {
 				t.Fatalf("deployment %s: a refused request changed or stored an order: %+v", dep.Name, row)
 			}
 		}
+	}
+}
+
+// A multi-node deployment the platform places takes a replica-count order, as
+// a single-node one does: its new replicas get their nodes when they grow.
+func TestScheduleReplicasOfAnAutomaticallyPlacedMultiNodeDeployment(t *testing.T) {
+	rig := newScheduleRig(t)
+	path := schedPath(rig.multiAuto, "schedule")
+	rec := rig.do(rig.session, http.MethodPost, path, `{"action":"replicas","weekdays":[1],"time":"21:00","timezone":"UTC","replicas":3}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body)
+	}
+	if body := decodeBody(t, rec); body["action"] != "replicas" || body["replicas"] != float64(3) {
+		t.Fatalf("created = %v", body)
+	}
+	// The refusal for a deployment placed by hand names the cause in its
+	// own code, so a client can tell the operator to switch placement.
+	rec = rig.do(rig.session, http.MethodPost, schedPath(rig.multi, "schedule"), `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`)
+	if body := decodeBody(t, rec); rec.Code != http.StatusBadRequest || body["code"] != "SCHEDULE_REPLICAS_MANUAL_PLACEMENT" {
+		t.Fatalf("manual placement = %d %s", rec.Code, rec.Body)
 	}
 }

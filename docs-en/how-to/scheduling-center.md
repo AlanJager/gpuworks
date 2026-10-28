@@ -7,7 +7,7 @@ This guide explains how to have the platform carry out sleep, wake, and replica-
 **Prerequisites**:
 
 - Scheduled sleep, scheduled wake, and idle sleep require the deployment to be **sleep capable** (vLLM, enabled at creation); see [Sleep and Wake Operations](sleep-wake.md) for the conditions.
-- A scheduled replica count applies only to single-node deployments (not PD, `nnodes` not above 1).
+- A scheduled replica count applies to single-node deployments and to multi-node deployments placed automatically (`placement_mode` `auto`); PD deployments and multi-node deployments placed by hand are not supported.
 - Service levels other than resident apply only to sleep-capable single-node deployments.
 - The scheduling center does not scale by load. The platform makes one deployment give up its cards for another only when service levels allow it; see [Service levels](#服务等级与按需唤醒).
 
@@ -72,7 +72,7 @@ The real `free_bytes` and the other sizes are integer bytes, and the values abov
 
 Each deployment can have any number of entries, each of which is “do an action at a time on certain weekdays”. In the **Scheduling policy** card in deployment details, click **Edit** and add them on the **Schedule** tab:
 
-1. Choose the action: **Sleep** (pick L1 or L2), **Wake**, or **Replica count** (1–32, single-node deployments only).
+1. Choose the action: **Sleep** (pick L1 or L2), **Wake**, or **Replica count** (1–32, single-node deployments and automatically placed multi-node ones only).
 2. Tick the weekdays and enter the time (HH:MM).
 3. The time zone defaults to the server's own; each entry can use a different IANA time zone (such as `Asia/Shanghai`).
 4. Save. You can disable, edit, or delete an entry at any time; the list shows the next run time.
@@ -124,10 +124,13 @@ Request fields: `action` (`sleep` / `wake` / `replicas`), `weekdays` (0 for Sund
 |---|---|
 | Missing fields, weekdays out of range or repeated, a bad time format, `sleep` without a level, `replicas` outside 1–32 | 400 `SCHEDULE_INVALID`; `params.field` and `params.reason` say what is wrong |
 | The server does not know the time zone | 400 `SCHEDULE_TIMEZONE_UNKNOWN`, `params.timezone` |
-| A replica count for a multi-node or PD deployment | 400 `SCHEDULE_REPLICAS_SHAPE` |
+| A replica count for a PD deployment | 400 `SCHEDULE_REPLICAS_SHAPE` |
+| A replica count for a multi-node deployment placed by hand | 400 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` |
 | The deployment is not sleep capable or the engine cannot sleep (`sleep` and `wake` actions) | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
 
-Multi-node and PD deployments list their replicas node by node, so a scheduled replica count is not offered for them.
+**A scheduled replica count for a multi-node deployment** takes the same path as the "grow or shrink by count" of `PUT /api/v1/deployments/{id}/replicas`: when growing, the server picks nodes for the new replicas by the placement strategy (the rules of [how nodes are picked at creation](multi-node-inference.md#创建时怎样挑节点)); when shrinking, the replicas added last go. If nothing fits, the `reason_code` of `SCHEDULE_ACTION_FAILED` is `UNIT_PLACEMENT_NONE`. A PD deployment has a count per role (`PUT /api/v1/deployments/{id}/pd`), which one number cannot express, so it is not supported; a multi-node deployment placed by hand lists the nodes of every replica, so someone has to name the nodes of an added replica, and it is not supported either.
+
+If a deployment is switched to manual placement after its schedule was written, the entry fails when it is due: the timeline records `SCHEDULE_ACTION_FAILED` (`reason_code` `SCHEDULE_REPLICAS_MANUAL_PLACEMENT`) and the entry itself stays, so it runs as usual at the next occurrence after the deployment goes back to automatic placement.
 
 ## Idle Sleep
 
@@ -216,7 +219,7 @@ The history holds only these scheduling events; instance state changes, configur
 
 ## First Placement Nodes
 
-When adding replicas to a single-node deployment, you can choose the nodes the new replicas start on first; see the note in [Deploy Models](deploy-models.md#部署后调整). This works alongside a scheduled replica count: the schedule changes only the number, and the candidate pool decides which node.
+When adding replicas to a single-node deployment, you can choose the nodes the new replicas start on first; see the note in [Deploy Models](deploy-models.md#部署后调整). This works alongside a scheduled replica count: the schedule changes only the number, and the candidate pool decides which node; for a multi-node deployment placed automatically the server picks the nodes.
 
 ## Timeline Events
 
@@ -249,5 +252,5 @@ For the events of node-loss rescheduling after a node is lost and of drain moves
 - Cards are yielded only when service levels allow it: a resident deployment never sleeps for anyone else; a yielding wake still happens only when an operator names it and the occupant can sleep.
 - No load-based scaling: the replica count changes only when a schedule entry is due.
 - Service levels apply only to single-node deployments; when a new deployment starts and the cards are held by an awake lower-level deployment, the platform does not yield cards for the start, and the deployment waits as one that does not fit.
-- A scheduled replica count applies only to single-node deployments.
+- A scheduled replica count applies only to single-node deployments and automatically placed multi-node ones, not to PD or multi-node deployments placed by hand.
 - The evaluator runs inside the server process; nothing happens automatically while the server is down, and after it recovers only the newest entry within 12 hours is made up.

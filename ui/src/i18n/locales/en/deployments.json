@@ -762,7 +762,7 @@
       "deleteConfirm": "Delete this scheduled order?",
       "deleted": "Scheduled order deleted",
       "empty": "No scheduled orders.",
-      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node, non-PD deployments.",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node ones (not PD).",
       "loadFailed": "Failed to load the schedule: {{detail}}",
       "saveFailed": "Failed to save the order: {{detail}}",
       "deleteFailed": "Failed to delete the order: {{detail}}",

@@ -12,12 +12,14 @@ const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DEFAULT_MAX_REPLICAS = 32;
 
 // scheduleActions are the orders this deployment may be given: sleep and wake
-// need a sleepable deployment, a replica count a single-node, non-PD one (the
-// replicas of a multi-node or PD deployment name their nodes).
+// need a sleepable deployment, a replica count a non-PD one whose new replicas
+// get their nodes picked: single-node, or multi-node placed automatically (a PD
+// deployment scales each role with its own count, and a multi-node one placed
+// by hand names the nodes of every replica).
 export function scheduleActions(dep: Deployment): ScheduleAction[] {
   const actions: ScheduleAction[] = [];
   if (dep.sleepable) actions.push("sleep", "wake");
-  if (!dep.pd && (dep.nnodes ?? 1) <= 1) actions.push("replicas");
+  if (!dep.pd && ((dep.nnodes ?? 1) <= 1 || dep.placement_mode === "auto")) actions.push("replicas");
   return actions;
 }
 

@@ -919,7 +919,8 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | L1 休眠需要把权重搬进主机内存，可用内存减去余量（总量的 5% 与 4 GiB 中较大者）放不下；`params` 含 `node`、`need_gib`、`available_gib`，改用 L2 |
 | `SCHEDULE_INVALID` | 400 | 定时计划的某个字段不合法：`params.field`、`params.reason` 指出哪一项（周几、时间格式 `HH:MM`、休眠级别、副本数 1–32、动作） |
 | `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | server 不认识这个时区名；用 IANA 名（如 `Asia/Shanghai`），留空则用 server 时区 |
-| `SCHEDULE_REPLICAS_SHAPE` | 400 | 多机与 PD 部署不能定时改副本数，它们的副本逐个列节点 |
+| `SCHEDULE_REPLICAS_SHAPE` | 400 | PD 部署不能定时改副本数，它的各角色各有自己的数量 |
+| `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
 | `IDLE_SLEEP_INVALID` | 400 | 闲置休眠的 `after_sec` 要是 0（关闭）或 60–604800，`level` 要是 1 或 2 |
 | `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |

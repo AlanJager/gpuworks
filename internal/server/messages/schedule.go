@@ -3,9 +3,13 @@ package messages
 // Product error codes of the scheduling center: a deployment's schedule, idle
 // sleep and waiting wakes.
 const (
-	// ErrorScheduleReplicasShape: a schedule sets the replica count of a
-	// multi-node or PD deployment, whose replicas name their nodes.
+	// ErrorScheduleReplicasShape: a schedule sets the replica count of a PD
+	// deployment, whose roles each scale with their own count.
 	ErrorScheduleReplicasShape = "SCHEDULE_REPLICAS_SHAPE"
+	// ErrorScheduleReplicasManualPlacement: a schedule sets the replica count
+	// of a multi-node deployment whose replicas the operator placed by hand;
+	// only one the platform places can grow by a count.
+	ErrorScheduleReplicasManualPlacement = "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"
 	// ErrorScheduleInvalid: a schedule order is malformed ({field}, {reason}).
 	ErrorScheduleInvalid = "SCHEDULE_INVALID"
 	// ErrorScheduleTimezoneUnknown: the server does not know the schedule's

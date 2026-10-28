@@ -1547,7 +1547,8 @@
     { "term_en": "Yield (Residency)", "translations": { "zh": "让卡" } },
     { "term_en": "Held Sleep", "translations": { "zh": "保持休眠" } },
     { "term_en": "Wake Waiting", "translations": { "zh": "唤醒等位" } },
-    { "term_en": "Yielding Wake", "translations": { "zh": "让位唤醒" } }
+    { "term_en": "Yielding Wake", "translations": { "zh": "让位唤醒" } },
+    { "term_en": "Scheduling History", "translations": { "zh": "调度记录" } }
   ],
   "do_not_translate": [
     "GPUWorks",
