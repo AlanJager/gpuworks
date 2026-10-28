@@ -140,6 +140,20 @@ specs:
   - bfloat16
   - --quantization
   - ascend
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '133120'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
   - --enable-auto-tool-choice
   - --tool-call-parser
   - qwen3_coder
@@ -147,6 +161,15 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\
@@ -183,6 +206,20 @@ specs:
   - bfloat16
   - --quantization
   - ascend
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '133120'
+  - --max-num-batched-tokens
+  - '16384'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.85'
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-processor-cache-type
+  - shm
   - --enable-auto-tool-choice
   - --tool-call-parser
   - qwen3_coder
@@ -190,6 +227,15 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64,68,72,76,80,84,88,92,96,100,104,108,112,116,120,124,128],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true}'
+  env:
+    HCCL_BUFFSIZE: '512'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
   placement:
     language: starlark
     resolver: "def resolve(gpu):\n    if gpu.count < 2: return reject(\"at least 2\

@@ -561,4 +561,133 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# The sglang profiles above were this model's only Ascend coverage. Upstream's
+# vLLM recipe for A2 and A3 is two devices with expert parallelism; the 950DT
+# profile further down is the same page's single-device shape on MXFP8 weights.
+- name: int8-vllm-ascend-1a118d71
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.6-35B-A3B-w8a8
+        revision: 1a118d717bcbd59480f4a110fe22181d21711b4d
+  weight_bytes: 39810885219
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --safetensors-load-strategy
+  - lazy
+  - --tensor-parallel-size
+  - '2'
+  - --enable-expert-parallel
+  - --max-model-len
+  - '135168'
+  - --max-num-seqs
+  - '128'
+  - --max-num-batched-tokens
+  - '4096'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enable-prefix-caching
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":true,"enable_super_kernel":false}}'
+  env:
+    VLLM_USE_MODELSCOPE: 'True'
+    HCCL_BUFFSIZE: '1024'
+    HCCL_OP_EXPANSION_MODE: AIV
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: '3000'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the published recipe runs exactly 2 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: int8-vllm-ascend-a3-1a118d71
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: int8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.6-35B-A3B-w8a8
+        revision: 1a118d717bcbd59480f4a110fe22181d21711b4d
+  weight_bytes: 39810885219
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --safetensors-load-strategy
+  - lazy
+  - --tensor-parallel-size
+  - '2'
+  - --enable-expert-parallel
+  - --max-model-len
+  - '135168'
+  - --max-num-seqs
+  - '128'
+  - --max-num-batched-tokens
+  - '4096'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enable-prefix-caching
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":true,"enable_super_kernel":false}}'
+  env:
+    VLLM_USE_MODELSCOPE: 'True'
+    HCCL_BUFFSIZE: '1024'
+    HCCL_OP_EXPANSION_MODE: AIV
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: '3000'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the published recipe runs exactly 2 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]

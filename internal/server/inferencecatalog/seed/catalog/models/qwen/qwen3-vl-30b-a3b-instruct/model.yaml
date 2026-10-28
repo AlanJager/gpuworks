@@ -145,4 +145,123 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Only sglang served this model on Ascend. Upstream publishes a vLLM recipe
+# shared between A2 and A3: two devices, tensor parallel with expert
+# parallelism, BF16. Upstream writes the multimodal limits as
+# `--limit-mm-per-prompt.image 1 --limit-mm-per-prompt.video 0`; the same
+# values are given here in the JSON form this catalog's other profiles use.
+- name: bf16-vllm-ascend-0639f696
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-910b-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-30B-A3B-Instruct
+        revision: 0639f696c2d063cca6c5b0c7b0dc94cb76d47cd2
+  weight_bytes: 62153208688
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  - --tensor-parallel-size
+  - '2'
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '32768'
+  - --max-num-batched-tokens
+  - '16384'
+  - --no-enable-prefix-caching
+  - --mm-processor-cache-gb
+  - '0'
+  - --gpu-memory-utilization
+  - '0.9'
+  - --mm-encoder-tp-mode
+  - data
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,2,4,8,16,24,32],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_fused_mc2":1}'
+  env:
+    HCCL_BUFFSIZE: '1024'
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the published recipe runs exactly 2 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+- name: bf16-vllm-ascend-a3-0639f696
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: Qwen/Qwen3-VL-30B-A3B-Instruct
+        revision: 0639f696c2d063cca6c5b0c7b0dc94cb76d47cd2
+  weight_bytes: 62153208688
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --dtype
+  - bfloat16
+  - --trust-remote-code
+  - --tensor-parallel-size
+  - '2'
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --max-num-seqs
+  - '32'
+  - --max-model-len
+  - '32768'
+  - --max-num-batched-tokens
+  - '16384'
+  - --no-enable-prefix-caching
+  - --mm-processor-cache-gb
+  - '0'
+  - --gpu-memory-utilization
+  - '0.9'
+  - --mm-encoder-tp-mode
+  - data
+  - --limit-mm-per-prompt
+  - '{"image":1,"video":0}'
+  - --compilation-config
+  - '{"cudagraph_capture_sizes":[1,2,4,8,16,24,32],"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_fused_mc2":1}'
+  env:
+    HCCL_BUFFSIZE: '1024'
+    HCCL_OP_EXPANSION_MODE: AIV
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 2: return reject(\"the published recipe runs exactly 2 devices\")\n    if gpu.min_memory_gib < 32: return reject(\"each device requires at least 32 GiB\")\n    return {\"GPU_COUNT\": 2, \"TP_SIZE\": 2, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]
