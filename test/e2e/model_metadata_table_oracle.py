@@ -46,3 +46,25 @@ def assert_ai(body, status, document, ident, locale):
     require(body == {'task': 'model.fit', 'model_id': ident, 'locale': locale}, 'AI wire scope differs')
     require(status == 503 and document.get('code') == 'AI_ENDPOINT_NOT_CONFIGURED',
             'AI unconfigured contract differs')
+
+
+def assert_session_activity(event, base):
+    """The UI's same-origin session activity POST has no body or query."""
+    actual, origin = urlsplit(event['url']), urlsplit(base)
+    require(actual.scheme == origin.scheme and actual.netloc == origin.netloc
+            and actual.path == '/api/v1/auth/activity' and not actual.query and not actual.fragment
+            and event.get('method') == 'POST' and event.get('status') == 204
+            and 'post_data' in event and event['post_data'] is None,
+            'unexpected session activity contract')
+
+
+def assert_preview_mutations(events, base):
+    mutations = []
+    for event in events:
+        if urlsplit(event['url']).path == '/api/v1/auth/activity':
+            assert_session_activity(event, base)
+        elif event['method'] in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            mutations.append(event)
+    require(all(e['method'] == 'POST' and urlsplit(e['url']).path == '/api/v1/ai/ask' for e in mutations),
+            'preview mutated product')
+    require(len(mutations) == 1, 'AI preview count differs')
