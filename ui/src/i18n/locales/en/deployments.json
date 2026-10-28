@@ -41,6 +41,7 @@
     "openPlayground": "Open Playground",
     "copyCurl": "Copy curl",
     "runtimeUnavailable": "Unavailable until the runtime is running",
+    "asleepUnavailable": "Asleep: requests are refused until you wake it",
     "more": "More Actions",
     "clone": "Clone Deployment",
     "edit": "Edit Parameters",
@@ -226,6 +227,7 @@
         "prefill": "Prefill"
       },
       "roleSummary": "{{role}} · TP {{tp}} · {{ready}}/{{desired}} ready",
+      "roleAsleep": "{{count}} asleep",
       "scale": {
         "action": "Scale roles",
         "title": "Scale PD roles",

@@ -8,6 +8,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -29,6 +30,11 @@ type replicaView struct {
 	// node UUIDs in the deployment's stored order.
 	names   map[string]string
 	ordered []string
+	// pd and mode are the deployment's roles: nil pd for an ordinary
+	// deployment, and mode as the placement names it (its zero value when the
+	// gateway does not know the name, which reads as no role being optional).
+	pd   *planning.PDPlacement
+	mode pdmode.Mode
 }
 
 func newReplicaView(rows dtoLookup, d *store.Deployment, insts []store.Instance) (replicaView, error) {
@@ -44,6 +50,10 @@ func newReplicaView(rows dtoLookup, d *store.Deployment, insts []store.Instance)
 	pd, err := planning.PDOf(d.Placement)
 	if err != nil {
 		return view, err
+	}
+	view.pd = pd
+	if pd != nil {
+		view.mode, _ = pdmode.Lookup(pd.Mode)
 	}
 	view.match = planning.MatchUnits(planning.UnitsOfDeployment(d, pd, uuids), insts, uuids, d.PlacementStrategy)
 	return view, nil
@@ -148,28 +158,6 @@ func ordinaryRetryExhausted(rows dtoLookup, view replicaView) *dto.DeploymentRet
 		}
 	}
 	return nil
-}
-
-// readyReplicas counts the replicas whose leader and every follower rank
-// are running.
-func readyReplicas(rows dtoLookup, view replicaView) int {
-	n := 0
-	for _, slot := range view.match.Slots {
-		if slot.Inst == nil || slot.Inst.State != proto.InstRunning || slot.Inst.SleepLevel != 0 || !instanceNodeOnline(rows, slot.Inst.NodeID) {
-			continue
-		}
-		ready := true
-		for _, f := range slot.Followers {
-			if f == nil || f.State != proto.InstRunning || !instanceNodeOnline(rows, f.NodeID) {
-				ready = false
-				break
-			}
-		}
-		if ready {
-			n++
-		}
-	}
-	return n
 }
 
 // Read connection facts separately from the agent's last runtime observation.

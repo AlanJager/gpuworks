@@ -99,12 +99,17 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 		redactAcquisitionSecrets(out.CatalogSelectionSnapshot)
 	}
 	insts := rows.instances(d.ID)
-	// One match serves every replica field of the response.
+	// One match and one walk serve every replica field of the response:
+	// ready_replicas and asleep_replicas are two counts of the same replicas,
+	// judged by the predicate the gateway routes on, so no field of a row can
+	// disagree with another or with what the gateway answers.
 	view, viewErr := newReplicaView(rows, d, insts)
+	var facts deploymentFacts
 	if viewErr == nil {
-		out.PD = deploymentPDDTO(rows, d, insts, view)
+		facts = deploymentFactsOf(rows, view, insts)
+		out.PD = deploymentPDDTO(rows, d, insts, view, facts)
 		if out.PD == nil {
-			ready := readyReplicas(rows, view)
+			ready := facts.Ready
 			out.ReadyReplicas = &ready
 			out.RetryExhausted = ordinaryRetryExhausted(rows, view)
 			out.PlacementStatus = placementStatus(rows, d, view)
@@ -169,6 +174,9 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	}
 	sort.Strings(out.RuntimeNodeNames)
 	out.RuntimeState = deploymentRuntimeState(rows, d, insts, recorded)
+	out.SleepLevel = facts.Level
+	out.AsleepReplicas = facts.AsleepReplicas
+	out.State = effectiveDeploymentState(d, out.RuntimeState, facts)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
 		for i := range insts {
@@ -206,10 +214,20 @@ func deploymentRuntimeState(rows dtoLookup, d *store.Deployment, insts []store.I
 
 // effectiveDeploymentState is the one state a list shows for a deployment: a
 // delete in flight outranks whatever the runtime reports, as in the UI's
-// effectiveDeploymentState.
-func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
+// effectiveDeploymentState, and a deployment the gateway refuses every request
+// of because the replicas it needs sleep is asleep (or sleeping, while the
+// order is still being carried out) rather than the running state its engines
+// keep reporting.
+//
+// A partly slept deployment keeps the runtime state: its awake replicas serve,
+// and asleep_replicas says how many do not, so the row shows both instead of
+// passing itself off as entirely well or entirely asleep.
+func effectiveDeploymentState(d *store.Deployment, runtimeState string, facts deploymentFacts) string {
 	if d.State == store.DeployDeleting {
 		return deploymentStateDeleting
+	}
+	if runtimeState == "running" && facts.Asleep() {
+		return facts.State()
 	}
 	return runtimeState
 }
@@ -217,7 +235,7 @@ func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
 const deploymentStateDeleting = "deleting"
 
 // deploymentListStates are the states a deployment list can be filtered by.
-var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting}
+var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting, deploymentStateSleeping, deploymentStateAsleep}
 
 // redactAcquisitionSecrets prevents credentials embedded in an explicit proxy
 // URL from being returned by deployment read APIs or persisted snapshots.

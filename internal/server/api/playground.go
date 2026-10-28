@@ -7,6 +7,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -62,13 +63,12 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		modelView := a.modelDTO(model, false)
-		sleeping := false
-		for _, instance := range candidate.instances {
-			if instance.SleepLevel > 0 {
-				sleeping = true
-				break
-			}
-		}
+		// The page offers a wake exactly when the gateway refuses every request
+		// of the deployment for sleep, which is what score 1 means: at least one
+		// instance fills a replica, and every one of them is asleep. A
+		// deployment some of whose replicas are awake is served by them, so it
+		// needs no wake.
+		sleeping := candidate.score == 1
 		contract := inferenceapi.ResolveDeploymentContract(a.d.Store, dep, candidate.instances)
 		contract.Operations = omitUnservedTranscription(contract.Operations, candidate.instances)
 		if len(contract.Operations) == 0 {
@@ -94,13 +94,19 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, catalog)
 }
 
+// playgroundDeploymentScore ranks a deployment's instances for the catalog: 2
+// when one of them can answer now, 1 when they all sleep (the page offers a
+// wake), 0 when none could serve whatever happens (a failed or starting
+// deployment is not a model the page lists). Sleep here is the gateway's
+// judgement, so a replica under a sleep order it has not carried out yet is
+// not counted as able to answer.
 func playgroundDeploymentScore(instances []store.Instance) int {
 	score := 0
 	for _, instance := range instances {
 		if instance.State != proto.InstRunning || instance.Headless || instance.APIPort <= 0 {
 			continue
 		}
-		if instance.SleepLevel == 0 {
+		if !planning.InstanceAsleep(&instance) {
 			return 2
 		}
 		score = 1

@@ -69,8 +69,14 @@ type DeploymentListItem struct {
 	NodeNames        []string           `json:"node_names,omitempty"`
 	DesiredState     string             `json:"desired_state"`
 	RuntimeState     string             `json:"runtime_state"`
-	Sleepable        bool               `json:"sleepable"`
-	Replicas         int                `json:"replicas"`
+	// State, AsleepReplicas and SleepLevel have the meaning and the value they
+	// have on Deployment: the state to show, how many of the serving replicas
+	// sleep, and the sleep level the engines report.
+	State          string `json:"state"`
+	AsleepReplicas int    `json:"asleep_replicas,omitempty"`
+	SleepLevel     int    `json:"sleep_level,omitempty"`
+	Sleepable      bool   `json:"sleepable"`
+	Replicas       int    `json:"replicas"`
 	// Replicas and ReadyReplicas total both roles for PD deployments;
 	// ordinary deployments use the same counts as Deployment.
 	ReadyReplicas *int                  `json:"ready_replicas,omitempty"`

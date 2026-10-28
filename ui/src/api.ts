@@ -962,6 +962,9 @@ export type DeploymentListItem = Pick<
   | "runtime_node_names"
   | "desired_state"
   | "runtime_state"
+  | "state"
+  | "asleep_replicas"
+  | "sleep_level"
   | "sleepable"
   | "replicas"
   | "ready_replicas"
@@ -1610,6 +1613,18 @@ export interface Deployment {
   served_name: string;
   desired_state: string;
   runtime_state: string;
+  /** The state to show: runtime_state, except that a deployment the gateway
+   *  refuses every request of because the replicas it needs sleep reads
+   *  asleep, and one whose sleep order its engines have not carried out yet
+   *  reads sleeping. A partly slept deployment keeps running and says so in
+   *  asleep_replicas. */
+  state?: string;
+  /** Replicas the gateway refuses because they sleep, over every role: with
+   *  ready_replicas it accounts for the replicas the gateway reaches at all. */
+  asleep_replicas?: number;
+  /** The deepest sleep level an engine reports: 0 awake, and while a sleep
+   *  order is still being carried out. */
+  sleep_level?: number;
   sleepable: boolean;
   replicas: number;
   // How many replicas the deployment may be scaled to.
@@ -1620,8 +1635,10 @@ export interface Deployment {
   // start_timeout_sec is the deployment's own instance health budget; absent
   // when it follows the cluster default (settings, deployment group).
   start_timeout_sec?: number;
-  // ready_replicas counts the connected, awake replicas running now (every rank); absent for a
-  // PD deployment, whose roles count their own.
+  // ready_replicas counts the replicas the gateway would serve a request from
+  // now (running, on an online node, every rank up, awake); absent for a PD
+  // deployment, whose roles count their own. With asleep_replicas it is two
+  // counts of one set of replicas, so the two can never contradict each other.
   ready_replicas?: number;
   // health is the deployment's health check (dto/deployment_health.go).
   health: DeploymentHealth;
@@ -1796,7 +1813,11 @@ export interface DeploymentPdRole {
   // multi-node unit has needed a wire value yet).
   pp?: number;
   desired: number;
+  // ready counts the role's units the gateway would route to now: running, on
+  // online nodes, every rank up, and awake. asleep says why ready may be short
+  // of desired with nothing down — those units sleep.
   ready: number;
+  asleep?: number;
   // The mode runs with no instance of the role: it may scale to zero and
   // sleep on its own.
   may_be_empty?: boolean;
@@ -1808,7 +1829,8 @@ export interface DeploymentPd {
   fallback: string;
   kv_load_failure: string;
   // not_ready: no role has a ready instance yet; partial: some but not every
-  // role is at its desired count; running: every role is.
+  // role the gateway needs has one (a role the mode serves without does not
+  // count); running: every one of them does.
   state: "not_ready" | "partial" | "running";
   // short: some role has fewer ready instances than desired.
   short: boolean;

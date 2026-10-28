@@ -57,7 +57,14 @@ type InstanceRef struct {
 	State        string
 	GPUIndexes   []int
 	SleepLevel   int
-	Headless     bool
+	// Asleep is whether the gateway refuses this instance for sleep
+	// (planning.InstanceAsleep): it reports a sleep level, or it is under a
+	// sleep order its engine has not carried out yet. The level alone is not
+	// the answer — an instance ordered to sleep is refused before its engine
+	// reports the level — so the monitor reads this, not SleepLevel, to decide
+	// whether an instance can serve. SleepLevel stays for display.
+	Asleep   bool
+	Headless bool
 	// Role is the instance's PD role, empty outside PD deployments.
 	Role string
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -261,13 +262,23 @@ func TestPlaygroundCatalogOmitsDeploymentsThatCannotServe(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := st.CreateInstance(&store.Instance{UUID: uuid, DeploymentID: dep.ID, NodeID: node.ID, State: state, SleepLevel: sleep, APIPort: port}); err != nil {
+		// A sleep order is written into the instance's desired state, so the
+		// fixture carries one: without it the order has nowhere to land.
+		desired := fmt.Sprintf(`{"uuid":%q,"state":"running","sleepable":true}`, uuid)
+		if _, err := st.CreateInstance(&store.Instance{UUID: uuid, DeploymentID: dep.ID, NodeID: node.ID, State: state, SleepLevel: sleep, APIPort: port, DesiredStateJSON: desired}); err != nil {
 			t.Fatal(err)
 		}
 		return dep
 	}
 	running := add("running-model", "running-instance", proto.InstRunning, 0, 30000)
 	add("sleeping-model", "sleeping-instance", proto.InstRunning, 1, 30001)
+	// Ordered to sleep, engine not there yet: the gateway already refuses this
+	// deployment, so the page must offer the wake instead of hiding it behind an
+	// instance that still reports level 0.
+	ordered := add("ordered-model", "ordered-instance", proto.InstRunning, 0, 30002)
+	if err := st.OrderInstancesSleep(ordered.ID, []string{"ordered-instance"}, 1, "wait"); err != nil {
+		t.Fatal(err)
+	}
 	add("failed-model", "failed-instance", proto.InstFailed, 0, 0)
 	add("starting-model", "starting-instance", proto.InstStarting, 0, 0)
 	// A newer failed rollout of a name that is already serving must not
@@ -297,14 +308,17 @@ func TestPlaygroundCatalogOmitsDeploymentsThatCannotServe(t *testing.T) {
 	for _, model := range catalog.Models {
 		got[model.ID] = model
 	}
-	if len(got) != 2 {
-		t.Fatalf("models=%v, want running and sleeping only", got)
+	if len(got) != 3 {
+		t.Fatalf("models=%v, want running, sleeping and ordered only", got)
 	}
 	if got["running-model"].DeploymentID != running.ID || got["running-model"].Sleeping {
 		t.Fatalf("running model=%+v, want serving deployment %d", got["running-model"], running.ID)
 	}
 	if !got["sleeping-model"].Sleeping {
 		t.Fatalf("sleeping model=%+v", got["sleeping-model"])
+	}
+	if !got["ordered-model"].Sleeping {
+		t.Fatalf("sleep-ordered model=%+v, want the wake offered before its engine reports a level", got["ordered-model"])
 	}
 	if _, ok := got["failed-model"]; ok {
 		t.Fatal("failed deployment was listed as available")

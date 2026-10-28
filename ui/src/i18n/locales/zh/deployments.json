@@ -41,6 +41,7 @@
     "openPlayground": "打开试验场",
     "copyCurl": "复制 curl",
     "runtimeUnavailable": "运行时就绪后才能使用",
+    "asleepUnavailable": "已休眠：唤醒前请求会被拒绝",
     "more": "更多操作",
     "clone": "克隆部署",
     "edit": "编辑参数",
@@ -226,6 +227,7 @@
         "prefill": "Prefill"
       },
       "roleSummary": "{{role}} · TP {{tp}} · 就绪 {{ready}}/{{desired}}",
+      "roleAsleep": "{{count}} 个休眠",
       "scale": {
         "action": "调整角色实例",
         "title": "调整 PD 角色实例",

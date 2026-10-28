@@ -41,7 +41,7 @@ func TestDeploymentPageWireJSON(t *testing.T) {
 	page := dto.DeploymentPage{Page: 2, PageSize: 1, Total: 3, Items: []dto.DeploymentListItem{{
 		ID: 7, Name: "qwen", TemplateID: 3, TemplateDeviated: true, Engine: "vllm", Image: "vllm/vllm-openai:v0.10.1",
 		ModelID: 2, ModelName: "Qwen/Qwen3-8B", ServedName: "qwen3", NodeUUID: "n-1", NodeName: "gpu3", NodeNames: []string{"gpu3", "gpu2"},
-		DesiredState: "active", RuntimeState: "running", Sleepable: true, Replicas: 2, ReadyReplicas: &ready,
+		DesiredState: "active", RuntimeState: "running", State: "running", Sleepable: true, Replicas: 2, ReadyReplicas: &ready,
 		Health:     dto.DeploymentHealth{Status: "timeout", ThresholdSec: 60, Last: &dto.HealthProbe{AtMS: 9, Status: "timeout", LatencyMS: 60000}, Recent: []dto.HealthProbe{{AtMS: 9, Status: "timeout", LatencyMS: 60000}}},
 		Operations: []dto.DeploymentOperation{{Type: "openai.chat", Endpoint: "/v1/chat/completions", Renderer: "chat"}},
 		CreatedAt:  time.Date(2026, 10, 3, 1, 2, 3, 0, time.UTC),
@@ -50,7 +50,7 @@ func TestDeploymentPageWireJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = `{"items":[{"id":7,"name":"qwen","template_id":3,"template_deviated":true,"engine":"vllm","image":"vllm/vllm-openai:v0.10.1","model_id":2,"model_name":"Qwen/Qwen3-8B","served_name":"qwen3","node_uuid":"n-1","node_name":"gpu3","node_names":["gpu3","gpu2"],"desired_state":"active","runtime_state":"running","sleepable":true,"replicas":2,"ready_replicas":1,"health":{"status":"timeout","threshold_sec":60,"last":{"at_ms":9,"status":"timeout","latency_ms":60000},"recent_mean_ms":null,"recent_ok":0,"recent":[{"at_ms":9,"status":"timeout","latency_ms":60000}]},"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","renderer":"chat"}],"created_at":"2026-10-03T01:02:03Z"}],"page":2,"page_size":1,"total":3}`
+	const want = `{"items":[{"id":7,"name":"qwen","template_id":3,"template_deviated":true,"engine":"vllm","image":"vllm/vllm-openai:v0.10.1","model_id":2,"model_name":"Qwen/Qwen3-8B","served_name":"qwen3","node_uuid":"n-1","node_name":"gpu3","node_names":["gpu3","gpu2"],"desired_state":"active","runtime_state":"running","state":"running","sleepable":true,"replicas":2,"ready_replicas":1,"health":{"status":"timeout","threshold_sec":60,"last":{"at_ms":9,"status":"timeout","latency_ms":60000},"recent_mean_ms":null,"recent_ok":0,"recent":[{"at_ms":9,"status":"timeout","latency_ms":60000}]},"operations":[{"type":"openai.chat","endpoint":"/v1/chat/completions","renderer":"chat"}],"created_at":"2026-10-03T01:02:03Z"}],"page":2,"page_size":1,"total":3}`
 	if string(got) != want {
 		t.Fatalf("wire JSON\n got: %s\nwant: %s", got, want)
 	}
@@ -58,7 +58,7 @@ func TestDeploymentPageWireJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const wantMinimal = `{"id":1,"name":"bare","template_deviated":false,"engine":"","model_id":0,"model_name":"","served_name":"","node_uuid":"","desired_state":"","runtime_state":"","sleepable":false,"replicas":0,"health":{"status":"","threshold_sec":0,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":null},"operations":[],"created_at":"0001-01-01T00:00:00Z"}`
+	const wantMinimal = `{"id":1,"name":"bare","template_deviated":false,"engine":"","model_id":0,"model_name":"","served_name":"","node_uuid":"","desired_state":"","runtime_state":"","state":"","sleepable":false,"replicas":0,"health":{"status":"","threshold_sec":0,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":null},"operations":[],"created_at":"0001-01-01T00:00:00Z"}`
 	if string(minimal) != wantMinimal {
 		t.Fatalf("optional fields\n got: %s\nwant: %s", minimal, wantMinimal)
 	}
@@ -277,7 +277,7 @@ func TestListQueryRejectsMalformedPagesAndFilters(t *testing.T) {
 		{f.handler.listDeployments, "page=two", ErrorListPageInvalid},
 		{f.handler.listDeployments, "page=1&page_size=0", ErrorListPageInvalid},
 		{f.handler.listDeployments, "page=1&page_size=201", ErrorListPageInvalid},
-		{f.handler.listDeployments, "page=1&state=asleep", ErrorListFilterInvalid},
+		{f.handler.listDeployments, "page=1&state=waking", ErrorListFilterInvalid},
 		{f.handler.listDeployments, "page=1&state=running,", ErrorListFilterInvalid},
 		{f.handler.listDeployments, "page=1&sort=gpu_count", ErrorListFilterInvalid},
 		{f.handler.listDeployments, "page=1&sort=--name", ErrorListFilterInvalid},
