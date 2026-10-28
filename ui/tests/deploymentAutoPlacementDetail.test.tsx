@@ -348,4 +348,3 @@ test("an unplaceable new PD unit is the server's explanation inside the dialog",
   await user.click(saveRoles());
   await within(screen.getByRole("dialog")).findByText(i18n.t("deployments:detail.pd.scale.failed", { detail: i18n.t("common:apiError.UNIT_PLACEMENT_NONE", { nodes: 2, unmet: 0, cordoned: 0, offline: 0, busy: 2, no_network: 0, largest: 0 }) }));
 });
-
