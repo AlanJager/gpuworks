@@ -105,8 +105,7 @@
     "partial": {
       "1.2": "default read/no expiry only; no edit form exists",
       "7.4": "read/revoke only; wrong scope and expiry matrix not complete",
-      "7.6": "list/DOM and produced artifact checks; not every response/download surface",
-      "12.7": "token name/impact and cancel/revoke; other referenced-resource deletion contracts not applicable"
+      "7.6": "list/DOM and produced artifact checks; not every response/download surface"
     },
     "1.10": "covered: A real 502 keeps the create dialog and the name, shows the server reason, stores no token, and the retry 201 is the only stored token on the independent GET",
     "1.11": "covered: Cancel, close and Escape each close the create dialog immediately, with no unsaved-changes prompt and no token write, so the stored tokens stay unchanged",
@@ -118,7 +117,8 @@
     "12.4": "covered: Cancel, Escape, close and mask each return focus to the card Create platform token button and send no POST",
     "12.5": "N/A: the create dialog has no nested child layer; the one-time secret dialog opens only after create closes",
     "12.6": "covered: While the create POST is held the footer Create shows the loading state and a second click sends no further create request; the 502 keeps the name and shows the failure reason; the later 201 matches the reloaded row and the independent token list",
-    "12.8": "N/A: platform token create and revoke have no delete preview, revision or compare-and-swap"
+    "12.8": "N/A: platform token create and revoke have no delete preview, revision or compare-and-swap",
+    "12.7": "The revoke confirmation names the token (the localized sentence interpolates the token's own name, and the dialog is only shown for that row), cancelling leaves the token usable, and confirming returns 204 with the row gone from the list and the independent collection empty. Cleanup is proved rather than assumed: the exported secret is spent immediately after the revoke and GET /api/v1/nodes with it answers 401 AUTHENTICATION_REQUIRED, then the page reloads to the empty state. Failure leaves nothing behind - revoking the same id a second time answers 404 'not found' and the collection stays empty. Reference-blocking has no subject here: a platform token is not referenced by other resources, revoking it is itself the terminal act."
   },
   "missing": [
     "complete list matrix and 10/30/100 volumes",

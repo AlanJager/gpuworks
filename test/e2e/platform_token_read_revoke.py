@@ -427,6 +427,15 @@ def test_read_token_create_revoke(page, context, server, artifacts, report, loca
     check(collection(page.request.get(server.base + TOKEN_PATH)) == [], "revoked token still persisted")
     code, denied = http(server.base, "GET", "/api/v1/nodes", copied)
     check(code == 401 and denied["code"] == "AUTHENTICATION_REQUIRED", "revoked token remains authorized")
+    # A second revoke of the same id must fail cleanly: the row is already gone,
+    # so the answer is 404 and nothing else in the collection moves.
+    again = page.request.delete(server.base + delete_path)
+    again_body = again.json() if again.text() else {}
+    check(again.status == 404 and again_body.get("error") == "not found",
+          "second revoke did not report not-found: HTTP %d %r" % (again.status, again_body))
+    check(collection(page.request.get(server.base + TOKEN_PATH)) == [],
+          "a failed revoke left a token behind")
+    report["revoke_failure"] = {"status": again.status, "error": again_body.get("error")}
     page.reload()
     expect(page.get_by_text(platform["empty"], exact=True)).to_be_visible()
     expect(row).to_have_count(0)
