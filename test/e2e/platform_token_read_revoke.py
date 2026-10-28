@@ -472,6 +472,7 @@ def main():
         "not_covered": ["expiry options other than 30 days", "full field/list matrix", "non-admin owner isolation", "service-failure recovery"],
         "command": ["python3", "test/e2e/platform_token_read_revoke.py", *sys.argv[1:]]}
     try:
+        server.require_binary()
         report["binary_sha256"] = digest(args.server_bin)
         report["health"] = server.start()
         report["base_url"] = server.base
