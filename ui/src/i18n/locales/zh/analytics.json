@@ -235,7 +235,7 @@
       "power": "总功耗均值",
       "powerPerCard": "平均每卡 {{value}}",
       "idle": "长期闲置卡数",
-      "idleSub": "利用率均值 < {{threshold}}%",
+      "idleSub": "利用率均值 < {{threshold}}% · {{total}} 张卡中 {{measured}} 张有利用率采样，{{missing}} 张无采样",
       "idleTip": "统计期内利用率均值低于 {{threshold}}% 的卡，既包括已分配但几乎没有流量的卡，也包括未分配给任何部署的卡。",
       "idleNeedsDetail": "筛选到 {{limit}} 张卡以内后统计"
     },

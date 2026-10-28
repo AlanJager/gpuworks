@@ -2,6 +2,7 @@ package gpu
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -148,15 +149,22 @@ func (p *HygonProber) Topology(ctx context.Context) string {
 
 func (p *HygonProber) Metrics(ctx context.Context) ([]Metric, error) {
 	out, err := p.run(ctx, "--showuse", "--showmeminfo", "vram", "--showtemp", "--showpower")
-	if err != nil {
-		// Memory fields are present in every real K100 capture and remain useful
-		// on hy-smi releases that do not implement the combined usage query.
-		out, err = p.run(ctx, "--showmeminfo", "vram")
-		if err != nil {
-			return nil, err
-		}
+	if err == nil {
+		return p.parseMetrics(out, ""), nil
 	}
-	return p.parseMetrics(out), nil
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+	// K100_AI hy-smi releases reject the combined query, so utilization,
+	// temperature and power would otherwise never be sampled. Memory fields
+	// stay on the proven --showmeminfo vram query; the rest come from the
+	// bare overview table every hy-smi prints.
+	memOut, memErr := p.run(ctx, "--showmeminfo", "vram")
+	overview, overviewErr := p.run(ctx)
+	if memErr != nil && overviewErr != nil {
+		return nil, errors.Join(err, memErr, overviewErr)
+	}
+	return p.parseMetrics(memOut, overview), nil
 }
 
 func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
@@ -248,9 +256,16 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 	}
 }
 
-func (p *HygonProber) parseMetrics(out string) []Metric {
-	records := parseHygonFields(out)
+func (p *HygonProber) parseMetrics(fieldsOut, overview string) []Metric {
+	records := parseHygonFields(fieldsOut)
+	overviewRows := parseHygonOverview(overview)
 	indexes := sortedHygonIndexes(records)
+	for index := range overviewRows {
+		if _, ok := records[index]; !ok {
+			indexes = append(indexes, index)
+		}
+	}
+	sort.Ints(indexes)
 	metrics := make([]Metric, 0, len(indexes))
 	for _, index := range indexes {
 		fields := records[index]
@@ -274,6 +289,15 @@ func (p *HygonProber) parseMetrics(out string) []Metric {
 				addHygonMetric(m.Values, "gpuworks_gpu_temperature_celsius", value, 1)
 			case strings.Contains(key, "average graphics package power") || key == "power":
 				addHygonMetric(m.Values, "gpuworks_gpu_power_watts", value, 1)
+			}
+		}
+		// The detailed query's fields win; the overview only fills what the
+		// meminfo-only fallback cannot answer. Cells hy-smi reported as N/A
+		// never reach this map, so unsupported telemetry stays unknown
+		// instead of reading as zero.
+		for name, value := range overviewRows[index] {
+			if _, ok := m.Values[name]; !ok {
+				m.Values[name] = value
 			}
 		}
 		if len(m.Values) > 0 {

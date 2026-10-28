@@ -245,6 +245,33 @@ test("GPU cards: the cards there now by model, mean memory use per card, the car
   assert.ok(stat("idle").getByText("2 / 3"), "two idle of the three cards that have a utilization figure");
 });
 
+test("GPU idle statistics explain the sampled denominator and missing cards", async () => {
+  stub();
+  const data = fx.gpusToday();
+  data.cards = Array.from({ length: 59 }, (_, index) => ({
+    ...data.cards[0], present: true, gpu_uuid: `GPU-${index}`, gpu_index: index,
+    util_avg: index === 58 ? null : 0,
+  }));
+  data.card_count = 59;
+  analyticsApi.gpus = async () => data;
+  mount("/analytics/gpus");
+  await ready("cards");
+  assert.ok(stat("cards").getByText("59"));
+  assert.ok(stat("idle").getByText("58 / 58"));
+  assert.ok(stat("idle").getByText(/58 of 59 cards sampled; 1 without utilization samples/));
+});
+
+test("GPU idle statistics do not label an entirely unobserved fleet as zero idle", async () => {
+  stub();
+  const data = fx.gpusToday();
+  data.cards = data.cards.filter((card) => card.present).map((card) => ({ ...card, util_avg: null }));
+  analyticsApi.gpus = async () => data;
+  mount("/analytics/gpus");
+  await ready("idle");
+  assert.ok(stat("idle").getByText("—"));
+  assert.ok(stat("idle").getByText(/0 of 3 cards sampled; 3 without utilization samples/));
+});
+
 test("the GPU table groups by card model, tints the idle groups and counts cards no longer there", async () => {
   stub();
   const user = mount("/analytics/gpus");
