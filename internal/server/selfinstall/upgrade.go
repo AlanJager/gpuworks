@@ -90,7 +90,7 @@ func (i *Installer) Upgrade(ctx context.Context, req UpgradeRequest) (UpgradeRep
 	i.adoptLayout(inst.Config, req.DataDirSet, req.LogsDirSet)
 	req.Addr = installedProbeAddr(inst.Config)
 
-	unlock, err := i.lockUpgrade()
+	unlock, err := i.lockUpgrade(ctx)
 	if err != nil {
 		return UpgradeReport{}, err
 	}

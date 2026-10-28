@@ -83,7 +83,7 @@ type InServiceUpgrade struct {
 // given), leaves the marker and swaps the binary. The caller restarts the
 // process afterwards. Nothing is changed when an error is returned.
 func (i *Installer) StageInService(ctx context.Context, from string, archive io.Reader, snapshotDB func(dest string) error, by string) (InServiceUpgrade, error) {
-	unlock, err := i.lockUpgrade()
+	unlock, err := i.lockUpgrade(ctx)
 	if err != nil {
 		return InServiceUpgrade{}, err
 	}
