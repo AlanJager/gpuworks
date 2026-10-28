@@ -73,6 +73,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.ExtraArgs = d.ExtraArgs
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
+	out.IdleSleep = dto.IdleSleep{AfterSec: d.IdleSleepAfterSec, Level: d.IdleSleepLevel}
 	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
 	out.PlacementMode = unitsPlacementMode(d)
 	if strings.TrimSpace(d.QuickParams) != "" {
@@ -99,6 +100,11 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 		redactAcquisitionSecrets(out.CatalogSelectionSnapshot)
 	}
 	insts := rows.instances(d.ID)
+	for i := range insts {
+		if since := insts[i].WakeWaitingSince; since != nil && (out.WakeWaitingSince == nil || since.Before(*out.WakeWaitingSince)) {
+			out.WakeWaitingSince = utcTimePtr(since)
+		}
+	}
 	// One match and one walk serve every replica field of the response:
 	// ready_replicas and asleep_replicas are two counts of the same replicas,
 	// judged by the predicate the gateway routes on, so no field of a row can

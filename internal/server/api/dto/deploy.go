@@ -140,9 +140,14 @@ type Deployment struct {
 	// TokenizeEnabled says whether the gateway forwards /v1/tokenize and
 	// /v1/detokenize to the deployment's engine.
 	TokenizeEnabled bool `json:"tokenize_enabled"`
-	// NodeReplacement is how long a node may stay offline before its
-	// replicas move (after_sec 0 never moves them).
+	// IdleSleep is the deployment's idle sleep (after_sec 0 is off) and
+	// NodeReplacement how long a node may stay offline before its replicas
+	// move (after_sec 0 never moves them).
+	IdleSleep       IdleSleep       `json:"idle_sleep"`
 	NodeReplacement NodeReplacement `json:"node_replacement"`
+	// WakeWaitingSince is when the oldest wake of the deployment that waits
+	// for room started waiting; absent when none waits.
+	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`
 	// PlacementMode is "auto" when the platform picks a multi-node or PD
 	// deployment's nodes whenever a unit starts, "manual" when they are the
 	// operator's; absent for a single-node deployment, whose draft says it.

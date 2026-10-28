@@ -2,7 +2,7 @@ import {
   CloudServerOutlined, DashboardOutlined, AppstoreOutlined, RocketOutlined,
   UnorderedListOutlined, KeyOutlined, CloudOutlined, SettingOutlined, FileSearchOutlined,
   ApartmentOutlined, ControlOutlined, ApiOutlined,
-  ExperimentOutlined, HeartOutlined, BarChartOutlined,
+  ExperimentOutlined, HeartOutlined, BarChartOutlined, ScheduleOutlined,
 } from "@ant-design/icons";
 
 // The side menu, also read by PageHeader so a page's breadcrumb names the
@@ -27,6 +27,7 @@ export const navGroups = [
   { labelKey: "navigation.groups.inference", items: [
     { key: "/deploy", icon: <RocketOutlined />, labelKey: "navigation.deploy" },
     { key: "/deployments", icon: <UnorderedListOutlined />, labelKey: "navigation.deployments" },
+    { key: "/scheduling", icon: <ScheduleOutlined />, labelKey: "navigation.scheduling" },
     { key: "/playground/chat", icon: <ExperimentOutlined />, labelKey: "navigation.playground" },
     { key: "/evaluations", icon: <FileSearchOutlined />, labelKey: "navigation.evaluations" },
   ] },

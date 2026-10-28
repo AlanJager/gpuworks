@@ -105,10 +105,11 @@ They **never silently fall back to unlimited GPU memory**.
 
 - Wake time: L1 (moves weights to host memory) takes one step and a few seconds, but consumes host RAM equal to the weight size. L2 (discards weights)
   reloads them from the model directory on wake, taking tens of seconds to several minutes, without consuming host RAM. Both levels discard the KV cache.
-- If a sleeping instance receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`) and **does not wake it automatically**.
-  Automatic switching on demand is currently unavailable.
+- If a sleeping instance receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`) and **does not wake it because of a request**.
+  Automatic switching on demand is currently unavailable. Switches you can agree on in advance belong to the [Scheduling Center](../how-to/scheduling-center.md):
+  schedules sleep and wake on chosen weekdays and times, idle sleep puts an unused deployment to sleep, and a wake that does not fit can wait for room and happens automatically once the GPUs free up.
 - Waking requires admission first: if a new deployment occupies the GPU, it returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY`. Stop or
-  sleep the occupying instance first; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
+  sleep the occupying instance first, or choose to wait for room or to put the occupant to sleep and then wake; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
 - When putting an instance to sleep, choose "Finish in-flight requests first (recommended)" (default; finishes in-flight requests first) or "Abort in-flight requests now."
 - Only **vLLM** is supported. SGLang deployments cannot declare sleep capability (rejected at creation with `SLEEP_ENGINE_UNSUPPORTED`). Enable
   "Sleep Capable" when creating the deployment. Multi-node deployments can sleep: the command goes to the leader, whose engine puts followers to sleep and wakes them together. PD

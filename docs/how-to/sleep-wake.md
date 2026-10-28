@@ -29,7 +29,7 @@ L2 没有“占用哪个磁盘”的配置项；唤醒读取的仍是部署挂�
 - **等待完成**（默认）：引擎跑完正在处理的请求再睡。长请求会推迟休眠，agent 单次指令上限为 10 分钟。
 - **立即中止**：正在处理的请求立即收到错误。
 
-指令发出后，网关立即停止向这次选中休眠的实例转发新请求。其余可服务的清醒副本继续接收请求；没有可服务的清醒副本时，网关才返回 HTTP 503 和 `model is asleep; wake it first`。
+指令发出后，网关立即停止向这次选中休眠的实例转发新请求。其余可服务的清醒副本继续接收请求；没有可服务的清醒副本时，网关才返回 HTTP 503，信息为 `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`。网关不会因为一个请求而自动唤醒；定时计划或唤醒等位可以替你唤醒，见[调度中心](scheduling-center.md)。
 
 ## 休眠整个部署
 
@@ -82,11 +82,44 @@ L1 把权重挪到主机内存。休眠前，平台按本节点上将要休眠�
 
    唤醒任一副本会撤销部署整体的睡眠命令，其余已休眠副本保持休眠。
 
-2. 如果返回 409 `WAKE_INSUFFICIENT_GPU_MEMORY`，按提示查看卡号、缺口 GiB 和占用者，先停止或休眠占用者再试。部署级默认全部可容纳才唤醒；多个休眠副本被拒绝后，可选择**唤醒放得下的副本**（`?partial=true`）。多机按整个副本判断，任何一个 rank 放不回，整个副本继续休眠。
-   卡被平台外的进程占着（平台看不到它占多少）时，唤醒被拒绝，返回 409 `WAKE_GPU_HELD_OUTSIDE`，参数与上一条相同，`refused[].held_outside` 为 true。先在节点上释放该进程，再唤醒。agent 也会检查平台上的实例全部在休眠的卡：休眠引擎自己的进程号已知时，才能把它们和平台外的进程区分开。
+2. 如果返回 409 `WAKE_INSUFFICIENT_GPU_MEMORY`，按提示查看卡号、缺口 GiB 和占用者。可以先停止或休眠占用者再试，也可以让平台代劳，见下面的[放不下时：等位与让位](#放不下时等位与让位)。部署级默认全部可容纳才唤醒；多个休眠副本被拒绝后，可选择**唤醒放得下的副本**（`?partial=true`）。多机按整个副本判断，任何一个 rank 放不回，整个副本继续休眠。
+   卡被平台外的进程占着（平台看不到它占多少）时，唤醒被拒绝，返回 409 `WAKE_GPU_HELD_OUTSIDE`，参数与上一条相同，`refused[].held_outside` 为 true。先在节点上释放该进程，再唤醒；等位和让位都不能绕开这一条。agent 也会检查平台上的实例全部在休眠的卡：休眠引擎自己的进程号已知时，才能把它们和平台外的进程区分开。
 3. 等待选中副本的 `sleep_level` 回到 0，再重试 `/v1` 请求，确认服务恢复。部分唤醒时还需检查其余副本的显存差额，不能据一个请求成功认定所有副本都已清醒。
 
 唤醒中的实例已按完整显存计账，避免等待 agent 回报期间重复分配同一张卡。
+
+### 放不下时：等位与让位
+
+唤醒被 `WAKE_INSUFFICIENT_GPU_MEMORY` 拒绝后，界面提供两个按钮，API 对应两个参数：
+
+| 做法 | 入口 | 效果 |
+|---|---|---|
+| 等位 | **等位唤醒**，`?wait=true` | 放得下的先醒，其余等卡腾出来，服务端在容量释放后自动唤醒；等满 30 分钟放弃并写时间线 |
+| 让位 | **让占用者休眠后唤醒**，`?yield=true`，可加 `&yield_level=1\|2`（默认 1） | 先让占着所需卡的醒着的部署休眠，再把唤醒放进等位，对方睡下后自动完成 |
+
+```bash
+curl --fail-with-body -sS -X POST \
+  "$API_URL/api/v1/deployments/7/wake?wait=true" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+全部放得下时返回 200 `{"status":"waking","woken":[...],"waiting":[],"yielded":[]}`；有的要等则返回 202 `{"status":"waiting",...}`，`waiting` 是在等的实例，`yielded` 是被让位休眠的部署名。单个实例用 `POST /api/v1/instances/{uuid}/wake?wait=true`。
+
+让位的细节：
+
+- 占用者默认休眠到 L1；它所在节点的主机内存放不下 L1 时自动改 L2。可用 `yield_level=2` 直接指定 L2。
+- 占用者里有不可休眠的部署、PD 里最后一个醒着的角色，或卡被平台外进程占着时，整个请求被拒绝，返回 409 `WAKE_YIELD_BLOCKED`（`occupants` 列出名字），什么都不会改动。
+- 被让位休眠的部署，时间线记 `YIELDED_FOR_WAKE`；除非另有定时计划，它不会自己醒来。
+
+部署在等位期间，详情页显示等位横幅和起点时间（部署的 `wake_waiting_since`）。要放弃等位，点**取消等位**，或调用：
+
+```bash
+curl --fail-with-body -sS -X DELETE \
+  "$API_URL/api/v1/deployments/7/wake-waiting" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+返回 200 `{"items":["<实例 UUID>"],"total":1}`，列出被撤销的实例。等位、让位与定时计划、闲置休眠一起构成[调度中心](scheduling-center.md)；调度看板上能看到谁在等位。
 
 休眠或唤醒失败时，先查看实例时间线：
 

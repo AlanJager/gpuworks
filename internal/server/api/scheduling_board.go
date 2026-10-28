@@ -1,0 +1,202 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/store"
+)
+
+const (
+	// boardPendingWindow is how recent a placement refusal must be for the
+	// board to list its deployment as waiting.
+	boardPendingWindow = 30 * time.Minute
+	// boardUpcomingWindow is how far ahead the board lists schedule actions.
+	boardUpcomingWindow = 24 * time.Hour
+	// boardRecent is how many of the scheduling center's latest events the
+	// board lists.
+	boardRecent = 50
+)
+
+// schedulingBoard answers GET /scheduling/board: a page of nodes (page,
+// page_size, q as for GET /nodes) with each GPU's holders, and fleet-wide what
+// waits, what is scheduled next and what was done lately. It only reads.
+func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
+	query, err := parseListQuery(r, nil)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	nodes, err := a.d.Store.ListNodes()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	var matched []store.Node
+	for _, node := range nodes {
+		if query.search == "" || strings.Contains(strings.ToLower(node.DisplayName()+" "+node.UUID), query.search) {
+			matched = append(matched, node)
+		}
+	}
+	sort.SliceStable(matched, func(i, j int) bool { return matched[i].DisplayName() < matched[j].DisplayName() })
+	deployments := map[uint]string{}
+	nameOf := func(id uint) string {
+		if name, ok := deployments[id]; ok {
+			return name
+		}
+		name := ""
+		if dep, err := a.d.Store.GetDeployment(id); err == nil {
+			name = dep.Name
+		}
+		deployments[id] = name
+		return name
+	}
+	online := a.onlineOf(nodes)
+	board := dto.SchedulingBoard{
+		Nodes: pageOf(matched, query, func(rows []store.Node) []dto.BoardNode {
+			out := make([]dto.BoardNode, 0, len(rows))
+			for i := range rows {
+				out = append(out, a.boardNode(&rows[i], online(rows[i].UUID), nameOf))
+			}
+			return out
+		}),
+		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{}, Recent: []dto.BoardEvent{},
+	}
+	now := time.Now().UTC()
+	if board.Pending, err = a.boardPending(now, nameOf); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if board.WaitingWakes, err = a.boardWaitingWakes(nameOf); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if board.Upcoming, err = a.boardUpcoming(now, nameOf); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if board.Recent, err = a.boardRecent(nameOf); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, board)
+}
+
+func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint) string) dto.BoardNode {
+	out := dto.BoardNode{UUID: node.UUID, Name: nodeDisplayName(node), Online: online, GPUs: []dto.BoardGPU{}}
+	withGPUs, err := a.d.Store.NodeWithGPUs(node.UUID)
+	if err != nil {
+		return out
+	}
+	allocations := planning.GPUAllocations(a.d.Store, withGPUs)
+	occupants := planning.GPUOccupants(a.d.Store, withGPUs)
+	for _, gpu := range withGPUs.OwnedGPUs() {
+		if gpu.Index < 0 {
+			continue // a card the vendor tool does not list holds nothing schedulable
+		}
+		alloc := allocations[gpu.Index]
+		item := dto.BoardGPU{
+			Index: gpu.Index, Name: gpu.Name, MemoryBytes: gpu.MemoryTotal, AwakeBytes: alloc.AllocatedBytes, SleepingBytes: alloc.SleepingBytes,
+			FreeBytes: max(gpu.MemoryTotal-alloc.AllocatedBytes-alloc.SleepingBytes, 0), HeldOutside: gpu.HeldOutsidePlatform(), Occupants: []dto.BoardOccupant{},
+		}
+		for _, o := range occupants[gpu.Index] {
+			state := "awake"
+			if o.Asleep {
+				state = "asleep"
+			}
+			item.Occupants = append(item.Occupants, dto.BoardOccupant{
+				DeploymentID: o.Instance.DeploymentID, Deployment: nameOf(o.Instance.DeploymentID), Instance: o.Instance.UUID,
+				State: state, SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
+			})
+		}
+		out.GPUs = append(out.GPUs, item)
+	}
+	return out
+}
+
+// boardPending is every active deployment whose latest scheduling note is a
+// recent refusal to place it.
+func (a *apiHandlers) boardPending(now time.Time, nameOf func(uint) string) ([]dto.BoardPending, error) {
+	latest, err := a.d.Store.LatestScheduleEvents()
+	if err != nil {
+		return nil, err
+	}
+	out := []dto.BoardPending{}
+	for depID, ev := range latest {
+		if ev.Code != store.EventDeploymentUnschedulable || now.Sub(ev.CreatedAt) > boardPendingWindow {
+			continue
+		}
+		dep, err := a.d.Store.GetDeployment(depID)
+		if err != nil || dep.State != store.DeployActive {
+			continue
+		}
+		item := dto.BoardPending{DeploymentID: depID, Deployment: nameOf(depID), At: ev.CreatedAt.UTC()}
+		var data struct {
+			Scheduler *dto.ScheduleReason `json:"scheduler"`
+		}
+		if json.Unmarshal([]byte(ev.Data), &data) == nil && data.Scheduler != nil {
+			item.Reason = *data.Scheduler
+		}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	return out, nil
+}
+
+func (a *apiHandlers) boardWaitingWakes(nameOf func(uint) string) ([]dto.BoardWaitingWake, error) {
+	insts, err := a.d.Store.InstancesWakeWaiting()
+	if err != nil {
+		return nil, err
+	}
+	out := []dto.BoardWaitingWake{}
+	at := map[uint]int{}
+	for _, in := range insts {
+		index, ok := at[in.DeploymentID]
+		if !ok {
+			at[in.DeploymentID] = len(out)
+			out = append(out, dto.BoardWaitingWake{DeploymentID: in.DeploymentID, Deployment: nameOf(in.DeploymentID), Since: in.WakeWaitingSince.UTC(), Instances: []string{}})
+			index = len(out) - 1
+		}
+		out[index].Instances = append(out[index].Instances, in.UUID)
+	}
+	return out, nil
+}
+
+func (a *apiHandlers) boardUpcoming(now time.Time, nameOf func(uint) string) ([]dto.BoardUpcomingAction, error) {
+	rows, err := a.d.Store.EnabledLifecycleSchedules()
+	if err != nil {
+		return nil, err
+	}
+	out := []dto.BoardUpcomingAction{}
+	for _, row := range rows {
+		for _, at := range automationSchedule(row).Occurrences(now, now.Add(boardUpcomingWindow)) {
+			out = append(out, dto.BoardUpcomingAction{
+				DeploymentID: row.DeploymentID, Deployment: nameOf(row.DeploymentID), ScheduleID: row.ID, Action: row.Action,
+				SleepLevel: row.SleepLevel, Replicas: row.Replicas, At: at.UTC(),
+			})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
+	return out, nil
+}
+
+func (a *apiHandlers) boardRecent(nameOf func(uint) string) ([]dto.BoardEvent, error) {
+	events, err := a.d.Store.RecentEventsOfKind(store.EventKindAutomation, boardRecent)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.BoardEvent, 0, len(events))
+	for _, ev := range events {
+		item := dto.BoardEvent{DeploymentID: ev.DeploymentID, Deployment: nameOf(ev.DeploymentID), Code: ev.Code, Params: map[string]any{}, At: ev.CreatedAt.UTC()}
+		if ev.Data != "" {
+			_ = json.Unmarshal([]byte(ev.Data), &item.Params)
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}

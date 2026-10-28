@@ -70,6 +70,23 @@
     "wakeAll": "Wake all",
     "wakeWhatFits": "Wake what fits",
     "partialWoken": "Woke {{woken}}; {{refused}} could not fit back on their cards",
+    "waitStarted": "Waiting for room: the wake follows when the GPUs free up",
+    "yieldStarted": "Putting {{names}} to sleep; the wake follows once there is room",
+    "refused": {
+      "title": "Not enough GPU memory to wake",
+      "wait": "Wait for room",
+      "yield": "Put {{occupants}} to sleep, then wake",
+      "theOccupants": "the occupants",
+      "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after 30 minutes). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
+      "heldOutside": "A process outside the platform holds the GPU"
+    },
+    "waiting": {
+      "since": "Waiting for room since {{time}}",
+      "hint": "The server wakes the sleepers when their GPUs can take them back, and gives up after 30 minutes.",
+      "cancel": "Cancel waiting",
+      "cancelled": "Stopped waiting",
+      "cancelFailed": "Failed to cancel waiting: {{detail}}"
+    },
     "role": {
       "summary": "{{role}}: {{asleep}}/{{total}} asleep",
       "sleep": "Sleep {{role}} (L1)",
@@ -366,6 +383,13 @@
       "UNIT_RETRIED": "Retry requested: {{attempts}} failed attempts cleared",
       "STORAGE_UNAVAILABLE": "Storage {{storage}} is unavailable on {{node}} ({{state}}): running instances keep serving from GPU memory, loading ones wait for it to return",
       "STORAGE_RECOVERED": "Storage {{storage}} is available again on {{node}}",
+      "AUTO_SLEEP": "Put to sleep (L{{level}}) {{cause}}",
+      "AUTO_WAKE": "Woke instance {{instances}} {{cause}}",
+      "AUTO_SCALE": "Replicas set to {{replicas}} {{cause}}",
+      "WAKE_WAITING": "Wake of instance {{instances}} waits for room{{yielded}}",
+      "WAKE_WAIT_TIMEOUT": "Stopped waiting for room to wake instance {{instances}} after {{waited}}",
+      "SCHEDULE_ACTION_FAILED": "Scheduled {{action}} failed: {{reason}}",
+      "YIELDED_FOR_WAKE": "Put to sleep (L{{level}}) to make room for waking {{deployment}}",
       "NODE_REPLACED": "Node {{from}} stayed offline for over {{after}}: {{what}} {{target}}",
       "NODE_REPLACE_REVERTED": "Node {{to}} came back before {{what}} ran on {{from}}: the move is undone",
       "NODE_REPLACE_NO_CANDIDATE": "Nodes {{nodes}} stayed offline, but no other node can take their replicas",
@@ -670,6 +694,107 @@
       "rankSlotAria": "Node of rank {{rank}} of new replica {{index}}",
       "preferPlaceholder": "Prefer a node (optional)",
       "prefixHint": "Name nodes from the first rank on: a rank can be named only after the ranks before it."
+    }
+  },
+  "automation": {
+    "title": "Automation",
+    "minutes": "min",
+    "save": "Save",
+    "retry": "Reload schedule",
+    "duration": {
+      "seconds": "{{value}} s",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "days": "{{value}} d"
+    },
+    "cause": {
+      "schedule": "by its schedule",
+      "idle": "after {{idle}} without requests",
+      "wake_waiting": "once its GPUs had room",
+      "operator": "as ordered"
+    },
+    "yieldedNote": ", after putting {{names}} to sleep",
+    "action": {
+      "sleep": "sleep",
+      "wake": "wake",
+      "replicas": "replica count"
+    },
+    "level": {
+      "1": "L1 · memory (quick)",
+      "2": "L2 · deep"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "hint": "Standing orders that run on their own at a set time. Each occurrence runs once; a manual order given in between is not overridden. A new or edited order fires from its next occurrence.",
+      "add": "Add order",
+      "addTitle": "Add a scheduled order",
+      "editTitle": "Edit scheduled order",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this scheduled order?",
+      "deleted": "Scheduled order deleted",
+      "empty": "No scheduled orders.",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node, non-PD deployments.",
+      "loadFailed": "Failed to load the schedule: {{detail}}",
+      "saveFailed": "Failed to save the order: {{detail}}",
+      "deleteFailed": "Failed to delete the order: {{detail}}",
+      "saved": "Scheduled order saved",
+      "save": "Save",
+      "serverZone": "server time zone",
+      "timezoneHint": "Leave empty for the server's time zone, or give an IANA name such as Asia/Shanghai.",
+      "everyDay": "Every day",
+      "enabledOf": "Enable {{order}} at {{time}}",
+      "columns": {
+        "order": "Order",
+        "days": "Days",
+        "time": "Time",
+        "next": "Next run",
+        "enabled": "Enabled"
+      },
+      "actionText": {
+        "sleep": "Sleep (L{{level}})",
+        "wake": "Wake",
+        "replicas": "Set replicas to {{count}}"
+      },
+      "actionName": {
+        "sleep": "Sleep",
+        "wake": "Wake",
+        "replicas": "Set replica count"
+      },
+      "field": {
+        "action": "Order",
+        "weekdays": "Days",
+        "time": "Time",
+        "timezone": "Time zone",
+        "sleep_level": "Sleep level",
+        "replicas": "Replicas",
+        "enabled": "Enabled"
+      },
+      "errors": {
+        "weekdays": "Pick at least one day.",
+        "time": "Enter the time as HH:MM.",
+        "replicas": "Replicas must be between 1 and {{maximum}}."
+      },
+      "weekday": {
+        "0": "Sun",
+        "1": "Mon",
+        "2": "Tue",
+        "3": "Wed",
+        "4": "Thu",
+        "5": "Fri",
+        "6": "Sat"
+      }
+    },
+    "idle": {
+      "title": "Idle sleep",
+      "hint": "Put the deployment to sleep after it has had no user request for a while. Health-check probes do not count as requests.",
+      "notSleepable": "Idle sleep needs a deployment created with sleep mode enabled.",
+      "enable": "Enable idle sleep",
+      "after": "After",
+      "minutes": "Idle minutes",
+      "level": "Sleep level",
+      "saved": "Idle sleep saved",
+      "saveFailed": "Failed to save idle sleep: {{detail}}"
     }
   },
   "nodeReplacement": {

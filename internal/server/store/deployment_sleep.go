@@ -79,8 +79,20 @@ func HoldsSleepIntent(in *Instance) bool {
 }
 
 // writeSleepIntent rewrites the sleep intent of the instances that hold one,
-// inside a transaction.
+// inside a transaction. A new order supersedes a wake that was waiting for
+// room: a wake has been admitted, or the instance is told to sleep again.
 func writeSleepIntent(tx *gorm.DB, insts []Instance, level int, mode string) error {
+	var waiting []uint
+	for i := range insts {
+		if insts[i].WakeWaitingSince != nil {
+			waiting = append(waiting, insts[i].ID)
+		}
+	}
+	if len(waiting) > 0 {
+		if err := tx.Model(&Instance{}).Where("id IN ?", waiting).Update("wake_waiting_since", nil).Error; err != nil {
+			return err
+		}
+	}
 	for i := range insts {
 		if !HoldsSleepIntent(&insts[i]) {
 			continue

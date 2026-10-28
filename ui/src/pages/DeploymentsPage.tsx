@@ -29,6 +29,7 @@ import DeploymentInstances from "./DeploymentInstances";
 import SleepControls from "./DeploymentSleepControls";
 import DeploymentNodeReplacement from "./DeploymentNodeReplacement";
 import PlacementModeControl from "./DeploymentPlacementMode";
+import DeploymentAutomation from "./DeploymentAutomation";
 import DeploymentLifecycleActions, { ReplicaRetryAlert } from "./DeploymentLifecycleActions";
 import { ReplicasEditor } from "./DeploymentReplicaActions";
 import { PlacementStatusAlert, RequirementTags } from "./DeploymentPlacementStatus";
@@ -454,6 +455,7 @@ function DeploymentDetail({
 
           <SleepControls dep={dep} onDone={load} />
 
+          <DeploymentAutomation dep={dep} onChanged={load} />
           <DeploymentNodeReplacement dep={dep} onChanged={load} />
 
           <DeploymentPreparation rows={dep.model_progress} onChanged={load} />

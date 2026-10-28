@@ -145,7 +145,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	// Distinguish "sleeping" from "not ready" so the caller is told to wake
 	// the model rather than to retry.
 	if anyAsleep {
-		return target{}, http.StatusServiceUnavailable, "model is asleep; wake it first", true
+		return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
 	}
 	if instancesGaveUp(insts) {
 		return target{}, http.StatusServiceUnavailable, "deployment for " + modelName + " failed to start; see the deployment list", false
@@ -236,7 +236,7 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 	}
 	if len(candidates) == 0 {
 		if anySleeping {
-			return target{}, http.StatusServiceUnavailable, "model is asleep; wake it first", true
+			return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
 		}
 		return target{}, http.StatusServiceUnavailable, fmt.Sprintf("distributed model %s is not ready: no replica has every rank running on an online node", modelName), false
 	}
@@ -247,4 +247,12 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 	}
 	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, affinity: affinity}, 0, "", false
+}
+
+// asleepMessage tells a client of a sleeping model what to do: wake it from
+// the console or the API, or wait for its schedule or a waiting wake. The
+// leading "model is asleep; wake it first" stays as it was, for clients that
+// match on it.
+func asleepMessage(dep *store.Deployment) string {
+	return fmt.Sprintf("model is asleep; wake it first (console, or POST /api/v1/deployments/%d/wake; a schedule or a waiting wake may also wake it)", dep.ID)
 }

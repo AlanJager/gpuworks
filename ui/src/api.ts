@@ -580,14 +580,42 @@ export interface EngineProfile {
   pd_modes?: PdModeProfile[];
 }
 
+// WakeRefusal is one group of sleepers a wake could not put back: the cards
+// that cannot take them, how far short they are and who holds the memory.
+// held_outside says a process outside the platform holds a card, which no
+// sleep order of ours can free.
+export interface WakeRefusal {
+  instances: string[];
+  node?: string;
+  gpu_indexes?: number[];
+  occupants?: string[];
+  shortfall_gib?: string;
+  held_outside?: boolean;
+}
+
 // WakeResult is a wake order's answer; a partial wake lists what it woke and
-// the sleepers whose cards could not take them back. held_outside says a
-// process outside the platform holds one of those cards, which no sleep order
-// of ours can free.
+// the sleepers whose cards could not take them back. A wake that waits for
+// room (wait or yield) answers 202 with status "waiting", what it woke at
+// once, what waits (waiting) and the deployments put to sleep to make room
+// (yielded); 200 "waking" when everything fit.
 export interface WakeResult {
   status: string;
   woken?: string[];
-  refused?: Array<{ instances: string[]; node?: string; gpu_indexes?: number[]; occupants?: string[]; shortfall_gib?: string; held_outside?: boolean }>;
+  refused?: WakeRefusal[];
+  waiting?: string[];
+  yielded?: string[];
+}
+
+// WakeOptions are the ways a wake order may proceed: role limits it to one
+// PD role, partial wakes what fits, wait leaves the rest waiting for room,
+// yield first puts the occupants of the needed cards to sleep (at yieldLevel,
+// 1 unless the server must fall back to 2).
+export interface WakeOptions {
+  role?: string;
+  partial?: boolean;
+  wait?: boolean;
+  yield?: boolean;
+  yieldLevel?: 1 | 2;
 }
 
 // PdModeProfile is one PD mode as the server's catalog states it.
@@ -978,6 +1006,77 @@ export type DeploymentListItem = Pick<
 };
 
 export type DeploymentPage = ListPage<DeploymentListItem>;
+
+// The scheduling center's board (GET /scheduling/board): who holds each GPU,
+// what waits to be placed or woken, what the schedules do next and what the
+// automation did last.
+export interface BoardOccupant {
+  deployment_id: number;
+  deployment: string;
+  instance: string;
+  state: "awake" | "asleep";
+  sleep_level?: number;
+  claim_bytes: number;
+  residue_bytes?: number;
+}
+
+export interface BoardGPU {
+  index: number;
+  name: string;
+  memory_bytes: number;
+  awake_bytes: number;
+  sleeping_bytes: number;
+  free_bytes: number;
+  held_outside: boolean;
+  occupants: BoardOccupant[];
+}
+
+export interface BoardNode {
+  uuid: string;
+  name: string;
+  online: boolean;
+  gpus: BoardGPU[];
+}
+
+export interface BoardPending {
+  deployment_id: number;
+  deployment: string;
+  reason: ScheduleMessage;
+  at: string;
+}
+
+export interface BoardWaitingWake {
+  deployment_id: number;
+  deployment: string;
+  instances: string[];
+  since: string;
+}
+
+export interface BoardUpcoming {
+  deployment_id: number;
+  deployment: string;
+  schedule_id: number;
+  action: ScheduleAction;
+  sleep_level?: number;
+  replicas?: number;
+  at: string;
+}
+
+export interface BoardEvent {
+  deployment_id: number;
+  deployment: string;
+  code: string;
+  params?: Record<string, unknown>;
+  at: string;
+}
+
+export interface SchedulingBoard {
+  nodes: ListPage<BoardNode>;
+  pending: BoardPending[];
+  waiting_wakes: BoardWaitingWake[];
+  upcoming: BoardUpcoming[];
+  recent: BoardEvent[];
+}
 
 /** A node page row omits topology and path usage (GET /nodes/{uuid} has them). */
 export interface NodePage extends ListPage<Node> {
@@ -1681,9 +1780,18 @@ export interface Deployment {
   // placement_status is set while replicas of an ordinary deployment wait
   // for a node: how many, and the controller's latest reason.
   placement_status?: DeploymentPlacementStatus;
-  // node_replacement moves a replica off a node that stays offline for
-  // after_sec (0 never moves it).
+  // idle_sleep puts the deployment to sleep after after_sec without a user
+  // request (0 is off); node_replacement moves a replica off a node that
+  // stays offline for after_sec (0 never moves it). wake_waiting_since is set
+  // while some wake of the deployment waits for room.
+  idle_sleep?: IdleSleep;
   node_replacement?: NodeReplacement;
+  wake_waiting_since?: string;
+}
+
+export interface IdleSleep {
+  after_sec: number;
+  level: 1 | 2;
 }
 
 export interface NodeReplacement {
@@ -1747,6 +1855,32 @@ export interface DeploymentEditBody {
 export interface DeploymentEditResult {
   plan: DeploymentEditPlan;
   deployment: Deployment;
+}
+
+export type ScheduleAction = "sleep" | "wake" | "replicas";
+
+// LifecycleSchedule is one standing order of a deployment: at time (HH:MM) on
+// weekdays (0 Sunday to 6 Saturday) in timezone ("" is the server's zone).
+export interface LifecycleSchedule {
+  id: number;
+  action: ScheduleAction;
+  weekdays: number[];
+  time: string;
+  timezone: string;
+  sleep_level?: 1 | 2;
+  replicas?: number;
+  enabled: boolean;
+  next_at?: string;
+}
+
+export interface LifecycleScheduleRequest {
+  action: ScheduleAction;
+  weekdays: number[];
+  time: string;
+  timezone: string;
+  sleep_level?: 1 | 2;
+  replicas?: number;
+  enabled?: boolean;
 }
 
 export interface DeploymentPlacementStatus {
@@ -3547,6 +3681,19 @@ export function storageFileUploadURL(id: number, node: string | undefined, path:
   return `/api/v1/storages/${id}/files/upload?${storageFilesQuery({ node_uuid: node, path, extract, overwrite: overwrite ? "true" : undefined })}`;
 }
 
+function wakeQuery(opts: WakeOptions): string {
+  const query = new URLSearchParams();
+  if (opts.role) query.set("role", opts.role);
+  if (opts.partial) query.set("partial", "true");
+  if (opts.wait) query.set("wait", "true");
+  if (opts.yield) {
+    query.set("yield", "true");
+    if (opts.yieldLevel) query.set("yield_level", String(opts.yieldLevel));
+  }
+  const qs = query.toString();
+  return qs ? `?${qs}` : "";
+}
+
 async function sendJSON<T>(
   method: string,
   path: string,
@@ -4199,24 +4346,36 @@ export const api = {
     sendJSON<void>("POST", `/api/v1/deployments/${id}/sleep?level=${level}&mode=${mode}${role ? `&role=${encodeURIComponent(role)}` : ""}`),
   // wakeDeployment wakes the deployment (or one PD role) all or nothing;
   // partial wakes the sleepers whose cards can take them back and lists the
-  // rest.
-  wakeDeployment: (id: number, opts: { role?: string; partial?: boolean } = {}) => {
-    const query = new URLSearchParams();
-    if (opts.role) query.set("role", opts.role);
-    if (opts.partial) query.set("partial", "true");
-    const qs = query.toString();
-    return sendJSON<WakeResult>("POST", `/api/v1/deployments/${id}/wake${qs ? `?${qs}` : ""}`);
-  },
+  // rest; wait leaves the rest waiting for room, and yield first puts the
+  // occupants of the needed cards to sleep.
+  wakeDeployment: (id: number, opts: WakeOptions = {}) =>
+    sendJSON<WakeResult>("POST", `/api/v1/deployments/${id}/wake${wakeQuery(opts)}`),
+  // endWakeWaiting cancels the deployment's waiting wakes; it answers with
+  // the instances no longer waiting.
+  endWakeWaiting: (id: number) =>
+    sendJSON<List<string>>("DELETE", `/api/v1/deployments/${id}/wake-waiting`),
   // sleepInstance and wakeInstance order the single-node replica an instance
   // leads; the deployment's other replicas keep serving.
   sleepInstance: (uuid: string, level: number, mode: "wait" | "abort" = "wait") =>
     sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/sleep?level=${level}&mode=${mode}`),
-  wakeInstance: (uuid: string) =>
-    sendJSON<void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake`),
-  // setNodeReplacement sets how long a node running a replica may stay offline
-  // before the replica moves (0 never moves it).
+  wakeInstance: (uuid: string, opts: WakeOptions = {}) =>
+    sendJSON<WakeResult | void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake${wakeQuery(opts)}`),
+  // A deployment's standing schedule (sleep, wake or replica count at a time
+  // on some weekdays), idle sleep and the wait before a lost node's replica
+  // moves.
+  deploymentSchedule: (id: number) => getJSON<List<LifecycleSchedule>>(`/api/v1/deployments/${id}/schedule`),
+  createSchedule: (id: number, body: LifecycleScheduleRequest) =>
+    sendJSON<LifecycleSchedule>("POST", `/api/v1/deployments/${id}/schedule`, body),
+  updateSchedule: (id: number, scheduleID: number, body: LifecycleScheduleRequest) =>
+    sendJSON<LifecycleSchedule>("PUT", `/api/v1/deployments/${id}/schedule/${scheduleID}`, body),
+  deleteSchedule: (id: number, scheduleID: number) =>
+    sendJSON<void>("DELETE", `/api/v1/deployments/${id}/schedule/${scheduleID}`),
+  setIdleSleep: (id: number, body: IdleSleep) =>
+    sendJSON<IdleSleep>("PUT", `/api/v1/deployments/${id}/idle-sleep`, body),
   setNodeReplacement: (id: number, body: NodeReplacement) =>
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
+  schedulingBoard: (query: { page: number; page_size: number; q?: string }) =>
+    getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`),
   // updateDeploymentPd rescales a PD deployment's role units and/or fallback
   // policy (ADR 0028); mode, TP and kv_load_failure are fixed once instances
   // start, so the request never carries them.

@@ -72,6 +72,10 @@
       "recent": []
     },
     "tokenize_enabled": true,
+    "idle_sleep": {
+      "after_sec": 0,
+      "level": 2
+    },
     "node_replacement": {
       "after_sec": 600
     },

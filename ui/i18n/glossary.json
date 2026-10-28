@@ -1539,7 +1539,11 @@
     { "term_en": "Cache Report Coverage", "translations": { "zh": "缓存上报覆盖率" } },
     { "term_en": "Node Replacement", "translations": { "zh": "节点失联 / 换节点" }, "forbidden": { "zh": ["故障转移"] } },
     { "term_en": "Sleep Residue", "translations": { "zh": "休眠残留" } },
-    { "term_en": "Automatic Placement", "translations": { "zh": "自动放置" } }
+    { "term_en": "Automatic Placement", "translations": { "zh": "自动放置" } },
+    { "term_en": "Lifecycle Schedule", "translations": { "zh": "定时计划" } },
+    { "term_en": "Idle Sleep", "translations": { "zh": "闲置休眠" } },
+    { "term_en": "Wake Waiting", "translations": { "zh": "唤醒等位" } },
+    { "term_en": "Yielding Wake", "translations": { "zh": "让位唤醒" } }
   ],
   "do_not_translate": [
     "GPUWorks",

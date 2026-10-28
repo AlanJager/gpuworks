@@ -441,11 +441,11 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
-	// Background: verify each PD prefill instance's KV handoff once.
-	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
-	goBG(func() { a.health.Run(ctx) })  // Background: the deployments' health checks.
-	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
-	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.
+	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })            // Background: verify each PD prefill instance's KV handoff once.
+	goBG(func() { runAutomation(ctx, a.store, a.proxyAcct, a.obs.tsdb, a.log) }) // Background: schedules, idle sleep and waiting wakes.
+	goBG(func() { a.health.Run(ctx) })                                           // Background: the deployments' health checks.
+	goBG(func() { a.usage.Run(ctx) })                                            // Background: the daily usage report.
+	goBG(func() { a.notices.Run(ctx) })                                          // Background: the notices' refresh.
 	// Background: prune metrics/logs beyond the retention window
 	// (--metrics-retention, default 72h).
 	//

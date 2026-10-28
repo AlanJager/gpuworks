@@ -1,0 +1,86 @@
+{
+  "page": {
+    "title": "Scheduling",
+    "description": "Who holds each GPU, what waits to be placed or woken, and what schedules and automation do next",
+    "loading": "Loading the scheduling board…",
+    "loadFailed": "Could not load the scheduling board",
+    "refreshFailed": "Could not refresh the board: {{detail}}",
+    "retry": "Retry"
+  },
+  "summary": {
+    "title": "Scheduling summary",
+    "waitingWakes": "Waiting wakes",
+    "pending": "Pending deployments",
+    "upcoming": "Scheduled in the next 24 hours"
+  },
+  "nodes": {
+    "title": "GPUs by node",
+    "search": "Search nodes by name",
+    "empty": "No nodes yet.",
+    "emptyFiltered": "No node matches the search.",
+    "total": "{{count}} nodes",
+    "online": "Online",
+    "offline": "Offline",
+    "noGpus": "This node reports no GPUs.",
+    "gpuLabel": "GPU {{index}} · {{name}}",
+    "figures": "{{awake}} awake · {{sleeping}} sleeping · {{free}} free of {{total}}",
+    "barAria": "{{node}} GPU {{index}}: {{awake}} awake, {{sleeping}} sleeping residue, {{free}} free of {{total}}",
+    "legend": {
+      "title": "Legend",
+      "awake": "Awake",
+      "sleeping": "Sleeping residue",
+      "free": "Free"
+    },
+    "occupant": {
+      "awake": "awake · {{claim}}",
+      "asleep": "asleep L{{level}} · residue {{residue}}"
+    },
+    "heldOutside": "Held by a process outside the platform",
+    "heldOutsideHint": "Part of this card's memory is used by a process gpuworks does not manage. Sleeping or stopping deployments cannot free it."
+  },
+  "pending": {
+    "title": "Pending deployments",
+    "empty": "Nothing waits for a node.",
+    "columns": {
+      "deployment": "Deployment",
+      "reason": "Why it waits",
+      "at": "Recorded"
+    }
+  },
+  "waiting": {
+    "title": "Wakes waiting for room",
+    "empty": "No wake waits for room.",
+    "columns": {
+      "deployment": "Deployment",
+      "instances": "Instances",
+      "since": "Waiting since"
+    },
+    "cancel": "Cancel waiting",
+    "cancelOf": "Cancel the waiting wake of {{name}}",
+    "cancelled": "Stopped waiting for {{name}}",
+    "cancelFailed": "Failed to cancel waiting: {{detail}}"
+  },
+  "upcoming": {
+    "title": "Scheduled in the next 24 hours",
+    "empty": "No schedule fires in the next 24 hours.",
+    "columns": {
+      "at": "When",
+      "deployment": "Deployment",
+      "action": "Order"
+    },
+    "action": {
+      "sleep": "Sleep (L{{level}})",
+      "wake": "Wake",
+      "replicas": "Set replicas to {{count}}"
+    }
+  },
+  "recent": {
+    "title": "Recent automation",
+    "empty": "The automation has not done anything yet.",
+    "columns": {
+      "at": "When",
+      "deployment": "Deployment",
+      "event": "What happened"
+    }
+  }
+}

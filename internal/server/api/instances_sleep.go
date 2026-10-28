@@ -64,6 +64,14 @@ func (a *apiHandlers) wakeInstance(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	how, ok := wakeWaitParams(w, r)
+	if !ok {
+		return
+	}
+	if how.wait || how.yield {
+		a.wakeAndWait(w, dep, match, members, false, how)
+		return
+	}
 	_, refused, err := planning.OrderWake(a.d.Store, dep, match, members, false, false)
 	if err != nil {
 		writeReplicaOrderErr(w, err)

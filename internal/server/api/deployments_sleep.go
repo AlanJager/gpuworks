@@ -149,6 +149,14 @@ func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	how, ok := wakeWaitParams(w, r)
+	if !ok {
+		return
+	}
+	if how.wait || how.yield {
+		a.wakeAndWait(w, dep, match, named, role == "", how)
+		return
+	}
 	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, named, partial, role == "")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)

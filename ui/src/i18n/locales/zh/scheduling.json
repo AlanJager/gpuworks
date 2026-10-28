@@ -1,0 +1,86 @@
+{
+  "page": {
+    "title": "调度中心",
+    "description": "每张 GPU 被谁占着、哪些在等待放置或唤醒，以及定时计划和自动化接下来要做什么",
+    "loading": "正在加载调度中心…",
+    "loadFailed": "无法加载调度中心",
+    "refreshFailed": "刷新失败：{{detail}}",
+    "retry": "重试"
+  },
+  "summary": {
+    "title": "调度概览",
+    "waitingWakes": "等位中的唤醒",
+    "pending": "待放置的部署",
+    "upcoming": "24 小时内的定时计划"
+  },
+  "nodes": {
+    "title": "各节点 GPU",
+    "search": "按名称搜索节点",
+    "empty": "还没有节点。",
+    "emptyFiltered": "没有节点匹配搜索。",
+    "total": "共 {{count}} 个节点",
+    "online": "在线",
+    "offline": "离线",
+    "noGpus": "该节点没有上报 GPU。",
+    "gpuLabel": "GPU {{index}} · {{name}}",
+    "figures": "清醒 {{awake}} · 休眠 {{sleeping}} · 空闲 {{free}}，共 {{total}}",
+    "barAria": "{{node}} 的 GPU {{index}}：清醒 {{awake}}，休眠残留 {{sleeping}}，空闲 {{free}}，共 {{total}}",
+    "legend": {
+      "title": "图例",
+      "awake": "清醒",
+      "sleeping": "休眠残留",
+      "free": "空闲"
+    },
+    "occupant": {
+      "awake": "清醒 · {{claim}}",
+      "asleep": "休眠 L{{level}} · 残留 {{residue}}"
+    },
+    "heldOutside": "被平台外的进程占用",
+    "heldOutsideHint": "这张卡有一部分显存被 gpuworks 不管理的进程占用，休眠或停止部署都无法释放。"
+  },
+  "pending": {
+    "title": "待放置的部署",
+    "empty": "没有部署在等节点。",
+    "columns": {
+      "deployment": "部署",
+      "reason": "等待原因",
+      "at": "记录时间"
+    }
+  },
+  "waiting": {
+    "title": "等位中的唤醒",
+    "empty": "没有唤醒在等位。",
+    "columns": {
+      "deployment": "部署",
+      "instances": "实例",
+      "since": "等位开始于"
+    },
+    "cancel": "取消等位",
+    "cancelOf": "取消 {{name}} 的等位唤醒",
+    "cancelled": "已取消 {{name}} 的等位",
+    "cancelFailed": "取消等位失败：{{detail}}"
+  },
+  "upcoming": {
+    "title": "24 小时内的定时计划",
+    "empty": "24 小时内没有定时计划要执行。",
+    "columns": {
+      "at": "时间",
+      "deployment": "部署",
+      "action": "指令"
+    },
+    "action": {
+      "sleep": "休眠（L{{level}}）",
+      "wake": "唤醒",
+      "replicas": "副本数设为 {{count}}"
+    }
+  },
+  "recent": {
+    "title": "最近的自动化动作",
+    "empty": "自动化还没有执行过任何动作。",
+    "columns": {
+      "at": "时间",
+      "deployment": "部署",
+      "event": "发生了什么"
+    }
+  }
+}

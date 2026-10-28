@@ -29,7 +29,7 @@ Choose an option in the sleep confirmation page:
 - **Finish in-flight requests first (recommended)** (default): the engine finishes requests it is processing before sleeping. Long requests delay sleep; the agent allows up to 10 minutes per command.
 - **Abort in-flight requests now**: requests being processed immediately receive an error.
 
-Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with `model is asleep; wake it first`.
+Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with the message `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`. The gateway never wakes a model because of one request; a schedule or a waiting wake can wake it for you, see the [Scheduling Center](scheduling-center.md).
 
 ## Put an Entire Deployment to Sleep
 
@@ -82,11 +82,44 @@ Why a sleeping instance does not keep its original allocation: sleep would then 
 
    Waking any replica revokes the deployment-wide sleep command. Other sleeping replicas remain asleep.
 
-2. If you receive 409 `WAKE_INSUFFICIENT_GPU_MEMORY`, inspect the GPU index, shortfall in GiB, and occupants shown in the message. Stop or put those occupants to sleep before retrying. By default, a deployment-level wake proceeds only if all replicas fit. After a wake request for multiple sleeping replicas is rejected, you can choose **Wake what fits** (`?partial=true`). A multi-node replica is evaluated as a whole: if any rank cannot fit back into memory, the entire replica remains asleep.
-   When a process outside the platform holds the card (the platform cannot see how much it uses), the wake is refused with 409 `WAKE_GPU_HELD_OUTSIDE`, with the same parameters as above and `refused[].held_outside` set to true. Release that process on the node first, then wake. The agent also examines cards whose platform instances all sleep: when the sleeping engine's own process IDs are known, it can tell them apart from processes outside the platform.
+2. If you receive 409 `WAKE_INSUFFICIENT_GPU_MEMORY`, inspect the GPU index, shortfall in GiB, and occupants shown in the message. You can stop or put those occupants to sleep before retrying, or let the platform do it, see [Wait or Yield When It Does Not Fit](#放不下时等位与让位). By default, a deployment-level wake proceeds only if all replicas fit. After a wake request for multiple sleeping replicas is rejected, you can choose **Wake what fits** (`?partial=true`). A multi-node replica is evaluated as a whole: if any rank cannot fit back into memory, the entire replica remains asleep.
+   When a process outside the platform holds the card (the platform cannot see how much it uses), the wake is refused with 409 `WAKE_GPU_HELD_OUTSIDE`, with the same parameters as above and `refused[].held_outside` set to true. Release that process on the node first, then wake; waiting and yielding cannot get around this. The agent also examines cards whose platform instances all sleep: when the sleeping engine's own process IDs are known, it can tell them apart from processes outside the platform.
 3. Wait for `sleep_level` to return to 0 for the selected replicas, then retry a `/v1` request to confirm service recovery. For a partial wake, also check the remaining replicas' GPU memory shortfalls. One successful request does not establish that all replicas are awake.
 
 Waking instances are already accounted for at their full GPU memory usage to prevent allocating the same GPU memory twice while waiting for the agent's report.
+
+### Wait or Yield When It Does Not Fit
+
+After a wake is refused with `WAKE_INSUFFICIENT_GPU_MEMORY`, the console offers two choices, which correspond to two API parameters:
+
+| Approach | Entry Point | Effect |
+|---|---|---|
+| Wait | **Wait for room**, `?wait=true` | Replicas that fit wake first; the rest wait for room, and the server wakes them automatically once capacity frees up; it gives up after 30 minutes and records this in the timeline |
+| Yield | **Put the occupants to sleep, then wake**, `?yield=true`, optionally `&yield_level=1\|2` (default 1) | First puts the awake deployments holding the needed cards to sleep, then places the wake into waiting; it completes automatically once they are asleep |
+
+```bash
+curl --fail-with-body -sS -X POST \
+  "$API_URL/api/v1/deployments/7/wake?wait=true" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+When everything fits, the response is 200 `{"status":"waking","woken":[...],"waiting":[],"yielded":[]}`; if some must wait it is 202 `{"status":"waiting",...}`, where `waiting` lists the instances waiting and `yielded` the names of the deployments put to sleep to make room. For a single instance use `POST /api/v1/instances/{uuid}/wake?wait=true`.
+
+Details of yielding:
+
+- Occupants sleep at L1 by default; when the host memory of their node cannot hold L1, the platform switches to L2 automatically. Use `yield_level=2` to ask for L2 directly.
+- If any occupant cannot sleep (a deployment that is not sleep-capable, the last awake role of a PD deployment, or a card held by a process outside the platform), the whole request is refused with 409 `WAKE_YIELD_BLOCKED` (`occupants` lists the names) and nothing changes.
+- The deployment put to sleep records `YIELDED_FOR_WAKE` in its timeline; unless a schedule says otherwise, it does not wake up by itself.
+
+While a deployment waits, its details page shows a waiting banner and the start time (the deployment's `wake_waiting_since`). To give up waiting, click **Cancel waiting**, or call:
+
+```bash
+curl --fail-with-body -sS -X DELETE \
+  "$API_URL/api/v1/deployments/7/wake-waiting" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+It returns 200 `{"items":["<instance UUID>"],"total":1}` listing the instances whose wait was cancelled. Waiting and yielding, together with schedules and idle sleep, make up the [Scheduling Center](scheduling-center.md); the scheduling board shows who is waiting.
 
 If sleep or wake fails, first inspect the instance timeline:
 

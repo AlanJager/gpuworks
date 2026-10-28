@@ -80,6 +80,7 @@
 - **增加单机副本时指定节点**：在**调整副本**里选**首次放置节点**，或在 `PUT /api/v1/deployments/{id}/replicas` 加 `place_on`。它只决定新副本第一次在哪里启动，之后与其他副本一样，详见[节点失联时自动换节点](node-failover.md#单机扩容时指定首次放置节点)。
 - **切换多机与 PD 的放置方式**：`PUT /api/v1/deployments/{id}/placement-mode`、请求 `{"mode": "auto"}` 或 `{"mode": "manual"}`，在自动与手动之间切换，不重启实例，单元继续用现在的节点，之后单元启动时按新的方式处理。切到自动会同时去掉 PD 单元钉住的卡（启动时由调度器现挑）。单机部署返回 400 `PLACEMENT_MODE_SHAPE`，它的放置写在节点条件里。部署详情的 `placement_mode` 给出当前方式。
 - **节点失联时的换节点等待时间**：节点离线超过它（默认 10 分钟，0 为从不），副本自动换到别的节点，见[节点失联时自动换节点](node-failover.md)。
+- **定时计划与闲置休眠**：可休眠部署可以按周几和时刻自动休眠、唤醒或调整单机副本数，也可以闲置一段时间后自动休眠，见[使用调度中心](scheduling-center.md)。
 - **健康检查**：详情中可开关或修改阈值，无需重启；API 为 `PUT /api/v1/deployments/{id}/health-check`。升级前已有部署默认不开启。
 - **多副本路由**：默认 `least_request`，可用 `PUT /api/v1/deployments/{id}/routing`、请求 `{"routing_policy": "..."}` 改为 `prefix_affinity` 或 `failover`。路由策略不属于引擎启动参数，修改不会重启实例。
 

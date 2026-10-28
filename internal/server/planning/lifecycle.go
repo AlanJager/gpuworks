@@ -3,6 +3,7 @@ package planning
 import (
 	"sync"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -102,4 +103,79 @@ func instanceUUIDs(insts []store.Instance) []string {
 		out = append(out, in.UUID)
 	}
 	return out
+}
+
+// YieldTarget is an awake instance on a GPU a refused wake needs, and the
+// deployment it serves: put to sleep, it gives the card back.
+type YieldTarget struct {
+	Deployment *store.Deployment
+	Instance   store.Instance
+}
+
+// YieldBlocker is an occupant a yielding wake cannot put to sleep, and why:
+// its deployment cannot sleep, it would leave a PD role empty, or the GPU is
+// held by a process outside the platform (Deployment nil).
+type YieldBlocker struct {
+	Deployment string
+	Code       string
+}
+
+// YieldTargets are the awake instances occupying the GPUs the refused wakes
+// need, each replica once (a multi-node replica sleeps whole through its
+// leader), and the occupants that cannot be put to sleep. A wake that yields
+// proceeds only when there are no blockers: putting some occupants to sleep
+// and not others would take service away without making room.
+func YieldTargets(st *store.Store, refusals []WakeRefusal) ([]YieldTarget, []YieldBlocker, error) {
+	var targets []YieldTarget
+	var blockers []YieldBlocker
+	seen := map[string]bool{}
+	waking := map[string]bool{}
+	for _, r := range refusals {
+		for _, in := range r.Instances {
+			waking[in.UUID] = true
+		}
+	}
+	for _, r := range refusals {
+		allocations := GPUAllocations(st, r.Node)
+		for _, short := range r.Verdict.Shortfalls {
+			if short.HeldOutside {
+				blockers = append(blockers, YieldBlocker{Code: "held_outside"})
+				continue
+			}
+			for _, in := range allocations[short.GPUIndex].Instances {
+				if waking[in.UUID] || seen[in.UUID] || chargesResidue(st, &in) || !proto.InstanceFillsReplica(in.State) {
+					continue
+				}
+				seen[in.UUID] = true
+				dep, err := st.GetDeployment(in.DeploymentID)
+				if err != nil {
+					return nil, nil, err
+				}
+				insts, err := st.InstancesForDeployment(dep.ID)
+				if err != nil {
+					return nil, nil, err
+				}
+				match, err := DeploymentMatch(st, dep, insts)
+				if err != nil {
+					return nil, nil, err
+				}
+				slot := match.SlotOf(in.UUID)
+				if slot != nil {
+					for _, member := range ReplicaMembers(slot) {
+						seen[member.UUID] = true
+					}
+				}
+				inst := in
+				if slot != nil {
+					inst = *slot.Inst
+				}
+				if refusal := InstanceSleepRefusal(dep, match, &inst, true); refusal != nil {
+					blockers = append(blockers, YieldBlocker{Deployment: dep.Name, Code: refusal.Code})
+					continue
+				}
+				targets = append(targets, YieldTarget{Deployment: dep, Instance: inst})
+			}
+		}
+	}
+	return targets, blockers, nil
 }

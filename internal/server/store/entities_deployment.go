@@ -74,6 +74,11 @@ type Deployment struct {
 	// /v1/detokenize for the deployment. It is stored inverted so the zero
 	// value (and every row from before the column) means they are open.
 	TokenizeDisabled bool `gorm:"not null;default:false"`
+	// IdleSleepAfterSec puts the deployment to sleep after this long without
+	// a user request through the gateway; 0 turns idle sleep off.
+	// IdleSleepLevel is the level it sleeps at (1 or 2).
+	IdleSleepAfterSec int `gorm:"not null;default:0"`
+	IdleSleepLevel    int `gorm:"not null;default:2"`
 	// NodeReplaceAfterSec is how long a node that runs one of the
 	// deployment's replicas may stay offline before the replica is moved to
 	// another node; 0 never moves it.
@@ -164,12 +169,16 @@ type Instance struct {
 	// card was shared, or the agent predates the measurement): the ledger
 	// then charges an estimate (sleep.ResidueBytes).
 	SleepResidueBytes int64
-	DistGroup         string `gorm:"size:64;index"`
-	DistRole          string `gorm:"size:16"` // leader | follower
-	NNodes            int
-	NodeRank          int
-	Headless          bool
-	DistAttempt       int
+	// WakeWaitingSince is when a wake that did not fit started waiting for
+	// room; nil when no wake waits. The controller wakes the instance once its
+	// GPUs can take it back, or gives up after the wait limit.
+	WakeWaitingSince *time.Time `gorm:"index"`
+	DistGroup        string     `gorm:"size:64;index"`
+	DistRole         string     `gorm:"size:16"` // leader | follower
+	NNodes           int
+	NodeRank         int
+	Headless         bool
+	DistAttempt      int
 	// Role is the instance's role in a PD disaggregated deployment
 	// (pdmode.Role*); empty for every other deployment. It is independent of
 	// DistRole, which ranks a multi-node group.

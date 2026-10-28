@@ -84,6 +84,8 @@ DELETE /api/v1/ai/configs/{id}
 DELETE /api/v1/apikeys/{prefix}
 DELETE /api/v1/benchmarks/{id}
 DELETE /api/v1/deployments/{id}
+DELETE /api/v1/deployments/{id}/schedule/{sid}
+DELETE /api/v1/deployments/{id}/wake-waiting
 DELETE /api/v1/image-series/{id}
 DELETE /api/v1/images/{id}
 DELETE /api/v1/images/{id}/nodes/{uuid}
@@ -135,6 +137,7 @@ GET /api/v1/deployments/{id}
 GET /api/v1/deployments/{id}/candidates
 GET /api/v1/deployments/{id}/draft
 GET /api/v1/deployments/{id}/events
+GET /api/v1/deployments/{id}/schedule
 GET /api/v1/dgpus
 GET /api/v1/engines
 GET /api/v1/events
@@ -205,6 +208,7 @@ GET /api/v1/pull/registry-credentials
 GET /api/v1/pull/source-rules
 GET /api/v1/pull/sync-groups
 GET /api/v1/routing-policies
+GET /api/v1/scheduling/board
 GET /api/v1/security/settings
 GET /api/v1/server/listen
 GET /api/v1/settings
@@ -253,6 +257,7 @@ POST /api/v1/deployments
 POST /api/v1/deployments/preflight
 POST /api/v1/deployments/{id}/clone
 POST /api/v1/deployments/{id}/restart
+POST /api/v1/deployments/{id}/schedule
 POST /api/v1/deployments/{id}/sleep
 POST /api/v1/deployments/{id}/start
 POST /api/v1/deployments/{id}/stop
@@ -339,12 +344,14 @@ PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
+PUT /api/v1/deployments/{id}/idle-sleep
 PUT /api/v1/deployments/{id}/node-replacement
 PUT /api/v1/deployments/{id}/pd
 PUT /api/v1/deployments/{id}/placement-mode
 PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing
+PUT /api/v1/deployments/{id}/schedule/{sid}
 PUT /api/v1/deployments/{id}/tokenize
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}

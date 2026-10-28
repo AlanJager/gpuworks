@@ -859,7 +859,7 @@ The gateway error body differs from the management API: `{"error":{"message":"�
 | 404 | `no deployment serves model <name>` | The model name is not the deployment's served name (list names with `GET /v1/models`), or the deployment has stopped |
 | 404 | `deployment <name> does not expose <METHOD> <path>` | Only the playground (`/api/v1/playground/v1/*`) performs contract checks and returns this error: the deployment's API contract does not include this endpoint (for example, calling `/v1/embeddings` on a Chat model). Use `GET /api/v1/playground/openapi.json` to view its declared endpoints. The public `/v1` does not perform this check; it forwards the request unchanged to the engine, which returns its own 404 or other response |
 | 404 | (The entire `/v1` path returns 404) | The listener you accessed does not serve the inference API. Check `listen.gateway` |
-| 503 | `model is asleep; wake it first` | No awake replica is available to serve requests. Call `POST /api/v1/deployments/{id}/wake` as needed. Once sleep intent is issued, selected instances stop accepting new requests |
+| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Center](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
 | 503 | `no running instance for <name> (still starting?)` | No running replica: it is still starting, has failed, has been stopped, or its node is offline. Check instance status |
 | 503 | `distributed model <name> is not ready: rank N is unavailable`, `distributed model leader is offline for <name>`, `distributed model leader is not ready for <name>`, `distributed deployment node set is incomplete for <name>` | A rank or the leader in a multi-node deployment is not ready |
 | 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … did not reattach within 5s` | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
@@ -912,9 +912,14 @@ See [Sleep / Wake](sleep-wake.md).
 | `SLEEP_ENGINE_UNSUPPORTED` | 400 | The engine does not support sleep (only vLLM supports it) |
 | `PD_SLEEP_RDMA_UNSUPPORTED` | 400 | A sleep-enabled PD deployment cannot send KV traffic over the host RDMA network: disable sleep, or switch the nodes to an Ethernet compute network |
 | `SLEEP_INVALID_LEVEL` / `SLEEP_INVALID_MODE` | 400 | `level` must be `1` or `2`; `mode` must be `wait` or `abort` |
-| `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | The GPUs are occupied, so the sleeping instance cannot fit back on them. `params` contains `gpu_indexes`, `shortfall_gib`, and `occupants`; stop or put the occupants to sleep first |
-| `WAKE_GPU_HELD_OUTSIDE` | 409 | A process outside the platform holds the card, so the platform cannot see its usage and does not allow the wake. `params` as above, and `refused[].held_outside` is true. Release that process on the node and retry; see [Card Is in Use by Processes Outside the Platform](#卡被平台外进程占用) |
+| `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | The GPUs are occupied, so the sleeping instance cannot fit back on them. `params` contains `gpu_indexes`, `shortfall_gib`, and `occupants`; stop or put the occupants to sleep first, or use `?wait=true` to wait for room or `?yield=true` to put the occupants to sleep and then wake |
+| `WAKE_GPU_HELD_OUTSIDE` | 409 | A process outside the platform holds the card, so the platform cannot see its usage and does not allow the wake (waiting and yielding do not help either). `params` as above, and `refused[].held_outside` is true. Release that process on the node and retry; see [Card Is in Use by Processes Outside the Platform](#卡被平台外进程占用) |
+| `WAKE_YIELD_BLOCKED` | 409 | A yielding wake cannot be done and nothing changed: `params.occupants` includes a deployment that cannot sleep, the last awake role of a PD deployment, or a process outside the platform. Wait for room instead, or deal with the occupants by hand |
 | `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | An L1 sleep moves the weights into host memory, and the available memory minus the headroom (the larger of 5% of total memory and 4 GiB) cannot hold them. `params` contains `node`, `need_gib`, and `available_gib`; use L2 |
+| `SCHEDULE_INVALID` | 400 | A field of the schedule is invalid: `params.field` and `params.reason` say which (weekdays, the `HH:MM` time format, sleep level, replica count 1–32, action) |
+| `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | The server does not know the time zone name; use an IANA name (such as `Asia/Shanghai`), or leave it empty for the server's time zone |
+| `SCHEDULE_REPLICAS_SHAPE` | 400 | Multi-node and PD deployments cannot have their replica count scheduled, because their replicas list nodes one by one |
+| `IDLE_SLEEP_INVALID` | 400 | Idle sleep `after_sec` must be 0 (off) or 60–604800, and `level` must be 1 or 2 |
 | `NODE_REPLACEMENT_INVALID` | 400 | The node replacement wait must be 0 (never) or 60–604800 seconds |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` names more nodes than the replicas being added |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit); an automatically placed multi-node deployment also has `no_group` (the named nodes cannot form a replica that fits: different compute networks or architectures, or not enough cards) |
@@ -927,6 +932,21 @@ See [Sleep / Wake](sleep-wake.md).
    `sleep level uncertain after …`. Its full GPU memory allocation is retained and gateway forwarding is blocked. The controller recreates this generation of instances.
 3. A failure with a confirmed state: the confirmed actual sleep level is retained. If the desired state still corresponds to the failed command, it is rolled back to that actual level (also applies to failed L1 / L2 transitions). The event is `INSTANCE_SLEEP_RESULT`,
    with `params.result` set to `failed_rollback` (`applied` on success). Failures are not retried automatically.
+
+### Schedules, Idle Sleep, or Waiting Did Not Run as Expected
+
+**Symptom**: a sleep or wake did not happen at the scheduled time, or a deployment was put to sleep unexpectedly.
+
+**How to confirm and handle it**: First look at the entries of type `automation` in the deployment timeline, or at **Recent automatic actions** in the Scheduling Center:
+
+| Event | Meaning and handling |
+|---|---|
+| `SCHEDULE_ACTION_FAILED` | The automatic action was refused. `params.reason` is the cause and `reason_code` the matching error code (see the table above); the failed occurrence is not retried, so fix the cause and wait for the next one, or run it by hand |
+| `WAKE_WAITING` | A scheduled wake did not fit and now waits for room; look at the scheduling board to see who holds the cards |
+| `WAKE_WAIT_TIMEOUT` | The wait ended after 30 minutes with no room; free the cards and wake again |
+| `AUTO_SLEEP` (`trigger` is `idle`) | Idle sleep fired; `idle_sec` is the idle time. Health checks and other requests the platform makes itself do not reset the clock |
+
+After a server outage, only the newest occurrence within 12 hours is made up. If a schedule's `next_at` does not match your time, check its `timezone` (empty means the server's time zone).
 
 ### Replicas Were Not Moved to Another Node After a Node Went Offline
 

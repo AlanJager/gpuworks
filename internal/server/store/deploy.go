@@ -450,6 +450,9 @@ func (s *Store) DeleteDeployment(id uint) error {
 		if err := tx.Where("deployment_id = ?", id).Delete(&DeploymentNodeRequirement{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
+			return err
+		}
 		result := tx.Delete(&Deployment{}, id)
 		if result.Error != nil {
 			return result.Error
