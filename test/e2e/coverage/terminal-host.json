@@ -8,7 +8,13 @@
   "page_id": "terminal",
   "lane": "local-real-server-agent-webterm",
   "identity": "admin browser / the node's real agent",
-  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
   "runtime_evidence": {
     "status": "N/A",
     "reason": "The real agent starts a host pty. No container, GPU, engine or inference is claimed."
@@ -25,39 +31,75 @@
       "component": "Node row terminal button",
       "request": "GET /nodes/{uuid}/terminal/settings",
       "persisted": "N/A: session",
-      "covered": ["an online node opens a terminal tab", "the connected status appears"],
-      "missing": ["an offline node and its disabled button", "a node without the webterm capability"]
+      "covered": [
+        "an online node opens a terminal tab",
+        "the connected status appears"
+      ],
+      "missing": [
+        "an offline node and its disabled button",
+        "a node without the webterm capability"
+      ]
     },
     {
       "id": "terminal.pty",
       "component": "xterm host terminal",
       "request": "terminal websocket frames",
       "persisted": "N/A: pty session",
-      "covered": ["echo marker reaches the real shell and returns", "exit ends the session with the ended status"],
-      "missing": ["multi-byte and box-drawing output", "resize/SIGWINCH", "full-screen programs", "reconnect after a dropped connection"]
+      "covered": [
+        "echo marker reaches the real shell and returns",
+        "exit ends the session with the ended status",
+        "multi-byte and box-drawing output",
+        "resize/SIGWINCH"
+      ],
+      "missing": [
+        "full-screen programs",
+        "reconnect after a dropped connection"
+      ]
     },
     {
       "id": "terminal.policy",
       "component": "Settings Web Terminal card",
       "request": "PUT /api/v1/settings/terminal",
       "persisted": "enabled",
-      "covered": ["disabled in the UI blocks a new terminal with the server reason", "re-enabled restores the terminal", "the switch state is read back"],
-      "missing": ["idle timeout firing", "SIGTERM/SIGKILL grace", "per-node and global limits", "disabling while a session is open", "non-admin access"]
+      "covered": [
+        "disabled in the UI blocks a new terminal with the server reason",
+        "re-enabled restores the terminal",
+        "the switch state is read back",
+        "idle timeout firing",
+        "per-node and global limits",
+        "non-admin access"
+      ],
+      "missing": [
+        "SIGTERM/SIGKILL grace",
+        "disabling while a session is open"
+      ]
     },
     {
       "id": "terminal.cleanup",
       "component": "N/A: process cleanup",
       "request": "DELETE /nodes/{uuid}?force=true",
       "persisted": "removal",
-      "covered": ["agent stopped", "owned node deleted"],
-      "missing": ["the audit record contents", "closing a session while a command is running"]
+      "covered": [
+        "agent stopped",
+        "owned node deleted",
+        "the audit record contents"
+      ],
+      "missing": [
+        "closing a session while a command is running"
+      ]
     }
   ],
   "checklist_items": {
     "19.1": "The online node's preflight admits the host terminal; the Settings kill switch denies and restores it",
     "19.2": "Typed keyboard input reaches the real pty and its output is visible",
     "19.4": "Exit ends the session and the ended state is shown",
-    "22.2": "The Settings Access tab is selected through the real Tabs control"
+    "22.2": "The Settings Access tab is selected through the real Tabs control",
+    "19.3": "Real host PTY bytes end to end: the first UTF-8 byte of 中 is held by a private file gate until the browser observes it as an actual WS binary frame, the reassembled 中┌终端┐ and three consecutive BATCH lines match exact bytes in xterm, and a real viewport resize yields client resize frames whose final quiescent rows/cols equal the settled PTY stty size and the host SIGWINCH trap log (settle race fixed and recorded).",
+    "19.5": "Policy persisted through the real Settings UI (per-node 1, global 2, idle 1min): a second session on the occupied node and a third session across two full nodes are refused at preflight with 429 node/global busy and no WS/audit, and a direct upgrade-shaped request is refused the same way; a real one-minute idle session ends with exit -1 \"idle timeout\", audit idle_timeout, duration >= 60s, active_total 0 and the PID gone, after which a new PTY connects.",
+    "19.6": "Every host session audit row is compared field-exact between the API and SQLite: admin principal, selected node, host target with empty ref, client IP, started/ended timestamps, close reason and byte counters with input bytes equal to the real WS binary count; metadata keys are exact and contain no command/output/token/password content.",
+    "22.1": "The admin Nodes menu popup, the explicit /nodes/{uuid}/terminal?target=host deep link and a real reload each establish distinct audited host PTYs with the correct title, host banner, WS target and URL query, verified against independent host files (PID/start_ticks, agent ancestry); a disconnected context proves release.",
+    "22.3": "A non-admin user sees the Nodes menu and the enabled terminal button as the product currently renders them, but the popup and the host deep link get preflight 403 with the localized permission text, zero new WS/audit, and a direct upgrade-shaped API request is refused 403 ADMINISTRATOR_REQUIRED.",
+    "22.7": "The node-row terminal popup opens the exact /nodes/{uuid}/terminal URL with window.opener===null while the explicit host deep link and reload still reach the real PTY; an unknown node yields node-detail 404 plus preflight 200 can_open=false with the raw server reason, never an SPA-200 success."
   },
   "missing": [
     "MISSING: checklist 19.3 (UTF-8 across frames, continuous output and resize/SIGWINCH)",
@@ -74,5 +116,143 @@
     "MISSING: audit metadata and non-admin access"
   ],
   "artifact": "secrets/e2e/<runId>/report.json with source/binary/agent/test digests, locale, preflight responses, settings PUT bodies, terminal marker/exit evidence and redacted server/agent logs",
-  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup"
+  "result": "NOT_RUN until a matching report.json records PASS with all required evidence, source and binary identity, and scoped cleanup",
+  "host_gates_evidence": {
+    "items": [
+      "19.3",
+      "19.5",
+      "19.6",
+      "22.1",
+      "22.3",
+      "22.7"
+    ],
+    "authority": "terminal-host (sole host-PTY authority; container terminal keeps its own contract)",
+    "normal_binary_sha256": "607839573e79e129d66af1d2f0200ad4cd037c0f88bf9d0dbfc00f6af779fba2",
+    "agent_binary_sha256": "0ff06d0af402ef1da40777cca67399266d98ee93f2f03d6f7fa9eadd7c3a4920",
+    "contract": "v3 strict-200 cleanup contract + settle-fixed resize oracle; sessions sha256 fc9686dccfa9578ab03c16b477d8aa9c76f9183ce122742401e6cc1bacd6d73c",
+    "normal_runs": [
+      {
+        "locale": "en",
+        "run_id": "20261027T150816Z-db29c298",
+        "report": "secrets/e2e/terminal-host-v3-en-20261027-03/report.json",
+        "report_sha256": "3a1265a4d44b86a2f41afdfb94f2bb579a95cc0990aaff2b9b42285f554dff96"
+      },
+      {
+        "locale": "zh",
+        "run_id": "20261027T151027Z-f290cbf5",
+        "report": "secrets/e2e/terminal-host-v3-zh-20261027/report.json",
+        "report_sha256": "e20a64b974cfdae6c4a334305d3863354b734c4b9b717ec011dfe206c4f63d82"
+      }
+    ],
+    "fault_runs": [
+      {
+        "item": "22.7",
+        "name": "terminal-popup-noopener",
+        "cohort": "terminal-fault-cohort-v1",
+        "run_id": "20261027T151928Z-7918a2f4",
+        "report_sha256": "7ab96d69f5a2cd4527f06afb70296ded362860efb8c889f2fccc58daeaae4d02",
+        "archive_sha256": "b88486458a2db2da6281a997c076d0b371a2406a12f12cc14a3bc53e4e050860",
+        "binary_sha256": "9a73f742c9c7b351165b484b0edba3ee7da3034a0f1298c4d54480254bdcdef3",
+        "review_note": "Killed at the popup opener oracle: with \"noopener\" removed the new tab has window.opener, so the exact require fails before any PTY claim.",
+        "expectation_correction": null
+      },
+      {
+        "item": "19.3",
+        "name": "terminal-utf8-decode",
+        "cohort": "terminal-fault-cohort-v1",
+        "run_id": "20261027T152405Z-45bb1236",
+        "report_sha256": "48b01bb2653ab9e47fd4dce2a7c87e67dd6433a3c68e86c042a8665f76433360",
+        "archive_sha256": "86413bc4b5673c1b376f6e38e58aa08424018294325ccd6728ecbdcccdfa9022",
+        "binary_sha256": "79d9072e933aa70c6a84608f838d10a142232983e7a2880a4f27fbfcc4cf1215",
+        "review_note": "Killed at the xterm reassembly assertion: per-frame TextDecoder corrupts the split 中┌终端┐ while the WS byte oracle still passes, proving UI-layer attribution.",
+        "expectation_correction": null
+      },
+      {
+        "item": "19.3",
+        "name": "terminal-resize-dropped",
+        "cohort": "terminal-fault-cohort-v1",
+        "run_id": "20261027T152752Z-0f2ad87e",
+        "report_sha256": "3252aa733d9abc5122b23e9b7cdadbf9562bd206f5ff1ecb0b072743ecf11d6a",
+        "archive_sha256": "3c1356a727f3ca2f0e4ee9c284bee24d39456a7ec6d035083858b213d2e5dfa7",
+        "binary_sha256": "99fbf974369dc860e1486c1b855d35df1e3b06d296a1023c229a4dd85383601d",
+        "review_note": "Killed at the ResizeObserver frame poll: no client resize frame is ever sent, so the stty/SIGWINCH chain cannot be claimed.",
+        "expectation_correction": null
+      },
+      {
+        "item": "22.1",
+        "name": "terminal-deep-target-corrupted",
+        "cohort": "terminal-fault-cohort-v1",
+        "run_id": "20261027T153154Z-a6b2bec4",
+        "report_sha256": "6a99f210fefc031d071e9748c55a5c5e168e349fe52ca6edff3fed64acaa40fd",
+        "archive_sha256": "5c2b11debfe6d4303ccb400913b68f7ed6a2e8818f6fc0108605c82e839b260a",
+        "binary_sha256": "075fd978becaeb44dce56430253569c05efdcba84e3239251fcf0aeabb25c445",
+        "review_note": "Killed at the first explicit deep link: connected() waits for the \"Connected\" banner 20s (element not found).",
+        "expectation_correction": "Expected wording said \"Timeout 20000ms exceeded\"; Playwright Python renders \"timeout 20000ms\" in the call log. Kill point identical, classification corrected only."
+      },
+      {
+        "item": "19.5",
+        "name": "terminal-node-limit-removed",
+        "cohort": "terminal-fault-cohort-v2",
+        "run_id": "20261027T153522Z-453012a6",
+        "report_sha256": "abb8e4f71081989a29504dbb571457faec31dbdb37f16d0d978079e57204b3fa",
+        "archive_sha256": "cd530da2ca3b7a65f39e9c5c4d6e8c6f1d9171c821e59cc3f5076c6a49d7debb",
+        "binary_sha256": "7874f0139a5fa757bb74d8b8038a13f4f82bdb7ab02651a7dd35baab02915c69",
+        "review_note": "Killed at gates.py:149 upgrade_denied: with the per-node guard removed the direct upgrade is admitted instead of 429, so the raw HTTP GET hangs and the client times out after 30s; upgrade_denials stays empty.",
+        "expectation_correction": "Bypass manifestation anticipated by the candidate kill plan (\"101/connection error must be preserved, not treated as expected refusal\"). Signature reclassified to the hang evidence; original report unchanged."
+      },
+      {
+        "item": "19.5",
+        "name": "terminal-global-limit-removed",
+        "cohort": "terminal-fault-cohort-v3",
+        "run_id": "20261027T191538Z-d8350a76",
+        "report_sha256": "588f291353cfa286f7c47f981b677add5f6070c2721d26504f82f2875bb7500f",
+        "archive_sha256": "07fd39a982e7ce9118eb1e1f9c90881044dcaabc90e653f4db69afea1ccf9f90",
+        "binary_sha256": "68fb0b6b1edc779222426ec504813cb4e6ae0353919ce350c563f8a7e2fe4f07",
+        "review_note": "Killed at gates.py:154 upgrade_denied: with the global guard removed the intact per-node guard fires first, yielding 429 NODE_BUSY where the contract requires GLOBAL_BUSY (\"direct WS denial reason/code differs\"). Matches Begin checking global before perNode.",
+        "expectation_correction": "Expected the same hang manifestation as the node-limit mutant; the real effect is the cleaner reason substitution. Classification corrected only."
+      },
+      {
+        "item": "22.3",
+        "name": "terminal-settings-no-admin",
+        "cohort": "terminal-fault-cohort-v4",
+        "run_id": "20261027T191843Z-4c18e338",
+        "report_sha256": "3d070b05ec7aadc9e0cf5d8678d29fdb245154750195d28960e0e309883a03ef",
+        "archive_sha256": "5ffc8fd9f01aa49adb5d9777c21e47c9920581f1a74bbc5c9be62a7bf5a2ffaf",
+        "binary_sha256": "df76ef62b29de4fbdf86e363f527904504020bbdcd582e25c55d1eb8991c0ede",
+        "review_note": "Killed at gates.py:95 denied(): with managementAdmin removed from terminal/settings, the non-admin preflight succeeds and the UI never renders \"Administrator permissions are required.\" (5s expect timeout); the error heading still appears via the WS guard, consistent with the single-variable mutation.",
+        "expectation_correction": "Expected a 20s first-expect timeout; the failure lands on the second expect (permission text, 5s). Classification corrected only."
+      },
+      {
+        "item": "19.6",
+        "name": "terminal-audit-principal",
+        "cohort": "terminal-fault-cohort-v5",
+        "run_id": "20261027T192302Z-97dab7b3",
+        "report_sha256": "21e41cfccd66e4483aca3d4846401f2c0ba7a38c02940ff84fc4056a7c1870d5",
+        "archive_sha256": "bfe457ab1d6ba8045cb41629d423211d66a4d68c8bb655f3e5a29730ae23613b",
+        "binary_sha256": "cfb5fdbe71c7d752fb290815f14ff8720987f2c9274fa038bcd376335ab1eaa7",
+        "review_note": "Killed at audit_contract: the mutated Username makes the API audit row fail the exact subject assertion \"audit subject/host target differs\".",
+        "expectation_correction": null
+      },
+      {
+        "item": "19.5",
+        "name": "terminal-idle-never-expires",
+        "cohort": "terminal-fault-cohort-v5",
+        "run_id": "20261027T192520Z-b6e70ff1",
+        "report_sha256": "238f4aa1a379ce4e8a0af0e7ab6bab940ba962a658424310df0bee80acb4b538",
+        "archive_sha256": "60bd6713a70755f3600a3ae9e737fdd0a9de490881dcfe2c95adf5a7340db04b",
+        "binary_sha256": "e0a2d8b0c0c30c8353fe492ad3d9d4e8b2c0f65a4882e077e2ff5115aba1e279",
+        "review_note": "Killed at the real idle wait: with watchIdle neutered the session never exits, so the 95s bounded wait for the localized exited banner times out.",
+        "expectation_correction": null
+      }
+    ],
+    "iterations": "first en run failed on the resize settle race (20261027T150221Z-25cf6da9, archived unchanged); oracle hardened to quiescent-frame + WINCH-last-line settle, no assertion weakened; diagnostic-only run 20261027T150515Z-43f5c989",
+    "controls": [
+      "four fault expectations reclassified to the real manifestation (deep-target wording, node-limit upgrade hang, global-limit per-node shadowing, settings second-expect timeout); original reports unchanged",
+      "two ineffective-candidate rounds (v2 204 contract) documented under terminal-host-candidate-v2/v3 before application"
+    ],
+    "limits": [
+      "22.5 stays uncovered: server preflight reasons remain English under zh and there is no generic translated empty-target screen; MR753 localizes the eight known reasons but is not merged and not in this binary",
+      "no container/GPU/runtime claim; agent runs --driver none on the real host"
+    ]
+  }
 }
