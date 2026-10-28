@@ -1568,6 +1568,7 @@
           "int8",
           "int8_per_token_head",
           "int4_per_token_head",
+          "mxfp8",
           "turboquant_k8v4",
           "turboquant_4bit_nc",
           "turboquant_k3v4_nc",
@@ -1678,6 +1679,13 @@
             "label": {
               "en": "INT4 per-token-head",
               "zh": "INT4 per-token-head"
+            }
+          },
+          {
+            "value": "mxfp8",
+            "label": {
+              "en": "MXFP8",
+              "zh": "MXFP8"
             }
           },
           {

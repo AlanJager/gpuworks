@@ -907,7 +907,7 @@
   "launchConfig": {
     "moved": "已移入参数字段：{{keys}}",
     "movedDismiss": "知道了",
-    "extraArgsHelp": "参数字典之外的参数，原样传给引擎。写在这里的字典内参数会自动移入对应字段。",
+    "extraArgsHelp": "参数字典之外的参数。文本按 shell 命令行拆分，含双引号的值（如 JSON）请用单引号包起来：--compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}'。写在这里的字典内参数会自动移入对应字段。",
     "templateArgs": "来自模板的附加参数",
     "templateArgsHint": "由推理模板携带，部署时一并下发；在上方填写同名参数会覆盖模板的取值。",
     "manualEstimate": "手动命令，估算不适用",

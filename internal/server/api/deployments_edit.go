@@ -281,6 +281,9 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 	if err != nil {
 		return bad(wrapProductError(ErrorExtraArgsInvalid, "extra_args cannot be parsed", map[string]any{"detail": err.Error()}, err))
 	}
+	if err := deploy.ValidateExtraArgsJSON(extra); err != nil {
+		return bad(err)
+	}
 	edited, removed, err := deploy.EditedParams(engine.Name(), base, req.QuickParams, req.QuickParamsUnset)
 	if err != nil {
 		return bad(err)

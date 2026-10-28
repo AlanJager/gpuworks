@@ -1,0 +1,9 @@
+kv_bytes_per_token:
+  vllm: 32768
+  sglang: 32768
+model_id: z-lab/kimi-k2.5-dflash
+source: upstream
+display_title: Kimi-K2.5-DFlash
+release_date: '2026-04-14'
+specs: []
+input_modalities: [text]

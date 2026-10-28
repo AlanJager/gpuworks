@@ -82,6 +82,7 @@ func TestDockerArgCodesMatchTheirProducer(t *testing.T) {
 		ErrorDockerArgUseMountField:      deploy.ErrorDockerArgUseMountField,
 		ErrorDockerArgUseEntrypointField: deploy.ErrorDockerArgUseEntrypointField,
 		ErrorShmSizeWithHostIPC:          deploy.ErrorShmSizeWithHostIPC,
+		ErrorExtraArgsJSONInvalid:        deploy.ErrorExtraArgsJSONInvalid,
 	} {
 		if api != producer {
 			t.Fatalf("api code %q, deploy code %q", api, producer)

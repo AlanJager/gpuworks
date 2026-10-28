@@ -26,6 +26,9 @@ func materializeDeployRequest(engine string, req *dto.DeployRequest, selection t
 	if err != nil {
 		return deploy.Materialized{}, wrapProductError(ErrorExtraArgsInvalid, "extra_args cannot be parsed", map[string]any{"detail": err.Error()}, err)
 	}
+	if err := deploy.ValidateExtraArgsJSON(extra); err != nil {
+		return deploy.Materialized{}, err
+	}
 	command, err := effectiveRequestCommand(req, selection)
 	if err != nil {
 		return deploy.Materialized{}, err

@@ -285,16 +285,17 @@ func TestEditDeploymentRefusals(t *testing.T) {
 		status int
 		want   string
 	}{
-		"model":             {dto.DeploymentEditRequest{Deployment: locked, BaseRevision: draft.Revision}, http.StatusBadRequest, `"field":"model_id"`},
-		"engine":            {dto.DeploymentEditRequest{Deployment: engine, BaseRevision: draft.Revision}, http.StatusBadRequest, `"field":"engine"`},
-		"served name":       {dto.DeploymentEditRequest{Deployment: served, BaseRevision: draft.Revision}, http.StatusBadRequest, `"field":"served_name"`},
-		"stale revision":    {dto.DeploymentEditRequest{Deployment: draft.Deployment, BaseRevision: "0000"}, http.StatusConflict, ErrorDeploymentChanged},
-		"no revision":       {dto.DeploymentEditRequest{Deployment: draft.Deployment}, http.StatusBadRequest, `"field":"base_revision"`},
-		"unknown field":     {`{"deployment":{},"base_revision":"x","surprise":1}`, http.StatusBadRequest, `"field":"body"`},
-		"bad extra args":    {dto.DeploymentEditRequest{Deployment: withExtra(draft.Deployment, `--x "unterminated`), BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorExtraArgsInvalid},
-		"bad routing":       {dto.DeploymentEditRequest{Deployment: withRouting(draft.Deployment, "sideways"), BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorRoutingPolicyInvalid},
-		"never fits":        {dto.DeploymentEditRequest{Deployment: big, BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorDeploymentNeverFits},
-		"start when active": {dto.DeploymentEditRequest{Deployment: withExtra(draft.Deployment, "--custom-flag x"), BaseRevision: draft.Revision, Start: true}, http.StatusBadRequest, ErrorDeploymentEditApplyInvalid},
+		"model":                     {dto.DeploymentEditRequest{Deployment: locked, BaseRevision: draft.Revision}, http.StatusBadRequest, `"field":"model_id"`},
+		"engine":                    {dto.DeploymentEditRequest{Deployment: engine, BaseRevision: draft.Revision}, http.StatusBadRequest, `"field":"engine"`},
+		"served name":               {dto.DeploymentEditRequest{Deployment: served, BaseRevision: draft.Revision}, http.StatusBadRequest, `"field":"served_name"`},
+		"stale revision":            {dto.DeploymentEditRequest{Deployment: draft.Deployment, BaseRevision: "0000"}, http.StatusConflict, ErrorDeploymentChanged},
+		"no revision":               {dto.DeploymentEditRequest{Deployment: draft.Deployment}, http.StatusBadRequest, `"field":"base_revision"`},
+		"unknown field":             {`{"deployment":{},"base_revision":"x","surprise":1}`, http.StatusBadRequest, `"field":"body"`},
+		"bad extra args":            {dto.DeploymentEditRequest{Deployment: withExtra(draft.Deployment, `--x "unterminated`), BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorExtraArgsInvalid},
+		"JSON flag lost its quotes": {dto.DeploymentEditRequest{Deployment: withExtra(draft.Deployment, `--compilation-config {"a":1}`), BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorExtraArgsJSONInvalid},
+		"bad routing":               {dto.DeploymentEditRequest{Deployment: withRouting(draft.Deployment, "sideways"), BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorRoutingPolicyInvalid},
+		"never fits":                {dto.DeploymentEditRequest{Deployment: big, BaseRevision: draft.Revision}, http.StatusBadRequest, ErrorDeploymentNeverFits},
+		"start when active":         {dto.DeploymentEditRequest{Deployment: withExtra(draft.Deployment, "--custom-flag x"), BaseRevision: draft.Revision, Start: true}, http.StatusBadRequest, ErrorDeploymentEditApplyInvalid},
 	} {
 		t.Run(name, func(t *testing.T) {
 			status, body := putEdit(t, h, dep.ID, c.body, false)

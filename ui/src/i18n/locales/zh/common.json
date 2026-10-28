@@ -345,6 +345,7 @@
     "FIELD_INVALID": "无效的值：{{detail}}",
     "ENGINE_INVALID": "未知引擎“{{engine}}”。",
     "EXTRA_ARGS_INVALID": "额外参数无法解析：{{detail}}",
+    "EXTRA_ARGS_JSON_INVALID": "{{flag}} 的值必须是合法 JSON，但收到的是 {{value}}。此文本框按 shell 命令行拆分，JSON 请用单引号包起来，例如 {{flag}} '{\"key\":\"value\"}'。",
     "MOUNT_CONTAINER_PATH": "挂载的容器路径必须是非根目录的绝对路径（{{target}}）。",
     "MOUNT_HOST_PATH": "挂载的宿主机路径必须是非根目录的绝对路径（{{source}}）。",
     "MOUNT_TARGET_NESTED": "挂载的容器目标路径不能互相嵌套：{{parent}} 与 {{child}}。",

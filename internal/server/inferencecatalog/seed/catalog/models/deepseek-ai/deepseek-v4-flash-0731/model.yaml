@@ -329,4 +329,86 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# 950DT runs this model from the plain BF16 checkpoint, not from the W8A8
+# weights the A2 and A3 profiles above use, and therefore takes no
+# `--quantization ascend`. The published recipe is eight devices with pure data
+# parallelism, an FP8 KV cache and FP8 indexer (A2/A3 use an int8 indexer and no
+# `--kv-cache-dtype`), DSpark speculative decoding at k=5, and
+# HCCL_OP_EXPANSION_MODE=CCU_SCHED where the other cards use AIV. No 950DT
+# hardware was available, so these arguments are the published recipe rather
+# than a measured one. `--reasoning-config` is not in the published command; it
+# is carried because this model's other profiles declare it and every vendor's
+# profile of a model has to agree on the parsers
+# (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs).
+- name: bf16-vllm-ascend-950dt-f981a343
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: deepseek-ai/DeepSeek-V4-Flash-0731
+        revision: f981a343464c25f82b901e5882716b3b2fa514de
+  weight_bytes: 166898521256
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --data-parallel-size
+  - '8'
+  - --prefill-context-parallel-size
+  - '1'
+  - --enable-expert-parallel
+  - --enable-chunked-prefill
+  - --max-model-len
+  - '1048576'
+  - --max-num-batched-tokens
+  - '16384'
+  - --max-num-seqs
+  - '32'
+  - --gpu-memory-utilization
+  - '0.9'
+  - --block-size
+  - '32'
+  - --safetensors-load-strategy
+  - prefetch
+  - --tokenizer-mode
+  - deepseek_v4
+  - --tool-call-parser
+  - deepseek_v4
+  - --enable-auto-tool-choice
+  - --reasoning-parser
+  - deepseek_v4
+  - --reasoning-config
+  - '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}'
+  - --kv-cache-dtype
+  - fp8
+  - --no-disable-hybrid-kv-cache-manager
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --speculative-config
+  - '{"num_speculative_tokens":5,"method":"dspark"}'
+  - --additional-config
+  - '{"enable_cpu_binding":"True","multistream_overlap_shared_expert":true,"enable_shared_expert_dp":true}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    OMP_PROC_BIND: 'false'
+    OMP_NUM_THREADS: '10'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    TASK_QUEUE_ENABLE: '1'
+    HCCL_OP_EXPANSION_MODE: CCU_SCHED
+    HCCL_BUFFSIZE: '1024'
+    VLLM_USE_FASTOKENS: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8: return reject(\"the published 950DT recipe runs exactly 8 devices\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 8, \"TP_SIZE\": 1, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]
