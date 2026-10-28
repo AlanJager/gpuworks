@@ -79,10 +79,16 @@ def exercise_list_states(page, server, text, common, prefix, all_before, errors,
         with page.expect_response(lambda r: urlsplit(r.url).path == list_path) as failed:
             page.reload()
         check(failed.value.status == 503, f"forced list failure HTTP {failed.value.status}")
-        expect(page.get_by_role("alert")).to_be_visible()
+        # Scope the retry to the error Alert: a page-wide button lookup could match
+        # some other Retry and would keep passing even if the Alert lost its action.
+        # The error Alert is the one carrying the failed-to-load message; match on
+        # the role only and then confirm its text, so a slow render is waited for
+        # rather than filtered out.
+        alert = page.get_by_role("alert").first
+        expect(alert).to_be_visible()
+        expect(alert).to_contain_text(text["page"]["loadFailed"])
         states["error_alert"] = True
-        retry = page.get_by_role("button", name=common["actions"]["retry"], exact=True)
-        expect(retry).to_be_visible()
+        expect(alert.get_by_role("button", name=common["actions"]["retry"], exact=True)).to_be_visible()
         states["retry_offered"] = True
     finally:
         page.unroute(re.compile(re.escape(server.base + list_path) + r"(?:\?|$)"), refuse)
