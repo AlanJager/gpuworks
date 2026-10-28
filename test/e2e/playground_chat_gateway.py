@@ -767,6 +767,46 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
     report["relogin_isolation"] = {"history_after_relogin": [first_prompt, second_prompt],
                                    "owners": stored["owners"], "rows": stored["count"]}
 
+    # A second account cannot be created through this product (one admin, no
+    # user management), but the filtering itself is observable: write a row
+    # under a foreign account key straight into the store and check that the
+    # sidebar does not show it. That tests the reader, not the writer.
+    foreign = "foreign-account-conversation-probe"
+    seeded = page.evaluate("""async (title) => {
+      const open = indexedDB.open("gpuworks-playground");
+      const db = await new Promise((resolve, reject) => {
+        open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error);
+      });
+      const tx = db.transaction("conversations", "readwrite");
+      const store = tx.objectStore("conversations");
+      const rows = await new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+      });
+      const template = rows[0];
+      if (!template) return {ok: false, reason: "no row to copy"};
+      const copy = { ...template, id: "foreign-" + Date.now(), title,
+                     userID: (template.userID || 1) + 9000, updatedAt: Date.now() };
+      store.put(copy);
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+      });
+      return {ok: true, foreign_user: copy.userID};
+    }""", foreign)
+    check(seeded.get("ok") is True, f"could not seed a foreign-account row: {seeded}")
+    page.reload()
+    expect(page.get_by_label(playground["chat"]["inputAria"])).to_be_visible(timeout=30000)
+    expand_again = page.get_by_role("button", name=playground["conversations"]["expand"])
+    if expand_again.count():
+        expand_again.click()
+    # Own history survives the reload, the foreign row never appears.
+    expect(page.locator(".playground-conversation-open").filter(
+        has_text=first_prompt)).to_have_count(1, timeout=30000)
+    check(page.locator(".playground-conversation-open").filter(has_text=foreign).count() == 0,
+          "the sidebar showed a conversation belonging to another account")
+    report["foreign_account_filtered"] = {"title": foreign,
+                                          "foreign_user": seeded.get("foreign_user")}
+
     unexpected = [item for item in bad_responses]
     check(not unexpected, "unexpected browser HTTP errors: " + str(unexpected))
     check(not page_errors and not console_errors,
