@@ -63,6 +63,12 @@ class LifecycleTests(unittest.TestCase):
         self.context.close.assert_called_once()
         self.browser.close.assert_called_once()
 
+    def test_explicit_browser_channel_uses_the_requested_browser(self):
+        self.args.browser_channel = 'chromium'
+        code, report = self.run_case()
+        self.assertEqual((code, report['status']), (0, 'PASS'))
+        self.play.chromium.launch.assert_called_once_with(channel='chromium', headless=True)
+
     def test_browser_close_exception_stays_failed_and_server_cleanup_runs(self):
         self.context.close.side_effect = RuntimeError('cannot close context')
         code, report = self.run_case()
@@ -170,7 +176,9 @@ class ProvenanceAndPreflightTests(unittest.TestCase):
                 return '' if args[1] == 'status' else 'a' * 40
             with patch.object(runner, 'ROOT', root), patch.object(runner, '__file__', str(root/paths[4])), \
                  patch.object(runner.subprocess, 'check_output', side_effect=git):
-                _, identity = runner.source_identity('manifest.json', 'driver.py', exercise, ['helper.py'])
+                _, identity = runner.source_identity('manifest.json', 'driver.py', exercise, ['helper.py'], 'upstream/master')
+                runner.subprocess.check_output.assert_any_call(
+                    ['git', 'rev-parse', 'upstream/master'], cwd=root, text=True)
                 self.assertEqual(set(identity['source_hashes']), set(paths))
                 self.assertEqual(identity['working_tree'], 'clean')
                 exercise.__name__ = 'wrong_function'
