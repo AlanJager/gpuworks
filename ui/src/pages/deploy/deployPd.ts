@@ -106,6 +106,17 @@ export function pdActive(values: Record<string, unknown>): boolean {
   return values.node_selection_mode === "pd";
 }
 
+// unitsPlacementAuto reports whether the draft is a multi-node or PD deployment
+// whose nodes the platform picks (placement_mode "auto" on the wire). Both
+// shapes default to it: an unset units_placement field reads as "auto", and
+// "manual" is the deployer's (or a stored deployment's) choice to name the
+// nodes. Single-node drafts have their own automatic/manual position
+// (node_selection_mode).
+export function unitsPlacementAuto(values: Record<string, unknown>): boolean {
+  const units = pdActive(values) || Number(values.nnodes || 1) > 1;
+  return units && values.units_placement !== "manual";
+}
+
 // defaultPdRoles seeds a fresh PD draft: one unit per role, TP 1. The
 // deployer fills in nodes and TP from there.
 export function defaultPdRoles(): PdRolesDraft {
@@ -119,7 +130,10 @@ export function defaultPdRoles(): PdRolesDraft {
 // `placement.pd` object (ADR 0028). It states exactly the rows the deployer
 // sees - an incomplete unit (no node picked yet) still counts, so a debounced
 // evaluate mid-edit reports the same shape the screen shows, and the field
-// validation lands on the row that is actually missing something. Returns
+// validation lands on the row that is actually missing something. An
+// automatically placed draft (unitsPlacementAuto) states its units without
+// node, GPUs or followers: the platform picks them, one node per unit, and
+// keeps the role's unit count and TP/PP the deployer set. Returns
 // undefined when PD is not the draft's topology, or its mode is unset, so
 // callers omit the key rather than send an empty shell.
 export function buildPdPlacement(
@@ -129,11 +143,13 @@ export function buildPdPlacement(
   const mode = String(values.pd_mode || "").trim();
   if (!mode) return undefined;
   const rolesDraft = (values.pd_roles || {}) as PdRolesDraft;
+  const auto = unitsPlacementAuto(values);
   const roles: Record<string, unknown> = {};
   for (const role of PD_ROLE_ORDER) {
     const draft = rolesDraft[role];
     const units = (draft?.units || []).map((unit) => {
       const out: Record<string, unknown> = {};
+      if (auto) return out;
       if (unit?.node_uuid) out.node_uuid = unit.node_uuid;
       if (Array.isArray(unit?.gpus) && unit.gpus.length) out.gpus = unit.gpus;
       if (Array.isArray(unit?.followers) && unit.followers.length) {

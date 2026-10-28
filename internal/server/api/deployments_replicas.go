@@ -58,6 +58,17 @@ func (a *apiHandlers) scaleReplicas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dep.NNodes > 1 {
+		if dep.UnitsAuto && len(req.Units) == 0 && req.Replicas != nil {
+			// The platform places this deployment: a count, with nodes
+			// optionally named for the new replicas' first placement.
+			units, status, err := a.autoReplicaUnits(dep, *req.Replicas, req.PlaceOn, req.Remove)
+			if err != nil {
+				writeErr(w, status, err)
+				return
+			}
+			a.setReplicaUnits(w, dep, units)
+			return
+		}
 		if req.Replicas != nil || len(req.Remove) > 0 || len(req.Units) == 0 {
 			writeProductError(w, http.StatusBadRequest, ErrorReplicasBodyShape, "a multi-node deployment's replicas are listed as units", map[string]any{"want": "units"})
 			return

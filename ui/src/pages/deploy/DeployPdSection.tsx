@@ -26,16 +26,19 @@ import {
   pdModesForVendor,
   pdPolicyValue,
 } from "./deployPd";
-import PdUnitRow from "./PdUnitFields";
+import PdUnitRow, { PdAutoUnitRow } from "./PdUnitFields";
 
 function PdRoleSection({
   role,
   eligibleNodes,
   maxUnits,
+  auto,
 }: {
   role: PdRoleName;
   eligibleNodes?: EligibleNode[];
   maxUnits?: number;
+  // The platform places the units: rows count instances, with no node or GPU.
+  auto: boolean;
 }) {
   const { t } = useTranslation("deploy");
   const roleLabel = t(`pd.role.${role}`);
@@ -70,18 +73,28 @@ function PdRoleSection({
       <Form.List name={["pd_roles", role, "units"]}>
         {(fields, { add, remove }) => (
           <Space direction="vertical" style={{ width: "100%" }} size={6}>
-            {fields.map((field, index) => (
-              <PdUnitRow
-                key={field.key}
-                role={role}
-                index={index}
-                rootName={["pd_roles", role, "units"]}
-                fieldName={field.name}
-                choice={choice}
-                removable={fields.length > 1}
-                onRemove={() => remove(field.name)}
-              />
-            ))}
+            {fields.map((field, index) =>
+              auto ? (
+                <PdAutoUnitRow
+                  key={field.key}
+                  role={role}
+                  index={index}
+                  removable={fields.length > 1}
+                  onRemove={() => remove(field.name)}
+                />
+              ) : (
+                <PdUnitRow
+                  key={field.key}
+                  role={role}
+                  index={index}
+                  rootName={["pd_roles", role, "units"]}
+                  fieldName={field.name}
+                  choice={choice}
+                  removable={fields.length > 1}
+                  onRemove={() => remove(field.name)}
+                />
+              ),
+            )}
             <Button
               type="dashed"
               size="small"
@@ -158,9 +171,11 @@ function PdUnitPreview({
 function PdPreview({
   result,
   loading,
+  auto,
 }: {
   result: EvaluateResponse | null;
   loading: boolean;
+  auto: boolean;
 }) {
   const { t } = useTranslation("deploy");
   const pd = result?.pd;
@@ -168,7 +183,7 @@ function PdPreview({
   return (
     <div className="deploy-node-card" data-testid="pd-preview">
       <div className="deploy-node-card-head">
-        <strong>{t("pd.previewTitle")}</strong>
+        <strong>{auto ? t("pd.previewAutoTitle") : t("pd.previewTitle")}</strong>
       </div>
       {loading ? (
         <Typography.Text type="secondary">
@@ -209,7 +224,8 @@ function PdPreview({
 }
 
 // DeployPdSection is the whole PD disaggregation editor: the mode pick, the
-// decode and prefill role sections (each its own node/GPU/TP picks), the
+// decode and prefill role sections (each its own node/GPU/TP picks, or only
+// the instance count and TP when the platform places them), the
 // gateway policies, and evaluate's per-unit preview. It carries no state of
 // its own - every value lives on the surrounding Form under pd_mode,
 // pd_roles, pd_fallback and pd_kv_load_failure, projected onto the wire by
@@ -219,11 +235,15 @@ export default function DeployPdSection({
   result,
   loading,
   profile,
+  auto = false,
 }: {
   eligibleNodes?: EligibleNode[];
   result: EvaluateResponse | null;
   loading: boolean;
   profile?: EngineProfile;
+  // The platform places the units (placement_mode "auto"): the role sections
+  // state how many units and their TP, the preview shows where they would go.
+  auto?: boolean;
 }) {
   const { t } = useTranslation("deploy");
   const form = Form.useFormInstance();
@@ -307,6 +327,7 @@ export default function DeployPdSection({
                   role={role}
                   eligibleNodes={eligibleNodes}
                   maxUnits={mode?.max_units_per_role}
+                  auto={auto}
                 />
               </Col>
             ))}
@@ -343,7 +364,7 @@ export default function DeployPdSection({
               </Col>
             )}
           </Row>
-          <PdPreview result={result} loading={loading} />
+          <PdPreview result={result} loading={loading} auto={auto} />
         </>
       )}
     </div>

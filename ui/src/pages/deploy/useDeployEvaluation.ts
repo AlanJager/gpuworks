@@ -14,6 +14,9 @@ import { applyEvaluateFormValues } from "./deployHelpers";
 // and the form name differ only where noted here.
 const formFieldName: Record<string, string> = {
   node_uuids: "distributed_nodes",
+  // The automatic placement of a multi-node or PD request: nothing to place
+  // on, a missing TP, units that span nodes - beside the auto / manual switch.
+  placement_mode: "units_placement",
   node_requirements: "node_labels",
   "placement.tp": "tp",
   "placement.pp": "pp",

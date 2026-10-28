@@ -35,6 +35,9 @@ type UnitSuggestFacts struct {
 	Requirements nodelabel.Requirements
 	Ranks        int
 	PerRank      int
+	// Strategy orders each group's nodes after the model: binpack the fewest
+	// free cards that still fit, anything else (spread, unset) the most.
+	Strategy store.PlacementStrategy
 }
 
 // UnitGroup is a set of nodes that could carry one replica: they share a
@@ -108,6 +111,9 @@ func SuggestUnitGroups(f UnitSuggestFacts) ([]UnitGroup, UnitSuggestCounts) {
 				return x.Model > y.Model
 			}
 			if x.FreeGPUs != y.FreeGPUs {
+				if f.Strategy == store.PlacementBinpack {
+					return x.FreeGPUs < y.FreeGPUs
+				}
 				return x.FreeGPUs > y.FreeGPUs
 			}
 			return x.Node.ID < y.Node.ID

@@ -57,6 +57,18 @@ Among the candidates, a node that already holds the model files is preferred. Wh
 
 Accelerator RDMA networks (Ascend) are always treated as switched: the same network and card numbers suffice, and card-to-card connectivity tests are not checked.
 
+## Node Online but Cannot Take the Replica: Automatic Placement Chooses Again
+
+Node replacement handles only **offline** nodes. A node that is online but cannot take the replica (its cards were taken by another deployment, it was cordoned, or it no longer meets the node requirements) is a different case, handled according to the deployment's placement mode:
+
+| State of the replica's node | Automatically placed multi-node and PD deployment | Manually placed multi-node and PD deployment |
+|---|---|---|
+| Offline | Replaced after the replacement wait time (above, unchanged) | Same |
+| Drained | Start the new replica before switching (below, unchanged) | Same |
+| Online but cannot take it | When the replica needs to start, only the ranks that do not fit move to other nodes (`UNIT_PLACED`) and the other ranks stay; with nowhere to go it keeps its nodes and waits, looking again every minute | The replica waits, with the reason in `DEPLOYMENT_UNSCHEDULABLE`; when PD pinned cards are held, the scheduling reason is `pinned_gpus_unavailable`, listing the deployments holding them |
+
+Both use the same candidates and trial plans, and both rewrite the placement the same way. They differ only in the trigger: replacement fires when a node has been offline longer than the wait, and the re-pick fires when a replica needs to start and its nodes cannot take it. There is no wait time and no retry is spent. It happens only when the replica has no instance anyway, so it never interrupts a replica that is serving. Single-node replicas are not covered here: the candidate pool chooses again at every start. For switching the placement mode, the selection rules, and the limits, see [Multi-Node Inference](multi-node-inference.md#自动放置与手动放置) and [PD Disaggregated Deployment](pd-disaggregation.md#自动放置与手动放置).
+
 ## When the Original Node Returns
 
 - If the original node comes back online **before the new generation is running**, the placement is changed back to it and the timeline records `NODE_REPLACE_REVERTED`.
@@ -88,7 +100,7 @@ curl --fail-with-body -sS -X PUT \
 
 - Naming more nodes than replicas added returns 400 `REPLICAS_PLACE_ON_TOO_MANY` (`params.count`, `params.maximum`). The same node may be named twice, meaning two replicas go there.
 - Each node must be known, online, schedulable, satisfy the deployment's node requirements, and have room for a replica now (the same trial plan the candidate pool runs); otherwise the response is 409 `REPLICAS_PLACE_ON_REFUSED`, where `params.reason` is `unknown`, `offline`, `cordoned`, `requirements`, or `no_room`, and the last two carry `detail` or `code` / `params` with the specific cause.
-- A multi-node deployment with `place_on` returns 400 `REPLICAS_BODY_SHAPE`; multi-node deployments list nodes directly with `units`.
+- A manually placed multi-node deployment with `place_on` returns 400 `REPLICAS_BODY_SHAPE`; it lists nodes directly with `units`. An automatically placed multi-node deployment also supports `place_on`, but there it names the nodes of the new replica's ranks; see [Multi-Node Inference](multi-node-inference.md#为已有部署增加副本) for the rules.
 - This governs only the first placement: afterward these replicas, like any others, take part in candidate-pool refill and automatic replacement. The hint is kept in server memory; after a server restart the candidate pool chooses nodes itself.
 
 ## Timeline Events
@@ -98,6 +110,7 @@ curl --fail-with-body -sS -X PUT \
 | `NODE_REPLACED` | A replica was moved off a lost node | `from`, `to` (absent for single-node replicas), `after_sec`, `unit`, `rank`, `role`, `instances` |
 | `NODE_REPLACE_REVERTED` | The original node returned before the new generation ran, and the placement was changed back | `from`, `to`, `unit`, `rank`, `role` |
 | `NODE_REPLACE_NO_CANDIDATE` | No node to move to; recorded at most every 10 minutes | `nodes` |
+| `UNIT_PLACED` | Before an automatically placed multi-node or PD replica started, the ranks that were online but could not take it moved to other nodes | `unit`, `role`, `from`, `to` (node names, by rank), `reason` (node cordoned, node requirements not met, or the scheduler's refusal code) |
 | `NODE_DRAIN_MOVED` | A multi-node or PD replica switched to its replacement during a drain | `unit`, `role` |
 
 ## Limitations

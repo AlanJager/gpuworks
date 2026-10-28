@@ -42,3 +42,30 @@ test("the same entries read in Chinese, and a payload without params still rende
   assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 600, unit: 2 }), "节点 gpu-a 离线超过 10 分钟：副本 2 已换到 gpu-b");
   assert.ok(text("NODE_REPLACE_NO_CANDIDATE", {}).length > 0);
 });
+
+test("an automatic re-pick names the unit, where it went, where it was and why", async () => {
+  const text = await texts("en");
+  assert.equal(
+    text("UNIT_PLACED", { unit: 2, from: ["gpu-a"], to: ["gpu-b"], reason: "pinned_gpus_unavailable" }),
+    "Automatic placement: replica 2 placed on gpu-b (was on gpu-a): the cards it was pinned to are held by other deployments",
+  );
+  assert.equal(
+    text("UNIT_PLACED", { unit: 1, role: "decode", from: ["gpu-a", "gpu-b"], to: ["gpu-c", "gpu-d"], reason: "node_cordoned" }),
+    "Automatic placement: replica Decode 1 placed on gpu-c, gpu-d (was on gpu-a, gpu-b): a node it was on stopped taking replicas",
+  );
+  // A reason code the client has no cause for reads as the general cause, not as the raw code.
+  assert.equal(
+    text("UNIT_PLACED", { unit: 3, from: ["gpu-a"], to: ["gpu-b"], reason: "something_new" }),
+    "Automatic placement: replica 3 placed on gpu-b (was on gpu-a): its previous nodes could not take it",
+  );
+  // A first placement has no previous nodes and no reason.
+  assert.equal(text("UNIT_PLACED", { unit: 1, to: ["gpu-b"] }), "Automatic placement: replica 1 placed on gpu-b");
+});
+
+test("the automatic re-pick reads in Chinese", async () => {
+  const text = await texts("zh");
+  assert.equal(
+    text("UNIT_PLACED", { unit: 1, role: "prefill", from: ["gpu-a"], to: ["gpu-b"], reason: "pinned_gpus_unavailable" }),
+    "自动放置：副本 Prefill 1 已放到 gpu-b（原在 gpu-a）：它钉住的卡被其他部署占用",
+  );
+});

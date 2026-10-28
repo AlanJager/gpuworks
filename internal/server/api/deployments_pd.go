@@ -47,7 +47,7 @@ func (a *apiHandlers) preparePDDeployRequest(req *dto.DeployRequest, engine stri
 		return nil, nil
 	}
 	if req.NNodes > 1 || len(req.NodeUUIDs) > 0 || req.Replicas > 1 || isAutomaticPlacement(req) {
-		return nil, productError(messages.ErrorPDShapeConflict, "a PD deployment states its instances per role; nnodes, node_uuids, replicas and automatic placement do not apply", nil)
+		return nil, productError(messages.ErrorPDShapeConflict, "a PD deployment states its instances per role; nnodes, node_uuids and replicas do not apply", nil)
 	}
 	mode, err := planning.ValidatePD(pd, engine)
 	if err != nil {

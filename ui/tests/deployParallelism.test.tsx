@@ -161,8 +161,17 @@ test("a multi-node draft sets its parallelism with the nodes, above image and we
 });
 
 test("a multi-node draft without an answer yet says where the default comes from", () => {
-  renderQuick({ node_selection_mode: "multi", nnodes: 2 }, null);
+  renderQuick({ node_selection_mode: "multi", nnodes: 2, units_placement: "manual" }, null);
   assert.ok(screen.getByText(w.parallel.fromNodes));
+});
+
+test("a multi-node draft the platform places says it needs a TP until one is stated", () => {
+  renderQuick({ node_selection_mode: "multi", nnodes: 2 }, null);
+  assert.ok(screen.getByText(w.parallel.tpRequiredAuto));
+  assert.equal(screen.queryByText(w.parallel.fromNodes), null);
+  cleanup();
+  renderQuick({ node_selection_mode: "multi", nnodes: 2, tp: 8 }, null);
+  assert.equal(screen.queryByText(w.parallel.tpRequiredAuto), null);
 });
 
 test("a single-node draft keeps TP automatic in the resource row", () => {

@@ -29,6 +29,7 @@ type Props = {
   mode?: "multiple";
   maxCount?: number;
   disabled?: boolean;
+  allowClear?: boolean;
   placeholder?: string;
   style?: React.CSSProperties;
   "aria-label"?: string;

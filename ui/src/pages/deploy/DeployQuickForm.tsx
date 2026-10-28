@@ -88,6 +88,7 @@ export default function DeployQuickForm({
     Form.useWatch("node_selection_mode", { form, preserve: true }) || "auto",
   );
   const pdMode = nodeMode === "pd";
+  const unitsPlacement = Form.useWatch("units_placement", { form, preserve: true });
   const replicasLocked = useControlLocked("replicas");
   const vramLocked = useControlLocked("vram_limit");
   const selectedTemplate = templates.find(
@@ -199,6 +200,25 @@ export default function DeployQuickForm({
   const templateArgs = result?.template_residual_args ?? [];
 
   const setNodeMode = (mode: "auto" | "manual" | "multi" | "pd") => {
+    // Multi-node and PD groups are placed by the platform by default (the
+    // same auto / manual switch as a single node's), and pack by default
+    // where a single node spreads. A strategy the deployer picked is kept.
+    const grouped = (m: string) => m === "multi" || m === "pd";
+    const crossing = grouped(String(form.getFieldValue("node_selection_mode") || "auto")) !== grouped(mode);
+    const strategy = form.getFieldValue("placement_strategy");
+    const placement = {
+      ...(grouped(mode)
+        ? { units_placement: form.getFieldValue("units_placement") ?? "auto" }
+        : {}),
+      ...(crossing
+        ? {
+            placement_strategy:
+              form.getFieldValue("placement_strategy_chosen") && strategy
+                ? strategy
+                : grouped(mode) ? "binpack" : "spread",
+          }
+        : {}),
+    };
     if (mode === "pd") {
       // PD names its own nodes per role unit (DeployPdSection); the ordinary
       // single/multi-node fields do not apply and stay at their rest values.
@@ -207,6 +227,7 @@ export default function DeployQuickForm({
         defaultPdMode(profile, form.getFieldValue("target_vendor"));
       const mode = pdModeOf(profile, pdMode);
       form.setFieldsValue({
+        ...placement,
         node_selection_mode: "pd",
         nnodes: 1,
         replicas: 1,
@@ -227,6 +248,7 @@ export default function DeployQuickForm({
         ? Math.max(2, Number(form.getFieldValue("nnodes") || 2))
         : 1;
     form.setFieldsValue({
+      ...placement,
       node_selection_mode: mode,
       nnodes: nodesCount,
       distributed_nodes:
@@ -249,7 +271,11 @@ export default function DeployQuickForm({
         onNodeMode={setNodeMode}
       />
       {nodeMode === "multi" && (
-        <DeployParallelRow result={result} disabled={!selectedModel} />
+        <DeployParallelRow
+          result={result}
+          disabled={!selectedModel}
+          autoPlaced={unitsPlacement !== "manual"}
+        />
       )}
       <DeployImageRow
         acquisition={result?.acquisition}

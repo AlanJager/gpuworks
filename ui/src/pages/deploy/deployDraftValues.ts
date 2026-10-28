@@ -141,6 +141,9 @@ export function draftToFormValues(
   if (request.placement_strategy) values.placement_strategy = request.placement_strategy;
 
   // Topology: PD, a distributed group, or one node placed automatically or by name.
+  // A multi-node or PD draft is the operator's placement unless it says the
+  // platform's: the stored nodes are what a draft without placement_mode names.
+  if (pd || multi) values.units_placement = request.placement_mode === "auto" ? "auto" : "manual";
   if (pd) {
     Object.assign(values, pdToControls(pd));
   } else if (multi) {

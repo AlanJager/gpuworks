@@ -57,6 +57,18 @@ curl --fail-with-body -sS -X PUT \
 
 加速器 RDMA 网络（昇腾）一律按有交换机处理，同网络、同卡号即可；不检查卡间连通测试。
 
+## 节点在线但放不下：自动放置的重新挑选
+
+换节点只处理**离线**的节点。节点在线、却放不下副本（卡被其他部署占了、被停止调度、不再满足节点条件）是另一件事，处理方式取决于部署的放置方式：
+
+| 副本所在节点的状态 | 自动放置的多机与 PD 部署 | 手动放置的多机与 PD 部署 |
+|---|---|---|
+| 离线 | 按换节点等待时间换（上文，不变） | 同左 |
+| 被驱逐 | 先起后切（下文，不变） | 同左 |
+| 在线但放不下 | 副本要启动时，只把放不下的 rank 换到别的节点（`UNIT_PLACED`），其余 rank 不动；没有地方可去就保留节点继续等，每分钟再找一次 | 副本等待，原因写在 `DEPLOYMENT_UNSCHEDULABLE`；PD 钉住的卡被占时调度原因是 `pinned_gpus_unavailable`，列出占卡的部署 |
+
+两者用同一套候选与试算，改写放置的方式也相同，区别只在触发：换节点由「离线超过等待时间」触发，自动放置的重新挑选由「副本要启动、而它的节点放不下」触发，没有等待时间，也不消耗重试次数。只在副本本来就没有实例时发生，不会打断正在服务的副本。单机副本不属于这里，它每次启动都由候选池重新选。切换放置方式、挑选规则与限制见[多机推理](multi-node-inference.md#自动放置与手动放置)和 [PD 分离部署](pd-disaggregation.md#自动放置与手动放置)。
+
 ## 原节点回来了
 
 - 替换后，**新一代还没跑起来**时原节点恢复在线：放置改回原节点，时间线记 `NODE_REPLACE_REVERTED`。
@@ -88,7 +100,7 @@ curl --fail-with-body -sS -X PUT \
 
 - 节点个数不能超过本次增加的副本数，否则 400 `REPLICAS_PLACE_ON_TOO_MANY`（`params.count`、`params.maximum`）。同一节点可以写两次，表示放两个。
 - 每个节点须已知、在线、可调度、满足部署的节点条件，并且现在放得下一个副本（与候选池同样的试算）；不满足返回 409 `REPLICAS_PLACE_ON_REFUSED`，`params.reason` 为 `unknown`、`offline`、`cordoned`、`requirements` 或 `no_room`，后两者带 `detail` 或 `code` / `params` 说明具体原因。
-- 多机部署带 `place_on` 返回 400 `REPLICAS_BODY_SHAPE`；多机用 `units` 直接列节点。
+- 手动放置的多机部署带 `place_on` 返回 400 `REPLICAS_BODY_SHAPE`，它用 `units` 直接列节点；自动放置的多机部署也支持 `place_on`，但指的是新副本里各 rank 的节点，规则见[多机推理](multi-node-inference.md#为已有部署增加副本)。
 - 这只管首次放置：之后这些副本与别的副本一样，参与候选池补位和自动换节点。提示保存在 server 内存里，server 重启后由候选池自己选节点。
 
 ## 时间线事件
@@ -98,6 +110,7 @@ curl --fail-with-body -sS -X PUT \
 | `NODE_REPLACED` | 失联节点上的副本被换走 | `from`、`to`（单机副本无）、`after_sec`、`unit`、`rank`、`role`、`instances` |
 | `NODE_REPLACE_REVERTED` | 新一代跑起来前原节点回来，放置改回 | `from`、`to`、`unit`、`rank`、`role` |
 | `NODE_REPLACE_NO_CANDIDATE` | 没有可换的节点，最多每 10 分钟记一次 | `nodes` |
+| `UNIT_PLACED` | 自动放置的多机或 PD 副本启动前，在线却放不下的 rank 被换到别的节点 | `unit`、`role`、`from`、`to`（节点名，按 rank）、`reason`（节点停止调度、不满足节点条件，或调度器的拒绝码） |
 | `NODE_DRAIN_MOVED` | 驱逐时多机或 PD 副本切到了替代副本上 | `unit`、`role` |
 
 ## 限制

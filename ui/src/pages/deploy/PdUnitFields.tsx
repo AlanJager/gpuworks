@@ -1,5 +1,5 @@
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Col, Form, Row, Select, Space, Typography } from "antd";
+import { Button, Col, Form, Row, Select, Space, Tag, Typography } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { EligibleNode, Node, PdRoleName } from "../../api";
@@ -14,14 +14,15 @@ import { gpuSelectOptions } from "./gpuOptions";
 export type PdNodeChoice = { eligibleNodes?: EligibleNode[] };
 
 // PdNodePicker is a row's node control: online nodes searched on the server.
-function PdNodePicker({ choice, ariaLabel, value, onChange }: { choice: PdNodeChoice; ariaLabel: string; value?: string; onChange?: (value: unknown) => void }) {
+function PdNodePicker({ choice, ariaLabel, value, onChange, placeholder, allowClear }: { choice: PdNodeChoice; ariaLabel: string; value?: string; onChange?: (value: unknown) => void; placeholder?: string; allowClear?: boolean }) {
   const { t } = useTranslation("deploy");
   return (
     <EligibleNodePicker
       value={value}
       onChange={onChange}
       eligibleNodes={choice.eligibleNodes}
-      placeholder={t("pd.selectNode")}
+      placeholder={placeholder ?? t("pd.selectNode")}
+      allowClear={allowClear}
       aria-label={ariaLabel}
       style={{ width: "100%" }}
     />
@@ -102,6 +103,41 @@ function PdFollowerRow({
   );
 }
 
+// PdAutoUnitRow is one role's instance row in a deployment the platform
+// places: no node and no GPU pickers - the platform picks both when the unit
+// starts, and the preview beside the roles shows where it would go now. The
+// row only counts the instance, so it can be removed.
+export function PdAutoUnitRow({
+  role,
+  index,
+  onRemove,
+  removable,
+}: {
+  role: PdRoleName;
+  index: number;
+  onRemove: () => void;
+  removable: boolean;
+}) {
+  const { t } = useTranslation("deploy");
+  const roleLabel = t(`pd.role.${role}`);
+  return (
+    <Row gutter={8} align="middle" className="deploy-pd-unit-row" wrap={false}>
+      <Col flex="1 1 auto">
+        <Typography.Text>{t("pd.autoUnit", { role: roleLabel, index: index + 1 })}</Typography.Text>{" "}
+        <Tag>{t("pd.autoScheduled")}</Tag>
+      </Col>
+      <Col flex="0 0 auto">
+        <Button
+          aria-label={t("pd.removeUnit", { role: roleLabel, index: index + 1 })}
+          icon={<DeleteOutlined />}
+          onClick={onRemove}
+          disabled={!removable}
+        />
+      </Col>
+    </Row>
+  );
+}
+
 // PdUnitRow is one role's instance row: node picker, GPU picker, remove
 // button, and - once it has at least one follower - the headless ranks
 // alongside it (a multi-node unit) with an "add node" action and a hint that
@@ -120,6 +156,8 @@ export default function PdUnitRow({
   choice,
   onRemove,
   removable,
+  placed,
+  isNew = false,
 }: {
   role: PdRoleName;
   index: number;
@@ -128,6 +166,12 @@ export default function PdUnitRow({
   choice: PdNodeChoice;
   onRemove: () => void;
   removable: boolean;
+  // The platform places the deployment ("auto"): a unit's node is optional
+  // (a stated one is the unit's first placement, an unstated one is picked
+  // for it), and no card is pinned. A manual deployment names a node per unit.
+  placed?: "auto" | "manual";
+  // A unit added in this dialog; only these say whether the node is named.
+  isNew?: boolean;
 }) {
   const { t } = useTranslation("deploy");
   const { t: tc } = useTranslation("common");
@@ -139,6 +183,9 @@ export default function PdUnitRow({
   ) as string | undefined;
   const node = useNodeLookup([nodeUUID]).get(nodeUUID ?? "");
   const followersRootName = [...rootName, fieldName, "followers"];
+  const auto = placed === "auto";
+  // A new unit of an automatic deployment: named or left to the platform.
+  const autoNew = auto && isNew;
   return (
     <Space direction="vertical" style={{ width: "100%" }} size={4}>
       <Row gutter={8} align="middle" className="deploy-pd-unit-row" wrap={false}>
@@ -146,23 +193,37 @@ export default function PdUnitRow({
           <Form.Item
             name={[fieldName, "node_uuid"]}
             noStyle
-            rules={[{ required: true, message: t("pd.unitNodeRequired") }]}
+            rules={auto ? undefined : [{ required: true, message: t("pd.unitNodeRequired") }]}
           >
-            <PdNodePicker choice={choice} ariaLabel={t("pd.unitNodeAria", { role: roleLabel, index: index + 1 })} />
-          </Form.Item>
-        </Col>
-        <Col flex="1 1 200px">
-          <Form.Item name={[fieldName, "gpus"]} noStyle>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder={t("pd.autoGpus")}
-              aria-label={t("pd.unitGpuAria", { role: roleLabel, index: index + 1 })}
-              style={{ width: "100%" }}
-              options={gpuOptions(node, tc)}
+            <PdNodePicker
+              choice={choice}
+              ariaLabel={t("pd.unitNodeAria", { role: roleLabel, index: index + 1 })}
+              placeholder={autoNew ? t("pd.preferNodePlaceholder") : undefined}
+              allowClear={autoNew}
             />
           </Form.Item>
         </Col>
+        {autoNew && (
+          <Col flex="0 0 auto">
+            <Tag color={nodeUUID ? "blue" : "default"}>
+              {nodeUUID ? t("pd.nodeNamed") : t("pd.autoScheduled")}
+            </Tag>
+          </Col>
+        )}
+        {!auto && (
+          <Col flex="1 1 200px">
+            <Form.Item name={[fieldName, "gpus"]} noStyle>
+              <Select
+                mode="multiple"
+                allowClear
+                placeholder={t("pd.autoGpus")}
+                aria-label={t("pd.unitGpuAria", { role: roleLabel, index: index + 1 })}
+                style={{ width: "100%" }}
+                options={gpuOptions(node, tc)}
+              />
+            </Form.Item>
+          </Col>
+        )}
         <Col flex="0 0 auto">
           <Button
             aria-label={t("pd.removeUnit", { role: roleLabel, index: index + 1 })}
@@ -172,6 +233,7 @@ export default function PdUnitRow({
           />
         </Col>
       </Row>
+      {!autoNew && (
       <Form.List name={[fieldName, "followers"]}>
         {(followerFields, { add: addFollower, remove: removeFollower }) => (
           <Space direction="vertical" style={{ width: "100%" }} size={4}>
@@ -204,6 +266,7 @@ export default function PdUnitRow({
           </Space>
         )}
       </Form.List>
+      )}
     </Space>
   );
 }

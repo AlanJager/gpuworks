@@ -540,3 +540,10 @@
 .deploy-gpu-grid button.is-degraded {
   border-color: #fa8c16;
 }
+
+/* The units_placement field has no control to draw (its switch is the segmented
+   control above); only its error text shows, so the empty control row must not
+   take space. */
+.deploy-units-placement-error .ant-form-item-control-input {
+  min-height: 0;
+}

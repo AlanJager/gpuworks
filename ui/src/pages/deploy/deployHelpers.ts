@@ -14,9 +14,9 @@ import {
   readyPartitionCapability,
 } from "../../components/partitionCapabilities.ts";
 import { visibleParamSpecs } from "./deployParamApplicability";
-import { buildPdPlacement, pdActive } from "./deployPd";
+import { buildPdPlacement, pdActive, unitsPlacementAuto } from "./deployPd";
 
-export { pdActive } from "./deployPd";
+export { pdActive, unitsPlacementAuto } from "./deployPd";
 
 
 export {
@@ -162,6 +162,9 @@ export function buildPayload(
 ) {
   const { quick, unset } = projectDraft(v, profile, modalities);
   const placement: Record<string, unknown> = {};
+  // A multi-node or PD draft the platform places states no node and no card:
+  // only how big each rank is (tp/pp, the PD role's units and TP).
+  const unitsAuto = unitsPlacementAuto(v);
   // A PD draft states its instances per role (ADR 0028): it replaces the
   // ordinary tp/pp/gpus placement rather than adding to it.
   const pd = buildPdPlacement(v);
@@ -170,7 +173,7 @@ export function buildPayload(
   } else {
     if (v.tp != null && v.tp !== "") placement.tp = v.tp;
     if (v.pp != null && v.pp !== "") placement.pp = v.pp;
-    if (Array.isArray(v.gpu_indexes) && v.gpu_indexes.length)
+    if (Array.isArray(v.gpu_indexes) && v.gpu_indexes.length && !unitsAuto)
       placement.gpus = v.gpu_indexes;
   }
   const payload: Record<string, unknown> = {};
@@ -187,7 +190,12 @@ export function buildPayload(
   if (poolNodes.length && !pd && Number(v.nnodes || 1) <= 1 && v.node_selection_mode !== "manual")
     requirements["gpuworks.ai/node"] = poolNodes;
   if (Object.keys(requirements).length) payload.node_requirements = requirements;
-  if (!pd && Number(v.nnodes || 1) <= 1 && (v.placement_strategy === "spread" || v.placement_strategy === "binpack"))
+  // The strategy applies to the placements the platform makes: an automatic
+  // single-node draft's, and an automatic multi-node or PD draft's.
+  if (
+    ((!pd && Number(v.nnodes || 1) <= 1) || unitsAuto) &&
+    (v.placement_strategy === "spread" || v.placement_strategy === "binpack")
+  )
     payload.placement_strategy = v.placement_strategy;
   // What the request says about the model's files: which public weight source
   // to run and the storage a node saves the model into when it has to fetch
@@ -214,7 +222,7 @@ export function buildPayload(
   if (v.target_vendor) payload.target_vendor = v.target_vendor;
   // A PD draft names its nodes per unit inside placement.pd instead; the
   // server fills the top-level node_uuid from the first decode unit.
-  if (v.node_uuid && !pd) payload.node_uuid = v.node_uuid;
+  if (v.node_uuid && !pd && !unitsAuto) payload.node_uuid = v.node_uuid;
   payload.engine = v.engine;
   if (v.image) payload.image = v.image;
   if (v.extra_args) payload.extra_args = v.extra_args;
@@ -242,15 +250,20 @@ export function buildPayload(
   if (Object.keys(quick).length) payload.quick_params = quick;
   if (unset.length) payload.quick_params_unset = unset;
   if (Object.keys(placement).length) payload.placement = placement;
+  if (unitsAuto) payload.placement_mode = "auto";
   if (v.nnodes != null) payload.nnodes = v.nnodes;
   if (v.replicas != null) payload.replicas = v.replicas;
   // A PD deployment states no multi-node group of its own (nnodes/node_uuids
   // above describe an ordinary distributed launch, which a PD draft never
   // is - the server rejects nnodes>1 or node_uuids alongside placement.pd).
   if (!pd && Number(v.nnodes || 1) > 1) {
-    if (Array.isArray(v.distributed_nodes) && v.distributed_nodes.length > 0)
-      payload.node_uuids = v.distributed_nodes;
-    if (v.master_addr) payload.master_addr = v.master_addr;
+    // An automatic group names no node (the platform picks every rank, and the
+    // leader's address is read from the node it picks).
+    if (!unitsAuto) {
+      if (Array.isArray(v.distributed_nodes) && v.distributed_nodes.length > 0)
+        payload.node_uuids = v.distributed_nodes;
+      if (v.master_addr) payload.master_addr = v.master_addr;
+    }
     if (v.master_port != null) payload.master_port = v.master_port;
     if (v.dist_group) payload.dist_group = v.dist_group;
     payload.dist_role = "leader";
@@ -498,9 +511,11 @@ export function deployDraftPayload(
   const built = buildPayload(draft, profile, modalities)
     .payload as Record<string, unknown>;
   if (pd) {
-    // PD names its own nodes per unit; placement_mode "auto" is one of the
-    // shapes the server rejects alongside placement.pd (PD_SHAPE_CONFLICT).
+    // PD names its own nodes per unit (or, placed automatically, leaves them
+    // to the platform: buildPayload states placement_mode "auto" then).
     delete built.node_uuid;
+  } else if (unitsPlacementAuto(values)) {
+    // buildPayload stated placement_mode "auto" and no node.
   } else if (automatic) {
     delete built.node_uuid;
     const placement = {

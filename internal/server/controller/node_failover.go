@@ -39,6 +39,7 @@ type nodeFailover struct {
 	moves     map[uint][]failoverMove // by deployment
 	noneSince map[uint]time.Time      // last NODE_REPLACE_NO_CANDIDATE, by deployment
 	drains    map[uint][]drainSurge   // units moving off draining nodes (node_failover_drain.go)
+	repicked  map[uint]time.Time      // last automatic re-pick that found no nodes, by deployment (unit_auto.go)
 }
 
 func (f *nodeFailover) get(dep uint) []failoverMove {

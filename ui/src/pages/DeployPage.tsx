@@ -147,6 +147,10 @@ function DeployForm({ opened }: { opened?: OpenedDeployment }) {
       };
     }
     const values = draftToFormValues(opened.draft.deployment);
+    // A multi-node or PD draft reads as the operator's placement; the
+    // deployment itself says when the platform places it.
+    if (opened.deployment?.placement_mode === "auto" && values.units_placement)
+      values.units_placement = "auto";
     return opened.mode === "from" ? cloneIdentity(values) : values;
   });
   const touchedRef = useRef(false);

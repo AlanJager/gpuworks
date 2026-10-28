@@ -104,6 +104,7 @@ test("buildPdPlacement returns undefined without a mode", () => {
 test("buildPdPlacement projects mode, roles, fallback and kv_load_failure onto the wire shape", () => {
   const placement = buildPdPlacement({
     node_selection_mode: "pd",
+    units_placement: "manual",
     pd_mode: "vllm-nixl",
     pd_fallback: "fail",
     pd_kv_load_failure: "recompute",
@@ -132,6 +133,7 @@ test("buildPdPlacement projects mode, roles, fallback and kv_load_failure onto t
 test("buildPdPlacement keeps a unit row with no node yet - the count on the wire matches what the screen shows", () => {
   const placement = buildPdPlacement({
     node_selection_mode: "pd",
+    units_placement: "manual",
     pd_mode: "vllm-nixl",
     pd_roles: {
       decode: { tp: 1, units: [{}] },
@@ -145,6 +147,7 @@ test("buildPdPlacement keeps a unit row with no node yet - the count on the wire
 test("buildPdPlacement omits an empty gpus array rather than sending one", () => {
   const placement = buildPdPlacement({
     node_selection_mode: "pd",
+    units_placement: "manual",
     pd_mode: "vllm-nixl",
     pd_roles: {
       decode: { tp: 1, units: [{ node_uuid: "n1", gpus: [] }] },
@@ -157,6 +160,7 @@ test("buildPdPlacement omits an empty gpus array rather than sending one", () =>
 test("buildPdPlacement projects a role's pp and a unit's followers onto the wire shape", () => {
   const placement = buildPdPlacement({
     node_selection_mode: "pd",
+    units_placement: "manual",
     pd_mode: "vllm-nixl",
     pd_roles: {
       decode: {
@@ -189,6 +193,7 @@ test("buildPdPlacement projects a role's pp and a unit's followers onto the wire
 test("buildPdPlacement keeps a follower row with no node yet, and omits an empty followers array", () => {
   const placement = buildPdPlacement({
     node_selection_mode: "pd",
+    units_placement: "manual",
     pd_mode: "vllm-nixl",
     pd_roles: {
       decode: {

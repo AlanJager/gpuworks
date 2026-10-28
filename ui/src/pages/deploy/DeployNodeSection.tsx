@@ -1,5 +1,5 @@
 import { useContext, useMemo } from "react";
-import { Alert, Collapse, Form, InputNumber, Radio, Segmented, Space, Tag, Typography } from "antd";
+import { Alert, Collapse, Form, Input, InputNumber, Radio, Segmented, Space, Tag, Typography } from "antd";
 import type { EligibleNode, EngineProfile, EvaluateResponse, Node, NodeFacets } from "../../api";
 import NodePlacementLabels from "../../components/NodePlacementLabels";
 import SystemLabelConditions from "../../components/SystemLabelConditions";
@@ -14,9 +14,46 @@ import { gpuModelSummary } from "../../nodes/cardIdentity";
 import EligibleNodePicker from "./EligibleNodePicker";
 import { nodeRefusals, nodeConditionSummary } from "./deployPlacementRefusal";
 import DeployNodeRefusals from "./DeployNodeRefusals";
+import AutoGroupPreview from "./DeployAutoGroupPreview";
 import { DeployEditContext, LockedGroup } from "./DeployEditContext";
 
 const ONLINE = { state: ["online"] };
+
+// StrategyField is the placement strategy of an automatic placement: single
+// nodes default to spreading replicas, multi-node and PD groups to packing
+// (the form seeds the default of the topology it opens; this field only
+// records an explicit pick so a later topology switch leaves it alone).
+function StrategyField({ initialValue }: { initialValue?: "spread" | "binpack" }) {
+  const { t } = useTranslation("deploy");
+  const form = Form.useFormInstance();
+  return (
+    <LockedGroup controls={["placement_strategy"]} hint={false}>
+      <Collapse
+        ghost
+        size="small"
+        items={[{
+          key: "placement",
+          label: t("workbench.node.placementOptions"),
+          forceRender: true,
+          children: (
+            <Form.Item name="placement_strategy" label={t("workbench.node.strategy")} initialValue={initialValue}>
+              <Radio.Group onChange={() => form.setFieldValue("placement_strategy_chosen", true)}>
+                <Radio value="spread">
+                  {t("workbench.node.strategySpread")}
+                  <Typography.Text type="secondary"> — {t("workbench.node.strategySpreadHelp")}</Typography.Text>
+                </Radio>
+                <Radio value="binpack">
+                  {t("workbench.node.strategyBinpack")}
+                  <Typography.Text type="secondary"> — {t("workbench.node.strategyBinpackHelp")}</Typography.Text>
+                </Radio>
+              </Radio.Group>
+            </Form.Item>
+          ),
+        }]}
+      />
+    </LockedGroup>
+  );
+}
 
 // The pickers search online nodes on the server and render its eligibility
 // answer (EligibleNodePicker). fleet is what the online nodes carry (GET
@@ -52,6 +89,11 @@ export default function NodeSection({
     preserve: true,
   }) || "auto") as "auto" | "manual" | "multi" | "pd";
   const single = mode === "auto" || mode === "manual";
+  // A multi-node or PD deployment is placed by the platform unless the
+  // deployer chose to name its nodes: the same auto / manual switch as a
+  // single node's, defaulting to auto.
+  const unitsPlacement = Form.useWatch("units_placement", { form, preserve: true });
+  const unitsAuto = !single && unitsPlacement !== "manual";
   const nnodes = Number(Form.useWatch("nnodes", { form, preserve: true }) || 1);
   const distributed = (Form.useWatch("distributed_nodes", {
     form,
@@ -123,77 +165,71 @@ export default function NodeSection({
           />
         </div>
         </LockedGroup>
-        {single && (
-          <div className="deploy-node-pool">
-            <LockedGroup controls={["placement_mode"]} hint={false}>
-              <Segmented
-                disabled={!ready}
-                value={mode}
-                onChange={(value) => onNodeMode(value as "auto" | "manual")}
-                options={[
-                  { value: "auto", label: t("workbench.node.auto") },
-                  { value: "manual", label: t("workbench.node.manual") },
-                ]}
-              />
-            </LockedGroup>
-            <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0" }}>
-              {mode === "auto" ? t("workbench.node.autoPoolDescription") : t("workbench.node.manualPoolDescription")}
+        <div className="deploy-node-pool">
+          <LockedGroup controls={["placement_mode"]} hint={false}>
+            <Segmented
+              disabled={!ready}
+              value={single ? mode : unitsAuto ? "auto" : "manual"}
+              onChange={(value) =>
+                single
+                  ? onNodeMode(value as "auto" | "manual")
+                  : form.setFieldValue("units_placement", value)
+              }
+              options={[
+                { value: "auto", label: t("workbench.node.auto") },
+                { value: "manual", label: t("workbench.node.manual") },
+              ]}
+            />
+          </LockedGroup>
+          <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0" }}>
+            {single
+              ? mode === "auto"
+                ? t("workbench.node.autoPoolDescription")
+                : t("workbench.node.manualPoolDescription")
+              : unitsAuto
+                ? t("workbench.node.autoUnitsDescription")
+                : t("workbench.node.manualUnitsDescription")}
+          </Typography.Paragraph>
+          {/* What the server attributes to the placement choice itself:
+              nothing to place on (UNIT_PLACEMENT_NONE), a missing TP, a
+              request shape automatic placement cannot take. The field has no
+              control of its own (the switch above is not a form field for a
+              multi-node or PD draft), so it is a hidden input whose error the
+              form item shows as it does for any field. */}
+          {!single && (
+            <Form.Item name="units_placement" className="deploy-units-placement-error" style={{ margin: "8px 0 0" }}>
+              <Input type="hidden" />
+            </Form.Item>
+          )}
+          {single && eligibleNodes && !loading && (
+            <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+              {conditions
+                ? t("workbench.node.conditionFunnel", { total: conditions.total, matched: conditions.matched.length, eligible: conditions.eligible })
+                : t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
             </Typography.Paragraph>
-            {eligibleNodes && !loading && (
-              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                {conditions
-                  ? t("workbench.node.conditionFunnel", { total: conditions.total, matched: conditions.matched.length, eligible: conditions.eligible })
-                  : t("workbench.node.poolMatches", { count: eligibleNodes.filter((node) => node.eligible).length, total: fleet?.total ?? 0 })}
-              </Typography.Paragraph>
-            )}
-            {conditions && conditions.eligible > 0 && mode === "auto" && (
-              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                {t("workbench.node.planningFunnel", { passed: conditions.passed, tried: conditions.tried, untried: conditions.untried })}
-              </Typography.Paragraph>
-            )}
-            {mode === "auto" && (
-              <LockedGroup controls={["node_requirements"]} hint={false}>
-                <Form.Item name="pool_nodes" label={t("workbench.node.poolNodes")} extra={t("workbench.node.poolNodesHelp")} style={{ margin: "8px 0 0" }}>
-                  <NodePicker
-                    mode="multiple"
-                    allowClear
-                    disabled={!ready}
-                    filter={vendorPool}
-                    placeholder={t("workbench.node.poolNodesPlaceholder")}
-                    aria-label={t("workbench.node.poolNodes")}
-                  />
-                </Form.Item>
-              </LockedGroup>
-            )}
-            {mode === "auto" && (
-              <LockedGroup controls={["placement_strategy"]} hint={false}>
-              <Collapse
-                ghost
-                size="small"
-                items={[{
-                  key: "placement",
-                  label: t("workbench.node.placementOptions"),
-                  forceRender: true,
-                  children: (
-                    <Form.Item name="placement_strategy" label={t("workbench.node.strategy")} initialValue={fromDraft ? undefined : "spread"}>
-                      <Radio.Group>
-                        <Radio value="spread">
-                          {t("workbench.node.strategySpread")}
-                          <Typography.Text type="secondary"> — {t("workbench.node.strategySpreadHelp")}</Typography.Text>
-                        </Radio>
-                        <Radio value="binpack">
-                          {t("workbench.node.strategyBinpack")}
-                          <Typography.Text type="secondary"> — {t("workbench.node.strategyBinpackHelp")}</Typography.Text>
-                        </Radio>
-                      </Radio.Group>
-                    </Form.Item>
-                  ),
-                }]}
-              />
-              </LockedGroup>
-            )}
-          </div>
-        )}
+          )}
+          {single && conditions && conditions.eligible > 0 && mode === "auto" && (
+            <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+              {t("workbench.node.planningFunnel", { passed: conditions.passed, tried: conditions.tried, untried: conditions.untried })}
+            </Typography.Paragraph>
+          )}
+          {single && mode === "auto" && (
+            <LockedGroup controls={["node_requirements"]} hint={false}>
+              <Form.Item name="pool_nodes" label={t("workbench.node.poolNodes")} extra={t("workbench.node.poolNodesHelp")} style={{ margin: "8px 0 0" }}>
+                <NodePicker
+                  mode="multiple"
+                  allowClear
+                  disabled={!ready}
+                  filter={vendorPool}
+                  placeholder={t("workbench.node.poolNodesPlaceholder")}
+                  aria-label={t("workbench.node.poolNodes")}
+                />
+              </Form.Item>
+            </LockedGroup>
+          )}
+          {single && mode === "auto" && <StrategyField initialValue={fromDraft ? undefined : "spread"} />}
+          {unitsAuto && <StrategyField initialValue={fromDraft ? undefined : "binpack"} />}
+        </div>
         {mode === "auto" && (
           <div className="deploy-node-card is-selected">
             <div className="deploy-node-card-head">
@@ -267,7 +303,7 @@ export default function NodeSection({
           <LockedGroup controls={["nodes", "topology"]}>
           <div className="deploy-node-card">
             <div className="deploy-node-card-head">
-              <strong>{t("workbench.node.selectMulti")}</strong>
+              <strong>{unitsAuto ? t("workbench.node.multiAutoTitle") : t("workbench.node.selectMulti")}</strong>
               <Space size={8}>
                 <span>{t("workbench.node.nodeCount")}</span>
                 <Form.Item name="nnodes" noStyle>
@@ -275,6 +311,10 @@ export default function NodeSection({
                 </Form.Item>
               </Space>
             </div>
+            {unitsAuto ? (
+              <AutoGroupPreview result={result} loading={loading} ready={ready} knownNodes={knownNodes} />
+            ) : (
+              <>
             <Form.Item
               name="distributed_nodes"
               rules={[
@@ -318,6 +358,8 @@ export default function NodeSection({
                 </Tag>
               )}
             </Space>
+              </>
+            )}
           </div>
           </LockedGroup>
         )}
@@ -328,6 +370,7 @@ export default function NodeSection({
               result={result}
               loading={loading}
               profile={profile}
+              auto={unitsAuto}
             />
           </LockedGroup>
         )}

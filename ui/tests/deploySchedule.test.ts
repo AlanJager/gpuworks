@@ -122,3 +122,17 @@ test("a source rule that forbids every image source names the node and the image
   assert.match(zh, /节点 gpu-b-02 适用的来源规则禁止了镜像 docker\.io\/lmsysorg\/sglang:v0\.5\.21/);
   assert.doesNotMatch(en + zh, /\{\{/);
 });
+
+test("a pinned PD unit waiting on cards other deployments hold names the node, the cards and the holders in both languages", () => {
+  const reason = { code: "pinned_gpus_unavailable", params: { node: "gpu-a", gpus: "0, 1", holders: "chat, embed" } };
+  const en = i18n.getFixedT("en", "deploy") as never;
+  const zh = i18n.getFixedT("zh", "deploy") as never;
+  assert.equal(
+    scheduleText(en, reason),
+    "GPU 0, 1 on gpu-a, which this unit is pinned to, is held by chat, embed. The unit waits for it; switch the deployment to automatic placement to let the platform use free GPUs instead.",
+  );
+  assert.equal(
+    scheduleText(zh, reason),
+    "该单元钉住的 gpu-a 上的 GPU 0, 1 正被 chat, embed 占用，单元会一直等待；把部署的放置方式改为自动，平台就会改用空闲的卡。",
+  );
+});

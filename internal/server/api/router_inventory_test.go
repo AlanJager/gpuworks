@@ -339,6 +339,7 @@ PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
 PUT /api/v1/deployments/{id}/node-replacement
 PUT /api/v1/deployments/{id}/pd
+PUT /api/v1/deployments/{id}/placement-mode
 PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing

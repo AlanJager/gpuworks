@@ -12,6 +12,7 @@ import {
   deploymentPartitionDraft,
   pdActive,
   submittedImage,
+  unitsPlacementAuto,
 } from "./deployHelpers";
 
 // useDeploySubmit owns the create: it re-serializes the submitted draft,
@@ -96,6 +97,20 @@ export default function useDeploySubmit({
     }
     // A PD draft names its nodes per role unit, not through this field.
     const pd = pdActive(raw);
+    // A multi-node or PD draft the platform places names no node: the server
+    // picks them again when it creates (the evaluation was a preview).
+    const unitsAuto = unitsPlacementAuto(raw);
+    // The server found nothing to place the group on: its reason is the answer
+    // (UNIT_PLACEMENT_NONE and the like), not a generic failure.
+    const unplaced = unitsAuto
+      ? evalResult.errors?.find((error) => error.field === "placement_mode")
+      : undefined;
+    if (unplaced) {
+      message.error(
+        apiErrorText(tCommon, new APIError(unplaced.code, unplaced.params ?? {}, unplaced.code, 200)),
+      );
+      return;
+    }
     // Automatic placement names no node in the form; the server's selection
     // is the node the create confirms.
     const automatic =
@@ -118,10 +133,10 @@ export default function useDeploySubmit({
     const body: Record<string, unknown> = {
       ...buildPayload(v, engineProfile, selectedModel?.input_modalities)
         .payload,
-      // placement_mode "auto" is one of the shapes the server rejects
-      // alongside placement.pd (PD_SHAPE_CONFLICT), so a PD draft states
-      // neither auto nor manual and lets the field go unset.
-      ...(pd ? {} : { placement_mode: automatic ? "auto" : "manual" }),
+      // A manual PD draft states neither (its units name their nodes, and
+      // placement_mode "auto" beside units that name nodes would place them
+      // again); an automatic one states "auto" in buildPayload.
+      ...(pd ? {} : { placement_mode: automatic || unitsAuto ? "auto" : "manual" }),
       name: v.name,
       // Everything the form displayed is confirmed by the user. In auto image
       // mode the displayed ref is the evaluated one, so it travels with the
@@ -149,10 +164,12 @@ export default function useDeploySubmit({
       };
     }
     if (!pd && Number(v.nnodes || 1) > 1) {
+      // An automatic group has no node list to count: the preview below is
+      // the nodes the server would pick now.
       const selected = Array.isArray(v.distributed_nodes)
         ? v.distributed_nodes
         : [];
-      if (selected.length !== Number(v.nnodes || 1)) {
+      if (!unitsAuto && selected.length !== Number(v.nnodes || 1)) {
         message.error(
           t("action.distributedNodeCount", { count: Number(v.nnodes || 1) }),
         );

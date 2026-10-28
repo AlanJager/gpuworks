@@ -1657,6 +1657,10 @@ export interface Deployment {
   // network, a label nothing has). Only a single deployment's read has them.
   node_requirement_labels?: RequirementLabel[];
   placement_strategy?: "spread" | "binpack" | string;
+  // placement_mode says who picks a multi-node or PD deployment's nodes: the
+  // platform ("auto", whenever a unit starts) or the operator ("manual").
+  // Absent for a single-node deployment, whose requirements say it.
+  placement_mode?: UnitsPlacementMode;
   // placement_status is set while replicas of an ordinary deployment wait
   // for a node: how many, and the controller's latest reason.
   placement_status?: DeploymentPlacementStatus;
@@ -1668,6 +1672,9 @@ export interface Deployment {
 export interface NodeReplacement {
   after_sec: number;
 }
+
+/** Who places a multi-node or PD deployment's units (PUT /deployments/{id}/placement-mode). */
+export type UnitsPlacementMode = "auto" | "manual";
 
 // DeploymentDraft is GET /deployments/{id}/draft: the deployment read back as
 // the create request that would make it (the deploy form fills itself from
@@ -1840,8 +1847,13 @@ export interface PdScaleUnitInput {
   followers?: PdScaleFollowerInput[];
 }
 
+// PdScaleRoleUnit is a unit of PUT /deployments/{id}/pd. On an automatically
+// placed deployment a new unit may leave node_uuid out (the platform picks its
+// node; a stated node is its first placement) and states no gpus.
+export type PdScaleRoleUnit = Omit<PdScaleUnitInput, "node_uuid"> & { node_uuid?: string };
+
 export interface PdScaleRequest {
-  roles?: Partial<Record<PdRoleName, { units: PdScaleUnitInput[] }>>;
+  roles?: Partial<Record<PdRoleName, { units: PdScaleRoleUnit[] }>>;
   fallback?: string;
 }
 
@@ -2831,6 +2843,10 @@ export interface EvaluateResponse {
   pre_start_script?: string;
   acquisition?: AcquisitionResult;
   ok: boolean;
+  // The server picked the nodes of this multi-node or PD request
+  // (placement_mode "auto"): the nodes shown are where it would go now, and the
+  // create picks again.
+  auto_placed?: boolean;
   // The complete launch configuration after materialization: every dictionary
   // key the deployment will start with, defaults included.
   effective_params: Record<string, unknown>;
@@ -4135,6 +4151,11 @@ export const api = {
   // start, so the request never carries them.
   updateDeploymentPd: (id: number, body: PdScaleRequest) =>
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/pd`, body),
+  // setPlacementMode hands a multi-node or PD deployment's node choice to the
+  // platform ("auto": a PD unit's pinned cards are dropped) or back to the
+  // operator ("manual": the nodes it has stay). Nothing restarts.
+  setPlacementMode: (id: number, mode: UnitsPlacementMode) =>
+    sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/placement-mode`, { mode }),
   // restartDeployment replaces every replica of a deployment, whatever its
   // shape: "rolling" (the server's default) one at a time, each draining
   // while its replacement starts; "all" stops every instance at once. Every

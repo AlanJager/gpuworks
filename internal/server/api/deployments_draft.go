@@ -144,7 +144,11 @@ func (a *apiHandlers) deploymentDraft(dep *store.Deployment, reqs map[string][]s
 		} else if node, err := a.d.Store.NodeByID(dep.NodeID); err == nil {
 			req.NodeUUID = node.UUID
 		}
-	} else if shape == deploymentShapeMulti {
+	} else {
+		// A multi-node or PD deployment says whether the platform places it.
+		req.PlacementMode = unitsPlacementMode(dep)
+	}
+	if shape == deploymentShapeMulti {
 		ids, err := dep.StoredNodeIDs()
 		if err != nil {
 			return dto.DeploymentDraft{}, err

@@ -251,6 +251,8 @@
     "wakeStarted": "Replica wake started",
     "editUnits": "Edit replicas",
     "unitsTitle": "Multi-node replicas",
+    "autoTitle": "Scale replicas",
+    "autoHint": "The platform picks every replica's {{nnodes}} nodes. Set the count; for new replicas you may name the nodes to start on first, and the rest are scheduled automatically. Shrinking removes the newest replicas first.",
     "unitsHint": "Each replica runs on {{nnodes}} nodes: the leader serves, the others are followers. Two replicas cannot be led from one node.",
     "unitLabel": "Replica {{index}}",
     "leaderNode": "Leader node",
@@ -290,7 +292,8 @@
         "offline": "Node {{node}} is offline.",
         "cordoned": "Node {{node}} is cordoned and takes no new replicas.",
         "requirements": "Node {{node}} does not satisfy the deployment's node requirements: {{detail}}",
-        "no_room": "Node {{node}} has no room for a new replica: {{detail}}"
+        "no_room": "Node {{node}} has no room for a new replica: {{detail}}",
+        "no_group": "Node {{node}} cannot be part of a group of nodes that takes the new replica now."
       }
     }
   },
@@ -363,7 +366,8 @@
       "NODE_REPLACED": "Node {{from}} stayed offline for over {{after}}: {{what}} {{target}}",
       "NODE_REPLACE_REVERTED": "Node {{to}} came back before {{what}} ran on {{from}}: the move is undone",
       "NODE_REPLACE_NO_CANDIDATE": "Nodes {{nodes}} stayed offline, but no other node can take their replicas",
-      "NODE_DRAIN_MOVED": "{{what}} moved off a draining node"
+      "NODE_DRAIN_MOVED": "{{what}} moved off a draining node",
+      "UNIT_PLACED": "Automatic placement: {{what}} placed on {{to}}{{from}}{{cause}}"
     },
     "pdTransport": {
       "rdma": "RDMA",
@@ -636,6 +640,32 @@
     "waitForIO": "The current I/O must return before another writer can start. Restore storage connectivity to resume safely.",
     "retry": "Retry cache copy"
   },
+  "unitsPlacement": {
+    "label": "Placement",
+    "auto": "Automatic",
+    "manual": "Manual",
+    "autoHint": "The platform picks a unit's nodes and cards whenever it starts, keeping its last nodes while they still fit.",
+    "manualHint": "The nodes are fixed: the platform does not pick other ones for a unit.",
+    "toAuto": "Switch to automatic",
+    "toManual": "Switch to manual",
+    "confirmTitleAuto": "Switch to automatic placement?",
+    "confirmTitleManual": "Switch to manual placement?",
+    "confirmAuto": "From now on the platform picks a unit's nodes and cards when the unit starts. The cards pinned to PD units are cleared. Nothing restarts now.",
+    "confirmManual": "The nodes each unit has now are fixed and the platform no longer re-picks them automatically. Nothing restarts now.",
+    "switchFailed": "Could not change the placement: {{detail}}",
+    "switchedAuto": "Placement is now automatic",
+    "switchedManual": "Placement is now manual",
+    "scale": {
+      "autoNote": "Nodes left empty are scheduled automatically.",
+      "specified": "Specified",
+      "automatic": "Scheduled automatically",
+      "newReplica": "New replica {{index}}",
+      "rankSlot": "Rank {{rank}} node",
+      "rankSlotAria": "Node of rank {{rank}} of new replica {{index}}",
+      "preferPlaceholder": "Prefer a node (optional)",
+      "prefixHint": "Name nodes from the first rank on: a rank can be named only after the ranks before it."
+    }
+  },
   "nodeReplacement": {
     "title": "Node failure",
     "hint": "When a node running a replica stays offline longer than this, the replica moves to another node.",
@@ -657,6 +687,17 @@
     },
     "movedTo": "moved to {{node}}",
     "movedElsewhere": "is rebuilt on another node",
+    "placedFrom": " (was on {{from}})",
+    "placedCause": ": {{reason}}",
+    "placedReason": {
+      "node_cordoned": "a node it was on stopped taking replicas",
+      "placement_rejected": "a node it was on no longer meets the deployment's node requirements",
+      "pinned_gpus_unavailable": "the cards it was pinned to are held by other deployments",
+      "insufficient_empty_gpus": "its nodes had no free cards for it",
+      "no_free_gpu": "its nodes had no free cards for it",
+      "no_fit": "its nodes had no room for it",
+      "other": "its previous nodes could not take it"
+    },
     "what": {
       "replica": "a replica",
       "unit": "replica {{label}}"

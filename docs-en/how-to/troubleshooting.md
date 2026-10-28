@@ -727,6 +727,10 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 |---|---|---|
 | `AUTOMATIC_PLACEMENT_STALE` | 409 | Resources have been occupied since evaluation, or nodes no longer meet the node requirements; evaluate again |
 | `NODE_REQUIREMENTS_UNMET` | 400 | The selected node does not meet the deployment's node requirements; `params.detail` identifies the key and required values |
+| `UNIT_PLACEMENT_NONE` | 409 | No group of nodes can take an automatically placed multi-node or PD request (create, evaluate, or scale) now. `params` gives the node total `nodes` and how many each check left out: `unmet` (node requirements not met), `cordoned`, `offline`, `busy` (not enough free cards), `no_network` (no usable compute network); `largest` is how many nodes the largest group has. Satisfy the item with the largest count, or place manually |
+| `AUTO_PLACEMENT_TP_REQUIRED` | 400 | An automatic multi-node request has no `placement.tp`, so the platform does not know how many free cards each node needs; fill in TP (and PP) |
+| `AUTO_PLACEMENT_PD_MULTI_NODE` | 400 | An automatically placed PD instance must fit on one node; an instance with `followers` must name its nodes (`params.role` is the role) |
+| `PLACEMENT_MODE_SHAPE` | 400 | `PUT /deployments/{id}/placement-mode` was used on a single-node deployment; its placement is in its node requirements, so edit those |
 | `NODE_SCHEDULABLE` | 409 | Force drain applies only to cordoned or draining nodes; cordon or drain first, or removed replicas are placed back on the same node |
 | `DEPLOYMENT_NEVER_FITS` | 400 | When creating a deployment or editing node requirements, no node in the candidate pool can accommodate one replica even when idle (too few cards, insufficient memory per card, unsupported precision, or inability to carry serving traffic). `params` gives the number of candidate nodes, the number of hardware configurations, and the first node's reason. Adjust parallelism, quantization, or node requirements according to the specific reason; do not always reduce TP. See the `no_fit` guidance below |
 | `NODE_REQUIREMENTS_INVALID` | 400 | The node requirements themselves are invalid (a misspelled system label key, two vendors, a conflict with `target_vendor`, or `gpuworks.ai/node` specified for a multi-node/PD deployment) |
@@ -741,6 +745,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 |---|---|
 | `no_fit` | Fixed startup requirement per card > available GPU memory; parameters include `required_gib`, `available_gib`, `tp`, and `gpu_memory_utilization` |
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | Not enough idle whole cards / shareable cards |
+| `pinned_gpus_unavailable` | The cards a manually placed PD instance is pinned to are held by other deployments; the parameters give `node`, `gpus` (the pinned card indexes), and `holders` (the deployments holding them). The instance does not switch to other free cards on the node but waits for the pinned cards: stop or move the deployments holding them, or switch this deployment to automatic placement (`PUT /deployments/{id}/placement-mode`) so the platform uses free cards. When a pinned card is held outside the platform, is not healthy, or is free but still does not fit, the corresponding reason code applies |
 | `no_free_gpu` | No idle GPUs |
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, unbound from drivers, or held by other drivers |
@@ -912,7 +917,7 @@ See [Sleep / Wake](sleep-wake.md).
 | `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | An L1 sleep moves the weights into host memory, and the available memory minus the headroom (the larger of 5% of total memory and 4 GiB) cannot hold them. `params` contains `node`, `need_gib`, and `available_gib`; use L2 |
 | `NODE_REPLACEMENT_INVALID` | 400 | The node replacement wait must be 0 (never) or 60–604800 seconds |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` names more nodes than the replicas being added |
-| `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit) |
+| `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit); an automatically placed multi-node deployment also has `no_group` (the named nodes cannot form a replica that fits: different compute networks or architectures, or not enough cards) |
 
 **Possible causes (agent-side failures)**
 
@@ -932,6 +937,8 @@ See [Sleep / Wake](sleep-wake.md).
 1. Check whether the deployment's **node replacement wait** is 0 (never) or has not elapsed; the default is 10 minutes, counted from when the server last saw the node.
 2. The timeline shows `NODE_REPLACE_NO_CANDIDATE`: no node can take over. A replacement for a multi-node or PD replica must be online, schedulable, satisfy the node requirements, share the compute network of the other ranks, have the same GPU vendor and architecture, and have free cards and pass the trial plan; fill in whatever is missing, and the platform retries every minute.
 3. A single-node replica pinned to this node (its node requirements allow only this one) does not move; wait for the node to return, or edit the node requirements.
+
+A node that is online but cannot take the replica (cards taken, cordoned) is not node replacement: an automatically placed multi-node or PD deployment moves only the ranks that do not fit when the replica is about to start (timeline `UNIT_PLACED`), and a manually placed one waits; see [Node online but cannot take it](node-failover.md#节点在线但放不下自动放置的重新挑选).
 
 For the rules and the undo, see [Replace Lost Nodes Automatically](node-failover.md).
 

@@ -251,6 +251,8 @@
     "wakeStarted": "已发起副本唤醒",
     "editUnits": "调整副本",
     "unitsTitle": "多机副本",
+    "autoTitle": "调整副本数",
+    "autoHint": "每个副本的 {{nnodes}} 个节点由平台挑选。设置副本数；新增的副本可以指定先放在哪些节点，其余的自动调度。缩容时先移除最新的副本。",
     "unitsHint": "每个副本占 {{nnodes}} 台节点：leader 对外服务，其余是 follower。不同副本的 leader 不能在同一台节点。",
     "unitLabel": "副本 {{index}}",
     "leaderNode": "leader 节点",
@@ -290,7 +292,8 @@
         "offline": "节点 {{node}} 离线。",
         "cordoned": "节点 {{node}} 已停止调度，不接收新副本。",
         "requirements": "节点 {{node}} 不满足部署的节点要求：{{detail}}",
-        "no_room": "节点 {{node}} 放不下新副本：{{detail}}"
+        "no_room": "节点 {{node}} 放不下新副本：{{detail}}",
+        "no_group": "节点 {{node}} 凑不出能放下新副本的节点组。"
       }
     }
   },
@@ -363,7 +366,8 @@
       "NODE_REPLACED": "节点 {{from}} 离线超过 {{after}}：{{what}} {{target}}",
       "NODE_REPLACE_REVERTED": "{{what}} 在 {{from}} 上跑起来前节点 {{to}} 已恢复，换节点已撤回",
       "NODE_REPLACE_NO_CANDIDATE": "节点 {{nodes}} 持续离线，但没有别的节点能接收它们的副本",
-      "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走"
+      "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走",
+      "UNIT_PLACED": "自动放置：{{what}} 已放到 {{to}}{{from}}{{cause}}"
     },
     "pdTransport": {
       "rdma": "RDMA",
@@ -636,6 +640,32 @@
     "waitForIO": "当前 I/O 返回前不能启动另一个写入任务。恢复存储连接后可安全续传。",
     "retry": "重试缓存复制"
   },
+  "unitsPlacement": {
+    "label": "放置方式",
+    "auto": "自动",
+    "manual": "手动",
+    "autoHint": "平台在单元启动时挑节点和卡，优先沿用上次的节点。",
+    "manualHint": "节点已固定：平台不会为单元另挑节点。",
+    "toAuto": "切换为自动",
+    "toManual": "切换为手动",
+    "confirmTitleAuto": "切换为自动放置？",
+    "confirmTitleManual": "切换为手动放置？",
+    "confirmAuto": "此后由平台在单元启动时挑节点和卡；PD 单元钉住的卡会被清除。现在不会重启任何实例。",
+    "confirmManual": "每个单元现在所在的节点被固定，平台不再自动重挑。现在不会重启任何实例。",
+    "switchFailed": "无法修改放置方式：{{detail}}",
+    "switchedAuto": "已切换为自动放置",
+    "switchedManual": "已切换为手动放置",
+    "scale": {
+      "autoNote": "未指定的节点将自动调度。",
+      "specified": "指定",
+      "automatic": "自动调度",
+      "newReplica": "新副本 {{index}}",
+      "rankSlot": "Rank {{rank}} 的节点",
+      "rankSlotAria": "新副本 {{index}} 的 rank {{rank}} 节点",
+      "preferPlaceholder": "优先放在（可留空）",
+      "prefixHint": "请从第一个 rank 起依次指定：前面的 rank 指定后才能指定后面的。"
+    }
+  },
   "nodeReplacement": {
     "title": "节点失联换节点",
     "hint": "运行副本的节点离线超过换节点等待后，副本会换到别的节点。",
@@ -657,6 +687,17 @@
     },
     "movedTo": "已换到 {{node}}",
     "movedElsewhere": "正在别的节点重建",
+    "placedFrom": "（原在 {{from}}）",
+    "placedCause": "：{{reason}}",
+    "placedReason": {
+      "node_cordoned": "它所在的节点已停止调度",
+      "placement_rejected": "它所在的节点已不满足部署的节点条件",
+      "pinned_gpus_unavailable": "它钉住的卡被其他部署占用",
+      "insufficient_empty_gpus": "它所在的节点没有空闲的卡",
+      "no_free_gpu": "它所在的节点没有空闲的卡",
+      "no_fit": "它所在的节点放不下它",
+      "other": "它原来的节点放不下它"
+    },
     "what": {
       "replica": "一个副本",
       "unit": "副本 {{label}}"

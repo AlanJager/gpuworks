@@ -465,7 +465,11 @@
     "SLEEP_HOST_MEMORY_INSUFFICIENT": "{{node}} has {{available_gib}} GiB of host memory free, but L1 sleep needs {{need_gib}} GiB. Use deep sleep (L2) instead.",
     "NODE_REPLACEMENT_INVALID": "The wait before a replica moves must be 0 (never) or between {{minimum}} and {{maximum}} seconds.",
     "REPLICAS_PLACE_ON_TOO_MANY": "{{count}} nodes were named for the first placement, but only {{maximum}} replicas are added.",
-    "REPLICAS_PLACE_ON_REFUSED": "Node {{node}} cannot take a new replica ({{reason}}). {{detail}}"
+    "REPLICAS_PLACE_ON_REFUSED": "Node {{node}} cannot take a new replica ({{reason}}). {{detail}}",
+    "UNIT_PLACEMENT_NONE": "No group of nodes can take this deployment now: of {{nodes}} nodes, {{unmet}} do not satisfy the requirements, {{cordoned}} are cordoned, {{offline}} are offline, {{busy}} lack free GPUs, {{no_network}} have no compute network; the largest group sharing a network and GPU architecture has {{largest}} nodes.",
+    "AUTO_PLACEMENT_TP_REQUIRED": "Automatic placement of a multi-node deployment needs a tensor parallel (TP) degree, so the platform knows how many GPUs each node gives a rank.",
+    "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
+    "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
