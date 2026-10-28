@@ -751,3 +751,35 @@ func TestUpdateAIConfigRefusesToClearTheOnlyDefault(t *testing.T) {
 		t.Fatalf("a refused patch cleared the default: %+v", row)
 	}
 }
+
+// A patch that names only a preset brings that provider's address and model,
+// the way a create fills them: a row labelled Alibaba Cloud must not keep
+// calling api.deepseek.com.
+func TestUpdateAIConfigPresetFillsMissingAddressAndModel(t *testing.T) {
+	rig := newAIConfigRig(t)
+	id := rig.create(t, `{"name":"primary","preset":"deepseek","base_url":"https://api.deepseek.com","model":"deepseek-v4-flash"}`)
+	preset, ok := aihelper.Presets["bailian"]
+	if !ok {
+		t.Skip("the bailian preset is not defined")
+	}
+	rec := rig.do(t, http.MethodPatch, fmt.Sprintf("/api/v1/ai/configs/%d", id), `{"preset":"bailian"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preset-only patch = %d %s", rec.Code, rec.Body.String())
+	}
+	row := rig.config(t, id)
+	wantBase, _ := aihelper.NormalizeBaseURL(preset.BaseURL)
+	if row.Preset != "bailian" || row.BaseURL != wantBase || row.Model != preset.Model {
+		t.Fatalf("preset-only patch stored %+v, want base %q model %q", row, wantBase, preset.Model)
+	}
+	// An explicit value in the same patch wins over the preset's fill.
+	rec = rig.do(t, http.MethodPatch, fmt.Sprintf("/api/v1/ai/configs/%d", id),
+		`{"preset":"deepseek","model":"deepseek-v4"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preset patch with an explicit model = %d %s", rec.Code, rec.Body.String())
+	}
+	row = rig.config(t, id)
+	deepseek, _ := aihelper.NormalizeBaseURL(aihelper.Presets["deepseek"].BaseURL)
+	if row.BaseURL != deepseek || row.Model != "deepseek-v4" {
+		t.Fatalf("an explicit model was overwritten: %+v", row)
+	}
+}

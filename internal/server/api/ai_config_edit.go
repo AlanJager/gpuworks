@@ -84,6 +84,12 @@ func (a *apiHandlers) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 			patch.APIKey = &encrypted
 		}
 	}
+	if patch.Preset != nil {
+		// A preset names a provider, so it brings that provider's address and
+		// model along unless this patch names its own - the same fill a create
+		// applies.
+		patch.BaseURL, patch.Model = fillAIConfigPreset(*patch.Preset, patch.BaseURL, patch.Model)
+	}
 	patch.IsDefault = req.IsDefault
 	c, err := a.d.Store.UpdateAIConfig(parseUint(chi.URLParam(r, "id")), patch)
 	if err != nil {
@@ -91,6 +97,34 @@ func (a *apiHandlers) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, aiConfigView(c))
+}
+
+// fillAIConfigPreset answers the address and model a patch should store for a
+// named preset, the way a create fills them from the same table.
+//
+// Without this, a client that patched only {"preset": "bailian"} got a row
+// labelled Alibaba Cloud that still called api.deepseek.com with a DeepSeek
+// model - the label and the traffic disagreeing, which is the worst kind of
+// wrong for a setting whose purpose is to say where data goes. The console hid
+// it only because the dialog fills the form client-side when the preset changes;
+// an API contract cannot depend on the one client that remembers to.
+//
+// A patch that names base_url or model keeps the value it named: the preset
+// fills gaps and never overwrites an explicit value.
+func fillAIConfigPreset(preset string, baseURL, model *string) (*string, *string) {
+	p, ok := aihelper.Presets[preset]
+	if !ok {
+		return baseURL, model
+	}
+	if baseURL == nil && p.BaseURL != "" {
+		base, _ := aihelper.NormalizeBaseURL(p.BaseURL)
+		baseURL = &base
+	}
+	if model == nil && p.Model != "" {
+		filled := p.Model
+		model = &filled
+	}
+	return baseURL, model
 }
 
 // testAIConfig asks an AI service whether it answers
