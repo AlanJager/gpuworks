@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"gpuworks.ai/gpuworks/pkg/model/modelmetadata"
 )
 
 const copySourceMarker = ".gpuworks-copy-source.json"
@@ -63,6 +65,16 @@ func prepareCopyResume(source, target string, files []copyFile) error {
 			if err := os.Remove(path + suffix); err != nil && !os.IsNotExist(err) {
 				return err
 			}
+		}
+	}
+	// Tool metadata is not a model file, so no listing names it and the loop
+	// above cannot reach it. A snapshot a pre-skip agent wrote does name it, and
+	// that agent left copies of it in the target; drop them so a resumed copy
+	// ends with the same file set a fresh one would, and so the stale copies
+	// cannot later be read back as this model's source identity.
+	for _, name := range modelmetadata.SourceMarkers {
+		if err := os.Remove(filepath.Join(target, name)); err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
 	if err := os.Remove(filepath.Join(target, modelCompleteMarker)); err != nil && !os.IsNotExist(err) {

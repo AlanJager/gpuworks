@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gpuworks.ai/gpuworks/pkg/model/modelmetadata"
 )
 
 const (
@@ -49,15 +51,27 @@ func identify(dir, rel string, c *Candidate) {
 	}
 	c.SourceID = rel
 	switch {
-	case exists(filepath.Join(dir, ".msc")) || exists(filepath.Join(dir, ".mv")):
+	case hasSourceMarker(dir):
 		c.Basis, c.Source = BasisModelScope, SourceModelScope
-		c.Revision = modelScopeRevision(filepath.Join(dir, ".mv"))
+		c.Revision = modelScopeRevision(filepath.Join(dir, modelmetadata.ModelScopeVersionMarker))
 	case hfDownloadDir(dir) != "":
 		c.Basis, c.Source = BasisHuggingFace, SourceHuggingFace
 		c.Revision = huggingFaceRevision(hfDownloadDir(dir))
 	default:
 		c.Basis, c.Source = BasisPath, SourceLocal
 	}
+}
+
+// hasSourceMarker reports whether dir holds any modelmetadata.SourceMarkers
+// name. The set is modelmetadata's because it is the leaf every reader can
+// import; internal/agent/app/modelcopy.go skips the same names when copying.
+func hasSourceMarker(dir string) bool {
+	for _, marker := range modelmetadata.SourceMarkers {
+		if exists(filepath.Join(dir, marker)) {
+			return true
+		}
+	}
+	return false
 }
 
 // readMarker accepts only a marker that parses and names its source and repo;
