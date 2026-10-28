@@ -17,7 +17,19 @@ func (a *apiHandlers) operatorEvent(r *http.Request, deploymentID uint, code str
 	if claims, ok := a.claimsFromRequest(r); ok && claims.Username != "" {
 		params["actor"] = claims.Username
 	}
-	a.d.Store.AddDeploymentEventCode(deploymentID, store.EventKindSchedule, code, params)
+	a.d.Store.AddDeploymentEventCode(deploymentID, operatorEventKind(code), code, params)
+}
+
+// operatorEventKind keeps the orders recorded only for the scheduling history
+// (a replica count, sleep, wake) out of EventKindSchedule, whose newest entry
+// is what a deployment's placement status reports; the restarts and retries
+// that were recorded there before stay there.
+func operatorEventKind(code string) string {
+	switch code {
+	case store.EventReplicasChanged, store.EventSleepOrdered, store.EventWakeOrdered:
+		return store.EventKindLifecycle
+	}
+	return store.EventKindSchedule
 }
 
 // sleepOrdered records an operator's sleep order. scope says what the order

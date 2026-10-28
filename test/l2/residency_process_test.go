@@ -121,7 +121,7 @@ func TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment(t *testing.T) {
 			}
 		}
 	}
-	waitSleepLevelWithin(t, base, token, batchInst.UUID, 2, 30*time.Second)
+	waitSleepLevelWithin(t, base, token, batchInst.UUID, 1, 30*time.Second)
 	if !engineSleeping(t, batchInst.APIPort) {
 		t.Fatal("the server reports the offline deployment asleep but its engine is not")
 	}

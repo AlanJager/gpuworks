@@ -440,7 +440,7 @@ func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.U
 	if unit.Role != "" {
 		params["role"] = unit.Role
 	}
-	c.store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventReplicaRebuilt, params)
+	c.store.AddDeploymentEventCode(dep.ID, store.EventKindLifecycle, store.EventReplicaRebuilt, params)
 }
 
 // retryWait is how long a unit waits before its next attempt: the retry

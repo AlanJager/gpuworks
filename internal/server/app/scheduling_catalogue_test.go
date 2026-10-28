@@ -34,17 +34,17 @@ func TestSchedulingCatalogueCoversTheRecordedCodes(t *testing.T) {
 		{controller.EventNodeReplaced, store.EventKindAutomation, store.SchedulingFailure},
 		{controller.EventNodeReplaceReverted, store.EventKindAutomation, store.SchedulingFailure},
 		{controller.EventNodeReplaceNoCandidate, store.EventKindAutomation, store.SchedulingFailure},
-		{store.EventReplicaRebuilt, store.EventKindSchedule, store.SchedulingFailure},
+		{store.EventReplicaRebuilt, store.EventKindLifecycle, store.SchedulingFailure},
 		{store.EventUnitRetryExhausted, store.EventKindSchedule, store.SchedulingFailure},
 		{store.EventDeploymentUnschedulable, store.EventKindSchedule, store.SchedulingFailure},
 		{store.EventDeploymentRollingStalled, store.EventKindSchedule, store.SchedulingFailure},
-		{store.EventReplicasChanged, store.EventKindSchedule, store.SchedulingManual},
+		{store.EventReplicasChanged, store.EventKindLifecycle, store.SchedulingManual},
 		{store.EventReplicaRestarted, store.EventKindSchedule, store.SchedulingManual},
 		{store.EventUnitRetried, store.EventKindSchedule, store.SchedulingManual},
 		{store.EventDeploymentRestarted, store.EventKindSchedule, store.SchedulingManual},
 		{store.EventDeploymentRollingRestarted, store.EventKindSchedule, store.SchedulingManual},
-		{store.EventSleepOrdered, store.EventKindSchedule, store.SchedulingManual},
-		{store.EventWakeOrdered, store.EventKindSchedule, store.SchedulingManual},
+		{store.EventSleepOrdered, store.EventKindLifecycle, store.SchedulingManual},
+		{store.EventWakeOrdered, store.EventKindLifecycle, store.SchedulingManual},
 	} {
 		entry, ok := have[want.code]
 		if !ok || entry.Kind != want.kind || entry.Category != want.category {

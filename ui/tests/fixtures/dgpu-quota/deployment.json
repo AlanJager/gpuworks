@@ -78,6 +78,8 @@
   "node_replacement": {
     "after_sec": 600
   },
+  "service_level": "resident",
+  "sleep_held": false,
   "nnodes": 1,
   "node_rank": 0,
   "created_at": "2026-10-18T08:00:00Z",

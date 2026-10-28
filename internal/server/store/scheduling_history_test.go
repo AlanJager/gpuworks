@@ -22,8 +22,8 @@ func seedHistory(t *testing.T, s *Store) {
 		rows = append(rows, InstanceEvent{DeploymentID: dep, Kind: kind, Code: code, Data: `{"actor":"alice"}`, CreatedAt: base.Add(at)})
 	}
 	add(1, EventKindAutomation, "AUTO_SLEEP", 10*time.Hour)
-	add(1, EventKindSchedule, EventReplicasChanged, 11*time.Hour)
-	add(2, EventKindSchedule, EventReplicaRebuilt, 12*time.Hour)
+	add(1, EventKindLifecycle, EventReplicasChanged, 11*time.Hour)
+	add(2, EventKindLifecycle, EventReplicaRebuilt, 12*time.Hour)
 	add(2, EventKindAutomation, "NODE_REPLACED", 13*time.Hour)
 	add(3, EventKindSchedule, EventDeploymentEdited, 14*time.Hour) // configuration, not scheduling
 	add(3, EventKindSchedule, EventUnitRetried, 15*time.Hour)
@@ -94,8 +94,8 @@ func TestSchedulingCatalogue(t *testing.T) {
 		if !ValidSchedulingCategory(entry.Category) {
 			t.Errorf("%s has category %q", entry.Code, entry.Category)
 		}
-		if entry.Kind != EventKindSchedule && entry.Kind != EventKindAutomation {
-			t.Errorf("%s has kind %q; the read serves only the schedule and automation kinds", entry.Code, entry.Kind)
+		if entry.Kind != EventKindSchedule && entry.Kind != EventKindAutomation && entry.Kind != EventKindLifecycle {
+			t.Errorf("%s has kind %q; the read serves only the schedule, automation and lifecycle kinds", entry.Code, entry.Kind)
 		}
 	}
 	if c, ok := SchedulingCategoryOf("NODE_REPLACED"); !ok || c != SchedulingFailure {
@@ -120,7 +120,7 @@ func TestSchedulingHistoryQueryPlans(t *testing.T) {
 		"time window": {Since: since, Until: until},
 		"everything":  {DeploymentID: 2, Before: 4000, Since: since, Until: until, Categories: []SchedulingCategory{SchedulingFailure}},
 	} {
-		for kind, codes := range map[string][]string{EventKindSchedule: {EventReplicaRebuilt, EventUnitRetried}, EventKindAutomation: {"AUTO_SLEEP", "NODE_REPLACED"}} {
+		for kind, codes := range map[string][]string{EventKindSchedule: {EventUnitRetried}, EventKindLifecycle: {EventReplicaRebuilt}, EventKindAutomation: {"AUTO_SLEEP", "NODE_REPLACED"}} {
 			stmt := s.historyKindQuery(f, kind, codes, 100).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
 			var plan []struct {
 				Detail string

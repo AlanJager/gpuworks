@@ -31,3 +31,10 @@ func (s *Store) SetDeploymentNodeReplaceAfter(id uint, afterSec int) error {
 // waiting wakes, moving a replica off a lost node) and an operator's waiting
 // or yielding wake.
 const EventKindAutomation = "automation"
+
+// EventKindLifecycle is the timeline kind of a replica's life the scheduling
+// history shows but a deployment's placement status does not read: an
+// operator's replica count, sleep and wake orders, and the controller
+// starting a failed replica again. It is kept apart from EventKindSchedule,
+// whose newest entry is what a deployment's placement status reports.
+const EventKindLifecycle = "lifecycle"

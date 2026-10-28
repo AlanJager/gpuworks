@@ -36,9 +36,9 @@ func historyCodesOf(items []map[string]any) string {
 func TestSchedulingHistoryWire(t *testing.T) {
 	rig := newScheduleRig(t)
 	rig.st.AddDeploymentEventCode(rig.sleepable.ID, store.EventKindAutomation, "AUTO_SLEEP", map[string]any{"trigger": "idle", "level": 2, "idle_sec": 900})
-	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindSchedule, store.EventReplicasChanged, map[string]any{"from": 1, "to": 3, "actor": "alice"})
+	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindLifecycle, store.EventReplicasChanged, map[string]any{"from": 1, "to": 3, "actor": "alice"})
 	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindSchedule, store.EventDeploymentEdited, map[string]any{"fields": "name"}) // not scheduling
-	rig.st.AddDeploymentEventCode(rig.multi.ID, store.EventKindSchedule, store.EventReplicaRebuilt, map[string]any{"replica": 1, "attempt": 2, "reason": "oom", "node": "gpu-1"})
+	rig.st.AddDeploymentEventCode(rig.multi.ID, store.EventKindLifecycle, store.EventReplicaRebuilt, map[string]any{"replica": 1, "attempt": 2, "reason": "oom", "node": "gpu-1"})
 
 	status, items, body := rig.history(t, rig.session, "")
 	if status != http.StatusOK || historyCodesOf(items) != "REPLICA_REBUILT,REPLICAS_CHANGED,AUTO_SLEEP" {
@@ -46,8 +46,8 @@ func TestSchedulingHistoryWire(t *testing.T) {
 	}
 	// The wire form of each entry, exactly: id and time vary, the rest is fixed.
 	want := []string{
-		`{"category":"failure","code":"REPLICA_REBUILT","deployment":"multi","deployment_id":%d,"kind":"schedule","params":{"attempt":2,"node":"gpu-1","reason":"oom","replica":1}}`,
-		`{"actor":"alice","category":"manual","code":"REPLICAS_CHANGED","deployment":"plain","deployment_id":%d,"kind":"schedule","params":{"actor":"alice","from":1,"to":3}}`,
+		`{"category":"failure","code":"REPLICA_REBUILT","deployment":"multi","deployment_id":%d,"kind":"lifecycle","params":{"attempt":2,"node":"gpu-1","reason":"oom","replica":1}}`,
+		`{"actor":"alice","category":"manual","code":"REPLICAS_CHANGED","deployment":"plain","deployment_id":%d,"kind":"lifecycle","params":{"actor":"alice","from":1,"to":3}}`,
 		`{"category":"auto","code":"AUTO_SLEEP","deployment":"sleepy","deployment_id":%d,"kind":"automation","params":{"idle_sec":900,"level":2,"trigger":"idle"}}`,
 	}
 	ids := []uint{rig.multi.ID, rig.plain.ID, rig.sleepable.ID}
@@ -138,7 +138,7 @@ func TestSchedulingHistoryRefusals(t *testing.T) {
 // The history outlives the deployment: a deleted one still reads by name.
 func TestSchedulingHistoryOfADeletedDeployment(t *testing.T) {
 	rig := newScheduleRig(t)
-	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindSchedule, store.EventReplicasChanged, map[string]any{"from": 1, "to": 2})
+	rig.st.AddDeploymentEventCode(rig.plain.ID, store.EventKindLifecycle, store.EventReplicasChanged, map[string]any{"from": 1, "to": 2})
 	if err := rig.st.DeleteDeployment(rig.plain.ID); err != nil {
 		t.Fatal(err)
 	}

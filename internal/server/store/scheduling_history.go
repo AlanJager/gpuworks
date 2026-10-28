@@ -73,19 +73,19 @@ var schedulingEventCodes = []SchedulingEventCode{
 	{"NODE_REPLACED", EventKindAutomation, SchedulingFailure},
 	{"NODE_REPLACE_REVERTED", EventKindAutomation, SchedulingFailure},
 	{"NODE_REPLACE_NO_CANDIDATE", EventKindAutomation, SchedulingFailure},
-	{EventReplicaRebuilt, EventKindSchedule, SchedulingFailure},
+	{EventReplicaRebuilt, EventKindLifecycle, SchedulingFailure},
 	{EventUnitRetryExhausted, EventKindSchedule, SchedulingFailure},
 	{EventDeploymentUnschedulable, EventKindSchedule, SchedulingFailure},
 	{EventDeploymentRollingStalled, EventKindSchedule, SchedulingFailure},
 
-	{EventReplicasChanged, EventKindSchedule, SchedulingManual},
+	{EventReplicasChanged, EventKindLifecycle, SchedulingManual},
 	{EventReplicaRestarted, EventKindSchedule, SchedulingManual},
 	{EventUnitRetried, EventKindSchedule, SchedulingManual},
 	{EventDeploymentRestarted, EventKindSchedule, SchedulingManual},
 	{"PD_GROUP_RESTARTED", EventKindSchedule, SchedulingManual},
 	{EventDeploymentRollingRestarted, EventKindSchedule, SchedulingManual},
-	{EventSleepOrdered, EventKindSchedule, SchedulingManual},
-	{EventWakeOrdered, EventKindSchedule, SchedulingManual},
+	{EventSleepOrdered, EventKindLifecycle, SchedulingManual},
+	{EventWakeOrdered, EventKindLifecycle, SchedulingManual},
 }
 
 // SchedulingEventCodes is the catalogue, in a stable order.

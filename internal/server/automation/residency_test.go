@@ -338,3 +338,25 @@ func TestAYieldGuardDoesNotOutliveItsTime(t *testing.T) {
 		t.Fatalf("a holder stayed asleep past the guard for a waiter that never woke: %v", w.wakeCalls)
 	}
 }
+
+// A wake the arbiter ordered that had to wait for a holder to yield is
+// recorded with the arbiter's reason when it lands, not as a plain waiting
+// wake.
+func TestAWakeThatWaitedForAYieldKeepsItsTrigger(t *testing.T) {
+	w := newResidencyWorld()
+	w.levels[1], w.levels[2] = servicelevel.Online, servicelevel.Offline
+	w.asleep[1] = true
+	w.activity[2] = Activity{InFlight: 1}
+	w.waiters = []Waiter{{DeploymentID: 1, Level: servicelevel.Online, Since: t0}}
+	w.blocking[1] = Blocking{Holders: []Holder{{DeploymentID: 2, Level: servicelevel.Offline, Instances: []string{"off"}}}}
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	w.waits = []WaitingWake{{DeploymentID: 1, Instances: []string{"i-1"}, Since: t0}}
+	w.fits[1] = []string{"i-1"}
+	c.t = c.t.Add(2 * time.Second)
+	e.waitingWakes(c.t)
+	last := len(w.events) - 1
+	if w.events[last] != "1 AUTO_WAKE" || w.params[last]["trigger"] != TriggerRequest {
+		t.Fatalf("last event %s %v, want AUTO_WAKE trigger request", w.events[last], w.params[last])
+	}
+}

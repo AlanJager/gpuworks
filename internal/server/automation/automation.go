@@ -219,11 +219,16 @@ func (e *Evaluator) waitingWakes(now time.Time) {
 			continue
 		}
 		if len(woken) > 0 {
-			e.actions.Record(w.DeploymentID, EventAutoWake, map[string]any{"trigger": TriggerWakeWaiting, "instances": woken})
+			trigger := TriggerWakeWaiting
 			if e.res != nil {
+				if why, ok := e.res.wakeTrigger[w.DeploymentID]; ok {
+					trigger = why
+					delete(e.res.wakeTrigger, w.DeploymentID)
+				}
 				e.res.awakeAt[w.DeploymentID] = now
 				delete(e.res.preempted, w.DeploymentID)
 			}
+			e.actions.Record(w.DeploymentID, EventAutoWake, map[string]any{"trigger": trigger, "instances": woken})
 		}
 	}
 }

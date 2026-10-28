@@ -99,6 +99,9 @@ type residencyState struct {
 	// wokeAt is when a wake was last ordered for a waiter, so a waiter whose
 	// wake is in flight is not ordered again on every pass.
 	wokeAt map[uint]time.Time
+	// wakeTrigger is why the arbiter ordered a wake that waits for room:
+	// the waiting-wakes pass records it when the wake lands.
+	wakeTrigger map[uint]string
 	// yieldedFor is whom each holder gave its cards to, and when: it does
 	// not take them back while that one is still waking, or it would take the
 	// room the yield made before the waiter could use it.
@@ -130,7 +133,7 @@ func (e *Evaluator) WithResidency(source ResidencySource, actions ResidencyActio
 	e.res = &residencyState{
 		source: source, actions: actions, demand: make(chan struct{}, 1),
 		awakeAt: map[uint]time.Time{}, preempted: map[uint]time.Time{}, draining: map[uint]drain{}, wokeAt: map[uint]time.Time{},
-		yieldedFor: map[uint]yielded{},
+		yieldedFor: map[uint]yielded{}, wakeTrigger: map[uint]string{},
 	}
 	return e
 }
@@ -240,6 +243,7 @@ func (e *Evaluator) serveWaiter(now time.Time, w waiting, yielding map[uint]bool
 	if len(result.Waiting) == 0 {
 		return
 	}
+	r.wakeTrigger[w.id] = trigger
 	blocking, err := r.source.Blocking(w.id)
 	if err != nil {
 		e.log.Warn("automation: read what keeps a deployment asleep", "deployment", w.id, "err", err)
