@@ -4,6 +4,18 @@ import "time"
 
 // AIConfig is an OpenAI-compatible LLM endpoint for the AI helper (plan §14).
 // The product is 100% usable without any configured — AI features simply hide.
+//
+// While at least one row is stored, exactly one of them is IsDefault, and that
+// is the service the assistant sends to. The invariant is kept in three places
+// on purpose: the store's create, update and delete keep it inside the same
+// transaction as the write; migration 179 repairs a database an older build left
+// broken and adds the partial unique index that stops a second mark; and the
+// read path is DefaultAIConfig, which answers ErrNotFound rather than standing
+// in an arbitrary row, because that fallback is exactly how the assistant ended
+// up calling a service the console did not mark. The store's single writer
+// connection (Open sets SetMaxOpenConns(1)) is what makes the read-then-write in
+// those transactions safe on SQLite; the index is the backstop that does not
+// depend on it.
 type AIConfig struct {
 	ID        uint   `gorm:"primaryKey"`
 	Name      string `gorm:"size:64"`

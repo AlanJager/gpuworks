@@ -161,11 +161,19 @@ func aiConfigView(c *store.AIConfig) dto.AIConfigView {
 	return dto.AIConfigView{ID: c.ID, Name: c.Name, Preset: c.Preset, BaseURL: c.BaseURL, Model: c.Model, IsDefault: c.IsDefault}
 }
 
-// writeAIStoreErr answers a config write: a missing service is a 404, anything
-// else a storage failure.
+// writeAIStoreErr answers a config write: a missing service is a 404, a patch
+// that would leave the stored services with no default is a 409 - the request
+// is well formed and the row exists, the state it asks for is what conflicts -
+// and anything else a storage failure.
 func writeAIStoreErr(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	if errors.Is(err, store.ErrAIDefaultRequired) {
+		writeProductError(w, http.StatusConflict, ErrorAIDefaultRequired,
+			"this is the AI service the assistant uses; make another service the default first, or delete this one",
+			map[string]any{"field": "is_default", "detail": "the service the assistant uses cannot stop being the default"})
 		return
 	}
 	writeErr(w, http.StatusInternalServerError, err)

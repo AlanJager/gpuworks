@@ -36,9 +36,14 @@ export default function AICard() {
     () => api.aiConfigs().then((list) => setConfigs(list.items)).catch(() => {}),
     [],
   );
-  // The assistant uses the default endpoint; say where its reads go when that
-  // is outside the platform.
-  const active = configs.find((c) => c.is_default) ?? configs[0];
+  // The assistant uses the stored default, and the server guarantees there is
+  // exactly one while any service is stored: a create, an edit and a delete all
+  // keep that rule, and the database refuses a second mark. So the notice names
+  // the row the traffic goes to, and there is nothing to guess at - the
+  // fallback this once had picked the first row of the list, which is the newest
+  // one, while the server's own reader fell back to the oldest; the notice could
+  // name a host the assistant never called.
+  const active = configs.find((c) => c.is_default);
   const egressHost = active ? externalHost(active.base_url) : "";
   useEffect(() => {
     load();
@@ -46,8 +51,12 @@ export default function AICard() {
 
   const del = async (id: number) => {
     try {
-      await api.deleteAIConfig(id);
-      message.success(t("ai.deleted"));
+      const answer = await api.deleteAIConfig(id);
+      // The service the operator deleted may have been the one in use; the
+      // server names the one that took over, so the console tells them rather
+      // than letting the egress notice above change host without a word.
+      const promoted = configs.find((c) => c.id === answer?.promoted_id);
+      message.success(promoted ? t("ai.deletedPromoted", { name: promoted.name }) : t("ai.deleted"));
       load();
     } catch (e) {
       message.error(t("error.delete", { detail: (e as Error).message }));

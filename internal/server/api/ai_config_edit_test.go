@@ -153,9 +153,9 @@ func TestUpdateAIConfigAppliesEachFieldAlone(t *testing.T) {
 				t.Fatalf("model = %q", row.Model)
 			}
 		}},
-		{"is_default", `{"is_default":false}`, func(t *testing.T, row dtoRow) {
-			if row.IsDefault {
-				t.Fatal("is_default not cleared")
+		{"is_default", `{"is_default":true}`, func(t *testing.T, row dtoRow) {
+			if !row.IsDefault {
+				t.Fatal("is_default not kept")
 			}
 		}},
 	} {
@@ -493,5 +493,82 @@ func TestAIConfigEditRoutesRequireAuthentication(t *testing.T) {
 	}
 	if rec := rig.do(t, http.MethodPatch, "/api/v1/ai/configs", `{"name":"x"}`); rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("PATCH on the collection = %d", rec.Code)
+	}
+}
+
+// A delete of a service that is already gone answers 404, so a stale console is
+// told what happened instead of being shown a success for a row that was never
+// there.
+func TestDeleteAIConfigMissingRowAnswers404(t *testing.T) {
+	rig := newAIConfigRig(t)
+	rec := rig.do(t, http.MethodDelete, "/api/v1/ai/configs/404", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("delete of a missing service = %d %s", rec.Code, rec.Body.String())
+	}
+	rec = rig.do(t, http.MethodDelete, "/api/v1/ai/configs/not-a-number", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("delete of an unparseable id = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Deleting the service the assistant uses answers which one took over, so the
+// console can say where the assistant went instead of letting the egress notice
+// change host unannounced.
+func TestDeleteAIConfigAnswersThePromotedService(t *testing.T) {
+	rig := newAIConfigRig(t)
+	first := rig.create(t, `{"name":"first","base_url":"https://api.deepseek.com","model":"m"}`)
+	second := rig.create(t, `{"name":"second","base_url":"https://api.deepseek.com","model":"m"}`)
+	rec := rig.do(t, http.MethodDelete, fmt.Sprintf("/api/v1/ai/configs/%d", first), "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete = %d %s", rec.Code, rec.Body.String())
+	}
+	var answer struct {
+		Status     string `json:"status"`
+		PromotedID uint   `json:"promoted_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil {
+		t.Fatalf("delete answer = %s (err %v)", rec.Body.String(), err)
+	}
+	if answer.Status != "deleted" || answer.PromotedID != second {
+		t.Fatalf("delete answer = %+v, want the promoted id %d", answer, second)
+	}
+	// And the assistant now reads the promoted service.
+	list := rig.do(t, http.MethodGet, "/api/v1/ai/configs", "")
+	var rows []dtoRow
+	if err := unmarshalList(list.Body.Bytes(), &rows); err != nil || len(rows) != 1 || !rows[0].IsDefault {
+		t.Fatalf("after the delete the remaining service is not the default: %s (err %v)", list.Body.String(), err)
+	}
+	// Deleting a service that is not the default promotes nothing.
+	third := rig.create(t, `{"name":"third","base_url":"https://api.deepseek.com","model":"m"}`)
+	rec = rig.do(t, http.MethodDelete, fmt.Sprintf("/api/v1/ai/configs/%d", third), "")
+	answer = struct {
+		Status     string `json:"status"`
+		PromotedID uint   `json:"promoted_id"`
+	}{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || answer.PromotedID != 0 || answer.Status != "deleted" {
+		t.Fatalf("delete of a non-default answered %+v (err %v)", answer, err)
+	}
+}
+
+// Clearing the switch on the service the assistant uses is refused with a code
+// the console can translate and a field it can mark, in keeping with the rule
+// that a stored service set always has exactly one default.
+func TestUpdateAIConfigRefusesToClearTheOnlyDefault(t *testing.T) {
+	rig := newAIConfigRig(t)
+	id := rig.create(t, `{"name":"only","base_url":"https://api.deepseek.com","model":"m"}`)
+	rec := rig.do(t, http.MethodPatch, fmt.Sprintf("/api/v1/ai/configs/%d", id), `{"is_default":false}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("clearing the only default = %d %s", rec.Code, rec.Body.String())
+	}
+	var answer struct {
+		Code   string         `json:"code"`
+		Params map[string]any `json:"params"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || answer.Code != ErrorAIDefaultRequired || answer.Params["field"] != "is_default" {
+		t.Fatalf("refusal = %s (err %v)", rec.Body.String(), err)
+	}
+	// The stored service is unchanged, and it is still the one in use.
+	if row := rig.config(t, id); !row.IsDefault {
+		t.Fatalf("a refused patch cleared the default: %+v", row)
 	}
 }

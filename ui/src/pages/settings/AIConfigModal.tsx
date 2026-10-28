@@ -226,8 +226,18 @@ export default function AIConfigModal({
         >
           <Input.Password placeholder={editing ? t("ai.keyKeep") : "sk-…"} autoComplete="new-password" />
         </Form.Item>
-        <Form.Item label={t("ai.setDefault")} name="is_default" valuePropName="checked">
-          <Switch />
+        <Form.Item
+          label={t("ai.setDefault")}
+          name="is_default"
+          valuePropName="checked"
+          // While any service is stored exactly one of them is the one the
+          // assistant uses, and the server refuses to clear the mark on that one
+          // rather than leaving every stored service unused. The switch cannot
+          // therefore offer to clear it: turning it off here would only produce a
+          // rejection the operator cannot act on from this dialog.
+          extra={editing?.is_default ? t("ai.defaultLocked") : undefined}
+        >
+          <Switch disabled={editing?.is_default} />
         </Form.Item>
       </Form>
       <Space direction="vertical" size={8} style={{ width: "100%" }}>

@@ -2093,6 +2093,16 @@ export interface AIConfigPatch {
   is_default?: boolean;
 }
 /**
+ * AIConfigDeleteResult answers a delete. promoted_id names the service that took
+ * over as the default when the deleted one was in use, and is absent when
+ * nothing changed hands: the console says which service the assistant moved to
+ * instead of letting the data-egress notice change host unannounced.
+ */
+export interface AIConfigDeleteResult {
+  status: string;
+  promoted_id?: number;
+}
+/**
  * AIConfigTest asks whether an endpoint answers before it is saved. id names
  * the stored service an edit started from; with an empty api_key its stored
  * key is used, while base_url still matches the stored address.
@@ -4480,7 +4490,7 @@ export const api = {
   testAIConfig: (body: AIConfigTest) =>
     sendJSON<AIConfigTestResult>("POST", "/api/v1/ai/configs/test", body),
   deleteAIConfig: (id: number) =>
-    sendJSON<void>("DELETE", `/api/v1/ai/configs/${id}`),
+    sendJSON<AIConfigDeleteResult>("DELETE", `/api/v1/ai/configs/${id}`),
   aiAsk: (body: AIAskRequest, signal?: AbortSignal) =>
     sendJSON<AIAnswer>("POST", "/api/v1/ai/ask", body, signal),
   /**

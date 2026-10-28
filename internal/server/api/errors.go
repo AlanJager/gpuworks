@@ -362,6 +362,13 @@ const (
 	ErrorQuickParamPath = "QUICK_PARAM_PATH_INVALID"
 )
 
+// ErrorAIDefaultRequired answers a patch that would clear the default mark on
+// the only stored AI service. The console shows the switch on every row, and
+// clearing the last mark would leave the assistant with services stored and none
+// of them in use - a state the console cannot show and the operator cannot
+// repair except by marking another row first.
+const ErrorAIDefaultRequired = "AI_DEFAULT_REQUIRED"
+
 func productError(code, fallback string, params map[string]any) error {
 	return messages.NewProductError(code, fallback, params)
 }

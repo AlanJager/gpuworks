@@ -90,12 +90,21 @@ func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"id": c.ID})
 }
 
+// deleteAIConfig removes one AI service (DELETE /api/v1/ai/configs/{id}).
+// Removing the service the assistant uses hands the mark to another one in the
+// same transaction, and the answer names it: the console says which service the
+// assistant moved to, instead of the egress notice silently changing host.
 func (a *apiHandlers) deleteAIConfig(w http.ResponseWriter, r *http.Request) {
-	if err := a.d.Store.DeleteAIConfig(parseUint(chi.URLParam(r, "id"))); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+	promoted, err := a.d.Store.DeleteAIConfig(parseUint(chi.URLParam(r, "id")))
+	if err != nil {
+		writeAIStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	answer := map[string]any{"status": "deleted"}
+	if promoted != 0 {
+		answer["promoted_id"] = promoted
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 // aiAsk runs a task (dto.AIAskRequest). Each task names its subject by

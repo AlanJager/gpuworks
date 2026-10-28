@@ -55,7 +55,15 @@ function stubAPI(rows: ReturnType<typeof stored>[]) {
   };
   api.deleteAIConfig = async (id) => {
     calls.deleted.push(id);
+    // The server promotes the newest survivor when the deleted service was the
+    // one in use, and names it in the answer; the stub does the same so the card
+    // is exercised against the reply it really gets.
+    const wasDefault = current.some((row) => row.id === id && row.is_default);
     current = current.filter((row) => row.id !== id);
+    if (!wasDefault || current.length === 0) return { status: "deleted" };
+    const promoted = [...current].sort((a, b) => b.id - a.id)[0];
+    current = current.map((row) => (row.id === promoted.id ? { ...row, is_default: true } : row));
+    return { status: "deleted", promoted_id: promoted.id };
   };
   api.testAIConfig = async (body) => {
     calls.tested.push(body as unknown as Record<string, unknown>);
@@ -259,4 +267,81 @@ test("the form says where the address ends", async () => {
   // A wrong address is the failure the bug reported; the hint is next to the
   // field, not only in a message after the assistant fails.
   assert.ok(within(dialog).getByText(ai.baseUrlHint));
+});
+
+// While any service is stored exactly one of them is the one the assistant uses,
+// and the server refuses to clear the mark on that one. The dialog therefore does
+// not offer to clear it: a switch that can only produce a rejection is worse than
+// no switch, because the operator reads it as a setting they own.
+test("the default service's own dialog does not offer to unset it", async () => {
+  const fake = stubAPI([stored({ id: 1, name: "primary", is_default: true }), stored({ id: 2, name: "spare", is_default: false })]);
+  fakes.push(fake);
+  renderCard();
+  const user = userEvent.setup({ document: dom.window.document });
+  await screen.findByText("primary");
+  // primary is the service in use, and the table lists it first.
+  await user.click(screen.getAllByRole("button", { name: common.edit })[0]);
+  const dialog = await screen.findByRole("dialog");
+  assert.equal((within(dialog).getByRole("switch") as HTMLElement).getAttribute("aria-checked"), "true");
+  assert.equal((within(dialog).getByRole("switch") as HTMLButtonElement).disabled, true);
+  assert.ok(within(dialog).getByText(ai.defaultLocked));
+});
+
+// Moving the assistant to another service stays available: that is the way the
+// operator changes which service it uses, and the switch on that row works.
+test("a service that is not in use can still be made the default", async () => {
+  const fake = stubAPI([stored({ id: 1, name: "primary", is_default: true }), stored({ id: 2, name: "spare", is_default: false })]);
+  fakes.push(fake);
+  renderCard();
+  const user = userEvent.setup({ document: dom.window.document });
+  await screen.findByText("spare");
+  await user.click(screen.getAllByRole("button", { name: common.edit })[1]);
+  const dialog = await screen.findByRole("dialog");
+  const toggle = within(dialog).getByRole("switch") as HTMLButtonElement;
+  assert.equal(toggle.getAttribute("aria-checked"), "false");
+  assert.equal(toggle.disabled, false);
+  assert.equal(within(dialog).queryByText(ai.defaultLocked), null);
+  // And the save carries it, so the move happens as the switch says it will.
+  await user.click(toggle);
+  await user.click(within(dialog).getByRole("button", { name: common.save }));
+  await waitFor(() => assert.equal(fake.calls.updated.length, 1));
+  assert.equal(fake.calls.updated[0].body.is_default, true);
+});
+
+// Deleting the service in use hands the mark to another one; the console says
+// which, so the data-egress notice above the table does not silently start
+// naming a different host.
+test("deleting the service in use says which one the assistant moved to", async () => {
+  const fake = stubAPI([stored({ id: 1, name: "primary", is_default: true }), stored({ id: 2, name: "spare", is_default: false })]);
+  fakes.push(fake);
+  renderCard();
+  const user = userEvent.setup({ document: dom.window.document });
+  await screen.findByText("primary");
+  await user.click(screen.getAllByRole("button", { name: common.delete })[0]);
+  const buttons = await screen.findAllByRole("button", { name: common.delete });
+  await user.click(buttons[buttons.length - 1]);
+  await waitFor(() => assert.deepEqual(fake.calls.deleted, [1]));
+  // The replacement is named: the row that took over is where the assistant's
+  // reads now go, and the operator is told so instead of inferring it.
+  assert.ok(await screen.findByText(ai.deletedPromoted.replace("{{name}}", "spare")));
+  await waitFor(() => assert.equal(screen.queryByText("primary"), null));
+  assert.ok(screen.getByText("spare"));
+});
+
+// Deleting a service that is not in use changes nothing about which one the
+// assistant uses, so there is nothing to announce beyond the delete.
+test("deleting a spare service says only that it was deleted", async () => {
+  const fake = stubAPI([stored({ id: 1, name: "primary", is_default: true }), stored({ id: 2, name: "spare", is_default: false })]);
+  fakes.push(fake);
+  renderCard();
+  const user = userEvent.setup({ document: dom.window.document });
+  await screen.findByText("spare");
+  await user.click(screen.getAllByRole("button", { name: common.delete })[1]);
+  const buttons = await screen.findAllByRole("button", { name: common.delete });
+  await user.click(buttons[buttons.length - 1]);
+  await waitFor(() => assert.deepEqual(fake.calls.deleted, [2]));
+  assert.ok(await screen.findByText(ai.deleted));
+  await waitFor(() => assert.equal(screen.queryByText("spare"), null));
+  // The service in use is untouched.
+  assert.ok(screen.getByText("primary"));
 });
