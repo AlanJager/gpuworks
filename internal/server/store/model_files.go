@@ -47,34 +47,51 @@ func (s *Store) publishModelFile(id uint, reason string) {
 func (s *Store) UpsertModelFile(mf *ModelFile) (*ModelFile, error) {
 	ref := s.resolveRef(FileRef{ModelID: mf.ModelID, StorageID: mf.StorageID, NodeID: mf.NodeID})
 	mf.StorageID = ref.StorageID
-	var existing ModelFile
-	err := refQuery(s.db, ref).First(&existing).Error
-	if err == nil {
-		mf.ID = existing.ID
-		if existing.State == proto.MFDeleting {
-			return nil, ErrCacheDeletionPending
+	result, reason := mf, "created"
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var existing ModelFile
+		err := refQuery(tx, ref).First(&existing).Error
+		if err == nil {
+			if existing.State == proto.MFDeleting {
+				return ErrCacheDeletionPending
+			}
+			path := mf.Path
+			if path == "" { // Struct updates leave zero-valued fields unchanged.
+				path = existing.Path
+			}
+			if err := sharedModelPathConflict(tx, ref, path); err != nil {
+				return err
+			}
+			mf.ID = existing.ID
+			res := tx.Model(&existing).Where("state <> ?", proto.MFDeleting).Updates(mf)
+			if res.Error != nil {
+				return modelFilePathWriteError(tx, ref, path, res.Error)
+			}
+			if res.RowsAffected == 0 {
+				return ErrCacheDeletionPending
+			}
+			if err := tx.First(&existing, existing.ID).Error; err != nil {
+				return err
+			}
+			result, reason = &existing, "upsert"
+			return nil
 		}
-		res := s.db.Model(&existing).Where("state <> ?", proto.MFDeleting).Updates(mf)
-		if res.Error != nil {
-			return nil, res.Error
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
-		if res.RowsAffected == 0 {
-			return nil, ErrCacheDeletionPending
+		if err := sharedModelPathConflict(tx, ref, mf.Path); err != nil {
+			return err
 		}
-		if err := s.db.First(&existing, existing.ID).Error; err != nil {
-			return nil, err
+		if err := tx.Create(mf).Error; err != nil {
+			return modelFilePathWriteError(tx, ref, mf.Path, err)
 		}
-		s.publishModelFile(existing.ID, "upsert")
-		return &existing, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	if err := s.db.Create(mf).Error; err != nil {
-		return nil, err
-	}
-	s.publishModelFile(mf.ID, "created")
-	return mf, nil
+	s.publishModelFile(result.ID, reason)
+	return result, nil
 }
 
 // ModelFilesForModel lists a model's rows in every storage.

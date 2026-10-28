@@ -178,6 +178,40 @@ test("an empty storage says nothing was found", async () => {
   assert.equal(importButton().disabled, true);
 });
 
+for (const language of ["en", "zh"] as const) {
+  test(`import path conflicts use the ${language} locale with the owning model and storage`, async () => {
+    const localized = await createI18n(["storage"], language);
+    api.scanStorage = (async () => ({ node_uuid: "n1", candidates: [candidate("org/model")], skipped: [], complete: true })) as never;
+    api.importStorage = (async () => ({
+      imported: [],
+      failed: [{ rel_path: "org/model", error: "Legacy fallback", error_detail: {
+        code: "MODEL_FILE_PATH_OCCUPIED", params: { path: "org/model", storage_id: 2, model_id: 7 }, message: "English fallback",
+      } }],
+    })) as never;
+    render(<I18nextProvider i18n={localized.i18n}><StorageScanModal storage={nfsStorage()} onClose={() => {}} onImported={() => {}} /></I18nextProvider>);
+    const user = userEvent.setup({ document: dom.window.document });
+    await screen.findByText("org/model");
+    const label = localized.locale.storage.scan.import.replace("{{count}}", "1");
+    await user.click(screen.getByRole("button", { name: label }));
+    const expected = language === "zh"
+      ? "存储 #2 中的路径「org/model」已被模型 #7 占用，请选择其他存储。"
+      : 'Path "org/model" in storage #2 is already used by model #7. Choose another storage.';
+    assert.ok(await screen.findByText(expected));
+    assert.equal(screen.queryByText("Legacy fallback"), null);
+    assert.equal(screen.queryByText("English fallback"), null);
+    assert.equal(checkbox("org/model").checked, true, "conflicting directories stay selected for retry");
+  });
+}
+
+test("an import error with an unknown product code uses its fallback", async () => {
+  api.scanStorage = (async () => ({ node_uuid: "n1", candidates: [candidate("org/model")], skipped: [], complete: true })) as never;
+  api.importStorage = (async () => ({ imported: [], failed: [{ rel_path: "org/model", error: "Legacy fallback", error_detail: { code: "FUTURE_IMPORT_ERROR", message: "Future import refusal" } }] })) as never;
+  const { user } = renderModal();
+  await screen.findByText("org/model");
+  await user.click(importButton());
+  assert.ok(await screen.findByText("Future import refusal"));
+});
+
 test("importItem leaves out fields the scan did not report", () => {
   assert.deepEqual(importItem(candidate("a/b") as never), { rel_path: "a/b", source: "modelscope", source_id: "a/b", size_bytes: 15 * 1024 ** 3 });
 });
