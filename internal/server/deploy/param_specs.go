@@ -124,11 +124,12 @@ func options(values ...string) []ParamOption {
 }
 
 // vllmKVCacheDtypes is vLLM's CacheDType (vllm/config/cache.py) plus the
-// Ascend extension's int8 cache. The engine decides which of them a model,
-// accelerator and attention backend can run.
+// Ascend extension's int8 and mxfp8 caches - mxfp8 is what the Ascend 950
+// recipes ask for, and it exists only on that card's kernel package. The engine
+// decides which of them a model, accelerator and attention backend can run.
 var vllmKVCacheDtypes = []string{
 	"auto", "float16", "bfloat16", "fp8", "fp8_e4m3", "fp8_e5m2", "fp8_inc", "fp8_per_token_head", "fp8_ds_mla",
-	"nvfp4", "nvfp4_4over6", "nvfp4_ds_mla", "int8", "int8_per_token_head", "int4_per_token_head",
+	"nvfp4", "nvfp4_4over6", "nvfp4_ds_mla", "int8", "int8_per_token_head", "int4_per_token_head", "mxfp8",
 	"turboquant_k8v4", "turboquant_4bit_nc", "turboquant_k3v4_nc", "turboquant_3bit_nc", "ultraquant_4bit",
 }
 
