@@ -33,7 +33,6 @@ CONTRACT = "gpuworks/terminal/host-pty-lifecycle"
 CASE = "终端 / 宿主机 PTY / 真实命令回显、退出结束、管理员开关禁用与恢复"
 NODES = "/api/v1/nodes"
 SETTINGS_TERMINAL = "/api/v1/settings/terminal"
-DISABLED_REASON = "web terminal is disabled in platform settings"
 
 
 def strings(locale):
@@ -181,7 +180,9 @@ def test_terminal_host(page, context, server, artifacts, report, locale, node,
     page.goto(server.base + "/nodes")
     terminal = open_terminal(page, terminal_row(page, node["name"]), nodes)
     expect(terminal.get_by_text(nodes["terminalView"]["status"]["error"], exact=True)).to_be_visible(timeout=20000)
-    expect(terminal.get_by_text(DISABLED_REASON, exact=False)).to_be_visible()
+    # The server sends the reason in English, and the UI is expected to
+    # localize it, so assert the translated sentence rather than the raw string.
+    expect(terminal.get_by_text(nodes["terminalView"]["preflight"]["disabled"], exact=False)).to_be_visible()
     terminal.close()
 
     page.goto(server.base + "/settings")

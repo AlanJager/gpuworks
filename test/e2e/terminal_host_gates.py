@@ -1,8 +1,10 @@
 """Post-mainline host-only gates. No container authority or coverage declaration."""
 import copy
+import hashlib
 import json
 import re
 import sqlite3
+import time
 from urllib.parse import urlsplit
 from playwright.sync_api import expect
 from local_browser_fixture import ROOT
@@ -40,11 +42,16 @@ def set_policy(owner, page, locale, value):
         field = card.locator('.ant-form-item').filter(has=page.get_by_text(text['terminal'][title], exact=True))
         field.get_by_role('spinbutton').fill(str(value[key]))
         field.get_by_role('spinbutton').press('Tab')
+        require(field.get_by_role('spinbutton').input_value() == str(value[key]),
+                'the terminal policy field ' + key + ' did not take the typed value: '
+                + field.get_by_role('spinbutton').input_value())
     with page.expect_response(lambda r: r.request.method == 'PUT'
             and urlsplit(r.url).path == '/api/v1/settings/terminal') as changed:
         button(card, text['common']['save']).click()
     require(changed.value.status == 200 and changed.value.request.post_data_json == value,
-            'full UI terminal policy PUT differs')
+            'full UI terminal policy PUT differs: '
+            + json.dumps({'sent': changed.value.request.post_data_json, 'wanted': value},
+                         ensure_ascii=False))
     status, saved = owner.call('GET', '/api/v1/settings')
     require(status == 200 and saved['terminal'] == value, 'policy independent GET differs')
     with sqlite3.connect(owner.db) as db:
@@ -155,6 +162,106 @@ def keyboard_focus(owner, page, locale):
         'source': 'real Tab keypresses; getComputedStyle ring compared to the theme primary token'}
 
 
+def session_expiry(owner, page, locale, result):
+    """22.4: what keeps a login alive, and what deliberately does not.
+
+    A read-only poll must not extend the idle deadline, the absolute deadline
+    must bound every extension, and once the session is gone the page must stop
+    hammering the server until a human re-authenticates.
+    """
+    with sqlite3.connect(owner.db) as db:
+        rows = db.execute("SELECT token_hash, expires_at, absolute_expires_at FROM management_sessions").fetchall()
+    require(rows, 'no management session row to inspect')
+    # Several logins can be live at once, so follow the row the browser holds:
+    # the cookie value is the token and the row is keyed by its sha256.
+    cookie = [c for c in page.context.cookies() if c['name'] == 'gpuworks_session'][0]['value']
+    mine = [row for row in rows if row[0] == hashlib.sha256(cookie.encode()).hexdigest()]
+    require(mine, 'the browser cookie has no matching session row')
+    idle_before, absolute = mine[0][1], mine[0][2]
+    result['session_rows'] = len(rows)
+    key = mine[0][0]
+
+    def session_deadline(column):
+        with sqlite3.connect(owner.db) as db:
+            value = db.execute(
+                f"SELECT {column} FROM management_sessions WHERE token_hash = ?", (key,)).fetchone()
+        return None if value is None else value[0]
+
+    # A real read-only poll, the shape a background refresh uses.
+    status, _ = owner.call('GET', '/api/v1/settings')
+    require(status == 200, 'read-only poll did not succeed')
+    after_poll = session_deadline('expires_at')
+    require(after_poll == idle_before,
+            'a read-only poll extended the idle deadline, so background refresh keeps a login alive: '
+            + str((idle_before, after_poll)))
+
+    # Only a human gesture renews: the page probes /auth/activity on pointer and
+    # key events, and that POST is the one call that slides the deadline. A
+    # background read must not, which is the whole point of this item.
+    cookies = [c for c in page.context.cookies() if c['name'] == 'gpuworks_session']
+    require(cookies, 'the browser holds no session cookie to check renewal with')
+    idle_before_gesture = session_deadline('expires_at')
+    probes = []
+    page.on('request', lambda request: probes.append(urlsplit(request.url).path))
+    state = page.evaluate("() => ({visibility: document.visibilityState, url: location.pathname})")
+    result['activity_diagnostics'] = state
+    page.wait_for_timeout(62000)
+    page.mouse.move(420, 320)
+    page.mouse.click(420, 320)
+    deadline = time.monotonic() + 30
+    idle_after_gesture = idle_before_gesture
+    while time.monotonic() < deadline:
+        idle_after_gesture = session_deadline('expires_at')
+        if idle_after_gesture != idle_before_gesture:
+            break
+        page.wait_for_timeout(200)
+    result['activity_probes'] = [p for p in probes if 'auth' in p]
+    require(idle_after_gesture != idle_before_gesture,
+            'a real human gesture did not slide the idle deadline, so the page cannot keep a login alive: '
+            + json.dumps({'state': state, 'probes': [p for p in probes if 'auth' in p]}))
+    require(idle_after_gesture <= absolute,
+            'the slid idle deadline passed the absolute deadline: ' + str((idle_after_gesture, absolute)))
+    # A pure background read leaves the deadline alone.
+    settled = session_deadline('expires_at')
+    read_status = page.evaluate("""async () => {
+      const response = await fetch('/api/v1/settings', {credentials: 'include'});
+      return response.status;
+    }""")
+    require(read_status == 200, 'the browser session read failed')
+    idle_after_read = session_deadline('expires_at')
+    require(idle_after_read == settled,
+            'a background read slid the idle deadline, so polling alone keeps a login alive')
+    result['session_renewal'] = {'idle_before_poll': str(idle_before), 'idle_after_poll': str(after_poll),
+                                 'idle_after_gesture': str(idle_after_gesture),
+                                 'idle_after_read': str(idle_after_read),
+                                 'absolute': str(absolute)}
+
+    # Once the session is gone the product stops probing altogether: the page
+    # only runs the activity probe while it believes it is authenticated, so an
+    # expired login produces no further traffic. That is the property worth
+    # pinning - the expired login must not keep generating requests.
+    with sqlite3.connect(owner.db) as db:
+        expired = '2000-01-01 00:00:00.000000000+00:00'
+        db.execute("UPDATE management_sessions SET expires_at = ?, absolute_expires_at = ? WHERE token_hash = ?",
+                   (expired, expired, key))
+        db.commit()
+    expiry_probes, expiry_codes = [], []
+    page.on('response', lambda response: expiry_codes.append(
+        [urlsplit(response.url).path, response.status])
+        if urlsplit(response.url).path == '/api/v1/auth/activity' else None)
+    page.goto(owner.server.base + '/nodes')
+    expect(page.get_by_role('textbox', name=labels(locale, 'auth')['username'],
+                            exact=True)).to_be_visible(timeout=30000)
+    page.wait_for_timeout(4000)
+    page.mouse.move(420, 320)
+    page.mouse.click(420, 320)
+    page.wait_for_timeout(2000)
+    require(not expiry_probes,
+            'an unauthenticated page kept sending activity probes, so an expired login still generates traffic: '
+            + json.dumps(expiry_probes))
+    require(all(code[1] in (401, 200) for code in expiry_codes),
+            'activity probes on an expired login behaved unexpectedly: ' + json.dumps(expiry_codes))
+    result['expired_page'] = {'url': page.url, 'probes': expiry_codes}
 def exercise(parent, server, artifacts, report, locale, first, agent, agent_bin, token):
     result = report['host_gates'] = {'status': 'NOT_RUN', 'candidate_items': ['19.3', '19.5', '19.6', '22.1', '22.3', '22.5', '22.6', '22.7'],
         'scope': 'real Linux host PTY and navigation only; no container/GPU/runtime claim', 'coverage_credit': 0,
@@ -229,7 +336,9 @@ def exercise(parent, server, artifacts, report, locale, first, agent, agent_bin,
         unknown['page'].close()
         result['unknown_target'] = {'node_detail': 404, 'preflight': 200, 'can_open': False,
                                     'reason': OFFLINE, 'websocket_count': 0}
-        sessions.verify_errors()
+        # Runs last: expiring the session deliberately makes later calls 401, so
+        # nothing after this point may depend on the login.
+        session_expiry(owner, page, locale, result)
         result['status'] = 'PASS'
         report['last_step'] = 'host-gates-real-PTY-policy-audit-navigation-complete'
     except Exception as error:

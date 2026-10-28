@@ -7,6 +7,7 @@ import shlex
 import time
 from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect
+from local_browser_fixture import ROOT
 from terminal_host_oracles import Frames, TEXT, audit_contract, require, socket_contract
 
 
@@ -24,6 +25,15 @@ class Sessions:
     def __init__(self, owner, context, locale):
         self.owner, self.context, self.locale = owner, context, locale
         self.text = TEXT[locale]
+        # Reasons the UI renders in the operator's language, keyed by the exact
+        # English reason the server sends.
+        preflight = json.loads(
+            (ROOT / 'ui/src/i18n/locales' / locale / 'nodes.json').read_text())['terminalView']['preflight']
+        self.shown = {'too many terminal sessions on this node': preflight['nodeLimit'],
+                      'too many terminal sessions on this platform': preflight['globalLimit'],
+                      'node is not connected': preflight['nodeOffline'],
+                      'web terminal is disabled in platform settings': preflight['disabled'],
+                      'terminal streaming is not available': preflight['unavailable']}
         self.records = []
         self.last_page = None
         self.expected_http = set()
@@ -217,7 +227,10 @@ class Sessions:
     def denied(self, record, reason, status=200):
         page = record['page']
         expect(page.get_by_text(self.text['error'], exact=True)).to_be_visible(timeout=20000)
-        expect(page.get_by_text(reason, exact=False)).to_be_visible()
+        # The server states the reason in English and the UI localizes it, so the
+        # sentence on screen is the translated one; the raw text is checked
+        # against the preflight payload below instead.
+        expect(page.get_by_text(self.shown.get(reason, reason), exact=False)).to_be_visible()
         poll(page, lambda: len(record['preflights']) == 1, 'denied actual preflight')
         pre = record['preflights'][0]
         require(pre.status == status and pre.request.method == 'GET'
