@@ -47,21 +47,17 @@ func (a *apiHandlers) listAIConfigs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name      string `json:"name"`
-		Preset    string `json:"preset"`
-		BaseURL   string `json:"base_url"`
-		APIKey    string `json:"api_key"`
-		Model     string `json:"model"`
-		IsDefault bool   `json:"is_default"`
-	}
+	var req dto.AIConfigRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
 	if !validateName(w, req.Name) {
 		return
 	}
-	// Fill base_url/model from a preset if given and not overridden.
+	// Fill base_url/model from a preset if given and not overridden, then
+	// store the base address the way an edit does. An address may be left
+	// empty here: a preset fills it, and a service stored without one is a
+	// configuration the assistant reports as unusable, not a lost write.
 	if p, ok := aihelper.Presets[req.Preset]; ok {
 		if req.BaseURL == "" {
 			req.BaseURL = p.BaseURL
@@ -69,6 +65,14 @@ func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
 		if req.Model == "" {
 			req.Model = p.Model
 		}
+	}
+	base, ok := validateAIBaseURL(w, req.BaseURL, false)
+	if !ok {
+		return
+	}
+	req.BaseURL = base
+	if !validateAIColumn(w, "preset", req.Preset, 32) || !validateAIColumn(w, "model", req.Model, 64) {
+		return
 	}
 	encryptedKey, err := store.EncryptAIKey(a.d.AISecretbox, req.APIKey)
 	if err != nil {

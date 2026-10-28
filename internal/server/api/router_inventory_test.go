@@ -238,6 +238,7 @@ PATCH /api/v1/storages/{id}
 PATCH /api/v1/storages/{id}/node-overrides
 POST /api/v1/ai/ask
 POST /api/v1/ai/configs
+POST /api/v1/ai/configs/test
 POST /api/v1/apikeys
 POST /api/v1/auth/activity
 POST /api/v1/auth/login

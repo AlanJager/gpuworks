@@ -11,6 +11,18 @@ type AIConfigView struct {
 	IsDefault bool   `json:"is_default"`
 }
 
+// AIConfigRequest adds an AI service (POST /api/v1/ai/configs). A known preset
+// fills base_url and model when they are left empty. An empty api_key is
+// allowed: a model served inside the installation often asks for none.
+type AIConfigRequest struct {
+	Name      string `json:"name"`
+	Preset    string `json:"preset"`
+	BaseURL   string `json:"base_url"`
+	APIKey    string `json:"api_key"`
+	Model     string `json:"model"`
+	IsDefault bool   `json:"is_default"`
+}
+
 // AIConfigPatch changes an AI service (PATCH /api/v1/ai/configs/{id}). Only the
 // fields present are changed, so a form that leaves the key alone cannot drop
 // it. api_key is the one field where an empty string means "keep the stored

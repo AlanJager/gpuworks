@@ -1,11 +1,13 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -13,6 +15,11 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
+
+// aiConfigTestTimeout bounds a connection test: a wrong address must be
+// reported while the operator still watches the dialog, not after the
+// assistant's full call timeout.
+const aiConfigTestTimeout = 10 * time.Second
 
 // updateAIConfig changes one AI service in place (PATCH /api/v1/ai/configs/{id}).
 // Partial by design: the edit dialog holds only the fields it shows, and the
@@ -82,6 +89,70 @@ func (a *apiHandlers) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, aiConfigView(c))
+}
+
+// testAIConfig asks an AI service whether it answers
+// (POST /api/v1/ai/configs/test) with the values a form holds, before they are
+// saved. It makes the call the assistant makes, through the same outbound
+// policy, so its answer is the assistant's answer. Nothing is stored.
+func (a *apiHandlers) testAIConfig(w http.ResponseWriter, r *http.Request) {
+	var req dto.AIConfigTest
+	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+	base, ok := validateAIBaseURL(w, req.BaseURL, true)
+	if !ok {
+		return
+	}
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		writeFieldInvalid(w, "model", "is required")
+		return
+	}
+	if !validateAIColumn(w, "model", model, 64) {
+		return
+	}
+	key, ok := a.aiConfigTestKey(w, req, base)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), aiConfigTestTimeout)
+	defer cancel()
+	result := aihelper.NewClient(
+		aihelper.Endpoint{BaseURL: base, APIKey: key, Model: model},
+		a.d.Outside.AllowPrivateHosts...,
+	).Probe(ctx)
+	writeJSON(w, http.StatusOK, dto.AIConfigTestResult{
+		Outcome: string(result.Outcome), Status: result.Status, Detail: result.Detail,
+		BaseURL: base, LatencyMS: result.LatencyMS,
+	})
+}
+
+// aiConfigTestKey picks the key a test uses. The edit dialog leaves the key
+// blank to mean "keep the stored one", and the stored one is used only while
+// the address is still the stored address: a test must not be a way to send a
+// stored secret to an address of the caller's choosing.
+func (a *apiHandlers) aiConfigTestKey(w http.ResponseWriter, req dto.AIConfigTest, base string) (string, bool) {
+	if key := strings.TrimSpace(req.APIKey); key != "" || req.ID == 0 {
+		return key, true
+	}
+	stored, err := a.d.Store.AIConfigByID(req.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", true
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return "", false
+	}
+	if stored.BaseURL != base {
+		return "", true
+	}
+	key, err := store.DecryptAIKey(a.d.AISecretbox, stored.APIKey)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return "", false
+	}
+	return key, true
 }
 
 // aiConfigView is the public form of a stored service: what the console shows,

@@ -26,7 +26,7 @@
       "request": "POST /api/v1/ai/configs {\"name\",\"preset\",\"base_url\",\"api_key\",\"model\",\"is_default\"}",
       "persisted": "name, preset, base_url, model, is_default; the key is encrypted and not returned",
       "covered": ["custom preset", "required fields", "default flag", "refresh and independent GET", "preset, base_url and model readback", "delete confirmation"],
-      "missing": ["all vendor presets", "validation failures", "the edit dialog", "multiple services and default switching"]
+      "missing": ["all vendor presets", "validation failures", "the edit dialog", "the connection test button", "multiple services and default switching"]
     },
     {
       "id": "assistant.ask-stream",

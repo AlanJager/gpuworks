@@ -589,6 +589,9 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			// AI helper.
 			r.Get("/ai/configs", a.listAIConfigs)
 			r.Post("/ai/configs", a.createAIConfig)
+			// The connection test changes nothing, so it is a POST to a verb
+			// path rather than a resource write under {id}.
+			r.Post("/ai/configs/test", a.testAIConfig)
 			r.Patch("/ai/configs/{id}", a.updateAIConfig)
 			r.Delete("/ai/configs/{id}", a.deleteAIConfig)
 			r.Get("/ai/available", a.aiAvailable)

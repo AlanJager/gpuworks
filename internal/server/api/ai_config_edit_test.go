@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/aihelper"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -290,7 +291,186 @@ func TestUpdateAIConfigRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-// The edit route is a management write: it needs a token and refuses the wrong
+// An address pasted with its call path is stored as the base address, so the
+// assistant's own call does not double it - the 404 the bug reported.
+func TestAIConfigStoresNormalizedAddress(t *testing.T) {
+	rig := newAIConfigRig(t)
+	for body, want := range map[string]string{
+		`{"name":"pasted","base_url":"http://172.30.8.122:8800/v1/chat/completions","model":"m"}`: "http://172.30.8.122:8800/v1",
+		`{"name":"trailing","base_url":"https://api.deepseek.com/v1///","model":"m"}`:             "https://api.deepseek.com/v1",
+		`{"name":"bare","base_url":"https://api.deepseek.com","model":"m"}`:                       "https://api.deepseek.com",
+	} {
+		if got := rig.config(t, rig.create(t, body)).BaseURL; got != want {
+			t.Fatalf("%s: stored %q, want %q", body, got, want)
+		}
+	}
+	// A create that names no address is not rejected: a preset fills it in,
+	// and a service stored without one is a configuration the assistant
+	// reports as unusable rather than a write that failed.
+	if got := rig.config(t, rig.create(t, `{"name":"none","model":"m"}`)).BaseURL; got != "" {
+		t.Fatalf("an address the create did not name was invented: %q", got)
+	}
+	// A preset's address is stored in the normalized form too.
+	if got := rig.config(t, rig.create(t, `{"name":"preset","preset":"deepseek"}`)).BaseURL; got != "https://api.deepseek.com" {
+		t.Fatalf("preset address = %q", got)
+	}
+}
+
+// The connection test makes the assistant's call against the values a form
+// holds and stores nothing; each answer an operator must act on differently is
+// its own outcome.
+func TestAIConfigTestReportsEachOutcome(t *testing.T) {
+	const served = "served-model"
+	var calls int
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v1/chat/completions" {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"detail":"Not Found"}`)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer sk-right" {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"detail":"invalid or missing API key"}`)
+			return
+		}
+		var body aihelper.ChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model != served {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, `{"detail":"no deployment serves model %q"}`, body.Model)
+			return
+		}
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}]}`)
+	}))
+	defer endpoint.Close()
+	rig := newAIConfigRig(t)
+	for _, tc := range []struct {
+		name    string
+		body    string
+		outcome string
+	}{
+		{"a served model answers", fmt.Sprintf(`{"base_url":%q,"api_key":"sk-right","model":%q}`, endpoint.URL+"/v1", served), string(aihelper.ProbeOK)},
+		{"a wrong key", fmt.Sprintf(`{"base_url":%q,"api_key":"sk-wrong","model":%q}`, endpoint.URL+"/v1", served), string(aihelper.ProbeAuth)},
+		{"no key", fmt.Sprintf(`{"base_url":%q,"model":%q}`, endpoint.URL+"/v1", served), string(aihelper.ProbeAuth)},
+		// The address the bug report recorded is normalized to the base
+		// address before it is called, so it now answers instead of 404ing.
+		{"a pasted call path is normalized and answers", fmt.Sprintf(`{"base_url":%q,"api_key":"sk-right","model":%q}`, endpoint.URL+"/v1/chat/completions", served), string(aihelper.ProbeOK)},
+		{"an address of the wrong path", fmt.Sprintf(`{"base_url":%q,"api_key":"sk-right","model":%q}`, endpoint.URL+"/wrong", served), string(aihelper.ProbePath)},
+		{"a model the endpoint does not serve", fmt.Sprintf(`{"base_url":%q,"api_key":"sk-right","model":"missing"}`, endpoint.URL+"/v1"), string(aihelper.ProbeModel)},
+		{"an address that does not answer", `{"base_url":"http://127.0.0.1:1/v1","api_key":"sk-right","model":"m"}`, string(aihelper.ProbeConnection)},
+	} {
+		rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test", tc.body)
+		var got struct {
+			Outcome string `json:"outcome"`
+			BaseURL string `json:"base_url"`
+			Detail  string `json:"detail"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); rec.Code != http.StatusOK || err != nil {
+			t.Fatalf("%s: test = %d %s (err %v)", tc.name, rec.Code, rec.Body.String(), err)
+		}
+		if got.Outcome != tc.outcome {
+			t.Fatalf("%s: outcome = %q (%s), want %q", tc.name, got.Outcome, rec.Body.String(), tc.outcome)
+		}
+		if strings.Contains(rec.Body.String(), "sk-") {
+			t.Fatalf("%s: the answer echoed a key: %s", tc.name, rec.Body.String())
+		}
+	}
+	// A test stores nothing: the list is still empty afterwards.
+	rec := rig.do(t, http.MethodGet, "/api/v1/ai/configs", "")
+	var rows []dtoRow
+	if err := unmarshalList(rec.Body.Bytes(), &rows); err != nil || len(rows) != 0 {
+		t.Fatalf("a connection test stored a service: %s (err %v)", rec.Body.String(), err)
+	}
+	if calls == 0 {
+		t.Fatal("the probe never reached the endpoint")
+	}
+}
+
+// An address the platform's outbound policy refuses is reported as such: the
+// operator fixes it in the allowlist, not at the provider.
+func TestAIConfigTestReportsBlockedAddress(t *testing.T) {
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer endpoint.Close()
+	// No allowPrivateHosts: the endpoint is a private address.
+	rig := newAIConfigRig(t)
+	rig.router = rig.routerAllowing(nil)
+	rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test",
+		fmt.Sprintf(`{"base_url":%q,"api_key":"sk-right","model":"m"}`, endpoint.URL))
+	var got struct {
+		Outcome string `json:"outcome"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("test = %d %s (err %v)", rec.Code, rec.Body.String(), err)
+	}
+	if got.Outcome != string(aihelper.ProbeBlocked) {
+		t.Fatalf("outcome = %q, want blocked: %s", got.Outcome, rec.Body.String())
+	}
+}
+
+// The edit dialog sends the stored service's id with a blank key to mean
+// "keep the stored key". That key is used while the address is still the
+// stored one, and never for an address the caller substituted.
+func TestAIConfigTestUsesStoredKeyOnlyForItsOwnAddress(t *testing.T) {
+	var seen []string
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization"))
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"pong"}}]}`)
+	}))
+	defer endpoint.Close()
+	rig := newAIConfigRig(t)
+	id := rig.create(t, fmt.Sprintf(`{"name":"primary","base_url":%q,"api_key":"sk-stored","model":"m"}`, endpoint.URL))
+	// The stored address: the stored key is used.
+	if rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test", fmt.Sprintf(`{"id":%d,"base_url":%q,"model":"m"}`, id, endpoint.URL)); rec.Code != http.StatusOK {
+		t.Fatalf("test = %d %s", rec.Code, rec.Body.String())
+	}
+	if len(seen) != 1 || seen[0] != "Bearer sk-stored" {
+		t.Fatalf("the stored key was not used for its own address: %v", seen)
+	}
+	// Another address: a blank key stays blank rather than following the id.
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, "other "+r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer other.Close()
+	if rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test", fmt.Sprintf(`{"id":%d,"base_url":%q,"model":"m"}`, id, other.URL)); rec.Code != http.StatusOK {
+		t.Fatalf("test = %d %s", rec.Code, rec.Body.String())
+	}
+	for _, header := range seen[1:] {
+		if strings.Contains(header, "sk-stored") {
+			t.Fatalf("the stored key followed the id to another address: %v", seen)
+		}
+	}
+}
+
+// A test rejects the values a save would reject, naming the field, and never
+// calls the endpoint for them.
+func TestAIConfigTestRejectsInvalidValues(t *testing.T) {
+	rig := newAIConfigRig(t)
+	for _, tc := range []struct {
+		name  string
+		body  string
+		field string
+	}{
+		{"a blank address", `{"base_url":"  ","model":"m"}`, "base_url"},
+		{"an address without a scheme", `{"base_url":"api.deepseek.com","model":"m"}`, "base_url"},
+		{"an address of another scheme", `{"base_url":"ftp://host/v1","model":"m"}`, "base_url"},
+		{"a blank model", `{"base_url":"https://api.deepseek.com/v1","model":" "}`, "model"},
+	} {
+		rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test", tc.body)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s: test = %d %s", tc.name, rec.Code, rec.Body.String())
+		}
+		var answer struct {
+			Code   string         `json:"code"`
+			Params map[string]any `json:"params"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || answer.Code != ErrorFieldInvalid || answer.Params["field"] != tc.field {
+			t.Fatalf("%s: %s (err %v)", tc.name, rec.Body.String(), err)
+		}
+	}
+}
+
+// Both routes are management writes: they need a token and refuse the wrong
 // method rather than answering a router default.
 func TestAIConfigEditRoutesRequireAuthentication(t *testing.T) {
 	rig := newAIConfigRig(t)
@@ -299,6 +479,7 @@ func TestAIConfigEditRoutesRequireAuthentication(t *testing.T) {
 		method, path, body string
 	}{
 		{http.MethodPatch, fmt.Sprintf("/api/v1/ai/configs/%d", id), `{"name":"x"}`},
+		{http.MethodPost, "/api/v1/ai/configs/test", `{"base_url":"https://api.deepseek.com","model":"m"}`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		rec := httptest.NewRecorder()

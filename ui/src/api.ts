@@ -2093,6 +2093,32 @@ export interface AIConfigPatch {
   is_default?: boolean;
 }
 /**
+ * AIConfigTest asks whether an endpoint answers before it is saved. id names
+ * the stored service an edit started from; with an empty api_key its stored
+ * key is used, while base_url still matches the stored address.
+ */
+export interface AIConfigTest {
+  id?: number;
+  base_url: string;
+  api_key?: string;
+  model: string;
+}
+/**
+ * AIConfigTestResult is what a connection test established. outcome is a
+ * stable code the console words itself: ok, connection (DNS, dial or
+ * timeout), blocked (refused by the outbound policy), auth (401/403), path (a
+ * 404 that names no model: the wrong address), model (the endpoint does not
+ * serve that model) or http (any other answer). detail is the endpoint's own
+ * words, shortened and with the key removed.
+ */
+export interface AIConfigTestResult {
+  outcome: "ok" | "connection" | "blocked" | "auth" | "path" | "model" | "http";
+  status?: number;
+  detail?: string;
+  base_url: string;
+  latency_ms: number;
+}
+/**
  * One assistant task about a subject named by reference (instance_uuid,
  * model_id, deployment_id or node_uuid); the server gathers its context.
  * Task "ask" is a free question. A follow-up carries the thread's earlier
@@ -4451,6 +4477,8 @@ export const api = {
     sendJSON<AIConfig>("POST", "/api/v1/ai/configs", body),
   updateAIConfig: (id: number, body: AIConfigPatch) =>
     sendJSON<AIConfig>("PATCH", `/api/v1/ai/configs/${id}`, body),
+  testAIConfig: (body: AIConfigTest) =>
+    sendJSON<AIConfigTestResult>("POST", "/api/v1/ai/configs/test", body),
   deleteAIConfig: (id: number) =>
     sendJSON<void>("DELETE", `/api/v1/ai/configs/${id}`),
   aiAsk: (body: AIAskRequest, signal?: AbortSignal) =>

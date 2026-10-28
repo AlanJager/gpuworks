@@ -1,8 +1,21 @@
-import { useState } from "react";
-import { Form, Input, Modal, Select, Switch, message } from "antd";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Button,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Switch,
+  Typography,
+  message,
+} from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { api, type AIConfig, type AIPreset } from "../../api";
+import { api, type AIConfig, type AIConfigTestResult, type AIPreset } from "../../api";
+
+const { Text } = Typography;
 
 /** PRESETS are the endpoints the platform knows a base address and model for. */
 export const PRESETS: { value: AIPreset; base_url: string; model: string }[] = [
@@ -20,6 +33,25 @@ export const PRESETS: { value: AIPreset; base_url: string; model: string }[] = [
 
 export const presetLabel = (t: TFunction, preset: string) =>
   PRESETS.some((item) => item.value === preset) ? t(`ai.presetName.${preset}`) : preset;
+
+/**
+ * TEST_RESULTS word each answer the server's connection test distinguishes.
+ * The distinctions are the ones an operator acts on differently: a wrong
+ * address, a wrong key, a model the endpoint does not serve, a host the
+ * platform refuses to call, and a service that does not answer at all.
+ */
+const TEST_RESULTS: Record<
+  AIConfigTestResult["outcome"],
+  { type: "success" | "warning" | "error"; text: string }
+> = {
+  ok: { type: "success", text: "ai.testOk" },
+  connection: { type: "error", text: "ai.testConnection" },
+  blocked: { type: "error", text: "ai.testBlocked" },
+  auth: { type: "error", text: "ai.testAuth" },
+  path: { type: "error", text: "ai.testPath" },
+  model: { type: "error", text: "ai.testModel" },
+  http: { type: "warning", text: "ai.testHttp" },
+};
 
 interface FormValues {
   preset: AIPreset;
@@ -50,6 +82,14 @@ export default function AIConfigModal({
   const { t } = useTranslation("settings");
   const [form] = Form.useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<AIConfigTestResult | null>(null);
+
+  // A result belongs to the address it was measured against; a new dialog
+  // starts without one.
+  useEffect(() => {
+    if (!open) setTestResult(null);
+  }, [open]);
 
   const onPreset = (value: AIPreset) => {
     const p = PRESETS.find((x) => x.value === value);
@@ -73,6 +113,36 @@ export default function AIConfigModal({
         api_key: "",
         is_default: true,
       };
+
+  // test asks the endpoint about the values in the form, before they are
+  // saved: only the address and the model are required, so an operator can try
+  // an address without having filled in a name yet. The other values are read
+  // unvalidated - a key typed here is what the test must use.
+  const test = async () => {
+    const valid = await form.validateFields(["base_url", "model"]).catch(() => null);
+    if (!valid) return;
+    const values = form.getFieldsValue();
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(
+        await api.testAIConfig({
+          id: editing?.id,
+          base_url: values.base_url,
+          // An empty key on an edit means "keep the stored one"; the server
+          // uses it only for the service's own address.
+          api_key: values.api_key || undefined,
+          model: values.model,
+        }),
+      );
+    } catch (e) {
+      // The test request itself failed (an invalid address, an expired
+      // session) rather than the endpoint answering badly.
+      message.error(t("error.save", { detail: (e as Error).message }));
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const submit = async () => {
     // A rejected validation leaves the dialog open on the fields it marked;
@@ -104,6 +174,7 @@ export default function AIConfigModal({
         message.success(t("ai.added"));
       }
       form.resetFields();
+      setTestResult(null);
       onDone();
     } catch (e) {
       message.error(t(editing ? "error.update" : "error.add", { detail: (e as Error).message }));
@@ -111,6 +182,8 @@ export default function AIConfigModal({
       setSubmitting(false);
     }
   };
+
+  const result = testResult ? TEST_RESULTS[testResult.outcome] ?? TEST_RESULTS.http : null;
 
   return (
     <Modal
@@ -138,6 +211,7 @@ export default function AIConfigModal({
         <Form.Item
           label={t("ai.baseUrl")}
           name="base_url"
+          extra={t("ai.baseUrlHint")}
           rules={[{ required: true, message: t("ai.baseUrlRequired") }]}
         >
           <Input placeholder="https://api.deepseek.com" />
@@ -156,6 +230,29 @@ export default function AIConfigModal({
           <Switch />
         </Form.Item>
       </Form>
+      <Space direction="vertical" size={8} style={{ width: "100%" }}>
+        <Button onClick={test} loading={testing}>
+          {t("ai.test")}
+        </Button>
+        {testResult && result && (
+          <Alert
+            type={result.type}
+            showIcon
+            message={t(result.text)}
+            description={
+              <Text type="secondary">
+                {[
+                  testResult.detail,
+                  t("ai.testAddress", { url: testResult.base_url }),
+                  t("ai.testLatency", { ms: testResult.latency_ms }),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+            }
+          />
+        )}
+      </Space>
     </Modal>
   );
 }
