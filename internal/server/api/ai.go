@@ -51,7 +51,12 @@ func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	if !validateName(w, req.Name) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		writeFieldInvalid(w, "name", "is required")
+		return
+	}
+	if !validateAIConfigName(w, name, "") {
 		return
 	}
 	// Fill base_url/model from a preset if given and not overridden, then
@@ -80,7 +85,7 @@ func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := a.d.Store.CreateAIConfig(&store.AIConfig{
-		Name: req.Name, Preset: req.Preset, BaseURL: req.BaseURL, APIKey: encryptedKey,
+		Name: name, Preset: req.Preset, BaseURL: req.BaseURL, APIKey: encryptedKey,
 		Model: req.Model, IsDefault: req.IsDefault,
 	})
 	if err != nil {

@@ -496,6 +496,122 @@ func TestAIConfigEditRoutesRequireAuthentication(t *testing.T) {
 	}
 }
 
+// A name the API accepts on create is a name it accepts on edit: the two paths
+// once held different bounds, so a name within the create limit (256 runes) and
+// over the edit limit (64) was stored and then refused by every edit - the edit
+// dialog always sends the name back, so that service could not be changed again
+// through the console. Both paths now apply aiConfigNameMaxRunes, and the
+// boundary is the same on each.
+func TestAIConfigNameBoundIsTheSameOnCreateAndEdit(t *testing.T) {
+	rig := newAIConfigRig(t)
+	// The longest accepted name, created through the API.
+	name := strings.Repeat("n", aiConfigNameMaxRunes)
+	rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs",
+		fmt.Sprintf(`{"name":%q,"base_url":"https://api.deepseek.com","model":"m"}`, name))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create with a %d-character name = %d %s", aiConfigNameMaxRunes, rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID uint `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil || created.ID == 0 {
+		t.Fatalf("create answer = %s (err %v)", rec.Body.String(), err)
+	}
+	// The edit dialog sends every field it shows, the name included: this is
+	// the request the console makes when the operator only fixes the model.
+	path := fmt.Sprintf("/api/v1/ai/configs/%d", created.ID)
+	rec = rig.do(t, http.MethodPatch, path,
+		fmt.Sprintf(`{"name":%q,"preset":"deepseek","base_url":"https://api.deepseek.com","model":"deepseek-v4"}`, name))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit of a service created with that name = %d %s", rec.Code, rec.Body.String())
+	}
+	if row := rig.config(t, created.ID); row.Model != "deepseek-v4" || row.Name != name {
+		t.Fatalf("the edit did not apply: %+v", row)
+	}
+	// One character over is refused by both paths, with the same field named:
+	// neither path can store what the other refuses.
+	longer := strings.Repeat("x", aiConfigNameMaxRunes+1)
+	if rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs",
+		fmt.Sprintf(`{"name":%q,"base_url":"https://api.deepseek.com","model":"m"}`, longer)); rec.Code != http.StatusBadRequest {
+		t.Fatalf("create with a %d-character name = %d %s", aiConfigNameMaxRunes+1, rec.Code, rec.Body.String())
+	}
+	rec = rig.do(t, http.MethodPatch, path, fmt.Sprintf(`{"name":%q}`, longer))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("edit to a %d-character name = %d %s", aiConfigNameMaxRunes+1, rec.Code, rec.Body.String())
+	}
+	var answer struct {
+		Code   string         `json:"code"`
+		Params map[string]any `json:"params"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || answer.Params["field"] != "name" {
+		t.Fatalf("rejection = %s (err %v)", rec.Body.String(), err)
+	}
+}
+
+// The bound counts characters, not bytes: a 30-character Chinese name is 90
+// bytes, was refused by a byte comparison whose message claimed characters, and
+// is a name the API now accepts on both paths.
+func TestAIConfigNameBoundCountsCharacters(t *testing.T) {
+	rig := newAIConfigRig(t)
+	name := strings.Repeat("模", 30)
+	if len(name) <= aiConfigNameMaxRunes {
+		t.Fatalf("the fixture is only %d bytes; it does not exercise the bound", len(name))
+	}
+	id := rig.create(t, fmt.Sprintf(`{"name":%q,"base_url":"https://api.deepseek.com","model":"m"}`, name))
+	if rec := rig.do(t, http.MethodPatch, fmt.Sprintf("/api/v1/ai/configs/%d", id), fmt.Sprintf(`{"name":%q}`, name)); rec.Code != http.StatusOK {
+		t.Fatalf("edit keeping a 30-character Chinese name = %d %s", rec.Code, rec.Body.String())
+	}
+	// Over the bound in characters is still refused.
+	over := strings.Repeat("模", aiConfigNameMaxRunes+1)
+	rec := rig.do(t, http.MethodPatch, fmt.Sprintf("/api/v1/ai/configs/%d", id), fmt.Sprintf(`{"name":%q}`, over))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("edit to %d Chinese characters = %d %s", aiConfigNameMaxRunes+1, rec.Code, rec.Body.String())
+	}
+	var answer struct {
+		Params map[string]any `json:"params"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if detail, _ := answer.Params["detail"].(string); !strings.Contains(detail, "characters") {
+		t.Fatalf("the rejection does not name the rule: %v", answer.Params)
+	}
+}
+
+// A name stored by an older build with a wider limit stays editable: the
+// unchanged name is not re-validated against the bound, so the operator can
+// still fix the address or the model.
+func TestUpdateAIConfigKeepsAPreExistingOverlongNameEditable(t *testing.T) {
+	rig := newAIConfigRig(t)
+	// Written straight to the store, the way a build with the wider create
+	// bound left it behind.
+	legacy := strings.Repeat("L", 120)
+	row, err := rig.store.CreateAIConfig(&store.AIConfig{
+		Name: legacy, BaseURL: "https://api.deepseek.com", Model: "m",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/api/v1/ai/configs/%d", row.ID)
+	// The dialog sends the stored name back; the model change must apply.
+	rec := rig.do(t, http.MethodPatch, path,
+		fmt.Sprintf(`{"name":%q,"base_url":"https://api.deepseek.com","model":"deepseek-v4"}`, legacy))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit of a pre-existing long name = %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rig.config(t, row.ID); got.Model != "deepseek-v4" || got.Name != legacy {
+		t.Fatalf("the edit did not apply: %+v", got)
+	}
+	// Changing the name is still held to the bound.
+	shorter := strings.Repeat("s", 10)
+	if rec := rig.do(t, http.MethodPatch, path, fmt.Sprintf(`{"name":%q}`, shorter)); rec.Code != http.StatusOK {
+		t.Fatalf("renaming a legacy row to a valid name = %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rig.config(t, row.ID); got.Name != shorter {
+		t.Fatalf("rename did not apply: %+v", got)
+	}
+}
+
 // A delete of a service that is already gone answers 404, so a stale console is
 // told what happened instead of being shown a success for a row that was never
 // there.

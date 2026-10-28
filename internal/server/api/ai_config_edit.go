@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -29,17 +30,18 @@ func (a *apiHandlers) updateAIConfig(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
+	id := parseUint(chi.URLParam(r, "id"))
 	patch := store.AIConfigPatch{}
 	if req.Name != nil {
-		if !validateName(w, *req.Name) {
-			return
-		}
 		name := strings.TrimSpace(*req.Name)
 		if name == "" {
 			writeFieldInvalid(w, "name", "is required")
 			return
 		}
-		if !validateAIColumn(w, "name", name, 64) {
+		// The stored name is read first so an unchanged one skips the bound; a
+		// missing row answers "" here and gets its own 404 from the write below,
+		// which is the failure the caller needs to see.
+		if !validateAIConfigName(w, name, a.aiConfigStoredName(id)) {
 			return
 		}
 		patch.Name = &name
@@ -161,6 +163,20 @@ func aiConfigView(c *store.AIConfig) dto.AIConfigView {
 	return dto.AIConfigView{ID: c.ID, Name: c.Name, Preset: c.Preset, BaseURL: c.BaseURL, Model: c.Model, IsDefault: c.IsDefault}
 }
 
+// aiConfigStoredName answers the name a stored service holds, or "" when the id
+// names no row.
+//
+// A row that cannot be read answers "": the bound is then applied to the value
+// as if it were new, and the write that follows reports the real reason the
+// caller has to act on (404 for a missing service, 500 for a storage failure).
+func (a *apiHandlers) aiConfigStoredName(id uint) string {
+	stored, err := a.d.Store.AIConfigByID(id)
+	if err != nil {
+		return ""
+	}
+	return stored.Name
+}
+
 // writeAIStoreErr answers a config write: a missing service is a 404, a patch
 // that would leave the stored services with no default is a 409 - the request
 // is well formed and the row exists, the state it asks for is what conflicts -
@@ -185,13 +201,57 @@ func writeFieldInvalid(w http.ResponseWriter, field, detail string) {
 	writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, field+" "+detail, map[string]any{"field": field, "detail": detail})
 }
 
-// validateAIColumn bounds one stored text field of an AI service by both its
-// character limit and its column width.
-func validateAIColumn(w http.ResponseWriter, field, value string, maximum int) bool {
-	if !validateTextField(w, field, value, maximum) {
+// aiConfigNameMaxRunes bounds the display name of an AI service, in characters,
+// on create and on edit alike.
+const aiConfigNameMaxRunes = 64
+
+// validateAIConfigName is the one bound both a create and an edit apply to a
+// service name, so that a name the API accepts is a name the API can later
+// change. When the two disagreed - create accepted up to maxNameRunes (256) and
+// edit held 64 - the API could store a 70-character name and then refuse every
+// edit of that service, because the edit dialog always sends the name back and
+// the edit path re-validated it: the row was permanently uneditable through the
+// console, which is how the defect was filed.
+//
+// stored is the name the row already holds, and is "" on a create. A patch that
+// sends the stored name back unchanged skips the bound: rows created by a build
+// with the wider limit are already in databases in the field, and refusing their
+// name would leave the operator unable to fix anything else about that service
+// without inventing a new name for it first. A name the operator is changing now
+// is held to the bound, because that is a value they are writing and can see the
+// rule for.
+func validateAIConfigName(w http.ResponseWriter, value, stored string) bool {
+	if !utf8.ValidString(value) || containsControl(value) {
+		writeFieldInvalid(w, "name", "must contain valid text without control characters")
 		return false
 	}
-	if len(value) > maximum {
+	if value == stored {
+		return true
+	}
+	if utf8.RuneCountInString(value) > aiConfigNameMaxRunes {
+		writeFieldInvalid(w, "name", "must be at most "+strconv.Itoa(aiConfigNameMaxRunes)+" characters")
+		return false
+	}
+	return true
+}
+
+// validateAIColumn bounds one stored text field of an AI service by its
+// character limit.
+//
+// The count is characters, and the message says so: the same function once
+// compared len(value), which is bytes, while telling the operator the limit was
+// in characters. Those differ for every name written in Chinese, and the
+// disagreement was invisible until a value was long enough that the byte count
+// crossed a limit the character count had not reached. The SQLite store keeps
+// these columns as TEXT, which has no enforced width, so the character count is
+// also the bound the schema can honestly claim; where a column width does matter
+// it is the store's to enforce on write, not a message to mis-state here.
+func validateAIColumn(w http.ResponseWriter, field, value string, maximum int) bool {
+	if !utf8.ValidString(value) || containsControl(value) {
+		writeFieldInvalid(w, field, "must contain valid text without control characters")
+		return false
+	}
+	if utf8.RuneCountInString(value) > maximum {
 		writeFieldInvalid(w, field, "must be at most "+strconv.Itoa(maximum)+" characters")
 		return false
 	}
