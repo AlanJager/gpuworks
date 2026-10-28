@@ -67,11 +67,20 @@ func TestAutomationAdapterSleepsAndReportsAwake(t *testing.T) {
 	if err != nil || len(idle) != 1 || !idle[0].Awake || idle[0].AfterSec != 900 || idle[0].Level != 2 {
 		t.Fatalf("idle deployments = %+v err=%v", idle, err)
 	}
-	if err := adapter.Sleep(dep.ID, 1); err != nil {
+	if err := adapter.Sleep(dep.ID, 1, false); err != nil {
 		t.Fatalf("sleep: %v", err)
 	}
 	if got := intentOf(t, st, "auto-1"); got != 1 {
 		t.Fatalf("intent after the automation's sleep = %d, want 1", got)
+	}
+	if got, _ := st.GetDeployment(dep.ID); got.SleepHeld {
+		t.Fatal("an idle sleep is held: a request would not wake it")
+	}
+	if err := adapter.Sleep(dep.ID, 2, true); err != nil {
+		t.Fatalf("held sleep: %v", err)
+	}
+	if got, _ := st.GetDeployment(dep.ID); !got.SleepHeld {
+		t.Fatal("a schedule's sleep is not held")
 	}
 	if idle, _ := adapter.IdleDeployments(); len(idle) != 1 || idle[0].Awake {
 		t.Fatalf("an ordered sleep still reads awake: %+v", idle)
@@ -96,7 +105,7 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 		t.Fatal(err)
 	}
 	adapter.metrics = metrics
-	err = adapter.Sleep(dep.ID, 1)
+	err = adapter.Sleep(dep.ID, 1, true)
 	coded, ok := err.(interface{ Code() string })
 	if !ok || coded.Code() != "SLEEP_HOST_MEMORY_INSUFFICIENT" {
 		t.Fatalf("L1 onto a full host = %v, want SLEEP_HOST_MEMORY_INSUFFICIENT", err)
@@ -104,7 +113,7 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 	if got := intentOf(t, st, "auto-1"); got != 0 {
 		t.Fatalf("a refused sleep changed the intent to %d", got)
 	}
-	if err := adapter.Sleep(dep.ID, 2); err != nil || intentOf(t, st, "auto-1") != 2 {
+	if err := adapter.Sleep(dep.ID, 2, true); err != nil || intentOf(t, st, "auto-1") != 2 {
 		t.Fatalf("L2 onto a full host: err=%v intent=%d", err, intentOf(t, st, "auto-1"))
 	}
 }

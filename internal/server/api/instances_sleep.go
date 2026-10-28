@@ -39,7 +39,7 @@ func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(members), level, mode); err != nil {
+	if err := a.d.Store.OrderInstancesSleepHeld(dep.ID, uuidsOf(members), level, mode, true); err != nil {
 		writeReplicaOrderErr(w, err)
 		return
 	}

@@ -352,6 +352,7 @@ PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing
 PUT /api/v1/deployments/{id}/schedule/{sid}
+PUT /api/v1/deployments/{id}/service-level
 PUT /api/v1/deployments/{id}/tokenize
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}

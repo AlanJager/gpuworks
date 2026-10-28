@@ -145,6 +145,12 @@ type Deployment struct {
 	// move (after_sec 0 never moves them).
 	IdleSleep       IdleSleep       `json:"idle_sleep"`
 	NodeReplacement NodeReplacement `json:"node_replacement"`
+	// ServiceLevel is how the deployment shares its GPUs with others:
+	// resident, online, shared or offline.
+	ServiceLevel string `json:"service_level"`
+	// SleepHeld says an operator or a schedule put the deployment to sleep,
+	// so a request does not wake it.
+	SleepHeld bool `json:"sleep_held"`
 	// WakeWaitingSince is when the oldest wake of the deployment that waits
 	// for room started waiting; absent when none waits.
 	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`

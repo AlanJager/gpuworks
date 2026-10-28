@@ -109,7 +109,7 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, dep *store.Deployment, 
 				return
 			}
 			replica := planning.ReplicaMembers(targetMatch.SlotOf(target.Instance.UUID))
-			if err := a.d.Store.OrderInstancesSleep(target.Deployment.ID, uuidsOf(replica), level, proto.SleepModeWait); err != nil {
+			if err := a.d.Store.OrderInstancesSleepHeld(target.Deployment.ID, uuidsOf(replica), level, proto.SleepModeWait, true); err != nil {
 				writeReplicaOrderErr(w, err)
 				return
 			}

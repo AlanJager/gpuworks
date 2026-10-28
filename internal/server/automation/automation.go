@@ -68,8 +68,10 @@ type Source interface {
 // Actions is how the automation acts: the same orders an operator gives,
 // each taking the lifecycle order lock.
 type Actions interface {
-	// Sleep puts the deployment's awake instances to sleep at level.
-	Sleep(deploymentID uint, level int) error
+	// Sleep puts the deployment's awake instances to sleep at level. A held
+	// sleep (a schedule's) is not woken by a request; one the platform chose
+	// (idle sleep) is.
+	Sleep(deploymentID uint, level int, held bool) error
 	// Wake wakes the deployment's sleepers that fit and leaves the rest
 	// waiting for room.
 	Wake(deploymentID uint) (WakeResult, error)
@@ -251,7 +253,7 @@ func (e *Evaluator) fire(s Schedule, at time.Time) {
 	switch s.Action {
 	case "sleep":
 		params["level"] = s.SleepLevel
-		if err = e.actions.Sleep(s.DeploymentID, s.SleepLevel); err == nil {
+		if err = e.actions.Sleep(s.DeploymentID, s.SleepLevel, true); err == nil {
 			e.actions.Record(s.DeploymentID, EventAutoSleep, params)
 		}
 	case "wake":
@@ -320,7 +322,7 @@ func (e *Evaluator) idle(now time.Time) {
 			continue
 		}
 		params := map[string]any{"trigger": TriggerIdle, "level": d.Level, "idle_sec": int(idleFor.Seconds())}
-		if err := e.actions.Sleep(d.ID, d.Level); err != nil {
+		if err := e.actions.Sleep(d.ID, d.Level, false); err != nil {
 			failed := copyParams(params)
 			failed["action"] = "sleep"
 			failed["reason"] = err.Error()

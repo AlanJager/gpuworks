@@ -48,7 +48,7 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := a.d.Store.OrderDeploymentSleep(dep.ID, level, mode); err != nil {
+		if err := a.d.Store.OrderDeploymentSleepHeld(dep.ID, level, mode, true); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -65,7 +65,7 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(named), level, mode); err != nil {
+	if err := a.d.Store.OrderInstancesSleepHeld(dep.ID, uuidsOf(named), level, mode, true); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}

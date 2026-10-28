@@ -74,6 +74,11 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
 	out.IdleSleep = dto.IdleSleep{AfterSec: d.IdleSleepAfterSec, Level: d.IdleSleepLevel}
+	out.ServiceLevel = d.ServiceLevel
+	if out.ServiceLevel == "" {
+		out.ServiceLevel = store.ServiceLevelResident
+	}
+	out.SleepHeld = d.SleepHeld
 	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
 	out.PlacementMode = unitsPlacementMode(d)
 	if strings.TrimSpace(d.QuickParams) != "" {

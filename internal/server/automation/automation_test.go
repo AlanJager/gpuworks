@@ -28,6 +28,7 @@ type fakeWorld struct {
 	params []map[string]any
 	fired  map[uint]time.Time
 	ended  [][]string
+	held   []bool
 }
 
 func newFakeWorld() *fakeWorld {
@@ -52,8 +53,9 @@ func (w *fakeWorld) LastRequestAt(id uint) (time.Time, bool) {
 	at, ok := w.lastReq[id]
 	return at, ok
 }
-func (w *fakeWorld) Sleep(id uint, level int) error {
+func (w *fakeWorld) Sleep(id uint, level int, held bool) error {
 	w.orders = append(w.orders, fmt.Sprintf("sleep %d L%d", id, level))
+	w.held = append(w.held, held)
 	return w.sleepErr
 }
 func (w *fakeWorld) Wake(id uint) (WakeResult, error) {
@@ -146,8 +148,8 @@ func TestAScheduledOrderRunsOncePerOccurrence(t *testing.T) {
 	e.Tick()
 	c.t = c.t.Add(time.Hour)
 	e.Tick()
-	if !slices.Equal(w.orders, []string{"sleep 7 L2"}) {
-		t.Fatalf("orders = %v, want one sleep", w.orders)
+	if !slices.Equal(w.orders, []string{"sleep 7 L2"}) || !slices.Equal(w.held, []bool{true}) {
+		t.Fatalf("orders = %v held = %v, want one held sleep (a request does not undo a schedule)", w.orders, w.held)
 	}
 	if !slices.Equal(w.events, []string{"7 AUTO_SLEEP"}) || w.params[0]["trigger"] != TriggerSchedule || w.params[0]["schedule_id"] != uint(1) {
 		t.Fatalf("events = %v %v", w.events, w.params)
@@ -259,6 +261,9 @@ func TestIdleSleepCountsFromTheLastRequest(t *testing.T) {
 	e.Tick()
 	if !slices.Equal(w.orders, []string{"sleep 5 L2"}) || w.params[0]["trigger"] != TriggerIdle || w.params[0]["idle_sec"] != 900 {
 		t.Fatalf("orders %v params %v", w.orders, w.params)
+	}
+	if !slices.Equal(w.held, []bool{false}) {
+		t.Fatalf("held = %v: an idle sleep must wake on the next request", w.held)
 	}
 	// Asleep now: nothing more happens.
 	w.idle[0].Awake = false

@@ -148,7 +148,7 @@ func (a *automationAdapter) LastRequestAt(deploymentID uint) (time.Time, bool) {
 // Sleep orders a deployment to sleep as an operator's deployment-wide order
 // does: refused when the deployment cannot sleep, or at L1 when a host
 // cannot hold the weights.
-func (a *automationAdapter) Sleep(deploymentID uint, level int) error {
+func (a *automationAdapter) Sleep(deploymentID uint, level int, held bool) error {
 	defer planning.LockLifecycle()()
 	dep, err := a.store.GetDeployment(deploymentID)
 	if err != nil {
@@ -166,7 +166,7 @@ func (a *automationAdapter) Sleep(deploymentID uint, level int) error {
 			return messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
 		}
 	}
-	return a.store.OrderDeploymentSleep(dep.ID, level, proto.SleepModeWait)
+	return a.store.OrderDeploymentSleepHeld(dep.ID, level, proto.SleepModeWait, held)
 }
 
 // Wake wakes the deployment's sleepers that fit and leaves the rest waiting
