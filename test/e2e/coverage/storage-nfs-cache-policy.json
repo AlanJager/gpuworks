@@ -168,7 +168,8 @@
     "12.6": "While the real stale defaults PATCH is held before sending, Save is disabled and a forced second click plus Enter send no duplicate. Releasing that request reaches the real server and returns 409 STORAGE_CONFIG_CHANGED; the unlimited limit and directory draft remain with the localized conflict reason. Reopening with the fresh revision and saving returns 200, matches independent GET and the refreshed effective limit. No management API response is mocked.",
     "12.7": "MISSING: clear-cache confirmation is not exercised; every seeded node is offline",
     "12.8": "The defaults dialog sends the previewed expected_updated_at. After another writer advances the revision, Save returns 409 STORAGE_CONFIG_CHANGED, the unlimited draft and cache path stay in the open dialog, and the independent GET keeps the previous default limit and the other writer's revision. Teardown is not the assertion",
-    "13.3": "The role=user session sees no configure, batch, restore, retry, defaults, clear or edit-scope control and no checkbox; its PATCH node-overrides, PATCH storage, POST cache/reconcile and DELETE cache are each refused with 403 ADMINISTRATOR_REQUIRED, and targets, updated_at and the default are unchanged"
+    "13.3": "The role=user session sees no configure, batch, restore, retry, defaults, clear or edit-scope control and no checkbox; its PATCH node-overrides, PATCH storage, POST cache/reconcile and DELETE cache are each refused with 403 ADMINISTRATOR_REQUIRED, and targets, updated_at and the default are unchanged",
+    "3.6": "The control and the server refuse the same lower bound. The form blurs -1 to empty and shows the invalid-limit alert without sending anything, and a PATCH written straight to /api/v1/storages/{id}/node-overrides with cache_max_bytes -1 and then -1073741824 is refused with HTTP 400 and code STORAGE_PATH_INVALID. Independent readback after both refusals still shows the stored limit at 0 bytes, so a rejected capacity left the configuration untouched."
   },
   "missing": [
     "MISSING: 1.1 full field inventory of the policy dialogs (cache path mode is not exercised)",
@@ -178,7 +179,6 @@
     "MISSING: 1.11 Esc/close of the single-node and batch dialogs and proof that cancel sends no mutation",
     "MISSING: 1.15 keyboard reachability and layout of the whole dialog at 1440×900 (only the batch trigger's Tab/Shift+Tab/Enter is exercised)",
     "MISSING: 3.1 complete limit-unit, default and step-text inventory outside the new3.3 control roundtrip",
-    "MISSING: 3.6 server-provided limit ranges",
     "MISSING: 5.2 selecting and persisting each mode filter value on its own",
     "N/A: 5.4 the mode filter has allowClear; clearing it is covered only through Clear filters",
     "MISSING: 5.5 and 5.7 conditional fields after a mode switch and failed option loads",

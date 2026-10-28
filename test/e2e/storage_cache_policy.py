@@ -26,6 +26,7 @@ from platform_token_read_revoke import button, check
 from storage_cache_policy_inventory import exercise_node_path_required, exercise_node_policy_inventory
 from storage_cache_policy_dialogs import (
     GIB, exercise_cache_limit_bounds, exercise_cache_limit_defaults, exercise_cache_limit_steps,
+    exercise_server_limit_range,
     exercise_defaults_conflict,
     exercise_defaults_dialog,
     exercise_editor_dismissals,
@@ -215,6 +216,9 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
         page, dialog, limit_input, cp['unit'],
         lambda: targets()['cache-node-01']['cache_max_bytes'],
         precision=report.get('check_family', 'all') != 'wire')
+    report['last_step'] = 'cache-limit-server-range'
+    report['limit_server_range'] = exercise_server_limit_range(
+        page, server.base, path, targets, evidence)
     report['last_step'] = 'cache-json-wire-types'
     limit_input.fill('32')
     expect(dialog.get_by_text(cm['unknownImpact'].replace('{{count}}', '1'), exact=True)).to_be_visible()
