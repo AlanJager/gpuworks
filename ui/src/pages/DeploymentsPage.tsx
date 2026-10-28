@@ -20,7 +20,7 @@ import {
 } from "antd";
 import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
 import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Deployment, type DeploymentListItem, type Instance, type RoutingPolicyOption } from "../api";
-import { DeploymentPreparation, PreparationLabel } from "./DeploymentPreparation";
+import { DeploymentPreparation, ListPreparationAction, PreparationLabel } from "./DeploymentPreparation";
 import DeploymentMetricsPanel from "../components/DeploymentMetricsPanel";
 import RoutingPolicyHelp from "../components/RoutingPolicyHelp";
 import { effectiveDeploymentState, stateLabel } from "./state";
@@ -167,7 +167,10 @@ export default function DeploymentsPage() {
       filteredValue: states,
       render: (_: unknown, deployment: DeploymentListItem) => {
         const b = stateLabel(effectiveDeploymentState(deployment), tCommon);
-        return <><Badge status={b.status} text={b.text} />{deployment.preparation && <Typography.Text type="secondary" className="resource-table-sub"><PreparationLabel item={deployment.preparation} /></Typography.Text>}</>;
+        // A failed model preparation is the reason the row is not running, so
+        // the retry is offered here, where that state is read - not only in
+        // the drawer behind it.
+        return <><Badge status={b.status} text={b.text} />{deployment.preparation && <Typography.Text type="secondary" className="resource-table-sub"><PreparationLabel item={deployment.preparation} /></Typography.Text>}{deployment.preparation && <ListPreparationAction item={deployment.preparation} onChanged={refetch} />}</>;
       },
     },
     { key: "health", title: <Space size={0}>{t("page.column.health")}<HealthCheckHelp /></Space>, width: 140, render: (_: unknown, d: DeploymentListItem) => <HealthTag health={d.health} /> },

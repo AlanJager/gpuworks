@@ -190,6 +190,50 @@ test("a failed page load shows the error and retries on request", async () => {
 });
 
 
+// The reported "界面无重试入口": a list row that reads 模型准备失败 carried no
+// action at all, so the retry existed only inside the drawer behind it.
+test("a list row whose model preparation failed offers the retry there and then", async () => {
+  const asked: unknown[] = [];
+  const retryOriginal = api.retryModelCache;
+  api.retryModelCache = (async (id: number, node: string, storage: number) => {
+    asked.push([id, node, storage]);
+    return { status: "pending" };
+  }) as never;
+  try {
+    renderPage(fakeServer([
+      { ...fleet[0], id: 201, name: "broken-copy", model_id: 131, runtime_state: "failed", preparation: {
+        model_id: 131, model_name: "org/m", node_uuid: "793bf494", node_name: "gpu-1", storage_id: 3, storage_name: "cache",
+        state: "failed", path: "/cache/m", progress: 0, size_bytes: 0, downloaded: 0, transferred_bytes: 0, rate_bps: 0,
+        acquisition: "copy", message: "copy .msc: open /cache/m/.msc: permission denied",
+        preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0, retryable: true },
+      } },
+    ]).serve);
+    await screen.findByText("broken-copy");
+    const row = screen.getByText("broken-copy").closest("tr")!;
+    assert.ok(within(row).getByText(deploymentsLocale.preparation.reason.MODEL_PREPARATION_FAILED));
+    const user = userEvent.setup({ document: dom.window.document });
+    // The row's own storage and node, not a guess.
+    await user.click(within(row).getByRole("button", { name: deploymentsLocale.preparation.retry }));
+    await waitFor(() => assert.deepEqual(asked, [[131, "793bf494", 3]]));
+  } finally {
+    api.retryModelCache = retryOriginal;
+  }
+});
+
+test("a list row failed from a download says it cannot be retried instead of nothing", async () => {
+  renderPage(fakeServer([
+    { ...fleet[0], id: 202, name: "download-broken", model_id: 9, runtime_state: "failed", preparation: {
+      model_id: 9, node_uuid: "n-1", node_name: "gpu-1", storage_id: 4, state: "failed", path: "/models/m", progress: 0,
+      size_bytes: 0, downloaded: 0, transferred_bytes: 0, rate_bps: 0, acquisition: "download",
+      preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0 },
+    } },
+  ]).serve);
+  await screen.findByText("download-broken");
+  const row = screen.getByText("download-broken").closest("tr")!;
+  assert.equal(within(row).queryByRole("button", { name: deploymentsLocale.preparation.retry }), null);
+  assert.ok(within(row).getByText(deploymentsLocale.preparation.retryUnavailableShort));
+});
+
 test("replica column labels ready versus desired for PD and ordinary rows, preserving unknown readiness", async () => {
   renderPage(fakeServer([
     { ...fleet[0], id: 101, name: "pd-ready", replicas: 2, ready_replicas: 2 },

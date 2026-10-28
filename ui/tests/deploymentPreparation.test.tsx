@@ -107,3 +107,29 @@ test("shared model sync progress keeps the server phase", () => {
     assert.ok(screen.getByText("Syncing model"));
     assert.ok(screen.getByText(/40 B \/ 100 B/));
 });
+
+// The Jira's "no retry entry, no automatic retry, and nobody says so": the
+// button must come with the statement that nothing retries on its own.
+test("an offered retry says the copy is not retried automatically", () => {
+    show([row({ state: "failed", transfer_id: "intent", preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0, retryable: true } })]);
+    assert.ok(screen.getByRole("button", { name: labels.retry }));
+    assert.ok(screen.getByText(labels.noAutoRetry));
+});
+
+// A failure the server does not offer to retry (a shared or download failure
+// has no cache copy intent to replace) says why rather than rendering nothing.
+test("a failed copy that cannot be retried says so instead of staying silent", () => {
+    show([row({ state: "failed", acquisition: "download", cache: false, message: "permission denied", preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0 } })]);
+    assert.equal(screen.queryByRole("button", { name: labels.retry }), null);
+    assert.ok(screen.getByText(labels.retryUnavailable));
+    assert.ok(screen.getByText("permission denied"));
+});
+
+// The reported failure text is the agent's own words, and a peer/download
+// origin line must not hide it.
+test("the failure message survives a transfer origin line", () => {
+    const message = "copy .msc: open /cache/weights/.msc: permission denied";
+    show([row({ state: "failed", acquisition: "peer", source_node_name: "gpu-9", source_node_uuid: "u-9", message, preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0, retryable: true } })]);
+    assert.ok(screen.getByText(message));
+    assert.ok(screen.getByText(labels.reason.MODEL_PREPARATION_FAILED));
+});
