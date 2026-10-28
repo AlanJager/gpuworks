@@ -121,3 +121,45 @@ def exercise_storage_name_contract(page, dialog, t, events):
     expect(path_item).not_to_have_class(re.compile(r'ant-form-item-has-error'))
     name_input.fill('')
     return rows
+
+
+def exercise_storage_name_editing(page, dialog, t, events):
+    """Typing, pasting and clearing all leave the controlled input consistent.
+
+    The name input is a controlled component driven by values.name, so every one
+    of these paths has to end with the field showing exactly what was entered -
+    a controlled input that swallows a paste or keeps stale text is a real defect.
+    """
+    name = dialog.get_by_label(t['form']['name'], exact=True)
+    rows = []
+
+    # Keyboard editing: type, backspace, then complete the value.
+    name.fill('')
+    name.type('paste-target', delay=10)
+    expect(name).to_have_value('paste-target')
+    for _ in range(6):
+        page.keyboard.press('Backspace')
+    expect(name).to_have_value('paste-')
+    name.type('edited', delay=10)
+    expect(name).to_have_value('paste-edited')
+    rows.append({'path': 'keyboard', 'value': 'paste-edited'})
+
+    # A real clipboard paste, which is a different path from fill(): the controlled
+    # value has to take the whole clip rather than the first character.
+    name.fill('')
+    name.focus()
+    page.evaluate("value => navigator.clipboard.writeText(value)", 'pasted-value')
+    page.keyboard.press('Control+V')
+    page.wait_for_timeout(150)
+    pasted = name.input_value()
+    check(pasted == 'pasted-value', f'paste produced {pasted!r}, expected the pasted text')
+    rows.append({'path': 'paste', 'value': pasted})
+
+    # Clearing with select-all + delete leaves an empty controlled value.
+    page.keyboard.press('Control+A')
+    page.keyboard.press('Delete')
+    expect(name).to_have_value('')
+    rows.append({'path': 'clear', 'value': ''})
+
+    check(events == [], 'editing the name field sent a mutation')
+    return rows

@@ -423,6 +423,10 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     report["name_contract"] = exercise_storage_name_contract(page, modal, storage, posts)
     report["evidence"].append({"layer": "ui", "name_contract": report["name_contract"]})
     report["last_step"] = "storage-name-contract"
+    from storage_local_required import exercise_storage_name_editing
+    report["name_editing"] = exercise_storage_name_editing(page, modal, storage, posts)
+    report["evidence"].append({"layer": "ui", "name_editing": report["name_editing"]})
+    report["last_step"] = "storage-name-editing"
     name_input.fill("Bad Name")
     path_input.fill(path)
     save.click()
@@ -628,7 +632,9 @@ def main():
         report["owned_server_pid"] = server.process.pid
         with sync_playwright() as play:
             browser = play.chromium.launch(channel="chrome", headless=True)
-            context = browser.new_context(viewport=report["viewport"],
+            context = browser.new_context(
+                viewport=report["viewport"],
+                permissions=["clipboard-read", "clipboard-write"],
                 locale="zh-CN" if args.locale == "zh" else "en-US", timezone_id="UTC")
             report["browser_version"] = browser.version
             page = context.new_page()

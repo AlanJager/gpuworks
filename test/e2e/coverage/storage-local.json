@@ -62,6 +62,8 @@
     }
   ],
   "checklist_items": {
+        "2.1": "Every text control is checked for its accessible label, control type, empty default and help text, and the inventory also records that the name has no placeholder and no maximum length attribute so the field is not relying on one. The values that are not edited are captured from the POST body itself rather than assumed: the create asserts the whole payload equals name/type/all_nodes/targets/path, so the untouched type and scope fields are shown to submit their displayed defaults.",
+        "2.6": "The name input is driven three ways and each one is read back from the control: per-key typing followed by Backspace (the value shortens by exactly the deleted characters and completes correctly), a real clipboard paste, and select-all plus Delete which leaves the field empty. A paste that the controlled value drops is a real defect and is caught.",
         "2.2": "The name is validated after trimming: '  spaced  ' is accepted and stored as 'spaced', while a run of only spaces trims to empty and is refused. Nothing is submitted by the rejected attempt.",
         "2.3": "The name's length contract is 1 to 63 characters, taken from storageForm.ts's /^[a-z0-9][a-z0-9-]{0,62}$/. A single character is accepted, 63 characters are accepted and 64 are refused - each driven through the real field and read from the form item's own error state rather than from a click.",
         "2.4": "The allowed alphabet is lowercase letters, digits and inner hyphens. 'ok-name-2' is accepted, while an uppercase value, a non-latin value, an underscore and an inner space are each refused by the field. The refusal is the form item going to its error state, not merely the browser rejecting a keystroke.",
