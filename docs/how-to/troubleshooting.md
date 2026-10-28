@@ -1003,7 +1003,8 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 
 2. 用新密码重新登录，确认恢复访问。改密会使该用户已有的管理会话失效；推理令牌不受影响。
 
-`--user` 缺省为 `admin`，`--data` 缺省为 `./data`（数据库路径可用 `--db` 直接指定）；`--password` 不能为空。
+`--user` 缺省为 `admin`；不给 `--data` 时先读二进制同目录、再读默认安装的 `server.yaml` 里的 `data_dir`，都没有才用 `./data`（数据库路径可用 `--db` 直接指定）；`--password` 不能为空。
+报 `database ... does not exist` 时，按提示用 `--data` 指定 server 实际的数据目录。
 用户不存在时报 `not found`，先核对用户名和数据目录；出现权限错误时检查当前用户对该数据库的访问权限。
 见 [CLI](../reference/cli.md)。
 

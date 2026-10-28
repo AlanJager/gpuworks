@@ -219,8 +219,8 @@
   {
     "path": "how-to/install-server.md",
     "block_index": 4,
-    "source_sha256": "ae5ad9fd7a8400041b4f9fad82a3467938aa5fb4a19ad101eb693e58299d0085",
-    "translation_sha256": "09bd85b08a316fe95eeebdad821c800d167cfdbaac14b30139f377deb5404e96",
+    "source_sha256": "a2a7d849742d4bc1b49eee629e9d586337d74603ea8592f6d24f2d3add8c1044",
+    "translation_sha256": "a51c2a29d1d5cfacb1af2136ca8e39aa3fcad8ea6674d3de2abc2c7c8f624e7b",
     "reason": "Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths."
   },
   {
