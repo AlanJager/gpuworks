@@ -110,7 +110,7 @@
     "20.3"
   ],
   "partial_checklist": {
-    "20.6": "A fresh browser context (separate storage) shows no conversations. Two accounts in the same browser profile, re-login isolation and the retention cap are not covered.",
+    "20.6": "History is now shown to be keyed to the signed-in account inside one browser: after logging out and back in the same browser shows both conversations again and the store holds every row under a single positive account key, while a separate browser context starts empty. What still holds the item at partial is real cross-account isolation: this product exposes one admin account and no user management, so a second account cannot be created through the product. I tried to prove the check by making the store ignore the account key and return every row - it did not fail, because with a single account the result is identical. That is a gap in what this environment can prove, not evidence of isolation, so it stays open rather than being claimed.",
     "20.3": "Chunking, the terminal [DONE] event, error events and usage are now asserted separately from the reply text, and the reply shows the reported token count exactly instead of an approximation, so a reply that ignores its usage event is caught (killed by dropping the recorded usage: the metric turns into ≈1). What still holds the item at partial is cancellation: at this stream shape the stop control is gone before it can be clicked, and holding the reply open changed the timing the completed-reply assertions depend on."
   },
   "missing": [
@@ -230,5 +230,26 @@
         "review_note": "Killed at the plane-separation assertion: the browser session got 200 on /v1/models, so one credential standing in for the other cannot pass."
       }
     ]
+  },
+  "account_isolation_evidence": {
+    "normal_binary_sha256": "8919c51e82a2e97493cc235805e7a4a17a5e1cc22ad0004eb68406479290b49c",
+    "runs": {
+      "en": {
+        "run_id": "20261028T080954Z-b7c38ba9",
+        "report_sha256": "4ff6ee249cea032053c8b0641339bff37bda3977b72f0ca6aa28103a9b2ba0df"
+      },
+      "zh": {
+        "run_id": "20261028T081022Z-bd889dac",
+        "report_sha256": "1f457abdc152841ba727cc72df242666c4dbf707fcae9d84ac1cfc1d4ca03c70"
+      }
+    },
+    "undetected_mutation": {
+      "sites": [
+        "ui/src/pages/playground/conversations/db.ts"
+      ],
+      "intent": "list() ignores the account key and returns every stored conversation",
+      "outcome": "NOT_KILLED",
+      "why": "A single admin account means the leaked result equals the correct one, so this test cannot distinguish them. Recorded as an environment limitation, not as a proven property."
+    }
   }
 }

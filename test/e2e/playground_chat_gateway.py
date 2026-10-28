@@ -146,6 +146,12 @@ def stream_shape(text):
     return shape
 
 
+def auth_logout(locale):
+    """The logout control's label in this locale."""
+    data = json.loads((ROOT / "ui/src/i18n/locales" / locale / "common.json").read_text())
+    return data["header"]["logout"]
+
+
 def metric_value(page, label):
     """Read one reply metric value by its label.
 
@@ -418,6 +424,54 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
     finally:
         other.close()
     report["last_step"] = "playground-conversations-browser-scoped"
+
+    # 20.6: conversations are kept per account inside this browser. Logging out
+    # and back in must show the same account's history again, and must not show
+    # another account's, so the store is keyed by the signed-in user rather
+    # than by the browser alone.
+    logout = page.get_by_role("button", name=auth_logout(locale))
+    # Logging out legitimately makes the next session probe answer 401, which
+    # is the same expected state as before the first login.
+    authenticated = False
+    logout.click()
+    expect(page.get_by_role("textbox", name=auth["username"], exact=True)).to_be_visible(timeout=30000)
+    page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + served_name)
+    expect(page.get_by_role("textbox", name=auth["username"], exact=True)).to_be_visible(timeout=30000)
+    page.get_by_role("textbox", name=auth["username"], exact=True).fill("admin")
+    page.get_by_label(auth["password"], exact=True).fill("password")
+    with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/auth/login"
+                              and r.request.method == "POST") as relogin:
+        button(page, auth["submit"]).click()
+    check(relogin.value.status == 200, "re-login failed")
+    authenticated = True
+    page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + served_name)
+    expect(page.get_by_label(playground["chat"]["inputAria"])).to_be_visible(timeout=30000)
+    after_expand = page.get_by_role("button", name=playground["conversations"]["expand"])
+    if after_expand.count():
+        after_expand.click()
+    titles = page.locator(".playground-conversation-open")
+    expect(titles.filter(has_text=first_prompt)).to_have_count(1)
+    expect(titles.filter(has_text=second_prompt)).to_have_count(1)
+    stored = page.evaluate("""async () => {
+      const open = indexedDB.open("gpuworks-playground");
+      const db = await new Promise((resolve, reject) => {
+        open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error);
+      });
+      if (!db.objectStoreNames.contains("conversations")) return {store: false, owners: []};
+      const tx = db.transaction("conversations", "readonly");
+      const all = await new Promise((resolve, reject) => {
+        const req = tx.objectStore("conversations").getAll();
+        req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+      });
+      return {store: true, owners: [...new Set(all.map((row) => row.userID))], count: all.length};
+    }""")
+    check(stored.get("store") is True, f"no conversation store found: {stored}")
+    check(len(stored["owners"]) == 1,
+          f"conversations are not keyed to a single account: {stored}")
+    check(all(isinstance(owner, int) and owner > 0 for owner in stored["owners"]),
+          f"conversation rows carry no real account key: {stored}")
+    report["relogin_isolation"] = {"history_after_relogin": [first_prompt, second_prompt],
+                                   "owners": stored["owners"], "rows": stored["count"]}
 
     unexpected = [item for item in bad_responses]
     check(not unexpected, "unexpected browser HTTP errors: " + str(unexpected))
