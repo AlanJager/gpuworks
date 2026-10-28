@@ -86,11 +86,14 @@ func TestAssembleWritesASignedTree(t *testing.T) {
 		t.Fatalf("SHA256SUMS = %q", sums)
 	}
 
-	// Both catalogs are the embedded ones, byte for byte, and the legacy
-	// manifest.json is the same file as the channel's image catalog.
+	// Both catalogs are the embedded ones, byte for byte, and the channel's
+	// manifest.json is the same file as its image catalog.
 	if !bytes.Equal(readTree(t, in.OutDir, index.ImageCatalog.Path), imagecatalog.SeedJSON()) ||
-		!bytes.Equal(readTree(t, in.OutDir, "manifest.json"), imagecatalog.SeedJSON()) {
+		!bytes.Equal(readTree(t, in.OutDir, "nightly/manifest.json"), imagecatalog.SeedJSON()) {
 		t.Fatal("image catalog differs from the embedded seed")
+	}
+	if _, err := os.Stat(filepath.Join(in.OutDir, "manifest.json")); !os.IsNotExist(err) {
+		t.Fatalf("assemble wrote a root manifest.json (stat: %v); each channel has its own", err)
 	}
 	if !bytes.Equal(readTree(t, in.OutDir, index.TemplateCatalog.Path), in.TemplateArchive) {
 		t.Fatal("template catalog differs from the embedded package")
@@ -192,7 +195,7 @@ func TestVerifyReadsTheTreeBackFromEachSource(t *testing.T) {
 		t.Fatalf("release id check = %v\n%s", err, out.String())
 	}
 	out.Reset()
-	if err := os.Remove(filepath.Join(in.OutDir, "manifest.json")); err != nil {
+	if err := os.Remove(filepath.Join(in.OutDir, "nightly", "manifest.json")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(filepath.Join(in.OutDir, "releases", "abc123", "gpuworks-abc123-linux-arm64.tar.gz")); err != nil {

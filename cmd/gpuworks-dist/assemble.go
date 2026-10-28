@@ -128,9 +128,10 @@ func assemble(in assembleInput) (distribution.Index, error) {
 		return distribution.Index{}, err
 	}
 	index.ImageCatalog = &distribution.CatalogFile{Version: images.CatalogVersion, File: imageFile}
-	// Servers released before the channel fetch this fixed name; it stays the
-	// same file as the channel's image catalog.
-	if _, err := writeBlob(in.OutDir, "manifest.json", in.ImageCatalog); err != nil {
+	// A fixed name per channel for fetching the image catalog by hand, to
+	// upload it to a server that cannot reach the sources; the same file as
+	// the channel's image catalog.
+	if _, err := writeBlob(in.OutDir, in.Channel+"/manifest.json", in.ImageCatalog); err != nil {
 		return distribution.Index{}, err
 	}
 

@@ -51,8 +51,9 @@ git diff --check
   只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.10.0-rc.1` 这类 tag 不创建 pipeline。
 - `v*` 必须在 GitLab 里设为 protected tag：签名私钥和发布源凭据是受保护变量，不受保护的 tag 的 pipeline 读不到它们，发布 job 会失败。
 - tag 推送后不移动、不重打：一个 release id 只对应一份字节（见下文发布流程第 1 步），有问题就发下一个补丁版本。
-- server 按构建时间判断有没有更新（[ADR 0040](../adr/0040-signed-multi-source-distribution.md)），所以 `release` 渠道只跟随最新一条发布线：
-  渠道已经指向更高版本时（例如 `v26.11.0` 发布之后再推 `v26.10.2`），`publish_dist.sh` 拒绝发布。
+- server 判断有没有更新时，两边都是版本 tag 就按版本号比较，否则（nightly 的短提交号、本地构建）按构建时间比较
+  （[ADR 0040](../adr/0040-signed-multi-source-distribution.md)）。`release` 渠道只跟随最新一条发布线：渠道已经指向更高版本时
+  （例如 `v26.12.0` 发布之后再推 `v26.11.2`），`publish_dist.sh` 拒绝发布。
 
 ## 发布通道
 
@@ -63,7 +64,7 @@ server 版本、系统镜像目录与内置推理模板目录通过同一个发�
 |---|---|---|
 | 阿里云 OSS 上海 `gpuworks-dl` | `https://gpuworks-dl.oss-cn-shanghai.aliyuncs.com` | 中国大陆（默认域名，免备案） |
 | 华为云 OBS 上海一 `gpuworks-dl` | `https://gpuworks-dl.obs.cn-east-3.myhuaweicloud.com` | 中国大陆（默认域名，免备案） |
-| Cloudflare R2 `gpuworks-dl` | `https://dl.gpuworks.ai` | 其他地区；`image-manifest.gpuworks.ai` 也绑在这个桶上 |
+| Cloudflare R2 `gpuworks-dl` | `https://dl.gpuworks.ai` | 其他地区 |
 
 三个源使用相同的目录结构。`<channel>` 表示发布渠道，`<release_id>` 标识一份发布件，
 `<sha256>` 是对应目录文件的内容摘要：
@@ -72,10 +73,10 @@ server 版本、系统镜像目录与内置推理模板目录通过同一个发�
 |---|---|
 | `<channel>/index.json` | ed25519 签名信封，即带签名的发布索引；正文列出 server 各平台压缩包、镜像目录与推理模板目录包，每个文件带路径、大小与 sha256 |
 | `<channel>/latest` | release id 纯文本，供首次下载定位版本 |
+| `<channel>/manifest.json` | 与该渠道索引里的镜像目录是同一文件，固定地址，供离线环境手工下载后上传 |
 | `releases/<release_id>/` | server 压缩包与 `SHA256SUMS` |
 | `catalog/images/<sha256>.json` | 按内容摘要标识的镜像目录 |
 | `catalog/templates/<sha256>.tar.gz` | 按内容摘要标识的推理模板目录包 |
-| 根目录 `manifest.json` | 供有渠道之前的旧版本读取，与 nightly 的镜像目录是同一文件，只随 nightly 发布切换 |
 | 根目录 `get.sh` | 一键安装脚本（源文件 `scripts/get.sh`）：挑最快的源，下载本机平台的压缩包、按 `SHA256SUMS` 校验后运行 `gpuworks install` |
 
 渠道 `nightly` 是每次 master 构建，release id 是短提交号；`release` 是每个版本 tag，release id 就是 tag（见[版本号](#版本号)）。
@@ -94,7 +95,7 @@ CI 的 `release-publish` 在 master 或版本 tag 的四个构建 job 全部成�
 3. `gpuworks-dist assemble` 用这些压缩包和本次检出内嵌的两份目录生成目录树并签名索引；
 4. rclone 以 `--immutable` 把不可变文件推到三个源：源上同名对象内容不同时报错退出，绝不覆盖（这种源要人工处理，见下）；
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
-6. 先存下各源当前的索引、`latest`（nightly 还有 `manifest.json`），再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
+6. 先存下各源当前的索引、`latest` 与 `manifest.json`，再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
 7. 把 `scripts/get.sh` 以 `Cache-Control: no-cache` 传到每个源的根目录 `get.sh`；
 8. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
 
@@ -111,8 +112,8 @@ R2 账户令牌 `gpuworks-dist-ci`），不能建桶，所以两个发布脚本�
 凭据放 `secrets/dist-publish.env`。发布 release：`make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.10.0` 后
 `make dist-publish CHANNEL=release`。
 
-Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 与 `image-manifest.gpuworks.ai` 配了两条缓存规则：`*/index.json`、`*/latest`、
-`/manifest.json` 一律不缓存；404 不缓存（否则发布前 `newer` 检查拿到的 404 会被边缘按默认 4 小时缓存，新渠道首次发布后读不到）。
+Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 配了两条缓存规则：`*/index.json`、`*/latest`、
+`*/manifest.json` 一律不缓存；404 不缓存（否则发布前 `newer` 检查拿到的 404 会被边缘按默认 4 小时缓存，新渠道首次发布后读不到）。
 不可变文件按来源的 `Cache-Control: immutable` 长缓存。`/notices.json`（发布方通知，见下）与 `/get.sh` 也必须不缓存，需要在同一条规则里加上。
 
 发布方通知（[ADR 0054](../adr/0054-usage-report-and-notices.md)）：编辑 `build/notices/notices.json`（未签名的正文，schema 与校验见
@@ -158,10 +159,8 @@ Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 与 `image-manifest.gpuw
 
 server 启动会执行版本化迁移；发布前必须验证 migration marker（记录迁移版本的标记）、重复执行的幂等性和事务回滚。
 内置推理目录是内容寻址包，即以内容摘要标识包；发布构建应对包做同一套 schema、路径和摘要校验。系统镜像目录
-由 `make image-manifest` 从 gpuworks-runner 构建矩阵生成内嵌种子，随每次发布进入[发布通道](#发布通道)；
-`make image-manifest-publish` 还会把同一文件单独发布到 OSS、OBS、R2 三个发布源的根目录，由 R2 对外提供旧版本读取的
-`https://image-manifest.gpuworks.ai/manifest.json`，见 [CLI 参考](../reference/cli.md#gpuworks-image-manifest)；
-内嵌种子与矩阵不一致时单测失败。
+由 `make image-manifest` 从 gpuworks-runner 构建矩阵生成内嵌种子，随每次发布进入[发布通道](#发布通道)，见
+[CLI 参考](../reference/cli.md#gpuworks-image-manifest)；内嵌种子与矩阵不一致时单测失败。
 
 ## 升级与回滚
 

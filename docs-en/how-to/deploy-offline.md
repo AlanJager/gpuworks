@@ -151,7 +151,7 @@ For images, the equivalent is a source rule with “Allow upstream” disabled.
 
 ### Update the Image Catalog and Inference Templates
 
-To use system image and inference template catalogs newer than those embedded in the server, download `manifest.json`
+To use system image and inference template catalogs newer than those embedded in the server, download `<channel>/manifest.json`
 and the `catalog/templates/<sha256>.tar.gz` listed in `<channel>/index.json` from any release source (such as `https://dl.gpuworks.ai`) on the online machine. Under “Version and updates” on the Settings page, click “Upload manifest” and “Upload catalog package.”
 For the rules, see [Image Catalog](../reference/image-families.md#更新目录). In an offline environment, “Check for updates” returns 502 `UPDATE_SOURCES_UNAVAILABLE` because release sources cannot be reached; the database is unchanged.
 

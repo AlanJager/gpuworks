@@ -20,11 +20,10 @@
 # 4. gpuworks-dist verify checks every public URL against the new index
 #    before any source points at it, so a CDN copy that differs stops the
 #    publish while the channel still names the previous build.
-# 5. Each source's <channel>/index.json and <channel>/latest are switched,
-#    and for nightly the root manifest.json too (servers older than the
-#    channels read it, and all of them are nightly builds); the channel is
-#    read back from every public URL, and when that fails, every source is
-#    put back on its previous pointers.
+# 5. Each source's <channel>/index.json, <channel>/latest and
+#    <channel>/manifest.json are switched, and the channel is read back from
+#    every public URL; when that fails, every source is put back on its
+#    previous pointers.
 # 6. scripts/get.sh, the one-line installer, is copied to the root of every
 #    source as get.sh.
 # 7. Release directories beyond the newest $GPUWORKS_DIST_KEEP are removed,
@@ -111,10 +110,7 @@ if [ "$channel" = release ]; then
   done
 fi
 
-pointers="$channel/index.json $channel/latest"
-if [ "$channel" = nightly ]; then
-  pointers="$pointers manifest.json"
-fi
+pointers="$channel/index.json $channel/latest $channel/manifest.json"
 
 tree="$work/tree"
 "$work/gpuworks-dist" assemble -channel "$channel" -dist "$dist" -out "$tree" -release-id "$release_id" \
@@ -125,7 +121,7 @@ pointer='Cache-Control: no-cache'
 for remote in $remotes; do
   echo "uploading files to $remote"
   "$rclone" copy "$tree" "$remote" --checksum --immutable --header-upload "$immutable" \
-    --exclude "/*/index.json" --exclude "/*/latest" --exclude "/manifest.json"
+    --exclude "/*/index.json" --exclude "/*/latest" --exclude "/*/manifest.json"
 done
 
 echo "checking every source serves the files of the new index"

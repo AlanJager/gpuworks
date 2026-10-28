@@ -71,7 +71,7 @@ There are only two update paths for the system catalog, both on the Images page'
   `UPDATE_SOURCES_UNAVAILABLE`. If the index is usable but no source provides a catalog file matching it, it returns 502 `UPDATE_DOWNLOAD_FAILED`
   (both include each source's reason in `detail`). If the channel has not published an image catalog, it returns 404 `UPDATE_NOT_PUBLISHED`. The database remains unchanged in all these cases.
 - **Upload manifest**: `POST /api/v1/images/import`, with the manifest JSON itself as the request body. Use this when the server cannot access the internet:
-  on a machine with internet access, download `manifest.json` from any release source (the same file as the image catalog in the release channel), then upload it.
+  on a machine with internet access, download the current channel's `<channel>/manifest.json` from any release source (such as `https://dl.gpuworks.ai/release/manifest.json`, the same file as the image catalog in the channel's index), then upload it.
 
 Both paths record the imported `catalog_version` as the current catalog version. The settings page's Version and updates section uses it to show whether updates are available.
 

@@ -1,5 +1,5 @@
-# Sourced by the distribution publish scripts (publish_dist.sh,
-# publish_image_manifest.sh, publish_notices.sh); not run on its own.
+# Sourced by the distribution publish scripts (publish_dist.sh and
+# publish_notices.sh); not run on its own.
 #
 # Loads the publishing credentials when the environment has none (the
 # worktree's secrets/dist-publish.env, falling back to the main checkout's
