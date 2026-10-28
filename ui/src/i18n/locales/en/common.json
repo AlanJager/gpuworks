@@ -345,6 +345,7 @@
     "FIELD_INVALID": "Invalid value: {{detail}}",
     "ENGINE_INVALID": "Unknown engine “{{engine}}”.",
     "EXTRA_ARGS_INVALID": "The extra arguments cannot be parsed: {{detail}}",
+    "EXTRA_ARGS_JSON_INVALID": "The value of {{flag}} must be valid JSON, but got {{value}}. The text box is split like a shell command line, so wrap JSON in single quotes, e.g. {{flag}} '{\"key\":\"value\"}'.",
     "MOUNT_CONTAINER_PATH": "A mount's container path must be an absolute non-root path ({{target}}).",
     "MOUNT_HOST_PATH": "A mount's host path must be an absolute non-root path ({{source}}).",
     "MOUNT_TARGET_NESTED": "Nested mount targets overlap: {{parent}} and {{child}}.",

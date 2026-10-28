@@ -350,6 +350,10 @@ const (
 	ErrorEngineInvalid = "ENGINE_INVALID"
 	// ErrorExtraArgsInvalid answers extra-args text the parser cannot read.
 	ErrorExtraArgsInvalid = "EXTRA_ARGS_INVALID"
+	// ErrorExtraArgsJSONInvalid answers a JSON-valued engine flag typed into
+	// extra_args with a value that is not JSON ({flag}, {value}); it is
+	// produced by deploy.ValidateExtraArgsJSON.
+	ErrorExtraArgsJSONInvalid = "EXTRA_ARGS_JSON_INVALID"
 	// ErrorMountContainerPath and ErrorMountHostPath answer extra-mount rows
 	// whose path is not an absolute non-root directory; ErrorMountTargetNested
 	// answers two mount targets that contain each other.

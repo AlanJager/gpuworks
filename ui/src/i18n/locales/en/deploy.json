@@ -907,7 +907,7 @@
   "launchConfig": {
     "moved": "Moved into parameter fields: {{keys}}",
     "movedDismiss": "Dismiss",
-    "extraArgsHelp": "Arguments outside the parameter dictionary, passed to the engine as written. A dictionary flag typed here moves into its own field.",
+    "extraArgsHelp": "Arguments outside the parameter dictionary. The text is split like a shell command line, so wrap a value containing double quotes, such as JSON, in single quotes: --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}'. A dictionary flag typed here moves into its own field.",
     "templateArgs": "Template arguments",
     "templateArgsHint": "Carried by the inference template and sent with the deployment. An argument you add above with the same flag takes precedence.",
     "manualEstimate": "Manual command, estimate not applicable",

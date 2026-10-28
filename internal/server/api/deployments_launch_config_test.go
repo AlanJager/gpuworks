@@ -249,6 +249,44 @@ func TestEvaluateAndCreateMaterializeLaunchConfig(t *testing.T) {
 			t.Fatalf("stored config=%v extra_args=%q; want max_model_len 8192 and residual --foo", deployment.QuickParams, deployment.ExtraArgs)
 		}
 	})
+
+	t.Run("JSON flag in extra_args: double-quoted loses its quotes and is refused, single-quoted is stored", func(t *testing.T) {
+		request := func(extra string) string {
+			encoded, err := json.Marshal(extra)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return fmt.Sprintf(`{"name":"lc-json","served_name":"lc-json","model_id":%d,"node_uuid":"lc-node","engine":"vllm","image":"vllm/vllm-openai:latest","quick_params":{},"extra_args":%s}`, model.ID, encoded)
+		}
+		bad := request(`--compilation-config {"cudagraph_mode":"FULL_DECODE_ONLY"}`)
+		for name, call := range map[string]func(http.ResponseWriter, *http.Request){"evaluate": handler.evaluate, "create": handler.createDeployment} {
+			rec := httptest.NewRecorder()
+			call(rec, httptest.NewRequest(http.MethodPost, "/api/v1/"+name, strings.NewReader(bad)))
+			if name == "evaluate" {
+				var evaluated struct {
+					OK     bool             `json:"ok"`
+					Errors []dto.FieldError `json:"errors"`
+				}
+				if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &evaluated) != nil || evaluated.OK || len(evaluated.Errors) != 1 {
+					t.Fatalf("evaluate=%d: %s", rec.Code, rec.Body.String())
+				}
+				got := evaluated.Errors[0]
+				if got.Field != "extra_args" || got.Code != ErrorExtraArgsJSONInvalid || got.Params["flag"] != "--compilation-config" || got.Params["value"] != "{cudagraph_mode:FULL_DECODE_ONLY}" {
+					t.Fatalf("evaluate error = %+v", got)
+				}
+				continue
+			}
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"`+ErrorExtraArgsJSONInvalid+`"`) || !strings.Contains(rec.Body.String(), "--compilation-config") {
+				t.Fatalf("create=%d, want 400 %s: %s", rec.Code, ErrorExtraArgsJSONInvalid, rec.Body.String())
+			}
+		}
+		good := request(`--compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}'`)
+		created := httptest.NewRecorder()
+		handler.createDeployment(created, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(good)))
+		if created.Code != http.StatusCreated {
+			t.Fatalf("create with single-quoted JSON=%d: %s", created.Code, created.Body.String())
+		}
+	})
 }
 
 func TestSpeculativeRequestMaterializesToEngineArgvAndStoredLaunchConfig(t *testing.T) {
