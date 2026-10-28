@@ -88,10 +88,10 @@ For the password change in this section and subsequent maintenance commands, use
 3. Change the initial password from the actual installation directory on the control plane host. For a systemd installation, first run `newgrp gpuworks` as instructed in the summary, or log in again to obtain the new group permissions, then run:
 
    ```bash
-   ./gpuworks reset-password --password '<new-password>' --data '<data-directory>'
+   ./gpuworks reset-password --password '<new-password>'
    ```
 
-   Replace the password and data directory. This command does not automatically read `server.yaml`; do not omit `--data`. Do not leave the actual password in command history or logs.
+   Replace the password. The command reads the data directory from the `server.yaml` next to the binary; you can also specify it explicitly with `--data`. Do not leave the actual password in command history or logs.
 
 4. Log in again with the new password and confirm that login succeeds.
 5. Delete the `initial-credentials` file in the actual data directory. This file stores the initial credentials in plain text. Deleting it does not change the account password. See [Control Plane Installation Layout](../reference/install-layout.md#凭证文件) for credential details.
@@ -284,7 +284,7 @@ Run `./gpuworks` in the table from the actual installation directory. Confirm `<
 | Cannot access the service after installation or upgrade | Check `<installation-directory>/logs/gpuworks-server.log`, resolve errors, and retry; call `/healthz` again and verify the version. If the log location is customized, use the actual configuration |
 | `cannot listen on :8800` | Another process occupies the port. First use `systemctl status gpuworks` to check whether it is the old service; do not simply install again |
 | `create /opt/gpuworks/server needs root` | Use an account with sudo permission, or use `--dir ~/gpuworks-server --no-systemd` |
-| Change the initial password or reset a forgotten password | Run `./gpuworks reset-password --password '<new-password>' --data '<data-directory>'`, replacing the password and data directory. Do not leave the actual password in command history or logs. The command does not automatically read `server.yaml`; do not omit the data directory. Log in again after the change to verify |
+| Change the initial password or reset a forgotten password | Run `./gpuworks reset-password --password '<new-password>'`, replacing the password; the data directory is read from the `server.yaml` next to the binary (or specify it with `--data`). Do not leave the actual password in command history or logs. Log in again after the change to verify |
 | Permission error when upgrading or resetting a password | The current terminal may not yet have `gpuworks` group permissions. Run `newgrp gpuworks` or log in again, then retry. If the data directory is still not writable, check its permissions |
 | The console reports that the channel has no version yet | Switch to a channel with a published release, or wait for a release on this channel and check again |
 | Release index signature verification fails | Check the server's outbound proxy, gateway, or login interception. As a temporary alternative, use a matching local upgrade package |

@@ -253,9 +253,11 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 |---|---|---|
 | `--password PASSWORD` | 无（必填） | 新密码，空值被拒绝 |
 | `--user USER` | `admin` | 用户名 |
-| `--data DIR` | `./data` | 数据目录 |
+| `--data DIR` | 见下 | 数据目录 |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite 路径 |
 
+- 不给 `--data` 时依次取：二进制同目录 `server.yaml` 的 `data_dir`、默认安装（`/opt/gpuworks/server/server.yaml`）的 `data_dir`、`./data`，与当前工作目录无关地找到安装的数据库。
+- 数据库文件必须已存在：不存在时报出所用路径及其来源并退出，不会新建空库。
 - 以操作员身份运行、不需要 `sudo`；数据库权限不足时按其自身的权限错误失败。
 - 密码和 key 不要写进 shell history 或日志。
 
