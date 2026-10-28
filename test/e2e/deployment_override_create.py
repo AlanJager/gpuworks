@@ -210,6 +210,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     launch_preview = wizard.launch_checks.draft_checks(
         page, labels, expected_body(fixture, fixture["name"]), report, token=token)
     report["last_step"] = "overrides-draft-configured"
+    wizard.launch_checks.boolean_rejection.seed(page, labels, expected_body(fixture, fixture["name"]), report, token, wizard.launch_checks.boolean_rejection.declared_mount(fixture["model_dir"]))
     invalid = "x" * 257
     name.fill(invalid)
     rejected = hold_deploy_create(page, report)
@@ -225,7 +226,9 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     assert_draft(page, fixture)
     code, listing = http(server.base, "GET", containers.DEPLOYMENTS, token=token)
     check(code == 200 and listing["total"] == 0, "rejection partially created deployment")
+    wizard.launch_checks.boolean_rejection.retained(page, labels, expected_body(fixture, fixture["name"]), report, token, rejected, "name")
     name.fill(fixture["name"])
+    wizard.launch_checks.boolean_rejection.restore(page, labels, expected_body(fixture, fixture["name"]), report, token)
     report["last_step"] = "backend-refused-draft-corrected"
     try:
         expect(deploy).to_be_enabled()
@@ -241,7 +244,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     check(created.value.status == 201, f"override create HTTP {created.value.status}: {created.value.text()}")
     dep_id = remember_created(created.value, report)
     created_notice(page, labels, report)
-    wizard.assert_json(requests, expected_requests(fixture), "full create mutation count/query/body differs")
+    wizard.assert_json(requests, wizard.launch_checks.boolean_rejection.expected_mutations(expected_requests(fixture), report), "full create mutation count/query/body differs")
     report["last_step"] = "browser-created"
     def running():
         status, document = http(server.base, "GET", containers.DEPLOYMENTS + f"/{dep_id}", token=token)
@@ -321,7 +324,7 @@ def test_deployment_container_overrides(page, context, server, artifacts, report
     wizard.until(page, lambda: containers.docker_running(container) == "absent", "container disappearance")
     expect(row).to_have_count(0)
     report["owned_deployment_id"] = None
-    wizard.assert_json(requests, expected_requests(fixture, dep_id), "final mutation sequence")
+    wizard.assert_json(requests, wizard.launch_checks.boolean_rejection.expected_mutations(expected_requests(fixture, dep_id), report), "final mutation sequence")
     allowed = [{"method": "POST", "path": containers.DEPLOYMENTS, "status": 400},
                {"method": "GET", "path": containers.DEPLOYMENTS + f"/{dep_id}", "status": 404}]
     check(all(item in allowed for item in http_errors), f"unexpected HTTP errors: {http_errors}")

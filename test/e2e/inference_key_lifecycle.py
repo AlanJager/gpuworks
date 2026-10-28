@@ -23,6 +23,20 @@ from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
 from platform_token_read_revoke import button, check, collection, modal_geometry, strings, theme_color
 
 CONTRACT = "gpuworks/inference-key/create-copy-delete"
+
+
+def active(rows):
+    """Keys still able to authenticate: revoking keeps the row on purpose.
+
+    DELETE now revokes in place so the name stays on the usage it produced;
+    the row is therefore expected to remain with revoked_at set.
+    """
+    return [row for row in rows if not row.get("revoked_at")]
+
+
+def revoked(rows):
+    return [row for row in rows if row.get("revoked_at")]
+
 CASE = "推理令牌 / UI 创建复制并删除 / 刷新回读、真实网关鉴权与即时撤销生效"
 KEY_PATH = "/api/v1/apikeys"
 DENIED = {"error": {"message": "invalid or missing API key", "type": "gpuworks_proxy"}}
@@ -143,8 +157,11 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     bootstrap = collection(page.request.get(server.base + KEY_PATH))
     check(len(bootstrap) == 1 and bootstrap[0]["name"] == "default", "fresh-server bootstrap key contract differs")
     removed = page.request.delete(server.base + KEY_PATH + "/" + bootstrap[0]["prefix"])
-    check(removed.status == 200 and removed.json() == {"status": "deleted"}, "owned bootstrap key cleanup failed")
-    check(collection(page.request.get(server.base + KEY_PATH)) == [], "bootstrap key still present")
+    check(removed.status == 200 and removed.json() == {"status": "revoked"}, "owned bootstrap key cleanup failed")
+    after_bootstrap = collection(page.request.get(server.base + KEY_PATH))
+    check(active(after_bootstrap) == [], f"bootstrap key still authenticates: {after_bootstrap}")
+    check(bootstrap[0]["prefix"] in [row["prefix"] for row in revoked(after_bootstrap)],
+          f"revoking dropped the row that carries the usage attribution: {after_bootstrap}")
     # Zero configured keys intentionally enables the product's anonymous dev mode.
     # Keep a scoped guard key until the revoked key has been proved unauthorized.
     guard_response = page.request.post(server.base + KEY_PATH, data={"name": guard_name})
@@ -255,12 +272,14 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     row = page.get_by_role("row").filter(has_text=name)
     expect(row).to_have_count(1)
     expect(row).to_contain_text(secret[:12])
-    items = collection(page.request.get(server.base + KEY_PATH))
-    check(len(items) == 2 and {item["name"] for item in items} == {name, guard_name}, "independent GET resource set drift")
+    everything = collection(page.request.get(server.base + KEY_PATH))
+    items = active(everything)
+    check({item["name"] for item in items} == {name, guard_name},
+          f"independent GET active set drift: {[row['name'] for row in everything]}")
     item = next(item for item in items if item["name"] == name)
     check(set(item) == {"name", "prefix", "created_at"} and item["prefix"] == secret[:12], "list fields/prefix drift or secret leak")
     check(datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")).timestamp() > 0, "invalid persisted created time")
-    check(secret not in page.content() and secret not in json.dumps(items), "persisted list or DOM reveals full secret")
+    check(secret not in page.content() and secret not in json.dumps(everything), "persisted list or DOM reveals full secret")
     report["evidence"].append({"layer": "persistence", "method": "GET", "path": KEY_PATH, "status": 200,
         "target": item, "total": 2, "refresh": "exactly one target row; prefix only"})
     check(http(server.base, "GET", "/v1/models", copied) == (200, MODELS), "copied key cannot consume real OpenAI model collection")
@@ -270,12 +289,28 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     used = next(item for item in collection(page.request.get(server.base + KEY_PATH)) if item["name"] == name)
     check(used.get("last_used") and {key: value for key, value in used.items() if key != "last_used"} == item,
           "successful gateway use did not persist last_used or changed credential metadata")
+    # 20.9: the public Bearer path and the signed-in Playground session path are
+    # separate credential planes. Passing one must not stand in for the other,
+    # so each is checked for the credential it must refuse.
+    playground_catalog = "/api/v1/playground/models"
+    bearer_on_session, bearer_session_body = http(server.base, "GET", playground_catalog, copied)
+    check(bearer_on_session == 401,
+          f"an inference key opened the signed-in playground session path: {bearer_on_session} {bearer_session_body}")
+    session_public = page.request.get(server.base + "/v1/models")
+    check(session_public.status == 401,
+          f"the signed-in browser session authenticated the public Bearer path: {session_public.status}")
+    check(http(server.base, "GET", "/v1/models", copied) == (200, MODELS),
+          "the inference key stopped authenticating its own public path")
     report["evidence"].append({"layer": "runtime", "auth": "bearer only; no cookies", "path": "/v1/models", "status": 200,
         "body": MODELS, "wrong_secret": 401, "management": {"status": code, "body": denied_management}, "last_used": used["last_used"],
+        "credential_planes": {"inference_key_on_session_path": bearer_on_session,
+                              "browser_session_on_public_path": session_public.status,
+                              "inference_key_on_public_path": 200,
+                              "session_path": playground_catalog, "public_path": "/v1/models"},
         "limit": "Empty deployed model inventory proves gateway authentication only; no generation/GPU claim"})
-    delete = button(row, k["actions"]["delete"])
+    delete = button(row, k["actions"]["revoke"])
     delete.click()
-    confirmation = k["delete"]["confirm"].replace("{{name}}", name)
+    confirmation = k["revoke"]["confirm"].replace("{{name}}", name)
     popup = page.get_by_role("tooltip").filter(has_text=confirmation)
     expect(popup).to_be_visible()
     expect(popup).to_be_in_viewport(ratio=1)
@@ -285,12 +320,15 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     delete.click()
     delete_path = KEY_PATH + "/" + item["prefix"]
     with page.expect_response(lambda r: urlsplit(r.url).path == delete_path and r.request.method == "DELETE") as deleted:
-        button(popup, k["actions"]["delete"]).click()
-    check(deleted.value.status == 200 and deleted.value.json() == {"status": "deleted"}, "unexpected delete response")
+        button(popup, k["actions"]["revoke"]).click()
+    check(deleted.value.status == 200 and deleted.value.json() == {"status": "revoked"}, "unexpected delete response")
     check(deleted.value.request.post_data is None and not urlsplit(deleted.value.url).query, "delete body/query drift")
     expect(row).to_have_count(0)
     remaining = collection(page.request.get(server.base + KEY_PATH))
-    check(len(remaining) == 1 and remaining[0]["name"] == guard_name and remaining[0]["prefix"] == guard_prefix, "delete changed unrelated guard or retained target")
+    check([(row["name"], row["prefix"]) for row in active(remaining)] == [(guard_name, guard_prefix)],
+          f"delete changed the unrelated guard or left the target able to authenticate: {remaining}")
+    check(item["prefix"] in [row["prefix"] for row in revoked(remaining)],
+          f"the revoked target did not keep its row for usage attribution: {remaining}")
     check(http(server.base, "GET", "/v1/models", copied) == (401, DENIED), "deleted key retained runtime authorization")
     check(http(server.base, "GET", "/v1/models") == (401, DENIED), "target delete disabled gateway authentication")
     check(http(server.base, "GET", "/v1/models", guard) == (200, MODELS), "target delete revoked unrelated guard")
@@ -299,10 +337,13 @@ def test_inference_key_lifecycle(page, context, server, artifacts, report, local
     expect(page.get_by_role("row").filter(has_text=guard_name)).to_have_count(1)
     check(mutations == [{"method": "POST", "path": KEY_PATH}, {"method": "DELETE", "path": delete_path}], "extra browser mutations")
     check(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "page horizontal overflow")
-    page.screenshot(path=artifacts.directory / "deleted.png")
+    page.screenshot(path=artifacts.directory / "revoked.png")
     guard_cleanup = page.request.delete(server.base + KEY_PATH + "/" + guard_prefix)
-    check(guard_cleanup.status == 200 and guard_cleanup.json() == {"status": "deleted"}, "guard cleanup failed")
-    check(collection(page.request.get(server.base + KEY_PATH)) == [], "owned keys leaked")
+    check(guard_cleanup.status == 200 and guard_cleanup.json() == {"status": "revoked"}, "guard cleanup failed")
+    final_keys = collection(page.request.get(server.base + KEY_PATH))
+    check(active(final_keys) == [], f"owned keys leaked: {final_keys}")
+    check(len(revoked(final_keys)) == len(final_keys),
+          f"cleanup left a key that never got revoked: {final_keys}")
     check(http(server.base, "GET", "/v1/models") == (200, MODELS), "zero-key cleanup did not restore documented anonymous development mode")
     check(not errors and not console_errors and not bad_responses, "unexpected browser errors: " + str([errors, console_errors, bad_responses]))
     report["evidence"].append({"layer": "cleanup", "method": "DELETE", "path": delete_path, "status": 200,

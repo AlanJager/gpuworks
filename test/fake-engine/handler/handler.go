@@ -233,7 +233,12 @@ func New(opts Options) *Engine {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Cache-Control", "no-cache")
 			flusher, _ := w.(http.Flusher)
-			chunk := []byte("data: {\"id\":\"fake-engine-completion\",\"choices\":[{\"delta\":{\"content\":\"" + opts.ResponseText + "\"}}]}\n\n")
+			encoded, encodeErr := json.Marshal(opts.ResponseText)
+			if encodeErr != nil {
+				writeAPIError(w, http.StatusInternalServerError, "invalid_request_error", encodeErr.Error())
+				return
+			}
+			chunk := []byte("data: {\"id\":\"fake-engine-completion\",\"choices\":[{\"delta\":{\"content\":" + string(encoded) + "}}]}\n\n")
 			for i := 0; i < max(opts.StreamChunks, 1); i++ {
 				if _, err := w.Write(chunk); err != nil {
 					return

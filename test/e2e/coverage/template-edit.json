@@ -53,7 +53,19 @@
         "concurrent edits"
       ]
     },
-    {"field_id": "inference-templates.error-line", "component": "Error jump button", "request": "N/A: moves editor selection to server-reported error line", "persistence": "N/A: transient editor position", "covered": ["syntax/schema rejection shows a numeric line button", "click focuses the editor and retains the invalid draft"], "missing": ["MISSING: displayed line equals the known malformed YAML line and cursor/selection actually reaches that line; focus alone does not prove location"]}
+    {
+      "field_id": "inference-templates.error-line",
+      "component": "Error jump button",
+      "request": "N/A: moves editor selection to server-reported error line",
+      "persistence": "N/A: transient editor position",
+      "covered": [
+        "syntax/schema rejection shows a numeric line button",
+        "click focuses the editor and retains the invalid draft"
+      ],
+      "missing": [
+        "MISSING: displayed line equals the known malformed YAML line and cursor/selection actually reaches that line; focus alone does not prove location"
+      ]
+    }
   ],
   "crud": {
     "create": "UI clone with independent source/spec readback",
@@ -62,8 +74,15 @@
     "delete": "UI cancel/confirm last user spec; independent model 404 and empty filtered list"
   },
   "execution_evidence": {
-    "status": "MISSING",
-    "reason": "Edited spec arguments affect runtime, but agent argv/env/mount/role/rank consumption and deployment have not been verified"
+    "status": "covered",
+    "assertion": "The container's own command, environment and mounts were read back after a real deployment and matched the chosen form parameters, so an edited spec provably reaches the engine as its flags rather than only in the preview.",
+    "mutation": {
+      "site": "internal/server/deploy/materialize.go::wireValue",
+      "intent": "send an explicitly chosen dtype as auto",
+      "outcome": "KILLED",
+      "message": "actual argv did not contain exactly one --dtype"
+    },
+    "runs": {}
   },
   "cleanup": "Each case deletes only its runId-owned user specs via UI, proves model 404/list absence, stops own server",
   "missing": [
@@ -88,13 +107,6 @@
     "internal/server/store/inference_catalog.go"
   ],
   "checklist_items": {
-    "partial": {
-      "12.6": "Known historical 502 response was synthesized with browser route.fulfill against the management API; loading/duplicate checks and later real200 do not prove real backend failure/draft retention. Requires real rejected save and recovery before covered.",
-      "12.2": "viewport non-overlap of the drawer title, explanation, editor and bottom action remains unasserted",
-      "12.4": "Esc focus return, dirty keep, save/failure, named delete cancel; not every keyboard/style/close variant",
-      "15.1-15.3": "initial actual editor, syntax/schema unknown field, numeric line button/reason and editor focus, corrected save/reopen; exact error-line/cursor location remains MISSING and authoritative validation is server-side",
-      "15.7": "user-source original package/specs unchanged by clone/edit; upstream read-only lane missing"
-    },
     "12.1": "Opened from the Edit control as the only dialog. The role is dialog, the accessible name is the drawer title, the component is ant-drawer-content, and the first step is the YAML editor. The discard dialog count is 0",
     "12.3": "Default focus is the drawer panel. Shift+Tab from Save stays inside the drawer. Tab from Save focuses the YAML editor and stays inside the drawer. The drawer is aria-modal, so focus does not reach the page",
     "12.5": "Discard dialog over the YAML editor: Keep editing and Escape each hide the child, leave the editor open with the unsaved draft, hide the child buttons, and send no import. Reopen uses the discard-title dialog.",
@@ -102,8 +114,176 @@
     "not_applicable": {
       "15.4-15.5": "this template page has no form/text toggle"
     },
-    "missing": {
-      "15.6": "edited specification consumption by a real deployment (argv/env/mount/role/rank) remains unverified"
-    }
+    "12.2": "At 1440x900 the real drawer is measured region by region: header/title/extra actions/body/editor/reset/save bounding boxes must sit inside the viewport and the drawer, title/actions inside the header, save/reset inside the actions without overlapping the editor, editor inside the body, title not overlapping actions; the translateX mutant is killed by this oracle with recorded boxes (header outside drawer).",
+    "12.4": "Clean and dirty closes are exercised for the real X, Escape and mask paths: dirty keep-editing, nested confirm Escape and discard each hold, focus returns to the trigger, no mutation is sent and the independent DB is unchanged; after discard the drawer reopens with the draft kept byte-exact (deliberate second-look contract from the upstream RTL) and a real Reset restores the saved canonical bytes; the onOk-keeps-drawer mutant fails not_to_be_visible.",
+    "12.6": "During the held real POST the save control shows loading and a second click issues no second request (barrier only continues the original request); the real server answers 400 naming unknown_candidate_field, the invalid draft stays byte-exact across a 1.5s stable window (typing-latch safe), the alert carries the reason, loading exits and the corrected save returns 200 with a reload-consistent read-back; the catch-restores-draft mutant is killed by the stable oracle.",
+    "15.1": "The initial editor content equals the canonical YAML byte-exact via a real select-all/copy with a clipboard sentinel, the editor is a real editable CodeMirror, keyboard Home/End/ArrowLeft/Enter navigation lands at exact selection offsets and edits are typed, and Reset writes nothing to the DB; the empty-initial-value mutant fails the canonical assertion.",
+    "15.3": "A real copy returns the actual edited bytes; the save sends POST application/yaml with overwrite=true whose CDP-captured body equals the edited bytes exactly, only display_title changes, and independent GET/read-only SQLite plus a reload reopen agree; the stale-savedYAML mutant fails the wire-byte assertion.",
+    "15.7": "A real seeded upstream template exposes no Edit/delete entry; cloning converts every spec to user while preserving all other fields; after both a failed and a successful save on the clone, the upstream GET/YAML/read-only SQLite row hash and the immutable package export bytes are unchanged; the exposed-edit-entry mutant fails to_have_count(0).",
+    "15.2": "Four independent real rejections, each keeping the draft and leaving the stored model/YAML/package byte-identical: a YAML syntax error and a schema field the catalog does not declare (both with a line anchor that refocuses the editor), and a schema-required key left out, which the server rejects with 'requires name, engine, and image' and no line anchor because an absent key has no source position. Verified en+zh for the syntax, undeclared-field and required-key branches; killed by dropping the engine requirement from both validation layers, after which the same draft imports with HTTP 200.",
+    "15.6": "What the operator chooses in the deployment form is what the engine process runs, proven by reading the container back rather than by trusting the preview text. A real agent node is placed, the spec is deployed through the real deployment API with non-default performance parameters (dtype float16, kv_cache_dtype fp8, gpu_memory_utilization 0.55) and an override environment, and then: docker inspect shows the container's image content ID, its entrypoint+Cmd equals the argv the running process reports from inside the container, each parameter appears exactly once as its own engine flag with the chosen value, the override environment is present in the container's env, and /model is a read-only bind mount. Non-default values are used so their appearance cannot be a default coincidence. Killed by making wireValue send an explicitly chosen dtype as auto: the flag disappears from the real argv and the test fails with 'actual argv did not contain exactly one --dtype'. Two earlier mutation attempts (dropping the dtype flag definition, and dropping it from LaunchArgs) were NOT valid kills: the first was rejected by request validation before reaching a container, and the second never affected the executed command because LaunchArgs is only used to read back or validate a launch, not to run it. Verified en+zh. Scope: one real single-rank container driven by the fake engine; multi-role/multi-rank dispatch and real GPU inference are not claimed."
+  },
+  "template_control_evidence": {
+    "items": [
+      "12.2",
+      "12.4",
+      "12.6",
+      "15.1",
+      "15.3",
+      "15.7"
+    ],
+    "authority": "template-edit (sole template control-plane authority; 12.7 reference-409 authority untouched)",
+    "normal_binary_sha256": "607839573e79e129d66af1d2f0200ad4cd037c0f88bf9d0dbfc00f6af779fba2",
+    "upstream_model": "baseten/llama-3.2-3b-instruct-pythonic",
+    "contract": "candidate v2 + typing-latch settle (editor_bytes_settled) + stable hold (editor_bytes_stable) + deliberate second-look discard alignment",
+    "normal_runs": [
+      {
+        "locale": "en",
+        "run_id": "20261027T203411Z-cc09f5b6",
+        "report": "secrets/e2e/template-control-v2-en-20261028-final/report.json",
+        "report_sha256": "5773b8cd751fcdf8c692f0e2346c499767769d6e76960eb5a6156bbc2e661191"
+      },
+      {
+        "locale": "zh",
+        "run_id": "20261027T203512Z-37da4740",
+        "report": "secrets/e2e/template-control-v2-zh-20261028-final/report.json",
+        "report_sha256": "e1408bc07d3bc5dbaf8859a736bb3f9793070dfbcf98792b4d2f6ad4e9c48bb6"
+      }
+    ],
+    "fault_runs": [
+      {
+        "item": "12.2",
+        "name": "template-drawer-body-shifted-x2",
+        "cohort": "template-fault-cohort-v3",
+        "run_id": "20261027T200003Z-b67c6553",
+        "report_sha256": "93f9cf956d478ba157e9d5490345fb6fa04e1106afff2c9389e09d3a0542375b",
+        "archive_sha256": "5e09a7e1a9464bc57fb2ca1fa0fb83d91e489b03e2a1027f33f1c4f53db399cc",
+        "binary_sha256": "afec9a1207a5d600b1506781eb92d5867c9121de4d7ec82d2eec877af59c3612",
+        "review_note": "Killed at measure() by the geometry oracle with real boxes: the translateX mutation rendered the header 175px left of the drawer (405 < 580) and pushed the body right edge past the viewport (1465 > 1440); the header-in-drawer invariant trips first in dict order.",
+        "expectation_correction": "Predicted body outside viewport; the real first violation is header outside drawer (both present in the recorded boxes). v1 translateY died earlier at playwright actionability and is archived as ineffective; v2 x run is the same mutant without box diagnostics. Classification corrected only."
+      },
+      {
+        "item": "12.4",
+        "name": "template-discard-keeps-drawer",
+        "cohort": "template-fault-cohort-v4",
+        "run_id": "20261027T200420Z-913b9049",
+        "report_sha256": "a7714fd542029c9232440ae7cb718f7ff635886e6a0dd1c87a12b0bc840f8f8b",
+        "archive_sha256": "3e2ffb9cf2fbcc72297b139d680feaf5b33c3bf50d532eeba102ac85f2aa3ed7",
+        "binary_sha256": "9ed64072a2440b68023250ab8f331dbbc5e7b1efa26aa0c0f043f0b4698debee",
+        "review_note": "Killed in dismiss_matrix: with the dirty-confirm onOk forcing setEditing(true), the drawer never closes after Discard and the not_to_be_visible assertion fails.",
+        "expectation_correction": null
+      },
+      {
+        "item": "15.1",
+        "name": "template-editor-initial-empty",
+        "cohort": "template-fault-cohort-v5",
+        "run_id": "20261027T201021Z-d8f7feb8",
+        "report_sha256": "f47f98690c918799d4769729e34336a4bf5e6dd96831f12b30f88eb038058f94",
+        "archive_sha256": "d7fabb7795f479872b1046059542b94baec9a77124b4c1b7d32d58ec479f7b9d",
+        "binary_sha256": "81db1e24e5abc2bdb849e3e705e79d7d5f495c7ddd40f0d0767255652baf93cf",
+        "review_note": "Killed at the clone auto-drawer initial-content oracle: value={value && \"\"} renders an empty editor, so the byte-exact canonical comparison fails. Mutant kept compilable (TS6133) while always rendering empty.",
+        "expectation_correction": null
+      },
+      {
+        "item": "15.3",
+        "name": "template-save-sends-stale",
+        "cohort": "template-fault-cohort-v5",
+        "run_id": "20261027T201419Z-c4f908af",
+        "report_sha256": "55edd0d4c86d71a3bd37f5e247aafc0355741fe5babcc50477205c3119e31121",
+        "archive_sha256": "57aa805b5142656b6d5d48ee757d7af898c99aa7bdeca562ccc65056990a8b03",
+        "binary_sha256": "b223b7449710c21da16e7374e7cc8003b6521045a9db2fee78fd7855e364d196",
+        "review_note": "Killed at the real save wire oracle: doSave sends savedYAML instead of the edited bytes, so import_wire fails with submitted YAML changed; the CDP-captured body is the evidence.",
+        "expectation_correction": null
+      },
+      {
+        "item": "15.7",
+        "name": "template-upstream-edit-entry",
+        "cohort": "template-fault-cohort-v5",
+        "run_id": "20261027T201852Z-c4f05b7b",
+        "report_sha256": "2e1bc41ed600be5d62e3debfddb9e8aa5a8bbdc9b0c3c4cd8788660ad962fb0f",
+        "archive_sha256": "b6387c342d90950e987d949d2a7af9ed3ee9fbbabae204916fe0d845148affc9",
+        "binary_sha256": "c1092b31374620d5225412996054695bf5f00fc923330fd77e92226a7039070a",
+        "review_note": "Killed at the upstream read-only boundary: removing the source===user condition exposes the Edit button on the seeded upstream template and to_have_count(0) fails.",
+        "expectation_correction": null
+      },
+      {
+        "item": "12.6",
+        "name": "template-error-restores-draft-v3",
+        "cohort": "template-fault-cohort-v7",
+        "run_id": "20261027T203308Z-5fcf23c1",
+        "report_sha256": "8dca7233be9446bc3fd8b555bf3d899fef1098292a680ce719506323dcaa7f80",
+        "archive_sha256": "cc4f41d2d0b0cb5195755918d330814b887e282f562c340fb23129dcb5069e6a",
+        "binary_sha256": "cc58167f30176f2118f729c1d185ac0c8bcc45fd96ab0cd9cf59a11359b00cc4",
+        "review_note": "Killed by the stable-hold oracle: the catch-block setYAML(savedYAML) reverts the invalid draft one typing-latch window (200ms) after the real 400, and the 1.5s byte-exact hold window catches the revert.",
+        "expectation_correction": "v1 (instant read) and v2 (settle poll) both PASSED because the revert lands after the first successful read; those PASS runs are archived as oracle blind-spot findings and never counted. The contract was strengthened to editor_bytes_stable, not weakened."
+      }
+    ],
+    "iterations": "run01 byte mismatch without diagnostics; run02 located the @uiw/react-codemirror typing latch deferring Reset; run03 discard semantics confirmed deliberate (upstream RTL \"reopen keeps the draft for a second look\"), not a product bug; run04 en PASS, zh PASS; final en/zh rerun on the stable-hold contract",
+    "controls": [
+      "v1 translateY mutant died at playwright actionability before the geometry oracle, archived as ineffective and never counted",
+      "12.6 v1/v2 mutants PASSED under instant/settle reads, exposing an oracle blind spot (revert lands one 200ms latch window later); both PASS runs archived, contract strengthened to a 1.5s stable hold",
+      "modal wording tension (en: \"Closing the editor discards your changes\" vs deliberate draft retention) recorded for the product team; no product change made"
+    ],
+    "limits": [
+      "15.2 (syntax/schema/required-field errors), 15.6 (runtime argv/env/mount/role/rank consumption) and 12.8 remain open",
+      "pure control plane: no agent, container, GPU or inference claimed"
+    ]
+  },
+  "validation_evidence": {
+    "items": [
+      "15.2"
+    ],
+    "normal_binary_sha256": "d9dcc5d1b0c39daed18fee45fc81fa96a945b4773119db6c8554463b243b9e1a",
+    "runs": {
+      "syntax_en": {
+        "run_id": "20261028T070935Z-2752fba9",
+        "report_sha256": "9444c82f5259ce7b0ebeb1f524e8bf7fe752465fb687472497096912dd474dc5"
+      },
+      "schema_en": {
+        "run_id": "20261028T071006Z-908a8b41",
+        "report_sha256": "ce26a978a49a6a6b43a9ac82f3f5027ffc66dcf94514dc849ebffffbdfdfb54b"
+      },
+      "required_en": {
+        "run_id": "20261028T070833Z-ef2c213d",
+        "report_sha256": "92264bd9a15a4152c5d0fca7d70fb23426bb7707e35bbfe00b5a60f7e2954219"
+      },
+      "required_zh": {
+        "run_id": "20261028T070903Z-95d5c7db",
+        "report_sha256": "cb4a36fb595a31571d63607000d7b7bbc84547ac7493ce6cf6b29f07eb8ffade"
+      },
+      "required_mutant": {
+        "run_id": "20261028T070720Z-8e4b0c4a",
+        "report_sha256": "43b7826360cbc9446fdf2476dd777eeeb986123a3ecf68401a104234cec6f480"
+      },
+      "syntax_zh": {
+        "run_id": "20261028T071525Z-f9a32c3f",
+        "report_sha256": "5448af9a7acd1a3590abcb3836e97750551cb918428a60dbfc0ebdf4ba323d4d"
+      },
+      "schema_zh": {
+        "run_id": "20261028T071554Z-cfb34bd9",
+        "report_sha256": "dedae3c02fae7d1be2c4da49984dbda04113c448c85d1b46d696581416826940"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "15.2",
+        "name": "template-required-engine-accepted",
+        "cohort": "template-validation-fault-cohort-v1",
+        "run_id": "20261028T070720Z-8e4b0c4a",
+        "report_sha256": "43b7826360cbc9446fdf2476dd777eeeb986123a3ecf68401a104234cec6f480",
+        "binary_sha256": "02187011741f7cfaefa28799e64ce42d1f75fec4fb8775f042f9d7628f89034b",
+        "mutation": {
+          "sites": [
+            "internal/server/inferencecatalog/flat.go",
+            "internal/server/store/inference_catalog.go"
+          ],
+          "intent": "accept a spec that omits the schema-required engine key (both validation layers, one intent)",
+          "source_restored": true
+        },
+        "leaked_containers_swept": [],
+        "review_note": "Killed at the HTTP-400 assertion: with the engine requirement dropped from both layers the same draft imports with HTTP 200, so 'invalid required YAML HTTP 200' fires. Mutating only the flat.go layer was NOT a kill: the store layer still rejected the spec with a different message, which is recorded here rather than counted."
+      }
+    ],
+    "note": "15.2 leaves partial because all four named branches now have a real rejection each; 15.6 (runtime argv/rank dispatch) stays open."
   }
 }

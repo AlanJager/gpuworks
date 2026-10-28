@@ -3,10 +3,10 @@ import json
 import math
 from urllib.parse import urlencode, urlsplit
 from playwright.sync_api import expect
-from model_hub_registration_browser import texts, choose_option, poll
+from model_hub_registration_browser import texts, poll
 from platform_token_read_revoke import button
 from model_metadata_table_owner import MODELS, require
-from model_metadata_table_oracle import expected_slice, query_matches, assert_document, assert_walk, assert_ai
+from model_metadata_table_oracle import expected_slice, query_matches, assert_document, assert_walk, assert_ai, assert_session_activity, assert_preview_mutations
 
 
 class ModelsTable:
@@ -25,8 +25,10 @@ class ModelsTable:
     def response(self, response):
         path = urlsplit(response.url).path
         if path.startswith('/api/v1/'):
-            self.report['responses'].append({'method': response.request.method, 'url': response.url,
-                                            'status': response.status})
+            event = {'method': response.request.method, 'url': response.url, 'status': response.status}
+            if path == '/api/v1/auth/activity':
+                event['post_data'] = response.request.post_data
+            self.report['responses'].append(event)
 
     @property
     def table(self):
@@ -99,15 +101,24 @@ class ModelsTable:
         self.size = size
         self.transition(lambda: options.nth((10, 20, 50, 100).index(size)).click())
 
-    def search(self, query):
+    def search(self, query, number=1):
         self.q = query
-        self.transition(lambda: self.page.locator('#model-search').fill(query))
+        self.transition(lambda: self.page.locator('#model-search').fill(query), number)
 
     def source_to(self, source):
         self.source = source
         label = {'all': self.labels['filter']['allSources'], 'huggingface': 'HuggingFace', 'modelscope': 'ModelScope'}[source]
-        self.transition(lambda: choose_option(self.page, self.page.get_by_role('combobox',
-            name=self.labels['filter']['sourceAria'], exact=True), label))
+        control = self.page.get_by_role('combobox', name=self.labels['filter']['sourceAria'], exact=True)
+        shell = control.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' ant-select-selector ')][1]")
+        def choose():
+            # A selected label spans the showSearch input and intercepts pointer
+            # events (readiness-05); the user clicks the visible selector body.
+            shell.click()
+            popup_id = control.get_attribute('aria-controls')
+            require(bool(popup_id), 'source selector has no controlled popup')
+            popup = self.page.locator('[id=' + json.dumps(popup_id) + ']').locator('..')
+            popup.get_by_text(label, exact=True).filter(visible=True).click()
+        self.transition(choose)
 
     def open(self):
         self.page.goto(self.server.base + '/models')
@@ -242,9 +253,7 @@ class ModelsTable:
         expect(button(dialog, self.labels['path']['listDirectory'])).to_be_disabled()
         self.close(dialog)
         self.delete_preview(ident, row)
-        mutations = [e for e in self.report['responses'][before:] if e['method'] in ('POST', 'PUT', 'PATCH', 'DELETE')]
-        require(all(e['method'] == 'POST' and urlsplit(e['url']).path == '/api/v1/ai/ask' for e in mutations), 'preview mutated product')
-        require(len(mutations) == 1, 'AI preview count differs')
+        assert_preview_mutations(self.report['responses'][before:], self.server.base)
         self.report['operations'].append({'id': ident, 'source': row.source, 'page': self.number,
             'types': ['detail', 'download', 'copy', 'AI-unconfigured', 'register-path', 'delete-cancel']})
 
@@ -359,7 +368,10 @@ class ModelsTable:
             return
         self.go(5)
         self.search(self.owner.namespace + '-model-00')
-        self.search(self.owner.namespace)
+        # usePagedList keeps the page chosen under a filter set: searching away did
+        # not re-record paging, so returning to the namespace filters restores the
+        # page 5 chosen above; it does not reset to page 1 (readiness-04 evidence).
+        self.search(self.owner.namespace, 5)
         self.go(5)
         self.source_to('huggingface')
         self.go(3)
@@ -404,8 +416,16 @@ class ModelsTable:
 
     def verify_errors(self):
         require(not self.report['page_errors'], 'table pageerror')
-        require(not self.report['request_failures'], 'table request failed')
+        # Reload/close aborts the three long-lived or mount-time requests; that is
+        # normal navigation teardown, not a product failure. Any other request
+        # failure, or a non-abort failure on these paths, remains fatal.
+        abortable = ('/api/v1/events', '/api/v1/auth/activity', '/api/v1/auth/me')
+        for event in self.report['request_failures']:
+            require(event['failure'] == 'net::ERR_ABORTED'
+                    and urlsplit(event['url']).path in abortable, 'table request failed')
         for event in self.report['responses']:
+            if urlsplit(event['url']).path == '/api/v1/auth/activity':
+                assert_session_activity(event, self.server.base)
             if event['status'] >= 400:
                 require(event['method'] == 'POST' and urlsplit(event['url']).path == '/api/v1/ai/ask'
                         and event['status'] == 503, 'unexpected new-page HTTP error')

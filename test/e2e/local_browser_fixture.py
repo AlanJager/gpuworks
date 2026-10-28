@@ -103,7 +103,23 @@ class LocalServer:
         self.reader = None
         self.base = ""
 
+    def missing_binary_hint(self) -> str:
+        """A sentence naming what to run, for the preflight message.
+
+        Each case reports BLOCKED_INFRA when a prerequisite is absent, but the
+        traceback alone leaves a newcomer guessing. This names the command.
+        """
+        return (f"{self.binary} does not exist. Build the binaries first with `make build`, "
+                f"which produces bin/gpuworks and bin/gpuworks-agent, or point the case at an "
+                f"existing build (--server-bin / --agent-bin). "
+                f"See test/e2e/RUNNING.md for the full prerequisite list.")
+
+    def require_binary(self):
+        if not self.binary.exists():
+            raise FileNotFoundError(self.missing_binary_hint())
+
     def start(self):
+        self.require_binary()
         # Cross-process locks close the bind/start race for concurrent cases.
         for port in range(8800, 8900, 2):
             lock = open(Path(tempfile.gettempdir()) / f"gpuworks-e2e-{os.getuid()}-{port}.lock", "a")

@@ -74,6 +74,12 @@ def cleanup(server, token, report, holder, *, http, docker_running, inject):
 
     if dep_id:
         delete_owned("deployment", "owned_deployment_id", DEPLOYMENTS + f"/{dep_id}", wait=90)
+    # 20.3 creates a second deployment whose engine streams slowly; it owns a
+    # container too, so it has to be removed here or the run leaks it.
+    slow_id = report.get("owned_slow_deployment_id")
+    if slow_id:
+        delete_owned("deployment", "owned_slow_deployment_id",
+                     DEPLOYMENTS + f"/{slow_id}", wait=90)
 
     # Stop the agent before emergency Docker cleanup so a remaining desired
     # deployment cannot recreate a container while its control plane is down.

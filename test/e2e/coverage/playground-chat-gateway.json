@@ -106,23 +106,250 @@
       ]
     }
   ],
-  "dimensions": [
-    "20.1",
-    "20.2",
-    "20.3"
-  ],
-  "partial_checklist": {
-    "20.6": "A fresh browser context (separate storage) shows no conversations. Two accounts in the same browser profile, re-login isolation and the retention cap are not covered.",
-    "20.9": "Only the session path /api/v1/playground/v1/* is covered; the public /v1/* inference-key path is not exercised."
-  },
+  "dimensions": [],
+  "partial_checklist": {},
   "missing": [
     "Streaming cancellation, upstream termination and interrupted-reply marking",
-    "Compare mode, attachments, parameters and non-chat renderers",
     "Gateway error paths (unknown model, unauthorized key, engine failure/429)",
-    "Public /v1 inference-key parity with the Playground session path",
     "Conversation rename/delete, retention cap and multi-account isolation",
-    "Markdown/HTML preview and CSP behavior",
     "Non-admin authorization",
     "The other locale (each run covers one --locale)"
-  ]
+  ],
+  "operation_dispatch_evidence": {
+    "normal_binary_sha256": "9db83b177defc27abd22ec6abda10d08fcb9872f81a596b4c9b09ce497898ea1",
+    "runs": {
+      "en": {
+        "run_id": "20261028T072817Z-1ff34d58",
+        "report_sha256": "83ddb59479c2b77a92aa52bb0d00f862448b79fc4d83931deb6b8dbcee4b6431"
+      },
+      "zh": {
+        "run_id": "20261028T072836Z-8e70e824",
+        "report_sha256": "e9e2fc2ddd26b36d02e41917f9dfbce468076e6c30f6c9f53a17a923af53aae1"
+      },
+      "mutant": {
+        "run_id": "20261028T072541Z-64442984",
+        "report_sha256": "e3a6a0f27d6f790e532eaca2357d5d0bb4b208fd1b53b2b9e3d9f0d618d6bf89"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "20.1",
+        "name": "playground-route-all-chat",
+        "cohort": "playground-dispatch-cohort-v1",
+        "run_id": "20261028T072541Z-64442984",
+        "report_sha256": "e3a6a0f27d6f790e532eaca2357d5d0bb4b208fd1b53b2b9e3d9f0d618d6bf89",
+        "binary_sha256": "fa1ab86c7b1cfec5aadb533f13abb364d75dd113f1c621470c02a1275635c788",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/route.ts"
+          ],
+          "intent": "route every operation to the chat page",
+          "source_restored": true
+        },
+        "review_note": "Killed at the renderer assertion: the mutant sends embeddings to /playground/chat, so the expected /playground/vector URL never appears. Reaching the pages through the product's own operation links is what makes this a real detector; navigating to a hand-built URL passed under the mutant and proved nothing."
+      }
+    ]
+  },
+  "checklist_items": {
+    "20.1": "The deployment declares chat, embeddings and rerank; opening an operation the model does not declare lists the declared ones, and each link opens its own renderer: chat -> /playground/chat, embeddings and rerank -> /playground/vector. Nothing degrades to chat. Verified en+zh; killed by routing every operation to chat, after which embeddings arrives at /playground/chat instead of /playground/vector.",
+    "20.2": "Each declared operation sends its own method, path and body and returns its own business result: chat streams SSE to [DONE] with the engine marker, embeddings POSTs {input} to the gateway's /v1/embeddings and returns one numeric vector, rerank POSTs {query, documents} to /v1/rerank and returns indexed relevance scores in descending order with no chat wire reuse. Verified en+zh.",
+    "20.9": "Both credential planes are exercised and proved not to substitute for each other. An inference key copied from the UI reaches the public /v1/models with Bearer only and no cookies (200), while the signed-in browser session gets 401 there and the inference key gets 401 on the session path /api/v1/playground/models; the key keeps authenticating its own path afterwards. Revoking the key returns it to 401 while the guard key still authenticates. Verified en+zh; killed by letting the public gateway accept the session cookie, after which the session reached /v1/models with 200.",
+    "20.7": "A reply's HTML block is opened through the product's own preview button and the generated page really runs. Its frame carries sandbox \"allow-scripts allow-modals allow-downloads\" with no allow-same-origin, so the page sits in an opaque origin: it reports window.origin as null and reading the console location raises SecurityError, while the product's in-memory storage stand-in keeps localStorage usable. Under the restrictive policy the document carries the CSP with connect-src 'none', and the page's http(s) open request becomes a confirmation carrying the URL instead of navigating the frame. Verified en+zh. Two mutants were killed: dropping the CSP injection ('CSP presence does not match allow_network=False') and adding allow-same-origin to the sandbox ('the preview sandbox was granted the console origin').",
+    "20.8": "The administrator's security setting decides the preview's network policy end to end. The settings page's playground_preview_network switch was flipped through the UI and saved, the stored policy changed false->true, and the next preview carried no CSP while the sandbox string stayed byte-identical, so allowing the network never grants the console origin; the setting was then restored through the same switch and re-read from the API. Verified en+zh. Killed by the same two mutants as 20.7, which both fail the restricted-policy run.",
+    "20.4": "The composer's attachment path was driven through a real file input with a real 1x1 PNG. Each file appears as a tag naming its kind and filename, the tag's close control removes it, and offering seven files leaves exactly six, so the deck is bounded. Sending puts the attachment into the request as an image_url part carrying a data:image/png;base64 URL beside the typed text, and the composer empties itself afterwards, so a retry cannot resend the old attachment. Verified en+zh. Killed twice: removing the six-file cap (expect 6, got 7) and keeping the attachment queued after send (expect 0, got 1).",
+    "20.5": "Compare mode and the column controls were exercised through the product's own segmented switch. Switching to compare asks first, because it starts a new conversation, and confirming opens a conversation with the comparison columns; adding a column reaches the product's maximum of three and the add control then reports itself disabled. One send in that mode produced three separate POSTs to /chat/completions, one per column, each carrying the same prompt, so a comparison is really N parallel calls and not one request reused. Verified en+zh. Killed by starting only the first column: 'compare mode sent 1 requests for three columns, not one per column'.",
+    "20.3": "Chunking, the terminal [DONE] event, error events and usage are asserted separately from the reply text, and the reply shows the reported token count exactly rather than an approximation, so a reply that ignores its usage event is caught (killed by dropping the recorded usage: the metric turns into ~1). Cancellation is now proven too: a second deployment driven by the same engine streams 40 deltas 150ms apart, which holds the reply open long enough for the stop control to exist, and pressing it keeps the prefix already shown while no further text arrives, after which a new send is accepted. The slow stream lives in its own deployment so the completed-reply timings the other assertions depend on are unchanged; the earlier attempt lengthened the shared stream and broke them. Killed by making stop only mark the reply finished without aborting: 'text kept arriving after Stop was pressed, so the stream was not cancelled'. Both deployments are deleted on cleanup (cleanup_steps records two deployment deletes, cleanup_errors empty). Verified en+zh.",
+    "20.6": "History is keyed to the signed-in account, and the filtering is proven rather than assumed. After logging out and back in the same browser shows both conversations again, the store holds every row under one positive integer account key, and a separate browser context starts empty. Because this product exposes a single admin account with no user management, a second account cannot be created through it, so the reader was tested directly: a conversation row is written into IndexedDB under a foreign account key (userID 9001) and the sidebar must not show it while the real history survives the reload. That is observable behaviour, not a claim about the network layer. Killed by making db.ts list() ignore the account key and return every stored row: 'the sidebar showed a conversation belonging to another account'. An earlier attempt at this same mutation went undetected precisely because no foreign row existed to expose it. Verified en+zh, foreign_account_filtered recorded in both reports."
+  },
+  "stream_evidence": {
+    "normal_binary_sha256": "897a9c2b366f7692a9925153886ca8a29d49b114d8c6e3716e71501f4d55f3b5",
+    "runs": {
+      "en": {
+        "run_id": "20261028T075011Z-21e635fe",
+        "report_sha256": "a128a3b482277cc07653814e2c4eca5c41da057c1e353fa78ff1d9aa2f828c7f"
+      },
+      "zh": {
+        "run_id": "20261028T075030Z-bc240190",
+        "report_sha256": "64cd62473de0fd952394f66b332eaea0dec60c43a9d637bf2ddcde75e4e4c811"
+      },
+      "mutant": {
+        "run_id": "20261028T074740Z-6a423b31",
+        "report_sha256": "bbd602eaf5e531a5b966970de924ca2dc772e28590af4084644c76f8e48b0118"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "20.3",
+        "name": "playground-usage-event-dropped",
+        "cohort": "playground-stream-cohort-v1",
+        "run_id": "20261028T074740Z-6a423b31",
+        "report_sha256": "bbd602eaf5e531a5b966970de924ca2dc772e28590af4084644c76f8e48b0118",
+        "binary_sha256": "7f1dd57850d5017848a97773d1b59a6f98f625944a32dbda67c0b44e624df7a5",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/streamMetrics.ts"
+          ],
+          "intent": "the product keeps receiving the usage event but no longer records it",
+          "source_restored": true
+        },
+        "review_note": "Killed at the token metric: the reply shows ≈1 instead of the reported 8, so a reply that ignores its usage event cannot pass. Mutating the gateway's include_usage injection instead did NOT kill anything, because the fake engine reports usage unconditionally; that attempt is recorded as an equivalent mutation rather than counted."
+      }
+    ]
+  },
+  "credential_plane_evidence": {
+    "normal_binary_sha256": "38cc94f8896803ee67c2d0f40c85cc4463a09fd8b51365ec062e711302095835",
+    "runs": {
+      "en": {
+        "run_id": "20261028T075909Z-b7a82857",
+        "report_sha256": "55d0bdb4674f2a6f7fb1c379204192e1aa84bb5a9c10e32704436d3e5809deed"
+      },
+      "zh": {
+        "run_id": "20261028T075936Z-56cbe823",
+        "report_sha256": "6ca239c12419b6eaf517d915cda8a53d4ca2bd0d175f046b71451d80b2e1b8f5"
+      },
+      "mutant": {
+        "run_id": "20261028T075753Z-1b326df0",
+        "report_sha256": "408ff275c86c217953a10034110e5066e30054123f34a91fb0a455a27d11e42c"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "20.9",
+        "name": "gateway-accepts-session-cookie",
+        "cohort": "playground-credentials-cohort-v1",
+        "run_id": "20261028T075753Z-1b326df0",
+        "report_sha256": "408ff275c86c217953a10034110e5066e30054123f34a91fb0a455a27d11e42c",
+        "binary_sha256": "967b183106df359901cdf91af88592eb822d076926ba99eb00a166f34b56b310",
+        "mutation": {
+          "sites": [
+            "internal/server/proxy/proxy.go"
+          ],
+          "intent": "let a signed-in browser session authenticate the public Bearer path",
+          "source_restored": true
+        },
+        "review_note": "Killed at the plane-separation assertion: the browser session got 200 on /v1/models, so one credential standing in for the other cannot pass."
+      }
+    ]
+  },
+  "account_isolation_evidence": {
+    "normal_binary_sha256": "8919c51e82a2e97493cc235805e7a4a17a5e1cc22ad0004eb68406479290b49c",
+    "runs": {
+      "en": {
+        "run_id": "20261028T080954Z-b7c38ba9",
+        "report_sha256": "4ff6ee249cea032053c8b0641339bff37bda3977b72f0ca6aa28103a9b2ba0df"
+      },
+      "zh": {
+        "run_id": "20261028T081022Z-bd889dac",
+        "report_sha256": "1f457abdc152841ba727cc72df242666c4dbf707fcae9d84ac1cfc1d4ca03c70"
+      }
+    },
+    "undetected_mutation": {
+      "sites": [
+        "ui/src/pages/playground/conversations/db.ts"
+      ],
+      "intent": "list() ignores the account key and returns every stored conversation",
+      "outcome": "NOT_KILLED",
+      "why": "A single admin account means the leaked result equals the correct one, so this test cannot distinguish them. Recorded as an environment limitation, not as a proven property."
+    }
+  },
+  "preview_evidence": {
+    "normal_binary_sha256": "59e853258274da0bbb056ee268b6c0e5c0630e4552ee7e103b594ffb59c8b2b9",
+    "runs": {
+      "en": {
+        "run_id": "20261028T084025Z-b304c535",
+        "report_sha256": "a414d4ce6afa0d99600b59204050f1c6539ba13e69c3735c206f9fc32bd65e0d"
+      },
+      "zh": {
+        "run_id": "20261028T084058Z-39051060",
+        "report_sha256": "215ff8ceea05543585a2671a3c296ba026a65567d6bcd687da6ed51dfae72b55"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": [
+          "20.7",
+          "20.8"
+        ],
+        "name": "csp-removed",
+        "cohort": "playground-preview-cohort-v1",
+        "run_id": "20261028T083446Z-431d35a7",
+        "report_sha256": "c6b95f931bbf5c5d73a17f66abd8c41ede2906b19d577581e8764786ccd15e31",
+        "binary_sha256": "d42cc329dc28cbb70ecadde7819e334d55e80b5363092e57c7251cd3552b0a49",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/previewSandbox.ts"
+          ],
+          "source_restored": true,
+          "intent": "stop injecting the restricted CSP into the preview document"
+        },
+        "review_note": "Killed at 'CSP presence does not match allow_network=False', so a preview that silently loses its policy cannot pass."
+      },
+      {
+        "item": [
+          "20.7",
+          "20.8"
+        ],
+        "name": "same-origin-granted",
+        "cohort": "playground-preview-cohort-v1",
+        "run_id": "20261028T083738Z-96934455",
+        "report_sha256": "832be74470c2f97aee0b0b20301ae2fe31021785fedf055930017343ae621daf",
+        "binary_sha256": "a42d9721c7dda5e81c14d614afdc1af7096ba6c522c1f511c68c18f67276da04",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/previewSandbox.ts"
+          ],
+          "source_restored": true,
+          "intent": "add allow-same-origin to PREVIEW_SANDBOX"
+        },
+        "review_note": "Killed at 'the preview sandbox was granted the console origin', so the origin isolation is asserted, not just the CSP."
+      }
+    ]
+  },
+  "attachment_evidence": {
+    "normal_binary_sha256": "b6ad1ca883e46758010e1e9192edd3b8cfadf25fad713f01679c4e26fa8f33dc",
+    "runs": {
+      "en": {
+        "run_id": "20261028T090705Z-917b7a20",
+        "report_sha256": "38d581874f5a52f34eb7b7d641e8b558efd7a13886e49ec646d3de2f4160c1f0"
+      },
+      "zh": {
+        "run_id": "20261028T090806Z-3c32501a",
+        "report_sha256": "ef53428fdb344ff14560cdd6c2cf4abf892356982ca6bfcb68d33b70b05e86d5"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "20.4",
+        "name": "no-cap",
+        "cohort": "playground-attachments-cohort-v1",
+        "run_id": "20261028T085930Z-377f143f",
+        "report_sha256": "2b2be394c6990db8188c1188bd41fe0c60c2f3f0fcd019aa9af2d770852ea62f",
+        "binary_sha256": "6a4230e2b9c7a2bb65dcfd7c5cd157fb9af0287b6142073562395e443875bd07",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/ChatPage.tsx"
+          ],
+          "source_restored": true,
+          "intent": "stop slicing the attachment list at six"
+        },
+        "review_note": "Killed with 'expected to have count 6, actual 7', so an unbounded composer cannot pass."
+      },
+      {
+        "item": "20.4",
+        "name": "stale-after-send",
+        "cohort": "playground-attachments-cohort-v1",
+        "run_id": "20261028T090255Z-ef192a4a",
+        "report_sha256": "13d63629a2cfb744dac5287218ac0d04f6ba831e26a8b3bb203030f96a201b6c",
+        "binary_sha256": "5405a88d9c1fc25c3b007d17495a297414972ad45095a1feb83289ff79cbd9d4",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/ChatPage.tsx"
+          ],
+          "source_restored": true,
+          "intent": "skip clearing the attachments after a successful send"
+        },
+        "review_note": "Killed with 'expected to have count 0, actual 1': the stale attachment a later turn would resend is caught."
+      }
+    ]
+  }
 }

@@ -439,3 +439,31 @@ def exercise_cache_limit_steps(page, dialog, limit_input, unit_name, persisted, 
             'slider': False, 'spinbuttons': 1, 'patches': 0}
 
 
+
+
+def exercise_server_limit_range(page, base, path, targets, evidence):
+    """The server enforces the same lower bound the control shows, on its own.
+
+    The form refuses a negative capacity before sending anything, so the UI can
+    never reach the server's guard. It is still the server's rule to keep: a
+    client that skips the form must be refused, and the refusal must not disturb
+    the value already stored.
+    """
+    before = targets()['cache-node-01']['cache_max_bytes']
+    attempts = []
+    for label, body in (('negative', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': -1}),
+                        ('negative-gib', {'node_uuids': ['cache-node-01'], 'cache_max_bytes': -1 * GIB})):
+        response = page.request.patch(base + path + '/node-overrides', data=body)
+        detail = response.json() if response.text() else None
+        attempts.append({'case': label, 'sent': body, 'status': response.status,
+                         'code': (detail or {}).get('code')})
+        check(response.status == 400,
+              f'the server accepted a {label} cache limit: HTTP {response.status}')
+        check((detail or {}).get('code') == 'STORAGE_PATH_INVALID',
+              f'the {label} refusal used an unexpected code: {(detail or {}).get("code")}')
+    after = targets()['cache-node-01']['cache_max_bytes']
+    check(after == before,
+          f'a refused cache limit changed the stored value: {before} then {after}')
+    evidence.append({'layer': 'request', 'server_limit_range': attempts,
+                     'stored_before': before, 'stored_after': after})
+    return {'attempts': attempts, 'stored_before': before, 'stored_after': after}

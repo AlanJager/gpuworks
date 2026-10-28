@@ -30,6 +30,7 @@ def main(argv=None):
                  'test/e2e/deployment_boolean_inventory.py',
                  'test/e2e/deployment_boolean_inventory_contracts.py',
                  'test/e2e/deployment_boolean_inventory_probe.py',
+                 'test/e2e/deployment_boolean_rejection_checks.py',
                  'test/e2e/deploy_submit_hold.py',
                  'test/e2e/deployment_batch_checks.py',
                  'test/e2e/deployment_selector_checks.py',
