@@ -58,7 +58,8 @@ def locale_strings(locale, namespace):
     return json.loads((ROOT / 'ui/src/i18n/locales' / locale / f'{namespace}.json').read_text())
 
 
-def exercise_list_states(page, server, t, prefix, report, locale, bad_http, console_errors):
+def exercise_list_states(page, server, t, prefix, report, locale, bad_http, console_errors,
+                         empty_copy=None, empty_action=None, heading=None, alert=None):
     """Loading, failure with retry, empty, and populated - one list, four states.
 
     The list is driven through its own GET so each state can be produced without
@@ -82,53 +83,92 @@ def exercise_list_states(page, server, t, prefix, report, locale, bad_http, cons
         route.fulfill(status=200, content_type='application/json',
                       body=json.dumps({'items': [], 'total': 0}))
 
-    page.route('**' + prefix, hold)
+    # The page issues the collection GET for several reasons (mount, events,
+    # Retry) and globs do not reliably include a query string, so match on the
+    # parsed path instead.
+    pattern = re.compile(re.escape(prefix) + r'(?:\?|$)')
+    page.route(pattern, hold)
     page.reload()
-    expect(page.get_by_role('heading', name=t['page']['title'], exact=True)).to_be_visible()
+    expect(page.get_by_role('heading', name=heading, exact=True)).to_be_visible()
     expect(page.locator('.ant-spin-spinning')).to_have_count(1)
     states['loading'] = True
     check(len(loading) == 1, f'the list sent {len(loading)} requests while held')
     for route in loading:
         route.continue_()
     loading.clear()
-    page.unroute('**' + prefix, hold)
+    page.unroute(pattern, hold)
     expect(page.locator('.ant-spin-spinning')).to_have_count(0)
 
-    page.route('**' + prefix, refuse)
+    hits = []
+    def refuse_logged(route):
+        hits.append(route.request.url)
+        try:
+            refuse(route)
+        except Exception as error:  # noqa: BLE001 - surfaced in the check below
+            hits.append('FULFIL FAILED: ' + repr(error))
+    page.route(pattern, refuse_logged)
     page.reload()
-    expect(page.get_by_role('alert')).to_contain_text(table['loadFailed'])
-    expect(page.get_by_role('alert')).to_contain_text('list probe down')
-    check(page.locator('.ant-table-row').count() == 0, 'a failed list still rendered rows')
+    page.wait_for_timeout(1500)
+    if not hits:
+        seen = []
+        probe = page.route('**/*', lambda r: (seen.append(r.request.url), r.continue_())[1]
+                           if '/api/' in r.request.url else r.continue_())
+        page.reload()
+        page.wait_for_timeout(3000)
+        page.unroute('**/*')
+        report['api_urls_seen'] = seen[:12]
+        check(False, 'the refused list request was never intercepted; saw ' + str(seen[:12]))
+    alert_box = alert or page.get_by_role('alert')
+    expect(alert_box).to_contain_text(table['loadFailed'])
+    expect(alert_box).to_contain_text('list probe down')
+    resource = page.locator('.resource-table')
+    list_table = resource.locator('.ant-table').first
+    rows_now = list_table.locator('.ant-table-row').count()
+    check(rows_now == 0,
+          f'a failed list still rendered rows: {rows_now} rows, '
+          f'resource-tables={resource.count()}, '
+          f'all-tables={page.locator(".ant-table").count()}, '
+          f'row-texts={page.locator(".ant-table-row").all_inner_texts()[:4]}')
     states['failure'] = {'message': table['loadFailed'], 'rows': 0}
-    page.unroute('**' + prefix, refuse)
+    page.unroute(pattern, refuse_logged)
     # The 503 is injected on purpose; record that it surfaced and clear it so the
     # case's own end-of-run assertion still means "nothing unexpected".
     allow_http_status(bad_http, console_errors, 503)
 
-    retry = page.get_by_role('alert').get_by_role('button', name=common['actions']['retry'], exact=True)
+    retry = alert_box.get_by_role('button', name=common['actions']['retry'], exact=True)
     expect(retry).to_be_visible()
     with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'GET') as again:
         retry.click()
     check(again.value.status == 200, f"retry HTTP {again.value.status}")
-    states['retry_rows'] = page.locator('.ant-table-row').count()
+    states['retry_rows'] = list_table.locator('.ant-table-row').count()
     check(states['retry_rows'] > 0, 'retry recovered no rows')
 
-    page.route('**' + prefix, empty)
-    page.reload()
-    # The storage list supplies its own empty copy and an Add action rather than
-    # the table's generic placeholder, so both are asserted here.
-    placeholder = page.locator('.ant-table-placeholder')
-    expect(placeholder).to_contain_text(t['page']['empty'])
-    empty_add = page.get_by_role('button').filter(has=page.get_by_text(t['page']['add'], exact=True))
-    expect(empty_add.first).to_be_visible()
-    check(page.locator('.ant-table-row').count() == 0, 'an empty list still rendered rows')
-    states['empty'] = {'message': t['page']['empty'], 'action': t['page']['add'], 'rows': 0}
-    page.unroute('**' + prefix, empty)
+    page.route(pattern, empty)
+    # Reloading races the page's own event-driven refresh, which would put real
+    # rows back under the empty frame; the table's own refresh control re-reads
+    # the collection on demand, so the empty response lands deterministically.
+    refresh = page.get_by_role('button', name=table['refresh'], exact=True)
+    with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'GET'):
+        refresh.click()
+    # Each page supplies its own empty copy; only some also offer an action from
+    # the empty frame, so the copy is required and the action is optional.
+    placeholder = list_table.locator('.ant-table-placeholder')
+    expect(placeholder).to_contain_text(empty_copy)
+    if empty_action:
+        empty_add = page.get_by_role('button').filter(has=page.get_by_text(empty_action, exact=True))
+        expect(empty_add.first).to_be_visible()
+    empty_rows = list_table.locator('.ant-table-row')
+    check(empty_rows.count() == 0,
+          'an empty list still rendered rows: ' + str(empty_rows.all_inner_texts()[:3]))
+    states['empty'] = {'message': empty_copy, 'action': empty_action, 'rows': 0}
+    page.unroute(pattern, empty)
 
-    page.reload()
-    expect(page.locator('.ant-table-row').first).to_be_visible()
-    check(not page.locator('.ant-table-placeholder').is_visible(), 'the empty frame survived real data')
-    states['populated_rows'] = page.locator('.ant-table-row').count()
+    with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'GET'):
+        refresh.click()
+    expect(list_table.locator('.ant-table-row').first).to_be_visible()
+    check(not list_table.locator('.ant-table-placeholder').is_visible(),
+          'the empty frame survived real data')
+    states['populated_rows'] = list_table.locator('.ant-table-row').count()
     report['list_states'] = states
     return states
 
@@ -215,6 +255,13 @@ def test_network_lifecycle(page, server, report, locale, bad_http, console_error
     events = mutations_on(page, prefix)
     page.goto(server.base + '/networks')
     expect(page.get_by_role('heading', name=t['title'], exact=True)).to_be_visible()
+    # This page renders a permanent info alert under the table, so the error frame
+    # has to be identified by its own copy rather than by the alert role alone.
+    common_net = locale_strings(locale, 'common')
+    list_states = exercise_list_states(
+        page, server, t, prefix, report, locale, bad_http, console_errors,
+        empty_copy=t['empty'], empty_action=None, heading=t['title'],
+        alert=page.get_by_role('alert').filter(has_text=common_net['dataTable']['loadFailed']))
     baseline = read(page, server.base, prefix)
     check(set(baseline) == {'items', 'roles', 'types', 'type_roles'}, 'network collection envelope differs')
     name = 'e2e-' + report['run_id'] + '-network'
@@ -410,7 +457,10 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
     events = mutations_on(page, prefix)
     page.goto(server.base + '/storage')
     expect(page.get_by_role('heading', name=t['page']['title'], exact=True)).to_be_visible()
-    list_states = exercise_list_states(page, server, t, prefix, report, locale, bad_http, console_errors)
+    list_states = exercise_list_states(
+        page, server, t, prefix, report, locale, bad_http, console_errors,
+        empty_copy=t['page']['empty'], empty_action=t['page']['add'],
+        heading=t['page']['title'])
     baseline = read(page, server.base, prefix)
     check(set(baseline) == {'items', 'total'} and baseline['total'] == len(baseline['items']), 'storage collection envelope differs')
     name = 'e2e-' + report['run_id'] + '-local'
