@@ -41,7 +41,7 @@ export default function useDeploymentIdentity(
     const currentName = String(form.getFieldValue("name") || "");
     const currentServedName = String(form.getFieldValue("served_name") || "");
     const updates: Record<string, unknown> = {};
-    if (!currentName || currentName === generatedName.current) {
+    if ((!currentName && !form.isFieldTouched("name")) || currentName === generatedName.current) {
       updates.name = nextName;
       generatedName.current = nextName;
     }
