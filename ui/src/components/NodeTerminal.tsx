@@ -13,6 +13,7 @@ import {
 } from "../terminal";
 import { useTranslation } from "react-i18next";
 import { apiErrorText } from "../apiError";
+import { terminalPreflightReason } from "../terminalMessages";
 
 // This module is loaded lazily so xterm (~250 KB) stays out of the main bundle;
 // only operators who actually open a terminal download it.
@@ -78,11 +79,11 @@ export default function NodeTerminal({ nodeUUID, hostname, target = "host", ref_
         if (disposed) return;
         setContainerRuntime(target === "container" ? (pre.container_runtime ?? "") : "");
         if (!pre.can_open) {
-          setStatus({ kind: "error", message: pre.reason || t("terminalView.cannotOpen") });
+          setStatus({ kind: "error", message: terminalPreflightReason(pre.reason, t) || t("terminalView.cannotOpen") });
           return;
         }
         if (target === "container" && !pre.container_supported) {
-          setStatus({ kind: "error", message: pre.container_reason || t("terminalView.containerUnsupported") });
+          setStatus({ kind: "error", message: terminalPreflightReason(pre.container_reason, t) || t("terminalView.containerUnsupported") });
           return;
         }
 
