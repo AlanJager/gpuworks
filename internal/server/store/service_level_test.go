@@ -13,6 +13,17 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	m := migrationByVersion(t, 184)
 	ms := []migration{m}
 	db := openSchedulingCenterLegacy(t, "service-level")
+	// Deployment 1's instance is at sleep level 2 (an operator slept a
+	// replica); 2 is ordered asleep deployment-wide; 3 is awake.
+	for _, stmt := range []string{
+		`ALTER TABLE deployments ADD COLUMN desired_sleep INTEGER NOT NULL DEFAULT 0`,
+		`INSERT INTO deployments (id, name, desired_state, sleepable, replicas, desired_sleep) VALUES (2, 'ordered', 'active', 1, 1, 1)`,
+		`INSERT INTO deployments (id, name, desired_state, sleepable, replicas, desired_sleep) VALUES (3, 'awake', 'active', 1, 1, 0)`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
 	}
@@ -27,9 +38,11 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 		ServiceLevel string
 		SleepHeld    bool
 	}
-	if err := db.Raw(`SELECT service_level, sleep_held FROM deployments WHERE id = 1`).Scan(&dep).Error; err != nil ||
-		dep.ServiceLevel != ServiceLevelResident || dep.SleepHeld {
-		t.Fatalf("existing deployment = %+v err=%v", dep, err)
+	for id, wantHeld := range map[int]bool{1: true, 2: true, 3: false} {
+		if err := db.Raw(`SELECT service_level, sleep_held FROM deployments WHERE id = ?`, id).Scan(&dep).Error; err != nil ||
+			dep.ServiceLevel != ServiceLevelResident || dep.SleepHeld != wantHeld {
+			t.Fatalf("existing deployment %d = %+v err=%v, want resident held=%v: a sleep from before the upgrade is not woken by a request", id, dep, err, wantHeld)
+		}
 	}
 	var marker SchemaMigration
 	if err := db.First(&marker, 184).Error; err != nil {

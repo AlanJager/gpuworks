@@ -19,13 +19,14 @@ const (
 func ValidServiceLevel(level string) bool { return servicelevel.Valid(level) }
 
 // addDeploymentServiceLevel adds the service level and the held-sleep flag.
-// An existing deployment reads as resident with no held sleep, so nothing
-// about it changes: it shares no cards and a request does not wake it unless
-// idle sleep put it to sleep.
+// An existing deployment reads as resident, and one asleep now (ordered
+// deployment-wide, or with a replica at a sleep level) is held: before the
+// flag nothing woke a sleeper on request, so none is woken by one after it.
 func addDeploymentServiceLevel(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&Deployment{}) {
 		return nil
 	}
+	added := false
 	for _, column := range []string{"ServiceLevel", "SleepHeld"} {
 		if db.Migrator().HasColumn(&Deployment{}, column) {
 			continue
@@ -33,8 +34,19 @@ func addDeploymentServiceLevel(db *gorm.DB) error {
 		if err := db.Migrator().AddColumn(&Deployment{}, column); err != nil {
 			return err
 		}
+		added = added || column == "SleepHeld"
 	}
-	return nil
+	if !added {
+		return nil
+	}
+	held := `UPDATE deployments SET sleep_held = 1 WHERE desired_sleep > 0`
+	if db.Migrator().HasTable(&Instance{}) && db.Migrator().HasColumn(&Instance{}, "SleepLevel") {
+		held += ` OR id IN (SELECT deployment_id FROM instances WHERE sleep_level > 0)`
+	}
+	if !db.Migrator().HasColumn(&Deployment{}, "DesiredSleep") {
+		return nil
+	}
+	return db.Exec(held).Error
 }
 
 // SetDeploymentServiceLevel stores the deployment's service level.
