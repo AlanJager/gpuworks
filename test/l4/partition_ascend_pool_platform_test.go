@@ -224,22 +224,34 @@ func attachAscendPoolNode(t *testing.T, control *testenv.Env, candidate ascendPo
 		t.Fatalf("start isolated pool agent: %v: %s", err, out)
 	}
 
-	ctx, dialCancel := context.WithTimeout(t.Context(), 2*time.Minute)
-	defer dialCancel()
 	dialAddr := net.JoinHostPort(ascendPoolHostAddress(candidate.host), remotePort)
+	dialAscendPoolAgent(t, control, dialAddr, enrolled.Node.UUID, enrolled.Token)
+	control.WaitNodeOnlineUUID(t, enrolled.Node.UUID)
+	return node
+}
+
+// dialAscendPoolAgent connects the control plane to the temporary agent. The
+// node is created with its server_dial address, so the hub's own reconnect
+// loop (every 10s) dials the agent as soon as it listens, racing this loop.
+// The agent serves one server connection at a time, so whichever dial lands
+// first wins and the other one only ever sees "read server_dial challenge:
+// i/o timeout" while the node is already online and reporting metrics. A loss
+// is therefore success, not a failure.
+func dialAscendPoolAgent(t *testing.T, control *testenv.Env, addr, nodeUUID, token string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
 	for {
-		err = control.DialServerAgent(ctx, dialAddr, enrolled.Token)
-		if err == nil {
-			break
+		err := control.DialServerAgent(ctx, addr, token)
+		if err == nil || control.NodeOnlineUUID(nodeUUID) {
+			return
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("dial isolated Ascend pool agent at %s: %v", dialAddr, err)
+			t.Fatalf("dial isolated Ascend pool agent at %s: %v", addr, err)
 		case <-time.After(time.Second):
 		}
 	}
-	control.WaitNodeOnlineUUID(t, enrolled.Node.UUID)
-	return node
 }
 
 func downloadAscendPoolAgent(t *testing.T, candidate ascendPoolCandidate, remoteDir string, compressed []byte) ([]byte, error) {
