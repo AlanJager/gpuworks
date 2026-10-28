@@ -285,7 +285,7 @@
         "1.9": "While the create POST is held the footer Save stays disabled and a forced second click sends no further create. The later 201 is the only stored storage",
         "1.10": "The 502 keeps the add dialog and the typed name and path, shows upstream fixture is unreachable, and stores no storage. The retry 201 matches the independent detail GET",
         "1.11": "covered: Cancel, close and Escape each close the add dialog immediately, with no unsaved-changes prompt and no storage write, so the stored storages stay unchanged",
-        "10": "PARTIAL: owned row and deletion; no full list matrix",
+        "10.1": "The storage list is driven through its own GET into each of the four states. A held response leaves the table spinning with no rows. A 503 replaces the table with the loadFailed alert carrying the server's own message and no rows at all, and the Retry action in that alert re-issues the GET, gets 200 and restores the rows. An emptied collection renders the storage page's own empty copy - not the table's generic placeholder - together with its Add action and zero rows. Restoring the real collection then shows the populated row and removes the empty frame, so the list is proven to recover to the state it started in.",
         "12.1": "covered: Add storage on the storage page opens the dialog named by the add title",
         "12.2": "covered: Add dialog at 1440x900: the dialog and footer Save stay inside the viewport, and the title, body and footer sit inside the dialog without overlap",
         "12.3": "covered: Default focus is inside the add dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog",
