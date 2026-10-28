@@ -470,7 +470,7 @@
     "SCHEDULE_TIMEZONE_UNKNOWN": "服务器不认识时区“{{timezone}}”。请使用 IANA 名称，如 Asia/Shanghai。",
     "SCHEDULE_REPLICAS_SHAPE": "只能为单机部署定时调整副本数；多机和 PD 的副本各自指定了节点。",
     "IDLE_SLEEP_INVALID": "闲置休眠设置不合法（{{field}}）：0 表示关闭，否则为 1 分钟到 7 天，级别为 1 或 2。",
-    "NODE_REPLACEMENT_INVALID": "换节点等待时间只能是 0（不迁）或 {{minimum}} 到 {{maximum}} 秒。",
+    "NODE_REPLACEMENT_INVALID": "节点失联重调度的等待时间只能是 0（关闭）或 {{minimum}} 到 {{maximum}} 秒。",
     "WAKE_YIELD_BLOCKED": "无法让位：{{occupants}} 不能休眠（未启用休眠、PD 部署最后一个清醒的角色，或是平台外的进程）。未做任何改动。",
     "REPLICAS_PLACE_ON_TOO_MANY": "首次放置指定了 {{count}} 个节点，但只新增了 {{maximum}} 个副本。",
     "REPLICAS_PLACE_ON_REFUSED": "节点 {{node}} 不能接收新副本（{{reason}}）。{{detail}}",

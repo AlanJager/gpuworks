@@ -5,9 +5,10 @@ import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
-// A deployment's automation section: the schedule list and its editor
-// (create, edit, delete, validation, the server's refusals), idle sleep and
-// the wait before a replica leaves a lost node.
+// The editors behind a deployment's scheduling policy card: the schedule list
+// and its dialog (create, edit, delete, validation, the server's refusals),
+// idle sleep and the wait before a replica leaves a lost node. The card that
+// holds them is in deploymentSchedulingPolicy.test.tsx.
 
 const closeChannels = trackMessageChannels();
 const { i18n, locale } = await createI18n(["deployments", "deploy"]);
@@ -16,12 +17,15 @@ const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { formatTime } = await import("../src/i18n/datetime.ts");
-const { default: DeploymentAutomation } = await import("../src/pages/DeploymentAutomation.tsx");
+const { default: ScheduleSection, useSchedules } = await import("../src/pages/DeploymentSchedule.tsx");
+const { default: IdleSleepEditor } = await import("../src/pages/DeploymentIdleSleep.tsx");
+const { default: NodeReplacementEditor } = await import("../src/pages/DeploymentNodeReplacement.tsx");
 type Deployment = import("../src/api.ts").Deployment;
 type Schedule = import("../src/api.ts").LifecycleSchedule;
 type Request = import("../src/api.ts").LifecycleScheduleRequest;
 
 const a = locale.deployments.automation;
+const n = locale.deployments.nodeReplacement;
 const original = { ...api };
 
 function deployment(overrides: Record<string, unknown> = {}): Deployment {
@@ -61,8 +65,23 @@ function stub() {
   api.deleteSchedule = async (_id, sid) => { deleted.push(sid); schedules = schedules.filter((item) => item.id !== sid); };
 }
 
+function Schedules({ dep }: { dep: Deployment }) {
+  const schedules = useSchedules(dep.id);
+  return <ScheduleSection dep={dep} schedules={schedules} />;
+}
+
 function mount(dep = deployment(), onChanged = () => {}) {
-  render(<I18nextProvider i18n={i18n}><DeploymentAutomation dep={dep} onChanged={onChanged} /></I18nextProvider>);
+  render(
+    <I18nextProvider i18n={i18n}>
+      <Schedules dep={dep} />
+      <IdleSleepEditor dep={dep} onChanged={onChanged} />
+    </I18nextProvider>,
+  );
+  return userEvent.setup();
+}
+
+function mountFailover(dep = deployment(), onChanged = () => {}) {
+  render(<I18nextProvider i18n={i18n}><NodeReplacementEditor dep={dep} onChanged={onChanged} /></I18nextProvider>);
   return userEvent.setup();
 }
 
@@ -275,4 +294,45 @@ test("a refused idle sleep says why", async () => {
   await user.click(within(section).getByRole("switch", { name: a.idle.enable }));
   await user.click(within(section).getByRole("button", { name: a.save }));
   await screen.findByText(i18n.t("deployments:automation.idle.saveFailed", { detail: i18n.t("common:apiError.SLEEP_NOT_ENABLED") }));
+});
+
+test("the wait before a replica leaves a lost node starts at 10 minutes and saves seconds; 0 turns it off", async () => {
+  const saved: unknown[] = [];
+  let changed = 0;
+  api.setNodeReplacement = async (_id, body) => { saved.push(body); return body; };
+  const user = mountFailover(deployment({ node_replacement: undefined }), () => { changed++; });
+  const section = screen.getByRole("region", { name: n.title });
+  const minutes = within(section).getByLabelText(n.minutes) as HTMLInputElement;
+  assert.equal(minutes.value, "10");
+  assert.ok(within(section).getByText(n.zeroNever));
+  assert.equal((within(section).getByRole("button", { name: n.save }) as HTMLButtonElement).disabled, true);
+  fireEvent.change(minutes, { target: { value: "20" } });
+  await user.click(labelled(within(section), n.save));
+  await waitFor(() => assert.deepEqual(saved, [{ after_sec: 1200 }]));
+  await screen.findByText(n.saved);
+  assert.equal(changed, 1);
+  fireEvent.change(minutes, { target: { value: "0" } });
+  await user.click(labelled(within(section), n.save));
+  await waitFor(() => assert.deepEqual(saved.at(-1), { after_sec: 0 }));
+});
+
+test("a saved wait is shown as saved, 0 reads as off, and saving needs a change", () => {
+  mountFailover(deployment({ node_replacement: { after_sec: 0 } }));
+  const section = screen.getByRole("region", { name: n.title });
+  assert.equal((within(section).getByLabelText(n.minutes) as HTMLInputElement).value, "0");
+  assert.equal((within(section).getByRole("button", { name: n.save }) as HTMLButtonElement).disabled, true);
+  cleanup();
+  mountFailover(deployment({ node_replacement: { after_sec: 5400 } }));
+  assert.equal((within(screen.getByRole("region", { name: n.title })).getByLabelText(n.minutes) as HTMLInputElement).value, "90");
+});
+
+test("a refused wait says why, in the words of the node-loss rescheduling", async () => {
+  api.setNodeReplacement = async () => { throw new APIError("NODE_REPLACEMENT_INVALID", { minimum: 60, maximum: 604800 }, "out of range", 400); };
+  const user = mountFailover(deployment({ nnodes: 2 }));
+  const section = screen.getByRole("region", { name: n.title });
+  fireEvent.change(within(section).getByLabelText(n.minutes), { target: { value: "1.5" } });
+  fireEvent.change(within(section).getByLabelText(n.minutes), { target: { value: "5" } });
+  await user.click(within(section).getByRole("button", { name: n.save }));
+  await screen.findByText(i18n.t("deployments:nodeReplacement.saveFailed", { detail: i18n.t("common:apiError.NODE_REPLACEMENT_INVALID", { minimum: 60, maximum: 604800 }) }));
+  assert.match(i18n.t("common:apiError.NODE_REPLACEMENT_INVALID", { minimum: 60, maximum: 604800 }), /节点失联重调度|node-loss rescheduling/);
 });

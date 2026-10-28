@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Alert, Button, InputNumber, Select, Space, Switch, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, type Deployment } from "../api";
-import ScheduleSection from "./DeploymentSchedule";
 import { useOrder } from "./useOrder";
 
 // What a new idle sleep starts from: 15 idle minutes, deep sleep.
@@ -11,23 +10,11 @@ const DEFAULT_IDLE_LEVEL = 2;
 // The server accepts 60 s to 7 days.
 const MAX_MINUTES = 7 * 24 * 60;
 
-// DeploymentAutomation is what the platform does to a deployment on its own
-// through the scheduling center: the standing schedule and idle sleep.
-export default function DeploymentAutomation({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
-  const { t } = useTranslation("deployments");
-  if (dep.desired_state === "deleting") return null;
-  return (
-    <section aria-label={t("automation.title")} style={{ marginTop: 20 }}>
-      <Typography.Title level={5} style={{ marginBottom: 0 }}>{t("automation.title")}</Typography.Title>
-      <ScheduleSection dep={dep} />
-      <IdleSleepEditor key={`idle-${dep.id}-${dep.idle_sleep?.after_sec ?? 0}-${dep.idle_sleep?.level ?? 0}`} dep={dep} onChanged={onChanged} />
-    </section>
-  );
-}
-
 // IdleSleepEditor sleeps the deployment after it received no user request for
-// a while. Off needs nothing; on needs a deployment that can sleep.
-function IdleSleepEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
+// a while. Off needs nothing; on needs a deployment that can sleep. The
+// scheduling policy editor keys it by the saved setting, so it restarts from
+// what was saved.
+export default function IdleSleepEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
   const { busy, run } = useOrder();
   const current = dep.idle_sleep;
@@ -48,8 +35,7 @@ function IdleSleepEditor({ dep, onChanged }: { dep: Deployment; onChanged: () =>
     onChanged();
   };
   return (
-    <section aria-label={t("automation.idle.title")} style={{ marginTop: 16 }}>
-      <Typography.Text strong>{t("automation.idle.title")}</Typography.Text>
+    <section aria-label={t("automation.idle.title")}>
       <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>{t("automation.idle.hint")}</Typography.Paragraph>
       {!sleepable && !savedOn && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("automation.idle.notSleepable")} />}
       <Space size={12} wrap style={{ marginTop: 8 }}>

@@ -663,7 +663,7 @@
       "autoPoolDescription": "每个副本启动时在候选节点里挑一台放得下的，每次启动都重新挑",
       "manualPoolDescription": "把部署钉在一台节点上：所有副本都跑在这台",
       "autoUnitsDescription": "平台在每个单元启动时挑节点和卡，优先沿用上次的节点；下面只是按当前空闲资源给出的预览。",
-      "manualUnitsDescription": "你指定的节点会被固定：单元不会被自动换到别的节点（只有节点离线超过换节点等待时间才会迁移）。",
+      "manualUnitsDescription": "你指定的节点会被固定：单元不会被自动换到别的节点（只有节点离线超过节点失联重调度的等待时间才会迁移）。",
       "previewTitle": "预览（以实际调度为准）",
       "multiAutoTitle": "自动挑选的节点",
       "autoGroupNoPreview": "目前凑不出可用的节点组，详见上方说明。",

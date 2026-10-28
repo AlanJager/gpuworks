@@ -21,32 +21,51 @@ export function scheduleActions(dep: Deployment): ScheduleAction[] {
   return actions;
 }
 
-// ScheduleSection is a deployment's standing orders: sleep, wake or a replica
-// count at a time on some weekdays. Each occurrence runs once, a manual order
-// given in between is not overridden, and a new or edited order fires from
-// its next occurrence.
-export default function ScheduleSection({ dep }: { dep: Deployment }) {
-  const { t } = useTranslation("deployments");
+// useSchedules loads a deployment's standing orders. The scheduling policy
+// card reads the same rows for its summary that the editor lists, so the
+// editor reloads them here after every change.
+export function useSchedules(depID: number) {
   const { t: tCommon } = useTranslation("common");
   const [rows, setRows] = useState<LifecycleSchedule[] | null>(null);
   const [error, setError] = useState("");
-  const [editing, setEditing] = useState<LifecycleSchedule | "new" | null>(null);
-  const [busyID, setBusyID] = useState<number | null>(null);
-  const actions = scheduleActions(dep);
-
   const load = useCallback(async () => {
     try {
-      const result = await api.deploymentSchedule(dep.id);
+      const result = await api.deploymentSchedule(depID);
       setRows(result.items);
       setError("");
     } catch (e) {
       setError(apiErrorText(tCommon, e));
     }
-  }, [dep.id, tCommon]);
+  }, [depID, tCommon]);
   useEffect(() => {
     setRows(null);
     void load();
   }, [load]);
+  return { rows, error, load };
+}
+
+export type Schedules = ReturnType<typeof useSchedules>;
+
+// scheduleOrderText words what an order does: "Sleep (L2)", "Wake", "Set replicas to 3".
+export function scheduleOrderText(t: TFunction<"deployments">, row: Pick<LifecycleSchedule, "action" | "sleep_level" | "replicas">): string {
+  return row.action === "sleep"
+    ? t("automation.schedule.actionText.sleep", { level: row.sleep_level ?? "" })
+    : row.action === "replicas"
+      ? t("automation.schedule.actionText.replicas", { count: row.replicas ?? "" })
+      : t("automation.schedule.actionText.wake");
+}
+
+// ScheduleSection is a deployment's standing orders: sleep, wake or a replica
+// count at a time on some weekdays. Each occurrence runs once, a manual order
+// given in between is not overridden, and a new or edited order fires from
+// its next occurrence.
+export default function ScheduleSection({ dep, schedules }: { dep: Deployment; schedules: Schedules }) {
+  const { t } = useTranslation("deployments");
+  const { t: tCommon } = useTranslation("common");
+  const { rows, error, load } = schedules;
+  const [editing, setEditing] = useState<LifecycleSchedule | "new" | null>(null);
+  const [busyID, setBusyID] = useState<number | null>(null);
+  const actions = scheduleActions(dep);
 
   const toBody = (row: LifecycleSchedule, enabled: boolean): LifecycleScheduleRequest => ({
     action: row.action, weekdays: row.weekdays, time: row.time, timezone: row.timezone,
@@ -78,20 +97,12 @@ export default function ScheduleSection({ dep }: { dep: Deployment }) {
     }
   };
 
-  const actionText = (row: Pick<LifecycleSchedule, "action" | "sleep_level" | "replicas">) =>
-    row.action === "sleep"
-      ? t("automation.schedule.actionText.sleep", { level: row.sleep_level ?? "" })
-      : row.action === "replicas"
-        ? t("automation.schedule.actionText.replicas", { count: row.replicas ?? "" })
-        : t("automation.schedule.actionText.wake");
+  const actionText = (row: Pick<LifecycleSchedule, "action" | "sleep_level" | "replicas">) => scheduleOrderText(t, row);
 
   return (
-    <section aria-label={t("automation.schedule.title")} style={{ marginTop: 12 }}>
+    <section aria-label={t("automation.schedule.title")}>
       <Space style={{ width: "100%", justifyContent: "space-between" }} align="start">
-        <div>
-          <Typography.Text strong>{t("automation.schedule.title")}</Typography.Text>
-          <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>{t("automation.schedule.hint")}</Typography.Paragraph>
-        </div>
+        <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>{t("automation.schedule.hint")}</Typography.Paragraph>
         <Button size="small" disabled={actions.length === 0} onClick={() => setEditing("new")}>{t("automation.schedule.add")}</Button>
       </Space>
       {actions.length === 0 && (
