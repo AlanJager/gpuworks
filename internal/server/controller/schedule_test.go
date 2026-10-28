@@ -270,7 +270,7 @@ func TestDeploymentRetryRemovesPriorContainersAndKeepsTerminalFailure(t *testing
 			t.Fatal(err)
 		}
 		want := map[string]any{"replica": float64(1), "attempt": float64(i + 2), "reason": "fixture failure", "node": node.DisplayName()}
-		if !reflect.DeepEqual(params, want) || ev.Kind != store.EventKindSchedule {
+		if !reflect.DeepEqual(params, want) || ev.Kind != store.EventKindLifecycle {
 			t.Fatalf("rebuild %d = kind %q %v, want %v", i, ev.Kind, params, want)
 		}
 	}
