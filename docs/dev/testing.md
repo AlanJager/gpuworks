@@ -245,6 +245,20 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
 定时 master 流水线与 MR 手动点同一个 job 就会这样互相打断。新增云端 L4 job 必须同样写
 `action: prepare`；互斥靠 `resource_group`，不靠环境。
 
+## GitHub Actions 镜像门禁
+
+`.github/workflows/ci.yml` 在 GitHub 托管 runner 上跑与 GitLab core 阶段相同的检查：UI 构建与测试、
+untagged Go suite 与各 check 脚本、`go vet`、CompShare 离线契约、严格模式的 L2/L3。权威流水线仍是 GitLab；
+GitHub 镜像只收到 master，所以这条 workflow 由 PR、手动触发与每晚 03:07（Asia/Shanghai，紧随 GitLab 的
+nightly）在 master 上运行，用来与 GitLab 同一提交的结果对比。L4、发布与文档构建不在这里跑，也不使用任何
+secret 或自托管 runner。
+
+- L2/L3 与 GitLab 的 `.docker-core` 同形：每个 job 一个 DinD daemon，暴露在专用的 `gpuworks-e2e` socket
+  上，suite 跑在 golang 容器里。直接用 runner VM 的 Docker 不行：VM 有 systemd，console upgrade 用例会把它
+  当成服务管理器；真实终端用例只接受专用 daemon。fixture 基础镜像在 suite 前预拉进 DinD。
+- UI suite 在 2 核 runner 上一次只跑一个测试文件，不拆要一个多小时；按 4 片并行，`npm run test:coverage`
+  读可选的 `TEST_SHARD`（如 `2/4`）传给 `--test-shard`，不设时与原命令相同。
+
 ## 成本和缓存
 
 - provider 常规用例只验证租机、SSH、agent 上线与 GPU inventory。RunPod、CompShare、AutoDL、
