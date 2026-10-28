@@ -1636,9 +1636,11 @@ export interface Deployment {
   // when it follows the cluster default (settings, deployment group).
   start_timeout_sec?: number;
   // ready_replicas counts the replicas the gateway would serve a request from
-  // now (running, on an online node, every rank up, awake); absent for a PD
-  // deployment, whose roles count their own. With asleep_replicas it is two
-  // counts of one set of replicas, so the two can never contradict each other.
+  // now (running, on an online node, every rank up, awake). A PD deployment
+  // totals its roles' ready units, the same replicas its replicas field
+  // totals, so the pair means one thing on both. With asleep_replicas it is
+  // two counts of one set of replicas, so the two can never contradict each
+  // other.
   ready_replicas?: number;
   // health is the deployment's health check (dto/deployment_health.go).
   health: DeploymentHealth;

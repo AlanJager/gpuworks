@@ -77,8 +77,9 @@ type DeploymentListItem struct {
 	SleepLevel     int    `json:"sleep_level,omitempty"`
 	Sleepable      bool   `json:"sleepable"`
 	Replicas       int    `json:"replicas"`
-	// Replicas and ReadyReplicas total both roles for PD deployments;
-	// ordinary deployments use the same counts as Deployment.
+	// Replicas and ReadyReplicas total both roles for PD deployments, and the
+	// detail response totals them the same way, so the row and the drawer
+	// print one pair of counts rather than two.
 	ReadyReplicas *int                  `json:"ready_replicas,omitempty"`
 	Health        DeploymentHealth      `json:"health"`
 	Operations    []DeploymentOperation `json:"operations"`
@@ -191,6 +192,14 @@ type DashboardNodes struct {
 }
 
 // DashboardDeployments counts deployments by their effective state.
+//
+// Total does not equal Running+Warming, and the difference is deliberate: a
+// sleeping or asleep deployment serves nothing, so it is counted as running
+// only when it can serve, and it is not warming either. Sleeping deployments
+// therefore fall into neither bucket and read as another state, exactly as a
+// stopped, failed or offline one does. Sleepable counts the deployments that
+// could sleep at all, so a client that wants a sleep total reads
+// Total-Running-Warming rather than inventing a bucket the wire does not carry.
 type DashboardDeployments struct {
 	Total   int `json:"total"`
 	Running int `json:"running"`

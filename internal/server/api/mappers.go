@@ -108,9 +108,25 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	if viewErr == nil {
 		facts = deploymentFactsOf(rows, view, insts)
 		out.PD = deploymentPDDTO(rows, d, insts, view, facts)
+		// ready_replicas answers the same question for a PD deployment as for
+		// an ordinary one, and the drawer pairs it with asleep_replicas, so it
+		// is filled from the same walk either way. Leaving it off a PD response
+		// was what made the drawer show a numerator with no denominator.
+		ready := facts.Ready
+		out.ReadyReplicas = &ready
+		if out.PD != nil {
+			// The stored Replicas only configures an ordinary deployment (PD
+			// creation forces it to 1), while asleep_replicas counts PD units
+			// across roles. Rewriting it to the role total here is the same
+			// rewrite the list row makes, so the drawer's denominator and the
+			// table's describe the same replicas instead of printing "2/1".
+			desired := 0
+			for _, role := range out.PD.Roles {
+				desired += role.Desired
+			}
+			out.Replicas = desired
+		}
 		if out.PD == nil {
-			ready := facts.Ready
-			out.ReadyReplicas = &ready
 			out.RetryExhausted = ordinaryRetryExhausted(rows, view)
 			out.PlacementStatus = placementStatus(rows, d, view)
 			// Listed only while the stored node list reads: an unreadable

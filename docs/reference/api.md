@@ -494,7 +494,7 @@ macOS 忽略 `no_systemd`。
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/deployments` | 部署列表；带 `page`/`page_size` 时分页返回列表列并可按 `q`/`state` 筛选（见“错误与响应约定”） | JWT |
+| GET | `/api/v1/deployments` | 部署列表；带 `page`/`page_size` 时分页返回列表列并可按 `q`/`state` 筛选（见“错误与响应约定”）。`state` 取值含 `sleeping`/`asleep`，行上另有 `asleep_replicas`、`sleep_level`，见[部署的睡眠状态](#部署的睡眠状态stateasleep_replicassleep_level) | JWT |
 | GET | `/api/v1/routing-policies` | 服务端下发的多副本路由策略及本地化说明 | JWT |
 | POST | `/api/v1/deployments/preflight` | 多机推理部署前置检查（rank 分配、网络探测） | JWT |
 | POST | `/api/v1/deployments` | 创建部署（`model_source` 只有 `{storage_id, provider}`：保存模型的存储与运行哪家权重来源，不接受镜像获取方式；`placement.pd` 为 PD 分离部署，见下）。对外模型名被未在删除的部署占用时返回 409 `SERVED_NAME_IN_USE`，`params` 包含 `served_name`、`deployment`、`deployment_id`；不填写时取模型名，同样校验 | JWT |
@@ -502,7 +502,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/deployments/{id}/draft` | 把部署读回成创建它的请求（`deployment`），附 `revision` 与不可编辑字段 `locked`；部署页的编辑与「克隆并修改」由此回填。见[编辑部署](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}` | 编辑部署：提交改过的 draft 与 `base_revision`，`?dry_run=1` 只返回变更计划。启动配置的变化按 `apply`（`rolling`/`all`/`none`）替换实例。见[编辑部署](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/requirements` | 替换普通单机部署的节点条件与放置策略，返回详情；只影响之后启动的副本，运行中副本不迁移；见[修改节点条件](#修改节点条件) | JWT |
-| GET | `/api/v1/deployments/{id}` | 部署详情，无查询参数；直接返回部署对象，未找到 404。含 `instances`、`node_requirements`、`node_requirement_labels`、`placement_strategy`、`ready_replicas`（PD 看各角色）、`health`、`tokenize_enabled`、`max_replicas`；`placement_status` 给出调度失败原因，`retry_exhausted` 标识耗尽重试次数的副本，`restart_requested_at` 标识滚动重启，多机副本见 `units`。见[查询部署详情](#查询部署详情) | JWT |
+| GET | `/api/v1/deployments/{id}` | 部署详情，无查询参数；直接返回部署对象，未找到 404。含 `state`（唯一该显示的状态，睡眠时为 `asleep`/`sleeping`）、`asleep_replicas`（因睡眠不被派发的副本数）、`sleep_level`（引擎上报的级别）、`instances`、`node_requirements`、`node_requirement_labels`、`placement_strategy`、`ready_replicas`（与 `asleep_replicas` 是同一组副本的两种计数，PD 按各角色汇总）、`health`、`tokenize_enabled`、`max_replicas`；`placement_status` 给出调度失败原因，`retry_exhausted` 标识耗尽重试次数的副本，`restart_requested_at` 标识滚动重启，多机副本见 `units`。见[查询部署详情](#查询部署详情)与[部署的睡眠状态](#部署的睡眠状态stateasleep_replicassleep_level) | JWT |
 | PUT | `/api/v1/deployments/{id}/routing` | 修改路由策略（`least_request`、`prefix_affinity` 或 `failover`） | JWT + 管理员 |
 | PUT | `/api/v1/deployments/{id}/dgpu` | 调整单机 dGPU 部署的 `vram_limit_gib`，返回立即生效的 `live` 与待重启的 `pending` 实例；见[调整显存上限](#调整显存上限) | JWT |
 | PUT | `/api/v1/deployments/{id}/health-check` | 开关部署的健康检查并设阈值：`{"enabled": true, "threshold_sec": 60}`（`threshold_sec` 1–600，省略或 0 保持当前）。开启要求模型提供 chat 或 embedding，否则 400 `FIELD_INVALID`（`params.field` 为 `health_check`）；阈值越界 400 `FIELD_INVALID`；不重启实例，下一轮检查即按新设置。返回部署详情 | JWT |
@@ -537,8 +537,20 @@ macOS 忽略 `no_systemd`。
 ### 部署列表的筛选与返回字段
 
 `q` 匹配部署名称、对外模型名、模型名。`state` 对应界面显示的状态：`running`、`starting`、`pulling`、
-`pending`、`failed`、`stopped`、`deleting`；删除中状态优先于运行时状态。
-可排序的列为 `name`、`model`、`state`、`replicas`、`created_at`。
+`pending`、`offline`、`failed`、`stopped`、`deleting`、`sleeping`、`asleep`；删除中状态优先于运行时状态。
+取值必须是其中之一，否则 400 `LIST_FILTER_INVALID`（不静默匹配全部）。
+可排序的列为 `name`、`model`、`state`、`replicas`、`created_at`；`sort=state` 按的就是下面这个 `state`。
+
+`state` 是每行唯一该显示的状态，`runtime_state` 不是：睡着的引擎仍在运行，`runtime_state` 一直是 `running`，
+而网关已经不再向它派发请求。取值的优先级是：
+
+- 删除中的部署算 `deleting`，优先于运行时的任何状态。
+- 其余情况下等于 `runtime_state`，只有两种例外，且只在 `runtime_state` 为 `running` 时才替换它：网关因所需副本全部睡着而拒绝所有请求时算 `asleep`，
+  睡眠指令已被接受、但还有引擎没报出级别时算 `sleeping`（详见[查询部署详情](#查询部署详情)）。
+- `offline` 是 `runtime_state` 自己的取值：没有可服务的副本（在线节点上没有非 headless、且所在多机代完整的运行中实例），
+  同时有运行中实例停在已离线的节点上。
+- 只有部分副本睡着的部署仍能服务，`state` 保持 `running`，睡着的副本数由 `asleep_replicas` 给出；
+  这样的行同样能被 `state=running` 筛到。
 
 成功返回 HTTP 200。外层响应中，`items` 为部署对象数组，`total` 为筛选后的总命中数（整数）；
 启用分页时另有整数 `page`、`page_size`。空结果为 `items: []`，超过最后一页也返回空数组。
@@ -550,8 +562,12 @@ macOS 忽略 `no_systemd`。
 | 身份与创建时间 | `id`、`name`、`created_at` |
 | 模板与模型 | `template_id`、`template_deviated`、`engine`、`image`、`model_id`、`model_name`、`served_name` |
 | 节点 | `node_uuid`、`node_name`、`node_names` |
-| 状态与副本 | `desired_state`、`runtime_state`、`sleepable`、`replicas`、`ready_replicas`、`health`、`preparation` |
+| 状态与副本 | `desired_state`、`runtime_state`、`state`、`sleepable`、`asleep_replicas`、`sleep_level`、`replicas`、`ready_replicas`、`health`、`preparation` |
 | 操作 | `operations` |
+
+`state`、`asleep_replicas`、`sleep_level` 在列表行上与详情里同名字段含义和取值都相同（见[查询部署详情](#查询部署详情)）；
+只看 `runtime_state` 会漏掉睡眠——睡着的引擎仍报 `running`。
+`asleep_replicas` 与 `sleep_level` 为 0 时整个字段省略，与详情一致。
 
 分页列表的 `preparation` 是 active 部署中第一个尚未准备完成的模型文件信息，没有时省略；
 完整准备情况在详情的 `model_progress` 中。
@@ -588,8 +604,11 @@ macOS 忽略 `no_systemd`。
 | `served_name` | 字符串 | 发起推理请求时填写的 `model` 名称 |
 | `model_id`、`model_name` | 整数、字符串 | 关联的已注册模型 ID 与名称 |
 | `desired_state` | 字符串 | 期望状态：`active`（维持运行）、`stopped`（停止）、`deleting`（删除中） |
-| `runtime_state` | 字符串 | 当前运行状态：`pending`、`pulling`、`starting`、`running`、`failed`、`stopped` |
-| `replicas`、`ready_replicas` | 整数 | 普通部署的目标副本数、当前所有 rank 均运行的副本数；PD 部署省略 `ready_replicas`，改看 `pd.roles[].ready` |
+| `runtime_state` | 字符串 | 当前运行状态：`pending`、`pulling`、`starting`、`running`、`offline`、`failed`、`stopped`。只由实例与期望状态推出，不含睡眠：睡着的引擎仍是 `running` |
+| `state` | 字符串 | 唯一该显示的状态。取值同列表筛选的 `state`：删除中优先给 `deleting`；否则等于 `runtime_state`，只有网关因所需副本全部睡着而拒绝所有请求时才改为 `asleep`（所有睡着副本的引擎都已报出级别）或 `sleeping`（指令已被接受、网关已拒绝，但还有引擎没报出级别） |
+| `asleep_replicas`（可选） | 整数 | 因睡眠不被网关派发的副本数，跨全部角色；与 `ready_replicas` 是同一组副本的两种计数，两者相加是网关能触达的副本数。0 时省略 |
+| `sleep_level`（可选） | 整数 | 引擎上报的最深睡眠级别（1 或 2）；全部副本清醒、或睡眠指令尚未执行时省略。缺省不等于清醒，判断睡没睡看 `state` |
+| `replicas`、`ready_replicas` | 整数 | 部署的副本数、当前所有 rank 均运行且清醒的副本数。PD 部署按各角色的 unit 汇总（`replicas` 为 `pd.roles[].desired` 之和，`ready_replicas` 为 `pd.roles[].ready` 之和），与列表行给出的同一对数一致；`asleep_replicas` 永不超过 `replicas` |
 | `health` | 对象 | 健康检查状态与最近结果，见[健康检查](#健康检查) |
 | `instances`（可选） | 对象数组 | 部署的实例；`uuid` 标识实例，`state` 表示状态，`node_uuid` 与 `gpu_indexes` 表示运行位置 |
 | `model_progress`（可选） | 对象数组 | 模型文件的准备状态；`state` 是文件状态，`progress` 为 0–1 的进度，`message` 为相关说明 |
@@ -609,6 +628,41 @@ macOS 忽略 `no_systemd`。
 - 普通部署的 `retry_exhausted{index,failed_attempts,last_failure}` 指出耗尽重试次数的副本，可用 `units/retry` 重试；多机部署的 `units[]` 给出各副本 leader 与 `followers[]`。调整方式见[普通部署的副本调整](#普通部署的副本调整)。
 
 请求示例见[查询一个部署的详情](api-conventions.md#3-查询一个部署的详情)。
+
+### 部署的睡眠状态（`state`、`asleep_replicas`、`sleep_level`）
+
+休眠的部署在 `runtime_state` 里看不出任何区别：引擎进程还在跑，它只是被网关拒绝派发。
+回答「这个部署现在睡没睡」的是 `state`、`asleep_replicas` 与 `sleep_level` 这三个字段，部署详情与
+列表行（分页列表的 `items[]`）同名同义、取值相同，`state` 筛选也按同一个 `state` 匹配。
+
+这三个字段都是**读的时候算出来的**，不落库：唯一的持久事实是每个实例被下令的睡眠意图与自己上报的
+`sleep_level`，判定条件与网关本身拒绝请求的条件是同一个。
+
+- **`asleep_replicas`**：网关因睡眠而不予派发的副本数，跨全部角色（PD 部署按各角色的 unit 计）。
+  副本按其 leader 判定：leader 在运行，且已被下令睡眠（意图尚未执行也算）或仍在上报睡眠级别，这个副本就算睡着。
+  所以**指令刚发出、引擎还在换出显存的时候，副本就已经计入 `asleep_replicas`**，因为它确实已经不接收请求了。
+  它与 `ready_replicas` 是同一组副本的两种计数：两者相加是网关**够得到**的副本数，因别的原因够不到的副本
+  （已停止、已失败、节点失联、多机副本缺 rank）两个都不计。因别的原因挂掉的副本永远不会被算成睡着。
+- **`state`**：见上文优先级。`asleep` 与 `sleeping` 只在网关**一个请求都不接**时出现——
+  它需要的某个角色没有任何清醒副本，而这些拒绝它的角色**全都**是因为睡着（有睡着副本、没有清醒副本），
+  不是因为挂了。只睡了一部分副本的部署照常服务，`state` 保持 `running`，醒着的副本继续接收请求，
+  `asleep_replicas` 说出剩下的有多少不在服务；这样的一行既不会伪装成完全健康，也不会伪装成整体睡着。
+  `deleting` 先于以上全部判断。
+- **`sleeping` 与 `asleep` 的界线**：所有睡着副本的引擎都报出了被下令的级别时是 `asleep`；
+  只要还有一个没到位就是 `sleeping`。改级别（例如 L1 改成 L2）也要经过清醒再睡，
+  期间行显示 `sleeping` 而不是原地不动的 `asleep`，用户点下去之后能看出指令在执行。
+- **`sleep_level`**：引擎上报的最深级别（1 或 2）。全部副本清醒时为 0（字段省略）；
+  指令已发出、引擎还没睡下去时同样没有值——**别把缺省当成「没有睡」**，
+  判断睡没睡看 `state` 与 `asleep_replicas`，`sleep_level` 只回答「睡到多深」。
+- **什么都不剩的部署不算睡着**：没有任何可服务副本时（实例已停止或已失败），没有东西可唤醒，
+  `state` 给出失败/停止本身的状态，`asleep_replicas` 为 0，即使实例上还留着睡眠意图。
+- **PD 部署**：`pd.roles[].asleep` 是同一批副本按角色拆开的结果（`ready` + `asleep` 是该角色网关够得到的 unit 数）。
+  模式允许跑空、且已整体睡着的角色（如 vLLM NIXL 的 prefill）不算拒绝服务，
+  只有解码这类必须存在的角色全睡时部署才读作 `asleep`/`sleeping`。
+
+实例级的睡眠字段（`instances[].asleep`、`instances[].sleep_level`、`instances[].desired_sleep`、
+`can_sleep_alone` / `can_wake_alone`）见[实例与部署路由条目](#deployments--instances部署与实例)；
+操作步骤见[操作 sleep / wake](../how-to/sleep-wake.md)。
 
 ### 候选池查询
 

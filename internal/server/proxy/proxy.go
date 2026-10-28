@@ -357,8 +357,9 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 			return
 		}
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/api/v1/playground")
-		deployment, tgt, pinned, status, message := p.pinnedTarget(r, modelName)
-		asleep := false
+		// A pinned refusal for sleep is the same event the load balancing path
+		// accounts as asleep_503, not a generic 5xx.
+		deployment, tgt, pinned, status, message, asleep := p.pinnedTarget(r, modelName)
 		if !pinned {
 			deployment, tgt, status, message, asleep = p.selectDeploymentInstanceWithKey(modelName, p.affinityKey(modelName, r))
 		}

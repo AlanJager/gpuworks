@@ -7,6 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -160,7 +161,10 @@ func (a *apiHandlers) benchmarkTargetSnapshot(targetKind, entry, baseURL, model,
 		snapshot.NodeName = displayBenchmarkNodeName(node)
 	}
 	for _, instance := range instances {
-		if instance.State != proto.InstRunning || instance.SleepLevel != 0 {
+		// planning.InstanceAsleep, not the reported level: a replica under a
+		// sleep order is already refused by the gateway and holds no GPU it
+		// would answer from.
+		if instance.State != proto.InstRunning || planning.InstanceAsleep(&instance) {
 			continue
 		}
 		node, err := a.d.Store.NodeByID(instance.NodeID)

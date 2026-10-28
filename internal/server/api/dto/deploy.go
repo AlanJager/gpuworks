@@ -117,7 +117,12 @@ type Deployment struct {
 	// card; absent for a deployment on whole cards. A change replaces the
 	// instances, so an instance's own vram_limit_bytes may trail it.
 	VRAMLimitBytes int64 `json:"vram_limit_bytes,omitempty"`
-	Replicas       int   `json:"replicas"`
+	// Replicas is how many replicas the deployment has, and it is the
+	// denominator of the sleep count: AsleepReplicas never exceeds it. A PD
+	// deployment has one replica per role unit, so this totals the roles the
+	// way the list row does rather than echoing the stored field, which PD
+	// creation forces to 1 and which would print "2/1 replicas".
+	Replicas int `json:"replicas"`
 	// MaxReplicas is how many replicas the deployment may be scaled to.
 	MaxReplicas   int    `json:"max_replicas"`
 	RoutingPolicy string `json:"routing_policy"`
@@ -126,8 +131,10 @@ type Deployment struct {
 	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
 	// ReadyReplicas counts the replicas the gateway would serve a request from
 	// now: running, on an online node, every rank of a multi-node one up, and
-	// awake. It is absent for a PD deployment, whose roles count their own
-	// (pd.roles[].ready, the same replicas).
+	// awake. A PD deployment counts the same replicas the list row does, one
+	// per role, so it totals pd.roles[].ready rather than omitting the field:
+	// the drawer prints it beside AsleepReplicas, and a missing half of that
+	// pair left the sleep count without the count it adds to.
 	//
 	// ReadyReplicas and AsleepReplicas are two counts of one set of replicas,
 	// judged the way the gateway judges them, so they never contradict each
