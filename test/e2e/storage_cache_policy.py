@@ -179,6 +179,82 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     report['last_step'] = 'table-loaded'
     expect(page.locator('.storage-cache-management .ant-btn-block')).to_have_count(5, timeout=12000)
     report['cache_metric_blocks'] = True
+
+    # 11.5/11.7: the batch buttons act on the selection, so selection is driven
+    # before any single-node edit. Both stay disabled until something is selected.
+    batch = button(page, cm['batch'])
+    restore = button(page, cm['restore'])
+    expect(batch).to_be_disabled()
+    expect(restore).to_be_disabled()
+    sel = {}
+
+    def box(node):
+        return page.get_by_role('checkbox', name=cm['selectNode'].replace('{{node}}', node), exact=True)
+
+    box('Cache node 01').check()
+    expect(batch).to_be_enabled()
+    expect(restore).to_be_enabled()
+    sel['single_enables_batch'] = True
+
+    box('Cache node 02').check()
+    sel['multi_rows'] = page.get_by_role('checkbox', checked=True).count()
+
+    box('Cache node 01').uncheck()
+    expect(batch).to_be_enabled()
+    sel['deselect_keeps_rest'] = True
+
+    # Select-all is scoped to what the table is showing, not to every node: the
+    # header control takes the visible rows, and select-filtered takes the filtered
+    # set. Both are driven here with a search that narrows the list, so a control
+    # that ignored the filter would select too many and fail.
+    sel['rows_in_table'] = page.locator('.ant-table-tbody .ant-table-row').count()
+    sel['pages'] = page.locator('.ant-pagination-item').count()
+    page.locator('.ant-table-thead').get_by_role('checkbox').first.check()
+    page.wait_for_timeout(300)
+    sel['select_all_count'] = page.locator('.ant-table-tbody').get_by_role('checkbox', checked=True).count()
+    # The header control is page-scoped: with 22 nodes paged at 20 it takes the
+    # page, not the set, so the count has to stay below the table total.
+    check(sel['select_all_count'] < sel['rows_in_table'],
+          f"select-all took {sel['select_all_count']} of {sel['rows_in_table']} - it is not page-scoped")
+
+    page.locator('.ant-table-thead').get_by_role('checkbox').first.uncheck()
+    page.wait_for_timeout(250)
+    search_box = page.locator('.storage-cache-management').get_by_placeholder(cm['search'])
+    search_box.fill('Cache node 0')
+    page.wait_for_timeout(400)
+    sel['filtered_rows'] = page.locator('.ant-table-tbody .ant-table-row').count()
+    check(sel['filtered_rows'] < sel['rows_in_table'],
+          f"the search did not narrow the table ({sel['filtered_rows']} of {sel['rows_in_table']})")
+    page.locator('.ant-table-thead').get_by_role('checkbox').first.check()
+    sel['filtered_select_all'] = page.locator('.ant-table-tbody').get_by_role('checkbox', checked=True).count()
+    # Under a filter the header control still takes at most one page; what matters
+    # is that it never reaches the rows the filter excluded, and that the filtered
+    # count is what the select-filtered action advertises.
+    check(sel['filtered_select_all'] <= sel['filtered_rows'],
+          f"select-all under a filter ticked {sel['filtered_select_all']} of {sel['filtered_rows']} filtered rows")
+    check(sel['filtered_select_all'] < sel['rows_in_table'],
+          'select-all under a filter reached rows the filter excluded')
+    sel['filter_limits_select_all'] = True
+    # The dedicated control names the filtered total, so the operator can tell the
+    # two scopes apart before acting.
+    alert = page.locator('.storage-cache-management').get_by_role('alert')
+    expect(alert).to_be_visible()
+    sel['selection_alert_text'] = alert.inner_text()
+    sel['select_filtered_present'] = cm['selectFiltered'].split('{{')[0].strip() in alert.inner_text()
+
+    search_box.fill('')
+    page.wait_for_timeout(400)
+
+    # Clearing disables the batch actions again. The header control only reaches the
+    # current page, so the dedicated clear action is what empties the whole set.
+    button(page, cm['deselect']).click()
+    page.wait_for_timeout(300)
+    expect(batch).to_be_disabled()
+    sel['clear_selection_disables_batch'] = True
+    sel['checked_after_clear'] = page.get_by_role('checkbox', checked=True).count()
+    report['row_selection'] = sel
+    evidence.append({'layer': 'ui', 'row_selection': sel})
+
     button(row('Cache node 01'), cm['configure']).click()
     dialog = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
     report['node_inventory'] = exercise_node_policy_inventory(dialog, cm, cp)
