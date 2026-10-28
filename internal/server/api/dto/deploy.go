@@ -145,12 +145,10 @@ type Deployment struct {
 	// move (after_sec 0 never moves them).
 	IdleSleep       IdleSleep       `json:"idle_sleep"`
 	NodeReplacement NodeReplacement `json:"node_replacement"`
-	// ServiceLevel is how the deployment shares its GPUs with others:
-	// resident, online, shared or offline.
+	// ServiceLevel is resident, online, shared or offline; SleepHeld says an
+	// operator's or a schedule's sleep holds it, so a request does not wake it.
 	ServiceLevel string `json:"service_level"`
-	// SleepHeld says an operator or a schedule put the deployment to sleep,
-	// so a request does not wake it.
-	SleepHeld bool `json:"sleep_held"`
+	SleepHeld    bool   `json:"sleep_held"`
 	// WakeWaitingSince is when the oldest wake of the deployment that waits
 	// for room started waiting; absent when none waits.
 	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`
@@ -413,9 +411,7 @@ type DeployRequest struct {
 	QuickParamsUnset []string `json:"quick_params_unset,omitempty"`
 	ExtraArgs        string   `json:"extra_args"`
 	Sleepable        bool     `json:"sleepable"`
-	// ServiceLevel is how the deployment shares GPUs: resident (the default
-	// when absent), online, shared or offline. Any but resident needs a
-	// sleepable single-node deployment.
+	// ServiceLevel: resident when absent (PUT .../service-level checks).
 	ServiceLevel  string         `json:"service_level,omitempty"`
 	Replicas      int            `json:"replicas,omitempty"`
 	RoutingPolicy string         `json:"routing_policy,omitempty"`

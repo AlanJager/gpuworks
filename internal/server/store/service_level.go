@@ -15,6 +15,9 @@ const (
 	ServiceLevelOffline  = servicelevel.Offline
 )
 
+// ValidServiceLevel says level is one of the ServiceLevel* constants.
+func ValidServiceLevel(level string) bool { return servicelevel.Valid(level) }
+
 // addDeploymentServiceLevel adds the service level and the held-sleep flag.
 // An existing deployment reads as resident with no held sleep, so nothing
 // about it changes: it shares no cards and a request does not wake it unless

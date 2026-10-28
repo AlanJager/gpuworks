@@ -9,7 +9,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -30,11 +29,11 @@ func (a *apiHandlers) setServiceLevel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	if !servicelevel.Valid(req.Level) {
+	if !store.ValidServiceLevel(req.Level) {
 		writeProductError(w, http.StatusBadRequest, messages.ErrorServiceLevelInvalid, "level is resident, online, shared or offline", map[string]any{"level": req.Level})
 		return
 	}
-	if req.Level != servicelevel.Resident {
+	if req.Level != store.ServiceLevelResident {
 		if code := planning.SleepEligibility(dep); code != "" {
 			writeSleepRefusal(w, http.StatusBadRequest, &planning.SleepRefusal{Code: code, Params: map[string]any{"engine": dep.Engine}})
 			return
@@ -44,7 +43,7 @@ func (a *apiHandlers) setServiceLevel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if req.Level == servicelevel.Online {
+	if req.Level == store.ServiceLevelOnline {
 		other, err := a.onlineSharingCards(dep)
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
@@ -79,7 +78,7 @@ func (a *apiHandlers) onlineSharingCards(dep *store.Deployment) (string, error) 
 	}
 	for i := range sharing {
 		other := &sharing[i]
-		if other.ID == dep.ID || other.ServiceLevel != servicelevel.Online {
+		if other.ID == dep.ID || other.ServiceLevel != store.ServiceLevelOnline {
 			continue
 		}
 		insts, err := a.d.Store.InstancesForDeployment(other.ID)
@@ -99,7 +98,7 @@ func (a *apiHandlers) onlineSharingCards(dep *store.Deployment) (string, error) 
 // when the request names none.
 func createServiceLevel(level string) string {
 	if level == "" {
-		return servicelevel.Resident
+		return store.ServiceLevelResident
 	}
 	return level
 }
@@ -110,11 +109,11 @@ func createServiceLevel(level string) string {
 // to keep from happening: it has no cards yet.
 func createServiceLevelValid(w http.ResponseWriter, req dto.DeployRequest, engine string, pd bool) bool {
 	level := createServiceLevel(req.ServiceLevel)
-	if !servicelevel.Valid(level) {
+	if !store.ValidServiceLevel(level) {
 		writeProductError(w, http.StatusBadRequest, messages.ErrorServiceLevelInvalid, "level is resident, online, shared or offline", map[string]any{"level": req.ServiceLevel})
 		return false
 	}
-	if level == servicelevel.Resident {
+	if level == store.ServiceLevelResident {
 		return true
 	}
 	if !req.Sleepable {
