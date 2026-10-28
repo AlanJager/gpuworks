@@ -495,4 +495,70 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# The 910B and 910C profiles above run sglang; this is the vendor's published
+# vLLM recipe for 950DT, which serves the model on one device from MXFP8
+# weights of its own. Static kernel generation makes the first start slow - the
+# engine is not ready until graph capture finishes. No 950DT hardware was
+# available, so these arguments are the published recipe, not a measured one.
+- name: mxfp8-vllm-ascend-950dt-c275cc09
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
+  weights:
+    quantization: mxfp8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.6-35B-A3B-w8a8-mxfp8
+        revision: c275cc095c8c3eb13c326e3f70b9dd0fd2021c98
+  weight_bytes: 39706993876
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --safetensors-load-strategy
+  - lazy
+  - --max-model-len
+  - '135168'
+  - --max-num-seqs
+  - '128'
+  - --max-num-batched-tokens
+  - '4096'
+  - --gpu-memory-utilization
+  - '0.90'
+  - --enable-prefix-caching
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"ascend_compilation_config":{"enable_npugraph_ex":true,"enable_static_kernel":true,"enable_super_kernel":false}}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '1'
+    VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: '3000'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_PROC_BIND: 'false'
+    OMP_NUM_THREADS: '1'
+    OPENBLAS_NUM_THREADS: '1'
+    TASK_QUEUE_ENABLE: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 1: return reject(\"the published 950DT recipe runs a single device\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 1, \"TP_SIZE\": 1, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]

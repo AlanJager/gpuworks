@@ -247,4 +247,71 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# This model had no Ascend profile at all. Upstream declares it for A2, A3 and
+# 950DT, but the A2 shape needs four nodes and the A3 shape two, so 950DT is
+# the only single-node recipe it publishes. The upstream reasoning parser for
+# this recipe is written as glm47; glm45 is carried here instead because that
+# is what this model's other profiles declare, and every vendor's profile of a
+# model has to agree on the parsers
+# (TestNonNVIDIAChatSpecsInheritModelFunctionalArgs). Upstream also notes that
+# only startup and short requests were validated - the 135k context was not.
+# No 950DT hardware was available here either.
+- name: mxfp4-vllm-ascend-950dt-1e0da06c
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
+  weights:
+    quantization: mxfp4
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/GLM-5.2-w4a4c8-mxfp4
+        revision: 1e0da06cb1abb373ddff2c6a0f1f70b47f746e20
+  weight_bytes: 418673621918
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --api-server-count
+  - '1'
+  - --enable-expert-parallel
+  - --max-model-len
+  - '135000'
+  - --max-num-batched-tokens
+  - '16384'
+  - --max-num-seqs
+  - '20'
+  - --gpu-memory-utilization
+  - '0.9'
+  - --enable-prefix-caching
+  - --trust-remote-code
+  - --enforce-eager
+  - --quantization
+  - ascend
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - glm47
+  - --reasoning-parser
+  - glm45
+  - --kv-cache-dtype
+  - fp8
+  - --additional-config
+  - '{"enable_flashcomm1":true,"enable_cpu_binding":true,"multistream_overlap_shared_expert":true,"enable_dsa_cp":true}'
+  env:
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '400'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    TASK_QUEUE_ENABLE: '1'
+    VLLM_ASCEND_ENABLE_FLASHCOMM1: '1'
+    VLLM_ASCEND_ENABLE_PREFETCH_MLP: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8: return reject(\"the published 950DT recipe runs exactly 8 devices\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 8, \"TP_SIZE\": 8, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text]

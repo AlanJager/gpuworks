@@ -361,4 +361,72 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# 950DT serves this model from W4A4-MXFP4 weights across 8 devices with expert
+# parallelism, where the A3 profile above uses W8A8-MTP across 16. The two are
+# different quantizations with different parallel shapes, so neither recipe can
+# stand in for the other. No 950DT hardware was available, so these arguments
+# are the published recipe, not a measured one.
+- name: mxfp4-vllm-ascend-950dt-446ef8e9
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
+  weights:
+    quantization: mxfp4
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Qwen3.5-397B-A17B-w4a4-mxfp4
+        revision: 446ef8e99564a9c2d0b9fd69a6b2f38cfa3b4428
+  weight_bytes: 231855876735
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])950DT([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --distributed-executor-backend
+  - mp
+  - --enable-expert-parallel
+  - --seed
+  - '1024'
+  - --quantization
+  - ascend
+  - --max-num-seqs
+  - '128'
+  - --max-model-len
+  - '133000'
+  - --max-num-batched-tokens
+  - '8192'
+  - --trust-remote-code
+  - --enable-prefix-caching
+  - --gpu-memory-utilization
+  - '0.90'
+  - --async-scheduling
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - qwen3_coder
+  - --reasoning-parser
+  - qwen3
+  - --mm-encoder-tp-mode
+  - data
+  - --speculative-config
+  - '{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"enable_cpu_binding":true,"enable_fused_mc2":1,"enable_flashcomm1":true}'
+  env:
+    HCCL_BUFFSIZE: '400'
+    HCCL_INTRA_ROCE_ENABLE: '0'
+    HCCL_OP_EXPANSION_MODE: AIV
+    VLLM_ASCEND_ENABLE_PREFETCH_MLP: '1'
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 8: return reject(\"the published 950DT recipe runs exactly 8 devices\")\n    if gpu.min_memory_gib < 96: return reject(\"each device requires at least 96 GiB\")\n    return {\"GPU_COUNT\": 8, \"TP_SIZE\": 8, \"SP_DEGREE\": 1}\n"
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]
