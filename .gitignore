@@ -11,6 +11,7 @@ identity.json
 internal/server/webui/dist/*
 !internal/server/webui/dist/.gitkeep
 *.log
+__pycache__/
 /secrets/*
 !/secrets/cloud-providers.env.example
 !/secrets/i18n-llm.env.example
