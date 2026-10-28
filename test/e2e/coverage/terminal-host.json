@@ -99,7 +99,8 @@
     "19.6": "Every host session audit row is compared field-exact between the API and SQLite: admin principal, selected node, host target with empty ref, client IP, started/ended timestamps, close reason and byte counters with input bytes equal to the real WS binary count; metadata keys are exact and contain no command/output/token/password content.",
     "22.1": "The admin Nodes menu popup, the explicit /nodes/{uuid}/terminal?target=host deep link and a real reload each establish distinct audited host PTYs with the correct title, host banner, WS target and URL query, verified against independent host files (PID/start_ticks, agent ancestry); a disconnected context proves release.",
     "22.3": "A non-admin user sees the Nodes menu and the enabled terminal button as the product currently renders them, but the popup and the host deep link get preflight 403 with the localized permission text, zero new WS/audit, and a direct upgrade-shaped API request is refused 403 ADMINISTRATOR_REQUIRED.",
-    "22.7": "The node-row terminal popup opens the exact /nodes/{uuid}/terminal URL with window.opener===null while the explicit host deep link and reload still reach the real PTY; an unknown node yields node-detail 404 plus preflight 200 can_open=false with the raw server reason, never an SPA-200 success."
+    "22.7": "The node-row terminal popup opens the exact /nodes/{uuid}/terminal URL with window.opener===null while the explicit host deep link and reload still reach the real PTY; an unknown node yields node-detail 404 plus preflight 200 can_open=false with the raw server reason, never an SPA-200 success.",
+    "22.6": "Real Tab presses from the page body reach the terminal entry; while unfocused it paints no outline (0px/none), and once keyboard-focused it matches :focus-visible and reports a solid 3px rgb(120,189,250) ring that is a lighter derivative of the theme primary #005bd4 read from ui/src/theme/tokens.ts; verified en+zh and killed by removing antd genFocusOutline."
   },
   "missing": [
     "MISSING: checklist 19.3 (UTF-8 across frames, continuous output and resize/SIGWINCH)",
@@ -124,24 +125,25 @@
       "19.6",
       "22.1",
       "22.3",
+      "22.6",
       "22.7"
     ],
     "authority": "terminal-host (sole host-PTY authority; container terminal keeps its own contract)",
-    "normal_binary_sha256": "607839573e79e129d66af1d2f0200ad4cd037c0f88bf9d0dbfc00f6af779fba2",
+    "normal_binary_sha256": "b9c80d861d720e4ffa23e097a244d65415b267f1ba97e40209d0a4dccfd42463",
     "agent_binary_sha256": "0ff06d0af402ef1da40777cca67399266d98ee93f2f03d6f7fa9eadd7c3a4920",
     "contract": "v3 strict-200 cleanup contract + settle-fixed resize oracle; sessions sha256 fc9686dccfa9578ab03c16b477d8aa9c76f9183ce122742401e6cc1bacd6d73c",
     "normal_runs": [
       {
         "locale": "en",
-        "run_id": "20261027T150816Z-db29c298",
-        "report": "secrets/e2e/terminal-host-v3-en-20261027-03/report.json",
-        "report_sha256": "3a1265a4d44b86a2f41afdfb94f2bb579a95cc0990aaff2b9b42285f554dff96"
+        "run_id": "20261028T065333Z-23f69db5",
+        "report": "secrets/e2e/20261028T065333Z-23f69db5/report.json",
+        "report_sha256": "14056e1b7367903e7800e7f51aa7e5b7ac9dab8a5e8bd529f6eb3a0ad42608bf"
       },
       {
         "locale": "zh",
-        "run_id": "20261027T151027Z-f290cbf5",
-        "report": "secrets/e2e/terminal-host-v3-zh-20261027/report.json",
-        "report_sha256": "e20a64b974cfdae6c4a334305d3863354b734c4b9b717ec011dfe206c4f63d82"
+        "run_id": "20261028T065536Z-2cf5e6e9",
+        "report": "secrets/e2e/20261028T065536Z-2cf5e6e9/report.json",
+        "report_sha256": "5ab4efe3f481bf9842a620e9a81f4b4afc1fab342494f567ec28b71f59a8e584"
       }
     ],
     "fault_runs": [
@@ -243,6 +245,25 @@
         "binary_sha256": "e0a2d8b0c0c30c8353fe492ad3d9d4e8b2c0f65a4882e077e2ff5115aba1e279",
         "review_note": "Killed at the real idle wait: with watchIdle neutered the session never exits, so the 95s bounded wait for the localized exited banner times out.",
         "expectation_correction": null
+      },
+      {
+        "item": "22.6",
+        "name": "terminal-focus-ring-removed",
+        "cohort": "terminal-fault-cohort-v2",
+        "run_id": "20261028T064703Z-b77ccc03",
+        "report_sha256": "55ff32a56adf81d3c3d41c3bf20137c12344232469a4f13c2a77450147b8c1e7",
+        "binary_sha256": "f0549fd51a6d8d52fb58d4a90024fa478f731ca761aa271bcdd3727cae6a9ec0",
+        "mutation": {
+          "file": "ui/node_modules/antd/es/style/index.js",
+          "symbol": "genFocusOutline",
+          "normal_sha256": "ec0369bb5031e06e9f230dcfb2de778b36fac0c09e2f1901c95f93d15b5084d3",
+          "before": "outline: `${unit(token.lineWidthFocus)} solid ${token.colorPrimaryBorder}`",
+          "after": "outline: 'none'",
+          "ui_rebuilt": true,
+          "source_restored": true
+        },
+        "leaked_containers_swept": [],
+        "review_note": "Killed at the 22.6 keyboard-focus oracle: with antd's genFocusOutline reduced to outline:'none' the terminal entry still matched :focus-visible after real Tab presses but reported outline 'rgb(74, 76, 79) none 0px', so the require that a solid ring is painted fails before any PTY claim. The normal runs on the restored binary report a 3px solid rgb(120,189,250) ring derived from the theme primary #005bd4, and 0px/none while unfocused, in both locales."
       }
     ],
     "iterations": "first en run failed on the resize settle race (20261027T150221Z-25cf6da9, archived unchanged); oracle hardened to quiescent-frame + WINCH-last-line settle, no assertion weakened; diagnostic-only run 20261027T150515Z-43f5c989",

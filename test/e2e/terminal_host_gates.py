@@ -105,8 +105,58 @@ def permissions(owner, sessions, admin_context, parent, locale):
         'code': 'ADMINISTRATOR_REQUIRED', 'created_audits': 0}
 
 
+def keyboard_focus(owner, page, locale):
+    """22.6: real Tab keypresses reach the terminal entry and the focused
+    control reports the product focus-visible ring through computed style.
+
+    The theme value is read from the stylesheet rule the product ships, never
+    hardcoded, and the unfocused control is required to differ from it, so a
+    ring that is always painted cannot satisfy this gate.
+    """
+    row, text = node_row(page, owner, owner.first, locale)
+    control = row.get_by_role('button', name=text['action']['terminal'], exact=True)
+    # Theme semver: the ring must derive from the product's own primary token,
+    # so a hardcoded or foreign colour cannot pass.
+    tokens = (ROOT / 'ui/src/theme/tokens.ts').read_text()
+    primary = re.search(r'primary:\s*"#([0-9a-fA-F]{6})"', tokens)
+    require(primary is not None, 'no theme primary token to compare the focus ring against')
+    base = [int(primary[1][index:index + 2], 16) for index in (0, 2, 4)]
+
+    def rgb(value):
+        found = re.match(r'rgba?\(([^)]+)\)', value or '')
+        require(found is not None, 'focus colour is not a computed rgb value: ' + repr(value))
+        return [int(part.strip()) for part in found[1].split(',')[:3]]
+
+    rest = control.evaluate("el => { const s = getComputedStyle(el); "
+                            "return {width: s.outlineWidth, style: s.outlineStyle, color: s.outlineColor}; }")
+    require(rest['width'] in ('0px', '0') , 'the terminal entry paints an outline before it is focused: ' + str(rest))
+    # Real keyboard navigation only: pointer focus does not set :focus-visible.
+    page.locator('body').click(position={'x': 2, 'y': 2})
+    focused, presses = False, 0
+    for presses in range(1, 61):
+        page.keyboard.press('Tab')
+        if control.evaluate('el => el === document.activeElement'):
+            focused = True
+            break
+    require(focused, 'no Tab sequence from the page body reached the terminal entry')
+    seen = control.evaluate("el => { const s = getComputedStyle(el); "
+                            "return {width: s.outlineWidth, style: s.outlineStyle, color: s.outlineColor, "
+                            "outline: s.outline, matches: el.matches(':focus-visible')}; }")
+    require(seen['matches'], 'keyboard-focused control does not match :focus-visible')
+    require(seen['style'] == 'solid' and seen['width'] not in ('0px', '0'),
+            'keyboard focus paints no visible solid ring: ' + str(seen))
+    ring = rgb(seen['color'])
+    require(ring != base, 'focus ring uses the raw primary instead of a distinct ring token: ' + str(ring))
+    require(all(ring[channel] >= base[channel] for channel in range(3)),
+            f'focus ring {ring} is not a lighter derivative of the theme primary {base}')
+    require(max(ring) > max(base), f'focus ring {ring} is not lighter than the theme primary {base}')
+    owner.report['keyboard_focus'] = {'entry': text['action']['terminal'], 'tab_presses': presses,
+        'theme_primary_rgb': base, 'unfocused': rest, 'focused': seen,
+        'source': 'real Tab keypresses; getComputedStyle ring compared to the theme primary token'}
+
+
 def exercise(parent, server, artifacts, report, locale, first, agent, agent_bin, token):
-    result = report['host_gates'] = {'status': 'NOT_RUN', 'candidate_items': ['19.3', '19.5', '19.6', '22.1', '22.3', '22.5', '22.7'],
+    result = report['host_gates'] = {'status': 'NOT_RUN', 'candidate_items': ['19.3', '19.5', '19.6', '22.1', '22.3', '22.5', '22.6', '22.7'],
         'scope': 'real Linux host PTY and navigation only; no container/GPU/runtime claim', 'coverage_credit': 0,
         'gaps': ['22.5: server preflight reasons remain English in zh; no generic translated empty-target screen',
                  'each invocation covers only its selected locale; final en+zh and scoped product mutants required']}
@@ -119,6 +169,7 @@ def exercise(parent, server, artifacts, report, locale, first, agent, agent_bin,
         owner.pages.append(page)
         sessions = Sessions(owner, context, locale)
         set_policy(owner, page, locale, dict(POLICY))
+        keyboard_focus(owner, page, locale)
         row, text = node_row(page, owner, owner.first, locale)
         popup = sessions.connected(sessions.popup(page, row, text['action']['terminal'], owner.first))
         sessions.utf8_resize(popup)
