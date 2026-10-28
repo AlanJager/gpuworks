@@ -230,11 +230,47 @@ func TestServerReleaseOlderThan(t *testing.T) {
 		{"2026-10-11T01:00:00Z", false}, // a server built before it
 		{"unknown", false},              // a local build: nothing is known
 	} {
-		if got := release.OlderThan(tc.built); got != tc.want {
-			t.Errorf("OlderThan(%s) = %v, want %v", tc.built, got, tc.want)
+		if got := release.OlderThan("abc1234", tc.built); got != tc.want {
+			t.Errorf("OlderThan(abc1234, %s) = %v, want %v", tc.built, got, tc.want)
 		}
 	}
-	if (ServerRelease{BuiltAt: "garbage"}).OlderThan("2026-10-11T00:00:00Z") {
+	if (ServerRelease{BuiltAt: "garbage"}).OlderThan("abc1234", "2026-10-11T00:00:00Z") {
 		t.Fatal("an unreadable release time must not hide catalog updates")
+	}
+}
+
+// Two version tags order by version, not build time: a patch to an older
+// release line is built after the newer line's release but is still older.
+func TestServerReleaseOrdersVersionTagsByVersion(t *testing.T) {
+	const early, late = "2026-11-01T00:00:00Z", "2026-11-20T00:00:00Z"
+	for _, tc := range []struct {
+		name                     string
+		theirs, theirBuilt       string
+		ours, ourBuilt           string
+		wantNewer, wantOlderThan bool
+	}{
+		{"a patch of the running line", "v26.11.1", late, "v26.11.0", early, true, false},
+		{"the next line", "v26.12.0", late, "v26.11.3", early, true, false},
+		{"a later patch of an older line", "v26.11.2", late, "v26.12.0", early, false, true},
+		{"a newer line built before an old-line patch", "v26.12.0", early, "v26.11.2", late, true, false},
+		{"months order numerically, not as text", "v26.10.0", early, "v26.9.4", late, true, false},
+		{"years order before months", "v27.1.0", early, "v26.12.9", late, true, false},
+		{"a pre-release tag falls back to build time", "v26.12.0", early, "v26.12.0-rc.1", late, false, true},
+		{"a git describe build falls back to build time", "v26.11.0", late, "v26.11.0-3-gabc1234", early, true, false},
+		{"a nightly falls back to build time", "v26.11.0", early, "abc1234", late, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			release := ServerRelease{ReleaseID: tc.theirs, BuiltAt: tc.theirBuilt}
+			if got := release.NewerThan(tc.ours, tc.ourBuilt); got != tc.wantNewer {
+				t.Errorf("%s NewerThan(%s) = %v, want %v", tc.theirs, tc.ours, got, tc.wantNewer)
+			}
+			if got := release.OlderThan(tc.ours, tc.ourBuilt); got != tc.wantOlderThan {
+				t.Errorf("%s OlderThan(%s) = %v, want %v", tc.theirs, tc.ours, got, tc.wantOlderThan)
+			}
+		})
+	}
+	// Versions order even when a build time is unreadable.
+	if (ServerRelease{ReleaseID: "v26.11.0", BuiltAt: "garbage"}).NewerThan("v26.11.1", "unknown") {
+		t.Fatal("v26.11.0 is not an update for v26.11.1")
 	}
 }

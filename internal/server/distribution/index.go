@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -198,40 +200,69 @@ func (f File) validate() error {
 }
 
 // NewerThan reports whether this release is an update for a server running
-// releaseID built at builtAt: a different release built later. Moving from a
-// nightly build to the release channel must not offer the older release as an
-// update. When either time is unreadable (a local build) any other release
-// counts as newer.
+// releaseID built at builtAt: a different release that orders after it (see
+// compareBuilds). Moving from a nightly build to the release channel must not
+// offer the older release as an update. When the two cannot be ordered (a
+// local build) any other release counts as newer.
 func (r ServerRelease) NewerThan(releaseID, builtAt string) bool {
 	if r.ReleaseID == releaseID {
 		return false
 	}
-	theirs, err := time.Parse(time.RFC3339, strings.TrimSpace(r.BuiltAt))
-	if err != nil {
-		return true
-	}
-	ours, err := time.Parse(time.RFC3339, strings.TrimSpace(builtAt))
-	if err != nil {
-		return true
-	}
-	return theirs.After(ours)
+	order, ok := compareBuilds(r.ReleaseID, r.BuiltAt, releaseID, builtAt)
+	return !ok || order > 0
 }
 
-// OlderThan reports whether this release was built before builtAt. The
-// catalogs a channel publishes come from its release's build, so a channel
-// whose release is older than the running server offers catalogs no newer
-// than the ones that server embeds. When either time is unreadable (a local
-// build) nothing is known to be older.
-func (r ServerRelease) OlderThan(builtAt string) bool {
-	theirs, err := time.Parse(time.RFC3339, strings.TrimSpace(r.BuiltAt))
-	if err != nil {
-		return false
+// OlderThan reports whether this release orders before a server running
+// releaseID built at builtAt (see compareBuilds). The catalogs a channel
+// publishes come from its release's build, so a channel whose release is
+// older than the running server offers catalogs no newer than the ones that
+// server embeds. When the two cannot be ordered (a local build) nothing is
+// known to be older.
+func (r ServerRelease) OlderThan(releaseID, builtAt string) bool {
+	order, ok := compareBuilds(r.ReleaseID, r.BuiltAt, releaseID, builtAt)
+	return ok && order < 0
+}
+
+// compareBuilds orders two builds. Two version tags (vYY.M.PATCH, see
+// docs/dev/release.md#版本号) order by version, so a patch to an older
+// release line built after a newer line is still older. Anything else, such
+// as a nightly's short commit, orders by build time. ok is false when the
+// times cannot be read.
+func compareBuilds(theirID, theirBuilt, ourID, ourBuilt string) (order int, ok bool) {
+	if theirs, ok := parseReleaseVersion(theirID); ok {
+		if ours, ok := parseReleaseVersion(ourID); ok {
+			return slices.Compare(theirs[:], ours[:]), true
+		}
 	}
-	ours, err := time.Parse(time.RFC3339, strings.TrimSpace(builtAt))
+	theirTime, err := time.Parse(time.RFC3339, strings.TrimSpace(theirBuilt))
 	if err != nil {
-		return false
+		return 0, false
 	}
-	return theirs.Before(ours)
+	ourTime, err := time.Parse(time.RFC3339, strings.TrimSpace(ourBuilt))
+	if err != nil {
+		return 0, false
+	}
+	return theirTime.Compare(ourTime), true
+}
+
+var releaseVersionPattern = regexp.MustCompile(`^v([0-9]+)\.([0-9]+)\.([0-9]+)$`)
+
+// parseReleaseVersion reads a release tag vYY.M.PATCH. A pre-release or a
+// git describe suffix is not a release version.
+func parseReleaseVersion(id string) ([3]int, bool) {
+	m := releaseVersionPattern.FindStringSubmatch(id)
+	if m == nil {
+		return [3]int{}, false
+	}
+	var v [3]int
+	for i := range v {
+		n, err := strconv.Atoi(m[i+1])
+		if err != nil {
+			return [3]int{}, false
+		}
+		v[i] = n
+	}
+	return v, true
 }
 
 // Asset picks the server archive for a platform.
