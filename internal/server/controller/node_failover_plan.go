@@ -49,6 +49,7 @@ func (c *Controller) planFailover(ctx context.Context, deployment *unitDeploymen
 	if err != nil {
 		return nil, err
 	}
+	facts.Strategy = dep.PlacementStrategy
 	nodesByUUID := map[string]*store.Node{}
 	for i := range facts.Nodes {
 		nodesByUUID[facts.Nodes[i].UUID] = &facts.Nodes[i]
@@ -240,48 +241,21 @@ func (c *Controller) rankGPUs(deployment *unitDeployment, role string, unit plan
 	return perRank
 }
 
-// trialUnitPlan plans the ranks a proposed unit moves, as their launch would
-// be planned: the group's shared network, the deployment's stored
-// configuration (the role's, for PD) and the template's hardware contract. A
-// rank the unit keeps on its node (same node as in original) is not planned:
-// its cards may still be its own.
+// unitTrial is the trial plan of the deployment's units (planning.UnitTrial).
+func (c *Controller) unitTrial(deployment *unitDeployment, model *store.Model) planning.UnitTrial {
+	trial := planning.UnitTrial{Store: c.store, Networks: c.networks, Deployment: deployment.dep, Requirements: deployment.requirements, Model: model}
+	if deployment.pd != nil {
+		trial.PD, trial.Mode = deployment.pd.placement, deployment.pd.mode
+	}
+	return trial
+}
+
+// trialUnitPlan plans the ranks a proposed unit moves (a rank the unit keeps
+// on its node is not planned: its cards may still be its own) and reports
+// whether every one would launch.
 func (c *Controller) trialUnitPlan(ctx context.Context, deployment *unitDeployment, model *store.Model, role string, original, unit planning.PDUnit, nodes map[string]*store.Node) bool {
-	dep := deployment.dep
-	ranks := unit.Ranks()
-	rows := make([]store.Node, 0, len(ranks))
-	for _, rank := range ranks {
-		node := nodes[rank.NodeUUID]
-		if node == nil {
-			return false
-		}
-		rows = append(rows, *node)
-	}
-	group, err := c.networks.ComputeGroup(rows)
-	if err != nil {
-		return false
-	}
-	kept := original.Ranks()
-	for i, rank := range ranks {
-		node := nodes[rank.NodeUUID]
-		if i < len(kept) && kept[i].NodeUUID == rank.NodeUUID {
-			continue
-		}
-		launch, layer, _, err := planning.DeploymentLaunch(dep, deployment.requirements, node, model, nil)
-		if err != nil {
-			return false
-		}
-		launch.Preview = true
-		launch.Topology = planning.PreviewRankTopology(len(ranks), i, group.Ranks[node.ID])
-		if deployment.pd != nil {
-			deployment.pd.placement.RankLaunch(deployment.pd.mode, role, unit, i, launch.Topology, planning.PDRankPorts{}).Apply(&launch)
-			launch.Preview = true
-		}
-		_, refusal, err := planning.PlanTemplateLaunch(ctx, c.store, c.networks, node, launch, layer)
-		if err != nil || refusal != nil {
-			return false
-		}
-	}
-	return true
+	refused, _, err := c.unitTrial(deployment, model).Unit(ctx, role, original, unit, nodes)
+	return err == nil && refused == ""
 }
 
 // writeUnits writes a deployment's units as an operator's edit of its

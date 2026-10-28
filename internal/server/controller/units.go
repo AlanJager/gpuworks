@@ -170,6 +170,9 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 			}
 			cleaned[slot.Key] = true
 		}
+		if moved, err := c.autoPlaceUnit(ctx, deployment, model, slot); moved || err != nil {
+			return err
+		}
 		nodes, ready := c.unitNodes(ctx, dep, deployment, model, slot.Unit)
 		if !ready {
 			placementResolved = false

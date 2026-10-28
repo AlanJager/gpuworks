@@ -53,6 +53,12 @@ type Deployment struct {
 	// PlacementStrategy orders a deployment's candidate nodes when a replica
 	// starts (PlacementSpread or PlacementBinpack).
 	PlacementStrategy PlacementStrategy `gorm:"size:16;not null;default:spread"`
+	// UnitsAuto says the platform picks the nodes of a multi-node or PD
+	// deployment's units whenever a unit starts, preferring the nodes it
+	// names; false is the operator's own placement, kept as given. A
+	// single-node deployment's automatic placement is the absence of a node
+	// requirement instead and does not use it.
+	UnitsAuto bool `gorm:"not null;default:false"`
 	// StartTimeoutSec is this deployment's health budget for a started
 	// instance, in seconds. Zero means it states none and every launch takes
 	// the cluster default (DeploymentPolicy.StartTimeoutSec) at that time.
