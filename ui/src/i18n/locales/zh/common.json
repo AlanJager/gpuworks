@@ -172,6 +172,7 @@
     "LOCAL_STORAGE_DISABLED": "本地存储已停用，不能开始新的下载或同步。",
     "LOCAL_MODEL_FIELDS_REQUIRED": "请选择节点并填写模型路径。",
     "MODEL_PATH_REQUIRED": "请输入模型路径。",
+    "MODEL_FILE_PATH_OCCUPIED": "存储 #{{storage_id}} 中的路径「{{path}}」已被模型 #{{model_id}} 占用，请选择其他存储。",
     "LOCAL_MODEL_METADATA_REFRESH": "本地模型请通过节点路径重新登记，以更新元数据。",
     "MODEL_METADATA_UNAVAILABLE": "模型源未返回可用元数据。",
     "MODEL_METADATA_UNREACHABLE": "管理节点连不上 {{hosts}}，模型已登记但还没有元数据（config、权重大小、README）。如果管理节点要经镜像站或代理才能访问，请在 设置 → 拉取设置 → 来源规则 中给相应的模型站点规则勾选「用于管理节点获取模型元数据」；离线导入的模型会在登记本地路径后补齐元数据。",

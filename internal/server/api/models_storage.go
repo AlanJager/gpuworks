@@ -196,6 +196,10 @@ func (a *apiHandlers) startSharedDownload(m *store.Model, storage *store.Storage
 	}
 	row, err := a.d.Store.PrepareModelDownload(ref, store.SharedModelRelPath(m))
 	if err != nil {
+		var occupied *store.ModelFilePathOccupiedError
+		if errors.As(err, &occupied) {
+			return nil, http.StatusConflict, modelFilePathProductError(err)
+		}
 		return nil, http.StatusInternalServerError, err
 	}
 	if err := a.d.Store.SetModelFileWriter(row.ID, writer.ID); err != nil {
@@ -279,6 +283,7 @@ func (a *apiHandlers) copyModel(w http.ResponseWriter, r *http.Request) {
 	}
 	mf, err := a.d.PeerSync.CopyModel(r.Context(), modelID, src, dst, rate)
 	if err != nil {
+		err = modelFilePathProductError(err)
 		if errors.Is(err, store.ErrStorageDisabled) || errors.Is(err, store.ErrStorageNotWritable) || errors.Is(err, store.ErrNotFound) {
 			writeStoreErr(w, err)
 			return

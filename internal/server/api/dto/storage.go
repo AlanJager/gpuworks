@@ -187,6 +187,8 @@ type StorageImported struct {
 	ModelID uint   `json:"model_id,omitempty"`
 	Created bool   `json:"created,omitempty"`
 	Error   string `json:"error,omitempty"`
+
+	ErrorDetail *ProductMessage `json:"error_detail,omitempty"`
 }
 
 // StorageControlPlane is another gpuworks installation using a shared storage.

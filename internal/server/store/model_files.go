@@ -47,34 +47,51 @@ func (s *Store) publishModelFile(id uint, reason string) {
 func (s *Store) UpsertModelFile(mf *ModelFile) (*ModelFile, error) {
 	ref := s.resolveRef(FileRef{ModelID: mf.ModelID, StorageID: mf.StorageID, NodeID: mf.NodeID})
 	mf.StorageID = ref.StorageID
-	var existing ModelFile
-	err := refQuery(s.db, ref).First(&existing).Error
-	if err == nil {
-		mf.ID = existing.ID
-		if existing.State == proto.MFDeleting {
-			return nil, ErrCacheDeletionPending
+	result, reason := mf, "created"
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var existing ModelFile
+		err := refQuery(tx, ref).First(&existing).Error
+		if err == nil {
+			if existing.State == proto.MFDeleting {
+				return ErrCacheDeletionPending
+			}
+			path := mf.Path
+			if path == "" { // Struct updates leave zero-valued fields unchanged.
+				path = existing.Path
+			}
+			if err := sharedModelPathConflict(tx, ref, path); err != nil {
+				return err
+			}
+			mf.ID = existing.ID
+			res := tx.Model(&existing).Where("state <> ?", proto.MFDeleting).Updates(mf)
+			if res.Error != nil {
+				return modelFilePathWriteError(tx, ref, path, res.Error)
+			}
+			if res.RowsAffected == 0 {
+				return ErrCacheDeletionPending
+			}
+			if err := tx.First(&existing, existing.ID).Error; err != nil {
+				return err
+			}
+			result, reason = &existing, "upsert"
+			return nil
 		}
-		res := s.db.Model(&existing).Where("state <> ?", proto.MFDeleting).Updates(mf)
-		if res.Error != nil {
-			return nil, res.Error
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
-		if res.RowsAffected == 0 {
-			return nil, ErrCacheDeletionPending
+		if err := sharedModelPathConflict(tx, ref, mf.Path); err != nil {
+			return err
 		}
-		if err := s.db.First(&existing, existing.ID).Error; err != nil {
-			return nil, err
+		if err := tx.Create(mf).Error; err != nil {
+			return modelFilePathWriteError(tx, ref, mf.Path, err)
 		}
-		s.publishModelFile(existing.ID, "upsert")
-		return &existing, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	if err := s.db.Create(mf).Error; err != nil {
-		return nil, err
-	}
-	s.publishModelFile(mf.ID, "created")
-	return mf, nil
+	s.publishModelFile(result.ID, reason)
+	return result, nil
 }
 
 // ModelFilesForModel lists a model's rows in every storage.
@@ -334,28 +351,36 @@ func (s *Store) RegisterModelFile(ref FileRef, path string, sizeBytes int64) (*M
 }
 
 func (s *Store) prepareModelFile(ref FileRef, path string, updates map[string]any) (*ModelFile, error) {
-	mf, err := s.ensureModelFile(ref, path)
+	ref = s.resolveRef(ref)
+	var mf *ModelFile
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := sharedModelPathConflict(tx, ref, path); err != nil {
+			return err
+		}
+		var err error
+		mf, err = ensureModelFile(tx, ref, path)
+		if err != nil {
+			return modelFilePathWriteError(tx, ref, path, err)
+		}
+		res := tx.Model(&ModelFile{}).Where("id = ? AND state <> ?", mf.ID, proto.MFDeleting).Updates(updates)
+		if res.Error != nil {
+			return modelFilePathWriteError(tx, ref, path, res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrCacheDeletionPending
+		}
+		return tx.First(mf, mf.ID).Error
+	})
 	if err != nil {
-		return nil, err
-	}
-	res := s.db.Model(&ModelFile{}).Where("id = ? AND state <> ?", mf.ID, proto.MFDeleting).Updates(updates)
-	if res.Error != nil {
-		return nil, res.Error
-	}
-	if res.RowsAffected == 0 {
-		return nil, ErrCacheDeletionPending
-	}
-	if err := s.db.First(mf, mf.ID).Error; err != nil {
 		return nil, err
 	}
 	s.publishModelFile(mf.ID, mf.State)
 	return mf, nil
 }
 
-func (s *Store) ensureModelFile(ref FileRef, path string) (*ModelFile, error) {
-	ref = s.resolveRef(ref)
+func ensureModelFile(db *gorm.DB, ref FileRef, path string) (*ModelFile, error) {
 	var mf ModelFile
-	err := refQuery(s.db, ref).First(&mf).Error
+	err := refQuery(db, ref).First(&mf).Error
 	if err == nil {
 		return &mf, nil
 	}
@@ -363,7 +388,7 @@ func (s *Store) ensureModelFile(ref FileRef, path string) (*ModelFile, error) {
 		return nil, err
 	}
 	mf = ModelFile{ModelID: ref.ModelID, StorageID: ref.StorageID, NodeID: ref.NodeID, Path: path}
-	if err := s.db.Create(&mf).Error; err != nil {
+	if err := db.Create(&mf).Error; err != nil {
 		return nil, err
 	}
 	return &mf, nil

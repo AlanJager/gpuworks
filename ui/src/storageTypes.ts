@@ -1,6 +1,8 @@
 // Wire types for /api/v1/storages. They mirror internal/server/api/dto/storage.go;
 // a storage's type values are the server's (local, nfs, nfs_cache, shared_dir).
 
+import type { ProductMessage } from "./apiError";
+
 export type StorageType = "local" | "nfs" | "nfs_cache" | "shared_dir";
 
 /** What a storage type means, in one place: the pages ask this instead of comparing type strings. */
@@ -211,6 +213,7 @@ export interface StorageImported {
   model_id?: number;
   created?: boolean;
   error?: string;
+  error_detail?: ProductMessage;
 }
 
 export interface StorageImportResult {
