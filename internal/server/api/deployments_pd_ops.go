@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 
@@ -101,6 +102,16 @@ func (a *apiHandlers) updatePD(w http.ResponseWriter, r *http.Request) {
 	if err := a.d.Store.SetDeploymentPlacement(dep.ID, encoded, jsonStr(nodeIDs), primary); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
+	}
+	roles := make([]string, 0, len(req.Roles))
+	for role := range req.Roles {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	for _, role := range roles {
+		if from, to := len(placement.PD.Units(role)), len(next.Units(role)); from != to {
+			a.operatorEvent(r, dep.ID, store.EventReplicasChanged, map[string]any{"role": role, "from": from, "to": to})
+		}
 	}
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {

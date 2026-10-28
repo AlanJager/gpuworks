@@ -184,7 +184,7 @@ func (a *apiHandlers) evictNode(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			out.Evicted = append(out.Evicted, leader)
-			a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventReplicaRestarted, map[string]any{"instance": leader, "drain": true, "evicted_from": node.UUID})
+			a.operatorEvent(r, dep.ID, store.EventReplicaRestarted, map[string]any{"instance": leader, "drain": true, "evicted_from": node.UUID})
 		}
 	}
 	sort.Strings(out.Evicted)

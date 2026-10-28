@@ -59,13 +59,14 @@ func wakeWaitParams(w http.ResponseWriter, r *http.Request) (wakeWaitHow, bool) 
 // waiting for room; with yield, it first puts the awake occupants of the GPUs
 // they need to sleep. A yield whose occupants cannot all sleep changes
 // nothing (409). The caller holds the lifecycle lock.
-func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, dep *store.Deployment, match planning.UnitMatch, named []store.Instance, whole bool, how wakeWaitHow) {
+func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *store.Deployment, match planning.UnitMatch, named []store.Instance, whole bool, how wakeWaitHow) {
 	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, named, true, whole)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	result := dto.WakeWaitResult{Status: "waking", Woken: uuidsOf(woken), Waiting: []string{}, Yielded: []string{}}
+	a.wakeOrdered(r, dep.ID, result.Woken)
 	if len(refused) == 0 {
 		writeJSON(w, http.StatusOK, result)
 		return

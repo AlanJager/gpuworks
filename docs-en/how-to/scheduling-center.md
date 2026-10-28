@@ -34,7 +34,7 @@ Open the **Scheduling Center** page to see in one place:
 - **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details.
 - **Waiting wakes**: which deployments are waiting and since when.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
-- **Recent automatic actions**: the latest 50 automation timeline events.
+- **Scheduling history**: when, why and what was scheduled; see [Scheduling History](#调度记录).
 
 Nodes are paged and can be searched by name. The API is:
 
@@ -66,7 +66,7 @@ The main structure of the response is below (`nodes` is a paged object; the othe
 }
 ```
 
-The real `free_bytes` and the other sizes are integer bytes, and the values above are only illustrative; `residue_bytes` appears only on sleeping occupants.
+The real `free_bytes` and the other sizes are integer bytes, and the values above are only illustrative; `residue_bytes` appears only on sleeping occupants. `recent` (the latest 50 automation events) is kept for compatibility; the page reads the scheduling history below instead.
 
 ## Schedules
 
@@ -191,13 +191,36 @@ When the platform itself put a deployment to sleep (idle sleep, or yielding card
 - When an offline deployment yields its cards, its in-flight requests are interrupted: the client receives HTTP 200 with `finish_reason` set to `"abort"` and truncated content, and must retry on its own. A shared deployment first stops accepting new requests before yielding and waits up to 30 seconds for in-flight requests to finish.
 - A deployment that yields its cards sleeps to L1 (a sleepable instance does one L1 prewarm when it starts, so the pinned host memory is already held; L2 when the host cannot hold the weights); shared and offline deployments resume automatically once cards are free. After a server restart, a deployment that had yielded its cards wakes only when a request arrives.
 
+## 调度记录
+
+The **Scheduling history** at the bottom of the Scheduling Center page lists the scheduling events of the whole cluster, newest first:
+
+| Column | Content |
+|---|---|
+| Time | When the event happened |
+| Deployment | Opens that deployment; a deleted deployment is marked "deleted" |
+| Action | The action name for the event code, such as automatic sleep, replica rebuilt, replicas changed |
+| Reason and details | The same wording as the deployment timeline: from which node to which, which attempt, the schedule or idle time that triggered it, the replica count change, and so on |
+| Category | **Automatic**: the platform acted on its own settings or schedules; **Failure**: something went wrong and the platform is dealing with it or has given up; **Manual**: an operator's order |
+| By | Who gave a manual order; empty for automatic and failure events |
+
+Filter by category, deployment (search by name), and time range (last hour / 24 hours / 7 days), and page with Older / Newer, 20 entries per page. The API is `GET /api/v1/scheduling/history`; see the [history API](../reference/api.md#调度记录).
+
+What is in the history:
+
+- **Automatic**: the actions of schedules, idle sleep, waiting wakes, and yielding wakes (see [Timeline Events](#时间线事件)), automatic placement of replicas, and replicas moved off a draining node.
+- **Failure**: a failed replica rebuilt automatically (`REPLICA_REBUILT`), a unit that spent its retry budget and was given up, a deployment that cannot be placed, a rolling restart stopped on a replica that gave up, and replicas rescheduled after a node was lost.
+- **Manual**: changing the replica count, restarting a deployment or a replica, retrying a replica, and ordering sleep and wake (`SLEEP_ORDERED`, `WAKE_ORDERED`). A manual event records the user who gave the order.
+
+The history holds only these scheduling events; instance state changes, configuration edits, and the like are not in it and stay on each deployment's timeline.
+
 ## First Placement Nodes
 
 When adding replicas to a single-node deployment, you can choose the nodes the new replicas start on first; see the note in [Deploy Models](deploy-models.md#部署后调整). This works alongside a scheduled replica count: the schedule changes only the number, and the candidate pool decides which node.
 
 ## Timeline Events
 
-Automatic actions are written to the deployment timeline (event kind `automation`, also shown under **Recent automatic actions** on the board):
+Automatic actions are written to the deployment timeline (event kind `automation`, also shown in the [scheduling history](#调度记录)):
 
 | code | Meaning | Main params |
 |---|---|---|
@@ -208,6 +231,16 @@ Automatic actions are written to the deployment timeline (event kind `automation
 | `WAKE_WAIT_TIMEOUT` | The wait ended after 30 minutes | `trigger`, `instances`, `waited_sec` |
 | `SCHEDULE_ACTION_FAILED` | An automatic action did not succeed and is not retried | `trigger`, `action`, `reason`, `reason_code`, `schedule_id`, `level`, `replicas` |
 | `YIELDED_FOR_WAKE` | Recorded on the deployment put to sleep to make room: for whom, and to which level | `deployment`, `instances`, `level` |
+
+An order an operator gives through the API is also written to the deployment timeline (event kind `schedule`) with `actor` (the user name):
+
+| code | Meaning | Main params |
+|---|---|---|
+| `REPLICAS_CHANGED` | The replica count was changed | `from`, `to`, `role` (PD), `actor` |
+| `SLEEP_ORDERED` | Sleep was ordered | `level`, `mode`, `scope`, `role`, `instances`, `actor` |
+| `WAKE_ORDERED` | A wake started waking instances | `instances`, `actor` |
+
+When a failed replica is rebuilt automatically the controller records `REPLICA_REBUILT` (params `replica`, `role`, `attempt`, `reason`, `node`); see the [history API](../reference/api.md#调度记录).
 
 For the events of node-loss rescheduling after a node is lost and of drain moves (`NODE_REPLACED` and the like), see [Reschedule Replicas on Node Loss](node-failover.md#时间线事件).
 

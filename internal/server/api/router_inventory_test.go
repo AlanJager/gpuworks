@@ -209,6 +209,7 @@ GET /api/v1/pull/source-rules
 GET /api/v1/pull/sync-groups
 GET /api/v1/routing-policies
 GET /api/v1/scheduling/board
+GET /api/v1/scheduling/history
 GET /api/v1/security/settings
 GET /api/v1/server/listen
 GET /api/v1/settings

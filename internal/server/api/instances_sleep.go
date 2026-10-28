@@ -43,6 +43,7 @@ func (a *apiHandlers) sleepInstance(w http.ResponseWriter, r *http.Request) {
 		writeReplicaOrderErr(w, err)
 		return
 	}
+	a.sleepOrdered(r, dep.ID, level, mode, "replica", "", uuidsOf(members))
 	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Instances: uuidsOf(members)})
 }
 
@@ -69,10 +70,10 @@ func (a *apiHandlers) wakeInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if how.wait || how.yield {
-		a.wakeAndWait(w, dep, match, members, false, how)
+		a.wakeAndWait(w, r, dep, match, members, false, how)
 		return
 	}
-	_, refused, err := planning.OrderWake(a.d.Store, dep, match, members, false, false)
+	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, members, false, false)
 	if err != nil {
 		writeReplicaOrderErr(w, err)
 		return
@@ -81,6 +82,7 @@ func (a *apiHandlers) wakeInstance(w http.ResponseWriter, r *http.Request) {
 		writeWakeRefusal(w, refused)
 		return
 	}
+	a.wakeOrdered(r, dep.ID, uuidsOf(woken))
 	writeJSON(w, http.StatusOK, dto.WakeResult{Status: "waking", Instances: uuidsOf(members)})
 }
 
