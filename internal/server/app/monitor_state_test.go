@@ -142,3 +142,40 @@ func (p monitorPreparationNodes) PreparationNodes(*store.Deployment) []uint { re
 func (monitorPreparationNodes) RetryCacheCopy(context.Context, store.FileRef) error {
 	panic("monitoring must not mutate preparation")
 }
+
+// A replica under a sleep order its engine has not carried out yet is already
+// refused by the gateway, so the monitor must not count it ready: the page
+// would otherwise show 1/1 ready beside a service the gateway answers 503 for.
+func TestMonitorServiceStateCountsAnOrderedReplicaAsNotReady(t *testing.T) {
+	fx := newMonitorFixtureBase(t)
+	if err := fx.st.SetNodeState(fx.node.UUID, store.NodeStateOnline); err != nil {
+		t.Fatal(err)
+	}
+	read := func() dto.MonitorServiceRow {
+		t.Helper()
+		svc := newMonitorAPIService(fx.st, fx.ts, func() time.Time { return fx.now }, nil, nil, nil)
+		out, err := svc.Overview(context.Background(), time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(out.Services) != 1 {
+			t.Fatalf("services = %+v", out.Services)
+		}
+		return out.Services[0]
+	}
+	row := read()
+	if row.Replicas.Ready != 1 || row.State != "running" {
+		t.Fatalf("before sleep = state %q, replicas %+v; want running, 1/1", row.State, row.Replicas)
+	}
+	// Ordered with no reported level: the engine is still at level 0.
+	if err := fx.st.OrderInstancesSleep(fx.dep.ID, []string{fx.inst.UUID}, 1, "wait"); err != nil {
+		t.Fatal(err)
+	}
+	row = read()
+	if row.Replicas.Ready != 0 {
+		t.Fatalf("ordered replica = %+v; want 0 ready: the gateway already refuses it", row.Replicas)
+	}
+	if row.State != "asleep" {
+		t.Fatalf("ordered replica = state %q; want asleep", row.State)
+	}
+}

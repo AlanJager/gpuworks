@@ -58,8 +58,8 @@ func newFakeAPI() *fakeAPI {
 			LastSeen: fakeNow.Add(-90 * time.Minute), Created: fakeNow.Add(-4 * 24 * time.Hour)},
 	}
 	f.deps = []map[string]any{
-		{"id": 12, "name": "qwen", "model_name": "Qwen3-8B", "runtime_state": "running", "replicas": 1, "node_names": []string{"gpu-a"}, "created_at": fakeNow.Add(-2 * time.Hour).Format(time.RFC3339)},
-		{"id": 13, "name": "llama", "model_name": "Llama-3-70B", "runtime_state": "failed", "replicas": 2, "node_names": []string{"gpu-b"}, "created_at": fakeNow.Add(-3 * time.Hour).Format(time.RFC3339)},
+		{"id": 12, "name": "qwen", "model_name": "Qwen3-8B", "state": "running", "runtime_state": "running", "replicas": 1, "ready_replicas": 1, "node_names": []string{"gpu-a"}, "created_at": fakeNow.Add(-2 * time.Hour).Format(time.RFC3339)},
+		{"id": 13, "name": "llama", "model_name": "Llama-3-70B", "state": "failed", "runtime_state": "failed", "replicas": 2, "ready_replicas": 0, "node_names": []string{"gpu-b"}, "created_at": fakeNow.Add(-3 * time.Hour).Format(time.RFC3339)},
 	}
 	r := f.mux
 	r.Get("/api/v1/nodes", f.listNodes)

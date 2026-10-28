@@ -32,6 +32,11 @@ export function stateLabel(s: string, t: Translate): { status: BadgeStatus; text
   return visual ? { status: visual.status, text: t(visual.key) } : { status: "default", text: s };
 }
 
+// effectiveDeploymentState picks the one state to show for a deployment. The
+// server already derives it (asleep, sleeping, deleting aside, its
+// runtime_state), but only a state this module can label is taken from it: a
+// string it does not know would otherwise be shown raw, in English, next to
+// translated ones. Anything else falls back to runtime_state.
 export function effectiveDeploymentState(deployment: {
 	runtime_state: string;
 	desired_state?: string;
@@ -47,7 +52,7 @@ export function effectiveDeploymentState(deployment: {
 	// reads asleep when every serving replica is, and sleeping while the order
 	// is still being carried out, which runtime_state cannot say (a sleeping
 	// engine is still running).
-	if (deployment.state) return deployment.state;
+	if (deployment.state && deployment.state in table) return deployment.state;
 	return deployment.runtime_state;
 }
 

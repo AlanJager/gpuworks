@@ -146,7 +146,7 @@ func deploymentRef(d *store.Deployment, instances []store.Instance) monitor.Depl
 		if spec, ok := desiredState(inst.DesiredStateJSON); ok {
 			headless = headless || spec.Headless
 		}
-		if inst.State == proto.InstRunning && inst.SleepLevel == 0 && !headless && !incomplete[inst.UUID] {
+		if inst.State == proto.InstRunning && !planning.InstanceAsleep(&inst) && !headless && !incomplete[inst.UUID] {
 			count++
 		}
 	}
@@ -186,6 +186,9 @@ func instanceRef(i *store.Instance, nodeUUIDByID map[uint]string) monitor.Instan
 	return monitor.InstanceRef{
 		UUID: i.UUID, DeploymentID: i.DeploymentID, NodeUUID: nodeUUIDByID[i.NodeID],
 		State: i.State, GPUIndexes: parseIntSliceJSON(i.GPUIndexes), SleepLevel: i.SleepLevel,
+		// Asleep is the gateway's judgement, not the reported level: an
+		// instance under a sleep order it has not carried out is refused too.
+		Asleep:   planning.InstanceAsleep(i),
 		Headless: headless,
 		Role:     i.Role,
 	}

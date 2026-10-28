@@ -72,9 +72,9 @@ func TestClusterOverviewIssuesBoundedReads(t *testing.T) {
 		"/api/v1/deployments?page=1&page_size=30&state=failed%2Cpending",
 		"/api/v1/deployments?page=1&page_size=20",
 	)
-	want := `{"deployments_needing_attention":{"items":[{"id":13,"model_name":"Llama-3-70B","name":"llama","node_names":["gpu-b"],"replicas":2,"runtime_state":"failed"}],"total":1},` +
+	want := `{"deployments_needing_attention":{"items":[{"id":13,"model_name":"Llama-3-70B","name":"llama","node_names":["gpu-b"],"ready_replicas":0,"replicas":2,"runtime_state":"failed","state":"failed"}],"total":1},` +
 		`"gpus":{"allocated":1,"healthy":2,"total":3,"unhealthy":1},` +
-		`"newest_deployments":{"items":[{"id":12,"model_name":"Qwen3-8B","name":"qwen","node_names":["gpu-a"],"replicas":1,"runtime_state":"running"},{"id":13,"model_name":"Llama-3-70B","name":"llama","node_names":["gpu-b"],"replicas":2,"runtime_state":"failed"}],"total":2},` +
+		`"newest_deployments":{"items":[{"id":12,"model_name":"Qwen3-8B","name":"qwen","node_names":["gpu-a"],"ready_replicas":1,"replicas":1,"runtime_state":"running","state":"running"},{"id":13,"model_name":"Llama-3-70B","name":"llama","node_names":["gpu-b"],"ready_replicas":0,"replicas":2,"runtime_state":"failed","state":"failed"}],"total":2},` +
 		`"nodes_needing_attention":{"items":[{"gpus":["A100 x1"],"last_seen_at":"2026-10-11T10:30:00Z (1.5h ago)","name":"gpu-b","scheduling":"schedulable","state":"offline"}],"total":1},` +
 		`"now":"2026-10-11T12:00:00Z",` +
 		`"summary":{"by_vendor":[{"gpus":3,"vendor":"nvidia"}],"deployments":{"failed":1,"running":1,"total":2},"nodes":{"gpus":3,"offline":1,"online":1,"total":2}}}`

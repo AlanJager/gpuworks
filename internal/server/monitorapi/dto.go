@@ -174,6 +174,12 @@ func deploymentPlacement(dep monitor.DeploymentRef, instances []monitor.Instance
 // and warming replacements; deployment policy supplies the state before an
 // instance exists. An explicitly stopped deployment stays stopped while its
 // containers are being reclaimed.
+//
+// Sleep is read as instanceRef.Asleep, the gateway's own judgement
+// (planning.InstanceAsleep), and not from the reported level: an instance
+// already under a sleep order its engine has not carried out is refused by the
+// gateway, so a deployment whose every instance is so ordered is asleep here
+// too rather than reading running while the gateway 503s.
 func deploymentState(deployment monitor.DeploymentRef, instances []monitor.InstanceRef) string {
 	if deployment.RuntimeState == "stopped" || deployment.RuntimeState == "offline" {
 		return deployment.RuntimeState
@@ -188,7 +194,7 @@ func deploymentState(deployment monitor.DeploymentRef, instances []monitor.Insta
 			hasFailed = true
 		case proto.InstRunning:
 			running++
-			if inst.SleepLevel == 0 {
+			if !inst.Asleep {
 				awake++
 			}
 		case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
@@ -217,7 +223,7 @@ func replicaState(inst monitor.InstanceRef) string {
 	switch {
 	case inst.State == proto.InstFailed:
 		return "failed"
-	case inst.State == proto.InstRunning && inst.SleepLevel > 0:
+	case inst.State == proto.InstRunning && inst.Asleep:
 		return "asleep"
 	case inst.State == proto.InstRunning:
 		return "running"

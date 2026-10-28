@@ -227,6 +227,7 @@
         "prefill": "Prefill"
       },
       "roleSummary": "{{role}} · TP {{tp}} · 就绪 {{ready}}/{{desired}}",
+      "roleAsleep": "{{count}} 个休眠",
       "scale": {
         "action": "调整角色实例",
         "title": "调整 PD 角色实例",

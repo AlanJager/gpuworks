@@ -38,7 +38,6 @@ type routeDeployment struct {
 	nnodes     int
 	policy     string
 	candidates []candidate
-	anyAsleep  bool
 	nodes      map[uint]string
 	// pd is set on a PD deployment: candidates then holds its decode
 	// instances and pd its prefill ones.
@@ -317,13 +316,13 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		// leader's intent and level say whether the replica is asleep, and a
 		// follower is never skipped for its own.
 		if rd.nnodes > 1 {
-			if !in.Headless && planning.InstanceAsleep(in) {
-				rd.anyAsleep = true
-			}
 			continue
 		}
 		if !in.Headless && planning.InstanceAsleep(in) {
-			rd.anyAsleep = true
+			// The router decides whether the deployment is asleep from the
+			// instances it reads per request (selectDeploymentInstances), so the
+			// snapshot only records a PD deployment's asleep prefill counts,
+			// which wantsPrefill reads.
 			if rd.pd != nil {
 				rd.pd.noteAsleep(in)
 			}

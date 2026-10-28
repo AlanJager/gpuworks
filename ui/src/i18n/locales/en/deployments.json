@@ -227,6 +227,7 @@
         "prefill": "Prefill"
       },
       "roleSummary": "{{role}} · TP {{tp}} · {{ready}}/{{desired}} ready",
+      "roleAsleep": "{{count}} asleep",
       "scale": {
         "action": "Scale roles",
         "title": "Scale PD roles",

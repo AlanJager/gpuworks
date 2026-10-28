@@ -36,6 +36,12 @@ func TestDeploymentPlacementFallsBackToUUIDWhenNodeUnnamed(t *testing.T) {
 	}
 }
 
+// sleeper is a running instance whose engine reports a sleep level: asleep by
+// the level and by the gateway's judgement alike.
+func sleeper(level int) monitor.InstanceRef {
+	return monitor.InstanceRef{State: proto.InstRunning, SleepLevel: level, Asleep: true}
+}
+
 func TestDeploymentStateRollup(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -50,13 +56,16 @@ func TestDeploymentStateRollup(t *testing.T) {
 		{"one starting", "", []monitor.InstanceRef{{State: proto.InstPulling}}, "starting"},
 		{"one running awake", "", []monitor.InstanceRef{{State: proto.InstRunning}}, "running"},
 		{"disconnected observed running", "offline", []monitor.InstanceRef{{State: proto.InstRunning}}, "offline"},
-		{"disconnected observed asleep", "offline", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}}, "offline"},
-		{"one running asleep", "", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}}, "asleep"},
-		{"mixed asleep and awake running", "running", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}, {State: proto.InstRunning}}, "running"},
+		{"disconnected observed asleep", "offline", []monitor.InstanceRef{sleeper(1)}, "offline"},
+		{"one running asleep", "", []monitor.InstanceRef{sleeper(1)}, "asleep"},
+		// Ordered to sleep, engine not there yet: the gateway already refuses
+		// it, so the deployment is asleep here too.
+		{"one running under a sleep order it has not carried out", "", []monitor.InstanceRef{{State: proto.InstRunning, Asleep: true}}, "asleep"},
+		{"mixed asleep and awake running", "running", []monitor.InstanceRef{sleeper(1), {State: proto.InstRunning}}, "running"},
 		{"serving replica outranks historical failure", "running", []monitor.InstanceRef{{State: proto.InstRunning}, {State: proto.InstFailed}}, "running"},
 		{"warming replacement outranks historical failure", "pulling", []monitor.InstanceRef{{State: proto.InstPulling}, {State: proto.InstFailed}}, "starting"},
 		{"serving replica outranks warming replacement", "pulling", []monitor.InstanceRef{{State: proto.InstRunning}, {State: proto.InstPulling}}, "running"},
-		{"sleeping service with warming replacement", "starting", []monitor.InstanceRef{{State: proto.InstRunning, SleepLevel: 1}, {State: proto.InstStarting}}, "asleep"},
+		{"sleeping service with warming replacement", "starting", []monitor.InstanceRef{sleeper(1), {State: proto.InstStarting}}, "asleep"},
 		{"failed only", "failed", []monitor.InstanceRef{{State: proto.InstFailed}}, "failed"},
 		{"headless worker does not hide failed leader", "running", []monitor.InstanceRef{{State: proto.InstRunning, Headless: true}, {State: proto.InstFailed}}, "failed"},
 		{"headless worker alone is not serving", "running", []monitor.InstanceRef{{State: proto.InstRunning, Headless: true}}, "starting"},
@@ -77,7 +86,8 @@ func TestReplicaStatePerInstance(t *testing.T) {
 		want string
 	}{
 		{"failed", monitor.InstanceRef{State: proto.InstFailed}, "failed"},
-		{"asleep", monitor.InstanceRef{State: proto.InstRunning, SleepLevel: 2}, "asleep"},
+		{"asleep", sleeper(2), "asleep"},
+		{"ordered to sleep, not carried out yet", monitor.InstanceRef{State: proto.InstRunning, Asleep: true}, "asleep"},
 		{"running", monitor.InstanceRef{State: proto.InstRunning}, "running"},
 		{"starting", monitor.InstanceRef{State: proto.InstOptimizing}, "starting"},
 		{"stopped", monitor.InstanceRef{State: proto.InstStopped}, "stopped"},
