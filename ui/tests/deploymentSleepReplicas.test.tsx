@@ -334,7 +334,8 @@ test("a partly asleep PD deployment shows the server's pair, not the stored coun
   // stored field only configures an ordinary deployment and PD creation forces
   // it to 1), so the detail response this fixture stands in for carries 3.
   const pd = sleepable({
-    replicas: 1,
+    replicas: 3,
+    ready_replicas: 1,
     asleep_replicas: 2,
     state: "running",
     pd: { mode: "vllm-nixl", fallback: "decode", kv_load_failure: "fail", state: "running", short: false, roles: [
@@ -357,7 +358,7 @@ test("a partly asleep PD deployment shows the server's pair, not the stored coun
   assert.ok(within(drawer()).getAllByText(i18n.t("sleep.partial", { asleep: 2, total: 3 })).length >= 1);
   // A denominator smaller than the numerator is the defect: never render the
   // stored 1 beside a count of 2 sleepers.
-  assert.deepEqual(within(drawer()).queryAllByText(i18n.t("sleep.partial", { asleep: 2, total: 1 })), []);
+  assert.equal(within(drawer()).queryAllByText(i18n.t("sleep.partial", { asleep: 2, total: 1 })).length, 0);
   // ready_replicas is filled for a PD deployment now, so the drawer prints the
   // ready count beside the same denominator instead of hiding the row.
   assert.ok(within(drawer()).getByText(i18n.t("detail.readyReplicas", { ready: 1, desired: 3 })));
