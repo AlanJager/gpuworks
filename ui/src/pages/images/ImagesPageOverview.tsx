@@ -2,10 +2,7 @@ import {
   Alert,
   Button,
   Card,
-  Col,
-  Row,
   Space,
-  Statistic,
   Tabs,
   Typography,
   Upload,
@@ -14,8 +11,8 @@ import { PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons"
 import { useTranslation } from "react-i18next";
 import type { ImageSeries } from "../../api";
 import PageHeader from "../../components/PageHeader";
-import { bytes } from "./ImagePageHelpers";
 import ImageSeriesTable from "./ImageSeriesTable";
+import ImageSummaryCards from "./ImageSummaryCards";
 
 const { Text } = Typography;
 
@@ -127,29 +124,15 @@ export default function ImagesPageOverview({
           </Button>
         </Space>
       )}
-      <Row gutter={[12, 12]} className="resource-summary-row">
-        {[
-          ["series", series.length],
-          ["images", totalVersions],
-          ["distributed", distributed],
-          ["catalogSize", bytes(catalogBytes)],
-          ["localSize", bytes(localBytes)],
-        ].map(([key, value], index) => (
-          <Col key={key} xs={24} sm={12} md={8} lg={index === 4 ? 4 : 5}>
-            <Card>
-              <Statistic title={t(`page.summary.${key}`)} value={value} />
-              {(key === "catalogSize" || key === "localSize") && (
-                <Text type="secondary">
-                  {t(`page.summary.${key}Hint`)}
-                  {(key === "catalogSize" ? catalogUnknown : localUnknown) > 0 && (
-                    <> · {t("page.summary.unknownSizes", { count: key === "catalogSize" ? catalogUnknown : localUnknown })}</>
-                  )}
-                </Text>
-              )}
-            </Card>
-          </Col>
-        ))}
-      </Row>
+      <ImageSummaryCards
+        seriesCount={series.length}
+        totalVersions={totalVersions}
+        distributed={distributed}
+        catalogBytes={catalogBytes}
+        localBytes={localBytes}
+        catalogUnknown={catalogUnknown}
+        localUnknown={localUnknown}
+      />
       {sourceError && (
         <Alert
           type="warning"
