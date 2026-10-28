@@ -234,6 +234,7 @@
     "STORAGE_IS_DEFAULT": "默认存储不能删除，请先把其它存储设为默认。",
     "STORAGE_EXPORT_ALREADY_REGISTERED": "这个导出已经登记为另一个存储。",
     "STORAGE_NAME_TAKEN": "已有同名的存储，请换一个名称。",
+    "MODEL_FILE_PATH_OCCUPIED": "存储 #{{storage_id}} 中的路径「{{path}}」已被模型 #{{model_id}} 占用，请选择其他存储。",
     "STORAGE_DISABLED": "该存储已停用（只读），不能写入。",
     "STORAGE_NOT_WRITABLE": "没有任何节点能写入这个存储。",
     "STORAGE_TARGETS_REQUIRED": "请选择这个存储用在哪些节点或标签上。",

@@ -234,6 +234,7 @@
     "STORAGE_IS_DEFAULT": "The default storage cannot be deleted. Set another storage as the default first.",
     "STORAGE_EXPORT_ALREADY_REGISTERED": "This export is already registered as another storage.",
     "STORAGE_NAME_TAKEN": "Another storage already has this name. Choose a different one.",
+    "MODEL_FILE_PATH_OCCUPIED": "Path \"{{path}}\" in storage #{{storage_id}} is already used by model #{{model_id}}. Choose another storage.",
     "STORAGE_DISABLED": "The storage is read-only (disabled): nothing can be written into it.",
     "STORAGE_NOT_WRITABLE": "No node can write to this storage.",
     "STORAGE_TARGETS_REQUIRED": "Choose the nodes or labels this storage applies to.",

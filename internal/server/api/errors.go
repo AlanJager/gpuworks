@@ -182,6 +182,7 @@ const (
 	ErrorLocalStorageDisabled             = "LOCAL_STORAGE_DISABLED"
 	ErrorLocalModelFieldsRequired         = "LOCAL_MODEL_FIELDS_REQUIRED"
 	ErrorModelPathRequired                = "MODEL_PATH_REQUIRED"
+	ErrorModelFilePathOccupied            = "MODEL_FILE_PATH_OCCUPIED"
 	ErrorLocalModelMetadataRefresh        = "LOCAL_MODEL_METADATA_REFRESH"
 	ErrorModelMetadataUnavailable         = "MODEL_METADATA_UNAVAILABLE"
 	// ErrorModelMetadataUnreachable: the management node reached none of
