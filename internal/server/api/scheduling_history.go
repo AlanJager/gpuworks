@@ -35,7 +35,7 @@ func (a *apiHandlers) schedulingHistory(w http.ResponseWriter, r *http.Request) 
 		}
 		filter.DeploymentID = uint(id)
 	}
-	for _, name := range strings.Split(query.Get("category"), ",") {
+	for _, name := range strings.Split(strings.Join(query["category"], ","), ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue

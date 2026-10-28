@@ -81,7 +81,7 @@ func TestSchedulingHistoryFiltersAndCursor(t *testing.T) {
 	for query, want := range map[string]string{
 		"?category=manual":                                       "UNIT_RETRIED",
 		"?category=auto,failure":                                 "DEPLOYMENT_UNSCHEDULABLE,NODE_REPLACED,AUTO_WAKE",
-		"?category=failure&category=manual":                      "DEPLOYMENT_UNSCHEDULABLE,NODE_REPLACED", // the first category parameter only
+		"?category=failure&category=manual":                      "DEPLOYMENT_UNSCHEDULABLE,NODE_REPLACED,UNIT_RETRIED",
 		fmt.Sprintf("?deployment_id=%d", rig.plain.ID):           "NODE_REPLACED,UNIT_RETRIED",
 		"?since=2999-01-01T00:00:00Z":                            "",
 		"?until=2000-01-01T00:00:00Z":                            "",
