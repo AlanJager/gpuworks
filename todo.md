@@ -575,3 +575,22 @@ dockerd 进独立网络命名空间并启用回环；在命名空间内用与宿
 
 - 经来源规则拉取的镜像从节点删除后，节点上不再有该镜像的任何平台 tag，内容与快照被回收（`df` 与 `nerdctl images` 可见）。
 - 测试覆盖 nerdctl、docker 与 udocker 三种驱动的删除路径，夹具忠实还原替代地址 tag 的存在。
+
+## T101. API key 删除后鉴权已拒绝，列表仍然列出它
+
+**来源**：2026-10-28 昇腾模板刷新期间在 live demo（mirror1:8800，`gpuworks 9118794aa`）上建临时 key 做网关验证后清理时发现。
+
+- `POST /api/v1/apikeys` 建 key → 用它调 `/v1/chat/completions` 成功。
+- `DELETE /api/v1/apikeys/{prefix}` 返回 200，**删除确实生效**：再用该 key 调网关返回 `invalid or missing API key`。
+- 但 `GET /api/v1/apikeys` 仍然把它列出来，条目里没有任何表示已撤销的字段（只有 `name`/`prefix`/`last_used`/`created_at`）。重复 DELETE 同一 prefix 仍返回 200，条目不消失。
+- 该机器上已累积多条这样的残留条目（`mr642-verify`、`gpuid-live-check`、`kvtest-playground`、`mineru-verify`、`mineru-test`），说明不是偶发。
+
+### 建议
+
+- 确认删除语义：如果是软删除（撤销），列表要带状态字段并在 UI 上标明，或默认过滤掉已撤销的；如果本意是硬删除，修删除路径。
+- 两种取向都要有测试断言「删除后列表里的可见性」，而不只断言鉴权被拒。
+
+### 验收条件
+
+- 删除一个 key 后，`GET /api/v1/apikeys` 的结果与所选语义一致（不再列出，或列出且明确标为已撤销）。
+- 覆盖重复删除同一 prefix 的幂等行为。
