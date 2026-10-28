@@ -238,6 +238,13 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
   （`l4-compshare-server-dial-node-onboarding-container`）和离线契约
   （`core-compshare-offline-contracts`）照常运行。
 
+云端 L4 的 CI job 都带 `environment: {name: cloud-test/<provider>/<lane>, action: prepare}`：环境作用域的
+变量（`cloud-test/<provider>/*` 下的凭据）照常注入，但 `action: prepare` 不创建 deployment。
+项目开着「跳过过期的部署作业」（`ci_forward_deployment_enabled`），一旦 job 创建 deployment，
+同一环境里后启动的 job 会把先启动、仍在运行的那个直接判失败（日志截断，`403 Job is not running`）；
+定时 master 流水线与 MR 手动点同一个 job 就会这样互相打断。新增云端 L4 job 必须同样写
+`action: prepare`；互斥靠 `resource_group`，不靠环境。
+
 ## 成本和缓存
 
 - provider 常规用例只验证租机、SSH、agent 上线与 GPU inventory。RunPod、CompShare、AutoDL、

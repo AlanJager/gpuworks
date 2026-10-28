@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/agentbin"
 	serverprovider "gpuworks.ai/gpuworks/internal/server/provider"
 	"gpuworks.ai/gpuworks/internal/server/provision"
+	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/testenv"
 	"gpuworks.ai/gpuworks/internal/testenv/cloudprovider"
 	"gpuworks.ai/gpuworks/internal/testenv/sshutil"
@@ -47,11 +49,124 @@ func hasProviderCredentials(p cloudprovider.ManagementProvider) bool {
 	return strings.TrimSpace(creds.APIKey) != "" || strings.TrimSpace(creds.PublicKey) != "" || strings.TrimSpace(creds.PrivateKey) != ""
 }
 
+// providerInstallReport carries what a provider install says beyond the node
+// it created.
+type providerInstallReport struct {
+	// QueuedDial is the detail of a server_dial check that came back "queued
+	// for reconnection": the install's own dial did not get through and the
+	// server's reconnect loop took the node over. Empty otherwise. The node is
+	// not known to work until it comes online, which waitQueuedDialNodeOnline
+	// checks.
+	QueuedDial string
+}
+
+// serverDialQueuedOnlineTimeout bounds how long a node whose first dial was
+// queued gets to come online through the server's redial loop (10s, 30s, 90s
+// and 270s backoff steps after the install returns).
+const serverDialQueuedOnlineTimeout = 5 * time.Minute
+
+const queuedForReconnectionPrefix = "queued for reconnection: "
+
+// providerInstallVerdict is how one provider install check is judged.
+type providerInstallVerdict struct {
+	Accepted bool
+	// Want describes the acceptable status for failure messages.
+	Want string
+	// QueuedDial marks an accepted server_dial warn that still has to be
+	// followed by the node coming online.
+	QueuedDial bool
+}
+
+// judgeProviderInstallCheck decides whether the install check at a position
+// that should be the check named want is acceptable. Every check must be ok,
+// except three advisory cases: prechecks may warn (a VM without Docker is
+// valid when the agent picks udocker), agent_dial may report that the agent
+// is still waiting for its first session, and server_dial may report that the
+// server queued the node for reconnection after its first dial failed (a
+// freshly mapped pod port can take a while to answer). The last two are only
+// accepted with their exact product detail; any other warn or error on them,
+// and any non-ok status elsewhere, fails.
+func judgeProviderInstallCheck(want string, check provision.CheckResult) providerInstallVerdict {
+	verdict := providerInstallVerdict{Want: "ok"}
+	switch {
+	case want == "precheck":
+		verdict.Want = "ok/warn"
+		verdict.Accepted = check.Status == "ok" || check.Status == "warn"
+	case want == "agent_dial" && check.Status == "warn" && check.Detail == "agent started; waiting for its first session":
+		// The management API observes the first session for three seconds.
+		// A cold VM may need longer; setupCloudNode still waits for this exact
+		// node to become online, and the suite subsequently requires GPUs.
+		verdict.Want = "ok/warn(waiting for first session)"
+		verdict.Accepted = true
+	case want == "server_dial" && check.Status == "warn" && strings.HasPrefix(check.Detail, queuedForReconnectionPrefix):
+		// The install tries the first dial a few times and otherwise hands
+		// the node to the server's reconnect loop (internal/server/api/provision.go).
+		verdict.Want = "ok/warn(queued for reconnection)"
+		verdict.Accepted = true
+		verdict.QueuedDial = true
+	default:
+		verdict.Accepted = check.Status == "ok"
+	}
+	if check.Name != want {
+		verdict.Accepted = false
+		verdict.QueuedDial = false
+	}
+	return verdict
+}
+
+// waitQueuedDialNodeOnline waits, up to timeout, for a node whose install
+// queued its first server dial to come online through the server's redial
+// loop. nodeState reads the node's current state; probe makes one direct
+// attempt at the node's agent address and describes the outcome. When the node
+// never comes online the error carries the install's dial error, the node's
+// last state and the probe, which is the dial error the server keeps hitting.
+func waitQueuedDialNodeOnline(ctx context.Context, timeout, poll time.Duration, nodeState func() (string, error), probe func() string, queued string) error {
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(poll)
+	defer ticker.Stop()
+	var lastState string
+	var lastStateErr error
+	for {
+		lastState, lastStateErr = nodeState()
+		if lastStateErr == nil && lastState == store.NodeStateOnline {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for the server to redial a queued server_dial node: %w (node state %q, first dial %s)", ctx.Err(), lastState, queued)
+		case <-deadline.C:
+			detail := fmt.Sprintf("node state %q", lastState)
+			if lastStateErr != nil {
+				detail = fmt.Sprintf("node state unreadable: %v", lastStateErr)
+			}
+			return fmt.Errorf("server_dial node did not come online within %s after its first dial was queued for reconnection; %s; install reported %q; direct probe now: %s",
+				timeout, detail, strings.TrimSpace(queued), probe())
+		case <-ticker.C:
+		}
+	}
+}
+
+// probeServerDialAddress makes one TCP connection attempt to addr and
+// describes the result.
+func probeServerDialAddress(addr string) string {
+	if addr == "" {
+		return "no server_dial address recorded"
+	}
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		return fmt.Sprintf("dial %s: %v", addr, err)
+	}
+	_ = conn.Close()
+	return fmt.Sprintf("dial %s: connected (the agent accepts TCP; the handshake or token is what fails)", addr)
+}
+
 // installCloudAgentViaProviderAPI adds the provider, syncs it and installs
 // the agent on instance through the provider API: dialing serverURL, or,
 // with serverURL empty, dialed by the server at the port the driver chooses
-// from the instance's mappings.
-func installCloudAgentViaProviderAPI(ctx context.Context, t *testing.T, env *testenv.Env, p cloudprovider.CloudProvider, instance *cloudprovider.Instance, serverURL string) (string, error) {
+// from the instance's mappings. report receives what the install said beyond
+// the node UUID.
+func installCloudAgentViaProviderAPI(ctx context.Context, t *testing.T, env *testenv.Env, p cloudprovider.CloudProvider, instance *cloudprovider.Instance, serverURL string, report *providerInstallReport) (string, error) {
 	t.Helper()
 	serverDial := serverURL == ""
 	var expectedVastSSH *serverprovider.SSHConnection
@@ -181,31 +296,12 @@ func installCloudAgentViaProviderAPI(ctx context.Context, t *testing.T, env *tes
 	var checkErr error
 	for i, want := range wantChecks {
 		t.Logf("provider install check: %s=%s %s", result.Checks[i].Name, result.Checks[i].Status, result.Checks[i].Detail)
-		statusOK := result.Checks[i].Status == "ok"
-		wantStatus := "ok"
-		if want == "precheck" {
-			// Provider prechecks are advisory. A VM without Docker is valid when
-			// the installed agent selects udocker, which the suite verifies after
-			// the node connects. Errors still indicate a missing hard prerequisite.
-			statusOK = statusOK || result.Checks[i].Status == "warn"
-			wantStatus = "ok/warn"
-		} else if want == "agent_dial" && result.Checks[i].Status == "warn" && result.Checks[i].Detail == "agent started; waiting for its first session" {
-			// The management API observes the first session for three seconds.
-			// A cold VM may need longer; setupCloudNode still waits for this exact
-			// node to become online, and the suite subsequently requires GPUs.
-			statusOK = true
-			wantStatus = "ok/warn(waiting for first session)"
-		} else if want == "server_dial" && result.Checks[i].Status == "warn" && strings.HasPrefix(result.Checks[i].Detail, "queued for reconnection: ") {
-			// The install tries the first dial a few times and otherwise hands
-			// the node to the server's reconnect loop (provision.go). A freshly
-			// mapped pod port can take longer to answer; setupCloudNode still
-			// waits for this exact node to come online, so an address that never
-			// works still fails the case.
-			statusOK = true
-			wantStatus = "ok/warn(queued for reconnection)"
+		verdict := judgeProviderInstallCheck(want, result.Checks[i])
+		if verdict.QueuedDial && report != nil {
+			report.QueuedDial = result.Checks[i].Detail
 		}
-		if checkErr == nil && (result.Checks[i].Name != want || !statusOK) {
-			checkErr = fmt.Errorf("provider install check %d=%+v, want %s=%s", i, result.Checks[i], want, wantStatus)
+		if checkErr == nil && !verdict.Accepted {
+			checkErr = fmt.Errorf("provider install check %d=%+v, want %s=%s", i, result.Checks[i], want, verdict.Want)
 		}
 	}
 	if checkErr != nil {

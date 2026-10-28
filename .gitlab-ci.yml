@@ -654,6 +654,18 @@ release-publish:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - when: never
 
+# Every job below that has an `environment:` uses `action: prepare`. This
+# project has "Skip outdated deployment jobs" (ci_forward_deployment_enabled)
+# on: when a deployment starts running, GitLab drops every older running
+# deployment of the same environment, which fails that job mid-run with a
+# trace that just stops ("403 Job is not running"). Nightly master job 261712
+# (l4-aliyun-provisioning-matrix) was killed that way the moment an MR
+# pipeline's manual run of the same job started. `action: prepare` keeps the
+# environment-scoped CI variables (cloud-test/<provider>/*, the credentials)
+# but creates no deployment, so there is nothing to supersede; the older-job
+# drop is driven by deployments only. GitLab 14.0 has only `prepare` (`verify`
+# and `access` came later). Mutual exclusion is the resource_group's job, not
+# the environment's, so a new L4 job needs `action: prepare` too.
 .l4-cloud:
   image:
     name: golang:1.26@sha256:d7722066f0b60ceccb6c0643cbed1f5f9e15506ac237146c95333504d7805d89
@@ -746,6 +758,7 @@ l4-runpod-huggingface-public-download:
     # Keep provider credentials scoped under cloud-test/runpod/* while making
     # the low-frequency download lane distinguishable in GitLab environments.
     name: cloud-test/runpod/download-huggingface
+    action: prepare
   script:
     - make test-l4-runpod-huggingface-public-download
   rules:
@@ -775,6 +788,7 @@ l4-runpod-vllm-sglang-lifecycle:
   extends: .l4-acceptance
   environment:
     name: cloud-test/runpod/full
+    action: prepare
   script:
     - make test-l4-runpod-vllm-sglang-lifecycle
 
@@ -785,6 +799,7 @@ l4-autodl-node-onboarding:
   timeout: 95m
   environment:
     name: cloud-test/autodl/full
+    action: prepare
   script:
     - make test-l4-autodl-node-onboarding
 
@@ -799,6 +814,7 @@ l4-gitee-ascend-partition-capability:
   timeout: 140m
   environment:
     name: cloud-test/gitee-capability
+    action: prepare
   script:
     # Nightly capability-only check: no business image, model download, or chat.
     - make test-l4-gitee-ascend-partition-capability
@@ -811,6 +827,7 @@ l4-gitee-ascend-deploy-chat:
   timeout: 135m
   environment:
     name: cloud-test/gitee-deploy-chat
+    action: prepare
   script:
     - make test-l4-gitee-ascend-deploy-chat
   rules:
@@ -845,6 +862,7 @@ l4-ascend-pool-partition-inference:
     - job: core-compshare-offline-contracts
   environment:
     name: cloud-test/ascend-primary
+    action: prepare
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
       when: on_success
@@ -923,25 +941,24 @@ l4-vast-node-onboarding:
   timeout: 65m
   environment:
     name: cloud-test/vast/full
+    action: prepare
   script:
     - make test-l4-vast-node-onboarding
 
 # The in-process server dials the agent at the public address Vast maps to
 # its port.
 #
-# Its own environment: this project skips outdated deployment jobs
-# (ci_forward_deployment_enabled), so when two jobs of one pipeline deploy to
-# the same environment the one that starts later fails the one still running
-# ("403 Job is not running", then exit code 128 in the runner's git step, a
-# few seconds in with a trace that stops at "Preparing environment"). Sharing
-# cloud-test/vast/full made l4-vast-node-onboarding fail every night from
-# 2026-10-21, the day this job was added. Keep it under cloud-test/vast/* so
-# the VAST_API_KEY scope still applies, and give every job its own name.
+# Kept under cloud-test/vast/* so the VAST_API_KEY scope applies. Sharing
+# cloud-test/vast/full while jobs still created deployments made
+# l4-vast-node-onboarding fail every night from 2026-10-21 (the later job
+# dropped the running one, see the note above .l4-cloud); `action: prepare`
+# removes the cause, and the separate name just keeps the jobs distinguishable.
 l4-vast-server-dial-node-onboarding:
   extends: .l4-acceptance
   timeout: 65m
   environment:
     name: cloud-test/vast/server-dial
+    action: prepare
   script:
     - make test-l4-vast-server-dial-node-onboarding
 
@@ -952,10 +969,9 @@ l4-runpod-server-dial-node-onboarding:
     GPUWORKS_SSH_PROXY: "socks5://zstack.one:7891"
   extends: .l4-acceptance
   timeout: 65m
-  # Its own environment: see l4-vast-server-dial-node-onboarding on jobs
-  # sharing an environment.
   environment:
     name: cloud-test/runpod/server-dial
+    action: prepare
   script:
     - make test-l4-runpod-server-dial-node-onboarding
 
@@ -984,6 +1000,7 @@ l4-compshare-modelscope-public-download:
   environment:
     # CompShare credentials are environment-scoped to cloud-test/compshare/*.
     name: cloud-test/compshare/download-modelscope
+    action: prepare
   script:
     - make test-l4-compshare-modelscope-public-download
 
@@ -1000,6 +1017,7 @@ l4-compshare-single-vm-tp2-dgpu:
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/suite
+    action: prepare
   script:
     - make test-l4-compshare-single-vm-tp2-dgpu
 
@@ -1009,13 +1027,13 @@ l4-compshare-provisioning-matrix:
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/provider
+    action: prepare
   script:
     - make test-l4-compshare-provisioning-matrix
 
 # A server-dialed agent on a CompShare container instance: the server dials
-# the TCP port the driver opened and forwarded. Its own environment, under
-# cloud-test/compshare/* for the credential scope, for the reason given at
-# l4-vast-server-dial-node-onboarding. The VM counterpart runs inside
+# the TCP port the driver opened and forwarded. Under cloud-test/compshare/*
+# for the credential scope. The VM counterpart runs inside
 # l4-compshare-provisioning-matrix. Same single-instance lane as the other
 # one-VM compshare jobs.
 l4-compshare-server-dial-node-onboarding-container:
@@ -1027,6 +1045,7 @@ l4-compshare-server-dial-node-onboarding-container:
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/server-dial-container
+    action: prepare
   script:
     - make test-l4-compshare-server-dial-node-onboarding-container
 
@@ -1036,6 +1055,7 @@ l4-compshare-one-vm-two-logical-nodes:
   resource_group: gpuworks-cloud-compshare-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/onevm-nnode2
+    action: prepare
   script:
     - make test-l4-compshare-one-vm-two-logical-nodes
 
@@ -1045,6 +1065,7 @@ l4-compshare-two-vm-docker-distributed:
   resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/docker-nnode2
+    action: prepare
   script:
     - make test-l4-compshare-two-vm-docker-distributed
 
@@ -1054,6 +1075,7 @@ l4-compshare-pd-deploy-chat-two-vm-docker:
   resource_group: gpuworks-cloud-compshare-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/compshare/pd-two-vm
+    action: prepare
   script:
     - make test-l4-compshare-pd-deploy-chat-two-vm-docker
 
@@ -1069,14 +1091,16 @@ l4-compshare-pd-deploy-chat-two-vm-docker:
 # reach SSH and the agent port; default anywhere), ALIYUN_NO_SPOT=1,
 # ALIYUN_NO_ON_DEMAND=1.
 # Same per-pipeline lanes as CompShare: at most one single-VM case and the
-# two-VM case run at once per pipeline. Every job has its own environment (see
-# l4-vast-server-dial-node-onboarding on why jobs must not share one).
+# two-VM case run at once per pipeline. Jobs create no deployment (see the
+# note above .l4-cloud), so MR and nightly runs of one job no longer kill each
+# other.
 l4-aliyun-provisioning-matrix:
   extends: .l4-acceptance
   timeout: 180m
   resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/provisioning
+    action: prepare
   script:
     - make test-l4-aliyun-provisioning-matrix
 
@@ -1088,6 +1112,7 @@ l4-aliyun-modelscope-public-download:
   resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/download-modelscope
+    action: prepare
   script:
     - make test-l4-aliyun-modelscope-public-download
   rules:
@@ -1105,6 +1130,7 @@ l4-aliyun-single-vm-tp2-dgpu:
   resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/suite
+    action: prepare
   script:
     - make test-l4-aliyun-single-vm-tp2-dgpu
 
@@ -1114,6 +1140,7 @@ l4-aliyun-one-vm-two-logical-nodes:
   resource_group: gpuworks-cloud-aliyun-single-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/onevm-nnode2
+    action: prepare
   script:
     - make test-l4-aliyun-one-vm-two-logical-nodes
 
@@ -1123,6 +1150,7 @@ l4-aliyun-two-vm-docker-distributed:
   resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/docker-nnode2
+    action: prepare
   script:
     - make test-l4-aliyun-two-vm-docker-distributed
 
@@ -1132,6 +1160,7 @@ l4-aliyun-pd-deploy-chat-two-vm-docker:
   resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/pd-two-vm
+    action: prepare
   script:
     - make test-l4-aliyun-pd-deploy-chat-two-vm-docker
 
@@ -1144,6 +1173,7 @@ l4-aliyun-two-vm-udocker-distributed:
   resource_group: gpuworks-cloud-aliyun-two-vm-$CI_PIPELINE_IID
   environment:
     name: cloud-test/aliyun/udocker-nnode2
+    action: prepare
   script:
     - make test-l4-aliyun-two-vm-udocker-distributed
 
