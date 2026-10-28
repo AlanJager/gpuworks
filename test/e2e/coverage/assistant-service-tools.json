@@ -8,7 +8,13 @@
   "page_id": "assistant",
   "lane": "local-real-server-sqlite-llm-fixture",
   "identity": "admin",
-  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
   "runtime_evidence": {
     "status": "N/A",
     "reason": "The LLM endpoint is an audited local fixture. The server, AI service configuration, read-only tools, SQLite and browser are real; no GPU, agent, container or vendor model is claimed."
@@ -25,40 +31,88 @@
       "component": "Modal with preset, name, URL, model, password and default switch",
       "request": "POST /api/v1/ai/configs {\"name\",\"preset\",\"base_url\",\"api_key\",\"model\",\"is_default\"}",
       "persisted": "name, preset, base_url, model, is_default; the key is encrypted and not returned",
-      "covered": ["custom preset", "required fields", "default flag", "refresh and independent GET", "preset, base_url and model readback", "delete confirmation"],
-      "missing": ["all vendor presets", "validation failures", "the edit dialog", "the connection test button", "multiple services and default switching"]
+      "covered": [
+        "custom preset",
+        "required fields",
+        "default flag",
+        "refresh and independent GET",
+        "preset, base_url and model readback",
+        "delete confirmation"
+      ],
+      "missing": [
+        "all vendor presets",
+        "validation failures",
+        "the edit dialog",
+        "the connection test button",
+        "multiple services and default switching"
+      ]
     },
     {
       "id": "assistant.ask-stream",
       "component": "Panel textarea and Send button; SSE answer",
       "request": "POST /api/v1/ai/ask with task, question and locale",
       "persisted": "N/A: the assistant thread is browser state",
-      "covered": ["free question", "streamed final answer", "answer visible after the stream", "exact task/question/locale and history presence for the first and follow-up asks"],
-      "missing": ["reasoning deltas", "error and retry", "rate-limit response", "thread persistence"]
+      "covered": [
+        "free question",
+        "streamed final answer",
+        "answer visible after the stream",
+        "exact task/question/locale and history presence for the first and follow-up asks"
+      ],
+      "missing": [
+        "reasoning deltas",
+        "error and retry",
+        "rate-limit response",
+        "thread persistence"
+      ]
     },
     {
       "id": "assistant.tool-loop",
       "component": "Tool step list in the answer",
       "request": "The server offers tools, executes cluster_overview and sends the tool result back",
       "persisted": "N/A: tool calls are part of the answer trace",
-      "covered": ["cluster_overview offered", "real server-side tool result", "tool result compared with an independent GET of the seeded node", "tool_call_id and exact function arguments matched to the preceding call; orphan or unanswered calls rejected", "error/unavailable content rejected by the fixture", "final answer derived from validated tool facts and compared with independently generated inventory text", "localized tool step"],
-      "missing": ["search_api/call_api/search_metrics", "multiple or parallel calls", "tool self-correction and retry", "step budget exhaustion"]
+      "covered": [
+        "cluster_overview offered",
+        "real server-side tool result",
+        "tool result compared with an independent GET of the seeded node",
+        "tool_call_id and exact function arguments matched to the preceding call; orphan or unanswered calls rejected",
+        "error/unavailable content rejected by the fixture",
+        "final answer derived from validated tool facts and compared with independently generated inventory text",
+        "localized tool step"
+      ],
+      "missing": [
+        "search_api/call_api/search_metrics",
+        "multiple or parallel calls",
+        "tool self-correction and retry",
+        "step budget exhaustion"
+      ]
     },
     {
       "id": "assistant.stop",
       "component": "Stop button while streaming",
       "request": "The browser aborts POST /ai/ask",
       "persisted": "N/A",
-      "covered": ["a slow stream is stopped and the stopped notice appears", "the fixture barrier proves the upstream request was observed and then cancelled"],
-      "missing": ["stop followed by retry", "cancellation observed by a real vendor endpoint"]
+      "covered": [
+        "a slow stream is stopped and the stopped notice appears",
+        "the fixture barrier proves the upstream request was observed and then cancelled"
+      ],
+      "missing": [
+        "stop followed by retry",
+        "cancellation observed by a real vendor endpoint"
+      ]
     },
     {
       "id": "assistant.cleanup",
       "component": "Row delete + Popconfirm",
       "request": "DELETE /api/v1/ai/configs/{id}",
       "persisted": "removal",
-      "covered": ["deleted through the UI", "independent GET empty", "the seeded node is force-deleted and an independent GET returns 404"],
-      "missing": ["deleting the active service while a question is in flight"]
+      "covered": [
+        "deleted through the UI",
+        "independent GET empty",
+        "the seeded node is force-deleted and an independent GET returns 404"
+      ],
+      "missing": [
+        "deleting the active service while a question is in flight"
+      ]
     }
   ],
   "checklist_items": {
@@ -83,7 +137,7 @@
     "23.1": "Without a service the assistant states that one must be configured while Settings stays usable; with a service the tool loop runs",
     "23.2": "Question, streaming answer, stop, upstream cancellation and final state are exercised",
     "23.3": "The tool result matches an independent inventory read, carries the requested call ID, and error/unavailable content is not reported as success",
-    "23.4": "Partial: call_api to the denied /api/v1/ssh-key route returns an error and no key material; write tools, arbitrary commands and terminal-route attempts remain MISSING"
+    "23.4": "The assistant cannot write, and a caller asking it to cannot get around that. call_api's schema carries only path, query, jq and limit - there is no method field - and the reader it is handed exposes Get alone, so a write has no expression at all. A scripted call that does ask for one, sending method DELETE with a labels body to /api/v1/nodes-labels-probe, is echoed by the tool and then fails as a read ('no GET endpoint ...'), and an independent node GET afterwards still shows empty labels. Reading is denied separately: /api/v1/ssh-key and /api/v1/terminal/sessions are refused as routes the assistant may not read, no key material appears in the answer, and a later node GET is unchanged. Removing the Readable guard makes the denied route readable and the case fails."
   },
   "missing": [
     "MISSING: checklist 12.7 (delete names the object and impact) — the product shows only a generic title; the confirmation is required but the name/impact claim is not covered",

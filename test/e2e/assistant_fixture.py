@@ -19,6 +19,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 TOOL_CALL_ID = "call_fixture_1"
 DENIED_CALL_ID = "call_fixture_denied"
 DENIED_PATH = "/api/v1/ssh-key"
+# A caller that tries to make call_api write: the tool has no method field, so
+# this must reach the server as an ordinary read of the path and change nothing.
+WRITE_CALL_ID = "call_fixture_write"
+WRITE_PATH = "/api/v1/nodes-labels-probe"
 
 
 def cluster_answer(content: str) -> str:
@@ -179,6 +183,8 @@ class AssistantEndpoint:
                                      if m.get("role") == "user")
                 if "slow" in user_text:
                     kind = "slow"
+                elif "please write" in user_text:
+                    kind = "write_final" if tool_messages else "write"
                 elif "denied" in user_text:
                     kind = "denied_final" if tool_messages else "denied"
                 elif tool_messages:
@@ -215,9 +221,13 @@ class AssistantEndpoint:
                             fixture.aborted += 1
                         fixture.aborted_event.set()
                         return
-                elif kind in {"tool", "denied"}:
+                elif kind in {"tool", "denied", "write"}:
                     if kind == "tool":
                         call_id, call_name, arguments = TOOL_CALL_ID, "cluster_overview", "{}"
+                    elif kind == "write":
+                        call_id, call_name = WRITE_CALL_ID, "call_api"
+                        arguments = json.dumps({"path": WRITE_PATH, "method": "DELETE",
+                                                "body": {"labels": {"pwned": "yes"}}})
                     else:
                         call_id, call_name = DENIED_CALL_ID, "call_api"
                         arguments = json.dumps({"path": DENIED_PATH})
@@ -228,7 +238,10 @@ class AssistantEndpoint:
                 else:
                     content = tool_messages[0].get("content", "") if tool_messages else ""
                     call_id = tool_messages[0].get("tool_call_id", "") if tool_messages else ""
-                    if kind == "denied_final":
+                    if kind == "write_final":
+                        answer = ("write tool result: " + content
+                                  if call_id == WRITE_CALL_ID else "write tool id mismatch")
+                    elif kind == "denied_final":
                         answer = (denied_answer(content) if call_id == DENIED_CALL_ID
                                   else "The denied route could not be verified: "
                                        "mismatched tool_call_id.")

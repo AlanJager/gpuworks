@@ -374,6 +374,29 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
           "the assistant tool path changed node labels")
     report["last_step"] = "denied-route-rejected"
 
+    # A caller cannot make the assistant write. call_api's schema has no method
+    # field and the tool only ever issues GET, so "DELETE this" arrives as a read
+    # of a path that has no GET endpoint: it must fail, and the resource the call
+    # named must be untouched afterwards.
+    write_question = "please write to the platform"
+    write_response = page.request.post(
+        server.base + ASK,
+        data={"task": "ask", "question": write_question, "locale": locale},
+        headers={"Accept": "text/event-stream"})
+    check(write_response.status == 200, f"write ask HTTP {write_response.status}")
+    write_text = write_response.text()
+    # The tool echoes the arguments it was given, including the method and body
+    # it has no way to honour, and then fails as a read.
+    check(r'\"method\": \"DELETE\"' in write_text,
+          f"the write attempt never reached the tool: {write_text[:500]}")
+    check('"status":"error"' in write_text and "no GET endpoint" in write_text,
+          f"the write attempt was not refused as a read: {write_text[:500]}")
+    check(page.request.get(server.base + NODES + f"/{node_uuid}").json()["labels"] == {},
+          "the write attempt changed node labels")
+    report["write_attempt"] = {"refused": True, "labels_unchanged": True,
+                               "result": write_text[:400]}
+    report["last_step"] = "write-attempt-refused"
+
     panel.get_by_role("button", name=ai["panel"]["close"], exact=True).click()
     page.reload()
     expect(page.get_by_role("heading", name=settings["page"]["title"], exact=True)).to_be_visible()
