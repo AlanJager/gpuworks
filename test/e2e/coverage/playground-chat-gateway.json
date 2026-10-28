@@ -117,7 +117,6 @@
     "Streaming cancellation, upstream termination and interrupted-reply marking",
     "Gateway error paths (unknown model, unauthorized key, engine failure/429)",
     "Conversation rename/delete, retention cap and multi-account isolation",
-    "Markdown/HTML preview and CSP behavior",
     "Non-admin authorization",
     "The other locale (each run covers one --locale)"
   ],
@@ -159,7 +158,9 @@
   "checklist_items": {
     "20.1": "The deployment declares chat, embeddings and rerank; opening an operation the model does not declare lists the declared ones, and each link opens its own renderer: chat -> /playground/chat, embeddings and rerank -> /playground/vector. Nothing degrades to chat. Verified en+zh; killed by routing every operation to chat, after which embeddings arrives at /playground/chat instead of /playground/vector.",
     "20.2": "Each declared operation sends its own method, path and body and returns its own business result: chat streams SSE to [DONE] with the engine marker, embeddings POSTs {input} to the gateway's /v1/embeddings and returns one numeric vector, rerank POSTs {query, documents} to /v1/rerank and returns indexed relevance scores in descending order with no chat wire reuse. Verified en+zh.",
-    "20.9": "Both credential planes are exercised and proved not to substitute for each other. An inference key copied from the UI reaches the public /v1/models with Bearer only and no cookies (200), while the signed-in browser session gets 401 there and the inference key gets 401 on the session path /api/v1/playground/models; the key keeps authenticating its own path afterwards. Revoking the key returns it to 401 while the guard key still authenticates. Verified en+zh; killed by letting the public gateway accept the session cookie, after which the session reached /v1/models with 200."
+    "20.9": "Both credential planes are exercised and proved not to substitute for each other. An inference key copied from the UI reaches the public /v1/models with Bearer only and no cookies (200), while the signed-in browser session gets 401 there and the inference key gets 401 on the session path /api/v1/playground/models; the key keeps authenticating its own path afterwards. Revoking the key returns it to 401 while the guard key still authenticates. Verified en+zh; killed by letting the public gateway accept the session cookie, after which the session reached /v1/models with 200.",
+    "20.7": "A reply's HTML block is opened through the product's own preview button and the generated page really runs. Its frame carries sandbox \"allow-scripts allow-modals allow-downloads\" with no allow-same-origin, so the page sits in an opaque origin: it reports window.origin as null and reading the console location raises SecurityError, while the product's in-memory storage stand-in keeps localStorage usable. Under the restrictive policy the document carries the CSP with connect-src 'none', and the page's http(s) open request becomes a confirmation carrying the URL instead of navigating the frame. Verified en+zh. Two mutants were killed: dropping the CSP injection ('CSP presence does not match allow_network=False') and adding allow-same-origin to the sandbox ('the preview sandbox was granted the console origin').",
+    "20.8": "The administrator's security setting decides the preview's network policy end to end. The settings page's playground_preview_network switch was flipped through the UI and saved, the stored policy changed false->true, and the next preview carried no CSP while the sandbox string stayed byte-identical, so allowing the network never grants the console origin; the setting was then restored through the same switch and re-read from the API. Verified en+zh. Killed by the same two mutants as 20.7, which both fail the restricted-policy run."
   },
   "stream_evidence": {
     "normal_binary_sha256": "897a9c2b366f7692a9925153886ca8a29d49b114d8c6e3716e71501f4d55f3b5",
@@ -251,5 +252,58 @@
       "outcome": "NOT_KILLED",
       "why": "A single admin account means the leaked result equals the correct one, so this test cannot distinguish them. Recorded as an environment limitation, not as a proven property."
     }
+  },
+  "preview_evidence": {
+    "normal_binary_sha256": "59e853258274da0bbb056ee268b6c0e5c0630e4552ee7e103b594ffb59c8b2b9",
+    "runs": {
+      "en": {
+        "run_id": "20261028T084025Z-b304c535",
+        "report_sha256": "a414d4ce6afa0d99600b59204050f1c6539ba13e69c3735c206f9fc32bd65e0d"
+      },
+      "zh": {
+        "run_id": "20261028T084058Z-39051060",
+        "report_sha256": "215ff8ceea05543585a2671a3c296ba026a65567d6bcd687da6ed51dfae72b55"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": [
+          "20.7",
+          "20.8"
+        ],
+        "name": "csp-removed",
+        "cohort": "playground-preview-cohort-v1",
+        "run_id": "20261028T083446Z-431d35a7",
+        "report_sha256": "c6b95f931bbf5c5d73a17f66abd8c41ede2906b19d577581e8764786ccd15e31",
+        "binary_sha256": "d42cc329dc28cbb70ecadde7819e334d55e80b5363092e57c7251cd3552b0a49",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/previewSandbox.ts"
+          ],
+          "source_restored": true,
+          "intent": "stop injecting the restricted CSP into the preview document"
+        },
+        "review_note": "Killed at 'CSP presence does not match allow_network=False', so a preview that silently loses its policy cannot pass."
+      },
+      {
+        "item": [
+          "20.7",
+          "20.8"
+        ],
+        "name": "same-origin-granted",
+        "cohort": "playground-preview-cohort-v1",
+        "run_id": "20261028T083738Z-96934455",
+        "report_sha256": "832be74470c2f97aee0b0b20301ae2fe31021785fedf055930017343ae621daf",
+        "binary_sha256": "a42d9721c7dda5e81c14d614afdc1af7096ba6c522c1f511c68c18f67276da04",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/previewSandbox.ts"
+          ],
+          "source_restored": true,
+          "intent": "add allow-same-origin to PREVIEW_SANDBOX"
+        },
+        "review_note": "Killed at 'the preview sandbox was granted the console origin', so the origin isolation is asserted, not just the CSP."
+      }
+    ]
   }
 }

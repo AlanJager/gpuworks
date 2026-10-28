@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 import traceback
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
@@ -37,6 +37,25 @@ MODEL_DIR = ROOT / "test/e2e/testdata/fake-model"
 IMAGE = "gpuworks/fake-engine:test"
 CHAT = "/api/v1/playground/v1/chat/completions"
 MARKER = "hello from fake-engine"
+# A generated page that tries to reach the network and to touch the console's
+# storage: both are what the preview's isolation has to stop.
+# One line on purpose: the engine writes this string inside a JSON SSE chunk,
+# so a raw newline would split the event and break the stream.
+PREVIEW_HTML = (
+    '<!doctype html><html><head><title>probe</title></head>'
+    '<body><p id="mark">preview probe</p>'
+    '<script>'
+    'window.__storageProbe=(()=>{try{localStorage.setItem("k","v");return "writable"}catch(e){return "blocked:"+e.name}})();'
+    'window.__sameOriginProbe=(()=>{try{return String(window.parent.location.href)}catch(e){return "blocked:"+e.name}})();'
+    'window.__originProbe=String(window.origin);'
+    # The frame is cross-origin, so it reports through the channel the product
+    # already listens on instead of being inspected from outside.
+    'parent.postMessage({source:"gpuworks-preview",type:"open",'
+    'url:"https://probe.invalid/report?storage="+encodeURIComponent(window.__storageProbe)'
+    '+";sameorigin="+encodeURIComponent(window.__sameOriginProbe)'
+    '+";origin="+encodeURIComponent(window.__originProbe)}, "*");'
+    'fetch("http://127.0.0.1:9/blocked-probe").then(()=>{window.__fetchProbe="allowed"}).catch(()=>{window.__fetchProbe="failed"});'
+    '</script></body></html>')
 
 
 def strings(locale):
@@ -252,6 +271,119 @@ def vector_operation(page, server, report, playground, served_name):
                                "source": "each declared non-chat operation opened its own renderer and "
                                          "sent its own method/path/body; no chat wire reuse"})
     return rows
+
+
+def preview_isolation(page, server, report, playground, expected_network):
+    """20.7/20.8: the HTML preview is isolated from the console.
+
+    The generated page runs in an opaque-origin sandbox, so it cannot be read
+    from the outside; it reports what it managed to do through the message
+    channel the product already listens on, and the parent turns an http(s)
+    open request into a confirmation carrying that URL.
+    """
+    text = playground["preview"]
+    # The dispatch checks leave the browser on a vector page; the preview lives
+    # on the chat page holding the reply with the HTML block.
+    page.goto(server.base + "/playground/chat")
+    opener = page.get_by_role("button", name=text["open"], exact=True)
+    expect(opener.first).to_be_visible(timeout=30000)
+    opener.first.click()
+    expect(page.locator("iframe[title]").first).to_be_visible(timeout=30000)
+    shape = page.evaluate("""() => {
+      const frame = document.querySelector('iframe[title]');
+      return {sandbox: frame.getAttribute('sandbox') || '',
+              srcdoc: frame.getAttribute('srcdoc') || ''};
+    }""")
+    granted = set(shape["sandbox"].split())
+    check("allow-same-origin" not in granted,
+          f"the preview sandbox was granted the console origin: {shape['sandbox']}")
+    check("allow-scripts" in granted,
+          f"the preview cannot run the generated page at all: {shape['sandbox']}")
+    has_csp = "Content-Security-Policy" in shape["srcdoc"]
+    # The sandbox is the same under both policies: allowing the network must
+    # never be what grants the page the console's origin.
+    check(shape["sandbox"] == "allow-scripts allow-modals allow-downloads",
+          f"the sandbox differs from the fixed policy: {shape['sandbox']}")
+    check(has_csp != expected_network,
+          f"CSP presence does not match allow_network={expected_network}: {has_csp}")
+    if not expected_network:
+        check("connect-src 'none'" in shape["srcdoc"],
+              "the restrictive policy does not block network requests")
+    values = None
+    if not expected_network:
+        # Under the restrictive policy the page's http(s) open request becomes a
+        # confirmation carrying the URL, so the page reports its probes that
+        # way. With the network allowed the product opens the link instead, so
+        # this channel is only available while the policy is restrictive.
+        confirm = page.get_by_role("dialog", name=re.compile(re.escape(text["openLinkTitle"])))
+        expect(confirm).to_be_visible(timeout=30000)
+        body = confirm.inner_text()
+        check("probe.invalid" in body, f"the reported probe URL is missing: {body}")
+        values = {key: unquote(value)
+                  for key, value in re.findall(r"(storage|sameorigin|origin)=([^\s;&,]+)", body)}
+        check(values.get("origin") == "null",
+              f"the preview frame is not in an opaque origin: {values}")
+        check(values.get("sameorigin", "").startswith("blocked:"),
+              f"the preview could read the console location: {values}")
+        check(values.get("storage") == "writable",
+              f"the preview storage stand-in is unusable: {values}")
+        report["preview_probes"] = values
+        # The confirmation is an antd modal-confirm; its own footer holds the
+        # two buttons, so scope there rather than matching by role name alone.
+        confirm.locator(".ant-modal-confirm-btns button").first.click()
+        expect(confirm).to_have_count(0, timeout=30000)
+    else:
+        # With the network allowed the product opens the link instead of asking,
+        # so the probe channel is unavailable; the frame itself is still
+        # inspected to prove the origin isolation did not come from the CSP.
+        check(page.get_by_role("dialog", name=re.compile(re.escape(text["openLinkTitle"]))).count() == 0,
+              "the preview still asked about the link even though the network is allowed")
+    report["evidence"].append({
+        "layer": "preview", "sandbox": shape["sandbox"],
+        "allow_same_origin": False, "csp_present": has_csp,
+        "network_allowed": expected_network, "probes": values,
+        "source": "the generated page ran inside an opaque-origin sandbox, could not read the "
+                  "console location, and its CSP presence followed the security setting"})
+    report["last_step"] = "playground-preview-isolated"
+
+
+def preview_network_toggle(page, server, report, locale):
+    """20.8: the security setting decides the preview network policy.
+
+    Turning the setting on must drop the restrictive CSP while the sandbox
+    keeps the opaque origin, so allowing the network never hands the generated
+    page the console's origin. The setting is put back afterwards.
+    """
+    settings = json.loads((ROOT / "ui/src/i18n/locales" / locale / "settings.json").read_text())
+    label = settings["security"]["previewNetwork"]
+    before = page.request.get(server.base + "/api/v1/security/settings").json()
+    # The settings page renders one group at a time; the security card lives in
+    # the group the "security" fragment selects.
+    page.goto(server.base + "/settings#security")
+    # The security card sits further down the settings page.
+    toggle = page.locator(f'[role="switch"][aria-label="{label}"]')
+    if not toggle.count():
+        toggle = page.get_by_role("switch", name=label)
+    expect(toggle.first).to_be_visible(timeout=30000)
+    check(toggle.first.is_checked() == bool(before["playground_preview_network"]),
+          f"the toggle does not show the stored policy: {before}")
+    toggle.first.click()
+    # Several settings cards have their own Save; scope to the one holding the
+    # preview switch.
+    card = page.locator("#security")
+    expect(card).to_have_count(1, timeout=30000)
+    with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/security/settings"
+                              and r.request.method == "PATCH") as patched:
+        button(card, settings["common"]["save"]).click()
+    check(patched.value.status == 200, f"saving the policy failed: {patched.value.status}")
+    after = page.request.get(server.base + "/api/v1/security/settings").json()
+    check(after["playground_preview_network"] is not before["playground_preview_network"],
+          f"the policy did not change: {before} -> {after}")
+    report["evidence"].append({"layer": "settings", "key": "playground_preview_network",
+                               "before": before["playground_preview_network"],
+                               "after": after["playground_preview_network"],
+                               "source": "the administrator's toggle changed the stored policy"})
+    return after["playground_preview_network"]
 
 
 def test_playground_chat(page, context, server, artifacts, report, locale,
@@ -481,6 +613,32 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
 
     vector_operation(page, server, report, playground, served_name)
     report["last_step"] = "playground-operation-dispatch"
+    preview_isolation(page, server, report, playground, expected_network=False)
+    starting_network = page.request.get(
+        server.base + "/api/v1/security/settings").json()["playground_preview_network"]
+    # 20.8: the administrator's setting decides whether the preview may reach
+    # the network, and turning it on must not lift the origin isolation.
+    settings_text = json.loads((ROOT / "ui/src/i18n/locales" / locale / "settings.json").read_text())
+    savetext = settings_text["common"]["save"]
+    enabled = preview_network_toggle(page, server, report, locale)
+    try:
+        preview_isolation(page, server, report, playground, expected_network=enabled)
+    finally:
+        page.goto(server.base + "/settings#security")
+        restore = page.locator('[role="switch"][aria-label="' + settings_text["security"]["previewNetwork"] + '"]')
+        expect(restore.first).to_be_visible(timeout=30000)
+        # The switch loads its stored value asynchronously; wait for it to stop
+        # being disabled before reading the state it shows.
+        expect(restore.first).to_be_enabled(timeout=30000)
+        if restore.first.is_checked() != bool(starting_network):
+            restore.first.click()
+            with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/security/settings"
+                                      and r.request.method == "PATCH") as undone:
+                button(page.locator("#security"), savetext).click()
+            check(undone.value.status == 200, "restoring the preview network policy failed")
+        restored = page.request.get(server.base + "/api/v1/security/settings").json()
+        check(restored["playground_preview_network"] == starting_network,
+              f"the original preview network policy was not restored: {restored}")
 
     report["evidence"].extend([
         {"layer": "ui", "entry": deployments["page"]["openPlayground"], "row": dep_name,
@@ -554,7 +712,13 @@ def create_fixtures(server, token, run_id, report, holder, agent_bin, artifacts,
         "model_id": model["id"], "node_uuid": node["uuid"], "name": dep_name,
         "served_name": served_name, "engine": "vllm", "image": IMAGE,
         "placement_mode": "manual",
-        "container_overrides": {"command_mode": "engine"}})
+        # The reply is the engine marker as its own paragraph plus a real HTML
+        # document in a fenced block, which is what gives the preview its
+        # content. The marker paragraph keeps the existing exact-text
+        # assertions meaningful.
+        "container_overrides": {"command_mode": "engine",
+                                "env": {"FAKE_ENGINE_RESPONSE_TEXT":
+                                        MARKER + "\n\n```html\n" + PREVIEW_HTML + "\n```"}}})
     check(status in (200, 201), f"deployment fixture HTTP {status} {deployment}")
     deployment["name"], deployment["served_name"] = dep_name, served_name
     report["owned_deployment_id"] = deployment["id"]
