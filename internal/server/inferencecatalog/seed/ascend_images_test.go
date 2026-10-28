@@ -115,7 +115,7 @@ func TestEvery910CClaimingBuiltInTemplateSelectsAnA3Image(t *testing.T) {
 	}
 	// This exact count audits the current catalog's image-routing contract. It
 	// is deliberately not presented as a count of real-hardware validations.
-	const current910CClaimingTemplates = 91
+	const current910CClaimingTemplates = 94
 	if checked != current910CClaimingTemplates {
 		t.Fatalf("910C-claiming template count = %d, want the reviewed catalog count %d", checked, current910CClaimingTemplates)
 	}

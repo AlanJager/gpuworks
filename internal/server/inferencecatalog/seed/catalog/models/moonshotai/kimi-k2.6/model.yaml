@@ -458,4 +458,97 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# This model had no Ascend profile. Upstream's support matrix says A2 and A3,
+# but the page's only single-node recipe is the A3 one below: its weight table
+# puts the W4A8 checkpoint on two A2 nodes, and the multi-node section is
+# written for A3 throughout, so no A2 shape can be stated from it.
+#
+# `--max-model-len` is the published value and is deliberately small: upstream
+# says 15000 covers a 3.5k-in / 1.5k-out throughput run and that accuracy work
+# needs at least 35000, which a deployment can raise. The draft is DFlash at
+# k=15, mounted as a component; upstream's Eagle3 draft belongs to the
+# multi-node decode role, not to this one. No Ascend hardware was available, so
+# these arguments are the published recipe rather than a measured one.
+- name: w4a8-vllm-ascend-a3-2de1ec2b
+  display_profile: general
+  scenario: balanced
+  engine: vllm
+  image: gpuworks/gpuworks-runner:cann9.1-a3-vllm0.26.0rc1-r2
+  weights: &k26_w4a8
+    quantization: w4a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/Kimi-K2.6-w4a8
+        revision: 2de1ec2be30b634b1d44254426f772834160bb2f
+  weight_bytes: 535908987657
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910C[A-Za-z0-9]*([^A-Za-z0-9]|$)
+    display_target: ascend
+  args:
+  - --quantization
+  - ascend
+  - --trust-remote-code
+  - --data-parallel-size
+  - '4'
+  - --enable-expert-parallel
+  - --no-enable-prefix-caching
+  - --max-num-seqs
+  - '4'
+  - --max-model-len
+  - '15000'
+  - --max-num-batched-tokens
+  - '16384'
+  - --gpu-memory-utilization
+  - '0.87'
+  - --seed
+  - '42'
+  - --tool-call-parser
+  - kimi_k2
+  - --reasoning-parser
+  - kimi_k2
+  - --enable-auto-tool-choice
+  - --mm-processor-cache-gb
+  - '0'
+  - --mm-encoder-tp-mode
+  - data
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --additional-config
+  - '{"scheduler_config":{"enable_balance_scheduling":false},"enable_mlapo":true}'
+  - --speculative-config
+  - '{"method":"dflash","model":"/draft","num_speculative_tokens":15}'
+  env:
+    HCCL_OP_EXPANSION_MODE: AIV
+    HCCL_BUFFSIZE: '600'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+    OMP_PROC_BIND: 'false'
+    OMP_NUM_THREADS: '1'
+    TASK_QUEUE_ENABLE: '1'
+  placement:
+    language: starlark
+    resolver: "def resolve(gpu):\n    if gpu.count != 16: return reject(\"the published recipe runs exactly 16 logical devices on one node\")\n    if gpu.min_memory_gib < 64: return reject(\"each device requires at least 64 GiB\")\n    return {\"GPU_COUNT\": 16, \"TP_SIZE\": 4, \"SP_DEGREE\": 1}\n"
+  components:
+  - name: primary
+    role: primary
+    weights: *k26_w4a8
+    weight_bytes: 535908987657
+    mount_path: /model
+  - name: dflash-draft
+    role: speculative_draft
+    model_id: z-lab/kimi-k2.5-dflash
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: z-lab/Kimi-K2.5-DFlash
+          revision: e2db14df8337367b5eae8a6c206ea0d7d01a42a8
+    weight_bytes: 6958986822
+    mount_path: /draft
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 input_modalities: [text, image]

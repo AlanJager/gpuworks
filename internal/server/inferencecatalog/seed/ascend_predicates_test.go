@@ -125,7 +125,7 @@ func TestInheritedA3SpecsMatchTheir910BOriginal(t *testing.T) {
 			}
 		}
 	}
-	const currentInheritedA3Profiles = 81
+	const currentInheritedA3Profiles = 83
 	if pairs != currentInheritedA3Profiles {
 		t.Fatalf("inherited A3 profile count = %d, want the reviewed catalog count %d", pairs, currentInheritedA3Profiles)
 	}
