@@ -235,7 +235,7 @@
       "power": "Average total power",
       "powerPerCard": "{{value}} per card",
       "idle": "Long-idle cards",
-      "idleSub": "Average utilization < {{threshold}}%",
+      "idleSub": "Average utilization < {{threshold}}% · {{measured}} of {{total}} cards sampled; {{missing}} without utilization samples",
       "idleTip": "Cards whose average utilization over the range is below {{threshold}}%: both cards given to a deployment that gets little traffic and cards given to none.",
       "idleNeedsDetail": "Counted once filtered to at most {{limit}} cards"
     },

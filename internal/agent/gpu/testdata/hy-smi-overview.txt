@@ -1,0 +1,5 @@
+================================= System Management Interface ==================================
+HCU     Temp     AvgPwr     Perf     PwrCap     VRAM%      HCU%      Mode
+0       64.0C    132.0W     auto     350.0W     0%         0.0%      Normal
+1       63.0C    130.0W     auto     350.0W     90%        73.5%     Normal
+======================================== End of SMI Log ========================================

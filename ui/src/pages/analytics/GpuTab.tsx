@@ -130,7 +130,13 @@ export default function GpuTab({ from, to, granularity, tz, reload, search, setS
       },
       s.idle == null || s.measured == null
         ? { key: "idle", title: t("gpus.cards.idle"), value: "—", tip: t("gpus.cards.idleTip", { threshold: IDLE_UTIL }), sub: t("gpus.cards.idleNeedsDetail", { limit: DETAIL_CARDS }) }
-        : { key: "idle", title: t("gpus.cards.idle"), value: `${s.idle} / ${s.measured}`, tip: t("gpus.cards.idleTip", { threshold: IDLE_UTIL }), sub: t("gpus.cards.idleSub", { threshold: IDLE_UTIL }) },
+        : {
+            key: "idle", title: t("gpus.cards.idle"),
+            // No card was sampled: the fleet's idleness is unknown, not zero.
+            value: s.measured === 0 ? "—" : `${s.idle} / ${s.measured}`,
+            tip: t("gpus.cards.idleTip", { threshold: IDLE_UTIL }),
+            sub: t("gpus.cards.idleSub", { threshold: IDLE_UTIL, measured: s.measured, total: s.cards, missing: s.cards - s.measured }),
+          },
     ];
   };
 
