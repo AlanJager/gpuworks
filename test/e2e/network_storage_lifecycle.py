@@ -383,11 +383,15 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
     exercise_storage_inflight(page, dialog, t, typed_name, typed_path, draft, bad_http, console_errors, evidence)
     created = mutate(page, save.click, 'POST', prefix, draft, 201, evidence)
     path = f"{prefix}/{created['id']}"
-    expect(page).to_have_url(server.base + f"/storage/{created['id']}")
+    expect(page).to_have_url(server.base + f"/storage?storage={created['id']}")
     persisted(page, server.base, path, {**draft, 'enabled': True}, evidence)
     page.reload()
-    expect(page.get_by_text(draft['path'], exact=True)).to_be_visible()
-    button(page, t['actions']['edit']).click()
+    # The path shows in the drawer and again in the list row; scope to the drawer
+    # it was opened into and take Edit from that same header.
+    header = page.locator('.ant-drawer-header').filter(has_text=name).first
+    expect(header).to_be_visible()
+    expect(page.locator('.ant-drawer-body').first.get_by_text(draft['path'], exact=True)).to_be_visible()
+    button(header, t['actions']['edit']).click()
     dialog = page.get_by_role('dialog', name=t['form']['editTitle'].replace('{{name}}', name), exact=True)
     modal_geometry(dialog, button(dialog, t['form']['save']))
     expect(dialog.get_by_label(t['form']['name'], exact=True)).to_have_value(name)
@@ -395,14 +399,14 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
     dialog.get_by_label(t['form']['path'], exact=True).fill(draft['path'] + '-cancelled')
     page.keyboard.press('Escape')
     expect(dialog).not_to_be_visible()
-    expect(button(page, t['actions']['edit'])).to_be_focused()
+    expect(button(header, t['actions']['edit'])).to_be_focused()
     check(len(events) == 2, 'cancel storage edit sent mutation')
     stored = persisted(page, server.base, path, draft, evidence)
     common = locale_strings(locale, 'common')
     exercise_edit_conflict(
         page, server, t, common, created['id'], name, draft['path'], stored['updated_at'],
-        bad_http, console_errors, evidence)
-    button(page, t['actions']['edit']).click()
+        bad_http, console_errors, evidence, report)
+    button(header, t['actions']['edit']).click()
     changed = {'name': name + '-edited', 'path': draft['path'] + '-edited', 'all_nodes': True, 'targets': []}
     dialog.get_by_label(t['form']['name'], exact=True).fill(changed['name'])
     dialog.get_by_label(t['form']['path'], exact=True).fill(changed['path'])
@@ -411,7 +415,7 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
            {'name': changed['name'], 'path': changed['path']}, 200, evidence)
     expect(dialog).not_to_be_visible()
     page.reload()
-    expect(page.get_by_text(changed['path'], exact=True)).to_be_visible()
+    expect(page.locator('.ant-drawer-body').first.get_by_text(changed['path'], exact=True)).to_be_visible()
     persisted(page, server.base, path, {**changed, 'type': 'local'}, evidence)
     switch = page.get_by_role('switch', name=t['actions']['enabledSwitch'].replace('{{name}}', changed['name']), exact=True)
     for enabled in [False, True]:
@@ -423,6 +427,7 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
     row = page.get_by_role('row').filter(has_text=changed['name'])
     expect(row).to_contain_text(changed['path'])
     delete = button(row, t['actions']['delete'])
+    before_cancel = len(events)
     delete.click()
     confirmation = t['actions']['deleteConfirm'].replace('{{name}}', changed['name'])
     popup = page.get_by_role('tooltip').filter(has_text=confirmation)
@@ -430,7 +435,9 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
     expect(popup.get_by_text(t['actions']['deleteHelp'], exact=True)).to_be_visible()
     button(popup, t['actions']['cancel']).click()
     expect(popup).not_to_be_visible()
-    check(len(events) == 6, 'cancel storage delete sent mutation')
+    # Relative to what the case has already sent: a fixed count rots whenever a
+    # probe is added ahead of it.
+    check(len(events) == before_cancel, 'cancel storage delete sent mutation')
     persisted(page, server.base, path, changed, evidence)
     dep_id = place_storage_reference(server, created['id'])
     blocked = refuse_storage_delete(page, row, t, changed['name'], path, 'reference block')
@@ -464,7 +471,14 @@ def test_storage_lifecycle(page, server, report, locale, bad_http, console_error
     expect(row).to_have_count(0)
     check(read(page, server.base, path, 404) == {'error': 'not found'}, 'deleted storage GET contract differs')
     check(read(page, server.base, prefix) == baseline, 'storage deletion did not restore baseline')
-    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix}] + [{'method': 'PATCH', 'path': path}] * 4 + [{'method': 'DELETE', 'path': path}] * 3, 'unexpected storage mutation')
+    # Two creates (the create flow and the case's own draft attempt), six PATCHes
+    # (the rename, enabled off/on, and the two the conflict case sends: the losing
+    # write from another session's revision and the restore), and three DELETEs
+    # (one refused by the reference, one refused while a file is still deleting,
+    # and the accepted one). Spelled out so a stray write still fails here.
+    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix}]
+          + [{'method': 'PATCH', 'path': path}] * 6
+          + [{'method': 'DELETE', 'path': path}] * 3, 'unexpected storage mutation')
     evidence.extend([{'layer': 'ui', 'checks': ['empty/whitespace/invalid name', 'relative path validation', 'trim', 'dialog viewport', 'keyboard focus border=theme.primary', 'Tab focus trap', 'cancel/create/edit/delete', 'refresh fields', 'enabled false/true']},
                      {'layer': 'cleanup', 'detail_status': 404, 'list_restored': True, 'mutations': events}])
 

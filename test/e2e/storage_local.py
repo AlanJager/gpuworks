@@ -130,7 +130,7 @@ def exercise_full_local(page, server, storage, name, directory, report):
     sent = created.value.request.post_data_json
     check(sent == body, "full storage create body differs")
     storage_id = created.value.json()["id"]
-    page.wait_for_url(re.compile(rf".*/storage/{storage_id}$"), timeout=15000)
+    page.wait_for_url(re.compile(rf".*/storage\?storage={storage_id}(?:&|$)"), timeout=15000)
     expect(page.get_by_text(full_path, exact=True).first).to_be_visible()
     expect(page.get_by_text(storage["overview"]["scopeChosen"], exact=True).first).to_be_visible()
     expect(page.get_by_text("team=alpha", exact=True).first).to_be_visible()
@@ -205,8 +205,11 @@ def exercise_local_inflight(page, modal, storage, name, path, body, bad_response
 def exercise_edit_conflict(page, server, storage, common, storage_id, name, path_value, stale,
                            bad_responses, console_errors, evidence, report):
     """The open edit dialog sends its previewed revision. Another writer advances it first."""
-    page.goto(server.base + f"/storage/{storage_id}")
-    button(page, storage["actions"]["edit"]).click()
+    page.goto(server.base + f"/storage?storage={storage_id}")
+    # The row and the detail drawer both carry Edit; take the drawer's header.
+    header = page.locator(".ant-drawer-header").filter(has_text=name).first
+    expect(header).to_be_visible()
+    button(header, storage["actions"]["edit"]).click()
     scope = storage["form"]["scope"]
     dialog = page.get_by_role("dialog", name=storage["form"]["editTitle"].replace("{{name}}", name), exact=True)
     expect(dialog).to_be_visible()
@@ -267,10 +270,11 @@ def exercise_edit_conflict(page, server, storage, common, storage_id, name, path
     expect(dialog).to_be_hidden()
     report["last_step"] = "conflict-reopen"
     page.reload()
-    expect(page.get_by_text(name, exact=True).first).to_be_visible()
-    expect(button(page, storage["actions"]["edit"])).to_be_visible()
+    header = page.locator(".ant-drawer-header").filter(has_text=name).first
+    expect(header).to_be_visible()
+    expect(button(header, storage["actions"]["edit"])).to_be_visible()
     reopened = page.get_by_role("dialog", name=storage["form"]["editTitle"].replace("{{name}}", name), exact=True)
-    button(page, storage["actions"]["edit"]).click()
+    button(header, storage["actions"]["edit"]).click()
     expect(reopened).to_be_visible()
     expect(reopened.get_by_role("radio", name=scope["all"], exact=True)).to_be_checked()
     expect(reopened.get_by_label(scope["labelKey"], exact=True)).to_have_count(0)
@@ -298,7 +302,8 @@ def exercise_edit_conflict(page, server, storage, common, storage_id, name, path
           and recovered_labels == recovered_targets,
           f"reloaded edit GET differs: {recovered_doc}")
     report["last_step"] = "conflict-restored"
-    button(page, storage["actions"]["edit"]).click()
+    header = page.locator(".ant-drawer-header").filter(has_text=name).first
+    button(header, storage["actions"]["edit"]).click()
     restoring = page.get_by_role("dialog", name=storage["form"]["editTitle"].replace("{{name}}", name), exact=True)
     expect(restoring).to_be_visible()
     expect(restoring.get_by_label(scope["labelKey"], exact=True)).to_have_value("team")
@@ -480,7 +485,7 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     expect(page.get_by_text(format_text(storage["form"]["created"], name=name),
                             exact=True).first).to_be_visible()
     # The form opens the new storage's detail page.
-    page.wait_for_url(re.compile(rf".*/storage/{storage_id}$"), timeout=15000)
+    page.wait_for_url(re.compile(rf".*/storage\?storage={storage_id}(?:&|$)"), timeout=15000)
     expect(page.get_by_text(name, exact=True).first).to_be_visible()
     expect(page.get_by_text(common["storageType"]["local"], exact=True).first).to_be_visible()
     expect(page.get_by_text(path, exact=True).first).to_be_visible()
