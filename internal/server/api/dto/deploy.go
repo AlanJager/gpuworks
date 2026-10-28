@@ -83,12 +83,29 @@ type Deployment struct {
 	// (deploy.LaunchConfig) and ExtraArgs the arguments the parameter dictionary
 	// does not describe. They are what the instance is started from, so read
 	// APIs expose them.
-	QuickParams      map[string]any `json:"quick_params,omitempty"`
-	ExtraArgs        string         `json:"extra_args,omitempty"`
-	DesiredState     string         `json:"desired_state"`
-	RuntimeState     string         `json:"runtime_state"`
-	Sleepable        bool           `json:"sleepable"`
-	PartitionBackend string         `json:"partition_backend,omitempty"`
+	QuickParams  map[string]any `json:"quick_params,omitempty"`
+	ExtraArgs    string         `json:"extra_args,omitempty"`
+	DesiredState string         `json:"desired_state"`
+	RuntimeState string         `json:"runtime_state"`
+	// State is the one state to show for the deployment: RuntimeState, except
+	// that a deployment whose every serving replica is asleep reads asleep
+	// (awake again once it is woken), and one whose sleep order is still being
+	// carried out reads sleeping. RuntimeState keeps what the runtime reports,
+	// so a sleeping deployment is still "running" there: the engine runs, the
+	// gateway refuses every request.
+	State string `json:"state"`
+	// AsleepReplicas counts the serving replicas the gateway refuses because
+	// of sleep. Against Replicas it says how much of the deployment sleeps, so
+	// a partly slept one shows its running replicas instead of reading as a
+	// broken replica.
+	AsleepReplicas int `json:"asleep_replicas,omitempty"`
+	// SleepLevel is the deepest sleep level an engine of the deployment
+	// reports: 0 while every replica is awake, and while a sleep order is
+	// still being carried out (the intent is there, the engine has not slept
+	// yet).
+	SleepLevel       int    `json:"sleep_level,omitempty"`
+	Sleepable        bool   `json:"sleepable"`
+	PartitionBackend string `json:"partition_backend,omitempty"`
 	// VRAMLimitBytes is the dGPU memory limit each replica runs under per
 	// card; absent for a deployment on whole cards. A change replaces the
 	// instances, so an instance's own vram_limit_bytes may trail it.

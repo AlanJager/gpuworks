@@ -105,6 +105,7 @@ func TestFrontendDTOContractAcceptsLiteralDeploymentPayload(t *testing.T) {
 		"served_name": "qwen",
 		"desired_state": "active",
 		"runtime_state": "running",
+		"state": "running",
 		"sleepable": false,
 		"replicas": 1,
 		"nnodes": 2,
@@ -132,12 +133,13 @@ func TestFrontendDTOContractAcceptsLiteralDeploymentPayload(t *testing.T) {
 		"node_uuid":            "node-1",
 		"runtime_state":        "running",
 		"desired_state":        "active",
+		"state":                "running",
 		"nnodes":               float64(2),
 		"master_addr":          "10.0.0.1",
 		"master_port":          float64(29500),
 		"template_deviated":    false,
 	})
-	assertJSONKeysAbsent(t, object, "blueprint_deviated", "template_profile_key", "state")
+	assertJSONKeysAbsent(t, object, "blueprint_deviated", "template_profile_key")
 	assertJSONKeysAbsent(t, object, "ModelID", "NodeUUID", "NodeUUIDs", "DesiredState", "RuntimeState", "MasterAddr", "MasterPort")
 }
 

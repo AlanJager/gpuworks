@@ -23,7 +23,7 @@ import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Dep
 import { DeploymentPreparation, ListPreparationAction, PreparationLabel } from "./DeploymentPreparation";
 import DeploymentMetricsPanel from "../components/DeploymentMetricsPanel";
 import RoutingPolicyHelp from "../components/RoutingPolicyHelp";
-import { effectiveDeploymentState, stateLabel } from "./state";
+import { effectiveDeploymentState, partlyAsleep, stateLabel } from "./state";
 import DeploymentPdPanel from "./DeploymentPdPanel";
 import DeploymentInstances from "./DeploymentInstances";
 import SleepControls from "./DeploymentSleepControls";
@@ -52,7 +52,7 @@ import { TokenizeHelp } from "../components/DeploymentTokenize";
 
 const DEPLOYMENT_PAGE_SIZE = 20;
 const DEPLOYMENT_TABLE_ID = "deployments";
-const DEPLOYMENT_LIST_STATES = ["running", "offline", "starting", "pulling", "pending", "failed", "stopped", "deleting"];
+const DEPLOYMENT_LIST_STATES = ["running", "sleeping", "asleep", "offline", "starting", "pulling", "pending", "failed", "stopped", "deleting"];
 
 export function deploymentTerminalInstances(deployment: Deployment): Instance[] {
   return (deployment.instances || []).filter((instance) => ["starting", "optimizing", "running"].includes(instance.state) && Boolean(instance.node_uuid && instance.container_id));
@@ -67,6 +67,21 @@ export function containerTerminalURL(instance: Instance): string {
 function replicaCount(d: DeploymentListItem): string {
   const desired = d.replicas ?? 0;
   return `${d.ready_replicas ?? "—"}/${desired}`;
+}
+
+// asleepActionHint is the tooltip on an action the deployment cannot take yet.
+// A sleep order explains itself: the runtime is fine, and requests are refused
+// until someone wakes the deployment, which is not what "not running yet" says.
+function asleepActionHint(d: DeploymentListItem, t: (key: string) => string): string {
+  switch (effectiveDeploymentState(d)) {
+    case "asleep":
+    case "sleeping":
+      return t("page.asleepUnavailable");
+    case "running":
+      return "";
+    default:
+      return t("page.runtimeUnavailable");
+  }
 }
 
 export default function DeploymentsPage() {
@@ -166,11 +181,21 @@ export default function DeploymentsPage() {
       filters: DEPLOYMENT_LIST_STATES.map((state) => ({ value: state, text: stateLabel(state, tCommon).text })),
       filteredValue: states,
       render: (_: unknown, deployment: DeploymentListItem) => {
-        const b = stateLabel(effectiveDeploymentState(deployment), tCommon);
+        const state = effectiveDeploymentState(deployment);
+        const b = stateLabel(state, tCommon);
+        // A partly slept deployment still serves, so it keeps the running
+        // text; the count beside it says how much of it is awake, which a
+        // plain green badge would hide.
+        const partial = partlyAsleep(deployment);
         // A failed model preparation is the reason the row is not running, so
         // the retry is offered here, where that state is read - not only in
-        // the drawer behind it.
-        return <><Badge status={b.status} text={b.text} />{deployment.preparation && <Typography.Text type="secondary" className="resource-table-sub"><PreparationLabel item={deployment.preparation} /></Typography.Text>}{deployment.preparation && <ListPreparationAction item={deployment.preparation} onChanged={refetch} />}</>;
+        // the drawer behind it (GWKS-143).
+        return <>
+          <Badge status={partial ? "processing" : b.status} text={b.text} />
+          {partial && <Typography.Text type="secondary" className="resource-table-sub">{t("sleep.partial", { asleep: deployment.asleep_replicas, total: deployment.replicas ?? 0 })}</Typography.Text>}
+          {deployment.preparation && <Typography.Text type="secondary" className="resource-table-sub"><PreparationLabel item={deployment.preparation} /></Typography.Text>}
+          {deployment.preparation && <ListPreparationAction item={deployment.preparation} onChanged={refetch} />}
+        </>;
       },
     },
     { key: "health", title: <Space size={0}>{t("page.column.health")}<HealthCheckHelp /></Space>, width: 140, render: (_: unknown, d: DeploymentListItem) => <HealthTag health={d.health} /> },
@@ -183,10 +208,12 @@ export default function DeploymentsPage() {
       width: 120,
       render: (_: unknown, d: DeploymentListItem) => {
     return <Space size={4}>
-      <Tooltip title={effectiveDeploymentState(d) === "running" ? `${t("page.openPlayground")} · ${(d.operations || []).map((operation) => operation.type).join(", ")}` : t("page.runtimeUnavailable")}><Button disabled={effectiveDeploymentState(d) !== "running" || !d.operations?.length} type="text" size="small" icon={<MessageOutlined />} onClick={() => d.operations?.[0] && navigate(playgroundRoute(d.operations[0], d.served_name || d.model_name))} aria-label={t("page.openPlayground")} /></Tooltip>
-      <Tooltip title={effectiveDeploymentState(d) === "running" ? t("page.copyCurl") : t("page.runtimeUnavailable")}><Button disabled={effectiveDeploymentState(d) !== "running"} type="text" size="small" icon={<ApiOutlined />} onClick={() => void copyCurl(d)} aria-label={t("page.copyCurl")} /></Tooltip>
+      <Tooltip title={effectiveDeploymentState(d) === "running" ? `${t("page.openPlayground")} · ${(d.operations || []).map((operation) => operation.type).join(", ")}` : asleepActionHint(d, t)}><Button disabled={effectiveDeploymentState(d) !== "running" || !d.operations?.length} type="text" size="small" icon={<MessageOutlined />} onClick={() => d.operations?.[0] && navigate(playgroundRoute(d.operations[0], d.served_name || d.model_name))} aria-label={t("page.openPlayground")} /></Tooltip>
+      <Tooltip title={effectiveDeploymentState(d) === "running" ? t("page.copyCurl") : asleepActionHint(d, t)}><Button disabled={effectiveDeploymentState(d) !== "running"} type="text" size="small" icon={<ApiOutlined />} onClick={() => void copyCurl(d)} aria-label={t("page.copyCurl")} /></Tooltip>
       <Dropdown trigger={["click"]} menu={{ items: [
-      { key: "terminal", icon: <CodeOutlined />, disabled: !["starting", "optimizing", "running"].includes(effectiveDeploymentState(d)), label: t("instanceTerminal.open") },
+      // A sleeping engine's container is still there to inspect; that is how
+      // an operator confirms the sleep state, so the terminal stays open.
+      { key: "terminal", icon: <CodeOutlined />, disabled: !["starting", "optimizing", "running", "sleeping", "asleep"].includes(effectiveDeploymentState(d)), label: t("instanceTerminal.open") },
       { key: "edit", icon: <EditOutlined />, disabled: d.desired_state === "deleting", label: t("page.edit") },
       { key: "clone", icon: <CopyOutlined />, label: t("page.clone") },
       { key: "cloneModify", icon: <CopyOutlined />, label: t("page.cloneModify") },
@@ -409,7 +436,9 @@ function DeploymentDetail({
             {dep.placement_mode && <Descriptions.Item label={t("unitsPlacement.label")} span={2}><PlacementModeControl dep={dep} onChanged={() => void load()} /></Descriptions.Item>}
             {!dep.pd && (dep.nnodes ?? 1) <= 1 && <Descriptions.Item label={t("detail.placement.requirements")} span={2}><Space size={4} wrap><RequirementTags dep={dep} />{dep.placement_strategy && <Tag color="blue">{t(`detail.placement.strategy.${dep.placement_strategy}`, { defaultValue: dep.placement_strategy })}</Tag>}<EditRequirementsButton dep={dep} onChanged={() => void load()} /></Space></Descriptions.Item>}
             <Descriptions.Item label={t("detail.state")}>
-              {b && <Badge status={b.status} text={b.text} />}
+              {/* A partly slept deployment serves, so it stays running here too,
+                  with the sleep count beside it rather than a plain badge. */}
+              {b && <Space size={4}><Badge status={dep && partlyAsleep(dep) ? "processing" : b.status} text={b.text} />{dep && partlyAsleep(dep) && <Typography.Text type="secondary">{t("sleep.partial", { asleep: dep.asleep_replicas, total: dep.replicas })}</Typography.Text>}</Space>}
             </Descriptions.Item>
             <Descriptions.Item label={<Space size={0}>{t("detail.health")}<HealthCheckHelp /></Space>}><HealthCheckEditor key={`${dep.id}-${dep.health.threshold_sec}`} dep={dep} onChanged={load} /></Descriptions.Item>
             <Descriptions.Item label={<Space size={0}>{t("detail.tokenize")}<TokenizeHelp /></Space>}><TokenizeEditor dep={dep} onChanged={load} /></Descriptions.Item>

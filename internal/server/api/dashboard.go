@@ -42,7 +42,11 @@ func (a *apiHandlers) dashboardSummary(w http.ResponseWriter, r *http.Request) {
 		if d.Sleepable {
 			out.Deployments.Sleepable++
 		}
-		switch effectiveDeploymentState(d, deploymentRuntimeState(rows, d, rows.instances(d.ID), recordedModelProgress(rows, d))) {
+		// A sleeping or asleep deployment serves nothing, so it is not counted
+		// as running; it falls into neither group and reads as another state,
+		// as a stopped one does.
+		insts := rows.instances(d.ID)
+		switch effectiveDeploymentState(d, deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d)), deploymentSleepOf(rows, d, insts)) {
 		case "running":
 			out.Deployments.Running++
 		case "pulling", "starting":

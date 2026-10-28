@@ -66,9 +66,11 @@ function fakeServer(rows: DeploymentListItem[]) {
   const serve = async (query: ListQuery): Promise<DeploymentPage> => {
     queries.push(query);
     const q = query.q?.trim().toLowerCase() ?? "";
+    // The server filters by the state a row shows, which follows sleep; a row
+    // with no state of its own shows its runtime state.
     const matched = rows.filter((row) =>
       (!q || [row.name, row.served_name, row.model_name].some((name) => name.toLowerCase().includes(q))) &&
-      (!query.state?.length || query.state.includes(row.runtime_state)));
+      (!query.state?.length || query.state.includes(row.state ?? row.runtime_state)));
     const start = (query.page - 1) * query.page_size;
     return { items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length };
   };
@@ -246,4 +248,63 @@ test("replica column labels ready versus desired for PD and ordinary rows, prese
   for (const [name, count] of [["pd-ready", "2/2"], ["pd-partial", "1/3"], ["ordinary-pending", "0/1"], ["unknown-readiness", "—/2"]]) {
     assert.ok(within(screen.getByText(name).closest("tr")!).getByRole("cell", { name: count }));
   }
+});
+
+// A sleeping deployment is not green, and the actions that would only get a
+// 503 say why they are unavailable. A partly slept one still serves, so it
+// keeps the running badge but carries the count of what is asleep.
+test("a sleeping deployment is not shown as running and refuses to open the Playground", async () => {
+  const operations = [{ type: "openai.chat", endpoint: "/v1/chat/completions", renderer: "chat" }];
+  renderPage(fakeServer([
+    { ...fleet[0], id: 201, name: "awake", runtime_state: "running", state: "running", replicas: 1, ready_replicas: 1, operations },
+    { ...fleet[0], id: 202, name: "draining", runtime_state: "running", state: "sleeping", replicas: 1, ready_replicas: 0, operations },
+    { ...fleet[0], id: 203, name: "slept", runtime_state: "running", state: "asleep", sleep_level: 1, asleep_replicas: 1, replicas: 1, ready_replicas: 0, operations },
+    { ...fleet[0], id: 204, name: "half-slept", runtime_state: "running", state: "running", sleep_level: 1, asleep_replicas: 1, replicas: 4, ready_replicas: 3, operations },
+  ]).serve);
+  await screen.findByText("awake");
+
+  const row = (name: string) => within(screen.getByText(name).closest("tr")!);
+  // The badge text is the state, and only the awake row is green: antd marks
+  // the status on the dot beside the text.
+  const badgeStatus = (name: string, text: string) => {
+    const badge = row(name).getByText(text).closest(".ant-badge")!;
+    return [...badge.querySelector(".ant-badge-status-dot")!.classList]
+      .map((cls) => cls.match(/^ant-badge-status-(success|warning|processing|default|error)$/)?.[1])
+      .find(Boolean);
+  };
+  assert.equal(badgeStatus("awake", commonLocale.states.running), "success");
+  assert.equal(badgeStatus("draining", commonLocale.states.sleeping), "processing");
+  assert.equal(badgeStatus("slept", commonLocale.states.asleep), "warning");
+  // A partly slept deployment still serves, so it keeps the running text —
+  // but not the green badge, which would hide the replicas answering nothing.
+  assert.equal(badgeStatus("half-slept", commonLocale.states.running), "processing");
+  assert.ok(row("half-slept").getByText("Partly asleep · 1/4 replicas"));
+
+  // An asleep deployment cannot take requests; a partly slept one can, so its
+  // actions stay open.
+  assert.equal(row("awake").getByRole("button", { name: deploymentsLocale.page.openPlayground }).hasAttribute("disabled"), false);
+  assert.equal(row("awake").getByRole("button", { name: deploymentsLocale.page.copyCurl }).hasAttribute("disabled"), false);
+  assert.equal(row("half-slept").getByRole("button", { name: deploymentsLocale.page.openPlayground }).hasAttribute("disabled"), false);
+  for (const name of ["draining", "slept"]) {
+    assert.ok(row(name).getByRole("button", { name: deploymentsLocale.page.openPlayground }).hasAttribute("disabled"), name);
+    assert.ok(row(name).getByRole("button", { name: deploymentsLocale.page.copyCurl }).hasAttribute("disabled"), name);
+  }
+});
+
+// The filter offers the sleep states and the server is asked for them.
+test("the state filter offers sleeping and asleep", async () => {
+  const server = fakeServer([
+    { ...fleet[0], id: 301, name: "awake", state: "running" },
+    { ...fleet[0], id: 302, name: "slept", runtime_state: "running", state: "asleep", sleep_level: 1, asleep_replicas: 1, ready_replicas: 0 },
+  ]);
+  renderPage(server.serve);
+  await screen.findByText("awake");
+  const header = screen.getByRole("columnheader", { name: /State/ });
+  fireEvent.click(header.querySelector(".ant-table-filter-trigger")!);
+  assert.ok(await screen.findByRole("menuitem", { name: new RegExp(commonLocale.states.sleeping) }));
+  fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(commonLocale.states.asleep) }));
+  fireEvent.click(screen.getByRole("button", { name: "OK" }));
+  await waitFor(() => assert.deepEqual(server.queries.at(-1)?.state, ["asleep"]));
+  await waitFor(() => assert.equal(screen.queryByText("awake"), null));
+  assert.ok(screen.getByText("slept"));
 });

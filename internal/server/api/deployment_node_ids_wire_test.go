@@ -25,7 +25,7 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 	progressA := fmt.Sprintf(progress, "node-a", "node-a")
 	progressB := fmt.Sprintf(progress, "node-b", "node-b")
 	const head = `{"operations":[],"id":1,"template_deviated":false,"name":"dep","engine":"","model_id":1,"model_name":"org/m","node_uuid":"node-a","node_name":"node-a",`
-	const tail = `"node_requirements":{},"placement_strategy":"spread","served_name":"","desired_state":"active","runtime_state":"pending","sleepable":false,"replicas":0,"max_replicas":32,"routing_policy":"least_request",`
+	const tail = `"node_requirements":{},"placement_strategy":"spread","served_name":"","desired_state":"active","runtime_state":"pending","state":"pending","sleepable":false,"replicas":0,"max_replicas":32,"routing_policy":"least_request",`
 	// No replica runs, and the check is off.
 	const ready = `"ready_replicas":0,`
 	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,` +

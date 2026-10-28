@@ -101,7 +101,11 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	insts := rows.instances(d.ID)
 	// One match serves every replica field of the response.
 	view, viewErr := newReplicaView(rows, d, insts)
+	// Sleep is presented from the same match, so a deployment never reads
+	// asleep in one field and ready in another.
+	var sleep deploymentSleep
 	if viewErr == nil {
+		sleep = deploymentSleepFacts(rows, view, insts)
 		out.PD = deploymentPDDTO(rows, d, insts, view)
 		if out.PD == nil {
 			ready := readyReplicas(rows, view)
@@ -169,6 +173,9 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	}
 	sort.Strings(out.RuntimeNodeNames)
 	out.RuntimeState = deploymentRuntimeState(rows, d, insts, recorded)
+	out.SleepLevel = sleep.Level
+	out.AsleepReplicas = sleep.AsleepReplicas
+	out.State = effectiveDeploymentState(d, out.RuntimeState, sleep)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
 		for i := range insts {
@@ -206,10 +213,19 @@ func deploymentRuntimeState(rows dtoLookup, d *store.Deployment, insts []store.I
 
 // effectiveDeploymentState is the one state a list shows for a deployment: a
 // delete in flight outranks whatever the runtime reports, as in the UI's
-// effectiveDeploymentState.
-func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
+// effectiveDeploymentState, and a deployment whose every serving replica is
+// asleep is asleep (or sleeping, while the order is still being carried out)
+// rather than the running state its engines keep reporting.
+//
+// A partly slept deployment keeps the runtime state: its awake replicas serve,
+// and asleep_replicas says how many do not, so the row shows both instead of
+// passing itself off as entirely well or entirely asleep.
+func effectiveDeploymentState(d *store.Deployment, runtimeState string, sleep deploymentSleep) string {
 	if d.State == store.DeployDeleting {
 		return deploymentStateDeleting
+	}
+	if runtimeState == "running" && sleep.Asleep() {
+		return sleep.State()
 	}
 	return runtimeState
 }
@@ -217,7 +233,7 @@ func effectiveDeploymentState(d *store.Deployment, runtimeState string) string {
 const deploymentStateDeleting = "deleting"
 
 // deploymentListStates are the states a deployment list can be filtered by.
-var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting}
+var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting, deploymentStateSleeping, deploymentStateAsleep}
 
 // redactAcquisitionSecrets prevents credentials embedded in an explicit proxy
 // URL from being returned by deployment read APIs or persisted snapshots.

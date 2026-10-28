@@ -55,6 +55,7 @@
     },
     "desired_state": "active",
     "runtime_state": "running",
+    "state": "running",
     "sleepable": false,
     "partition_backend": "nvidia-dgpu",
     "vram_limit_bytes": 12884901888,

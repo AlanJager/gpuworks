@@ -74,34 +74,39 @@ func TestDeploymentDistributedOfflineFollower(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	check := func(state string, ready int) {
+	// The state a row shows follows the runtime state, except that a replica
+	// asleep with its whole unit reads asleep; an offline follower outranks
+	// sleep, since the deployment cannot serve for another reason.
+	check := func(state, shown string, ready int) {
 		t.Helper()
 		got := f.handler.deploymentDTO(dep, true)
-		if got.RuntimeState != state || got.ReadyReplicas == nil || *got.ReadyReplicas != ready {
-			t.Fatalf("got %+v, want %s/%d", got, state, ready)
+		if got.RuntimeState != state || got.State != shown || got.ReadyReplicas == nil || *got.ReadyReplicas != ready {
+			t.Fatalf("got %s/%s/%d, want %s/%s/%d", got.RuntimeState, got.State, *got.ReadyReplicas, state, shown, ready)
 		}
 	}
-	check("running", 1)
+	check("running", "running", 1)
 	if err := f.st.SetNodeState("list-b", store.NodeStateOffline); err != nil {
 		t.Fatal(err)
 	}
-	check("offline", 0)
+	check("offline", "offline", 0)
 	if err := f.st.SetNodeState("list-b", store.NodeStateOnline); err != nil {
 		t.Fatal(err)
 	}
-	check("running", 1)
+	check("running", "running", 1)
 	if err := f.st.DB().Model(&store.Instance{}).Where("uuid = ?", "leader").Update("sleep_level", 1).Error; err != nil {
 		t.Fatal(err)
 	}
-	check("running", 0)
+	// The leader rules the unit: the follower never reports a level of its
+	// own, and one sleeping rank does not make the unit half asleep.
+	check("running", "asleep", 0)
 	if err := f.st.SetNodeState("list-b", store.NodeStateOffline); err != nil {
 		t.Fatal(err)
 	}
-	check("offline", 0)
+	check("offline", "offline", 0)
 	if err := f.st.SetNodeState("list-b", store.NodeStateOnline); err != nil {
 		t.Fatal(err)
 	}
-	check("running", 0)
+	check("running", "asleep", 0)
 }
 
 func TestDeploymentPDOfflineReadiness(t *testing.T) {

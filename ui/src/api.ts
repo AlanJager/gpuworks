@@ -962,6 +962,9 @@ export type DeploymentListItem = Pick<
   | "runtime_node_names"
   | "desired_state"
   | "runtime_state"
+  | "state"
+  | "asleep_replicas"
+  | "sleep_level"
   | "sleepable"
   | "replicas"
   | "ready_replicas"
@@ -1610,6 +1613,16 @@ export interface Deployment {
   served_name: string;
   desired_state: string;
   runtime_state: string;
+  /** The state to show: runtime_state, except that a deployment whose every
+   *  serving replica is asleep reads asleep and one under a sleep order its
+   *  engines have not carried out yet reads sleeping. */
+  state?: string;
+  /** Serving replicas the gateway refuses because of sleep; against replicas
+   *  it says how much of the deployment sleeps. */
+  asleep_replicas?: number;
+  /** The deepest sleep level an engine reports: 0 awake, and while a sleep
+   *  order is still being carried out. */
+  sleep_level?: number;
   sleepable: boolean;
   replicas: number;
   // How many replicas the deployment may be scaled to.

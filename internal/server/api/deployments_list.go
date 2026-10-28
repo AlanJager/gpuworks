@@ -89,8 +89,9 @@ func deploymentListSorters(rows dtoLookup) listSorters[*store.Deployment] {
 		if s, ok := states[d.ID]; ok {
 			return s
 		}
-		runtime := deploymentRuntimeState(rows, d, rows.instances(d.ID), recordedModelProgress(rows, d))
-		states[d.ID] = effectiveDeploymentState(d, runtime)
+		insts := rows.instances(d.ID)
+		runtime := deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d))
+		states[d.ID] = effectiveDeploymentState(d, runtime, deploymentSleepOf(rows, d, insts))
 		return states[d.ID]
 	}
 	return listSorters[*store.Deployment]{
@@ -125,8 +126,9 @@ func deploymentMatches(rows dtoLookup, d *store.Deployment, query listQuery) boo
 	if len(query.states) == 0 {
 		return true
 	}
-	runtime := deploymentRuntimeState(rows, d, rows.instances(d.ID), recordedModelProgress(rows, d))
-	return query.matchesState(effectiveDeploymentState(d, runtime))
+	insts := rows.instances(d.ID)
+	runtime := deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d))
+	return query.matchesState(effectiveDeploymentState(d, runtime, deploymentSleepOf(rows, d, insts)))
 }
 
 // deploymentListItem is the list row of a deployment DTO; preparation is the
@@ -146,7 +148,8 @@ func deploymentListItem(d dto.Deployment, preparation *dto.ModelNodePresence) dt
 		Preparation: preparation, ID: d.ID, Name: d.Name, TemplateID: d.TemplateID, TemplateDeviated: d.TemplateDeviated,
 		Engine: d.Engine, Image: d.Image, ModelID: d.ModelID, ModelName: d.ModelName, ServedName: d.ServedName,
 		NodeUUID: d.NodeUUID, NodeName: d.NodeName, NodeNames: d.NodeNames,
-		DesiredState: d.DesiredState, RuntimeState: d.RuntimeState, Sleepable: d.Sleepable, Replicas: d.Replicas,
+		DesiredState: d.DesiredState, RuntimeState: d.RuntimeState, State: d.State,
+		AsleepReplicas: d.AsleepReplicas, SleepLevel: d.SleepLevel, Sleepable: d.Sleepable, Replicas: d.Replicas,
 		ReadyReplicas: d.ReadyReplicas, Health: d.Health,
 		Operations: d.Operations, CreatedAt: d.CreatedAt,
 	}

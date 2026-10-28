@@ -41,6 +41,7 @@
     "openPlayground": "打开试验场",
     "copyCurl": "复制 curl",
     "runtimeUnavailable": "运行时就绪后才能使用",
+    "asleepUnavailable": "已休眠：唤醒前请求会被拒绝",
     "more": "更多操作",
     "clone": "克隆部署",
     "edit": "编辑参数",
