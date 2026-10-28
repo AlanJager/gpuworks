@@ -182,6 +182,29 @@ test-ui-motion:
 test-ui-playground-layout:
 	python3 -B ui/tests/browser/playground_layout.py
 
+.PHONY: test-e2e-setup-check
+## test-e2e-setup-check: report which E2E prerequisites this machine is missing.
+## Runs no test and never fails on a missing dependency; it only tells you what
+## to install next. See test/e2e/RUNNING.md for the four dependency layers.
+test-e2e-setup-check:
+	@missing=0; \
+	command -v python3 >/dev/null || { echo "MISSING python3"; missing=1; }; \
+	python3 -c "import playwright" 2>/dev/null || { echo "MISSING playwright  -> python3 -m pip install -r requirements-e2e.txt"; missing=1; }; \
+	{ google-chrome --version || chromium --version; } >/dev/null 2>&1 || { echo "MISSING Google Chrome (E2E uses channel=\"chrome\")"; missing=1; }; \
+	command -v objdump >/dev/null || { echo "MISSING objdump  -> apt install binutils (needed by make check-libvgpu)"; missing=1; }; \
+	test -f bin/gpuworks || { echo "MISSING bin/gpuworks  -> run make build"; missing=1; }; \
+	test -f bin/gpuworks-agent || { echo "MISSING bin/gpuworks-agent  -> run make build"; missing=1; }; \
+	docker info >/dev/null 2>&1 || echo "NOTE no reachable Docker daemon: only the Docker-class cases need it"; \
+	if [ $$missing -eq 0 ]; then echo "E2E prerequisites look complete: make test-e2e-smoke"; else echo "Fix the MISSING lines above, then run make test-e2e-smoke"; fi
+
+.PHONY: test-e2e-smoke
+## test-e2e-smoke: the shortest real E2E path - Chrome, an isolated server and
+## SQLite, no Docker and no GPU. Use this to prove the setup works before
+## running narrower cases.
+test-e2e-smoke: build
+	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/platform_token_read_revoke.py
+	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/session_logout.py
+
 .PHONY: test-e2e-platform-token
 ## test-e2e-platform-token: real Chrome + isolated server/SQLite; no GPU required
 test-e2e-platform-token: build

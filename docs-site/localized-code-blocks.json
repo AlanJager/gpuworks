@@ -474,5 +474,12 @@
     "source_sha256": "ef092705e802a3c2b5efba757885a4728f51cf78a1626fcf6dafa0d330f42a71",
     "translation_sha256": "51273292cd140c06a4abb1450496b25a9397b1f06030de564aa066a69f02cc7f",
     "reason": "Reviewed English translation of the visible natural-language Playground prompt; the fenced text format and six requested sections are unchanged."
+  },
+  {
+    "path": "dev/setup.md",
+    "block_index": 1,
+    "source_sha256": "dea59384e98e508bb4f51f4985b2c3004a0c5a99b547af917fdcdb8f80ee5071",
+    "translation_sha256": "86d28401690e54ddeee0277f5db30af00918a10d0787d35b866ba3e06760d9e2",
+    "reason": "E2E prerequisite commands; the comments are translated."
   }
 ]

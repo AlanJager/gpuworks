@@ -21,19 +21,22 @@ GPU（`nvidia-smi` / CUDA）只影响 17 个脚本，且这些脚本注入调度
 ## 二、按顺序准备
 
 ```bash
-# 1. Playwright 与 Chrome（无 requirements.txt，需手动安装）
-python3 -m pip install --user playwright
-# 系统 Chrome 由 channel="chrome" 直接使用，Playwright 不需要下载 chromium
-google-chrome --version || chromium --version   # 必须存在
+# 0. 先问这台机器缺什么（不跑测试，只报告，缺依赖也不会失败）
+make test-e2e-setup-check
+
+# 1. Python 依赖与 Chrome
+python3 -m pip install -r requirements-e2e.txt
+google-chrome --version || chromium --version   # 必须存在；测试用 channel="chrome"，不下载 chromium
 
 # 2. 构建二进制（一条命令产出 gpuworks 与 gpuworks-agent）
 make build
-ls bin/gpuworks bin/gpuworks-agent
 
-# 3. 跑一条最轻的 case 验证链路
-NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost \
-  python3 test/e2e/platform_token_read_revoke.py
+# 3. 用最小链路证明环境可用（真实 Chrome + 隔离 server + SQLite，不碰 Docker/GPU）
+make test-e2e-smoke
 ```
+
+`make test-e2e-setup-check` 会逐项列出 `MISSING` 并给出对应的修复命令；Docker 缺失只作为 `NOTE`
+提示，因为只有 Docker 那一层需要它。
 
 `make build` 的前置里有两个容易踩的坑：
 
@@ -76,14 +79,16 @@ FileNotFoundError: [Errno 2] No such file or directory: '/path/bin/gpuworks'
 - **248 个脚本，只有 6 个 Make 入口**（`test-e2e-platform-token`、`-inference-key`、`-network-storage`、
   `-mcp-settings`、`-local`、`-log-filter-export`）。其余需要手工调用并自己给参数，各脚本 CLI 并不统一
   （`--server-bin`、`--artifact-dir` 等并非都有）。用 `--help` 确认，不要假设。
-- **没有 `requirements.txt` / `pyproject.toml`**，Python 依赖没有版本约束，也没有安装脚本。
-- `docs/dev/setup.md` 未提及 Python / Playwright / Chrome / e2e，而 README 却指向它要"开发环境配置"。
+- ~~没有 `requirements.txt`~~ → 已加 `requirements-e2e.txt`；~~`docs/dev/setup.md` 未提及 e2e~~
+  → 已补「浏览器 E2E」一节。
+- 已有 `make test-e2e-setup-check`（依赖自检）与 `make test-e2e-smoke`（最小链路）两个入口。
 - 每条 case 独立起自己的 server 和 SQLite、按 8800/8802… 选端口并加进程锁；**同一时间只跑一条浏览器 case**
   是最稳的用法。
 
 ## 六、想简化的话，优先级建议
 
-1. **给 39 个裸 traceback 换成一句可操作提示**，收益最大、改动最小（只改异常分支，不动断言）。
-2. **加 `requirements.txt` 并在 `docs/dev/setup.md` 里补 e2e 一节**，让新人按文档能走到 L2。
-3. **给 L2 那 57 个脚本补 Make 入口**（很多已有现成 CLI），让"不用记参数"成为默认。
-4. Docker 类（L4）单独成一个显式目标，并在缺镜像时直接说 `make fake-engine-image`。
+1. ~~把 39 个裸 traceback 换成可操作提示~~ —— 已完成（共享 fixture 的 `require_binary()`）。
+2. ~~加依赖声明并补 `docs/dev/setup.md`~~ —— 已完成（`requirements-e2e.txt` + setup.md 的 E2E 一节）。
+3. ~~给 L2 补 Make 入口~~ —— 已有 `test-e2e-setup-check` / `test-e2e-smoke`，其余 L2 用例仍可直接调用。
+4. **仍待做**：Docker 类（L4）单独成一个显式目标，并在缺镜像时直接说 `make fake-engine-image`。
+   目前 Docker 类 case 仍需手工设置 `DOCKER_HOST` 并自行准备镜像。

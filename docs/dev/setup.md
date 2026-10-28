@@ -18,6 +18,26 @@ make demo
 `make demo` 使用独立的 `127.0.0.1:8099` 和临时目录，并为本次运行生成管理员密码；
 脚本结束时会清理它创建的进程与临时目录。
 
+## 浏览器 E2E
+
+E2E 需要的依赖比构建更多，且分四层：只跑 Playwright 与系统 Chrome 的、加 `bin/gpuworks` 的、
+加 `bin/gpuworks-agent` 的、再加 Docker daemon 的。多数开发改动落在前两层，不需要 GPU。
+完整清单、每层覆盖多少脚本、以及缺依赖时的排查方法见
+[test/e2e/RUNNING.md](../../test/e2e/RUNNING.md)。
+
+```bash
+# Python 依赖（无虚拟环境时也可用 --user）
+python3 -m pip install -r requirements-e2e.txt
+google-chrome --version          # 测试用 channel="chrome"，不下载 chromium
+
+make build                       # 产出 bin/gpuworks 与 bin/gpuworks-agent
+make test-e2e-smoke              # 最小链路：真实 Chrome + 隔离 server + SQLite
+```
+
+`check-libvgpu` 需要 `objdump`（`apt install binutils`）。**不要导出 `GO`、`CGO_ENABLED`、
+`GOTOOLCHAIN`、`GOMAXPROCS`**：它们会污染 `cross-agents` 循环里的 `$(GO)` 展开，症状是
+`/bin/sh: 4: build: not found`，与真实编译错误无关。需要换工具链时用 `make ... GO=<绝对路径>`。
+
 ## 分开启动后端与前端
 
 在仓库根目录打开一个终端，启动后端并保持它运行：
