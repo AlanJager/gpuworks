@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 import traceback
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
@@ -121,6 +121,75 @@ def send_and_capture(page, composer, prompt, timeout=60000):
 #           → 从部署列表进入 Playground → 真实 SSE 请求经网关到引擎并渲染回复
 #           → 刷新后对话仍在（IndexedDB）→ 新对话隔离，切换回旧对话内容正确
 #           → 删除部署、停止 agent、清理节点与模型
+def vector_operation(page, server, report, playground, served_name):
+    """20.1/20.2 for the non-chat operations this deployment actually declares.
+
+    The Playground must dispatch each declared operation to its own renderer
+    and send that operation's method, path and body, not reuse the chat wire.
+    """
+    text = playground["vector"]
+    rows = []
+    # Enter through the product's own operation links instead of a hand-built
+    # URL: opening an operation the model does not declare lists every
+    # operation it does declare, and those links are built by the same route
+    # function the deployment entry uses.
+    undeclared = (server.base + "/playground/audio?model=" + quote(served_name, safe=""))
+    for kind, operation, path, detail, mode in [
+            ("embedding", "openai.embeddings", "/api/v1/playground/v1/embeddings", "embedding", "vector"),
+            ("rerank", "openai.rerank", "/api/v1/playground/v1/rerank", "ranked", "vector")]:
+        page.goto(undeclared)
+        expect(page.get_by_text(
+            playground["page"]["unsupportedModel"].replace("{{model}}", served_name),
+            exact=True)).to_be_visible()
+        page.get_by_role("link", name=operation, exact=True).click()
+        expect(page).to_have_url(re.compile(r"/playground/" + mode + r"\?" + r".*operation="
+                                            + re.escape(operation)))
+        if kind == "rerank":
+            page.get_by_text(text["rerank"], exact=True).first.click()
+        input_box = page.get_by_role("textbox").first
+        prompt = "GPU inference runs on accelerators " + kind
+        input_box.fill(prompt)
+        if kind == "rerank":
+            documents = page.get_by_role("textbox").nth(1)
+            documents.fill("GPU inference runs on accelerators.\nUnrelated text.")
+        with page.expect_response(lambda r: urlsplit(r.url).path == path
+                                  and r.request.method == "POST") as sent:
+            button(page, text["run"]).click()
+        response = sent.value
+        check(response.status == 200, f"{operation} HTTP {response.status}")
+        body = response.request.post_data_json
+        check(body.get("model") == served_name, f"{operation} wrong model: {body.get('model')}")
+        if kind == "embedding":
+            check(body.get("input") == prompt, f"{operation} lost the input: {body}")
+            check("messages" not in body and "stream" not in body,
+                  f"{operation} reused the chat wire: {body}")
+            payload = response.json()
+            vectors = [entry.get("embedding") for entry in payload.get("data") or []]
+            check(len(vectors) == 1 and isinstance(vectors[0], list) and len(vectors[0]) >= 2
+                  and all(isinstance(value, float) for value in vectors[0]),
+                  f"{operation} returned no numeric embedding: {payload}")
+        else:
+            check(body.get("query") == prompt, f"{operation} lost the query: {body}")
+            check(len(body.get("documents") or []) == 2, f"{operation} lost documents: {body}")
+            payload = response.json()
+            results = payload.get("results") or []
+            check([entry.get("index") for entry in results] == [0, 1]
+                  and all(isinstance(entry.get("relevance_score"), (int, float))
+                          and not isinstance(entry.get("relevance_score"), bool)
+                          for entry in results),
+                  f"{operation} returned no ranked results: {payload}")
+            scores = [float(entry["relevance_score"]) for entry in results]
+            check(scores == sorted(scores, reverse=True),
+                  f"{operation} results are not ordered by score: {scores}")
+        rows.append({"operation": operation, "renderer": kind, "method": "POST",
+                     "path": path, "status": response.status, "model": body.get("model"),
+                     "detail": detail})
+    report["evidence"].append({"layer": "request", "operation_dispatch": rows,
+                               "source": "each declared non-chat operation opened its own renderer and "
+                                         "sent its own method/path/body; no chat wire reuse"})
+    return rows
+
+
 def test_playground_chat(page, context, server, artifacts, report, locale,
                          deployment, run_id):
     deployments, playground, auth = strings(locale)
@@ -277,6 +346,9 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
           f"browser errors: {page_errors}, {console_errors}")
     report["last_step"] = "browser-errors-clear"
 
+    vector_operation(page, server, report, playground, served_name)
+    report["last_step"] = "playground-operation-dispatch"
+
     report["evidence"].extend([
         {"layer": "ui", "entry": deployments["page"]["openPlayground"], "row": dep_name,
          "url": page.url, "model": served_name, "send": playground["chat"]["send"],
@@ -336,7 +408,9 @@ def create_fixtures(server, token, run_id, report, holder, agent_bin, artifacts,
     report["owned_model_id"] = model["id"]
     status, configured = http(server.base, "PATCH",
                               MODELS + f"/{model['id']}/inference-config", token=token,
-                              body={"operations": [{"type": "openai.chat"}],
+                              body={"operations": [{"type": "openai.chat"},
+                                                   {"type": "openai.embeddings", "endpoint": "/v1/embeddings"},
+                                                   {"type": "openai.rerank", "endpoint": "/v1/rerank"}],
                                     "input_modalities": ["text"]})
     check(status == 200, f"inference config HTTP {status} {configured}")
     if inject_config_failure:

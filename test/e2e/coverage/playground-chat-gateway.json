@@ -107,8 +107,6 @@
     }
   ],
   "dimensions": [
-    "20.1",
-    "20.2",
     "20.3"
   ],
   "partial_checklist": {
@@ -117,12 +115,50 @@
   },
   "missing": [
     "Streaming cancellation, upstream termination and interrupted-reply marking",
-    "Compare mode, attachments, parameters and non-chat renderers",
     "Gateway error paths (unknown model, unauthorized key, engine failure/429)",
     "Public /v1 inference-key parity with the Playground session path",
     "Conversation rename/delete, retention cap and multi-account isolation",
     "Markdown/HTML preview and CSP behavior",
     "Non-admin authorization",
     "The other locale (each run covers one --locale)"
-  ]
+  ],
+  "operation_dispatch_evidence": {
+    "normal_binary_sha256": "9db83b177defc27abd22ec6abda10d08fcb9872f81a596b4c9b09ce497898ea1",
+    "runs": {
+      "en": {
+        "run_id": "20261028T072817Z-1ff34d58",
+        "report_sha256": "83ddb59479c2b77a92aa52bb0d00f862448b79fc4d83931deb6b8dbcee4b6431"
+      },
+      "zh": {
+        "run_id": "20261028T072836Z-8e70e824",
+        "report_sha256": "e9e2fc2ddd26b36d02e41917f9dfbce468076e6c30f6c9f53a17a923af53aae1"
+      },
+      "mutant": {
+        "run_id": "20261028T072541Z-64442984",
+        "report_sha256": "e3a6a0f27d6f790e532eaca2357d5d0bb4b208fd1b53b2b9e3d9f0d618d6bf89"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "20.1",
+        "name": "playground-route-all-chat",
+        "cohort": "playground-dispatch-cohort-v1",
+        "run_id": "20261028T072541Z-64442984",
+        "report_sha256": "e3a6a0f27d6f790e532eaca2357d5d0bb4b208fd1b53b2b9e3d9f0d618d6bf89",
+        "binary_sha256": "fa1ab86c7b1cfec5aadb533f13abb364d75dd113f1c621470c02a1275635c788",
+        "mutation": {
+          "sites": [
+            "ui/src/pages/playground/route.ts"
+          ],
+          "intent": "route every operation to the chat page",
+          "source_restored": true
+        },
+        "review_note": "Killed at the renderer assertion: the mutant sends embeddings to /playground/chat, so the expected /playground/vector URL never appears. Reaching the pages through the product's own operation links is what makes this a real detector; navigating to a hand-built URL passed under the mutant and proved nothing."
+      }
+    ]
+  },
+  "checklist_items": {
+    "20.1": "The deployment declares chat, embeddings and rerank; opening an operation the model does not declare lists the declared ones, and each link opens its own renderer: chat -> /playground/chat, embeddings and rerank -> /playground/vector. Nothing degrades to chat. Verified en+zh; killed by routing every operation to chat, after which embeddings arrives at /playground/chat instead of /playground/vector.",
+    "20.2": "Each declared operation sends its own method, path and body and returns its own business result: chat streams SSE to [DONE] with the engine marker, embeddings POSTs {input} to the gateway's /v1/embeddings and returns one numeric vector, rerank POSTs {query, documents} to /v1/rerank and returns indexed relevance scores in descending order with no chat wire reuse. Verified en+zh."
+  }
 }
