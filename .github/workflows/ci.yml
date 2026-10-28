@@ -12,6 +12,12 @@ name: ci
 on:
   pull_request:
   workflow_dispatch:
+  # While GitLab stays authoritative only master reaches this mirror, so a
+  # nightly run on it is what gets compared with GitLab's pipeline for the
+  # same commit. 03:07 Asia/Shanghai: just after GitLab's nightly starts and
+  # before anyone merges, off the top of the hour GitHub delays.
+  schedule:
+    - cron: "7 19 * * *"
 
 permissions:
   contents: read
