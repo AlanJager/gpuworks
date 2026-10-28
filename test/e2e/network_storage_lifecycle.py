@@ -140,6 +140,9 @@ def exercise_list_states(page, server, t, prefix, report, locale, bad_http, cons
     with page.expect_response(lambda r: urlsplit(r.url).path == prefix and r.request.method == 'GET') as again:
         retry.click()
     check(again.value.status == 200, f"retry HTTP {again.value.status}")
+    # The response arriving is not the same moment as the rows rendering, so wait
+    # for the row rather than counting immediately after the response.
+    expect(list_table.locator('.ant-table-row').first).to_be_visible()
     states['retry_rows'] = list_table.locator('.ant-table-row').count()
     check(states['retry_rows'] > 0, 'retry recovered no rows')
 
@@ -212,6 +215,77 @@ def mutations_on(page, prefix):
 # Mainline: gpuworks/network/ethernet-resource-lifecycle; 空库 → UI拒绝空名称/角色并取消 → 创建Ethernet serving定义
 # → 刷新+独立GET → 编辑名称/CIDR并清空描述/接口 → 刷新回填 → 取消删除不修改 → UI删除、GET404和列表消失。
 # 无绑定节点，执行和流量效果N/A；本case不声称网络连通性或agent配置生效。
+def exercise_network_type_matrix(page, dialog, t, events):
+    """Every type is selectable, and each one decides which fields exist.
+
+    Nothing is submitted here: the point is that picking a type really changes the
+    form (not just the checked radio) and that switching away puts the fields back.
+    """
+    kinds = ['host_ethernet', 'host_rdma', 'accelerator_rdma', 'accelerator_hccs']
+    rails = {'host_rdma', 'accelerator_rdma', 'accelerator_hccs'}
+    accelerator = {'accelerator_rdma', 'accelerator_hccs'}
+    name = dialog.get_by_label(t['form']['name'], exact=True)
+    # A value in interface must not survive a move to a rails type, and the
+    # bootstrap CIDR must be the field that remains.
+    name.fill('type-matrix-probe')
+    report_rows = []
+    # antd wraps a hidden radio input inside a labelled button; click the label so
+    # the real control receives the gesture.
+    def pick(kind):
+        dialog.locator('.ant-radio-button-wrapper').filter(has_text=t['type'][kind]).first.click()
+    for kind in kinds:
+        pick(kind)
+        radio = dialog.get_by_role('radio', name=t['type'][kind], exact=True)
+        expect(radio).to_be_checked()
+        for other in kinds:
+            if other != kind:
+                expect(dialog.get_by_role('radio', name=t['type'][other], exact=True)).not_to_be_checked()
+        hint = t['form']['acceleratorInferred'] if kind in accelerator else (
+            t['form']['rdmaInferred'] if kind in rails else t['form']['selectorNote'])
+        expect(dialog.get_by_text(hint, exact=True)).to_be_visible()
+        if kind in rails:
+            # Rails types hide the plain cidr/interface pair behind the advanced
+            # disclosure and keep the bootstrap address there instead.
+            expect(dialog.get_by_label(t['form']['interface'], exact=True)).to_have_count(0)
+            expect(dialog.get_by_label(t['form']['cidr'], exact=True)).to_have_count(0)
+            expect(dialog.get_by_text(t['form']['advanced'], exact=True)).to_be_visible()
+        else:
+            expect(dialog.get_by_label(t['form']['interface'], exact=True)).to_be_visible()
+            expect(dialog.get_by_label(t['form']['cidr'], exact=True)).to_be_visible()
+            expect(dialog.get_by_text(t['form']['advanced'], exact=True)).to_have_count(0)
+        # type_roles is the server's own dictionary: host types may carry every
+        # role, accelerator types carry compute only. A role the type cannot carry
+        # has to be disabled in the form rather than silently accepted.
+        role_state = {}
+        for role in ('storage_sync', 'compute', 'serving'):
+            box = dialog.get_by_role('checkbox', name=t['role'][role], exact=True)
+            if kind in accelerator:
+                expected = role == 'compute'
+                check(box.is_disabled() == (not expected),
+                      f'{kind}: role {role} disabled={box.is_disabled()}, expected enabled={expected}')
+            else:
+                check(not box.is_disabled(), f'{kind}: role {role} is disabled on a host type')
+            role_state[role] = not box.is_disabled()
+        report_rows.append({'type': kind,
+                            'interface': kind not in rails,
+                            'roles': role_state,
+                            'hint': hint})
+    # Returning to ethernet has to restore the pair it hid, and the roles the
+    # chosen type cannot carry must be disabled with the reason attached.
+    pick('host_ethernet')
+    expect(dialog.get_by_label(t['form']['interface'], exact=True)).to_be_visible()
+    check(events == [], 'switching type without saving sent a mutation')
+    # Switching to an accelerator type unticks the roles it cannot carry, so the
+    # form is left without the required role. Put the caller's starting state back
+    # rather than leaving a half-filled form behind.
+    for role in ('storage_sync', 'compute', 'serving'):
+        box = dialog.get_by_role('checkbox', name=t['role'][role], exact=True)
+        if box.is_checked():
+            box.uncheck()
+    name.fill('')
+    return report_rows
+
+
 def exercise_network_inflight(page, dialog, t, body, bad_http, console_errors, evidence):
     """One held create, a swallowed second click, then a 502 that keeps the draft."""
     reason = 'upstream fixture is unreachable'
@@ -300,6 +374,7 @@ def test_network_lifecycle(page, server, report, locale, bad_http, console_error
     expect(trigger).to_be_focused()
     check(events == [], 'cancel create sent mutation')
     trigger.click()
+    report['type_matrix'] = exercise_network_type_matrix(page, dialog, t, events)
     for field in ['name', 'description', 'cidr', 'interface']:
         dialog.get_by_label(t['form'][field], exact=True).fill(draft[field])
     dialog.get_by_role('checkbox', name=t['role']['serving'], exact=True).check()
