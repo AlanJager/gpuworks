@@ -39,6 +39,21 @@ git diff --check
 `check-assets` 包含 `check-libvgpu` 和 `check-perftest`，不校验昇腾、PPU 或 partition probe 资产；
 发布前必须单独运行 `make runtime-assets-verify`，否则这三类资产的缺失或篡改不会被发现。
 
+## 版本号
+
+正式版本用日历版本号 `YY.M.PATCH`，tag 写作 `vYY.M.PATCH`，例如 `v26.10.0`。
+
+- `YY.M` 是从 master 切出发布分支的年月，月份不补零（`26.1.0`，不写 `26.01.0`）。一条发布线的首个版本 `PATCH` 为 0，
+  之后只修缺陷的补丁版本依次加一。
+- 每条发布线一个分支 `release/YY.M`，从 master 上选定的提交切出。分支上只合缺陷修复：修复先合进 master，再
+  `git cherry-pick -x` 到发布分支。
+- 在发布分支上打带注释的 tag 并推送（`git tag -a v26.10.0 -m "GPUWorks 26.10.0"`、`git push origin v26.10.0`）。
+  只有匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 的 tag 会创建 pipeline 并发布到 `release` 渠道；`v26.10.0-rc.1` 这类 tag 不创建 pipeline。
+- `v*` 必须在 GitLab 里设为 protected tag：签名私钥和发布源凭据是受保护变量，不受保护的 tag 的 pipeline 读不到它们，发布 job 会失败。
+- tag 推送后不移动、不重打：一个 release id 只对应一份字节（见下文发布流程第 1 步），有问题就发下一个补丁版本。
+- server 按构建时间判断有没有更新（[ADR 0040](../adr/0040-signed-multi-source-distribution.md)），所以 `release` 渠道只跟随最新一条发布线：
+  渠道已经指向更高版本时（例如 `v26.11.0` 发布之后再推 `v26.10.2`），`publish_dist.sh` 拒绝发布。
+
 ## 发布通道
 
 server 版本、系统镜像目录与内置推理模板目录通过同一个发布通道交给已安装的 server（[ADR 0040](../adr/0040-signed-multi-source-distribution.md)）。
@@ -60,23 +75,26 @@ server 版本、系统镜像目录与内置推理模板目录通过同一个发�
 | `releases/<release_id>/` | server 压缩包与 `SHA256SUMS` |
 | `catalog/images/<sha256>.json` | 按内容摘要标识的镜像目录 |
 | `catalog/templates/<sha256>.tar.gz` | 按内容摘要标识的推理模板目录包 |
-| 根目录 `manifest.json` | 供旧版本读取，与镜像目录是同一文件 |
+| 根目录 `manifest.json` | 供有渠道之前的旧版本读取，与 nightly 的镜像目录是同一文件，只随 nightly 发布切换 |
 | 根目录 `get.sh` | 一键安装脚本（源文件 `scripts/get.sh`）：挑最快的源，下载本机平台的压缩包、按 `SHA256SUMS` 校验后运行 `gpuworks install` |
 
-渠道 `nightly` 是每次 master 构建；`release` 留给 `v*` tag。二进制跟随构建时注入的渠道（`make CHANNEL=…`，默认 `nightly`）。
+渠道 `nightly` 是每次 master 构建，release id 是短提交号；`release` 是每个版本 tag，release id 就是 tag（见[版本号](#版本号)）。
+二进制跟随构建时注入的渠道（`make CHANNEL=…`，默认 `nightly`；`scripts/package_release.sh` 读 `GPUWORKS_RELEASE_CHANNEL`，
+`release` 渠道只接受 `vYY.M.PATCH` 形式的 release id）。
 
-CI 的 `release-publish` 在 master 的四个构建 job 全部成功后运行 `scripts/publish_dist.sh nightly dist`。
+CI 的 `release-publish` 在 master 或版本 tag 的四个构建 job 全部成功后运行 `scripts/publish_dist.sh <渠道> dist`。
 它位于独立的 `publish` 阶段，因为 GitLab 14.0 的 needs 只能指向更早阶段的 job；
 `make check-ci-yaml` 检查这一约束。脚本执行以下流程：
 
 1. 一个 release id 永远只对应一份字节：`releases/` 下的文件按 immutable 长缓存，CDN 留着它第一次见到的那份。同一提交再次构建
    （新流水线、手工重跑）产出的包字节不同（构建时间写在包里），所以某个源已有 `releases/<id>/` 时，脚本把它拷回来，
    `gpuworks-dist adopt` 核对与 `SHA256SUMS` 一致后，发布的是这份已发布的包与它的构建时间，丢弃本次构建的包；
-2. 如果某个源已经在提供同一渠道中创建时间更晚的构建，说明流水线乱序完成，本次不再发布任何内容；
+2. 如果某个源已经在提供同一渠道中创建时间更晚的构建，说明流水线乱序完成，本次不再发布任何内容；`release` 渠道另外按版本号比较，
+   某个源的 `release/latest` 是更高版本时报错退出；
 3. `gpuworks-dist assemble` 用这些压缩包和本次检出内嵌的两份目录生成目录树并签名索引；
 4. rclone 以 `--immutable` 把不可变文件推到三个源：源上同名对象内容不同时报错退出，绝不覆盖（这种源要人工处理，见下）；
 5. 切换前，`gpuworks-dist verify -index` 用新索引逐个核对三个公开地址（含 CDN）上的文件大小，任一不符就停下，通道仍指向上一版；
-6. 先存下各源当前的索引、`latest` 与 `manifest.json`，再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
+6. 先存下各源当前的索引、`latest`（nightly 还有 `manifest.json`），再切换到新版本，并从三个公开地址读回核对；切换或读回失败时把各源恢复到原来的指针后退出；
 7. 把 `scripts/get.sh` 以 `Cache-Control: no-cache` 传到每个源的根目录 `get.sh`；
 8. 每个源只保留最近 20 个版本目录，以及两个渠道 `latest` 指向的版本。
 
@@ -90,7 +108,7 @@ CI 的 `release-publish` 在 master 的四个构建 job 全部成功后运行 `s
 R2 账户令牌 `gpuworks-dist-ci`），不能建桶，所以两个发布脚本给 rclone 设了 `no_check_bucket`。
 
 本地手工补发用 `make dist-publish CHANNEL=nightly`，
-凭据放 `secrets/dist-publish.env`。发布 release：`make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v1.2.3` 后
+凭据放 `secrets/dist-publish.env`。发布 release：`make release-packages CHANNEL=release GPUWORKS_RELEASE_ID=v26.10.0` 后
 `make dist-publish CHANNEL=release`。
 
 Cloudflare 区域 `gpuworks.ai` 上为 `dl.gpuworks.ai` 与 `image-manifest.gpuworks.ai` 配了两条缓存规则：`*/index.json`、`*/latest`、

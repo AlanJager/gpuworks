@@ -5,6 +5,9 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$repo_dir"
 
 release_id=${GPUWORKS_RELEASE_ID:-$(git describe --tags --always 2>/dev/null || echo dev)}
+# The channel the binaries follow for upgrades (ADR 0040): nightly for
+# default-branch builds, release for version tags.
+channel=${GPUWORKS_RELEASE_CHANNEL:-nightly}
 commit=${CI_COMMIT_SHA:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}
 build_at=${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 dist_dir=${GPUWORKS_DIST_DIR:-$repo_dir/dist}
@@ -16,6 +19,22 @@ trap 'rm -rf "$work_dir"' EXIT INT TERM
 case "$release_id" in
   *[!A-Za-z0-9._+-]*|'')
     echo "invalid release id: $release_id" >&2
+    exit 2
+    ;;
+esac
+
+# A release build is named by its version tag, vYY.M.PATCH
+# (docs/dev/release.md#版本号); publish_dist.sh orders the release channel by it.
+case "$channel" in
+  nightly) ;;
+  release)
+    if ! printf '%s\n' "$release_id" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+      echo "release channel build needs a vYY.M.PATCH release id, got: $release_id" >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "unknown release channel: $channel" >&2
     exit 2
     ;;
 esac
@@ -54,7 +73,7 @@ for target_os in $release_oses; do
   seen_oses="$seen_oses$target_os "
   target_count=$((target_count + 1))
   for target_arch in $release_arches; do
-    make VERSION="$release_id" COMMIT="$commit" DATE="$build_at" "server-${target_os}-${target_arch}-prebuilt-ui"
+    make VERSION="$release_id" COMMIT="$commit" DATE="$build_at" CHANNEL="$channel" "server-${target_os}-${target_arch}-prebuilt-ui"
   done
 done
 

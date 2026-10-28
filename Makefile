@@ -80,7 +80,7 @@ server-darwin-arm64-prebuilt-ui: cross-agents
 
 ## release-packages: build versioned Linux and macOS server archives with checksums
 release-packages:
-	./scripts/package_release.sh
+	GPUWORKS_RELEASE_CHANNEL="$${GPUWORKS_RELEASE_CHANNEL:-$(CHANNEL)}" ./scripts/package_release.sh
 
 DIST_DIR ?= dist
 
