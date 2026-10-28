@@ -183,3 +183,15 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 	l.releaseFn = func(o attemptOutcome) { b.release(l, o) }
 	return l
 }
+
+func (p *Proxy) affinityKey(modelName string, r *http.Request) string {
+	// The explicit header is cheap to inspect and must always be stripped, even
+	// when the selected deployment does not use prefix affinity.
+	if strings.TrimSpace(r.Header.Get("X-GPUWorks-Affinity-Key")) != "" {
+		return affinityKey(r)
+	}
+	if p.routes == nil || !p.routes.needsAffinity(modelName) {
+		return ""
+	}
+	return affinityKey(r)
+}

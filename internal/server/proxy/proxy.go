@@ -74,7 +74,10 @@ type Proxy struct {
 	// each forwarded request's record as its reply ends (ADR 0042).
 	live  liveTable
 	guard *instanceGuard
-	sink  func(uxrecord.Request)
+	// hold keeps requests for deployments the platform put to sleep while
+	// they wake.
+	hold *wakeHold
+	sink func(uxrecord.Request)
 	// sampleRoot decides whether a trace the gateway starts is sampled
 	// (request_identity.go); nil samples none.
 	sampleRoot func(tracecontext.TraceID) bool
@@ -176,7 +179,9 @@ func New(st *store.Store, networks Networks, hub Tunneler, log *slog.Logger, max
 		}
 	})
 	p.guard = &instanceGuard{store: st}
+	p.hold = newWakeHold()
 	p.routes.setOnRebuild(func(active map[string]bool) {
+		p.hold.signal()
 		p.balancer.gc(active)
 		p.guard.checkMissing(active)
 	})
@@ -360,7 +365,11 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 		deployment, tgt, pinned, status, message := p.pinnedTarget(r, modelName)
 		asleep := false
 		if !pinned {
-			deployment, tgt, status, message, asleep = p.selectDeploymentInstanceWithKey(modelName, p.affinityKey(modelName, r))
+			affinity := p.affinityKey(modelName, r)
+			deployment, tgt, status, message, asleep = p.selectDeploymentInstanceWithKey(modelName, affinity)
+			if status != 0 && asleep {
+				deployment, tgt, status, message, asleep = p.holdForWake(r.Context(), w, modelName, affinity, deployment)
+			}
 		}
 		if status != 0 {
 			p.acct.RecordImmediate(deploymentIDOrZero(deployment), status, asleep)
@@ -483,7 +492,11 @@ func (p *Proxy) serveAuthenticated(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName string) {
-	dep, tgt, status, msg, asleep := p.selectDeploymentInstanceWithKey(modelName, p.affinityKey(modelName, r))
+	affinity := p.affinityKey(modelName, r)
+	dep, tgt, status, msg, asleep := p.selectDeploymentInstanceWithKey(modelName, affinity)
+	if status != 0 && asleep {
+		dep, tgt, status, msg, asleep = p.holdForWake(r.Context(), w, modelName, affinity, dep)
+	}
 	if status != 0 {
 		p.acct.RecordImmediate(deploymentIDOrZero(dep), status, asleep)
 		writeErr(w, status, msg)
@@ -491,18 +504,6 @@ func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName str
 	}
 
 	p.serveSelectedTarget(w, r, modelName, tgt, dep.ID)
-}
-
-func (p *Proxy) affinityKey(modelName string, r *http.Request) string {
-	// The explicit header is cheap to inspect and must always be stripped, even
-	// when the selected deployment does not use prefix affinity.
-	if strings.TrimSpace(r.Header.Get("X-GPUWorks-Affinity-Key")) != "" {
-		return affinityKey(r)
-	}
-	if p.routes == nil || !p.routes.needsAffinity(modelName) {
-		return ""
-	}
-	return affinityKey(r)
 }
 
 // serveSelectedTarget dispatches to the resolved target, rewriting the
