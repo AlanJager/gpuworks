@@ -116,7 +116,7 @@
     "15.1": "The initial editor content equals the canonical YAML byte-exact via a real select-all/copy with a clipboard sentinel, the editor is a real editable CodeMirror, keyboard Home/End/ArrowLeft/Enter navigation lands at exact selection offsets and edits are typed, and Reset writes nothing to the DB; the empty-initial-value mutant fails the canonical assertion.",
     "15.3": "A real copy returns the actual edited bytes; the save sends POST application/yaml with overwrite=true whose CDP-captured body equals the edited bytes exactly, only display_title changes, and independent GET/read-only SQLite plus a reload reopen agree; the stale-savedYAML mutant fails the wire-byte assertion.",
     "15.7": "A real seeded upstream template exposes no Edit/delete entry; cloning converts every spec to user while preserving all other fields; after both a failed and a successful save on the clone, the upstream GET/YAML/read-only SQLite row hash and the immutable package export bytes are unchanged; the exposed-edit-entry mutant fails to_have_count(0).",
-    "15.2": "Four independent real rejections, each keeping the draft and leaving the stored model/YAML/package byte-identical: a YAML syntax error and a schema field the catalog does not declare (both with a line anchor that refocuses the editor), and a schema-required key left out, which the server rejects with 'requires name, engine, and image' and no line anchor because an absent key has no source position. Verified en+zh; killed by dropping the engine requirement from both validation layers, after which the same draft imports with HTTP 200."
+    "15.2": "Four independent real rejections, each keeping the draft and leaving the stored model/YAML/package byte-identical: a YAML syntax error and a schema field the catalog does not declare (both with a line anchor that refocuses the editor), and a schema-required key left out, which the server rejects with 'requires name, engine, and image' and no line anchor because an absent key has no source position. Verified en+zh for the syntax, undeclared-field and required-key branches; killed by dropping the engine requirement from both validation layers, after which the same draft imports with HTTP 200."
   },
   "template_control_evidence": {
     "items": [
@@ -249,6 +249,14 @@
       "required_mutant": {
         "run_id": "20261028T070720Z-8e4b0c4a",
         "report_sha256": "43b7826360cbc9446fdf2476dd777eeeb986123a3ecf68401a104234cec6f480"
+      },
+      "syntax_zh": {
+        "run_id": "20261028T071525Z-f9a32c3f",
+        "report_sha256": "5448af9a7acd1a3590abcb3836e97750551cb918428a60dbfc0ebdf4ba323d4d"
+      },
+      "schema_zh": {
+        "run_id": "20261028T071554Z-cfb34bd9",
+        "report_sha256": "dedae3c02fae7d1be2c4da49984dbda04113c448c85d1b46d696581416826940"
       }
     },
     "fault_runs": [
