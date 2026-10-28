@@ -92,6 +92,85 @@ def confirm_popconfirm(page):
     popconfirm.locator(".ant-btn-primary").click()
 
 
+def exercise_name_taken(page, server, storage, name, path, report, bad_http, console_errors):
+    """A storage name is unique: the second create is refused and recovers.
+
+    storages.go maps store.ErrStorageNameTaken to 409 STORAGE_NAME_TAKEN, and the
+    lookup is an exact name match, so the collision has to reuse the same name.
+    """
+    # The edit flow leaves its detail drawer open, which would sit over the add
+    # dialog's footer, so close it before opening the add dialog.
+    page.goto(server.base + "/storage")
+    for _ in range(3):
+        closer = page.locator(".ant-drawer-close").first
+        if closer.count() and closer.is_visible():
+            closer.click()
+            page.wait_for_timeout(200)
+        else:
+            break
+    expect(page.locator(".ant-drawer-open")).to_have_count(0)
+    add = action(page, storage["page"]["add"])
+    title = storage["form"]["addTitle"]
+    existing = page.request.get(server.base + STORAGES).json()
+    names = [item.get("name") for item in existing.get("items") or existing or []]
+    check(name in names, f'fixture storage {name!r} is missing from the list: {names}')
+
+    add.click()
+    dialog = page.get_by_role("dialog", name=title, exact=True)
+    expect(dialog).to_be_visible()
+    name_input = dialog.get_by_label(storage["form"]["name"], exact=True)
+    name_input.fill(name)
+    dialog.get_by_label(storage["form"]["path"], exact=True).fill(path + "-taken")
+    save = button(dialog, storage["form"]["save"])
+    # The dialog re-renders as the name is typed (the save button lives in the
+    # footer array), so wait for the modal to settle before pressing.
+    page.wait_for_timeout(400)
+    expect(save).to_be_visible()
+    expect(save).to_be_enabled()
+    with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES
+                              and r.request.method == "POST") as refused:
+        save.click()
+    result = refused.value
+    check(result.status == 409, f'duplicate storage name HTTP {result.status}')
+    code = result.json().get("code")
+    check(code == "STORAGE_NAME_TAKEN", f'duplicate storage name code {code}')
+    # The dialog stays open with the typed name, so the operator can fix it.
+    page.wait_for_timeout(300)
+    report["name_taken_dialog_after_409"] = dialog.is_visible()
+    check(dialog.is_visible(), 'the add dialog closed itself on a refused save')
+    check(name_input.input_value() == name, 'the typed name was cleared after the refusal')
+    # The 409 is the expected outcome of this probe, so account for it rather than
+    # letting it fail the run's unexpected-error check.
+    from storage_delete_blocks import allow_http_status
+    allow_http_status(bad_http, console_errors, 409)
+
+    # A different name that is still free goes through, which shows the refusal was
+    # about the collision and not about the record being unsavable.
+    free = name + "-free"
+    name_input.fill(free)
+    dialog.get_by_label(storage["form"]["path"], exact=True).fill(path + "-free")
+    page.wait_for_timeout(400)
+    retry = button(dialog, storage["form"]["save"])
+    expect(retry).to_be_visible()
+    expect(retry).to_be_enabled()
+    with page.expect_response(lambda r: urlsplit(r.url).path == STORAGES
+                              and r.request.method == "POST") as created:
+        retry.click()
+    check(created.value.status == 201, f'renamed create HTTP {created.value.status}')
+    made = created.value.json()
+    report["name_taken"] = {"refused_status": result.status, "code": code,
+                            "typed_kept": True, "recovered_name": free,
+                            "created_id": made.get("id")}
+    report["evidence"].append({"layer": "request", "method": "POST", "path": STORAGES,
+                               "status": result.status, "code": code,
+                               "duplicate_of": name})
+    # Clean up the recovered record so the case leaves nothing behind.
+    removed = page.request.delete(server.base + STORAGES + f"/{made['id']}")
+    check(removed.status in (200, 204), f'recovered storage delete HTTP {removed.status}')
+    report["evidence"].append({"layer": "cleanup", "deleted": made["id"]})
+    return report["name_taken"]
+
+
 def exercise_full_local(page, server, storage, name, directory, report):
     """Second local create that fills the label optional. The label row is start-aligned."""
     full_name = name + "-full"
@@ -534,6 +613,8 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     report["local_edit"] = exercise_local_edit_changes(
         page, server, storage, storage_id, name, path)
     report["local_edit_sha256"] = digest(ROOT / "test/e2e/storage_local_edit.py")
+    report["last_step"] = "name-taken"
+    exercise_name_taken(page, server, storage, name, path, report, bad_responses, console_errors)
     report["last_step"] = "full-optional"
     report["full_optional"] = exercise_full_local(page, server, storage, name, path, report)
     page.goto(server.base + "/storage")
