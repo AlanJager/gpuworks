@@ -102,6 +102,64 @@ def check_new_chat_request(body, served_name, prompt):
           "a fresh conversation must send exactly its own user prompt")
 
 
+def stream_shape(text):
+    """Parse a real SSE body into the parts 20.3 has to assert separately.
+
+    Counting the marker in the whole body cannot tell a complete stream from
+    one that stopped after its first chunk, so the events are split out here:
+    content deltas, the terminal event, error events and the usage event.
+    """
+    events, data = [], []
+    for line in text.splitlines():
+        if not line.strip():
+            if data:
+                events.append("\n".join(data)); data = []
+            continue
+        if line.startswith("data:"):
+            data.append(line[len("data:"):].strip())
+    if data:
+        events.append("\n".join(data))
+    shape = {"events": len(events), "content_deltas": 0, "done_last": False,
+             "usage": None, "error_events": 0, "terminal": None}
+    for index, event in enumerate(events):
+        if event == "[DONE]":
+            shape["done_last"] = index == len(events) - 1
+            shape["terminal"] = "[DONE]"
+            continue
+        if event.startswith("[DONE]"):
+            shape["done_last"] = index == len(events) - 1
+            shape["terminal"] = "[DONE]"
+            continue
+        try:
+            payload = json.loads(event)
+        except json.JSONDecodeError:
+            continue
+        if payload.get("error"):
+            shape["error_events"] += 1
+            continue
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            shape["usage"] = usage
+        for choice in payload.get("choices") or []:
+            if (choice.get("delta") or {}).get("content"):
+                shape["content_deltas"] += 1
+    return shape
+
+
+def metric_value(page, label):
+    """Read one reply metric value by its label.
+
+    Reply metrics render as <small>label</small><strong>value</strong> inside
+    the message, so the label is matched exactly and the value read from the
+    sibling element rather than from the whole message text.
+    """
+    metric = page.locator(".playground-metrics").first.locator(
+        "span").filter(has=page.locator("small", has_text=re.compile("^" + re.escape(label) + "$")))
+    if not metric.count():
+        return None
+    return metric.first.locator("strong").inner_text().strip()
+
+
 def send_and_capture(page, composer, prompt, timeout=60000):
     """Send one Playground message and return its streaming request/response."""
     composer.fill(prompt)
@@ -274,6 +332,27 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
           f"prompt not sent: {first_body.get('messages')}")
     check(MARKER in first_text and "[DONE]" in first_text,
           f"unexpected SSE body: {first_text[:300]}")
+    first_stream = stream_shape(first_text)
+    check(first_stream["done_last"],
+          f"the stream did not end with a [DONE] event: {first_stream}")
+    check(first_stream["content_deltas"] >= 1,
+          f"no content delta arrived: {first_stream}")
+    check(first_stream["usage"] is not None,
+          f"the stream carried no usage event: {first_stream}")
+    check(first_stream["usage"].get("total_tokens", 0) > 0,
+          f"the usage event reported no tokens: {first_stream['usage']}")
+    check(first_stream["error_events"] == 0,
+          f"the successful stream reported error events: {first_stream}")
+    # The reply must actually use the usage event, not just receive it: with
+    # usage the token figure is the reported exact number, and the product
+    # marks it with an approximation sign only when no usage arrived.
+    reported = first_stream["usage"]["completion_tokens"]
+    tokens = metric_value(page, "Token")
+    check(tokens is not None, "the reply shows no token metric")
+    check(not tokens.startswith("≈"),
+          f"the reply treated the reported usage as an estimate: {tokens}")
+    check(tokens.replace(",", "") == str(reported),
+          f"the reply does not show the reported {reported} tokens: {tokens}")
     # The prompt is also the conversation title in the sidebar; message
     # assertions belong to the chat log.
     chat_log = page.locator(".playground-message-list").first
