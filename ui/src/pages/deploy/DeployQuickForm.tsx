@@ -18,6 +18,7 @@ import DeployAdvancedSection from "./DeployAdvancedSection";
 import DeployImageRow from "./DeployImageRow";
 import DeployKvOffloadSection from "./DeployKvOffloadSection";
 import DeployNodeAcquisition from "./DeployNodeAcquisition";
+import DeployServiceLevelField from "./DeployServiceLevelField";
 import DeployParamField from "./DeployParamField";
 import DeployParallelFields, { DeployParallelRow } from "./DeployParallelFields";
 import FeatureChoice from "./DeployFeatureChoice";
@@ -394,6 +395,7 @@ export default function DeployQuickForm({
               </Form.Item>
             )}
           </div>
+          <DeployServiceLevelField />
           <LockedHint controls={["replicas", "vram_limit"]} />
         </div>
       </div>
