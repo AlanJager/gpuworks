@@ -91,7 +91,7 @@ func deploymentListSorters(rows dtoLookup) listSorters[*store.Deployment] {
 		}
 		insts := rows.instances(d.ID)
 		runtime := deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d))
-		states[d.ID] = effectiveDeploymentState(d, runtime, deploymentSleepOf(rows, d, insts))
+		states[d.ID] = effectiveDeploymentState(d, runtime, deploymentFactsFor(rows, d, insts))
 		return states[d.ID]
 	}
 	return listSorters[*store.Deployment]{
@@ -128,7 +128,7 @@ func deploymentMatches(rows dtoLookup, d *store.Deployment, query listQuery) boo
 	}
 	insts := rows.instances(d.ID)
 	runtime := deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d))
-	return query.matchesState(effectiveDeploymentState(d, runtime, deploymentSleepOf(rows, d, insts)))
+	return query.matchesState(effectiveDeploymentState(d, runtime, deploymentFactsFor(rows, d, insts)))
 }
 
 // deploymentListItem is the list row of a deployment DTO; preparation is the

@@ -46,7 +46,7 @@ func (a *apiHandlers) dashboardSummary(w http.ResponseWriter, r *http.Request) {
 		// as running; it falls into neither group and reads as another state,
 		// as a stopped one does.
 		insts := rows.instances(d.ID)
-		switch effectiveDeploymentState(d, deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d)), deploymentSleepOf(rows, d, insts)) {
+		switch effectiveDeploymentState(d, deploymentRuntimeState(rows, d, insts, recordedModelProgress(rows, d)), deploymentFactsFor(rows, d, insts)) {
 		case "running":
 			out.Deployments.Running++
 		case "pulling", "starting":

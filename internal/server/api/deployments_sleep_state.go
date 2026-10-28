@@ -1,105 +1,232 @@
 package api
 
 import (
+	"sort"
+
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// The states a deployment shows while sleep covers every replica that could
-// serve it. They are derived, never stored: an instance's reported SleepLevel
-// and the sleep intent of its desired state are the only record of sleep, and
-// planning.InstanceAsleep is how the gateway judges a request, so the state a
-// list shows cannot disagree with what the gateway answers.
+// The states a deployment shows while the gateway refuses every request
+// because the replicas it needs sleep. They are derived, never stored: an
+// instance's reported SleepLevel and the sleep intent of its desired state are
+// the only record of sleep, and planning.InstanceAsleep is how the gateway
+// judges a request, so what a row shows cannot disagree with what the gateway
+// answers.
 const (
-	// deploymentStateSleeping is every serving replica asleep while at least
-	// one engine still reports the level it had before the order: the order is
-	// accepted and the gateway already refuses every request, and the engines
-	// are still swapping memory out (a level-1 order takes seconds).
+	// deploymentStateSleeping is every replica the gateway needs asleep while
+	// at least one engine still reports the level it had before the order: the
+	// order is accepted and the gateway already refuses every request, and the
+	// engines are still swapping memory out (a level-1 order takes seconds).
 	deploymentStateSleeping = "sleeping"
-	// deploymentStateAsleep is every serving replica asleep with the level its
-	// engine reports.
+	// deploymentStateAsleep is every replica the gateway needs asleep with the
+	// level its engine reports.
 	deploymentStateAsleep = "asleep"
 )
 
-// deploymentSleep is what a deployment's serving replicas say about sleep.
-// Every fact is read from the instances the response already loaded, so it
-// costs no query and cannot race a separate read of them.
-type deploymentSleep struct {
-	// Replicas counts the serving replicas these facts are about: an ordinary
-	// replica whose leader and every follower rank run on online nodes, or a PD
-	// unit of a role. A deployment with none (no instance yet, or none able to
-	// serve) is not asleep, whatever its instances were once ordered to do.
-	Replicas int
-	// AsleepReplicas counts the serving replicas the gateway refuses because of
-	// sleep. It equals Replicas when the whole deployment sleeps; short of it,
-	// it is what tells a partly slept deployment from a broken replica, so the
-	// running ones stay visible.
+// replicaStanding is how the gateway judges one replica.
+type replicaStanding int
+
+const (
+	// replicaNotServing is a replica the gateway routes no request to for a
+	// reason other than sleep: no instance, a stopped or failed one, a node
+	// that is gone, a multi-node generation missing a rank.
+	replicaNotServing replicaStanding = iota
+	// replicaAwake is a replica the gateway serves requests from.
+	replicaAwake
+	// replicaAsleep is a replica the gateway would route to but refuses for
+	// sleep: planning.InstanceAsleep, the judgement the router itself makes.
+	replicaAsleep
+)
+
+// standingOf is the one predicate the ready and the asleep counts come from,
+// and it is the gateway's: a replica is reached through its leader, on an
+// online node, and a multi-node generation serves only as a whole. A follower
+// sleeps with its generation's engine (one process, one sleep order) and is
+// never judged on its own.
+//
+// Sleep is judged first, as the router judges it (route_select records an
+// asleep leader before it looks at its node or its other ranks), so a replica
+// whose own ranks or node are down is still asleep when the leader asks to
+// sleep: the gateway refuses it for sleep either way.
+func standingOf(rows dtoLookup, leader *store.Instance, followersComplete bool, incomplete map[string]bool) replicaStanding {
+	if leader == nil || leader.State != proto.InstRunning {
+		return replicaNotServing
+	}
+	if planning.InstanceAsleep(leader) {
+		return replicaAsleep
+	}
+	if !instanceNodeOnline(rows, leader.NodeID) || incomplete[leader.UUID] || !followersComplete {
+		return replicaNotServing
+	}
+	return replicaAwake
+}
+
+// replicaCounts is what one role's replicas are, as the gateway reads them.
+type replicaCounts struct {
+	Awake  int
+	Asleep int
+	// Settled is the asleep ones whose engine reports the level it was ordered
+	// to; Level is the deepest reported level.
+	Settled int
+	Level   int
+}
+
+// deploymentFacts is how the gateway reads a deployment's replicas now.
+type deploymentFacts struct {
+	// Ready counts the replicas the gateway would serve a request from: this
+	// is ready_replicas.
+	Ready int
+	// AsleepReplicas counts the replicas the gateway refuses because they
+	// sleep, in every role: this is asleep_replicas, and with Ready it adds up
+	// to the replicas the gateway reaches at all.
 	AsleepReplicas int
 	// Settled counts the asleep replicas whose engine reports the level it was
-	// ordered to. The rest are still swapping memory out: ordered, refused, and
-	// not yet asleep.
+	// ordered to. The rest have been ordered, are already refused, and are
+	// still swapping memory out.
 	Settled int
 	// Level is the deepest sleep level an engine reports.
 	Level int
+	// Roles is the same walk per role, for a PD response's role counts.
+	Roles map[string]replicaCounts
+	// refused is set when the gateway would answer no request at all: some
+	// role it needs has no awake replica.
+	refused bool
+	// sleepRefusal is set when every role that refuses is refused by sleep
+	// alone: it has sleeping replicas and no awake one. Only refused and
+	// sleepRefusal together make a deployment asleep, which is why a replica
+	// down for another reason never reads as asleep.
+	sleepRefusal bool
 }
 
-// Asleep reports every serving replica being asleep, the condition the
-// sleeping and asleep states describe. A deployment with no serving replica is
-// never asleep: nothing is left to wake.
-func (s deploymentSleep) Asleep() bool { return s.Replicas > 0 && s.AsleepReplicas == s.Replicas }
+// Asleep reports the gateway refusing every request because the replicas it
+// needs sleep: the condition the sleeping and asleep states describe. A
+// deployment with no serving replica is never asleep; nothing is left to wake.
+func (f deploymentFacts) Asleep() bool { return f.refused && f.sleepRefusal && f.AsleepReplicas > 0 }
 
-// State is the state a fully asleep deployment shows: asleep once every engine
-// reports its level, sleeping while any order is still being carried out. It
-// is only meaningful when Asleep says so; callers ask for it that way.
-func (s deploymentSleep) State() string {
-	if s.Replicas > 0 && s.Settled == s.Replicas {
+// State is the state a fully asleep deployment shows: asleep once every asleep
+// engine reports its level, sleeping while any order is still being carried
+// out. It is only meaningful when Asleep says so; callers ask for it that way.
+func (f deploymentFacts) State() string {
+	if f.Settled >= f.AsleepReplicas {
 		return deploymentStateAsleep
 	}
 	return deploymentStateSleeping
 }
 
-// deploymentSleepFacts reads a deployment's sleep facts from the replica match
-// of instances already loaded. The leader of a replica says whether it sleeps,
-// as the gateway reads it: a follower sleeps with its generation's engine and
-// is never judged on its own.
-func deploymentSleepFacts(rows dtoLookup, view replicaView, insts []store.Instance) deploymentSleep {
+// deploymentFactsOf reads the facts out of the replica match the response
+// shows: one walk, so every number a response carries describes the same
+// replicas, judged the way the router judges them.
+func deploymentFactsOf(rows dtoLookup, view replicaView, insts []store.Instance) deploymentFacts {
 	incomplete := planning.GroupsIncomplete(onlineInstances(rows, insts))
-	var facts deploymentSleep
-	for _, slot := range view.match.Slots {
-		leader := slot.Inst
-		// Only a replica that could serve counts. A replica with no instance,
-		// a stopped or failed one, one whose node is gone, and a multi-node
-		// generation missing ranks are all "not ready", never "asleep".
-		if leader == nil || leader.State != proto.InstRunning || !instanceNodeOnline(rows, leader.NodeID) || incomplete[leader.UUID] || !followersRunning(rows, slot) {
+	facts := deploymentFacts{Roles: map[string]replicaCounts{}}
+	refused, sleepCause := false, true
+	for _, role := range view.roles() {
+		counts := replicaCountsOf(rows, view, role, incomplete)
+		facts.Roles[role] = counts
+		facts.Ready += counts.Awake
+		facts.AsleepReplicas += counts.Asleep
+		facts.Settled += counts.Settled
+		facts.Level = max(facts.Level, counts.Level)
+		if counts.Awake > 0 || !view.roleRequired(role, counts) {
 			continue
 		}
-		facts.Replicas++
-		if !planning.InstanceAsleep(leader) {
-			continue
-		}
-		facts.AsleepReplicas++
-		if leader.SleepLevel > 0 {
-			facts.Settled++
-			facts.Level = max(facts.Level, leader.SleepLevel)
+		// The gateway has nothing awake to answer this role: an outage, and an
+		// outage caused by sleep only when the role is asleep rather than down.
+		refused = true
+		if counts.Asleep == 0 {
+			sleepCause = false
 		}
 	}
+	facts.refused = refused
+	facts.sleepRefusal = refused && sleepCause
 	return facts
 }
 
-// deploymentSleepOf is deploymentSleepFacts over instances the caller already
-// read; a deployment whose placement cannot be read reports no sleep facts
-// rather than a guess.
-func deploymentSleepOf(rows dtoLookup, d *store.Deployment, insts []store.Instance) deploymentSleep {
+// replicaCountsOf counts the replicas filling one role, over the units the
+// placement has and, for an ordinary deployment, the replica that left it.
+func replicaCountsOf(rows dtoLookup, view replicaView, role string, incomplete map[string]bool) replicaCounts {
+	var out replicaCounts
+	judge := func(leader *store.Instance, followersComplete bool) {
+		switch standingOf(rows, leader, followersComplete, incomplete) {
+		case replicaAwake:
+			out.Awake++
+		case replicaAsleep:
+			out.Asleep++
+			if leader.SleepLevel > 0 {
+				out.Settled++
+				out.Level = max(out.Level, leader.SleepLevel)
+			}
+		}
+	}
+	for _, slot := range view.match.Slots {
+		if slot.Unit.Role != role {
+			continue
+		}
+		judge(slot.Inst, followersRunning(rows, slot))
+	}
+	// An ordinary deployment's excess replica still serves: the controller
+	// drains it on a later pass and, until it is draining, the gateway routes
+	// to it as to any other replica. So a scale-down that leaves the awake
+	// replica excess must not read asleep. A PD deployment's excess replica
+	// does not: pdRoute.withoutUnroutable drops it from the routing set.
+	if role == "" && view.pd == nil {
+		for i := range view.match.Excess {
+			judge(&view.match.Excess[i], true)
+		}
+	}
+	return out
+}
+
+// roles are the roles the deployment's replicas are counted by: one empty role
+// for an ordinary deployment, the mode's roles for a PD one (the placement's,
+// in the mode's order, when the mode cannot be read).
+func (v replicaView) roles() []string {
+	if v.pd == nil {
+		return []string{""}
+	}
+	if len(v.mode.Roles) > 0 {
+		return v.mode.Roles
+	}
+	out := make([]string, 0, len(v.pd.Roles))
+	for role := range v.pd.Roles {
+		out = append(out, role)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// roleRequired reports whether the gateway needs an awake replica of this role
+// to answer a request, which is what makes its sleeping replicas an outage
+// instead of a reduction. It mirrors the gateway's own rule: pdRoute.wantsPrefill
+// serves without prefill instances when the mode may run empty and every one of
+// them sleeps, which is an order carried out rather than a degradation.
+func (v replicaView) roleRequired(role string, counts replicaCounts) bool {
+	if v.pd == nil {
+		return role == ""
+	}
+	if role != pdmode.RolePrefill {
+		return true
+	}
+	if len(v.pd.Units(pdmode.RolePrefill)) == 0 {
+		return false
+	}
+	return !(counts.Awake == 0 && counts.Asleep > 0 && v.mode.MayBeEmpty(pdmode.RolePrefill))
+}
+
+// deploymentFactsFor reads the facts for callers that hold no replica view.
+func deploymentFactsFor(rows dtoLookup, d *store.Deployment, insts []store.Instance) deploymentFacts {
 	view, err := newReplicaView(rows, d, insts)
 	if err != nil {
-		return deploymentSleep{}
+		return deploymentFacts{}
 	}
-	return deploymentSleepFacts(rows, view, insts)
+	return deploymentFactsOf(rows, view, insts)
 }
 
 // followersRunning reports every follower rank of the replica running on an
-// online node, as readyReplicas requires: a generation serves as a whole.
+// online node: a generation serves as a whole.
 func followersRunning(rows dtoLookup, slot planning.UnitSlot) bool {
 	for _, follower := range slot.Followers {
 		if follower == nil || follower.State != proto.InstRunning || !instanceNodeOnline(rows, follower.NodeID) {

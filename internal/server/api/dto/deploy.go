@@ -88,16 +88,23 @@ type Deployment struct {
 	DesiredState string         `json:"desired_state"`
 	RuntimeState string         `json:"runtime_state"`
 	// State is the one state to show for the deployment: RuntimeState, except
-	// that a deployment whose every serving replica is asleep reads asleep
-	// (awake again once it is woken), and one whose sleep order is still being
-	// carried out reads sleeping. RuntimeState keeps what the runtime reports,
-	// so a sleeping deployment is still "running" there: the engine runs, the
-	// gateway refuses every request.
+	// that a deployment the gateway refuses every request of because the
+	// replicas it needs sleep reads asleep (awake again once it is woken), and
+	// one whose sleep order is still being carried out reads sleeping.
+	// RuntimeState keeps what the runtime reports, so a sleeping deployment is
+	// still "running" there: the engine runs, the gateway refuses the request.
+	//
+	// The judgement is the gateway's own (internal/server/proxy/route_select.go
+	// and pd_route.go): a replica is asleep when planning.InstanceAsleep says so,
+	// and a deployment is asleep only when every role the gateway needs has
+	// none awake. A partly slept deployment therefore keeps its running state
+	// and says how many of its replicas sleep in AsleepReplicas.
 	State string `json:"state"`
-	// AsleepReplicas counts the serving replicas the gateway refuses because
-	// of sleep. Against Replicas it says how much of the deployment sleeps, so
-	// a partly slept one shows its running replicas instead of reading as a
-	// broken replica.
+	// AsleepReplicas counts the replicas the gateway refuses because they
+	// sleep, over every role: with ReadyReplicas it accounts for the replicas
+	// the gateway reaches at all. Against Replicas it says how much of the
+	// deployment sleeps, so a partly slept one shows its running replicas
+	// instead of reading as a broken replica.
 	AsleepReplicas int `json:"asleep_replicas,omitempty"`
 	// SleepLevel is the deepest sleep level an engine of the deployment
 	// reports: 0 while every replica is awake, and while a sleep order is
@@ -117,9 +124,15 @@ type Deployment struct {
 	// StartTimeoutSec is the deployment's own instance health budget; absent
 	// when it states none and its launches take the cluster default.
 	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
-	// ReadyReplicas counts the connected, awake replicas running now (every rank of a
-	// multi-node one); absent for a PD deployment, whose roles count their
-	// own (PD).
+	// ReadyReplicas counts the replicas the gateway would serve a request from
+	// now: running, on an online node, every rank of a multi-node one up, and
+	// awake. It is absent for a PD deployment, whose roles count their own
+	// (pd.roles[].ready, the same replicas).
+	//
+	// ReadyReplicas and AsleepReplicas are two counts of one set of replicas,
+	// judged the way the gateway judges them, so they never contradict each
+	// other; what they do not count is a replica the gateway cannot reach for
+	// another reason (stopped, failed, its node gone).
 	ReadyReplicas *int `json:"ready_replicas,omitempty"`
 	// Health is the deployment's health check: on or off, its threshold and
 	// what the recent checks found.
@@ -144,7 +157,9 @@ type Deployment struct {
 	ModelProgress []ModelNodePresence `json:"model_progress,omitempty"`
 	Instances     []Instance          `json:"instances,omitempty"`
 	// PD is set on a PD disaggregated deployment: its mode, policies and each
-	// role's desired and ready counts, with the state derived from them.
+	// role's desired, ready and asleep counts, with the state derived from them
+	// and from which roles the gateway needs (a prefill role its mode serves
+	// without does not make the deployment unready or asleep when empty).
 	PD *DeploymentPD `json:"pd,omitempty"`
 	// RetryExhausted is set on an ordinary deployment one of whose replicas
 	// has no instance because the controller gave up rebuilding it. A PD
@@ -208,7 +223,13 @@ type DeploymentPDRole struct {
 	TP      int    `json:"tp"`
 	PP      int    `json:"pp,omitempty"`
 	Desired int    `json:"desired"`
-	Ready   int    `json:"ready"`
+	// Ready counts the role's units the gateway would route to now: running,
+	// on online nodes, every rank of a multi-node unit up, and awake.
+	Ready int `json:"ready"`
+	// Asleep counts the role's units the gateway refuses for sleep, which is
+	// why Ready can be short of Desired with nothing down. It is the
+	// deployment's asleep_replicas split by role.
+	Asleep int `json:"asleep,omitempty"`
 	// MayBeEmpty says the mode runs with no instance of the role: it may be
 	// scaled to zero and sleep on its own.
 	MayBeEmpty bool               `json:"may_be_empty"`

@@ -136,32 +136,38 @@ func (f sleepStateFixture) detail(t *testing.T, name string) dto.Deployment {
 }
 
 // A sleep order reaches both the list row and the single-deployment read as
-// the same state, and asleep_replicas says how much of the deployment sleeps
-// so a partly slept one does not read as broken or as entirely well.
+// the same state, and ready_replicas and asleep_replicas describe the same
+// replicas: a replica the gateway refuses for sleep is never also counted
+// ready, and one it serves is never counted asleep.
 func TestDeploymentWireCarriesSleepState(t *testing.T) {
 	f := newSleepStateFixture(t)
 	for _, tc := range []struct {
 		name        string
 		wantState   string
 		wantRuntime string
+		ready       int
 		asleep      int  // asleep_replicas, 0 when the key is absent
 		hasAsleep   bool // whether asleep_replicas is on the wire
 		level       int
 		hasLevel    bool
 	}{
-		{name: "awake", wantState: "running", wantRuntime: "running"},
+		{name: "awake", wantState: "running", wantRuntime: "running", ready: 1},
 		// The order is accepted and the gateway already refuses, while the
-		// engine still reports the level it had: the drain window.
+		// engine still reports the level it had: the drain window. The replica
+		// is asleep for the gateway, so it is not ready too.
 		{name: "draining", wantState: "sleeping", wantRuntime: "running", asleep: 1, hasAsleep: true},
 		{name: "asleep", wantState: "asleep", wantRuntime: "running", asleep: 1, hasAsleep: true, level: 1, hasLevel: true},
 		// One replica of two sleeps: the deployment still serves, so it keeps
 		// its running state and the counts say what is asleep.
-		{name: "partial", wantState: "running", wantRuntime: "running", asleep: 1, hasAsleep: true, level: 1, hasLevel: true},
+		{name: "partial", wantState: "running", wantRuntime: "running", ready: 1, asleep: 1, hasAsleep: true, level: 1, hasLevel: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			row := f.row(t, tc.name)
 			if row.State != tc.wantState || row.RuntimeState != tc.wantRuntime {
 				t.Fatalf("list state/runtime = %q/%q, want %q/%q", row.State, row.RuntimeState, tc.wantState, tc.wantRuntime)
+			}
+			if row.ReadyReplicas == nil || *row.ReadyReplicas != tc.ready {
+				t.Fatalf("list ready_replicas = %v, want %d", row.ReadyReplicas, tc.ready)
 			}
 			if row.AsleepReplicas != tc.asleep {
 				t.Fatalf("list asleep_replicas = %d, want %d", row.AsleepReplicas, tc.asleep)
@@ -179,6 +185,9 @@ func TestDeploymentWireCarriesSleepState(t *testing.T) {
 			detail := f.detail(t, tc.name)
 			if detail.State != tc.wantState || detail.RuntimeState != tc.wantRuntime {
 				t.Fatalf("detail state/runtime = %q/%q, want %q/%q", detail.State, detail.RuntimeState, tc.wantState, tc.wantRuntime)
+			}
+			if detail.ReadyReplicas == nil || *detail.ReadyReplicas != tc.ready {
+				t.Fatalf("detail ready_replicas = %v, want %d", detail.ReadyReplicas, tc.ready)
 			}
 			if detail.AsleepReplicas != tc.asleep || detail.SleepLevel != tc.level {
 				t.Fatalf("detail asleep_replicas/sleep_level = %d/%d, want %d/%d", detail.AsleepReplicas, detail.SleepLevel, tc.asleep, tc.level)
