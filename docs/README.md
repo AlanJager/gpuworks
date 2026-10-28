@@ -100,6 +100,7 @@
 - [典型部署拓扑](explanation/topologies.md)
 - [怎么选：dGPU、sleep/wake、多机、副本、PD](explanation/choosing-features.md)
 - [调度与显存估算](explanation/scheduling-and-estimation.md)
+- [服务等级：几个部署怎样共用一批 GPU](explanation/service-levels.md)
 - [部署启动配置的语义](explanation/launch-config.md)
 - [SGLang 日志注入的行为与边界](explanation/sglang-logging.md)
 - [dGPU 的语义与边界](explanation/dgpu.md)
