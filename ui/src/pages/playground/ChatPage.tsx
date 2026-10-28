@@ -218,7 +218,6 @@ export default function ChatPage({ catalog, onCatalogChanged }: { catalog: Playg
                 column={column}
                 models={catalog.models}
                 definitions={catalog.parameters}
-                presets={catalog.extra_parameter_presets}
                 streamOptions={streamOptions}
                 number={compare ? index + 1 : undefined}
                 onCatalogChanged={onCatalogChanged}

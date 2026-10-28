@@ -13,7 +13,10 @@
     "disable_thinking": "关闭思考"
   },
   "preset_unavailable": {
-    "disable_thinking": "只有 vLLM 或 SGLang 上的 Qwen3 对话模型会响应这个开关。当前模型已禁用它；藏起思考文本并不能阻止模型继续生成思考内容。"
+    "disable_thinking": {
+      "engine": "该部署的对话请求不经过支持 chat_template_kwargs 的引擎，模板开关在此不会生效。只有在引擎接受该参数时，才需要在「额外参数」中加入，例如 {{examples}}。",
+      "model": "试验场尚未确认该模型用哪个 chat_template_kwargs 字段关闭思考，因此不下发模板可能忽略的字段。请在「额外参数」中自行加入，例如 {{examples}}。"
+    }
   },
   "stream_options": {
     "include_usage": { "label": "返回用量（include_usage）", "description": "在流的最后一个块返回 prompt / completion token 数，用于计算回答结束后的准确指标。" },
