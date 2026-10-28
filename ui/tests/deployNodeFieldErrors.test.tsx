@@ -22,7 +22,7 @@ const wire = fixture.request;
 const { quick_params, container_overrides, placement_mode, dist_role, ...identity } = wire;
 // Reconstruct the fixed Form inputs only; the actual serializer builds all
 // requests. The response's literal error/code/params is never regenerated.
-const initial = { ...identity, ...quick_params, extra_args: "", node_selection_mode: "auto",
+const initial = { ...identity, ...quick_params, extra_args: "", node_selection_mode: "auto", units_placement: "manual",
   container_env_rows: Object.entries(container_overrides.env).map(([key, value]) => ({ key, value })) };
 const originalApi = { evaluate: api.evaluate, nodes: api.nodes, nodesPage: api.nodesPage, node: api.node, nodeFacets: api.nodeFacets };
 let form: import("antd").FormInstance;

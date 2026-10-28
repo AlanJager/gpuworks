@@ -3,8 +3,8 @@ import { Alert, Button, Checkbox, InputNumber, Modal, Popconfirm, Space, Typogra
 import { useTranslation } from "react-i18next";
 import { api, type Deployment, type Instance, type Node, type PdScaleUnitInput, type ScheduleMessage } from "../api";
 import NodePicker from "../nodes/NodePicker";
-import type { TFunction } from "i18next";
-import { APIError, apiErrorText } from "../apiError";
+import { apiErrorText } from "../apiError";
+import AutoReplicasDialog, { placeOnRefusal } from "./DeploymentAutoReplicas";
 import { scheduleText } from "./deploy/deploySchedule";
 import SleepModeDialog, { type SleepMode } from "../components/SleepModeDialog";
 import { ConfirmOrderModal } from "./OrderDialogs";
@@ -146,7 +146,9 @@ export function ReplicasEditor({ dep, onChanged }: { dep: Deployment; onChanged:
       <Space size={8}>
         {dep.replicas}
         <Button size="small" onClick={() => setListOpen(true)}>{t("replica.editUnits")}</Button>
-        {listOpen && <MultiNodeReplicasDialog dep={dep} ranks={ranks} onClose={() => setListOpen(false)} onChanged={onChanged} />}
+        {listOpen && (dep.placement_mode === "auto"
+          ? <AutoReplicasDialog dep={dep} ranks={ranks} onClose={() => setListOpen(false)} onChanged={onChanged} />
+          : <MultiNodeReplicasDialog dep={dep} ranks={ranks} onClose={() => setListOpen(false)} onChanged={onChanged} />)}
       </Space>
     );
   }
@@ -191,20 +193,6 @@ export function ReplicasEditor({ dep, onChanged }: { dep: Deployment; onChanged:
       {added > 0 && <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("replica.placeOn.hint")}</Typography.Text>}
     </Space>
   );
-}
-
-// placeOnRefusal words a refused first placement (REPLICAS_PLACE_ON_REFUSED):
-// the node, why it cannot take the new replica (the scheduler's own reason
-// when it has no room), and the detail the server gave.
-function placeOnRefusal(e: unknown, t: TFunction<"deployments">, tDeploy: TFunction<"deploy">, tCommon: TFunction<"common">): Error | null {
-  if (!(e instanceof APIError) || e.code !== "REPLICAS_PLACE_ON_REFUSED") return null;
-  const params = e.params ?? {};
-  const reason = String(params.reason ?? "");
-  const detail = reason === "no_room" && params.code
-    ? scheduleText(tDeploy, { code: String(params.code), params: params.params as Record<string, unknown> | undefined })
-    : String(params.detail ?? "");
-  const text = t(`replica.placeOn.refused.${reason}`, { node: params.node, detail, defaultValue: "" });
-  return new Error(text || apiErrorText(tCommon, e));
 }
 
 // MultiNodeReplicasDialog edits a multi-node deployment's replica list: each

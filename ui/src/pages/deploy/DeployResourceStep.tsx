@@ -28,6 +28,7 @@ import EligibleNodePicker from "./EligibleNodePicker";
 import DeployParallelFields from "./DeployParallelFields";
 import { gpuSelectOptions } from "./gpuOptions";
 import { LockedHint, useControlLocked } from "./DeployEditContext";
+import AutoGroupPreview from "./DeployAutoGroupPreview";
 
 const ONLINE = { state: ["online"] };
 
@@ -56,6 +57,9 @@ export default function DeployResourceStep({
   const nodeMode =
     Form.useWatch("node_selection_mode", watchOptions) || "manual";
   const nnodes = Number(Form.useWatch("nnodes", watchOptions) || 1);
+  // A multi-node group is placed by the platform unless the deployer names
+  // its nodes (the quick form's switch, here as a form control).
+  const groupAuto = Form.useWatch("units_placement", watchOptions) !== "manual";
   const vramLimit = Number(Form.useWatch("vram_limit_gib", watchOptions) || 0);
   const supportsPartition = capability?.status === "ready";
   // What an edit of the deployment cannot change (see DeployEditContext).
@@ -220,6 +224,28 @@ export default function DeployResourceStep({
           )}
         {nnodes > 1 && (
           <>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t("resource.groupPlacement")}
+                name="units_placement"
+                getValueProps={(value) => ({ value: value ?? "auto" })}
+              >
+                <Segmented
+                  block
+                  disabled={modeLocked}
+                  options={[
+                    { value: "auto", label: t("resource.autoSelect") },
+                    { value: "manual", label: t("resource.manualSelect") },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            {groupAuto ? (
+              <Col span={24}>
+                <AutoGroupPreview result={result} loading={false} ready />
+              </Col>
+            ) : (
+              <>
             <Col span={24}>
               <Form.Item
                 label={t("resource.distributedNodes")}
@@ -247,6 +273,8 @@ export default function DeployResourceStep({
                 <Input placeholder={t("resource.masterAddressPlaceholder")} disabled={rankLocked} />
               </Form.Item>
             </Col>
+              </>
+            )}
             <Col xs={24} md={8}>
               <Form.Item label={t("resource.masterPort")} name="master_port">
                 <InputNumber style={{ width: "100%" }} min={1024} max={65535} disabled={rankLocked} />

@@ -70,7 +70,7 @@ function renderSection(values: Record<string, unknown>, modelReady = true) {
 }
 
 test("the multi-node picker names nodes and accepts compute-network ranks", async () => {
-  renderSection({ node_selection_mode: "multi", target_vendor: "nvidia", nnodes: 2 });
+  renderSection({ node_selection_mode: "multi", target_vendor: "nvidia", nnodes: 2, units_placement: "manual" });
   assert.ok(screen.getByText(node.multiPlaceholder));
   const picker = screen.getByText(node.multiPlaceholder).closest(".ant-select") as HTMLElement;
   fireEvent.mouseDown(picker.querySelector(".ant-select-selector") as HTMLElement);

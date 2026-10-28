@@ -28,6 +28,7 @@ import DeploymentPdPanel from "./DeploymentPdPanel";
 import DeploymentInstances from "./DeploymentInstances";
 import SleepControls from "./DeploymentSleepControls";
 import DeploymentNodeReplacement from "./DeploymentNodeReplacement";
+import PlacementModeControl from "./DeploymentPlacementMode";
 import DeploymentLifecycleActions, { ReplicaRetryAlert } from "./DeploymentLifecycleActions";
 import { ReplicasEditor } from "./DeploymentReplicaActions";
 import { PlacementStatusAlert, RequirementTags } from "./DeploymentPlacementStatus";
@@ -402,6 +403,7 @@ function DeploymentDetail({
             <Descriptions.Item label={t("detail.model")}><Link to={`/models?detail=${dep.model_id}`}>{dep.model_name || dep.model_id}</Link></Descriptions.Item>
             <Descriptions.Item label={t("detail.servedName")}>{dep.served_name || "—"}</Descriptions.Item>
             <Descriptions.Item label={t("detail.node")}><DeploymentNodeLinks dep={dep} /></Descriptions.Item>
+            {dep.placement_mode && <Descriptions.Item label={t("unitsPlacement.label")} span={2}><PlacementModeControl dep={dep} onChanged={() => void load()} /></Descriptions.Item>}
             {!dep.pd && (dep.nnodes ?? 1) <= 1 && <Descriptions.Item label={t("detail.placement.requirements")} span={2}><Space size={4} wrap><RequirementTags dep={dep} />{dep.placement_strategy && <Tag color="blue">{t(`detail.placement.strategy.${dep.placement_strategy}`, { defaultValue: dep.placement_strategy })}</Tag>}<EditRequirementsButton dep={dep} onChanged={() => void load()} /></Space></Descriptions.Item>}
             <Descriptions.Item label={t("detail.state")}>
               {b && <Badge status={b.status} text={b.text} />}
