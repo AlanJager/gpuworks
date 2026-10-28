@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Model selection stays one control line, including long names and revisions.
 
+Git prerequisite: fetch the MR target branch and use its local tracking ref.
+The example assumes upstream points to the target repository and master has
+been fetched; check with git rev-parse --verify upstream/master^{commit}.
+Set --target-ref (or E2E_TARGET_REF for Make) to match your checkout.
+This records target_sha only; it does not fetch or switch revisions.
+Omitting it retains the shared runner's wei/master default, which must exist.
+
 After building the server (no agent/GPU required):
   PYTHONPATH=test/e2e python3 -m model_picker_height.case --locale en --target-ref upstream/master --browser-channel chromium
 Repeat with --locale zh. Use --server-bin to check another built revision;

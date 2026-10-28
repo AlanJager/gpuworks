@@ -20,7 +20,7 @@
     "ui/src/pages/deploy/ModelRegistrationDetails.tsx",
     "ui/src/theme/tokens.ts"
   ],
-  "fixture": "One uniquely named run-owned model registered through the real browser_metadata API with explicit metadata; independent GET checks its identity. No remote model files, agent, or browser management mocks. Existing cleanup discovers only the run-owned repository and verifies DELETE/404 and an empty query.",
+  "fixture": "Each run starts an isolated server with a fresh SQLite database and registers exactly one uniquely named run-owned model through the real browser_metadata API with explicit metadata; independent GET checks its identity. The unfiltered browser model list must therefore contain only that model with total == 1; a shared database is outside this fixture contract. No remote model files, agent, or browser management mocks. Existing cleanup discovers only the run-owned repository by source_id and verifies DELETE/404 and an empty query.",
   "fields": [
     {
       "id": "model_id",
