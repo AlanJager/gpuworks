@@ -291,3 +291,50 @@ func TestOffWithoutResidency(t *testing.T) {
 		t.Fatalf("orders = %v", w.orders)
 	}
 }
+
+// A holder that gave its cards up does not take them straight back while the
+// one it gave them to is still waking: that would undo the yield.
+func TestAYieldedHolderLeavesTheCardsToTheWaiterWhileItWakes(t *testing.T) {
+	w := newResidencyWorld()
+	const online, offline = 1, 2
+	w.levels[online], w.levels[offline] = servicelevel.Online, servicelevel.Offline
+	w.asleep[online] = true
+	w.waiters = []Waiter{{DeploymentID: online, Level: servicelevel.Online, Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Level: servicelevel.Offline, Instances: []string{"off"}}}}
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	if !slices.Equal(w.yields, []string{"2 abort=true"}) {
+		t.Fatalf("yields = %v", w.yields)
+	}
+	// The card is free now, and online's wake is still on its way: offline
+	// would fit, but must not take it back.
+	w.fitsNow[offline] = true
+	c.t = c.t.Add(5 * time.Second)
+	e.residency(c.t)
+	if slices.Contains(w.wakeCalls, offline) {
+		t.Fatalf("offline took the cards back while online woke: %v", w.wakeCalls)
+	}
+	// Online is awake: offline may try again (and finds online holding).
+	w.asleep[online] = false
+	w.waiters = nil
+	c.t = c.t.Add(5 * time.Second)
+	e.residency(c.t)
+	if !slices.Contains(w.wakeCalls, offline) {
+		t.Fatalf("offline never tried to resume after online woke: %v", w.wakeCalls)
+	}
+}
+
+func TestAYieldGuardDoesNotOutliveItsTime(t *testing.T) {
+	w := newResidencyWorld()
+	w.levels[1], w.levels[2] = servicelevel.Online, servicelevel.Offline
+	w.asleep[1], w.asleep[2] = true, true
+	e, c := newResidencyEvaluator(w, t0)
+	e.res.preempted[2] = t0
+	e.res.yieldedFor[2] = yielded{to: 1, at: t0}
+	w.fitsNow[2] = true
+	c.t = t0.Add(yieldGuard)
+	e.residency(c.t)
+	if !slices.Contains(w.wakeCalls, 2) {
+		t.Fatalf("a holder stayed asleep past the guard for a waiter that never woke: %v", w.wakeCalls)
+	}
+}

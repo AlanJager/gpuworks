@@ -99,7 +99,20 @@ type residencyState struct {
 	// wokeAt is when a wake was last ordered for a waiter, so a waiter whose
 	// wake is in flight is not ordered again on every pass.
 	wokeAt map[uint]time.Time
+	// yieldedFor is whom each holder gave its cards to, and when: it does
+	// not take them back while that one is still waking, or it would take the
+	// room the yield made before the waiter could use it.
+	yieldedFor map[uint]yielded
 }
+
+type yielded struct {
+	to uint
+	at time.Time
+}
+
+// yieldGuard is how long a holder leaves the cards it gave up to the one it
+// gave them to, at most, while that one wakes.
+const yieldGuard = 2 * time.Minute
 
 type drain struct {
 	since     time.Time
@@ -117,6 +130,7 @@ func (e *Evaluator) WithResidency(source ResidencySource, actions ResidencyActio
 	e.res = &residencyState{
 		source: source, actions: actions, demand: make(chan struct{}, 1),
 		awakeAt: map[uint]time.Time{}, preempted: map[uint]time.Time{}, draining: map[uint]drain{}, wokeAt: map[uint]time.Time{},
+		yieldedFor: map[uint]yielded{},
 	}
 	return e
 }
@@ -174,6 +188,9 @@ func (e *Evaluator) residency(now time.Time) {
 		level, ok := r.source.Wakeable(id)
 		if !ok {
 			delete(r.preempted, id)
+			continue
+		}
+		if e.stillWakingFor(now, id) {
 			continue
 		}
 		queue = append(queue, waiting{id: id, level: level, since: since, resume: true})
@@ -303,6 +320,9 @@ func (e *Evaluator) sleepHolder(id uint, instances []string, abort bool, params 
 	params["level"] = level
 	e.actions.Record(id, EventAutoSleep, params)
 	delete(r.awakeAt, id)
+	if to, ok := params["for_deployment"].(uint); ok {
+		r.yieldedFor[id] = yielded{to: to, at: e.now()}
+	}
 	if level, ok := r.source.Wakeable(id); ok && servicelevel.For(level).Preemptible {
 		r.preempted[id] = e.now()
 	}
@@ -321,4 +341,21 @@ func (e *Evaluator) finishDrains(now time.Time) {
 		e.sleepHolder(id, d.instances, inFlight > 0, d.params)
 		r.actions.Drain(id, false)
 	}
+}
+
+// stillWakingFor says the deployment gave its cards to one that has not woken
+// yet: it leaves them alone until that one is awake, or for yieldGuard.
+func (e *Evaluator) stillWakingFor(now time.Time, id uint) bool {
+	r := e.res
+	y, ok := r.yieldedFor[id]
+	if !ok {
+		return false
+	}
+	if now.Sub(y.at) < yieldGuard {
+		if _, asleep := r.source.Wakeable(y.to); asleep {
+			return true
+		}
+	}
+	delete(r.yieldedFor, id)
+	return false
 }
