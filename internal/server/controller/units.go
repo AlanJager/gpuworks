@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -202,6 +203,9 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 		}
 		if !launched {
 			return nil
+		}
+		if len(attempts) > 0 {
+			c.recordReplicaRebuilt(dep, slot.Unit, attempts, nodes[0])
 		}
 	}
 	if placementResolved {
@@ -419,6 +423,24 @@ func (c *Controller) recordUnitExhausted(dep *store.Deployment, unit planning.Un
 	}
 	c.log.Warn("unit gave up after repeated failures", "dep", dep.ID, "role", unit.Role, "unit", unit.Index, "failed", len(attempts))
 	c.store.AddInstanceEventCode(&newest, store.EventKindSchedule, store.EventUnitRetryExhausted, map[string]any{"attempts": len(attempts), "reason": newest.Message})
+}
+
+// rebuildReasonRunes bounds the failed attempt's message a REPLICA_REBUILT
+// event carries: the full message stays on the failed attempt's own timeline.
+const rebuildReasonRunes = 200
+
+// recordReplicaRebuilt says on the deployment's timeline that a replica was
+// started again after its previous attempt failed, and why it failed.
+func (c *Controller) recordReplicaRebuilt(dep *store.Deployment, unit planning.Unit, attempts []store.Instance, leader *store.Node) {
+	reason := []rune(strings.TrimSpace(planning.NewestAttempt(attempts).Message))
+	if len(reason) > rebuildReasonRunes {
+		reason = append(reason[:rebuildReasonRunes], '…')
+	}
+	params := map[string]any{"replica": unit.Index + 1, "attempt": len(attempts) + 1, "reason": string(reason), "node": leader.DisplayName()}
+	if unit.Role != "" {
+		params["role"] = unit.Role
+	}
+	c.store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventReplicaRebuilt, params)
 }
 
 // retryWait is how long a unit waits before its next attempt: the retry

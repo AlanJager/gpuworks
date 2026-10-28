@@ -531,6 +531,12 @@ const (
 	// EventUnitRetried: an operator gave a unit its retry budget back.
 	// Params: role, unit, attempts.
 	EventUnitRetried = "UNIT_RETRIED"
+	// EventReplicaRebuilt: the controller started a replica again after its
+	// previous attempt failed, within the unit's retry budget (ADR 0029).
+	// Recorded once per rebuild, so at most the budget per unit. Params:
+	// role (PD only), replica (1-based), attempt, reason (the failed attempt's
+	// message, shortened), node (the leader's node name).
+	EventReplicaRebuilt = "REPLICA_REBUILT"
 )
 
 // CreateInstance persists a scheduled instance with its desired spec.

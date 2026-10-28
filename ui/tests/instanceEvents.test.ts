@@ -91,6 +91,16 @@ test("every lifecycle event has text in both locales, and a stalled rolling rest
     params: { role: "prefill", replica: 2, attempts: 3 },
     created_at: "2026-09-30T00:00:00Z",
   }), "Rolling restart waits: replica Prefill 2 gave up after 3 failed attempts; retry it to continue");
+  // A rebuilt replica says which attempt it is, where it starts and why the
+  // last one failed; a failure without a message drops the clause.
+  const t = i18n.getFixedT("en", "deployments") as never;
+  const tc = i18n.getFixedT("en", "common") as never;
+  assert.equal(instanceEventText(t, tc, {
+    kind: "schedule", code: "REPLICA_REBUILT", params: { role: "decode", replica: 1, attempt: 2, node: "gpu-3", reason: "CUDA out of memory" }, created_at: "2026-09-30T00:00:00Z",
+  }), "Replica Decode 1 failed and was rebuilt automatically (attempt 2, on gpu-3); it failed with: CUDA out of memory");
+  assert.equal(instanceEventText(t, tc, {
+    kind: "schedule", code: "REPLICA_REBUILT", params: { replica: 3, attempt: 3, node: "gpu-3", reason: "" }, created_at: "2026-09-30T00:00:00Z",
+  }), "Replica 3 failed and was rebuilt automatically (attempt 3, on gpu-3)");
 });
 
 test("a storage outage on the timeline names the storage, the node and the localized state", async () => {

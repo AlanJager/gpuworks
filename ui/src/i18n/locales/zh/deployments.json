@@ -383,6 +383,7 @@
       "REPLICA_RESTARTED": "已请求重启实例 {{instance}} 所在的副本",
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",
       "UNIT_RETRIED": "已请求重试：清除了 {{attempts}} 次失败记录",
+      "REPLICA_REBUILT": "副本 {{replica}} 失败后已自动重建（第 {{attempt}} 次尝试，放在 {{node}}）{{reasonNote}}",
       "STORAGE_UNAVAILABLE": "存储 {{storage}} 在节点 {{node}} 上不可用（{{state}}）：运行中的实例继续用显存里的权重服务，正在加载的实例会等它恢复",
       "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
       "AUTO_SLEEP": "已休眠（L{{level}}）{{cause}}",
@@ -399,6 +400,7 @@
       "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走",
       "UNIT_PLACED": "自动放置：{{what}} 已放到 {{to}}{{from}}{{cause}}"
     },
+    "reasonNote": "；上次失败：{{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
       "tcp": "TCP",

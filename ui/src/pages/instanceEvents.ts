@@ -21,7 +21,7 @@ const knownInstanceEventCodes = new Set<string>(instanceEventCodes);
  * a prefill instance (ADR 0028), an operator's restart of the deployment or
  * of one replica, an edit of its configuration, a change of its dGPU memory
  * limit, a replica giving up
- * after its retry budget or being retried (ADR 0029), and a rolling restart waiting on a replica that gave
+ * after its retry budget or being retried (ADR 0029) or rebuilt within it, and a rolling restart waiting on a replica that gave
  * up, and the shared storage the deployment reads its weights from becoming
  * unavailable on an instance's node or recovering. PD_GROUP_RESTARTED is
  * what restarts wrote before they covered every deployment shape.
@@ -39,6 +39,7 @@ export const lifecycleEventCodes = [
   "REPLICA_RESTARTED",
   "UNIT_RETRY_EXHAUSTED",
   "UNIT_RETRIED",
+  "REPLICA_REBUILT",
   "STORAGE_UNAVAILABLE",
   "STORAGE_RECOVERED",
 ] as const;
@@ -66,6 +67,8 @@ function lifecycleEventText(t: TFunction<"deployments">, event: InstanceEvent, c
     replica: replicaLabel(t, event),
     instance: paramText(event, "instance").slice(0, 8),
     attempts: numberParam(event, "attempts") ?? "",
+    attempt: numberParam(event, "attempt") ?? "",
+    reasonNote: paramText(event, "reason") ? t("instance.reasonNote", { reason: paramText(event, "reason") }) : "",
     storage: paramText(event, "storage"),
     node: paramText(event, "node"),
     fields: paramText(event, "fields"),

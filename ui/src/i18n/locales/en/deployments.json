@@ -383,6 +383,7 @@
       "REPLICA_RESTARTED": "Restart requested for the replica of instance {{instance}}",
       "UNIT_RETRY_EXHAUSTED": "Gave up after {{attempts}} failed attempts ({{reason}})",
       "UNIT_RETRIED": "Retry requested: {{attempts}} failed attempts cleared",
+      "REPLICA_REBUILT": "Replica {{replica}} failed and was rebuilt automatically (attempt {{attempt}}, on {{node}}){{reasonNote}}",
       "STORAGE_UNAVAILABLE": "Storage {{storage}} is unavailable on {{node}} ({{state}}): running instances keep serving from GPU memory, loading ones wait for it to return",
       "STORAGE_RECOVERED": "Storage {{storage}} is available again on {{node}}",
       "AUTO_SLEEP": "Put to sleep (L{{level}}) {{cause}}",
@@ -399,6 +400,7 @@
       "NODE_DRAIN_MOVED": "{{what}} moved off a draining node",
       "UNIT_PLACED": "Automatic placement: {{what}} placed on {{to}}{{from}}{{cause}}"
     },
+    "reasonNote": "; it failed with: {{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
       "tcp": "TCP",
