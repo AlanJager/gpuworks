@@ -38,6 +38,9 @@ MODEL_DIR = ROOT / "test/e2e/testdata/fake-model"
 IMAGE = "gpuworks/fake-engine:test"
 CHAT = "/api/v1/playground/v1/chat/completions"
 MARKER = "hello from fake-engine"
+# The slow deployment repeats this once per streamed delta, so a cancelled reply
+# is a partial run of it.
+SLOW_MARKER = "slowmarker"
 # A generated page that tries to reach the network and to touch the console's
 # storage: both are what the preview's isolation has to stop.
 # One line on purpose: the engine writes this string inside a JSON SSE chunk,
@@ -543,7 +546,7 @@ def preview_network_toggle(page, server, report, locale):
 
 
 def test_playground_chat(page, context, server, artifacts, report, locale,
-                         deployment, run_id):
+                         deployment, run_id, slow_deployment):
     deployments, playground, auth = strings(locale)
     dep_id, dep_name, served_name = deployment["id"], deployment["name"], deployment["served_name"]
     first_prompt = f"first playground prompt {run_id[-8:]}"
@@ -600,7 +603,10 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
     check(any(op.get("type") == "openai.chat" and op.get("endpoint") == "/v1/chat/completions"
               for op in operations), f"chat operation missing: {operations}")
 
-    row = page.get_by_role("row").filter(has_text=dep_name)
+    # The fixture's own deployment row, matched on its full name. A second
+    # deployment (the slow-stream one 20.3 needs) shares the run prefix, so a
+    # prefix match would see two rows.
+    row = page.get_by_role("row").filter(has_text=dep_name).filter(has_not_text="-slow")
     expect(row).to_have_count(1)
     with page.expect_response(lambda r: urlsplit(r.url).path == "/api/v1/playground/models"
                               and r.request.method == "GET") as catalog:
@@ -769,6 +775,12 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
 
     vector_operation(page, server, report, playground, served_name)
     report["last_step"] = "playground-operation-dispatch"
+    # A confirmation left open by an earlier step would make the next preview's
+    # assertion see two dialogs, so clear any before starting.
+    stray = page.locator(".ant-modal-confirm, .ant-modal")
+    for _ in range(stray.count()):
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(200)
     # Read the administrator's stored policy before touching it, and start from
     # the restrictive one so the first pass really exercises it even if a
     # previous run died before putting the switch back.
@@ -805,6 +817,7 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
 
     attachment_lifecycle(page, server, served_name, report, playground, artifacts)
     compare_run(page, server, served_name, report, playground)
+    cancellation(page, server, run_id, report, playground, slow_deployment)
 
     report["evidence"].extend([
         {"layer": "ui", "entry": deployments["page"]["openPlayground"], "row": dep_name,
@@ -832,6 +845,76 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
     report["chat_sse_sample"] = artifacts.redact(first_text[:2000])
 
 
+def cancellation(page, server, run_id, report, playground, slow_deployment):
+    """20.3: stopping a reply really cancels the stream and keeps the prefix.
+
+    The default fixture streams one chunk and closes immediately, so a Stop
+    button never exists long enough to click - that is why this item was stuck.
+    The fake engine can stream N deltas TPOT apart, which keeps the reply open
+    for long enough to cancel it for real.
+    """
+    chat = playground["chat"]
+    report["last_step"] = "cancellation-start"
+    slow_name = slow_deployment["served_name"]
+    page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + slow_name)
+    chat_input = page.get_by_label(chat["inputAria"])
+    expect(chat_input).to_be_visible(timeout=30000)
+    chat_input.click()
+    chat_input.type(f"cancel probe {run_id[-8:]}", delay=10)
+
+    page.locator(".playground-composer button").filter(has_text=chat["send"]).last.click()
+
+    stop = page.locator(".playground-stop-button")
+    # The reply must still be generating when the stop control appears.
+    expect(stop.first).to_be_visible(timeout=30000)
+    report["cancellation_stop_visible"] = True
+    # Let some deltas land so there is a prefix worth keeping.
+    page.wait_for_timeout(1200)
+    stop.first.click()
+    expect(stop).to_have_count(0, timeout=30000)
+
+    bubble = page.locator(".playground-message-list").first
+    # The slow deployment replies with this marker once per delta, so a partial
+    # reply is a non-empty run of it rather than the whole reply.
+    expect(bubble.get_by_text(SLOW_MARKER, exact=False).first).to_be_visible(timeout=30000)
+    kept = page.evaluate("""() => {
+      const list = document.querySelector('.playground-message-list');
+      return list ? list.innerText.length : 0;
+    }""")
+    check(kept > 0, "the cancelled reply lost the text it had already shown")
+
+    # The cancel must be a real stream abort, not a UI-only hide: the server
+    # sees the request end and no further deltas arrive.
+    baseline = page.evaluate("""() => {
+      const list = document.querySelector('.playground-message-list');
+      return list ? list.innerText : '';
+    }""")
+    page.wait_for_timeout(2500)
+    after = page.evaluate("""() => {
+      const list = document.querySelector('.playground-message-list');
+      return list ? list.innerText : '';
+    }""")
+    check(after == baseline,
+          "text kept arriving after Stop was pressed, so the stream was not cancelled")
+    report["cancellation_frozen"] = True
+
+    # A cancelled reply is not a finished one: sending again must work rather
+    # than staying blocked by a stream the product thinks is still running.
+    chat_input.click()
+    chat_input.type(f"after cancel {run_id[-8:]}", delay=10)
+    page.locator(".playground-composer button").filter(has_text=chat["send"]).last.click()
+    expect(stop.first).to_be_visible(timeout=30000)
+    stop.first.click()
+    expect(stop).to_have_count(0, timeout=30000)
+    report["evidence"].append({
+        "layer": "execution", "mode": "cancel",
+        "chunks": 40, "tpot": "150ms",
+        "source": "a 40-delta stream held the reply open long enough to press Stop; the text already "
+                  "shown was kept and then stopped changing, and a later send was accepted, so the "
+                  "cancel aborted the request instead of only hiding the control"})
+    report["last_step"] = "cancellation-complete"
+
+
 def create_fixtures(server, token, run_id, report, holder, agent_bin, artifacts,
                     inject_online_failure=False, inject_model_failure=False,
                     inject_config_failure=False, inject_deployment_failure=False):
@@ -846,7 +929,9 @@ def create_fixtures(server, token, run_id, report, holder, agent_bin, artifacts,
     state.mkdir()
     log = (server.work / "agent.log").open("w")
     holder["log"] = log
-    env = {**os.environ, "GPUWORKS_FAKE_GPU": "A100x1,24576",
+    # Two GPUs so a case can hold one deployment while a second (the slow
+    # stream 20.3 cancels) is placed; with one GPU the second stays pending.
+    env = {**os.environ, "GPUWORKS_FAKE_GPU": "A100x2,24576",
            "GPUWORKS_FAKE_GPU_NO_INJECT": "1"}
     agent = subprocess.Popen([str(agent_bin), "run",
                               "--server", server.base, "--token", node_token,
@@ -891,6 +976,36 @@ def create_fixtures(server, token, run_id, report, holder, agent_bin, artifacts,
     check(status in (200, 201), f"deployment fixture HTTP {status} {deployment}")
     deployment["name"], deployment["served_name"] = dep_name, served_name
     report["owned_deployment_id"] = deployment["id"]
+    # 20.3 needs a reply that stays open long enough to press Stop. The default
+    # fixture streams one chunk and closes at once, so this second deployment
+    # streams many deltas apart; the node advertises two GPUs so it can be
+    # placed alongside the first.
+    slow_name = f"e2e-{run_id}-slow"
+    status, slow = http(server.base, "POST", DEPLOYMENTS, token=token, body={
+        "model_id": model["id"], "node_uuid": node["uuid"],
+        "name": f"e2e-{run_id}-slow", "served_name": slow_name, "engine": "vllm",
+        "image": IMAGE, "placement_mode": "manual",
+        "container_overrides": {"command_mode": "engine", "env": {
+            "FAKE_ENGINE_RESPONSE_TEXT": "slowmarker",
+            "FAKE_ENGINE_STREAM_CHUNKS": "40",
+            "FAKE_ENGINE_TPOT_DELAY": "150ms"}}})
+    check(status in (200, 201), f"slow deployment HTTP {status} {slow}")
+    slow["name"], slow["served_name"] = f"e2e-{run_id}-slow", slow_name
+    report["owned_slow_deployment_id"] = slow["id"]
+    deadline = time.time() + 240
+    state = None
+    while time.time() < deadline:
+        code, current = http(server.base, "GET", DEPLOYMENTS + f"/{slow['id']}", token=token)
+        if code == 200:
+            state = current.get("runtime_state")
+            serving = any(i.get("state") == "running" and i.get("container_id")
+                          for i in current.get("instances") or [])
+            if state == "running" and serving:
+                break
+        time.sleep(1)
+    else:
+        raise AssertionError(f"the slow deployment never started serving: {state}")
+    holder["slow_deployment"] = slow
     if inject_deployment_failure:
         raise RuntimeError("injected deployment fixture failure")
     return node, node_token, model, deployment
@@ -984,7 +1099,8 @@ def main():
             page.set_default_timeout(10000)
             try:
                 test_playground_chat(page, context, server, artifacts, report,
-                                     args.locale, deployment, run_id)
+                                     args.locale, deployment, run_id,
+                                     holder["slow_deployment"])
                 layers = {item["layer"] for item in report["evidence"]}
                 check(set(manifest["required_evidence"]) - {"cleanup"} <= layers,
                       "required evidence is missing")
