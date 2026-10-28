@@ -1,8 +1,8 @@
-# ADR 0058: The Scheduling Center Only Carries Out Orders Operators Gave in Advance, Sleep Releases Capacity Down to a Per-Instance Residue, and Node Replacement Rewrites the Placement the Way an Operator's Edit Would
+# ADR 0058: The Scheduling Center Only Carries Out Orders Operators Gave in Advance, Sleep Releases Capacity Down to a Per-Instance Residue, and Node-Loss Rescheduling Rewrites the Placement the Way an Operator's Edit Would
 
 Date: 2026-10-25 · Status: Accepted
 
-Terminology follows `CONTEXT.md`: **sleep residue**, **lifecycle schedule**, **idle sleep**, **wake waiting**, **yielding wake**, **node replacement**, **node drain**.
+Terminology follows `CONTEXT.md`: **sleep residue**, **lifecycle schedule**, **idle sleep**, **wake waiting**, **yielding wake**, **node-loss rescheduling**, **node drain**.
 Supplements [ADR 0033](0033-replica-level-lifecycle.md) (sleep intent on instances) and [ADR 0029](0029-deployments-reconcile-as-units.md) (deployments reconcile as units).
 
 ## Background
@@ -29,7 +29,7 @@ so a scheduled wake and a manual wake cannot both pass admission for the same ca
 - A yielding wake (`?yield=true`) is a one-off action an operator names: it first puts sleep-capable occupants to sleep, and if an occupant cannot sleep, the whole request is refused (409 `WAKE_YIELD_BLOCKED`) and nothing changes.
 - A scheduled replica count applies only to single-node deployments; there is no preemption, no load-based autoscaling, and no gateway holding of requests until a wake.
 
-Persistence: one row per schedule entry (`lifecycle_schedules`, typed columns); idle sleep and the node replacement wait are integer columns on the deployment, and the start of a wait is a time column on the instance.
+Persistence: one row per schedule entry (`lifecycle_schedules`, typed columns); idle sleep and the node-loss rescheduling wait are integer columns on the deployment, and the start of a wait is a time column on the instance.
 
 **2. Sleep releases capacity, keeping only a per-instance residue; the idea that ordinary sleep retains the original allocation claim is not adopted.**
 For an instance confirmed asleep, the allocation claim shrinks to its residue, the rest of the card's memory can go to other deployments, and a wake must pass admission again. The residue is recorded per instance:
@@ -45,8 +45,8 @@ and a sleep that does not fit is refused with a hint to use L2, while a node wit
 The rejected approach is "ordinary sleep keeps the original allocation claim, and only an explicit declaration releases it", that is, a guaranteed wake: it makes sleep pointless for several models taking turns on one card,
 and it runs against the current code and how users work. Scenarios that need a guaranteed wake can be revisited later as an optional mode alongside time-sharing groups.
 
-**3. Node replacement is validated like an operator's placement edit, never spends retries, is undone only before the moved unit runs, and keeps its state in memory; drain of the units it names moves replacement-first.**
-A node counts as lost when it has been offline for the deployment's replacement wait (`node_replace_after_sec`, default 600, 0 for never):
+**3. Node-loss rescheduling is validated like an operator's placement edit, never spends retries, is undone only before the moved unit runs, and keeps its state in memory; drain of the units it names moves replacement-first.**
+A node counts as lost when it has been offline for the deployment's rescheduling wait (`node_replace_after_sec`, default 600, 0 for never):
 
 - Single-node replicas: the instance rows on the lost node are removed and the candidate pool fills in on other nodes; the replica did not fail, so no retry is spent. A replica pinned to its node has nowhere to go and stays.
 - Multi-node and PD replicas: only the lost rank is replaced, on a node of the same compute network (the management network as a fallback), the same vendor and architecture, with free cards and a trial plan per rank under the deployment's configuration that fits,
@@ -69,6 +69,6 @@ and afterward the replicas take part in refill and replacement like any other.
 - Operators must arrange who holds a card themselves: when two deployments share a card in turns, pair sleeping and waking with schedules, or use a yielding wake; the platform does not give way on anyone's behalf.
 - After sleep releases capacity, a wake may not fit back. This is an explicit semantic (409, waiting, and yielding offer ways out), not a defect.
 - The estimate used when nothing was measured is only an empirical figure and may be high or low; a measurement exists only when the instance is alone on its cards, so sleeping instances sharing a card always use the estimate.
-- Node replacement, its undo, and the drain surge keep their state in memory, so a server restart may lose the chance to undo or choose the replacement node again, in exchange for adding no persisted facts for these short-lived states.
+- Node-loss rescheduling, its undo, and the drain surge keep their state in memory, so a server restart may lose the chance to undo or choose the replacement node again, in exchange for adding no persisted facts for these short-lived states.
 - The evaluator runs inside the server process: nothing happens automatically while the server is down, and after it recovers only the newest schedule entry within 12 hours is made up.
 - The evaluator reads only deployments that have a schedule, an idle setting, or a wait, and never scans them all, in keeping with the scale target; the board is paged by node and reads occupants only for the nodes on the page.

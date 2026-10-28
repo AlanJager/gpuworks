@@ -221,7 +221,7 @@ Before upgrading drivers, replacing cards, or decommissioning a node, use **More
   “Edit” in deployment details to change the node requirements, so the pinned replicas move normally.
 - **Make schedulable**: Restore scheduling after maintenance. Waiting replicas retry immediately.
 
-When a node goes offline unexpectedly, its replicas move to other nodes automatically once it has been offline longer than the deployment's node replacement wait (default 10 minutes), without consuming retries. See [Replace Lost Nodes Automatically](node-failover.md). Serving capacity drops during the wait. Use drain for planned maintenance.
+When a node goes offline unexpectedly, its replicas move to other nodes automatically once it has been offline longer than the deployment's node-loss rescheduling wait (default 10 minutes), without consuming retries. See [Reschedule Replicas on Node Loss](node-failover.md). Serving capacity drops during the wait. Use drain for planned maintenance.
 
 ## Uninstall
 

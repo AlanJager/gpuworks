@@ -921,7 +921,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | server 不认识这个时区名；用 IANA 名（如 `Asia/Shanghai`），留空则用 server 时区 |
 | `SCHEDULE_REPLICAS_SHAPE` | 400 | 多机与 PD 部署不能定时改副本数，它们的副本逐个列节点 |
 | `IDLE_SLEEP_INVALID` | 400 | 闲置休眠的 `after_sec` 要是 0（关闭）或 60–604800，`level` 要是 1 或 2 |
-| `NODE_REPLACEMENT_INVALID` | 400 | 换节点等待时间要是 0（从不）或 60–604800 秒 |
+| `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
 
@@ -955,13 +955,13 @@ server 停机错过的计划只补 12 小时内最新的一次。计划的 `next
 
 **怎么确认与处理**：
 
-1. 部署详情的**换节点等待时间**是否为 0（从不）或还没到点；默认 10 分钟，从 server 最后一次见到节点算起。
+1. 部署详情**调度策略**卡片里**节点失联重调度**的等待时间是否为 0（从不）或还没到点；默认 10 分钟，从 server 最后一次见到节点算起。
 2. 时间线有 `NODE_REPLACE_NO_CANDIDATE`：没有节点能接手。多机与 PD 副本要求替换节点在线、可调度、满足节点条件、与其余 rank 同计算网络、同 GPU 厂商和架构、卡空闲且试算放得下；补齐其中缺的一项即可，平台每分钟重试。
 3. 钉在这台节点上的单机副本（节点条件只允许这一台）不会换，等节点回来，或编辑节点条件。
 
-节点在线却放不下副本（卡被占、停止调度）不属于换节点：自动放置的多机与 PD 部署会在副本要启动时只换放不下的 rank（时间线 `UNIT_PLACED`），手动放置的部署等待，见[节点在线但放不下](node-failover.md#节点在线但放不下自动放置的重新挑选)。
+节点在线却放不下副本（卡被占、停止调度）不属于节点失联重调度：自动放置的多机与 PD 部署会在副本要启动时只换放不下的 rank（时间线 `UNIT_PLACED`），手动放置的部署等待，见[节点在线但放不下](node-failover.md#节点在线但放不下自动放置的重新挑选)。
 
-换节点的规则和撤回见[节点失联时自动换节点](node-failover.md)。
+节点失联重调度的规则和撤回见[节点失联重调度](node-failover.md)。
 
 ## 多机、NCCL 或 RDMA 网络不通
 

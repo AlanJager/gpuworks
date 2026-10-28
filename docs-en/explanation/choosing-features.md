@@ -148,7 +148,7 @@ GPU interconnect bandwidth depends on hardware (such as NVLink), which is the ma
 - **Vendor boundaries**: Compute networks come in four types: host Ethernet, host RDMA (NVIDIA, NCCL/UCX), accelerator RDMA (Ascend RoCE), and accelerator HCCS (Ascend A3/910C LingQu).
   Ascend multi-node deployments must share one accelerator RDMA or accelerator HCCS network (`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`). Host RDMA compute networks cannot be used on runveil
   (`udocker` driver) nodes (`COMPUTE_NETWORK_RUNTIME`). Multi-node inference on other vendors has no validation result.
-- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points. Once the node has been offline longer than the deployment's node replacement wait (default 10 minutes), the platform replaces only the lost rank without spending retries; see [Replace Lost Nodes Automatically](../how-to/node-failover.md).
+- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points. Once the node has been offline longer than the deployment's node-loss rescheduling wait (default 10 minutes), the platform replaces only the lost rank without spending retries; see [Reschedule Replicas on Node Loss](../how-to/node-failover.md).
 
 **When not to use multiple nodes**: The model fits on one machine. Cross-machine deployment is appropriate only when GPU memory or compute capacity is genuinely insufficient.
 

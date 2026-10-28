@@ -58,7 +58,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Enable and Troubleshoot dGPU](how-to/dgpu.md)
 - [Put Instances to Sleep and Wake Them](how-to/sleep-wake.md)
 - [Use the Scheduling Center: Schedules, Idle Sleep, and Waiting Wakes](how-to/scheduling-center.md)
-- [Replace Lost Nodes Automatically](how-to/node-failover.md)
+- [Reschedule Replicas on Node Loss](how-to/node-failover.md)
 
 **Operations and Benchmarking**
 

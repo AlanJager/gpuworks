@@ -148,7 +148,7 @@
 - **厂商边界**：参数网络分四种类型——主机以太网、主机 RDMA（NVIDIA，NCCL/UCX）、加速器 RDMA（昇腾 RoCE）和加速器 HCCS（昇腾 A3/910C 灵衢）；
   昇腾多机必须共用一个加速器 RDMA 或加速器 HCCS 网络（`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`）。主机 RDMA 参数网络不能用在 runveil
   （`udocker` driver）节点上（`COMPUTE_NETWORK_RUNTIME`）。其他厂商的多机推理没有验证结论。
-- 一个 rank 所在节点离线会让整组失败并重建，跨机越多故障面越大。节点离线超过部署的换节点等待时间（默认 10 分钟）后，平台会只换掉失联的 rank、不消耗重试次数，见[节点失联时自动换节点](../how-to/node-failover.md)。
+- 一个 rank 所在节点离线会让整组失败并重建，跨机越多故障面越大。节点离线超过部署的重调度等待时间（默认 10 分钟）后，平台会只换掉失联的 rank、不消耗重试次数，见[节点失联重调度](../how-to/node-failover.md)。
 
 **什么时候不该用多机**：单机放得下。跨机只应在显存或算力确实不够时使用。
 

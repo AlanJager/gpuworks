@@ -58,7 +58,7 @@
 - [启用和排查 dGPU](how-to/dgpu.md)
 - [让实例 sleep / wake](how-to/sleep-wake.md)
 - [使用调度中心：定时计划、闲置休眠与唤醒等位](how-to/scheduling-center.md)
-- [节点失联时自动换节点](how-to/node-failover.md)
+- [节点失联重调度](how-to/node-failover.md)
 
 **运维与评测**
 

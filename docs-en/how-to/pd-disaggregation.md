@@ -89,12 +89,12 @@ For an automatic PD request, the evaluate endpoint returns `auto_placed: true` a
 
 ### Choosing Again When an Instance Starts
 
-The nodes picked are written into the placement, and afterwards the instances are matched, their networks resolved, and node replacement and drain applied as usual. When an instance needs to start and has no running instance, the platform plans it again with the current free cards:
+The nodes picked are written into the placement, and afterwards the instances are matched, their networks resolved, and node-loss rescheduling and drain applied as usual. When an instance needs to start and has no running instance, the platform plans it again with the current free cards:
 
 - Its nodes are online and can take it: it starts as is.
 - Its nodes were cordoned, no longer meet the node requirements, or would refuse the launch (another deployment holds the cards): only the ranks of that instance that do not fit move to other nodes, and the deployment's other instances are neither moved nor restarted. The timeline records `UNIT_PLACED` (`role`, `unit`, `from`, `to`, `reason`).
 - Nowhere to go: it keeps its nodes, keeps waiting, and the platform looks again every minute.
-- An offline node still follows the wait time in [Replace Lost Nodes Automatically](node-failover.md), and a drain still starts the new instance before switching; both are the same for automatic and manual deployments.
+- An offline node still follows the wait time in [Reschedule Replicas on Node Loss](node-failover.md), and a drain still starts the new instance before switching; both are the same for automatic and manual deployments.
 
 ### Cards Pinned by Manual Placement Are Held
 

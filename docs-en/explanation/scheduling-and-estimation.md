@@ -58,7 +58,7 @@ with no node to move to, the replica stays and keeps serving. Single-node deploy
 immediately retries waiting replicas.
 
 Later changes do not retroactively affect replica placement: node labels, GPU replacements, and network changes only affect replicas started afterward; running replicas do not move.
-If a replica fails, it is recreated in the pool using the rules above. If a replica's node stays offline longer than the deployment's node replacement wait (default 10 minutes), single-node replicas are replaced by the pool, while multi-node and PD replicas move only the lost rank; neither spends retries (see [Replace Lost Nodes Automatically](../how-to/node-failover.md)). When scaling down, `spread` first removes
+If a replica fails, it is recreated in the pool using the rules above. If a replica's node stays offline longer than the deployment's node-loss rescheduling wait (default 10 minutes), single-node replicas are replaced by the pool, while multi-node and PD replicas move only the lost rank; neither spends retries (see [Reschedule Replicas on Node Loss](../how-to/node-failover.md)). When scaling down, `spread` first removes
 replicas from nodes with the most replicas, while `binpack` first removes replicas from nodes with the fewest. Replicas that are not ready are always removed first.
 Fixed GPU indices (`placement.gpus`) take effect only when the deployment is pinned to exactly one node. Otherwise, the scheduler selects GPUs on the destination node.
 

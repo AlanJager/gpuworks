@@ -920,7 +920,7 @@ See [Sleep / Wake](sleep-wake.md).
 | `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | The server does not know the time zone name; use an IANA name (such as `Asia/Shanghai`), or leave it empty for the server's time zone |
 | `SCHEDULE_REPLICAS_SHAPE` | 400 | Multi-node and PD deployments cannot have their replica count scheduled, because their replicas list nodes one by one |
 | `IDLE_SLEEP_INVALID` | 400 | Idle sleep `after_sec` must be 0 (off) or 60–604800, and `level` must be 1 or 2 |
-| `NODE_REPLACEMENT_INVALID` | 400 | The node replacement wait must be 0 (never) or 60–604800 seconds |
+| `NODE_REPLACEMENT_INVALID` | 400 | The node-loss rescheduling wait must be 0 (never) or 60–604800 seconds |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` names more nodes than the replicas being added |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit); an automatically placed multi-node deployment also has `no_group` (the named nodes cannot form a replica that fits: different compute networks or architectures, or not enough cards) |
 
@@ -954,13 +954,13 @@ After a server outage, only the newest occurrence within 12 hours is made up. If
 
 **How to confirm and handle it**:
 
-1. Check whether the deployment's **node replacement wait** is 0 (never) or has not elapsed; the default is 10 minutes, counted from when the server last saw the node.
+1. Check whether the deployment's **node-loss rescheduling wait** is 0 (never) or has not elapsed; the default is 10 minutes, counted from when the server last saw the node.
 2. The timeline shows `NODE_REPLACE_NO_CANDIDATE`: no node can take over. A replacement for a multi-node or PD replica must be online, schedulable, satisfy the node requirements, share the compute network of the other ranks, have the same GPU vendor and architecture, and have free cards and pass the trial plan; fill in whatever is missing, and the platform retries every minute.
 3. A single-node replica pinned to this node (its node requirements allow only this one) does not move; wait for the node to return, or edit the node requirements.
 
-A node that is online but cannot take the replica (cards taken, cordoned) is not node replacement: an automatically placed multi-node or PD deployment moves only the ranks that do not fit when the replica is about to start (timeline `UNIT_PLACED`), and a manually placed one waits; see [Node online but cannot take it](node-failover.md#节点在线但放不下自动放置的重新挑选).
+A node that is online but cannot take the replica (cards taken, cordoned) is not node-loss rescheduling: an automatically placed multi-node or PD deployment moves only the ranks that do not fit when the replica is about to start (timeline `UNIT_PLACED`), and a manually placed one waits; see [Node online but cannot take it](node-failover.md#节点在线但放不下自动放置的重新挑选).
 
-For the rules and the undo, see [Replace Lost Nodes Automatically](node-failover.md).
+For the rules and the undo, see [Reschedule Replicas on Node Loss](node-failover.md).
 
 ## Multi-Node, NCCL, or RDMA Network Connectivity Failure
 

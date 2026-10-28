@@ -1,19 +1,19 @@
-# Replace Lost Nodes Automatically
+# Reschedule Replicas on Node Loss
 
-This guide explains how the platform moves the replicas of an offline node to other nodes: how single-node, multi-node, and PD replicas are handled, how to adjust the wait, and how to make added single-node replicas start on chosen nodes first.
+This guide explains how the platform reschedules the replicas of an offline node onto other nodes: how single-node, multi-node, and PD replicas are handled, how to adjust the wait, and how to make added single-node replicas start on chosen nodes first.
 
 **Use case**: a node crashes, loses its network, or stays down for a long time, and you want service to recover on other nodes without editing replica lists by hand. For planned maintenance, use [drain](connect-nodes.md#维护节点停止调度与驱逐).
 
 **Prerequisites**:
 
 - The cluster has other online, schedulable nodes that satisfy the deployment's node requirements and have free cards.
-- Replacing a multi-node or PD replica requires the replacement to share the original node's compute network and to have the same GPU vendor and architecture; see [How a Replacement Node Is Chosen](#怎样选替换节点).
+- Rescheduling a multi-node or PD replica requires the replacement to share the original node's compute network and to have the same GPU vendor and architecture; see [How a Replacement Node Is Chosen](#怎样选替换节点).
 
-## When a Node Is Replaced
+## When a Replica Is Rescheduled
 
-A node counts as lost when it has been offline (counted from when the server last saw its agent) for the deployment's **node replacement wait**. The default is 10 minutes, adjustable per deployment, and 0 means never. Nothing moves during the wait: if the node comes back soon, its replicas simply carry on. The server's own downtime does not count: after a restart, offline time is counted from the server's start at the earliest, giving agents the chance to reconnect; the same holds for a multi-node unit's reconnect grace.
+A node counts as lost when it has been offline (counted from when the server last saw its agent) for the deployment's **node-loss rescheduling wait**. The default is 10 minutes, adjustable per deployment, and 0 means never (shown as Off in the console). Nothing moves during the wait: if the node comes back soon, its replicas simply carry on. The server's own downtime does not count: after a restart, offline time is counted from the server's start at the earliest, giving agents the chance to reconnect; the same holds for a multi-node unit's reconnect grace.
 
-Change it under **Node replacement wait** in deployment details, or through the API:
+Change it in the **Scheduling policy** card in deployment details: click **Edit** and use the **Reschedule on node loss** tab (the card's one-line summary shows the current wait), or use the API:
 
 ```bash
 curl --fail-with-body -sS -X PUT \
@@ -24,11 +24,11 @@ curl --fail-with-body -sS -X PUT \
 
 Success returns 200 with the same `{"after_sec":600}`; the `node_replacement` field in deployment details shows the current value. `after_sec` is 0 or 60 to 604800 seconds (7 days); a value outside that returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `params.maximum`).
 
-Automatic replacement is on by default (10 minutes for new and existing deployments), does not require the deployment to declare a compute network, and works for deployments that use the management network too.
+Node-loss rescheduling is on by default (10 minutes for new and existing deployments), does not require the deployment to declare a compute network, and works for deployments that use the management network too.
 
-Why it is on by default: without it, a replica on a lost node can only retry in place until its retries run out, and the service stays degraded. Replacement rewrites the placement through the same validation as editing the replica list by hand, so every step on the timeline matches an action you could have taken yourself, which is more predictable than relying on failure retries. Why there is no switch back once the new generation is running: switching back would interrupt the service that has just recovered. The undo record lives only in server memory, so no persistent data is added for these short-lived states; the price is that after a server restart the replacements already made are kept and no longer undone.
+Why it is on by default: without it, a replica on a lost node can only retry in place until its retries run out, and the service stays degraded. Rescheduling rewrites the placement through the same validation as editing the replica list by hand, so every step on the timeline matches an action you could have taken yourself, which is more predictable than relying on failure retries. Why there is no switch back once the new generation is running: switching back would interrupt the service that has just recovered. The undo record lives only in server memory, so no persistent data is added for these short-lived states; the price is that after a server restart the replacements already made are kept and no longer undone.
 
-## How Each Kind of Replica Is Replaced
+## How Each Kind of Replica Is Rescheduled
 
 | Replica | Handling |
 |---|---|
@@ -36,7 +36,7 @@ Why it is on by default: without it, a replica on a lost node can only retry in 
 | Multi-node replica | Only the lost rank is replaced and the other ranks stay on their nodes; only when that fails are the nodes chosen again for the whole replica. The newly placed replica gets a full retry budget |
 | PD replica | Each P and each D is a replica and is handled like a multi-node one: only the lost rank is replaced, and the role's replica in the placement is rewritten |
 
-Replacement rewrites the placement exactly as you would by editing nodes under **Edit replicas** or in a PD role, with the same validation. Every replacement writes `NODE_REPLACED` (original node, new node, wait) to the deployment timeline.
+Rescheduling rewrites the placement exactly as you would by editing nodes under **Edit replicas** or in a PD role, with the same validation. Every rescheduling writes `NODE_REPLACED` (original node, new node, wait) to the deployment timeline.
 
 When no suitable replacement exists, the replica stays as it is, the timeline records `NODE_REPLACE_NO_CANDIDATE` every 10 minutes, and the platform keeps trying until a node frees up.
 
@@ -59,11 +59,11 @@ Accelerator RDMA networks (Ascend) are always treated as switched: the same netw
 
 ## Node Online but Cannot Take the Replica: Automatic Placement Chooses Again
 
-Node replacement handles only **offline** nodes. A node that is online but cannot take the replica (its cards were taken by another deployment, it was cordoned, or it no longer meets the node requirements) is a different case, handled according to the deployment's placement mode:
+Node-loss rescheduling handles only **offline** nodes. A node that is online but cannot take the replica (its cards were taken by another deployment, it was cordoned, or it no longer meets the node requirements) is a different case, handled according to the deployment's placement mode:
 
 | State of the replica's node | Automatically placed multi-node and PD deployment | Manually placed multi-node and PD deployment |
 |---|---|---|
-| Offline | Replaced after the replacement wait time (above, unchanged) | Same |
+| Offline | Rescheduled after the rescheduling wait time (above, unchanged) | Same |
 | Drained | Start the new replica before switching (below, unchanged) | Same |
 | Online but cannot take it | When the replica needs to start, only the ranks that do not fit move to other nodes (`UNIT_PLACED`) and the other ranks stay; with nowhere to go it keeps its nodes and waits, looking again every minute | The replica waits, with the reason in `DEPLOYMENT_UNSCHEDULABLE`; when PD pinned cards are held, the scheduling reason is `pinned_gpus_unavailable`, listing the deployments holding them |
 

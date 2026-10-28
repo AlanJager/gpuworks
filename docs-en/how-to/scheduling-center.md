@@ -21,6 +21,8 @@ This guide explains how to have the platform carry out sleep, wake, and replica-
 
 They carry out the same actions you would take by hand: the same lifecycle lock, the same eligibility checks and wake admission. An automatic wake and your manual **Wake** cannot both pass admission for the same card. Every automatic action is written to the deployment timeline; see [Timeline Events](#时间线事件).
 
+The **Scheduling policy** card in deployment details keeps these settings in one place. Collapsed, it shows one summary line: the wait for node-loss rescheduling, the number of schedule entries and the next run, and the idle sleep setting (idle sleep is not shown when the deployment cannot sleep). Only admins see **Edit**; it opens one tab per setting, each saved on its own. For node-loss rescheduling, see [Reschedule Replicas on Node Loss](node-failover.md).
+
 ## Scheduling Board
 
 Open the **Scheduling Center** page to see in one place:
@@ -65,7 +67,7 @@ The real `free_bytes` and the other sizes are integer bytes, and the values abov
 
 ## Schedules
 
-Each deployment can have any number of entries, each of which is “do an action at a time on certain weekdays”. Add them under **Schedule** in deployment details:
+Each deployment can have any number of entries, each of which is “do an action at a time on certain weekdays”. In the **Scheduling policy** card in deployment details, click **Edit** and add them on the **Schedule** tab:
 
 1. Choose the action: **Sleep** (pick L1 or L2), **Wake**, or **Replica count** (1–32, single-node deployments only).
 2. Tick the weekdays and enter the time (HH:MM).
@@ -126,7 +128,7 @@ Multi-node and PD deployments list their replicas node by node, so a scheduled r
 
 ## Idle Sleep
 
-Under **Idle sleep** in deployment details, set how long without user requests before the deployment sleeps, and the sleep level. A suggested setting is 15 minutes and L2; enter 0 to turn it off.
+In the **Scheduling policy** card in deployment details, click **Edit** and use the **Idle sleep** tab to set how long without user requests before the deployment sleeps, and the sleep level. A suggested setting is 15 minutes and L2; enter 0 to turn it off.
 
 ```bash
 curl --fail-with-body -sS -X PUT \
@@ -170,7 +172,7 @@ Automatic actions are written to the deployment timeline (event kind `automation
 | `SCHEDULE_ACTION_FAILED` | An automatic action did not succeed and is not retried | `trigger`, `action`, `reason`, `reason_code`, `schedule_id`, `level`, `replicas` |
 | `YIELDED_FOR_WAKE` | Recorded on the deployment put to sleep to make room: for whom, and to which level | `deployment`, `instances`, `level` |
 
-For the events of node replacement after a node is lost and of drain moves (`NODE_REPLACED` and the like), see [Replace Lost Nodes Automatically](node-failover.md#时间线事件).
+For the events of node-loss rescheduling after a node is lost and of drain moves (`NODE_REPLACED` and the like), see [Reschedule Replicas on Node Loss](node-failover.md#时间线事件).
 
 ## Limitations
 

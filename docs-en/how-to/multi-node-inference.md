@@ -72,12 +72,12 @@ When no group can take the replica, creation returns 409 `UNIT_PLACEMENT_NONE` w
 
 ### Choosing Again When a Replica Starts
 
-The nodes picked are the nodes written in the unit (replica), and matching, network resolution, node replacement, and drain all work from them as before. When a replica needs to start and has no instance, the platform plans it again with the current free cards:
+The nodes picked are the nodes written in the unit (replica), and matching, network resolution, node-loss rescheduling, and drain all work from them as before. When a replica needs to start and has no instance, the platform plans it again with the current free cards:
 
 - All its nodes are online and can take it: it starts as is.
 - Some ranks' nodes were cordoned, no longer meet the node requirements, or would refuse the launch (another deployment holds the cards): **only those ranks move to other nodes** and the other ranks keep their nodes. The candidates are chosen as for a [replacement after a node is lost](node-failover.md#怎样选替换节点) (same compute network, same vendor and architecture, free cards, trial plan fits). If the ranks cannot be moved one at a time, the whole replica is chosen again. The timeline records `UNIT_PLACED` with which replica, the old nodes, the new nodes, and the reason (`reason`, for example `node_cordoned`, `placement_rejected`, or the scheduler's refusal code).
 - Nowhere to go: the replica keeps its nodes and keeps waiting, with the scheduler's wait reason in the timeline as usual; the platform looks again after a minute.
-- An offline node is [node replacement](node-failover.md)'s and follows its wait time; replicas on a draining node follow the drain's start-new-then-switch. These two cases are the same for automatic and manual deployments.
+- An offline node is [node-loss rescheduling](node-failover.md)'s and follows its wait time; replicas on a draining node follow the drain's start-new-then-switch. These two cases are the same for automatic and manual deployments.
 - While the deployment's own instances are still leaving those nodes (a restart or a retired attempt) nothing is chosen again, because their cards are about to be released.
 
 Manual deployments do not do this: a replica whose nodes cannot take it waits, and `DEPLOYMENT_UNSCHEDULABLE` says why. Switch to automatic if you want the platform to move it.
@@ -102,7 +102,7 @@ Manual deployments do not do this: a replica whose nodes cannot take it waits, a
 Nodes in a recommended group must be online, schedulable, satisfy node requirements, and share the same compute network and GPU architecture. Each node must have enough free cards for one rank.
 The platform evaluates placement rank by rank using the deployment configuration, then populates the list. A leader does not share a node with another replica's leader. The recommendation is only a suggestion and is saved after you confirm it; it uses the same selection as automatic placement and differs only in that you confirm the result. `place_on` on a manual deployment returns 400 `REPLICAS_BODY_SHAPE`.
 
-**When a node is lost or drained**, automatic and manual deployments behave the same: the platform replaces nodes automatically, only the affected rank moves, and the replacement is chosen by the same rules (same compute network, same GPU vendor and architecture, free cards, trial plan fits) without spending retries. For the wait, selection rules, and undo, see [Replace Lost Nodes Automatically](node-failover.md).
+**When a node is lost or drained**, automatic and manual deployments behave the same: the platform replaces nodes automatically, only the affected rank moves, and the replacement is chosen by the same rules (same compute network, same GPU vendor and architecture, free cards, trial plan fits) without spending retries. For the wait, selection rules, and undo, see [Reschedule Replicas on Node Loss](node-failover.md).
 
 ## Limits
 

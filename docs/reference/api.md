@@ -524,7 +524,7 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/schedule/{sid}` | 整条替换一条计划，请求体与新建相同，200；计划不属于该部署 404 | JWT |
 | DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | 删除一条计划，204；不存在 404 | JWT |
 | PUT | `/api/v1/deployments/{id}/idle-sleep` | 设置闲置休眠 `{"after_sec":900,"level":2}`，`after_sec` 为 0（关）或 60–604800，`level` 为 1 或 2，200 返回同样的请求体；越界 400 `IDLE_SLEEP_INVALID`，`after_sec` 大于 0 而部署不可休眠 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` | JWT |
-| PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联后换节点的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联时自动换节点](../how-to/node-failover.md) | JWT |
+| PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联重调度的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联重调度](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）、`recent`（最近 50 条自动化事件）；见[调度看板](#调度看板) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
@@ -603,7 +603,7 @@ macOS 忽略 `no_systemd`。
 | `quick_params`、`extra_args`（可选） | 对象、字符串 | 已保存的启动配置与额外参数，见[部署启动参数来源](deployment-launch-sources.md) |
 | `pd`（可选） | 对象 | PD 部署的模式、各角色副本数和状态，见 [PD 分离部署](#pd-分离部署placementpd) |
 | `idle_sleep` | 对象 | 闲置休眠 `{after_sec, level}`，`after_sec` 为 0 表示关闭 |
-| `node_replacement` | 对象 | 节点失联后换节点的等待时间 `{after_sec}`，默认 600，0 表示从不 |
+| `node_replacement` | 对象 | 节点失联重调度的等待时间 `{after_sec}`，默认 600，0 表示从不 |
 | `wake_waiting_since`（可选） | RFC3339 时间 | 该部署有唤醒在等位时出现，值为等位起点 |
 
 `active` 表示期望运行，不代表已经能够服务；还需结合运行状态、就绪副本和健康检查判断。
@@ -782,7 +782,7 @@ macOS 忽略 `no_systemd`。
 | `upcoming` | 未来 24 小时的计划动作：`deployment_id`、`deployment`、`schedule_id`、`action`、`sleep_level`、`replicas`、`at` |
 | `recent` | 最近 50 条自动化事件：`deployment_id`、`deployment`、`code`、`params`、`at` |
 
-时间线事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)与[节点失联时自动换节点](../how-to/node-failover.md#时间线事件)。
+时间线事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)与[节点失联重调度](../how-to/node-failover.md#时间线事件)。
 
 ### 普通部署的副本调整
 
