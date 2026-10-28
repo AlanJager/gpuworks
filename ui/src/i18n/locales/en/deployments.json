@@ -133,6 +133,7 @@
     },
     "placement": {
       "preparingModel": "Preparing model; {{count}} replica(s) have not started",
+      "preparationFailed": "Model preparation failed; {{count}} replica(s) have not started",
       "waiting": "{{count}} replica(s) are waiting for a node",
       "candidates": "Candidate nodes",
       "requirements": "Node requirements",
@@ -638,7 +639,10 @@
     "eta": "About {{seconds}} seconds remaining",
     "idle": "No progress for {{seconds}} seconds",
     "waitForIO": "The current I/O must return before another writer can start. Restore storage connectivity to resume safely.",
-    "retry": "Retry cache copy"
+    "retry": "Retry cache copy",
+    "noAutoRetry": "Nothing retries this copy automatically; start it again when the cause is fixed.",
+    "retryUnavailable": "This failure cannot be retried from here: only a failed copy into a node cache can be restarted. Fix the source or the storage, then deploy again.",
+    "retryUnavailableShort": "Cannot be retried here"
   },
   "unitsPlacement": {
     "label": "Placement",

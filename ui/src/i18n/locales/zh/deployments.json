@@ -133,6 +133,7 @@
     },
     "placement": {
       "preparingModel": "正在准备模型，{{count}} 个副本尚未启动",
+      "preparationFailed": "模型准备失败，{{count}} 个副本尚未启动",
       "waiting": "{{count}} 个副本正在等待节点",
       "candidates": "候选节点",
       "requirements": "节点条件",
@@ -638,7 +639,10 @@
     "eta": "预计剩余 {{seconds}} 秒",
     "idle": "已 {{seconds}} 秒无进展",
     "waitForIO": "当前 I/O 返回前不能启动另一个写入任务。恢复存储连接后可安全续传。",
-    "retry": "重试缓存复制"
+    "retry": "重试缓存复制",
+    "noAutoRetry": "系统不会自动重试这次复制；请排除原因后手动重试。",
+    "retryUnavailable": "这里不能重试这次失败：只有复制到节点缓存失败的任务可以重试。请修复来源或存储后重新部署。",
+    "retryUnavailableShort": "此处不可重试"
   },
   "unitsPlacement": {
     "label": "放置方式",

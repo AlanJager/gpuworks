@@ -155,3 +155,44 @@ test("failed cache cleanup does not masquerade as active model preparation", () 
   assert.ok(screen.getByText(locale.closest));
   assert.equal(screen.queryByText("Preparing model; 2 replica(s) have not started"), null);
 });
+
+// The reported bug: the copy failed with a permission error, and the screen
+// explained the missing replicas with the GPU assessment instead. A failed
+// preparation is the known cause, so the node refusal is not the answer.
+test("a failed model preparation explains the missing replicas, not the GPU verdict", () => {
+  show(deployment({ model_progress: [{ node_uuid: "n-1", state: "failed", message: "copy .msc: open /cache/weights/.msc: permission denied", preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0, retryable: true } }] }));
+  assert.ok(screen.getByText(i18n.t("detail.placement.preparationFailed", { count: 2 })));
+  assert.ok(screen.getByText(i18n.t("preparation.reason.MODEL_PREPARATION_FAILED")));
+  // The agent's own words, as it reported them.
+  assert.ok(screen.getByText("copy .msc: open /cache/weights/.msc: permission denied"));
+  assert.ok(screen.getByText(i18n.t("preparation.noAutoRetry")));
+  // The GPU assessment is neither the headline nor the explanation, and the
+  // stale closest-node list is gone with it.
+  const noFreeGPU = i18n.t("deploy:schedule.no_free_gpu");
+  assert.equal(screen.queryByText(new RegExp(noFreeGPU)), null);
+  assert.equal(document.body.textContent!.includes("no_free_gpu"), false);
+  assert.equal(screen.queryByText(locale.closest), null);
+  assert.equal(screen.queryByText(i18n.t("detail.placement.waiting", { count: 2 })), null);
+  // A failure is a warning, never an info notice.
+  assert.ok(document.querySelector(".ant-alert-error"), "a failed preparation is an error-styled alert");
+});
+
+// The other half: with no preparation problem at all the GPU refusal is the
+// real reason and stays exactly as it was.
+test("a genuine no-free-GPU refusal still shows without a preparation failure", () => {
+  show(deployment());
+  const reason = screen.getByText(new RegExp("None of the 8 best of 40 candidate nodes"));
+  assert.ok(reason.textContent!.includes(i18n.t("deploy:schedule.no_free_gpu")), reason.textContent!);
+  assert.equal(screen.queryByText(locale.preparationFailed.replace("{{count}}", "2")), null);
+});
+
+// A copy still running keeps its own wording; the failure wording is not
+// applied to work in progress.
+test("active preparation and failed preparation say different things", () => {
+  show(deployment({ model_progress: [{ node_uuid: "n-1", state: "copying", preparation: { phase: "copying", total_known: true, idle_seconds: 0 } }] }));
+  assert.ok(screen.getByText(i18n.t("detail.placement.preparingModel", { count: 2 })));
+  cleanup();
+  show(deployment({ model_progress: [{ node_uuid: "n-1", state: "failed", preparation: { phase: "waiting", reason: "MODEL_PREPARATION_FAILED", total_known: false, idle_seconds: 0 } }] }));
+  assert.ok(screen.getByText(i18n.t("detail.placement.preparationFailed", { count: 2 })));
+  assert.equal(screen.queryByText(i18n.t("detail.placement.preparingModel", { count: 2 })), null);
+});

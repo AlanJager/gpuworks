@@ -1,4 +1,4 @@
-import { Button, Progress, Space, Typography, message } from "antd";
+import { Button, Progress, Space, Tooltip, Typography, message } from "antd";
 import { storageDetailPath } from "./storage/storageLinks";
 import { useState } from "react";
 import { apiErrorText } from "../apiError";
@@ -17,6 +17,14 @@ export function PreparationLabel({ item }: { item: ModelNodePresence }) {
   const view = item.preparation;
   const key = view?.reason ? `preparation.reason.${view.reason}` : `preparation.phase.${view?.phase ?? "waiting"}`;
   return <>{t(key, { defaultValue: t("preparation.phase.waiting") })}</>;
+}
+
+// A failed copy is an operator decision: nothing retries it on its own, and
+// the section says so rather than leaving the deployment looking stuck. The
+// wording is shared by the drawer and the list row.
+export function RetryHint() {
+  const { t } = useTranslation("deployments");
+  return <Typography.Text type="secondary">{t("preparation.noAutoRetry")}</Typography.Text>;
 }
 
 export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePresence[]; onChanged?: () => void }) {
@@ -38,6 +46,9 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
       const view = item.preparation;
       const measurable = Boolean(view?.total_known) && item.size_bytes > 0;
       const origin = transferOrigin(item);
+      // A failure is the operator's to act on; its message is the agent's own
+      // words about why, so it is never hidden behind a source line.
+      const failed = view?.reason === "MODEL_PREPARATION_FAILED";
       return <div key={`${item.node_uuid}:${item.model_id}:${item.storage_id}`} style={{ marginTop: 12 }}>
         <Space wrap>
           <Typography.Text strong>{item.node_name || item.node_uuid.slice(0, 12)}</Typography.Text>
@@ -53,10 +64,39 @@ export function DeploymentPreparation({ rows, onChanged }: { rows?: ModelNodePre
           {view?.eta_seconds ? ` · ${t("preparation.eta", { seconds: view.eta_seconds })}` : ""}
           {view?.reason === "MODEL_COPY_STALLED" ? ` · ${t("preparation.idle", { seconds: view.idle_seconds })}` : ""}
         </Typography.Text></div>
-        {view?.retryable && <Button aria-label={t("preparation.retry")} size="small" loading={busy === `${item.node_uuid}:${item.model_id}:${item.storage_id}`} disabled={busy !== null} onClick={() => void retry(item)}>{t("preparation.retry")}</Button>}
-        {item.message && !origin && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
+        {view?.retryable && <Space wrap>
+          <Button aria-label={t("preparation.retry")} size="small" loading={busy === `${item.node_uuid}:${item.model_id}:${item.storage_id}`} disabled={busy !== null} onClick={() => void retry(item)}>{t("preparation.retry")}</Button>
+          <RetryHint />
+        </Space>}
+        {failed && !view?.retryable && <Typography.Text type="secondary">{t("preparation.retryUnavailable")}</Typography.Text>}
+        {item.message && (!origin || failed) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
         {view?.reason === "MODEL_COPY_STALLED" && <Typography.Paragraph>{t("preparation.waitForIO")}</Typography.Paragraph>}
       </div>;
     })}
   </section>;
+}
+
+// ListPreparationAction is the same retry, where the operator reads the failed
+// state: the deployment list row. It is offered only on the server's own
+// retryable fact and with the row's own storage, and a failure the server does
+// not offer to retry says why instead of staying silent. The row is narrow, so
+// the wording lives in the tooltip and the drawer says it in full.
+export function ListPreparationAction({ item, onChanged }: { item: ModelNodePresence; onChanged?: () => void }) {
+  const { t } = useTranslation("deployments");
+  const { t: tCommon } = useTranslation("common");
+  const [busy, setBusy] = useState(false);
+  const view = item.preparation;
+  if (view?.retryable && item.model_id && item.storage_id) {
+    const retry = async () => {
+      setBusy(true);
+      try { await api.retryModelCache(item.model_id!, item.node_uuid, item.storage_id!); onChanged?.(); }
+      catch (error) { message.error(apiErrorText(tCommon, error)); }
+      finally { setBusy(false); }
+    };
+    return <Tooltip title={t("preparation.noAutoRetry")}>
+      <Button size="small" type="link" loading={busy} aria-label={t("preparation.retry")} onClick={() => void retry()}>{t("preparation.retry")}</Button>
+    </Tooltip>;
+  }
+  if (view?.reason !== "MODEL_PREPARATION_FAILED") return null;
+  return <Tooltip title={t("preparation.retryUnavailable")}><Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("preparation.retryUnavailableShort")}</Typography.Text></Tooltip>;
 }
