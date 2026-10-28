@@ -242,12 +242,16 @@ const (
 	ReasonTPHeadCountNotDivisible   = "tp_head_count_not_divisible"
 	ReasonInsufficientSharedGPUs    = "insufficient_shared_gpus"
 	ReasonInsufficientEmptyGPUs     = "insufficient_empty_gpus"
-	ReasonTopologyNVLink            = "topology_nvlink"
-	ReasonTopologyNUMA              = "topology_numa"
-	ReasonTopologyCross             = "topology_cross"
-	ReasonTopologySingle            = "topology_single"
-	ReasonPacking                   = "packing"
-	ReasonTightFit                  = "tight_fit"
+	// ReasonPinnedGPUsUnavailable: other deployments ({holders}) hold the
+	// GPUs an operator pinned a rank to on the node ({node}, {gpus}); the
+	// deployment waits for them.
+	ReasonPinnedGPUsUnavailable = "pinned_gpus_unavailable"
+	ReasonTopologyNVLink        = "topology_nvlink"
+	ReasonTopologyNUMA          = "topology_numa"
+	ReasonTopologyCross         = "topology_cross"
+	ReasonTopologySingle        = "topology_single"
+	ReasonPacking               = "packing"
+	ReasonTightFit              = "tight_fit"
 	// ReasonPlacementPreference: the catalog's placement contract ranked this
 	// candidate above the others it accepted ({preference}, {count}). Emitted
 	// only when the contract stated a non-zero preference.

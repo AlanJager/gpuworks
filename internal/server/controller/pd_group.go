@@ -141,6 +141,9 @@ func (c *Controller) planPDRank(ctx context.Context, deployment *unitDeployment,
 	pd.placement.RankLaunch(pd.mode, launch.role, launch.unit, launch.rank.Rank, topology, launch.ports).Apply(&req)
 	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
 	if err != nil || refusal != nil {
+		if refusal != nil {
+			refusal = c.pinnedGPUsRefusal(dep, node, req.Placement.GPUIndexes, refusal)
+		}
 		return nil, planning.PDRecord{}, refusal, err
 	}
 	record := launch.pd

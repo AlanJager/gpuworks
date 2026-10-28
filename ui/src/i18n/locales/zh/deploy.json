@@ -169,6 +169,7 @@
     "tp_head_count_not_divisible": "张量并行度 tp={{tp}} 不能整除 {{head_count}} 个注意力头；请改用可整除的并行度。",
     "insufficient_shared_gpus": "本节点需要 {{gpus}} 张 GPU（TP {{tp}} × PP {{pp}}），每卡需要 {{required_gib}} GiB，但只有 {{available}} 张 GPU 可用；请降低显存需求或释放 GPU。",
     "insufficient_empty_gpus": "本节点需要 {{gpus}} 张空闲 GPU（TP {{tp}} × PP {{pp}}），当前只有 {{available}} 张满足条件（每卡需 {{required_gib}} GiB）；请释放 GPU 或调整并行度。",
+    "pinned_gpus_unavailable": "该单元钉住的 {{node}} 上的 GPU {{gpus}} 正被 {{holders}} 占用，单元会一直等待；把部署的放置方式改为自动，平台就会改用空闲的卡。",
     "topology_nvlink": "这 {{gpus}} 张 GPU 全部高速互联。",
     "topology_numa": "这 {{gpus}} 张 GPU 在同一 NUMA 节点内。",
     "topology_cross": "这 {{gpus}} 张 GPU 跨 NUMA 节点且仅经 PCIe 互联，性能可能较低。",
