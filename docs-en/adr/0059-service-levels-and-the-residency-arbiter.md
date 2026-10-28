@@ -13,7 +13,7 @@ or several models are each rarely used and take turns on a set of cards. The for
 Schedules and manual yielding cannot do this: nobody knows in advance when a request will arrive, and a request to a sleeping deployment only gets a 503.
 
 Measured on an Alibaba Cloud L20 on 2026-10-28 (vLLM 0.17.1, model files in the page cache): swapping a 7B and a 14B model on the same card, from the yielding side going to sleep to the woken side producing its first token took
-about 2.5–5 seconds; an L1 sleep pins host memory of about 1.9 times the weight size and does not release it after the wake, which pushes the other model's files out of the page cache and turns its wake into a disk read (40–110 seconds for 14B);
+about 2.5 seconds with L1, and with L2 3.5–5 seconds while the model files stayed in the page cache but 40–110 seconds for 14B when read from disk; an engine's first L1 sleep pins host memory of about 1.9 times the weight size and does not release it after the wake, and the agent does one L1 prewarm right after every sleepable instance starts, so that memory is held from the start;
 `/sleep?mode=abort` returns in 0.7 seconds, and in-flight requests end normally with `finish_reason: "abort"` (HTTP 200); the engine does not reject requests that arrive during sleep, but holds them until after the wake.
 
 ## Decision
@@ -45,7 +45,7 @@ Although the engine itself holds requests that arrive during sleep, the gateway 
 **4. The residency arbiter is one step of the automation evaluator** (`internal/server/automation/residency.go`), run on every tick and within 100 milliseconds after the gateway holds a request.
 It first tries a normal wake (the same wake admission and waiting as the API); when that does not fit, it judges the occupants by rule 2, and once it decides to yield: offline sleeps at once with `mode=abort`;
 a busy shared deployment first stops accepting new requests (the gateway holds new requests as asleep) and waits up to 30 seconds for in-flight requests to finish, aborting any still running then; an idle one sleeps with `mode=wait`.
-A sleep from yielding is always L2 and is not held; preemptible levels (shared, offline) are recorded as “pending resume” and take the cards back by rule 2 when they are free. Every yield and wake is written to the timeline
+A sleep from yielding is L1 (L2 when the host's available memory cannot hold the weights) and is not held; preemptible levels (shared, offline) are recorded as “pending resume” and take the cards back by rule 2 when they are free. Every yield and wake is written to the timeline
 (`AUTO_SLEEP` with `trigger: preempt`, `reason`, and `for_deployment`; `AUTO_WAKE` with `trigger: request | resume`).
 
 **5. Placement leaves room for sharing.** While a deployment that shares cards by service level (anything other than resident) is asleep, it is still counted at full usage against levels it does not share with (resident, or another online one when it is online),
@@ -58,6 +58,6 @@ Held requests, in-flight counts, each deployment's residency start this turn, th
 
 - The two sharing patterns, real-time plus batch and several models taking turns, no longer need operators to arrange them by hand; every action still maps one-to-one to a timeline entry.
 - When an offline deployment is preempted, its in-flight requests are truncated: the client sees HTTP 200 with `finish_reason: "abort"` and must retry on its own; platform-hosted batch jobs (`/v1/batches`) come later.
-- Yielding is always L2: the switch is about 1 second slower than L1, in exchange for not pinning host memory and not pushing other models out of the page cache; when the model files are not in the page cache, an L2 wake is a disk read, taking the weight size divided by the disk speed.
+- Yielding uses L1: the pinned host memory is already held since the prewarm, so L1 takes no more, switches fastest and reads nothing from disk; the cost is that every sleepable deployment holds about 1.9 times its weight size in host memory from the start, which hosts running several of them must plan for.
 - The first version covers only single-node deployments; multi-node and PD stay resident. When a new deployment starts and the cards are held by an awake lower-level deployment, the first version does not preempt for the start, and the deployment waits as one that does not fit, to be placed once the other yields or sleeps.
 - The arbiter and the gateway counts live in memory and are read per deployment without scanning all deployments; levels affect only the few deployments that share cards by service level, and the path for resident deployments is unchanged.

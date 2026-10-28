@@ -42,9 +42,11 @@ If the cards W needs hold several awake replicas, they either all yield or none 
 
 To the client an interrupted request ends normally: HTTP 200, `finish_reason` set to `"abort"`, and truncated content. Batch clients should retry on that signal.
 
-## Why Yielding Always Uses L2
+## Why Yielding Uses L1
 
-Measured on an L20 (vLLM 0.17.1, 7B and 14B models, model files in the page cache): swapping two models on the same card, from the yielding side going to sleep to the woken side producing its first token, took about 2.5 seconds with L1 and about 3.5–5 seconds with L2, a small difference. But L1 pins host memory of about 1.9 times the weight size and does not release it after the wake; it pushes the other model's files out of the page cache, so that model's next wake has to read from disk, 40–110 seconds for 14B. Yielding therefore always sleeps to L2. When the model files are not in the page cache, an L2 wake takes roughly the weight size divided by the disk read speed.
+Measured on an L20 (vLLM 0.17.1, 7B and 14B models): swapping two models on the same card, from the yielding side going to sleep to the woken side producing its first token, took about 2.5 seconds with L1; with L2 it took about 3.5–5 seconds while the model files stayed in the page cache, and 40–110 seconds for 14B when they had to be read from disk. An engine's first L1 sleep pins host memory of about 1.9 times the weight size and does not release it after the wake; the platform does one L1 prewarm right after every sleepable instance starts (hiding the first sleep's tens of seconds), so that memory is already held from the start. An L1 yield therefore takes no more host memory, switches fastest, and does not depend on the page cache. When the host's available memory cannot hold the weights (a conservative estimate), the yield falls back to L2.
+
+This also means that **a sleepable deployment holds about 1.9 times its weight size in host memory from the moment it starts**. Plan host memory by that amount when one host runs several sleepable deployments.
 
 ## Held Sleep
 

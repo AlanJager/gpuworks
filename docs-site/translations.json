@@ -126,7 +126,7 @@
   "tutorials/scale-model-replicas.md": "387d0dc3e7c624e985535d849325c041b1645630f58d29c4c1f67151d15e2395",
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "25f9221008f3cda3f3fbf3784806befd2e6f1ca32a852ad194a58ba308f991fd",
-  "how-to/scheduling-center.md": "ad0e172de3caa6c8cadf977ab5015af44dd52db9b6e88a0c98d3a05a9e7027e5",
-  "adr/0059-service-levels-and-the-residency-arbiter.md": "5c007e667c624805c2603dfd29fba0135187d9aeeb16fde4dad12a69d436f75d",
-  "explanation/service-levels.md": "06f9df5261fe70c069a6a404aa0c7fad71629c088cbc0368360c3d4be88cba62"
+  "how-to/scheduling-center.md": "2a542004ffb86e1c3ffd8579cc0aca3428dd8efca4a31718a9ec7b2f2ef89ff7",
+  "adr/0059-service-levels-and-the-residency-arbiter.md": "78c965e53e295ff88857a11426e936bd3ddbdfa23c81780695e7f2dd1f2e5a5f",
+  "explanation/service-levels.md": "b5306d86ab265faf92a26815e2f82c1789470c494f0c2ef40bae801369620da0"
 }

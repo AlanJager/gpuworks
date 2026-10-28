@@ -179,7 +179,7 @@ curl --fail-with-body -sS -X PUT \
 
 Success returns 200 with the same `{"level":"offline"}`. An invalid level returns 400 `SERVICE_LEVEL_INVALID`; anything other than resident requires sleep capability (400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`) and a single-node deployment (400 `SERVICE_LEVEL_SHAPE`); a deployment that shares cards with another online deployment cannot be set to online (409 `SERVICE_LEVEL_ONLINE_SHARED`, where `params.deployment` is the other one). The `service_level` field in deployment details gives the current level.
 
-The typical use is real-time plus batch: set the real-time model to online and the batch model to offline, and deploy them on the same cards. After the real-time model has been idle for 5 minutes it yields its cards and the batch model resumes; when a real-time request arrives, the batch model yields at once and the request waits at the gateway for the real-time model to wake (an L2 switch takes about 3–5 seconds when the model files are already in the page cache).
+The typical use is real-time plus batch: set the real-time model to online and the batch model to offline, and deploy them on the same cards. After the real-time model has been idle for 5 minutes it yields its cards and the batch model resumes; when a real-time request arrives, the batch model yields at once and the request waits at the gateway for the real-time model to wake (an L1 switch takes about 2.5 seconds).
 
 ### On-Demand Wake
 
@@ -189,7 +189,7 @@ When the platform itself put a deployment to sleep (idle sleep, or yielding card
 - A sleep that you or a schedule issued is a **held sleep** (`sleep_held` is `true` in deployment details): requests do not wake it and still get 503. Any wake clears the hold.
 - When it does not fit, the service levels decide whether the occupant yields; when it should not, the request waits until the hold time runs out.
 - When an offline deployment yields its cards, its in-flight requests are interrupted: the client receives HTTP 200 with `finish_reason` set to `"abort"` and truncated content, and must retry on its own. A shared deployment first stops accepting new requests before yielding and waits up to 30 seconds for in-flight requests to finish.
-- A deployment that yields its cards always sleeps to L2 (no host memory held); shared and offline deployments resume automatically once cards are free. After a server restart, a deployment that had yielded its cards wakes only when a request arrives.
+- A deployment that yields its cards sleeps to L1 (a sleepable instance does one L1 prewarm when it starts, so the pinned host memory is already held; L2 when the host cannot hold the weights); shared and offline deployments resume automatically once cards are free. After a server restart, a deployment that had yielded its cards wakes only when a request arrives.
 
 ## First Placement Nodes
 

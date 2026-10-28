@@ -70,7 +70,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	}
 
 	level, err := res.Yield(other.ID, h.Instances, true)
-	if err != nil || level != proto.SleepLevelL2 || intentOf(t, st, "batch-1") != proto.SleepLevelL2 {
+	if err != nil || level != proto.SleepLevelL1 || intentOf(t, st, "batch-1") != proto.SleepLevelL1 {
 		t.Fatalf("yield = %d err=%v intent=%d", level, err, intentOf(t, st, "batch-1"))
 	}
 	in, _ := st.InstanceByUUID("batch-1")
@@ -121,4 +121,17 @@ func TestResidencyAdapterBlockingAndHeldSleeps(t *testing.T) {
 	}
 	res.Drain(other.ID, true)
 	res.Drain(other.ID, false)
+}
+
+// A host that cannot hold the weights gets an L2 yield instead of L1.
+func TestResidencyAdapterYieldsAtL2WhenTheHostCannotHoldTheWeights(t *testing.T) {
+	res, auto, st, dep, other := residencyFixture(t)
+	res.host = func(string) (int64, int64, bool) { return 1 << 30, 64 << 30, true }
+	if _, err := auto.Wake(dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	level, err := res.Yield(other.ID, []string{"batch-1"}, false)
+	if err != nil || level != proto.SleepLevelL2 || intentOf(t, st, "batch-1") != proto.SleepLevelL2 {
+		t.Fatalf("yield = %d err=%v intent=%d, want L2", level, err, intentOf(t, st, "batch-1"))
+	}
 }

@@ -8,13 +8,15 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// yieldLevel is the level the arbiter puts a deployment to sleep at when it
-// gives its cards to another. L2: measured on an L20, an L2 switch with the
-// model files in page cache takes 3-5 s against L1's 2-3 s, while an engine
-// that has slept at L1 keeps about twice its weights pinned in host memory
-// even awake, evicting the other models' files from page cache and turning
-// their wakes into disk reads (docs/explanation/service-levels.md).
-const yieldLevel = proto.SleepLevelL2
+// A yield sleeps at L1 when the host can hold the weights, else at L2.
+// Measured on an L20 (docs/explanation/service-levels.md): the first L1 sleep
+// of an engine pins about twice its weights in host memory and keeps them
+// pinned even awake, and the agent does that first sleep when the engine
+// starts (its prewarm). So an L1 yield takes no host memory that is not
+// already held, switches in about 2.5 s, and needs no model file read back,
+// where an L2 wake reads the weights again: seconds from page cache, but
+// tens of seconds to minutes from disk once pinned memory has squeezed the
+// page cache.
 
 // residencyAdapter backs the residency arbiter with the store, the ledger and
 // the gateway's held requests and traffic.
@@ -22,6 +24,7 @@ type residencyAdapter struct {
 	store *store.Store
 	proxy *proxy.Proxy
 	acct  *proxy.Accountant
+	host  planning.HostMemory
 }
 
 // Waiters are the deployments with requests held for their wake whose sleep a
@@ -137,18 +140,39 @@ func (a *residencyAdapter) Activity(id uint) automation.Activity {
 	return automation.Activity{InFlight: a.acct.InFlight(id), Held: held, LastRequest: last}
 }
 
-// Yield puts the holder's replica to sleep at yieldLevel, a sleep the
-// platform chose (not held: a request for it waits and wakes it again).
+// Yield puts the holder's replica to sleep, at L1 unless the host cannot
+// hold the weights (planning.L1HostMemoryRefusal), a sleep the platform chose
+// (not held: a request for it waits and wakes it again).
 func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, error) {
 	defer planning.LockLifecycle()()
 	mode := proto.SleepModeWait
 	if abort {
 		mode = proto.SleepModeAbort
 	}
-	if err := a.store.OrderInstancesSleepHeld(id, instances, yieldLevel, mode, false); err != nil {
+	level := proto.SleepLevelL1
+	if dep, err := a.store.GetDeployment(id); err == nil {
+		want := map[string]bool{}
+		for _, uuid := range instances {
+			want[uuid] = true
+		}
+		insts, err := a.store.InstancesForDeployment(id)
+		if err != nil {
+			return 0, err
+		}
+		var named []store.Instance
+		for _, in := range insts {
+			if want[in.UUID] {
+				named = append(named, in)
+			}
+		}
+		if planning.L1HostMemoryRefusal(a.store, dep, named, a.host) != nil {
+			level = proto.SleepLevelL2
+		}
+	}
+	if err := a.store.OrderInstancesSleepHeld(id, instances, level, mode, false); err != nil {
 		return 0, err
 	}
-	return yieldLevel, nil
+	return level, nil
 }
 
 func (a *residencyAdapter) Drain(id uint, on bool) {

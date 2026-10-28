@@ -38,7 +38,8 @@ func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *
 	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
 	if px != nil {
-		evaluator.WithResidency(&residencyAdapter{store: st, proxy: px, acct: acct}, &residencyAdapter{store: st, proxy: px, acct: acct})
+		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory}
+		evaluator.WithResidency(residency, residency)
 		px.SetWakeDemand(evaluator.Demand)
 	}
 	if st.Bus != nil {
