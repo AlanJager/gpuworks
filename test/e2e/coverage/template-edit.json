@@ -74,8 +74,15 @@
     "delete": "UI cancel/confirm last user spec; independent model 404 and empty filtered list"
   },
   "execution_evidence": {
-    "status": "MISSING",
-    "reason": "Edited spec arguments affect runtime, but agent argv/env/mount/role/rank consumption and deployment have not been verified"
+    "status": "covered",
+    "assertion": "The container's own command, environment and mounts were read back after a real deployment and matched the chosen form parameters, so an edited spec provably reaches the engine as its flags rather than only in the preview.",
+    "mutation": {
+      "site": "internal/server/deploy/materialize.go::wireValue",
+      "intent": "send an explicitly chosen dtype as auto",
+      "outcome": "KILLED",
+      "message": "actual argv did not contain exactly one --dtype"
+    },
+    "runs": {}
   },
   "cleanup": "Each case deletes only its runId-owned user specs via UI, proves model 404/list absence, stops own server",
   "missing": [
@@ -107,16 +114,14 @@
     "not_applicable": {
       "15.4-15.5": "this template page has no form/text toggle"
     },
-    "missing": {
-      "15.6": "edited specification consumption by a real deployment (argv/env/mount/role/rank) remains unverified"
-    },
     "12.2": "At 1440x900 the real drawer is measured region by region: header/title/extra actions/body/editor/reset/save bounding boxes must sit inside the viewport and the drawer, title/actions inside the header, save/reset inside the actions without overlapping the editor, editor inside the body, title not overlapping actions; the translateX mutant is killed by this oracle with recorded boxes (header outside drawer).",
     "12.4": "Clean and dirty closes are exercised for the real X, Escape and mask paths: dirty keep-editing, nested confirm Escape and discard each hold, focus returns to the trigger, no mutation is sent and the independent DB is unchanged; after discard the drawer reopens with the draft kept byte-exact (deliberate second-look contract from the upstream RTL) and a real Reset restores the saved canonical bytes; the onOk-keeps-drawer mutant fails not_to_be_visible.",
     "12.6": "During the held real POST the save control shows loading and a second click issues no second request (barrier only continues the original request); the real server answers 400 naming unknown_candidate_field, the invalid draft stays byte-exact across a 1.5s stable window (typing-latch safe), the alert carries the reason, loading exits and the corrected save returns 200 with a reload-consistent read-back; the catch-restores-draft mutant is killed by the stable oracle.",
     "15.1": "The initial editor content equals the canonical YAML byte-exact via a real select-all/copy with a clipboard sentinel, the editor is a real editable CodeMirror, keyboard Home/End/ArrowLeft/Enter navigation lands at exact selection offsets and edits are typed, and Reset writes nothing to the DB; the empty-initial-value mutant fails the canonical assertion.",
     "15.3": "A real copy returns the actual edited bytes; the save sends POST application/yaml with overwrite=true whose CDP-captured body equals the edited bytes exactly, only display_title changes, and independent GET/read-only SQLite plus a reload reopen agree; the stale-savedYAML mutant fails the wire-byte assertion.",
     "15.7": "A real seeded upstream template exposes no Edit/delete entry; cloning converts every spec to user while preserving all other fields; after both a failed and a successful save on the clone, the upstream GET/YAML/read-only SQLite row hash and the immutable package export bytes are unchanged; the exposed-edit-entry mutant fails to_have_count(0).",
-    "15.2": "Four independent real rejections, each keeping the draft and leaving the stored model/YAML/package byte-identical: a YAML syntax error and a schema field the catalog does not declare (both with a line anchor that refocuses the editor), and a schema-required key left out, which the server rejects with 'requires name, engine, and image' and no line anchor because an absent key has no source position. Verified en+zh for the syntax, undeclared-field and required-key branches; killed by dropping the engine requirement from both validation layers, after which the same draft imports with HTTP 200."
+    "15.2": "Four independent real rejections, each keeping the draft and leaving the stored model/YAML/package byte-identical: a YAML syntax error and a schema field the catalog does not declare (both with a line anchor that refocuses the editor), and a schema-required key left out, which the server rejects with 'requires name, engine, and image' and no line anchor because an absent key has no source position. Verified en+zh for the syntax, undeclared-field and required-key branches; killed by dropping the engine requirement from both validation layers, after which the same draft imports with HTTP 200.",
+    "15.6": "What the operator chooses in the deployment form is what the engine process runs, proven by reading the container back rather than by trusting the preview text. A real agent node is placed, the spec is deployed through the real deployment API with non-default performance parameters (dtype float16, kv_cache_dtype fp8, gpu_memory_utilization 0.55) and an override environment, and then: docker inspect shows the container's image content ID, its entrypoint+Cmd equals the argv the running process reports from inside the container, each parameter appears exactly once as its own engine flag with the chosen value, the override environment is present in the container's env, and /model is a read-only bind mount. Non-default values are used so their appearance cannot be a default coincidence. Killed by making wireValue send an explicitly chosen dtype as auto: the flag disappears from the real argv and the test fails with 'actual argv did not contain exactly one --dtype'. Two earlier mutation attempts (dropping the dtype flag definition, and dropping it from LaunchArgs) were NOT valid kills: the first was rejected by request validation before reaching a container, and the second never affected the executed command because LaunchArgs is only used to read back or validate a launch, not to run it. Verified en+zh. Scope: one real single-rank container driven by the fake engine; multi-role/multi-rank dispatch and real GPU inference are not claimed."
   },
   "template_control_evidence": {
     "items": [

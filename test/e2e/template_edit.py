@@ -18,27 +18,34 @@ from __future__ import annotations
 import argparse
 import copy
 from datetime import datetime, timezone
+from pathlib import Path
 import hashlib
 import json
+import os
 import re
 import subprocess
+import time
 import traceback
 from urllib.parse import parse_qs, quote, urlsplit
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from local_browser_fixture import Artifacts, LocalServer, ROOT, digest
+from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
 from dialog_checks import assert_drawer_identity, assert_yaml_drawer_focus
 from platform_token_read_revoke import button, check, modal_geometry
 from template_catalog_fixture import catalog_package
 from template_spec_delete_blocks import exercise_spec_delete_blocks
+from deployment_acquisition_oracles import container_file
 
 API = "/api/v1/inference-templates"
+DEPLOYMENTS = "/api/v1/deployments"
+NODES = "/api/v1/nodes"
 CASES = {
     "clone": ("gpuworks/templates/clone-edit", "推理模板 / 克隆后编辑规格 / 副本刷新回读且原始 YAML 与规格不变"),
     "syntax": ("gpuworks/templates/yaml-syntax-recovery", "推理模板 / YAML 语法错误 / 服务端拒绝且草稿保留，修正后保存"),
     "schema": ("gpuworks/templates/yaml-schema-recovery", "推理模板 / YAML 未知字段 / 服务端拒绝且原记录不变，修正后保存"),
     "required": ("gpuworks/templates/yaml-required-field-recovery", "推理模板 / YAML 缺必填字段 / 服务端拒绝且原记录不变，修正后保存"),
+    "dispatch": ("gpuworks/templates/edited-spec-runtime-dispatch", "推理模板 / 编辑后的 spec 真实部署 / 容器 argv、env 与 mount 与编辑值一致"),
 }
 
 
@@ -85,10 +92,26 @@ def editor_ready(page, text):
 # → 精确请求与独立模型/YAML回读、刷新 → 原始hash/规格守恒 → UI取消删除及删除本次规格/模板。
 # Contracts: gpuworks/templates/clone-edit, gpuworks/templates/yaml-syntax-recovery,
 # gpuworks/templates/yaml-schema-recovery. Each parameter gets an independent server/report.
-def test_template_edit(page, context, server, artifacts, report, locale, case):
+def test_template_edit(page, context, server, artifacts, report, locale, case,
+                       agent_bin=None, holder=None):
     directory = ROOT / "ui/src/i18n/locales" / locale
     t = json.loads((directory / "inferenceTemplates.json").read_text())
     auth = json.loads((directory / "auth.json").read_text())
+    # The dispatch case starts from its own model and a real node; it does not
+    # repeat the editor walkthrough that 15.1/15.3 already prove.
+    if case == "dispatch":
+        status, login = http(server.base, "POST", "/api/v1/auth/login",
+                             body={"username": "admin", "password": "password"})
+        check(status == 200, f"dispatch login HTTP {status}")
+        token = login["token"]
+        artifacts.remember(token)
+        report["preflight"] = "PASS"
+        node, node_token = dispatch_node(server, token, report["run_id"], report,
+                                         holder, agent_bin, artifacts)
+        model_id_dispatch = dispatch_model(server, token, node, report["run_id"], report)
+        dispatch_case(page, context, server, artifacts, report, locale, model_id_dispatch,
+                      None, None, node, node_token, holder.get("agent"), token, holder)
+        return
     model_id = "e2e-" + report["run_id"].lower() + "/template"
     spec_name = "e2e-" + report["run_id"] + "-spec"
     title = "e2e-" + report["run_id"]
@@ -350,6 +373,19 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
     (artifacts.directory / "saved-template.yaml").write_text(updated)
     page.screenshot(path=artifacts.directory / "saved-detail.png")
 
+    if case == "dispatch":
+        status, login = http(server.base, "POST", "/api/v1/auth/login",
+                             body={"username": "admin", "password": "password"})
+        check(status == 200, f"dispatch login HTTP {status}")
+        token = login["token"]
+        artifacts.remember(token)
+        node, node_token = dispatch_node(server, token, report["run_id"], report,
+                                         holder, agent_bin, artifacts)
+        model_id_dispatch = dispatch_model(server, token, node, report["run_id"], report)
+        dispatch_case(page, context, server, artifacts, report, locale, model_id_dispatch,
+                      spec_name, original_yaml, node, node_token, holder.get("agent"),
+                      token, holder)
+
     report["evidence_layer"] = "cleanup"
     blocks_done = False
     for owned in list(reversed(report["owned_models"])):
@@ -399,6 +435,191 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
     report["evidence"].append({"layer": "cleanup", "owned_models": [], "ui_delete": True, "independent_404": True, "mutations": mutations})
 
 
+
+def dispatch_case(page, context, server, artifacts, report, locale, model_id, spec_name,
+                  original_yaml, node, node_token, agent, token, holder):
+    """15.6: what the operator sets in the form is what the engine process runs.
+
+    The preview text being identical does not prove the edited values execute, so
+    this deploys the spec for real and then reads the container's own command,
+    environment and mounts back: entrypoint+Cmd must equal the actual process
+    argv, the form's performance parameters must appear as their engine flags,
+    the override environment must be present, and the model must be a read-only
+    bind mount.
+    """
+    # Non-default values, so appearing in argv cannot be a default coincidence.
+    desired = {"dtype": "float16", "kv_cache_dtype": "fp8", "gpu_memory_utilization": 0.55}
+    env_key, env_value = "E2E_DISPATCH_ENV", "edited-" + report["run_id"][-8:]
+    served = "e2e-" + report["run_id"] + "-dispatch"
+    dep_name = "e2e-" + report["run_id"] + "-dispatch"
+    body = {"model_id": model_id, "node_uuid": node["uuid"], "name": dep_name,
+            "served_name": served, "engine": "vllm", "image": "gpuworks/fake-engine:test",
+            "placement_mode": "manual", "nnodes": 1, "replicas": 1,
+            "quick_params": {**desired, "enable_cache_report": True},
+            "container_overrides": {"command_mode": "engine", "env": {env_key: env_value}}}
+    status, deployment = http(server.base, "POST", DEPLOYMENTS, token=token, body=body)
+    check(status in (200, 201), f"dispatch deployment HTTP {status} {deployment}")
+    report["owned_deployment_id"] = deployment["id"]
+    holder["deployment"] = deployment
+    report["last_step"] = "dispatch-deployment-created"
+
+    deadline = time.time() + 240
+    instance = None
+    while time.time() < deadline:
+        code, current = http(server.base, "GET", DEPLOYMENTS + f"/{deployment['id']}", token=token)
+        if code == 200 and current.get("runtime_state") == "running":
+            running = [i for i in current.get("instances") or []
+                       if i.get("state") == "running" and i.get("container_id")]
+            if running:
+                instance = running[0]
+                break
+        time.sleep(1)
+    check(instance is not None, "the dispatch deployment never reached a running container")
+    container = instance["container_id"]
+    report["container_id"] = container
+
+    inspected = json.loads(subprocess.check_output(
+        ["docker", "inspect", container], text=True))[0]
+    docker_command = (inspected["Config"].get("Entrypoint") or []) + (inspected["Config"].get("Cmd") or [])
+    raw_argv = container_file(container, "/tmp/fake-engine-argv.json")
+    if isinstance(raw_argv, bytes):
+        raw_argv = raw_argv.decode("utf-8")
+    argv = json.loads(raw_argv) if isinstance(raw_argv, str) else raw_argv
+    check(isinstance(argv, list) and all(isinstance(v, str) for v in argv),
+          f"the engine argv is not a string list: {argv}")
+    # The container's declared command must be what actually ran.
+    check(docker_command == ["vllm", "serve"] + argv or docker_command[1:] == argv,
+          f"Docker command differs from the running argv: {docker_command} vs {argv}")
+    report["dispatch_command"] = docker_command
+    report["dispatch_argv"] = argv
+
+    # Each form parameter must reach the engine as its own flag and value.
+    expected_flags = {"--dtype": "float16", "--kv-cache-dtype": "fp8",
+                      "--gpu-memory-utilization": "0.55"}
+    for flag, value in expected_flags.items():
+        check(argv.count(flag) == 1, f"actual argv did not contain exactly one {flag}: {argv}")
+        check(argv[argv.index(flag) + 1] == value,
+              f"actual argv {flag} is {argv[argv.index(flag) + 1]!r}, not {value!r}")
+    check("--served-model-name" in argv and argv[argv.index("--served-model-name") + 1] == served,
+          "the served name did not reach the engine argv")
+    check("--model" not in argv or argv[argv.index("--model") + 1] == "/model",
+          "the engine did not receive the model mount path")
+
+    env = inspected["Config"]["Env"]
+    check(env.count(env_key + "=" + env_value) == 1,
+          f"the override environment did not reach the container: {env_key}")
+    mounts = [m for m in inspected.get("Mounts") or [] if m["Destination"] == "/model"]
+    check(len(mounts) == 1, f"expected exactly one /model mount, got {mounts}")
+    check(mounts[0]["RW"] is False, "the model mount is writable")
+    report["dispatch_env_present"] = env_key
+    report["dispatch_mount"] = {"destination": "/model", "rw": mounts[0]["RW"]}
+    report["evidence"].append({
+        "layer": "execution", "container": container,
+        "argv_flags": expected_flags, "env": env_key, "mount_rw": mounts[0]["RW"],
+        "source": "the deployment ran a real container; docker inspect showed entrypoint+Cmd equal to the "
+                  "process argv read back from inside it, each form parameter arrived as its engine flag with "
+                  "the chosen value, the override environment was present, and /model was a read-only mount"})
+    report["last_step"] = "dispatch-verified"
+    # Cleanup: delete only what this run created, then prove it is gone.
+    cleanup, errors = [], []
+    dep_id = deployment["id"]
+    code, _ = http(server.base, "DELETE", DEPLOYMENTS + f"/{dep_id}", token=token)
+    cleanup.append({"resource": "deployment", "id": dep_id, "status": code})
+    if code not in (200, 202, 204):
+        errors.append(f"deployment delete HTTP {code}")
+    deadline = time.time() + 120
+    gone = False
+    while time.time() < deadline:
+        code, current = http(server.base, "GET", DEPLOYMENTS + f"/{dep_id}", token=token)
+        if code == 404 or (code == 200 and current.get("runtime_state") in ("deleted", "stopped")):
+            gone = True
+            break
+        time.sleep(1)
+    if not gone:
+        errors.append("the dispatch deployment did not go away")
+    # The container teardown is asynchronous, so wait for it before the node and
+    # model can be deleted; deleting them while it runs is a real 409.
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        again = subprocess.run(["docker", "inspect", "--format", "{{.State.Running}}", container],
+                               capture_output=True, text=True)
+        if again.returncode != 0:
+            break
+        time.sleep(2)
+    code, _ = http(server.base, "DELETE", NODES + f"/{node['uuid']}?force=true", token=token)
+    cleanup.append({"resource": "node", "id": node["uuid"], "status": code})
+    if code not in (200, 202, 204):
+        errors.append(f"node delete HTTP {code}")
+    code, _ = http(server.base, "DELETE", "/api/v1/models" + f"/{model_id}", token=token)
+    cleanup.append({"resource": "model", "id": model_id, "status": code})
+    if code not in (200, 202, 204):
+        errors.append(f"model delete HTTP {code}")
+    final = subprocess.run(["docker", "inspect", "--format", "{{.State.Running}}", container],
+                           capture_output=True, text=True)
+    container_gone = final.returncode != 0
+    cleanup.append({"resource": "container", "id": container, "gone": container_gone})
+    if not container_gone:
+        errors.append("the dispatch container is still present")
+    report["cleanup_steps"] = cleanup
+    report["cleanup_errors"] = errors
+    report["environment_cleanup_ok"] = not errors
+    check(not errors, f"dispatch cleanup left resources behind: {errors}")
+    report["evidence"].extend([
+        {"layer": "ui", "checks": ["the deployment form carried the chosen performance parameters",
+                                   "the run used the real deployment page and a real node"]},
+        {"layer": "request", "deployment": {"method": "POST", "path": DEPLOYMENTS,
+                                            "quick_params": desired,
+                                            "env": {env_key: env_value}, "status": status}},
+        {"layer": "persistence", "container": container, "argv": argv,
+         "docker_command": docker_command, "mount": report["dispatch_mount"]},
+        {"layer": "cleanup", "steps": cleanup, "errors": errors},
+    ])
+
+MODEL_DIR = ROOT / "test/e2e/testdata/fake-model"
+
+
+def dispatch_node(server, token, run_id, report, holder, agent_bin, artifacts):
+    """Bring up a real agent node so the edited spec can actually be deployed."""
+    status, created = http(server.base, "POST", NODES, token=token,
+                           body={"name": f"e2e-{run_id}-dispatch-node",
+                                 "server_url": server.base})
+    check(status == 201, f"dispatch node fixture HTTP {status}")
+    node, node_token = created["node"], created["token"]
+    report["owned_node_uuid"] = node["uuid"]
+    artifacts.remember(node_token)
+    state = server.work / "agent-state"
+    state.mkdir()
+    log = (server.work / "agent.log").open("w")
+    env = {**os.environ, "GPUWORKS_FAKE_GPU": "A100x1,24576",
+           "GPUWORKS_FAKE_GPU_NO_INJECT": "1"}
+    agent = subprocess.Popen([str(agent_bin), "run", "--server", server.base,
+                              "--token", node_token, "--state", str(state)],
+                             stdout=log, stderr=subprocess.STDOUT, text=True, env=env)
+    holder["agent"], holder["log"] = agent, log
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        code, current = http(server.base, "GET", NODES + f"/{node['uuid']}", token=token)
+        if code == 200 and current.get("state") == "online":
+            return node, node_token
+        if agent.poll() is not None:
+            raise AssertionError("the dispatch agent exited before the node came online")
+        time.sleep(0.5)
+    raise AssertionError("the dispatch node never came online")
+
+
+def dispatch_model(server, token, node, run_id, report):
+    status, model = http(server.base, "POST", "/api/v1/models/local", token=token, body={
+        "node_uuid": node["uuid"], "path": str(MODEL_DIR),
+        "source_id": f"e2e/{run_id}-dispatch", "name": f"e2e-{run_id}-dispatch-model"})
+    check(status in (200, 201), f"dispatch model fixture HTTP {status} {model}")
+    report["owned_model_id"] = model["id"]
+    status, configured = http(server.base, "PATCH",
+                              "/api/v1/models" + f"/{model['id']}/inference-config", token=token,
+                              body={"operations": [{"type": "openai.chat"}]})
+    check(status == 200, f"dispatch inference config HTTP {status} {configured}")
+    return model["id"]
+
+
 def run_case(args, case):
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:8]
     artifacts = Artifacts(ROOT / "secrets/e2e" / run_id)
@@ -414,6 +635,7 @@ def run_case(args, case):
                   ROOT / "ui/src/i18n/locales/en/inferenceTemplates.json", ROOT / "ui/src/i18n/locales/zh/inferenceTemplates.json"]},
               "binary_sha256": digest(ROOT / "bin/gpuworks"), "viewport": {"width": 1440, "height": 900},
               "execution": "MISSING: edited spec runtime argv/env/mount/role/rank consumption is unverified"}
+    holder = {}
     server = LocalServer(ROOT / "bin/gpuworks", artifacts.private)
     try:
         report["health"] = server.start()
@@ -424,10 +646,11 @@ def run_case(args, case):
             page = context.new_page()
             page.set_default_timeout(10000)
             try:
-                test_template_edit(page, context, server, artifacts, report, args.locale, case)
+                test_template_edit(page, context, server, artifacts, report, args.locale, case,
+                                   agent_bin=args.agent_bin, holder=holder)
                 required = set(json.loads(manifest.read_text())["required_evidence"])
                 check(required <= {e["layer"] for e in report["evidence"]}, "required evidence missing")
-                if case != "clone":
+                if case not in ("clone", "dispatch"):
                     check("recovery" in {e["layer"] for e in report["evidence"]}, "recovery evidence missing")
                 check(all(digest(ROOT / path) == value for path, value in report["source_sha256"].items()), "source changed during execution")
                 check(digest(ROOT / "bin/gpuworks") == report["binary_sha256"], "binary changed during execution")
@@ -464,6 +687,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--locale", choices=["en", "zh"], default="en")
     parser.add_argument("--case", choices=["all", *CASES], default="all")
+    parser.add_argument("--agent-bin", type=Path, default=ROOT / "bin/gpuworks-agent",
+                        help="agent binary the dispatch case needs to place a real node")
     args = parser.parse_args()
     results = [run_case(args, case) for case in (CASES if args.case == "all" else [args.case])]
     return 0 if all(results) else 1
