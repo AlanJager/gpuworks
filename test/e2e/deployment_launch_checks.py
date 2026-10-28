@@ -19,19 +19,21 @@ from urllib.parse import urljoin, urlsplit
 
 import deployment_boolean_checks as boolean_checks
 import deployment_boolean_inventory as boolean_inventory
+import deployment_boolean_rejection_checks as boolean_rejection
 
 from playwright.sync_api import expect
 from local_browser_fixture import ROOT
 from platform_token_read_revoke import button, check
 
-FAMILIES = ('all', 'quick-expert', 'manual-roundtrip', 'launch-contract', 'manual-editor', 'boolean-tristate', 'boolean-inventory', 'numeric-inventory')
+FAMILIES = ('all', 'quick-expert', 'manual-roundtrip', 'launch-contract', 'manual-editor', 'boolean-tristate', 'boolean-inventory', 'numeric-inventory', 'boolean-rejection')
 SOURCE_FILES = ('deployment_numeric_contract.py', 'deployment_numeric_checks.py', 'deployment_editor_checks.py', 'deployment_launch_checks.py', 'deployment_batch_checks.py',
     'deployment_selector_checks.py', 'deployment_wizard_create.py', 'deployment_wizard_fixture.py',
     'deployment_override_create.py', 'deployment_override_fixture.py', 'deployment_acquisition.py',
     'deployment_acquisition_browser.py', 'deployment_acquisition_fixture.py',
     'deployment_acquisition_oracles.py', 'deployment_boolean_checks.py',
     'deployment_boolean_contracts.py', 'deployment_boolean_inventory.py',
-    'deployment_boolean_inventory_contracts.py', 'deployment_boolean_inventory_probe.py')
+    'deployment_boolean_inventory_contracts.py', 'deployment_boolean_inventory_probe.py',
+    'deployment_boolean_rejection_checks.py')
 
 
 def enabled(report, family):

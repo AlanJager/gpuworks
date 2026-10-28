@@ -295,11 +295,11 @@
       "sources": [
         {
           "file": "internal/server/inferencecatalog/schema.go",
-          "sha256": "305cd09336932031939888ead36fc719276711a542b5f22a51777a2c45ebb5cc"
+          "sha256": "1d6aadb786911b0e645a89500766b4e7a2720f8f6b63a15c32cfb099840169d1"
         },
         {
           "file": "ui/src/pages/deploy/DeployWeightSourceModal.tsx",
-          "sha256": "199ade30c1bac1b290737ad65c82c027fd189a0327b324db555cbffd25e1c1a2"
+          "sha256": "5758ecb258ebb7c361f16587eedd8e6d8a94e5dfe9b3da9e9218b914d4751475"
         }
       ],
       "covered": {
@@ -349,7 +349,7 @@
       "sources": [
         {
           "file": "ui/src/pages/deploy/DeployNodeSection.tsx",
-          "sha256": "63b26ef198ee1d27a64e96ff0cc4ee69227a51b15fdc759ba83dc3d6487219f6"
+          "sha256": "67aac56e9ddd67d04f4eac7dbb15312b3ad0c67b7cb4544c7f213413e56b6731"
         }
       ],
       "covered": {
@@ -374,7 +374,7 @@
       "sources": [
         {
           "file": "ui/src/pages/deploy/DeployNodeSection.tsx",
-          "sha256": "63b26ef198ee1d27a64e96ff0cc4ee69227a51b15fdc759ba83dc3d6487219f6"
+          "sha256": "67aac56e9ddd67d04f4eac7dbb15312b3ad0c67b7cb4544c7f213413e56b6731"
         }
       ],
       "covered": {
@@ -401,7 +401,7 @@
       "sources": [
         {
           "file": "internal/server/api/dto/evaluate.go",
-          "sha256": "fec11b3ff10a54b9f11ebafbb90236133b12ee85d504145dfc8079299c83f8da"
+          "sha256": "96b3dc70be2ea10f05530d8c84351d62c2433470ac2266b3d614ed52805654ac"
         },
         {
           "file": "ui/src/pages/deploy/DeployNodeAcquisition.tsx",
@@ -431,7 +431,7 @@
       "sources": [
         {
           "file": "internal/server/api/dto/evaluate.go",
-          "sha256": "fec11b3ff10a54b9f11ebafbb90236133b12ee85d504145dfc8079299c83f8da"
+          "sha256": "96b3dc70be2ea10f05530d8c84351d62c2433470ac2266b3d614ed52805654ac"
         },
         {
           "file": "ui/src/pages/deploy/DeployNodeAcquisition.tsx",
@@ -479,111 +479,531 @@
   },
   "result": "PASS: both complete locales for frozen normal build/source and observed cleanup in batch_c_evidence; other missing checklist items remain open.",
   "checklist": [
-    {"item": "1.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 字段盘点：逐个登记标签、组件类型、必填性、默认值、单位、合法范围、条件显示、请求字段和持久化字段。"},
-    {"item": "1.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 首次打开：默认值正确；编辑时回填已保存值；异步加载结束前不能提交不完整数据；secret 不回显。"},
-    {"item": "1.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 必填校验：每个必填字段分别输入空字符串和纯空白，错误定位到该字段，且没有 mutation 请求。"},
-    {"item": "1.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 字段边界：按后续组件清单逐字段执行最小、最大、越界、非法格式等适用场景；不虚构产品没有的上限。"},
-    {"item": "1.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 枚举穷举：每个实际可选项单独选择，验证选中态、精确提交值、保存回读及适用运行时效果。"},
-    {"item": "1.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 条件字段：切换控制项，验证显隐、首次默认值、隐藏值的提交规则、重新显示后的保留或重置规则。"},
-    {"item": "1.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 最小创建：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"},
-    {"item": "1.8", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 完整创建：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"},
-    {"item": "1.9", "status": "covered", "assertion": "While the create POST is held the deploy button stays loading and a second click sends no further create. That held request is the only create until the later 201"},
-    {"item": "1.10", "status": "covered", "assertion": "The real 400 ACQUISITION_CANDIDATE_STALE keeps the name and served-name draft, shows the stale-source reason, and the independent deployment list stays empty. Restoring the provider and submitting again returns 201"},
-    {"item": "1.11", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 取消退出：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"},
-    {"item": "1.12", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 编辑变更：分别覆盖 A→B、开→关→开、有值→空、绑定 A→B→无；仅改一个字段时其他字段保持原值。"},
-    {"item": "1.13", "status": "covered", "assertion": "After page evaluation a different management session updates the same owned spec to remove the selected provider. The browser retains its original draft and sends the exact original create body. The real server returns 400 ACQUISITION_CANDIDATE_STALE with that provider, the localized operation error is visible, name/route draft remain and an independent deployment list is empty. Restoring the same spec provider allows retry 201; one running instance, independently read provider/revision snapshot, selected storage B, actual downloaded file hashes, container mount/argv and gateway output prove recovery."},
-    {"item": "1.14", "status": "covered", "assertion": "exercise: independent saved deployment/model snapshot; reload list and exact route/image; actual agent files, Docker view/mount/argv and gateway execution"},
-    {"item": "1.15", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 键盘与布局：Tab 可达、Enter 不误提交、错误可感知，1440×900 下字段与底部操作可达且不重叠。"},
-    {"item": "2.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 检查标签、说明、placeholder、默认值及只读/禁用状态；placeholder 不能代替可访问标签。 默认值必须断言控件实际值（如 `input_value()`），不能以 placeholder 或提示文字作为证据；同时核对未手改时提交的字段值或明确的后端默认语义。"},
-    {"item": "2.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别验证空、纯空白、前后空格，明确 trim 与保留空白的字段差异，并检查最终请求和回读值。"},
-    {"item": "2.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 有长度合同的字段分别验证最短、最短减一、最长、最长加一；明确按字符还是字节计数。"},
-    {"item": "2.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 输入中文、英文、数字、标点、换行及产品禁止字符，验证接受或具体错误，不能以浏览器输入成功代替保存成功。"},
-    {"item": "2.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 对名称唯一性等服务端约束构造真实冲突；失败后原值保留，修改后错误消失且可重新提交。"},
-    {"item": "2.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证文本粘贴、清空、键盘编辑；多行内容换行在保存与重进后保持合同语义。"},
-    {"item": "2.7", "status": "covered", "assertion": "The fixture-owned display name contains literal <b> markup, Chinese, ampersand and quoted text. The exact browser create body and independent deployment GET retain those bytes. After page reload the list button, the actual detail drawer title and the named delete preview display the complete literal name and contain no b element. The real runtime and cleanup still complete; this checks these display surfaces, not a comprehensive XSS audit."},
-    {"item": "3.1", "status": "covered", "assertion": "All reachable numeric and slider controls across the reviewed Quick/Expert surfaces are matched to the independently frozen dictionary/hardware contract: unique controls, actual defaults or explicit empty automatic values, accessible labels, help/units, min/max/step and conditional required/disabled states; GPU/rank counts, GiB/MiB-derived memory, percentage, seconds and concurrency stay distinct. Exact complete surface multisets include partition, multi-node, PD and KV-tier branches. Real dictionary API is verified against the frozen snapshot. Slider step is verified through the dictionary and product binding; interaction remains3.3. Preserves the entire original real400/recovery/create/persistence/container/gateway/delete mainline in both locales. Does not claim3.2–3.6 or a new topology/runtime."},
-    {"item": "3.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别验证 0、最小、最大、上下越界；负数、小数、空值和非数字按真实字段合同接受或拒绝。"},
-    {"item": "3.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 使用键盘、加减按钮和滑块实际改变值；有联动输入框时值与限制一致。"},
-    {"item": "3.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 检查 JSON 数值类型，不得把字符串、空字符串、null、0 和省略混为一谈。"},
-    {"item": "3.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 保存后刷新和 GET 回读单位换算与精度；运行时按保存值执行，不能只比较格式化展示文本。"},
-    {"item": "3.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 对服务端字典提供的范围与 step 验证前后端一致，拒绝后原配置保持不变。"},
-    {"item": "5.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证默认项、可见标签、选中态与禁用原因，枚举本次页面实际显示的所有选项。"},
-    {"item": "5.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 每个可选项独立执行选择→请求→保存→刷新回读；只检查 option 存在不算该项覆盖。"},
-    {"item": "5.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 有搜索能力时验证完整/部分搜索、无结果、清空搜索及恢复候选。"},
-    {"item": "5.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 有清空能力时验证清空；没有时验证产品规定的返回默认路径，不添加不存在的清空操作。"},
-    {"item": "5.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 切换选项触发的区域、默认值及隐藏字段提交规则正确；切回原选项后没有错误的陈旧值。"},
-    {"item": "5.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证键盘打开、移动、选择和关闭；菜单 portal 关闭后焦点回到合理触发位置。"},
-    {"item": "5.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 异步选项加载失败、重试或选项失效时，不得提交看似有效但实际不存在的值。"},
-    {"item": "6.1", "status": "COVERED", "assertion": "当前fixture逐项核对引擎完整布尔字典及Quick白名单、Quick/Expert默认态、精确可访问名称、禁用态及具体原因；区分Auto、显式布尔、静态开关、未提供字段与辅助能力按钮。固定注册/有效API及公开GPU事实独立核验；原挂载行与独立页新行的read-only默认值均实查，独立页零创建并观察关闭，原草稿完整wire恢复后完成原真实创建、运行、刷新与删除。"},
-    {"item": "6.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别完成关→开、开→关并检查精确布尔请求值及刷新回读。"},
-    {"item": "6.3", "status": "COVERED", "assertion": "真实 Quick/Expert 检查当前引擎完整三态参数集合及 Quick 白名单缺席项；逐项选择由引擎决定/显式 true/显式 false，以独立完整 evaluate wire 严格区分省略、JSON 布尔与 null/0/1/字符串，并恢复原始草稿后完成原创建、运行与删除流程。"},
-    {"item": "6.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 控制项影响其他字段时验证显隐、禁用、默认值与陈旧值提交规则。"},
-    {"item": "6.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 保存失败时按产品合同恢复原态或保留待保存态，不能显示成功而后端未改变。"},
-    {"item": "6.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 涉及运行时能力的开关通过真实 workload/调用观察效果；disabled 不一律等同于现有资源立即不可读。"},
-    {"item": "8.1", "status": "covered", "assertion": "Template detail GET independently matches both public-provider/repository/revision identities; the real model-source lookup is empty before registration. Actual acquisition evaluate returns exact two fixture storage ids/names/types. Both visible options show localized readable name/type; browser chooses B, exact create body, independent GET and real agent download/container mount prove B. No internal-id text is required from the user."},
-    {"item": "8.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证搜索、无结果、清空搜索、候选加载失败与重试，精确检查 query 和候选集合。"},
-    {"item": "8.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证选中值回填；候选因新搜索不在当前集合时，已选资源名称仍正确。"},
-    {"item": "8.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别绑定 A、换绑 B、移除/清空，刷新查询正向关系；有反向查询能力时同时验证旧关系已解除。"},
-    {"item": "8.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 多选添加或删除一项不影响其他项；最大选择数和重复选择按合同验证。"},
-    {"item": "8.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 禁用、离线、不兼容、已删除或无权限候选有正确提示且不可错误提交；提交时失效要由真实后端拒绝。"},
-    {"item": "8.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 大集合目标仍可找到：当前 NodePicker 搜索返回单页，验证第 51 条可通过搜索找到，不虚构分页按钮。"},
-    {"item": "8.8", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: EligibleNodePicker 分别覆盖在线、硬件适配和多机地址条件；影响调度/挂载的选择继续验证真实落点。"},
-    {"item": "10.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别构造 loading、空数据、失败和有数据，验证完整状态、总数、重试和恢复后的行集合。"},
-    {"item": "10.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 搜索覆盖完整、部分、不存在、特殊字符、清空及大小写/空白合同，检查 query、命中和排除行。"},
-    {"item": "10.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 每个实际筛选项独立执行；组合至少两个条件，覆盖各自有结果但交集为空，检查参数与集合。"},
-    {"item": "10.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 每个可排序列验证升降序和相同值稳定顺序，确保先按产品合同排序再分页。"},
-    {"item": "10.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 独立切换全部实际 page-size；ResourceTable 默认 20，可选 10/20/50/100，以页面配置为准。"},
-    {"item": "10.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证首页、上一页、下一页、末页及边界禁用；逐页收集稳定 ID，无重复无遗漏，返回顺序一致。"},
-    {"item": "10.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"},
-    {"item": "10.8", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别准备总量 10、30、100 的真实归属数据，验证跨页查询与操作；page-size 选项不能代替总量证据。"},
-    {"item": "10.9", "status": "partial", "assertion": "PARTIAL: the unique run-owned row name is checked without scrolling; its name button is completely in the viewport before the real click, and the resulting browser GET and detail drawer id/name match the fixture. The other applicable row menu/terminal/diagnostic entry paths are not fully exercised."},
-    {"item": "10.10", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 修改后手动刷新与后台更新按合同保留筛选；轮询不能覆盖未保存草稿或让已删除对象重新出现。"},
-    {"item": "10.11", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"},
-    {"item": "10.12", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"},
-    {"item": "10.13", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 按主规范的组合查询合同，逐条验证相互影响的控件路径：同时命中、单项命中、交集为空、"},
-    {"item": "12.1", "status": "covered", "assertion": "Deploy on the template opens one dialog named by the weight-source title, and the source field is the visible business control"},
-    {"item": "12.2", "status": "covered", "assertion": "Weight-source dialog at 1440x900: the dialog and footer Register model and deploy stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"},
-    {"item": "12.3", "status": "covered", "assertion": "Default focus is inside the weight-source dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"},
-    {"item": "12.4", "status": "covered", "assertion": "Cancel, Escape, the close button and the mask each return focus to the drawer Delete button and send no delete. The independent deployment GET keeps the same name"},
-    {"item": "12.5", "status": "covered", "assertion": "The delete dialog over the deployment detail drawer: Cancel, Escape, close and mask each hide the delete dialog, leave the drawer open, and hide the delete dialog buttons. Reopen uses the Delete deployment dialog"},
-    {"item": "12.6", "status": "covered", "assertion": "While the create POST is held the Deploy button shows the loading state and a second click sends no further create; the real 400 keeps the name and served name and shows the stale provider reason, and stores no deployment; the later 201 matches the independent detail GET and the reloaded row"},
-    {"item": "12.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 删除确认包含名称及实际影响；引用阻止、允许清理和失败无部分修改分别验证。"},
-    {"item": "12.8", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 仅产品实际提供删除预览/revision/CAS 时验证预览变化冲突；teardown 不充当删除业务断言。"},
-    {"item": "13.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 验证触发器可访问名称，鼠标和适用键盘操作可打开、选择和关闭，禁用项不可执行。"},
-    {"item": "13.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 长列表末行及屏幕边缘打开时浮层在视口内、不遮挡必要操作，关闭后焦点合理返回。"},
-    {"item": "13.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 菜单项权限、状态条件与真实 API 一致；隐藏按钮之外还需后端权限拒绝证据。"},
-    {"item": "13.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: Tooltip 只补充说明，不作为唯一可达操作或唯一错误信息；有键盘触发能力时必须验证。"},
-    {"item": "13.5", "status": "covered", "assertion": "Real ACQUISITION_CANDIDATE_STALE source-expiry rejection shows exactly one visible error notification containing the localized create operation and concrete server reason, with no false create-success notification. Correcting the draft produces a real 201 and exactly one visible localized success notification. Independent GET, actual container/gateway execution and refreshed UI prove the stored result; notification disappearance is not used as recovery evidence."},
-    {"item": "13.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 连续事件或轮询不产生无限重复通知，不遮挡后续重试、取消或编辑入口。"},
-    {"item": "14.1", "status": "N/A", "assertion": "Current deployment page is a single workbench, not a Steps wizard; filename wizard does not create step controls."},
-    {"item": "14.2", "status": "N/A", "assertion": "Current deployment page is a single workbench, not a Steps wizard; filename wizard does not create step controls."},
-    {"item": "14.3", "status": "covered", "assertion": "Quick-to-Expert and back preserve the entire fixture quick_params object, stable deployment/source/storage/placement fields and unset list on genuine evaluate POSTs. Untouched defaults, explicit cache-report false, explicit prefix-cache false and return-to-Auto omission are checked with actual controls. A reversible served-name textbox edit triggers evaluation when a mode switch correctly sends none; the original draft is restored before normal creation."},
-    {"item": "14.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"},
-    {"item": "14.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 更换模型、引擎、spec 或硬件时验证兼容性、模板锁定/偏离、依赖字段更新和失效选择提示。"},
-    {"item": "14.6", "status": "covered", "assertion": "exercise: actual provider modal + pinned revision, full create source/storage body; real selected provider removed after evaluate returns exact400 instead of fallback; independent bytes/path verify selected provider and destination"},
-    {"item": "14.7", "status": "covered", "assertion": "The real rendered full command, environment and resolved-runtime JSON agree with the evaluated one-rank launch. Engine/image/node, known utilization and complete fixture/system environment have independent fixture oracles. Independent GET checks persisted quick parameters and original template selection/env/residual arguments/entrypoint; the actual instance must retain the complete evaluated entrypoint/argv/env/mounts/docker arguments/shm/model mount. The only permitted normalization is the unique preview API port30000 to the assigned instance port. No second engine-command builder or general token/path filter is used."},
-    {"item": "14.8", "status": "covered", "assertion": "exercise + fixture.cleanup: real browser creation through controller/agent/download/Docker/fake-engine/gateway; independent resource and process disappearance required by shared runner PASS gate"},
-    {"item": "15.1", "status": "COVERED", "assertion": "真实 shell 命令 textarea 验证完整生成初值、结构化预览只读及完整命令、pending 时禁止编辑、格式与动态绑定说明；实际键盘验证导航/选择/Tab/换行/撤销/删除和完整 evaluate wire，恢复原草稿且不产生额外 deployment POST；不声明 YAML/schema 编辑能力。"},
-    {"item": "15.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 输入语法错误、schema 错误、未知字段和缺必填字段，验证具体位置/原因及不发送非法 mutation。"},
-    {"item": "15.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 格式化、复制、保存和重开后语义一致；敏感字段遵守 secret 合同。"},
-    {"item": "15.4", "status": "covered", "assertion": "Structured custom arguments are entered through the actual form and captured in a real evaluate request. Canceling text-mode entry retains them; confirmed entry produces a complete shell script whose set/export/exec tokens and environment match the evaluated launch. Edited manual text reaches evaluate; canceling return retains it. The exact localized discard warning is checked and confirmed return must reproduce the complete earlier structured request and visible custom arguments without manual-only keys. The original empty draft is restored. This tests roundtrip preservation, not manual-mode workload execution."},
-    {"item": "15.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 手工命令模式禁用应禁用的字段，placement 等仍可编辑项保持有效；切回表单恢复参数来源合同。"},
-    {"item": "15.6", "status": "covered", "assertion": "For the one actual standalone rank0 of this contract, real Docker inspect verifies complete image/Entrypoint+Cmd, environment including independently inspected OCI defaults, bind-mount set and RO/RW flags, and shm bytes. Actual fake-engine process argv is read from the running container and compared with persisted dispatch and evaluated launch, with only the documented API-port rebinding. Fixture-owned model paths, and applicable acquired/override files, remain independently checked. This proves actual fake-engine dispatch, not real GPU inference, PD or multiple roles/ranks."},
-    {"item": "15.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 系统模板只读与克隆后可编辑边界正确，失败不修改原模板。"},
-    {"item": "17.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 分别验证 loading、empty、error、数据与陈旧数据，缺失值和真实零值必须可区分。"},
-    {"item": "17.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 用已知样本检查查询参数、时间范围、聚合、单位与精度；canvas 存在或截图相似不足以证明数据正确。"},
-    {"item": "17.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 实际操作图例、tooltip、时间控件及适用联动，验证对应系列与样本值。"},
-    {"item": "17.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 切换节点/GPU/部署或范围后旧响应不覆盖新图表，刷新、follow 与暂停遵循当前选择。"},
-    {"item": "17.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: GPU 显存、利用率、引擎吞吐和网关请求分别使用其权威来源，不把健康探测请求当成业务调用。"},
-    {"item": "17.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 时间线验证事件顺序、状态转移、关联资源与终态；时间接近的历史事件不能代替本次 runId。"},
-    {"item": "17.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 无数据、长标签、大数和错误态下检查实际尺寸、单位可见性与无重叠，颜色从主题语义推导。"},
-    {"item": "22.1", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 每个实际页面入口与深链分别进入，检查标题、选中态、目标组件及刷新后位置。"},
-    {"item": "22.2", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 浏览器前进/后退、Tabs 切换与 URL 参数按合同保留状态，不能出现页面内容和导航选中态不一致。"},
-    {"item": "22.3", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: admin/user 分别验证菜单、按钮和直接 API 权限；GPUWorks 不套用 Router 的组织/IAM 权限模型。"},
-    {"item": "22.4", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 登录失效与重新认证验证目的页面和可恢复草稿；后台轮询不能被当成人类活动无限续期。"},
-    {"item": "22.5", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: zh/en 分别检查导航、首屏、表单、错误、空态及实际动态文本，内部字段名不能代替翻译。"},
-    {"item": "22.6", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 真实键盘操作验证 focus-visible；颜色、间距和禁用态使用浏览器 computed style 与主题 token 语义比较。"},
-    {"item": "22.7", "status": "MISSING", "assertion": "Not fully exercised in this acquisition contract: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"}
+    {
+      "item": "1.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 字段盘点：逐个登记标签、组件类型、必填性、默认值、单位、合法范围、条件显示、请求字段和持久化字段。"
+    },
+    {
+      "item": "1.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 首次打开：默认值正确；编辑时回填已保存值；异步加载结束前不能提交不完整数据；secret 不回显。"
+    },
+    {
+      "item": "1.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 必填校验：每个必填字段分别输入空字符串和纯空白，错误定位到该字段，且没有 mutation 请求。"
+    },
+    {
+      "item": "1.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 字段边界：按后续组件清单逐字段执行最小、最大、越界、非法格式等适用场景；不虚构产品没有的上限。"
+    },
+    {
+      "item": "1.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 枚举穷举：每个实际可选项单独选择，验证选中态、精确提交值、保存回读及适用运行时效果。"
+    },
+    {
+      "item": "1.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 条件字段：切换控制项，验证显隐、首次默认值、隐藏值的提交规则、重新显示后的保留或重置规则。"
+    },
+    {
+      "item": "1.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 最小创建：仅填写必填项，通过 UI 提交，验证 method/path/body、响应、列表与详情，并刷新和独立 GET 回读。"
+    },
+    {
+      "item": "1.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 完整创建：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"
+    },
+    {
+      "item": "1.9",
+      "status": "covered",
+      "assertion": "While the create POST is held the deploy button stays loading and a second click sends no further create. That held request is the only create until the later 201"
+    },
+    {
+      "item": "1.10",
+      "status": "covered",
+      "assertion": "The real 400 ACQUISITION_CANDIDATE_STALE keeps the name and served-name draft, shows the stale-source reason, and the independent deployment list stays empty. Restoring the provider and submitting again returns 201"
+    },
+    {
+      "item": "1.11",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 取消退出：分别取消、关闭、Esc；不发送 mutation，原数据保持不变；未保存提示按产品合同验证。"
+    },
+    {
+      "item": "1.12",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 编辑变更：分别覆盖 A→B、开→关→开、有值→空、绑定 A→B→无；仅改一个字段时其他字段保持原值。"
+    },
+    {
+      "item": "1.13",
+      "status": "covered",
+      "assertion": "After page evaluation a different management session updates the same owned spec to remove the selected provider. The browser retains its original draft and sends the exact original create body. The real server returns 400 ACQUISITION_CANDIDATE_STALE with that provider, the localized operation error is visible, name/route draft remain and an independent deployment list is empty. Restoring the same spec provider allows retry 201; one running instance, independently read provider/revision snapshot, selected storage B, actual downloaded file hashes, container mount/argv and gateway output prove recovery."
+    },
+    {
+      "item": "1.14",
+      "status": "covered",
+      "assertion": "exercise: independent saved deployment/model snapshot; reload list and exact route/image; actual agent files, Docker view/mount/argv and gateway execution"
+    },
+    {
+      "item": "1.15",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 键盘与布局：Tab 可达、Enter 不误提交、错误可感知，1440×900 下字段与底部操作可达且不重叠。"
+    },
+    {
+      "item": "2.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 检查标签、说明、placeholder、默认值及只读/禁用状态；placeholder 不能代替可访问标签。 默认值必须断言控件实际值（如 `input_value()`），不能以 placeholder 或提示文字作为证据；同时核对未手改时提交的字段值或明确的后端默认语义。"
+    },
+    {
+      "item": "2.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别验证空、纯空白、前后空格，明确 trim 与保留空白的字段差异，并检查最终请求和回读值。"
+    },
+    {
+      "item": "2.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 有长度合同的字段分别验证最短、最短减一、最长、最长加一；明确按字符还是字节计数。"
+    },
+    {
+      "item": "2.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 输入中文、英文、数字、标点、换行及产品禁止字符，验证接受或具体错误，不能以浏览器输入成功代替保存成功。"
+    },
+    {
+      "item": "2.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 对名称唯一性等服务端约束构造真实冲突；失败后原值保留，修改后错误消失且可重新提交。"
+    },
+    {
+      "item": "2.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证文本粘贴、清空、键盘编辑；多行内容换行在保存与重进后保持合同语义。"
+    },
+    {
+      "item": "2.7",
+      "status": "covered",
+      "assertion": "The fixture-owned display name contains literal <b> markup, Chinese, ampersand and quoted text. The exact browser create body and independent deployment GET retain those bytes. After page reload the list button, the actual detail drawer title and the named delete preview display the complete literal name and contain no b element. The real runtime and cleanup still complete; this checks these display surfaces, not a comprehensive XSS audit."
+    },
+    {
+      "item": "3.1",
+      "status": "covered",
+      "assertion": "All reachable numeric and slider controls across the reviewed Quick/Expert surfaces are matched to the independently frozen dictionary/hardware contract: unique controls, actual defaults or explicit empty automatic values, accessible labels, help/units, min/max/step and conditional required/disabled states; GPU/rank counts, GiB/MiB-derived memory, percentage, seconds and concurrency stay distinct. Exact complete surface multisets include partition, multi-node, PD and KV-tier branches. Real dictionary API is verified against the frozen snapshot. Slider step is verified through the dictionary and product binding; interaction remains3.3. Preserves the entire original real400/recovery/create/persistence/container/gateway/delete mainline in both locales. Does not claim3.2–3.6 or a new topology/runtime."
+    },
+    {
+      "item": "3.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别验证 0、最小、最大、上下越界；负数、小数、空值和非数字按真实字段合同接受或拒绝。"
+    },
+    {
+      "item": "3.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 使用键盘、加减按钮和滑块实际改变值；有联动输入框时值与限制一致。"
+    },
+    {
+      "item": "3.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 检查 JSON 数值类型，不得把字符串、空字符串、null、0 和省略混为一谈。"
+    },
+    {
+      "item": "3.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 保存后刷新和 GET 回读单位换算与精度；运行时按保存值执行，不能只比较格式化展示文本。"
+    },
+    {
+      "item": "3.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 对服务端字典提供的范围与 step 验证前后端一致，拒绝后原配置保持不变。"
+    },
+    {
+      "item": "5.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证默认项、可见标签、选中态与禁用原因，枚举本次页面实际显示的所有选项。"
+    },
+    {
+      "item": "5.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 每个可选项独立执行选择→请求→保存→刷新回读；只检查 option 存在不算该项覆盖。"
+    },
+    {
+      "item": "5.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 有搜索能力时验证完整/部分搜索、无结果、清空搜索及恢复候选。"
+    },
+    {
+      "item": "5.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 有清空能力时验证清空；没有时验证产品规定的返回默认路径，不添加不存在的清空操作。"
+    },
+    {
+      "item": "5.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 切换选项触发的区域、默认值及隐藏字段提交规则正确；切回原选项后没有错误的陈旧值。"
+    },
+    {
+      "item": "5.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证键盘打开、移动、选择和关闭；菜单 portal 关闭后焦点回到合理触发位置。"
+    },
+    {
+      "item": "5.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 异步选项加载失败、重试或选项失效时，不得提交看似有效但实际不存在的值。"
+    },
+    {
+      "item": "6.1",
+      "status": "COVERED",
+      "assertion": "当前fixture逐项核对引擎完整布尔字典及Quick白名单、Quick/Expert默认态、精确可访问名称、禁用态及具体原因；区分Auto、显式布尔、静态开关、未提供字段与辅助能力按钮。固定注册/有效API及公开GPU事实独立核验；原挂载行与独立页新行的read-only默认值均实查，独立页零创建并观察关闭，原草稿完整wire恢复后完成原真实创建、运行、刷新与删除。"
+    },
+    {
+      "item": "6.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别完成关→开、开→关并检查精确布尔请求值及刷新回读。"
+    },
+    {
+      "item": "6.3",
+      "status": "COVERED",
+      "assertion": "真实 Quick/Expert 检查当前引擎完整三态参数集合及 Quick 白名单缺席项；逐项选择由引擎决定/显式 true/显式 false，以独立完整 evaluate wire 严格区分省略、JSON 布尔与 null/0/1/字符串，并恢复原始草稿后完成原创建、运行与删除流程。"
+    },
+    {
+      "item": "6.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 控制项影响其他字段时验证显隐、禁用、默认值与陈旧值提交规则。"
+    },
+    {
+      "item": "6.5",
+      "status": "covered",
+      "assertion": "While the selected weight provider is expired by a real template replacement, the seeded pending draft (cache tri-state off, prefix caching on, an owned store-b mount row) is submitted and refused with 400 ACQUISITION_CANDIDATE_STALE naming the provider; a request guard observes zero /api/v1/evaluate calls across the whole remove/400/retain/restore window; the owned store-b is independently GET-verified ready and writable on exactly the eligible node; the complete reviewed boolean matrix (30 entries including the conditional owned mount row) proves the draft survives the rejection byte-exact; no deployment is persisted and no success toast appears; restoring the original draft leads to the sole 201 and the original persistence, real fake-engine container execution and cleanup oracles are unchanged."
+    },
+    {
+      "item": "6.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 涉及运行时能力的开关通过真实 workload/调用观察效果；disabled 不一律等同于现有资源立即不可读。"
+    },
+    {
+      "item": "8.1",
+      "status": "covered",
+      "assertion": "Template detail GET independently matches both public-provider/repository/revision identities; the real model-source lookup is empty before registration. Actual acquisition evaluate returns exact two fixture storage ids/names/types. Both visible options show localized readable name/type; browser chooses B, exact create body, independent GET and real agent download/container mount prove B. No internal-id text is required from the user."
+    },
+    {
+      "item": "8.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证搜索、无结果、清空搜索、候选加载失败与重试，精确检查 query 和候选集合。"
+    },
+    {
+      "item": "8.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证选中值回填；候选因新搜索不在当前集合时，已选资源名称仍正确。"
+    },
+    {
+      "item": "8.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别绑定 A、换绑 B、移除/清空，刷新查询正向关系；有反向查询能力时同时验证旧关系已解除。"
+    },
+    {
+      "item": "8.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 多选添加或删除一项不影响其他项；最大选择数和重复选择按合同验证。"
+    },
+    {
+      "item": "8.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 禁用、离线、不兼容、已删除或无权限候选有正确提示且不可错误提交；提交时失效要由真实后端拒绝。"
+    },
+    {
+      "item": "8.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 大集合目标仍可找到：当前 NodePicker 搜索返回单页，验证第 51 条可通过搜索找到，不虚构分页按钮。"
+    },
+    {
+      "item": "8.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: EligibleNodePicker 分别覆盖在线、硬件适配和多机地址条件；影响调度/挂载的选择继续验证真实落点。"
+    },
+    {
+      "item": "10.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别构造 loading、空数据、失败和有数据，验证完整状态、总数、重试和恢复后的行集合。"
+    },
+    {
+      "item": "10.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 搜索覆盖完整、部分、不存在、特殊字符、清空及大小写/空白合同，检查 query、命中和排除行。"
+    },
+    {
+      "item": "10.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 每个实际筛选项独立执行；组合至少两个条件，覆盖各自有结果但交集为空，检查参数与集合。"
+    },
+    {
+      "item": "10.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 每个可排序列验证升降序和相同值稳定顺序，确保先按产品合同排序再分页。"
+    },
+    {
+      "item": "10.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 独立切换全部实际 page-size；ResourceTable 默认 20，可选 10/20/50/100，以页面配置为准。"
+    },
+    {
+      "item": "10.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证首页、上一页、下一页、末页及边界禁用；逐页收集稳定 ID，无重复无遗漏，返回顺序一致。"
+    },
+    {
+      "item": "10.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 搜索、筛选、page-size 或数据变化后保持合法页；删除末页最后一条后总数、页码和行集合正确。"
+    },
+    {
+      "item": "10.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别准备总量 10、30、100 的真实归属数据，验证跨页查询与操作；page-size 选项不能代替总量证据。"
+    },
+    {
+      "item": "10.9",
+      "status": "partial",
+      "assertion": "PARTIAL: the unique run-owned row name is checked without scrolling; its name button is completely in the viewport before the real click, and the resulting browser GET and detail drawer id/name match the fixture. The other applicable row menu/terminal/diagnostic entry paths are not fully exercised."
+    },
+    {
+      "item": "10.10",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 修改后手动刷新与后台更新按合同保留筛选；轮询不能覆盖未保存草稿或让已删除对象重新出现。"
+    },
+    {
+      "item": "10.11",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 有分组/汇总时验证已知 2+1 分组、合计、切换及筛选联动；不同投影不能跨维度相加。"
+    },
+    {
+      "item": "10.12",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 允许的表格内部横向滚动与页面整体溢出分开检查，固定操作列仍可达。"
+    },
+    {
+      "item": "10.13",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 按主规范的组合查询合同，逐条验证相互影响的控件路径：同时命中、单项命中、交集为空、"
+    },
+    {
+      "item": "12.1",
+      "status": "covered",
+      "assertion": "Deploy on the template opens one dialog named by the weight-source title, and the source field is the visible business control"
+    },
+    {
+      "item": "12.2",
+      "status": "covered",
+      "assertion": "Weight-source dialog at 1440x900: the dialog and footer Register model and deploy stay inside the viewport, and the title, body and footer sit inside the dialog without overlap"
+    },
+    {
+      "item": "12.3",
+      "status": "covered",
+      "assertion": "Default focus is inside the weight-source dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog"
+    },
+    {
+      "item": "12.4",
+      "status": "covered",
+      "assertion": "Cancel, Escape, the close button and the mask each return focus to the drawer Delete button and send no delete. The independent deployment GET keeps the same name"
+    },
+    {
+      "item": "12.5",
+      "status": "covered",
+      "assertion": "The delete dialog over the deployment detail drawer: Cancel, Escape, close and mask each hide the delete dialog, leave the drawer open, and hide the delete dialog buttons. Reopen uses the Delete deployment dialog"
+    },
+    {
+      "item": "12.6",
+      "status": "covered",
+      "assertion": "While the create POST is held the Deploy button shows the loading state and a second click sends no further create; the real 400 keeps the name and served name and shows the stale provider reason, and stores no deployment; the later 201 matches the independent detail GET and the reloaded row"
+    },
+    {
+      "item": "12.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 删除确认包含名称及实际影响；引用阻止、允许清理和失败无部分修改分别验证。"
+    },
+    {
+      "item": "12.8",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 仅产品实际提供删除预览/revision/CAS 时验证预览变化冲突；teardown 不充当删除业务断言。"
+    },
+    {
+      "item": "13.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 验证触发器可访问名称，鼠标和适用键盘操作可打开、选择和关闭，禁用项不可执行。"
+    },
+    {
+      "item": "13.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 长列表末行及屏幕边缘打开时浮层在视口内、不遮挡必要操作，关闭后焦点合理返回。"
+    },
+    {
+      "item": "13.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 菜单项权限、状态条件与真实 API 一致；隐藏按钮之外还需后端权限拒绝证据。"
+    },
+    {
+      "item": "13.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: Tooltip 只补充说明，不作为唯一可达操作或唯一错误信息；有键盘触发能力时必须验证。"
+    },
+    {
+      "item": "13.5",
+      "status": "covered",
+      "assertion": "Real ACQUISITION_CANDIDATE_STALE source-expiry rejection shows exactly one visible error notification containing the localized create operation and concrete server reason, with no false create-success notification. Correcting the draft produces a real 201 and exactly one visible localized success notification. Independent GET, actual container/gateway execution and refreshed UI prove the stored result; notification disappearance is not used as recovery evidence."
+    },
+    {
+      "item": "13.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 连续事件或轮询不产生无限重复通知，不遮挡后续重试、取消或编辑入口。"
+    },
+    {
+      "item": "14.1",
+      "status": "N/A",
+      "assertion": "Current deployment page is a single workbench, not a Steps wizard; filename wizard does not create step controls."
+    },
+    {
+      "item": "14.2",
+      "status": "N/A",
+      "assertion": "Current deployment page is a single workbench, not a Steps wizard; filename wizard does not create step controls."
+    },
+    {
+      "item": "14.3",
+      "status": "covered",
+      "assertion": "Quick-to-Expert and back preserve the entire fixture quick_params object, stable deployment/source/storage/placement fields and unset list on genuine evaluate POSTs. Untouched defaults, explicit cache-report false, explicit prefix-cache false and return-to-Auto omission are checked with actual controls. A reversible served-name textbox edit triggers evaluation when a mode switch correctly sends none; the original draft is restored before normal creation."
+    },
+    {
+      "item": "14.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 按 server `/engines` 字典逐项验证参数类型、枚举、边界、版本可见性，不只覆盖硬编码 vLLM 子集。"
+    },
+    {
+      "item": "14.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 更换模型、引擎、spec 或硬件时验证兼容性、模板锁定/偏离、依赖字段更新和失效选择提示。"
+    },
+    {
+      "item": "14.6",
+      "status": "covered",
+      "assertion": "exercise: actual provider modal + pinned revision, full create source/storage body; real selected provider removed after evaluate returns exact400 instead of fallback; independent bytes/path verify selected provider and destination"
+    },
+    {
+      "item": "14.7",
+      "status": "covered",
+      "assertion": "The real rendered full command, environment and resolved-runtime JSON agree with the evaluated one-rank launch. Engine/image/node, known utilization and complete fixture/system environment have independent fixture oracles. Independent GET checks persisted quick parameters and original template selection/env/residual arguments/entrypoint; the actual instance must retain the complete evaluated entrypoint/argv/env/mounts/docker arguments/shm/model mount. The only permitted normalization is the unique preview API port30000 to the assigned instance port. No second engine-command builder or general token/path filter is used."
+    },
+    {
+      "item": "14.8",
+      "status": "covered",
+      "assertion": "exercise + fixture.cleanup: real browser creation through controller/agent/download/Docker/fake-engine/gateway; independent resource and process disappearance required by shared runner PASS gate"
+    },
+    {
+      "item": "15.1",
+      "status": "COVERED",
+      "assertion": "真实 shell 命令 textarea 验证完整生成初值、结构化预览只读及完整命令、pending 时禁止编辑、格式与动态绑定说明；实际键盘验证导航/选择/Tab/换行/撤销/删除和完整 evaluate wire，恢复原草稿且不产生额外 deployment POST；不声明 YAML/schema 编辑能力。"
+    },
+    {
+      "item": "15.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 输入语法错误、schema 错误、未知字段和缺必填字段，验证具体位置/原因及不发送非法 mutation。"
+    },
+    {
+      "item": "15.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 格式化、复制、保存和重开后语义一致；敏感字段遵守 secret 合同。"
+    },
+    {
+      "item": "15.4",
+      "status": "covered",
+      "assertion": "Structured custom arguments are entered through the actual form and captured in a real evaluate request. Canceling text-mode entry retains them; confirmed entry produces a complete shell script whose set/export/exec tokens and environment match the evaluated launch. Edited manual text reaches evaluate; canceling return retains it. The exact localized discard warning is checked and confirmed return must reproduce the complete earlier structured request and visible custom arguments without manual-only keys. The original empty draft is restored. This tests roundtrip preservation, not manual-mode workload execution."
+    },
+    {
+      "item": "15.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 手工命令模式禁用应禁用的字段，placement 等仍可编辑项保持有效；切回表单恢复参数来源合同。"
+    },
+    {
+      "item": "15.6",
+      "status": "covered",
+      "assertion": "For the one actual standalone rank0 of this contract, real Docker inspect verifies complete image/Entrypoint+Cmd, environment including independently inspected OCI defaults, bind-mount set and RO/RW flags, and shm bytes. Actual fake-engine process argv is read from the running container and compared with persisted dispatch and evaluated launch, with only the documented API-port rebinding. Fixture-owned model paths, and applicable acquired/override files, remain independently checked. This proves actual fake-engine dispatch, not real GPU inference, PD or multiple roles/ranks."
+    },
+    {
+      "item": "15.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 系统模板只读与克隆后可编辑边界正确，失败不修改原模板。"
+    },
+    {
+      "item": "17.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 分别验证 loading、empty、error、数据与陈旧数据，缺失值和真实零值必须可区分。"
+    },
+    {
+      "item": "17.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 用已知样本检查查询参数、时间范围、聚合、单位与精度；canvas 存在或截图相似不足以证明数据正确。"
+    },
+    {
+      "item": "17.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 实际操作图例、tooltip、时间控件及适用联动，验证对应系列与样本值。"
+    },
+    {
+      "item": "17.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 切换节点/GPU/部署或范围后旧响应不覆盖新图表，刷新、follow 与暂停遵循当前选择。"
+    },
+    {
+      "item": "17.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: GPU 显存、利用率、引擎吞吐和网关请求分别使用其权威来源，不把健康探测请求当成业务调用。"
+    },
+    {
+      "item": "17.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 时间线验证事件顺序、状态转移、关联资源与终态；时间接近的历史事件不能代替本次 runId。"
+    },
+    {
+      "item": "17.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 无数据、长标签、大数和错误态下检查实际尺寸、单位可见性与无重叠，颜色从主题语义推导。"
+    },
+    {
+      "item": "22.1",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 每个实际页面入口与深链分别进入，检查标题、选中态、目标组件及刷新后位置。"
+    },
+    {
+      "item": "22.2",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 浏览器前进/后退、Tabs 切换与 URL 参数按合同保留状态，不能出现页面内容和导航选中态不一致。"
+    },
+    {
+      "item": "22.3",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: admin/user 分别验证菜单、按钮和直接 API 权限；GPUWorks 不套用 Router 的组织/IAM 权限模型。"
+    },
+    {
+      "item": "22.4",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 登录失效与重新认证验证目的页面和可恢复草稿；后台轮询不能被当成人类活动无限续期。"
+    },
+    {
+      "item": "22.5",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: zh/en 分别检查导航、首屏、表单、错误、空态及实际动态文本，内部字段名不能代替翻译。"
+    },
+    {
+      "item": "22.6",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 真实键盘操作验证 focus-visible；颜色、间距和禁用态使用浏览器 computed style 与主题 token 语义比较。"
+    },
+    {
+      "item": "22.7",
+      "status": "MISSING",
+      "assertion": "Not fully exercised in this acquisition contract: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"
+    }
   ],
   "selector_evidence": {
     "contract": "gpuworks/deployment/acquisition-vllm-huggingface",
@@ -881,6 +1301,113 @@
       "old VLLM reports keep old helper identity per the scoped bridge; no report rewritten or falsified as a new-source rerun",
       "input manifests/raw report not_covered remain their prepublication snapshots",
       "existing broad numerical missing text refers to remaining boundary/interaction/wire/estimate gaps"
+    ]
+  },
+  "boolean_rejection_evidence": {
+    "item": "6.5",
+    "family": "boolean-rejection",
+    "normal_binary_sha256": "1a4ae32905e9f781f54c5715245b0294dd16270ca6c2671ea1c28124b7d40493",
+    "agent_binary_sha256": "0ff06d0af402ef1da40777cca67399266d98ee93f2f03d6f7fa9eadd7c3a4920",
+    "normal_runs": [
+      {
+        "case": "vllm-huggingface",
+        "locale": "en",
+        "run_id": "20261028T042005Z-aa2d09dc",
+        "report_sha256": "d27dbe9f0dece89e511543a689140190d71a4dc607e33a17c66df2e9ac195689",
+        "archive_sha256": "a3d78fd1987f694f9c95c45286850773b5693803dc4ec545050e0aefa9b50c1b"
+      },
+      {
+        "case": "vllm-huggingface",
+        "locale": "zh",
+        "run_id": "20261028T042126Z-62cefff1",
+        "report_sha256": "464ff46167902728552898ca56adf84d51865271df0dd90049ebfce16b26cdfb",
+        "archive_sha256": "70dc2ac80b1ed651973a4fd936951e0acfebb1d04d63fcd99873b7399e93f752"
+      }
+    ],
+    "fault_runs": [
+      {
+        "name": "boolrej-mount-readonly-default-checked",
+        "cohort": "boolean-rejection-fault-cohort-v1",
+        "run_id": "20261028T043431Z-f5d7b49a",
+        "report_sha256": "64bfe21adb0d73500383aa9ea7ce59c777f07ac2f23626d407030427a0cc326c",
+        "archive_sha256": "3d7f110a0d591de8c2013d1adc4e2a2260cbe68bc2a57c63f186a41ed2bf1c54",
+        "binary_sha256": "d8819280dd6dba66da6b192cfc3990c91e4bea9cbd1cec04e8eb2c733cab1268",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the mount-seed oracle: the added mount row is created with read_only: true, so _append_mount's expect(checkbox).not_to_be_checked() fails inside the seeded-wire step (\"Locator expected not to be checked / Actual value: checked\", 9 polls resolving the real #container_mount_rows_0_read_only input). The mutated behaviour is the product default of a newly added mount row, exactly what the 6.5 seeded draft asserts."
+      },
+      {
+        "name": "boolrej-mount-delete-first-row-x",
+        "cohort": "boolean-rejection-fault-cohort-v2",
+        "run_id": "20261028T044753Z-d8606171",
+        "report_sha256": "b6751ee79051d3d47cfbc9025563b7ee4d2fc1b9603c72b34f756403d1521c13",
+        "archive_sha256": "db20ece273fc8ea28c6df4363b60e2c821b357b5bb8a22689f8933c402fe7d1c",
+        "binary_sha256": "3492922e4dd067ec549bfa98f68131644bb536ee50b1787b9d851202bc93612c",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the original-restored evaluate-wire oracle in the overrides context: remove(0) deletes the first original row instead of the owned pending row, so the restored draft sent for evaluate carries [override-rw, e2e-...-weights] while the contract expects [override-ro, override-rw]. The diff is visible field by field in the recorded expected/actual bodies, so the kill is the byte-exact draft-restoration assertion rather than any UI timeout."
+      },
+      {
+        "name": "boolrej-tristate-change-swallowed-x",
+        "cohort": "boolean-rejection-fault-cohort-v3",
+        "run_id": "20261028T045729Z-f5fe5c93",
+        "report_sha256": "e68fca9111790fb4fe6f0c8e93a34700ade9ed3b9bc35ddbe0bc530e431708d1",
+        "archive_sha256": "3b70973305ad2cfad8684cd0d947ef88308b3dd2fa58719c788df950625dceef",
+        "binary_sha256": "ca003bca75ba64794e4ef63c1f2af18474dda8e5c928df1ee423e482afb3d449",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the seeded evaluate-wire byte comparison after the mutation was retargeted to the component that actually writes the quick-surface tri-state: with DeployFeatureChoice onChange reduced to a no-op, the seeded draft reaches the wire as enable_cache_report=true and enable_prefix_caching=null, while the contract requires false and true. Both differing keys are reported in the same assertion, so the failure is the tri-state seeding path and nothing else."
+      },
+      {
+        "name": "boolrej-create-failure-silent",
+        "cohort": "boolean-rejection-fault-cohort-v3",
+        "run_id": "20261028T050054Z-b4c8fdfd",
+        "report_sha256": "27f0d4de5ea1fc05500ac1ed8b78c703f6e8ac246372223a8a10af48c59ed7b3",
+        "archive_sha256": "b69fa3ea397cdc6dfefcde8b3539929e81939b96e69cab35644027b4f3d5d42a",
+        "binary_sha256": "d41055f56825f7ba7914a4431f8da0e518f9b4e6658e72a03de761a8538b2d91",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the rejection-notice oracle: the catch path shows the success message text instead of the server detail, so the error toast carrying the exact FIELD_INVALID detail never appears (\".ant-message-error\" filtered by the 256-character detail resolves to 0 elements across the 12s expectation window, actual value 0). This proves the 6.5 rejection notice is asserted on real product copy and not merely on the presence of any toast."
+      },
+      {
+        "name": "boolrej-name-length-check-removed",
+        "cohort": "boolean-rejection-fault-cohort-v3",
+        "run_id": "20261028T050144Z-201e9c6e",
+        "report_sha256": "6088d095992b64679d9a6578905f56a23199d95f8e62fd3eecc50369fbbd1d93",
+        "archive_sha256": "14e77315c256b76ed6a0bee824b2381836ba0e9e91980c8753d647a59a728ecb",
+        "binary_sha256": "fde96312a3818a62b76c6816ec4922024c575217f7644946d2797a81216d7d13",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the rejected-wire oracle on a real Go mutation: with the rune-count maximum removed from validateTextField the 257-rune name is accepted, so the create returns 201 where the contract requires 400 (\"AssertionError: overlong name HTTP 201\" at deployment_wizard_create.py:213). The mutant is a single-file Go change rebuilt into its own binary; the normal binary is untouched."
+      },
+      {
+        "name": "boolrej-stale-provider-accepted",
+        "cohort": "boolean-rejection-fault-cohort-v3",
+        "run_id": "20261028T050225Z-b8b3671d",
+        "report_sha256": "abf0d9b3db635a9d83086c284a7b73d116944f12ff4d7e763b54e6487228e711",
+        "archive_sha256": "069b48ece4935046c181c7617dbf7bf1dfcfdd6616dfb047b2e66418589554eb",
+        "binary_sha256": "a278f351c549551c12df5a5b0b0f14f8a11c16411fb25a4a7db50274fe9b4c3e",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the acquisition refusal oracle on a real Go mutation: returning nil instead of ErrorAcquisitionCandidateStale lets the expired weight provider through, so the stale submit answers 201 where the contract requires 400 (\"expired selected provider HTTP: expected=400; actual=201\"). This is the second independent proof that the retained draft is evaluated against live provider state."
+      },
+      {
+        "name": "boolrej-evaluate-on-stale-error",
+        "cohort": "boolean-rejection-fault-cohort-v3",
+        "run_id": "20261028T050613Z-cadde93d",
+        "report_sha256": "a6c7ecc1d18771da2afbe26bf0a2f6b90682bd971e1508b6e8a2f0015367aeaa",
+        "archive_sha256": "6f13d9848c543fdd734acf4e1f2c21d028231a6ca45e60d5fbdf8522ba0e36a6",
+        "binary_sha256": "b5fb6fd1253ef76284a19ca3d6845088534c1b1f7062bce3887630e9033ca801",
+        "leaked_containers_swept": [],
+        "review_note": "Killed by the expiry guard: injecting a real api.evaluate({}) into the catch path makes the client emit evaluate traffic while the selected provider is expired, so the guard's \"requests\" list is non-empty and \"6.5 mode/read observations emitted evaluate while provider expired\" fails at the retained mount read-only expert step. The observation is recorded by a request guard rather than inferred from the UI."
+      }
+    ],
+    "contract_notes": [
+      "dictionary control dispatch uses the TRISTATE product fact instead of the position proxy (proven field-by-field equivalent for unseeded states)",
+      "the wizard final full-sequence assertion is wrapped by expected_mutations like the four other binding sites"
+    ],
+    "controls": [
+      "v1 mount-delete-first-row mutant PASSED in the wizard context (zero original mounts make remove(0) identical to remove(field.name)); archived as ineffective-for-wizard, never counted, retargeted to overrides and killed there",
+      "v2 tristate-change-swallowed mutant PASSED because the DeployParamField branch is not the component that writes the quick-surface tri-state; archived as ineffective-for-seed, never counted, retargeted to DeployFeatureChoice and killed there",
+      "the seven reviewed kills cover five distinct mutation sites plus one request-guard observation; both ineffective mutants above are excluded from every count",
+      "a real product race found by the zh run (polling re-refilled a cleared deployment name) fixed separately as MR768; the evidence binary includes that fix"
+    ],
+    "limits": [
+      "deployment-health/replicas/node-removal keep their own 6.5 open: different save-rejection contexts not covered here"
     ]
   }
 }

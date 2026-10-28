@@ -241,28 +241,33 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
     report['evaluate_observations'].append({'status': evaluated.status,
         'request': evaluated.request.post_data_json, 'response': evaluation})
     launch_preview = launch_checks.draft_checks(page, labels, expected_body(data), report, token=token)
+    launch_checks.boolean_rejection.seed(page, labels, expected_body(data), report, token,
+        launch_checks.boolean_rejection.declared_mount(str(server.storage_root / 'store-b')), data['storages'][1]['id'])
     # A real second session removes the selected provider from this owned
     # spec after evaluation. Browser retains its original valid draft.
     report['step'] = 'real selected provider expires before create'
     changed = copy.deepcopy(data['import_model'])
     changed['specs'][0]['weights']['sources'] = [source for source in changed['specs'][0]['weights']['sources']
                                                if data['provider'] not in source]
-    replace_owned_template(server, token, data, changed)
-    try:
-        stale = hold_deploy_create(page, report)
-        same(stale.status, 400, 'expired selected provider HTTP')
-        rejected = stale.json()
-        same(rejected['code'], 'ACQUISITION_CANDIDATE_STALE', 'expired provider error code')
-        same(rejected['params'], {'provider': data['provider']}, 'expired provider error parameters')
-        same(stale.request.post_data_json, expected_body(data), 'expired provider original full draft')
-        expect(name).to_have_value(data['name'])
-        expect(route).to_have_value(data['served_name'])
-        error = labels['action']['createFailed'].replace('{{detail}}', common['apiError']['ACQUISITION_CANDIDATE_STALE'])
-        rejected_notice(page, error, labels, report)
-        status, listed = http(server.base, 'GET', containers.DEPLOYMENTS + '?q=' + quote(data['name'], safe=''), token)
-        check(status == 200 and listed['items'] == [] and listed['total'] == 0, 'rejected expiry wrote a deployment')
-    finally:
-        replace_owned_template(server, token, data, data['import_model'])
+    with launch_checks.boolean_rejection.expiry_guard(page, report):
+        replace_owned_template(server, token, data, changed)
+        try:
+            stale = hold_deploy_create(page, report)
+            same(stale.status, 400, 'expired selected provider HTTP')
+            rejected = stale.json()
+            same(rejected['code'], 'ACQUISITION_CANDIDATE_STALE', 'expired provider error code')
+            same(rejected['params'], {'provider': data['provider']}, 'expired provider error parameters')
+            same(stale.request.post_data_json, launch_checks.boolean_rejection.expected_bad_body(expected_body(data), report), 'expired provider original full draft')
+            expect(name).to_have_value(data['name'])
+            expect(route).to_have_value(data['served_name'])
+            error = labels['action']['createFailed'].replace('{{detail}}', common['apiError']['ACQUISITION_CANDIDATE_STALE'])
+            rejected_notice(page, error, labels, report)
+            status, listed = http(server.base, 'GET', containers.DEPLOYMENTS + '?q=' + quote(data['name'], safe=''), token)
+            check(status == 200 and listed['items'] == [] and listed['total'] == 0, 'rejected expiry wrote a deployment')
+            launch_checks.boolean_rejection.retained(page, labels, expected_body(data), report, token, stale, 'provider')
+        finally:
+            replace_owned_template(server, token, data, data['import_model'])
+    launch_checks.boolean_rejection.restore(page, labels, expected_body(data), report, token)
     report['step'] = 'restore selected provider and create exactly one deployment'
     with page.expect_response(lambda r: urlsplit(r.url).path == containers.DEPLOYMENTS
                               and r.request.method == 'POST') as created:
@@ -370,7 +375,9 @@ def exercise(page, context, server, artifacts, report, locale, data, token, hold
         'dismissals': ['cancel', 'escape', 'close', 'mask'],
         'focus_returned': True, 'delete_requests': 0, 'stored_name': data['name']})
     same(requests, [{'method': 'POST', 'path': path, 'query': '', 'body': expected_register},
-                   *[{'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '', 'body': expected_body(data)}] * 2],
+                   {'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '',
+                    'body': launch_checks.boolean_rejection.expected_bad_body(expected_body(data), report)},
+                   {'method': 'POST', 'path': containers.DEPLOYMENTS, 'query': '', 'body': expected_body(data)}],
          'browser mutation full bodies/count/order')
     launch_checks.frozen(report)
     conclude(report)

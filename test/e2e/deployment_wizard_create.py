@@ -198,6 +198,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     forecast = page.get_by_role("table").filter(has=page.get_by_text(labels["workbench"]["nodeAcquisition"]["forecastNote"], exact=True))
     expect(forecast.get_by_role("row").last).to_have_text(
         fixture["node"]["name"] + labels["workbench"]["nodeAcquisition"]["present"] * 2)
+    launch_checks.boolean_rejection.seed(page, labels, expected_body(fixture, fixture["name"]), report, token, launch_checks.boolean_rejection.declared_mount(fixture["model_dir"]))
     name_input.fill("")
     deploy.click()
     expect(page.get_by_text(labels["basic"]["nameRequired"], exact=True)).to_be_visible()
@@ -213,14 +214,16 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     detail = "must contain valid text without control characters and at most 256 characters"
     assert_json(rejected.json(), {"code": "FIELD_INVALID", "error": "name " + detail,
           "params": {"field": "name", "detail": detail}}, "wrong server validation wire")
-    assert_json(creates[0]["body"], expected_body(fixture, invalid), "rejected create body differs")
+    assert_json(creates[0]["body"], launch_checks.boolean_rejection.expected_bad_body(expected_body(fixture, invalid), report), "rejected create body differs")
     error_text = common["apiError"]["FIELD_INVALID"].replace("{{field}}", "name").replace("{{detail}}", detail)
     rejected_notice(page, labels["action"]["createFailed"].replace("{{detail}}", error_text), labels, report)
     expect(name_input).to_have_value(invalid)
     expect(image).to_have_value(IMAGE)
     status, empty = http(server.base, "GET", DEPLOYMENTS, token=token)
     check(status == 200 and empty["total"] == 0, "rejected request created a deployment")
+    launch_checks.boolean_rejection.retained(page, labels, expected_body(fixture, fixture["name"]), report, token, rejected, "name")
     name_input.fill(fixture["name"])
+    launch_checks.boolean_rejection.restore(page, labels, expected_body(fixture, fixture["name"]), report, token)
     with page.expect_response(lambda r: urlsplit(r.url).path == DEPLOYMENTS
                               and r.request.method == "POST") as created:
         deploy.click()
@@ -315,10 +318,10 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     expect(row).to_have_count(0)
     report["owned_deployment_id"] = None
     check(len(create_responses) == len(creates) == 2, "unexpected deployment response count")
-    assert_json(deployment_requests, [
+    assert_json(deployment_requests, launch_checks.boolean_rejection.expected_mutations([
         {"method": "POST", "path": DEPLOYMENTS, "query": "", "body": expected_body(fixture, invalid)},
         {"method": "POST", "path": DEPLOYMENTS, "query": "", "body": expected_body(fixture, fixture["name"])}],
-        "unexpected deployment POST request count/query/body")
+        report), "unexpected deployment POST request count/query/body")
     allowed_http = [{"method": "POST", "path": DEPLOYMENTS, "status": 400},
                     {"method": "GET", "path": DEPLOYMENTS + f"/{dep_id}", "status": 404}]
     check(all(item in allowed_http for item in http_errors), f"unexpected browser HTTP errors: {http_errors}")

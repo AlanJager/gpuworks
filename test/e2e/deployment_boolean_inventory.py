@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 from playwright.sync_api import expect
 from local_browser_fixture import ROOT, http
 from platform_token_read_revoke import check
-from deployment_boolean_contracts import ENGINE_DECIDES, evaluate_body, reviewed_profile, same
+from deployment_boolean_contracts import ENGINE_DECIDES, TRISTATE, evaluate_body, reviewed_profile, same
 from deployment_boolean_checks import _selected, _select_label
 from deployment_boolean_inventory_contracts import (
     FIXTURE_PARTITION, QUICK, SLEEP_SUPPORTED, complete, fixture_hardware, health_contract, health_source, initial, rows,
@@ -93,7 +93,7 @@ def _dictionary(page, labels, body, report, surface, key, evidence):
         # explain that prerequisite rather than only describe disk transport.
         _reason(control.locator('xpath=ancestor::div[contains(@class,"deploy-kv-tier")][1]'),
             labels['workbench']['kv']['memoryRequired'], record, evidence)
-    elif kind == 'feature-select' or record['position'] == 'auto' or key in ENGINE_DECIDES[body['engine']]:
+    elif kind == 'feature-select' or key in TRISTATE[body['engine']] or key in ENGINE_DECIDES[body['engine']]:
         control = page.get_by_role('combobox', name=title, exact=True)
         expect(control).to_have_count(1)
         expect(control).to_be_visible()
