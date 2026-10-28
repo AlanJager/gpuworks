@@ -5,8 +5,8 @@ import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
-// A deployment's scheduling policy card: one summary line over the three
-// policies (rescheduling on node loss, schedule, idle sleep), and the dialog
+// A deployment's scheduling policy card: one summary line over the
+// policies (rescheduling on node loss, schedule, idle sleep, service level), and the dialog
 // that edits them. The editors' own validation is in deploymentPolicyEditors.
 
 const closeChannels = trackMessageChannels();
@@ -77,7 +77,9 @@ const item = (label: string, value: string) => i18n.t("deployments:schedulingPol
 const line = (...items: string[]) => items.join(p.separator);
 const failover = (value: string) => item(n.title, value);
 const schedule = (value: string) => item(a.schedule.title, value);
-const idle = (value: string) => item(a.idle.title, value);
+// A sleepable single-node deployment's line also ends with its service level
+// (resident here); the part has its own tests in deploymentServiceLevel.
+const idle = (value: string) => line(item(a.idle.title, value), item(locale.deployments.serviceLevel.title, locale.deployments.serviceLevel.name.resident));
 const labelled = (scope: ReturnType<typeof within>, text: string) => scope.getByText(text).closest("button") as HTMLButtonElement;
 const dialogs = () => screen.getAllByRole("dialog");
 
@@ -166,7 +168,7 @@ test("the edit action opens the dialog from the keyboard, with a tab for each po
   await user.keyboard("{Enter}");
   const dialog = within(await screen.findByRole("dialog"));
   const tabs = dialog.getAllByRole("tab").map((tab) => tab.textContent);
-  assert.deepEqual(tabs, [n.title, a.schedule.title, a.idle.title]);
+  assert.deepEqual(tabs, [n.title, a.schedule.title, a.idle.title, locale.deployments.serviceLevel.title]);
   // The long explanations are not on the page any more.
   assert.equal(screen.queryByText(/回来|returns before the moved replica/), null);
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape", keyCode: 27 });

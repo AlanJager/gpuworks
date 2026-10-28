@@ -170,3 +170,19 @@ test("without a waiting wake there is no banner", async () => {
   mount();
   assert.equal(screen.queryByText(sl.waiting.cancel), null);
 });
+
+test("an asleep deployment says a request wakes it, unless the sleep was ordered by an operator or a schedule", async () => {
+  stub(async () => ({ status: "woken", woken: ["inst-a"], waiting: [], yielded: [] }));
+  mount(asleep());
+  screen.getByText(sl.requestWakesHint);
+  assert.equal(screen.queryByText(sl.heldHint), null);
+  cleanup();
+  mount(asleep({ sleep_held: true }));
+  screen.getByText(sl.heldHint);
+  assert.equal(screen.queryByText(sl.requestWakesHint), null);
+  cleanup();
+  // An awake deployment has no sleep to explain.
+  mount(asleep({ instances: [{ ...instance("inst-a", 0), sleep_level: 0, desired_sleep: 0, asleep: false }] }));
+  assert.equal(screen.queryByText(sl.requestWakesHint), null);
+  assert.equal(screen.queryByText(sl.heldHint), null);
+});

@@ -1787,7 +1787,20 @@ export interface Deployment {
   idle_sleep?: IdleSleep;
   node_replacement?: NodeReplacement;
   wake_waiting_since?: string;
+  // service_level is how the deployment shares its GPUs with the others on
+  // them; absent counts as resident. sleep_held is set while an operator's or
+  // a schedule's sleep keeps it asleep: a request does not wake it.
+  service_level?: ServiceLevel;
+  sleep_held?: boolean;
 }
+
+// ServiceLevel orders deployments that share GPUs: resident never gives its
+// GPUs up, online gives them up after 5 idle minutes and takes them back on a
+// request, shared takes turns with other shared deployments and gives way to
+// online, offline gives way to everyone at once. The create and evaluate
+// bodies carry it as service_level (absent: resident).
+export type ServiceLevel = "resident" | "online" | "shared" | "offline";
+export const serviceLevels: ServiceLevel[] = ["resident", "online", "shared", "offline"];
 
 export interface IdleSleep {
   after_sec: number;
@@ -4372,6 +4385,8 @@ export const api = {
     sendJSON<void>("DELETE", `/api/v1/deployments/${id}/schedule/${scheduleID}`),
   setIdleSleep: (id: number, body: IdleSleep) =>
     sendJSON<IdleSleep>("PUT", `/api/v1/deployments/${id}/idle-sleep`, body),
+  setServiceLevel: (id: number, level: ServiceLevel) =>
+    sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/service-level`, { level }),
   setNodeReplacement: (id: number, body: NodeReplacement) =>
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   schedulingBoard: (query: { page: number; page_size: number; q?: string }) =>

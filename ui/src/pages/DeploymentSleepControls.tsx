@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Space, Tag, message } from "antd";
+import { Alert, Button, Space, Tag, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
 import { api, type Deployment, type WakeOptions, type WakeResult } from "../api";
 import { APIError, apiErrorText } from "../apiError";
@@ -148,6 +148,11 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
       {refusal && <WakeRefusalAlert refusal={refusal} busy={busy} onWait={() => void doWaitWake({ wait: true })} onYield={() => void doWaitWake({ yield: true })} />}
       {all && <Tag color="orange">{t("sleep.sleeping", { level: summary.level, name: levelName(summary.level) })}</Tag>}
       {summary.asleep > 0 && !all && <Tag color="orange">{t("sleep.partial", { asleep: summary.asleep, total: summary.total })}</Tag>}
+      {summary.asleep > 0 && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {dep.sleep_held ? t("sleep.heldHint") : t("sleep.requestWakesHint")}
+        </Typography.Text>
+      )}
       {summary.asleep > 0 && (
         <Button size="small" type="primary" loading={busy} onClick={() => void doWake(false)}>
           {all ? t("sleep.wake") : t("sleep.wakeAll")}

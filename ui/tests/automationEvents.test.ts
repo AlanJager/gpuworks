@@ -52,3 +52,32 @@ test("the same entries read in Chinese, and a payload without params still rende
   assert.equal(text("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 4 }), "副本数已设为 4，由定时计划触发");
   assert.ok(text("AUTO_WAKE", {}).length > 0);
 });
+
+test("a wake a request waited for, and one that took the GPUs back, read in both languages", async () => {
+  const en = await texts("en");
+  assert.equal(en("AUTO_WAKE", { trigger: "request", instances: [uuid] }), "Woke instance 01234567 because a request arrived");
+  assert.equal(en("AUTO_WAKE", { trigger: "resume", instances: [uuid] }), "Woke instance 01234567 once the GPUs it gave up were free again");
+  const zh = await texts("zh");
+  assert.equal(zh("AUTO_WAKE", { trigger: "request", instances: [uuid] }), "已唤醒实例 01234567，因请求到达");
+  assert.equal(zh("AUTO_WAKE", { trigger: "resume", instances: [uuid] }), "已唤醒实例 01234567，让出的 GPU 已空出，恢复运行");
+});
+
+test("a sleep that gave GPUs to another deployment says to whom, why, and whether requests were cut off", async () => {
+  const zh = await texts("zh");
+  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "rank", for_deployment: 7, level: 2, abort: false, instances: [uuid] }), "已休眠（L2），部署 #7 的服务等级更高，为其让出 GPU");
+  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "idle", for_deployment: 7, level: 2, abort: false, instances: [uuid] }), "已休眠（L2），空闲超过让卡时间，为 部署 #7 让出 GPU");
+  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "turn", for_deployment: 9, level: 1, abort: true, instances: [uuid] }), "已休眠（L1），分时轮到 部署 #9，为其让出 GPU，中断了进行中的请求");
+  const en = await texts("en");
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "rank", for_deployment: 7, level: 2, abort: true, instances: [uuid] }), "Put to sleep (L2) to give its GPUs to deployment #7, which has a higher service level; requests in flight were cut off");
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "turn", for_deployment: 9, level: 1, abort: false, instances: [uuid] }), "Put to sleep (L1) to give its GPUs to deployment #9, whose turn it is in the time share");
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "idle", for_deployment: 3, level: 2, abort: false, instances: [uuid] }), "Put to sleep (L2) to give its GPUs to deployment #3 after sitting idle past its hold time");
+  // Without a target or a known reason the entry still says it gave GPUs up.
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", level: 2 }), "Put to sleep (L2) to give its GPUs to another deployment");
+});
+
+test("a failed sleep that was ordered to give GPUs up is not worded as a scheduled one", async () => {
+  const en = await texts("en");
+  assert.equal(en("SCHEDULE_ACTION_FAILED", { trigger: "preempt", action: "sleep", reason: "engine busy" }), "Failed to sleep to give up GPUs: engine busy");
+  const zh = await texts("zh");
+  assert.equal(zh("SCHEDULE_ACTION_FAILED", { trigger: "preempt", action: "sleep", reason: "引擎忙" }), "让出 GPU 时休眠失败：引擎忙");
+});

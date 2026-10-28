@@ -4,6 +4,7 @@ import type { Deployment } from "../api";
 import { formatTime } from "../i18n/datetime";
 import IdleSleepEditor from "./DeploymentIdleSleep";
 import NodeReplacementEditor, { nodeReplacementSeconds } from "./DeploymentNodeReplacement";
+import ServiceLevelEditor, { canShareGPUs, levelOf } from "./DeploymentServiceLevel";
 import ScheduleSection, { scheduleOrderText, type Schedules } from "./DeploymentSchedule";
 import { durationText } from "./nodeReplacementEvents";
 
@@ -18,7 +19,7 @@ export interface PolicyContext {
 // A PolicySection is one kind of standing policy on a deployment: its name,
 // whether the deployment has it, the phrase it adds to the card's summary and
 // the editor that changes it. The card lists these in order, so a new policy
-// (a service level) is one more entry here.
+// is one more entry here.
 export interface PolicySection {
   key: string;
   // The i18n key of its name, in the deployments namespace.
@@ -65,6 +66,15 @@ export const policySections: PolicySection[] = [
     render: ({ dep, onChanged }) => (
       <IdleSleepEditor key={`idle-${dep.id}-${idleAfterSec(dep)}-${dep.idle_sleep?.level ?? 0}`} dep={dep} onChanged={onChanged} />
     ),
+  },
+  {
+    key: "serviceLevel",
+    label: "serviceLevel.title",
+    // Only a sleepable single-node deployment can leave resident; one that
+    // kept another level from when it could still shows it so it can go back.
+    visible: (dep) => canShareGPUs(dep) || levelOf(dep) !== "resident",
+    summary: (t, { dep }) => t(`serviceLevel.name.${levelOf(dep)}`),
+    render: ({ dep, onChanged }) => <ServiceLevelEditor key={`level-${dep.id}-${levelOf(dep)}`} dep={dep} onChanged={onChanged} />,
   },
 ];
 

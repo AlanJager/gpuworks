@@ -68,6 +68,8 @@
     "deepAction": "Deep Sleep (L2)",
     "partial": "Partly asleep · {{asleep}}/{{total}} replicas",
     "wakeAll": "Wake all",
+    "heldHint": "Put to sleep by an operator or a schedule: requests do not wake it",
+    "requestWakesHint": "A request wakes it automatically",
     "wakeWhatFits": "Wake what fits",
     "partialWoken": "Woke {{woken}}; {{refused}} could not fit back on their cards",
     "waitStarted": "Waiting for room: the wake follows when the GPUs free up",
@@ -389,6 +391,7 @@
       "WAKE_WAITING": "Wake of instance {{instances}} waits for room{{yielded}}",
       "WAKE_WAIT_TIMEOUT": "Stopped waiting for room to wake instance {{instances}} after {{waited}}",
       "SCHEDULE_ACTION_FAILED": "Scheduled {{action}} failed: {{reason}}",
+      "SCHEDULE_ACTION_FAILED_preempt": "Failed to {{action}} to give up GPUs: {{reason}}",
       "YIELDED_FOR_WAKE": "Put to sleep (L{{level}}) to make room for waking {{deployment}}",
       "NODE_REPLACED": "Reschedule on node loss: node {{from}} stayed offline for over {{after}}, {{what}} {{target}}",
       "NODE_REPLACE_REVERTED": "Node {{to}} came back before {{what}} ran on {{from}}: the rescheduling is undone",
@@ -710,9 +713,20 @@
       "schedule": "by its schedule",
       "idle": "after {{idle}} without requests",
       "wake_waiting": "once its GPUs had room",
-      "operator": "as ordered"
+      "operator": "as ordered",
+      "request": "because a request arrived",
+      "resume": "once the GPUs it gave up were free again"
     },
     "yieldedNote": ", after putting {{names}} to sleep",
+    "preempt": {
+      "idle": "to give its GPUs to {{who}} after sitting idle past its hold time",
+      "rank": "to give its GPUs to {{who}}, which has a higher service level",
+      "turn": "to give its GPUs to {{who}}, whose turn it is in the time share",
+      "other": "to give its GPUs to {{who}}",
+      "who": "deployment #{{id}}",
+      "someone": "another deployment",
+      "abort": "; requests in flight were cut off"
+    },
     "action": {
       "sleep": "sleep",
       "wake": "wake",
@@ -813,6 +827,25 @@
     "scheduleCount_other": "{{count}} orders",
     "scheduleNext": ", next {{time}}: {{order}}",
     "scheduleAllOff": ", all disabled"
+  },
+  "serviceLevel": {
+    "title": "Service level",
+    "hint": "When several deployments share GPUs, the service level decides who gives way. A request for a non-resident deployment the platform put to sleep is held while it wakes, instead of failing with 503.",
+    "notEligible": "Only a sleepable single-node (non-PD) deployment can change its service level.",
+    "saved": "Service level saved",
+    "saveFailed": "Failed to save the service level: {{detail}}",
+    "name": {
+      "resident": "Resident",
+      "online": "Online",
+      "shared": "Shared",
+      "offline": "Offline"
+    },
+    "description": {
+      "resident": "Never gives its GPUs to another deployment (default).",
+      "online": "Gives its GPUs up only after 5 minutes without requests; takes them back from shared and offline deployments when a request comes. Two online deployments cannot share GPUs.",
+      "shared": "Takes turns with other shared deployments on the same GPUs (at least 2 minutes each); gives way to online at once, letting requests in flight finish for up to 30 s.",
+      "offline": "Gives its GPUs to everyone else at once and cuts off requests in flight (clients see finish_reason \"abort\"); resumes when the GPUs are free again. For batch work."
+    }
   },
   "nodeReplacement": {
     "title": "Reschedule on node loss",

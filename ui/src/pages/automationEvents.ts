@@ -55,17 +55,34 @@ function shortIDs(ids: string[]): string {
   return ids.map((id) => id.slice(0, 8)).join(", ");
 }
 
+// preemptCause words a deployment giving its GPUs to another by service level:
+// who got them, why (idle past its hold time, rank, a time-share turn) and
+// whether requests in flight were cut off.
+function preemptCause(t: TFunction<"deployments">, event: InstanceEvent): string {
+  const target = num(event, "for_deployment");
+  const who = target != null ? t("automation.preempt.who", { id: target }) : t("automation.preempt.someone");
+  const reason = text(event, "reason");
+  const why = t(`automation.preempt.${reason}`, { who, defaultValue: "" }) || t("automation.preempt.other", { who });
+  return event.params?.abort === true ? why + t("automation.preempt.abort") : why;
+}
+
 /** Word one automation entry from its code and params. */
 export function automationEventText(t: TFunction<"deployments">, event: InstanceEvent, code: string): string {
   const trigger = text(event, "trigger");
   const level = num(event, "level") ?? "";
   const instances = shortIDs(list(event, "instances"));
   const idle = num(event, "idle_sec");
-  const cause = trigger ? t(`automation.cause.${trigger}`, { defaultValue: "", idle: idle != null ? durationText(t, idle) : "" }) : "";
+  const preempt = trigger === "preempt";
+  const cause = preempt
+    ? preemptCause(t, event)
+    : trigger ? t(`automation.cause.${trigger}`, { defaultValue: "", idle: idle != null ? durationText(t, idle) : "" }) : "";
   const waited = num(event, "waited_sec");
   const yielded = list(event, "yielded");
   const action = text(event, "action");
-  const rendered = t(`instance.event.${code}`, {
+  // A failed sleep ordered to give GPUs to another deployment is not a
+  // scheduled one: it has its own wording.
+  const key = code === "SCHEDULE_ACTION_FAILED" && preempt ? `${code}_preempt` : code;
+  const rendered = t(`instance.event.${key}`, {
     cause,
     level,
     instances,
