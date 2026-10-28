@@ -158,8 +158,16 @@ func (s *Store) SetDeploymentSleep(id uint, level int) error {
 // deployment and, on every live instance, the level and pause mode (an empty
 // mode keeps each instance's), atomically.
 func (s *Store) OrderDeploymentSleep(id uint, level int, mode string) error {
+	return s.OrderDeploymentSleepHeld(id, level, mode, false)
+}
+
+// OrderDeploymentSleepHeld is OrderDeploymentSleep that also says whether the
+// sleep is held (Deployment.SleepHeld): an operator's or a schedule's sleep
+// is, so a request does not wake it; a wake (level 0) never is.
+func (s *Store) OrderDeploymentSleepHeld(id uint, level int, mode string, held bool) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&Deployment{}).Where("id = ?", id).Update("desired_sleep", level).Error; err != nil {
+		if err := tx.Model(&Deployment{}).Where("id = ?", id).
+			Updates(map[string]any{"desired_sleep": level, "sleep_held": held && level > 0}).Error; err != nil {
 			return err
 		}
 		var insts []Instance
@@ -180,9 +188,22 @@ func (s *Store) OrderDeploymentSleep(id uint, level int, mode string) error {
 // deployment-wide sleep order, since the deployment is no longer wholly under
 // it; its other sleepers keep their own intent.
 func (s *Store) OrderInstancesSleep(depID uint, uuids []string, level int, mode string) error {
+	return s.OrderInstancesSleepHeld(depID, uuids, level, mode, false)
+}
+
+// OrderInstancesSleepHeld is OrderInstancesSleep that also sets whether the
+// deployment's sleep is held (Deployment.SleepHeld). A wake clears it; a
+// sleep that is not held leaves it as it was, so an operator's hold on some
+// replicas is not lifted by the platform putting others to sleep.
+func (s *Store) OrderInstancesSleepHeld(depID uint, uuids []string, level int, mode string, held bool) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if level == 0 {
-			if err := tx.Model(&Deployment{}).Where("id = ?", depID).Update("desired_sleep", 0).Error; err != nil {
+			if err := tx.Model(&Deployment{}).Where("id = ?", depID).
+				Updates(map[string]any{"desired_sleep": 0, "sleep_held": false}).Error; err != nil {
+				return err
+			}
+		} else if held {
+			if err := tx.Model(&Deployment{}).Where("id = ?", depID).Update("sleep_held", true).Error; err != nil {
 				return err
 			}
 		}

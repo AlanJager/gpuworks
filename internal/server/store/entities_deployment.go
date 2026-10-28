@@ -83,6 +83,16 @@ type Deployment struct {
 	// deployment's replicas may stay offline before the replica is moved to
 	// another node; 0 never moves it.
 	NodeReplaceAfterSec int `gorm:"not null;default:600"`
+	// ServiceLevel is how the deployment shares GPUs with others
+	// (ServiceLevel* constants): resident never gives its cards up; online,
+	// shared and offline let the residency arbiter put them to sleep for one
+	// another by priority (docs/explanation/service-levels.md).
+	ServiceLevel string `gorm:"size:16;not null;default:'resident'"`
+	// SleepHeld says the deployment's sleep was ordered by an operator or a
+	// schedule: a request through the gateway does not wake it. A sleep the
+	// platform chose (idle sleep, the arbiter) is not held and a request
+	// wakes it.
+	SleepHeld bool `gorm:"not null;default:false"`
 
 	// State is the internal Go name; the persisted column is desired_state.
 	// The column type is unchanged: DeploymentState is a string alias.
