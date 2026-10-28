@@ -4,6 +4,13 @@
 # build` depends on `make ui`. All Go binaries are static (CGO_ENABLED=0).
 
 GO        ?= go
+# A caller may export GO with no value (GO= make build). `?=` only fills an
+# undefined variable, so an exported-but-empty GO would reach the shell as an
+# empty command and every build step would fail with "/bin/sh: N: build: not
+# found" - a message that names the subcommand, never GO. Fall back instead.
+ifeq ($(strip $(GO)),)
+GO        := go
+endif
 GO_TEST_FLAGS ?=
 COVERPROFILE ?=
 GOBIN     := $(HOME)/.local/go/bin
@@ -182,6 +189,19 @@ test-ui-motion:
 test-ui-playground-layout:
 	python3 -B ui/tests/browser/playground_layout.py
 
+.PHONY: ensure-bins
+## ensure-bins: the E2E entry points need bin/gpuworks and bin/gpuworks-agent,
+## but a full `make build` (UI bundle plus every cross-compiled agent) takes
+## minutes even when nothing changed. Build only when a binary is missing, so
+## re-running one case does not pay for a rebuild it does not need.
+ensure-bins:
+	@if [ -x bin/gpuworks ] && [ -x bin/gpuworks-agent ]; then \
+		echo "  reusing existing bin/gpuworks and bin/gpuworks-agent"; \
+	else \
+		echo "  binaries missing; running make build"; \
+		$(MAKE) build || exit 1; \
+	fi
+
 .PHONY: test-e2e-setup-check
 ## test-e2e-setup-check: report which E2E prerequisites this machine is missing.
 ## Runs no test and never fails on a missing dependency; it only tells you what
@@ -209,35 +229,35 @@ test-e2e-docker-check:
 .PHONY: test-e2e-playground-chat
 ## test-e2e-playground-chat: playground streaming, conversations, preview and
 ## compare. Needs the Docker daemon and the fake-engine image (make fake-engine-image).
-test-e2e-playground-chat: build
+test-e2e-playground-chat: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/playground_chat_gateway.py --locale en
 
 .PHONY: test-e2e-smoke
 ## test-e2e-smoke: the shortest real E2E path - Chrome, an isolated server and
 ## SQLite, no Docker and no GPU. Use this to prove the setup works before
 ## running narrower cases.
-test-e2e-smoke: build
+test-e2e-smoke: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/platform_token_read_revoke.py
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/session_logout.py
 
 .PHONY: test-e2e-platform-token
 ## test-e2e-platform-token: real Chrome + isolated server/SQLite; no GPU required
-test-e2e-platform-token: build
+test-e2e-platform-token: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/platform_token_read_revoke.py
 
 .PHONY: test-e2e-inference-key test-e2e-network-storage test-e2e-mcp-settings test-e2e-local
 ## Local browser closures: isolated real server/SQLite and Chrome, no GPU.
-test-e2e-inference-key: build
+test-e2e-inference-key: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/inference_key_lifecycle.py
 
-test-e2e-network-storage: build
+test-e2e-network-storage: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/network_storage_lifecycle.py
 
-test-e2e-mcp-settings: build
+test-e2e-mcp-settings: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/mcp_settings_lifecycle.py
 
 ## Build once, then execute each independent case; any failure stops this target.
-test-e2e-local: build
+test-e2e-local: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/provider_endpoint_defaults.py
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/image_catalog.py --case register
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/image_catalog.py --case delete-version
@@ -627,7 +647,7 @@ clean:
 
 .PHONY: test-e2e-log-filter-export
 ## test-e2e-log-filter-export: real local server WARN collection, browser filters and exact CSV bytes
-test-e2e-log-filter-export: build
+test-e2e-log-filter-export: ensure-bins
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/log_filter_export.py --locale en
 	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/log_filter_export.py --locale zh
 

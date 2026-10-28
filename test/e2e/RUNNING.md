@@ -7,15 +7,17 @@
 
 | 层 | 需要什么 | 覆盖脚本数 | 典型 case |
 |---|---|---|---|
-| L1 无需构建产物 | Python 3.12 + Playwright + 系统 Chrome | 135 | — |
-| L2 加 server 二进制 | `bin/gpuworks`（`make build` 产出） | 57 | `platform_token_read_revoke.py`、`inference_key_lifecycle.py` |
-| L3 加 agent 二进制 | `bin/gpuworks-agent`（同样是 `make build`） | 35 | `deployment_replicas.py` |
-| L4 加 Docker daemon | 可达的 docker socket + 已导入的镜像 | 27 | `playground_chat_gateway.py` |
+| L1 只用浏览器 | Python 3.12 + Playwright + 系统 Chrome | 71 | — |
+| L2 加 server 二进制 | `bin/gpuworks` | 63 | `platform_token_read_revoke.py`、`inference_key_lifecycle.py` |
+| L3 加 agent 二进制 | `bin/gpuworks-agent` | 25 | `deployment_replicas.py` |
+| L4 加 Docker daemon | 可达的 docker socket + 已导入的镜像 | 18 | `playground_chat_gateway.py` |
+
+（按 147 个可执行脚本统计，各层含上一层的脚本；`make build` 一次产出两个二进制。）
 
 **先跑 L2 那批**：它们是"真实 Chrome + 隔离 server + SQLite"的纯本机链路，不碰 GPU、不碰容器，
 覆盖平台令牌、推理密钥、网络存储、MCP 设置等主干功能。多数开发改动用 L2 就够了。
 
-GPU（`nvidia-smi` / CUDA）只影响 17 个脚本，且这些脚本注入调度用的 GPU 事实、不认领真实算力。
+GPU（`nvidia-smi` / CUDA）只影响 7 个脚本，且这些脚本注入调度用的 GPU 事实、不认领真实算力。
 真正的 GPU 推理验证不在本目录。
 
 ## 二、按顺序准备
@@ -78,9 +80,12 @@ FileNotFoundError: [Errno 2] No such file or directory: '/path/bin/gpuworks'
 
 ## 五、当前结构与已知摩擦
 
-- **248 个脚本，只有 6 个 Make 入口**（`test-e2e-platform-token`、`-inference-key`、`-network-storage`、
-  `-mcp-settings`、`-local`、`-log-filter-export`）。其余需要手工调用并自己给参数，各脚本 CLI 并不统一
-  （`--server-bin`、`--artifact-dir` 等并非都有）。用 `--help` 确认，不要假设。
+- 目录里 248 个 `.py` 的实际构成：**101 个是库/辅助模块**（无 `__main__`，如 `local_browser_fixture`、
+  `dialog_checks`），其余 147 个可执行；其中 **93 个已封装成 `test-e2e-*` 目标**，可以直接
+  `make test-e2e-<name>`，不用记 `NO_PROXY` 和模块路径。需要参数的用例（`--server-bin`、`--locale`、
+  `--artifact-dir` 等）仍要手工调用，且各脚本 CLI 并不统一，用 `--help` 确认，不要假设。
+- **`make build` 即使无改动也要约 2.5 分钟**（UI 打包 + 三平台 agent 交叉编译，全部是 `.PHONY`）。
+  E2E 目标已改成依赖 `ensure-bins`：二进制在就复用（实测单条用例 39 秒），缺了才构建。
 - ~~没有 `requirements.txt`~~ → 已加 `requirements-e2e.txt`；~~`docs/dev/setup.md` 未提及 e2e~~
   → 已补「浏览器 E2E」一节。
 - 已有 `make test-e2e-setup-check`（依赖自检）与 `make test-e2e-smoke`（最小链路）两个入口。
