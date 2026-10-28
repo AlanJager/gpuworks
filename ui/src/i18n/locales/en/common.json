@@ -110,6 +110,7 @@
     "AI_TASK_INVALID": "Unknown assistant task \"{{task}}\".",
     "AI_TARGET_REQUIRED": "The assistant needs the one instance, model, deployment, node or question this task is about.",
     "AI_ASK_BUSY": "You already have {{limit}} questions running; wait for one to finish.",
+    "AI_DEFAULT_REQUIRED": "This is the AI service the assistant uses. Make another service the default first, or delete this one.",
     "PLATFORM_TOKEN_READ_ONLY": "This token is read-only.",
     "PLATFORM_TOKEN_NOT_ALLOWED": "Platform tokens are managed from a signed-in session.",
     "PLATFORM_TOKEN_SCOPE_INVALID": "A token's scope is read or write, not \"{{scope}}\".",

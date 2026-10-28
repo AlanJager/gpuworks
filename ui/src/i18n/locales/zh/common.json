@@ -110,6 +110,7 @@
     "AI_TASK_INVALID": "未知的助手任务“{{task}}”。",
     "AI_TARGET_REQUIRED": "助手需要指定这个任务针对的一个实例、模型、部署、节点或问题。",
     "AI_ASK_BUSY": "你已有 {{limit}} 个问题在处理中，请等其中一个完成。",
+    "AI_DEFAULT_REQUIRED": "这是助手正在使用的 AI 服务。请先把另一个服务设为默认，或直接删除这个服务。",
     "PLATFORM_TOKEN_READ_ONLY": "该令牌只读。",
     "PLATFORM_TOKEN_NOT_ALLOWED": "平台令牌只能在登录状态下管理。",
     "PLATFORM_TOKEN_SCOPE_INVALID": "令牌范围只能是 read 或 write，不能是“{{scope}}”。",

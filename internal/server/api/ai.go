@@ -38,38 +38,31 @@ func (a *apiHandlers) listAIConfigs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// Never return the API key.
-	type config struct {
-		ID        uint   `json:"id"`
-		Name      string `json:"name"`
-		Preset    string `json:"preset"`
-		BaseURL   string `json:"base_url"`
-		Model     string `json:"model"`
-		IsDefault bool   `json:"is_default"`
-	}
-	out := make([]config, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, config{ID: c.ID, Name: c.Name, Preset: c.Preset, BaseURL: c.BaseURL, Model: c.Model, IsDefault: c.IsDefault})
+	// Never return the API key: dto.AIConfigView has no field for it.
+	out := make([]dto.AIConfigView, 0, len(cs))
+	for i := range cs {
+		out = append(out, aiConfigView(&cs[i]))
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(out))
 }
 
 func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name      string `json:"name"`
-		Preset    string `json:"preset"`
-		BaseURL   string `json:"base_url"`
-		APIKey    string `json:"api_key"`
-		Model     string `json:"model"`
-		IsDefault bool   `json:"is_default"`
-	}
+	var req dto.AIConfigRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
-	if !validateName(w, req.Name) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		writeFieldInvalid(w, "name", "is required")
 		return
 	}
-	// Fill base_url/model from a preset if given and not overridden.
+	if !validateAIConfigName(w, name, "") {
+		return
+	}
+	// Fill base_url/model from a preset if given and not overridden, then
+	// store the base address the way an edit does. An address may be left
+	// empty here: a preset fills it, and a service stored without one is a
+	// configuration the assistant reports as unusable, not a lost write.
 	if p, ok := aihelper.Presets[req.Preset]; ok {
 		if req.BaseURL == "" {
 			req.BaseURL = p.BaseURL
@@ -78,13 +71,21 @@ func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
 			req.Model = p.Model
 		}
 	}
+	base, ok := validateAIBaseURL(w, req.BaseURL, false)
+	if !ok {
+		return
+	}
+	req.BaseURL = base
+	if !validateAIColumn(w, "preset", req.Preset, 32) || !validateAIColumn(w, "model", req.Model, 64) {
+		return
+	}
 	encryptedKey, err := store.EncryptAIKey(a.d.AISecretbox, req.APIKey)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
 	c, err := a.d.Store.CreateAIConfig(&store.AIConfig{
-		Name: req.Name, Preset: req.Preset, BaseURL: req.BaseURL, APIKey: encryptedKey,
+		Name: name, Preset: req.Preset, BaseURL: req.BaseURL, APIKey: encryptedKey,
 		Model: req.Model, IsDefault: req.IsDefault,
 	})
 	if err != nil {
@@ -94,12 +95,21 @@ func (a *apiHandlers) createAIConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"id": c.ID})
 }
 
+// deleteAIConfig removes one AI service (DELETE /api/v1/ai/configs/{id}).
+// Removing the service the assistant uses hands the mark to another one in the
+// same transaction, and the answer names it: the console says which service the
+// assistant moved to, instead of the egress notice silently changing host.
 func (a *apiHandlers) deleteAIConfig(w http.ResponseWriter, r *http.Request) {
-	if err := a.d.Store.DeleteAIConfig(parseUint(chi.URLParam(r, "id"))); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
+	promoted, err := a.d.Store.DeleteAIConfig(parseUint(chi.URLParam(r, "id")))
+	if err != nil {
+		writeAIStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	answer := map[string]any{"status": "deleted"}
+	if promoted != 0 {
+		answer["promoted_id"] = promoted
+	}
+	writeJSON(w, http.StatusOK, answer)
 }
 
 // aiAsk runs a task (dto.AIAskRequest). Each task names its subject by

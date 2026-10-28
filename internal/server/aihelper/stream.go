@@ -59,7 +59,11 @@ func (c *Client) ChatStream(ctx context.Context, messages []Message, tools []Too
 		ChatRequest
 		StreamOptions streamOptions `json:"stream_options"`
 	}{ChatRequest{Model: c.ep.Model, Messages: messages, Tools: tools, Stream: true}, streamOptions{IncludeUsage: true}})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.ep.BaseURL+"/chat/completions", bytes.NewReader(body))
+	call, err := ChatCompletionsURL(c.ep.BaseURL)
+	if err != nil {
+		return Message{}, Usage{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, call, bytes.NewReader(body))
 	if err != nil {
 		return Message{}, Usage{}, err
 	}
