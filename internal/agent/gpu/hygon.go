@@ -221,7 +221,6 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			devices = append(devices, path)
 		}
 	}
-	args = append(args, "--volume", "/opt/hyhal:/opt/hyhal:ro")
 	// Docker resolves named supplementary groups inside the image. Minimal
 	// probe images have no group database, so pass host device GIDs as numbers.
 	groups := map[uint32]bool{}
@@ -253,6 +252,9 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			"HIP_VISIBLE_DEVICES":   visible,
 		},
 		DockerArgs: args,
+		// Driver libraries are required by every runtime. PRoot launchers do
+		// not interpret Docker volume flags; structured mounts reach them too.
+		Mounts: []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}},
 	}
 }
 

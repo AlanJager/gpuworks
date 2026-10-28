@@ -193,12 +193,15 @@ func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 		"--device", "/dev/mkfd:/dev/mkfd:rwm",
 		"--device", "/dev/dri/card2:/dev/dri/card2:rwm",
 		"--device", "/dev/dri/renderD129:/dev/dri/renderD129:rwm",
-		"--volume", "/opt/hyhal:/opt/hyhal:ro",
 		"--group-add", "39",
 		"--group-add", "998",
 	}
 	if !reflect.DeepEqual(inj.DockerArgs, wantArgs) {
 		t.Fatalf("docker args = %#v, want %#v", inj.DockerArgs, wantArgs)
+	}
+	wantMounts := []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}}
+	if !reflect.DeepEqual(inj.Mounts, wantMounts) {
+		t.Fatalf("driver library mounts = %#v, want %#v", inj.Mounts, wantMounts)
 	}
 }
 
