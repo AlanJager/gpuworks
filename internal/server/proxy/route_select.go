@@ -28,6 +28,9 @@ func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*st
 		deployments, ok := p.routes.snapshot(modelName)
 		if ok {
 			for _, rd := range deployments {
+				if p.hold.isDraining(rd.dep.ID) {
+					continue
+				}
 				if tgt, ok := p.pickRouted(rd, modelName, affinity); ok {
 					return rd.dep, tgt, 0, "", false
 				}
@@ -86,6 +89,9 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string) (tar
 }
 
 func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affinity string) (target, int, string, bool) {
+	if p.hold.isDraining(dep.ID) {
+		return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
+	}
 	insts, _ := p.store.InstancesForDeployment(dep.ID)
 	if dep.NNodes > 1 {
 		return p.selectDistributedInstance(dep, insts, modelName, affinity)

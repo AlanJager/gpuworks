@@ -208,3 +208,45 @@ func TestASleepHeldWhileWaitingEndsTheHold(t *testing.T) {
 		t.Fatalf("held for %v after an operator held the sleep", waited)
 	}
 }
+
+func TestADrainingDeploymentHoldsNewRequestsUntilItResumes(t *testing.T) {
+	p, st, key, depID, front := newSleepingProxy(t, false)
+	// Awake, but draining: a new request waits rather than starting.
+	if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 0).Error; err != nil {
+		t.Fatal(err)
+	}
+	p.SetDraining(depID, true)
+	p.SetWakeDemand(func(uint) {
+		go func() {
+			time.Sleep(150 * time.Millisecond)
+			p.SetDraining(depID, false)
+		}()
+	})
+	start := time.Now()
+	resp := postChat(t, front, key)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if waited := time.Since(start); waited < 150*time.Millisecond {
+		t.Fatalf("a draining deployment took a new request after %v", waited)
+	}
+	if p.hold.isDraining(depID) {
+		t.Fatal("still draining")
+	}
+}
+
+func TestInFlightCountsTheDeploymentsServedRequests(t *testing.T) {
+	var a *Accountant
+	if a.InFlight(1) != 0 {
+		t.Fatal("a nil accountant counts requests")
+	}
+	acct := newAccountant(nil, 4, nil)
+	acct.Dispatch(5)
+	acct.Dispatch(5)
+	if got := acct.InFlight(5); got != 2 {
+		t.Fatalf("in flight = %d, want 2", got)
+	}
+	if got := acct.InFlight(6); got != 0 {
+		t.Fatalf("another deployment's in flight = %d", got)
+	}
+}

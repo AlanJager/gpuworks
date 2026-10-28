@@ -37,13 +37,16 @@ type wakeHold struct {
 	now    func() time.Time
 	// holdMax is how long a request for a deployment of the level waits.
 	holdMax func(level string) time.Duration
+	// draining are deployments about to give their cards up: new requests
+	// for them are held as if they slept, while those in flight finish.
+	draining map[uint]bool
 }
 
 type heldRequest struct{ since time.Time }
 
 func newWakeHold() *wakeHold {
 	return &wakeHold{
-		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now,
+		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]bool{},
 		holdMax: func(level string) time.Duration { return servicelevel.For(level).HoldMax },
 	}
 }
@@ -140,6 +143,31 @@ func (p *Proxy) HeldRequests(deploymentID uint) (int, time.Time) {
 	return p.hold.Held(deploymentID)
 }
 
+// SetDraining stops (on) or resumes routing new requests to the deployment:
+// while it drains they are held as if it slept, so the requests in flight can
+// finish before it gives its cards up.
+func (p *Proxy) SetDraining(deploymentID uint, on bool) {
+	p.hold.mu.Lock()
+	if on {
+		p.hold.draining[deploymentID] = true
+	} else {
+		delete(p.hold.draining, deploymentID)
+	}
+	p.hold.mu.Unlock()
+	if !on {
+		p.hold.signal()
+	}
+}
+
+func (h *wakeHold) isDraining(deploymentID uint) bool {
+	if h == nil {
+		return false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.draining[deploymentID]
+}
+
 // HeldDeployments are the deployments with a request held for their wake.
 func (p *Proxy) HeldDeployments() []uint {
 	return p.hold.HeldDeployments()
@@ -150,12 +178,15 @@ func (p *Proxy) HeldDeployments() []uint {
 // request still not served when its time is up gets the asleep refusal with
 // a Retry-After.
 func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelName, affinity string, dep *store.Deployment) (*store.Deployment, target, int, string, bool) {
-	p.hold.mu.Lock()
-	demand := p.hold.demand
-	p.hold.mu.Unlock()
 	refuse := func() (*store.Deployment, target, int, string, bool) {
 		return dep, target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
 	}
+	if p.hold == nil {
+		return refuse()
+	}
+	p.hold.mu.Lock()
+	demand := p.hold.demand
+	p.hold.mu.Unlock()
 	if demand == nil || !wakesOnRequest(dep) {
 		return refuse()
 	}

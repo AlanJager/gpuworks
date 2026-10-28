@@ -29,12 +29,18 @@ type automationAdapter struct {
 	now     func() time.Time
 }
 
-// runAutomation carries out schedules, idle sleep and waiting wakes until ctx
-// ends. A change to an instance or a deployment nudges it, since a waiting
-// wake may fit once another instance sleeps or goes.
-func runAutomation(ctx context.Context, st *store.Store, acct *proxy.Accountant, metrics tsdb.Store, log *slog.Logger) {
+// runAutomation carries out schedules, idle sleep, waiting wakes and the
+// residency arbiter until ctx ends. A change to an instance or a deployment
+// nudges it, since a waiting wake may fit once another instance sleeps or
+// goes; a request the gateway holds for a sleeping deployment asks it to wake
+// that one.
+func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, log *slog.Logger) {
 	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
+	if px != nil {
+		evaluator.WithResidency(&residencyAdapter{store: st, proxy: px, acct: acct}, &residencyAdapter{store: st, proxy: px, acct: acct})
+		px.SetWakeDemand(evaluator.Demand)
+	}
 	if st.Bus != nil {
 		sub := st.Bus.Subscribe(64, "instance", "deployment")
 		go func() {

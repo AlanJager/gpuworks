@@ -122,6 +122,8 @@ type Evaluator struct {
 	awakeSince map[uint]time.Time
 	wasAwake   map[uint]bool
 	wake       chan struct{}
+	// res is the residency arbiter, nil when off (WithResidency).
+	res *residencyState
 }
 
 // New returns an evaluator. log may be nil.
@@ -153,7 +155,7 @@ func (e *Evaluator) Run(ctx context.Context) {
 	e.started = e.now()
 	ticker := time.NewTicker(e.interval)
 	defer ticker.Stop()
-	var settled <-chan time.Time
+	var settled, demanded <-chan time.Time
 	e.Tick()
 	for {
 		select {
@@ -165,9 +167,18 @@ func (e *Evaluator) Run(ctx context.Context) {
 			if settled == nil {
 				settled = time.After(e.settle)
 			}
+		case <-e.demandChan():
+			if demanded == nil {
+				demanded = time.After(DefaultDemandSettle)
+			}
+		case <-demanded:
+			demanded = nil
+			e.residency(e.now())
 		case <-settled:
 			settled = nil
-			e.waitingWakes(e.now())
+			now := e.now()
+			e.waitingWakes(now)
+			e.residency(now)
 		}
 	}
 }
@@ -180,6 +191,7 @@ func (e *Evaluator) Tick() {
 		e.started = now
 	}
 	e.waitingWakes(now)
+	e.residency(now)
 	e.schedules(now)
 	e.idle(now)
 }
@@ -208,6 +220,10 @@ func (e *Evaluator) waitingWakes(now time.Time) {
 		}
 		if len(woken) > 0 {
 			e.actions.Record(w.DeploymentID, EventAutoWake, map[string]any{"trigger": TriggerWakeWaiting, "instances": woken})
+			if e.res != nil {
+				e.res.awakeAt[w.DeploymentID] = now
+				delete(e.res.preempted, w.DeploymentID)
+			}
 		}
 	}
 }
