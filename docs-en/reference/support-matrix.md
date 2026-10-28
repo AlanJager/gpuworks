@@ -36,6 +36,10 @@ PPU queries `ppu-smi` and verifies identities against device nodes, then injects
 The embedded `gpuworks/partition-probe:v4` verifies both the selected UUID and its memory quota. Missing, invalid, duplicate or unqueryable identities fail, as does a quota applied only to another card. Recreate existing workloads after upgrading the agent to activate the new selection and slicing libraries. Device visibility under runveil still does not provide kernel device isolation.
 
 
+## Hygon full-GPU driver libraries
+
+Hygon full-GPU workloads receive the host `/opt/hyhal` through a structured mount shared by Docker, nerdctl and udocker/runveil. For example, DTK 26.04 PyTorch needs its `librocm_smi64.so.2`. Device injection fails early if the directory is absent. Containers keep the image's DTK and library search path; recreate workloads after upgrading the agent to apply the mount fix. The mount is declared read-only; PRoot binds use the host runtime account's permissions and do not provide kernel-enforced read-only isolation.
+
 ## Hygon Z100 dGPU
 
 Z100 uses the `hygon-dgpu` backend, assigning CUs in proportion to the memory quota. Build and install the optional `gpuworks-hygon-vdev-helper` on the node (see `build/runtime-assets/hygon-vdev-helper/README.md` in the source tree), and provide the host DTK, HYHAL and DCGM libraries. The agent itself remains a static binary. Only x86_64 + Docker is supported; other models, including K100, do not receive this capability.

@@ -35,6 +35,10 @@ PPU 使用 `ppu-smi` 查询并经设备节点校验的身份，按选卡顺序�
 
 内嵌探针 `gpuworks/partition-probe:v4` 同时检查目标 UUID 和显存配额。缺失、无效、重复或不可查询的身份，以及只有其他卡显示配额的情况都不能通过。升级 agent 后需重新创建已有工作负载，新的设备选择与切分库才会生效；runveil 的设备可见性仍不等于内核设备隔离。
 
+## 海光整卡驱动库
+
+海光整卡工作负载通过结构化挂载将宿主 `/opt/hyhal` 传入容器，Docker、nerdctl 与 udocker/runveil 共用该挂载；例如 DTK 26.04 的 PyTorch 需要其中的 `librocm_smi64.so.2`。节点缺少该目录时，设备注入会提前报错。容器继续使用镜像自带的 DTK 与库搜索路径，升级 Agent 后需重新创建工作负载以应用挂载修复。挂载声明为只读；PRoot 的绑定沿用宿主运行账户权限，不提供内核级只读隔离。
+
 ## 海光 Z100 dGPU
 
 Z100 使用 `hygon-dgpu` 后端，按显存比例分配 CU。启用前，在节点构建并安装可选的 `gpuworks-hygon-vdev-helper`（构建步骤见源码的 `build/runtime-assets/hygon-vdev-helper/README.md`），并提供宿主 DTK、HYHAL 和 DCGM 库。agent 本身仍是静态二进制。仅 x86_64 + Docker 路径受支持；K100 等其他型号不会获得此能力。
