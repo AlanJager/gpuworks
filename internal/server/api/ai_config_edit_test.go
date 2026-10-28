@@ -612,6 +612,69 @@ func TestUpdateAIConfigKeepsAPreExistingOverlongNameEditable(t *testing.T) {
 	}
 }
 
+// A connection test whose blank key means "use the stored one" works for a row
+// stored before addresses were normalized on write. Comparing the normalized
+// request base with the RAW stored value ran the probe keyless, the endpoint
+// answered 401, and the dialog told the operator to check a key that was
+// correct - which is the report the ticket started from.
+func TestAIConfigTestUsesStoredKeyForARawStoredAddress(t *testing.T) {
+	var seen []string
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Header.Get("Authorization")+" "+r.URL.RequestURI())
+		fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"pong"}}]}`)
+	}))
+	defer endpoint.Close()
+	rig := newAIConfigRig(t)
+	// The address as an older build stored it: verbatim, call path included.
+	raw := endpoint.URL + "/v1/chat/completions"
+	row, err := rig.store.CreateAIConfig(&store.AIConfig{
+		Name: "legacy", BaseURL: raw, APIKey: "enc:v1:unused", Model: "m",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := store.EncryptAIKey(rig.box, "sk-stored")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rig.store.UpdateAIConfig(row.ID, store.AIConfigPatch{APIKey: &encrypted}); err != nil {
+		t.Fatal(err)
+	}
+	// The dialog sends the base address it derived from the form, with no key.
+	rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test",
+		fmt.Sprintf(`{"id":%d,"base_url":%q,"model":"m"}`, row.ID, endpoint.URL+"/v1"))
+	var got struct {
+		Outcome string `json:"outcome"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("test = %d %s (err %v)", rec.Code, rec.Body.String(), err)
+	}
+	if got.Outcome != string(aihelper.ProbeOK) {
+		t.Fatalf("outcome = %q, want ok: %s", got.Outcome, rec.Body.String())
+	}
+	if len(seen) != 1 || !strings.HasPrefix(seen[0], "Bearer sk-stored ") {
+		t.Fatalf("the stored key was not used for a raw stored address: %v", seen)
+	}
+	if !strings.Contains(seen[0], "/v1/chat/completions") {
+		t.Fatalf("the probe did not call the stored address's call path: %v", seen)
+	}
+	// Another host still gets no stored key.
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, "other "+r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer other.Close()
+	if rec := rig.do(t, http.MethodPost, "/api/v1/ai/configs/test",
+		fmt.Sprintf(`{"id":%d,"base_url":%q,"model":"m"}`, row.ID, other.URL+"/v1")); rec.Code != http.StatusOK {
+		t.Fatalf("test = %d %s", rec.Code, rec.Body.String())
+	}
+	for _, header := range seen[1:] {
+		if strings.Contains(header, "sk-stored") {
+			t.Fatalf("the stored key followed an address substitution: %v", seen)
+		}
+	}
+}
+
 // A delete of a service that is already gone answers 404, so a stale console is
 // told what happened instead of being shown a success for a row that was never
 // there.

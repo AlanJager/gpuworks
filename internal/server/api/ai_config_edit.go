@@ -131,9 +131,26 @@ func (a *apiHandlers) testAIConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 // aiConfigTestKey picks the key a test uses. The edit dialog leaves the key
-// blank to mean "keep the stored one", and the stored one is used only while
-// the address is still the stored address: a test must not be a way to send a
-// stored secret to an address of the caller's choosing.
+// blank to mean "keep the stored one", and the stored one is used only while the
+// address being tested is still the stored address: a test must not be a way to
+// send a stored secret to an address of the caller's choosing.
+//
+// Both sides are normalized before they are compared, through the same
+// aihelper.NormalizeBaseURL the store wrote the request base with. Comparing the
+// normalized request base with the RAW stored value answered "a different
+// address" for every row written before addresses were normalized on write - a
+// stored "http://host:8800/v1/chat/completions" never equals the ".../v1" the
+// dialog sends - so the probe ran keyless, the endpoint answered 401, and the
+// dialog told the operator their key was rejected and to check it. These are
+// exactly the rows the ticket was filed about, and the advice sent the operator
+// to fix a key that was correct.
+//
+// Normalizing does not weaken the guard: normalization strips a call path from
+// the PATH, and a query string is kept. The host is compared unchanged either
+// way, so a key still cannot be sent anywhere but the stored service's own host
+// (and, with the query kept, its own tenant: an Azure-style base carries
+// ?api-version=... as part of the address, and a test that dropped it would call
+// a different address than the assistant does).
 func (a *apiHandlers) aiConfigTestKey(w http.ResponseWriter, req dto.AIConfigTest, base string) (string, bool) {
 	if key := strings.TrimSpace(req.APIKey); key != "" || req.ID == 0 {
 		return key, true
@@ -146,7 +163,7 @@ func (a *apiHandlers) aiConfigTestKey(w http.ResponseWriter, req dto.AIConfigTes
 		writeErr(w, http.StatusInternalServerError, err)
 		return "", false
 	}
-	if stored.BaseURL != base {
+	if storedBase, _ := aihelper.NormalizeBaseURL(stored.BaseURL); storedBase != base {
 		return "", true
 	}
 	key, err := store.DecryptAIKey(a.d.AISecretbox, stored.APIKey)
