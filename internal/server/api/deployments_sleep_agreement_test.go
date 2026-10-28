@@ -424,6 +424,69 @@ func TestDeploymentPDDetailReplicasMatchTheListRow(t *testing.T) {
 	}
 }
 
+// The same invariant when every unit sleeps: the denominator is still the unit
+// total, so the drawer reads "3/3" rather than a numerator over the stored 1.
+func TestDeploymentPDDetailReplicasFullyAsleep(t *testing.T) {
+	f := newPDStateFixture(t)
+	f.sleepRole(t, "prefill", 1)
+	f.sleepRole(t, "decode", 1)
+	for _, uuid := range []string{"prefill-0", "prefill-1", "decode-0"} {
+		f.reported(t, uuid, 1)
+	}
+
+	detail := f.handlers.deploymentDTO(mustDeployment(t, f.store, f.id), true)
+	units := 0
+	for _, role := range detail.PD.Roles {
+		units += role.Desired
+	}
+	if units != 3 {
+		t.Fatalf("unit total = %d, want 3", units)
+	}
+	if detail.AsleepReplicas != units {
+		t.Fatalf("asleep_replicas = %d, want all %d units", detail.AsleepReplicas, units)
+	}
+	if detail.ReadyReplicas == nil || *detail.ReadyReplicas != 0 {
+		t.Fatalf("ready_replicas = %v, want a counted 0", detail.ReadyReplicas)
+	}
+	if detail.Replicas != units {
+		t.Fatalf("detail replicas = %d, want the %d units the mode has", detail.Replicas, units)
+	}
+	// The whole deployment is asleep, and still the denominator covers the
+	// numerator: the pair a client prints is 0 ready over 3, asleep 3 of 3.
+	if row := f.listRow(t); row.Replicas != detail.Replicas || row.AsleepReplicas != detail.AsleepReplicas {
+		t.Fatalf("list = %d/%d, detail = %d/%d, want the same pair",
+			row.AsleepReplicas, row.Replicas, detail.AsleepReplicas, detail.Replicas)
+	}
+}
+
+// An ordinary deployment's detail is untouched by the PD rewrite: its replicas
+// stay the stored count and its ready_replicas keeps counting the same walk.
+func TestDeploymentOrdinaryDetailReplicasUnchanged(t *testing.T) {
+	f := newSleepStateFixture(t)
+	// "partial" is a two-replica deployment with one replica asleep.
+	detail := f.detail(t, "partial")
+	if detail.PD != nil {
+		t.Fatalf("PD summary on an ordinary deployment: %+v", detail.PD)
+	}
+	if detail.Replicas != 2 {
+		t.Fatalf("replicas = %d, want the stored 2", detail.Replicas)
+	}
+	if detail.ReadyReplicas == nil || *detail.ReadyReplicas != 1 {
+		t.Fatalf("ready_replicas = %v, want 1", detail.ReadyReplicas)
+	}
+	if detail.AsleepReplicas != 1 {
+		t.Fatalf("asleep_replicas = %d, want 1", detail.AsleepReplicas)
+	}
+	if detail.AsleepReplicas > detail.Replicas {
+		t.Fatalf("asleep_replicas = %d > replicas = %d", detail.AsleepReplicas, detail.Replicas)
+	}
+	// And it matches the row, which never had the bug.
+	row := f.row(t, "partial")
+	if row.Replicas != detail.Replicas || row.AsleepReplicas != detail.AsleepReplicas {
+		t.Fatalf("list = %d/%d, detail = %d/%d", row.AsleepReplicas, row.Replicas, detail.AsleepReplicas, detail.Replicas)
+	}
+}
+
 // listRow reads this PD deployment from the list the way the table does.
 func (f pdStateFixture) listRow(t *testing.T) dto.DeploymentListItem {
 	t.Helper()

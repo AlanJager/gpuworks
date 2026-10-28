@@ -657,3 +657,61 @@ func TestPDRouteForRefusesAPlacementItCannotRoute(t *testing.T) {
 		}
 	}
 }
+
+// A pinned request must be refused on the same judgement the rest of the
+// gateway uses. The sleep order becomes effective at once — before the engine
+// reports the new level — because a request queued behind an order can hang,
+// so in that window the reported level is still 0 while the gateway already
+// refuses the replica. Reading the level alone forwarded the pinned request to
+// an engine on its way to sleep and accounted it as awake, while the
+// deployment row for the same replica read asleep.
+func TestPinnedRequestRefusesAnOrderedSleepBeforeTheEngineReports(t *testing.T) {
+	h := newPDHarness(t, 1, "")
+	// An instance holds a sleep intent only when it carries a desired state, so
+	// give the harness's ranks one, then order sleep and leave the reported
+	// level at 0: exactly the drain window, the case this feature exists for.
+	if err := h.st.UpdateInstanceDesiredState("prefill-0", `{"uuid":"prefill-0","desired_state":"running","sleepable":true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.OrderDeploymentSleep(h.dep.ID, 1, "wait"); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := h.st.InstanceByUUID("prefill-0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.SleepIntent() != 1 || inst.SleepLevel != 0 {
+		t.Fatalf("fixture intent=%d level=%d, want an order in flight (1, 0)", inst.SleepIntent(), inst.SleepLevel)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/chat/completions", strings.NewReader(pdChat))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(instanceHeader, "prefill-0")
+	h.proxy.PlaygroundHandler(nil)(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("pinned request under a sleep order = %d, want 503: the gateway refuses this replica",
+			rec.Code)
+	}
+	if len(h.prefills[0].bodies) != 0 {
+		t.Fatalf("forwarded %d requests to an engine on its way to sleep", len(h.prefills[0].bodies))
+	}
+	// The refusal must name sleep, not the generic "not awake and running":
+	// the operator's next action is to wake it, which is a different fix.
+	if body := rec.Body.String(); !strings.Contains(body, "sleep") {
+		t.Fatalf("refusal = %q, want it to name the sleep order so the operator knows to wake it", body)
+	}
+	// The pinned path must account the refusal the way the load balancing path
+	// accounts the identical refusal. Counting it as a plain 5xx made the
+	// metrics read as a broken deployment at the same moment the deployment row
+	// read asleep, and sent an operator to look for a fault that was not there.
+	h.acct.mu.Lock()
+	c := h.acct.counters[h.dep.ID]
+	h.acct.mu.Unlock()
+	if c == nil || c.classTotals[classAsleep] != 1 {
+		t.Fatalf("classAsleep = %+v, want 1: a pinned refusal for sleep is the asleep_503 the load balancing path counts", c)
+	}
+	if c.classTotals[class5xx] != 0 {
+		t.Fatalf("an asleep pinned refusal must not also count as class5xx: %+v", c.classTotals)
+	}
+}

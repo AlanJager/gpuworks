@@ -494,7 +494,7 @@ This endpoint does not check whether a user spec with the same name already exis
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/deployments` | List deployments; with `page`/`page_size`, returns paginated list columns and supports filtering by `q`/`state` (see “Error and Response Conventions”) | JWT |
+| GET | `/api/v1/deployments` | List deployments; with `page`/`page_size`, returns paginated list columns and supports filtering by `q`/`state` (see “Error and Response Conventions”). `state` includes `sleeping`/`asleep`, and rows also carry `asleep_replicas` and `sleep_level`; see [Deployment Sleep State](#deployment-sleep-state-state-asleep_replicas-sleep_level) | JWT |
 | GET | `/api/v1/routing-policies` | Get server-provided multi-replica routing policies and localized descriptions | JWT |
 | POST | `/api/v1/deployments/preflight` | Run preflight checks for multi-node inference deployment (rank assignment and network probing) | JWT |
 | POST | `/api/v1/deployments` | Create a deployment (`model_source` contains only `{storage_id, provider}`: where to store the model and which provider's weights to run; it does not accept an image acquisition method. `placement.pd` specifies a PD disaggregated deployment; see below). Returns 409 `SERVED_NAME_IN_USE` if the served model name is occupied by a deployment that is not being deleted; `params` includes `served_name`, `deployment`, and `deployment_id`. When omitted, the name defaults to the model name and undergoes the same validation | JWT |
@@ -502,7 +502,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | GET | `/api/v1/deployments/{id}/draft` | Read the deployment back as the request that creates it (`deployment`), with `revision` and the non-editable fields `locked`. The deploy page fills its edit and "Clone and modify" forms from it. See [Edit a Deployment](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}` | Edit a deployment: submit the modified draft with `base_revision`; `?dry_run=1` returns only the change plan. Launch configuration changes replace instances according to `apply` (`rolling`/`all`/`none`). See [Edit a Deployment](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/requirements` | Replace the node requirements and placement strategy of a regular single-node deployment and return its details. Affects only replicas started afterward; running replicas are not migrated. See [Modify Node Requirements](#修改节点条件) | JWT |
-| GET | `/api/v1/deployments/{id}` | Get deployment details. Takes no query parameters; returns the deployment object directly, or 404 if not found. Includes `instances`, `node_requirements`, `node_requirement_labels`, `placement_strategy`, `ready_replicas` (check each role for PD), `health`, `tokenize_enabled`, and `max_replicas`; `placement_status` gives scheduling failure reasons, `retry_exhausted` identifies replicas that have exhausted their retries, and `restart_requested_at` identifies a rolling restart. See `units` for multi-node replicas. See [Query Deployment Details](#查询部署详情) | JWT |
+| GET | `/api/v1/deployments/{id}` | Get deployment details. Takes no query parameters; returns the deployment object directly, or 404 if not found. Includes `state` (the one state to show, `asleep`/`sleeping` when it sleeps), `asleep_replicas` (replicas the gateway does not dispatch to because of sleep), `sleep_level` (the level an engine reports), `instances`, `node_requirements`, `node_requirement_labels`, `placement_strategy`, `ready_replicas` (two counts of the same replicas as `asleep_replicas`; a PD deployment also gives the per-role breakdown), `health`, `tokenize_enabled`, and `max_replicas`; `placement_status` gives scheduling failure reasons, `retry_exhausted` identifies replicas that have exhausted their retries, and `restart_requested_at` identifies a rolling restart. See `units` for multi-node replicas. See [Query Deployment Details](#查询部署详情) and [Deployment Sleep State](#deployment-sleep-state-state-asleep_replicas-sleep_level) | JWT |
 | PUT | `/api/v1/deployments/{id}/routing` | Change the routing policy (`least_request`, `prefix_affinity`, or `failover`) | JWT + administrator |
 | PUT | `/api/v1/deployments/{id}/dgpu` | Adjust `vram_limit_gib` for a single-node dGPU deployment. Returns `live` instances where the change takes effect immediately and `pending` instances that require a restart. See [Adjust the GPU Memory Limit](#调整显存上限) | JWT |
 | PUT | `/api/v1/deployments/{id}/health-check` | Enable or disable health checks for the deployment and set the threshold: `{"enabled": true, "threshold_sec": 60}` (`threshold_sec` is 1–600; omit it or use 0 to retain the current value). Enabling requires the model to provide chat or embedding; otherwise returns 400 `FIELD_INVALID` (`params.field` is `health_check`). An out-of-range threshold returns 400 `FIELD_INVALID`. Does not restart instances; the new settings apply to the next check. Returns deployment details | JWT |
@@ -537,8 +537,17 @@ Missing or unavailable information remains unknown and is not replaced with info
 ### Deployment List Filters and Response Fields
 
 `q` matches the deployment name, served model name, and model name. `state` corresponds to the state displayed in the UI: `running`, `starting`, `pulling`,
-`pending`, `failed`, `stopped`, or `deleting`; the deleting state takes precedence over runtime states.
-Sortable columns are `name`, `model`, `state`, `replicas`, and `created_at`.
+`pending`, `offline`, `failed`, `stopped`, `deleting`, `sleeping`, or `asleep`; the deleting state takes precedence over runtime states.
+A value must be one of these; anything else returns 400 `LIST_FILTER_INVALID` rather than silently matching everything.
+Sortable columns are `name`, `model`, `state`, `replicas`, and `created_at`; `sort=state` sorts by this same `state`.
+
+`state` is the one state a row should display; `runtime_state` is not, because a sleeping engine is still running and stays `running` there
+while the gateway no longer dispatches requests to it. The precedence is:
+
+- A deployment being deleted reads `deleting`, ahead of any runtime state.
+- Otherwise it equals `runtime_state`, with two exceptions that apply only while `runtime_state` is `running`: it reads `asleep` when the gateway refuses every request because the replicas it needs sleep, and `sleeping` when the sleep order has been accepted but at least one engine has not reported its level yet (see [Query Deployment Details](#查询部署详情)).
+- `offline` is a value of `runtime_state` itself: no replica can serve (no running, non-headless instance on an online node whose multi-node generation is complete), while running instances remain on nodes that went offline.
+- A deployment with only some replicas asleep still serves: `state` stays `running` and `asleep_replicas` says how many sleep; such rows also match `state=running`.
 
 Success returns HTTP 200. In the outer response, `items` is an array of deployment objects, and `total` is the total number of matches after filtering (an integer).
 When pagination is enabled, integer fields `page` and `page_size` are also included. An empty result is `items: []`; requests beyond the last page also return an empty array.
@@ -550,8 +559,12 @@ With pagination, each deployment returns only the following list fields. See [Qu
 | Identity and creation time | `id`, `name`, `created_at` |
 | Template and model | `template_id`, `template_deviated`, `engine`, `image`, `model_id`, `model_name`, `served_name` |
 | Nodes | `node_uuid`, `node_name`, `node_names` |
-| State and replicas | `desired_state`, `runtime_state`, `sleepable`, `replicas`, `ready_replicas`, `health`, `preparation` |
+| State and replicas | `desired_state`, `runtime_state`, `state`, `sleepable`, `asleep_replicas`, `sleep_level`, `replicas`, `ready_replicas`, `health`, `preparation` |
 | Operations | `operations` |
+
+`state`, `asleep_replicas`, and `sleep_level` mean and carry exactly what the fields of the same name carry in the details (see [Query Deployment Details](#查询部署详情));
+reading `runtime_state` alone misses sleep, because a sleeping engine still reports `running`.
+When `asleep_replicas` or `sleep_level` is 0 the whole field is omitted, as in the details.
 
 In a paginated list, `preparation` contains information about the first model file that is not yet ready in an active deployment; it is omitted if there is none.
 Complete preparation information is in `model_progress` in the details.
@@ -588,8 +601,11 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `served_name` | String | The `model` name to specify in inference requests |
 | `model_id`, `model_name` | Integer, string | ID and name of the associated registered model |
 | `desired_state` | String | Desired state: `active` (keep running), `stopped` (stopped), or `deleting` (being deleted) |
-| `runtime_state` | String | Current runtime state: `pending`, `pulling`, `starting`, `running`, `failed`, or `stopped` |
-| `replicas`, `ready_replicas` | Integer | Target replica count for a regular deployment and the current number of replicas with all ranks running. PD deployments omit `ready_replicas`; check `pd.roles[].ready` instead |
+| `runtime_state` | String | Current runtime state: `pending`, `pulling`, `starting`, `running`, `offline`, `failed`, or `stopped`. Derived from instances and the desired state only, never from sleep: a sleeping engine is still `running` |
+| `state` | String | The one state to show. Takes the values of the list filter's `state`: `deleting` first for a deployment being deleted; otherwise `runtime_state`, except that it reads `asleep` (every asleep replica's engine reports its level) or `sleeping` (the order is accepted and the gateway already refuses, but at least one engine has not reported its level) when the gateway refuses every request because the replicas it needs sleep |
+| `asleep_replicas` (optional) | Integer | Replicas the gateway does not dispatch to because they sleep, across every role; it and `ready_replicas` are two counts of one set of replicas, and their sum is the number of replicas the gateway can reach. Omitted when 0 |
+| `sleep_level` (optional) | Integer | The deepest sleep level an engine reports (1 or 2); omitted while every replica is awake and while a sleep order is still being carried out. An absent field is not awake: ask `state` whether it sleeps |
+| `replicas`, `ready_replicas` | Integer | The deployment's replica count and the number of awake replicas with all ranks running. PD deployments sum the units of each role (`replicas` is the sum of `pd.roles[].desired`, `ready_replicas` the sum of `pd.roles[].ready`), the same pair the list row gives; `asleep_replicas` never exceeds `replicas` |
 | `health` | Object | Health check status and latest results; see [Health Checks](#健康检查) |
 | `instances` (optional) | Array of objects | Instances in the deployment; `uuid` identifies an instance, `state` indicates its state, and `node_uuid` and `gpu_indexes` indicate where it runs |
 | `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information |
@@ -609,6 +625,38 @@ Do not uniformly treat absent optional fields as `0` or empty arrays. Use the fo
 - For regular deployments, `retry_exhausted{index,failed_attempts,last_failure}` identifies replicas that have exhausted their retries; use `units/retry` to retry them. For multi-node deployments, `units[]` gives each replica's leader and `followers[]`. See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for adjustment methods.
 
 For a request example, see [Query Details of One Deployment](api-conventions.md#3-查询一个部署的详情).
+
+### Deployment Sleep State (`state`, `asleep_replicas`, `sleep_level`)
+
+A sleeping deployment is indistinguishable in `runtime_state`: the engine process is still running and the gateway simply refuses to dispatch to it.
+The fields that answer "is this deployment asleep right now" are `state`, `asleep_replicas`, and `sleep_level`. They mean the same and carry the same values
+in deployment details and in list rows (the paginated list's `items[]`), and the `state` filter matches the same `state`.
+
+All three are **derived at read time**, never stored: the only persisted facts are each instance's ordered sleep intent and the `sleep_level` it reports,
+and the judgement is the same one the gateway itself uses to refuse requests.
+
+- **`asleep_replicas`**: replicas the gateway does not dispatch to because of sleep, across every role (PD deployments count each role's units).
+  A replica is judged by its leader: if the leader is running and has been ordered to sleep (intent alone counts) or still reports a sleep level, the replica is asleep.
+  So **in the seconds after the order is placed, while the engine is still swapping memory out, the replica already counts in `asleep_replicas`**, because it really is not receiving requests.
+  It and `ready_replicas` are two counts of one set of replicas: their sum is the number of replicas the gateway can **reach**; a replica it cannot reach for another reason
+  (stopped, failed, its node gone, a multi-node replica missing a rank) counts in neither. A replica down for another reason never reads as asleep.
+- **`state`**: the precedence above. `asleep` and `sleeping` appear only when the gateway answers **no request at all** — some role it needs has no awake replica,
+  and every role refusing it refuses because of sleep (it has sleeping replicas and none awake), not because it is down. A deployment with only some replicas asleep
+  still serves: `state` stays `running`, the awake replicas keep receiving requests, and `asleep_replicas` says how many the rest are; such a row neither poses as
+  entirely healthy nor as entirely asleep. `deleting` outranks all of the above.
+- **Where `sleeping` ends and `asleep` begins**: it is `asleep` once every asleep replica's engine reports the level it was ordered to; a single engine not there yet makes it `sleeping`.
+  Changing levels (say L1 to L2) goes through awake before sleeping again, and the row reads `sleeping` during it rather than an unchanging `asleep`, so the click visibly takes effect.
+- **`sleep_level`**: the deepest level an engine reports (1 or 2). It is 0 (field omitted) while every replica is awake; a sleep order not yet carried out also has no value —
+  **do not read an absent field as "not asleep"**. Ask `state` and `asleep_replicas` whether it sleeps; `sleep_level` only answers how deep.
+- **A deployment with nothing left is not asleep**: with no serving replica at all (instances stopped or failed) there is nothing to wake, so `state` gives the failure's or
+  stopped state itself and `asleep_replicas` is 0, even if a sleep intent remains on the instances.
+- **PD deployments**: `pd.roles[].asleep` is the same replicas split by role (`ready` + `asleep` is the role's units the gateway can reach).
+  A role the mode runs without and that is entirely asleep (vLLM NIXL's prefill, for example) does not count as refusing service; the deployment reads
+  `asleep`/`sleeping` only when a role that must exist, such as decode, is entirely asleep.
+
+For the instance-level sleep fields (`instances[].asleep`, `instances[].sleep_level`, `instances[].desired_sleep`,
+`can_sleep_alone` / `can_wake_alone`), see the [Deployments and Instances route entries](#deployments--instances部署与实例).
+For the procedure, see [Sleep and Wake Operations](../how-to/sleep-wake.md).
 
 ### Query the Candidate Pool
 

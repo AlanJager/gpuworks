@@ -77,8 +77,9 @@ type DeploymentListItem struct {
 	SleepLevel     int    `json:"sleep_level,omitempty"`
 	Sleepable      bool   `json:"sleepable"`
 	Replicas       int    `json:"replicas"`
-	// Replicas and ReadyReplicas total both roles for PD deployments;
-	// ordinary deployments use the same counts as Deployment.
+	// Replicas and ReadyReplicas total both roles for PD deployments, and the
+	// detail response totals them the same way, so the row and the drawer
+	// print one pair of counts rather than two.
 	ReadyReplicas *int                  `json:"ready_replicas,omitempty"`
 	Health        DeploymentHealth      `json:"health"`
 	Operations    []DeploymentOperation `json:"operations"`
