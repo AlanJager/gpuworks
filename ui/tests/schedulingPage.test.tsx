@@ -22,7 +22,7 @@ type Board = import("../src/api.ts").SchedulingBoard;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
-const original = { schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting };
+const original = { schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting, schedulingHistory: api.schedulingHistory };
 
 function board(overrides: Partial<Board> = {}): Board {
   return {
@@ -59,6 +59,11 @@ function Probe() {
 }
 
 function mount() {
+  // The scheduling history has its own tests (schedulingHistory.test.tsx).
+  api.schedulingHistory = async () => ({ items: [{
+    id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
+    params: { trigger: "idle", level: 2, idle_sec: 900 },
+  }] });
   render(
     <I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={["/scheduling"]}>
@@ -113,7 +118,7 @@ test("an empty board says so in every table and the node list", async () => {
   });
   mount();
   await screen.findByText(s.nodes.empty);
-  for (const text of [s.pending.empty, s.waiting.empty, s.upcoming.empty, s.recent.empty]) assert.ok(screen.getByText(text), text);
+  for (const text of [s.pending.empty, s.waiting.empty, s.upcoming.empty]) assert.ok(screen.getByText(text), text);
 });
 
 test("the summary counts what waits, and each GPU is a bar of awake, sleeping residue and free memory", async () => {
@@ -154,16 +159,19 @@ test("a deployment name opens that deployment's drawer", async () => {
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
 
-test("pending reasons read like the deployment drawer's placement alert; upcoming and recent entries are worded", async () => {
+test("pending reasons read like the deployment drawer's placement alert; upcoming entries are worded; the history replaces the board's recent list", async () => {
   api.schedulingBoard = async () => board();
   mount();
   await screen.findByText("big-model");
   assert.ok(screen.getByText(i18n.t("deploy:schedule.pool_empty", { nodes: 3, unmet: 1, cordoned: 1, offline: 1 })));
   assert.ok(screen.getByText(i18n.t("scheduling:upcoming.action.sleep", { level: 2 })));
   assert.ok(screen.getByText(i18n.t("scheduling:upcoming.action.replicas", { count: 3 })));
-  assert.ok(screen.getByText(i18n.t("deployments:instance.event.AUTO_SLEEP", {
+  // What was done lately is the scheduling history, worded as the timeline words it.
+  assert.ok(await screen.findByText(i18n.t("deployments:instance.event.AUTO_SLEEP", {
     level: 2, cause: i18n.t("deployments:automation.cause.idle", { idle: "15 min" }),
   })));
+  assert.ok(screen.getByText(s.history.title));
+  assert.equal(screen.queryByText("Recent automation actions"), null);
 });
 
 test("the search narrows the nodes on the server and starts from the first page", async () => {

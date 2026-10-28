@@ -1070,6 +1070,36 @@ export interface BoardEvent {
   at: string;
 }
 
+/** Who or what caused a scheduling history entry. */
+export type SchedulingCategory = "auto" | "failure" | "manual";
+
+/** One scheduling event of the cluster-wide history (GET /scheduling/history). */
+export interface SchedulingHistoryEntry {
+  /** Pagination cursor: pass the last entry's id back as `before`. */
+  id: number;
+  created_at: string;
+  deployment_id: number;
+  /** Absent when not even the deleted deployment's name is known. */
+  deployment?: string;
+  deployment_deleted?: boolean;
+  instance?: string;
+  kind: string;
+  code: string;
+  category: SchedulingCategory;
+  params: Record<string, unknown>;
+  /** The user who ordered a manual entry, when known. */
+  actor?: string;
+}
+
+export interface SchedulingHistoryQuery {
+  limit?: number;
+  before?: number;
+  category?: SchedulingCategory[];
+  deployment_id?: number;
+  since?: string;
+  until?: string;
+}
+
 export interface SchedulingBoard {
   nodes: ListPage<BoardNode>;
   pending: BoardPending[];
@@ -3761,6 +3791,18 @@ async function sendFile<T>(path: string, file: File): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function schedulingHistoryQuery(query: SchedulingHistoryQuery): string {
+  const params = new URLSearchParams();
+  if (query.limit) params.set("limit", String(query.limit));
+  if (query.before) params.set("before", String(query.before));
+  if (query.category?.length) params.set("category", query.category.join(","));
+  if (query.deployment_id) params.set("deployment_id", String(query.deployment_id));
+  if (query.since) params.set("since", query.since);
+  if (query.until) params.set("until", query.until);
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
 function eventPageQuery(page?: { limit?: number; before?: number }): string {
   const params = new URLSearchParams();
   if (page?.limit) params.set("limit", String(page.limit));
@@ -4391,6 +4433,10 @@ export const api = {
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   schedulingBoard: (query: { page: number; page_size: number; q?: string }) =>
     getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`),
+  // The history is newest-first and cursor paginated like a deployment's
+  // timeline: `before` is the id of the last entry of the page already held.
+  schedulingHistory: (query: SchedulingHistoryQuery) =>
+    getJSON<CursorPage<SchedulingHistoryEntry>>(`/api/v1/scheduling/history${schedulingHistoryQuery(query)}`),
   // updateDeploymentPd rescales a PD deployment's role units and/or fallback
   // policy (ADR 0028); mode, TP and kv_load_failure are fixed once instances
   // start, so the request never carries them.

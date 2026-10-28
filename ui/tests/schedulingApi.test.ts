@@ -97,3 +97,13 @@ test("scaling may name first-placement nodes, and the server's refusal keeps its
   await assert.rejects(api.scaleReplicas(7, { replicas: 3, place_on: ["n-b"] }), (error: unknown) =>
     error instanceof APIError && error.code === "REPLICAS_PLACE_ON_REFUSED" && error.params?.reason === "offline");
 });
+
+test("the scheduling history asks for a cursor page with its filters in the query", async () => {
+  const seen = fake(200, { items: [] });
+  await api.schedulingHistory({});
+  await api.schedulingHistory({ limit: 21, before: 90, category: ["auto", "failure"], deployment_id: 7, since: "2026-10-25T00:00:00Z", until: "2026-10-26T00:00:00Z" });
+  assert.deepEqual(seen, [
+    { url: "/api/v1/scheduling/history", method: undefined, body: undefined },
+    { url: "/api/v1/scheduling/history?limit=21&before=90&category=auto%2Cfailure&deployment_id=7&since=2026-10-25T00%3A00%3A00Z&until=2026-10-26T00%3A00%3A00Z", method: undefined, body: undefined },
+  ]);
+});

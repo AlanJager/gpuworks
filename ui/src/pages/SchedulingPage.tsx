@@ -7,14 +7,16 @@ import EmptyState from "../components/EmptyState";
 import PageHeader from "../components/PageHeader";
 import { storedPageSize } from "../components/resourceTable/ResourceTable";
 import { Legend, NodeList } from "./scheduling/GpuBoard";
-import { PendingTable, RecentTable, UpcomingTable, WaitingWakesTable } from "./scheduling/BoardTables";
+import { PendingTable, UpcomingTable, WaitingWakesTable } from "./scheduling/BoardTables";
+import HistoryCard from "./scheduling/HistoryCard";
 
 const BOARD_POLL_MS = 10_000;
 const NODES_TABLE_ID = "scheduling-nodes";
 
 // SchedulingPage is the scheduling center: who holds each GPU, what waits to
-// be placed or woken, what the schedules do next and what the automation did
-// last. The board refreshes itself.
+// be placed or woken, what the schedules do next and, as the scheduling
+// history, what the platform and the operators did to the deployments. The
+// board refreshes itself.
 export default function SchedulingPage() {
   const { t } = useTranslation("scheduling");
   const { t: tCommon } = useTranslation("common");
@@ -113,7 +115,7 @@ export default function SchedulingPage() {
       <Card className="scheduling-card" title={t("pending.title")}><PendingTable rows={data.pending} /></Card>
       <Card className="scheduling-card" title={t("waiting.title")}><WaitingWakesTable rows={data.waiting_wakes} busyID={cancelling} onCancel={(row) => void cancelWake(row)} /></Card>
       <Card className="scheduling-card" title={t("upcoming.title")}><UpcomingTable rows={data.upcoming} /></Card>
-      <Card className="scheduling-card" title={t("recent.title")}><RecentTable rows={data.recent} /></Card>
+      <HistoryCard />
     </>
   );
 }

@@ -74,13 +74,70 @@
       "replicas": "Set replicas to {{count}}"
     }
   },
-  "recent": {
-    "title": "Recent automation",
-    "empty": "The automation has not done anything yet.",
+  "history": {
+    "title": "Scheduling history",
+    "loading": "Loading the scheduling history…",
+    "loadFailed": "Cannot load the scheduling history",
+    "refreshFailed": "Refreshing the scheduling history failed: {{detail}}",
+    "empty": "Nothing has been scheduled yet.",
+    "emptyFiltered": "No scheduling history matches the filters.",
+    "pagination": "Scheduling history pages",
+    "page": "Page {{page}}",
+    "newer": "Newer",
+    "older": "Older",
+    "deleted": "{{name}} (deleted)",
+    "filters": {
+      "category": "Filter by category",
+      "range": "Filter by time range",
+      "deployment": "Filter by deployment",
+      "deploymentPlaceholder": "All deployments",
+      "deploymentNone": "No matching deployment"
+    },
+    "category": {
+      "all": "All",
+      "auto": "Automatic",
+      "failure": "Failure",
+      "manual": "Manual"
+    },
+    "range": {
+      "all": "All time",
+      "1h": "Last hour",
+      "24h": "Last 24 hours",
+      "7d": "Last 7 days"
+    },
     "columns": {
-      "at": "When",
+      "at": "Time",
       "deployment": "Deployment",
-      "event": "What happened"
+      "action": "Action",
+      "details": "Reason and details",
+      "category": "Category",
+      "actor": "By"
+    },
+    "action": {
+      "AUTO_SLEEP": "Automatic sleep",
+      "AUTO_WAKE": "Automatic wake",
+      "AUTO_SCALE": "Automatic scaling",
+      "WAKE_WAITING": "Wake waiting",
+      "WAKE_WAIT_TIMEOUT": "Wait timed out",
+      "SCHEDULE_ACTION_FAILED": "Automatic action failed",
+      "YIELDED_FOR_WAKE": "Slept to make room",
+      "UNIT_PLACED": "Replica placed",
+      "NODE_DRAIN_MOVED": "Replica moved off a draining node",
+      "NODE_REPLACED": "Rescheduled after node loss",
+      "NODE_REPLACE_REVERTED": "Reschedule reverted",
+      "NODE_REPLACE_NO_CANDIDATE": "No node to reschedule to",
+      "REPLICA_REBUILT": "Replica rebuilt",
+      "UNIT_RETRY_EXHAUSTED": "Gave up retrying",
+      "DEPLOYMENT_UNSCHEDULABLE": "Cannot be placed",
+      "DEPLOYMENT_ROLLING_STALLED": "Rolling restart paused",
+      "REPLICAS_CHANGED": "Replicas changed",
+      "REPLICA_RESTARTED": "Replica restarted",
+      "UNIT_RETRIED": "Replica retried",
+      "DEPLOYMENT_RESTARTED": "Deployment restarted",
+      "PD_GROUP_RESTARTED": "Deployment restarted",
+      "DEPLOYMENT_ROLLING_RESTARTED": "Rolling restart",
+      "SLEEP_ORDERED": "Sleep ordered",
+      "WAKE_ORDERED": "Wake ordered"
     }
   }
 }

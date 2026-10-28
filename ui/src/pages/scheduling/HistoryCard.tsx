@@ -1,0 +1,198 @@
+import { useEffect, useRef, useState } from "react";
+import { Alert, Button, Card, Segmented, Select, Space, Spin, Tag, Typography } from "antd";
+import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { api, usePolling, type SchedulingCategory, type SchedulingHistoryEntry } from "../../api";
+import EmptyState from "../../components/EmptyState";
+import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
+import { formatTime } from "../../i18n/datetime";
+import { instanceEventText } from "../instanceEvents";
+
+const HISTORY_POLL_MS = 15_000;
+// A page shows PAGE_SIZE entries; one more is asked for to know whether there
+// is a next page without counting the history.
+const PAGE_SIZE = 20;
+const RANGES = { all: 0, "1h": 3_600_000, "24h": 86_400_000, "7d": 7 * 86_400_000 } as const;
+type Range = keyof typeof RANGES;
+const CATEGORY_COLORS: Record<SchedulingCategory, string> = { auto: "blue", failure: "red", manual: "default" };
+
+interface Filters {
+  category: SchedulingCategory | "all";
+  deployment: number | null;
+  range: Range;
+}
+
+const NO_FILTERS: Filters = { category: "all", deployment: null, range: "all" };
+
+// HistoryCard is the scheduling history: when, why and what the platform or an
+// operator did to where, whether and how many replicas run, newest first. It
+// pages with the entry id as cursor, like a deployment's timeline.
+export default function HistoryCard() {
+  const { t } = useTranslation("scheduling");
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS);
+  // cursors[n] is the `before` of page n+1; the first page has none.
+  const [cursors, setCursors] = useState<number[]>([0]);
+  const page = cursors.length;
+  const before = cursors[page - 1] || undefined;
+  const history = usePolling(
+    () => {
+      const since = filters.range === "all" ? undefined : new Date(Date.now() - RANGES[filters.range]).toISOString();
+      return api.schedulingHistory({
+        limit: PAGE_SIZE + 1,
+        before,
+        category: filters.category === "all" ? undefined : [filters.category],
+        deployment_id: filters.deployment ?? undefined,
+        since,
+      });
+    },
+    HISTORY_POLL_MS,
+    [before, filters.category, filters.deployment, filters.range],
+  );
+  const refine = (next: Partial<Filters>) => {
+    setFilters((current) => ({ ...current, ...next }));
+    setCursors([0]);
+  };
+  const entries = history.data?.items ?? [];
+  const shown = entries.slice(0, PAGE_SIZE);
+  const hasNext = entries.length > PAGE_SIZE;
+  const filtered = filters.category !== "all" || filters.deployment !== null || filters.range !== "all";
+
+  let body;
+  if (!history.data && history.error) {
+    body = (
+      <Alert
+        type="error"
+        showIcon
+        message={t("history.loadFailed")}
+        description={history.error.message}
+        action={<Button onClick={() => void history.refetch()}>{t("page.retry")}</Button>}
+      />
+    );
+  } else if (!history.data) {
+    body = <div role="status" className="scheduling-loading"><Spin /> <span>{t("history.loading")}</span></div>;
+  } else {
+    body = (
+      <>
+        {history.error && (
+          <Alert
+            style={{ marginBottom: 12 }}
+            type="warning"
+            showIcon
+            message={t("history.refreshFailed", { detail: history.error.message })}
+            action={<Button size="small" onClick={() => void history.refetch()}>{t("page.retry")}</Button>}
+          />
+        )}
+        <Spin spinning={history.loading}>
+          {shown.length === 0 ? (
+            <EmptyState kind="data" compact description={t(filtered ? "history.emptyFiltered" : "history.empty")} />
+          ) : (
+            <HistoryTable rows={shown} />
+          )}
+        </Spin>
+        {(page > 1 || hasNext) && (
+          <nav className="scheduling-pagination" aria-label={t("history.pagination")}>
+            <Space>
+              <Typography.Text type="secondary">{t("history.page", { page })}</Typography.Text>
+              <Button disabled={page === 1} onClick={() => setCursors((current) => current.slice(0, -1))}>{t("history.newer")}</Button>
+              <Button disabled={!hasNext} onClick={() => setCursors((current) => [...current, shown[shown.length - 1].id])}>{t("history.older")}</Button>
+            </Space>
+          </nav>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <Card className="scheduling-card" title={t("history.title")}>
+      <Space wrap className="scheduling-filters">
+        <Segmented
+          aria-label={t("history.filters.category")}
+          value={filters.category}
+          options={(["all", "auto", "failure", "manual"] as const).map((value) => ({ value, label: t(`history.category.${value}`) }))}
+          onChange={(value) => refine({ category: value as Filters["category"] })}
+        />
+        <DeploymentFilter value={filters.deployment} onChange={(deployment) => refine({ deployment })} />
+        <Segmented
+          aria-label={t("history.filters.range")}
+          value={filters.range}
+          options={(Object.keys(RANGES) as Range[]).map((value) => ({ value, label: t(`history.range.${value}`) }))}
+          onChange={(value) => refine({ range: value as Range })}
+        />
+      </Space>
+      {body}
+    </Card>
+  );
+}
+
+// DeploymentFilter picks one deployment by searching names on the server, so
+// a fleet's worth of deployments is never loaded into the page.
+function DeploymentFilter({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
+  const { t } = useTranslation("scheduling");
+  const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
+  const [search, setSearch] = useState("");
+  const chosen = useRef<{ value: number; label: string } | null>(null);
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(() => {
+      api.deploymentsPage({ page: 1, page_size: 20, q: search.trim() || undefined })
+        .then((page) => { if (live) setOptions(page.items.map((item) => ({ value: item.id, label: item.name }))); })
+        .catch(() => { if (live) setOptions([]); });
+    }, search ? 250 : 0);
+    return () => { live = false; clearTimeout(timer); };
+  }, [search]);
+  // The chosen deployment stays an option while the search moves on.
+  const shown = chosen.current && value === chosen.current.value && !options.some((o) => o.value === value) ? [chosen.current, ...options] : options;
+  return (
+    <Select<number>
+      showSearch
+      allowClear
+      style={{ width: 240 }}
+      aria-label={t("history.filters.deployment")}
+      placeholder={t("history.filters.deploymentPlaceholder")}
+      value={value ?? undefined}
+      options={shown}
+      filterOption={false}
+      onSearch={setSearch}
+      onChange={(id) => {
+        chosen.current = id == null ? null : (shown.find((o) => o.value === id) ?? null);
+        onChange(id ?? null);
+      }}
+      onClear={() => { chosen.current = null; onChange(null); }}
+      notFoundContent={t("history.filters.deploymentNone")}
+    />
+  );
+}
+
+function DeploymentCell({ row }: { row: SchedulingHistoryEntry }) {
+  const { t } = useTranslation("scheduling");
+  const name = row.deployment || `#${row.deployment_id}`;
+  if (row.deployment_deleted) return <span>{t("history.deleted", { name })}</span>;
+  return <Link to={`/deployments?deployment=${row.deployment_id}`}>{name}</Link>;
+}
+
+// HistoryTable words each entry as the deployment's own timeline words it, so
+// the two read the same; the actor has a column of its own.
+function HistoryTable({ rows }: { rows: SchedulingHistoryEntry[] }) {
+  const { t } = useTranslation("scheduling");
+  const { t: tDeployments } = useTranslation("deployments");
+  const { t: tCommon } = useTranslation("common");
+  const columns: ResourceColumn<SchedulingHistoryEntry>[] = [
+    { key: "at", title: t("history.columns.at"), width: 160, render: (_: unknown, row) => formatTime(row.created_at) },
+    { key: "deployment", title: t("history.columns.deployment"), width: 180, render: (_: unknown, row) => <DeploymentCell row={row} /> },
+    { key: "action", title: t("history.columns.action"), width: 160, render: (_: unknown, row) => t(`history.action.${row.code}`, { defaultValue: row.code }) },
+    {
+      key: "details",
+      title: t("history.columns.details"),
+      width: 440,
+      ellipsis: false,
+      render: (_: unknown, row) => (
+        <Typography.Text>
+          {instanceEventText(tDeployments, tCommon, { id: row.id, kind: row.kind, code: row.code, params: row.params, created_at: row.created_at }, { withActor: false })}
+        </Typography.Text>
+      ),
+    },
+    { key: "category", title: t("history.columns.category"), width: 90, render: (_: unknown, row) => <Tag color={CATEGORY_COLORS[row.category]}>{t(`history.category.${row.category}`)}</Tag> },
+    { key: "actor", title: t("history.columns.actor"), width: 110, render: (_: unknown, row) => row.actor || "—" },
+  ];
+  return <ResourceTable<SchedulingHistoryEntry> tableId="scheduling-history" columns={columns} data={rows} rowKey={(row) => String(row.id)} pagination={false} columnSettings={false} emptyDescription={t("history.empty")} />;
+}

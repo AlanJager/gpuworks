@@ -384,6 +384,9 @@
       "UNIT_RETRY_EXHAUSTED": "Gave up after {{attempts}} failed attempts ({{reason}})",
       "UNIT_RETRIED": "Retry requested: {{attempts}} failed attempts cleared",
       "REPLICA_REBUILT": "Replica {{replica}} failed and was rebuilt automatically (attempt {{attempt}}, on {{node}}){{reasonNote}}",
+      "REPLICAS_CHANGED": "Replicas {{from}} → {{to}}{{roleNote}}",
+      "SLEEP_ORDERED": "Sleep ordered (L{{level}}): {{scope}}{{modeNote}}",
+      "WAKE_ORDERED": "Wake ordered: instances {{instances}}",
       "STORAGE_UNAVAILABLE": "Storage {{storage}} is unavailable on {{node}} ({{state}}): running instances keep serving from GPU memory, loading ones wait for it to return",
       "STORAGE_RECOVERED": "Storage {{storage}} is available again on {{node}}",
       "AUTO_SLEEP": "Put to sleep (L{{level}}) {{cause}}",
@@ -400,6 +403,7 @@
       "NODE_DRAIN_MOVED": "{{what}} moved off a draining node",
       "UNIT_PLACED": "Automatic placement: {{what}} placed on {{to}}{{from}}{{cause}}"
     },
+    "actorNote": " (by {{actor}})",
     "reasonNote": "; it failed with: {{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
@@ -699,6 +703,15 @@
       "rankSlotAria": "Node of rank {{rank}} of new replica {{index}}",
       "preferPlaceholder": "Prefer a node (optional)",
       "prefixHint": "Name nodes from the first rank on: a rank can be named only after the ranks before it."
+    }
+  },
+  "operator": {
+    "roleNote": " ({{role}})",
+    "abortNote": "; in-flight requests aborted",
+    "scope": {
+      "deployment": "the whole deployment",
+      "role": "the {{role}} role",
+      "replica": "the replica of instance {{instances}}"
     }
   },
   "automation": {

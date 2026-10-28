@@ -1,12 +1,11 @@
-import { Button, Typography } from "antd";
+import { Button } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { BoardEvent, BoardPending, BoardUpcoming, BoardWaitingWake, InstanceEvent, ScheduleMessage } from "../../api";
+import type { BoardPending, BoardUpcoming, BoardWaitingWake, ScheduleMessage } from "../../api";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { formatTime } from "../../i18n/datetime";
 import { reasonWithFirst } from "../DeploymentPlacementStatus";
 import { scheduleText } from "../deploy/deploySchedule";
-import { instanceEventText } from "../instanceEvents";
 
 function DeploymentLink({ id, name }: { id: number; name: string }) {
   return <Link to={`/deployments?deployment=${id}`}>{name}</Link>;
@@ -67,27 +66,4 @@ export function UpcomingTable({ rows }: { rows: BoardUpcoming[] }) {
     },
   ];
   return <BoardTable id="scheduling-upcoming" columns={columns} data={rows} rowKey={(row) => `${row.schedule_id}-${row.at}`} empty={t("upcoming.empty")} />;
-}
-
-// RecentTable lists what the automation did last, worded as the deployment's
-// own timeline words it.
-export function RecentTable({ rows }: { rows: BoardEvent[] }) {
-  const { t } = useTranslation("scheduling");
-  const { t: tDeployments } = useTranslation("deployments");
-  const { t: tCommon } = useTranslation("common");
-  const columns: ResourceColumn<BoardEvent>[] = [
-    { key: "at", title: t("recent.columns.at"), width: 160, render: (_: unknown, row) => formatTime(row.at) },
-    { key: "deployment", title: t("recent.columns.deployment"), width: 200, render: (_: unknown, row) => <DeploymentLink id={row.deployment_id} name={row.deployment} /> },
-    {
-      key: "event",
-      title: t("recent.columns.event"),
-      width: 480,
-      ellipsis: false,
-      render: (_: unknown, row) => {
-        const event: InstanceEvent = { id: 0, kind: "automation", code: row.code, params: row.params, created_at: row.at };
-        return <Typography.Text>{instanceEventText(tDeployments, tCommon, event)}</Typography.Text>;
-      },
-    },
-  ];
-  return <BoardTable id="scheduling-recent" columns={columns} data={rows} rowKey={(row) => `${row.deployment_id}-${row.code}-${row.at}`} empty={t("recent.empty")} />;
 }

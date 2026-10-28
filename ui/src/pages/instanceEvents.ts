@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import type { InstanceEvent } from "../api";
 import { isNodeReplacementEvent, nodeReplacementEventText } from "./nodeReplacementEvents.ts";
 import { automationEventText, isAutomationEvent } from "./automationEvents.ts";
+import { isOperatorEvent, operatorEventText } from "./operatorEvents.ts";
 import { stateLabel } from "./state.ts";
 import { formatBytes as formatSize } from "../format";
 import { storageStateLabel } from "../storageDisplay";
@@ -144,13 +145,29 @@ function translatedPhase(t: TFunction<"deployments">, phase: string): string {
   return t(`instance.phase.${phase}`, { defaultValue: phase });
 }
 
-/** Render new code/params events while preserving every historical message. */
+/**
+ * Render new code/params events while preserving every historical message.
+ * An operator's order names the user who gave it, unless the caller shows the
+ * actor in a column of its own (withActor false).
+ */
 export function instanceEventText(
+  t: TFunction<"deployments">,
+  tCommon: TFunction<"common">,
+  event: InstanceEvent,
+  options: { withActor?: boolean } = {},
+): string {
+  const text = eventBodyText(t, tCommon, event);
+  const actor = paramText(event, "actor");
+  return actor && options.withActor !== false ? text + t("instance.actorNote", { actor }) : text;
+}
+
+function eventBodyText(
   t: TFunction<"deployments">,
   tCommon: TFunction<"common">,
   event: InstanceEvent,
 ): string {
   const code = event.code?.trim() ?? "";
+  if (isOperatorEvent(code)) return operatorEventText(t, event, code);
   if (knownLifecycleEventCodes.has(code)) return lifecycleEventText(t, event, code);
   if (isNodeReplacementEvent(code)) return nodeReplacementEventText(t, event, code);
   if (isAutomationEvent(code)) return automationEventText(t, event, code);

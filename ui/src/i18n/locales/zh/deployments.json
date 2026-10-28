@@ -384,6 +384,9 @@
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",
       "UNIT_RETRIED": "已请求重试：清除了 {{attempts}} 次失败记录",
       "REPLICA_REBUILT": "副本 {{replica}} 失败后已自动重建（第 {{attempt}} 次尝试，放在 {{node}}）{{reasonNote}}",
+      "REPLICAS_CHANGED": "副本数 {{from}} → {{to}}{{roleNote}}",
+      "SLEEP_ORDERED": "已下达休眠（L{{level}}）：{{scope}}{{modeNote}}",
+      "WAKE_ORDERED": "已下达唤醒：实例 {{instances}}",
       "STORAGE_UNAVAILABLE": "存储 {{storage}} 在节点 {{node}} 上不可用（{{state}}）：运行中的实例继续用显存里的权重服务，正在加载的实例会等它恢复",
       "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
       "AUTO_SLEEP": "已休眠（L{{level}}）{{cause}}",
@@ -400,6 +403,7 @@
       "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走",
       "UNIT_PLACED": "自动放置：{{what}} 已放到 {{to}}{{from}}{{cause}}"
     },
+    "actorNote": "（操作人：{{actor}}）",
     "reasonNote": "；上次失败：{{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
@@ -699,6 +703,15 @@
       "rankSlotAria": "新副本 {{index}} 的 rank {{rank}} 节点",
       "preferPlaceholder": "优先放在（可留空）",
       "prefixHint": "请从第一个 rank 起依次指定：前面的 rank 指定后才能指定后面的。"
+    }
+  },
+  "operator": {
+    "roleNote": "（{{role}}）",
+    "abortNote": "；立即中止在途请求",
+    "scope": {
+      "deployment": "整个部署",
+      "role": "{{role}}角色",
+      "replica": "实例 {{instances}} 所在的副本"
     }
   },
   "automation": {
