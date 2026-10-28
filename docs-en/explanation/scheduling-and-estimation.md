@@ -46,7 +46,7 @@ With 1,000 nodes, these reports arrive about 17 times per second. Fully reschedu
 continuously reordering the entire cluster.
 
 **Stopping scheduling and draining.** Before maintaining a node, such as upgrading its driver, replacing a GPU, or taking it out of service, stop scheduling through Scheduling and drain on the node page. The candidate pool lists it separately as
-Cordoned and no longer starts new replicas on it. Multi-node and PD ranks assigned to it also wait with the reason `node_cordoned`. Existing replicas continue serving normally.
+Cordoned and no longer starts new replicas on it. Manually placed multi-node and PD ranks assigned to it also wait with the reason `node_cordoned`; automatically placed ones move to other nodes when the replica is about to start (see [Multi-Node Inference](../how-to/multi-node-inference.md#自动放置与手动放置)). Existing replicas continue serving normally.
 
 Draining also
 moves replicas placed there by the candidate pool. For each deployment, it moves one replica at a time: first it starts a replacement replica on another node, temporarily adding one replica in the pool. Only after the replacement is running does the original replica begin draining,

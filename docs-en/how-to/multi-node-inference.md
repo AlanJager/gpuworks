@@ -19,11 +19,12 @@ After completing this guide, all ranks of a replica are ready, and you can compl
    To verify links, select these nodes and run an [internal network test](configure-networks.md#内部测试);
    TCP reachability does not prove RDMA or accelerator network availability. Select the corresponding test method.
    If a network probe fails, fix routes, firewalls, or ports first. Do not bypass the failure by disabling authentication.
-2. On the deployments page, fix the node order by rank 0…N-1 and configure parallelism. Tensor parallelism (TP) and pipeline parallelism (PP)
+2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)). In manual mode, fix the node order by rank 0…N-1 on the deployments page; in automatic mode you may name only the first ranks' nodes and the platform picks the rest. Then configure parallelism. Tensor parallelism (TP) and pipeline parallelism (PP)
    apply to the entire deployment. Total cards = TP × PP; each node runs TP × PP ÷ node count cards (the division must be exact).
    After you select nodes, TP defaults to the smallest GPU count among selected nodes, and PP defaults to the node count. TP can also span nodes: for example, two nodes with
    1 card each can use TP 2. A node with more GPUs than the per-node card count uses only some of them.
    In the multi-node form, parallelism settings follow nodes and precede the image. TP / PP errors appear on the corresponding fields and do not prevent image and weight acquisition estimates from appearing.
+   Automatic placement requires TP: the platform needs it to work out how many free cards each node must have. Without TP the request returns 400 `AUTO_PLACEMENT_TP_REQUIRED`.
 3. Select the image and weights, then expand the per-node acquisition estimates, such as “1 of 2 nodes needs to pull the image.”
    Nodes that need resources follow the [pull settings](configure-pull-settings.md); nodes that already have them are skipped. Image pre-pulling before startup uses the same candidates.
 4. Review the form's configuration assessment. Correct errors in nodes, shared networks, and TP / PP, and confirm that the master port is available.
@@ -42,14 +43,69 @@ the leader does not reserve GPUs first, and this wait does not consume replica r
 
 For all creation fields, see the [API Reference](../reference/api.md).
 
+## Automatic and Manual Placement
+
+A multi-node deployment has the same two placement modes as a single-node one:
+
+| Mode | Who chooses the nodes | How to use it |
+|---|---|---|
+| **Automatic** | The platform. At creation it picks the ranks the request leaves out, from the nodes' free cards; when a replica starts and its nodes cannot take it, it moves only the ranks that do not fit | `placement_mode: "auto"` with `placement.tp`; `node_uuids` may be omitted or may name only the first ranks (the rest are filled in from the same network and architecture) |
+| **Manual** | You. You write every rank's node and the platform does not change it | Omit `placement_mode` (it means manual) and write `nnodes` entries in `node_uuids` |
+
+Multi-node deployments that existed before the upgrade are manual. The deployment's `placement_mode` shows the current mode, and `PUT /api/v1/deployments/{id}/placement-mode` switches between them without restarting instances; see [Deploy Models](deploy-models.md#部署后调整).
+
+### How Nodes Are Chosen at Creation
+
+For each replica the platform picks `nnodes` nodes that meet the conditions below. All nodes of one replica must share one compute network and one GPU architecture:
+
+- Online, schedulable (not cordoned or draining), meeting the deployment's node requirements, and with the free cards one rank needs (TP × PP ÷ node count).
+
+Groups that qualify are compared in this order:
+
+1. RDMA networks (host RDMA or accelerator RDMA) before Ethernet.
+2. Groups with more nodes that already hold the model file.
+3. Within the group, the placement strategy: multi-node defaults to `binpack`, which takes the node with the fewest free cards that still fit so whole empty nodes stay free for the next deployment; `spread` takes the most free cards. Nodes that already have the model always come first, and ties go to the lower node ID, so the same input gives the same result.
+
+After the pick, the request goes through the ordinary checks as if you had written those nodes yourself, and the deployment stores the nodes that were picked. Which cards are used is decided by scheduling at launch. For an automatic multi-node request, the evaluate endpoint (`POST /api/v1/evaluate`) returns `auto_placed: true` and previews the nodes that would be picked now; creation picks again, so the two can differ.
+
+When no group can take the replica, creation returns 409 `UNIT_PLACEMENT_NONE` with parameters saying how many nodes each check left out (requirements not met, cordoned, offline, not enough free cards, no compute network) and how many nodes the largest group has. Evaluation reports it as an error on the `placement_mode` field.
+
+### Choosing Again When a Replica Starts
+
+The nodes picked are the nodes written in the unit (replica), and matching, network resolution, node replacement, and drain all work from them as before. When a replica needs to start and has no instance, the platform plans it again with the current free cards:
+
+- All its nodes are online and can take it: it starts as is.
+- Some ranks' nodes were cordoned, no longer meet the node requirements, or would refuse the launch (another deployment holds the cards): **only those ranks move to other nodes** and the other ranks keep their nodes. The candidates are chosen as for a [replacement after a node is lost](node-failover.md#怎样选替换节点) (same compute network, same vendor and architecture, free cards, trial plan fits). If the ranks cannot be moved one at a time, the whole replica is chosen again. The timeline records `UNIT_PLACED` with which replica, the old nodes, the new nodes, and the reason (`reason`, for example `node_cordoned`, `placement_rejected`, or the scheduler's refusal code).
+- Nowhere to go: the replica keeps its nodes and keeps waiting, with the scheduler's wait reason in the timeline as usual; the platform looks again after a minute.
+- An offline node is [node replacement](node-failover.md)'s and follows its wait time; replicas on a draining node follow the drain's start-new-then-switch. These two cases are the same for automatic and manual deployments.
+- While the deployment's own instances are still leaving those nodes (a restart or a retired attempt) nothing is chosen again, because their cards are about to be released.
+
+Manual deployments do not do this: a replica whose nodes cannot take it waits, and `DEPLOYMENT_UNSCHEDULABLE` says why. Switch to automatic if you want the platform to move it.
+
 ## Add Replicas to an Existing Deployment
+
+**For an automatically placed deployment**, say only how many replicas you want:
+
+1. Open **Edit replicas** in deployment details and enter the replica count. If needed, name the new replicas' nodes in **Nodes for first placement**.
+2. The API is `PUT /api/v1/deployments/{id}/replicas` with `{"replicas": 3, "place_on": ["<node UUID>", …], "remove": ["<instance UUID>"]}`:
+   - `place_on` names nodes for the new replicas' ranks in order: first the first new replica's ranks 0…N-1, then the next replica's. You may give only some; the platform fills in the rest from the same network. More nodes than the new replicas have ranks returns 400 `REPLICAS_PLACE_ON_TOO_MANY`, and nodes that cannot form a replica that fits return 409 `REPLICAS_PLACE_ON_REFUSED` (`params.reason` is `no_group`).
+   - When no group can take a replica, 409 `UNIT_PLACEMENT_NONE`.
+   - When you reduce the count, the replicas of the instances listed in `remove` go first; without it the most recently added go.
+
+   A new replica's leader does not share a node with another replica's leader. `place_on` only decides where a new replica is first placed; afterwards it takes part in the re-pick at launch like the others.
+
+**For a manually placed deployment**, submit the full replica list (`units`); the recommendation button saves effort:
 
 1. Open **Edit replicas** in deployment details and click **Add a suggested replica**.
 2. Check the populated node list and save after confirming it is correct. If no group is recommended, check the number of excluded nodes by category, satisfy the missing conditions indicated by the reasons, then select nodes again.
 
 Nodes in a recommended group must be online, schedulable, satisfy node requirements, and share the same compute network and GPU architecture. Each node must have enough free cards for one rank.
-The platform evaluates placement rank by rank using the deployment configuration, then populates the list. A leader does not share a node with another replica's leader.
+The platform evaluates placement rank by rank using the deployment configuration, then populates the list. A leader does not share a node with another replica's leader. The recommendation is only a suggestion and is saved after you confirm it; it uses the same selection as automatic placement and differs only in that you confirm the result. `place_on` on a manual deployment returns 400 `REPLICAS_BODY_SHAPE`.
 
-Recommendations still require your confirmation. **When you create a deployment or add replicas**, the platform does not select nodes automatically for multi-node replicas because crossing switches or unavailable RDMA connectivity can affect the entire replica group.
+**When a node is lost or drained**, automatic and manual deployments behave the same: the platform replaces nodes automatically, only the affected rank moves, and the replacement is chosen by the same rules (same compute network, same GPU vendor and architecture, free cards, trial plan fits) without spending retries. For the wait, selection rules, and undo, see [Replace Lost Nodes Automatically](node-failover.md).
 
-**When a node is lost or drained**, the platform does replace nodes automatically: only the affected rank moves, and the replacement is chosen by the same rules (same compute network, same GPU vendor and architecture, free cards, trial plan fits) without spending retries. For the wait, selection rules, and undo, see [Replace Lost Nodes Automatically](node-failover.md).
+## Limits
+
+- Automatic placement chooses nodes only, not cards: how many cards each node uses is fixed by TP × PP ÷ node count, and the scheduler picks which ones at launch. A multi-node replica cannot pin cards.
+- The platform judges whether nodes can reach each other from the compute network **declaration**, not from network test results. When the declaration does not match reality (for example a switch that does not route), a group that cannot talk can still be chosen, and the engine reports the failure after launch. For network selection and verification see [Configure Node Networks](configure-networks.md).
+- Automatic placement does not start some ranks while it waits for the rest: the ranks of a replica are created together or wait together.

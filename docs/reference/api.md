@@ -274,7 +274,7 @@ macOS 忽略 `no_systemd`。
 
 `PUT /api/v1/nodes/{uuid}/scheduling` 的三个取值影响如下：
 
-- `cordoned`：不再启动新副本，已有副本继续服务。候选池单列为 `cordoned`；指定该节点的多机或 PD rank 等待，原因为 `node_cordoned`。
+- `cordoned`：不再启动新副本，已有副本继续服务。候选池单列为 `cordoned`；手动放置的多机或 PD rank 指定了该节点时等待，原因为 `node_cordoned`；自动放置的在副本要启动时把这些 rank 换到别的节点（`UNIT_PLACED`）。
 - `draining`：同时逐个迁走这台节点上的副本；先在其他节点启动替代副本，运行后再排空原副本，每个部署一次一个。多机与 PD 副本同样先起后切（替代节点同计算网络、同 GPU 架构、卡空闲，运行后放置才改写，时间线 `NODE_DRAIN_MOVED`），没有节点可去时留在原处等待。钉在这台节点上的单机部署不迁。
 - `schedulable`：恢复调度，等待中的副本立即重试。
 
@@ -516,7 +516,8 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE`（参数同上，`refused[].held_outside` 为 true） | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | 为多机部署推荐一个副本的节点；请求体 `{"units":[...]}` 为已选副本，返回推荐 `unit` 或无法放置的原因，不保存；见[推荐多机副本节点](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | 让一个副本重新获得重试次数：请求体 `{"role","index"}`（普通部署 `role` 为空），该副本的失败尝试被移除（容器清理、时间线保留），控制器随后重建它，其他副本不受影响；没有该副本 404 `UNIT_UNKNOWN`，没有失败尝试或仍有实例 409 `UNIT_NOT_FAILED`，部署非运行中 409 `UNIT_RETRY_NOT_ACTIVE` | JWT |
-| PUT | `/api/v1/deployments/{id}/replicas` | 单机部署修改副本数（增加时可加 `place_on` 指定新副本首次启动的节点），多机部署修改副本节点列表；完整字段与条件见[普通部署的副本调整](#普通部署的副本调整) | JWT |
+| PUT | `/api/v1/deployments/{id}/replicas` | 单机部署修改副本数（增加时可加 `place_on` 指定新副本首次启动的节点），手动放置的多机部署修改副本节点列表，自动放置的多机部署按副本数增减（`place_on` 为新副本各 rank 的节点）；完整字段与条件见[普通部署的副本调整](#普通部署的副本调整) | JWT |
+| PUT | `/api/v1/deployments/{id}/placement-mode` | 切换多机或 PD 部署的放置方式：请求体 `{"mode":"auto"}` 或 `{"mode":"manual"}`，不重启实例，单元沿用现有节点；切到 `auto` 同时去掉 PD 单元钉住的卡；200 返回部署详情（`placement_mode` 为新值）。`mode` 不是这两个值 400 `FIELD_INVALID`（`params.field` 为 `mode`），单机部署 400 `PLACEMENT_MODE_SHAPE`，部署不存在 404；见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联后换节点的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联时自动换节点](../how-to/node-failover.md) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
@@ -603,6 +604,7 @@ macOS 忽略 `no_systemd`。
   详情额外返回 `node_requirement_labels[]`：`{key,value,display,display_code?,nodes}`。节点与网络显示名称；`nodes` 是当前匹配数量，0 不代表条件失效，而是当前没有节点匹配。列表不带这些显示字段。
 - `placement_strategy` 为 `spread` 或 `binpack`。普通单机副本尚无实例时，`placement_status{unscheduled,reason,at}` 给出等待数量与最近原因：`pool_empty` 或 `pool_no_fit`。
   原因参数包含各类计数、最多 3 台最接近的候选及拒绝原因；每个等待超时窗口最多记录一次。
+- `placement_mode` 只在多机与 PD 部署出现：`auto` 表示节点由平台挑选（创建时按空闲卡挑，单元启动时放不下再换），`manual` 表示节点是运维写的；升级前已有的部署都是 `manual`。单机部署不带这个字段，它的放置写在节点条件里（`GET /deployments/{id}/draft` 的 `placement_mode` 与 `node_uuid`）。
 - `max_replicas` 是调整副本数的上限；`restart_requested_at` 只在滚动重启进行中出现。
 - 普通部署的 `retry_exhausted{index,failed_attempts,last_failure}` 指出耗尽重试次数的副本，可用 `units/retry` 重试；多机部署的 `units[]` 给出各副本 leader 与 `followers[]`。调整方式见[普通部署的副本调整](#普通部署的副本调整)。
 
@@ -731,7 +733,7 @@ macOS 忽略 `no_systemd`。
 
 `PUT /api/v1/deployments/{id}/replicas` 用于调整普通部署的副本；多机与单机部署使用不同的请求体。
 
-**多机部署**提交期望的全部副本：`{"units":[{"node_uuid":"<leader>","followers":[{"node_uuid":"..."}]}]}`。
+**手动放置的多机部署**提交期望的全部副本：`{"units":[{"node_uuid":"<leader>","followers":[{"node_uuid":"..."}]}]}`。
 
 - 每个副本恰好有 `nnodes` 个 rank，且各在不同的已知节点，否则报 `REPLICA_UNIT_RANKS` / `REPLICA_UNIT_NODE`。
 - 不能指定 GPU，否则报 `REPLICA_UNIT_GPUS`。
@@ -740,6 +742,13 @@ macOS 忽略 `no_systemd`。
 - 新增或换了节点的副本还须在线（`REPLICA_UNIT_NODE_OFFLINE`）并满足部署的节点条件（`REPLICA_UNIT_REQUIREMENTS`）。已列出且节点与顺序都不变的副本原样保留，不因节点掉线或标签变化而挡住整个列表的修改。
 - 换了首个副本的 leader 时，部署上存的 master 地址随之清空；每个副本在自己 leader 的参数网络地址上汇合。
 - 从列表去掉的副本排空后退役；新副本各自成组，在自己的 leader 上汇合。响应的 `units` 列出当前副本及其重试情况。
+
+**自动放置的多机部署**（`placement_mode` 为 `auto`）提交副本数：`{"replicas":N,"place_on":["<node uuid>"],"remove":["<uuid>"]}`，不带 `units`（带了 `units` 则按上面的列表原样写入）。
+
+- 增加副本时，服务端按放置策略为新副本挑节点（同一副本内同计算网络、同 GPU 架构，每台有一个 rank 的空闲卡，leader 不与其他副本的 leader 同节点），写进该部署的副本列表；规则同[创建时挑节点](../how-to/multi-node-inference.md#创建时怎样挑节点)。
+- `place_on` 可选，只在增加副本时使用：按顺序给新副本的 rank 指定节点（第一个新副本的 rank 0…N-1，再是下一个的），可以只给一部分，其余由服务端补。个数多于新增副本的 rank 总数 400 `REPLICAS_PLACE_ON_TOO_MANY`（`params.count`、`maximum`）；所写节点凑不成能放下的副本 409 `REPLICAS_PLACE_ON_REFUSED`（`params.node`、`reason` 为 `no_group`）；没有任何一组放得下 409 `UNIT_PLACEMENT_NONE`。
+- `remove` 只在减少副本时使用，增加副本时带上返回 400 `REPLICAS_REMOVE_TOO_MANY`（`params.maximum` 为 0）。
+- 减少副本时，`remove` 里的实例所在的副本先去掉（不属于本部署 400 `REPLICAS_REMOVE_INVALID`，多于减少的个数 400 `REPLICAS_REMOVE_TOO_MANY`），不写则去掉最后加入的；至少保留 1 个副本，否则 400 `REPLICAS_TOO_FEW`。
 
 **单机部署**提交副本数：`{"replicas":N,"remove":["<uuid>"]}`。
 
@@ -751,7 +760,7 @@ macOS 忽略 `no_systemd`。
 
 **两种请求共用的错误条件：**
 
-- 请求体与部署形态不符（PD、多机传数量、单机传列表、多机带 `place_on`）：400 `REPLICAS_BODY_SHAPE`。
+- 请求体与部署形态不符（PD、手动放置的多机传数量、单机传列表、手动放置的多机带 `place_on`）：400 `REPLICAS_BODY_SHAPE`。
 - 部署正在删除：409 `DEPLOYMENT_DELETING`。
 
 ### 评估与创建的配置字段
@@ -762,10 +771,10 @@ macOS 忽略 `no_systemd`。
 |---|---|
 | `quick_params` | 按 `/engines` 参数字典声明的类型提交值；显式 `false` 与省略不同 |
 | `quick_params_unset` | 本次明确不继承的参数 key 数组，阻止模板回填；不写入持久化配置 |
-| `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。只是请求里的说法：部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`（单机、非 PD） |
+| `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。单机：只是请求里的说法，部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`。多机与 PD：`auto` 时服务端在创建时为请求没写的 rank 或单元挑节点（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)），部署保存为自动放置，详情的 `placement_mode` 为 `auto` |
 | `target_vendor` | 评估与创建使用同一加速器厂商；存为节点条件 `gpuworks.ai/vendor`。未给时创建按落点节点的厂商补上 |
 | `node_requirements` | 节点条件：`{"<key>": ["<value>", …]}`，同一键的多个值是「其中之一」，不同键「同时满足」。键可以是节点标签，也可以是系统标签（见上「节点标签」）；保留域里不是这八个系统键的一律拒绝（拼错的键不会悄悄匹配 0 台），`gpuworks.ai/vendor` 只能有一个值，网络键的值是网络 ID 或 `management`。多机与 PD 部署逐 rank 列节点，不接受 `gpuworks.ai/node`。错误 `NODE_REQUIREMENTS_INVALID`；所选节点不满足 `NODE_REQUIREMENTS_UNMET`（`params.detail` 写明哪个键） |
-| `placement_strategy` | `spread`（默认）或 `binpack`，随部署保存；其它值 `PLACEMENT_STRATEGY_INVALID` |
+| `placement_strategy` | `spread` 或 `binpack`，随部署保存；其它值 `PLACEMENT_STRATEGY_INVALID`。没写时单机是 `spread`，多机与 PD（不论自动还是手动）是 `binpack` |
 | `placement.gpus`、`placement.tp`、`placement.pp` | 明确的物理 GPU 索引；TP、PP 是整个部署的并行度（每节点 TP × PP ÷ `nnodes` 张卡，必须整除）。多机未给 TP 时默认每节点一个流水线阶段、TP 取所选节点中最少的 GPU 数，生效值写回 placement；单机未给 TP 时由调度器按 PP 的整数倍挑卡（TP = 卡数 ÷ PP），自动放置同样按所填 TP、PP 选节点；评估在 `form_values.tp/pp` 与 `parallelism`（`tp`、`pp`、`nodes`、`gpus_per_node`）中返回；多机评估与手动放置的 `acquisition.nodes` 逐节点给出获取预估 |
 | `routing_policy` | 多副本网关策略：`least_request`（默认）、`prefix_affinity` 或 `failover`；不属于引擎启动参数 |
 | `tokenize_enabled` | 网关是否把 `/v1/tokenize`、`/v1/detokenize` 转给该部署（见 [OpenAI 兼容网关](openai-gateway.md#分词tokenize)）：省略为开启，`false` 关闭；与引擎无关，引擎不提供时由引擎自己回错 |
@@ -792,6 +801,40 @@ chat 发送内容为 `1` 的消息、`max_tokens:1`；仅有 embedding 时发送
 | `recent` | 最近至多 10 次检查，旧的在前 |
 | `recent_mean_ms`、`recent_ok` | 其中阈值内回复的平均耗时与次数；没有时为 `null`、`0` |
 
+### 自动放置多机与 PD 部署
+
+多机和 PD 的创建、评估请求写 `placement_mode: "auto"`，由服务端为请求没写的 rank 或单元挑节点；省略或写 `manual` 时节点由请求给出。
+
+多机请求（`nnodes` > 1）：
+
+```json
+{
+  "model_id": 3, "nnodes": 2, "placement_mode": "auto",
+  "placement": {"tp": 8, "pp": 2},
+  "node_uuids": ["<node uuid of rank 0, optional>"]
+}
+```
+
+- 必须有 `placement.tp`，否则 400 `AUTO_PLACEMENT_TP_REQUIRED`；每台节点需要的空闲卡数是 TP × PP ÷ `nnodes`。
+- `node_uuids` 可省略，也可以只给前几个 rank 的节点（多于 `nnodes` 个 400 `DISTRIBUTED_NODE_COUNT`），其余在这些节点所在的计算网络、GPU 架构里补；给的节点不在同一计算网络、同一架构里时按没有一组放得下处理（409 `UNIT_PLACEMENT_NONE`）。
+- 多机仍只支持 1 个副本（`replicas` 为 1），其后用 `PUT /replicas` 按副本数扩容（见[普通部署的副本调整](#普通部署的副本调整)）。
+
+PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元留在原处，平台只补没写的；自动补的单元不钉卡（`gpus` 由调度器启动时挑）；已经写了节点的单元要用的卡，在为其他单元挑节点时先扣掉。某个角色没写节点的单元带 `followers` 时 400 `AUTO_PLACEMENT_PD_MULTI_NODE`（`params.role`）：自动放置的单元必须一台节点放得下。`PUT /deployments/{id}/pd` 增加单元同理，新单元可以不写节点。
+
+挑选规则（多机以一个副本为单位，PD 以整个部署为单位；只在在线、可调度、满足节点条件且有空闲卡的节点里挑）：
+
+1. 一个副本内（PD 是整个部署内）的节点同一张计算网络、同一种 GPU 架构；PD 已有单元时，新单元加入它们所在的网络和架构。
+2. 组之间：RDMA 网络（主机 RDMA、加速器 RDMA）优先于以太网，再看已有模型文件的节点多的组。
+3. 组内：已有模型的节点优先，再按 `placement_strategy`（没写时多机与 PD 是 `binpack`）：`binpack` 取空闲卡最少但够用的，`spread` 取最多的，最后按节点编号定。PD 在 `binpack` 下，一台节点放得下全部单元就都放这一台；`spread` 下 prefill 与 decode 尽量不在同一台。
+
+没有一组放得下返回 409 `UNIT_PLACEMENT_NONE`，`params` 为 `nodes`（节点总数）、`unmet`（不满足节点条件）、`cordoned`、`offline`、`busy`（空闲卡不够）、`no_network`（没有可用的计算网络）、`largest`（最大的一组有几台）。评估对这些失败不返回 HTTP 错误，而是 `ok=false`、`errors[]` 里 `field` 为 `placement_mode`，响应带 `auto_placed: true`。
+
+评估成功时响应带 `auto_placed: true`，预览按此刻挑中的节点算；创建时重新挑一次，所以两次的节点可能不同；创建不提交评估选中的节点，也就没有单机自动放置那样的 `AUTOMATIC_PLACEMENT_STALE`，资源在评估后被占走时，由单元启动时的重新挑选处理。部署保存的是挑中的节点（写在多机的 `node_uuids` 或 PD 的单元里），详情的 `placement_mode` 为 `auto`。
+
+单元启动时，控制器按当前空闲卡试算它的节点：节点都在线且放得下就启动；节点已停止调度、不满足节点条件或会被调度拒绝（卡被其他部署占了）时，只把这些 rank 换到别的节点并记 `UNIT_PLACED`（`params`：`unit`（从 1 起）、`role`、`from`、`to`（按 rank 的节点名）、`reason`）；没有地方可去时保留节点继续等待，约每分钟重试。离线节点归换节点，被驱逐的节点归驱逐，与放置方式无关。手动放置的单元不做这件事，PD 钉住的卡被其他部署占着时调度原因是 `pinned_gpus_unavailable`（`params`：`node`、`gpus`、`holders`）。
+
+`PUT /deployments/{id}/placement-mode` 在自动与手动之间切换；已有部署都是手动。
+
 ### 评估请求与获取预估
 
 部署请求不选择镜像或模型从哪里来（[ADR 0048](../adr/0048-pull-settings.md)）：`model_source` 只有 `{storage_id, provider}`，前者是节点取模型时保存到的存储，后者是运行模板的哪家权重来源（`huggingface` / `modelscope`）。`acquisition.nodes[]` 对请求指定的节点（手动放置或多机，按 rank 顺序）给出预估，只是预估，节点启动时会重新判断：
@@ -802,7 +845,7 @@ chat 发送内容为 `1` 的消息、`max_tokens:1`；仅有 embedding 时发送
 | `weights_plan` | `present` 已有；`copy` 从 `weights_copy_from` 节点复制；`storage` 从共享存储 `weights_storage` 读取或缓存；`download` 从 `weights_provider` 下载 |
 | `image_cached`、`image_cache_reason`、`weights_present` | 镜像是否已缓存（未知时带原因）与模型是否已在节点上 |
 
-自动放置时不逐节点预估，调度后由选中的节点自己获取。
+单机自动放置在调度器选出节点之前不逐节点预估，调度后由选中的节点自己获取。多机与 PD 的自动放置在评估里先按此刻挑中的节点处理，与这些节点是手动写出的一样。
 
 ### 评估的字段错误（`errors[]`）与 `ok=false` 语义
 
@@ -817,7 +860,7 @@ chat 发送内容为 `1` 的消息、`max_tokens:1`；仅有 embedding 时发送
 - 请求级字段使用请求 JSON 中的名称：`replicas`、`nnodes`、`engine`、`target_vendor`、`extra_args`、
   `quick_params_unset`、`master_port`、`placement`、`placement.tp`、`placement.pp`、`node_requirements`、
   `placement_strategy`、`partition_backend`、`start_timeout_sec`、`health_check_threshold_sec`；
-- `node_uuids`（多机节点列表）在表单里对应 `distributed_nodes` 控件；
+- `node_uuids`（多机节点列表）在表单里对应 `distributed_nodes` 控件；自动放置的多机请求在挑不出节点或缺 `placement.tp` 时，错误归到 `placement_mode`；
 - 额外挂载行统一归到 `container_mount_rows`（请求只携带用户新增的挂载，不含行号）；
 - docker 参数错误归到 `container_docker_args`，共享内存大小错误归到 `container_shm_gib`；
 - **`field` 为空串的错误不归属任何控件**：启动装配/放置试算等与单个参数无关的失败
@@ -858,7 +901,8 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
 自动模式评估返回 `selected_node`、逐节点 `candidates` 与选中节点的 `plan`。
 创建时提交 `selected_node.uuid` 作为 `node_uuid`，同时提交 `plan.plan.gpus`
 和 `plan.plan.tp`，并保留标签等原约束。创建会重新校验，原节点、GPU 或约束失效时
-返回冲突，要求重新评估。当前自动确认只支持单节点、单副本；显式节点与旧请求的多副本
+返回冲突，要求重新评估。这套「评估后提交所选节点」的确认只适用于单节点、单副本；多机与 PD 的自动放置
+不走它（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)）。显式节点与旧请求的多副本
 评估仍为 `plan_scope=per_replica`，不能据此推断整个副本组都能分配成功。
 
 模板详情及评估响应中的 `engine_decides_param_keys` 是当前有效启动不替用户填默认值、
@@ -911,7 +955,7 @@ extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`M
   `PD_KV_LOAD_FAILURE_INVALID`。
 - `GET /api/v1/engines` 每个引擎的 `pd_modes[]` 给出这些规则：`name`、`vendors`、`roles`、`scalable_to_zero`（运行中可缩到 0
   的角色）、`tp_rule`、`max_units_per_role`、`fallbacks`、`kv_load_failures`（首项为默认值）、`unverified`。
-- 与 `nnodes`、`node_uuids`、`replicas > 1` 或自动放置同时给出时返回 `PD_SHAPE_CONFLICT`；其余校验错误码以
+- 与 `nnodes`、`node_uuids`、`replicas > 1` 同时给出时返回 `PD_SHAPE_CONFLICT`；自动放置用 `placement_mode: "auto"` 且单元不写 `node_uuid`（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)）；其余校验错误码以
   `PD_` 开头（字段 `placement.pd`）。可休眠（`sleepable`）且 KV 经 UCX 走主机 RDMA 网络时，创建与评估返回
   `PD_SLEEP_RDMA_UNSUPPORTED`（`params`：`mode`、`network`）。
 - 部署详情的 `pd` 字段：`mode`、`fallback`、`kv_load_failure`、`state`（`not_ready|partial|running`）、`short`、

@@ -274,7 +274,7 @@ When `install_dir` is omitted, `/opt/gpuworks` is used, falling back to `/tmp/gp
 
 The three values for `PUT /api/v1/nodes/{uuid}/scheduling` have the following effects:
 
-- `cordoned`: No new replicas start; existing replicas continue serving. The candidate pool lists the node separately as `cordoned`; multi-node or PD ranks assigned to it wait with the reason `node_cordoned`.
+- `cordoned`: No new replicas start; existing replicas continue serving. The candidate pool lists the node separately as `cordoned`; manually placed multi-node or PD ranks assigned to it wait with the reason `node_cordoned`, while automatically placed ones move to other nodes when the replica is about to start (`UNIT_PLACED`).
 - `draining`: Also migrates the replicas on this node one at a time. A replacement starts on another node first; once it is running, the original replica drains. This proceeds one replica at a time per deployment. Multi-node and PD replicas move the same way, replacement first (the replacement node has the same compute network, the same GPU architecture, and free cards; the placement is rewritten only once it runs, recorded in the timeline as `NODE_DRAIN_MOVED`), and stay in place waiting if there is no node to go to. Single-node deployments pinned to this node do not move.
 - `schedulable`: Resumes scheduling; waiting replicas retry immediately.
 
@@ -516,7 +516,8 @@ This endpoint does not check whether a user spec with the same name already exis
 | POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command. A card held by a process outside the platform gives 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters as above, with `refused[].held_outside` true) | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | Suggest nodes for one replica of a multi-node deployment. The request body `{"units":[...]}` lists the replicas already selected. Returns a suggested `unit` or the reason placement is not possible, without saving. See [Suggest Nodes for a Multi-Node Replica](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | Give a replica a fresh retry allowance: request body `{"role","index"}` (`role` is empty for regular deployments). Remove the replica's failed attempts (clean up containers and retain the timeline); the controller then recreates it without affecting other replicas. Returns 404 `UNIT_UNKNOWN` if the replica does not exist, 409 `UNIT_NOT_FAILED` if there are no failed attempts or instances still exist, or 409 `UNIT_RETRY_NOT_ACTIVE` if the deployment is not running | JWT |
-| PUT | `/api/v1/deployments/{id}/replicas` | Change the replica count for a single-node deployment (when growing, `place_on` names the nodes the new replicas start on first) or the replica node list for a multi-node deployment. See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for all fields and conditions | JWT |
+| PUT | `/api/v1/deployments/{id}/replicas` | Change the replica count for a single-node deployment (when growing, `place_on` names the nodes the new replicas start on first), the replica node list for a manually placed multi-node deployment, or the replica count for an automatically placed multi-node deployment (`place_on` names the nodes of the new replicas' ranks). See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for all fields and conditions | JWT |
+| PUT | `/api/v1/deployments/{id}/placement-mode` | Switch a multi-node or PD deployment between placement modes: body `{"mode":"auto"}` or `{"mode":"manual"}`. Instances are not restarted and units keep their current nodes; switching to `auto` also drops the cards PD units were pinned to. 200 returns the deployment detail (`placement_mode` has the new value). A `mode` other than these two returns 400 `FIELD_INVALID` (`params.field` is `mode`), a single-node deployment returns 400 `PLACEMENT_MODE_SHAPE`, and an unknown deployment returns 404; see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Replace Lost Nodes Automatically](../how-to/node-failover.md) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | Recreate the deployment using the current configuration and reset replica retry counts. The request body accepts an optional `strategy` (default `rolling`; `all` interrupts service). See [Restart Strategies](#重启策略) | JWT |
@@ -603,6 +604,7 @@ Do not uniformly treat absent optional fields as `0` or empty arrays. Use the fo
   Details additionally return `node_requirement_labels[]`: `{key,value,display,display_code?,nodes}`. Nodes and networks display names; `nodes` is the current match count. A value of 0 does not mean the requirement is invalid, only that no nodes currently match. Lists do not include these display fields.
 - `placement_strategy` is `spread` or `binpack`. When a regular single-node replica has no instance yet, `placement_status{unscheduled,reason,at}` provides the waiting count and latest reason: `pool_empty` or `pool_no_fit`.
   Reason parameters include counts by category, up to 3 closest candidates, and rejection reasons; at most one event is recorded per waiting timeout window.
+- `placement_mode` appears only on multi-node and PD deployments: `auto` means the platform picks the nodes (at creation from free cards, and again when a unit starts and no longer fits), `manual` means the operator wrote them; deployments that existed before the upgrade are all `manual`. Single-node deployments do not carry this field; their placement is in the node requirements (`placement_mode` and `node_uuid` in `GET /deployments/{id}/draft`).
 - `max_replicas` is the upper limit when adjusting replica counts; `restart_requested_at` appears only while a rolling restart is in progress.
 - For regular deployments, `retry_exhausted{index,failed_attempts,last_failure}` identifies replicas that have exhausted their retries; use `units/retry` to retry them. For multi-node deployments, `units[]` gives each replica's leader and `followers[]`. See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for adjustment methods.
 
@@ -731,7 +733,7 @@ An unknown strategy returns 400 `RESTART_STRATEGY_INVALID`; a non-active deploym
 
 `PUT /api/v1/deployments/{id}/replicas` adjusts replicas of regular deployments. Multi-node and single-node deployments use different request bodies.
 
-For **multi-node deployments**, submit all desired replicas: `{"units":[{"node_uuid":"<leader>","followers":[{"node_uuid":"..."}]}]}`.
+For **manually placed multi-node deployments**, submit all desired replicas: `{"units":[{"node_uuid":"<leader>","followers":[{"node_uuid":"..."}]}]}`.
 
 - Each replica must have exactly `nnodes` ranks, each on a different known node; otherwise returns `REPLICA_UNIT_RANKS` / `REPLICA_UNIT_NODE`.
 - GPUs cannot be specified; otherwise returns `REPLICA_UNIT_GPUS`.
@@ -740,6 +742,13 @@ For **multi-node deployments**, submit all desired replicas: `{"units":[{"node_u
 - Nodes for new replicas or replicas whose nodes have changed must also be online (`REPLICA_UNIT_NODE_OFFLINE`) and meet the deployment's node requirements (`REPLICA_UNIT_REQUIREMENTS`). Already listed replicas whose nodes and order remain unchanged are retained as-is, so offline nodes or changed labels do not block changes to the entire list.
 - When the first replica's leader changes, the master address stored on the deployment is cleared; each replica rendezvouses at its own leader's parameter-network address.
 - Replicas removed from the list drain and then retire. New replicas form separate groups and rendezvous at their own leaders. The response's `units` lists current replicas and their retry status.
+
+For **automatically placed multi-node deployments** (`placement_mode` is `auto`), submit the replica count: `{"replicas":N,"place_on":["<node uuid>"],"remove":["<uuid>"]}`, without `units` (with `units`, the list is written as given, as above).
+
+- When growing, the server picks nodes for the new replicas by the placement strategy (within a replica, one compute network and one GPU architecture, a free-card slot for one rank on each node, and a leader that does not share a node with another replica's leader) and writes them into the deployment's replica list; the rules are those of [how nodes are chosen at creation](../how-to/multi-node-inference.md#创建时怎样挑节点).
+- `place_on` is optional and used only when growing: it names nodes for the new replicas' ranks in order (the first new replica's ranks 0…N-1, then the next replica's). You may give only some, and the server fills in the rest. More entries than the new replicas have ranks returns 400 `REPLICAS_PLACE_ON_TOO_MANY` (`params.count`, `maximum`); named nodes that cannot form a replica that fits return 409 `REPLICAS_PLACE_ON_REFUSED` (`params.node`, `reason` is `no_group`); when no group fits at all, 409 `UNIT_PLACEMENT_NONE`.
+- `remove` is used only when shrinking; with it on a grow, the request returns 400 `REPLICAS_REMOVE_TOO_MANY` (`params.maximum` is 0).
+- When shrinking, the replicas of the instances listed in `remove` go first (an instance that is not in this deployment returns 400 `REPLICAS_REMOVE_INVALID`, more than the reduction returns 400 `REPLICAS_REMOVE_TOO_MANY`); without it the most recently added go. At least one replica remains, otherwise 400 `REPLICAS_TOO_FEW`.
 
 For **single-node deployments**, submit the replica count: `{"replicas":N,"remove":["<uuid>"]}`.
 
@@ -751,7 +760,7 @@ For **single-node deployments**, submit the replica count: `{"replicas":N,"remov
 
 **Error conditions shared by both requests:**
 
-- Request body does not match the deployment shape (PD, a count for a multi-node deployment, a list for a single-node deployment, or `place_on` on a multi-node deployment): 400 `REPLICAS_BODY_SHAPE`.
+- Request body does not match the deployment shape (PD, a count for a manually placed multi-node deployment, a list for a single-node deployment, or `place_on` on a manually placed multi-node deployment): 400 `REPLICAS_BODY_SHAPE`.
 - Deployment is being deleted: 409 `DEPLOYMENT_DELETING`.
 
 ### Configuration Fields for Evaluation and Creation
@@ -762,10 +771,10 @@ For **single-node deployments**, submit the replica count: `{"replicas":N,"remov
 |---|---|
 | `quick_params` | Submit values in the types declared by the `/engines` parameter dictionary; explicit `false` differs from omission |
 | `quick_params_unset` | Array of parameter keys explicitly excluded from inheritance in this request, preventing template backfill; not written to persistent configuration |
-| `placement_mode` | `auto` lets the server select nodes; `manual` uses explicit nodes. Defaults to `manual` if omitted. This is only request terminology: the deployment does not store this field. Manual placement is stored as node requirement `gpuworks.ai/node: [node_uuid]` (single-node, non-PD) |
+| `placement_mode` | `auto` lets the server select nodes; `manual` uses explicit nodes. Defaults to `manual` if omitted. Single-node: only request terminology, the deployment does not store this field, and manual placement is stored as node requirement `gpuworks.ai/node: [node_uuid]`. Multi-node and PD: with `auto` the server picks nodes for the ranks or units the request leaves out at creation (see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署)), the deployment is stored as automatically placed, and `placement_mode` in the detail is `auto` |
 | `target_vendor` | Evaluation and creation use the same accelerator vendor; stored as node requirement `gpuworks.ai/vendor`. If omitted, creation fills it in using the destination node's vendor |
 | `node_requirements` | Node requirements: `{"<key>": ["<value>", …]}`. Multiple values for one key mean "any of these"; different keys must "all match." Keys can be node labels or system labels (see "Node Labels" above). Any key in the reserved domain other than the eight system keys is rejected (a misspelled key does not silently match 0 nodes). `gpuworks.ai/vendor` can have only one value; network key values are network IDs or `management`. Multi-node and PD deployments list nodes per rank and do not accept `gpuworks.ai/node`. Errors: `NODE_REQUIREMENTS_INVALID`; selected nodes do not meet requirements: `NODE_REQUIREMENTS_UNMET` (`params.detail` identifies the key) |
-| `placement_strategy` | `spread` (default) or `binpack`, saved with the deployment; other values return `PLACEMENT_STRATEGY_INVALID` |
+| `placement_strategy` | `spread` or `binpack`, saved with the deployment; other values return `PLACEMENT_STRATEGY_INVALID`. When omitted it is `spread` for single-node and `binpack` for multi-node and PD (automatic or manual) |
 | `placement.gpus`, `placement.tp`, `placement.pp` | Explicit physical GPU indexes; TP and PP are parallelism for the entire deployment (TP × PP ÷ `nnodes` GPUs per node, which must divide evenly). If TP is omitted for multi-node deployment, the default is one pipeline stage per node, with TP set to the smallest GPU count among the selected nodes; effective values are written back to placement. If TP is omitted for single-node deployment, the scheduler selects a GPU count that is an integer multiple of PP (TP = GPU count ÷ PP). Automatic placement also selects nodes according to the supplied TP and PP. Evaluation returns values in `form_values.tp/pp` and `parallelism` (`tp`, `pp`, `nodes`, `gpus_per_node`); `acquisition.nodes` in multi-node evaluation and manual placement provides acquisition estimates for each node |
 | `routing_policy` | Multi-replica gateway policy: `least_request` (default), `prefix_affinity`, or `failover`; not an engine launch parameter |
 | `tokenize_enabled` | Whether the gateway forwards `/v1/tokenize` and `/v1/detokenize` to this deployment (see [OpenAI-Compatible Gateway](openai-gateway.md#分词tokenize)). Enabled if omitted; `false` disables it. Independent of the engine; if the engine does not provide these endpoints, the engine itself returns an error |
@@ -792,6 +801,40 @@ The `health` field in deployment details, deployment lists, and the monitoring s
 | `recent` | Up to 10 most recent checks, oldest first |
 | `recent_mean_ms`, `recent_ok` | Mean latency and count of checks that responded within the threshold; `null` and `0` if none |
 
+### Automatically Placed Multi-Node and PD Deployments
+
+Create and evaluate requests for multi-node and PD deployments take `placement_mode: "auto"`, and the server picks the nodes for the ranks or units the request leaves out. With it omitted or `manual`, the request supplies the nodes.
+
+Multi-node request (`nnodes` > 1):
+
+```json
+{
+  "model_id": 3, "nnodes": 2, "placement_mode": "auto",
+  "placement": {"tp": 8, "pp": 2},
+  "node_uuids": ["<node uuid of rank 0, optional>"]
+}
+```
+
+- `placement.tp` is required, otherwise 400 `AUTO_PLACEMENT_TP_REQUIRED`; the free cards each node needs are TP × PP ÷ `nnodes`.
+- `node_uuids` may be omitted or may name only the first ranks' nodes (more than `nnodes` entries return 400 `DISTRIBUTED_NODE_COUNT`); the rest are filled in from the compute network and GPU architecture those nodes are in. Named nodes that are not in one compute network and one architecture are treated as no group fitting (409 `UNIT_PLACEMENT_NONE`).
+- A multi-node deployment still has exactly one replica at creation (`replicas` is 1); scale it afterwards with `PUT /replicas` by replica count (see [Adjust Replicas for Regular Deployments](#普通部署的副本调整)).
+
+PD request (`placement.pd`): a unit may omit `node_uuid`. Units that name a node stay where they are, and the platform fills in only the rest; units placed automatically pin no cards (the scheduler picks `gpus` at launch), and the cards that units already naming a node will use are subtracted first when nodes are picked for the others. When a unit without a node has `followers`, the request returns 400 `AUTO_PLACEMENT_PD_MULTI_NODE` (`params.role`): automatically placed units must fit one node. Adding units through `PUT /deployments/{id}/pd` works the same way, and new units may omit their nodes.
+
+Selection rules (a multi-node request is chosen per replica, a PD request for the whole deployment; only online, schedulable nodes that meet the node requirements and have free cards are considered):
+
+1. The nodes within one replica (the whole deployment for PD) share one compute network and one GPU architecture; when a PD deployment already has units, new units join the network and architecture those are in.
+2. Between groups: RDMA networks (host RDMA, accelerator RDMA) before Ethernet, then the group with more nodes that already hold the model file.
+3. Within a group: nodes with the model first, then `placement_strategy` (multi-node and PD default to `binpack` when it is omitted): `binpack` takes the node with the fewest free cards that still fit, `spread` the most, and ties go to the lower node ID. For PD under `binpack`, if one node can take every unit they all go on that node; under `spread`, prefill and decode avoid sharing a node where they can.
+
+When no group fits, the request returns 409 `UNIT_PLACEMENT_NONE`, with `params` `nodes` (total nodes), `unmet` (node requirements not met), `cordoned`, `offline`, `busy` (not enough free cards), `no_network` (no usable compute network), and `largest` (how many nodes the largest group has). Evaluation does not answer these failures with an HTTP error; it returns `ok=false` with an entry in `errors[]` whose `field` is `placement_mode`, and the response carries `auto_placed: true`.
+
+A successful evaluation carries `auto_placed: true` and previews the nodes picked now; creation picks again, so the two can differ. Creation does not submit the nodes evaluation selected, so it has none of single-node automatic placement's `AUTOMATIC_PLACEMENT_STALE`; when resources are taken after evaluation, the re-pick when the unit starts handles it. The deployment stores the nodes that were picked (in the multi-node `node_uuids` or in the PD units), and `placement_mode` in the detail is `auto`.
+
+When a unit starts, the controller plans its nodes against the current free cards. If all nodes are online and fit, it starts. If nodes were cordoned, no longer meet the node requirements, or would be refused by scheduling (another deployment holds the cards), only those ranks move to other nodes and `UNIT_PLACED` is recorded (`params`: `unit` (from 1), `role`, `from`, `to` (node names by rank), `reason`). With nowhere to go the unit keeps its nodes and waits, trying again about every minute. Offline nodes belong to node replacement and draining nodes to drain, regardless of the placement mode. Manually placed units do not do this; when PD pinned cards are held by other deployments the scheduling reason is `pinned_gpus_unavailable` (`params`: `node`, `gpus`, `holders`).
+
+`PUT /deployments/{id}/placement-mode` switches between automatic and manual; existing deployments are manual.
+
 ### Evaluation Requests and Acquisition Estimates
 
 Deployment requests do not select where images or models come from ([ADR 0048](../adr/0048-pull-settings.md)): `model_source` contains only `{storage_id, provider}`. The former is the storage where a node saves the model it acquires; the latter selects the weight provider for the running template (`huggingface` / `modelscope`). `acquisition.nodes[]` provides estimates for the nodes specified in the request (manual placement or multi-node, in rank order). These are estimates only; the node reassesses acquisition when it starts:
@@ -802,7 +845,7 @@ Deployment requests do not select where images or models come from ([ADR 0048](.
 | `weights_plan` | `present`: already present; `copy`: copy from the `weights_copy_from` node; `storage`: read or cache from shared storage `weights_storage`; `download`: download from `weights_provider` |
 | `image_cached`, `image_cache_reason`, `weights_present` | Whether the image is cached (with a reason if unknown) and whether the model is already on the node |
 
-Automatic placement does not provide per-node estimates. After scheduling, the selected node acquires the assets itself.
+Single-node automatic placement does not provide per-node estimates before the scheduler selects a node; after scheduling, the selected node acquires the assets itself. Automatic placement of multi-node and PD requests is first resolved to the nodes picked now in evaluation, as if those nodes had been written by hand.
 
 ### Evaluation Field Errors (`errors[]`) and `ok=false` Semantics
 
@@ -817,7 +860,7 @@ errors beside the corresponding controls; `POST /api/v1/deployments` (create) co
 - Request-level fields use their names in the request JSON: `replicas`, `nnodes`, `engine`, `target_vendor`, `extra_args`,
   `quick_params_unset`, `master_port`, `placement`, `placement.tp`, `placement.pp`, `node_requirements`,
   `placement_strategy`, `partition_backend`, `start_timeout_sec`, and `health_check_threshold_sec`.
-- `node_uuids` (the multi-node list) maps to the `distributed_nodes` control in the form.
+- `node_uuids` (the multi-node list) maps to the `distributed_nodes` control in the form; when an automatic multi-node request cannot pick nodes or lacks `placement.tp`, the error is attributed to `placement_mode`.
 - All additional mount rows map to `container_mount_rows` (the request carries only user-added mounts, without row numbers).
 - Docker argument errors map to `container_docker_args`, and shared memory size errors map to `container_shm_gib`.
 - **Errors with an empty `field` string do not belong to any control**: failures unrelated to an individual parameter, such as launch assembly or placement simulation failures
@@ -858,7 +901,7 @@ and fully disable the corresponding configuration. Unknown connectors or mixed c
 Evaluation in automatic mode returns `selected_node`, per-node `candidates`, and the selected node's `plan`.
 When creating the deployment, submit `selected_node.uuid` as `node_uuid`, together with `plan.plan.gpus`
 and `plan.plan.tp`, and retain the original constraints, such as labels. Creation revalidates the request. If the original node, GPUs, or constraints are no longer valid,
-it returns a conflict requiring reevaluation. Automatic confirmation currently supports only a single node and a single replica. Evaluation with an explicit node and multi-replica
+it returns a conflict requiring reevaluation. This confirm-what-was-evaluated flow applies only to a single node and a single replica; automatic placement of multi-node and PD requests does not use it (see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署)). Evaluation with an explicit node and multi-replica
 evaluation for legacy requests still use `plan_scope=per_replica`; this does not imply that the entire replica group can be allocated successfully.
 
 In template details and evaluation responses, `engine_decides_param_keys` lists dictionary keys for which the current effective launch leaves defaults to the engine
@@ -911,7 +954,7 @@ Scripts and third-party clients cannot directly reuse vLLM parameters for SGLang
   `PD_KV_LOAD_FAILURE_INVALID`.
 - In `GET /api/v1/engines`, each engine's `pd_modes[]` provides these rules: `name`, `vendors`, `roles`, `scalable_to_zero` (roles that can scale to 0
   while running), `tp_rule`, `max_units_per_role`, `fallbacks`, `kv_load_failures` (the first entry is the default), and `unverified`.
-- Specifying it together with `nnodes`, `node_uuids`, `replicas > 1`, or automatic placement returns `PD_SHAPE_CONFLICT`. Other validation error codes start with
+- Specifying it together with `nnodes`, `node_uuids`, or `replicas > 1` returns `PD_SHAPE_CONFLICT`; use `placement_mode: "auto"` with units that omit `node_uuid` for automatic placement (see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署)). Other validation error codes start with
   `PD_` (field `placement.pd`). When the deployment is sleepable (`sleepable`) and KV uses the host RDMA network through UCX, creation and evaluation return
   `PD_SLEEP_RDMA_UNSUPPORTED` (`params`: `mode`, `network`).
 - The `pd` field in deployment details contains `mode`, `fallback`, `kv_load_failure`, `state` (`not_ready|partial|running`), `short`,

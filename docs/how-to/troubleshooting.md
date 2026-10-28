@@ -728,6 +728,10 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 |---|---|---|
 | `AUTOMATIC_PLACEMENT_STALE` | 409 | 评估之后资源被占走或节点不再满足节点条件；重新评估 |
 | `NODE_REQUIREMENTS_UNMET` | 400 | 所选节点不满足部署的节点条件；`params.detail` 写明哪个键、要求哪些值 |
+| `UNIT_PLACEMENT_NONE` | 409 | 自动放置的多机或 PD 请求（创建、评估、扩容）现在没有一组节点放得下；`params` 给出节点总数 `nodes`，以及各项检查排除的台数：`unmet`（不满足节点条件）、`cordoned`（已停止调度）、`offline`、`busy`（空闲卡不够）、`no_network`（没有可用的计算网络），`largest` 是最大的一组有几台。按最大的一项补齐条件，或改手动指定节点 |
+| `AUTO_PLACEMENT_TP_REQUIRED` | 400 | 自动放置的多机请求没写 `placement.tp`，平台不知道每台节点要几张空闲卡；填 TP（和 PP） |
+| `AUTO_PLACEMENT_PD_MULTI_NODE` | 400 | 自动放置的 PD 实例必须一台节点放得下；带 `followers` 的实例要自己写节点（`params.role` 是哪个角色） |
+| `PLACEMENT_MODE_SHAPE` | 400 | `PUT /deployments/{id}/placement-mode` 用在了单机部署上；它的放置写在节点条件里，改节点条件即可 |
 | `NODE_SCHEDULABLE` | 409 | 强制驱逐只用于已停止调度或驱逐中的节点；先停止调度或驱逐，否则撤下的副本会被放回原处 |
 | `DEPLOYMENT_NEVER_FITS` | 400 | 创建或编辑节点条件时，候选池里没有一台节点在空载时放得下一个副本（卡太少、单卡显存不够、精度不支持、不能承担服务流量）；`params` 给出候选节点数、硬件规格数与第一台的原因。按具体原因调整并行度、量化或节点条件；不要统一调小 TP，`no_fit` 的处理见下文 |
 | `NODE_REQUIREMENTS_INVALID` | 400 | 节点条件本身无效（拼错的系统标签键、两个厂商、与 `target_vendor` 冲突、多机/PD 部署写了 `gpuworks.ai/node`） |
@@ -742,6 +746,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 |---|---|
 | `no_fit` | 每卡启动固定需求 > 可用显存；参数含 `required_gib`、`available_gib`、`tp`、`gpu_memory_utilization` |
 | `insufficient_empty_gpus` / `insufficient_shared_gpus` | 空闲整卡 / 可共享的卡不够 |
+| `pinned_gpus_unavailable` | 手动放置的 PD 实例钉住的卡被其他部署占着；参数给出 `node`、`gpus`（钉住的卡号）和 `holders`（占卡的部署）。实例不会改用同节点的其他空卡，而是等钉住的卡空出来：停掉或迁走占卡的部署，或把这个部署切成自动放置（`PUT /deployments/{id}/placement-mode`），由平台改用空闲的卡。钉住的卡被平台外进程占着、不健康或空着仍放不下时，仍是对应的原因码 |
 | `no_free_gpu` | 没有空闲的 GPU |
 | `no_healthy_gpu` | 节点自己的卡都不在能服务的健康级别 |
 | `no_owned_gpu` | 节点没有归本机使用的卡：一张都没有，或全部直通给虚拟机、未绑定驱动、被其他驱动持有 |
@@ -913,7 +918,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | L1 休眠需要把权重搬进主机内存，可用内存减去余量（总量的 5% 与 4 GiB 中较大者）放不下；`params` 含 `node`、`need_gib`、`available_gib`，改用 L2 |
 | `NODE_REPLACEMENT_INVALID` | 400 | 换节点等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
-| `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下） |
+| `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
 
 **可能原因（agent 侧失败）**
 
@@ -933,6 +938,8 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 1. 部署详情的**换节点等待时间**是否为 0（从不）或还没到点；默认 10 分钟，从 server 最后一次见到节点算起。
 2. 时间线有 `NODE_REPLACE_NO_CANDIDATE`：没有节点能接手。多机与 PD 副本要求替换节点在线、可调度、满足节点条件、与其余 rank 同计算网络、同 GPU 厂商和架构、卡空闲且试算放得下；补齐其中缺的一项即可，平台每分钟重试。
 3. 钉在这台节点上的单机副本（节点条件只允许这一台）不会换，等节点回来，或编辑节点条件。
+
+节点在线却放不下副本（卡被占、停止调度）不属于换节点：自动放置的多机与 PD 部署会在副本要启动时只换放不下的 rank（时间线 `UNIT_PLACED`），手动放置的部署等待，见[节点在线但放不下](node-failover.md#节点在线但放不下自动放置的重新挑选)。
 
 换节点的规则和撤回见[节点失联时自动换节点](node-failover.md)。
 

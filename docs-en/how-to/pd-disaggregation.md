@@ -26,7 +26,7 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 1. On the deployments page, select **PD disaggregation** under **Node Placement**, then select a PD mode. Available modes come from the engine profiles: vLLM offers `vllm-nixl` (NVIDIA) and
    `vllm-ascend-mooncake` (Ascend); SGLang offers `sglang-nixl` (unverified).
 
-2. Set TP separately for prefill and decode, then add instances one by one. Select a node for each instance and optionally pin cards. Each mode has TP rules: `vllm-nixl` requires
+2. Choose the placement mode (see [Automatic and Manual Placement](#自动放置与手动放置)), set TP separately for prefill and decode, then add instances one by one. In manual mode select a node for each instance and optionally pin cards; in automatic mode an instance may leave its node out and the platform picks it. Each mode has TP rules: `vllm-nixl` requires
    decode TP ≥ prefill TP, `vllm-ascend-mooncake` requires the reverse, and `sglang-nixl` requires equal values.
    When creating a deployment, each of the P and D roles needs at least one instance.
 
@@ -60,6 +60,46 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 
 API form: `placement.pd` in `POST /api/v1/deployments`. See the [API Reference](../reference/api.md) for fields.
 
+## Automatic and Manual Placement
+
+A PD deployment has the same two placement modes as a single-node or multi-node one:
+
+| Mode | Who chooses nodes and cards | How to use it |
+|---|---|---|
+| **Automatic** | The platform picks the nodes (at creation from free cards, and again when a unit starts and no longer fits); the scheduler picks the cards at launch and they are not written into the placement | `placement_mode: "auto"`; instances in `placement.pd` may omit `node_uuid`. Instances that name a node stay where they are and the platform fills in only the ones that do not |
+| **Manual** | You. You write each instance's node (and optionally its cards) and they are pinned as written | Omit `placement_mode`, write `node_uuid` on every instance and `gpus` where needed |
+
+PD deployments that existed before the upgrade are manual. The deployment's `placement_mode` shows the current mode, and `PUT /api/v1/deployments/{id}/placement-mode` switches between the two without restarting instances. Switching to automatic drops every instance's pinned cards, which the scheduler then picks at launch.
+
+### How Automatic Placement Chooses Nodes
+
+P and D exchange KV, so all instances of the PD deployment are chosen inside one compute network and one GPU architecture, and every instance without a node is picked in one go:
+
+1. A group is chosen first: RDMA networks before Ethernet, then the group with more nodes that already hold the model file.
+2. Inside the group the placement strategy allocates; PD defaults to `binpack`:
+   - **Pack (`binpack`)**: when one node has the free cards for all the instances, they all go on that node and no KV crosses the network; otherwise the instances fill the nodes already in use first and use as few nodes as possible.
+   - **Spread (`spread`)**: each instance takes the node with the most free cards, and prefill and decode avoid sharing a node where they can.
+3. Nodes that already hold the model file come first under both strategies.
+
+The nodes chosen first pass the ordinary PD validation (mode, TP rule, whether the compute network can carry KV). When no group can take the deployment, creation returns 409 `UNIT_PLACEMENT_NONE` with parameters saying how many nodes each check left out.
+
+Each automatically placed instance must fit on one node. An instance with `followers` (spanning nodes) must name its nodes; a request with such an instance and no nodes returns 400 `AUTO_PLACEMENT_PD_MULTI_NODE`.
+
+For an automatic PD request, the evaluate endpoint returns `auto_placed: true` and previews the nodes that would be picked now; creation picks again.
+
+### Choosing Again When an Instance Starts
+
+The nodes picked are written into the placement, and afterwards the instances are matched, their networks resolved, and node replacement and drain applied as usual. When an instance needs to start and has no running instance, the platform plans it again with the current free cards:
+
+- Its nodes are online and can take it: it starts as is.
+- Its nodes were cordoned, no longer meet the node requirements, or would refuse the launch (another deployment holds the cards): only the ranks of that instance that do not fit move to other nodes, and the deployment's other instances are neither moved nor restarted. The timeline records `UNIT_PLACED` (`role`, `unit`, `from`, `to`, `reason`).
+- Nowhere to go: it keeps its nodes, keeps waiting, and the platform looks again every minute.
+- An offline node still follows the wait time in [Replace Lost Nodes Automatically](node-failover.md), and a drain still starts the new instance before switching; both are the same for automatic and manual deployments.
+
+### Cards Pinned by Manual Placement Are Held
+
+When the cards a manual placement pins are held by other deployments, the instance does not use other free cards on the same node; it waits until the pinned cards are free. The scheduling reason in `DEPLOYMENT_UNSCHEDULABLE` is then `pinned_gpus_unavailable`: it gives the node, the pinned card indexes, and the deployments holding them, instead of only saying that there are not enough free whole cards. To resolve it, stop or move the deployments holding the cards, or switch this deployment to automatic placement so the platform uses free cards. When a pinned card is held by a process outside the platform, is not healthy, or is free but still does not fit (memory, sharing), the scheduler's original reason applies.
+
 ## During Operation
 
 ### Status
@@ -76,6 +116,7 @@ After each prefill instance first becomes ready, the platform automatically perf
 
 Open **Scale roles** in deployment details to change the instances for each role (`PUT /api/v1/deployments/{id}/pd`). Removed instances drain before stopping.
 
+- For an automatically placed deployment, new instances may omit their nodes: the platform puts them in the network and architecture the existing instances are in and picks by the placement strategy. Instances that name a node are placed as written and pass the ordinary PD validation together with the others. When no node can take a new instance, 409 `UNIT_PLACEMENT_NONE`.
 - Both vLLM modes support scaling prefill to 0. Requests are then intentionally handled entirely by decode and do not count as fallback.
   This differs from still expecting P instances but falling back or returning 503 according to `fallback` when P fails.
 - `sglang-nixl` requires instances to remain for both P and D.
