@@ -211,8 +211,11 @@ make test       # static checks + Go unit tests + UI tests
 make test-l2    # multi-process tests with real binaries and fake GPUs
 ```
 
-See the [developer docs](docs-en/dev/README.md) and [testing guide](docs-en/dev/testing.md). Contributor
-conventions are in [CLAUDE.md](CLAUDE.md) (Chinese) and domain terms in [CONTEXT.md](CONTEXT.md).
+See the [developer docs](docs-en/dev/README.md) and [testing guide](docs-en/dev/testing.md). How to file a
+report, send a patch, or get a hardware combination into the support matrix is in
+[CONTRIBUTING.md](CONTRIBUTING.md); contributor conventions are in [CLAUDE.md](CLAUDE.md) (Chinese) and
+domain terms in [CONTEXT.md](CONTEXT.md). Security issues go to [SECURITY.md](SECURITY.md) — never a
+public issue.
 
 ## Help us improve the product
 

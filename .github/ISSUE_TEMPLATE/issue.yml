@@ -1,0 +1,64 @@
+name: Question or other issue
+description: Ask how to do something, report a documentation problem, or start a discussion that is not a bug.
+title: "[Issue] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when the software behaved as documented but something was still unclear
+        or wrong in the docs. For defects, use the **Bug report** form instead.
+
+        Questions about your own environment (GPU drivers, container runtimes, storage) are
+        welcome too — but please include the version and the relevant command output so the
+        answer is not a guess.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of issue is this?
+      options:
+        - How do I do X? (usage question)
+        - The documentation is wrong or missing
+        - Build or development setup problem
+        - Feature idea (an issue, not a formal proposal)
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: GPUWorks version
+      description: Output of `curl -s http://<server>:8800/healthz`, or the commit you built from.
+      placeholder: e.g. dev-0f9b23a9
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: |
+        For a documentation problem, link the page and quote the sentence that is wrong.
+        For a usage question, describe what you are trying to achieve, not only the step that failed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you have already tried
+      description: Commands you ran, docs you read, results you got. This is often what makes the answer possible.
+      placeholder: |
+        - Ran `make build`, output was ...
+        - Followed docs-en/how-to/connect-nodes.md, the node stayed offline
+        - Checked `journalctl -u gpuworks-agent` ...
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the documentation and the existing issues.
+          required: true
+        - label: I removed credentials and private addresses from anything pasted above.
+          required: true
