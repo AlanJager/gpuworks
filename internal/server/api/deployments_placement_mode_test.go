@@ -163,6 +163,10 @@ func TestPlacementModeSwitchesAMultiNodeDeployment(t *testing.T) {
 	if n := r.storedDeployment(t, dep.ID).Replicas; n != 1 {
 		t.Fatalf("switching restarted or rescaled the deployment: replicas %d", n)
 	}
+	// The draft an edit or a clone starts from carries the mode.
+	if got := r.do(r.session, http.MethodGet, fmt.Sprintf("/api/v1/deployments/%d/draft", dep.ID), ""); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"placement_mode":"auto"`) {
+		t.Fatalf("draft = %d %s", got.Code, got.Body)
+	}
 }
 
 func TestPlacementModeRefusals(t *testing.T) {
