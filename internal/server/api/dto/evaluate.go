@@ -52,6 +52,10 @@ type EvaluateResponse struct {
 	// endpoint, and the form keeps the draft while showing each error beside
 	// its control. Codes match the 400 path create would answer with.
 	Errors []FieldError `json:"errors,omitempty"`
+	// AutoPlaced says the server picked the nodes of this multi-node or PD
+	// request (placement_mode "auto"): the nodes the preview shows are where
+	// it would go now, and the create picks again.
+	AutoPlaced bool `json:"auto_placed,omitempty"`
 	// One breakdown/plan describes one replica. Repeated replicas compete for
 	// shared capacity and are admitted separately at scheduling time.
 	Replicas           int                   `json:"replicas"`

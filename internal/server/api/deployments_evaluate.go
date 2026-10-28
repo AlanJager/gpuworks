@@ -86,6 +86,14 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// with 400: evaluation is the interactive endpoint, and the form keeps the
 	// draft while it shows each error beside its control. Create keeps the 400.
 	errs := &evaluateFieldErrors{}
+	// An automatic multi-node or PD request is previewed on the nodes the
+	// server would pick now; the create picks again.
+	autoPlaced, autoErr := a.autoPlaceRequest(req)
+	if autoErr != nil {
+		errs.add("placement_mode", autoErr)
+		writeEvaluateFieldErrors(w, &dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, Replicas: req.Replicas, AutoPlaced: true}, errs)
+		return
+	}
 	if err := validateReplicaShape(req); err != nil {
 		errs.add("replicas", err)
 	}
@@ -146,7 +154,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	// multi-replica group, so the scope is always per-replica. The response
 	// exists from here on so every field-error exit carries the template facts
 	// it already resolved.
-	resp := dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, OK: true, Replicas: req.Replicas, PlanScope: "per_replica", TemplateMatch: selection.Match, MatchedBy: selection.MatchedBy, TemplateDeviated: selection.Deviated}
+	resp := dto.EvaluateResponse{SchemaVersion: evaluateSchemaVersion, OK: true, Replicas: req.Replicas, AutoPlaced: autoPlaced, PlanScope: "per_replica", TemplateMatch: selection.Match, MatchedBy: selection.MatchedBy, TemplateDeviated: selection.Deviated}
 	if selection.Spec != nil {
 		resp.TemplateSpecSource = selection.Spec.Source
 		resp.TemplateSpecName = selection.Spec.Name

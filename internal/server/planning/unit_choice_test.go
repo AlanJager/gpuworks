@@ -56,17 +56,17 @@ func TestChooseReplicaNodesOrder(t *testing.T) {
 	)
 	facts.Ranks, facts.PerRank = 2, 2
 
-	nodes, _, ok := ChooseReplicaNodes(facts, store.PlacementBinpack, acceptAll)
+	nodes, _, ok := ChooseReplicaNodes(facts, store.PlacementBinpack, nil, acceptAll)
 	if !ok || !slices.Equal(nodeUUIDs(nodes), []string{"n-3", "n-5"}) {
 		t.Fatalf("binpack = %v %v, want the RDMA group's two fullest nodes", nodeUUIDs(nodes), ok)
 	}
-	nodes, _, ok = ChooseReplicaNodes(facts, store.PlacementSpread, acceptAll)
+	nodes, _, ok = ChooseReplicaNodes(facts, store.PlacementSpread, nil, acceptAll)
 	if !ok || !slices.Equal(nodeUUIDs(nodes), []string{"n-4", "n-5"}) {
 		t.Fatalf("spread = %v %v, want the RDMA group's two emptiest nodes", nodeUUIDs(nodes), ok)
 	}
 	// The model on n-4 puts it first whatever the strategy.
 	facts.Files = []store.ModelFile{{NodeID: 4, State: "present"}}
-	nodes, _, _ = ChooseReplicaNodes(facts, store.PlacementBinpack, acceptAll)
+	nodes, _, _ = ChooseReplicaNodes(facts, store.PlacementBinpack, nil, acceptAll)
 	if nodeUUIDs(nodes)[0] != "n-4" {
 		t.Fatalf("with the model on n-4 = %v", nodeUUIDs(nodes))
 	}
@@ -90,16 +90,16 @@ func TestChooseReplicaNodesTriesPastRefusals(t *testing.T) {
 		}
 		return -1
 	}
-	if _, _, ok := ChooseReplicaNodes(facts, store.PlacementSpread, trial); ok {
+	if _, _, ok := ChooseReplicaNodes(facts, store.PlacementSpread, nil, trial); ok {
 		t.Fatal("chose a replica with n-1 refused: the RDMA group has one node left and the Ethernet group one that fits")
 	}
 	refuse = map[string]bool{}
-	nodes, _, ok := ChooseReplicaNodes(facts, store.PlacementSpread, trial)
+	nodes, _, ok := ChooseReplicaNodes(facts, store.PlacementSpread, nil, trial)
 	if !ok || !slices.Equal(nodeUUIDs(nodes), []string{"n-1", "n-2"}) {
 		t.Fatalf("= %v %v", nodeUUIDs(nodes), ok)
 	}
 	facts.Nodes = facts.Nodes[2:]
-	_, counts, ok := ChooseReplicaNodes(facts, store.PlacementSpread, trial)
+	_, counts, ok := ChooseReplicaNodes(facts, store.PlacementSpread, nil, trial)
 	if ok || counts.Busy != 1 || counts.Largest != 1 {
 		t.Fatalf("ok=%v counts=%+v, want n-4 busy and a group of one", ok, counts)
 	}
@@ -124,11 +124,11 @@ func TestChoosePDUnitsSameNodeOrApart(t *testing.T) {
 	)
 	roles := []PDRoleNeed{{Role: "prefill", Units: 1, GPUs: 1}, {Role: "decode", Units: 1, GPUs: 1}}
 
-	units, _, ok := ChoosePDUnits(facts, roles, store.PlacementBinpack, acceptPD)
+	units, _, ok := ChoosePDUnits(facts, roles, nil, store.PlacementBinpack, acceptPD)
 	if !ok || !slices.Equal(pdNodes(units, "prefill"), []string{"n-2"}) || !slices.Equal(pdNodes(units, "decode"), []string{"n-2"}) {
 		t.Fatalf("binpack = %v %v, want both on n-2, the fullest node that holds both", units, ok)
 	}
-	units, _, ok = ChoosePDUnits(facts, roles, store.PlacementSpread, acceptPD)
+	units, _, ok = ChoosePDUnits(facts, roles, nil, store.PlacementSpread, acceptPD)
 	if !ok || pdNodes(units, "prefill")[0] == pdNodes(units, "decode")[0] {
 		t.Fatalf("spread = %v %v, want prefill and decode apart", units, ok)
 	}
@@ -152,7 +152,7 @@ func TestChoosePDUnitsBinpackAcrossNodes(t *testing.T) {
 		map[uint]netplan.Network{1: rdma, 2: rdma, 3: rdma},
 	)
 	roles := []PDRoleNeed{{Role: "prefill", Units: 2, GPUs: 1}, {Role: "decode", Units: 1, GPUs: 2}}
-	units, _, ok := ChoosePDUnits(facts, roles, store.PlacementBinpack, acceptPD)
+	units, _, ok := ChoosePDUnits(facts, roles, nil, store.PlacementBinpack, acceptPD)
 	if !ok {
 		t.Fatal("no choice")
 	}
@@ -181,7 +181,7 @@ func TestChoosePDUnitsStaysInOneGroup(t *testing.T) {
 		map[uint]netplan.Network{1: rdma, 2: ethernet},
 	)
 	roles := []PDRoleNeed{{Role: "prefill", Units: 1, GPUs: 1}, {Role: "decode", Units: 1, GPUs: 1}}
-	if units, _, ok := ChoosePDUnits(facts, roles, store.PlacementBinpack, acceptPD); ok {
+	if units, _, ok := ChoosePDUnits(facts, roles, nil, store.PlacementBinpack, acceptPD); ok {
 		t.Fatalf("chose %v across two networks", units)
 	}
 	facts = choiceFacts(map[uint]int{1: 2, 2: 2, 3: 2}, map[uint]netplan.Network{1: rdma, 2: rdma, 3: rdma})
@@ -195,8 +195,62 @@ func TestChoosePDUnitsStaysInOneGroup(t *testing.T) {
 		}
 		return ""
 	}
-	units, _, ok := ChoosePDUnits(facts, roles, store.PlacementBinpack, refusing)
+	units, _, ok := ChoosePDUnits(facts, roles, nil, store.PlacementBinpack, refusing)
 	if !ok || pdNodes(units, "prefill")[0] == "n-1" || pdNodes(units, "decode")[0] == "n-1" {
 		t.Fatalf("= %v %v, want n-1 left out after its refusal", units, ok)
+	}
+}
+
+// Nodes the operator named take the first ranks; the rest come from the
+// group they are in. A named node outside every usable group yields nothing.
+func TestChooseReplicaNodesWithNamedNodes(t *testing.T) {
+	facts := choiceFacts(
+		map[uint]int{1: 4, 2: 4, 3: 4, 4: 4},
+		map[uint]netplan.Network{1: rdma, 2: rdma, 3: ethernet, 4: ethernet},
+	)
+	facts.Ranks, facts.PerRank = 2, 2
+	nodes, _, ok := ChooseReplicaNodes(facts, store.PlacementBinpack, []string{"n-3"}, acceptAll)
+	if !ok || !slices.Equal(nodeUUIDs(nodes), []string{"n-3", "n-4"}) {
+		t.Fatalf("= %v %v, want n-3 leading and n-4 from its network", nodeUUIDs(nodes), ok)
+	}
+	// A named node that leads another replica cannot lead this one.
+	facts.Leaders = map[string]bool{"n-3": true}
+	if _, _, ok := ChooseReplicaNodes(facts, store.PlacementBinpack, []string{"n-3"}, acceptAll); ok {
+		t.Fatal("a replica led from a node that already leads one")
+	}
+	facts.Leaders = nil
+	if _, _, ok := ChooseReplicaNodes(facts, store.PlacementBinpack, []string{"n-9"}, acceptAll); ok {
+		t.Fatal("a replica from a node that is in no group")
+	}
+	// The named node refusing ends the choice: there is nothing else to name.
+	refuseNamed := func(nodes []*store.Node) int {
+		if nodes[0].UUID == "n-3" {
+			return 0
+		}
+		return -1
+	}
+	if _, _, ok := ChooseReplicaNodes(facts, store.PlacementBinpack, []string{"n-3"}, refuseNamed); ok {
+		t.Fatal("chose past a named node that refused")
+	}
+}
+
+// Units added to a PD deployment join the group its placed units are in,
+// and under binpack the nodes those units already use first.
+func TestChoosePDUnitsBesideFixedUnits(t *testing.T) {
+	facts := choiceFacts(
+		map[uint]int{1: 4, 2: 8, 3: 8},
+		map[uint]netplan.Network{1: ethernet, 2: rdma, 3: rdma},
+	)
+	fixed := map[string][]PDUnit{"prefill": {{NodeUUID: "n-1"}}}
+	roles := []PDRoleNeed{{Role: "decode", Units: 1, GPUs: 1}}
+	units, _, ok := ChoosePDUnits(facts, roles, fixed, store.PlacementBinpack, acceptPD)
+	if !ok || !slices.Equal(pdNodes(units, "decode"), []string{"n-1"}) || !slices.Equal(pdNodes(units, "prefill"), []string{"n-1"}) {
+		t.Fatalf("= %v %v, want the decode beside the prefill on n-1 (its network, fewer free cards)", units, ok)
+	}
+	// Spread prefers another node for the decode, but keeping apart is a
+	// preference: the only node on the prefill's network still takes it.
+	units, _, ok = ChoosePDUnits(facts, roles, fixed, store.PlacementSpread, acceptPD)
+	if !ok || !slices.Equal(pdNodes(units, "decode"), []string{"n-1"}) {
+		t.Fatalf("spread = %v %v", units, ok)
 	}
 }

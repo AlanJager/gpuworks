@@ -373,6 +373,26 @@ func writeProductError(w http.ResponseWriter, status int, code, fallback string,
 	writeErr(w, status, productError(code, fallback, params))
 }
 
+// Automatic placement of multi-node and PD deployments (placement_mode
+// "auto"; deployments_auto_units.go).
+const (
+	// ErrorUnitPlacementNone: no group of nodes can take the deployment now;
+	// how many nodes there are ({nodes}) and how many each check left out
+	// ({unmet}, {cordoned}, {offline}, {busy}, {no_network}), and the largest
+	// group short of the ranks ({largest}).
+	ErrorUnitPlacementNone = "UNIT_PLACEMENT_NONE"
+	// ErrorAutoPlacementTPRequired: an automatic multi-node request states no
+	// placement.tp, so how many free GPUs each node needs is unknown.
+	ErrorAutoPlacementTPRequired = "AUTO_PLACEMENT_TP_REQUIRED"
+	// ErrorAutoPlacementPDMultiNode: an automatic PD request has a role whose
+	// units span nodes ({role}); those name their nodes.
+	ErrorAutoPlacementPDMultiNode = "AUTO_PLACEMENT_PD_MULTI_NODE"
+	// ErrorPlacementModeShape: PUT /deployments/{id}/placement-mode on a
+	// single-node deployment, which states its placement in its node
+	// requirements.
+	ErrorPlacementModeShape = "PLACEMENT_MODE_SHAPE"
+)
+
 // Deployment edit codes (GET /deployments/{id}/draft, PUT /deployments/{id}).
 const (
 	// ErrorDeploymentFieldNotEditable: an edit changes a field an existing

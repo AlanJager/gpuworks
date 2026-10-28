@@ -112,6 +112,12 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, ErrorTargetVendorInvalid, "target_vendor is not supported", map[string]any{"vendor": req.TargetVendor})
 		return
 	}
+	unitsAuto, err := a.autoPlaceRequest(&req)
+	if err != nil {
+		writeErr(w, unitPlacementStatus(err), err)
+		return
+	}
+	defaultUnitStrategy(&req)
 	if err := validateReplicaShape(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
@@ -366,6 +372,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		ContainerOverrides:       jsonStr(req.ContainerOverrides),
 		Placement:                jsonStr(storedPlacement(req.Placement, isAutomaticPlacement(&req) && req.NNodes <= 1 && pdReq == nil)),
 		PlacementStrategy:        strategy,
+		UnitsAuto:                unitsAuto,
 		DistGroup:                req.DistGroup,
 		DistRole:                 req.DistRole,
 		NNodes:                   req.NNodes,

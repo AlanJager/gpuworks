@@ -70,17 +70,21 @@ func orderByStrategy(nodes []PoolCandidate, strategy store.PlacementStrategy) {
 type ReplicaTrial func(nodes []*store.Node) int
 
 // ChooseReplicaNodes picks the nodes of one multi-node replica: f.Ranks
-// nodes with f.PerRank free cards each, one of which may lead. ok is false
-// when no group yields a replica that plans; counts say why nodes were left
-// out.
-func ChooseReplicaNodes(f UnitSuggestFacts, strategy store.PlacementStrategy, trial ReplicaTrial) ([]*store.Node, UnitSuggestCounts, bool) {
+// nodes with f.PerRank free cards each, one of which may lead. fixed are
+// nodes the operator named for its first ranks, in rank order; the rest are
+// chosen from the group they are in. ok is false when no group yields a
+// replica that plans; counts say why nodes were left out.
+func ChooseReplicaNodes(f UnitSuggestFacts, strategy store.PlacementStrategy, fixed []string, trial ReplicaTrial) ([]*store.Node, UnitSuggestCounts, bool) {
 	f.Strategy = strategy
 	groups, counts := SuggestUnitGroups(f)
 	orderChoiceGroups(groups)
+	if len(fixed) > 0 {
+		groups = groupsHolding(groups, fixed)
+	}
 	for _, group := range groups[:min(len(groups), unitChoiceGroups)] {
 		skip := map[string]bool{}
 		for try := 0; try < unitChoiceTries; try++ {
-			nodes, ok := UnitFromGroup(group, max(f.Ranks, 1), f.Leaders, skip)
+			nodes, ok := replicaFromGroup(group, max(f.Ranks, 1), f.Leaders, fixed, skip)
 			if !ok {
 				break
 			}
@@ -88,10 +92,68 @@ func ChooseReplicaNodes(f UnitSuggestFacts, strategy store.PlacementStrategy, tr
 			if refused < 0 {
 				return nodes, counts, true
 			}
+			if refused < len(fixed) {
+				// A node the operator named refused: nothing else to try in
+				// this group.
+				break
+			}
 			skip[nodes[refused].UUID] = true
 		}
 	}
 	return nil, counts, false
+}
+
+// groupsHolding are the groups that hold every node in uuids.
+func groupsHolding(groups []UnitGroup, uuids []string) []UnitGroup {
+	var out []UnitGroup
+	for _, group := range groups {
+		in := map[string]bool{}
+		for _, candidate := range group.Nodes {
+			in[candidate.Node.UUID] = true
+		}
+		all := true
+		for _, uuid := range uuids {
+			all = all && in[uuid]
+		}
+		if all {
+			out = append(out, group)
+		}
+	}
+	return out
+}
+
+// replicaFromGroup is a replica of ranks nodes from group: the fixed nodes
+// first, in order, then the group's best others not in skip. Without fixed
+// nodes it is UnitFromGroup.
+func replicaFromGroup(group UnitGroup, ranks int, leaders map[string]bool, fixed []string, skip map[string]bool) ([]*store.Node, bool) {
+	if len(fixed) == 0 {
+		return UnitFromGroup(group, ranks, leaders, skip)
+	}
+	byUUID := map[string]*store.Node{}
+	for _, candidate := range group.Nodes {
+		byUUID[candidate.Node.UUID] = candidate.Node
+	}
+	nodes := make([]*store.Node, 0, ranks)
+	taken := map[string]bool{}
+	for _, uuid := range fixed {
+		node := byUUID[uuid]
+		if node == nil || taken[uuid] {
+			return nil, false
+		}
+		nodes, taken[uuid] = append(nodes, node), true
+	}
+	if leaders[nodes[0].UUID] {
+		return nil, false
+	}
+	for _, candidate := range group.Nodes {
+		if len(nodes) >= ranks {
+			break
+		}
+		if !taken[candidate.Node.UUID] && !skip[candidate.Node.UUID] {
+			nodes, taken[candidate.Node.UUID] = append(nodes, candidate.Node), true
+		}
+	}
+	return nodes, len(nodes) == ranks
 }
 
 // PDRoleNeed is one PD role a choice places: how many units and how many
@@ -113,7 +175,7 @@ type PDTrial func(units map[string][]PDUnit) string
 // the units fill the fewest nodes; under spread each unit takes the node with
 // the most free cards, a prefill and a decode on different nodes where they
 // can be. Units take no pinned cards: the scheduler picks them at launch.
-func ChoosePDUnits(f UnitSuggestFacts, roles []PDRoleNeed, strategy store.PlacementStrategy, trial PDTrial) (map[string][]PDUnit, UnitSuggestCounts, bool) {
+func ChoosePDUnits(f UnitSuggestFacts, roles []PDRoleNeed, fixed map[string][]PDUnit, strategy store.PlacementStrategy, trial PDTrial) (map[string][]PDUnit, UnitSuggestCounts, bool) {
 	smallest, total := 0, 0
 	for _, role := range roles {
 		if role.Units <= 0 {
@@ -127,10 +189,21 @@ func ChoosePDUnits(f UnitSuggestFacts, roles []PDRoleNeed, strategy store.Placem
 	f.Ranks, f.PerRank, f.Leaders = 1, max(smallest, 1), nil
 	groups, counts := SuggestUnitGroups(f)
 	orderChoiceGroups(groups)
+	if key, ok := fixedGroupKey(f, fixed); ok {
+		// The units already placed set the network and architecture the
+		// new ones join: they exchange KV with them.
+		var same []UnitGroup
+		for _, group := range groups {
+			if group.Network.ID == key.network && group.Arch == key.arch {
+				same = append(same, group)
+			}
+		}
+		groups = same
+	}
 	for _, group := range groups[:min(len(groups), unitChoiceGroups)] {
 		skip := map[string]bool{}
 		for try := 0; try < unitChoiceTries; try++ {
-			units, ok := assignPDUnits(group, roles, total, strategy, skip)
+			units, ok := assignPDUnits(group, roles, total, fixed, strategy, skip)
 			if !ok {
 				break
 			}
@@ -144,9 +217,38 @@ func ChoosePDUnits(f UnitSuggestFacts, roles []PDRoleNeed, strategy store.Placem
 	return nil, counts, false
 }
 
+// groupKey is a group's compute network and architecture.
+type groupKey struct {
+	network uint
+	arch    string
+}
+
+// fixedGroupKey is the group of the first fixed unit's node, when there is
+// one.
+func fixedGroupKey(f UnitSuggestFacts, fixed map[string][]PDUnit) (groupKey, bool) {
+	for _, units := range fixed {
+		for _, unit := range units {
+			for i := range f.Nodes {
+				node := &f.Nodes[i]
+				if node.UUID != unit.NodeUUID {
+					continue
+				}
+				compute, ok := f.Facts.Networks.For(node.ID, netplan.RoleCompute)
+				if !ok {
+					return groupKey{}, false
+				}
+				return groupKey{network: compute.Network.ID, arch: nodeArch(node)}, true
+			}
+		}
+	}
+	return groupKey{}, false
+}
+
 // assignPDUnits places every unit of roles on the group's nodes not in skip,
-// counting down each node's free cards as units take them.
-func assignPDUnits(group UnitGroup, roles []PDRoleNeed, total int, strategy store.PlacementStrategy, skip map[string]bool) (map[string][]PDUnit, bool) {
+// counting down each node's free cards as units take them. The fixed units
+// stay where they are and are returned with the new ones; a node one of them
+// is on counts as in use.
+func assignPDUnits(group UnitGroup, roles []PDRoleNeed, total int, fixed map[string][]PDUnit, strategy store.PlacementStrategy, skip map[string]bool) (map[string][]PDUnit, bool) {
 	var nodes []PoolCandidate
 	for _, candidate := range group.Nodes {
 		if !skip[candidate.Node.UUID] {
@@ -155,7 +257,17 @@ func assignPDUnits(group UnitGroup, roles []PDRoleNeed, total int, strategy stor
 	}
 	orderByStrategy(nodes, strategy)
 	out := map[string][]PDUnit{}
-	if strategy == store.PlacementBinpack {
+	hosts := map[string]map[string]bool{} // node -> roles it already hosts
+	for role, units := range fixed {
+		for _, unit := range units {
+			out[role] = append(out[role], unit)
+			if hosts[unit.NodeUUID] == nil {
+				hosts[unit.NodeUUID] = map[string]bool{}
+			}
+			hosts[unit.NodeUUID][role] = true
+		}
+	}
+	if strategy == store.PlacementBinpack && len(fixed) == 0 {
 		for _, candidate := range nodes {
 			if candidate.FreeGPUs >= total {
 				for _, role := range roles {
@@ -171,7 +283,6 @@ func assignPDUnits(group UnitGroup, roles []PDRoleNeed, total int, strategy stor
 	for _, candidate := range nodes {
 		free[candidate.Node.UUID] = candidate.FreeGPUs
 	}
-	hosts := map[string]map[string]bool{} // node -> roles it already hosts
 	for _, role := range roles {
 		for i := 0; i < role.Units; i++ {
 			node := pickPDNode(nodes, free, hosts, role, strategy)

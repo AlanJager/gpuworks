@@ -112,16 +112,20 @@ type Deployment struct {
 	TokenizeEnabled bool `json:"tokenize_enabled"`
 	// NodeReplacement is how long a node may stay offline before its
 	// replicas move (after_sec 0 never moves them).
-	NodeReplacement NodeReplacement     `json:"node_replacement"`
-	DistGroup       string              `json:"dist_group,omitempty"`
-	DistRole        string              `json:"dist_role,omitempty"`
-	NNodes          int                 `json:"nnodes,omitempty"`
-	NodeRank        int                 `json:"node_rank"`
-	MasterAddr      string              `json:"master_addr,omitempty"`
-	MasterPort      int                 `json:"master_port,omitempty"`
-	CreatedAt       time.Time           `json:"created_at"`
-	ModelProgress   []ModelNodePresence `json:"model_progress,omitempty"`
-	Instances       []Instance          `json:"instances,omitempty"`
+	NodeReplacement NodeReplacement `json:"node_replacement"`
+	// PlacementMode is "auto" when the platform picks a multi-node or PD
+	// deployment's nodes whenever a unit starts, "manual" when they are the
+	// operator's; absent for a single-node deployment, whose draft says it.
+	PlacementMode string              `json:"placement_mode,omitempty"`
+	DistGroup     string              `json:"dist_group,omitempty"`
+	DistRole      string              `json:"dist_role,omitempty"`
+	NNodes        int                 `json:"nnodes,omitempty"`
+	NodeRank      int                 `json:"node_rank"`
+	MasterAddr    string              `json:"master_addr,omitempty"`
+	MasterPort    int                 `json:"master_port,omitempty"`
+	CreatedAt     time.Time           `json:"created_at"`
+	ModelProgress []ModelNodePresence `json:"model_progress,omitempty"`
+	Instances     []Instance          `json:"instances,omitempty"`
 	// PD is set on a PD disaggregated deployment: its mode, policies and each
 	// role's desired and ready counts, with the state derived from them.
 	PD *DeploymentPD `json:"pd,omitempty"`
@@ -537,4 +541,10 @@ type UnitSuggestedNode struct {
 	Name     string `json:"name"`
 	FreeGPUs int    `json:"free_gpus"`
 	Model    string `json:"model"`
+}
+
+// PlacementModeRequest switches a multi-node or PD deployment between
+// automatic placement ("auto") and the operator's own ("manual").
+type PlacementModeRequest struct {
+	Mode string `json:"mode"`
 }

@@ -74,6 +74,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
 	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
+	out.PlacementMode = unitsPlacementMode(d)
 	if strings.TrimSpace(d.QuickParams) != "" {
 		_ = json.Unmarshal([]byte(d.QuickParams), &out.QuickParams)
 	}

@@ -439,6 +439,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/deployments/{id}/sleep", a.sleepDeployment)
 			r.Post("/deployments/{id}/wake", a.wakeDeployment)
 			r.Put("/deployments/{id}/node-replacement", a.setNodeReplacement)
+			r.Put("/deployments/{id}/placement-mode", a.setPlacementMode)
 			// A deployment's own timeline, including scheduling outcomes
 			// recorded before any instance existed.
 			r.Get("/deployments/{id}/events", a.deploymentEvents)

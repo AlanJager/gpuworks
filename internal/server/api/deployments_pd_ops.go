@@ -59,6 +59,12 @@ func (a *apiHandlers) updatePD(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
+	if dep.UnitsAuto && len(req.Roles) > 0 {
+		if status, err := a.autoPDRoles(dep, placement.PD, req.Roles); err != nil {
+			writeErr(w, status, err)
+			return
+		}
+	}
 	applied, err := planning.ApplyPDUpdate(placement.PD, dep.Engine, planning.PDUpdate{Mode: req.Mode, Roles: req.Roles, KVLoadFailure: req.KVLoadFailure, Fallback: req.Fallback})
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
