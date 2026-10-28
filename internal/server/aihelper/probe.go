@@ -63,7 +63,11 @@ func (c *Client) Probe(ctx context.Context) ProbeResult {
 	if err != nil {
 		return ProbeResult{Outcome: ProbeConnection, Detail: "the request could not be built", LatencyMS: millisSince(started)}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.ep.BaseURL+chatCompletionsPath, bytes.NewReader(body))
+	call, err := ChatCompletionsURL(c.ep.BaseURL)
+	if err != nil {
+		return ProbeResult{Outcome: ProbeConnection, Detail: c.redact(err.Error()), LatencyMS: millisSince(started)}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, call, bytes.NewReader(body))
 	if err != nil {
 		return ProbeResult{Outcome: ProbeConnection, Detail: c.redact(err.Error()), LatencyMS: millisSince(started)}
 	}

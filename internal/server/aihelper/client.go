@@ -100,7 +100,11 @@ func NewClient(ep Endpoint, allowPrivateHosts ...string) *Client {
 // Chat performs one chat completion.
 func (c *Client) Chat(ctx context.Context, messages []Message, tools []ToolDef) (Message, Usage, error) {
 	body, _ := json.Marshal(ChatRequest{Model: c.ep.Model, Messages: messages, Tools: tools})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.ep.BaseURL+"/chat/completions", bytes.NewReader(body))
+	call, err := ChatCompletionsURL(c.ep.BaseURL)
+	if err != nil {
+		return Message{}, Usage{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, call, bytes.NewReader(body))
 	if err != nil {
 		return Message{}, Usage{}, err
 	}

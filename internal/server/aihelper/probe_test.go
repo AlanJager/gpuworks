@@ -68,9 +68,12 @@ func TestProbeClassifiesEachAnswer(t *testing.T) {
 		{"a served model answers", base, "sk-right", "served-model", ProbeOK, 200},
 		{"a wrong key is an auth failure", base, "sk-wrong", "served-model", ProbeAuth, 401},
 		{"no key at all is an auth failure", base, "", "served-model", ProbeAuth, 401},
-		// The call path appended twice is what the bug report recorded: the
-		// gateway answers 404 without naming a model.
-		{"a doubled call path is a wrong address", base + "/chat/completions", "sk-right", "served-model", ProbePath, 404},
+		// The call path appended twice is what the bug report recorded. The
+		// probe now repairs it rather than reporting it: a row saved before
+		// normalization existed must still be testable, and the operator then
+		// sees the endpoint work instead of a 404 they did not cause.
+		{"a pasted call path is repaired, not a wrong address", base + "/chat/completions", "sk-right", "served-model", ProbeOK, 200},
+		{"a path the endpoint does not serve is a wrong address", base + "/v1", "sk-right", "served-model", ProbePath, 404},
 		{"a host that serves no path is a wrong address", srv.URL, "sk-right", "served-model", ProbePath, 404},
 		{"a model the endpoint does not serve is its own failure", base, "sk-right", "missing-model", ProbeModel, 404},
 		{"a refused connection is a connection failure", "http://127.0.0.1:1/v1", "sk-right", "served-model", ProbeConnection, 0},
