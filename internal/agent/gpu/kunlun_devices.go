@@ -17,8 +17,12 @@ import (
 // Runtime injection verifies the native device identities before granting the
 // scheduled devices to the container. Probe and telemetry stay in kunlun.go;
 // the optional multi-node transport extension stays in kunlun_runtime.go.
+// A caller that does not say which container runtime will start the workload
+// gets no assumption made for it: Kunlun's contract is driver-specific, so
+// naming one here would authorize a host this backend has not been verified
+// on. gpu.ResolveInjection reaches the seams below instead.
 func (p *KunlunProber) RuntimeInjection(indexes []int) RuntimeInjection {
-	return p.RuntimeInjectionForDriver(indexes, "docker")
+	return p.RuntimeInjectionForDriver(indexes, "")
 }
 func (p *KunlunProber) RuntimeInjectionForDriver(indexes []int, driver string) RuntimeInjection {
 	return p.runtimeInjectionForDriver(context.Background(), indexes, driver)
@@ -37,7 +41,15 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 		actual.Driver = driver
 	}
 	if params := accelerator.RuntimeMismatchParams(p.Vendor(), actual); params != nil {
-		return fail(fmt.Sprintf("runtime_unsupported: requires %s/%s with %s; observed os=%q arch=%q runtime=%q", params["required_os"], params["required_arch"], params["required_runtime"], actual.OS, actual.Arch, actual.Driver))
+		// Named after the server's refusals for the same two cases, so one
+		// grep finds both sides of a report. Neither authorizes a launch;
+		// the distinction is whether the operator is missing a fact or has
+		// a host this backend does not run on.
+		cause := "runtime_unsupported"
+		if params["missing_facts"] == true {
+			cause = "runtime_unreported"
+		}
+		return fail(fmt.Sprintf("%s: requires %s/%s with %s; observed os=%q arch=%q runtime=%q", cause, params["required_os"], params["required_arch"], params["required_runtime"], actual.OS, actual.Arch, actual.Driver))
 	}
 	inv, e := p.inventoryWithFreshness(ctx, true)
 	if e != nil {

@@ -27,7 +27,9 @@ func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
 	if err != nil || len(cards) != 2 || cards[0].PCIeBDF != "10000:09:00.0" || cards[1].PCIeBDF != "0000:09:00.0" || !cards[0].Healthy || !cards[1].Healthy {
 		t.Fatalf("%+v %v", cards, err)
 	}
-	if inj := p.RuntimeInjection([]int{0, 1}); inj.UnsupportedReason != "" {
+	// Name the container runtime: the driver is not what this test is about,
+	// and Kunlun refuses rather than assume one.
+	if inj := p.RuntimeInjectionForDriver([]int{0, 1}, "docker"); inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
 	p.readFile = func(path string) ([]byte, error) {
@@ -36,7 +38,7 @@ func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
 		}
 		return oldRead(path)
 	}
-	if inj := p.RuntimeInjection([]int{0}); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.DockerArgs) != 0 {
+	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.DockerArgs) != 0 {
 		t.Fatalf("domain-zero fallback: %+v", inj)
 	}
 }
@@ -48,7 +50,9 @@ func TestKunlunMissingUUIDRetainsIndexMetricsButNotLaunchPermission(t *testing.T
 	if err != nil || len(metrics) != 2 || metrics[0].Index != 0 || metrics[0].UUID != "" || metrics[0].Values["gpuworks_gpu_memory_total_bytes"] != 96<<30 {
 		t.Fatalf("metrics lost: %+v %v", metrics, err)
 	}
-	if inj := p.RuntimeInjection([]int{0}); inj.UnsupportedReason == "" || len(inj.DockerArgs) != 0 {
+	// The named cause matters: refusing for want of a runtime driver would
+	// pass this assertion without ever reaching the identity check.
+	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(inj.DockerArgs) != 0 {
 		t.Fatalf("unidentified card was authorized: %+v", inj)
 	}
 }

@@ -67,6 +67,40 @@ type TopologyAwareInjector interface {
 	RuntimeInjectionForLaunch(ctx context.Context, indexes []int, driverName string, nNodes int, dockerArgs []string) RuntimeInjection
 }
 
+// InjectionRequest is what the caller knows about the workload whose devices
+// it is asking for. DriverName is the container runtime driver that will start
+// it, NNodes its rank count, and DockerArgs the options already resolved for
+// it (the compute network's, among others), which a backend may require but
+// must not duplicate.
+type InjectionRequest struct {
+	Indexes    []int
+	DriverName string
+	NNodes     int
+	DockerArgs []string
+}
+
+// ResolveInjection asks a prober for its device injection through the most
+// specific seam it implements. It is the one place the optional extensions
+// above are dispatched, so a launch and the doctor that is supposed to
+// predict it ask the same question of the same backend.
+//
+// Asking through a plainer seam than the backend implements means inventing
+// the facts the seam leaves out: a caller that drops DriverName has to assume
+// some container runtime, and a backend whose contract depends on it then
+// answers for a host that may not be this one.
+func ResolveInjection(ctx context.Context, p Prober, req InjectionRequest) RuntimeInjection {
+	switch injector := p.(type) {
+	case nil:
+		return RuntimeInjection{}
+	case TopologyAwareInjector:
+		return injector.RuntimeInjectionForLaunch(ctx, req.Indexes, req.DriverName, req.NNodes, req.DockerArgs)
+	case DriverAwareInjector:
+		return injector.RuntimeInjectionForDriver(req.Indexes, req.DriverName)
+	default:
+		return injector.RuntimeInjection(req.Indexes)
+	}
+}
+
 // AcceleratorPortProber is an optional Prober extension for accelerators
 // whose cards carry their own network port (Ascend 910's RoCE port). The
 // ports never appear in the host's interfaces, so the network inventory takes

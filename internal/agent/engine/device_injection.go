@@ -34,14 +34,7 @@ func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.
 		}
 		return nil
 	}
-	var inj gpu.RuntimeInjection
-	if aware, ok := e.prober.(gpu.TopologyAwareInjector); ok {
- inj = aware.RuntimeInjectionForLaunch(ctx, indexes, driverName, nNodes, ws.DockerArgs)
- } else if aware, ok := e.prober.(gpu.DriverAwareInjector); ok {
-		inj = aware.RuntimeInjectionForDriver(indexes, driverName)
-	} else {
-		inj = e.prober.RuntimeInjection(indexes)
-	}
+	inj := gpu.ResolveInjection(ctx, e.prober, gpu.InjectionRequest{Indexes: indexes, DriverName: driverName, NNodes: nNodes, DockerArgs: ws.DockerArgs})
 	if inj.UnsupportedReason != "" {
 		return fmt.Errorf("accelerator runtime unavailable: %s", inj.UnsupportedReason)
 	}
