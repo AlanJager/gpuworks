@@ -281,6 +281,9 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, code, sleepRefusalFallback(code), map[string]any{"engine": eng.Name()})
 		return
 	}
+	if !createServiceLevelValid(w, req, eng.Name(), pdReq != nil) {
+		return
+	}
 	if req.NNodes > 1 && pdReq == nil {
 		node, err = a.d.Store.NodeWithGPUs(distNodes[0].UUID)
 		if err != nil {
@@ -390,6 +393,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 			return jsonStr(ids)
 		}(),
 		Sleepable:               req.Sleepable,
+		ServiceLevel:            createServiceLevel(req.ServiceLevel),
 		HealthCheck:             healthCheck,
 		HealthCheckThresholdSec: healthThreshold,
 		TokenizeDisabled:        req.TokenizeEnabled != nil && !*req.TokenizeEnabled,

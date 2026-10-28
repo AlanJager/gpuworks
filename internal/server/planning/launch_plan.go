@@ -55,8 +55,12 @@ type LaunchRequest struct {
 	ModelHostPath   string
 	ComponentMounts []proto.MountSpec
 
-	ServedName         string
-	Sleepable          bool
+	ServedName string
+	Sleepable  bool
+	// ServiceLevel is the deployment's (servicelevel): the cards of
+	// deployments it does not share with stay reserved against it even while
+	// they sleep. Empty reads as resident.
+	ServiceLevel       string
 	MasterAddr         string
 	MasterPort         int
 	VRAMLimitBytes     int64
@@ -217,6 +221,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		RuntimeImageCached:   runtimeImageCached(st, req),
 		Unloaded:             req.Unloaded,
 		ExcludeDeploymentID:  req.ExcludeDeploymentID,
+		ServiceLevel:         req.ServiceLevel,
 		Parallel:             req.Placement.Parallelism(req.Topology.NNodes),
 		GPUIndexes:           req.Placement.GPUIndexes,
 		VRAMLimitBytes:       req.VRAMLimitBytes,

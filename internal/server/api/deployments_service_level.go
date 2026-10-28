@@ -94,3 +94,36 @@ func (a *apiHandlers) onlineSharingCards(dep *store.Deployment) (string, error) 
 	}
 	return "", nil
 }
+
+// createServiceLevel is the level a new deployment is stored with: resident
+// when the request names none.
+func createServiceLevel(level string) string {
+	if level == "" {
+		return servicelevel.Resident
+	}
+	return level
+}
+
+// createServiceLevelValid checks a new deployment's service level as
+// setServiceLevel checks a change, writing the refusal. Whether an online
+// deployment would share a card with another online one is the placement's
+// to keep from happening: it has no cards yet.
+func createServiceLevelValid(w http.ResponseWriter, req dto.DeployRequest, engine string, pd bool) bool {
+	level := createServiceLevel(req.ServiceLevel)
+	if !servicelevel.Valid(level) {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorServiceLevelInvalid, "level is resident, online, shared or offline", map[string]any{"level": req.ServiceLevel})
+		return false
+	}
+	if level == servicelevel.Resident {
+		return true
+	}
+	if !req.Sleepable {
+		writeProductError(w, http.StatusBadRequest, ErrorSleepNotEnabled, sleepRefusalFallback(ErrorSleepNotEnabled), map[string]any{"engine": engine})
+		return false
+	}
+	if pd || req.NNodes > 1 {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorServiceLevelShape, "only a single-node deployment shares its cards by service level", nil)
+		return false
+	}
+	return true
+}

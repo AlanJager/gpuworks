@@ -410,13 +410,17 @@ type DeployRequest struct {
 	// QuickParamsUnset is a request-only tombstone. It removes named engine
 	// dictionary keys from template/user launch layers without persisting a
 	// second launch configuration.
-	QuickParamsUnset []string       `json:"quick_params_unset,omitempty"`
-	ExtraArgs        string         `json:"extra_args"`
-	Sleepable        bool           `json:"sleepable"`
-	Replicas         int            `json:"replicas,omitempty"`
-	RoutingPolicy    string         `json:"routing_policy,omitempty"`
-	Placement        map[string]any `json:"placement"`
-	VRAMLimitGiB     float64        `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
+	QuickParamsUnset []string `json:"quick_params_unset,omitempty"`
+	ExtraArgs        string   `json:"extra_args"`
+	Sleepable        bool     `json:"sleepable"`
+	// ServiceLevel is how the deployment shares GPUs: resident (the default
+	// when absent), online, shared or offline. Any but resident needs a
+	// sleepable single-node deployment.
+	ServiceLevel  string         `json:"service_level,omitempty"`
+	Replicas      int            `json:"replicas,omitempty"`
+	RoutingPolicy string         `json:"routing_policy,omitempty"`
+	Placement     map[string]any `json:"placement"`
+	VRAMLimitGiB  float64        `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
 	// StartTimeoutSec is how long a started instance may take to answer its
 	// health check before the start counts as failed. Zero (or absent) states
 	// none: each launch takes the cluster default then.

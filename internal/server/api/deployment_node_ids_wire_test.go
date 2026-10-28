@@ -31,7 +31,7 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,` +
 		// A new deployment has idle sleep off and moves a replica off a node
 		// offline for ten minutes.
-		`"idle_sleep":{"after_sec":0,"level":2},"node_replacement":{"after_sec":600},`
+		`"idle_sleep":{"after_sec":0,"level":2},"node_replacement":{"after_sec":600},"service_level":"resident","sleep_held":false,`
 	// A multi-node deployment carries who places it; a single-node one has
 	// no placement_mode key.
 	const manual = `"placement_mode":"manual",`

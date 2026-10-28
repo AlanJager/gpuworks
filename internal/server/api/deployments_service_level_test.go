@@ -2,10 +2,12 @@ package api
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -171,5 +173,38 @@ func TestAnOperatorsSleepIsHeld(t *testing.T) {
 	got := (&replacementRig{tokenRig: rig.tokenRig}).deploymentWire(t, rig.sleepy)
 	if got["sleep_held"] != true {
 		t.Fatalf("after an operator's sleep sleep_held = %v", got["sleep_held"])
+	}
+}
+
+func TestANewDeploymentsServiceLevelIsCheckedLikeAChange(t *testing.T) {
+	for _, tc := range []struct {
+		req    dto.DeployRequest
+		pd     bool
+		ok     bool
+		code   string
+		stored string
+	}{
+		{req: dto.DeployRequest{}, ok: true, stored: "resident"},
+		{req: dto.DeployRequest{ServiceLevel: "offline", Sleepable: true}, ok: true, stored: "offline"},
+		{req: dto.DeployRequest{ServiceLevel: "gold", Sleepable: true}, code: "SERVICE_LEVEL_INVALID"},
+		{req: dto.DeployRequest{ServiceLevel: "online"}, code: "SLEEP_NOT_ENABLED"},
+		{req: dto.DeployRequest{ServiceLevel: "shared", Sleepable: true, NNodes: 2}, code: "SERVICE_LEVEL_SHAPE"},
+		{req: dto.DeployRequest{ServiceLevel: "shared", Sleepable: true}, pd: true, code: "SERVICE_LEVEL_SHAPE"},
+		{req: dto.DeployRequest{ServiceLevel: "resident", NNodes: 2}, ok: true, stored: "resident"},
+	} {
+		rec := httptest.NewRecorder()
+		ok := createServiceLevelValid(rec, tc.req, "vllm", tc.pd)
+		if ok != tc.ok {
+			t.Fatalf("%+v pd=%v: ok = %v (%s)", tc.req, tc.pd, ok, rec.Body)
+		}
+		if !ok {
+			if rec.Code != http.StatusBadRequest || decodeBody(t, rec)["code"] != tc.code {
+				t.Fatalf("%+v: %d %s, want 400 %s", tc.req, rec.Code, rec.Body, tc.code)
+			}
+			continue
+		}
+		if got := createServiceLevel(tc.req.ServiceLevel); got != tc.stored {
+			t.Fatalf("%+v stored as %q", tc.req, got)
+		}
 	}
 }
