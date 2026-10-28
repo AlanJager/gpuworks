@@ -11,13 +11,11 @@ import (
 )
 
 func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
-	parameters, extraParameterPresets := playgroundDictionary()
 	catalog := dto.PlaygroundCatalog{
-		Models:                []dto.PlaygroundModel{},
-		Parameters:            parameters,
-		ExtraParameterPresets: extraParameterPresets,
-		StreamOptions:         playgroundStreamOptions(),
-		HTMLPreview:           dto.PlaygroundHTMLPreview{AllowNetwork: a.d.Store.SecurityPolicy().PlaygroundPreviewNetwork},
+		Models:        []dto.PlaygroundModel{},
+		Parameters:    playgroundParameters(),
+		StreamOptions: playgroundStreamOptions(),
+		HTMLPreview:   dto.PlaygroundHTMLPreview{AllowNetwork: a.d.Store.SecurityPolicy().PlaygroundPreviewNetwork},
 	}
 
 	deps, err := a.d.Store.ListDeployments()
@@ -89,7 +87,7 @@ func (a *apiHandlers) playgroundModels(w http.ResponseWriter, r *http.Request) {
 			ID: dep.ServedName, Label: dep.ServedName, Operations: playgroundOperations(contract, dep.ServedName),
 			InputModalities: modelView.InputModalities, ContextLength: model.ContextLength,
 			Sleeping: sleeping, DeploymentID: dep.ID, TemplateID: dep.TemplateID, TemplateSpecSource: dep.TemplateSpecSource, TemplateSpecName: dep.TemplateSpecName, PublicDataPlane: true,
-			ThinkingToggle: playgroundThinkingToggleEnabled(dep.Engine, dep.ServedName, model, hasChat),
+			ExtraParameterPresets: playgroundPresets(playgroundThinkingSwitchFor(dep.Engine, dep.ServedName, model, hasChat)),
 		})
 	}
 

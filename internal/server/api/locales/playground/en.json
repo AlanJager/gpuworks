@@ -13,7 +13,10 @@
     "disable_thinking": "Disable Thinking"
   },
   "preset_unavailable": {
-    "disable_thinking": "Only a Qwen3 chat model on vLLM or SGLang honors this switch. It is off for the current model, and hiding the thinking text would not stop the model from generating it."
+    "disable_thinking": {
+      "engine": "This deployment does not serve Chat through an engine that forwards chat_template_kwargs, so no chat-template switch can take effect here. Add the parameter under Extra Parameters only if the engine accepts it, for example {{examples}}.",
+      "model": "The Playground has not confirmed which chat_template_kwargs field stops thinking for this model, so it does not send one the chat template might ignore. Add the parameter yourself under Extra Parameters, for example {{examples}}."
+    }
   },
   "stream_options": {
     "include_usage": { "label": "Report usage (include_usage)", "description": "Return prompt and completion token counts in the last chunk, for exact metrics once the reply ends." },

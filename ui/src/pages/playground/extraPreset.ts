@@ -3,8 +3,9 @@ function plainObject(value: unknown): value is Record<string, unknown> {
 }
 
 // mergedExtraJSON folds a preset into the current extra-parameter object.
-// Nested objects merge one level, so chat_template_kwargs.enable_thinking
-// replaces only that flag and leaves sibling template kwargs in place.
+// Nested objects merge one level, so a field inside chat_template_kwargs (the
+// thinking switch, whose name is the model family's and resolved by the
+// server) replaces only that field and leaves sibling template kwargs in place.
 // A non-object or invalid document is rejected instead of being overwritten.
 export function mergedExtraJSON(current: string, preset: Record<string, unknown>): string {
   const trimmed = current.trim();

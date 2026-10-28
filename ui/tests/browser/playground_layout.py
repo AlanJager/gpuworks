@@ -49,7 +49,7 @@ CATALOG = {
                 "operations": [{"type": "openai.chat", "endpoint": "/v1/chat/completions",
                                 "renderer": "chat", "response": "sse", "mode": "stream",
                                 "request_encodings": ["json"]}]}],
-    "parameters": [], "extra_parameter_presets": [], "stream_options": [],
+    "parameters": [], "stream_options": [],
     "html_preview": {"allow_network": False},
 }
 

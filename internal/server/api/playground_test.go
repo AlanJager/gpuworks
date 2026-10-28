@@ -60,7 +60,7 @@ func TestPlaygroundCatalogIncludesDeploymentsWithoutAssistantConfigs(t *testing.
 	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Parameters) != 7 || len(catalog.ExtraParameterPresets) != 2 || len(catalog.Models) != 1 {
+	if len(catalog.Parameters) != 7 || len(catalog.Models) != 1 {
 		t.Fatalf("catalog = %+v", catalog)
 	}
 	for _, parameter := range catalog.Parameters {
@@ -68,7 +68,13 @@ func TestPlaygroundCatalogIncludesDeploymentsWithoutAssistantConfigs(t *testing.
 			t.Fatalf("parameter %q has incomplete labels: %#v", parameter.Name, parameter.Label)
 		}
 	}
-	for _, preset := range catalog.ExtraParameterPresets {
+	// Presets travel with the model, because whether a preset can be honored
+	// depends on the deployment.
+	presets := catalog.Models[0].ExtraParameterPresets
+	if len(presets) != 2 {
+		t.Fatalf("presets = %+v", presets)
+	}
+	for _, preset := range presets {
 		if preset.Label[localization.English] == "" || preset.Label[localization.Chinese] == "" {
 			t.Fatalf("preset has incomplete labels: %#v", preset.Label)
 		}
@@ -82,8 +88,8 @@ func TestPlaygroundCatalogIncludesDeploymentsWithoutAssistantConfigs(t *testing.
 	if len(catalog.StreamOptions) != 2 || catalog.StreamOptions[1].Description[localization.Chinese] == "" {
 		t.Fatalf("stream options = %+v", catalog.StreamOptions)
 	}
-	if catalog.Parameters[0].Name != "temperature" || catalog.Parameters[0].Default != float64(0.7) || catalog.ExtraParameterPresets[0].Value["reasoning_effort"] != "low" {
-		t.Fatalf("playground semantic defaults changed: %+v / %+v", catalog.Parameters[0], catalog.ExtraParameterPresets[0])
+	if catalog.Parameters[0].Name != "temperature" || catalog.Parameters[0].Default != float64(0.7) || presets[0].Value["reasoning_effort"] != "low" {
+		t.Fatalf("playground semantic defaults changed: %+v / %+v", catalog.Parameters[0], presets[0])
 	}
 	if len(catalog.Models[0].Operations) != 1 || catalog.Models[0].Operations[0].Type != inferenceapi.OperationAudioTranscribe || !catalog.Models[0].Sleeping || catalog.Models[0].ID != "qwen-asr" || !catalog.Models[0].PublicDataPlane {
 		t.Fatalf("deployment model = %+v", catalog.Models[0])

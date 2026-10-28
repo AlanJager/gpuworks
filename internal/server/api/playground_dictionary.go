@@ -3,6 +3,8 @@ package api
 import (
 	"embed"
 	"fmt"
+	"slices"
+	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/pkg/localization"
@@ -14,9 +16,12 @@ var requiredPlaygroundLocales = []string{localization.English, localization.Chin
 var playgroundLocaleFiles embed.FS
 
 type playgroundLocale struct {
-	Parameters        map[string]string                       `json:"parameters"`
-	Presets           map[string]string                       `json:"presets"`
-	PresetUnavailable map[string]string                       `json:"preset_unavailable"`
+	Parameters map[string]string `json:"parameters"`
+	Presets    map[string]string `json:"presets"`
+	// PresetUnavailable is keyed by preset, then by the reason it cannot be
+	// honored: an engine that drops chat_template_kwargs and an undeclared
+	// model family are different facts and get different texts.
+	PresetUnavailable map[string]map[string]string            `json:"preset_unavailable"`
 	StreamOptions     map[string]playgroundStreamOptionLocale `json:"stream_options"`
 }
 
@@ -25,14 +30,21 @@ type playgroundStreamOptionLocale struct {
 	Description string `json:"description"`
 }
 
-// playgroundThinkingToggle is the only model family whose "disable thinking"
-// preset is a reliable switch. Other presets stay generic parameter examples.
-const playgroundThinkingToggle = "qwen3"
+// playgroundThinkingKeyDisableThinking is the preset whose value depends on the
+// model family: the chat-template field that turns thinking off comes from
+// playgroundThinkingFamilies.
+const playgroundThinkingKeyDisableThinking = "disable_thinking"
 
 type playgroundPresetDefinition struct {
-	Key         string
-	Value       map[string]any
-	AppliesWhen string
+	Key string
+	// Value is the extra-parameters patch of a preset every model can send.
+	// A preset whose patch depends on the model leaves it nil and is filled in
+	// by playgroundPresets.
+	Value map[string]any
+	// FamilyDependent marks a preset the server may serve without a value,
+	// because it cannot be honored by every deployment. Its wire form then
+	// carries the localized text that names what the user can add by hand.
+	FamilyDependent bool
 }
 
 var playgroundParameterDefinitions = []dto.PlaygroundParameter{
@@ -57,10 +69,10 @@ var playgroundStreamOptionDefinitions = []dto.PlaygroundStreamOption{
 
 var playgroundPresetDefinitions = []playgroundPresetDefinition{
 	{Key: "low_reasoning_effort", Value: map[string]any{"reasoning_effort": "low"}},
-	// vLLM and SGLang apply Qwen3's chat-template flag only through
-	// chat_template_kwargs. A top-level enable_thinking field is accepted and
-	// ignored, so the model keeps writing the thinking body.
-	{Key: "disable_thinking", AppliesWhen: playgroundThinkingToggle, Value: map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}},
+	// The chat-template field that stops thinking is the model family's, so
+	// this preset carries no fixed value: playgroundPresets writes the one the
+	// selected deployment declares, and leaves it disabled otherwise.
+	{Key: playgroundThinkingKeyDisableThinking, FamilyDependent: true},
 }
 
 var playgroundLocales map[string]playgroundLocale
@@ -125,14 +137,32 @@ func validateDisplayLabels(language, kind string, expected map[string]struct{}, 
 	return nil
 }
 
-func validatePresetUnavailable(language string, labels map[string]string) error {
-	expected := map[string]struct{}{}
+// validatePresetUnavailable requires one text per family-dependent preset and
+// per reason it can be unavailable, and rejects texts nothing asks for.
+func validatePresetUnavailable(language string, texts map[string]map[string]string) error {
 	for _, definition := range playgroundPresetDefinitions {
-		if definition.AppliesWhen != "" {
-			expected[definition.Key] = struct{}{}
+		if !definition.FamilyDependent {
+			if _, ok := texts[definition.Key]; ok {
+				return fmt.Errorf("locale %s has unavailable text for %q, which every model can honor", language, definition.Key)
+			}
+			continue
+		}
+		reasons, ok := texts[definition.Key]
+		if !ok {
+			return fmt.Errorf("locale %s is missing unavailable text for %q", language, definition.Key)
+		}
+		for reason := range reasons {
+			if !slices.Contains(playgroundThinkingUnavailableReasons, reason) {
+				return fmt.Errorf("locale %s has unavailable text for %q reason %q", language, definition.Key, reason)
+			}
+		}
+		for _, reason := range playgroundThinkingUnavailableReasons {
+			if reasons[reason] == "" {
+				return fmt.Errorf("locale %s is missing unavailable text for %q reason %q", language, definition.Key, reason)
+			}
 		}
 	}
-	return validateDisplayLabels(language, "preset unavailable text", expected, labels)
+	return nil
 }
 
 func playgroundStreamOptions() []dto.PlaygroundStreamOption {
@@ -149,7 +179,7 @@ func playgroundStreamOptions() []dto.PlaygroundStreamOption {
 	return options
 }
 
-func playgroundDictionary() ([]dto.PlaygroundParameter, []dto.PlaygroundExtraPreset) {
+func playgroundParameters() []dto.PlaygroundParameter {
 	parameters := make([]dto.PlaygroundParameter, 0, len(playgroundParameterDefinitions))
 	for _, definition := range playgroundParameterDefinitions {
 		definition.Label = make(localization.Text, len(requiredPlaygroundLocales))
@@ -158,20 +188,52 @@ func playgroundDictionary() ([]dto.PlaygroundParameter, []dto.PlaygroundExtraPre
 		}
 		parameters = append(parameters, definition)
 	}
+	return parameters
+}
+
+// playgroundPresets builds the preset buttons of one catalog model. Disable
+// Thinking carries the chat-template field the deployment's model family
+// declares, so the page can enable the button exactly when the request it
+// writes would stop thinking; a model no family covers is served the same
+// preset without a value and with the text naming the parameters a user can
+// add by hand instead.
+func playgroundPresets(thinking playgroundThinkingSwitch) []dto.PlaygroundExtraPreset {
 	presets := make([]dto.PlaygroundExtraPreset, 0, len(playgroundPresetDefinitions))
 	for _, definition := range playgroundPresetDefinitions {
-		label := make(localization.Text, len(requiredPlaygroundLocales))
-		for _, language := range requiredPlaygroundLocales {
-			label[language] = playgroundLocales[language].Presets[definition.Key]
-		}
-		preset := dto.PlaygroundExtraPreset{Key: definition.Key, Label: label, Value: definition.Value, AppliesWhen: definition.AppliesWhen}
-		if definition.AppliesWhen != "" {
-			preset.Unavailable = make(localization.Text, len(requiredPlaygroundLocales))
-			for _, language := range requiredPlaygroundLocales {
-				preset.Unavailable[language] = playgroundLocales[language].PresetUnavailable[definition.Key]
+		preset := dto.PlaygroundExtraPreset{Key: definition.Key, Label: playgroundPresetLabel(definition.Key), Value: definition.Value}
+		if definition.FamilyDependent {
+			// A family-dependent preset sends the family's chat-template field,
+			// so it never carries a fixed value, and a deployment no family
+			// covers gets none at all: a button that writes a parameter the
+			// template ignores is the bug this table replaced.
+			if thinking.declared() {
+				preset.Value, preset.AppliesWhen = thinking.value(), thinking.Family
+			} else {
+				preset.Unavailable = playgroundPresetUnavailable(definition.Key, thinking.Unavailable)
 			}
 		}
 		presets = append(presets, preset)
 	}
-	return parameters, presets
+	return presets
+}
+
+func playgroundPresetLabel(key string) localization.Text {
+	label := make(localization.Text, len(requiredPlaygroundLocales))
+	for _, language := range requiredPlaygroundLocales {
+		label[language] = playgroundLocales[language].Presets[key]
+	}
+	return label
+}
+
+// playgroundPresetUnavailable is the text of a preset the current deployment
+// cannot honor. The model reason names the chat_template_kwargs fields the
+// declared families use, so the reader learns the parameter to add by hand
+// instead of being told the model cannot stop thinking.
+func playgroundPresetUnavailable(key, reason string) localization.Text {
+	unavailable := make(localization.Text, len(requiredPlaygroundLocales))
+	for _, language := range requiredPlaygroundLocales {
+		text := playgroundLocales[language].PresetUnavailable[key][reason]
+		unavailable[language] = strings.ReplaceAll(text, "{{examples}}", playgroundDisableThinkingExamples())
+	}
+	return unavailable
 }

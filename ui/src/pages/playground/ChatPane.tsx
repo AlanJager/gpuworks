@@ -17,7 +17,6 @@ import MessageBubble from "./MessageBubble";
 import ParametersPanel from "./ParametersPanel";
 import type {
   ChatMessage,
-  ExtraParameterPreset,
   ParameterDefinition,
   PlaygroundModel,
   StreamOptionDefinition,
@@ -30,7 +29,6 @@ interface ChatPaneProps {
   column: ConversationColumn;
   models: PlaygroundModel[];
   definitions: ParameterDefinition[];
-  presets: ExtraParameterPreset[];
   streamOptions: StreamOptionDefinition[];
   /** The column number in a compare conversation. */
   number?: number;
@@ -67,7 +65,6 @@ const ChatPane = memo(function ChatPane({
   column,
   models,
   definitions,
-  presets,
   streamOptions,
   number,
   onCatalogChanged,
@@ -144,7 +141,7 @@ const ChatPane = memo(function ChatPane({
         {showParameters && (
           <aside className="playground-parameter-aside">
             {number && <Button size="small" block onClick={() => { store.applyParameters(column.id); message.success(t("chat.appliedAll")); }}>{t("pane.applyAll")}</Button>}
-            <ParametersPanel definitions={definitions} presets={presets} streamOptions={streamOptions} thinkingToggle={!!selectedModel?.thinking_toggle} value={column.parameters} onChange={(value) => store.setParameters(column.id, value)} />
+            <ParametersPanel definitions={definitions} presets={selectedModel?.extra_parameter_presets ?? []} streamOptions={streamOptions} value={column.parameters} onChange={(value) => store.setParameters(column.id, value)} />
           </aside>
         )}
       </div>

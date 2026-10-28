@@ -95,7 +95,6 @@ const catalog: PlaygroundCatalog = {
     model("translate-model", [{ ...operation("openai.completions", "/v1/completions", "completion", "sse", "stream"), request_defaults: { stop: ["<|plamo:op|>"], temperature: 0 } }]),
   ],
   parameters: [],
-  extra_parameter_presets: [],
   html_preview: { allow_network: false },
 };
 

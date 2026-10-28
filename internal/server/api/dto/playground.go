@@ -8,9 +8,8 @@ import (
 // PlaygroundCatalog is the complete server-owned model and parameter
 // dictionary used to render the playground without hard-coded sampling ranges.
 type PlaygroundCatalog struct {
-	Models                []PlaygroundModel       `json:"models"`
-	Parameters            []PlaygroundParameter   `json:"parameters"`
-	ExtraParameterPresets []PlaygroundExtraPreset `json:"extra_parameter_presets"`
+	Models     []PlaygroundModel     `json:"models"`
+	Parameters []PlaygroundParameter `json:"parameters"`
 	// StreamOptions are the stream_options fields the Playground adds to a
 	// streamed chat request. Each can be switched off for an endpoint that
 	// rejects it.
@@ -39,9 +38,11 @@ type PlaygroundModel struct {
 	TemplateSpecName   string                `json:"template_spec_name,omitempty"`
 	External           bool                  `json:"external,omitempty"`
 	PublicDataPlane    bool                  `json:"public_data_plane"`
-	// ThinkingToggle reports that Disable Thinking is a reliable switch for
-	// this deployment: a Qwen3 chat model on vLLM or SGLang.
-	ThinkingToggle bool `json:"thinking_toggle,omitempty"`
+	// ExtraParameterPresets are the extra-parameter buttons for this
+	// deployment. Which chat-template field stops thinking depends on the
+	// model family and the engine, so the server resolves it here instead of
+	// letting the page hard-code a family.
+	ExtraParameterPresets []PlaygroundExtraPreset `json:"extra_parameter_presets"`
 }
 
 // PlaygroundOperation is the resolved catalog operation plus the code-owned
@@ -85,12 +86,21 @@ type PlaygroundStreamOption struct {
 	Requires    string            `json:"requires,omitempty"`
 }
 
+// PlaygroundExtraPreset is one extra-parameters patch the page can apply to a
+// request. A preset that only some deployments can honor is served per model:
+// with Value and AppliesWhen when this deployment's declared capability makes
+// it effective, and without a Value but with Unavailable (the text naming what
+// to add by hand instead) when it is not.
 type PlaygroundExtraPreset struct {
 	Key   string            `json:"key"`
 	Label localization.Text `json:"label"`
-	Value map[string]any    `json:"value"`
-	// AppliesWhen names the capability that makes Value a reliable switch.
-	// Empty means the preset is an example the caller can send as-is.
-	AppliesWhen string            `json:"applies_when,omitempty"`
+	// Value is the patch; empty means this deployment cannot honor the preset.
+	Value map[string]any `json:"value,omitempty"`
+	// AppliesWhen names the declared capability that makes Value effective
+	// (the model family whose chat template reads it). Empty for a preset that
+	// is a plain example or cannot be honored here.
+	AppliesWhen string `json:"applies_when,omitempty"`
+	// Unavailable explains the disabled state and names the parameters to add
+	// by hand. It is set only when Value is empty.
 	Unavailable localization.Text `json:"unavailable,omitempty"`
 }
