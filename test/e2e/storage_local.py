@@ -419,6 +419,10 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     from storage_local_required import exercise_storage_required
     report["required_fields"] = exercise_storage_required(page, modal, storage, path)
     report["last_step"] = "storage-required"
+    from storage_local_required import exercise_storage_name_contract
+    report["name_contract"] = exercise_storage_name_contract(page, modal, storage, posts)
+    report["evidence"].append({"layer": "ui", "name_contract": report["name_contract"]})
+    report["last_step"] = "storage-name-contract"
     name_input.fill("Bad Name")
     path_input.fill(path)
     save.click()
@@ -491,11 +495,12 @@ def test_storage_local(page, context, server, artifacts, report, locale):
     expect(page.get_by_text(path, exact=True).first).to_be_visible()
     expect(page.get_by_text(storage["scope"]["all"], exact=True).first).to_be_visible()
     config_title = storage["overview"]["config"]
-    config_card = page.locator(".ant-card").filter(
-        has=page.locator(".ant-card-head-title", has_text=re.compile(rf"^{re.escape(config_title)}$")))
+    # The overview is a stack of DetailSection blocks now, not antd cards: the
+    # section is a <section class="detail-section"> headed by an h5.
+    config_card = page.locator("section.detail-section").filter(
+        has=page.get_by_role("heading", name=config_title, exact=True))
     expect(config_card).to_have_count(1)
-    expect(config_card).to_have_class(re.compile(r"\bant-card-small\b"))
-    report["config_card_small"] = True
+    report["config_section"] = True
     report["last_step"] = "show-nodes-link"
     show_nodes = page.get_by_role("button", name=storage["overview"]["showNodes"], exact=True)
     expect(show_nodes).to_have_count(1)
