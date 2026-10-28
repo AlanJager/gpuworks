@@ -33,6 +33,7 @@ google-chrome --version          # the tests use channel="chrome" and never down
 
 make build                       # produces bin/gpuworks and bin/gpuworks-agent
 make test-e2e-smoke              # shortest path: real Chrome, isolated server, SQLite
+make test-e2e-docker-check       # whether the Docker-class cases can run here
 ```
 
 `check-libvgpu` needs `objdump` (`apt install binutils`). **Do not export `GO`, `CGO_ENABLED`,

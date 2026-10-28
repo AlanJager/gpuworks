@@ -197,6 +197,21 @@ test-e2e-setup-check:
 	docker info >/dev/null 2>&1 || echo "NOTE no reachable Docker daemon: only the Docker-class cases need it"; \
 	if [ $$missing -eq 0 ]; then echo "E2E prerequisites look complete: make test-e2e-smoke"; else echo "Fix the MISSING lines above, then run make test-e2e-smoke"; fi
 
+.PHONY: test-e2e-docker-check
+## test-e2e-docker-check: report whether the Docker-class cases can run here.
+## Like test-e2e-setup-check this runs no test; it names the fix for each gap.
+test-e2e-docker-check:
+	@ok=0; \
+	if docker info >/dev/null 2>&1; then echo "docker daemon: reachable"; else echo "MISSING docker daemon  -> start Docker, or set DOCKER_HOST to a reachable socket"; ok=1; fi; \
+	if docker image inspect gpuworks/fake-engine:test >/dev/null 2>&1; then echo "engine image: gpuworks/fake-engine:test present"; else echo "MISSING engine image  -> make fake-engine-image"; ok=1; fi; \
+	if [ $$ok -eq 0 ]; then echo "Docker-class cases can run: make test-e2e-playground-chat"; else echo "Fix the MISSING lines above; see test/e2e/RUNNING.md"; fi
+
+.PHONY: test-e2e-playground-chat
+## test-e2e-playground-chat: playground streaming, conversations, preview and
+## compare. Needs the Docker daemon and the fake-engine image (make fake-engine-image).
+test-e2e-playground-chat: build
+	NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost python3 test/e2e/playground_chat_gateway.py --locale en
+
 .PHONY: test-e2e-smoke
 ## test-e2e-smoke: the shortest real E2E path - Chrome, an isolated server and
 ## SQLite, no Docker and no GPU. Use this to prove the setup works before

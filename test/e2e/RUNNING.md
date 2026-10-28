@@ -54,6 +54,8 @@ make test-e2e-smoke
 它们支持 `DOCKER_HOST`，所以可以指向任意私有 daemon：
 
 ```bash
+make test-e2e-docker-check        # 缺 daemon 或镜像时直接告诉你缺哪个、怎么补
+make test-e2e-playground-chat     # 该层入口；默认 daemon 不可达时用下面的写法
 DOCKER_HOST=unix:///path/to/docker.sock python3 test/e2e/playground_chat_gateway.py --locale en
 ```
 
@@ -90,5 +92,5 @@ FileNotFoundError: [Errno 2] No such file or directory: '/path/bin/gpuworks'
 1. ~~把 39 个裸 traceback 换成可操作提示~~ —— 已完成（共享 fixture 的 `require_binary()`）。
 2. ~~加依赖声明并补 `docs/dev/setup.md`~~ —— 已完成（`requirements-e2e.txt` + setup.md 的 E2E 一节）。
 3. ~~给 L2 补 Make 入口~~ —— 已有 `test-e2e-setup-check` / `test-e2e-smoke`，其余 L2 用例仍可直接调用。
-4. **仍待做**：Docker 类（L4）单独成一个显式目标，并在缺镜像时直接说 `make fake-engine-image`。
-   目前 Docker 类 case 仍需手工设置 `DOCKER_HOST` 并自行准备镜像。
+4. ~~Docker 类（L4）单独成目标~~ —— 已完成：`make test-e2e-docker-check` 报告 daemon 与镜像是否就绪
+   并给出 `make fake-engine-image`，`make test-e2e-playground-chat` 是这一层的入口。

@@ -32,6 +32,7 @@ google-chrome --version          # 测试用 channel="chrome"，不下载 chromi
 
 make build                       # 产出 bin/gpuworks 与 bin/gpuworks-agent
 make test-e2e-smoke              # 最小链路：真实 Chrome + 隔离 server + SQLite
+make test-e2e-docker-check       # 需要 Docker 的用例是否就绪
 ```
 
 `check-libvgpu` 需要 `objdump`（`apt install binutils`）。**不要导出 `GO`、`CGO_ENABLED`、
