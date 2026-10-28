@@ -133,14 +133,20 @@ func TestDeploymentPDAsleepPrefillStillServes(t *testing.T) {
 	if got.PDState != "running" {
 		t.Fatalf("pd state = %q, want running: the mode serves without prefill", got.PDState)
 	}
-	// Waking it makes every role ready again.
+	// Waking it: with the order withdrawn only the engine's own level keeps
+	// the replica asleep, which is what the gateway reads until it wakes.
 	f.sleepRole(t, "prefill", 0)
-	f.reported(t, "prefill-0", 0)
-	if got := f.dto(t); got.State != "running" || got.AsleepReplicas != 0 || got.SleepLevel != 0 {
-		t.Fatalf("woken = %s, want no asleep replica", got)
+	waking := f.dto(t)
+	if waking.State != "running" || waking.AsleepReplicas != 1 || waking.SleepLevel != 1 {
+		t.Fatalf("waking = %s, want one replica still asleep at its reported level", waking)
 	}
-	if fmt.Sprint(got.Roles) != fmt.Sprint([]string{"decode:1/0/1", "prefill:2/0/2"}) {
-		t.Fatalf("roles after wake = %v", got.Roles)
+	f.reported(t, "prefill-0", 0)
+	woken := f.dto(t)
+	if woken.State != "running" || woken.AsleepReplicas != 0 || woken.SleepLevel != 0 {
+		t.Fatalf("woken = %s, want no asleep replica", woken)
+	}
+	if fmt.Sprint(woken.Roles) != fmt.Sprint([]string{"decode:1/0/1", "prefill:2/0/2"}) {
+		t.Fatalf("roles after wake = %v, want every prefill unit ready", woken.Roles)
 	}
 }
 
@@ -172,9 +178,10 @@ func TestDeploymentPDAsleepDecodeRefuses(t *testing.T) {
 	if got := f.dto(t); got.State != "running" || got.AsleepReplicas != 2 {
 		t.Fatalf("woken decode, asleep prefill = %s, want running with both prefill replicas asleep", got)
 	}
-	// Both roles asleep: nothing answers at all.
+	// Both roles asleep, and every engine reports its level: nothing answers.
 	f.sleepRole(t, "decode", 1)
 	f.reported(t, "decode-0", 1)
+	f.reported(t, "prefill-1", 1)
 	if got := f.dto(t); got.State != "asleep" || got.AsleepReplicas != 3 {
 		t.Fatalf("both asleep = %s, want asleep with three asleep replicas", got)
 	}
