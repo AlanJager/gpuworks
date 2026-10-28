@@ -24,9 +24,9 @@ Qwen3-0.6B and Qwen3.8-27B are available as an [importable template package](../
 
 ## Two-Node Communication Prerequisites
 
-- Both nodes need working XDR compatible with their kernels. The agent only checks and exposes devices; it does not install, compile or load drivers, or alter KASLR/boot entries.
+- Multi-node needs one working transport between the nodes. XDR is one of them: it is exposed where the host has it, and where it does not the resolved host RDMA network carries the collective instead, which is not a reason to refuse the launch. The agent only checks and exposes devices; it does not install, compile or load drivers, or alter KASLR/boot entries.
 - Configure a reachable compute network and verify the inventory’s mapping among RDMA ports, interfaces and IPs. Inventory neither changes networking nor establishes measured bandwidth.
-- The common network layer supplies `/dev/infiniband`, unlimited memlock and `IPC_LOCK` for a host RDMA compute network. The Kunlun prober injects only the selected XPUs, control device and XDR; it does not enumerate all HCAs or duplicate network arguments. XDR must be a real character device. Multi-node launches explicitly refuse missing resolved resources or finite memlock limits.
+- The common network layer supplies `/dev/infiniband`, unlimited memlock and `IPC_LOCK` for a host RDMA compute network. The Kunlun prober injects only the selected XPUs, the control device, and XDR where the host has it; it does not enumerate all HCAs or duplicate network arguments. Multi-node launches explicitly refuse missing resolved resources or finite memlock limits. An absent `/dev/xdrdrv` means the host does not offer that transport; one that exists but is not a real character device is refused.
 - `IPC_LOCK` and memlock relaxation serve communication-memory registration. Templates and host mounts use the common administrator trust model; do not add other GPUs or device directories.
 
 Images must supply the corresponding RDMA userspace libraries and verified communication parameters. The platform does not introduce global defaults that bypass driver checks or modify kernel boot arguments. Check the supplier’s supported kernel, driver and image combinations before use.

@@ -13,7 +13,10 @@ import (
 func (p *KunlunProber) verifyKunlunXDR() error {
 	info, err := p.inspect("/dev/xdrdrv")
 	if err != nil {
-		return fmt.Errorf("Kunlun multi-node runtime requires XDR: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+            return nil
+        }
+        return fmt.Errorf("Kunlun multi-node runtime XDR inspection: %w", err)
 	}
 	mode := info.Mode()
 	if mode&os.ModeSymlink != 0 || mode&os.ModeDevice == 0 || mode&os.ModeCharDevice == 0 {
