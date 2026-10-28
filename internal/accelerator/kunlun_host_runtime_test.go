@@ -39,8 +39,12 @@ func TestKunlunIdentityDoesNotUseIncidentalModelSubstrings(t *testing.T) {
 	if InferVendor("", "P800 PCIe", "KL3", "10.2") != VendorKunlunxin {
 		t.Fatal("native architecture lost to CUDA facade")
 	}
-	if VendorForPCI(0x2057, 0, 0x078000, "kunlun") != VendorKunlunxin {
-		t.Fatal("captured PCI identity missing")
+	// Both with the vendor's module bound and without it: see
+	// TestACardIsFoundByItsClassWithItsVendorsDriverUnbound.
+	for _, driver := range []string{"kunlun", ""} {
+		if VendorForPCI(0x2057, 0x3686, 0x078000, driver) != VendorKunlunxin {
+			t.Fatalf("captured PCI identity missing on driver %q", driver)
+		}
 	}
 }
 

@@ -90,6 +90,35 @@ func TestTheAcceleratorBaseClassCountsWholeAndTheProcessorOneDoesNot(t *testing.
 	}
 }
 
+// A card has to be found by its class with its vendor's module unbound,
+// because that is the case the PCI roster exists for: an unloaded or
+// wrong-bound driver must reach an operator as a driver problem on a node
+// that has cards, not as a node that has none. The driver rule alone would
+// hide exactly the failure worth reporting.
+//
+// Kunlunxin's P800 claims no accelerator class of its own and reports
+// 0x0780, "other communication device" (2057:3686, measured 2026-10-28 on
+// two eight-card hosts).
+func TestACardIsFoundByItsClassWithItsVendorsDriverUnbound(t *testing.T) {
+	// The class as sysfs spells it, programming interface byte included.
+	const p800 = 0x078000
+	for _, driver := range []string{"kunlun", "", "pci-stub", "vfio-pci"} {
+		if got := VendorForPCI(0x2057, 0x3686, p800, driver); got != VendorKunlunxin {
+			t.Errorf("a P800 on driver %q = %q, want %q", driver, got, VendorKunlunxin)
+		}
+	}
+	// Being identified is the point; a card the rules recognize is not also
+	// reported as one nobody told us about.
+	if UnknownAcceleratorFunction(0x2057, 0x3686, p800, "") {
+		t.Error("a recognized P800 was also reported as unrecognized")
+	}
+	// The class is granted to this vendor id, not to the class: a server is
+	// full of 0x07 functions and none of the others is a card.
+	if got := VendorForPCI(0x10de, 0x2204, p800, ""); got != "" {
+		t.Errorf("another vendor's 0x0780 function = %q, want no claim", got)
+	}
+}
+
 // A vendor that ships a new product line at a class nobody told us about
 // still has its own kernel module bound to it. That is enough.
 func TestAVendorsOwnDriverIdentifiesACardWhateverItsClass(t *testing.T) {
@@ -185,7 +214,7 @@ func TestAnUnnamedCardIsLabelledByItsIDs(t *testing.T) {
 // The vendors a node can be told to manage are those a PCI bus lists:
 // every one but Apple, and nothing unknown.
 func TestOnlyVendorsOnAPCIBusCanBeChosen(t *testing.T) {
-	for _, vendor := range []string{VendorNVIDIA, VendorAscend, VendorHygon, VendorPPU, VendorAMD} {
+	for _, vendor := range []string{VendorNVIDIA, VendorAscend, VendorHygon, VendorPPU, VendorAMD, VendorKunlunxin} {
 		if !HasPCICards(vendor) {
 			t.Fatalf("HasPCICards(%q) = false", vendor)
 		}

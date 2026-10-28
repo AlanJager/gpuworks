@@ -36,11 +36,15 @@ import "strconv"
 //   - 0x03 is display, shared by every BMC and integrated graphics chip on
 //     the market, so only its two GPU subclasses count, and only for
 //     vendors that do not also make display silicon.
+//   - 0x07 is simple communication controllers, whose 0x0780 "other" is
+//     where a card lands when its vendor claims no class of its own. A
+//     server is full of 0x07 functions, so it counts one vendor at a time.
 const (
-	pciClassVGA              = 0x0300 // consumer cards (an RTX 3090 reports this)
-	pciClass3D               = 0x0302 // datacenter cards, and every PPU
-	pciClassCoProcessor      = 0x0b40 // Hygon's DCU
-	pciBaseClassAccelerators = 0x12   // Ascend's NPU, and where the industry is heading
+	pciClassVGA                = 0x0300 // consumer cards (an RTX 3090 reports this)
+	pciClass3D                 = 0x0302 // datacenter cards, and every PPU
+	pciClassOtherCommunication = 0x0780 // Kunlunxin's P800
+	pciClassCoProcessor        = 0x0b40 // Hygon's DCU
+	pciBaseClassAccelerators   = 0x12   // Ascend's NPU, and where the industry is heading
 )
 
 type pciVendor struct {
@@ -70,6 +74,9 @@ type pciVendor struct {
 // bound to alipci (192.0.2.210); Hygon K100 "KONGMING" 1d94:6211 class
 // 0x0b40 (192.0.2.133); NVIDIA RTX 2080 Ti 10de:1e04 class 0x0300 and
 // Quadro RTX 8000 10de:1e78 class 0x0302, both bound to nvidia (gpu3).
+// Measured 2026-10-28: Kunlunxin P800 2057:3686 class 0x0780 bound to kunlun,
+// eight cards on each of two hosts (the node11 and node12 captures in
+// internal/agent/gpu/testdata).
 //
 // Huawei deliberately has no 0x03: 19e5:1711, the BMC display controller on
 // every one of its servers, reports 0x0300 and would otherwise be listed as
@@ -80,7 +87,7 @@ var pciVendors = map[uint32]pciVendor{
 		name:    VendorAMD,
 		drivers: []string{AMDGPUDriver},
 	},
-	0x2057: {name: VendorKunlunxin, classes: []uint32{0x078000}, drivers: []string{"kunlun"}},
+	0x2057: {name: VendorKunlunxin, classes: []uint32{pciClassOtherCommunication}, drivers: []string{"kunlun"}},
 	0x10de: {
 		name:    VendorNVIDIA,
 		classes: []uint32{pciClassVGA, pciClass3D},
