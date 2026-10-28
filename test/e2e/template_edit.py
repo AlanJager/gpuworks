@@ -38,6 +38,7 @@ CASES = {
     "clone": ("gpuworks/templates/clone-edit", "推理模板 / 克隆后编辑规格 / 副本刷新回读且原始 YAML 与规格不变"),
     "syntax": ("gpuworks/templates/yaml-syntax-recovery", "推理模板 / YAML 语法错误 / 服务端拒绝且草稿保留，修正后保存"),
     "schema": ("gpuworks/templates/yaml-schema-recovery", "推理模板 / YAML 未知字段 / 服务端拒绝且原记录不变，修正后保存"),
+    "required": ("gpuworks/templates/yaml-required-field-recovery", "推理模板 / YAML 缺必填字段 / 服务端拒绝且原记录不变，修正后保存"),
 }
 
 
@@ -220,7 +221,16 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
 
     if case != "clone":
         report["evidence_layer"] = "error recovery"
-        invalid = updated + ("\ninvalid: [\n" if case == "syntax" else "\nunknown_e2e_field: true\n")
+        if case == "syntax":
+            invalid = updated + "\ninvalid: [\n"
+        elif case == "schema":
+            invalid = updated + "\nunknown_e2e_field: true\n"
+        else:
+            # required: drop a schema-required key the real validator rejects.
+            dropped = re.sub(r"(?m)^\s+engine:[^\n]*\n", "", updated, count=1)
+            check(dropped != updated, "required case did not drop the engine key")
+            check(not re.search(r"(?m)^\s+engine:", dropped), "engine key survived the required case edit")
+            invalid = dropped
         replace_editor(editor, invalid)
         with page.expect_response(lambda r: urlsplit(r.url).path == API + "/import" and r.request.method == "POST") as rejected:
             save.click()
@@ -231,19 +241,28 @@ def test_template_edit(page, context, server, artifacts, report, locale, case):
         check(isinstance(payload.get("error"), str) and payload["error"], "server failure has no reason")
         alert = dialog.get_by_role("alert")
         expect(alert).to_contain_text(t["editor"]["saveFailed"])
-        expect(alert).to_contain_text("expected" if case == "syntax" else "unknown_e2e_field")
-        line_button = alert.get_by_role("button")
-        expect(line_button).to_have_text(re.compile(r"\d+"))
-        line_button.click()
-        expect(editor).to_be_focused()
-        expect(editor).to_have_text(invalid, use_inner_text=True)
+        expect(alert).to_contain_text({"syntax": "expected", "schema": "unknown_e2e_field"}.get(case, "engine"))
+        if case == "required":
+            # A missing schema-required key has no source line, so the product
+            # shows the reason and keeps the draft instead of a line jump.
+            expect(alert).not_to_have_count(0)
+            expect(editor).to_have_text(invalid, use_inner_text=True)
+        else:
+            line_button = alert.get_by_role("button")
+            expect(line_button).to_have_text(re.compile(r"\d+"))
+            line_button.click()
+            expect(editor).to_be_focused()
+            expect(editor).to_have_text(invalid, use_inner_text=True)
         expect(save).to_be_enabled()
         check(read_model(page, server.base, target) == baseline and read_yaml(page, server.base, target) == baseline_yaml, "rejected YAML partially changed model/specs")
         unchanged_package = page.request.get(package_url)
         check(unchanged_package.status == 200 and unchanged_package.body() == original_package, "rejected YAML changed package bytes")
         artifacts.write_json("rejected-request.json", {"case": case, "status": response.status, "query": parse_qs(urlsplit(response.url).query), "body": invalid, "response": payload})
         page.screenshot(path=artifacts.directory / "validation-error.png")
-        report["evidence"].append({"layer": "recovery", "status": 400, "case": case, "draft_retained": True, "baseline_unchanged": True})
+        report["evidence"].append({"layer": "recovery", "status": 400, "case": case, "draft_retained": True,
+                                   "baseline_unchanged": True,
+                                   "reason": payload.get("error"),
+                                   "line_anchor": case != "required"})
         replace_editor(editor, updated)
 
     # Hold the corrected import. Save shows the loading state, a second click

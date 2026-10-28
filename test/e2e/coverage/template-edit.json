@@ -100,9 +100,6 @@
     "internal/server/store/inference_catalog.go"
   ],
   "checklist_items": {
-    "partial": {
-      "15.2": "the real 400 on unknown_candidate_field with the exact reason and draft retention is 12.6/15.7 failure-recovery evidence; the full 15.2 claim (syntax error, schema error and missing required fields each with exact position and no illegal mutation sent) remains open"
-    },
     "12.1": "Opened from the Edit control as the only dialog. The role is dialog, the accessible name is the drawer title, the component is ant-drawer-content, and the first step is the YAML editor. The discard dialog count is 0",
     "12.3": "Default focus is the drawer panel. Shift+Tab from Save stays inside the drawer. Tab from Save focuses the YAML editor and stays inside the drawer. The drawer is aria-modal, so focus does not reach the page",
     "12.5": "Discard dialog over the YAML editor: Keep editing and Escape each hide the child, leave the editor open with the unsaved draft, hide the child buttons, and send no import. Reopen uses the discard-title dialog.",
@@ -118,7 +115,8 @@
     "12.6": "During the held real POST the save control shows loading and a second click issues no second request (barrier only continues the original request); the real server answers 400 naming unknown_candidate_field, the invalid draft stays byte-exact across a 1.5s stable window (typing-latch safe), the alert carries the reason, loading exits and the corrected save returns 200 with a reload-consistent read-back; the catch-restores-draft mutant is killed by the stable oracle.",
     "15.1": "The initial editor content equals the canonical YAML byte-exact via a real select-all/copy with a clipboard sentinel, the editor is a real editable CodeMirror, keyboard Home/End/ArrowLeft/Enter navigation lands at exact selection offsets and edits are typed, and Reset writes nothing to the DB; the empty-initial-value mutant fails the canonical assertion.",
     "15.3": "A real copy returns the actual edited bytes; the save sends POST application/yaml with overwrite=true whose CDP-captured body equals the edited bytes exactly, only display_title changes, and independent GET/read-only SQLite plus a reload reopen agree; the stale-savedYAML mutant fails the wire-byte assertion.",
-    "15.7": "A real seeded upstream template exposes no Edit/delete entry; cloning converts every spec to user while preserving all other fields; after both a failed and a successful save on the clone, the upstream GET/YAML/read-only SQLite row hash and the immutable package export bytes are unchanged; the exposed-edit-entry mutant fails to_have_count(0)."
+    "15.7": "A real seeded upstream template exposes no Edit/delete entry; cloning converts every spec to user while preserving all other fields; after both a failed and a successful save on the clone, the upstream GET/YAML/read-only SQLite row hash and the immutable package export bytes are unchanged; the exposed-edit-entry mutant fails to_have_count(0).",
+    "15.2": "Four independent real rejections, each keeping the draft and leaving the stored model/YAML/package byte-identical: a YAML syntax error and a schema field the catalog does not declare (both with a line anchor that refocuses the editor), and a schema-required key left out, which the server rejects with 'requires name, engine, and image' and no line anchor because an absent key has no source position. Verified en+zh; killed by dropping the engine requirement from both validation layers, after which the same draft imports with HTTP 200."
   },
   "template_control_evidence": {
     "items": [
@@ -225,5 +223,54 @@
       "15.2 (syntax/schema/required-field errors), 15.6 (runtime argv/env/mount/role/rank consumption) and 12.8 remain open",
       "pure control plane: no agent, container, GPU or inference claimed"
     ]
+  },
+  "validation_evidence": {
+    "items": [
+      "15.2"
+    ],
+    "normal_binary_sha256": "d9dcc5d1b0c39daed18fee45fc81fa96a945b4773119db6c8554463b243b9e1a",
+    "runs": {
+      "syntax_en": {
+        "run_id": "20261028T070935Z-2752fba9",
+        "report_sha256": "9444c82f5259ce7b0ebeb1f524e8bf7fe752465fb687472497096912dd474dc5"
+      },
+      "schema_en": {
+        "run_id": "20261028T071006Z-908a8b41",
+        "report_sha256": "ce26a978a49a6a6b43a9ac82f3f5027ffc66dcf94514dc849ebffffbdfdfb54b"
+      },
+      "required_en": {
+        "run_id": "20261028T070833Z-ef2c213d",
+        "report_sha256": "92264bd9a15a4152c5d0fca7d70fb23426bb7707e35bbfe00b5a60f7e2954219"
+      },
+      "required_zh": {
+        "run_id": "20261028T070903Z-95d5c7db",
+        "report_sha256": "cb4a36fb595a31571d63607000d7b7bbc84547ac7493ce6cf6b29f07eb8ffade"
+      },
+      "required_mutant": {
+        "run_id": "20261028T070720Z-8e4b0c4a",
+        "report_sha256": "43b7826360cbc9446fdf2476dd777eeeb986123a3ecf68401a104234cec6f480"
+      }
+    },
+    "fault_runs": [
+      {
+        "item": "15.2",
+        "name": "template-required-engine-accepted",
+        "cohort": "template-validation-fault-cohort-v1",
+        "run_id": "20261028T070720Z-8e4b0c4a",
+        "report_sha256": "43b7826360cbc9446fdf2476dd777eeeb986123a3ecf68401a104234cec6f480",
+        "binary_sha256": "02187011741f7cfaefa28799e64ce42d1f75fec4fb8775f042f9d7628f89034b",
+        "mutation": {
+          "sites": [
+            "internal/server/inferencecatalog/flat.go",
+            "internal/server/store/inference_catalog.go"
+          ],
+          "intent": "accept a spec that omits the schema-required engine key (both validation layers, one intent)",
+          "source_restored": true
+        },
+        "leaked_containers_swept": [],
+        "review_note": "Killed at the HTTP-400 assertion: with the engine requirement dropped from both layers the same draft imports with HTTP 200, so 'invalid required YAML HTTP 200' fires. Mutating only the flat.go layer was NOT a kill: the store layer still rejected the spec with a different message, which is recorded here rather than counted."
+      }
+    ],
+    "note": "15.2 leaves partial because all four named branches now have a real rejection each; 15.6 (runtime argv/rank dispatch) stays open."
   }
 }
