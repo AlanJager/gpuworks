@@ -291,17 +291,19 @@ from coverage_completion_queue import summary
 # These counts move only when a manifest declaration changes.
 BASELINE = {
     "1": 138, "2": 291, "3": 267, "4": 299, "5": 197, "6": 137,
-    "7": 105, "8": 102, "9": 76, "10": 111, "11": 85, "out": 379,
+    "7": 105, "8": 102, "9": 76, "10": 110, "11": 84, "out": 379,
 }
 
 
 class QueueTest(unittest.TestCase):
     def test_every_open_checklist_gap_has_one_phase(self):
         extra, counts, total = summary()
-        self.assertEqual(extra, "7")
+        # No provider section after 1-10 still has a residual, so there is no
+        # "smallest" one left to name.
+        self.assertIsNone(extra)
         self.assertEqual(dict(counts), BASELINE)
         self.assertEqual(total, sum(BASELINE.values()))
-        self.assertEqual(total, 2187)
+        self.assertEqual(total, 2185)
 
 
 if __name__ == "__main__":
