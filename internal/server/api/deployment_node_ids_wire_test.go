@@ -31,6 +31,9 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 	const health = `"health":{"status":"off","threshold_sec":60,"last":null,"recent_mean_ms":null,"recent_ok":0,"recent":[]},"tokenize_enabled":true,` +
 		// A new deployment moves a replica off a node offline for ten minutes.
 		`"node_replacement":{"after_sec":600},`
+	// A multi-node deployment carries who places it; a single-node one has
+	// no placement_mode key.
+	const manual = `"placement_mode":"manual",`
 	for _, tc := range []struct {
 		name         string
 		nodeIDs      string
@@ -44,7 +47,7 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 		},
 		{
 			name: "distributed", nodeIDs: "[1,2]", nnodes: 2,
-			want: head + `"node_uuids":["node-a","node-b"],"node_names":["node-a","node-b"],` + tail + ready + health +
+			want: head + `"node_uuids":["node-a","node-b"],"node_names":["node-a","node-b"],` + tail + ready + health + manual +
 				`"nnodes":2,"node_rank":0,"created_at":"2026-10-01T00:00:00Z","model_progress":[` + progressA + `,` + progressB + `],` +
 				`"units":[{"node_uuid":"node-a","node_name":"node-a","followers":[{"node_uuid":"node-b","node_name":"node-b"}]}]}`,
 		},
@@ -64,7 +67,7 @@ func TestDeploymentDTONodeIDsWire(t *testing.T) {
 		},
 		{
 			name: "unreadable column", nodeIDs: "not json", nnodes: 2,
-			want: head + tail + ready + health + `"nnodes":2,"node_rank":0,"created_at":"2026-10-01T00:00:00Z","model_progress":[` + progressA + `]}`,
+			want: head + tail + ready + health + manual + `"nnodes":2,"node_rank":0,"created_at":"2026-10-01T00:00:00Z","model_progress":[` + progressA + `]}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

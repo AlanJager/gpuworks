@@ -44,7 +44,11 @@ func (a *apiHandlers) autoPlaceRequest(req *dto.DeployRequest) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	facts, err := planning.LoadUnitSuggestFacts(a.d.Store, a.networks().Resolve, &store.Deployment{ModelID: req.ModelID}, reqs, nil, a.onlineOf(nodes), 1, 1)
+	var named []planning.ListedRank
+	if pd != nil {
+		named = listedPDRanks(pd, namedPDUnits(pd))
+	}
+	facts, err := planning.LoadUnitSuggestFacts(a.d.Store, a.networks().Resolve, &store.Deployment{ModelID: req.ModelID}, reqs, named, a.onlineOf(nodes), 1, 1)
 	if err != nil {
 		return false, err
 	}
@@ -132,6 +136,39 @@ func autoPlacePD(req *dto.DeployRequest, pd *planning.PDPlacement, facts plannin
 		pd.Roles[role] = r
 	}
 	return setPlacementPD(req, pd)
+}
+
+// namedPDUnits are the units of pd that already name their node.
+func namedPDUnits(pd *planning.PDPlacement) map[string][]planning.PDUnit {
+	mode, ok := pdmode.Lookup(pd.Mode)
+	if !ok {
+		return nil
+	}
+	out := map[string][]planning.PDUnit{}
+	for _, role := range mode.Roles {
+		for _, unit := range pd.Units(role) {
+			if unit.NodeUUID != "" {
+				out[role] = append(out[role], unit)
+			}
+		}
+	}
+	return out
+}
+
+// listedPDRanks are the cards the units will take on their nodes, as ranks
+// the choice must leave alone: the units that stay where they are claim their
+// cards before the others are placed beside them.
+func listedPDRanks(pd *planning.PDPlacement, units map[string][]planning.PDUnit) []planning.ListedRank {
+	var out []planning.ListedRank
+	for role, list := range units {
+		for _, unit := range list {
+			gpus := pd.RankGPUs(role, unit)
+			for _, rank := range unit.Ranks() {
+				out = append(out, planning.ListedRank{NodeUUID: rank.NodeUUID, GPUs: gpus})
+			}
+		}
+	}
+	return out
 }
 
 // setPlacementPD writes pd back into the request's placement document.

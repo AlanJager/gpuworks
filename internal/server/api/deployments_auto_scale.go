@@ -37,6 +37,11 @@ func (a *apiHandlers) autoReplicaUnits(dep *store.Deployment, replicas int, plac
 	if added <= 0 {
 		return a.shrinkReplicaUnits(dep, current, replicas, remove)
 	}
+	if len(remove) > 0 {
+		// As for a single-node deployment: instances are named only for the
+		// replicas a shrink drops.
+		return nil, http.StatusBadRequest, productError(ErrorReplicasRemoveTooMany, "more instances named than replicas removed", map[string]any{"count": len(remove), "maximum": 0})
+	}
 	reqs, err := a.d.Store.DeploymentRequirements(dep.ID)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -181,7 +186,7 @@ func (a *apiHandlers) autoPDRoles(dep *store.Deployment, current *planning.PDPla
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
-	facts, err := planning.LoadUnitSuggestFacts(a.d.Store, a.networks().Resolve, dep, reqs, nil, a.onlineOf(nodes), 1, 1)
+	facts, err := planning.LoadUnitSuggestFacts(a.d.Store, a.networks().Resolve, dep, reqs, listedPDRanks(current, fixed), a.onlineOf(nodes), 1, 1)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
