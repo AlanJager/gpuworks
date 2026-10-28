@@ -13,6 +13,7 @@ retains the private database/logs for scoped diagnosis (seven days).
 from __future__ import annotations
 
 import argparse
+import base64
 from datetime import datetime, timezone
 import json
 import os
@@ -271,6 +272,100 @@ def vector_operation(page, server, report, playground, served_name):
                                "source": "each declared non-chat operation opened its own renderer and "
                                          "sent its own method/path/body; no chat wire reuse"})
     return rows
+
+
+def attachment_lifecycle(page, server, served_name, report, playground, artifacts):
+    """20.4: attachments are bounded, removable, and never sent stale.
+
+    The composer accepts images through a real file input, shows each one as a
+    removable tag, keeps at most six, clears them once the reply is sent, and a
+    failed send must not leave an attachment queued for the retry to resend by
+    accident.
+    """
+    report["last_step"] = "attachments-start"
+    chat = playground["chat"]
+    # The preview checks leave the browser on the settings page.
+    page.goto(server.base + "/playground/chat?operation=openai.chat&model=" + served_name)
+    expect(page.get_by_label(chat["inputAria"])).to_be_visible(timeout=30000)
+    # A 1x1 PNG: a real image the browser can read, small enough to inline.
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
+    one = artifacts.directory / "probe.png"
+    one.write_bytes(png)
+    seven = []
+    for index in range(7):
+        path = artifacts.directory / f"probe-{index}.png"
+        path.write_bytes(png)
+        seven.append(str(path))
+    # Image and audio each own a hidden input; only the image one takes a PNG.
+    picker = page.locator('input.playground-hidden-input[type="file"][accept="image/*"]').first
+    probe = page.evaluate("""() => {
+      const inputs = [...document.querySelectorAll('input.playground-hidden-input')];
+      return inputs.map((el) => ({accept: el.accept, disabled: el.disabled}));
+    }""")
+    check(not any(item["accept"] == "image/*" and item["disabled"] for item in probe),
+          f"the image picker is disabled for this model: {probe}")
+    tags = page.locator(".playground-attachments .ant-tag")
+    check(tags.count() == 0, "the composer already held attachments")
+    picker.set_input_files(str(one))
+    expect(tags).to_have_count(1, timeout=30000)
+    expect(tags.first).to_contain_text(chat["image"])
+    expect(tags.first).to_contain_text("probe.png")
+    # Removing the tag must drop it, so a dismissed attachment is not sent.
+    tags.first.locator(".ant-tag-close-icon").click()
+    expect(tags).to_have_count(0, timeout=30000)
+    # The composer keeps at most six, dropping the excess rather than growing.
+    picker.set_input_files(seven)
+    expect(tags).to_have_count(6, timeout=30000)
+    report["last_step"] = "attachments-capped"
+    report["evidence"].append({
+        "layer": "ui", "attachments": tags.count(), "cap": 6,
+        "removed": "the tag's close control dropped the attachment",
+        "source": "a real file input fed the composer; the tag named the kind and the file, "
+                  "closing it removed the attachment, and seven files were capped at six"})
+    # Clear the deck so the send below is measured on its own.
+    while tags.count():
+        tags.first.locator(".ant-tag-close-icon").click()
+    expect(tags).to_have_count(0, timeout=30000)
+    picker.set_input_files(str(one))
+    expect(tags).to_have_count(1, timeout=30000)
+    # Sending must put the attachment in the request and then clear the deck, so
+    # a following turn cannot resend it by accident.
+    chat_input = page.get_by_label(chat["inputAria"])
+    # Type rather than fill: the composer's state follows real input events.
+    chat_input.click()
+    chat_input.type(f"attachment probe {report['run_id'][-8:]}", delay=10)
+    state = page.evaluate("""() => {
+      const buttons = [...document.querySelectorAll('.playground-composer button')];
+      return {value: document.querySelector('#playground-chat-input')?.value,
+              buttons: buttons.map((b) => ({text: b.textContent.trim(), disabled: b.disabled}))};
+    }""")
+    report["composer_state"] = state
+    # The send control sits in the composer footer; locating it by its text
+    # avoids depending on how the icon affects the accessible name.
+    send = page.locator(".playground-composer button").filter(has_text=chat["send"]).last
+    with page.expect_response(lambda r: urlsplit(r.url).path.endswith("/chat/completions")
+                              and r.request.method == "POST") as sent:
+        send.click()
+    check(sent.value.status == 200, f"sending with an attachment failed: {sent.value.status}")
+    body = sent.value.request.post_data_json
+    message = (body.get("messages") or [])[-1]
+    parts = message.get("content")
+    check(isinstance(parts, list),
+          f"the attachment never reached the request as parts: {message}")
+    images = [part for part in parts if part.get("type") == "image_url"]
+    check(len(images) == 1 and str(images[0]["image_url"]["url"]).startswith("data:image/png;base64,"),
+          f"the request carried the wrong image part: {images}")
+    check(any(part.get("type") == "text" and str(part.get("text", "")).startswith("attachment probe")
+              for part in parts),
+          f"the typed text was lost alongside the attachment: {parts}")
+    expect(tags).to_have_count(0, timeout=30000)
+    report["evidence"].append({
+        "layer": "request", "attachment_part": "image_url/data:image/png;base64",
+        "cleared_after_send": True,
+        "source": "the composer sent the attachment as an image_url part beside the text and "
+                  "emptied itself, so a retry cannot resend the old attachment"})
+    return one
 
 
 def preview_isolation(page, server, report, playground, expected_network):
@@ -640,6 +735,8 @@ def test_playground_chat(page, context, server, artifacts, report, locale,
         check(restored["playground_preview_network"] == starting_network,
               f"the original preview network policy was not restored: {restored}")
 
+    attachment_lifecycle(page, server, served_name, report, playground, artifacts)
+
     report["evidence"].extend([
         {"layer": "ui", "entry": deployments["page"]["openPlayground"], "row": dep_name,
          "url": page.url, "model": served_name, "send": playground["chat"]["send"],
@@ -702,7 +799,10 @@ def create_fixtures(server, token, run_id, report, holder, agent_bin, artifacts,
                               body={"operations": [{"type": "openai.chat"},
                                                    {"type": "openai.embeddings", "endpoint": "/v1/embeddings"},
                                                    {"type": "openai.rerank", "endpoint": "/v1/rerank"}],
-                                    "input_modalities": ["text"]})
+                                    # The chat model also declares image input so the
+                                    # composer's attachment path can be exercised; the
+                                    # engine ignores it and replies with text as before.
+                                    "input_modalities": ["text", "image"]})
     check(status == 200, f"inference config HTTP {status} {configured}")
     if inject_config_failure:
         raise RuntimeError("injected inference config failure")
