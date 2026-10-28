@@ -1326,6 +1326,7 @@ Each range-based response includes `range`: `from_ms`, `to_ms`, `granularity`, `
 |---|---|---|---|
 | GET | `/api/v1/ai/configs` | List AI Helper LLM connection configurations | JWT |
 | POST | `/api/v1/ai/configs` | Add an LLM connection configuration | JWT |
+| PATCH | `/api/v1/ai/configs/{id}` | Partially update an LLM connection configuration: only the `name`/`preset`/`base_url`/`model`/`is_default` in the request change. A missing `api_key` or an empty string keeps the stored key (including a legacy plaintext one); a non-empty one is encrypted and stored. Setting the default clears it on the others. Answers the same row the list shows (six fields, no key). 404 for a missing configuration, 400 `FIELD_INVALID` for an invalid value | JWT |
 | DELETE | `/api/v1/ai/configs/{id}` | Delete an LLM connection configuration | JWT |
 | GET | `/api/v1/ai/available` | Whether AI Helper is available (whether an LLM is configured) | JWT |
 | POST | `/api/v1/ai/ask` | Ask AI Helper to perform a task; supports regular responses and SSE. See [AI Ask Request and Response](#ai-提问的请求与响应) for all fields and conditions | JWT |

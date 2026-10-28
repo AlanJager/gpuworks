@@ -1325,6 +1325,7 @@ trace id 为 32 位十六进制、不区分大小写，查询该 trace 的全部
 |---|---|---|---|
 | GET | `/api/v1/ai/configs` | AI 助手 LLM 接入配置列表 | JWT |
 | POST | `/api/v1/ai/configs` | 新增 LLM 接入配置 | JWT |
+| PATCH | `/api/v1/ai/configs/{id}` | 部分更新 LLM 接入配置：只改请求里出现的 `name`/`preset`/`base_url`/`model`/`is_default`；`api_key` 不出现或为空字符串时保留已存的密钥（旧版明文存储的也原样保留），非空则重新加密存。设为默认会同时清掉其他配置的默认。返回与列表同一行（六个字段，不含密钥）。配置不存在 404，取值不合法 400 `FIELD_INVALID` | JWT |
 | DELETE | `/api/v1/ai/configs/{id}` | 删除 LLM 接入配置 | JWT |
 | GET | `/api/v1/ai/available` | AI 助手是否可用（是否已配置 LLM） | JWT |
 | POST | `/api/v1/ai/ask` | 让 AI 助手执行任务，支持普通响应和 SSE；完整字段与条件见[AI 提问的请求与响应](#ai-提问的请求与响应) | JWT |

@@ -38,18 +38,10 @@ func (a *apiHandlers) listAIConfigs(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// Never return the API key.
-	type config struct {
-		ID        uint   `json:"id"`
-		Name      string `json:"name"`
-		Preset    string `json:"preset"`
-		BaseURL   string `json:"base_url"`
-		Model     string `json:"model"`
-		IsDefault bool   `json:"is_default"`
-	}
-	out := make([]config, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, config{ID: c.ID, Name: c.Name, Preset: c.Preset, BaseURL: c.BaseURL, Model: c.Model, IsDefault: c.IsDefault})
+	// Never return the API key: dto.AIConfigView has no field for it.
+	out := make([]dto.AIConfigView, 0, len(cs))
+	for i := range cs {
+		out = append(out, aiConfigView(&cs[i]))
 	}
 	writeJSON(w, http.StatusOK, dto.NewList(out))
 }

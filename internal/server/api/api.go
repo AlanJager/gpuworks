@@ -589,6 +589,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			// AI helper.
 			r.Get("/ai/configs", a.listAIConfigs)
 			r.Post("/ai/configs", a.createAIConfig)
+			r.Patch("/ai/configs/{id}", a.updateAIConfig)
 			r.Delete("/ai/configs/{id}", a.deleteAIConfig)
 			r.Get("/ai/available", a.aiAvailable)
 			r.Post("/ai/ask", a.aiAsk)

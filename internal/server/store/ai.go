@@ -91,6 +91,78 @@ func (s *Store) DefaultAIConfig() (*AIConfig, error) {
 	return &c, nil
 }
 
+// AIConfigByID reads one config, or ErrNotFound.
+func (s *Store) AIConfigByID(id uint) (*AIConfig, error) {
+	var c AIConfig
+	if err := s.db.First(&c, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &c, nil
+}
+
+// AIConfigPatch is a partial change to an AI config: a nil field keeps the
+// stored value. APIKey is the ciphertext to store, not a plaintext key.
+type AIConfigPatch struct {
+	Name      *string
+	Preset    *string
+	BaseURL   *string
+	APIKey    *string
+	Model     *string
+	IsDefault *bool
+}
+
+// UpdateAIConfig applies a patch and answers the row as stored. Marking one
+// config the default clears the mark on the others in the same transaction, so
+// the assistant never sees two defaults or none of them.
+func (s *Store) UpdateAIConfig(id uint, patch AIConfigPatch) (*AIConfig, error) {
+	var out AIConfig
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&out, id).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		updates := map[string]any{}
+		if patch.Name != nil {
+			updates["name"] = *patch.Name
+		}
+		if patch.Preset != nil {
+			updates["preset"] = *patch.Preset
+		}
+		if patch.BaseURL != nil {
+			updates["base_url"] = *patch.BaseURL
+		}
+		if patch.APIKey != nil {
+			updates["api_key"] = *patch.APIKey
+		}
+		if patch.Model != nil {
+			updates["model"] = *patch.Model
+		}
+		if patch.IsDefault != nil {
+			if *patch.IsDefault {
+				if err := tx.Model(&AIConfig{}).Where("is_default = ? AND id <> ?", true, id).Update("is_default", false).Error; err != nil {
+					return err
+				}
+			}
+			updates["is_default"] = *patch.IsDefault
+		}
+		if len(updates) > 0 {
+			if err := tx.Model(&AIConfig{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+				return err
+			}
+		}
+		return tx.First(&out, id).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.Bus.PublishChange("ai", uintKey(id), "updated")
+	return &out, nil
+}
+
 // DeleteAIConfig removes a config.
 func (s *Store) DeleteAIConfig(id uint) error {
 	return s.db.Delete(&AIConfig{}, id).Error

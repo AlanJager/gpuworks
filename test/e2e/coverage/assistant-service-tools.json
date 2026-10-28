@@ -16,7 +16,7 @@
   "crud": {
     "create": "UI Add AI Service creates a default custom endpoint through POST /ai/configs; the upstream key is never returned",
     "read": "The settings row and independent GET keep the non-secret service fields after refresh",
-    "update": "N/A: the service card offers create and delete, not edit",
+    "update": "The card has an Edit action per row; POST /ai/configs also covers partial edits through PATCH /ai/configs/{id}, which keeps the stored key when api_key is blank (the UI edit dialog and Go tests cover it, this browser lane does not)",
     "delete": "UI delete confirmation removes the configuration; independent GET returns an empty list"
   },
   "fields": [
@@ -26,7 +26,7 @@
       "request": "POST /api/v1/ai/configs {\"name\",\"preset\",\"base_url\",\"api_key\",\"model\",\"is_default\"}",
       "persisted": "name, preset, base_url, model, is_default; the key is encrypted and not returned",
       "covered": ["custom preset", "required fields", "default flag", "refresh and independent GET", "preset, base_url and model readback", "delete confirmation"],
-      "missing": ["all vendor presets", "validation failures", "editing an existing service", "multiple services and default switching"]
+      "missing": ["all vendor presets", "validation failures", "the edit dialog", "multiple services and default switching"]
     },
     {
       "id": "assistant.ask-stream",

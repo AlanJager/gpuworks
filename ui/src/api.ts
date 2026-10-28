@@ -2080,6 +2080,19 @@ export interface AIConfigInput {
   is_default: boolean;
 }
 /**
+ * AIConfigPatch changes a stored service in place. Only the fields present
+ * change; api_key is left out to keep the stored key, which the API never
+ * sends back.
+ */
+export interface AIConfigPatch {
+  name?: string;
+  preset?: AIPreset;
+  base_url?: string;
+  api_key?: string;
+  model?: string;
+  is_default?: boolean;
+}
+/**
  * One assistant task about a subject named by reference (instance_uuid,
  * model_id, deployment_id or node_uuid); the server gathers its context.
  * Task "ask" is a free question. A follow-up carries the thread's earlier
@@ -4436,6 +4449,8 @@ export const api = {
     getJSON<List<AIConfig>>("/api/v1/ai/configs"),
   createAIConfig: (body: AIConfigInput) =>
     sendJSON<AIConfig>("POST", "/api/v1/ai/configs", body),
+  updateAIConfig: (id: number, body: AIConfigPatch) =>
+    sendJSON<AIConfig>("PATCH", `/api/v1/ai/configs/${id}`, body),
   deleteAIConfig: (id: number) =>
     sendJSON<void>("DELETE", `/api/v1/ai/configs/${id}`),
   aiAsk: (body: AIAskRequest, signal?: AbortSignal) =>

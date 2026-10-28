@@ -92,7 +92,7 @@
       "tooLarge": "图片压缩后仍超过 {{max}} KiB，请换一张更简单的图片"
     }
   },
-  "common": { "save": "保存", "saved": "已保存", "delete": "删除", "add": "添加", "cancel": "取消" },
+  "common": { "save": "保存", "saved": "已保存", "delete": "删除", "add": "添加", "edit": "编辑", "cancel": "取消" },
   "error": { "save": "保存失败：{{detail}}", "update": "更新失败：{{detail}}", "import": "导入失败：{{detail}}", "delete": "删除失败：{{detail}}", "add": "添加失败：{{detail}}" },
   "pull": {
     "title": "拉取设置",
@@ -344,7 +344,7 @@
       "gateway": "推理 API"
     }
   },
-  "ai": { "empty": "尚未配置 AI 服务", "service": "AI 服务", "notice": "不配置 AI 也能 100% 使用平台；配置后解锁部署建议、错误诊断和模型问答。", "egressNotice": "AI 助手会读取提问用户能看到的平台数据（节点、部署、模型、日志与指标），并把读到的内容发送给当前使用的 AI 服务（{{host}}）。如需数据不出平台，请改用本平台部署的模型。", "name": "名称", "preset": "预设", "model": "模型", "default": "默认", "deleteConfirm": "删除该配置？", "deleted": "已删除", "addService": "添加 AI 服务", "added": "已添加", "baseUrl": "Base URL", "upstreamKey": "上游 API 密钥", "setDefault": "设为默认", "nameRequired": "请输入名称", "namePlaceholder": "例如 deepseek-primary", "baseUrlRequired": "请输入 Base URL", "modelRequired": "请输入模型名", "keyRequired": "请输入上游 API 密钥", "presetName": { "deepseek": "DeepSeek（默认）", "bailian": "百炼", "siliconflow": "硅基流动", "openrouter": "OpenRouter", "poe": "Poe", "custom": "自定义" } },
+  "ai": { "empty": "尚未配置 AI 服务", "service": "AI 服务", "notice": "不配置 AI 也能 100% 使用平台；配置后解锁部署建议、错误诊断和模型问答。", "egressNotice": "AI 助手会读取提问用户能看到的平台数据（节点、部署、模型、日志与指标），并把读到的内容发送给当前使用的 AI 服务（{{host}}）。如需数据不出平台，请改用本平台部署的模型。", "name": "名称", "preset": "预设", "model": "模型", "default": "默认", "deleteConfirm": "删除该配置？", "deleted": "已删除", "addService": "添加 AI 服务", "added": "已添加", "baseUrl": "Base URL", "upstreamKey": "上游 API 密钥", "setDefault": "设为默认", "nameRequired": "请输入名称", "namePlaceholder": "例如 deepseek-primary", "baseUrlRequired": "请输入 Base URL", "modelRequired": "请输入模型名", "keyRequired": "请输入上游 API 密钥", "editService": "编辑 AI 服务", "updated": "已更新", "keyKeep": "留空表示不修改", "presetName": { "deepseek": "DeepSeek（默认）", "bailian": "百炼", "siliconflow": "硅基流动", "openrouter": "OpenRouter", "poe": "Poe", "custom": "自定义" } },
   "dataRetention": {
     "title": "数据保留",
     "description": "每类数据保留多久、最多占多少空间，以及按天统计用哪个时区。保存后立即生效；改短的部分会在后台分批删除。",
