@@ -184,14 +184,20 @@ def test_network_lifecycle(page, server, report, locale, bad_http, console_error
     exercise_network_inflight(page, dialog, t, draft, bad_http, console_errors, evidence)
     created = mutate(page, save.click, 'POST', prefix, draft, 201, evidence)
     path = f"{prefix}/{created['id']}"
-    expect(page).to_have_url(server.base + f"/networks/{created['id']}")
-    expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
+    expect(page).to_have_url(server.base + f"/networks?network={created['id']}")
+    # Creation now opens the detail drawer over the list instead of navigating
+    # to a per-network page; the row itself is the stable proof the record exists.
+    expect(page.get_by_role('dialog')).to_be_visible()
+    expect(page.get_by_role('row').filter(has_text=name)).to_have_count(1)
     persisted(page, server.base, path, draft, evidence)
     page.reload()
     expect(page.get_by_text(draft['description'], exact=True)).to_be_visible()
     expect(page.get_by_text(draft['cidr'], exact=True)).to_be_visible()
     expect(page.get_by_text(t['detail']['noAttachments'], exact=True)).to_be_visible()
-    button(page, t['actions']['edit']).click()
+    # The list row and the detail drawer each offer Edit; take the drawer's.
+    header = page.locator('.ant-drawer-header').filter(has_text=name).first
+    expect(header).to_be_visible()
+    button(header, t['actions']['edit']).click()
     dialog = page.get_by_role('dialog', name=t['form']['editTitle'], exact=True)
     modal_geometry(dialog, button(dialog, t['actions']['save']))
     for field in ['name', 'description', 'cidr', 'interface']:
@@ -201,29 +207,66 @@ def test_network_lifecycle(page, server, report, locale, bad_http, console_error
     expect(dialog).not_to_be_visible()
     check(len(events) == 2, 'cancel edit sent mutation')
     persisted(page, server.base, path, draft, evidence)
-    button(page, t['actions']['edit']).click()
+    # A name is unique per network, compared case-insensitively and excluding the
+    # row itself. Occupy a name first, then try to edit this network onto it: the
+    # save must be refused, keep what the operator typed, and leave the stored row
+    # alone. Fixing the name then has to succeed without closing the dialog.
+    occupied_name = 'e2e-' + report['run_id'] + '-taken'
+    occupied = page.request.post(server.base + prefix,
+                                 data={'name': occupied_name, 'description': 'name collision probe',
+                                       'roles': ['serving'], 'type': 'host_ethernet',
+                                       'cidr': '10.79.0.0/16', 'interface': 'ens*'})
+    check(occupied.status in (200, 201), f"collision fixture HTTP {occupied.status}")
+    occupied_body = occupied.json()
+    occupied_id = (occupied_body.get('network') or occupied_body).get('id')
+    button(header, t['actions']['edit']).click()
+    name_field = dialog.get_by_label(t['form']['name'], exact=True)
+    collision = occupied_name.upper()
+    name_field.fill(collision)
+    with page.expect_response(lambda r: urlsplit(r.url).path == path
+                              and r.request.method == "PUT") as refused:
+        button(dialog, t['actions']['save']).click()
+    check(refused.value.status == 409, f"collision HTTP {refused.value.status}")
+    check(refused.value.json().get('code') == 'NETWORK_NAME_TAKEN',
+          f"collision code {refused.value.json().get('code')}")
+    report['collision'] = {'sent': collision, 'status': refused.value.status,
+                           'code': refused.value.json().get('code'),
+                           'dialog_open': dialog.is_visible(),
+                           'typed_value_kept': name_field.input_value()}
+    # The record must be untouched by the refused save.
+    persisted(page, server.base, path, draft, evidence)
+    allow_http_status(bad_http, console_errors, 409)
+    if not dialog.is_visible():
+        button(header, t['actions']['edit']).click()
+    name_field = dialog.get_by_label(t['form']['name'], exact=True)
+    name_field.fill(name + '-edited')
     changed = {**draft, 'name': name + '-edited', 'description': '', 'cidr': '10.78.0.0/16', 'interface': ''}
     for field in ['name', 'description', 'cidr', 'interface']:
         dialog.get_by_label(t['form'][field], exact=True).fill(changed[field])
     mutate(page, button(dialog, t['actions']['save']).click, 'PUT', path, changed, 200, evidence)
     expect(dialog).not_to_be_visible()
     page.reload()
-    expect(page.get_by_role('heading', name=changed['name'], exact=True)).to_be_visible()
+    expect(page.get_by_role('row').filter(has_text=changed['name'])).to_have_count(1)
     persisted(page, server.base, path, changed, evidence)
-    button(page, t['actions']['edit']).click()
+    header = page.locator('.ant-drawer-header').filter(has_text=changed['name']).first
+    expect(header).to_be_visible()
+    button(header, t['actions']['edit']).click()
     for field in ['name', 'description', 'cidr', 'interface']:
         expect(dialog.get_by_label(t['form'][field], exact=True)).to_have_value(changed[field])
     dialog.get_by_label(t['form']['name'], exact=True).press('Escape')
     expect(dialog).not_to_be_visible()
-    button(page, t['actions']['delete']).click()
+    before_cancel = len(events)
+    button(header, t['actions']['delete']).click()
     confirmation = t['actions']['confirmDelete'].replace('{{name}}', changed['name'])
     popup = page.get_by_role('tooltip').filter(has_text=confirmation)
     expect(popup).to_be_in_viewport(ratio=1)
     button(popup, t['actions']['cancel']).click()
     expect(popup).not_to_be_visible()
-    check(len(events) == 3, 'cancel delete sent mutation')
+    # Relative to what the collision probes already sent, cancelling must add
+    # nothing - a fixed count would silently rot every time a probe is added.
+    check(len(events) == before_cancel, 'cancel delete sent mutation')
     persisted(page, server.base, path, changed, evidence)
-    button(page, t['actions']['delete']).click()
+    button(header, t['actions']['delete']).click()
     result = mutate(page, button(popup, t['actions']['delete']).click, 'DELETE', path, None, 200, evidence)
     check(result == {'status': 'deleted'}, 'network deletion envelope differs')
     expect(page).to_have_url(server.base + '/networks')
@@ -231,8 +274,17 @@ def test_network_lifecycle(page, server, report, locale, bad_http, console_error
     expect(page.get_by_role('heading', name=t['title'], exact=True)).to_be_visible()
     expect(page.get_by_role('row').filter(has_text=changed['name'])).to_have_count(0)
     check(read(page, server.base, path, 404)['code'] == 'NETWORK_NOT_FOUND', 'deleted network GET contract differs')
+    # The collision probe made a real network; it is cleaned up through the API
+    # and the list has to come back to exactly what the case started with.
+    reclaimed = page.request.delete(server.base + f"{prefix}/{occupied_id}")
+    check(reclaimed.status in (200, 204), f"collision fixture cleanup HTTP {reclaimed.status}")
     check(read(page, server.base, prefix) == baseline, 'network deletion did not restore baseline')
-    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix}, {'method': 'PUT', 'path': path}, {'method': 'DELETE', 'path': path}], 'unexpected network mutation')
+    # Two PUTs: the refused collision (409, no stored change) and the accepted
+    # rename. Every write the case causes is listed, so a new stray mutation
+    # still fails here.
+    check(events == [{'method': 'POST', 'path': prefix}, {'method': 'POST', 'path': prefix},
+                     {'method': 'PUT', 'path': path}, {'method': 'PUT', 'path': path},
+                     {'method': 'DELETE', 'path': path}], 'unexpected network mutation')
     evidence.extend([{'layer': 'ui', 'checks': ['empty/whitespace/roles validation', 'dialog viewport', 'keyboard focus border=theme.primary', 'Tab focus trap', 'cancel/create/edit/delete', 'refresh fields', 'clear optional fields']},
                      {'layer': 'cleanup', 'detail_status': 404, 'list_restored': True, 'mutations': events}])
 
