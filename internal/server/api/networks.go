@@ -278,7 +278,7 @@ func writeNetworkInvalid(w http.ResponseWriter, e *network.InvalidError) {
 	case network.InvalidRole:
 		writeProductError(w, http.StatusBadRequest, ErrorNetworkRoleInvalid, "network roles must be one or more of storage_sync, compute, serving", map[string]any{"role": e.Value})
 	case network.InvalidType:
-		writeProductError(w, http.StatusBadRequest, ErrorNetworkTypeInvalid, "network type must be host_ethernet, host_rdma or accelerator_rdma", map[string]any{"type": e.Value})
+		writeProductError(w, http.StatusBadRequest, ErrorNetworkTypeInvalid, "network type must be host_ethernet, host_rdma, accelerator_rdma or accelerator_hccs", map[string]any{"type": e.Value})
 	case network.InvalidTypeRole:
 		writeProductError(w, http.StatusBadRequest, ErrorNetworkTypeRoleInvalid, "a network of type "+e.Field+" cannot carry role "+e.Value, map[string]any{"type": e.Field, "role": e.Value})
 	case network.InvalidSelector:

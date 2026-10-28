@@ -97,8 +97,8 @@ func (a *apiHandlers) planNetworkTest(w http.ResponseWriter, r *http.Request) (n
 	case kind == networkTestRDMATool && tested.Type != netplan.TypeHostRDMA:
 		writeProductError(w, http.StatusBadRequest, ErrorNetworkTestKindInvalid, "rdma_tool tests need an RDMA network", map[string]any{"kind": kind})
 		return networkTestPlan{}, false
-	case network.CardTest(kind) && tested.Type != netplan.TypeAcceleratorRDMA:
-		writeProductError(w, http.StatusBadRequest, ErrorNetworkTestKindInvalid, "card tests need an accelerator RDMA network", map[string]any{"kind": kind})
+	case network.CardTest(kind) && !netplan.IsAccelerator(tested.Type):
+		writeProductError(w, http.StatusBadRequest, ErrorNetworkTestKindInvalid, "card tests need an accelerator network", map[string]any{"kind": kind})
 		return networkTestPlan{}, false
 	}
 	pattern := strings.TrimSpace(req.Pattern)

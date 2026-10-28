@@ -97,8 +97,9 @@ export function RailsCell({ network, node, onChanged }: { network: NetworkDetail
   };
   // An accelerator network's rails are the cards; a host RDMA network's, the host's RDMA ports.
   const accelerator = isAcceleratorRDMA(network.type);
+  const hccs = network.type === "accelerator_hccs";
   const ports: { name: string; ip: string; gap?: string }[] = accelerator
-    ? (inventory?.accelerator_ports ?? []).map((p) => ({ name: p.name, ip: p.ip, gap: p.gap }))
+    ? (inventory?.accelerator_ports ?? []).map((p) => ({ name: p.name, ip: hccs ? (p.hccs_ip ?? "") : p.ip, gap: hccs ? p.hccs_gap : p.gap }))
     : (inventory?.rdma_ports ?? []).map((p) => ({ name: `${p.device}:${p.port}`, ip: p.ip, gap: p.gap }));
   const options = ports
     .filter((p) => !used.has(p.name))

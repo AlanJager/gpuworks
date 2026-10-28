@@ -7,6 +7,7 @@
 - **主机以太网**：节点在目标网络上已有可用地址。
 - **主机 RDMA**：有 ACTIVE 的 InfiniBand 或 RoCE 端口；RoCE 对应网卡还需 IPv4 地址。带宽测试需要可运行的 `ib_write_bw`，工具条件见[内部测试](#内部测试)。
 - **加速器 RDMA**：昇腾卡的网口已配置地址且链路 UP，agent 能通过 `hccn_tool` 读取。
+- **加速器 HCCS**：A3/910C 节点的灵衢 HCCS/vNIC 已配置，agent 能通过 `hccn_tool -vnic` 和 `-hccs_ping` 读取与验证。
 
 多机推理和 PD 的部署步骤分别见[多机推理](multi-node-inference.md)与 [PD 分离部署](pd-disaggregation.md)。网络对象的设计与推断规则见 [ADR 0030](../adr/0030-network-objects.md) 和 [ADR 0027](../adr/0027-rdma-network-inference.md)。
 
@@ -23,7 +24,7 @@ UI 里需要填 server 地址的地方都用浏览器当前访问的地址预填
 
 ## 网络
 
-1. 打开**资源 → 网络**，点**新建网络**，填写名称，选择角色与类型，并按下列说明设置选择器。一个网络可承担多个角色；加速器 RDMA 只能承担参数角色。
+1. 打开**资源 → 网络**，点**新建网络**，填写名称，选择角色与类型，并按下列说明设置选择器。一个网络可承担多个角色；加速器 RDMA 和加速器 HCCS 只能承担参数角色。
 2. 点**保存**，进入新网络的详情页。按[加载到节点或标签](#加载到节点或标签)加载目标节点。
 3. 在详情的节点列表核对实际 IP、网卡；RDMA 网络还要核对 bootstrap 和 HCA。橙色叹号表示有未生效或不可用的配置，先查看原因并修正。
 4. 需要验证节点间路径时，按[内部测试](#内部测试)发起测试。网络声明保存成功不代表实际链路已通；运行中的实例仍使用启动时的网络，下次启动才应用变更。
@@ -31,9 +32,9 @@ UI 里需要填 server 地址的地方都用浏览器当前访问的地址预填
 创建时的字段含义：
 
 - **角色**（可多选）：`存储同步`（节点间同步模型和镜像）、`参数`（多机推理的 NCCL/Gloo 与 PD 分离的 KV 传输）、`服务`（网关访问推理实例）。三个都选就是 all in one。
-- **类型**：`主机以太网`（`host_ethernet`）、`主机 RDMA`（`host_rdma`）或 `加速器 RDMA`（`accelerator_rdma`）。主机 RDMA 同时涵盖 InfiniBand 和 RoCE，每个节点是哪一种由其 RDMA 端口的链路层自动识别，显示在节点行上；同一网络内识别出不同链路层时给出橙色叹号。加速器 RDMA 是加速卡自带的 RoCE 口（昇腾 NPU），见[下文](#加速器-rdma-网络加速卡自带的网口)。类型决定参数网络的 NCCL/UCX/HCCL 配置和设备注入。只有同一个网络对象上的节点被视为互通。
+- **类型**：`主机以太网`（`host_ethernet`）、`主机 RDMA`（`host_rdma`）、`加速器 RDMA`（`accelerator_rdma`）或 `加速器 HCCS`（`accelerator_hccs`）。主机 RDMA 同时涵盖 InfiniBand 和 RoCE，每个节点是哪一种由其 RDMA 端口的链路层自动识别，显示在节点行上；同一网络内识别出不同链路层时给出橙色叹号。加速器 RDMA 是加速卡自带的 RoCE 口；加速器 HCCS 是 A3/910C 的灵衢 HCCS/HIXL 链路，见[下文](#加速器-hccs-网络a3910c-灵衢链路)。类型决定参数网络的 NCCL/UCX/HCCL 配置和设备注入。只有同一个网络对象上的节点被视为互通。
 - **默认选择器**（只有主机以太网需要）：填"默认网段"，流量走地址落在其中的网卡；网卡名（支持 `*`、`?`、`[...]` 通配）只在网段区分不开时需要。
-- 主机 RDMA 与加速器 RDMA 网络**不需要填写任何选择器**，见下两节；"高级"里只有一个可选的 bootstrap 网段。
+- 主机 RDMA、加速器 RDMA 与加速器 HCCS 网络**不需要填写任何选择器**，见下三节；"高级"里只有一个可选的 bootstrap 网段。
 
 ### RDMA 网络：bootstrap 与 HCA 自动推断
 
@@ -77,6 +78,12 @@ RDMA 网络上每个节点用两样东西：
 
 网络只声明"这些节点的加速卡网口连在一起"，不决定实例用哪几张卡：实例用调度选中的卡，哪两张卡之间能通取决于布线。两台机器按卡号直连时只有同号卡之间能通，而这从地址上看不出来（两台的卡可以在同一个网段里）。
 
+### 加速器 HCCS 网络：A3/910C 灵衢链路
+
+A3/910C 的灵衢 HCCS 是独立于加速器 RoCE 的 HIXL 传输路径。节点详情中的 vNIC 地址可用 `hccn_tool -vnic -g` 查看，节点间的卡级连通性用 `hccn_tool -i <卡号> -hccs_ping -g address <对端地址>` 双向验证。HCCS 网络同样按加速卡作为 rail、按主机地址作为 bootstrap，只能承担参数角色。
+
+选择 HCCS 后，vLLM-Ascend/Mooncake 会自动使用 `hccs:device` 协议，并注入 A3 所需的 HIXL/Fabric Memory 环境；不要把 HCCS 地址改写进 `/etc/hccn.conf`，该文件仍保留 RoCE/HCCN 地址供驱动和容器使用。
+
 ### 加载到节点或标签
 
 在网络详情点**加载**，选择多个节点，或改选节点标签并填写 `key=value`，点**保存**。核对加载结果与节点列表；个别节点失败时只处理失败项，不必重做已成功的项。
@@ -88,7 +95,7 @@ RDMA 网络上每个节点用两样东西：
 
 「加载」可以一次选多个节点；个别节点失败（例如节点已删除）不影响其他节点，结果里逐个列出，已经加载过的节点算成功。
 
-主机以太网加载到节点时可以覆盖默认选择器：指定网卡或 IP。主机 RDMA 与加速器 RDMA 网络在节点上可以指定 bootstrap 网卡或 IP（见上两节），HCA 在节点列表里增删。覆盖值会用 agent 上报的网卡清单校验，清单里没有时同样显示橙色叹号。节点离线时也能保存。
+主机以太网加载到节点时可以覆盖默认选择器：指定网卡或 IP。主机 RDMA、加速器 RDMA 与加速器 HCCS 网络在节点上可以指定 bootstrap 网卡或 IP（见上面各节），rail 在节点列表里增删。覆盖值会用 agent 上报的网卡清单校验，清单里没有时同样显示橙色叹号。节点离线时也能保存。
 
 节点详情页的「已加载网络」列出这个节点每个角色实际用的网络、网卡、IP 和 HCA；「网卡清单」是 agent 从 sysfs 读取的网卡、地址、速率和 RDMA 端口，以及昇腾节点上用 `hccn_tool` 读取的加速卡网口。只上报物理网卡和带地址的虚拟网卡（网桥、bond、VLAN）。
 
@@ -126,10 +133,11 @@ RDMA 网络上每个节点用两样东西：
 - **主机以太网**：设置 `NCCL_IB_DISABLE=1`，使用 TCP。
 - **主机 RDMA**：设置 `NCCL_NET=IB`，给 NCCL 提供全部 HCA、给 UCX 提供第一张 HCA，并向容器暴露 `/dev/infiniband` 和所需锁定内存权限。容器看不到 verbs 设备时启动失败，不会静默退回 TCP；模板或用户设置的同名环境变量仍优先。runveil（运行时标识 `udocker`）无法向容器暴露 RDMA 设备，不能使用此类参数网络（`COMPUTE_NETWORK_RUNTIME`）。
 - **加速器 RDMA**：为 HCCL 提供 bootstrap IP 和网卡，并只读挂载主机 `/etc/hccn.conf`；使用加速卡网口，不注入 `/dev/infiniband`。昇腾多机部署必须共用此类网络（`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`），每个节点至少有一张可用的卡（`COMPUTE_NETWORK_NO_CARDS`）。
+- **加速器 HCCS**：为 A3/910C 的 Mooncake/HIXL PD 路径选择 `hccs:device`，并自动启用 HCCS 所需的初始化和 Fabric Memory 参数；仍只读挂载 `/etc/hccn.conf`，但不把 RoCE 端口当作实际 KV 传输路径。
 
 PD 分离还按模式检查 KV 传输网络：
 
-- `vllm-ascend-mooncake` 跨机时必须使用加速器 RDMA 网络（`PD_NETWORK_ACCELERATOR_REQUIRED`）。
+- `vllm-ascend-mooncake` 跨机时必须使用加速器 RDMA 或加速器 HCCS 网络（`PD_NETWORK_ACCELERATOR_REQUIRED`）。
 - 走 UCX 的模式不能使用加速器 RDMA 网络（`PD_NETWORK_HOST_REQUIRED`）。
 - 可休眠的 PD 部署不能让 KV 走主机 RDMA 网络（`PD_SLEEP_RDMA_UNSUPPORTED`），创建时会拒绝；创建后再挂上 RDMA 网络，部署会停在无法调度并给出同一原因。普通多机部署经 RDMA 做集合通信不受此限制，见 [sleep / wake](sleep-wake.md) 的限制。
 
@@ -199,7 +207,7 @@ TCP 与 RDMA 带宽在 agent 宿主机执行，覆盖存储同步和主机以太
 - **卡连通性 · 同号卡**（`card_ping`，默认）由两个节点的同号卡互相 ping，例如 `npu3` 对 `npu3`，适合日常巡检。
 - **卡连通性 · 全卡矩阵**（`card_matrix`）由一个节点的每张卡 ping 另一个节点的每张卡，建网时用它确认布线。不同卡号是否相通不能仅从地址判断。
 
-agent 在宿主机用 `hccn_tool -i <卡号> -ping` 测可达性，不测带宽。有回包即可证明双向可达，因此每两个节点只测一次：全互测共 N×(N−1)÷2 对，环形 N 对。
+agent 在宿主机用 `hccn_tool -i <卡号> -ping`（加速器 RDMA）或 `hccn_tool -i <卡号> -hccs_ping`（加速器 HCCS）测可达性，不测带宽。有回包即可证明双向可达，因此每两个节点只测一次：全互测共 N×(N−1)÷2 对，环形 N 对。
 
 测试按轮次错开节点和卡，每张卡同一时间只发一次 ping；不通时一轮最长等待 3 秒。预计耗时按轮数计算，不逐个累加全部探测。可按下表选择范围：
 

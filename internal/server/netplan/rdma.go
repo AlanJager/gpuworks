@@ -15,10 +15,10 @@ import (
 // operator may still pin a node's rails or bootstrap on its attachment, and
 // may give the network a bootstrap CIDR. See docs/how-to/configure-networks.md.
 //
-// A host RDMA network's rails are the host's RDMA ports. An accelerator RDMA
-// network's rails are the accelerator cards, each through the RoCE port it
-// owns; the host cannot bind those addresses, so its bootstrap is always a
-// host address of its own.
+// A host RDMA network's rails are the host's RDMA ports. An accelerator
+// network's rails are the accelerator cards, through either their RoCE port or
+// HCCS vNIC; the host cannot bind those addresses, so its bootstrap is always
+// a host address of its own.
 
 // Rail is one RDMA port, or one accelerator card's port, a node uses on a
 // network.
@@ -57,7 +57,7 @@ func (r Rail) Gap() string {
 		return RailUnknown
 	case !r.linkUp():
 		return RailInactive
-	case r.LinkLayer == LinkLayerRoCE && r.Addr == "":
+	case (r.LinkLayer == LinkLayerRoCE || r.LinkLayer == LinkLayerHCCS) && r.Addr == "":
 		return RailNoIPv4
 	}
 	return ""
@@ -88,10 +88,10 @@ func AllRails(inv *proto.NetInventory, networkType string) []Rail {
 	if inv == nil {
 		return []Rail{}
 	}
-	if networkType == TypeAcceleratorRDMA {
+	if IsAccelerator(networkType) {
 		out := make([]Rail, 0, len(inv.AcceleratorPorts))
 		for _, p := range inv.AcceleratorPorts {
-			out = append(out, describeAcceleratorRail(p))
+			out = append(out, describeAcceleratorRail(p, networkType == TypeAcceleratorHCCS))
 		}
 		return out
 	}
@@ -103,13 +103,17 @@ func AllRails(inv *proto.NetInventory, networkType string) []Rail {
 }
 
 // describeAcceleratorRail is a card's port as a rail.
-func describeAcceleratorRail(p proto.AcceleratorPort) Rail {
-	rail := Rail{Name: p.Name, LinkLayer: LinkLayerRoCE, State: p.State, SpeedGbps: p.SpeedGbps}
-	if ip := net.ParseIP(p.IP); ip != nil && ip.To4() != nil {
-		rail.Addr = p.IP
-		if mask := net.ParseIP(p.Netmask); mask != nil && mask.To4() != nil {
+func describeAcceleratorRail(p proto.AcceleratorPort, hccs bool) Rail {
+	linkLayer, state, ipText, netmask := LinkLayerRoCE, p.State, p.IP, p.Netmask
+	if hccs {
+		linkLayer, state, ipText, netmask = LinkLayerHCCS, p.HCCSState, p.HCCSIP, p.HCCSNetmask
+	}
+	rail := Rail{Name: p.Name, LinkLayer: linkLayer, State: state, SpeedGbps: p.SpeedGbps}
+	if ip := net.ParseIP(ipText); ip != nil && ip.To4() != nil {
+		rail.Addr = ipText
+		if mask := net.ParseIP(netmask); mask != nil && mask.To4() != nil {
 			if ones, bits := net.IPMask(mask.To4()).Size(); bits == 32 {
-				rail.Addr = p.IP + "/" + strconv.Itoa(ones)
+				rail.Addr = ipText + "/" + strconv.Itoa(ones)
 			}
 		}
 	}
@@ -138,7 +142,7 @@ func describeRail(inv *proto.NetInventory, p proto.RDMAPort) Rail {
 // one kind and one speed; slower ports are management or storage NICs. On an
 // accelerator RDMA network: every card whose port is usable, in card order.
 func inferRails(inv *proto.NetInventory, networkType string) []string {
-	if networkType == TypeAcceleratorRDMA {
+	if IsAccelerator(networkType) {
 		out := []string{}
 		for _, rail := range AllRails(inv, networkType) {
 			if rail.Gap() == "" {
@@ -206,7 +210,7 @@ func selectRDMA(r *Resolved, node Node, c candidate) {
 	} else if inv != nil {
 		r.HCAs = inferRails(inv, c.network.Type)
 	}
-	r.LinkLayer = portsLinkLayer(inv, r.HCAs)
+	r.LinkLayer = portsLinkLayer(inv, r.HCAs, c.network.Type)
 
 	overrideIface, overrideIP := strings.TrimSpace(a.Interface), strings.TrimSpace(a.IP)
 	switch {
@@ -216,7 +220,7 @@ func selectRDMA(r *Resolved, node Node, c candidate) {
 	case inv == nil:
 	case strings.TrimSpace(c.network.CIDR) != "":
 		r.Interface, r.IP = matchInterface(inv, Network{CIDR: c.network.CIDR})
-	case c.network.Type == TypeAcceleratorRDMA:
+	case IsAccelerator(c.network.Type):
 		// No host process can bind a card's address, so the handshake rides
 		// the one host address every node has.
 		if addr, ok := node.Management(); ok {

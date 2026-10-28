@@ -9,7 +9,7 @@ After completing this guide, all ranks of a replica are ready, and you can compl
 - At least two online nodes, connected as described in [Connect Nodes](connect-nodes.md).
 - All nodes must share a compute network. Without a shared compute network, fallback to the management network is possible only if every node allows it to carry compute traffic. For network selection and RDMA settings, see [Configure Node Networks](configure-networks.md).
 - NVIDIA uses NCCL/UCX for communication on a host RDMA compute network. This network cannot be used on runveil (udocker driver) nodes.
-- Ascend multi-node inference requires an accelerator RDMA network.
+- Ascend multi-node inference requires an accelerator RDMA or accelerator HCCS network.
 - You are familiar with single-node deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
 
 ## Deploy a Multi-Node Replica

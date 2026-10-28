@@ -8,7 +8,7 @@ After completing this guide, you can call the model through a single service nam
 
 - You are familiar with ordinary deployment. See [Deploy Models, Select GPUs, and Interpret Scheduling Results](deploy-models.md).
 - Your hardware and engine meet the requirements of the selected PD mode: `vllm-nixl` targets NVIDIA, `vllm-ascend-mooncake` targets Ascend, and `sglang-nixl` is unverified.
-- In NVIDIA mode, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared accelerator RDMA network, and the NPUs hosting prefill and decode must be mutually reachable over the NPU network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
+- In NVIDIA mode, KV travels over the compute network when P and D are on different machines; RDMA or Ethernet can be used. In Ascend mode, cross-machine deployments require a shared Accelerator RDMA or Accelerator HCCS network, and the NPUs hosting prefill and decode must be mutually reachable over that accelerator network. For configuration and validation, see [Configure Node Networks](configure-networks.md).
 
 PD disaggregation splits inference for one model into two instance groups: prefill instances process only the prompt, and decode instances retrieve their KV and then generate tokens one by one. Externally, it remains
 one deployment with one service name. Send requests to `/v1` as usual; the gateway coordinates the two instance groups. For the design and tradeoffs, see
@@ -42,9 +42,11 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
 
    Mode, TP, PP, and KV load failure policy cannot be changed after startup; clone the deployment to change them. Confirm these selections before submitting.
 
-5. In Ascend mode, KV uses the NPUs' built-in RoCE ports. For cross-machine deployment, these nodes must share an accelerator RDMA network (see
-   [Configure Node Networks](configure-networks.md)); otherwise, the deployment is rejected. The NPUs hosting prefill and decode must also be mutually reachable over the NPU network. Use
-   `hccn_tool -i <card-index> -lldp -g` to inspect each port's peer, and `hccn_tool -i <card-index> -ping -g address <peer-ip>` to verify connectivity.
+5. In Ascend mode, KV uses the selected accelerator network: 910B/910 uses the NPUs' built-in RoCE ports, while A3/910C LingQu uses HCCS. For cross-machine deployment, these nodes must share an Accelerator RDMA or Accelerator HCCS network (see
+   [Configure Node Networks](configure-networks.md)); otherwise, the deployment is rejected. The NPUs hosting prefill and decode must also be mutually reachable over that network. Use
+   `hccn_tool -i <card-index> -ping -g address <peer-ip>` for RoCE or
+   `hccn_tool -i <card-index> -hccs_ping -g address <peer-ip>` for HCCS. Use
+   `hccn_tool -i <card-index> -lldp -g` to inspect the peer of a RoCE port.
 
    If two machines are directly connected by card number without a switch, P and D must select matching card numbers that are actually connected.
    First run **Card reachability · full card matrix** under the network's **Internal test** to check cabling. Deployment validation does not verify card-to-card links for you.

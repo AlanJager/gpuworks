@@ -84,7 +84,8 @@
           ],
           "missing": [
             "host_rdma",
-            "accelerator_rdma"
+            "accelerator_rdma",
+            "accelerator_hccs"
           ]
         },
         {

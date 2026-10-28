@@ -211,18 +211,24 @@ type NodeLoadedNetwork struct {
 	Warnings        []NetworkWarning `json:"warnings"`
 }
 
-// AcceleratorPort mirrors one reported port of an accelerator card: the
-// card's own RoCE port, which the host's interfaces do not include.
+// AcceleratorPort mirrors one reported port of an accelerator card. IP and
+// State describe its RoCE port; HCCSIP and HCCSState describe the A3/910C
+// LingQu vNIC when the agent reports one.
 type AcceleratorPort struct {
-	Name      string  `json:"name"`
-	Index     int     `json:"index"`
-	IP        string  `json:"ip"`
-	Netmask   string  `json:"netmask"`
-	State     string  `json:"state"` // UP | DOWN | "" when unknown
-	SpeedGbps float64 `json:"speed_gbps"`
+	Name        string  `json:"name"`
+	Index       int     `json:"index"`
+	IP          string  `json:"ip"`
+	Netmask     string  `json:"netmask"`
+	State       string  `json:"state"` // UP | DOWN | "" when unknown
+	SpeedGbps   float64 `json:"speed_gbps"`
+	HCCSIP      string  `json:"hccs_ip,omitempty"`
+	HCCSNetmask string  `json:"hccs_netmask,omitempty"`
+	HCCSState   string  `json:"hccs_state,omitempty"`
 	// Gap is as on NetworkRail: why the card's port cannot carry traffic
 	// ("" when it can).
 	Gap string `json:"gap,omitempty"`
+	// HCCSGap is the HCCS vNIC's gap when the agent reports an HCCS port.
+	HCCSGap string `json:"hccs_gap,omitempty"`
 }
 
 // ServingForward is the gateway's direct path to a node over its serving

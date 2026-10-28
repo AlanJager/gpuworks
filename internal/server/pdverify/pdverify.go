@@ -192,7 +192,7 @@ func (v *Verifier) conclude(ctx context.Context, c Candidate, o Outcome) (string
 		params["transport"] = TransportLocal
 		return EventVerified, params
 	}
-	if c.NetworkType == netplan.TypeAcceleratorRDMA {
+	if netplan.IsAccelerator(c.NetworkType) {
 		// The KV rides the cards' own ports, whose traffic no host counter
 		// sees, so the handoff is proven but its transport is not.
 		params["transport"] = TransportUnmeasured

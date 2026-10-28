@@ -103,8 +103,13 @@ func (a *apiHandlers) getNodeNetworks(w http.ResponseWriter, r *http.Request) {
 				IP: rails[i].IP(), Gap: rails[i].Gap(), RxBPS: rx, TxBPS: tx})
 		}
 		cards := netplan.AllRails(inv, netplan.TypeAcceleratorRDMA)
+		hccsCards := netplan.AllRails(inv, netplan.TypeAcceleratorHCCS)
 		for i, p := range inv.AcceleratorPorts {
-			out.AcceleratorPorts = append(out.AcceleratorPorts, dto.AcceleratorPort{Name: p.Name, Index: p.Index, IP: p.IP, Netmask: p.Netmask, State: p.State, SpeedGbps: p.SpeedGbps, Gap: cards[i].Gap()})
+			port := dto.AcceleratorPort{Name: p.Name, Index: p.Index, IP: p.IP, Netmask: p.Netmask, State: p.State, SpeedGbps: p.SpeedGbps, HCCSIP: p.HCCSIP, HCCSNetmask: p.HCCSNetmask, HCCSState: p.HCCSState, Gap: cards[i].Gap()}
+			if p.HCCSIP != "" || p.HCCSNetmask != "" || p.HCCSState != "" {
+				port.HCCSGap = hccsCards[i].Gap()
+			}
+			out.AcceleratorPorts = append(out.AcceleratorPorts, port)
 		}
 	}
 	writeJSON(w, http.StatusOK, out)

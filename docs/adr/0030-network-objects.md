@@ -69,3 +69,11 @@ Consequences 里"昇腾 NPU 直出 RoCE 需要另行建模"在这里落地。类
 ### 厂商知识的产地
 
 "哪些厂商的加速卡自带网口、要告诉集合通信库哪些环境变量、容器需要主机上的哪些文件"只在 `internal/accelerator`（`CardNetworkOf`）里说一次。网络类型 `accelerator_rdma` 是厂商中立的；放置校验、启动装配和 PD 模式都从这一处取，agent 的卡名与卡号互转也用它。
+
+## 更新（2026-10-28）：加速器 HCCS 是第四种类型
+
+A3/910C 的灵衢 HCCS/HIXL 链路与 910B/910 的 RoCE 卡口使用不同的传输协议和检查命令，不能继续把所有加速器网络都解释为 RoCE。新增 `accelerator_hccs`，仍复用 agent 上报的 `accelerator_ports` 和卡 rail 解析，但网络测试对它使用 `hccn_tool -hccs_ping`，Mooncake 启动自动选择 `hccs:device` 并设置 HCCS 初始化参数。
+
+- **字段与自动解析不变**：HCCS 网络仍只承担参数角色，卡地址、状态、速度和 bootstrap 由现有 inventory 自动解析；网络对象记录的是灵衢 fabric 的互通边界。
+- **启动协议显式选择**：HCCS 不再把 RoCE rail 当作 KV 传输协议。PD 和多机启动按网络类型注入 `ASCEND_GLOBAL_RESOURCE_CONFIG`、`ACL_OP_INIT_MODE` 与 `ASCEND_ENABLE_USE_FABRIC_MEM`，并保留 `/etc/hccn.conf` 的只读挂载供 CANN 使用。
+- **兼容旧网络**：`accelerator_rdma` 的 API、卡测试和 RoCE 命令保持不变；旧 agent 对缺省协议仍按 `-ping` 处理。

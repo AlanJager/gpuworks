@@ -38,6 +38,12 @@ func (n *NodeRuntime) rpcAcceleratorPing(ctx context.Context, params json.RawMes
 	if timeout > acceleratorPingMaxTimeout {
 		timeout = acceleratorPingMaxTimeout
 	}
+	if p.Protocol == "" {
+		p.Protocol = proto.AcceleratorPingProtocolRoCE
+	}
+	if p.Protocol != proto.AcceleratorPingProtocolRoCE && p.Protocol != proto.AcceleratorPingProtocolHCCS {
+		return nil, fmt.Errorf("accelerator ping protocol %q is unsupported", p.Protocol)
+	}
 	results := make([]proto.AcceleratorPingResult, len(p.Probes))
 	for i, probe := range p.Probes {
 		results[i] = proto.AcceleratorPingResult{Card: probe.Card, Target: probe.Target}
@@ -63,7 +69,18 @@ func (n *NodeRuntime) rpcAcceleratorPing(ctx context.Context, params json.RawMes
 		go func() {
 			defer wg.Done()
 			for _, i := range byCard[card] {
-				rtt, err := pinger.PingAcceleratorPort(ctx, card, p.Probes[i].Target, timeout)
+				var rtt float64
+				var err error
+				if p.Protocol == proto.AcceleratorPingProtocolHCCS {
+					protocolPinger, supported := n.prober.(gpu.AcceleratorPortProtocolPinger)
+					if !supported {
+						err = errors.New("the accelerator prober does not support HCCS ping")
+					} else {
+						rtt, err = protocolPinger.PingAcceleratorPortProtocol(ctx, card, p.Probes[i].Target, p.Protocol, timeout)
+					}
+				} else {
+					rtt, err = pinger.PingAcceleratorPort(ctx, card, p.Probes[i].Target, timeout)
+				}
 				switch {
 				case err == nil:
 					results[i].Reachable, results[i].RTTMS = true, rtt

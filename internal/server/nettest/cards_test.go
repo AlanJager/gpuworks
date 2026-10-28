@@ -17,20 +17,21 @@ import (
 // probe in request order, cards of a node side by side, and an address that
 // does not answer reported as unreachable. It records what ran together.
 type cardAgents struct {
-	mu       sync.Mutex
-	owner    map[string]string // card address -> "node/card"
-	reach    func(source, target string) bool
-	rpcErr   map[string]error                                   // node -> the RPC itself fails
-	answer   map[string]func([]proto.AcceleratorPingResult) any // node -> rewrite the answer
-	toolFail map[string]string                                  // "node/card" -> tool error
-	noCard   map[string]bool                                    // "node/card" the node does not have
-	inFlight map[string]int                                     // "node/card" pings running
-	overlap  []string
-	busiest  int // most source cards pinging at once
-	calls    int
-	probes   int
-	timeouts map[int]bool
-	delay    time.Duration
+	mu        sync.Mutex
+	owner     map[string]string // card address -> "node/card"
+	reach     func(source, target string) bool
+	rpcErr    map[string]error                                   // node -> the RPC itself fails
+	answer    map[string]func([]proto.AcceleratorPingResult) any // node -> rewrite the answer
+	toolFail  map[string]string                                  // "node/card" -> tool error
+	noCard    map[string]bool                                    // "node/card" the node does not have
+	inFlight  map[string]int                                     // "node/card" pings running
+	overlap   []string
+	busiest   int // most source cards pinging at once
+	calls     int
+	probes    int
+	protocols []string
+	timeouts  map[int]bool
+	delay     time.Duration
 }
 
 func (f *cardAgents) call(_ context.Context, node, method string, params any) (json.RawMessage, error) {
@@ -45,6 +46,7 @@ func (f *cardAgents) call(_ context.Context, node, method string, params any) (j
 	f.mu.Lock()
 	f.calls++
 	f.probes += len(p.Probes)
+	f.protocols = append(f.protocols, p.Protocol)
 	if f.timeouts == nil {
 		f.timeouts = map[int]bool{}
 	}
@@ -99,6 +101,20 @@ func (f *cardAgents) call(_ context.Context, node, method string, params any) (j
 		return json.Marshal(rewrite(out))
 	}
 	return json.Marshal(out)
+}
+
+func TestHCCSCardRunCarriesHCCSProtocol(t *testing.T) {
+	f := &cardAgents{reach: anyCard, delay: time.Millisecond}
+	endpoints := cardEndpoints(f, 2, 0, 1)
+	pairs := Run(context.Background(), f.call, endpoints, Options{Mode: ModeCardPing, Pattern: PatternRing, Protocol: "hccs"})
+	if len(pairs) != 1 || pairs[0].Status(false) != StatusPassed {
+		t.Fatalf("pairs = %+v", pairs)
+	}
+	for _, protocol := range f.protocols {
+		if protocol != "hccs" {
+			t.Fatalf("protocols = %v, want only hccs", f.protocols)
+		}
+	}
 }
 
 // cardEndpoints builds nodes n0..n(N-1), each with the given cards; card c of

@@ -128,8 +128,11 @@ type Caller func(ctx context.Context, nodeUUID, method string, params any) (json
 
 // Options tune a run.
 type Options struct {
-	Mode      string // ModeTCP (default), ModeRDMATool, ModeCardPing or ModeCardMatrix
-	Pattern   string // PatternMesh (default) or PatternRing
+	Mode    string // ModeTCP (default), ModeRDMATool, ModeCardPing or ModeCardMatrix
+	Pattern string // PatternMesh (default) or PatternRing
+	// Protocol selects the accelerator fabric for card tests. Empty and
+	// "roce" use the legacy accelerator ping; "hccs" uses HCCS ping.
+	Protocol  string
 	Bandwidth bool
 	Seconds   int // per-pair bandwidth duration, 1..10
 }

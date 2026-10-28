@@ -63,6 +63,18 @@ func TestVLLMPDRoleArgvAndEnv(t *testing.T) {
 			t.Fatalf("NCCL_SOCKET_IFNAME = %q", launch.Env["NCCL_SOCKET_IFNAME"])
 		}
 	}
+	hccs := pdParams("decode", LaunchConfig{}, ComputeNetwork{Type: netplan.TypeAcceleratorHCCS, Interface: "br0"})
+	hccs.PD.Mode = "vllm-ascend-mooncake"
+	launch := BuildVLLM(hccs)
+	for key, want := range map[string]string{
+		"ASCEND_GLOBAL_RESOURCE_CONFIG": `{"comm_resource_config.protocol_desc":["hccs:device"]}`,
+		"ACL_OP_INIT_MODE":              "1",
+		"ASCEND_ENABLE_USE_FABRIC_MEM":  "1",
+	} {
+		if launch.Env[key] != want {
+			t.Fatalf("HCCS env %s = %q, want %q", key, launch.Env[key], want)
+		}
+	}
 }
 
 // NixlConnector refuses a hybrid model (Qwen3.5 gated delta net, Kimi KDA,

@@ -17,8 +17,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-// Each 910 card has a RoCE port the host kernel does not see; hccn_tool is
-// the only way to read it. A query takes about 0.3 s and one on a card the
+// Each supported Ascend card exposes accelerator fabric ports the host kernel
+// does not see; hccn_tool is the only way to read them. A query takes about
+// 0.3 s and one on a card the
 // host does not own (passed through to a VM) never returns, so every call is
 // time-limited and the result is cached: addresses and link state change on
 // the scale of recabling, not of status reports.
@@ -28,8 +29,9 @@ const (
 )
 
 var (
-	_ AcceleratorPortProber = (*AscendProber)(nil)
-	_ AcceleratorPortPinger = (*AscendProber)(nil)
+	_ AcceleratorPortProber         = (*AscendProber)(nil)
+	_ AcceleratorPortPinger         = (*AscendProber)(nil)
+	_ AcceleratorPortProtocolPinger = (*AscendProber)(nil)
 )
 
 // ascendCardPorts is what the prober keeps about the cards' ports: the last
@@ -50,9 +52,9 @@ type ascendCardPorts struct {
 	owned map[int]bool
 }
 
-// AcceleratorPorts implements AcceleratorPortProber: the RoCE port of every
-// card npu-smi lists, ordered by card index. A card whose port answers
-// nothing is left out; a host without hccn_tool has none.
+// AcceleratorPorts implements AcceleratorPortProber: the accelerator ports
+// of every card npu-smi lists, ordered by card index. A card whose port
+// answers nothing is left out; a host without hccn_tool has none.
 func (p *AscendProber) AcceleratorPorts(ctx context.Context) []proto.AcceleratorPort {
 	p.ports.mu.Lock()
 	defer p.ports.mu.Unlock()
@@ -127,7 +129,10 @@ func ascendPort(ctx context.Context, run ascendCommandRunner, index int) *proto.
 	port := proto.AcceleratorPort{Name: accelerator.PortRailName(accelerator.VendorAscend, index), Index: index}
 	port.IP, port.Netmask = parseHCCNAddress(ask("-ip"))
 	port.State = parseHCCNLink(ask("-link"))
-	if port.IP == "" && port.State == "" {
+	vnic := ask("-vnic")
+	port.HCCSIP, port.HCCSNetmask = parseHCCNVNICAddress(vnic)
+	port.HCCSState = parseHCCNVNICLink(vnic)
+	if port.IP == "" && port.State == "" && port.HCCSIP == "" && port.HCCSState == "" {
 		return nil
 	}
 	port.SpeedGbps = parseHCCNSpeed(ask("-speed"))
@@ -142,10 +147,13 @@ func runHCCN(ctx context.Context, args ...string) (string, error) {
 }
 
 var (
-	hccnIPRE      = regexp.MustCompile(`(?m)^ipaddr:\s*(\S+)`)
-	hccnNetmaskRE = regexp.MustCompile(`(?m)^netmask:\s*(\S+)`)
-	hccnLinkRE    = regexp.MustCompile(`(?mi)^link status:\s*(UP|DOWN)\b`)
-	hccnSpeedRE   = regexp.MustCompile(`(?mi)^Speed:\s*([0-9]+)\s*Mb/s`)
+	hccnIPRE       = regexp.MustCompile(`(?m)^ipaddr:\s*(\S+)`)
+	hccnNetmaskRE  = regexp.MustCompile(`(?m)^netmask:\s*(\S+)`)
+	hccnLinkRE     = regexp.MustCompile(`(?mi)^link status:\s*(UP|DOWN)\b`)
+	hccnVNICIPRE   = regexp.MustCompile(`(?m)^vnic ipaddr:\s*(\S+)`)
+	hccnVNICMaskRE = regexp.MustCompile(`(?m)^vnic netmask:\s*(\S+)`)
+	hccnVNICLinkRE = regexp.MustCompile(`(?mi)^vnic link status:\s*(UP|DOWN)\b`)
+	hccnSpeedRE    = regexp.MustCompile(`(?mi)^Speed:\s*([0-9]+)\s*Mb/s`)
 )
 
 // parseHCCNAddress reads "ipaddr:172.20.9.59\nnetmask:255.255.0.0".
@@ -159,9 +167,26 @@ func parseHCCNAddress(out string) (ip, netmask string) {
 	return ip, netmask
 }
 
+func parseHCCNVNICAddress(out string) (ip, netmask string) {
+	if m := hccnVNICIPRE.FindStringSubmatch(out); m != nil {
+		ip = m[1]
+	}
+	if m := hccnVNICMaskRE.FindStringSubmatch(out); m != nil {
+		netmask = m[1]
+	}
+	return ip, netmask
+}
+
 // parseHCCNLink reads "link status: UP"; anything else is unknown.
 func parseHCCNLink(out string) string {
 	if m := hccnLinkRE.FindStringSubmatch(out); m != nil {
+		return strings.ToUpper(m[1])
+	}
+	return ""
+}
+
+func parseHCCNVNICLink(out string) string {
+	if m := hccnVNICLinkRE.FindStringSubmatch(out); m != nil {
 		return strings.ToUpper(m[1])
 	}
 	return ""
@@ -178,12 +203,19 @@ func parseHCCNSpeed(out string) float64 {
 	return 0
 }
 
-// PingAcceleratorPort implements AcceleratorPortPinger with
-// "hccn_tool -i N -ping -g address IP". The tool sends three packets and
+// PingAcceleratorPort implements AcceleratorPortPinger with the legacy RoCE
+// command "hccn_tool -i N -ping -g address IP".
+func (p *AscendProber) PingAcceleratorPort(ctx context.Context, card, target string, timeout time.Duration) (float64, error) {
+	return p.PingAcceleratorPortProtocol(ctx, card, target, proto.AcceleratorPingProtocolRoCE, timeout)
+}
+
+// PingAcceleratorPortProtocol pings through the requested accelerator fabric.
+// RoCE uses hccn_tool -ping and HCCS uses hccn_tool -hccs_ping. Both commands
+// send three packets and
 // prints everything at once when done, about a second later; it has no
 // timeout of its own and never returns when the address does not answer, so
 // the limit is enforced here by ending the process.
-func (p *AscendProber) PingAcceleratorPort(ctx context.Context, card, target string, timeout time.Duration) (float64, error) {
+func (p *AscendProber) PingAcceleratorPortProtocol(ctx context.Context, card, target, protocol string, timeout time.Duration) (float64, error) {
 	index, ok := accelerator.PortRailIndex(accelerator.VendorAscend, card)
 	if !ok || !p.ownsCard(index) {
 		return 0, ErrAcceleratorNoCard
@@ -204,7 +236,11 @@ func (p *AscendProber) PingAcceleratorPort(ctx context.Context, card, target str
 	defer lock.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	out, err := run(ctx, "-i", strconv.Itoa(index), "-ping", "-g", "address", ip.String())
+	command := "-ping"
+	if protocol == proto.AcceleratorPingProtocolHCCS {
+		command = "-hccs_ping"
+	}
+	out, err := run(ctx, "-i", strconv.Itoa(index), command, "-g", "address", ip.String())
 	if rtt, ok := parseHCCNPing(out); ok {
 		return rtt, nil
 	}
@@ -251,6 +287,7 @@ func runHCCNUnlimited(ctx context.Context, args ...string) (string, error) {
 var (
 	hccnPingSummaryRE = regexp.MustCompile(`(?m)^(\d+) packets transmitted, (\d+) received`)
 	hccnPingRecvRE    = regexp.MustCompile(`(?m)^recv seq=\d+,time=([0-9.]+)ms`)
+	hccsPingRecvRE    = regexp.MustCompile(`(?m)^recv seq\s+\d+,\s*time\s*=\s*([0-9.]+)us`)
 )
 
 // parseHCCNPing reads
@@ -274,6 +311,12 @@ func parseHCCNPing(out string) (rttMS float64, ok bool) {
 	for _, m := range hccnPingRecvRE.FindAllStringSubmatch(out, -1) {
 		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
 			sum += v
+			n++
+		}
+	}
+	for _, m := range hccsPingRecvRE.FindAllStringSubmatch(out, -1) {
+		if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+			sum += v / 1000
 			n++
 		}
 	}
