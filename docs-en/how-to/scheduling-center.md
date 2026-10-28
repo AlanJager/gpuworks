@@ -1,4 +1,4 @@
-# Use the Scheduling Center: Schedules, Idle Sleep, and Waiting Wakes
+# Use the Scheduling Center: Schedules, Idle Sleep, Waiting Wakes, and Service Levels
 
 This guide explains how to have the platform carry out sleep, wake, and replica-count changes you agreed on in advance, and how to read the scheduling board to see who holds each card, what is waiting, and what is about to happen.
 
@@ -8,7 +8,8 @@ This guide explains how to have the platform carry out sleep, wake, and replica-
 
 - Scheduled sleep, scheduled wake, and idle sleep require the deployment to be **sleep capable** (vLLM, enabled at creation); see [Sleep and Wake Operations](sleep-wake.md) for the conditions.
 - A scheduled replica count applies only to single-node deployments (not PD, `nnodes` not above 1).
-- The scheduling center only carries out what an operator wrote down in advance. It has no preemption, does not scale by load, and does not wake a model because a request arrived.
+- Service levels other than resident apply only to sleep-capable single-node deployments.
+- The scheduling center does not scale by load. The platform makes one deployment give up its cards for another only when service levels allow it; see [Service levels](#服务等级与按需唤醒).
 
 ## What the Scheduling Center Does
 
@@ -18,6 +19,8 @@ This guide explains how to have the platform carry out sleep, wake, and replica-
 | Idle sleep | How long without user requests, and sleep to L1 or L2 | Sleeps automatically once the time is up |
 | Waiting wake | Choose “wait” when a wake does not fit | Wakes automatically once cards free up; gives up after 30 minutes |
 | Yielding wake | Choose “put the occupants to sleep, then wake” when a wake does not fit | Puts the occupants to sleep first, then wakes through waiting |
+| On-demand wake | Nothing to set: deployments the platform put to sleep itself (idle sleep, yielding cards) | When a request arrives, the gateway holds it, wakes the deployment, and lets the request through once it is awake |
+| Service level | Resident, online, shared, or offline | Deployments sharing a set of cards yield cards by level and take turns |
 
 They carry out the same actions you would take by hand: the same lifecycle lock, the same eligibility checks and wake admission. An automatic wake and your manual **Wake** cannot both pass admission for the same card. Every automatic action is written to the deployment timeline; see [Timeline Events](#时间线事件).
 
@@ -143,7 +146,7 @@ Success returns 200 with the same `{"after_sec":900,"level":2}`; the `idle_sleep
 - The idle time counts from the latest of the server start, the last wake, and the last user request. After a server restart the deployment must therefore be watched for a whole idle period before it sleeps, and a deployment just woken is not put straight back to sleep.
 - Health checks and other probes the platform sends itself are not user requests and do not reset the clock.
 - When the sleep fails (for example, not enough host memory for L1), the timeline records `SCHEDULE_ACTION_FAILED`, and it tries again only after another whole idle period.
-- A request to a sleeping deployment gets a 503 from the gateway and does not wake it; you, a schedule, or a waiting wake can wake it when needed.
+- A request that arrives after an idle sleep is held by the gateway, which wakes the deployment and lets the request through once it is awake; see [On-demand wake](#按需唤醒).
 
 ## Waiting Wakes and Yielding Wakes
 
@@ -153,6 +156,40 @@ When a wake is refused with `WAKE_INSUFFICIENT_GPU_MEMORY`, the console offers t
 - Yielding puts the occupants to sleep first; if an occupant cannot sleep, the whole request is refused with 409 `WAKE_YIELD_BLOCKED` and nothing changes.
 - While waiting, the deployment details show a waiting banner and the start (`wake_waiting_since`), and you can click **Cancel waiting**, which maps to `DELETE /deployments/{id}/wake-waiting`. The start of the wait is stored in the database, so the wait continues after a server restart.
 - When a process outside the platform holds the card, neither waiting nor yielding takes effect: the wake is refused outright with 409 `WAKE_GPU_HELD_OUTSIDE`.
+
+## Service Levels and On-Demand Wake
+
+A service level decides how a deployment gets along with the other deployments that share its cards. For the concepts and rules see [Service levels](../explanation/service-levels.md), and for the design trade-offs see [ADR 0059](../adr/0059-service-levels-and-the-residency-arbiter.md).
+
+| Level | Suited to | Behavior |
+|---|---|---|
+| Resident (default) | Core online services | Never yields its cards |
+| Online | Real-time services used intermittently | Yields only after 5 idle minutes; when it has requests, it makes shared and offline deployments yield at once |
+| Shared | Several models taking turns on a set of cards | Takes turns with its peers, each turn lasting at least 2 minutes (longer when switching is slow); yields to online |
+| Offline | Batch work, evaluation | Yields to everyone at any time, and in-flight requests are interrupted; resumes automatically once cards are free |
+
+In the **Scheduling policy** card in deployment details, click **Edit** and choose on the **Service level** tab; you can also choose it directly when creating a deployment with **Sleep capable** on. The API:
+
+```bash
+curl --fail-with-body -sS -X PUT \
+  "$API_URL/api/v1/deployments/7/service-level" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"level":"offline"}'
+```
+
+Success returns 200 with the same `{"level":"offline"}`. An invalid level returns 400 `SERVICE_LEVEL_INVALID`; anything other than resident requires sleep capability (400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`) and a single-node deployment (400 `SERVICE_LEVEL_SHAPE`); a deployment that shares cards with another online deployment cannot be set to online (409 `SERVICE_LEVEL_ONLINE_SHARED`, where `params.deployment` is the other one). The `service_level` field in deployment details gives the current level.
+
+The typical use is real-time plus batch: set the real-time model to online and the batch model to offline, and deploy them on the same cards. After the real-time model has been idle for 5 minutes it yields its cards and the batch model resumes; when a real-time request arrives, the batch model yields at once and the request waits at the gateway for the real-time model to wake (an L2 switch takes about 3–5 seconds when the model files are already in the page cache).
+
+### On-Demand Wake
+
+When the platform itself put a deployment to sleep (idle sleep, or yielding cards by service level), a request that arrives does not get a 503 from the gateway. The gateway holds the request, wakes the deployment, and lets the request through once it is awake:
+
+- The hold time depends on the level: 2 minutes for resident and online, 10 minutes for shared, 30 minutes for offline; on timeout it returns 503 with `Retry-After`. Each deployment holds at most 256 requests, and any beyond that get 503 immediately.
+- A sleep that you or a schedule issued is a **held sleep** (`sleep_held` is `true` in deployment details): requests do not wake it and still get 503. Any wake clears the hold.
+- When it does not fit, the service levels decide whether the occupant yields; when it should not, the request waits until the hold time runs out.
+- When an offline deployment yields its cards, its in-flight requests are interrupted: the client receives HTTP 200 with `finish_reason` set to `"abort"` and truncated content, and must retry on its own. A shared deployment first stops accepting new requests before yielding and waits up to 30 seconds for in-flight requests to finish.
+- A deployment that yields its cards always sleeps to L2 (no host memory held); shared and offline deployments resume automatically once cards are free. After a server restart, a deployment that had yielded its cards wakes only when a request arrives.
 
 ## First Placement Nodes
 
@@ -164,8 +201,8 @@ Automatic actions are written to the deployment timeline (event kind `automation
 
 | code | Meaning | Main params |
 |---|---|---|
-| `AUTO_SLEEP` | A schedule or idle sleep put the deployment to sleep | `trigger` (`schedule` / `idle`), `schedule_id`, `scheduled_at`, `level`, `idle_sec` |
-| `AUTO_WAKE` | A schedule or a waiting wake woke instances | `trigger` (`schedule` / `wake_waiting`), `schedule_id`, `instances` |
+| `AUTO_SLEEP` | A schedule, idle sleep, or yielding cards put the deployment to sleep | `trigger` (`schedule` / `idle` / `preempt`), `schedule_id`, `scheduled_at`, `level`, `idle_sec`; when yielding cards also `reason` (`idle` idle for the full time / `rank` the other has a higher level / `turn` it is the other shared deployment's turn), `for_deployment` (the deployment it yields for), `abort` (whether in-flight requests were interrupted), `instances` |
+| `AUTO_WAKE` | A schedule, a waiting wake, a request, or a resume woke instances | `trigger` (`schedule` / `wake_waiting` / `request` a request is waiting / `resume` taking cards back after yielding), `schedule_id`, `instances` |
 | `AUTO_SCALE` | A schedule changed the replica count | `trigger`, `schedule_id`, `replicas` |
 | `WAKE_WAITING` | A wake did not fit and now waits for room | `trigger` (`schedule` / `operator`), `instances`, `yielded` |
 | `WAKE_WAIT_TIMEOUT` | The wait ended after 30 minutes | `trigger`, `instances`, `waited_sec` |
@@ -176,8 +213,8 @@ For the events of node-loss rescheduling after a node is lost and of drain moves
 
 ## Limitations
 
-- No preemption: the platform never stops another deployment on its own so that one can run; a yielding wake happens only when an operator names it and the occupant can sleep.
+- Cards are yielded only when service levels allow it: a resident deployment never sleeps for anyone else; a yielding wake still happens only when an operator names it and the occupant can sleep.
 - No load-based scaling: the replica count changes only when a schedule entry is due.
-- No wake on request: the gateway does not hold a request while waiting for a wake.
+- Service levels apply only to single-node deployments; when a new deployment starts and the cards are held by an awake lower-level deployment, the platform does not yield cards for the start, and the deployment waits as one that does not fit.
 - A scheduled replica count applies only to single-node deployments.
 - The evaluator runs inside the server process; nothing happens automatically while the server is down, and after it recovers only the newest entry within 12 hours is made up.

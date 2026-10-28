@@ -29,7 +29,7 @@ Choose an option in the sleep confirmation page:
 - **Finish in-flight requests first (recommended)** (default): the engine finishes requests it is processing before sleeping. Long requests delay sleep; the agent allows up to 10 minutes per command.
 - **Abort in-flight requests now**: requests being processed immediately receive an error.
 
-Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with the message `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`. The gateway never wakes a model because of one request; a schedule or a waiting wake can wake it for you, see the [Scheduling Center](scheduling-center.md).
+Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with the message `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`. A sleep you issue by hand is a held sleep, and the gateway does not wake it because of a request; a schedule or a waiting wake can wake it for you. A sleep the platform made itself (idle sleep, yielding cards by service level) is woken automatically when a request arrives; see the [Scheduling Center](scheduling-center.md#按需唤醒).
 
 ## Put an Entire Deployment to Sleep
 

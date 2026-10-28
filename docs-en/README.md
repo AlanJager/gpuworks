@@ -100,6 +100,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Typical Deployment Topologies](explanation/topologies.md)
 - [Choosing Between dGPU, Sleep/Wake, Multi-Node Inference, Replicas, and PD](explanation/choosing-features.md)
 - [Scheduling and GPU Memory Estimation](explanation/scheduling-and-estimation.md)
+- [Service Levels: How Deployments Share a Set of GPUs](explanation/service-levels.md)
 - [Deployment Launch Configuration Semantics](explanation/launch-config.md)
 - [SGLang Log Injection: Behavior and Boundaries](explanation/sglang-logging.md)
 - [dGPU Semantics and Boundaries](explanation/dgpu.md)
