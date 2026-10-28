@@ -93,7 +93,7 @@ const (
 	// their collectives across hosts on the cards' own ports, and the group
 	// shares a network of another type.
 	ErrorComputeNetworkAcceleratorRequired = "COMPUTE_NETWORK_ACCELERATOR_REQUIRED"
-	// ErrorComputeNetworkNoCards: a node is on an accelerator RDMA network
+	// ErrorComputeNetworkNoCards: a node is on an accelerator network
 	// without a usable card on it.
 	ErrorComputeNetworkNoCards = "COMPUTE_NETWORK_NO_CARDS"
 	// ErrorComputeNetworkRuntime: a node's container runtime cannot give a

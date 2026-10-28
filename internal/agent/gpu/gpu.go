@@ -66,6 +66,13 @@ type AcceleratorPortPinger interface {
 	PingAcceleratorPort(ctx context.Context, card, target string, timeout time.Duration) (rttMS float64, err error)
 }
 
+// AcceleratorPortProtocolPinger is the protocol-aware extension used by
+// accelerator fabrics that have a vendor-specific reachability command. The
+// legacy AcceleratorPortPinger remains the RoCE default for older probers.
+type AcceleratorPortProtocolPinger interface {
+	PingAcceleratorPortProtocol(ctx context.Context, card, target, protocol string, timeout time.Duration) (rttMS float64, err error)
+}
+
 var (
 	// ErrAcceleratorPingTimeout reports that a ping got no answer in time.
 	ErrAcceleratorPingTimeout = errors.New("no answer within the time limit")

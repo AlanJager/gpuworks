@@ -171,7 +171,7 @@ func TestNetworksAPILifecycle(t *testing.T) {
 	if created["name"] != "ib-a" || created["cidr"] != "10.20.0.0/16" || !reflect.DeepEqual(created["roles"], []any{"compute"}) ||
 		!reflect.DeepEqual(created["attachments"], []any{}) || !reflect.DeepEqual(created["nodes"], []any{}) ||
 		!reflect.DeepEqual(created["role_options"], []any{"storage_sync", "compute", "serving"}) ||
-		!reflect.DeepEqual(created["type_options"], []any{"host_ethernet", "host_rdma", "accelerator_rdma"}) {
+		!reflect.DeepEqual(created["type_options"], []any{"host_ethernet", "host_rdma", "accelerator_rdma", "accelerator_hccs"}) {
 		t.Fatalf("created = %v", created)
 	}
 	id := "/api/v1/networks/1"

@@ -33,7 +33,13 @@ func (n ComputeNetwork) HostRDMA() bool {
 // Accelerator reports whether collectives run on the accelerator cards' own
 // ports, which only the vendor's collective library drives.
 func (n ComputeNetwork) Accelerator() bool {
-	return n.Type == netplan.TypeAcceleratorRDMA
+	return netplan.IsAccelerator(n.Type)
+}
+
+// AcceleratorHCCS reports that accelerator traffic uses the Ascend A3 HCCS
+// fabric rather than the card's RoCE ports.
+func (n ComputeNetwork) AcceleratorHCCS() bool {
+	return n.Type == netplan.TypeAcceleratorHCCS
 }
 
 // rdmaDockerArgs expose the RDMA verbs devices to the container and lift the
@@ -47,7 +53,7 @@ var rdmaDockerArgs = [][2]string{
 // computeNetworkEnv is the system-layer environment for a multi-node rank.
 // Host RDMA networks force the IB transport so a container that cannot see
 // the verbs devices fails at startup instead of silently falling back to TCP
-// sockets at a fraction of the bandwidth. An accelerator RDMA network names
+// sockets at a fraction of the bandwidth. An accelerator network names
 // the host address and interface the vendor's collective library builds its
 // communicator over (accelerator.CardNetworkOf says in which variables): left
 // to pick among a host's interfaces HCCL picks wrong and no rank reaches the
@@ -67,10 +73,15 @@ func computeNetworkEnv(p Params) map[string]string {
 				env[key] = n.Interface
 			}
 		}
-		if p.NodeAddress != "" {
+		if p.NodeAddress != "" && !n.AcceleratorHCCS() {
 			for _, key := range cards.AddressEnv {
 				env[key] = p.NodeAddress
 			}
+		}
+		if n.AcceleratorHCCS() {
+			env["ASCEND_GLOBAL_RESOURCE_CONFIG"] = `{"comm_resource_config.protocol_desc":["hccs:device"]}`
+			env["ACL_OP_INIT_MODE"] = "1"
+			env["ASCEND_ENABLE_USE_FABRIC_MEM"] = "1"
 		}
 		return env
 	}
@@ -102,7 +113,7 @@ func onComputeNetwork(p Params) bool {
 
 // withComputeNetworkDockerArgs appends the RDMA container options a
 // multi-node rank or a PD instance on a host RDMA network needs, skipping any
-// already present. An accelerator RDMA network needs none: the cards' ports
+// already present. An accelerator network needs none: the cards' ports
 // are not under /dev/infiniband, and the cards come with device injection.
 func withComputeNetworkDockerArgs(args []string, p Params) []string {
 	if !onComputeNetwork(p) || !p.ComputeNetwork.HostRDMA() {

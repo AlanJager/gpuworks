@@ -2,8 +2,8 @@
 // dictionary (role_options / type_options); the unions here only name them.
 
 export type NetworkRole = "storage_sync" | "compute" | "serving";
-export type NetworkType = "host_ethernet" | "host_rdma" | "accelerator_rdma";
-export type LinkLayer = "infiniband" | "roce";
+export type NetworkType = "host_ethernet" | "host_rdma" | "accelerator_rdma" | "accelerator_hccs";
+export type LinkLayer = "infiniband" | "roce" | "hccs";
 
 export interface NetworkWarning {
   code: "conflict" | "override_missing" | "link_layer_mismatch" | "rdma_no_hca" | "bootstrap_missing" | "hca_unusable" | "hca_mismatch" | string;
@@ -264,7 +264,7 @@ export interface RDMAPort {
   tx_bytes_per_sec?: number;
 }
 
-/** One network port an accelerator card owns (Ascend's on-card RoCE port). */
+/** One network port an accelerator card owns, including an A3/910C HCCS vNIC when reported. */
 export interface AcceleratorPort {
   name: string;
   index: number;
@@ -273,8 +273,12 @@ export interface AcceleratorPort {
   /** UP | DOWN, empty when unknown. */
   state: string;
   speed_gbps: number;
+  hccs_ip?: string;
+  hccs_netmask?: string;
+  hccs_state?: string;
   /** Why the card's port cannot carry traffic; absent when it can. */
   gap?: RailGap;
+  hccs_gap?: RailGap;
 }
 
 export interface NodeLoadedNetwork {

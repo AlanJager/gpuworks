@@ -89,6 +89,11 @@ func vllmPDEnv(p Params, env map[string]string) {
 	if p.PD == nil {
 		return
 	}
+	if p.PD.mode().Transport == pdmode.TransportHCCL && p.ComputeNetwork.AcceleratorHCCS() {
+		env["ASCEND_GLOBAL_RESOURCE_CONFIG"] = `{"comm_resource_config.protocol_desc":["hccs:device"]}`
+		env["ACL_OP_INIT_MODE"] = "1"
+		env["ASCEND_ENABLE_USE_FABRIC_MEM"] = "1"
+	}
 	mode := p.PD.mode()
 	for key, value := range mode.Env {
 		env[key] = value

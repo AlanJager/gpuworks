@@ -248,7 +248,7 @@ flowchart LR
 - **推理请求**：客户端只访问同一个服务名，网关对 PD 部署先选 decode（沿用部署的路由策略），再选 prefill，两阶段
   交接由网关完成，引擎端口不对外暴露；网关到实例沿用 e 里的服务网或 agent 隧道。
 - **KV 传输**：NVIDIA 模式由 decode 从 prefill 拉取 KV，走**参数网络**——RDMA 网络最快，以太网可用但每个请求多一次
-  KV 拷贝；同节点的 P、D 走本机 TCP，适合验证。昇腾模式的 KV 走 NPU 自带的 RoCE 口，跨机时必须在加速器 RDMA 网络上
+  KV 拷贝；同节点的 P、D 走本机 TCP，适合验证。昇腾模式的 KV 走所选加速器 fabric：910B/910 的 RoCE 口或 A3/910C 的 HCCS，跨机时必须在加速器 RDMA 或加速器 HCCS 网络上
   （`PD_NETWORK_ACCELERATOR_REQUIRED`），prefill 与 decode 所在的 NPU 必须在 NPU 网络上互通。
 - **集合通信**：多机实例各 rank 之间（NCCL / Gloo）也走参数网络。
 

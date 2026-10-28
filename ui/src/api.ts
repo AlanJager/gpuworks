@@ -1340,10 +1340,10 @@ export interface StorageNodeUsage {
 export interface InstanceComputeNetwork {
   name: string;
   management: boolean;
-  type: "host_ethernet" | "host_rdma" | "accelerator_rdma";
+  type: "host_ethernet" | "host_rdma" | "accelerator_rdma" | "accelerator_hccs";
   interface: string;
   ip: string;
-  link_layer?: "infiniband" | "roce";
+  link_layer?: "infiniband" | "roce" | "hccs";
 }
 
 // --- VRAM breakdown -------------------------------------------------------

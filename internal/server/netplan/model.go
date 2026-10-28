@@ -94,9 +94,9 @@ type Resolved struct {
 	LabelValue   string
 	Interface    string
 	IP           string
-	HCAs         []string // rails: "device:port", or cards ("npu3") on an accelerator RDMA network
-	// LinkLayer is what the rails are: LinkLayerInfiniBand or
-	// LinkLayerRoCE; empty for Ethernet networks or when no port matched.
+	HCAs         []string // rails: "device:port", or cards ("npu3") on an accelerator network
+	// LinkLayer is what the rails are: LinkLayerInfiniBand, LinkLayerRoCE, or
+	// LinkLayerHCCS; empty for Ethernet networks or when no port matched.
 	LinkLayer string
 	// HCAsPinned and BootstrapPinned are set when the node attachment pins
 	// the RDMA network's rails or bootstrap instead of leaving them inferred.

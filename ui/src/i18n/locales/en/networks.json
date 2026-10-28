@@ -14,7 +14,8 @@
   "type": {
     "host_ethernet": "Host Ethernet",
     "host_rdma": "Host RDMA",
-    "accelerator_rdma": "Accelerator RDMA"
+    "accelerator_rdma": "Accelerator RDMA",
+    "accelerator_hccs": "Accelerator HCCS"
   },
   "source": {
     "node": "Node",

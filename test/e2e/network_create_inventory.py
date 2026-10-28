@@ -4,14 +4,14 @@ from __future__ import annotations
 from platform_token_read_revoke import check
 from playwright.sync_api import expect
 
-TYPES = ["host_ethernet", "host_rdma", "accelerator_rdma"]
+TYPES = ["host_ethernet", "host_rdma", "accelerator_rdma", "accelerator_hccs"]
 ROLES = ["storage_sync", "compute", "serving"]
 CIDR_PLACEHOLDER = "10.20.0.0/16"
 
 
 def exercise_network_create_inventory(dialog, t):
     """Labels, control types, required flags, defaults, range, and ethernet condition."""
-    expect(dialog.locator(".ant-radio-button-wrapper")).to_have_count(3)
+    expect(dialog.locator(".ant-radio-button-wrapper")).to_have_count(4)
     for kind in TYPES:
         wrapper = dialog.locator(".ant-radio-button-wrapper").filter(has_text=t["type"][kind])
         expect(wrapper).to_have_count(1)
@@ -68,7 +68,7 @@ def exercise_network_create_inventory(dialog, t):
     expect(dialog.get_by_role("combobox")).to_have_count(0)
     expect(dialog.get_by_role("textbox")).to_have_count(4)
     return {
-        "button_radios": 3,
+        "button_radios": 4,
         "default_type": TYPES[0],
         "name_maxlength": 64,
         "description_maxlength": 256,

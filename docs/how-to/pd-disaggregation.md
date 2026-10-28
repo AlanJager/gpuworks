@@ -8,7 +8,7 @@
 
 - 已熟悉普通部署流程，见[部署模型、选卡与解释调度结果](deploy-models.md)。
 - 硬件与引擎符合所选 PD 模式：`vllm-nixl` 面向 NVIDIA，`vllm-ascend-mooncake` 面向昇腾，`sglang-nixl` 未验证。
-- NVIDIA 模式的 P、D 跨机时 KV 走参数网络，可选 RDMA 或以太网；昇腾模式跨机时必须共用加速器 RDMA 网络，且 prefill 与 decode 所在 NPU 在 NPU 网络上互通。配置与验证见[配置节点网络](configure-networks.md)。
+- NVIDIA 模式的 P、D 跨机时 KV 走参数网络，可选 RDMA 或以太网；昇腾模式跨机时必须共用加速器 RDMA 或加速器 HCCS 网络，且 prefill 与 decode 所在 NPU 在对应加速器网络上互通。配置与验证见[配置节点网络](configure-networks.md)。
 
 PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示，decode 实例从它那里取走 KV 后逐 token 生成。对外仍是
 一个部署、一个服务名，请求照常发给 `/v1`，由网关协调两组实例。设计与取舍见
@@ -42,9 +42,9 @@ PD 分离把一个模型的推理拆成两组实例：prefill 实例只算提示
 
    模式、TP、PP 与 KV 加载失败策略启动后不能改，需要克隆部署；提交前确认这些选择。
 
-5. 昇腾模式的 KV 走 NPU 自带的 RoCE 网口：跨机部署时这些节点必须共用一个加速器 RDMA 网络（见
-   [配置节点网络](configure-networks.md)），否则被拒绝；prefill 与 decode 所在的 NPU 还必须在 NPU 网络上互通。用
-   `hccn_tool -i <卡号> -lldp -g` 看每个口的对端，`hccn_tool -i <卡号> -ping -g address <对端 IP>` 验证。
+5. 昇腾模式的 KV 走所选的加速器网络：910B/910 系列使用 NPU 自带的 RoCE 网口，A3/910C 灵衢网络使用 HCCS。跨机部署时这些节点必须共用一个加速器 RDMA 或加速器 HCCS 网络（见
+   [配置节点网络](configure-networks.md)），否则被拒绝；prefill 与 decode 所在的 NPU 还必须在对应网络上互通。RoCE 用
+   `hccn_tool -i <卡号> -ping -g address <对端 IP>`，HCCS 用 `hccn_tool -i <卡号> -hccs_ping -g address <对端 IP>` 验证；`hccn_tool -i <卡号> -lldp -g` 可查看 RoCE 口的对端。
 
    没有交换机、两台机器按卡号直连时，P、D 要选择实际互通的同号卡。
    可先在网络**内部测试**中运行**卡连通性 · 全卡矩阵**确认布线；部署校验不会替你验证卡间链路。

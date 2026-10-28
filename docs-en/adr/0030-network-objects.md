@@ -69,3 +69,17 @@ Internal tests for accelerator RDMA networks add two modes: ping between matchin
 ### Source of Vendor Knowledge
 
 Which vendors' accelerator cards have built-in network ports, which environment variables their collective communication libraries need, and which host files their containers require are declared only once, in `internal/accelerator` (`CardNetworkOf`). The `accelerator_rdma` network type is vendor-neutral; placement validation, launch assembly, and PD modes all obtain this knowledge from the same source, which the agent also uses to convert between card names and numbers.
+
+## Update (2026-10-28): Accelerator HCCS is a fourth type
+
+A3/910C LingQu HCCS/HIXL uses a different transport protocol and reachability
+command from the RoCE card ports on 910B/910. Treating every accelerator
+network as RoCE would select the wrong Mooncake path, so the vocabulary adds
+`accelerator_hccs`. It reuses the agent's `accelerator_ports` inventory and
+card-rail resolution, while network tests use `hccn_tool -hccs_ping` and
+Mooncake launches select `hccs:device` with the required HCCS initialization
+parameters.
+
+- **The fields and automatic resolution stay the same**: HCCS carries only Compute; card addresses, state, speed, and bootstrap are inferred from the existing inventory, while the network object records the LingQu fabric boundary.
+- **Launch protocol is explicit**: PD and multi-node launches inject `ASCEND_GLOBAL_RESOURCE_CONFIG`, `ACL_OP_INIT_MODE`, and `ASCEND_ENABLE_USE_FABRIC_MEM` for HCCS, and retain a read-only `/etc/hccn.conf` mount for CANN.
+- **Old networks remain compatible**: `accelerator_rdma` keeps its API, card tests, and RoCE command; an older agent treats an omitted protocol as the original `-ping` behavior.

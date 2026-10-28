@@ -248,7 +248,7 @@ can itself span multiple nodes, with a leader serving requests and the others ac
 - **Inference requests**: Clients use the same service name. For PD deployments, the gateway selects decode first (using the deployment's routing policy), then prefill, and handles
   the two-stage handoff. Engine ports are not exposed externally; gateway-to-instance traffic uses the serving network or agent tunnel described in e.
 - **KV transfer**: In NVIDIA mode, decode pulls KV from prefill over the **compute network**. RDMA is fastest; Ethernet works but requires an extra
-  KV copy per request. P and D on the same node use local TCP, suitable for verification. In Ascend mode, KV uses the NPU's built-in RoCE ports. Cross-node transfer must use an accelerator RDMA network
+  KV copy per request. P and D on the same node use local TCP, suitable for verification. In Ascend mode, KV uses the selected accelerator fabric: RoCE ports on 910B/910 or HCCS on A3/910C. Cross-node transfer must use an accelerator RDMA or accelerator HCCS network
   (`PD_NETWORK_ACCELERATOR_REQUIRED`), and the NPUs hosting prefill and decode must be mutually reachable over the NPU network.
 - **Collective communication**: Communication between ranks of multi-node instances (NCCL / Gloo) also uses the compute network.
 

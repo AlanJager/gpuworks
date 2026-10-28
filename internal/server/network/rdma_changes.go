@@ -199,7 +199,7 @@ func portOf(node store.Node, networkType, hca string) (string, bool) {
 	}
 	device, _, hasPort := strings.Cut(hca, ":")
 	for _, rail := range netplan.AllRails(Inventory(node), networkType) {
-		if networkType == netplan.TypeAcceleratorRDMA {
+		if netplan.IsAccelerator(networkType) {
 			if rail.Name == hca {
 				return rail.Name, true
 			}

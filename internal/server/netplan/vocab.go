@@ -32,17 +32,22 @@ const (
 	// those ports, so no host process can bind their addresses; the network
 	// still resolves a host address, for the handshake alone.
 	TypeAcceleratorRDMA = "accelerator_rdma"
+	// TypeAcceleratorHCCS is the HCCS/HIXL fabric exposed by Ascend A3/910C
+	// accelerators. It uses the same card rails as accelerator_rdma, but a
+	// different transfer protocol and launch configuration.
+	TypeAcceleratorHCCS = "accelerator_hccs"
 
 	// Link layers a resolved RDMA network reports per node.
 	LinkLayerInfiniBand = "infiniband"
 	LinkLayerRoCE       = "roce"
+	LinkLayerHCCS       = "hccs"
 )
 
 // Roles lists every role in display order.
 var Roles = []string{RoleStorageSync, RoleCompute, RoleServing}
 
 // Types lists every link type in display order.
-var Types = []string{TypeHostEthernet, TypeHostRDMA, TypeAcceleratorRDMA}
+var Types = []string{TypeHostEthernet, TypeHostRDMA, TypeAcceleratorRDMA, TypeAcceleratorHCCS}
 
 // Attachment sources, from strongest to weakest. The management network is
 // weakest of all: it carries a role only where no network is attached for it.
@@ -92,14 +97,19 @@ func (e *UnknownRoleError) Unwrap() error { return ErrUnknownRole }
 // (RDMA ports or accelerator cards) apart from the host address it resolves
 // for the handshake.
 func UsesRails(t string) bool {
-	return t == TypeHostRDMA || t == TypeAcceleratorRDMA
+	return t == TypeHostRDMA || IsAccelerator(t)
+}
+
+// IsAccelerator reports whether t uses accelerator-owned network rails.
+func IsAccelerator(t string) bool {
+	return t == TypeAcceleratorRDMA || t == TypeAcceleratorHCCS
 }
 
 // TypeRoles lists the roles a network of type t may carry, in Roles order.
 // An accelerator RDMA network carries compute traffic only: storage sync
 // and serving are host processes, which cannot bind a card's address.
 func TypeRoles(t string) []string {
-	if t == TypeAcceleratorRDMA {
+	if IsAccelerator(t) {
 		return []string{RoleCompute}
 	}
 	return append([]string(nil), Roles...)

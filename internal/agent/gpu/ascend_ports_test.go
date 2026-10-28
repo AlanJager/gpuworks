@@ -92,8 +92,24 @@ func TestAscendAcceleratorPortsReadEachListedCard(t *testing.T) {
 			t.Fatalf("asked a card npu-smi did not list: %q", call)
 		}
 	}
-	if len(hccn.calls) != 6 {
-		t.Fatalf("calls = %v, want three per card", hccn.calls)
+	if len(hccn.calls) != 8 {
+		t.Fatalf("calls = %v, want four per card", hccn.calls)
+	}
+}
+
+func TestAscendAcceleratorPortsReadHCCSVNIC(t *testing.T) {
+	hccn := &fakeHCCN{cards: map[string]map[string]string{
+		"2": {
+			"-ip":    "ipaddr:10.20.0.4\nnetmask:255.255.0.0\n",
+			"-link":  "link status: UP\n",
+			"-speed": "Speed: 200000 Mb/s\n",
+			"-vnic":  "vnic link status: UP\nvnic ipaddr:192.9.2.197\nvnic netmask:255.0.0.0\n",
+		},
+	}}
+	p := ascendPortProber(hccn, ascendInfo26Sample)
+	got := p.AcceleratorPorts(t.Context())
+	if len(got) != 1 || got[0].HCCSIP != "192.9.2.197" || got[0].HCCSNetmask != "255.0.0.0" || got[0].HCCSState != "UP" {
+		t.Fatalf("ports = %+v", got)
 	}
 }
 
@@ -170,7 +186,7 @@ func TestParseHCCNAnswers(t *testing.T) {
 	}
 }
 
-// fakePing answers "hccn_tool -i N -ping -g address IP" the way the 910B4
+// fakePing answers "hccn_tool -i N -ping/-hccs_ping -g address IP" the way the 910B4
 // hosts do: a reachable address prints three answers at once after about a
 // second, an unreachable one prints nothing and never returns, and a card
 // asked twice at once answers "Command execute failed!".
@@ -184,7 +200,7 @@ type fakePing struct {
 }
 
 func (f *fakePing) run(ctx context.Context, args ...string) (string, error) {
-	if len(args) != 6 || args[0] != "-i" || args[2] != "-ping" || args[3] != "-g" || args[4] != "address" {
+	if len(args) != 6 || args[0] != "-i" || (args[2] != "-ping" && args[2] != "-hccs_ping") || args[3] != "-g" || args[4] != "address" {
 		return hccnCard("172.20.9.1", "UP", "200000 Mb/s")[args[2]], nil
 	}
 	card, ip := args[1], args[5]
@@ -216,6 +232,9 @@ func (f *fakePing) run(ctx context.Context, args ...string) (string, error) {
 	case <-time.After(f.delay):
 	case <-ctx.Done():
 		return "", ctx.Err()
+	}
+	if args[2] == "-hccs_ping" {
+		return "device " + card + " PING " + ip + "\nrecv seq 0, time = 359.000us, L1 plane check result = 0x0\nrecv seq 1, time = 238.000us, L1 plane check result = 0x0\nrecv seq 2, time = 224.000us, L1 plane check result = 0x0\n3 packets transmitted, 3 received, 0.00% packet loss\n", nil
 	}
 	return "device " + card + " PING " + ip + "\nrecv seq=0,time=0.359000ms\nrecv seq=1,time=0.238000ms\nrecv seq=2,time=0.224000ms\n3 packets transmitted, 3 received, 0.00% packet loss\n", nil
 }
@@ -254,6 +273,18 @@ func TestAscendPingAcceleratorPort(t *testing.T) {
 	go func() { time.Sleep(10 * time.Millisecond); cancel() }()
 	if _, err := p.PingAcceleratorPort(ctx, "npu3", "172.20.9.83", time.Minute); !errors.Is(err, ErrAcceleratorPingTimeout) {
 		t.Fatalf("cancelled ping err = %v", err)
+	}
+}
+
+func TestAscendPingHCCS(t *testing.T) {
+	ping := &fakePing{reachable: map[string]bool{"3->172.20.9.82": true}, delay: time.Millisecond}
+	p := &AscendProber{hccn: ping.run}
+	rtt, err := p.PingAcceleratorPortProtocol(t.Context(), "npu3", "172.20.9.82", proto.AcceleratorPingProtocolHCCS, time.Second)
+	if err != nil || rtt < 0.27 || rtt > 0.28 {
+		t.Fatalf("HCCS ping = %v, %v; want microsecond output converted to milliseconds", rtt, err)
+	}
+	if len(ping.calls) != 1 || ping.calls[0] != "3->172.20.9.82" {
+		t.Fatalf("calls = %v", ping.calls)
 	}
 }
 

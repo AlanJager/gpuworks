@@ -27,8 +27,8 @@ from platform_token_read_revoke import button, check
 
 PREFIX = '/api/v1/networks'
 ROLES = ['storage_sync', 'compute', 'serving']
-TYPES = ['host_ethernet', 'host_rdma', 'accelerator_rdma']
-TYPE_ROLES = {'host_ethernet': ROLES, 'host_rdma': ROLES, 'accelerator_rdma': ['compute']}
+TYPES = ['host_ethernet', 'host_rdma', 'accelerator_rdma', 'accelerator_hccs']
+TYPE_ROLES = {'host_ethernet': ROLES, 'host_rdma': ROLES, 'accelerator_rdma': ['compute'], 'accelerator_hccs': ['compute']}
 # Fixed contract denominator: the API dictionary must match, never shrink it dynamically.
 COMBINATIONS = {
     kind + '--' + '-'.join(roles): (kind, list(roles))
@@ -101,7 +101,7 @@ def open_create(page, server, t, evidence):
 
 
 def delete_owned(page, server, t, path, name, baseline, evidence):
-    button(page, t['actions']['delete']).click()
+    button(page.get_by_role('dialog'), t['actions']['delete']).click()
     popup = page.get_by_role('tooltip').filter(has_text=t['actions']['confirmDelete'].replace('{{name}}', name))
     expect(popup).to_be_in_viewport(ratio=1)
     result = mutate(page, button(popup, t['actions']['delete']).click, 'DELETE', path, None, 200, evidence)
@@ -243,31 +243,30 @@ def exercise_create_inflight(page, dialog, t, name, roles, body, bad_http, conso
                      "failure_status": 502, "draft_retained": True, "failure_reason_visible": True})
 
 
-# Mainline: gpuworks/network/type-role/<type--roles>; 空库字典固定三类型/三角色 → UI逐项选择指定非空角色组合
+# Mainline: gpuworks/network/type-role/<type--roles>; 空库字典固定四类型/三角色 → UI逐项选择指定非空角色组合
 # → 精确POST+独立GET → 刷新打开编辑确认类型/角色回填 → UI删除+GET404+列表恢复；仅定义，无网络运行时声明。
 def exercise_minimum_network(page, server, t, name, network_id, result):
     """Minimum host-ethernet create: empty optionals, list row, and one small attach button."""
     resolved_title = t['detail']['resolved'].replace('{{count}}', '0')
-    resolved = page.locator('.ant-card').filter(
-        has=page.locator('.ant-card-head-title', has_text=re.compile(rf'^{re.escape(resolved_title)}$')))
-    expect(resolved).to_have_count(1)
+    resolved = page.get_by_role('dialog')
+    expect(resolved.get_by_role('heading', name=resolved_title, exact=True)).to_be_visible()
     table = resolved.locator('.ant-table')
     expect(table).to_have_count(1)
-    expect(table).to_have_class(re.compile(r'\bant-table-middle\b'))
+    expect(table).to_have_class(re.compile(r'\bant-table-small\b'))
     attach = button(page, t['actions']['attach'])
     expect(attach).to_have_count(1)
     expect(attach).to_have_class(re.compile(r'\bant-btn-sm\b'))
-    cidr = page.locator('.ant-descriptions-item').filter(has_text=t['selector']['cidr'])
-    interface = page.locator('.ant-descriptions-item').filter(has_text=t['selector']['interface'])
+    cidr = resolved.get_by_role('rowheader', name=t['selector']['cidr'], exact=True).locator('..')
+    interface = resolved.get_by_role('rowheader', name=t['selector']['interface'], exact=True).locator('..')
     expect(cidr).to_have_count(1)
     expect(interface).to_have_count(1)
     expect(cidr).to_contain_text('—')
     expect(interface).to_contain_text('—')
     expect(page.get_by_text(t['detail']['noAttachments'], exact=True)).to_be_visible()
-    result['last_step'] = 'selector-descriptions'
-    descriptions = page.locator('.ant-descriptions').filter(has=cidr)
+    result['last_step'] = 'selector-table'
+    descriptions = table
     expect(descriptions).to_have_count(1)
-    expect(descriptions).to_have_class(re.compile(r'\bant-descriptions-small\b'))
+    expect(descriptions).to_have_class(re.compile(r'\bant-table-small\b'))
     page.goto(server.base + '/networks')
     expect(page.get_by_role('heading', name=t['title'], exact=True)).to_be_visible()
     row = page.get_by_role('row').filter(has_text=name)
@@ -290,8 +289,8 @@ def exercise_minimum_network(page, server, t, name, network_id, result):
     expect(editing.locator('input[type=password]')).to_have_count(0)
     button(editing, t['actions']['cancel']).click()
     expect(editing).not_to_be_visible()
-    page.goto(server.base + '/networks/' + str(network_id))
-    expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
+    page.goto(server.base + '/networks?network=' + str(network_id))
+    expect(page.get_by_role('heading', name=re.compile(r'^' + re.escape(name) + r'(?:\s|$)'))).to_be_visible()
     return {
         'attach_button_small': True,
         'list_name': True,
@@ -302,8 +301,8 @@ def exercise_minimum_network(page, server, t, name, network_id, result):
         'edit_button_text': True,
         'edit_backfill': True,
         'edit_password_fields': 0,
-        'resolved_table_middle': True,
-        'selector_descriptions_small': True,
+        'resolved_table_small': True,
+        'selector_table_small': True,
     }
 
 
@@ -329,16 +328,16 @@ def exercise_full_optional(page, server, t, name, evidence):
     dialog.get_by_label(t['form']['cidr'], exact=True).fill(body['cidr'])
     dialog.get_by_label(t['form']['interface'], exact=True).fill(body['interface'])
     for role in ROLES:
-        role_control(dialog, t, role).check()
+        role_control(dialog, t, role).click()
         expect(role_control(dialog, t, role)).to_be_checked()
     created = mutate(page, button(dialog, t['actions']['save']).click, 'POST', PREFIX, body, 201, evidence)
     path = PREFIX + '/' + str(created['id'])
-    expect(page).to_have_url(server.base + '/networks/' + str(created['id']))
+    expect(page).to_have_url(server.base + '/networks?network=' + str(created['id']))
     stored = persisted(page, server.base, path, body, evidence)
     expect(page.get_by_text(body['description'], exact=True).first).to_be_visible()
     expect(page.get_by_text(body['cidr'], exact=True).first).to_be_visible()
     expect(page.get_by_text(body['interface'], exact=True).first).to_be_visible()
-    button(page, t['actions']['delete']).click()
+    button(page.get_by_role('dialog'), t['actions']['delete']).click()
     popup = page.get_by_role('tooltip').filter(has_text=t['actions']['confirmDelete'].replace('{{name}}', full_name))
     expect(popup).to_be_in_viewport(ratio=1)
     deleted = mutate(page, button(popup, t['actions']['delete']).click, 'DELETE', path, None, 200, evidence)
@@ -417,7 +416,7 @@ def test_type_role_combination(page, server, result, locale, key, baseline, bad_
     result["create_inventory"] = exercise_network_create_inventory(dialog, t)
     evidence.append({"layer": "ui", "create_inventory": result["create_inventory"]})
     expect(type_control(dialog, t, TYPES[0])).to_be_checked()
-    expect(dialog.get_by_role('radio')).to_have_count(3)
+    expect(dialog.get_by_role('radio')).to_have_count(4)
     expect(dialog.get_by_role('checkbox')).to_have_count(3)
     for role in ROLES:
         expect(role_control(dialog, t, role)).not_to_be_checked()
@@ -435,7 +434,7 @@ def test_type_role_combination(page, server, result, locale, key, baseline, bad_
         else:
             expect(control).to_be_disabled()
         if role in roles:
-            control.check()
+            control.click()
             expect(control).to_be_checked()
     name = 'e2e-' + result['run_id'] + '-' + str(CASES.index(key))
     dialog.get_by_label(t['form']['name'], exact=True).fill(name)
@@ -455,15 +454,15 @@ def test_type_role_combination(page, server, result, locale, key, baseline, bad_
         exercise_create_inflight(page, dialog, t, name, roles, body, bad_http, console_errors, evidence)
     created = mutate(page, button(dialog, t['actions']['save']).click, 'POST', PREFIX, body, 201, evidence)
     path = PREFIX + '/' + str(created['id'])
-    expect(page).to_have_url(server.base + '/networks/' + str(created['id']))
+    expect(page).to_have_url(server.base + '/networks?network=' + str(created['id']))
     actual = persisted(page, server.base, path, body, evidence)
     check(actual['type_roles'] == TYPE_ROLES, 'detail type_roles differs')
     page.reload()
-    expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
+    expect(page.get_by_role('heading', name=re.compile(r'^' + re.escape(name) + r'(?:\s|$)'))).to_be_visible()
     if key == 'host_ethernet--compute':
         result['minimum_create'] = exercise_minimum_network(page, server, t, name, created['id'], result)
         result['last_step'] = 'minimum-create'
-    button(page, t['actions']['edit']).click()
+    button(page.get_by_role('dialog'), t['actions']['edit']).click()
     dialog = form(page, t, True)
     expect(type_control(dialog, t, kind)).to_be_checked()
     for role in ROLES:
@@ -489,8 +488,8 @@ def test_type_role_combination(page, server, result, locale, key, baseline, bad_
         result['last_step'] = 'full-optional'
         result['full_optional'] = exercise_full_optional(page, server, t, name, evidence)
         full_path = result['full_optional']['path']
-        page.goto(server.base + '/networks/' + str(created['id']))
-        expect(page.get_by_role('heading', name=name, exact=True)).to_be_visible()
+        page.goto(server.base + '/networks?network=' + str(created['id']))
+        expect(page.get_by_role('heading', name=re.compile(r'^' + re.escape(name) + r'(?:\s|$)'))).to_be_visible()
     delete_owned(page, server, t, path, name, baseline, evidence)
     expected = [{'method': 'POST', 'path': PREFIX}] * posts + [{'method': 'DELETE', 'path': path}]
     if key == 'host_ethernet--storage_sync':
@@ -521,13 +520,13 @@ def test_type_transition(page, server, result, locale, key, baseline):
     for field in ['name', 'description', 'cidr', 'interface']:
         dialog.get_by_label(t['form'][field], exact=True).fill(body[field])
     for role in ROLES:
-        role_control(dialog, t, role).check()
+        role_control(dialog, t, role).click()
     created = mutate(page, button(dialog, t['actions']['save']).click, 'POST', PREFIX, body, 201, evidence)
     path = PREFIX + '/' + str(created['id'])
-    expect(page).to_have_url(server.base + '/networks/' + str(created['id']))
+    expect(page).to_have_url(server.base + '/networks?network=' + str(created['id']))
     persisted(page, server.base, path, body, evidence)
     page.reload()
-    button(page, t['actions']['edit']).click()
+    button(page.get_by_role('dialog'), t['actions']['edit']).click()
     dialog = form(page, t, True)
     choose_type(dialog, t, target)
     expect(dialog.get_by_label(t['form']['interface'], exact=True)).to_have_count(0)
@@ -557,7 +556,7 @@ def test_type_transition(page, server, result, locale, key, baseline):
     expect(dialog).not_to_be_visible()
     persisted(page, server.base, path, changed, evidence)
     page.reload()
-    button(page, t['actions']['edit']).click()
+    button(page.get_by_role('dialog'), t['actions']['edit']).click()
     dialog = form(page, t, True)
     expect(type_control(dialog, t, target)).to_be_checked()
     expect(dialog.get_by_role('button').filter(has_text=t['form']['advanced'])).to_have_attribute('aria-expanded', 'true')
@@ -571,7 +570,7 @@ def test_type_transition(page, server, result, locale, key, baseline):
     expect(dialog).not_to_be_visible()
     persisted(page, server.base, path, back, evidence)
     page.reload()
-    button(page, t['actions']['edit']).click()
+    button(page.get_by_role('dialog'), t['actions']['edit']).click()
     dialog = form(page, t, True)
     expect(type_control(dialog, t, 'host_ethernet')).to_be_checked()
     expect(dialog.get_by_label(t['form']['interface'], exact=True)).to_have_value('')
@@ -604,7 +603,7 @@ def main():
               'lane': 'local-real-server-sqlite', 'identity': 'admin', 'locale': args.locale, 'timezone': 'UTC',
               'viewport': {'width': 1440, 'height': 900}, 'retries': 0, 'cases': [], 'selection': selected,
               'source_digests': {str(p.relative_to(ROOT)): digest(p) for p in [Path(__file__).resolve(), manifest_path,
-                  ROOT / 'test/e2e/local_browser_fixture.py', ROOT / 'test/e2e/network_storage_lifecycle.py', ROOT / 'test/e2e/platform_token_read_revoke.py', ROOT / 'test/e2e/dialog_checks.py', ROOT / 'test/e2e/network_create_inventory.py', ROOT / 'ui/src/pages/networks/NetworkFormModal.tsx', ROOT / 'ui/src/pages/networks/NetworkDetailPage.tsx', ROOT / 'ui/src/pages/networks/NetworksPage.tsx']},
+                  ROOT / 'test/e2e/local_browser_fixture.py', ROOT / 'test/e2e/network_storage_lifecycle.py', ROOT / 'test/e2e/platform_token_read_revoke.py', ROOT / 'test/e2e/dialog_checks.py', ROOT / 'test/e2e/network_create_inventory.py', ROOT / 'ui/src/pages/networks/NetworkFormModal.tsx', ROOT / 'ui/src/pages/networks/NetworkDetailDrawer.tsx', ROOT / 'ui/src/pages/networks/NetworksPage.tsx']},
               'command': ['python3', 'test/e2e/network_type_roles.py', *sys.argv[1:]]}
     try:
         check(manifest['test_file'] == 'test/e2e/network_type_roles.py', 'manifest file mismatch')

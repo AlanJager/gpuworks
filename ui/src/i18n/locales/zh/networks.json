@@ -14,7 +14,8 @@
   "type": {
     "host_ethernet": "主机以太网",
     "host_rdma": "主机 RDMA",
-    "accelerator_rdma": "加速器 RDMA"
+    "accelerator_rdma": "加速器 RDMA",
+    "accelerator_hccs": "加速器 HCCS"
   },
   "source": {
     "node": "节点",
