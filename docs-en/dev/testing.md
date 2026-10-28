@@ -246,6 +246,23 @@ environment fails the earlier one that is still running (truncated trace, `403 J
 scheduled master pipeline and an MR manual run of the same job would kill each other. A new cloud L4 job must
 use `action: prepare` too; mutual exclusion comes from `resource_group`, not from the environment.
 
+## GitHub Actions Mirror Gates
+
+`.github/workflows/ci.yml` runs the same checks as GitLab's core stage on GitHub-hosted runners: the UI
+build and tests, the untagged Go suite with the check scripts, `go vet`, the CompShare offline contracts,
+and strict L2/L3. GitLab remains the authoritative pipeline; the GitHub mirror only receives master, so this
+workflow runs on pull requests, on manual dispatch, and nightly at 03:07 (Asia/Shanghai, just after GitLab's
+nightly) on master, for comparison with GitLab's result for the same commit. L4, releases and the docs build
+do not run here, and no secret or self-hosted runner is used.
+
+- L2/L3 take the shape of GitLab's `.docker-core`: one DinD daemon per job, exposed on a dedicated
+  `gpuworks-e2e` socket, with the suite in a golang container. The runner VM's own Docker does not work: the
+  VM has systemd, which the console upgrade cases take for a service manager, and the real terminal case
+  accepts only a dedicated daemon. The fixture base images are pulled into DinD before the suite.
+- On a 2-core runner the UI suite runs one test file at a time and takes over an hour unsplit; it runs as 4
+  parallel shards, with `npm run test:coverage` passing an optional `TEST_SHARD` (such as `2/4`) to
+  `--test-shard`. Unset, the command is the original one.
+
 ## Cost and Caching
 
 - Regular provider tests verify only machine rental, SSH, agent connectivity, and GPU inventory. API fields, regional constraints, and cleanup behavior for RunPod, CompShare, AutoDL,
