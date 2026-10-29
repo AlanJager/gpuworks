@@ -104,9 +104,15 @@ def test_quick_controls(page, context, server, artifacts, report, locale, chip):
         actual = response.value.json()
         check(actual == expected, 'search IDs/content/order/total mismatch: ' + label)
         counts = Counter(row['time_ms'] // 60000 * 60000 for row in expected_rows)
-        buckets = [{'start_ms': stamp, 'counts': {'warn': count}} for stamp, count in sorted(counts.items())]
+        # The store returns buckets newest-first, the same order as every other read
+        # (logstore.histogramOnce sorts descending and the UI reverses for display).
+        # Sorting ascending here only matched while the fixture happened to fall in a
+        # single minute; once it straddled two, the expected order was reversed.
+        buckets = [{'start_ms': stamp, 'counts': {'warn': count}}
+                   for stamp, count in sorted(counts.items(), reverse=True)]
         actual_histogram = histogram.value.json()
-        check(actual_histogram == {'items': buckets, 'total': len(buckets)}, 'histogram mismatch: ' + label)
+        check(actual_histogram == {'items': buckets, 'total': len(buckets)},
+              f'histogram mismatch: {label}; expected={buckets} actual={actual_histogram}')
         visible = page.get_by_test_id('log-row')
         expect(visible).to_have_count(len(keys))
         for index, row in enumerate(expected_rows):
