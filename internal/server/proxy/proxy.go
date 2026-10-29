@@ -551,20 +551,11 @@ func (p *Proxy) serveSelectedTarget(w http.ResponseWriter, r *http.Request, publ
 // and its owner, received now. With no keys configured yet every request is
 // allowed (dev) and the caller is anonymous.
 func (p *Proxy) authenticate(w http.ResponseWriter, r *http.Request) (uxrecord.Caller, bool) {
-	caller := uxrecord.Caller{Source: uxrecord.SourceAPI, ReceivedMS: time.Now().UnixMilli()}
-	if p.store.HasAnyAPIKey() {
-		key := auth.BearerToken(r.Header.Get("Authorization"))
-		identity, ok := store.APIKeyIdentity{}, false
-		if key != "" {
-			identity, ok = p.store.ResolveAPIKey(key)
-		}
-		if !ok {
-			writeErr(w, http.StatusUnauthorized, "invalid or missing API key")
-			return caller, false
-		}
-		caller.APIKeyID, caller.UserID = identity.KeyID, identity.UserID
+	caller, ok := p.Identify(r)
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "invalid or missing API key")
 	}
-	return caller, true
+	return caller, ok
 }
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
