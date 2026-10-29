@@ -24,7 +24,7 @@ Qwen3-0.6B 和 Qwen3.8-27B 可使用仓库内的[可导入模板包](../../build
 
 ## 双机通信前提
 
-- 两节点须具备与内核匹配且可工作的 XDR；agent 只验证和接入设备，不安装、编译或加载驱动，不改变 KASLR 或启动项。
+- 两节点须具备与内核匹配且可工作的 XDR，这是多机的硬性前置：`/dev/xdrdrv` 必须是真实字符设备，缺失或类型不对时该 rank 在设备注入阶段直接失败，报 `accelerator runtime unavailable: Kunlun multi-node runtime requires XDR`，整个多机单元随之失败。节点本身仍会上线、被探测、被调度，单机也照常可用，所以这个前置不满足时只有多机会坏，排查前先在每个节点上确认 `modinfo xdr` 有输出且 `/dev/xdrdrv` 存在。agent 只验证和接入设备，不安装、编译或加载驱动，不改变 KASLR 或启动项。
 - 已配置可达的计算网络，并确认网络清单中的 RDMA 端口、接口和 IP 对应。网络清单不改变主机网络，也不代表链路带宽已测定。
 - 主机 RDMA 计算网络由通用网络层提供 `/dev/infiniband`、无限 memlock 和 `IPC_LOCK`；昆仑 prober 只注入所选 XPU、控制设备和 XDR，不枚举全部 HCA 或重复添加网络参数。XDR 必须为真实字符设备；多机启动缺少这些已解析资源或设置有限 memlock 时明确拒绝。
 - `IPC_LOCK` 与 memlock 放宽仅用于通信内存注册。模板和宿主挂载遵循通用管理员信任模型，不应额外声明其他 GPU 或设备目录。

@@ -24,7 +24,7 @@ Qwen3-0.6B and Qwen3.8-27B are available as an [importable template package](../
 
 ## Two-Node Communication Prerequisites
 
-- Both nodes need working XDR compatible with their kernels. The agent only checks and exposes devices; it does not install, compile or load drivers, or alter KASLR/boot entries.
+- Both nodes need working XDR compatible with their kernels, and this is a hard prerequisite for multi-node: `/dev/xdrdrv` must be a real character device, and a rank whose host lacks it fails during device injection with `accelerator runtime unavailable: Kunlun multi-node runtime requires XDR`, taking the whole multi-node unit with it. Such a node still comes online, is probed and is scheduled, and single-node work on it is unaffected, so an unmet prerequisite shows up only in multi-node. Confirm `modinfo xdr` answers and `/dev/xdrdrv` exists on every node before looking elsewhere. The agent only checks and exposes devices; it does not install, compile or load drivers, or alter KASLR/boot entries.
 - Configure a reachable compute network and verify the inventory’s mapping among RDMA ports, interfaces and IPs. Inventory neither changes networking nor establishes measured bandwidth.
 - The common network layer supplies `/dev/infiniband`, unlimited memlock and `IPC_LOCK` for a host RDMA compute network. The Kunlun prober injects only the selected XPUs, control device and XDR; it does not enumerate all HCAs or duplicate network arguments. XDR must be a real character device. Multi-node launches explicitly refuse missing resolved resources or finite memlock limits.
 - `IPC_LOCK` and memlock relaxation serve communication-memory registration. Templates and host mounts use the common administrator trust model; do not add other GPUs or device directories.
