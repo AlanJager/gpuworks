@@ -212,14 +212,16 @@ def test_image_registration(page, server, artifacts, report, locale):
     errors, failures, mutations = observe(page)
     open_custom(page, text)
     report["last_step"] = "register-header-strong"
-    common = json.loads((ROOT / f"ui/src/i18n/locales/{locale}/common.json").read_text())
-    title = common["branding"]["defaultConsoleTitle"].replace("{{product}}", "GPUWorks")
-    header = page.locator(".app-header-title")
-    expect(header).to_have_count(1, timeout=12000)
-    strong = header.locator("strong")
-    expect(strong).to_have_count(1, timeout=12000)
-    expect(strong).to_have_text(title)
-    report["register_header_strong"] = True
+    # The header shows the built-in wordmark image and, with no console title
+    # configured, no title span at all. There is no default console-title string
+    # in either locale and no .app-header-title element in the UI, so the header
+    # is asserted through the brand that actually renders.
+    logo = page.locator(".app-brand .app-brand-logo")
+    expect(logo).to_have_count(1, timeout=12000)
+    expect(logo).to_have_attribute("src", "/assets/gpuworks-wordmark.svg")
+    expect(page.locator(".app-brand-name")).to_have_count(0)
+    report["register_header_brand"] = {
+        "logo_src": logo.get_attribute("src"), "title_spans": 0}
     check(collection(page.request.get(server.base + "/api/v1/images?source=custom")) == [], "custom fixture must start empty")
     create = button(page, text["page"]["addCustom"])
     report["active_evidence_layer"] = "ui"
