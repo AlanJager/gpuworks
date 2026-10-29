@@ -23,12 +23,13 @@ type residencyWorld struct {
 	drains    []string
 	yieldErr  error
 	wakeCalls []uint
+	settling  map[uint]bool // waiting to be placed, or starting
 }
 
 func newResidencyWorld() *residencyWorld {
 	return &residencyWorld{
 		fakeWorld: newFakeWorld(), levels: map[uint]servicelevel.Policy{}, asleep: map[uint]bool{}, blocking: map[uint]Blocking{},
-		activity: map[uint]Activity{}, fitsNow: map[uint]bool{},
+		activity: map[uint]Activity{}, fitsNow: map[uint]bool{}, settling: map[uint]bool{},
 	}
 }
 
@@ -38,6 +39,7 @@ func (w *residencyWorld) Wakeable(id uint) (servicelevel.Policy, bool) {
 }
 func (w *residencyWorld) Blocking(id uint) (Blocking, error) { return w.blocking[id], nil }
 func (w *residencyWorld) Activity(id uint) Activity          { return w.activity[id] }
+func (w *residencyWorld) Settling(id uint) bool              { return w.settling[id] }
 func (w *residencyWorld) Yield(id uint, instances []string, abort bool) (int, error) {
 	w.yields = append(w.yields, fmt.Sprintf("%d abort=%v", id, abort))
 	if w.yieldErr != nil {
@@ -459,5 +461,57 @@ func TestABusyIdleHolderIsPolled(t *testing.T) {
 	e.residency(c.t)
 	if _, ok := e.residencyDue(); ok {
 		t.Fatal("something fell due with nothing waiting")
+	}
+}
+
+// A replica waiting to be placed is served like a request held for a sleeper:
+// the holder on its cards yields by the same rule, without anything to wake;
+// the holder then leaves the cards alone while the newcomer is placed and
+// starts, and the newcomer's idle time counts from when it serves.
+func TestAReplicaWaitingToBePlacedHasTheHolderYield(t *testing.T) {
+	w := newResidencyWorld()
+	const batch, chat = 1, 2
+	w.levels[batch], w.levels[chat] = pol(servicelevel.Anytime), pol(servicelevel.Idle)
+	w.activity[batch] = Activity{InFlight: 2, LastRequest: t0}
+	w.blocking[chat] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Since: t0, Place: true}}
+	w.settling[chat] = true
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	if len(w.wakeCalls) != 0 {
+		t.Fatalf("a replica waiting to be placed was woken: %v", w.wakeCalls)
+	}
+	if !slices.Equal(w.yields, []string{"1 abort=true"}) {
+		t.Fatalf("batch did not give way to the new online replica at once: %v", w.yields)
+	}
+	if got := w.eventsFor(batch); !slices.Equal(got, []string{"1 AUTO_SLEEP preempt/rank"}) {
+		t.Fatalf("batch events = %v", got)
+	}
+
+	// The replica is placed and starts; batch wants its cards back and
+	// waits while chat settles, however long past the wake guard.
+	w.waiters = nil
+	w.blocking[batch] = Blocking{Holders: []Holder{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Instances: []string{"c-1"}}}}
+	c.t = t0.Add(5 * time.Minute)
+	e.residency(c.t)
+	if len(w.yields) != 1 || len(w.wakeCalls) != 0 {
+		t.Fatalf("batch took the cards back while chat started: yields %v wakes %v", w.yields, w.wakeCalls)
+	}
+	// Chat serves: batch tries to resume, and chat gives way only after its
+	// own idle minute from now, not from when it was placed.
+	w.settling[chat] = false
+	e.residency(c.t)
+	if len(w.wakeCalls) != 1 || len(w.yields) != 1 {
+		t.Fatalf("on chat serving: wakes %v yields %v", w.wakeCalls, w.yields)
+	}
+	c.t = c.t.Add(59 * time.Second)
+	e.residency(c.t)
+	if len(w.yields) != 1 {
+		t.Fatalf("chat gave way before an idle minute of serving: %v", w.yields)
+	}
+	c.t = c.t.Add(time.Second)
+	e.residency(c.t)
+	if !slices.Equal(w.yields, []string{"1 abort=true", "2 abort=false"}) {
+		t.Fatalf("chat did not give way once idle: %v", w.yields)
 	}
 }

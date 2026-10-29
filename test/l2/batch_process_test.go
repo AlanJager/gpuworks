@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -33,35 +32,7 @@ func TestProcessABatchOnAnOfflineDeploymentSurvivesPreemption(t *testing.T) {
 
 	create := func(served string, extra map[string]any) (uint, processInstance) {
 		t.Helper()
-		body := map[string]any{
-			"model_id": modelID, "node_uuid": node, "served_name": served,
-			"engine": "vllm", "image": "gpuworks/fake-engine:test", "sleepable": true,
-		}
-		for k, v := range extra {
-			body[k] = v
-		}
-		raw, _ := json.Marshal(body)
-		resp, data := authedDo(t, http.MethodPost, base, token, "/api/v1/deployments", raw)
-		if resp.StatusCode != http.StatusCreated {
-			t.Fatalf("create %s status=%d body=%s", served, resp.StatusCode, data)
-		}
-		var created struct {
-			ID uint `json:"id"`
-		}
-		if err := json.Unmarshal(data, &created); err != nil {
-			t.Fatal(err)
-		}
-		inst := waitInstance(t, base, token, func(inst processInstance) bool {
-			return inst.DeploymentID == created.ID && inst.State == "running" && inst.ContainerID != "" && len(inst.Argv) > 0
-		})
-		t.Cleanup(func() {
-			if resp, err := authedDo(t, http.MethodDelete, base, token, "/api/v1/deployments/"+itoa(created.ID), nil); err == nil && resp != nil {
-				resp.Body.Close()
-			}
-			waitDeploymentGone(t, base, token, created.ID, 30*time.Second)
-			_ = exec.Command("docker", "rm", "-f", inst.ContainerID).Run()
-		})
-		return created.ID, inst
+		return createFakeSleepable(t, base, token, node, modelID, served, extra)
 	}
 
 	// The online deployment, asleep, gives way to the offline one 15 seconds

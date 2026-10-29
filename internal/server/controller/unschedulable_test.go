@@ -231,3 +231,29 @@ func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) 
 		t.Fatal("an offline refusal after the grace was not recorded")
 	}
 }
+
+// A replica that waits for holders to yield is noted in the placement waits,
+// with the instances it waits for, and planned again soon; another refusal
+// notes nothing.
+func TestARefusalThatWaitsForAYieldIsNoted(t *testing.T) {
+	c, _, dep := unschedulableFixture(t)
+	now := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonNoFreeGPU, Params: map[string]any{"free": 0}})
+	if _, ok := c.PlacementWaits().Get(dep.ID, now); ok {
+		t.Fatal("a refusal that waits for no one was noted")
+	}
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonWaitingForYield, Params: map[string]any{
+		"node": "gpu-1", "holders": []map[string]any{{"deployment": "batch", "at_once": true}}, "instances": []string{"batch-1"},
+	}})
+	w, ok := c.PlacementWaits().Get(dep.ID, now)
+	if !ok || len(w.Instances) != 1 || w.Instances[0] != "batch-1" || !w.Since.Equal(now) {
+		t.Fatalf("placement wait = %+v %v", w, ok)
+	}
+	c.q.mu.Lock()
+	at, queued := c.q.pending[depKey(dep.ID)]
+	c.q.mu.Unlock()
+	if !queued || time.Until(at) > yieldRecheck {
+		t.Fatalf("not planned again within %v (queued=%v at %v)", yieldRecheck, queued, at)
+	}
+}

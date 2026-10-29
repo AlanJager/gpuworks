@@ -19,12 +19,18 @@ const (
 	TriggerPreempt = "preempt"
 )
 
-// Waiter is a deployment with requests held for its wake.
+// Waiter is a deployment with requests held for its wake, or (Place) one
+// whose next replica waits for room to be placed.
 type Waiter struct {
 	DeploymentID uint
 	Policy       servicelevel.Policy
-	// Since is when its oldest held request came.
+	// Since is when its oldest held request came, or its replica started
+	// waiting.
 	Since time.Time
+	// Place says it has nothing asleep to wake: what blocks it is what keeps
+	// its replica from being placed, and once that sleeps the controller
+	// places it.
+	Place bool
 }
 
 // Holder is an awake replica on cards a waiting deployment needs, and the
@@ -65,6 +71,9 @@ type ResidencySource interface {
 	Blocking(deploymentID uint) (Blocking, error)
 	// Activity is the deployment's traffic.
 	Activity(deploymentID uint) Activity
+	// Settling says the deployment is not serving yet: its replica waits to
+	// be placed, or an instance of it is still starting.
+	Settling(deploymentID uint) bool
 }
 
 // ResidencyActions is how the residency arbiter acts.
@@ -118,8 +127,12 @@ type yielded struct {
 }
 
 // yieldGuard is how long a holder leaves the cards it gave up to the one it
-// gave them to, at most, while that one wakes.
-const yieldGuard = 2 * time.Minute
+// gave them to, at most, while that one wakes; startGuard, while that one
+// is placed and starts, which loading a model can take minutes of.
+const (
+	yieldGuard = 2 * time.Minute
+	startGuard = 10 * time.Minute
+)
 
 type drain struct {
 	since time.Time
@@ -171,6 +184,7 @@ type waiting struct {
 	policy servicelevel.Policy
 	since  time.Time
 	resume bool
+	place  bool
 }
 
 // residency wakes the deployments requests wait for, and makes room for
@@ -192,7 +206,7 @@ func (e *Evaluator) residency(now time.Time) {
 	listed := map[uint]bool{}
 	for _, w := range waiters {
 		listed[w.DeploymentID] = true
-		queue = append(queue, waiting{id: w.DeploymentID, policy: w.Policy, since: w.Since})
+		queue = append(queue, waiting{id: w.DeploymentID, policy: w.Policy, since: w.Since, place: w.Place})
 	}
 	for id, since := range r.preempted {
 		if listed[id] {
@@ -245,9 +259,10 @@ func (e *Evaluator) residency(now time.Time) {
 
 // serveWaiter wakes a waiter, or, when its wake waits for room, puts to
 // sleep what blocks it once that must give way. ordered says its wake was
-// ordered already and waits for room: only the blockers are looked at.
+// ordered already and waits for room: only the blockers are looked at, as
+// for a replica waiting to be placed.
 func (e *Evaluator) serveWaiter(now time.Time, w waiting, ordered bool, yielding map[uint]bool) {
-	if !ordered && !e.orderWake(now, w) {
+	if !ordered && !w.place && !e.orderWake(now, w) {
 		return
 	}
 	e.makeRoom(now, w, yielding)
@@ -449,6 +464,14 @@ func (e *Evaluator) stillWakingFor(now time.Time, id uint) bool {
 		if _, asleep := r.source.Wakeable(y.to); asleep {
 			return true
 		}
+	}
+	if now.Sub(y.at) < startGuard && r.source.Settling(y.to) {
+		return true
+	}
+	// The one it gave way to serves now: its turn, and its idle time,
+	// count from here.
+	if at, ok := r.awakeAt[y.to]; !ok || at.Before(y.at) {
+		r.awakeAt[y.to] = now
 	}
 	delete(r.yieldedFor, id)
 	return false
