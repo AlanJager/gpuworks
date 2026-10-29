@@ -485,6 +485,7 @@
     "BATCH_NOT_CANCELLABLE": "The batch has already finished and cannot be cancelled.",
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
+    "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
     "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}"
   },
   "httpError": {

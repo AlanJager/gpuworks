@@ -38,7 +38,7 @@ func TestBatchTablesMigration(t *testing.T) {
 			t.Fatalf("%T has no table", e)
 		}
 	}
-	for _, column := range []string{"UserID", "InputFileID", "Status", "CheckpointOffset", "ExpiresAt", "CancelledAt"} {
+	for _, column := range []string{"UserID", "InputFileID", "Status", "CheckpointOffset", "ModelOverride", "ExpiresAt", "CancelledAt"} {
 		if !db.Migrator().HasColumn(&Batch{}, column) {
 			t.Errorf("batches.%s missing", column)
 		}

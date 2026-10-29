@@ -10,12 +10,12 @@ import (
 
 // CreateFromUpload creates a batch from the console's form: a "file" with the
 // JSONL requests and an "endpoint", in either order, and optionally a
-// "completion_window" (24h). The file is validated while it is saved; one that
+// "completion_window" (24h by default, 1h to 72h) and a "model" that every request is sent to. The file is validated while it is saved; one that
 // is refused, or an endpoint it does not fit, leaves nothing behind.
 func (s *Service) CreateFromUpload(owner Owner, mr *multipart.Reader) (Batch, error) {
 	var (
-		endpoint, window string
-		saved            *File
+		endpoint, window, model string
+		saved                   *File
 	)
 	window = CompletionWindow
 	for {
@@ -28,11 +28,14 @@ func (s *Service) CreateFromUpload(owner Owner, mr *multipart.Reader) (Batch, er
 			return Batch{}, invalid("invalid_multipart", "", "the multipart body cannot be read: "+err.Error())
 		}
 		switch part.FormName() {
-		case "endpoint", "completion_window":
-			raw, _ := io.ReadAll(io.LimitReader(part, 64))
-			if part.FormName() == "endpoint" {
+		case "endpoint", "completion_window", "model":
+			raw, _ := io.ReadAll(io.LimitReader(part, 256))
+			switch part.FormName() {
+			case "endpoint":
 				endpoint = strings.TrimSpace(string(raw))
-			} else {
+			case "model":
+				model = strings.TrimSpace(string(raw))
+			default:
 				window = strings.TrimSpace(string(raw))
 			}
 		case "file":
@@ -50,7 +53,7 @@ func (s *Service) CreateFromUpload(owner Owner, mr *multipart.Reader) (Batch, er
 	if saved == nil {
 		return Batch{}, invalid("missing_required_parameter", "file", "file is required")
 	}
-	b, err := s.CreateBatch(owner, CreateRequest{InputFileID: saved.ID, Endpoint: endpoint, CompletionWindow: window})
+	b, err := s.CreateBatch(owner, CreateRequest{InputFileID: saved.ID, Endpoint: endpoint, CompletionWindow: window, Model: model})
 	if err != nil {
 		s.discard(owner, saved)
 		return Batch{}, err

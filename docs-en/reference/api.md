@@ -1618,7 +1618,7 @@ For the procedure, the result file format, and the retry rules, see [Run Batches
 | GET | `/api/v1/batches` | List batches, newest first, as the paged structure `{items,page,page_size,total}`. `state` is one of the 8 statuses; separate several values with commas; an invalid value returns 400 `LIST_FILTER_INVALID`; `q` is not supported and also returns 400 `LIST_FILTER_INVALID`. Administrators see every user's batches; other users see only their own. List items do not include `input_filename` | JWT |
 | GET | `/api/v1/batches/{id}` | Batch details, including `input_filename`; a missing batch, or one that is not yours (administrators excepted), returns 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | Download a batch file; `kind` is `input`, `output`, or `error`; the response is JSON Lines (`application/x-ndjson`, with an attachment filename); an invalid `kind` returns 400 `BATCH_REQUEST_INVALID`; a missing or deleted file returns 404 `BATCH_NOT_FOUND` | JWT |
-| POST | `/api/v1/batches` | Create a batch: `multipart/form-data` with the fields `file` (JSONL) and `endpoint`; the file is validated line by line on upload, and success returns 201 and the batch object. The batch belongs to the signed-in user | JWT(admin) |
+| POST | `/api/v1/batches` | Create a batch: `multipart/form-data` with the fields `file` (JSONL), `endpoint`, and optionally `completion_window` (a whole number of hours from `1h` to `72h`, `24h` by default; an invalid one returns 400 `BATCH_REQUEST_INVALID` with `params.field` `completion_window`) and `model` (when set, the `body.model` of every request is replaced by it; it must be the served model name of a running or sleeping deployment, otherwise 400 `BATCH_MODEL_UNKNOWN`); the file is validated line by line on upload, and success returns 201 and the batch object, with `warnings` when the chosen model's deployment sleeps by an operator's order (a request does not wake it). The batch belongs to the signed-in user | JWT(admin) |
 | POST | `/api/v1/batches/{id}/cancel` | Cancel a batch; returns the batch object with status `cancelling`; a batch that has ended returns 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
 
 Reading (GET) works with a read-only platform token; writing needs the administrator role (otherwise 403 `ADMINISTRATOR_REQUIRED`) and a platform token with write scope (otherwise 403 `PLATFORM_TOKEN_READ_ONLY`).
@@ -1631,12 +1631,14 @@ The batch object (RFC3339 times; time fields not yet reached are omitted, as are
 | `status` | `validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled` |
 | `input_file_id`, `input_filename` | Input file ID; the file name appears only in detail, create, and cancel responses |
 | `output_file_id`, `error_file_id` | Output and error file IDs, present once the file exists |
-| `completion_window` | Always `24h` |
+| `completion_window` | The completion window chosen at creation, a whole number of hours from `1h` to `72h`, `24h` by default |
+| `model` | The model chosen at creation: every request is sent to it and the line's own `body.model` is replaced; absent when none was chosen and each line uses its own |
 | `request_counts` | `{total, completed, failed}`, updated about every 5 seconds; a request being retried is counted in neither |
 | `metadata` | An object of string to string, `{}` when there is none |
 | `failure` | `{code, message}`, present only in the `failed` status |
+| `warnings` | Findings at creation that do not stop the batch; present only in the create response, for example `[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"qwen3-offline"}}]`: the chosen model's deployment sleeps by an operator's or a schedule's order, which a request does not wake |
 | `user_id`, `api_key_id` | The creator; a batch created from the console has no `api_key_id` |
-| `created_at`, `expires_at` | Creation time and expiry time (24 hours after creation) |
+| `created_at`, `expires_at` | Creation time and expiry time (creation time plus the completion window) |
 | `in_progress_at`, `finalizing_at`, `completed_at`, `failed_at`, `expired_at`, `cancelling_at`, `cancelled_at` | When each stage was reached |
 
 ```json
@@ -1651,6 +1653,7 @@ Product error codes:
 | `BATCH_NOT_CANCELLABLE` | 409 | The batch has ended |
 | `BATCH_FILE_INVALID` | 400 | The input file is invalid; `params` is `{line, reason, detail}`, `line` 0 means the file as a whole, and `reason` is one of the validation error codes below |
 | `BATCH_FILE_TOO_LARGE` | 413 | The file exceeds the limit; `params` is `{limit_mb}` |
+| `BATCH_MODEL_UNKNOWN` | 400 | The `model` chosen at creation is served by no running or sleeping deployment; `params` is `{model}`. A stopped deployment does not count |
 | `BATCH_REQUEST_INVALID` | 400 | A field of the request is invalid; `params` is `{field, reason}`, for example not multipart, `file` missing, `endpoint` unsupported, or `endpoint` different from the `url` in the file |
 
 Files are stored under `batch-files/` in the server data directory.
@@ -1687,8 +1690,9 @@ The request body for creating a batch:
 |---|---|
 | `input_file_id` | Required. A file with `purpose` `batch` that the caller can see; otherwise 400 `file_not_found` (`param` is `input_file_id`) |
 | `endpoint` | Required, one of `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, and equal to the `url` of every line in the file; otherwise 400 `endpoint_mismatch` |
-| `completion_window` | Required, only `"24h"`; otherwise 400 `invalid_completion_window` |
+| `completion_window` | Required: `"24h"` (OpenAI's value) or a whole number of hours from `"1h"` to `"72h"` without leading zeros (a gpuworks extension); otherwise 400 `invalid_completion_window` (`param` is `completion_window`). `expires_at` is `created_at` plus this time |
 | `metadata` | Optional, an object of string to string with at most 16 keys, keys of 1–64 characters, and values of at most 512 characters; otherwise 400 `invalid_metadata` |
+| `model` | A gpuworks extension, optional. A served model name: every request is sent to it and the line's own `body.model` is replaced; omitted, each line uses its own model. It must be the served model name of a running or sleeping deployment, otherwise 400 `model_not_found` (`param` is `model`). A deployment that sleeps by an operator's or a schedule's order (a request does not wake it) is still accepted, and the create response carries `warnings` |
 
 All times in the batch object are Unix seconds, and `null` when not yet reached:
 
@@ -1696,8 +1700,9 @@ All times in the batch object are Unix seconds, and `null` when not yet reached:
 {"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
 ```
 
+- A batch object created with a `model` has an extra `model` field (absent when none was chosen), and the create response has an extra `warnings` array `[{"code":"model_sleep_held","message":"…","param":"model"}]` when needed; other reads do not carry it. Both fields are gpuworks extensions that the official SDKs ignore.
 - `id` is `batch_` plus 24 hexadecimal digits; `metadata` is `null` when there is none; `errors` is normally `null` and, in the `failed` status, is `{"object":"list","data":[{"code","message","param":null,"line":null}]}`.
-- `status` values: `validating` (waiting for an execution slot; at most 32 batches run at once across the server), `in_progress`, `finalizing`, `completed`, `failed` (only because of a platform fault, such as the input file disappearing), `expired` (more than 24 hours passed; requests without a result go to the error file with the code `batch_expired`), `cancelling`, `cancelled`.
+- `status` values: `validating` (waiting for an execution slot; at most 32 batches run at once across the server), `in_progress`, `finalizing`, `completed`, `failed` (only because of a platform fault, such as the input file disappearing), `expired` (the completion window passed; requests without a result go to the error file with the code `batch_expired`), `cancelling`, `cancelled`.
 - Cancellation: no new requests are sent, in-flight requests get up to 2 more minutes, and then the batch ends as `cancelled`, with the results so far kept in the output and error files.
 
 **Input file validation**: the file is validated while it is received and the first error rejects it. The error carries `line`, its `message` starts with `Line N: `, and a rejected upload leaves no file behind.
@@ -1736,7 +1741,7 @@ Errors of the upload request itself, all 400: `invalid_content_type`, `invalid_m
 
 | Status | `code` | Scenario |
 |---|---|---|
-| 400 | `invalid_json`, `invalid_limit`, `invalid_order`, `invalid_endpoint`, `invalid_completion_window`, `invalid_metadata`, `endpoint_mismatch`, `file_not_found`, `invalid_purpose` | Invalid batch creation or list parameters; the input file validation codes are listed above |
+| 400 | `invalid_json`, `invalid_limit`, `invalid_order`, `invalid_endpoint`, `invalid_completion_window`, `invalid_metadata`, `endpoint_mismatch`, `file_not_found`, `invalid_purpose`, `model_not_found` | Invalid batch creation or list parameters; the input file validation codes are listed above |
 | 401 | `invalid_api_key` | The API key is missing or invalid |
 | 404 | `file_not_found`, `batch_not_found`, `not_found` | The object does not exist or does not belong to the caller; unknown path |
 | 405 | `method_not_allowed` | The path does not support the method |

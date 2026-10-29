@@ -1617,7 +1617,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
 | GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
-| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）和 `endpoint`；上传时逐行校验，成功返回 201 和任务对象。任务属于当前登录用户 | JWT(admin) |
+| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）、`endpoint`，可选 `completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个运行中或休眠中的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`）；上传时逐行校验，成功返回 201 和任务对象，所选模型的部署是手动休眠（请求不会唤醒）时响应带 `warnings`。任务属于当前登录用户 | JWT(admin) |
 | POST | `/api/v1/batches/{id}/cancel` | 取消任务，返回带 `cancelling` 状态的任务对象；已结束的任务返回 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
 
 读取（GET）使用只读平台令牌即可；写入需要管理员角色（否则 403 `ADMINISTRATOR_REQUIRED`）和读写范围的平台令牌（否则 403 `PLATFORM_TOKEN_READ_ONLY`）。
@@ -1630,12 +1630,14 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `status` | `validating`、`in_progress`、`finalizing`、`completed`、`failed`、`expired`、`cancelling`、`cancelled` |
 | `input_file_id`、`input_filename` | 输入文件 ID；文件名只在详情、创建和取消的响应里出现 |
 | `output_file_id`、`error_file_id` | 输出、错误文件 ID，文件存在后才有 |
-| `completion_window` | 固定为 `24h` |
+| `completion_window` | 创建时选的完成时限，`1h` 到 `72h` 的整小时，默认 `24h` |
+| `model` | 创建时指定的模型：每个请求发往它，行里自己的 `body.model` 被替换；没有指定时不出现，各行用自己的模型 |
 | `request_counts` | `{total, completed, failed}`，约每 5 秒更新一次；重试中的请求两者都不计 |
 | `metadata` | 字符串到字符串的对象，没有时为 `{}` |
 | `failure` | `{code, message}`，仅 `failed` 状态有 |
+| `warnings` | 创建时不阻止任务的提示，只在创建的响应里出现，形如 `[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"qwen3-offline"}}]`：指定的模型的部署被人工或定时计划休眠，请求不会唤醒它 |
 | `user_id`、`api_key_id` | 创建者；从控制台创建时没有 `api_key_id` |
-| `created_at`、`expires_at` | 创建时间与过期时间（创建后 24 小时） |
+| `created_at`、`expires_at` | 创建时间与过期时间（创建时间加完成时限） |
 | `in_progress_at`、`finalizing_at`、`completed_at`、`failed_at`、`expired_at`、`cancelling_at`、`cancelled_at` | 各阶段到达的时间 |
 
 ```json
@@ -1650,6 +1652,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `BATCH_NOT_CANCELLABLE` | 409 | 任务已结束 |
 | `BATCH_FILE_INVALID` | 400 | 输入文件无效；`params` 为 `{line, reason, detail}`，`line` 为 0 表示整个文件，`reason` 是下文的校验错误码 |
 | `BATCH_FILE_TOO_LARGE` | 413 | 文件超过上限；`params` 为 `{limit_mb}` |
+| `BATCH_MODEL_UNKNOWN` | 400 | 创建时指定的 `model` 没有运行中或休眠中的部署使用；`params` 为 `{model}`。已停止的部署不算 |
 | `BATCH_REQUEST_INVALID` | 400 | 请求的某个字段无效；`params` 为 `{field, reason}`，例如不是 multipart、缺少 `file`、`endpoint` 不被支持、`endpoint` 与文件内的 `url` 不一致 |
 
 文件保存在 server 数据目录的 `batch-files/` 下。
@@ -1686,8 +1689,9 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 |---|---|
 | `input_file_id` | 必填。`purpose` 为 `batch`、调用者可见的文件，否则 400 `file_not_found`（`param` 为 `input_file_id`） |
 | `endpoint` | 必填，`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 之一，且等于文件内每一行的 `url`，否则 400 `endpoint_mismatch` |
-| `completion_window` | 必填，只能是 `"24h"`，否则 400 `invalid_completion_window` |
+| `completion_window` | 必填，`"24h"`（OpenAI 的取值）或 `"1h"` 到 `"72h"` 的整小时（gpuworks 扩展，不带前导零），否则 400 `invalid_completion_window`（`param` 为 `completion_window`）。`expires_at` 是 `created_at` 加这段时间 |
 | `metadata` | 可选，字符串到字符串的对象，最多 16 个键，键 1–64 个字符，值至多 512 个字符，否则 400 `invalid_metadata` |
+| `model` | gpuworks 扩展，可选。对外模型名，每个请求发往它，行里自己的 `body.model` 被替换；省略则各行用自己的模型。必须是某个运行中或休眠中的部署的对外模型名，否则 400 `model_not_found`（`param` 为 `model`）。该部署被人工或定时计划休眠（请求不会唤醒）时仍然接受，创建的响应带 `warnings` |
 
 任务对象的时间都是 Unix 秒，还没到达的为 `null`：
 
@@ -1695,8 +1699,9 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 {"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
 ```
 
+- 指定了 `model` 的任务对象多一个 `model` 字段（没指定时不出现）；创建的响应在需要时多一个 `warnings` 数组 `[{"code":"model_sleep_held","message":"…","param":"model"}]`，其他读取不带。这两个字段是 gpuworks 扩展，官方 SDK 会忽略它们。
 - `id` 是 `batch_` 加 24 位十六进制；没有 `metadata` 时为 `null`；`errors` 平时为 `null`，`failed` 状态下是 `{"object":"list","data":[{"code","message","param":null,"line":null}]}`。
-- `status` 取值：`validating`（排队等执行名额，全 server 同时最多执行 32 个任务）、`in_progress`、`finalizing`、`completed`、`failed`（只因平台故障，例如输入文件消失）、`expired`（超过 24 小时，没有结果的请求写入错误文件，错误码 `batch_expired`）、`cancelling`、`cancelled`。
+- `status` 取值：`validating`（排队等执行名额，全 server 同时最多执行 32 个任务）、`in_progress`、`finalizing`、`completed`、`failed`（只因平台故障，例如输入文件消失）、`expired`（超过完成时限，没有结果的请求写入错误文件，错误码 `batch_expired`）、`cancelling`、`cancelled`。
 - 取消：不再发送新请求，在途请求最多再等 2 分钟，之后任务以 `cancelled` 结束，已有结果留在输出文件和错误文件里。
 
 **输入文件校验**：上传时边收边校验，第一处错误即拒绝，错误带 `line`，`message` 以 `Line N: ` 开头，被拒绝的上传不留下任何文件。
@@ -1735,7 +1740,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 
 | 状态 | `code` | 场景 |
 |---|---|---|
-| 400 | `invalid_json`、`invalid_limit`、`invalid_order`、`invalid_endpoint`、`invalid_completion_window`、`invalid_metadata`、`endpoint_mismatch`、`file_not_found`、`invalid_purpose` | 创建任务或列表参数不合法；输入文件校验的错误码见上 |
+| 400 | `invalid_json`、`invalid_limit`、`invalid_order`、`invalid_endpoint`、`invalid_completion_window`、`invalid_metadata`、`endpoint_mismatch`、`file_not_found`、`invalid_purpose`、`model_not_found` | 创建任务或列表参数不合法；输入文件校验的错误码见上 |
 | 401 | `invalid_api_key` | 缺少或无效的 API key |
 | 404 | `file_not_found`、`batch_not_found`、`not_found` | 对象不存在或不属于调用者；未知路径 |
 | 405 | `method_not_allowed` | 方法不被该路径支持 |

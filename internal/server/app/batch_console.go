@@ -8,6 +8,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/batch"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // batchConsole is the console's side of the Batch API (api.BatchService) over
@@ -78,12 +79,17 @@ func batchDTO(b batch.Batch, inputName string) dto.Batch {
 		ID: b.ID, Endpoint: b.Endpoint, Status: b.Status, InputFileID: b.InputFileID, InputFilename: inputName,
 		OutputFileID: b.OutputFileID, ErrorFileID: b.ErrorFileID, CompletionWindow: b.CompletionWindow,
 		RequestCounts: dto.BatchRequestCount{Total: b.Total, Completed: b.Completed, Failed: b.Failed},
-		Metadata:      map[string]string{}, UserID: b.UserID, APIKeyID: b.APIKeyID,
+		Model:         b.Model, Metadata: map[string]string{}, UserID: b.UserID, APIKeyID: b.APIKeyID,
 		CreatedAt: b.CreatedAt, ExpiresAt: b.ExpiresAt, InProgressAt: b.InProgressAt, FinalizingAt: b.FinalizingAt,
 		CompletedAt: b.CompletedAt, FailedAt: b.FailedAt, ExpiredAt: b.ExpiredAt, CancellingAt: b.CancellingAt, CancelledAt: b.CancelledAt,
 	}
 	for k, v := range b.Metadata {
 		out.Metadata[k] = v
+	}
+	for _, w := range b.Warnings {
+		if w.Code == batch.WarningModelSleepHeld {
+			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelSleepHeld, Params: map[string]any{"model": b.Model}})
+		}
 	}
 	if b.ErrorCode != "" {
 		out.Failure = &dto.BatchFailure{Code: b.ErrorCode, Message: b.ErrorMessage}
@@ -103,6 +109,9 @@ func consoleBatchError(err error) error {
 	switch {
 	case be.Status == http.StatusNotFound:
 		out.Code = api.ErrorBatchNotFound
+	case be.Code == "model_not_found":
+		out.Code = api.ErrorBatchModelUnknown
+		out.Params = map[string]any{"model": be.Model}
 	case be.Code == "batch_not_cancellable":
 		out.Code = api.ErrorBatchNotCancellable
 	case be.Status == http.StatusRequestEntityTooLarge:

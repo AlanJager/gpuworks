@@ -42,6 +42,8 @@ type Config struct {
 	// SweepEvery spaces the removals of expired output files (1h).
 	SweepEvery time.Duration
 	Clock      Clock
+	// Models checks the model a batch is created with; nil accepts any name.
+	Models Models
 	// Jitter spreads a backoff; the default is ±20% at random.
 	Jitter func(time.Duration) time.Duration
 	Log    *slog.Logger

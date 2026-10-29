@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 func TestBatchWire(t *testing.T) {
@@ -42,6 +44,23 @@ func TestBatchWire(t *testing.T) {
 				UserID: 1, CreatedAt: created, ExpiresAt: created.Add(24 * time.Hour), InProgressAt: &started, FinalizingAt: &done, CompletedAt: &done,
 			},
 			wire: `{"id":"batch_3","endpoint":"/v1/completions","status":"completed","input_file_id":"file-in","output_file_id":"file-out","error_file_id":"file-err","completion_window":"24h","request_counts":{"total":2,"completed":1,"failed":1},"metadata":{},"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z","in_progress_at":"2026-10-28T09:00:01Z","finalizing_at":"2026-10-28T10:00:00Z","completed_at":"2026-10-28T10:00:00Z"}`,
+		},
+		{
+			name: "a batch given a model names it, and a create response carries its warnings",
+			in: Batch{
+				ID: "batch_4", Endpoint: "/v1/chat/completions", Status: "validating", InputFileID: "file-in", CompletionWindow: "24h", Model: "qwen-chat",
+				Metadata: map[string]string{}, UserID: 1, CreatedAt: created, ExpiresAt: created.Add(24 * time.Hour),
+				Warnings: []messages.Warning{{Code: "BATCH_MODEL_SLEEP_HELD", Params: map[string]any{"model": "qwen-chat"}}},
+			},
+			wire: `{"id":"batch_4","endpoint":"/v1/chat/completions","status":"validating","input_file_id":"file-in","completion_window":"24h","model":"qwen-chat","request_counts":{"total":0,"completed":0,"failed":0},"metadata":{},"warnings":[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"qwen-chat"}}],"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z"}`,
+		},
+		{
+			name: "a batch with a longer completion window expires that much later",
+			in: Batch{
+				ID: "batch_5", Endpoint: "/v1/embeddings", Status: "validating", InputFileID: "file-in", CompletionWindow: "72h",
+				Metadata: map[string]string{}, UserID: 1, CreatedAt: created, ExpiresAt: created.Add(72 * time.Hour),
+			},
+			wire: `{"id":"batch_5","endpoint":"/v1/embeddings","status":"validating","input_file_id":"file-in","completion_window":"72h","request_counts":{"total":0,"completed":0,"failed":0},"metadata":{},"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-31T09:00:00Z"}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

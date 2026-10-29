@@ -59,6 +59,26 @@ test("create posts the file and the endpoint as multipart fields", async () => {
   assert.equal((form.get("file") as File).name, "reqs.jsonl");
 });
 
+test("create adds the model field only when a model is chosen", async () => {
+  const seen = fake(201, batch({ status: "validating", model: "qwen-chat" }));
+  const file = new File(["x"], "reqs.jsonl");
+  const created = await batchApi.create(file, "/v1/chat/completions", { model: "qwen-chat" });
+  assert.equal(created.model, "qwen-chat");
+  assert.deepEqual([...(seen[0].body as FormData).keys()].sort(), ["endpoint", "file", "model"]);
+  assert.equal((seen[0].body as FormData).get("model"), "qwen-chat");
+  await batchApi.create(file, "/v1/chat/completions", { model: "" });
+  assert.deepEqual([...(seen[1].body as FormData).keys()].sort(), ["endpoint", "file"]);
+});
+
+test("create sends the completion window in hours as completion_window", async () => {
+  const seen = fake(201, batch({ status: "validating", completion_window: "72h" }));
+  const file = new File(["x"], "reqs.jsonl");
+  const created = await batchApi.create(file, "/v1/chat/completions", { completionWindowHours: 72 });
+  assert.equal(created.completion_window, "72h");
+  assert.deepEqual([...(seen[0].body as FormData).keys()].sort(), ["completion_window", "endpoint", "file"]);
+  assert.equal((seen[0].body as FormData).get("completion_window"), "72h");
+});
+
 test("create raises the product error with its code and params", async () => {
   fake(400, { error: "line 7: custom_id is missing", code: "BATCH_FILE_INVALID", params: { line: 7, reason: "missing_custom_id", detail: "line 7: custom_id is missing" } });
   const failure = await batchApi.create(new File(["x"], "r.jsonl"), "/v1/completions").catch((e: unknown) => e);

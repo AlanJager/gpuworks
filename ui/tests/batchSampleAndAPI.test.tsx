@@ -33,10 +33,10 @@ beforeEach(() => {
   batchApi.list = (async () => page([])) as never;
   api.deployments = (async () => ({
     items: [
-      { id: 1, served_name: "qwen-chat", state: "active" },
-      { id: 2, served_name: "stopped-one", state: "stopped" },
-      { id: 3, served_name: "qwen-chat", state: "active" },
-      { id: 4, served_name: "embedder", state: "active" },
+      { id: 1, served_name: "qwen-chat", desired_state: "active", runtime_state: "running", state: "running" },
+      { id: 2, served_name: "stopped-one", desired_state: "stopped", runtime_state: "stopped", state: "stopped" },
+      { id: 3, served_name: "qwen-chat", desired_state: "active", runtime_state: "running", state: "running" },
+      { id: 4, served_name: "embedder", desired_state: "active", runtime_state: "running", state: "running" },
     ],
     total: 4,
   })) as never;

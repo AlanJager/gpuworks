@@ -6,7 +6,7 @@ This guide explains how to hand a large set of inference requests to the platfor
 
 **Prerequisites**:
 
-- A running deployment whose served model name you know. A batch routes by the `model` in each request line, exactly as a direct gateway call does.
+- A running deployment whose served model name you know. A batch routes by the `model` in each request line, exactly as a direct gateway call does; you can also choose one model when creating the batch so that all requests go to it, see [Choosing the Model](#指定模型).
 - An inference token (starting with `gw-`), created on the **Inference tokens** card of the **API Tokens** page; the plaintext is shown only once. When the server has no inference token configured, the `/v1` routes need no authentication, like the rest of the gateway.
 - Creating or cancelling a batch in the console requires an administrator (the create button is disabled for other roles); other users can view their own batches in the console.
 - For the interface specification (object fields, error codes, limits), see [Complete REST API Routes](../reference/api.md#batches批处理任务).
@@ -19,7 +19,7 @@ A batch is a set of requests from one JSONL file. The flow is always three steps
 2. Create a batch from that file (`POST /v1/batches`) and get a batch ID.
 3. When the batch ends, fetch the results from the output file and the error file.
 
-Three endpoints are supported: `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings`; all requests in one batch must use the same endpoint. Streaming (`"stream": true`) is not supported. The completion window is fixed at `24h`: requests without a result 24 hours after the batch was created are treated as expired.
+Three endpoints are supported: `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings`; all requests in one batch must use the same endpoint. Streaming (`"stream": true`) is not supported. The completion window is `24h` by default and can be set to a whole number of hours from `1h` to `72h` when creating the batch (see [Completion Window](#完成时限)): requests without a result once that time has passed since the batch was created are treated as expired.
 
 A batch's requests take the same gateway path as a client's request: a replica is chosen by `model`, a sleeping deployment is woken when necessary, and usage and request records are counted. They therefore appear in the request views and reset the deployment's idle-sleep timer.
 
@@ -151,12 +151,45 @@ Cancel with `client.batches.cancel(batch.id)` and list with `client.batches.list
 
 The **Batches** page in the **Inference Services** group of the left menu runs a batch without code. **Call it through the API** at the top of the page expands to the curl and SDK calls above, for the address you opened the console from; the usage note on the **API Keys** page points to these endpoints too.
 
-1. Click **Create batch**, choose the `.jsonl` file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason. Without a file at hand, pick an active deployment under **Sample file** in the dialog and click **Download sample** for a 5-request `.jsonl` sample, or **Use sample** to create a batch with it as is.
-2. The list shows each batch's ID, status, endpoint, progress (completed out of total, with the failure count), creation time, and expiry time; use **Filter by status** to narrow it.
+1. Click **Create batch**, choose the `.jsonl` file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason. The **Model** drop-down sets the model every request uses (see [Choosing the Model](#指定模型)), and **Completion window** changes the batch's time limit (see [Completion Window](#完成时限)). Without a file at hand, pick a deployment under **Sample file** in the dialog (the sample uses the **Model** when one is chosen) and click **Download sample** for a 5-request `.jsonl` sample, or **Use sample** to create a batch with it as is.
+2. The list shows each batch's ID, status, endpoint, model (shown only when one was chosen, otherwise "Per file line"), progress (completed out of total, with the failure count), creation time, and expiry time; use **Filter by status** to narrow it.
 3. Click a row to open the detail drawer: summary, request counts, the timeline of stages, metadata, and **Download input**, **Download output**, and **Download errors**. A failed batch (`failed`) also shows the failure reason.
 4. While a batch has not ended, click **Cancel batch** and confirm in the page.
 
 A batch created in the console belongs to the signed-in user and, like one created with an API token, can be viewed through `/v1/batches` with any inference token of the same user. Administrators see every user's batches; other users see only their own.
+
+## Choosing the Model
+
+The `body.model` on each line of the input file decides which deployment it goes to. To hand the whole file to one model, choose the model when creating the batch instead of editing the file:
+
+- **Console**: the **Model** drop-down in the create dialog (optional; leave it empty to **use the model on each line of the file**).
+- **`/v1/batches`**: one more field in the request body, `model`, a gpuworks extension; with the official SDK, put it in `extra_body={"model": "qwen3-offline"}`. Omitted, each line uses its own model.
+
+```bash
+curl -sS "$GPUWORKS_URL/v1/batches" \
+  -H "Authorization: Bearer $GPUWORKS_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","endpoint":"/v1/chat/completions","completion_window":"24h","model":"qwen3-offline"}'
+```
+
+With a model chosen, the platform sets the `body.model` of every request (retries included) to that name just before sending it and leaves the rest of the request alone; each line of the file still needs a `body.model` (upload validation is unchanged), whatever it says. The batch object gains a `model` field (the console's list and detail show it too), absent when none was chosen.
+
+The chosen model must be the served model name of a running or sleeping deployment; a stopped or unknown one returns 400 (`BATCH_MODEL_UNKNOWN` in the console, `model_not_found` on `/v1`) and no batch is created. A sleeping deployment can be chosen:
+
+- One the platform put to sleep itself (idle sleep, yielding cards): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
+- One you or a schedule put to sleep (`sleep_held` is `true` in the deployment detail): a request does **not** wake it. The batch is still created, but the create response carries `warnings` (the console shows a notice), and the requests are retried until someone wakes the deployment or the batch expires. The console's drop-down marks such a deployment "Asleep (held, requests do not wake it)".
+
+**Checking the models in the file**: after you choose a file in the console, the browser reads it (when it is at most 50 MB) and lists every model it uses. With no model chosen, if some model has no available deployment on the platform, a warning names those models, and their requests would get 404 into the error file; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check never blocks submitting, and files over 50 MB are not checked.
+
+## Completion Window
+
+The completion window decides how long a batch has from its creation: `expires_at` is the creation time plus the window, and requests without a result by then are treated as expired (see [Statuses, Cancellation, and Expiry](#状态取消与过期)). The default is `24h`; for a tighter or looser limit, set it to a whole number of hours from `1h` to `72h`:
+
+- **Console**: **Completion window** in the create dialog (hours, 1–72, 24 by default); the format hint in the dialog follows it.
+- **`/v1/batches`**: `completion_window` in the request body is `"24h"` (OpenAI's value) or `"1h"` to `"72h"` (a gpuworks extension; with the official SDK you can override the parameter with `extra_body={"completion_window": "48h"}`).
+- Anything else (`0h`, `73h`, `1d`, `90m`, `24H`, leading zeros or fractions) returns 400 `invalid_completion_window` (`BATCH_REQUEST_INVALID` in the console, with `params.field` set to `completion_window`).
+
+The batch object and the console detail both show its `completion_window`. The 30-day retention of the output and error files counts from when the batch ends and does not depend on the window.
 
 ## Statuses, Cancellation, and Expiry
 
@@ -167,13 +200,13 @@ A batch created in the console belongs to the signed-in user and, like one creat
 | `finalizing` | Every request has a result; the output and error files are being written |
 | `completed` | Ended; every request has a result (success or failure) |
 | `failed` | A platform fault, such as the input file disappearing; `errors` gives the reason |
-| `expired` | 24 hours passed after creation; requests without a result go to the error file with the code `batch_expired` |
+| `expired` | The completion window (24 hours by default) passed after creation; requests without a result go to the error file with the code `batch_expired` |
 | `cancelling` | Cancellation requested: no new requests are sent, and requests already in flight get up to 2 more minutes |
 | `cancelled` | Cancellation finished; the results so far are in the output and error files |
 
 Cancel with `POST /v1/batches/{id}/cancel` (in the console, **Cancel batch** in the detail drawer). Cancelling a batch that has already ended returns 409 `batch_not_cancellable`.
 
-A batch's `expires_at` is its creation time plus 24 hours. A server restart does not lose batches: unfinished ones resume from the latest progress checkpoint, and requests that already have a result are not sent again.
+A batch's `expires_at` is its creation time plus its completion window (24 hours by default). A server restart does not lose batches: unfinished ones resume from the latest progress checkpoint, and requests that already have a result are not sent again.
 
 ## Reading the Result Files
 
@@ -229,7 +262,7 @@ How a batch interacts with an offline deployment:
 - Files and batches belong to the user that owns the API token that created them; any inference token of the same user sees them, and other users get 404. Administrators see every user's batches in the console.
 - Concurrency: 8 concurrent requests per batch and 64 in-flight requests across all batches.
 - Files are stored under `batch-files/` in the server data directory and use server disk; `GET /v1/files` lists your own files, so delete input files you no longer need.
-- The completion window can only be `24h`.
+- The completion window is a whole number of hours from `1h` to `72h`, `24h` by default.
 
 ## Troubleshooting
 
@@ -237,6 +270,8 @@ How a batch interacts with an offline deployment:
 |---|---|
 | Upload returns 400 with `Line N` | Fix the file by the line number and error code, for example `duplicate_custom_id`, `streaming_not_supported`, `invalid_url` |
 | Creating a batch returns 400 `endpoint_mismatch` | `endpoint` must equal the `url` of every line in the file |
+| Creating a batch returns 400 `model_not_found` (`BATCH_MODEL_UNKNOWN` in the console) | No running or sleeping deployment serves the chosen `model`; check the served model name and whether the deployment was stopped |
+| Creating a batch returns 400 `invalid_completion_window` | `completion_window` must be a whole number of hours from `1h` to `72h`, such as `"48h"` |
 | Creating a batch returns 400 `file_not_found` | The file ID is wrong, or the file is not a `purpose=batch` file of the same user |
 | The batch stays in `validating` | 32 batches are already executing across the server; it is waiting for a slot |
 | The batch stays in `in_progress` and the counts do not move | The deployment may be asleep or have yielded its cards; check the deployment timeline and the scheduling center. Requests are being retried and do not count as failures |

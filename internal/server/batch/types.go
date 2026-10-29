@@ -10,6 +10,8 @@ package batch
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -47,6 +49,24 @@ const (
 	EndpointEmbedding  = "/v1/embeddings"
 	CompletionWindow   = "24h"
 )
+
+// The completion windows a batch may ask for, in whole hours: "24h" is OpenAI's
+// and the default, "1h" to "72h" are a gpuworks extension.
+const (
+	MinWindowHours = 1
+	MaxWindowHours = 72
+)
+
+// ParseWindow reads a completion window of the form "<hours>h" with whole
+// hours from MinWindowHours to MaxWindowHours, written without leading zeros.
+func ParseWindow(s string) (time.Duration, bool) {
+	hours, found := strings.CutSuffix(s, "h")
+	n, err := strconv.Atoi(hours)
+	if !found || err != nil || strconv.Itoa(n) != hours || n < MinWindowHours || n > MaxWindowHours {
+		return 0, false
+	}
+	return time.Duration(n) * time.Hour, true
+}
 
 // Endpoints is the set of urls an input file's requests may ask for.
 var Endpoints = []string{EndpointChat, EndpointCompletion, EndpointEmbedding}
@@ -95,6 +115,9 @@ type Batch struct {
 	OutputFileID     string
 	ErrorFileID      string
 	CompletionWindow string
+	// Model is the served name every request is sent to, replacing its line's
+	// own body.model; empty when each line names its own.
+	Model            string
 	Status           string
 	ErrorCode        string
 	ErrorMessage     string
@@ -112,6 +135,23 @@ type Batch struct {
 	ExpiredAt        *time.Time
 	CancellingAt     *time.Time
 	CancelledAt      *time.Time
+	// Warnings are the non-blocking findings of creating the batch; set on the
+	// batch CreateBatch returns, never stored.
+	Warnings []Warning
+}
+
+// Warning codes of a created batch.
+const (
+	// WarningModelSleepHeld: the model's deployment sleeps by an operator's or
+	// a schedule's order, which a request does not wake; its requests are
+	// retried until someone wakes it or the batch expires.
+	WarningModelSleepHeld = "model_sleep_held"
+)
+
+// Warning is a finding about a batch that does not refuse it.
+type Warning struct {
+	Code    string
+	Message string
 }
 
 // Owner is the owner a batch acts for when it sends requests.
@@ -164,6 +204,25 @@ type Repo interface {
 	DeleteOutputsBefore(cutoff time.Time) ([]string, error)
 }
 
+// ModelState is what a served model name is on the platform.
+type ModelState int
+
+const (
+	// ModelUnknown: no active deployment serves the name.
+	ModelUnknown ModelState = iota
+	// ModelAvailable: an active deployment serves it, running or asleep in a
+	// way a request wakes (the gateway holds the request and wakes it).
+	ModelAvailable
+	// ModelSleepHeld: every active deployment serving it sleeps by an
+	// operator's or a schedule's order, which a request does not wake.
+	ModelSleepHeld
+)
+
+// Models looks a served model name up among the platform's deployments.
+type Models interface {
+	Lookup(name string) (ModelState, error)
+}
+
 // Reply is what sending one request came to.
 type Reply struct {
 	// Status is the HTTP status, 0 when no response came.
@@ -206,6 +265,8 @@ type Error struct {
 	Code    string
 	Message string
 	Param   string
+	// Model is the model name a refusal about a model names.
+	Model string
 	// Line is the line of the input file the error is about, 0 for none.
 	Line int
 }

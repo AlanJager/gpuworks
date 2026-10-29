@@ -63,7 +63,10 @@ type Batch struct {
 	OutputFileID     string `gorm:"size:48;not null;default:''"`
 	ErrorFileID      string `gorm:"size:48;not null;default:''"`
 	CompletionWindow string `gorm:"size:8;not null"`
-	Status           string `gorm:"size:16;not null;index"`
+	// ModelOverride is the served name every request of the batch is sent to,
+	// replacing its line's own body.model; empty when each line names its own.
+	ModelOverride string `gorm:"size:128;not null;default:''"`
+	Status        string `gorm:"size:16;not null;index"`
 	// ErrorCode and ErrorMessage say why a failed batch failed.
 	ErrorCode        string    `gorm:"size:64;not null;default:''"`
 	ErrorMessage     string    `gorm:"size:512;not null;default:''"`

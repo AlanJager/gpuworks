@@ -267,6 +267,8 @@ type createBatchBody struct {
 	Endpoint         string            `json:"endpoint"`
 	CompletionWindow string            `json:"completion_window"`
 	Metadata         map[string]string `json:"metadata"`
+	// Model is a gpuworks extension: the served name every request is sent to.
+	Model string `json:"model"`
 }
 
 func (h *v1) createBatch(w http.ResponseWriter, r *http.Request) {

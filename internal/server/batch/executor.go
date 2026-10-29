@@ -238,6 +238,7 @@ func (r *run) dispatch(dispCtx, sendCtx context.Context) error {
 // if it got an answer.
 func (r *run) process(dispCtx, sendCtx context.Context, l requestLine) {
 	s := r.svc
+	body := withModel(l.Body, r.b.Model)
 	for attempt := 0; ; attempt++ {
 		select {
 		case s.global <- struct{}{}:
@@ -245,7 +246,7 @@ func (r *run) process(dispCtx, sendCtx context.Context, l requestLine) {
 			return
 		}
 		attemptCtx, cancel := context.WithTimeout(sendCtx, s.cfg.AttemptTimeout)
-		reply := s.send.Send(attemptCtx, r.b.Owner(), l.URL, l.Body)
+		reply := s.send.Send(attemptCtx, r.b.Owner(), l.URL, body)
 		cancel()
 		<-s.global
 		if reply.Err != nil && sendCtx.Err() != nil {
@@ -266,6 +267,25 @@ func (r *run) process(dispCtx, sendCtx context.Context, l requestLine) {
 		case <-s.cfg.Clock.After(s.cfg.Jitter(backoff(attempt, s.cfg.RetryBase, s.cfg.RetryCap, reply.RetryAfter))):
 		}
 	}
+}
+
+// withModel is body with its "model" set to model, the batch's override; a
+// batch without one, or a body that is not a JSON object, goes as it is.
+func withModel(body []byte, model string) []byte {
+	if model == "" {
+		return body
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		return body
+	}
+	name, _ := json.Marshal(model)
+	fields["model"] = name
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func (r *run) record(customID string, line []byte, succeeded bool) {

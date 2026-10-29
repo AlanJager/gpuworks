@@ -264,7 +264,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	ai.log = log
 	ai.outboundAllowPrivateHosts = append([]string(nil), cfg.OutboundAllowPrivateHosts...)
 	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
-	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Log: log})
+	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Models: batchModels{st}, Log: log})
 	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health, modelPreparation{h, ctrl})
 
 	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}

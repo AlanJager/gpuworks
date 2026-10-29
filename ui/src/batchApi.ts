@@ -34,6 +34,12 @@ export interface BatchFailure {
   message: string;
 }
 
+/** A finding that does not refuse the batch; BATCH_MODEL_SLEEP_HELD says the model's deployment sleeps by an operator's order, which requests do not wake. */
+export interface BatchWarning {
+  code: string;
+  params?: Record<string, unknown>;
+}
+
 export interface Batch {
   id: string;
   endpoint: BatchEndpoint | string;
@@ -44,9 +50,13 @@ export interface Batch {
   output_file_id?: string;
   error_file_id?: string;
   completion_window: string;
+  /** The served name every request is sent to, replacing its line's model; absent when each line names its own. */
+  model?: string;
   request_counts: BatchRequestCounts;
   metadata: Record<string, string>;
   failure?: BatchFailure;
+  /** Non-blocking findings of creating the batch; only on the create response. */
+  warnings?: BatchWarning[];
   user_id: number;
   api_key_id: number;
   created_at: string;
@@ -59,6 +69,16 @@ export interface Batch {
   cancelling_at?: string;
   cancelled_at?: string;
 }
+
+/** What the create call takes besides the file and the endpoint. */
+export interface BatchCreateOptions {
+  model?: string;
+  completionWindowHours?: number;
+  signal?: AbortSignal;
+}
+
+/** The completion windows a batch may ask for, in whole hours. */
+export const BATCH_WINDOW_HOURS = { min: 1, max: 72, default: 24 } as const;
 
 /** The limits the create form shows; the server enforces them. */
 export const BATCH_LIMITS = { maxFileMB: 200, maxRequests: 50_000 } as const;
@@ -94,11 +114,18 @@ export function batchFileURL(id: string, kind: BatchFileKind): string {
 export const batchApi = {
   list: (query: ListQuery) => getJSON<ListPage<Batch>>(`/api/v1/batches?${listQueryString(query)}`),
   get: (id: string) => getJSON<Batch>(`/api/v1/batches/${encodeURIComponent(id)}`),
-  /** Uploads the JSONL input and starts the batch (admin only). */
-  create: async (file: File, endpoint: string, signal?: AbortSignal): Promise<Batch> => {
+  /**
+   * Uploads the JSONL input and starts the batch (admin only). model, when
+   * given, replaces the model of every line; completionWindowHours is the time
+   * the batch has (the server's default is 24, BATCH_WINDOW_HOURS the range).
+   */
+  create: async (file: File, endpoint: string, options: BatchCreateOptions = {}): Promise<Batch> => {
+    const { model, completionWindowHours, signal } = options;
     const body = new FormData();
     body.append("file", file, file.name);
     body.append("endpoint", endpoint);
+    if (model) body.append("model", model);
+    if (completionWindowHours !== undefined) body.append("completion_window", `${completionWindowHours}h`);
     const res = await fetch("/api/v1/batches", { method: "POST", credentials: "include", body, signal });
     if (!res.ok) throw await localizedResponseError(res, `/api/v1/batches: ${res.status}`);
     return res.json();

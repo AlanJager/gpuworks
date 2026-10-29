@@ -93,7 +93,7 @@ test("creating a batch uploads the chosen file and endpoint, closes the dialog a
   const user = mountPage();
   const dialog = await openCreate(user);
   assert.equal(submitButton(dialog).disabled, true, "nothing to upload yet");
-  for (const hint of [b.create.hint.line, b.create.hint.unique, b.create.hint.sameUrl, b.create.hint.noStream, b.create.hint.window]) {
+  for (const hint of [b.create.hint.line, b.create.hint.unique, b.create.hint.sameUrl, b.create.hint.noStream, b.create.hint.window.replace("{{hours}}", "24")]) {
     assert.ok(within(dialog).getByText(hint));
   }
   assert.ok(within(dialog).getByText("JSON Lines, at most 200 MB and 50,000 requests."));

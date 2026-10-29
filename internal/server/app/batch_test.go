@@ -163,6 +163,7 @@ func TestConsoleBatchErrorsBecomeProductErrors(t *testing.T) {
 		{&batch.Error{Status: 400, Code: "duplicate_custom_id", Line: 4, Message: "Line 4: x"}, 400, api.ErrorBatchFileInvalid},
 		{&batch.Error{Status: 400, Code: "empty_file"}, 400, api.ErrorBatchFileInvalid},
 		{&batch.Error{Status: 400, Code: "endpoint_mismatch", Param: "endpoint"}, 400, api.ErrorBatchRequestInvalid},
+		{&batch.Error{Status: 400, Code: "model_not_found", Param: "model", Model: "ghost"}, 400, api.ErrorBatchModelUnknown},
 	} {
 		got, ok := consoleBatchError(tc.err).(*api.BatchError)
 		if !ok || got.Status != tc.status || got.Code != tc.code {

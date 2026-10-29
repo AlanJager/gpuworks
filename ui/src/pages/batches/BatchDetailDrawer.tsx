@@ -90,6 +90,7 @@ function BatchBody({ batch, canManage, onChanged }: { batch: Batch; canManage: b
             { key: "id", label: t("detail.id"), children: <Typography.Text copyable code>{batch.id}</Typography.Text> },
             { key: "status", label: t("detail.status"), children: <BatchStatusTag status={batch.status} /> },
             { key: "endpoint", label: t("detail.endpoint"), children: <Typography.Text code>{batch.endpoint}</Typography.Text> },
+            ...(batch.model ? [{ key: "model", label: t("detail.model"), children: <Typography.Text code>{batch.model}</Typography.Text> }] : []),
             { key: "window", label: t("detail.completionWindow"), children: batch.completion_window },
             ...(batch.input_filename ? [{ key: "file", label: t("detail.inputFilename"), children: batch.input_filename }] : []),
             { key: "owner", label: t("detail.owner"), children: batch.user_id },

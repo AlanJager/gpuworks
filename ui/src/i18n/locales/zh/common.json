@@ -485,6 +485,7 @@
     "BATCH_NOT_CANCELLABLE": "该批处理任务已结束，无法取消。",
     "BATCH_FILE_INVALID": "批处理输入文件无效。{{detail}}",
     "BATCH_FILE_TOO_LARGE": "批处理输入文件超过 {{limit_mb}} MB。",
+    "BATCH_MODEL_UNKNOWN": "没有运行中的部署使用模型名 {{model}}，请选择平台上已有的部署。",
     "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}"
   },
   "httpError": {

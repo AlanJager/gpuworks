@@ -34,6 +34,8 @@
     "id": "Batch",
     "status": "Status",
     "endpoint": "Endpoint",
+    "model": "Model",
+    "modelPerLine": "Per file line",
     "progress": "Progress",
     "createdAt": "Created",
     "expiresAt": "Expires"
@@ -60,6 +62,7 @@
     "id": "ID",
     "status": "Status",
     "endpoint": "Endpoint",
+    "model": "Model override",
     "completionWindow": "Completion window",
     "inputFilename": "Input file name",
     "owner": "Owner (user ID)",
@@ -104,6 +107,32 @@
     "fileSelected": "{{name}} ({{size}})",
     "fileRequired": "Choose a requests file first.",
     "endpoint": "Endpoint",
+    "window": {
+      "label": "Completion window",
+      "unit": "hours",
+      "help": "A whole number of hours from {{min}} to {{max}}, {{default}} by default. Requests without a result by then are treated as expired."
+    },
+    "model": {
+      "label": "Model",
+      "placeholder": "Use the model on each line of the file",
+      "help": "Optional. When set, the body.model of every request in the file is replaced by it; when empty, each line keeps its own model. A sleeping deployment can be chosen too: the gateway wakes it when a request arrives.",
+      "state": {
+        "serving": "Serving",
+        "asleep": "Asleep",
+        "asleepHeld": "Asleep (held, requests do not wake it)"
+      },
+      "heldWarning": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires."
+    },
+    "fileModels": {
+      "count": "Models in the file ({{count}}): {{models}}",
+      "none": "No model name was found in the file.",
+      "skipped": "The file is over 50 MB, so its models were not checked in the browser.",
+      "unknown": "These models in the file have no available deployment on the platform, so their requests would fail: {{models}}. Choose a model above to replace them.",
+      "replaced": "The models in the file ({{models}}) will all be replaced by {{model}}."
+    },
+    "warnings": {
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires."
+    },
     "created": "Batch {{id}} created",
     "hintTitle": "Format and limits",
     "hint": {
@@ -112,7 +141,7 @@
       "unique": "custom_id must be unique within the file.",
       "sameUrl": "All lines use the same url, and it must equal the endpoint you choose.",
       "noStream": "Streaming requests are not supported.",
-      "window": "The completion window is 24 hours: a batch that has not finished by then expires."
+      "window": "The completion window is {{hours}} hours: a batch that has not finished by then expires."
     },
     "tooLarge": "The file is larger than {{limit}} MB.",
     "failed": "Could not create the batch",

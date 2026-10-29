@@ -62,6 +62,10 @@ export default function BatchesPage({ pollMs = BATCH_POLL_MS }: { pollMs?: numbe
   const created = (batch: Batch) => {
     setCreateOpen(false);
     message.success(t("create.created", { id: batch.id }));
+    // A finding that did not refuse the batch, e.g. its model sleeps by an operator's order.
+    for (const warning of batch.warnings ?? []) {
+      message.warning(t(`create.warnings.${warning.code}`, { ...warning.params, defaultValue: warning.code }));
+    }
     void list.refetch();
     openDetail(batch.id);
   };
@@ -75,6 +79,10 @@ export default function BatchesPage({ pollMs = BATCH_POLL_MS }: { pollMs?: numbe
     },
     { key: "status", title: t("columns.status"), width: 130, render: (_: unknown, batch) => <BatchStatusTag status={batch.status} /> },
     { key: "endpoint", title: t("columns.endpoint"), width: 200, render: (_: unknown, batch) => <Typography.Text code>{batch.endpoint}</Typography.Text> },
+    {
+      key: "model", title: t("columns.model"), width: 180,
+      render: (_: unknown, batch) => (batch.model ? <Typography.Text code>{batch.model}</Typography.Text> : <Typography.Text type="secondary">{t("columns.modelPerLine")}</Typography.Text>),
+    },
     { key: "progress", title: t("columns.progress"), width: 220, render: (_: unknown, batch) => <BatchProgress batch={batch} /> },
     { key: "created_at", title: t("columns.createdAt"), width: 160, render: (_: unknown, batch) => formatTime(batch.created_at) },
     { key: "expires_at", title: t("columns.expiresAt"), width: 160, render: (_: unknown, batch) => formatTime(batch.expires_at) },

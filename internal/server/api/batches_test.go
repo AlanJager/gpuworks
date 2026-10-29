@@ -12,6 +12,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // fakeBatches is a BatchService that records what the routes pass it and
@@ -245,9 +246,22 @@ func TestBatchCreateTakesAMultipartUpload(t *testing.T) {
 	if r.fake.form["endpoint"] != "/v1/chat/completions" || r.fake.form["file"] != `{"custom_id":"a"}`+"\n" || !r.fake.caller.All {
 		t.Fatalf("service got %+v for %+v", r.fake.form, r.fake.caller)
 	}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "qwen-chat"})
+	if rec.Code != http.StatusCreated || r.fake.form["model"] != "qwen-chat" {
+		t.Fatalf("create with a model = %d %s, service got %+v", rec.Code, rec.Body, r.fake.form)
+	}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "completion_window": "72h"})
+	if rec.Code != http.StatusCreated || r.fake.form["completion_window"] != "72h" {
+		t.Fatalf("create with a window = %d %s, service got %+v", rec.Code, rec.Body, r.fake.form)
+	}
 	rec = r.do(r.session, "POST", "/api/v1/batches", `{"endpoint":"/v1/embeddings"}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"code":"BATCH_REQUEST_INVALID"`) {
 		t.Fatalf("a JSON body = %d %s", rec.Code, rec.Body)
+	}
+	r.fake.err = &BatchError{Status: 400, Code: ErrorBatchRequestInvalid, Fallback: "completion_window must be a whole number of hours from 1h to 72h", Params: map[string]any{"field": "completion_window", "reason": "invalid_completion_window"}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/embeddings", "completion_window": "73h"})
+	if want := `{"code":"BATCH_REQUEST_INVALID","error":"completion_window must be a whole number of hours from 1h to 72h","params":{"field":"completion_window","reason":"invalid_completion_window"}}`; rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("a bad window = %d %s", rec.Code, rec.Body)
 	}
 	r.fake.err = &BatchError{Status: 413, Code: ErrorBatchFileTooLarge, Fallback: "the file is larger than 200 MB", Params: map[string]any{"limit_mb": 200}}
 	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/embeddings"})
@@ -284,5 +298,24 @@ func TestBatchRoutesAnswerNotFoundWithoutAService(t *testing.T) {
 		if rec := rig.do(rig.session, route.method, route.path, ""); rec.Code != http.StatusNotFound {
 			t.Errorf("%s %s = %d", route.method, route.path, rec.Code)
 		}
+	}
+}
+
+// A batch given a model carries it, and the create response its warnings, in
+// the wire shape a client reads; a refused model is a product error.
+func TestBatchCreateWithAModelWireAndErrors(t *testing.T) {
+	r := newBatchRig(t)
+	r.fake.batch.Model = "held-model"
+	r.fake.batch.Warnings = []messages.Warning{{Code: WarningBatchModelSleepHeld, Params: map[string]any{"model": "held-model"}}}
+	rec := r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "held-model"})
+	want := `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"validating","input_file_id":"file-in","completion_window":"24h","model":"held-model","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"warnings":[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"held-model"}}],"user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z"}`
+	if rec.Code != http.StatusCreated || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("create = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
+	}
+
+	r.fake.err = &BatchError{Status: 400, Code: ErrorBatchModelUnknown, Fallback: "No active deployment serves the model ghost", Params: map[string]any{"model": "ghost"}}
+	rec = r.upload(r.session, map[string]string{"file": "x", "endpoint": "/v1/chat/completions", "model": "ghost"})
+	if wantErr := `{"code":"BATCH_MODEL_UNKNOWN","error":"No active deployment serves the model ghost","params":{"model":"ghost"}}`; rec.Code != http.StatusBadRequest || strings.TrimSpace(rec.Body.String()) != wantErr {
+		t.Fatalf("unknown model = %d %s", rec.Code, rec.Body)
 	}
 }

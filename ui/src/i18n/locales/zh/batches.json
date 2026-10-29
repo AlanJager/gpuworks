@@ -34,6 +34,8 @@
     "id": "批处理任务",
     "status": "状态",
     "endpoint": "端点",
+    "model": "模型",
+    "modelPerLine": "按文件每行",
     "progress": "进度",
     "createdAt": "创建时间",
     "expiresAt": "到期时间"
@@ -60,6 +62,7 @@
     "id": "ID",
     "status": "状态",
     "endpoint": "端点",
+    "model": "指定模型",
     "completionWindow": "完成时限",
     "inputFilename": "输入文件名",
     "owner": "所属用户（用户 ID）",
@@ -104,6 +107,32 @@
     "fileSelected": "{{name}}（{{size}}）",
     "fileRequired": "请先选择请求文件。",
     "endpoint": "端点",
+    "window": {
+      "label": "完成时限",
+      "unit": "小时",
+      "help": "{{min}}–{{max}} 的整数小时，默认 {{default}}。到期仍未结束的请求按过期处理。"
+    },
+    "model": {
+      "label": "模型",
+      "placeholder": "使用文件中每行的模型",
+      "help": "可选。指定后，文件里每个请求的 body.model 都会改成它；不指定则按每行自己的模型。休眠的部署也可以选，请求到达时网关会把它唤醒。",
+      "state": {
+        "serving": "提供服务",
+        "asleep": "休眠",
+        "asleepHeld": "休眠（手动，请求不会唤醒）"
+      },
+      "heldWarning": "{{model}} 是被手动或定时计划休眠的，请求不会唤醒它：任务的请求会一直重试，直到有人唤醒它或任务过期。"
+    },
+    "fileModels": {
+      "count": "文件使用了 {{count}} 个模型：{{models}}",
+      "none": "文件里没有读到模型名。",
+      "skipped": "文件超过 50 MB，没有在浏览器里检查其中的模型。",
+      "unknown": "文件里的这些模型在平台上没有可用的部署，对应的请求会失败：{{models}}。可以在上面选一个模型来替代它们。",
+      "replaced": "文件里的模型 {{models}} 都会被替换为 {{model}}。"
+    },
+    "warnings": {
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} 被手动或定时计划休眠，请求不会唤醒它：任务的请求会一直重试，直到有人唤醒它或任务过期。"
+    },
     "created": "已创建批处理任务 {{id}}",
     "hintTitle": "格式与限制",
     "hint": {
@@ -112,7 +141,7 @@
       "unique": "custom_id 在文件内必须唯一。",
       "sameUrl": "所有行的 url 必须相同，并且等于所选端点。",
       "noStream": "不支持流式请求。",
-      "window": "完成时限为 24 小时：到期仍未结束的任务会过期。"
+      "window": "完成时限为 {{hours}} 小时：到期仍未结束的任务会过期。"
     },
     "tooLarge": "文件超过 {{limit}} MB。",
     "failed": "无法创建批处理任务",

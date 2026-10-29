@@ -503,4 +503,11 @@ const (
 	ErrorBatchFileTooLarge = "BATCH_FILE_TOO_LARGE"
 	// ErrorBatchRequestInvalid: a field of the request ({field}) is not valid.
 	ErrorBatchRequestInvalid = "BATCH_REQUEST_INVALID"
+	// ErrorBatchModelUnknown: no active deployment serves the {model} the batch
+	// was asked to send its requests to.
+	ErrorBatchModelUnknown = "BATCH_MODEL_UNKNOWN"
 )
+
+// WarningBatchModelSleepHeld is the warning on a created batch whose {model}
+// sleeps by an operator's or a schedule's order, which requests do not wake.
+const WarningBatchModelSleepHeld = "BATCH_MODEL_SLEEP_HELD"

@@ -46,7 +46,7 @@ func fileOf(f store.BatchFile) batch.File {
 func batchOf(b store.Batch, metadata map[string]string) batch.Batch {
 	return batch.Batch{
 		ID: b.ID, UserID: b.UserID, APIKeyID: b.APIKeyID, Endpoint: b.Endpoint, InputFileID: b.InputFileID,
-		OutputFileID: b.OutputFileID, ErrorFileID: b.ErrorFileID, CompletionWindow: b.CompletionWindow, Status: b.Status,
+		OutputFileID: b.OutputFileID, ErrorFileID: b.ErrorFileID, CompletionWindow: b.CompletionWindow, Model: b.ModelOverride, Status: b.Status,
 		ErrorCode: b.ErrorCode, ErrorMessage: b.ErrorMessage, Total: b.Total, Completed: b.Completed, Failed: b.Failed,
 		CheckpointOffset: b.CheckpointOffset, Metadata: metadata, CreatedAt: b.CreatedAt, ExpiresAt: b.ExpiresAt,
 		InProgressAt: b.InProgressAt, FinalizingAt: b.FinalizingAt, CompletedAt: b.CompletedAt, FailedAt: b.FailedAt,
@@ -95,7 +95,7 @@ func (r batchRepo) DeleteFile(id string) error { return batchErr(r.st.DeleteBatc
 func (r batchRepo) CreateBatch(b batch.Batch) error {
 	return r.st.CreateBatch(&store.Batch{
 		ID: b.ID, UserID: b.UserID, APIKeyID: b.APIKeyID, Endpoint: b.Endpoint, InputFileID: b.InputFileID,
-		CompletionWindow: b.CompletionWindow, Status: b.Status, Total: b.Total, CreatedAt: b.CreatedAt, ExpiresAt: b.ExpiresAt,
+		CompletionWindow: b.CompletionWindow, ModelOverride: b.Model, Status: b.Status, Total: b.Total, CreatedAt: b.CreatedAt, ExpiresAt: b.ExpiresAt,
 	}, b.Metadata)
 }
 

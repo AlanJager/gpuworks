@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -131,6 +130,10 @@ type CreateRequest struct {
 	Endpoint         string
 	CompletionWindow string
 	Metadata         map[string]string
+	// Model, when set, is the served name of an active deployment that every
+	// request of the batch is sent to, whatever its line says (a gpuworks
+	// extension of the OpenAI batch request).
+	Model string
 }
 
 // CreateBatch validates the request against the input file and starts the
@@ -142,8 +145,9 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 	if !slices.Contains(Endpoints, req.Endpoint) {
 		return Batch{}, invalid("invalid_endpoint", "endpoint", "endpoint must be one of "+strings.Join(Endpoints, ", "))
 	}
-	if req.CompletionWindow != CompletionWindow {
-		return Batch{}, invalid("invalid_completion_window", "completion_window", `completion_window must be "24h"`)
+	window, ok := ParseWindow(req.CompletionWindow)
+	if !ok {
+		return Batch{}, invalid("invalid_completion_window", "completion_window", `completion_window must be a whole number of hours from 1h to 72h, such as "24h"`)
 	}
 	if err := checkMetadata(req.Metadata); err != nil {
 		return Batch{}, err
@@ -165,17 +169,43 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 		}
 		return Batch{}, invalid("endpoint_mismatch", "endpoint", message)
 	}
+	warnings, err := s.checkModel(req.Model)
+	if err != nil {
+		return Batch{}, err
+	}
 	now := s.cfg.Clock.Now().UTC()
 	b := Batch{
 		ID: randomID("batch_"), UserID: owner.UserID, APIKeyID: owner.APIKeyID, Endpoint: req.Endpoint,
-		InputFileID: in.ID, CompletionWindow: CompletionWindow, Status: StatusValidating, Total: in.Lines,
-		Metadata: req.Metadata, CreatedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+		InputFileID: in.ID, CompletionWindow: req.CompletionWindow, Status: StatusValidating, Total: in.Lines,
+		Metadata: req.Metadata, Model: req.Model, CreatedAt: now, ExpiresAt: now.Add(window),
 	}
 	if err := s.repo.CreateBatch(b); err != nil {
 		return Batch{}, err
 	}
 	s.launch(b)
+	b.Warnings = warnings
 	return b, nil
+}
+
+// checkModel refuses a model no active deployment serves and warns about one
+// whose deployment a request does not wake. No model is always fine.
+func (s *Service) checkModel(model string) ([]Warning, error) {
+	if model == "" || s.cfg.Models == nil {
+		return nil, nil
+	}
+	state, err := s.cfg.Models.Lookup(model)
+	if err != nil {
+		return nil, err
+	}
+	switch state {
+	case ModelAvailable:
+		return nil, nil
+	case ModelSleepHeld:
+		return []Warning{{Code: WarningModelSleepHeld, Message: "The deployment serving " + model + " sleeps by an operator's or a schedule's order, which requests do not wake; the batch's requests are retried until it is woken or the batch expires"}}, nil
+	}
+	e := invalid("model_not_found", "model", "No active deployment serves the model "+model)
+	e.Model = model
+	return nil, e
 }
 
 func checkMetadata(m map[string]string) error {

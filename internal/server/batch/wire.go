@@ -72,6 +72,17 @@ type wireBatch struct {
 	CancelledAt      *int64            `json:"cancelled_at"`
 	RequestCounts    wireCounts        `json:"request_counts"`
 	Metadata         map[string]string `json:"metadata"`
+	// Model and Warnings are gpuworks extensions: the served name every request
+	// is sent to (absent when each line names its own), and the findings of
+	// creating the batch (the create response only).
+	Model    string        `json:"model,omitempty"`
+	Warnings []wireWarning `json:"warnings,omitempty"`
+}
+
+type wireWarning struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Param   string `json:"param,omitempty"`
 }
 
 func toWireBatch(b Batch) wireBatch {
@@ -86,6 +97,10 @@ func toWireBatch(b Batch) wireBatch {
 	}
 	if len(b.Metadata) > 0 {
 		w.Metadata = b.Metadata
+	}
+	w.Model = b.Model
+	for _, warning := range b.Warnings {
+		w.Warnings = append(w.Warnings, wireWarning{Code: warning.Code, Message: warning.Message, Param: "model"})
 	}
 	if b.ErrorCode != "" {
 		w.Errors = &wireBatchErrors{Object: "list", Data: []wireBatchError{{Code: b.ErrorCode, Message: b.ErrorMessage}}}
