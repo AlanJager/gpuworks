@@ -212,10 +212,10 @@ func (s *Service) ListBatches(owner Owner, after string, limit int) (batches []B
 	return batches, more, nil
 }
 
-// ListBatchesPage lists one page of the owner's batches, those in status when
-// it is set, with the number of batches that match.
-func (s *Service) ListBatchesPage(owner Owner, status string, offset, limit int) ([]Batch, int, error) {
-	return s.repo.ListBatchesPage(owner, status, offset, limit)
+// ListBatchesPage lists one page of the owner's batches, those in one of
+// statuses when any is given, with the number of batches that match.
+func (s *Service) ListBatchesPage(owner Owner, statuses []string, offset, limit int) ([]Batch, int, error) {
+	return s.repo.ListBatchesPage(owner, statuses, offset, limit)
 }
 
 // Cancel stops a batch that has not finished: it goes to cancelling, lets the

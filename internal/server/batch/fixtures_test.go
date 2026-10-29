@@ -170,10 +170,10 @@ func (m *memRepo) GetBatch(id string) (Batch, error) {
 	return b, nil
 }
 
-func (m *memRepo) sortedBatches(owner Owner, status string) []Batch {
+func (m *memRepo) sortedBatches(owner Owner, statuses []string) []Batch {
 	var all []Batch
 	for _, b := range m.batches {
-		if owner.Sees(b.UserID) && (status == "" || b.Status == status) {
+		if owner.Sees(b.UserID) && (len(statuses) == 0 || slices.Contains(statuses, b.Status)) {
 			all = append(all, b)
 		}
 	}
@@ -189,7 +189,7 @@ func (m *memRepo) sortedBatches(owner Owner, status string) []Batch {
 func (m *memRepo) ListBatchesAfter(owner Owner, after string, limit int) ([]Batch, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	all := m.sortedBatches(owner, "")
+	all := m.sortedBatches(owner, nil)
 	if after != "" {
 		if i := slices.IndexFunc(all, func(b Batch) bool { return b.ID == after }); i >= 0 {
 			all = all[i+1:]
@@ -201,10 +201,10 @@ func (m *memRepo) ListBatchesAfter(owner Owner, after string, limit int) ([]Batc
 	return all, nil
 }
 
-func (m *memRepo) ListBatchesPage(owner Owner, status string, offset, limit int) ([]Batch, int, error) {
+func (m *memRepo) ListBatchesPage(owner Owner, statuses []string, offset, limit int) ([]Batch, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	all := m.sortedBatches(owner, status)
+	all := m.sortedBatches(owner, statuses)
 	total := len(all)
 	if offset > len(all) {
 		offset = len(all)

@@ -164,11 +164,12 @@ func (s *Store) ListBatchesAfter(owner BatchOwnerFilter, after string, limit int
 }
 
 // ListBatchesPage lists one page of batches newest first with the number of
-// batches that match, those in status when it is set (the console's list).
-func (s *Store) ListBatchesPage(owner BatchOwnerFilter, status string, offset, limit int) ([]Batch, int, error) {
+// batches that match, those in one of statuses when any is given (the
+// console's list).
+func (s *Store) ListBatchesPage(owner BatchOwnerFilter, statuses []string, offset, limit int) ([]Batch, int, error) {
 	q := owner.apply(s.reader().Model(&Batch{}))
-	if status != "" {
-		q = q.Where("status = ?", status)
+	if len(statuses) > 0 {
+		q = q.Where("status IN ?", statuses)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {

@@ -154,7 +154,7 @@ type Repo interface {
 	CreateBatch(b Batch) error
 	GetBatch(id string) (Batch, error)
 	ListBatchesAfter(owner Owner, after string, limit int) ([]Batch, error)
-	ListBatchesPage(owner Owner, status string, offset, limit int) ([]Batch, int, error)
+	ListBatchesPage(owner Owner, statuses []string, offset, limit int) ([]Batch, int, error)
 	Unfinished() ([]Batch, error)
 	Start(id string, at time.Time) (bool, error)
 	SaveProgress(id string, p Progress) error

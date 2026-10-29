@@ -186,7 +186,7 @@ func TestRouterAuthenticationCategoryTable(t *testing.T) {
 	r := Router(Deps{
 		AuthSigner: signer, Store: routerAuthStore(t),
 		AgentConnect: stub(http.StatusTeapot), InstallSh: stub(http.StatusTeapot),
-		ProxyV1: stub(http.StatusTeapot), ProxyModels: stub(http.StatusTeapot), PlaygroundV1: stub(http.StatusTeapot),
+		ProxyV1: stub(http.StatusTeapot), PlaygroundV1: stub(http.StatusTeapot),
 	})
 	tests := []struct {
 		path string

@@ -153,12 +153,13 @@ type Deps struct {
 	// stays unaware of hub and yamux. Terminal owns admission and audit;
 	// NodeCaps lets the handler refuse agents that predate webterm with a clear
 	// message.
-	OpenTerminal  func(nodeUUID, target, ref string, rows, cols uint16, graceSec int) (net.Conn, error)
-	NodeCaps      func(nodeUUID string) []string
-	Terminal      *webterm.Manager
-	ProxyV1       http.Handler // /v1/* data plane
-	ProxyModels   http.Handler // /v1/models
-	PlaygroundV1  http.Handler // authenticated internal proxy, no platform API key
+	OpenTerminal func(nodeUUID, target, ref string, rows, cols uint16, graceSec int) (net.Conn, error)
+	NodeCaps     func(nodeUUID string) []string
+	Terminal     *webterm.Manager
+	ProxyV1      http.Handler // /v1/* data plane: models, the OpenAI-compatible files and batches, and the model requests
+	PlaygroundV1 http.Handler // authenticated internal proxy, no platform API key
+	// Batches is the Batch API's console side (batches.go); nil answers 404.
+	Batches       BatchService
 	NodePrecheck  provision.Prechecker
 	NodeInstaller provision.Installer
 	Recovery      interface {
@@ -261,11 +262,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 	}
 
 	// Data plane: OpenAI-compatible /v1. ProxyV1 owns API-key auth for every
-	// endpoint, including /v1/models.
+	// endpoint, including /v1/models and the batch files.
 	if d.ProxyV1 != nil {
-		if d.ProxyModels != nil {
-			r.Handle("/v1/models", d.ProxyModels)
-		}
 		r.Handle("/v1/*", d.ProxyV1)
 	}
 
@@ -622,6 +620,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			if d.PlaygroundV1 != nil {
 				r.Handle("/playground/v1/*", a.withClaims(d.PlaygroundV1))
 			}
+
+			// Batches: the console's side of the Batch API. Anyone signed in reads
+			// (an administrator sees every user's), an administrator writes.
+			r.Get("/batches", a.listBatches)
+			r.With(a.managementAdmin).Post("/batches", a.createBatch)
+			r.Get("/batches/{id}", a.getBatch)
+			r.With(a.managementAdmin).Post("/batches/{id}/cancel", a.cancelBatch)
+			r.Get("/batches/{id}/files/{kind}", a.downloadBatchFile)
 		})
 	})
 	r.Get("/healthz", a.health)

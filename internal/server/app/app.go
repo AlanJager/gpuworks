@@ -24,6 +24,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/agentbin"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/batch"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/controller"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
@@ -62,6 +63,7 @@ type App struct {
 	proxyAcct *proxy.Accountant
 	proxy     *proxy.Proxy
 	health    *healthcheck.Checker // the deployments' health checks
+	batches   *batch.Service       // the Batch API's executor and files
 	telemetry *telemetryService    // the request trace export
 	http      *http.Server
 	// ln is created by Run instead of http.Server.ListenAndServe so tests can
@@ -262,9 +264,10 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	ai.log = log
 	ai.outboundAllowPrivateHosts = append([]string(nil), cfg.OutboundAllowPrivateHosts...)
 	health := healthcheck.New(healthSource{store: st}, healthSender{proxy: px})
+	batches := batch.New(batchRepo{st}, batchSender{px}, batch.Config{Dir: filepath.Join(cfg.DataDir, "batch-files"), Log: log})
 	monSvc := newMonitorAPIService(st, obs.tsdb, nil, newRequestSource(st, px.LiveRequests, obs.ux), health.Health, modelPreparation{h, ctrl})
 
-	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, telemetry: telemetry}
+	a := &App{cfg: cfg, log: log, store: st, bus: b, hub: h, ctrl: ctrl, obs: obs, ops: ops, selfLog: cfg.SelfLog, proxyAcct: acct, proxy: px, health: health, batches: batches, telemetry: telemetry}
 	var restart func()
 	if cfg.SelfRestart {
 		restart = a.requestRestart
@@ -345,8 +348,8 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		OpenTerminal:         h.OpenTerminal,
 		NodeCaps:             h.NodeCaps,
 		Terminal:             webterm.New(st),
-		ProxyV1:              px.Handler(),
-		ProxyModels:          px.ModelsHandler(),
+		ProxyV1:              dataPlane(px.ModelsHandler(), batches.V1Handler(batchAuth(px)), px.Handler()),
+		Batches:              batchConsole{batches},
 		PlaygroundV1:         px.PlaygroundHandler(box),
 		NodePrecheck:         nodePrechecker,
 		NodeInstaller:        nodeInstaller,
@@ -449,6 +452,12 @@ func (a *App) Run(ctx context.Context) error {
 	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })                     // Background: verify each PD prefill instance's KV handoff once.
 	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) }) // Background: schedules, idle sleep, waiting wakes, residency.
 	goBG(func() { a.health.Run(ctx) })                                                    // Background: the deployments' health checks.
+	// Background: the batches in progress, resumed from their checkpoints.
+	if err := a.batches.Start(ctx); err != nil {
+		a.log.Error("batch executor not started", "err", err)
+	} else {
+		goBG(func() { <-ctx.Done(); a.batches.Wait() })
+	}
 	goBG(func() { a.usage.Run(ctx) })                                                     // Background: the daily usage report.
 	goBG(func() { a.notices.Run(ctx) })                                                   // Background: the notices' refresh.
 	// Background: prune metrics/logs beyond the retention window

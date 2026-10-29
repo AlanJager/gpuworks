@@ -122,6 +122,9 @@ GET /api/v1/analytics/quality
 GET /api/v1/analytics/usage
 GET /api/v1/apikeys
 GET /api/v1/auth/me
+GET /api/v1/batches
+GET /api/v1/batches/{id}
+GET /api/v1/batches/{id}/files/{kind}
 GET /api/v1/benchmarks
 GET /api/v1/benchmarks/meta
 GET /api/v1/benchmarks/{id}
@@ -249,6 +252,8 @@ POST /api/v1/apikeys
 POST /api/v1/auth/activity
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
+POST /api/v1/batches
+POST /api/v1/batches/{id}/cancel
 POST /api/v1/benchmarks
 POST /api/v1/benchmarks/datasets/import
 POST /api/v1/benchmarks/models

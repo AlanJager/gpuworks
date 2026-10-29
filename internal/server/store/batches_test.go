@@ -92,15 +92,15 @@ func TestBatchCreateListMetadataAndCursor(t *testing.T) {
 		t.Fatal("no event after the commit")
 	}
 	two := uint(2)
-	mine, total, err := st.ListBatchesPage(BatchOwnerFilter{UserID: &two}, "", 0, 10)
+	mine, total, err := st.ListBatchesPage(BatchOwnerFilter{UserID: &two}, nil, 0, 10)
 	if err != nil || total != 2 || len(mine) != 2 || mine[0].ID != "batch_3" {
 		t.Fatalf("user 2 batches = %+v total=%d err=%v", mine, total, err)
 	}
-	pg, total, _ := st.ListBatchesPage(BatchOwnerFilter{}, "", 1, 2)
+	pg, total, _ := st.ListBatchesPage(BatchOwnerFilter{}, nil, 1, 2)
 	if total != 5 || len(pg) != 2 || pg[0].ID != "batch_3" || pg[1].ID != "batch_2" {
 		t.Fatalf("page = %+v total=%d", pg, total)
 	}
-	none, total, _ := st.ListBatchesPage(BatchOwnerFilter{}, BatchCompleted, 0, 10)
+	none, total, _ := st.ListBatchesPage(BatchOwnerFilter{}, []string{BatchCompleted, BatchFailed}, 0, 10)
 	if total != 0 || len(none) != 0 {
 		t.Fatalf("completed = %+v", none)
 	}
