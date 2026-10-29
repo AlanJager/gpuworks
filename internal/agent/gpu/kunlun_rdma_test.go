@@ -41,8 +41,8 @@ func TestKunlunXDRRequiresRealCharacterDevice(t *testing.T) {
 		})
 	}
 	p, _ := kunlunFixture(t)
-	if err := p.verifyKunlunXDR(); err != nil {
-		t.Fatalf("missing XDR should allow RDMA fallback: %v", err)
+	if err := p.verifyKunlunXDR(); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing XDR lost its cause: %v", err)
 	}
 }
 
