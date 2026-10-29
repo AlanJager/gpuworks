@@ -33,7 +33,7 @@ from local_browser_fixture import Artifacts, LocalServer, ROOT, digest, http
 from platform_token_read_revoke import button, check
 
 CONTRACT = "gpuworks/session/two-tab-logout-relogin"
-LOGIN, LOGOUT, ME = ("/api/v1/auth/" + name for name in ("login", "logout", "me"))
+LOGIN, LOGOUT, ME, ACTIVITY = ("/api/v1/auth/" + name for name in ("login", "logout", "me", "activity"))
 COOKIE = "gpuworks_session"
 DENIED = {"code": "AUTHENTICATION_REQUIRED", "error": "authentication required"}
 
@@ -117,13 +117,13 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
                                               for path in (LOGIN, LOGOUT)]})
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("response", lambda r: http_errors.append({"path": urlsplit(r.url).path, "status": r.status})
-                if r.status >= 400 and urlsplit(r.url).path not in (ME, LOGIN) else None)
+                if r.status >= 400 and urlsplit(r.url).path not in (ME, LOGIN, ACTIVITY) else None)
 
         def console(message):
             if message.type != "error":
                 return
             # Chrome logs the deliberately rejected login/anonymous probe.
-            if (urlsplit(message.location.get("url", "")).path in (LOGIN, ME)
+            if (urlsplit(message.location.get("url", "")).path in (LOGIN, ME, ACTIVITY)
                     and message.text == "Failed to load resource: the server responded with a status of 401 (Unauthorized)"):
                 return
             console_errors.append(message.text)
@@ -297,6 +297,10 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     report["evidence"].append({"layer": "persistence", "after": "UI re-login and both tabs reload",
         "replacement_cookie_status": 200, "replacement_bearer_status": 200, "original_cookie_status": 401,
         "original_bearer_status": 401, "paths": ["/networks", "/settings"], "identity": identity})
+    # 22.1: with a live session, walk the sidebar the page actually renders and check
+    # each entry's deep link, heading, highlighted entry and reload position.
+    from session_persistence import exercise_navigation_entries
+    report["navigation"] = exercise_navigation_entries(page, server, report)
     page.screenshot(path=artifacts.directory / "recovered-networks.png")
     with peer.expect_response(lambda r: urlsplit(r.url).path == LOGOUT) as cleanup:
         button(peer, common["header"]["logout"]).click()

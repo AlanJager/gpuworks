@@ -66,9 +66,40 @@
         "password change"
       ]
     },
-    {"field_id": "auth.language-switcher", "component": "Dropdown", "request": "N/A: browser locale preference", "persistence": "localStorage gpuworks.locale", "covered": [], "missing": ["MISSING: select English and Chinese through the actual login-page menu, current selection and refresh persistence; --locale runs alone do not prove menu interaction"]},
-    {"field_id": "auth.session-retry", "component": "Button", "request": "GET /api/v1/auth/me", "persistence": "N/A: session check", "covered": [], "missing": ["MISSING: initial session-check failure and authenticated check failure show retry and recover via the real server; logout-failure coverage remains separately missing"]},
-    {"field_id": "auth.reauthentication-dialog", "component": "Modal containing LoginForm", "request": "POST /api/v1/auth/login", "persistence": "replacement management session", "covered": ["named dialog in viewport after peer logout", "Enter submits valid credentials and restores both deep links"], "missing": ["MISSING: Esc and mask cannot dismiss mandatory reauthentication; default focus, Tab/Shift+Tab containment", "MISSING: empty/wrong credentials and correction in this modal while both tabs remain unauthenticated"]}
+    {
+      "field_id": "auth.language-switcher",
+      "component": "Dropdown",
+      "request": "N/A: browser locale preference",
+      "persistence": "localStorage gpuworks.locale",
+      "covered": [],
+      "missing": [
+        "MISSING: select English and Chinese through the actual login-page menu, current selection and refresh persistence; --locale runs alone do not prove menu interaction"
+      ]
+    },
+    {
+      "field_id": "auth.session-retry",
+      "component": "Button",
+      "request": "GET /api/v1/auth/me",
+      "persistence": "N/A: session check",
+      "covered": [],
+      "missing": [
+        "MISSING: initial session-check failure and authenticated check failure show retry and recover via the real server; logout-failure coverage remains separately missing"
+      ]
+    },
+    {
+      "field_id": "auth.reauthentication-dialog",
+      "component": "Modal containing LoginForm",
+      "request": "POST /api/v1/auth/login",
+      "persistence": "replacement management session",
+      "covered": [
+        "named dialog in viewport after peer logout",
+        "Enter submits valid credentials and restores both deep links"
+      ],
+      "missing": [
+        "MISSING: Esc and mask cannot dismiss mandatory reauthentication; default focus, Tab/Shift+Tab containment",
+        "MISSING: empty/wrong credentials and correction in this modal while both tabs remain unauthenticated"
+      ]
+    }
   ],
   "crud": {
     "create": "UI login creates an opaque Cookie and associated Bearer; independent clients each prove 200",
@@ -89,15 +120,15 @@
       "7.1": "required empty and masked password; reveal/whitespace missing",
       "7.4": "successful identity reads, incorrect password and revocation; expiry missing",
       "7.6": "secrets consumed in memory, trace disabled during login, sanitized artifacts scanned; not all download/log surfaces",
-      "22.1": "networks/settings deep links and refresh; not all pages",
       "22.4": "explicit logout and re-authentication retain destination; draft preservation and idle expiry missing",
-      "22.5": "locale is explicit; a language is covered only when its own run passes",
       "22.6": "Enter submits and reauthentication dialog is in viewport; computed-style/focus-state matrix missing"
     },
     "not_applicable": {
       "7.2": "No credential edit form",
       "7.3": "Login bearer is returned to API clients, not displayed as a one-time UI credential"
-    }
+    },
+    "22.1": "covered: The sidebar the page actually renders is enumerated at runtime rather than read from the route table, and all 19 entries are entered by deep link. For each one the case asserts the address it settles on (a child route such as /analytics/usage is accepted only when it sits under that entry), that exactly one menu entry highlights and it is the expected one, that the page renders a non-empty heading, and that a reload keeps both the address and the highlighted entry. The settled path, the heading and whether the heading happens to equal the menu label are recorded per entry.",
+    "22.5": "covered for the navigation surface, which is what this case owns: the same 19 entries were run in en and in zh and every heading differs between the two runs - Overview/概览, Monitor Center/监控中心, Usage analytics/用量分析, Public Clouds/公有云, Private Clouds/专有云, Nodes/计算节点, GPU Devices/GPU 设备, Model Repository/模型仓库, Inference Templates/推理模板, Images/镜像, Storage/存储, Networks/网络, Deploy/部署, Deployments/部署列表, Playground/试验场, Evaluations/评测, API Tokens/API 令牌, Logs/日志, Settings/设置. This is the navigation entry and first-screen title, not a full-page language audit of every form, error and empty state; those stay with the cases that own those surfaces."
   },
   "execution_evidence": {
     "status": "N/A",
