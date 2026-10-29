@@ -8,8 +8,8 @@ func TestKunlunCapabilitiesAndHostRequirements(t *testing.T) {
 			t.Fatal(feature)
 		}
 	}
-	if Supports(VendorKunlunxin, FeatureMultiNode) || !RequiresDeviceSelection(VendorKunlunxin) {
-		t.Fatal("single-node capability boundary lost")
+	if !Supports(VendorKunlunxin, FeatureMultiNode) || !RequiresDeviceSelection(VendorKunlunxin) {
+		t.Fatal("whole-card multi-node contract lost")
 	}
 	for _, host := range []HostRuntime{{OS: "linux", Arch: "amd64", Driver: "docker"}, {OS: "Linux", Arch: "x86_64", Driver: "Docker"}} {
 		if params := RuntimeMismatchParams(VendorKunlunxin, host); params != nil {

@@ -21,7 +21,7 @@ func (e *Engine) applyDeviceInjection(ws *runtime.WorkloadSpec, indexes []int) e
 }
 
 func (e *Engine) applyDeviceInjectionForDriver(ws *runtime.WorkloadSpec, indexes []int, driverName string) error {
- return e.applyDeviceInjectionForLaunch(context.Background(), ws, indexes, driverName, 1)
+	return e.applyDeviceInjectionForLaunch(context.Background(), ws, indexes, driverName, 1)
 }
 
 func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.WorkloadSpec, indexes []int, driverName string, nNodes int) error {

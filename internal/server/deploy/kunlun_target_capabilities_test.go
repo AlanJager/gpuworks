@@ -66,6 +66,8 @@ func TestKunlunTensorParallelLaunch(t *testing.T) {
 		want                   string
 	}{
 		{"single node two cards", 2, 2, 1, 0, "--tp-size 2"},
+		{"two nodes leader", 2, 4, 2, 0, "--nnodes 2 --node-rank 0 --dist-init-addr 192.0.2.10:29500"},
+		{"two nodes follower", 2, 4, 2, 1, "--nnodes 2 --node-rank 1 --dist-init-addr 192.0.2.10:29500"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Params{Vendor: "kunlunxin", AssignedGPUs: tc.cards, TensorParallel: tc.tp, NNodes: tc.nodes, NodeRank: tc.rank, Headless: tc.rank > 0, MasterAddr: "192.0.2.10", MasterPort: 29500, ModelPath: "/model"}
