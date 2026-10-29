@@ -2,9 +2,13 @@
 
 Sources: the [SGLang cookbook](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)
 and the [vLLM-Ascend DeepSeek-V4.1-Flash guide](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4.1-Flash.html).
-The NVIDIA profiles use 8 H200 or 4 B200/B300/GB300 GPUs. The mixed FP8/FP4 checkpoint
+The NVIDIA profiles use 8 H200/H20 or 4 B200/B300/GB300 GPUs. The mixed FP8/FP4 checkpoint
 occupies about 510.3 GB on disk; allow additional VRAM, host RAM and download space.
 They require the dedicated dev-dsv41 image. Hopper and Blackwell use different kernels.
+
+The 96 GB and 141 GB H20 variants share the 8-GPU profile; admission uses the
+capacity reported by the node. H20 matching and resource admission have offline
+coverage, but H20 inference has not been validated on hardware.
 
 The Ascend A3 profile uses `Eco-Tech/DeepSeek-V4.1-Flash-w8a8` (about 797.6 GB) on one
 64 GB × 16-logical-device server with DP4 × TP4. Engram tables stay in host memory and

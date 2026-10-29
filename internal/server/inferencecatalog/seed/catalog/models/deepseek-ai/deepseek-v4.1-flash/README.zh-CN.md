@@ -3,10 +3,13 @@
 配方来源：[SGLang 官方文档](https://docs.sglang.io/cookbook/autoregressive/DeepSeek/DeepSeek-V4_1)
 与 [vLLM-Ascend DeepSeek-V4.1-Flash 教程](https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4.1-Flash.html)。
 
-单节点：H200 × 8，或 B200/B300/GB300 × 4。原始混合 FP8/FP4 权重约
+单节点：H200/H20 × 8，或 B200/B300/GB300 × 4。原始混合 FP8/FP4 权重约
 510.3 GB；需要额外显存、主机内存和下载空间。使用专用 dev-dsv41 镜像；不能替换成
 V4 镜像或普通旧版 runner。Hopper 使用不同 MoE 内核，Blackwell 配方启用内置
 DSpark。
+
+H20 的 96 GB 和 141 GB 版本共用 8 卡配方，资源准入使用节点上报的实际显存。
+H20 已覆盖离线匹配和资源检查，尚未完成真机推理验证。
 
 昇腾 A3 单机使用 `Eco-Tech/DeepSeek-V4.1-Flash-w8a8`，权重约 797.6 GB。
 模板在一台 64 GB × 16 逻辑 die 的 A3/910C 上运行 DP4 × TP4，Engram 表放主机内存；
