@@ -35,7 +35,7 @@ specs:
   weight_bytes: 510296708312
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --trust-remote-code

@@ -35,7 +35,7 @@ specs:
   weight_bytes: 510296708312
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --trust-remote-code
@@ -82,7 +82,7 @@ specs:
   weight_bytes: 510296708312
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --trust-remote-code
@@ -109,8 +109,8 @@ specs:
     resolver: |
       # The ~196 GB Engram tables live in host memory, so each GPU holds about
       # 73 GB of backbone (measured on 4x H200): admission asks for that plus
-      # compile/graph headroom, not weight_bytes / 4. The card selector
-      # already limits it to H200.
+      # compile/graph headroom, not weight_bytes / 4. Admission also checks
+      # each card's reported capacity.
       def resolve(gpu):
           if gpu.count != 4:
               return reject("this recipe requires exactly 4 GPUs per node")
@@ -136,7 +136,7 @@ specs:
   weight_bytes: 510296708312
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --trust-remote-code
@@ -170,7 +170,7 @@ specs:
       # The ~196 GB Engram tables live in host memory, so each GPU holds about
       # 73 GB of backbone plus the 2 GB DSpark head (measured on 4x H200):
       # admission asks for that plus compile/graph headroom, not
-      # weight_bytes / 4. The card selector already limits it to H200.
+      # weight_bytes / 4. Admission also checks each card's reported capacity.
       # DSpark's decode-graph capture allocates a
       # 12 GiB index tensor at the 1M default context, which does not fit next
       # to the KV pool; 256K context leaves room for it.
@@ -245,7 +245,7 @@ specs:
   weight_bytes: 510296708312
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --trust-remote-code
@@ -333,7 +333,7 @@ specs:
   weight_bytes: 510296708312
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --tokenizer-mode

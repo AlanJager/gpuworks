@@ -10,13 +10,13 @@
 
 | 配方 | 硬件 | 说明 |
 | --- | --- | --- |
-| `fp4-sglang-nvidia-h200-tp8` | H200 × 8 | 上游 H200 低延迟命令，1M 上下文，不开推测解码 |
-| `fp4-sglang-nvidia-h200-tp8-throughput` | H200 × 8 | 上游 H200 高吞吐命令：最多 256 个并发请求 |
-| `fp4-sglang-nvidia-h200-tp4-engram-host` | H200 × 4 | 设置 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1`，把约 196 GB 的 Engram 表放到主机内存，每卡只放约 73 GB 主干权重；需要约 250 GB 主机内存；1M 上下文 |
-| `fp4-sglang-nvidia-h200-tp4-engram-host-dspark` | H200 × 4 | 在上一行基础上开启 DSpark；上下文限制为 256K（1M 时 decode CUDA graph 捕获会再申请 12 GiB，放不下） |
+| `fp4-sglang-nvidia-h200-tp8` | H200/H20 × 8 | 上游 H200 低延迟命令，1M 上下文，不开推测解码 |
+| `fp4-sglang-nvidia-h200-tp8-throughput` | H200/H20 × 8 | 上游 H200 高吞吐命令：最多 256 个并发请求 |
+| `fp4-sglang-nvidia-h200-tp4-engram-host` | H200/H20（141 GB）× 4 | 设置 `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1`，把约 196 GB 的 Engram 表放到主机内存，每卡只放约 73 GB 主干权重；需要约 250 GB 主机内存；1M 上下文 |
+| `fp4-sglang-nvidia-h200-tp4-engram-host-dspark` | H200/H20（141 GB）× 4 | 在上一行基础上开启 DSpark；上下文限制为 256K（1M 时 decode CUDA graph 捕获会再申请 12 GiB，放不下） |
 | `fp4-sglang-nvidia-b200-tp4` | B200/B300/GB300 × 4 | 上游 Blackwell 低延迟命令，开启 DSpark |
 | `fp4-sglang-nvidia-b200-tp4-throughput` | B200/B300/GB300 × 4 | 上游 Blackwell 高吞吐命令：不开 DSpark，最多 256 个并发请求 |
-| `fp4-vllm-nvidia-h200-tp4-engram-host` | H200 × 4 | 上游 H200 命令：TP4，Engram 表放主机内存（`--engram-config {"cpu_offload":true}`） |
+| `fp4-vllm-nvidia-h200-tp4-engram-host` | H200/H20（141 GB）× 4 | 上游 H200 命令：TP4，Engram 表放主机内存（`--engram-config {"cpu_offload":true}`） |
 | `fp4-vllm-nvidia-b200-tp2` | B200 × 2 | 上游 B200 命令：TP2，Engram 表放主机内存（THP），面向低并发 |
 | `fp4-vllm-nvidia-b300-tp2` | B300 × 2 | 上游 B300 命令：TP2，Engram 表放主机内存，最多 256 个并发请求 |
 | `fp4-vllm-nvidia-blackwell-dep8` | B200/B300 × 8 | 上游单机 DEP 命令：数据并行 8 + 专家并行，高吞吐 |
@@ -25,6 +25,8 @@
 | `int8-vllm-ascend-a3-tp4-dp4` | A3/910C × 16 逻辑 die | 1017 W8A8，DP4 × TP4，150K 上下文，约 781.5 GB 权重；Engram 表放主机内存 |
 
 H200 × 4 的两个 SGLang 配方是本平台补充的组合，所用开关均来自上游文档。
+
+H20 共用这些配方，保留原 spec 名称。默认参数下，96 GB 版本使用两个 SGLang 8 卡方案；三个 4 卡方案仍会被显存准入拒绝，141 GB 版本可评估这些方案。型号匹配不替代卡数和实际显存检查。下方 H200 实测不代表 H20 已验证；H20 尚未完成真机推理验证。
 
 ## Ascend A3 的部署前提与实测
 
