@@ -502,8 +502,7 @@ func (p *Proxy) serveModel(w http.ResponseWriter, r *http.Request, modelName str
 		writeErr(w, status, msg)
 		return
 	}
-
-	p.serveSelectedTarget(w, r, modelName, tgt, dep.ID)
+	p.serveResolved(w, r, modelName, affinity, dep, tgt)
 }
 
 // serveSelectedTarget dispatches to the resolved target, rewriting the

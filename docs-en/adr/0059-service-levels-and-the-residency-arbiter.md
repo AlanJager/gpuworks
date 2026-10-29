@@ -57,7 +57,7 @@ Held requests, in-flight counts, each deployment's residency start this turn, th
 ## Consequences
 
 - The two sharing patterns, real-time plus batch and several models taking turns, no longer need operators to arrange them by hand; every action still maps one-to-one to a timeline entry.
-- When an offline deployment is preempted, its in-flight requests are truncated: the client sees HTTP 200 with `finish_reason: "abort"` and must retry on its own; platform-hosted batch jobs (`/v1/batches`) come later.
+- When an offline or shared deployment is preempted, its in-flight requests are truncated: a non-streaming request is held by the gateway and replayed once the deployment resumes; a streaming request cannot be replayed, so the client sees HTTP 200 with `finish_reason: "abort"` and must retry on its own, and long jobs are better sent as platform-hosted batch jobs.
 - Yielding uses L1: the pinned host memory is already held since the prewarm, so L1 takes no more, switches fastest and reads nothing from disk; the cost is that every sleepable deployment holds about 1.9 times its weight size in host memory from the start, which hosts running several of them must plan for.
 - The first version covers only single-node deployments; multi-node and PD stay resident. When a new deployment starts and the cards are held by an awake lower-level deployment, the first version does not preempt for the start, and the deployment waits as one that does not fit, to be placed once the other yields or sleeps.
 - The arbiter and the gateway counts live in memory and are read per deployment without scanning all deployments; levels affect only the few deployments that share cards by service level, and the path for resident deployments is unchanged.

@@ -40,7 +40,7 @@ If the cards W needs hold several awake replicas, they either all yield or none 
 4. Once the occupant is confirmed asleep and only its residue remains on the cards, the waiting deployment is woken and the held requests are let through.
 5. A shared or offline deployment that yielded is recorded as pending resume, and takes the cards back under the same rule once they are free again.
 
-To the client an interrupted request ends normally: HTTP 200, `finish_reason` set to `"abort"`, and truncated content. Batch clients should retry on that signal.
+An interrupted non-streaming request is held by the gateway and replayed once the deployment serves again (at most 3 times), so the client only sees the reply that ran to its end. A streaming request has already started its output and cannot be replayed: to the client it ends normally with HTTP 200, `finish_reason` set to `"abort"`, and truncated content, and the client should retry on that signal.
 
 ## Why Yielding Uses L1
 
