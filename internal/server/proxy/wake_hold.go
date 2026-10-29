@@ -195,7 +195,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 		w.Header().Set("Retry-After", strconv.Itoa(int(wakeHoldRecheck.Seconds())*30))
 		return refuse()
 	}
-	defer p.hold.leave(dep.ID, req)
+	defer p.leaveHold(dep.ID, req)
 	demand(dep.ID)
 	hold := p.hold.holdMax(dep.ServiceLevel)
 	deadline := time.NewTimer(hold)

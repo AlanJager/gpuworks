@@ -601,6 +601,30 @@
       "quantiles": false
     },
     {
+      "series": "gpuworks_proxy_wake_hold_wait_ms",
+      "name": "wake_hold_wait_ms",
+      "source": "gateway",
+      "kind": "histogram",
+      "unit": "milliseconds",
+      "quantiles": true
+    },
+    {
+      "series": "gpuworks_proxy_wake_hold_wait_ms_sum",
+      "name": "wake_hold_wait_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "milliseconds",
+      "quantiles": false
+    },
+    {
+      "series": "gpuworks_proxy_wake_hold_wait_ms_count",
+      "name": "wake_hold_wait_ms",
+      "source": "gateway",
+      "kind": "counter",
+      "unit": "requests",
+      "quantiles": false
+    },
+    {
       "series": "gpuworks_bench_latency_p99_ms",
       "name": "bench_latency_p99_ms",
       "source": "benchmark",
@@ -1238,5 +1262,5 @@
       "description": "Requests the gateway routed to each replica."
     }
   ],
-  "total": 121
+  "total": 124
 }
