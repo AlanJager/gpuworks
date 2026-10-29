@@ -10,8 +10,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // upgradeReq is what the command line builds for `gpuworks upgrade`.
@@ -429,6 +431,49 @@ func TestUpgradeKeepsOnlyTheNewestBackups(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(h.layout.BackupsDir, "v1.0.0-20260101T000000Z.tar.gz")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("the oldest backup survived pruning")
+	}
+}
+
+// GWKS-146: `--keep N` deleted the newest snapshot first when the release id
+// sorted it first. The upgrade path is what the operator runs, so the guarantee
+// is asserted here end to end, with the three release ids the ticket measured:
+// `aaa-keep20000` sorts before `dev-…` and `sit-…`, and it is the newest.
+func TestUpgradePrunesByTimeNotReleaseID(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	// The snapshot this run takes lands a few seconds after the two already on
+	// disk, and it carries the release id that sorts first of all three.
+	h.now = time.Date(2026, 10, 24, 9, 24, 15, 0, time.UTC)
+	// The installation upgraded away from aaa-keep20000 first, so the two older
+	// snapshots are already there when this run takes its own.
+	h.writeExistingInstall("aaa-keep20000")
+	for _, name := range []string{
+		"dev-0b0801dfd-20261024T092315Z.tar.gz",
+		"sit-zkeep1000-20261024T092327Z.tar.gz",
+	} {
+		writeFile(t, filepath.Join(h.layout.BackupsDir, name), "old snapshot", 0o600)
+	}
+	h.useSite("zzz-next-release", []byte("new binary"))
+	req := h.upgradeReq()
+	req.Keep = 2
+
+	report, err := h.installer.Upgrade(context.Background(), req)
+	if err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+	if got := filepath.Base(report.Backup); got != "aaa-keep20000-20261024T092415Z.tar.gz" {
+		t.Fatalf("snapshot = %q, want it named by the release it replaced and the time it was taken", got)
+	}
+	got, want := backupNames(t, h.layout.BackupsDir), []string{
+		"aaa-keep20000-20261024T092415Z.tar.gz",
+		"sit-zkeep1000-20261024T092327Z.tar.gz",
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("survivors = %v, want the newest two %v", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(h.layout.BackupsDir, "dev-0b0801dfd-20261024T092315Z.tar.gz")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the oldest snapshot survived pruning")
 	}
 }
 
