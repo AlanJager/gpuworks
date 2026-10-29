@@ -34,7 +34,7 @@ clears its rejection history for the old pool and selects nodes from the new poo
 
 If no node fits, the replica waits without being persisted or reserving GPUs. The `DEPLOYMENT_UNSCHEDULABLE` event explains why: an empty pool produces
 `pool_empty`, with the total node count, counts of nodes that fail the requirements or are offline, and one specific requirement mismatch. If no node in the pool fits, it produces `pool_no_fit`,
-with the candidate count, number of nodes tried, best-fitting node, and that node's full rejection reason.
+with the candidate count, number of nodes tried, best-fitting node, and that node's full rejection reason. If no node in the pool fits outright but some node would fit once deployments sharing its cards give them up, the reason is `waiting_for_yield`; see [How a New Deployment Gets onto a Shared Card](../how-to/scheduling-center.md#新部署怎样放到共用的卡上).
 
 Replicas waiting for a node retry when nodes change: a node coming online, label changes, and similar events immediately trigger rescheduling for all deployments. Each agent's routine status report,
 sent once per minute with free GPUs, disk, images, and GPU health, is coalesced by the controller every 2 seconds. Only deployments that have not settled are rescheduled: those with replicas waiting for nodes, starting,
