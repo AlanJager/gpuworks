@@ -468,7 +468,7 @@
     "help": {
       "schedulable": "The node takes new replicas. Cordon it to keep new ones off while what runs keeps running, or drain it to also move the replicas placed from a pool onto other nodes.",
       "cordoned": "No new replica is started here; what runs keeps running. Drain to move the pool-placed replicas off, or make it schedulable again.",
-      "draining": "No new replica is started here, and each pool-placed replica is replaced on another node before it is retired, one at a time per deployment, so no deployment serves fewer replicas than before. Replicas pinned to this node and multi-node or PD ranks stay until evicted."
+      "draining": "No new replica is started here. Replacements start on other nodes before existing replicas retire, so service capacity is retained. Pinned replicas wait for a placement change; multi-node and PD units wait until suitable replacement nodes are available."
     },
     "action": {
       "cordon": "Cordon",
@@ -476,7 +476,8 @@
       "uncordon": "Make schedulable",
       "uncordonAnyway": "Make schedulable anyway",
       "evict": "Evict now",
-      "evictConfirm": "Take every replica off this node now, without waiting for replacements? Pinned replicas and multi-node or PD ranks wait until the node is schedulable again or their deployment names another node."
+      "evictConfirm": "Take every replica off this node now, without waiting for replacements? Pinned replicas and multi-node or PD ranks wait until the node is schedulable again or their deployment names another node.",
+      "stopDrain": "Stop drain"
     },
     "done": {
       "schedulable": "The node takes new replicas again",
@@ -484,20 +485,32 @@
       "draining": "The node is draining"
     },
     "evicted": "{{count}} replica(s) evicted",
-    "stuck": "{{count}} replica(s) here are not moved by a drain: pinned to this node, or a multi-node or PD rank. Change their deployment's nodes, or evict them.",
+    "stuck": "{{count}} replica(s) are pinned to this node. Change their deployment’s node requirements, or explicitly evict them.",
     "replicas": "Replicas on this node ({{count}})",
     "empty": "Nothing runs on this node",
     "columns": {
       "deployment": "Deployment",
       "instance": "Instance",
       "state": "State",
-      "drain": "On drain"
+      "drain": "On drain",
+      "feedback": "Progress and feedback"
     },
     "kind": {
-      "pool": "Moved to another node",
+      "pool": "Waits for a replacement elsewhere",
       "pinned": "Pinned here: waits",
-      "named": "Names this node: evict to move"
-    }
+      "named": "Moves its unit after a replacement is ready"
+    },
+    "drainHint": "Open Scheduling and drain to see waiting replicas, scheduling feedback, or stop the drain while keeping the node cordoned.",
+    "waiting": "Waiting for {{count}} replica(s) to leave: replacements must be ready before existing service is retired.",
+    "stopHint": "Check each deployment’s latest feedback. You can stop further drain work while keeping the node cordoned; work already in progress may finish. The platform does not automatically enable scheduling or force replicas off the node.",
+    "completed": "No active replicas remain. The node still takes no new replicas; stop the drain to leave it cordoned.",
+    "retiring": "Retiring this instance; waiting for in-flight requests and removal confirmation.",
+    "pinnedReason": "The deployment is pinned to this node. Change its node requirements, or explicitly evict it.",
+    "lastFeedback": "Latest scheduling feedback: {{reason}}",
+    "lastFailedAttempt": "Latest failed attempt on another node: {{message}}",
+    "awaitingReason": "Waiting for a replacement. No scheduling refusal has been reported yet; check the deployment’s instances and model/image preparation.",
+    "offline": "The node is offline: retirement and container removal cannot be confirmed.",
+    "offlineHint": "Restore its agent connection and check its instances. You can stop the drain while keeping the node cordoned; the platform will not enable scheduling or claim that removal succeeded."
   },
   "systemLabels": {
     "title": "System labels",

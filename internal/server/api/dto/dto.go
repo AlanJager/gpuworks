@@ -194,8 +194,9 @@ type NodeSchedulingRequest struct {
 // NodeReplicas is what still runs on a node, for following a drain
 // (GET /nodes/{uuid}/replicas).
 type NodeReplicas struct {
-	Scheduling string        `json:"scheduling"`
-	Items      []NodeReplica `json:"items"`
+	DrainOffline bool          `json:"drain_offline,omitempty"`
+	Scheduling   string        `json:"scheduling"`
+	Items        []NodeReplica `json:"items"`
 }
 
 // NodeReplica is one instance on a node and whether a drain moves it: "pool"
@@ -210,6 +211,11 @@ type NodeReplica struct {
 	Deployment   string `json:"deployment"`
 	State        string `json:"state"`
 	Kind         string `json:"kind"`
+	// Latest scheduler feedback and failed attempt are observations, not a
+	// separate persisted drain state. Only populated while awaiting replacement.
+	DrainReason   *ScheduleReason `json:"drain_reason,omitempty"`
+	DrainReasonAt *time.Time      `json:"drain_reason_at,omitempty"`
+	DrainMessage  string          `json:"drain_message,omitempty"`
 }
 
 // NodeEviction is what POST /nodes/{uuid}/evict took off the node: the

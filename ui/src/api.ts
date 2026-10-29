@@ -130,9 +130,13 @@ export interface NodeReplica {
   deployment: string;
   state: string;
   kind: "pool" | "pinned" | "named";
+  drain_reason?: ScheduleMessage;
+  drain_reason_at?: string;
+  drain_message?: string;
 }
 
 export interface NodeReplicas {
+  drain_offline?: boolean;
   scheduling: NodeScheduling;
   items: NodeReplica[];
 }
