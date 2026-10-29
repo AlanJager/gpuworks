@@ -117,7 +117,7 @@ specs:
   display_profile: compatible
   scenario: balanced
   engine: vllm
-  image: quay.io/ascend/vllm-ascend:v0.30.0rc2-a3
+  image: gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1
   image_sources:
   - quay.nju.edu.cn/ascend/vllm-ascend:v0.30.0rc2-a3
   weights:

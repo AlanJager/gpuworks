@@ -110,7 +110,7 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Created != 29 || result.Updated != 0 || result.Deleted != 69 || result.Deprecated != 3 || len(result.Skipped) != 0 {
+	if result.Created != 33 || result.Updated != 0 || result.Deleted != 69 || result.Deprecated != 3 || len(result.Skipped) != 0 {
 		t.Fatalf("sync result = %+v", result)
 	}
 
@@ -179,7 +179,7 @@ func TestSyncSeedReplacesGPUStackCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Created != 0 || again.Updated != 29 || again.Deleted != 0 || again.Deprecated != 0 {
+	if again.Created != 0 || again.Updated != 33 || again.Deleted != 0 || again.Deprecated != 0 {
 		t.Fatalf("second sync = %+v", again)
 	}
 }
@@ -243,7 +243,7 @@ func TestSyncSeedSkipsConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Skipped) != 2 || result.Created != 27 {
+	if len(result.Skipped) != 2 || result.Created != 31 {
 		t.Fatalf("result = %+v", result)
 	}
 	community, err := st.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2")
