@@ -120,7 +120,7 @@ specs:
         revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
     - modelscope:
         repo_id: Qwen/Qwen3.5-2B
-        revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+        revision: c00cc5fd7803c60b7788e053dcce33d0d26b11ef
   weight_bytes: 4548221488
   gpus:
     vendor: ppu

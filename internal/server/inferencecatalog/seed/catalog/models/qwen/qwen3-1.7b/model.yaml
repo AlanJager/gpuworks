@@ -141,7 +141,7 @@ specs:
         revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
     - modelscope:
         repo_id: Qwen/Qwen3-1.7B
-        revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+        revision: 4855588ea1a12789f2e965e5f52a9e4a24c94b2a
   weight_bytes: 4063515592
   gpus:
     vendor: ppu
