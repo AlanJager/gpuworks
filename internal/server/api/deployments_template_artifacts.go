@@ -42,40 +42,63 @@ func (a *apiHandlers) resolveTemplateWeightModelForNode(source weightSource, ori
 	}
 	if existing != nil {
 		state := availability[existing.ID]
-		if !state.failed && (state.ready || nodeID == 0) {
+		if !state.failedOnly && (state.ready || nodeID == 0) {
 			return existing, nil
 		}
 	}
 	var candidate *store.Model
-	for i := range candidates {
-		item := &candidates[i]
-		state := availability[item.ID]
-		if state.failed {
-			continue
-		}
-		if explicit && (existing == nil || item.ID != existing.ID) {
-			if !state.ready {
-				continue
-			}
-			// An imported copy has no revision: retain the existing size check
-			// before substituting it for weights pinned by the catalog.
-			if item.Revision == "" && source.Revision != "" && !sameWeightSize(item.WeightBytes, weightBytes) {
-				continue
-			}
-		}
-		if candidate == nil || preferTemplateArtifact(item, candidate, source, availability) {
-			candidate = item
-		}
+	if explicit {
+		candidate = selectExplicitTemplateArtifact(candidates, source.Revision, weightBytes, availability)
+	} else {
+		candidate = selectPreferredTemplateArtifact(candidates, source, availability)
 	}
 	if candidate != nil {
 		return candidate, nil
 	}
-	if findErr == nil {
+	if existing != nil {
+		if !availability[existing.ID].failedOnly {
+			return existing, nil
+		}
 		return nil, productError(ErrorModelSourceUnavailable, "the selected template artifact has failed; retry or select another model", map[string]any{
 			"model_id": existing.ID, "provider": existing.Source, "repo_id": existing.SourceID, "revision": existing.Revision,
 		})
 	}
 	return a.createTemplateWeightModel(source, original, engine, quantization, weightBytes)
+}
+
+func selectExplicitTemplateArtifact(providerCandidates []store.Model, revision string, weightBytes int64, availability map[uint]templateArtifactState) *store.Model {
+	revision = strings.TrimSpace(revision)
+	var imported *store.Model
+	for i := range providerCandidates {
+		item := &providerCandidates[i]
+		if !availability[item.ID].ready {
+			continue
+		}
+		itemRevision := strings.TrimSpace(item.Revision)
+		if itemRevision == revision {
+			return item
+		}
+		// Unknown revisions may be imported copies of the pinned weights;
+		// a different known revision is never a substitute (ADR 0018).
+		if imported == nil && itemRevision == "" && sameWeightSize(item.WeightBytes, weightBytes) {
+			imported = item
+		}
+	}
+	return imported
+}
+
+func selectPreferredTemplateArtifact(candidates []store.Model, source weightSource, availability map[uint]templateArtifactState) *store.Model {
+	var candidate *store.Model
+	for i := range candidates {
+		item := &candidates[i]
+		if availability[item.ID].failedOnly {
+			continue
+		}
+		if candidate == nil || preferTemplateArtifact(item, candidate, source, availability) {
+			candidate = item
+		}
+	}
+	return candidate
 }
 
 func preferTemplateArtifact(candidate, current *store.Model, source weightSource, availability map[uint]templateArtifactState) bool {
@@ -137,8 +160,8 @@ func (a *apiHandlers) readyModelArtifacts(models []store.Model, nodeID uint, pin
 }
 
 type templateArtifactState struct {
-	ready  bool
-	failed bool
+	ready      bool
+	failedOnly bool
 }
 
 func (a *apiHandlers) templateArtifactAvailability(models []store.Model, nodeID uint, pinned []uint) (map[uint]templateArtifactState, error) {
@@ -174,19 +197,18 @@ func (a *apiHandlers) templateArtifactAvailability(models []store.Model, nodeID 
 			applies[storage.Storage.ID] = true
 		}
 	}
+	hasFailure := map[uint]bool{}
 	viable := map[uint]bool{}
 	for i := range files {
 		file := &files[i]
 		if (len(pinned) > 0 && !slices.Contains(pinned, file.StorageID)) || (applies != nil && !applies[file.StorageID]) {
 			continue
 		}
-		state := out[file.ModelID]
-		state.failed = state.failed || file.State == proto.MFFailed
-		out[file.ModelID] = state
+		hasFailure[file.ModelID] = hasFailure[file.ModelID] || file.State == proto.MFFailed
 		viable[file.ModelID] = viable[file.ModelID] || file.Ready() || store.TransferUnderWay(file)
 	}
 	for id, state := range out {
-		state.failed = state.failed && !state.ready && !viable[id]
+		state.failedOnly = hasFailure[id] && !state.ready && !viable[id]
 		out[id] = state
 	}
 	return out, nil

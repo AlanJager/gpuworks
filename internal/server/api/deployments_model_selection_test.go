@@ -118,14 +118,10 @@ func TestTemplateAutomaticModelRejectsFailedArtifact(t *testing.T) {
 }
 
 func TestTemplateAutomaticModelPrefersReadableRevision(t *testing.T) {
-	for _, explicit := range []bool{false, true} {
-		t.Run(fmt.Sprint(explicit), func(t *testing.T) {
-			f, bad := templateFailedRevisionFixture(t, true)
-			got, err := f.h.resolveTemplateWeightModelForNode(weightSource{Provider: bad.Source, RepoID: bad.SourceID, Revision: bad.Revision}, f.template, "vllm", "", 0, f.node.ID, nil, explicit)
-			if err != nil || got.ID != f.shared.ID {
-				t.Fatalf("readable revision lost to failed exact match: model=%+v err=%v", got, err)
-			}
-		})
+	f, bad := templateFailedRevisionFixture(t, true)
+	got, err := f.h.resolveTemplateWeightModelForNode(weightSource{Provider: bad.Source, RepoID: bad.SourceID, Revision: bad.Revision}, f.template, "vllm", "", 0, f.node.ID, nil)
+	if err != nil || got == nil || got.ID != f.shared.ID {
+		t.Fatalf("readable revision lost to failed exact match: model=%+v err=%v", got, err)
 	}
 }
 
