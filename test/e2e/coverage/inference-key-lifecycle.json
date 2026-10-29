@@ -11,21 +11,74 @@
   "lane": "local-real-server-sqlite",
   "identity": "admin creates; copied inference bearer consumes without cookies",
   "fixture": "Fresh SQLite/server/Chrome; remove the fresh server-owned default key via API, then scoped guard key keeps gateway authentication enabled during target revocation",
-  "product_contracts": ["ui/src/pages/APIKeysPage.tsx", "internal/server/api/deploy.go", "internal/server/api/dto/deploy.go", "internal/server/proxy/proxy.go", "internal/server/store/auth.go"],
-  "required_evidence": ["ui", "request", "persistence", "runtime", "cleanup"],
-  "execution_evidence": {"status": "N/A", "reason": "Gateway authorization is server/store-only; empty /v1/models proves no model execution"},
-  "fields": [{"field_id": "inference-key.name", "component": "Text", "required": true, "default": "", "request": "name", "persistence": "name", "contract": "UI requires nonblank name; API preserves supplied name, defaults empty to default, and declares no length bound", "covered": ["empty", "whitespace", "named create"], "missing": ["non-ASCII and surrounding-whitespace preservation"]},
-    {"field_id": "api-keys.table-preferences", "component": "ResourceTable settings drawer and resize handles", "request": "N/A: browser-local table preferences", "persistence": "preferences keyed by tableId=api-keys", "covered": [], "missing": ["MISSING: drag width/minimum width, hide/show/reorder/reset columns and reload persistence", "MISSING: fixed name/action column restrictions and safe handling of unknown saved columns", "MISSING: api-keys and platform-tokens preferences remain isolated on the same page", "MISSING: concrete sortable columns name/last_used/created_at in both directions and tied-value ordering; existing full-list gap includes pagination and volumes"]}
+  "product_contracts": [
+    "ui/src/pages/APIKeysPage.tsx",
+    "internal/server/api/deploy.go",
+    "internal/server/api/dto/deploy.go",
+    "internal/server/proxy/proxy.go",
+    "internal/server/store/auth.go"
+  ],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "runtime",
+    "cleanup"
+  ],
+  "execution_evidence": {
+    "status": "N/A",
+    "reason": "Gateway authorization is server/store-only; empty /v1/models proves no model execution"
+  },
+  "fields": [
+    {
+      "field_id": "inference-key.name",
+      "component": "Text",
+      "required": true,
+      "default": "",
+      "request": "name",
+      "persistence": "name",
+      "contract": "UI requires nonblank name; API preserves supplied name, defaults empty to default, and declares no length bound",
+      "covered": [
+        "empty",
+        "whitespace",
+        "named create"
+      ],
+      "missing": [
+        "non-ASCII and surrounding-whitespace preservation"
+      ]
+    },
+    {
+      "field_id": "api-keys.table-preferences",
+      "component": "ResourceTable settings drawer and resize handles",
+      "request": "N/A: browser-local table preferences",
+      "persistence": "preferences keyed by tableId=api-keys",
+      "covered": [],
+      "missing": [
+        "MISSING: drag width/minimum width, hide/show/reorder/reset columns and reload persistence",
+        "MISSING: fixed name/action column restrictions and safe handling of unknown saved columns",
+        "MISSING: api-keys and platform-tokens preferences remain isolated on the same page",
+        "MISSING: concrete sortable columns name/last_used/created_at in both directions and tied-value ordering; existing full-list gap includes pagination and volumes"
+      ]
+    }
   ],
   "crud": {
     "create": "UI Enter POST; exact name and 201 once-only key; field rejection and Esc do not mutate",
     "read": "Reload and independent exact GET metadata, no full key, successful gateway call persists last_used",
-    "update": {"status": "N/A", "reason": "Inference key API/UI expose create/list/delete only; no expiry or scope control"},
+    "update": {
+      "status": "N/A",
+      "reason": "Inference key API/UI expose create/list/delete only; no expiry or scope control"
+    },
     "delete": "UI named-impact confirmation, cancel retains runtime access, delete returns 200 and invalidates key while guard remains usable"
   },
   "checklist_items": {
     "1.1": "The create dialog shows one field and none is hidden. Name is a required textbox, its value is empty, it has no unit and no control range. Reading the field sends no key write. The submit sends POST /api/v1/apikeys with only name. The 201 response carries that name. After reload the row shows the name and the prefix. The independent GET item keeps name, prefix and created_at",
-    "covered_in_this_scenario": ["1.3", "1.7", "7.3", "21.1", "21.5"],
+    "covered_in_this_scenario": [
+      "1.3",
+      "1.7",
+      "7.3",
+      "21.1",
+      "21.5"
+    ],
     "partial": {
       "7.4": "Valid/wrong-secret/revoked runtime paths; broader identities missing",
       "7.6": "GET/DOM and artifacts checked; not all response/log/export surfaces",
@@ -42,9 +95,18 @@
     "12.4": "covered: Cancel, Escape, close and mask each return focus to the card Create inference token button and send no key mutation",
     "12.5": "N/A: the create dialog has no nested child layer; the one-time secret dialog opens only after create closes",
     "12.6": "covered: While the create POST is held the footer Create shows the loading state and a second click sends no further create request; the 502 keeps the name and shows the failure reason; the later 201 matches the reloaded row and the independent key list",
-    "12.8": "N/A: inference key create and delete have no delete preview, revision or compare-and-swap"
+    "12.8": "N/A: inference key create and delete have no delete preview, revision or compare-and-swap",
+    "1.3": "covered: the single required field is given both the empty string and pure whitespace, and each submission shows the field's own required message, marks it aria-invalid, and leaves the mutation log empty - so a rejected create is located at the field rather than reported and a request is never sent.",
+    "1.15": "covered: Tab from the field stays inside the dialog across eight presses, Shift+Tab returns to the field, and the focus ring inherits theme.primary. At the recorded 1440x900 viewport the dialog and its submit button are each measured in a single frame after the open animation settles and must both sit inside the viewport with the button's rectangle wholly inside the dialog's, so neither the field nor the footer action can be clipped or overlapped."
   },
-  "missing": ["real deployed model generation/streaming", "full list matrix and 10/30/100 records", "non-admin permissions", "browser server-failure recovery", "last-key deletion through UI (zero-key mode is checked after fixture cleanup only)", "all name and keyboard/style boundaries"],
+  "missing": [
+    "real deployed model generation/streaming",
+    "full list matrix and 10/30/100 records",
+    "non-admin permissions",
+    "browser server-failure recovery",
+    "last-key deletion through UI (zero-key mode is checked after fixture cleanup only)",
+    "all name and keyboard/style boundaries"
+  ],
   "result": "NOT_RUN until a matching real report.json records PASS and all evidence",
   "artifact": "secrets/e2e/<runId>/report.json; source/test/helper/fixture/manifest/binary SHA, evidence, redacted trace/screenshots",
   "cleanup": "Target UI deletion asserted in body; owned guard API deletion and empty GET asserted; stop owned process; private diagnostic state retained at most 7 days"
