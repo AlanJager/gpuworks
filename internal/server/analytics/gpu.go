@@ -146,6 +146,14 @@ func (s *Service) GPUs(ctx context.Context, q GPUQuery) (dto.GPUAnalytics, error
 		if err != nil {
 			return out, err
 		}
+		// Inventory cards without any samples still belong in the detail.
+		// Empty accumulators preserve unknown metrics without inventing zeros.
+		for _, current := range sc.cards {
+			key := cardKey{current.NodeUUID, current.Index, current.UUID}
+			if cards[key] == nil {
+				cards[key] = &statsdb.GPUCard{NodeUUID: current.NodeUUID, GPUIndex: current.Index, GPUUUID: current.UUID, GPUModel: current.Model}
+			}
+		}
 		nodes := make([]string, 0, len(cards))
 		for k := range cards {
 			nodes = append(nodes, k.node)

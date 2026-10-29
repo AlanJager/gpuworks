@@ -1,0 +1,17 @@
+============================ System Management Interface ============================
+HCU[0] : HCU use (%): 0.0
+HCU[0] : Temperature (Sensor edge) (C): 41.0
+HCU[0] : Average Graphics Package Power (W): 122.0
+HCU[0] : vram Total Memory (MiB): 65520
+HCU[0] : vram Total Used Memory (MiB): 59202
+HCU[1] : HCU use (%): 73.5
+HCU[1] : Temperature (Sensor edge) (C): 37.0
+HCU[1] : Average Graphics Package Power (W): 121.0
+HCU[1] : vram Total Memory (MiB): 65520
+HCU[1] : vram Total Used Memory (MiB): 58980
+HCU[2] : HCU use (%): N/A
+HCU[2] : Temperature (Sensor edge) (C): 56.0
+HCU[2] : Average Graphics Package Power (W): 122.0
+HCU[2] : vram Total Memory (MiB): 65520
+HCU[2] : vram Total Used Memory (MiB): 0
+===================================================================================

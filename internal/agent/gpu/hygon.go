@@ -285,7 +285,7 @@ func (p *HygonProber) parseMetrics(fieldsOut, overview string) []Metric {
 				addHygonMetric(m.Values, "gpuworks_gpu_memory_used_bytes", value, 1024*1024)
 			case strings.Contains(key, "vram total memory"):
 				addHygonMetric(m.Values, "gpuworks_gpu_memory_total_bytes", value, 1024*1024)
-			case strings.Contains(key, "gpu use") || strings.Contains(key, "gpu utilization"):
+			case strings.Contains(key, "gpu use") || strings.Contains(key, "hcu use") || strings.Contains(key, "gpu utilization"):
 				addHygonMetric(m.Values, "gpuworks_gpu_utilization", value, 1)
 			case strings.Contains(key, "temperature"):
 				addHygonMetric(m.Values, "gpuworks_gpu_temperature_celsius", value, 1)
