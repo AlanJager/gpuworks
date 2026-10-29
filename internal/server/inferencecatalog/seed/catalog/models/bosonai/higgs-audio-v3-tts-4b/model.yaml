@@ -15,11 +15,11 @@ specs:
     quantization: bf16
     sources:
     - huggingface:
-        repo_id: bosonai/higgs-audio-v3-tts-4b
+        repo_id: bosonai/higgs-tts-3-4b
         revision: 239f63fb7b02b1aa085f98d9efae5e35cc5523e8
     - modelscope:
-        repo_id: bosonai/higgs-audio-v3-tts-4b
-        revision: de49b06378d9b7daa0bb17ef6563cb10cf05f304
+        repo_id: bosonai/higgs-tts-3-4b
+        revision: 337c2e754886476e45d6addce12e638ae92c6283
   weight_bytes: 9321521878
   gpus:
     vendor: nvidia
@@ -28,6 +28,33 @@ specs:
   args:
   - --omni
   - --trust-remote-code
+  env:
+    HIGGS_AUDIO_TOKENIZER_PATH: /models/audio-tokenizer
+  components:
+  - name: target
+    role: primary
+    weights:
+      quantization: bf16
+      sources:
+      - huggingface:
+          repo_id: bosonai/higgs-tts-3-4b
+          revision: 239f63fb7b02b1aa085f98d9efae5e35cc5523e8
+      - modelscope:
+          repo_id: bosonai/higgs-tts-3-4b
+          revision: 337c2e754886476e45d6addce12e638ae92c6283
+    weight_bytes: 9321521878
+    mount_path: /model
+  - name: audio-tokenizer
+    role: auxiliary
+    weights:
+      quantization: fp32
+      sources:
+      - huggingface:
+          repo_id: k2-fsa/OmniVoice
+          revision: 18db15024ce4b7e15638be6ef0e283d99d282f39
+          subfolder: audio_tokenizer
+    weight_bytes: 805675058
+    mount_path: /models/audio-tokenizer
   api:
     health_endpoint: /health
     operations:
@@ -47,11 +74,11 @@ specs:
     quantization: bf16
     sources:
     - huggingface:
-        repo_id: bosonai/higgs-audio-v3-tts-4b
+        repo_id: bosonai/higgs-tts-3-4b
         revision: 7556c17e05201fccd9c8cc120bc216dcc7b5d561
     - modelscope:
-        repo_id: bosonai/higgs-audio-v3-tts-4b
-        revision: 72e379808c5e092e65cde7343dd413aa9e23c321
+        repo_id: bosonai/higgs-tts-3-4b
+        revision: 2a348e3ee35922faf91f232de9efebccdacb77b0
   weight_bytes: 9309834930
   gpus:
     vendor: ppu
