@@ -29,7 +29,7 @@ L2 没有“占用哪个磁盘”的配置项；唤醒读取的仍是部署挂�
 - **等待完成**（默认）：引擎跑完正在处理的请求再睡。长请求会推迟休眠，agent 单次指令上限为 10 分钟。
 - **立即中止**：正在处理的请求立即收到错误。
 
-指令发出后，网关立即停止向这次选中休眠的实例转发新请求。其余可服务的清醒副本继续接收请求；没有可服务的清醒副本时，网关才返回 HTTP 503，信息为 `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`。你手动下的休眠是保持休眠，网关不会因为请求唤醒它；定时计划或唤醒等位可以替你唤醒。平台自己让它睡下的（无抢占时自动休眠、按出让策略让卡）有请求时会被自动唤醒，见[调度中心](scheduling-center.md#按需唤醒)。
+指令发出后，网关立即停止向这次选中休眠的实例转发新请求。其余可服务的清醒副本继续接收请求；没有可服务的清醒副本时，网关才返回 HTTP 503，信息为 `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`。你手动下的休眠是保持休眠，网关不会因为请求唤醒它；定时计划或唤醒等位可以替你唤醒。平台自己让它睡下的（按出让策略让卡）有请求时会被自动唤醒，见[调度中心](scheduling-center.md#按需唤醒)。
 
 ## 休眠整个部署
 
@@ -111,6 +111,8 @@ curl --fail-with-body -sS -X POST \
 - 占用者里有不可休眠的部署、PD 里最后一个醒着的角色，或卡被平台外进程占着时，整个请求被拒绝，返回 409 `WAKE_YIELD_BLOCKED`（`occupants` 列出名字），什么都不会改动。
 - 被让位休眠的部署，时间线记 `YIELDED_FOR_WAKE`；除非另有定时计划，它不会自己醒来。
 
+等位一旦开始，保持休眠就解除了：部署是要醒的，等位期间到达的请求由网关挂起、等这次唤醒，驻留仲裁也可以按各自的出让策略为它腾地方，而不是回 503（以前要等唤醒落地才解除）。
+
 部署在等位期间，详情页显示等位横幅和起点时间（部署的 `wake_waiting_since`）。要放弃等位，点**取消等位**，或调用：
 
 ```bash
@@ -119,7 +121,7 @@ curl --fail-with-body -sS -X DELETE \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-返回 200 `{"items":["<实例 UUID>"],"total":1}`，列出被撤销的实例。等位、让位与定时计划、自动休眠一起构成[调度中心](scheduling-center.md)；调度看板上能看到谁在等位。
+返回 200 `{"items":["<实例 UUID>"],"total":1}`，列出被撤销的实例。等位、让位与定时计划、出让策略一起构成[调度中心](scheduling-center.md)；调度看板上能看到谁在等位。
 
 休眠或唤醒失败时，先查看实例时间线：
 

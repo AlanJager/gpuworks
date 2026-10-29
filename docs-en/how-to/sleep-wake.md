@@ -29,7 +29,7 @@ Choose an option in the sleep confirmation page:
 - **Finish in-flight requests first (recommended)** (default): the engine finishes requests it is processing before sleeping. Long requests delay sleep; the agent allows up to 10 minutes per command.
 - **Abort in-flight requests now**: requests being processed immediately receive an error.
 
-Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with the message `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`. A sleep you issue by hand is a held sleep, and the gateway does not wake it because of a request; a schedule or a waiting wake can wake it for you. A sleep the platform made itself (auto sleep, yielding cards by yield policy) is woken automatically when a request arrives; see the [Scheduling Center](scheduling-center.md#按需唤醒).
+Once the command is sent, the gateway immediately stops forwarding new requests to the instances selected for sleep. Other awake replicas that can serve requests continue receiving them. Only when no awake replica can serve requests does the gateway return HTTP 503 with the message `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)`. A sleep you issue by hand is a held sleep, and the gateway does not wake it because of a request; a schedule or a waiting wake can wake it for you. A sleep the platform made itself (yielding cards by yield policy) is woken automatically when a request arrives; see the [Scheduling Center](scheduling-center.md#按需唤醒).
 
 ## Put an Entire Deployment to Sleep
 
@@ -111,6 +111,8 @@ Details of yielding:
 - If any occupant cannot sleep (a deployment that is not sleep-capable, the last awake role of a PD deployment, or a card held by a process outside the platform), the whole request is refused with 409 `WAKE_YIELD_BLOCKED` (`occupants` lists the names) and nothing changes.
 - The deployment put to sleep records `YIELDED_FOR_WAKE` in its timeline; unless a schedule says otherwise, it does not wake up by itself.
 
+Once waiting starts, the hold is cleared: the deployment is meant to be awake, so a request that arrives while it waits is held by the gateway for that wake, and the residency arbiter may make room for it under the yield policies, instead of getting a 503 (before, the hold stayed until the wake landed).
+
 While a deployment waits, its details page shows a waiting banner and the start time (the deployment's `wake_waiting_since`). To give up waiting, click **Cancel waiting**, or call:
 
 ```bash
@@ -119,7 +121,7 @@ curl --fail-with-body -sS -X DELETE \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-It returns 200 `{"items":["<instance UUID>"],"total":1}` listing the instances whose wait was cancelled. Waiting and yielding, together with schedules and auto sleep, make up the [Scheduling Center](scheduling-center.md); the scheduling board shows who is waiting.
+It returns 200 `{"items":["<instance UUID>"],"total":1}` listing the instances whose wait was cancelled. Waiting and yielding, together with schedules and yield policies, make up the [Scheduling Center](scheduling-center.md); the scheduling board shows who is waiting.
 
 If sleep or wake fails, first inspect the instance timeline:
 

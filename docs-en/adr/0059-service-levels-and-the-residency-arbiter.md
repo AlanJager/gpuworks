@@ -2,9 +2,10 @@
 
 Date: 2026-10-28 · Status: Accepted
 
-Terminology follows `CONTEXT.md`: **service level**, **residency arbiter**, **yield**, **held sleep**.
+Terminology follows `CONTEXT.md`: **yield policy** (called service level in the original decision of 2026-10-28), **residency arbiter**, **yield**, **held sleep**.
 Changes two points of decision 1 in [ADR 0058](0058-scheduling-center-acts-through-operator-orders.md): “no preemption” and “the gateway does not hold requests while waiting for a wake”;
 the rest (schedules, idle sleep, waiting wakes, yielding wakes, sleep releasing capacity down to a residue) is unchanged.
+This page keeps the original decision of 2026-10-28 and two amendments of 2026-10-29; **service level** and the presets are no longer terms after the second amendment (the last section), which states the current behaviour.
 
 ## Background
 
@@ -89,3 +90,34 @@ The text above is the original decision of 2026-10-28 and is kept as it was. In 
 - The idle time before yield anytime (formerly offline) changes from 10 seconds to a fixed 30 seconds; the other three presets behave as the former levels did.
 - A deployment that had idle sleep on before the migration becomes custom, and its idle time also decides how long it must be idle before it yields.
 - `wait_unbounded` leaves how long the waiter waits to the longest request; use it only when an operator explicitly accepts that.
+
+## Second Amendment (2026-10-29): The Yield Policy Is the Only Choice
+
+After the previous amendment there were two layers in the UI: the yield policy with its parameters, and, on top of them, the four service-level presets (resident, online, shared, offline, with “custom” for any edit). In use, the presets and the policy are the same dimension: resident is `never`, online is `idle`, shared is `timeslice`, and offline is `anytime`; choosing another preset means changing the policy, and choosing another policy turns the preset into custom. Several hard-coded or surplus parts of the design also no longer held up. The change is that the yield policy is the only choice, and where the previous amendment conflicts with this section, this section prevails.
+
+**1. Presets are gone.** The yield policy has four values, from the highest rank to the lowest: never yield automatically (`never`) > yield when idle (`idle`) > yield on a turn (`timeslice`) > yield anytime (`anytime`). Resident, online, shared, offline, and “custom” are no longer concepts; they appear only to say what each policy suits: always-on services, online services, several models sharing in turns, batch and offline work. The `preset` request body and response field of the API are removed, and `preset` in the scheduling board, overview, and residency timeline becomes `yield_policy` (the policy name).
+
+**2. Auto sleep when not preempted is gone.** When nobody waits for its cards, sleeping only leaves GPU memory empty and makes the deployment's own next request pay a wake; yielding is only meaningful when someone waits. So a deployment stays awake while nobody waits for its cards, and `auto_sleep`, the `AUTO_SLEEP` with `trigger: idle` (`TriggerIdle`), and the idle scan in the evaluator are removed. To sleep at fixed times, use a schedule. A multi-node or PD deployment, which can only never yield automatically, therefore has no sleep parameters at all.
+
+**3. The idle time is common to every policy except never yield.** `anytime` used to have a fixed, unconfigurable 30-second idle yield time, while `idle` and `timeslice` each had one, and which parameters applied varied by policy. Now `idle_sec` (15–604800 s) applies to all three policies that yield: once idle (no in-flight or held request) that long, the deployment yields if someone waits for its cards. The defaults are 60 s for `idle`, 30 s for `timeslice`, and 30 s for `anytime`; the minimum drops from 30 to 15 seconds.
+
+**4. A longest serving time replaces the least serving time.** `min_serve_sec` (0–3600 s, further raised by the arbiter to 10 times the measured switch time) becomes `max_serve_sec` (30–86400 s, default 120 s), used by `timeslice` only: when taking turns with another yield-on-a-turn deployment, the holder yields to the waiting one once it has served that long in this wake, no longer requires the other's request to have waited 30 seconds, and no longer stretches with the measured switch time. The reason is that “serve at least this long” answers the holder refusing to yield, whereas what turn-taking must really bound is a holder that never lets go; an operator-given upper limit makes the behaviour predictable. The `idle_sec` of a `timeslice` deployment may not exceed `max_serve_sec`, otherwise the idle time could never be reached.
+
+**5. There is no unbounded wait.** `wait_unbounded` is removed: `unfinished` is `abort` or `wait` (`unfinished_wait_sec` 1–600 s, default 30 s). One very long request holds a waiter for at most 600 seconds. The longest request hold `hold_max_sec` is now 10–3600 s, defaulting to 300 s for `idle`, 600 s for `timeslice`, and 3600 s for `anytime`.
+
+**6. Two `idle` deployments may share a card.** This used to be refused when the policy was set (409 `YIELD_POLICY_IDLE_SHARED`), and placement avoided it. Now it is allowed and the error code is removed: while both are busy neither yields, so one side's requests are held by the gateway until the other is idle, or until they reach their own `hold_max_sec` and get a 503. `idle_neighbours` in the 200 answer of `PUT .../yield-policy` lists the other `idle` deployments on the cards, and the UI shows a warning from it and suggests `timeslice` for taking turns. The refusal became a warning because such sharing is not dangerous, only slow for the side that is busy, and blocking it would leave operators no way to say “they are usually both idle, and now and then one is busy”.
+
+**7. Yields happen when they fall due, not on a tick.** The residency arbiter keeps one timer for the next due moment (an idle time ending, a turn ending, a wait-to-finish limit running out) and looks at that moment instead of waiting for the 10-second evaluator tick, so thresholds of 15 or 30 seconds hold to about a second. For a busy holder that yields only once idle, it looks every 2 seconds whether the holder has become idle. When it looks at a waiter's holders, it does so again even while that waiter's wake is waiting for room.
+
+**8. The server serves the dictionary of policies.** New `GET /api/v1/scheduling/yield-policies`: the four policies in rank order, each with `defaults` and the parameters that apply (`applies`), plus the range of each numeric parameter (`bounds`, where `at_most` marks that `idle_sec` may not exceed `max_serve_sec`), `sleep_levels`, and `unfinished`. The defaults, the ranges, and which parameters apply live only on the server, and the UI keeps no copy.
+
+**9. A waiting wake clears the held sleep.** When an operator's `POST /deployments/{id}/wake?wait=true` does not fit and answers 202 `waiting`, the deployment's held sleep (`sleep_held`) is cleared at once: the deployment is meant to be awake, so a request that arrives afterwards is held by the gateway for that wake, and the residency arbiter may make room for it under the yield policies, instead of getting a 503. Before, the hold stayed until the wake landed.
+
+**10. Persistence and migration.** Migration 188 reshapes the `deployments` columns: `auto_sleep` and `min_serve_sec` are dropped and `max_serve_sec` is added. For a `timeslice` deployment `max_serve_sec` comes from the old least serving time, at least 30 s; an `anytime` deployment's `idle_sec` becomes the 30 s that used to be built in; a `wait_unbounded` `unfinished` becomes `wait` for 600 s; a never-yield deployment that had auto sleep on becomes a plain never-yield deployment (after the upgrade it no longer sleeps by itself when nobody waits for its cards); idle times under 15 s are raised to 15 s, a `timeslice` idle time is kept at most `max_serve_sec`, and hold limits over 3600 s are lowered to 3600 s.
+
+**Consequences.**
+
+- One select answers “does it yield, and when”: there is no “the preset became custom” state, and the UI and the docs no longer speak two vocabularies.
+- A deployment that relied on “auto sleep when not preempted” to free GPU memory no longer sleeps by itself after the upgrade; use a schedule to sleep at fixed times.
+- The length of a `timeslice` turn is now an upper limit the operator states; a model that is slow to switch needs a larger `max_serve_sec` set by hand.
+- Two `idle` deployments sharing a card is no longer refused, and operators need to read the warning.

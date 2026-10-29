@@ -514,7 +514,7 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/{id}/start` | 启动已停止的部署，按保留的配置重新调度（每个副本的重试次数重新计）；已在运行则不做任何事；删除中的部署 409 `DEPLOYMENT_DELETING` | JWT |
 | DELETE | `/api/v1/deployments/{id}` | 删除部署 | JWT |
 | POST | `/api/v1/deployments/{id}/sleep` | 休眠部署（`?level=1\|2`，默认 1；`?mode=wait\|abort`，默认 wait）：睡眠意图写进每个活跃实例的期望状态，网关立即不再派发给它们，部署记为"整体处于睡眠命令下"（此后新起的实例也按此睡眠）。`?role=prefill` 只睡 PD 部署该角色的实例（响应带 `role`、`instances`），部署整体不算在睡眠命令下；非 PD 400 `PD_NOT_PD`，不是该部署模式的角色 400 `PD_ROLE_UNKNOWN`，模式不允许为空的角色（如 decode）400 `SLEEP_ROLE_CANNOT_EMPTY`。`level=1` 时本节点主机内存放不下将卸载的权重（可用内存减去 max(总量 5%, 4 GiB) 余量）409 `SLEEP_HOST_MEMORY_INSUFFICIENT`（`params.node`、`need_gib`、`available_gib`），改用 L2；节点没有最近的主机内存观测时不拦 | JWT |
-| POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE`（参数同上，`refused[].held_outside` 为 true）。`?wait=true` 放得下的先醒、其余等位，`?yield=true`（可加 `&yield_level=1\|2`，默认 1，占用者主机放不下 L1 时自动改 2）先让占用者休眠再等位；响应见[唤醒等位与让位唤醒](#唤醒等位与让位唤醒) | JWT |
+| POST | `/api/v1/deployments/{id}/wake` | 唤醒部署：已睡着的实例须放得回原卡，否则 409 `WAKE_INSUFFICIENT_GPU_MEMORY`（全有或全无）。`?role=` 只唤醒 PD 该角色的实例。`?partial=true` 唤醒放得下的那部分，响应 `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`；一个也放不下时仍 409。409 的参数描述第一个被拒的节点，`refused` 列出全部被拒的副本；任何唤醒都会撤销部署整体的睡眠命令，要等位的唤醒（202 `waiting`）同时解除保持休眠。卡被平台外进程占着时 409 `WAKE_GPU_HELD_OUTSIDE`（参数同上，`refused[].held_outside` 为 true）。`?wait=true` 放得下的先醒、其余等位，`?yield=true`（可加 `&yield_level=1\|2`，默认 1，占用者主机放不下 L1 时自动改 2）先让占用者休眠再等位；响应见[唤醒等位与让位唤醒](#唤醒等位与让位唤醒) | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | 为多机部署推荐一个副本的节点；请求体 `{"units":[...]}` 为已选副本，返回推荐 `unit` 或无法放置的原因，不保存；见[推荐多机副本节点](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | 让一个副本重新获得重试次数：请求体 `{"role","index"}`（普通部署 `role` 为空），该副本的失败尝试被移除（容器清理、时间线保留），控制器随后重建它，其他副本不受影响；没有该副本 404 `UNIT_UNKNOWN`，没有失败尝试或仍有实例 409 `UNIT_NOT_FAILED`，部署非运行中 409 `UNIT_RETRY_NOT_ACTIVE` | JWT |
 | PUT | `/api/v1/deployments/{id}/replicas` | 单机部署修改副本数（增加时可加 `place_on` 指定新副本首次启动的节点），手动放置的多机部署修改副本节点列表，自动放置的多机部署按副本数增减（`place_on` 为新副本各 rank 的节点）；完整字段与条件见[普通部署的副本调整](#普通部署的副本调整) | JWT |
@@ -524,12 +524,13 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/deployments/{id}/schedule` | 新建一条定时计划，201 返回该计划；校验失败 400 `SCHEDULE_INVALID` / `SCHEDULE_TIMEZONE_UNKNOWN` / `SCHEDULE_REPLICAS_MANUAL_PLACEMENT`（手动放置的多机或 PD 部署） / `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` | JWT |
 | PUT | `/api/v1/deployments/{id}/schedule/{sid}` | 整条替换一条计划，请求体与新建相同，200；计划不属于该部署 404 | JWT |
 | DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | 删除一条计划，204；不存在 404 | JWT |
-| PUT | `/api/v1/deployments/{id}/yield-policy` | 设置出让策略与参数（服务等级是它的预设）：请求体 `{"preset":"online"}`（`resident` / `online` / `shared` / `offline`，只带预设），或 `{"policy":"idle","auto_sleep":true,"idle_sec":30,"sleep_level":"l1","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":120}`，除 `policy` 外都可省略，省略的取该策略的默认值，不适用的被忽略；给了 `policy` 时忽略 `preset`。200 返回归一化的策略与派生的 `preset`，不适用的参数不出现。没有 `policy`（`{}`，或只带参数）、取值不合法或越界 400 `YIELD_POLICY_INVALID`（`params.field`、`reason`：`required` / `invalid_value` / `out_of_range`，越界另带 `minimum`、`maximum`）；策略不是 `never` 或 `auto_sleep` 为真而部署不可休眠 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`；多机或 PD 部署设 `never` 以外的策略 400 `YIELD_POLICY_SHAPE`；与另一个 `idle` 部署共用卡时设为 `idle` 409 `YIELD_POLICY_IDLE_SHARED`（`params.deployment`）；见[出让策略](#出让策略) | JWT |
+| PUT | `/api/v1/deployments/{id}/yield-policy` | 设置出让策略与参数：请求体 `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`，`policy`（`never` / `idle` / `timeslice` / `anytime`）必填，其余都可省略，省略的取该策略的默认值，不适用的被忽略。200 返回存下的策略，不适用的参数不出现；设为 `idle` 而卡上已有另一个 `idle` 部署时多一个 `idle_neighbours`。没有 `policy`（`{}`，或只带参数）、取值不合法或越界 400 `YIELD_POLICY_INVALID`（`params.field`、`reason`：`required` / `invalid_value` / `out_of_range`，越界另带 `minimum`、`maximum`）；策略不是 `never` 而部署不可休眠 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`；多机或 PD 部署设 `never` 以外的策略 400 `YIELD_POLICY_SHAPE`；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联重调度的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联重调度](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）、`recent`（最近 50 条自动化事件，为兼容保留，界面改读调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余四项为空，不存在的节点 404），`?queues=1` 只回答后四项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | 调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
 | GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群出让策略不是 `never` 的部署的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
+| GET | `/api/v1/scheduling/yield-policies` | 出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与适用的参数 `applies`，加各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，以及请求指定了节点时的 `nodes[]`（见「评估请求与获取预估」） | JWT |
@@ -607,7 +608,7 @@ macOS 忽略 `no_systemd`。
 | `quick_params`、`extra_args`（可选） | 对象、字符串 | 已保存的启动配置与额外参数，见[部署启动参数来源](deployment-launch-sources.md) |
 | `pd`（可选） | 对象 | PD 部署的模式、各角色副本数和状态，见 [PD 分离部署](#pd-分离部署placementpd) |
 | `node_replacement` | 对象 | 节点失联重调度的等待时间 `{after_sec}`，默认 600，0 表示从不 |
-| `yield_policy` | 对象 | 出让策略与参数，形状同[出让策略](#出让策略)的响应：`preset`（派生的服务等级预设：`resident`、`online`、`shared`、`offline` 或 `custom`）、`policy`、`auto_sleep` 与适用的参数；见[服务等级](../explanation/service-levels.md) |
+| `yield_policy` | 对象 | 出让策略与参数，形状同[出让策略](#出让策略)的响应：`policy` 与适用的参数；见[出让策略](../explanation/service-levels.md) |
 | `sleep_held` | 布尔 | 休眠是否由运维或定时计划下达（保持休眠）：为 `true` 时请求不唤醒部署 |
 | `wake_waiting_since`（可选） | RFC3339 时间 | 该部署有唤醒在等位时出现，值为等位起点 |
 
@@ -747,7 +748,7 @@ macOS 忽略 `no_systemd`。
 
 `POST /api/v1/deployments/{id}/wake` 与 `POST /api/v1/instances/{uuid}/wake` 的 `?wait=true` 和 `?yield=true`：
 
-- `wait`：放得下的先醒，其余等卡腾出来，服务端容量释放后自动唤醒，等满 30 分钟放弃（时间线 `WAKE_WAIT_TIMEOUT`）。等位起点保存在实例上，部署详情的 `wake_waiting_since` 是其中最早的一个。
+- `wait`：放得下的先醒，其余等卡腾出来，服务端容量释放后自动唤醒，等满 30 分钟放弃（时间线 `WAKE_WAIT_TIMEOUT`）。等位起点保存在实例上，部署详情的 `wake_waiting_since` 是其中最早的一个。应答 202 `waiting` 的同时，部署的保持休眠（`sleep_held`）就解除了：部署是要醒的，等位期间到达的请求由网关挂起、等这次唤醒（驻留仲裁也可以按出让策略为它腾地方），而不是回 503；以前保持要等唤醒落地才解除。
 - `yield`：先把占着所需卡的醒着的部署休眠（`yield_level` 为 1 或 2，默认 1；占用者的主机内存放不下 L1 时自动改 2），再等位。
 - 全部放得下时 200 `{"status":"waking","woken":[…],"waiting":[],"yielded":[]}`；有的要等时 202 `{"status":"waiting",…}`，`waiting` 是在等的实例 UUID，`yielded` 是被让位休眠的部署名。
 - 占用者不能休眠（部署不可休眠、PD 最后一个醒着的角色、平台外进程）时 409 `WAKE_YIELD_BLOCKED`（`params.occupants` 名字列表、`woken`），什么都不改；`yield_level` 不是 1 或 2 时 400 `SLEEP_INVALID_LEVEL`。
@@ -756,57 +757,86 @@ macOS 忽略 `no_systemd`。
 
 ### 出让策略
 
-`PUT /api/v1/deployments/{id}/yield-policy` 设置部署怎样与共用同一批卡的其他部署相处，以及没人用时要不要自己睡下。常驻、在线、分时、离线四个服务等级是它的预设，部署上存的只有策略和参数，预设由它们与四个预设比较得出。规则见[服务等级](../explanation/service-levels.md)，操作见[使用调度中心](../how-to/scheduling-center.md#服务等级与休眠)。请求体二选一：
+`PUT /api/v1/deployments/{id}/yield-policy` 设置部署怎样与共用同一批卡的其他部署相处。出让策略是唯一要选的东西。规则见[出让策略：几个部署怎样共用一批 GPU](../explanation/service-levels.md)，操作见[使用调度中心](../how-to/scheduling-center.md#出让策略)。请求体：
 
-- 只带预设：`{"preset":"online"}`，`preset` 为 `resident` / `online` / `shared` / `offline`，把预设的整套参数写进去；
-- 带策略：`{"policy":"idle","auto_sleep":true,"idle_sec":30,"sleep_level":"l1","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":120}`，除 `policy` 外的键都可省略，省略的取该策略的默认值（即该策略对应预设的值；`auto_sleep` 默认 `false`；只因自动休眠才适用的 `idle_sec` 默认 300；从不出让的 `hold_max_sec` 默认 120），不适用的键被忽略。给了 `policy` 时 `preset` 被忽略，所以响应可以原样当请求体发回。
+```json
+{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
+```
+
+除 `policy` 外的键都可省略，省略的取该策略的默认值，不适用的键被忽略（`idle_neighbours` 也是），所以响应可以原样当请求体发回。
 
 | 字段 | 取值 | 适用于 |
 |---|---|---|
-| `policy` | `never` 从不出让、`idle` 闲置自动出让、`timeslice` 时间片轮流、`anytime` 随时出让 | 总是必填（带策略时） |
-| `auto_sleep` | 布尔，默认 `false`：无抢占时自动休眠，没有别的部署等它的卡也在闲置满 `idle_sec` 后休眠 | 所有可休眠部署，包括多机与 PD |
-| `idle_sec` | 30–604800 秒 | `idle`、`timeslice`；任何策略下 `auto_sleep` 为真时 |
-| `sleep_level` | `auto`（L1，主机内存放不下权重时退回 L2）、`l1`（严格 L1，放不下就拒绝）、`l2`；适用于平台替该部署选的每一次休眠（让卡、自动休眠），运维与定时计划下的休眠不受影响 | 策略不是 `never`，或 `auto_sleep` 为真 |
-| `min_serve_sec` | 0–3600 秒 | `timeslice` |
-| `unfinished` | `abort` 立即中断；`wait` 等待完成，最多 `unfinished_wait_sec` 秒后中断剩下的；`wait_unbounded` 等待完成，不限时 | `timeslice`、`anytime` |
+| `policy` | `never` 不自动出让、`idle` 闲置自动出让、`timeslice` 按时自动出让、`anytime` 随时出让；按等级从高到低 | 总是必填 |
+| `idle_sec` | 15–604800 秒：多久没有请求算闲置，闲置满这么久，有部署等它的卡就让；`timeslice` 时不得超过 `max_serve_sec` | `idle`、`timeslice`、`anytime` |
+| `sleep_level` | `auto`（L1，主机内存放不下权重时退回 L2）、`l1`（严格 L1，放不下就拒绝）、`l2`；适用于平台替该部署选的每一次休眠（让卡），运维与定时计划下的休眠不受影响 | 策略不是 `never` |
+| `max_serve_sec` | 30–86400 秒：与另一个 `timeslice` 部署轮流时，一次醒来最长服务多久，到了就让 | `timeslice` |
+| `unfinished` | `abort` 立即中断；`wait` 等待完成，最多 `unfinished_wait_sec` 秒后中断剩下的 | `timeslice`、`anytime` |
 | `unfinished_wait_sec` | 1–600 秒 | `unfinished` 为 `wait` |
-| `hold_max_sec` | 10–1800 秒：网关为等该部署唤醒最多挂起一个请求多久，超时 503 并带 `Retry-After` | 策略不是 `never`，或 `auto_sleep` 为真 |
+| `hold_max_sec` | 10–3600 秒：网关为等该部署唤醒最多挂起一个请求多久，超时 503 并带 `Retry-After` | 策略不是 `never` |
 
-四个预设的取值：
+各策略的默认值：
 
-| 预设 | 策略与参数 |
+| 策略 | 默认值 |
 |---|---|
-| `resident` | `never`，`auto_sleep` 关 |
-| `online` | `idle`，`idle_sec` 300，`sleep_level` `auto`，`hold_max_sec` 120，`auto_sleep` 关 |
-| `shared` | `timeslice`，`idle_sec` 60，`min_serve_sec` 120，`unfinished` `wait`、`unfinished_wait_sec` 30，`sleep_level` `auto`，`hold_max_sec` 600，`auto_sleep` 关 |
-| `offline` | `anytime`，`unfinished` `abort`，`sleep_level` `auto`，`hold_max_sec` 1800，`auto_sleep` 关 |
+| `never` | 无参数 |
+| `idle` | `idle_sec` 60，`sleep_level` `auto`，`hold_max_sec` 300 |
+| `timeslice` | `idle_sec` 30，`max_serve_sec` 120，`unfinished` `wait`、`unfinished_wait_sec` 30，`sleep_level` `auto`，`hold_max_sec` 600 |
+| `anytime` | `idle_sec` 30，`unfinished` `abort`，`sleep_level` `auto`，`hold_max_sec` 3600 |
 
-成功返回 200 和归一化后的策略，附上派生的 `preset`（与四个预设逐项一致才是预设，否则为 `custom`），不适用的参数不出现。部署详情的 `yield_policy` 同样的形状。响应示例：
+成功返回 200 和存下的策略，不适用的参数不出现。部署详情的 `yield_policy` 同样的形状。响应示例：
 
 ```json
-{"preset":"online","policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}
-{"preset":"shared","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
-{"preset":"offline","policy":"anytime","auto_sleep":false,"sleep_level":"auto","unfinished":"abort","hold_max_sec":1800}
-{"preset":"resident","policy":"never","auto_sleep":false}
-{"preset":"custom","policy":"never","auto_sleep":true,"idle_sec":600,"sleep_level":"l1","hold_max_sec":120}
+{"policy":"never"}
+{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}
+{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
+{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}
 ```
 
-上面五行依次是在线、分时、离线、常驻，以及一个从不出让但打开了自动休眠（因此是自定义）的部署。
+设为 `idle`、而卡上已有另一个 `idle` 部署时仍是 200，响应多一个 `idle_neighbours`（对方的部署名数组）：两个 `idle` 部署都忙时谁也不让，一方的请求被网关挂起，直到对方闲置，或挂到 `hold_max_sec` 后得到 503；要让它们轮流，用 `timeslice`。
 
 错误：
 
 | 情形 | 响应 |
 |---|---|
 | `{}`，或只带参数不带 `policy` | 400 `YIELD_POLICY_INVALID`，`params` 为 `{"field":"policy","reason":"required"}` |
-| 取值不合法 | 400 `YIELD_POLICY_INVALID`，`params.reason` 为 `invalid_value`，`params.field` 为 `policy`、`preset`、`sleep_level` 或 `unfinished` |
-| 数值越界 | 400 `YIELD_POLICY_INVALID`，`params.reason` 为 `out_of_range`，`params.field` 为 `idle_sec`、`min_serve_sec`、`unfinished_wait_sec` 或 `hold_max_sec`，另带 `params.minimum`、`params.maximum` |
-| 策略不是 `never` 或 `auto_sleep` 为真，而部署没打开可休眠 / 引擎不支持休眠 | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
+| 取值不合法 | 400 `YIELD_POLICY_INVALID`，`params.reason` 为 `invalid_value`，`params.field` 为 `policy`、`sleep_level` 或 `unfinished` |
+| 数值越界 | 400 `YIELD_POLICY_INVALID`，`params.reason` 为 `out_of_range`，`params.field` 为 `idle_sec`、`max_serve_sec`、`unfinished_wait_sec` 或 `hold_max_sec`，另带 `params.minimum`、`params.maximum`；`timeslice` 的 `idle_sec` 超过 `max_serve_sec` 时，`idle_sec` 的 `maximum` 就是 `max_serve_sec` |
+| 策略不是 `never`，而部署没打开可休眠 / 引擎不支持休眠 | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
 | 多机或 PD 部署设了 `never` 以外的策略 | 400 `YIELD_POLICY_SHAPE` |
-| 设为 `idle`，而卡上已有另一个 `idle` 部署 | 409 `YIELD_POLICY_IDLE_SHARED`，`params.deployment` 是对方 |
 
-创建部署（`POST /api/v1/deployments`）时 `yield_policy` 取同样的请求对象，省略按常驻；校验同上。
+创建部署（`POST /api/v1/deployments`）时 `yield_policy` 取同样的请求对象，省略按 `never`；校验同上。
 
-时间线事件 `AUTO_SLEEP` 的 `trigger` 为 `schedule`（定时计划）、`idle`（无抢占时自动休眠）或 `preempt`（让卡，`reason` 为 `idle` / `rank` / `turn`）；`level` 总是平台实际选的级别（1 或 2）。事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)。
+`GET /api/v1/scheduling/yield-policies`（JWT，只读）是策略的字典，客户端据此编辑，不另存一份默认值或范围：
+
+```json
+{
+  "policies": [
+    {"policy": "never", "defaults": {"policy": "never"}, "applies": []},
+    {"policy": "idle", "defaults": {"policy": "idle", "idle_sec": 60, "sleep_level": "auto", "hold_max_sec": 300}, "applies": ["idle_sec", "sleep_level", "hold_max_sec"]},
+    {"policy": "timeslice", "defaults": {"policy": "timeslice", "idle_sec": 30, "sleep_level": "auto", "max_serve_sec": 120, "unfinished": "wait", "unfinished_wait_sec": 30, "hold_max_sec": 600}, "applies": ["idle_sec", "sleep_level", "max_serve_sec", "unfinished", "unfinished_wait_sec", "hold_max_sec"]},
+    {"policy": "anytime", "defaults": {"policy": "anytime", "idle_sec": 30, "sleep_level": "auto", "unfinished": "abort", "unfinished_wait_sec": 30, "hold_max_sec": 3600}, "applies": ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec", "hold_max_sec"]}
+  ],
+  "bounds": {
+    "hold_max_sec": {"minimum": 10, "maximum": 3600},
+    "idle_sec": {"minimum": 15, "maximum": 604800, "at_most": "max_serve_sec"},
+    "max_serve_sec": {"minimum": 30, "maximum": 86400},
+    "unfinished_wait_sec": {"minimum": 1, "maximum": 600}
+  },
+  "sleep_levels": ["auto", "l1", "l2"],
+  "unfinished": ["abort", "wait"]
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `policies[]` | 按等级从高到低；`defaults` 是选这个策略时填入的值（凡适用 `unfinished` 的都带 `unfinished_wait_sec`，供打开等待的客户端使用）；`applies` 是适用的参数名，其中 `unfinished_wait_sec` 只在 `unfinished` 为 `wait` 时才有意义 |
+| `bounds` | 各数值参数的范围，单位秒；`at_most` 指出同时适用时不得超过的另一个参数 |
+| `sleep_levels`、`unfinished` | 两个枚举参数的取值 |
+
+没有令牌 401，`POST` 等其他方法 405。
+
+时间线事件 `AUTO_SLEEP` 的 `trigger` 为 `schedule`（定时计划）或 `preempt`（让卡，`reason` 为 `idle` / `rank` / `turn`）；`level` 总是平台实际选的级别（1 或 2）。事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)。
 
 ### 定时计划
 
@@ -836,7 +866,7 @@ macOS 忽略 `no_systemd`。
 
 | 字段 | 含义 |
 |---|---|
-| `nodes` | 分页对象（`items`、`page`、`page_size`、`total`），节点按名称排序，`q` 匹配名称或 UUID。每个节点含 `uuid`、`name`、`online`、`gpus[]`：`index`、`name`、`memory_bytes`、`awake_bytes`、`sleeping_bytes`、`free_bytes`、`held_outside` 与 `occupants[]`（`deployment_id`、`deployment`、`preset`、`instance`、`state`：`awake` / `asleep`、`sleep_level`、`claim_bytes`、`residue_bytes`） |
+| `nodes` | 分页对象（`items`、`page`、`page_size`、`total`），节点按名称排序，`q` 匹配名称或 UUID。每个节点含 `uuid`、`name`、`online`、`gpus[]`：`index`、`name`、`memory_bytes`、`awake_bytes`、`sleeping_bytes`、`free_bytes`、`held_outside` 与 `occupants[]`（`deployment_id`、`deployment`、`yield_policy`、`instance`、`state`：`awake` / `asleep`、`sleep_level`、`claim_bytes`、`residue_bytes`） |
 | `pending` | 最近 30 分钟被调度拒绝的 active 部署：`deployment_id`、`deployment`、`reason{code,params}`、`at` |
 | `waiting_wakes` | 等位中的唤醒：`deployment_id`、`deployment`、`instances`、`since` |
 | `upcoming` | 未来 24 小时的计划动作：`deployment_id`、`deployment`、`schedule_id`、`action`、`sleep_level`、`replicas`（`replicas` 动作才有，含 0）、`role`（PD 角色的 `replicas` 动作）、`at` |
@@ -859,7 +889,7 @@ macOS 忽略 `no_systemd`。
     "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
   },
   "models": ["L20", "H100"],
-  "deployments": [{"id": 7, "name": "qwen", "preset": "resident"}, {"id": 9, "name": "night", "preset": "online"}],
+  "deployments": [{"id": 7, "name": "qwen", "yield_policy": "never"}, {"id": 9, "name": "night", "yield_policy": "idle"}],
   "nodes": [{
     "uuid": "…", "name": "gpu-a", "online": true, "labels": {"zone": "a"}, "contention": 5,
     "cards": [[0, 0, 49152, 100, 0, 0, [0]], [1, 0, 49152, 25, 4, 2, [2, 5]]]
@@ -871,7 +901,7 @@ macOS 忽略 `no_systemd`。
 |---|---|
 | `summary` | 全集群的卡数。每张卡只计入第一个成立的桶，顺序为：`offline`（节点不在线）、`unhealthy`（卡故障或因所有权、健康状态不可用）、`held_outside`（被平台外进程占用）、`awake`（有实例占着显存）、`asleep`（只有休眠者的残留）、`free`；六个桶之和等于 `cards`。`by_model` 是同样的计数按 GPU 型号（卡名）分开，卡数多的在前 |
 | `summary.contention` | `waiting_wakes`：有休眠实例在等位唤醒的部署数；`held_requests`：网关此刻为等唤醒而扣住的请求数；`yields_last_hour`：最近一小时为别的部署让位而休眠的次数（运维的让位唤醒与驻留仲裁的抢占） |
-| `models`、`deployments` | 卡引用的字典：GPU 型号名；占着卡的部署（`id`、`name`、`preset`：`resident`、`online`、`shared`、`offline` 或 `custom`）。各按首次出现的顺序 |
+| `models`、`deployments` | 卡引用的字典：GPU 型号名；占着卡的部署（`id`、`name`、`yield_policy`：`never`、`idle`、`timeslice` 或 `anytime`）。各按首次出现的顺序 |
 | `nodes[]` | 按名称排序。`labels` 是运维写的节点标签（没有则省略）；`contention` 是该节点上等位的休眠实例数，加上为在该节点上休眠的部署扣住的请求数，再加上该节点上有卡的部署的让位次数（没有则省略） |
 | `nodes[].cards[]` | 数组 `[index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants]`：`index` 是卡在节点上的设备序号；`model` 是 `models` 的下标；`memory_mib` 是显存总量（MiB）；`awake_pct` / `sleeping_pct` 是醒着的实例占用、休眠者残留各占显存的百分比（0 到 100，非零不会舍入成 0，两者之和不超过 100）；`flags` 的位：1 被平台外进程占用、2 卡上有实例正在切换（启动、休眠、唤醒、排空中）、4 卡不可用（故障或所有权）；`occupants` 没有时整项省略，否则是 `下标 × 2 + 1（休眠时）` 的整数列表，下标指 `deployments` |
 
@@ -899,7 +929,7 @@ macOS 忽略 `no_systemd`。
     }]
   }],
   "deployments": [{
-    "deployment_id": 7, "deployment": "qwen", "preset": "shared",
+    "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
     "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
     "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
   }]
@@ -911,7 +941,7 @@ macOS 忽略 `no_systemd`。
 | `window` | 窗口：`hours`（6 或 24）、`from`、`to`（现在） |
 | `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
 | `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
-| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠）、`yielded_to`（别的部署为它让出）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而扣住的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被扣住的请求或网关不保留指标时省略） |
+| `deployments[]` | 窗口内占过这些卡、出让策略不是 `never` 的部署（带各自的 `yield_policy`）：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠）、`yielded_to`（别的部署为它让出）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而扣住的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被扣住的请求或网关不保留指标时省略） |
 
 时间线由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度中心](../how-to/scheduling-center.md#驻留时间线)。
 
@@ -1028,7 +1058,7 @@ curl --fail-with-body -sS \
 | `placement_mode` | `auto` 由服务端选择节点，`manual` 使用显式节点；省略按 `manual`。单机：只是请求里的说法，部署不存这个字段，手动放置存为节点条件 `gpuworks.ai/node: [node_uuid]`。多机与 PD：`auto` 时服务端在创建时为请求没写的 rank 或单元挑节点（见[自动放置多机与 PD 部署](#自动放置多机与-pd-部署)），部署保存为自动放置，详情的 `placement_mode` 为 `auto` |
 | `target_vendor` | 评估与创建使用同一加速器厂商；存为节点条件 `gpuworks.ai/vendor`。未给时创建按落点节点的厂商补上 |
 | `node_requirements` | 节点条件：`{"<key>": ["<value>", …]}`，同一键的多个值是「其中之一」，不同键「同时满足」。键可以是节点标签，也可以是系统标签（见上「节点标签」）；保留域里不是这八个系统键的一律拒绝（拼错的键不会悄悄匹配 0 台），`gpuworks.ai/vendor` 只能有一个值，网络键的值是网络 ID 或 `management`。多机与 PD 部署逐 rank 列节点，不接受 `gpuworks.ai/node`。错误 `NODE_REQUIREMENTS_INVALID`；所选节点不满足 `NODE_REQUIREMENTS_UNMET`（`params.detail` 写明哪个键） |
-| `yield_policy` | 出让策略，对象，形状同 `PUT /deployments/{id}/yield-policy` 的请求体（`{"preset":"online"}`，或 `policy` 加参数）；省略按常驻（`never`）。`never` 以外的策略或 `auto_sleep` 为真要求 `sleepable`，策略不是 `never` 还要求单机部署，否则 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`。评估按它计算放置：按出让策略共卡的部署睡着时，对不与它共卡的部署仍按全量占用 |
+| `yield_policy` | 出让策略，对象，形状同 `PUT /deployments/{id}/yield-policy` 的请求体（`policy` 加参数）；省略按 `never`。`never` 以外的策略要求 `sleepable`，策略不是 `never` 还要求单机部署，否则 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`。评估按它计算放置：按出让策略共卡的部署睡着时，对不与它共卡的部署仍按全量占用 |
 | `placement_strategy` | `spread` 或 `binpack`，随部署保存；其它值 `PLACEMENT_STRATEGY_INVALID`。没写时单机是 `spread`，多机与 PD（不论自动还是手动）是 `binpack` |
 | `placement.gpus`、`placement.tp`、`placement.pp` | 明确的物理 GPU 索引；TP、PP 是整个部署的并行度（每节点 TP × PP ÷ `nnodes` 张卡，必须整除）。多机未给 TP 时默认每节点一个流水线阶段、TP 取所选节点中最少的 GPU 数，生效值写回 placement；单机未给 TP 时由调度器按 PP 的整数倍挑卡（TP = 卡数 ÷ PP），自动放置同样按所填 TP、PP 选节点；评估在 `form_values.tp/pp` 与 `parallelism`（`tp`、`pp`、`nodes`、`gpus_per_node`）中返回；多机评估与手动放置的 `acquisition.nodes` 逐节点给出获取预估 |
 | `routing_policy` | 多副本网关策略：`least_request`（默认）、`prefix_affinity` 或 `failover`；不属于引擎启动参数 |

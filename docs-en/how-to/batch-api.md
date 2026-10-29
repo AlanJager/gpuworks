@@ -1,6 +1,6 @@
 # Run Batches: the Batch API and the Console
 
-This guide explains how to hand a large set of inference requests to the platform to run asynchronously: prepare a JSONL file, upload it, create a batch, follow its progress, download the results, cancel it, and point it at a deployment with the offline service level so it uses only idle GPUs.
+This guide explains how to hand a large set of inference requests to the platform to run asynchronously: prepare a JSONL file, upload it, create a batch, follow its progress, download the results, cancel it, and point it at a deployment whose yield policy is yield anytime so it uses only idle GPUs.
 
 **Use case**: work with many requests that do not need an immediate answer, such as generating answers for a dataset, labeling in bulk, or computing embeddings in bulk. Requests that need streamed output or millisecond latency do not belong in a batch; call the [OpenAI-Compatible Gateway](../reference/openai-gateway.md) directly.
 
@@ -176,7 +176,7 @@ With a model chosen, the platform sets the `body.model` of every request (retrie
 
 The chosen model must be the served model name of a running or sleeping deployment; a stopped or unknown one returns 400 (`BATCH_MODEL_UNKNOWN` in the console, `model_not_found` on `/v1`) and no batch is created. A sleeping deployment can be chosen:
 
-- One the platform put to sleep itself (automatic sleep without preemption, or yielding): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
+- One the platform put to sleep itself (yielding): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
 - One you or a schedule put to sleep (`sleep_held` is `true` in the deployment detail): a request does **not** wake it. The batch is still created, but the create response carries `warnings` (the console shows a notice), and the requests are retried until someone wakes the deployment or the batch expires. The console's drop-down marks such a deployment "Asleep (held, requests do not wake it)".
 
 **Checking the models in the file**: after you choose a file in the console, the browser reads it (when it is at most 50 MB) and lists every model it uses. With no model chosen, if some model has no available deployment on the platform, a warning names those models, and their requests would get 404 into the error file; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check never blocks submitting, and files over 50 MB are not checked.
@@ -237,7 +237,7 @@ The platform separates "the request itself is wrong" from "the platform cannot s
 
 | Situation | Handling |
 |---|---|
-| The answer is HTTP 200 but some choice has `finish_reason` `abort` (an offline deployment preempted by a higher level) | Retried automatically; not a failure |
+| The answer is HTTP 200 but some choice has `finish_reason` `abort` (a yield-anytime deployment preempted by a higher level) | Retried automatically; not a failure |
 | 503 (the deployment is asleep and did not wake within the hold, or has no replica yet), 429, 408, any other 5xx, or a connection error | Retried automatically; not a failure |
 | Any other 4xx: 400 invalid request, 404 model not found, 401, and so on | Final failure: written to the error file and counted in `failed` |
 
@@ -247,19 +247,19 @@ Retries use exponential backoff from 2 seconds, doubling up to 60 seconds, honor
 
 The requests a batch sends show the source **Batch** (`source=batch`) in request records, usage analytics and monitoring, so they can be filtered on their own and do not mix with ordinary API calls. A batch created with an API key is counted under that key; one created in the console has no key and is counted as **Batch (user name)** under the user who created it.
 
-## Pairing with the Offline Service Level
+## Pairing with Yield Anytime
 
-Point a batch at a deployment with the **offline** preset (yield policy "Yield anytime") and it runs on idle GPUs only: when a real-time model needs the cards the batch deployment yields its memory, and it comes back automatically once the cards are free. For how to set the level on the deployment, see [Service levels and on-demand wake](scheduling-center.md#服务等级与按需唤醒); for the rules, see [Service Levels](../explanation/service-levels.md).
+Point a batch at a deployment whose yield policy is **yield anytime** and it runs on idle GPUs only: when a real-time model needs the cards the batch deployment yields its memory, and it comes back automatically once the cards are free. For how to set the policy on the deployment, see [Yield policy](scheduling-center.md#出让策略); for the rules, see [Yield Policy: How Deployments Share a Set of GPUs](../explanation/service-levels.md).
 
-1. When creating the deployment, turn on **sleep capable** and set the **service level** to **offline** (or change it later under **Scheduling policy** in the deployment details).
+1. When creating the deployment, turn on **sleep capable** and set the **yield policy** to **yield anytime** (or change it later under **Scheduling policy** in the deployment details).
 2. Put this deployment's model name in the `model` of the JSONL, and follow the same steps as above.
 
-How a batch interacts with an offline deployment:
+How a batch interacts with a yield-anytime deployment:
 
-- **On-demand wake**: when the deployment is asleep or has yielded its cards, a batch request is held by the gateway and triggers a wake like any other request, and is let through once the deployment is awake. The offline level holds requests for up to 30 minutes; a request that times out gets 503, and the batch retries it automatically.
-- **Counts as activity**: batch requests reset the idle timer and appear in the request records, unlike health probes. The deployment therefore does not sleep or yield for being idle in the middle of a batch.
-- **Retry after preemption**: when a higher-level deployment needs the cards, the offline deployment yields immediately and in-flight requests are cut off; the client sees HTTP 200 with `finish_reason: "abort"`. The batch recognizes this signal and sends those requests again until the batch expires; they are not counted as failures. The deployment recovers automatically once the cards are free, and the batch continues.
-- **When the cards stay taken**: if the real-time model stays busy and the offline deployment never gets the cards, requests keep being retried until the batch expires, and the remaining requests land in the error file with `batch_expired`. When you need a more predictable finish time, move the batch to a resident or shared deployment, or shrink the batch.
+- **On-demand wake**: when the deployment is asleep or has yielded its cards, a batch request is held by the gateway and triggers a wake like any other request, and is let through once the deployment is awake. A request is held for at most the deployment's `hold_max_sec` (1 hour by default for yield anytime); a request that times out gets 503, and the batch retries it automatically.
+- **Counts as activity**: batch requests reset the idle timer and appear in the request records, unlike health probes. The deployment therefore does not yield for being idle in the middle of a batch.
+- **Retry after preemption**: when a higher-level deployment needs the cards, the yield-anytime deployment yields immediately and in-flight requests are cut off; the client sees HTTP 200 with `finish_reason: "abort"`. The batch recognizes this signal and sends those requests again until the batch expires; they are not counted as failures. The deployment recovers automatically once the cards are free, and the batch continues.
+- **When the cards stay taken**: if the real-time model stays busy and the yield-anytime deployment never gets the cards, requests keep being retried until the batch expires, and the remaining requests land in the error file with `batch_expired`. When you need a more predictable finish time, move the batch to a deployment that never yields automatically or yields on a turn, or shrink the batch.
 
 ## Scope and Limits
 

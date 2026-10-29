@@ -110,6 +110,7 @@ var routeDocs = map[string]string{
 	"/api/v1/scheduling/history":                "调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录)",
 	"/api/v1/scheduling/overview":               "调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览)",
 	"/api/v1/scheduling/timeline":               "驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群出让策略不是 `never` 的部署的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`），不存在的节点被略过；见[驻留时间线](#驻留时间线)",
+	"/api/v1/scheduling/yield-policies":         "出让策略字典：四个策略按等级从高到低，每个带 `defaults` 与适用的参数 `applies`，加各数值参数的范围 `bounds`（`at_most` 为不得超过的另一个参数）、`sleep_levels`、`unfinished`，客户端据此编辑，不另存默认值；见[出让策略](#出让策略)",
 	"/api/v1/security/settings":                 "安全开关：`playground_preview_network`（试验场 HTML 预览是否允许发起网络请求，默认 `false`）",
 	"/api/v1/server/listen":                     "server 的监听地址：已保存的 `console`/`agent`/`gateway` 地址、当前实际打开的 `running` 套接字、`restart_pending`（保存的地址要重启才生效）、`config_path`，以及 `editable`/`overridden`（未用 server.yaml 启动或被 `--addr` 覆盖时不可编辑）",
 	"/api/v1/settings":                          "全部设置项当前值（不含 `telemetry_export` 与 `branding`，它们只经各自的专用接口读写）",

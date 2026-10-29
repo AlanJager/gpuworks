@@ -919,9 +919,8 @@ See [Sleep / Wake](sleep-wake.md).
 | `SCHEDULE_INVALID` | 400 | A field of the schedule is invalid: `params.field` and `params.reason` say which (weekdays, the `HH:MM` time format, sleep level, replica count 1–32, action) |
 | `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | The server does not know the time zone name; use an IANA name (such as `Asia/Shanghai`), or leave it empty for the server's time zone |
 | `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | A multi-node or PD deployment placed by hand cannot have its replica count scheduled; switch it to automatic placement first with `PUT /deployments/{id}/placement-mode`. For an entry written before the deployment was switched to manual placement, the entry fails when due and records `SCHEDULE_ACTION_FAILED` |
-| `YIELD_POLICY_INVALID` | 400 | The yield policy request is invalid: `params.field` is the field (`policy`, `preset`, `sleep_level`, `unfinished`, `idle_sec`, `min_serve_sec`, `unfinished_wait_sec`, `hold_max_sec`) and `params.reason` is `required` (no `policy` given: the body is `{}`, or has parameters but no `policy`), `invalid_value` (not one of the allowed values), or `out_of_range` (a number out of range, which also carries `minimum` and `maximum`); see [Service levels and sleep](scheduling-center.md#服务等级与休眠) |
-| `YIELD_POLICY_SHAPE` | 400 | A multi-node or PD deployment can only use never yield; auto sleep is not affected |
-| `YIELD_POLICY_IDLE_SHARED` | 409 | Two yield-when-idle deployments cannot share a card; `params.deployment` is the other one already on those cards. Use another policy, or move that deployment away first |
+| `YIELD_POLICY_INVALID` | 400 | The yield policy request is invalid: `params.field` is the field (`policy`, `sleep_level`, `unfinished`, `idle_sec`, `max_serve_sec`, `unfinished_wait_sec`, `hold_max_sec`) and `params.reason` is `required` (no `policy` given: the body is `{}`, or has parameters but no `policy`), `invalid_value` (not one of the allowed values), or `out_of_range` (a number out of range, which also carries `minimum` and `maximum`; when the idle time of a yield-on-a-turn deployment exceeds the longest serving time, the `maximum` of `idle_sec` is the longest serving time); see [Yield policy](scheduling-center.md#出让策略) |
+| `YIELD_POLICY_SHAPE` | 400 | A multi-node or PD deployment can only use never yield automatically |
 | `NODE_REPLACEMENT_INVALID` | 400 | The node-loss rescheduling wait must be 0 (never) or 60–604800 seconds |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` names more nodes than the replicas being added |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | A node in `place_on` cannot take a new replica; `params.reason` is `unknown` (no such node), `offline`, `cordoned`, `requirements` (does not satisfy the node requirements), or `no_room` (the trial plan does not fit); an automatically placed multi-node deployment also has `no_group` (the named nodes cannot form a replica that fits: different compute networks or architectures, or not enough cards) |
@@ -935,7 +934,7 @@ See [Sleep / Wake](sleep-wake.md).
 3. A failure with a confirmed state: the confirmed actual sleep level is retained. If the desired state still corresponds to the failed command, it is rolled back to that actual level (also applies to failed L1 / L2 transitions). The event is `INSTANCE_SLEEP_RESULT`,
    with `params.result` set to `failed_rollback` (`applied` on success). Failures are not retried automatically.
 
-### Schedules, Auto Sleep, or Waiting Did Not Run as Expected
+### Schedules, Yielding, or Waiting Did Not Run as Expected
 
 **Symptom**: a sleep or wake did not happen at the scheduled time, or a deployment was put to sleep unexpectedly.
 
@@ -946,8 +945,7 @@ See [Sleep / Wake](sleep-wake.md).
 | `SCHEDULE_ACTION_FAILED` | The automatic action was refused. `params.reason` is the cause and `reason_code` the matching error code (see the table above); the failed occurrence is not retried, so fix the cause and wait for the next one, or run it by hand |
 | `WAKE_WAITING` | A scheduled wake did not fit and now waits for room; look at the scheduling board to see who holds the cards |
 | `WAKE_WAIT_TIMEOUT` | The wait ended after 30 minutes with no room; free the cards and wake again |
-| `AUTO_SLEEP` (`trigger` is `idle`) | Auto sleep when not preempted fired; `idle_sec` is the idle time. Health checks and other requests the platform makes itself do not reset the clock. If you do not want it, turn **Auto sleep when not preempted** off in the deployment's **Scheduling policy** card |
-| `AUTO_SLEEP` (`trigger` is `preempt`) | The deployment yielded its cards to another one; `reason` is `idle` (idle for the full time), `rank` (the other ranks higher), or `turn` (it was the other time-slice deployment's turn), and `for_deployment` is the one it yielded for. Set the yield policy to never yield if the deployment must not be preempted |
+| `AUTO_SLEEP` (`trigger` is `preempt`) | The deployment yielded its cards to another one; `reason` is `idle` (idle for the idle time), `rank` (the other ranks higher), or `turn` (it was the other yield-on-a-turn deployment's turn, and it had served the longest serving time), and `for_deployment` is the one it yielded for. Set the yield policy to never yield automatically if the deployment must not be preempted (health checks and other requests the platform makes itself are not user requests and do not reset the idle clock). A deployment does not sleep on its own while nobody waits for its cards; one that used to sleep through “auto sleep when not preempted” should use a schedule instead |
 
 After a server outage, only the newest occurrence within 12 hours is made up. If a schedule's `next_at` does not match your time, check its `timezone` (empty means the server's time zone).
 

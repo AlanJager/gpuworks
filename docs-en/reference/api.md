@@ -514,7 +514,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | POST | `/api/v1/deployments/{id}/start` | Start a stopped deployment and reschedule it using the retained configuration (resetting each replica's retry count). Does nothing if already running; returns 409 `DEPLOYMENT_DELETING` if the deployment is being deleted | JWT |
 | DELETE | `/api/v1/deployments/{id}` | Delete the deployment | JWT |
 | POST | `/api/v1/deployments/{id}/sleep` | Put the deployment to sleep (`?level=1\|2`, default 1; `?mode=wait\|abort`, default wait): write the sleep intent to every active instance's desired state. The gateway immediately stops dispatching requests to them, and the deployment is marked as under a deployment-wide sleep command (instances started afterward also sleep accordingly). `?role=prefill` puts only instances of that PD role to sleep (the response includes `role` and `instances`), without placing the whole deployment under a sleep command. Returns 400 `PD_NOT_PD` for non-PD deployments, 400 `PD_ROLE_UNKNOWN` for a role not in the deployment's mode, or 400 `SLEEP_ROLE_CANNOT_EMPTY` for a role that the mode does not allow to be empty (such as decode). With `level=1`, if the node's host memory cannot hold the weights to be offloaded (available memory minus a headroom of max(5% of total, 4 GiB)), returns 409 `SLEEP_HOST_MEMORY_INSUFFICIENT` (`params.node`, `need_gib`, `available_gib`); use L2. A node with no recent host memory observation is not refused | JWT |
-| POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command. A card held by a process outside the platform returns 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters, `refused[].held_outside` is true). `?wait=true` wakes what fits and makes the rest wait for room; `?yield=true` (optionally `&yield_level=1\|2`, default 1, switched to 2 automatically when the occupant's host cannot hold L1) first puts the occupants to sleep and then waits; see [Waiting Wakes and Yielding Wakes](#唤醒等位与让位唤醒) for the responses | JWT |
+| POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command, and a wake that has to wait (202 `waiting`) also clears the held sleep. A card held by a process outside the platform returns 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters, `refused[].held_outside` is true). `?wait=true` wakes what fits and makes the rest wait for room; `?yield=true` (optionally `&yield_level=1\|2`, default 1, switched to 2 automatically when the occupant's host cannot hold L1) first puts the occupants to sleep and then waits; see [Waiting Wakes and Yielding Wakes](#唤醒等位与让位唤醒) for the responses | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | Suggest nodes for one replica of a multi-node deployment. The request body `{"units":[...]}` lists the replicas already selected. Returns a suggested `unit` or the reason placement is not possible, without saving. See [Suggest Nodes for a Multi-Node Replica](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | Give a replica a fresh retry allowance: request body `{"role","index"}` (`role` is empty for regular deployments). Remove the replica's failed attempts (clean up containers and retain the timeline); the controller then recreates it without affecting other replicas. Returns 404 `UNIT_UNKNOWN` if the replica does not exist, 409 `UNIT_NOT_FAILED` if there are no failed attempts or instances still exist, or 409 `UNIT_RETRY_NOT_ACTIVE` if the deployment is not running | JWT |
 | PUT | `/api/v1/deployments/{id}/replicas` | Change the replica count for a single-node deployment (when growing, `place_on` names the nodes the new replicas start on first), the replica node list for a manually placed multi-node deployment, or the replica count for an automatically placed multi-node deployment (`place_on` names the nodes of the new replicas' ranks). See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for all fields and conditions | JWT |
@@ -524,12 +524,13 @@ This endpoint does not check whether a user spec with the same name already exis
 | POST | `/api/v1/deployments/{id}/schedule` | Create a schedule entry; 201 returns it. Validation failures return 400 `SCHEDULE_INVALID`, `SCHEDULE_TIMEZONE_UNKNOWN`, `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` (a multi-node or PD deployment placed by hand), `SLEEP_NOT_ENABLED`, or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
 | PUT | `/api/v1/deployments/{id}/schedule/{sid}` | Replace one entry; the body is the same as for creating it, 200; an entry that does not belong to the deployment returns 404 | JWT |
 | DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | Delete one entry, 204; a missing one returns 404 | JWT |
-| PUT | `/api/v1/deployments/{id}/yield-policy` | Set the yield policy and its parameters (the service levels are presets of it). The body is `{"preset":"online"}` (`resident` / `online` / `shared` / `offline`, the preset alone) or `{"policy":"idle","auto_sleep":true,"idle_sec":30,"sleep_level":"l1","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":120}`; every key but `policy` may be omitted and then takes the policy's default, and inapplicable keys are ignored; when `policy` is given `preset` is ignored. 200 returns the normalized policy with the derived `preset`, inapplicable parameters absent. A missing `policy` (`{}`, or parameters only), an invalid value, or an out-of-range number returns 400 `YIELD_POLICY_INVALID` (`params.field`, `reason`: `required` / `invalid_value` / `out_of_range`, which also carries `minimum` and `maximum`); a policy other than `never` or a true `auto_sleep` on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`; a policy other than `never` on a multi-node or PD deployment returns 400 `YIELD_POLICY_SHAPE`; setting `idle` while sharing cards with another `idle` deployment returns 409 `YIELD_POLICY_IDLE_SHARED` (`params.deployment`); see [Yield policy](#出让策略) | JWT |
+| PUT | `/api/v1/deployments/{id}/yield-policy` | Set the yield policy and its parameters. The body is `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`; `policy` (`never` / `idle` / `timeslice` / `anytime`) is required, every other key may be omitted and then takes the policy's default, and inapplicable keys are ignored. 200 returns the stored policy, inapplicable parameters absent; setting `idle` while the cards already hold another `idle` deployment adds `idle_neighbours`. A missing `policy` (`{}`, or parameters only), an invalid value, or an out-of-range number returns 400 `YIELD_POLICY_INVALID` (`params.field`, `reason`: `required` / `invalid_value` / `out_of_range`, which also carries `minimum` and `maximum`); a policy other than `never` on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`; a policy other than `never` on a multi-node or PD deployment returns 400 `YIELD_POLICY_SHAPE`; see [Yield policy](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Reschedule Replicas on Node Loss](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); `?node=<uuid>` answers for that one node only (a one-row `nodes` page and empty other lists; 404 for an unknown node), and `?queues=1` answers only the last four lists (an empty `nodes` page, no node is read); see [Scheduling Board](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/overview` | The scheduling overview: every node and the compact state of every card of the whole cluster in one response, plus the summary, for the heatmap; served from a cache (rebuilt at most every 2 seconds), with an `ETag` and a 304 for a matching `If-None-Match`; see [Scheduling Overview](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
 | GET | `/api/v1/scheduling/timeline` | The residency timeline: `?node=<uuid>` (repeatable, at most 200, normally the node that was opened) `&hours=6\|24` (default 6). The segments in which each deployment's instance held each card over the last `hours` (`awake` / `asleep` / `switching` / `starting`), and the stats of the deployments whose yield policy is not `never` that appear; `?sharing=1&hours=` without `node` answers only the stats of the cluster's deployments whose yield policy is not `never` (`nodes` empty, cached for about 30 seconds); a missing `node` (without `sharing`), a `sharing` that is not 1 or is used with `node`, or an `hours` that is not 6 or 24 returns 400 `FIELD_INVALID` (`params.field`), unknown nodes are skipped; see [Residency Timeline](#residency-timeline) | JWT |
+| GET | `/api/v1/scheduling/yield-policies` | The dictionary of yield policies: the four policies from the highest rank to the lowest, each with its `defaults` and the parameters that apply (`applies`), plus the range of each numeric parameter (`bounds`, with `at_most` naming another parameter it may not exceed), `sleep_levels`, and `unfinished`, from which a client edits without keeping its own defaults; see [Yield policy](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | Recreate the deployment using the current configuration and reset replica retry counts. The request body accepts an optional `strategy` (default `rolling`; `all` interrupts service). See [Restart Strategies](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | Estimate GPU memory, simulate scheduling, and estimate acquisition (without creating a deployment). The response's `acquisition` includes `present` (storage that already holds the model and is readable by the target node), `targets` (storage to which nodes can save the model when acquiring it), `providers` (the template's weight sources), `image`, and `nodes[]` when nodes are specified in the request (see "Evaluation Requests and Acquisition Estimates") | JWT |
@@ -607,7 +608,7 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |
 | `node_replacement` | Object | How long a lost node is waited for before its replicas move, `{after_sec}`; default 600, 0 means never |
-| `yield_policy` | Object | The yield policy and parameters, shaped like the response in [Yield policy](#出让策略): `preset` (the derived service-level preset: `resident`, `online`, `shared`, `offline`, or `custom`), `policy`, `auto_sleep`, and the parameters that apply; see [Service levels](../explanation/service-levels.md) |
+| `yield_policy` | Object | The yield policy and parameters, shaped like the response in [Yield policy](#出让策略): `policy` and the parameters that apply; see [Yield policy](../explanation/service-levels.md) |
 | `sleep_held` | Boolean | Whether the sleep was issued by an operator or a schedule (held sleep): when `true`, requests do not wake the deployment |
 | `wake_waiting_since` (optional) | RFC3339 time | Present when a wake of the deployment is waiting for room; the value is when the wait began |
 
@@ -747,7 +748,7 @@ An unknown strategy returns 400 `RESTART_STRATEGY_INVALID`; a non-active deploym
 
 `?wait=true` and `?yield=true` on `POST /api/v1/deployments/{id}/wake` and `POST /api/v1/instances/{uuid}/wake`:
 
-- `wait`: replicas that fit wake first and the rest wait for room; the server wakes them automatically once capacity frees up, and gives up after 30 minutes (timeline `WAKE_WAIT_TIMEOUT`). The start of the wait is kept on the instance, and the deployment's `wake_waiting_since` is the earliest of them.
+- `wait`: replicas that fit wake first and the rest wait for room; the server wakes them automatically once capacity frees up, and gives up after 30 minutes (timeline `WAKE_WAIT_TIMEOUT`). The start of the wait is kept on the instance, and the deployment's `wake_waiting_since` is the earliest of them. The answer 202 `waiting` also clears the deployment's held sleep (`sleep_held`): the deployment is meant to be awake, so a request that arrives while it waits is held by the gateway for that wake (and the residency arbiter may make room for it under the yield policies) instead of getting a 503; before, the hold stayed until the wake landed.
 - `yield`: first puts the awake deployments holding the needed GPUs to sleep (`yield_level` is 1 or 2, default 1; when the occupant's host memory cannot hold L1 it switches to 2 automatically), then waits.
 - When everything fits the response is 200 `{"status":"waking","woken":[…],"waiting":[],"yielded":[]}`; when some must wait it is 202 `{"status":"waiting",…}`, where `waiting` lists the instance UUIDs waiting and `yielded` the names of the deployments put to sleep.
 - When an occupant cannot sleep (a deployment that is not sleep-capable, the last awake role of a PD deployment, or a process outside the platform) the response is 409 `WAKE_YIELD_BLOCKED` (`params.occupants` names, `woken`) and nothing changes; a `yield_level` other than 1 or 2 returns 400 `SLEEP_INVALID_LEVEL`.
@@ -756,57 +757,86 @@ A wake without these parameters behaves as before. For usage see [Sleep and Wake
 
 ### Yield Policy
 
-`PUT /api/v1/deployments/{id}/yield-policy` sets how a deployment gets along with the other deployments that share its cards, and whether it puts itself to sleep when nobody uses it. The four service levels (resident, online, shared, offline) are presets of it; the deployment stores only the policy and parameters, and the preset is derived by comparing them with the four presets. For the rules see [Service levels](../explanation/service-levels.md), and for the steps [Use the Scheduling Center](../how-to/scheduling-center.md#服务等级与休眠). The body is one of two forms:
+`PUT /api/v1/deployments/{id}/yield-policy` sets how a deployment gets along with the other deployments that share its cards. The yield policy is the only thing to choose. For the rules see [Yield Policy: How Deployments Share a Set of GPUs](../explanation/service-levels.md), and for the steps see [Use the Scheduling Center](../how-to/scheduling-center.md#出让策略). The body:
 
-- The preset alone: `{"preset":"online"}`, where `preset` is `resident` / `online` / `shared` / `offline`; it writes the preset's whole set of parameters.
-- A policy: `{"policy":"idle","auto_sleep":true,"idle_sec":30,"sleep_level":"l1","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":120}`. Every key but `policy` may be omitted and then takes the policy's default (the values of that policy's preset; `auto_sleep` defaults to `false`; `idle_sec` defaults to 300 when it applies only because of auto sleep; `hold_max_sec` defaults to 120 for never yield), and inapplicable keys are ignored. When `policy` is given `preset` is ignored, so a response can be sent back as is.
+```json
+{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
+```
+
+Every key but `policy` may be omitted and then takes the policy's default; inapplicable keys are ignored (so is `idle_neighbours`), so a response can be sent back as a request body as it is.
 
 | Field | Values | Applies to |
 |---|---|---|
-| `policy` | `never` never yield, `idle` yield when idle, `timeslice` time slice, `anytime` yield anytime | Always required (in the policy form) |
-| `auto_sleep` | Boolean, default `false`: auto sleep when not preempted, which sleeps after `idle_sec` of idleness even when no other deployment waits for its cards | Every sleep-capable deployment, including multi-node and PD |
-| `idle_sec` | 30–604800 seconds | `idle`, `timeslice`; any policy when `auto_sleep` is true |
-| `sleep_level` | `auto` (L1, falling back to L2 when host memory cannot hold the weights), `l1` (strict L1, refused where it does not fit), `l2`; applies to every sleep the platform chooses for the deployment (a yield, an auto sleep), and does not affect sleeps ordered by an operator or a schedule | A policy other than `never`, or `auto_sleep` true |
-| `min_serve_sec` | 0–3600 seconds | `timeslice` |
-| `unfinished` | `abort` cuts them off at once; `wait` lets them finish for at most `unfinished_wait_sec` seconds and then cuts off what is left; `wait_unbounded` lets them finish with no time limit | `timeslice`, `anytime` |
-| `unfinished_wait_sec` | 1–600 seconds | `unfinished` is `wait` |
-| `hold_max_sec` | 10–1800 seconds: the longest the gateway holds a request while the deployment wakes; on timeout, 503 with `Retry-After` | A policy other than `never`, or `auto_sleep` true |
+| `policy` | `never` never yield automatically, `idle` yield when idle, `timeslice` yield on a turn, `anytime` yield anytime; from the highest rank to the lowest | Always required |
+| `idle_sec` | 15–604800 s: how long without a request counts as idle; once idle this long the deployment yields if another one waits for its cards; with `timeslice` it may not exceed `max_serve_sec` | `idle`, `timeslice`, `anytime` |
+| `sleep_level` | `auto` (L1, falling back to L2 when host memory cannot hold the weights), `l1` (strict L1, refused where it does not fit), `l2`; applies to every sleep the platform chooses for the deployment (a yield); sleeps ordered by an operator or a schedule are unaffected | A policy other than `never` |
+| `max_serve_sec` | 30–86400 s: when taking turns with another `timeslice` deployment, how long one wake may serve before giving way | `timeslice` |
+| `unfinished` | `abort` cuts them off at once; `wait` lets them finish, for at most `unfinished_wait_sec` seconds, then cuts off what is left | `timeslice`, `anytime` |
+| `unfinished_wait_sec` | 1–600 s | `unfinished` is `wait` |
+| `hold_max_sec` | 10–3600 s: how long the gateway holds a request for the deployment to wake; on timeout 503 with `Retry-After` | A policy other than `never` |
 
-The values of the four presets:
+The defaults of each policy:
 
-| Preset | Policy and parameters |
+| Policy | Defaults |
 |---|---|
-| `resident` | `never`, `auto_sleep` off |
-| `online` | `idle`, `idle_sec` 300, `sleep_level` `auto`, `hold_max_sec` 120, `auto_sleep` off |
-| `shared` | `timeslice`, `idle_sec` 60, `min_serve_sec` 120, `unfinished` `wait` with `unfinished_wait_sec` 30, `sleep_level` `auto`, `hold_max_sec` 600, `auto_sleep` off |
-| `offline` | `anytime`, `unfinished` `abort`, `sleep_level` `auto`, `hold_max_sec` 1800, `auto_sleep` off |
+| `never` | No parameters |
+| `idle` | `idle_sec` 60, `sleep_level` `auto`, `hold_max_sec` 300 |
+| `timeslice` | `idle_sec` 30, `max_serve_sec` 120, `unfinished` `wait` with `unfinished_wait_sec` 30, `sleep_level` `auto`, `hold_max_sec` 600 |
+| `anytime` | `idle_sec` 30, `unfinished` `abort`, `sleep_level` `auto`, `hold_max_sec` 3600 |
 
-Success returns 200 with the normalized policy and the derived `preset` (a preset only when it matches one of the four item by item, otherwise `custom`), with inapplicable parameters absent. The `yield_policy` in deployment details has the same shape. Example responses:
+Success returns 200 with the stored policy, with inapplicable parameters absent. The `yield_policy` in deployment details has the same shape. Example responses:
 
 ```json
-{"preset":"online","policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}
-{"preset":"shared","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
-{"preset":"offline","policy":"anytime","auto_sleep":false,"sleep_level":"auto","unfinished":"abort","hold_max_sec":1800}
-{"preset":"resident","policy":"never","auto_sleep":false}
-{"preset":"custom","policy":"never","auto_sleep":true,"idle_sec":600,"sleep_level":"l1","hold_max_sec":120}
+{"policy":"never"}
+{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}
+{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
+{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}
 ```
 
-The five lines above are, in order, online, shared, offline, resident, and a deployment that never yields but has auto sleep on (and is therefore custom).
+Setting `idle` while the cards already hold another `idle` deployment is still 200, and the response carries one more field, `idle_neighbours` (an array of the other deployments' names): while both `idle` deployments are busy neither yields, so one side's requests are held by the gateway until the other is idle, or until they reach `hold_max_sec` and get a 503; to make them take turns, use `timeslice`.
 
 Errors:
 
-| Situation | Response |
+| Case | Response |
 |---|---|
-| `{}`, or parameters without `policy` | 400 `YIELD_POLICY_INVALID`, with `params` of `{"field":"policy","reason":"required"}` |
-| An invalid value | 400 `YIELD_POLICY_INVALID`; `params.reason` is `invalid_value` and `params.field` is `policy`, `preset`, `sleep_level`, or `unfinished` |
-| A number out of range | 400 `YIELD_POLICY_INVALID`; `params.reason` is `out_of_range`, `params.field` is `idle_sec`, `min_serve_sec`, `unfinished_wait_sec`, or `hold_max_sec`, and `params.minimum` and `params.maximum` are also given |
-| A policy other than `never`, or `auto_sleep` true, on a deployment that is not sleep capable / whose engine does not support sleep | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
-| A policy other than `never` on a multi-node or PD deployment | 400 `YIELD_POLICY_SHAPE` |
-| Setting `idle` while another `idle` deployment is on the same cards | 409 `YIELD_POLICY_IDLE_SHARED`; `params.deployment` is the other one |
+| `{}`, or parameters without a `policy` | 400 `YIELD_POLICY_INVALID`, with `params` of `{"field":"policy","reason":"required"}` |
+| An invalid value | 400 `YIELD_POLICY_INVALID`; `params.reason` is `invalid_value` and `params.field` is `policy`, `sleep_level`, or `unfinished` |
+| A number out of range | 400 `YIELD_POLICY_INVALID`; `params.reason` is `out_of_range` and `params.field` is `idle_sec`, `max_serve_sec`, `unfinished_wait_sec`, or `hold_max_sec`, with `params.minimum` and `params.maximum`; when the `idle_sec` of a `timeslice` deployment exceeds `max_serve_sec`, the `maximum` of `idle_sec` is `max_serve_sec` |
+| The policy is not `never` and the deployment is not sleep capable / the engine does not support sleep | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
+| A multi-node or PD deployment with a policy other than `never` | 400 `YIELD_POLICY_SHAPE` |
 
-When creating a deployment (`POST /api/v1/deployments`), `yield_policy` takes the same request object and defaults to resident; the checks are the same.
+When creating a deployment (`POST /api/v1/deployments`), `yield_policy` takes the same request object and defaults to `never` when omitted; validation is the same.
 
-The `trigger` of the timeline event `AUTO_SLEEP` is `schedule` (a schedule), `idle` (auto sleep when not preempted), or `preempt` (yielding cards, with a `reason` of `idle` / `rank` / `turn`); `level` is always the level the platform actually chose (1 or 2). For the event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件).
+`GET /api/v1/scheduling/yield-policies` (JWT, read-only) is the dictionary of policies, from which a client edits without keeping its own copy of the defaults or ranges:
+
+```json
+{
+  "policies": [
+    {"policy": "never", "defaults": {"policy": "never"}, "applies": []},
+    {"policy": "idle", "defaults": {"policy": "idle", "idle_sec": 60, "sleep_level": "auto", "hold_max_sec": 300}, "applies": ["idle_sec", "sleep_level", "hold_max_sec"]},
+    {"policy": "timeslice", "defaults": {"policy": "timeslice", "idle_sec": 30, "sleep_level": "auto", "max_serve_sec": 120, "unfinished": "wait", "unfinished_wait_sec": 30, "hold_max_sec": 600}, "applies": ["idle_sec", "sleep_level", "max_serve_sec", "unfinished", "unfinished_wait_sec", "hold_max_sec"]},
+    {"policy": "anytime", "defaults": {"policy": "anytime", "idle_sec": 30, "sleep_level": "auto", "unfinished": "abort", "unfinished_wait_sec": 30, "hold_max_sec": 3600}, "applies": ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec", "hold_max_sec"]}
+  ],
+  "bounds": {
+    "hold_max_sec": {"minimum": 10, "maximum": 3600},
+    "idle_sec": {"minimum": 15, "maximum": 604800, "at_most": "max_serve_sec"},
+    "max_serve_sec": {"minimum": 30, "maximum": 86400},
+    "unfinished_wait_sec": {"minimum": 1, "maximum": 600}
+  },
+  "sleep_levels": ["auto", "l1", "l2"],
+  "unfinished": ["abort", "wait"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `policies[]` | From the highest rank to the lowest; `defaults` are the values filled in when a policy is chosen (every policy to which `unfinished` applies carries `unfinished_wait_sec`, for a client that turns waiting on); `applies` names the parameters that apply, of which `unfinished_wait_sec` matters only while `unfinished` is `wait` |
+| `bounds` | The range of each numeric parameter, in seconds; `at_most` names another parameter it may not exceed when both apply |
+| `sleep_levels`, `unfinished` | The values of the two enumerated parameters |
+
+Without a token the answer is 401, and other methods such as `POST` are 405.
+
+The `trigger` of the timeline event `AUTO_SLEEP` is `schedule` (a schedule) or `preempt` (yielding cards, with `reason` `idle` / `rank` / `turn`); `level` is always the level the platform actually chose (1 or 2). For event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件).
 
 ### Schedules
 
@@ -836,7 +866,7 @@ Each occurrence runs once; after a server outage only the newest missed occurren
 
 | Field | Meaning |
 |---|---|
-| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `preset`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
+| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `yield_policy`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
 | `pending` | Active deployments refused by the scheduler in the last 30 minutes: `deployment_id`, `deployment`, `reason{code,params}`, `at` |
 | `waiting_wakes` | Wakes waiting for room: `deployment_id`, `deployment`, `instances`, `since` |
 | `upcoming` | Schedule actions in the next 24 hours: `deployment_id`, `deployment`, `schedule_id`, `action`, `sleep_level`, `replicas` (only for a `replicas` action, 0 included), `role` (a `replicas` action of a PD role), `at` |
@@ -859,7 +889,7 @@ For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-ce
     "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
   },
   "models": ["L20", "H100"],
-  "deployments": [{"id": 7, "name": "qwen", "preset": "resident"}, {"id": 9, "name": "night", "preset": "online"}],
+  "deployments": [{"id": 7, "name": "qwen", "yield_policy": "never"}, {"id": 9, "name": "night", "yield_policy": "idle"}],
   "nodes": [{
     "uuid": "…", "name": "gpu-a", "online": true, "labels": {"zone": "a"}, "contention": 5,
     "cards": [[0, 0, 49152, 100, 0, 0, [0]], [1, 0, 49152, 25, 4, 2, [2, 5]]]
@@ -871,7 +901,7 @@ For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-ce
 |---|---|
 | `summary` | The card counts of the whole cluster. A card is counted once, in the first bucket that holds, in this order: `offline` (its node is not online), `unhealthy` (the card is faulty or unusable because of ownership or health), `held_outside` (a process outside the platform uses it), `awake` (an instance holds memory on it), `asleep` (only sleepers' residue is on it), `free`; the six buckets add up to `cards`. `by_model` is the same count per GPU model (the card's name), the model with the most cards first |
 | `summary.contention` | `waiting_wakes`: deployments with a sleeping instance waiting for room to wake; `held_requests`: requests the gateway holds for a wake right now; `yields_last_hour`: sleeps in the last hour that made room for another deployment (an operator's yielding wake and the residency arbiter's preemption) |
-| `models`, `deployments` | The dictionaries the cards refer to: GPU model names, and the deployments that occupy a card (`id`, `name`, `preset`: `resident`, `online`, `shared`, `offline`, or `custom`), each in order of first appearance |
+| `models`, `deployments` | The dictionaries the cards refer to: GPU model names, and the deployments that occupy a card (`id`, `name`, `yield_policy`: `never`, `idle`, `timeslice`, or `anytime`), each in order of first appearance |
 | `nodes[]` | Sorted by name. `labels` are the node labels an operator wrote (omitted when none); `contention` is the number of the node's sleepers waiting to wake, plus the requests held for deployments asleep on it, plus the yields of the deployments that have cards on it (omitted when 0) |
 | `nodes[].cards[]` | The array `[index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants]`: `index` is the card's device index on the node; `model` an index into `models`; `memory_mib` the memory in MiB; `awake_pct` / `sleeping_pct` the shares of the memory claimed by awake instances and kept by sleepers (0 to 100, a non-zero share is never rounded to 0, and the two never add up to more than 100); `flags` the bits 1 held by a process outside the platform, 2 an instance on the card is switching (starting, going to sleep, waking, draining), 4 the card is unusable (faulty or by ownership); `occupants` is left out when empty, otherwise a list of integers `index * 2` (`+ 1` when asleep) where the index is into `deployments` |
 
@@ -899,7 +929,7 @@ The response comes from a cache in the server's memory and is not recomputed for
     }]
   }],
   "deployments": [{
-    "deployment_id": 7, "deployment": "qwen", "preset": "shared",
+    "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
     "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
     "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
   }]
@@ -911,7 +941,7 @@ The response comes from a cache in the server's memory and is not recomputed for
 | `window` | The window: `hours` (6 or 24), `from`, `to` (now) |
 | `nodes[].gpus[]` | The same cards as the board (`index`); `segments[]` run oldest to newest; `truncated` true means only the latest 200 segments were kept |
 | `segments[]` | One instance holding the card for a stretch: `deployment_id`, `deployment`, `instance`, `state` (`awake` / `asleep` / `switching` / `starting`), `level` (1 or 2) while asleep, `from`, `to` (both inside the window); an instance on several cards appears once on each |
-| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never`: `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment), `yielded_to` (another deployment gave a card to it), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics) |
+| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment), `yielded_to` (another deployment gave a card to it), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics) |
 
 The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use the Scheduling Center](../how-to/scheduling-center.md#residency-timeline).
 
@@ -1028,7 +1058,7 @@ For **single-node deployments**, submit the replica count: `{"replicas":N,"remov
 | `placement_mode` | `auto` lets the server select nodes; `manual` uses explicit nodes. Defaults to `manual` if omitted. Single-node: only request terminology, the deployment does not store this field, and manual placement is stored as node requirement `gpuworks.ai/node: [node_uuid]`. Multi-node and PD: with `auto` the server picks nodes for the ranks or units the request leaves out at creation (see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署)), the deployment is stored as automatically placed, and `placement_mode` in the detail is `auto` |
 | `target_vendor` | Evaluation and creation use the same accelerator vendor; stored as node requirement `gpuworks.ai/vendor`. If omitted, creation fills it in using the destination node's vendor |
 | `node_requirements` | Node requirements: `{"<key>": ["<value>", …]}`. Multiple values for one key mean "any of these"; different keys must "all match." Keys can be node labels or system labels (see "Node Labels" above). Any key in the reserved domain other than the eight system keys is rejected (a misspelled key does not silently match 0 nodes). `gpuworks.ai/vendor` can have only one value; network key values are network IDs or `management`. Multi-node and PD deployments list nodes per rank and do not accept `gpuworks.ai/node`. Errors: `NODE_REQUIREMENTS_INVALID`; selected nodes do not meet requirements: `NODE_REQUIREMENTS_UNMET` (`params.detail` identifies the key) |
-| `yield_policy` | The yield policy, an object shaped like the body of `PUT /deployments/{id}/yield-policy` (`{"preset":"online"}`, or `policy` plus parameters); when omitted it is resident (`never`). A policy other than `never`, or a true `auto_sleep`, requires `sleepable`, and a policy other than `never` also a single-node deployment, otherwise 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`. Evaluation computes placement from it: while a deployment that shares cards by yield policy is asleep, deployments it does not share with still count it at full usage |
+| `yield_policy` | The yield policy, an object shaped like the body of `PUT /deployments/{id}/yield-policy` (`policy` plus parameters); when omitted it is `never`. A policy other than `never` requires `sleepable`, and a policy other than `never` also a single-node deployment, otherwise 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`. Evaluation computes placement from it: while a deployment that shares cards by yield policy is asleep, deployments it does not share with still count it at full usage |
 | `placement_strategy` | `spread` or `binpack`, saved with the deployment; other values return `PLACEMENT_STRATEGY_INVALID`. When omitted it is `spread` for single-node and `binpack` for multi-node and PD (automatic or manual) |
 | `placement.gpus`, `placement.tp`, `placement.pp` | Explicit physical GPU indexes; TP and PP are parallelism for the entire deployment (TP × PP ÷ `nnodes` GPUs per node, which must divide evenly). If TP is omitted for multi-node deployment, the default is one pipeline stage per node, with TP set to the smallest GPU count among the selected nodes; effective values are written back to placement. If TP is omitted for single-node deployment, the scheduler selects a GPU count that is an integer multiple of PP (TP = GPU count ÷ PP). Automatic placement also selects nodes according to the supplied TP and PP. Evaluation returns values in `form_values.tp/pp` and `parallelism` (`tp`, `pp`, `nodes`, `gpus_per_node`); `acquisition.nodes` in multi-node evaluation and manual placement provides acquisition estimates for each node |
 | `routing_policy` | Multi-replica gateway policy: `least_request` (default), `prefix_affinity`, or `failover`; not an engine launch parameter |
