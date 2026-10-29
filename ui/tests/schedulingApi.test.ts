@@ -40,12 +40,14 @@ test("schedule calls use the deployment's schedule path and literal bodies", asy
   assert.deepEqual(deleted, [{ url: "/api/v1/deployments/7/schedule/3", method: "DELETE", body: undefined }]);
 });
 
-test("idle sleep and node replacement put their seconds", async () => {
+test("the yield policy puts a preset alone or the full policy, and node replacement puts its seconds", async () => {
   const seen = fake(200, {});
-  await api.setIdleSleep(7, { after_sec: 900, level: 2 });
+  await api.setYieldPolicy(7, { preset: "online" });
+  await api.setYieldPolicy(7, { policy: "idle", auto_sleep: false, idle_sec: 300, sleep_level: "auto", hold_max_sec: 120 });
   await api.setNodeReplacement(7, { after_sec: 600 });
   assert.deepEqual(seen, [
-    { url: "/api/v1/deployments/7/idle-sleep", method: "PUT", body: { after_sec: 900, level: 2 } },
+    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { preset: "online" } },
+    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { policy: "idle", auto_sleep: false, idle_sec: 300, sleep_level: "auto", hold_max_sec: 120 } },
     { url: "/api/v1/deployments/7/node-replacement", method: "PUT", body: { after_sec: 600 } },
   ]);
 });
@@ -100,7 +102,7 @@ test("the board of one node, and the fleet-wide lists alone, are separate reads"
 });
 
 test("the overview is one plain read, and its cards stay the server's compact arrays", async () => {
-  const wire = { summary: { nodes: 1 }, models: ["L20"], deployments: [{ id: 7, name: "qwen", service_level: "shared" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 0, [1]], [1, 0, 49152, 0, 0, 0]] }] };
+  const wire = { summary: { nodes: 1 }, models: ["L20"], deployments: [{ id: 7, name: "qwen", preset: "shared" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 0, [1]], [1, 0, 49152, 0, 0, 0]] }] };
   const seen = fake(200, wire);
   const got = await api.schedulingOverview();
   assert.deepEqual(seen, [{ url: "/api/v1/scheduling/overview", method: undefined, body: undefined }]);

@@ -229,15 +229,20 @@ test("a clone gets suffixed names and a draft names its template spec", () => {
   assert.equal(templateSpecKey({ model_id: 1 }), undefined);
 });
 
-test("a cloned draft keeps its service level, and an edit states the stored one rather than the form's", () => {
-  const leveled = { ...manualDraft, service_level: "online" };
+test("a cloned draft keeps its yield preset, and an edit never states a yield policy", () => {
+  const leveled = { ...manualDraft, yield_policy: { preset: "online" } };
   const values = draftToFormValues(leveled, vllm);
-  assert.equal(values.service_level, "online");
-  // The level is changed on the scheduling policy, so an edit repeats the stored one.
-  const payload = editPayload({ ...values, service_level: "offline" }, [], vllm, [], { request: leveled, locked: identity });
+  assert.equal(values.yield_preset, "online");
+  // A stored policy read whole carries the preset the server derived.
+  assert.equal(draftToFormValues({ ...manualDraft, yield_policy: { preset: "shared", policy: "timeslice", auto_sleep: false } }, vllm).yield_preset, "shared");
+  // Custom has no place in the form's preset select, and an absent policy is resident.
+  assert.equal(draftToFormValues({ ...manualDraft, yield_policy: { preset: "custom", policy: "never", auto_sleep: true } }, vllm).yield_preset, undefined);
+  assert.equal(draftToFormValues(manualDraft, vllm).yield_preset, undefined);
+  // The policy is changed on the scheduling policy card; the server ignores it on an edit.
+  const payload = editPayload({ ...values, yield_preset: "offline" }, [], vllm, [], { request: leveled, locked: identity });
   assert.ok(payload);
-  assert.equal(payload.service_level, "online");
-  const plain = editPayload({ ...values, service_level: "offline" }, [], vllm, [], { request: manualDraft, locked: identity });
+  assert.equal("yield_policy" in payload, false);
+  const plain = editPayload({ ...values, yield_preset: "offline" }, [], vllm, [], { request: manualDraft, locked: identity });
   assert.ok(plain);
-  assert.equal("service_level" in plain, false);
+  assert.equal("yield_policy" in plain, false);
 });

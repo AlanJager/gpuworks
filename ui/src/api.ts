@@ -1013,7 +1013,7 @@ export type DeploymentPage = ListPage<DeploymentListItem>;
 export interface BoardOccupant {
   deployment_id: number;
   deployment: string;
-  service_level: ServiceLevel;
+  preset: YieldPresetName;
   instance: string;
   state: "awake" | "asleep";
   sleep_level?: number;
@@ -1051,7 +1051,7 @@ export interface TimelineNode {
 export interface TimelineDeployment {
   deployment_id: number;
   deployment: string;
-  service_level: ServiceLevel;
+  preset: YieldPresetName;
   awake_seconds: number;
   awake_share: number;
   switches: number;
@@ -1129,7 +1129,7 @@ export interface OverviewNode {
 export interface OverviewDeployment {
   id: number;
   name: string;
-  service_level: ServiceLevel;
+  preset: YieldPresetName;
 }
 
 export interface SchedulingOverview {
@@ -1912,31 +1912,65 @@ export interface Deployment {
   // placement_status is set while replicas of an ordinary deployment wait
   // for a node: how many, and the controller's latest reason.
   placement_status?: DeploymentPlacementStatus;
-  // idle_sleep puts the deployment to sleep after after_sec without a user
-  // request (0 is off); node_replacement moves a replica off a node that
-  // stays offline for after_sec (0 never moves it). wake_waiting_since is set
-  // while some wake of the deployment waits for room.
-  idle_sleep?: IdleSleep;
+  // node_replacement moves a replica off a node that stays offline for
+  // after_sec (0 never moves it). wake_waiting_since is set while some wake
+  // of the deployment waits for room.
   node_replacement?: NodeReplacement;
   wake_waiting_since?: string;
-  // service_level is how the deployment shares its GPUs with the others on
-  // them; absent counts as resident. sleep_held is set while an operator's or
-  // a schedule's sleep keeps it asleep: a request does not wake it.
-  service_level?: ServiceLevel;
+  // yield_policy is how the deployment shares its GPUs with the others on
+  // them and whether it sleeps when idle; absent counts as resident.
+  // sleep_held is set while an operator's or a schedule's sleep keeps it
+  // asleep: a request does not wake it.
+  yield_policy?: YieldPolicy;
   sleep_held?: boolean;
 }
 
-// ServiceLevel orders deployments that share GPUs: resident never gives its
-// GPUs up, online gives them up after 5 idle minutes and takes them back on a
-// request, shared takes turns with other shared deployments and gives way to
-// online, offline gives way to everyone at once. The create and evaluate
-// bodies carry it as service_level (absent: resident).
-export type ServiceLevel = "resident" | "online" | "shared" | "offline";
-export const serviceLevels: ServiceLevel[] = ["resident", "online", "shared", "offline"];
+// The four service levels are presets of a yield policy: resident never gives
+// its GPUs up, online gives them up after 5 idle minutes and takes them back on
+// a request, shared takes turns with other shared deployments and gives way to
+// online, offline gives way to everyone at once. A deployment whose parameters
+// differ from every preset is custom, which the server reports but never takes
+// as a preset.
+export type YieldPreset = "resident" | "online" | "shared" | "offline";
+export type YieldPresetName = YieldPreset | "custom";
 
-export interface IdleSleep {
-  after_sec: number;
-  level: 1 | 2;
+// YieldPolicyName is the yield policy proper: never gives its GPUs to another
+// deployment, idle gives them up when another waits and it has been idle,
+// timeslice takes turns with other timeslice deployments, anytime gives them to
+// any higher-ranked waiter at once.
+export type YieldPolicyName = "never" | "idle" | "timeslice" | "anytime";
+export type YieldSleepLevel = "auto" | "l1" | "l2";
+export type YieldUnfinished = "abort" | "wait" | "wait_unbounded";
+
+// YieldPolicyRequest is the body of PUT /deployments/{id}/yield-policy and of a
+// create request's yield_policy: either a preset alone, or the policy with any
+// of its parameters (a missing one takes the policy's default; one that does
+// not apply to the policy is ignored).
+export type YieldPolicyRequest =
+  | { preset: YieldPreset }
+  | {
+      policy: YieldPolicyName;
+      auto_sleep?: boolean;
+      idle_sec?: number;
+      sleep_level?: YieldSleepLevel;
+      min_serve_sec?: number;
+      unfinished?: YieldUnfinished;
+      unfinished_wait_sec?: number;
+      hold_max_sec?: number;
+    };
+
+// YieldPolicy is what the server holds, normalized: a parameter that does not
+// apply to the policy is absent.
+export interface YieldPolicy {
+  preset: YieldPresetName;
+  policy: YieldPolicyName;
+  auto_sleep: boolean;
+  idle_sec?: number;
+  sleep_level?: YieldSleepLevel;
+  min_serve_sec?: number;
+  unfinished?: YieldUnfinished;
+  unfinished_wait_sec?: number;
+  hold_max_sec?: number;
 }
 
 export interface NodeReplacement {
@@ -4524,7 +4558,7 @@ export const api = {
   wakeInstance: (uuid: string, opts: WakeOptions = {}) =>
     sendJSON<WakeResult | void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake${wakeQuery(opts)}`),
   // A deployment's standing schedule (sleep, wake or replica count at a time
-  // on some weekdays), idle sleep and the wait before a lost node's replica
+  // on some weekdays), yield policy and the wait before a lost node's replica
   // moves.
   deploymentSchedule: (id: number) => getJSON<List<LifecycleSchedule>>(`/api/v1/deployments/${id}/schedule`),
   createSchedule: (id: number, body: LifecycleScheduleRequest) =>
@@ -4533,10 +4567,8 @@ export const api = {
     sendJSON<LifecycleSchedule>("PUT", `/api/v1/deployments/${id}/schedule/${scheduleID}`, body),
   deleteSchedule: (id: number, scheduleID: number) =>
     sendJSON<void>("DELETE", `/api/v1/deployments/${id}/schedule/${scheduleID}`),
-  setIdleSleep: (id: number, body: IdleSleep) =>
-    sendJSON<IdleSleep>("PUT", `/api/v1/deployments/${id}/idle-sleep`, body),
-  setServiceLevel: (id: number, level: ServiceLevel) =>
-    sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/service-level`, { level }),
+  setYieldPolicy: (id: number, body: YieldPolicyRequest) =>
+    sendJSON<YieldPolicy>("PUT", `/api/v1/deployments/${id}/yield-policy`, body),
   setNodeReplacement: (id: number, body: NodeReplacement) =>
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   // The board is a page of nodes with their holders (page, page_size, q); or

@@ -36,7 +36,7 @@ export function smallFleet(): SchedulingOverview {
       { uuid: "node-c", name: "gpu-c", online: true, labels: { zone: "c" }, cards: [card(0, 1, 0, 0, FLAGS.held), card(1, 1, 0, 5, 0, [5]), card(2, 1)] },
     ],
     ["L20", "H100"],
-    [{ id: 7, name: "qwen", service_level: "resident" }, { id: 8, name: "batch", service_level: "shared" }, { id: 9, name: "night", service_level: "online" }],
+    [{ id: 7, name: "qwen", preset: "resident" }, { id: 8, name: "batch", preset: "shared" }, { id: 9, name: "night", preset: "online" }],
     { waiting_wakes: 1, held_requests: 3, yields_last_hour: 2 },
   );
 }
@@ -53,5 +53,5 @@ export function bigFleet(nodes: number, cards: number): SchedulingOverview {
       }),
     });
   }
-  return overviewOf(list, ["L20", "H100"], [{ id: 1, name: "alpha", service_level: "resident" }, { id: 2, name: "beta", service_level: "shared" }, { id: 3, name: "gamma", service_level: "offline" }]);
+  return overviewOf(list, ["L20", "H100"], [{ id: 1, name: "alpha", preset: "resident" }, { id: 2, name: "beta", preset: "shared" }, { id: 3, name: "gamma", preset: "offline" }]);
 }

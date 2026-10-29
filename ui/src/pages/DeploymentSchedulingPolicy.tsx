@@ -9,7 +9,7 @@ import { policySections, policySummary } from "./schedulingPolicySections";
 
 // DeploymentSchedulingPolicy is what the platform does to a deployment on its
 // own, in one card: where its replicas go when their node is lost, its standing
-// schedule and its idle sleep. Collapsed it is one line of what each is set
+// schedule and its service level and sleep. Collapsed it is one line of what each is set
 // to; editing opens the editors, one tab per policy.
 export default function DeploymentSchedulingPolicy({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   if (dep.desired_state === "deleting") return null;

@@ -96,7 +96,7 @@ function OccupantChip({ occupant }: { occupant: BoardOccupant }) {
   return (
     <Tag className={`scheduling-occupant${asleep ? " is-asleep" : ""}`} color={asleep ? "purple" : "blue"}>
       <Link to={`/deployments?deployment=${occupant.deployment_id}`}>{occupant.deployment}</Link>
-      <span className="scheduling-level">{t("nodes.occupant.level", { level: tDeploy(`serviceLevel.name.${occupant.service_level ?? "resident"}`) })}</span>
+      <span className="scheduling-level">{t("nodes.occupant.level", { level: tDeploy(`yieldPolicy.preset.name.${occupant.preset ?? "resident"}`) })}</span>
       <span className="scheduling-num">
         {" · "}
         {asleep

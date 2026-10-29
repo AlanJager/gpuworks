@@ -54,8 +54,8 @@ function timeline(overrides: Partial<Timeline> = {}): Timeline {
       ],
     }],
     deployments: [
-      { deployment_id: 7, deployment: "qwen", service_level: "shared", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000 },
-      { deployment_id: 8, deployment: "llama", service_level: "offline", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0 },
+      { deployment_id: 7, deployment: "qwen", preset: "shared", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000 },
+      { deployment_id: 8, deployment: "llama", preset: "offline", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0 },
     ],
     ...overrides,
   };
@@ -161,7 +161,7 @@ test("each card is lanes of blocks coloured by state from the theme, with a lege
   assert.deepEqual(blocks.map((b) => Math.round(parseFloat(b.getAttribute("width") ?? "0"))), [333, 83, 250]);
   assert.deepEqual(blocks.map((b) => Math.round(parseFloat(b.getAttribute("x") ?? "0"))), [0, 333, 417]);
   // The deployment's service level labels its lane.
-  assert.ok(gpu0.getAllByText(i18n.t("deployments:serviceLevel.name.shared")).length >= 1);
+  assert.ok(gpu0.getAllByText(i18n.t("deployments:yieldPolicy.preset.name.shared")).length >= 1);
   assert.ok(gpu0.getByRole("link", { name: "llama" }));
   const legend = screen.getByRole("list", { name: s.timeline.legend });
   for (const label of [s.timeline.state.awake, s.timeline.state.asleep, s.timeline.state.switching, s.timeline.state.starting]) assert.ok(within(legend).getByText(label), label);
@@ -226,7 +226,7 @@ test("the sharing table lists service level, awake time, switches, yields and th
   for (const heading of Object.values(s.timeline.columns)) assert.ok(table.getAllByText(heading).length >= 1, heading);
   const qwen = table.getByRole("link", { name: "qwen" }).closest("tr") as HTMLElement;
   const cells = within(qwen);
-  assert.ok(cells.getByText(i18n.t("deployments:serviceLevel.name.shared")));
+  assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.preset.name.shared")));
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("scheduling:timeline.duration.hours", { hours: 2, minutes: 0 }), share: 33.3 })));
   assert.ok(cells.getByText("3")); // switches
   assert.ok(cells.getByText("4")); // held requests

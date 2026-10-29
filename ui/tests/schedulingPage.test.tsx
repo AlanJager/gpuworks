@@ -56,8 +56,8 @@ function nodeBoard(uuid: string): Board {
           {
             index: 0, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, held_outside: false,
             occupants: [
-              { deployment_id: 7, deployment: "qwen", service_level: "online", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
-              { deployment_id: 8, deployment: "llama", service_level: "shared", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
+              { deployment_id: 7, deployment: "qwen", preset: "online", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
+              { deployment_id: 8, deployment: "llama", preset: "shared", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
             ],
           },
           { index: 1, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, held_outside: true, occupants: [] },
@@ -71,7 +71,7 @@ function nodeBoard(uuid: string): Board {
 
 const sharing = (): Timeline => ({
   window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [],
-  deployments: [{ deployment_id: 8, deployment: "llama", service_level: "shared", awake_seconds: 3600, awake_share: 0.25, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
+  deployments: [{ deployment_id: 8, deployment: "llama", preset: "shared", awake_seconds: 3600, awake_share: 0.25, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
 });
 
 interface Calls { board: unknown[]; timeline: unknown[] }
@@ -274,7 +274,7 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
   assert.deepEqual(calls.board.at(-1), { node: "node-a" });
   const bar = within(drawer).getByRole("img", { name: i18n.t("scheduling:nodes.barAria", { node: "gpu-a", index: 0, awake: "20.0 GiB", sleeping: "4.0 GiB", free: "24.0 GiB", total: "48.0 GiB" }) });
   assert.deepEqual([...bar.querySelectorAll("span")].map((span) => Math.round(parseFloat((span as HTMLElement).style.width))), [42, 8, 50]);
-  const level = (name: string) => i18n.t("scheduling:nodes.occupant.level", { level: i18n.t(`deployments:serviceLevel.name.${name}`) }).trim();
+  const level = (name: string) => i18n.t("scheduling:nodes.occupant.level", { level: i18n.t(`deployments:yieldPolicy.preset.name.${name}`) }).trim();
   const awake = within(drawer).getByRole("link", { name: "qwen" }).parentElement as HTMLElement;
   assert.ok(within(awake).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.awake", { claim: "20.0 GiB" }))));
   assert.ok(within(awake).getByText(level("online")));

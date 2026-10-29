@@ -727,7 +727,7 @@
     },
     "cause": {
       "schedule": "，由定时计划触发",
-      "idle": "，因 {{idle}}内没有请求",
+      "idle": "，无抢占时自动休眠（{{idle}}内没有请求）",
       "wake_waiting": "，GPU 已腾出空间",
       "operator": "，按操作员指令",
       "request": "，因请求到达",
@@ -735,9 +735,9 @@
     },
     "yieldedNote": "，已先让 {{names}} 休眠",
     "preempt": {
-      "idle": "，空闲超过让卡时间，为 {{who}} 让出 GPU",
-      "rank": "，{{who}} 的服务等级更高，为其让出 GPU",
-      "turn": "，分时轮到 {{who}}，为其让出 GPU",
+      "idle": "，已闲置达到闲置时间，按出让策略为 {{who}} 让出 GPU",
+      "rank": "，按出让策略，为排位更高的 {{who}} 让出 GPU",
+      "turn": "，时间片轮到 {{who}}，为其让出 GPU",
       "other": "，为 {{who}} 让出 GPU",
       "who": "部署 #{{id}}",
       "someone": "其他部署",
@@ -816,17 +816,6 @@
         "5": "周五",
         "6": "周六"
       }
-    },
-    "idle": {
-      "title": "闲置休眠",
-      "hint": "部署一段时间没有用户请求后自动休眠。健康检查探测不算请求。",
-      "notSleepable": "闲置休眠需要以启用休眠模式创建的部署。",
-      "enable": "启用闲置休眠",
-      "after": "闲置",
-      "minutes": "闲置分钟数",
-      "level": "休眠级别",
-      "saved": "已保存闲置休眠",
-      "saveFailed": "保存闲置休眠失败：{{detail}}"
     }
   },
   "schedulingPolicy": {
@@ -834,36 +823,105 @@
     "edit": "编辑",
     "close": "完成",
     "helpLabel": "调度策略说明",
-    "help": "详细说明见文档《使用调度中心》（定时计划、闲置休眠）和《节点失联重调度》。",
+    "help": "详细说明见文档《使用调度中心》（定时计划、服务等级与休眠）和《节点失联重调度》。",
     "item": "{{label}}：{{value}}",
     "separator": " · ",
     "off": "关闭",
     "none": "无",
     "loading": "加载中…",
     "loadFailed": "加载失败",
-    "idleOn": "{{minutes}} 分钟 / L{{level}}",
     "scheduleCount_one": "{{count}} 条",
     "scheduleCount_other": "{{count}} 条",
     "scheduleNext": "，下次 {{time}} {{order}}",
     "scheduleAllOff": "，均未启用"
   },
-  "serviceLevel": {
-    "title": "服务等级",
-    "hint": "同一批 GPU 上有多个部署时，服务等级决定谁让谁。非常驻的部署被平台休眠后，请求到达会被挂起等待唤醒，而不是直接返回 503。",
-    "notEligible": "只有可休眠的单机（非 PD）部署能改服务等级。",
-    "saved": "已保存服务等级",
-    "saveFailed": "保存服务等级失败：{{detail}}",
-    "name": {
-      "resident": "常驻",
-      "online": "在线",
-      "shared": "分时",
-      "offline": "离线"
+  "yieldPolicy": {
+    "title": "服务等级与休眠",
+    "summaryLabel": "服务等级",
+    "hint": "同一批 GPU 上有多个部署时，出让策略决定谁让谁。服务等级（常驻、在线、分时、离线）是四套预设；改动任何一项参数，就变成自定义。被平台休眠的部署，请求到达会被挂起等待唤醒，而不是直接返回 503。",
+    "notSleepable": "该部署没有启用休眠模式：只能保持从不出让，也不能自动休眠。",
+    "singleNodeOnly": "多机与 PD 部署只能从不出让，但可以开启无抢占时自动休眠。",
+    "saved": "已保存服务等级与休眠",
+    "saveFailed": "保存服务等级与休眠失败：{{detail}}",
+    "presetLabel": "预设",
+    "preset": {
+      "name": {
+        "resident": "常驻",
+        "online": "在线",
+        "shared": "分时",
+        "offline": "离线",
+        "custom": "自定义"
+      },
+      "description": {
+        "resident": "不把 GPU 让给其他部署（默认）。",
+        "online": "其他部署在等 GPU、且自己闲置 5 分钟后才让出；有请求时从分时、离线部署手里收回。两个在线部署不能共用 GPU。",
+        "shared": "与同一批 GPU 上的其他分时部署轮流使用（每轮至少 2 分钟）；在线部署需要时让出，进行中的请求最多再等 30 秒。",
+        "offline": "立即把 GPU 让给其他所有部署，并中断进行中的请求（客户端看到 finish_reason 为 abort）；GPU 空出后自动恢复。适合批处理。",
+        "custom": "各项参数与四个预设都不相同。选择一个预设会重置全部参数。"
+      }
     },
-    "description": {
-      "resident": "不把 GPU 让给其他部署（默认）。",
-      "online": "空闲 5 分钟后才让出 GPU；有请求时从分时、离线部署手里收回。两个在线部署不能共用 GPU。",
-      "shared": "与同一批 GPU 上的其他分时部署轮流使用（每轮至少 2 分钟）；在线部署需要时立即让出，进行中的请求最多再等 30 秒。",
-      "offline": "立即把 GPU 让给其他所有部署，并中断进行中的请求（客户端看到 finish_reason 为 abort）；GPU 空出后自动恢复。适合批处理。"
+    "policyLabel": "出让策略",
+    "policy": {
+      "name": {
+        "never": "从不出让",
+        "idle": "闲置自动出让",
+        "timeslice": "时间片轮流",
+        "anytime": "随时出让"
+      },
+      "description": {
+        "never": "不把 GPU 让给其他部署。",
+        "idle": "有其他部署在等 GPU，且自己闲置达到闲置时间，才让出。",
+        "timeslice": "与同一批 GPU 上的其他时间片部署轮流使用；让位于从不出让和闲置自动出让的部署。",
+        "anytime": "有排位更高的部署在等，就立即让出。"
+      }
+    },
+    "field": {
+      "policy": "出让策略",
+      "auto_sleep": "无抢占时自动休眠",
+      "idle_sec": "闲置时间",
+      "sleep_level": "休眠级别",
+      "min_serve_sec": "最短提供服务时间",
+      "unfinished": "出让时未完成请求的处理策略",
+      "unfinished_wait_sec": "最多等待",
+      "hold_max_sec": "请求最长挂起时间"
+    },
+    "help": {
+      "idle_sec": "一段时间没有用户请求才算闲置，健康检查探测不算请求。",
+      "idle_sec_none": "当前设置下闲置时间不起作用。",
+      "auto_sleep": "没有部署在等 GPU 时，闲置达到闲置时间也休眠；之后有请求会自动唤醒。",
+      "min_serve_sec": "每次轮到后至少服务这么久，才会让给下一个部署。",
+      "hold_max_sec": "部署休眠或被让出期间，请求最多被挂起这么久等待唤醒，超时返回错误。"
+    },
+    "sleepLevel": {
+      "auto": "自动（优先 L1，主机内存放不下权重时用 L2）",
+      "l1": "L1 · 内存（快速）",
+      "l2": "L2 · 深度"
+    },
+    "unfinished": {
+      "abort": "立即中断",
+      "wait": "等待完成（超时中断）",
+      "wait_unbounded": "等待完成（不限时）",
+      "waitUnboundedWarning": "不限时等待时，一个很长的请求会让等位的部署一直等下去。"
+    },
+    "unit": "秒",
+    "none": "—",
+    "range": "范围 {{minimum}} 到 {{maximum}} 秒",
+    "error": {
+      "invalid_value": "“{{field}}”的取值不合法。",
+      "out_of_range": "“{{field}}”必须在 {{minimum}} 到 {{maximum}} 秒之间。",
+      "required": "“{{field}}”不能为空。"
+    },
+    "summary": {
+      "custom": "自定义 · {{policy}}",
+      "customDigest": "自定义 · {{policy}}（{{digest}}）",
+      "idle": "闲置 {{value}}",
+      "level": {
+        "auto": "自动休眠级别",
+        "l1": "L1",
+        "l2": "L2"
+      },
+      "autoSleep": "自动休眠",
+      "separator": "，"
     }
   },
   "nodeReplacement": {

@@ -29,7 +29,7 @@ export function cellText(t: TFunction<"scheduling">, tDeploy: TFunction<"deploym
   if (card.occupants.length > 0) {
     const holders = card.occupants.map((o) => {
       const dep = deployments[o.deployment];
-      return t("heatmap.holder", { name: dep?.name ?? "?", level: tDeploy(`serviceLevel.name.${dep?.service_level ?? "resident"}`), state: t(`heatmap.holderState.${o.asleep ? "asleep" : "awake"}`) });
+      return t("heatmap.holder", { name: dep?.name ?? "?", level: tDeploy(`yieldPolicy.preset.name.${dep?.preset ?? "resident"}`), state: t(`heatmap.holderState.${o.asleep ? "asleep" : "awake"}`) });
     });
     parts.push(t("heatmap.detail.holders", { list: holders.join(", ") }));
   }

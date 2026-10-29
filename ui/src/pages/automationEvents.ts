@@ -4,7 +4,7 @@ import type { InstanceEvent } from "../api";
 
 /**
  * The scheduling center's timeline entries (kind "automation"): what a
- * schedule, idle sleep or a waiting wake did to the deployment. Their params
+ * schedule, auto sleep, a yield or a waiting wake did to the deployment. Their params
  * are lists and names, not counts, so they are worded here rather than by the
  * lifecycle mapping. The node-replacement entries are worded in
  * nodeReplacementEvents.ts.
@@ -55,9 +55,9 @@ function shortIDs(ids: string[]): string {
   return ids.map((id) => id.slice(0, 8)).join(", ");
 }
 
-// preemptCause words a deployment giving its GPUs to another by service level:
-// who got them, why (idle past its hold time, rank, a time-share turn) and
-// whether requests in flight were cut off.
+// preemptCause words a deployment giving its GPUs to another under its yield
+// policy: who got them, why (idle for the idle time, rank, a time-slice turn)
+// and whether requests in flight were cut off.
 function preemptCause(t: TFunction<"deployments">, event: InstanceEvent): string {
   const target = num(event, "for_deployment");
   const who = target != null ? t("automation.preempt.who", { id: target }) : t("automation.preempt.someone");

@@ -27,11 +27,11 @@ test("every automation event has text in both locales", () => {
   }
 });
 
-test("a schedule's, an idle sleep's and a waiting wake's entries read in English with their causes", async () => {
+test("a schedule's, an auto sleep's and a waiting wake's entries read in English with their causes", async () => {
   const text = await texts("en");
   assert.equal(text("AUTO_SLEEP", { trigger: "schedule", schedule_id: 3, level: 2, scheduled_at: "2026-10-25T22:00:00Z" }), "Put to sleep (L2) by its schedule");
-  assert.equal(text("AUTO_SLEEP", { trigger: "idle", level: 2, idle_sec: 900 }), "Put to sleep (L2) after 15 min without requests");
-  assert.equal(text("AUTO_SLEEP", { trigger: "idle", level: 1, idle_sec: 7200 }), "Put to sleep (L1) after 2 h without requests");
+  assert.equal(text("AUTO_SLEEP", { trigger: "idle", level: 2, idle_sec: 900 }), "Put to sleep (L2) after 15 min without requests (auto sleep when not preempted)");
+  assert.equal(text("AUTO_SLEEP", { trigger: "idle", level: 1, idle_sec: 7200 }), "Put to sleep (L1) after 2 h without requests (auto sleep when not preempted)");
   assert.equal(text("AUTO_WAKE", { trigger: "wake_waiting", instances: [uuid, "fedcba9876543210"] }), "Woke instance 01234567, fedcba98 once its GPUs had room");
   assert.equal(text("AUTO_WAKE", { trigger: "schedule", schedule_id: 1, instances: [uuid] }), "Woke instance 01234567 by its schedule");
   assert.equal(text("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 4 }), "Replicas set to 4 by its schedule");
@@ -56,7 +56,7 @@ test("waiting, giving up and yielding entries name the instances, the wait and w
 
 test("the same entries read in Chinese, and a payload without params still renders", async () => {
   const text = await texts("zh");
-  assert.equal(text("AUTO_SLEEP", { trigger: "idle", level: 2, idle_sec: 900 }), "已休眠（L2），因 15 分钟内没有请求");
+  assert.equal(text("AUTO_SLEEP", { trigger: "idle", level: 2, idle_sec: 900 }), "已休眠（L2），无抢占时自动休眠（15 分钟内没有请求）");
   assert.equal(text("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 4 }), "副本数已设为 4，由定时计划触发");
   assert.ok(text("AUTO_WAKE", {}).length > 0);
 });
@@ -72,13 +72,13 @@ test("a wake a request waited for, and one that took the GPUs back, read in both
 
 test("a sleep that gave GPUs to another deployment says to whom, why, and whether requests were cut off", async () => {
   const zh = await texts("zh");
-  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "rank", for_deployment: 7, level: 2, abort: false, instances: [uuid] }), "已休眠（L2），部署 #7 的服务等级更高，为其让出 GPU");
-  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "idle", for_deployment: 7, level: 2, abort: false, instances: [uuid] }), "已休眠（L2），空闲超过让卡时间，为 部署 #7 让出 GPU");
-  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "turn", for_deployment: 9, level: 1, abort: true, instances: [uuid] }), "已休眠（L1），分时轮到 部署 #9，为其让出 GPU，中断了进行中的请求");
+  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "rank", for_deployment: 7, level: 2, abort: false, instances: [uuid] }), "已休眠（L2），按出让策略，为排位更高的 部署 #7 让出 GPU");
+  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "idle", for_deployment: 7, level: 2, abort: false, instances: [uuid] }), "已休眠（L2），已闲置达到闲置时间，按出让策略为 部署 #7 让出 GPU");
+  assert.equal(zh("AUTO_SLEEP", { trigger: "preempt", reason: "turn", for_deployment: 9, level: 1, abort: true, instances: [uuid] }), "已休眠（L1），时间片轮到 部署 #9，为其让出 GPU，中断了进行中的请求");
   const en = await texts("en");
-  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "rank", for_deployment: 7, level: 2, abort: true, instances: [uuid] }), "Put to sleep (L2) to give its GPUs to deployment #7, which has a higher service level; requests in flight were cut off");
-  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "turn", for_deployment: 9, level: 1, abort: false, instances: [uuid] }), "Put to sleep (L1) to give its GPUs to deployment #9, whose turn it is in the time share");
-  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "idle", for_deployment: 3, level: 2, abort: false, instances: [uuid] }), "Put to sleep (L2) to give its GPUs to deployment #3 after sitting idle past its hold time");
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "rank", for_deployment: 7, level: 2, abort: true, instances: [uuid] }), "Put to sleep (L2) to give its GPUs to deployment #7, which ranks higher, under its yield policy; requests in flight were cut off");
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "turn", for_deployment: 9, level: 1, abort: false, instances: [uuid] }), "Put to sleep (L1) to give its GPUs to deployment #9, whose turn it is in the time slice");
+  assert.equal(en("AUTO_SLEEP", { trigger: "preempt", reason: "idle", for_deployment: 3, level: 2, abort: false, instances: [uuid] }), "Put to sleep (L2) to give its GPUs to deployment #3 under its yield policy, after sitting idle for the idle time");
   // Without a target or a known reason the entry still says it gave GPUs up.
   assert.equal(en("AUTO_SLEEP", { trigger: "preempt", level: 2 }), "Put to sleep (L2) to give its GPUs to another deployment");
 });

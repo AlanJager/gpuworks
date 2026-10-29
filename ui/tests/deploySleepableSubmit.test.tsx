@@ -343,7 +343,7 @@ test("the automatic mode renders the server's selection and the create confirms 
   assert.equal(modelsFake.listedAll, 0);
 });
 
-test("the service level is chosen only for a sleepable single-node deployment, and reaches the preview and the create", async () => {
+test("the service level preset is chosen only for a sleepable single-node deployment, and reaches the preview and the create", async () => {
   const label = deployLocale.serviceLevel.label;
   const { user } = await openDeployPage();
   await pickVendorAndName(user, "tiered");
@@ -355,15 +355,16 @@ test("the service level is chosen only for a sleepable single-node deployment, a
   // The default is resident, and resident states nothing.
   assert.ok(screen.getAllByText(deployLocale.serviceLevel.name.resident).length > 0);
   await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).sleepable, true));
-  assert.equal("service_level" in (calls.evaluate.at(-1) as Record<string, unknown>), false);
+  assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false);
 
   await user.click(select);
   await user.click(await screen.findByText(`${deployLocale.serviceLevel.name.shared} - ${deployLocale.serviceLevel.hint.shared}`));
-  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).service_level, "shared"), { timeout: 4000 });
+  await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, { preset: "shared" }), { timeout: 4000 });
 
   await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
   await waitFor(() => assert.ok(calls.create.length > 0));
-  assert.equal((calls.create[0] as Record<string, unknown>).service_level, "shared");
+  assert.deepEqual((calls.create[0] as Record<string, unknown>).yield_policy, { preset: "shared" });
+  assert.equal("service_level" in (calls.create[0] as Record<string, unknown>), false);
   assert.equal((calls.create[0] as Record<string, unknown>).sleepable, true);
 });
 
@@ -376,14 +377,14 @@ test("turning sleep off takes the service level out of the form and the request"
   await user.click(card);
   await user.click(await screen.findByRole("combobox", { name: label }));
   await user.click(await screen.findByText(`${deployLocale.serviceLevel.name.offline} - ${deployLocale.serviceLevel.hint.offline}`));
-  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).service_level, "offline"), { timeout: 4000 });
+  await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, { preset: "offline" }), { timeout: 4000 });
 
   await user.click(card);
   await waitFor(() => assert.equal(screen.queryByRole("combobox", { name: label }), null));
-  await waitFor(() => assert.equal("service_level" in (calls.evaluate.at(-1) as Record<string, unknown>), false), { timeout: 4000 });
+  await waitFor(() => assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false), { timeout: 4000 });
   await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
   await waitFor(() => assert.ok(calls.create.length > 0));
-  assert.equal("service_level" in (calls.create[0] as Record<string, unknown>), false);
+  assert.equal("yield_policy" in (calls.create[0] as Record<string, unknown>), false);
   assert.equal("sleepable" in (calls.create[0] as Record<string, unknown>), false);
 });
 

@@ -72,14 +72,14 @@
       "recent": []
     },
     "tokenize_enabled": true,
-    "idle_sleep": {
-      "after_sec": 0,
-      "level": 2
-    },
     "node_replacement": {
       "after_sec": 600
     },
-    "service_level": "resident",
+    "yield_policy": {
+      "preset": "resident",
+      "policy": "never",
+      "auto_sleep": false
+    },
     "sleep_held": false,
     "nnodes": 1,
     "node_rank": 0,

@@ -6,9 +6,10 @@ import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
 // The editors behind a deployment's scheduling policy card: the schedule list
-// and its dialog (create, edit, delete, validation, the server's refusals),
-// idle sleep and the wait before a replica leaves a lost node. The card that
-// holds them is in deploymentSchedulingPolicy.test.tsx.
+// and its dialog (create, edit, delete, validation, the server's refusals) and
+// the wait before a replica leaves a lost node. The yield policy editor is in
+// deploymentYieldPolicy.test.tsx, the card that holds them all in
+// deploymentSchedulingPolicy.test.tsx.
 
 const closeChannels = trackMessageChannels();
 const { i18n, locale } = await createI18n(["deployments", "deploy"]);
@@ -18,7 +19,6 @@ const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { formatTime } = await import("../src/i18n/datetime.ts");
 const { default: ScheduleSection, useSchedules } = await import("../src/pages/DeploymentSchedule.tsx");
-const { default: IdleSleepEditor } = await import("../src/pages/DeploymentIdleSleep.tsx");
 const { default: NodeReplacementEditor } = await import("../src/pages/DeploymentNodeReplacement.tsx");
 type Deployment = import("../src/api.ts").Deployment;
 type Schedule = import("../src/api.ts").LifecycleSchedule;
@@ -34,7 +34,7 @@ function deployment(overrides: Record<string, unknown> = {}): Deployment {
     desired_state: "active", runtime_state: "running", sleepable: true, replicas: 2, max_replicas: 32, nnodes: 1,
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
-    idle_sleep: { after_sec: 0, level: 2 }, node_replacement: { after_sec: 600 },
+    node_replacement: { after_sec: 600 },
     ...overrides,
   } as unknown as Deployment;
 }
@@ -70,11 +70,10 @@ function Schedules({ dep }: { dep: Deployment }) {
   return <ScheduleSection dep={dep} schedules={schedules} />;
 }
 
-function mount(dep = deployment(), onChanged = () => {}) {
+function mount(dep = deployment()) {
   render(
     <I18nextProvider i18n={i18n}>
       <Schedules dep={dep} />
-      <IdleSleepEditor dep={dep} onChanged={onChanged} />
     </I18nextProvider>,
   );
   return userEvent.setup();
@@ -247,53 +246,6 @@ test("sleep and wake are offered only for a sleepable deployment; replica counts
   mount(deployment({ sleepable: false, nnodes: 2 }));
   await within(scheduleSection()).findByText(a.schedule.noActions);
   assert.equal((within(scheduleSection()).getByRole("button", { name: a.schedule.add }) as HTMLButtonElement).disabled, true);
-});
-
-test("idle sleep starts from 15 minutes at L2 and saves seconds", async () => {
-  stub();
-  const saved: unknown[] = [];
-  api.setIdleSleep = async (_id, body) => { saved.push(body); return body; };
-  let changed = 0;
-  const user = mount(deployment(), () => { changed += 1; });
-  const section = screen.getByRole("region", { name: a.idle.title });
-  await user.click(within(section).getByRole("switch", { name: a.idle.enable }));
-  assert.equal((within(section).getByLabelText(a.idle.minutes) as HTMLInputElement).value, "15");
-  assert.ok(within(section).getByText(a.level["2"]));
-  await user.click(within(section).getByRole("button", { name: a.save }));
-  await waitFor(() => assert.deepEqual(saved, [{ after_sec: 900, level: 2 }]));
-  await waitFor(() => assert.equal(changed, 1));
-});
-
-test("turning idle sleep off saves 0; a saved setting shows as on", async () => {
-  stub();
-  const saved: unknown[] = [];
-  api.setIdleSleep = async (_id, body) => { saved.push(body); return body; };
-  const user = mount(deployment({ idle_sleep: { after_sec: 3600, level: 1 } }));
-  const section = screen.getByRole("region", { name: a.idle.title });
-  assert.equal((within(section).getByLabelText(a.idle.minutes) as HTMLInputElement).value, "60");
-  assert.ok(within(section).getByText(a.level["1"]));
-  assert.equal((within(section).getByRole("button", { name: a.save }) as HTMLButtonElement).disabled, true);
-  await user.click(within(section).getByRole("switch", { name: a.idle.enable }));
-  await user.click(within(section).getByRole("button", { name: a.save }));
-  await waitFor(() => assert.deepEqual(saved, [{ after_sec: 0, level: 1 }]));
-});
-
-test("idle sleep is disabled with an explanation on a deployment that cannot sleep", async () => {
-  stub();
-  mount(deployment({ sleepable: false }));
-  const section = screen.getByRole("region", { name: a.idle.title });
-  assert.ok(within(section).getByText(a.idle.notSleepable));
-  assert.equal((within(section).getByRole("switch", { name: a.idle.enable }) as HTMLButtonElement).disabled, true);
-});
-
-test("a refused idle sleep says why", async () => {
-  stub();
-  api.setIdleSleep = async () => { throw new APIError("SLEEP_NOT_ENABLED", {}, "sleep mode was not enabled", 400); };
-  const user = mount();
-  const section = screen.getByRole("region", { name: a.idle.title });
-  await user.click(within(section).getByRole("switch", { name: a.idle.enable }));
-  await user.click(within(section).getByRole("button", { name: a.save }));
-  await screen.findByText(i18n.t("deployments:automation.idle.saveFailed", { detail: i18n.t("common:apiError.SLEEP_NOT_ENABLED") }));
 });
 
 test("the wait before a replica leaves a lost node starts at 10 minutes and saves seconds; 0 turns it off", async () => {

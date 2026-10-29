@@ -317,7 +317,7 @@
   },
   "serviceLevel": {
     "label": "Service level",
-    "help": "When several deployments share GPUs, this decides who gives way. Below resident, a request wakes the deployment if it is asleep.",
+    "help": "When several deployments share GPUs, this decides who gives way. Below resident, a request wakes the deployment if it is asleep. After creating it, tune the yield policy's parameters on the scheduling policy card.",
     "name": {
       "resident": "Resident",
       "online": "Online",
@@ -326,8 +326,8 @@
     },
     "hint": {
       "resident": "never gives up its GPUs",
-      "online": "gives them up after 5 idle minutes, takes them back on a request",
-      "shared": "takes turns with other shared deployments, gives way to online at once",
+      "online": "gives them up when another deployment waits and it was idle for 5 minutes, takes them back on a request",
+      "shared": "takes turns with other shared deployments, gives way to online when needed",
       "offline": "gives way to everyone at once, cuts off requests in flight, for batch work"
     }
   },

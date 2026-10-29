@@ -38,7 +38,7 @@ function pdDeployment(overrides: Record<string, unknown> = {}): Deployment {
     },
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
-    idle_sleep: { after_sec: 0, level: 2 }, node_replacement: { after_sec: 600 },
+    node_replacement: { after_sec: 600 },
     ...overrides,
   } as unknown as Deployment;
 }
