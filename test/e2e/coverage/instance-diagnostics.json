@@ -9,31 +9,169 @@
   "test_file": "test/e2e/instance_diagnostics_browser.py",
   "test_function": "test_instance_diagnostics",
   "command": "make test-e2e-instance-diagnostics E2E_LOCALE=en",
-  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
   "result": "NOT_RUN: only the exact source/binary/runId report can establish PASS; each locale is independent",
   "external_boundary": "Locally cached Alpine plus unchanged fake-engine; GPU facts only drive scheduling. Docker, real agent collector/log shipper, SQLite, TSDB, HTTP and SSE remain real.",
   "fields": [
-    {"field_id": "instance.logs", "component": "LogStream / SSE / pre", "request": "GET /instances/{uuid}/logs; GET /logs/search?instance&limit&from&to", "persistence": "agent stdout -> log shipper -> logstore row -> browser after stop/reload", "covered": ["unique UTF-8 marker written into engine PID1 stdout and independently counted in Docker logs", "live browser SSE method/path/query/body/content type", "persisted exact text, node/instance/source/level/arrival timestamp", "one-hour query and exact known row", "same row in log center after stop, row-instance filtering and page reload"], "missing": ["full SSE chunk/reconnect/dedup/long-line matrix", "server failure recovery and permission expiry", "FTS, search/export, histograms and system-event range filtering"]},
-    {"field_id": "instance.logs.range", "component": "TimeRangePicker", "default": "Live; stop retires instance, log center retains history", "covered": ["1h actual instance/from/to/limit query and known persisted marker", "log center defaults to exact 24h/source instance, retired row-instance filtering and reload (unsaved filter resets)"], "missing": ["other log presets", "custom start/end and inclusive boundary exclusion", "cancel custom draft, stale-response handling and timezone alternatives"]},
-    {"field_id": "instance.logs.follow", "component": "Checkbox", "default": true, "missing": ["toggle and scroll-position semantics"]},
-    {"field_id": "instance.metrics.range", "component": "TimeRangePicker", "default": "15m", "covered": ["all seven quick options selected independently with exact step/window/instance query", "exact three-gauge request set once per change"], "missing": ["custom ranges, invalid/inclusive boundaries and stale-response races", "retention warning geometry and custom cancel"]},
-    {"field_id": "deployment.metrics.range", "component": "separate deployment-wide TimeRangePicker", "covered": ["real 1y selection and cache query establish isolated context for inner instance range request counts"], "missing": ["other outer metric ranges and full deployment-wide series matrix"]},
-    {"field_id": "instance.metrics.values", "component": "Statistic / TimeSeriesChart", "covered": ["raw engine gauge wire running=2, waiting=3, cache=0.375 independently checked", "collector TSDB gauge samples exactly equal independent wire", "UI numbers 2/3 and cache 37% (Statistic precision=0 truncates 37.5)", "unreported KV/spec ratios render unknown rather than 0"], "missing": ["token counter rates, GPU strip and stage telemetry exact values", "canvas tooltip/series sample rendering", "loading/error/stale matrix", "missing numeric-card series browser state (separate RTL regression protects unknown vs zero)"]},
-    {"field_id": "instance.launch-facts", "component": "Collapse / Descriptions", "request": "GET /instances/{uuid}/launch-facts", "covered": ["actual browser request on expansion", "current container/image observation compared with independent Docker inspect", "image/container identity, argv, env, mount and device/volume JSON rendered exactly", "process not_collected remains unknown"], "missing": ["intent/resolved UI fields, observation replacement/history identities", "failed loading and retry", "refresh during racing responses", "copy and clipboard consumption"]},
-    {"field_id": "instance.tabs", "component": "Tabs", "covered": ["Logs -> Metrics -> Logs; retired instance history in log center"], "missing": ["keyboard tab traversal and navigation history"]},
-    {"field_id": "deployment.stop", "component": "Popconfirm", "covered": ["browser POST stop and independent Docker disappearance"], "missing": ["named impact, cancel, focus trap and failure recovery; authority remains deployment-lifecycle case"]},
-    {"field_id": "instance.container-terminal", "component": "Button / new window", "missing": ["separate container-terminal contract owns PTY and session lifecycle"]},
-    {"field_id": "instance.remaining-controls", "component": "ReplicaActions, topology, model/storage links, launch command copy, Environment & Mounts collapse, VRAM breakdown, AI diagnosis", "missing": ["not exercised by this diagnostic contract; existing replica/override cases retain their own authority", "real GPU/dGPU facts and performance"]}
+    {
+      "field_id": "instance.logs",
+      "component": "LogStream / SSE / pre",
+      "request": "GET /instances/{uuid}/logs; GET /logs/search?instance&limit&from&to",
+      "persistence": "agent stdout -> log shipper -> logstore row -> browser after stop/reload",
+      "covered": [
+        "unique UTF-8 marker written into engine PID1 stdout and independently counted in Docker logs",
+        "live browser SSE method/path/query/body/content type",
+        "persisted exact text, node/instance/source/level/arrival timestamp",
+        "one-hour query and exact known row",
+        "same row in log center after stop, row-instance filtering and page reload"
+      ],
+      "missing": [
+        "full SSE chunk/reconnect/dedup/long-line matrix",
+        "server failure recovery and permission expiry",
+        "FTS, search/export, histograms and system-event range filtering"
+      ]
+    },
+    {
+      "field_id": "instance.logs.range",
+      "component": "TimeRangePicker",
+      "default": "Live; stop retires instance, log center retains history",
+      "covered": [
+        "1h actual instance/from/to/limit query and known persisted marker",
+        "log center defaults to exact 24h/source instance, retired row-instance filtering and reload (unsaved filter resets)"
+      ],
+      "missing": [
+        "other log presets",
+        "custom start/end and inclusive boundary exclusion",
+        "cancel custom draft, stale-response handling and timezone alternatives"
+      ]
+    },
+    {
+      "field_id": "instance.logs.follow",
+      "component": "Checkbox",
+      "default": true,
+      "missing": [
+        "toggle and scroll-position semantics"
+      ]
+    },
+    {
+      "field_id": "instance.metrics.range",
+      "component": "TimeRangePicker",
+      "default": "15m",
+      "covered": [
+        "all seven quick options selected independently with exact step/window/instance query",
+        "exact three-gauge request set once per change"
+      ],
+      "missing": [
+        "custom ranges, invalid/inclusive boundaries and stale-response races",
+        "retention warning geometry and custom cancel"
+      ]
+    },
+    {
+      "field_id": "deployment.metrics.range",
+      "component": "separate deployment-wide TimeRangePicker",
+      "covered": [
+        "real 1y selection and cache query establish isolated context for inner instance range request counts"
+      ],
+      "missing": [
+        "other outer metric ranges and full deployment-wide series matrix"
+      ]
+    },
+    {
+      "field_id": "instance.metrics.values",
+      "component": "Statistic / TimeSeriesChart",
+      "covered": [
+        "raw engine gauge wire running=2, waiting=3, cache=0.375 independently checked",
+        "collector TSDB gauge samples exactly equal independent wire",
+        "UI numbers 2/3 and cache 37% (Statistic precision=0 truncates 37.5)",
+        "unreported KV/spec ratios render unknown rather than 0"
+      ],
+      "missing": [
+        "token counter rates, GPU strip and stage telemetry exact values",
+        "canvas tooltip/series sample rendering",
+        "loading/error/stale matrix",
+        "missing numeric-card series browser state (separate RTL regression protects unknown vs zero)"
+      ]
+    },
+    {
+      "field_id": "instance.launch-facts",
+      "component": "Collapse / Descriptions",
+      "request": "GET /instances/{uuid}/launch-facts",
+      "covered": [
+        "actual browser request on expansion",
+        "current container/image observation compared with independent Docker inspect",
+        "image/container identity, argv, env, mount and device/volume JSON rendered exactly",
+        "process not_collected remains unknown"
+      ],
+      "missing": [
+        "intent/resolved UI fields, observation replacement/history identities",
+        "failed loading and retry",
+        "refresh during racing responses",
+        "copy and clipboard consumption"
+      ]
+    },
+    {
+      "field_id": "instance.tabs",
+      "component": "Tabs",
+      "covered": [
+        "Logs -> Metrics -> Logs; retired instance history in log center"
+      ],
+      "missing": [
+        "keyboard tab traversal and navigation history"
+      ]
+    },
+    {
+      "field_id": "deployment.stop",
+      "component": "Popconfirm",
+      "covered": [
+        "browser POST stop and independent Docker disappearance"
+      ],
+      "missing": [
+        "named impact, cancel, focus trap and failure recovery; authority remains deployment-lifecycle case"
+      ]
+    },
+    {
+      "field_id": "instance.container-terminal",
+      "component": "Button / new window",
+      "missing": [
+        "separate container-terminal contract owns PTY and session lifecycle"
+      ]
+    },
+    {
+      "field_id": "instance.remaining-controls",
+      "component": "ReplicaActions, topology, model/storage links, launch command copy, Environment & Mounts collapse, VRAM breakdown, AI diagnosis",
+      "missing": [
+        "not exercised by this diagnostic contract; existing replica/override cases retain their own authority",
+        "real GPU/dGPU facts and performance"
+      ]
+    }
   ],
   "crud": {
-    "create": {"status": "N/A", "reason": "Fixture creates prerequisites; no browser creation claim"},
+    "create": {
+      "status": "N/A",
+      "reason": "Fixture creates prerequisites; no browser creation claim"
+    },
     "read": "Live marker, persisted row, all metric quick queries and runtime observations",
     "update": "Browser Stop solely establishes retired-instance historical read; lifecycle authority remains separate",
-    "delete": {"status": "N/A", "reason": "Scoped teardown only; no browser deletion claim"}
+    "delete": {
+      "status": "N/A",
+      "reason": "Scoped teardown only; no browser deletion claim"
+    }
   },
   "checklist_items": {
     "9.1": "PARTIAL: every metric quick range selected and queried; logs only instance 1h and log center default 24h; custom missing",
-    "9.2-9.8": "MISSING: custom validation/cancel/inclusive boundaries/timezones/follow/stale response matrix",
+    "9.2": "PARTIAL: quick ranges only; a custom start/end range, its validation, inversion and precision bounds are not exercised.",
+    "9.3": "MISSING: confirming and cancelling a custom range (query re-issued on confirm, previous range kept on cancel).",
+    "9.4": "PARTIAL: the fixture supplies boundary samples and the series is asserted per gauge, but inclusion at both ends of the window is not checked against a boundary record.",
+    "9.5": "covered: each of the seven presets is mapped to its exact millisecond span and step (15m/900000/10s, 1h/3600000/30s, 6h/21600000/2m, 1d/86400000/10m, 1w/604800000/1h, 1mo/2592000000/4h, 1y/31536000000/24h), and a metrics/query request is accepted only when its parsed step equals that string and end minus start equals that span, so a preset that converts to the wrong duration or emits a human-readable duration instead of milliseconds cannot pass.",
+    "9.6": "PARTIAL: quick ranges slide with the clock and are re-queried; a live/follow toggle and URL range backfill are not covered.",
+    "9.7": "MISSING: retention hint and hard-illegal range are not distinguished.",
+    "9.8": "MISSING: overlapping range switches are not ordered to prove a stale response cannot overwrite the newest.",
     "12.1": "covered: real deployment row opens the correctly named drawer and instance identity",
     "12.2": "covered: Delete dialog at 1440x900: the dialog and footer Delete stay inside the viewport, and the title, description, body and footer sit inside the dialog without overlap.",
     "12.3": "covered: Default focus is inside the delete dialog. Tab and Shift+Tab each cycle across at least two controls and never leave the dialog.",
@@ -58,15 +196,46 @@
     "22.2-22.7": "MISSING: history, permission/session expiry, full-site language and computed focus/state matrix"
   },
   "failure_table": [
-    {"wrong_implementation": "SSE returns another instance or stale stdout", "fails_at": "unique runtime marker in exact owned instance live pre"},
-    {"wrong_implementation": "log shipper drops/misclassifies/duplicates marker", "fails_at": "persisted_marker exact count/text/identity/source/level/bracket"},
-    {"wrong_implementation": "UI reads logs with wrong instance or one-hour unit", "fails_at": "request_contract and exact to-from=3600000; known row"},
-    {"wrong_implementation": "collector gauge mapping/UI cache scaling is altered", "fails_at": "independent metric_wire -> assert_series -> exact Statistic values and %"},
-    {"wrong_implementation": "launch facts invent image/env/mounts or measured process", "fails_at": "assert_launch independent Docker projection and exact rendered JSON/unknown reason"},
-    {"wrong_implementation": "stop leaves container alive or history depends on stale component state", "fails_at": "Docker absent then page reload actual persisted GET and same marker"},
-    {"wrong_implementation": "cleanup or close fails", "fails_at": "shared runner fail-closed aggregation; shared fixture timeout/daemon/close selftests"}
+    {
+      "wrong_implementation": "SSE returns another instance or stale stdout",
+      "fails_at": "unique runtime marker in exact owned instance live pre"
+    },
+    {
+      "wrong_implementation": "log shipper drops/misclassifies/duplicates marker",
+      "fails_at": "persisted_marker exact count/text/identity/source/level/bracket"
+    },
+    {
+      "wrong_implementation": "UI reads logs with wrong instance or one-hour unit",
+      "fails_at": "request_contract and exact to-from=3600000; known row"
+    },
+    {
+      "wrong_implementation": "collector gauge mapping/UI cache scaling is altered",
+      "fails_at": "independent metric_wire -> assert_series -> exact Statistic values and %"
+    },
+    {
+      "wrong_implementation": "launch facts invent image/env/mounts or measured process",
+      "fails_at": "assert_launch independent Docker projection and exact rendered JSON/unknown reason"
+    },
+    {
+      "wrong_implementation": "stop leaves container alive or history depends on stale component state",
+      "fails_at": "Docker absent then page reload actual persisted GET and same marker"
+    },
+    {
+      "wrong_implementation": "cleanup or close fails",
+      "fails_at": "shared runner fail-closed aggregation; shared fixture timeout/daemon/close selftests"
+    }
   ],
-  "product_mutation": {"instruction": "In ui/src/components/InferenceMetricsPanel.tsx change cache MetricStat numeric value to 999. Build fresh isolated server, run --mutation cache-card-999; the exact 37% UI assertion must fail while original wire/TSDB remain 0.375. Restore source, rebuild clean binaries and run en/zh independently.", "expected_failure": "gauges: exact GPU Cache statistic", "status": "NOT_RUN until mutation report is retained"},
+  "product_mutation": {
+    "instruction": "In ui/src/components/InferenceMetricsPanel.tsx change cache MetricStat numeric value to 999. Build fresh isolated server, run --mutation cache-card-999; the exact 37% UI assertion must fail while original wire/TSDB remain 0.375. Restore source, rebuild clean binaries and run en/zh independently.",
+    "expected_failure": "gauges: exact GPU Cache statistic",
+    "status": "NOT_RUN until mutation report is retained"
+  },
   "cleanup": "Reuse override fixture: inventory only exact owned image reference, delete deployment and observe 404/all owned containers absent, key/model/template/node delete and observed absence, stop own agent, remove derived/source image tags. Shared runner independently closes browser/server and scans artifacts; any failed stage retains run-scoped reclaim entries.",
-  "missing": ["all unexercised controls and checklist branches listed above", "real GPU compute, vendor hardware metrics, memory release and dGPU isolation", "full model/source/terminal/deployment lifecycle workflows", "browser negative HTTP failure recovery and permissions for diagnostics", "custom log/metric inclusive boundary ranges"]
+  "missing": [
+    "all unexercised controls and checklist branches listed above",
+    "real GPU compute, vendor hardware metrics, memory release and dGPU isolation",
+    "full model/source/terminal/deployment lifecycle workflows",
+    "browser negative HTTP failure recovery and permissions for diagnostics",
+    "custom log/metric inclusive boundary ranges"
+  ]
 }
