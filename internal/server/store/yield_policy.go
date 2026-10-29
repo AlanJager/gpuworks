@@ -74,7 +74,7 @@ func (s *Store) SharingDeployments() ([]Deployment, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.rows, c.generation, c.at, c.ok = out, generation, time.Now(), true
+	c.rows, c.generation, c.at, c.ok = out, generation, time.Now().UTC(), true
 	return slices.Clone(out), nil
 }
 
