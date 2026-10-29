@@ -8,7 +8,7 @@
       "versions": [
         {
           "name": "vllm0.25.1-k26-managed",
-          "image_ref": "registry.zstack.ai/gpuworks/gpuworks-runner:xre-vllm0.25.1-amd64-slot26",
+          "image_ref": "registry.zstack.ai/gpuworks/gpuworks-runner:candidate-k26-rdma-20261029-214d427e3172",
           "engine_version": "0.25.1",
           "arch": "amd64",
           "notes": "K26 vLLM 0.25.1, XRE 5.0.21.46. Legacy optional tag catalog entry; specs use an immutable digest. This is not a built-in or public runner image.",

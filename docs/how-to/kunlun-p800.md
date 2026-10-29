@@ -2,7 +2,7 @@
 
 ## 当前能力
 
-P800 PCIe / KL3 使用 `kunlunxin` 厂商和 `xre` 框架，已验证的运行时为 Linux amd64、Docker；需求列表或适配器条目不代表 nerdctl 已受支持。该组合支持整卡单卡、单机 TP（Tensor Parallelism，张量并行）。当前阶段不开放跨节点 TP。PP、引擎 DP、PD、分区和 sleep 尚未开放。多个独立单机副本不等于跨机 TP。
+P800 PCIe / KL3 使用 `kunlunxin` 厂商和 `xre` 框架，已验证的运行时为 Linux amd64、Docker；需求列表或适配器条目不代表 nerdctl 已受支持。该组合支持整卡单卡、单机 TP（Tensor Parallelism，张量并行）及有条件的跨节点 TP。PP、引擎 DP、PD、分区和 sleep 尚未开放。多个独立单机副本不等于跨机 TP。
 
 复用宿主已有 Docker daemon。独立 socket/data-root 不隔离宿主网络；不要在同一网络命名空间另起使用 `--bridge=none` 的 dockerd，这可能删除已有 `docker0`。镜像或推理测试不需要重启现有 Docker，离线探针使用容器级 `--network none`。
 
@@ -14,17 +14,26 @@ GPUWorks 单机设备接入只核对并注入所选 XPU 和控制设备，不要
 
 支持芯片并不自动提供任意模型的推理档位。当前仓库未发布默认昆仑 runner 镜像；使用现有镜像和推理模板导入 API 提供已经验证的镜像与用户 spec。
 
-Qwen3-0.6B 和 Qwen3.8-27B 可使用仓库内的[可导入模板包](../../build/inference-templates/kunlun-p800/README.zh-CN.md)。它只添加用户档位；包内 spec 直接锁定已审核的私有仓库 manifest digest；可选 tag 镜像目录条目不是内置 runner，也不是公开发行镜像。
+Qwen3-0.6B 和 Qwen3.8-27B 可使用仓库内的[可导入模板包](../../build/inference-templates/kunlun-p800/README.zh-CN.md)。它只添加用户档位；包内 spec 直接锁定已审核的私有仓库 manifest digest；可选 tag 镜像目录条目不是内置 runner，也不是公开发行镜像。双机时按包说明配置原生通信环境。
 
-1. 在所选节点准备已验证镜像。记录不可变摘要、引擎版本及镜像中的实际 Python/入口路径，不以同名 CUDA 兼容字段判断原生运行能力。
+1. 在两节点准备相同的已验证镜像。记录不可变摘要、引擎版本及镜像中的实际 Python/入口路径，不以同名 CUDA 兼容字段判断原生运行能力。
 2. 登记本地权重时填写完整仓库标识，例如 `deepseek-ai/DeepSeek-R1-Distill-Qwen-7B`。目录短名不是仓库标识；已有相同文件可以登记规范身份，无需复制或下载。
 3. 导入 spec 时，`weights.sources[].repo_id` 必须与模型 `source_id` 对应，`gpus.vendor` 为 `kunlunxin`，卡名谓词匹配 `P800 PCIe`。缺少 spec 或身份不对应会导致 Web 无兼容档位。
 4. spec 使用镜像中已验证的原生 entrypoint，明确 dtype、上下文和显存参数。依赖设备枚举的镜像可使用 `env -u XPU_VISIBLE_DEVICES`；不能把宿主编号当作容器逻辑编号。
-5. 单卡使用 TP=1；单机多卡使用 TP=所选卡数、PP=1、nnodes=1。
+5. 单卡 spec 可明确固定 TP=1；跨机 spec 的 placement resolver 应核对每节点卡数，并把全局 TP 留给部署。两节点各两卡的请求使用 TP=4、PP=1、nnodes=2，而不是在 resolver 返回 TP=2。
+
+## 双机通信前提
+
+- 两节点须具备与内核匹配且可工作的 XDR；agent 只验证和接入设备，不安装、编译或加载驱动，不改变 KASLR 或启动项。
+- 已配置可达的计算网络，并确认网络清单中的 RDMA 端口、接口和 IP 对应。网络清单不改变主机网络，也不代表链路带宽已测定。
+- 主机 RDMA 计算网络由通用网络层提供 `/dev/infiniband`、无限 memlock 和 `IPC_LOCK`；昆仑 prober 只注入所选 XPU、控制设备和 XDR，不枚举全部 HCA 或重复添加网络参数。XDR 必须为真实字符设备；多机启动缺少这些已解析资源或设置有限 memlock 时明确拒绝。
+- `IPC_LOCK` 与 memlock 放宽仅用于通信内存注册。模板和宿主挂载遵循通用管理员信任模型，不应额外声明其他 GPU 或设备目录。
+
+镜像须提供对应 RDMA 用户态库及已验证的通信参数。平台不设置绕过驱动检查的全局默认项，不修改内核启动参数。使用前须核对供应商支持的内核、驱动和镜像组合。
 
 ## 验证与边界
 
-先验证单卡，再验证所选单机卡组。Web 创建时选择正确档位、一个节点、TP=所选卡数及 PP=1；核对模型与镜像来源，再验证 health、普通 HTTP、SSE DONE 和网页文本。仅握手成功或收到 HTTP 200 不等于返回有效文本。跨节点请求当前返回不支持的放置理由。
+先验证每机单卡，再验证集体通信和双机部署。Web 创建时选择正确档位、两个节点和 TP=4/PP=1；核对每 rank 命令、模型/镜像获取来源，再验证 health、普通 HTTP、SSE DONE 和网页文本。仅握手成功或收到 HTTP 200 不等于返回有效文本。
 
 相关支持边界见 [厂商支持矩阵](../reference/support-matrix.md)。
 

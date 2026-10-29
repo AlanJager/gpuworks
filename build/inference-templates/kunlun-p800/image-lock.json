@@ -1,7 +1,7 @@
 {
-  "image_ref": "registry.zstack.ai/gpuworks/gpuworks-runner:xre-vllm0.25.1-amd64-slot26",
-  "manifest_digest": "sha256:b89a290ad64f62c24ca52923f509d6d906c7753b47c9d3dd4690003f58bc1aae",
-  "config_digest": "sha256:550fc8ba5049ff7bea3a836693ac94c45c9bb167ab41be4ce985a0c801c4e9e5",
+  "image_ref": "registry.zstack.ai/gpuworks/gpuworks-runner:candidate-k26-rdma-20261029-214d427e3172",
+  "manifest_digest": "sha256:47b3f487c3bfa2151116f30c518406aa107ba1c519a3a4624d815a2d571f723c",
+  "config_digest": "sha256:214d427e3172be52777b537bf292b2aac496b1949f8fe013df07b6982a4d3444",
   "architecture": "amd64",
   "interpreter": "/opt/vllm025-venv/bin/python"
 }

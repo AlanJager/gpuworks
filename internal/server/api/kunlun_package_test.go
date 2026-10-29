@@ -5,10 +5,12 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/chipmatch"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
@@ -107,7 +109,7 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 			if source := spec.Weights.Sources[0]; source.RepoID != wantRepo || source.Revision != wantRevision {
 				t.Fatal(source)
 			}
-			if spec.Image != "registry.zstack.ai/gpuworks/gpuworks-runner@sha256:b89a290ad64f62c24ca52923f509d6d906c7753b47c9d3dd4690003f58bc1aae" {
+			if spec.Image != "registry.zstack.ai/gpuworks/gpuworks-runner@sha256:47b3f487c3bfa2151116f30c518406aa107ba1c519a3a4624d815a2d571f723c" {
 				t.Fatal("image must be the reviewed private-registry manifest digest")
 			}
 			// Template-owned digest refs do not need a mutable image-catalog row.
@@ -126,7 +128,7 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 					t.Fatalf("wrong hardware match: %+v", card)
 				}
 			}
-			for _, shape := range []struct{ cards, nodes, tp int }{{1, 1, 1}, {2, 1, 2}, {4, 1, 4}, {8, 1, 8}} {
+			for _, shape := range []struct{ cards, nodes, tp int }{{1, 1, 1}, {2, 1, 2}, {1, 2, 2}, {4, 2, 8}} {
 				result, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: shape.cards, MinMemoryGiB: 96})
 				if err != nil || result.Reason != "" {
 					t.Fatalf("placement %+v: %+v %v", shape, result, err)
@@ -167,5 +169,42 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The missing-network paths must fail before invoking the image interpreter.
+// These are launcher preflight tests; they do not simulate a successful model.
+func TestKunlunTemplateMultiNodePreflight(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("launcher requires bash")
+	}
+	root := filepath.Join("..", "..", "..", "build", "inference-templates", "kunlun-p800", "catalog")
+	pkg, err := inferencecatalog.LoadPackageDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range pkg.Catalog.Models {
+		entry, err := placement.Expand([]string{model.Specs[0].PreStartScript}, map[string]any{"NNODES": 2, "LOCAL_VISIBLE_DEVICES": "0,1"}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			env  []string
+			want string
+		}{
+			{nil, "set BKCL_RDMA_NICS"},
+			{[]string{"BKCL_RDMA_NICS=net0,net0"}, "requires a selected compute network"},
+			{[]string{"BKCL_RDMA_NICS=net0,net0", "GLOO_SOCKET_IFNAME=lo"}, "requires a selected compute network"},
+		} {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			cmd := exec.CommandContext(ctx, bash, "-c", entry[0])
+			cmd.Env = append([]string{"PATH=/usr/bin:/bin"}, tc.env...)
+			output, err := cmd.CombinedOutput()
+			cancel()
+			if err == nil || !strings.Contains(string(output), tc.want) {
+				t.Fatalf("preflight %s: %s %v", model.ModelID, output, err)
+			}
+		}
 	}
 }

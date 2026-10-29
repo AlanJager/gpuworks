@@ -8,7 +8,7 @@
 | PPU / HGGC | ppu-smi | provider/runtime 依赖 | HGGC 显存与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 / K100_AI / BW 原生 vdev（实验性，x86_64，Docker 或 runveil/udocker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
-| 昆仑芯 / XRE | xpu-smi XML、PCI/sysfs 设备身份 | Linux amd64、Docker、P800 PCIe / KL3、整卡 TP | 不支持 | 单卡、单机 TP；当前不开放跨节点 TP；不开放 PP、引擎 DP、PD、sleep；镜像和模型使用显式目录 spec |
+| 昆仑芯 / XRE | xpu-smi XML、PCI/sysfs 设备身份 | Linux amd64、Docker、P800 PCIe / KL3、整卡 TP | 不支持 | 单卡、单机 TP 与有条件的双机 TP；不开放 PP、引擎 DP、PD、sleep；镜像和模型使用显式目录 spec |
 
 上表的 dGPU 能力状态由 server 的 partition capability（分区能力判定）推导：
 
@@ -103,7 +103,7 @@ agent 探测不到任何加速卡（各厂商 CLI 都不应答、都没装、也
 
 原生 XML 中单卡身份或 ECC 异常只使该卡不可调度，其他卡继续上报；缺失卡由 PCI 清单补充。设备注入重新查询并核对 UUID、PCI BDF、minor 与 sysfs 字符设备号，只自动注入所选 `/dev/xpuN` 和 `/dev/xpuctrl`。计算进程占用通过公共清单上报，显存为零不代表空闲。
 
-单机设备接入不要求 XDR 或 RDMA。当前只开放单节点，跨节点请求返回不支持的放置理由。
+单机设备接入不要求 XDR 或 RDMA。多机 TP 由网络层提供 verbs 设备、`IPC_LOCK` 与无限 memlock，昆仑 prober 核验这些资源并追加 XDR；缺少所需资源会拒绝启动。平台不加载驱动或变更宿主网络。
 
 容器参数遵循公共管理员模板契约；平台选卡注入不是对任意特权参数、镜像或宿主挂载的安全沙箱。
 agent 不设置 `XPU_VISIBLE_DEVICES`，镜像入口须遵循自己的容器逻辑编号契约。镜像和模型需显式导入适配的目录 spec，详见 [昆仑 P800 部署](../how-to/kunlun-p800.md)。

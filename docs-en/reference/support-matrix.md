@@ -8,7 +8,7 @@
 | PPU / HGGC | ppu-smi | Depends on provider/runtime | HGGC GPU memory and weighted QoS | Sustained 20/80 workloads have demonstrated throughput weighting under load, not hard SM partitioning |
 | Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Native Z100 / K100_AI / BW vdev (experimental, x86_64, Docker or runveil/udocker) | Requires the optional native helper, host libraries and a per-GPU behavioral probe; other models remain full-GPU only |
 | Apple / Metal | sysctl, ioreg (macOS 15+, Apple silicon) | host (the engine is a host process; the image is a darwin environment package) | None; a Mac runs multiple instances concurrently using unified memory | One unified-memory card; GPU memory is the Metal working set; engine sleep, multi-node operation, and the KV disk tier are unsupported; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
-| Kunlunxin / XRE | xpu-smi XML, PCI/sysfs device identity | Linux amd64, Docker, P800 PCIe / KL3, whole-card TP | Unsupported | Single-card and single-node TP; cross-node TP not enabled; no PP, engine DP, PD or sleep; explicit image/model catalog specs |
+| Kunlunxin / XRE | xpu-smi XML, PCI/sysfs device identity | Linux amd64, Docker, P800 PCIe / KL3, whole-card TP | Unsupported | Single-card, single-node TP and conditional two-node TP; no PP, engine DP, PD or sleep; explicit image/model catalog specs |
 
 The dGPU capability status in the table above is derived from the server's partition capability assessment:
 
@@ -103,6 +103,6 @@ Kunlunxin uses vendor `kunlunxin` and framework `xre`; CUDA compatibility versio
 
 A card with invalid identity or ECC information becomes unschedulable without losing its peers; PCI inventory supplies missing cards. Runtime injection freshly verifies UUID, PCI BDF, minor and sysfs character-device numbers, automatically exposing only the selected `/dev/xpuN` and `/dev/xpuctrl`. The common process inventory reports compute occupancy; zero memory use is not proof of availability.
 
-Single-node device injection does not require XDR or RDMA. Cross-node requests currently produce an unsupported placement refusal.
+Single-node device injection does not require XDR or RDMA. For multi-node TP, the network layer supplies verbs devices, `IPC_LOCK` and unlimited memlock; the Kunlun prober verifies those resources and adds XDR. Missing resources refuse startup. The platform neither loads drivers nor changes host networking.
 
 Container options follow the common administrator template contract. Scheduled device injection is not a security sandbox for arbitrary privileged options, images or host mounts. The agent does not set `XPU_VISIBLE_DEVICES`; the image entrypoint must respect its own container-logical indexing contract. Import suitable image and model specs explicitly; see [Kunlun P800 deployment](../how-to/kunlun-p800.md).
