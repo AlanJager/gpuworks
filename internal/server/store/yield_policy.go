@@ -1,6 +1,10 @@
 package store
 
 import (
+	"slices"
+	"sync"
+	"time"
+
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
@@ -49,12 +53,43 @@ func (s *Store) SetDeploymentYieldPolicy(id uint, p servicelevel.Policy) error {
 }
 
 // SharingDeployments are the active deployments that share cards by yield
-// policy: every policy but never. The residency arbiter reads only these.
+// policy: every policy but never. The residency arbiter reads only these, and
+// placement reads them on every node it plans, so the rows are kept until
+// the bus reports a deployment change or sharingTTL passes, whichever is
+// first; the copy handed out is the caller's.
 func (s *Store) SharingDeployments() ([]Deployment, error) {
+	var generation uint64
+	if s.Bus != nil {
+		generation = s.Bus.Generation("deployment")
+	}
+	c := &s.sharing
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ok && c.generation == generation && time.Since(c.at) < sharingTTL {
+		return slices.Clone(c.rows), nil
+	}
 	var out []Deployment
 	err := s.reader().Where("desired_state = ? AND yield_policy NOT IN ?", DeployActive, []string{"", servicelevel.Never}).
 		Order("id").Find(&out).Error
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	c.rows, c.generation, c.at, c.ok = out, generation, time.Now(), true
+	return slices.Clone(out), nil
+}
+
+// sharingTTL bounds how long SharingDeployments keeps its rows even with no
+// deployment change reported: a write that published nothing is seen this
+// late at most.
+const sharingTTL = 5 * time.Second
+
+// sharingCache is SharingDeployments' copy of its rows.
+type sharingCache struct {
+	mu         sync.Mutex
+	rows       []Deployment
+	generation uint64
+	at         time.Time
+	ok         bool
 }
 
 // AutoSleepDeployments is every active, sleepable deployment with auto sleep

@@ -379,3 +379,41 @@ func TestFreshDatabaseHasOnlyTheYieldPolicyColumns(t *testing.T) {
 		}
 	}
 }
+// Placement reads the sharing deployments for every node it plans, so they
+// are kept between deployment changes: a change the bus reports is seen at
+// once, a row edited behind the bus's back only after sharingTTL.
+func TestSharingDeploymentsAreKeptUntilADeploymentChanges(t *testing.T) {
+	s := newTestStore(t)
+	dep, err := s.CreateDeployment(&Deployment{Name: "a", ServedName: "a", Engine: "vllm", Sleepable: true, State: DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() int {
+		t.Helper()
+		got, err := s.SharingDeployments()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(got)
+	}
+	if read() != 0 {
+		t.Fatal("a never deployment shares")
+	}
+	// Behind the bus: still the kept rows.
+	if err := s.DB().Model(&Deployment{}).Where("id = ?", dep.ID).Update("yield_policy", "anytime").Error; err != nil {
+		t.Fatal(err)
+	}
+	if read() != 0 {
+		t.Fatal("rows re-read without a reported change")
+	}
+	s.Bus.PublishChange("deployment", uintKey(dep.ID), "test")
+	if read() != 1 {
+		t.Fatal("a reported deployment change was not seen")
+	}
+	// The copy is the caller's.
+	got, _ := s.SharingDeployments()
+	got[0].Name = "changed"
+	if again, _ := s.SharingDeployments(); again[0].Name != "a" {
+		t.Fatal("a caller's edit reached the kept rows")
+	}
+}
