@@ -79,8 +79,8 @@ func TestGenerateMapsMatrixItems(t *testing.T) {
 	if strings.Join(names, ",") != wantSeries {
 		t.Fatalf("series = %v", names)
 	}
-	if len(versions) != 29 {
-		t.Fatalf("versions = %d, want 29", len(versions))
+	if len(versions) != 33 {
+		t.Fatalf("versions = %d, want 33", len(versions))
 	}
 	// The Apple silicon environment package: framework metal, its version the
 	// minimum macOS, its arch the CPU's.
