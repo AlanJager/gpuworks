@@ -235,14 +235,30 @@ func TestSimulatedNodeConfinesDesiredState(t *testing.T) {
 	h, _, _ := simulated(t)
 	download := proto.ModelFileTask{Key: "a", DesiredState: "present"}
 	withdraw := proto.ModelFileTask{Key: "b", DesiredState: "absent"}
+	own := proto.StorageTask{ID: 1, Type: proto.StorageLocal, Path: h.Dir}
 	ds := proto.DesiredState{
-		ModelsRoot: "/", Storages: []proto.StorageTask{{}}, RegistryAuth: []proto.SourceAuth{{Host: "r"}},
+		ModelsRoot: "/", RegistryAuth: []proto.SourceAuth{{Host: "r"}},
+		Storages: []proto.StorageTask{
+			own,
+			{ID: 2, Type: proto.StorageLocal, Path: "/srv/models"},
+			{ID: 3, Type: proto.StorageNFS, Path: filepath.Join(h.Dir, "nfs"), Export: "10.0.0.1:/x"},
+		},
 		Benchmarks: []proto.BenchmarkSpec{{}}, ModelFiles: []proto.ModelFileTask{download, withdraw},
 		Instances: []proto.InstanceDesiredState{{UUID: "i"}},
 	}
 	refused := h.ConfineState(&ds)
-	if ds.ModelsRoot != "" || ds.Storages != nil || ds.RegistryAuth != nil || ds.Benchmarks != nil {
+	if ds.ModelsRoot != "" || ds.RegistryAuth != nil || ds.Benchmarks != nil {
 		t.Fatalf("host-reaching fields kept: %+v", ds)
+	}
+	// The node's own local storage stays and reports like any node's; a
+	// mount or another path does not.
+	if len(ds.Storages) != 1 || ds.Storages[0].ID != 1 {
+		t.Fatalf("storages = %+v, want only the node's own", ds.Storages)
+	}
+	inside := proto.DesiredState{ModelsRoot: h.Dir}
+	h.ConfineState(&inside)
+	if inside.ModelsRoot != h.Dir {
+		t.Fatalf("the node's own models root dropped: %q", inside.ModelsRoot)
 	}
 	if len(ds.Instances) != 1 || len(ds.ModelFiles) != 1 || ds.ModelFiles[0].Key != "b" {
 		t.Fatalf("kept = %+v", ds)

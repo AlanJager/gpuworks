@@ -123,16 +123,36 @@ func (h *Host) File(path string) (string, error) {
 }
 
 // ConfineState drops from a full desired state what would act on the real
-// host: storages and a models root elsewhere, registry logins, a runtime
-// switch, evaluation load (it would leave from the real host). Model downloads are returned to
-// be failed: the environment serves only its preloaded models.
+// host: a models root or storage outside the node's directory (a shared
+// mount, another local path), registry logins, a runtime switch, evaluation
+// load (it would leave from the real host). The node's own local storage
+// stays, so it reports ready like any node's. Model downloads are returned
+// to be failed: the environment serves only its preloaded models.
 func (h *Host) ConfineState(ds *proto.DesiredState) (refused []proto.ModelFileTask) {
 	if h == nil {
 		return nil
 	}
-	ds.ModelsRoot, ds.Storages, ds.RegistryAuth, ds.Benchmarks, ds.RuntimePreference = "", nil, nil, nil, ""
+	ds.ModelsRoot = h.ownPath(ds.ModelsRoot)
+	ds.RegistryAuth, ds.Benchmarks, ds.RuntimePreference = nil, nil, ""
+	if ds.Storages != nil {
+		kept := []proto.StorageTask{}
+		for _, s := range ds.Storages {
+			if s.Type == proto.StorageLocal && h.ownPath(s.Path) != "" {
+				kept = append(kept, s)
+			}
+		}
+		ds.Storages = kept
+	}
 	ds.ModelFiles, refused = splitDownloads(ds.ModelFiles)
 	return refused
+}
+
+// ownPath is path when it lies in the node's directory, else "".
+func (h *Host) ownPath(path string) string {
+	if _, err := h.File(path); err != nil {
+		return ""
+	}
+	return path
 }
 
 // ConfineUpdate is ConfineState for an incremental update.
@@ -140,7 +160,8 @@ func (h *Host) ConfineUpdate(su *proto.StateUpdate) (refused []proto.ModelFileTa
 	if h == nil {
 		return nil
 	}
-	su.ModelsRoot, su.Benchmarks, su.RemovedBenchmarks = "", nil, nil
+	su.ModelsRoot = h.ownPath(su.ModelsRoot)
+	su.Benchmarks, su.RemovedBenchmarks = nil, nil
 	su.ModelFiles, refused = splitDownloads(su.ModelFiles)
 	return refused
 }
