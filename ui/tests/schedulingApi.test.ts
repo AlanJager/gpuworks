@@ -107,3 +107,9 @@ test("the scheduling history asks for a cursor page with its filters in the quer
     { url: "/api/v1/scheduling/history?limit=21&before=90&category=auto%2Cfailure&deployment_id=7&since=2026-10-25T00%3A00%3A00Z&until=2026-10-26T00%3A00%3A00Z", method: undefined, body: undefined },
   ]);
 });
+
+test("the residency timeline names every node and the window in the query", async () => {
+  const seen = fake(200, { window: { from: "a", to: "b", hours: 24 }, nodes: [], deployments: [] });
+  await api.schedulingTimeline({ nodes: ["n-1", "n-2"], hours: 24 });
+  assert.deepEqual(seen, [{ url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&hours=24", method: undefined, body: undefined }]);
+});

@@ -85,15 +85,18 @@ function GpuRow({ node, gpu }: { node: BoardNode; gpu: BoardGPU }) {
   );
 }
 
-// OccupantChip names one instance on a card: its deployment (a link), whether
+// OccupantChip names one instance on a card: its deployment (a link) and the
+// service level it shares the card at, whether
 // it is awake or asleep, and the memory it holds - the claim while awake, the
 // residue while asleep.
 function OccupantChip({ occupant }: { occupant: BoardOccupant }) {
   const { t } = useTranslation("scheduling");
+  const { t: tDeploy } = useTranslation("deployments");
   const asleep = occupant.state === "asleep";
   return (
     <Tag className={`scheduling-occupant${asleep ? " is-asleep" : ""}`} color={asleep ? "purple" : "blue"}>
       <Link to={`/deployments?deployment=${occupant.deployment_id}`}>{occupant.deployment}</Link>
+      <span className="scheduling-level">{t("nodes.occupant.level", { level: tDeploy(`serviceLevel.name.${occupant.service_level ?? "resident"}`) })}</span>
       <span className="scheduling-num">
         {" · "}
         {asleep

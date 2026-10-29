@@ -367,6 +367,7 @@
       "default": "准备中"
     },
     "event": {
+      "INSTANCE_REMOVED": "实例已移除（释放所占的卡）",
       "INSTANCE_CREATED": "实例已创建（{{state}}）",
       "INSTANCE_STATE_CHANGED": "状态已变更为{{state}}",
       "INSTANCE_STATUS_UPDATED": "状态上报为{{state}}",

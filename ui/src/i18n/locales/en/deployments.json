@@ -367,6 +367,7 @@
       "default": "Preparing"
     },
     "event": {
+      "INSTANCE_REMOVED": "Instance removed (its cards are free)",
       "INSTANCE_CREATED": "Instance created ({{state}})",
       "INSTANCE_STATE_CHANGED": "State changed to {{state}}",
       "INSTANCE_STATUS_UPDATED": "State reported as {{state}}",

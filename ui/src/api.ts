@@ -1013,11 +1013,62 @@ export type DeploymentPage = ListPage<DeploymentListItem>;
 export interface BoardOccupant {
   deployment_id: number;
   deployment: string;
+  service_level: ServiceLevel;
   instance: string;
   state: "awake" | "asleep";
   sleep_level?: number;
   claim_bytes: number;
   residue_bytes?: number;
+}
+
+// The residency timeline (GET /scheduling/timeline): for the nodes of a board
+// page, which deployment's instance held each GPU over the last `hours` and in
+// what state, and the stats of the deployments that share GPUs.
+export type TimelineState = "awake" | "asleep" | "switching" | "starting";
+
+export interface TimelineSegment {
+  deployment_id: number;
+  deployment: string;
+  instance: string;
+  state: TimelineState;
+  level?: number;
+  from: string;
+  to: string;
+}
+
+export interface TimelineGPU {
+  index: number;
+  segments: TimelineSegment[];
+  truncated: boolean;
+}
+
+export interface TimelineNode {
+  uuid: string;
+  name: string;
+  gpus: TimelineGPU[];
+}
+
+export interface TimelineDeployment {
+  deployment_id: number;
+  deployment: string;
+  service_level: ServiceLevel;
+  awake_seconds: number;
+  awake_share: number;
+  switches: number;
+  yielded: number;
+  yielded_to: number;
+  wakes: number;
+  held_requests: number;
+  wait_p50_ms?: number;
+  wait_p95_ms?: number;
+}
+
+export type TimelineHours = 6 | 24;
+
+export interface SchedulingTimeline {
+  window: { from: string; to: string; hours: TimelineHours };
+  nodes: TimelineNode[];
+  deployments: TimelineDeployment[];
 }
 
 export interface BoardGPU {
@@ -4440,6 +4491,12 @@ export const api = {
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   schedulingBoard: (query: { page: number; page_size: number; q?: string }) =>
     getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`),
+  schedulingTimeline: (query: { nodes: string[]; hours: TimelineHours }) => {
+    const params = new URLSearchParams();
+    for (const node of query.nodes) params.append("node", node);
+    params.set("hours", String(query.hours));
+    return getJSON<SchedulingTimeline>(`/api/v1/scheduling/timeline?${params.toString()}`);
+  },
   // The history is newest-first and cursor paginated like a deployment's
   // timeline: `before` is the id of the last entry of the page already held.
   schedulingHistory: (query: SchedulingHistoryQuery) =>

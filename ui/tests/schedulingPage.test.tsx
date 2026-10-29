@@ -22,7 +22,7 @@ type Board = import("../src/api.ts").SchedulingBoard;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
-const original = { schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting, schedulingHistory: api.schedulingHistory };
+const original = { schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting, schedulingHistory: api.schedulingHistory, schedulingTimeline: api.schedulingTimeline };
 
 function board(overrides: Partial<Board> = {}): Board {
   return {
@@ -33,8 +33,8 @@ function board(overrides: Partial<Board> = {}): Board {
           {
             index: 0, name: "RTX 8000", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, held_outside: false,
             occupants: [
-              { deployment_id: 7, deployment: "qwen", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
-              { deployment_id: 8, deployment: "llama", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
+              { deployment_id: 7, deployment: "qwen", service_level: "online", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
+              { deployment_id: 8, deployment: "llama", service_level: "shared", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
             ],
           },
           { index: 1, name: "RTX 8000", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, held_outside: true, occupants: [] },
@@ -59,6 +59,8 @@ function Probe() {
 }
 
 function mount() {
+  // The residency timeline has its own tests (schedulingTimeline.test.tsx).
+  api.schedulingTimeline = async () => ({ window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [], deployments: [] });
   // The scheduling history has its own tests (schedulingHistory.test.tsx).
   api.schedulingHistory = async () => ({ items: [{
     id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
@@ -149,6 +151,10 @@ test("occupants show their state: the claim while awake, the residue while aslee
   assert.ok(within(asleep).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.asleep", { level: 2, residue: "4.0 GiB" }))));
   assert.ok(screen.getByText(s.nodes.heldOutside));
   assert.ok(screen.getByText(s.nodes.heldOutsideHint));
+  // Each chip says how its deployment shares the card.
+  const level = (name: string) => i18n.t("scheduling:nodes.occupant.level", { level: i18n.t(`deployments:serviceLevel.name.${name}`) }).trim();
+  assert.ok(within(awake).getByText(level("online")));
+  assert.ok(within(asleep).getByText(level("shared")));
 });
 
 test("a deployment name opens that deployment's drawer", async () => {

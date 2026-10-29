@@ -33,7 +33,8 @@
     },
     "occupant": {
       "awake": "awake · {{claim}}",
-      "asleep": "asleep L{{level}} · residue {{residue}}"
+      "asleep": "asleep L{{level}} · residue {{residue}}",
+      "level": " ({{level}})"
     },
     "heldOutside": "Held by a process outside the platform",
     "heldOutsideHint": "Part of this card's memory is used by a process gpuworks does not manage. Sleeping or stopping deployments cannot free it."
@@ -139,6 +140,56 @@
       "DEPLOYMENT_ROLLING_RESTARTED": "Rolling restart",
       "SLEEP_ORDERED": "Sleep ordered",
       "WAKE_ORDERED": "Wake ordered"
+    }
+  },
+  "timeline": {
+    "title": "Residency timeline",
+    "window": "Time window",
+    "hours": "{{hours}} h",
+    "legend": "State legend",
+    "state": {
+      "awake": "Awake",
+      "asleep": "Asleep",
+      "asleepLevel": "Asleep L{{level}}",
+      "switching": "Switching",
+      "starting": "Starting"
+    },
+    "nodeAria": "Residency timeline of {{node}}",
+    "gpuAria": "Residency timeline of GPU {{index}} on {{node}}",
+    "gpuPlain": "GPU {{index}}",
+    "laneAria": "When {{deployment}} held this card",
+    "segmentText": "{{deployment}} · {{state}} · {{from}} to {{to}}",
+    "truncated": "Only the latest segments are shown",
+    "noneOnCard": "No instance held this card in this window.",
+    "noNodes": "There are no nodes on this page.",
+    "noCards": "These nodes have no schedulable GPUs.",
+    "noneInWindow": "No instance held these cards in the last {{hours}} hours.",
+    "loading": "Loading the residency timeline…",
+    "loadFailed": "Failed to load the residency timeline",
+    "refreshFailed": "Failed to refresh the residency timeline: {{detail}}",
+    "sharingTitle": "Deployments sharing cards",
+    "sharingEmpty": "No deployment that shares cards (not resident) held these cards in this window.",
+    "columns": {
+      "deployment": "Deployment",
+      "level": "Service level",
+      "awake": "Awake time",
+      "switches": "Switches",
+      "yielded": "Yielded",
+      "yieldedTo": "Yielded to",
+      "held": "Held requests",
+      "waitP50": "Wait p50",
+      "waitP95": "Wait p95"
+    },
+    "awakeShare": "{{span}} ({{share}}%)",
+    "duration": {
+      "seconds": "{{seconds}} s",
+      "minutes": "{{minutes}} min",
+      "hours": "{{hours}} h {{minutes}} min"
+    },
+    "wait": {
+      "ms": "{{value}} ms",
+      "seconds": "{{value}} s",
+      "minutes": "{{value}} min"
     }
   }
 }

@@ -9,6 +9,7 @@ import { storedPageSize } from "../components/resourceTable/ResourceTable";
 import { Legend, NodeList } from "./scheduling/GpuBoard";
 import { PendingTable, UpcomingTable, WaitingWakesTable } from "./scheduling/BoardTables";
 import HistoryCard from "./scheduling/HistoryCard";
+import ResidencyTimeline from "./scheduling/ResidencyTimeline";
 
 const BOARD_POLL_MS = 10_000;
 const NODES_TABLE_ID = "scheduling-nodes";
@@ -112,6 +113,7 @@ export default function SchedulingPage() {
           />
         )}
       </Card>
+      <ResidencyTimeline nodes={nodes.items} />
       <Card className="scheduling-card" title={t("pending.title")}><PendingTable rows={data.pending} /></Card>
       <Card className="scheduling-card" title={t("waiting.title")}><WaitingWakesTable rows={data.waiting_wakes} busyID={cancelling} onCancel={(row) => void cancelWake(row)} /></Card>
       <Card className="scheduling-card" title={t("upcoming.title")}><UpcomingTable rows={data.upcoming} /></Card>
