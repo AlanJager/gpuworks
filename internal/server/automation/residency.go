@@ -213,6 +213,11 @@ func (e *Evaluator) residency(now time.Time) {
 		if at, ok := r.wokeAt[w.id]; ok && now.Sub(at) < wakeRepeat {
 			continue
 		}
+		// A holder that gave its cards to one still waking leaves them be,
+		// whether it waits to resume or has requests of its own waiting.
+		if !w.resume && e.stillWakingFor(now, w.id) {
+			continue
+		}
 		e.serveWaiter(now, w, yielding)
 	}
 	for id, at := range r.wokeAt {

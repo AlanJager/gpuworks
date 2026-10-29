@@ -360,3 +360,37 @@ func TestAWakeThatWaitedForAYieldKeepsItsTrigger(t *testing.T) {
 		t.Fatalf("last event %s %v, want AUTO_WAKE trigger request", w.events[last], w.params[last])
 	}
 }
+
+// A holder with requests of its own waiting (a batch queued against it) does
+// not wake back onto the cards it just gave up before the one it gave them to
+// is awake.
+func TestAYieldedHolderWithItsOwnRequestsLeavesTheCardsWhileTheWaiterWakes(t *testing.T) {
+	w := newResidencyWorld()
+	const online, offline = 1, 2
+	w.levels[online], w.levels[offline] = servicelevel.Online, servicelevel.Offline
+	w.asleep[online] = true
+	w.activity[offline] = Activity{InFlight: 4}
+	w.waiters = []Waiter{{DeploymentID: online, Level: servicelevel.Online, Since: t0}}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: offline, Level: servicelevel.Offline, Instances: []string{"off"}}}}
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	if len(w.yields) != 1 {
+		t.Fatalf("yields = %v", w.yields)
+	}
+	// Offline's batch requests are now held for it, and its card reads free
+	// while online's wake is on its way.
+	w.fitsNow[offline] = true
+	w.waiters = append(w.waiters, Waiter{DeploymentID: offline, Level: servicelevel.Offline, Since: c.t})
+	c.t = c.t.Add(3 * time.Second)
+	e.residency(c.t)
+	if slices.Contains(w.wakeCalls, offline) {
+		t.Fatalf("offline woke back for its own requests while online woke: %v", w.wakeCalls)
+	}
+	w.asleep[online] = false
+	w.waiters = w.waiters[1:]
+	c.t = c.t.Add(wakeRepeat)
+	e.residency(c.t)
+	if !slices.Contains(w.wakeCalls, offline) {
+		t.Fatalf("offline's requests were never served after online woke: %v", w.wakeCalls)
+	}
+}
