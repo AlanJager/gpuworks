@@ -108,7 +108,7 @@ func consoleBatchError(err error) error {
 	case be.Status == http.StatusRequestEntityTooLarge:
 		out.Code = api.ErrorBatchFileTooLarge
 		out.Params = map[string]any{"limit_mb": batch.MaxFileBytes >> 20}
-	case be.Line > 0 || be.Code == "empty_file" || be.Code == "too_many_requests":
+	case be.Line > 0 || be.Code == "empty_file" || be.Code == "too_many_requests" || be.Code == "invalid_file_extension":
 		out.Code = api.ErrorBatchFileInvalid
 		out.Params = map[string]any{"line": be.Line, "reason": be.Code, "detail": be.Message}
 	default:

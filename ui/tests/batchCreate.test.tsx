@@ -98,7 +98,7 @@ test("creating a batch uploads the chosen file and endpoint, closes the dialog a
   }
   assert.ok(within(dialog).getByText("JSON Lines, at most 200 MB and 50,000 requests."));
   const fileInput = within(dialog).getByLabelText(b.create.file) as HTMLInputElement;
-  assert.equal(fileInput.getAttribute("accept"), ".jsonl,.json,.txt");
+  assert.equal(fileInput.getAttribute("accept"), ".jsonl");
   await user.upload(fileInput, jsonl());
   assert.ok(await within(dialog).findByText(/^reqs\.jsonl \(/));
   await user.click(within(dialog).getByRole("combobox", { name: b.create.endpoint }));

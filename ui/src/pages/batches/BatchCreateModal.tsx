@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Button, Modal, Select, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import { BATCH_ENDPOINTS, BATCH_LIMITS, batchApi, type Batch } from "../../batchApi";
+import { api } from "../../api";
+import { BATCH_ENDPOINTS, BATCH_LIMITS, batchApi, type Batch, type BatchEndpoint } from "../../batchApi";
 import { batchErrorText, type BatchErrorText } from "./batchErrors";
+import { batchSampleJSONL, downloadBatchSample, sampleFileName } from "./batchSample";
 
-export const BATCH_FILE_ACCEPT = ".jsonl,.json,.txt";
+export const BATCH_FILE_ACCEPT = ".jsonl";
 
 function sizeText(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -29,6 +31,25 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<BatchErrorText | null>(null);
   const tooLarge = !!file && file.size > BATCH_LIMITS.maxFileMB * 1024 * 1024;
+  // The sample names a model the platform serves, so it runs as downloaded.
+  const [models, setModels] = useState<string[]>([]);
+  const [sampleModel, setSampleModel] = useState<string>("");
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    api.deployments().then((list) => {
+      if (!live) return;
+      const names = Array.from(new Set(list.items.filter((d) => d.state === "active" && d.served_name).map((d) => d.served_name)));
+      setModels(names);
+      setSampleModel((current) => current || names[0] || "");
+    }).catch(() => { /* the sample still works with a model typed in later */ });
+    return () => { live = false; };
+  }, [open]);
+  const sampleModelName = sampleModel || "your-model";
+  const useSample = () => {
+    const ep = endpoint as BatchEndpoint;
+    pick(new File([batchSampleJSONL(ep, sampleModelName)], sampleFileName(ep), { type: "application/jsonl" }));
+  };
 
   const reset = () => {
     setFile(null);
@@ -96,6 +117,26 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
             options={BATCH_ENDPOINTS.map((value) => ({ value, label: value }))}
             style={{ width: "100%" }}
           />
+        </div>
+        <div className="batch-create-field">
+          <label htmlFor="batch-create-sample-model">{t("create.sample.title")}</label>
+          <Typography.Text type="secondary">{t("create.sample.help")}</Typography.Text>
+          <div className="batch-create-sample">
+            <Select
+              id="batch-create-sample-model"
+              aria-label={t("create.sample.model")}
+              value={sampleModel || undefined}
+              placeholder={t("create.sample.noModel")}
+              onChange={setSampleModel}
+              disabled={submitting || models.length === 0}
+              options={models.map((value) => ({ value, label: value }))}
+              style={{ minWidth: 200, flex: 1 }}
+            />
+            <Button onClick={() => downloadBatchSample(endpoint as BatchEndpoint, sampleModelName)} disabled={submitting}>
+              {t("create.sample.download")}
+            </Button>
+            <Button onClick={useSample} disabled={submitting}>{t("create.sample.use")}</Button>
+          </div>
         </div>
         <Alert
           type="info"

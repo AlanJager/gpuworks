@@ -100,7 +100,7 @@
     "submitting": "Uploading...",
     "cancel": "Cancel",
     "file": "Requests file (JSONL)",
-    "fileHelp": "Choose a .jsonl, .json or .txt file with one request per line.",
+    "fileHelp": "Choose a .jsonl file (JSON Lines), one request per line.",
     "fileSelected": "{{name}} ({{size}})",
     "fileRequired": "Choose a requests file first.",
     "endpoint": "Endpoint",
@@ -115,7 +115,15 @@
       "window": "The completion window is 24 hours: a batch that has not finished by then expires."
     },
     "tooLarge": "The file is larger than {{limit}} MB.",
-    "failed": "Could not create the batch"
+    "failed": "Could not create the batch",
+    "sample": {
+      "title": "Sample file",
+      "help": "Builds a 5-request sample for the chosen endpoint and model: download it to edit, or use it as is to create a batch.",
+      "model": "Model the sample uses",
+      "noModel": "No active deployment",
+      "download": "Download sample",
+      "use": "Use sample"
+    }
   },
   "errors": {
     "detail": "Detail: {{detail}}",
@@ -142,5 +150,17 @@
       "invalid_multipart": "the upload is not a valid form"
     },
     "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}"
+  },
+  "api": {
+    "title": "Call it through the API (OpenAI-compatible /v1/files and /v1/batches)",
+    "description": "Batches are the platform's OpenAI Batch API: call the gateway directly with an API key, and the official OpenAI SDK only needs its base_url pointed here. This page is a management view of the same batches.",
+    "keys": "Create an API key",
+    "steps": {
+      "upload": "1. Upload the requests file (.jsonl)",
+      "create": "2. Create the batch",
+      "poll": "3. Check its progress and status",
+      "download": "4. Download the results",
+      "sdk": "Or with the OpenAI Python SDK"
+    }
   }
 }

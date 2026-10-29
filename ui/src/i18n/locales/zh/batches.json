@@ -100,7 +100,7 @@
     "submitting": "上传中…",
     "cancel": "取消",
     "file": "请求文件（JSONL）",
-    "fileHelp": "选择 .jsonl、.json 或 .txt 文件，每行一个请求。",
+    "fileHelp": "选择 .jsonl 文件（JSON Lines），每行一个请求。",
     "fileSelected": "{{name}}（{{size}}）",
     "fileRequired": "请先选择请求文件。",
     "endpoint": "端点",
@@ -115,7 +115,15 @@
       "window": "完成时限为 24 小时：到期仍未结束的任务会过期。"
     },
     "tooLarge": "文件超过 {{limit}} MB。",
-    "failed": "无法创建批处理任务"
+    "failed": "无法创建批处理任务",
+    "sample": {
+      "title": "示例文件",
+      "help": "按所选端点和模型生成 5 个请求的示例，可以下载后修改，也可以直接用它创建任务。",
+      "model": "示例使用的模型",
+      "noModel": "暂无运行中的部署",
+      "download": "下载示例",
+      "use": "使用示例"
+    }
   },
   "errors": {
     "detail": "详细信息：{{detail}}",
@@ -142,5 +150,17 @@
       "invalid_multipart": "上传的表单无效"
     },
     "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}"
+  },
+  "api": {
+    "title": "通过 API 调用（OpenAI 兼容的 /v1/files 与 /v1/batches）",
+    "description": "批处理任务就是平台的 OpenAI Batch API：用 API 令牌直接调用网关，官方 OpenAI SDK 只需把 base_url 指向本平台。本页只是同一组任务的管理视图。",
+    "keys": "创建 API 令牌",
+    "steps": {
+      "upload": "1. 上传请求文件（.jsonl）",
+      "create": "2. 创建批处理任务",
+      "poll": "3. 查询进度与状态",
+      "download": "4. 下载结果文件",
+      "sdk": "或用 OpenAI Python SDK"
+    }
   }
 }

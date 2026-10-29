@@ -11,6 +11,7 @@ import ResourceTable, { storedPageSize, type ResourceColumn } from "../component
 import { formatTime } from "../i18n/datetime";
 import { usePagedList } from "../pagedList";
 import BatchCreateModal from "./batches/BatchCreateModal";
+import BatchAPIUsage from "./batches/BatchAPIUsage";
 import BatchDetailDrawer from "./batches/BatchDetailDrawer";
 import { BatchProgress, BatchStatusTag } from "./batches/batchDisplay";
 import { useBatchPolling } from "./batches/useBatchPolling";
@@ -104,6 +105,7 @@ export default function BatchesPage({ pollMs = BATCH_POLL_MS }: { pollMs?: numbe
   return (
     <>
       <PageHeader title={t("page.title")} description={t("page.description")} extra={createButton} />
+      <BatchAPIUsage />
       <ResourceTable<Batch>
         tableId={TABLE_ID}
         rowKey="id"

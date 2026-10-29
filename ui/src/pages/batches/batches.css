@@ -6,3 +6,14 @@
 .batch-create-field label { font-weight: 500; }
 .batch-create-hint { margin: 0; padding-inline-start: 18px; }
 .batch-row { cursor: pointer; }
+
+.batch-create-sample {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.batch-api-usage { margin-bottom: 16px; }
+.batch-api-steps { display: flex; flex-direction: column; gap: 8px; }
+.batch-api-steps .code-block { margin: 4px 0 0; overflow-x: auto; }

@@ -36,6 +36,8 @@
   },
   "title": "API Tokens",
   "usage": "Usage",
+  "usageBatches": "The same API key also calls the OpenAI-compatible batch API, /v1/files and /v1/batches; examples are on",
+  "usageBatchesLink": "Batches",
   "gateway": {
     "title": "Inference tokens",
     "description": "For applications calling deployed models (/v1, OpenAI-compatible); they start with gw-. They cannot call the platform management API."

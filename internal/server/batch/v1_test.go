@@ -260,7 +260,7 @@ func TestUploadLimits(t *testing.T) {
 	svc := v.svc
 	defer func(old int64) { fileLimit = old }(fileLimit)
 	fileLimit = 1 << 20
-	if _, err := svc.Upload(testOwner, "a", io.MultiReader(strings.NewReader(one), &zeroReader{n: fileLimit})); err == nil {
+	if _, err := svc.Upload(testOwner, "a.jsonl", io.MultiReader(strings.NewReader(one), &zeroReader{n: fileLimit})); err == nil {
 		t.Fatal("a file over 200 MB was accepted")
 	} else if e := err.(*Error); e.Status != 413 || e.Code != "file_too_large" || !strings.Contains(e.Message, "1 MB") {
 		t.Fatalf("error = %+v", e)
@@ -269,7 +269,7 @@ func TestUploadLimits(t *testing.T) {
 		t.Fatalf("%d files left behind", n)
 	}
 	// A file of exactly the limit is fine.
-	if _, err := svc.Upload(testOwner, "a", io.MultiReader(strings.NewReader(one), &zeroReader{n: fileLimit - int64(len(one))})); err != nil {
+	if _, err := svc.Upload(testOwner, "a.jsonl", io.MultiReader(strings.NewReader(one), &zeroReader{n: fileLimit - int64(len(one))})); err != nil {
 		t.Fatalf("a file at the limit: %v", err)
 	}
 }
@@ -552,5 +552,26 @@ func TestOutputFilesExpireAfterTheRetention(t *testing.T) {
 	}
 	if got := globFiles(t, v.cfg.Dir); len(got) != 1 {
 		t.Fatalf("files on disk = %v", got)
+	}
+}
+
+// Only a .jsonl file is a batch input: the API names JSON Lines, and a
+// .json or .txt file is refused before anything is written.
+func TestUploadRefusesAFileThatIsNotJSONL(t *testing.T) {
+	v := newV1Rig(t)
+	line := `{"custom_id":"1","method":"POST","url":"/v1/embeddings","body":{"model":"m","input":"x"}}` + "\n"
+	for _, name := range []string{"in.json", "in.txt", "in", "in.jsonl.txt"} {
+		rec := v.upload("k1", line, [2]string{"purpose", "batch"}, [2]string{"file", name})
+		if rec.Code != 400 || !strings.Contains(rec.Body.String(), `"code":"invalid_file_extension"`) {
+			t.Fatalf("%s = %d %s", name, rec.Code, rec.Body)
+		}
+	}
+	for _, name := range []string{"in.jsonl", "IN.JSONL"} {
+		if rec := v.upload("k1", line, [2]string{"purpose", "batch"}, [2]string{"file", name}); rec.Code != 200 {
+			t.Fatalf("%s = %d %s", name, rec.Code, rec.Body)
+		}
+	}
+	if n := len(globFiles(t, v.cfg.Dir)); n != 2 {
+		t.Fatalf("%d files kept, want only the two accepted", n)
 	}
 }

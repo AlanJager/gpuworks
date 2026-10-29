@@ -36,6 +36,8 @@
   },
   "title": "API 令牌",
   "usage": "调用方式",
+  "usageBatches": "同一个 API 令牌也能调用 OpenAI 兼容的批处理接口 /v1/files 与 /v1/batches，示例见",
+  "usageBatchesLink": "批处理任务",
   "gateway": {
     "title": "推理服务令牌",
     "description": "下游应用调用已部署模型（/v1，OpenAI 兼容）时使用，以 gw- 开头。不能用来调用平台管理 API。"

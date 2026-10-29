@@ -25,7 +25,7 @@ A batch's requests take the same gateway path as a client's request: a replica i
 
 ## 1. Prepare the Input File
 
-The input is JSON Lines: each non-blank line is one request with these fields.
+The input is JSON Lines, in a file named `*.jsonl` (another extension is refused on upload with 400 `invalid_file_extension`): each non-blank line is one request with these fields.
 
 | Field | Requirement |
 |---|---|
@@ -149,9 +149,9 @@ Cancel with `client.batches.cancel(batch.id)` and list with `client.batches.list
 
 ## 4. Run from the Console
 
-The **Batches** page in the **Inference Services** group of the left menu runs a batch without code:
+The **Batches** page in the **Inference Services** group of the left menu runs a batch without code. **Call it through the API** at the top of the page expands to the curl and SDK calls above, for the address you opened the console from; the usage note on the **API Keys** page points to these endpoints too.
 
-1. Click **Create batch**, choose the JSONL file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason.
+1. Click **Create batch**, choose the `.jsonl` file and the endpoint (`endpoint`), and submit. The file is validated line by line on upload here too, and an error names the line and the reason. Without a file at hand, pick an active deployment under **Sample file** in the dialog and click **Download sample** for a 5-request `.jsonl` sample, or **Use sample** to create a batch with it as is.
 2. The list shows each batch's ID, status, endpoint, progress (completed out of total, with the failure count), creation time, and expiry time; use **Filter by status** to narrow it.
 3. Click a row to open the detail drawer: summary, request counts, the timeline of stages, metadata, and **Download input**, **Download output**, and **Download errors**. A failed batch (`failed`) also shows the failure reason.
 4. While a batch has not ended, click **Cancel batch** and confirm in the page.

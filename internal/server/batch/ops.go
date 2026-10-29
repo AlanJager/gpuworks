@@ -14,6 +14,9 @@ import (
 // Upload saves and validates an input file (purpose "batch", the only one).
 // A refused file leaves nothing behind.
 func (s *Service) Upload(owner Owner, filename string, src io.Reader) (File, error) {
+	if !strings.EqualFold(filepath.Ext(cleanFilename(filename)), ".jsonl") {
+		return File{}, invalid("invalid_file_extension", "file", "a batch input file must be JSON Lines with the .jsonl extension")
+	}
 	if err := os.MkdirAll(s.cfg.Dir, 0o750); err != nil {
 		return File{}, err
 	}
