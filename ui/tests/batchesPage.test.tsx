@@ -103,7 +103,8 @@ test("a loading state shows until the first page answers", async () => {
   assert.ok(document.querySelector(".ant-spin"), "the table shows its spinner");
   release();
   await screen.findByRole("button", { name: b.action.open.replace("{{id}}", "batch_aaa111") });
-  assert.equal(document.querySelector(".ant-spin-spinning"), null);
+  // A boolean, never the element: a failed assert.equal prints its operands, and printing a jsdom node walks the whole document.
+  await waitFor(() => assert.ok(!document.querySelector(".ant-spin-spinning")));
 });
 
 test("a failed load shows the error and retries on request", async () => {
