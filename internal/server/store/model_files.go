@@ -101,6 +101,16 @@ func (s *Store) ModelFilesForModel(modelID uint) ([]ModelFile, error) {
 	return mfs, err
 }
 
+// ModelFilesForModels reads only the requested models, across their locations.
+func (s *Store) ModelFilesForModels(modelIDs []uint) ([]ModelFile, error) {
+	if len(modelIDs) == 0 {
+		return nil, nil
+	}
+	var files []ModelFile
+	err := s.reader().Where("model_id IN ?", modelIDs).Find(&files).Error
+	return files, err
+}
+
 // ModelFilesForModelOnNodes is ModelFilesForModel restricted to rows on the
 // given nodes.
 func (s *Store) ModelFilesForModelOnNodes(modelID uint, nodeIDs []uint) ([]ModelFile, error) {

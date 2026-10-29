@@ -1,8 +1,10 @@
 package api
 
 import (
+	"slices"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -23,103 +25,70 @@ func (a *apiHandlers) resolveTemplateWeightModelForNode(source weightSource, ori
 	if findErr != nil && findErr != store.ErrNotFound {
 		return nil, findErr
 	}
-	if findErr == nil && nodeID != 0 {
-		ready, err := a.modelHasReadyArtifact(existing, nodeID, pinned)
-		if err != nil {
-			return nil, err
-		}
-		if ready {
-			return existing, nil
-		}
-	}
-	if findErr == nil && nodeID == 0 {
-		return existing, nil
-	}
-	if len(explicitProvider) > 0 && explicitProvider[0] {
-		unknown, err := a.unknownRevisionCopyOnNode(source, weightBytes, nodeID, pinned)
-		if err != nil {
-			return nil, err
-		}
-		if unknown != nil {
-			return unknown, nil
-		}
-		if findErr == nil {
-			return existing, nil
-		}
-		return a.createTemplateWeightModel(source, original, engine, quantization, weightBytes)
-	}
-
-	models, err := a.d.Store.ListModels()
+	explicit := len(explicitProvider) > 0 && explicitProvider[0]
+	models, err := a.d.Store.ListModels(source.RepoID)
 	if err != nil {
 		return nil, err
 	}
 	candidates := make([]store.Model, 0, len(models))
 	for _, model := range models {
-		if templateWeightMatchesModel(source, &model) {
+		if templateWeightMatchesModel(source, &model) && (!explicit || strings.EqualFold(strings.TrimSpace(model.Source), strings.TrimSpace(source.Provider))) {
 			candidates = append(candidates, model)
 		}
 	}
-	ready, err := a.readyModelArtifacts(candidates, nodeID, pinned)
+	availability, err := a.templateArtifactAvailability(candidates, nodeID, pinned)
 	if err != nil {
 		return nil, err
 	}
+	if existing != nil {
+		state := availability[existing.ID]
+		if !state.failed && (state.ready || nodeID == 0) {
+			return existing, nil
+		}
+	}
 	var candidate *store.Model
-	bestScore := -1
-	for index := range candidates {
-		item := &candidates[index]
-		// A copy the target node can already use outranks every preference; the
-		// requested provider and revision then break ties so repeated resolutions
-		// of the same request keep choosing the same row.
-		score := 0
-		if ready[item.ID] {
-			score += 1000
+	for i := range candidates {
+		item := &candidates[i]
+		state := availability[item.ID]
+		if state.failed {
+			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(item.Source), strings.TrimSpace(source.Provider)) {
-			score += 10
+		if explicit && (existing == nil || item.ID != existing.ID) {
+			if !state.ready {
+				continue
+			}
+			// An imported copy has no revision: retain the existing size check
+			// before substituting it for weights pinned by the catalog.
+			if item.Revision == "" && source.Revision != "" && !sameWeightSize(item.WeightBytes, weightBytes) {
+				continue
+			}
 		}
-		if strings.TrimSpace(item.Revision) == strings.TrimSpace(source.Revision) {
-			score += 5
-		}
-		if score > bestScore {
-			candidate, bestScore = item, score
+		if candidate == nil || preferTemplateArtifact(item, candidate, source, availability) {
+			candidate = item
 		}
 	}
 	if candidate != nil {
 		return candidate, nil
 	}
 	if findErr == nil {
-		return existing, nil
+		return nil, productError(ErrorModelSourceUnavailable, "the selected template artifact has failed; retry or select another model", map[string]any{
+			"model_id": existing.ID, "provider": existing.Source, "repo_id": existing.SourceID, "revision": existing.Revision,
+		})
 	}
 	return a.createTemplateWeightModel(source, original, engine, quantization, weightBytes)
 }
 
-// unknownRevisionCopyOnNode is a copy of the selected repository, registered
-// at the same provider without a revision, that the target node can already
-// use and whose size matches the pinned revision. A directory imported from a
-// storage (one a provider CLI downloaded, say) carries no commit, so the pinned
-// identity never matches it; an empty revision means unknown, not different,
-// and the size check keeps a copy of other weights from standing in. Without
-// this, a request that chose the provider would download the whole repository
-// again beside the copy it already has (ADR 0018).
-func (a *apiHandlers) unknownRevisionCopyOnNode(source weightSource, weightBytes int64, nodeID uint, pinned []uint) (*store.Model, error) {
-	if nodeID == 0 || weightBytes <= 0 || strings.TrimSpace(source.Revision) == "" {
-		return nil, nil
+func preferTemplateArtifact(candidate, current *store.Model, source weightSource, availability map[uint]templateArtifactState) bool {
+	if ready, currentReady := availability[candidate.ID].ready, availability[current.ID].ready; ready != currentReady {
+		return ready
 	}
-	model, err := a.d.Store.FindModelArtifact(source.RepoID, source.Provider, "", source.Subfolder)
-	if err == store.ErrNotFound {
-		return nil, nil
+	providerMatches := func(model *store.Model) bool {
+		return strings.EqualFold(strings.TrimSpace(model.Source), strings.TrimSpace(source.Provider))
 	}
-	if err != nil {
-		return nil, err
+	if matches, currentMatches := providerMatches(candidate), providerMatches(current); matches != currentMatches {
+		return matches
 	}
-	if !sameWeightSize(model.WeightBytes, weightBytes) {
-		return nil, nil
-	}
-	ready, err := a.modelHasReadyArtifact(model, nodeID, pinned)
-	if err != nil || !ready {
-		return nil, err
-	}
-	return model, nil
+	return strings.TrimSpace(candidate.Revision) == strings.TrimSpace(source.Revision) && strings.TrimSpace(current.Revision) != strings.TrimSpace(source.Revision)
 }
 
 // sameWeightSize accepts sizes that differ by provider bookkeeping files
@@ -165,4 +134,60 @@ func (a *apiHandlers) readyModelArtifacts(models []store.Model, nodeID uint, pin
 		ready[id] = sources.Source(id, nodeID, store.SourceRules{Pinned: pinned}).Action == store.SourceReady
 	}
 	return ready, nil
+}
+
+type templateArtifactState struct {
+	ready  bool
+	failed bool
+}
+
+func (a *apiHandlers) templateArtifactAvailability(models []store.Model, nodeID uint, pinned []uint) (map[uint]templateArtifactState, error) {
+	out := make(map[uint]templateArtifactState, len(models))
+	if len(models) == 0 {
+		return out, nil
+	}
+	ready, err := a.readyModelArtifacts(models, nodeID, pinned)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uint, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.ID)
+		out[model.ID] = templateArtifactState{ready: ready[model.ID]}
+	}
+	files, err := a.d.Store.ModelFilesForModels(ids)
+	if err != nil {
+		return nil, err
+	}
+	var applies map[uint]bool
+	if nodeID != 0 {
+		node, err := a.d.Store.NodeByID(nodeID)
+		if err != nil {
+			return nil, err
+		}
+		storages, err := a.d.Store.StoragesForNode(node)
+		if err != nil {
+			return nil, err
+		}
+		applies = make(map[uint]bool, len(storages))
+		for _, storage := range storages {
+			applies[storage.Storage.ID] = true
+		}
+	}
+	viable := map[uint]bool{}
+	for i := range files {
+		file := &files[i]
+		if (len(pinned) > 0 && !slices.Contains(pinned, file.StorageID)) || (applies != nil && !applies[file.StorageID]) {
+			continue
+		}
+		state := out[file.ModelID]
+		state.failed = state.failed || file.State == proto.MFFailed
+		out[file.ModelID] = state
+		viable[file.ModelID] = viable[file.ModelID] || file.Ready() || store.TransferUnderWay(file)
+	}
+	for id, state := range out {
+		state.failed = state.failed && !state.ready && !viable[id]
+		out[id] = state
+	}
+	return out, nil
 }
