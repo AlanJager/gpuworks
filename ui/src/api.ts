@@ -959,6 +959,7 @@ export type DeploymentListItem = Pick<
   | "node_uuid"
   | "node_name"
   | "node_names"
+  | "runtime_nodes"
   | "runtime_node_names"
   | "desired_state"
   | "runtime_state"
@@ -1582,6 +1583,21 @@ export interface InstanceLaunchFacts {
   runtime_observation_received_at?: string;
 }
 
+/**
+ * One node a deployment's instances are on now: where a replica actually runs,
+ * which is the placement target only until something moves it.
+ */
+export interface DeploymentRuntimeNode {
+  node_uuid: string;
+  node_name?: string;
+  /**
+   * How many of the deployment's instance rows are on the node, of any state. A
+   * spread deployment has one node per replica here; the count is what a table
+   * folds into "N nodes" and expands again.
+   */
+  instances: number;
+}
+
 export interface Deployment {
   operations?: Array<
     Pick<
@@ -1605,7 +1621,19 @@ export interface Deployment {
   node_uuids?: string[];
   /** Display names of node_uuids, rank by rank. */
   node_names?: string[];
-  /** Distinct nodes hosting active instances now. */
+  /**
+   * Where the deployment's instances run now, one entry per node, read from the
+   * instance rows. node_name/node_names above are the placement target — the
+   * node, or rank by rank the nodes, the deployment was *asked* to run on — so
+   * the two differ whenever automatic placement picks the node later, a retried
+   * replica is relaunched elsewhere, or a spread deployment runs on several
+   * nodes at once. Empty before anything is placed.
+   */
+  runtime_nodes?: DeploymentRuntimeNode[];
+  /**
+   * Names of runtime_nodes, in the same order. Prefer runtime_nodes where the
+   * uuid or the per-node instance count is needed.
+   */
   runtime_node_names?: string[];
   partition_backend?: string;
   /** The dGPU memory limit each replica runs under per card; absent on whole cards. */

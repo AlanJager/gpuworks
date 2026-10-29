@@ -558,9 +558,15 @@ With pagination, each deployment returns only the following list fields. See [Qu
 |---|---|
 | Identity and creation time | `id`, `name`, `created_at` |
 | Template and model | `template_id`, `template_deviated`, `engine`, `image`, `model_id`, `model_name`, `served_name` |
-| Nodes | `node_uuid`, `node_name`, `node_names` |
+| Nodes | `node_uuid`, `node_name`, `node_names`, `runtime_nodes`, `runtime_node_names` |
 | State and replicas | `desired_state`, `runtime_state`, `state`, `sleepable`, `asleep_replicas`, `sleep_level`, `replicas`, `ready_replicas`, `health`, `preparation` |
 | Operations | `operations` |
+
+The node fields fall into two groups with different meanings, and neither stands in for the other: `node_uuid`, `node_name` and `node_names` are the **placement target** — the node the deployment was asked to run on (the node an operator wrote for manual placement; absent when placement is automatic) — while `runtime_nodes` is **where it runs now**, taken from the instance rows themselves, the same source the GPU inventory attributes cards from, so both pages name the same machine for the same instances.
+The two legitimately differ: automatic placement picks the node later, a retried replica is relaunched on another node, and a `spread` deployment runs its replicas on several at once.
+`runtime_nodes` is an array of objects, one per node: `node_uuid`, `node_name`, and `instances` (how many instances the node holds).
+The order is stable and deduplicated per node, and a multi-replica deployment lists every node rather than one of them. The whole field is omitted when no instance row names a node: nothing has been placed yet, or every replica is stopped.
+`runtime_node_names` names the same nodes in the same order.
 
 `state`, `asleep_replicas`, and `sleep_level` mean and carry exactly what the fields of the same name carry in the details (see [Query Deployment Details](#查询部署详情));
 reading `runtime_state` alone misses sleep, because a sleeping engine still reports `running`.
@@ -608,6 +614,7 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `replicas`, `ready_replicas` | Integer | The deployment's replica count and the number of awake replicas with all ranks running. PD deployments sum the units of each role (`replicas` is the sum of `pd.roles[].desired`, `ready_replicas` the sum of `pd.roles[].ready`), the same pair the list row gives; `asleep_replicas` never exceeds `replicas` |
 | `health` | Object | Health check status and latest results; see [Health Checks](#健康检查) |
 | `instances` (optional) | Array of objects | Instances in the deployment; `uuid` identifies an instance, `state` indicates its state, and `node_uuid` and `gpu_indexes` indicate where it runs |
+| `runtime_nodes` (optional) | Array of objects | The nodes the instances are on now, one entry per node: `{node_uuid, node_name, instances}`, with the meaning and value the same field has on a list row. `node_uuid`, `node_name` and `node_names` are the placement target, which can differ from it |
 | `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information |
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |

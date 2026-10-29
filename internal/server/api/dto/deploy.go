@@ -58,14 +58,19 @@ type Deployment struct {
 	Image                    string                `json:"image,omitempty"`
 	ModelID                  uint                  `json:"model_id"`
 	ModelName                string                `json:"model_name"`
-	NodeUUID                 string                `json:"node_uuid"`
+	// NodeUUID/NodeName/NodeUUIDs/NodeNames are the placement target - what was
+	// asked for, not where the replicas are. Read RuntimeNodes for the location.
+	NodeUUID string `json:"node_uuid"`
 	// NodeName is what a person calls the node. The uuid stays authoritative
 	// for addressing; this exists so clients never have to show a raw uuid.
 	NodeName  string   `json:"node_name,omitempty"`
 	NodeUUIDs []string `json:"node_uuids,omitempty"`
 	// NodeNames name NodeUUIDs, rank by rank.
 	NodeNames []string `json:"node_names,omitempty"`
-	// RuntimeNodeNames are the distinct nodes hosting active instances now.
+	// RuntimeNodes are the nodes the instances are on now, with how many each
+	// holds, from the instance rows the GPU page attributes cards from.
+	RuntimeNodes []DeploymentRuntimeNode `json:"runtime_nodes,omitempty"`
+	// RuntimeNodeNames name RuntimeNodes in the same order.
 	RuntimeNodeNames []string `json:"runtime_node_names,omitempty"`
 	// NodeRequirements is where the deployment may run, as DeployRequest
 	// states it: always present, {} when it names nothing. A deployment

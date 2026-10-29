@@ -92,9 +92,25 @@ test("the deployment list reloads for state changes and not for progress notices
 });
 
 test("the deployment list displays the instance node when scheduling chose a different node", async () => {
-  api.deploymentsPage = async () => listPage([{ ...row, node_name: "target-node", runtime_node_names: ["actual-node"] }]) as never;
+  api.deploymentsPage = async () => listPage([{ ...row, node_uuid: "target-node", node_name: "target-node", runtime_nodes: [{ node_uuid: "actual-node", node_name: "actual-node", instances: 1 }] }]) as never;
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><DeploymentsPage /></MemoryRouter></I18nextProvider>);
   await screen.findByText("qwen-prod");
-  assert.ok(screen.getByText("actual-node"));
+  assert.ok(screen.getByText("actual-node"), "the column shows where the replica runs");
+  // The target column is off by default, so the node that was asked for is not
+  // printed as if it were where the replica is.
   assert.equal(screen.queryByText("target-node"), null);
+});
+
+test("a spread deployment shows every node, not just the one it is keyed by", async () => {
+  api.deploymentsPage = async () => listPage([{ ...row, node_uuid: "node-a", node_name: "node-a", replicas: 2, runtime_nodes: [
+    { node_uuid: "node-a", node_name: "172.30.8.31", instances: 1 },
+    { node_uuid: "node-b", node_name: "172.30.8.32", instances: 1 },
+  ] }]) as never;
+  render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={["/deployments"]}><DeploymentsPage /></MemoryRouter></I18nextProvider>);
+  await screen.findByText("qwen-prod");
+  // The cell folds to "172.30.8.31 of 2 nodes"; the second node is in the
+  // cell's tooltip and label, so the row never implies one node runs it all.
+  assert.ok(screen.getByText("172.30.8.31 of 2 nodes"), "the cell folds a spread deployment");
+  assert.ok(screen.getByLabelText(/172\.30\.8\.32/), "the second node is still named, not hidden behind the first");
+  assert.equal(screen.queryByText("node-a"), null, "the target node is not shown as the compute node");
 });

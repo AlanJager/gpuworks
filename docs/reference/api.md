@@ -561,9 +561,17 @@ macOS 忽略 `no_systemd`。
 |---|---|
 | 身份与创建时间 | `id`、`name`、`created_at` |
 | 模板与模型 | `template_id`、`template_deviated`、`engine`、`image`、`model_id`、`model_name`、`served_name` |
-| 节点 | `node_uuid`、`node_name`、`node_names` |
+| 节点 | `node_uuid`、`node_name`、`node_names`、`runtime_nodes`、`runtime_node_names` |
 | 状态与副本 | `desired_state`、`runtime_state`、`state`、`sleepable`、`asleep_replicas`、`sleep_level`、`replicas`、`ready_replicas`、`health`、`preparation` |
 | 操作 | `operations` |
+
+节点字段分两类，含义不同、不能互相替代：`node_uuid`、`node_name`、`node_names` 是**放置目标**，即部署被要求运行在的节点
+（手动放置时是运维写的节点，自动放置时没有这个字段）；`runtime_nodes` 是**实际运行位置**，即实例此刻所在的节点，
+取自实例行本身，与 GPU 设备页的归属同源，因此两处对同一批实例报同一台机器。
+两者不一致是正常的：自动放置会改挑节点，失败重试会在别的节点重新启动，`spread` 部署的副本本就分散在多台。
+`runtime_nodes` 是对象数组，一台节点一项：`node_uuid`、`node_name`、`instances`（该节点上的实例数）；
+顺序稳定、按节点去重，多副本时给出全部节点而不是只给一台。没有实例行指向节点时（尚未放置，或副本都已停止）整个字段省略。
+`runtime_node_names` 是同序的节点名。
 
 `state`、`asleep_replicas`、`sleep_level` 在列表行上与详情里同名字段含义和取值都相同（见[查询部署详情](#查询部署详情)）；
 只看 `runtime_state` 会漏掉睡眠——睡着的引擎仍报 `running`。
@@ -611,6 +619,7 @@ macOS 忽略 `no_systemd`。
 | `replicas`、`ready_replicas` | 整数 | 部署的副本数、当前所有 rank 均运行且清醒的副本数。PD 部署按各角色的 unit 汇总（`replicas` 为 `pd.roles[].desired` 之和，`ready_replicas` 为 `pd.roles[].ready` 之和），与列表行给出的同一对数一致；`asleep_replicas` 永不超过 `replicas` |
 | `health` | 对象 | 健康检查状态与最近结果，见[健康检查](#健康检查) |
 | `instances`（可选） | 对象数组 | 部署的实例；`uuid` 标识实例，`state` 表示状态，`node_uuid` 与 `gpu_indexes` 表示运行位置 |
+| `runtime_nodes`（可选） | 对象数组 | 实例当前所在节点，一台一项 `{node_uuid, node_name, instances}`；与列表行的同名字段含义、取值都相同。`node_uuid`、`node_name`、`node_names` 是放置目标，与它可能不同 |
 | `model_progress`（可选） | 对象数组 | 模型文件的准备状态；`state` 是文件状态，`progress` 为 0–1 的进度，`message` 为相关说明 |
 | `quick_params`、`extra_args`（可选） | 对象、字符串 | 已保存的启动配置与额外参数，见[部署启动参数来源](deployment-launch-sources.md) |
 | `pd`（可选） | 对象 | PD 部署的模式、各角色副本数和状态，见 [PD 分离部署](#pd-分离部署placementpd) |
