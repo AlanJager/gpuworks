@@ -21,7 +21,7 @@ A batch is a set of requests from one JSONL file. The flow is always three steps
 
 Three endpoints are supported: `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings`; all requests in one batch must use the same endpoint. Streaming (`"stream": true`) is not supported. The completion window is `24h` by default and can be set to a whole number of hours from `1h` to `72h` when creating the batch (see [Completion Window](#完成时限)): requests without a result once that time has passed since the batch was created are treated as expired.
 
-A batch's requests take the same gateway path as a client's request: a replica is chosen by `model`, a sleeping deployment is woken when necessary, and usage and request records are counted. They therefore appear in the request views and reset the deployment's idle-sleep timer.
+A batch's requests take the same gateway path as a client's request: a replica is chosen by `model`, a sleeping deployment is woken when necessary, and usage and request records are counted. They therefore appear in the request views and reset the deployment's idle timer.
 
 ## 1. Prepare the Input File
 
@@ -176,7 +176,7 @@ With a model chosen, the platform sets the `body.model` of every request (retrie
 
 The chosen model must be the served model name of a running or sleeping deployment; a stopped or unknown one returns 400 (`BATCH_MODEL_UNKNOWN` in the console, `model_not_found` on `/v1`) and no batch is created. A sleeping deployment can be chosen:
 
-- One the platform put to sleep itself (idle sleep, yielding cards): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
+- One the platform put to sleep itself (automatic sleep without preemption, or yielding): when a request arrives, the gateway holds it, wakes the deployment, and lets it through once awake, as for any request.
 - One you or a schedule put to sleep (`sleep_held` is `true` in the deployment detail): a request does **not** wake it. The batch is still created, but the create response carries `warnings` (the console shows a notice), and the requests are retried until someone wakes the deployment or the batch expires. The console's drop-down marks such a deployment "Asleep (held, requests do not wake it)".
 
 **Checking the models in the file**: after you choose a file in the console, the browser reads it (when it is at most 50 MB) and lists every model it uses. With no model chosen, if some model has no available deployment on the platform, a warning names those models, and their requests would get 404 into the error file; with a model chosen, the models in the file are replaced by it and only a notice is shown. The check never blocks submitting, and files over 50 MB are not checked.
@@ -249,7 +249,7 @@ The requests a batch sends show the source **Batch** (`source=batch`) in request
 
 ## Pairing with the Offline Service Level
 
-Point a batch at a deployment with the **offline** level and it runs on idle GPUs only: when a real-time model needs the cards the batch deployment yields its memory, and it comes back automatically once the cards are free. For how to set the level on the deployment, see [Service levels and on-demand wake](scheduling-center.md#服务等级与按需唤醒); for the rules, see [Service Levels](../explanation/service-levels.md).
+Point a batch at a deployment with the **offline** preset (yield policy "Yield anytime") and it runs on idle GPUs only: when a real-time model needs the cards the batch deployment yields its memory, and it comes back automatically once the cards are free. For how to set the level on the deployment, see [Service levels and on-demand wake](scheduling-center.md#服务等级与按需唤醒); for the rules, see [Service Levels](../explanation/service-levels.md).
 
 1. When creating the deployment, turn on **sleep capable** and set the **service level** to **offline** (or change it later under **Scheduling policy** in the deployment details).
 2. Put this deployment's model name in the `model` of the JSONL, and follow the same steps as above.
@@ -257,7 +257,7 @@ Point a batch at a deployment with the **offline** level and it runs on idle GPU
 How a batch interacts with an offline deployment:
 
 - **On-demand wake**: when the deployment is asleep or has yielded its cards, a batch request is held by the gateway and triggers a wake like any other request, and is let through once the deployment is awake. The offline level holds requests for up to 30 minutes; a request that times out gets 503, and the batch retries it automatically.
-- **Counts as activity**: batch requests reset the idle-sleep timer and appear in the request records, unlike health probes. The deployment therefore is not put to idle sleep in the middle of a batch.
+- **Counts as activity**: batch requests reset the idle timer and appear in the request records, unlike health probes. The deployment therefore does not sleep or yield for being idle in the middle of a batch.
 - **Retry after preemption**: when a higher-level deployment needs the cards, the offline deployment yields immediately and in-flight requests are cut off; the client sees HTTP 200 with `finish_reason: "abort"`. The batch recognizes this signal and sends those requests again until the batch expires; they are not counted as failures. The deployment recovers automatically once the cards are free, and the batch continues.
 - **When the cards stay taken**: if the real-time model stays busy and the offline deployment never gets the cards, requests keep being retried until the batch expires, and the remaining requests land in the error file with `batch_expired`. When you need a more predictable finish time, move the batch to a resident or shared deployment, or shrink the batch.
 
