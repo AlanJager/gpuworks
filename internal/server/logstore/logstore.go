@@ -133,9 +133,11 @@ type Store interface {
 	// oldest-first, like reading a log file top-to-bottom.
 	Tail(instance string, limit int) ([]Entry, error)
 	// Context returns the window of lines around a match, chronological, with
-	// matchIndex pointing at the matched row inside the returned slice. The
-	// window is scoped to the same instance when the row has one, otherwise to
-	// the same node (infrastructure logs), and never crosses a day boundary.
+	// matchIndex pointing at the matched row inside the returned slice, or -1
+	// when the anchor id is absent from the window's partition (pruned by
+	// retention, or a ts from a different day than the id). The window is
+	// scoped to the same instance when the row has one, otherwise to the same
+	// node (infrastructure logs), and never crosses a day boundary.
 	Context(instance, node string, ts, id int64, before, after int) (rows []Entry, matchIndex int, err error)
 	// Histogram counts rows per bucket (unix-ms aligned) and severity for the
 	// filter, over the partitions the filter's time range touches.
