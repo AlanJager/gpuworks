@@ -167,6 +167,7 @@ export default function APIKeysPage() {
           <Paragraph style={{ margin: 0 }}>
             <pre className="code-block">
               {`curl ${gateway}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
   -H "Authorization: Bearer <key>" \\
   -d '{"model":"<served_name>","messages":[{"role":"user","content":"hi"}]}'`}
             </pre>
