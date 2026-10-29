@@ -180,10 +180,18 @@ func (s *Store) SetModelInferenceConfig(id uint, operations, inputModalities str
 	return s.GetModel(id)
 }
 
-// ListModels returns all models newest-first.
-func (s *Store) ListModels() ([]Model, error) {
+// ListModels returns models newest-first, optionally limited to repository IDs.
+func (s *Store) ListModels(sourceIDs ...string) ([]Model, error) {
+	query := s.db
+	if len(sourceIDs) > 0 {
+		ids := make([]string, len(sourceIDs))
+		for i, id := range sourceIDs {
+			ids[i] = strings.ToLower(strings.TrimSpace(id))
+		}
+		query = query.Where("lower(source_id) IN ?", ids)
+	}
 	var ms []Model
-	err := s.db.Order("id desc").Find(&ms).Error
+	err := query.Order("id desc").Find(&ms).Error
 	return ms, err
 }
 
