@@ -7,8 +7,11 @@ import { VENDOR_ASSETS } from "../src/components/vendorAssets.ts";
 
 test("all accelerator vendors resolve through the shared logo asset map", () => {
   assert.equal(vendorForFramework("dtk"), "hygon");
+  assert.equal(vendorForFramework("xre"), "kunlunxin");
+  assert.equal(vendorForFramework("KUNLUNXIN"), "kunlunxin");
   assert.equal(vendorForFramework("HYGON"), "hygon");
   assert.equal(VENDOR_ASSETS.hygon, "/vendor-logos/hygon.webp");
+  assert.equal(VENDOR_ASSETS.kunlunxin, "/vendor-logos/kunlunxin.png");
   assert.equal(vendorForFramework("hggc"), "ppu");
   assert.ok(VENDOR_ASSETS.thead);
 });

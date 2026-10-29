@@ -8,6 +8,7 @@
     "ascend": "昇腾",
     "ppu": "平头哥",
     "hygon": "海光",
+    "kunlunxin": "昆仑芯",
     "apple": "Apple",
     "unknown": "未知厂商",
     "unknownFramework": "未知框架",
@@ -152,6 +153,7 @@
     "ROUTING_POLICY_INVALID": "路由策略无效。",
     "DISTRIBUTED_REPLICA_COUNT": "分布式部署必须恰好使用 {{required}} 个副本。",
     "SLEEP_NOT_ENABLED": "该部署未启用休眠模式。请以启用休眠模式的方式重新部署。",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} 不支持 {{feature}}。",
     "SLEEP_ENGINE_UNSUPPORTED": "{{engine}} 引擎不支持休眠模式。",
     "SLEEP_INVALID_LEVEL": "休眠级别只能是 1（快速）或 2（深度）；{{level}} 不是有效级别。",
     "SLEEP_INVALID_MODE": "休眠方式只能是 wait（等待完成）或 abort（立即中止）；{{mode}} 无效。",
@@ -752,6 +754,16 @@
         "label": "运行时无法使用",
         "summary": "卡能被列出、看起来正常，但加速卡运行时用不了它：在它上面创建上下文失败。",
         "action": "在节点上用 dmesg 查看驱动报错。一张卡初始化失败可能导致整台机器的卡都用不了，所以也要看其他卡的结论；通常需要复位出问题的卡，有时需要重启主机。"
+      },
+      "telemetry_unavailable": {
+        "label": "诊断数据缺失",
+        "summary": "卡的身份可确认，但 ECC 计数等诊断字段未返回有效数值。",
+        "action": "查看记录的字段及驱动配置。此警告不阻止调度，但不能将缺失的计数视为零错误。"
+      },
+      "inventory_identity_invalid": {
+        "label": "设备身份无效",
+        "summary": "厂商清单返回缺失、重复或不一致的设备身份字段。",
+        "action": "检查 card_validation 证据，并对照 xpu-smi 输出、PCI 与设备映射。"
       },
       "vendor_cli_unanswered": {
         "label": "读不到信息",

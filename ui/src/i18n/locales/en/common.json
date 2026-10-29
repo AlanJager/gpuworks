@@ -8,6 +8,7 @@
     "ascend": "Ascend",
     "ppu": "T-Head",
     "hygon": "Hygon",
+    "kunlunxin": "Kunlunxin",
     "apple": "Apple",
     "unknown": "Unknown Vendor",
     "unknownFramework": "Unknown Framework",
@@ -152,6 +153,7 @@
     "ROUTING_POLICY_INVALID": "The routing policy is invalid.",
     "DISTRIBUTED_REPLICA_COUNT": "Distributed deployments require exactly {{required}} replica.",
     "SLEEP_NOT_ENABLED": "Sleep mode was not enabled for this deployment. Redeploy with sleep mode enabled to use it.",
+    "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}.",
     "SLEEP_ENGINE_UNSUPPORTED": "The {{engine}} engine does not support sleep mode.",
     "SLEEP_INVALID_LEVEL": "The sleep level must be 1 (quick) or 2 (deep); {{level}} is not a level.",
     "SLEEP_INVALID_MODE": "The sleep mode must be wait or abort; {{mode}} is not a mode.",
@@ -752,6 +754,16 @@
         "label": "Runtime cannot use it",
         "summary": "The card is listed and looks well, but the accelerator runtime could not use it: creating a context on it failed.",
         "action": "Check the driver errors in the node's dmesg. One card that fails to initialize can make every card of a host unusable, so look at the other cards' findings too; the usual fix is a reset of the failing card, sometimes a host reboot."
+      },
+      "telemetry_unavailable": {
+        "label": "Diagnostic data unavailable",
+        "summary": "The card can be identified, but a diagnostic field such as the ECC counter was not reported as a valid number.",
+        "action": "Inspect the recorded field and driver configuration. Scheduling remains enabled; missing telemetry is not a claim of zero errors."
+      },
+      "inventory_identity_invalid": {
+        "label": "Invalid card identity",
+        "summary": "The vendor inventory returned missing, duplicate, or inconsistent card identity fields.",
+        "action": "Inspect the card_validation evidence and compare xpu-smi output with PCI and device mappings."
       },
       "vendor_cli_unanswered": {
         "label": "Not readable",

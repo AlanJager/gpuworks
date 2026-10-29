@@ -16,5 +16,7 @@ export const VENDOR_ASSETS: Record<string, string> = {
   ascend: "/vendor-logos/ascend.svg",
   thead: "/vendor-logos/thead.png",
   hygon: "/vendor-logos/hygon.webp",
+  // Official company site: https://www.kunlunxin.com/wp-content/uploads/2023/01/logo-quan.png
+  kunlunxin: "/vendor-logos/kunlunxin.png",
   apple: "/vendor-logos/apple.svg",
 };

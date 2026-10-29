@@ -316,7 +316,8 @@
       "nvidia": "NVIDIA",
       "ascend": "Ascend",
       "hygon": "Hygon",
-      "ppu": "T-Head PPU"
+      "ppu": "T-Head PPU",
+      "kunlunxin": "Kunlunxin"
     },
     "recommendedInferenceTemplate": "Recommended Inference Template",
     "selected": "Selected",
