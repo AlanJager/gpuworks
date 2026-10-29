@@ -125,7 +125,10 @@ type Deps struct {
 	UIHandler     http.Handler // embedded SPA (may be nil in dev)
 
 	// Hub integration.
-	Online          func(uuid string) bool
+	Online func(uuid string) bool
+	// WakeHeld counts the requests the gateway holds for each deployment's
+	// wake right now (the scheduling overview's contention); nil reads none.
+	WakeHeld        func() map[uint]int
 	KickNode        func(uuid string)
 	NodeSync        NodeSync
 	CallNode        func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
@@ -582,6 +585,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/logs/histogram", a.logsHistogram)
 			r.Get("/monitor/overview", a.monitorOverview)
 			r.Get("/scheduling/board", a.schedulingBoard)
+			r.Get("/scheduling/overview", a.schedulingOverview)
 			r.Get("/scheduling/history", a.schedulingHistory)
 			r.Get("/scheduling/timeline", a.schedulingTimeline)
 			r.Get("/monitor/deployments/{id}", a.monitorDeployment)
@@ -648,6 +652,7 @@ type apiHandlers struct {
 	gpuCacheAt          time.Time
 	gpuCache            *gpuInventoryCache
 	gpuCacheGeneration  uint64
+	overview            overviewCache // the scheduling overview (scheduling_overview.go)
 	benchmarkMu         sync.Mutex
 	benchmarkExecutions map[uint]*benchmarkExecution
 	updates             distribution.CheckCache

@@ -348,6 +348,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		OpenTerminal:         h.OpenTerminal,
 		NodeCaps:             h.NodeCaps,
 		Terminal:             webterm.New(st),
+		WakeHeld:             wakeHeldBy(px),
 		ProxyV1:              dataPlane(px.ModelsHandler(), batches.V1Handler(batchAuth(px)), px.Handler()),
 		Batches:              batchConsole{batches},
 		PlaygroundV1:         px.PlaygroundHandler(box),
@@ -449,17 +450,17 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
-	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })                     // Background: verify each PD prefill instance's KV handoff once.
+	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })                                      // Background: verify each PD prefill instance's KV handoff once.
 	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) }) // Background: schedules, idle sleep, waiting wakes, residency.
-	goBG(func() { a.health.Run(ctx) })                                                    // Background: the deployments' health checks.
+	goBG(func() { a.health.Run(ctx) })                                                                     // Background: the deployments' health checks.
 	// Background: the batches in progress, resumed from their checkpoints.
 	if err := a.batches.Start(ctx); err != nil {
 		a.log.Error("batch executor not started", "err", err)
 	} else {
 		goBG(func() { <-ctx.Done(); a.batches.Wait() })
 	}
-	goBG(func() { a.usage.Run(ctx) })                                                     // Background: the daily usage report.
-	goBG(func() { a.notices.Run(ctx) })                                                   // Background: the notices' refresh.
+	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
+	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.
 	// Background: prune metrics/logs beyond the retention window
 	// (--metrics-retention, default 72h).
 	//

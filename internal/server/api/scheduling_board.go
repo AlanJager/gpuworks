@@ -25,50 +25,48 @@ const (
 
 // schedulingBoard answers GET /scheduling/board: a page of nodes (page,
 // page_size, q as for GET /nodes) with each GPU's holders, and fleet-wide what
-// waits, what is scheduled next and what was done lately. It only reads.
+// waits, what is scheduled next and what was done lately. With node=<uuid> it
+// answers for that one node alone, without the fleet-wide lists (the drawer of
+// the overview reads it). With queues=1 it answers the fleet-wide lists alone
+// and reads no node. It only reads.
 func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
+	if uuid := strings.TrimSpace(r.URL.Query().Get("node")); uuid != "" {
+		a.schedulingBoardNode(w, uuid)
+		return
+	}
 	query, err := parseListQuery(r, nil)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	nodes, err := a.d.Store.ListNodes()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	var matched []store.Node
-	for _, node := range nodes {
-		if query.search == "" || strings.Contains(strings.ToLower(node.DisplayName()+" "+node.UUID), query.search) {
-			matched = append(matched, node)
-		}
-	}
-	sort.SliceStable(matched, func(i, j int) bool { return matched[i].DisplayName() < matched[j].DisplayName() })
-	type labelled struct{ name, level string }
-	deployments := map[uint]labelled{}
-	lookup := func(id uint) labelled {
-		if known, ok := deployments[id]; ok {
-			return known
-		}
-		known := labelled{level: store.ServiceLevelResident}
-		if dep, err := a.d.Store.GetDeployment(id); err == nil {
-			known = labelled{name: dep.Name, level: dep.ServiceLevel}
-		}
-		deployments[id] = known
-		return known
-	}
-	nameOf := func(id uint) string { return lookup(id).name }
-	levelOf := func(id uint) string { return lookup(id).level }
-	online := a.onlineOf(nodes)
+	nameOf, levelOf := a.deploymentLabels()
 	board := dto.SchedulingBoard{
-		Nodes: pageOf(matched, query, func(rows []store.Node) []dto.BoardNode {
+		Nodes:   dto.ListPage[dto.BoardNode]{Items: []dto.BoardNode{}, Page: query.page, PageSize: query.pageSize},
+		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{}, Recent: []dto.BoardEvent{},
+	}
+	// queues=1 asks for the fleet-wide lists alone, which is what the
+	// overview page reads beside its heatmap: no node is read for it.
+	if r.URL.Query().Get("queues") != "1" {
+		nodes, err := a.d.Store.ListNodes()
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		var matched []store.Node
+		for _, node := range nodes {
+			if query.search == "" || strings.Contains(strings.ToLower(node.DisplayName()+" "+node.UUID), query.search) {
+				matched = append(matched, node)
+			}
+		}
+		sort.SliceStable(matched, func(i, j int) bool { return matched[i].DisplayName() < matched[j].DisplayName() })
+		online := a.onlineOf(nodes)
+		board.Nodes = pageOf(matched, query, func(rows []store.Node) []dto.BoardNode {
 			out := make([]dto.BoardNode, 0, len(rows))
 			for i := range rows {
 				out = append(out, a.boardNode(&rows[i], online(rows[i].UUID), nameOf, levelOf))
 			}
 			return out
-		}),
-		Pending: []dto.BoardPending{}, WaitingWakes: []dto.BoardWaitingWake{}, Upcoming: []dto.BoardUpcomingAction{}, Recent: []dto.BoardEvent{},
+		})
 	}
 	now := time.Now().UTC()
 	if board.Pending, err = a.boardPending(now, nameOf); err != nil {
@@ -88,6 +86,25 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, board)
+}
+
+// deploymentLabels name a deployment and give its service level, each
+// deployment read once however often it is asked for.
+func (a *apiHandlers) deploymentLabels() (nameOf func(uint) string, levelOf func(uint) string) {
+	type labelled struct{ name, level string }
+	deployments := map[uint]labelled{}
+	lookup := func(id uint) labelled {
+		if known, ok := deployments[id]; ok {
+			return known
+		}
+		known := labelled{level: store.ServiceLevelResident}
+		if dep, err := a.d.Store.GetDeployment(id); err == nil {
+			known = labelled{name: dep.Name, level: dep.ServiceLevel}
+		}
+		deployments[id] = known
+		return known
+	}
+	return func(id uint) string { return lookup(id).name }, func(id uint) string { return lookup(id).level }
 }
 
 func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint) string, levelOf func(uint) string) dto.BoardNode {
@@ -125,7 +142,7 @@ func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint)
 // boardPending is every active deployment whose latest scheduling note is a
 // recent refusal to place it.
 func (a *apiHandlers) boardPending(now time.Time, nameOf func(uint) string) ([]dto.BoardPending, error) {
-	latest, err := a.d.Store.LatestScheduleEvents()
+	latest, err := a.d.Store.RecentLatestScheduleEvents(now.Add(-boardPendingWindow))
 	if err != nil {
 		return nil, err
 	}

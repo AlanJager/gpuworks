@@ -1,5 +1,11 @@
 package store
 
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
 // RoutingDeployments returns the active deployment rows needed by the proxy's
 // in-memory routing table. It deliberately avoids joins and preloads.
 func (s *Store) RoutingDeployments() ([]Deployment, error) {
@@ -79,4 +85,30 @@ func (s *Store) LatestScheduleEvents() (map[uint]InstanceEvent, error) {
 		out[ev.DeploymentID] = ev
 	}
 	return out, nil
+}
+
+// RecentLatestScheduleEvents is LatestScheduleEvents among the events since
+// the time: a deployment's newest scheduling event if it is that recent. It
+// reads the id range of the window rather than every scheduling event there
+// has been, which is the same answer for a caller that only wants the recent.
+func (s *Store) RecentLatestScheduleEvents(since time.Time) (map[uint]InstanceEvent, error) {
+	out := map[uint]InstanceEvent{}
+	first, ok, err := s.ResidencyWindowStart(since)
+	if err != nil || !ok {
+		return out, err
+	}
+	var events []InstanceEvent
+	if err := recentScheduleEventsQuery(s.db, first).Find(&events).Error; err != nil {
+		return nil, err
+	}
+	for _, ev := range events {
+		out[ev.DeploymentID] = ev
+	}
+	return out, nil
+}
+
+func recentScheduleEventsQuery(db *gorm.DB, firstID uint) *gorm.DB {
+	latest := db.Model(&InstanceEvent{}).Select("MAX(id)").
+		Where("kind = ? AND deployment_id <> 0 AND id >= ?", EventKindSchedule, firstID).Group("deployment_id")
+	return db.Where("id IN (?)", latest)
 }

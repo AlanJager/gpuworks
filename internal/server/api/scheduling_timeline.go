@@ -30,6 +30,9 @@ var timelineWindows = []int{6, 24}
 // over the last hours (6 or 24) - which deployment's instance held it and in
 // what state - and the stats of the deployments that share GPUs.
 //
+// With sharing=1 and no node it answers the stats of the deployments that
+// share GPUs across the fleet and no lanes.
+//
 // It is a separate read from the board so the board, which refreshes every few
 // seconds, stays one cheap read: the timeline is derived from the event log
 // over a window, once per page of nodes and window, by index ranges only
@@ -57,11 +60,24 @@ func (a *apiHandlers) schedulingTimeline(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
+	now := time.Now().UTC().Truncate(time.Second)
+	if sharing := strings.TrimSpace(r.URL.Query().Get("sharing")); sharing != "" {
+		if sharing != "1" || len(uuids) > 0 {
+			invalid("sharing", "is 1, and is asked for without node")
+			return
+		}
+		out, err := a.cachedSharingTimeline(now, hours)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	if len(uuids) == 0 || len(uuids) > timelineMaxNodes {
 		invalid("node", "names between 1 and "+strconv.Itoa(timelineMaxNodes)+" nodes")
 		return
 	}
-	now := time.Now().UTC().Truncate(time.Second)
 	out, err := a.residencyTimeline(uuids, now, hours)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -119,6 +135,13 @@ func (a *apiHandlers) residencyTimeline(uuids []string, now time.Time, hours int
 	if err != nil {
 		return out, err
 	}
+	return a.fillTimeline(out, cards, insts, events, from, now)
+}
+
+// fillTimeline derives the segments of the instances into the cards' lanes
+// (none for the fleet's sharing stats) and the stats of the shared deployments.
+func (a *apiHandlers) fillTimeline(out dto.SchedulingTimeline, cards map[uint]map[int]*timelineCard, insts []store.ResidencyInstance, events map[string][]store.ResidencyEvent, from, now time.Time) (dto.SchedulingTimeline, error) {
+	var err error
 	type derived struct {
 		inst store.ResidencyInstance
 		segs []store.ResidencySegment

@@ -97,6 +97,31 @@ func (s *Store) ResidencyInputs(nodeIDs []uint, since time.Time) ([]ResidencyIns
 	if len(nodeIDs) == 0 {
 		return nil, nil, nil
 	}
+	onPage := map[uint]bool{}
+	for _, id := range nodeIDs {
+		onPage[id] = true
+	}
+	return s.residencyInputs(since, "node_id IN ?", nodeIDs, func(row InstanceEvent, ev ResidencyEvent) bool { return onPage[ev.NodeID] })
+}
+
+// ResidencyInputsOf is ResidencyInputs for the instances of some
+// deployments, wherever they run: the inputs of the stats of the deployments
+// that share GPUs, without those of every instance beside them.
+func (s *Store) ResidencyInputsOf(deploymentIDs []uint, since time.Time) ([]ResidencyInstance, map[string][]ResidencyEvent, error) {
+	if len(deploymentIDs) == 0 {
+		return nil, nil, nil
+	}
+	wanted := map[uint]bool{}
+	for _, id := range deploymentIDs {
+		wanted[id] = true
+	}
+	return s.residencyInputs(since, "deployment_id IN ?", deploymentIDs, func(row InstanceEvent, ev ResidencyEvent) bool { return wanted[row.DeploymentID] })
+}
+
+// residencyInputs is the read behind ResidencyInputs and ResidencyInputsOf:
+// the live instances matching where (an index on its column, with ids as its
+// argument) and the removals that keep says belong to the scope.
+func (s *Store) residencyInputs(since time.Time, where string, ids []uint, keep func(InstanceEvent, ResidencyEvent) bool) ([]ResidencyInstance, map[string][]ResidencyEvent, error) {
 	db := s.reader()
 	firstID, haveWindow, err := s.ResidencyWindowStart(since)
 	if err != nil {
@@ -107,7 +132,7 @@ func (s *Store) ResidencyInputs(nodeIDs []uint, since time.Time) ([]ResidencyIns
 	}
 	var rows []Instance
 	if err := db.Select("ID", "UUID", "DeploymentID", "NodeID", "State", "Phase", "SleepLevel", "GPUIndexes", "CreatedAt", "Headless", "DistGroup", "DistAttempt").
-		Where("node_id IN ?", nodeIDs).Find(&rows).Error; err != nil {
+		Where(where, ids).Find(&rows).Error; err != nil {
 		return nil, nil, err
 	}
 	insts := make([]ResidencyInstance, 0, len(rows))
@@ -130,17 +155,13 @@ func (s *Store) ResidencyInputs(nodeIDs []uint, since time.Time) ([]ResidencyIns
 		if err := residencyRemovedQuery(db, firstID).Find(&removed).Error; err != nil {
 			return nil, nil, err
 		}
-		onPage := map[uint]bool{}
-		for _, id := range nodeIDs {
-			onPage[id] = true
-		}
 		live := map[string]bool{}
 		for _, inst := range insts {
 			live[inst.UUID] = true
 		}
 		for _, row := range removed {
 			ev := decodeResidencyEvent(row)
-			if live[row.InstanceUUID] || !onPage[ev.NodeID] || len(ev.GPUs) == 0 {
+			if live[row.InstanceUUID] || !keep(row, ev) || len(ev.GPUs) == 0 {
 				continue
 			}
 			insts = append(insts, ResidencyInstance{UUID: row.InstanceUUID, DeploymentID: row.DeploymentID, NodeID: ev.NodeID, GPUs: ev.GPUs})

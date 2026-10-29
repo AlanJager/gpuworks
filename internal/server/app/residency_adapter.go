@@ -178,3 +178,17 @@ func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, 
 func (a *residencyAdapter) Drain(id uint, on bool) {
 	a.proxy.SetDraining(id, on)
 }
+
+// wakeHeldBy is the gateway's held requests by deployment, for the scheduling
+// overview's contention.
+func wakeHeldBy(px *proxy.Proxy) func() map[uint]int {
+	return func() map[uint]int {
+		out := map[uint]int{}
+		for _, id := range px.HeldDeployments() {
+			if n, _ := px.HeldRequests(id); n > 0 {
+				out[id] = n
+			}
+		}
+		return out
+	}
+}
