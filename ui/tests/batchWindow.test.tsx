@@ -60,7 +60,6 @@ async function openCreate(user: ReturnType<typeof userEvent.setup>) {
 }
 const submitButton = (dialog: HTMLElement) => within(dialog).getByRole("button", { name: b.create.submit }) as HTMLButtonElement;
 const windowInput = (dialog: HTMLElement) => within(dialog).getByRole("spinbutton", { name: b.create.window.label }) as HTMLInputElement;
-const hint = (hours: number) => b.create.hint.window.replace("{{hours}}", String(hours));
 
 test("the window defaults to 24 hours, which is what is sent", async () => {
   const sent: Array<number | undefined> = [];
@@ -72,7 +71,6 @@ test("the window defaults to 24 hours, which is what is sent", async () => {
   const user = mountPage();
   const dialog = await openCreate(user);
   assert.equal(windowInput(dialog).value, "24");
-  assert.ok(within(dialog).getByText(hint(24)));
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl());
   await user.click(submitButton(dialog));
   await waitFor(() => assert.deepEqual(sent, [24]));
@@ -90,8 +88,6 @@ test("a chosen window is sent in hours and the hint follows it", async () => {
   const input = windowInput(dialog);
   await user.clear(input);
   await user.type(input, "72");
-  assert.ok(await within(dialog).findByText(hint(72)));
-  assert.equal(within(dialog).queryByText(hint(24)), null);
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl());
   await user.click(submitButton(dialog));
   await waitFor(() => assert.deepEqual(sent, [72]));

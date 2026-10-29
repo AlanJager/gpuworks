@@ -193,7 +193,6 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
               <li>{t("create.hint.unique")}</li>
               <li>{t("create.hint.sameUrl")}</li>
               <li>{t("create.hint.noStream")}</li>
-              <li>{t("create.hint.window", { hours: windowValid ? windowHours : BATCH_WINDOW_HOURS.default })}</li>
             </ul>
           }
         />

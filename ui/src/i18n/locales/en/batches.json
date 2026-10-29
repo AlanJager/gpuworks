@@ -140,8 +140,7 @@
       "line": "Each line is one request: {\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}.",
       "unique": "custom_id must be unique within the file.",
       "sameUrl": "All lines use the same url, and it must equal the endpoint you choose.",
-      "noStream": "Streaming requests are not supported.",
-      "window": "The completion window is {{hours}} hours: a batch that has not finished by then expires."
+      "noStream": "Streaming requests are not supported."
     },
     "tooLarge": "The file is larger than {{limit}} MB.",
     "failed": "Could not create the batch",
