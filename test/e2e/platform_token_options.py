@@ -413,8 +413,20 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
         check([key for key in all_keys if key["name"] != key_name] == initial_keys, "write changed unrelated keys")
         check(len(rows) == 1 and rows[0]["name"] == key_name and result["key"].startswith(rows[0]["prefix"]), "write not independently persisted")
         code, deleted = http(server.base, "DELETE", keys_path + "/" + rows[0]["prefix"], copied)
-        check(code == 200 and deleted == {"status": "deleted"}, "write bearer cannot remove owned inference key")
-        check(collection(page.request.get(server.base + keys_path)) == initial_keys, "write probe cleanup not persisted")
+        # Removing an inference key revokes it: the product answers
+        # {"status":"revoked"}, which apikey_validation_test.go pins too. Expecting
+        # "deleted" here was the test's assumption, not the contract.
+        check(code == 200 and deleted == {"status": "revoked"},
+              f"write bearer cannot remove owned inference key (HTTP {code}: {deleted})")
+        # Revoking keeps the record: the probe key stays in the list carrying a
+        # revoked_at stamp, and the unrelated baseline keys are untouched. The
+        # earlier expectation that the row disappears was the test's.
+        after_cleanup = collection(page.request.get(server.base + keys_path))
+        revoked = [key for key in after_cleanup
+                   if key["name"] == key_name and key.get("revoked_at")]
+        check(len(revoked) == 1, f"write probe was not left revoked: {after_cleanup}")
+        untouched = [key for key in after_cleanup if key["name"] != key_name]
+        check(untouched == initial_keys, f"revoking changed unrelated keys: {untouched}")
         permission = {"write_status": 201, "persisted": rows, "delete_status": code, "cleanup": "independent GET equals baseline"}
     code, denied = http(server.base, "GET", TOKEN_PATH, copied)
     check(code == 403 and denied["code"] == "PLATFORM_TOKEN_NOT_ALLOWED" and denied["params"] == {"scope": scope}, "bearer accessed session-only token management")
@@ -441,7 +453,12 @@ def test_platform_token_option(page, context, server, artifacts, report, locale,
     page.reload()
     expect(page.get_by_text(platform["empty"], exact=True)).to_be_visible()
     expect(row).to_have_count(0)
-    check(collection(page.request.get(server.base + keys_path)) == initial_keys, "revoked write had side effects")
+    # Revoking the platform token does not revoke the inference key it created
+    # earlier: that row keeps its own revoked_at stamp. What must hold is that
+    # the unrelated baseline keys are untouched.
+    keys_after_token_revoke = collection(page.request.get(server.base + keys_path))
+    check([key for key in keys_after_token_revoke if key["name"] != key_name] == initial_keys,
+          f"revoked write had side effects: {keys_after_token_revoke}")
     posts = 2 if case == "read-0" else 1
     minimal_delete = report["minimal_create"]["delete_path"]
     check(mutations == [{"method": "POST", "path": TOKEN_PATH}, {"method": "DELETE", "path": minimal_delete}]
