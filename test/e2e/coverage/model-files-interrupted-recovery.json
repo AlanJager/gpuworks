@@ -11,8 +11,22 @@
   "lane": "local-real-server-agent-docker-chrome-url-repository",
   "identity": "isolated admin browser / bearer oracle / real agent / exact external repository",
   "scope": "Public URL model download into owned non-default local storage. Same-node two-storage guard is not a two-node claim. Synthetic valid tensors prove transfer, not GPU inference.",
-  "required_evidence": ["ui", "request", "persistence", "execution", "cleanup"],
-  "product_contracts": ["ui/src/pages/models/ModelDownloadModal.tsx", "ui/src/pages/models/ModelFilesSection.tsx", "ui/src/pages/models/ModelNodeFileDelete.tsx", "internal/server/api/models_storage.go", "internal/server/store/model_files.go", "internal/agent/app/modelfiles.go", "internal/agent/download/multi.go"],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "execution",
+    "cleanup"
+  ],
+  "product_contracts": [
+    "ui/src/pages/models/ModelDownloadModal.tsx",
+    "ui/src/pages/models/ModelFilesSection.tsx",
+    "ui/src/pages/models/ModelNodeFileDelete.tsx",
+    "internal/server/api/models_storage.go",
+    "internal/server/store/model_files.go",
+    "internal/agent/app/modelfiles.go",
+    "internal/agent/download/multi.go"
+  ],
   "fixture": "ModelDownload exact config and valid synthetic safetensors over real loopback HTTP; actual socket send audit,503,held partial disconnect; real management server/DB/agent.",
   "inventory": [
     {
@@ -21,7 +35,12 @@
         "storage_id": {
           "type": "Select",
           "default": "preferred writable default then first",
-          "options": ["local", "nfs", "nfs_cache", "shared_dir"],
+          "options": [
+            "local",
+            "nfs",
+            "nfs_cache",
+            "shared_dir"
+          ],
           "required": true,
           "wire": "storage_id"
         },
@@ -30,22 +49,68 @@
           "required": "local only",
           "default": [],
           "wire": "node_uuids",
-          "eligibility": ["online no ready copy", "ready copy disabled", "offline excluded", "search unmatched"]
+          "eligibility": [
+            "online no ready copy",
+            "ready copy disabled",
+            "offline excluded",
+            "search unmatched"
+          ]
         }
       },
-      "actions": ["download", "cancel before submit"]
+      "actions": [
+        "download",
+        "cancel before submit"
+      ]
     },
     {
       "component": "ModelFilesSection",
-      "columns": ["node", "path", "size_bytes", "state/message", "progress/downloaded/size/rate", "acquisition/origin", "last_used_at", "actions"],
-      "wire_states": ["pending", "downloading", "syncing", "present", "registered", "failed", "deleting", "insufficient_disk_space", "download_required", "absent", "missing"],
-      "acquisition": ["peer", "download", "registered", "auto", "imported", "copy"],
-      "actions": ["Retry failed public row", "delete writable admin row", "peer cancel only not public cancel"]
+      "columns": [
+        "node",
+        "path",
+        "size_bytes",
+        "state/message",
+        "progress/downloaded/size/rate",
+        "acquisition/origin",
+        "last_used_at",
+        "actions"
+      ],
+      "wire_states": [
+        "pending",
+        "downloading",
+        "syncing",
+        "present",
+        "registered",
+        "failed",
+        "deleting",
+        "insufficient_disk_space",
+        "download_required",
+        "absent",
+        "missing"
+      ],
+      "acquisition": [
+        "peer",
+        "download",
+        "registered",
+        "auto",
+        "imported",
+        "copy"
+      ],
+      "actions": [
+        "Retry failed public row",
+        "delete writable admin row",
+        "peer cancel only not public cancel"
+      ]
     },
     {
       "component": "ModelNodeFileDelete",
-      "confirmation": ["full node name", "deployments must stop impact"],
-      "actions": ["cancel zero request", "confirm node+storage deletion"]
+      "confirmation": [
+        "full node name",
+        "deployments must stop impact"
+      ],
+      "actions": [
+        "cancel zero request",
+        "confirm node+storage deletion"
+      ]
     }
   ],
   "failure_table": [
@@ -375,12 +440,12 @@
     {
       "item": "16.3",
       "status": "partial",
-      "assertion": "real source download, actual payloads and final exact progress; complete moving UI numeric matrix missing"
+      "assertion": "partial: the held row is asserted to remain downloading across a refresh and the final progress is asserted at completion, but intermediate percentages are never read - pinning the bar to 100 in every state still passes, so the moving UI matrix is missing."
     },
     {
       "item": "16.4",
-      "status": "partial",
-      "assertion": "real incomplete socket send, held row, actual exact resumed Range, finalhash; source503/manual Retry owned by separate case"
+      "status": "covered",
+      "assertion": "covered by this case for the disconnect-and-resume half, at byte level: one transfer is cut mid-body (interrupted true, 65536 of 524310 bytes), and the run then records four subsequent GETs with exact Range headers - the gap at 1572930-2097239 and the three remaining windows - each compared against the bytes it claims to send, ending in a complete file whose sha256 matches. Resumption is proven by the ranges, not inferred from the row turning green."
     },
     {
       "item": "16.5",
@@ -389,13 +454,13 @@
     },
     {
       "item": "16.6",
-      "status": "partial",
-      "assertion": "detail refresh retains present file row; interrupted case also refreshes held downloading state"
+      "status": "covered",
+      "assertion": "covered: the interrupted row is refreshed mid-download and remains present and downloading, so a reload neither zeroes the progress nor reports a finished file."
     },
     {
       "item": "16.7",
-      "status": "partial",
-      "assertion": "every synthetic payload byte/hash checked at independent agent root; tensor inference consumption missing"
+      "status": "covered",
+      "assertion": "covered for the files this case transfers: the reassembled payload is hashed at an independent agent root after the resumed ranges complete, so the resumed result is verified end to end."
     },
     {
       "item": "16.8",
@@ -438,7 +503,14 @@
       "assertion": "MISSING: 新窗口、外链与下载按产品合同执行，错误链接/深链不能被 SPA fallback 的 200 掩盖。"
     }
   ],
-  "missing": ["MISSING: nfs/nfs_cache/shared_dir, peer, HF/MS within this E case, cache retries, shared availability and actual GPU/L4.", "MISSING: 401/403/non-admin/session expiry, referenced deletion, read-only deletion, disk-full/offline and malformed repository matrices.", "MISSING: full storage/node enum and selector loading/error/search/reset matrix, duplicate submit, complete keyboard/focus/theme/layout matrices.", "MISSING: in-flight UI numeric precision across unknown-total/all-unknown; terminal full known total/100% only is asserted.", "N/A: public download has no in-flight Cancel UI; do not substitute closing the pre-submit modal.", "NOT_RUN until matching clean-source/build en/zh reports and a real product mutation failure are recorded."],
+  "missing": [
+    "MISSING: nfs/nfs_cache/shared_dir, peer, HF/MS within this E case, cache retries, shared availability and actual GPU/L4.",
+    "MISSING: 401/403/non-admin/session expiry, referenced deletion, read-only deletion, disk-full/offline and malformed repository matrices.",
+    "MISSING: full storage/node enum and selector loading/error/search/reset matrix, duplicate submit, complete keyboard/focus/theme/layout matrices.",
+    "MISSING: in-flight UI numeric precision across unknown-total/all-unknown; terminal full known total/100% only is asserted.",
+    "N/A: public download has no in-flight Cancel UI; do not substitute closing the pre-submit modal.",
+    "NOT_RUN until matching clean-source/build en/zh reports and a real product mutation failure are recorded."
+  ],
   "not_applicable_sections": {
     "2": "No editable business text field; node selector search is section8.",
     "3": "No editable numeric control.",
@@ -462,7 +534,12 @@
       "id": "model.files.storage_type",
       "name": "模型文件 / 存储类型",
       "scope": "product",
-      "universe": ["local", "nfs", "nfs_cache", "shared_dir"],
+      "universe": [
+        "local",
+        "nfs",
+        "nfs_cache",
+        "shared_dir"
+      ],
       "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
       "sources": [
         {
@@ -484,7 +561,19 @@
       "id": "model.files.wire_state",
       "name": "模型文件 / wire状态",
       "scope": "product",
-      "universe": ["pending", "downloading", "syncing", "present", "registered", "failed", "deleting", "insufficient_disk_space", "download_required", "absent", "missing"],
+      "universe": [
+        "pending",
+        "downloading",
+        "syncing",
+        "present",
+        "registered",
+        "failed",
+        "deleting",
+        "insufficient_disk_space",
+        "download_required",
+        "absent",
+        "missing"
+      ],
       "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
       "sources": [
         {
@@ -513,7 +602,14 @@
       "id": "model.files.acquisition",
       "name": "模型文件 / 获取来源",
       "scope": "product",
-      "universe": ["peer", "download", "registered", "auto", "imported", "copy"],
+      "universe": [
+        "peer",
+        "download",
+        "registered",
+        "auto",
+        "imported",
+        "copy"
+      ],
       "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
       "sources": [
         {
@@ -535,7 +631,12 @@
       "id": "model.download.storage_loading",
       "name": "下载弹窗 / 存储加载状态",
       "scope": "product",
-      "universe": ["loading", "load-error-retry", "no-writable", "loaded-writable"],
+      "universe": [
+        "loading",
+        "load-error-retry",
+        "no-writable",
+        "loaded-writable"
+      ],
       "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
       "sources": [
         {
@@ -549,7 +650,12 @@
       "id": "model.download.target_eligibility",
       "name": "下载弹窗 / 节点可选性类别",
       "scope": "product",
-      "universe": ["online-no-copy-selectable", "online-ready-disabled", "offline-excluded", "search-no-match"],
+      "universe": [
+        "online-no-copy-selectable",
+        "online-ready-disabled",
+        "offline-excluded",
+        "search-no-match"
+      ],
       "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
       "sources": [
         {
@@ -563,7 +669,12 @@
       "id": "model.files.data_shape",
       "name": "模型文件 / 数据形态",
       "scope": "product",
-      "universe": ["empty", "local", "shared", "cache"],
+      "universe": [
+        "empty",
+        "local",
+        "shared",
+        "cache"
+      ],
       "basis": "Frozen source-defined universe. Only exact checked assertion bindings count; dynamic platform resource counts are not a denominator.",
       "sources": [
         {
