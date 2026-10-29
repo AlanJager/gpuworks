@@ -8,6 +8,7 @@
 | PPU / HGGC | ppu-smi | Depends on provider/runtime | HGGC GPU memory and weighted QoS | Sustained 20/80 workloads have demonstrated throughput weighting under load, not hard SM partitioning |
 | Hygon / DTK | hy-smi | Determined by the catalog spec and runtime | Native Z100 / K100_AI / BW vdev (experimental, x86_64, Docker or runveil/udocker) | Requires the optional native helper, host libraries and a per-GPU behavioral probe; other models remain full-GPU only |
 | Apple / Metal | sysctl, ioreg (macOS 15+, Apple silicon) | host (the engine is a host process; the image is a darwin environment package) | None; a Mac runs multiple instances concurrently using unified memory | One unified-memory card; GPU memory is the Metal working set; engine sleep, multi-node operation, and the KV disk tier are unsupported; see [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
+| Kunlunxin / XRE | xpu-smi XML, PCI/sysfs device identity | Linux amd64, Docker, P800 PCIe / KL3, whole-card TP | Unsupported | Single-card and single-node TP; cross-node TP not enabled; no PP, engine DP, PD or sleep; explicit image/model catalog specs |
 
 The dGPU capability status in the table above is derived from the server's partition capability assessment:
 
@@ -77,7 +78,7 @@ Under a host lock, the helper creates a vdev and saves a configuration snapshot 
 ## GPU Models and Architectures
 
 When the server receives a node report, it normalizes model names before storing them (`accelerator.NormalizeGPUName`): it removes a leading vendor word
-(`NVIDIA`, `Ascend`, `Huawei`, `Hygon`, `AMD`, or `Apple`, followed by whitespace), trims leading and trailing whitespace, and collapses internal whitespace.
+(`NVIDIA`, `Ascend`, `Huawei`, `Hygon`, `AMD`, `Apple`, or `Kunlunxin`, followed by whitespace), trims leading and trailing whitespace, and collapses internal whitespace.
 Both `NVIDIA GeForce RTX 4090` and `GeForce RTX 4090` are stored as `GeForce RTX 4090`; `Ascend 910B4` is stored as `910B4`.
 The inference catalog's name predicates, PD's same-model check, and the GPU list all read this value. The original name is retained only on the agent side (`doctor`, logs).
 Existing benchmark snapshots retain the names recorded at the time.
@@ -94,5 +95,14 @@ and are not stored in the database. The server does not read the `arch_family` f
 | PPU | `ZW810E` (from the name) | `beethoven` (the architecture column in `ppu-smi`) |
 | AMD | KFD `gfx_target_version`, e.g. `gfx90a`, `gfx942`, `gfx1151`; empty when unavailable | Not derived yet |
 | Apple | SoC name: `M1 Max`, `M4 Pro` (the model from `ioreg` with `Apple` removed) | Chip generation `m1`…`m6` |
+| Kunlunxin | `kl3` (native product_architecture, lowercased) | `kl3` |
 
 When the agent detects no accelerator cards (none of the vendor CLIs respond or are installed, and no vendor device files exist), the node's vendor is empty; it no longer reports NVIDIA by default.
+
+Kunlunxin uses vendor `kunlunxin` and framework `xre`; CUDA compatibility versions are neither CUDA identity nor XRE versions. `internal/accelerator` owns capabilities, evaluated against candidate and selected cards. P800 supports whole-card TP, but not PP, engine DP, PD, partitions or sleep. It requires Linux amd64 and Docker. Incompatible cards produce structured placement refusals without preventing other candidates from being tried.
+
+A card with invalid identity or ECC information becomes unschedulable without losing its peers; PCI inventory supplies missing cards. Runtime injection freshly verifies UUID, PCI BDF, minor and sysfs character-device numbers, automatically exposing only the selected `/dev/xpuN` and `/dev/xpuctrl`. The common process inventory reports compute occupancy; zero memory use is not proof of availability.
+
+Single-node device injection does not require XDR or RDMA. Cross-node requests currently produce an unsupported placement refusal.
+
+Container options follow the common administrator template contract. Scheduled device injection is not a security sandbox for arbitrary privileged options, images or host mounts. The agent does not set `XPU_VISIBLE_DEVICES`; the image entrypoint must respect its own container-logical indexing contract. Import suitable image and model specs explicitly; see [Kunlun P800 deployment](../how-to/kunlun-p800.md).

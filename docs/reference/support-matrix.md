@@ -8,6 +8,7 @@
 | PPU / HGGC | ppu-smi | provider/runtime 依赖 | HGGC 显存与加权 QoS | 20/80 长负载已证明繁忙时吞吐权重，不是硬 SM 分区 |
 | 海光 / DTK | hy-smi | 由目录 spec 和 runtime 决定 | Z100 / K100_AI / BW 原生 vdev（实验性，x86_64，Docker 或 runveil/udocker） | 需可选原生 helper、宿主库和逐卡行为探针；其他型号仍只支持整卡 |
 | Apple / Metal | sysctl、ioreg（macOS 15+，Apple silicon） | host（引擎为宿主机进程，镜像是 darwin 环境包） | 无；一台 Mac 按统一内存同时跑多个实例 | 1 张统一内存卡，显存为 Metal 工作集；不支持引擎休眠、多机、KV 磁盘层；见 [ADR 0044](../adr/0044-mac-engines-as-host-processes.md) |
+| 昆仑芯 / XRE | xpu-smi XML、PCI/sysfs 设备身份 | Linux amd64、Docker、P800 PCIe / KL3、整卡 TP | 不支持 | 单卡、单机 TP；当前不开放跨节点 TP；不开放 PP、引擎 DP、PD、sleep；镜像和模型使用显式目录 spec |
 
 上表的 dGPU 能力状态由 server 的 partition capability（分区能力判定）推导：
 
@@ -76,7 +77,7 @@ helper 在宿主锁下创建 vdev，并保存配置快照和归属令牌，阻�
 ## GPU 型号与架构
 
 server 收到节点上报时把型号名规范化后再存（`accelerator.NormalizeGPUName`）：去掉开头的厂商词
-（`NVIDIA`、`Ascend`、`Huawei`、`Hygon`、`AMD`、`Apple`，后面须跟空白），首尾空白去掉、中间空白合并。
+（`NVIDIA`、`Ascend`、`Huawei`、`Hygon`、`AMD`、`Apple`、`Kunlunxin`，后面须跟空白），首尾空白去掉、中间空白合并。
 `NVIDIA GeForce RTX 4090` 与 `GeForce RTX 4090` 都存为 `GeForce RTX 4090`，`Ascend 910B4` 存为 `910B4`。
 推理目录的名字谓词、PD 的同型号检查、GPU 列表读的都是这个值；原始名字只留在 agent 侧（`doctor`、日志）。
 已有的 benchmark 快照保留当时的名字。
@@ -93,5 +94,16 @@ server 收到节点上报时把型号名规范化后再存（`accelerator.Normal
 | PPU | `ZW810E`（取自名字） | `beethoven`（`ppu-smi` architecture 列） |
 | AMD | KFD `gfx_target_version`，如 `gfx90a`、`gfx942`、`gfx1151`；缺失时为空 | 暂不推导 |
 | Apple | SoC 名：`M1 Max`、`M4 Pro`（`ioreg` 的 model 去掉 `Apple`） | 芯片代际 `m1`…`m6` |
+| 昆仑芯 | `kl3`（原生探测的 product_architecture 转小写） | `kl3` |
 
 agent 探测不到任何加速卡（各厂商 CLI 都不应答、都没装、也没有厂商设备文件）时节点厂商为空，不再按 NVIDIA 上报。
+
+昆仑芯使用 `kunlunxin` 厂商与 `xre` framework；CUDA 兼容版本不作为 CUDA 身份或 XRE 版本。
+能力由 `internal/accelerator` 统一声明，按候选卡及所选卡判断。P800 支持整卡 TP，不开放 PP、引擎 DP、PD、分区或 sleep；所需宿主为 Linux amd64 和 Docker。不兼容的卡返回结构化放置拒绝，不阻止继续尝试其他候选。
+
+原生 XML 中单卡身份或 ECC 异常只使该卡不可调度，其他卡继续上报；缺失卡由 PCI 清单补充。设备注入重新查询并核对 UUID、PCI BDF、minor 与 sysfs 字符设备号，只自动注入所选 `/dev/xpuN` 和 `/dev/xpuctrl`。计算进程占用通过公共清单上报，显存为零不代表空闲。
+
+单机设备接入不要求 XDR 或 RDMA。当前只开放单节点，跨节点请求返回不支持的放置理由。
+
+容器参数遵循公共管理员模板契约；平台选卡注入不是对任意特权参数、镜像或宿主挂载的安全沙箱。
+agent 不设置 `XPU_VISIBLE_DEVICES`，镜像入口须遵循自己的容器逻辑编号契约。镜像和模型需显式导入适配的目录 spec，详见 [昆仑 P800 部署](../how-to/kunlun-p800.md)。
