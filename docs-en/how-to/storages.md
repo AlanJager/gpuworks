@@ -186,6 +186,7 @@ Administrators can browse the entire storage in its details, download any file o
 ## Disable Storage
 
 You can disable any storage. Disabled means read-only: model files can no longer be downloaded, copied into it, or deleted, including downloads triggered by deployment. Existing model files can still be deployed as usual.
+For **NFS with local cache**, disabling protects the NFS model library. Node caches can still be filled, cleared, and trimmed according to their capacity policy. This also applies to manually disabled storage; caches that are in use, being transferred, or lack an NFS source copy remain protected.
 Images are not stored in storage; they reside in each node's container runtime. Disabling storage does not affect image synchronization.
 
 ## Notes

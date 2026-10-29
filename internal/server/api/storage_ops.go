@@ -295,10 +295,6 @@ func (a *apiHandlers) clearStorageCache(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	only := strings.TrimSpace(r.URL.Query().Get("node_uuid"))
-	if !row.Enabled {
-		writeStoreErr(w, store.ErrStorageDisabled)
-		return
-	}
 	if a.d.CallNode == nil {
 		writeProductError(w, http.StatusServiceUnavailable, ErrorNodeRPCUnavailable, "node RPC is not configured", nil)
 		return

@@ -82,7 +82,7 @@ func (a *apiHandlers) fillStorageCaches(out *dto.Storage, storage *store.Storage
 		}
 		needsCleanup, refusal := store.CacheBudgetStatus(in)
 		switch {
-		case !applies || !storage.Enabled:
+		case !applies:
 			cache.State, cache.Reason = "unavailable", "storage_unavailable"
 		case status.State == "offline":
 			cache.State, cache.Reason = "offline", "node_offline"
