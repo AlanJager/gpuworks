@@ -485,40 +485,35 @@ test("a failed URL row keeps the URL action instead of offering a retry label", 
   );
 });
 
-// A row that holds the image is done. The bytes a cancelled attempt left behind
-// must not be drawn as a percentage of the image: that invents a download that
-// is not running.
-test("a present row shows full progress, not the last attempt's bytes", async () => {
-  const version = catalogVersion({
-    registry_sources: [ARCHIVE_URL],
-    nodes: [
-      {
-        node_uuid: "node-1",
-        node_name: "gpu-1",
-        node_state: "online",
-        state: "present",
-        source: "url",
-        size_bytes: 9_448_928_256,
-        transferred_bytes: 521_666_560,
-      },
-    ],
-  }) as never as Record<string, unknown>;
-  render(wrap(React.createElement(ImageNodeTable, {
-    selectedVersion: version as never,
-    inspecting: null,
-    availablePeer: () => false,
-    modeFor: () => ARCHIVE_URL,
-    setMode: () => {},
-    pullVersion: () => {},
-    pullFromURL: async () => {},
-    inspectVersion: () => {},
-    cancelTransfer: () => {},
-    removeFromNode: () => {},
-  })));
-  const bar = await screen.findByRole("progressbar");
-  assert.equal(bar.getAttribute("aria-valuenow"), "100");
-  await screen.findByText(`8.8 GiB / 8.8 GiB`);
-});
+for (const state of ["present", "absent", "failed"]) {
+  test(`a ${state} row has no transfer progress or stale byte counts`, async () => {
+    const version = catalogVersion({ nodes: [{ node_uuid: "node-1", node_name: "gpu-1", node_state: "online", state,
+      size_bytes: 0, transferred_bytes: 521_666_560, rate_bps: 1_048_576 }] });
+    render(wrap(React.createElement(ImageNodeTable, {
+      selectedVersion: version, inspecting: null, availablePeer: () => false,
+      modeFor: () => "auto", setMode: () => {}, pullVersion: () => {},
+      pullFromURL: async () => {}, inspectVersion: () => {}, cancelTransfer: () => {}, removeFromNode: () => {},
+    })));
+    assert.ok(!screen.queryByRole("progressbar"), "an idle row must not show transfer progress");
+    assert.ok(!screen.queryByText(/0 B \/ 0 B|497\.5 MiB|1\.0 MiB\/s/), "an idle row must not show stale transfer bytes or speed");
+  });
+}
+
+for (const state of ["pulling", "syncing"]) {
+  for (const total of [0, 1_048_576]) {
+    test(`a ${state} row retains live progress with ${total ? "known" : "unknown"} total`, async () => {
+      const version = catalogVersion({ nodes: [{ node_uuid: "node-1", node_name: "gpu-1", node_state: "online", state,
+        size_bytes: total, transferred_bytes: 524_288, rate_bps: 1_048_576 }] });
+      render(wrap(React.createElement(ImageNodeTable, {
+        selectedVersion: version, inspecting: null, availablePeer: () => false,
+        modeFor: () => "auto", setMode: () => {}, pullVersion: () => {},
+        pullFromURL: async () => {}, inspectVersion: () => {}, cancelTransfer: () => {}, removeFromNode: () => {},
+      })));
+      assert.equal(screen.getByRole("progressbar").getAttribute("aria-valuenow"), total ? "50" : "0");
+      assert.ok(screen.getByText(total ? "512 KiB / 1.0 MiB · 1.0 MiB/s" : "512 KiB · 1.0 MiB/s"));
+    });
+  }
+}
 
 test("polling speeds up only while something is moving", () => {
   const idle = catalogVersion({ nodes: [{ node_uuid: "node-1", node_name: "gpu-1", node_state: "online", state: "present" }] }) as never;
