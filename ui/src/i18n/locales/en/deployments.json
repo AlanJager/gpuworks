@@ -391,7 +391,7 @@
       "STORAGE_RECOVERED": "Storage {{storage}} is available again on {{node}}",
       "AUTO_SLEEP": "Put to sleep (L{{level}}) {{cause}}",
       "AUTO_WAKE": "Woke instance {{instances}} {{cause}}",
-      "AUTO_SCALE": "Replicas set to {{replicas}} {{cause}}",
+      "AUTO_SCALE": "Replicas set to {{replicas}}{{roleNote}} {{cause}}",
       "WAKE_WAITING": "Wake of instance {{instances}} waits for room{{yielded}}",
       "WAKE_WAIT_TIMEOUT": "Stopped waiting for room to wake instance {{instances}} after {{waited}}",
       "SCHEDULE_ACTION_FAILED": "Scheduled {{action}} failed: {{reason}}",
@@ -762,7 +762,7 @@
       "deleteConfirm": "Delete this scheduled order?",
       "deleted": "Scheduled order deleted",
       "empty": "No scheduled orders.",
-      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node ones (not PD).",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node or PD ones.",
       "loadFailed": "Failed to load the schedule: {{detail}}",
       "saveFailed": "Failed to save the order: {{detail}}",
       "deleteFailed": "Failed to delete the order: {{detail}}",
@@ -782,7 +782,8 @@
       "actionText": {
         "sleep": "Sleep (L{{level}})",
         "wake": "Wake",
-        "replicas": "Set replicas to {{count}}"
+        "replicas": "Set replicas to {{count}}",
+        "roleReplicas": "Set {{role}} replicas to {{count}}"
       },
       "actionName": {
         "sleep": "Sleep",
@@ -796,12 +797,14 @@
         "timezone": "Time zone",
         "sleep_level": "Sleep level",
         "replicas": "Replicas",
+        "role": "Role",
         "enabled": "Enabled"
       },
+      "roleHint": "A PD deployment scales each role with its own count; the order sets the count of the role you pick.",
       "errors": {
         "weekdays": "Pick at least one day.",
         "time": "Enter the time as HH:MM.",
-        "replicas": "Replicas must be between 1 and {{maximum}}."
+        "replicas": "Replicas must be between {{minimum}} and {{maximum}}."
       },
       "weekday": {
         "0": "Sun",

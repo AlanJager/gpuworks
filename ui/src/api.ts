@@ -1059,6 +1059,7 @@ export interface BoardUpcoming {
   action: ScheduleAction;
   sleep_level?: number;
   replicas?: number;
+  role?: string;
   at: string;
 }
 
@@ -1911,7 +1912,10 @@ export interface LifecycleSchedule {
   time: string;
   timezone: string;
   sleep_level?: 1 | 2;
+  // replicas is stated for a replicas order (0 included, for a PD role the mode
+  // lets be empty); role is the PD role it scales, absent otherwise.
   replicas?: number;
+  role?: string;
   enabled: boolean;
   next_at?: string;
 }
@@ -1923,6 +1927,9 @@ export interface LifecycleScheduleRequest {
   timezone: string;
   sleep_level?: 1 | 2;
   replicas?: number;
+  // role names the PD role a replicas order scales: required for a PD
+  // deployment, refused for any other.
+  role?: string;
   enabled?: boolean;
 }
 

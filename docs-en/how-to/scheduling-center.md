@@ -7,7 +7,7 @@ This guide explains how to have the platform carry out sleep, wake, and replica-
 **Prerequisites**:
 
 - Scheduled sleep, scheduled wake, and idle sleep require the deployment to be **sleep capable** (vLLM, enabled at creation); see [Sleep and Wake Operations](sleep-wake.md) for the conditions.
-- A scheduled replica count applies to single-node deployments and to multi-node deployments placed automatically (`placement_mode` `auto`); PD deployments and multi-node deployments placed by hand are not supported.
+- A scheduled replica count applies to single-node deployments and to multi-node and PD deployments placed automatically (`placement_mode` `auto`; a PD deployment is scheduled one role at a time); multi-node and PD deployments placed by hand are not supported.
 - Service levels other than resident apply only to sleep-capable single-node deployments.
 - The scheduling center does not scale by load. The platform makes one deployment give up its cards for another only when service levels allow it; see [Service levels](#服务等级与按需唤醒).
 
@@ -72,7 +72,7 @@ The real `free_bytes` and the other sizes are integer bytes, and the values abov
 
 Each deployment can have any number of entries, each of which is “do an action at a time on certain weekdays”. In the **Scheduling policy** card in deployment details, click **Edit** and add them on the **Schedule** tab:
 
-1. Choose the action: **Sleep** (pick L1 or L2), **Wake**, or **Replica count** (1–32, single-node deployments and automatically placed multi-node ones only).
+1. Choose the action: **Sleep** (pick L1 or L2), **Wake**, or **Replica count** (1–32, single-node deployments and automatically placed multi-node and PD ones only; a PD deployment also asks for a **role**, see below).
 2. Tick the weekdays and enter the time (HH:MM).
 3. The time zone defaults to the server's own; each entry can use a different IANA time zone (such as `Asia/Shanghai`).
 4. Save. You can disable, edit, or delete an entry at any time; the list shows the next run time.
@@ -106,7 +106,7 @@ Creating returns 201 and the entry:
 | `PUT /deployments/{id}/schedule/{sid}` | Replace an entry, 200; the body is the same as for creating |
 | `DELETE /deployments/{id}/schedule/{sid}` | Delete, 204 |
 
-Request fields: `action` (`sleep` / `wake` / `replicas`), `weekdays` (0 for Sunday through 6 for Saturday, at least one, no repeats), `time` (`HH:MM`), `timezone` (an empty string uses the server's time zone), `sleep_level` (only for `sleep`, required), `replicas` (only for `replicas`, required), and `enabled` (default true).
+Request fields: `action` (`sleep` / `wake` / `replicas`), `weekdays` (0 for Sunday through 6 for Saturday, at least one, no repeats), `time` (`HH:MM`), `timezone` (an empty string uses the server's time zone), `sleep_level` (only for `sleep`, required), `replicas` (only for `replicas`, required), `role` (only for `replicas`: required for a PD deployment, refused for any other), and `enabled` (default true).
 
 ### What Happens When an Occurrence Is Due
 
@@ -122,13 +122,15 @@ Request fields: `action` (`sleep` / `wake` / `replicas`), `weekdays` (0 for Sund
 
 | Case | Response |
 |---|---|
-| Missing fields, weekdays out of range or repeated, a bad time format, `sleep` without a level, `replicas` outside 1–32 | 400 `SCHEDULE_INVALID`; `params.field` and `params.reason` say what is wrong |
+| Missing fields, weekdays out of range or repeated, a bad time format, `sleep` without a level, `replicas` out of range (1–32; 0–32 for a PD role the mode lets be empty) | 400 `SCHEDULE_INVALID`; `params.field` and `params.reason` say what is wrong |
+| A `replicas` entry of a PD deployment with no `role` or a role its mode does not have; a `role` on a deployment that is not PD; a `role` on a `sleep` or `wake` entry | 400 `SCHEDULE_INVALID` with `params.field` `role` (for a PD deployment `params.roles` lists the roles to choose from) |
 | The server does not know the time zone | 400 `SCHEDULE_TIMEZONE_UNKNOWN`, `params.timezone` |
-| A replica count for a PD deployment | 400 `SCHEDULE_REPLICAS_SHAPE` |
-| A replica count for a multi-node deployment placed by hand | 400 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` |
+| A replica count for a multi-node or PD deployment placed by hand | 400 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` |
 | The deployment is not sleep capable or the engine cannot sleep (`sleep` and `wake` actions) | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
 
-**A scheduled replica count for a multi-node deployment** takes the same path as the "grow or shrink by count" of `PUT /api/v1/deployments/{id}/replicas`: when growing, the server picks nodes for the new replicas by the placement strategy (the rules of [how nodes are picked at creation](multi-node-inference.md#创建时怎样挑节点)); when shrinking, the replicas added last go. If nothing fits, the `reason_code` of `SCHEDULE_ACTION_FAILED` is `UNIT_PLACEMENT_NONE`. A PD deployment has a count per role (`PUT /api/v1/deployments/{id}/pd`), which one number cannot express, so it is not supported; a multi-node deployment placed by hand lists the nodes of every replica, so someone has to name the nodes of an added replica, and it is not supported either.
+**A scheduled replica count for a multi-node deployment** takes the same path as the "grow or shrink by count" of `PUT /api/v1/deployments/{id}/replicas`: when growing, the server picks nodes for the new replicas by the placement strategy (the rules of [how nodes are picked at creation](multi-node-inference.md#创建时怎样挑节点)); when shrinking, the replicas added last go. If nothing fits, the `reason_code` of `SCHEDULE_ACTION_FAILED` is `UNIT_PLACEMENT_NONE`. A multi-node deployment placed by hand lists the nodes of every replica, so someone has to name the nodes of an added replica, and it is not supported.
+
+**A scheduled replica count for a PD deployment is set per role**: the entry's `role` is a role of its mode (such as `prefill` or `decode`) and `replicas` is the number of instances of that role; the other role is left alone. When due it takes the same path as `PUT /api/v1/deployments/{id}/pd`: when growing, the server picks nodes for the new units beside the placed ones (as when an automatically placed PD deployment is created); when shrinking, the units added last go. If nothing fits, the `reason_code` of `SCHEDULE_ACTION_FAILED` is `UNIT_PLACEMENT_NONE`; any other failure (say, the role's units span several nodes while a new unit gets one) keeps the PD update's own error code and `reason`. A role's minimum holds as well: a role the mode lets be empty (`prefill` in `vllm-nixl`) may be scheduled to 0, every other role needs at least 1, so a number below the minimum is refused when the entry is created; `decode` at 0 returns 400. A deployment placed by hand is refused likewise (`SCHEDULE_REPLICAS_MANUAL_PLACEMENT`).
 
 If a deployment is switched to manual placement after its schedule was written, the entry fails when it is due: the timeline records `SCHEDULE_ACTION_FAILED` (`reason_code` `SCHEDULE_REPLICAS_MANUAL_PLACEMENT`) and the entry itself stays, so it runs as usual at the next occurrence after the deployment goes back to automatic placement.
 
@@ -229,10 +231,10 @@ Automatic actions are written to the deployment timeline (event kind `automation
 |---|---|---|
 | `AUTO_SLEEP` | A schedule, idle sleep, or yielding cards put the deployment to sleep | `trigger` (`schedule` / `idle` / `preempt`), `schedule_id`, `scheduled_at`, `level`, `idle_sec`; when yielding cards also `reason` (`idle` idle for the full time / `rank` the other has a higher level / `turn` it is the other shared deployment's turn), `for_deployment` (the deployment it yields for), `abort` (whether in-flight requests were interrupted), `instances` |
 | `AUTO_WAKE` | A schedule, a waiting wake, a request, or a resume woke instances | `trigger` (`schedule` / `wake_waiting` / `request` a request is waiting / `resume` taking cards back after yielding), `schedule_id`, `instances` |
-| `AUTO_SCALE` | A schedule changed the replica count | `trigger`, `schedule_id`, `replicas` |
+| `AUTO_SCALE` | A schedule changed the replica count | `trigger`, `schedule_id`, `replicas`, `role` (PD) |
 | `WAKE_WAITING` | A wake did not fit and now waits for room | `trigger` (`schedule` / `operator`), `instances`, `yielded` |
 | `WAKE_WAIT_TIMEOUT` | The wait ended after 30 minutes | `trigger`, `instances`, `waited_sec` |
-| `SCHEDULE_ACTION_FAILED` | An automatic action did not succeed and is not retried | `trigger`, `action`, `reason`, `reason_code`, `schedule_id`, `level`, `replicas` |
+| `SCHEDULE_ACTION_FAILED` | An automatic action did not succeed and is not retried | `trigger`, `action`, `reason`, `reason_code`, `schedule_id`, `level`, `replicas`, `role` (PD) |
 | `YIELDED_FOR_WAKE` | Recorded on the deployment put to sleep to make room: for whom, and to which level | `deployment`, `instances`, `level` |
 
 An order an operator gives through the API is also written to the deployment timeline (event kind `schedule`) with `actor` (the user name):
@@ -252,5 +254,5 @@ For the events of node-loss rescheduling after a node is lost and of drain moves
 - Cards are yielded only when service levels allow it: a resident deployment never sleeps for anyone else; a yielding wake still happens only when an operator names it and the occupant can sleep.
 - No load-based scaling: the replica count changes only when a schedule entry is due.
 - Service levels apply only to single-node deployments; when a new deployment starts and the cards are held by an awake lower-level deployment, the platform does not yield cards for the start, and the deployment waits as one that does not fit.
-- A scheduled replica count applies only to single-node deployments and automatically placed multi-node ones, not to PD or multi-node deployments placed by hand.
+- A scheduled replica count applies only to single-node deployments and automatically placed multi-node and PD ones, not to multi-node or PD deployments placed by hand; a PD entry changes one role, so changing both takes two entries.
 - The evaluator runs inside the server process; nothing happens automatically while the server is down, and after it recovers only the newest entry within 12 hours is made up.

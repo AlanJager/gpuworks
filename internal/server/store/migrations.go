@@ -1287,6 +1287,7 @@ var migrations = []migration{
 	{Version: 182, Name: "lifecycle_schedules", Apply: createLifecycleSchedules},
 	{Version: 183, Name: "instance_event_kind_index", Apply: indexInstanceEventKind},
 	{Version: 184, Name: "deployment_service_level", Apply: addDeploymentServiceLevel},
+	{Version: 186, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

@@ -125,6 +125,9 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		return nil, false
 	}
 	row := &store.LifecycleSchedule{DeploymentID: dep.ID, Action: req.Action, Timezone: strings.TrimSpace(req.Timezone), Enabled: req.Enabled == nil || *req.Enabled}
+	if req.Role != "" && req.Action != store.ScheduleActionReplicas {
+		return invalid("role", "only a replicas order names a role")
+	}
 	if len(req.Weekdays) == 0 {
 		return invalid("weekdays", "name at least one day")
 	}
@@ -171,14 +174,17 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		if req.SleepLevel != nil {
 			return invalid("sleep_level", "only a sleep order sets a level")
 		}
-		if err := scheduledReplicasRefusal(dep); err != nil {
+		role := strings.TrimSpace(req.Role)
+		if err := scheduledReplicasRefusal(dep, role); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return nil, false
 		}
-		if req.Replicas == nil || *req.Replicas < 1 || *req.Replicas > planning.MaxReplicas {
-			return invalid("replicas", fmt.Sprintf("a replica count is 1 to %d", planning.MaxReplicas))
+		lowest, highest := scheduledReplicasBounds(dep, role)
+		if req.Replicas == nil || *req.Replicas < lowest || *req.Replicas > highest {
+			return invalid("replicas", fmt.Sprintf("a replica count is %d to %d", lowest, highest))
 		}
 		row.Replicas = *req.Replicas
+		row.Role = role
 	default:
 		return invalid("action", "an order is sleep, wake or replicas")
 	}
@@ -209,7 +215,7 @@ func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
 			loc = l
 		}
 	}
-	s := automation.Schedule{ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute, Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas}
+	s := automation.Schedule{ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute, Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Role: row.Role}
 	if row.LastFiredAt != nil {
 		s.LastFiredAt = *row.LastFiredAt
 	}
@@ -219,7 +225,11 @@ func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
 func scheduleDTO(row store.LifecycleSchedule, now time.Time) dto.LifecycleSchedule {
 	out := dto.LifecycleSchedule{
 		ID: row.ID, Action: row.Action, Weekdays: []int{}, Time: fmt.Sprintf("%02d:%02d", row.Minute/60, row.Minute%60),
-		Timezone: row.Timezone, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Enabled: row.Enabled,
+		Timezone: row.Timezone, SleepLevel: row.SleepLevel, Enabled: row.Enabled,
+	}
+	if row.Action == store.ScheduleActionReplicas {
+		// A PD role may be scheduled down to 0, so the count is stated even then.
+		out.Replicas, out.Role = &row.Replicas, row.Role
 	}
 	for day := 0; day < 7; day++ {
 		if row.Weekdays&(1<<day) != 0 {

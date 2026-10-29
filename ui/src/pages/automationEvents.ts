@@ -79,6 +79,7 @@ export function automationEventText(t: TFunction<"deployments">, event: Instance
   const waited = num(event, "waited_sec");
   const yielded = list(event, "yielded");
   const action = text(event, "action");
+  const role = text(event, "role");
   // A failed sleep ordered to give GPUs to another deployment is not a
   // scheduled one: it has its own wording.
   const key = code === "SCHEDULE_ACTION_FAILED" && preempt ? `${code}_preempt` : code;
@@ -87,6 +88,7 @@ export function automationEventText(t: TFunction<"deployments">, event: Instance
     level,
     instances,
     replicas: num(event, "replicas") ?? "",
+    roleNote: role ? t("operator.roleNote", { role: t(`detail.pd.role.${role}`, { defaultValue: role }) }) : "",
     waited: waited != null ? durationText(t, waited) : "",
     yielded: yielded.length > 0 ? t("automation.yieldedNote", { names: yielded.join(", ") }) : "",
     action: action ? t(`automation.action.${action}`, { defaultValue: action }) : "",

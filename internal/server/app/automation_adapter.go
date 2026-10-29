@@ -25,7 +25,7 @@ type automationAdapter struct {
 	store   *store.Store
 	acct    *proxy.Accountant
 	metrics tsdb.Store
-	scale   func(deploymentID uint, replicas int) error
+	scale   func(deploymentID uint, role string, replicas int) error
 	log     *slog.Logger
 	now     func() time.Time
 }
@@ -35,7 +35,7 @@ type automationAdapter struct {
 // nudges it, since a waiting wake may fit once another instance sleeps or
 // goes; a request the gateway holds for a sleeping deployment asks it to wake
 // that one.
-func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, replicas int) error, log *slog.Logger) {
+func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, role string, replicas int) error, log *slog.Logger) {
 	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, scale: scale, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
 	if px != nil {
@@ -77,7 +77,7 @@ func (a *automationAdapter) Schedules() ([]automation.Schedule, error) {
 		}
 		s := automation.Schedule{
 			ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute,
-			Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas,
+			Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Role: row.Role,
 		}
 		if row.LastFiredAt != nil {
 			s.LastFiredAt = *row.LastFiredAt
@@ -268,11 +268,12 @@ func (a *automationAdapter) EndWaiting(deploymentID uint, uuids []string) error 
 
 // ScaleReplicas sets the deployment's replica count through the API's own
 // path (api.ReplicaScaler): a multi-node deployment the platform places gets
-// its nodes picked as an operator's request would, and a refusal (a
-// deployment placed by hand, a PD deployment, no room for a replica) comes
-// back as the product error the failure event records.
-func (a *automationAdapter) ScaleReplicas(deploymentID uint, replicas int) error {
-	return a.scale(deploymentID, replicas)
+// its nodes picked as an operator's request would, a PD deployment's role is
+// scaled through the PD update, and a refusal (a deployment placed by hand,
+// no room for a replica, a role below its minimum) comes back as the product
+// error the failure event records.
+func (a *automationAdapter) ScaleReplicas(deploymentID uint, role string, replicas int) error {
+	return a.scale(deploymentID, role, replicas)
 }
 
 func (a *automationAdapter) MarkFired(scheduleID uint, at time.Time) error {

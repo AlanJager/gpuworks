@@ -71,7 +71,8 @@
     "action": {
       "sleep": "Sleep (L{{level}})",
       "wake": "Wake",
-      "replicas": "Set replicas to {{count}}"
+      "replicas": "Set replicas to {{count}}",
+      "roleReplicas": "Set {{role}} replicas to {{count}}"
     }
   },
   "history": {

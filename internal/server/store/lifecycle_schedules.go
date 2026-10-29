@@ -29,14 +29,27 @@ type LifecycleSchedule struct {
 	Timezone     string `gorm:"size:64;not null;default:''"`
 	SleepLevel   int    `gorm:"not null;default:0"`
 	Replicas     int    `gorm:"not null;default:0"`
-	Enabled      bool   `gorm:"not null;index"`
-	LastFiredAt  *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// Role is the PD role a replicas order scales ("prefill", "decode"); empty
+	// for every other order, and for a replicas order of a deployment that is
+	// not PD.
+	Role        string `gorm:"size:16;not null;default:''"`
+	Enabled     bool   `gorm:"not null;index"`
+	LastFiredAt *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func createLifecycleSchedules(db *gorm.DB) error {
 	return db.AutoMigrate(&LifecycleSchedule{})
+}
+
+// addLifecycleScheduleRole adds the PD role a replicas order scales. An
+// existing order scales no role: PD deployments could not be given one.
+func addLifecycleScheduleRole(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&LifecycleSchedule{}) || db.Migrator().HasColumn(&LifecycleSchedule{}, "Role") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&LifecycleSchedule{}, "Role")
 }
 
 // addDeploymentIdleSleep adds the per-deployment idle sleep setting. An
@@ -93,7 +106,7 @@ func (s *Store) UpdateLifecycleSchedule(sc *LifecycleSchedule) error {
 	now := time.Now().UTC()
 	res := s.db.Model(&LifecycleSchedule{}).Where("id = ? AND deployment_id = ?", sc.ID, sc.DeploymentID).Updates(map[string]any{
 		"action": sc.Action, "weekdays": sc.Weekdays, "minute": sc.Minute, "timezone": sc.Timezone,
-		"sleep_level": sc.SleepLevel, "replicas": sc.Replicas, "enabled": sc.Enabled, "last_fired_at": now,
+		"sleep_level": sc.SleepLevel, "replicas": sc.Replicas, "role": sc.Role, "enabled": sc.Enabled, "last_fired_at": now,
 	})
 	if res.Error != nil {
 		return res.Error

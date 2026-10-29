@@ -20,6 +20,7 @@ type fakeWorld struct {
 	sleepErr   error
 	wakeResult WakeResult
 	wakeErr    error
+	scaleErr   error
 	fits       map[uint][]string // WakeWaiting answers these as woken
 	readErr    error
 
@@ -70,9 +71,13 @@ func (w *fakeWorld) EndWaiting(id uint, instances []string) error {
 	w.ended = append(w.ended, instances)
 	return nil
 }
-func (w *fakeWorld) ScaleReplicas(id uint, n int) error {
-	w.orders = append(w.orders, fmt.Sprintf("replicas %d=%d", id, n))
-	return nil
+func (w *fakeWorld) ScaleReplicas(id uint, role string, n int) error {
+	if role != "" {
+		w.orders = append(w.orders, fmt.Sprintf("replicas %d %s=%d", id, role, n))
+	} else {
+		w.orders = append(w.orders, fmt.Sprintf("replicas %d=%d", id, n))
+	}
+	return w.scaleErr
 }
 func (w *fakeWorld) MarkFired(id uint, at time.Time) error {
 	if at.After(w.fired[id]) {
@@ -238,6 +243,62 @@ func TestAScheduledReplicaCountIsApplied(t *testing.T) {
 	e.Tick()
 	if !slices.Equal(w.orders, []string{"replicas 7=4"}) || !slices.Equal(w.events, []string{"7 AUTO_SCALE"}) {
 		t.Fatalf("orders %v events %v", w.orders, w.events)
+	}
+}
+
+// A PD deployment's replicas order names its role: the count goes to that
+// role, the timeline event carries the role, and a refusal is recorded with
+// the role and its code.
+func TestAScheduledPDRoleCountIsAppliedAndFailuresNameTheRole(t *testing.T) {
+	w := newFakeWorld()
+	start := time.Date(2026, 10, 26, 9, 0, 30, 0, shanghai)
+	fired := start.Add(-time.Hour)
+	w.schedules = []Schedule{
+		{ID: 1, DeploymentID: 7, Action: "replicas", Replicas: 4, Role: "decode", Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: fired},
+		{ID: 2, DeploymentID: 7, Action: "replicas", Replicas: 0, Role: "prefill", Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: fired},
+	}
+	e, _ := newEvaluator(w, start)
+	e.Tick()
+	if !slices.Equal(w.orders, []string{"replicas 7 decode=4", "replicas 7 prefill=0"}) || !slices.Equal(w.events, []string{"7 AUTO_SCALE", "7 AUTO_SCALE"}) {
+		t.Fatalf("orders %v events %v", w.orders, w.events)
+	}
+	if w.params[0]["role"] != "decode" || w.params[0]["replicas"] != 4 || w.params[1]["role"] != "prefill" || w.params[1]["replicas"] != 0 {
+		t.Fatalf("params = %v", w.params)
+	}
+
+	failing := newFakeWorld()
+	failing.scaleErr = codedError{code: "PD_ROLE_UNITS_EMPTY", msg: "the decode role needs at least one instance"}
+	failing.schedules = []Schedule{{ID: 3, DeploymentID: 7, Action: "replicas", Replicas: 0, Role: "decode", Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: fired}}
+	e, _ = newEvaluator(failing, start)
+	e.Tick()
+	if !slices.Equal(failing.events, []string{"7 SCHEDULE_ACTION_FAILED"}) {
+		t.Fatalf("events = %v", failing.events)
+	}
+	p := failing.params[0]
+	if p["role"] != "decode" || p["action"] != "replicas" || p["reason_code"] != "PD_ROLE_UNITS_EMPTY" || p["trigger"] != TriggerSchedule {
+		t.Fatalf("failure params = %v", p)
+	}
+	// Handled, not retried every tick.
+	e.Tick()
+	if len(failing.orders) != 1 {
+		t.Fatalf("a failed order was retried: %v", failing.orders)
+	}
+}
+
+type codedError struct{ code, msg string }
+
+func (e codedError) Error() string { return e.msg }
+func (e codedError) Code() string  { return e.code }
+
+// A replicas order of a deployment that is not PD names no role.
+func TestAScheduledReplicaCountOfANonPDDeploymentCarriesNoRole(t *testing.T) {
+	w := newFakeWorld()
+	start := time.Date(2026, 10, 26, 9, 0, 30, 0, shanghai)
+	w.schedules = []Schedule{{ID: 1, DeploymentID: 7, Action: "replicas", Replicas: 2, Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: start.Add(-time.Hour)}}
+	e, _ := newEvaluator(w, start)
+	e.Tick()
+	if _, has := w.params[0]["role"]; has {
+		t.Fatalf("params = %v", w.params[0])
 	}
 }
 

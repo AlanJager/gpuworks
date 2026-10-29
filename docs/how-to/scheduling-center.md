@@ -7,7 +7,7 @@
 **前置条件**：
 
 - 定时休眠、定时唤醒、闲置休眠要求部署**可休眠**（vLLM，创建时打开），条件见[操作 sleep / wake](sleep-wake.md)。
-- 定时副本数用于单机部署，以及自动放置（`placement_mode` 为 `auto`）的多机部署；PD 部署和手动放置的多机部署不支持。
+- 定时副本数用于单机部署，以及自动放置（`placement_mode` 为 `auto`）的多机部署和 PD 部署（PD 按角色各定各的）；手动放置的多机部署和 PD 部署不支持。
 - 服务等级（常驻以外）只用于可休眠的单机部署。
 - 调度中心不按负载扩缩容；平台只在服务等级允许时让一个部署为另一个让卡，见[服务等级](#服务等级与按需唤醒)。
 
@@ -72,7 +72,7 @@ curl --fail-with-body -sS \
 
 每个部署可以有若干条计划，每条是“在周几的某个时刻执行一个动作”。在部署详情的**调度策略**卡片里点**编辑**，在**定时计划**页签添加：
 
-1. 选择动作：**休眠**（须选 L1 或 L2）、**唤醒**，或**副本数**（1–32，仅单机部署和自动放置的多机部署）。
+1. 选择动作：**休眠**（须选 L1 或 L2）、**唤醒**，或**副本数**（1–32，仅单机部署和自动放置的多机、PD 部署；PD 部署还要选**角色**，见下文）。
 2. 勾选周几，填写时间（HH:MM）。
 3. 时区默认是 server 所在时区，每条可以改成别的 IANA 时区（如 `Asia/Shanghai`）。
 4. 保存。可以随时停用、修改或删除一条计划；列表里显示下一次执行时间。
@@ -106,7 +106,7 @@ curl --fail-with-body -sS -X POST \
 | `PUT /deployments/{id}/schedule/{sid}` | 整条替换，200；请求体与新建相同 |
 | `DELETE /deployments/{id}/schedule/{sid}` | 删除，204 |
 
-请求字段：`action`（`sleep` / `wake` / `replicas`）、`weekdays`（0 为周日到 6 为周六，至少一个、不重复）、`time`（`HH:MM`）、`timezone`（空字符串用 server 时区）、`sleep_level`（只用于 `sleep`，必填）、`replicas`（只用于 `replicas`，必填）、`enabled`（默认 true）。
+请求字段：`action`（`sleep` / `wake` / `replicas`）、`weekdays`（0 为周日到 6 为周六，至少一个、不重复）、`time`（`HH:MM`）、`timezone`（空字符串用 server 时区）、`sleep_level`（只用于 `sleep`，必填）、`replicas`（只用于 `replicas`，必填）、`role`（只用于 `replicas`：PD 部署必填，其他部署不接受）、`enabled`（默认 true）。
 
 ### 到点时怎么执行
 
@@ -122,13 +122,15 @@ curl --fail-with-body -sS -X POST \
 
 | 情形 | 响应 |
 |---|---|
-| 缺字段、周几越界或重复、时间格式不对、`sleep` 没给级别、`replicas` 不在 1–32 | 400 `SCHEDULE_INVALID`，`params.field`、`params.reason` 说明哪里错 |
+| 缺字段、周几越界或重复、时间格式不对、`sleep` 没给级别、`replicas` 不在范围内（1–32；PD 的可为空角色为 0–32） | 400 `SCHEDULE_INVALID`，`params.field`、`params.reason` 说明哪里错 |
+| PD 部署的 `replicas` 计划没给 `role` 或给了模式里没有的角色；非 PD 部署给了 `role`；`role` 出现在 `sleep` / `wake` 上 | 400 `SCHEDULE_INVALID`，`params.field` 为 `role`（PD 部署的响应另带 `params.roles`，列出可选角色） |
 | 时区 server 不认识 | 400 `SCHEDULE_TIMEZONE_UNKNOWN`，`params.timezone` |
-| 对 PD 部署定副本数 | 400 `SCHEDULE_REPLICAS_SHAPE` |
-| 对手动放置的多机部署定副本数 | 400 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` |
+| 对手动放置的多机或 PD 部署定副本数 | 400 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` |
 | 部署没打开可休眠 / 引擎不支持休眠（`sleep`、`wake` 动作） | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
 
-**多机部署的定时副本数**与 `PUT /api/v1/deployments/{id}/replicas` 的“按副本数增减”走同一条路径：增加时由服务端按放置策略为新副本挑节点（规则同[创建时挑节点](multi-node-inference.md#创建时怎样挑节点)），减少时去掉最后加入的副本；放不下时 `SCHEDULE_ACTION_FAILED` 的 `reason_code` 为 `UNIT_PLACEMENT_NONE`。PD 部署的副本按角色各有各的数量（`PUT /api/v1/deployments/{id}/pd`），一个数字说不清，所以不支持；手动放置的多机部署逐个副本列节点，增加副本得有人指定节点，所以也不支持。
+**多机部署的定时副本数**与 `PUT /api/v1/deployments/{id}/replicas` 的“按副本数增减”走同一条路径：增加时由服务端按放置策略为新副本挑节点（规则同[创建时挑节点](multi-node-inference.md#创建时怎样挑节点)），减少时去掉最后加入的副本；放不下时 `SCHEDULE_ACTION_FAILED` 的 `reason_code` 为 `UNIT_PLACEMENT_NONE`。手动放置的多机部署逐个副本列节点，增加副本得有人指定节点，所以不支持。
+
+**PD 部署的定时副本数按角色定**：计划里的 `role` 是模式里的角色（如 `prefill`、`decode`），`replicas` 是这个角色的实例数，别的角色不动。到点时与 `PUT /api/v1/deployments/{id}/pd` 走同一条路径：增加时服务端在已放置的单元旁为新单元挑节点（同自动放置 PD 的创建），减少时去掉最后加入的单元；放不下时 `SCHEDULE_ACTION_FAILED` 的 `reason_code` 为 `UNIT_PLACEMENT_NONE`，别的失败（如某角色的单元跨多个节点而新单元只有一个节点）沿用 PD 更新自己的错误码和 `reason`。角色的下限也一样：模式允许为空的角色（如 `vllm-nixl` 的 `prefill`）可以定到 0，别的角色最少 1，所以建计划时就拒绝低于下限的数字；`decode` 定到 0 在建计划时 400。部署手动放置时同样拒绝（`SCHEDULE_REPLICAS_MANUAL_PLACEMENT`）。
 
 计划写好之后部署被切换成手动放置，到点时这条计划失败：时间线记 `SCHEDULE_ACTION_FAILED`（`reason_code` 为 `SCHEDULE_REPLICAS_MANUAL_PLACEMENT`），计划本身保留，切回自动放置后下一个时间点照常执行。
 
@@ -229,10 +231,10 @@ curl --fail-with-body -sS -X PUT \
 |---|---|---|
 | `AUTO_SLEEP` | 定时计划、闲置休眠或让卡把部署休眠了 | `trigger`（`schedule` / `idle` / `preempt`）、`schedule_id`、`scheduled_at`、`level`、`idle_sec`；让卡时另有 `reason`（`idle` 空闲满时长 / `rank` 对方等级更高 / `turn` 分时轮到对方）、`for_deployment`（为哪个部署让卡）、`abort`（是否中断了进行中的请求）、`instances` |
 | `AUTO_WAKE` | 定时计划、唤醒等位、请求或恢复唤醒了实例 | `trigger`（`schedule` / `wake_waiting` / `request` 有请求在等 / `resume` 让卡后拿回）、`schedule_id`、`instances` |
-| `AUTO_SCALE` | 定时计划改了副本数 | `trigger`、`schedule_id`、`replicas` |
+| `AUTO_SCALE` | 定时计划改了副本数 | `trigger`、`schedule_id`、`replicas`、`role`（PD） |
 | `WAKE_WAITING` | 一次唤醒放不下，进入等位 | `trigger`（`schedule` / `operator`）、`instances`、`yielded` |
 | `WAKE_WAIT_TIMEOUT` | 等位满 30 分钟放弃 | `trigger`、`instances`、`waited_sec` |
-| `SCHEDULE_ACTION_FAILED` | 自动动作没成功，不自动重试 | `trigger`、`action`、`reason`、`reason_code`、`schedule_id`、`level`、`replicas` |
+| `SCHEDULE_ACTION_FAILED` | 自动动作没成功，不自动重试 | `trigger`、`action`、`reason`、`reason_code`、`schedule_id`、`level`、`replicas`、`role`（PD） |
 | `YIELDED_FOR_WAKE` | 记在被让位休眠的部署上：为谁让位、休眠到几级 | `deployment`、`instances`、`level` |
 
 运维通过接口下的指令也写进部署时间线（事件类型 `schedule`），并带 `actor`（用户名）：
@@ -252,5 +254,5 @@ curl --fail-with-body -sS -X PUT \
 - 只有服务等级允许时才让卡：常驻部署从不为别人休眠；让位唤醒仍是运维点名、对方可休眠才会发生。
 - 没有按负载的自动扩缩容：副本数只在定时计划到点时变。
 - 服务等级只用于单机部署；新部署启动时卡被醒着的低等级部署占着，平台不为启动让卡，部署按放不下等待。
-- 定时副本数只用于单机部署和自动放置的多机部署，不支持 PD 和手动放置的多机部署。
+- 定时副本数只用于单机部署和自动放置的多机、PD 部署，不支持手动放置的多机或 PD 部署；一条 PD 计划只改一个角色，要同时改两个角色就建两条。
 - 评估器在 server 进程内运行；server 停机期间没有任何自动动作，恢复后只补 12 小时内最新的一次计划。

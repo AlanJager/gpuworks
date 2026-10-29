@@ -95,12 +95,12 @@
   "how-to/rent-cloud-gpus.md": "908f4bbd671c5e676f5040f75c6aa181686f380ad5dd9c89ff0249789335ade9",
   "how-to/sleep-wake.md": "2ed02f26425d4a1b8445bf2bb3464caf15877833f1f2251f03b53b6414f42bd0",
   "how-to/storages.md": "fd71fb9908d50375f10c37553354c7e072405b220792c1cdba56bd7747a34bd8",
-  "how-to/troubleshooting.md": "c3281e7dc77f3f34f6966972223ed72bd5272beeff4e900540422b9e5a60de9c",
+  "how-to/troubleshooting.md": "0fc1325c78925db213109616b0163e28adfce5ba950c1eb548098d1a99b983a6",
   "how-to/upgrade-and-compatibility.md": "6bdaf526b14dfa03ca6549be64e17e7aa81ce1fc1b949d5179f27d68cb2a433c",
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "reference/api-conventions.md": "a40ef7cc9dbfcf2cf050845693243fb8ccd9bd21b071b891d7afe6361873d482",
-  "reference/api.md": "2d4b92c4d6f9383cf30aab4941fbcd8566f8d2fb2e619e9c68d06972712d2293",
+  "reference/api.md": "61461b5dda1648a7c8881d66cb77b3c9590fa474b762961bd83391c0953c368b",
   "reference/ascend-support-matrix.md": "78bb969b8b0686f0884ef68c070f875351febbf6a42e038e92ef7c99d4422fef",
   "reference/cli.md": "4e1c2800bf29b4aaa12f980e4510ca2a18d781275dee44e91e0c457c2663722f",
   "reference/configuration.md": "9216338edef60622fedea6e1f6d510ba2ffe5f4b3e5cd3c9f4be73fb3c2afaec",
@@ -126,7 +126,7 @@
   "tutorials/scale-model-replicas.md": "387d0dc3e7c624e985535d849325c041b1645630f58d29c4c1f67151d15e2395",
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "25f9221008f3cda3f3fbf3784806befd2e6f1ca32a852ad194a58ba308f991fd",
-  "how-to/scheduling-center.md": "3ac5ab024f1f9eac6a6c31ab17f17abb5b39dc153a13be463d71d683c75a22dd",
+  "how-to/scheduling-center.md": "b30789b7fa6c4d979af0a3687c3be617bdd0cc447661e271db89932536b2bbd9",
   "adr/0059-service-levels-and-the-residency-arbiter.md": "5bbe82203c5c624d30262c64e94559ab15ba0be84393f31cee8d858ee99c019f",
   "explanation/service-levels.md": "4562d6c060c864e754f5ccf7b6cbb9afa48456fdfa0799da3aea3c54d32ee9ce"
 }

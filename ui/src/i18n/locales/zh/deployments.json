@@ -391,7 +391,7 @@
       "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
       "AUTO_SLEEP": "已休眠（L{{level}}）{{cause}}",
       "AUTO_WAKE": "已唤醒实例 {{instances}}{{cause}}",
-      "AUTO_SCALE": "副本数已设为 {{replicas}}{{cause}}",
+      "AUTO_SCALE": "副本数已设为 {{replicas}}{{roleNote}}{{cause}}",
       "WAKE_WAITING": "实例 {{instances}} 等位唤醒中{{yielded}}",
       "WAKE_WAIT_TIMEOUT": "等位 {{waited}} 仍未腾出空间，已放弃唤醒实例 {{instances}}",
       "SCHEDULE_ACTION_FAILED": "定时{{action}}失败：{{reason}}",
@@ -762,7 +762,7 @@
       "deleteConfirm": "删除这条定时指令？",
       "deleted": "已删除定时指令",
       "empty": "暂无定时指令。",
-      "noActions": "该部署无法按计划休眠或调整副本数：休眠和唤醒需要可休眠的部署，副本数只能为单机部署，或自动放置的多机部署（非 PD）定时调整。",
+      "noActions": "该部署无法按计划休眠或调整副本数：休眠和唤醒需要可休眠的部署，副本数只能为单机部署，或自动放置的多机、PD 部署定时调整。",
       "loadFailed": "加载定时计划失败：{{detail}}",
       "saveFailed": "保存指令失败：{{detail}}",
       "deleteFailed": "删除指令失败：{{detail}}",
@@ -782,7 +782,8 @@
       "actionText": {
         "sleep": "休眠（L{{level}}）",
         "wake": "唤醒",
-        "replicas": "副本数设为 {{count}}"
+        "replicas": "副本数设为 {{count}}",
+        "roleReplicas": "{{role}}副本数设为 {{count}}"
       },
       "actionName": {
         "sleep": "休眠",
@@ -796,12 +797,14 @@
         "timezone": "时区",
         "sleep_level": "休眠级别",
         "replicas": "副本数",
+        "role": "角色",
         "enabled": "启用"
       },
+      "roleHint": "PD 部署的每个角色各有自己的副本数；这条指令设置所选角色的副本数。",
       "errors": {
         "weekdays": "请至少选择一天。",
         "time": "时间请按 HH:MM 填写。",
-        "replicas": "副本数需在 1 到 {{maximum}} 之间。"
+        "replicas": "副本数需在 {{minimum}} 到 {{maximum}} 之间。"
       },
       "weekday": {
         "0": "周日",

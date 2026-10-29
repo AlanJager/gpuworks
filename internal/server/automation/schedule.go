@@ -25,6 +25,9 @@ type Schedule struct {
 	Location   *time.Location
 	SleepLevel int
 	Replicas   int
+	// Role is the PD role a replicas order scales; empty for a deployment
+	// that is not PD.
+	Role string
 	// LastFiredAt is the scheduled time of the newest occurrence handled.
 	LastFiredAt time.Time
 }

@@ -37,6 +37,14 @@ test("a schedule's, an idle sleep's and a waiting wake's entries read in English
   assert.equal(text("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 4 }), "Replicas set to 4 by its schedule");
 });
 
+test("a PD role's scheduled count names the role, in both languages", async () => {
+  const en = await texts("en");
+  assert.equal(en("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 4, role: "decode" }), "Replicas set to 4 (Decode) by its schedule");
+  assert.equal(en("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 0, role: "prefill" }), "Replicas set to 0 (Prefill) by its schedule");
+  const zh = await texts("zh");
+  assert.equal(zh("AUTO_SCALE", { trigger: "schedule", schedule_id: 2, replicas: 4, role: "decode" }), "副本数已设为 4（Decode），由定时计划触发");
+});
+
 test("waiting, giving up and yielding entries name the instances, the wait and who gave way", async () => {
   const text = await texts("en");
   assert.equal(text("WAKE_WAITING", { trigger: "operator", instances: [uuid], yielded: ["other", "third"] }), "Wake of instance 01234567 waits for room, after putting other, third to sleep");

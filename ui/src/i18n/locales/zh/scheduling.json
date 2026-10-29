@@ -71,7 +71,8 @@
     "action": {
       "sleep": "休眠（L{{level}}）",
       "wake": "唤醒",
-      "replicas": "副本数设为 {{count}}"
+      "replicas": "副本数设为 {{count}}",
+      "roleReplicas": "{{role}}副本数设为 {{count}}"
     }
   },
   "history": {

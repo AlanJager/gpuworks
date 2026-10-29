@@ -55,6 +55,7 @@ export function WaitingWakesTable({ rows, busyID, onCancel }: { rows: BoardWaiti
 // UpcomingTable lists what the schedules will do in the next 24 hours.
 export function UpcomingTable({ rows }: { rows: BoardUpcoming[] }) {
   const { t } = useTranslation("scheduling");
+  const { t: tDeployments } = useTranslation("deployments");
   const columns: ResourceColumn<BoardUpcoming>[] = [
     { key: "at", title: t("upcoming.columns.at"), width: 160, render: (_: unknown, row) => formatTime(row.at) },
     { key: "deployment", title: t("upcoming.columns.deployment"), width: 200, render: (_: unknown, row) => <DeploymentLink id={row.deployment_id} name={row.deployment} /> },
@@ -62,7 +63,10 @@ export function UpcomingTable({ rows }: { rows: BoardUpcoming[] }) {
       key: "action",
       title: t("upcoming.columns.action"),
       width: 220,
-      render: (_: unknown, row) => t(`upcoming.action.${row.action}`, { level: row.sleep_level ?? "", count: row.replicas ?? "", defaultValue: row.action }),
+      render: (_: unknown, row) => {
+        const key = row.action === "replicas" && row.role ? "roleReplicas" : row.action;
+        return t(`upcoming.action.${key}`, { level: row.sleep_level ?? "", count: row.replicas ?? "", role: row.role ? tDeployments(`detail.pd.role.${row.role}`, { defaultValue: row.role }) : "", defaultValue: row.action });
+      },
     },
   ];
   return <BoardTable id="scheduling-upcoming" columns={columns} data={rows} rowKey={(row) => `${row.schedule_id}-${row.at}`} empty={t("upcoming.empty")} />;

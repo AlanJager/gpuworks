@@ -10,6 +10,7 @@ import (
 
 func TestLifecycleScheduleWire(t *testing.T) {
 	next := time.Date(2026, 10, 26, 13, 0, 0, 0, time.UTC)
+	four, zero := 4, 0
 	for _, tc := range []struct {
 		name string
 		in   LifecycleSchedule
@@ -27,8 +28,18 @@ func TestLifecycleScheduleWire(t *testing.T) {
 		},
 		{
 			name: "replicas order",
-			in:   LifecycleSchedule{ID: 9, Action: "replicas", Weekdays: []int{3}, Time: "00:00", Timezone: "UTC", Replicas: 4, Enabled: true, NextAt: &next},
+			in:   LifecycleSchedule{ID: 9, Action: "replicas", Weekdays: []int{3}, Time: "00:00", Timezone: "UTC", Replicas: &four, Enabled: true, NextAt: &next},
 			wire: `{"id":9,"action":"replicas","weekdays":[3],"time":"00:00","timezone":"UTC","replicas":4,"enabled":true,"next_at":"2026-10-26T13:00:00Z"}`,
+		},
+		{
+			name: "a PD role's order names the role",
+			in:   LifecycleSchedule{ID: 10, Action: "replicas", Weekdays: []int{3}, Time: "00:00", Timezone: "UTC", Replicas: &four, Role: "decode", Enabled: true, NextAt: &next},
+			wire: `{"id":10,"action":"replicas","weekdays":[3],"time":"00:00","timezone":"UTC","replicas":4,"role":"decode","enabled":true,"next_at":"2026-10-26T13:00:00Z"}`,
+		},
+		{
+			name: "a PD role scheduled to 0 still states the count",
+			in:   LifecycleSchedule{ID: 11, Action: "replicas", Weekdays: []int{3}, Time: "00:00", Timezone: "UTC", Replicas: &zero, Role: "prefill", Enabled: false},
+			wire: `{"id":11,"action":"replicas","weekdays":[3],"time":"00:00","timezone":"UTC","replicas":0,"role":"prefill","enabled":false}`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -77,6 +88,15 @@ func TestLifecycleScheduleRequestWire(t *testing.T) {
 	}
 	if got, want := marshalString(t, LifecycleScheduleRequest{Action: "replicas", Weekdays: []int{2}, Time: "22:15", Replicas: &replicas}),
 		`{"action":"replicas","weekdays":[2],"time":"22:15","timezone":"","replicas":3}`; got != want {
+		t.Fatalf("marshal\n got %s\nwant %s", got, want)
+	}
+
+	var pd LifecycleScheduleRequest
+	if err := json.Unmarshal([]byte(`{"action":"replicas","weekdays":[1],"time":"07:00","replicas":2,"role":"decode"}`), &pd); err != nil || pd.Role != "decode" || pd.Replicas == nil || *pd.Replicas != 2 {
+		t.Fatalf("role = %+v %v", pd, err)
+	}
+	if got, want := marshalString(t, LifecycleScheduleRequest{Action: "replicas", Weekdays: []int{2}, Time: "22:15", Replicas: &replicas, Role: "prefill"}),
+		`{"action":"replicas","weekdays":[2],"time":"22:15","timezone":"","replicas":3,"role":"prefill"}`; got != want {
 		t.Fatalf("marshal\n got %s\nwant %s", got, want)
 	}
 

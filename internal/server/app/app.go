@@ -84,7 +84,7 @@ type App struct {
 	notices *noticeService
 	// scaleReplicas sets a deployment's replica count as the API does, for
 	// the scheduling automation's replica schedules.
-	scaleReplicas func(deploymentID uint, replicas int) error
+	scaleReplicas func(deploymentID uint, role string, replicas int) error
 }
 
 // proxyMetricsSink adapts an Accountant flush batch to observability's tsdb

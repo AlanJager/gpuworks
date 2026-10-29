@@ -175,10 +175,15 @@ func (a *apiHandlers) boardUpcoming(now time.Time, nameOf func(uint) string) ([]
 	out := []dto.BoardUpcomingAction{}
 	for _, row := range rows {
 		for _, at := range automationSchedule(row).Occurrences(now, now.Add(boardUpcomingWindow)) {
-			out = append(out, dto.BoardUpcomingAction{
+			item := dto.BoardUpcomingAction{
 				DeploymentID: row.DeploymentID, Deployment: nameOf(row.DeploymentID), ScheduleID: row.ID, Action: row.Action,
-				SleepLevel: row.SleepLevel, Replicas: row.Replicas, At: at.UTC(),
-			})
+				SleepLevel: row.SleepLevel, At: at.UTC(),
+			}
+			if row.Action == store.ScheduleActionReplicas {
+				replicas := row.Replicas
+				item.Replicas, item.Role = &replicas, row.Role
+			}
+			out = append(out, item)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })

@@ -174,6 +174,20 @@ test("pending reasons read like the deployment drawer's placement alert; upcomin
   assert.equal(screen.queryByText("Recent automation actions"), null);
 });
 
+test("a PD role's scheduled count names the role, and a count of 0 is still a count", async () => {
+  api.schedulingBoard = async () => board({
+    upcoming: [
+      { deployment_id: 11, deployment: "pd-chat", schedule_id: 3, action: "replicas", replicas: 0, role: "prefill", at: "2026-10-26T07:00:00Z" },
+      { deployment_id: 11, deployment: "pd-chat", schedule_id: 4, action: "replicas", replicas: 3, role: "decode", at: "2026-10-26T08:00:00Z" },
+    ],
+  });
+  mount();
+  await screen.findByText("gpu-a");
+  for (const [role, count] of [["prefill", 0], ["decode", 3]] as const) {
+    assert.ok(screen.getByText(i18n.t("scheduling:upcoming.action.roleReplicas", { role: i18n.t(`deployments:detail.pd.role.${role}`), count })), role);
+  }
+});
+
 test("the search narrows the nodes on the server and starts from the first page", async () => {
   const queries: unknown[] = [];
   api.schedulingBoard = async (query) => { queries.push(query); return board(); };

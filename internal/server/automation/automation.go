@@ -79,8 +79,9 @@ type Actions interface {
 	WakeWaiting(deploymentID uint, instances []string) ([]string, error)
 	// EndWaiting gives up the named instances' wait.
 	EndWaiting(deploymentID uint, instances []string) error
-	// ScaleReplicas sets a single-node deployment's replica count.
-	ScaleReplicas(deploymentID uint, replicas int) error
+	// ScaleReplicas sets the deployment's replica count; of a PD deployment,
+	// the count of one role (role is empty for any other).
+	ScaleReplicas(deploymentID uint, role string, replicas int) error
 	// MarkFired records that a schedule's occurrence at at was handled.
 	MarkFired(scheduleID uint, at time.Time) error
 	// Record adds an event to the deployment's timeline.
@@ -293,7 +294,10 @@ func (e *Evaluator) fire(s Schedule, at time.Time) {
 		}
 	case "replicas":
 		params["replicas"] = s.Replicas
-		if err = e.actions.ScaleReplicas(s.DeploymentID, s.Replicas); err == nil {
+		if s.Role != "" {
+			params["role"] = s.Role
+		}
+		if err = e.actions.ScaleReplicas(s.DeploymentID, s.Role, s.Replicas); err == nil {
 			e.actions.Record(s.DeploymentID, EventAutoScale, params)
 		}
 	default:
