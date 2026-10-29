@@ -21,7 +21,7 @@ specs:
         revision: ea980cb0a6c2ae4b936e82123acc929f1cec04c1
     - modelscope:
         repo_id: Qwen/Qwen3-1.7B-Base
-        revision: ea980cb0a6c2ae4b936e82123acc929f1cec04c1
+        revision: b0786a09cd6ee101cd8c90e30a5727beb8230544
   weight_bytes: 3441185608
   gpus:
     vendor: ppu

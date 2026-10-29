@@ -21,7 +21,7 @@ specs:
         revision: fcc320f490e08fdb4b99d935b2c58d40bf35b0d0
     - modelscope:
         repo_id: HuggingFaceTB/SmolLM-135M-Instruct
-        revision: fcc320f490e08fdb4b99d935b2c58d40bf35b0d0
+        revision: 89e86e700a070e77373fb7bda7b02ddded846b41
   weight_bytes: 269060552
   gpus:
     vendor: ppu

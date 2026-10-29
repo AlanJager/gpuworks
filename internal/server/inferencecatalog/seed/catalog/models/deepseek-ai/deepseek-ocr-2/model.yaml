@@ -195,7 +195,7 @@ specs:
         revision: aaa02f3811945a91062062994c5c4a3f4c0af2b0
     - modelscope:
         repo_id: deepseek-ai/DeepSeek-OCR-2
-        revision: aaa02f3811945a91062062994c5c4a3f4c0af2b0
+        revision: d9362d8032017d261ef40fd7b18cd70db16cdbe7
   weight_bytes: 6778573880
   gpus:
     vendor: ppu

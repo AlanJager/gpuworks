@@ -21,7 +21,7 @@ specs:
         revision: c0650403e44e78ec0262dab1c90914c65b196c4e
     - modelscope:
         repo_id: ibm-granite/granite-4.1-3b
-        revision: c0650403e44e78ec0262dab1c90914c65b196c4e
+        revision: 4352bf8648e5deeeb23321792b6deca341e55bb2
   weight_bytes: 6805714792
   gpus:
     vendor: ppu

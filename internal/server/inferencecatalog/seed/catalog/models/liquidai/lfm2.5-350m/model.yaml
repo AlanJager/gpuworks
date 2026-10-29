@@ -144,7 +144,7 @@ specs:
         revision: 9e6c6ccf47cd318696e137d381a7ded8fe4df09f
     - modelscope:
         repo_id: LiquidAI/LFM2.5-350M
-        revision: 9e6c6ccf47cd318696e137d381a7ded8fe4df09f
+        revision: 20a19d21e6ae39f71e17a106a97c63a4dffdb8da
   weight_bytes: 708984464
   gpus:
     vendor: ppu

@@ -343,7 +343,7 @@ specs:
         revision: dd76d535f5447ca3897a9c893fb1e612ead98192
     - modelscope:
         repo_id: jinaai/jina-embeddings-v5-text-small
-        revision: dd76d535f5447ca3897a9c893fb1e612ead98192
+        revision: b615e0e4b00aef9b9f84f7858731ce6f8379247c
   weight_bytes: 1192133208
   gpus:
     vendor: ppu

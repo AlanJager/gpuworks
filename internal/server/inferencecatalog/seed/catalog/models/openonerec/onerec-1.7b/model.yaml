@@ -21,7 +21,7 @@ specs:
         revision: cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b
     - modelscope:
         repo_id: OpenOneRec/OneRec-1.7B
-        revision: cc4d0b5b7294ecf75e40be1c77fa6b7d284bb84b
+        revision: 96ded8b50e52c2f0ad0f8b6555ac632636792496
   weight_bytes: 4263793656
   gpus:
     vendor: ppu

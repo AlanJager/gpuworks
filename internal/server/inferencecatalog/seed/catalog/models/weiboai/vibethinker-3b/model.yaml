@@ -21,7 +21,7 @@ specs:
         revision: 77bd2cced09193c8b9a59a32bd8577bbd1f3e01c
     - modelscope:
         repo_id: WeiboAI/VibeThinker-3B
-        revision: 77bd2cced09193c8b9a59a32bd8577bbd1f3e01c
+        revision: fd738379de73e4ac7aea26e8dbbb6573aac00713
   weight_bytes: 6171927000
   gpus:
     vendor: ppu
