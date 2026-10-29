@@ -1,0 +1,126 @@
+name: Bug report
+description: Something behaved differently from what the documentation says it should.
+title: "[Bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report.
+
+        Before you continue, please check that the issue is not already covered:
+
+        - Search the existing issues, including closed ones.
+        - Read the [troubleshooting guide](https://gpuworks.zstack.ai/docs/en/how-to/troubleshooting/).
+
+        If the report concerns a security vulnerability, **do not open an issue**. Report it privately
+        with [the security mailbox](mailto:security@gpuworks.ai), or through *Report a vulnerability* on
+        the repository's *Security* tab — the process in `SECURITY.md` describes both channels.
+
+  - type: input
+    id: version
+    attributes:
+      label: GPUWorks version
+      description: Output of `curl -s http://<server>:8800/healthz`. Releases are named `dev-<commit>`.
+      placeholder: e.g. dev-0f9b23a9
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      description: Pick the closest match. Choose "Not sure" if you cannot tell.
+      options:
+        - Server (control plane, API, gateway)
+        - Agent (node side)
+        - Web UI
+        - CLI
+        - Deployment / inference runtime
+        - Node onboarding
+        - Model or storage handling
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the observed behaviour. Include exact error messages, HTTP status codes and exit codes where you have them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What the documentation or the UI led you to expect. Link the page or file if you can.
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Assume the reader starts from a clean install. Number the steps.
+      placeholder: |
+        1. Install with `./bin/gpuworks install --dir /opt/gpuworks --addr :8800`
+        2. Onboard a node with the `curl | sh` command
+        3. Deploy vLLM on that node
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: How often does it reproduce?
+      options:
+        - Every time
+        - Intermittently (roughly half the time)
+        - Rarely
+        - Only once
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Everything that could plausibly matter. Leave out secrets.
+      value: |
+        - OS / kernel:
+        - GPU vendor and model:
+        - Driver / CUDA / CANN version:
+        - Container runtime (docker / nerdctl / runveil / none):
+        - Installation method (script / manual / source build):
+        - Number of nodes:
+
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: Node diagnosis (optional)
+      description: |
+        If the problem is on a node, run `gpuworks-agent doctor` there and paste the output here.
+        Keep the header lines — they carry the version and runtime it detected.
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste the smallest excerpt that still shows the problem. Strip tokens, hostnames and
+        addresses first. Server logs: `journalctl -u gpuworks -n 200`. Agent logs:
+        `journalctl -u gpuworks-agent -n 200`.
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find this problem.
+          required: true
+        - label: I removed credentials, tokens and private addresses from the logs above.
+          required: true
+        - label: This is not a security vulnerability (those go to SECURITY.md).
+          required: true
