@@ -29,7 +29,7 @@ func TestDoSendsARequestAsTheCallersAndAccountsIt(t *testing.T) {
 	var records []uxrecord.Request
 	p.SetRequestSink(func(r uxrecord.Request) { records = append(records, r) })
 
-	reply := p.Do(context.Background(), uxrecord.Caller{APIKeyID: 5, UserID: 9}, chatPath, []byte(`{"model":"omni","messages":[]}`))
+	reply := p.Do(context.Background(), uxrecord.Caller{APIKeyID: 5, UserID: 9, Source: uxrecord.SourceBatch}, chatPath, []byte(`{"model":"omni","messages":[]}`))
 	if reply.Status != http.StatusOK || reply.Err != nil || reply.TooLarge || !strings.Contains(string(reply.Body), `"finish_reason":"stop"`) || reply.RequestID == "" {
 		t.Fatalf("reply = %+v", reply)
 	}
@@ -42,8 +42,8 @@ func TestDoSendsARequestAsTheCallersAndAccountsIt(t *testing.T) {
 	if _, samples := acct.snapshotAndClearDirty(); len(samples) == 0 {
 		t.Error("the request was not accounted")
 	}
-	if len(records) != 1 || records[0].APIKeyID != 5 || records[0].UserID != 9 || records[0].Source != uxrecord.SourceAPI {
-		t.Fatalf("records = %+v", records)
+	if len(records) != 1 || records[0].APIKeyID != 5 || records[0].UserID != 9 || records[0].Source != uxrecord.SourceBatch {
+		t.Fatalf("records = %+v, want the batch source kept", records)
 	}
 	if live := p.LiveRequests(depID, 10); len(live.Requests) != 0 {
 		t.Errorf("still in flight: %+v", live)

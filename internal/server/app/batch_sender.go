@@ -17,7 +17,7 @@ type batchSender struct {
 }
 
 func (s batchSender) Send(ctx context.Context, owner batch.Owner, path string, body []byte) batch.Reply {
-	r := s.proxy.Do(ctx, uxrecord.Caller{APIKeyID: owner.APIKeyID, UserID: owner.UserID}, path, body)
+	r := s.proxy.Do(ctx, uxrecord.Caller{APIKeyID: owner.APIKeyID, UserID: owner.UserID, Source: uxrecord.SourceBatch}, path, body)
 	return batch.Reply{Status: r.Status, RequestID: r.RequestID, Body: r.Body, RetryAfter: r.RetryAfter, TooLarge: r.TooLarge, Err: r.Err}
 }
 

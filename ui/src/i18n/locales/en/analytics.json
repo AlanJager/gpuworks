@@ -58,7 +58,9 @@
     "noKey": "No API token",
     "revoked": "Revoked",
     "deletedDeployment": "Deleted deployment",
-    "deploymentId": "Deployment #{{id}}"
+    "deploymentId": "Deployment #{{id}}",
+    "batch": "Batch ({{user}})",
+    "batchAnonymous": "Batch"
   },
   "usage": {
     "filters": {
@@ -76,7 +78,8 @@
     },
     "source": {
       "api": "API",
-      "playground": "Playground"
+      "playground": "Playground",
+      "batch": "Batch"
     },
     "keyPrefixMissing": "The API token {{prefix}} has no usage in this range, so the list is not filtered. Try a longer range.",
     "cards": {

@@ -378,7 +378,8 @@
       "prefill_no_kv_params": "prefill 实例没有返回 KV 交接参数",
       "prefill_failed": "prefill 调用失败"
     },
-    "deletedName": "{{name}}（已删除）"
+    "deletedName": "{{name}}（已删除）",
+    "batch": "批处理"
   },
   "latency": {
     "title": "端到端延迟拆解",

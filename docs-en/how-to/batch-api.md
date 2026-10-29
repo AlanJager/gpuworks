@@ -243,6 +243,10 @@ The platform separates "the request itself is wrong" from "the platform cannot s
 
 Retries use exponential backoff from 2 seconds, doubling up to 60 seconds, honoring any `Retry-After` in the answer and adding jitter, until the batch expires. A batch with a misspelled model name gets a 404 for every line quickly and ends in the error file instead of waiting until expiry.
 
+## Batches in Usage and Request Records
+
+The requests a batch sends show the source **Batch** (`source=batch`) in request records, usage analytics and monitoring, so they can be filtered on their own and do not mix with ordinary API calls. A batch created with an API key is counted under that key; one created in the console has no key and is counted as **Batch (user name)** under the user who created it.
+
 ## Pairing with the Offline Service Level
 
 Point a batch at a deployment with the **offline** level and it runs on idle GPUs only: when a real-time model needs the cards the batch deployment yields its memory, and it comes back automatically once the cards are free. For how to set the level on the deployment, see [Service levels and on-demand wake](scheduling-center.md#服务等级与按需唤醒); for the rules, see [Service Levels](../explanation/service-levels.md).

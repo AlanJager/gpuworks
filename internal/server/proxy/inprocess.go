@@ -62,9 +62,9 @@ func (p *Proxy) Identify(r *http.Request) (uxrecord.Caller, bool) {
 }
 
 // Do posts body to path (a /v1 path) as caller's request and returns the
-// response. ctx bounds it, the wake hold included.
+// response; the caller's Source says which entry the request stands for
+// (a batch's, say). ctx bounds it, the wake hold included.
 func (p *Proxy) Do(ctx context.Context, caller uxrecord.Caller, path string, body []byte) InProcessReply {
-	caller.Source = uxrecord.SourceAPI
 	caller.ReceivedMS = time.Now().UnixMilli()
 	req, err := http.NewRequestWithContext(uxrecord.WithCaller(ctx, caller), http.MethodPost, path, bytes.NewReader(body))
 	if err != nil {

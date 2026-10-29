@@ -58,7 +58,9 @@
     "noKey": "未使用 API 令牌",
     "revoked": "已吊销",
     "deletedDeployment": "已删除的部署",
-    "deploymentId": "部署 #{{id}}"
+    "deploymentId": "部署 #{{id}}",
+    "batch": "批处理（{{user}}）",
+    "batchAnonymous": "批处理"
   },
   "usage": {
     "filters": {
@@ -76,7 +78,8 @@
     },
     "source": {
       "api": "API",
-      "playground": "Playground"
+      "playground": "Playground",
+      "batch": "批处理"
     },
     "keyPrefixMissing": "API 令牌 {{prefix}} 在所选时间段内没有用量，列表未做筛选；可以换更长的时间段。",
     "cards": {

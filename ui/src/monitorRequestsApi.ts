@@ -29,7 +29,7 @@ export interface MonitorRequest {
   // Empty for no key (playground) or a deleted key.
   api_key_name: string;
   user_id: number;
-  source: "api" | "playground";
+  source: "api" | "playground" | "batch";
   stream: boolean;
   body_bytes: number;
   images: number;
