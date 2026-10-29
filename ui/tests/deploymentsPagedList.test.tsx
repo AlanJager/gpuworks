@@ -102,6 +102,47 @@ test("a legacy empty served name stays empty rather than copying the model name"
   assert.equal(within(cell).queryByRole("button"), null);
 });
 
+test("a long served name keeps its copy button clickable", async () => {
+  // GWKS-145: the cell was ellipsized as a whole, so a long external model
+  // name pushed the copy button past the column edge and it could not be
+  // clicked at all. jsdom does no layout, so this pins the cause instead of
+  // the pixels: the served name column must opt out of the table's cell-wide
+  // ellipsis, the name must be truncated on its own, and the copy button must
+  // be its sibling — never its child, where clipping the name would hide it.
+  const long = "Qwen/Qwen2.5-72B-Instruct-AWQ-very-long-served-name-abcdefghijklmnop";
+  const server = fakeServer([{ ...fleet[0], served_name: long }]);
+  renderPage(server.serve);
+  const name = await screen.findByText("svc-45");
+  const headers = screen.getAllByRole("columnheader");
+  const index = headers.indexOf(screen.getByRole("columnheader", { name: "Served name" }));
+  const cell = within(name.closest("tr")!).getAllByRole("cell")[index];
+
+  assert.equal(cell.classList.contains("ant-table-cell-ellipsis"), false, "the cell clips nothing, so the button stays inside the column");
+  const text = within(cell).getByText(long);
+  assert.ok(text.classList.contains("ant-typography-ellipsis"), "the name truncates on its own");
+  assert.equal(text.querySelector("button"), null, "truncating the name cannot clip the button");
+  assert.ok(cell.textContent?.includes(long), "the full name stays in the DOM, not a JS-sliced prefix");
+
+  const button = within(cell).getByRole("button", { name: "Copy" });
+  assert.equal(button.textContent, "", "the button is the icon-only copy affordance");
+  assert.equal(button.hasAttribute("disabled"), false);
+
+  // And it copies what the cell shows, not the truncated prefix.
+  const originalExecCommand = document.execCommand;
+  let copied = "";
+  document.execCommand = (command) => {
+    assert.equal(command, "copy");
+    copied = window.getSelection()?.toString() || "";
+    return true;
+  };
+  try {
+    await userEvent.setup({ document: dom.window.document }).click(button);
+  } finally {
+    document.execCommand = originalExecCommand;
+  }
+  assert.equal(copied, long);
+});
+
 test("the list asks the server for one page and shows the total", async () => {
   const server = fakeServer(fleet);
   renderPage(server.serve);

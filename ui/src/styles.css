@@ -792,6 +792,13 @@ button, input, textarea, select { letter-spacing: 0; }
 .resource-cell-tags .ant-tag.resource-cell-tags-more { flex: 0 0 auto; }
 .resource-cell-tags-rest { max-height: 320px; overflow-y: auto; }
 .resource-table .ant-table-tbody .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+/* A served name with its own copy button: the name shrinks and truncates, the
+   button keeps its width, so the button stays clickable however long the name
+   is (GWKS-145). The cell must not ellipsize as a whole, which is what used to
+   clip the button away. */
+.served-name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.served-name-cell .served-name-text { flex: 1 1 auto; min-width: 0; }
+.served-name-cell .served-name-copy { flex: 0 0 auto; }
 .model-name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .model-name-cell .model-name-link { min-width: 0; overflow: hidden; white-space: nowrap; }
 .model-name-cell .model-name-link > span { overflow: hidden; text-overflow: ellipsis; }

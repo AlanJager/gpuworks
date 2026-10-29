@@ -158,7 +158,27 @@ export default function DeploymentsPage() {
       serverSort: true,
       render: (_: unknown, d: DeploymentListItem) => <Button type="link" onClick={() => openDetail(d.id)}>{d.name}</Button>,
     },
-    { key: "served_name", title: t("page.column.servedName"), width: 220, render: (_: unknown, d: DeploymentListItem) => d.served_name ? <Typography.Text copyable>{d.served_name}</Typography.Text> : "—" },
+    {
+      key: "served_name",
+      title: t("page.column.servedName"),
+      width: 220,
+      // ResourceTable ellipsizes every column but actions, and that clips the
+      // whole cell: with an inline copy button inside it, a long external
+      // model name took the button off the edge with it, so the name could not
+      // be copied at all (GWKS-145). The cell therefore clips nothing itself —
+      // the name truncates on its own and the copy button is its sibling, so
+      // the button keeps its space at any name length. Typography's ellipsis
+      // does not engage alongside copyable, hence the two elements.
+      ellipsis: false,
+      render: (_: unknown, d: DeploymentListItem) => d.served_name
+        ? (
+          <span className="served-name-cell">
+            <Typography.Text className="served-name-text" ellipsis={{ tooltip: d.served_name }}>{d.served_name}</Typography.Text>
+            <Typography.Text className="served-name-copy" copyable={{ text: d.served_name }} />
+          </span>
+        )
+        : "—",
+    },
     { key: "model", title: t("page.column.model"), width: 220, serverSort: true, render: (_: unknown, d: DeploymentListItem) => d.model_name || "—" },
     {
       key: "runtime",
