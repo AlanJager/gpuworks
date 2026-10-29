@@ -27,16 +27,16 @@
     "offline": "离线",
     "noGpus": "该节点没有上报 GPU。",
     "gpuLabel": "GPU {{index}} · {{name}}",
-    "figures": "清醒 {{awake}} · 休眠 {{sleeping}} · 空闲 {{free}}，共 {{total}}",
-    "barAria": "{{node}} 的 GPU {{index}}：清醒 {{awake}}，休眠残留 {{sleeping}}，空闲 {{free}}，共 {{total}}",
+    "figures": "提供服务 {{awake}} · 休眠 {{sleeping}} · 空闲 {{free}}，共 {{total}}",
+    "barAria": "{{node}} 的 GPU {{index}}：提供服务 {{awake}}，休眠 {{sleeping}}，空闲 {{free}}，共 {{total}}",
     "legend": {
       "title": "图例",
-      "awake": "清醒",
-      "sleeping": "休眠残留",
+      "awake": "提供服务",
+      "sleeping": "休眠",
       "free": "空闲"
     },
     "occupant": {
-      "awake": "清醒 · {{claim}}",
+      "awake": "提供服务 · {{claim}}",
       "asleep": "休眠 L{{level}} · 残留 {{residue}}",
       "level": "（{{level}}）"
     },
@@ -152,7 +152,7 @@
     "hours": "{{hours}} 小时",
     "legend": "状态图例",
     "state": {
-      "awake": "清醒",
+      "awake": "提供服务",
       "asleep": "休眠",
       "asleepLevel": "休眠 L{{level}}",
       "switching": "切换中",
@@ -176,7 +176,7 @@
     "columns": {
       "deployment": "部署",
       "level": "服务级别",
-      "awake": "清醒时长",
+      "awake": "提供服务时长",
       "switches": "切换",
       "yielded": "让出",
       "yieldedTo": "被让",
@@ -197,8 +197,8 @@
     }
   },
   "states": {
-    "awake": "清醒",
-    "asleep": "休眠（残留）",
+    "awake": "提供服务",
+    "asleep": "休眠",
     "free": "空闲",
     "held": "被平台外进程占用",
     "unhealthy": "故障",
@@ -217,7 +217,7 @@
     "emptyFiltered": "没有卡符合筛选条件。",
     "cell": "{{node}} 的 GPU {{index}}，{{model}} {{memory}}：{{state}}",
     "detail": {
-      "claimed": "清醒的部署占用 {{pct}}%",
+      "claimed": "提供服务的部署占用 {{pct}}%",
       "residue": "休眠的部署留着 {{pct}}%",
       "held": "平台外的进程在使用这张卡",
       "switching": "正在切换状态",
@@ -225,13 +225,13 @@
     },
     "holder": "{{name}}（{{level}}，{{state}}）",
     "holderState": {
-      "awake": "清醒",
+      "awake": "提供服务",
       "asleep": "休眠"
     },
     "tipTitle": "{{node}} · GPU {{index}}",
     "tipModel": "{{model}} · {{memory}}",
-    "tipShares": "清醒 {{awake}}% · 休眠 {{sleeping}}% · 空闲 {{free}}%",
-    "legendShade": "清醒，越深占用越多",
+    "tipShares": "提供服务 {{awake}}% · 休眠 {{sleeping}}% · 空闲 {{free}}%",
+    "legendShade": "提供服务，越深占用越多",
     "legendSwitching": "正在切换状态",
     "legendHit": "被搜索的部署占用"
   },

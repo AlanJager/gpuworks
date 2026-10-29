@@ -127,7 +127,7 @@
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "25f9221008f3cda3f3fbf3784806befd2e6f1ca32a852ad194a58ba308f991fd",
   "how-to/batch-api.md": "405a15267119153dfe9fdc2ad76dd8b3e8f2656ed5b5d55c53251f5219c9335d",
-  "how-to/scheduling-center.md": "cf82ebba06aa02f5fb3288d0421bc676553d9bdd42fc1d4dc704399a83807f06",
+  "how-to/scheduling-center.md": "edc1b44b66bbf32e52964b425683989f8cd5bd01298e75042ddbe7ad7be1378d",
   "adr/0059-service-levels-and-the-residency-arbiter.md": "5bbe82203c5c624d30262c64e94559ab15ba0be84393f31cee8d858ee99c019f",
   "explanation/service-levels.md": "39cb4de74f1cc3b09ecc591cd0b396ed174de6314d45196ee80ae31feebf4b4a"
 }

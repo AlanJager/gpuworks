@@ -30,12 +30,12 @@ The **Scheduling policy** card in deployment details keeps these settings in one
 
 Open the **Scheduling Center** page. The upper half shows the whole cluster, the lower half the queues and the history:
 
-- **Summary strip**: the total number of cards in the cluster; how many are awake, asleep (residue), free, held by a process outside the platform, faulty, or on an offline node (six disjoint classes that add up to the total); the cards and free cards by GPU model, for example "L20 ×320, 41 free"; and contention - wakes waiting for room, requests the gateway holds for a wake right now, yields in the last hour - plus the deployments waiting for placement and the schedule actions in the next 24 hours. These figures are computed by the server for the whole cluster and do not change with the filters below.
+- **Summary strip**: the total number of cards in the cluster; how many are serving, asleep, free, held by a process outside the platform, faulty, or on an offline node (six disjoint classes that add up to the total); the cards and free cards by GPU model, for example "L20 ×320, 41 free"; and contention - wakes waiting for room, requests the gateway holds for a wake right now, yields in the last hour - plus the deployments waiting for placement and the schedule actions in the next 24 hours. These figures are computed by the server for the whole cluster and do not change with the filters below.
 - **GPU heatmap**: one small cell (about 12 px) per card, grouped by node; 1000 nodes of 8 cards fit on one or two screens. The colour is the card's state, with the legend at the top right of the card:
 
   | Colour | Meaning |
   |---|---|
-  | Blue, deeper = more claimed | Awake: an instance holds memory on the card; the depth is the share of memory claimed |
+  | Blue, deeper = more claimed | Serving: an instance holds memory on the card; the depth is the share of memory claimed |
   | Purple | Asleep: only the residue of sleepers is on the card |
   | Light green with a green border | Free |
   | Orange | Held by a process outside the platform |
@@ -43,9 +43,9 @@ Open the **Scheduling Center** page. The upper half shows the whole cluster, the
   | Grey, hatched | Its node is offline (as last reported, so possibly stale) |
   | Black inner outline | An instance on the card is starting, going to sleep, waking or draining |
 
-  Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are awake, sleeping and free, and its occupants (deployment, service level, awake or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
+  Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are serving, asleep and free, and its occupants (deployment, service level, serving or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
 - **Filters and view**: filter by GPU model (several allowed), node label (`key=value`) and node state (has free cards, has sleepers, has cards held outside, offline); type a part of a deployment name in "Find a deployment" and the cards it occupies get a red ring while the rest fade, with a count of the occupied cards. Group by node (the default), by GPU model, or by the value of a node label; sort by name, by free capacity (the unclaimed memory of the cards, not counting offline, faulty or externally held cards) or by contention (sleepers waiting to wake, plus the requests held for deployments asleep on the node, plus the yields of deployments that have cards on it). **Clear filters and view** returns to the default.
-- **Node drawer**: click a cell or a node name and a drawer opens that node: a bar per card split into awake usage, sleeping residue and free memory, the occupants of each card (deployment and its service level - resident, online, shared or offline - awake or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open.
+- **Node drawer**: click a cell or a node name and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its service level - resident, online, shared or offline - serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open.
 - **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details.
 - **Waiting wakes**: which deployments are waiting and since when; the wait can be cancelled.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
@@ -92,7 +92,7 @@ The **Residency timeline** in the node drawer draws a horizontal time axis for e
 
 | State | Meaning |
 |---|---|
-| Awake | The instance was running and could serve requests |
+| Serving | The instance was running and could serve requests |
 | Asleep | The engine slept and only its residue stayed in memory; L1 or L2 is shown |
 | Switching | Between a sleep or wake order and its result |
 | Starting | Being created, pulling its image or loading; not serving yet |
@@ -103,7 +103,7 @@ The **Deployments sharing cards** table on the page lists the deployments across
 
 | Column | Meaning |
 |---|---|
-| Awake time, share | The time at least one replica was awake, and its share of the window |
+| Serving time, share | The time at least one replica was serving, and its share of the window |
 | Switches | Times it yielded plus times the platform woke it |
 | Yielded, yielded to | Times it was put to sleep to give a card to another deployment, and times another deployment gave a card to it |
 | Held requests, wait p50 / p95 | Requests the gateway held while it woke, and the median and 95th percentile of their waits |
@@ -123,7 +123,7 @@ curl --fail-with-body -sS \
 What the figures mean and where they stop:
 
 - The timeline is derived from instance records and the event log; nothing else is stored for it. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
-- With `node`, only the nodes named in the request count: replicas of a deployment on other nodes are not part of its awake time, and "yielded to" counts only the deployments that also held these cards giving way to it. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments, and its result is cached for about 30 seconds.
+- With `node`, only the nodes named in the request count: replicas of a deployment on other nodes are not part of its serving time, and "yielded to" counts only the deployments that also held these cards giving way to it. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments, and its result is cached for about 30 seconds.
 - A follower of a multi-node replica follows its leader's sleep and wake.
 - At most the latest 200 segments of a card are returned; older ones are left out and the console says so.
 - The wait quantiles approximate the window: the gateway's quantile of each flush interval, weighted by the requests of that interval, not an exact per-request quantile of the window. The counts start again from zero when the gateway restarts, and both columns stay empty when no request was held in the window. The metric the gateway records is `wake_hold_wait_ms`, see [Inference Metrics](../reference/inference-metrics.md).
