@@ -4,6 +4,7 @@ package l3
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -144,13 +145,17 @@ func TestDockerDriverDeploymentMountHealthProxyAndCleanup(t *testing.T) {
 		t.Fatalf("delete deployment status=%d body=%s", deleted.StatusCode, deleteBody)
 	}
 	env.Eventually(t, 20*time.Second, func() bool {
-		current, _ := env.Store().ListInstances()
-		if len(current) != 0 {
+		if _, err := env.Store().GetDeployment(depID); !errors.Is(err, store.ErrNotFound) {
 			return false
 		}
-		_, err := exec.Command("docker", "inspect", containerID).CombinedOutput()
-		return err != nil
+		current, err := env.Store().ListInstances()
+		if err != nil || len(current) != 0 {
+			return false
+		}
+		status, err := dockerdrv.New().Status(t.Context(), containerID)
+		return err == nil && !status.Exists
 	})
+	t.Logf("deleted deployment %d, instances and container %s", depID, containerID)
 }
 
 type dockerInspectLaunchFacts struct {
