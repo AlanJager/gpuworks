@@ -155,6 +155,12 @@ func (a *apiHandlers) boardPending(now time.Time, nameOf func(uint) string) ([]d
 		if err != nil || dep.State != store.DeployActive {
 			continue
 		}
+		// A refusal the deployment has since got past (its replicas are all
+		// placed now, say after the agents reconnected) is history, not a
+		// wait: only a deployment with a replica no instance fills waits.
+		if waits, err := a.hasUnfilledReplica(dep); err != nil || !waits {
+			continue
+		}
 		item := dto.BoardPending{DeploymentID: depID, Deployment: nameOf(depID), At: ev.CreatedAt.UTC()}
 		var data struct {
 			Scheduler *dto.ScheduleReason `json:"scheduler"`
@@ -166,6 +172,25 @@ func (a *apiHandlers) boardPending(now time.Time, nameOf func(uint) string) ([]d
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
 	return out, nil
+}
+
+// hasUnfilledReplica says some replica (or unit) of the deployment has no
+// instance filling it: what still waits to be placed.
+func (a *apiHandlers) hasUnfilledReplica(dep *store.Deployment) (bool, error) {
+	insts, err := a.d.Store.InstancesForDeployment(dep.ID)
+	if err != nil {
+		return false, err
+	}
+	match, err := planning.DeploymentMatch(a.d.Store, dep, insts)
+	if err != nil {
+		return false, err
+	}
+	for _, slot := range match.Slots {
+		if slot.Inst == nil {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (a *apiHandlers) boardWaitingWakes(nameOf func(uint) string) ([]dto.BoardWaitingWake, error) {

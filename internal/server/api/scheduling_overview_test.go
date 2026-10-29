@@ -411,6 +411,11 @@ func TestSchedulingBoardQueuesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	rig.st.AddDeploymentEventCode(rig.batch.ID, store.EventKindSchedule, store.EventDeploymentUnschedulable, map[string]any{"scheduler": map[string]any{"code": "pool_empty"}})
+	// A refusal is pending only while a replica is unplaced: ask for one
+	// more replica than the instances fill.
+	if err := rig.st.DB().Model(&store.Deployment{}).Where("id = ?", rig.batch.ID).Update("replicas", 9).Error; err != nil {
+		t.Fatal(err)
+	}
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/scheduling/board?queues=1", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("queues = %d %s", rec.Code, rec.Body)

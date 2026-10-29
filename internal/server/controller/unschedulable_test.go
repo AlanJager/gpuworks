@@ -172,3 +172,42 @@ func TestRecordUnschedulableWritesAChangedReasonAtOnce(t *testing.T) {
 		t.Fatalf("events = %d, latest %s: want the narrowed pool written", len(events), latest.Data)
 	}
 }
+
+// Just after the server starts, nodes read offline until their agents
+// reconnect. A refusal that names offline nodes in that window is not
+// recorded (the deployment is looked at again soon); after it, or with no
+// offline node named, it is.
+func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) {
+	c, st, dep := unschedulableFixture(t)
+	start := time.Date(2026, 10, 29, 14, 16, 52, 0, time.UTC)
+	clock := start.Add(time.Second)
+	c.now = func() time.Time { return clock }
+	c.watchingSince = start
+	offline := scheduler.Reason{Code: scheduler.ReasonPoolEmpty, Params: map[string]any{"nodes": 1, "offline": 1}}
+
+	c.recordUnschedulable(dep, offline)
+	if _, found, err := st.FirstScheduleEvent(dep.ID); err != nil || found {
+		t.Fatalf("a refusal while the agents reconnect was recorded (found=%v err=%v)", found, err)
+	}
+	c.q.mu.Lock()
+	_, queued := c.q.pending[depKey(dep.ID)]
+	c.q.mu.Unlock()
+	if !queued {
+		t.Fatal("the deployment is not looked at again")
+	}
+
+	// A refusal that names no offline node is recorded at once.
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonNoFreeGPU, Params: map[string]any{"free": 0}})
+	if _, found, _ := st.FirstScheduleEvent(dep.ID); !found {
+		t.Fatal("a refusal unrelated to reconnecting agents was held back")
+	}
+
+	// Past the grace the offline refusal stands.
+	c2, st2, dep2 := unschedulableFixture(t)
+	c2.now = func() time.Time { return start.Add(c2.offlineGrace) }
+	c2.watchingSince = start
+	c2.recordUnschedulable(dep2, offline)
+	if _, found, _ := st2.FirstScheduleEvent(dep2.ID); !found {
+		t.Fatal("an offline refusal after the grace was not recorded")
+	}
+}

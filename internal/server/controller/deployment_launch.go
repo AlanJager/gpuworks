@@ -85,6 +85,26 @@ func (c *Controller) recordUnschedulable(dep *store.Deployment, reason scheduler
 	c.recordUnschedulableRank(dep, reason, nil)
 }
 
+// reconnectRecheck is how soon a deployment held back only by nodes whose
+// agents have not reconnected since the server started is looked at again.
+const reconnectRecheck = 5 * time.Second
+
+// agentsReconnecting says a refusal names offline nodes while the server is
+// still within its offline grace of starting to watch them: the agents are
+// reconnecting, and the refusal is not recorded.
+func (c *Controller) agentsReconnecting(reason scheduler.Reason) bool {
+	if c.watchingSince.IsZero() || c.now().Sub(c.watchingSince) >= c.offlineGrace {
+		return false
+	}
+	switch offline := reason.Params["offline"].(type) {
+	case int:
+		return offline > 0
+	case float64:
+		return offline > 0
+	}
+	return false
+}
+
 // refusalChangeFloor is the least time between two recorded refusals of one
 // deployment that differ.
 const refusalChangeFloor = 10 * time.Second
@@ -141,6 +161,13 @@ type rankPlace struct {
 // recordUnschedulableRank is recordUnschedulable for one rank of a
 // generation; at is nil for a single-node replica.
 func (c *Controller) recordUnschedulableRank(dep *store.Deployment, reason scheduler.Reason, at *rankPlace) {
+	if c.agentsReconnecting(reason) {
+		// Just after the server starts, a node counts offline until its
+		// agent reconnects: that is not a refusal worth showing. Look again
+		// soon (a node coming online also queues the deployment).
+		c.q.addAfter(depKey(dep.ID), reconnectRecheck)
+		return
+	}
 	payload := map[string]any{"scheduler": reason}
 	if at != nil {
 		payload["rank"], payload["node"] = at.Rank, at.Node.UUID
