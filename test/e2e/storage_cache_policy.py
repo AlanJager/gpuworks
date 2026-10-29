@@ -278,7 +278,12 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     options = page.locator('.ant-select-dropdown:visible .ant-select-item-option')
     pages['size_option_labels'] = options.all_inner_texts()
     options.first.click(force=True)
-    page.wait_for_timeout(500)
+    # The click closes the dropdown and the table re-renders; retry the measurement
+    # rather than reading the row count once and calling a slow commit a failure.
+    for _ in range(20):
+        page.wait_for_timeout(100)
+        if tbody.count() == 10:
+            break
     pages['rows_at_10'] = tbody.count()
     totals = page.locator('.storage-cache-management .ant-pagination-total-text')
     pages['pagination_total_text'] = totals.first.inner_text() if totals.count() else None
@@ -317,6 +322,30 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
           f"restoring the page size left {pages['restored_rows']} rows, expected {pages['default_rows']}")
     report['pagination'] = pages
     evidence.append({'layer': 'ui', 'pagination': pages})
+
+    # 10.9: each row in the viewport opens its own detail, addressed by the row's own
+    # node name rather than by position, and the detail that opens is a definition
+    # list belonging to that row. policy_details already encodes how this table opens
+    # and closes a row, so the sweep reuses it instead of a second spelling of it.
+    view = {}
+    report['viewport_rows'] = view
+    visible_rows = scope.locator('.ant-table-tbody > tr[data-row-key]')
+    names = [visible_rows.nth(i).locator('a').first.inner_text().strip()
+             for i in range(visible_rows.count())]
+    view['row_names'] = names
+    check(len(names) >= 10, f"the viewport only rendered {len(names)} rows")
+    check(len(names) == len(set(names)), f"row names are not unique: {names}")
+    opened = 0
+    for name in names:
+        detail = policy_details(name)
+        terms = [item.strip() for item in detail.locator('dt').all_inner_texts() if item.strip()]
+        check(len(terms) >= 3, f"the detail for {name} rendered {len(terms)} labelled fields")
+        record = row(name)
+        button(record, t['detail']['collapse']).click()
+        expect(button(record, t['detail']['expand'])).to_be_visible()
+        opened += 1
+    view['rows_opened'] = opened
+    check(opened == len(names), f"opened {opened} of {len(names)} row details")
 
     button(row('Cache node 01'), cm['configure']).click()
     dialog = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
