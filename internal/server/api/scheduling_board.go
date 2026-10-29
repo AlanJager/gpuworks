@@ -44,24 +44,27 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sort.SliceStable(matched, func(i, j int) bool { return matched[i].DisplayName() < matched[j].DisplayName() })
-	deployments := map[uint]string{}
-	nameOf := func(id uint) string {
-		if name, ok := deployments[id]; ok {
-			return name
+	type labelled struct{ name, level string }
+	deployments := map[uint]labelled{}
+	lookup := func(id uint) labelled {
+		if known, ok := deployments[id]; ok {
+			return known
 		}
-		name := ""
+		known := labelled{level: store.ServiceLevelResident}
 		if dep, err := a.d.Store.GetDeployment(id); err == nil {
-			name = dep.Name
+			known = labelled{name: dep.Name, level: dep.ServiceLevel}
 		}
-		deployments[id] = name
-		return name
+		deployments[id] = known
+		return known
 	}
+	nameOf := func(id uint) string { return lookup(id).name }
+	levelOf := func(id uint) string { return lookup(id).level }
 	online := a.onlineOf(nodes)
 	board := dto.SchedulingBoard{
 		Nodes: pageOf(matched, query, func(rows []store.Node) []dto.BoardNode {
 			out := make([]dto.BoardNode, 0, len(rows))
 			for i := range rows {
-				out = append(out, a.boardNode(&rows[i], online(rows[i].UUID), nameOf))
+				out = append(out, a.boardNode(&rows[i], online(rows[i].UUID), nameOf, levelOf))
 			}
 			return out
 		}),
@@ -87,7 +90,7 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, board)
 }
 
-func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint) string) dto.BoardNode {
+func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint) string, levelOf func(uint) string) dto.BoardNode {
 	out := dto.BoardNode{UUID: node.UUID, Name: nodeDisplayName(node), Online: online, GPUs: []dto.BoardGPU{}}
 	withGPUs, err := a.d.Store.NodeWithGPUs(node.UUID)
 	if err != nil {
@@ -110,7 +113,7 @@ func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint)
 				state = "asleep"
 			}
 			item.Occupants = append(item.Occupants, dto.BoardOccupant{
-				DeploymentID: o.Instance.DeploymentID, Deployment: nameOf(o.Instance.DeploymentID), Instance: o.Instance.UUID,
+				DeploymentID: o.Instance.DeploymentID, Deployment: nameOf(o.Instance.DeploymentID), ServiceLevel: levelOf(o.Instance.DeploymentID), Instance: o.Instance.UUID,
 				State: state, SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
 			})
 		}

@@ -30,7 +30,8 @@ The **Scheduling policy** card in deployment details keeps these settings in one
 
 Open the **Scheduling Center** page to see in one place:
 
-- **Nodes and GPUs**: each card's total, the usage of awake instances, the residue of sleeping instances, and what is free; the occupants of the card (deployment, awake or asleep, sleep level, claim and residue); cards held by processes outside the platform are marked.
+- **Nodes and GPUs**: each card's total, the usage of awake instances, the residue of sleeping instances, and what is free; the occupants of the card (deployment and its service level - resident, online, shared or offline - awake or asleep, sleep level, claim and residue); cards held by processes outside the platform are marked.
+- **Residency timeline**: which deployment held each card over the last 6 hours (switchable to 24 hours) and in what state, plus the switches and request waits of the deployments that share cards; see [Residency Timeline](#residency-timeline).
 - **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details.
 - **Waiting wakes**: which deployments are waiting and since when.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
@@ -55,7 +56,7 @@ The main structure of the response is below (`nodes` is a paged object; the othe
         "index": 0, "name": "RTX 8000", "memory_bytes": 51539607552,
         "awake_bytes": 0, "sleeping_bytes": 1610612736, "free_bytes": 49928994816, "held_outside": false,
         "occupants": [{
-          "deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "asleep",
+          "deployment_id": 7, "deployment": "qwen", "service_level": "shared", "instance": "…", "state": "asleep",
           "sleep_level": 2, "claim_bytes": 38654705664, "residue_bytes": 1610612736
         }]
       }]
@@ -67,6 +68,44 @@ The main structure of the response is below (`nodes` is a paged object; the othe
 ```
 
 The real `free_bytes` and the other sizes are integer bytes, and the values above are only illustrative; `residue_bytes` appears only on sleeping occupants. `recent` (the latest 50 automation events) is kept for compatibility; the page reads the scheduling history below instead.
+
+### Residency Timeline
+
+The **Residency timeline** card draws a horizontal time axis for every card of the nodes on the current page: one lane for each deployment that held the card, with blocks coloured by the state it was in during that stretch:
+
+| State | Meaning |
+|---|---|
+| Awake | The instance was running and could serve requests |
+| Asleep | The engine slept and only its residue stayed in memory; L1 or L2 is shown |
+| Switching | Between a sleep or wake order and its result |
+| Starting | Being created, pulling its image or loading; not serving yet |
+
+The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours.
+
+Below it, the **Deployments sharing cards** table lists the deployments that held these cards in the window and whose service level is not resident:
+
+| Column | Meaning |
+|---|---|
+| Awake time, share | The time at least one replica was awake, and its share of the window |
+| Switches | Times it yielded plus times the platform woke it |
+| Yielded, yielded to | Times it was put to sleep to give a card to another deployment, and times another deployment gave a card to it |
+| Held requests, wait p50 / p95 | Requests the gateway held while it woke, and the median and 95th percentile of their waits |
+
+The endpoint is separate so that it does not slow down the board, which refreshes every few seconds:
+
+```bash
+curl --fail-with-body -sS \
+  "$API_URL/api/v1/scheduling/timeline?node=$NODE_UUID&hours=6" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+What the figures mean and where they stop:
+
+- The timeline is derived from instance records and the event log; nothing else is stored for it. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
+- Only the nodes named in the request (the board's current page) count: replicas of a deployment on other nodes are not part of its awake time, and "yielded to" counts only the deployments that also held these cards giving way to it.
+- A follower of a multi-node replica follows its leader's sleep and wake.
+- At most the latest 200 segments of a card are returned; older ones are left out and the console says so.
+- The wait quantiles approximate the window: the gateway's quantile of each flush interval, weighted by the requests of that interval, not an exact per-request quantile of the window. The counts start again from zero when the gateway restarts, and both columns stay empty when no request was held in the window. The metric the gateway records is `wake_hold_wait_ms`, see [Inference Metrics](../reference/inference-metrics.md).
 
 ## Schedules
 

@@ -528,6 +528,7 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联重调度的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联重调度](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）、`recent`（最近 50 条自动化事件，为兼容保留，界面改读调度记录）；见[调度看板](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
+| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是看板当前页的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；缺少 `node` 或 `hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，以及请求指定了节点时的 `nodes[]`（见「评估请求与获取预估」） | JWT |
@@ -781,13 +782,49 @@ macOS 忽略 `no_systemd`。
 
 | 字段 | 含义 |
 |---|---|
-| `nodes` | 分页对象（`items`、`page`、`page_size`、`total`），节点按名称排序，`q` 匹配名称或 UUID。每个节点含 `uuid`、`name`、`online`、`gpus[]`：`index`、`name`、`memory_bytes`、`awake_bytes`、`sleeping_bytes`、`free_bytes`、`held_outside` 与 `occupants[]`（`deployment_id`、`deployment`、`instance`、`state`：`awake` / `asleep`、`sleep_level`、`claim_bytes`、`residue_bytes`） |
+| `nodes` | 分页对象（`items`、`page`、`page_size`、`total`），节点按名称排序，`q` 匹配名称或 UUID。每个节点含 `uuid`、`name`、`online`、`gpus[]`：`index`、`name`、`memory_bytes`、`awake_bytes`、`sleeping_bytes`、`free_bytes`、`held_outside` 与 `occupants[]`（`deployment_id`、`deployment`、`service_level`、`instance`、`state`：`awake` / `asleep`、`sleep_level`、`claim_bytes`、`residue_bytes`） |
 | `pending` | 最近 30 分钟被调度拒绝的 active 部署：`deployment_id`、`deployment`、`reason{code,params}`、`at` |
 | `waiting_wakes` | 等位中的唤醒：`deployment_id`、`deployment`、`instances`、`since` |
 | `upcoming` | 未来 24 小时的计划动作：`deployment_id`、`deployment`、`schedule_id`、`action`、`sleep_level`、`replicas`（`replicas` 动作才有，含 0）、`role`（PD 角色的 `replicas` 动作）、`at` |
 | `recent` | 最近 50 条自动化事件：`deployment_id`、`deployment`、`code`、`params`、`at` |
 
 时间线事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)与[节点失联重调度](../how-to/node-failover.md#时间线事件)。
+
+### 驻留时间线
+
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` 只读。它与看板分开，因为看板每隔几秒刷新，而时间线要读窗口内的事件日志；界面按看板当前页的节点和所选窗口各读一次，约每分钟刷新。响应：
+
+```json
+{
+  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6},
+  "nodes": [{
+    "uuid": "…", "name": "host2",
+    "gpus": [{
+      "index": 0, "truncated": false,
+      "segments": [
+        {"deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "awake",
+         "from": "2026-10-28T06:00:00Z", "to": "2026-10-28T09:00:00Z"},
+        {"deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "asleep", "level": 2,
+         "from": "2026-10-28T09:01:00Z", "to": "2026-10-28T12:00:00Z"}
+      ]
+    }]
+  }],
+  "deployments": [{
+    "deployment_id": 7, "deployment": "qwen", "service_level": "shared",
+    "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
+    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
+  }]
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `window` | 窗口：`hours`（6 或 24）、`from`、`to`（现在） |
+| `nodes[].gpus[]` | 与看板同样的卡（`index`），`segments[]` 从旧到新；`truncated` 为 true 表示只保留了最近 200 段 |
+| `segments[]` | 一个实例在一段时间里占着这张卡：`deployment_id`、`deployment`、`instance`、`state`（`awake` / `asleep` / `switching` / `starting`）、休眠时的 `level`（1 或 2）、`from`、`to`（都落在窗口内）；多卡实例在每张卡上各出现一次 |
+| `deployments[]` | 窗口内占过这些卡、服务级别不是 `resident` 的部署：`awake_seconds`（至少一个副本醒着的时间）、`awake_share`（占窗口，0 到 1）、`switches`（`yielded` + `wakes`）、`yielded`（为别的部署让出卡而休眠）、`yielded_to`（别的部署为它让出）、`wakes`（平台唤醒它）、`held_requests`（网关为等它唤醒而扣住的请求数）、`wait_p50_ms` / `wait_p95_ms`（这些请求的等待，近似值，没有被扣住的请求或网关不保留指标时省略） |
+
+时间线由实例记录与事件日志推导，移除实例时记录的 `INSTANCE_REMOVED` 事件（`kind` 为 `residency`，参数 `node_id`、`gpus`）说明它占过的节点与卡。语义与限制见[使用调度中心](../how-to/scheduling-center.md#驻留时间线)。
 
 ### 调度记录
 

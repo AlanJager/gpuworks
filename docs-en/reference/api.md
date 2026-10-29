@@ -528,6 +528,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Reschedule Replicas on Node Loss](../how-to/node-failover.md) | JWT |
 | GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); see [Scheduling Board](#调度看板) | JWT |
 | GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
+| GET | `/api/v1/scheduling/timeline` | The residency timeline: `?node=<uuid>` (repeatable, at most 200, normally the board's current page) `&hours=6\|24` (default 6). The segments in which each deployment's instance held each card over the last `hours` (`awake` / `asleep` / `switching` / `starting`), and the stats of the non-resident deployments that appear; a missing `node` or an `hours` that is not 6 or 24 returns 400 `FIELD_INVALID` (`params.field`), unknown nodes are skipped; see [Residency Timeline](#residency-timeline) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | Recreate the deployment using the current configuration and reset replica retry counts. The request body accepts an optional `strategy` (default `rolling`; `all` interrupts service). See [Restart Strategies](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | Estimate GPU memory, simulate scheduling, and estimate acquisition (without creating a deployment). The response's `acquisition` includes `present` (storage that already holds the model and is readable by the target node), `targets` (storage to which nodes can save the model when acquiring it), `providers` (the template's weight sources), `image`, and `nodes[]` when nodes are specified in the request (see "Evaluation Requests and Acquisition Estimates") | JWT |
@@ -781,13 +782,49 @@ Each occurrence runs once; after a server outage only the newest missed occurren
 
 | Field | Meaning |
 |---|---|
-| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
+| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `service_level`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
 | `pending` | Active deployments refused by the scheduler in the last 30 minutes: `deployment_id`, `deployment`, `reason{code,params}`, `at` |
 | `waiting_wakes` | Wakes waiting for room: `deployment_id`, `deployment`, `instances`, `since` |
 | `upcoming` | Schedule actions in the next 24 hours: `deployment_id`, `deployment`, `schedule_id`, `action`, `sleep_level`, `replicas` (only for a `replicas` action, 0 included), `role` (a `replicas` action of a PD role), `at` |
 | `recent` | The latest 50 automation events: `deployment_id`, `deployment`, `code`, `params`, `at` |
 
 For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件) and [Reschedule Replicas on Node Loss](../how-to/node-failover.md#时间线事件).
+
+### Residency Timeline
+
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` is read-only. It is separate from the board because the board refreshes every few seconds while the timeline reads the event log over a window; the console reads it once per page of board nodes and chosen window, and refreshes it about every minute. The response:
+
+```json
+{
+  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6},
+  "nodes": [{
+    "uuid": "…", "name": "host2",
+    "gpus": [{
+      "index": 0, "truncated": false,
+      "segments": [
+        {"deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "awake",
+         "from": "2026-10-28T06:00:00Z", "to": "2026-10-28T09:00:00Z"},
+        {"deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "asleep", "level": 2,
+         "from": "2026-10-28T09:01:00Z", "to": "2026-10-28T12:00:00Z"}
+      ]
+    }]
+  }],
+  "deployments": [{
+    "deployment_id": 7, "deployment": "qwen", "service_level": "shared",
+    "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
+    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
+  }]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `window` | The window: `hours` (6 or 24), `from`, `to` (now) |
+| `nodes[].gpus[]` | The same cards as the board (`index`); `segments[]` run oldest to newest; `truncated` true means only the latest 200 segments were kept |
+| `segments[]` | One instance holding the card for a stretch: `deployment_id`, `deployment`, `instance`, `state` (`awake` / `asleep` / `switching` / `starting`), `level` (1 or 2) while asleep, `from`, `to` (both inside the window); an instance on several cards appears once on each |
+| `deployments[]` | Deployments that held these cards in the window and whose service level is not `resident`: `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment), `yielded_to` (another deployment gave a card to it), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics) |
+
+The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use the Scheduling Center](../how-to/scheduling-center.md#residency-timeline).
 
 ### 调度记录
 

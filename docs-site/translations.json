@@ -100,7 +100,7 @@
   "how-to/use-ai-helper.md": "5a57ff49247970e28de95d0fd51958435a95554355f921942fe6dc9bbdea2c28",
   "how-to/use-mcp.md": "96d72b65ef2c22f89a8999f5447ef3ff76a091345c7eda33daa597128dbac854",
   "reference/api-conventions.md": "a40ef7cc9dbfcf2cf050845693243fb8ccd9bd21b071b891d7afe6361873d482",
-  "reference/api.md": "61461b5dda1648a7c8881d66cb77b3c9590fa474b762961bd83391c0953c368b",
+  "reference/api.md": "adb7b1040db1ed22d6142053e704fdfa0aa3eb9fd76181bfdc677536995b756a",
   "reference/ascend-support-matrix.md": "78bb969b8b0686f0884ef68c070f875351febbf6a42e038e92ef7c99d4422fef",
   "reference/cli.md": "4e1c2800bf29b4aaa12f980e4510ca2a18d781275dee44e91e0c457c2663722f",
   "reference/configuration.md": "9216338edef60622fedea6e1f6d510ba2ffe5f4b3e5cd3c9f4be73fb3c2afaec",
@@ -109,7 +109,7 @@
   "reference/image-families.md": "6e43e994672478a63298de049d90479725a2b986a0c97fbfa37b82268a4c6ce6",
   "reference/inference-catalog-package.md": "edf23a76ba3258b02d64e678c5817ab9824f60a3c4c6fbcf99c5599b8da7dcf9",
   "reference/inference-catalog-spec.md": "f744d6b313fb8b7090bb9ca4f1e8fa565889b1c654e2e5bfe53bde06304a76eb",
-  "reference/inference-metrics.md": "be00fc3b3f6bb2df9695fd07be840093e889ecd61a994cfc0fb860d02b7b2704",
+  "reference/inference-metrics.md": "6f16fe816b9d17210c6284aba97c44ac771e9b0249c661597fc723f3c0aaf278",
   "reference/install-layout.md": "b16b74174fbf8f13df50a93de51c16b7d21f292e83948da712e9a431444317ed",
   "reference/network-metrics.md": "c0738811e1db07438a70b886d25262bdf7029d77e123fb0ff4c4b5cc768d2370",
   "reference/openai-gateway.md": "475df11f503418d88f26a3549d1acea209460f3ed964abf31b3d048a6c7344c7",
@@ -126,7 +126,7 @@
   "tutorials/scale-model-replicas.md": "387d0dc3e7c624e985535d849325c041b1645630f58d29c4c1f67151d15e2395",
   "tutorials/trace-slow-request.md": "6e582ef2a8658da1057336f4ee79f5a41179dbae69773cd0b753431027acc065",
   "adr/0058-scheduling-center-acts-through-operator-orders.md": "25f9221008f3cda3f3fbf3784806befd2e6f1ca32a852ad194a58ba308f991fd",
-  "how-to/scheduling-center.md": "b30789b7fa6c4d979af0a3687c3be617bdd0cc447661e271db89932536b2bbd9",
+  "how-to/scheduling-center.md": "55ad4389181082fc9bd84179aac71b3ac9311f4a4694f9735e82f3d778153ff5",
   "adr/0059-service-levels-and-the-residency-arbiter.md": "5bbe82203c5c624d30262c64e94559ab15ba0be84393f31cee8d858ee99c019f",
   "explanation/service-levels.md": "4562d6c060c864e754f5ccf7b6cbb9afa48456fdfa0799da3aea3c54d32ee9ce"
 }
