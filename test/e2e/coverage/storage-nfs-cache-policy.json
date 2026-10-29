@@ -169,7 +169,9 @@
     "12.7": "MISSING: clear-cache confirmation is not exercised; every seeded node is offline",
     "12.8": "The defaults dialog sends the previewed expected_updated_at. After another writer advances the revision, Save returns 409 STORAGE_CONFIG_CHANGED, the unlimited draft and cache path stay in the open dialog, and the independent GET keeps the previous default limit and the other writer's revision. Teardown is not the assertion",
     "13.3": "The role=user session sees no configure, batch, restore, retry, defaults, clear or edit-scope control and no checkbox; its PATCH node-overrides, PATCH storage, POST cache/reconcile and DELETE cache are each refused with 403 ADMINISTRATOR_REQUIRED, and targets, updated_at and the default are unchanged",
-    "3.6": "The control and the server refuse the same lower bound. The form blurs -1 to empty and shows the invalid-limit alert without sending anything, and a PATCH written straight to /api/v1/storages/{id}/node-overrides with cache_max_bytes -1 and then -1073741824 is refused with HTTP 400 and code STORAGE_CACHE_LIMIT_NEGATIVE. Independent readback after both refusals still shows the stored limit at 0 bytes, so a rejected capacity left the configuration untouched."
+    "3.6": "The control and the server refuse the same lower bound. The form blurs -1 to empty and shows the invalid-limit alert without sending anything, and a PATCH written straight to /api/v1/storages/{id}/node-overrides with cache_max_bytes -1 and then -1073741824 is refused with HTTP 400 and code STORAGE_CACHE_LIMIT_NEGATIVE. Independent readback after both refusals still shows the stored limit at 0 bytes, so a rejected capacity left the configuration untouched.",
+    "10.5": "covered: The node table pages at 20 of 25 nodes and the size changer offers exactly PAGE_SIZE_OPTIONS ([10,20,50,100], read from the rendered dropdown). Choosing 10 reduces the rendered data rows from 20 to 10; choosing 20 restores 20. Rows are counted on tr[data-row-key] because antd also renders a zero-height measure row and an expansion placeholder, and counting .ant-table-row overcounts - a fact this check surfaced rather than assumed.",
+    "10.6": "covered: With 10 per page the table has 3 pages over 25 nodes and every navigation control is live: jumping to the last page shows the 5 remaining nodes, previous returns to a full 10, next returns to the 5 and marks item 3 active, and item 1 returns to 10. Controls are resolved inside the cache management region because the page carries more than one paged table. The size is then restored to 20 and the row count matches the starting count."
   },
   "missing": [
     "MISSING: 1.1 full field inventory of the policy dialogs (cache path mode is not exercised)",
@@ -184,7 +186,6 @@
     "MISSING: 5.5 and 5.7 conditional fields after a mode switch and failed option loads",
     "MISSING: 10.1 loading and error states of the node table (the empty state is covered for a search)",
     "MISSING: 10.4 sorting the node and cache columns",
-    "MISSING: 10.5, 10.6 and 10.8 page-size switching, first/last/previous navigation and 10/30/100 record matrices",
     "MISSING: 10.7 a valid page after filtering on page 2",
     "MISSING: 10.9 opening details or diagnostics from each row in the viewport",
     "MISSING: 10.10 reload keeping filters and polling not overwriting drafts",

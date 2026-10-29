@@ -255,6 +255,69 @@ def test_storage_cache_policy(page, server, artifacts, report, storage_id, stora
     report['row_selection'] = sel
     evidence.append({'layer': 'ui', 'row_selection': sel})
 
+    # 10.5/10.6/10.7: the node table pages at 20 of 22, so page-size switching and
+    # first/prev/next/last navigation are all exercised against a real second page.
+    pages = {}
+    report['pagination'] = pages  # bind early so diagnostics survive an assertion
+    # antd renders a zero-height measure row and, with row expansion, a placeholder
+    # per row, so counting .ant-table-row overcounts. Only rows carrying a data-row-key
+    # are real; the measure row has none.
+    tbody = page.locator('.storage-cache-management .ant-table-tbody > tr[data-row-key]')
+    pages['default_rows'] = tbody.count()
+    # The page carries more than one paged table, so the size changer is resolved
+    # inside the cache management region rather than by taking the first on screen.
+    scope = page.locator('.storage-cache-management')
+    all_sizes = scope.locator('.ant-pagination-options .ant-select-selector')
+    report['size_changer_count'] = all_sizes.count()
+    expect(all_sizes.first).to_be_visible()
+    size_select = all_sizes.first
+
+    size_select.click(force=True)
+    # The size options are antd's own copy, which is localised, so the choice is made
+    # by position in PAGE_SIZE_OPTIONS rather than by matching its label text.
+    options = page.locator('.ant-select-dropdown:visible .ant-select-item-option')
+    pages['size_option_labels'] = options.all_inner_texts()
+    options.first.click(force=True)
+    page.wait_for_timeout(500)
+    pages['rows_at_10'] = tbody.count()
+    totals = page.locator('.storage-cache-management .ant-pagination-total-text')
+    pages['pagination_total_text'] = totals.first.inner_text() if totals.count() else None
+    check(pages['rows_at_10'] == 10, f"page size 10 shows {pages['rows_at_10']} rows")
+    total = int(''.join(ch for ch in (pages['pagination_total_text'] or '0') if ch.isdigit()) or 0)
+    pages['total_nodes'] = total
+
+    # With 10 per page there are 3 pages, so every navigation control is live.
+    scope.locator('.ant-pagination-item-3').first.click()
+    page.wait_for_timeout(300)
+    pages['last_page_rows'] = tbody.count()
+    pages['last_page_pages'] = page.locator('.storage-cache-management .ant-pagination-item').count()
+    check(pages['last_page_rows'] == total - 20,
+          f"the last page shows {pages['last_page_rows']} rows, expected {total - 20}")
+
+    scope.locator('.ant-pagination-prev').first.click()
+    page.wait_for_timeout(300)
+    pages['prev_page_rows'] = tbody.count()
+    scope.locator('.ant-pagination-next').first.click()
+    page.wait_for_timeout(300)
+    pages['next_page_rows'] = tbody.count()
+    check(pages['next_page_rows'] == total - 20, 'next did not return to the last page')
+    expect(scope.locator('.ant-pagination-item-3')).to_have_class(re.compile(r'ant-pagination-item-active'))
+    pages['back_to_last'] = True
+
+    # Page 1 through the explicit item, then the size goes back to the default so
+    # the rest of the case sees the table as it started.
+    scope.locator('.ant-pagination-item-1').first.click()
+    page.wait_for_timeout(300)
+    pages['first_page_rows'] = tbody.count()
+    size_select.click(force=True)
+    page.locator('.ant-select-dropdown:visible .ant-select-item-option').nth(1).click()
+    page.wait_for_timeout(400)
+    pages['restored_rows'] = tbody.count()
+    check(pages['restored_rows'] == pages['default_rows'],
+          f"restoring the page size left {pages['restored_rows']} rows, expected {pages['default_rows']}")
+    report['pagination'] = pages
+    evidence.append({'layer': 'ui', 'pagination': pages})
+
     button(row('Cache node 01'), cm['configure']).click()
     dialog = page.get_by_role('dialog', name=cm['nodeTitle'].replace('{{node}}', 'Cache node 01'), exact=True)
     report['node_inventory'] = exercise_node_policy_inventory(dialog, cm, cp)
