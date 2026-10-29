@@ -48,8 +48,13 @@ func TestBatchTablesMigration(t *testing.T) {
 			t.Errorf("batches index %s missing", index)
 		}
 	}
-	if !db.Migrator().HasIndex(&BatchFile{}, "CreatedAt") || !db.Migrator().HasIndex(&BatchFile{}, "UserID") {
-		t.Error("batch_files indexes missing")
+	for _, index := range []string{"idx_batch_files_user_created", "idx_batch_files_created"} {
+		if !db.Migrator().HasIndex(&BatchFile{}, index) {
+			t.Errorf("batch_files index %s missing", index)
+		}
+	}
+	if !db.Migrator().HasIndex(&Batch{}, "idx_batches_created") {
+		t.Error("batches index idx_batches_created missing")
 	}
 	var marker SchemaMigration
 	if err := db.First(&marker, 185).Error; err != nil || marker.Name != "batch_tables" {

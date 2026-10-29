@@ -2,6 +2,8 @@ package store
 
 import (
 	"errors"
+	"slices"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -186,7 +188,15 @@ func (s *Store) UnfinishedBatches() ([]Batch, error) {
 	var out []Batch
 	err := s.reader().
 		Where("status IN ?", []string{BatchValidating, BatchInProgress, BatchFinalizing, BatchCancelling}).
-		Order("created_at, id").Find(&out).Error
+		Find(&out).Error
+	// The unfinished set is small and read once at start, so it is sorted
+	// here rather than by the database.
+	slices.SortFunc(out, func(a, b Batch) int {
+		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
 	return out, err
 }
 

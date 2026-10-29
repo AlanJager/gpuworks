@@ -36,8 +36,8 @@ func BatchTerminal(status string) bool {
 // owner is the user who created it, through an API key or the console; a
 // caller sees the files of its own user, the console's administrators see all.
 type BatchFile struct {
-	ID       string `gorm:"primaryKey;size:48"`
-	UserID   uint   `gorm:"not null;default:0;index"`
+	ID       string `gorm:"primaryKey;size:48;index:idx_batch_files_user_created,priority:3;index:idx_batch_files_created,priority:2"`
+	UserID   uint   `gorm:"not null;default:0;index:idx_batch_files_user_created,priority:1"`
 	APIKeyID uint   `gorm:"not null;default:0"`
 	Purpose  string `gorm:"size:16;not null"`
 	Filename string `gorm:"size:255;not null"`
@@ -47,7 +47,7 @@ type BatchFile struct {
 	// Endpoint is the url every request of an input file asks for; empty when
 	// they differ, which no batch accepts.
 	Endpoint  string    `gorm:"size:40;not null;default:''"`
-	CreatedAt time.Time `gorm:"index"`
+	CreatedAt time.Time `gorm:"index:idx_batch_files_user_created,priority:2;index:idx_batch_files_created,priority:1"`
 }
 
 // Batch is one asynchronous batch of requests over an input file. The counts
@@ -55,7 +55,7 @@ type BatchFile struct {
 // CheckpointOffset is the byte length of the partial result file that is
 // durably written, the truncation point a resumed run starts from.
 type Batch struct {
-	ID               string `gorm:"primaryKey;size:48"`
+	ID               string `gorm:"primaryKey;size:48;index:idx_batches_user_created,priority:3;index:idx_batches_created,priority:2"`
 	UserID           uint   `gorm:"not null;default:0;index:idx_batches_user_created,priority:1"`
 	APIKeyID         uint   `gorm:"not null;default:0"`
 	Endpoint         string `gorm:"size:40;not null"`
@@ -71,7 +71,7 @@ type Batch struct {
 	Completed        int       `gorm:"not null;default:0"`
 	Failed           int       `gorm:"not null;default:0"`
 	CheckpointOffset int64     `gorm:"not null;default:0"`
-	CreatedAt        time.Time `gorm:"index:idx_batches_user_created,priority:2"`
+	CreatedAt        time.Time `gorm:"index:idx_batches_user_created,priority:2;index:idx_batches_created,priority:1"`
 	ExpiresAt        time.Time `gorm:"not null"`
 	InProgressAt     *time.Time
 	FinalizingAt     *time.Time

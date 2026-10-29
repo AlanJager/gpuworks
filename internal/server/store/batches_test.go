@@ -1,10 +1,16 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func newBatchRow(id string, user uint, created time.Time) *Batch {
@@ -235,5 +241,75 @@ func TestDeleteBatchOutputsBeforeKeepsInputs(t *testing.T) {
 		if _, err := st.GetBatchFile(id); err != nil {
 			t.Fatalf("%s: %v", id, err)
 		}
+	}
+}
+
+// planLogger records the SQL a store method runs.
+type planLogger struct {
+	logger.Interface
+	mu  *sync.Mutex
+	sql *[]string
+}
+
+func (l planLogger) LogMode(logger.LogLevel) logger.Interface { return l }
+func (l planLogger) Trace(_ context.Context, _ time.Time, fc func() (string, int64), _ error) {
+	q, _ := fc()
+	l.mu.Lock()
+	*l.sql = append(*l.sql, q)
+	l.mu.Unlock()
+}
+
+// The listings and sweeps run on indexes: no query reads a whole table or
+// sorts it (a "temp b-tree" in the plan), however many batches and files there
+// are.
+func TestBatchQueriesUseIndexes(t *testing.T) {
+	st := newTestStore(t)
+	now := time.Now().UTC()
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("batch_%02d", i)
+		_ = st.CreateBatch(newBatchRow(id, uint(1+i%3), now.Add(time.Duration(i)*time.Second)), nil)
+		_ = st.CreateBatchFile(&BatchFile{ID: fmt.Sprintf("file-%02d", i), UserID: uint(1 + i%3), Purpose: BatchFilePurposeOutput, Filename: "f", CreatedAt: now.Add(time.Duration(i) * time.Second)})
+	}
+	var (
+		mu  sync.Mutex
+		sql []string
+	)
+	db := st.db
+	st.db = db.Session(&gorm.Session{Logger: planLogger{mu: &mu, sql: &sql}})
+	one := uint(1)
+	_, _ = st.ListBatchesAfter(BatchOwnerFilter{UserID: &one}, "batch_05", 20)
+	_, _ = st.ListBatchesAfter(BatchOwnerFilter{}, "", 20)
+	_, _, _ = st.ListBatchesPage(BatchOwnerFilter{UserID: &one}, nil, 0, 20)
+	_, _, _ = st.ListBatchesPage(BatchOwnerFilter{}, nil, 20, 20)
+	_, _ = st.ListBatchFiles(BatchOwnerFilter{UserID: &one}, BatchFilePurposeOutput, "file-05", 20)
+	_, _ = st.ListBatchFiles(BatchOwnerFilter{}, "", "", 20)
+	_, _ = st.UnfinishedBatches()
+	_, _ = st.DeleteBatchOutputsBefore(now.Add(-time.Hour))
+	_ = st.DeleteBatchFile("file-00")
+	st.db = db
+
+	if len(sql) < 10 {
+		t.Fatalf("only %d statements recorded", len(sql))
+	}
+	for _, q := range sql {
+		if !strings.HasPrefix(strings.TrimSpace(q), "SELECT") {
+			continue
+		}
+		// The statements carry their values inline; EXPLAIN takes them as is.
+		rows, err := db.Raw("EXPLAIN QUERY PLAN " + q).Rows()
+		if err != nil {
+			t.Fatalf("explain %s: %v", q, err)
+		}
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(detail, "TEMP B-TREE") || (strings.HasPrefix(detail, "SCAN") && !strings.Contains(detail, "USING")) {
+				t.Errorf("plan of %s\n  %s", q, detail)
+			}
+		}
+		rows.Close()
 	}
 }
