@@ -172,10 +172,10 @@
     "loadFailed": "Failed to load the residency timeline",
     "refreshFailed": "Failed to refresh the residency timeline: {{detail}}",
     "sharingTitle": "Deployments sharing cards",
-    "sharingEmpty": "No deployment that shares cards (not resident) held cards in this window.",
+    "sharingEmpty": "No deployment that shares cards (any yield policy but never) held cards in this window.",
     "columns": {
       "deployment": "Deployment",
-      "level": "Service level",
+      "level": "Yield policy",
       "awake": "Serving time",
       "switches": "Switches",
       "yielded": "Yielded",

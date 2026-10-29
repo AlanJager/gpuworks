@@ -981,18 +981,23 @@ test("removed variables travel as env_unset, trimmed and de-duplicated", () => {
   );
 });
 
-test("the yield policy preset is stated only for a sleepable single-node draft that left resident", () => {
+test("the yield policy is stated, with its parameters, only for a sleepable single-node draft that left never", () => {
   const base = { model_id: 7, engine: "vllm", sleepable: true, nnodes: 1 };
   const policy = (values: Record<string, unknown>) => (buildPayload({ ...base, ...values }).payload as Record<string, unknown>).yield_policy;
-  assert.deepEqual(policy({ yield_preset: "online" }), { preset: "online" });
-  assert.deepEqual(policy({ yield_preset: "shared" }), { preset: "shared" });
-  assert.deepEqual(policy({ yield_preset: "offline" }), { preset: "offline" });
-  assert.equal(policy({ yield_preset: "resident" }), undefined, "resident is what an absent policy means");
+  const idle = { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 };
+  const timeslice = { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 };
+  assert.deepEqual(policy({ yield_policy: idle }), idle);
+  assert.deepEqual(policy({ yield_policy: timeslice }), timeslice);
+  assert.deepEqual(policy({ yield_policy: { policy: "anytime", unfinished: "abort" } }), { policy: "anytime", unfinished: "abort" });
+  assert.equal(policy({ yield_policy: { policy: "never" } }), undefined, "never is what an absent policy means");
   assert.equal(policy({}), undefined);
-  // A preset left in the form after the draft became one the server refuses is not sent.
-  assert.equal(policy({ yield_preset: "online", sleepable: false }), undefined);
-  assert.equal(policy({ yield_preset: "online", nnodes: 2 }), undefined);
-  assert.equal(policy({ yield_preset: "online", node_selection_mode: "pd", pd_mode: "pd_disagg" }), undefined);
-  // The old service_level key is no longer a request field.
-  assert.equal((buildPayload({ ...base, yield_preset: "online" }).payload as Record<string, unknown>).service_level, undefined);
+  // Only the known parameters go out.
+  assert.deepEqual(policy({ yield_policy: { ...idle, auto_sleep: true, preset: "online", min_serve_sec: 3 } }), idle);
+  // A policy left in the form after the draft became one the server refuses is not sent.
+  assert.equal(policy({ yield_policy: idle, sleepable: false }), undefined);
+  assert.equal(policy({ yield_policy: idle, nnodes: 2 }), undefined);
+  assert.equal(policy({ yield_policy: idle, node_selection_mode: "pd", pd_mode: "pd_disagg" }), undefined);
+  // The old preset form is no longer a request field.
+  assert.equal(policy({ yield_preset: "online" }), undefined);
+  assert.equal((buildPayload({ ...base, yield_policy: idle }).payload as Record<string, unknown>).service_level, undefined);
 });

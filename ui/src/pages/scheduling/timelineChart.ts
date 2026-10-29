@@ -1,4 +1,4 @@
-import type { YieldPresetName, TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../api";
+import type { YieldPolicyName, TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../api";
 import { colors } from "../../theme/tokens";
 
 // Geometry of the residency timeline. Every x is a position on a track that is
@@ -62,7 +62,7 @@ export const stateOrder: TimelineState[] = ["awake", "asleep", "switching", "sta
 export interface Lane {
   deploymentID: number;
   deployment: string;
-  level: YieldPresetName;
+  policy: YieldPolicyName;
   segments: TimelineSegment[];
 }
 
@@ -72,12 +72,12 @@ export interface Lane {
  * the deployments that share cards.
  */
 export function lanesOf(segments: TimelineSegment[], stats: TimelineDeployment[]): Lane[] {
-  const levels = new Map(stats.map((row) => [row.deployment_id, row.preset]));
+  const policies = new Map(stats.map((row) => [row.deployment_id, row.yield_policy]));
   const lanes = new Map<number, Lane>();
   for (const segment of segments) {
     let lane = lanes.get(segment.deployment_id);
     if (!lane) {
-      lane = { deploymentID: segment.deployment_id, deployment: segment.deployment, level: levels.get(segment.deployment_id) ?? "resident", segments: [] };
+      lane = { deploymentID: segment.deployment_id, deployment: segment.deployment, policy: policies.get(segment.deployment_id) ?? "never", segments: [] };
       lanes.set(segment.deployment_id, lane);
     }
     lane.segments.push(segment);

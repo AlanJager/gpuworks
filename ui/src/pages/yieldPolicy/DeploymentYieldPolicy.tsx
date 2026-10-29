@@ -1,23 +1,19 @@
 import { useMemo, useState } from "react";
-import { Alert, Button, Radio, Select, Space, Typography, message } from "antd";
+import { Alert, Button, Select, Skeleton, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, type Deployment, type YieldPolicyName, type YieldPreset } from "../../api";
+import { api, usePolling, type Deployment, type YieldPolicyDictionary, type YieldPolicyName } from "../../api";
 import { APIError, apiErrorText } from "../../apiError";
 import YieldPolicyFields from "./YieldPolicyFields";
 import {
-  applicable,
-  canAutoSleep,
   canYield,
   draftEqual,
   draftErrors,
   draftOfParams,
   draftOfPolicy,
-  draftOfPreset,
-  presetOfDraft,
+  modifiedFields,
   requestOfDraft,
   savedPolicy,
-  yieldPolicyNames,
-  yieldPresets,
+  applicable,
   type YieldDraft,
 } from "./model";
 
@@ -45,36 +41,63 @@ function refusalText(
 }
 
 // YieldPolicyEditor sets how the deployment shares its GPUs with the others on
-// them and whether it sleeps by itself when idle: a preset (the service level),
-// or a yield policy with the parameters that apply to it. The scheduling
-// policy card keys it by what is saved, so it restarts from that. A policy
-// other than never needs a sleepable single-node, non-PD deployment, and
-// automatic sleep a sleepable one; a deployment that kept what it can no longer
-// have can still go back (turn it off, choose never).
+// them: one yield policy and the parameters that apply to it. Which policies
+// and parameters there are, their defaults and bounds come from the server's
+// dictionary, which the editor waits for. The scheduling policy card keys it
+// by what is saved, so it restarts from that. A policy other than never needs a
+// sleepable single-node, non-PD deployment; a deployment that kept one it can
+// no longer have can still go back (choose never).
 export default function YieldPolicyEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
+  const dictionary = usePolling(api.yieldPolicies, 0);
+  return (
+    <section aria-label={t("yieldPolicy.title")}>
+      <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>{t("yieldPolicy.hint")}</Typography.Paragraph>
+      {!dep.sleepable && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("yieldPolicy.notSleepable")} />}
+      {dep.sleepable && !canYield(dep) && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("yieldPolicy.singleNodeOnly")} />}
+      {dictionary.data ? (
+        <YieldPolicyForm dep={dep} dictionary={dictionary.data} onChanged={onChanged} />
+      ) : dictionary.error ? (
+        <Alert
+          style={{ marginTop: 12 }}
+          type="error"
+          showIcon
+          message={t("yieldPolicy.dictionary.failed", { detail: dictionary.error.message })}
+          action={<Button size="small" onClick={() => void dictionary.refetch()}>{t("yieldPolicy.dictionary.retry")}</Button>}
+        />
+      ) : (
+        <div style={{ marginTop: 12 }} role="status" aria-label={t("yieldPolicy.dictionary.loading")}>
+          <Skeleton active paragraph={{ rows: 3 }} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function YieldPolicyForm({ dep, dictionary, onChanged }: { dep: Deployment; dictionary: YieldPolicyDictionary; onChanged: () => void }) {
+  const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
-  const saved = useMemo(() => draftOfParams(savedPolicy(dep)), [dep]);
-  const [draft, setDraft] = useState<YieldDraft>(saved);
+  const saved = useMemo(() => savedPolicy(dep), [dep]);
+  const [draft, setDraft] = useState<YieldDraft>(() => draftOfParams(saved));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
   const yields = canYield(dep);
-  const sleeps = canAutoSleep(dep);
 
-  const preset = presetOfDraft(draft);
-  const use = applicable(draft);
-  const errors = draftErrors(draft);
-  const dirty = !draftEqual(draft, saved);
-  const change = (patch: Partial<YieldDraft>) => {
+  const applies = applicable(dictionary, draft);
+  const errors = draftErrors(dictionary, draft);
+  const modified = modifiedFields(dictionary, draft);
+  const dirty = !draftEqual(dictionary, draft, saved);
+  const change = (next: YieldDraft) => {
     setRefused(null);
-    setDraft((current) => ({ ...current, ...patch }));
+    setDraft(next);
   };
 
   const save = async () => {
     setBusy(true);
     setRefused(null);
+    let answer;
     try {
-      await api.setYieldPolicy(dep.id, requestOfDraft(draft));
+      answer = await api.setYieldPolicy(dep.id, requestOfDraft(dictionary, draft));
     } catch (error) {
       setRefused(refusalText(t, tCommon, error));
       return;
@@ -82,36 +105,14 @@ export default function YieldPolicyEditor({ dep, onChanged }: { dep: Deployment;
       setBusy(false);
     }
     message.success(t("yieldPolicy.saved"));
+    if (answer.idle_neighbours && answer.idle_neighbours.length > 0) {
+      message.warning({ content: t("yieldPolicy.idleNeighbours", { names: answer.idle_neighbours.join(t("yieldPolicy.nameSeparator")) }), duration: 12 });
+    }
     onChanged();
   };
 
   return (
-    <section aria-label={t("yieldPolicy.title")}>
-      <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>{t("yieldPolicy.hint")}</Typography.Paragraph>
-      {!sleeps && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("yieldPolicy.notSleepable")} />}
-      {sleeps && !yields && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("yieldPolicy.singleNodeOnly")} />}
-
-      <Typography.Text strong style={{ display: "block", marginTop: 12, marginBottom: 4 }}>{t("yieldPolicy.presetLabel")}</Typography.Text>
-      <div role="radiogroup" aria-label={t("yieldPolicy.presetLabel")}>
-        <Radio.Group
-          value={preset}
-          disabled={busy}
-          onChange={(event) => {
-            // Custom is a result, never a choice: its radio is always disabled.
-            const next = event.target.value as YieldPreset;
-            change({ ...draftOfPreset(next) });
-          }}
-        >
-          <Space wrap size={[16, 4]}>
-            {yieldPresets.map((value) => (
-              <Radio key={value} value={value} disabled={busy || (!yields && value !== "resident")}>{t(`yieldPolicy.preset.name.${value}`)}</Radio>
-            ))}
-            <Radio value="custom" disabled>{t("yieldPolicy.preset.name.custom")}</Radio>
-          </Space>
-        </Radio.Group>
-      </div>
-      <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginTop: 4 }}>{t(`yieldPolicy.preset.description.${preset}`)}</Typography.Text>
-
+    <>
       <div role="group" aria-label={t("yieldPolicy.policyLabel")} style={{ marginTop: 12 }}>
         <Typography.Text strong style={{ display: "block", marginBottom: 4 }}>{t("yieldPolicy.policyLabel")}</Typography.Text>
         <Select<YieldPolicyName>
@@ -120,28 +121,32 @@ export default function YieldPolicyEditor({ dep, onChanged }: { dep: Deployment;
           disabled={busy}
           aria-label={t("yieldPolicy.policyLabel")}
           optionLabelProp="short"
+          virtual={false}
           style={{ width: 360, maxWidth: "100%" }}
-          onChange={(policy) => {
-            setRefused(null);
-            setDraft((current) => draftOfPolicy(policy, current.auto_sleep));
-          }}
-          options={yieldPolicyNames.map((value) => ({
-            value,
-            short: t(`yieldPolicy.policy.name.${value}`),
-            label: `${t(`yieldPolicy.policy.name.${value}`)} - ${t(`yieldPolicy.policy.description.${value}`)}`,
-            disabled: !yields && value !== "never",
+          onChange={(policy) => change(draftOfPolicy(dictionary, policy))}
+          options={dictionary.policies.map(({ policy }) => ({
+            value: policy,
+            short: t(`yieldPolicy.policy.name.${policy}`),
+            label: `${t(`yieldPolicy.policy.name.${policy}`)} - ${t(`yieldPolicy.policy.description.${policy}`)}`,
+            disabled: !yields && policy !== "never",
           }))}
         />
+        <Typography.Text type="secondary" style={{ display: "block", fontSize: 12, marginTop: 4 }}>{t(`yieldPolicy.policy.description.${draft.policy}`)}</Typography.Text>
       </div>
 
-      <YieldPolicyFields draft={draft} use={use} errors={errors} busy={busy} canAutoSleep={sleeps} onChange={change} />
+      <YieldPolicyFields dictionary={dictionary} draft={draft} errors={errors} modified={modified} busy={busy} onChange={change} />
 
       {refused && <Alert style={{ marginTop: 12 }} type="error" showIcon message={t("yieldPolicy.saveFailed", { detail: refused })} />}
       <div style={{ marginTop: 12 }}>
         <Button size="small" type="primary" loading={busy} disabled={!dirty || errors.length > 0} onClick={() => void save()}>
           {t("automation.save")}
         </Button>
+        {applies.size > 0 && (
+          <Button size="small" style={{ marginLeft: 8 }} disabled={busy || modified.size === 0} onClick={() => change(draftOfPolicy(dictionary, draft.policy))}>
+            {t("yieldPolicy.restoreDefaults")}
+          </Button>
+        )}
       </div>
-    </section>
+    </>
   );
 }

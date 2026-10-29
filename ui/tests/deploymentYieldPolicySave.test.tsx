@@ -1,26 +1,115 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import {
-  APIError, api, cleanup, deployment, f, fireEvent, held, i18n, mount, openEditor, p, presets, radio, saveButton, screen, serverAnswer, spin, state, stub, summaryOf, summaryText, userEvent, waitFor, withPolicy, within, y,
+  APIError, api, message, choosePolicy, cleanup, defaults, deployment, f, fireEvent, i18n, mount, openEditor, p, saveButton, screen, serverAnswer, spin, state, stub, summaryOf, summaryText, userEvent, waitFor, withPolicy, within, y,
+  type Editor, type YieldPolicyRequest,
 } from "./helpers/yieldPolicyHarness.tsx";
 
 // What the yield policy editor saves and how it answers: the request as literal
-// JSON, success, a save in flight, the ranges, the server's refusals, the
-// deployments that cannot yield or sleep, a read-only user and the keyboard.
+// JSON, success, the idle-neighbours warning, a save in flight, the bounds, the
+// server's refusals, the deployments that cannot yield or sleep, a read-only
+// user and the keyboard.
+
+const radioOf = (editor: Editor, name: string) => editor.getByRole("radio", { name }) as HTMLInputElement;
 
 test("saving shows success, reloads the deployment, restarts the editor from what is saved and updates the summary", async () => {
   stub();
   const user = mount();
   const editor = await openEditor(user);
-  await user.click(radio(editor, y.preset.name.shared));
+  await choosePolicy(user, editor, "timeslice");
   await user.click(saveButton(editor));
   await waitFor(() => assert.equal(state.sent.length, 1));
   await waitFor(() => assert.equal(state.changed, 1));
   assert.ok((await screen.findAllByText(y.saved)).length > 0);
-  await waitFor(() => assert.ok((screen.getByRole("region", { name: p.title }).textContent ?? "").includes(summaryOf(y.preset.name.shared))));
+  await waitFor(() => assert.ok((screen.getByRole("region", { name: p.title }).textContent ?? "").includes(summaryOf("Yield on a turn · idle 30 s / up to 2 min per turn"))));
   const again = within(await screen.findByRole("region", { name: y.title }));
-  assert.equal(radio(again, y.preset.name.shared).checked, true);
+  await again.findByRole("combobox", { name: y.policyLabel });
+  assert.equal(spin(again, f.max_serve_sec)?.value, "120");
   assert.equal(saveButton(again).disabled, true, "what is saved is not a change");
+});
+
+test("what is saved is the policy with the parameters that apply, as literal JSON", async () => {
+  stub();
+  const cases: Array<[string, (user: ReturnType<typeof userEvent.setup>, editor: Editor) => Promise<void>, YieldPolicyRequest]> = [
+    ["idle with its defaults", async (user, editor) => { await choosePolicy(user, editor, "idle"); },
+      { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 }],
+    ["timeslice with its defaults", async (user, editor) => { await choosePolicy(user, editor, "timeslice"); },
+      { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 }],
+    ["anytime with its defaults carries no wait time", async (user, editor) => { await choosePolicy(user, editor, "anytime"); },
+      { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 }],
+    ["timeslice with edited values", async (user, editor) => {
+      await choosePolicy(user, editor, "timeslice");
+      fireEvent.change(spin(editor, f.idle_sec) as HTMLInputElement, { target: { value: "45" } });
+      fireEvent.change(spin(editor, f.max_serve_sec) as HTMLInputElement, { target: { value: "30" } });
+      fireEvent.change(spin(editor, f.unfinished_wait_sec) as HTMLInputElement, { target: { value: "600" } });
+      fireEvent.change(spin(editor, f.hold_max_sec) as HTMLInputElement, { target: { value: "10" } });
+      await user.click(editor.getByRole("combobox", { name: f.sleep_level }));
+      await user.click(await screen.findByText(y.sleepLevel.l1));
+    }, { policy: "timeslice", idle_sec: 30, sleep_level: "l1", max_serve_sec: 30, unfinished: "wait", unfinished_wait_sec: 600, hold_max_sec: 10 }],
+    ["abort leaves the wait time out", async (user, editor) => {
+      await choosePolicy(user, editor, "timeslice");
+      await user.click(editor.getByRole("radio", { name: y.unfinished.abort }));
+    }, { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "abort", hold_max_sec: 600 }],
+    ["parameters that stop applying are left out", async (user, editor) => {
+      await choosePolicy(user, editor, "timeslice");
+      fireEvent.change(spin(editor, f.max_serve_sec) as HTMLInputElement, { target: { value: "500" } });
+      await choosePolicy(user, editor, "anytime");
+    }, { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 }],
+  ];
+  for (const [name, act, want] of cases) {
+    stub();
+    const user = mount();
+    const editor = await openEditor(user);
+    await act(user, editor);
+    // idle_sec 45 is above the cap of the 30 s max_serve case: the form would refuse it.
+    if (name === "timeslice with edited values") fireEvent.change(spin(editor, f.idle_sec) as HTMLInputElement, { target: { value: "30" } });
+    await user.click(saveButton(editor));
+    await waitFor(() => assert.equal(state.sent.length, 1), { timeout: 3000 });
+    assert.deepEqual(state.sent[0][1], want, name);
+    assert.equal(state.sent[0][0], 1);
+    for (const gone of ["preset", "auto_sleep", "min_serve_sec"]) assert.equal(gone in state.sent[0][1], false, `${name}: ${gone}`);
+    cleanup();
+  }
+  // Going back to never sends the policy alone.
+  stub();
+  const user = mount(withPolicy(defaults.idle));
+  const editor = await openEditor(user);
+  await choosePolicy(user, editor, "never");
+  await user.click(saveButton(editor));
+  await waitFor(() => assert.deepEqual(state.sent, [[1, { policy: "never" }]]));
+});
+
+test("the answer's idle neighbours are warned about after the save, in the user's language, and a clean answer is not", async () => {
+  const warn = mock.method(message, "warning");
+  try {
+    stub();
+    state.neighbours = ["chat-b", "chat-c"];
+    const user = mount();
+    const editor = await openEditor(user);
+    await choosePolicy(user, editor, "idle");
+    await user.click(saveButton(editor));
+    await waitFor(() => assert.equal(state.changed, 1));
+    const wording = "It shares GPUs with chat-b, chat-c, and all of them yield when idle: while both are busy neither gives way, and the other's requests are held until they time out. To take turns, switch to yield on a turn.";
+    assert.equal(i18n.t("deployments:yieldPolicy.idleNeighbours", { names: "chat-b, chat-c" }), wording);
+    await screen.findByText(wording);
+    assert.equal(warn.mock.callCount(), 1);
+    assert.ok((await screen.findAllByText(y.saved)).length > 0, "it is saved all the same");
+    // The save itself was not refused: the server allows it.
+    assert.deepEqual(state.current.yield_policy, defaults.idle);
+    cleanup();
+
+    warn.mock.resetCalls();
+    stub();
+    state.neighbours = [];
+    const user2 = mount();
+    const editor2 = await openEditor(user2);
+    await choosePolicy(user2, editor2, "idle");
+    await user2.click(saveButton(editor2));
+    await waitFor(() => assert.equal(state.changed, 1));
+    assert.equal(warn.mock.callCount(), 0, "no neighbours, no warning");
+  } finally {
+    warn.mock.restore();
+  }
 });
 
 test("a save in flight locks the form and shows it is working", async () => {
@@ -32,28 +121,29 @@ test("a save in flight locks the form and shows it is working", async () => {
   });
   const user = mount();
   const editor = await openEditor(user);
-  await user.click(radio(editor, y.preset.name.online));
+  await choosePolicy(user, editor, "idle");
   await user.click(saveButton(editor));
   await waitFor(() => assert.equal(state.sent.length, 1));
   assert.ok(saveButton(editor).className.includes("ant-btn-loading") || saveButton(editor).disabled);
-  assert.equal(radio(editor, y.preset.name.offline).disabled, true);
   assert.equal(spin(editor, f.idle_sec)?.disabled, true);
+  assert.equal((editor.getByRole("button", { name: y.restoreDefaults }) as HTMLButtonElement).disabled, true);
   assert.equal(state.changed, 0, "nothing is saved yet");
   finish();
   await waitFor(() => assert.equal(state.changed, 1));
 });
 
-test("a value out of its range or a cleared one is flagged and cannot be saved", async () => {
+test("a value out of its bounds or a cleared one is flagged and cannot be saved", async () => {
   stub();
-  const user = mount(withPolicy(presets.shared));
+  const user = mount(withPolicy(defaults.timeslice));
   const editor = await openEditor(user);
-  const ranges: Array<[string, string, number, number]> = [
-    [f.idle_sec, "29", 30, 604800],
-    [f.min_serve_sec, "3601", 0, 3600],
+  const bounds: Array<[string, string, number, number]> = [
+    [f.idle_sec, "14", 15, 120],
+    [f.max_serve_sec, "29", 30, 86400],
+    [f.max_serve_sec, "86401", 30, 86400],
     [f.unfinished_wait_sec, "0", 1, 600],
-    [f.hold_max_sec, "1801", 10, 1800],
+    [f.hold_max_sec, "3601", 10, 3600],
   ];
-  for (const [label, bad, minimum, maximum] of ranges) {
+  for (const [label, bad, minimum, maximum] of bounds) {
     const input = spin(editor, label) as HTMLInputElement;
     const good = input.value;
     fireEvent.change(input, { target: { value: bad } });
@@ -70,33 +160,67 @@ test("a value out of its range or a cleared one is flagged and cannot be saved",
   await user.click(saveButton(editor));
   assert.deepEqual(state.sent, []);
   // The boundaries are accepted.
-  fireEvent.change(idle, { target: { value: "30" } });
+  fireEvent.change(idle, { target: { value: "15" } });
   assert.equal(saveButton(editor).disabled, false);
-  fireEvent.change(idle, { target: { value: "604800" } });
+  fireEvent.change(idle, { target: { value: "120" } });
   assert.equal(saveButton(editor).disabled, false);
   // A field that does not apply is not checked.
-  await user.click(radio(editor, y.preset.name.offline));
-  assert.equal(spin(editor, f.idle_sec), null);
+  await choosePolicy(user, editor, "idle");
+  assert.equal(spin(editor, f.max_serve_sec), null);
+  assert.equal(saveButton(editor).disabled, false);
+});
+
+test("the idle time may not exceed the longest serving time, and the range says what the cap is now", async () => {
+  stub();
+  const user = mount(withPolicy(defaults.timeslice));
+  const editor = await openEditor(user);
+  const idle = spin(editor, f.idle_sec) as HTMLInputElement;
+  fireEvent.change(idle, { target: { value: "121" } });
+  editor.getByText(i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.idle_sec, minimum: 15, maximum: 120 }));
+  assert.equal(saveButton(editor).disabled, true);
+  // Raising the longest serving time lifts the cap.
+  fireEvent.change(spin(editor, f.max_serve_sec) as HTMLInputElement, { target: { value: "300" } });
+  assert.equal(editor.queryByText(i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.idle_sec, minimum: 15, maximum: 120 })), null);
+  assert.equal(saveButton(editor).disabled, false);
+  fireEvent.change(idle, { target: { value: "301" } });
+  editor.getByText(i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.idle_sec, minimum: 15, maximum: 300 }));
+  // Without the longest serving time in play (the idle policy) only the plain maximum holds.
+  await choosePolicy(user, editor, "idle");
+  fireEvent.change(spin(editor, f.idle_sec) as HTMLInputElement, { target: { value: "604800" } });
+  assert.equal(saveButton(editor).disabled, false);
+  fireEvent.change(spin(editor, f.idle_sec) as HTMLInputElement, { target: { value: "604801" } });
+  editor.getByText(i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.idle_sec, minimum: 15, maximum: 604800 }));
+});
+
+test("the stub server refuses what the real one does: the old preset body and an idle time above the longest serving time", () => {
+  stub();
+  assert.throws(() => serverAnswer({ preset: "online" } as never), (error: unknown) => error instanceof APIError && error.status === 400);
+  assert.throws(() => serverAnswer({ policy: "timeslice", idle_sec: 200, max_serve_sec: 120 }), (error: unknown) => {
+    const refusal = error as APIError;
+    return refusal.code === "YIELD_POLICY_INVALID" && refusal.params?.field === "idle_sec" && refusal.params?.reason === "out_of_range" && refusal.params?.maximum === 120;
+  });
+  assert.deepEqual(serverAnswer({ policy: "anytime" }), defaults.anytime && { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 });
 });
 
 test("the server's refusals are shown in the user's language and nothing is marked saved", async () => {
   stub();
   const refusals: Array<[APIError, string]> = [
     [
-      new APIError("YIELD_POLICY_INVALID", { field: "hold_max_sec", reason: "out_of_range", minimum: 10, maximum: 1800 }, "out of range", 400),
-      i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.hold_max_sec, minimum: 10, maximum: 1800 }),
+      new APIError("YIELD_POLICY_INVALID", { field: "hold_max_sec", reason: "out_of_range", minimum: 10, maximum: 3600 }, "out of range", 400),
+      i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.hold_max_sec, minimum: 10, maximum: 3600 }),
+    ],
+    [
+      // The cap of the idle time is the longest serving time.
+      new APIError("YIELD_POLICY_INVALID", { field: "idle_sec", reason: "out_of_range", minimum: 15, maximum: 120 }, "out of range", 400),
+      i18n.t("deployments:yieldPolicy.error.out_of_range", { field: f.idle_sec, minimum: 15, maximum: 120 }),
+    ],
+    [
+      new APIError("YIELD_POLICY_INVALID", { field: "max_serve_sec", reason: "required" }, "required", 400),
+      i18n.t("deployments:yieldPolicy.error.required", { field: f.max_serve_sec }),
     ],
     [
       new APIError("YIELD_POLICY_INVALID", { field: "unfinished", reason: "invalid_value" }, "bad value", 400),
       i18n.t("deployments:yieldPolicy.error.invalid_value", { field: f.unfinished }),
-    ],
-    [
-      new APIError("YIELD_POLICY_INVALID", { field: "idle_sec", reason: "required" }, "required", 400),
-      i18n.t("deployments:yieldPolicy.error.required", { field: f.idle_sec }),
-    ],
-    [
-      new APIError("YIELD_POLICY_IDLE_SHARED", { deployment: "other-chat" }, "another idle-policy deployment shares its GPUs", 409),
-      i18n.t("common:apiError.YIELD_POLICY_IDLE_SHARED", { deployment: "other-chat" }),
     ],
     [new APIError("YIELD_POLICY_SHAPE", {}, "single-node only", 400), i18n.t("common:apiError.YIELD_POLICY_SHAPE")],
     [new APIError("SLEEP_NOT_ENABLED", {}, "sleep mode was not enabled", 400), i18n.t("common:apiError.SLEEP_NOT_ENABLED")],
@@ -105,17 +229,17 @@ test("the server's refusals are shown in the user's language and nothing is mark
     api.setYieldPolicy = async () => { throw error; };
     const user = mount();
     const editor = await openEditor(user);
-    await user.click(radio(editor, y.preset.name.online));
+    await choosePolicy(user, editor, "idle");
     await user.click(saveButton(editor));
     const alert = await screen.findByText(i18n.t("deployments:yieldPolicy.saveFailed", { detail }));
     assert.ok(alert, error.code);
     assert.equal(state.changed, 0, error.code);
     // The form stays as it was, ready to be corrected.
-    assert.equal(radio(editor, y.preset.name.online).checked, true);
-    assert.ok((await summaryText()).includes(summaryOf(y.preset.name.resident)), "the summary still shows what is saved");
+    assert.equal(spin(editor, f.idle_sec)?.value, "60");
+    assert.ok((await summaryText()).includes(summaryOf("Never yield automatically")), "the summary still shows what is saved");
     // Changing anything clears the refusal.
-    await userEvent.setup().click(radio(editor, y.preset.name.offline));
-    assert.equal(screen.queryByText(i18n.t("deployments:yieldPolicy.saveFailed", { detail })), null);
+    fireEvent.change(spin(editor, f.hold_max_sec) as HTMLInputElement, { target: { value: "999" } });
+    assert.ok(screen.queryByText(i18n.t("deployments:yieldPolicy.saveFailed", { detail })) === null, error.code);
     cleanup();
   }
 });
@@ -125,54 +249,37 @@ test("a refusal of the server that the editor did not expect still reads in the 
   api.setYieldPolicy = async () => { throw new APIError("YIELD_POLICY_INVALID", { field: "something_new", reason: "unheard_of" }, "bad", 400); };
   const user = mount();
   const editor = await openEditor(user);
-  await user.click(radio(editor, y.preset.name.online));
+  await choosePolicy(user, editor, "idle");
   await user.click(saveButton(editor));
   await screen.findByText(i18n.t("deployments:yieldPolicy.saveFailed", { detail: i18n.t("common:apiError.YIELD_POLICY_INVALID", { field: "something_new", reason: "unheard_of" }) }));
 });
 
-test("a deployment that cannot sleep says so and offers only the way back to resident", async () => {
+test("a deployment that cannot sleep says so and offers only the way back to never", async () => {
   stub();
-  const user = mount(deployment({ sleepable: false, yield_policy: held(presets.shared) }));
+  const user = mount(deployment({ sleepable: false, yield_policy: defaults.timeslice }));
   const editor = await openEditor(user);
   editor.getByText(y.notSleepable);
-  assert.equal(radio(editor, y.preset.name.shared).checked, true);
-  for (const name of ["online", "shared", "offline"] as const) assert.equal(radio(editor, y.preset.name[name]).disabled, true, name);
-  assert.equal(radio(editor, y.preset.name.resident).disabled, false);
-  // The policy select offers never yield only.
+  assert.equal(spin(editor, f.max_serve_sec)?.value, "120", "what it kept is shown");
   await user.click(editor.getByRole("combobox", { name: y.policyLabel }));
   const option = (policy: keyof typeof y.policy.name) => screen.getByText(`${y.policy.name[policy]} - ${y.policy.description[policy]}`).closest(".ant-select-item") as HTMLElement;
   for (const policy of ["idle", "timeslice", "anytime"] as const) assert.ok(option(policy).className.includes("ant-select-item-option-disabled"), policy);
   assert.ok(!option("never").className.includes("ant-select-item-option-disabled"));
-  await user.keyboard("{Escape}");
-  await user.click(radio(editor, y.preset.name.resident));
+  await user.click(option("never"));
   await user.click(saveButton(editor));
-  await waitFor(() => assert.equal(JSON.stringify(state.sent), '[[1,{"policy":"never","auto_sleep":false}]]'));
-  cleanup();
-
-  // Without a policy kept, it cannot turn automatic sleep on either.
-  const user2 = mount(deployment({ sleepable: false, yield_policy: held({ policy: "never", auto_sleep: true, idle_sec: 600, sleep_level: "l1", hold_max_sec: 120 }) }));
-  const editor2 = await openEditor(user2);
-  const toggle = editor2.getByRole("switch", { name: f.auto_sleep }) as HTMLButtonElement;
-  assert.equal(toggle.disabled, false, "a kept automatic sleep can be turned off");
-  await user2.click(toggle);
-  assert.equal(radio(editor2, y.preset.name.resident).checked, true);
-  assert.equal((editor2.getByRole("switch", { name: f.auto_sleep }) as HTMLButtonElement).disabled, true, "and cannot be turned on again");
+  await waitFor(() => assert.deepEqual(state.sent, [[1, { policy: "never" }]]));
 });
 
-test("a multi-node or PD deployment can only never yield, but can sleep by itself", async () => {
+test("a multi-node or PD deployment can only never yield automatically", async () => {
   stub();
   for (const shape of [{ nnodes: 2 }, { pd: { mode: "ep", roles: [] } }]) {
     const user = mount(deployment(shape));
     const editor = await openEditor(user);
     editor.getByText(y.singleNodeOnly);
-    for (const name of ["online", "shared", "offline"] as const) assert.equal(radio(editor, y.preset.name[name]).disabled, true, name);
-    const toggle = editor.getByRole("switch", { name: f.auto_sleep }) as HTMLButtonElement;
-    assert.equal(toggle.disabled, false);
-    await user.click(toggle);
-    await user.click(saveButton(editor));
-    await waitFor(() => assert.equal(state.sent.length, 1));
-    assert.equal(JSON.stringify(state.sent[0][1]), '{"policy":"never","auto_sleep":true,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}');
-    state.sent.length = 0;
+    await user.click(editor.getByRole("combobox", { name: y.policyLabel }));
+    for (const policy of ["idle", "timeslice", "anytime"] as const) {
+      const option = screen.getByText(`${y.policy.name[policy]} - ${y.policy.description[policy]}`).closest(".ant-select-item") as HTMLElement;
+      assert.ok(option.className.includes("ant-select-item-option-disabled"), policy);
+    }
     cleanup();
   }
   // A single-node deployment that can sleep has no such notice.
@@ -182,58 +289,58 @@ test("a multi-node or PD deployment can only never yield, but can sleep by itsel
   assert.equal(editor.queryByText(y.notSleepable), null);
 });
 
-test("a read-only user sees the service level but cannot edit it", async () => {
+test("a read-only user sees the yield policy but cannot edit it", async () => {
   stub();
   state.role = "viewer";
-  mount(withPolicy(presets.online));
-  assert.ok((await summaryText()).includes(summaryOf(y.preset.name.online)));
+  mount(withPolicy(defaults.idle));
+  assert.ok((await summaryText()).includes(summaryOf("Yield when idle · yields after 1 min idle")));
   await waitFor(() => assert.equal(screen.queryByRole("button", { name: p.edit }), null));
 });
 
-test("the editor is operable from the keyboard: arrow keys on the presets, space on the switch, the select, then save", async () => {
+test("the editor is operable from the keyboard: the select, the radios, restore defaults, then save", async () => {
   stub();
   const user = mount();
   const editor = await openEditor(user);
-  // Arrow keys walk the presets; custom, being disabled, is skipped.
-  radio(editor, y.preset.name.resident).focus();
-  await user.keyboard("{ArrowDown}");
-  assert.equal(radio(editor, y.preset.name.online).checked, true);
-  assert.equal(spin(editor, f.idle_sec)?.value, "300");
-  await user.keyboard("{ArrowDown}");
-  assert.equal(radio(editor, y.preset.name.shared).checked, true);
-  await user.keyboard("{ArrowUp}{ArrowUp}");
-  assert.equal(radio(editor, y.preset.name.resident).checked, true);
-  assert.equal(saveButton(editor).disabled, true);
-
-  // Tab moves on to the policy select, which opens and picks with the keys.
-  await user.tab();
   const policy = editor.getByRole("combobox", { name: y.policyLabel });
+  policy.focus();
   assert.equal(document.activeElement, policy);
-  // The select reads key codes (which jsdom does not fill in for typed keys), so its keys are state.sent as events.
+  // The select reads key codes (which jsdom does not fill in for typed keys), so its keys are sent as events.
   const press = (name: "ArrowDown" | "Enter") => fireEvent.keyDown(policy, { key: name, code: name, keyCode: name === "Enter" ? 13 : 40, which: name === "Enter" ? 13 : 40 });
-  press("ArrowDown");
-  await screen.findAllByRole("option", { hidden: true });
-  press("ArrowDown");
-  press("Enter");
-  await waitFor(() => assert.equal(radio(editor, y.preset.name.online).checked, true));
+  // ArrowDown opens the list on the current policy, each further one moves on, Enter picks.
+  const pick = async (steps: number) => {
+    press("ArrowDown");
+    await screen.findAllByRole("option", { hidden: true });
+    for (let i = 0; i < steps; i += 1) press("ArrowDown");
+    press("Enter");
+  };
+  await pick(1);
+  await waitFor(() => assert.equal(spin(editor, f.idle_sec)?.value, "60"));
+  await choosePolicy(user, editor, "timeslice");
+  assert.equal(spin(editor, f.max_serve_sec)?.value, "120");
 
-  // Space and Enter flip the switch.
-  const toggle = editor.getByRole("switch", { name: f.auto_sleep });
-  toggle.focus();
-  await user.keyboard(" ");
-  assert.equal(toggle.getAttribute("aria-checked"), "true");
-  await user.keyboard("{Enter}");
-  assert.equal(toggle.getAttribute("aria-checked"), "false");
-  assert.equal(radio(editor, y.preset.name.online).checked, true);
+  // Arrow keys walk the unfinished-request choices.
+  radioOf(editor, y.unfinished.wait).focus();
+  await user.keyboard("{ArrowUp}");
+  assert.equal(radioOf(editor, y.unfinished.abort).checked, true);
+  assert.equal(spin(editor, f.unfinished_wait_sec), null);
+  await user.keyboard("{ArrowDown}");
+  assert.equal(radioOf(editor, y.unfinished.wait).checked, true);
 
-  // The number field takes typed digits, and the save button is reached and pressed with the keyboard.
+  // The number field takes typed digits; restore defaults and save are reached and pressed with the keyboard.
   const hold = spin(editor, f.hold_max_sec) as HTMLInputElement;
   hold.focus();
   await user.keyboard("{Control>}a{/Control}200");
-  assert.equal(radio(editor, y.preset.name.custom).checked, true);
+  within(editor.getByRole("group", { name: f.hold_max_sec })).getByText(y.modified);
+  const restore = editor.getByRole("button", { name: y.restoreDefaults });
+  restore.focus();
+  await user.keyboard("{Enter}");
+  assert.equal(spin(editor, f.hold_max_sec)?.value, "600");
+  assert.equal(editor.queryAllByText(y.modified).length, 0);
+  hold.focus();
+  await user.keyboard("{Control>}a{/Control}200");
   const save = saveButton(editor);
   save.focus();
   await user.keyboard("{Enter}");
-  await waitFor(() => assert.equal(JSON.stringify(state.sent), '[[1,{"policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":200}]]'));
+  await waitFor(() => assert.deepEqual(state.sent, [[1, { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 200 }]]));
   await waitFor(() => assert.equal(state.changed, 1));
 });

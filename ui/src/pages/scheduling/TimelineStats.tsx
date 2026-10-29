@@ -32,7 +32,7 @@ export function SharingTable({ rows }: { rows: TimelineDeployment[] }) {
   const num = (key: keyof TimelineDeployment) => (_: unknown, row: TimelineDeployment) => <span className="scheduling-num">{String(row[key])}</span>;
   const columns: ResourceColumn<TimelineDeployment>[] = [
     { key: "deployment", title: t("timeline.columns.deployment"), width: 200, render: (_: unknown, row) => <Link to={`/deployments?deployment=${row.deployment_id}`}>{row.deployment}</Link> },
-    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => <Tag>{tDeploy(`yieldPolicy.preset.name.${row.preset}`)}</Tag> },
+    { key: "level", title: t("timeline.columns.level"), width: 90, render: (_: unknown, row) => <Tag>{tDeploy(`yieldPolicy.policy.name.${row.yield_policy}`)}</Tag> },
     {
       key: "awake",
       title: t("timeline.columns.awake"),

@@ -38,7 +38,7 @@ export default function CardTooltip({ active, deployments }: { active: ActiveCar
               <li key={`${occupant.deployment}-${occupant.asleep ? "s" : "a"}`}>
                 {t("heatmap.holder", {
                   name: dep?.name ?? "?",
-                  level: tDeploy(`yieldPolicy.preset.name.${dep?.preset ?? "resident"}`),
+                  level: tDeploy(`yieldPolicy.policy.name.${dep?.yield_policy ?? "never"}`),
                   state: t(`heatmap.holderState.${occupant.asleep ? "asleep" : "awake"}`),
                 })}
               </li>

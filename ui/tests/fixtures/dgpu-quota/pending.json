@@ -76,9 +76,7 @@
       "after_sec": 600
     },
     "yield_policy": {
-      "preset": "resident",
-      "policy": "never",
-      "auto_sleep": false
+      "policy": "never"
     },
     "sleep_held": false,
     "nnodes": 1,

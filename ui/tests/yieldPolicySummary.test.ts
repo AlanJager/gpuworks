@@ -1,39 +1,51 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createI18n } from "./helpers/dom.ts";
-import { presetParams } from "../src/pages/yieldPolicy/model.ts";
 import { paramsSummary, spanText, yieldSummary } from "../src/pages/yieldPolicy/summary.ts";
 
-// The one phrase a policy is summed up in on the scheduling policy card, in
-// both languages.
+// The one line a policy is summed up in on the scheduling policy card, in both
+// languages. It reads the saved parameters alone: no dictionary is involved.
+
+const wording = {
+  en: {
+    never: "Never yield automatically",
+    idle: "Yield when idle · yields after 1 min idle",
+    timeslice: "Yield on a turn · idle 30 s / up to 2 min per turn",
+    anytime: "Yield anytime · idle 30 s",
+  },
+  zh: {
+    never: "不自动出让",
+    idle: "闲置自动出让 · 闲置 1 分钟后让出",
+    timeslice: "按时自动出让 · 闲置 30 秒 / 每轮最长 2 分钟",
+    anytime: "随时出让 · 闲置 30 秒",
+  },
+} as const;
 
 for (const lng of ["en", "zh"] as const) {
-  const { i18n, locale } = await createI18n(["deployments"], lng);
+  const { i18n } = await createI18n(["deployments"], lng);
   const t = i18n.getFixedT(lng, "deployments");
-  const y = locale.deployments.yieldPolicy;
 
-  test(`${lng}: a preset is summed up by its name`, () => {
-    for (const name of ["resident", "online", "shared", "offline"] as const) {
-      assert.equal(paramsSummary(t, presetParams[name]), y.preset.name[name]);
-    }
+  test(`${lng}: each policy is summed up by its name and the parameters that matter`, () => {
+    assert.equal(paramsSummary(t, { policy: "never" }), wording[lng].never);
+    assert.equal(paramsSummary(t, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 }), wording[lng].idle);
+    assert.equal(
+      paramsSummary(t, { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 }),
+      wording[lng].timeslice,
+    );
+    assert.equal(paramsSummary(t, { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 }), wording[lng].anytime);
   });
 
-  test(`${lng}: a custom policy names its policy and the parameters that matter`, () => {
-    const idle = paramsSummary(t, { policy: "idle", auto_sleep: false, idle_sec: 30, sleep_level: "l1", hold_max_sec: 120 });
-    assert.equal(idle, i18n.t("deployments:yieldPolicy.summary.customDigest", {
-      policy: y.policy.name.idle,
-      digest: [i18n.t("deployments:yieldPolicy.summary.idle", { value: spanText(t, 30) }), y.summary.level.l1].join(y.summary.separator),
-    }));
-    const never = paramsSummary(t, { policy: "never", auto_sleep: true, idle_sec: 600, sleep_level: "l2", hold_max_sec: 120 });
-    assert.ok(never.includes(y.policy.name.never) && never.includes(y.summary.autoSleep) && never.includes(y.summary.level.l2));
-    // Anytime has no idle time of its own: the digest has no idle part.
-    const anytime = paramsSummary(t, { policy: "anytime", auto_sleep: false, sleep_level: "l1", unfinished: "abort", hold_max_sec: 1800 });
-    assert.ok(!anytime.includes(i18n.t("deployments:yieldPolicy.summary.idle", { value: "" }).trim()));
-    assert.ok(anytime.includes(y.summary.level.l1));
+  test(`${lng}: the summary follows the saved values, not any default`, () => {
+    assert.ok(paramsSummary(t, { policy: "idle", idle_sec: 90, sleep_level: "l2", hold_max_sec: 10 }).includes(spanText(t, 90)));
+    assert.ok(paramsSummary(t, { policy: "timeslice", idle_sec: 7200, max_serve_sec: 86400, unfinished: "abort" }).includes(spanText(t, 86400)));
+    // A policy saved without its parameters is named alone; never ignores any.
+    assert.equal(paramsSummary(t, { policy: "timeslice" }), t("yieldPolicy.policy.name.timeslice"));
+    assert.equal(paramsSummary(t, { policy: "never", idle_sec: 60 }), wording[lng].never);
   });
 
-  test(`${lng}: a deployment with no policy is resident`, () => {
-    assert.equal(yieldSummary(t, { id: 1 } as never), y.preset.name.resident);
+  test(`${lng}: a deployment with no policy never yields automatically`, () => {
+    assert.equal(yieldSummary(t, { id: 1 } as never), wording[lng].never);
+    assert.equal(yieldSummary(t, { id: 1, yield_policy: { policy: "idle", idle_sec: 60 } } as never), wording[lng].idle);
   });
 
   test(`${lng}: spans read in days, hours or minutes when they divide evenly, else in seconds`, () => {

@@ -40,16 +40,37 @@ test("schedule calls use the deployment's schedule path and literal bodies", asy
   assert.deepEqual(deleted, [{ url: "/api/v1/deployments/7/schedule/3", method: "DELETE", body: undefined }]);
 });
 
-test("the yield policy puts a preset alone or the full policy, and node replacement puts its seconds", async () => {
+test("the yield policy puts the policy with its parameters, and node replacement puts its seconds", async () => {
   const seen = fake(200, {});
-  await api.setYieldPolicy(7, { preset: "online" });
-  await api.setYieldPolicy(7, { policy: "idle", auto_sleep: false, idle_sec: 300, sleep_level: "auto", hold_max_sec: 120 });
+  await api.setYieldPolicy(7, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 });
+  await api.setYieldPolicy(7, { policy: "timeslice", idle_sec: 30, sleep_level: "l1", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 });
+  await api.setYieldPolicy(7, { policy: "never" });
   await api.setNodeReplacement(7, { after_sec: 600 });
   assert.deepEqual(seen, [
-    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { preset: "online" } },
-    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { policy: "idle", auto_sleep: false, idle_sec: 300, sleep_level: "auto", hold_max_sec: 120 } },
+    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 } },
+    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { policy: "timeslice", idle_sec: 30, sleep_level: "l1", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 } },
+    { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { policy: "never" } },
     { url: "/api/v1/deployments/7/node-replacement", method: "PUT", body: { after_sec: 600 } },
   ]);
+});
+
+test("the yield policy answer carries the idle neighbours as the server states them", async () => {
+  fake(200, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300, idle_neighbours: ["chat-b"] });
+  const answer = await api.setYieldPolicy(7, { policy: "idle" });
+  assert.deepEqual(answer, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300, idle_neighbours: ["chat-b"] });
+});
+
+test("the yield policy dictionary is one plain read of the scheduling endpoint, returned as the server states it", async () => {
+  const wire = {
+    policies: [{ policy: "never", defaults: { policy: "never" }, applies: [] }, { policy: "idle", defaults: { policy: "idle", idle_sec: 60 }, applies: ["idle_sec"] }],
+    bounds: { idle_sec: { minimum: 15, maximum: 604800, at_most: "max_serve_sec" } },
+    sleep_levels: ["auto", "l1", "l2"],
+    unfinished: ["abort", "wait"],
+  };
+  const seen = fake(200, wire);
+  const got = await api.yieldPolicies();
+  assert.deepEqual(seen, [{ url: "/api/v1/scheduling/yield-policies", method: undefined, body: undefined }]);
+  assert.deepEqual(got, wire);
 });
 
 test("wake carries wait, yield and yield_level only when asked, and a plain wake is unchanged", async () => {
@@ -102,7 +123,7 @@ test("the board of one node, and the fleet-wide lists alone, are separate reads"
 });
 
 test("the overview is one plain read, and its cards stay the server's compact arrays", async () => {
-  const wire = { summary: { nodes: 1 }, models: ["L20"], deployments: [{ id: 7, name: "qwen", preset: "shared" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 0, [1]], [1, 0, 49152, 0, 0, 0]] }] };
+  const wire = { summary: { nodes: 1 }, models: ["L20"], deployments: [{ id: 7, name: "qwen", yield_policy: "timeslice" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 0, [1]], [1, 0, 49152, 0, 0, 0]] }] };
   const seen = fake(200, wire);
   const got = await api.schedulingOverview();
   assert.deepEqual(seen, [{ url: "/api/v1/scheduling/overview", method: undefined, body: undefined }]);

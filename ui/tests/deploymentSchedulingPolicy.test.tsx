@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { after, afterEach, test } from "node:test";
 import React, { useState } from "react";
 import { I18nextProvider } from "react-i18next";
@@ -6,7 +7,7 @@ import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
 
 // A deployment's scheduling policy card: one summary line over the
-// policies (rescheduling on node loss, schedule, service level and sleep), and
+// policies (rescheduling on node loss, schedule, yield policy), and
 // the dialog that edits them. The editors' own validation is in
 // deploymentPolicyEditors, the yield policy editor's in deploymentYieldPolicy.
 
@@ -25,6 +26,8 @@ const p = locale.deployments.schedulingPolicy;
 const a = locale.deployments.automation;
 const n = locale.deployments.nodeReplacement;
 const original = { ...api };
+// The dictionary the server answers GET /scheduling/yield-policies with, literally.
+const dictionary = JSON.parse(fs.readFileSync(new URL("./fixtures/yield-policies.json", import.meta.url), "utf8")) as import("../src/api.ts").YieldPolicyDictionary;
 
 function deployment(overrides: Record<string, unknown> = {}): Deployment {
   return {
@@ -60,12 +63,12 @@ function stub() {
     return row;
   };
   api.setYieldPolicy = async (_id, body) => {
-    // The server normalizes what it is given and derives the preset; for these
-    // tests the policy it holds is what was sent, whole.
-    const held = { preset: "custom", auto_sleep: false, ...body } as NonNullable<Deployment["yield_policy"]>;
-    current = { ...current, yield_policy: held };
-    return held;
+    // For these tests the policy the server holds is what was sent, whole; the
+    // editor's own save path has its tests in deploymentYieldPolicySave.
+    current = { ...current, yield_policy: body };
+    return body;
   };
+  api.yieldPolicies = async () => structuredClone(dictionary);
   api.setNodeReplacement = async (_id, body) => { current = { ...current, node_replacement: body }; return body; };
 }
 
@@ -84,7 +87,7 @@ const item = (label: string, value: string) => i18n.t("deployments:schedulingPol
 const line = (...items: string[]) => items.join(p.separator);
 const failover = (value: string) => item(n.title, value);
 const schedule = (value: string) => item(a.schedule.title, value);
-// A sleepable deployment's line ends with its service level (resident unless
+// A sleepable deployment's line ends with its yield policy (never unless
 // stated); the part has its own tests in deploymentYieldPolicy.
 const y = locale.deployments.yieldPolicy;
 const level = (value: string) => item(y.summaryLabel, value);
@@ -94,10 +97,10 @@ const dialogs = () => screen.getAllByRole("dialog");
 afterEach(() => { cleanup(); Object.assign(api, original); });
 after(() => closeChannels());
 
-test("collapsed, the card sums up node-loss rescheduling, the schedule and the service level in one line", async () => {
+test("collapsed, the card sums up node-loss rescheduling, the schedule and the yield policy in one line", async () => {
   stub();
   mount();
-  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.policy.name.never)));
   assert.ok(screen.getByRole("region", { name: p.title }));
 });
 
@@ -110,38 +113,37 @@ test("the schedule part counts the orders and names the next enabled one, with w
     time: formatTime(nightly.next_at),
     order: i18n.t("deployments:automation.schedule.actionText.sleep", { level: 2 }),
   });
-  await screen.findByText(line(failover("10 min"), schedule(count + next), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(count + next), level(y.policy.name.never)));
   cleanup();
 
   schedules = [paused];
   mount();
-  await screen.findByText(line(failover("10 min"), schedule(i18n.t("deployments:schedulingPolicy.scheduleCount", { count: 1 }) + p.scheduleAllOff), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(i18n.t("deployments:schedulingPolicy.scheduleCount", { count: 1 }) + p.scheduleAllOff), level(y.policy.name.never)));
 });
 
 test("rescheduling on node loss reads Off at 0, and long waits read in hours and days", async () => {
   stub();
   mount(deployment({ node_replacement: { after_sec: 0 } }));
-  await screen.findByText(line(failover(p.off), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover(p.off), schedule(p.none), level(y.policy.name.never)));
   cleanup();
   mount(deployment({ node_replacement: { after_sec: 7200 } }));
-  await screen.findByText(line(failover("2 h"), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("2 h"), schedule(p.none), level(y.policy.name.never)));
   cleanup();
   // A deployment with no saved setting waits the default 10 minutes.
   mount(deployment({ node_replacement: undefined }));
-  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.policy.name.never)));
 });
 
-test("the service level is summed up by preset or, when custom, by its policy and parameters; a deployment that cannot sleep has none to show", async () => {
+test("the yield policy is summed up by its name and the parameters that matter; a deployment that cannot sleep has none to show", async () => {
   stub();
-  mount(deployment({ yield_policy: { preset: "online", policy: "idle", auto_sleep: false, idle_sec: 300, sleep_level: "auto", hold_max_sec: 120 } }));
-  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.preset.name.online)));
+  mount(deployment({ yield_policy: { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 } }));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level("Yield when idle · yields after 1 min idle")));
   cleanup();
-  mount(deployment({ yield_policy: { preset: "custom", policy: "idle", auto_sleep: false, idle_sec: 30, sleep_level: "l1", hold_max_sec: 120 } }));
-  const custom = i18n.t("deployments:yieldPolicy.summary.customDigest", {
-    policy: y.policy.name.idle,
-    digest: [i18n.t("deployments:yieldPolicy.summary.idle", { value: "30 s" }), y.summary.level.l1].join(y.summary.separator),
-  });
-  await screen.findByText(line(failover("10 min"), schedule(p.none), level(custom)));
+  mount(deployment({ yield_policy: { policy: "timeslice", idle_sec: 30, sleep_level: "l1", max_serve_sec: 120, unfinished: "abort", hold_max_sec: 600 } }));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level("Yield on a turn · idle 30 s / up to 2 min per turn")));
+  cleanup();
+  mount(deployment({ yield_policy: { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 } }));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level("Yield anytime · idle 30 s")));
   cleanup();
   mount(deployment({ sleepable: false }));
   await screen.findByText(line(failover("10 min"), schedule(p.none)));
@@ -152,18 +154,18 @@ test("the schedule part says it is loading, and that it failed when the list can
   stub();
   api.deploymentSchedule = () => new Promise(() => {});
   mount();
-  await screen.findByText(line(failover("10 min"), schedule(p.loading), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(p.loading), level(y.policy.name.never)));
   cleanup();
   api.deploymentSchedule = async () => { throw new APIError("DEPLOYMENT_NOT_FOUND", {}, "no such deployment", 404); };
   mount();
-  await screen.findByText(line(failover("10 min"), schedule(p.loadFailed), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(p.loadFailed), level(y.policy.name.never)));
 });
 
 test("a read-only user sees the summary and no edit action; so does the card of a deployment being deleted", async () => {
   stub();
   role = "viewer";
   mount();
-  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.policy.name.never)));
   await waitFor(() => assert.equal(screen.queryByRole("button", { name: p.edit }), null));
   cleanup();
   role = "admin";
@@ -211,14 +213,14 @@ test("saving the wait on the first tab calls the node replacement API and update
   await waitFor(() => assert.deepEqual(saved, [{ after_sec: 1800 }]));
   await screen.findByText(n.saved);
   assert.equal(changed, 1);
-  await screen.findByText(line(failover("30 min"), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("30 min"), schedule(p.none), level(y.policy.name.never)));
   // Turning it off.
   fireEvent.change(dialog.getByLabelText(n.minutes), { target: { value: "0" } });
   await user.click(labelled(dialog, n.save));
-  await screen.findByText(line(failover(p.off), schedule(p.none), level(y.preset.name.resident)));
+  await screen.findByText(line(failover(p.off), schedule(p.none), level(y.policy.name.never)));
 });
 
-test("saving the service level on its tab calls the yield policy API and updates the summary", async () => {
+test("saving the yield policy on its tab calls the yield policy API and updates the summary", async () => {
   stub();
   const saved: unknown[] = [];
   const set = api.setYieldPolicy;
@@ -227,10 +229,11 @@ test("saving the service level on its tab calls the yield policy API and updates
   await user.click(await screen.findByRole("button", { name: p.edit }));
   await user.click(within(await screen.findByRole("dialog")).getByRole("tab", { name: y.title }));
   const section = within(await screen.findByRole("region", { name: y.title }));
-  await user.click(section.getByRole("radio", { name: y.preset.name.online }));
+  await user.click(await section.findByRole("combobox", { name: y.policyLabel }));
+  await user.click(await screen.findByText(`${y.policy.name.idle} - ${y.policy.description.idle}`));
   await user.click(labelled(section, a.save));
-  await waitFor(() => assert.deepEqual(saved, [{ policy: "idle", auto_sleep: false, idle_sec: 300, sleep_level: "auto", hold_max_sec: 120 }]));
-  await screen.findByText(line(failover("10 min"), schedule(p.none), level(y.preset.name.online)));
+  await waitFor(() => assert.deepEqual(saved, [{ policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 }]));
+  await screen.findByText(line(failover("10 min"), schedule(p.none), level("Yield when idle · yields after 1 min idle")));
   assert.equal(changed, 1);
 });
 
@@ -250,7 +253,7 @@ test("adding an order on the schedule tab reloads the list and the summary", asy
     time: formatTime("2026-10-30T15:00:00Z"),
     order: i18n.t("deployments:automation.schedule.actionText.sleep", { level: 2 }),
   });
-  await screen.findByText(line(failover("10 min"), schedule(i18n.t("deployments:schedulingPolicy.scheduleCount", { count: 1 }) + next), level(y.preset.name.resident)));
+  await screen.findByText(line(failover("10 min"), schedule(i18n.t("deployments:schedulingPolicy.scheduleCount", { count: 1 }) + next), level(y.policy.name.never)));
 });
 
 test("a refused save is shown and leaves the summary as it was", async () => {
@@ -266,9 +269,10 @@ test("a refused save is shown and leaves the summary as it was", async () => {
   await screen.findByText(i18n.t("deployments:nodeReplacement.saveFailed", { detail: i18n.t("common:apiError.NODE_REPLACEMENT_INVALID", { minimum: 60, maximum: 604800 }) }));
   await user.click(dialog.getByRole("tab", { name: y.title }));
   const section = within(await screen.findByRole("region", { name: y.title }));
-  await user.click(section.getByRole("switch", { name: y.field.auto_sleep }));
+  await user.click(await section.findByRole("combobox", { name: y.policyLabel }));
+  await user.click(await screen.findByText(`${y.policy.name.anytime} - ${y.policy.description.anytime}`));
   await user.click(labelled(section, a.save));
   await screen.findByText(i18n.t("deployments:yieldPolicy.saveFailed", { detail: i18n.t("common:apiError.SLEEP_NOT_ENABLED") }));
   assert.equal(changed, 0);
-  assert.ok(screen.getByText(line(failover("10 min"), schedule(p.none), level(y.preset.name.resident))));
+  assert.ok(screen.getByText(line(failover("10 min"), schedule(p.none), level(y.policy.name.never))));
 });

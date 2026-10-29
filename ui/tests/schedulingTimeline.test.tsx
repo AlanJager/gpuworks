@@ -54,8 +54,8 @@ function timeline(overrides: Partial<Timeline> = {}): Timeline {
       ],
     }],
     deployments: [
-      { deployment_id: 7, deployment: "qwen", preset: "shared", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000 },
-      { deployment_id: 8, deployment: "llama", preset: "offline", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0 },
+      { deployment_id: 7, deployment: "qwen", yield_policy: "timeslice", awake_seconds: 7200, awake_share: 0.3333, switches: 3, yielded: 1, yielded_to: 2, wakes: 2, held_requests: 4, wait_p50_ms: 4200, wait_p95_ms: 31000 },
+      { deployment_id: 8, deployment: "llama", yield_policy: "anytime", awake_seconds: 30, awake_share: 0.0014, switches: 0, yielded: 0, yielded_to: 0, wakes: 0, held_requests: 0 },
     ],
     ...overrides,
   };
@@ -98,8 +98,8 @@ test("the chart geometry is to scale: a block's width is its share of the window
 
 test("lanes are one per deployment in the order they first held the card; unlisted deployments are resident", () => {
   const lanes = lanesOf(timeline().nodes[0].gpus[0].segments, timeline().deployments);
-  assert.deepEqual(lanes.map((lane) => [lane.deployment, lane.level, lane.segments.length]), [["qwen", "shared", 3], ["llama", "offline", 1]]);
-  assert.equal(lanesOf(timeline().nodes[0].gpus[1].segments, timeline().deployments)[0].level, "resident");
+  assert.deepEqual(lanes.map((lane) => [lane.deployment, lane.policy, lane.segments.length]), [["qwen", "timeslice", 3], ["llama", "anytime", 1]]);
+  assert.equal(lanesOf(timeline().nodes[0].gpus[1].segments, timeline().deployments)[0].policy, "never");
 });
 
 test("a loading status shows until the timeline answers", async () => {
@@ -160,8 +160,8 @@ test("each card is lanes of blocks coloured by state from the theme, with a lege
   // 2 h of 6 h, then half an hour, then an hour and a half.
   assert.deepEqual(blocks.map((b) => Math.round(parseFloat(b.getAttribute("width") ?? "0"))), [333, 83, 250]);
   assert.deepEqual(blocks.map((b) => Math.round(parseFloat(b.getAttribute("x") ?? "0"))), [0, 333, 417]);
-  // The deployment's service level labels its lane.
-  assert.ok(gpu0.getAllByText(i18n.t("deployments:yieldPolicy.preset.name.shared")).length >= 1);
+  // The deployment's yield policy labels its lane.
+  assert.ok(gpu0.getAllByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")).length >= 1);
   assert.ok(gpu0.getByRole("link", { name: "llama" }));
   const legend = screen.getByRole("list", { name: s.timeline.legend });
   for (const label of [s.timeline.state.awake, s.timeline.state.asleep, s.timeline.state.switching, s.timeline.state.starting]) assert.ok(within(legend).getByText(label), label);
@@ -218,7 +218,7 @@ test("the window selector asks for 24 hours and keeps showing the card meanwhile
   assert.ok(screen.getByRole("group", { name: i18n.t("scheduling:timeline.gpuAria", { node: "gpu-a", index: 0 }) }));
 });
 
-test("the sharing table lists service level, awake time, switches, yields and the held requests' waits", async () => {
+test("the sharing table lists the yield policy, awake time, switches, yields and the held requests' waits", async () => {
   api.schedulingTimeline = async () => timeline();
   mount();
   await screen.findByText(s.timeline.sharingTitle);
@@ -226,7 +226,7 @@ test("the sharing table lists service level, awake time, switches, yields and th
   for (const heading of Object.values(s.timeline.columns)) assert.ok(table.getAllByText(heading).length >= 1, heading);
   const qwen = table.getByRole("link", { name: "qwen" }).closest("tr") as HTMLElement;
   const cells = within(qwen);
-  assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.preset.name.shared")));
+  assert.ok(cells.getByText(i18n.t("deployments:yieldPolicy.policy.name.timeslice")));
   assert.ok(cells.getByText(i18n.t("scheduling:timeline.awakeShare", { span: i18n.t("scheduling:timeline.duration.hours", { hours: 2, minutes: 0 }), share: 33.3 })));
   assert.ok(cells.getByText("3")); // switches
   assert.ok(cells.getByText("4")); // held requests

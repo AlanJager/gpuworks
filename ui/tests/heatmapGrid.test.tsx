@@ -56,7 +56,7 @@ test("every card is a cell named in full, grouped under its node", () => {
   assert.ok(label.includes(i18n.t("scheduling:heatmap.detail.claimed", { pct: 25 })));
   assert.ok(label.includes(i18n.t("scheduling:heatmap.detail.residue", { pct: 4 })));
   assert.ok(label.includes(i18n.t("scheduling:heatmap.detail.switching")));
-  assert.ok(label.includes(i18n.t("scheduling:heatmap.holder", { name: "night", level: i18n.t("deployments:yieldPolicy.preset.name.online"), state: s.heatmap.holderState.asleep })));
+  assert.ok(label.includes(i18n.t("scheduling:heatmap.holder", { name: "night", level: i18n.t("deployments:yieldPolicy.policy.name.idle"), state: s.heatmap.holderState.asleep })));
   assert.ok(cellOf("gpu-c", 0).getAttribute("aria-label")?.includes(s.states.held));
   assert.ok(cellOf("gpu-b", 0).getAttribute("aria-label")?.includes(s.states.offline));
 });
@@ -80,8 +80,8 @@ test("hovering a cell shows the card's node, model, shares and holders with thei
   assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.tipTitle", { node: "gpu-a", index: 1 })));
   assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.tipModel", { model: "L20", memory: "48.0 GiB" })));
   assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.tipShares", { awake: 25, sleeping: 4, free: 71 })));
-  assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.holder", { name: "batch", level: i18n.t("deployments:yieldPolicy.preset.name.shared"), state: s.heatmap.holderState.awake })));
-  assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.holder", { name: "night", level: i18n.t("deployments:yieldPolicy.preset.name.online"), state: s.heatmap.holderState.asleep })));
+  assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.holder", { name: "batch", level: i18n.t("deployments:yieldPolicy.policy.name.timeslice"), state: s.heatmap.holderState.awake })));
+  assert.ok(within(tip).getByText(i18n.t("scheduling:heatmap.holder", { name: "night", level: i18n.t("deployments:yieldPolicy.policy.name.idle"), state: s.heatmap.holderState.asleep })));
   await user.hover(cellOf("gpu-c", 0));
   assert.ok(within(screen.getByRole("tooltip", { hidden: true })).getByText(i18n.t("scheduling:heatmap.tipTitle", { node: "gpu-c", index: 0 })));
   assert.equal(screen.getAllByRole("tooltip", { hidden: true }).length, 1, "one hover card follows the pointer");

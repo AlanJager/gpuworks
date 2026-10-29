@@ -4,7 +4,7 @@ import type { Deployment } from "../api";
 import { formatTime } from "../i18n/datetime";
 import NodeReplacementEditor, { nodeReplacementSeconds } from "./DeploymentNodeReplacement";
 import YieldPolicyEditor from "./yieldPolicy/DeploymentYieldPolicy";
-import { presetOfDraft, draftOfParams, savedPolicy } from "./yieldPolicy/model";
+import { savedPolicy } from "./yieldPolicy/model";
 import { yieldSummary } from "./yieldPolicy/summary";
 import ScheduleSection, { scheduleOrderText, type Schedules } from "./DeploymentSchedule";
 import { durationText } from "./nodeReplacementEvents";
@@ -32,8 +32,6 @@ export interface PolicySection {
   render: (context: PolicyContext) => ReactNode;
 }
 
-const presetOfDeployment = (dep: Deployment) => presetOfDraft(draftOfParams(savedPolicy(dep)));
-
 export const policySections: PolicySection[] = [
   {
     key: "failover",
@@ -60,7 +58,7 @@ export const policySections: PolicySection[] = [
     summaryLabel: "yieldPolicy.summaryLabel",
     // A deployment that cannot sleep has nothing to set; one that kept a policy
     // from when it could still shows it so it can go back.
-    visible: (dep) => dep.sleepable || presetOfDeployment(dep) !== "resident",
+    visible: (dep) => dep.sleepable || savedPolicy(dep).policy !== "never",
     summary: (t, { dep }) => yieldSummary(t, dep),
     render: ({ dep, onChanged }) => (
       <YieldPolicyEditor key={`yield-${dep.id}-${JSON.stringify(savedPolicy(dep))}`} dep={dep} onChanged={onChanged} />

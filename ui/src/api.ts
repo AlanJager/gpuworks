@@ -1013,7 +1013,7 @@ export type DeploymentPage = ListPage<DeploymentListItem>;
 export interface BoardOccupant {
   deployment_id: number;
   deployment: string;
-  preset: YieldPresetName;
+  yield_policy: YieldPolicyName;
   instance: string;
   state: "awake" | "asleep";
   sleep_level?: number;
@@ -1051,7 +1051,7 @@ export interface TimelineNode {
 export interface TimelineDeployment {
   deployment_id: number;
   deployment: string;
-  preset: YieldPresetName;
+  yield_policy: YieldPolicyName;
   awake_seconds: number;
   awake_share: number;
   switches: number;
@@ -1129,7 +1129,7 @@ export interface OverviewNode {
 export interface OverviewDeployment {
   id: number;
   name: string;
-  preset: YieldPresetName;
+  yield_policy: YieldPolicyName;
 }
 
 export interface SchedulingOverview {
@@ -1918,59 +1918,69 @@ export interface Deployment {
   node_replacement?: NodeReplacement;
   wake_waiting_since?: string;
   // yield_policy is how the deployment shares its GPUs with the others on
-  // them and whether it sleeps when idle; absent counts as resident.
+  // them; absent counts as never.
   // sleep_held is set while an operator's or a schedule's sleep keeps it
   // asleep: a request does not wake it.
   yield_policy?: YieldPolicy;
   sleep_held?: boolean;
 }
 
-// The four service levels are presets of a yield policy: resident never gives
-// its GPUs up, online gives them up after 5 idle minutes and takes them back on
-// a request, shared takes turns with other shared deployments and gives way to
-// online, offline gives way to everyone at once. A deployment whose parameters
-// differ from every preset is custom, which the server reports but never takes
-// as a preset.
-export type YieldPreset = "resident" | "online" | "shared" | "offline";
-export type YieldPresetName = YieldPreset | "custom";
-
-// YieldPolicyName is the yield policy proper: never gives its GPUs to another
-// deployment, idle gives them up when another waits and it has been idle,
-// timeslice takes turns with other timeslice deployments, anytime gives them to
-// any higher-ranked waiter at once.
+// YieldPolicyName is how a deployment shares its GPUs, in rank order (highest
+// first): never gives its GPUs to another deployment, idle gives them up when
+// another waits and it has been idle, timeslice also takes turns with other
+// timeslice deployments and gives way at once to a higher-ranked waiter,
+// anytime gives them to any higher-ranked waiter at once.
 export type YieldPolicyName = "never" | "idle" | "timeslice" | "anytime";
 export type YieldSleepLevel = "auto" | "l1" | "l2";
-export type YieldUnfinished = "abort" | "wait" | "wait_unbounded";
+export type YieldUnfinished = "abort" | "wait";
 
-// YieldPolicyRequest is the body of PUT /deployments/{id}/yield-policy and of a
-// create request's yield_policy: either a preset alone, or the policy with any
-// of its parameters (a missing one takes the policy's default; one that does
-// not apply to the policy is ignored).
-export type YieldPolicyRequest =
-  | { preset: YieldPreset }
-  | {
-      policy: YieldPolicyName;
-      auto_sleep?: boolean;
-      idle_sec?: number;
-      sleep_level?: YieldSleepLevel;
-      min_serve_sec?: number;
-      unfinished?: YieldUnfinished;
-      unfinished_wait_sec?: number;
-      hold_max_sec?: number;
-    };
-
-// YieldPolicy is what the server holds, normalized: a parameter that does not
-// apply to the policy is absent.
+// YieldPolicy is a policy with the parameters that apply to it, as the server
+// holds it and as PUT /deployments/{id}/yield-policy and a create request's
+// yield_policy take it: a parameter that does not apply is absent.
 export interface YieldPolicy {
-  preset: YieldPresetName;
   policy: YieldPolicyName;
-  auto_sleep: boolean;
   idle_sec?: number;
   sleep_level?: YieldSleepLevel;
-  min_serve_sec?: number;
+  max_serve_sec?: number;
   unfinished?: YieldUnfinished;
   unfinished_wait_sec?: number;
   hold_max_sec?: number;
+}
+
+export type YieldPolicyRequest = YieldPolicy;
+
+// YieldPolicyAnswer is what the PUT answers: the policy as stored, and the
+// other idle-policy deployments on the same cards (the server allows this, the
+// operator should know). Only the PUT answer carries them.
+export interface YieldPolicyAnswer extends YieldPolicy {
+  idle_neighbours?: string[];
+}
+
+export type YieldParamName = "idle_sec" | "sleep_level" | "max_serve_sec" | "unfinished" | "unfinished_wait_sec" | "hold_max_sec";
+
+// One policy of the dictionary (GET /scheduling/yield-policies): its default
+// parameters and which of them apply to it.
+export interface YieldPolicyEntry {
+  policy: YieldPolicyName;
+  defaults: YieldPolicy;
+  applies: YieldParamName[];
+}
+
+// The range of a numeric parameter in seconds. at_most names the parameter it
+// may not exceed when both apply.
+export interface YieldBound {
+  minimum: number;
+  maximum: number;
+  at_most?: YieldParamName;
+}
+
+// The yield policy dictionary: the policies in rank order with their defaults,
+// the bounds of the numeric parameters and the values of the choices.
+export interface YieldPolicyDictionary {
+  policies: YieldPolicyEntry[];
+  bounds: Partial<Record<YieldParamName, YieldBound>>;
+  sleep_levels: YieldSleepLevel[];
+  unfinished: YieldUnfinished[];
 }
 
 export interface NodeReplacement {
@@ -4568,7 +4578,8 @@ export const api = {
   deleteSchedule: (id: number, scheduleID: number) =>
     sendJSON<void>("DELETE", `/api/v1/deployments/${id}/schedule/${scheduleID}`),
   setYieldPolicy: (id: number, body: YieldPolicyRequest) =>
-    sendJSON<YieldPolicy>("PUT", `/api/v1/deployments/${id}/yield-policy`, body),
+    sendJSON<YieldPolicyAnswer>("PUT", `/api/v1/deployments/${id}/yield-policy`, body),
+  yieldPolicies: () => getJSON<YieldPolicyDictionary>("/api/v1/scheduling/yield-policies"),
   setNodeReplacement: (id: number, body: NodeReplacement) =>
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
   // The board is a page of nodes with their holders (page, page_size, q); or

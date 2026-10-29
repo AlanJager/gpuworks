@@ -9,7 +9,7 @@ const WINDOWS: TimelineHours[] = [6, 24];
 
 /**
  * SharingStats is the stats of the deployments that share cards (every
- * service level but resident) across the whole fleet: how long each was awake,
+ * yield policy but never) across the whole fleet: how long each was awake,
  * how often it changed places with others and how long the requests held for
  * its wake waited. The timeline lanes are the node drawer's; this is the only
  * read of the event log the page makes for the fleet, and only for those

@@ -823,7 +823,7 @@
     "edit": "Edit",
     "close": "Done",
     "helpLabel": "About the scheduling policy",
-    "help": "See the docs \"Use the Scheduling Center\" (schedule, service level and sleep) and \"Reschedule on Node Loss\" for details.",
+    "help": "See the docs \"Use the Scheduling Center\" (schedule, yield policy) and \"Reschedule on Node Loss\" for details.",
     "item": "{{label}}: {{value}}",
     "separator": " · ",
     "off": "Off",
@@ -836,60 +836,42 @@
     "scheduleAllOff": ", all disabled"
   },
   "yieldPolicy": {
-    "title": "Service level and sleep",
-    "summaryLabel": "Service level",
-    "hint": "When several deployments share GPUs, the yield policy decides who gives way. The service levels (resident, online, shared, offline) are four presets; changing any parameter makes the deployment custom. A request for a deployment the platform put to sleep is held while it wakes, instead of failing with 503.",
-    "notSleepable": "Sleep mode is not enabled for this deployment: it can only stay on never yield and cannot sleep by itself.",
-    "singleNodeOnly": "A multi-node or PD deployment can only never yield, but it can turn on auto sleep when not preempted.",
-    "saved": "Service level and sleep saved",
-    "saveFailed": "Failed to save the service level and sleep: {{detail}}",
-    "presetLabel": "Preset",
-    "preset": {
-      "name": {
-        "resident": "Resident",
-        "online": "Online",
-        "shared": "Shared",
-        "offline": "Offline",
-        "custom": "Custom"
-      },
-      "description": {
-        "resident": "Never gives its GPUs to another deployment (default).",
-        "online": "Gives its GPUs up only when another deployment waits and it has been idle for 5 minutes; takes them back from shared and offline deployments when a request comes. Two online deployments cannot share GPUs.",
-        "shared": "Takes turns with other shared deployments on the same GPUs (at least 2 minutes each); gives way to online when needed, letting requests in flight finish for up to 30 s.",
-        "offline": "Gives its GPUs to everyone else at once and cuts off requests in flight (clients see finish_reason \"abort\"); resumes when the GPUs are free again. For batch work.",
-        "custom": "The parameters differ from all four presets. Choosing a preset resets every parameter."
-      }
-    },
+    "title": "Yield policy",
+    "summaryLabel": "Yield policy",
+    "hint": "When several sleepable deployments share GPUs, the yield policy decides who gives way to whom. A request for a deployment the platform put to sleep is held while it wakes, instead of failing with 503.",
+    "notSleepable": "Sleep mode is not enabled for this deployment: it can only never yield automatically.",
+    "singleNodeOnly": "A multi-node or PD deployment can only never yield automatically.",
+    "saved": "Yield policy saved",
+    "saveFailed": "Failed to save the yield policy: {{detail}}",
+    "idleNeighbours": "It shares GPUs with {{names}}, and all of them yield when idle: while both are busy neither gives way, and the other's requests are held until they time out. To take turns, switch to yield on a turn.",
+    "nameSeparator": ", ",
     "policyLabel": "Yield policy",
     "policy": {
       "name": {
-        "never": "Never yield",
+        "never": "Never yield automatically",
         "idle": "Yield when idle",
-        "timeslice": "Time slice",
+        "timeslice": "Yield on a turn",
         "anytime": "Yield anytime"
       },
       "description": {
-        "never": "Never gives its GPUs to another deployment.",
-        "idle": "Gives its GPUs up only when another deployment waits and it has been idle for the idle time.",
-        "timeslice": "Takes turns with other time-slice deployments on the same GPUs; gives way to never-yield and yield-when-idle deployments.",
-        "anytime": "Gives its GPUs to any higher-ranked deployment that waits, at once."
+        "never": "Is never pushed out automatically; its GPUs free up only after a manual or scheduled sleep. For always-on services (default).",
+        "idle": "Gives its GPUs up only when another deployment waits and it has been idle for the idle time; on a request it can take them back from yield-on-a-turn and yield-anytime deployments. For online services.",
+        "timeslice": "Gives its GPUs up once idle for the idle time; when sharing with other yield-on-a-turn deployments, also once it has served for the longest serving time (even with requests running); gives way at once to a higher-ranked deployment. For several models taking turns on the same GPUs.",
+        "anytime": "Gives way at once to a higher-ranked deployment, busy or not; resumes by itself when the GPUs are free again. For batch and offline work."
       }
     },
     "field": {
       "policy": "Yield policy",
-      "auto_sleep": "Auto sleep when not preempted",
       "idle_sec": "Idle time",
-      "sleep_level": "Sleep level",
-      "min_serve_sec": "Minimum serving time",
-      "unfinished": "Requests unfinished when yielding",
+      "max_serve_sec": "Longest serving time",
+      "unfinished": "When yielding, requests not yet finished",
       "unfinished_wait_sec": "Wait at most",
+      "sleep_level": "Sleep level",
       "hold_max_sec": "Longest request hold"
     },
     "help": {
-      "idle_sec": "Idle means no user request for that long; health-check probes do not count as requests.",
-      "idle_sec_none": "The idle time has no effect with these settings.",
-      "auto_sleep": "Also sleeps once idle for the idle time when no deployment waits for its GPUs; a later request wakes it.",
-      "min_serve_sec": "After its turn starts, it serves at least this long before giving way to the next deployment.",
+      "idle_sec": "Yields after this long without a user request (health checks do not count) while another deployment waits for the GPUs.",
+      "max_serve_sec": "When sharing GPUs with other yield-on-a-turn deployments, each turn serves at most this long before giving way.",
       "hold_max_sec": "While the deployment is asleep or has yielded, a request is held at most this long waiting for the wake, then fails."
     },
     "sleepLevel": {
@@ -899,29 +881,28 @@
     },
     "unfinished": {
       "abort": "Cut off at once",
-      "wait": "Wait for them to finish (cut off on timeout)",
-      "wait_unbounded": "Wait for them to finish (no limit)",
-      "waitUnboundedWarning": "With no limit, one very long request can keep a waiting deployment waiting indefinitely."
+      "wait": "Wait for them to finish"
     },
     "unit": "s",
-    "none": "—",
     "range": "Range {{minimum}} to {{maximum}} s",
+    "modified": "Modified",
+    "restoreDefaults": "Restore defaults",
+    "dictionary": {
+      "loading": "Loading the yield policy options",
+      "failed": "Failed to load the yield policy options: {{detail}}",
+      "retry": "Retry"
+    },
     "error": {
       "invalid_value": "The value of \"{{field}}\" is not valid.",
       "out_of_range": "\"{{field}}\" must be between {{minimum}} and {{maximum}} seconds.",
       "required": "\"{{field}}\" cannot be empty."
     },
     "summary": {
-      "custom": "Custom · {{policy}}",
-      "customDigest": "Custom · {{policy}} ({{digest}})",
+      "line": "{{policy}} · {{digest}}",
       "idle": "idle {{value}}",
-      "level": {
-        "auto": "automatic sleep level",
-        "l1": "L1",
-        "l2": "L2"
-      },
-      "autoSleep": "auto sleep",
-      "separator": ", "
+      "idleYield": "yields after {{value}} idle",
+      "turn": "up to {{value}} per turn",
+      "separator": " / "
     }
   },
   "nodeReplacement": {

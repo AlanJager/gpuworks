@@ -1,5 +1,5 @@
 import type { EngineProfile } from "../../api";
-import { yieldPresets } from "../yieldPolicy/model";
+import { paramsOfValue } from "../yieldPolicy/model";
 import { visibleParamSpecs } from "./deployParamApplicability";
 
 const NODE_KEY = "gpuworks.ai/node";
@@ -91,14 +91,11 @@ function pdToControls(pd: Obj): Obj {
   };
 }
 
-// draftYieldPreset reads the create form's preset out of a draft's yield
-// policy: the draft states a preset by name, or the stored policy whole
-// (which carries the preset the server derived). A custom policy has no place
-// in the form's preset select, so the form shows the default.
-function draftYieldPreset(policy: unknown): string | undefined {
-  if (!isObject(policy)) return undefined;
-  const preset = String(policy.preset ?? "");
-  return (yieldPresets as string[]).includes(preset) ? preset : undefined;
+// draftYieldPolicy reads the create form's yield policy out of a draft: the
+// policy with its parameters, none for never (what an absent policy means).
+function draftYieldPolicy(policy: unknown): Obj | undefined {
+  const params = paramsOfValue(policy);
+  return params && params.policy !== "never" ? (params as unknown as Obj) : undefined;
 }
 
 // draftToFormValues is buildPayload's inverse: the deploy form's values for a
@@ -129,7 +126,7 @@ export function draftToFormValues(
     target_vendor: request.target_vendor || undefined,
     extra_args: request.extra_args || undefined,
     sleepable: request.sleepable === true,
-    yield_preset: draftYieldPreset(request.yield_policy),
+    yield_policy: draftYieldPolicy(request.yield_policy),
     replicas: Number(request.replicas) > 0 ? request.replicas : 1,
     routing_policy: request.routing_policy || undefined,
     nnodes: Math.max(nnodes, 1),

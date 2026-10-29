@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "批处理任务",
-    "description": "以批处理服务等级离线运行大批量请求：上传 JSONL 文件，跟踪进度并下载结果",
+    "description": "以批处理优先级离线运行大批量请求：上传 JSONL 文件，跟踪进度并下载结果",
     "loadFailed": "无法加载批处理任务",
     "detailLoadFailed": "无法加载该批处理任务"
   },
@@ -71,7 +71,7 @@
     "completed": "成功",
     "failed": "失败",
     "pending": "未结束（等待或重试中）",
-    "pendingHint": "平台正在重试的请求（例如部署正在唤醒、被更高服务等级抢占，或收到 429 / 5xx 应答）算作未结束。",
+    "pendingHint": "平台正在重试的请求（例如部署正在唤醒、被更高优先级的部署抢占，或收到 429 / 5xx 应答）算作未结束。",
     "times": {
       "created_at": "创建时间",
       "expires_at": "到期时间",

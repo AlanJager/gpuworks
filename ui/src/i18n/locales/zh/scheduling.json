@@ -172,10 +172,10 @@
     "loadFailed": "无法加载驻留时间线",
     "refreshFailed": "刷新驻留时间线失败：{{detail}}",
     "sharingTitle": "共卡部署",
-    "sharingEmpty": "这段时间没有共卡（非常驻）的部署占用过卡。",
+    "sharingEmpty": "这段时间没有共卡（出让策略不是不自动出让）的部署占用过卡。",
     "columns": {
       "deployment": "部署",
-      "level": "服务级别",
+      "level": "出让策略",
       "awake": "提供服务时长",
       "switches": "切换",
       "yielded": "让出",

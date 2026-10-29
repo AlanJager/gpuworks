@@ -229,20 +229,22 @@ test("a clone gets suffixed names and a draft names its template spec", () => {
   assert.equal(templateSpecKey({ model_id: 1 }), undefined);
 });
 
-test("a cloned draft keeps its yield preset, and an edit never states a yield policy", () => {
-  const leveled = { ...manualDraft, yield_policy: { preset: "online" } };
+test("a cloned draft keeps its yield policy, and an edit never states a yield policy", () => {
+  const leveled = { ...manualDraft, yield_policy: { policy: "timeslice", idle_sec: 45, sleep_level: "l1", max_serve_sec: 90, unfinished: "wait", unfinished_wait_sec: 20, hold_max_sec: 600 } };
   const values = draftToFormValues(leveled, vllm);
-  assert.equal(values.yield_preset, "online");
-  // A stored policy read whole carries the preset the server derived.
-  assert.equal(draftToFormValues({ ...manualDraft, yield_policy: { preset: "shared", policy: "timeslice", auto_sleep: false } }, vllm).yield_preset, "shared");
-  // Custom has no place in the form's preset select, and an absent policy is resident.
-  assert.equal(draftToFormValues({ ...manualDraft, yield_policy: { preset: "custom", policy: "never", auto_sleep: true } }, vllm).yield_preset, undefined);
-  assert.equal(draftToFormValues(manualDraft, vllm).yield_preset, undefined);
+  assert.deepEqual(values.yield_policy, { policy: "timeslice", idle_sec: 45, sleep_level: "l1", max_serve_sec: 90, unfinished: "wait", unfinished_wait_sec: 20, hold_max_sec: 600 });
+  assert.equal("yield_preset" in values, false);
+  // Parameters of unknown names are dropped, and what is not a policy is no policy.
+  assert.deepEqual(draftToFormValues({ ...manualDraft, yield_policy: { policy: "idle", idle_sec: 60, auto_sleep: true, preset: "online" } }, vllm).yield_policy, { policy: "idle", idle_sec: 60 });
+  assert.equal(draftToFormValues({ ...manualDraft, yield_policy: { preset: "online" } }, vllm).yield_policy, undefined);
+  // Never is what an absent policy means: the form states none.
+  assert.equal(draftToFormValues({ ...manualDraft, yield_policy: { policy: "never" } }, vllm).yield_policy, undefined);
+  assert.equal(draftToFormValues(manualDraft, vllm).yield_policy, undefined);
   // The policy is changed on the scheduling policy card; the server ignores it on an edit.
-  const payload = editPayload({ ...values, yield_preset: "offline" }, [], vllm, [], { request: leveled, locked: identity });
+  const payload = editPayload({ ...values, yield_policy: { policy: "anytime" } }, [], vllm, [], { request: leveled, locked: identity });
   assert.ok(payload);
   assert.equal("yield_policy" in payload, false);
-  const plain = editPayload({ ...values, yield_preset: "offline" }, [], vllm, [], { request: manualDraft, locked: identity });
+  const plain = editPayload({ ...values, yield_policy: { policy: "anytime" } }, [], vllm, [], { request: manualDraft, locked: identity });
   assert.ok(plain);
   assert.equal("yield_policy" in plain, false);
 });

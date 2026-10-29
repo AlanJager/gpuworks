@@ -823,7 +823,7 @@
     "edit": "编辑",
     "close": "完成",
     "helpLabel": "调度策略说明",
-    "help": "详细说明见文档《使用调度中心》（定时计划、服务等级与休眠）和《节点失联重调度》。",
+    "help": "详细说明见文档《使用调度中心》（定时计划、出让策略）和《节点失联重调度》。",
     "item": "{{label}}：{{value}}",
     "separator": " · ",
     "off": "关闭",
@@ -836,60 +836,42 @@
     "scheduleAllOff": "，均未启用"
   },
   "yieldPolicy": {
-    "title": "服务等级与休眠",
-    "summaryLabel": "服务等级",
-    "hint": "同一批 GPU 上有多个部署时，出让策略决定谁让谁。服务等级（常驻、在线、分时、离线）是四套预设；改动任何一项参数，就变成自定义。被平台休眠的部署，请求到达会被挂起等待唤醒，而不是直接返回 503。",
-    "notSleepable": "该部署没有启用休眠模式：只能保持从不出让，也不能自动休眠。",
-    "singleNodeOnly": "多机与 PD 部署只能从不出让，但可以开启无抢占时自动休眠。",
-    "saved": "已保存服务等级与休眠",
-    "saveFailed": "保存服务等级与休眠失败：{{detail}}",
-    "presetLabel": "预设",
-    "preset": {
-      "name": {
-        "resident": "常驻",
-        "online": "在线",
-        "shared": "分时",
-        "offline": "离线",
-        "custom": "自定义"
-      },
-      "description": {
-        "resident": "不把 GPU 让给其他部署（默认）。",
-        "online": "其他部署在等 GPU、且自己闲置 5 分钟后才让出；有请求时从分时、离线部署手里收回。两个在线部署不能共用 GPU。",
-        "shared": "与同一批 GPU 上的其他分时部署轮流使用（每轮至少 2 分钟）；在线部署需要时让出，进行中的请求最多再等 30 秒。",
-        "offline": "立即把 GPU 让给其他所有部署，并中断进行中的请求（客户端看到 finish_reason 为 abort）；GPU 空出后自动恢复。适合批处理。",
-        "custom": "各项参数与四个预设都不相同。选择一个预设会重置全部参数。"
-      }
-    },
+    "title": "出让策略",
+    "summaryLabel": "出让策略",
+    "hint": "同一批 GPU 上有多个可休眠部署时，出让策略决定谁让给谁；被平台休眠的部署收到请求会挂起等待唤醒，而不是直接返回 503。",
+    "notSleepable": "该部署没有启用休眠模式，只能不自动出让。",
+    "singleNodeOnly": "多机与 PD 部署只能不自动出让。",
+    "saved": "已保存出让策略",
+    "saveFailed": "保存出让策略失败：{{detail}}",
+    "idleNeighbours": "与 {{names}} 共用 GPU，且都是闲置自动出让：两者都忙时互不让出，对方的请求会挂起直到超时。需要轮流使用请改为按时自动出让。",
+    "nameSeparator": "、",
     "policyLabel": "出让策略",
     "policy": {
       "name": {
-        "never": "从不出让",
+        "never": "不自动出让",
         "idle": "闲置自动出让",
-        "timeslice": "时间片轮流",
+        "timeslice": "按时自动出让",
         "anytime": "随时出让"
       },
       "description": {
-        "never": "不把 GPU 让给其他部署。",
-        "idle": "有其他部署在等 GPU，且自己闲置达到闲置时间，才让出。",
-        "timeslice": "与同一批 GPU 上的其他时间片部署轮流使用；让位于从不出让和闲置自动出让的部署。",
-        "anytime": "有排位更高的部署在等，就立即让出。"
+        "never": "不会被自动挤走；手动或定时休眠后 GPU 才会腾出。适合常驻服务（默认）。",
+        "idle": "有其他部署在等 GPU、且自己闲置满闲置时间才让出；有请求时可从按时、随时出让的部署手里收回 GPU。适合在线服务。",
+        "timeslice": "闲置满闲置时间就让出；与其他按时自动出让的部署共用时，服务满最长服务时间也让出（即使还有请求）；更高优先级的部署来时立即让出。适合多个模型分时共用。",
+        "anytime": "更高优先级的部署来时立即让出（忙也让）；GPU 空出后自动恢复。适合批处理、离线任务。"
       }
     },
     "field": {
       "policy": "出让策略",
-      "auto_sleep": "无抢占时自动休眠",
       "idle_sec": "闲置时间",
-      "sleep_level": "休眠级别",
-      "min_serve_sec": "最短提供服务时间",
+      "max_serve_sec": "最长服务时间",
       "unfinished": "出让时未完成请求的处理策略",
       "unfinished_wait_sec": "最多等待",
+      "sleep_level": "休眠级别",
       "hold_max_sec": "请求最长挂起时间"
     },
     "help": {
-      "idle_sec": "一段时间没有用户请求才算闲置，健康检查探测不算请求。",
-      "idle_sec_none": "当前设置下闲置时间不起作用。",
-      "auto_sleep": "没有部署在等 GPU 时，闲置达到闲置时间也休眠；之后有请求会自动唤醒。",
-      "min_serve_sec": "每次轮到后至少服务这么久，才会让给下一个部署。",
+      "idle_sec": "持续这么久没有用户请求（健康检查不算），且有其他部署在等 GPU 时让出。",
+      "max_serve_sec": "与其他按时自动出让的部署共用 GPU 时，每轮最多服务这么久就让出。",
       "hold_max_sec": "部署休眠或被让出期间，请求最多被挂起这么久等待唤醒，超时返回错误。"
     },
     "sleepLevel": {
@@ -899,29 +881,28 @@
     },
     "unfinished": {
       "abort": "立即中断",
-      "wait": "等待完成（超时中断）",
-      "wait_unbounded": "等待完成（不限时）",
-      "waitUnboundedWarning": "不限时等待时，一个很长的请求会让等位的部署一直等下去。"
+      "wait": "等待完成"
     },
     "unit": "秒",
-    "none": "—",
     "range": "范围 {{minimum}} 到 {{maximum}} 秒",
+    "modified": "已修改",
+    "restoreDefaults": "恢复默认",
+    "dictionary": {
+      "loading": "加载出让策略选项",
+      "failed": "加载出让策略选项失败：{{detail}}",
+      "retry": "重试"
+    },
     "error": {
       "invalid_value": "“{{field}}”的取值不合法。",
       "out_of_range": "“{{field}}”必须在 {{minimum}} 到 {{maximum}} 秒之间。",
       "required": "“{{field}}”不能为空。"
     },
     "summary": {
-      "custom": "自定义 · {{policy}}",
-      "customDigest": "自定义 · {{policy}}（{{digest}}）",
+      "line": "{{policy}} · {{digest}}",
       "idle": "闲置 {{value}}",
-      "level": {
-        "auto": "自动休眠级别",
-        "l1": "L1",
-        "l2": "L2"
-      },
-      "autoSleep": "自动休眠",
-      "separator": "，"
+      "idleYield": "闲置 {{value}}后让出",
+      "turn": "每轮最长 {{value}}",
+      "separator": " / "
     }
   },
   "nodeReplacement": {

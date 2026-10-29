@@ -1,7 +1,7 @@
 {
   "page": {
     "title": "Batches",
-    "description": "Run large sets of requests offline at the batch service level: upload a JSONL file, follow the progress and download the results",
+    "description": "Run large sets of requests offline at batch priority: upload a JSONL file, follow the progress and download the results",
     "loadFailed": "Could not load the batches",
     "detailLoadFailed": "Could not load this batch"
   },
@@ -71,7 +71,7 @@
     "completed": "Completed",
     "failed": "Failed",
     "pending": "Not finished (waiting or being retried)",
-    "pendingHint": "Requests the platform is retrying, for example while a deployment wakes, after a preemption by a higher service level, or after a 429 or 5xx answer, are counted as not finished.",
+    "pendingHint": "Requests the platform is retrying, for example while a deployment wakes, after a preemption by a higher-ranked deployment, or after a 429 or 5xx answer, are counted as not finished.",
     "times": {
       "created_at": "Created at",
       "expires_at": "Expires at",
