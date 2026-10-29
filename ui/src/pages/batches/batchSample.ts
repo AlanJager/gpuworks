@@ -20,10 +20,13 @@ const sampleBodies: Record<BatchEndpoint, (model: string, n: number) => Record<s
 };
 
 const sampleQuestions = [
+  // i18n-ignore: sample request content sent to the model, not UI text
   "用一句话解释什么是 GPU。",
   "Write a haiku about autumn.",
+  // i18n-ignore: sample request content sent to the model, not UI text
   "列出三种常见的排序算法。",
   "What is the capital of France?",
+  // i18n-ignore: sample request content sent to the model, not UI text
   "把“你好，世界”翻译成英文。",
 ];
 
