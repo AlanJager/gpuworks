@@ -390,3 +390,46 @@ func writeArchive(t *testing.T, dir, name string, members map[string]string) str
 	writeFile(t, path, string(tarGz(t, members)), 0o600)
 	return path
 }
+
+// A snapshot written by a version that skipped the master key (GWKS-148)
+// restores its database without complaint and leaves the key alone: the
+// database comes back, but the credentials sealed inside it stay unreadable
+// because the key that sealed them is not in the archive. This pins the
+// behaviour rather than endorsing it — the fix refuses to write such a
+// snapshot, so the only way to have one is to carry it from an older build.
+func TestRestoreOfAKeylessSnapshotBringsBackTheDatabaseWithoutAKey(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	h.writeExistingInstall("v1.0.0")
+	if err := mkdirAll(h.layout.BackupsDir, dirMode); err != nil {
+		t.Fatalf("mkdir backups: %v", err)
+	}
+	path := writeArchive(t, h.layout.BackupsDir, "keyless.tar.gz", map[string]string{
+		"data/gpuworks.db": "old database",
+		"bin/gpuworks":     "old binary",
+	})
+	// The newer version generated a fresh key after the snapshot was taken.
+	writeFile(t, filepath.Join(h.layout.DataDir, "master.key"), "regenerated key", 0o600)
+
+	if err := h.installer.restoreBackup(path); err != nil {
+		t.Fatalf("restoreBackup: %v", err)
+	}
+	if got := readFile(t, filepath.Join(h.layout.DataDir, "gpuworks.db")); got != "old database" {
+		t.Fatalf("database = %q", got)
+	}
+	// The key that is there is the one the snapshot never held, so the restored
+	// database's encrypted columns cannot be read with it.
+	if got := readFile(t, filepath.Join(h.layout.DataDir, "master.key")); got != "regenerated key" {
+		t.Fatalf("master.key = %q, want the one already on disk", got)
+	}
+	// With no key on disk at all the restore still succeeds and writes none:
+	// the next start would generate one, which is the same loss.
+	if err := os.Remove(filepath.Join(h.layout.DataDir, "master.key")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.installer.restoreBackup(path); err != nil {
+		t.Fatalf("restoreBackup without a key on disk: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.layout.DataDir, "master.key")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the restore wrote a master key: %v", err)
+	}
+}
