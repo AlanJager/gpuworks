@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 
 	"gorm.io/gorm"
@@ -103,10 +104,53 @@ func IsYield(ev InstanceEvent) bool {
 	return false
 }
 
-// SharedDeploymentIDs are the ids of the deployments that share GPUs by a
-// service level other than resident.
+// SharedDeploymentIDs are the ids of the deployments that share GPUs: those
+// of a service level other than resident, and any whose live instances sit
+// on a card together with another deployment's, sorted.
 func (s *Store) SharedDeploymentIDs() ([]uint, error) {
 	var ids []uint
-	err := s.reader().Model(&Deployment{}).Where("service_level NOT IN ?", []string{"", ServiceLevelResident}).Pluck("id", &ids).Error
-	return ids, err
+	if err := s.reader().Model(&Deployment{}).Where("service_level NOT IN ?", []string{"", ServiceLevelResident}).Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	// Deployments whose live instances sit on one card together share it
+	// whatever their level (a resident one asleep beside another, say).
+	live, err := s.LiveInstances()
+	if err != nil {
+		return nil, err
+	}
+	type card struct {
+		node  uint
+		index int
+	}
+	onCard := map[card]map[uint]bool{}
+	for _, in := range live {
+		var indexes []int
+		if in.GPUIndexes == "" || json.Unmarshal([]byte(in.GPUIndexes), &indexes) != nil {
+			continue
+		}
+		for _, index := range indexes {
+			k := card{in.NodeID, index}
+			if onCard[k] == nil {
+				onCard[k] = map[uint]bool{}
+			}
+			onCard[k][in.DeploymentID] = true
+		}
+	}
+	seen := map[uint]bool{}
+	for _, id := range ids {
+		seen[id] = true
+	}
+	for _, deps := range onCard {
+		if len(deps) < 2 {
+			continue
+		}
+		for id := range deps {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	slices.Sort(ids)
+	return ids, nil
 }

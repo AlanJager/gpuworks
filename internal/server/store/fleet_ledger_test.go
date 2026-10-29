@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -205,5 +206,39 @@ func TestRecentLatestScheduleEvents(t *testing.T) {
 	t.Log(strings.Join(text, " | "))
 	if joined := strings.Join(text, " | "); !strings.Contains(joined, "USING") || strings.Contains(joined, "SCAN instance_events") && !strings.Contains(joined, "USING") {
 		t.Errorf("recent schedule events scan the table: %s", joined)
+	}
+}
+
+// Two resident deployments on one card share it too: one asleep beside the
+// other is what a sharing view must show. A resident deployment alone on its
+// card, or one whose instance is stopped, does not count.
+func TestSharedDeploymentsIncludeResidentOnesOnOneCard(t *testing.T) {
+	s := newTestStore(t)
+	mk := func(name string) uint {
+		t.Helper()
+		dep, err := s.CreateDeployment(&Deployment{Name: name, ServedName: name, Engine: "vllm", State: DeployActive, ServiceLevel: ServiceLevelResident})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dep.ID
+	}
+	place := func(uuid string, dep, node uint, gpus string, state string) {
+		t.Helper()
+		if err := s.DB().Create(&Instance{UUID: uuid, DeploymentID: dep, NodeID: node, GPUIndexes: gpus, State: state}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	chat, asr, alone, gone := mk("chat"), mk("asr"), mk("alone"), mk("gone")
+	place("chat-1", chat, 1, "[1]", "running")
+	place("asr-1", asr, 1, "[0,1]", "running")
+	place("alone-1", alone, 2, "[1]", "running")
+	place("gone-1", gone, 2, "[1]", "stopped")
+	place("other-node", gone, 3, "[0]", "stopped")
+	got, err := s.SharedDeploymentIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []uint{chat, asr}) && !slices.Equal(got, []uint{min(chat, asr), max(chat, asr)}) {
+		t.Fatalf("shared = %v, want chat %d and asr %d (same card on node 1)", got, chat, asr)
 	}
 }
