@@ -269,7 +269,7 @@ func ConfirmStart(layout Layout, pending PendingUpgrade, mode string, now time.T
 	if err := os.Remove(layout.PendingUpgradePath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	(&Installer{layout: layout}).pruneBackups(keep)
+	(&Installer{layout: layout}).pruneBackups(keep, pending.Backup)
 	return nil
 }
 

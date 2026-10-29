@@ -8,8 +8,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBackupAndRestoreRoundTrip(t *testing.T) {
@@ -174,7 +176,7 @@ func TestPruneBackupsKeepsTheNewest(t *testing.T) {
 		writeFile(t, filepath.Join(h.layout.BackupsDir, name), "snapshot", 0o600)
 	}
 
-	h.installer.pruneBackups(2)
+	h.installer.pruneBackups(2, "")
 	names := backupNames(t, h.layout.BackupsDir)
 	if len(names) != 2 {
 		t.Fatalf("backups = %v", names)
@@ -190,9 +192,100 @@ func TestPruneBackupsKeepsTheNewest(t *testing.T) {
 
 	// A keep of zero or less means "no limit", not "delete everything": the
 	// upgrade path would otherwise delete the snapshot it just took.
-	h.installer.pruneBackups(0)
+	h.installer.pruneBackups(0, "")
 	if got := backupNames(t, h.layout.BackupsDir); len(got) != 2 {
 		t.Fatalf("backups = %v", got)
+	}
+}
+
+// The release ids in this test are the ones GWKS-146 measured: `aaa-` sorts
+// before both `dev-` and `sit-`, so ordering snapshots by their whole name
+// deletes the newest one first. Ordering by the timestamp in the name keeps the
+// newest two whatever the versions are called.
+func TestPruneBackupsOrdersByTimeNotReleaseID(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	if err := mkdirAll(h.layout.BackupsDir, dirMode); err != nil {
+		t.Fatalf("mkdir backups: %v", err)
+	}
+	// Oldest first, and the release id runs the opposite way.
+	newest := h.layout.BackupPath("aaa-keep20000", time.Date(2026, 10, 24, 9, 24, 15, 0, time.UTC))
+	for _, path := range []string{
+		h.layout.BackupPath("dev-0b0801dfd", time.Date(2026, 10, 24, 9, 23, 15, 0, time.UTC)),
+		h.layout.BackupPath("sit-zkeep1000", time.Date(2026, 10, 24, 9, 23, 27, 0, time.UTC)),
+		newest,
+	} {
+		writeFile(t, path, "snapshot", 0o600)
+	}
+
+	h.installer.pruneBackups(2, "")
+
+	if got, want := backupNames(t, h.layout.BackupsDir), []string{
+		"aaa-keep20000-20261024T092415Z.tar.gz",
+		"sit-zkeep1000-20261024T092327Z.tar.gz",
+	}; !slices.Equal(got, want) {
+		t.Fatalf("survivors = %v, want the newest two %v", got, want)
+	}
+	if _, err := os.Stat(newest); err != nil {
+		t.Fatalf("the newest snapshot was pruned: %v", err)
+	}
+}
+
+// Pruning runs at the end of the upgrade that took the snapshot, so the archive
+// it just wrote must survive even if an older one carries the same stamp and
+// wins the tie-break — otherwise the upgrade reports a backup path, and writes
+// it to the history as the rollback point, that does not exist.
+func TestPruneBackupsNeverRemovesTheArchiveJustWritten(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	if err := mkdirAll(h.layout.BackupsDir, dirMode); err != nil {
+		t.Fatalf("mkdir backups: %v", err)
+	}
+	at := time.Date(2026, 10, 24, 9, 23, 15, 0, time.UTC)
+	current := h.layout.BackupPath("sit-zkeep1000", at)
+	// Same second, and a name that sorts later, so a name tie-break alone would
+	// hand the surviving slot to the older snapshot.
+	writeFile(t, filepath.Join(h.layout.BackupsDir, "zzz-older-20261024T092315Z.tar.gz"), "snapshot", 0o600)
+	writeFile(t, current, "snapshot", 0o600)
+
+	h.installer.pruneBackups(1, current)
+
+	if got := backupNames(t, h.layout.BackupsDir); !slices.Equal(got, []string{filepath.Base(current)}) {
+		t.Fatalf("survivors = %v, want only the snapshot just taken", got)
+	}
+}
+
+func TestPruneBackupsLeavesNamesItCannotRead(t *testing.T) {
+	h := newHarness(t, t.TempDir())
+	if err := mkdirAll(h.layout.BackupsDir, dirMode); err != nil {
+		t.Fatalf("mkdir backups: %v", err)
+	}
+	// Each of these is unreadable one way or another: no stamp, an impossible
+	// month, a stamp that is not at the end, and a stamp with no release id
+	// separator. They must not be ranked, so they must not be deleted either.
+	unreadable := []string{
+		"hand-made.tar.gz",
+		"v1.0.0-20261324T092315Z.tar.gz",
+		"v1.0.0-20261024T092315Z-copy.tar.gz",
+		"20261024T092315Z.tar.gz",
+	}
+	for _, name := range unreadable {
+		writeFile(t, filepath.Join(h.layout.BackupsDir, name), "snapshot", 0o600)
+	}
+	for _, at := range []time.Time{
+		time.Date(2026, 10, 24, 9, 23, 15, 0, time.UTC),
+		time.Date(2026, 10, 24, 9, 23, 16, 0, time.UTC),
+		time.Date(2026, 10, 24, 9, 23, 17, 0, time.UTC),
+	} {
+		writeFile(t, h.layout.BackupPath("v1.0.0", at), "snapshot", 0o600)
+	}
+
+	h.installer.pruneBackups(1, "")
+
+	got := backupNames(t, h.layout.BackupsDir)
+	want := append([]string{"v1.0.0-20261024T092317Z.tar.gz"}, unreadable...)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("survivors = %v, want the newest readable snapshot plus every unreadable name %v", got, want)
 	}
 }
 
