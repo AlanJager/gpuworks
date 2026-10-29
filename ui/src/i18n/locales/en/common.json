@@ -480,7 +480,12 @@
     "UNIT_PLACEMENT_NONE": "No group of nodes can take this deployment now: of {{nodes}} nodes, {{unmet}} do not satisfy the requirements, {{cordoned}} are cordoned, {{offline}} are offline, {{busy}} lack free GPUs, {{no_network}} have no compute network; the largest group sharing a network and GPU architecture has {{largest}} nodes.",
     "AUTO_PLACEMENT_TP_REQUIRED": "Automatic placement of a multi-node deployment needs a tensor parallel (TP) degree, so the platform knows how many GPUs each node gives a rank.",
     "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
-    "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments."
+    "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments.",
+    "BATCH_NOT_FOUND": "The batch or file was not found, or its output has expired and was deleted.",
+    "BATCH_NOT_CANCELLABLE": "The batch has already finished and cannot be cancelled.",
+    "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
+    "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
+    "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
@@ -545,7 +550,8 @@
     "logs": "Logs",
     "settings": "Settings",
     "networks": "Networks",
-    "scheduling": "Scheduling"
+    "scheduling": "Scheduling",
+    "batches": "Batches"
   },
   "branding": {
     "defaultLoginDescription": "Manage heterogeneous GPU nodes, model deployments, inference services, and runtime status in one place."

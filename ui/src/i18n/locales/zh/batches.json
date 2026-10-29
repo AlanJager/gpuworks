@@ -1,0 +1,146 @@
+{
+  "page": {
+    "title": "批处理任务",
+    "description": "以批处理服务等级离线运行大批量请求：上传 JSONL 文件，跟踪进度并下载结果",
+    "loadFailed": "无法加载批处理任务",
+    "detailLoadFailed": "无法加载该批处理任务"
+  },
+  "action": {
+    "create": "创建批处理任务",
+    "createAdminOnly": "只有管理员可以创建批处理任务",
+    "refresh": "刷新",
+    "retry": "重试",
+    "open": "查看批处理任务 {{id}} 的详情",
+    "cancel": "取消任务",
+    "cancelTitle": "取消这个批处理任务？",
+    "cancelBody": "尚未开始的请求不会再运行；已在执行中的请求最多可再运行 2 分钟，之后任务才会变为已取消。",
+    "cancelOk": "确认取消",
+    "cancelKeep": "继续运行"
+  },
+  "filter": {
+    "status": "按状态筛选"
+  },
+  "status": {
+    "validating": "校验中",
+    "in_progress": "运行中",
+    "finalizing": "收尾中",
+    "cancelling": "取消中",
+    "completed": "已完成",
+    "failed": "失败",
+    "expired": "已过期",
+    "cancelled": "已取消"
+  },
+  "columns": {
+    "id": "批处理任务",
+    "status": "状态",
+    "endpoint": "端点",
+    "progress": "进度",
+    "createdAt": "创建时间",
+    "expiresAt": "到期时间"
+  },
+  "progress": {
+    "summary": "已完成 {{done}} / {{total}}",
+    "failed": "失败 {{count}}",
+    "aria": "共 {{total}} 个请求，已结束 {{done}} 个，其中失败 {{failed}} 个"
+  },
+  "empty": {
+    "all": "还没有批处理任务。上传一份 JSONL 请求文件即可创建。",
+    "filtered": "没有符合所选状态的批处理任务。"
+  },
+  "detail": {
+    "title": "批处理任务 {{id}}",
+    "sections": {
+      "summary": "概要",
+      "counts": "请求",
+      "times": "时间线",
+      "metadata": "元数据",
+      "files": "文件",
+      "failure": "失败原因"
+    },
+    "id": "ID",
+    "status": "状态",
+    "endpoint": "端点",
+    "completionWindow": "完成时限",
+    "inputFilename": "输入文件名",
+    "owner": "所属用户（用户 ID）",
+    "apiKey": "API 令牌 ID",
+    "total": "请求总数",
+    "completed": "成功",
+    "failed": "失败",
+    "pending": "未结束（等待或重试中）",
+    "pendingHint": "平台正在重试的请求（例如部署正在唤醒、被更高服务等级抢占，或收到 429 / 5xx 应答）算作未结束。",
+    "times": {
+      "created_at": "创建时间",
+      "expires_at": "到期时间",
+      "in_progress_at": "开始运行",
+      "finalizing_at": "开始收尾",
+      "completed_at": "完成时间",
+      "failed_at": "失败时间",
+      "expired_at": "过期时间",
+      "cancelling_at": "请求取消时间",
+      "cancelled_at": "取消完成时间"
+    },
+    "noMetadata": "没有元数据。",
+    "failureCode": "原因代码",
+    "download": {
+      "input": "下载输入文件",
+      "output": "下载输出文件",
+      "error": "下载错误文件",
+      "unavailable": "不可用",
+      "hint": "输出文件和错误文件在任务结束 {{days}} 天后删除。",
+      "expired": "该文件已过期并被删除。"
+    },
+    "cancelPending": "已请求取消。在执行中的请求结束之前（最多 2 分钟），任务会一直显示为取消中。",
+    "cancelled": "已请求取消批处理任务 {{id}}",
+    "cancelFailed": "无法取消该批处理任务：{{detail}}"
+  },
+  "create": {
+    "title": "创建批处理任务",
+    "submit": "创建批处理任务",
+    "submitting": "上传中…",
+    "cancel": "取消",
+    "file": "请求文件（JSONL）",
+    "fileHelp": "选择 .jsonl、.json 或 .txt 文件，每行一个请求。",
+    "fileSelected": "{{name}}（{{size}}）",
+    "fileRequired": "请先选择请求文件。",
+    "endpoint": "端点",
+    "created": "已创建批处理任务 {{id}}",
+    "hintTitle": "格式与限制",
+    "hint": {
+      "format": "JSON Lines 格式，文件不超过 {{size}} MB、{{requests, number}} 个请求。",
+      "line": "每行一个请求：{\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}。",
+      "unique": "custom_id 在文件内必须唯一。",
+      "sameUrl": "所有行的 url 必须相同，并且等于所选端点。",
+      "noStream": "不支持流式请求。",
+      "window": "完成时限为 24 小时：到期仍未结束的任务会过期。"
+    },
+    "tooLarge": "文件超过 {{limit}} MB。",
+    "failed": "无法创建批处理任务"
+  },
+  "errors": {
+    "detail": "详细信息：{{detail}}",
+    "fileLine": "文件第 {{line}} 行无效：{{reason}}",
+    "fileWhole": "文件无效：{{reason}}",
+    "fileReasons": {
+      "invalid_json_line": "该行不是有效的 JSON",
+      "missing_custom_id": "缺少 custom_id",
+      "duplicate_custom_id": "custom_id 与前面的行重复",
+      "invalid_method": "method 必须是 POST",
+      "invalid_url": "url 缺失或不是受支持的端点",
+      "missing_body": "缺少 body",
+      "missing_model": "缺少 body.model",
+      "streaming_not_supported": "批处理不支持流式请求",
+      "line_too_long": "该行过长",
+      "empty_file": "文件中没有请求",
+      "too_many_requests": "文件中的请求数超过批处理任务的上限",
+      "upload_failed": "无法读取上传的内容"
+    },
+    "requestReasons": {
+      "endpoint_mismatch": "文件中的请求没有全部使用所选端点",
+      "invalid_endpoint": "不支持该端点",
+      "missing_required_parameter": "缺少必填字段",
+      "invalid_multipart": "上传的表单无效"
+    },
+    "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}"
+  }
+}

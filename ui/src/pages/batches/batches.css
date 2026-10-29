@@ -1,0 +1,8 @@
+.batch-progress { min-width: 140px; }
+.batch-progress .ant-progress { margin: 0; line-height: 1; }
+.batch-progress-failed { margin-inline-start: 8px; }
+.batch-create-form { display: flex; flex-direction: column; gap: 16px; }
+.batch-create-field { display: flex; flex-direction: column; gap: 6px; }
+.batch-create-field label { font-weight: 500; }
+.batch-create-hint { margin: 0; padding-inline-start: 18px; }
+.batch-row { cursor: pointer; }
