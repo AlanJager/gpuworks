@@ -89,6 +89,25 @@ test("the board is asked a page at a time, searched by q", async () => {
   ]);
 });
 
+test("the board of one node, and the fleet-wide lists alone, are separate reads", async () => {
+  const seen = fake(200, {});
+  await api.schedulingBoard({ node: "n/1 a" });
+  await api.schedulingBoard({ queues: true });
+  assert.deepEqual(seen.map((request) => request.url), [
+    "/api/v1/scheduling/board?node=n%2F1%20a",
+    "/api/v1/scheduling/board?queues=1",
+  ]);
+});
+
+test("the overview is one plain read, and its cards stay the server's compact arrays", async () => {
+  const wire = { summary: { nodes: 1 }, models: ["L20"], deployments: [{ id: 7, name: "qwen", service_level: "shared" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 0, [1]], [1, 0, 49152, 0, 0, 0]] }] };
+  const seen = fake(200, wire);
+  const got = await api.schedulingOverview();
+  assert.deepEqual(seen, [{ url: "/api/v1/scheduling/overview", method: undefined, body: undefined }]);
+  assert.deepEqual(got.nodes[0].cards[0], [0, 0, 49152, 100, 0, 0, [1]]);
+  assert.equal(got.nodes[0].cards[1].length, 6, "a card with no occupants has no seventh element");
+});
+
 test("scaling may name first-placement nodes, and the server's refusal keeps its code and params", async () => {
   const seen = fake(200, {});
   await api.scaleReplicas(7, { replicas: 3, place_on: ["n-b", "n-c"] });
@@ -111,5 +130,9 @@ test("the scheduling history asks for a cursor page with its filters in the quer
 test("the residency timeline names every node and the window in the query", async () => {
   const seen = fake(200, { window: { from: "a", to: "b", hours: 24 }, nodes: [], deployments: [] });
   await api.schedulingTimeline({ nodes: ["n-1", "n-2"], hours: 24 });
-  assert.deepEqual(seen, [{ url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&hours=24", method: undefined, body: undefined }]);
+  await api.schedulingTimeline({ sharing: true, hours: 6 });
+  assert.deepEqual(seen, [
+    { url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&hours=24", method: undefined, body: undefined },
+    { url: "/api/v1/scheduling/timeline?sharing=1&hours=6", method: undefined, body: undefined },
+  ]);
 });

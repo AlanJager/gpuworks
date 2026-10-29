@@ -1089,6 +1089,56 @@ export interface BoardNode {
   gpus: BoardGPU[];
 }
 
+// The scheduling center's overview (GET /scheduling/overview): every node and
+// each card of the fleet in one compact response. A card is an array
+// [index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants?]:
+// model is a position in `models`; occupants, when present, are
+// position*2 + 1 when asleep (position in `deployments`) for the deployments
+// on the card; flags are OVERVIEW_FLAG bits (pages/scheduling/overviewModel.ts).
+export type OverviewCardWire = [number, number, number, number, number, number, number[]?];
+
+export interface OverviewCounts {
+  cards: number;
+  awake: number;
+  asleep: number;
+  free: number;
+  held_outside: number;
+  unhealthy: number;
+  offline: number;
+}
+
+export interface OverviewModelCounts extends OverviewCounts {
+  model: string;
+}
+
+export interface OverviewContention {
+  waiting_wakes: number;
+  held_requests: number;
+  yields_last_hour: number;
+}
+
+export interface OverviewNode {
+  uuid: string;
+  name: string;
+  online: boolean;
+  labels?: Record<string, string>;
+  contention?: number;
+  cards: OverviewCardWire[];
+}
+
+export interface OverviewDeployment {
+  id: number;
+  name: string;
+  service_level: ServiceLevel;
+}
+
+export interface SchedulingOverview {
+  summary: OverviewCounts & { nodes: number; online_nodes: number; by_model: OverviewModelCounts[]; contention: OverviewContention };
+  models: string[];
+  deployments: OverviewDeployment[];
+  nodes: OverviewNode[];
+}
+
 export interface BoardPending {
   deployment_id: number;
   deployment: string;
@@ -4489,11 +4539,21 @@ export const api = {
     sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/service-level`, { level }),
   setNodeReplacement: (id: number, body: NodeReplacement) =>
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
-  schedulingBoard: (query: { page: number; page_size: number; q?: string }) =>
-    getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`),
-  schedulingTimeline: (query: { nodes: string[]; hours: TimelineHours }) => {
+  // The board is a page of nodes with their holders (page, page_size, q); or
+  // one node's (node); or the fleet-wide lists alone (queues), which read no node.
+  schedulingBoard: (query: { page: number; page_size: number; q?: string } | { node: string } | { queues: true }) => {
+    if ("node" in query) return getJSON<SchedulingBoard>(`/api/v1/scheduling/board?node=${encodeURIComponent(query.node)}`);
+    if ("queues" in query) return getJSON<SchedulingBoard>("/api/v1/scheduling/board?queues=1");
+    return getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`);
+  },
+  // Every node and card of the fleet in one compact response.
+  schedulingOverview: () => getJSON<SchedulingOverview>("/api/v1/scheduling/overview"),
+  // The residency timeline of some nodes, or (sharing) the stats of the
+  // deployments that share cards across the fleet and no lanes.
+  schedulingTimeline: (query: { nodes: string[]; hours: TimelineHours } | { sharing: true; hours: TimelineHours }) => {
     const params = new URLSearchParams();
-    for (const node of query.nodes) params.append("node", node);
+    if ("sharing" in query) params.set("sharing", "1");
+    else for (const node of query.nodes) params.append("node", node);
     params.set("hours", String(query.hours));
     return getJSON<SchedulingTimeline>(`/api/v1/scheduling/timeline?${params.toString()}`);
   },

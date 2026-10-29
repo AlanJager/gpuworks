@@ -28,24 +28,41 @@ The **Scheduling policy** card in deployment details keeps these settings in one
 
 ## Scheduling Board
 
-Open the **Scheduling Center** page to see in one place:
+Open the **Scheduling Center** page. The upper half shows the whole cluster, the lower half the queues and the history:
 
-- **Nodes and GPUs**: each card's total, the usage of awake instances, the residue of sleeping instances, and what is free; the occupants of the card (deployment and its service level - resident, online, shared or offline - awake or asleep, sleep level, claim and residue); cards held by processes outside the platform are marked.
-- **Residency timeline**: which deployment held each card over the last 6 hours (switchable to 24 hours) and in what state, plus the switches and request waits of the deployments that share cards; see [Residency Timeline](#residency-timeline).
+- **Summary strip**: the total number of cards in the cluster; how many are awake, asleep (residue), free, held by a process outside the platform, faulty, or on an offline node (six disjoint classes that add up to the total); the cards and free cards by GPU model, for example "L20 ×320, 41 free"; and contention - wakes waiting for room, requests the gateway holds for a wake right now, yields in the last hour - plus the deployments waiting for placement and the schedule actions in the next 24 hours. These figures are computed by the server for the whole cluster and do not change with the filters below.
+- **GPU heatmap**: one small cell (about 12 px) per card, grouped by node; 1000 nodes of 8 cards fit on one or two screens. The colour is the card's state, with the legend at the top right of the card:
+
+  | Colour | Meaning |
+  |---|---|
+  | Blue, deeper = more claimed | Awake: an instance holds memory on the card; the depth is the share of memory claimed |
+  | Purple | Asleep: only the residue of sleepers is on the card |
+  | Light green with a green border | Free |
+  | Orange | Held by a process outside the platform |
+  | Red | Faulty, or unusable because of its ownership or health |
+  | Grey, hatched | Its node is offline (as last reported, so possibly stale) |
+  | Black inner outline | An instance on the card is starting, going to sleep, waking or draining |
+
+  Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are awake, sleeping and free, and its occupants (deployment, service level, awake or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
+- **Filters and view**: filter by GPU model (several allowed), node label (`key=value`) and node state (has free cards, has sleepers, has cards held outside, offline); type a part of a deployment name in "Find a deployment" and the cards it occupies get a red ring while the rest fade, with a count of the occupied cards. Group by node (the default), by GPU model, or by the value of a node label; sort by name, by free capacity (the unclaimed memory of the cards, not counting offline, faulty or externally held cards) or by contention (sleepers waiting to wake, plus the requests held for deployments asleep on the node, plus the yields of deployments that have cards on it). **Clear filters and view** returns to the default.
+- **Node drawer**: click a cell or a node name and a drawer opens that node: a bar per card split into awake usage, sleeping residue and free memory, the occupants of each card (deployment and its service level - resident, online, shared or offline - awake or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open.
 - **Deployments waiting for placement**: deployments the scheduler refused in the last 30 minutes, with reasons written the same way as the placement status in deployment details.
-- **Waiting wakes**: which deployments are waiting and since when.
+- **Waiting wakes**: which deployments are waiting and since when; the wait can be cancelled.
 - **Schedule actions in the next 24 hours**: time, deployment, action.
+- **Deployments sharing cards**: the stats, over a 6 or 24 hour window, of the deployments across the whole cluster whose service level is not resident; see [Residency Timeline](#residency-timeline).
 - **Scheduling history**: when, why and what was scheduled; see [Scheduling History](#调度记录).
 
-Nodes are paged and can be searched by name. The API is:
+The heatmap works from the keyboard alone: Tab enters it and the focus rests on one cell; Left and Right move between cards (continuing across nodes), Up and Down move between neighbouring nodes at the same position, Page Up and Page Down jump ten nodes, Home and End go to the first and last card; Enter or Space opens that node's drawer. The page refreshes every 10 seconds and redraws nothing when the cluster has not changed.
+
+The server keeps the state of the whole cluster in a memory cache. Changes to nodes, instances and deployments invalidate it, but it is rebuilt at most every 2 seconds, so the status reports of a large fleet do not make every refresh recompute it. The API is:
 
 ```bash
-curl --fail-with-body -sS \
-  "$API_URL/api/v1/scheduling/board?page=1&page_size=20&q=gpu" \
-  -H "Authorization: Bearer $TOKEN"
+curl --fail-with-body -sS "$API_URL/api/v1/scheduling/overview" -H "Authorization: Bearer $TOKEN"
+
+curl --fail-with-body -sS "$API_URL/api/v1/scheduling/board?node=$NODE_UUID" -H "Authorization: Bearer $TOKEN"
 ```
 
-The main structure of the response is below (`nodes` is a paged object; the other four items cover the whole cluster):
+The overview's structure is in the [API reference](../reference/api.md#调度总览). `GET /api/v1/scheduling/board` can still be read page by page (`page`, `page_size`, `q`); the main structure of its response is below (`nodes` is a paged object; the other four items cover the whole cluster):
 
 ```json
 {
@@ -71,7 +88,7 @@ The real `free_bytes` and the other sizes are integer bytes, and the values abov
 
 ### Residency Timeline
 
-The **Residency timeline** card draws a horizontal time axis for every card of the nodes on the current page: one lane for each deployment that held the card, with blocks coloured by the state it was in during that stretch:
+The **Residency timeline** in the node drawer draws a horizontal time axis for every card of that node: one lane for each deployment that held the card, with blocks coloured by the state it was in during that stretch:
 
 | State | Meaning |
 |---|---|
@@ -82,7 +99,7 @@ The **Residency timeline** card draws a horizontal time axis for every card of t
 
 The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours.
 
-Below it, the **Deployments sharing cards** table lists the deployments that held these cards in the window and whose service level is not resident:
+The **Deployments sharing cards** table on the page lists the deployments across the whole cluster that held cards in the window and whose service level is not resident (the drawer shows the same table under its timeline, limited to the deployments that held that node's cards):
 
 | Column | Meaning |
 |---|---|
@@ -91,18 +108,22 @@ Below it, the **Deployments sharing cards** table lists the deployments that hel
 | Yielded, yielded to | Times it was put to sleep to give a card to another deployment, and times another deployment gave a card to it |
 | Held requests, wait p50 / p95 | Requests the gateway held while it woke, and the median and 95th percentile of their waits |
 
-The endpoint is separate so that it does not slow down the board, which refreshes every few seconds:
+The endpoint is separate so that it does not slow down the overview, which refreshes every few seconds:
 
 ```bash
 curl --fail-with-body -sS \
   "$API_URL/api/v1/scheduling/timeline?node=$NODE_UUID&hours=6" \
+  -H "Authorization: Bearer $TOKEN"
+
+curl --fail-with-body -sS \
+  "$API_URL/api/v1/scheduling/timeline?sharing=1&hours=6" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 What the figures mean and where they stop:
 
 - The timeline is derived from instance records and the event log; nothing else is stored for it. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
-- Only the nodes named in the request (the board's current page) count: replicas of a deployment on other nodes are not part of its awake time, and "yielded to" counts only the deployments that also held these cards giving way to it.
+- With `node`, only the nodes named in the request count: replicas of a deployment on other nodes are not part of its awake time, and "yielded to" counts only the deployments that also held these cards giving way to it. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments, and its result is cached for about 30 seconds.
 - A follower of a multi-node replica follows its leader's sleep and wake.
 - At most the latest 200 segments of a card are returned; older ones are left out and the console says so.
 - The wait quantiles approximate the window: the gateway's quantile of each flush interval, weighted by the requests of that interval, not an exact per-request quantile of the window. The counts start again from zero when the gateway restarts, and both columns stay empty when no request was held in the window. The metric the gateway records is `wake_hold_wait_ms`, see [Inference Metrics](../reference/inference-metrics.md).

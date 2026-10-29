@@ -89,7 +89,7 @@ func (a *apiHandlers) currentOverview() (*overviewSnapshot, error) {
 	}
 	sum := fnv.New64a()
 	_, _ = sum.Write(body)
-	c.snapshot = &overviewSnapshot{body: body, etag: `"` + strconv.FormatUint(sum.Sum64(), 36) + `"`, at: time.Now(), generation: generation}
+	c.snapshot = &overviewSnapshot{body: body, etag: `"` + strconv.FormatUint(sum.Sum64(), 36) + `"`, at: time.Now().UTC(), generation: generation}
 	c.rebuilds.Add(1)
 	return c.snapshot, nil
 }

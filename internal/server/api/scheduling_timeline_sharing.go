@@ -39,7 +39,7 @@ func (a *apiHandlers) cachedSharingTimeline(now time.Time, hours int) (dto.Sched
 	if c.byHours == nil {
 		c.byHours = map[int]sharingEntry{}
 	}
-	c.byHours[hours] = sharingEntry{out: out, at: time.Now()}
+	c.byHours[hours] = sharingEntry{out: out, at: time.Now().UTC()}
 	c.reads.Add(1)
 	return out, nil
 }

@@ -527,9 +527,10 @@ This endpoint does not check whether a user spec with the same name already exis
 | PUT | `/api/v1/deployments/{id}/idle-sleep` | Set idle sleep `{"after_sec":900,"level":2}`; `after_sec` is 0 (off) or 60–604800 and `level` is 1 or 2. 200 returns the same body; out of range returns 400 `IDLE_SLEEP_INVALID`, and `after_sec` above 0 on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
 | PUT | `/api/v1/deployments/{id}/service-level` | Set the service level `{"level":"offline"}`; values are `resident` / `online` / `shared` / `offline`. 200 returns the same body; an invalid value returns 400 `SERVICE_LEVEL_INVALID` (`params.level`); anything other than resident requires sleep capability (400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`) and a single-node deployment (400 `SERVICE_LEVEL_SHAPE`); setting online while sharing cards with another online deployment returns 409 `SERVICE_LEVEL_ONLINE_SHARED` (`params.deployment`); see [Service levels](../explanation/service-levels.md) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Reschedule Replicas on Node Loss](../how-to/node-failover.md) | JWT |
-| GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); see [Scheduling Board](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); `?node=<uuid>` answers for that one node only (a one-row `nodes` page and empty other lists; 404 for an unknown node), and `?queues=1` answers only the last four lists (an empty `nodes` page, no node is read); see [Scheduling Board](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/overview` | The scheduling overview: every node and the compact state of every card of the whole cluster in one response, plus the summary, for the heatmap; served from a cache (rebuilt at most every 2 seconds), with an `ETag` and a 304 for a matching `If-None-Match`; see [Scheduling Overview](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
-| GET | `/api/v1/scheduling/timeline` | The residency timeline: `?node=<uuid>` (repeatable, at most 200, normally the board's current page) `&hours=6\|24` (default 6). The segments in which each deployment's instance held each card over the last `hours` (`awake` / `asleep` / `switching` / `starting`), and the stats of the non-resident deployments that appear; a missing `node` or an `hours` that is not 6 or 24 returns 400 `FIELD_INVALID` (`params.field`), unknown nodes are skipped; see [Residency Timeline](#residency-timeline) | JWT |
+| GET | `/api/v1/scheduling/timeline` | The residency timeline: `?node=<uuid>` (repeatable, at most 200, normally the node that was opened) `&hours=6\|24` (default 6). The segments in which each deployment's instance held each card over the last `hours` (`awake` / `asleep` / `switching` / `starting`), and the stats of the non-resident deployments that appear; `?sharing=1&hours=` without `node` answers only the stats of the cluster's non-resident deployments (`nodes` empty, cached for about 30 seconds); a missing `node` (without `sharing`), a `sharing` that is not 1 or is used with `node`, or an `hours` that is not 6 or 24 returns 400 `FIELD_INVALID` (`params.field`), unknown nodes are skipped; see [Residency Timeline](#residency-timeline) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | Recreate the deployment using the current configuration and reset replica retry counts. The request body accepts an optional `strategy` (default `rolling`; `all` interrupts service). See [Restart Strategies](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | Estimate GPU memory, simulate scheduling, and estimate acquisition (without creating a deployment). The response's `acquisition` includes `present` (storage that already holds the model and is readable by the target node), `targets` (storage to which nodes can save the model when acquiring it), `providers` (the template's weight sources), `image`, and `nodes[]` when nodes are specified in the request (see "Evaluation Requests and Acquisition Estimates") | JWT |
@@ -789,11 +790,46 @@ Each occurrence runs once; after a server outage only the newest missed occurren
 | `upcoming` | Schedule actions in the next 24 hours: `deployment_id`, `deployment`, `schedule_id`, `action`, `sleep_level`, `replicas` (only for a `replicas` action, 0 included), `role` (a `replicas` action of a PD role), `at` |
 | `recent` | The latest 50 automation events: `deployment_id`, `deployment`, `code`, `params`, `at` |
 
+`?node=<uuid>` reads only that node: `nodes` is a one-row page (`page` and `page_size` 1, `total` 1; `page`, `page_size` and `q` are ignored) and `pending`, `waiting_wakes`, `upcoming` and `recent` are empty arrays; an unknown node returns 404. The console reads it when a node's drawer is open, at a cost independent of the cluster size. `?queues=1` is the opposite: it answers only `pending`, `waiting_wakes`, `upcoming` and `recent`, with an empty `nodes` page, and reads no node.
+
 For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件) and [Reschedule Replicas on Node Loss](../how-to/node-failover.md#时间线事件).
+
+### Scheduling Overview
+
+`GET /api/v1/scheduling/overview` is read-only and returns every card of every node of the cluster at once, each as the few small integers a heatmap needs and without the detail of its occupants (read that with `GET /scheduling/board?node=`). For 1000 nodes of 8 cards and about 3000 instances the response is about 290 KB (about 25 KB gzipped).
+
+```json
+{
+  "summary": {
+    "nodes": 3, "online_nodes": 2, "cards": 6,
+    "awake": 2, "asleep": 1, "free": 1, "held_outside": 1, "unhealthy": 0, "offline": 1,
+    "by_model": [{"model": "L20", "cards": 3, "awake": 2, "asleep": 0, "free": 0, "held_outside": 0, "unhealthy": 0, "offline": 1}],
+    "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
+  },
+  "models": ["L20", "H100"],
+  "deployments": [{"id": 7, "name": "qwen", "service_level": "resident"}, {"id": 9, "name": "night", "service_level": "online"}],
+  "nodes": [{
+    "uuid": "…", "name": "gpu-a", "online": true, "labels": {"zone": "a"}, "contention": 5,
+    "cards": [[0, 0, 49152, 100, 0, 0, [0]], [1, 0, 49152, 25, 4, 2, [2, 5]]]
+  }]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `summary` | The card counts of the whole cluster. A card is counted once, in the first bucket that holds, in this order: `offline` (its node is not online), `unhealthy` (the card is faulty or unusable because of ownership or health), `held_outside` (a process outside the platform uses it), `awake` (an instance holds memory on it), `asleep` (only sleepers' residue is on it), `free`; the six buckets add up to `cards`. `by_model` is the same count per GPU model (the card's name), the model with the most cards first |
+| `summary.contention` | `waiting_wakes`: deployments with a sleeping instance waiting for room to wake; `held_requests`: requests the gateway holds for a wake right now; `yields_last_hour`: sleeps in the last hour that made room for another deployment (an operator's yielding wake and the residency arbiter's preemption) |
+| `models`, `deployments` | The dictionaries the cards refer to: GPU model names, and the deployments that occupy a card (`id`, `name`, `service_level`), each in order of first appearance |
+| `nodes[]` | Sorted by name. `labels` are the node labels an operator wrote (omitted when none); `contention` is the number of the node's sleepers waiting to wake, plus the requests held for deployments asleep on it, plus the yields of the deployments that have cards on it (omitted when 0) |
+| `nodes[].cards[]` | The array `[index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants]`: `index` is the card's device index on the node; `model` an index into `models`; `memory_mib` the memory in MiB; `awake_pct` / `sleeping_pct` the shares of the memory claimed by awake instances and kept by sleepers (0 to 100, a non-zero share is never rounded to 0, and the two never add up to more than 100); `flags` the bits 1 held by a process outside the platform, 2 an instance on the card is switching (starting, going to sleep, waking, draining), 4 the card is unusable (faulty or by ownership); `occupants` is left out when empty, otherwise a list of integers `index * 2` (`+ 1` when asleep) where the index is into `deployments` |
+
+Only the cards the node owns and the vendor tool numbers are listed, as on the board.
+
+The response comes from a cache in the server's memory and is not recomputed for each request: events of nodes, instances and deployments invalidate it, but it is rebuilt at most every 2 seconds (nodes report status often), and with no events every 10 seconds to pick up the requests the gateway holds and the hour of yields. A rebuild reads the nodes once, the live instances once and the deployments once, and charges all the cards in one pass with the same ledger arithmetic as the board, not node by node. The response carries an `ETag` (a hash of the content), and a request with a matching `If-None-Match` gets a 304.
 
 ### Residency Timeline
 
-`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` is read-only. It is separate from the board because the board refreshes every few seconds while the timeline reads the event log over a window; the console reads it once per page of board nodes and chosen window, and refreshes it about every minute. The response:
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` is read-only. It is separate from the board because the board refreshes every few seconds while the timeline reads the event log over a window; the console reads it once per opened node and chosen window, and refreshes it about every minute. `?sharing=1&hours=6` has no `node`: it answers only the stats of the cluster's non-resident deployments (`deployments[]`, `nodes` an empty array), reading only those deployments' instances and events and caching the result for about 30 seconds; the console uses it for the "Deployments sharing cards" table. The response:
 
 ```json
 {

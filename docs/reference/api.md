@@ -527,9 +527,10 @@ macOS 忽略 `no_systemd`。
 | PUT | `/api/v1/deployments/{id}/idle-sleep` | 设置闲置休眠 `{"after_sec":900,"level":2}`，`after_sec` 为 0（关）或 60–604800，`level` 为 1 或 2，200 返回同样的请求体；越界 400 `IDLE_SLEEP_INVALID`，`after_sec` 大于 0 而部署不可休眠 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` | JWT |
 | PUT | `/api/v1/deployments/{id}/service-level` | 设置服务等级 `{"level":"offline"}`，取值 `resident` / `online` / `shared` / `offline`，200 返回同样的请求体；不合法 400 `SERVICE_LEVEL_INVALID`（`params.level`），常驻以外要求可休眠（400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`）与单机部署（400 `SERVICE_LEVEL_SHAPE`），与另一个在线部署共用卡时设为在线 409 `SERVICE_LEVEL_ONLINE_SHARED`（`params.deployment`）；见[服务等级](../explanation/service-levels.md) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | 设置节点失联重调度的等待时间 `{"after_sec":600}`，0 为从不，否则 60–604800，200 返回同样的请求体；越界 400 `NODE_REPLACEMENT_INVALID`（`params.minimum`、`maximum`）；见[节点失联重调度](../how-to/node-failover.md) | JWT |
-| GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）、`recent`（最近 50 条自动化事件，为兼容保留，界面改读调度记录）；见[调度看板](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/board` | 调度看板：`?page=&page_size=&q=` 分页的节点（每张卡的醒着占用、休眠残留、可用量、占用者与外部进程）加全集群的 `pending`（最近 30 分钟被调度拒绝的部署）、`waiting_wakes`、`upcoming`（未来 24 小时的计划动作）、`recent`（最近 50 条自动化事件，为兼容保留，界面改读调度记录）；`?node=<uuid>` 只回答这一个节点（一行的 `nodes` 页，其余四项为空，不存在的节点 404），`?queues=1` 只回答后四项（`nodes` 为空页，不读任何节点）；见[调度看板](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/overview` | 调度总览：全集群每个节点、每张卡的紧凑状态与汇总，一次返回，供热力图使用；来自缓存（至多每 2 秒重建一次），带 `ETag`，`If-None-Match` 命中返回 304；见[调度总览](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | 调度记录：全集群的调度事件，最新优先、游标分页（`limit`、`before`，同部署时间线），可按 `deployment_id`、`category`（`auto` / `failure` / `manual`，逗号分隔）、`since` / `until`（RFC 3339）筛选；非法筛选 400 `FIELD_INVALID`（`params.field`），非法游标或页大小 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`；见[调度记录](#调度记录) | JWT |
-| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是看板当前页的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；缺少 `node` 或 `hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
+| GET | `/api/v1/scheduling/timeline` | 驻留时间线：`?node=<uuid>`（可重复，至多 200 个，通常是被打开的节点）`&hours=6\|24`（默认 6）。每张卡过去 `hours` 小时里各部署实例占用它的分段（`awake` / `asleep` / `switching` / `starting`），以及出现过的非常驻部署的统计；`?sharing=1&hours=` 不带 `node`，只回答全集群非常驻部署的统计（`nodes` 为空，约 30 秒缓存）；缺少 `node`（且没有 `sharing`）、`sharing` 不是 1 或与 `node` 同用、`hours` 不是 6 / 24 时 400 `FIELD_INVALID`（`params.field`），不存在的节点被略过；见[驻留时间线](#驻留时间线) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | PD 部署调整各角色副本（`roles.<role>.units`）与 `fallback`；`mode`、角色的 `tp`/`pp`、`kv_load_failure` 不可变（`PD_IMMUTABLE`）；非 PD 部署 400 `PD_NOT_PD` | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | 按当前配置重建部署，重置副本重试次数；请求体可选 `strategy`（默认 `rolling`，`all` 会中断服务）；见[重启策略](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | 显存估算、调度试算与获取预估（不创建部署）：响应的 `acquisition` 含 `present`（已持有模型、目标节点读得到的存储）、`targets`（节点取模型时可保存到的存储）、`providers`（模板的权重来源）、`image`，以及请求指定了节点时的 `nodes[]`（见「评估请求与获取预估」） | JWT |
@@ -789,11 +790,46 @@ macOS 忽略 `no_systemd`。
 | `upcoming` | 未来 24 小时的计划动作：`deployment_id`、`deployment`、`schedule_id`、`action`、`sleep_level`、`replicas`（`replicas` 动作才有，含 0）、`role`（PD 角色的 `replicas` 动作）、`at` |
 | `recent` | 最近 50 条自动化事件：`deployment_id`、`deployment`、`code`、`params`、`at` |
 
+`?node=<uuid>` 只读这一个节点：`nodes` 是只有它的一行页（`page` 与 `page_size` 为 1，`total` 为 1，忽略 `page`、`page_size`、`q`），`pending`、`waiting_wakes`、`upcoming`、`recent` 为空数组；节点不存在返回 404。控制台打开一个节点的抽屉时读它，开销与集群大小无关。`?queues=1` 相反，只回答 `pending`、`waiting_wakes`、`upcoming`、`recent`，`nodes` 为空页，不读任何节点。
+
 时间线事件码见[使用调度中心](../how-to/scheduling-center.md#时间线事件)与[节点失联重调度](../how-to/node-failover.md#时间线事件)。
+
+### 调度总览
+
+`GET /api/v1/scheduling/overview` 只读，一次返回全集群每个节点的每张卡，每张卡只有热力图需要的几个小整数，不含占用者的明细（明细用 `GET /scheduling/board?node=` 读）。1000 个节点、每节点 8 张卡、约 3000 个实例时，响应约 290 KB（gzip 后约 25 KB）。
+
+```json
+{
+  "summary": {
+    "nodes": 3, "online_nodes": 2, "cards": 6,
+    "awake": 2, "asleep": 1, "free": 1, "held_outside": 1, "unhealthy": 0, "offline": 1,
+    "by_model": [{"model": "L20", "cards": 3, "awake": 2, "asleep": 0, "free": 0, "held_outside": 0, "unhealthy": 0, "offline": 1}],
+    "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
+  },
+  "models": ["L20", "H100"],
+  "deployments": [{"id": 7, "name": "qwen", "service_level": "resident"}, {"id": 9, "name": "night", "service_level": "online"}],
+  "nodes": [{
+    "uuid": "…", "name": "gpu-a", "online": true, "labels": {"zone": "a"}, "contention": 5,
+    "cards": [[0, 0, 49152, 100, 0, 0, [0]], [1, 0, 49152, 25, 4, 2, [2, 5]]]
+  }]
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `summary` | 全集群的卡数。每张卡只计入第一个成立的桶，顺序为：`offline`（节点不在线）、`unhealthy`（卡故障或因所有权、健康状态不可用）、`held_outside`（被平台外进程占用）、`awake`（有实例占着显存）、`asleep`（只有休眠者的残留）、`free`；六个桶之和等于 `cards`。`by_model` 是同样的计数按 GPU 型号（卡名）分开，卡数多的在前 |
+| `summary.contention` | `waiting_wakes`：有休眠实例在等位唤醒的部署数；`held_requests`：网关此刻为等唤醒而扣住的请求数；`yields_last_hour`：最近一小时为别的部署让位而休眠的次数（运维的让位唤醒与驻留仲裁的抢占） |
+| `models`、`deployments` | 卡引用的字典：GPU 型号名；占着卡的部署（`id`、`name`、`service_level`）。各按首次出现的顺序 |
+| `nodes[]` | 按名称排序。`labels` 是运维写的节点标签（没有则省略）；`contention` 是该节点上等位的休眠实例数，加上为在该节点上休眠的部署扣住的请求数，再加上该节点上有卡的部署的让位次数（没有则省略） |
+| `nodes[].cards[]` | 数组 `[index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants]`：`index` 是卡在节点上的设备序号；`model` 是 `models` 的下标；`memory_mib` 是显存总量（MiB）；`awake_pct` / `sleeping_pct` 是醒着的实例占用、休眠者残留各占显存的百分比（0 到 100，非零不会舍入成 0，两者之和不超过 100）；`flags` 的位：1 被平台外进程占用、2 卡上有实例正在切换（启动、休眠、唤醒、排空中）、4 卡不可用（故障或所有权）；`occupants` 没有时整项省略，否则是 `下标 × 2 + 1（休眠时）` 的整数列表，下标指 `deployments` |
+
+只列节点自己拥有、设备序号有效的卡，与看板一致。
+
+响应来自 server 内存里的缓存，不为每个请求重算：节点、实例、部署的事件让缓存失效，但重建最多每 2 秒一次（节点的状态上报很频繁），没有事件时每 10 秒重建一次以带上网关扣住的请求和一小时的让位数。重建时只读一次节点、一次存活实例、一次部署，再按看板同样的账本算法一次算完，不按节点逐个读。响应带 `ETag`（内容的哈希），带 `If-None-Match` 且内容没变返回 304。
 
 ### 驻留时间线
 
-`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` 只读。它与看板分开，因为看板每隔几秒刷新，而时间线要读窗口内的事件日志；界面按看板当前页的节点和所选窗口各读一次，约每分钟刷新。响应：
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` 只读。它与看板分开，因为看板每隔几秒刷新，而时间线要读窗口内的事件日志；界面按被打开的节点和所选窗口读一次，约每分钟刷新。`?sharing=1&hours=6` 不带 `node`：只回答全集群非常驻部署的统计（`deployments[]`，`nodes` 为空数组），只读这些部署的实例与事件，并缓存约 30 秒；界面用它显示「共卡部署」表。响应：
 
 ```json
 {

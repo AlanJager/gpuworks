@@ -52,6 +52,7 @@ import "./pages/nodes/nodeDetail.css";
 import "./pages/dashboard.css";
 import "./pages/scheduling/scheduling.css";
 import "./pages/batches/batches.css";
+import "./pages/scheduling/heatmap.css";
 import "./pages/playground/playground.css";
 
 const { Header, Sider, Content } = Layout;
