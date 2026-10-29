@@ -8,7 +8,12 @@
   "page_id": "settings",
   "lane": "local-real-server-sqlite",
   "identity": "admin",
-  "required_evidence": ["ui", "request", "persistence", "cleanup"],
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
   "runtime_evidence": {
     "status": "N/A",
     "reason": "The contract ends at the cluster-wide deployment policy. No agent, container, GPU or engine is claimed."
@@ -25,24 +30,44 @@
       "component": "InputNumber with min/max and seconds suffix",
       "request": "start_timeout_sec",
       "persisted": "deployment.start_timeout_sec",
-      "covered": ["initial default read", "empty value disables Save with no request", "minimum 60", "maximum 86400", "refresh and independent GET", "restore original"],
-      "missing": ["typing an out-of-range value into the control itself", "step behavior with the 60-second increment"]
+      "covered": [
+        "initial default read",
+        "empty value disables Save with no request",
+        "minimum 60",
+        "maximum 86400",
+        "refresh and independent GET",
+        "restore original"
+      ],
+      "missing": [
+        "typing an out-of-range value into the control itself",
+        "step behavior with the 60-second increment"
+      ]
     },
     {
       "id": "deployment.other-policy-fields",
       "component": "N/A: not edited by this card",
       "request": "omitted from the PUT body",
       "persisted": "pending_timeout_sec, event_retention_days, event_retention_bytes",
-      "covered": ["all three remain unchanged after this card saves"],
-      "missing": ["their own UI editing and validation"]
+      "covered": [
+        "all three remain unchanged after this card saves"
+      ],
+      "missing": [
+        "their own UI editing and validation"
+      ]
     },
     {
       "id": "deployment.server-validation",
       "component": "API boundary behind the card",
       "request": "PUT with start_timeout_sec below the floor",
       "persisted": "unchanged",
-      "covered": ["direct out-of-range request returns 400 and does not change the stored policy"],
-      "missing": ["non-admin authorization", "out-of-range above the ceiling", "malformed JSON"]
+      "covered": [
+        "direct out-of-range request returns 400 and does not change the stored policy"
+      ],
+      "missing": [
+        "non-admin authorization",
+        "out-of-range above the ceiling",
+        "malformed JSON"
+      ]
     },
     {
       "id": "deployment.inheritance",
@@ -50,7 +75,9 @@
       "request": "deployment with no start_timeout_sec",
       "persisted": "deployment policy",
       "covered": [],
-      "missing": ["an actual instance start that consumes the changed default; this requires an agent and engine"]
+      "missing": [
+        "an actual instance start that consumes the changed default; this requires an agent and engine"
+      ]
     }
   ],
   "checklist_items": {
@@ -66,7 +93,9 @@
     "3.2": "Empty disables Save and sends no request. 0, 30 and -1 blur to the minimum 60. 86401 blurs to the maximum 86400. 60.4 blurs to 60 and 60.6 blurs to 61. A non-numeric entry blurs back to that integer. None of those submits a request, and the independent GET stays at the stored timeout. The minimum 60 and the maximum 86400 then save and the independent GET matches",
     "3.3": "From 61, ArrowUp shows 121 and ArrowDown returns to 61. The Increase Value button shows 121 and Decrease Value returns to 61. At the minimum 60 a further decrease stays 60. At the maximum 86400 a further increase stays 86400. This control has no slider and no second linked input. None of those steps submits a request, and the independent GET stays at the stored timeout",
     "3.4": "The PUT body carries start_timeout_sec as a JSON number, not a string",
-    "3.6": "The server rejects a value below the floor and the stored policy is unchanged"
+    "3.6": "The server rejects a value below the floor and the stored policy is unchanged",
+    "3.5": "covered: after saving 60 the input shows 60 on a refresh and an independent GET reads start_timeout_sec 60; the same is done for the maximum 86400, and the value is then restored to 1800 and re-read. Seconds are the unit on the wire and in the control, so the readback is the same number rather than a formatted or converted string, and the execution path that consumes the policy is the stored integer.",
+    "1.3": "covered: clearing the only required numeric control disables Save and sends no request (save_disabled true, puts 0), and the other three policy fields on the card stay at their stored values rather than being reset by the edit."
   },
   "missing": [
     "N/A: checklist 1.11 (cancel, close, Esc) — the settings card exposes Save only; it has no cancel control",
