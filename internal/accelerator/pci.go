@@ -80,6 +80,7 @@ var pciVendors = map[uint32]pciVendor{
 		name:    VendorAMD,
 		drivers: []string{AMDGPUDriver},
 	},
+	0x2057: {name: VendorKunlunxin, classes: []uint32{0x078000}, drivers: []string{"kunlun"}},
 	0x10de: {
 		name:    VendorNVIDIA,
 		classes: []uint32{pciClassVGA, pciClass3D},
