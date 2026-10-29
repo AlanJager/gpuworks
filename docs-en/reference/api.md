@@ -330,6 +330,7 @@ so renaming changes only `display` and does not affect label-based matching.
 | DELETE | `/api/v1/models/{id}` | Delete a model | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | Fetch model metadata again (config/README/logo) | JWT |
 | POST | `/api/v1/models/{id}/download` | Start a public repository download: `storage_id` selects the storage (defaults to the default storage when omitted). For local storage, also provide `node_uuid` or `node_uuids`; for shared storage, one writer node downloads the model once | JWT |
+| POST | `/api/v1/models/{id}/download/cancel` | Cancel a model download in a specified storage (`storage_id`; local storage also requires `node_uuid`); retain downloaded data for retry | JWT |
 | POST | `/api/v1/models/{id}/copy` | Copy model files between two locations: `source`/`target` each contain `{storage_id, node_uuid?}`. Copy locally when the same node can read the source and write the target; otherwise, transfer directly between nodes. Returns 400 if the source and target are the same location; shared storage is identified by storage ID (ignoring the node). State conflicts such as offline or non-writable storage still return 409 | JWT |
 | POST | `/api/v1/models/{id}/nodes/{uuid}/cache/retry` | Retry a failed NFS Cache copy (`preparation.retryable=true`), with request body `{storage_id}`; returns 202 when accepted. Returns 409 `MODEL_CACHE_RETRY_BLOCKED` if the task has not failed, the node is disconnected, capacity is insufficient, termination of the previous task is unconfirmed, or a concurrent change occurs | JWT |
 | DELETE | `/api/v1/models/{id}/storages/{storage_id}` | Delete model files from shared storage (and all node caches for NFS with caching); returns 409 `STORAGE_SHARED_BY_OTHER_CONTROL_PLANES` if another gpuworks control plane is using it. Use `?force=1` to force deletion | JWT(admin) |
@@ -366,11 +367,11 @@ The request for `POST /api/v1/models/{id}/register-path` is
 This operation only registers existing files; it does not copy or move directories. To import a library from shared storage, use the storage scan/import endpoints.
 
 Returns `200 {"status":"registered"}` on success. The node checks that the directory is readable, contains non-empty files, and has no incomplete downloads;
-it does not require fixed weight filenames or `config.json`, preserving custom engine layouts. `registered` means the path selected by the caller has been registered;
-it does not prove that the directory contains the correct model or that the engine can load it. Do not treat a request as invalid because the path is outside the storage root.
+Metadata must identify exactly one complete model entry in the directory. Formats with embedded metadata, such as GGUF, do not require `config.json`; parent directories, non-model directories, and unknown layouts return 409. `registered` means the selected model directory has been registered;
+it does not guarantee that the engine can load the model. Do not treat a request as invalid because the path is outside the storage root.
 
 An empty `path` returns 400; a missing target model returns 404. The node rejects missing or empty directories and directories containing `.part`/`.part.state` files;
-the endpoint returns 409 and does not replace the existing registration. Errors such as unavailable RPC to the actual node may also return 409; handle them according to the error details.
+the endpoint returns 409 and does not replace the existing registration. If the agent cannot return directory recognition metadata, the endpoint returns `AGENT_UPGRADE_REQUIRED`; upgrade the agent first. Errors such as unavailable RPC to the actual node may also return 409; handle them according to the error details.
 
 ## Images / Storages (Image Catalog and Storage Policies)
 

@@ -17,12 +17,13 @@ const (
 // network tests, storage, model and image transfer, runtime changes and
 // upgrade act on the real host and are refused.
 var rpcRules = map[string]rule{
-	proto.RPCFSList:           allowInDir,
-	proto.RPCFSReadFile:       allowInDir,
-	proto.RPCFSStat:           allowInDir,
-	proto.RPCRegisterPath:     allowInDir,
-	proto.RPCPartitionReprobe: allow,
-	proto.RPCModelCopyStop:    allow,
+	proto.RPCFSList:            allowInDir,
+	proto.RPCFSReadFile:        allowInDir,
+	proto.RPCFSStat:            allowInDir,
+	proto.RPCRegisterPath:      allowInDir,
+	proto.RPCPartitionReprobe:  allow,
+	proto.RPCModelCopyStop:     allow,
+	proto.RPCModelDownloadStop: allow, // stops a task by key/attempt; no host filesystem or network access
 	// Eviction stays under the storage roots, which on a simulated node are
 	// its models directory alone (ConfineState drops the rest).
 	proto.RPCModelEvict:      allow,

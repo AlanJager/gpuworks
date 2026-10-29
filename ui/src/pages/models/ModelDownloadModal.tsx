@@ -11,7 +11,7 @@ import { nodeDisplayName } from "../../nodeDisplay";
 /**
  * Downloads a model from its source into a storage. A local storage needs the
  * nodes to download to (one copy each); a shared storage is downloaded once
- * and needs no node. Only storages that take writes can be chosen; with a
+ * through one chosen writer node. Only storages that take writes can be chosen; with a
  * single writable local storage the choice is made and only the nodes remain.
  */
 export function DownloadModal({ model, onClose, onDone }: { model: Model | null; onClose: () => void; onDone: () => void }) {
@@ -38,13 +38,13 @@ export function DownloadModal({ model, onClose, onDone }: { model: Model | null;
   const chosen = storages.find((s) => s.id === storageId);
   const shared = storageTypeInfo(chosen?.type).shared;
   const onlyChoice = writable.length === 1 && writable[0].type === "local";
-  const ready = !!chosen && (shared || nodeUuids.length > 0);
+  const ready = !loading && !error && !!chosen && canWriteStorage(chosen) && nodeUuids.length > 0;
 
   const submit = async () => {
-    if (!model || !chosen) return;
+    if (!model || !chosen || !ready) return;
     setSubmitting(true);
     try {
-      const result = await api.downloadModelToStorage(model.id, shared ? { storage_id: chosen.id } : { storage_id: chosen.id, node_uuids: nodeUuids });
+      const result = await api.downloadModelToStorage(model.id, { storage_id: chosen.id, node_uuids: nodeUuids });
       if (result?.status === "present") message.info(t("download.alreadyPresent", { storage: chosen.name }));
       else message.success(t("download.started"));
       setNodeUuids([]);
@@ -76,23 +76,22 @@ export function DownloadModal({ model, onClose, onDone }: { model: Model | null;
             })}
           />
         </Form.Item>}
-        {shared
-          ? <Alert type="info" showIcon message={t("download.sharedHint")} />
-          : <Form.Item label={t("download.nodes")}>
+        {shared && <Alert type="info" showIcon style={{ marginBottom: 12 }} message={t("download.sharedHint")} />}
+        <Form.Item label={t(shared ? "download.writer" : "download.nodes")}>
             {/* Online nodes, searched on the server: the fleet is not listed whole. */}
             <NodePicker
-              mode="multiple"
-              aria-label={t("download.nodes")}
+              mode={shared ? undefined : "multiple"}
+              aria-label={t(shared ? "download.writer" : "download.nodes")}
               style={{ width: "100%" }}
-              placeholder={t("download.nodesPlaceholder")}
-              value={nodeUuids}
+              placeholder={t(shared ? "download.writerPlaceholder" : "download.nodesPlaceholder")}
+              value={shared ? nodeUuids[0] : nodeUuids}
               onChange={(next) => setNodeUuids(Array.isArray(next) ? next : next ? [next] : [])}
-              filter={{ state: ["online"] }}
-              optionDisabled={(n) => heldOnNode(chosen?.id, n.uuid)}
+              filter={{ state: ["online"], ...(shared && chosen ? { label: [`gpuworks.ai/storage=${chosen.id}`] } : {}) }}
+              optionDisabled={(n) => !shared && heldOnNode(chosen?.id, n.uuid)}
               optionLabel={(n) => `${nodeDisplayName(n)} · ${t("download.gpuCount", { count: n.gpu_count })}${heldOnNode(chosen?.id, n.uuid) ? ` ${t("download.storageHasIt")}` : ""}`}
               notFoundContent={t("download.noOnlineNodes")}
             />
-          </Form.Item>}
+          </Form.Item>
       </Form>}
   </Modal>;
 }

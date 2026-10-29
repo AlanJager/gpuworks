@@ -14,6 +14,7 @@ type ImageTarget struct {
 	Engine           string
 	Vendor           string
 	PlatformArch     string // host image architecture, for example amd64 or arm64
+	PlatformOS       string // execution OS: linux containers or the host environment OS
 	Framework        string
 	FrameworkVersion string
 	DriverVersion    string // raw node-reported driver string; normalized by accelerator compat checks
@@ -96,7 +97,7 @@ func IsEngineDefaultImage(engine, ref string) bool {
 }
 
 // ResolveImageCatalog applies the automatic image precedence rules. An
-// explicit override always wins and is never blocked, only warned about.
+// explicit override wins unless its known execution platform cannot run on the target.
 // Automatic selection hard-filters on engine, framework, framework-implied
 // vendor, and host architecture, then orders survivors deterministically:
 // driver-compatible framework versions first (an unusable driver version only
@@ -106,6 +107,12 @@ func IsEngineDefaultImage(engine, ref string) bool {
 // the final fallback so older databases and incomplete manifests keep working.
 func ResolveImageCatalog(t ImageTarget, candidates []ImageCandidate) ImageResolution {
 	if override := strings.TrimSpace(t.Override); override != "" {
+		// An audited template cannot make an incompatible binary executable.
+		if candidate, ok := findCandidateByRef(candidates, override); ok && !imagePlatformCompatible(t, candidate) {
+			return ImageResolution{Image: override, Source: "override", Blocking: true, Warnings: []messages.Warning{
+				messages.NewWarning(messages.WarningImageOverrideIncompatible, map[string]any{"image": override}),
+			}}
+		}
 		if t.TrustedOverride {
 			return ImageResolution{Image: override, Source: "catalog-spec"}
 		}
@@ -121,8 +128,8 @@ func ResolveImageCatalog(t ImageTarget, candidates []ImageCandidate) ImageResolu
 		} else {
 			res.Warnings = append(res.Warnings, messages.NewWarning(messages.WarningImageOverrideUnverified, map[string]any{"image": override}))
 		}
-		// An explicit image is an operator decision. Compatibility remains
-		// advisory and must never block deployment.
+		// Framework and driver compatibility remain advisory for an explicit
+		// choice; the known execution platform above is a hard constraint.
 		return res
 	}
 
@@ -231,7 +238,7 @@ func candidateCompatible(t ImageTarget, candidate ImageCandidate) bool {
 // version/creation comparison in compareCandidateVersions.
 func catalogCompatibility(t ImageTarget, targetVendor string, candidate ImageCandidate) (bool, int) {
 	score := 0
-	if !archMatches(candidate.Arch, t.PlatformArch) {
+	if !imagePlatformCompatible(t, candidate) {
 		return false, 0
 	}
 	if framework := normalizeKey(candidate.Framework); framework != "" {
@@ -253,6 +260,24 @@ func catalogCompatibility(t ImageTarget, targetVendor string, candidate ImageCan
 		}
 	}
 	return true, score
+}
+
+// imagePlatformCompatible checks binary execution facts independently of
+// engine/framework advice. Catalog Metal artifacts are macOS host environment
+// packages; the other known accelerator frameworks ship Linux containers.
+// Unknown frameworks and unset target facts cannot prove a mismatch.
+func imagePlatformCompatible(t ImageTarget, candidate ImageCandidate) bool {
+	if !archMatches(candidate.Arch, t.PlatformArch) {
+		return false
+	}
+	os := ""
+	if vendor := accelerator.FrameworkVendor(candidate.Framework); vendor != "" {
+		os = "linux"
+		if vendor == accelerator.VendorApple {
+			os = "darwin"
+		}
+	}
+	return os == "" || normalizeKey(t.PlatformOS) == "" || os == normalizeKey(t.PlatformOS)
 }
 
 func archMatches(candidate, platform string) bool {

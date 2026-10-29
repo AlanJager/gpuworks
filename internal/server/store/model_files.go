@@ -210,7 +210,7 @@ func (s *Store) UpdateModelFileStatus(nodeID uint, st proto.ModelFileStatus) err
 	if current.NodeID != nodeID && !(current.NodeID == 0 && current.WriterNodeID == nodeID) {
 		return errors.New("model file is not on the reporting node")
 	}
-	if current.State == proto.MFDeleting {
+	if current.State == proto.MFDeleting || current.State == proto.MFCanceled {
 		return nil
 	}
 	if st.TransferID != "" && st.TransferID != current.TransferID {
@@ -324,7 +324,7 @@ func transferReset(path, state, acquisition string, extra map[string]any) map[st
 // predates download IDs reports none; those reports are still accepted.
 func (s *Store) PrepareModelDownload(ref FileRef, path string) (*ModelFile, error) {
 	return s.prepareModelFile(ref, path, transferReset(path, proto.MFPending, proto.ModelAcquireDownload, map[string]any{
-		"revision": "", "transfer_id": auth.NewUUID(),
+		"revision": "", "transfer_id": auth.NewUUID(), "download_deployment_id": 0,
 	}))
 }
 

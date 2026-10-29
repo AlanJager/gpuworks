@@ -175,7 +175,7 @@ func TransferUnderWay(file *ModelFile) bool {
 		return false
 	}
 	switch file.State {
-	case proto.MFDeleting, proto.MFMissing, proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk, proto.MFAbsent:
+	case proto.MFCanceled, proto.MFDeleting, proto.MFMissing, proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk, proto.MFAbsent:
 		return false
 	}
 	return !file.Ready()

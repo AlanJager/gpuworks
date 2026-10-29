@@ -78,8 +78,8 @@ func TestImportAdmissionAcrossEntrypoints(t *testing.T) {
 		{name: "unknown component", report: &modelmetadata.Report{Entries: []modelmetadata.Entry{{Path: ".", Incomplete: true}}, Issues: []modelmetadata.Issue{{Path: "encoder", Code: "unverified_component", Detail: "custom.Encoder"}}}, cause: "custom.Encoder"},
 		{name: "component only", report: &modelmetadata.Report{Component: true}, cause: "component"},
 		{name: "multiple entries", report: &modelmetadata.Report{Entries: []modelmetadata.Entry{{Path: "a"}, {Path: "b"}}}, cause: "exactly one"},
-		{name: "unknown explicit layout", report: &modelmetadata.Report{}, localOK: true, cause: "exactly one"},
-		{name: "older agent", localOK: true, storageOK: true},
+		{name: "unknown explicit layout", report: &modelmetadata.Report{}, cause: "exactly one"},
+		{name: "older agent", cause: "upgrade the agent"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, entrance := range []string{"local", "storage"} {

@@ -71,7 +71,7 @@
     "DGPU_QUOTA_NO_ROOM": "GPU {{gpu}} of {{node}} cannot hold it: {{free_gib}} GiB is free once the deployment's own claim is handed back, and the new quota needs {{need_gib}} GiB.",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "No node can satisfy automatic placement. Review the candidate reasons or choose a node manually.",
     "AUTOMATIC_PLACEMENT_STALE": "The evaluated node or GPU plan has changed. Evaluate the deployment again.",
-    "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before pulling images.",
+    "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before continuing.",
     "NODE_RPC_UNAVAILABLE": "Node RPC is not configured.",
     "NODE_OFFLINE": "The node is offline.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",

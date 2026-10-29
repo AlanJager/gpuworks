@@ -64,6 +64,7 @@ type ModelFetchCandidate struct {
 const (
 	MFPending     = "pending"
 	MFDownloading = "downloading"
+	MFCanceled    = "canceled"
 	MFSyncing     = "syncing"
 	MFPresent     = "present"
 	MFRegistered  = "registered"

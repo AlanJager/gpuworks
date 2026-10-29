@@ -11,23 +11,31 @@ import (
 // stopModelCopy confirms worker exit without removing resumable bytes. The
 // canceled intent stays fenced until the server supplies a new TransferID.
 func (n *NodeRuntime) stopModelCopy(ctx context.Context, raw json.RawMessage) (any, error) {
+	return n.stopModelTransfer(ctx, raw, true)
+}
+
+func (n *NodeRuntime) stopModelTransfer(ctx context.Context, raw json.RawMessage, copyOnly bool) (any, error) {
 	var request proto.ModelCopyStopParams
 	if err := json.Unmarshal(raw, &request); err != nil {
 		return nil, err
 	}
 	if request.Key == "" || request.TransferID == "" {
-		return nil, errors.New("copy key and transfer ID are required")
+		return nil, errors.New("model task key and transfer ID are required")
 	}
 	n.dlMu.Lock()
 	active := n.downloading[request.Key]
-	if active != nil && (!active.copy || active.transferID != request.TransferID) {
+	if active != nil && ((copyOnly && !active.copy) || active.transferID != request.TransferID) {
 		n.dlMu.Unlock()
 		return nil, errors.New("another model transfer owns this task")
 	}
-	if n.stoppedCopies == nil {
-		n.stoppedCopies = map[string]string{}
+	if copyOnly {
+		if n.stoppedCopies == nil {
+			n.stoppedCopies = map[string]string{}
+		}
+		n.stoppedCopies[request.Key] = request.TransferID
+	} else {
+		n.fenceDownloadLocked(request.Key, request.TransferID)
 	}
-	n.stoppedCopies[request.Key] = request.TransferID
 	if active != nil {
 		active.cancel()
 	}
