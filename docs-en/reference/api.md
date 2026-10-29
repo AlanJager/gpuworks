@@ -7,6 +7,7 @@ For your first call, see [Log In and Query the Inference Service List](api-conve
 
 Model inference uses a separate set of endpoints: `/v1/*` is the external OpenAI-compatible gateway, and `/api/v1/playground/v1/*` is
 the internal Playground proxy. See [OpenAI-Compatible Gateway](openai-gateway.md) for their calling conventions; they are not listed again here.
+The OpenAI-compatible batch endpoints (`/v1/files`, `/v1/batches`) are the exception: they are listed together with the management batch routes in the [Batches](#batches批处理任务) section.
 
 ## Authentication Model
 
@@ -1565,10 +1566,153 @@ Deterministic estimator outputs remain fully available without an LLM configured
 For the boundary between Playground and the `/v1` gateway, and external model naming `external:<config-id>:<model>`, see
 [`openai-gateway.md`](openai-gateway.md).
 
+## Batches
+
+A batch runs the requests in one JSONL file asynchronously through the gateway and writes the results to an output file and an error file. It has two groups of endpoints:
+
+- Management endpoints `/api/v1/batches`, used by the console and authenticated like the other routes in this document.
+- OpenAI-compatible endpoints `/v1/files` and `/v1/batches`, authenticated with an inference API key and usable directly from the official SDKs.
+
+For the procedure, the result file format, and the retry rules, see [Run Batches](../how-to/batch-api.md).
+
+### Console Endpoints `/api/v1/batches`
+
+| Method | Path | Description | Authentication |
+|---|---|---|---|
+| GET | `/api/v1/batches` | List batches, newest first, as the paged structure `{items,page,page_size,total}`. `state` is one of the 8 statuses; separate several values with commas; an invalid value returns 400 `LIST_FILTER_INVALID`; `q` is not supported and also returns 400 `LIST_FILTER_INVALID`. Administrators see every user's batches; other users see only their own. List items do not include `input_filename` | JWT |
+| GET | `/api/v1/batches/{id}` | Batch details, including `input_filename`; a missing batch, or one that is not yours (administrators excepted), returns 404 `BATCH_NOT_FOUND` | JWT |
+| GET | `/api/v1/batches/{id}/files/{kind}` | Download a batch file; `kind` is `input`, `output`, or `error`; the response is JSON Lines (`application/x-ndjson`, with an attachment filename); an invalid `kind` returns 400 `BATCH_REQUEST_INVALID`; a missing or deleted file returns 404 `BATCH_NOT_FOUND` | JWT |
+| POST | `/api/v1/batches` | Create a batch: `multipart/form-data` with the fields `file` (JSONL) and `endpoint`; the file is validated line by line on upload, and success returns 201 and the batch object. The batch belongs to the signed-in user | JWT(admin) |
+| POST | `/api/v1/batches/{id}/cancel` | Cancel a batch; returns the batch object with status `cancelling`; a batch that has ended returns 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
+
+Reading (GET) works with a read-only platform token; writing needs the administrator role (otherwise 403 `ADMINISTRATOR_REQUIRED`) and a platform token with write scope (otherwise 403 `PLATFORM_TOKEN_READ_ONLY`).
+
+The batch object (RFC3339 times; time fields not yet reached are omitted, as are `output_file_id`, `error_file_id`, and `failure`):
+
+| Field | Meaning |
+|---|---|
+| `id`, `endpoint`, `status` | Batch ID, endpoint (one of `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`), and status |
+| `status` | `validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled` |
+| `input_file_id`, `input_filename` | Input file ID; the file name appears only in detail, create, and cancel responses |
+| `output_file_id`, `error_file_id` | Output and error file IDs, present once the file exists |
+| `completion_window` | Always `24h` |
+| `request_counts` | `{total, completed, failed}`, updated about every 5 seconds; a request being retried is counted in neither |
+| `metadata` | An object of string to string, `{}` when there is none |
+| `failure` | `{code, message}`, present only in the `failed` status |
+| `user_id`, `api_key_id` | The creator; a batch created from the console has no `api_key_id` |
+| `created_at`, `expires_at` | Creation time and expiry time (24 hours after creation) |
+| `in_progress_at`, `finalizing_at`, `completed_at`, `failed_at`, `expired_at`, `cancelling_at`, `cancelled_at` | When each stage was reached |
+
+```json
+{"id":"batch_5a1e9d03c7b24f6e8d2a4b19","endpoint":"/v1/chat/completions","status":"in_progress","input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","input_filename":"requests.jsonl","completion_window":"24h","request_counts":{"total":1000,"completed":410,"failed":3},"metadata":{},"user_id":3,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z","in_progress_at":"2026-10-28T09:00:02Z"}
+```
+
+Product error codes:
+
+| Error code | Status | Meaning |
+|---|---|---|
+| `BATCH_NOT_FOUND` | 404 | The batch or file does not exist, or does not belong to the caller |
+| `BATCH_NOT_CANCELLABLE` | 409 | The batch has ended |
+| `BATCH_FILE_INVALID` | 400 | The input file is invalid; `params` is `{line, reason, detail}`, `line` 0 means the file as a whole, and `reason` is one of the validation error codes below |
+| `BATCH_FILE_TOO_LARGE` | 413 | The file exceeds the limit; `params` is `{limit_mb}` |
+| `BATCH_REQUEST_INVALID` | 400 | A field of the request is invalid; `params` is `{field, reason}`, for example not multipart, `file` missing, `endpoint` unsupported, or `endpoint` different from the `url` in the file |
+
+Files are stored under `batch-files/` in the server data directory.
+
+### OpenAI-Compatible Files and Batches Endpoints
+
+These routes are mounted under `/v1` together with the other gateway endpoints such as `/v1/chat/completions`, and authenticate with an inference API key (`Authorization: Bearer <key>`); when the server has no inference token configured they need no authentication, like the other `/v1` routes. A failed authentication returns 401 with the error code `invalid_api_key`. Files and batches belong to the user that owns the API key that created them: any key of the same user can access them, and other users get 404.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/files` | Upload an input file, `multipart/form-data` with the fields `file` and `purpose` (only `batch`); success returns 200 and a file object |
+| GET | `/v1/files` | List files; `purpose` is `batch` or `batch_output`, `limit` defaults to and is capped at 10000, `after` is the last file ID of the previous page, and only `order=desc` (newest first) is supported |
+| GET | `/v1/files/{id}` | The file object |
+| GET | `/v1/files/{id}/content` | The file content, `application/jsonl` |
+| DELETE | `/v1/files/{id}` | Delete a file; returns `{"id","object":"file","deleted":true}`; while a batch that has not ended still reads it, returns 409 `file_in_use` |
+| POST | `/v1/batches` | Create a batch; success returns 200 and the batch object |
+| GET | `/v1/batches` | List batches, newest first; `limit` defaults to 20 and is capped at 100, `after` is the last batch ID of the previous page |
+| GET | `/v1/batches/{id}` | The batch object |
+| POST | `/v1/batches/{id}/cancel` | Cancel a batch; returns the batch object with status `cancelling`; a batch that has ended returns 409 `batch_not_cancellable` |
+
+A list response is `{"object":"list","data":[...],"first_id","last_id","has_more"}`; when `data` is empty, `first_id` and `last_id` are `null`.
+
+The file object:
+
+```json
+{"id":"file-3f9c2a7e1b6d4c8a90e5d721","object":"file","bytes":412,"created_at":1790000000,"filename":"requests.jsonl","purpose":"batch","status":"processed"}
+```
+
+`id` is `file-` plus 24 hexadecimal digits; `purpose` is `batch` (input) or `batch_output` (output and error files); `created_at` is Unix seconds.
+
+The request body for creating a batch:
+
+| Field | Requirement |
+|---|---|
+| `input_file_id` | Required. A file with `purpose` `batch` that the caller can see; otherwise 400 `file_not_found` (`param` is `input_file_id`) |
+| `endpoint` | Required, one of `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, and equal to the `url` of every line in the file; otherwise 400 `endpoint_mismatch` |
+| `completion_window` | Required, only `"24h"`; otherwise 400 `invalid_completion_window` |
+| `metadata` | Optional, an object of string to string with at most 16 keys, keys of 1–64 characters, and values of at most 512 characters; otherwise 400 `invalid_metadata` |
+
+All times in the batch object are Unix seconds, and `null` when not yet reached:
+
+```json
+{"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
+```
+
+- `id` is `batch_` plus 24 hexadecimal digits; `metadata` is `null` when there is none; `errors` is normally `null` and, in the `failed` status, is `{"object":"list","data":[{"code","message","param":null,"line":null}]}`.
+- `status` values: `validating` (waiting for an execution slot; at most 32 batches run at once across the server), `in_progress`, `finalizing`, `completed`, `failed` (only because of a platform fault, such as the input file disappearing), `expired` (more than 24 hours passed; requests without a result go to the error file with the code `batch_expired`), `cancelling`, `cancelled`.
+- Cancellation: no new requests are sent, in-flight requests get up to 2 more minutes, and then the batch ends as `cancelled`, with the results so far kept in the output and error files.
+
+**Input file validation**: the file is validated while it is received and the first error rejects it. The error carries `line`, its `message` starts with `Line N: `, and a rejected upload leaves no file behind.
+
+| Item | Limit |
+|---|---|
+| File size | 200 MB; larger returns 413 `file_too_large` |
+| Number of requests | At most 50000 non-blank lines; more returns 400 `too_many_requests` |
+| Line length | 16 MiB; longer returns 400 `line_too_long` |
+| Empty file | 400 `empty_file` |
+
+Each non-blank line must be a JSON object. The validation error codes are:
+
+| Error code | Meaning |
+|---|---|
+| `invalid_json_line` | The line is not a JSON object |
+| `missing_custom_id` | `custom_id` is missing or not a non-empty string |
+| `duplicate_custom_id` | `custom_id` is repeated in the file |
+| `invalid_method` | `method` is not `POST` |
+| `invalid_url` | `url` is not one of the three supported endpoints |
+| `missing_body` | `body` is missing or not an object |
+| `missing_model` | `body.model` is missing or not a non-empty string |
+| `streaming_not_supported` | `body.stream` is `true` |
+
+Errors of the upload request itself, all 400: `invalid_content_type`, `invalid_multipart`, `invalid_purpose` (`purpose` is not `batch`), and `missing_required_parameter` (`file` or `purpose` missing).
+
+**Result files**: after a batch ends, `output_file_id` points to the output file of successful requests and `error_file_id` to the error file of requests that finally failed. Both are JSON Lines with `purpose` `batch_output`, one line per `custom_id`, in completion order. A line of the output file is `{"id":"batch_req_<hex>","custom_id","response":{"status_code":200,"request_id","body":{...}},"error":null}`, and a line of the error file is `{"id","custom_id","response":null|{"status_code","request_id","body"},"error":{"code","message"}}`. The output file exists only if at least one request succeeded, and the error file only if at least one request failed. Both are deleted 30 days after the batch ends and reading them afterwards returns 404 `file_not_found`; the batch keeps its counts. Input files are kept until the user deletes them.
+
+**Which requests are retried**: when the answer is HTTP 200 but some choice has `finish_reason` `abort`, or is 503, 429, 408, any other 5xx, or a transport error, the request is retried with exponential backoff (starting at 2 seconds, doubling, capped at 60 seconds, honoring `Retry-After`, with jitter) until the batch expires and does not count as failed; any other 4xx is a final failure.
+
+**Error format**: these routes return errors in OpenAI's format, and file validation errors carry an extra `line`:
+
+```json
+{"error":{"message":"Line 2: custom_id must be a non-empty string","type":"invalid_request_error","param":null,"code":"missing_custom_id","line":2}}
+```
+
+| Status | `code` | Scenario |
+|---|---|---|
+| 400 | `invalid_json`, `invalid_limit`, `invalid_order`, `invalid_endpoint`, `invalid_completion_window`, `invalid_metadata`, `endpoint_mismatch`, `file_not_found`, `invalid_purpose` | Invalid batch creation or list parameters; the input file validation codes are listed above |
+| 401 | `invalid_api_key` | The API key is missing or invalid |
+| 404 | `file_not_found`, `batch_not_found`, `not_found` | The object does not exist or does not belong to the caller; unknown path |
+| 405 | `method_not_allowed` | The path does not support the method |
+| 409 | `file_in_use`, `batch_not_cancellable` | Deleting a file still read by a batch that has not ended; cancelling a batch that has ended |
+| 413 | `file_too_large` | The upload exceeds 200 MB |
+
+**Execution and limits**: a batch's requests take the same gateway path as a client's request (routing by `body.model`, on-demand wake of sleeping deployments, usage counting, and request records attributed to the API key and user that created the batch). Each batch runs 8 requests at a time and all batches together have at most 64 requests in flight; progress is saved about every 5 seconds, and after a server restart unfinished batches resume from the latest checkpoint without sending again the requests that already have a result.
+
 ## Out of Scope
 
 - For data plane `/v1/*` endpoints (OpenAI-compatible chat/embeddings/rerank/audio/image/video/realtime endpoints, etc.), see
-  [`openai-gateway.md`](openai-gateway.md); they are not repeated here.
+  [`openai-gateway.md`](openai-gateway.md); they are not repeated here, except `/v1/files` and `/v1/batches`, which are in [Batches](#batches批处理任务).
 - Agent-side yamux subprotocols (`ctrl`/`metrics`/`logtail`/`tunnel`/`model.read`/`model.write`/
   `image.read`/`image.write`/`terminal`) are not HTTP routes. They belong to the `internal/proto` control plane protocol and are outside this document's scope.
 

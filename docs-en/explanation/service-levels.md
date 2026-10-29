@@ -40,7 +40,7 @@ If the cards W needs hold several awake replicas, they either all yield or none 
 4. Once the occupant is confirmed asleep and only its residue remains on the cards, the waiting deployment is woken and the held requests are let through.
 5. A shared or offline deployment that yielded is recorded as pending resume, and takes the cards back under the same rule once they are free again.
 
-An interrupted non-streaming request is held by the gateway and replayed once the deployment serves again (at most 3 times), so the client only sees the reply that ran to its end. A streaming request has already started its output and cannot be replayed: to the client it ends normally with HTTP 200, `finish_reason` set to `"abort"`, and truncated content, and the client should retry on that signal.
+An interrupted non-streaming request is held by the gateway and replayed once the deployment serves again (at most 3 times), so the client only sees the reply that ran to its end. A streaming request has already started its output and cannot be replayed: to the client it ends normally with HTTP 200, `finish_reason` set to `"abort"`, and truncated content, and the client should retry on that signal. Long jobs can be sent as platform-hosted [batch jobs](../how-to/batch-api.md#与离线服务等级搭配), which retry interrupted requests themselves.
 
 ## Why Yielding Uses L1
 
@@ -61,4 +61,4 @@ While a deployment that shares cards by service level is asleep, it is still cou
 - Only single-node deployments are covered; multi-node and PD deployments stay resident.
 - When a new deployment starts and the cards are held by an awake deployment, the platform does not yield cards for the start; the new deployment waits as one that does not fit, and is placed once the other yields or sleeps.
 - Held requests, each turn's residency start, and the pending-resume list all live in server memory: after a server restart, a deployment that had yielded its cards wakes only when a request arrives.
-- Requests interrupted on an offline deployment need client retries; platform-hosted batch jobs are not yet supported.
+- Requests interrupted on an offline deployment need client retries; platform-hosted [batches](../how-to/batch-api.md#与离线服务等级搭配) (`/v1/batches`) retry automatically until the batch expires.

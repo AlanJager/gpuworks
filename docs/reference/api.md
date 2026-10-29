@@ -7,6 +7,7 @@
 
 调用模型推理使用另一组接口：`/v1/*` 是对外的 OpenAI 兼容网关，`/api/v1/playground/v1/*` 是
 Playground 内部代理。它们的调用规则见 [OpenAI 兼容网关](openai-gateway.md)，本文不重复列出。
+批处理的 OpenAI 兼容接口（`/v1/files`、`/v1/batches`）例外：它们与管理接口的批处理路由一起列在 [Batches](#batches批处理任务) 一节。
 
 ## 鉴权模型
 
@@ -1564,10 +1565,153 @@ server 组装上下文后运行带只读工具的 agent 循环。工具以提问
 Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:<model>` 见
 [`openai-gateway.md`](openai-gateway.md)。
 
+## Batches（批处理任务）
+
+批处理任务把一个 JSONL 文件里的请求异步交给网关执行，结果写成输出文件和错误文件。它有两组接口：
+
+- 控制台用的管理接口 `/api/v1/batches`，鉴权同本文其他路由。
+- OpenAI 兼容接口 `/v1/files` 与 `/v1/batches`，用推理 API key 鉴权，官方 SDK 可直接使用。
+
+操作步骤、结果文件格式和重试规则见[运行批处理任务](../how-to/batch-api.md)。
+
+### 控制台接口 `/api/v1/batches`
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
+| GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
+| GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
+| POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）和 `endpoint`；上传时逐行校验，成功返回 201 和任务对象。任务属于当前登录用户 | JWT(admin) |
+| POST | `/api/v1/batches/{id}/cancel` | 取消任务，返回带 `cancelling` 状态的任务对象；已结束的任务返回 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
+
+读取（GET）使用只读平台令牌即可；写入需要管理员角色（否则 403 `ADMINISTRATOR_REQUIRED`）和读写范围的平台令牌（否则 403 `PLATFORM_TOKEN_READ_ONLY`）。
+
+任务对象（RFC3339 时间；到达之前的时间字段不出现，`output_file_id`、`error_file_id`、`failure` 同理）：
+
+| 字段 | 含义 |
+|---|---|
+| `id`、`endpoint`、`status` | 任务 ID、接口（`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 之一）、状态 |
+| `status` | `validating`、`in_progress`、`finalizing`、`completed`、`failed`、`expired`、`cancelling`、`cancelled` |
+| `input_file_id`、`input_filename` | 输入文件 ID；文件名只在详情、创建和取消的响应里出现 |
+| `output_file_id`、`error_file_id` | 输出、错误文件 ID，文件存在后才有 |
+| `completion_window` | 固定为 `24h` |
+| `request_counts` | `{total, completed, failed}`，约每 5 秒更新一次；重试中的请求两者都不计 |
+| `metadata` | 字符串到字符串的对象，没有时为 `{}` |
+| `failure` | `{code, message}`，仅 `failed` 状态有 |
+| `user_id`、`api_key_id` | 创建者；从控制台创建时没有 `api_key_id` |
+| `created_at`、`expires_at` | 创建时间与过期时间（创建后 24 小时） |
+| `in_progress_at`、`finalizing_at`、`completed_at`、`failed_at`、`expired_at`、`cancelling_at`、`cancelled_at` | 各阶段到达的时间 |
+
+```json
+{"id":"batch_5a1e9d03c7b24f6e8d2a4b19","endpoint":"/v1/chat/completions","status":"in_progress","input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","input_filename":"requests.jsonl","completion_window":"24h","request_counts":{"total":1000,"completed":410,"failed":3},"metadata":{},"user_id":3,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z","in_progress_at":"2026-10-28T09:00:02Z"}
+```
+
+产品错误码：
+
+| 错误码 | 状态 | 含义 |
+|---|---|---|
+| `BATCH_NOT_FOUND` | 404 | 任务或文件不存在，或不属于调用者 |
+| `BATCH_NOT_CANCELLABLE` | 409 | 任务已结束 |
+| `BATCH_FILE_INVALID` | 400 | 输入文件无效；`params` 为 `{line, reason, detail}`，`line` 为 0 表示整个文件，`reason` 是下文的校验错误码 |
+| `BATCH_FILE_TOO_LARGE` | 413 | 文件超过上限；`params` 为 `{limit_mb}` |
+| `BATCH_REQUEST_INVALID` | 400 | 请求的某个字段无效；`params` 为 `{field, reason}`，例如不是 multipart、缺少 `file`、`endpoint` 不被支持、`endpoint` 与文件内的 `url` 不一致 |
+
+文件保存在 server 数据目录的 `batch-files/` 下。
+
+### OpenAI 兼容的 Files 与 Batches 接口
+
+这些路由与 `/v1/chat/completions` 等网关接口一起挂在 `/v1` 下，用推理 API key（`Authorization: Bearer <key>`）鉴权；server 没有配置任何推理令牌时与其余 `/v1` 路由一样不要求鉴权。鉴权失败返回 401，错误码 `invalid_api_key`。文件和任务属于创建它们的 API key 所属用户：同一用户的任意 key 都能访问，其他用户得到 404。
+
+| Method | Path | 说明 |
+|---|---|---|
+| POST | `/v1/files` | 上传输入文件，`multipart/form-data`，字段 `file` 和 `purpose`（只能是 `batch`），成功返回 200 和文件对象 |
+| GET | `/v1/files` | 文件列表；`purpose` 为 `batch` 或 `batch_output`，`limit` 默认且最大 10000，`after` 为上一页最后一个文件 ID，只支持 `order=desc`（最新优先） |
+| GET | `/v1/files/{id}` | 文件对象 |
+| GET | `/v1/files/{id}/content` | 文件内容，`application/jsonl` |
+| DELETE | `/v1/files/{id}` | 删除文件，返回 `{"id","object":"file","deleted":true}`；仍有未结束的任务在读它时返回 409 `file_in_use` |
+| POST | `/v1/batches` | 创建任务，成功返回 200 和任务对象 |
+| GET | `/v1/batches` | 任务列表，最新优先；`limit` 默认 20、最大 100，`after` 为上一页最后一个任务 ID |
+| GET | `/v1/batches/{id}` | 任务对象 |
+| POST | `/v1/batches/{id}/cancel` | 取消任务，返回状态为 `cancelling` 的任务对象；已结束的任务返回 409 `batch_not_cancellable` |
+
+列表响应是 `{"object":"list","data":[...],"first_id","last_id","has_more"}`；`data` 为空时 `first_id`、`last_id` 为 `null`。
+
+文件对象：
+
+```json
+{"id":"file-3f9c2a7e1b6d4c8a90e5d721","object":"file","bytes":412,"created_at":1790000000,"filename":"requests.jsonl","purpose":"batch","status":"processed"}
+```
+
+`id` 是 `file-` 加 24 位十六进制；`purpose` 为 `batch`（输入）或 `batch_output`（输出文件与错误文件）；`created_at` 是 Unix 秒。
+
+创建任务的请求体：
+
+| 字段 | 要求 |
+|---|---|
+| `input_file_id` | 必填。`purpose` 为 `batch`、调用者可见的文件，否则 400 `file_not_found`（`param` 为 `input_file_id`） |
+| `endpoint` | 必填，`/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 之一，且等于文件内每一行的 `url`，否则 400 `endpoint_mismatch` |
+| `completion_window` | 必填，只能是 `"24h"`，否则 400 `invalid_completion_window` |
+| `metadata` | 可选，字符串到字符串的对象，最多 16 个键，键 1–64 个字符，值至多 512 个字符，否则 400 `invalid_metadata` |
+
+任务对象的时间都是 Unix 秒，还没到达的为 `null`：
+
+```json
+{"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
+```
+
+- `id` 是 `batch_` 加 24 位十六进制；没有 `metadata` 时为 `null`；`errors` 平时为 `null`，`failed` 状态下是 `{"object":"list","data":[{"code","message","param":null,"line":null}]}`。
+- `status` 取值：`validating`（排队等执行名额，全 server 同时最多执行 32 个任务）、`in_progress`、`finalizing`、`completed`、`failed`（只因平台故障，例如输入文件消失）、`expired`（超过 24 小时，没有结果的请求写入错误文件，错误码 `batch_expired`）、`cancelling`、`cancelled`。
+- 取消：不再发送新请求，在途请求最多再等 2 分钟，之后任务以 `cancelled` 结束，已有结果留在输出文件和错误文件里。
+
+**输入文件校验**：上传时边收边校验，第一处错误即拒绝，错误带 `line`，`message` 以 `Line N: ` 开头，被拒绝的上传不留下任何文件。
+
+| 项目 | 限制 |
+|---|---|
+| 文件大小 | 200 MB，超过返回 413 `file_too_large` |
+| 请求数 | 非空行最多 50000，超过返回 400 `too_many_requests` |
+| 单行长度 | 16 MiB，超过返回 400 `line_too_long` |
+| 空文件 | 400 `empty_file` |
+
+每个非空行必须是 JSON 对象，校验失败的错误码如下：
+
+| 错误码 | 含义 |
+|---|---|
+| `invalid_json_line` | 该行不是 JSON 对象 |
+| `missing_custom_id` | `custom_id` 缺失或不是非空字符串 |
+| `duplicate_custom_id` | `custom_id` 在文件内重复 |
+| `invalid_method` | `method` 不是 `POST` |
+| `invalid_url` | `url` 不是三个受支持的接口之一 |
+| `missing_body` | `body` 缺失或不是对象 |
+| `missing_model` | `body.model` 缺失或不是非空字符串 |
+| `streaming_not_supported` | `body.stream` 为 `true` |
+
+上传请求本身的错误：`invalid_content_type`、`invalid_multipart`、`invalid_purpose`（`purpose` 不是 `batch`）、`missing_required_parameter`（缺 `file` 或 `purpose`），都是 400。
+
+**结果文件**：任务结束后，`output_file_id` 指向成功请求的输出文件，`error_file_id` 指向最终失败请求的错误文件，都是 `purpose` 为 `batch_output` 的 JSON Lines，每个 `custom_id` 一行、按完成顺序排列。输出文件的行是 `{"id":"batch_req_<hex>","custom_id","response":{"status_code":200,"request_id","body":{...}},"error":null}`，错误文件的行是 `{"id","custom_id","response":null|{"status_code","request_id","body"},"error":{"code","message"}}`。输出文件只在至少一个请求成功时存在，错误文件只在至少一个请求失败时存在。两者在任务结束 30 天后删除，之后读取返回 404 `file_not_found`；任务保留计数。输入文件保留到用户删除。
+
+**哪些请求会重试**：应答为 HTTP 200 但某个 choice 的 `finish_reason` 为 `abort`、503、429、408、其他 5xx 或传输错误时，请求以指数退避（2 秒起翻倍，60 秒封顶，遵守 `Retry-After`，带抖动）重试到任务过期，不计入失败；其他 4xx 是最终失败。
+
+**错误格式**：这些路由按 OpenAI 的格式返回错误，文件校验错误另带 `line`：
+
+```json
+{"error":{"message":"Line 2: custom_id must be a non-empty string","type":"invalid_request_error","param":null,"code":"missing_custom_id","line":2}}
+```
+
+| 状态 | `code` | 场景 |
+|---|---|---|
+| 400 | `invalid_json`、`invalid_limit`、`invalid_order`、`invalid_endpoint`、`invalid_completion_window`、`invalid_metadata`、`endpoint_mismatch`、`file_not_found`、`invalid_purpose` | 创建任务或列表参数不合法；输入文件校验的错误码见上 |
+| 401 | `invalid_api_key` | 缺少或无效的 API key |
+| 404 | `file_not_found`、`batch_not_found`、`not_found` | 对象不存在或不属于调用者；未知路径 |
+| 405 | `method_not_allowed` | 方法不被该路径支持 |
+| 409 | `file_in_use`、`batch_not_cancellable` | 删除正被未结束任务读取的文件；取消已结束的任务 |
+| 413 | `file_too_large` | 上传超过 200 MB |
+
+**执行方式与限制**：任务的请求走与客户端请求相同的网关路径（按 `body.model` 路由、休眠部署的按需唤醒、用量计数、请求记录归到创建任务的 API key 和用户）。每个任务同时 8 个请求，所有任务合计 64 个在途请求；进度约每 5 秒保存一次，server 重启后未结束的任务从最近的检查点继续，不重发已有结果的请求。
+
 ## 未覆盖内容
 
 - 数据面 `/v1/*`（chat/embeddings/rerank/audio/image/video/realtime 等 OpenAI 兼容 endpoint）见
-  [`openai-gateway.md`](openai-gateway.md)，不在本文重复。
+  [`openai-gateway.md`](openai-gateway.md)，不在本文重复；其中 `/v1/files` 与 `/v1/batches` 见 [Batches](#batches批处理任务)。
 - agent 侧 yamux 子协议（`ctrl`/`metrics`/`logtail`/`tunnel`/`model.read`/`model.write`/
   `image.read`/`image.write`/`terminal`）不是 HTTP 路由，属于 `internal/proto` 控制面协议，不在本文范围。
 

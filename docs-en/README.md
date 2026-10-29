@@ -59,6 +59,7 @@ see the index in [`artifacts/README.md`](../artifacts/README.md)). Chinese origi
 - [Put Instances to Sleep and Wake Them](how-to/sleep-wake.md)
 - [Use the Scheduling Center: Schedules, Idle Sleep, and Waiting Wakes](how-to/scheduling-center.md)
 - [Reschedule Replicas on Node Loss](how-to/node-failover.md)
+- [Run Batches: the Batch API and the Console](how-to/batch-api.md)
 
 **Operations and Benchmarking**
 

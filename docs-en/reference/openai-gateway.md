@@ -15,6 +15,7 @@ The server's `/v1/*` endpoints use API key authentication. The `model` field in 
 | image generation | /v1/images/generations | JSON or multipart |
 | video generation | /v1/videos | JSON or multipart; supports async |
 | realtime | /v1/realtime | WebSocket |
+| batch (Files and Batches) | /v1/files, /v1/batches | JSON; file upload is multipart. Asynchronous batches, see [Batches](#批处理files-与-batches) |
 
 Each spec's API contract declares the operations and endpoints available for that deployment. The two entry points apply different checks:
 
@@ -32,6 +33,15 @@ Deployments with multiple replicas use least-request selection by default, prefe
 - If an instance cannot serve because it is sleeping, starting, or has a nonzero rank, the gateway returns 503 and preserves retry semantics.
 
 A deployment can select `least_request`, `prefix_affinity`, or `failover` through the management API `PUT /api/v1/deployments/{id}/routing`. Prefix affinity first reads `X-GPUWorks-Affinity-Key` and also supports extracting a stable key from chat messages, prompt, or input. This header is not forwarded to the engine.
+
+## Batches (Files and Batches)
+
+The gateway supports OpenAI's Batch API: upload a JSONL file with `POST /v1/files` (`purpose=batch`), create a batch with `POST /v1/batches`, follow its progress with `GET /v1/batches/{id}`, and fetch the output and error files from `GET /v1/files/{id}/content`. The supported routes are:
+
+- Files: `POST /v1/files`, `GET /v1/files`, `GET /v1/files/{id}`, `GET /v1/files/{id}/content`, `DELETE /v1/files/{id}`.
+- Batches: `POST /v1/batches`, `GET /v1/batches`, `GET /v1/batches/{id}`, `POST /v1/batches/{id}/cancel`.
+
+The `chat/completions`, `completions`, and `embeddings` requests in a batch take the same gateway path as ordinary requests by `body.model`, are counted in usage and request records, and cannot stream. Like the other `/v1` routes, these two groups authenticate with an API key and return errors in OpenAI's format. For the procedure and examples see [Run Batches](../how-to/batch-api.md); for objects and error codes see [Complete REST API Routes](api.md#batches批处理任务).
 
 ## Tokenization (tokenize)
 
