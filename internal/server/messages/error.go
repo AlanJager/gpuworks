@@ -11,6 +11,7 @@ type ProductError struct {
 
 // Product error codes shared by domain services and the API layer.
 const (
+	ErrorSleepEngineUnsupported             = "SLEEP_ENGINE_UNSUPPORTED"
 	ErrorAgentUpgradeRequired               = "AGENT_UPGRADE_REQUIRED"
 	ErrorLaunchFeaturesUnknown              = "LAUNCH_FEATURES_UNKNOWN"
 	ErrorSleepTargetUnresolved              = "SLEEP_TARGET_UNRESOLVED"
