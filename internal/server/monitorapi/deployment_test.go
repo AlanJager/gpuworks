@@ -160,6 +160,7 @@ func TestReplicaRowsDTORoundsNumericFieldsToOneDecimal(t *testing.T) {
 			Index: 0, HasUtil: true, UtilPct: 55.049999999999997,
 			HasTemp: true, TempC: 61.050000000000004,
 			HasMemBW: true, MemBWPct: 30.949999999999999,
+			HasPower: true, PowerW: 244.05000000000001,
 		}},
 	}}
 	out := replicaRowsDTO(rows, map[string]string{})
@@ -197,6 +198,45 @@ func TestReplicaRowsDTORoundsNumericFieldsToOneDecimal(t *testing.T) {
 	}
 	if gpu.MemBWPct == nil || *gpu.MemBWPct != 31.0 {
 		t.Fatalf("MemBWPct = %v, want 31.0 (rounded)", gpu.MemBWPct)
+	}
+	if gpu.PowerW == nil || *gpu.PowerW != 244.1 {
+		t.Fatalf("PowerW = %v, want 244.1 (rounded)", gpu.PowerW)
+	}
+}
+
+// TestBuildDeploymentReplicaGPUPower is GWKS-144's end-to-end regression at
+// the wire boundary: a node that collects gpuworks_gpu_power_watts must
+// reach the replica table's power_w as that card's mean draw over the
+// diagnosis window (100/200/300 W here, so a MaxOf reduction - what
+// temperature wants, and what would report the 300 W peak - fails this),
+// rounded like every other GPU column. A card with no power series of its
+// own stays null rather than a fabricated 0 W.
+func TestBuildDeploymentReplicaGPUPower(t *testing.T) {
+	store := newTestStore(t)
+	inv := monitor.Inventory{
+		Deployments: []monitor.DeploymentRef{{ID: 7, Name: "svc"}},
+		Instances:   []monitor.InstanceRef{{UUID: "i1", DeploymentID: 7, NodeUUID: "n1", GPUIndexes: []int{0, 1}}},
+	}
+	svc := New(Deps{TSDB: store, Inventory: inventoryFunc(inv), Now: func() time.Time { return baseTime }})
+	// Only GPU 0's power was collected; GPU 1 has no such series at all.
+	labels := map[string]string{"node": "n1", "gpu": "0"}
+	writeSample(t, store, "gpuworks_gpu_power_watts", labels, 100, baseTime.Add(-20*time.Second))
+	writeSample(t, store, "gpuworks_gpu_power_watts", labels, 200, baseTime.Add(-10*time.Second))
+	writeSample(t, store, "gpuworks_gpu_power_watts", labels, 300, baseTime)
+
+	out, err := svc.Deployment(context.Background(), 7, time.Hour)
+	if err != nil {
+		t.Fatalf("Deployment: %v", err)
+	}
+	if len(out.Replicas) != 1 || len(out.Replicas[0].GPUs) != 2 {
+		t.Fatalf("replicas = %+v, want one row with two GPU sub-rows", out.Replicas)
+	}
+	gpus := out.Replicas[0].GPUs
+	if gpus[0].PowerW == nil || *gpus[0].PowerW != 200 {
+		t.Fatalf("GPU 0 power_w = %v, want 200 (the window mean of 100/200/300)", gpus[0].PowerW)
+	}
+	if gpus[1].PowerW != nil {
+		t.Fatalf("GPU 1 power_w = %v, want null (no power series was collected for it)", *gpus[1].PowerW)
 	}
 }
 

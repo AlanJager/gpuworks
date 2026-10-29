@@ -176,6 +176,15 @@ func (i *Installer) runUpgrade(ctx context.Context, req UpgradeRequest, inst ins
 	i.io.Say("upgrading the installation at %s (%s, %s)", i.layout.Dir, report.From, inst.Mode)
 	cfg := i.unitConfig(inst.ServiceUser, inst.Mode)
 	svc := i.service(inst.Mode, inst.ServiceUser, cfg)
+	// A snapshot has to hold the master key: it decrypts the credentials in the
+	// database, and a server that starts without it generates a fresh key,
+	// leaving every encrypted credential undecryptable. That is checked here,
+	// before anything on the host is written, so the refusal leaves nothing
+	// changed instead of producing a backup that cannot be restored and then
+	// re-keying the installation.
+	if err := i.checkSnapshotMembers(); err != nil {
+		return fmt.Errorf("%w; nothing was changed", err)
+	}
 	if inst.FromInstallJSON {
 		if err := i.adoptInstallJSON(ctx, inst, svc); err != nil {
 			return err
@@ -296,7 +305,10 @@ func (i *Installer) finishUpgrade(ctx context.Context, req UpgradeRequest, repor
 	}, 0o600); err != nil {
 		i.io.Warn("warning: could not append to the install history: %v", err)
 	}
-	i.pruneBackups(req.Keep)
+	// The snapshot this run just took is named separately, so pruning cannot
+	// delete the archive the history line above just offered as the rollback
+	// point — not even when the clock ties its stamp with an older one.
+	i.pruneBackups(req.Keep, report.Backup)
 }
 
 // installedProbeAddr is the address the health check reaches for an

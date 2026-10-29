@@ -37,6 +37,65 @@ func (i *Installer) backupMembers() []string {
 	return members
 }
 
+// requiredBackupMember returns why a snapshot cannot be taken without the
+// archive member name, or "" when that member is optional.
+//
+// Only the master key is required. It is named rather than pointed at, so both
+// writers of this archive share one decision: the CLI snapshot takes the file
+// from the data directory, the in-service one names the same archive member,
+// and each maps a path onto the name it carries inside. It is also the one
+// member an upgrade cannot repair: the key decrypts the credentials sealed in
+// the database, and a server that starts without the file generates a fresh
+// one, which leaves that ciphertext unreadable for good.
+//
+// Everything else in the member list may legitimately be absent. A database
+// that has never been checkpointed has no -wal/-shm, an installation made by
+// hand may have no database yet, and a server.yaml can be removed by hand; a
+// snapshot missing those is still restorable, so they are skipped.
+func requiredBackupMember(name string) string {
+	if name == backupDataPrefix+"master.key" {
+		return "it decrypts the credentials stored in the database, and a server that starts without " +
+			"it generates a new one, which would leave every encrypted credential undecryptable"
+	}
+	return ""
+}
+
+// inspectBackupMember applies the required/optional policy to one member before
+// it is archived. It reports whether the member should be written: an absent or
+// non-regular required member is an error, an optional one is skipped.
+func inspectBackupMember(path, name string) (os.FileInfo, bool, error) {
+	info, err := os.Stat(path)
+	required := requiredBackupMember(name)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		if required != "" {
+			return nil, false, fmt.Errorf("%s is missing, but %s", path, required)
+		}
+		return nil, false, nil
+	case err != nil:
+		return nil, false, err
+	case !info.Mode().IsRegular():
+		if required != "" {
+			return nil, false, fmt.Errorf("%s is not a regular file, but %s", path, required)
+		}
+		return nil, false, nil
+	}
+	return info, true, nil
+}
+
+// checkSnapshotMembers verifies that the members a snapshot cannot do without
+// are there, applying the same policy the archive writer does. It reads no
+// member contents, so the upgrade path can call it before the service is
+// stopped and refuse while nothing has changed.
+func (i *Installer) checkSnapshotMembers() error {
+	for _, member := range i.backupMembers() {
+		if _, _, err := inspectBackupMember(member, archiveName(i.layout, member)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // createBackup archives the current state before an upgrade replaces it and
 // returns the archive path.
 func (i *Installer) createBackup(ctx context.Context, releaseID string) (string, error) {
@@ -123,20 +182,15 @@ func archiveName(layout Layout, member string) string {
 
 func binaryPath() string { return backupBinPrefix + binaryName }
 
-// addToArchive writes one member. A missing optional file (a database that has
-// never been checkpointed has no -wal, an installation made by hand has no
-// manifest) is skipped rather than failing the backup; a missing required file
-// is reported by the caller's restore expectations, not here.
+// addToArchive writes one member, applying the required/optional policy: an
+// optional file that is not there (a database that has never been checkpointed
+// has no -wal) is skipped, a required one that is not there fails the snapshot.
+// Skipping a required member would hand back an archive that cannot be
+// restored, so it is reported here rather than left to the restore path.
 func addToArchive(writer *tar.Writer, path, name string, at time.Time) error {
-	info, err := os.Stat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+	info, write, err := inspectBackupMember(path, name)
+	if err != nil || !write {
 		return err
-	}
-	if !info.Mode().IsRegular() {
-		return nil
 	}
 	header, err := tar.FileInfoHeader(info, "")
 	if err != nil {
@@ -161,6 +215,17 @@ func addToArchive(writer *tar.Writer, path, name string, at time.Time) error {
 // restoring a database while a stale -wal from the newer version is present
 // would leave sqlite replaying changes that belong to a schema it no longer
 // has.
+//
+// It restores exactly what the archive holds and verifies no required member.
+// A snapshot that lacks data/master.key therefore unpacks without complaint:
+// it leaves whatever key is on disk in place (so the restored database's
+// encrypted credentials stay undecryptable, because the key that sealed them
+// is gone) or, when there is no key at all, leaves none for the next start to
+// replace with a fresh one — the same loss. That is deliberate: a rollback has
+// to put the database back even from an incomplete snapshot, or the operator is
+// left with neither the old version nor its data. The guard belongs on the way
+// in, which is what requiredBackupMember and checkSnapshotMembers enforce, so
+// every snapshot this build writes is restorable.
 func (i *Installer) restoreBackup(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -268,9 +333,58 @@ func (i *Installer) discardDatabaseLog() error {
 	return nil
 }
 
-// pruneBackups keeps the newest keep snapshots. Backup names start with the
-// release id and end with a UTC timestamp, so ordering by name orders by age.
-func (i *Installer) pruneBackups(keep int) {
+// backupSnapshot is one snapshot in the backup directory and the moment it was
+// taken, as its name records it.
+type backupSnapshot struct {
+	name string
+	at   time.Time
+}
+
+// backupStampAt reads the UTC timestamp a snapshot's name ends with. The stamp
+// is taken from the end of the name, not from its first dash: the release id in
+// front of it may contain dashes itself (`dev-0b0801dfd`), and only the tail is
+// guaranteed to be the time the snapshot was taken, because that is what
+// BackupPath appends.
+//
+// The stamp is fixed-width, so comparing those sixteen characters would rank
+// them correctly too. Parsing is preferred because it also rejects a stamp that
+// is the right shape and the wrong time (a month of 13, an hour of 25): a name
+// like that is not one this package wrote, and ranking it by a key nobody can
+// reason about is how a snapshot gets deleted on a guess.
+func backupStampAt(name string) (time.Time, bool) {
+	stem, ok := strings.CutSuffix(name, backupSuffix)
+	if !ok || len(stem) < len(backupStampLayout)+2 {
+		return time.Time{}, false
+	}
+	stamp := stem[len(stem)-len(backupStampLayout):]
+	if stem[len(stem)-len(backupStampLayout)-1] != '-' {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(backupStampLayout, stamp)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// pruneBackups keeps the newest keep snapshots, current never among the ones it
+// removes.
+//
+// Ordering is by the timestamp in the name, not by the whole name and not by
+// mtime. The whole name is what used to be used, and it orders by release id
+// first: `aaa-…` sorts before `dev-…` and `sit-…`, so the newest snapshot of
+// the newest version was the first one deleted. mtime would order correctly on
+// the machine that wrote the files, but a snapshot's mtime is carried by
+// nothing inside the archive and is rewritten by a copy, a restore or a tar
+// round trip, so it can say a five-day-old snapshot is newer than this
+// morning's; the name is what the snapshot itself recorded.
+//
+// A name that does not end in a readable stamp is left alone. It is not
+// provably one of ours (a hand-placed copy, or one from a version that named
+// its snapshots differently), and deleting the archive an operator was counting
+// on because its name could not be parsed is the same mistake as deleting the
+// newest one.
+func (i *Installer) pruneBackups(keep int, current string) {
 	if keep <= 0 {
 		return
 	}
@@ -278,19 +392,44 @@ func (i *Installer) pruneBackups(keep int) {
 	if err != nil {
 		return
 	}
-	var names []string
+	// The archive this run just wrote is not a pruning candidate. It holds one
+	// of the keep slots by definition — it is the newest snapshot by the clock
+	// that wrote it — so only the rest are ranked, and nothing can remove it even
+	// when the clock puts it among the oldest or ties it with an older archive.
+	protected := ""
+	if current != "" {
+		if info, err := os.Stat(current); err == nil && info.Mode().IsRegular() {
+			protected = filepath.Base(current)
+		}
+	}
+	var snapshots []backupSnapshot
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tar.gz") {
+		if entry.IsDir() || entry.Name() == protected {
 			continue
 		}
-		names = append(names, entry.Name())
+		at, ok := backupStampAt(entry.Name())
+		if !ok {
+			continue
+		}
+		snapshots = append(snapshots, backupSnapshot{name: entry.Name(), at: at})
 	}
-	if len(names) <= keep {
+	vacancies := keep
+	if protected != "" {
+		vacancies--
+	}
+	if len(snapshots) <= vacancies {
 		return
 	}
-	slices.Sort(names)
-	slices.Reverse(names)
-	for _, name := range names[keep:] {
-		_ = os.Remove(filepath.Join(i.layout.BackupsDir, name))
+	// Newest first. Two snapshots taken within the same second carry the same
+	// stamp and the name cannot tell them apart, so the name breaks the tie and
+	// keeps pruning deterministic from one run to the next.
+	slices.SortFunc(snapshots, func(a, b backupSnapshot) int {
+		if c := b.at.Compare(a.at); c != 0 {
+			return c
+		}
+		return strings.Compare(b.name, a.name)
+	})
+	for _, snapshot := range snapshots[vacancies:] {
+		_ = os.Remove(filepath.Join(i.layout.BackupsDir, snapshot.name))
 	}
 }

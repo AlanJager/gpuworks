@@ -1,0 +1,114 @@
+{
+  "contract_id": "gpuworks/deployment/model-picker-height",
+  "name": "部署模型选择器 / 长名称和版本 / 选中内容保持单行且位于原控件高度内",
+  "page_id": "deploy",
+  "scope": "Only the deployment model selector height contract; not all Select widgets or the deployment workflow",
+  "lane": "local-real-server-sqlite-browser-no-gpu",
+  "test_file": "test/e2e/model_picker_height/case.py",
+  "driver_file": "test/e2e/model_picker_height/case.py",
+  "test_function": "test_model_picker_height",
+  "command": "make test-e2e-model-picker-height E2E_TARGET_REF=upstream/master E2E_BROWSER_CHANNEL=chromium",
+  "required_evidence": [
+    "ui",
+    "request",
+    "persistence",
+    "cleanup"
+  ],
+  "product_contracts": [
+    "ui/src/pages/deploy/ModelPicker.tsx",
+    "ui/src/pages/deploy/DeployBasicStep.tsx",
+    "ui/src/pages/deploy/ModelRegistrationDetails.tsx",
+    "ui/src/theme/tokens.ts"
+  ],
+  "fixture": "Each run starts an isolated server with a fresh SQLite database and registers exactly one uniquely named run-owned model through the real browser_metadata API with explicit metadata; independent GET checks its identity. The unfiltered browser model list must therefore contain only that model with total == 1; a shared database is outside this fixture contract. No remote model files, agent, or browser management mocks. Existing cleanup discovers only the run-owned repository by source_id and verifies DELETE/404 and an empty query.",
+  "fields": [
+    {
+      "id": "model_id",
+      "component": "Select",
+      "default": null,
+      "request": "Page GET /models?page=1&page_size=50; GET /models/{id} on deep link",
+      "persistence": "Fixture metadata persisted by real POST then independently read. The draft is not submitted.",
+      "covered": [
+        "empty control height captured before selection at each viewport",
+        "long name and full revision present in the actual dropdown",
+        "mouse selection and URL refill preserve readable model identity",
+        "selected control height equals empty control height within CSS subpixel tolerance",
+        "selected label and every text line stay inside the control vertically",
+        "en/zh at 1440x900,1024x900,390x844"
+      ],
+      "missing": [
+        "other sources",
+        "search variants",
+        "unavailable selected model",
+        "loading/error layout",
+        "multi-select is not supported here"
+      ]
+    }
+  ],
+  "component_checklist": [
+    {
+      "item": "5.1",
+      "status": "partial",
+      "assertion": "One registered option: exact name and full revision before/after selection, no-files detail, empty placeholder, height and text bounds. Disabled candidates are not constructed."
+    },
+    {
+      "item": "5.2",
+      "status": "partial",
+      "assertion": "Mouse selection and URL refill read the exact fixture ID through real API; no deployment is saved."
+    },
+    {
+      "item": "5.3",
+      "status": "MISSING",
+      "assertion": "Search variations belong to the existing RTL suite; not exercised in this geometry case."
+    },
+    {
+      "item": "5.4",
+      "status": "N/A",
+      "assertion": "ModelPicker does not expose allowClear; each viewport starts with a fresh empty deployment draft."
+    },
+    {
+      "item": "5.5",
+      "status": "MISSING",
+      "assertion": "Dependent engine/template fields are outside this selector-height contract."
+    },
+    {
+      "item": "5.6",
+      "status": "partial",
+      "assertion": "Keyboard focus and ArrowDown open the associated popup; mouse selection closes it. Arrow-key candidate changes are not asserted."
+    },
+    {
+      "item": "5.7",
+      "status": "MISSING",
+      "assertion": "Asynchronous failure and deleted model scenarios are not exercised here."
+    }
+  ],
+  "other_reachable_controls": [
+    {
+      "id": "deployment.other-fields",
+      "component": "Form and deployment controls",
+      "status": "MISSING",
+      "reason": "Vendor/template/name/served name, node, resource, image, engine and submit flows remain outside this targeted layout case; no deployment submission."
+    }
+  ],
+  "runtime": {
+    "status": "N/A",
+    "reason": "Select rendering does not execute a workload; no GPU/inference claim."
+  },
+  "mutations": [
+    {
+      "behavior": "Restore the pre-fix model label for the selected value",
+      "expected_failure": "selected label escapes the single-line control"
+    }
+  ],
+  "missing": [
+    "All other dropdown consumers, menus and multi-select controls",
+    "Full deployment create/evaluate/runtime acceptance",
+    "Non-admin permissions and session expiry",
+    "Automatic CI execution of this browser case; the checked-in Make target must be invoked explicitly"
+  ],
+  "result": "NOT_RUN until an actual matching report passes required evidence and observed cleanup",
+  "oracle_self_tests": [
+    "Control growth is rejected by test_control_cannot_grow_to_fit_a_wrapped_label",
+    "A fixed wrapper cannot hide offscreen text: test_clipping_the_label_does_not_hide_a_second_text_line"
+  ]
+}

@@ -3253,6 +3253,10 @@ export interface LogsBucket {
 
 export interface LogsWindow {
   items: LogEntry[];
+  // Index of the anchor row in items, or -1 when the anchor is gone from
+  // that partition (pruned by retention, or ts from another day). The
+  // surrounding rows are still real, so compare against the index for
+  // highlighting and never use it to index items without a >= 0 check.
   match_index: number;
 }
 
