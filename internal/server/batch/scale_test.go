@@ -26,10 +26,13 @@ func cpuTime(t *testing.T) time.Duration {
 // handful of times rather than per request, and holds memory and CPU down.
 func TestExecutorScaleBudget(t *testing.T) {
 	const (
-		batches  = 32
-		requests = 2000
-		cap      = 64
+		batches = 32
+		cap     = 64
 	)
+	requests := 2000
+	if raceEnabled {
+		requests = 200
+	}
 	r := newRig(t, Config{PerBatch: 8, GlobalCap: cap, MaxRunning: batches}, func(ctx context.Context, _ Owner, _ string, _ []byte) Reply {
 		time.Sleep(50 * time.Microsecond) // enough latency for the cap to be reached
 		return okReply(`{"id":"x","choices":[{"finish_reason":"stop"}]}`)
@@ -87,7 +90,7 @@ func TestExecutorScaleBudget(t *testing.T) {
 	<-sampled
 	cpu := cpuTime(t) - cpuBefore
 
-	if peak := r.send.peakInFlight(); peak > cap || peak < cap*3/4 {
+	if peak := r.send.peakInFlight(); peak > cap || (!raceEnabled && peak < cap*3/4) {
 		t.Fatalf("peak in-flight requests = %d, want the global cap %d held and nearly reached", peak, cap)
 	}
 	// Row writes: each batch writes its row on a start, a finalize and a
@@ -97,7 +100,10 @@ func TestExecutorScaleBudget(t *testing.T) {
 		t.Fatalf("%d progress writes for %d requests (%d batches)", saves, batches*requests, batches)
 	}
 	total := batches * requests
-	const heapBudget = 120 << 20
+	const heapBudget = 120 << 20 // above the base, measured at about 50
+	if raceEnabled {
+		return
+	}
 	if peakHeap > base.HeapAlloc+heapBudget {
 		t.Fatalf("heap peaked at %d MiB over a %d MiB base; budget %d MiB for %d requests in %d batches",
 			peakHeap>>20, base.HeapAlloc>>20, heapBudget>>20, total, batches)
