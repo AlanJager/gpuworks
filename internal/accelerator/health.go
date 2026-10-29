@@ -66,6 +66,8 @@ const (
 	// this says only that we could not ask. The node carries the probe
 	// error that explains why.
 	HealthCLIUnanswered = "vendor_cli_unanswered"
+	HealthInventoryInvalid = "inventory_identity_invalid"
+	HealthTelemetryUnavailable = "telemetry_unavailable"
 	// HealthPCIeLinkDegraded: a PCIe link between the card and its root
 	// port runs at fewer lanes, or (while the card is busy) a lower speed,
 	// than both of its ends support. The card works, slower to load and to
@@ -90,7 +92,7 @@ func HealthLevel(code string) string {
 	switch code {
 	case "", HealthMemoryErrorHistory:
 		return HealthOK
-	case HealthMemoryRepairPending, HealthVendorWarning, HealthPCIeLinkDegraded, HealthPCIeErrors, HealthNVLinkDown:
+	case HealthMemoryRepairPending, HealthVendorWarning, HealthPCIeLinkDegraded, HealthPCIeErrors, HealthNVLinkDown, HealthTelemetryUnavailable:
 		return HealthWarning
 	default:
 		return HealthError
@@ -120,6 +122,7 @@ var healthSeverity = map[string]int{
 	HealthNVLinkDown:          4,
 	HealthVendorWarning:       5,
 	HealthMemoryRepairPending: 6,
+	HealthTelemetryUnavailable: 5,
 	// The runtime cannot use the card. It has to outrank every finding
 	// above, which would otherwise leave the card looking schedulable, and
 	// to yield to every finding below, which names why rather than that.
@@ -129,6 +132,7 @@ var healthSeverity = map[string]int{
 	HealthMemoryUncorrectable: 9,
 	HealthMemoryRemapFailed:   10,
 	HealthVendorFault:         11,
+	HealthInventoryInvalid:    11,
 	HealthResetRequired:       12,
 	HealthRebootRequired:      13,
 	HealthPowerCycleRequired:  14,

@@ -1,0 +1,54 @@
+package gpu
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+// Synthetic VMD addresses exercise the same-domain collision that motivated
+// accelerator.NormalizeBDF. Injection must consult the full sysfs address.
+func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
+	p, raw := kunlunFixture(t)
+	*raw = strings.Replace(*raw, "00000000:07:00.0", "00010000:09:00.0", -1)
+	oldRead := p.readFile
+	p.readFile = func(path string) ([]byte, error) {
+		switch path {
+		case "/sys/bus/pci/devices/10000:09:00.0/vendor":
+			return []byte("0x2057"), nil
+		case "/sys/bus/pci/devices/10000:09:00.0/kunlun/xpu0/dev":
+			return []byte("195:0"), nil
+		case "/sys/bus/pci/devices/10000:09:00.0/numa_node":
+			return []byte("-1"), nil
+		}
+		return oldRead(path)
+	}
+	cards, err := p.Probe(t.Context())
+	if err != nil || len(cards) != 2 || cards[0].PCIeBDF != "10000:09:00.0" || cards[1].PCIeBDF != "0000:09:00.0" || !cards[0].Healthy || !cards[1].Healthy {
+		t.Fatalf("%+v %v", cards, err)
+	}
+	if inj := p.RuntimeInjection([]int{0, 1}); inj.UnsupportedReason != "" {
+		t.Fatal(inj.UnsupportedReason)
+	}
+	p.readFile = func(path string) ([]byte, error) {
+		if strings.Contains(path, "10000:09:00.0") {
+			return nil, os.ErrNotExist
+		}
+		return oldRead(path)
+	}
+	if inj := p.RuntimeInjection([]int{0}); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.DockerArgs) != 0 {
+		t.Fatalf("domain-zero fallback: %+v", inj)
+	}
+}
+
+func TestKunlunMissingUUIDRetainsIndexMetricsButNotLaunchPermission(t *testing.T) {
+	p, raw := kunlunFixture(t)
+	*raw = strings.Replace(*raw, "<uuid>GPU-fixture-1</uuid>", "<uuid></uuid>", 1)
+	metrics, err := p.Metrics(t.Context())
+	if err != nil || len(metrics) != 2 || metrics[0].Index != 0 || metrics[0].UUID != "" || metrics[0].Values["gpuworks_gpu_memory_total_bytes"] != 96<<30 {
+		t.Fatalf("metrics lost: %+v %v", metrics, err)
+	}
+	if inj := p.RuntimeInjection([]int{0}); inj.UnsupportedReason == "" || len(inj.DockerArgs) != 0 {
+		t.Fatalf("unidentified card was authorized: %+v", inj)
+	}
+}

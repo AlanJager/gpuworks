@@ -409,7 +409,7 @@ func (e *Engine) startOrAdoptEpoch(ctx context.Context, spec proto.InstanceDesir
 		return
 	}
 
-	if err := e.applyDeviceInjectionForDriver(&ws, spec.GPUIndexes, driver.Name()); err != nil {
+	if err := e.applyDeviceInjectionForLaunch(ctx, &ws, spec.GPUIndexes, driver.Name(), spec.NNodes); err != nil {
 		e.reportState(spec, proto.InstFailed, "", "", err.Error())
 		return
 	}

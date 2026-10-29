@@ -58,6 +58,15 @@ type DriverAwareInjector interface {
 	RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection
 }
 
+// TopologyAwareInjector extends the same device-injection seam for backends
+// whose distributed transport needs extra devices. Its result includes the
+// selected accelerators and transport together; failure exposes neither.
+// The input slices are borrowed read-only for this call. The caller owns the
+// returned resources; implementations must not retain or modify its inputs.
+type TopologyAwareInjector interface {
+	RuntimeInjectionForLaunch(ctx context.Context, indexes []int, driverName string, nNodes int, dockerArgs []string) RuntimeInjection
+}
+
 // AcceleratorPortProber is an optional Prober extension for accelerators
 // whose cards carry their own network port (Ascend 910's RoCE port). The
 // ports never appear in the host's interfaces, so the network inventory takes
@@ -185,11 +194,14 @@ func pciBusVendors(hostRoot string) (func(string) bool, func(string) bool) {
 // host's real vendor, and reporting it keeps the failure attributable (for
 // example "npu-smi: dcmi module initialize failed" instead of "0 NVIDIA GPUs").
 var vendorDeviceFiles = map[string][]string{
-	accelerator.VendorNVIDIA: {"/dev/nvidiactl"},
-	accelerator.VendorAscend: {"/dev/davinci_manager"},
-	accelerator.VendorPPU:    {"/dev/alixpu_ctl"},
+	accelerator.VendorKunlunxin: {"/dev/xpuctrl"},
+	accelerator.VendorNVIDIA:    {"/dev/nvidiactl"},
+	accelerator.VendorAscend:    {"/dev/davinci_manager"},
+	accelerator.VendorPPU:       {"/dev/alixpu_ctl"},
 }
 
+// xpu-smi is deliberately absent: Intel uses that name too. Kunlun fallback
+// needs its control device or PCI identity, not an executable name alone.
 // vendorCommands are the CLIs each backend queries its driver with, in the
 // order fallbackProber trusts them: NVIDIA's last, because a stale
 // nvidia-smi is the one commonly left on hosts of other vendors.
@@ -255,7 +267,7 @@ func defaultProbers() []Prober {
 	// Keep the existing automatic-probe order stable. AMD is an explicit
 	// choice on mixed-vendor nodes; inserting it before NVIDIA would silently
 	// change which vendor the single-prober agent reports in auto mode.
-	return []Prober{&HygonProber{}, &AscendProber{}, &PPUProber{}, &SMIProber{}, &AppleProber{}, &AMDProber{}}
+	return []Prober{&HygonProber{}, &AscendProber{}, &PPUProber{}, &KunlunProber{}, &SMIProber{}, &AppleProber{}, &AMDProber{}}
 }
 
 func firstAvailable(probers []Prober) Prober {

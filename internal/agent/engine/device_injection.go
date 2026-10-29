@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -20,6 +21,10 @@ func (e *Engine) applyDeviceInjection(ws *runtime.WorkloadSpec, indexes []int) e
 }
 
 func (e *Engine) applyDeviceInjectionForDriver(ws *runtime.WorkloadSpec, indexes []int, driverName string) error {
+ return e.applyDeviceInjectionForLaunch(context.Background(), ws, indexes, driverName, 1)
+}
+
+func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.WorkloadSpec, indexes []int, driverName string, nNodes int) error {
 	if e.prober == nil {
 		return nil
 	}
@@ -30,7 +35,9 @@ func (e *Engine) applyDeviceInjectionForDriver(ws *runtime.WorkloadSpec, indexes
 		return nil
 	}
 	var inj gpu.RuntimeInjection
-	if aware, ok := e.prober.(gpu.DriverAwareInjector); ok {
+	if aware, ok := e.prober.(gpu.TopologyAwareInjector); ok {
+ inj = aware.RuntimeInjectionForLaunch(ctx, indexes, driverName, nNodes, ws.DockerArgs)
+ } else if aware, ok := e.prober.(gpu.DriverAwareInjector); ok {
 		inj = aware.RuntimeInjectionForDriver(indexes, driverName)
 	} else {
 		inj = e.prober.RuntimeInjection(indexes)
