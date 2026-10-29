@@ -190,6 +190,9 @@ func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Update("last_seen_at", start.Add(-time.Hour)).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	c.recordUnschedulable(dep, offline)
 	if _, found, err := st.FirstScheduleEvent(dep.ID); err != nil || found {

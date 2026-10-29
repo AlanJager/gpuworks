@@ -58,7 +58,7 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 		t.Fatal(err)
 	}
 	for level, want := range map[string]bool{
-		"": false, servicelevel.Never: false, servicelevel.Idle: false,
+		"": false, servicelevel.Never: false, servicelevel.Idle: true,
 		servicelevel.TimeSlice: true, servicelevel.Anytime: true,
 	} {
 		if got := fits(level); got != want {

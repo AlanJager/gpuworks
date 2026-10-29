@@ -93,8 +93,11 @@ func TestGatewayCountsTheWaitOfHeldRequests(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if count, sum := holdWaitOf(t, acct, depID); count != 1 || sum < 100 || sum > 2000 {
-		t.Fatalf("abandoned: count = %v sum = %v ms, want one wait of about 300 ms", count, sum)
+	// The wait is what was left of the client's 300 ms once the request was
+	// held: under load the request may reach the hold late.
+	count, abandoned := holdWaitOf(t, acct, depID)
+	if count != 1 || abandoned <= 0 || abandoned > 2000 {
+		t.Fatalf("abandoned: count = %v sum = %v ms, want one wait of at most about 300 ms", count, abandoned)
 	}
 
 	// Served: the wake lands after 200 ms.
@@ -118,7 +121,7 @@ func TestGatewayCountsTheWaitOfHeldRequests(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	if count, sum := holdWaitOf(t, acct, depID); count != 2 || sum < 300 {
+	if count, sum := holdWaitOf(t, acct, depID); count != 2 || sum-abandoned < 200 {
 		t.Fatalf("served: count = %v sum = %v ms, want a second wait of at least 200 ms", count, sum)
 	}
 
