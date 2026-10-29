@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,13 +20,54 @@ func TestModelFilesForModelsScopesTheBatch(t *testing.T) {
 		}
 	}
 	for _, ids := range [][]uint{nil, {f.model.ID}, {f.model.ID, other.ID}} {
-		files, err := f.st.ModelFilesForModels(ids)
-		if err != nil || len(files) != len(ids) {
-			t.Fatalf("ids=%v files=%+v err=%v", ids, files, err)
+		for _, nodeID := range []uint{0, f.n1.ID, f.n2.ID} {
+			files, err := f.st.ModelFilesForModels(ids, nodeID)
+			if err != nil || len(files) != len(ids) {
+				t.Fatalf("ids=%v node=%d files=%+v err=%v", ids, nodeID, files, err)
+			}
+			if len(ids) == 1 && files[0].ModelID != f.model.ID {
+				t.Fatalf("unrelated model leaked into selected batch: %+v", files)
+			}
 		}
-		if len(ids) == 1 && files[0].ModelID != f.model.ID {
-			t.Fatalf("unrelated model leaked into selected batch: %+v", files)
-		}
+	}
+}
+
+func TestModelFilesForModelsScopesNodeCachesButKeepsLocalPeers(t *testing.T) {
+	f := newSourceFixture(t)
+	cache, err := f.st.CreateStorage(&Storage{Name: "cache", Type: proto.StorageNFSCache, Enabled: true,
+		AllNodes: true, Path: "/mnt/cache", Export: "nfs.example.internal:/cache", CachePath: "/cache/models"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared := f.file(t, cache, nil, "weights", proto.MFFailed)
+	first := f.file(t, cache, f.n1, "/cache/models/weights", proto.MFPresent)
+	second := f.file(t, cache, f.n2, "/cache/models/weights", proto.MFDownloading)
+	local := f.file(t, f.local, f.n1, "/models/weights", proto.MFFailed)
+	peer := f.file(t, f.local, f.n2, "/models/weights", proto.MFPresent)
+	for _, tc := range []struct {
+		name string
+		node uint
+		want []uint
+	}{
+		{"first node", f.n1.ID, []uint{shared.ID, first.ID, local.ID, peer.ID}},
+		{"second node", f.n2.ID, []uint{shared.ID, second.ID, local.ID, peer.ID}},
+		{"no target", 0, []uint{shared.ID, first.ID, second.ID, local.ID, peer.ID}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files, err := f.st.ModelFilesForModels([]uint{f.model.ID}, tc.node)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []uint
+			for _, file := range files {
+				got = append(got, file.ID)
+			}
+			slices.Sort(got)
+			slices.Sort(tc.want)
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("node-scoped files=%v, want shared/own/local-peer files=%v", got, tc.want)
+			}
+		})
 	}
 }
 

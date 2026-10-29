@@ -155,7 +155,7 @@ func (a *apiHandlers) templateArtifactAvailability(models []store.Model, nodeID 
 		ids = append(ids, model.ID)
 		out[model.ID] = templateArtifactState{ready: ready[model.ID]}
 	}
-	files, err := a.d.Store.ModelFilesForModels(ids)
+	files, err := a.d.Store.ModelFilesForModels(ids, nodeID)
 	if err != nil {
 		return nil, err
 	}
