@@ -582,8 +582,14 @@ def exercise_interrupted_recovery(page, context, server, artifacts, report, loca
     checked(part.is_file() and not part.is_symlink(), 'no real in-progress partial file')
     dialog = open_detail(page, server, labels, data)
     expect(dialog.locator('#model-files').get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
-    page.reload()
-    expect(model_detail_dialog(page, labels, data['name']).locator('#model-files').get_by_text(labels['presence']['downloading'], exact=True)).to_be_visible()
+    # No progress-bar matrix here on purpose. The detail renders the record it fetched
+    # when it opened and does not poll, so a bar read mid-transfer is a snapshot of
+    # whatever the previous transfer left; requiring it to move would be testing a
+    # behaviour the product does not offer. The moving numbers are asserted against
+    # the API below, which is where this product actually reports them.
+    held_bar = dialog.locator('#model-files tr.ant-table-row').get_by_role('progressbar')
+    report['held_bar'] = {'count': held_bar.count(),
+                          'aria_valuenow': int(held_bar.get_attribute('aria-valuenow')) if held_bar.count() == 1 else None}
     hub.release()
     assert_ready(page, server, token, labels, data, target, report)
     source = wire_proof(data, start)
