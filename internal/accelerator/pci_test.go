@@ -225,3 +225,46 @@ func TestOnlyVendorsOnAPCIBusCanBeChosen(t *testing.T) {
 		}
 	}
 }
+
+// A backend that has to confirm, before granting a character device to a
+// container, that the device belongs to the card it probed asks this package
+// rather than carrying the vendor id itself. Kunlun's injection check did
+// carry it, and a second id for a later generation would have been added to
+// pciVendors while that copy went on rejecting every card.
+func TestSysfsVendorIsReadsTheIDFromThisPackage(t *testing.T) {
+	// The attribute as the captured P800 hosts write it.
+	for _, raw := range []string{"0x2057", "0x2057\n", " 0x2057 ", "0X2057", "2057"} {
+		if !SysfsVendorIs(VendorKunlunxin, raw) {
+			t.Errorf("SysfsVendorIs(kunlunxin, %q) = false", raw)
+		}
+	}
+	// Another vendor's card at the same bus position is not this one.
+	for _, raw := range []string{"0x10de", "0x19e5", "0x1002"} {
+		if SysfsVendorIs(VendorKunlunxin, raw) {
+			t.Errorf("SysfsVendorIs(kunlunxin, %q) = true", raw)
+		}
+	}
+	// Each vendor answers for its own id and no other.
+	for _, tc := range []struct{ vendor, raw string }{
+		{VendorNVIDIA, "0x10de"}, {VendorAscend, "0x19e5"},
+		{VendorPPU, "0x1ded"}, {VendorHygon, "0x1d94"},
+	} {
+		if !SysfsVendorIs(tc.vendor, tc.raw) {
+			t.Errorf("SysfsVendorIs(%q, %q) = false", tc.vendor, tc.raw)
+		}
+		if SysfsVendorIs(tc.vendor, "0x2057") {
+			t.Errorf("SysfsVendorIs(%q, kunlun's id) = true", tc.vendor)
+		}
+	}
+	// Nothing is granted on an unreadable attribute, an id this platform
+	// does not know, or a vendor it has no cards for.
+	for _, tc := range []struct{ vendor, raw string }{
+		{VendorKunlunxin, ""}, {VendorKunlunxin, "not hex"}, {VendorKunlunxin, "0x"},
+		{VendorKunlunxin, "0xffffffffff"}, {VendorKunlunxin, "0x8086},"},
+		{VendorApple, "0x2057"}, {"", "0x2057"}, {"nonsense", "0x2057"},
+	} {
+		if SysfsVendorIs(tc.vendor, tc.raw) {
+			t.Errorf("SysfsVendorIs(%q, %q) = true, want no claim", tc.vendor, tc.raw)
+		}
+	}
+}

@@ -108,7 +108,7 @@ func (p *KunlunProber) verifyKunlunDevice(bdf string, n int) (string, error) {
 	// Confirm the XML minor is bound to this PCI device in the native driver.
 	base := "/sys/bus/pci/devices/" + bdf
 	vendor, e := p.read(base + "/vendor")
-	if e != nil || strings.TrimSpace(string(vendor)) != "0x2057" {
+	if e != nil || !accelerator.SysfsVendorIs(p.Vendor(), string(vendor)) {
 		return "", errors.New("Kunlun PCI vendor cannot be verified")
 	}
 	node := "/dev/xpu" + strconv.Itoa(n)

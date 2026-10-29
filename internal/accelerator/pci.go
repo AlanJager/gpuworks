@@ -1,6 +1,9 @@
 package accelerator
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Which PCI functions are accelerators this platform can use, and whose.
 // This is vendor identity like the rest of this package, so it is the one
@@ -260,6 +263,29 @@ func plausiblyAnAccelerator(class uint32, displayCounts bool) bool {
 // looking a model name up and for naming an unidentified card.
 func PCIVendorHex(id uint32) string {
 	return pad4(strconv.FormatUint(uint64(id), 16))
+}
+
+// SysfsVendorIs reports whether a PCI function's sysfs "vendor" attribute,
+// as read ("0x2057"), is the vendor whose accelerators this platform calls
+// vendor. It answers for a backend that has to confirm, before handing a
+// character device to a container, that the device it is about to grant
+// really belongs to the card it probed.
+//
+// It exists so that a backend asks this package rather than carrying the id
+// itself: a vendor's next generation shipping under a second id is a change
+// to pciVendors, and a backend with its own copy would go on rejecting every
+// card while the probe and the scheduler accepted them.
+func SysfsVendorIs(vendor, sysfsVendor string) bool {
+	vendor = NormalizeVendor(vendor)
+	if vendor == "" {
+		return false
+	}
+	id, err := strconv.ParseUint(strings.TrimPrefix(strings.TrimSpace(strings.ToLower(sysfsVendor)), "0x"), 16, 32)
+	if err != nil {
+		return false
+	}
+	known, ok := pciVendors[uint32(id)]
+	return ok && known.name == vendor
 }
 
 // PCIDeviceLabel is what a card is called when no name is known for it:
