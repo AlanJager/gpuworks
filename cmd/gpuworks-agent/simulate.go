@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	agentapp "gpuworks.ai/gpuworks/internal/agent/app"
 	"gpuworks.ai/gpuworks/internal/agent/simulate"
+	"gpuworks.ai/gpuworks/internal/parentwatch"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -18,8 +20,21 @@ func applySimulation(cfg *agentapp.Config, path string) error {
 	if err != nil {
 		return err
 	}
+	// Only the experience environment starts a simulated node, as its child:
+	// a real node that inherited the variable (an exported shell, a stale
+	// service drop-in) must not start reporting simulated cards under its
+	// real identity.
+	if spec.ParentPID <= 0 || os.Getppid() != spec.ParentPID {
+		return fmt.Errorf("%s is set, but this agent was not started by the experience environment that wrote %s", simulate.EnvSpec, path)
+	}
 	driver, prober := simulate.New(spec)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := driver.ReleaseAll(ctx); err != nil {
+		return fmt.Errorf("release the engines of the previous simulated node: %w", err)
+	}
 	cfg.Prober, cfg.Driver, cfg.ForceDriver = prober, driver, driver.Name()
+	cfg.SimulatedHost = prober.Host()
 	address := spec.Address
 	cfg.NetworkInterfaceResolver = func(string) (string, error) {
 		if address == "" {
@@ -35,19 +50,7 @@ func applySimulation(cfg *agentapp.Config, path string) error {
 		}
 		return inv
 	}
-	if spec.ParentPID > 0 {
-		go exitWithParent(spec.ParentPID)
-	}
+	// None outlives the environment that started it.
+	go parentwatch.Follow(context.Background(), spec.ParentPID, func() { os.Exit(0) })
 	return nil
-}
-
-// exitWithParent ends the simulated node once the experience environment
-// that started it is gone, however it ended.
-func exitWithParent(pid int) {
-	for {
-		time.Sleep(2 * time.Second)
-		if os.Getppid() != pid {
-			os.Exit(0)
-		}
-	}
 }

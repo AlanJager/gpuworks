@@ -9,6 +9,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-chi/chi/v5"
+
+	"gpuworks.ai/gpuworks/internal/server/aihelper"
+	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
@@ -18,79 +22,99 @@ import (
 // hub, evaluations, API keys and the like. Anything that would act on the
 // host the environment runs on, reach a real cloud, network, registry or
 // storage, or change the console itself is refused with
-// EXPERIENCE_UNSUPPORTED; reading stays open, except where reading itself
-// reaches the host (a terminal, file browsing).
+// EXPERIENCE_UNSUPPORTED.
+//
+// The guard judges a request by the route the console's router matches it
+// to, never by its own reading of the path. Writes are refused unless listed
+// in allowedWrites. Reads are open except the ones the AI assistant may not
+// read either (aihelper.DeniedRoutes: terminals, file browsing, public
+// registries and the like) and the few in refusedReads; a read route the
+// platform marks sensitive tomorrow is refused here without anyone editing
+// this file, and openReads lets the console's own pages through.
 
 // allowedWrites are the mutating routes a visitor may call, as
-// "METHOD /api/v1/<pattern>", where * matches one path segment and a
-// trailing /** any rest.
-var allowedWrites = []string{
-	"POST /api/v1/auth/login",
-	"POST /api/v1/auth/logout",
-	"POST /api/v1/auth/activity",
-	"POST /api/v1/notices/read",
-	"POST /api/v1/apikeys",
-	"DELETE /api/v1/apikeys/*",
+// "METHOD <route pattern>" exactly as the console's router names it
+// (TestGuardPatternsNameConsoleRoutes).
+var allowedWrites = map[string]bool{
+	"POST /api/v1/auth/login":         true,
+	"POST /api/v1/auth/logout":        true,
+	"POST /api/v1/auth/activity":      true,
+	"POST /api/v1/notices/read":       true,
+	"POST /api/v1/apikeys":            true,
+	"DELETE /api/v1/apikeys/{prefix}": true,
 
-	"PATCH /api/v1/nodes/*/name",
-	"PUT /api/v1/nodes/*/labels",
-	"PUT /api/v1/nodes/*/scheduling",
-	"POST /api/v1/nodes/*/evict",
+	"PATCH /api/v1/nodes/{uuid}/name":     true,
+	"PUT /api/v1/nodes/{uuid}/labels":     true,
+	"PUT /api/v1/nodes/{uuid}/scheduling": true,
+	"POST /api/v1/nodes/{uuid}/evict":     true,
 
-	"POST /api/v1/models",
-	"POST /api/v1/models/quick-register",
-	"DELETE /api/v1/models/*",
-	"PATCH /api/v1/models/*/inference-config",
-	"POST /api/v1/models/*/metadata/refresh",
+	"POST /api/v1/models":                        true,
+	"POST /api/v1/models/quick-register":         true,
+	"DELETE /api/v1/models/{id}":                 true,
+	"PATCH /api/v1/models/{id}/inference-config": true,
+	"POST /api/v1/models/{id}/metadata/refresh":  true,
+	"POST /api/v1/inference-templates/clone":     true,
+	"POST /api/v1/inference-templates/evaluate":  true,
 
-	"POST /api/v1/inference-templates/clone",
-	"POST /api/v1/inference-templates/evaluate",
+	"POST /api/v1/deployments/preflight":            true,
+	"POST /api/v1/deployments":                      true, // preloaded models only (deployable)
+	"PUT /api/v1/deployments/{id}":                  true,
+	"DELETE /api/v1/deployments/{id}":               true,
+	"POST /api/v1/deployments/{id}/clone":           true,
+	"POST /api/v1/deployments/{id}/stop":            true,
+	"POST /api/v1/deployments/{id}/start":           true,
+	"POST /api/v1/deployments/{id}/restart":         true,
+	"POST /api/v1/deployments/{id}/units/retry":     true,
+	"POST /api/v1/deployments/{id}/units/suggest":   true,
+	"PUT /api/v1/deployments/{id}/requirements":     true,
+	"PUT /api/v1/deployments/{id}/routing":          true,
+	"PUT /api/v1/deployments/{id}/health-check":     true,
+	"PUT /api/v1/deployments/{id}/tokenize":         true,
+	"PUT /api/v1/deployments/{id}/dgpu":             true,
+	"PUT /api/v1/deployments/{id}/pd":               true,
+	"PUT /api/v1/deployments/{id}/replicas":         true,
+	"PUT /api/v1/deployments/{id}/node-replacement": true,
+	"PUT /api/v1/deployments/{id}/placement-mode":   true,
+	"POST /api/v1/instances/{uuid}/restart":         true,
 
-	"POST /api/v1/deployments/preflight",
-	"POST /api/v1/deployments",
-	"PUT /api/v1/deployments/*",
-	"DELETE /api/v1/deployments/*",
-	"POST /api/v1/deployments/*/clone",
-	"POST /api/v1/deployments/*/stop",
-	"POST /api/v1/deployments/*/start",
-	"POST /api/v1/deployments/*/restart",
-	"POST /api/v1/deployments/*/units/retry",
-	"POST /api/v1/deployments/*/units/suggest",
-	"PUT /api/v1/deployments/*/requirements",
-	"PUT /api/v1/deployments/*/routing",
-	"PUT /api/v1/deployments/*/health-check",
-	"PUT /api/v1/deployments/*/tokenize",
-	"PUT /api/v1/deployments/*/dgpu",
-	"PUT /api/v1/deployments/*/pd",
-	"PUT /api/v1/deployments/*/replicas",
-	"PUT /api/v1/deployments/*/node-replacement",
-	"PUT /api/v1/deployments/*/placement-mode",
-	"POST /api/v1/instances/*/restart",
-
-	"POST /api/v1/evaluate",
+	"POST /api/v1/evaluate": true,
 	// Evaluations of the environment's own deployments only (evaluable):
 	// an external endpoint would make the console a load generator.
-	"POST /api/v1/benchmarks",
-	"DELETE /api/v1/benchmarks/*",
-	"POST /api/v1/benchmarks/*/cancel",
+	"POST /api/v1/benchmarks":             true,
+	"DELETE /api/v1/benchmarks/{id}":      true,
+	"POST /api/v1/benchmarks/{id}/cancel": true,
 
-	"POST /api/v1/playground/v1/**",
-	"POST /api/v1/mcp",
+	"POST /api/v1/playground/v1/*": true,
 }
 
-// refusedReads are reads that reach the host or leave the environment.
-var refusedReads = []string{
-	"GET /api/v1/nodes/*/fs",
-	"GET /api/v1/nodes/*/terminal",
-	"GET /api/v1/nodes/*/terminal/settings",
-	"GET /api/v1/terminal/sessions",
-	"GET /api/v1/nodes/*/ssh",
-	"GET /api/v1/ssh-key",
-	"GET /api/v1/storages/*/files",
-	"GET /api/v1/storages/*/files/download",
-	"GET /api/v1/updates",
-	"GET /api/v1/server/listen",
-	"GET /install.sh",
+// openReads are the reads the AI assistant may not make (for its own
+// reasons: a stream, an image, a secret it must not repeat) that the
+// console's pages need and that stay inside the environment
+// (TestGuardOpenReadsAreAssistantDenied keeps each one a denied route).
+var openReads = map[string]string{
+	"/api/v1/agent/connect":                       "the simulated nodes' connections",
+	"/api/v1/providers/{id}":                      "the seeded accounts' edit form",
+	"/api/v1/ai/configs":                          "the assistant settings page",
+	"/api/v1/apikeys":                             "the API key page",
+	"/api/v1/experience":                          "answers 404 inside the environment",
+	"/api/v1/deployments/{id}/draft":              "the deploy form",
+	"/api/v1/branding":                            "the console's logo",
+	"/api/v1/platform-tokens":                     "the platform token page",
+	"/api/v1/events":                              "the console's live updates",
+	"/api/v1/instances/{uuid}/logs":               "the simulated engines' logs",
+	"/api/v1/inference-templates/export/{digest}": "a template archive built from the environment's own data",
+	"/api/v1/models/{id}/logo":                    "model logos",
+	"/api/v1/playground/openapi.json":             "the playground's description of the environment's own endpoints",
+	"/api/v1/pull/registry-credentials":           "answers that the setting moved",
+}
+
+// refusedReads are reads the assistant may make that reach the host or
+// leave the environment.
+var refusedReads = map[string]string{
+	"/api/v1/nodes/{uuid}/terminal/settings": "the host terminal's settings",
+	"/api/v1/updates":                        "asks the update channel",
+	"/api/v1/server/listen":                  "the host's listen addresses",
+	"/install.sh":                            "installs an agent on a real host",
 }
 
 // maxWriteBody bounds a visitor's write to the console; the environment
@@ -117,16 +141,20 @@ func (g *guard) allowModels(ids map[uint]bool, names []string) {
 	g.mu.Unlock()
 }
 
+// wrap guards next, the console's router, whose routes it judges requests
+// by. A handler that is not a router has no routes to judge by, and every
+// visitor's request is refused.
 func (g *guard) wrap(next http.Handler) http.Handler {
+	routes, _ := next.(routeFinder)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if g.internal(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		r.Header.Del(internalHeader)
-		// An escaped path (%2F) is matched by the router on its raw form, which
-		// the patterns below do not see; the console never needs one.
-		if r.URL.RawPath != "" || !g.permitted(r) {
+		// An escaped path (%2F) is routed on its raw form; the console never
+		// needs one.
+		if routes == nil || r.URL.RawPath != "" || !permitted(routes, r) {
 			refuse(w, messages.ErrorExperienceUnsupported, "the experience environment is for showing the product and does not support this operation", nil)
 			return
 		}
@@ -143,8 +171,45 @@ func (g *guard) wrap(next http.Handler) http.Handler {
 	})
 }
 
+// permitted reports whether a visitor may make request r, judged by the
+// route the console's router matches it to.
+func permitted(routes routeFinder, r *http.Request) bool {
+	if isGateway(r.URL.Path) {
+		return true // the OpenAI gateway, served beside the router, behind API keys
+	}
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		pattern := routes.Find(chi.NewRouteContext(), http.MethodGet, r.URL.Path)
+		return pattern == "" || readable(pattern) // "": the console's pages and assets
+	}
+	pattern := routes.Find(chi.NewRouteContext(), r.Method, r.URL.Path)
+	return pattern != "" && allowedWrites[r.Method+" "+pattern]
+}
+
+// routeFinder names the route a method and path match (chi.Routes.Find).
+type routeFinder interface {
+	Find(rctx *chi.Context, method, path string) string
+}
+
+// readable reports whether a visitor may read the route pattern.
+func readable(pattern string) bool {
+	if _, refused := refusedReads[pattern]; refused {
+		return false
+	}
+	if _, open := openReads[pattern]; open {
+		return true
+	}
+	_, denied := assistantDenied[pattern]
+	return !denied
+}
+
+// assistantDenied are the GET routes the AI assistant may not read.
+var assistantDenied = aihelper.DeniedRoutes()
+
+func isGateway(path string) bool { return path == "/v1" || strings.HasPrefix(path, "/v1/") }
+
 func isChat(path string) bool {
-	return path == "/v1" || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/api/v1/playground/")
+	return isGateway(path) || strings.HasPrefix(path, "/api/v1/playground/")
 }
 
 // evaluable lets an evaluation through only against a deployment of the
@@ -183,18 +248,6 @@ func (g *guard) internal(r *http.Request) bool {
 	return got != "" && subtle.ConstantTimeCompare([]byte(got), []byte(g.secret)) == 1
 }
 
-func (g *guard) permitted(r *http.Request) bool {
-	path := strings.TrimSuffix(r.URL.Path, "/")
-	switch r.Method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return !matchesAny(refusedReads, http.MethodGet, path)
-	}
-	if path == "/v1" || strings.HasPrefix(path, "/v1/") || path == "/api/v1/agent/connect" {
-		return true // the gateway (API keys) and the simulated nodes' connections
-	}
-	return matchesAny(allowedWrites, r.Method, path)
-}
-
 // deployable lets a deployment through only for a preloaded model: every
 // other model has no copy on any node, and the environment downloads none.
 func (g *guard) deployable(w http.ResponseWriter, r *http.Request) bool {
@@ -215,35 +268,7 @@ func (g *guard) deployable(w http.ResponseWriter, r *http.Request) bool {
 	return ok
 }
 
+// refuse answers 403 with a product error, in the console's own error shape.
 func refuse(w http.ResponseWriter, code, fallback string, params map[string]any) {
-	body := map[string]any{"error": fallback, "code": code}
-	if len(params) > 0 {
-		body["params"] = params
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	_ = json.NewEncoder(w).Encode(body)
-}
-
-func matchesAny(patterns []string, method, path string) bool {
-	for _, p := range patterns {
-		m, pattern, _ := strings.Cut(p, " ")
-		if m == method && matchPath(pattern, path) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchPath(pattern, path string) bool {
-	ps, xs := strings.Split(pattern, "/"), strings.Split(path, "/")
-	for i, seg := range ps {
-		if seg == "**" {
-			return len(xs) > i
-		}
-		if i >= len(xs) || (seg != "*" && seg != xs[i]) || (seg == "*" && xs[i] == "") {
-			return false
-		}
-	}
-	return len(ps) == len(xs)
+	api.WriteError(w, http.StatusForbidden, messages.NewProductError(code, fallback, params))
 }

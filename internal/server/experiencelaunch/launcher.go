@@ -29,6 +29,19 @@ import (
 // User is the environment console's administrator.
 const User = "admin"
 
+// The `gpuworks experience` command line: the launcher writes it and
+// cmd/gpuworks parses it, both from these names.
+const (
+	Command          = "experience"
+	FlagListen       = "listen"        // comma-separated console addresses
+	FlagAddr         = "addr"          // one address for everything
+	FlagTLSCert      = "tls-cert"      // the server's certificate
+	FlagTLSKey       = "tls-key"       // and its key
+	FlagData         = "data"          // the environment's data directory
+	FlagPasswordFile = "password-file" // the console password, followed while it runs
+	FlagParentPID    = "parent-pid"    // the server: the environment ends with it
+)
+
 // Config locates the environment.
 type Config struct {
 	// Binary is the gpuworks executable that runs `experience`.
@@ -136,14 +149,15 @@ func (l *Launcher) start() error {
 	if err != nil {
 		return err
 	}
-	args := []string{"experience", "--data", l.dataDir(), "--password-file", l.passwordFile(), "--parent-pid", strconv.Itoa(os.Getpid())}
+	flag := func(name string) string { return "--" + name }
+	args := []string{Command, flag(FlagData), l.dataDir(), flag(FlagPasswordFile), l.passwordFile(), flag(FlagParentPID), strconv.Itoa(os.Getpid())}
 	if l.cfg.Addr != "" {
-		args = append(args, "--addr", l.cfg.Addr)
+		args = append(args, flag(FlagAddr), l.cfg.Addr)
 	} else {
-		args = append(args, "--listen", strings.Join(l.cfg.Listen, ","))
+		args = append(args, flag(FlagListen), strings.Join(l.cfg.Listen, ","))
 	}
 	if l.cfg.TLSCertFile != "" {
-		args = append(args, "--tls-cert", l.cfg.TLSCertFile, "--tls-key", l.cfg.TLSKeyFile)
+		args = append(args, flag(FlagTLSCert), l.cfg.TLSCertFile, flag(FlagTLSKey), l.cfg.TLSKeyFile)
 	}
 	cmd := exec.Command(l.cfg.Binary, args...)
 	cmd.Stdout, cmd.Stderr = logFile, logFile

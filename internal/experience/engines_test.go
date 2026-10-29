@@ -113,6 +113,45 @@ func TestEngineHostClaimRelease(t *testing.T) {
 	}
 }
 
+// TestEngineHostReleasesARestartedNodesEngines: a node agent that starts
+// afresh releases everything its node held, and only its node's.
+func TestEngineHostReleasesARestartedNodesEngines(t *testing.T) {
+	base := startEngineHost(t, "tok")
+	mine, theirs := freePort(t), freePort(t)
+	for _, c := range []string{
+		`{"node":"n1","container":"sim-1","port":` + strconv.Itoa(mine) + `,"model":"a"}`,
+		`{"node":"n1","container":"sim-2","port":` + strconv.Itoa(mine) + `,"model":"b"}`,
+		`{"node":"n2","container":"sim-1","port":` + strconv.Itoa(theirs) + `,"model":"c"}`,
+	} {
+		if code := post(t, base+"/claim", "tok", c); code != http.StatusNoContent {
+			t.Fatalf("claim %s: %d", c, code)
+		}
+	}
+	if code := post(t, base+"/release", "tok", `{}`); code != http.StatusBadRequest {
+		t.Fatalf("release without a node: %d", code)
+	}
+	if code := post(t, base+"/release", "tok", `{"node":"n1"}`); code != http.StatusNoContent {
+		t.Fatalf("release the node: %d", code)
+	}
+	answers := func(port int) bool {
+		c, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 200*time.Millisecond)
+		if err == nil {
+			c.Close()
+		}
+		return err == nil
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for answers(mine) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if answers(mine) {
+		t.Fatal("the restarted node's engine still answers")
+	}
+	if !answers(theirs) {
+		t.Fatal("another node's engine was released")
+	}
+}
+
 func claimedEngine(t *testing.T, model string) string {
 	t.Helper()
 	base := startEngineHost(t, "tok")
@@ -328,9 +367,18 @@ func TestPromptWords(t *testing.T) {
 }
 
 func TestPace(t *testing.T) {
-	small, smallTok := pace("qwen3-8b-chat")
+	// A starter answers at the latency its history records, so its live
+	// charts meet its past.
+	for _, s := range starters {
+		ttft, tpot := pace(s.Name)
+		if ttft.Milliseconds() != int64(s.TTFT) || tpot.Milliseconds() != int64(s.TPOT) {
+			t.Errorf("%s: pace %v/%v, history %v/%v ms", s.Name, ttft, tpot, s.TTFT, s.TPOT)
+		}
+	}
+	// A visitor's deployment is paced by size.
+	small, smallTok := pace("my-8b")
 	big, bigTok := pace("Qwen/Qwen3-32B")
-	mid, _ := pace("qwen3.8-27b")
+	mid, _ := pace("my-27b")
 	if !(small < big && smallTok < bigTok && mid == big) {
 		t.Fatalf("pace: 8b %v/%v, 32b %v/%v, 27b %v", small, smallTok, big, bigTok, mid)
 	}

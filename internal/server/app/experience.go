@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net"
 	"net/http"
@@ -126,37 +125,12 @@ func StartStatisticsAt(dbPath string, since time.Time) error {
 }
 
 // SeedCloudAccount adds a cloud account and its instances as a sync would
-// have listed them, without asking the vendor: the experience environment's
-// accounts are for showing, and every operation on them is refused.
+// have listed them, without asking the vendor (provider.Service.Record).
 func (a *App) SeedCloudAccount(kind, name string, creds provider.Credentials, instances []provider.Instance) error {
 	box, err := auth.NewSecretbox(masterSecret(a.cfg))
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(creds)
-	if err != nil {
-		return err
-	}
-	cipher, err := box.Encrypt(raw)
-	if err != nil {
-		return err
-	}
-	p, err := a.store.CreateProvider(&store.Provider{Name: name, Kind: kind, CredsCipher: cipher, State: "valid"})
-	if err != nil {
-		return err
-	}
-	rows := make([]store.ProviderInstance, 0, len(instances))
-	for _, in := range instances {
-		connections, err := json.Marshal(in.SSHConnections)
-		if err != nil {
-			return err
-		}
-		rows = append(rows, store.ProviderInstance{
-			ProviderID: p.ID, ExternalID: in.ExternalID, Name: in.Name,
-			GPUModel: in.GPUModel, GPUCount: in.GPUCount, Power: string(in.Power),
-			PricePerHr: in.PricePerHr, Region: in.Region, PublicIP: in.PublicIP,
-			SSHPort: in.SSHPort, SSHUser: in.SSHUser, SSHConnections: string(connections), Kind: in.Kind,
-		})
-	}
-	return a.store.SyncProviderInstances(p.ID, rows)
+	_, err = provider.NewService(a.store, box).Record(kind, name, creds, instances)
+	return err
 }

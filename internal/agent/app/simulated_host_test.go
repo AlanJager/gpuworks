@@ -5,135 +5,158 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-// simulatedProber stands for another machine (gpu.HostSimulator).
-type simulatedProber struct{ *gpu.FixedProber }
+// simulatedNode is a node runtime standing for another machine
+// (hostsim.Host), whose models directory holds a file, with a file outside
+// it to reach for, and the messages it emits.
+type simulatedNode struct {
+	*NodeRuntime
+	driver          *candidateDriver
+	inside, outside string
 
-func (simulatedProber) SimulatesHost() bool { return true }
+	mu   sync.Mutex
+	sent []any
+}
 
-// simulatedNode is a node runtime in simulation mode whose directory holds
-// a model file, and a file outside it to reach for.
-func simulatedNode(t *testing.T) (n *NodeRuntime, inside, outside string) {
+func newSimulatedNode(t *testing.T, simulated bool) *simulatedNode {
 	t.Helper()
 	root := t.TempDir()
-	state := filepath.Join(root, "node")
-	if err := os.MkdirAll(filepath.Join(state, "models"), 0o700); err != nil {
+	driver := newCandidateDriver()
+	n := NewNodeRuntime(slog.Default(), namedPullDriver{driver, "docker"}, filepath.Join(root, "node", "models"))
+	s := &simulatedNode{NodeRuntime: n, driver: driver,
+		inside: filepath.Join(n.ModelsRoot(), "tokenizer.json"), outside: filepath.Join(root, "secret.txt")}
+	if err := os.MkdirAll(n.ModelsRoot(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	inside = filepath.Join(state, "models", "tokenizer.json")
-	outside = filepath.Join(root, "secret.txt")
-	for path, data := range map[string]string{inside: `{"model":{}}`, outside: "host secret"} {
+	for path, data := range map[string]string{s.inside: `{"model":{}}`, s.outside: "host secret"} {
 		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	return &NodeRuntime{prober: simulatedProber{&gpu.FixedProber{VendorName: "nvidia"}}, stateDir: state}, inside, outside
+	if simulated {
+		n.host = &hostsim.Host{Dir: n.ModelsRoot()}
+	}
+	n.Bind(func(_ string, body any) error {
+		s.mu.Lock()
+		s.sent = append(s.sent, body)
+		s.mu.Unlock()
+		return nil
+	})
+	return s
 }
 
-func pathParams(path string) json.RawMessage {
-	raw, _ := json.Marshal(map[string]string{"path": path})
-	return raw
-}
-
-func TestSimulatedNodeAnswersOnlyAllowlistedRPCs(t *testing.T) {
-	n, inside, _ := simulatedNode(t)
-	for method := range simulatedNodeRPCs {
-		params := json.RawMessage(`{}`)
-		if pathRPCs[method] {
-			params = pathParams(inside)
-		}
-		if err := n.simulatedHostRefusal(method, params); err != nil {
-			t.Errorf("%s refused: %v", method, err)
+func (s *simulatedNode) modelFileStatuses() []proto.ModelFileStatus {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []proto.ModelFileStatus
+	for _, b := range s.sent {
+		if st, ok := b.(proto.ModelFileStatus); ok {
+			out = append(out, st)
 		}
 	}
-	for _, method := range []string{
-		proto.RPCNodeDoctor, proto.RPCAgentUpgrade, proto.RPCStorageProbe, proto.RPCStorageScan,
-		proto.RPCStorageFilesList, proto.RPCStorageFilesDelete, "no.such.rpc",
-	} {
-		err := n.simulatedHostRefusal(method, json.RawMessage(`{}`))
-		if !errors.Is(err, errSimulatedHost) {
-			t.Errorf("%s: err = %v, want refused", method, err)
-		}
-	}
-	// The refusal comes before any handler runs.
-	if _, err := n.OnRPC(context.Background(), proto.RPCNodeDoctor, json.RawMessage(`{}`)); !errors.Is(err, errSimulatedHost) {
-		t.Fatalf("OnRPC doctor: err = %v", err)
-	}
-}
-
-func TestSimulatedNodeConfinesPathRPCsToItsDirectory(t *testing.T) {
-	n, inside, outside := simulatedNode(t)
-	escape := filepath.Join(n.stateDir, "models", "escape")
-	if err := os.Symlink(filepath.Dir(outside), escape); err != nil {
-		t.Fatal(err)
-	}
-	for method := range pathRPCs {
-		for path, ok := range map[string]bool{
-			inside: true,
-			filepath.Join(n.stateDir, "models", "not-yet", "x"): true, // judged by where it would be
-			n.stateDir:                          true,
-			outside:                             false,
-			"/etc/passwd":                       false,
-			filepath.Join(n.stateDir, ".."):     false,
-			filepath.Join(escape, "secret.txt"): false, // a link that leads out
-			"models/tokenizer.json":             false, // relative
-			"":                                  false,
-		} {
-			err := n.simulatedHostRefusal(method, pathParams(path))
-			if ok && err != nil {
-				t.Errorf("%s %q refused: %v", method, path, err)
-			}
-			if !ok && !errors.Is(err, errSimulatedHost) {
-				t.Errorf("%s %q: err = %v, want refused", method, path, err)
-			}
-		}
-		if err := n.simulatedHostRefusal(method, json.RawMessage(`{"path":`)); err == nil {
-			t.Errorf("%s: malformed params accepted", method)
-		}
-	}
-	if _, err := n.OnRPC(context.Background(), proto.RPCFSReadFile, pathParams(outside)); !errors.Is(err, errSimulatedHost) {
-		t.Fatalf("OnRPC read outside: err = %v", err)
-	}
-}
-
-func TestRealNodeIsNotConfined(t *testing.T) {
-	_, _, outside := simulatedNode(t)
-	n := &NodeRuntime{prober: &gpu.FixedProber{VendorName: "nvidia"}, stateDir: t.TempDir()}
-	for _, method := range []string{proto.RPCNodeDoctor, proto.RPCAgentUpgrade, proto.RPCFSReadFile} {
-		if err := n.simulatedHostRefusal(method, pathParams(outside)); err != nil {
-			t.Fatalf("real node %s refused: %v", method, err)
-		}
-	}
-	var buf bytes.Buffer
-	if err := n.StreamLargeFile(context.Background(), outside, &buf); err != nil || buf.String() != "host secret" {
-		t.Fatalf("real node large file: err=%v body=%q", err, buf.String())
-	}
+	return out
 }
 
 func TestSimulatedNodeStreamsOnlyItsOwnFiles(t *testing.T) {
-	n, inside, outside := simulatedNode(t)
+	s := newSimulatedNode(t, true)
 	var buf bytes.Buffer
-	if err := n.StreamLargeFile(context.Background(), inside, &buf); err != nil || !strings.Contains(buf.String(), "model") {
+	if err := s.StreamLargeFile(context.Background(), s.inside, &buf); err != nil || !strings.Contains(buf.String(), "model") {
 		t.Fatalf("inside: err=%v body=%q", err, buf.String())
 	}
 	buf.Reset()
-	err := n.StreamLargeFile(context.Background(), outside, &buf)
-	if !errors.Is(err, errSimulatedHost) || buf.Len() != 0 {
+	if err := s.StreamLargeFile(context.Background(), s.outside, &buf); !errors.Is(err, hostsim.ErrRefused) || buf.Len() != 0 {
 		t.Fatalf("outside: err=%v wrote %d bytes", err, buf.Len())
 	}
-	link := filepath.Join(n.stateDir, "models", "link.json")
-	if err := os.Symlink(outside, link); err != nil {
+	link := filepath.Join(s.ModelsRoot(), "link.json")
+	if err := os.Symlink(s.outside, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := n.StreamLargeFile(context.Background(), link, &buf); !errors.Is(err, errSimulatedHost) || buf.Len() != 0 {
+	if err := s.StreamLargeFile(context.Background(), link, &buf); !errors.Is(err, hostsim.ErrRefused) || buf.Len() != 0 {
 		t.Fatalf("link out: err=%v wrote %d bytes", err, buf.Len())
 	}
+
+	real := newSimulatedNode(t, false)
+	if err := real.StreamLargeFile(context.Background(), real.outside, &buf); err != nil || buf.String() != "host secret" {
+		t.Fatalf("real node: err=%v body=%q", err, buf.String())
+	}
+}
+
+// TestSimulatedNodeConfinesWhatTheServerPushes: a desired state cannot move
+// a simulated node's models root or make it download; the download is
+// failed, not left waiting.
+func TestSimulatedNodeConfinesWhatTheServerPushes(t *testing.T) {
+	s := newSimulatedNode(t, true)
+	root := s.ModelsRoot()
+	task := proto.ModelFileTask{Key: "m1", DesiredState: "present", Source: "url", Endpoint: "https://example.com/m", RelPath: "m"}
+	s.OnStateSync(context.Background(), proto.DesiredState{ModelsRoot: "/", ModelFiles: []proto.ModelFileTask{task}})
+	if s.ModelsRoot() != root {
+		t.Fatalf("models root moved to %q", s.ModelsRoot())
+	}
+	s.OnStateUpdate(context.Background(), proto.StateUpdate{ModelsRoot: "/", ModelFiles: []proto.ModelFileTask{{Key: "m2", DesiredState: "present", RelPath: "m2"}}})
+	if s.ModelsRoot() != root {
+		t.Fatalf("models root moved to %q", s.ModelsRoot())
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(s.modelFileStatuses()) < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	got := s.modelFileStatuses()
+	if len(got) != 2 {
+		t.Fatalf("statuses = %+v", got)
+	}
+	for _, st := range got {
+		if st.State != proto.MFFailed || !strings.Contains(st.Message, hostsim.ErrRefused.Error()) {
+			t.Fatalf("status = %+v, want refused", st)
+		}
+	}
+	if s.isDownloading("m1") || s.isDownloading("m2") {
+		t.Fatal("a refused download started")
+	}
+
+	real := newSimulatedNode(t, false)
+	real.OnStateSync(context.Background(), proto.DesiredState{ModelsRoot: "/srv/models"})
+	if real.ModelsRoot() != "/srv/models" {
+		t.Fatalf("real node models root = %q", real.ModelsRoot())
+	}
+}
+
+func TestSimulatedNodeAnswersImagePullsWithoutARegistry(t *testing.T) {
+	s := newSimulatedNode(t, true)
+	params, _ := json.Marshal(map[string]any{"effective_ref": "registry.example.com/x:1", "canonical_ref": "x:1", "transfer_id": "t"})
+	if _, err := s.OnRPC(context.Background(), proto.RPCImagePull, params); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		var present bool
+		for _, b := range s.sent {
+			if st, ok := b.(proto.ImageNodeStatus); ok && st.State == "present" {
+				present = true
+			}
+		}
+		s.mu.Unlock()
+		if present {
+			s.driver.mu.Lock()
+			pulled := s.driver.pulled
+			s.driver.mu.Unlock()
+			if len(pulled) != 0 {
+				t.Fatalf("the simulated node pulled %v", pulled)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the image was not reported present")
 }

@@ -15,9 +15,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	serverapp "gpuworks.ai/gpuworks/internal/server/app"
+	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 )
 
@@ -36,8 +38,9 @@ type Config struct {
 	PasswordFile string
 }
 
-// user is the console's administrator.
-const user = "admin"
+// user is the console's administrator, whom the server's settings card
+// names.
+const user = experiencelaunch.User
 
 // Run starts the environment and blocks until ctx ends.
 func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
@@ -104,15 +107,30 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// Engines take ports from a block nothing else on this host holds, below
 	// the ephemeral range, so no starting instance meets a port another
 	// program took.
-	start, ok := freePortBlock(600)
+	// Each node takes an equal slice of the block (simulate.Spec.PortSlot).
+	size := len(scenario) * enginePortsPerNode
+	start, ok := freePortBlock(size)
 	if !ok {
-		return errors.New("no free block of 600 ports between 20000 and 30000 for the simulated engines")
+		return fmt.Errorf("no free block of %d ports between 20000 and 30000 for the simulated engines", size)
 	}
-	app.SetControllerEnginePorts(start, start+599)
+	app.SetControllerEnginePorts(start, start+size-1)
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// Everything the environment starts ends before Run returns, so
+	// whoever started it may remove its data at once.
+	var bg sync.WaitGroup
+	spawn := func(f func()) {
+		bg.Add(1)
+		go func() {
+			defer bg.Done()
+			f()
+		}()
+	}
+	defer func() {
+		cancel()
+		bg.Wait()
+	}()
 	served := make(chan error, 1)
-	go func() { served <- app.Run(ctx) }()
+	spawn(func() { served <- app.Run(ctx) })
 	base, err := waitBound(ctx, app, served)
 	if err != nil {
 		return err
@@ -123,7 +141,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	enginesToken := randomHex(24)
-	go newEngineHost(enginesToken, log.With("component", "experience-engines")).serve(ctx, enginesLn)
+	engineHost := newEngineHost(enginesToken, log.With("component", "experience-engines"))
+	spawn(func() { engineHost.serve(ctx, enginesLn) })
 
 	members, err := enroll(app, filepath.Join(cfg.DataDir, "nodes.json"))
 	if err != nil {
@@ -131,8 +150,6 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}
 	f := &fleet{agent: agent, assets: assets, server: base, engines: "http://" + enginesLn.Addr().String(),
 		enginesToken: enginesToken, dataDir: cfg.DataDir, log: log.With("component", "experience-node")}
-	// The nodes go before Run returns, so whoever started the environment
-	// may remove its data at once.
 	defer func() {
 		cancel()
 		f.wait()
@@ -150,8 +167,8 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}); err != nil {
 		return err
 	}
-	go followPassword(ctx, app, client, cfg.PasswordFile, password, log)
-	go populate(ctx, app, client, g, cfg.DataDir, members, shapes, log)
+	spawn(func() { followPassword(ctx, app, client, cfg.PasswordFile, password, log) })
+	spawn(func() { populate(ctx, app, client, g, cfg.DataDir, members, shapes, spawn, log) })
 	log.Info("experience environment ready", "console", base, "nodes", len(scenario))
 	select {
 	case <-ctx.Done():
@@ -165,7 +182,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 // populate fills a new environment: the preloaded models, the starter
 // deployments, the cloud accounts, the usage history and a finished
 // evaluation; then it keeps live traffic going.
-func populate(ctx context.Context, app *serverapp.App, c *apiClient, g *guard, dataDir string, members map[string]member, shapes map[string]modelShape, log *slog.Logger) {
+func populate(ctx context.Context, app *serverapp.App, c *apiClient, g *guard, dataDir string, members map[string]member, shapes map[string]modelShape, spawn func(func()), log *slog.Logger) {
 	ids, err := seedModels(ctx, c, dataDir, members, shapes)
 	if err != nil {
 		log.Warn("models were not all preloaded", "err", err)
@@ -193,9 +210,9 @@ func populate(ctx context.Context, app *serverapp.App, c *apiClient, g *guard, d
 		log.Warn("callers' API keys were not created; no traffic or history", "err", err)
 		return
 	}
-	go traffic(ctx, app.LoopbackURL(), c, keys)
-	go seedBenchmark(ctx, c, filepath.Join(dataDir, "seeded-benchmark"), log)
-	go backfillMetrics(ctx, app, filepath.Join(dataDir, "seeded-metrics"), log)
+	spawn(func() { traffic(ctx, app.LoopbackURL(), c, keys) })
+	spawn(func() { seedBenchmark(ctx, c, filepath.Join(dataDir, "seeded-benchmark"), log) })
+	spawn(func() { backfillMetrics(ctx, app, filepath.Join(dataDir, "seeded-metrics"), log) })
 	seedHistory(ctx, app, c, members, keys, filepath.Join(dataDir, "seeded-history"), log)
 }
 
@@ -238,7 +255,7 @@ func seedModels(ctx context.Context, c *apiClient, dataDir string, members map[s
 				}
 				ids[repo] = out.ID
 			}
-			if err := writeCheckpoint(ctx, dir, shape, 0, nil); err != nil {
+			if err := writeCheckpoint(dir, shape); err != nil {
 				errs = append(errs, fmt.Errorf("write %s: %w", repo, err))
 				continue
 			}
@@ -348,6 +365,10 @@ func readPassword(path string) (string, error) {
 	}
 	return password, nil
 }
+
+// enginePortsPerNode is each simulated node's slice of the engine ports: more
+// than its instances ever hold.
+const enginePortsPerNode = 100
 
 // freePortBlock finds size consecutive ports no program listens on, below
 // the ephemeral ranges (Linux from 32768, macOS from 49152) and above the

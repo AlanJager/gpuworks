@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -123,7 +124,13 @@ func backfillMetrics(ctx context.Context, app *serverapp.App, marker string, log
 		batch = batch[:0]
 		return true
 	}
-	for metric, shape := range backfilled {
+	metrics := make([]string, 0, len(backfilled))
+	for metric := range backfilled {
+		metrics = append(metrics, metric)
+	}
+	sort.Strings(metrics) // a stable order, whatever the map's
+	for _, metric := range metrics {
+		shape := backfilled[metric]
 		series, err := app.MetricSeries(metric, now.Add(-10*time.Minute).UnixMilli())
 		if err != nil {
 			log.Warn("metric history skipped", "metric", metric, "err", err)

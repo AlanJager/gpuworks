@@ -21,6 +21,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/imagepull"
 	"gpuworks.ai/gpuworks/internal/agent/perftest"
 	partitionprobe "gpuworks.ai/gpuworks/internal/agent/probe"
@@ -161,6 +162,10 @@ type NodeRuntime struct {
 	nodeToken      atomic.Value // string
 	servingForward *servingForwarder
 	perftest       perftest.Runner
+
+	// host is the machine a simulated node stands for (hostsim); nil on a
+	// real node.
+	host *hostsim.Host
 
 	// stateDir is the agent's own state directory (udocker, runtime assets,
 	// caches). It is fixed for the process: the models root can move with a
@@ -383,7 +388,7 @@ func (n *NodeRuntime) PartitionAssets(ctx context.Context) []proto.AssetReport {
 	}
 	vendor := accelerator.NormalizeVendor(n.prober.Vendor())
 	if vendor == accelerator.VendorNVIDIA {
-		if assets.LibvgpuAvailable() || gpu.SimulatesPartitioning(n.prober) {
+		if assets.LibvgpuAvailable() || n.host.LibvgpuExtractor() != nil {
 			return []proto.AssetReport{{Backend: accelerator.BackendNVIDIALogical, Root: "embedded://dgpu", Files: []string{"libvgpu.so"}}}
 		}
 		return []proto.AssetReport{}

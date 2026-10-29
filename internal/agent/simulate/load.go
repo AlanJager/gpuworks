@@ -30,7 +30,7 @@ func Rhythm(t time.Time) float64 {
 func BusyUtilization(r float64) float64 { return 28 + 66*r }
 
 // HostSamples are the machine's CPU, disk and network figures, in place of
-// the real host's (gpu.HostSampler): they rise with the load and the cards
+// the real host's (hostsim.Host.Samples): they rise with the load and the cards
 // the node's instances hold.
 func (p *Prober) HostSamples(node string, now int64) []proto.MetricSample {
 	held := 0.0

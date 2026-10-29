@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/assets"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -52,17 +53,17 @@ func (r *Runtime) Name() string                         { return "docker" }
 func (r *Runtime) Detect(context.Context) (bool, error) { return true, nil }
 
 // Images are always present: nothing is pulled on a simulated node.
-func (r *Runtime) ImageExists(context.Context, string) (bool, error)      { return true, nil }
-func (r *Runtime) PullImage(context.Context, string, func(string)) error  { return nil }
-func (r *Runtime) LoadImage(context.Context, string, io.Reader) error     { return nil }
-func (r *Runtime) Prepare(context.Context, runtime.WorkloadSpec) error    { return nil }
-func (r *Runtime) Exec(context.Context, string, []string) ([]byte, error) { return nil, errSimulated }
-func (r *Runtime) BindHostPort(int) (io.Closer, error)                    { return io.NopCloser(nil), nil }
+func (r *Runtime) ImageExists(context.Context, string) (bool, error)     { return true, nil }
+func (r *Runtime) PullImage(context.Context, string, func(string)) error { return nil }
+func (r *Runtime) LoadImage(context.Context, string, io.Reader) error    { return nil }
+func (r *Runtime) Prepare(context.Context, runtime.WorkloadSpec) error   { return nil }
+func (r *Runtime) Exec(context.Context, string, []string) ([]byte, error) {
+	return nil, hostsim.ErrRefused
+}
+func (r *Runtime) BindHostPort(int) (io.Closer, error) { return io.NopCloser(nil), nil }
 func (r *Runtime) InspectImage(context.Context, string) (runtime.ImageInspection, error) {
 	return runtime.ImageInspection{}, nil
 }
-
-var errSimulated = fmt.Errorf("not available on a simulated node")
 
 func (r *Runtime) Run(ctx context.Context, s runtime.WorkloadSpec) (string, error) {
 	r.mu.Lock()
@@ -105,13 +106,27 @@ func (r *Runtime) Stop(ctx context.Context, id string) error {
 		r.running[id], r.exited[id] = false, true
 	}
 	claimed := r.claimed[id]
-	delete(r.claimed, id)
 	r.mu.Unlock()
 	r.cards.release(id)
-	if claimed {
-		return r.call(ctx, "/release", map[string]any{"node": r.spec.Hostname, "container": id})
+	if !claimed {
+		return nil
 	}
+	// The claim is forgotten only once the engine host let it go, so a
+	// failed release is retried by the next Stop or Remove.
+	if err := r.call(ctx, "/release", map[string]any{"node": r.spec.Hostname, "container": id}); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	delete(r.claimed, id)
+	r.mu.Unlock()
 	return nil
+}
+
+// ReleaseAll lets go of every engine the node held before this process: a
+// restarted agent starts with no containers, and the engines its previous
+// process claimed would otherwise keep answering.
+func (r *Runtime) ReleaseAll(ctx context.Context) error {
+	return r.call(ctx, "/release", map[string]any{"node": r.spec.Hostname})
 }
 
 func (r *Runtime) Remove(ctx context.Context, id string) error {
@@ -265,7 +280,7 @@ func containsArg(argv []string, want string) bool {
 }
 
 // EnginePortListeners report every port of r outside the node's own slice
-// of it as taken (gpu.ListenerReporter): the simulated nodes share one host,
+// of it as taken (hostsim.Host.Listeners): the simulated nodes share one host,
 // and with a slice each the console never gives two of them the same port.
 func (p *Prober) EnginePortListeners(r proto.PortRange) []int {
 	if p.spec.PortSlots <= 1 {

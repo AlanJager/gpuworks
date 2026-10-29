@@ -21,13 +21,8 @@ import (
 
 // The simulated node must stand for another machine to the agent.
 var (
-	_ gpu.Prober           = (*Prober)(nil)
-	_ gpu.HostSimulator    = (*Prober)(nil)
-	_ gpu.HostDescriber    = (*Prober)(nil)
-	_ gpu.PortConfiner     = (*Prober)(nil)
-	_ gpu.ListenerReporter = (*Prober)(nil)
-	_ gpu.HostSampler      = (*Prober)(nil)
-	_ runtime.Driver       = (*Runtime)(nil)
+	_ gpu.Prober     = (*Prober)(nil)
+	_ runtime.Driver = (*Runtime)(nil)
 )
 
 func writeSpec(t *testing.T, raw string) string {
@@ -231,8 +226,37 @@ func TestStopReportsAFailedRelease(t *testing.T) {
 	if err := rt.Stop(ctx, "inst-d"); err == nil {
 		t.Fatal("a failed release must be reported")
 	}
+	// The claim is kept until the engine host lets it go: removing retries
+	// the release, and fails while the host still refuses.
+	if err := rt.Remove(ctx, "inst-d"); err == nil {
+		t.Fatal("a remove whose release failed must be reported")
+	}
+	host.mu.Lock()
+	host.status = 0
+	host.mu.Unlock()
 	if err := rt.Remove(ctx, "inst-d"); err != nil {
-		t.Fatalf("a stopped instance removes without another release: %v", err)
+		t.Fatalf("remove once the host answers: %v", err)
+	}
+	if err := rt.Remove(ctx, "inst-d"); err != nil {
+		t.Fatalf("a removed instance removes again: %v", err)
+	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	if len(host.releases) != 3 {
+		t.Fatalf("releases = %v, want the two failed and the one that held", host.releases)
+	}
+}
+
+func TestReleaseAllLetsGoOfTheNodesEngines(t *testing.T) {
+	host := &engineHost{}
+	rt, _ := newSimulated(t, host)
+	if err := rt.ReleaseAll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	if len(host.releases) != 1 || host.releases[0]["node"] != "gpu-a100-01" || host.releases[0]["container"] != nil {
+		t.Fatalf("releases = %v", host.releases)
 	}
 }
 
@@ -343,11 +367,11 @@ func TestProbeListsTheSpecsCards(t *testing.T) {
 			t.Fatalf("card %d = %+v", i, c)
 		}
 	}
-	if p.SimulatesPartitioning() {
+	if p.Host().LibvgpuExtractor() != nil {
 		t.Fatal("only simulated NVIDIA cards offer dGPU without the library")
 	}
 	_, nv := New(Spec{Hostname: "n", Vendor: "nvidia", Card: "c", Count: 1, VRAMMiB: 1, ComputeCapability: "8.0", Engines: "http://e"})
-	if c, _ := nv.Probe(context.Background()); c[0].ArchID != "8.0" || !nv.SimulatesPartitioning() {
+	if c, _ := nv.Probe(context.Background()); c[0].ArchID != "8.0" || nv.Host().LibvgpuExtractor() == nil {
 		t.Fatalf("nvidia card = %+v", c[0])
 	}
 	_, none := New(Spec{Hostname: "cpu", Engines: "http://e"})
@@ -430,8 +454,11 @@ func TestDescribeHostReportsTheSimulatedMachine(t *testing.T) {
 	if sys.MemTotalKB != 1536<<20 || sys.MemAvailKB <= 0 || sys.MemAvailKB >= sys.MemTotalKB || sys.DiskAvailKB >= sys.DiskTotalKB {
 		t.Fatalf("memory/disk = %+v", sys)
 	}
-	if gpu.HostInfo(p, real).Hostname != "npu-910b-01" || !gpu.SimulatesHost(p) {
+	if h := p.Host(); h.SysInfo(real).Hostname != "npu-910b-01" || !h.Simulated() {
 		t.Fatal("the agent must see the simulated host")
+	}
+	if _, ok := p.Host().HostSamples("n", 0); !ok {
+		t.Fatal("the agent must sample the simulated host")
 	}
 }
 
@@ -440,7 +467,7 @@ func TestMayDialOnlyClaimedLoopbackPorts(t *testing.T) {
 	p.cards.claim("sim-1", 30020)
 	for addr, want := range map[string]bool{
 		"127.0.0.1:30020": true,
-		"localhost:30020": true,
+		"localhost:30020": false, // may resolve to ::1, which the engine host does not hold
 		"127.0.0.1:30021": false,
 		"10.0.0.5:30020":  false,
 		"0.0.0.0:30020":   false,
@@ -452,8 +479,10 @@ func TestMayDialOnlyClaimedLoopbackPorts(t *testing.T) {
 			t.Errorf("MayDial(%q) = %v, want %v", addr, got, want)
 		}
 	}
-	if !gpu.MayDial(p, "127.0.0.1:30020") || gpu.MayDial(p, "127.0.0.1:8800") {
-		t.Fatal("gpu.MayDial must defer to the simulated prober")
+	h := p.Host()
+	if h.Stream(proto.StreamHeader{Kind: proto.StreamTunnel, Dst: "127.0.0.1:30020"}) != nil ||
+		h.Stream(proto.StreamHeader{Kind: proto.StreamTunnel, Dst: "127.0.0.1:8800"}) == nil {
+		t.Fatal("the node's tunnels must defer to the simulated prober")
 	}
 }
 

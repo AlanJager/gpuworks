@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/agent/conn"
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
 	"gpuworks.ai/gpuworks/internal/commandlog"
@@ -180,6 +180,7 @@ func (n *NodeRuntime) queueBenchmarkStatusLocked(st proto.BenchmarkStatus) {
 
 // OnStateSync applies a full desired state (server replayed on connect).
 func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
+	n.refuseModelFiles(n.host.ConfineState(&ds))
 	n.log.Info("desired state sync", "instances", len(ds.Instances), "model_files", len(ds.ModelFiles))
 	if strings.TrimSpace(ds.RuntimePreference) != "" {
 		if err := n.applyRuntimePreference(ctx, ds.RuntimePreference, true); err != nil {
@@ -212,9 +213,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 			n.log.Warn("orphan container cleanup failed; leaked containers may remain", "driver", n.RuntimeDriverName(), "err", err)
 		}
 	}
-	// A simulated node runs no evaluation load: its host is not the machine
-	// it stands for, and the load would leave from the real one.
-	if n.bench != nil && !gpu.SimulatesHost(n.prober) {
+	if n.bench != nil {
 		n.bench.SetDesiredFull(ctx, ds.Benchmarks)
 	}
 	// After the desired instances are known: a differing accelerator
@@ -230,6 +229,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 
 // OnStateUpdate applies an incremental update.
 func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) bool {
+	n.refuseModelFiles(n.host.ConfineUpdate(&su))
 	imageRefsChanged := false
 	if su.Network != nil {
 		n.setNetwork(*su.Network)
@@ -250,7 +250,7 @@ func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) b
 		n.engine.ApplyUpdate(ctx, su.Instances, su.RemovedInstances)
 		n.engine.UpdateObservations(su.Observations)
 	}
-	if n.bench != nil && !gpu.SimulatesHost(n.prober) {
+	if n.bench != nil {
 		n.bench.ApplyUpdate(ctx, su.Benchmarks, su.RemovedBenchmarks)
 	}
 	for _, mf := range su.ModelFiles {
@@ -311,9 +311,6 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 
 // OnRPC handles short-action RPCs.
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
-	if err := n.simulatedHostRefusal(method, params); err != nil {
-		return nil, err
-	}
 	switch method {
 	case proto.RPCNodeDoctor:
 		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
@@ -507,7 +504,7 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 		n.lockImageOperation(p.CanonicalRef, "pulling")
 		defer n.imagePullMu.Unlock()
 		n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: "pulling " + p.EffectiveRef})
-		if gpu.SimulatesHost(n.prober) {
+		if !n.host.PullsImages() {
 			// Every image is on a simulated node; asking a registry would
 			// reach the network from the real host.
 			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image present"})
@@ -553,3 +550,11 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 }
 
 // StreamLogs streams an instance's container logs into w (logtail data plane).
+
+// refuseModelFiles fails the model downloads a simulated node refuses
+// (hostsim.Host.ConfineState); a real node refuses none.
+func (n *NodeRuntime) refuseModelFiles(tasks []proto.ModelFileTask) {
+	for _, mf := range tasks {
+		n.failModelFile(mf, hostsim.ErrRefused)
+	}
+}

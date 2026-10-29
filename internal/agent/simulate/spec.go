@@ -3,7 +3,7 @@
 // host the agent runs on. Its cards are simulated (with metrics that follow
 // what runs on them), its runtime starts no containers (each "container"
 // asks the experience environment to answer for its model on its port), and
-// the agent refuses whatever would reach the real host (gpu.HostSimulator).
+// the agent refuses whatever would reach the real host (hostsim).
 // A real node never loads this package's types.
 package simulate
 

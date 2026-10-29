@@ -1,13 +1,11 @@
 package experience
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
@@ -126,59 +124,48 @@ func fallbackShape() modelShape {
 	}
 }
 
-// writeCheckpoint lays down a servable model directory whose weights are
-// sparse files: the declared size is real to every size check, and the disk
-// holds almost nothing. done reports the bytes written so far.
-func writeCheckpoint(ctx context.Context, dir string, shape modelShape, pace time.Duration, done func(int64)) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	config, err := json.MarshalIndent(shape.Config, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), config, 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "tokenizer.json"), tokenizerJSON(), 0o644); err != nil {
-		return err
-	}
-	shards := int((shape.WeightBytes + shardBytes - 1) / shardBytes)
-	if shards < 1 {
-		shards = 1
-	}
+// checkpoint is the file layout of shape's published checkpoint: config,
+// tokenizer, weight shards of shardBytes and their index. The offline hub
+// serves it and the preloaded models are written from it, so a model reads
+// the same whichever way it arrived.
+func checkpoint(shape modelShape) []repoFile {
+	config, _ := json.MarshalIndent(shape.Config, "", "  ")
+	shards := max(int((shape.WeightBytes+shardBytes-1)/shardBytes), 1)
 	weightMap := map[string]string{}
-	var written int64
+	out := []repoFile{{Path: "config.json", Data: config}, {Path: "tokenizer.json", Data: tokenizerJSON()}}
 	for i := 1; i <= shards; i++ {
 		name := fmt.Sprintf("model-%05d-of-%05d.safetensors", i, shards)
 		size := shardBytes
 		if i == shards {
 			size = shape.WeightBytes - shardBytes*int64(shards-1)
 		}
-		if err := sparseFile(filepath.Join(dir, name), size); err != nil {
-			return err
-		}
 		weightMap[fmt.Sprintf("model.layers.%d.weight", i)] = name
-		written += size
-		if done != nil {
-			done(written)
-		}
-		if pace > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(pace):
-			}
-		}
+		out = append(out, repoFile{Path: name, Size: size})
 	}
-	index, err := json.MarshalIndent(map[string]any{
-		"metadata":   map[string]any{"total_size": shape.WeightBytes},
-		"weight_map": weightMap,
-	}, "", "  ")
-	if err != nil {
+	index, _ := json.MarshalIndent(map[string]any{"metadata": map[string]any{"total_size": shape.WeightBytes}, "weight_map": weightMap}, "", "  ")
+	return append(out, repoFile{Path: "model.safetensors.index.json", Data: index})
+}
+
+// writeCheckpoint lays down shape's checkpoint in dir with sparse weights:
+// the declared size is real to every size check, and the disk holds almost
+// nothing.
+func writeCheckpoint(dir string, shape modelShape) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "model.safetensors.index.json"), index, 0o644)
+	for _, f := range checkpoint(shape) {
+		path := filepath.Join(dir, f.Path)
+		var err error
+		if f.Data != nil {
+			err = os.WriteFile(path, f.Data, 0o644)
+		} else {
+			err = sparseFile(path, f.Size)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // sparseFile creates a file of the given apparent size that occupies

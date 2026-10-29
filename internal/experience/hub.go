@@ -2,7 +2,6 @@ package experience
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -42,22 +41,7 @@ func (h *hub) files(repo string) []repoFile {
 	if !ok {
 		shape = fallbackShape()
 	}
-	config, _ := json.MarshalIndent(shape.Config, "", "  ")
-	shards := int((shape.WeightBytes + shardBytes - 1) / shardBytes)
-	shards = max(shards, 1)
-	weightMap := map[string]string{}
-	out := []repoFile{{Path: "config.json", Data: config}, {Path: "tokenizer.json", Data: tokenizerJSON()}}
-	for i := 1; i <= shards; i++ {
-		name := fmt.Sprintf("model-%05d-of-%05d.safetensors", i, shards)
-		size := shardBytes
-		if i == shards {
-			size = shape.WeightBytes - shardBytes*int64(shards-1)
-		}
-		weightMap[fmt.Sprintf("model.layers.%d.weight", i)] = name
-		out = append(out, repoFile{Path: name, Size: size})
-	}
-	index, _ := json.Marshal(map[string]any{"metadata": map[string]any{"total_size": shape.WeightBytes}, "weight_map": weightMap})
-	out = append(out, repoFile{Path: "model.safetensors.index.json", Data: index})
+	out := checkpoint(shape)
 	if shape.Readme != "" {
 		out = append(out, repoFile{Path: "README.md", Data: []byte(shape.Readme)})
 	}

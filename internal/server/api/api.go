@@ -1000,6 +1000,12 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// WriteError answers err as the API does: a product error with its stable
+// code and params, any other error with its text. It is for a handler in
+// front of the router (the experience environment's guard), so a refusal
+// there reads like one from the API.
+func WriteError(w http.ResponseWriter, status int, err error) { writeErr(w, status, err) }
+
 func writeErr(w http.ResponseWriter, code int, err error) {
 	response := map[string]any{"error": err.Error()}
 	var productErr *messages.ProductError

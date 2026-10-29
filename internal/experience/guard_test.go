@@ -2,45 +2,40 @@ package experience
 
 import (
 	"encoding/json"
-	"github.com/go-chi/chi/v5"
-	"gpuworks.ai/gpuworks/internal/server/api"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"gpuworks.ai/gpuworks/internal/server/api"
 )
 
-func TestMatchPath(t *testing.T) {
-	cases := []struct {
-		pattern, path string
-		want          bool
-	}{
-		{"/api/v1/apikeys/*", "/api/v1/apikeys/abc", true},
-		{"/api/v1/apikeys/*", "/api/v1/apikeys/", false},
-		{"/api/v1/apikeys/*", "/api/v1/apikeys/a/b", false},
-		{"/api/v1/apikeys", "/api/v1/apikeys/x", false},
-		{"/api/v1/playground/v1/**", "/api/v1/playground/v1/chat/completions", true},
-		{"/api/v1/playground/v1/**", "/api/v1/playground/v1", false},
-		{"/api/v1/deployments/*/stop", "/api/v1/deployments/3/stop", true},
-		{"/api/v1/deployments/*/stop", "/api/v1/deployments/3/start", false},
+// consoleRouter is the console's real router, for its routes.
+func consoleRouter(t *testing.T) chi.Routes {
+	t.Helper()
+	router, ok := api.Router(api.Deps{PlaygroundV1: http.NotFoundHandler(), InstallSh: http.NotFound}).(chi.Routes)
+	if !ok {
+		t.Fatal("the console router cannot be walked")
 	}
-	for _, c := range cases {
-		if got := matchPath(c.pattern, c.path); got != c.want {
-			t.Errorf("matchPath(%q, %q) = %v, want %v", c.pattern, c.path, got, c.want)
-		}
-	}
+	return router
+}
+
+// echoRouter routes as the console does and echoes what reached it.
+type echoRouter struct{ chi.Routes }
+
+func (echoRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	w.Header().Set("X-Body", string(body))
+	w.Header().Set("X-Internal", r.Header.Get(internalHeader))
+	w.WriteHeader(http.StatusTeapot)
 }
 
 // guarded is g in front of a console that echoes what reached it.
-func guarded(g *guard) http.Handler {
-	return g.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		w.Header().Set("X-Body", string(body))
-		w.Header().Set("X-Internal", r.Header.Get(internalHeader))
-		w.WriteHeader(http.StatusTeapot)
-	}))
+func guarded(t *testing.T, g *guard) http.Handler {
+	t.Helper()
+	return g.wrap(echoRouter{consoleRouter(t)})
 }
 
 func serve(t *testing.T, h http.Handler, method, path, body string, header map[string]string) *httptest.ResponseRecorder {
@@ -56,18 +51,20 @@ func serve(t *testing.T, h http.Handler, method, path, body string, header map[s
 
 func TestGuardPermitsAndRefuses(t *testing.T) {
 	g := newGuard("s3cret")
-	h := guarded(g)
+	h := guarded(t, g)
 	allowed := []struct{ method, path string }{
 		{http.MethodGet, "/api/v1/nodes"},
 		{http.MethodGet, "/api/v1/deployments/1"},
 		{http.MethodPost, "/api/v1/auth/login"},
 		{http.MethodPost, "/api/v1/models"},
 		{http.MethodPut, "/api/v1/deployments/4/replicas"},
-		{http.MethodDelete, "/api/v1/apikeys/abc/"},
+		{http.MethodDelete, "/api/v1/apikeys/abc"},
 		{http.MethodPost, "/api/v1/playground/v1/chat/completions"},
 		{http.MethodPost, "/v1/chat/completions"},
 		{http.MethodGet, "/api/v1/agent/connect"},
-		{http.MethodPost, "/api/v1/agent/connect"},
+		{http.MethodGet, "/api/v1/events"},
+		{http.MethodGet, "/"},
+		{http.MethodGet, "/assets/index.js"},
 	}
 	for _, c := range allowed {
 		if rec := serve(t, h, c.method, c.path, "{}", nil); rec.Code != http.StatusTeapot {
@@ -89,6 +86,12 @@ func TestGuardPermitsAndRefuses(t *testing.T) {
 		{http.MethodGet, "/api/v1/storages/2/files/download"},
 		{http.MethodGet, "/install.sh"},
 		{http.MethodHead, "/install.sh"},
+		// Denied to the assistant, so refused here without being listed.
+		{http.MethodGet, "/api/v1/images/community/browse"},
+		{http.MethodGet, "/api/v1/ssh-key"},
+		{http.MethodGet, "/api/v1/nodes/abc/ssh"},
+		// A write no route answers.
+		{http.MethodPost, "/api/v1/no-such-route"},
 	}
 	for _, c := range refused {
 		rec := serve(t, h, c.method, c.path, "{}", nil)
@@ -108,7 +111,7 @@ func TestGuardPermitsAndRefuses(t *testing.T) {
 
 func TestGuardInternalSecret(t *testing.T) {
 	g := newGuard("s3cret")
-	h := guarded(g)
+	h := guarded(t, g)
 	rec := serve(t, h, http.MethodPost, "/api/v1/nodes/install", "{}", map[string]string{internalHeader: "s3cret"})
 	if rec.Code != http.StatusTeapot {
 		t.Fatalf("the environment's own request was refused: %d", rec.Code)
@@ -126,7 +129,7 @@ func TestGuardInternalSecret(t *testing.T) {
 func TestGuardDeploysOnlyPreloadedModels(t *testing.T) {
 	g := newGuard("s3cret")
 	g.allowModels(map[uint]bool{1: true}, []string{"Qwen/Qwen3-8B"})
-	h := guarded(g)
+	h := guarded(t, g)
 	rec := serve(t, h, http.MethodPost, "/api/v1/deployments", `{"model_id":2}`, nil)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status %d, want 403", rec.Code)
@@ -135,7 +138,7 @@ func TestGuardDeploysOnlyPreloadedModels(t *testing.T) {
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Fatalf("body\n got %s\nwant %s", got, want)
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		t.Fatalf("content type %q", ct)
 	}
 	body := `{"model_id":1,"name":"x"}`
@@ -158,32 +161,45 @@ func TestGuardDeploysOnlyPreloadedModels(t *testing.T) {
 // the console's routes: a pattern naming no route guards nothing.
 func TestGuardPatternsNameConsoleRoutes(t *testing.T) {
 	routes := map[string]bool{}
-	router, ok := api.Router(api.Deps{PlaygroundV1: http.NotFoundHandler(), InstallSh: http.NotFound}).(chi.Routes)
-	if !ok {
-		t.Fatal("the console router cannot be walked")
-	}
-	if err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		route = regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(route, "*")
+	if err := chi.Walk(consoleRouter(t), func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		route = strings.TrimSuffix(route, "/")
-		routes[method+" "+route], routes["* "+route] = true, true
+		if route == "" {
+			route = "/"
+		}
+		routes[method+" "+route] = true
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, list := range [][]string{allowedWrites, refusedReads} {
-		for _, p := range list {
-			p = strings.Replace(p, "/**", "/*", 1)
-			_, path, _ := strings.Cut(p, " ")
-			// A route mounted with Handle answers every method.
-			if !routes[p] && !routes["* "+path] {
-				t.Errorf("guard pattern %q names no console route", p)
-			}
+	for p := range allowedWrites {
+		_, path, _ := strings.Cut(p, " ")
+		// A route mounted with Handle answers every method.
+		if !routes[p] && !routes["*"+" "+path] {
+			t.Errorf("allowedWrites %q names no console route", p)
+		}
+	}
+	for path := range refusedReads {
+		if !routes["GET "+path] && !routes["* "+path] {
+			t.Errorf("refusedReads %q names no console route", path)
+		}
+	}
+}
+
+// TestGuardOpenReadsAreAssistantDenied: openReads only reopens routes the
+// assistant's list denies; one that left that list is open anyway.
+func TestGuardOpenReadsAreAssistantDenied(t *testing.T) {
+	for path := range openReads {
+		if _, ok := assistantDenied[path]; !ok {
+			t.Errorf("openReads %q is not denied to the assistant; drop it", path)
+		}
+		if _, ok := refusedReads[path]; ok {
+			t.Errorf("%q is both open and refused", path)
 		}
 	}
 }
 
 func TestGuardEvaluatesOnlyOwnDeploymentsFromTheConsole(t *testing.T) {
-	h := guarded(newGuard("secret"))
+	h := guarded(t, newGuard("secret"))
 	for _, tc := range []struct {
 		body string
 		want int
@@ -206,7 +222,7 @@ func TestGuardEvaluatesOnlyOwnDeploymentsFromTheConsole(t *testing.T) {
 }
 
 func TestGuardRefusesEscapedPathsAndLargeBodies(t *testing.T) {
-	h := guarded(newGuard("secret"))
+	h := guarded(t, newGuard("secret"))
 	if rec := serve(t, h, http.MethodGet, "/api/v1/nodes/a%2Fb/fs", "", nil); rec.Code != http.StatusForbidden {
 		t.Errorf("escaped path: status %d, want 403", rec.Code)
 	}

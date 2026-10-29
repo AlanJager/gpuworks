@@ -30,7 +30,9 @@ const engineBatch = 24
 
 // engineHost answers for every simulated instance's engine. A simulated
 // node's runtime claims an engine port for a model when an instance starts
-// (POST /claim) and releases it when the instance stops (POST /release).
+// (POST /claim) and releases it when the instance stops (POST /release); a
+// node agent that starts afresh releases all its node held (POST /release
+// without a container), so a restarted node leaves no engine behind.
 // Every node runs on this one host, so each node takes its engine ports
 // from a slice of the range of its own (simulate.Spec.PortSlot); a port is
 // one node's.
@@ -38,9 +40,10 @@ type engineHost struct {
 	token string
 	log   *slog.Logger
 
-	mu    sync.Mutex
-	ports map[int]*enginePort
-	owner map[string]int // container ("<node>/<id>") -> port
+	mu     sync.Mutex
+	closed bool // once serve has ended: no claim opens a listener after
+	ports  map[int]*enginePort
+	owner  map[string]int // container ("<node>/<id>") -> port
 }
 
 func newEngineHost(token string, log *slog.Logger) *engineHost {
@@ -59,6 +62,7 @@ func (h *engineHost) serve(ctx context.Context, ln net.Listener) {
 		_ = srv.Close()
 		h.mu.Lock()
 		defer h.mu.Unlock()
+		h.closed = true
 		for _, p := range h.ports {
 			_ = p.srv.Close()
 		}
@@ -97,6 +101,10 @@ func (h *engineHost) claim(w http.ResponseWriter, r *http.Request) {
 	key := req.Node + "/" + req.Container
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.closed {
+		http.Error(w, "the experience environment is stopping", http.StatusServiceUnavailable)
+		return
+	}
 	p := h.ports[req.Port]
 	if p != nil && p.node != req.Node {
 		// Each port answers for one node's instance: the agent reads its
@@ -123,16 +131,29 @@ func (h *engineHost) claim(w http.ResponseWriter, r *http.Request) {
 
 func (h *engineHost) release(w http.ResponseWriter, r *http.Request) {
 	var req claimRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil || req.Container == "" {
-		http.Error(w, "container is required", http.StatusBadRequest)
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil || req.Node == "" {
+		http.Error(w, "node is required", http.StatusBadRequest)
 		return
 	}
-	key := req.Node + "/" + req.Container
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if req.Container != "" {
+		h.releaseLocked(req.Node + "/" + req.Container)
+	} else {
+		for key := range h.owner {
+			if strings.HasPrefix(key, req.Node+"/") {
+				h.releaseLocked(key)
+			}
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// releaseLocked drops one claim, closing its port once nothing holds it.
+// h.mu is held.
+func (h *engineHost) releaseLocked(key string) {
 	port, ok := h.owner[key]
 	if !ok {
-		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	delete(h.owner, key)
@@ -140,7 +161,6 @@ func (h *engineHost) release(w http.ResponseWriter, r *http.Request) {
 		_ = p.srv.Close()
 		delete(h.ports, port)
 	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // enginePort is one engine listener and the models claimed on it.
@@ -267,8 +287,14 @@ func (p *enginePort) chat(w http.ResponseWriter, r *http.Request) {
 }
 
 // pace is how fast model answers at rest: its first token, then each next
-// one. A larger model is slower, as on the same cards.
+// one. A starter answers at the latency its history records (starters);
+// a deployment a visitor made is paced by its size, a larger model slower.
 func pace(model string) (ttft, tpot time.Duration) {
+	for _, s := range starters {
+		if s.Name == model {
+			return time.Duration(s.TTFT * float64(time.Millisecond)), time.Duration(s.TPOT * float64(time.Millisecond))
+		}
+	}
 	m := strings.ToLower(model)
 	switch {
 	case strings.Contains(m, "32b"), strings.Contains(m, "27b"):

@@ -10,7 +10,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/dgpucache"
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	agentruntime "gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/assets"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -36,9 +35,6 @@ func (nvidiaPartitionInjector) apply(e *Engine, _ context.Context, ws *agentrunt
 	extract := e.extractLibvgpu
 	if extract == nil {
 		extract = assets.ExtractLibvgpu
-	}
-	if gpu.SimulatesPartitioning(e.prober) {
-		extract = writeLibvgpuPlaceholder
 	}
 	if _, err := extract(libHost); err != nil {
 		return false, "GPU partitioning requested but libvgpu unavailable: " + err.Error()
@@ -127,13 +123,4 @@ func buildLibvgpuInjection(libvgpuPath, instanceUUID, cacheDir string, gpuCount 
 // DGPUCachePath returns the agent-host libvgpu usage-cache path for an instance.
 func (e *Engine) DGPUCachePath(uuid string) string {
 	return filepath.Join(e.stateDir, "dgpu-cache", uuid+".cache")
-}
-
-// writeLibvgpuPlaceholder stands in for the library on a simulated node,
-// whose runtime mounts the file but never loads it.
-func writeLibvgpuPlaceholder(path string) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
-	}
-	return path, os.WriteFile(path, []byte("simulated libvgpu\n"), 0o644)
 }

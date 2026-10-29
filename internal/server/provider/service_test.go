@@ -532,3 +532,39 @@ func TestServiceInstallMapsPortsForCompShareContainersOnly(t *testing.T) {
 		})
 	}
 }
+
+// TestServiceRecordStoresWhatASyncWould: Record keeps the account the way
+// Add does and its instances the way Sync does, and asks the vendor nothing.
+func TestServiceRecordStoresWhatASyncWould(t *testing.T) {
+	Register(serviceTestDriver{})
+	st, err := store.Open("file:provider_service_record_test?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := auth.NewSecretbox("provider-service-record-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(st, box)
+	if _, err := svc.Record("no-such-kind", "x", Credentials{}, nil); err == nil {
+		t.Fatal("an unknown kind was recorded")
+	}
+	p, err := svc.Record("service-test-provider", "shown", Credentials{APIKey: "k"}, []Instance{{
+		ExternalID: "i-1", Name: "gpu-1", GPUModel: "H100", GPUCount: 8, Power: PowerRunning,
+		SSHConnections: []SSHConnection{{Host: "10.0.0.1", Port: 22}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := svc.creds(p); err != nil || got.APIKey != "k" || p.State != "valid" {
+		t.Fatalf("creds = %+v, %v; state %q", got, err, p.State)
+	}
+	rows, err := st.ProviderInstances(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ExternalID != "i-1" || rows[0].GPUCount != 8 || rows[0].Power != string(PowerRunning) ||
+		!strings.Contains(rows[0].SSHConnections, "10.0.0.1") {
+		t.Fatalf("rows = %+v", rows)
+	}
+}

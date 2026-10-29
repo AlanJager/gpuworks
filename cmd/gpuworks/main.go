@@ -32,6 +32,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
@@ -108,7 +109,7 @@ func run(log *slog.Logger, args []string, stderr io.Writer) int {
 			log.Error("expose failed", "err", err)
 			return 1
 		}
-	case "experience":
+	case experiencelaunch.Command:
 		if err := experienceCommand(rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("experience environment exited", "err", err)
 			return 1

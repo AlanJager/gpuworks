@@ -7,38 +7,40 @@ import (
 	"sync"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-// sampledProber stands for a simulated machine that reports its own CPU,
-// disk and network figures (gpu.HostSampler) and memory (gpu.HostDescriber).
-type sampledProber struct {
-	collectorProber
+// sampledHost is a simulated machine that reports its own CPU, disk and
+// network figures and memory (hostsim.Host), recording who asked.
+type sampledHost struct {
 	nodes []string
 }
 
-func (*sampledProber) SimulatesHost() bool { return true }
-
-func (p *sampledProber) DescribeHost(sys proto.SysInfo) proto.SysInfo {
-	sys.MemTotalKB, sys.MemAvailKB = 1024<<20, 768<<20
-	return sys
-}
-
-func (p *sampledProber) HostSamples(node string, now int64) []proto.MetricSample {
-	p.nodes = append(p.nodes, node)
-	return []proto.MetricSample{
-		{Metric: "gpuworks_node_cpu_busy_percent", Labels: map[string]string{"node": node}, Value: 42, TimeMS: now},
-		{Metric: "gpuworks_node_nic_rx_bytes_per_sec", Labels: map[string]string{"node": node, "iface": "eth0"}, Value: 7, TimeMS: now},
+func (s *sampledHost) host() *hostsim.Host {
+	return &hostsim.Host{
+		Describe: func(sys proto.SysInfo) proto.SysInfo {
+			sys.MemTotalKB, sys.MemAvailKB = 1024<<20, 768<<20
+			return sys
+		},
+		Samples: func(node string, now int64) []proto.MetricSample {
+			s.nodes = append(s.nodes, node)
+			return []proto.MetricSample{
+				{Metric: "gpuworks_node_cpu_busy_percent", Labels: map[string]string{"node": node}, Value: 42, TimeMS: now},
+				{Metric: "gpuworks_node_nic_rx_bytes_per_sec", Labels: map[string]string{"node": node, "iface": "eth0"}, Value: 7, TimeMS: now},
+			}
+		},
 	}
 }
 
 func TestSimulatedHostSamplesReplaceTheRealHosts(t *testing.T) {
 	var mu sync.Mutex
 	var got []proto.MetricSample
-	prober := &sampledProber{collectorProber: collectorProber{err: errors.New("smi failed")}}
-	c := New("node-1", prober, func() []RunningInstance { return nil },
+	prober := &sampledHost{}
+	c := New("node-1", &collectorProber{err: errors.New("smi failed")}, func() []RunningInstance { return nil },
 		func(b proto.MetricBatch) { mu.Lock(); got = b.Samples; mu.Unlock() }, slog.Default())
 	c.SetModelsRoot(t.TempDir())
+	c.SetSimulatedHost(prober.host())
 	c.RunOnce(context.Background())
 	mu.Lock()
 	defer mu.Unlock()

@@ -41,13 +41,8 @@ func (p *Prober) Topology(context.Context) string      { return "" }
 // RuntimeInjection is empty: the simulated runtime starts no containers.
 func (p *Prober) RuntimeInjection([]int) gpu.RuntimeInjection { return gpu.RuntimeInjection{} }
 
-// Synthetic, SimulatesHost and SimulatesPartitioning mark the node as
-// simulated (gpu.HostSimulator, gpu.PartitionSimulator).
-func (*Prober) Synthetic() bool     { return true }
-func (*Prober) SimulatesHost() bool { return true }
-func (p *Prober) SimulatesPartitioning() bool {
-	return p.spec.Vendor == "nvidia"
-}
+// Synthetic marks the cards as simulated (gpu.IsSynthetic).
+func (*Prober) Synthetic() bool { return true }
 
 func (p *Prober) Probe(context.Context) ([]proto.GPUInfo, error) {
 	out := make([]proto.GPUInfo, p.spec.Count)
@@ -107,7 +102,7 @@ func (p *Prober) Metrics(context.Context) ([]gpu.Metric, error) {
 func (p *Prober) bias(i int) float64 { return float64((i*7+len(p.spec.Hostname))%9) - 4 }
 
 // DescribeHost reports the simulated machine, never the real host
-// (gpu.HostDescriber).
+// (hostsim.Host.Describe).
 func (p *Prober) DescribeHost(sys proto.SysInfo) proto.SysInfo {
 	const kibPerGiB = 1 << 20
 	sys.Hostname, sys.OS, sys.Arch, sys.Kernel = p.spec.Hostname, p.spec.OS, p.spec.Arch, p.spec.Kernel
@@ -119,10 +114,10 @@ func (p *Prober) DescribeHost(sys proto.SysInfo) proto.SysInfo {
 }
 
 // MayDial lets a tunnel reach only the loopback ports the node's instances
-// claimed from the engine host (gpu.PortConfiner).
+// claimed from the engine host (hostsim.Host.MayDial).
 func (p *Prober) MayDial(addr string) bool {
 	host, port, err := net.SplitHostPort(addr)
-	if err != nil || (host != "127.0.0.1" && host != "localhost") {
+	if err != nil || host != "127.0.0.1" {
 		return false
 	}
 	n, err := strconv.Atoi(port)

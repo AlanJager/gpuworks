@@ -10,7 +10,6 @@ import (
 
 	"github.com/libp2p/go-yamux/v5"
 
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/terminal"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -33,14 +32,10 @@ func (c *Conn) handleStream(ctx context.Context, stream *yamux.Stream) {
 		_ = stream.Close()
 		return
 	}
-	if gpu.SimulatesHost(c.prober) && !simulatedStream(c.prober, hdr) {
-		// A simulated node serves its engines, their logs and its own files
-		// (confined to its directory where they are read); nothing that
-		// would reach the real host (a shell, other files or ports, images,
-		// its binary).
-		c.log.Warn("stream refused on a simulated node", "kind", hdr.Kind)
+	if err := c.creds.Simulated.Stream(hdr); err != nil {
+		c.log.Warn("stream refused on a simulated node", "kind", hdr.Kind, "err", err)
 		if hdr.Kind == proto.StreamTerminal {
-			termFail(stream, errSimulatedHost.Error())
+			termFail(stream, err.Error())
 		}
 		_ = stream.Close()
 		return
@@ -71,16 +66,6 @@ func (c *Conn) handleStream(ctx context.Context, stream *yamux.Stream) {
 	default:
 		_ = stream.Close()
 	}
-}
-
-func simulatedStream(p gpu.Prober, hdr proto.StreamHeader) bool {
-	switch hdr.Kind {
-	case proto.StreamTunnel:
-		return gpu.MayDial(p, hdr.Dst)
-	case proto.StreamLogtail, proto.StreamLargeFileRead:
-		return true
-	}
-	return false
 }
 
 // handleTunnel bridges a data-plane stream to a local address (the inference

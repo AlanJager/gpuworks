@@ -3,7 +3,6 @@ package conn
 import (
 	"context"
 
-	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/netinfo"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -28,8 +27,8 @@ func (c *Conn) enginePortListeners() []int {
 	if r == nil {
 		return nil
 	}
-	if l, ok := c.prober.(gpu.ListenerReporter); ok {
-		return l.EnginePortListeners(*r)
+	if ports, ok := c.creds.Simulated.EnginePortListeners(*r); ok {
+		return ports
 	}
 	ports, err := netinfo.ListenPorts(*r)
 	if err != nil {
