@@ -36,7 +36,7 @@
 - `pdverify`：PD 交接自检，逐个 prefill 实例经网关做一次内部交接并判定传输方式，结果写实例时间线；由 `app` 接线。
 - `scheduler` / `planning` / `estimate`：调度管道（filters → GPU planner → scorers）+ schedule_explain；显存估算：`pkg/estimate` 只放模型侧硬件事实（dtype 每元素开销、多模态 tower 运行时缓存），server 侧 `estimate` 是其门面，把 model config + 参数算成 VRAM breakdown（部署表单/详情）与 scheduler 请求输入，另含 dtype 硬件矩阵；模型 config.json 解析在 `pkg/modelconfig`。
 - `sleep`：sleep/wake 策略叶子包（按模型参数量与卡数估算每实例的睡眠残留、L1 主机内存余量、资格判断、唤醒准入），不读 store；调度账本和 API 只负责提供快照、持久化与错误映射。agent 在实例独占卡时实测残留（`internal/agent/engine/sleep_residue.go`），测不到则回退估算。
-- `automation`：调度中心的执行者，评估器按 15 秒 tick 执行定时计划、闲置休眠与唤醒等位，只通过 `Source` / `Actions` 接口读写，动作经与 API 相同的生命周期锁；由 `app` 接线（`automation_adapter.go`）。
+- `automation`：调度中心的执行者，评估器按 10 秒 tick 执行定时计划、无抢占时自动休眠与唤醒等位，只通过 `Source` / `Actions` 接口读写，动作经与 API 相同的生命周期锁；由 `app` 接线（`automation_adapter.go`）。
 - `deploy`：引擎参数组装、instance 状态机（含 `optimizing`、sleep/wake；状态枚举定义在 `internal/proto`）。
 - `proxy`：`/v1` OpenAI 兼容反代 + API key；睡眠实例返回 503。PD 交接在 `pd_sequential.go` / `pd_concurrent.go`，请求的 prefill 阶段（实例、等待、prefill 实例自报的排队与 Prefill、降级原因、`pd.prefill` span）由 `pd_stage.go` 记下，进请求记录与在途表。
 - `inferenceapi`：稳定的推理操作词表与 Contract（openai.chat/embeddings/rerank 等），被目录、部署快照、proxy、Playground 共享。
