@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -507,5 +508,32 @@ func TestSharingDeploymentsAreKeptUntilADeploymentChanges(t *testing.T) {
 	got[0].Name = "changed"
 	if again, _ := s.SharingDeployments(); again[0].Name != "a" {
 		t.Fatal("a caller's edit reached the kept rows")
+	}
+}
+
+// A wake that waits for room lifts an operator's hold: the deployment is to
+// be awake, so a request for it waits for the wake rather than being refused.
+func TestAWaitingWakeLiftsTheHold(t *testing.T) {
+	s := newTestStore(t)
+	dep := &Deployment{Name: "held", Engine: "vllm", Sleepable: true, State: DeployActive, Replicas: 1}
+	if _, err := s.CreateDeployment(dep); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.Create(&Instance{UUID: "h-1", DeploymentID: dep.ID, State: proto.InstRunning}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.OrderDeploymentSleepHeld(dep.ID, 2, proto.SleepModeWait, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkWakeWaiting(dep.ID, []string{"h-1"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetDeployment(dep.ID)
+	if err != nil || got.SleepHeld {
+		t.Fatalf("sleep_held = %v err=%v after a waiting wake, want false", got.SleepHeld, err)
+	}
+	in, _ := s.InstanceByUUID("h-1")
+	if in.WakeWaitingSince == nil {
+		t.Fatalf("instance = %+v: the wait did not start", in)
 	}
 }

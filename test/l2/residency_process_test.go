@@ -152,10 +152,11 @@ func wakeWhenThereIsRoom(t *testing.T, base, token string, deploymentID uint) {
 	t.Helper()
 	resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/wake?wait=true", deploymentID), nil)
 	var result struct {
+		Status  string   `json:"status"`
 		Woken   []string `json:"woken"`
 		Waiting []string `json:"waiting"`
 	}
-	if err := json.Unmarshal(data, &result); err != nil || resp.StatusCode != http.StatusOK || len(result.Woken) != 0 || len(result.Waiting) != 1 {
+	if err := json.Unmarshal(data, &result); err != nil || resp.StatusCode != http.StatusAccepted || result.Status != "waiting" || len(result.Woken) != 0 || len(result.Waiting) != 1 {
 		t.Fatalf("wake that waits for room = %d %s, want one waiting", resp.StatusCode, data)
 	}
 	if got := deploymentField(t, base, token, deploymentID, "sleep_held"); got != false {
