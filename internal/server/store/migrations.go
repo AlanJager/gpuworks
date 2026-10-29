@@ -1287,6 +1287,7 @@ var migrations = []migration{
 	{Version: 182, Name: "lifecycle_schedules", Apply: createLifecycleSchedules},
 	{Version: 183, Name: "instance_event_kind_index", Apply: indexInstanceEventKind},
 	{Version: 184, Name: "deployment_service_level", Apply: addDeploymentServiceLevel},
+	{Version: 185, Name: "batch_tables", Apply: createBatchTables},
 	{Version: 186, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
 }
 
@@ -1596,7 +1597,7 @@ func (s *Store) AutoMigrateDev() error {
 		&Model{}, &ModelFile{}, &Deployment{}, &Instance{}, &InstanceEvent{},
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},
-		&NoticeRead{}, &LifecycleSchedule{},
+		&NoticeRead{}, &LifecycleSchedule{}, &BatchFile{}, &Batch{}, &BatchMetadata{},
 		&UsageHourly{}, &UsageDaily{}, &UsageRolledDay{}, &UsageRollupState{}, &DeletedDeployment{}, &DeletedNode{},
 	)
 }
