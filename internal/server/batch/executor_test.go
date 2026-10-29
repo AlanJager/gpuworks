@@ -682,3 +682,22 @@ func TestOpenPartialDropsATornTailAndAShortFileStartsOver(t *testing.T) {
 		t.Fatal("a corrupt partial file was accepted")
 	}
 }
+
+// A batch whose results are being assembled cannot be cancelled any more.
+func TestCancelOfAFinalizingBatchIsRefused(t *testing.T) {
+	r := newRig(t, Config{}, echo)
+	f, err := r.svc.Upload(testOwner, "in.jsonl", strings.NewReader(inputLines(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := r.svc.CreateBatch(testOwner, CreateRequest{InputFileID: f.ID, Endpoint: EndpointChat, CompletionWindow: "24h"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.repo.Start(b.ID, r.clock.Now())
+	r.repo.BeginFinalize(b.ID, r.clock.Now())
+	_, err = r.svc.Cancel(testOwner, b.ID)
+	if e, ok := err.(*Error); !ok || e.Status != 409 || e.Code != "batch_not_cancellable" || !strings.Contains(e.Message, "finalizing") {
+		t.Fatalf("cancel = %v", err)
+	}
+}

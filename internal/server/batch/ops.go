@@ -232,6 +232,10 @@ func (s *Service) Cancel(owner Owner, id string) (Batch, error) {
 	if err != nil {
 		return Batch{}, err
 	}
+	if b.Status != StatusCancelling {
+		// Finalizing: the results are being assembled and the batch ends as it is.
+		return Batch{}, &Error{Status: 409, Type: "invalid_request_error", Code: "batch_not_cancellable", Message: "The batch is " + b.Status + " and cannot be cancelled: " + id}
+	}
 	s.signalCancel(b)
 	return b, nil
 }
