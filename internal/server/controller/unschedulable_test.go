@@ -184,6 +184,12 @@ func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) 
 	c.now = func() time.Time { return clock }
 	c.watchingSince = start
 	offline := scheduler.Reason{Code: scheduler.ReasonPoolEmpty, Params: map[string]any{"nodes": 1, "offline": 1}}
+	// A node that has not reported since the server started: its agent is
+	// reconnecting.
+	node, err := st.RegisterNode("reconnecting", store.HashToken("t"), "reconnecting")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	c.recordUnschedulable(dep, offline)
 	if _, found, err := st.FirstScheduleEvent(dep.ID); err != nil || found {
@@ -194,6 +200,17 @@ func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) 
 	c.q.mu.Unlock()
 	if !queued {
 		t.Fatal("the deployment is not looked at again")
+	}
+
+	// Once every node has reported since the start, an offline node went
+	// offline for real and the refusal stands even within the grace.
+	seen := start.Add(time.Second)
+	if err := st.DB().Model(&store.Node{}).Where("id = ?", node.ID).Update("last_seen_at", seen).Error; err != nil {
+		t.Fatal(err)
+	}
+	c.recordUnschedulable(dep, offline)
+	if _, found, _ := st.FirstScheduleEvent(dep.ID); !found {
+		t.Fatal("a refusal for a node that went offline after reconnecting was held back")
 	}
 
 	// A refusal that names no offline node is recorded at once.

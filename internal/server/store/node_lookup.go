@@ -1,5 +1,7 @@
 package store
 
+import "time"
+
 // NodesByUUID reads the named nodes as ListNodes reads every node: with their
 // GPUs and credential flags, newest first. A UUID with no node is skipped.
 func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
@@ -15,6 +17,14 @@ func (s *Store) NodesByUUID(uuids []string) ([]Node, error) {
 }
 
 // CountNodes counts every node, whatever its state.
+// CountNodesUnseenSince counts the nodes whose agents have not reported since
+// at (or never have): after a server start, the ones still reconnecting.
+func (s *Store) CountNodesUnseenSince(at time.Time) (int, error) {
+	var n int64
+	err := s.reader().Model(&Node{}).Where("last_seen_at IS NULL OR last_seen_at < ?", at).Count(&n).Error
+	return int(n), err
+}
+
 func (s *Store) CountNodes() (int, error) {
 	var n int64
 	err := s.reader().Model(&Node{}).Count(&n).Error

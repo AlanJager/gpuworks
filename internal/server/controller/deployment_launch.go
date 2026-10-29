@@ -90,19 +90,26 @@ func (c *Controller) recordUnschedulable(dep *store.Deployment, reason scheduler
 const reconnectRecheck = 5 * time.Second
 
 // agentsReconnecting says a refusal names offline nodes while the server is
-// still within its offline grace of starting to watch them: the agents are
-// reconnecting, and the refusal is not recorded.
+// still within its offline grace of starting to watch them and some node has
+// not reported since: its agent is reconnecting, and the refusal is not
+// recorded. A node that reported since and then went offline is a real
+// refusal, recorded as ever.
 func (c *Controller) agentsReconnecting(reason scheduler.Reason) bool {
 	if c.watchingSince.IsZero() || c.now().Sub(c.watchingSince) >= c.offlineGrace {
 		return false
 	}
-	switch offline := reason.Params["offline"].(type) {
+	offline := 0
+	switch v := reason.Params["offline"].(type) {
 	case int:
-		return offline > 0
+		offline = v
 	case float64:
-		return offline > 0
+		offline = int(v)
 	}
-	return false
+	if offline <= 0 {
+		return false
+	}
+	unseen, err := c.store.CountNodesUnseenSince(c.watchingSince)
+	return err == nil && unseen > 0
 }
 
 // refusalChangeFloor is the least time between two recorded refusals of one
