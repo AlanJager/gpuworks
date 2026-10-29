@@ -65,9 +65,10 @@ type OverviewContention struct {
 
 // OverviewDeployment names a deployment that occupies a card.
 type OverviewDeployment struct {
-	ID           uint   `json:"id"`
-	Name         string `json:"name"`
-	ServiceLevel string `json:"service_level"`
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+	// Preset is the service level its yield policy stands for, or custom.
+	Preset string `json:"preset"`
 }
 
 // OverviewNode is a node and its cards. Labels are the labels an operator

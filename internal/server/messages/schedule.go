@@ -1,7 +1,7 @@
 package messages
 
-// Product error codes of the scheduling center: a deployment's schedule, idle
-// sleep and waiting wakes.
+// Product error codes of the scheduling center: a deployment's schedule and
+// waiting wakes.
 const (
 	// ErrorScheduleReplicasManualPlacement: a schedule sets the replica count
 	// of a multi-node or PD deployment whose replicas the operator placed by
@@ -14,8 +14,6 @@ const (
 	// ErrorScheduleTimezoneUnknown: the server does not know the schedule's
 	// time zone ({timezone}).
 	ErrorScheduleTimezoneUnknown = "SCHEDULE_TIMEZONE_UNKNOWN"
-	// ErrorIdleSleepInvalid: an idle sleep setting is out of range ({field}).
-	ErrorIdleSleepInvalid = "IDLE_SLEEP_INVALID"
 	// ErrorWakeYieldBlocked: a yielding wake cannot make room because an
 	// occupant cannot be put to sleep ({occupants}).
 	ErrorWakeYieldBlocked = "WAKE_YIELD_BLOCKED"

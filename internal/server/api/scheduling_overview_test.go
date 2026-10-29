@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -82,13 +83,13 @@ func newOverviewRig(t *testing.T) *overviewRig {
 	c := node("gpu-c", "", held, store.GPU{Index: 1, Name: "H100", MemoryTotal: 80 * gib}, store.GPU{Index: 2, Name: "H100", MemoryTotal: 80 * gib})
 
 	mk := func(name, level string) *store.Deployment {
-		dep, err := base.st.CreateDeployment(&store.Deployment{ModelID: 1, NodeID: a.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: store.DeployActive, ServiceLevel: level})
+		dep, err := base.st.CreateDeployment(presetDeployment(&store.Deployment{ModelID: 1, NodeID: a.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: store.DeployActive}, level))
 		if err != nil {
 			t.Fatal(err)
 		}
 		return dep
 	}
-	rig.qwen, rig.batch, rig.night = mk("qwen", store.ServiceLevelResident), mk("batch", store.ServiceLevelShared), mk("night", store.ServiceLevelOnline)
+	rig.qwen, rig.batch, rig.night = mk("qwen", servicelevel.PresetResident), mk("batch", servicelevel.PresetShared), mk("night", servicelevel.PresetOnline)
 	spec := func(desiredSleep int, claim int64) string {
 		return fmt.Sprintf(`{"desired_sleep":%d,"memory_claim_bytes":%d}`, desiredSleep, claim)
 	}
@@ -139,7 +140,7 @@ func TestSchedulingOverviewWire(t *testing.T) {
 		`{"model":"H100","cards":3,"awake":0,"asleep":1,"free":1,"held_outside":1,"unhealthy":0,"offline":0}],`+
 		`"contention":{"waiting_wakes":1,"held_requests":3,"yields_last_hour":1}},`+
 		`"models":["L20","H100"],`+
-		`"deployments":[{"id":%d,"name":"qwen","service_level":"resident"},{"id":%d,"name":"batch","service_level":"shared"},{"id":%d,"name":"night","service_level":"online"}],`+
+		`"deployments":[{"id":%d,"name":"qwen","preset":"resident"},{"id":%d,"name":"batch","preset":"shared"},{"id":%d,"name":"night","preset":"online"}],`+
 		`"nodes":[`+
 		`{"uuid":"gpu-a","name":"gpu-a","online":true,"labels":{"zone":"a"},"contention":%d,"cards":[[0,0,49152,100,0,0,[0]],[1,0,49152,25,4,0,[2,5]]]},`+
 		`{"uuid":"gpu-b","name":"gpu-b","online":false,"cards":[[0,0,49152,100,0,0,[0]]]},`+
@@ -334,7 +335,7 @@ func TestSchedulingBoardOfOneNode(t *testing.T) {
 		t.Fatalf("nodes = %+v", board.Nodes)
 	}
 	cards := board.Nodes.Items[0].GPUs
-	if len(cards) != 2 || len(cards[1].Occupants) != 2 || cards[1].Occupants[1].State != "asleep" || cards[1].Occupants[1].ServiceLevel != "online" {
+	if len(cards) != 2 || len(cards[1].Occupants) != 2 || cards[1].Occupants[1].State != "asleep" || cards[1].Occupants[1].Preset != "online" {
 		t.Fatalf("cards = %+v", cards)
 	}
 	for _, list := range []string{`"pending":[]`, `"waiting_wakes":[]`, `"upcoming":[]`, `"recent":[]`} {
@@ -364,7 +365,7 @@ func TestSchedulingTimelineSharingStats(t *testing.T) {
 	}
 	names := map[string]string{}
 	for _, d := range got.Deployments {
-		names[d.Deployment] = d.ServiceLevel
+		names[d.Deployment] = d.Preset
 	}
 	if len(got.Nodes) != 0 || len(names) != 2 || names["batch"] != "shared" || names["night"] != "online" || got.Window.Hours != 24 {
 		t.Fatalf("sharing stats = %+v", got)

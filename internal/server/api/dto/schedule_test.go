@@ -109,23 +109,12 @@ func TestLifecycleScheduleRequestWire(t *testing.T) {
 	}
 }
 
-func TestIdleSleepAndNodeReplacementWire(t *testing.T) {
-	if got, want := marshalString(t, IdleSleep{AfterSec: 900, Level: 2}), `{"after_sec":900,"level":2}`; got != want {
-		t.Fatalf("idle sleep = %s, want %s", got, want)
-	}
-	// Off is after_sec 0, and it is still written: no omitempty.
-	if got, want := marshalString(t, IdleSleep{Level: 1}), `{"after_sec":0,"level":1}`; got != want {
-		t.Fatalf("idle sleep off = %s, want %s", got, want)
-	}
+func TestNodeReplacementWireAfterSec(t *testing.T) {
 	if got, want := marshalString(t, NodeReplacement{AfterSec: 600}), `{"after_sec":600}`; got != want {
 		t.Fatalf("node replacement = %s, want %s", got, want)
 	}
 	if got, want := marshalString(t, NodeReplacement{}), `{"after_sec":0}`; got != want {
 		t.Fatalf("node replacement never = %s, want %s", got, want)
-	}
-	var idle IdleSleep
-	if err := json.Unmarshal([]byte(`{"after_sec":3600,"level":1}`), &idle); err != nil || idle != (IdleSleep{AfterSec: 3600, Level: 1}) {
-		t.Fatalf("idle sleep decoded = %+v %v", idle, err)
 	}
 	var repl NodeReplacement
 	if err := json.Unmarshal([]byte(`{"after_sec":120}`), &repl); err != nil || repl != (NodeReplacement{AfterSec: 120}) {
@@ -156,8 +145,7 @@ func TestWakeWaitResultWire(t *testing.T) {
 }
 
 // The deployment carries the automation settings on every response:
-// idle_sleep and node_replacement always, wake_waiting_since only while a wake
-// waits.
+// node_replacement always, wake_waiting_since only while a wake waits.
 func TestDeploymentSchedulingFieldsWire(t *testing.T) {
 	keys := func(d Deployment) map[string]json.RawMessage {
 		var m map[string]json.RawMessage
@@ -166,9 +154,12 @@ func TestDeploymentSchedulingFieldsWire(t *testing.T) {
 		}
 		return m
 	}
-	m := keys(Deployment{IdleSleep: IdleSleep{AfterSec: 900, Level: 2}, NodeReplacement: NodeReplacement{AfterSec: 600}})
-	if string(m["idle_sleep"]) != `{"after_sec":900,"level":2}` || string(m["node_replacement"]) != `{"after_sec":600}` {
-		t.Fatalf("idle_sleep=%s node_replacement=%s", m["idle_sleep"], m["node_replacement"])
+	m := keys(Deployment{NodeReplacement: NodeReplacement{AfterSec: 600}})
+	if string(m["node_replacement"]) != `{"after_sec":600}` {
+		t.Fatalf("node_replacement=%s", m["node_replacement"])
+	}
+	if _, ok := m["idle_sleep"]; ok {
+		t.Fatalf("idle_sleep is gone: the deployment's auto sleep is in yield_policy, got %s", m["idle_sleep"])
 	}
 	if _, ok := m["wake_waiting_since"]; ok {
 		t.Fatalf("wake_waiting_since present with no waiting wake: %s", m["wake_waiting_since"])
@@ -178,14 +169,14 @@ func TestDeploymentSchedulingFieldsWire(t *testing.T) {
 	if string(m["wake_waiting_since"]) != `"2026-10-25T01:02:03Z"` {
 		t.Fatalf("wake_waiting_since = %s", m["wake_waiting_since"])
 	}
-	if string(m["idle_sleep"]) != `{"after_sec":0,"level":0}` || string(m["node_replacement"]) != `{"after_sec":0}` {
-		t.Fatalf("zero settings must still be written: %s %s", m["idle_sleep"], m["node_replacement"])
+	if string(m["node_replacement"]) != `{"after_sec":0}` {
+		t.Fatalf("zero settings must still be written: %s", m["node_replacement"])
 	}
 	var back Deployment
-	if err := json.Unmarshal([]byte(`{"idle_sleep":{"after_sec":60,"level":1},"node_replacement":{"after_sec":7200},"wake_waiting_since":"2026-10-25T01:02:03Z"}`), &back); err != nil {
+	if err := json.Unmarshal([]byte(`{"node_replacement":{"after_sec":7200},"wake_waiting_since":"2026-10-25T01:02:03Z"}`), &back); err != nil {
 		t.Fatal(err)
 	}
-	if back.IdleSleep != (IdleSleep{AfterSec: 60, Level: 1}) || back.NodeReplacement.AfterSec != 7200 || back.WakeWaitingSince == nil || !back.WakeWaitingSince.Equal(since) {
+	if back.NodeReplacement.AfterSec != 7200 || back.WakeWaitingSince == nil || !back.WakeWaitingSince.Equal(since) {
 		t.Fatalf("decoded = %+v", back)
 	}
 }

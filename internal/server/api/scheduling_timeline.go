@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -228,7 +229,7 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 	var shared, every []uint
 	for id, info := range deployments {
 		every = append(every, id)
-		if info.ServiceLevel != store.ServiceLevelResident {
+		if info.Yield != servicelevel.Never {
 			shared = append(shared, id)
 		}
 	}
@@ -252,7 +253,7 @@ func (a *apiHandlers) timelineDeployments(deployments map[uint]store.ResidencyDe
 		info, c, wait := deployments[id], counts[id], waits[id]
 		seconds := unionSeconds(awake[id])
 		out = append(out, dto.TimelineDeployment{
-			DeploymentID: id, Deployment: info.Name, ServiceLevel: info.ServiceLevel,
+			DeploymentID: id, Deployment: info.Name, Preset: info.Preset,
 			AwakeSeconds: seconds, AwakeShare: min(float64(seconds)/window, 1),
 			Switches: c.Yielded + c.Wakes, Yielded: c.Yielded, YieldedTo: c.YieldedTo, Wakes: c.Wakes,
 			HeldRequests: wait.held, WaitP50Ms: wait.p50, WaitP95Ms: wait.p95,

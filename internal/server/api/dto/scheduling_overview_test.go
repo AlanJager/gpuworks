@@ -47,7 +47,7 @@ func TestSchedulingOverviewWire(t *testing.T) {
 			Contention: OverviewContention{WaitingWakes: 1, HeldRequests: 4, YieldsLastHour: 2},
 		},
 		Models:      []string{"L20"},
-		Deployments: []OverviewDeployment{{ID: 7, Name: "qwen", ServiceLevel: "shared"}},
+		Deployments: []OverviewDeployment{{ID: 7, Name: "qwen", Preset: "shared"}},
 		Nodes: []OverviewNode{
 			{UUID: "n1", Name: "gpu-1", Online: true, Labels: map[string]string{"zone": "a"}, Contention: 6, Cards: []OverviewCard{{MemoryMiB: 49152, AwakePct: 100, Occupants: []int{0}}, {Index: 1, MemoryMiB: 49152}}},
 			{UUID: "n2", Name: "gpu-2", Cards: []OverviewCard{{MemoryMiB: 49152}}},
@@ -60,7 +60,7 @@ func TestSchedulingOverviewWire(t *testing.T) {
 	want := `{"summary":{"nodes":2,"online_nodes":1,"cards":3,"awake":1,"asleep":0,"free":1,"held_outside":0,"unhealthy":0,"offline":1,` +
 		`"by_model":[{"model":"L20","cards":3,"awake":1,"asleep":0,"free":1,"held_outside":0,"unhealthy":0,"offline":1}],` +
 		`"contention":{"waiting_wakes":1,"held_requests":4,"yields_last_hour":2}},` +
-		`"models":["L20"],"deployments":[{"id":7,"name":"qwen","service_level":"shared"}],` +
+		`"models":["L20"],"deployments":[{"id":7,"name":"qwen","preset":"shared"}],` +
 		`"nodes":[{"uuid":"n1","name":"gpu-1","online":true,"labels":{"zone":"a"},"contention":6,"cards":[[0,0,49152,100,0,0,[0]],[1,0,49152,0,0,0]]},` +
 		`{"uuid":"n2","name":"gpu-2","online":false,"cards":[[0,0,49152,0,0,0]]}]}`
 	if string(raw) != want {

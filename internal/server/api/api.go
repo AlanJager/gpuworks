@@ -444,9 +444,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/deployments/{id}/schedule", a.createSchedule)
 			r.Put("/deployments/{id}/schedule/{sid}", a.updateSchedule)
 			r.Delete("/deployments/{id}/schedule/{sid}", a.deleteSchedule)
-			r.Put("/deployments/{id}/idle-sleep", a.setIdleSleep)
 			r.Put("/deployments/{id}/node-replacement", a.setNodeReplacement)
-			r.Put("/deployments/{id}/service-level", a.setServiceLevel)
+			r.Put("/deployments/{id}/yield-policy", a.setYieldPolicy)
 			r.Put("/deployments/{id}/placement-mode", a.setPlacementMode)
 			// A deployment's own timeline, including scheduling outcomes
 			// recorded before any instance existed.

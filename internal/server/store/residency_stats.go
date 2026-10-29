@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 
 	"gorm.io/gorm"
+
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 )
 
 // Automation event codes and the trigger the residency arbiter gives its
@@ -75,9 +77,12 @@ func (s *Store) ResidencySwitchCounts(deploymentIDs []uint, firstID uint) (map[u
 
 // ResidencyDeployment is what the timeline names a deployment by.
 type ResidencyDeployment struct {
-	ID           uint
-	Name         string
-	ServiceLevel string
+	ID   uint
+	Name string
+	// Yield is its yield policy; Preset the service level that stands for,
+	// or custom.
+	Yield  string
+	Preset string
 }
 
 // ResidencyDeployments names the deployments by id, including ones deleted
@@ -89,11 +94,11 @@ func (s *Store) ResidencyDeployments(ids []uint) (map[uint]ResidencyDeployment, 
 		return out, nil
 	}
 	var live []Deployment
-	if err := s.reader().Select("id", "name", "service_level").Where("id IN ?", ids).Find(&live).Error; err != nil {
+	if err := s.reader().Select(append([]string{"id", "name"}, yieldPolicyColumns...)).Where("id IN ?", ids).Find(&live).Error; err != nil {
 		return nil, err
 	}
 	for _, d := range live {
-		out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, ServiceLevel: d.ServiceLevel}
+		out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: d.Policy().Yield, Preset: d.Preset()}
 	}
 	var gone []DeletedDeployment
 	if err := s.reader().Where("id IN ?", ids).Find(&gone).Error; err != nil {
@@ -101,7 +106,7 @@ func (s *Store) ResidencyDeployments(ids []uint) (map[uint]ResidencyDeployment, 
 	}
 	for _, d := range gone {
 		if _, ok := out[d.ID]; !ok {
-			out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, ServiceLevel: ServiceLevelResident}
+			out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: servicelevel.Never, Preset: servicelevel.PresetResident}
 		}
 	}
 	return out, nil

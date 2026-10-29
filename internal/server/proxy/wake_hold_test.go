@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -177,7 +178,7 @@ func TestAWakeSignalReachesEveryHeldRequest(t *testing.T) {
 
 func TestAHeldRequestTimesOutWithRetryAfter(t *testing.T) {
 	p, _, key, depID, front := newSleepingProxy(t, false)
-	p.hold.holdMax = func(string) time.Duration { return 150 * time.Millisecond }
+	p.hold.holdMax = func(*store.Deployment) time.Duration { return 150 * time.Millisecond }
 	p.SetWakeDemand(func(uint) {})
 	start := time.Now()
 	resp := postChat(t, front, key)
@@ -189,6 +190,33 @@ func TestAHeldRequestTimesOutWithRetryAfter(t *testing.T) {
 	}
 	if n, _ := p.HeldRequests(depID); n != 0 {
 		t.Fatalf("still held: %d", n)
+	}
+}
+
+// The gateway holds a request for as long as the deployment's own policy says
+// (hold_max_sec), not for a time the level it once had stood for.
+func TestAHeldRequestWaitsForTheDeploymentsHoldMaxSec(t *testing.T) {
+	p, st, key, depID, front := newSleepingProxy(t, false)
+	p.SetWakeDemand(func(uint) {})
+	if err := st.SetDeploymentYieldPolicy(depID, servicelevel.Policy{Yield: servicelevel.Anytime, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	resp := postChat(t, front, key)
+	waited := time.Since(start)
+	if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") != "1" {
+		t.Fatalf("status = %d Retry-After = %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+	if waited < time.Second || waited > 20*time.Second {
+		t.Fatalf("held for %v, want the 1 s hold_max_sec", waited)
+	}
+	dep, _ := st.GetDeployment(depID)
+	if got := p.hold.holdMax(dep); got != time.Second {
+		t.Fatalf("holdMax = %v", got)
+	}
+	// A deployment with no hold stated is held for the default.
+	if got := p.hold.holdMax(&store.Deployment{}); got != servicelevel.DefaultHoldMax {
+		t.Fatalf("default holdMax = %v", got)
 	}
 }
 

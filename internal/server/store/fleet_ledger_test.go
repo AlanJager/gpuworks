@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 )
 
 // The fleet reads must each be a range of an index, or a pass over a small
@@ -86,7 +87,7 @@ func TestLedgerDeploymentsAndModels(t *testing.T) {
 		t.Fatalf("deployments = %d", len(deployments))
 	}
 	for _, d := range deployments {
-		if d.Name == "" || d.ServiceLevel != ServiceLevelShared || d.ModelID != 1 || d.QuickParams != "" {
+		if d.Name == "" || d.Preset() != servicelevel.PresetShared || d.ModelID != 1 || d.QuickParams != "" {
 			t.Errorf("deployment row = %+v, want name, level and model only", d)
 		}
 	}
@@ -94,7 +95,7 @@ func TestLedgerDeploymentsAndModels(t *testing.T) {
 	if err != nil || len(shared) != 2 {
 		t.Fatalf("shared deployments = %v %v", shared, err)
 	}
-	if _, err := s.CreateDeployment(&Deployment{ModelID: 1, Name: "always-on", ServedName: "always-on", Engine: "vllm", State: DeployActive, ServiceLevel: ServiceLevelResident}); err != nil {
+	if _, err := s.CreateDeployment(&Deployment{ModelID: 1, Name: "always-on", ServedName: "always-on", Engine: "vllm", State: DeployActive}); err != nil {
 		t.Fatal(err)
 	}
 	if shared, _ = s.SharedDeploymentIDs(); len(shared) != 2 || (shared[0] != ids["alpha"] && shared[1] != ids["alpha"]) {
@@ -216,7 +217,7 @@ func TestSharedDeploymentsIncludeResidentOnesOnOneCard(t *testing.T) {
 	s := newTestStore(t)
 	mk := func(name string) uint {
 		t.Helper()
-		dep, err := s.CreateDeployment(&Deployment{Name: name, ServedName: name, Engine: "vllm", State: DeployActive, ServiceLevel: ServiceLevelResident})
+		dep, err := s.CreateDeployment(&Deployment{Name: name, ServedName: name, Engine: "vllm", State: DeployActive})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -22,7 +22,7 @@ const (
 // Waiter is a deployment with requests held for its wake.
 type Waiter struct {
 	DeploymentID uint
-	Level        string
+	Policy       servicelevel.Policy
 	// Since is when its oldest held request came.
 	Since time.Time
 }
@@ -32,7 +32,7 @@ type Waiter struct {
 type Holder struct {
 	DeploymentID uint
 	Name         string
-	Level        string
+	Policy       servicelevel.Policy
 	// Instances are the replica's instances, put to sleep together.
 	Instances []string
 }
@@ -58,9 +58,9 @@ type ResidencySource interface {
 	// sleep a request may end (not held by an operator or a schedule).
 	Waiters() ([]Waiter, error)
 	// Wakeable says the deployment is still asleep by the platform's choice
-	// and active, with its level; a deployment put back to sleep by an
+	// and active, with its policy; a deployment put back to sleep by an
 	// operator is not.
-	Wakeable(deploymentID uint) (level string, ok bool)
+	Wakeable(deploymentID uint) (policy servicelevel.Policy, ok bool)
 	// Blocking is what keeps the deployment's waiting sleepers from waking.
 	Blocking(deploymentID uint) (Blocking, error)
 	// Activity is the deployment's traffic.
@@ -70,7 +70,8 @@ type ResidencySource interface {
 // ResidencyActions is how the residency arbiter acts.
 type ResidencyActions interface {
 	// Yield puts a holder's replica to sleep for another deployment, cutting
-	// its requests off when abort; it returns the level it chose.
+	// its requests off when abort; it returns the level it chose (the
+	// holder's sleep level preference, servicelevel.Policy.SleepLevel).
 	Yield(deploymentID uint, instances []string, abort bool) (int, error)
 	// Drain stops (on) or resumes routing new requests to the deployment;
 	// they are held as if it slept.
@@ -118,8 +119,11 @@ type yielded struct {
 const yieldGuard = 2 * time.Minute
 
 type drain struct {
-	since     time.Time
+	since time.Time
+	// limit is how long requests may run on; zero with unbounded set is
+	// however long they take.
 	limit     time.Duration
+	unbounded bool
 	instances []string
 	params    map[string]any
 }
@@ -159,7 +163,7 @@ func (e *Evaluator) demandChan() <-chan struct{} {
 
 type waiting struct {
 	id     uint
-	level  string
+	policy servicelevel.Policy
 	since  time.Time
 	resume bool
 }
@@ -182,13 +186,13 @@ func (e *Evaluator) residency(now time.Time) {
 	listed := map[uint]bool{}
 	for _, w := range waiters {
 		listed[w.DeploymentID] = true
-		queue = append(queue, waiting{id: w.DeploymentID, level: w.Level, since: w.Since})
+		queue = append(queue, waiting{id: w.DeploymentID, policy: w.Policy, since: w.Since})
 	}
 	for id, since := range r.preempted {
 		if listed[id] {
 			continue
 		}
-		level, ok := r.source.Wakeable(id)
+		policy, ok := r.source.Wakeable(id)
 		if !ok {
 			delete(r.preempted, id)
 			continue
@@ -196,10 +200,10 @@ func (e *Evaluator) residency(now time.Time) {
 		if e.stillWakingFor(now, id) {
 			continue
 		}
-		queue = append(queue, waiting{id: id, level: level, since: since, resume: true})
+		queue = append(queue, waiting{id: id, policy: policy, since: since, resume: true})
 	}
 	sort.SliceStable(queue, func(a, b int) bool {
-		ra, rb := servicelevel.For(queue[a].level).Rank, servicelevel.For(queue[b].level).Rank
+		ra, rb := queue[a].policy.Rank(), queue[b].policy.Rank()
 		if ra != rb {
 			return ra > rb
 		}
@@ -257,7 +261,7 @@ func (e *Evaluator) serveWaiter(now time.Time, w waiting, yielding map[uint]bool
 	if blocking.Blocked || len(blocking.Holders) == 0 {
 		return
 	}
-	waiter := servicelevel.Waiter{Level: w.level, Waited: now.Sub(w.since)}
+	waiter := servicelevel.Waiter{Policy: w.policy, Waited: now.Sub(w.since)}
 	reasons := make([]servicelevel.Reason, len(blocking.Holders))
 	for i, h := range blocking.Holders {
 		if yielding[h.DeploymentID] || h.DeploymentID == w.id {
@@ -286,7 +290,7 @@ func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
 	if at, ok := r.awakeAt[h.DeploymentID]; ok && at.After(since) {
 		since = at
 	}
-	out := servicelevel.Holder{Level: h.Level, AwakeFor: now.Sub(since)}
+	out := servicelevel.Holder{Policy: h.Policy, AwakeFor: now.Sub(since)}
 	act := r.source.Activity(h.DeploymentID)
 	if act.InFlight == 0 && act.Held == 0 {
 		last := since
@@ -298,18 +302,25 @@ func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
 	return out
 }
 
-// yield puts a holder to sleep for a waiter. A level that lets requests run
-// on (shared) first stops new ones and drains; offline is cut off at once.
+// yield puts a holder to sleep for a waiter. A holder idle for the reason has
+// nothing running and sleeps at once. Otherwise its policy says what becomes
+// of the requests still running (Policy.Drain): cut off at once, or new ones
+// are held and those running get the time its policy gives them, or as long
+// as they take.
 func (e *Evaluator) yield(now time.Time, h Holder, reason servicelevel.Reason, w waiting) {
 	r := e.res
 	params := map[string]any{"trigger": TriggerPreempt, "reason": string(reason), "for_deployment": w.id, "instances": h.Instances}
-	policy := servicelevel.For(h.Level)
-	if policy.Drain > 0 && r.source.Activity(h.DeploymentID).InFlight > 0 {
-		r.actions.Drain(h.DeploymentID, true)
-		r.draining[h.DeploymentID] = drain{since: now, limit: policy.Drain, instances: h.Instances, params: params}
+	abort, limit := h.Policy.Drain()
+	if reason == servicelevel.ReasonIdle {
+		e.sleepHolder(h.DeploymentID, h.Instances, false, params)
 		return
 	}
-	e.sleepHolder(h.DeploymentID, h.Instances, policy.Drain == 0 && reason != servicelevel.ReasonIdle, params)
+	if !abort && r.source.Activity(h.DeploymentID).InFlight > 0 {
+		r.actions.Drain(h.DeploymentID, true)
+		r.draining[h.DeploymentID] = drain{since: now, limit: limit, unbounded: limit == 0, instances: h.Instances, params: params}
+		return
+	}
+	e.sleepHolder(h.DeploymentID, h.Instances, abort, params)
 }
 
 func (e *Evaluator) sleepHolder(id uint, instances []string, abort bool, params map[string]any) {
@@ -332,7 +343,7 @@ func (e *Evaluator) sleepHolder(id uint, instances []string, abort bool, params 
 	if to, ok := params["for_deployment"].(uint); ok {
 		r.yieldedFor[id] = yielded{to: to, at: e.now()}
 	}
-	if level, ok := r.source.Wakeable(id); ok && servicelevel.For(level).Preemptible {
+	if policy, ok := r.source.Wakeable(id); ok && policy.Preemptible() {
 		r.preempted[id] = e.now()
 	}
 }
@@ -343,7 +354,7 @@ func (e *Evaluator) finishDrains(now time.Time) {
 	r := e.res
 	for id, d := range r.draining {
 		inFlight := r.source.Activity(id).InFlight
-		if inFlight > 0 && now.Sub(d.since) < d.limit {
+		if inFlight > 0 && (d.unbounded || now.Sub(d.since) < d.limit) {
 			continue
 		}
 		delete(r.draining, id)

@@ -9,6 +9,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -88,7 +89,7 @@ func (a *apiHandlers) schedulingBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, board)
 }
 
-// deploymentLabels name a deployment and give its service level, each
+// deploymentLabels name a deployment and give its service level preset, each
 // deployment read once however often it is asked for.
 func (a *apiHandlers) deploymentLabels() (nameOf func(uint) string, levelOf func(uint) string) {
 	type labelled struct{ name, level string }
@@ -97,9 +98,9 @@ func (a *apiHandlers) deploymentLabels() (nameOf func(uint) string, levelOf func
 		if known, ok := deployments[id]; ok {
 			return known
 		}
-		known := labelled{level: store.ServiceLevelResident}
+		known := labelled{level: servicelevel.PresetResident}
 		if dep, err := a.d.Store.GetDeployment(id); err == nil {
-			known = labelled{name: dep.Name, level: dep.ServiceLevel}
+			known = labelled{name: dep.Name, level: dep.Preset()}
 		}
 		deployments[id] = known
 		return known
@@ -130,7 +131,7 @@ func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint)
 				state = "asleep"
 			}
 			item.Occupants = append(item.Occupants, dto.BoardOccupant{
-				DeploymentID: o.Instance.DeploymentID, Deployment: nameOf(o.Instance.DeploymentID), ServiceLevel: levelOf(o.Instance.DeploymentID), Instance: o.Instance.UUID,
+				DeploymentID: o.Instance.DeploymentID, Deployment: nameOf(o.Instance.DeploymentID), Preset: levelOf(o.Instance.DeploymentID), Instance: o.Instance.UUID,
 				State: state, SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
 			})
 		}

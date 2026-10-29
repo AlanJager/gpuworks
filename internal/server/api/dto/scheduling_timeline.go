@@ -58,9 +58,11 @@ type TimelineSegment struct {
 // requests of each interval and are absent when no request was held or the
 // gateway's metrics are not kept.
 type TimelineDeployment struct {
-	DeploymentID uint     `json:"deployment_id"`
-	Deployment   string   `json:"deployment"`
-	ServiceLevel string   `json:"service_level"`
+	DeploymentID uint   `json:"deployment_id"`
+	Deployment   string `json:"deployment"`
+	// Preset is the service level its yield policy stands for (resident,
+	// online, shared, offline), or custom.
+	Preset       string   `json:"preset"`
 	AwakeSeconds int64    `json:"awake_seconds"`
 	AwakeShare   float64  `json:"awake_share"`
 	Switches     int      `json:"switches"`

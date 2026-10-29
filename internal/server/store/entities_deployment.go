@@ -74,23 +74,27 @@ type Deployment struct {
 	// /v1/detokenize for the deployment. It is stored inverted so the zero
 	// value (and every row from before the column) means they are open.
 	TokenizeDisabled bool `gorm:"not null;default:false"`
-	// IdleSleepAfterSec puts the deployment to sleep after this long without
-	// a user request through the gateway; 0 turns idle sleep off.
-	// IdleSleepLevel is the level it sleeps at (1 or 2).
-	IdleSleepAfterSec int `gorm:"not null;default:0"`
-	IdleSleepLevel    int `gorm:"not null;default:2"`
 	// NodeReplaceAfterSec is how long a node that runs one of the
 	// deployment's replicas may stay offline before the replica is moved to
 	// another node; 0 never moves it.
 	NodeReplaceAfterSec int `gorm:"not null;default:600"`
-	// ServiceLevel is how the deployment shares GPUs with others
-	// (ServiceLevel* constants): resident never gives its cards up; online,
-	// shared and offline let the residency arbiter put them to sleep for one
-	// another by priority (docs/explanation/service-levels.md).
-	ServiceLevel string `gorm:"size:16;not null;default:'resident'"`
+	// The deployment's yield policy and its parameters (package
+	// servicelevel, docs/explanation/service-levels.md): YieldPolicy is how
+	// it shares GPUs with others (never, idle, timeslice, anytime); the
+	// others are normalized on write, so a parameter that does not apply to
+	// the policy is its zero value. The service level a deployment shows is
+	// derived from them (servicelevel.PresetOf), not stored.
+	YieldPolicy       string `gorm:"size:16;not null;default:'never'"`
+	AutoSleep         bool   `gorm:"not null;default:false"`
+	IdleSec           int    `gorm:"not null;default:0"`
+	SleepLevelPref    string `gorm:"size:8;not null;default:''"`
+	MinServeSec       int    `gorm:"not null;default:0"`
+	Unfinished        string `gorm:"size:16;not null;default:''"`
+	UnfinishedWaitSec int    `gorm:"not null;default:0"`
+	HoldMaxSec        int    `gorm:"not null;default:0"`
 	// SleepHeld says the deployment's sleep was ordered by an operator or a
 	// schedule: a request through the gateway does not wake it. A sleep the
-	// platform chose (idle sleep, the arbiter) is not held and a request
+	// platform chose (auto sleep, the arbiter) is not held and a request
 	// wakes it.
 	SleepHeld bool `gorm:"not null;default:false"`
 

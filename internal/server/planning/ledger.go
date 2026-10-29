@@ -328,7 +328,7 @@ type ledgerView struct {
 	// the memory they hold now is not counted against it (Input.ExcludeDeploymentID).
 	excludeDeployment uint
 	// reserved says a sleeper keeps its whole claim rather than its residue:
-	// it shares its cards by service level, but not with the deployment
+	// it shares its cards by yield policy, but not with the deployment
 	// being placed (reservedAgainst).
 	reserved func(*store.Instance) bool
 }

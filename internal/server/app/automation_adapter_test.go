@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -60,19 +61,19 @@ func intentOf(t *testing.T, st *store.Store, uuid string) int {
 	return in.SleepIntent()
 }
 
-// The adapter's sleep is an operator's deployment-wide order; idle sleep
+// The adapter's sleep is an operator's deployment-wide order; auto sleep
 // sees the deployment awake before and asleep after.
 func TestAutomationAdapterSleepsAndReportsAwake(t *testing.T) {
 	adapter, st, dep := automationFixture(t)
-	if err := st.SetDeploymentIdleSleep(dep.ID, 900, 2); err != nil {
+	if err := st.SetDeploymentYieldPolicy(dep.ID, servicelevel.Policy{Yield: servicelevel.Never, AutoSleep: true, IdleSec: 900, SleepLevel: servicelevel.LevelL2, HoldMaxSec: 120}); err != nil {
 		t.Fatal(err)
 	}
-	idle, err := adapter.IdleDeployments()
+	idle, err := adapter.AutoSleepDeployments()
 	if err != nil || len(idle) != 1 || !idle[0].Awake || idle[0].AfterSec != 900 || idle[0].Level != 2 {
-		t.Fatalf("idle deployments = %+v err=%v", idle, err)
+		t.Fatalf("auto sleep deployments = %+v err=%v", idle, err)
 	}
-	if err := adapter.Sleep(dep.ID, 1, false); err != nil {
-		t.Fatalf("sleep: %v", err)
+	if level, err := adapter.Sleep(dep.ID, 1, false); err != nil || level != 1 {
+		t.Fatalf("sleep: %d %v", level, err)
 	}
 	if got := intentOf(t, st, "auto-1"); got != 1 {
 		t.Fatalf("intent after the automation's sleep = %d, want 1", got)
@@ -80,13 +81,13 @@ func TestAutomationAdapterSleepsAndReportsAwake(t *testing.T) {
 	if got, _ := st.GetDeployment(dep.ID); got.SleepHeld {
 		t.Fatal("an idle sleep is held: a request would not wake it")
 	}
-	if err := adapter.Sleep(dep.ID, 2, true); err != nil {
+	if _, err := adapter.Sleep(dep.ID, 2, true); err != nil {
 		t.Fatalf("held sleep: %v", err)
 	}
 	if got, _ := st.GetDeployment(dep.ID); !got.SleepHeld {
 		t.Fatal("a schedule's sleep is not held")
 	}
-	if idle, _ := adapter.IdleDeployments(); len(idle) != 1 || idle[0].Awake {
+	if idle, _ := adapter.AutoSleepDeployments(); len(idle) != 1 || idle[0].Awake {
 		t.Fatalf("an ordered sleep still reads awake: %+v", idle)
 	}
 }
@@ -109,7 +110,7 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 		t.Fatal(err)
 	}
 	adapter.metrics = metrics
-	err = adapter.Sleep(dep.ID, 1, true)
+	_, err = adapter.Sleep(dep.ID, 1, true)
 	coded, ok := err.(interface{ Code() string })
 	if !ok || coded.Code() != "SLEEP_HOST_MEMORY_INSUFFICIENT" {
 		t.Fatalf("L1 onto a full host = %v, want SLEEP_HOST_MEMORY_INSUFFICIENT", err)
@@ -117,8 +118,44 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 	if got := intentOf(t, st, "auto-1"); got != 0 {
 		t.Fatalf("a refused sleep changed the intent to %d", got)
 	}
-	if err := adapter.Sleep(dep.ID, 2, true); err != nil || intentOf(t, st, "auto-1") != 2 {
+	if _, err := adapter.Sleep(dep.ID, 2, true); err != nil || intentOf(t, st, "auto-1") != 2 {
 		t.Fatalf("L2 onto a full host: err=%v intent=%d", err, intentOf(t, st, "auto-1"))
+	}
+	// The auto level is L1 where the host holds the weights and L2 where it
+	// cannot: the order is not refused.
+	if err := st.SetDeploymentSleep(dep.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if level, err := adapter.Sleep(dep.ID, automation.LevelAuto, false); err != nil || level != proto.SleepLevelL2 || intentOf(t, st, "auto-1") != 2 {
+		t.Fatalf("auto onto a full host = %d err=%v intent=%d, want L2", level, err, intentOf(t, st, "auto-1"))
+	}
+}
+
+func TestAutomationAdapterAutoLevelSleepsAtL1WhenTheHostHasRoom(t *testing.T) {
+	adapter, st, dep := automationFixture(t)
+	if level, err := adapter.Sleep(dep.ID, automation.LevelAuto, false); err != nil || level != proto.SleepLevelL1 || intentOf(t, st, "auto-1") != 1 {
+		t.Fatalf("auto = %d err=%v intent=%d, want L1", level, err, intentOf(t, st, "auto-1"))
+	}
+}
+
+// The policy's sleep level preference reaches the automation as the level of
+// the order: auto is left to the platform.
+func TestAutoSleepDeploymentsCarryTheSleepLevelPreference(t *testing.T) {
+	adapter, st, dep := automationFixture(t)
+	for pref, want := range map[string]int{servicelevel.LevelAuto: automation.LevelAuto, servicelevel.LevelL1: 1, servicelevel.LevelL2: 2} {
+		if err := st.SetDeploymentYieldPolicy(dep.ID, servicelevel.Policy{Yield: servicelevel.Never, AutoSleep: true, IdleSec: 60, SleepLevel: pref, HoldMaxSec: 120}); err != nil {
+			t.Fatal(err)
+		}
+		got, err := adapter.AutoSleepDeployments()
+		if err != nil || len(got) != 1 || got[0].Level != want || got[0].AfterSec != 60 {
+			t.Fatalf("%s: %+v err=%v, want level %d", pref, got, err, want)
+		}
+	}
+	if err := st.SetDeploymentYieldPolicy(dep.ID, servicelevel.Policy{Yield: servicelevel.Never}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := adapter.AutoSleepDeployments(); err != nil || len(got) != 0 {
+		t.Fatalf("a deployment with auto sleep off is checked: %+v err=%v", got, err)
 	}
 }
 

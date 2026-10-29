@@ -28,14 +28,14 @@ func InstanceCards(insts []store.Instance) map[Card]bool {
 	return out
 }
 
-// reservedAgainst is the ledger's reservation for a deployment of level being
-// placed: a sleeping instance of a deployment that shares its cards by
-// service level (any level but resident) keeps its whole claim against a
-// level it does not share with. A resident deployment or an online one is
-// thus never placed on an online deployment's cards while that one sleeps, so
-// its wake is never left without room; a shared or offline one may be. Nil
-// when no deployment shares by service level.
-func reservedAgainst(st *store.Store, level string) func(*store.Instance) bool {
+// reservedAgainst is the ledger's reservation for a deployment of yield
+// policy being placed: a sleeping instance of a deployment that shares its
+// cards by policy (any but never) keeps its whole claim against a policy it
+// does not share with. A never deployment or an idle one is thus never placed
+// on an idle deployment's cards while that one sleeps, so its wake is never
+// left without room; a timeslice or anytime one may be. Nil when no
+// deployment shares by yield policy.
+func reservedAgainst(st *store.Store, policy string) func(*store.Instance) bool {
 	if st == nil {
 		return nil
 	}
@@ -43,15 +43,15 @@ func reservedAgainst(st *store.Store, level string) func(*store.Instance) bool {
 	if err != nil || len(sharing) == 0 {
 		return nil
 	}
-	if level == "" {
-		level = servicelevel.Resident
+	if policy == "" {
+		policy = servicelevel.Never
 	}
-	levels := make(map[uint]string, len(sharing))
+	policies := make(map[uint]string, len(sharing))
 	for _, dep := range sharing {
-		levels[dep.ID] = dep.ServiceLevel
+		policies[dep.ID] = dep.YieldPolicy
 	}
 	return func(in *store.Instance) bool {
-		other, ok := levels[in.DeploymentID]
-		return ok && !servicelevel.SharesCardsWith(level, other)
+		other, ok := policies[in.DeploymentID]
+		return ok && !servicelevel.SharesCardsWith(policy, other)
 	}
 }

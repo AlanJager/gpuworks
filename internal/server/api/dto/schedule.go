@@ -38,13 +38,6 @@ type LifecycleScheduleRequest struct {
 	Enabled    *bool  `json:"enabled,omitempty"`
 }
 
-// IdleSleep is a deployment's idle sleep: after AfterSec without a user
-// request it sleeps at Level; AfterSec 0 is off.
-type IdleSleep struct {
-	AfterSec int `json:"after_sec"`
-	Level    int `json:"level"`
-}
-
 // WakeWaitResult answers a wake that waits for room (?wait=true) or makes
 // room by putting the occupants to sleep (?yield=true): the sleepers it woke
 // at once, those now waiting, and the occupants put to sleep.

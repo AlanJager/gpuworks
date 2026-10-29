@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 )
 
 // The reads below serve the scheduling center's overview of the whole fleet
@@ -40,12 +41,12 @@ func (s *Store) LiveInstances() ([]Instance, error) {
 }
 
 func ledgerDeploymentsQuery(db *gorm.DB) *gorm.DB {
-	return db.Model(&Deployment{}).Select("id", "name", "service_level", "model_id")
+	return db.Model(&Deployment{}).Select(append([]string{"id", "name", "model_id"}, yieldPolicyColumns...))
 }
 
 // LedgerDeployments are every deployment with only what the scheduling
-// overview names it by and the ledger sizes a sleeper from: id, name, service
-// level and model.
+// overview names it by and the ledger sizes a sleeper from: id, name, yield
+// policy and model.
 func (s *Store) LedgerDeployments() ([]Deployment, error) {
 	var out []Deployment
 	err := ledgerDeploymentsQuery(s.reader()).Find(&out).Error
@@ -105,11 +106,11 @@ func IsYield(ev InstanceEvent) bool {
 }
 
 // SharedDeploymentIDs are the ids of the deployments that share GPUs: those
-// of a service level other than resident, and any whose live instances sit
+// of a yield policy other than never, and any whose live instances sit
 // on a card together with another deployment's, sorted.
 func (s *Store) SharedDeploymentIDs() ([]uint, error) {
 	var ids []uint
-	if err := s.reader().Model(&Deployment{}).Where("service_level NOT IN ?", []string{"", ServiceLevelResident}).Pluck("id", &ids).Error; err != nil {
+	if err := s.reader().Model(&Deployment{}).Where("yield_policy NOT IN ?", []string{"", servicelevel.Never}).Pluck("id", &ids).Error; err != nil {
 		return nil, err
 	}
 	// Deployments whose live instances sit on one card together share it

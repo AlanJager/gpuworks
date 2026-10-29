@@ -36,12 +36,13 @@ type BoardGPU struct {
 }
 
 // BoardOccupant is one instance on a GPU. State is awake or asleep;
-// ResidueBytes is set while asleep. ServiceLevel is how its deployment shares
-// GPUs (resident, online, shared or offline).
+// ResidueBytes is set while asleep. Preset is the service level its
+// deployment's yield policy stands for (resident, online, shared or offline),
+// or custom.
 type BoardOccupant struct {
 	DeploymentID uint   `json:"deployment_id"`
 	Deployment   string `json:"deployment"`
-	ServiceLevel string `json:"service_level"`
+	Preset       string `json:"preset"`
 	Instance     string `json:"instance"`
 	State        string `json:"state"`
 	SleepLevel   int    `json:"sleep_level,omitempty"`

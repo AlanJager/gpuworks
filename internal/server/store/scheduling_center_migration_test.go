@@ -43,7 +43,7 @@ func TestSchedulingCenterMigrations(t *testing.T) {
 		t.Fatal("instances.wake_waiting_since missing or unindexed")
 	}
 	for _, column := range []string{"IdleSleepAfterSec", "IdleSleepLevel"} {
-		if !db.Migrator().HasColumn(&Deployment{}, column) {
+		if !db.Migrator().HasColumn(&deploymentServiceColumns{}, column) {
 			t.Fatalf("deployments.%s missing", column)
 		}
 	}
@@ -95,7 +95,7 @@ func TestSchedulingCenterMigrations(t *testing.T) {
 		}
 		switch m.Version {
 		case 180:
-			if rollback.Migrator().HasColumn(&Deployment{}, "IdleSleepAfterSec") {
+			if rollback.Migrator().HasColumn(&deploymentServiceColumns{}, "IdleSleepAfterSec") {
 				t.Fatal("deployment columns survived the failed migration")
 			}
 		case 181:

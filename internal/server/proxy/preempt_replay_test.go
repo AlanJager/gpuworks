@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -36,11 +37,19 @@ func newPreemptibleProxy(t *testing.T, level string, replies ...string) (*Proxy,
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, reply)
 	})
-	p, _, key, depID, closeUpstream := newAccountingProxyFor(t, upstream, &store.Deployment{Engine: "vllm", Sleepable: true, ServiceLevel: level})
+	p, _, key, depID, closeUpstream := newAccountingProxyFor(t, upstream, presetDeployment(level))
 	t.Cleanup(closeUpstream)
 	front := httptest.NewServer(p.Handler())
 	t.Cleanup(front.Close)
 	return p, p.store, key, depID, front, &calls
+}
+
+// presetDeployment is a sleepable deployment of the service level.
+func presetDeployment(preset string) *store.Deployment {
+	dep := &store.Deployment{Engine: "vllm", Sleepable: true}
+	p, _ := servicelevel.PresetPolicy(preset)
+	dep.SetPolicy(p)
+	return dep
 }
 
 func chat(t *testing.T, front *httptest.Server, key, body string) (int, string) {
@@ -68,7 +77,7 @@ func wakeAfter(p *Proxy, st *store.Store, delay time.Duration) {
 }
 
 func TestACutOffReplyIsReplayedOnceTheDeploymentServesAgain(t *testing.T) {
-	for _, level := range []string{store.ServiceLevelOffline, store.ServiceLevelShared} {
+	for _, level := range []string{servicelevel.PresetOffline, servicelevel.PresetShared} {
 		t.Run(level, func(t *testing.T) {
 			p, st, key, _, front, calls := newPreemptibleProxy(t, level, abortedReply, finishedReply)
 			wakeAfter(p, st, 150*time.Millisecond)
@@ -87,9 +96,9 @@ func TestReplayIsOnlyForPreemptibleNonStreamingRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name, level, body string
 	}{
-		{"a stream", store.ServiceLevelOffline, `{"model":"omni","stream":true,"messages":[]}`},
-		{"an online deployment", store.ServiceLevelOnline, `{"model":"omni","messages":[]}`},
-		{"a resident deployment", store.ServiceLevelResident, `{"model":"omni","messages":[]}`},
+		{"a stream", servicelevel.PresetOffline, `{"model":"omni","stream":true,"messages":[]}`},
+		{"an online deployment", servicelevel.PresetOnline, `{"model":"omni","messages":[]}`},
+		{"a resident deployment", servicelevel.PresetResident, `{"model":"omni","messages":[]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p, st, key, _, front, calls := newPreemptibleProxy(t, tc.level, abortedReply, finishedReply)
@@ -110,7 +119,7 @@ func TestReplayStopsAfterItsLimit(t *testing.T) {
 		calls.Add(1)
 		_, _ = io.WriteString(w, abortedReply)
 	})
-	p, _, key, _, closeUpstream := newAccountingProxyFor(t, upstream, &store.Deployment{Engine: "vllm", Sleepable: true, ServiceLevel: store.ServiceLevelOffline})
+	p, _, key, _, closeUpstream := newAccountingProxyFor(t, upstream, presetDeployment(servicelevel.PresetOffline))
 	defer closeUpstream()
 	front := httptest.NewServer(p.Handler())
 	defer front.Close()

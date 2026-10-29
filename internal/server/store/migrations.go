@@ -1289,6 +1289,7 @@ var migrations = []migration{
 	{Version: 184, Name: "deployment_service_level", Apply: addDeploymentServiceLevel},
 	{Version: 185, Name: "batch_tables", Apply: createBatchTables},
 	{Version: 186, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
+	{Version: 187, Name: "deployment_yield_policy", Apply: addDeploymentYieldPolicy},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

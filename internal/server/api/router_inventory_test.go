@@ -352,7 +352,6 @@ PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
-PUT /api/v1/deployments/{id}/idle-sleep
 PUT /api/v1/deployments/{id}/node-replacement
 PUT /api/v1/deployments/{id}/pd
 PUT /api/v1/deployments/{id}/placement-mode
@@ -360,8 +359,8 @@ PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing
 PUT /api/v1/deployments/{id}/schedule/{sid}
-PUT /api/v1/deployments/{id}/service-level
 PUT /api/v1/deployments/{id}/tokenize
+PUT /api/v1/deployments/{id}/yield-policy
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}
 PUT /api/v1/networks/{id}/attachments/{attachmentID}

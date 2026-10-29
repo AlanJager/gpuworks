@@ -84,7 +84,7 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 					at = len(out.Deployments)
 					deploymentAt[occupant.DeploymentID] = at
 					info := ledger.Deployments[occupant.DeploymentID]
-					out.Deployments = append(out.Deployments, dto.OverviewDeployment{ID: occupant.DeploymentID, Name: info.Name, ServiceLevel: orResident(info.ServiceLevel)})
+					out.Deployments = append(out.Deployments, dto.OverviewDeployment{ID: occupant.DeploymentID, Name: info.Name, Preset: info.Preset})
 				}
 				code := at * 2
 				if occupant.Asleep {
@@ -125,13 +125,6 @@ func percent(bytes, total int64) int {
 		return 100
 	}
 	return min(max(int((bytes*100+total/2)/total), 1), 100)
-}
-
-func orResident(level string) string {
-	if level == "" {
-		return store.ServiceLevelResident
-	}
-	return level
 }
 
 // count adds one card to the fleet's and its model's summary, in the first

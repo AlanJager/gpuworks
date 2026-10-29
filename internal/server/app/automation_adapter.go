@@ -11,6 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -30,7 +31,7 @@ type automationAdapter struct {
 	now     func() time.Time
 }
 
-// runAutomation carries out schedules, idle sleep, waiting wakes and the
+// runAutomation carries out schedules, auto sleep, waiting wakes and the
 // residency arbiter until ctx ends. A change to an instance or a deployment
 // nudges it, since a waiting wake may fit once another instance sleeps or
 // goes; a request the gateway holds for a sleeping deployment asks it to wake
@@ -96,14 +97,14 @@ func scheduleLocation(name string) (*time.Location, error) {
 	return time.LoadLocation(name)
 }
 
-// IdleDeployments are the deployments with idle sleep on, each saying whether
-// any of its replicas serves.
-func (a *automationAdapter) IdleDeployments() ([]automation.IdleDeployment, error) {
-	deps, err := a.store.IdleSleepDeployments()
+// AutoSleepDeployments are the deployments with auto sleep on, each saying
+// whether any of its replicas serves.
+func (a *automationAdapter) AutoSleepDeployments() ([]automation.AutoSleepDeployment, error) {
+	deps, err := a.store.AutoSleepDeployments()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]automation.IdleDeployment, 0, len(deps))
+	out := make([]automation.AutoSleepDeployment, 0, len(deps))
 	for _, dep := range deps {
 		insts, err := a.store.InstancesForDeployment(dep.ID)
 		if err != nil {
@@ -117,7 +118,8 @@ func (a *automationAdapter) IdleDeployments() ([]automation.IdleDeployment, erro
 				break
 			}
 		}
-		out = append(out, automation.IdleDeployment{ID: dep.ID, AfterSec: dep.IdleSleepAfterSec, Level: dep.IdleSleepLevel, Awake: awake})
+		policy := dep.Policy()
+		out = append(out, automation.AutoSleepDeployment{ID: dep.ID, AfterSec: policy.IdleSec, Level: sleepLevelOf(policy.SleepLevelPref()), Awake: awake})
 	}
 	return out, nil
 }
@@ -153,28 +155,47 @@ func (a *automationAdapter) LastRequestAt(deploymentID uint) (time.Time, bool) {
 	return a.acct.LastRequestAt(deploymentID)
 }
 
+// sleepLevelOf is the sleep level order of a policy's preference.
+func sleepLevelOf(pref string) int {
+	switch pref {
+	case servicelevel.LevelL1:
+		return proto.SleepLevelL1
+	case servicelevel.LevelL2:
+		return proto.SleepLevelL2
+	}
+	return automation.LevelAuto
+}
+
 // Sleep orders a deployment to sleep as an operator's deployment-wide order
 // does: refused when the deployment cannot sleep, or at L1 when a host
-// cannot hold the weights.
-func (a *automationAdapter) Sleep(deploymentID uint, level int, held bool) error {
+// cannot hold the weights. At the auto level it sleeps at L1, or at L2 where
+// the host cannot hold the weights; it returns the level ordered.
+func (a *automationAdapter) Sleep(deploymentID uint, level int, held bool) (int, error) {
 	defer planning.LockLifecycle()()
 	dep, err := a.store.GetDeployment(deploymentID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if code := planning.SleepEligibility(dep); code != "" {
-		return messages.NewProductError(code, "the deployment cannot sleep", map[string]any{"engine": dep.Engine})
+		return 0, messages.NewProductError(code, "the deployment cannot sleep", map[string]any{"engine": dep.Engine})
+	}
+	auto := level == automation.LevelAuto
+	if auto {
+		level = proto.SleepLevelL1
 	}
 	if level == proto.SleepLevelL1 {
 		insts, err := a.store.InstancesForDeployment(dep.ID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if refusal := planning.L1HostMemoryRefusal(a.store, dep, planning.Sleepers(insts), a.hostMemory); refusal != nil {
-			return messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
+			if !auto {
+				return 0, messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
+			}
+			level = proto.SleepLevelL2
 		}
 	}
-	return a.store.OrderDeploymentSleepHeld(dep.ID, level, proto.SleepModeWait, held)
+	return level, a.store.OrderDeploymentSleepHeld(dep.ID, level, proto.SleepModeWait, held)
 }
 
 // Wake wakes the deployment's sleepers that fit and leaves the rest waiting

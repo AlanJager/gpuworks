@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -20,10 +19,10 @@ const (
 
 // replaysPreemption says a request for dep is replayed when a preemption cuts
 // it off: the deployment is one the arbiter puts to sleep for others while it
-// is busy (shared, offline), and the request is not a stream — a stream's
+// is busy (a timeslice or anytime policy), and the request is not a stream — a stream's
 // first tokens have reached the client before it could be cut off.
 func replaysPreemption(dep *store.Deployment, r *http.Request) bool {
-	if dep == nil || !servicelevel.For(dep.ServiceLevel).Preemptible || r.GetBody == nil {
+	if dep == nil || !dep.Policy().Preemptible() || r.GetBody == nil {
 		return false
 	}
 	body, err := r.GetBody()

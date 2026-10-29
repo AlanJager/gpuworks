@@ -1,6 +1,6 @@
 package api
 
-// A deployment's schedule, idle sleep and node replacement: orders given in
+// A deployment's schedule and node replacement: orders given in
 // advance that the scheduling automation (internal/server/automation) carries
 // out as an operator's own orders.
 
@@ -24,10 +24,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// Bounds of the idle sleep wait, in seconds.
+// Bounds of the schedule look-ahead.
 const (
-	idleSleepMinSec         = 60
-	idleSleepMaxSec         = 7 * 24 * 3600
 	scheduleNextHorizonDays = 8
 )
 
@@ -243,45 +241,6 @@ func scheduleDTO(row store.LifecycleSchedule, now time.Time) dto.LifecycleSchedu
 		}
 	}
 	return out
-}
-
-func (a *apiHandlers) setIdleSleep(w http.ResponseWriter, r *http.Request) {
-	dep, err := a.d.Store.GetDeployment(parseUint(chi.URLParam(r, "id")))
-	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
-		return
-	}
-	var req dto.IdleSleep
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	if req.AfterSec != 0 && (req.AfterSec < idleSleepMinSec || req.AfterSec > idleSleepMaxSec) {
-		writeProductError(w, http.StatusBadRequest, messages.ErrorIdleSleepInvalid, fmt.Sprintf("after_sec is 0 (off) or %d to %d", idleSleepMinSec, idleSleepMaxSec), map[string]any{"field": "after_sec", "minimum": idleSleepMinSec, "maximum": idleSleepMaxSec})
-		return
-	}
-	if req.AfterSec == 0 && req.Level == 0 {
-		// Turning idle sleep off need not restate a level: the one set
-		// before is kept for when it is turned on again.
-		req.Level = max(dep.IdleSleepLevel, proto.SleepLevelL1)
-	}
-	if req.Level != proto.SleepLevelL1 && req.Level != proto.SleepLevelL2 {
-		writeProductError(w, http.StatusBadRequest, messages.ErrorIdleSleepInvalid, "level is 1 or 2", map[string]any{"field": "level"})
-		return
-	}
-	if req.AfterSec > 0 {
-		if code := planning.SleepEligibility(dep); code != "" {
-			writeSleepRefusal(w, http.StatusBadRequest, &planning.SleepRefusal{Code: code, Params: map[string]any{"engine": dep.Engine}})
-			return
-		}
-	}
-	if err := a.d.Store.SetDeploymentIdleSleep(dep.ID, req.AfterSec, req.Level); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, req)
 }
 
 // endWakeWaiting withdraws every wake of the deployment that waits for room.

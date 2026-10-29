@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -35,8 +34,9 @@ type wakeHold struct {
 	// demand is told a deployment has a request waiting, so it is woken.
 	demand func(deploymentID uint)
 	now    func() time.Time
-	// holdMax is how long a request for a deployment of the level waits.
-	holdMax func(level string) time.Duration
+	// holdMax is how long a request for the deployment waits: its policy's
+	// hold_max_sec.
+	holdMax func(dep *store.Deployment) time.Duration
 	// draining are deployments about to give their cards up: new requests
 	// for them are held as if they slept, while those in flight finish.
 	draining map[uint]bool
@@ -47,7 +47,7 @@ type heldRequest struct{ since time.Time }
 func newWakeHold() *wakeHold {
 	return &wakeHold{
 		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]bool{},
-		holdMax: func(level string) time.Duration { return servicelevel.For(level).HoldMax },
+		holdMax: func(dep *store.Deployment) time.Duration { return dep.Policy().HoldMax() },
 	}
 }
 
@@ -197,7 +197,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 	}
 	defer p.leaveHold(dep.ID, req)
 	demand(dep.ID)
-	hold := p.hold.holdMax(dep.ServiceLevel)
+	hold := p.hold.holdMax(dep)
 	deadline := time.NewTimer(hold)
 	defer deadline.Stop()
 	recheck := time.NewTicker(wakeHoldRecheck)

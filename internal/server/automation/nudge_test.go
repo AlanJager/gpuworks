@@ -15,7 +15,7 @@ type countingWorld struct {
 }
 
 func (w *countingWorld) Schedules() ([]Schedule, error) { w.schedules.Add(1); return nil, nil }
-func (w *countingWorld) IdleDeployments() ([]IdleDeployment, error) {
+func (w *countingWorld) AutoSleepDeployments() ([]AutoSleepDeployment, error) {
 	w.idle.Add(1)
 	return nil, nil
 }

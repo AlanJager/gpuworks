@@ -27,7 +27,7 @@ func (s *Store) SetDeploymentNodeReplaceAfter(id uint, afterSec int) error {
 }
 
 // EventKindAutomation is the timeline kind of the scheduling center's events:
-// what the platform did on its own for a deployment (schedules, idle sleep,
+// what the platform did on its own for a deployment (schedules, auto sleep,
 // waiting wakes, moving a replica off a lost node) and an operator's waiting
 // or yielding wake.
 const EventKindAutomation = "automation"

@@ -281,7 +281,8 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, code, sleepRefusalFallback(code), map[string]any{"engine": eng.Name()})
 		return
 	}
-	if !createServiceLevelValid(w, req, eng.Name(), pdReq != nil) {
+	yieldPolicy, ok := createYieldPolicy(w, req, eng.Name(), pdReq != nil)
+	if !ok {
 		return
 	}
 	if req.NNodes > 1 && pdReq == nil {
@@ -393,7 +394,6 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 			return jsonStr(ids)
 		}(),
 		Sleepable:               req.Sleepable,
-		ServiceLevel:            createServiceLevel(req.ServiceLevel),
 		HealthCheck:             healthCheck,
 		HealthCheckThresholdSec: healthThreshold,
 		TokenizeDisabled:        req.TokenizeEnabled != nil && !*req.TokenizeEnabled,
@@ -404,6 +404,7 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		RoutingPolicy:           req.RoutingPolicy,
 		State:                   store.DeployActive,
 	}
+	dep.SetPolicy(yieldPolicy)
 	var created *store.Deployment
 	if templateConfig.modelID == 0 {
 		created, err = a.d.Store.CreateDeploymentWithRequirements(dep, reqs)

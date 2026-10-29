@@ -13,7 +13,7 @@ import (
 // every order given. Orders can be made to fail.
 type fakeWorld struct {
 	schedules []Schedule
-	idle      []IdleDeployment
+	idle      []AutoSleepDeployment
 	waits     []WaitingWake
 	lastReq   map[uint]time.Time
 
@@ -48,16 +48,20 @@ func (w *fakeWorld) Schedules() ([]Schedule, error) {
 	}
 	return out, nil
 }
-func (w *fakeWorld) IdleDeployments() ([]IdleDeployment, error) { return w.idle, w.readErr }
-func (w *fakeWorld) WaitingWakes() ([]WaitingWake, error)       { return w.waits, w.readErr }
+func (w *fakeWorld) AutoSleepDeployments() ([]AutoSleepDeployment, error) { return w.idle, w.readErr }
+func (w *fakeWorld) WaitingWakes() ([]WaitingWake, error)                 { return w.waits, w.readErr }
 func (w *fakeWorld) LastRequestAt(id uint) (time.Time, bool) {
 	at, ok := w.lastReq[id]
 	return at, ok
 }
-func (w *fakeWorld) Sleep(id uint, level int, held bool) error {
+func (w *fakeWorld) Sleep(id uint, level int, held bool) (int, error) {
 	w.orders = append(w.orders, fmt.Sprintf("sleep %d L%d", id, level))
 	w.held = append(w.held, held)
-	return w.sleepErr
+	if level == LevelAuto {
+		// The platform's choice, as the adapter makes it with room in host memory.
+		level = 1
+	}
+	return level, w.sleepErr
 }
 func (w *fakeWorld) Wake(id uint) (WakeResult, error) {
 	w.orders = append(w.orders, fmt.Sprintf("wake %d", id))
@@ -307,7 +311,7 @@ func TestAScheduledReplicaCountOfANonPDDeploymentCarriesNoRole(t *testing.T) {
 func TestIdleSleepCountsFromTheLastRequest(t *testing.T) {
 	w := newFakeWorld()
 	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []IdleDeployment{{ID: 5, AfterSec: 900, Level: 2, Awake: true}}
+	w.idle = []AutoSleepDeployment{{ID: 5, AfterSec: 900, Level: 2, Awake: true}}
 	e, c := newEvaluator(w, start)
 	e.Tick()
 	c.t = start.Add(10 * time.Minute)
@@ -354,7 +358,7 @@ func TestIdleSleepCountsFromTheLastRequest(t *testing.T) {
 func TestARefusedIdleSleepWaitsAnotherPeriod(t *testing.T) {
 	w := newFakeWorld()
 	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []IdleDeployment{{ID: 5, AfterSec: 60, Level: 1, Awake: true}}
+	w.idle = []AutoSleepDeployment{{ID: 5, AfterSec: 60, Level: 1, Awake: true}}
 	w.sleepErr = errors.New("boom")
 	e, c := newEvaluator(w, start)
 	e.Tick()

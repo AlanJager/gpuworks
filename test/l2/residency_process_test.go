@@ -16,7 +16,7 @@ import (
 
 // TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment proves on-demand
 // wake and the residency arbiter across the real process boundary. An online
-// deployment the platform put to sleep (idle sleep) shares its one card with
+// deployment the platform put to sleep (auto sleep) shares its one card with
 // an offline deployment placed while it slept. A request for the online one
 // is held by the gateway, the arbiter puts the offline one to sleep, the
 // online one wakes on the engine, and the held request is answered. An
@@ -67,15 +67,15 @@ func TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment(t *testing.T) {
 		}
 	}
 
-	// The online deployment, put to sleep by idle sleep: a sleep the
-	// platform chose.
-	chat, chatInst := create("residency-chat", map[string]any{"service_level": "online"})
-	put(fmt.Sprintf("/api/v1/deployments/%d/idle-sleep", chat), map[string]any{"after_sec": 60, "level": 2})
+	// The online deployment, put to sleep by auto sleep: a sleep the platform
+	// chose. Setting the online preset again then ends the auto sleep.
+	chat, chatInst := create("residency-chat", map[string]any{"yield_policy": map[string]any{"preset": "online"}})
+	put(fmt.Sprintf("/api/v1/deployments/%d/yield-policy", chat), map[string]any{"policy": "idle", "auto_sleep": true, "idle_sec": 60, "sleep_level": "l2"})
 	waitSleepLevelWithin(t, base, token, chatInst.UUID, 2, 3*time.Minute)
-	put(fmt.Sprintf("/api/v1/deployments/%d/idle-sleep", chat), map[string]any{"after_sec": 0, "level": 2})
+	put(fmt.Sprintf("/api/v1/deployments/%d/yield-policy", chat), map[string]any{"preset": "online"})
 
 	// The offline deployment takes the card the sleeper gave up.
-	batch, batchInst := create("residency-batch", map[string]any{"service_level": "offline"})
+	batch, batchInst := create("residency-batch", map[string]any{"yield_policy": map[string]any{"preset": "offline"}})
 
 	_, keyData := authedDo(t, http.MethodPost, base, token, "/api/v1/apikeys", []byte(`{"name":"residency"}`))
 	var key struct {

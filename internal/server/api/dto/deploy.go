@@ -140,15 +140,16 @@ type Deployment struct {
 	// TokenizeEnabled says whether the gateway forwards /v1/tokenize and
 	// /v1/detokenize to the deployment's engine.
 	TokenizeEnabled bool `json:"tokenize_enabled"`
-	// IdleSleep is the deployment's idle sleep (after_sec 0 is off) and
-	// NodeReplacement how long a node may stay offline before its replicas
-	// move (after_sec 0 never moves them).
-	IdleSleep       IdleSleep       `json:"idle_sleep"`
+	// NodeReplacement is how long a node may stay offline before its
+	// replicas move (after_sec 0 never moves them).
 	NodeReplacement NodeReplacement `json:"node_replacement"`
-	// ServiceLevel is resident, online, shared or offline; SleepHeld says an
-	// operator's or a schedule's sleep holds it, so a request does not wake it.
-	ServiceLevel string `json:"service_level"`
-	SleepHeld    bool   `json:"sleep_held"`
+	// YieldPolicy is how the deployment shares GPUs with others and the
+	// parameters that go with it, with the service level it stands for
+	// (preset, derived: custom when it is none of the four); SleepHeld says
+	// an operator's or a schedule's sleep holds it, so a request does not
+	// wake it.
+	YieldPolicy YieldPolicy `json:"yield_policy"`
+	SleepHeld   bool        `json:"sleep_held"`
 	// WakeWaitingSince is when the oldest wake of the deployment that waits
 	// for room started waiting; absent when none waits.
 	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`
@@ -411,12 +412,12 @@ type DeployRequest struct {
 	QuickParamsUnset []string `json:"quick_params_unset,omitempty"`
 	ExtraArgs        string   `json:"extra_args"`
 	Sleepable        bool     `json:"sleepable"`
-	// ServiceLevel: resident when absent (PUT .../service-level checks).
-	ServiceLevel  string         `json:"service_level,omitempty"`
-	Replicas      int            `json:"replicas,omitempty"`
-	RoutingPolicy string         `json:"routing_policy,omitempty"`
-	Placement     map[string]any `json:"placement"`
-	VRAMLimitGiB  float64        `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
+	// YieldPolicy: the never policy when absent (PUT .../yield-policy checks).
+	YieldPolicy   *YieldPolicyRequest `json:"yield_policy,omitempty"`
+	Replicas      int                 `json:"replicas,omitempty"`
+	RoutingPolicy string              `json:"routing_policy,omitempty"`
+	Placement     map[string]any      `json:"placement"`
+	VRAMLimitGiB  float64             `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
 	// StartTimeoutSec is how long a started instance may take to answer its
 	// health check before the start counts as failed. Zero (or absent) states
 	// none: each launch takes the cluster default then.

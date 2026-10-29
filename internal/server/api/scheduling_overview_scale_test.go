@@ -15,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -49,13 +50,14 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err := db.CreateInBatches(&models, 50).Error; err != nil {
 		t.Fatal(err)
 	}
-	levels := []string{store.ServiceLevelResident, store.ServiceLevelOnline, store.ServiceLevelShared, store.ServiceLevelOffline}
+	levels := servicelevel.Presets
 	deployments := make([]store.Deployment, scaleDeploys)
 	for i := range deployments {
 		deployments[i] = store.Deployment{
 			Name: fmt.Sprintf("dep-%03d", i), ServedName: fmt.Sprintf("dep-%03d", i), ModelID: models[i%len(models)].ID, Engine: "vllm", Sleepable: true,
-			State: store.DeployActive, ServiceLevel: levels[i%len(levels)], Replicas: 1,
+			State: store.DeployActive, Replicas: 1,
 		}
+		presetDeployment(&deployments[i], levels[i%len(levels)])
 	}
 	if err := db.CreateInBatches(&deployments, 200).Error; err != nil {
 		t.Fatal(err)

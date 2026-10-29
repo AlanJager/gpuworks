@@ -10,6 +10,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -36,13 +37,13 @@ func newTimelineRig(t *testing.T) *timelineRig {
 		}
 	}
 	mk := func(name, level string) *store.Deployment {
-		dep, err := rig.st.CreateDeployment(&store.Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: store.DeployActive, ServiceLevel: level})
+		dep, err := rig.st.CreateDeployment(presetDeployment(&store.Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: store.DeployActive}, level))
 		if err != nil {
 			t.Fatal(err)
 		}
 		return dep
 	}
-	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", store.ServiceLevelShared), res: mk("always-on", store.ServiceLevelResident)}
+	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", servicelevel.PresetShared), res: mk("always-on", servicelevel.PresetResident)}
 	for _, in := range []store.Instance{
 		{UUID: "inst-shared", DeploymentID: r.shared.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", CreatedAt: r.t0},
 		{UUID: "inst-plain", DeploymentID: r.plain.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[1]", CreatedAt: r.t0},
@@ -133,7 +134,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	}
 	d.AwakeSeconds, d.AwakeShare = 0, 0
 	line, _ := json.Marshal(d)
-	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","service_level":"shared","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0}`, r.shared.ID); string(line) != want {
+	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","preset":"shared","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0}`, r.shared.ID); string(line) != want {
 		t.Fatalf("stats\n got  %s\n want %s", line, want)
 	}
 	if share := got.Deployments[0].AwakeShare; share <= 0.3 || share >= 0.6 {
@@ -213,7 +214,7 @@ func TestSchedulingTimelineCapsSegmentsPerCard(t *testing.T) {
 	}
 }
 
-func TestBoardOccupantsCarryTheServiceLevel(t *testing.T) {
+func TestBoardOccupantsCarryThePreset(t *testing.T) {
 	r := newTimelineRig(t)
 	rec := r.do(r.session, http.MethodGet, "/api/v1/scheduling/board", "")
 	if rec.Code != http.StatusOK {
@@ -235,7 +236,7 @@ func TestBoardOccupantsCarryTheServiceLevel(t *testing.T) {
 	for _, node := range board.Nodes.Items {
 		for _, gpu := range node.GPUs {
 			for _, o := range gpu.Occupants {
-				levels[fmt.Sprint(o["deployment"])] = fmt.Sprint(o["service_level"])
+				levels[fmt.Sprint(o["deployment"])] = fmt.Sprint(o["preset"])
 			}
 		}
 	}

@@ -52,23 +52,6 @@ func addLifecycleScheduleRole(db *gorm.DB) error {
 	return db.Migrator().AddColumn(&LifecycleSchedule{}, "Role")
 }
 
-// addDeploymentIdleSleep adds the per-deployment idle sleep setting. An
-// existing deployment keeps idle sleep off, as a new one does.
-func addDeploymentIdleSleep(db *gorm.DB) error {
-	if !db.Migrator().HasTable(&Deployment{}) {
-		return nil
-	}
-	for _, column := range []string{"IdleSleepAfterSec", "IdleSleepLevel"} {
-		if db.Migrator().HasColumn(&Deployment{}, column) {
-			continue
-		}
-		if err := db.Migrator().AddColumn(&Deployment{}, column); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // LifecycleSchedules is a deployment's schedule in creation order.
 func (s *Store) LifecycleSchedules(deploymentID uint) ([]LifecycleSchedule, error) {
 	var out []LifecycleSchedule
@@ -149,28 +132,6 @@ func (s *Store) LifecycleSchedule(deploymentID, id uint) (*LifecycleSchedule, er
 		return nil, ErrNotFound
 	}
 	return &sc, err
-}
-
-// SetDeploymentIdleSleep sets a deployment's idle sleep: after afterSec
-// without a user request it sleeps at level; 0 turns it off.
-func (s *Store) SetDeploymentIdleSleep(id uint, afterSec, level int) error {
-	res := s.db.Model(&Deployment{}).Where("id = ?", id).Updates(map[string]any{"idle_sleep_after_sec": afterSec, "idle_sleep_level": level})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	s.Bus.PublishChange("deployment", uintKey(id), "idle-sleep")
-	return nil
-}
-
-// IdleSleepDeployments is every active, sleepable deployment with idle sleep
-// on, for the automation to check.
-func (s *Store) IdleSleepDeployments() ([]Deployment, error) {
-	var out []Deployment
-	err := s.reader().Where("idle_sleep_after_sec > 0 AND sleepable = ? AND desired_state = ?", true, DeployActive).Order("id").Find(&out).Error
-	return out, err
 }
 
 // indexInstanceEventKind lets the scheduling board read the newest events of

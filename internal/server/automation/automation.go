@@ -31,11 +31,17 @@ const (
 	TriggerWakeWaiting = "wake_waiting"
 )
 
-// IdleDeployment is a deployment with idle sleep on.
-type IdleDeployment struct {
+// LevelAuto is the sleep level of an order that leaves the choice of L1 or L2
+// to the platform: L1, and L2 where the host cannot hold the weights.
+const LevelAuto = 0
+
+// AutoSleepDeployment is a deployment with auto sleep on.
+type AutoSleepDeployment struct {
 	ID       uint
 	AfterSec int
-	Level    int
+	// Level is the sleep level it sleeps at, LevelAuto for the platform's
+	// choice.
+	Level int
 	// Awake says at least one of its instances serves (is not asleep and not
 	// ordered to sleep): only then is there anything to put to sleep.
 	Awake bool
@@ -58,7 +64,7 @@ type WakeResult struct {
 // Source is what the automation reads.
 type Source interface {
 	Schedules() ([]Schedule, error)
-	IdleDeployments() ([]IdleDeployment, error)
+	AutoSleepDeployments() ([]AutoSleepDeployment, error)
 	WaitingWakes() ([]WaitingWake, error)
 	// LastRequestAt is when the gateway last saw a user request for the
 	// deployment since the server started.
@@ -68,10 +74,11 @@ type Source interface {
 // Actions is how the automation acts: the same orders an operator gives,
 // each taking the lifecycle order lock.
 type Actions interface {
-	// Sleep puts the deployment's awake instances to sleep at level. A held
-	// sleep (a schedule's) is not woken by a request; one the platform chose
-	// (idle sleep) is.
-	Sleep(deploymentID uint, level int, held bool) error
+	// Sleep puts the deployment's awake instances to sleep at level
+	// (LevelAuto: the platform's choice) and returns the level it ordered. A
+	// held sleep (a schedule's) is not woken by a request; one the platform
+	// chose (auto sleep) is.
+	Sleep(deploymentID uint, level int, held bool) (int, error)
 	// Wake wakes the deployment's sleepers that fit and leaves the rest
 	// waiting for room.
 	Wake(deploymentID uint) (WakeResult, error)
@@ -90,7 +97,7 @@ type Actions interface {
 
 // Defaults for the evaluator.
 const (
-	DefaultInterval = 15 * time.Second
+	DefaultInterval = 10 * time.Second
 	// DefaultCatchUp is how old an occurrence missed while the server was
 	// down may be and still run when it starts.
 	DefaultCatchUp = 12 * time.Hour
@@ -103,7 +110,7 @@ const (
 	DefaultNudgeSettle = 2 * time.Second
 )
 
-// Evaluator carries out schedules, idle sleep and waiting wakes on a tick.
+// Evaluator carries out schedules, auto sleep and waiting wakes on a tick.
 type Evaluator struct {
 	source   Source
 	actions  Actions
@@ -117,7 +124,7 @@ type Evaluator struct {
 	// before it has been watched for its whole idle period, since the
 	// gateway's request clock starts with the server.
 	started time.Time
-	// awakeSince is when each idle-sleep deployment was last seen go from
+	// awakeSince is when each auto-sleep deployment was last seen go from
 	// asleep to awake, so a deployment just woken is not put back to sleep
 	// before anyone could use it.
 	awakeSince map[uint]time.Time
@@ -141,7 +148,7 @@ func New(source Source, actions Actions, log *slog.Logger) *Evaluator {
 }
 
 // Nudge asks for a look at the waiting wakes soon, since one may fit once
-// another instance sleeps or goes. Schedules and idle sleep keep to the tick:
+// another instance sleeps or goes. Schedules and auto sleep keep to the tick:
 // a change elsewhere does not make either due.
 func (e *Evaluator) Nudge() {
 	select {
@@ -185,7 +192,7 @@ func (e *Evaluator) Run(ctx context.Context) {
 }
 
 // Tick runs one evaluation: waiting wakes first (they free nothing and only
-// take room that is there), then schedules, then idle sleep.
+// take room that is there), then schedules, then auto sleep.
 func (e *Evaluator) Tick() {
 	now := e.now()
 	if e.started.IsZero() {
@@ -275,7 +282,7 @@ func (e *Evaluator) fire(s Schedule, at time.Time) {
 	switch s.Action {
 	case "sleep":
 		params["level"] = s.SleepLevel
-		if err = e.actions.Sleep(s.DeploymentID, s.SleepLevel, true); err == nil {
+		if _, err = e.actions.Sleep(s.DeploymentID, s.SleepLevel, true); err == nil {
 			e.actions.Record(s.DeploymentID, EventAutoSleep, params)
 		}
 	case "wake":
@@ -319,9 +326,9 @@ func (e *Evaluator) fire(s Schedule, at time.Time) {
 }
 
 func (e *Evaluator) idle(now time.Time) {
-	deployments, err := e.source.IdleDeployments()
+	deployments, err := e.source.AutoSleepDeployments()
 	if err != nil {
-		e.log.Warn("automation: read idle sleep deployments", "err", err)
+		e.log.Warn("automation: read auto sleep deployments", "err", err)
 		return
 	}
 	seen := map[uint]bool{}
@@ -346,9 +353,13 @@ func (e *Evaluator) idle(now time.Time) {
 		if idleFor < time.Duration(d.AfterSec)*time.Second {
 			continue
 		}
-		params := map[string]any{"trigger": TriggerIdle, "level": d.Level, "idle_sec": int(idleFor.Seconds())}
-		if err := e.actions.Sleep(d.ID, d.Level, false); err != nil {
+		params := map[string]any{"trigger": TriggerIdle, "idle_sec": int(idleFor.Seconds())}
+		level, err := e.actions.Sleep(d.ID, d.Level, false)
+		if err != nil {
 			failed := copyParams(params)
+			if d.Level != LevelAuto {
+				failed["level"] = d.Level
+			}
 			failed["action"] = "sleep"
 			failed["reason"] = err.Error()
 			if code, ok := codeOf(err); ok {
@@ -359,6 +370,7 @@ func (e *Evaluator) idle(now time.Time) {
 			e.awakeSince[d.ID] = now
 			continue
 		}
+		params["level"] = level
 		e.actions.Record(d.ID, EventAutoSleep, params)
 		e.wasAwake[d.ID] = false
 	}

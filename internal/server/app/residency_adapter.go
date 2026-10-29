@@ -3,12 +3,15 @@ package app
 import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/automation"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// A yield sleeps at L1 when the host can hold the weights, else at L2.
+// A yield sleeps at the level the holder's policy prefers: auto is L1 when
+// the host can hold the weights, else L2; l1 and l2 are what they say.
 // Measured on an L20 (docs/explanation/service-levels.md): the first L1 sleep
 // of an engine pins about twice its weights in host memory and keeps them
 // pinned even awake, and the agent does that first sleep when the engine
@@ -43,7 +46,7 @@ func (a *residencyAdapter) Waiters() ([]automation.Waiter, error) {
 		if !wakeableByRequest(dep) {
 			continue
 		}
-		out = append(out, automation.Waiter{DeploymentID: id, Level: dep.ServiceLevel, Since: since})
+		out = append(out, automation.Waiter{DeploymentID: id, Policy: dep.Policy(), Since: since})
 	}
 	return out, nil
 }
@@ -54,21 +57,21 @@ func wakeableByRequest(dep *store.Deployment) bool {
 
 // Wakeable says the deployment is active, asleep by the platform's choice,
 // and has a sleeper to wake.
-func (a *residencyAdapter) Wakeable(id uint) (string, bool) {
+func (a *residencyAdapter) Wakeable(id uint) (servicelevel.Policy, bool) {
 	dep, err := a.store.GetDeployment(id)
 	if err != nil || !wakeableByRequest(dep) {
-		return "", false
+		return servicelevel.Policy{}, false
 	}
 	insts, err := a.store.InstancesForDeployment(id)
 	if err != nil {
-		return "", false
+		return servicelevel.Policy{}, false
 	}
 	for i := range insts {
 		if store.HoldsSleepIntent(&insts[i]) && planning.InstanceSleepIntent(&insts[i]) > 0 {
-			return dep.ServiceLevel, true
+			return dep.Policy(), true
 		}
 	}
-	return "", false
+	return servicelevel.Policy{}, false
 }
 
 // Blocking is what keeps the first of the deployment's waiting replicas from
@@ -122,7 +125,7 @@ func (a *residencyAdapter) Blocking(id uint) (automation.Blocking, error) {
 		if !ok {
 			at[target.Deployment.ID] = len(out.Holders)
 			out.Holders = append(out.Holders, automation.Holder{
-				DeploymentID: target.Deployment.ID, Name: target.Deployment.Name, Level: target.Deployment.ServiceLevel,
+				DeploymentID: target.Deployment.ID, Name: target.Deployment.Name, Policy: target.Deployment.Policy(),
 			})
 			index = len(out.Holders) - 1
 		}
@@ -140,9 +143,11 @@ func (a *residencyAdapter) Activity(id uint) automation.Activity {
 	return automation.Activity{InFlight: a.acct.InFlight(id), Held: held, LastRequest: last}
 }
 
-// Yield puts the holder's replica to sleep, at L1 unless the host cannot
-// hold the weights (planning.L1HostMemoryRefusal), a sleep the platform chose
-// (not held: a request for it waits and wakes it again).
+// Yield puts the holder's replica to sleep at the level its policy prefers
+// (auto: L1 unless the host cannot hold the weights, planning.
+// L1HostMemoryRefusal), a sleep the platform chose (not held: a request for
+// it waits and wakes it again). A holder that prefers L1 is refused when the
+// host cannot hold the weights, as an operator's L1 sleep is.
 func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, error) {
 	defer planning.LockLifecycle()()
 	mode := proto.SleepModeWait
@@ -151,22 +156,30 @@ func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, 
 	}
 	level := proto.SleepLevelL1
 	if dep, err := a.store.GetDeployment(id); err == nil {
-		want := map[string]bool{}
-		for _, uuid := range instances {
-			want[uuid] = true
-		}
-		insts, err := a.store.InstancesForDeployment(id)
-		if err != nil {
-			return 0, err
-		}
-		var named []store.Instance
-		for _, in := range insts {
-			if want[in.UUID] {
-				named = append(named, in)
-			}
-		}
-		if planning.L1HostMemoryRefusal(a.store, dep, named, a.host) != nil {
+		pref := dep.Policy().SleepLevelPref()
+		if pref == servicelevel.LevelL2 {
 			level = proto.SleepLevelL2
+		} else {
+			want := map[string]bool{}
+			for _, uuid := range instances {
+				want[uuid] = true
+			}
+			insts, err := a.store.InstancesForDeployment(id)
+			if err != nil {
+				return 0, err
+			}
+			var named []store.Instance
+			for _, in := range insts {
+				if want[in.UUID] {
+					named = append(named, in)
+				}
+			}
+			if refusal := planning.L1HostMemoryRefusal(a.store, dep, named, a.host); refusal != nil {
+				if pref == servicelevel.LevelL1 {
+					return 0, messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
+				}
+				level = proto.SleepLevelL2
+			}
 		}
 	}
 	if err := a.store.OrderInstancesSleepHeld(id, instances, level, mode, false); err != nil {
