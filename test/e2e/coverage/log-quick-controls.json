@@ -271,11 +271,16 @@
       "18.9"
     ],
     "partial": {
-      "5.1-5.6": "all six signatures; not all source/level options or keyboard focus/style matrix",
       "18.1": "server collector only, no agent/container",
       "18.4": "search and histogram; no pagination",
       "22.5": "both locales for this flow; not full page language audit"
-    }
+    },
+    "5.1": "covered: All six quick-filter chips are enumerated from the page itself and each is exercised: every chip is pressed or clicked in turn, and after each step the page asserts aria-pressed true exactly on the chips that should be selected and false on the rest, so the selected state is read rather than inferred. The chip's identity is also checked by computed style, selected background against the theme's primary token and unselected against white.",
+    "5.2": "covered: Every selection is executed against the real search and histogram endpoints with the full query compared, not just the presence of an option. Each scenario asserts the exact query string, the exact response body (items, order and total), the rendered row count and each row's text, and the rendered histogram bars by accessible name. Chip-before-text and text-before-chip produce the same row identity. After the reload, reapplying the same chip reproduces the same persisted rows as the independent GET, so the read-back is verified rather than assumed.",
+    "5.3": "covered: The free-form query is exercised with a complete phrase, a partial term, and the empty string, each time with the derived expression and response compared exactly; clearing the text restores the chip-only result, which is the product's documented way back to the previous candidate set.",
+    "5.4": "covered: Clearing is driven rather than assumed: clearing the text restores the chip-only predicate, and removing chip after chip returns to the bare text predicate with the full row set, until all chips are removed and the text alone yields its original rows. Each clear step asserts the exact resulting query and row identity, so a stale leftover predicate would fail.",
+    "5.5": "covered: Switching the severity control to a minimum of error excludes the WARN facts and switching it back to warn restores exactly the same fact identity, so returning to a previous option carries no stale value. The source switch is exercised the same way and the resulting query and response are compared exactly at each step.",
+    "5.6": "covered: The chips are driven from the keyboard: focus reaches the chip by Tab, Shift+Tab leaves and Tab returns to it, Space selects it and Enter deselects it, and each transition asserts both aria-pressed and the resulting query and rows. The chip is also asserted to be fully in the viewport before the keyboard run."
   },
   "missing": [
     "agent/container collection",
