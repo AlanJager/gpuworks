@@ -478,7 +478,8 @@
     "UNIT_PLACEMENT_NONE": "目前凑不出能放下该部署的节点组：共 {{nodes}} 个节点，{{unmet}} 个不满足条件，{{cordoned}} 个已停止调度，{{offline}} 个离线，{{busy}} 个空闲 GPU 不够，{{no_network}} 个没有参数网络；同一网络、同一 GPU 架构下最大的一组只有 {{largest}} 个节点。",
     "AUTO_PLACEMENT_TP_REQUIRED": "多机部署的自动放置必须设置张量并行（TP），平台才知道每个节点给每个 rank 几张卡。",
     "AUTO_PLACEMENT_PD_MULTI_NODE": "自动放置只处理一台节点放得下的 PD 实例，但 {{role}} 角色的实例跨了多个节点。请改为手动放置并指定它们的节点。",
-    "PLACEMENT_MODE_SHAPE": "单机部署的放置写在节点条件里；自动 / 手动放置只适用于多机和 PD 部署。"
+    "PLACEMENT_MODE_SHAPE": "单机部署的放置写在节点条件里；自动 / 手动放置只适用于多机和 PD 部署。",
+    "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"

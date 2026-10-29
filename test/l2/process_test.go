@@ -370,11 +370,10 @@ func TestAgentUpgradeEndpointAtomicallyReplacesBinary(t *testing.T) {
 		}
 		t.Skipf("agent self-upgrade executes a Linux replacement binary; got %s", runtime.GOOS)
 	}
-	ensureEmbeddedAgentFor(t, runtime.GOARCH)
-	serverBin := buildBinary(t, "./cmd/gpuworks")
+	serverBin, agentBin, dataDir := upgradeProcessBinaries(t)
 	port := freePort(t)
 	base := "http://127.0.0.1:" + port
-	server := serverCommand(t, "upgrade-password", serverBin, "serve", "--addr", "127.0.0.1:"+port, "--data", t.TempDir())
+	server := serverCommand(t, "upgrade-password", serverBin, "serve", "--addr", "127.0.0.1:"+port, "--data", dataDir)
 	server.Stdout, server.Stderr = io.Discard, io.Discard
 	if err := server.Start(); err != nil {
 		t.Fatal(err)
@@ -383,7 +382,6 @@ func TestAgentUpgradeEndpointAtomicallyReplacesBinary(t *testing.T) {
 	waitHTTP(t, base+"/api/v1/healthz", serverHealthTimeout, func(resp *http.Response) bool { return resp.StatusCode == http.StatusUnauthorized })
 	adminToken := loginWithPassword(t, base, "upgrade-password")
 	node, nodeToken := createNode(t, base, adminToken, "upgrade-node")
-	agentBin := buildBinary(t, "./cmd/gpuworks-agent")
 	state := filepath.Join(t.TempDir(), "agent-state")
 	agent := exec.Command(agentBin, "run", "--server", base, "--token", nodeToken, "--state", state)
 	agent.Env = append(os.Environ(), "GPUWORKS_FAKE_GPU=A100x1,24576", "GPUWORKS_RUNTIME_DRIVER=none", "GPUWORKS_LOG_LEVEL=warn")
@@ -408,6 +406,7 @@ func TestAgentUpgradeEndpointAtomicallyReplacesBinary(t *testing.T) {
 		t.Fatalf("upgrade endpoint status=%d body=%s", resp.StatusCode, body)
 	}
 	waitUpgradeConfirmed(t, agentBin)
+	waitUpgradeRunFromResponse(t, base, adminToken, body)
 }
 
 // A server_dial agent cannot reach the server: its --server points at a port
@@ -422,11 +421,10 @@ func TestServerDialAgentUpgradesWithoutReachingTheServer(t *testing.T) {
 		}
 		t.Skipf("agent self-upgrade executes a Linux replacement binary; got %s", runtime.GOOS)
 	}
-	ensureEmbeddedAgentFor(t, runtime.GOARCH)
-	serverBin := buildBinary(t, "./cmd/gpuworks")
+	serverBin, agentBin, dataDir := upgradeProcessBinaries(t)
 	port := freePort(t)
 	base := "http://127.0.0.1:" + port
-	server := serverCommand(t, "upgrade-password", serverBin, "serve", "--addr", "127.0.0.1:"+port, "--data", t.TempDir(), "--server-dial-reconnect-interval", "1s")
+	server := serverCommand(t, "upgrade-password", serverBin, "serve", "--addr", "127.0.0.1:"+port, "--data", dataDir, "--server-dial-reconnect-interval", "1s")
 	server.Stdout, server.Stderr = io.Discard, io.Discard
 	if err := server.Start(); err != nil {
 		t.Fatal(err)
@@ -457,7 +455,6 @@ func TestServerDialAgentUpgradesWithoutReachingTheServer(t *testing.T) {
 		t.Fatalf("create server_dial node status=%d body=%+v", resp.StatusCode, created)
 	}
 
-	agentBin := buildBinary(t, "./cmd/gpuworks-agent")
 	state := filepath.Join(t.TempDir(), "agent-state")
 	agentLog, err := os.Create(filepath.Join(t.TempDir(), "agent.log"))
 	if err != nil {
@@ -495,6 +492,7 @@ func TestServerDialAgentUpgradesWithoutReachingTheServer(t *testing.T) {
 		t.Fatalf("upgrade endpoint status=%d body=%s", resp.StatusCode, body)
 	}
 	waitUpgradeConfirmed(t, agentBin)
+	waitUpgradeRunFromResponse(t, base, adminToken, body)
 	waitNode(t, base, adminToken, func(n processNode) bool { return n.UUID == created.Node.UUID && n.State == "online" })
 }
 

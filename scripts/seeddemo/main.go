@@ -9,9 +9,9 @@ import (
 	"log"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/pkg/topoparse"
 )
@@ -23,7 +23,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := seed.Seed(st); err != nil {
+	if err := app.SyncInferenceCatalog(st); err != nil {
 		log.Fatal(err)
 	}
 	g := st.DB()

@@ -17,6 +17,8 @@ GOBIN     := $(HOME)/.local/go/bin
 export PATH := $(GOBIN):$(HOME)/go/bin:$(PATH)
 
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Resolve once: link flags and the Agent manifest must name the same build.
+VERSION   := $(VERSION)
 COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 # DATE is the build time the binary reports. Release builds pass the pipeline's
 # creation time, the same value the distribution index records, so a server
@@ -99,7 +101,7 @@ AGENTBIN := internal/server/agentbin/dl
 ## the server reads either.
 cross-agents: check-libvgpu
 	@mkdir -p $(AGENTBIN) $(BIN)/dl
-	@rm -f $(AGENTBIN)/gpuworks-agent-*
+	@rm -f $(AGENTBIN)/gpuworks-agent-* $(AGENTBIN)/agent-manifest.json
 	@for p in $(PLATFORMS); do \
 		os=$${p%/*}; arch=$${p#*/}; name=gpuworks-agent-$$os-$$arch; \
 		echo "  embed agent $$os/$$arch"; \
@@ -111,6 +113,7 @@ cross-agents: check-libvgpu
 			CGO_ENABLED=0 $(GO) run ./scripts/zstdpack -o $(AGENTBIN)/$$name.zst $(BIN)/dl/$$name || exit 1; \
 		fi; \
 	done
+	CGO_ENABLED=0 $(GO) run ./scripts/agentmanifest -version "$(VERSION)" -o $(AGENTBIN)/agent-manifest.json $(addprefix $(BIN)/dl/gpuworks-agent-,$(subst /,-,$(PLATFORMS)))
 
 ## cross: alias kept for the demo (the plain agents are in $(BIN)/dl)
 cross: cross-agents

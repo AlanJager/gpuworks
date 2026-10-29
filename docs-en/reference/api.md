@@ -190,6 +190,14 @@ Login, logout, and management write requests using login sessions check the requ
 | POST | `/api/v1/nodes` | Create a node awaiting connection and return the installation command and token; see [Connection Parameters for Node Creation](#创建节点的连接参数) for all fields and conditions | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | Recent rejected connection attempts | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | Recent agent upgrade failures | JWT |
+| POST | `/api/v1/agent-upgrades/preview` | Preview eligibility and target for all or selected nodes | JWT(admin) |
+| POST | `/api/v1/agent-upgrades` | Create a run using the preview UUID snapshot, target, manifest fingerprint, and idempotency key | JWT(admin) |
+| GET | `/api/v1/agent-upgrades` | List paginated runs and the global blocking item | JWT |
+| GET | `/api/v1/agent-upgrades/{id}` | Read run progress and counts | JWT |
+| GET | `/api/v1/agent-upgrades/{id}/items` | Read paginated node outcomes, optionally filtered by state | JWT |
+| POST | `/api/v1/agent-upgrades/{id}/stop` | Cancel queued nodes and keep observing the active node | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/continue-preview` | Preview remaining nodes from a paused run | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | Release an unconfirmed reservation with an administrator audit note | JWT(admin) |
 | POST | `/api/v1/nodes/precheck` | Check the host environment and bidirectional connectivity required for SSH connection; see [SSH Checks and Installation](#ssh-检查与安装) for address rules | JWT(admin) |
 | POST | `/api/v1/nodes/install` | Install the agent through SSH; connection parameters are the same as for node creation. Use `no_systemd` to select the Linux background execution mode. See [SSH Checks and Installation](#ssh-检查与安装) for conflicts and replacement conditions | JWT(admin) |
 | GET | `/api/v1/nodes/{uuid}` | Node details (including the GPU list; also includes the token for administrators) | JWT |
@@ -214,6 +222,29 @@ Login, logout, and management write requests using login sessions check the requ
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | Regenerate the node token (disconnects the current connection) | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}` | By default, uninstall the agent using saved SSH credentials, delete the record after confirming completion, and return `{"status":"deleted","agent_uninstalled":true}`. If uninstallation is not confirmed, return 409 `NODE_UNINSTALL_UNCONFIRMED` and retain the node and SSH credentials. Explicitly specifying `?force=true` skips uninstallation, deletes only the record, and returns `agent_uninstalled:false`; both modes reject nodes with instances (409). A non-boolean force value or repeated parameter returns 400; a nonexistent node returns 404 | JWT |
 | GET | `/api/v1/events` | SSE change event stream | JWT |
+
+### Bulk Agent Upgrades
+
+An administrator first posts the platform-wide scope to `/api/v1/agent-upgrades/preview`, independently of node list filters and pagination:
+
+```json
+{"scope":"all"}
+```
+
+Alternatively, submit `{"node_uuids":["node-a"]}`. The preview returns the complete `node_uuids` snapshot, `target_version`, `manifest_fingerprint`, per-node eligibility in `nodes`, eligibility `counts`, and the global `blocked_by_item`. Reuse that snapshot and target in the create request:
+
+```json
+{
+  "node_uuids": ["node-a", "node-b"],
+  "expected_target_version": "v0.6.0",
+  "expected_manifest_fingerprint": "<preview.manifest_fingerprint>",
+  "idempotency_key": "<client-generated-unique-key>"
+}
+```
+
+Success returns 202 and a run object with `id`, `state`, and `counts`. An identical request with the same idempotency key returns the original run. A changed request, target, or artifact returns 409 and requires another preview. `GET /agent-upgrades` and `GET /agent-upgrades/{id}/items` support `page` and `page_size`; items also accept a single `state` filter. `processed` includes all terminal outcomes and does not mean `succeeded`; `unconfirmed` remains an unknown outcome that reserves the global execution slot.
+
+Stopping cancels only queued items. To continue, call `continue-preview`, then create a new run with `source_run_id` pointing to the original run; cancellation of the original queue and creation of the new run are atomic. After verifying an unconfirmed node, an administrator posts `{"note":"处理依据"}` to `items/{uuid}/release`; success returns 204. The original result remains and verification is audited separately. Management identities can read results; bulk writes require an administrator and reject read-only platform tokens. The existing single-node route retains its permissions, adds `run_id` to its 202 response, and shares the global execution reservation. For workflow and workload impact, see [Upgrade the Agent](../how-to/upgrade-and-compatibility.md#升级-agent).
 
 ### Node List Filters and Response Fields
 

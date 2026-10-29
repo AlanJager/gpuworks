@@ -77,9 +77,13 @@ Upgrading the control plane does not automatically update agents. Upgrades from 
 
 Use an administrator account. The node must be online; older agents also need access to the server's download address.
 
-1. Open **Compute Nodes**. First select an online node with no instances or whose workload can be interrupted, and open its details to check **Agent version**. Skip it if it matches the server; if it is newer than the server, first confirm whether you intend to downgrade.
-2. Click **Upgrade Agent**, and wait for the message that the agent has upgraded and come back online. Confirm that the node is online and **Agent version** in its details matches the server.
-3. After the current node recovers, proceed to the next node.
+1. Open **Compute Nodes** and click **Upgrade all agents**. The preview covers all platform nodes regardless of search, filters, or pagination, and shows the target version and each node's eligibility or reason for skipping or manual action.
+2. Verify that the target is the current server version and confirm that workloads can tolerate a brief interruption. A different version string may represent a downgrade; unidentifiable target builds such as `dev` cannot be used for bulk upgrades.
+3. View total, processed, succeeded, failed, skipped, and unconfirmed counts, and open per-node results. Only one agent upgrades at a time across the platform; **Upgrade Agent** in node details uses the same queue. Progress records remain available after refreshing the page. The latest 20 completed runs are retained; runs with queued work or unresolved reservations are never pruned.
+4. Success requires a new formal connection from the target agent version and a normal status report. Transfer or reconnection timeouts pause the queue; unconfirmed means the outcome is unknown and does not mean it is safe to retry. Check the node's processes, version, service logs, and connection state. After confirming that the old process has exited and no upgrade remains in progress, an administrator can release the reservation with an audit note, then preview and confirm the remaining nodes. Continuing creates a linked new batch and preserves the original results.
+5. **Stop remaining upgrades** cancels only nodes that have not started. The current upgrade remains under observation. Console server upgrades are rejected while an upgrade is running or an unconfirmed reservation remains unresolved, keeping the target stable.
+
+For older agents that download their binary, the batch package remains pinned during the download. Older server-initiated agents that cannot receive an upgrade package over the connection require the manual procedure below. Upgrading does not automatically drain workloads or guarantee uninterrupted requests; verify workload recovery one node at a time for multi-node inference and PD disaggregation.
 
 ### Rerun the Installation Script on the Node
 

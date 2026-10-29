@@ -118,6 +118,8 @@ function gpuInfo(index: number): Node["gpus"][number] {
 }
 
 const originals = {
+  me: api.me,
+  agentUpgradeRuns: api.agentUpgradeRuns,
   nodes: api.nodes,
   nodesPage: api.nodesPage,
   health: api.health,
@@ -163,6 +165,8 @@ function nodesServer(nodes: Node[]) {
 
 function stubApi(nodes: Node[]) {
   pageQueries = [];
+  api.me = async () => ({ role: "admin" }) as never;
+  api.agentUpgradeRuns = async () => ({ items: [], total: 0, page: 1, page_size: 20 });
   api.nodes = async () => { throw new Error("the node page fetched every node"); };
   api.nodesPage = nodesServer(nodes);
   api.node = async (uuid: string) => {

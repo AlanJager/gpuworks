@@ -32,6 +32,8 @@ import { nodeDisplayName } from "../nodeDisplay";
 import NodeLabelsModal from "../components/NodeLabelsModal";
 import { NodeSchedulingModal } from "../components/NodeSchedulingModal";
 import { labelPair } from "../nodeLabels";
+import { useIsAdmin } from "../components/useIsAdmin";
+import AgentUpgradeManager from "../components/agentUpgrades/AgentUpgradeManager";
 import {
   useAgentUpgrades,
   type UpgradeEvent,
@@ -41,6 +43,8 @@ const NODE_PAGE_SIZE = 20;
 
 export default function NodesPage() {
   const { t } = useTranslation("nodes");
+  const isAdmin = useIsAdmin();
+  const [upgradeRunID, setUpgradeRunID] = useState<number>();
   const location = useLocation();
   const incoming = location.state as {
     nodeUUID?: string;
@@ -78,6 +82,13 @@ export default function NodesPage() {
   const onUpgradeEvent = (event: UpgradeEvent) => {
     const name = event.name;
     switch (event.kind) {
+      case "serverTracked":
+        setUpgradeRunID(event.runID);
+        break;
+      case "serverSettled":
+        if (event.node) setDetail((current) => current?.uuid === event.uuid ? event.node! : current);
+        refresh();
+        break;
       case "dispatched":
         message.success(t("upgrade.dispatched"));
         break;
@@ -197,6 +208,7 @@ export default function NodesPage() {
           </Space>
         }
       />
+      <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} />
       <Card>
         <ResourceTable<Node>
           tableId={NODE_TABLE_ID}

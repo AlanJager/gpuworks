@@ -317,6 +317,21 @@ func (a *apiHandlers) upgradeServerFromUpload(w http.ResponseWriter, r *http.Req
 }
 
 func (a *apiHandlers) upgradeServer(w http.ResponseWriter, r *http.Request, archive io.Reader) {
+	if a.d.AgentUpgrades.Service != nil {
+		finish, err := a.d.AgentUpgrades.Service.BeginServerUpgrade()
+		if err != nil {
+			writeAgentUpgradeError(w, err)
+			return
+		}
+		accepted := false
+		defer func() { finish(accepted) }()
+		a.upgradeServerWithAgentGuard(w, r, archive, &accepted)
+		return
+	}
+	a.upgradeServerWithAgentGuard(w, r, archive, nil)
+}
+
+func (a *apiHandlers) upgradeServerWithAgentGuard(w http.ResponseWriter, r *http.Request, archive io.Reader, accepted *bool) {
 	by := ""
 	if claims, ok := a.claimsFromRequest(r); ok {
 		by = claims.Username
@@ -325,6 +340,9 @@ func (a *apiHandlers) upgradeServer(w http.ResponseWriter, r *http.Request, arch
 	if err != nil {
 		writeServerSettingsError(w, err)
 		return
+	}
+	if accepted != nil {
+		*accepted = true
 	}
 	writeJSON(w, http.StatusAccepted, started)
 }

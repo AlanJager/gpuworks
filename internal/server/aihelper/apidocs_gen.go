@@ -3,6 +3,9 @@
 package aihelper
 
 var routeDocs = map[string]string{
+	"/api/v1/agent-upgrades":                    "分页列出升级批次与全局阻塞项",
+	"/api/v1/agent-upgrades/{}":                 "获取批次进度和计数",
+	"/api/v1/agent-upgrades/{}/items":           "分页查询逐节点结果，可按 state 筛选",
 	"/api/v1/agent/connect":                     "agent 长连接 WS upgrade 入口",
 	"/api/v1/agent/rejects":                     "最近被拒绝的连接尝试",
 	"/api/v1/agent/upgrade-errors":              "最近 agent 升级失败记录",

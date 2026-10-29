@@ -201,7 +201,7 @@ Linux 上以非 root 用户运行 agent 时，使用 runveil 需要该用户能�
 
 先升级 server，再更新 agent；节点升级的目标版本来自当前 server。升级会短暂中断该节点的连接与在途请求。多机推理或 PD 分离节点应逐个升级，每次等待节点恢复在线。
 
-- **控制台升级**：在节点详情点击**升级 Agent**，等待完成，再核对节点在线且 **Agent 版本**与 server 一致。新 agent 可经现有连接接收升级包，较早的 agent 仍需访问 server 的下载地址。
+- **控制台升级**：在节点页点击**升级全部 Agent**，预览全平台节点并确认后查看逐台进度；也可在节点详情点击**升级 Agent**。等待正式重连成功，再核对节点在线且 **Agent 版本**与 server 一致。新 agent 可经现有连接接收升级包，较早的 agent 仍需访问 server 的下载地址。
 - **重新运行安装脚本或离线包**：先保留旧二进制，再沿用原 Token、连接方式、安装和 state 目录执行安装；完成后核对在线状态和版本。这会重写配置，没有自升级的自动回滚。
 
 没有常驻 agent 的手工运行环境，也可使用 [`gpuworks-agent upgrade`](../reference/cli.md#gpuworks-agent-upgrade)。它会进入前台运行，不会重启原服务，不适用于没有 server 地址的 Server 发起连接节点。
