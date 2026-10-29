@@ -488,3 +488,19 @@ const (
 	// without a code of its own, or the transfer broke.
 	ErrorStorageFileOperationFailed = "STORAGE_FILE_OPERATION_FAILED"
 )
+
+// Batch codes (GET /batches, POST /batches, the Batch API's console side).
+const (
+	// ErrorBatchNotFound: no such batch, file or output file for the caller.
+	ErrorBatchNotFound = "BATCH_NOT_FOUND"
+	// ErrorBatchNotCancellable: the batch has finished ({status}).
+	ErrorBatchNotCancellable = "BATCH_NOT_CANCELLABLE"
+	// ErrorBatchFileInvalid: the uploaded file is not a valid batch input:
+	// {line} of it (0 for the file as a whole), {reason} the check that failed
+	// and {detail} its English text.
+	ErrorBatchFileInvalid = "BATCH_FILE_INVALID"
+	// ErrorBatchFileTooLarge: the file is over the {limit_mb} megabytes allowed.
+	ErrorBatchFileTooLarge = "BATCH_FILE_TOO_LARGE"
+	// ErrorBatchRequestInvalid: a field of the request ({field}) is not valid.
+	ErrorBatchRequestInvalid = "BATCH_REQUEST_INVALID"
+)
