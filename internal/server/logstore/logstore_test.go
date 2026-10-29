@@ -287,6 +287,61 @@ func TestContextWindow(t *testing.T) {
 	}
 }
 
+// TestContextMissingAnchorMatchIndex pins the contract for an anchor id that
+// does not exist (GWKS-147): matchIndex must be -1, never an index into the
+// returned slice. The reporter measured items=[672,674] with match_index=2 -
+// two real rows but an index one past the end - so a caller indexing
+// items[match_index] panicked or highlighted the wrong row. Both shapes are
+// covered: neighbours present, and an empty window.
+func TestContextMissingAnchorMatchIndex(t *testing.T) {
+	s := newStore(t)
+	seed(t, s)
+
+	res, err := s.Search(Filter{Query: `"CUDA out of memory"`, Limit: 1})
+	if err != nil {
+		t.Fatalf("Search anchor: %v", err)
+	}
+	real := res.Entries[0]
+	// A nonexistent id between real neighbours: the case that returned a
+	// non-empty window with an out-of-range index.
+	const missingID = 1 << 40
+	rows, idx, err := s.Context(real.Instance, "node-1", real.TimeMS, missingID, 2, 2)
+	if err != nil {
+		t.Fatalf("Context missing anchor: %v", err)
+	}
+	if idx != -1 {
+		t.Fatalf("matchIndex = %d for a missing anchor with %d rows; want -1", idx, len(rows))
+	}
+	if len(rows) == 0 {
+		t.Fatal("expected the neighbouring rows to still be returned around a missing anchor")
+	}
+
+	// Empty window: an instance with no rows at all returns no neighbours
+	// either, and the old code reported matchIndex == len(rows) == 0.
+	rows, idx, err = s.Context("inst-absent", "", real.TimeMS, missingID, 2, 2)
+	if err != nil {
+		t.Fatalf("Context missing anchor, empty window: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want 0 for an instance with no rows", len(rows))
+	}
+	if idx != -1 {
+		t.Fatalf("matchIndex = %d for an empty window; want -1", idx)
+	}
+
+	// A present anchor still reports its own position in the same window.
+	rows, idx, err = s.Context(real.Instance, "node-1", real.TimeMS, real.ID, 2, 2)
+	if err != nil {
+		t.Fatalf("Context present anchor: %v", err)
+	}
+	if idx < 0 || idx >= len(rows) {
+		t.Fatalf("matchIndex = %d is outside a %d-row window", idx, len(rows))
+	}
+	if rows[idx].ID != real.ID {
+		t.Fatalf("rows[%d] = %+v, want the anchor id %d", idx, rows[idx], real.ID)
+	}
+}
+
 func TestHistogram(t *testing.T) {
 	s := newStore(t)
 	seed(t, s)
