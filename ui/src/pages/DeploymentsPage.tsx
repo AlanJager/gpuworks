@@ -19,7 +19,7 @@ import {
   message,
 } from "antd";
 import { ApiOutlined, CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, ExperimentOutlined, MessageOutlined, MoreOutlined } from "@ant-design/icons";
-import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Deployment, type DeploymentListItem, type Instance, type RoutingPolicyOption } from "../api";
+import { api, useEventPayload, useEvents, usePolling, type ChangeEvent, type Deployment, type DeploymentListItem, type DeploymentRuntimeNode, type Instance, type RoutingPolicyOption } from "../api";
 import { DeploymentPreparation, ListPreparationAction, PreparationLabel } from "./DeploymentPreparation";
 import DeploymentMetricsPanel from "../components/DeploymentMetricsPanel";
 import RoutingPolicyHelp from "../components/RoutingPolicyHelp";
@@ -190,8 +190,20 @@ export default function DeploymentsPage() {
       key: "node",
       title: t("page.column.node"),
       width: 160,
-      // The uuid identifies the node; the name is what an operator recognizes.
-      render: (_: unknown, d: DeploymentListItem) => deploymentNodesLabel(d, d.node_uuid),
+      // Where the replicas run now - not where the deployment was asked to run,
+      // which has its own column beside it. A spread deployment folds into
+      // "172.30.8.31 and 1 more" with every node in the tooltip and the drawer,
+      // so no replica's node is hidden behind another's (GWKS-120).
+      render: (_: unknown, d: DeploymentListItem) => <DeploymentRuntimeNodes dep={d} />,
+    },
+    {
+      key: "targetNode",
+      title: t("page.column.targetNode"),
+      width: 160,
+      defaultHidden: true,
+      // The node the deployment was asked to run on. It stays available beside
+      // the actual one rather than carrying both meanings in one field.
+      render: (_: unknown, d: DeploymentListItem) => <DeploymentTargetNodes dep={d} />,
     },
     {
       key: "state",
@@ -452,7 +464,8 @@ function DeploymentDetail({
           <Descriptions column={2} bordered size="small">
             <Descriptions.Item label={t("detail.model")}><Link to={`/models?detail=${dep.model_id}`}>{dep.model_name || dep.model_id}</Link></Descriptions.Item>
             <Descriptions.Item label={t("detail.servedName")}>{dep.served_name || "—"}</Descriptions.Item>
-            <Descriptions.Item label={t("detail.node")}><DeploymentNodeLinks dep={dep} /></Descriptions.Item>
+            <Descriptions.Item label={t("detail.node")}><DeploymentRuntimeNodeLinks dep={dep} /></Descriptions.Item>
+            <Descriptions.Item label={t("detail.targetNode")}><DeploymentNodeLinks dep={dep} /></Descriptions.Item>
             {dep.placement_mode && <Descriptions.Item label={t("unitsPlacement.label")} span={2}><PlacementModeControl dep={dep} onChanged={() => void load()} /></Descriptions.Item>}
             {!dep.pd && (dep.nnodes ?? 1) <= 1 && <Descriptions.Item label={t("detail.placement.requirements")} span={2}><Space size={4} wrap><RequirementTags dep={dep} />{dep.placement_strategy && <Tag color="blue">{t(`detail.placement.strategy.${dep.placement_strategy}`, { defaultValue: dep.placement_strategy })}</Tag>}<EditRequirementsButton dep={dep} onChanged={() => void load()} /></Space></Descriptions.Item>}
             <Descriptions.Item label={t("detail.state")}>
@@ -471,6 +484,21 @@ function DeploymentDetail({
           {dep.pd && <DeploymentPdPanel dep={dep} onChanged={load} />}
           <ReplicaRetryAlert dep={dep} onChanged={load} />
           <PlacementStatusAlert dep={dep} />
+          {/* The two node fields above are only readable if the drawer says
+              outright that they differ, rather than leaving an operator to
+              notice it and wonder which one is true (GWKS-120). */}
+          {actualNodesDiffer(dep) && (
+            <Alert
+              type="info"
+              showIcon
+              role="status"
+              style={{ marginBottom: 12 }}
+              message={t("detail.scheduledElsewhere", {
+                nodes: (dep.runtime_nodes ?? []).map((node) => node.node_name || node.node_uuid.slice(0, 8)).join(", "),
+                target: deploymentTargetLabel(dep, dep.node_uuid),
+              })}
+            />
+          )}
 
           <SleepControls dep={dep} onDone={load} />
 
@@ -490,16 +518,108 @@ function DeploymentDetail({
   );
 }
 
-// A multi-node deployment runs on every rank's node; name them all, in rank
-// order, instead of only the leader the row is keyed by.
-export function deploymentNodesLabel(d: Pick<Deployment, "node_name" | "node_names" | "runtime_node_names">, leaderUUID?: string): string {
-  if ((d.runtime_node_names?.length ?? 0) > 0) return d.runtime_node_names!.join(", ");
+// runtimeNodesLabel names the nodes a deployment's replicas run on now. One
+// node prints its name. Several fold to the first and how many nodes there are
+// in all - 「172.30.8.31 等 2 台」, "172.30.8.31 and 1 more" - so the cell stays
+// one line and still says the deployment is not on one machine. The full set is
+// in the cell's tooltip and in the drawer, so a spread deployment can always be
+// expanded; it is never printed as a single node.
+//
+// nodes comes from runtime_nodes, which the server derives from the instance
+// rows. Nothing here falls back to the placement target: naming a machine the
+// replicas are not on is exactly the bug (GWKS-120).
+export function runtimeNodesLabel(
+  nodes: DeploymentRuntimeNode[] | undefined,
+  folded: (others: number, total: number) => string,
+): string {
+  if (!nodes?.length) return "—";
+  const name = (node: DeploymentRuntimeNode) => node.node_name || node.node_uuid.slice(0, 8);
+  const [first, ...rest] = nodes;
+  return rest.length ? `${name(first)} ${folded(rest.length, nodes.length)}` : name(first);
+}
+
+// The target nodes a deployment was asked to run on: node_names rank by rank
+// for a multi-node one, else its single named node. This is the placement
+// target, and the drawer labels it as such rather than sharing 「计算节点」 with
+// where the replicas run.
+export function deploymentTargetLabel(d: Pick<Deployment, "node_name" | "node_names">, leaderUUID?: string): string {
   if ((d.node_names?.length ?? 0) > 1) return d.node_names!.join(", ");
+  if ((d.node_names?.length ?? 0) === 1) return d.node_names![0];
   return d.node_name || (leaderUUID ? leaderUUID.slice(0, 8) : "—");
 }
 
+// DeploymentRuntimeNodes is the 「计算节点」 cell: the distinct nodes the
+// instances are on now, folded to one line, with every node and its instance
+// count in the tooltip and the whole list in the drawer.
+//
+// One node is printed as a link to its page. Several are printed as the folded
+// text "172.30.8.31 等 2 台" ("172.30.8.31 and 1 more") inside the tooltip that
+// spells out the rest, because a row of links per node would wrap the cell and
+// bury the state beside it; the drawer lists one link per node.
+function DeploymentRuntimeNodes({ dep }: { dep: Pick<Deployment, "runtime_nodes"> }) {
+  const { t } = useTranslation("deployments");
+  const nodes = dep.runtime_nodes ?? [];
+  if (!nodes.length) {
+    // No instance exists, so no node hosts a replica - true for a deployment
+    // that was never placed and for one that has stopped. Saying so is truer
+    // than printing the node that was asked for.
+    return <Typography.Text type="secondary">{t("page.runtimeNodes.none")}</Typography.Text>;
+  }
+  const name = (node: DeploymentRuntimeNode) => node.node_name || node.node_uuid.slice(0, 8);
+  if (nodes.length === 1) {
+    return <Link to="/nodes" state={{ nodeUUID: nodes[0].node_uuid }}>{name(nodes[0])}</Link>;
+  }
+  const folded = runtimeNodesLabel(nodes, (others, total) => t("page.runtimeNodes.others", { count: others, total }));
+  // The whole set in one string, so hover and a screen reader both learn every
+  // node rather than only the first the cell has room for.
+  const all = nodes.map((node) => `${name(node)} (${t("page.runtimeNodes.replicas", { count: node.instances })})`).join(", ");
+  return (
+    <Tooltip title={all}>
+      <span aria-label={all}>{folded}</span>
+    </Tooltip>
+  );
+}
+
+// DeploymentTargetNodes is the optional 「目标节点」 cell: where the deployment
+// was asked to run, which is node_name/node_names and can differ from the node
+// its replicas actually run on.
+function DeploymentTargetNodes({ dep }: { dep: Pick<Deployment, "node_uuid" | "node_name" | "node_names"> }) {
+  return <>{deploymentTargetLabel(dep, dep.node_uuid)}</>;
+}
+
+// DeploymentRuntimeNodeLinks lists every node the deployment's replicas are on,
+// one link each, so a folded cell can always be expanded to the whole set. A
+// replica on a node that is not the placement target is what the drawer's
+// 「已调度到其它节点」 notice points at.
+export function DeploymentRuntimeNodeLinks({ dep }: { dep: Pick<Deployment, "runtime_nodes"> }) {
+  const { t } = useTranslation("deployments");
+  const nodes = dep.runtime_nodes ?? [];
+  if (!nodes.length) return <Typography.Text type="secondary">{t("page.runtimeNodes.none")}</Typography.Text>;
+  return (
+    <Space size={4} wrap>
+      {nodes.map((node) => (
+        <Link key={node.node_uuid} to="/nodes" state={{ nodeUUID: node.node_uuid }}>
+          {node.node_name || node.node_uuid.slice(0, 8)}
+          {nodes.length > 1 && <Typography.Text type="secondary"> ×{node.instances}</Typography.Text>}
+        </Link>
+      ))}
+    </Space>
+  );
+}
+
+// actualNodesDiffer reports whether any replica runs on a node the deployment
+// does not name as its target - the condition the drawer explains instead of
+// leaving the two node fields to contradict each other.
+export function actualNodesDiffer(dep: Pick<Deployment, "node_uuid" | "node_uuids" | "runtime_nodes">): boolean {
+  const nodes = dep.runtime_nodes ?? [];
+  if (!nodes.length) return false;
+  const targets = new Set<string>(dep.node_uuids?.length ? dep.node_uuids : dep.node_uuid ? [dep.node_uuid] : []);
+  if (!targets.size) return true;
+  return nodes.some((node) => !targets.has(node.node_uuid));
+}
+
 // Each node the deployment runs on, linked to its node detail; a multi-node
-// deployment lists its ranks in order, as deploymentNodesLabel does.
+// deployment lists its ranks in order.
 function DeploymentNodeLinks({ dep }: { dep: Pick<Deployment, "node_uuid" | "node_name" | "node_uuids" | "node_names"> }) {
   const uuids = dep.node_uuids?.length ? dep.node_uuids : dep.node_uuid ? [dep.node_uuid] : [];
   if (uuids.length === 0) return <>—</>;

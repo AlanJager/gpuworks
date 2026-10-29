@@ -47,6 +47,15 @@ type ListPage[T any] struct {
 // DeploymentPage is one page of GET /api/v1/deployments?page=…, newest first.
 type DeploymentPage = ListPage[DeploymentListItem]
 
+// DeploymentRuntimeNode is one node the deployment's instances are on now.
+type DeploymentRuntimeNode struct {
+	NodeUUID string `json:"node_uuid"`
+	NodeName string `json:"node_name,omitempty"`
+	// Instances is how many instance rows are on the node, of any state, so a
+	// client can fold a spread deployment into "N nodes" or expand it.
+	Instances int `json:"instances"`
+}
+
 // DeploymentListItem is a deployment as a list row shows it. The launch
 // configuration, the catalog selection and the instances stay with
 // GET /api/v1/deployments/{id}; every field here but preparation has the
@@ -67,8 +76,15 @@ type DeploymentListItem struct {
 	NodeUUID         string             `json:"node_uuid"`
 	NodeName         string             `json:"node_name,omitempty"`
 	NodeNames        []string           `json:"node_names,omitempty"`
-	DesiredState     string             `json:"desired_state"`
-	RuntimeState     string             `json:"runtime_state"`
+	// RuntimeNodes and RuntimeNodeNames are where the deployment's instances
+	// run now, as on Deployment. node_uuid/node_name/node_names beside them
+	// stay the placement target, so a row can show where a deployment was
+	// asked to run and where it actually runs without either field meaning
+	// both.
+	RuntimeNodes     []DeploymentRuntimeNode `json:"runtime_nodes,omitempty"`
+	RuntimeNodeNames []string                `json:"runtime_node_names,omitempty"`
+	DesiredState     string                  `json:"desired_state"`
+	RuntimeState     string                  `json:"runtime_state"`
 	// State, AsleepReplicas and SleepLevel have the meaning and the value they
 	// have on Deployment: the state to show, how many of the serving replicas
 	// sleep, and the sleep level the engines report.
