@@ -116,7 +116,9 @@ func (c *Controller) poolNodes(reqs nodelabel.Requirements) (nodes []store.Node,
 // placement runs - has room, trying at most poolTrialBudget candidates, those
 // refused within poolRefusalMemory last. When none has room the
 // pass records why, once per timeout window like any unschedulable reason,
-// and the replica waits; nothing is written. The pick is counted against the
+// and the replica waits; nothing is written. A candidate that fits once the
+// deployments sharing its cards give them up is waited on only when none
+// fits outright. The pick is counted against the
 // candidate at once, so the pass's next replica ranks the pool as it will be.
 func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeployment, model *store.Model) (*store.Node, bool) {
 	dep := deployment.dep
@@ -164,6 +166,9 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 	// closest are the candidates refused this pass, best first: what the
 	// deployment's status shows as the nodes nearest to running a replica.
 	var closest []map[string]any
+	// yieldWait is the best candidate that fits once deployments sharing its
+	// cards give them up: taken only when none fits outright.
+	var yieldWait *scheduler.Reason
 	for _, index := range order {
 		if tried == poolTrialBudget {
 			break
@@ -183,10 +188,21 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 			c.log.Warn("candidate trial plan", "dep", dep.ID, "node", candidate.Node.UUID, "err", err)
 			refusal = &scheduler.Reason{Code: scheduler.ReasonPlacementRejected, Params: map[string]any{"detail": err.Error()}}
 		}
+		if refusal.Code == scheduler.ReasonWaitingForYield {
+			if yieldWait == nil {
+				yieldWait = refusal
+			}
+			continue
+		}
 		c.rememberPoolRefusal(dep.ID, candidate.Node.ID)
 		if len(closest) < poolClosest {
 			closest = append(closest, map[string]any{"node": candidate.Node.UUID, "name": candidate.Node.DisplayName(), "reason": *refusal})
 		}
+	}
+	if yieldWait != nil {
+		c.recordUnschedulable(dep, *yieldWait)
+		c.rememberPoolWait(dep.ID)
+		return nil, false
 	}
 	params := map[string]any{
 		"candidates": len(pool.Ranked), "tried": tried,

@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
@@ -36,12 +37,15 @@ type automationAdapter struct {
 // nudges it, since a waiting wake may fit once another instance sleeps or
 // goes; a request the gateway holds for a sleeping deployment asks it to wake
 // that one.
-func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, role string, replicas int) error, log *slog.Logger) {
+func runAutomation(ctx context.Context, st *store.Store, px *proxy.Proxy, acct *proxy.Accountant, metrics tsdb.Store, scale func(deploymentID uint, role string, replicas int) error, waits *placewait.Registry, log *slog.Logger) {
 	adapter := &automationAdapter{store: st, acct: acct, metrics: metrics, scale: scale, log: log, now: time.Now}
 	evaluator := automation.New(adapter, adapter, log)
 	if px != nil {
-		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory}
+		residency := &residencyAdapter{store: st, proxy: px, acct: acct, host: adapter.hostMemory, waits: waits, now: time.Now}
 		evaluator.WithResidency(residency, residency)
+		if waits != nil {
+			waits.OnWait(evaluator.Demand)
+		}
 		px.SetWakeDemand(evaluator.Demand)
 	}
 	if st.Bus != nil {

@@ -1,9 +1,12 @@
 package app
 
 import (
+	"time"
+
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
@@ -28,6 +31,11 @@ type residencyAdapter struct {
 	proxy *proxy.Proxy
 	acct  *proxy.Accountant
 	host  planning.HostMemory
+	// waits are the deployments whose replica waits to be placed until
+	// others give up cards (the controller's); nil when there are none to
+	// read.
+	waits *placewait.Registry
+	now   func() time.Time
 }
 
 // Waiters are the deployments with requests held for their wake whose sleep a
@@ -47,6 +55,67 @@ func (a *residencyAdapter) Waiters() ([]automation.Waiter, error) {
 			continue
 		}
 		out = append(out, automation.Waiter{DeploymentID: id, Policy: dep.Policy(), Since: since})
+	}
+	for _, w := range a.placeWaits() {
+		dep, err := a.store.GetDeployment(w.DeploymentID)
+		if err != nil || dep.State != store.DeployActive {
+			continue
+		}
+		out = append(out, automation.Waiter{DeploymentID: w.DeploymentID, Policy: dep.Policy(), Since: w.Since, Place: true})
+	}
+	return out, nil
+}
+
+func (a *residencyAdapter) placeWaits() []placewait.Waiter {
+	if a.waits == nil {
+		return nil
+	}
+	return a.waits.Waiting(a.now())
+}
+
+// Settling says the deployment's replica waits to be placed, or an instance
+// of it is still starting.
+func (a *residencyAdapter) Settling(id uint) bool {
+	if a.waits != nil {
+		if _, ok := a.waits.Get(id, a.now()); ok {
+			return true
+		}
+	}
+	insts, err := a.store.InstancesForDeployment(id)
+	if err != nil {
+		return false
+	}
+	for i := range insts {
+		switch insts[i].State {
+		case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
+			return true
+		}
+	}
+	return false
+}
+
+// placeBlocking is what keeps a replica waiting to be placed: the awake
+// instances it waits for, still awake, by deployment. Sharing deployments
+// are single-node, so an instance is a whole replica.
+func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blocking, error) {
+	var out automation.Blocking
+	at := map[uint]int{}
+	for _, uuid := range w.Instances {
+		in, err := a.store.InstanceByUUID(uuid)
+		if err != nil || in.State != proto.InstRunning || planning.InstanceSleepIntent(in) > 0 || in.SleepLevel > 0 {
+			continue
+		}
+		index, ok := at[in.DeploymentID]
+		if !ok {
+			dep, err := a.store.GetDeployment(in.DeploymentID)
+			if err != nil {
+				continue
+			}
+			at[in.DeploymentID] = len(out.Holders)
+			out.Holders = append(out.Holders, automation.Holder{DeploymentID: dep.ID, Name: dep.Name, Policy: dep.Policy()})
+			index = len(out.Holders) - 1
+		}
+		out.Holders[index].Instances = append(out.Holders[index].Instances, in.UUID)
 	}
 	return out, nil
 }
@@ -79,6 +148,11 @@ func (a *residencyAdapter) Wakeable(id uint) (servicelevel.Policy, bool) {
 // occupant nothing can put to sleep. One replica is enough to serve the
 // requests that wait; the rest wake when there is room.
 func (a *residencyAdapter) Blocking(id uint) (automation.Blocking, error) {
+	if a.waits != nil {
+		if w, ok := a.waits.Get(id, a.now()); ok {
+			return a.placeBlocking(w)
+		}
+	}
 	dep, err := a.store.GetDeployment(id)
 	if err != nil {
 		return automation.Blocking{}, err

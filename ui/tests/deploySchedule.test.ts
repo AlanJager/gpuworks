@@ -136,3 +136,32 @@ test("a pinned PD unit waiting on cards other deployments hold names the node, t
     "该单元钉住的 gpu-a 上的 GPU 0, 1 正被 chat, embed 占用，单元会一直等待；把部署的放置方式改为自动，平台就会改用空闲的卡。",
   );
 });
+
+test("a replica waiting for holders to yield names each one and its terms", async () => {
+  const reason = {
+    code: "waiting_for_yield",
+    params: {
+      node: "gpu-1",
+      instances: ["b-1", "s-1", "o-1"],
+      holders: [
+        { deployment: "batch", at_once: true },
+        { deployment: "shared", at_once: false, idle_sec: 30, max_serve_sec: 120 },
+        { deployment: "chat", at_once: false, idle_sec: 60 },
+      ],
+    },
+  };
+  await i18n.changeLanguage("zh");
+  assert.equal(
+    scheduleText(i18n.getFixedT("zh", "deploy") as never, reason),
+    "等待：batch 立即让出 GPU；shared 闲置 30 秒或本轮服务满 2 分钟后让出 GPU；chat 闲置 1 分钟后让出 GPU。之后在 gpu-1 上放置副本。",
+  );
+  assert.equal(
+    scheduleText(i18n.getFixedT("en", "deploy") as never, reason),
+    "Waiting until batch gives up its GPUs now; shared gives up its GPUs after 30 s idle or 2 min of serving; chat gives up its GPUs after 1 min idle; the replica then goes on gpu-1.",
+  );
+  // With no holder left to put to sleep, it waits for the sleeps ordered.
+  assert.equal(
+    scheduleText(i18n.getFixedT("zh", "deploy") as never, { code: "waiting_for_yield", params: { node: "gpu-1", holders: [], instances: [] } }),
+    "等待：已让出 GPU 的部署完成休眠。之后在 gpu-1 上放置副本。",
+  );
+});

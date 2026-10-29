@@ -450,9 +450,10 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
-	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })                                      // Background: verify each PD prefill instance's KV handoff once.
-	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) }) // Background: schedules, auto sleep, waiting wakes, residency.
-	goBG(func() { a.health.Run(ctx) })                                                                     // Background: the deployments' health checks.
+	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) }) // Background: verify each PD prefill instance's KV handoff once.
+	waits := a.ctrl.PlacementWaits()
+	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, waits, a.log) }) // Background: schedules, waiting wakes, residency.
+	goBG(func() { a.health.Run(ctx) })                                                                            // Background: the deployments' health checks.
 	// Background: the batches in progress, resumed from their checkpoints.
 	if err := a.batches.Start(ctx); err != nil {
 		a.log.Error("batch executor not started", "err", err)

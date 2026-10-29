@@ -270,3 +270,24 @@ func TestPolicyAccessors(t *testing.T) {
 		t.Fatal("yield validity")
 	}
 }
+
+func TestTermsOf(t *testing.T) {
+	never, idle, slice, anytime := defaults(t, Never), defaults(t, Idle), defaults(t, TimeSlice), defaults(t, Anytime)
+	for _, c := range []struct {
+		name           string
+		holder, waiter Policy
+		want           Terms
+	}{
+		{"never never gives way", never, idle, Terms{Never: true}},
+		{"anytime gives way to idle at once", anytime, idle, Terms{AtOnce: true}},
+		{"timeslice gives way to never at once", slice, never, Terms{AtOnce: true}},
+		{"idle gives way once idle", idle, anytime, Terms{Idle: time.Minute}},
+		{"anytime to anytime once idle", anytime, anytime, Terms{Idle: 30 * time.Second}},
+		{"timeslice to timeslice once idle or at the end of its turn", slice, slice, Terms{Idle: 30 * time.Second, Turn: 2 * time.Minute}},
+		{"timeslice to anytime once idle", slice, anytime, Terms{Idle: 30 * time.Second}},
+	} {
+		if got := TermsOf(c.holder, c.waiter); got != c.want {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+}

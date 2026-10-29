@@ -1,5 +1,8 @@
 {
-  "noOperations": {"title": "这个部署不会暴露任何推理 API", "description": "这个模型没有声明任何推理接口（对话、文本补全、Embedding 等）：部署后不会出现在试验场里，也无法开启健康检查。请先在「模型」页设置它的接口，再部署。"},
+  "noOperations": {
+    "title": "这个部署不会暴露任何推理 API",
+    "description": "这个模型没有声明任何推理接口（对话、文本补全、Embedding 等）：部署后不会出现在试验场里，也无法开启健康检查。请先在「模型」页设置它的接口，再部署。"
+  },
   "catalog": {
     "myModels": "我的模型",
     "catalogModels": "内置目录",
@@ -158,6 +161,7 @@
     "pool_empty": "当前没有节点能承载副本：共 {{nodes}} 台节点，{{unmet}} 台不满足部署的节点条件，{{cordoned}} 台已停止调度，{{offline}} 台离线。请让节点上线或恢复调度、接入满足条件的节点，或放宽条件。",
     "node_cordoned": "节点 {{node}} 已停止调度，副本等它恢复调度后再启动；也可以在“调整副本”里换一台节点。",
     "pool_no_fit": "{{candidates}} 台候选节点中最合适的 {{tried}} 台都放不下一个副本；最合适的 {{node}} 的原因：{{first}}。请在该节点上释放资源、缩容其他部署，或增加节点。",
+    "waiting_for_yield": "等待：{{holders}}。之后在 {{node}} 上放置副本。",
     "model_unavailable": "模型 {{model}} 在节点 {{node}} 上获取失败或在等待选择来源，副本不会在这台节点上启动；请在模型页为该节点重试同步或改用公网下载。",
     "image_delivery_waiting": "正在等待镜像 {{image}} 到达节点 {{node}}。可在镜像页查看传输进度；停滞的节点间传输会被取消，以便重试。",
     "image_delivery_failed": "镜像 {{image}} 在节点 {{node}} 上预拉取失败，多机部署因此无法启动；平台会继续重试，也可在镜像页查看原因或检查拉取设置。",
@@ -1018,5 +1022,15 @@
     "applyNote": {
       "partition_change": "开启或关闭 dGPU、更换分区后端时，旧实例要全部退出后新实例才能启动，无法逐个替换，服务会中断到新实例就绪。"
     }
+  },
+  "scheduleHolder": {
+    "atOnce": "{{deployment}} 立即让出 GPU",
+    "idle": "{{deployment}} 闲置 {{idle}}后让出 GPU",
+    "idleOrTurn": "{{deployment}} 闲置 {{idle}}或本轮服务满 {{turn}}后让出 GPU",
+    "sleeping": "已让出 GPU 的部署完成休眠",
+    "separator": "；",
+    "seconds": "{{value}} 秒",
+    "minutes": "{{value}} 分钟",
+    "hours": "{{value}} 小时"
   }
 }

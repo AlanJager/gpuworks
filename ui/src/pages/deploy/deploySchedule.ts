@@ -22,7 +22,8 @@ export function scheduleText(
     // schedule.* holds the scheduler's own codes (the i18n check ties it to
     // the scheduler source), worded for replicas that exist.
     const key = `schedule.${code}`;
-    const translated = t(key, { ...value.params, defaultValue: "" });
+    const params = code === "waiting_for_yield" ? { ...value.params, holders: holdersText(t, value.params?.holders) } : value.params;
+    const translated = t(key, { ...params, defaultValue: "" });
     if (translated && translated !== key) return translated + scheduleNote(t, value);
   }
   return value.message?.trim() || code;
@@ -86,4 +87,35 @@ function scheduleNote(t: TFunction<"deploy">, value: Exclude<ScheduleMessageLike
 function note(t: TFunction<"deploy">, key: string, param: string, value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   return " " + t(key, { [param]: value });
+}
+
+// A holder a replica waits for, as the server states it: the deployment and
+// the terms it gives way on (at once, or once idle, or at the end of its
+// turn).
+interface YieldHolderTerms {
+  deployment?: string;
+  at_once?: boolean;
+  idle_sec?: number;
+  max_serve_sec?: number;
+}
+
+function spanText(t: TFunction<"deploy">, seconds: number): string {
+  if (seconds >= 3600 && seconds % 3600 === 0) return t("scheduleHolder.hours", { value: seconds / 3600 });
+  if (seconds >= 60 && seconds % 60 === 0) return t("scheduleHolder.minutes", { value: seconds / 60 });
+  return t("scheduleHolder.seconds", { value: seconds });
+}
+
+// holdersText words who a replica waits for and when each gives way.
+function holdersText(t: TFunction<"deploy">, holders: unknown): string {
+  const list = Array.isArray(holders) ? (holders as YieldHolderTerms[]) : [];
+  if (list.length === 0) return t("scheduleHolder.sleeping");
+  return list
+    .map((holder) => {
+      const deployment = holder.deployment ?? "";
+      if (holder.at_once) return t("scheduleHolder.atOnce", { deployment });
+      const idle = spanText(t, holder.idle_sec ?? 0);
+      if (holder.max_serve_sec) return t("scheduleHolder.idleOrTurn", { deployment, idle, turn: spanText(t, holder.max_serve_sec) });
+      return t("scheduleHolder.idle", { deployment, idle });
+    })
+    .join(t("scheduleHolder.separator"));
 }

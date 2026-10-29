@@ -99,11 +99,14 @@ type ScheduleResult = scheduler.Result
 type ScheduleReason = scheduler.Reason
 
 type Output struct {
-	Result         scheduler.Result
-	Breakdown      estimate.Breakdown
-	Config         *modelconfig.Config
-	Warnings       []messages.Warning
-	Eviction       []EvictSuggestion // when no fit but sleeping these would free room
+	Result    scheduler.Result
+	Breakdown estimate.Breakdown
+	Config    *modelconfig.Config
+	Warnings  []messages.Warning
+	Eviction  []EvictSuggestion // when no fit but sleeping these would free room
+	// Yield is set when no fit but the deployments sharing the node's cards
+	// by yield policy would make room by giving them up (launchYield).
+	Yield          *LaunchYield
 	Placement      placement.Result
 	PlacementError error
 }
@@ -295,6 +298,9 @@ func (in Input) Evaluate(st *store.Store) Output {
 	// the platform never sleeps silently).
 	if !out.Result.OK {
 		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
+		if !in.Unloaded {
+			out.Yield = launchYield(st, in.Node, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+		}
 	}
 	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {
 		// Deliberately non-blocking (GWKS-79): new attention layouts and engine
