@@ -8,8 +8,8 @@ import (
 )
 
 // Timeline event codes the automation records on a deployment. Their params
-// always carry "trigger": "schedule" (with "schedule_id"), "idle" or
-// "wake_waiting".
+// always carry "trigger": "schedule" (with "schedule_id"), "wake_waiting", or
+// one of the residency arbiter's (TriggerRequest and the others).
 const (
 	EventAutoSleep            = "AUTO_SLEEP"
 	EventAutoWake             = "AUTO_WAKE"
@@ -27,25 +27,12 @@ const (
 const (
 	TriggerOperator    = "operator"
 	TriggerSchedule    = "schedule"
-	TriggerIdle        = "idle"
 	TriggerWakeWaiting = "wake_waiting"
 )
 
 // LevelAuto is the sleep level of an order that leaves the choice of L1 or L2
 // to the platform: L1, and L2 where the host cannot hold the weights.
 const LevelAuto = 0
-
-// AutoSleepDeployment is a deployment with auto sleep on.
-type AutoSleepDeployment struct {
-	ID       uint
-	AfterSec int
-	// Level is the sleep level it sleeps at, LevelAuto for the platform's
-	// choice.
-	Level int
-	// Awake says at least one of its instances serves (is not asleep and not
-	// ordered to sleep): only then is there anything to put to sleep.
-	Awake bool
-}
 
 // WaitingWake is a deployment's instances whose wake waits for room.
 type WaitingWake struct {
@@ -64,11 +51,7 @@ type WakeResult struct {
 // Source is what the automation reads.
 type Source interface {
 	Schedules() ([]Schedule, error)
-	AutoSleepDeployments() ([]AutoSleepDeployment, error)
 	WaitingWakes() ([]WaitingWake, error)
-	// LastRequestAt is when the gateway last saw a user request for the
-	// deployment since the server started.
-	LastRequestAt(deploymentID uint) (time.Time, bool)
 }
 
 // Actions is how the automation acts: the same orders an operator gives,
@@ -110,7 +93,8 @@ const (
 	DefaultNudgeSettle = 2 * time.Second
 )
 
-// Evaluator carries out schedules, auto sleep and waiting wakes on a tick.
+// Evaluator carries out schedules and waiting wakes on a tick, and the
+// residency arbiter's yields when they fall due.
 type Evaluator struct {
 	source   Source
 	actions  Actions
@@ -124,12 +108,7 @@ type Evaluator struct {
 	// before it has been watched for its whole idle period, since the
 	// gateway's request clock starts with the server.
 	started time.Time
-	// awakeSince is when each auto-sleep deployment was last seen go from
-	// asleep to awake, so a deployment just woken is not put back to sleep
-	// before anyone could use it.
-	awakeSince map[uint]time.Time
-	wasAwake   map[uint]bool
-	wake       chan struct{}
+	wake    chan struct{}
 	// res is the residency arbiter, nil when off (WithResidency).
 	res *residencyState
 }
@@ -142,14 +121,13 @@ func New(source Source, actions Actions, log *slog.Logger) *Evaluator {
 	return &Evaluator{
 		source: source, actions: actions, log: log, now: time.Now,
 		interval: DefaultInterval, catchUp: DefaultCatchUp, waitMax: DefaultWakeWaitLimit,
-		settle:     DefaultNudgeSettle,
-		awakeSince: map[uint]time.Time{}, wasAwake: map[uint]bool{}, wake: make(chan struct{}, 1),
+		settle: DefaultNudgeSettle, wake: make(chan struct{}, 1),
 	}
 }
 
 // Nudge asks for a look at the waiting wakes soon, since one may fit once
-// another instance sleeps or goes. Schedules and auto sleep keep to the tick:
-// a change elsewhere does not make either due.
+// another instance sleeps or goes. Schedules keep to the tick: a change
+// elsewhere does not make one due.
 func (e *Evaluator) Nudge() {
 	select {
 	case e.wake <- struct{}{}:
@@ -164,13 +142,34 @@ func (e *Evaluator) Run(ctx context.Context) {
 	ticker := time.NewTicker(e.interval)
 	defer ticker.Stop()
 	var settled, demanded <-chan time.Time
+	// due fires when the residency arbiter's next yield falls due (an idle
+	// time or a turn ending, a drain running out): one timer, re-armed after
+	// every look.
+	due := time.NewTimer(time.Hour)
+	defer due.Stop()
+	rearm := func() {
+		if !due.Stop() {
+			select {
+			case <-due.C:
+			default:
+			}
+		}
+		if after, ok := e.residencyDue(); ok {
+			due.Reset(after)
+		}
+	}
 	e.Tick()
+	rearm()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			e.Tick()
+			rearm()
+		case <-due.C:
+			e.residency(e.now())
+			rearm()
 		case <-e.wake:
 			if settled == nil {
 				settled = time.After(e.settle)
@@ -182,17 +181,19 @@ func (e *Evaluator) Run(ctx context.Context) {
 		case <-demanded:
 			demanded = nil
 			e.residency(e.now())
+			rearm()
 		case <-settled:
 			settled = nil
 			now := e.now()
 			e.waitingWakes(now)
 			e.residency(now)
+			rearm()
 		}
 	}
 }
 
 // Tick runs one evaluation: waiting wakes first (they free nothing and only
-// take room that is there), then schedules, then auto sleep.
+// take room that is there), then the residency arbiter, then schedules.
 func (e *Evaluator) Tick() {
 	now := e.now()
 	if e.started.IsZero() {
@@ -201,7 +202,6 @@ func (e *Evaluator) Tick() {
 	e.waitingWakes(now)
 	e.residency(now)
 	e.schedules(now)
-	e.idle(now)
 }
 
 func (e *Evaluator) waitingWakes(now time.Time) {
@@ -322,63 +322,6 @@ func (e *Evaluator) fire(s Schedule, at time.Time) {
 	}
 	if err := e.actions.MarkFired(s.ID, at); err != nil {
 		e.log.Warn("automation: mark an occurrence handled", "schedule", s.ID, "err", err)
-	}
-}
-
-func (e *Evaluator) idle(now time.Time) {
-	deployments, err := e.source.AutoSleepDeployments()
-	if err != nil {
-		e.log.Warn("automation: read auto sleep deployments", "err", err)
-		return
-	}
-	seen := map[uint]bool{}
-	for _, d := range deployments {
-		seen[d.ID] = true
-		if !d.Awake {
-			e.wasAwake[d.ID] = false
-			continue
-		}
-		if !e.wasAwake[d.ID] {
-			e.wasAwake[d.ID] = true
-			e.awakeSince[d.ID] = now
-		}
-		last := e.started
-		if since := e.awakeSince[d.ID]; since.After(last) {
-			last = since
-		}
-		if at, ok := e.source.LastRequestAt(d.ID); ok && at.After(last) {
-			last = at
-		}
-		idleFor := now.Sub(last)
-		if idleFor < time.Duration(d.AfterSec)*time.Second {
-			continue
-		}
-		params := map[string]any{"trigger": TriggerIdle, "idle_sec": int(idleFor.Seconds())}
-		level, err := e.actions.Sleep(d.ID, d.Level, false)
-		if err != nil {
-			failed := copyParams(params)
-			if d.Level != LevelAuto {
-				failed["level"] = d.Level
-			}
-			failed["action"] = "sleep"
-			failed["reason"] = err.Error()
-			if code, ok := codeOf(err); ok {
-				failed["reason_code"] = code
-			}
-			e.actions.Record(d.ID, EventScheduleActionFailed, failed)
-			// Not again until it has been idle a whole period more.
-			e.awakeSince[d.ID] = now
-			continue
-		}
-		params["level"] = level
-		e.actions.Record(d.ID, EventAutoSleep, params)
-		e.wasAwake[d.ID] = false
-	}
-	for id := range e.wasAwake {
-		if !seen[id] {
-			delete(e.wasAwake, id)
-			delete(e.awakeSince, id)
-		}
 	}
 }
 

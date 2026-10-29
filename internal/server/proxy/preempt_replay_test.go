@@ -44,10 +44,11 @@ func newPreemptibleProxy(t *testing.T, level string, replies ...string) (*Proxy,
 	return p, p.store, key, depID, front, &calls
 }
 
-// presetDeployment is a sleepable deployment of the service level.
-func presetDeployment(preset string) *store.Deployment {
+// presetDeployment is a sleepable deployment of the yield policy, with its
+// defaults.
+func presetDeployment(yield string) *store.Deployment {
 	dep := &store.Deployment{Engine: "vllm", Sleepable: true}
-	p, _ := servicelevel.PresetPolicy(preset)
+	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
 	dep.SetPolicy(p)
 	return dep
 }
@@ -77,7 +78,7 @@ func wakeAfter(p *Proxy, st *store.Store, delay time.Duration) {
 }
 
 func TestACutOffReplyIsReplayedOnceTheDeploymentServesAgain(t *testing.T) {
-	for _, level := range []string{servicelevel.PresetOffline, servicelevel.PresetShared} {
+	for _, level := range []string{servicelevel.Anytime, servicelevel.TimeSlice} {
 		t.Run(level, func(t *testing.T) {
 			p, st, key, _, front, calls := newPreemptibleProxy(t, level, abortedReply, finishedReply)
 			wakeAfter(p, st, 150*time.Millisecond)
@@ -96,9 +97,9 @@ func TestReplayIsOnlyForPreemptibleNonStreamingRequests(t *testing.T) {
 	for _, tc := range []struct {
 		name, level, body string
 	}{
-		{"a stream", servicelevel.PresetOffline, `{"model":"omni","stream":true,"messages":[]}`},
-		{"an online deployment", servicelevel.PresetOnline, `{"model":"omni","messages":[]}`},
-		{"a resident deployment", servicelevel.PresetResident, `{"model":"omni","messages":[]}`},
+		{"a stream", servicelevel.Anytime, `{"model":"omni","stream":true,"messages":[]}`},
+		{"an online deployment", servicelevel.Idle, `{"model":"omni","messages":[]}`},
+		{"a resident deployment", servicelevel.Never, `{"model":"omni","messages":[]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p, st, key, _, front, calls := newPreemptibleProxy(t, tc.level, abortedReply, finishedReply)
@@ -119,7 +120,7 @@ func TestReplayStopsAfterItsLimit(t *testing.T) {
 		calls.Add(1)
 		_, _ = io.WriteString(w, abortedReply)
 	})
-	p, _, key, _, closeUpstream := newAccountingProxyFor(t, upstream, presetDeployment(servicelevel.PresetOffline))
+	p, _, key, _, closeUpstream := newAccountingProxyFor(t, upstream, presetDeployment(servicelevel.Anytime))
 	defer closeUpstream()
 	front := httptest.NewServer(p.Handler())
 	defer front.Close()

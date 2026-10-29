@@ -13,9 +13,7 @@ import (
 // every order given. Orders can be made to fail.
 type fakeWorld struct {
 	schedules []Schedule
-	idle      []AutoSleepDeployment
 	waits     []WaitingWake
-	lastReq   map[uint]time.Time
 
 	sleepErr   error
 	wakeResult WakeResult
@@ -33,7 +31,7 @@ type fakeWorld struct {
 }
 
 func newFakeWorld() *fakeWorld {
-	return &fakeWorld{lastReq: map[uint]time.Time{}, fits: map[uint][]string{}, fired: map[uint]time.Time{}}
+	return &fakeWorld{fits: map[uint][]string{}, fired: map[uint]time.Time{}}
 }
 
 func (w *fakeWorld) Schedules() ([]Schedule, error) {
@@ -48,12 +46,7 @@ func (w *fakeWorld) Schedules() ([]Schedule, error) {
 	}
 	return out, nil
 }
-func (w *fakeWorld) AutoSleepDeployments() ([]AutoSleepDeployment, error) { return w.idle, w.readErr }
-func (w *fakeWorld) WaitingWakes() ([]WaitingWake, error)                 { return w.waits, w.readErr }
-func (w *fakeWorld) LastRequestAt(id uint) (time.Time, bool) {
-	at, ok := w.lastReq[id]
-	return at, ok
-}
+func (w *fakeWorld) WaitingWakes() ([]WaitingWake, error) { return w.waits, w.readErr }
 func (w *fakeWorld) Sleep(id uint, level int, held bool) (int, error) {
 	w.orders = append(w.orders, fmt.Sprintf("sleep %d L%d", id, level))
 	w.held = append(w.held, held)
@@ -303,76 +296,6 @@ func TestAScheduledReplicaCountOfANonPDDeploymentCarriesNoRole(t *testing.T) {
 	e.Tick()
 	if _, has := w.params[0]["role"]; has {
 		t.Fatalf("params = %v", w.params[0])
-	}
-}
-
-// Idle sleep waits a whole idle period from when the server started watching,
-// counts from the last user request, and never sleeps an asleep deployment.
-func TestIdleSleepCountsFromTheLastRequest(t *testing.T) {
-	w := newFakeWorld()
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []AutoSleepDeployment{{ID: 5, AfterSec: 900, Level: 2, Awake: true}}
-	e, c := newEvaluator(w, start)
-	e.Tick()
-	c.t = start.Add(10 * time.Minute)
-	w.lastReq[5] = start.Add(8 * time.Minute)
-	e.Tick()
-	c.t = start.Add(20 * time.Minute)
-	e.Tick()
-	if len(w.orders) != 0 {
-		t.Fatalf("slept before 15 idle minutes: %v", w.orders)
-	}
-	c.t = start.Add(23 * time.Minute)
-	e.Tick()
-	if !slices.Equal(w.orders, []string{"sleep 5 L2"}) || w.params[0]["trigger"] != TriggerIdle || w.params[0]["idle_sec"] != 900 {
-		t.Fatalf("orders %v params %v", w.orders, w.params)
-	}
-	if !slices.Equal(w.held, []bool{false}) {
-		t.Fatalf("held = %v: an idle sleep must wake on the next request", w.held)
-	}
-	// Asleep now: nothing more happens.
-	w.idle[0].Awake = false
-	c.t = c.t.Add(time.Hour)
-	e.Tick()
-	if len(w.orders) != 1 {
-		t.Fatalf("asleep deployment slept again: %v", w.orders)
-	}
-	// Woken by hand: a full idle period again before it sleeps.
-	w.idle[0].Awake = true
-	woke := c.t
-	e.Tick()
-	c.t = woke.Add(14 * time.Minute)
-	e.Tick()
-	if len(w.orders) != 1 {
-		t.Fatalf("slept right after a wake: %v", w.orders)
-	}
-	c.t = woke.Add(15 * time.Minute)
-	e.Tick()
-	if len(w.orders) != 2 {
-		t.Fatalf("did not sleep a full period after the wake: %v", w.orders)
-	}
-}
-
-// A refused idle sleep is recorded and not retried until another idle period
-// passes.
-func TestARefusedIdleSleepWaitsAnotherPeriod(t *testing.T) {
-	w := newFakeWorld()
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []AutoSleepDeployment{{ID: 5, AfterSec: 60, Level: 1, Awake: true}}
-	w.sleepErr = errors.New("boom")
-	e, c := newEvaluator(w, start)
-	e.Tick()
-	c.t = start.Add(61 * time.Second)
-	e.Tick()
-	c.t = start.Add(90 * time.Second)
-	e.Tick()
-	if len(w.orders) != 1 || !slices.Equal(w.events, []string{"5 SCHEDULE_ACTION_FAILED"}) {
-		t.Fatalf("orders %v events %v", w.orders, w.events)
-	}
-	c.t = start.Add(122 * time.Second)
-	e.Tick()
-	if len(w.orders) != 2 {
-		t.Fatalf("not retried after another period: %v", w.orders)
 	}
 }
 

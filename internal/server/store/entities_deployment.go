@@ -82,13 +82,11 @@ type Deployment struct {
 	// servicelevel, docs/explanation/service-levels.md): YieldPolicy is how
 	// it shares GPUs with others (never, idle, timeslice, anytime); the
 	// others are normalized on write, so a parameter that does not apply to
-	// the policy is its zero value. The service level a deployment shows is
-	// derived from them (servicelevel.PresetOf), not stored.
+	// the policy is its zero value.
 	YieldPolicy       string `gorm:"size:16;not null;default:'never'"`
-	AutoSleep         bool   `gorm:"not null;default:false"`
 	IdleSec           int    `gorm:"not null;default:0"`
 	SleepLevelPref    string `gorm:"size:8;not null;default:''"`
-	MinServeSec       int    `gorm:"not null;default:0"`
+	MaxServeSec       int    `gorm:"not null;default:0"`
 	Unfinished        string `gorm:"size:16;not null;default:''"`
 	UnfinishedWaitSec int    `gorm:"not null;default:0"`
 	HoldMaxSec        int    `gorm:"not null;default:0"`

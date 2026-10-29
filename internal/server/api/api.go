@@ -587,6 +587,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/scheduling/overview", a.schedulingOverview)
 			r.Get("/scheduling/history", a.schedulingHistory)
 			r.Get("/scheduling/timeline", a.schedulingTimeline)
+			r.Get("/scheduling/yield-policies", a.yieldPolicyDictionary)
 			r.Get("/monitor/deployments/{id}", a.monitorDeployment)
 			r.Get("/monitor/deployments/{id}/requests", a.monitorRequests)
 			r.Get("/monitor/requests/lookup", a.monitorRequestLookup)

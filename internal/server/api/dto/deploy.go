@@ -144,8 +144,7 @@ type Deployment struct {
 	// replicas move (after_sec 0 never moves them).
 	NodeReplacement NodeReplacement `json:"node_replacement"`
 	// YieldPolicy is how the deployment shares GPUs with others and the
-	// parameters that go with it, with the service level it stands for
-	// (preset, derived: custom when it is none of the four); SleepHeld says
+	// parameters that go with it; SleepHeld says
 	// an operator's or a schedule's sleep holds it, so a request does not
 	// wake it.
 	YieldPolicy YieldPolicy `json:"yield_policy"`

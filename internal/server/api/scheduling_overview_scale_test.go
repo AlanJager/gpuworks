@@ -50,7 +50,7 @@ func seedScaleFleet(t *testing.T) *scaleFleet {
 	if err := db.CreateInBatches(&models, 50).Error; err != nil {
 		t.Fatal(err)
 	}
-	levels := servicelevel.Presets
+	levels := []string{servicelevel.Never, servicelevel.Idle, servicelevel.TimeSlice, servicelevel.Anytime}
 	deployments := make([]store.Deployment, scaleDeploys)
 	for i := range deployments {
 		deployments[i] = store.Deployment{

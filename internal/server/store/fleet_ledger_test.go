@@ -87,7 +87,7 @@ func TestLedgerDeploymentsAndModels(t *testing.T) {
 		t.Fatalf("deployments = %d", len(deployments))
 	}
 	for _, d := range deployments {
-		if d.Name == "" || d.Preset() != servicelevel.PresetShared || d.ModelID != 1 || d.QuickParams != "" {
+		if d.Name == "" || d.Policy().Yield != servicelevel.TimeSlice || d.ModelID != 1 || d.QuickParams != "" {
 			t.Errorf("deployment row = %+v, want name, level and model only", d)
 		}
 	}

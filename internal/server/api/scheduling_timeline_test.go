@@ -43,7 +43,7 @@ func newTimelineRig(t *testing.T) *timelineRig {
 		}
 		return dep
 	}
-	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", servicelevel.PresetShared), res: mk("always-on", servicelevel.PresetResident)}
+	r := &timelineRig{scheduleRig: rig, node: node, t0: time.Now().UTC().Truncate(time.Second).Add(-3 * time.Hour), shared: mk("night-batch", servicelevel.TimeSlice), res: mk("always-on", servicelevel.Never)}
 	for _, in := range []store.Instance{
 		{UUID: "inst-shared", DeploymentID: r.shared.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", CreatedAt: r.t0},
 		{UUID: "inst-plain", DeploymentID: r.plain.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[1]", CreatedAt: r.t0},
@@ -134,7 +134,7 @@ func TestSchedulingTimelineWire(t *testing.T) {
 	}
 	d.AwakeSeconds, d.AwakeShare = 0, 0
 	line, _ := json.Marshal(d)
-	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","preset":"shared","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0}`, r.shared.ID); string(line) != want {
+	if want := fmt.Sprintf(`{"deployment_id":%d,"deployment":"night-batch","yield_policy":"timeslice","awake_seconds":0,"awake_share":0,"switches":3,"yielded":1,"yielded_to":1,"wakes":2,"held_requests":0}`, r.shared.ID); string(line) != want {
 		t.Fatalf("stats\n got  %s\n want %s", line, want)
 	}
 	if share := got.Deployments[0].AwakeShare; share <= 0.3 || share >= 0.6 {
@@ -214,7 +214,7 @@ func TestSchedulingTimelineCapsSegmentsPerCard(t *testing.T) {
 	}
 }
 
-func TestBoardOccupantsCarryThePreset(t *testing.T) {
+func TestBoardOccupantsCarryTheYieldPolicy(t *testing.T) {
 	r := newTimelineRig(t)
 	rec := r.do(r.session, http.MethodGet, "/api/v1/scheduling/board", "")
 	if rec.Code != http.StatusOK {
@@ -236,11 +236,11 @@ func TestBoardOccupantsCarryThePreset(t *testing.T) {
 	for _, node := range board.Nodes.Items {
 		for _, gpu := range node.GPUs {
 			for _, o := range gpu.Occupants {
-				levels[fmt.Sprint(o["deployment"])] = fmt.Sprint(o["preset"])
+				levels[fmt.Sprint(o["deployment"])] = fmt.Sprint(o["yield_policy"])
 			}
 		}
 	}
-	if levels["night-batch"] != "shared" || levels["always-on"] != "resident" {
+	if levels["night-batch"] != "timeslice" || levels["always-on"] != "never" {
 		t.Fatalf("occupant levels = %v in %s", levels, rec.Body)
 	}
 }

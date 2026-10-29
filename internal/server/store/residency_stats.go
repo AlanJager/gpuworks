@@ -79,10 +79,8 @@ func (s *Store) ResidencySwitchCounts(deploymentIDs []uint, firstID uint) (map[u
 type ResidencyDeployment struct {
 	ID   uint
 	Name string
-	// Yield is its yield policy; Preset the service level that stands for,
-	// or custom.
-	Yield  string
-	Preset string
+	// Yield is its yield policy.
+	Yield string
 }
 
 // ResidencyDeployments names the deployments by id, including ones deleted
@@ -98,7 +96,7 @@ func (s *Store) ResidencyDeployments(ids []uint) (map[uint]ResidencyDeployment, 
 		return nil, err
 	}
 	for _, d := range live {
-		out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: d.Policy().Yield, Preset: d.Preset()}
+		out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: d.Policy().Yield}
 	}
 	var gone []DeletedDeployment
 	if err := s.reader().Where("id IN ?", ids).Find(&gone).Error; err != nil {
@@ -106,7 +104,7 @@ func (s *Store) ResidencyDeployments(ids []uint) (map[uint]ResidencyDeployment, 
 	}
 	for _, d := range gone {
 		if _, ok := out[d.ID]; !ok {
-			out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: servicelevel.Never, Preset: servicelevel.PresetResident}
+			out[d.ID] = ResidencyDeployment{ID: d.ID, Name: d.Name, Yield: servicelevel.Never}
 		}
 	}
 	return out, nil

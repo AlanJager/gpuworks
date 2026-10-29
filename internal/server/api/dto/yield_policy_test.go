@@ -9,25 +9,26 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 )
 
-// The wire form of a policy: the preset is derived, and a parameter that does
-// not apply is absent rather than zero.
+// The wire form of a policy: a parameter that does not apply is absent
+// rather than zero.
 func TestYieldPolicyWire(t *testing.T) {
-	preset := func(name string) servicelevel.Policy { p, _ := servicelevel.PresetPolicy(name); return p }
+	defaults := func(yield string) servicelevel.Policy {
+		p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
+		return p
+	}
 	for _, c := range []struct {
 		name string
 		p    servicelevel.Policy
 		wire string
 	}{
-		{"resident", preset("resident"), `{"preset":"resident","policy":"never","auto_sleep":false}`},
-		{"online", preset("online"), `{"preset":"online","policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}`},
-		{"shared", preset("shared"), `{"preset":"shared","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
-		{"offline", preset("offline"), `{"preset":"offline","policy":"anytime","auto_sleep":false,"sleep_level":"auto","unfinished":"abort","hold_max_sec":1800}`},
-		{"never with auto sleep", servicelevel.Policy{Yield: "never", AutoSleep: true, IdleSec: 600, SleepLevel: "l1", HoldMaxSec: 120},
-			`{"preset":"custom","policy":"never","auto_sleep":true,"idle_sec":600,"sleep_level":"l1","hold_max_sec":120}`},
-		{"timeslice with a zero turn and an unbounded wait", servicelevel.Policy{Yield: "timeslice", IdleSec: 30, SleepLevel: "l2", MinServeSec: 0, Unfinished: "wait_unbounded", HoldMaxSec: 10},
-			`{"preset":"custom","policy":"timeslice","auto_sleep":false,"idle_sec":30,"sleep_level":"l2","min_serve_sec":0,"unfinished":"wait_unbounded","hold_max_sec":10}`},
-		{"leftover parameters are dropped", servicelevel.Policy{Yield: "never", IdleSec: 99, SleepLevel: "l2", MinServeSec: 5, HoldMaxSec: 50},
-			`{"preset":"resident","policy":"never","auto_sleep":false}`},
+		{"never", defaults("never"), `{"policy":"never"}`},
+		{"idle", defaults("idle"), `{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}`},
+		{"timeslice", defaults("timeslice"), `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
+		{"anytime", defaults("anytime"), `{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}`},
+		{"anytime waiting", servicelevel.Policy{Yield: "anytime", IdleSec: 15, SleepLevel: "l2", Unfinished: "wait", UnfinishedWaitSec: 45, HoldMaxSec: 10},
+			`{"policy":"anytime","idle_sec":15,"sleep_level":"l2","unfinished":"wait","unfinished_wait_sec":45,"hold_max_sec":10}`},
+		{"leftover parameters are dropped", servicelevel.Policy{Yield: "never", IdleSec: 99, SleepLevel: "l2", MaxServeSec: 5, HoldMaxSec: 50},
+			`{"policy":"never"}`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			got, err := json.Marshal(YieldPolicyOf(c.p))
@@ -39,6 +40,11 @@ func TestYieldPolicyWire(t *testing.T) {
 				t.Fatalf("round trip = %+v %v", back, err)
 			}
 		})
+	}
+	withNeighbours := YieldPolicyOf(defaults("idle"))
+	withNeighbours.IdleNeighbours = []string{"chat-b"}
+	if got := marshalString(t, withNeighbours); got != `{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300,"idle_neighbours":["chat-b"]}` {
+		t.Fatalf("with idle neighbours = %s", got)
 	}
 }
 
@@ -53,35 +59,40 @@ func TestYieldPolicyRequestParse(t *testing.T) {
 		}
 		return req.Parse()
 	}
-	for preset, policy := range map[string]string{"resident": "never", "online": "idle", "shared": "timeslice", "offline": "anytime"} {
-		p, v := parse(`{"preset":"` + preset + `"}`)
-		if v != nil || p.Yield != policy || servicelevel.PresetOf(p) != preset {
-			t.Errorf("preset %s = %+v %+v", preset, p, v)
-		}
-	}
-	// The full form, as the wire of a response sent back.
-	p, v := parse(`{"preset":"custom","policy":"idle","auto_sleep":true,"idle_sec":30,"sleep_level":"l1","hold_max_sec":120}`)
-	if v != nil || p != (servicelevel.Policy{Yield: "idle", AutoSleep: true, IdleSec: 30, SleepLevel: "l1", HoldMaxSec: 120}) {
+	// The full form, as the wire of a response sent back (its neighbours
+	// ignored).
+	p, v := parse(`{"policy":"idle","idle_sec":30,"sleep_level":"l1","hold_max_sec":120,"idle_neighbours":["x"]}`)
+	if v != nil || p != (servicelevel.Policy{Yield: "idle", IdleSec: 30, SleepLevel: "l1", HoldMaxSec: 120}) {
 		t.Errorf("full form = %+v %+v", p, v)
 	}
 	// A policy alone takes the policy's defaults.
-	if p, v = parse(`{"policy":"timeslice"}`); v != nil || servicelevel.PresetOf(p) != "shared" {
+	want, _ := servicelevel.Parse(servicelevel.TimeSlice, servicelevel.Overrides{})
+	if p, v = parse(`{"policy":"timeslice"}`); v != nil || p != want {
 		t.Errorf("policy alone = %+v %+v", p, v)
+	}
+	if p, v = parse(`{"policy":"timeslice","max_serve_sec":60,"idle_sec":15}`); v != nil || p.MaxServeSec != 60 || p.IdleSec != 15 {
+		t.Errorf("timeslice turn = %+v %+v", p, v)
 	}
 	for _, c := range []struct {
 		body string
 		want servicelevel.Violation
 	}{
 		{`{}`, servicelevel.Violation{Field: "policy", Reason: "required"}},
-		{`{"preset":"online","idle_sec":60}`, servicelevel.Violation{Field: "policy", Reason: "required"}},
 		{`{"idle_sec":60}`, servicelevel.Violation{Field: "policy", Reason: "required"}},
-		{`{"preset":"custom"}`, servicelevel.Violation{Field: "preset", Reason: "invalid_value"}},
-		{`{"preset":"gold"}`, servicelevel.Violation{Field: "preset", Reason: "invalid_value"}},
 		{`{"policy":"gold"}`, servicelevel.Violation{Field: "policy", Reason: "invalid_value"}},
-		{`{"policy":"idle","idle_sec":29}`, servicelevel.Violation{Field: "idle_sec", Reason: "out_of_range", Min: 30, Max: 604800}},
+		{`{"policy":"idle","idle_sec":14}`, servicelevel.Violation{Field: "idle_sec", Reason: "out_of_range", Min: 15, Max: 604800}},
+		{`{"policy":"timeslice","max_serve_sec":29}`, servicelevel.Violation{Field: "max_serve_sec", Reason: "out_of_range", Min: 30, Max: 86400}},
 	} {
 		if _, v := parse(c.body); v == nil || *v != c.want {
 			t.Errorf("%s = %+v, want %+v", c.body, v, c.want)
+		}
+	}
+	for _, gone := range []string{`{"preset":"online"}`, `{"policy":"never","auto_sleep":true}`, `{"policy":"timeslice","min_serve_sec":60}`} {
+		var req YieldPolicyRequest
+		dec := json.NewDecoder(strings.NewReader(gone))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err == nil {
+			t.Errorf("%s was taken: the field is gone", gone)
 		}
 	}
 }
@@ -93,7 +104,7 @@ func TestDeploymentYieldPolicyWire(t *testing.T) {
 	if err := json.Unmarshal([]byte(marshalString(t, Deployment{YieldPolicy: YieldPolicyOf(servicelevel.Policy{Yield: "never"})})), &m); err != nil {
 		t.Fatal(err)
 	}
-	if string(m["yield_policy"]) != `{"preset":"resident","policy":"never","auto_sleep":false}` {
+	if string(m["yield_policy"]) != `{"policy":"never"}` {
 		t.Fatalf("yield_policy = %s", m["yield_policy"])
 	}
 	for _, gone := range []string{"service_level", "idle_sleep"} {
@@ -102,7 +113,7 @@ func TestDeploymentYieldPolicyWire(t *testing.T) {
 		}
 	}
 	var req DeployRequest
-	if err := json.Unmarshal([]byte(`{"yield_policy":{"preset":"offline"}}`), &req); err != nil || req.YieldPolicy == nil || req.YieldPolicy.Preset != "offline" {
+	if err := json.Unmarshal([]byte(`{"yield_policy":{"policy":"anytime"}}`), &req); err != nil || req.YieldPolicy == nil || req.YieldPolicy.Policy != "anytime" {
 		t.Fatalf("create request = %+v %v", req.YieldPolicy, err)
 	}
 	if got := marshalString(t, DeployRequest{}); strings.Contains(got, "yield_policy") {

@@ -89,7 +89,7 @@ func newOverviewRig(t *testing.T) *overviewRig {
 		}
 		return dep
 	}
-	rig.qwen, rig.batch, rig.night = mk("qwen", servicelevel.PresetResident), mk("batch", servicelevel.PresetShared), mk("night", servicelevel.PresetOnline)
+	rig.qwen, rig.batch, rig.night = mk("qwen", servicelevel.Never), mk("batch", servicelevel.TimeSlice), mk("night", servicelevel.Idle)
 	spec := func(desiredSleep int, claim int64) string {
 		return fmt.Sprintf(`{"desired_sleep":%d,"memory_claim_bytes":%d}`, desiredSleep, claim)
 	}
@@ -140,7 +140,7 @@ func TestSchedulingOverviewWire(t *testing.T) {
 		`{"model":"H100","cards":3,"awake":0,"asleep":1,"free":1,"held_outside":1,"unhealthy":0,"offline":0}],`+
 		`"contention":{"waiting_wakes":1,"held_requests":3,"yields_last_hour":1}},`+
 		`"models":["L20","H100"],`+
-		`"deployments":[{"id":%d,"name":"qwen","preset":"resident"},{"id":%d,"name":"batch","preset":"shared"},{"id":%d,"name":"night","preset":"online"}],`+
+		`"deployments":[{"id":%d,"name":"qwen","yield_policy":"never"},{"id":%d,"name":"batch","yield_policy":"timeslice"},{"id":%d,"name":"night","yield_policy":"idle"}],`+
 		`"nodes":[`+
 		`{"uuid":"gpu-a","name":"gpu-a","online":true,"labels":{"zone":"a"},"contention":%d,"cards":[[0,0,49152,100,0,0,[0]],[1,0,49152,25,4,0,[2,5]]]},`+
 		`{"uuid":"gpu-b","name":"gpu-b","online":false,"cards":[[0,0,49152,100,0,0,[0]]]},`+
@@ -335,7 +335,7 @@ func TestSchedulingBoardOfOneNode(t *testing.T) {
 		t.Fatalf("nodes = %+v", board.Nodes)
 	}
 	cards := board.Nodes.Items[0].GPUs
-	if len(cards) != 2 || len(cards[1].Occupants) != 2 || cards[1].Occupants[1].State != "asleep" || cards[1].Occupants[1].Preset != "online" {
+	if len(cards) != 2 || len(cards[1].Occupants) != 2 || cards[1].Occupants[1].State != "asleep" || cards[1].Occupants[1].YieldPolicy != "idle" {
 		t.Fatalf("cards = %+v", cards)
 	}
 	for _, list := range []string{`"pending":[]`, `"waiting_wakes":[]`, `"upcoming":[]`, `"recent":[]`} {
@@ -365,9 +365,9 @@ func TestSchedulingTimelineSharingStats(t *testing.T) {
 	}
 	names := map[string]string{}
 	for _, d := range got.Deployments {
-		names[d.Deployment] = d.Preset
+		names[d.Deployment] = d.YieldPolicy
 	}
-	if len(got.Nodes) != 0 || len(names) != 2 || names["batch"] != "shared" || names["night"] != "online" || got.Window.Hours != 24 {
+	if len(got.Nodes) != 0 || len(names) != 2 || names["batch"] != "timeslice" || names["night"] != "idle" || got.Window.Hours != 24 {
 		t.Fatalf("sharing stats = %+v", got)
 	}
 	for _, bad := range []string{"sharing=2", "sharing=1&node=gpu-a", "sharing=0"} {

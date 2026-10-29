@@ -97,33 +97,6 @@ func scheduleLocation(name string) (*time.Location, error) {
 	return time.LoadLocation(name)
 }
 
-// AutoSleepDeployments are the deployments with auto sleep on, each saying
-// whether any of its replicas serves.
-func (a *automationAdapter) AutoSleepDeployments() ([]automation.AutoSleepDeployment, error) {
-	deps, err := a.store.AutoSleepDeployments()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]automation.AutoSleepDeployment, 0, len(deps))
-	for _, dep := range deps {
-		insts, err := a.store.InstancesForDeployment(dep.ID)
-		if err != nil {
-			return nil, err
-		}
-		awake := false
-		for i := range insts {
-			in := &insts[i]
-			if !in.Headless && in.State == proto.InstRunning && !planning.InstanceAsleep(in) {
-				awake = true
-				break
-			}
-		}
-		policy := dep.Policy()
-		out = append(out, automation.AutoSleepDeployment{ID: dep.ID, AfterSec: policy.IdleSec, Level: sleepLevelOf(policy.SleepLevelPref()), Awake: awake})
-	}
-	return out, nil
-}
-
 // WaitingWakes groups the instances whose wake waits by deployment, each
 // group's wait starting at its oldest.
 func (a *automationAdapter) WaitingWakes() ([]automation.WaitingWake, error) {
@@ -146,13 +119,6 @@ func (a *automationAdapter) WaitingWakes() ([]automation.WaitingWake, error) {
 		}
 	}
 	return out, nil
-}
-
-func (a *automationAdapter) LastRequestAt(deploymentID uint) (time.Time, bool) {
-	if a.acct == nil {
-		return time.Time{}, false
-	}
-	return a.acct.LastRequestAt(deploymentID)
 }
 
 // sleepLevelOf is the sleep level order of a policy's preference.

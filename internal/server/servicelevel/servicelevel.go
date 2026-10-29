@@ -1,64 +1,46 @@
 // Package servicelevel is how a deployment shares GPUs with others: its yield
-// policy, the parameters that go with it, and the presets (the four service
-// levels) those stand for. It is a leaf, read by the store (the columns'
-// values), the gateway (how long a request may wait for a wake) and the
-// residency arbiter (who may put whom to sleep).
+// policy and the parameters that go with it. It is a leaf, read by the store
+// (the columns' values), the gateway (how long a request may wait for a
+// wake) and the residency arbiter (who may put whom to sleep).
 //
 // The rule every policy follows (docs/explanation/service-levels.md): a
 // deployment waiting for its cards may have the one awake on them put to
-// sleep when that one can be preempted and either ranks lower, has had its
-// turn at the same rank, or has been idle long enough to give the cards up.
+// sleep when that one yields at all and either has been idle for its idle
+// time, ranks lower and yields when busy, or takes turns with it and has
+// served its turn.
 package servicelevel
 
 import "time"
 
-// Yield policies, stored in Deployment.YieldPolicy. The policy is the only
-// thing the yield rule looks at to rank deployments.
+// Yield policies, stored in Deployment.YieldPolicy, in rank order: a
+// deployment waiting for cards may take them from a busy one of lower rank
+// that yields when busy, and from any yielding one idle for its IdleSec.
 const (
-	// Never gives its cards to no other deployment. Every deployment from
+	// Never gives its cards to no other deployment by itself; only an
+	// operator's or a schedule's sleep frees them. Every deployment from
 	// before yield policies is never.
 	Never = "never"
-	// Idle gives its cards up only when another deployment waits for them
-	// and it has been idle for IdleSec; it takes them back from timeslice
-	// and anytime deployments as soon as a request comes.
+	// Idle gives its cards up only once idle for IdleSec, to whoever waits
+	// for them; it takes them from timeslice and anytime deployments as soon
+	// as a request comes.
 	Idle = "idle"
-	// TimeSlice takes turns with the other timeslice deployments on its
-	// cards (each keeps them at least MinServeSec) and gives them up to
-	// never and idle ones.
+	// TimeSlice also gives its cards up when busy: to a higher-ranked waiter
+	// at once, and to another timeslice deployment once it has served
+	// MaxServeSec.
 	TimeSlice = "timeslice"
-	// Anytime gives its cards up to every higher-ranked waiter at once and
-	// resumes when the cards are free again.
+	// Anytime gives its cards up to every higher-ranked waiter at once, busy
+	// or not, and resumes when the cards are free again.
 	Anytime = "anytime"
 )
+
+// Policies are the yield policies, highest rank first.
+var Policies = []string{Never, Idle, TimeSlice, Anytime}
 
 // ValidYield says p is one of the yield policies.
 func ValidYield(p string) bool {
 	switch p {
 	case Never, Idle, TimeSlice, Anytime:
 		return true
-	}
-	return false
-}
-
-// Presets: the four service levels, each a full set of parameters
-// (PresetPolicy). A deployment whose parameters match none is Custom.
-const (
-	PresetResident = "resident"
-	PresetOnline   = "online"
-	PresetShared   = "shared"
-	PresetOffline  = "offline"
-	PresetCustom   = "custom"
-)
-
-// Presets are the presets a deployment can be set to, in display order.
-var Presets = []string{PresetResident, PresetOnline, PresetShared, PresetOffline}
-
-// ValidPreset says p is one of Presets (custom is derived, never chosen).
-func ValidPreset(p string) bool {
-	for _, name := range Presets {
-		if p == name {
-			return true
-		}
 	}
 	return false
 }
@@ -76,51 +58,55 @@ const (
 func ValidSleepLevel(l string) bool { return l == LevelAuto || l == LevelL1 || l == LevelL2 }
 
 // What becomes of the requests still running when a deployment gives its
-// cards up (Unfinished).
+// cards up while busy (Unfinished).
 const (
 	// UnfinishedAbort cuts them off at once.
 	UnfinishedAbort = "abort"
 	// UnfinishedWait lets them run on for UnfinishedWaitSec, then cuts off
 	// what is left.
 	UnfinishedWait = "wait"
-	// UnfinishedWaitUnbounded lets them run on however long they take.
-	UnfinishedWaitUnbounded = "wait_unbounded"
 )
 
 // ValidUnfinished says u is one of the unfinished-request handlings.
-func ValidUnfinished(u string) bool {
-	return u == UnfinishedAbort || u == UnfinishedWait || u == UnfinishedWaitUnbounded
-}
+func ValidUnfinished(u string) bool { return u == UnfinishedAbort || u == UnfinishedWait }
 
 // Bounds of the parameters, in seconds.
 const (
-	IdleSecMin           = 30
+	IdleSecMin           = 15
 	IdleSecMax           = 7 * 24 * 3600
-	MinServeSecMax       = 3600
+	MaxServeSecMin       = 30
+	MaxServeSecMax       = 24 * 3600
 	UnfinishedWaitSecMin = 1
 	UnfinishedWaitSecMax = 600
 	HoldMaxSecMin        = 10
-	HoldMaxSecMax        = 1800
+	HoldMaxSecMax        = 3600
 )
 
-// Fixed internal times of the yield rule that no parameter sets.
-const (
-	// AnytimeIdle is how long an anytime deployment must sit idle before it
-	// gives its cards to a waiter (an equal one, in effect: a higher-ranked
-	// waiter gets them at once).
-	AnytimeIdle = 30 * time.Second
-	// TurnWait is how long a timeslice waiter's oldest request must have
-	// waited before the deployment that has had its turn gives way to it.
-	TurnWait = 30 * time.Second
-	// DefaultHoldMax is how long the gateway holds a request for a
-	// deployment whose policy states no hold time.
-	DefaultHoldMax = 2 * time.Minute
+// Bound is the range a numeric parameter may take, in seconds. AtMost names
+// another parameter it may not exceed when both apply.
+type Bound struct {
+	Min, Max int
+	AtMost   string
+}
+
+// Bounds are the ranges of the numeric parameters, by their request names;
+// Validate holds a policy to them.
+var Bounds = map[string]Bound{
+	"idle_sec":            {Min: IdleSecMin, Max: IdleSecMax, AtMost: "max_serve_sec"},
+	"max_serve_sec":       {Min: MaxServeSecMin, Max: MaxServeSecMax},
+	"unfinished_wait_sec": {Min: UnfinishedWaitSecMin, Max: UnfinishedWaitSecMax},
+	"hold_max_sec":        {Min: HoldMaxSecMin, Max: HoldMaxSecMax},
+}
+
+// SleepLevels and UnfinishedModes are the values those parameters take.
+var (
+	SleepLevels     = []string{LevelAuto, LevelL1, LevelL2}
+	UnfinishedModes = []string{UnfinishedAbort, UnfinishedWait}
 )
 
-// SwitchMultiple sets a timeslice deployment's turn from the measured switch
-// time: max(MinServeSec, SwitchMultiple × switch), so the time spent
-// switching stays a small share of the time spent serving.
-const SwitchMultiple = 10
+// DefaultHoldMax is how long the gateway holds a request for a deployment
+// whose policy states no hold time.
+const DefaultHoldMax = 2 * time.Minute
 
 // Policy is a deployment's yield policy and its parameters. A parameter that
 // does not apply to the policy is its zero value (Normalize); which apply is
@@ -128,22 +114,19 @@ const SwitchMultiple = 10
 type Policy struct {
 	// Yield is one of Never, Idle, TimeSlice, Anytime.
 	Yield string
-	// AutoSleep puts the deployment to sleep after IdleSec without a
-	// request even when no deployment waits for its cards.
-	AutoSleep bool
-	// IdleSec is how long without a request counts as idle: for the idle and
-	// timeslice policies before giving the cards up to a waiter, and for any
-	// policy before an auto sleep.
+	// IdleSec is how long without a request counts as idle: once idle that
+	// long, a deployment of any policy but never gives its cards to whoever
+	// waits for them.
 	IdleSec int
 	// SleepLevel is the level of every sleep the platform chooses for the
-	// deployment (a yield, an auto sleep): LevelAuto, LevelL1 or LevelL2.
+	// deployment (a yield): LevelAuto, LevelL1 or LevelL2.
 	SleepLevel string
-	// MinServeSec is the least a timeslice deployment keeps its cards once
-	// woken before an equal may take them.
-	MinServeSec int
+	// MaxServeSec is how long a timeslice deployment keeps its cards once
+	// woken while another timeslice deployment waits for them.
+	MaxServeSec int
 	// Unfinished is what becomes of the requests still running when a
-	// timeslice or anytime deployment gives its cards up; UnfinishedWaitSec
-	// is how long they may run on for UnfinishedWait.
+	// timeslice or anytime deployment gives its cards up while busy;
+	// UnfinishedWaitSec is how long they may run on for UnfinishedWait.
 	Unfinished        string
 	UnfinishedWaitSec int
 	// HoldMaxSec is how long the gateway holds a request for the deployment
@@ -152,45 +135,41 @@ type Policy struct {
 }
 
 // Which parameters apply to a policy.
-func (p Policy) usesIdle() bool       { return p.Yield == Idle || p.Yield == TimeSlice || p.AutoSleep }
-func (p Policy) sleeps() bool         { return p.Yield != Never || p.AutoSleep }
-func (p Policy) usesMinServe() bool   { return p.Yield == TimeSlice }
+func (p Policy) yields() bool         { return p.Yield != Never }
+func (p Policy) usesMaxServe() bool   { return p.Yield == TimeSlice }
 func (p Policy) usesUnfinished() bool { return p.Yield == TimeSlice || p.Yield == Anytime }
 
 // Applicable says which of the optional parameters apply, so a client shows
-// only those: IdleSec, SleepLevel, MinServeSec, Unfinished (and
+// only those: IdleSec, SleepLevel, MaxServeSec, Unfinished (and
 // UnfinishedWaitSec when it is UnfinishedWait) and HoldMaxSec.
 type Applicable struct {
-	IdleSec, SleepLevel, MinServeSec, Unfinished, UnfinishedWaitSec, HoldMaxSec bool
+	IdleSec, SleepLevel, MaxServeSec, Unfinished, UnfinishedWaitSec, HoldMaxSec bool
 }
 
 // Applies is which parameters apply to p.
 func (p Policy) Applies() Applicable {
 	return Applicable{
-		IdleSec: p.usesIdle(), SleepLevel: p.sleeps(), MinServeSec: p.usesMinServe(),
+		IdleSec: p.yields(), SleepLevel: p.yields(), MaxServeSec: p.usesMaxServe(),
 		Unfinished: p.usesUnfinished(), UnfinishedWaitSec: p.usesUnfinished() && p.Unfinished == UnfinishedWait,
-		HoldMaxSec: p.sleeps(),
+		HoldMaxSec: p.yields(),
 	}
 }
 
 // Normalize is p with every parameter that does not apply cleared, and a
 // sleep level that applies but is empty read as auto. A policy read from
 // storage or built from a request is normalized, so equal policies compare
-// equal and a preset is recognized by ==.
+// equal.
 func (p Policy) Normalize() Policy {
 	if p.Yield == "" {
 		p.Yield = Never
 	}
-	if !p.usesIdle() {
-		p.IdleSec = 0
-	}
-	if !p.sleeps() {
-		p.SleepLevel, p.HoldMaxSec = "", 0
+	if !p.yields() {
+		p.IdleSec, p.SleepLevel, p.HoldMaxSec = 0, "", 0
 	} else if p.SleepLevel == "" {
 		p.SleepLevel = LevelAuto
 	}
-	if !p.usesMinServe() {
-		p.MinServeSec = 0
+	if !p.usesMaxServe() {
+		p.MaxServeSec = 0
 	}
 	if !p.usesUnfinished() {
 		p.Unfinished = ""
@@ -201,55 +180,18 @@ func (p Policy) Normalize() Policy {
 	return p
 }
 
-// PresetPolicy is the parameters of a preset (a name from Presets).
-func PresetPolicy(name string) (Policy, bool) {
-	switch name {
-	case PresetResident:
-		return Policy{Yield: Never}, true
-	case PresetOnline:
-		return Policy{Yield: Idle, IdleSec: 300, SleepLevel: LevelAuto, HoldMaxSec: 120}, true
-	case PresetShared:
-		return Policy{
-			Yield: TimeSlice, IdleSec: 60, SleepLevel: LevelAuto, MinServeSec: 120,
-			Unfinished: UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600,
-		}, true
-	case PresetOffline:
-		return Policy{Yield: Anytime, SleepLevel: LevelAuto, Unfinished: UnfinishedAbort, HoldMaxSec: 1800}, true
-	}
-	return Policy{}, false
-}
-
-// PresetOf is the preset p stands for: the one whose parameters p matches
-// exactly, else custom. It is derived, never stored.
-func PresetOf(p Policy) string {
-	p = p.Normalize()
-	for _, name := range Presets {
-		if preset, _ := PresetPolicy(name); preset.Normalize() == p {
-			return name
-		}
-	}
-	return PresetCustom
-}
-
 // Defaults is the full set of parameters a client that names only a policy
-// (and some parameters) gets for the rest: the preset of the policy, with
-// the values a policy's optional features (auto sleep, the unfinished wait)
-// start from. Nothing here is normalized.
+// (and some parameters) gets for the rest. Nothing here is normalized, so the
+// wait time is there for a client that turns waiting on.
 func Defaults(yield string) Policy {
-	preset := map[string]string{Never: PresetResident, Idle: PresetOnline, TimeSlice: PresetShared, Anytime: PresetOffline}[yield]
-	p, _ := PresetPolicy(preset)
-	p.Yield = yield
-	if p.IdleSec == 0 {
-		p.IdleSec = 300
-	}
-	if p.SleepLevel == "" {
-		p.SleepLevel = LevelAuto
-	}
-	if p.HoldMaxSec == 0 {
-		p.HoldMaxSec = int(DefaultHoldMax / time.Second)
-	}
-	if p.UnfinishedWaitSec == 0 {
-		p.UnfinishedWaitSec = 30
+	p := Policy{Yield: yield, SleepLevel: LevelAuto, UnfinishedWaitSec: 30}
+	switch yield {
+	case Idle:
+		p.IdleSec, p.HoldMaxSec = 60, 300
+	case TimeSlice:
+		p.IdleSec, p.MaxServeSec, p.Unfinished, p.HoldMaxSec = 30, 120, UnfinishedWait, 600
+	case Anytime:
+		p.IdleSec, p.Unfinished, p.HoldMaxSec = 30, UnfinishedAbort, 3600
 	}
 	return p
 }
@@ -257,10 +199,9 @@ func Defaults(yield string) Policy {
 // Overrides are the parameters a request states; nil/empty is not stated and
 // takes the policy's default (Build).
 type Overrides struct {
-	AutoSleep         *bool
 	IdleSec           *int
 	SleepLevel        string
-	MinServeSec       *int
+	MaxServeSec       *int
 	Unfinished        string
 	UnfinishedWaitSec *int
 	HoldMaxSec        *int
@@ -270,17 +211,14 @@ type Overrides struct {
 // policy under the stated parameters, normalized. It does not validate.
 func Build(yield string, o Overrides) Policy {
 	p := Defaults(yield)
-	if o.AutoSleep != nil {
-		p.AutoSleep = *o.AutoSleep
-	}
 	if o.IdleSec != nil {
 		p.IdleSec = *o.IdleSec
 	}
 	if o.SleepLevel != "" {
 		p.SleepLevel = o.SleepLevel
 	}
-	if o.MinServeSec != nil {
-		p.MinServeSec = *o.MinServeSec
+	if o.MaxServeSec != nil {
+		p.MaxServeSec = *o.MaxServeSec
 	}
 	if o.Unfinished != "" {
 		p.Unfinished = o.Unfinished
@@ -346,8 +284,13 @@ func (p Policy) Validate() *Violation {
 	if apply.IdleSec && (p.IdleSec < IdleSecMin || p.IdleSec > IdleSecMax) {
 		return &Violation{Field: "idle_sec", Reason: ReasonRange, Min: IdleSecMin, Max: IdleSecMax}
 	}
-	if apply.MinServeSec && (p.MinServeSec < 0 || p.MinServeSec > MinServeSecMax) {
-		return &Violation{Field: "min_serve_sec", Reason: ReasonRange, Min: 0, Max: MinServeSecMax}
+	if apply.MaxServeSec && (p.MaxServeSec < MaxServeSecMin || p.MaxServeSec > MaxServeSecMax) {
+		return &Violation{Field: "max_serve_sec", Reason: ReasonRange, Min: MaxServeSecMin, Max: MaxServeSecMax}
+	}
+	// Idle that long never comes before the turn ends: the idle time would
+	// do nothing.
+	if apply.MaxServeSec && p.IdleSec > p.MaxServeSec {
+		return &Violation{Field: "idle_sec", Reason: ReasonRange, Min: IdleSecMin, Max: p.MaxServeSec}
 	}
 	if apply.Unfinished && !ValidUnfinished(p.Unfinished) {
 		return &Violation{Field: "unfinished", Reason: ReasonValue}
@@ -387,27 +330,15 @@ func (p Policy) TakesTurns() bool { return p.Yield == TimeSlice }
 // or waiting before it gives its cards to a deployment waiting for them;
 // zero never.
 func (p Policy) IdleRelease() time.Duration {
-	switch p.Yield {
-	case Idle, TimeSlice:
-		return time.Duration(p.IdleSec) * time.Second
-	case Anytime:
-		return AnytimeIdle
+	if !p.yields() {
+		return 0
 	}
-	return 0
+	return time.Duration(p.IdleSec) * time.Second
 }
 
-// MinTurn is the least time a timeslice deployment keeps its cards once
-// woken before an equal may take them; Turn raises it from the switch time.
-func (p Policy) MinTurn() time.Duration { return time.Duration(p.MinServeSec) * time.Second }
-
-// WaitBeforeTurn is how long an equal's oldest request must have waited
-// before the deployment gives way to it.
-func (p Policy) WaitBeforeTurn() time.Duration {
-	if p.TakesTurns() {
-		return TurnWait
-	}
-	return 0
-}
+// Turn is how long a timeslice deployment keeps its cards once woken while
+// an equal waits for them.
+func (p Policy) Turn() time.Duration { return time.Duration(p.MaxServeSec) * time.Second }
 
 // HoldMax is how long the gateway holds a request for the deployment while
 // it wakes.
@@ -419,14 +350,11 @@ func (p Policy) HoldMax() time.Duration {
 }
 
 // Drain says how requests still running are treated when the deployment
-// gives its cards up: cut off at once (abort), or let run on for limit
-// (zero: however long they take, bounded false) after new ones are held.
+// gives its cards up: cut off at once (abort), or let run on for limit after
+// new ones are held.
 func (p Policy) Drain() (abort bool, limit time.Duration) {
-	switch p.Unfinished {
-	case UnfinishedWait:
+	if p.Unfinished == UnfinishedWait {
 		return false, time.Duration(p.UnfinishedWaitSec) * time.Second
-	case UnfinishedWaitUnbounded:
-		return false, 0
 	}
 	return true, 0
 }
@@ -439,34 +367,21 @@ func (p Policy) SleepLevelPref() string {
 	return p.SleepLevel
 }
 
-// Turn is the least time a deployment keeps its cards once woken, given the
-// switch time measured for it (zero when none is known yet).
-func Turn(p Policy, switchTime time.Duration) time.Duration {
-	if t := SwitchMultiple * switchTime; t > p.MinTurn() {
-		return t
-	}
-	return p.MinTurn()
-}
-
 // Holder is a deployment awake on cards another one waits for.
 type Holder struct {
 	Policy Policy
 	// AwakeFor is how long it has been awake since its last wake.
 	AwakeFor time.Duration
+	// Busy says it has a request in flight or waiting.
+	Busy bool
 	// IdleFor is how long it has had no request in flight or waiting; zero
-	// while it has one.
+	// while Busy.
 	IdleFor time.Duration
-	// SwitchTime is the measured time to switch it out and back; zero when
-	// unknown.
-	SwitchTime time.Duration
 }
 
 // Waiter is a deployment waiting for cards.
 type Waiter struct {
 	Policy Policy
-	// Waited is how long its oldest request (or its wish to resume) has
-	// waited.
-	Waited time.Duration
 }
 
 // Reason says why a holder may be put to sleep for a waiter.
@@ -474,11 +389,12 @@ type Reason string
 
 // Reasons a holder gives way.
 const (
-	// ReasonIdle: the holder has been idle for its IdleRelease.
+	// ReasonIdle: the holder has been idle for its IdleSec.
 	ReasonIdle Reason = "idle"
 	// ReasonRank: the waiter ranks higher and the holder is preemptible.
 	ReasonRank Reason = "rank"
-	// ReasonTurn: equals taking turns, and the holder has had its turn.
+	// ReasonTurn: equals taking turns, and the holder has served its
+	// MaxServeSec.
 	ReasonTurn Reason = "turn"
 )
 
@@ -489,27 +405,52 @@ func Yields(holder Holder, waiter Waiter) (Reason, bool) {
 	if !ValidYield(hp.Yield) || hp.Yield == Never {
 		return "", false
 	}
-	if release := hp.IdleRelease(); release > 0 && holder.IdleFor >= release {
+	if release := hp.IdleRelease(); !holder.Busy && holder.IdleFor >= release {
 		return ReasonIdle, true
 	}
 	if hp.Preemptible() && wp.Rank() > hp.Rank() {
 		return ReasonRank, true
 	}
-	if hp.TakesTurns() && wp.Rank() == hp.Rank() && holder.AwakeFor >= Turn(hp, holder.SwitchTime) && waiter.Waited >= hp.WaitBeforeTurn() {
+	if hp.TakesTurns() && wp.Rank() == hp.Rank() && holder.AwakeFor >= hp.Turn() {
 		return ReasonTurn, true
 	}
 	return "", false
 }
 
-// SharesCardsWith says a deployment of yield policy a may be placed on cards
-// a deployment of policy b holds (awake or asleep). Two idle deployments may
-// not share: neither would give way to the other while both are busy, and
-// each would hold the other's requests for as long as it stays busy. A never
-// deployment shares with no one but what it already shares by sleeping (its
-// own choice).
-func SharesCardsWith(a, b string) bool {
-	if a == Never || b == Never {
-		return false
+// Due is how long until holder must give its cards to waiter if nothing
+// else changes: the rest of its idle time, or of its turn. ok is false when
+// no wait ends it - a never holder, or a busy one that yields to the waiter
+// only once idle (when its requests end, which no clock tells). Zero when it
+// must already (Yields).
+func Due(holder Holder, waiter Waiter) (time.Duration, bool) {
+	if _, ok := Yields(holder, waiter); ok {
+		return 0, true
 	}
-	return !(a == Idle && b == Idle)
+	hp, wp := holder.Policy, waiter.Policy
+	if !ValidYield(hp.Yield) || hp.Yield == Never {
+		return 0, false
+	}
+	var due time.Duration
+	ok := false
+	if !holder.Busy {
+		due, ok = hp.IdleRelease()-holder.IdleFor, true
+	}
+	if hp.TakesTurns() && wp.Rank() == hp.Rank() {
+		if left := hp.Turn() - holder.AwakeFor; !ok || left < due {
+			due, ok = left, true
+		}
+	}
+	return due, ok
 }
+
+// SharesCardsWith says a deployment of yield policy a may be placed on cards
+// a deployment of policy b holds (awake or asleep). A never deployment
+// shares with no one but what it already shares by sleeping (its own
+// choice). Two idle deployments may share, though neither gives way to the
+// other while both are busy (IdleNeighbours warns of it).
+func SharesCardsWith(a, b string) bool { return a != Never && b != Never }
+
+// IdleNeighbours says two deployments of these policies on the same cards
+// each hold the other's requests for as long as it stays busy: both give
+// their cards up only when idle.
+func IdleNeighbours(a, b string) bool { return a == Idle && b == Idle }

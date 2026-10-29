@@ -104,7 +104,7 @@ func seedResidency(t *testing.T) (*Store, *Node, map[string]uint) {
 	}
 	ids := map[string]uint{}
 	for _, name := range []string{"alpha", "beta"} {
-		dep, err := s.CreateDeployment(withPreset(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, servicelevel.PresetShared))
+		dep, err := s.CreateDeployment(withPolicy(&Deployment{ModelID: 1, NodeID: node.ID, Name: name, ServedName: name, Engine: "vllm", Sleepable: true, State: DeployActive}, servicelevel.TimeSlice))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,7 +274,7 @@ func TestResidencySwitchCounts(t *testing.T) {
 		t.Fatalf("counts = %+v", got)
 	}
 	names, err := s.ResidencyDeployments([]uint{a, 9999})
-	if err != nil || names[a].Name != "alpha" || names[a].Preset != servicelevel.PresetShared {
+	if err != nil || names[a].Name != "alpha" || names[a].Yield != servicelevel.TimeSlice {
 		t.Fatalf("names = %+v, %v", names, err)
 	}
 	if _, ok := names[9999]; ok {

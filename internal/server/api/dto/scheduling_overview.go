@@ -67,8 +67,8 @@ type OverviewContention struct {
 type OverviewDeployment struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
-	// Preset is the service level its yield policy stands for, or custom.
-	Preset string `json:"preset"`
+	// YieldPolicy is its yield policy (never, idle, timeslice, anytime).
+	YieldPolicy string `json:"yield_policy"`
 }
 
 // OverviewNode is a node and its cards. Labels are the labels an operator

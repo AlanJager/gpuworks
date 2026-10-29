@@ -1,7 +1,6 @@
 package automation
 
 import (
-	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -18,64 +17,28 @@ func TestTheEvaluatorTicksEveryTenSeconds(t *testing.T) {
 	}
 }
 
-// An auto sleep that leaves the level to the platform records the level the
-// platform chose.
-func TestAutoSleepAtTheAutoLevelRecordsTheChosenLevel(t *testing.T) {
-	w := newFakeWorld()
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []AutoSleepDeployment{{ID: 5, AfterSec: 30, Level: LevelAuto, Awake: true}}
-	e, c := newEvaluator(w, start)
-	e.Tick()
-	c.t = start.Add(29 * time.Second)
-	e.Tick()
-	if len(w.orders) != 0 {
-		t.Fatalf("slept before the 30 s idle time: %v", w.orders)
-	}
-	c.t = start.Add(30 * time.Second)
-	e.Tick()
-	if !slices.Equal(w.orders, []string{"sleep 5 L0"}) || w.params[0]["level"] != 1 || w.params[0]["idle_sec"] != 30 {
-		t.Fatalf("orders %v params %v", w.orders, w.params)
-	}
-}
-
-func TestAnAutoSleepRefusedAtAnAutoLevelRecordsNoLevel(t *testing.T) {
-	w := newFakeWorld()
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []AutoSleepDeployment{{ID: 5, AfterSec: 30, Level: LevelAuto, Awake: true}}
-	w.sleepErr = errors.New("boom")
-	e, c := newEvaluator(w, start)
-	e.Tick()
-	c.t = start.Add(31 * time.Second)
-	e.Tick()
-	if _, has := w.params[0]["level"]; has || !slices.Equal(w.events, []string{"5 SCHEDULE_ACTION_FAILED"}) {
-		t.Fatalf("events %v params %v", w.events, w.params)
-	}
-}
-
 // holderWorld is a holder (1) awake with requests running and a waiting
 // higher-ranked deployment (2) that has to wait for its cards.
 func holderWorld(holder servicelevel.Policy, inFlight int) (*residencyWorld, *Evaluator, *clock) {
 	w := newResidencyWorld()
-	w.levels[1], w.levels[2] = holder, pol(servicelevel.PresetOnline)
+	w.levels[1], w.levels[2] = holder, pol(servicelevel.Idle)
 	w.asleep[2] = true
 	w.activity[1] = Activity{InFlight: inFlight, LastRequest: t0}
 	w.blocking[2] = Blocking{Holders: []Holder{{DeploymentID: 1, Policy: holder, Instances: []string{"h-1"}}}}
-	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(servicelevel.PresetOnline), Since: t0}}
+	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(servicelevel.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	return w, e, c
 }
 
 func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 	waitFor := func(sec int) servicelevel.Policy {
-		p := pol(servicelevel.PresetShared)
+		p := pol(servicelevel.TimeSlice)
 		p.UnfinishedWaitSec = sec
 		return p
 	}
-	unbounded := pol(servicelevel.PresetShared)
-	unbounded.Unfinished, unbounded.UnfinishedWaitSec = servicelevel.UnfinishedWaitUnbounded, 0
-	abortShared := pol(servicelevel.PresetShared)
+	abortShared := pol(servicelevel.TimeSlice)
 	abortShared.Unfinished, abortShared.UnfinishedWaitSec = servicelevel.UnfinishedAbort, 0
-	waitOffline := pol(servicelevel.PresetOffline)
+	waitOffline := pol(servicelevel.Anytime)
 	waitOffline.Unfinished, waitOffline.UnfinishedWaitSec = servicelevel.UnfinishedWait, 90
 
 	t.Run("abort cuts them off at once, even on a timeslice deployment", func(t *testing.T) {
@@ -86,7 +49,7 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 		}
 	})
 	t.Run("abort on an anytime deployment is the preset", func(t *testing.T) {
-		w, e, c := holderWorld(pol(servicelevel.PresetOffline), 4)
+		w, e, c := holderWorld(pol(servicelevel.Anytime), 4)
 		e.residency(c.t)
 		if !slices.Equal(w.yields, []string{"1 abort=true"}) {
 			t.Fatalf("yields %v", w.yields)
@@ -133,24 +96,6 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 			t.Fatalf("yields %v drains %v", w.yields, w.drains)
 		}
 	})
-	t.Run("an unbounded wait never cuts them off, however long", func(t *testing.T) {
-		w, e, c := holderWorld(unbounded, 4)
-		e.residency(c.t)
-		c.t = c.t.Add(24 * time.Hour)
-		for range 3 {
-			e.residency(c.t)
-			c.t = c.t.Add(time.Hour)
-		}
-		if len(w.yields) != 0 || !slices.Equal(w.drains, []string{"1 true"}) {
-			t.Fatalf("an unbounded drain ended on time: yields %v drains %v", w.yields, w.drains)
-		}
-		w.activity[1] = Activity{LastRequest: c.t}
-		w.waiters, w.blocking[2] = nil, Blocking{}
-		e.residency(c.t)
-		if !slices.Equal(w.yields, []string{"1 abort=false"}) || !slices.Equal(w.drains, []string{"1 true", "1 false"}) {
-			t.Fatalf("after the last request: yields %v drains %v", w.yields, w.drains)
-		}
-	})
 	t.Run("with nothing running a wait sleeps at once", func(t *testing.T) {
 		w, e, c := holderWorld(waitFor(45), 0)
 		e.residency(c.t)
@@ -177,9 +122,9 @@ func idleHolderWorld(holder, waiter servicelevel.Policy, idleFor time.Duration) 
 
 // A custom idle time moves when an idle deployment gives its cards up.
 func TestAnIdleDeploymentGivesWayAfterItsOwnIdleTime(t *testing.T) {
-	custom := pol(servicelevel.PresetOnline)
+	custom := pol(servicelevel.Idle)
 	custom.IdleSec = 30
-	offline := pol(servicelevel.PresetOffline)
+	offline := pol(servicelevel.Anytime)
 	if w := idleHolderWorld(custom, offline, 29*time.Second); len(w.yields) != 0 {
 		t.Fatalf("gave way before its 30 s: %v", w.yields)
 	}
@@ -188,15 +133,14 @@ func TestAnIdleDeploymentGivesWayAfterItsOwnIdleTime(t *testing.T) {
 	}
 }
 
-// An anytime holder yields to an equal waiting only once idle for the fixed
-// 30 s, whatever idle time it states for auto sleep.
-func TestEqualAnytimeDeploymentsYieldAfterTheFixedIdleTime(t *testing.T) {
-	holder := pol(servicelevel.PresetOffline)
-	holder.AutoSleep, holder.IdleSec = true, 3600
-	if w := idleHolderWorld(holder, pol(servicelevel.PresetOffline), 29*time.Second); len(w.yields) != 0 {
-		t.Fatalf("yielded to an equal before it was idle 30 s: %v", w.yields)
+// An anytime holder yields to an equal waiting once idle for its idle time.
+func TestEqualAnytimeDeploymentsYieldAfterTheirIdleTime(t *testing.T) {
+	holder := pol(servicelevel.Anytime)
+	holder.IdleSec = 45
+	if w := idleHolderWorld(holder, pol(servicelevel.Anytime), 44*time.Second); len(w.yields) != 0 {
+		t.Fatalf("yielded to an equal before it was idle 45 s: %v", w.yields)
 	}
-	if w := idleHolderWorld(holder, pol(servicelevel.PresetOffline), 30*time.Second); !slices.Equal(w.yields, []string{"1 abort=false"}) {
+	if w := idleHolderWorld(holder, pol(servicelevel.Anytime), 45*time.Second); !slices.Equal(w.yields, []string{"1 abort=false"}) {
 		t.Fatalf("yields %v", w.yields)
 	}
 }

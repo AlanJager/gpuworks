@@ -63,28 +63,21 @@ func TestProcessABatchOnAnOfflineDeploymentSurvivesPreemption(t *testing.T) {
 		})
 		return created.ID, inst
 	}
-	put := func(path string, body any) {
-		t.Helper()
-		raw, _ := json.Marshal(body)
-		if resp, data := authedDo(t, http.MethodPut, base, token, path, raw); resp.StatusCode != http.StatusOK {
-			t.Fatalf("PUT %s status=%d body=%s", path, resp.StatusCode, data)
-		}
-	}
 
-	// The online deployment is put to sleep by auto sleep, which stays on: it
-	// goes back to sleep a minute after the request that preempts the batch's
-	// deployment, and that is when the offline deployment wakes again.
-	online, onlineInst := create("batchapi-online", map[string]any{"yield_policy": map[string]any{"preset": "online"}})
-	put(fmt.Sprintf("/api/v1/deployments/%d/yield-policy", online), map[string]any{"policy": "idle", "auto_sleep": true, "idle_sec": 60, "sleep_level": "l2"})
-	waitSleepLevelWithin(t, base, token, onlineInst.UUID, 2, 3*time.Minute)
+	// The online deployment, asleep, gives way to the offline one 15 seconds
+	// after the request that preempts the batch's deployment: the offline one
+	// waits to resume, and that is when it wakes again.
+	online, onlineInst := create("batchapi-online", map[string]any{"yield_policy": map[string]any{"policy": "idle", "idle_sec": 15, "sleep_level": "l2"}})
+	sleepForTheTaking(t, base, token, online, onlineInst.UUID)
 
 	// The offline deployment takes the card the sleeper gave up. Five seconds
 	// per request (four rounds of eight) keep the batch running while the
 	// preemption happens.
 	offline, _ := create("batchapi-offline", map[string]any{
-		"yield_policy":        map[string]any{"preset": "offline"},
+		"yield_policy":        map[string]any{"policy": "anytime"},
 		"container_overrides": map[string]any{"env": map[string]string{"FAKE_ENGINE_TTFT_DELAY": "5s"}},
 	})
+	wakeWhenThereIsRoom(t, base, token, online)
 
 	_, keyData := authedDo(t, http.MethodPost, base, token, "/api/v1/apikeys", []byte(`{"name":"batchapi"}`))
 	var key struct {

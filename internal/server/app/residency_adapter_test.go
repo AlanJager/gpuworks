@@ -27,7 +27,7 @@ func residencyFixture(t *testing.T) (*residencyAdapter, *automationAdapter, *sto
 	if err != nil {
 		t.Fatal(err)
 	}
-	offline, _ := servicelevel.PresetPolicy(servicelevel.PresetOffline)
+	offline, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
 	if err := st.SetDeploymentYieldPolicy(other.ID, offline); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 		t.Fatalf("blocking = %+v err=%v", b, err)
 	}
 	h := b.Holders[0]
-	if h.DeploymentID != other.ID || h.Name != "batch" || servicelevel.PresetOf(h.Policy) != servicelevel.PresetOffline || !slices.Equal(h.Instances, []string{"batch-1"}) {
+	if h.DeploymentID != other.ID || h.Name != "batch" || h.Policy.Yield != servicelevel.Anytime || !slices.Equal(h.Instances, []string{"batch-1"}) {
 		t.Fatalf("holder = %+v", h)
 	}
 
@@ -91,7 +91,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	if woken, err := auto.WakeWaiting(dep.ID, result.Waiting); err != nil || len(woken) != 1 {
 		t.Fatalf("waiting wake after the yield = %v err=%v", woken, err)
 	}
-	if policy, ok := res.Wakeable(other.ID); !ok || servicelevel.PresetOf(policy) != servicelevel.PresetOffline {
+	if policy, ok := res.Wakeable(other.ID); !ok || policy.Yield != servicelevel.Anytime {
 		t.Fatalf("the holder put to sleep for another is not wakeable: %+v %v", policy, ok)
 	}
 }

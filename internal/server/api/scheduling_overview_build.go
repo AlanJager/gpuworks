@@ -84,7 +84,7 @@ func (a *apiHandlers) buildOverview(now time.Time) (*dto.SchedulingOverview, err
 					at = len(out.Deployments)
 					deploymentAt[occupant.DeploymentID] = at
 					info := ledger.Deployments[occupant.DeploymentID]
-					out.Deployments = append(out.Deployments, dto.OverviewDeployment{ID: occupant.DeploymentID, Name: info.Name, Preset: info.Preset})
+					out.Deployments = append(out.Deployments, dto.OverviewDeployment{ID: occupant.DeploymentID, Name: info.Name, YieldPolicy: info.YieldPolicy})
 				}
 				code := at * 2
 				if occupant.Asleep {

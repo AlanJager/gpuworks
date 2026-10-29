@@ -215,6 +215,7 @@ GET /api/v1/scheduling/board
 GET /api/v1/scheduling/history
 GET /api/v1/scheduling/overview
 GET /api/v1/scheduling/timeline
+GET /api/v1/scheduling/yield-policies
 GET /api/v1/security/settings
 GET /api/v1/server/listen
 GET /api/v1/settings

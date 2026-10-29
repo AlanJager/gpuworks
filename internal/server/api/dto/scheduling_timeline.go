@@ -60,9 +60,8 @@ type TimelineSegment struct {
 type TimelineDeployment struct {
 	DeploymentID uint   `json:"deployment_id"`
 	Deployment   string `json:"deployment"`
-	// Preset is the service level its yield policy stands for (resident,
-	// online, shared, offline), or custom.
-	Preset       string   `json:"preset"`
+	// YieldPolicy is its yield policy (never, idle, timeslice, anytime).
+	YieldPolicy  string   `json:"yield_policy"`
 	AwakeSeconds int64    `json:"awake_seconds"`
 	AwakeShare   float64  `json:"awake_share"`
 	Switches     int      `json:"switches"`

@@ -13,9 +13,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// presetDeployment states the service level's policy on dep.
-func presetDeployment(dep *store.Deployment, preset string) *store.Deployment {
-	p, _ := servicelevel.PresetPolicy(preset)
+// presetDeployment states the yield policy, with its defaults, on dep.
+func presetDeployment(dep *store.Deployment, yield string) *store.Deployment {
+	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
 	dep.SetPolicy(p)
 	return dep
 }
@@ -64,8 +64,8 @@ func (r *yieldPolicyRig) place(t *testing.T, dep *store.Deployment, uuid, gpus s
 func TestYieldPolicyRouteAuthAndTarget(t *testing.T) {
 	rig := newYieldPolicyRig(t)
 	path := schedPath(rig.sleepy, "yield-policy")
-	const body = `{"preset":"offline"}`
-	const answer = `{"preset":"offline","policy":"anytime","auto_sleep":false,"sleep_level":"auto","unfinished":"abort","hold_max_sec":1800}`
+	const body = `{"policy":"anytime"}`
+	const answer = `{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}`
 	if rec := rig.do("", http.MethodPut, path, body); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("no token = %d %s, want 401", rec.Code, rec.Body)
 	}
@@ -73,8 +73,8 @@ func TestYieldPolicyRouteAuthAndTarget(t *testing.T) {
 	if rec := rig.do(read, http.MethodPut, path, body); rec.Code != http.StatusForbidden || decodeBody(t, rec)["code"] != "PLATFORM_TOKEN_READ_ONLY" {
 		t.Fatalf("read token = %d %s, want 403", rec.Code, rec.Body)
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Preset() != servicelevel.PresetResident {
-		t.Fatalf("a refused request changed the policy to %s", dep.Preset())
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Never {
+		t.Fatalf("a refused request changed the policy to %+v", dep.Policy())
 	}
 	if rec := rig.do(rig.mint("write"), http.MethodPut, path, body); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != answer {
 		t.Fatalf("write token = %d %s", rec.Code, rec.Body)
@@ -102,7 +102,7 @@ func TestTheServiceLevelAndIdleSleepRoutesAreGone(t *testing.T) {
 			}
 		}
 	}
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Preset() != servicelevel.PresetResident || dep.AutoSleep {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Never {
 		t.Fatalf("a removed route changed the policy: %+v", dep.Policy())
 	}
 }
@@ -114,8 +114,8 @@ func TestYieldPolicySetting(t *testing.T) {
 		return (&replacementRig{tokenRig: rig.tokenRig}).deploymentWire(t, dep)
 	}
 	got := wire(rig.sleepy)
-	if jsonOf(t, got["yield_policy"]) != `{"auto_sleep":false,"policy":"never","preset":"resident"}` || got["sleep_held"] != false {
-		t.Fatalf("a new deployment reads yield_policy=%s sleep_held=%v, want resident/false", jsonOf(t, got["yield_policy"]), got["sleep_held"])
+	if jsonOf(t, got["yield_policy"]) != `{"policy":"never"}` || got["sleep_held"] != false {
+		t.Fatalf("a new deployment reads yield_policy=%s sleep_held=%v, want never/false", jsonOf(t, got["yield_policy"]), got["sleep_held"])
 	}
 	for _, gone := range []string{"service_level", "idle_sleep"} {
 		if _, ok := got[gone]; ok {
@@ -126,27 +126,22 @@ func TestYieldPolicySetting(t *testing.T) {
 	// Every body is answered with the policy as stored, and the deployment
 	// then reads exactly that.
 	for _, tc := range []struct{ name, body, want string }{
-		{"online preset", `{"preset":"online"}`, `{"preset":"online","policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}`},
-		{"shared preset", `{"preset":"shared"}`, `{"preset":"shared","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
-		{"offline preset", `{"preset":"offline"}`, `{"preset":"offline","policy":"anytime","auto_sleep":false,"sleep_level":"auto","unfinished":"abort","hold_max_sec":1800}`},
-		{"resident preset", `{"preset":"resident"}`, `{"preset":"resident","policy":"never","auto_sleep":false}`},
-		// What the UI sends for a preset's full parameter set is the preset.
-		{"online as a full object", `{"policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}`, `{"preset":"online","policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}`},
-		{"shared as a full object", `{"policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`, `{"preset":"shared","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
 		// A policy alone takes its defaults.
-		{"policy alone", `{"policy":"timeslice"}`, `{"preset":"shared","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
-		// A change from a preset is custom.
-		{"idle with a 30 s idle time", `{"policy":"idle","idle_sec":30}`, `{"preset":"custom","policy":"idle","auto_sleep":false,"idle_sec":30,"sleep_level":"auto","hold_max_sec":120}`},
-		{"never with auto sleep", `{"policy":"never","auto_sleep":true,"idle_sec":600,"sleep_level":"l1"}`, `{"preset":"custom","policy":"never","auto_sleep":true,"idle_sec":600,"sleep_level":"l1","hold_max_sec":120}`},
-		{"anytime that waits and sleeps on its own", `{"policy":"anytime","auto_sleep":true,"idle_sec":45,"sleep_level":"l2","unfinished":"wait","unfinished_wait_sec":90,"hold_max_sec":60}`, `{"preset":"custom","policy":"anytime","auto_sleep":true,"idle_sec":45,"sleep_level":"l2","unfinished":"wait","unfinished_wait_sec":90,"hold_max_sec":60}`},
-		{"timeslice that waits without a bound", `{"policy":"timeslice","unfinished":"wait_unbounded","min_serve_sec":0}`, `{"preset":"custom","policy":"timeslice","auto_sleep":false,"idle_sec":60,"sleep_level":"auto","min_serve_sec":0,"unfinished":"wait_unbounded","hold_max_sec":600}`},
+		{"idle alone", `{"policy":"idle"}`, `{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}`},
+		{"timeslice alone", `{"policy":"timeslice"}`, `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`},
+		{"anytime alone", `{"policy":"anytime"}`, `{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}`},
+		{"never alone", `{"policy":"never"}`, `{"policy":"never"}`},
+		// What the UI sends: every parameter.
+		{"idle with a 15 s idle time", `{"policy":"idle","idle_sec":15,"sleep_level":"l1","hold_max_sec":300}`, `{"policy":"idle","idle_sec":15,"sleep_level":"l1","hold_max_sec":300}`},
+		{"anytime that waits", `{"policy":"anytime","idle_sec":45,"sleep_level":"l2","unfinished":"wait","unfinished_wait_sec":90,"hold_max_sec":60}`, `{"policy":"anytime","idle_sec":45,"sleep_level":"l2","unfinished":"wait","unfinished_wait_sec":90,"hold_max_sec":60}`},
+		{"timeslice that cuts off", `{"policy":"timeslice","idle_sec":15,"max_serve_sec":30,"unfinished":"abort","unfinished_wait_sec":30}`, `{"policy":"timeslice","idle_sec":15,"sleep_level":"auto","max_serve_sec":30,"unfinished":"abort","hold_max_sec":600}`},
 		// Parameters that do not apply are ignored, however they are spelt.
-		{"inapplicable parameters", `{"policy":"idle","idle_sec":300,"min_serve_sec":99999,"unfinished":"abort","unfinished_wait_sec":0}`, `{"preset":"online","policy":"idle","auto_sleep":false,"idle_sec":300,"sleep_level":"auto","hold_max_sec":120}`},
-		{"never ignores everything but auto sleep", `{"policy":"never","idle_sec":5,"sleep_level":"l2","hold_max_sec":1}`, `{"preset":"resident","policy":"never","auto_sleep":false}`},
-		// A response sent back as it is, its derived preset ignored.
-		{"a response sent back", `{"preset":"online","policy":"timeslice","auto_sleep":true,"idle_sec":100,"sleep_level":"l1","min_serve_sec":5,"unfinished":"wait","unfinished_wait_sec":9,"hold_max_sec":15}`, `{"preset":"custom","policy":"timeslice","auto_sleep":true,"idle_sec":100,"sleep_level":"l1","min_serve_sec":5,"unfinished":"wait","unfinished_wait_sec":9,"hold_max_sec":15}`},
-		{"bounds", `{"policy":"timeslice","idle_sec":30,"min_serve_sec":3600,"unfinished":"wait","unfinished_wait_sec":600,"hold_max_sec":10}`, `{"preset":"custom","policy":"timeslice","auto_sleep":false,"idle_sec":30,"sleep_level":"auto","min_serve_sec":3600,"unfinished":"wait","unfinished_wait_sec":600,"hold_max_sec":10}`},
-		{"upper bounds", `{"policy":"idle","idle_sec":604800,"hold_max_sec":1800}`, `{"preset":"custom","policy":"idle","auto_sleep":false,"idle_sec":604800,"sleep_level":"auto","hold_max_sec":1800}`},
+		{"inapplicable parameters", `{"policy":"idle","idle_sec":60,"max_serve_sec":99999,"unfinished":"abort","unfinished_wait_sec":0}`, `{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}`},
+		{"never ignores everything", `{"policy":"never","idle_sec":5,"sleep_level":"l2","hold_max_sec":1}`, `{"policy":"never"}`},
+		// A response sent back as it is.
+		{"a response sent back", `{"policy":"timeslice","idle_sec":100,"sleep_level":"l1","max_serve_sec":100,"unfinished":"wait","unfinished_wait_sec":9,"hold_max_sec":15}`, `{"policy":"timeslice","idle_sec":100,"sleep_level":"l1","max_serve_sec":100,"unfinished":"wait","unfinished_wait_sec":9,"hold_max_sec":15}`},
+		{"bounds", `{"policy":"timeslice","idle_sec":15,"max_serve_sec":86400,"unfinished":"wait","unfinished_wait_sec":600,"hold_max_sec":10}`, `{"policy":"timeslice","idle_sec":15,"sleep_level":"auto","max_serve_sec":86400,"unfinished":"wait","unfinished_wait_sec":600,"hold_max_sec":10}`},
+		{"upper bounds", `{"policy":"idle","idle_sec":604800,"hold_max_sec":3600}`, `{"policy":"idle","idle_sec":604800,"sleep_level":"auto","hold_max_sec":3600}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := rig.do(rig.session, http.MethodPut, path, tc.body)
@@ -161,6 +156,9 @@ func TestYieldPolicySetting(t *testing.T) {
 		})
 	}
 
+	rangeOf := func(field string, lo, hi int) map[string]any {
+		return map[string]any{"field": field, "reason": "out_of_range", "minimum": float64(lo), "maximum": float64(hi)}
+	}
 	for _, tc := range []struct {
 		dep    *store.Deployment
 		body   string
@@ -169,25 +167,22 @@ func TestYieldPolicySetting(t *testing.T) {
 		params map[string]any
 	}{
 		{rig.sleepy, `{}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "policy", "reason": "required"}},
-		{rig.sleepy, `{"preset":"online","idle_sec":60}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "policy", "reason": "required"}},
-		{rig.sleepy, `{"preset":"custom"}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "preset", "reason": "invalid_value"}},
-		{rig.sleepy, `{"preset":"gold"}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "preset", "reason": "invalid_value"}},
+		{rig.sleepy, `{"idle_sec":60}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "policy", "reason": "required"}},
 		{rig.sleepy, `{"policy":"gold"}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "policy", "reason": "invalid_value"}},
 		{rig.sleepy, `{"policy":"idle","sleep_level":"l3"}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "sleep_level", "reason": "invalid_value"}},
 		{rig.sleepy, `{"policy":"never","unfinished":"maybe"}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "unfinished", "reason": "invalid_value"}},
-		{rig.sleepy, `{"policy":"idle","idle_sec":29}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "idle_sec", "reason": "out_of_range", "minimum": float64(30), "maximum": float64(604800)}},
-		{rig.sleepy, `{"policy":"timeslice","idle_sec":604801}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "idle_sec", "reason": "out_of_range", "minimum": float64(30), "maximum": float64(604800)}},
-		{rig.sleepy, `{"policy":"never","auto_sleep":true,"idle_sec":10}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "idle_sec", "reason": "out_of_range", "minimum": float64(30), "maximum": float64(604800)}},
-		{rig.sleepy, `{"policy":"timeslice","min_serve_sec":3601}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "min_serve_sec", "reason": "out_of_range", "minimum": float64(0), "maximum": float64(3600)}},
-		{rig.sleepy, `{"policy":"anytime","unfinished":"wait","unfinished_wait_sec":0}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "unfinished_wait_sec", "reason": "out_of_range", "minimum": float64(1), "maximum": float64(600)}},
-		{rig.sleepy, `{"policy":"timeslice","unfinished":"wait","unfinished_wait_sec":601}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "unfinished_wait_sec", "reason": "out_of_range", "minimum": float64(1), "maximum": float64(600)}},
-		{rig.sleepy, `{"policy":"idle","hold_max_sec":9}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "hold_max_sec", "reason": "out_of_range", "minimum": float64(10), "maximum": float64(1800)}},
-		{rig.sleepy, `{"policy":"anytime","hold_max_sec":1801}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "hold_max_sec", "reason": "out_of_range", "minimum": float64(10), "maximum": float64(1800)}},
-		{rig.plain, `{"preset":"offline"}`, http.StatusBadRequest, "SLEEP_NOT_ENABLED", nil},
-		{rig.plain, `{"policy":"never","auto_sleep":true}`, http.StatusBadRequest, "SLEEP_NOT_ENABLED", nil},
-		{rig.sglang, `{"preset":"shared"}`, http.StatusBadRequest, "SLEEP_NOT_ENABLED", nil},
-		{rig.multi, `{"preset":"online"}`, http.StatusBadRequest, "YIELD_POLICY_SHAPE", nil},
-		{rig.multi, `{"policy":"anytime","auto_sleep":true}`, http.StatusBadRequest, "YIELD_POLICY_SHAPE", nil},
+		{rig.sleepy, `{"policy":"timeslice","unfinished":"wait_unbounded"}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", map[string]any{"field": "unfinished", "reason": "invalid_value"}},
+		{rig.sleepy, `{"policy":"idle","idle_sec":14}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("idle_sec", 15, 604800)},
+		{rig.sleepy, `{"policy":"anytime","idle_sec":604801}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("idle_sec", 15, 604800)},
+		{rig.sleepy, `{"policy":"timeslice","idle_sec":61,"max_serve_sec":60}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("idle_sec", 15, 60)},
+		{rig.sleepy, `{"policy":"timeslice","max_serve_sec":29,"idle_sec":15}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("max_serve_sec", 30, 86400)},
+		{rig.sleepy, `{"policy":"anytime","unfinished":"wait","unfinished_wait_sec":0}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("unfinished_wait_sec", 1, 600)},
+		{rig.sleepy, `{"policy":"timeslice","unfinished":"wait","unfinished_wait_sec":601}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("unfinished_wait_sec", 1, 600)},
+		{rig.sleepy, `{"policy":"idle","hold_max_sec":9}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("hold_max_sec", 10, 3600)},
+		{rig.sleepy, `{"policy":"anytime","hold_max_sec":3601}`, http.StatusBadRequest, "YIELD_POLICY_INVALID", rangeOf("hold_max_sec", 10, 3600)},
+		{rig.plain, `{"policy":"anytime"}`, http.StatusBadRequest, "SLEEP_NOT_ENABLED", nil},
+		{rig.sglang, `{"policy":"timeslice"}`, http.StatusBadRequest, "SLEEP_NOT_ENABLED", nil},
+		{rig.multi, `{"policy":"idle"}`, http.StatusBadRequest, "YIELD_POLICY_SHAPE", nil},
 	} {
 		rec := rig.do(rig.session, http.MethodPut, schedPath(tc.dep, "yield-policy"), tc.body)
 		resp := decodeBody(t, rec)
@@ -202,27 +197,24 @@ func TestYieldPolicySetting(t *testing.T) {
 	}
 	// Never needs nothing: any deployment can go back to it.
 	for _, dep := range []*store.Deployment{rig.plain, rig.multi, rig.sglang} {
-		if rec := rig.do(rig.session, http.MethodPut, schedPath(dep, "yield-policy"), `{"preset":"resident"}`); rec.Code != http.StatusOK {
-			t.Fatalf("%s back to resident = %d %s", dep.Name, rec.Code, rec.Body)
+		if rec := rig.do(rig.session, http.MethodPut, schedPath(dep, "yield-policy"), `{"policy":"never"}`); rec.Code != http.StatusOK {
+			t.Fatalf("%s back to never = %d %s", dep.Name, rec.Code, rec.Body)
 		}
 	}
-	// Auto sleep, which the old idle sleep allowed on any deployment that can
-	// sleep, is allowed on a multi-node one.
-	if rec := rig.do(rig.session, http.MethodPut, schedPath(rig.multi, "yield-policy"), `{"policy":"never","auto_sleep":true,"idle_sec":900,"sleep_level":"l2"}`); rec.Code != http.StatusOK {
-		t.Fatalf("auto sleep on a multi-node deployment = %d %s", rec.Code, rec.Body)
-	}
-	for _, body := range []string{`{"preset":"online","x":1}`, `{"preset":1}`, `{"policy":"idle","idle_sec":"60"}`, `{"policy":"idle","auto_sleep":"yes"}`, `{`, ``} {
+	for _, body := range []string{`{"policy":"idle","x":1}`, `{"preset":"online"}`, `{"policy":"never","auto_sleep":true}`, `{"policy":"timeslice","min_serve_sec":60}`, `{"policy":1}`, `{"policy":"idle","idle_sec":"60"}`, `{`, ``} {
 		if rec := rig.do(rig.session, http.MethodPut, path, body); rec.Code != http.StatusBadRequest {
 			t.Fatalf("PUT %q = %d, want 400", body, rec.Code)
 		}
 	}
-	// Every refusal left the last accepted policy: the bounds test's.
-	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().IdleSec != 604800 || dep.Policy().HoldMaxSec != 1800 || dep.Policy().Yield != servicelevel.Idle {
+	// Every refusal left the last accepted policy: the upper bounds test's.
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().IdleSec != 604800 || dep.Policy().HoldMaxSec != 3600 || dep.Policy().Yield != servicelevel.Idle {
 		t.Fatalf("a refused request changed the policy: %+v", dep.Policy())
 	}
 }
 
-func TestTwoIdleDeploymentsMayNotShareACard(t *testing.T) {
+// Two idle deployments may share a card: the answer names the other so the
+// operator is warned that neither gives way to the other while busy.
+func TestTwoIdleDeploymentsOnACardAreNamed(t *testing.T) {
 	rig := newYieldPolicyRig(t)
 	other, err := rig.st.CreateDeployment(&store.Deployment{Name: "other", ServedName: "other", Engine: "vllm", Sleepable: true, Replicas: 1, State: store.DeployActive})
 	if err != nil {
@@ -230,20 +222,23 @@ func TestTwoIdleDeploymentsMayNotShareACard(t *testing.T) {
 	}
 	rig.place(t, rig.sleepy, "sleepy-1", "[0,1]")
 	rig.place(t, other, "other-1", "[1]")
-	if rec := rig.do(rig.session, http.MethodPut, schedPath(other, "yield-policy"), `{"preset":"online"}`); rec.Code != http.StatusOK {
-		t.Fatalf("first idle = %d %s", rec.Code, rec.Body)
+	if rec := rig.do(rig.session, http.MethodPut, schedPath(other, "yield-policy"), `{"policy":"idle"}`); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "idle_neighbours") {
+		t.Fatalf("first idle = %d %s, want no neighbours", rec.Code, rec.Body)
 	}
-	for _, body := range []string{`{"preset":"online"}`, `{"policy":"idle","idle_sec":30}`} {
-		rec := rig.do(rig.session, http.MethodPut, schedPath(rig.sleepy, "yield-policy"), body)
-		resp := decodeBody(t, rec)
-		params, _ := resp["params"].(map[string]any)
-		if rec.Code != http.StatusConflict || resp["code"] != "YIELD_POLICY_IDLE_SHARED" || params["deployment"] != "other" {
-			t.Fatalf("second idle %s on a shared card = %d %s, want 409 naming other", body, rec.Code, rec.Body)
-		}
+	rec := rig.do(rig.session, http.MethodPut, schedPath(rig.sleepy, "yield-policy"), `{"policy":"idle","idle_sec":30}`)
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"policy":"idle","idle_sec":30,"sleep_level":"auto","hold_max_sec":300,"idle_neighbours":["other"]}` {
+		t.Fatalf("second idle on a shared card = %d %s, want 200 naming other", rec.Code, rec.Body)
 	}
-	// Idle may share with timeslice or anytime, and a never one with auto sleep.
-	for _, body := range []string{`{"preset":"shared"}`, `{"preset":"offline"}`, `{"policy":"never","auto_sleep":true}`, `{"policy":"anytime","auto_sleep":true}`} {
-		if rec := rig.do(rig.session, http.MethodPut, schedPath(rig.sleepy, "yield-policy"), body); rec.Code != http.StatusOK {
+	if dep, _ := rig.st.GetDeployment(rig.sleepy.ID); dep.Policy().Yield != servicelevel.Idle {
+		t.Fatalf("the second idle policy was not stored: %+v", dep.Policy())
+	}
+	// The deployment itself does not carry the warning: only the answer.
+	if got := (&replacementRig{tokenRig: rig.tokenRig}).deploymentWire(t, rig.sleepy); strings.Contains(jsonOf(t, got["yield_policy"]), "idle_neighbours") {
+		t.Fatalf("the deployment reads %s", jsonOf(t, got["yield_policy"]))
+	}
+	// Next to timeslice or anytime there is nothing to warn of.
+	for _, body := range []string{`{"policy":"timeslice"}`, `{"policy":"anytime"}`} {
+		if rec := rig.do(rig.session, http.MethodPut, schedPath(rig.sleepy, "yield-policy"), body); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "idle_neighbours") {
 			t.Fatalf("%s next to idle = %d %s", body, rec.Code, rec.Body)
 		}
 	}
@@ -251,7 +246,7 @@ func TestTwoIdleDeploymentsMayNotShareACard(t *testing.T) {
 	if err := rig.st.DB().Model(&store.Instance{}).Where("uuid = ?", "other-1").Update("state", proto.InstStopped).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rec := rig.do(rig.session, http.MethodPut, schedPath(rig.sleepy, "yield-policy"), `{"preset":"online"}`); rec.Code != http.StatusOK {
+	if rec := rig.do(rig.session, http.MethodPut, schedPath(rig.sleepy, "yield-policy"), `{"policy":"idle"}`); rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "idle_neighbours") {
 		t.Fatalf("idle once the other's instance stopped = %d %s", rec.Code, rec.Body)
 	}
 }
@@ -286,17 +281,15 @@ func TestANewDeploymentsYieldPolicyIsCheckedLikeAChange(t *testing.T) {
 		code   string
 		stored string
 	}{
-		{name: "none stated", req: dto.DeployRequest{}, ok: true, stored: "resident"},
-		{name: "offline", req: dto.DeployRequest{YieldPolicy: policy(`{"preset":"offline"}`), Sleepable: true}, ok: true, stored: "offline"},
-		{name: "a custom policy", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"idle","idle_sec":30}`), Sleepable: true}, ok: true, stored: "custom"},
-		{name: "unknown preset", req: dto.DeployRequest{YieldPolicy: policy(`{"preset":"gold"}`), Sleepable: true}, code: "YIELD_POLICY_INVALID"},
+		{name: "none stated", req: dto.DeployRequest{}, ok: true, stored: "never"},
+		{name: "anytime", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"anytime"}`), Sleepable: true}, ok: true, stored: "anytime"},
+		{name: "idle with parameters", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"idle","idle_sec":30}`), Sleepable: true}, ok: true, stored: "idle"},
+		{name: "unknown policy", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"gold"}`), Sleepable: true}, code: "YIELD_POLICY_INVALID"},
 		{name: "empty object", req: dto.DeployRequest{YieldPolicy: policy(`{}`), Sleepable: true}, code: "YIELD_POLICY_INVALID"},
-		{name: "not sleepable", req: dto.DeployRequest{YieldPolicy: policy(`{"preset":"online"}`)}, code: "SLEEP_NOT_ENABLED"},
-		{name: "auto sleep not sleepable", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"never","auto_sleep":true}`)}, code: "SLEEP_NOT_ENABLED"},
-		{name: "multi-node", req: dto.DeployRequest{YieldPolicy: policy(`{"preset":"shared"}`), Sleepable: true, NNodes: 2}, code: "YIELD_POLICY_SHAPE"},
-		{name: "pd", req: dto.DeployRequest{YieldPolicy: policy(`{"preset":"shared"}`), Sleepable: true}, pd: true, code: "YIELD_POLICY_SHAPE"},
-		{name: "resident multi-node", req: dto.DeployRequest{YieldPolicy: policy(`{"preset":"resident"}`), NNodes: 2}, ok: true, stored: "resident"},
-		{name: "auto sleep multi-node", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"never","auto_sleep":true}`), Sleepable: true, NNodes: 2}, ok: true, stored: "custom"},
+		{name: "not sleepable", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"idle"}`)}, code: "SLEEP_NOT_ENABLED"},
+		{name: "multi-node", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"timeslice"}`), Sleepable: true, NNodes: 2}, code: "YIELD_POLICY_SHAPE"},
+		{name: "pd", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"timeslice"}`), Sleepable: true}, pd: true, code: "YIELD_POLICY_SHAPE"},
+		{name: "never multi-node", req: dto.DeployRequest{YieldPolicy: policy(`{"policy":"never"}`), NNodes: 2}, ok: true, stored: "never"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
@@ -310,8 +303,8 @@ func TestANewDeploymentsYieldPolicyIsCheckedLikeAChange(t *testing.T) {
 				}
 				return
 			}
-			if got := servicelevel.PresetOf(p); got != tc.stored {
-				t.Fatalf("stored as %q, want %q", got, tc.stored)
+			if p.Yield != tc.stored {
+				t.Fatalf("stored as %q, want %q", p.Yield, tc.stored)
 			}
 			// What placement previews plan for is the stored policy's yield.
 			if got, want := requestYield(tc.req.YieldPolicy), p.Yield; got != want {
@@ -319,7 +312,43 @@ func TestANewDeploymentsYieldPolicyIsCheckedLikeAChange(t *testing.T) {
 			}
 		})
 	}
-	if requestYield(policy(`{"preset":"gold"}`)) != servicelevel.Never {
+	if requestYield(policy(`{"policy":"gold"}`)) != servicelevel.Never {
 		t.Fatal("a malformed policy plans as never")
+	}
+}
+
+// The dictionary is the server's rules on the wire: a client's editor reads
+// its defaults, which parameters apply and their ranges from here.
+func TestYieldPolicyDictionary(t *testing.T) {
+	rig := newYieldPolicyRig(t)
+	if rec := rig.do("", http.MethodGet, "/api/v1/scheduling/yield-policies", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token = %d, want 401", rec.Code)
+	}
+	rec := rig.do(rig.mint("read"), http.MethodGet, "/api/v1/scheduling/yield-policies", "")
+	const want = `{"policies":[` +
+		`{"policy":"never","defaults":{"policy":"never"},"applies":[]},` +
+		`{"policy":"idle","defaults":{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300},"applies":["idle_sec","sleep_level","hold_max_sec"]},` +
+		`{"policy":"timeslice","defaults":{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600},"applies":["idle_sec","sleep_level","max_serve_sec","unfinished","unfinished_wait_sec","hold_max_sec"]},` +
+		`{"policy":"anytime","defaults":{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","unfinished_wait_sec":30,"hold_max_sec":3600},"applies":["idle_sec","sleep_level","unfinished","unfinished_wait_sec","hold_max_sec"]}],` +
+		`"bounds":{"hold_max_sec":{"minimum":10,"maximum":3600},"idle_sec":{"minimum":15,"maximum":604800,"at_most":"max_serve_sec"},"max_serve_sec":{"minimum":30,"maximum":86400},"unfinished_wait_sec":{"minimum":1,"maximum":600}},` +
+		`"sleep_levels":["auto","l1","l2"],"unfinished":["abort","wait"]}`
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("dictionary = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
+	}
+	// Every default is a policy the server takes as it is.
+	var dict dto.YieldPolicyDictionary
+	if err := json.Unmarshal(rec.Body.Bytes(), &dict); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range dict.Policies {
+		raw, _ := json.Marshal(entry.Defaults)
+		var req dto.YieldPolicyRequest
+		_ = json.Unmarshal(raw, &req)
+		if _, v := req.Parse(); v != nil {
+			t.Errorf("%s defaults refused: %+v", entry.Policy, v)
+		}
+	}
+	if rec := rig.do(rig.session, http.MethodPost, "/api/v1/scheduling/yield-policies", "{}"); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST = %d, want 405", rec.Code)
 	}
 }

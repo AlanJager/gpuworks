@@ -10,9 +10,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 )
 
-// withPreset states the preset's policy on d.
-func withPreset(d *Deployment, preset string) *Deployment {
-	p, _ := servicelevel.PresetPolicy(preset)
+// withPolicy states the yield policy, with its defaults, on d.
+func withPolicy(d *Deployment, yield string) *Deployment {
+	p, _ := servicelevel.Parse(yield, servicelevel.Overrides{})
 	d.SetPolicy(p)
 	return d
 }
@@ -131,18 +131,18 @@ func TestSleepHeldFollowsWhoOrderedTheSleep(t *testing.T) {
 
 func TestSharingDeploymentsSkipNeverAndStopped(t *testing.T) {
 	s := newTestStore(t)
-	mk := func(name, preset string, state DeploymentState) uint {
+	mk := func(name, yield string, state DeploymentState) uint {
 		t.Helper()
-		dep := withPreset(&Deployment{Name: name, Engine: "vllm", Sleepable: true, State: state}, preset)
+		dep := withPolicy(&Deployment{Name: name, Engine: "vllm", Sleepable: true, State: state}, yield)
 		if _, err := s.CreateDeployment(dep); err != nil {
 			t.Fatal(err)
 		}
 		return dep.ID
 	}
-	mk("resident", servicelevel.PresetResident, DeployActive)
-	online := mk("online", servicelevel.PresetOnline, DeployActive)
-	offline := mk("offline", servicelevel.PresetOffline, DeployActive)
-	mk("stopped", servicelevel.PresetShared, DeployStopped)
+	mk("never", servicelevel.Never, DeployActive)
+	online := mk("idle", servicelevel.Idle, DeployActive)
+	offline := mk("anytime", servicelevel.Anytime, DeployActive)
+	mk("stopped", servicelevel.TimeSlice, DeployStopped)
 	got, err := s.SharingDeployments()
 	if err != nil {
 		t.Fatal(err)
@@ -162,56 +162,35 @@ func TestDeploymentPolicyRoundTripsNormalized(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := s.GetDeployment(dep.ID)
-	if err != nil || got.Policy().Yield != servicelevel.Never || got.Preset() != servicelevel.PresetResident {
-		t.Fatalf("a new deployment is resident: %+v err=%v", got.Policy(), err)
+	if err != nil || got.Policy() != (servicelevel.Policy{Yield: servicelevel.Never}) {
+		t.Fatalf("a new deployment is never: %+v err=%v", got.Policy(), err)
 	}
 	// A policy stored with parameters that do not apply keeps none of them.
-	custom := servicelevel.Policy{
-		Yield: servicelevel.Anytime, AutoSleep: true, IdleSec: 45, SleepLevel: servicelevel.LevelL2, MinServeSec: 99,
-		Unfinished: servicelevel.UnfinishedWaitUnbounded, UnfinishedWaitSec: 12, HoldMaxSec: 200,
+	stated := servicelevel.Policy{
+		Yield: servicelevel.Anytime, IdleSec: 45, SleepLevel: servicelevel.LevelL2, MaxServeSec: 99,
+		Unfinished: servicelevel.UnfinishedAbort, UnfinishedWaitSec: 12, HoldMaxSec: 200,
 	}
-	if err := s.SetDeploymentYieldPolicy(dep.ID, custom); err != nil {
+	if err := s.SetDeploymentYieldPolicy(dep.ID, stated); err != nil {
 		t.Fatal(err)
 	}
 	want := servicelevel.Policy{
-		Yield: servicelevel.Anytime, AutoSleep: true, IdleSec: 45, SleepLevel: servicelevel.LevelL2,
-		Unfinished: servicelevel.UnfinishedWaitUnbounded, HoldMaxSec: 200,
+		Yield: servicelevel.Anytime, IdleSec: 45, SleepLevel: servicelevel.LevelL2, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 200,
 	}
 	got, err = s.GetDeployment(dep.ID)
-	if err != nil || got.Policy() != want || got.Preset() != servicelevel.PresetCustom {
-		t.Fatalf("policy = %+v preset=%s err=%v, want %+v custom", got.Policy(), got.Preset(), err, want)
+	if err != nil || got.Policy() != want || got.MaxServeSec != 0 || got.UnfinishedWaitSec != 0 {
+		t.Fatalf("policy = %+v err=%v, want %+v", got.Policy(), err, want)
 	}
-	preset, _ := servicelevel.PresetPolicy(servicelevel.PresetShared)
-	if err := s.SetDeploymentYieldPolicy(dep.ID, preset); err != nil {
+	slice, _ := servicelevel.Parse(servicelevel.TimeSlice, servicelevel.Overrides{})
+	if err := s.SetDeploymentYieldPolicy(dep.ID, slice); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = s.GetDeployment(dep.ID); got.Preset() != servicelevel.PresetShared || got.MinServeSec != 120 || got.AutoSleep {
-		t.Fatalf("shared preset not stored: %+v", got)
+	if got, _ = s.GetDeployment(dep.ID); got.Policy() != slice || got.MaxServeSec != 120 {
+		t.Fatalf("timeslice not stored: %+v", got)
 	}
 }
 
-func TestAutoSleepDeploymentsAreActiveSleepableOnes(t *testing.T) {
-	s := newTestStore(t)
-	mk := func(name string, sleepable, auto bool, state DeploymentState) uint {
-		t.Helper()
-		dep := &Deployment{Name: name, Engine: "vllm", Sleepable: sleepable, State: state}
-		dep.SetPolicy(servicelevel.Policy{Yield: servicelevel.Never, AutoSleep: auto, IdleSec: 60})
-		if _, err := s.CreateDeployment(dep); err != nil {
-			t.Fatal(err)
-		}
-		return dep.ID
-	}
-	on := mk("on", true, true, DeployActive)
-	mk("off", true, false, DeployActive)
-	mk("not sleepable", false, true, DeployActive)
-	mk("stopped", true, true, DeployStopped)
-	got, err := s.AutoSleepDeployments()
-	if err != nil || len(got) != 1 || got[0].ID != on {
-		t.Fatalf("auto sleep deployments = %+v err=%v", got, err)
-	}
-}
-
-// legacyYieldRow is a deployment as migration 187 leaves it.
+// legacyYieldRow is a deployment's yield policy columns as migration 187
+// leaves them.
 type legacyYieldRow struct {
 	YieldPolicy       string
 	AutoSleep         bool
@@ -221,14 +200,6 @@ type legacyYieldRow struct {
 	Unfinished        string
 	UnfinishedWaitSec int
 	HoldMaxSec        int
-}
-
-func (r legacyYieldRow) policy() servicelevel.Policy {
-	d := Deployment{
-		YieldPolicy: r.YieldPolicy, AutoSleep: r.AutoSleep, IdleSec: r.IdleSec, SleepLevelPref: r.SleepLevelPref, MinServeSec: r.MinServeSec,
-		Unfinished: r.Unfinished, UnfinishedWaitSec: r.UnfinishedWaitSec, HoldMaxSec: r.HoldMaxSec,
-	}
-	return d.Policy()
 }
 
 // openYieldPolicyLegacy is a database that ran migrations 180 to 186 (the
@@ -256,22 +227,38 @@ func openYieldPolicyLegacy(t *testing.T, name string) *gorm.DB {
 	return db
 }
 
-func readYieldRows(t *testing.T, db *gorm.DB) map[int]servicelevel.Policy {
+func readLegacyYieldRows(t *testing.T, db *gorm.DB) map[int]legacyYieldRow {
 	t.Helper()
 	var ids []int
 	if err := db.Raw(`SELECT id FROM deployments ORDER BY id`).Scan(&ids).Error; err != nil {
 		t.Fatal(err)
 	}
-	out := map[int]servicelevel.Policy{}
+	out := map[int]legacyYieldRow{}
 	for _, id := range ids {
 		var row legacyYieldRow
 		if err := db.Raw(`SELECT yield_policy, auto_sleep, idle_sec, sleep_level_pref, min_serve_sec, unfinished, unfinished_wait_sec, hold_max_sec
 			FROM deployments WHERE id = ?`, id).Scan(&row).Error; err != nil {
 			t.Fatal(err)
 		}
-		out[id] = row.policy()
+		out[id] = row
 	}
 	return out
+}
+
+// The rows migration 187 makes of openYieldPolicyLegacy's.
+var legacyYieldRows = map[int]legacyYieldRow{
+	1:  {YieldPolicy: "never"}, // the row the legacy fixture started with
+	10: {YieldPolicy: "never"},
+	11: {YieldPolicy: "idle", IdleSec: 300, SleepLevelPref: "auto", HoldMaxSec: 120},
+	12: {YieldPolicy: "timeslice", IdleSec: 60, SleepLevelPref: "auto", MinServeSec: 120, Unfinished: "wait", UnfinishedWaitSec: 30, HoldMaxSec: 600},
+	13: {YieldPolicy: "anytime", SleepLevelPref: "auto", Unfinished: "abort", HoldMaxSec: 1800},
+	// Idle sleep stays as auto sleep at its time and level; an idle
+	// sleeper kept the gateway's two-minute hold.
+	14: {YieldPolicy: "never", AutoSleep: true, IdleSec: 600, SleepLevelPref: "l1", HoldMaxSec: 120},
+	15: {YieldPolicy: "idle", AutoSleep: true, IdleSec: 600, SleepLevelPref: "l2", HoldMaxSec: 120},
+	16: {YieldPolicy: "anytime", AutoSleep: true, IdleSec: 30, SleepLevelPref: "l2", Unfinished: "abort", HoldMaxSec: 1800},
+	17: {YieldPolicy: "never"},
+	18: {YieldPolicy: "timeslice", AutoSleep: true, IdleSec: 90, SleepLevelPref: "l1", MinServeSec: 120, Unfinished: "wait", UnfinishedWaitSec: 30, HoldMaxSec: 600},
 }
 
 func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *testing.T) {
@@ -281,32 +268,10 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
 	}
-	preset := func(name string) servicelevel.Policy { p, _ := servicelevel.PresetPolicy(name); return p.Normalize() }
-	autoSleep := func(p servicelevel.Policy, idle int, level string, hold int) servicelevel.Policy {
-		p.AutoSleep, p.IdleSec, p.SleepLevel = true, idle, level
-		p.HoldMaxSec = hold
-		return p.Normalize()
-	}
-	want := map[int]servicelevel.Policy{
-		1:  preset("resident"), // the row the legacy fixture started with
-		10: preset("resident"), 11: preset("online"), 12: preset("shared"), 13: preset("offline"),
-		// Idle sleep stays as auto sleep at its time and level; an idle
-		// sleeper kept the gateway's two-minute hold.
-		14: autoSleep(preset("resident"), 600, servicelevel.LevelL1, 120),
-		15: autoSleep(preset("online"), 600, servicelevel.LevelL2, 120),
-		16: autoSleep(preset("offline"), 30, servicelevel.LevelL2, 1800),
-		17: preset("resident"),
-		18: autoSleep(preset("shared"), 90, servicelevel.LevelL1, 600),
-	}
-	got := readYieldRows(t, db)
-	for id, w := range want {
+	got := readLegacyYieldRows(t, db)
+	for id, w := range legacyYieldRows {
 		if got[id] != w {
 			t.Errorf("deployment %d = %+v, want %+v", id, got[id], w)
-		}
-	}
-	for id, preset := range map[int]string{10: "resident", 11: "online", 12: "shared", 13: "offline", 14: "custom", 15: "custom", 16: "custom", 17: "resident", 18: "custom"} {
-		if p := servicelevel.PresetOf(got[id]); p != preset {
-			t.Errorf("deployment %d preset = %s, want %s", id, p, preset)
 		}
 	}
 	for _, column := range []string{"service_level", "idle_sleep_after_sec", "idle_sleep_level"} {
@@ -329,7 +294,7 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("rerun without marker: %v", err)
 	}
-	for id, p := range readYieldRows(t, db) {
+	for id, p := range readLegacyYieldRows(t, db) {
 		if p != got[id] {
 			t.Errorf("deployment %d changed on rerun: %+v -> %+v", id, got[id], p)
 		}
@@ -359,6 +324,132 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 	if err := migrateDB(rollback, ms); err != nil {
 		t.Fatalf("restart after rollback: %v", err)
 	}
+	for id, p := range readLegacyYieldRows(t, rollback) {
+		if p != got[id] {
+			t.Errorf("after the restart deployment %d = %+v, want %+v", id, p, got[id])
+		}
+	}
+}
+
+// openYieldPolicy187 is openYieldPolicyLegacy after migration 187, with two
+// more rows: a timeslice one with a short least turn and an idle time past
+// it, and one that waits for its unfinished requests without bound.
+func openYieldPolicy187(t *testing.T, name string) *gorm.DB {
+	t.Helper()
+	db := openYieldPolicyLegacy(t, name)
+	if err := migrateDB(db, []migration{migrationByVersion(t, 187)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`INSERT INTO deployments (id, name, desired_state, sleepable, replicas, yield_policy, idle_sec, sleep_level_pref, min_serve_sec, unfinished, unfinished_wait_sec, hold_max_sec)
+			VALUES (19, 'd', 'active', 1, 1, 'timeslice', 60, 'auto', 10, 'wait_unbounded', 0, 600)`,
+		`INSERT INTO deployments (id, name, desired_state, sleepable, replicas, yield_policy, idle_sec, sleep_level_pref, min_serve_sec, unfinished, unfinished_wait_sec, hold_max_sec)
+			VALUES (20, 'd', 'active', 1, 1, 'anytime', 0, 'auto', 0, 'wait_unbounded', 0, 1800)`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	return db
+}
+
+func readYieldRows(t *testing.T, db *gorm.DB) map[int]servicelevel.Policy {
+	t.Helper()
+	var rows []Deployment
+	if err := db.Raw(`SELECT id, yield_policy, idle_sec, sleep_level_pref, max_serve_sec, unfinished, unfinished_wait_sec, hold_max_sec
+		FROM deployments ORDER BY id`).Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	out := map[int]servicelevel.Policy{}
+	for _, d := range rows {
+		out[int(d.ID)] = d.Policy()
+	}
+	return out
+}
+
+func TestDeploymentYieldPolicyReshapeMigration(t *testing.T) {
+	m := migrationByVersion(t, 188)
+	ms := []migration{m}
+	db := openYieldPolicy187(t, "yield-reshape")
+	if err := migrateDB(db, ms); err != nil {
+		t.Fatal(err)
+	}
+	never := servicelevel.Policy{Yield: servicelevel.Never}
+	want := map[int]servicelevel.Policy{
+		1: never, 10: never, 17: never,
+		11: {Yield: servicelevel.Idle, IdleSec: 300, SleepLevel: servicelevel.LevelAuto, HoldMaxSec: 120},
+		// The least turn becomes the turn.
+		12: {Yield: servicelevel.TimeSlice, IdleSec: 60, SleepLevel: servicelevel.LevelAuto, MaxServeSec: 120, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600},
+		// Anytime gets the idle time it had built in.
+		13: {Yield: servicelevel.Anytime, IdleSec: 30, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1800},
+		// Auto sleep goes; a never deployment with it is plain never, the
+		// others keep the idle time and level they had.
+		14: never,
+		15: {Yield: servicelevel.Idle, IdleSec: 600, SleepLevel: servicelevel.LevelL2, HoldMaxSec: 120},
+		16: {Yield: servicelevel.Anytime, IdleSec: 30, SleepLevel: servicelevel.LevelL2, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1800},
+		18: {Yield: servicelevel.TimeSlice, IdleSec: 90, SleepLevel: servicelevel.LevelL1, MaxServeSec: 120, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 30, HoldMaxSec: 600},
+		// A 10 s least turn is a 30 s turn, the idle time kept within it;
+		// waiting without bound is waiting the longest that may be stated.
+		19: {Yield: servicelevel.TimeSlice, IdleSec: 30, SleepLevel: servicelevel.LevelAuto, MaxServeSec: 30, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 600, HoldMaxSec: 600},
+		20: {Yield: servicelevel.Anytime, IdleSec: 30, SleepLevel: servicelevel.LevelAuto, Unfinished: servicelevel.UnfinishedWait, UnfinishedWaitSec: 600, HoldMaxSec: 1800},
+	}
+	got := readYieldRows(t, db)
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("deployment %d = %+v, want %+v", id, got[id], w)
+		}
+		if v := got[id].Validate(); v != nil {
+			t.Errorf("deployment %d is not a valid policy: %+v", id, v)
+		}
+	}
+	for _, column := range []string{"auto_sleep", "min_serve_sec"} {
+		if ok, _ := tableHasColumn(db, "deployments", column); ok {
+			t.Errorf("deployments.%s was not dropped", column)
+		}
+	}
+	var marker SchemaMigration
+	if err := db.First(&marker, 188).Error; err != nil {
+		t.Fatalf("marker: %v", err)
+	}
+	if err := migrateDB(db, ms); err != nil {
+		t.Fatalf("not idempotent: %v", err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 188").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrateDB(db, ms); err != nil {
+		t.Fatalf("rerun without marker: %v", err)
+	}
+	for id, p := range readYieldRows(t, db) {
+		if p != got[id] {
+			t.Errorf("deployment %d changed on rerun: %+v -> %+v", id, got[id], p)
+		}
+	}
+
+	rollback := openYieldPolicy187(t, "yield-reshape-rollback")
+	boom := errors.New("injected failure")
+	failing := migration{Version: m.Version, Name: m.Name, Apply: func(tx *gorm.DB) error {
+		if err := m.Apply(tx); err != nil {
+			return err
+		}
+		return boom
+	}}
+	if err := applyMigration(rollback, failing); !errors.Is(err, boom) {
+		t.Fatalf("error = %v", err)
+	}
+	if ok, _ := tableHasColumn(rollback, "deployments", "max_serve_sec"); ok {
+		t.Fatal("the failed migration left max_serve_sec behind")
+	}
+	if ok, _ := tableHasColumn(rollback, "deployments", "auto_sleep"); !ok {
+		t.Fatal("the failed migration dropped auto_sleep")
+	}
+	var count int64
+	if err := rollback.Model(&SchemaMigration{}).Where("version = 188").Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("marker count = %d err=%v", count, err)
+	}
+	if err := migrateDB(rollback, ms); err != nil {
+		t.Fatalf("restart after rollback: %v", err)
+	}
 	for id, p := range readYieldRows(t, rollback) {
 		if p != got[id] {
 			t.Errorf("after the restart deployment %d = %+v, want %+v", id, p, got[id])
@@ -368,8 +459,8 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 
 func TestFreshDatabaseHasOnlyTheYieldPolicyColumns(t *testing.T) {
 	s := newTestStore(t)
-	for _, column := range []string{"service_level", "idle_sleep_after_sec", "idle_sleep_level"} {
-		if s.db.Migrator().HasColumn(&deploymentServiceColumns{}, column) {
+	for _, column := range []string{"service_level", "idle_sleep_after_sec", "idle_sleep_level", "auto_sleep", "min_serve_sec"} {
+		if ok, _ := tableHasColumn(s.db, "deployments", column); ok {
 			t.Errorf("deployments.%s exists on a fresh database", column)
 		}
 	}
@@ -379,6 +470,7 @@ func TestFreshDatabaseHasOnlyTheYieldPolicyColumns(t *testing.T) {
 		}
 	}
 }
+
 // Placement reads the sharing deployments for every node it plans, so they
 // are kept between deployment changes: a change the bus reports is seen at
 // once, a row edited behind the bus's back only after sharingTTL.

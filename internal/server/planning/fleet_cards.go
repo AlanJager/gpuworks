@@ -33,9 +33,8 @@ type FleetCard struct {
 // FleetDeployment is what the overview names a deployment by.
 type FleetDeployment struct {
 	Name string
-	// Preset is the service level the deployment's policy stands for, or
-	// custom.
-	Preset string
+	// YieldPolicy is the deployment's yield policy.
+	YieldPolicy string
 }
 
 // FleetLedger is every node's cards, by node ID, in the order the node lists
@@ -63,7 +62,7 @@ func FleetCards(st *store.Store, nodes []store.Node) (*FleetLedger, error) {
 	modelOf := make(map[uint]uint, len(deployments))
 	for i := range deployments {
 		d := &deployments[i]
-		out.Deployments[d.ID] = FleetDeployment{Name: d.Name, Preset: d.Preset()}
+		out.Deployments[d.ID] = FleetDeployment{Name: d.Name, YieldPolicy: d.Policy().Yield}
 		modelOf[d.ID] = d.ModelID
 	}
 
