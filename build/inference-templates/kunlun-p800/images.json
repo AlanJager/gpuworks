@@ -1,0 +1,22 @@
+{
+  "series": [
+    {
+      "name": "vLLM · Kunlun XRE (K26)",
+      "engine": "vllm",
+      "purpose": "inference",
+      "framework": "xre",
+      "versions": [
+        {
+          "name": "vllm0.25.1-k26-managed",
+          "image_ref": "registry.zstack.ai/gpuworks/gpuworks-runner:xre-vllm0.25.1-amd64-slot26",
+          "engine_version": "0.25.1",
+          "arch": "amd64",
+          "notes": "K26 vLLM 0.25.1, XRE 5.0.21.46. Legacy optional tag catalog entry; specs use an immutable digest. This is not a built-in or public runner image.",
+          "framework_version": "5.0.21.46"
+        }
+      ],
+      "source": "custom",
+      "enabled": true
+    }
+  ]
+}
