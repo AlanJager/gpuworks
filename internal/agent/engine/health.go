@@ -38,7 +38,15 @@ func (e *Engine) probeAndReport(ctx context.Context, spec proto.InstanceDesiredS
 	var loadResult <-chan string
 
 	for time.Now().Before(deadline) {
-		if st, err := driver.Status(ctx, id); err == nil && st.Exists && !st.Running {
+		st, err := driver.Status(ctx, id)
+		if ctx.Err() != nil {
+			return false
+		}
+		if err == nil && !st.Exists {
+			e.failAfterContainer(ctx, spec, "container disappeared during startup")
+			return false
+		}
+		if err == nil && st.Exists && !st.Running {
 			msg := "container OOM-killed"
 			if !e.detectOOM(ctx, id, st) {
 				msg = e.exitMessage(ctx, id, fmt.Sprintf("container exited (code %d)", st.ExitCode))
@@ -159,6 +167,13 @@ func (e *Engine) probeHeadlessAndReport(ctx context.Context, spec proto.Instance
 	stable := 0
 	for time.Now().Before(deadline) {
 		st, err := driver.Status(ctx, id)
+		if ctx.Err() != nil {
+			return false
+		}
+		if err == nil && !st.Exists {
+			e.failAfterContainer(ctx, spec, "headless worker disappeared during startup")
+			return false
+		}
 		if err == nil && st.Exists {
 			if !st.Running || st.Health == "unhealthy" {
 				var msg string
