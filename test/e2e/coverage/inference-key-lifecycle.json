@@ -96,7 +96,6 @@
     "12.5": "N/A: the create dialog has no nested child layer; the one-time secret dialog opens only after create closes",
     "12.6": "covered: While the create POST is held the footer Create shows the loading state and a second click sends no further create request; the 502 keeps the name and shows the failure reason; the later 201 matches the reloaded row and the independent key list",
     "12.8": "N/A: inference key create and delete have no delete preview, revision or compare-and-swap",
-    "1.3": "covered: the single required field is given both the empty string and pure whitespace, and each submission shows the field's own required message, marks it aria-invalid, and leaves the mutation log empty - so a rejected create is located at the field rather than reported and a request is never sent.",
     "1.15": "covered: Tab from the field stays inside the dialog across eight presses, Shift+Tab returns to the field, and the focus ring inherits theme.primary. At the recorded 1440x900 viewport the dialog and its submit button are each measured in a single frame after the open animation settles and must both sit inside the viewport with the button's rectangle wholly inside the dialog's, so neither the field nor the footer action can be clipped or overlapped."
   },
   "missing": [
