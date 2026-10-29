@@ -56,15 +56,24 @@ func (n *NodeRuntime) rpcRegisterPath(ctx context.Context, params json.RawMessag
 		}
 		var report modelmetadata.Report
 		var err error
+		// Registration adopts a user-supplied directory rather than a verified
+		// download manifest. Recognize this exact directory before walking its
+		// bytes, even when the server already has metadata for the model.
+		if root != "" {
+			report, err = modelscan.ParseMetadataWithin(ctx, root, p.Path)
+		} else {
+			report, err = modelscan.ParseMetadata(ctx, p.Path)
+		}
+		if err != nil {
+			return err
+		}
+		if len(report.Entries) != 1 {
+			return fmt.Errorf("selected directory must identify exactly one model entry through its metadata; select the model directory rather than its parent (found %d entries)", len(report.Entries))
+		}
+		if report.Entries[0].Incomplete {
+			return fmt.Errorf("selected model directory has missing or unresolved files: %s", strings.Join(report.Entries[0].Missing, ", "))
+		}
 		if p.ParseMetadata {
-			if root != "" {
-				report, err = modelscan.ParseMetadataWithin(ctx, root, p.Path)
-			} else {
-				report, err = modelscan.ParseMetadata(ctx, p.Path)
-			}
-			if err != nil {
-				return err
-			}
 			result.Metadata = &report
 		}
 		info, err := os.Stat(p.Path)

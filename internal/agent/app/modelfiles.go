@@ -48,7 +48,14 @@ type modelDownload struct {
 // A task from the server is the newest word on its key, so whatever was parked
 // for the key is replaced by it.
 func (n *NodeRuntime) reconcileModelFile(ctx context.Context, mf proto.ModelFileTask) {
-	n.dropWaiting(mf.Key)
+	if mf.DesiredState == "present" && n.downloadTaskStopped(mf) {
+		return
+	}
+	if mf.DesiredState == "paused" {
+		n.dropParkedTransfer(mf.Key, mf.TransferID)
+	} else {
+		n.dropWaiting(mf.Key)
+	}
 	n.reconcileModelFileTask(ctx, mf, false)
 }
 
@@ -65,7 +72,10 @@ func (n *NodeRuntime) reconcileModelFileTask(ctx context.Context, mf proto.Model
 		// Withdrawn: a task parked for its storage must not run when the
 		// storage recovers, and the transfer that was writing for it stops.
 		n.dlMu.Lock()
-		if active := n.downloading[mf.Key]; active != nil {
+		if mf.DesiredState == "paused" && mf.TransferID != "" {
+			n.fenceDownloadLocked(mf.Key, mf.TransferID)
+		}
+		if active := n.downloading[mf.Key]; active != nil && (mf.TransferID == "" || mf.TransferID == active.transferID) {
 			active.cancel()
 		}
 		n.dlMu.Unlock()

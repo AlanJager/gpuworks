@@ -348,6 +348,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Patch("/models/{id}/inference-config", a.updateModelInferenceConfig)
 			r.Post("/models/{id}/metadata/refresh", a.refreshModelMetadata)
 			r.Post("/models/{id}/download", a.downloadModel)
+			r.Post("/models/{id}/download/cancel", a.cancelModelDownload)
 			r.Post("/models/{id}/copy", a.copyModel)
 			r.Post("/models/{id}/nodes/{uuid}/cache/retry", a.retryModelCache)
 			r.With(a.managementAdmin).Delete("/models/{id}/storages/{storage_id}", a.deleteModelInStorage)

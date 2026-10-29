@@ -288,6 +288,7 @@ POST /api/v1/models/quick-register
 POST /api/v1/models/register-url
 POST /api/v1/models/{id}/copy
 POST /api/v1/models/{id}/download
+POST /api/v1/models/{id}/download/cancel
 POST /api/v1/models/{id}/metadata/refresh
 POST /api/v1/models/{id}/nodes/{uuid}/cache/retry
 POST /api/v1/models/{id}/nodes/{uuid}/sync

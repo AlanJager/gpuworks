@@ -66,7 +66,7 @@ func ModelPreparationFile(source store.ModelSource) *store.ModelFile {
 		}
 		if source.Location.Reason == store.LocationModelMissingInStore {
 			switch shared.State {
-			case proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk:
+			case proto.MFCanceled, proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk:
 				return shared
 			}
 		}
@@ -99,7 +99,7 @@ func PrepareModelView(node *store.Node, source store.ModelSource, observation *p
 		case proto.MFDeleting:
 			view.Reason = PreparationReasonEvictionFailed
 			return view
-		case proto.MFFailed:
+		case proto.MFCanceled, proto.MFFailed:
 			view.Reason = PreparationReasonFailed
 			return view
 		}

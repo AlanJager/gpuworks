@@ -21,6 +21,7 @@ const (
 	RPCModelEvict         = "model.evict"
 	RPCCacheEvict         = "model.cache.evict"
 	RPCModelCopyStop      = "model.copy.stop"
+	RPCModelDownloadStop  = "model.download.stop"
 	RPCModelSyncListen    = "model.sync.listen"
 	RPCModelSyncSend      = "model.sync.send"
 	RPCModelSyncStop      = "model.sync.stop"

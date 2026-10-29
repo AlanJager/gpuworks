@@ -221,6 +221,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 	n.applyAcceleratorPreference(ds.AcceleratorPreference)
 	// A full state lists every model file the node should have; a task parked
 	// for its storage that is not among them was withdrawn.
+	n.withdrawUnlistedDownloads(ds.ModelFiles)
 	n.pruneWaiting(ds.ModelFiles)
 	for _, mf := range ds.ModelFiles {
 		n.reconcileModelFile(ctx, mf)
@@ -353,6 +354,8 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		return n.rpcRegisterPath(ctx, params)
 	case proto.RPCSourceProbe:
 		return n.rpcSourceProbe(ctx, params)
+	case proto.RPCModelDownloadStop:
+		return n.stopModelTransfer(ctx, params, false)
 	case proto.RPCModelCopyStop:
 		return n.stopModelCopy(ctx, params)
 	case proto.RPCModelEvict:

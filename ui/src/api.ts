@@ -4042,6 +4042,8 @@ export const api = {
   /** status is "present" when the storage (or every chosen node) already has the model. */
   downloadModelToStorage: (id: number, body: { storage_id: number; node_uuids?: string[] }) =>
     sendJSON<{ status?: string; writer?: string } | undefined>("POST", `/api/v1/models/${id}/download`, body),
+  cancelModelDownload: (id: number, body: { storage_id?: number; node_uuid?: string }) =>
+    sendJSON<{ state: string; message: string }>("POST", `/api/v1/models/${id}/download/cancel`, body),
   copyModel: (id: number, body: { source: ModelLocationRef; target: ModelLocationRef; rate_limit_kib_s?: number }) =>
     sendJSON<{ state?: string; transfer_id?: string; message?: string }>("POST", `/api/v1/models/${id}/copy`, body),
   /** Delete a model's copy in a shared storage; force overrides other gpuworks using it. */

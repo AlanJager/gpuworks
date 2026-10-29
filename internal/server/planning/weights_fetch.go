@@ -143,7 +143,7 @@ func ModelLogins(st *store.Store) []modelrepo.Login {
 // are: the rules govern only what a node downloads. The store sends an HTTP
 // directory's address as the task's endpoint, since it is the model's own.
 func PlanModelFetch(rules []sourceurl.Rule, node *store.Node, task *proto.ModelFileTask, model string) error {
-	if task.Acquisition != proto.ModelAcquireDownload {
+	if task.Acquisition != proto.ModelAcquireDownload || (task.DesiredState != "" && task.DesiredState != "present") {
 		return nil
 	}
 	sourceURL := ""
@@ -180,7 +180,7 @@ func PlanModelFileTasks(rules []sourceurl.Rule, node *store.Node, tasks []proto.
 // PlanModelFileTask is PlanModelFetch for one task pushed on its own, reading
 // the node's rules.
 func PlanModelFileTask(st *store.Store, resolve NodeResolver, node *store.Node, task *proto.ModelFileTask, model string) error {
-	if task.Acquisition != proto.ModelAcquireDownload {
+	if task.Acquisition != proto.ModelAcquireDownload || (task.DesiredState != "" && task.DesiredState != "present") {
 		return nil
 	}
 	rules, err := RulesFor(st, resolve, node)

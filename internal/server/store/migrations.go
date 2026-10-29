@@ -1282,6 +1282,7 @@ var migrations = []migration{
 	{Version: 177, Name: "deployment_node_replace_after", Apply: addDeploymentNodeReplaceAfter},
 	{Version: 178, Name: "deployment_units_auto", Apply: addDeploymentUnitsAuto},
 	{Version: 179, Name: "ai_config_single_default", Apply: addAIConfigSingleDefault},
+	{Version: 180, Name: "model_download_deployment", Apply: addModelDownloadDeployment},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to

@@ -330,6 +330,7 @@ macOS 忽略 `no_systemd`。
 | DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo） | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
+| POST | `/api/v1/models/{id}/download/cancel` | 取消指定存储的模型下载（`storage_id`，本地存储另带 `node_uuid`）；保留已下载数据以供重试 | JWT |
 | POST | `/api/v1/models/{id}/copy` | 在两个位置之间复制模型文件：`source`/`target` 各为 `{storage_id, node_uuid?}`；同一节点能读源写目标时本机复制，否则节点间直传；源与目标为同一位置返回 400，共享存储按存储 ID 判定（忽略节点）；离线或不可写等状态冲突仍返回 409 | JWT |
 | POST | `/api/v1/models/{id}/nodes/{uuid}/cache/retry` | 重试失败的 NFS Cache 复制（`preparation.retryable=true`），请求体 `{storage_id}`，接受返回 202。非失败任务、节点未连接、容量不足、旧任务未确认退出或并发变化返回 409 `MODEL_CACHE_RETRY_BLOCKED` | JWT |
 | DELETE | `/api/v1/models/{id}/storages/{storage_id}` | 从共享存储删除模型文件（及 NFS 加缓存的各节点缓存）；别的 gpuworks 在用时 409 `STORAGE_SHARED_BY_OTHER_CONTROL_PLANES`，`?force=1` 强制 | JWT(admin) |
@@ -366,11 +367,11 @@ macOS 忽略 `no_systemd`。
 该操作只登记已有文件，不复制或搬迁目录。共享存储的库导入使用存储扫描/导入接口。
 
 成功返回 `200 {"status":"registered"}`。节点检查目录可读、有非空文件且没有未完成下载；
-不要求固定权重文件名或 `config.json`，保留自定义引擎布局。`registered` 表示调用方选定的路径已登记，
-不证明其中是正确的模型或引擎可以加载。不能用“路径在存储范围外”判断请求无效。
+目录元数据必须识别出恰好一个完整模型入口，GGUF 等自带元数据的格式不要求 `config.json`；父目录、非模型目录和未知布局返回 409。`registered` 表示调用方选定的模型目录已登记，
+不保证引擎可以加载该模型。不能用“路径在存储范围外”判断请求无效。
 
 空 `path` 返回 400；目标模型不存在返回 404；缺失、空目录或含 `.part`/`.part.state` 的目录由节点拒绝，
-接口返回 409，已有登记不被替换。真实节点 RPC 不可用等错误也可能返回 409，调用方应结合错误内容处理。
+接口返回 409，已有登记不被替换。agent 过旧、无法返回目录元数据识别结果时，返回 `AGENT_UPGRADE_REQUIRED`，需先升级 agent。真实节点 RPC 不可用等错误也可能返回 409，调用方应结合错误内容处理。
 
 ## Images / Storages（镜像目录与存储策略）
 

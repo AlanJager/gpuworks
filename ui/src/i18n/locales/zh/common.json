@@ -71,7 +71,7 @@
     "DGPU_QUOTA_NO_ROOM": "{{node}} 的 GPU {{gpu}} 放不下：扣掉该部署自己的占用后可用 {{free_gib}} GiB，新配额需要 {{need_gib}} GiB。",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "没有节点满足自动放置要求。请查看候选节点原因，或改为手动选择节点。",
     "AUTOMATIC_PLACEMENT_STALE": "评估后的节点或 GPU 方案已发生变化，请重新评估部署。",
-    "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再拉取镜像。",
+    "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再继续操作。",
     "NODE_RPC_UNAVAILABLE": "节点 RPC 尚未配置。",
     "NODE_OFFLINE": "计算节点已离线。",
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
