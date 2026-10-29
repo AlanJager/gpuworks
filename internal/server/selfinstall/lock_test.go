@@ -2,7 +2,9 @@ package selfinstall
 
 import (
 	"context"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -179,6 +181,62 @@ func TestStageInServiceSharesTheUpgradeLock(t *testing.T) {
 // account that cannot open it, and a sudo from inside the server would have no
 // terminal to answer. The error has to name the command that does work.
 func TestUpgradeLockNamesTheRepairForAFileItCannotOpen(t *testing.T) {
+	if os.Geteuid() == 0 {
+		// Root bypasses mode 0000. Run this exact assertion as an account
+		// without DAC privileges, including in root-run CI containers. Copy
+		// the binary out of go test's private build directory so that account
+		// can execute it; only its own fixture directory needs to be writable.
+		dir, err := os.MkdirTemp("", "gpuworks-lock-denied-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		source, err := os.Open(executable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer source.Close()
+		childBinary := filepath.Join(dir, "selfinstall.test")
+		target, err := os.OpenFile(childBinary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o755)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, copyErr := io.Copy(target, source)
+		modeErr := target.Chmod(0o755)
+		closeErr := target.Close()
+		if modeErr != nil {
+			t.Fatal(modeErr)
+		}
+		if copyErr != nil {
+			t.Fatal(copyErr)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		work := filepath.Join(dir, "work")
+		if err := os.Mkdir(work, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		const deniedID = 65534
+		if err := os.Chown(work, deniedID, deniedID); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(childBinary, "-test.run=^TestUpgradeLockNamesTheRepairForAFileItCannotOpen$", "-test.v")
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(), "TMPDIR="+work)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: deniedID, Gid: deniedID}}
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("permission assertion as unprivileged account: %v\n%s", err, output)
+		}
+		return
+	}
 	h := lockFixture(t)
 	writeFile(t, h.layout.LockPath(), "", 0o000)
 	if _, err := os.Stat(h.layout.LockPath()); err != nil {
