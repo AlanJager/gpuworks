@@ -32,6 +32,14 @@ func (c *Conn) handleStream(ctx context.Context, stream *yamux.Stream) {
 		_ = stream.Close()
 		return
 	}
+	if err := c.creds.Simulated.Stream(hdr); err != nil {
+		c.log.Warn("stream refused on a simulated node", "kind", hdr.Kind, "err", err)
+		if hdr.Kind == proto.StreamTerminal {
+			termFail(stream, err.Error())
+		}
+		_ = stream.Close()
+		return
+	}
 	switch hdr.Kind {
 	case proto.StreamTunnel:
 		c.handleTunnel(hdr.Dst, stream)

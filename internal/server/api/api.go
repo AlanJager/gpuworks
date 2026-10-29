@@ -202,6 +202,10 @@ type Deps struct {
 	// Analytics is usage analytics: the data retention every store is
 	// kept under (analytics.go). Nil answers 404.
 	Analytics Analytics
+	// Experience is the experience environment beside the server
+	// (experience.go). Nil answers 404: the environment's own console, or a
+	// harness.
+	Experience Experience
 
 	// AI serves /ai/available, /ai/ask and the LLM-free findings and fit
 	// reads. Nil means no AI service is wired: available reports false.
@@ -564,6 +568,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Get("/usage-report", a.getUsageReport)
 			r.With(a.managementAdmin).Put("/usage-report/enabled", a.putUsageReportEnabled)
 			r.With(a.managementAdmin).Get("/usage-report/preview", a.getUsageReportPreview)
+			r.With(a.managementAdmin).Get("/experience", a.getExperience)
+			r.With(a.managementAdmin).Put("/experience/enabled", a.putExperienceEnabled)
+			r.With(a.managementAdmin).Post("/experience/reset", a.postExperienceReset)
+			r.With(a.managementAdmin).Post("/experience/password", a.postExperiencePassword)
 			r.Get("/notices", a.getNotices)
 			r.Post("/notices/read", a.postNoticesRead)
 			r.With(a.managementAdmin).Get("/server/listen", a.getServerListen)
@@ -991,6 +999,12 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+// WriteError answers err as the API does: a product error with its stable
+// code and params, any other error with its text. It is for a handler in
+// front of the router (the experience environment's guard), so a refusal
+// there reads like one from the API.
+func WriteError(w http.ResponseWriter, status int, err error) { writeErr(w, status, err) }
 
 func writeErr(w http.ResponseWriter, code int, err error) {
 	response := map[string]any{"error": err.Error()}

@@ -9,6 +9,8 @@ type SessionPolicy struct {
 	// Proxies may supply the browser origin through forwarded host and
 	// protocol headers; nil trusts nobody.
 	Proxies *ProxyTrust
+	// Cookie names the management session cookie; empty is the default.
+	Cookie string
 }
 
 // Normalized supplies safe defaults for callers that do not configure sessions.

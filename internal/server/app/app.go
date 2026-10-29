@@ -277,15 +277,16 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 
 	dlDir := filepath.Join(cfg.DataDir, "dl")
 	_ = os.MkdirAll(dlDir, 0o755)
-	provSvc.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
-	h.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	readAgent := func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }
+	provSvc.SetAgentBinaryReader(readAgent)
+	h.SetAgentBinaryReader(readAgent)
 	sshHostKeys, err := provision.NewFileHostKeyStore(filepath.Join(cfg.DataDir, "ssh-hostkeys.json"))
 	if err != nil {
 		return nil, err
 	}
 	nodePrechecker := provision.NewSSHPrechecker()
 	nodePrechecker.HostKeys = sshHostKeys
-	nodeInstaller := provision.NewSSHInstaller(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	nodeInstaller := provision.NewSSHInstaller(readAgent)
 	nodeInstaller.HostKeys = sshHostKeys
 	nodeInstaller.UdockerBundleSource = cfg.UdockerBundleSource
 	provision.SetSSHProxy(cfg.SSHProxy)
@@ -307,7 +308,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		InstallSh:     a.installHandler(),
 		RecentRejects: func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
 		UpgradeErrors: h.UpgradeErrors,
-		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }), webui.Handler()),
+		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.Handler()),
 		Online:        h.Online,
 		KickNode:      h.Kick,
 		NodeSync:      h,
@@ -359,6 +360,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Monitor:              monitorService{monSvc},
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
+		Experience:           experienceLauncher(cfg, log),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
 		AI:                   ai,
@@ -366,14 +368,12 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
-	}, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
-	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(handler)))
+	}, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
+	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(cfg.experienceGuard(handler))))
 
-	a.http = &http.Server{
-		Handler: handler,
-		// No read/write timeouts: the agent WS and SSE are long-lived. The WS
-		// route bypasses these via hijacking; SSE flushes keepalives.
-	}
+	// No read/write timeouts: the agent WS and SSE are long-lived. The WS
+	// route bypasses these via hijacking; SSE flushes keepalives.
+	a.http = &http.Server{Handler: handler}
 	return a, nil
 }
 

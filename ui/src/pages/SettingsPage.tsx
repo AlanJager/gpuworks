@@ -28,6 +28,7 @@ import { TELEMETRY_ANCHOR } from "./settings/TelemetryCard";
 import { SECURITY_ANCHOR } from "./settings/SecurityCard";
 import DataRetentionCard, { DATA_RETENTION_ANCHOR } from "./settings/DataRetentionCard";
 import AICard, { externalHost } from "./settings/AIConfigCard";
+import ExperienceCard, { EXPERIENCE_ANCHOR } from "./settings/ExperienceCard";
 
 const { Text } = Typography;
 
@@ -42,8 +43,8 @@ export { externalHost };
 const SETTINGS_TABS: { key: string; anchors: string[]; cards: () => ReactNode }[] = [
   {
     key: "general",
-    anchors: [BRANDING_ANCHOR, "updates"],
-    cards: () => <><BrandingCard /><UpdatesCard /><ServerListenCard /></>,
+    anchors: [BRANDING_ANCHOR, "updates", EXPERIENCE_ANCHOR],
+    cards: () => <><BrandingCard /><UpdatesCard /><ServerListenCard /><ExperienceCard /></>,
   },
   { key: "pull", anchors: ["pull-settings"], cards: () => <PullSettingsCard /> },
   {

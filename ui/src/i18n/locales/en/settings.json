@@ -414,5 +414,18 @@
         "description": "Where days start for daily statistics. A change applies to days rolled up after it; days already rolled up stay."
       }
     }
+  },
+  "experience": {
+    "title": "Feature experience mode",
+    "starting": "Starting…",
+    "exited": "Exited: {{error}}",
+    "address": "Entry",
+    "user": "User",
+    "password": "Password",
+    "portHint": "Uses port {{port}}; open it in the firewall to reach it from other computers. Each time it is turned on, the initial data is restored and a new password is generated.",
+    "reset": "Restore initial data",
+    "resetConfirm": "Discard what was done in the experience environment and restore the initial data?",
+    "changePassword": "Change password",
+    "passwordConfirm": "Generate a new password? Signed-in sessions in the experience environment end and must sign in again with the new password."
   }
 }

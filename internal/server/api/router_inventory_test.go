@@ -138,6 +138,7 @@ GET /api/v1/deployments/{id}/events
 GET /api/v1/dgpus
 GET /api/v1/engines
 GET /api/v1/events
+GET /api/v1/experience
 GET /api/v1/gpus
 GET /api/v1/healthz
 GET /api/v1/images
@@ -260,6 +261,8 @@ POST /api/v1/deployments/{id}/units/retry
 POST /api/v1/deployments/{id}/units/suggest
 POST /api/v1/deployments/{id}/wake
 POST /api/v1/evaluate
+POST /api/v1/experience/password
+POST /api/v1/experience/reset
 POST /api/v1/images/import
 POST /api/v1/images/preview-archive-url
 POST /api/v1/images/sync
@@ -346,6 +349,7 @@ PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing
 PUT /api/v1/deployments/{id}/tokenize
+PUT /api/v1/experience/enabled
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}
 PUT /api/v1/networks/{id}/attachments/{attachmentID}
