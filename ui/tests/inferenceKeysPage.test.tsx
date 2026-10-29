@@ -31,6 +31,17 @@ function setup(items: import("../src/api.ts").ApiKey[] = []) {
 afterEach(() => { cleanup(); Object.assign(api, original); analyticsApi.keyUsage = originalKeyUsage; });
 after(() => closeChannels());
 
+test("inference usage example declares JSON while preserving its authentication and request body", async () => {
+  setup();
+  const command = screen.getByText((_, element) => element?.tagName === "PRE" && !!element.textContent?.includes("/v1/chat/completions")).textContent ?? "";
+  assert.ok(command.startsWith(`curl ${window.location.origin}/v1/chat/completions`));
+  assert.ok(command.includes('-H "Content-Type: application/json"'));
+  assert.ok(command.includes('-H "Authorization: Bearer <key>"'));
+  const payload = command.match(/-d '([^']+)'/)?.[1];
+  assert.ok(payload, "the example includes a JSON request body");
+  assert.deepEqual(JSON.parse(payload), { model: "<served_name>", messages: [{ role: "user", content: "hi" }] });
+});
+
 test("empty and whitespace inference token names do not mutate or reject outside the field", async () => {
   const { created, user } = setup();
   await user.click(screen.getByRole("button", { name: k.create.button }));
