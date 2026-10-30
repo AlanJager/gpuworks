@@ -549,3 +549,27 @@ func TestAHolderStillStartingIsNotAskedToYield(t *testing.T) {
 		t.Fatalf("did not yield once idle 30 s after starting: %v", w.yields)
 	}
 }
+
+// A holder put to sleep for one waiter is not put to sleep again for
+// another while that sleep lands: the cards are the first one's.
+func TestAHolderYieldsOnceForTheFirstWaiter(t *testing.T) {
+	w := newResidencyWorld()
+	const batch, chat, nightly = 1, 2, 3
+	w.levels[batch], w.levels[chat], w.levels[nightly] = pol(servicelevel.Anytime), pol(servicelevel.Idle), pol(servicelevel.TimeSlice)
+	w.asleep[batch] = true
+	w.activity[chat] = Activity{LastRequest: t0}
+	holder := Blocking{Holders: []Holder{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Instances: []string{"c-1"}}}}
+	w.blocking[batch], w.blocking[nightly] = holder, holder
+	e, c := newResidencyEvaluator(w, t0)
+	e.res.preempted[batch] = t0
+	for i := 1; i <= 13; i++ {
+		c.t = t0.Add(time.Duration(i*5) * time.Second)
+		if i == 4 {
+			w.waiters = []Waiter{{DeploymentID: nightly, Policy: pol(servicelevel.TimeSlice), Since: c.t, Place: true}}
+		}
+		e.residency(c.t)
+	}
+	if !slices.Equal(w.yields, []string{"2 abort=false"}) || w.params[len(w.params)-1]["for_deployment"] != uint(nightly) {
+		t.Fatalf("yields %v params %v, want chat to yield once, for the replica waiting to be placed", w.yields, w.params)
+	}
+}
