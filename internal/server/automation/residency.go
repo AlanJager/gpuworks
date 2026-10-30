@@ -119,6 +119,9 @@ type residencyState struct {
 	// next is when the last look found the next yield due, zero when none
 	// is (Evaluator.residencyDue).
 	next time.Time
+	// starting are holders last seen still starting: once one serves, its
+	// turn and idle time count from then.
+	starting map[uint]bool
 }
 
 type yielded struct {
@@ -155,7 +158,7 @@ func (e *Evaluator) WithResidency(source ResidencySource, actions ResidencyActio
 	e.res = &residencyState{
 		source: source, actions: actions, demand: make(chan struct{}, 1),
 		awakeAt: map[uint]time.Time{}, preempted: map[uint]time.Time{}, draining: map[uint]drain{}, wokeAt: map[uint]time.Time{},
-		yieldedFor: map[uint]yielded{}, wakeTrigger: map[uint]string{},
+		yieldedFor: map[uint]yielded{}, wakeTrigger: map[uint]string{}, starting: map[uint]bool{},
 	}
 	return e
 }
@@ -317,6 +320,13 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 		if y, ok := r.yieldedFor[h.DeploymentID]; ok && y.to == w.id && now.Sub(y.at) < yieldGuard {
 			return
 		}
+		// A holder still starting has served nothing and is asked nothing:
+		// look again once it may have started.
+		if r.source.Settling(h.DeploymentID) {
+			r.starting[h.DeploymentID] = true
+			r.dueAt(now.Add(busyPoll))
+			return
+		}
 		state := e.holderState(now, h)
 		reason, ok := servicelevel.Yields(state, waiter)
 		if !ok {
@@ -338,6 +348,10 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 // holderState is a holder as the yield rule reads it.
 func (e *Evaluator) holderState(now time.Time, h Holder) servicelevel.Holder {
 	r := e.res
+	if r.starting[h.DeploymentID] {
+		delete(r.starting, h.DeploymentID)
+		r.awakeAt[h.DeploymentID] = now
+	}
 	since := e.started
 	if at, ok := r.awakeAt[h.DeploymentID]; ok && at.After(since) {
 		since = at
