@@ -854,10 +854,10 @@
         "anytime": "Yield anytime"
       },
       "description": {
-        "never": "Is never pushed out automatically; its GPUs free up only after a manual or scheduled sleep. For always-on services (default).",
-        "idle": "Gives its GPUs up only when another deployment waits and it has been idle for the idle time; on a request it can take them back from yield-on-a-turn and yield-anytime deployments. For online services.",
-        "timeslice": "Gives its GPUs up once idle for the idle time; when sharing with other yield-on-a-turn deployments, also once it has served for the longest serving time (even with requests running); gives way at once to a higher-ranked deployment. For several models taking turns on the same GPUs.",
-        "anytime": "Gives way at once to a higher-ranked deployment, busy or not; resumes by itself when the GPUs are free again. For batch and offline work."
+        "never": "Never gives up its GPU memory and compute; for always-on services",
+        "idle": "Gives up its GPU memory and compute when idle and a model sharing its cards needs them; for online workloads",
+        "timeslice": "Gives up its GPU memory and compute when idle or its turn is over and a model sharing its cards needs them; for several models taking turns",
+        "anytime": "Gives up its GPU memory and compute at once to a higher-priority deployment that needs them; for batch and offline work"
       }
     },
     "field": {

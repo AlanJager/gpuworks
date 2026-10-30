@@ -1,9 +1,9 @@
 {
   "page": {
-    "title": "调度中心",
+    "title": "调度分析",
     "description": "每张 GPU 被谁占着、哪些在等待放置或唤醒，以及定时计划和自动化接下来要做什么",
-    "loading": "正在加载调度中心…",
-    "loadFailed": "无法加载调度中心",
+    "loading": "正在加载调度分析…",
+    "loadFailed": "无法加载调度分析",
     "refreshFailed": "刷新失败：{{detail}}",
     "retry": "重试"
   },
@@ -18,7 +18,7 @@
     "models": "各 GPU 型号的卡数",
     "modelLine": "{{model}} ×{{cards}}，{{free}} 张空闲",
     "contentionTitle": "争用与队列",
-    "heldRequests": "此刻为唤醒而扣住的请求",
+    "heldRequests": "此刻挂起等唤醒的请求",
     "yields": "近 1 小时的让位次数"
   },
   "nodes": {
@@ -180,9 +180,9 @@
       "switches": "切换",
       "yielded": "让出",
       "yieldedTo": "被让",
-      "held": "被扣住的请求",
-      "waitP50": "等待 p50",
-      "waitP95": "等待 p95"
+      "held": "挂起的请求",
+      "waitP50": "挂起等待 p50",
+      "waitP95": "挂起等待 p95"
     },
     "awakeShare": "{{span}}（{{share}}%）",
     "duration": {

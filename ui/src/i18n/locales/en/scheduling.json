@@ -1,9 +1,9 @@
 {
   "page": {
-    "title": "Scheduling",
+    "title": "Scheduling analysis",
     "description": "Who holds each GPU, what waits to be placed or woken, and what schedules and automation do next",
-    "loading": "Loading the scheduling board…",
-    "loadFailed": "Could not load the scheduling board",
+    "loading": "Loading scheduling analysis…",
+    "loadFailed": "Could not load scheduling analysis",
     "refreshFailed": "Could not refresh the board: {{detail}}",
     "retry": "Retry"
   },
