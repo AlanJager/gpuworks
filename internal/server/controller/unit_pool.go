@@ -47,7 +47,7 @@ func (c *Controller) poolOf(deployment *unitDeployment, model *store.Model) (*un
 	if err != nil {
 		return nil, err
 	}
-	held, err := c.store.AwakeGPUHolders()
+	held, err := planning.HeldGPUs(c.store, dep.YieldPolicy)
 	if err != nil {
 		return nil, err
 	}

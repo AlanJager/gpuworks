@@ -189,7 +189,8 @@ type PoolEntry struct {
 // PoolFacts is everything a pool is built from, each read in bulk.
 type PoolFacts struct {
 	Nodes []store.Node
-	// Held is which GPUs awake instances hold, by node (store.AwakeGPUHolders).
+	// Held is which GPUs the deployment cannot take, by node: awake
+	// instances hold them, or sleepers keep them against it (HeldGPUs).
 	Held map[uint]map[int]bool
 	// Files are the model's file rows on every node.
 	Files []store.ModelFile

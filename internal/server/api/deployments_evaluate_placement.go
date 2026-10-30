@@ -100,7 +100,7 @@ func (a *apiHandlers) rankEligible(eligible []dto.EligibleNode, model *store.Mod
 	if err != nil {
 		return nil, err
 	}
-	held, err := a.d.Store.AwakeGPUHolders()
+	held, err := planning.HeldGPUs(a.d.Store, requestYield(req.YieldPolicy))
 	if err != nil {
 		return nil, err
 	}

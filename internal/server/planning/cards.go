@@ -59,6 +59,40 @@ func SplitByCards(insts []store.Instance, cards map[Card]bool) (off, on []store.
 	return off, on
 }
 
+// HeldGPUs is which GPUs a deployment of yield policy being placed cannot
+// take, by node, for ranking nodes and choosing them for units before the
+// ledger is asked: those awake instances hold (store.AwakeGPUHolders) and
+// those sleepers keep for a request's wake against the policy, by the
+// ledger's own rule (reservedAgainst). The sleepers are read only when a
+// deployment shares cards by yield policy.
+func HeldGPUs(st *store.Store, policy string) (map[uint]map[int]bool, error) {
+	held, err := st.AwakeGPUHolders()
+	if err != nil {
+		return nil, err
+	}
+	reserved := reservedAgainst(st, policy)
+	if reserved == nil {
+		return held, nil
+	}
+	sleepers, err := st.SleepingGPUHolders()
+	if err != nil {
+		return nil, err
+	}
+	for i := range sleepers {
+		in := &sleepers[i]
+		if !reserved(in) {
+			continue
+		}
+		if held[in.NodeID] == nil {
+			held[in.NodeID] = map[int]bool{}
+		}
+		for _, index := range parseInts(in.GPUIndexes) {
+			held[in.NodeID][index] = true
+		}
+	}
+	return held, nil
+}
+
 // reservedAgainst is the ledger's reservation for a deployment of yield
 // policy being placed: a sleeping instance of a deployment that shares its
 // cards by policy (any but never) keeps its whole claim against a policy it
