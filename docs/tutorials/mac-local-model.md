@@ -36,13 +36,10 @@
    tar -xzf "$GPUWORKS_PACKAGE.tar.gz"
    cd "$GPUWORKS_PACKAGE"
    ./gpuworks version
-   ./gpuworks install \
-     --dir "$HOME/.gpuworks/server" \
-     --addr 127.0.0.1:8800 \
-     --no-systemd --quiet
+   ./gpuworks install --addr 127.0.0.1:8800 --quiet
    ```
 
-   `--quiet` 跳过安装提问，新安装使用随机管理员密码并在最后摘要中交付。`--no-systemd` 在 Mac 上表示使用后台进程，不注册开机启动服务；本次控制台只监听本机 `127.0.0.1:8800`。
+   `--quiet` 跳过安装提问，新安装使用随机管理员密码并在最后摘要中交付。Mac 上默认安装到 `~/gpuworks/server`，以后台进程运行，不注册开机启动服务（需要时再执行 `~/gpuworks/server/gpuworks install --autostart`）；本次控制台只监听本机 `127.0.0.1:8800`。
 
 3. 检查控制台已就绪。
 
@@ -65,9 +62,9 @@
 
 ![添加本机节点：名称为 mac-local，选择不支持 SSH，Agent 连接本机 127.0.0.1:8800](../assets/screenshots/tutorial-mac-add-node.png)
 
-2. 点击 **创建节点并生成命令**，复制完整命令，在末尾追加 `--install-dir "$HOME/.gpuworks" --no-sudo`，然后在这台 Mac 的终端执行。保留生成命令中的节点专属 Token。
+2. 点击 **创建节点并生成命令**，复制完整命令，在末尾追加 `--no-sudo`，然后在这台 Mac 的终端执行。保留生成命令中的节点专属 Token。
 
-   这会将 agent 和节点数据放在 `~/.gpuworks`。`--no-sudo` 使用用户级安装；正常情况下通过用户的 launchd 任务运行，只在该用户登录期间可用。若出现 LaunchAgents 权限错误，先按下方权限分支处理，再继续第 3 步。
+   agent 和节点数据默认放在 `~/gpuworks`，与控制台的 `~/gpuworks/server` 互不覆盖。`--no-sudo` 使用用户级安装；正常情况下通过用户的 launchd 任务运行，只在该用户登录期间可用。若出现 LaunchAgents 权限错误，先按下方权限分支处理，再继续第 3 步。
 
 3. 等待安装输出显示 `agent running under launchd`，回到 **计算节点**确认 `mac-local` **在线**。本例显示 `1× M5`、系统内存 `32 GiB`，运行时为 `host`。
 
@@ -83,11 +80,11 @@
 ls -ld "$HOME/Library/LaunchAgents"
 ```
 
-本次设备的该目录属于 `root`，当前用户无法写入。此时安装脚本已经把节点配置写入 `~/.gpuworks`，可以直接将已安装的 agent 注册为系统级 LaunchDaemon：
+本次设备的该目录属于 `root`，当前用户无法写入。此时安装脚本已经把节点配置写入 `~/gpuworks`，可以直接将已安装的 agent 注册为系统级 LaunchDaemon：
 
 ```bash
-sudo "$HOME/.gpuworks/gpuworks-agent" install-service \
-  --state "$HOME/.gpuworks" \
+sudo "$HOME/gpuworks/gpuworks-agent" install-service \
+  --state "$HOME/gpuworks" \
   --user "$(id -un)"
 ```
 

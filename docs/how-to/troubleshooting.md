@@ -22,8 +22,8 @@
 | 实例事件时间线 | 实例详情；API `GET /api/v1/instances/{uuid}/events`（部署级：`GET /api/v1/deployments/{id}/events`） | 卡在哪个状态和阶段、失败原因（`params.detail`） |
 | 调度解释 | 部署页；实例响应的 `schedule.explain`；`POST /api/v1/evaluate` 响应的 `plan` | 为什么选这张卡、别的候选为什么被拒 |
 | 日志页 | 按实例、级别、来源（`source=instance\|node\|agent\|server`）、关键字检索，见[监控与日志](monitor-and-logs.md) | 引擎输出、`CUDA out of memory` 之类 |
-| server 日志 | `gpuworks install` 安装的：`/opt/gpuworks/server/logs/gpuworks-server.log`；直接 `serve`：`<data>/logs/gpuworks-server.log`；systemd 下 `journalctl -u gpuworks` | 握手失败、恢复轮次、代理错误 |
-| agent 日志 | `<state>/agent.log`（安装默认 state 为 `/opt/gpuworks`，10 MB 轮转、保留一代 `agent.log.1`）；`systemctl status gpuworks-agent` | 连接、GPU 探测、拉取、启动 |
+| server 日志 | `gpuworks install` 安装的：`/opt/gpuworks/server/logs/gpuworks-server.log`（macOS 上 `~/gpuworks/server/logs/gpuworks-server.log`）；直接 `serve`：`<data>/logs/gpuworks-server.log`；systemd 下 `journalctl -u gpuworks` | 握手失败、恢复轮次、代理错误 |
+| agent 日志 | `<state>/agent.log`（安装默认 state 为 `/opt/gpuworks`，macOS 上 `~/gpuworks`，10 MB 轮转、保留一代 `agent.log.1`）；`systemctl status gpuworks-agent` | 连接、GPU 探测、拉取、启动 |
 | 环境自检 | 节点上 `gpuworks-agent doctor` | 运行时、GPU、驱动、设备权限 |
 
 实例状态取值：`pending`、`pulling`、`starting`、`optimizing`、`running`、`removing`、`stopped`、`failed`、

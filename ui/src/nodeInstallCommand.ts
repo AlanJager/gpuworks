@@ -25,8 +25,11 @@ export function buildInstallCommand(options: InstallCommandOptions): string {
   const command = customControlPlane
     ? `curl -fsSL ${shellQuoteArg(`${normalizedServerURL}/install.sh`)} | sh -s -- --server ${shellQuoteArg(normalizedServerURL)} --token ${shellQuoteArg(options.token)}`
     : options.baseCommand;
-  const dir = options.installDir && options.installDir !== "/opt/gpuworks"
-    ? ` --install-dir ${shellQuoteArg(options.installDir)}`
+  // An empty directory is left to the script, whose default depends on the
+  // node (/opt/gpuworks on Linux, ~/gpuworks on a Mac); a typed one, even
+  // /opt/gpuworks, is passed as given.
+  const dir = options.installDir?.trim()
+    ? ` --install-dir ${shellQuoteArg(options.installDir.trim())}`
     : "";
   return command + dir + (options.noSystemd ? " --no-systemd" : "");
 }

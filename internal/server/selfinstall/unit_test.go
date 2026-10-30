@@ -132,13 +132,13 @@ func TestNewLayoutDefaults(t *testing.T) {
 	if l.Dir != DefaultDir {
 		t.Fatalf("dir = %q", l.Dir)
 	}
-	if l.DataDir != "/opt/gpuworks/server/data" || l.LogsDir != "/opt/gpuworks/server/logs" {
+	if l.DataDir != DefaultDir+"/data" || l.LogsDir != DefaultDir+"/logs" {
 		t.Fatalf("layout = %+v", l)
 	}
-	if l.LogFile() != "/opt/gpuworks/server/logs/gpuworks-server.log" {
+	if l.LogFile() != DefaultDir+"/logs/gpuworks-server.log" {
 		t.Fatalf("log file = %q", l.LogFile())
 	}
-	if l.CredentialsPath() != "/opt/gpuworks/server/data/initial-credentials" {
+	if l.CredentialsPath() != DefaultDir+"/data/initial-credentials" {
 		t.Fatalf("credentials = %q", l.CredentialsPath())
 	}
 	if l.UnitPath() != "/etc/systemd/system/gpuworks.service" {

@@ -105,7 +105,7 @@ If root/sudo is available and systemd is running, the installer configures a sys
 - **Without sudo**: From the extracted release package directory, install to a writable user directory:
 
   ```bash
-  ./gpuworks install --dir ~/gpuworks-server --no-systemd
+  ./gpuworks install --dir ~/gpuworks/server --no-systemd
   ```
 
 - **After a host restart with a nohup installation**: The service does not recover automatically. Run the following in the actual installation directory:
@@ -124,14 +124,14 @@ For service configuration and permissions, see [Installation Layout](../referenc
 2. In a Mac terminal, use `shasum -a 256` to check the archive's SHA-256. Extract it only after confirming that the value matches `SHA256SUMS`.
 3. Enter the extracted directory, run `./gpuworks install`, complete the prompts described above, and then finish [Verification and First Login](#验证与首次登录).
 
-When you install using an account with sudo permission, the service runs as the installing user and starts at system boot. The default installation directory is `/opt/gpuworks/server`; an agent on the same machine resides in `/opt/gpuworks`, so neither overwrites the other. Run the following as needed from the actual control plane installation directory:
+On a Mac, the default installation directory is `~/gpuworks/server` (the installing user's home directory), and the server runs as a nohup background process without startup at boot; the automatic-startup prompt defaults to `no`. An agent on the same machine resides in `~/gpuworks` by default, so neither overwrites the other. Run the following as needed from the actual control plane installation directory:
 
 ```bash
 ./gpuworks restart            # Restart the service
 ./gpuworks stop               # Stop the service; launchd installations start again at the next boot
 ```
 
-Using `--no-systemd` selects nohup instead and does not configure startup at boot. For launchd configuration, see [Installation Layout](../reference/install-layout.md#launchd-plistmacos).
+To start at system boot, run `./gpuworks install --autostart` from an account with sudo permission (or answer `yes` to the automatic-startup prompt): this installs a launch daemon, and the service runs as the installing user. Reinstalling over an installation that has a launch daemon keeps the launch daemon by default. For launchd configuration, see [Installation Layout](../reference/install-layout.md#launchd-plistmacos).
 
 ### Run in a Container
 
@@ -283,7 +283,7 @@ Run `./gpuworks` in the table from the actual installation directory. Confirm `<
 |---|---|
 | Cannot access the service after installation or upgrade | Check `<installation-directory>/logs/gpuworks-server.log`, resolve errors, and retry; call `/healthz` again and verify the version. If the log location is customized, use the actual configuration |
 | `cannot listen on :8800` | Another process occupies the port. First use `systemctl status gpuworks` to check whether it is the old service; do not simply install again |
-| `create /opt/gpuworks/server needs root` | Use an account with sudo permission, or use `--dir ~/gpuworks-server --no-systemd` |
+| `create /opt/gpuworks/server needs root` | Use an account with sudo permission, or use `--dir ~/gpuworks/server --no-systemd` |
 | Change the initial password or reset a forgotten password | Run `./gpuworks reset-password --password '<new-password>'`, replacing the password; the data directory is read from the `server.yaml` next to the binary (or specify it with `--data`). Do not leave the actual password in command history or logs. Log in again after the change to verify |
 | Permission error when upgrading or resetting a password | The current terminal may not yet have `gpuworks` group permissions. Run `newgrp gpuworks` or log in again, then retry. If the data directory is still not writable, check its permissions |
 | The console reports that the channel has no version yet | Switch to a channel with a published release, or wait for a release on this channel and check again |
