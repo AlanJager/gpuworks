@@ -2,7 +2,7 @@ import { Alert, Empty, Space, Tag, Typography } from "antd";
 import { WarningOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { BoardGPU, BoardNode, BoardOccupant } from "../../api";
+import type { BoardGPU, BoardNode, BoardOccupant } from "../../schedulingApi";
 import { formatBytes } from "../../format";
 
 // Legend explains the three parts of every GPU bar once for the whole board.

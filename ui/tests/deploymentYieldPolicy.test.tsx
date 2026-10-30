@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as shapes from "./helpers/deploymentCapabilities.ts";
 import {
-  api, choosePolicy, cleanup, controls, defaults, deployment, dictionary, f, fireEvent, i18n, locale, mount, openEditor, p, saveButton, screen, spin, state, stub, stubDictionary, summaryOf, summaryText, waitFor, withPolicy, within, y,
+  api, yieldPolicyApi, choosePolicy, cleanup, controls, defaults, deployment, dictionary, f, fireEvent, i18n, locale, mount, openEditor, p, saveButton, screen, spin, state, stub, stubDictionary, summaryOf, summaryText, waitFor, withPolicy, within, y,
 } from "./helpers/yieldPolicyHarness.tsx";
 
 // The yield policy part of a deployment's scheduling policy card: when the card
@@ -153,7 +153,7 @@ test("the defaults are the dictionary's: another answer, other numbers, nothing 
   other.policies[1].defaults.idle_sec = 99;
   other.policies[1].defaults.hold_max_sec = 77;
   other.bounds.idle_sec = { minimum: 20, maximum: 500 };
-  api.yieldPolicies = async () => structuredClone(other);
+  yieldPolicyApi.dictionary = async () => structuredClone(other);
   const user = mount();
   const editor = await openEditor(user);
   await choosePolicy(user, editor, "idle");

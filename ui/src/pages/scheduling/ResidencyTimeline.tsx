@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Alert, Button, Card, Segmented, Spin, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, timelineWindows, usePolling, type BoardNode, type TimelineHours } from "../../api";
+import { usePolling } from "../../api";
+import { schedulingApi, timelineWindows, type BoardNode, type TimelineHours } from "../../schedulingApi";
 import EmptyState from "../../components/EmptyState";
 import { TimelineLegend, TimelineNodes } from "./TimelineLanes";
 import { SharingTable } from "./TimelineStats";
@@ -45,7 +46,7 @@ export default function ResidencyTimeline({ nodes }: { nodes: BoardNode[] }) {
 
 function TimelineBody({ uuids, hours, gpuNames }: { uuids: string[]; hours: TimelineHours; gpuNames: Map<string, string> }) {
   const { t } = useTranslation("scheduling");
-  const timeline = usePolling(() => api.schedulingTimeline({ nodes: uuids, hours }), TIMELINE_POLL_MS, [uuids.join(","), hours]);
+  const timeline = usePolling(() => schedulingApi.timeline({ nodes: uuids, hours }), TIMELINE_POLL_MS, [uuids.join(","), hours]);
   const data = timeline.data;
   if (!data && timeline.error) {
     return (

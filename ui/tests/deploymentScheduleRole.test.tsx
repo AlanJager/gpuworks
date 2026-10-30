@@ -15,15 +15,17 @@ const { i18n, locale } = await createI18n(["deployments", "deploy"]);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
+const { deploymentScheduleApi } = await import("../src/deploymentScheduleApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: ScheduleSection, useSchedules } = await import("../src/pages/DeploymentSchedule.tsx");
 const { default: DeploymentSchedulingPolicy } = await import("../src/pages/DeploymentSchedulingPolicy.tsx");
 type Deployment = import("../src/api.ts").Deployment;
-type Schedule = import("../src/api.ts").LifecycleSchedule;
-type Request = import("../src/api.ts").LifecycleScheduleRequest;
+type Schedule = import("../src/deploymentScheduleApi.ts").LifecycleSchedule;
+type Request = import("../src/deploymentScheduleApi.ts").LifecycleScheduleRequest;
 
 const a = locale.deployments.automation;
 const original = { ...api };
+const originalDeploymentScheduleApi = { ...deploymentScheduleApi };
 
 function pdDeployment(overrides: Record<string, unknown> = {}): Deployment {
   return {
@@ -53,14 +55,14 @@ function stub() {
   schedules = [];
   created.length = updated.length = 0;
   api.me = async () => ({ id: 1, username: "u", role: "admin" }) as Awaited<ReturnType<typeof api.me>>;
-  api.deploymentSchedule = async () => ({ items: schedules, total: schedules.length });
-  api.createSchedule = async (_id, body) => {
+  deploymentScheduleApi.list = async () => ({ items: schedules, total: schedules.length });
+  deploymentScheduleApi.create = async (_id, body) => {
     created.push(body);
     const row = { ...body, id: 10 + created.length, enabled: body.enabled ?? true } as Schedule;
     schedules = [...schedules, row];
     return row;
   };
-  api.updateSchedule = async (_id, sid, body) => {
+  deploymentScheduleApi.update = async (_id, sid, body) => {
     updated.push([sid, body]);
     const row = { ...body, id: sid, enabled: body.enabled ?? true } as Schedule;
     schedules = schedules.map((item) => (item.id === sid ? row : item));
@@ -99,7 +101,7 @@ async function pickRole(modal: ReturnType<typeof dialog>, role: string) {
   fireEvent.click(option!);
 }
 
-afterEach(() => { cleanup(); Object.assign(api, original); });
+afterEach(() => { cleanup(); Object.assign(api, original); Object.assign(deploymentScheduleApi, originalDeploymentScheduleApi); });
 after(() => closeChannels());
 
 test("a PD deployment placed automatically offers a replica count, and asks for the role", async () => {
@@ -199,7 +201,7 @@ test("the server's refusal of a role is worded by the role field's label", async
   const user = mount();
   const modal = await openNewReplicasOrder(user);
   fireEvent.change(modal.getByLabelText(a.schedule.field.time), { target: { value: "09:30" } });
-  api.createSchedule = async () => {
+  deploymentScheduleApi.create = async () => {
     throw new APIError("SCHEDULE_INVALID", { field: "role", reason: 'the vllm-nixl mode has no "encode" role' }, "schedule role: the vllm-nixl mode has no \"encode\" role", 400);
   };
   await user.click(modal.getByRole("button", { name: a.schedule.save }));
@@ -209,7 +211,7 @@ test("the server's refusal of a role is worded by the role field's label", async
 test("the scheduling policy summary names the role of the next order", async () => {
   stub();
   schedules = [{ id: 8, action: "replicas", weekdays: [1], time: "07:00", timezone: "", replicas: 0, role: "prefill", enabled: true, next_at: "2026-10-30T07:00:00Z" }];
-  api.deploymentSchedule = async () => ({ items: schedules, total: schedules.length });
+  deploymentScheduleApi.list = async () => ({ items: schedules, total: schedules.length });
   const dep = pdDeployment();
   render(<I18nextProvider i18n={i18n}><DeploymentSchedulingPolicy dep={dep} onChanged={() => {}} /></I18nextProvider>);
   const group = await screen.findByRole("region", { name: locale.deployments.schedulingPolicy.title });

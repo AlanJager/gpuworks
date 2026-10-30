@@ -1,4 +1,4 @@
-import type { OverviewCardWire, OverviewNode, SchedulingOverview } from "../../src/api.ts";
+import type { OverviewCardWire, OverviewNode, SchedulingOverview } from "../../src/schedulingApi.ts";
 
 /** The states the server names, in its order: a card refers to one by position. */
 export const STATES = ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"];

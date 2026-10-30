@@ -1,7 +1,8 @@
 import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, Spin, message } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, usePolling, type BoardWaitingWake } from "../api";
+import { api, usePolling } from "../api";
+import { schedulingApi, type BoardWaitingWake } from "../schedulingApi";
 import { apiErrorText } from "../apiError";
 import EmptyState from "../components/EmptyState";
 import PageHeader from "../components/PageHeader";
@@ -25,8 +26,8 @@ const POLL_MS = 10_000;
 export default function SchedulingPage() {
   const { t } = useTranslation("scheduling");
   const { t: tCommon } = useTranslation("common");
-  const overview = usePolling(() => api.schedulingOverview(), POLL_MS);
-  const queues = usePolling(() => api.schedulingBoard({ queues: true }), POLL_MS);
+  const overview = usePolling(() => schedulingApi.overview(), POLL_MS);
+  const queues = usePolling(() => schedulingApi.board({ queues: true }), POLL_MS);
   const [view, setView] = useState<ViewState>(DEFAULT_VIEW);
   const [open, setOpen] = useState<{ uuid: string; name: string } | null>(null);
   const [cancelling, setCancelling] = useState<number | null>(null);
@@ -131,7 +132,7 @@ export default function SchedulingPage() {
 }
 
 function QueueCards({ board, error, onRetry, cancelling, onCancel }: {
-  board: Awaited<ReturnType<typeof api.schedulingBoard>> | null;
+  board: Awaited<ReturnType<typeof schedulingApi.board>> | null;
   error: Error | null;
   onRetry: () => void;
   cancelling: number | null;

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Alert, Button, Card, Segmented, Spin } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, timelineWindows, usePolling, type TimelineHours } from "../../api";
+import { usePolling } from "../../api";
+import { schedulingApi, timelineWindows, type TimelineHours } from "../../schedulingApi";
 import { SharingTable } from "./TimelineStats";
 
 const SHARING_POLL_MS = 60_000;
@@ -17,7 +18,7 @@ const SHARING_POLL_MS = 60_000;
 export default function SharingStats() {
   const { t } = useTranslation("scheduling");
   const [hours, setHours] = useState<TimelineHours>(timelineWindows[0]);
-  const stats = usePolling(() => api.schedulingTimeline({ sharing: true, hours }), SHARING_POLL_MS, [hours]);
+  const stats = usePolling(() => schedulingApi.timeline({ sharing: true, hours }), SHARING_POLL_MS, [hours]);
   const data = stats.data;
   const window = (
     <Segmented<TimelineHours>

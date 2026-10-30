@@ -98,6 +98,7 @@ const { cleanup, fireEvent, render, screen, waitFor } =
 const { MemoryRouter } = await import("react-router-dom");
 const { default: userEvent } = await import("@testing-library/user-event");
 const { api } = await import("../src/api.ts");
+const { yieldPolicyApi } = await import("../src/yieldPolicyApi.ts");
 
 const gpuMemSpec = {
   key: "gpu_memory_utilization",
@@ -197,10 +198,10 @@ stub("inferenceTemplateIndex", async () => ({ items: [] }));
 stub("imageVersions", async () => list([]));
 stub("images", async () => list([]));
 let yieldPoliciesFail = false;
-stub("yieldPolicies", async () => {
+yieldPolicyApi.dictionary = async () => {
   if (yieldPoliciesFail) throw new Error("dictionary unavailable");
   return structuredClone(yieldDictionary);
-});
+};
 afterEach(() => {
   cleanup();
   // Later cases in this file override individual stubs; restore the shared

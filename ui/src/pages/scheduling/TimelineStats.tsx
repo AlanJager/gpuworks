@@ -2,7 +2,7 @@ import { Tag } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { TimelineDeployment } from "../../api";
+import type { TimelineDeployment } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { durationText } from "../durationText";
 

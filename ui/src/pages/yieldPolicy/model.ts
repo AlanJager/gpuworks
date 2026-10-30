@@ -1,15 +1,7 @@
 import type {
   Deployment,
-  YieldBound,
-  YieldParamName,
-  YieldPolicy,
-  YieldPolicyDictionary,
-  YieldPolicyEntry,
-  YieldPolicyName,
-  YieldPolicyRequest,
-  YieldSleepLevel,
-  YieldUnfinished,
 } from "../../api";
+import type { YieldBound, YieldParamName, YieldPolicy, YieldPolicyDictionary, YieldPolicyEntry, YieldPolicyName, YieldPolicyRequest, YieldSleepLevel, YieldUnfinished } from "../../yieldPolicyApi";
 
 // The pure side of the yield policy editor: the working copy of a policy, which
 // parameters apply to the chosen one, what differs from its defaults, the

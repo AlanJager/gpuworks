@@ -1,4 +1,5 @@
-import type { YieldPolicyName, TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../api";
+import type { TimelineDeployment, TimelineHours, TimelineSegment, TimelineState } from "../../schedulingApi";
+import type { YieldPolicyName } from "../../yieldPolicyApi";
 import { colors } from "../../theme/tokens";
 
 // Geometry of the residency timeline. Every x is a position on a track that is

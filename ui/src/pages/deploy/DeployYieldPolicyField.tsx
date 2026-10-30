@@ -1,7 +1,9 @@
 import { useContext } from "react";
 import { Form, Select } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, usePolling, type Eligibility, type YieldPolicyDictionary, type YieldPolicyName } from "../../api";
+import { usePolling } from "../../api";
+import type { Eligibility } from "../../deploymentCapabilities";
+import { yieldPolicyApi, type YieldPolicyDictionary, type YieldPolicyName } from "../../yieldPolicyApi";
 import { draftOfPolicy, paramsOfValue, type YieldParams } from "../yieldPolicy/model";
 import { DeployEditContext } from "./DeployEditContext";
 
@@ -62,7 +64,7 @@ function YieldPolicyItem({ allowed, reason }: { allowed: boolean; reason?: strin
   const { t } = useTranslation("deploy");
   const { t: tCommon } = useTranslation("common");
   const engine = String(Form.useWatch("engine", { preserve: true }) ?? "");
-  const dictionary = usePolling(api.yieldPolicies, 0);
+  const dictionary = usePolling(yieldPolicyApi.dictionary, 0);
   const refusal = !allowed && reason ? tCommon(`apiError.${reason}`, { engine, defaultValue: reason }) : "";
   return (
     <Form.Item

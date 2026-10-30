@@ -10,6 +10,9 @@ for (const name of ["window", "document", "navigator"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 const { api } = await import("../src/api.ts");
+const { schedulingApi } = await import("../src/schedulingApi.ts");
+const { yieldPolicyApi } = await import("../src/yieldPolicyApi.ts");
+const { deploymentScheduleApi } = await import("../src/deploymentScheduleApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -27,24 +30,24 @@ function fake(status = 200, body: unknown = {}) {
 
 test("schedule calls use the deployment's schedule path and literal bodies", async () => {
   const seen = fake(200, { items: [], total: 0 });
-  await api.deploymentSchedule(7);
-  await api.createSchedule(7, { action: "sleep", weekdays: [1, 2], time: "22:00", timezone: "", sleep_level: 2, enabled: true });
-  await api.updateSchedule(7, 3, { action: "replicas", weekdays: [0], time: "06:30", timezone: "Asia/Shanghai", replicas: 3 });
+  await deploymentScheduleApi.list(7);
+  await deploymentScheduleApi.create(7, { action: "sleep", weekdays: [1, 2], time: "22:00", timezone: "", sleep_level: 2, enabled: true });
+  await deploymentScheduleApi.update(7, 3, { action: "replicas", weekdays: [0], time: "06:30", timezone: "Asia/Shanghai", replicas: 3 });
   assert.deepEqual(seen, [
     { url: "/api/v1/deployments/7/schedule", method: undefined, body: undefined },
     { url: "/api/v1/deployments/7/schedule", method: "POST", body: { action: "sleep", weekdays: [1, 2], time: "22:00", timezone: "", sleep_level: 2, enabled: true } },
     { url: "/api/v1/deployments/7/schedule/3", method: "PUT", body: { action: "replicas", weekdays: [0], time: "06:30", timezone: "Asia/Shanghai", replicas: 3 } },
   ]);
   const deleted = fake(204);
-  await api.deleteSchedule(7, 3);
+  await deploymentScheduleApi.delete(7, 3);
   assert.deepEqual(deleted, [{ url: "/api/v1/deployments/7/schedule/3", method: "DELETE", body: undefined }]);
 });
 
 test("the yield policy puts the policy with its parameters, and node replacement puts its seconds", async () => {
   const seen = fake(200, {});
-  await api.setYieldPolicy(7, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 });
-  await api.setYieldPolicy(7, { policy: "timeslice", idle_sec: 30, sleep_level: "l1", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 });
-  await api.setYieldPolicy(7, { policy: "never" });
+  await yieldPolicyApi.set(7, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 });
+  await yieldPolicyApi.set(7, { policy: "timeslice", idle_sec: 30, sleep_level: "l1", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 });
+  await yieldPolicyApi.set(7, { policy: "never" });
   await api.setNodeReplacement(7, { after_sec: 600 });
   assert.deepEqual(seen, [
     { url: "/api/v1/deployments/7/yield-policy", method: "PUT", body: { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300 } },
@@ -56,7 +59,7 @@ test("the yield policy puts the policy with its parameters, and node replacement
 
 test("the yield policy answer carries the idle neighbours as the server states them", async () => {
   fake(200, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300, idle_neighbours: ["chat-b"] });
-  const answer = await api.setYieldPolicy(7, { policy: "idle" });
+  const answer = await yieldPolicyApi.set(7, { policy: "idle" });
   assert.deepEqual(answer, { policy: "idle", idle_sec: 60, sleep_level: "auto", hold_max_sec: 300, idle_neighbours: ["chat-b"] });
 });
 
@@ -69,7 +72,7 @@ test("the yield policy dictionary is one plain read of the scheduling endpoint, 
     unfinished: ["abort", "wait"],
   };
   const seen = fake(200, wire);
-  const got = await api.yieldPolicies();
+  const got = await yieldPolicyApi.dictionary();
   assert.deepEqual(seen, [{ url: "/api/v1/scheduling/yield-policies", method: undefined, body: undefined }]);
   assert.deepEqual(got, wire);
 });
@@ -105,8 +108,8 @@ test("cancelling a waiting wake deletes the deployment's wake-waiting", async ()
 
 test("the board is asked a page at a time, searched by q", async () => {
   const seen = fake(200, {});
-  await api.schedulingBoard({ page: 2, page_size: 10, q: " gpu " });
-  await api.schedulingBoard({ page: 1, page_size: 20 });
+  await schedulingApi.board({ page: 2, page_size: 10, q: " gpu " });
+  await schedulingApi.board({ page: 1, page_size: 20 });
   assert.deepEqual(seen.map((request) => request.url), [
     "/api/v1/scheduling/board?page=2&page_size=10&q=gpu",
     "/api/v1/scheduling/board?page=1&page_size=20",
@@ -115,8 +118,8 @@ test("the board is asked a page at a time, searched by q", async () => {
 
 test("the board of one node, and the fleet-wide lists alone, are separate reads", async () => {
   const seen = fake(200, {});
-  await api.schedulingBoard({ node: "n/1 a" });
-  await api.schedulingBoard({ queues: true });
+  await schedulingApi.board({ node: "n/1 a" });
+  await schedulingApi.board({ queues: true });
   assert.deepEqual(seen.map((request) => request.url), [
     "/api/v1/scheduling/board?node=n%2F1%20a",
     "/api/v1/scheduling/board?queues=1",
@@ -126,7 +129,7 @@ test("the board of one node, and the fleet-wide lists alone, are separate reads"
 test("the overview is one plain read, and its cards stay the server's compact arrays", async () => {
   const wire = { summary: { nodes: 1 }, states: ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"], models: ["L20"], deployments: [{ id: 7, name: "qwen", yield_policy: "timeslice" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 3, 1, [1]], [1, 0, 49152, 0, 0, 5, 0]] }] };
   const seen = fake(200, wire);
-  const got = await api.schedulingOverview();
+  const got = await schedulingApi.overview();
   assert.deepEqual(seen, [{ url: "/api/v1/scheduling/overview", method: undefined, body: undefined }]);
   assert.deepEqual(got.nodes[0].cards[0], [0, 0, 49152, 100, 0, 3, 1, [1]]);
   assert.equal(got.nodes[0].cards[1].length, 7, "a card with no occupants has no eighth element");
@@ -144,8 +147,8 @@ test("scaling may name first-placement nodes, and the server's refusal keeps its
 
 test("the scheduling history asks for a cursor page with its filters in the query", async () => {
   const seen = fake(200, { items: [] });
-  await api.schedulingHistory({});
-  await api.schedulingHistory({ limit: 21, before: 90, category: ["auto", "failure"], deployment_id: 7, since: "2026-10-25T00:00:00Z", until: "2026-10-26T00:00:00Z" });
+  await schedulingApi.history({});
+  await schedulingApi.history({ limit: 21, before: 90, category: ["auto", "failure"], deployment_id: 7, since: "2026-10-25T00:00:00Z", until: "2026-10-26T00:00:00Z" });
   assert.deepEqual(seen, [
     { url: "/api/v1/scheduling/history", method: undefined, body: undefined },
     { url: "/api/v1/scheduling/history?limit=21&before=90&category=auto%2Cfailure&deployment_id=7&since=2026-10-25T00%3A00%3A00Z&until=2026-10-26T00%3A00%3A00Z", method: undefined, body: undefined },
@@ -154,8 +157,8 @@ test("the scheduling history asks for a cursor page with its filters in the quer
 
 test("the residency timeline names every node and the window in the query", async () => {
   const seen = fake(200, { window: { from: "a", to: "b", hours: 24 }, nodes: [], deployments: [] });
-  await api.schedulingTimeline({ nodes: ["n-1", "n-2"], hours: 24 });
-  await api.schedulingTimeline({ sharing: true, hours: 6 });
+  await schedulingApi.timeline({ nodes: ["n-1", "n-2"], hours: 24 });
+  await schedulingApi.timeline({ sharing: true, hours: 6 });
   assert.deepEqual(seen, [
     { url: "/api/v1/scheduling/timeline?node=n-1&node=n-2&hours=24", method: undefined, body: undefined },
     { url: "/api/v1/scheduling/timeline?sharing=1&hours=6", method: undefined, body: undefined },

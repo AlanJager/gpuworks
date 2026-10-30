@@ -3,7 +3,7 @@ import { Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { SchedulingTimeline, TimelineDeployment, TimelineGPU, TimelineNode, TimelineSegment } from "../../api";
+import type { SchedulingTimeline, TimelineDeployment, TimelineGPU, TimelineNode, TimelineSegment } from "../../schedulingApi";
 import { formatTime } from "../../i18n/datetime";
 import { colors } from "../../theme/tokens";
 import { CHART_WIDTH, blockOf, lanesOf, stateColor, stateOrder, ticksOf, windowSpan, type Lane, type Span } from "./timelineChart";

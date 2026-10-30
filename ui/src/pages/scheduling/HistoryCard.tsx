@@ -2,7 +2,8 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Segmented, Select, Space, Spin, Tag, Typography } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { api, usePolling, type SchedulingCategory, type SchedulingHistoryEntry } from "../../api";
+import { api, usePolling } from "../../api";
+import { schedulingApi, type SchedulingCategory, type SchedulingHistoryEntry } from "../../schedulingApi";
 import EmptyState from "../../components/EmptyState";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { formatTime } from "../../i18n/datetime";
@@ -37,7 +38,7 @@ export default function HistoryCard() {
   const history = usePolling(
     () => {
       const since = filters.range === "all" ? undefined : new Date(Date.now() - RANGES[filters.range]).toISOString();
-      return api.schedulingHistory({
+      return schedulingApi.history({
         limit: PAGE_SIZE + 1,
         before,
         category: filters.category === "all" ? undefined : [filters.category],

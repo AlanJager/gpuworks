@@ -16,12 +16,14 @@ const { cleanup, render, screen, waitFor, within, fireEvent } = await import("@t
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
+const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { default: HistoryCard } = await import("../src/pages/scheduling/HistoryCard.tsx");
-type Entry = import("../src/api.ts").SchedulingHistoryEntry;
-type Query = import("../src/api.ts").SchedulingHistoryQuery;
+type Entry = import("../src/schedulingApi.ts").SchedulingHistoryEntry;
+type Query = import("../src/schedulingApi.ts").SchedulingHistoryQuery;
 
 const h = locale.scheduling.history;
-const original = { schedulingHistory: api.schedulingHistory, deploymentsPage: api.deploymentsPage };
+const original = { deploymentsPage: api.deploymentsPage };
+const originalScheduling = { ...schedulingApi };
 
 function entry(id: number, overrides: Partial<Entry> = {}): Entry {
   return {
@@ -62,7 +64,7 @@ const choose = (user: ReturnType<typeof userEvent.setup>, name: string) => user.
 
 function serve(items: Entry[] | ((query: Query) => Entry[])) {
   const queries: Query[] = [];
-  api.schedulingHistory = async (query) => { queries.push(query); return { items: typeof items === "function" ? items(query) : items }; };
+  schedulingApi.history = async (query) => { queries.push(query); return { items: typeof items === "function" ? items(query) : items }; };
   api.deploymentsPage = async (query) => ({
     items: [{ id: 7, name: "qwen" }, { id: 8, name: "llama" }].filter((d) => !query.q || d.name.includes(query.q)),
     page: 1, page_size: 20, total: 2,
@@ -73,13 +75,14 @@ function serve(items: Entry[] | ((query: Query) => Entry[])) {
 afterEach(() => {
   cleanup();
   Object.assign(api, original);
+  Object.assign(schedulingApi, originalScheduling);
 });
 after(() => closeChannels());
 
 test("a loading status shows until the history answers", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  api.schedulingHistory = async () => { await gate; return { items: sample }; };
+  schedulingApi.history = async () => { await gate; return { items: sample }; };
   mount();
   assert.ok(screen.getByRole("status"));
   assert.ok(screen.getByText(h.loading));
@@ -156,7 +159,7 @@ test("an empty history says so, and says differently when filters hide everythin
 
 test("a failed first load shows the error and retries on request", async () => {
   let calls = 0;
-  api.schedulingHistory = async () => {
+  schedulingApi.history = async () => {
     calls += 1;
     if (calls === 1) throw new Error("history unavailable");
     return { items: sample };
@@ -171,7 +174,7 @@ test("a failed first load shows the error and retries on request", async () => {
 
 test("a later failed refresh keeps the entries and warns", async () => {
   let calls = 0;
-  api.schedulingHistory = async () => {
+  schedulingApi.history = async () => {
     calls += 1;
     if (calls > 1) throw new Error("server restarting");
     return { items: sample };

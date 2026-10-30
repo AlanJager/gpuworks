@@ -20,18 +20,22 @@ export const { message } = await import("antd");
 export const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 export const userEvent = (await import("@testing-library/user-event")).default;
 export const { api } = await import("../../src/api.ts");
+export const { yieldPolicyApi } = await import("../../src/yieldPolicyApi.ts");
+export const { deploymentScheduleApi } = await import("../../src/deploymentScheduleApi.ts");
 export const { APIError } = await import("../../src/apiError.ts");
 const { default: DeploymentSchedulingPolicy } = await import("../../src/pages/DeploymentSchedulingPolicy.tsx");
 export type Deployment = import("../../src/api.ts").Deployment;
-export type YieldPolicy = import("../../src/api.ts").YieldPolicy;
-export type YieldPolicyRequest = import("../../src/api.ts").YieldPolicyRequest;
-export type YieldPolicyAnswer = import("../../src/api.ts").YieldPolicyAnswer;
-export type YieldPolicyDictionary = import("../../src/api.ts").YieldPolicyDictionary;
-type YieldParamName = import("../../src/api.ts").YieldParamName;
+export type YieldPolicy = import("../../src/yieldPolicyApi.ts").YieldPolicy;
+export type YieldPolicyRequest = import("../../src/yieldPolicyApi.ts").YieldPolicyRequest;
+export type YieldPolicyAnswer = import("../../src/yieldPolicyApi.ts").YieldPolicyAnswer;
+export type YieldPolicyDictionary = import("../../src/yieldPolicyApi.ts").YieldPolicyDictionary;
+type YieldParamName = import("../../src/yieldPolicyApi.ts").YieldParamName;
 
 export const p = locale.deployments.schedulingPolicy;
 export const y = locale.deployments.yieldPolicy;
 const original = { ...api };
+const originalYieldPolicyApi = { ...yieldPolicyApi };
+const originalDeploymentScheduleApi = { ...deploymentScheduleApi };
 
 export function deployment(overrides: Record<string, unknown> = {}): Deployment {
   return {
@@ -110,7 +114,7 @@ export function serverAnswer(body: YieldPolicyRequest): YieldPolicyAnswer {
 // pending.
 export function stubDictionary(mode: "ok" | "error" | "pending" = "ok") {
   state.dictionaryMode = mode;
-  api.yieldPolicies = async () => {
+  yieldPolicyApi.dictionary = async () => {
     state.dictionaryReads += 1;
     if (state.dictionaryMode === "error") throw new APIError("INTERNAL", {}, "dictionary unavailable", 500);
     if (state.dictionaryMode === "pending") return new Promise<YieldPolicyDictionary>(() => {});
@@ -125,9 +129,9 @@ export function stub() {
   state.dictionaryReads = 0;
   state.neighbours = [];
   api.me = async () => ({ id: 1, username: "u", role: state.role }) as Awaited<ReturnType<typeof api.me>>;
-  api.deploymentSchedule = async () => ({ items: [], total: 0 });
+  deploymentScheduleApi.list = async () => ({ items: [], total: 0 });
   stubDictionary();
-  api.setYieldPolicy = async (id, body) => {
+  yieldPolicyApi.set = async (id, body) => {
     state.sent.push([id, body]);
     const answer = serverAnswer(body);
     const { idle_neighbours: _neighbours, ...stored } = answer;
@@ -184,5 +188,5 @@ export async function choosePolicy(user: ReturnType<typeof userEvent.setup>, edi
 
 // Toasts live outside the rendered tree: clear them so one test's does not answer another's query.
 export const clearToasts = () => message.destroy();
-afterEach(() => { cleanup(); clearToasts(); Object.assign(api, original); });
+afterEach(() => { cleanup(); clearToasts(); Object.assign(api, original); Object.assign(yieldPolicyApi, originalYieldPolicyApi); Object.assign(deploymentScheduleApi, originalDeploymentScheduleApi); });
 after(() => closeChannels());

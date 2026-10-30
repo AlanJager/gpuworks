@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Input, InputNumber, Modal, Popconfirm, Select, Space, Switch, Table, Typography, message } from "antd";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { api, type Deployment, type LifecycleSchedule, type LifecycleScheduleRequest, type ScheduleAction } from "../api";
+import type { Deployment } from "../api";
+import { deploymentScheduleApi, type LifecycleSchedule, type LifecycleScheduleRequest, type ScheduleAction } from "../deploymentScheduleApi";
 import { APIError, apiErrorText } from "../apiError";
 import { formatTime } from "../i18n/datetime";
 
@@ -60,7 +61,7 @@ export function useSchedules(depID: number) {
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
-      const result = await api.deploymentSchedule(depID);
+      const result = await deploymentScheduleApi.list(depID);
       setRows(result.items);
       setError("");
     } catch (e) {
@@ -113,7 +114,7 @@ export default function ScheduleSection({ dep, schedules }: { dep: Deployment; s
   const toggle = async (row: LifecycleSchedule, enabled: boolean) => {
     setBusyID(row.id);
     try {
-      await api.updateSchedule(dep.id, row.id, toBody(row, enabled));
+      await deploymentScheduleApi.update(dep.id, row.id, toBody(row, enabled));
       await load();
     } catch (e) {
       message.error(t("automation.schedule.saveFailed", { detail: apiErrorText(tCommon, e) }));
@@ -124,7 +125,7 @@ export default function ScheduleSection({ dep, schedules }: { dep: Deployment; s
   const remove = async (row: LifecycleSchedule) => {
     setBusyID(row.id);
     try {
-      await api.deleteSchedule(dep.id, row.id);
+      await deploymentScheduleApi.delete(dep.id, row.id);
       message.success(t("automation.schedule.deleted"));
       await load();
     } catch (e) {
@@ -288,8 +289,8 @@ function ScheduleModal({ dep, row, actions, onClose, onSaved }: {
     setSaving(true);
     setError("");
     try {
-      if (row) await api.updateSchedule(dep.id, row.id, body);
-      else await api.createSchedule(dep.id, body);
+      if (row) await deploymentScheduleApi.update(dep.id, row.id, body);
+      else await deploymentScheduleApi.create(dep.id, body);
       message.success(t("automation.schedule.saved"));
       onSaved();
     } catch (e) {

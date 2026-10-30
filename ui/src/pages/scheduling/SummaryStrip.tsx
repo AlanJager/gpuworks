@@ -1,6 +1,6 @@
 import { Tag, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import type { SchedulingOverview } from "../../api";
+import type { SchedulingOverview } from "../../schedulingApi";
 import { stateFill } from "./cellColor";
 import { CELL_STATES, type CellState } from "./overviewModel";
 

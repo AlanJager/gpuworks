@@ -1,4 +1,4 @@
-import type { OverviewDeployment, SchedulingOverview } from "../../api";
+import type { OverviewDeployment, SchedulingOverview } from "../../schedulingApi";
 
 // The scheduling overview as the heatmap works with it: the response's compact
 // arrays decoded into cards, and the filtering, grouping and sorting of the

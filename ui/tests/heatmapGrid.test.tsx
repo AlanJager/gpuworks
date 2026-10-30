@@ -18,7 +18,7 @@ const { default: Heatmap, cardsAcross } = await import("../src/pages/scheduling/
 const { arrange, buildModel, NO_FILTERS } = await import("../src/pages/scheduling/overviewModel.ts");
 type Filters = import("../src/pages/scheduling/overviewModel.ts").Filters;
 type GroupBy = import("../src/pages/scheduling/overviewModel.ts").GroupBy;
-type Overview = import("../src/api.ts").SchedulingOverview;
+type Overview = import("../src/schedulingApi.ts").SchedulingOverview;
 
 const s = locale.scheduling;
 afterEach(cleanup);

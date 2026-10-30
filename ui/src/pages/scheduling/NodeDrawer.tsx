@@ -1,6 +1,7 @@
 import { Alert, Button, Drawer, Spin } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, usePolling } from "../../api";
+import { usePolling } from "../../api";
+import { schedulingApi } from "../../schedulingApi";
 import { Legend, NodeList } from "./GpuBoard";
 import ResidencyTimeline from "./ResidencyTimeline";
 
@@ -23,7 +24,7 @@ export default function NodeDrawer({ uuid, name, onClose }: { uuid: string | nul
 
 function NodeDetail({ uuid }: { uuid: string }) {
   const { t } = useTranslation("scheduling");
-  const board = usePolling(() => api.schedulingBoard({ node: uuid }), NODE_POLL_MS, [uuid]);
+  const board = usePolling(() => schedulingApi.board({ node: uuid }), NODE_POLL_MS, [uuid]);
   const node = board.data?.nodes.items[0];
   if (!node && board.error) {
     return (

@@ -18,18 +18,17 @@ const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@t
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
+const { schedulingApi } = await import("../src/schedulingApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: SchedulingPage } = await import("../src/pages/SchedulingPage.tsx");
-type Board = import("../src/api.ts").SchedulingBoard;
-type Overview = import("../src/api.ts").SchedulingOverview;
-type Timeline = import("../src/api.ts").SchedulingTimeline;
+type Board = import("../src/schedulingApi.ts").SchedulingBoard;
+type Overview = import("../src/schedulingApi.ts").SchedulingOverview;
+type Timeline = import("../src/schedulingApi.ts").SchedulingTimeline;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
-const original = {
-  schedulingOverview: api.schedulingOverview, schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting,
-  schedulingHistory: api.schedulingHistory, schedulingTimeline: api.schedulingTimeline,
-};
+const original = { endWakeWaiting: api.endWakeWaiting };
+const originalScheduling = { ...schedulingApi };
 
 /** The fleet-wide lists of the board, as GET /scheduling/board?queues=1 answers. */
 function queues(overrides: Partial<Board> = {}): Board {
@@ -77,20 +76,20 @@ interface Calls { board: unknown[]; timeline: unknown[] }
 
 function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: () => Timeline } = {}): Calls {
   const calls: Calls = { board: [], timeline: [] };
-  api.schedulingOverview = options.overview ?? (async () => smallFleet());
-  api.schedulingBoard = async (query) => {
+  schedulingApi.overview = options.overview ?? (async () => smallFleet());
+  schedulingApi.board = async (query) => {
     calls.board.push(query);
     if ("node" in query) return nodeBoard(query.node);
     if ("queues" in query) return (options.board ?? queues)();
     throw new Error(`the page must not ask for a page of nodes: ${JSON.stringify(query)}`);
   };
-  api.schedulingTimeline = async (query) => {
+  schedulingApi.timeline = async (query) => {
     calls.timeline.push(query);
     if ("sharing" in query) return (options.sharing ?? sharing)();
     return { window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [], deployments: [] };
   };
   // The scheduling history has its own tests (schedulingHistory.test.tsx).
-  api.schedulingHistory = async () => ({ items: [{
+  schedulingApi.history = async () => ({ items: [{
     id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
     params: { trigger: "idle", level: 2, idle_sec: 900 },
   }] });
@@ -120,6 +119,7 @@ function mount() {
 afterEach(() => {
   cleanup();
   Object.assign(api, original);
+  Object.assign(schedulingApi, originalScheduling);
 });
 after(() => closeChannels());
 
@@ -293,8 +293,8 @@ test("opening a node reads it in full: each GPU as a bar with its holders, and i
 test("a node that cannot be read says so in its drawer and retries", async () => {
   serve();
   let calls = 0;
-  const base = api.schedulingBoard;
-  api.schedulingBoard = async (query) => {
+  const base = schedulingApi.board;
+  schedulingApi.board = async (query) => {
     if ("node" in query) { calls += 1; if (calls === 1) throw new Error("node unavailable"); }
     return base(query);
   };
@@ -352,8 +352,8 @@ test("a waiting wake is cancelled from the keyboard, then the queues and the ove
   const cancelled: number[] = [];
   api.endWakeWaiting = async (id) => { cancelled.push(id); waiting = []; return { items: ["inst-llama-0001"], total: 1 }; };
   let reads = 0;
-  const base = api.schedulingOverview;
-  api.schedulingOverview = async () => { reads += 1; return base(); };
+  const base = schedulingApi.overview;
+  schedulingApi.overview = async () => { reads += 1; return base(); };
   const user = mount();
   await screen.findByText("big-model");
   const before = reads;

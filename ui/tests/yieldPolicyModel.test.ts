@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { test } from "node:test";
-import type { YieldPolicyDictionary } from "../src/api.ts";
+import type { YieldPolicyDictionary } from "../src/yieldPolicyApi.ts";
 import {
   applicable,
   boundOf,

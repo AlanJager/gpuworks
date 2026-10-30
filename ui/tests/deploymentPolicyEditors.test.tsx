@@ -17,17 +17,19 @@ const { i18n, locale } = await createI18n(["deployments", "deploy"]);
 const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
+const { deploymentScheduleApi } = await import("../src/deploymentScheduleApi.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { formatTime } = await import("../src/i18n/datetime.ts");
 const { default: ScheduleSection, useSchedules } = await import("../src/pages/DeploymentSchedule.tsx");
 const { default: NodeReplacementEditor } = await import("../src/pages/DeploymentNodeReplacement.tsx");
 type Deployment = import("../src/api.ts").Deployment;
-type Schedule = import("../src/api.ts").LifecycleSchedule;
-type Request = import("../src/api.ts").LifecycleScheduleRequest;
+type Schedule = import("../src/deploymentScheduleApi.ts").LifecycleSchedule;
+type Request = import("../src/deploymentScheduleApi.ts").LifecycleScheduleRequest;
 
 const a = locale.deployments.automation;
 const n = locale.deployments.nodeReplacement;
 const original = { ...api };
+const originalDeploymentScheduleApi = { ...deploymentScheduleApi };
 
 function deployment(overrides: Record<string, unknown> = {}): Deployment {
   return {
@@ -51,20 +53,20 @@ const deleted: number[] = [];
 function stub() {
   schedules = [];
   created.length = updated.length = deleted.length = 0;
-  api.deploymentSchedule = async () => ({ items: schedules, total: schedules.length });
-  api.createSchedule = async (_id, body) => {
+  deploymentScheduleApi.list = async () => ({ items: schedules, total: schedules.length });
+  deploymentScheduleApi.create = async (_id, body) => {
     created.push(body);
     const row = { ...body, id: 10 + created.length, enabled: body.enabled ?? true } as Schedule;
     schedules = [...schedules, row];
     return row;
   };
-  api.updateSchedule = async (_id, sid, body) => {
+  deploymentScheduleApi.update = async (_id, sid, body) => {
     updated.push([sid, body]);
     const row = { ...body, id: sid, enabled: body.enabled ?? true } as Schedule;
     schedules = schedules.map((item) => (item.id === sid ? row : item));
     return row;
   };
-  api.deleteSchedule = async (_id, sid) => { deleted.push(sid); schedules = schedules.filter((item) => item.id !== sid); };
+  deploymentScheduleApi.delete = async (_id, sid) => { deleted.push(sid); schedules = schedules.filter((item) => item.id !== sid); };
 }
 
 function Schedules({ dep }: { dep: Deployment }) {
@@ -93,7 +95,7 @@ const labelled = (scope: ReturnType<typeof within>, text: string) => scope.getBy
 const scheduleSection = () => screen.getByRole("region", { name: a.schedule.title });
 const dialog = () => screen.getByRole("dialog");
 
-afterEach(() => { cleanup(); Object.assign(api, original); });
+afterEach(() => { cleanup(); Object.assign(api, original); Object.assign(deploymentScheduleApi, originalDeploymentScheduleApi); });
 after(() => closeChannels());
 
 test("the schedule lists each order with its days, time zone and next run; none says so", async () => {
@@ -119,7 +121,7 @@ test("the schedule lists each order with its days, time zone and next run; none 
 test("a failed schedule load shows the reason and retries", async () => {
   stub();
   let calls = 0;
-  api.deploymentSchedule = async () => {
+  deploymentScheduleApi.list = async () => {
     calls += 1;
     if (calls === 1) throw new APIError("DEPLOYMENT_NOT_FOUND", {}, "no such deployment", 404);
     return { items: [nightly], total: 1 };
@@ -174,12 +176,12 @@ test("what the server still refuses shows in the dialog: an invalid order names 
   await user.click(within(scheduleSection()).getByRole("button", { name: a.schedule.add }));
   const modal = within(dialog());
   fireEvent.change(modal.getByLabelText(a.schedule.field.time), { target: { value: "07:00" } });
-  api.createSchedule = async () => {
+  deploymentScheduleApi.create = async () => {
     throw new APIError("SCHEDULE_INVALID", { field: "time", reason: "use HH:MM, 00:00 to 23:59" }, "schedule time: use HH:MM, 00:00 to 23:59", 400);
   };
   await user.click(labelled(modal, a.schedule.save));
   await modal.findByText(i18n.t("common:apiError.SCHEDULE_INVALID", { field: a.schedule.field.time, reason: "use HH:MM, 00:00 to 23:59" }));
-  api.createSchedule = async () => {
+  deploymentScheduleApi.create = async () => {
     throw new APIError("SCHEDULE_TIMEZONE_UNKNOWN", { timezone: "Mars/Base" }, "unknown zone", 400);
   };
   await user.type(modal.getByLabelText(a.schedule.field.timezone), "Mars/Base");

@@ -1,7 +1,8 @@
 import { Button } from "antd";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import type { BoardPending, BoardUpcoming, BoardWaitingWake, ScheduleMessage } from "../../api";
+import type { ScheduleMessage } from "../../api";
+import type { BoardPending, BoardUpcoming, BoardWaitingWake } from "../../schedulingApi";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
 import { formatTime } from "../../i18n/datetime";
 import { reasonWithFirst } from "../DeploymentPlacementStatus";

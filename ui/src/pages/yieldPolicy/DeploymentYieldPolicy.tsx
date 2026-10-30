@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Alert, Button, Select, Skeleton, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, usePolling, type Deployment, type YieldPolicyDictionary, type YieldPolicyName } from "../../api";
+import { usePolling, type Deployment } from "../../api";
+import { yieldPolicyApi, type YieldPolicyDictionary, type YieldPolicyName } from "../../yieldPolicyApi";
 import { APIError, apiErrorText } from "../../apiError";
 import YieldPolicyFields from "./YieldPolicyFields";
 import {
@@ -71,7 +72,7 @@ export function yieldRefusalText(
 export default function YieldPolicyEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
-  const dictionary = usePolling(api.yieldPolicies, 0);
+  const dictionary = usePolling(yieldPolicyApi.dictionary, 0);
   const refusal = yieldRefusalText(t, tCommon, dep);
   return (
     <section aria-label={t("yieldPolicy.title")}>
@@ -119,7 +120,7 @@ function YieldPolicyForm({ dep, dictionary, onChanged }: { dep: Deployment; dict
     setRefused(null);
     let answer;
     try {
-      answer = await api.setYieldPolicy(dep.id, requestOfDraft(dictionary, draft));
+      answer = await yieldPolicyApi.set(dep.id, requestOfDraft(dictionary, draft));
     } catch (error) {
       setRefused(refusalText(t, tCommon, error));
       return;
