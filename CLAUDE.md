@@ -66,7 +66,7 @@ make demo       # 起 server + agent，验证接入/心跳/重连
 ## 文档与计划
 
 - `docs/` 只描述当前行为；不可逆的架构取舍写 `docs/adr/`；术语以 `CONTEXT.md` 为准。
-- **`artifacts/` 是独立的私有仓库**（`ssh://git@dev.zstack.io:9022/wei.wang/gpuworks-artifacts.git`，GitHub 镜像 `GPUWorksAI/gpuworks-artifacts`），检出在主 checkout 的 `artifacts/` 下，主仓库 `.gitignore` 忽略它、绝不跟踪其中文件（`make check-artifacts` 拦截）。主 checkout 里直接 `git clone <上述地址> artifacts`；各 worktree 用 `git -C ../gpuworks/artifacts worktree add -b <分支> "$PWD/artifacts" origin/master` 共享对象。计划、证据的改动提交到 artifacts 仓库，代码改动提交到主仓库，两边分别推送。没检出 artifacts 时 `make test` 照常通过，只跳过索引与链接检查。
+- **`artifacts/` 是独立的私有仓库**（`ssh://git@dev.zstack.io:9022/wei.wang/gpuworks-artifacts.git`，GitHub 镜像 `GPUWorksAI/gpuworks-artifacts`），检出在主 checkout 的 `artifacts/` 下，主仓库 `.gitignore` 忽略它、绝不跟踪其中文件（`make check-artifacts` 拦截）。主 checkout 里直接 `git clone <上述地址> artifacts`；各 worktree 用 `git -C ../gpuworks/artifacts worktree add -b <分支> "$PWD/artifacts" origin/master` 共享对象。计划、证据的改动提交到 artifacts 仓库，代码改动提交到主仓库，两边分别推送。没检出 artifacts 时 `make test` 照常通过，只跳过索引与链接检查——所以 worktree 里开工前先确认 `artifacts/` 存在，缺了就按上面的命令检出，否则读不到计划与已定决策，新决策也会漏记。主 checkout 可装本地 `post-checkout` 钩子在 `git worktree add` 时自动以 detached 方式检出（不用软链：多个 worktree 共用一个检出会互相切分支）；detached 检出里提交前先 `git switch -c work/<主题>`。
 - 主仓库将要公开：新写的代码注释、`docs/`、脚本与 CI 不再引用 `artifacts/` 路径（外部读者打不开），设计依据写进 `docs/` 或 ADR；存量引用随开源计划清理。
 - 新工作在 `artifacts/work/<YYYY-MM-DD>-<主题>/` 开目录，入口 `plan.md`（或 `README.md`）带 YAML frontmatter；计划、设计稿、验收记录、证据都放同一目录，正文只链接证据，不内联过程记录。
 - 同一计划线只有一版时叫 `plan.md`；出现第二版起统一改为 `plan-v1.md`、`plan-v2.md`… 连续编号，不再保留裸 `plan.md`。
