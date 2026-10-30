@@ -148,8 +148,8 @@
     },
     {
       "item": "3.1",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "COVERED",
+      "reason": "The replica spinbutton's saved value, unit, step and both bounds are read from the control and from the server: aria-valuemin 1 and aria-valuemax 32, the server-supplied max_replicas asserted to be 32, step 1, unit 'replicas', and the saved count compared to the deployment document. Verified under en and zh."
     },
     {
       "item": "3.2",
@@ -173,8 +173,8 @@
     },
     {
       "item": "3.6",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "COVERED",
+      "reason": "The range the UI enforces is the range the server publishes: max_replicas from the deployment document is asserted equal to 32 and aria-valuemax is asserted to be that same 32, so a client clamp that disagreed with the server dictionary cannot pass (killed by setting MaxReplicas to 16, which fails with 'expected JSON integer 32, actual 16'). An abandoned draft leaves the stored configuration untouched: clearing the input disables Apply with zero requests recorded. Verified under en and zh."
     },
     {
       "item": "6.1",
