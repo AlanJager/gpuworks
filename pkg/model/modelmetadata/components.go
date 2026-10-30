@@ -13,8 +13,8 @@ import (
 // needs configuration while a model needs weights. Unknown Python classes
 // cannot be verified by the presence of their directory alone.
 type componentContract struct {
-	config  string
-	weights []string
+	config           string
+	weightExtensions []string
 	// Any one complete set satisfies non-weight assets (e.g. fast/slow tokenizers).
 	fileSets [][]string
 }
@@ -24,7 +24,7 @@ func sentenceTransformerContract(class string) (componentContract, bool) {
 	case "Normalize":
 		return componentContract{}, true // save() writes no files.
 	case "Transformer", "Dense":
-		return componentContract{config: "config.json", weights: []string{"model.safetensors", "pytorch_model.bin"}}, true
+		return componentContract{config: "config.json", weightExtensions: []string{".safetensors", ".bin"}}, true
 	case "Pooling", "LogitScore":
 		return componentContract{config: "config.json"}, true
 	default:
@@ -51,9 +51,9 @@ func diffusersComponentContract(library, class string) (componentContract, bool)
 	case library == "diffusers" && strings.HasSuffix(class, "Scheduler"):
 		return componentContract{config: "scheduler_config.json"}, true
 	case library == "diffusers" && (strings.Contains(class, "Model") || strings.HasPrefix(class, "Autoencoder") || strings.HasPrefix(class, "UNet")):
-		return componentContract{config: "config.json", weights: []string{"diffusion_pytorch_model.safetensors", "diffusion_pytorch_model.bin"}}, true
+		return componentContract{config: "config.json", weightExtensions: []string{".safetensors", ".bin"}}, true
 	case library == "transformers" && strings.Contains(class, "Model"):
-		return componentContract{config: "config.json", weights: []string{"model.safetensors", "pytorch_model.bin"}}, true
+		return componentContract{config: "config.json", weightExtensions: []string{".safetensors", ".bin"}}, true
 	default:
 		return componentContract{}, false
 	}
@@ -65,7 +65,7 @@ func validateComponent(ctx context.Context, files FileView, dir, class string, c
 		result.Issues = append(result.Issues, Issue{Path: dir, Code: "unverified_component", Detail: class})
 		return nil
 	}
-	if contract.config == "" && len(contract.weights) == 0 && len(contract.fileSets) == 0 {
+	if contract.config == "" && len(contract.weightExtensions) == 0 && len(contract.fileSets) == 0 {
 		return nil
 	}
 	info, err := files.Stat(ctx, dir)
@@ -93,10 +93,10 @@ func validateComponent(ctx context.Context, files FileView, dir, class string, c
 			return err
 		}
 	}
-	if len(contract.weights) == 0 {
+	if len(contract.weightExtensions) == 0 {
 		return nil
 	}
-	weights, err := checkpointWithNames(ctx, dir, entry.Format, files, contract.weights)
+	weights, err := checkpointWithExtensions(ctx, dir, entry.Format, files, contract.weightExtensions)
 	if err != nil {
 		return componentReadError(dir, err, entry, result)
 	}
