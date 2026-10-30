@@ -573,3 +573,30 @@ func TestAHolderYieldsOnceForTheFirstWaiter(t *testing.T) {
 		t.Fatalf("yields %v params %v, want chat to yield once, for the replica waiting to be placed", w.yields, w.params)
 	}
 }
+
+// Once a holder is put to sleep for a waiter, the arbiter looks again on the
+// yield poll until the waiter is awake, rather than waiting for a nudge.
+func TestAYieldInFlightIsPolledUntilTheWaiterWakes(t *testing.T) {
+	w := newResidencyWorld()
+	const online, batch = 1, 2
+	w.levels[online], w.levels[batch] = pol(servicelevel.Idle), pol(servicelevel.Anytime)
+	w.asleep[online] = true
+	w.activity[batch] = Activity{InFlight: 1, LastRequest: t0}
+	w.blocking[online] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: online, Policy: pol(servicelevel.Idle), Since: t0}}
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	if !slices.Equal(w.yields, []string{"2 abort=true"}) {
+		t.Fatalf("yields %v", w.yields)
+	}
+	if after, ok := e.residencyDue(); !ok || after != yieldPoll {
+		t.Fatalf("next look in %v (%v), want the yield poll", after, ok)
+	}
+	// The waiter is awake: no more polling on its account.
+	w.asleep[online] = false
+	w.waiters = nil
+	e.residency(c.t.Add(time.Second))
+	if after, ok := e.residencyDue(); ok && after <= yieldPoll {
+		t.Fatalf("still polling every %v after the waiter woke", after)
+	}
+}

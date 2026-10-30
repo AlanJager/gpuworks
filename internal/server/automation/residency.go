@@ -146,6 +146,10 @@ type drain struct {
 	params    map[string]any
 }
 
+// yieldPoll is how often the arbiter looks while a yield it ordered lands,
+// so the waiter wakes as soon as the room is there.
+const yieldPoll = 250 * time.Millisecond
+
 // busyPoll is how often the arbiter looks again at a holder that yields
 // once idle but is busy: no clock says when its requests end.
 const busyPoll = 2 * time.Second
@@ -260,6 +264,16 @@ func (e *Evaluator) residency(now time.Time) {
 	for id, at := range r.wokeAt {
 		if now.Sub(at) >= wakeRepeat {
 			delete(r.wokeAt, id)
+		}
+	}
+	// While a yield lands, look often: the waiter's wake waits on it, and a
+	// nudge would add its settle on top of the sleep.
+	for _, y := range r.yieldedFor {
+		if now.Sub(y.at) < yieldGuard {
+			if _, asleep := r.source.Wakeable(y.to); asleep {
+				r.dueAt(now.Add(yieldPoll))
+				break
+			}
 		}
 	}
 }
