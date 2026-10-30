@@ -21,7 +21,7 @@ specs:
         revision: 12fd25f77366fa6b3b4b768ec3050bf629380bac
     - modelscope:
         repo_id: HuggingFaceTB/SmolLM2-135M-Instruct
-        revision: 12fd25f77366fa6b3b4b768ec3050bf629380bac
+        revision: c134cb42e51e0d1f29041149173377c623c99b25
   weight_bytes: 269067072
   gpus:
     vendor: ppu

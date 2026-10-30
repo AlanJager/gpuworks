@@ -34,7 +34,7 @@ specs:
   weight_bytes: 755632050320
   gpus:
     vendor: nvidia
-    name: (^|[^A-Za-z0-9])(?:H200|H20-3e|B200|B300)([^A-Za-z0-9]|$)
+    name: (^|[^A-Za-z0-9])(?:H200|H20|H20-3e|B200|B300)([^A-Za-z0-9]|$)
     display_target: nvidia
   args:
   - --kv-cache-dtype

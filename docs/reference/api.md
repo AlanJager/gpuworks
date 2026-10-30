@@ -190,6 +190,14 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | 最近被拒绝的连接尝试 | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | 最近 agent 升级失败记录 | JWT |
+| POST | `/api/v1/agent-upgrades/preview` | 预览全平台或指定节点的升级资格与目标版本 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades` | 创建升级批次，提交预览的 UUID 快照、目标和 manifest 指纹及幂等键 | JWT(admin) |
+| GET | `/api/v1/agent-upgrades` | 分页列出升级批次与全局阻塞项 | JWT |
+| GET | `/api/v1/agent-upgrades/{id}` | 获取批次进度和计数 | JWT |
+| GET | `/api/v1/agent-upgrades/{id}/items` | 分页查询逐节点结果，可按 state 筛选 | JWT |
+| POST | `/api/v1/agent-upgrades/{id}/stop` | 停止尚未开始的节点，继续观察当前节点 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/continue-preview` | 重新预览暂停批次的剩余节点 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | 管理员填写 note 释放待确认项的全局占位，保留审计 | JWT(admin) |
 | POST | `/api/v1/nodes/precheck` | 检查 SSH 接入所需的主机环境与双向连通性；地址规则见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | POST | `/api/v1/nodes/install` | 经 SSH 安装 agent；连接参数同创建节点，可用 `no_systemd` 选择 Linux 后台运行方式。冲突与替换条件见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | GET | `/api/v1/nodes/{uuid}` | 节点详情（含 GPU 列表；管理员额外含 token） | JWT |
@@ -197,7 +205,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes/{uuid}/doctor` | 触发节点自检 RPC | JWT |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级 | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | 设置 `scheduling` 为 `cordoned`、`draining` 或 `schedulable`，返回节点；非法值 400 `FIELD_INVALID`。各状态的影响见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
-| GET | `/api/v1/nodes/{uuid}/replicas` | 节点上仍在运行的实例与驱逐对它的处理：`{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank：驱逐时先在别的节点起替代，运行后切过去，没有节点可去则等待；强制驱逐才立即撤下）；已停止、已失败的实例不列 | JWT |
+| GET | `/api/v1/nodes/{uuid}/replicas` | 节点上仍在运行的实例与驱逐对它的处理：`{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`，`kind` 为 `pool`（迁到别的节点）、`pinned`（部署只钉在这台，等待）或 `named`（多机、PD 的 rank：驱逐时先在别的节点起替代，运行后切过去，没有节点可去则等待；强制驱逐才立即撤下）；已停止、已失败的实例不列。驱逐时还可返回 `drain_reason`（最近的结构化调度反馈）、`drain_reason_at`、`drain_message`（其他节点最近一次失败尝试的信息）。这些是现有观测，不是新的驱逐状态；反馈时间用于辨别历史记录。 驱逐时还可返回顶层 `drain_offline`，表示当前 agent 连接已离线，退役和容器移除尚无法确认；重连后此标记清除。 | JWT |
 | POST | `/api/v1/nodes/{uuid}/evict` | 强制驱逐：不等替代副本，把节点上每个副本立即撤下（所在副本的 leader 进入排空，follower 随之），副本在能放的地方重建，不计入重试次数；返回 `{"evicted": [leader UUID…]}`（202）。节点仍可调度时 409 `NODE_SCHEDULABLE` | JWT |
 | PUT | `/api/v1/nodes/{uuid}/labels` | 替换节点标签（key/value；空对象清空）。键名不得使用平台保留的 `gpuworks.ai/` 命名空间及其子域 | JWT |
 | PATCH | `/api/v1/nodes/{uuid}/name` | 重命名节点 | JWT |
@@ -214,6 +222,32 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | 重新生成节点 token（会踢掉当前连接） | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}` | 默认通过保存的 SSH 凭据卸载 agent，确认完成后删除记录，返回 `{"status":"deleted","agent_uninstalled":true}`。卸载未确认回 409 `NODE_UNINSTALL_UNCONFIRMED`，保留节点及 SSH 凭据。显式 `?force=true` 跳过卸载，仅删除记录，返回 `agent_uninstalled:false`；两种方式均拒绝有实例的节点（409）。force 非布尔值或重复参数回 400；节点不存在回 404 | JWT |
 | GET | `/api/v1/events` | SSE 变更事件流 | JWT |
+
+### Agent 批量升级
+
+管理员先向 `/api/v1/agent-upgrades/preview` 提交全平台范围（不受节点列表的筛选、分页影响）：
+
+```json
+{"scope":"all"}
+```
+
+也可提交 `{"node_uuids":["node-a"]}`。预览返回完整 `node_uuids` 快照、`target_version`、`manifest_fingerprint`、逐节点资格 `nodes`、资格计数 `counts` 和全局阻塞项 `blocked_by_item`。创建请求必须复用该快照及目标：
+
+```json
+{
+  "node_uuids": ["node-a", "node-b"],
+  "expected_target_version": "v0.6.0",
+  "expected_manifest_fingerprint": "<preview.manifest_fingerprint>",
+  "idempotency_key": "<client-generated-unique-key>"
+}
+```
+
+
+预览的 `target_build` 与版本更新接口的 `server.current_build` 共用当前构建说明：包含 `version`、`kind`（`stable`、`prerelease`、`development`、`unknown`）、可用时的 `commit`、`built_at`、`build_channel`、`published_version` 与 `published_at`。构建时间属于当前运行版本，不是远端候选时间；发布字段只在已验签索引的版本号、完整 commit 和构建时间均匹配时填写。Agent 预览只读取已有发布检查缓存，不新增出网请求；更新源不可用或记录不匹配时仍可预览本地制品。
+
+成功返回 202 和批次对象，含 `id`、`state`、`counts`。同幂等键与相同请求返回原批次；修改请求或目标/制品变化返回 409，需重新预览。`GET /agent-upgrades`、`GET /agent-upgrades/{id}/items` 支持 `page`、`page_size`；逐节点结果可用单个 `state` 筛选。`processed` 包含所有终态，不等于 `succeeded`；`unconfirmed` 是未知结果，仍保留全局执行占位。
+
+停止只取消 queued 项。继续时先调用 `continue-preview`，再次创建时增加 `source_run_id` 指向原批次，原队列的撤销与新批次创建原子完成。管理员核实待确认节点后，向 `items/{uuid}/release` 提交 `{"note":"处理依据"}`，成功返回 204；原结果保留，新增核实审计。查询接口可供管理身份读取，批量写入仅管理员且拒绝只读平台令牌。旧的单节点升级路由保留原权限，返回 202 时增加 `run_id`，与批量升级共享执行占位。操作和业务影响见[升级 Agent](../how-to/upgrade-and-compatibility.md#升级-agent)。
 
 ### 节点列表的筛选与返回字段
 
@@ -330,6 +364,7 @@ macOS 忽略 `no_systemd`。
 | DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo） | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
+| POST | `/api/v1/models/{id}/download/cancel` | 取消指定存储的模型下载（`storage_id`，本地存储另带 `node_uuid`）；保留已下载数据以供重试 | JWT |
 | POST | `/api/v1/models/{id}/copy` | 在两个位置之间复制模型文件：`source`/`target` 各为 `{storage_id, node_uuid?}`；同一节点能读源写目标时本机复制，否则节点间直传；源与目标为同一位置返回 400，共享存储按存储 ID 判定（忽略节点）；离线或不可写等状态冲突仍返回 409 | JWT |
 | POST | `/api/v1/models/{id}/nodes/{uuid}/cache/retry` | 重试失败的 NFS Cache 复制（`preparation.retryable=true`），请求体 `{storage_id}`，接受返回 202。非失败任务、节点未连接、容量不足、旧任务未确认退出或并发变化返回 409 `MODEL_CACHE_RETRY_BLOCKED` | JWT |
 | DELETE | `/api/v1/models/{id}/storages/{storage_id}` | 从共享存储删除模型文件（及 NFS 加缓存的各节点缓存）；别的 gpuworks 在用时 409 `STORAGE_SHARED_BY_OTHER_CONTROL_PLANES`，`?force=1` 强制 | JWT(admin) |
@@ -366,11 +401,11 @@ macOS 忽略 `no_systemd`。
 该操作只登记已有文件，不复制或搬迁目录。共享存储的库导入使用存储扫描/导入接口。
 
 成功返回 `200 {"status":"registered"}`。节点检查目录可读、有非空文件且没有未完成下载；
-不要求固定权重文件名或 `config.json`，保留自定义引擎布局。`registered` 表示调用方选定的路径已登记，
-不证明其中是正确的模型或引擎可以加载。不能用“路径在存储范围外”判断请求无效。
+目录元数据必须识别出恰好一个完整模型入口，GGUF 等自带元数据的格式不要求 `config.json`；父目录、非模型目录和未知布局返回 409。`registered` 表示调用方选定的模型目录已登记，
+不保证引擎可以加载该模型。不能用“路径在存储范围外”判断请求无效。
 
 空 `path` 返回 400；目标模型不存在返回 404；缺失、空目录或含 `.part`/`.part.state` 的目录由节点拒绝，
-接口返回 409，已有登记不被替换。真实节点 RPC 不可用等错误也可能返回 409，调用方应结合错误内容处理。
+接口返回 409，已有登记不被替换。agent 过旧、无法返回目录元数据识别结果时，返回 `AGENT_UPGRADE_REQUIRED`，需先升级 agent。真实节点 RPC 不可用等错误也可能返回 409，调用方应结合错误内容处理。
 
 ## Images / Storages（镜像目录与存储策略）
 
@@ -494,7 +529,7 @@ macOS 忽略 `no_systemd`。
 
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
-| GET | `/api/v1/deployments` | 部署列表；带 `page`/`page_size` 时分页返回列表列并可按 `q`/`state` 筛选（见“错误与响应约定”） | JWT |
+| GET | `/api/v1/deployments` | 部署列表；带 `page`/`page_size` 时分页返回列表列并可按 `q`/`state` 筛选（见“错误与响应约定”）。`state` 取值含 `sleeping`/`asleep`，行上另有 `asleep_replicas`、`sleep_level`，见[部署的睡眠状态](#部署的睡眠状态stateasleep_replicassleep_level) | JWT |
 | GET | `/api/v1/routing-policies` | 服务端下发的多副本路由策略及本地化说明 | JWT |
 | POST | `/api/v1/deployments/preflight` | 多机推理部署前置检查（rank 分配、网络探测） | JWT |
 | POST | `/api/v1/deployments` | 创建部署（`model_source` 只有 `{storage_id, provider}`：保存模型的存储与运行哪家权重来源，不接受镜像获取方式；`placement.pd` 为 PD 分离部署，见下）。对外模型名被未在删除的部署占用时返回 409 `SERVED_NAME_IN_USE`，`params` 包含 `served_name`、`deployment`、`deployment_id`；不填写时取模型名，同样校验 | JWT |
@@ -502,7 +537,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/deployments/{id}/draft` | 把部署读回成创建它的请求（`deployment`），附 `revision` 与不可编辑字段 `locked`；部署页的编辑与「克隆并修改」由此回填。见[编辑部署](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}` | 编辑部署：提交改过的 draft 与 `base_revision`，`?dry_run=1` 只返回变更计划。启动配置的变化按 `apply`（`rolling`/`all`/`none`）替换实例。见[编辑部署](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/requirements` | 替换普通单机部署的节点条件与放置策略，返回详情；只影响之后启动的副本，运行中副本不迁移；见[修改节点条件](#修改节点条件) | JWT |
-| GET | `/api/v1/deployments/{id}` | 部署详情，无查询参数；直接返回部署对象，未找到 404。含 `instances`、`node_requirements`、`node_requirement_labels`、`placement_strategy`、`ready_replicas`（PD 看各角色）、`health`、`tokenize_enabled`、`max_replicas`；`placement_status` 给出调度失败原因，`retry_exhausted` 标识耗尽重试次数的副本，`restart_requested_at` 标识滚动重启，多机副本见 `units`。见[查询部署详情](#查询部署详情) | JWT |
+| GET | `/api/v1/deployments/{id}` | 部署详情，无查询参数；直接返回部署对象，未找到 404。含 `state`（唯一该显示的状态，睡眠时为 `asleep`/`sleeping`）、`asleep_replicas`（因睡眠不被派发的副本数）、`sleep_level`（引擎上报的级别）、`instances`、`node_requirements`、`node_requirement_labels`、`placement_strategy`、`ready_replicas`（与 `asleep_replicas` 是同一组副本的两种计数，PD 按各角色汇总）、`health`、`tokenize_enabled`、`max_replicas`；`placement_status` 给出调度失败原因，`retry_exhausted` 标识耗尽重试次数的副本，`restart_requested_at` 标识滚动重启，多机副本见 `units`。见[查询部署详情](#查询部署详情)与[部署的睡眠状态](#部署的睡眠状态stateasleep_replicassleep_level) | JWT |
 | PUT | `/api/v1/deployments/{id}/routing` | 修改路由策略（`least_request`、`prefix_affinity` 或 `failover`） | JWT + 管理员 |
 | PUT | `/api/v1/deployments/{id}/dgpu` | 调整单机 dGPU 部署的 `vram_limit_gib`，返回立即生效的 `live` 与待重启的 `pending` 实例；见[调整显存上限](#调整显存上限) | JWT |
 | PUT | `/api/v1/deployments/{id}/health-check` | 开关部署的健康检查并设阈值：`{"enabled": true, "threshold_sec": 60}`（`threshold_sec` 1–600，省略或 0 保持当前）。开启要求模型提供 chat 或 embedding，否则 400 `FIELD_INVALID`（`params.field` 为 `health_check`）；阈值越界 400 `FIELD_INVALID`；不重启实例，下一轮检查即按新设置。返回部署详情 | JWT |
@@ -546,8 +581,20 @@ macOS 忽略 `no_systemd`。
 ### 部署列表的筛选与返回字段
 
 `q` 匹配部署名称、对外模型名、模型名。`state` 对应界面显示的状态：`running`、`starting`、`pulling`、
-`pending`、`failed`、`stopped`、`deleting`；删除中状态优先于运行时状态。
-可排序的列为 `name`、`model`、`state`、`replicas`、`created_at`。
+`pending`、`offline`、`failed`、`stopped`、`deleting`、`sleeping`、`asleep`；删除中状态优先于运行时状态。
+取值必须是其中之一，否则 400 `LIST_FILTER_INVALID`（不静默匹配全部）。
+可排序的列为 `name`、`model`、`state`、`replicas`、`created_at`；`sort=state` 按的就是下面这个 `state`。
+
+`state` 是每行唯一该显示的状态，`runtime_state` 不是：睡着的引擎仍在运行，`runtime_state` 一直是 `running`，
+而网关已经不再向它派发请求。取值的优先级是：
+
+- 删除中的部署算 `deleting`，优先于运行时的任何状态。
+- 其余情况下等于 `runtime_state`，只有两种例外，且只在 `runtime_state` 为 `running` 时才替换它：网关因所需副本全部睡着而拒绝所有请求时算 `asleep`，
+  睡眠指令已被接受、但还有引擎没报出级别时算 `sleeping`（详见[查询部署详情](#查询部署详情)）。
+- `offline` 是 `runtime_state` 自己的取值：没有可服务的副本（在线节点上没有非 headless、且所在多机代完整的运行中实例），
+  同时有运行中实例停在已离线的节点上。
+- 只有部分副本睡着的部署仍能服务，`state` 保持 `running`，睡着的副本数由 `asleep_replicas` 给出；
+  这样的行同样能被 `state=running` 筛到。
 
 成功返回 HTTP 200。外层响应中，`items` 为部署对象数组，`total` 为筛选后的总命中数（整数）；
 启用分页时另有整数 `page`、`page_size`。空结果为 `items: []`，超过最后一页也返回空数组。
@@ -558,9 +605,21 @@ macOS 忽略 `no_systemd`。
 |---|---|
 | 身份与创建时间 | `id`、`name`、`created_at` |
 | 模板与模型 | `template_id`、`template_deviated`、`engine`、`image`、`model_id`、`model_name`、`served_name` |
-| 节点 | `node_uuid`、`node_name`、`node_names` |
-| 状态与副本 | `desired_state`、`runtime_state`、`sleepable`、`replicas`、`ready_replicas`、`health`、`preparation` |
+| 节点 | `node_uuid`、`node_name`、`node_names`、`runtime_nodes`、`runtime_node_names` |
+| 状态与副本 | `desired_state`、`runtime_state`、`state`、`sleepable`、`asleep_replicas`、`sleep_level`、`replicas`、`ready_replicas`、`health`、`preparation` |
 | 操作 | `operations` |
+
+节点字段分两类，含义不同、不能互相替代：`node_uuid`、`node_name`、`node_names` 是**放置目标**，即部署被要求运行在的节点
+（手动放置时是运维写的节点，自动放置时没有这个字段）；`runtime_nodes` 是**实际运行位置**，即实例此刻所在的节点，
+取自实例行本身，与 GPU 设备页的归属同源，因此两处对同一批实例报同一台机器。
+两者不一致是正常的：自动放置会改挑节点，失败重试会在别的节点重新启动，`spread` 部署的副本本就分散在多台。
+`runtime_nodes` 是对象数组，一台节点一项：`node_uuid`、`node_name`、`instances`（该节点上的实例数）；
+顺序稳定、按节点去重，多副本时给出全部节点而不是只给一台。没有实例行指向节点时（尚未放置，或副本都已停止）整个字段省略。
+`runtime_node_names` 是同序的节点名。
+
+`state`、`asleep_replicas`、`sleep_level` 在列表行上与详情里同名字段含义和取值都相同（见[查询部署详情](#查询部署详情)）；
+只看 `runtime_state` 会漏掉睡眠——睡着的引擎仍报 `running`。
+`asleep_replicas` 与 `sleep_level` 为 0 时整个字段省略，与详情一致。
 
 分页列表的 `preparation` 是 active 部署中第一个尚未准备完成的模型文件信息，没有时省略；
 完整准备情况在详情的 `model_progress` 中。
@@ -597,10 +656,14 @@ macOS 忽略 `no_systemd`。
 | `served_name` | 字符串 | 发起推理请求时填写的 `model` 名称 |
 | `model_id`、`model_name` | 整数、字符串 | 关联的已注册模型 ID 与名称 |
 | `desired_state` | 字符串 | 期望状态：`active`（维持运行）、`stopped`（停止）、`deleting`（删除中） |
-| `runtime_state` | 字符串 | 当前运行状态：`pending`、`pulling`、`starting`、`running`、`failed`、`stopped` |
-| `replicas`、`ready_replicas` | 整数 | 普通部署的目标副本数、当前所有 rank 均运行的副本数；PD 部署省略 `ready_replicas`，改看 `pd.roles[].ready` |
+| `runtime_state` | 字符串 | 当前运行状态：`pending`、`pulling`、`starting`、`running`、`offline`、`failed`、`stopped`。只由实例与期望状态推出，不含睡眠：睡着的引擎仍是 `running` |
+| `state` | 字符串 | 唯一该显示的状态。取值同列表筛选的 `state`：删除中优先给 `deleting`；否则等于 `runtime_state`，只有网关因所需副本全部睡着而拒绝所有请求时才改为 `asleep`（所有睡着副本的引擎都已报出级别）或 `sleeping`（指令已被接受、网关已拒绝，但还有引擎没报出级别） |
+| `asleep_replicas`（可选） | 整数 | 因睡眠不被网关派发的副本数，跨全部角色；与 `ready_replicas` 是同一组副本的两种计数，两者相加是网关能触达的副本数。0 时省略 |
+| `sleep_level`（可选） | 整数 | 引擎上报的最深睡眠级别（1 或 2）；全部副本清醒、或睡眠指令尚未执行时省略。缺省不等于清醒，判断睡没睡看 `state` |
+| `replicas`、`ready_replicas` | 整数 | 部署的副本数、当前所有 rank 均运行且清醒的副本数。PD 部署按各角色的 unit 汇总（`replicas` 为 `pd.roles[].desired` 之和，`ready_replicas` 为 `pd.roles[].ready` 之和），与列表行给出的同一对数一致；`asleep_replicas` 永不超过 `replicas` |
 | `health` | 对象 | 健康检查状态与最近结果，见[健康检查](#健康检查) |
 | `instances`（可选） | 对象数组 | 部署的实例；`uuid` 标识实例，`state` 表示状态，`node_uuid` 与 `gpu_indexes` 表示运行位置 |
+| `runtime_nodes`（可选） | 对象数组 | 实例当前所在节点，一台一项 `{node_uuid, node_name, instances}`；与列表行的同名字段含义、取值都相同。`node_uuid`、`node_name`、`node_names` 是放置目标，与它可能不同 |
 | `model_progress`（可选） | 对象数组 | 模型文件的准备状态；`state` 是文件状态，`progress` 为 0–1 的进度，`message` 为相关说明 |
 | `quick_params`、`extra_args`（可选） | 对象、字符串 | 已保存的启动配置与额外参数，见[部署启动参数来源](deployment-launch-sources.md) |
 | `pd`（可选） | 对象 | PD 部署的模式、各角色副本数和状态，见 [PD 分离部署](#pd-分离部署placementpd) |
@@ -622,6 +685,41 @@ macOS 忽略 `no_systemd`。
 - 普通部署的 `retry_exhausted{index,failed_attempts,last_failure}` 指出耗尽重试次数的副本，可用 `units/retry` 重试；多机部署的 `units[]` 给出各副本 leader 与 `followers[]`。调整方式见[普通部署的副本调整](#普通部署的副本调整)。
 
 请求示例见[查询一个部署的详情](api-conventions.md#3-查询一个部署的详情)。
+
+### 部署的睡眠状态（`state`、`asleep_replicas`、`sleep_level`）
+
+休眠的部署在 `runtime_state` 里看不出任何区别：引擎进程还在跑，它只是被网关拒绝派发。
+回答「这个部署现在睡没睡」的是 `state`、`asleep_replicas` 与 `sleep_level` 这三个字段，部署详情与
+列表行（分页列表的 `items[]`）同名同义、取值相同，`state` 筛选也按同一个 `state` 匹配。
+
+这三个字段都是**读的时候算出来的**，不落库：唯一的持久事实是每个实例被下令的睡眠意图与自己上报的
+`sleep_level`，判定条件与网关本身拒绝请求的条件是同一个。
+
+- **`asleep_replicas`**：网关因睡眠而不予派发的副本数，跨全部角色（PD 部署按各角色的 unit 计）。
+  副本按其 leader 判定：leader 在运行，且已被下令睡眠（意图尚未执行也算）或仍在上报睡眠级别，这个副本就算睡着。
+  所以**指令刚发出、引擎还在换出显存的时候，副本就已经计入 `asleep_replicas`**，因为它确实已经不接收请求了。
+  它与 `ready_replicas` 是同一组副本的两种计数：两者相加是网关**够得到**的副本数，因别的原因够不到的副本
+  （已停止、已失败、节点失联、多机副本缺 rank）两个都不计。因别的原因挂掉的副本永远不会被算成睡着。
+- **`state`**：见上文优先级。`asleep` 与 `sleeping` 只在网关**一个请求都不接**时出现——
+  它需要的某个角色没有任何清醒副本，而这些拒绝它的角色**全都**是因为睡着（有睡着副本、没有清醒副本），
+  不是因为挂了。只睡了一部分副本的部署照常服务，`state` 保持 `running`，醒着的副本继续接收请求，
+  `asleep_replicas` 说出剩下的有多少不在服务；这样的一行既不会伪装成完全健康，也不会伪装成整体睡着。
+  `deleting` 先于以上全部判断。
+- **`sleeping` 与 `asleep` 的界线**：所有睡着副本的引擎都报出了被下令的级别时是 `asleep`；
+  只要还有一个没到位就是 `sleeping`。改级别（例如 L1 改成 L2）也要经过清醒再睡，
+  期间行显示 `sleeping` 而不是原地不动的 `asleep`，用户点下去之后能看出指令在执行。
+- **`sleep_level`**：引擎上报的最深级别（1 或 2）。全部副本清醒时为 0（字段省略）；
+  指令已发出、引擎还没睡下去时同样没有值——**别把缺省当成「没有睡」**，
+  判断睡没睡看 `state` 与 `asleep_replicas`，`sleep_level` 只回答「睡到多深」。
+- **什么都不剩的部署不算睡着**：没有任何可服务副本时（实例已停止或已失败），没有东西可唤醒，
+  `state` 给出失败/停止本身的状态，`asleep_replicas` 为 0，即使实例上还留着睡眠意图。
+- **PD 部署**：`pd.roles[].asleep` 是同一批副本按角色拆开的结果（`ready` + `asleep` 是该角色网关够得到的 unit 数）。
+  模式允许跑空、且已整体睡着的角色（如 vLLM NIXL 的 prefill）不算拒绝服务，
+  只有解码这类必须存在的角色全睡时部署才读作 `asleep`/`sleeping`。
+
+实例级的睡眠字段（`instances[].asleep`、`instances[].sleep_level`、`instances[].desired_sleep`、
+`can_sleep_alone` / `can_wake_alone`）见[实例与部署路由条目](#deployments--instances部署与实例)；
+操作步骤见[操作 sleep / wake](../how-to/sleep-wake.md)。
 
 ### 候选池查询
 
@@ -1230,6 +1328,10 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | GET | `/api/v1/usage-report` | 用户体验改进计划状态 `{enabled, editable, last_day?, last_attempt?: {at, day, ok, error?}, next_due_at?}`：是否加入（`server.yaml` 的 `usage_report`）、能否在控制台修改、最近一份送达的报告覆盖的 UTC 日、本进程最近一次投递、下一份报告的预计时间（[用户体验改进计划](usage-report.md)） | JWT(admin) |
 | PUT | `/api/v1/usage-report/enabled` | 加入或退出 `{"enabled":true\|false}`：写入 `server.yaml` 的 `usage_report`（加入时删除该键）并立即生效，返回状态。没有 server.yaml 时 409 `USAGE_REPORT_READ_ONLY`，缺少或不是布尔值时 400 `USAGE_REPORT_INVALID` | JWT(admin) |
 | GET | `/api/v1/usage-report/preview` | 下一份报告的原文（`application/json`，与实际发送的字节相同，不取走进程内计数）；未接入改进计划的服务端 404 `USAGE_REPORT_UNAVAILABLE` | JWT(admin) |
+| GET | `/api/v1/experience` | 功能体验模式状态 `{enabled, ready, port, user, password?, error?}`：体验环境是否在运行、控制台是否已应答、端口（控制台端口 +10）、账号，运行时附密码；自行退出时 `error` 为原因。体验环境是独立进程与数据目录，只含模拟数据；体验环境自身的控制台与无数据目录的服务端 404 `EXPERIENCE_UNAVAILABLE` | JWT(admin) |
+| PUT | `/api/v1/experience/enabled` | 开关体验环境 `{"enabled":true\|false}`：开启时清空上次数据、生成新密码并启动，已在运行则不变；关闭时停止进程。返回状态；缺少或不是布尔值时 400 `EXPERIENCE_INVALID`，端口被其他程序占用时 409 `EXPERIENCE_PORT_IN_USE`（`params.port`），其他启动失败 409 `EXPERIENCE_FAILED`（`params.reason`） | JWT(admin) |
+| POST | `/api/v1/experience/reset` | 清空运行中体验环境的数据并重新启动，密码不变；未运行时 409 `EXPERIENCE_FAILED` | JWT(admin) |
+| POST | `/api/v1/experience/password` | 为运行中的体验环境生成新密码，旧密码的会话随即失效；未运行时 409 `EXPERIENCE_FAILED` | JWT(admin) |
 | GET | `/api/v1/notices` | 页头通知铃铛 `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`：发布方签名发布的、适用于本安装的通知（`kind` 为 `security` / `release` / `event`，`title`/`body` 按语言给出纯文本）；按紧急程度、再按时间排序，`read` 与 `unread` 按调用者计算 | JWT |
 | POST | `/api/v1/notices/read` | 把通知标为已读 `{"ids": [...]}`（1–128 个，每个 ≤64 字节，否则 400 `NOTICE_IDS_INVALID`）；只记调用者自己的已读，重复标记无副作用，204 | JWT |
 | POST | `/api/v1/updates/server` | 下载发布包，备份并替换服务端后重启；接受返回 202 `{from,to,backup}`，下一次启动确认或回滚；见[服务端升级限制](#服务端升级限制) | JWT(admin) |
@@ -1347,7 +1449,7 @@ server 只有渠道版本更新时才标记 `update_available`。两份目录还
 |---|---|---|---|
 | GET | `/api/v1/metrics/query` | 时序指标查询（`metric`、`range`、`step`、`node`/`gpu`/`gpu_uuid`/`instance`/`benchmark`/`point`/`iface`/`hca`/`role` matcher）。返回 `{"items": [{"labels": {…}, "points": [[unix_ms, value], …]}], "total"}`，每个 label 组合一条序列。没有数据且指标名不在指标目录（`GET /api/v1/monitor/metrics`）里时回 400 `METRIC_UNKNOWN`，`params.similar` 给出最接近的已登记名；目录里有但窗口内没有数据时正常返回空 | JWT |
 | GET | `/api/v1/logs/search` | 日志检索/tail（`q`、`instance` 前缀、`instances`（逗号分隔 uuid 精确匹配集合，最多 64 个，与 `instance` 互斥）、`node`、`level`、`source`、`from`/`to`、`cursor_ts`/`cursor_id`、`limit`、`with_total`；按到达序倒序分页；未指定时间边界表示该方向不限制，均未指定时查询所有尚未清理的日志；列表与总数使用同一范围，页面默认显式传最近 24h）。返回 `{"items": [{"id", "instance", "node", "level", "source", "time_ms", "line"}], "total", "total_capped", "truncated"}`（后三项按需出现） | JWT |
-| GET | `/api/v1/logs/context` | 单条命中的上下文窗口（`instance`、`ts`、`id`、`before`/`after` 取值 0–500），等价 grep -C。返回 `{"items": [日志行], "match_index"}` | JWT |
+| GET | `/api/v1/logs/context` | 单条命中的上下文窗口（`instance`、`ts`、`id`、`before`/`after` 取值 0–500），等价 grep -C。返回 `{"items": [日志行], "match_index"}`；`match_index` 是锚点行在 `items` 中的下标，锚点行不在该分区时（已被保留策略清理，或 `ts` 与 `id` 不同天）为 `-1`，此时 `items` 仍是该位置附近真实存在的行，接口仍返回 200。调用方必须判 `match_index >= 0` 再取值，或只用它做比较 | JWT |
 | GET | `/api/v1/logs/histogram` | 时间桶 × 级别计数（同 search 过滤参数，含 `instances`，+ `bucket` 毫秒，1s–24h）。返回 `{"items": [{"start_ms", "counts": {"error": N, …}}], "total"}`；桶按 UTC 对齐 | JWT |
 | GET | `/api/v1/monitor/overview` | 监控中枢集群层快照（`range` ∈ `15m\|1h\|6h\|24h\|168h`，默认 `1h`，或自选时间段 `from`+`to`（见下文）；信号行（只报事实：数值、明细与近期走势，不带严重程度）、服务表（每行带该部署的 `health` 健康检查，按健康状况排序：失败、超时、无可用副本、检查中、正常、未开启，同档按名称）、显存条、集群 tok/s、容量事件） | JWT |
 | GET | `/api/v1/monitor/deployments/{id}` | 服务监控快照；`range` 为 `15m/1h/6h/24h/168h`（默认 `1h`），也可使用 `from`+`to`。含请求、延迟、副本、`health`、供日志查询的 `log_instances`、指标来源 `sources`（engine/gateway）；PD 另有 `pd` 的降级、Prefill 统计与 `kv_transfer`。未知部署 404；已删除的部署 404 `MONITOR_DEPLOYMENT_DELETED`，`params` 含 `deployment_id`、`name`、`served_name`。见[服务监控返回值](#服务监控返回值) | JWT |

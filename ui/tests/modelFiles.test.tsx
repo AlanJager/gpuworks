@@ -322,3 +322,46 @@ test("a transfer names where its bytes come from: the mirror a download uses, th
   assert.ok(within(rowOf("node-01")).getByText(`${models.acquisition.peer} · ${fill(models.files.fromNode, { node: "gpu3" })}`));
   assert.ok(within(rowOf("node-02")).getByText(models.acquisition.download), "nothing known beyond how it was acquired");
 });
+
+test("download cancellation names local and shared locations and refreshes after confirmation", async () => {
+  stubMe("viewer");
+  const originalCancel = api.cancelModelDownload;
+  const calls: unknown[] = [];
+  let changes = 0;
+  api.cancelModelDownload = (async (id, body) => { calls.push([id, body]); return { state: "canceled", message: "canceled" }; }) as typeof api.cancelModelDownload;
+  try {
+    renderSection(modelWith({ nodes: [row({ storage_id: 2, state: "downloading" })], storages: [shared({ state: "pending", acquisition: "download" })] }), () => { changes++; });
+    const buttons = screen.getAllByRole("button", { name: models.presenceAction.cancelDownload });
+    assert.equal(buttons.length, 2);
+    fireEvent.click(buttons[0]);
+    const confirm = await screen.findByText(models.presenceAction.cancelDownloadConfirm);
+    fireEvent.click(within(confirm.closest(".ant-popover") as HTMLElement).getByRole("button", { name: models.presenceAction.cancelDownload }));
+    await waitFor(() => assert.equal(calls.length, 1));
+    assert.deepEqual(calls[0], [9, { storage_id: 2, node_uuid: "n1" }]);
+    assert.equal(changes, 1);
+    cleanup();
+    renderSection(modelWith({ storages: [shared({ state: "downloading", acquisition: "download" })] }), () => { changes++; });
+    fireEvent.click(screen.getByRole("button", { name: models.presenceAction.cancelDownload }));
+    const sharedConfirm = await screen.findByText(models.presenceAction.cancelDownloadConfirm);
+    fireEvent.click(within(sharedConfirm.closest(".ant-popover") as HTMLElement).getByRole("button", { name: models.presenceAction.cancelDownload }));
+    await waitFor(() => assert.equal(calls.length, 2));
+    assert.deepEqual(calls[1], [9, { storage_id: 3, node_uuid: undefined }]);
+    assert.equal(changes, 2);
+  } finally { api.cancelModelDownload = originalCancel; }
+});
+
+test("download cancellation errors preserve the task and do not announce a change", async () => {
+  stubMe("viewer");
+  const originalCancel = api.cancelModelDownload;
+  let changes = 0;
+  api.cancelModelDownload = async () => { throw new Error("writer cancellation unavailable"); };
+  try {
+    renderSection(modelWith({ nodes: [row({ storage_id: 2, state: "downloading" })] }), () => { changes++; });
+    fireEvent.click(screen.getByRole("button", { name: models.presenceAction.cancelDownload }));
+    const confirm = await screen.findByText(models.presenceAction.cancelDownloadConfirm);
+    fireEvent.click(within(confirm.closest(".ant-popover") as HTMLElement).getByRole("button", { name: models.presenceAction.cancelDownload }));
+    assert.ok(await screen.findByText("writer cancellation unavailable"));
+    assert.equal(changes, 0);
+    assert.ok(screen.getAllByText(models.presence.downloading).length > 0);
+  } finally { api.cancelModelDownload = originalCancel; }
+});

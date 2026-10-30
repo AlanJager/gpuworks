@@ -128,7 +128,7 @@ specs:
         revision: cfbefacb99257ffa30c83adab238a50856ac3083
     - modelscope:
         repo_id: microsoft/Phi-4-mini-instruct
-        revision: cfbefacb99257ffa30c83adab238a50856ac3083
+        revision: 8499918ca3a6c058b44def91b3322d857ce57ed3
   weight_bytes: 7672066216
   gpus:
     vendor: ppu

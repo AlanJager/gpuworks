@@ -32,6 +32,7 @@
       "model": "Model",
       "runtime": "Engine / Image",
       "node": "Compute Node",
+      "targetNode": "Target node",
       "state": "State",
       "health": "Health",
       "instances": "Ready / desired replicas",
@@ -51,7 +52,12 @@
     "empty": "No deployments yet. Create an inference service first.",
     "create": "Create Deployment",
     "emptyFiltered": "No deployments match the search or state filter.",
-    "search": "Search by name or model"
+    "search": "Search by name or model",
+    "runtimeNodes": {
+      "none": "No instances",
+      "others": "of {{total}} nodes",
+      "replicas": "{{count}} instances"
+    }
   },
   "sleep": {
     "quick": "Quick / Memory",
@@ -213,6 +219,8 @@
     "model": "Model",
     "servedName": "Public Model Name",
     "node": "Compute Node",
+    "targetNode": "Target node",
+    "scheduledElsewhere": "Running on {{nodes}}, not on the target node {{target}}.",
     "state": "State",
     "sleepable": "Sleep Capable",
     "yes": "Yes",

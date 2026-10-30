@@ -21,7 +21,7 @@ specs:
         revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
     - modelscope:
         repo_id: Qwen/Qwen3-VL-Embedding-2B
-        revision: 9f2f7e710d6d81056aa5c0a4f04764fec6bb7bda
+        revision: c35dddf20620fe32745cb3d01f87ba64ae316313
   weight_bytes: 4255140312
   gpus:
     vendor: ppu

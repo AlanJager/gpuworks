@@ -11,6 +11,7 @@ import (
 // old clients receive an actionable error string; the UI translates the stable
 // code and params from common.json.
 const (
+	ErrorAgentUpgradeRefused                    = "AGENT_UPGRADE_REFUSED"
 	ErrorModelCacheRetryBlocked                 = "MODEL_CACHE_RETRY_BLOCKED"
 	ErrorNodeLabelsInvalid                      = "NODE_LABELS_INVALID"
 	ErrorNodeRPCUnavailable                     = "NODE_RPC_UNAVAILABLE"
@@ -239,6 +240,9 @@ const (
 	ErrorUsageReportReadOnly                    = "USAGE_REPORT_READ_ONLY"
 	ErrorUsageReportInvalid                     = "USAGE_REPORT_INVALID"
 	ErrorUsageReportUnavailable                 = "USAGE_REPORT_UNAVAILABLE"
+	ErrorExperienceUnavailable                  = "EXPERIENCE_UNAVAILABLE"
+	ErrorExperienceInvalid                      = "EXPERIENCE_INVALID"
+	ErrorExperienceFailed                       = "EXPERIENCE_FAILED"
 	ErrorNoticeIDsInvalid                       = "NOTICE_IDS_INVALID"
 	ErrorImageRefRequired                       = "IMAGE_REF_REQUIRED"
 	ErrorImageTagRequired                       = "IMAGE_TAG_REQUIRED"

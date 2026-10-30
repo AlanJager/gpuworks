@@ -24,13 +24,13 @@ import (
 
 func TestRPCRegisterPathValidatesModelDirectory(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"model_type":"qwen3"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "shard"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "shard", "model.safetensors"), []byte("weights"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("weights"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	n := &NodeRuntime{}
@@ -56,7 +56,7 @@ func TestRPCRegisterPathValidatesModelDirectory(t *testing.T) {
 
 func TestRPCRegisterPathValidatesSymlinkedModelDirectory(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"model_type":"qwen3"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("weights"), 0o644); err != nil {
@@ -69,12 +69,13 @@ func TestRPCRegisterPathValidatesSymlinkedModelDirectory(t *testing.T) {
 	if err := os.Symlink(dir, link); err != nil {
 		t.Fatal(err)
 	}
-	size, err := validateModelDir(link)
+	n := &NodeRuntime{}
+	result, err := n.OnRPC(context.Background(), proto.RPCRegisterPath, mustRaw(t, map[string]string{"path": link}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if size <= 0 {
-		t.Fatalf("symlinked model dir reported size=%d, want > 0", size)
+	if got := result.(registerPathResult); got.Path != link || got.SizeBytes <= 0 {
+		t.Fatalf("symlinked model registration=%+v", got)
 	}
 }
 
@@ -127,7 +128,7 @@ func TestRPCRegisterPathRejectsInvalidDirectory(t *testing.T) {
 
 func TestRPCRegisterPathAcceptsAGGUFOnlyDirectory(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "model.gguf"), []byte("GGUF"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "model.gguf"), registrationGGUF(), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	n := &NodeRuntime{}

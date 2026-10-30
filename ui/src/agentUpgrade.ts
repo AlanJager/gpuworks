@@ -3,9 +3,9 @@ import { api, type Node } from "./api";
 
 // The agent answers the upgrade RPC before it downloads, smoke-tests and
 // execs the replacement binary, so the outcome has to be observed afterwards.
-// The server does not record that an upgrade was requested; these snapshots
-// taken at click time are what lets the page tell a new result from state
-// that was already there. They are tracked per node on the page, not in the
+// New servers return a persistent run ID, whose items are authoritative.
+// Legacy responses without an ID retain the click-time snapshots below so
+// older integrations can still distinguish a new result from existing state. They are tracked per node on the page, not in the
 // detail drawer, so closing the drawer or opening another node never loses
 // or leaks them.
 
@@ -17,6 +17,7 @@ export interface PendingUpgrade {
   startedAt: number;
   baselineSeen: number;
   baselineError?: string;
+  runID?: number;
 }
 
 export type UpgradeOutcome = "pending" | "completed" | "failed" | "timeout";
@@ -26,7 +27,9 @@ export type UpgradeEvent =
   | { kind: "requestFailed"; uuid: string; name: string; detail: string }
   | { kind: "completed"; uuid: string; name: string; node: Node }
   | { kind: "failed"; uuid: string; name: string; detail: string }
-  | { kind: "timeout"; uuid: string; name: string };
+  | { kind: "timeout"; uuid: string; name: string }
+  | { kind: "serverTracked"; uuid: string; name: string; runID: number }
+  | { kind: "serverSettled"; uuid: string; name: string; runID: number; node?: Node };
 
 export const UPGRADE_TIMEOUT_MS = 2 * 60 * 1000;
 export const UPGRADE_RECHECK_MS = 5000;
@@ -97,7 +100,7 @@ export function useAgentUpgrades({
     const at = latest.current.now();
     const settled: UpgradeEvent[] = [];
     for (const [uuid, p] of Object.entries(pending)) {
-      if (p.phase !== "waiting") continue;
+      if (p.phase !== "waiting" || p.runID) continue;
       const node = nodes?.find((n) => n.uuid === uuid);
       const error = upgradeErrors?.[uuid];
       const outcome = evaluateUpgrade(p, node, serverVersion, error, at);
@@ -119,6 +122,34 @@ export function useAgentUpgrades({
     for (const event of settled) latest.current.onEvent(event);
   }, [pending, nodes, serverVersion, upgradeErrors, tick]);
 
+  // A server run is authoritative even when its node leaves the current page.
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      for (const [uuid, p] of Object.entries(pending)) {
+        if (p.phase !== "waiting" || !p.runID) continue;
+        try {
+          const result = await api.agentUpgradeItems(p.runID);
+          const item = result.items.find((entry) => entry.node_uuid === uuid);
+          if (!item || !["succeeded", "failed", "skipped", "cancelled", "interrupted", "unconfirmed"].includes(item.phase)) continue;
+          let node: Node | undefined;
+          if (item.phase === "succeeded") {
+            try { node = await api.node(uuid); } catch { /* The result survives a later node deletion. */ }
+          }
+          if (cancelled) return;
+          active.current.delete(uuid);
+          setPending((current) => {
+            if (current[uuid]?.runID !== p.runID) return current;
+            const next = { ...current }; delete next[uuid]; return next;
+          });
+          latest.current.onEvent({ kind: "serverSettled", uuid, name: p.name, runID: p.runID, node });
+        } catch { /* Keep the server run pending; its detail view shows query errors. */ }
+      }
+    };
+    void check();
+    return () => { cancelled = true; };
+  }, [pending, tick]);
+
   const start = useCallback(async (node: Node) => {
     const { nodes, upgradeErrors, upgradeNode, now } = latest.current;
     const uuid = node.uuid;
@@ -139,7 +170,13 @@ export function useAgentUpgrades({
       },
     }));
     try {
-      await upgradeNode(uuid);
+      const result = await upgradeNode(uuid);
+      const runID = result && typeof result === "object" && "run_id" in result ? Number(result.run_id) : 0;
+      if (Number.isSafeInteger(runID) && runID > 0) {
+        setPending((current) => current[uuid] ? { ...current, [uuid]: { ...current[uuid], phase: "waiting", runID } } : current);
+        latest.current.onEvent({ kind: "serverTracked", uuid, name, runID });
+        return;
+      }
     } catch (e) {
       active.current.delete(uuid);
       setPending((current) => {

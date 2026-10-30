@@ -101,6 +101,23 @@ func (s *Store) ModelFilesForModel(modelID uint) ([]ModelFile, error) {
 	return mfs, err
 }
 
+// ModelFilesForModels reads the requested models' shared rows, the target's
+// own rows and local-storage peer rows. Other nodes' caches cannot serve the
+// target. A nodeID of zero retains every location before a target is selected.
+func (s *Store) ModelFilesForModels(modelIDs []uint, nodeID uint) ([]ModelFile, error) {
+	if len(modelIDs) == 0 {
+		return nil, nil
+	}
+	query := s.reader().Where("model_id IN ?", modelIDs)
+	if nodeID != 0 {
+		localStorages := s.reader().Model(&Storage{}).Select("id").Where("type = ?", proto.StorageLocal)
+		query = query.Where("node_id IN ? OR storage_id IN (?)", []uint{0, nodeID}, localStorages)
+	}
+	var files []ModelFile
+	err := query.Find(&files).Error
+	return files, err
+}
+
 // ModelFilesForModelOnNodes is ModelFilesForModel restricted to rows on the
 // given nodes.
 func (s *Store) ModelFilesForModelOnNodes(modelID uint, nodeIDs []uint) ([]ModelFile, error) {
@@ -210,7 +227,7 @@ func (s *Store) UpdateModelFileStatus(nodeID uint, st proto.ModelFileStatus) err
 	if current.NodeID != nodeID && !(current.NodeID == 0 && current.WriterNodeID == nodeID) {
 		return errors.New("model file is not on the reporting node")
 	}
-	if current.State == proto.MFDeleting {
+	if current.State == proto.MFDeleting || current.State == proto.MFCanceled {
 		return nil
 	}
 	if st.TransferID != "" && st.TransferID != current.TransferID {
@@ -324,7 +341,7 @@ func transferReset(path, state, acquisition string, extra map[string]any) map[st
 // predates download IDs reports none; those reports are still accepted.
 func (s *Store) PrepareModelDownload(ref FileRef, path string) (*ModelFile, error) {
 	return s.prepareModelFile(ref, path, transferReset(path, proto.MFPending, proto.ModelAcquireDownload, map[string]any{
-		"revision": "", "transfer_id": auth.NewUUID(),
+		"revision": "", "transfer_id": auth.NewUUID(), "download_deployment_id": 0,
 	}))
 }
 

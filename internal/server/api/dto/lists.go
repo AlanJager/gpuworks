@@ -47,6 +47,15 @@ type ListPage[T any] struct {
 // DeploymentPage is one page of GET /api/v1/deployments?page=…, newest first.
 type DeploymentPage = ListPage[DeploymentListItem]
 
+// DeploymentRuntimeNode is one node the deployment's instances are on now.
+type DeploymentRuntimeNode struct {
+	NodeUUID string `json:"node_uuid"`
+	NodeName string `json:"node_name,omitempty"`
+	// Instances is how many instance rows are on the node, of any state, so a
+	// client can fold a spread deployment into "N nodes" or expand it.
+	Instances int `json:"instances"`
+}
+
 // DeploymentListItem is a deployment as a list row shows it. The launch
 // configuration, the catalog selection and the instances stay with
 // GET /api/v1/deployments/{id}; every field here but preparation has the
@@ -67,8 +76,15 @@ type DeploymentListItem struct {
 	NodeUUID         string             `json:"node_uuid"`
 	NodeName         string             `json:"node_name,omitempty"`
 	NodeNames        []string           `json:"node_names,omitempty"`
-	DesiredState     string             `json:"desired_state"`
-	RuntimeState     string             `json:"runtime_state"`
+	// RuntimeNodes and RuntimeNodeNames are where the deployment's instances
+	// run now, as on Deployment. node_uuid/node_name/node_names beside them
+	// stay the placement target, so a row can show where a deployment was
+	// asked to run and where it actually runs without either field meaning
+	// both.
+	RuntimeNodes     []DeploymentRuntimeNode `json:"runtime_nodes,omitempty"`
+	RuntimeNodeNames []string                `json:"runtime_node_names,omitempty"`
+	DesiredState     string                  `json:"desired_state"`
+	RuntimeState     string                  `json:"runtime_state"`
 	// State, AsleepReplicas and SleepLevel have the meaning and the value they
 	// have on Deployment: the state to show, how many of the serving replicas
 	// sleep, and the sleep level the engines report.
@@ -77,8 +93,9 @@ type DeploymentListItem struct {
 	SleepLevel     int    `json:"sleep_level,omitempty"`
 	Sleepable      bool   `json:"sleepable"`
 	Replicas       int    `json:"replicas"`
-	// Replicas and ReadyReplicas total both roles for PD deployments;
-	// ordinary deployments use the same counts as Deployment.
+	// Replicas and ReadyReplicas total both roles for PD deployments, and the
+	// detail response totals them the same way, so the row and the drawer
+	// print one pair of counts rather than two.
 	ReadyReplicas *int                  `json:"ready_replicas,omitempty"`
 	Health        DeploymentHealth      `json:"health"`
 	Operations    []DeploymentOperation `json:"operations"`
@@ -191,6 +208,14 @@ type DashboardNodes struct {
 }
 
 // DashboardDeployments counts deployments by their effective state.
+//
+// Total does not equal Running+Warming, and the difference is deliberate: a
+// sleeping or asleep deployment serves nothing, so it is counted as running
+// only when it can serve, and it is not warming either. Sleeping deployments
+// therefore fall into neither bucket and read as another state, exactly as a
+// stopped, failed or offline one does. Sleepable counts the deployments that
+// could sleep at all, so a client that wants a sleep total reads
+// Total-Running-Warming rather than inventing a bucket the wire does not carry.
 type DashboardDeployments struct {
 	Total   int `json:"total"`
 	Running int `json:"running"`

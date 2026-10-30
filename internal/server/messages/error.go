@@ -13,6 +13,15 @@ type ProductError struct {
 const (
 	ErrorAgentUpgradeRequired = "AGENT_UPGRADE_REQUIRED"
 
+	// The experience environment's console (internal/experience) refuses
+	// what would act on the host or leave the environment, and deployments
+	// of any but its preloaded models ({models}).
+	ErrorExperienceUnsupported       = "EXPERIENCE_UNSUPPORTED"
+	ErrorExperienceModelNotPreloaded = "EXPERIENCE_MODEL_NOT_PRELOADED"
+	// ErrorExperiencePortInUse: the experience environment's console port
+	// ({port}) is held by another program.
+	ErrorExperiencePortInUse = "EXPERIENCE_PORT_IN_USE"
+
 	// Usage analytics queries (internal/server/analytics); params name
 	// the field and say why.
 	ErrorAnalyticsRangeInvalid = "ANALYTICS_RANGE_INVALID"

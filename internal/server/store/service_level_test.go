@@ -10,7 +10,7 @@ import (
 )
 
 func TestDeploymentServiceLevelMigration(t *testing.T) {
-	m := migrationByVersion(t, 184)
+	m := migrationByVersion(t, 186)
 	ms := []migration{m}
 	db := openSchedulingCenterLegacy(t, "service-level")
 	// Deployment 1's instance is at sleep level 2 (an operator slept a
@@ -45,13 +45,13 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 		}
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 184).Error; err != nil {
+	if err := db.First(&marker, 186).Error; err != nil {
 		t.Fatalf("marker: %v", err)
 	}
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("not idempotent: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 184").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 186").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, ms); err != nil {
@@ -73,7 +73,7 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 		t.Fatal("columns survived the failed migration")
 	}
 	var count int64
-	if err := rollback.Model(&SchemaMigration{}).Where("version = 184").Count(&count).Error; err != nil || count != 0 {
+	if err := rollback.Model(&SchemaMigration{}).Where("version = 186").Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("marker count = %d err=%v", count, err)
 	}
 	if err := migrateDB(rollback, ms); err != nil {

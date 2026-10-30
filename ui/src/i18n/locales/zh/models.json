@@ -85,11 +85,16 @@
   "unknownSize": "大小未知",
   "unrecognized": "未识别",
   "presenceMessage": {
+    "downloadCanceled": "下载已取消",
+
     "downloadStarted": "已开始公网下载",
     "syncStarted": "已开始计算节点同步",
     "syncCanceled": "已取消计算节点同步"
   },
   "presenceAction": {
+    "cancelDownload": "取消下载",
+    "cancelDownloadConfirm": "取消本次下载？已下载的数据会保留，供重试时使用。",
+
     "cancelConfirm": "取消当前计算节点同步？",
     "cancelSync": "取消同步",
     "continueSync": "继续同步",
@@ -181,7 +186,9 @@
     "noWritableStorage": "没有可写入的存储，请先在存储页启用一个",
     "nodes": "计算节点",
     "nodesPlaceholder": "选择在线计算节点；每台各下载一份",
-    "sharedHint": "只下载一次，所有挂载了该存储的计算节点随即可用。"
+    "writer": "下载节点",
+    "writerPlaceholder": "选择可访问此存储的在线节点",
+    "sharedHint": "选择执行下载的节点，共享存储只保存一份。更换节点前请先取消正在进行的传输。"
   },
   "path": {
     "title": "登记已有路径 · {{name}}",
@@ -222,6 +229,8 @@
     "open": "查看各节点的模型文件"
   },
   "presence": {
+    "canceled": "已取消",
+
     "deleting": "删除待确认",
     "pending": "等待处理",
     "downloading": "公网下载",

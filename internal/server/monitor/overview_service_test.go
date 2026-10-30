@@ -446,3 +446,42 @@ func TestBuildServiceReplicaGPUMemBW(t *testing.T) {
 		t.Fatalf("GPU MemBW = %v has=%v, want 77/true", gpu.MemBWPct, gpu.HasMemBW)
 	}
 }
+
+// TestBuildServiceReplicaGPUPower proves the replica table's per-GPU power is
+// the card's *average* draw over the diagnosis window, not its peak:
+// instantaneous watts bouncing between an idle floor and a boost burst have
+// no single sampled extreme that represents them, whereas the temperature
+// column next to it deliberately takes the maximum (see the temp assertion
+// in TestBuildServiceReplicaRowsAndGPUs) because a transient hot reading is
+// exactly the thing worth surfacing. The 100/200/300 W ramp below makes a
+// MaxOf-style reduction fail loudly: it would report the 300 W peak.
+func TestBuildServiceReplicaGPUPower(t *testing.T) {
+	store := newTestStore(t)
+	inv := Inventory{
+		Deployments: []DeploymentRef{{ID: 93, Name: "svc"}},
+		Instances:   []InstanceRef{{UUID: "i1", DeploymentID: 93, NodeUUID: "n1", GPUIndexes: []int{0, 1}}},
+	}
+	deps := Deps{TSDB: store, Inventory: inventoryFunc(inv), Now: func() time.Time { return baseTime }}
+	gpu0 := map[string]string{"node": "n1", "gpu": "0"}
+	// gpuworks_gpu_power_watts is a watts gauge (internal/platformmetrics), so
+	// the window mean is the card's average draw in watts.
+	writeSample(t, store, "gpuworks_gpu_power_watts", gpu0, 100, baseTime.Add(-20*time.Second))
+	writeSample(t, store, "gpuworks_gpu_power_watts", gpu0, 200, baseTime.Add(-10*time.Second))
+	writeSample(t, store, "gpuworks_gpu_power_watts", gpu0, 300, baseTime)
+
+	snap, err := BuildService(context.Background(), deps, 93, time.Hour)
+	if err != nil {
+		t.Fatalf("BuildService: %v", err)
+	}
+	if len(snap.Replicas) != 1 || len(snap.Replicas[0].GPUs) != 2 {
+		t.Fatalf("Replicas = %+v, want one row with two GPUs", snap.Replicas)
+	}
+	gpus := snap.Replicas[0].GPUs
+	if !gpus[0].HasPower || gpus[0].PowerW != 200 {
+		t.Fatalf("GPU 0 power = %v has=%v, want the 200 W mean", gpus[0].PowerW, gpus[0].HasPower)
+	}
+	// GPU 1 has no power series at all: absent, not a 0 W reading.
+	if gpus[1].HasPower || gpus[1].PowerW != 0 {
+		t.Fatalf("GPU 1 power = %v has=%v, want false/0 (never collected)", gpus[1].PowerW, gpus[1].HasPower)
+	}
+}

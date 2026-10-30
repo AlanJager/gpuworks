@@ -288,6 +288,17 @@ func (s *sqliteStore) Tail(instance string, limit int) ([]Entry, error) {
 // Context assembles before + match + after around (ts,id) for one instance.
 // Window rows come from the match's own day partition; a window that would
 // cross midnight truncates there (documented behavior).
+//
+// matchIndex is the index of the anchor row inside the returned slice, or -1
+// when the anchor id is not in that partition. The anchor can legitimately be
+// missing: retention prunes the boundary partition between a search and a
+// click on one of its rows, and a caller may pass a ts from a different day
+// than the id's. Such a window is still worth returning - the neighbouring
+// lines are real - so the anchor's absence is reported by the index rather
+// than by dropping the window or failing the read. -1 is deliberately chosen
+// over len(rows): every bounds-checked read (0 <= i && i < len(rows)) rejects
+// it, whereas len(rows) is a valid index once after rows exist and silently
+// pointed callers at a neighbour before this contract existed.
 func (s *sqliteStore) Context(instance, node string, ts, id int64, before, after int) ([]Entry, int, error) {
 	if before < 0 || after < 0 {
 		return nil, 0, fmt.Errorf("negative context window")
@@ -324,7 +335,14 @@ func (s *sqliteStore) Context(instance, node string, ts, id int64, before, after
 	for i := len(beforeRows) - 1; i >= 0; i-- {
 		out = append(out, beforeRows[i])
 	}
-	matchIndex := len(out)
+	// The anchor is matched by primary key, so match holds zero or one row.
+	// Deriving the index from len(out) before appending it made a missing
+	// anchor report the position of the first after row - or len(out), one
+	// past the end, when there were none.
+	matchIndex := -1
+	if len(match) == 1 {
+		matchIndex = len(out)
+	}
 	out = append(out, match...)
 	out = append(out, afterRows...)
 	return out, matchIndex, nil

@@ -47,7 +47,7 @@ export default function StorageCacheNodes({ storage, nodes, files, isAdmin, onCh
   const selected = selection.filter((id) => byID.has(id));
   const selectedRows = selected.map((id) => byID.get(id)!);
   const applicable = allRows.filter((row) => row.active);
-  const canClean = selectedRows.length > 0 && storage.enabled && selectedRows.every((row) => row.active);
+  const canClean = selectedRows.length > 0 && selectedRows.every((row) => row.active);
   const openEditor = (kind: CacheEditorSession["kind"], selectedRows: CacheNodeRow[], restore = false) => {
     // Scope and node identities are frozen at opening, even if polling changes the table.
     setEditing({ kind, storage: structuredClone(storage), rows: structuredClone(selectedRows), restore });
@@ -84,7 +84,7 @@ export default function StorageCacheNodes({ storage, nodes, files, isAdmin, onCh
       return <Space direction="vertical" size={0}>{explanation && <Typography.Text type="secondary">{explanation}</Typography.Text>}{cache && cache.protected_bytes > 0 && <Typography.Text type="secondary">{t("cacheManage.protectedValue", { value: formatBytes(cache.protected_bytes) })}</Typography.Text>}{!explanation && !(cache && cache.protected_bytes > 0) && "—"}</Space>;
     } },
     { key: "updated", title: t("nodes.column.updated"), width: 180, render: (_, row) => row.updated_at ? <Tooltip title={formatTime(row.updated_at)}><Typography.Text type="secondary">{agoText(t, Math.max(0, (Date.now() - new Date(row.updated_at).getTime()) / 1000))}</Typography.Text></Tooltip> : "—" },
-    ...(isAdmin ? [{ key: "actions", role: "actions" as const, title: t("list.column.actions"), width: 130, render: (_: unknown, row: CacheNodeRow) => <Space wrap size={4} style={{ maxWidth: "100%" }} onClick={(event) => event.stopPropagation()}><Button type="link" size="small" onClick={() => openEditor("node", [row])}>{t("cacheManage.configure")}</Button>{row.active && ["failed", "blocked", "offline", "unavailable"].includes(cacheRowState(row)) && <Button size="small" type="link" disabled={!storage.enabled || busy} onClick={() => void runReconcile([row.node_uuid], "trim")}>{t("cacheManage.retry")}</Button>}</Space> }] : []),
+    ...(isAdmin ? [{ key: "actions", role: "actions" as const, title: t("list.column.actions"), width: 130, render: (_: unknown, row: CacheNodeRow) => <Space wrap size={4} style={{ maxWidth: "100%" }} onClick={(event) => event.stopPropagation()}><Button type="link" size="small" onClick={() => openEditor("node", [row])}>{t("cacheManage.configure")}</Button>{row.active && ["failed", "blocked", "offline", "unavailable"].includes(cacheRowState(row)) && <Button size="small" type="link" disabled={busy} onClick={() => void runReconcile([row.node_uuid], "trim")}>{t("cacheManage.retry")}</Button>}</Space> }] : []),
   ];
   // The row keeps the node, its state, the cache's state and the actions,
   // beside the selection the batch actions use; the mount and cache disk, the

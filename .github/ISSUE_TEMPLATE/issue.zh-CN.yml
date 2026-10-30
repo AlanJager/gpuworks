@@ -1,0 +1,63 @@
+name: 问题咨询（中文）
+description: 询问怎么用、反馈文档问题，或发起与缺陷无关的讨论。
+title: "[Issue] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        软件行为与文档一致、但你想问清楚，或者文档本身写错了，用这个表单。
+        如果是软件缺陷，请改用 **Bug 报告** 表单。
+
+        关于你自己环境的问题（GPU 驱动、容器运行时、存储）也欢迎提，但请附上版本和
+        相关命令输出，否则只能靠猜。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 问题类型
+      options:
+        - 怎么做 X？（使用咨询）
+        - 文档写错了或缺失
+        - 构建 / 开发环境问题
+        - 功能想法（只是讨论，不是正式提案）
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: GPUWorks 版本
+      description: 执行 `curl -s http://<server>:8800/healthz` 得到的输出，或者你构建时用的 commit。
+      placeholder: 例如 dev-0f9b23a9
+
+  - type: textarea
+    id: details
+    attributes:
+      label: 详细说明
+      description: |
+        文档问题请给出页面链接，并引用写错的那句原文。
+        使用咨询请说明你想达成什么目标，而不只是卡在哪一步。
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 已尝试的做法
+      description: 跑过什么命令、看过哪篇文档、得到什么结果。这些往往决定了问题能不能被回答。
+      placeholder: |
+        - 执行 `make build`，输出是 ……
+        - 按 docs/how-to/connect-nodes.md 操作，节点一直是离线
+        - 查看过 `journalctl -u gpuworks-agent` ……
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已查过文档和现有 issue。
+          required: true
+        - label: 我已从上面粘贴的内容中去掉凭据和内部地址。
+          required: true

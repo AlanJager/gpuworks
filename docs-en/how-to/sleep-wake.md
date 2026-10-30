@@ -35,9 +35,28 @@ Once the command is sent, the gateway immediately stops forwarding new requests 
 
 1. Open deployment details and select L1 or L2 **Sleep**.
 2. In the confirmation page, choose to wait for completion or abort immediately, then confirm.
-3. Wait for the deployment's sleep label to show the selected level. Instances remain `running`, and `sleep_level` becomes 1 or 2. If only some complete, inspect each replica's status and failure reasons in the timeline. Sending the command does not mean that all instances have successfully gone to sleep.
+3. Wait until the deployment reads `asleep` with `sleep_level` at the level you chose; instances remain `running`. If only some complete, inspect each replica's status and failure reasons in the timeline. Sending the command does not mean that all instances have successfully gone to sleep.
 
 The API is `POST /api/v1/deployments/{id}/sleep?level=1|2&mode=wait|abort`.
+
+## Confirming That a Deployment Is Asleep
+
+Deployment details and every row of the deployment list carry three fields that answer "is it asleep", so you do not have to count instances yourself:
+
+| Field | Meaning |
+|---|---|
+| `state` | The one state to show for the row: `asleep` when entirely asleep; `sleeping` once the order is accepted and the gateway already refuses while at least one engine has not gone down yet; `deleting` for a deployment being deleted, ahead of everything else |
+| `asleep_replicas` | How many replicas the gateway does not dispatch to because of sleep. **It counts from the moment the order is placed**, while the engine is still swapping memory out, because that replica really is not receiving requests |
+| `sleep_level` | The level an engine reports (1 or 2); it has no value while the engine has not gone down, so an absent field must not be read as "not asleep" |
+
+`runtime_state` stays `running` throughout: the sleeping engine process is still running, the gateway just does not dispatch to it. Judge sleep by `state`, not by `runtime_state`.
+
+When only some replicas sleep (or only one PD role does), the deployment still serves: `state` stays `running`, `asleep_replicas` says how many sleep, and the reading in the list is **Partly asleep · k/N replicas**.
+`asleep_replicas` and `ready_replicas` are two counts of one set of replicas; their sum is the number of replicas the gateway can reach. A replica down for another reason (stopped, failed, its node gone, a multi-node generation missing a rank) counts in neither and never reads as asleep.
+
+A deployment with no serving replica left (instances stopped or failed) is not asleep: there is nothing to wake, so `state` gives the failure's or stopped state itself and `asleep_replicas` is 0.
+
+For the field definitions, their precedence, and the per-role PD counts, see [API Reference: Deployment Sleep State](../reference/api.md#deployment-sleep-state-state-asleep_replicas-sleep_level).
 
 ## Partial Sleep: Replicas and PD Roles
 
@@ -50,7 +69,8 @@ In a deployment with multiple replicas, you can put some to sleep while others c
 
 The single-replica APIs are `POST /api/v1/instances/{uuid}/sleep?level=&mode=` and `POST /api/v1/instances/{uuid}/wake`; role sleep uses `POST /api/v1/deployments/{id}/sleep?role=prefill`.
 
-After confirming, check the status of the selected scope. Deployment labels count replicas; partial sleep displays **Partly asleep · k/N replicas**.
+After confirming, check the status of the selected scope. The row's readings are described in the previous section: with only some replicas asleep, `state` remains `running` and
+`asleep_replicas` counts the sleeping ones, shown in the list as **Partly asleep · k/N replicas**; `state` becomes `asleep`/`sleeping` only once every replica the gateway needs sleeps and it accepts no requests at all.
 
 Sleep state after recreation depends on the sleep scope:
 
@@ -84,7 +104,7 @@ Why a sleeping instance does not keep its original allocation: sleep would then 
 
 2. If you receive 409 `WAKE_INSUFFICIENT_GPU_MEMORY`, inspect the GPU index, shortfall in GiB, and occupants shown in the message. You can stop or put those occupants to sleep before retrying, or let the platform do it, see [Wait or Yield When It Does Not Fit](#放不下时等位与让位). By default, a deployment-level wake proceeds only if all replicas fit. After a wake request for multiple sleeping replicas is rejected, you can choose **Wake what fits** (`?partial=true`). A multi-node replica is evaluated as a whole: if any rank cannot fit back into memory, the entire replica remains asleep.
    When a process outside the platform holds the card (the platform cannot see how much it uses), the wake is refused with 409 `WAKE_GPU_HELD_OUTSIDE`, with the same parameters as above and `refused[].held_outside` set to true. Release that process on the node first, then wake; waiting and yielding cannot get around this. The agent also examines cards whose platform instances all sleep: when the sleeping engine's own process IDs are known, it can tell them apart from processes outside the platform.
-3. Wait for `sleep_level` to return to 0 for the selected replicas, then retry a `/v1` request to confirm service recovery. For a partial wake, also check the remaining replicas' GPU memory shortfalls. One successful request does not establish that all replicas are awake.
+3. Wait until `state` is no longer `asleep`/`sleeping` (it is back to `running`, or the instances are being recreated), then retry a `/v1` request to confirm service recovery. For a partial wake, also check the remaining replicas' GPU memory shortfalls. One successful request does not establish that all replicas are awake: the deployment may still read `running` with `asleep_replicas` above 0.
 
 Waking instances are already accounted for at their full GPU memory usage to prevent allocating the same GPU memory twice while waiting for the agent's report.
 

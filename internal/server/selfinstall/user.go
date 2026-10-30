@@ -66,12 +66,7 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 		return nil
 	}
 	run := i.deps.Run.Run
-	// The account's own group: the service account's on Linux is its
-	// namesake, a Mac user's is staff.
-	group := name
-	if g, err := i.deps.Run.Output(ctx, Command{Path: "id", Args: []string{"-gn", name}}); err == nil && strings.TrimSpace(g) != "" {
-		group = strings.TrimSpace(g)
-	}
+	group := i.serviceGroup(ctx, name)
 	if err := run(ctx, Command{
 		Path: "chown", Args: []string{"-R", name + ":" + group, i.layout.Dir}, Sudo: true,
 	}); err != nil {
@@ -85,6 +80,17 @@ func (i *Installer) chownTree(ctx context.Context, name string) error {
 		return err
 	}
 	return run(ctx, Command{Path: "find", Args: []string{i.layout.Dir, "-type", "d", "-exec", "chmod", "g+s", "{}", "+"}, Sudo: true})
+}
+
+// serviceGroup is the group the service account's files are shared through:
+// the account's own group, which on Linux is its namesake and for a Mac user is
+// staff. It falls back to the account name when `id` cannot answer, which is
+// what the caller would have guessed anyway.
+func (i *Installer) serviceGroup(ctx context.Context, name string) string {
+	if g, err := i.deps.Run.Output(ctx, Command{Path: "id", Args: []string{"-gn", name}}); err == nil && strings.TrimSpace(g) != "" {
+		return strings.TrimSpace(g)
+	}
+	return name
 }
 
 // addOperatorToGroup puts the operator into the service account's group, which

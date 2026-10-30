@@ -468,7 +468,7 @@
     "help": {
       "schedulable": "The node takes new replicas. Cordon it to keep new ones off while what runs keeps running, or drain it to also move the replicas placed from a pool onto other nodes.",
       "cordoned": "No new replica is started here; what runs keeps running. Drain to move the pool-placed replicas off, or make it schedulable again.",
-      "draining": "No new replica is started here, and each pool-placed replica is replaced on another node before it is retired, one at a time per deployment, so no deployment serves fewer replicas than before. Replicas pinned to this node and multi-node or PD ranks stay until evicted."
+      "draining": "No new replica is started here. Replacements start on other nodes before existing replicas retire, so service capacity is retained. Pinned replicas wait for a placement change; multi-node and PD units wait until suitable replacement nodes are available."
     },
     "action": {
       "cordon": "Cordon",
@@ -476,7 +476,8 @@
       "uncordon": "Make schedulable",
       "uncordonAnyway": "Make schedulable anyway",
       "evict": "Evict now",
-      "evictConfirm": "Take every replica off this node now, without waiting for replacements? Pinned replicas and multi-node or PD ranks wait until the node is schedulable again or their deployment names another node."
+      "evictConfirm": "Take every replica off this node now, without waiting for replacements? Pinned replicas and multi-node or PD ranks wait until the node is schedulable again or their deployment names another node.",
+      "stopDrain": "Stop drain"
     },
     "done": {
       "schedulable": "The node takes new replicas again",
@@ -484,20 +485,32 @@
       "draining": "The node is draining"
     },
     "evicted": "{{count}} replica(s) evicted",
-    "stuck": "{{count}} replica(s) here are not moved by a drain: pinned to this node, or a multi-node or PD rank. Change their deployment's nodes, or evict them.",
+    "stuck": "{{count}} replica(s) are pinned to this node. Change their deployment’s node requirements, or explicitly evict them.",
     "replicas": "Replicas on this node ({{count}})",
     "empty": "Nothing runs on this node",
     "columns": {
       "deployment": "Deployment",
       "instance": "Instance",
       "state": "State",
-      "drain": "On drain"
+      "drain": "On drain",
+      "feedback": "Progress and feedback"
     },
     "kind": {
-      "pool": "Moved to another node",
+      "pool": "Waits for a replacement elsewhere",
       "pinned": "Pinned here: waits",
-      "named": "Names this node: evict to move"
-    }
+      "named": "Moves its unit after a replacement is ready"
+    },
+    "drainHint": "Open Scheduling and drain to see waiting replicas, scheduling feedback, or stop the drain while keeping the node cordoned.",
+    "waiting": "Waiting for {{count}} replica(s) to leave: replacements must be ready before existing service is retired.",
+    "stopHint": "Check each deployment’s latest feedback. You can stop further drain work while keeping the node cordoned; work already in progress may finish. The platform does not automatically enable scheduling or force replicas off the node.",
+    "completed": "No active replicas remain. The node still takes no new replicas; stop the drain to leave it cordoned.",
+    "retiring": "Retiring this instance; waiting for in-flight requests and removal confirmation.",
+    "pinnedReason": "The deployment is pinned to this node. Change its node requirements, or explicitly evict it.",
+    "lastFeedback": "Latest scheduling feedback: {{reason}}",
+    "lastFailedAttempt": "Latest failed attempt on another node: {{message}}",
+    "awaitingReason": "Waiting for a replacement. No scheduling refusal has been reported yet; check the deployment’s instances and model/image preparation.",
+    "offline": "The node is offline: retirement and container removal cannot be confirmed.",
+    "offlineHint": "Restore its agent connection and check its instances. You can stop the drain while keeping the node cordoned; the platform will not enable scheduling or claim that removal succeeded."
   },
   "systemLabels": {
     "title": "System labels",
@@ -685,5 +698,128 @@
       "readOnly": "Read-only",
       "ephemeral": "Container layer"
     }
+  },
+  "batchUpgrade": {
+    "targetHeading": "Target for this update",
+    "targetSource": "Provided by the current control plane. After updating, Agent versions will match the control plane.",
+    "versionDetails": "View version and updates",
+    "selected": "Upgrade selected Agents",
+    "selectedCount": "{{count}} nodes selected",
+    "clearSelection": "Clear selection",
+    "scope": "This batch is limited to the nodes listed below. Refreshing the preview updates their status without adding other nodes.",
+    "previewTitle": "Review Agent upgrade",
+    "target": "Target version: {{version}}",
+    "previewCounts": "{{eligible}} eligible of {{total}} nodes; {{skipped}} will be skipped.",
+    "disruption": "Agents will restart one at a time. Connections may be briefly interrupted.",
+    "versionWarning": "Updating replaces Agents with the target shown above and can downgrade them. Multi-node and PD inference can fail if a node remains offline.",
+    "acknowledge": "I have arranged a maintenance window or confirmed that the affected workloads can be interrupted.",
+    "start": "Update to this version",
+    "refreshPreview": "Refresh preview",
+    "close": "Close",
+    "refresh": "Refresh upgrades",
+    "loadingPreview": "Loading upgrade preview",
+    "loadingRun": "Loading upgrade result",
+    "loadingRuns": "Loading Agent upgrades",
+    "noEligible": "No nodes can be upgraded with this preview. Review the reasons below.",
+    "empty": "No Agent upgrade batches yet.",
+    "details": "View upgrade details",
+    "history": "Recent Agent upgrades",
+    "historyItem": "Batch {{id}} · {{version}}",
+    "runTitle": "Agent upgrade batch {{id}}",
+    "processed": "Processed {{processed}} / {{total}} nodes",
+    "results": "Succeeded {{succeeded}} · Failed {{failed}} · Skipped {{skipped}} · Cancelled {{cancelled}} · Interrupted {{interrupted}} · Unconfirmed {{unconfirmed}} · Queued {{queued}} · Active {{active}}",
+    "processingNotSuccess": "Processing progress includes failures and skipped nodes; 100% does not mean all Agents upgraded successfully.",
+    "blocked": "The earlier upgrade on {{name}} still requires verification. Further upgrades are blocked.",
+    "unconfirmedHelp": "An unconfirmed attempt may still replace the Agent. Check the node and its logs before releasing the reservation. Starting another batch cannot bypass it.",
+    "stop": "Stop remaining upgrades",
+    "stopConfirm": "Stop the nodes that have not started yet?",
+    "stopHelp": "An Agent that is transferring, replacing itself or reconnecting will still be observed. This does not roll it back.",
+    "continue": "Preview retry / remaining nodes",
+    "filter": "Filter upgrade results",
+    "allResults": "All results",
+    "noItems": "No matching upgrade items.",
+    "release": "Verify prior attempt ended",
+    "releaseTitle": "Verify the prior upgrade on {{name}}",
+    "releaseHelp": "Only release this reservation after checking that the previous upgrade has ended. This does not mark the upgrade successful or automatically retry it.",
+    "releaseNote": "What did you check to confirm the prior attempt ended?",
+    "noteRequired": "Record the checks before releasing this reservation.",
+    "verified": "Later verification: {{note}}",
+    "columns": {
+      "node": "Node",
+      "from": "Original version",
+      "current": "Observed version",
+      "platform": "Platform",
+      "result": "Eligibility",
+      "reason": "Details",
+      "phase": "Stage",
+      "time": "Started / finished",
+      "action": "Action"
+    },
+    "runState": {
+      "running": "Running",
+      "stopping": "Stopping remaining nodes",
+      "paused": "Paused for verification",
+      "finished": "Finished",
+      "interrupted": "Interrupted",
+      "unknown": "Status unavailable"
+    },
+    "phase": {
+      "queued": "Queued",
+      "transferring": "Transferring / downloading",
+      "waiting_registration": "Waiting for reconnection",
+      "observing_recovery": "Observing recovery",
+      "succeeded": "Target confirmed",
+      "failed": "Failed",
+      "skipped": "Skipped",
+      "cancelled": "Cancelled before starting",
+      "interrupted": "Interrupted",
+      "unconfirmed": "Unconfirmed",
+      "unknown": "Status unavailable"
+    },
+    "eligibility": {
+      "eligible": "Eligible",
+      "already_current": "Already at target",
+      "offline": "Offline",
+      "unsupported": "Unsupported platform or artifact",
+      "legacy_unverified": "Legacy download conditions unverified",
+      "unknown_version": "Version unknown",
+      "busy": "Upgrade already reserved",
+      "unavailable": "Unavailable"
+    },
+    "reason": {
+      "already_current": "Already running the target version.",
+      "offline": "The node is offline.",
+      "unsupported": "The platform or upgrade method is not supported.",
+      "unsupported_platform": "The platform is not supported.",
+      "artifact_missing": "The target Agent artifact is unavailable.",
+      "artifact_untrusted": "The target artifact version or checksum could not be verified.",
+      "legacy_unverified": "The old Agent download conditions cannot be verified; handle this node individually.",
+      "unknown_version": "The Agent version cannot be identified.",
+      "busy": "An earlier upgrade still owns this node.",
+      "target_changed": "The target or artifact changed; refresh the preview.",
+      "server_restarted": "The server restarted during this attempt.",
+      "server_changed": "The control-plane target changed.",
+      "transfer_failed": "The artifact transfer failed.",
+      "agent_rejected": "The Agent rejected the upgrade.",
+      "rolled_back": "The Agent reported a rollback.",
+      "timeout": "The target version was not confirmed within the observation window.",
+      "unconfirmed": "The prior attempt has not been confirmed to have ended.",
+      "superseded": "The remaining work moved to another confirmed batch.",
+      "stopped": "Stopped before dispatch.",
+      "node_deleted": "The node was removed before dispatch.",
+      "unavailable": "See the reported details or check the node logs.",
+      "capabilities_changed": "The node capabilities changed after preview.",
+      "transport_uncertain": "The transfer outcome is uncertain; the prior attempt must be checked.",
+      "server_stopped": "The control plane stopped during this attempt.",
+      "agent_failed": "The Agent reported an upgrade failure.",
+      "artifact_unavailable": "The fixed target artifact is unavailable.",
+      "confirmation_timeout": "The target version was not confirmed within the observation window.",
+      "target_registered": "A new Agent session confirmed the target version."
+    },
+    "activeBlock": "{{name}} is part of an active upgrade batch. Wait for it to finish or view its progress.",
+    "activeHelp": "The execution slot remains reserved until the current attempt is confirmed. Other batches cannot start in parallel.",
+    "startedAt": "Started: {{at}}",
+    "finishedAt": "Finished: {{at}}",
+    "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
   }
 }

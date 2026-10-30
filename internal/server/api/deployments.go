@@ -229,6 +229,14 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 		TemplateShmBytes: selection.shmBytes(), TemplateMemlockUnlimited: selection.memlockUnlimited(),
 		AllowUnresolved: true,
 	}
+	imageNodes := append([]*store.Node{profileNode}, distNodes...)
+	if pdReq != nil {
+		imageNodes = append(imageNodes, pdReq.nodes...)
+	}
+	if err := a.admitImagePlatforms(eng.Name(), selection, req.Image, imageNodes); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	imageFor := func(node *store.Node) string {
 		return a.rankImage(eng.Name(), selection, req.Image, node).Image
 	}
@@ -309,6 +317,10 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if err := a.admitImagePlatforms(eng.Name(), selection, req.Image, append([]*store.Node{node}, distNodes...)); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
 	weightStorage, err := a.resolveSaveToStorage(req.ModelSource, model, append([]*store.Node{node}, distNodes...))
 	if err != nil {
 		writeErr(w, http.StatusConflict, err)
@@ -320,10 +332,6 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	rules := store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: saveTo}
 	if err := a.admitDeploymentModel(r.Context(), model, rules, append([]*store.Node{node}, distNodes...)); err != nil {
 		writeErr(w, http.StatusConflict, err)
-		return
-	}
-	if status, err := a.startSharedModelDownload(model, weightStorage, append([]*store.Node{node}, distNodes...)); err != nil {
-		writeErr(w, status, err)
 		return
 	}
 	imageResolution := a.rankImage(eng.Name(), selection, req.Image, node)
@@ -412,6 +420,13 @@ func (a *apiHandlers) createDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		writeDeploymentCreateErr(w, err)
+		return
+	}
+	// Start the download only after validation and persistence: a rejected
+	// create must not leave an unowned transfer running.
+	if status, err := a.startSharedModelDownload(model, weightStorage, append([]*store.Node{node}, distNodes...), created.ID); err != nil {
+		_ = a.d.Store.DeleteDeployment(created.ID)
+		writeErr(w, status, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, a.deploymentDTO(created, true))

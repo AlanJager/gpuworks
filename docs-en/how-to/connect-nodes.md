@@ -201,7 +201,7 @@ A node without outbound internet access still cannot download images or models f
 
 Upgrade the server first, then the agent; the node's target version comes from the current server. Upgrading briefly interrupts the node's connection and in-flight requests. Upgrade nodes for multi-node inference or PD disaggregation one at a time, waiting for each node to return online.
 
-- **Upgrade from the console**: Click **Upgrade Agent** in node details, wait for completion, then verify that the node is online and its **Agent version** matches the server. Newer agents can receive the upgrade package over the existing connection; older agents still need access to the server's download address.
+- **Upgrade from the console**: Select nodes in the node list, click **Upgrade selected Agents**, preview the selected nodes, and confirm to view progress for each node; **Upgrade Agent** in node details also remains available. Wait for successful formal reconnection, then verify that the node is online and its **Agent version** matches the server. Newer agents can receive the upgrade package over the existing connection; older agents still need access to the server's download address.
 - **Rerun the installation script or offline package**: Preserve the old binary first, then install using the original token, connection method, installation directory, and state directory. Afterward, check the online status and version. This rewrites the configuration and does not provide the automatic rollback available with self-upgrade.
 
 For manual environments without a persistent agent, you can also use [`gpuworks-agent upgrade`](../reference/cli.md#gpuworks-agent-upgrade). It runs in the foreground and does not restart the original service. It is unsuitable for server-initiated nodes without a server address.
@@ -216,6 +216,8 @@ Before upgrading drivers, replacing cards, or decommissioning a node, use **More
 - **Drain**: Cordons the node and moves the replicas on it to other nodes, one at a time per deployment. A replacement replica starts elsewhere first;
   the original replica retires only after the replacement is running, so the number of serving replicas never drops below the count before the drain. Single-node replicas are replaced by the candidate pool. Multi-node and PD replicas move too:
   the replacement goes on a node with the same compute network, the same GPU architecture, and free cards, and the placement is rewritten onto it only once it runs; with no node to move to, the replica stays and waits. The page lists the replicas remaining on the node and how the drain handles each, refreshing every 5 seconds.
+While a drain is waiting, the dialog shows timestamped scheduling feedback and the latest failed attempt on another node. Historical feedback does not prove that the next attempt will fail. **Stop drain** stops further moves while keeping the node cordoned; work already started may finish. The platform does not automatically enable scheduling or force replicas off.
+
 - **Evict now**: A single-node deployment pinned to this node is not moved by a drain. To clear the node immediately, click “Evict now”.
   It does not wait for replacements: everything is removed immediately (without counting against retries). Those eligible for other nodes are recreated elsewhere; those that specify this node wait until it becomes schedulable again. You can also first use
   “Edit” in deployment details to change the node requirements, so the pinned replicas move normally.

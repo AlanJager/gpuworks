@@ -78,6 +78,10 @@ func (c *Controller) acquireLocalModel(ctx context.Context, node *store.Node, de
 			return err
 		}
 		mf = created
+		if err := c.store.SetDownloadDeployment(mf.ID, mf.TransferID, dep.ID); err != nil {
+			return err
+		}
+		mf.DownloadDeploymentID = dep.ID
 	}
 	handled, refused := c.syncModelWithin(ctx, node, model, mf, pinned)
 	if !handled {

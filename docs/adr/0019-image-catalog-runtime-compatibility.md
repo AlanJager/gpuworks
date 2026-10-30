@@ -15,7 +15,7 @@
 - 镜像系列和版本只描述 framework、framework version、engine、engine version、主机架构及运行时默认值。厂商由 framework 的唯一映射推导；旧字段作为兼容列保留但不再读写或出现在 wire JSON。
 - 自动选择先硬约束 engine、framework、厂商和主机架构。用户填写引擎版本时归一化后精确匹配；未填写时按数值版本降序选择系列中最新启用版本。同一组候选暂按稳定排序解决歧义。
 - 驱动兼容性只影响候选排序并生成 Warning。CUDA 只采用最低驱动要求，不以 minor 版本表的上限淘汰更高驱动；无法证明的 CANN、DTK、HGGC 组合返回 Unknown。系统不产生 Perfect 判定。
-- 用户显式指定的镜像始终可用，即使不在目录中或被判定可疑也不产生 Blocking。TrustedOverride 继续直接放行。
+- 用户显式指定镜像的框架、厂商和驱动适配仍采用告警；已知 CPU 架构或执行 OS 不匹配时必须 Blocking，TrustedOverride 同样遵守。Metal 目录资产为 darwin 主机环境包，其余已知加速框架为 Linux 容器，OS 从已有 framework 与节点运行时事实推导，不新增冗余目录字段。未知私有镜像维持未验证告警，不把未知当作不匹配。创建时在注册模型、启动下载前检查所有具体 rank；自动放置在选定节点后复验。
 - `turing-no-bf16` 只对 NVIDIA 节点真实 compute capability 生效，条件为 `cc < 8.0`；它不参与镜像候选资格。
 
 ## 影响

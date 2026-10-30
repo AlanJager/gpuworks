@@ -22,6 +22,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
+
 	// Aliased: New's own "hub" parameter (the Tunneler) shadows the package
 	// name for the rest of this file, so the sentinel below is only reachable
 	// through this alias.
@@ -362,8 +363,9 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 			return
 		}
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, "/api/v1/playground")
-		deployment, tgt, pinned, status, message := p.pinnedTarget(r, modelName)
-		asleep := false
+		// A pinned refusal for sleep is the same event the load balancing path
+		// accounts as asleep_503, not a generic 5xx.
+		deployment, tgt, pinned, status, message, asleep := p.pinnedTarget(r, modelName)
 		if !pinned {
 			affinity := p.affinityKey(modelName, r)
 			deployment, tgt, status, message, asleep = p.selectDeploymentInstanceWithKey(modelName, affinity)
@@ -574,27 +576,4 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"error": map[string]string{"message": msg, "type": "gpuworks_proxy"},
 	})
-}
-
-// modelsHandler serves GET /v1/models listing deployed served-names (OpenAI shape).
-func (p *Proxy) ModelsHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := p.authenticate(w, r); !ok {
-			return
-		}
-		deps, _ := p.store.ListDeployments()
-		type model struct {
-			ID      string `json:"id"`
-			Object  string `json:"object"`
-			OwnedBy string `json:"owned_by"`
-		}
-		out := []model{}
-		for _, d := range deps {
-			if d.State == store.DeployActive && d.ServedName != "" {
-				out = append(out, model{ID: d.ServedName, Object: "model", OwnedBy: "gpuworks"})
-			}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": out})
-	}
 }

@@ -1,3 +1,4 @@
+import type { ServerBuildInfo } from "./serverBuildInfo";
 import type { BenchmarkPointEvidence } from "./benchmarkEvidenceTypes";
 export type * from "./benchmarkEvidenceTypes";
 // API client + shared types. Types mirror internal/server/api/dto.
@@ -13,6 +14,8 @@ import type {
   StorageDownloadFormat, StorageFileList,
 } from "./storageTypes";
 export type * from "./storageTypes";
+import type { AgentUpgradeCreate, AgentUpgradeItem, AgentUpgradePage, AgentUpgradePreview, AgentUpgradeRun } from "./agentUpgradesTypes";
+export type * from "./agentUpgradesTypes";
 import i18n from "./i18n";
 import { APIError, apiErrorText, apiResponseError, ProxyErrorPage, type ProductMessage } from "./apiError";
 import { readSSE } from "./sse";
@@ -130,9 +133,13 @@ export interface NodeReplica {
   deployment: string;
   state: string;
   kind: "pool" | "pinned" | "named";
+  drain_reason?: ScheduleMessage;
+  drain_reason_at?: string;
+  drain_message?: string;
 }
 
 export interface NodeReplicas {
+  drain_offline?: boolean;
   scheduling: NodeScheduling;
   items: NodeReplica[];
 }
@@ -987,6 +994,7 @@ export type DeploymentListItem = Pick<
   | "node_uuid"
   | "node_name"
   | "node_names"
+  | "runtime_nodes"
   | "runtime_node_names"
   | "desired_state"
   | "runtime_state"
@@ -1376,6 +1384,7 @@ export interface UpdateStatus {
   source?: string;
   sources: UpdateSourceStatus[];
   server: {
+    current_build?: ServerBuildInfo;
     current: string;
     latest?: string;
     built_at?: string;
@@ -1711,6 +1720,21 @@ export interface InstanceLaunchFacts {
   runtime_observation_received_at?: string;
 }
 
+/**
+ * One node a deployment's instances are on now: where a replica actually runs,
+ * which is the placement target only until something moves it.
+ */
+export interface DeploymentRuntimeNode {
+  node_uuid: string;
+  node_name?: string;
+  /**
+   * How many of the deployment's instance rows are on the node, of any state. A
+   * spread deployment has one node per replica here; the count is what a table
+   * folds into "N nodes" and expands again.
+   */
+  instances: number;
+}
+
 export interface Deployment {
   operations?: Array<
     Pick<
@@ -1734,7 +1758,19 @@ export interface Deployment {
   node_uuids?: string[];
   /** Display names of node_uuids, rank by rank. */
   node_names?: string[];
-  /** Distinct nodes hosting active instances now. */
+  /**
+   * Where the deployment's instances run now, one entry per node, read from the
+   * instance rows. node_name/node_names above are the placement target — the
+   * node, or rank by rank the nodes, the deployment was *asked* to run on — so
+   * the two differ whenever automatic placement picks the node later, a retried
+   * replica is relaunched elsewhere, or a spread deployment runs on several
+   * nodes at once. Empty before anything is placed.
+   */
+  runtime_nodes?: DeploymentRuntimeNode[];
+  /**
+   * Names of runtime_nodes, in the same order. Prefer runtime_nodes where the
+   * uuid or the per-node instance count is needed.
+   */
   runtime_node_names?: string[];
   partition_backend?: string;
   /** The dGPU memory limit each replica runs under per card; absent on whole cards. */
@@ -1765,9 +1801,11 @@ export interface Deployment {
   // when it follows the cluster default (settings, deployment group).
   start_timeout_sec?: number;
   // ready_replicas counts the replicas the gateway would serve a request from
-  // now (running, on an online node, every rank up, awake); absent for a PD
-  // deployment, whose roles count their own. With asleep_replicas it is two
-  // counts of one set of replicas, so the two can never contradict each other.
+  // now (running, on an online node, every rank up, awake). A PD deployment
+  // totals its roles' ready units, the same replicas its replicas field
+  // totals, so the pair means one thing on both. With asleep_replicas it is
+  // two counts of one set of replicas, so the two can never contradict each
+  // other.
   ready_replicas?: number;
   // health is the deployment's health check (dto/deployment_health.go).
   health: DeploymentHealth;
@@ -2109,6 +2147,16 @@ export interface DataRetention {
   gpu: boolean;
   gpu_time: boolean;
   time_zone: string;
+}
+
+/** The experience environment beside this server: a separate console holding only simulated data. */
+export interface ExperienceStatus {
+  enabled: boolean;
+  ready: boolean;
+  port: number;
+  user: string;
+  password?: string;
+  error?: string;
 }
 
 export interface DataRetentionView {
@@ -3418,6 +3466,10 @@ export interface LogsBucket {
 
 export interface LogsWindow {
   items: LogEntry[];
+  // Index of the anchor row in items, or -1 when the anchor is gone from
+  // that partition (pruned by retention, or ts from another day). The
+  // surrounding rows are still real, so compare against the index for
+  // highlighting and never use it to index items without a >= 0 check.
   match_index: number;
 }
 
@@ -3886,6 +3938,19 @@ export const api = {
   agentRejects: () => getJSON<List<AgentRejectEvent>>("/api/v1/agent/rejects"),
   agentUpgradeErrors: () =>
     getJSON<Record<string, string>>("/api/v1/agent/upgrade-errors"),
+  agentUpgradePreview: (body: { scope: "all" } | { node_uuids: string[] }) =>
+    sendJSON<AgentUpgradePreview>("POST", "/api/v1/agent-upgrades/preview", body),
+  createAgentUpgrade: (body: AgentUpgradeCreate) =>
+    sendJSON<AgentUpgradeRun>("POST", "/api/v1/agent-upgrades", body),
+  agentUpgradeRuns: (page = 1, pageSize = 20) =>
+    getJSON<AgentUpgradePage<AgentUpgradeRun>>(`/api/v1/agent-upgrades?page=${page}&page_size=${pageSize}`),
+  agentUpgradeRun: (id: number) => getJSON<AgentUpgradeRun>(`/api/v1/agent-upgrades/${id}`),
+  agentUpgradeItems: (id: number, page = 1, pageSize = 20, state = "") =>
+    getJSON<AgentUpgradePage<AgentUpgradeItem>>(`/api/v1/agent-upgrades/${id}/items?page=${page}&page_size=${pageSize}${state ? `&state=${encodeURIComponent(state)}` : ""}`),
+  stopAgentUpgrade: (id: number) => sendJSON<AgentUpgradeRun>("POST", `/api/v1/agent-upgrades/${id}/stop`),
+  continueAgentUpgradePreview: (id: number) => sendJSON<AgentUpgradePreview>("POST", `/api/v1/agent-upgrades/${id}/continue-preview`),
+  releaseAgentUpgrade: (id: number, uuid: string, note: string) =>
+    sendJSON<void>("POST", `/api/v1/agent-upgrades/${id}/items/${encodeURIComponent(uuid)}/release`, { note }),
   createNode: (
     input?:
       | string
@@ -3937,7 +4002,7 @@ export const api = {
   deleteNode: (uuid: string, force = false) =>
     sendJSON<void>("DELETE", `/api/v1/nodes/${encodeURIComponent(uuid)}${force ? "?force=true" : ""}`),
   upgradeNode: (uuid: string) =>
-    sendJSON<{ status: string }>("POST", `/api/v1/nodes/${uuid}/upgrade`),
+    sendJSON<{ status: string; run_id?: number }>("POST", `/api/v1/nodes/${uuid}/upgrade`),
   precheckNode: (body: SSHPrecheckRequest) =>
     sendJSON<SSHPrecheckReport>("POST", "/api/v1/nodes/precheck", body),
   installNode: (body: SSHInstallRequest) =>
@@ -4200,6 +4265,8 @@ export const api = {
   /** status is "present" when the storage (or every chosen node) already has the model. */
   downloadModelToStorage: (id: number, body: { storage_id: number; node_uuids?: string[] }) =>
     sendJSON<{ status?: string; writer?: string } | undefined>("POST", `/api/v1/models/${id}/download`, body),
+  cancelModelDownload: (id: number, body: { storage_id?: number; node_uuid?: string }) =>
+    sendJSON<{ state: string; message: string }>("POST", `/api/v1/models/${id}/download/cancel`, body),
   copyModel: (id: number, body: { source: ModelLocationRef; target: ModelLocationRef; rate_limit_kib_s?: number }) =>
     sendJSON<{ state?: string; transfer_id?: string; message?: string }>("POST", `/api/v1/models/${id}/copy`, body),
   /** Delete a model's copy in a shared storage; force overrides other gpuworks using it. */
@@ -4717,6 +4784,10 @@ export const api = {
 
   settings: () => getJSON<Record<string, any>>("/api/v1/settings"),
   dataRetention: () => getJSON<DataRetentionView>("/api/v1/data-retention"),
+  experience: () => getJSON<ExperienceStatus>("/api/v1/experience"),
+  setExperienceEnabled: (enabled: boolean) => sendJSON<ExperienceStatus>("PUT", "/api/v1/experience/enabled", { enabled }),
+  resetExperience: () => sendJSON<ExperienceStatus>("POST", "/api/v1/experience/reset"),
+  rotateExperiencePassword: () => sendJSON<ExperienceStatus>("POST", "/api/v1/experience/password"),
   putDataRetention: (value: DataRetention) => sendJSON<DataRetentionView>("PUT", "/api/v1/data-retention", value),
   dataRetentionStatus: () => getJSON<DataRetentionStatus>("/api/v1/data-retention/status"),
   putSetting: (key: string, value: unknown) =>

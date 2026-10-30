@@ -222,26 +222,23 @@ export default function ImageNodeTable({
       title: t("nodeTable.column.progress"),
       key: "progress",
       render: (_: unknown, row: ImageNode) => {
+        if (row.state !== "pulling" && row.state !== "syncing") {
+          return <Text type="secondary">—</Text>;
+        }
         const expected = row.size_bytes || selectedVersion.size_bytes || 0;
-        // A row that holds the image is done, whatever the last transfer
-        // reported: a cancelled or superseded attempt leaves its byte count
-        // behind, and showing that as a percentage of the image invents a
-        // download that is not happening.
-        const done = row.state === "present" && expected ? expected : row.transferred_bytes || 0;
+        const done = row.transferred_bytes || 0;
         return (
           <Space direction="vertical" style={{ width: 108 }} size={2}>
             <Progress
               percent={
                 expected
                   ? Math.min(100, Math.round((done / expected) * 100))
-                  : row.state === "present"
-                    ? 100
-                    : 0
+                  : 0
               }
               size="small"
             />
             <Text type="secondary">
-              {bytes(done)} / {bytes(expected)}
+              {bytes(done)}{expected > 0 ? ` / ${bytes(expected)}` : ""}
               {row.rate_bps ? ` · ${bytes(row.rate_bps)}/s` : ""}
             </Text>
           </Space>

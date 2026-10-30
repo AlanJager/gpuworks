@@ -265,10 +265,15 @@ func (a *apiHandlers) registerModelPath(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// A model registered while the management node could not read its
-	// source has no metadata yet: the directory being registered is asked
-	// for it in the same call.
-	reg, err := callNodeRegisterPath(r.Context(), a.d.CallNode, node.UUID, req.Path, lacksMetadata(m))
+	// source has no metadata yet: the directory being registered can fill it
+	// in the same call. Always inspect it to validate the selected directory,
+	// even when the model already has metadata.
+	reg, err := callNodeRegisterPath(r.Context(), a.d.CallNode, node.UUID, req.Path, true)
 	if err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
+	if err := validateModelMetadata(reg.Metadata); err != nil {
 		writeErr(w, http.StatusConflict, err)
 		return
 	}

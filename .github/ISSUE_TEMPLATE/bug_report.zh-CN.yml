@@ -1,0 +1,123 @@
+name: Bug 报告（中文）
+description: 行为和文档描述不一致时使用。
+title: "[Bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请先确认这不是已有问题的重复：
+
+        - 搜索现有 issue，包括已关闭的。
+        - 阅读[排障指南](https://gpuworks.zstack.ai/docs/how-to/troubleshooting/)。
+
+        如果你要报告的是**安全漏洞**，请不要开 issue。请私下报告：
+        [发邮件给安全邮箱](mailto:security@gpuworks.ai)，或在仓库 *Security* 页使用
+        「Report a vulnerability」——两条渠道的流程见 `SECURITY.zh-CN.md`。
+
+  - type: input
+    id: version
+    attributes:
+      label: GPUWorks 版本
+      description: 执行 `curl -s http://<server>:8800/healthz` 的输出。版本形如 `dev-<commit>`。
+      placeholder: 例如 dev-0f9b23a9
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 受影响的组件
+      description: 选最接近的一项；判断不了就选「不确定」。
+      options:
+        - Server（控制面、API、网关）
+        - Agent（节点侧）
+        - Web 界面
+        - CLI
+        - 部署 / 推理运行时
+        - 节点接入
+        - 模型或存储
+        - 文档
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 实际现象
+      description: 描述你看到的行为。有确切报错、HTTP 状态码、退出码的请一并给出。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+      description: 文档或界面让你预期发生什么。能给出对应页面或文件路径更好。
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 假设读者从全新安装开始，按步骤编号写。
+      placeholder: |
+        1. 用 `./bin/gpuworks install --dir /opt/gpuworks --addr :8800` 安装
+        2. 用 `curl | sh` 命令接入一个节点
+        3. 在该节点上部署 vLLM
+        4. ……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: 复现频率
+      options:
+        - 每次都复现
+        - 偶发（大约一半）
+        - 很少复现
+        - 只出现过一次
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 把所有可能相关的都写上，注意不要填真实密钥。
+      value: |
+        - 操作系统 / 内核:
+        - GPU 厂商与型号:
+        - 驱动 / CUDA / CANN 版本:
+        - 容器运行时（docker / nerdctl / runveil / 无）:
+        - 安装方式（脚本 / 手动 / 源码构建）:
+        - 节点数量:
+
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: 节点诊断信息（可选）
+      description: |
+        如果问题出在节点上，在该节点执行 `gpuworks-agent doctor`，把输出贴在这里。
+        请保留开头的几行 —— 里面有它探测到的版本和运行时。
+      render: shell
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: |
+        贴最小的一段能说明问题的日志即可。请先去掉令牌、主机名和地址。
+        Server 日志：`journalctl -u gpuworks -n 200`；Agent 日志：`journalctl -u gpuworks-agent -n 200`。
+      render: shell
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 我已搜索过现有 issue，没有找到同样的问题。
+          required: true
+        - label: 我已从上面的日志中去掉了凭据、令牌和内部地址。
+          required: true
+        - label: 这不是安全漏洞（安全漏洞按 SECURITY.zh-CN.md 处理）。
+          required: true

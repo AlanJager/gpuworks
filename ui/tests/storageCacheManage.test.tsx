@@ -262,3 +262,40 @@ test("cache cleanup failures retain the actual RPC diagnostic", () => {
   assert.ok(screen.getByText(diagnostic));
   assert.ok(screen.getByRole("button", { name: s.cacheManage.retry }));
 });
+
+for (const mode of ["clear", "trim"] as const) {
+  test(`disabled NFS cache permits ${mode} without changing storage writability`, async () => {
+    const storage = fixture();
+    storage.enabled = false;
+    storage.nodes.all![0].writable = false;
+    storage.nodes.all![0].cache!.state = "failed";
+    const calls: unknown[] = [];
+    api.reconcileStorageCache = async (...args) => { calls.push(args); };
+    const { user, changed } = view(storage);
+    if (mode === "clear") {
+      const button = screen.getByRole("button", { name: s.cacheManage.clear }) as HTMLButtonElement;
+      assert.equal(button.disabled, true, "selection is still required");
+      await user.click(screen.getByTitle("gpu-00", { selector: "input" }));
+      assert.equal(button.disabled, false, "read-only NFS does not disable local cache cleanup");
+      await user.click(button);
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: s.cacheManage.clear }));
+    } else {
+      const retry = screen.getByRole("button", { name: s.cacheManage.retry }) as HTMLButtonElement;
+      assert.equal(retry.disabled, false, "read-only NFS does not disable retry");
+      await user.click(retry);
+    }
+    await waitFor(() => assert.deepEqual(calls, [[storage.id, ["n0"], mode]]));
+    assert.equal(changed(), 1);
+    assert.equal(storage.enabled, false);
+    assert.equal(storage.nodes.all![0].writable, false);
+  });
+}
+
+test("disabled NFS cache cleanup remains unavailable to a viewer", () => {
+  const storage = fixture();
+  storage.enabled = false;
+  storage.nodes.all![0].cache!.state = "failed";
+  view(storage, false);
+  assert.equal(screen.queryByRole("button", { name: s.cacheManage.clear }), null);
+  assert.equal(screen.queryByRole("button", { name: s.cacheManage.retry }), null);
+});

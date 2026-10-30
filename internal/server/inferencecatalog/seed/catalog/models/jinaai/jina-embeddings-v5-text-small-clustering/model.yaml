@@ -21,7 +21,7 @@ specs:
         revision: 4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271
     - modelscope:
         repo_id: jinaai/jina-embeddings-v5-text-small-clustering
-        revision: 4ab9d9d3c5cca288d9ab38c1dc5228124fdf3271
+        revision: c5d44078ac5945f35450d3aa36f410e86542f793
   weight_bytes: 1192133232
   gpus:
     vendor: ppu

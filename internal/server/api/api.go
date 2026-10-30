@@ -121,7 +121,7 @@ type Deps struct {
 	AgentConnect  http.HandlerFunc // hub.ServeWS
 	InstallSh     http.HandlerFunc // install script
 	RecentRejects func() []dto.AgentReject
-	UpgradeErrors func() map[string]string
+	AgentUpgrades AgentUpgradeHooks
 	UIHandler     http.Handler // embedded SPA (may be nil in dev)
 
 	// Hub integration.
@@ -202,6 +202,10 @@ type Deps struct {
 	// Analytics is usage analytics: the data retention every store is
 	// kept under (analytics.go). Nil answers 404.
 	Analytics Analytics
+	// Experience is the experience environment beside the server
+	// (experience.go). Nil answers 404: the environment's own console, or a
+	// harness.
+	Experience Experience
 
 	// AI serves /ai/available, /ai/ask and the LLM-free findings and fit
 	// reads. Nil means no AI service is wired: available reports false.
@@ -299,6 +303,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/nodes", a.createNode)
 			r.Get("/agent/rejects", a.listRejects)
 			r.Get("/agent/upgrade-errors", a.listUpgradeErrors)
+			r.With(a.managementAdmin).Post("/agent-upgrades/preview", a.previewAgentUpgrade)
+			r.With(a.managementAdmin).Post("/agent-upgrades", a.createAgentUpgrade)
+			r.Get("/agent-upgrades", a.listAgentUpgrades)
+			r.Get("/agent-upgrades/{id}", a.getAgentUpgrade)
+			r.Get("/agent-upgrades/{id}/items", a.agentUpgradeItems)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/stop", a.stopAgentUpgrade)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/continue-preview", a.continueAgentUpgradePreview)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/items/{uuid}/release", a.releaseAgentUpgrade)
 			r.With(a.managementAdmin).Post("/nodes/precheck", a.precheckNode)
 			r.With(a.managementAdmin).Post("/nodes/install", a.installNode)
 			r.Get("/nodes/{uuid}", a.getNode)
@@ -344,6 +356,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Patch("/models/{id}/inference-config", a.updateModelInferenceConfig)
 			r.Post("/models/{id}/metadata/refresh", a.refreshModelMetadata)
 			r.Post("/models/{id}/download", a.downloadModel)
+			r.Post("/models/{id}/download/cancel", a.cancelModelDownload)
 			r.Post("/models/{id}/copy", a.copyModel)
 			r.Post("/models/{id}/nodes/{uuid}/cache/retry", a.retryModelCache)
 			r.With(a.managementAdmin).Delete("/models/{id}/storages/{storage_id}", a.deleteModelInStorage)
@@ -571,6 +584,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Get("/usage-report", a.getUsageReport)
 			r.With(a.managementAdmin).Put("/usage-report/enabled", a.putUsageReportEnabled)
 			r.With(a.managementAdmin).Get("/usage-report/preview", a.getUsageReportPreview)
+			r.With(a.managementAdmin).Get("/experience", a.getExperience)
+			r.With(a.managementAdmin).Put("/experience/enabled", a.putExperienceEnabled)
+			r.With(a.managementAdmin).Post("/experience/reset", a.postExperienceReset)
+			r.With(a.managementAdmin).Post("/experience/password", a.postExperiencePassword)
 			r.Get("/notices", a.getNotices)
 			r.Post("/notices/read", a.postNoticesRead)
 			r.With(a.managementAdmin).Get("/server/listen", a.getServerListen)
@@ -814,11 +831,11 @@ func (a *apiHandlers) listRejects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) listUpgradeErrors(w http.ResponseWriter, r *http.Request) {
-	if a.d.UpgradeErrors == nil {
+	if a.d.AgentUpgrades.Errors == nil {
 		writeJSON(w, http.StatusOK, map[string]string{})
 		return
 	}
-	writeJSON(w, http.StatusOK, a.d.UpgradeErrors())
+	writeJSON(w, http.StatusOK, a.d.AgentUpgrades.Errors())
 }
 
 func (a *apiHandlers) getNode(w http.ResponseWriter, r *http.Request) {
@@ -914,6 +931,15 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *apiHandlers) upgradeNode(w http.ResponseWriter, r *http.Request) {
+	if a.d.AgentUpgrades.Service != nil {
+		run, err := a.d.AgentUpgrades.Service.UpgradeNode(r.Context(), chi.URLParam(r, "uuid"), a.agentUpgradeActor(r))
+		if err != nil {
+			writeAgentUpgradeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": "upgrading", "run_id": run.ID})
+		return
+	}
 	if a.d.CallNode == nil {
 		writeProductError(w, http.StatusServiceUnavailable, ErrorNodeRPCUnavailable, "node RPC is not configured", nil)
 		return
@@ -1000,6 +1026,12 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+// WriteError answers err as the API does: a product error with its stable
+// code and params, any other error with its text. It is for a handler in
+// front of the router (the experience environment's guard), so a refusal
+// there reads like one from the API.
+func WriteError(w http.ResponseWriter, status int, err error) { writeErr(w, status, err) }
 
 func writeErr(w http.ResponseWriter, code int, err error) {
 	response := map[string]any{"error": err.Error()}

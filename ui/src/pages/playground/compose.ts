@@ -1,3 +1,4 @@
+import { localizedText } from "../../i18n/localizedText";
 import type { InputField, InferenceAPIOperation } from "../../inferenceApi";
 
 export function composeRequest(operation: InferenceAPIOperation, model: string, primary: Record<string, unknown>, values: Record<string, unknown>, raw?: string): Record<string, unknown> {
@@ -9,7 +10,7 @@ export function composeRequest(operation: InferenceAPIOperation, model: string, 
   if (raw?.trim()) { const expert = JSON.parse(raw) as unknown; if (!expert || Array.isArray(expert) || typeof expert !== "object") throw new Error("Expert request must be a JSON object"); Object.assign(body, expert); }
   body.model = model; return body;
 }
-export function inputLabel(field: InputField): string { if (typeof field.label === "string") return field.label; return field.label?.en || field.label?.["zh-CN"] || field.name; }
+export function inputLabel(field: InputField, language: string, fallback = field.name): string { return localizedText(field.label, language) || fallback; }
 export function declaredValues(operation: InferenceAPIOperation, values: Record<string, unknown>): Record<string, unknown> {
   const declared = new Set((operation.inputs || []).map((field) => field.name));
   return Object.fromEntries(Object.entries(values).filter(([name]) => declared.has(name)));

@@ -22,6 +22,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/agentbin"
+	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
@@ -48,15 +49,16 @@ import (
 
 // App holds the assembled server.
 type App struct {
-	cfg      Config
-	log      *slog.Logger
-	store    *store.Store
-	bus      *bus.Bus
-	hub      *hub.Hub
-	ctrl     *controller.Controller
-	obs      *observability
-	ops      *opsStats // usage analytics' long-term statistics
-	recovery *recovery.Recoverer
+	cfg           Config
+	log           *slog.Logger
+	store         *store.Store
+	bus           *bus.Bus
+	hub           *hub.Hub
+	ctrl          *controller.Controller
+	agentUpgrades *agentupgrade.Service
+	obs           *observability
+	ops           *opsStats // usage analytics' long-term statistics
+	recovery      *recovery.Recoverer
 	// proxyAcct is proxy request accounting (see accounting.go in the proxy
 	// package).
 	proxyAcct *proxy.Accountant
@@ -280,15 +282,21 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 
 	dlDir := filepath.Join(cfg.DataDir, "dl")
 	_ = os.MkdirAll(dlDir, 0o755)
-	provSvc.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
-	h.SetAgentBinaryReader(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	readAgent := func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }
+	provSvc.SetAgentBinaryReader(readAgent)
+	h.SetAgentBinaryReader(readAgent)
+	a.agentUpgrades, err = newAgentUpgrades(st, h, cfg.DataDir, log)
+	if err != nil {
+		return nil, err
+	}
+
 	sshHostKeys, err := provision.NewFileHostKeyStore(filepath.Join(cfg.DataDir, "ssh-hostkeys.json"))
 	if err != nil {
 		return nil, err
 	}
 	nodePrechecker := provision.NewSSHPrechecker()
 	nodePrechecker.HostKeys = sshHostKeys
-	nodeInstaller := provision.NewSSHInstaller(func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) })
+	nodeInstaller := provision.NewSSHInstaller(readAgent)
 	nodeInstaller.HostKeys = sshHostKeys
 	nodeInstaller.UdockerBundleSource = cfg.UdockerBundleSource
 	provision.SetSSHProxy(cfg.SSHProxy)
@@ -309,8 +317,8 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AgentConnect:  h.ServeWS,
 		InstallSh:     a.installHandler(),
 		RecentRejects: func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
-		UpgradeErrors: h.UpgradeErrors,
-		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }), webui.Handler()),
+		AgentUpgrades: api.AgentUpgradeHooks{Service: agentUpgradeAPI{service: a.agentUpgrades}, Errors: h.UpgradeErrors},
+		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.Handler(), a.agentUpgrades.DownloadBinary),
 		Online:        h.Online,
 		KickNode:      h.Kick,
 		NodeSync:      h,
@@ -362,6 +370,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Monitor:              monitorService{monSvc},
 		Telemetry:            telemetry,
 		Analytics:            newAnalyticsAPI(ops, st, obs, cfg.DataDir),
+		Experience:           experienceLauncher(cfg, log),
 		UsageReport:          a.usage,
 		Notices:              a.notices,
 		AI:                   ai,
@@ -370,15 +379,13 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
 	}
-	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
+	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
 	a.scaleReplicas = api.ReplicaScaler(apiDeps)
-	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(handler)))
+	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(cfg.experienceGuard(handler))))
 
-	a.http = &http.Server{
-		Handler: handler,
-		// No read/write timeouts: the agent WS and SSE are long-lived. The WS
-		// route bypasses these via hijacking; SSE flushes keepalives.
-	}
+	// No read/write timeouts: the agent WS and SSE are long-lived. The WS
+	// route bypasses these via hijacking; SSE flushes keepalives.
+	a.http = &http.Server{Handler: handler}
 	return a, nil
 }
 
@@ -446,11 +453,14 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
-	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })                     // Background: verify each PD prefill instance's KV handoff once.
-	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) }) // Background: schedules, idle sleep, waiting wakes, residency.
-	goBG(func() { a.health.Run(ctx) })                                                    // Background: the deployments' health checks.
-	goBG(func() { a.usage.Run(ctx) })                                                     // Background: the daily usage report.
-	goBG(func() { a.notices.Run(ctx) })                                                   // Background: the notices' refresh.
+	goBG(func() { a.agentUpgrades.Run(ctx) })
+	// Background: verify each PD prefill instance's KV handoff once.
+	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
+	// Background: schedules, idle sleep, waiting wakes, residency.
+	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) })
+	goBG(func() { a.health.Run(ctx) })  // Background: the deployments' health checks.
+	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
+	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.
 	// Background: prune metrics/logs beyond the retention window
 	// (--metrics-retention, default 72h).
 	//

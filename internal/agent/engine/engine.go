@@ -104,6 +104,15 @@ func WithNetworkConfig(read func() proto.NetworkConfig) EngineOption {
 	}
 }
 
+// WithLibvgpuExtractor replaces where the NVIDIA dGPU library comes from
+// (the agent's embedded copy by default): a simulated node writes a stand-in
+// its runtime mounts but never loads.
+func WithLibvgpuExtractor(extract func(path string) (string, error)) EngineOption {
+	return func(engine *Engine) {
+		engine.extractLibvgpu = extract
+	}
+}
+
 func (e *Engine) network() proto.NetworkConfig {
 	if e.networkConfig == nil {
 		return proto.NetworkConfig{}

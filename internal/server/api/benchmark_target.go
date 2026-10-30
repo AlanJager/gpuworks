@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -71,11 +72,16 @@ func (a *apiHandlers) resolveManagedBenchmarkTarget(r *http.Request, deploymentI
 	}
 	insts, _ := a.d.Store.InstancesForDeployment(dep.ID)
 	target := managedBenchmarkTarget{deployment: dep, instances: insts, model: dep.ServedName}
+	// Serving is judged by planning.InstanceAsleep, not the reported level: an
+	// instance under a sleep order its engine has not carried out is already
+	// refused by the gateway, so counting it as a benchmark candidate picks a
+	// replica that answers 503. The button stays enabled for a partly asleep
+	// running row, which is exactly when this distinction shows.
 	serving := func(inst *store.Instance) bool {
-		return inst.State == proto.InstRunning && inst.SleepLevel == 0 && !inst.Headless && inst.APIPort > 0
+		return inst.State == proto.InstRunning && !planning.InstanceAsleep(inst) && !inst.Headless && inst.APIPort > 0
 	}
 	for i := range insts {
-		if insts[i].State == proto.InstRunning && insts[i].SleepLevel == 0 {
+		if insts[i].State == proto.InstRunning && !planning.InstanceAsleep(&insts[i]) {
 			target.numGPUs += instanceGPUCount(insts[i])
 		}
 	}

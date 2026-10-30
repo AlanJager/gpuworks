@@ -144,7 +144,7 @@ specs:
         revision: 0f604ada3f766f9f257460c4c9f0b5d6f69d431b
     - modelscope:
         repo_id: LiquidAI/LFM2.5-1.2B-Instruct
-        revision: 0f604ada3f766f9f257460c4c9f0b5d6f69d431b
+        revision: 13b4e4e7ea44c4b052d7ebeec7dd3f959bd00a5b
   weight_bytes: 2340697936
   gpus:
     vendor: ppu

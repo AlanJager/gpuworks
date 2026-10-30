@@ -1,6 +1,8 @@
 # GLM-5.3-Flash
 
-原始 FP8 权重约 328.3 GB。NVIDIA 配方参照 [SGLang 配方](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash)：H200 用 TileLang DSA + BF16 KV，B200/B300 用 TRT-LLM DSA + FP8 KV；两者都接受单节点 4 卡或 8 卡（TP = EP = 卡数）。上游只给出 8 卡命令，4 卡由本平台按 GB300 的 TP4 配方补充。MI355X × 4 使用 [vLLM ROCm 配方](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash)，AMD 使用 ROCm 10 nightly 镜像。
+原始 FP8 权重约 328.3 GB。NVIDIA 配方参照 [SGLang 配方](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash)：H200/H20 用 TileLang DSA + BF16 KV，B200/B300 用 TRT-LLM DSA + FP8 KV；两者都接受单节点 4 卡或 8 卡（TP = EP = 卡数）。上游只给出 8 卡命令，4 卡由本平台按 GB300 的 TP4 配方补充。MI355X × 4 使用 [vLLM ROCm 配方](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash)，AMD 使用 ROCm 10 nightly 镜像。
+
+H20 共用 Hopper 配方；默认参数下，96 GB 版本使用 8 卡，4 卡会被显存准入拒绝；141 GB 版本可评估 4/8 卡。准入使用节点上报的实际显存。H20 尚未完成真机推理验证。
 
 昇腾档按 vLLM-Ascend v0.30.0rc2 的 A3 配方：单个 16 die 的 910C 节点、
 TP16/EP16、W8A8 权重、INT8 KV cache 和 1M 上下文。模板固定完整 ModelScope 快照。

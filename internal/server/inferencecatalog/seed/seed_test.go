@@ -32,10 +32,10 @@ func TestEmbeddedFlatCatalogSeedsIdempotentlyAndPreservesUserModels(t *testing.T
 	if err := st.ImportUserInferenceCatalog([]store.InferenceModel{user}, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := Seed(st); err != nil {
+	if err := reconcileEmbeddedCatalog(st); err != nil {
 		t.Fatal(err)
 	}
-	if err := Seed(st); err != nil {
+	if err := reconcileEmbeddedCatalog(st); err != nil {
 		t.Fatalf("second seed: %v", err)
 	}
 	if _, err := st.InferenceModelByModelID("me/custom"); err != nil {
@@ -238,4 +238,12 @@ func containsArgumentPair(args []string, flag, value string) bool {
 		}
 	}
 	return false
+}
+
+func reconcileEmbeddedCatalog(st *store.Store) error {
+	catalog, digest, err := CatalogWithDigest()
+	if err != nil {
+		return err
+	}
+	return inferencecatalog.ReconcileUpstreamCatalog(st, catalog, digest)
 }

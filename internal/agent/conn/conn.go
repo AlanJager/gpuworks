@@ -25,6 +25,7 @@ import (
 	"github.com/libp2p/go-yamux/v5"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/netinfo"
 	"gpuworks.ai/gpuworks/internal/agent/sysinfo"
 	"gpuworks.ai/gpuworks/internal/agent/terminal"
@@ -49,6 +50,9 @@ type Credentials struct {
 	// with (after "run"). The RPC upgrade path leaves this empty and preserves
 	// os.Args verbatim.
 	ResumeArgs []string
+	// Simulated is the machine a simulated node stands for, whose policy
+	// (hostsim) decides what the connection serves; nil is a real node.
+	Simulated *hostsim.Host
 }
 
 // RejectError is returned when the server explicitly rejects a handshake.
@@ -368,6 +372,7 @@ func (c *Conn) handshake() error {
 	if h, ok := c.handlers.(containerTerminalCapabilities); ok {
 		hello.Caps = append(hello.Caps, validatedContainerCaps(runtimeName(c.handlers), h.ContainerTerminalCapabilities())...)
 	}
+	hello.Caps = c.creds.Simulated.Capabilities(hello.Caps)
 	if h, ok := c.handlers.(runtimeAssetCache); ok {
 		hello.RuntimeAssetDigests = h.CachedRuntimeAssetDigests()
 	}
@@ -375,7 +380,7 @@ func (c *Conn) handshake() error {
 		hello.NodeUUID = c.creds.NodeUUID
 		hello.NodeToken = c.creds.NodeToken
 	}
-	hello.Hostname = sysinfo.Collect().Hostname
+	hello.Hostname = c.creds.Simulated.SysInfo(sysinfo.Collect()).Hostname
 	if h, ok := c.handlers.(interface{ OwnModelsDir() string }); ok {
 		hello.OwnModelsDir = h.OwnModelsDir()
 	}
@@ -578,7 +583,7 @@ func (c *Conn) statusLoop(ctx context.Context) {
 
 // reportStatus collects sysinfo + GPUs and sends a status.node envelope.
 func (c *Conn) reportStatus(ctx context.Context) {
-	sys := sysinfo.Collect()
+	sys := c.creds.Simulated.SysInfo(sysinfo.Collect())
 	gpus, probeErr := c.prober.Probe(ctx)
 	// Whether the vendor CLI answered, and whether that leaves the node's
 	// accelerators unknown, are two questions. The optional queries below
@@ -658,6 +663,9 @@ func (c *Conn) reportStatus(ctx context.Context) {
 	var network proto.NetInventory
 	if h, ok := c.handlers.(interface{ NetworkInventory() proto.NetInventory }); ok {
 		network = h.NetworkInventory()
+		if c.creds.Simulated.Simulated() {
+			network.EnginePortListeners = c.enginePortListeners()
+		}
 	} else {
 		network = netinfo.Collect()
 		// A simulated inventory brings its own management address; the
@@ -742,6 +750,12 @@ func (c *Conn) handleRPC(ctx context.Context, env proto.Envelope) {
 	var req rpcReqBody
 	if err := json.Unmarshal(env.D, &req); err != nil {
 		_ = c.send(proto.TRPCResp, env.ID, rpcRespBody{Error: "bad request"})
+		return
+	}
+	// The one door every RPC passes: a simulated node refuses here what
+	// would reach the real host, before any handler runs.
+	if err := c.creds.Simulated.RPC(req.Method, req.Params); err != nil {
+		_ = c.send(proto.TRPCResp, env.ID, rpcRespBody{Error: err.Error()})
 		return
 	}
 	if req.Method == proto.RPCAgentUpgrade {

@@ -10,13 +10,13 @@ The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes fo
 
 | Profile | Hardware | Notes |
 | --- | --- | --- |
-| `fp4-sglang-nvidia-h200-tp8` | 8× H200 | Upstream H200 low-latency command, 1M context, no speculation |
-| `fp4-sglang-nvidia-h200-tp8-throughput` | 8× H200 | Upstream H200 high-throughput command: up to 256 running requests |
-| `fp4-sglang-nvidia-h200-tp4-engram-host` | 4× H200 | `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` moves the ~196 GB Engram tables to host memory, leaving ~73 GB of backbone per GPU; needs ~250 GB of host RAM; 1M context |
-| `fp4-sglang-nvidia-h200-tp4-engram-host-dspark` | 4× H200 | The above plus DSpark; context capped at 256K (at 1M the decode CUDA-graph capture needs another 12 GiB that does not fit) |
+| `fp4-sglang-nvidia-h200-tp8` | 8× H200/H20 | Upstream H200 low-latency command, 1M context, no speculation |
+| `fp4-sglang-nvidia-h200-tp8-throughput` | 8× H200/H20 | Upstream H200 high-throughput command: up to 256 running requests |
+| `fp4-sglang-nvidia-h200-tp4-engram-host` | 4× H200/H20 (141 GB) | `SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` moves the ~196 GB Engram tables to host memory, leaving ~73 GB of backbone per GPU; needs ~250 GB of host RAM; 1M context |
+| `fp4-sglang-nvidia-h200-tp4-engram-host-dspark` | 4× H200/H20 (141 GB) | The above plus DSpark; context capped at 256K (at 1M the decode CUDA-graph capture needs another 12 GiB that does not fit) |
 | `fp4-sglang-nvidia-b200-tp4` | 4× B200/B300/GB300 | Upstream Blackwell low-latency command with DSpark |
 | `fp4-sglang-nvidia-b200-tp4-throughput` | 4× B200/B300/GB300 | Upstream Blackwell high-throughput command: no DSpark, up to 256 running requests |
-| `fp4-vllm-nvidia-h200-tp4-engram-host` | 4× H200 | Upstream H200 command: TP4 with the Engram tables in host memory (`--engram-config {"cpu_offload":true}`) |
+| `fp4-vllm-nvidia-h200-tp4-engram-host` | 4× H200/H20 (141 GB) | Upstream H200 command: TP4 with the Engram tables in host memory (`--engram-config {"cpu_offload":true}`) |
 | `fp4-vllm-nvidia-b200-tp2` | 2× B200 | Upstream B200 command: TP2, Engram tables in host memory (THP), for low concurrency |
 | `fp4-vllm-nvidia-b300-tp2` | 2× B300 | Upstream B300 command: TP2, Engram tables in host memory, up to 256 running requests |
 | `fp4-vllm-nvidia-blackwell-dep8` | 8× B200/B300 | Upstream single-node DEP command: data parallel 8 with expert parallel, for throughput |
@@ -25,6 +25,8 @@ The mixed FP8/FP4 checkpoint is about 510.3 GB. This template carries recipes fo
 | `int8-vllm-ascend-a3-tp4-dp4` | A3/910C × 16 logical dies | 1017 W8A8, DP4 × TP4, 150K context, ~781.5 GB of weights; Engram tables in host memory |
 
 The two 4× H200 SGLang profiles are platform additions; every switch they use comes from the upstream documentation.
+
+H20 reuses these profiles without changing their spec names. Under the default parameters, the 96 GB variant uses either SGLang 8-GPU profile; the three 4-GPU profiles still fail memory admission, while the 141 GB variant can be evaluated with them. Matching the model name does not bypass GPU-count or reported-memory checks. The H200 measurements below do not validate H20; H20 inference has not been tested on hardware.
 
 ## Ascend A3 prerequisites and measurements
 
