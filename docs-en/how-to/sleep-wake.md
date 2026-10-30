@@ -33,7 +33,7 @@ Once the command is sent, the gateway immediately stops forwarding new requests 
 
 ## Put an Entire Deployment to Sleep
 
-1. Open deployment details and select L1 or L2 **Sleep**.
+1. Open deployment details and select L1 or L2 **Sleep**. A deployment whose engine cannot sleep (**Sleep capable** is off, or the engine does not support sleep) shows no sleep or wake controls; the server says so in `schedule_capabilities.sleep` of the deployment details.
 2. In the confirmation page, choose to wait for completion or abort immediately, then confirm.
 3. Wait for the deployment's sleep label to show the selected level. Instances remain `running`, and `sleep_level` becomes 1 or 2. If only some complete, inspect each replica's status and failure reasons in the timeline. Sending the command does not mean that all instances have successfully gone to sleep.
 
@@ -94,7 +94,7 @@ After a wake is refused with `WAKE_INSUFFICIENT_GPU_MEMORY`, the console offers 
 
 | Approach | Entry Point | Effect |
 |---|---|---|
-| Wait | **Wait for room**, `?wait=true` | Replicas that fit wake first; the rest wait for room, and the server wakes them automatically once capacity frees up; it gives up after 30 minutes and records this in the timeline |
+| Wait | **Wait for room**, `?wait=true` | Replicas that fit wake first; the rest wait for room, and the server wakes them automatically once capacity frees up; it gives up after 30 minutes and records this in the timeline (the server gives this limit as `wake_wait_limit_sec` in the deployment details) |
 | Yield | **Put the occupants to sleep, then wake**, `?yield=true`, optionally `&yield_level=1\|2` (default 1) | First puts the awake deployments holding the needed cards to sleep, then places the wake into waiting; it completes automatically once they are asleep |
 
 ```bash
@@ -107,7 +107,7 @@ When everything fits, the response is 200 `{"status":"waking","woken":[...],"wai
 
 Details of yielding:
 
-- Occupants sleep at L1 by default; when the host memory of their node cannot hold L1, the platform switches to L2 automatically. Use `yield_level=2` to ask for L2 directly.
+- Occupants sleep at L1 by default; when the host memory of their node cannot hold L1, the platform switches to L2 automatically. Use `yield_level=2` to ask for L2 directly. `yield_level=1` is the yield policy's `auto`: L1 first, falling back to L2, and the yielding wake is not refused because L1 does not fit; a yield and a yielding wake follow the same rule.
 - If any occupant cannot sleep (a deployment that is not sleep-capable, the last awake role of a PD deployment, or a card held by a process outside the platform), the whole request is refused with 409 `WAKE_YIELD_BLOCKED` (`occupants` lists the names) and nothing changes.
 - The deployment put to sleep records `YIELDED_FOR_WAKE` in its timeline; unless a schedule says otherwise, it does not wake up by itself.
 

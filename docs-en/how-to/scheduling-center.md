@@ -42,6 +42,8 @@ Open **Scheduling Analysis** from the “Overview” group of the left menu (`/s
   | Grey, hatched | Its node is offline (as last reported, so possibly stale) |
   | Black inner outline | An instance on the card is starting, going to sleep, waking or draining |
 
+  A card has exactly one state, which the server derives in a fixed order (its node is offline, faulty, held by a process outside the platform, serving, asleep, free: the first that holds); the summary, the heatmap colours and the card states in the node drawer all use that one result, and the page only maps a state to its colour and words.
+
   Hover or keyboard-focus a cell to see the card's details: node, card index, model, memory, the shares that are serving, asleep and free, and its occupants (deployment, yield policy, serving or asleep). The heatmap itself carries no occupant detail, so even a thousand-card fleet costs one read of about 290 KB (about 25 KB gzipped).
 - **Filters and view**: filter by GPU model (several allowed), node label (`key=value`) and node state (has free cards, has sleepers, has cards held outside, offline); type a part of a deployment name in "Find a deployment" and the cards it occupies get a red ring while the rest fade, with a count of the occupied cards. Group by node (the default), by GPU model, or by the value of a node label; sort by name, by free capacity (the unclaimed memory of the cards, not counting offline, faulty or externally held cards) or by contention (sleepers waiting to wake, plus the requests held for deployments asleep on the node, plus the yields of deployments that have cards on it). **Clear filters and view** returns to the default.
 - **Node drawer**: click a cell or a node name and a drawer opens that node: a bar per card split into serving usage, the residue memory of sleepers and free memory, the occupants of each card (deployment and its yield policy, serving or asleep, sleep level, claim and residue), cards held by processes outside the platform marked, and below them the node's [residency timeline](#residency-timeline). The drawer reads only that one node, and only when it is open.
@@ -61,7 +63,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/overview" -H "Authorizatio
 curl --fail-with-body -sS "$API_URL/api/v1/scheduling/board?node=$NODE_UUID" -H "Authorization: Bearer $TOKEN"
 ```
 
-The overview's structure is in the [API reference](../reference/api.md#调度总览). `GET /api/v1/scheduling/board` can still be read page by page (`page`, `page_size`, `q`); the main structure of its response is below (`nodes` is a paged object; the other four items cover the whole cluster):
+The overview's structure is in the [API reference](../reference/api.md#调度总览). `GET /api/v1/scheduling/board` can still be read page by page (`page`, `page_size`, `q`; `q` matches part of a node's name, hostname or UUID, case-insensitively); the main structure of its response is below (`nodes` is a paged object; the other three items cover the whole cluster):
 
 ```json
 {
@@ -70,7 +72,8 @@ The overview's structure is in the [API reference](../reference/api.md#调度总
       "uuid": "…", "name": "host2", "online": true,
       "gpus": [{
         "index": 0, "name": "RTX 8000", "memory_bytes": 51539607552,
-        "awake_bytes": 0, "sleeping_bytes": 1610612736, "free_bytes": 49928994816, "held_outside": false,
+        "awake_bytes": 0, "sleeping_bytes": 1610612736, "free_bytes": 49928994816,
+        "state": "asleep", "held_outside": false, "switching": false,
         "occupants": [{
           "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice", "instance": "…", "state": "asleep",
           "sleep_level": 2, "claim_bytes": 38654705664, "residue_bytes": 1610612736
@@ -79,11 +82,11 @@ The overview's structure is in the [API reference](../reference/api.md#调度总
     }],
     "page": 1, "page_size": 20, "total": 3
   },
-  "pending": [], "waiting_wakes": [], "upcoming": [], "recent": []
+  "pending": [], "waiting_wakes": [], "upcoming": []
 }
 ```
 
-The real `free_bytes` and the other sizes are integer bytes, and the values above are only illustrative; `residue_bytes` appears only on sleeping occupants. `recent` (the latest 50 automation events) is kept for compatibility; the page reads the scheduling history below instead.
+The real `free_bytes` and the other sizes are integer bytes, and the values above are only illustrative; `residue_bytes` appears only on sleeping occupants. The `state` of each card takes the same values as the overview (`offline`, `unhealthy`, `held_outside`, `awake`, `asleep`, `free`), and `switching` says an instance on the card is starting, going to sleep, waking or draining. The board no longer carries `recent` (the latest automation events); read the scheduling history below for those.
 
 ### Residency Timeline
 
@@ -96,7 +99,7 @@ The **Residency timeline** in the node drawer draws a horizontal time axis for e
 | Switching | Between a sleep or wake order and its result |
 | Starting | Being created, pulling its image or loading; not serving yet |
 
-The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours.
+The time ticks are drawn to scale. Hover a block, or focus it with the keyboard, to see the deployment, the state and the start and end times. The window is 6 or 24 hours (6 by default); any other `hours` returns 400 `FIELD_INVALID`, with a message saying the choices are `6, 24`.
 
 The **Deployments sharing cards** table on the page lists the deployments across the whole cluster that held cards in the window and whose yield policy is not never yield (the drawer shows the same table under its timeline, limited to the deployments that held that node's cards):
 
@@ -121,6 +124,7 @@ curl --fail-with-body -sS \
 
 What the figures mean and where they stop:
 
+- **A yield is counted one way**: the overview's "yields in the last hour", the timeline's "Yielded" and "Yielded to", and the shared-cards table count the same kind of event: the residency arbiter putting a holder to sleep (a yield), and an operator's yielding wake (`?yield=true`) putting an occupant to sleep. An operator's yielding wake also records which deployment it was for (`for_deployment`), so it links to that deployment in the [scheduling history](#调度记录) and counts in that deployment's "Yielded to" too.
 - The timeline is derived from instance records and the event log; nothing else is stored for it. Removing an instance now also records an `INSTANCE_REMOVED` event naming the node and cards it held; instances removed before the upgrade have no such record and do not appear in past segments.
 - With `node`, only the nodes named in the request count: replicas of a deployment on other nodes are not part of its serving time, and "yielded to" counts only the deployments that also held these cards giving way to it. `sharing=1` counts all the instances of these deployments across the cluster, reads only as much as the number of sharing deployments, and its result is cached for about 30 seconds.
 - A follower of a multi-node replica follows its leader's sleep and wake.
@@ -135,6 +139,8 @@ Each deployment can have any number of entries, each of which is “do an action
 2. Tick the weekdays and enter the time (HH:MM).
 3. The time zone defaults to the server's own; each entry can use a different IANA time zone (such as `Asia/Shanghai`).
 4. Save. You can disable, edit, or delete an entry at any time; the list shows the next run time.
+
+Which actions can be added is told by the server for each deployment (`schedule_capabilities` in the deployment details): a deployment whose engine cannot sleep (**Sleep capable** is off, or the engine does not support sleep) offers no **Sleep** or **Wake**, and the deployment details show no sleep or wake controls either. The range of **Replicas** (1 to `max_replicas` for a single-node deployment, per role for a PD deployment, down to 0 for a role its mode allows to be empty) and the reason a replica count cannot be scheduled (manual placement, for example) also come from the server; the page does not work them out itself.
 
 The API lives under `/api/v1/deployments/{id}/schedule`:
 
@@ -174,6 +180,7 @@ Request fields: `action` (`sleep` / `wake` / `replicas`), `weekdays` (0 for Sund
 - **Manual operations are not overridden repeatedly**: an entry acts once at its time, and if you then wake or sleep by hand, the entry does not change it back on the next round.
 - **A new or edited entry takes effect from its next occurrence** and does not look back at earlier ones.
 - When two entries of one deployment are due together (the server was down across both), the earlier runs first and the newer runs last and stands.
+- **An entry in a time zone the server does not know does not run and has no next run time.** A time zone the server does not know is rejected when an entry is created or edited (`SCHEDULE_TIMEZONE_UNKNOWN`), so this only happens when the server later loses that zone's data; the API gives no `next_at` for such an entry and the evaluator does not run it, so the two agree and the entry is never quietly run in the server's zone instead.
 - When an action fails (the deployment cannot sleep, it does not fit, and so on), the timeline records `SCHEDULE_ACTION_FAILED` and the occurrence still counts as handled; it is not retried on every tick.
 - **A scheduled wake that does not fit**: replicas that fit wake first and the rest go into a waiting wake (timeline `WAKE_WAITING`) rather than failing outright.
 
@@ -199,6 +206,7 @@ When a wake is refused with `WAKE_INSUFFICIENT_GPU_MEMORY`, the console offers t
 
 - Waiting takes only room that is already there and makes no one give way; once capacity is released the server usually wakes the deployment within 10 seconds, and gives up after 30 minutes with `WAKE_WAIT_TIMEOUT` in the timeline.
 - Yielding puts the occupants to sleep first; if an occupant cannot sleep, the whole request is refused with 409 `WAKE_YIELD_BLOCKED` and nothing changes.
+- The time after which a wait gives up comes from the server: it is `wake_wait_limit_sec` (seconds) in the deployment details, and the page's hints use that number.
 - While waiting, the deployment details show a waiting banner and the start (`wake_waiting_since`), and you can click **Cancel waiting**, which maps to `DELETE /deployments/{id}/wake-waiting`. The start of the wait is stored in the database, so the wait continues after a server restart.
 - When a process outside the platform holds the card, neither waiting nor yielding takes effect: the wake is refused outright with 409 `WAKE_GPU_HELD_OUTSIDE`.
 
@@ -233,7 +241,7 @@ These defaults, which parameters apply to which policy, and the range of each pa
 
 - **Idle time**: how long without a user request counts as idle. The platform's own health checks are not user requests. Once idle this long, the deployment yields if another one waits for these cards.
 - **Longest serving time**: when two yield-on-a-turn deployments share cards and one waits for the other's, the holder yields once it has served this long since it last woke.
-- **Sleep level** applies to every sleep the platform chooses for the deployment (a yield); sleeps an operator orders by hand or a schedule entry specifies use their own level and are unaffected.
+- **Sleep level** applies to every sleep the platform chooses for the deployment (a yield); sleeps an operator orders by hand or a schedule entry specifies use their own level and are unaffected. `auto` has one meaning: L1 first, falling back to L2 when this node's host memory cannot hold the weights. An operator's yielding wake with `yield_level=1` (the default) and the yield policy's `auto` follow the same rule; only the yield policy's `l1` and an operator's direct L1 sleep (`sleep?level=1`) are strict L1 and refuse when it does not fit.
 - **`wait` of `unfinished`**: when yielding, the gateway first stops sending new requests to the deployment (they are held), and the deployment sleeps once the in-flight requests finish, waiting at most `unfinished_wait_sec` seconds and cutting off what is left then. There is no “unbounded” option: one very long request holds a waiter for at most 600 seconds.
 - **Two yield-when-idle deployments may share a card**: while both are busy neither yields, so one side's requests are held by the gateway until the other is idle, or until they reach their own `hold_max_sec` and get a 503. When you set the policy, `idle_neighbours` in the response lists such neighbours and the UI shows a warning; to make them take turns, use yield on a turn.
 - The rule is applied at the moment a yield falls due, not at a periodic evaluation, so thresholds of 15 or 30 seconds hold to about a second.
@@ -246,7 +254,7 @@ In the **Scheduling policy** card in deployment details, click **Edit** and use 
 2. Below it only the parameters that apply to the current policy are shown.
 3. Save.
 
-When creating a deployment (with **Sleep capable** on) you can also choose a yield policy; the other parameters take their defaults, and you edit them after creation.
+When creating a deployment (with **Sleep capable** on) you can also choose a yield policy; the other parameters take their defaults, and you edit them after creation. The create form sends the chosen policy to the server as it is, and the server checks it against "sleep capable, single-node, not PD" and refuses it when it does not hold (see the table below); the deployment details' `yield_policy_eligible` and the `yield_policy_eligible` that the evaluate response works out for the draft tell the page this result in advance (`ok`, and when not allowed `reason` is `SLEEP_NOT_ENABLED`, `SLEEP_ENGINE_UNSUPPORTED` or `YIELD_POLICY_SHAPE`), and the page disables the policies that cannot be chosen and shows the reason.
 
 The API has a single entry point, `PUT /api/v1/deployments/{id}/yield-policy`. The request body carries `policy` plus any parameters; a missing parameter takes the default of that policy. The first request below sets yield when idle with all defaults, and the second sets yield on a turn, a turn of 300 s, and waits at most 60 s for unfinished requests when yielding:
 
@@ -284,7 +292,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-In the response, `policies` lists the four policies from the highest rank to the lowest, each with `defaults` (the values filled in when it is chosen) and `applies` (the names of the parameters that apply); `bounds` holds the range of each numeric parameter, with `at_most` naming another parameter it may not exceed; `sleep_levels` and `unfinished` are the values of the two enumerated parameters. See the [API reference](../reference/api.md#出让策略).
+In the response, `policies` lists the four policies from the highest rank to the lowest, each with `defaults` (the values filled in when it is chosen) and `applies` (the names of the parameters that can apply); `applies_when` says which parameters apply only when another parameter has certain values, currently `{"unfinished_wait_sec":{"unfinished":["wait"]}}`, that is, the wait time means something only when `unfinished` is `wait`, and the editor reads it instead of keeping the rule itself; `bounds` holds the range of each numeric parameter, with `at_most` naming another parameter it may not exceed; `sleep_levels` and `unfinished` are the values of the two enumerated parameters. See the [API reference](../reference/api.md#出让策略).
 
 ### Choosing a Yield Policy
 
@@ -314,9 +322,11 @@ When you create a new deployment (or add a replica to one), the cards it needs m
 
 The reason's parameters are `node`, `holders` (one entry per holding deployment: `deployment`, `at_once`, and when it does not give way at once also `idle_sec`, and for yield-on-a-turn also `max_serve_sec`, that is, the terms on which it gives the cards to this new deployment) and `instances`. Once the holders are asleep, the replica is placed and started automatically; nothing needs to be done by hand. In short:
 
+- The deployment form's preview (`POST /api/v1/evaluate`) says what the controller says: when the replica does not fit but would once the holders yield, the preview's `plan` and the per-node `candidates[].reason` of automatic placement are likewise `waiting_for_yield`; when it does not fit only because sleepers keep the cards, they are `reserved_for_sleepers`, rather than a plain "does not fit".
 - The holders sleep under [the same yield rule](../explanation/service-levels.md#让卡规则), using the yield policy of the new deployment: when the new deployment ranks higher, yield-on-a-turn and yield-anytime holders give way at once; otherwise a holder gives way once idle for its idle time; between two yield-on-a-turn deployments it gives way when the holder has served its longest serving time this turn.
 - A new deployment with never yield waits for nobody and needs the cards to be free; a holder with never yield is never asked to give way, so the new replica still waits as one that does not fit.
-- The controller plans the replica again every 5 seconds. A replica of a deployment with a node pool takes a node that needs a yield only when no node fits outright.
+- The controller plans the replica again every 5 seconds. A replica of a deployment with a node pool takes a node that needs a yield only when no node fits outright. A replica already waiting for the holders on one node to yield is looked at on that node first each time: if it still fits once its holders sleep, only that node is planned again; the search goes on to the other nodes of the pool only when it no longer fits even with the holders' yield.
+- While a yield lands, the residency arbiter looks every 250 milliseconds, for up to two minutes, whether it has landed; it then looks only at the waiting wakes of the deployment the yield was for and no longer goes through every waiting wake in the cluster, and the waiter's wake still lands within one look of the holder going to sleep.
 - A holder that gave way does not take the cards back while the new replica is being placed and started (up to 10 minutes); the new replica's turn and idle time count from when it begins to serve.
 - The wait lives in server memory only; after a restart the controller notes it again on its first pass.
 
@@ -367,7 +377,7 @@ Automatic actions are written to the deployment timeline (event kind `automation
 | `WAKE_WAITING` | A wake did not fit and now waits for room | `trigger` (`schedule` / `operator`), `instances`, `yielded` |
 | `WAKE_WAIT_TIMEOUT` | The wait ended after 30 minutes | `trigger`, `instances`, `waited_sec` |
 | `SCHEDULE_ACTION_FAILED` | An automatic action did not succeed and is not retried | `trigger`, `action`, `reason`, `reason_code`, `schedule_id`, `level`, `replicas`, `role` (PD) |
-| `YIELDED_FOR_WAKE` | Recorded on the deployment put to sleep to make room: for whom, and to which level | `deployment`, `instances`, `level` |
+| `YIELDED_FOR_WAKE` | Recorded on the deployment put to sleep to make room: for whom, and to which level; the scheduling history links the deployment named by `for_deployment` | `deployment`, `for_deployment`, `instances`, `level` |
 
 An order an operator gives through the API is also written to the deployment timeline (event kind `schedule`) with `actor` (the user name):
 

@@ -42,6 +42,8 @@
   | 灰斜纹 | 所在节点离线（上次上报的数，不一定准） |
   | 黑色内框 | 卡上有实例正在启动、休眠、唤醒或排空 |
 
+  一张卡只有一个状态，由服务端按固定的先后判定（所在节点离线、故障、被平台外进程占用、提供服务、休眠、空闲，取第一个成立的）；总览的汇总、热力图的颜色和节点抽屉里每张卡的状态用的是同一份结果，页面只负责配色和措辞。
+
   鼠标悬停或键盘聚焦一个方格，会弹出这张卡的详情：节点、卡序号、型号、显存、提供服务 / 休眠 / 空闲各占几成，以及占用者（部署、出让策略、提供服务还是休眠）。热力图本身不带占用者的明细，所以千卡规模也只需要一次约 290 KB（gzip 后约 25 KB）的读取。
 - **筛选与视图**：按 GPU 型号（可多选）、节点标签（`key=value`）、节点状态（有空闲卡、有休眠者、有卡被外部占用、离线）筛选；在「查找部署」里输入部署名的一部分，占着卡的方格会加红圈，其余变淡，并显示有多少张卡被占用。分组可选按节点（默认）、按 GPU 型号，或按某个节点标签的值；排序可选按名称、按空闲容量（卡上没被占用的显存之和，不计离线、故障、被外部占用的卡）、按争用（等位的休眠实例，加为该节点上休眠的部署挂起的请求，再加该节点上有卡的部署的让位次数）。**清除筛选与视图**回到默认。
 - **节点抽屉**：点击一个方格或节点名，右侧抽屉打开这个节点：每张卡一条横条，分提供服务的占用、休眠留下的残留显存和空闲，卡上的占用者（部署及其出让策略，提供服务或休眠、休眠级别、分配量和残留），被平台外进程占着的卡会标出，下面是这个节点的[驻留时间线](#驻留时间线)。抽屉只在打开时读这一个节点。
@@ -61,7 +63,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/overview" -H "Authorizatio
 curl --fail-with-body -sS "$API_URL/api/v1/scheduling/board?node=$NODE_UUID" -H "Authorization: Bearer $TOKEN"
 ```
 
-总览的结构见 [API 参考](../reference/api.md#调度总览)。看板接口 `GET /api/v1/scheduling/board` 仍可按节点分页读取（`page`、`page_size`、`q`），响应的关键结构如下（`nodes` 是分页对象，其余四项是全集群范围）：
+总览的结构见 [API 参考](../reference/api.md#调度总览)。看板接口 `GET /api/v1/scheduling/board` 仍可按节点分页读取（`page`、`page_size`、`q`；`q` 匹配节点名称、主机名或 UUID 的一部分，不分大小写），响应的关键结构如下（`nodes` 是分页对象，其余三项是全集群范围）：
 
 ```json
 {
@@ -70,7 +72,8 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/board?node=$NODE_UUID" -H 
       "uuid": "…", "name": "host2", "online": true,
       "gpus": [{
         "index": 0, "name": "RTX 8000", "memory_bytes": 51539607552,
-        "awake_bytes": 0, "sleeping_bytes": 1610612736, "free_bytes": 49928994816, "held_outside": false,
+        "awake_bytes": 0, "sleeping_bytes": 1610612736, "free_bytes": 49928994816,
+        "state": "asleep", "held_outside": false, "switching": false,
         "occupants": [{
           "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice", "instance": "…", "state": "asleep",
           "sleep_level": 2, "claim_bytes": 38654705664, "residue_bytes": 1610612736
@@ -79,11 +82,11 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/board?node=$NODE_UUID" -H 
     }],
     "page": 1, "page_size": 20, "total": 3
   },
-  "pending": [], "waiting_wakes": [], "upcoming": [], "recent": []
+  "pending": [], "waiting_wakes": [], "upcoming": []
 }
 ```
 
-实际 `free_bytes` 等是字节整数，上面是示意；`residue_bytes` 只在休眠的占用者上出现。`recent`（最近 50 条自动化事件）为兼容保留，页面改读下面的调度记录。
+实际 `free_bytes` 等是字节整数，上面是示意；`residue_bytes` 只在休眠的占用者上出现。每张卡的 `state` 与总览同一套取值（`offline`、`unhealthy`、`held_outside`、`awake`、`asleep`、`free`），`switching` 表示卡上有实例正在启动、休眠、唤醒或排空。看板不再带 `recent`（最近的自动化事件），那些事件看下面的调度记录。
 
 ### 驻留时间线
 
@@ -96,7 +99,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/board?node=$NODE_UUID" -H 
 | 切换中 | 从休眠或唤醒指令到结果之间 |
 | 启动中 | 创建、拉取镜像或加载中，还不能服务 |
 
-时间刻度按比例绘制，悬停或用键盘聚焦色块可以看到部署、状态和起止时间。窗口可选 6 小时或 24 小时。
+时间刻度按比例绘制，悬停或用键盘聚焦色块可以看到部署、状态和起止时间。窗口可选 6 小时或 24 小时（默认 6）；`hours` 给其他值时 400 `FIELD_INVALID`，消息写明可选的是 `6, 24`。
 
 页面上的**共卡部署**表列出整个集群里在窗口内占过卡、出让策略不是不自动出让的部署（抽屉的时间线下面有同样的表，只含占过这个节点的卡的部署）：
 
@@ -121,6 +124,7 @@ curl --fail-with-body -sS \
 
 口径和限制：
 
+- **让出只有一个口径**：总览的「最近一小时的让位次数」、时间线的「让出」「被让」和共卡部署表数的是同一类事件——驻留仲裁让占卡者休眠（让卡），以及运维的让位唤醒（`?yield=true`）让占用者休眠。运维的让位唤醒同样记下为哪个部署让（`for_deployment`），所以它在[调度记录](#调度记录)里同样链接到那个部署，那个部署的「被让」也会计上这一次。
 - 时间线由实例记录和事件日志推导，不另存数据。移除实例时会多记一条 `INSTANCE_REMOVED` 事件，写明它占过的节点和卡；升级前已被移除的实例没有这条记录，不出现在过去的段里。
 - 带 `node` 时只统计请求里列出的节点：部署在别的节点上的副本不计入提供服务时长；「被让」只计同样在这些卡上出现过的部署为它让出的次数。`sharing=1` 统计的是这些部署在整个集群里的全部实例，读取量只与共卡部署的数量有关，结果缓存约 30 秒。
 - 多机副本的从属实例跟随主实例的休眠与唤醒。
@@ -135,6 +139,8 @@ curl --fail-with-body -sS \
 2. 勾选周几，填写时间（HH:MM）。
 3. 时区默认是 server 所在时区，每条可以改成别的 IANA 时区（如 `Asia/Shanghai`）。
 4. 保存。可以随时停用、修改或删除一条计划；列表里显示下一次执行时间。
+
+能添加哪些动作由服务端按部署告知（部署详情里的 `schedule_capabilities`）：引擎不能休眠的部署（没打开**可休眠**，或引擎不支持休眠）不提供**休眠**和**唤醒**，部署详情里也不显示休眠、唤醒控件；**副本数**的可选范围（单机部署 1–`max_replicas`，PD 部署按角色，模式允许为空的角色可到 0）和不能定副本数的原因（例如手动放置）同样来自服务端，界面不自己推断。
 
 API 在 `/api/v1/deployments/{id}/schedule` 下：
 
@@ -174,6 +180,7 @@ curl --fail-with-body -sS -X POST \
 - **手动操作不会被反复覆盖**：计划只在时间点上动一次，之后你再手动唤醒或休眠，计划不会在下一轮把它改回去。
 - **新建或修改的计划从它的下一个时间点起生效**，不追溯过去的时间点。
 - 同一个部署有两条计划同时到期（server 停机跨过了两个时间点）时，先执行较早的，较新的最后执行并留下效果。
+- **时区 server 不认识的计划不会执行，也没有下一次执行时间**：新建和修改时 server 不认识的时区会被拒绝（`SCHEDULE_TIMEZONE_UNKNOWN`），所以只会发生在 server 之后丢了这个时区数据的情况；这样的计划接口里不给 `next_at`，评估器也不执行，两边一致，不会悄悄改按 server 时区跑。
 - 动作失败（部署不可休眠、放不下等）时，时间线记 `SCHEDULE_ACTION_FAILED`，该时间点也算已处理，不会每个 tick 重复尝试。
 - **定时唤醒放不下**时，放得下的先醒，其余进入唤醒等位（时间线 `WAKE_WAITING`），不会直接失败。
 
@@ -199,6 +206,7 @@ curl --fail-with-body -sS -X POST \
 
 - 等位只拿现成的空位，不会让任何人让出；资源被释放后，服务端通常在 10 秒内自动唤醒，等满 30 分钟放弃，时间线记 `WAKE_WAIT_TIMEOUT`。
 - 让位先让占用者休眠；占用者不能休眠时整个请求 409 `WAKE_YIELD_BLOCKED`，什么都不改。
+- 等位的放弃时限由服务端给出，部署详情的 `wake_wait_limit_sec`（秒）就是它，界面的提示按这个数写。
 - 部署详情在等位期间显示等位横幅和起点（`wake_waiting_since`），可点**取消等位**，对应 `DELETE /deployments/{id}/wake-waiting`。等位起点保存在数据库，server 重启后继续等。
 - 卡被平台外的进程占着时，等位和让位都不会生效：唤醒直接 409 `WAKE_GPU_HELD_OUTSIDE`。
 
@@ -233,7 +241,7 @@ curl --fail-with-body -sS -X POST \
 
 - **闲置时间**：多久没有用户请求算闲置。平台自发的健康检查不算用户请求。闲置满这么久，有别的部署在等这批卡，它就让。
 - **最长服务时间**：两个按时自动出让的部署同在一批卡上、一个在等另一个的卡时，占卡的一方这一次醒来服务满最长服务时间就让。
-- **休眠级别**适用于平台替这个部署选的每一次休眠（让卡）；运维手动下的和定时计划里的休眠按各自指定的级别，不受它影响。
+- **休眠级别**适用于平台替这个部署选的每一次休眠（让卡）；运维手动下的和定时计划里的休眠按各自指定的级别，不受它影响。`auto` 只有一个意思：先 L1，这个节点的主机内存放不下权重时退回 L2。运维让位唤醒的 `yield_level=1`（默认）与出让策略的 `auto` 是同一条规则；只有出让策略的 `l1` 和运维直接下的 L1 休眠（`sleep?level=1`）是严格 L1，放不下就拒绝。
 - **`unfinished` 的 `wait`**：出让时网关先停止给这个部署接新请求（新请求挂起），等进行中的请求结束再休眠，最多等 `unfinished_wait_sec` 秒，到时剩下的请求被中断。等待没有“不限时”的选项：一个很长的请求最多拖住等卡者 600 秒。
 - **两个闲置自动出让的部署可以共用一张卡**：两边都忙时谁都不让，一方的请求被网关挂起，直到对方闲置，或挂到自己的 `hold_max_sec` 后得到 503。设置时响应的 `idle_neighbours` 列出这样的邻居，界面会提示；要让它们轮流，改用按时自动出让。
 - 规则在让卡到期的那一刻执行，而不是等周期性的评估，所以 15 秒、30 秒这样的阈值能准到约一秒。
@@ -246,7 +254,7 @@ curl --fail-with-body -sS -X POST \
 2. 再往下只显示对当前策略适用的参数。
 3. 保存。
 
-创建部署时（打开**可休眠**后）也可以选出让策略，其余参数取默认值，要改在创建后编辑。
+创建部署时（打开**可休眠**后）也可以选出让策略，其余参数取默认值，要改在创建后编辑。创建表单把选定的策略原样发给服务端，由服务端按「可休眠、单机、非 PD」检查并在不满足时拒绝（同下表）；部署详情的 `yield_policy_eligible` 和评估响应里按草稿算出的 `yield_policy_eligible` 把这个结果提前告诉界面（`ok`，不行时 `reason` 为 `SLEEP_NOT_ENABLED`、`SLEEP_ENGINE_UNSUPPORTED` 或 `YIELD_POLICY_SHAPE`），界面据此禁用不能选的策略并显示原因。
 
 API 只有一个入口 `PUT /api/v1/deployments/{id}/yield-policy`。请求体带 `policy` 加任意参数，缺的参数取这个策略的默认值。下面第一个请求设为闲置自动出让并全取默认值，第二个设为按时自动出让、轮流服务 300 秒、出让时最多等 60 秒：
 
@@ -284,7 +292,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-响应的 `policies` 按等级从高到低列出四个策略，每个带 `defaults`（选它时填入的值）和 `applies`（适用的参数名）；`bounds` 是各数值参数的范围，`at_most` 指出不得超过的另一个参数；`sleep_levels` 与 `unfinished` 是两个枚举参数的取值。详见 [API 参考](../reference/api.md#出让策略)。
+响应的 `policies` 按等级从高到低列出四个策略，每个带 `defaults`（选它时填入的值）和 `applies`（可能适用的参数名）；`applies_when` 说明哪些参数只在另一个参数取某些值时才适用，目前是 `{"unfinished_wait_sec":{"unfinished":["wait"]}}`，即等待时长只在 `unfinished` 为 `wait` 时有意义，编辑器读它，不自己写这条规则；`bounds` 是各数值参数的范围，`at_most` 指出不得超过的另一个参数；`sleep_levels` 与 `unfinished` 是两个枚举参数的取值。详见 [API 参考](../reference/api.md#出让策略)。
 
 ### 怎样选出让策略
 
@@ -314,9 +322,11 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
 
 原因的参数是 `node`、`holders`（每个占卡部署一项：`deployment`、`at_once`，不是立即让时还有 `idle_sec`，按时自动出让的还有 `max_serve_sec`，即它按什么条件把卡让给这个新部署）和 `instances`。占卡者睡下后副本自动放置、启动，不需要手动操作。要点：
 
+- 部署表单的预览（`POST /api/v1/evaluate`）说的和控制器一样：放不下、但占卡者让卡就能放下时，预览的 `plan` 和自动放置逐节点的 `candidates[].reason` 同样是 `waiting_for_yield`；只因休眠者留着卡放不下时是 `reserved_for_sleepers`，不会笼统写成放不下。
 - 占卡者按[同一条让卡规则](../explanation/service-levels.md#让卡规则)休眠，用的是新部署的出让策略：新部署等级更高时，按时自动出让、随时出让的占卡者立即让；否则闲置满它的闲置时间才让；同为按时自动出让时，在这一轮服务满最长服务时间时让。
 - 新部署是不自动出让时不等任何人，卡必须空闲；不自动出让的占卡者从不被要求让卡，新副本仍按放不下等待。
-- 控制器每 5 秒重新算一次。节点池里的副本只有在没有节点能直接放下时，才选需要等卡的节点。
+- 控制器每 5 秒重新算一次。节点池里的副本只有在没有节点能直接放下时，才选需要等卡的节点。已经在等某个节点上的占卡者让卡时，每次重新算先只看那个节点：它的占卡者睡下后仍放得下，就只重算这一个节点；只有它即使占卡者让卡也放不下了，才继续在池里的其他节点上找。
+- 占卡者让卡期间，驻留仲裁每 250 毫秒看一次让卡有没有落地，最多两分钟；这时它只看为之让卡的那个部署的等位唤醒，不再逐个检查全集群的等位唤醒；占卡者一睡下，对方的唤醒仍在一次检查内落地。
 - 占卡者让卡后，在新副本放置、启动期间（最多 10 分钟）不会把卡拿回去；新副本的一轮服务和闲置时间从它开始服务算起。
 - 这份等待只在 server 内存里，重启后控制器第一轮重新记下。
 
@@ -367,7 +377,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
 | `WAKE_WAITING` | 一次唤醒放不下，进入等位 | `trigger`（`schedule` / `operator`）、`instances`、`yielded` |
 | `WAKE_WAIT_TIMEOUT` | 等位满 30 分钟放弃 | `trigger`、`instances`、`waited_sec` |
 | `SCHEDULE_ACTION_FAILED` | 自动动作没成功，不自动重试 | `trigger`、`action`、`reason`、`reason_code`、`schedule_id`、`level`、`replicas`、`role`（PD） |
-| `YIELDED_FOR_WAKE` | 记在被让位休眠的部署上：为谁让位、休眠到几级 | `deployment`、`instances`、`level` |
+| `YIELDED_FOR_WAKE` | 记在被让位休眠的部署上：为谁让位、休眠到几级；调度记录据 `for_deployment` 链接到被让位的部署 | `deployment`、`for_deployment`、`instances`、`level` |
 
 运维通过接口下的指令也写进部署时间线（事件类型 `schedule`），并带 `actor`（用户名）：
 
