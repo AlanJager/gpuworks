@@ -20,10 +20,6 @@ import (
 )
 
 const (
-	// DefaultDir is the control-plane install directory. It is a subdirectory of
-	// the agent's /opt/gpuworks so both can run on one host without sharing a
-	// state directory.
-	DefaultDir = "/opt/gpuworks/server"
 	// ServiceName is the systemd unit basename ("gpuworks.service").
 	ServiceName = "gpuworks"
 	// DefaultServiceUser runs the service when the operator does not opt out.
@@ -67,22 +63,23 @@ type Layout struct {
 }
 
 // NewLayout fills in the derived directories. An empty dir means DefaultDir;
-// empty data/logs dirs are placed inside dir. Every directory is made absolute
+// empty data/logs dirs are placed inside dir. A leading ~ is expanded (see
+// ExpandHome), and every directory is made absolute
 // against the working directory: the nohup service starts the binary with the
 // install directory as its working directory, so a relative --dir would be
 // resolved a second time there (gpuworks/server/gpuworks/server/gpuworks).
 func NewLayout(dir, dataDir, logsDir string) Layout {
-	dir = strings.TrimRight(strings.TrimSpace(dir), "/")
+	dir = strings.TrimRight(ExpandHome(strings.TrimSpace(dir)), "/")
 	if dir == "" {
 		dir = DefaultDir
 	}
 	dir = absolutePath(dir)
-	dataDir = strings.TrimSpace(dataDir)
+	dataDir = ExpandHome(strings.TrimSpace(dataDir))
 	if dataDir == "" {
 		dataDir = filepath.Join(dir, "data")
 	}
 	dataDir = absolutePath(dataDir)
-	logsDir = strings.TrimSpace(logsDir)
+	logsDir = ExpandHome(strings.TrimSpace(logsDir))
 	if logsDir == "" {
 		logsDir = filepath.Join(dir, "logs")
 	}
@@ -102,7 +99,7 @@ func NewLayout(dir, dataDir, logsDir string) Layout {
 // of exe when exe is the binary installed there (it holds server.yaml, or the
 // install.json of an installation made before it), DefaultDir otherwise. A
 // host can carry more than one installation, and `/opt/b/gpuworks upgrade`
-// silently upgrading /opt/gpuworks/server instead is the surprise this avoids.
+// silently upgrading the default installation instead is the surprise this avoids.
 func DirOf(exe string) string {
 	if dir, ok := installationDirOf(exe); ok {
 		return dir

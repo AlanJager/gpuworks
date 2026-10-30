@@ -125,7 +125,7 @@ func (p *SSHPrechecker) PrecheckSSH(ctx context.Context, req SSHPrecheckRequest)
 		privilege := macPrivilegeCheck(ctx, client, req.SSHAuth)
 		report.Checks = append(report.Checks, privilege)
 		admin := privilege.Status == "ok"
-		dir := macInstallDir(ctx, client, requested, admin)
+		dir := macInstallDir(ctx, client, requested)
 		report.Checks = append(report.Checks, ProbeMacInstallDir(ctx, client, dir, admin).Checks...)
 	} else {
 		report.Checks = append(report.Checks, ProbeInstallDirForRuntime(ctx, client, installDir(requested), req.InstanceKind, req.ProviderKind, req.RuntimeDriver).Checks...)

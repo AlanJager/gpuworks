@@ -67,7 +67,7 @@
 ## data-dir 与 origin
 
 - data-dir 解析顺序：`--data` > 二进制旁边的 `server.yaml` > 默认安装目录的 `server.yaml`
-  （`/opt/gpuworks/server/server.yaml`）> 开发态 `./data`。CLI 每次都会打印它用了哪个
+  （`/opt/gpuworks/server/server.yaml`，macOS 上 `~/gpuworks/server/server.yaml`）> 开发态 `./data`。CLI 每次都会打印它用了哪个
   （`--url-only` 除外，那时 stdout 只有地址）。
 - origin 一般不用填：用 server 启动时记下的**实际监听**地址（通配地址转成 loopback，IPv6 也处理），
   没有记录时取安装目录 `server.yaml` 的第一个 console 地址；都不合适时用 `--origin`。server 改了监听

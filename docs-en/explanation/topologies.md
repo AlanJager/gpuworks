@@ -39,7 +39,7 @@ flowchart LR
 | agent → server | Same port, through `127.0.0.1` | Node access (local loopback; no external firewall access required) |
 
 For local use only, you do not need to open any firewall ports. To access the console or `/v1` from another machine, open the port on the listen address.
-The default control plane and agent installation directories do not overwrite each other (`/opt/gpuworks/server` and `/opt/gpuworks`), so they can coexist on the same machine. When connecting through
+The default control plane and agent installation directories do not overwrite each other (`/opt/gpuworks/server` and `/opt/gpuworks`; `~/gpuworks/server` and `~/gpuworks` on macOS), so they can coexist on the same machine. When connecting through
 `127.0.0.1`, the node's “Management network address” is the address of the network interface used by the default route.
 
 **How to configure**: [Install and Upgrade the Control Plane](../how-to/install-server.md), then create a node on the Nodes page and set

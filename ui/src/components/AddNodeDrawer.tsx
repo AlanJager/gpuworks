@@ -269,7 +269,7 @@ export default function AddNodeDrawer({
           children: (
             <>
               <Form.Item label={t("add.installDir")} tooltip={t("add.installDirTooltip")} extra={t("add.installDirHelp")} style={{ marginBottom: 12 }}>
-                <Input value={installDir} onChange={(e) => { resetResults(); setInstallDir(e.target.value); }} placeholder="/opt/gpuworks" />
+                <Input value={installDir} onChange={(e) => { resetResults(); setInstallDir(e.target.value); }} placeholder={t("add.installDirPlaceholder")} />
               </Form.Item>
               <Form.Item label={t("add.useSystemd")} tooltip={t("add.useSystemdTooltip")} extra={useSystemd ? undefined : t("add.useSystemdOffHelp")} style={{ marginBottom: 0 }}>
                 <Switch checked={useSystemd} onChange={(checked) => { resetResults(); setUseSystemd(checked); }} aria-label={t("add.useSystemd")} />
