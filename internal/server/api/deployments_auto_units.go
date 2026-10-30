@@ -46,7 +46,7 @@ func (a *apiHandlers) autoPlaceRequest(req *dto.DeployRequest) (bool, error) {
 	}
 	var named []planning.ListedRank
 	if pd != nil {
-		named = listedPDRanks(pd, namedPDUnits(pd))
+		named = planning.ListedPDRanks(pd, namedPDUnits(pd))
 	}
 	facts, err := planning.LoadUnitSuggestFacts(a.d.Store, a.networks().Resolve, &store.Deployment{ModelID: req.ModelID}, reqs, named, a.onlineOf(nodes), 1, 1)
 	if err != nil {
@@ -85,7 +85,7 @@ func autoPlaceReplica(req *dto.DeployRequest, facts planning.UnitSuggestFacts, s
 	facts.Ranks, facts.PerRank = req.NNodes, perRank
 	chosen, counts, ok := planning.ChooseReplicaNodes(facts, strategy, req.NodeUUIDs, func([]*store.Node) int { return -1 })
 	if !ok {
-		return unitPlacementNone(counts)
+		return planning.UnitPlacementNone(counts)
 	}
 	req.NodeUUIDs = req.NodeUUIDs[:0]
 	for _, node := range chosen {
@@ -128,7 +128,7 @@ func autoPlacePD(req *dto.DeployRequest, pd *planning.PDPlacement, facts plannin
 	}
 	chosen, counts, ok := planning.ChoosePDUnits(facts, needs, fixed, strategy, func(map[string][]planning.PDUnit) string { return "" })
 	if !ok {
-		return unitPlacementNone(counts)
+		return planning.UnitPlacementNone(counts)
 	}
 	for role, units := range chosen {
 		r := pd.Roles[role]
@@ -155,22 +155,6 @@ func namedPDUnits(pd *planning.PDPlacement) map[string][]planning.PDUnit {
 	return out
 }
 
-// listedPDRanks are the cards the units will take on their nodes, as ranks
-// the choice must leave alone: the units that stay where they are claim their
-// cards before the others are placed beside them.
-func listedPDRanks(pd *planning.PDPlacement, units map[string][]planning.PDUnit) []planning.ListedRank {
-	var out []planning.ListedRank
-	for role, list := range units {
-		for _, unit := range list {
-			gpus := pd.RankGPUs(role, unit)
-			for _, rank := range unit.Ranks() {
-				out = append(out, planning.ListedRank{NodeUUID: rank.NodeUUID, GPUs: gpus})
-			}
-		}
-	}
-	return out
-}
-
 // setPlacementPD writes pd back into the request's placement document.
 func setPlacementPD(req *dto.DeployRequest, pd *planning.PDPlacement) error {
 	raw, err := json.Marshal(pd)
@@ -186,15 +170,6 @@ func setPlacementPD(req *dto.DeployRequest, pd *planning.PDPlacement) error {
 	}
 	req.Placement["pd"] = doc
 	return nil
-}
-
-// unitPlacementNone says no group of nodes can take the request, with how
-// many nodes each check left out.
-func unitPlacementNone(counts planning.UnitSuggestCounts) error {
-	return productError(ErrorUnitPlacementNone, "no group of nodes can take the deployment now", map[string]any{
-		"nodes": counts.Nodes, "unmet": counts.Unmet, "cordoned": counts.Cordoned, "offline": counts.Offline,
-		"busy": counts.Busy, "no_network": counts.NoNetwork, "largest": counts.Largest,
-	})
 }
 
 // unitPlacementStatus is the HTTP status of an automatic placement failure:

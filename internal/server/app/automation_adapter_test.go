@@ -14,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
@@ -199,7 +200,7 @@ func TestAutomationAdapterWakeWaitsAndWakesWhenItFits(t *testing.T) {
 // leaving the deployment as it was.
 func TestAutomationAdapterScalesThroughTheAPIsPath(t *testing.T) {
 	adapter, st, dep := automationFixture(t)
-	adapter.scale = api.ReplicaScaler(api.Deps{Store: st})
+	adapter.scale = planning.Scaling{Store: st, Resolve: network.New(st, network.StoreCatalog{Store: st}).Resolve}.ScaleScheduled
 	if err := adapter.ScaleReplicas(dep.ID, "", 3); err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +259,7 @@ func pdAutomationFixture(t *testing.T) (*automationAdapter, *store.Store, *store
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter.scale = api.ReplicaScaler(api.Deps{Store: st})
+	adapter.scale = planning.Scaling{Store: st, Resolve: network.New(st, network.StoreCatalog{Store: st}).Resolve}.ScaleScheduled
 	return adapter, st, dep
 }
 

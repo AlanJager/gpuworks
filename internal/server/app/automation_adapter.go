@@ -265,7 +265,7 @@ func (a *automationAdapter) EndWaiting(deploymentID uint, uuids []string) error 
 }
 
 // ScaleReplicas sets the deployment's replica count through the API's own
-// path (api.ReplicaScaler): a multi-node deployment the platform places gets
+// path (planning.Scaling.ScaleScheduled): a multi-node deployment the platform places gets
 // its nodes picked as an operator's request would, a PD deployment's role is
 // scaled through the PD update, and a refusal (a deployment placed by hand,
 // no room for a replica, a role below its minimum) comes back as the product

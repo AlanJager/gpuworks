@@ -27,7 +27,7 @@ func (r *autoRig) deploymentNodes(t *testing.T, id uint) [][]string {
 // every refusal reaches the caller as a product error with its code.
 func TestReplicaScalerPlacesAnAutomaticMultiNodeDeployment(t *testing.T) {
 	r := newAutoRig(t, 4)
-	scale := ReplicaScaler(Deps{Store: r.st})
+	scale := (&apiHandlers{d: Deps{Store: r.st}}).scaling().ScaleScheduled
 	dep := r.mustCreate(t, r.multiBody("scaled", ""))
 
 	if err := scale(dep.ID, "", 2); err != nil {
@@ -78,7 +78,7 @@ func TestReplicaScalerPlacesAnAutomaticMultiNodeDeployment(t *testing.T) {
 
 func TestReplicaScalerSingleNodeAndPD(t *testing.T) {
 	rig := newScheduleRig(t)
-	scale := ReplicaScaler(Deps{Store: rig.st})
+	scale := (&apiHandlers{d: Deps{Store: rig.st}}).scaling().ScaleScheduled
 	if err := scale(rig.plain.ID, "", 3); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestReplicaScalerSingleNodeAndPD(t *testing.T) {
 // refusals are the update's own.
 func TestReplicaScalerScalesOnePDRole(t *testing.T) {
 	r := newAutoRig(t, 3)
-	scale := ReplicaScaler(Deps{Store: r.st})
+	scale := (&apiHandlers{d: Deps{Store: r.st}}).scaling().ScaleScheduled
 	pd := r.mustCreate(t, r.pdAutoBody("pd-sched", `{}`, `{}`, ""))
 	before := pdNodes(t, pd, "decode")
 

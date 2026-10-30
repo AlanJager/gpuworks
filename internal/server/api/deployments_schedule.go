@@ -171,11 +171,11 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 			return invalid("sleep_level", "only a sleep order sets a level")
 		}
 		role := strings.TrimSpace(req.Role)
-		if err := scheduledReplicasRefusal(dep, role); err != nil {
+		if err := planning.ScheduledReplicasRefusal(dep, role); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return nil, false
 		}
-		lowest, highest := scheduledReplicasBounds(dep, role)
+		lowest, highest := planning.ReplicaBounds(dep, role)
 		if req.Replicas == nil || *req.Replicas < lowest || *req.Replicas > highest {
 			return invalid("replicas", fmt.Sprintf("a replica count is %d to %d", lowest, highest))
 		}

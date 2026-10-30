@@ -84,8 +84,9 @@ type App struct {
 	// notices the console's notice bell.
 	usage   *usageReporter
 	notices *noticeService
-	// scaleReplicas sets a deployment's replica count as the API does, for
-	// the scheduling automation's replica schedules.
+	// scaleReplicas sets a deployment's replica count as the API does
+	// (planning.Scaling, which the handlers share), for the scheduling
+	// automation's replica schedules.
 	scaleReplicas func(deploymentID uint, role string, replicas int) error
 }
 
@@ -375,7 +376,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		Recovery:             recoverer,
 	}
 	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies})
-	a.scaleReplicas = api.ReplicaScaler(apiDeps)
+	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online}.ScaleScheduled
 	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(handler)))
 
 	a.http = &http.Server{
