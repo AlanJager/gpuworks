@@ -72,6 +72,7 @@ func AscendCLSmokePrerequisite() string {
 func runAscendSmokeCommand(ctx context.Context, visible string, target ascendSmokeTarget) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "python3", "-c", accelerator.AscendACLSmokeScript)
 	cmd.Env = ascendSmokeEnv(os.Environ(), visible, target)
+	killGroupOnCancel(cmd)
 	cmd.WaitDelay = 5 * time.Second
 	return cmd.CombinedOutput()
 }

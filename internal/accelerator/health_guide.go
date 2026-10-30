@@ -31,6 +31,11 @@ var (
 		"remapped_rows.pending",
 		"remapped_rows.failure",
 	}
+	// HygonRASBlocks are the driver's RAS blocks whose error counts the agent
+	// reads (/sys/bus/pci/devices/<bdf>/ras/<block>_err_count): memory first,
+	// then the blocks a K100 driver enables RAS for. A block whose file is
+	// missing is skipped.
+	HygonRASBlocks = []string{"umc", "gfx", "sdma", "mmhub", "hdp", "mp0", "mp1", "pcie_bif", "xgmi_wafl"}
 	// AscendHealthFieldNames are the labels npu-smi prints for the chip address and
 	// in its health view ("npu-smi info -t health").
 	AscendHealthFieldNames = []string{"NPU", "Chip", "Health", "Health Status", "Error Code", "Error Information"}
@@ -85,6 +90,8 @@ func HealthGuideFor(card HealthCard, evidence []HealthField) (HealthGuide, bool)
 		return nvidiaHealthGuide(card.Code, target, evidence)
 	case VendorAscend:
 		return ascendHealthGuide(card.Code, evidence)
+	case VendorHygon:
+		return hygonHealthGuide(card.Code, card.BDF)
 	}
 	return HealthGuide{}, false
 }
@@ -190,6 +197,23 @@ func nvidiaHealthGuide(code, target string, evidence []HealthField) (HealthGuide
 		return memory, true
 	case HealthMemoryRemapFailed, HealthMemoryErrorHistory:
 		return memory, true
+	}
+	return HealthGuide{}, false
+}
+
+// hygonHealthGuide shows the RAS files the agent read and hy-smi's readable
+// view of them. hy-smi names no recovery command for these, so there are no
+// Actions.
+func hygonHealthGuide(code, bdf string) (HealthGuide, bool) {
+	if bdf == "" {
+		return HealthGuide{}, false
+	}
+	ras := "/sys/bus/pci/devices/" + NormalizeBDF(bdf) + "/ras/"
+	switch code {
+	case HealthMemoryUncorrectable, HealthVendorFault:
+		return HealthGuide{Probe: "grep . " + ras + "*_err_count", Recheck: "hy-smi --showrasinfo all"}, true
+	case HealthMemoryRepairPending, HealthMemoryRemapFailed, HealthMemoryErrorHistory:
+		return HealthGuide{Probe: "cat " + ras + "gpu_vram_bad_pages", Recheck: "hy-smi --showpagesinfo"}, true
 	}
 	return HealthGuide{}, false
 }

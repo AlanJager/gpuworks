@@ -19,6 +19,7 @@ import (
 // caller would wait as long as the driver does.
 var cudaSmokeCommand = func(ctx context.Context, visible string, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	killGroupOnCancel(cmd)
 	if visible != "" {
 		cmd.Env = append(os.Environ(), "CUDA_VISIBLE_DEVICES="+visible)
 	}

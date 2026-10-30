@@ -277,3 +277,19 @@ func TestQueryVendorCLIServesASlowCLIsAnswerWithoutWaiting(t *testing.T) {
 		t.Fatal("a quick query must clear the slow mark")
 	}
 }
+
+// A CLI run by its full path (hy-smi under /opt/dtk/bin when it is not on
+// PATH) is tracked as the same binary the runtime check asks about by name.
+func TestVendorCLISlowNamesABinaryByItsBaseName(t *testing.T) {
+	vendorQueries.Lock()
+	vendorQueries.binaries[binaryKey("/opt/dtk/bin/gw-path-smi")] = &vendorBinary{lastTook: vendorCLITimeout + time.Second}
+	vendorQueries.Unlock()
+	t.Cleanup(func() {
+		vendorQueries.Lock()
+		delete(vendorQueries.binaries, "gw-path-smi")
+		vendorQueries.Unlock()
+	})
+	if !VendorCLISlow("gw-path-smi") {
+		t.Fatal("a slow CLI run by its full path is not slow by its name")
+	}
+}
