@@ -515,3 +515,37 @@ func TestAReplicaWaitingToBePlacedHasTheHolderYield(t *testing.T) {
 		t.Fatalf("chat did not give way once idle: %v", w.yields)
 	}
 }
+
+// A holder still starting is asked nothing, whatever ranks the waiter has:
+// it has served nothing yet. Once it serves, its idle time counts from then.
+func TestAHolderStillStartingIsNotAskedToYield(t *testing.T) {
+	w := newResidencyWorld()
+	const batch, nightly = 1, 2
+	w.levels[batch], w.levels[nightly] = pol(servicelevel.Anytime), pol(servicelevel.TimeSlice)
+	w.asleep[batch] = true
+	w.blocking[batch] = Blocking{Holders: []Holder{{DeploymentID: nightly, Policy: pol(servicelevel.TimeSlice), Instances: []string{"n-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Since: t0}}
+	w.settling[nightly] = true
+	e, c := newResidencyEvaluator(w, t0)
+	c.t = t0.Add(time.Hour)
+	e.residency(c.t)
+	if len(w.yields) != 0 {
+		t.Fatalf("a starting holder was put to sleep: %v", w.yields)
+	}
+	if after, ok := e.residencyDue(); !ok || after != busyPoll {
+		t.Fatalf("next look in %v (%v), want the busy poll", after, ok)
+	}
+	// It serves now: idle for its 30 s from here, not from an hour ago.
+	w.settling[nightly] = false
+	e.residency(c.t)
+	c.t = c.t.Add(29 * time.Second)
+	e.residency(c.t)
+	if len(w.yields) != 0 {
+		t.Fatalf("yielded before 30 s of serving idle: %v", w.yields)
+	}
+	c.t = c.t.Add(time.Second)
+	e.residency(c.t)
+	if !slices.Equal(w.yields, []string{"2 abort=false"}) {
+		t.Fatalf("did not yield once idle 30 s after starting: %v", w.yields)
+	}
+}
