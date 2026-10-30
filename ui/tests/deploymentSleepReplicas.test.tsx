@@ -229,6 +229,22 @@ test("one replica asleep reads as partly asleep; its panel wakes it, the drawer 
   await waitFor(() => assert.deepEqual(wakes[1], ["deployment", 1, { partial: false }]));
 });
 
+test("each replica says its own hold, and the drawer says the mix the server read", async () => {
+  // inst-a is held asleep by an operator; inst-b was put to sleep by the
+  // platform, so a request wakes it.
+  const mixed = sleepable({ replicas: 2, sleep_hold: "some", sleep_held: false, instances: [
+    instance("inst-a", { sleep_level: 2, desired_sleep: 2, asleep: true, sleep_held: true, replica: { index: 0 }, ...alone }),
+    instance("inst-b", { sleep_level: 1, desired_sleep: 1, asleep: true, sleep_held: false, replica: { index: 1 }, ...alone }),
+  ] });
+  stub("deploymentsPage", async () => listPage([mixed]));
+  stub("deployment", async () => mixed);
+  await openDetail();
+  assert.ok(within(drawer()).getByText(locale.sleep.someHeldHint));
+  assert.equal(within(drawer()).queryByText(locale.sleep.heldHint), null);
+  assert.ok(within(document.getElementById("instance-inst-a") as HTMLElement).getByText(locale.instance.held));
+  assert.equal(within(document.getElementById("instance-inst-b") as HTMLElement).queryByText(locale.instance.held), null);
+});
+
 test("a wake the cards cannot take all at once offers to wake what fits", async () => {
   const asleep = sleepable({ instances: [
     instance("inst-a", { sleep_level: 1, desired_sleep: 1, asleep: true, replica: { index: 0 }, ...alone }),

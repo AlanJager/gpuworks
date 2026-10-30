@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Button, Space, Tag, Typography, message } from "antd";
 import { useTranslation } from "react-i18next";
-import { api, type Deployment, type WakeOptions, type WakeResult } from "../api";
+import { api, type Deployment, type SleepHold, type WakeOptions, type WakeResult } from "../api";
 import { APIError, apiErrorText } from "../apiError";
 import SleepModeDialog, { type SleepMode } from "../components/SleepModeDialog";
 import { latestSleepFailure } from "./instanceEvents";
@@ -148,9 +148,9 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
       {refusal && <WakeRefusalAlert refusal={refusal} limitSec={dep.wake_wait_limit_sec} busy={busy} onWait={() => void doWaitWake({ wait: true })} onYield={() => void doWaitWake({ yield: true })} />}
       {all && <Tag color="orange">{t("sleep.sleeping", { level: summary.level, name: levelName(summary.level) })}</Tag>}
       {summary.asleep > 0 && !all && <Tag color="orange">{t("sleep.partial", { asleep: summary.asleep, total: summary.total })}</Tag>}
-      {summary.asleep > 0 && (
+      {dep.sleep_hold && (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {dep.sleep_held ? t("sleep.heldHint") : t("sleep.requestWakesHint")}
+          {t(holdHint[dep.sleep_hold])}
         </Typography.Text>
       )}
       {summary.asleep > 0 && (
@@ -184,6 +184,14 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
     </Space>
   );
 }
+
+// holdHint is what the server's reading of the asleep replicas' holds tells
+// an operator: whether a request wakes them.
+const holdHint: Record<SleepHold, "sleep.heldHint" | "sleep.someHeldHint" | "sleep.requestWakesHint"> = {
+  all: "sleep.heldHint",
+  some: "sleep.someHeldHint",
+  none: "sleep.requestWakesHint",
+};
 
 // RoleSleepActions sleep (memory / L1) or wake one role of a PD deployment:
 // the roles the server says its mode runs without (may_be_empty). With every

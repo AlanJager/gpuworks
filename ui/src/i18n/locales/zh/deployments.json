@@ -76,6 +76,7 @@
     "wakeAll": "全部唤醒",
     "heldHint": "手动休眠，请求不会唤醒",
     "requestWakesHint": "有请求时会自动唤醒",
+    "someHeldHint": "部分副本手动休眠，请求只唤醒其余副本",
     "wakeWhatFits": "唤醒放得下的副本",
     "partialWoken": "已唤醒 {{woken}} 个；{{refused}} 个放不回原卡",
     "waitStarted": "已开始等位：GPU 腾出空间后自动唤醒",
@@ -352,6 +353,7 @@
     "sleeping": "休眠中 L{{level}}（{{storage}}）",
     "fallingAsleep": "正在进入休眠 · L{{level}}",
     "waking": "正在唤醒",
+    "held": "手动休眠，请求不会唤醒",
     "rank": {
       "leader": "leader · rank {{rank}}",
       "follower": "follower · rank {{rank}}",

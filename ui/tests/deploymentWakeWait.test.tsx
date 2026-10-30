@@ -210,12 +210,22 @@ test("without a waiting wake there is no banner", async () => {
 
 test("an asleep deployment says a request wakes it, unless the sleep was ordered by an operator or a schedule", async () => {
   stub(async () => ({ status: "woken", woken: ["inst-a"], waiting: [], yielded: [] }));
-  mount(asleep());
+  mount(asleep({ sleep_hold: "none" }));
   screen.getByText(sl.requestWakesHint);
   assert.equal(screen.queryByText(sl.heldHint), null);
   cleanup();
-  mount(asleep({ sleep_held: true }));
+  mount(asleep({ sleep_hold: "all", sleep_held: true }));
   screen.getByText(sl.heldHint);
+  assert.equal(screen.queryByText(sl.requestWakesHint), null);
+  cleanup();
+  // The server reads some replicas held and the others not: the hint says a
+  // request wakes only the others, and says neither of the plain hints.
+  mount(asleep({
+    sleep_hold: "some", sleep_held: false, replicas: 2,
+    instances: [{ ...instance("inst-a", 0), sleep_held: true }, { ...instance("inst-b", 1), sleep_held: false }],
+  }));
+  screen.getByText(sl.someHeldHint);
+  assert.equal(screen.queryByText(sl.heldHint), null);
   assert.equal(screen.queryByText(sl.requestWakesHint), null);
   cleanup();
   // An awake deployment has no sleep to explain.

@@ -1475,6 +1475,9 @@ export interface Instance {
   // fills (absent when it fills none), and whether it takes a sleep or wake
   // order of its own.
   asleep?: boolean;
+  // sleep_held: an operator's or a schedule's sleep holds this instance, so
+  // a request does not wake it.
+  sleep_held?: boolean;
   replica?: { role?: string; index: number };
   can_sleep_alone?: boolean;
   can_wake_alone?: boolean;
@@ -1759,9 +1762,12 @@ export interface Deployment {
   wake_wait_limit_sec: number;
   // yield_policy is how the deployment shares its GPUs with the others on
   // them; absent counts as never.
-  // sleep_held is set while an operator's or a schedule's sleep keeps it
-  // asleep: a request does not wake it.
   yield_policy?: YieldPolicy;
+  // sleep_hold is how the server reads its asleep replicas: every one held
+  // by an operator's or a schedule's sleep (all, a request wakes none), some
+  // (a request wakes the others), or none; absent with none asleep.
+  // sleep_held is sleep_hold all.
+  sleep_hold?: SleepHold;
   sleep_held?: boolean;
   // yield_policy_eligible says whether the deployment may hold a policy other
   // than never, and schedule_capabilities what its schedule may order: the
@@ -1771,6 +1777,8 @@ export interface Deployment {
 }
 
 
+
+export type SleepHold = "all" | "some" | "none";
 
 export interface NodeReplacement {
   after_sec: number;

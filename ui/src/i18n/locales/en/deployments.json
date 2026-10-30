@@ -76,6 +76,7 @@
     "wakeAll": "Wake all",
     "heldHint": "Put to sleep by an operator or a schedule: requests do not wake it",
     "requestWakesHint": "A request wakes it automatically",
+    "someHeldHint": "Some replicas were put to sleep by an operator or a schedule: a request wakes only the others",
     "wakeWhatFits": "Wake what fits",
     "partialWoken": "Woke {{woken}}; {{refused}} could not fit back on their cards",
     "waitStarted": "Waiting for room: the wake follows when the GPUs free up",
@@ -352,6 +353,7 @@
     "sleeping": "Sleeping L{{level}} ({{storage}})",
     "fallingAsleep": "Going to sleep · L{{level}}",
     "waking": "Waking up",
+    "held": "Held asleep: requests do not wake it",
     "rank": {
       "leader": "leader · rank {{rank}}",
       "follower": "follower · rank {{rank}}",
