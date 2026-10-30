@@ -169,7 +169,14 @@ func (s *Service) CreateBatch(owner Owner, req CreateRequest) (Batch, error) {
 		}
 		return Batch{}, invalid("endpoint_mismatch", "endpoint", message)
 	}
-	warnings, err := s.checkModel(req.Model)
+	// An override replaces the model of every line, so the file's own models
+	// matter only without one.
+	var warnings []Warning
+	if req.Model != "" {
+		warnings, err = s.checkModel(req.Model)
+	} else {
+		warnings, err = s.checkFileModels(in)
+	}
 	if err != nil {
 		return Batch{}, err
 	}
@@ -201,7 +208,7 @@ func (s *Service) checkModel(model string) ([]Warning, error) {
 	case ModelAvailable:
 		return nil, nil
 	case ModelSleepHeld:
-		return []Warning{{Code: WarningModelSleepHeld, Message: "The deployment serving " + model + " sleeps by an operator's or a schedule's order, which requests do not wake; the batch's requests are retried until it is woken or the batch expires"}}, nil
+		return []Warning{{Code: WarningModelSleepHeld, Param: "model", Models: []string{model}, Message: "The deployment serving " + model + " sleeps by an operator's or a schedule's order, which requests do not wake; the batch's requests are retried until it is woken or the batch expires"}}, nil
 	}
 	e := invalid("model_not_found", "model", "No active deployment serves the model "+model)
 	e.Model = model

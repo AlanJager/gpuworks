@@ -164,7 +164,6 @@ export default function BatchCreateModal({ open, onClose, onCreated }: {
         <BatchModelField options={modelOptions} value={model} onChange={setModel} disabled={submitting} />
         <div className="batch-create-field">
           <label htmlFor="batch-create-sample-model">{t("create.sample.title")}</label>
-          <Typography.Text type="secondary">{t("create.sample.help")}</Typography.Text>
           <div className="batch-create-sample">
             <Select
               id="batch-create-sample-model"

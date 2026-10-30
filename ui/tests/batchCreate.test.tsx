@@ -156,6 +156,19 @@ test("an invalid file names its line, keeps the dialog open and lets the file be
   assert.equal(attempts, 2);
 });
 
+test("a refusal because the file's models are served by nothing is shown in the dialog in the reader's language", async () => {
+  batchApi.list = async () => page([]);
+  batchApi.create = async () => {
+    throw new APIError("BATCH_MODEL_UNKNOWN", { model: "ghost-1, ghost-2", models: "ghost-1, ghost-2" }, "The input file names models that no active deployment serves: ghost-1, ghost-2", 400);
+  };
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  await user.upload(within(dialog).getByLabelText(b.create.file), jsonl("ghosts.jsonl"));
+  await user.click(submitButton(dialog));
+  assert.ok(await within(dialog).findByText(b.errors.fileModelsUnknown.replace("{{models}}", "ghost-1, ghost-2")));
+  assert.ok(screen.getByRole("dialog", { name: b.create.title }), "the dialog stays open");
+});
+
 test("an error about the whole file or the request is worded without a line", async () => {
   const t = i18n.getFixedT("en", "batches");
   const tc = i18n.getFixedT("en", "common");

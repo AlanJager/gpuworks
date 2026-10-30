@@ -15,12 +15,15 @@ export interface BatchErrorText {
 
 /**
  * batchErrorText words a batch error. An invalid input file names its line
- * (line 0 is the whole file) and a request error its field and reason in the
- * reader's language; every other product error goes through the shared
- * translation of its code.
+ * (line 0 is the whole file), a request error its field and reason and a file
+ * whose models nothing serves those models, in the reader's language; every
+ * other product error goes through the shared translation of its code.
  */
 export function batchErrorText(t: APIErrorTranslator, tCommon: APIErrorTranslator, error: unknown): BatchErrorText {
   if (error instanceof APIError) {
+    if (error.code === "BATCH_MODEL_UNKNOWN" && typeof error.params?.models === "string") {
+      return { message: t("errors.fileModelsUnknown", { models: error.params.models }) };
+    }
     const reason = String(error.params?.reason ?? "");
     if (error.code === "BATCH_FILE_INVALID" && FILE_REASONS.has(reason)) {
       const line = Number(error.params?.line ?? 0);

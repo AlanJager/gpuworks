@@ -504,7 +504,9 @@ const (
 	// ErrorBatchRequestInvalid: a field of the request ({field}) is not valid.
 	ErrorBatchRequestInvalid = "BATCH_REQUEST_INVALID"
 	// ErrorBatchModelUnknown: no active deployment serves the {model} the batch
-	// was asked to send its requests to.
+	// was asked to send its requests to. For a file of requests that name
+	// models of their own, {models} is the list of those nothing serves (the
+	// first few, "..." when more follow), and {model} the same list.
 	ErrorBatchModelUnknown = "BATCH_MODEL_UNKNOWN"
 )
 

@@ -152,6 +152,10 @@ const (
 type Warning struct {
 	Code    string
 	Message string
+	// Param is the request field the warning is about.
+	Param string
+	// Models are the served names it is about.
+	Models []string
 }
 
 // Owner is the owner a batch acts for when it sends requests.
@@ -267,6 +271,9 @@ type Error struct {
 	Param   string
 	// Model is the model name a refusal about a model names.
 	Model string
+	// Models are the models of an input file that a refusal about them names,
+	// in the order of the file: at most a few dozen, however many it names.
+	Models []string
 	// Line is the line of the input file the error is about, 0 for none.
 	Line int
 }

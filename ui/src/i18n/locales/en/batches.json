@@ -127,7 +127,7 @@
       "count": "Models in the file ({{count}}): {{models}}",
       "none": "No model name was found in the file.",
       "skipped": "The file is over 50 MB, so its models were not checked in the browser.",
-      "unknown": "These models in the file have no available deployment on the platform, so their requests would fail: {{models}}. Choose a model above to replace them.",
+      "unknown": "These models in the file have no available deployment on the platform, so the batch cannot be created: {{models}}. Choose a model above to replace them, or deploy these models first.",
       "replaced": "The models in the file ({{models}}) will all be replaced by {{model}}."
     },
     "warnings": {
@@ -146,7 +146,6 @@
     "failed": "Could not create the batch",
     "sample": {
       "title": "Sample file",
-      "help": "Builds a 1,000-request sample for the chosen endpoint and model (math reasoning, translation, summaries, writing and code, in English and Chinese), enough to keep a GPU busy for minutes: download it to edit, or use it as is to create a batch.",
       "model": "Model the sample uses",
       "noModel": "No active deployment",
       "download": "Download sample",
@@ -177,7 +176,8 @@
       "missing_required_parameter": "a required field is missing",
       "invalid_multipart": "the upload is not a valid form"
     },
-    "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}"
+    "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}",
+    "fileModelsUnknown": "The file names models that no active deployment serves: {{models}}. Choose a model to send every request to, or deploy these models first."
   },
   "api": {
     "title": "Call it through the API (OpenAI-compatible /v1/files and /v1/batches)",

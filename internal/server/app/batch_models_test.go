@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/batch"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -81,6 +83,7 @@ func TestBatchConsoleModelThroughTheStore(t *testing.T) {
 	addDeployment(t, st, "serving", store.DeployActive, false)
 	addDeployment(t, st, "napping", store.DeployActive, true)
 	addDeployment(t, st, "stopped-one", store.DeployStopped, false)
+	addDeployment(t, st, "m", store.DeployActive, false) // the model the lines of twoLines name
 	caller := api.BatchCaller{UserID: 2, All: true}
 	form := func(fields map[string]string) *multipart.Reader {
 		var buf bytes.Buffer
@@ -171,5 +174,66 @@ func TestBatchConsoleModelThroughTheStore(t *testing.T) {
 		if item.ID == created.ID && item.Model != "serving" {
 			t.Fatalf("list row = %+v", item)
 		}
+	}
+}
+
+// Without a model the lines name their own: the console refuses a file with a
+// model no active deployment serves (a stopped one included) as a product error
+// that names the models and leaves no batch or file behind, warns about one
+// whose sleep is held, and accepts a file of served models.
+func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
+	st, console := modelStack(t, &scriptedSender{reply: func(string, []byte) batch.Reply {
+		return batch.Reply{Status: 200, RequestID: "r", Body: []byte(`{"ok":1}`)}
+	}})
+	addDeployment(t, st, "serving", store.DeployActive, false)
+	addDeployment(t, st, "napping", store.DeployActive, true)
+	addDeployment(t, st, "stopped-one", store.DeployStopped, false)
+	caller := api.BatchCaller{UserID: 2, All: true}
+	file := func(models ...string) string {
+		var b strings.Builder
+		for i, m := range models {
+			fmt.Fprintf(&b, `{"custom_id":"c%d","method":"POST","url":"/v1/chat/completions","body":{"model":%q,"messages":[]}}`+"\n", i, m)
+		}
+		return b.String()
+	}
+	create := func(fields map[string]string) (dto.Batch, error) {
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		for k, v := range fields {
+			if k != "file" {
+				_ = mw.WriteField(k, v)
+			}
+		}
+		w, _ := mw.CreateFormFile("file", "my.jsonl")
+		_, _ = io.WriteString(w, fields["file"])
+		_ = mw.Close()
+		return console.CreateFromUpload(caller, multipart.NewReader(&buf, mw.Boundary()))
+	}
+	chat := "/v1/chat/completions"
+
+	_, err := create(map[string]string{"file": file("serving", "Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone", "stopped-one", "serving"), "endpoint": chat})
+	be, ok := err.(*api.BatchError)
+	if !ok || be.Status != 400 || be.Code != api.ErrorBatchModelUnknown || be.Params["models"] != "Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone, stopped-one" || be.Params["model"] != be.Params["models"] {
+		t.Fatalf("unknown models: %#v", err)
+	}
+	if page, err := console.List(caller, nil, 1, 50); err != nil || page.Total != 0 {
+		t.Fatalf("a refused file left %d batches (%v)", page.Total, err)
+	}
+	var files int64
+	if err := st.DB().Model(&store.BatchFile{}).Count(&files).Error; err != nil || files != 0 {
+		t.Fatalf("a refused file left %d files (%v)", files, err)
+	}
+
+	ok1, err := create(map[string]string{"file": file("serving", "serving"), "endpoint": chat})
+	if err != nil || ok1.Model != "" || len(ok1.Warnings) != 0 {
+		t.Fatalf("served models: %+v err=%v", ok1, err)
+	}
+	held, err := create(map[string]string{"file": file("serving", "napping"), "endpoint": chat})
+	if err != nil || len(held.Warnings) != 1 || held.Warnings[0].Code != api.WarningBatchModelSleepHeld || held.Warnings[0].Params["model"] != "napping" {
+		t.Fatalf("held model: %+v err=%v", held, err)
+	}
+	over, err := create(map[string]string{"file": file("ghost"), "endpoint": chat, "model": "serving"})
+	if err != nil || over.Model != "serving" {
+		t.Fatalf("an override replaces the unknown model: %+v err=%v", over, err)
 	}
 }

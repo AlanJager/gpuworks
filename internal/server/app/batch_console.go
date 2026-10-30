@@ -88,7 +88,7 @@ func batchDTO(b batch.Batch, inputName string) dto.Batch {
 	}
 	for _, w := range b.Warnings {
 		if w.Code == batch.WarningModelSleepHeld {
-			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelSleepHeld, Params: map[string]any{"model": b.Model}})
+			out.Warnings = append(out.Warnings, messages.Warning{Code: api.WarningBatchModelSleepHeld, Params: map[string]any{"model": batch.ModelsText(w.Models)}})
 		}
 	}
 	if b.ErrorCode != "" {
@@ -109,6 +109,10 @@ func consoleBatchError(err error) error {
 	switch {
 	case be.Status == http.StatusNotFound:
 		out.Code = api.ErrorBatchNotFound
+	case be.Code == "model_not_found" && len(be.Models) > 0:
+		list := batch.ModelsText(be.Models)
+		out.Code = api.ErrorBatchModelUnknown
+		out.Params = map[string]any{"model": list, "models": list}
 	case be.Code == "model_not_found":
 		out.Code = api.ErrorBatchModelUnknown
 		out.Params = map[string]any{"model": be.Model}

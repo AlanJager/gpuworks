@@ -127,7 +127,7 @@
       "count": "文件使用了 {{count}} 个模型：{{models}}",
       "none": "文件里没有读到模型名。",
       "skipped": "文件超过 50 MB，没有在浏览器里检查其中的模型。",
-      "unknown": "文件里的这些模型在平台上没有可用的部署，对应的请求会失败：{{models}}。可以在上面选一个模型来替代它们。",
+      "unknown": "文件里的这些模型在平台上没有可用的部署，无法创建任务：{{models}}。可以在上面选一个模型来替代它们，或先部署这些模型。",
       "replaced": "文件里的模型 {{models}} 都会被替换为 {{model}}。"
     },
     "warnings": {
@@ -146,7 +146,6 @@
     "failed": "无法创建批处理任务",
     "sample": {
       "title": "示例文件",
-      "help": "按所选端点和模型生成 1000 个请求的示例（数学推理、翻译、摘要、写作、代码等，中英混合），足以让 GPU 忙上几分钟；可以下载后修改，也可以直接用它创建任务。",
       "model": "示例使用的模型",
       "noModel": "暂无运行中的部署",
       "download": "下载示例",
@@ -177,7 +176,8 @@
       "missing_required_parameter": "缺少必填字段",
       "invalid_multipart": "上传的表单无效"
     },
-    "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}"
+    "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}",
+    "fileModelsUnknown": "文件里的这些模型没有运行中的部署：{{models}}。请选一个模型来接收全部请求，或先部署这些模型。"
   },
   "api": {
     "title": "通过 API 调用（OpenAI 兼容的 /v1/files 与 /v1/batches）",

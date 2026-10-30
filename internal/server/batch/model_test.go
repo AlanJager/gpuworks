@@ -29,7 +29,7 @@ func (f fakeModels) Lookup(name string) (ModelState, error) {
 	return f.states[name], nil
 }
 
-var platformModels = fakeModels{states: map[string]ModelState{"real": ModelAvailable, "held": ModelSleepHeld}}
+var platformModels = fakeModels{states: map[string]ModelState{"real": ModelAvailable, "held": ModelSleepHeld, "m": ModelAvailable}}
 
 // multipartForm is a console create form: the fields, then the file.
 func multipartForm(t *testing.T, fields map[string]string, file string) *multipart.Reader {
@@ -119,7 +119,7 @@ func TestOverrideRewritesTheModelOfEveryLineAndEveryRetry(t *testing.T) {
 func TestNoOverrideSendsEachLineUntouched(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
-	r := newRig(t, Config{Models: platformModels}, func(_ context.Context, _ Owner, _ string, body []byte) Reply {
+	r := newRig(t, Config{Models: fakeModels{states: map[string]ModelState{"whatever": ModelAvailable}}}, func(_ context.Context, _ Owner, _ string, body []byte) Reply {
 		mu.Lock()
 		got = append(got, string(body))
 		mu.Unlock()
@@ -162,7 +162,7 @@ func TestWithModel(t *testing.T) {
 
 func TestCreateBatchChecksTheModel(t *testing.T) {
 	r := newRig(t, Config{Models: fakeModels{
-		states:  map[string]ModelState{"real": ModelAvailable, "held": ModelSleepHeld},
+		states:  map[string]ModelState{"real": ModelAvailable, "held": ModelSleepHeld, "m": ModelAvailable},
 		failing: map[string]bool{"broken": true},
 	}}, echo)
 	r.start()
