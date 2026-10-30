@@ -278,8 +278,8 @@
     },
     {
       "item": "12.2",
-      "status": "MISSING",
-      "reason": "Outside this bounded ordinary-replica mainline; no whole-page coverage claimed"
+      "status": "covered",
+      "reason": "Measured in the browser at 1440x900 by the shared drawer shell check, on the same deployment detail drawer this case already declares 12.1, 12.3 and 12.5 from: the drawer, header, title, body and header actions all lie inside the viewport, the body starts at or below the header's bottom edge, the title stays inside the header, and the actions start to the right of the title. Recorded as drawer_regions in the report's evidence. Proven by mutation on the same helper: a -60px body margin fails with 'drawer body overlaps its header'."
     },
     {
       "item": "12.3",
