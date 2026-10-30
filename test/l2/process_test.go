@@ -256,6 +256,7 @@ type processInstance struct {
 	State        string   `json:"state"`
 	ContainerID  string   `json:"container_id"`
 	SleepLevel   int      `json:"sleep_level"`
+	GPUIndexes   []int    `json:"gpu_indexes"`
 	APIPort      int      `json:"api_port"`
 	Argv         []string `json:"argv"`
 }
