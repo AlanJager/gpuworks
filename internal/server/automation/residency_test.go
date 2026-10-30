@@ -24,6 +24,9 @@ type residencyWorld struct {
 	inFlight  map[string]int // requests running, by instance
 	yieldErr  error
 	wakeCalls []uint
+	// heldWakes are the wakes asked to wake held sleepers too: the arbiter
+	// never asks that, a request or a resume wakes only the platform's.
+	heldWakes []uint
 	settling  map[uint]bool // waiting to be placed, or starting
 }
 
@@ -59,8 +62,11 @@ func (w *residencyWorld) InstancesInFlight(instances []string) int {
 func (w *residencyWorld) Drain(id uint, instances []string, on bool) {
 	w.drains = append(w.drains, fmt.Sprintf("%d %s %v", id, strings.Join(instances, ","), on))
 }
-func (w *residencyWorld) Wake(id uint) (WakeResult, error) {
+func (w *residencyWorld) Wake(id uint, held bool) (WakeResult, error) {
 	w.wakeCalls = append(w.wakeCalls, id)
+	if held {
+		w.heldWakes = append(w.heldWakes, id)
+	}
 	if w.fitsNow[id] {
 		w.asleep[id] = false
 		return WakeResult{Woken: []string{fmt.Sprintf("i-%d", id)}}, nil
@@ -278,6 +284,9 @@ func TestHigherRankWaitersAreServedFirstAndAHolderYieldsOnce(t *testing.T) {
 	e.residency(c.t)
 	if !slices.Equal(w.wakeCalls, []uint{2, 1}) {
 		t.Fatalf("wake order = %v, want online first", w.wakeCalls)
+	}
+	if len(w.heldWakes) > 0 {
+		t.Fatalf("the arbiter woke held sleepers of %v: a request wakes only the platform's", w.heldWakes)
 	}
 	if !slices.Equal(w.yields, []string{"3 abort=true"}) {
 		t.Fatalf("yields = %v", w.yields)

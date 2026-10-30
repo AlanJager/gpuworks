@@ -40,12 +40,12 @@ func (s *Store) AwakeGPUHolders() (map[uint]map[int]bool, error) {
 }
 
 // SleepingGPUHolders are the instances asleep on their cards (a reported
-// sleep level, still holding a claim), lean: node, deployment and cards. A
-// sleeper is charged its residue unless a placement keeps its whole claim
-// for a request's wake (planning.HeldGPUs).
+// sleep level, still holding a claim), lean: node, deployment, cards and
+// whether the sleep is held. A sleeper is charged its residue unless a
+// placement keeps its whole claim for a request's wake (planning.HeldGPUs).
 func (s *Store) SleepingGPUHolders() ([]Instance, error) {
 	var rows []Instance
-	err := s.reader().Select("NodeID", "DeploymentID", "GPUIndexes").
+	err := s.reader().Select("NodeID", "DeploymentID", "GPUIndexes", "SleepHeld").
 		Where("state NOT IN ? AND sleep_level > 0", []string{proto.InstStopped, proto.InstFailed}).
 		Find(&rows).Error
 	return rows, err

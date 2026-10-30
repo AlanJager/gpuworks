@@ -9,8 +9,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// An operator's sleep of one replica holds the deployment's sleep
-// (Deployment.SleepHeld), but the replica left awake still serves: the name
+// An operator's sleep of one replica holds that replica (Instance.SleepHeld),
+// but the replica left awake still serves: the name
 // is served as long as one replica is awake with no sleep ordered, and held
 // once none is.
 func TestBatchModelsAHeldReplicaLeavesTheOthersServing(t *testing.T) {

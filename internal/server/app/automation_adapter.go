@@ -133,8 +133,11 @@ func (a *automationAdapter) Sleep(deploymentID uint, level int, held bool) (int,
 }
 
 // Wake wakes the deployment's sleepers that fit and leaves the rest waiting
-// for room.
-func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, error) {
+// for room. A held wake (a schedule's) names every sleeper; one a request or
+// a resume drives names only those a request wakes
+// (store.Deployment.WakesOnRequest), so the sleepers an operator or a
+// schedule holds stay asleep and held.
+func (a *automationAdapter) Wake(deploymentID uint, held bool) (automation.WakeResult, error) {
 	defer planning.LockLifecycle()()
 	dep, err := a.store.GetDeployment(deploymentID)
 	if err != nil {
@@ -151,16 +154,21 @@ func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, erro
 	if err != nil {
 		return automation.WakeResult{}, err
 	}
-	sleepers, held := a.notForPlacement(dep, planning.Sleepers(insts))
+	named := planning.Sleepers(insts)
+	whole := true
+	if !held {
+		named, whole = wakesOnRequest(dep, named)
+	}
+	sleepers, kept := a.notForPlacement(dep, named)
 	var woken []store.Instance
 	var refused []planning.WakeRefusal
 	if len(sleepers) > 0 {
-		woken, refused, err = planning.OrderWake(a.store, dep, match, sleepers, true, len(held) == 0)
+		woken, refused, err = planning.OrderWake(a.store, dep, match, sleepers, true, whole && len(kept) == 0)
 		if err != nil {
 			return automation.WakeResult{}, err
 		}
 	}
-	result := automation.WakeResult{Woken: uuidList(woken), Waiting: uuidList(held)}
+	result := automation.WakeResult{Woken: uuidList(woken), Waiting: uuidList(kept)}
 	for _, r := range refused {
 		result.Waiting = append(result.Waiting, uuidList(r.Instances)...)
 	}
@@ -168,6 +176,19 @@ func (a *automationAdapter) Wake(deploymentID uint) (automation.WakeResult, erro
 		return result, err
 	}
 	return result, nil
+}
+
+// wakesOnRequest are the sleepers a request wakes, and whether they are all
+// of them: a held sleeper stays asleep, so a wake that leaves one is not the
+// deployment-wide wake.
+func wakesOnRequest(dep *store.Deployment, sleepers []store.Instance) ([]store.Instance, bool) {
+	out := make([]store.Instance, 0, len(sleepers))
+	for i := range sleepers {
+		if dep.WakesOnRequest(&sleepers[i]) {
+			out = append(out, sleepers[i])
+		}
+	}
+	return out, len(out) == len(sleepers)
 }
 
 // WakeWaiting wakes the named waiting instances whose GPUs can take them back

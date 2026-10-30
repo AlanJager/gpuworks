@@ -68,9 +68,9 @@ type ResidencySource interface {
 	// Waiters are the deployments with a request held for their wake whose
 	// sleep a request may end (not held by an operator or a schedule).
 	Waiters() ([]Waiter, error)
-	// Wakeable says the deployment is still asleep by the platform's choice
-	// and active, with its policy; a deployment put back to sleep by an
-	// operator is not.
+	// Wakeable says the deployment is active and has a sleeper the
+	// platform put to sleep (one a request wakes), with its policy; a
+	// deployment whose sleepers an operator or a schedule all holds is not.
 	Wakeable(deploymentID uint) (policy yieldpolicy.Policy, ok bool)
 	// Blocking is what keeps the deployment's waiting sleepers from waking.
 	Blocking(deploymentID uint) (Blocking, error)
@@ -362,7 +362,7 @@ func (e *Evaluator) orderWake(now time.Time, w waiting) bool {
 	if w.resume {
 		trigger = TriggerResume
 	}
-	result, err := e.actions.Wake(w.id)
+	result, err := e.actions.Wake(w.id, false)
 	if err != nil {
 		e.log.Warn("automation: wake a deployment a request waits for", "deployment", w.id, "err", err)
 		return false

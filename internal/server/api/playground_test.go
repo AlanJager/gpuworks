@@ -286,6 +286,22 @@ func TestPlaygroundCatalogOmitsDeploymentsThatCannotServe(t *testing.T) {
 	if err := st.OrderInstancesSleepHeld(ordered.ID, []string{"ordered-instance"}, 1, "wait", true); err != nil {
 		t.Fatal(err)
 	}
+	// One replica held asleep by an operator, the other asleep by the
+	// platform's choice: a request wakes the latter.
+	mixed := add("mixed-model", "mixed-held", proto.InstRunning, 2, 30003)
+	if err := st.DB().Model(&store.Deployment{}).Where("id = ?", mixed.ID).Update("sleepable", true).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateInstance(&store.Instance{UUID: "mixed-free", DeploymentID: mixed.ID, NodeID: node.ID, State: proto.InstRunning, SleepLevel: 1, APIPort: 30004,
+		DesiredStateJSON: `{"uuid":"mixed-free","state":"running","sleepable":true}`}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.OrderInstancesSleepHeld(mixed.ID, []string{"mixed-held"}, 2, "wait", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.OrderInstancesSleep(mixed.ID, []string{"mixed-free"}, 1, "wait"); err != nil {
+		t.Fatal(err)
+	}
 	add("failed-model", "failed-instance", proto.InstFailed, 0, 0)
 	add("starting-model", "starting-instance", proto.InstStarting, 0, 0)
 	// A newer failed rollout of a name that is already serving must not
@@ -315,8 +331,11 @@ func TestPlaygroundCatalogOmitsDeploymentsThatCannotServe(t *testing.T) {
 	for _, model := range catalog.Models {
 		got[model.ID] = model
 	}
-	if len(got) != 3 {
-		t.Fatalf("models=%v, want running, sleeping and ordered only", got)
+	if len(got) != 4 {
+		t.Fatalf("models=%v, want running, sleeping, ordered and mixed only", got)
+	}
+	if !got["mixed-model"].Sleeping || !got["mixed-model"].WakesOnRequest {
+		t.Fatalf("mixed model=%+v, want asleep and woken by a request through its platform sleeper", got["mixed-model"])
 	}
 	if got["running-model"].DeploymentID != running.ID || got["running-model"].Sleeping {
 		t.Fatalf("running model=%+v, want serving deployment %d", got["running-model"], running.ID)

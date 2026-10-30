@@ -14,12 +14,13 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
-// residencyFixture is the automation fixture's deployment asleep at L2 with
-// its wake waiting, and a sleepable offline deployment awake on its card.
+// residencyFixture is the automation fixture's deployment asleep at L2 by
+// the platform's choice (a request wakes it), and a sleepable offline
+// deployment awake on its card.
 func residencyFixture(t *testing.T) (*residencyAdapter, *automationAdapter, *store.Store, *store.Deployment, *store.Deployment) {
 	t.Helper()
 	auto, st, dep := automationFixture(t)
-	if err := st.SetDeploymentSleep(dep.ID, 2); err != nil {
+	if err := st.OrderInstancesSleep(dep.ID, []string{"auto-1"}, 2, proto.SleepModeWait); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "auto-1", State: proto.InstRunning, SleepLevel: 2}); err != nil {
@@ -60,7 +61,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	if b, err := res.Blocking(dep.ID); err != nil || len(b.Holders) != 0 || b.Blocked {
 		t.Fatalf("blocking before its wake waits = %+v err=%v", b, err)
 	}
-	result, err := auto.Wake(dep.ID)
+	result, err := auto.Wake(dep.ID, false)
 	if err != nil || len(result.Waiting) != 1 {
 		t.Fatalf("wake = %+v err=%v", result, err)
 	}
@@ -83,7 +84,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	if desired.SleepMode != proto.SleepModeAbort {
 		t.Fatalf("an offline holder's sleep mode = %q, want abort", desired.SleepMode)
 	}
-	if got, _ := st.GetDeployment(other.ID); got.SleepHeld {
+	if mustInstance(t, st, "batch-1").SleepHeld {
 		t.Fatal("the arbiter's sleep is held: a request would not wake the holder again")
 	}
 	// Once the holder reports asleep, the waiting wake fits.
@@ -109,7 +110,7 @@ func TestResidencyAdapterHolderStartingIsItsOwnReplicas(t *testing.T) {
 	if _, err := st.CreateInstance(&store.Instance{UUID: "batch-2", DeploymentID: other.ID, NodeID: dep.NodeID, State: proto.InstPending, NNodes: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auto.Wake(dep.ID); err != nil {
+	if _, err := auto.Wake(dep.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	b, err := res.Blocking(dep.ID)
@@ -177,14 +178,14 @@ func TestResidencyAdapterBlockingAndHeldSleeps(t *testing.T) {
 	if err := st.DB().Model(&store.Deployment{}).Where("id = ?", other.ID).Update("sleepable", false).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auto.Wake(dep.ID); err != nil {
+	if _, err := auto.Wake(dep.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	if b, err := res.Blocking(dep.ID); err != nil || !b.Blocked {
 		t.Fatalf("blocking with an occupant that cannot sleep = %+v err=%v", b, err)
 	}
 	// An operator's sleep is not the arbiter's to end.
-	if err := st.OrderDeploymentSleepHeld(dep.ID, 2, proto.SleepModeWait, true); err != nil {
+	if err := st.OrderDeploymentSleep(dep.ID, 2, proto.SleepModeWait); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := res.Wakeable(dep.ID); ok {
@@ -207,7 +208,7 @@ func TestResidencyAdapterBlockingAndHeldSleeps(t *testing.T) {
 func TestResidencyAdapterYieldsAtL2WhenTheHostCannotHoldTheWeights(t *testing.T) {
 	res, auto, st, dep, other := residencyFixture(t)
 	res.host = func(string) (int64, int64, bool) { return 1 << 30, 64 << 30, true }
-	if _, err := auto.Wake(dep.ID); err != nil {
+	if _, err := auto.Wake(dep.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	level, err := res.Yield(other.ID, []string{"batch-1"}, false)
@@ -241,7 +242,7 @@ func TestResidencyAdapterYieldFollowsTheHoldersSleepLevelPreference(t *testing.T
 			if err := st.SetDeploymentYieldPolicy(other.ID, yieldpolicy.Policy{Yield: yieldpolicy.Anytime, SleepLevel: c.pref, Unfinished: yieldpolicy.UnfinishedAbort, HoldMaxSec: 1800}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := auto.Wake(dep.ID); err != nil {
+			if _, err := auto.Wake(dep.ID, false); err != nil {
 				t.Fatal(err)
 			}
 			level, err := res.Yield(other.ID, []string{"batch-1"}, false)

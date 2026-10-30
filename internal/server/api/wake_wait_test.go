@@ -199,8 +199,8 @@ func TestWakeYieldPutsASleepableCoTenantToSleep(t *testing.T) {
 			// (store.Deployment.WakesOnRequest, which the gateway and the
 			// residency arbiter read); only an operator's or a schedule's
 			// wake does (docs/explanation/service-levels.md).
-			if !got.SleepHeld || got.WakesOnRequest() {
-				t.Fatalf("the yielder is held=%v wakes on request=%v, want held and not woken by a request", got.SleepHeld, got.WakesOnRequest())
+			if !inst.SleepHeld || got.WakesOnRequest(inst) {
+				t.Fatalf("the yielder is held=%v wakes on request=%v, want held and not woken by a request", inst.SleepHeld, got.WakesOnRequest(inst))
 			}
 		})
 	}

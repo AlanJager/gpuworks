@@ -46,11 +46,8 @@ func (a *residencyAdapter) Waiters() ([]automation.Waiter, error) {
 		if n == 0 {
 			continue
 		}
-		dep, err := a.store.GetDeployment(id)
-		if err != nil {
-			continue
-		}
-		if !wakeableByRequest(dep) {
+		dep, ok := a.wakeableByRequest(id)
+		if !ok {
 			continue
 		}
 		out = append(out, automation.Waiter{DeploymentID: id, Policy: dep.Policy(), Since: since})
@@ -127,27 +124,35 @@ func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blockin
 	return out, nil
 }
 
-func wakeableByRequest(dep *store.Deployment) bool {
-	return dep.State == store.DeployActive && dep.WakesOnRequest()
-}
-
-// Wakeable says the deployment is active, asleep by the platform's choice,
-// and has a sleeper to wake.
-func (a *residencyAdapter) Wakeable(id uint) (yieldpolicy.Policy, bool) {
+// wakeableByRequest is the deployment when it is active and has a sleeper
+// (ordered to sleep) a request wakes (store.Deployment.WakesOnRequest): an
+// operator's or a schedule's sleepers are not woken for a request or a
+// resume, while the platform's sleepers of the same deployment are.
+func (a *residencyAdapter) wakeableByRequest(id uint) (*store.Deployment, bool) {
 	dep, err := a.store.GetDeployment(id)
-	if err != nil || !wakeableByRequest(dep) {
-		return yieldpolicy.Policy{}, false
+	if err != nil || dep.State != store.DeployActive || !dep.Sleepable {
+		return nil, false
 	}
 	insts, err := a.store.InstancesForDeployment(id)
 	if err != nil {
-		return yieldpolicy.Policy{}, false
+		return nil, false
 	}
 	for i := range insts {
-		if store.HoldsSleepIntent(&insts[i]) && planning.InstanceSleepIntent(&insts[i]) > 0 {
-			return dep.Policy(), true
+		if store.HoldsSleepIntent(&insts[i]) && planning.InstanceSleepIntent(&insts[i]) > 0 && dep.WakesOnRequest(&insts[i]) {
+			return dep, true
 		}
 	}
-	return yieldpolicy.Policy{}, false
+	return nil, false
+}
+
+// Wakeable says the deployment is active and has a sleeper a request wakes
+// (wakeableByRequest), with its policy.
+func (a *residencyAdapter) Wakeable(id uint) (yieldpolicy.Policy, bool) {
+	dep, ok := a.wakeableByRequest(id)
+	if !ok {
+		return yieldpolicy.Policy{}, false
+	}
+	return dep.Policy(), true
 }
 
 // Blocking is what keeps the first of the deployment's waiting replicas from

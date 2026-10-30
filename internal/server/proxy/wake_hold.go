@@ -37,6 +37,11 @@ type wakeHold struct {
 	// holdMax is how long a request for the deployment waits: its policy's
 	// hold_max_sec.
 	holdMax func(dep *store.Deployment) time.Duration
+	// wakes says, of each deployment last refused for sleep, whether a
+	// request wakes it (refuseAsleep), as read from its instance rows on that
+	// refusal; holdForWake reads it right after. One entry per deployment
+	// ever refused for sleep, so it is bounded by the deployments.
+	wakes map[uint]bool
 	// draining are the instances about to give their cards up, by
 	// deployment (drain.go). Each set is replaced, never changed in place,
 	// so a request reads the one it took under the lock after letting go.
@@ -47,7 +52,7 @@ type heldRequest struct{ since time.Time }
 
 func newWakeHold() *wakeHold {
 	return &wakeHold{
-		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]map[string]bool{},
+		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]map[string]bool{}, wakes: map[uint]bool{},
 		holdMax: func(dep *store.Deployment) time.Duration { return dep.Policy().HoldMax() },
 	}
 }
@@ -142,6 +147,26 @@ func (p *Proxy) HeldDeployments() []uint {
 	return p.hold.HeldDeployments()
 }
 
+// noteAsleep records whether a request wakes the deployment, as its latest
+// refusal for sleep read it.
+func (h *wakeHold) noteAsleep(deploymentID uint, wakes bool) {
+	h.mu.Lock()
+	h.wakes[deploymentID] = wakes
+	h.mu.Unlock()
+}
+
+// wakesOnRequest says a request for dep, just refused for sleep, is held for
+// a wake: a sleeper of it wakes on request (store.Deployment.WakesOnRequest,
+// per instance), as that refusal read its instances (refuseAsleep).
+func (p *Proxy) wakesOnRequest(dep *store.Deployment) bool {
+	if p.hold == nil || dep == nil {
+		return false
+	}
+	p.hold.mu.Lock()
+	defer p.hold.mu.Unlock()
+	return p.hold.wakes[dep.ID]
+}
+
 // holdForWake holds a request for a sleeping deployment until the deployment
 // can serve it, then selects again. It returns the selection's result; a
 // request still not served when its time is up gets the asleep refusal with
@@ -156,7 +181,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 	p.hold.mu.Lock()
 	demand := p.hold.demand
 	p.hold.mu.Unlock()
-	if demand == nil || !dep.WakesOnRequest() {
+	if demand == nil || !p.wakesOnRequest(dep) {
 		return refuse()
 	}
 	req, changed, ok := p.hold.enter(dep.ID)
@@ -186,8 +211,9 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 		if status == 0 || !asleep {
 			return got, tgt, status, msg, asleep
 		}
-		if got != nil && got.ID == dep.ID && !got.WakesOnRequest() {
-			// An operator or a schedule put it to sleep meanwhile.
+		if got != nil && got.ID == dep.ID && !p.wakesOnRequest(got) {
+			// An operator or a schedule put its sleepers to sleep, or the
+			// platform's sleepers were woken by hand, meanwhile.
 			return got, tgt, status, msg, asleep
 		}
 	}

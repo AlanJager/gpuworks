@@ -81,13 +81,13 @@ func TestAutomationAdapterSleeps(t *testing.T) {
 	if got := intentOf(t, st, "auto-1"); got != 1 {
 		t.Fatalf("intent after the automation's sleep = %d, want 1", got)
 	}
-	if got, _ := st.GetDeployment(dep.ID); got.SleepHeld {
+	if mustInstance(t, st, "auto-1").SleepHeld {
 		t.Fatal("a platform sleep is held: a request would not wake it")
 	}
 	if _, err := adapter.Sleep(dep.ID, 2, true); err != nil {
 		t.Fatalf("held sleep: %v", err)
 	}
-	if got, _ := st.GetDeployment(dep.ID); !got.SleepHeld {
+	if !mustInstance(t, st, "auto-1").SleepHeld {
 		t.Fatal("a schedule's sleep is not held")
 	}
 }
@@ -158,7 +158,7 @@ func TestAutomationAdapterWakeWaitsAndWakesWhenItFits(t *testing.T) {
 	if _, err := st.CreateInstance(&store.Instance{UUID: "other-1", DeploymentID: other.ID, NodeID: dep.NodeID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, DesiredStateJSON: string(spec)}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := adapter.Wake(dep.ID)
+	result, err := adapter.Wake(dep.ID, true)
 	if err != nil || len(result.Woken) != 0 || len(result.Waiting) != 1 || result.Waiting[0] != "auto-1" {
 		t.Fatalf("wake onto a taken card = %+v err=%v", result, err)
 	}
@@ -385,7 +385,7 @@ func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
 	waits.Wait(newcomer.ID, card, []string{"auto-1"}, time.Now())
 
 	// The newcomer is idle and ranks higher: the card is its.
-	result, err := adapter.Wake(dep.ID)
+	result, err := adapter.Wake(dep.ID, true)
 	if err != nil || len(result.Woken) != 0 || len(result.Waiting) != 1 || intentOf(t, st, "auto-1") != 1 {
 		t.Fatalf("wake onto a placement's card = %+v err=%v intent=%d, want it left waiting", result, err, intentOf(t, st, "auto-1"))
 	}

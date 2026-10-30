@@ -34,7 +34,8 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 	if _, err := st.CreateInstance(&store.Instance{UUID: "chat-1", DeploymentID: dep.ID, NodeID: node.ID, State: "running", GPUIndexes: "[0]", DesiredStateJSON: sleepSpec("chat-1", 0)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetDeploymentSleep(dep.ID, 2); err != nil {
+	// The platform's sleep (a yield), which a request wakes.
+	if err := st.OrderInstancesSleep(dep.ID, []string{"chat-1"}, 2, proto.SleepModeWait); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "chat-1", State: proto.InstRunning, SleepLevel: 2}); err != nil {
@@ -94,7 +95,7 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 
 	// An operator's sleep is held: no request wakes it, so it keeps nothing
 	// and the card is anyone's.
-	if err := st.OrderDeploymentSleepHeld(dep.ID, 2, proto.SleepModeWait, true); err != nil {
+	if err := st.OrderInstancesSleepHeld(dep.ID, []string{"chat-1"}, 2, proto.SleepModeWait, true); err != nil {
 		t.Fatal(err)
 	}
 	st.Bus.PublishChange("deployment", fmt.Sprint(dep.ID), "test")

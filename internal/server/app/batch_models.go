@@ -78,20 +78,17 @@ func nameState(rows []store.Deployment, instances map[uint][]store.Instance) bat
 	return best
 }
 
-// deploymentState is what one active deployment is to a batch: awake (or
-// starting) it serves; asleep, a request wakes it when
-// Deployment.WakesOnRequest says so - the gateway's rule - and otherwise the
-// sleep is held. A replica awake with no sleep ordered serves, held or not:
-// an operator's sleep of some replicas holds the deployment's sleep
-// (Deployment.SleepHeld) while the others serve. Otherwise a held sleep is
-// asleep whatever the instances report yet, and a deployment not held is
-// asleep when it has running replicas and the gateway would refuse each for
-// sleep (planning.InstanceAsleep on their leaders).
+// deploymentState is what one active deployment is to a batch: a replica
+// awake with no sleep ordered serves, held or not, and so does a deployment
+// some of whose running replicas are not asleep. With every running replica
+// asleep (planning.InstanceAsleep on their leaders), a request wakes it when
+// one of them wakes on request (planning.RequestWakes, the gateway's rule),
+// and otherwise every sleep is held.
 func deploymentState(d *store.Deployment, insts []store.Instance) batch.ModelState {
-	if anyReplicaServes(insts) || !d.SleepHeld && !replicasAsleep(insts) {
+	if anyReplicaServes(insts) || !replicasAsleep(insts) {
 		return batch.ModelAvailable
 	}
-	if d.WakesOnRequest() {
+	if planning.RequestWakes(d, insts) {
 		return batch.ModelAsleep
 	}
 	return batch.ModelSleepHeld

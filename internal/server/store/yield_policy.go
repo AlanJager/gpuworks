@@ -10,15 +10,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
-// WakesOnRequest says a request for the deployment, while it sleeps, is
-// held for its wake rather than refused: it can sleep, and its sleep is the
-// platform's choice rather than an operator's or a schedule's (SleepHeld).
-// The gateway, the residency arbiter, placement and the playground all ask
-// this one question.
-func (d *Deployment) WakesOnRequest() bool {
-	return d != nil && d.Sleepable && !d.SleepHeld
-}
-
 // Policy is the deployment's yield policy as its columns state it,
 // normalized; the policy a row from before the columns reads as is never.
 func (d *Deployment) Policy() yieldpolicy.Policy {
@@ -126,7 +117,8 @@ func addDeploymentIdleSleep(db *gorm.DB) error {
 	return nil
 }
 
-// addDeploymentServiceLevel adds the service level and the held-sleep flag.
+// addDeploymentServiceLevel adds the service level and the held-sleep flag
+// (191 moved the flag to the instances).
 // An existing deployment reads as resident, and one asleep now (ordered
 // deployment-wide, or with a replica at a sleep level) is held: before the
 // flag nothing woke a sleeper on request, so none is woken by one after it.
@@ -140,8 +132,8 @@ func addDeploymentServiceLevel(db *gorm.DB) error {
 			return err
 		}
 	}
-	if !db.Migrator().HasColumn(&Deployment{}, "SleepHeld") {
-		if err := db.Migrator().AddColumn(&Deployment{}, "SleepHeld"); err != nil {
+	if !db.Migrator().HasColumn(&deploymentSleepHeldColumn{}, "SleepHeld") {
+		if err := db.Migrator().AddColumn(&deploymentSleepHeldColumn{}, "SleepHeld"); err != nil {
 			return err
 		}
 		added = true

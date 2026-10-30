@@ -156,11 +156,17 @@ type Deployment struct {
 	// replicas move (after_sec 0 never moves them).
 	NodeReplacement NodeReplacement `json:"node_replacement"`
 	// YieldPolicy is how the deployment shares GPUs with others and the
-	// parameters that go with it; SleepHeld says
-	// an operator's or a schedule's sleep holds it, so a request does not
-	// wake it.
+	// parameters that go with it.
 	YieldPolicy YieldPolicy `json:"yield_policy"`
-	SleepHeld   bool        `json:"sleep_held"`
+	// SleepHold says how its asleep replicas are held, derived from each
+	// replica's own hold (Instance.SleepHeld): SleepHoldAll when an
+	// operator's or a schedule's sleep holds every one (a request wakes
+	// none), SleepHoldSome when it holds some (a request wakes the others),
+	// SleepHoldNone when the platform put them all to sleep (a request
+	// wakes them); absent with none asleep. SleepHeld is SleepHoldAll: the
+	// deployment has replicas asleep and a request wakes none of them.
+	SleepHold string `json:"sleep_hold,omitempty"`
+	SleepHeld bool   `json:"sleep_held"`
 	// WakeWaitingSince is when the oldest wake of the deployment that waits
 	// for room started waiting; absent when none waits. A waiting wake gives
 	// up after WakeWaitLimitSec.
@@ -300,6 +306,13 @@ type RoutingPolicyOption struct {
 	Description localization.Text `json:"description"`
 }
 
+// A deployment's SleepHold: how its asleep replicas are held.
+const (
+	SleepHoldAll  = "all"
+	SleepHoldSome = "some"
+	SleepHoldNone = "none"
+)
+
 // Instance is the API view of a running replica.
 type Instance struct {
 	PreStartArgv   []string `json:"pre_start_argv,omitempty"`
@@ -331,6 +344,10 @@ type Instance struct {
 	// Asleep says the gateway sends the instance nothing because of sleep:
 	// ordered to sleep, or still reporting a sleep level.
 	Asleep bool `json:"asleep"`
+	// SleepHeld says an operator's or a schedule's sleep holds the
+	// instance: a request does not wake it. Its deployment's other
+	// instances may be held or not on their own.
+	SleepHeld bool `json:"sleep_held"`
 	// Replica is the replica the instance fills (as its leader or a
 	// follower of its generation); absent when it fills none.
 	Replica *InstanceReplica `json:"replica,omitempty"`

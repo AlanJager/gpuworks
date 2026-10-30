@@ -97,9 +97,10 @@ func HeldGPUs(st *store.Store, policy string) (map[uint]map[int]bool, error) {
 // policy being placed: a sleeping instance of a deployment that shares its
 // cards by policy (any but never) keeps its whole claim against a policy it
 // does not share with (never), so a request that wakes it is never left
-// without room. A sleep an operator or a schedule holds reserves nothing: no
-// request wakes it, and the wake that does (an operator's, a schedule's)
-// waits for room or makes it. Nil when no deployment shares by yield policy.
+// without room. A sleeper an operator or a schedule holds reserves nothing
+// (store.Deployment.WakesOnRequest, per instance): no request wakes it, and
+// the wake that does (an operator's, a schedule's) waits for room or makes
+// it. Nil when no deployment shares by yield policy.
 func reservedAgainst(st *store.Store, policy string) func(*store.Instance) bool {
 	if st == nil {
 		return nil
@@ -111,14 +112,12 @@ func reservedAgainst(st *store.Store, policy string) func(*store.Instance) bool 
 	if policy == "" {
 		policy = yieldpolicy.Never
 	}
-	policies := make(map[uint]string, len(sharing))
-	for _, dep := range sharing {
-		if dep.WakesOnRequest() {
-			policies[dep.ID] = dep.YieldPolicy
-		}
+	deps := make(map[uint]*store.Deployment, len(sharing))
+	for i := range sharing {
+		deps[sharing[i].ID] = &sharing[i]
 	}
 	return func(in *store.Instance) bool {
-		other, ok := policies[in.DeploymentID]
-		return ok && !yieldpolicy.SharesCardsWith(policy, other)
+		dep := deps[in.DeploymentID]
+		return dep != nil && dep.WakesOnRequest(in) && !yieldpolicy.SharesCardsWith(policy, dep.YieldPolicy)
 	}
 }

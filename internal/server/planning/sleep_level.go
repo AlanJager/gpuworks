@@ -57,11 +57,14 @@ type SleepOrder struct {
 	// Mode is the pause mode (proto.SleepModeWait or SleepModeAbort).
 	Mode string
 	// Held says an operator or a schedule ordered it: a request does not
-	// wake it. A sleep the platform chose (auto sleep, a yield) is not held.
+	// wake the instances it puts to sleep (store.Instance.SleepHeld). A
+	// sleep the platform chose (a yield) is not held, and leaves every
+	// instance's hold as it was.
 	Held bool
 	// Instances names the instances ordered to sleep; nil orders the whole
-	// deployment (store.OrderDeploymentSleepHeld), whose awake sleepers are
-	// what an L1 sleep moves into host memory.
+	// deployment, whose awake sleepers are what an L1 sleep moves into host
+	// memory. A whole-deployment order is held (store.OrderDeploymentSleep);
+	// one that is not names every sleeper instead.
 	Instances []string
 }
 
@@ -76,6 +79,16 @@ func OrderSleep(st *store.Store, dep *store.Deployment, order SleepOrder, host H
 		return 0, &SleepRefusal{Code: code, Params: map[string]any{"engine": dep.Engine}}, nil
 	}
 	level := proto.SleepLevelL2
+	if order.Instances == nil && !order.Held {
+		insts, err := st.InstancesForDeployment(dep.ID)
+		if err != nil {
+			return 0, nil, err
+		}
+		order.Instances = instanceUUIDs(Sleepers(insts))
+		if len(order.Instances) == 0 {
+			return 0, nil, nil
+		}
+	}
 	if order.Pref != yieldpolicy.LevelL2 {
 		insts, err := st.InstancesForDeployment(dep.ID)
 		if err != nil {
@@ -91,7 +104,7 @@ func OrderSleep(st *store.Store, dep *store.Deployment, order SleepOrder, host H
 		}
 	}
 	if order.Instances == nil {
-		return level, nil, st.OrderDeploymentSleepHeld(dep.ID, level, order.Mode, order.Held)
+		return level, nil, st.OrderDeploymentSleep(dep.ID, level, order.Mode)
 	}
 	return level, nil, st.OrderInstancesSleepHeld(dep.ID, order.Instances, level, order.Mode, order.Held)
 }

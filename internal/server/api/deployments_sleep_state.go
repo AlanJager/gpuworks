@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -72,6 +73,9 @@ type replicaCounts struct {
 	// to; Level is the deepest reported level.
 	Settled int
 	Level   int
+	// Held is the asleep ones an operator's or a schedule's sleep holds
+	// (store.Instance.SleepHeld, the leader's): a request does not wake them.
+	Held int
 }
 
 // deploymentFacts is how the gateway reads a deployment's replicas now.
@@ -89,6 +93,9 @@ type deploymentFacts struct {
 	Settled int
 	// Level is the deepest sleep level an engine reports.
 	Level int
+	// HeldReplicas counts the asleep replicas a held sleep keeps asleep: a
+	// request wakes none of them.
+	HeldReplicas int
 	// Roles is the same walk per role, for a PD response's role counts.
 	Roles map[string]replicaCounts
 	// refused is set when the gateway would answer no request at all: some
@@ -105,6 +112,21 @@ type deploymentFacts struct {
 // needs sleep: the condition the sleeping and asleep states describe. A
 // deployment with no serving replica is never asleep; nothing is left to wake.
 func (f deploymentFacts) Asleep() bool { return f.refused && f.sleepRefusal && f.AsleepReplicas > 0 }
+
+// SleepHold says how the asleep replicas are held (dto.SleepHold*): every
+// one by an operator's or a schedule's sleep, some, or none; empty with none
+// asleep.
+func (f deploymentFacts) SleepHold() string {
+	switch {
+	case f.AsleepReplicas == 0:
+		return ""
+	case f.HeldReplicas >= f.AsleepReplicas:
+		return dto.SleepHoldAll
+	case f.HeldReplicas > 0:
+		return dto.SleepHoldSome
+	}
+	return dto.SleepHoldNone
+}
 
 // State is the state a fully asleep deployment shows: asleep once every asleep
 // engine reports its level, sleeping while any order is still being carried
@@ -129,6 +151,7 @@ func deploymentFactsOf(rows dtoLookup, view replicaView, insts []store.Instance)
 		facts.Ready += counts.Awake
 		facts.AsleepReplicas += counts.Asleep
 		facts.Settled += counts.Settled
+		facts.HeldReplicas += counts.Held
 		facts.Level = max(facts.Level, counts.Level)
 		if counts.Awake > 0 || !view.roleRequired(role, counts) {
 			continue
@@ -156,6 +179,9 @@ func replicaCountsOf(rows dtoLookup, view replicaView, role string, incomplete m
 		case replicaAsleep:
 			out.Asleep++
 			out.Level = max(out.Level, leader.SleepLevel)
+			if leader.SleepHeld {
+				out.Held++
+			}
 			// Settled means the engine has reached the level it was ordered
 			// to, which is not the same as it reporting some level: a change
 			// between two levels goes through awake (the engine only sleeps

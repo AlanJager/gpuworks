@@ -82,14 +82,14 @@ func cardsWakeFixture(t *testing.T, replicas ...string) (*automationAdapter, *st
 // waits for room, and wakes once the placement is done.
 func TestAWakeLeavesAReplicaSpanningAPlacementsCardAsleepWhole(t *testing.T) {
 	adapter, st, dep, waits := cardsWakeFixture(t, "[0,1]")
-	result, err := adapter.Wake(dep.ID)
+	result, err := adapter.Wake(dep.ID, true)
 	if err != nil || len(result.Woken) != 0 || !slices.Equal(result.Waiting, []string{"auto-1"}) {
 		t.Fatalf("wake = %+v err=%v, want auto-1 waiting", result, err)
 	}
 	if intentOf(t, st, "auto-1") != 1 || mustInstance(t, st, "auto-1").WakeWaitingSince == nil {
 		t.Fatal("auto-1 is not asleep and waiting for room")
 	}
-	if got, _ := st.GetDeployment(dep.ID); got.SleepHeld {
+	if mustInstance(t, st, "auto-1").SleepHeld {
 		t.Fatal("a wake that waits left the sleep held")
 	}
 	// Still the placement's card: the waiting wake leaves it.
@@ -109,7 +109,7 @@ func TestAWakeLeavesAReplicaSpanningAPlacementsCardAsleepWhole(t *testing.T) {
 // wakes now, that one waits for room.
 func TestAWakeWakesTheReplicaOffAPlacementsCard(t *testing.T) {
 	adapter, st, dep, _ := cardsWakeFixture(t, "[0]", "[1]")
-	result, err := adapter.Wake(dep.ID)
+	result, err := adapter.Wake(dep.ID, true)
 	if err != nil || !slices.Equal(result.Woken, []string{"auto-1"}) || !slices.Equal(result.Waiting, []string{"auto-2"}) {
 		t.Fatalf("wake = %+v err=%v, want auto-1 woken and auto-2 waiting", result, err)
 	}

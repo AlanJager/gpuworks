@@ -102,7 +102,7 @@ func TestUnitChoiceCountsTheCardsSleepersKeep(t *testing.T) {
 		t.Fatalf("held for a sharing launch = %v err=%v, want card 0 free", held[node.ID], err)
 	}
 	// An operator's sleep reserves nothing.
-	if err := st.OrderDeploymentSleepHeld(1, 1, "", true); err != nil {
+	if err := st.OrderDeploymentSleep(1, 1, ""); err != nil {
 		t.Fatal(err)
 	}
 	if held, err := HeldGPUs(st, yieldpolicy.Never); err != nil || held[node.ID][0] {

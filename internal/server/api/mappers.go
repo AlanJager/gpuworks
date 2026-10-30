@@ -74,7 +74,6 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
 	out.YieldPolicy = dto.YieldPolicyOf(d.Policy())
-	out.SleepHeld = d.SleepHeld
 	out.WakeWaitLimitSec = int(automation.DefaultWakeWaitLimit / time.Second)
 	out.YieldPolicyEligible = dto.EligibilityOf(planning.YieldPolicyRefusal(d))
 	out.ScheduleCapabilities = scheduleCapabilitiesDTO(planning.ScheduleCapabilitiesOf(d))
@@ -188,6 +187,8 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.RuntimeState = deploymentRuntimeState(rows, d, insts, recorded)
 	out.SleepLevel = facts.Level
 	out.AsleepReplicas = facts.AsleepReplicas
+	out.SleepHold = facts.SleepHold()
+	out.SleepHeld = out.SleepHold == dto.SleepHoldAll
 	out.State = effectiveDeploymentState(d, out.RuntimeState, facts)
 	if withInstances {
 		out.NodeRequirementLabels = a.requirementLabels(out.NodeRequirements)
@@ -479,7 +480,7 @@ func (a *apiHandlers) instanceDTOFrom(rows dtoLookup, in *store.Instance) dto.In
 		UUID: in.UUID, DeploymentID: in.DeploymentID, State: in.State, ImageDigestID: in.ImageDigestID,
 		APIPort: in.APIPort, Image: in.Image, Message: in.Message, ContainerID: in.ContainerID,
 		Phase: in.Phase, Progress: in.Progress, BytesDone: in.BytesDone, BytesTotal: in.BytesTotal, RateBPS: in.RateBPS,
-		SleepLevel: in.SleepLevel, DesiredSleep: in.SleepIntent(), Asleep: planning.InstanceAsleep(in),
+		SleepLevel: in.SleepLevel, DesiredSleep: in.SleepIntent(), Asleep: planning.InstanceAsleep(in), SleepHeld: in.SleepHeld,
 		DistGroup: in.DistGroup, DistRole: instanceDistRole(in), NNodes: in.NNodes, NodeRank: in.NodeRank, Headless: in.Headless, DistAttempt: in.DistAttempt,
 		GPUIndexes: parseIntSlice(in.GPUIndexes), Ports: parseIntSlice(in.Ports), Role: in.Role,
 	}

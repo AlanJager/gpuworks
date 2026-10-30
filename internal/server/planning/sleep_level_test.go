@@ -77,11 +77,7 @@ func TestOrderSleepWritesTheResolvedLevelOrNothing(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		dep, err := st.GetDeployment(in.DeploymentID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return InstanceSleepIntent(in), dep.SleepHeld
+		return InstanceSleepIntent(in), in.SleepHeld
 	}
 
 	t.Run("an explicit L1 the host cannot hold is refused and writes nothing", func(t *testing.T) {

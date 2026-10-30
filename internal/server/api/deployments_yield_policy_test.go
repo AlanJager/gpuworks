@@ -251,11 +251,14 @@ func TestTwoIdleDeploymentsOnACardAreNamed(t *testing.T) {
 	}
 }
 
-// An operator's sleep is held (a request does not wake it) and a wake lifts
-// it; the deployment reads it as sleep_held.
+// An operator's sleep is held (a request does not wake it); the deployment,
+// all of whose replicas it holds, reads it as sleep_held.
 func TestAnOperatorsSleepIsHeld(t *testing.T) {
 	rig := newYieldPolicyRig(t)
-	rig.place(t, rig.sleepy, "sleepy-1", "[0]")
+	spec, _ := json.Marshal(proto.InstanceDesiredState{UUID: "sleepy-1", DesiredState: "running", Sleepable: true})
+	if _, err := rig.st.CreateInstance(&store.Instance{UUID: "sleepy-1", DeploymentID: rig.sleepy.ID, NodeID: rig.node.ID, State: proto.InstRunning, GPUIndexes: "[0]", DesiredStateJSON: string(spec)}); err != nil {
+		t.Fatal(err)
+	}
 	if rec := rig.do(rig.session, http.MethodPost, schedPath(rig.sleepy, "sleep?level=2"), ""); rec.Code != http.StatusOK {
 		t.Fatalf("sleep = %d %s", rec.Code, rec.Body)
 	}

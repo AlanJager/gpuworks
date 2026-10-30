@@ -97,7 +97,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	// request is held as if the deployment slept (drain.go).
 	draining := p.hold.drainingOf(dep.ID)
 	if draining != nil && dep.NNodes > 1 {
-		return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
+		return p.refuseAsleep(dep, dep.Sleepable)
 	}
 	insts, _ := p.store.InstancesForDeployment(dep.ID)
 	if dep.NNodes > 1 {
@@ -150,7 +150,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	if routable := withoutDraining(candidates, draining); len(routable) < len(candidates) {
 		if len(routable) == 0 {
-			return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
+			return p.refuseAsleep(dep, dep.Sleepable)
 		}
 		candidates = routable
 	}
@@ -164,7 +164,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	// Distinguish "sleeping" from "not ready" so the caller is told to wake
 	// the model rather than to retry.
 	if anyAsleep {
-		return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
+		return p.refuseAsleep(dep, planning.RequestWakes(dep, insts))
 	}
 	if instancesGaveUp(insts) {
 		return target{}, http.StatusServiceUnavailable, "deployment for " + modelName + " failed to start; see the deployment list", false
@@ -255,7 +255,7 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 	}
 	if len(candidates) == 0 {
 		if anySleeping {
-			return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
+			return p.refuseAsleep(dep, planning.RequestWakes(dep, insts))
 		}
 		return target{}, http.StatusServiceUnavailable, fmt.Sprintf("distributed model %s is not ready: no replica has every rank running on an online node", modelName), false
 	}
@@ -266,6 +266,18 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 	}
 	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, affinity: affinity}, 0, "", false
+}
+
+// refuseAsleep is the refusal of a request for dep because its replicas
+// sleep (or drain to sleep), and records for holdForWake whether a request
+// wakes it (wakes: a sleeper of it wakes on request, planning.RequestWakes,
+// or its replicas drain for a yield). wakes is worked out from the instance
+// rows the refusal was read from, so the request path reads nothing more.
+func (p *Proxy) refuseAsleep(dep *store.Deployment, wakes bool) (target, int, string, bool) {
+	if p.hold != nil {
+		p.hold.noteAsleep(dep.ID, wakes)
+	}
+	return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
 }
 
 // asleepMessage tells a client of a sleeping model what to do: wake it from

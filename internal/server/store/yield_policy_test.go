@@ -3,11 +3,9 @@ package store
 import (
 	"errors"
 	"testing"
-	"time"
 
 	"gorm.io/gorm"
 
-	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
@@ -36,7 +34,7 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
 	}
-	if !db.Migrator().HasColumn(&deploymentServiceColumns{}, "ServiceLevel") || !db.Migrator().HasColumn(&Deployment{}, "SleepHeld") {
+	if !db.Migrator().HasColumn(&deploymentServiceColumns{}, "ServiceLevel") || !db.Migrator().HasColumn(&deploymentSleepHeldColumn{}, "SleepHeld") {
 		t.Fatal("deployments.service_level or sleep_held missing")
 	}
 	// An existing deployment is resident and holds no sleep: nothing about
@@ -76,7 +74,7 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	if err := applyMigration(rollback, failing); !errors.Is(err, want) {
 		t.Fatalf("error = %v", err)
 	}
-	if rollback.Migrator().HasColumn(&deploymentServiceColumns{}, "service_level") || rollback.Migrator().HasColumn(&Deployment{}, "SleepHeld") {
+	if rollback.Migrator().HasColumn(&deploymentServiceColumns{}, "service_level") || rollback.Migrator().HasColumn(&deploymentSleepHeldColumn{}, "SleepHeld") {
 		t.Fatal("columns survived the failed migration")
 	}
 	var count int64
@@ -85,48 +83,6 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 	}
 	if err := migrateDB(rollback, ms); err != nil {
 		t.Fatalf("restart after rollback: %v", err)
-	}
-}
-
-func TestSleepHeldFollowsWhoOrderedTheSleep(t *testing.T) {
-	s := newTestStore(t)
-	dep := &Deployment{Name: "held", Engine: "vllm", Sleepable: true, State: DeployActive, Replicas: 2}
-	if _, err := s.CreateDeployment(dep); err != nil {
-		t.Fatal(err)
-	}
-	for _, uuid := range []string{"i-1", "i-2"} {
-		if err := s.db.Create(&Instance{UUID: uuid, DeploymentID: dep.ID, State: proto.InstRunning}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	held := func() bool {
-		t.Helper()
-		got, err := s.GetDeployment(dep.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return got.SleepHeld
-	}
-
-	if err := s.OrderDeploymentSleepHeld(dep.ID, 1, proto.SleepModeWait, true); err != nil || !held() {
-		t.Fatalf("an operator's sleep is held: held=%v err=%v", held(), err)
-	}
-	if err := s.SetDeploymentSleep(dep.ID, 0); err != nil || held() {
-		t.Fatalf("a wake lifts the hold: held=%v err=%v", held(), err)
-	}
-	if err := s.OrderDeploymentSleep(dep.ID, 2, proto.SleepModeWait); err != nil || held() {
-		t.Fatalf("the platform's sleep is not held: held=%v err=%v", held(), err)
-	}
-	if err := s.OrderInstancesSleepHeld(dep.ID, []string{"i-1"}, 1, proto.SleepModeWait, true); err != nil || !held() {
-		t.Fatalf("an operator's replica sleep holds: held=%v err=%v", held(), err)
-	}
-	// The platform putting another replica to sleep does not lift the
-	// operator's hold.
-	if err := s.OrderInstancesSleep(dep.ID, []string{"i-2"}, 1, proto.SleepModeWait); err != nil || !held() {
-		t.Fatalf("a platform sleep lifted the hold: held=%v err=%v", held(), err)
-	}
-	if err := s.OrderInstancesSleep(dep.ID, []string{"i-1"}, 0, ""); err != nil || held() {
-		t.Fatalf("a replica wake lifts the hold: held=%v err=%v", held(), err)
 	}
 }
 
@@ -508,32 +464,5 @@ func TestSharingDeploymentsAreKeptUntilADeploymentChanges(t *testing.T) {
 	got[0].Name = "changed"
 	if again, _ := s.SharingDeployments(); again[0].Name != "a" {
 		t.Fatal("a caller's edit reached the kept rows")
-	}
-}
-
-// A wake that waits for room lifts an operator's hold: the deployment is to
-// be awake, so a request for it waits for the wake rather than being refused.
-func TestAWaitingWakeLiftsTheHold(t *testing.T) {
-	s := newTestStore(t)
-	dep := &Deployment{Name: "held", Engine: "vllm", Sleepable: true, State: DeployActive, Replicas: 1}
-	if _, err := s.CreateDeployment(dep); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.db.Create(&Instance{UUID: "h-1", DeploymentID: dep.ID, State: proto.InstRunning}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := s.OrderDeploymentSleepHeld(dep.ID, 2, proto.SleepModeWait, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.MarkWakeWaiting(dep.ID, []string{"h-1"}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	got, err := s.GetDeployment(dep.ID)
-	if err != nil || got.SleepHeld {
-		t.Fatalf("sleep_held = %v err=%v after a waiting wake, want false", got.SleepHeld, err)
-	}
-	in, _ := s.InstanceByUUID("h-1")
-	if in.WakeWaitingSince == nil {
-		t.Fatalf("instance = %+v: the wait did not start", in)
 	}
 }

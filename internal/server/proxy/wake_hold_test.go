@@ -25,7 +25,7 @@ func newSleepingProxy(t *testing.T, held bool) (*Proxy, *store.Store, string, ui
 		t.Fatal(err)
 	}
 	if held {
-		if err := st.DB().Model(&store.Deployment{}).Where("id = ?", depID).Update("sleep_held", true).Error; err != nil {
+		if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_held", true).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -221,11 +221,11 @@ func TestAHeldRequestWaitsForTheDeploymentsHoldMaxSec(t *testing.T) {
 }
 
 func TestASleepHeldWhileWaitingEndsTheHold(t *testing.T) {
-	p, st, key, depID, front := newSleepingProxy(t, false)
+	p, st, key, _, front := newSleepingProxy(t, false)
 	p.SetWakeDemand(func(uint) {
 		go func() {
 			time.Sleep(100 * time.Millisecond)
-			_ = st.DB().Model(&store.Deployment{}).Where("id = ?", depID).Update("sleep_held", true).Error
+			_ = st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_held", true).Error
 		}()
 	})
 	start := time.Now()

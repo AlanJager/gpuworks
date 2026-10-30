@@ -90,11 +90,6 @@ type Deployment struct {
 	Unfinished        string `gorm:"size:16;not null;default:''"`
 	UnfinishedWaitSec int    `gorm:"not null;default:0"`
 	HoldMaxSec        int    `gorm:"not null;default:0"`
-	// SleepHeld says the deployment's sleep was ordered by an operator or a
-	// schedule: a request through the gateway does not wake it. A sleep the
-	// platform chose (auto sleep, the arbiter) is not held and a request
-	// wakes it.
-	SleepHeld bool `gorm:"not null;default:false"`
 
 	// State is the internal Go name; the persisted column is desired_state.
 	// The column type is unchanged: DeploymentState is a string alias.
@@ -185,12 +180,19 @@ type Instance struct {
 	// room; nil when no wake waits. The controller wakes the instance once its
 	// GPUs can take it back, or gives up after the wait limit.
 	WakeWaitingSince *time.Time `gorm:"index"`
-	DistGroup        string     `gorm:"size:64;index"`
-	DistRole         string     `gorm:"size:16"` // leader | follower
-	NNodes           int
-	NodeRank         int
-	Headless         bool
-	DistAttempt      int
+	// SleepHeld says the instance's sleep was ordered by an operator or a
+	// schedule (a held sleep): a request through the gateway does not wake
+	// it. A held sleep marks exactly the instances it orders, a wake clears
+	// exactly the ones it wakes or leaves waiting, and a sleep the platform
+	// chose (the residency arbiter's) neither sets nor clears it
+	// (Deployment.WakesOnRequest).
+	SleepHeld   bool   `gorm:"not null;default:false"`
+	DistGroup   string `gorm:"size:64;index"`
+	DistRole    string `gorm:"size:16"` // leader | follower
+	NNodes      int
+	NodeRank    int
+	Headless    bool
+	DistAttempt int
 	// Role is the instance's role in a PD disaggregated deployment
 	// (pdmode.Role*); empty for every other deployment. It is independent of
 	// DistRole, which ranks a multi-node group.

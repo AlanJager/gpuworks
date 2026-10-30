@@ -36,14 +36,16 @@ func modelStack(t *testing.T, send batch.Sender) (*store.Store, batchConsole) {
 	return st, batchConsole{svc}
 }
 
+// addDeployment adds a deployment of the served name; held gives it one
+// running replica an operator's sleep holds.
 func addDeployment(t *testing.T, st *store.Store, served string, state store.DeploymentState, held bool) {
 	t.Helper()
-	d, err := st.CreateDeployment(&store.Deployment{Name: served + "-dep", ServedName: served, State: state})
+	d, err := st.CreateDeployment(&store.Deployment{Name: served + "-dep", ServedName: served, State: state, Sleepable: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if held {
-		if err := st.DB().Model(&store.Deployment{}).Where("id = ?", d.ID).Update("sleep_held", true).Error; err != nil {
+		if _, err := st.CreateInstance(&store.Instance{UUID: served + "-held", DeploymentID: d.ID, State: proto.InstRunning, NNodes: 1, SleepLevel: 2, SleepHeld: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -265,7 +267,9 @@ func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	seq := 0
-	deploy := func(served string, sleepable, held bool, levels ...int) {
+	// Each replica is its reported sleep level, with h when an operator's
+	// sleep holds it.
+	deploy := func(served string, sleepable bool, replicas ...string) {
 		t.Helper()
 		d, err := st.CreateDeployment(&store.Deployment{Name: fmt.Sprintf("%s-%d", served, seq), ServedName: fmt.Sprintf("%s-%d", served, seq), State: store.DeployActive, Sleepable: sleepable})
 		if err != nil {
@@ -273,24 +277,27 @@ func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 		}
 		// The store refuses a second active deployment of a name; a rollout's
 		// pair is renamed after creation.
-		if err := st.DB().Model(&store.Deployment{}).Where("id = ?", d.ID).Updates(map[string]any{"served_name": served, "sleep_held": held}).Error; err != nil {
+		if err := st.DB().Model(&store.Deployment{}).Where("id = ?", d.ID).Update("served_name", served).Error; err != nil {
 			t.Fatal(err)
 		}
-		for i, level := range levels {
-			if _, err := st.CreateInstance(&store.Instance{UUID: fmt.Sprintf("%s-%d-%d", served, seq, i), DeploymentID: d.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, SleepLevel: level}); err != nil {
+		for i, replica := range replicas {
+			level, held := int(replica[0]-'0'), strings.HasSuffix(replica, "h")
+			if _, err := st.CreateInstance(&store.Instance{UUID: fmt.Sprintf("%s-%d-%d", served, seq, i), DeploymentID: d.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, SleepLevel: level, SleepHeld: held}); err != nil {
 				t.Fatal(err)
 			}
 		}
 		seq++
 	}
-	deploy("awake", true, false, 0)
-	deploy("starting", true, false)       // no running replica yet
-	deploy("half", true, false, 1, 0)     // one replica serves
-	deploy("napping", true, false, 1, 2)  // every replica asleep, a request wakes it
-	deploy("ordered", true, true)         // a held sleep, whatever the instances report yet
-	deploy("unwakeable", false, false, 1) // asleep, but not sleepable: a request does not wake it
-	deploy("rolling", true, true)         // a held old deployment ...
-	deploy("rolling", true, false, 1)     // ... beside a new one a request wakes
+	deploy("awake", true, "0")
+	deploy("starting", true)             // no running replica yet
+	deploy("half", true, "1", "0")       // one replica serves
+	deploy("half-held", true, "0", "2h") // one replica serves beside a held one
+	deploy("napping", true, "1", "2")    // every replica asleep, a request wakes it
+	deploy("mixed", true, "1h", "2")     // asleep, one held: a request wakes the other
+	deploy("ordered", true, "1h", "2h")  // every replica held asleep
+	deploy("unwakeable", false, "1")     // asleep, but not sleepable: a request does not wake it
+	deploy("rolling", true, "2h")        // a held old deployment ...
+	deploy("rolling", true, "1")         // ... beside a new one a request wakes
 	addDeployment(t, st, "stopped-one", store.DeployStopped, false)
 
 	m := batchModels{st}
@@ -299,8 +306,9 @@ func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []batch.ModelEntry{
-		{Name: "awake", State: batch.ModelAvailable}, {Name: "half", State: batch.ModelAvailable}, {Name: "starting", State: batch.ModelAvailable},
-		{Name: "napping", State: batch.ModelAsleep}, {Name: "rolling", State: batch.ModelAsleep},
+		{Name: "awake", State: batch.ModelAvailable}, {Name: "half", State: batch.ModelAvailable}, {Name: "half-held", State: batch.ModelAvailable},
+		{Name: "starting", State: batch.ModelAvailable},
+		{Name: "mixed", State: batch.ModelAsleep}, {Name: "napping", State: batch.ModelAsleep}, {Name: "rolling", State: batch.ModelAsleep},
 		{Name: "ordered", State: batch.ModelSleepHeld}, {Name: "unwakeable", State: batch.ModelSleepHeld},
 	}
 	if fmt.Sprint(list) != fmt.Sprint(want) {
@@ -320,7 +328,7 @@ func TestBatchModelsListAgreesWithLookup(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(d.Models)
-	if wantJSON := `[{"name":"awake","state":"served"},{"name":"half","state":"served"},{"name":"starting","state":"served"},{"name":"napping","state":"asleep"},{"name":"rolling","state":"asleep"},{"name":"ordered","state":"asleep_held"},{"name":"unwakeable","state":"asleep_held"}]`; string(raw) != wantJSON {
+	if wantJSON := `[{"name":"awake","state":"served"},{"name":"half","state":"served"},{"name":"half-held","state":"served"},{"name":"starting","state":"served"},{"name":"mixed","state":"asleep"},{"name":"napping","state":"asleep"},{"name":"rolling","state":"asleep"},{"name":"ordered","state":"asleep_held"},{"name":"unwakeable","state":"asleep_held"}]`; string(raw) != wantJSON {
 		t.Fatalf("dictionary models = %s", raw)
 	}
 	if d.OutputRetentionDays != 30 || d.CompletionWindowHours != (dto.BatchWindowHours{Min: 1, Max: 72, Default: 24}) || d.MaxFileBytes != 200<<20 || d.MaxFileLines != 50000 || len(d.Statuses) != 8 || len(d.Endpoints) != 3 {
