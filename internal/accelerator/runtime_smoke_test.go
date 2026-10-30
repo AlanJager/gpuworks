@@ -196,10 +196,11 @@ func TestRuntimeUnusableGuidePerVendor(t *testing.T) {
 		t.Errorf("Ascend guide for an unenumerated die = %+v, want none", g)
 	}
 
-	// Hygon and PPU have no host runtime check; their cards keep the verdict
+	// PPU and Apple have no host runtime check; their cards keep the verdict
 	// their CLI gave them, and inventing a command would send the reader
-	// after a check this platform never made.
-	for _, vendor := range []string{VendorHygon, VendorPPU} {
+	// after a check this platform never made. (Hygon's is in
+	// TestHygonRuntimeSmokeCommand.)
+	for _, vendor := range []string{VendorPPU, VendorApple} {
 		if g, ok := HealthGuideFor(HealthCard{Vendor: vendor, Code: HealthRuntimeUnusable, BDF: "0000:7e:00.0", Index: 0}, nil); ok {
 			t.Errorf("%s runtime_unusable guide = %+v, want none", vendor, g)
 		}
