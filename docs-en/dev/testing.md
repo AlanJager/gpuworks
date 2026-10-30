@@ -385,7 +385,11 @@ The image is about 50 GB (the runner image dominates); the first full snapshot o
 Custom images are isolated by region, so there is one ID per region; the printed `ALIYUN_IMAGE_CN_HANGZHOU=` and similar lines go into `secrets/cloud-providers.env`
 or the CI environment variables, and cases rent only in regions that have an image. The tool deletes no older image and changes no CI variable;
 with `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` a failed source instance is kept and a 0600 credentials file is written,
-and `-resume-credentials` continues from it. The image already carries Docker and the model, so the cases only verify them and neither install nor download
+and `-resume-credentials` continues from it.
+Both the model and the runner can be changed: `-model-repo`/`-model-rev` pick the ModelScope model, `-model-path` its path in the image,
+and `-docker-image`/`-pull-sources` the runner; the default image name follows the model (`gpuworks-golden-<model>-<UTC time>`).
+`-source-regions` limits where the source and validation instances are rented (by default the same as `-regions`); when copying to overseas and similar regions, use it to keep the source instance in a mainland region with stock.
+The L4 cases register the default Qwen2-0.5B and `gpustack/runner:cuda12.8-vllm0.17.1`, so an image with another model or runner cannot serve them as is. The image already carries Docker and the model, so the cases only verify them and neither install nor download
 (a missing piece means the image is broken and the case fails at once).
 
 Variables CI needs (scoped to `cloud-test/aliyun/*`): `ALIYUN_ACCESS_KEY_ID`, `ALIYUN_ACCESS_KEY_SECRET`

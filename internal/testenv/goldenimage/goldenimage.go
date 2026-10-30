@@ -33,11 +33,11 @@ type File struct {
 	Size int64  `json:"size"`
 }
 
-// ModelFiles lists the files of the default model and refuses a repository
+// ModelFiles lists the files of a ModelScope model and refuses a repository
 // whose total size is not that of a small model: a renamed or replaced repo
 // must not silently bake a different multi-gigabyte model into an image.
-func ModelFiles(ctx context.Context) ([]File, error) {
-	listed, err := modelrepo.ListFiles(ctx, modelrepo.SourceMS, DefaultModelRepo, DefaultModelRev, "", nil)
+func ModelFiles(ctx context.Context, repo, rev string) ([]File, error) {
+	listed, err := modelrepo.ListFiles(ctx, modelrepo.SourceMS, repo, rev, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("list ModelScope files: %w", err)
 	}
@@ -50,7 +50,7 @@ func ModelFiles(ctx context.Context) ([]File, error) {
 		total += file.Size
 		files = append(files, File{
 			Path: file.Path, Size: file.Size,
-			URL: modelrepo.ResolveURL(modelrepo.SourceMS, DefaultModelRepo, file.Revision, file.Path, ""),
+			URL: modelrepo.ResolveURL(modelrepo.SourceMS, repo, file.Revision, file.Path, ""),
 		})
 	}
 	if total < 100<<20 || total > 3<<30 {

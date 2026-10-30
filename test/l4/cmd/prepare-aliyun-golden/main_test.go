@@ -258,3 +258,19 @@ func TestSplitList(t *testing.T) {
 		t.Fatalf("splitList = %v", got)
 	}
 }
+
+func TestImageNameAndDescriptionFollowTheModel(t *testing.T) {
+	for repo, want := range map[string]string{"Qwen/Qwen3-0.6B": "qwen3-0-6b", "Qwen/Qwen2-0.5B-Instruct": "qwen2-0-5b", "plain_name": "plain-name"} {
+		if got := modelSlug(repo); got != want {
+			t.Fatalf("modelSlug(%q) = %q, want %q", repo, got, want)
+		}
+	}
+	o := options{modelRepo: "Qwen/Qwen3-0.6B", modelPath: "/opt/m", dockerImage: "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r2"}
+	if got := imageDescription(o); !strings.Contains(got, o.modelRepo) || !strings.Contains(got, o.dockerImage) || len(got) > 256 {
+		t.Fatalf("description = %q", got)
+	}
+	o.dockerImage = strings.Repeat("x", 300)
+	if got := imageDescription(o); len(got) != 256 {
+		t.Fatalf("description is %d chars, want capped at 256", len(got))
+	}
+}

@@ -376,7 +376,11 @@ secret 或自托管 runner。
 所以每个地域一个 ID，输出的 `ALIYUN_IMAGE_CN_HANGZHOU=` 等行写进 `secrets/cloud-providers.env`
 或 CI 环境变量；用例只在有镜像的地域租机。工具不删旧镜像、不改 CI 变量；
 `GPUWORKS_CLOUD_KEEP_ON_FAILURE=1` 时失败的源机保留并写出 0600 凭据文件，
-可用 `-resume-credentials` 接着做。镜像里已有 Docker 与模型，用例只验证、不安装、不下载
+可用 `-resume-credentials` 接着做。
+模型与 runner 都可以换：`-model-repo`/`-model-rev` 指定 ModelScope 模型，`-model-path` 指定镜像内路径，
+`-docker-image`/`-pull-sources` 指定 runner，默认镜像名随模型生成（`gpuworks-golden-<模型>-<UTC 时间>`）；
+`-source-regions` 限定源机与验证机的租用地域（默认同 `-regions`），复制到海外等地域时用它把源机留在有库存的大陆地域。
+L4 用例按默认的 Qwen2-0.5B 与 `gpustack/runner:cuda12.8-vllm0.17.1` 注册模型，换了模型或 runner 的镜像不能直接给 L4 用。镜像里已有 Docker 与模型，用例只验证、不安装、不下载
 （缺了就是镜像坏了，直接失败）。
 
 CI 需要的变量（作用域 `cloud-test/aliyun/*`）：`ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET`
