@@ -50,11 +50,11 @@ function backend(initial: AgentUpgradeRun[] = []) {
   api.releaseAgentUpgrade = async (_id, _uuid, note) => { state.released.push(note); state.runs = [run({ state: "finished", counts: counts({ total: 1, processed: 1, unconfirmed: 1, active: 0, queued: 0 }) })]; state.items = [item({ phase: "unconfirmed", verified_at: "2026-10-29T01:00:00Z", verification_note: note })]; };
   return state;
 }
-function mount(isAdmin = true, requestedRunID?: number) {
-  return render(<I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin={isAdmin} requestedRunID={requestedRunID} /></I18nextProvider>);
+function mount(isAdmin = true, requestedRunID?: number, selectedNodeUUIDs = preview().node_uuids, onStarted?: () => void) {
+  return render(<I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin={isAdmin} requestedRunID={requestedRunID} selectedNodeUUIDs={selectedNodeUUIDs} onStarted={onStarted} /></I18nextProvider>);
 }
 
-test("the full platform preview requires consent and submits every snapshot UUID exactly once", async () => {
+test("the selected node preview requires consent and submits every snapshot UUID exactly once", async () => {
   const state = backend();
   let finish!: () => void;
   api.createAgentUpgrade = async (body) => {
@@ -64,11 +64,10 @@ test("the full platform preview requires consent and submits every snapshot UUID
     state.runs = [value]; return value;
   };
   const user = userEvent.setup(); mount();
-  await screen.findByText(k.empty);
-  await user.click(screen.getByRole("button", { name: k.all }));
+  await user.click(screen.getByRole("button", { name: k.selected }));
   const modal = await screen.findByRole("dialog");
   await within(modal).findByText("fleet-0");
-  assert.deepEqual(state.previews, [{ scope: "all" }]);
+  assert.deepEqual(state.previews, [{ node_uuids: preview().node_uuids }]);
   const start = within(modal).getByRole("button", { name: k.start }) as HTMLButtonElement;
   assert.equal(start.disabled, true);
   await user.click(within(modal).getByRole("checkbox", { name: k.acknowledge }));
@@ -89,8 +88,8 @@ test("the full platform preview requires consent and submits every snapshot UUID
 test("a lost create response can retry with the same idempotency key and a refresh resets consent", async () => {
   const state = backend(); const user = userEvent.setup();
   api.createAgentUpgrade = async (body) => { state.created.push(body); throw new Error("response lost"); };
-  mount(); await screen.findByText(k.empty);
-  await user.click(screen.getByRole("button", { name: k.all }));
+  mount();
+  await user.click(screen.getByRole("button", { name: k.selected }));
   const modal = await screen.findByRole("dialog"); await within(modal).findByText("fleet-0");
   await user.click(within(modal).getByRole("checkbox"));
   await user.click(within(modal).getByRole("button", { name: k.start }));
@@ -106,13 +105,15 @@ test("persisted partial results survive remount and read-only users can inspect 
   const blocker = { run_id: 7, node_uuid: "node-a", name: "unconfirmed node", reason: "unconfirmed" };
   backend([run({ state: "finished", blocked_by_item: blocker, counts: counts({ total: 2, processed: 2, succeeded: 1, unconfirmed: 1, queued: 0, active: 0 }) })]);
   const user = userEvent.setup(); const view = mount(false);
+  await user.click(screen.getByRole("button", { name: k.history }));
   await screen.findByText(k.processingNotSuccess);
-  assert.ok(!screen.queryByRole("button", { name: k.all }));
+  assert.ok(!screen.queryByRole("button", { name: k.selected }));
   const details = screen.getAllByRole("button", { name: k.details }); await user.click(details[0]);
   await screen.findByText("node outside current page");
   assert.ok(!screen.queryByRole("button", { name: k.stop }));
   assert.ok(!screen.queryByRole("button", { name: k.release }));
   view.unmount(); mount(false);
+  await user.click(screen.getByRole("button", { name: k.history }));
   assert.ok(await screen.findByText(k.processingNotSuccess));
 });
 
@@ -152,15 +153,17 @@ test("query and preview failures expose retry, and SSE refreshes the persisted r
   const state = backend(); let fail = true;
   const list = api.agentUpgradeRuns;
   api.agentUpgradeRuns = async (...args) => { if (fail) throw new Error("result query unavailable"); return list(...args); };
-  const user = userEvent.setup(); mount(); await screen.findByText("result query unavailable");
+  const user = userEvent.setup(); mount(); await user.click(screen.getByRole("button", { name: k.history })); await screen.findByText("result query unavailable");
   fail = false; await user.click(screen.getByRole("button", { name: k.refresh })); await screen.findByText(k.empty);
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
   api.agentUpgradePreview = async () => { throw new Error("artifact metadata unavailable"); };
-  await user.click(screen.getByRole("button", { name: k.all }));
-  const modal = await screen.findByRole("dialog"); await within(modal).findByText("artifact metadata unavailable");
+  await user.click(screen.getByRole("button", { name: k.selected }));
+  const modal = await screen.findByRole("dialog", { name: k.previewTitle }); await within(modal).findByText("artifact metadata unavailable");
   assert.equal((within(modal).getByRole("button", { name: k.start }) as HTMLButtonElement).disabled, true);
   await user.click(within(modal).getAllByRole("button", { name: k.close }).at(-1)!);
   state.runs = [run({ state: "finished", counts: counts({ processed: 2, succeeded: 2, queued: 0, active: 0 }) })];
   await act(async () => Events.emit("agent_upgrade"));
+  await user.click(screen.getByRole("button", { name: k.history }));
   assert.ok(await screen.findByText(i18n.t("nodes:batchUpgrade.processed", { processed: 2, total: 2 })));
 });
 
@@ -198,8 +201,8 @@ test("an interrupted run can confirm its own queued handoff but another run rema
 test("an all-skipped preview cannot create an upgrade even after consent", async () => {
   const state = backend();
   api.agentUpgradePreview = async () => ({ ...preview(), counts: { eligible: 0, already_current: 25 }, nodes: preview().nodes.map((node) => ({ ...node, eligibility: "already_current" })) });
-  const user = userEvent.setup(); mount(); await screen.findByText(k.empty);
-  await user.click(screen.getByRole("button", { name: k.all }));
+  const user = userEvent.setup(); mount();
+  await user.click(screen.getByRole("button", { name: k.selected }));
   const modal = await screen.findByRole("dialog"); await within(modal).findByText(k.noEligible);
   await user.click(within(modal).getByRole("checkbox"));
   assert.equal((within(modal).getByRole("button", { name: k.start }) as HTMLButtonElement).disabled, true);
@@ -221,6 +224,7 @@ test("active batches poll without SSE and stop polling after a persisted termina
   globalThis.clearInterval = ((timer: ReturnType<typeof setInterval>) => { intervals.delete(timer); originalClear(timer); }) as typeof clearInterval;
   try {
     mount();
+    await userEvent.setup().click(screen.getByRole("button", { name: k.history }));
     await screen.findByText(i18n.t("nodes:batchUpgrade.processed", { processed: 0, total: 2 }));
     await waitFor(() => assert.ok(intervals.size > 0, "active batches need a polling fallback"));
     state.runs = [run({ state: "finished", counts: counts({ processed: 2, succeeded: 2, queued: 0, active: 0 }) })];
@@ -240,11 +244,47 @@ test("upgrade API sends explicit wire JSON and encoded item filters with session
     const result = String(input).includes("/items?") ? { items: [], total: 0, page: 2, page_size: 20 } : preview();
     return new Response(JSON.stringify(result), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
-  await originals.agentUpgradePreview({ scope: "all" });
+  await originals.agentUpgradePreview({ node_uuids: ["node-a", "node-b"] });
   assert.equal(calls[0].path, "/api/v1/agent-upgrades/preview");
   assert.equal(calls[0].init?.credentials, "include");
   assert.equal(new Headers(calls[0].init?.headers).get("Content-Type"), "application/json");
-  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { scope: "all" });
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { node_uuids: ["node-a", "node-b"] });
   await originals.agentUpgradeItems(7, 2, 20, "unconfirmed");
   assert.equal(calls[1].path, "/api/v1/agent-upgrades/7/items?page=2&page_size=20&state=unconfirmed");
+});
+
+
+test("empty selection cannot open a preview and history remains available without a standalone card", async () => {
+  const state = backend(); mount(true, undefined, []);
+  const button = screen.getByRole("button", { name: k.selected }) as HTMLButtonElement;
+  assert.equal(button.disabled, true);
+  assert.equal(document.querySelector(".ant-card"), null);
+  assert.equal(screen.queryByText(k.empty), null);
+  fireEvent.click(button);
+  assert.equal(state.previews.length, 0);
+  await userEvent.setup().click(screen.getByRole("button", { name: k.history }));
+  assert.ok(await screen.findByText(k.empty));
+});
+
+test("refresh keeps the reviewed selection even when the list selection changes", async () => {
+  const state = backend(); const user = userEvent.setup();
+  const selected = ["node-0", "node-7"];
+  api.agentUpgradePreview = async (body) => {
+    state.previews.push(body);
+    const nodes = preview().nodes.filter((n) => selected.includes(n.node_uuid));
+    return { ...preview(), node_uuids: selected, nodes, counts: { eligible: 2 } };
+  };
+  let started = 0;
+  const view = mount(true, undefined, selected, () => started++);
+  await user.click(screen.getByRole("button", { name: k.selected }));
+  const modal = await screen.findByRole("dialog"); await within(modal).findByText("fleet-7");
+  assert.equal(within(modal).queryByText("fleet-1"), null);
+  view.rerender(<I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin selectedNodeUUIDs={["node-2"]} onStarted={() => started++} /></I18nextProvider>);
+  await user.click(within(modal).getByRole("button", { name: k.refreshPreview }));
+  await waitFor(() => assert.equal(state.previews.length, 2));
+  assert.deepEqual(state.previews, [{ node_uuids: selected }, { node_uuids: selected }]);
+  await user.click(within(modal).getByRole("checkbox", { name: k.acknowledge }));
+  await user.click(within(modal).getByRole("button", { name: k.start }));
+  await waitFor(() => assert.equal(started, 1));
+  assert.deepEqual(state.created[0].node_uuids, selected);
 });

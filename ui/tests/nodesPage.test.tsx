@@ -120,6 +120,8 @@ function gpuInfo(index: number): Node["gpus"][number] {
 const originals = {
   me: api.me,
   agentUpgradeRuns: api.agentUpgradeRuns,
+  agentUpgradePreview: api.agentUpgradePreview,
+  createAgentUpgrade: api.createAgentUpgrade,
   nodes: api.nodes,
   nodesPage: api.nodesPage,
   health: api.health,
@@ -227,13 +229,13 @@ test("the table uses a fixed layout with explicit widths; the name leads frozen 
   const table = container.querySelector(".ant-table-content table") as HTMLTableElement;
   assert.equal(table.style.tableLayout, "fixed");
   const cols = Array.from(table.querySelectorAll("colgroup col"));
-  // 10 shown columns; the agent version and creation time are offered but hidden by default.
-  assert.equal(cols.length, 10);
-  assert.equal((cols[0] as HTMLElement).style.width, "220px");
+  // A selection column plus 10 shown columns; the agent version and creation time are offered but hidden by default.
+  assert.equal(cols.length, 11);
+  assert.equal((cols[1] as HTMLElement).style.width, "220px");
   assert.equal((cols[cols.length - 1] as HTMLElement).style.width, "110px");
   const headers = screen.getAllByRole("columnheader");
-  assert.equal(headers[0].textContent, "Name");
-  assert.ok(headers[0].className.includes("ant-table-cell-fix-left"), "the name column is frozen left");
+  assert.equal(headers[1].textContent, "Name");
+  assert.ok(headers[1].className.includes("ant-table-cell-fix-left"), "the name column is frozen left");
   assert.equal(headers.at(-1)?.textContent, "Actions");
   assert.ok(headers.at(-1)?.className.includes("ant-table-cell-fix-right"), "the actions column is frozen right");
 });
@@ -744,4 +746,68 @@ test("a node event reloads the list in the background, without the table's loadi
   await waitFor(() => assert.ok(screen.getByText("k8s-3-910c-host")));
   watcher.disconnect();
   assert.equal(spun, false, "the background reload spun the table");
+});
+
+
+test("batch upgrade retains checked nodes across pages and clears the entire selection", async (context) => {
+  const fleet = Array.from({ length: 12 }, (_, i) => ({ ...onlineNode, uuid: `batch-${i}`, name: `batch-node-${i}`, hostname: `10.1.0.${i}` }));
+  const { saveStoredPageSize, storageKey } = await import("../src/components/resourceTable/columnPrefs.ts");
+  const key = storageKey("nodes");
+  const previous = dom.window.localStorage.getItem(key);
+  context.after(() => { if (previous === null) dom.window.localStorage.removeItem(key); else dom.window.localStorage.setItem(key, previous); });
+  saveStoredPageSize("nodes", 10);
+  stubApi(fleet);
+  const requests: unknown[] = [];
+  api.agentUpgradePreview = async (body) => {
+    requests.push(body);
+    const nodes = [fleet[0], fleet[11]].map((node) => ({ node_uuid: node.uuid, name: node.name!, from_version: node.agent_version, os: node.os, arch: node.arch, transport: "push", eligibility: "eligible" }));
+    return { target_version: "0.9.8", manifest_fingerprint: "sealed", node_uuids: nodes.map((node) => node.node_uuid), nodes, counts: { eligible: 2 } };
+  };
+  renderPage(); await screen.findByText("batch-node-0");
+  const batch = screen.getByRole("button", { name: "Upgrade selected Agents" }) as HTMLButtonElement;
+  assert.equal(batch.disabled, true);
+  fireEvent.click(rowOf("batch-node-0").getByRole("checkbox"));
+  await screen.findByText("1 nodes selected");
+  fireEvent.click(screen.getByTitle("2")); await screen.findByText("batch-node-11");
+  fireEvent.click(rowOf("batch-node-11").getByRole("checkbox")); await screen.findByText("2 nodes selected");
+  fireEvent.click(screen.getByTitle("1")); await screen.findByText("batch-node-0");
+  assert.equal((rowOf("batch-node-0").getByRole("checkbox") as HTMLInputElement).checked, true);
+  fireEvent.click(batch); await screen.findByRole("dialog", { name: "Review Agent upgrade" });
+  assert.deepEqual(requests, [{ node_uuids: ["batch-0", "batch-11"] }]);
+  fireEvent.click(within(screen.getByRole("dialog")).getAllByRole("button", { name: "Close", exact: true }).at(-1)!);
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
+  fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+  assert.equal((rowOf("batch-node-0").getByRole("checkbox") as HTMLInputElement).checked, false);
+  assert.equal(batch.disabled, true);
+  assert.ok(!screen.queryByText("2 nodes selected"));
+});
+
+
+test("a node-list refresh failure preserves an open upgrade preview and its retry identity", async () => {
+  stubApi([onlineNode]);
+  let failList = false;
+  const serve = nodesServer([onlineNode]);
+  api.nodesPage = async (query) => { if (failList) throw new Error("node list temporarily unavailable"); return serve(query); };
+  const submitted: Array<{ idempotency_key: string; node_uuids: string[] }> = [];
+  api.agentUpgradePreview = async () => ({ target_version: "0.9.8", manifest_fingerprint: "sealed", node_uuids: [onlineNode.uuid], nodes: [{ node_uuid: onlineNode.uuid, name: onlineNode.name!, from_version: "0.9.7", os: "linux", arch: "amd64", transport: "push", eligibility: "eligible" }], counts: { eligible: 1 } });
+  api.createAgentUpgrade = async (body) => { submitted.push(body); throw new Error("create response lost"); };
+  renderPage(); await screen.findByText(onlineNode.name!);
+  fireEvent.click(rowOf(onlineNode.name!).getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "Upgrade selected Agents" }));
+  const modal = await screen.findByRole("dialog", { name: "Review Agent upgrade" });
+  await within(modal).findByText("0.9.7");
+  fireEvent.click(within(modal).getByRole("checkbox"));
+  fireEvent.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  await within(modal).findByText("create response lost");
+  failList = true;
+  await act(async () => {
+    for (const listener of Events.listeners.get("node") ?? []) listener(new dom.window.MessageEvent("node", { data: JSON.stringify({ key: onlineNode.uuid, reason: "status" }) }) as unknown as Event);
+  });
+  await screen.findByText("node list temporarily unavailable");
+  assert.ok(screen.getByRole("dialog", { name: "Review Agent upgrade" }) === modal);
+  fireEvent.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  await waitFor(() => assert.equal(submitted.length, 2));
+  assert.equal(submitted[0].idempotency_key, submitted[1].idempotency_key);
+  assert.deepEqual(submitted[1].node_uuids, [onlineNode.uuid]);
+  assert.ok(screen.getByRole("button", { name: "Recent Agent upgrades" }));
 });
