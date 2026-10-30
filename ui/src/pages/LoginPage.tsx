@@ -76,10 +76,10 @@ export function LoginForm({ onLogin }: { onLogin: () => void }) {
 
   return (
     <Form form={form} layout="vertical" onFinish={submit} requiredMark={false}>
-      <Form.Item label={t("username")} name="username" rules={[{ required: true, message: t("usernameRequired") }]}>
+      <Form.Item label={t("username")} name="username" rules={[{ required: true, whitespace: true, message: t("usernameRequired") }]}>
         <Input size="large" prefix={<UserOutlined />} placeholder={t("username")} autoComplete="username" onChange={() => error && setError("")} />
       </Form.Item>
-      <Form.Item label={t("password")} name="password" rules={[{ required: true, message: t("passwordRequired") }]}>
+      <Form.Item label={t("password")} name="password" rules={[{ required: true, whitespace: true, message: t("passwordRequired") }]}>
         <Input.Password size="large" prefix={<LockOutlined />} placeholder={t("password")} autoComplete="current-password" onChange={() => error && setError("")} />
       </Form.Item>
       <div className="auth-error-slot">
