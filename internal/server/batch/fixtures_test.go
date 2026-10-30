@@ -87,6 +87,8 @@ type memRepo struct {
 	progress int
 	saves    map[string][]Progress
 	created  int
+	// createErr fails CreateBatch, as a database that refuses the row.
+	createErr error
 }
 
 func newMemRepo() *memRepo {
@@ -154,6 +156,9 @@ func (m *memRepo) DeleteFile(id string) error {
 func (m *memRepo) CreateBatch(b Batch) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.createErr != nil {
+		return m.createErr
+	}
 	m.batches[b.ID] = b
 	m.order = append(m.order, b.ID)
 	m.created++

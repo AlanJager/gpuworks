@@ -95,13 +95,15 @@ func writeV1Error(w http.ResponseWriter, e *Error) {
 	}})
 }
 
-// failV1 answers err: a refusal as itself, anything else as a server error.
-func failV1(w http.ResponseWriter, err error) {
+// fail answers err: a refusal as itself, anything else as a server error,
+// logged with the request it failed, since the client sees no detail.
+func (h *v1) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var e *Error
 	if errors.As(err, &e) {
 		writeV1Error(w, e)
 		return
 	}
+	h.s.cfg.Log.Error("batch: request failed", "method", r.Method, "path", r.URL.Path, "err", err)
 	writeV1Error(w, &Error{Status: 500, Type: "server_error", Code: "internal_error", Message: "internal error"})
 }
 
@@ -126,7 +128,7 @@ func (h *v1) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	file, err := h.s.UploadMultipart(h.owner(r), mr)
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toWireFile(file))
@@ -218,7 +220,7 @@ func (h *v1) listFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	files, more, err := h.s.ListFiles(h.owner(r), purpose, r.URL.Query().Get("after"), limit)
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	out := wireFileList{Object: "list", Data: make([]wireFile, 0, len(files)), HasMore: more}
@@ -234,7 +236,7 @@ func (h *v1) listFiles(w http.ResponseWriter, r *http.Request) {
 func (h *v1) getFile(w http.ResponseWriter, r *http.Request) {
 	f, err := h.s.File(h.owner(r), chi.URLParam(r, "id"))
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toWireFile(f))
@@ -243,7 +245,7 @@ func (h *v1) getFile(w http.ResponseWriter, r *http.Request) {
 func (h *v1) fileContent(w http.ResponseWriter, r *http.Request) {
 	f, fh, err := h.s.OpenFile(h.owner(r), chi.URLParam(r, "id"))
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	defer fh.Close()
@@ -256,7 +258,7 @@ func (h *v1) fileContent(w http.ResponseWriter, r *http.Request) {
 func (h *v1) deleteFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.s.DeleteFile(h.owner(r), id); err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, wireFileDeleted{ID: id, Object: "file", Deleted: true})
@@ -280,7 +282,7 @@ func (h *v1) createBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := h.s.CreateBatch(h.owner(r), CreateRequest(body))
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toWireBatch(b))
@@ -289,7 +291,7 @@ func (h *v1) createBatch(w http.ResponseWriter, r *http.Request) {
 func (h *v1) getBatch(w http.ResponseWriter, r *http.Request) {
 	b, err := h.s.Batch(h.owner(r), chi.URLParam(r, "id"))
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toWireBatch(b))
@@ -306,7 +308,7 @@ func (h *v1) listBatches(w http.ResponseWriter, r *http.Request) {
 	}
 	batches, more, err := h.s.ListBatches(h.owner(r), r.URL.Query().Get("after"), limit)
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	out := wireBatchList{Object: "list", Data: make([]wireBatch, 0, len(batches)), HasMore: more}
@@ -322,7 +324,7 @@ func (h *v1) listBatches(w http.ResponseWriter, r *http.Request) {
 func (h *v1) cancelBatch(w http.ResponseWriter, r *http.Request) {
 	b, err := h.s.Cancel(h.owner(r), chi.URLParam(r, "id"))
 	if err != nil {
-		failV1(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, toWireBatch(b))
