@@ -98,6 +98,20 @@ func (c *CheckCache) Prefetch(client *Client, channel string, timeout time.Durat
 func (c *CheckCache) Cached(channel string) (fetched *Fetched, err error, at time.Time, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.cachedLocked(channel)
+}
+
+// TryCached returns the same snapshot as Cached when it is immediately
+// available. An optional display must not wait for a source probe in progress.
+func (c *CheckCache) TryCached(channel string) (fetched *Fetched, err error, at time.Time, ok bool) {
+	if !c.mu.TryLock() {
+		return nil, nil, time.Time{}, false
+	}
+	defer c.mu.Unlock()
+	return c.cachedLocked(channel)
+}
+
+func (c *CheckCache) cachedLocked(channel string) (fetched *Fetched, err error, at time.Time, ok bool) {
 	if c.channel != channel || c.at.IsZero() {
 		return nil, nil, time.Time{}, false
 	}

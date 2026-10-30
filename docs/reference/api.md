@@ -190,6 +190,14 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes` | 创建待接入节点，返回安装命令与 token；完整字段与条件见[创建节点的连接参数](#创建节点的连接参数) | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | 最近被拒绝的连接尝试 | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | 最近 agent 升级失败记录 | JWT |
+| POST | `/api/v1/agent-upgrades/preview` | 预览全平台或指定节点的升级资格与目标版本 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades` | 创建升级批次，提交预览的 UUID 快照、目标和 manifest 指纹及幂等键 | JWT(admin) |
+| GET | `/api/v1/agent-upgrades` | 分页列出升级批次与全局阻塞项 | JWT |
+| GET | `/api/v1/agent-upgrades/{id}` | 获取批次进度和计数 | JWT |
+| GET | `/api/v1/agent-upgrades/{id}/items` | 分页查询逐节点结果，可按 state 筛选 | JWT |
+| POST | `/api/v1/agent-upgrades/{id}/stop` | 停止尚未开始的节点，继续观察当前节点 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/continue-preview` | 重新预览暂停批次的剩余节点 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | 管理员填写 note 释放待确认项的全局占位，保留审计 | JWT(admin) |
 | POST | `/api/v1/nodes/precheck` | 检查 SSH 接入所需的主机环境与双向连通性；地址规则见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | POST | `/api/v1/nodes/install` | 经 SSH 安装 agent；连接参数同创建节点，可用 `no_systemd` 选择 Linux 后台运行方式。冲突与替换条件见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | GET | `/api/v1/nodes/{uuid}` | 节点详情（含 GPU 列表；管理员额外含 token） | JWT |
@@ -214,6 +222,32 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | 重新生成节点 token（会踢掉当前连接） | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}` | 默认通过保存的 SSH 凭据卸载 agent，确认完成后删除记录，返回 `{"status":"deleted","agent_uninstalled":true}`。卸载未确认回 409 `NODE_UNINSTALL_UNCONFIRMED`，保留节点及 SSH 凭据。显式 `?force=true` 跳过卸载，仅删除记录，返回 `agent_uninstalled:false`；两种方式均拒绝有实例的节点（409）。force 非布尔值或重复参数回 400；节点不存在回 404 | JWT |
 | GET | `/api/v1/events` | SSE 变更事件流 | JWT |
+
+### Agent 批量升级
+
+管理员先向 `/api/v1/agent-upgrades/preview` 提交全平台范围（不受节点列表的筛选、分页影响）：
+
+```json
+{"scope":"all"}
+```
+
+也可提交 `{"node_uuids":["node-a"]}`。预览返回完整 `node_uuids` 快照、`target_version`、`manifest_fingerprint`、逐节点资格 `nodes`、资格计数 `counts` 和全局阻塞项 `blocked_by_item`。创建请求必须复用该快照及目标：
+
+```json
+{
+  "node_uuids": ["node-a", "node-b"],
+  "expected_target_version": "v0.6.0",
+  "expected_manifest_fingerprint": "<preview.manifest_fingerprint>",
+  "idempotency_key": "<client-generated-unique-key>"
+}
+```
+
+
+预览的 `target_build` 与版本更新接口的 `server.current_build` 共用当前构建说明：包含 `version`、`kind`（`stable`、`prerelease`、`development`、`unknown`）、可用时的 `commit`、`built_at`、`build_channel`、`published_version` 与 `published_at`。构建时间属于当前运行版本，不是远端候选时间；发布字段只在已验签索引的版本号、完整 commit 和构建时间均匹配时填写。Agent 预览只读取已有发布检查缓存，不新增出网请求；更新源不可用或记录不匹配时仍可预览本地制品。
+
+成功返回 202 和批次对象，含 `id`、`state`、`counts`。同幂等键与相同请求返回原批次；修改请求或目标/制品变化返回 409，需重新预览。`GET /agent-upgrades`、`GET /agent-upgrades/{id}/items` 支持 `page`、`page_size`；逐节点结果可用单个 `state` 筛选。`processed` 包含所有终态，不等于 `succeeded`；`unconfirmed` 是未知结果，仍保留全局执行占位。
+
+停止只取消 queued 项。继续时先调用 `continue-preview`，再次创建时增加 `source_run_id` 指向原批次，原队列的撤销与新批次创建原子完成。管理员核实待确认节点后，向 `items/{uuid}/release` 提交 `{"note":"处理依据"}`，成功返回 204；原结果保留，新增核实审计。查询接口可供管理身份读取，批量写入仅管理员且拒绝只读平台令牌。旧的单节点升级路由保留原权限，返回 202 时增加 `run_id`，与批量升级共享执行占位。操作和业务影响见[升级 Agent](../how-to/upgrade-and-compatibility.md#升级-agent)。
 
 ### 节点列表的筛选与返回字段
 

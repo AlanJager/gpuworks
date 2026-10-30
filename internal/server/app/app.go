@@ -22,6 +22,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/agentbin"
+	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
@@ -48,15 +49,16 @@ import (
 
 // App holds the assembled server.
 type App struct {
-	cfg      Config
-	log      *slog.Logger
-	store    *store.Store
-	bus      *bus.Bus
-	hub      *hub.Hub
-	ctrl     *controller.Controller
-	obs      *observability
-	ops      *opsStats // usage analytics' long-term statistics
-	recovery *recovery.Recoverer
+	cfg           Config
+	log           *slog.Logger
+	store         *store.Store
+	bus           *bus.Bus
+	hub           *hub.Hub
+	ctrl          *controller.Controller
+	agentUpgrades *agentupgrade.Service
+	obs           *observability
+	ops           *opsStats // usage analytics' long-term statistics
+	recovery      *recovery.Recoverer
 	// proxyAcct is proxy request accounting (see accounting.go in the proxy
 	// package).
 	proxyAcct *proxy.Accountant
@@ -280,6 +282,11 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	readAgent := func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }
 	provSvc.SetAgentBinaryReader(readAgent)
 	h.SetAgentBinaryReader(readAgent)
+	a.agentUpgrades, err = newAgentUpgrades(st, h, cfg.DataDir, log)
+	if err != nil {
+		return nil, err
+	}
+
 	sshHostKeys, err := provision.NewFileHostKeyStore(filepath.Join(cfg.DataDir, "ssh-hostkeys.json"))
 	if err != nil {
 		return nil, err
@@ -307,8 +314,8 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AgentConnect:  h.ServeWS,
 		InstallSh:     a.installHandler(),
 		RecentRejects: func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
-		UpgradeErrors: h.UpgradeErrors,
-		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.Handler()),
+		AgentUpgrades: api.AgentUpgradeHooks{Service: agentUpgradeAPI{service: a.agentUpgrades}, Errors: h.UpgradeErrors},
+		UIHandler:     withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.Handler(), a.agentUpgrades.DownloadBinary),
 		Online:        h.Online,
 		KickNode:      h.Kick,
 		NodeSync:      h,
@@ -441,6 +448,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	// Background: reconcile deployments → instances.
 	goBG(func() { a.ctrl.Run(ctx) })
+	goBG(func() { a.agentUpgrades.Run(ctx) })
 	// Background: verify each PD prefill instance's KV handoff once.
 	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
 	goBG(func() { a.health.Run(ctx) })  // Background: the deployments' health checks.
@@ -553,48 +561,5 @@ func (a *App) Run(ctx context.Context) error {
 		a.stopMetricsIngest(metricsCancel, metricsDone)
 		bg.wait()
 		return err
-	}
-}
-
-// eventRetentionLoop bounds the deployment event timeline. Events are history
-// and are deliberately kept when their deployment is deleted, so this is what
-// stops the table growing for the life of the installation. The bounds (180
-// days / 50 GiB by default) are operator-tunable in settings.
-func (a *App) eventRetentionLoop(ctx context.Context) {
-	const interval = 6 * time.Hour
-	sweep := func() {
-		n, err := a.store.SweepEventRetention(time.Now())
-		if err != nil {
-			a.log.Warn("event retention sweep failed", "err", err)
-			return
-		}
-		if n > 0 {
-			a.log.Info("event retention sweep", "removed", n)
-		}
-	}
-	sweep()
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			sweep()
-		}
-	}
-}
-
-func (a *App) staleLoop(ctx context.Context) {
-	t := time.NewTicker(a.cfg.StaleCheckInterval)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			// Nodes with a live session heartbeat within 90s stay online.
-			_ = a.store.MarkStaleOffline(ctx, a.cfg.StaleAfter)
-		}
 	}
 }

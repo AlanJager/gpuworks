@@ -121,7 +121,7 @@ type Deps struct {
 	AgentConnect  http.HandlerFunc // hub.ServeWS
 	InstallSh     http.HandlerFunc // install script
 	RecentRejects func() []dto.AgentReject
-	UpgradeErrors func() map[string]string
+	AgentUpgrades AgentUpgradeHooks
 	UIHandler     http.Handler // embedded SPA (may be nil in dev)
 
 	// Hub integration.
@@ -303,6 +303,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.With(a.managementAdmin).Post("/nodes", a.createNode)
 			r.Get("/agent/rejects", a.listRejects)
 			r.Get("/agent/upgrade-errors", a.listUpgradeErrors)
+			r.With(a.managementAdmin).Post("/agent-upgrades/preview", a.previewAgentUpgrade)
+			r.With(a.managementAdmin).Post("/agent-upgrades", a.createAgentUpgrade)
+			r.Get("/agent-upgrades", a.listAgentUpgrades)
+			r.Get("/agent-upgrades/{id}", a.getAgentUpgrade)
+			r.Get("/agent-upgrades/{id}/items", a.agentUpgradeItems)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/stop", a.stopAgentUpgrade)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/continue-preview", a.continueAgentUpgradePreview)
+			r.With(a.managementAdmin).Post("/agent-upgrades/{id}/items/{uuid}/release", a.releaseAgentUpgrade)
 			r.With(a.managementAdmin).Post("/nodes/precheck", a.precheckNode)
 			r.With(a.managementAdmin).Post("/nodes/install", a.installNode)
 			r.Get("/nodes/{uuid}", a.getNode)
@@ -814,11 +822,11 @@ func (a *apiHandlers) listRejects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiHandlers) listUpgradeErrors(w http.ResponseWriter, r *http.Request) {
-	if a.d.UpgradeErrors == nil {
+	if a.d.AgentUpgrades.Errors == nil {
 		writeJSON(w, http.StatusOK, map[string]string{})
 		return
 	}
-	writeJSON(w, http.StatusOK, a.d.UpgradeErrors())
+	writeJSON(w, http.StatusOK, a.d.AgentUpgrades.Errors())
 }
 
 func (a *apiHandlers) getNode(w http.ResponseWriter, r *http.Request) {
@@ -914,6 +922,15 @@ func (a *apiHandlers) updateNodeRuntime(w http.ResponseWriter, r *http.Request) 
 }
 
 func (a *apiHandlers) upgradeNode(w http.ResponseWriter, r *http.Request) {
+	if a.d.AgentUpgrades.Service != nil {
+		run, err := a.d.AgentUpgrades.Service.UpgradeNode(r.Context(), chi.URLParam(r, "uuid"), a.agentUpgradeActor(r))
+		if err != nil {
+			writeAgentUpgradeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": "upgrading", "run_id": run.ID})
+		return
+	}
 	if a.d.CallNode == nil {
 		writeProductError(w, http.StatusServiceUnavailable, ErrorNodeRPCUnavailable, "node RPC is not configured", nil)
 		return

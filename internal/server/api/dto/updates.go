@@ -38,6 +38,18 @@ type UpdateSourceStatus struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// ServerBuildInfo describes this exact running build. Publication details are
+// present only when a verified distribution index matches its full identity.
+type ServerBuildInfo struct {
+	Version          string `json:"version"`
+	Commit           string `json:"commit,omitempty"`
+	BuiltAt          string `json:"built_at,omitempty"`
+	BuildChannel     string `json:"build_channel,omitempty"`
+	Kind             string `json:"kind"` // stable | prerelease | development | unknown
+	PublishedVersion string `json:"published_version,omitempty"`
+	PublishedAt      string `json:"published_at,omitempty"`
+}
+
 // ServerUpdate compares the running server with the channel's release.
 // Installable says the release has an archive for this server's platform.
 // SelfUpgrade says the console can upgrade this server in place; otherwise
@@ -46,14 +58,15 @@ type UpdateSourceStatus struct {
 // the installation the server runs from (the directory of its server.yaml),
 // for the commands the page offers; empty when it was started without one.
 type ServerUpdate struct {
-	Current            string `json:"current"`
-	Latest             string `json:"latest,omitempty"`
-	BuiltAt            string `json:"built_at,omitempty"`
-	UpdateAvailable    bool   `json:"update_available"`
-	Installable        bool   `json:"installable"`
-	SelfUpgrade        bool   `json:"self_upgrade"`
-	SelfUpgradeBlocker string `json:"self_upgrade_blocker,omitempty"`
-	InstallDir         string `json:"install_dir,omitempty"`
+	CurrentBuild       ServerBuildInfo `json:"current_build"`
+	Current            string          `json:"current"`
+	Latest             string          `json:"latest,omitempty"`
+	BuiltAt            string          `json:"built_at,omitempty"`
+	UpdateAvailable    bool            `json:"update_available"`
+	Installable        bool            `json:"installable"`
+	SelfUpgrade        bool            `json:"self_upgrade"`
+	SelfUpgradeBlocker string          `json:"self_upgrade_blocker,omitempty"`
+	InstallDir         string          `json:"install_dir,omitempty"`
 }
 
 // ServerUpgradeStarted answers a console upgrade: the binary is swapped and

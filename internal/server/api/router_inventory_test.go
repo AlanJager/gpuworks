@@ -106,6 +106,9 @@ DELETE /api/v1/pull/sync-groups/{id}
 DELETE /api/v1/storages/{id}
 DELETE /api/v1/storages/{id}/cache
 DELETE /api/v1/storages/{id}/files
+GET /api/v1/agent-upgrades
+GET /api/v1/agent-upgrades/{id}
+GET /api/v1/agent-upgrades/{id}/items
 GET /api/v1/agent/connect
 GET /api/v1/agent/rejects
 GET /api/v1/agent/upgrade-errors
@@ -237,6 +240,11 @@ PATCH /api/v1/security/settings
 PATCH /api/v1/storages/settings
 PATCH /api/v1/storages/{id}
 PATCH /api/v1/storages/{id}/node-overrides
+POST /api/v1/agent-upgrades
+POST /api/v1/agent-upgrades/preview
+POST /api/v1/agent-upgrades/{id}/continue-preview
+POST /api/v1/agent-upgrades/{id}/items/{uuid}/release
+POST /api/v1/agent-upgrades/{id}/stop
 POST /api/v1/ai/ask
 POST /api/v1/ai/configs
 POST /api/v1/ai/configs/test

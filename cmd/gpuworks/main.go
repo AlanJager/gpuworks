@@ -34,7 +34,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -278,7 +277,7 @@ func migrate(log *slog.Logger, args []string) error {
 		return err
 	}
 	if applyEmbedded {
-		if err := seed.Seed(st); err != nil {
+		if err := app.SyncInferenceCatalog(st); err != nil {
 			return err
 		}
 		if err := app.SyncImageCatalog(st, log); err != nil {

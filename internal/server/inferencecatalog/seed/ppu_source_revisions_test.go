@@ -69,7 +69,7 @@ func TestPPURevisionCorrectionUpdatesUpstreamAndPreservesUserSpec(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	if err := Seed(st); err != nil {
+	if err := reconcileEmbeddedCatalog(st); err != nil {
 		t.Fatal(err)
 	}
 	model, err := st.InferenceModelByModelID(evidence.ModelID)
@@ -104,7 +104,7 @@ func TestPPURevisionCorrectionUpdatesUpstreamAndPreservesUserSpec(t *testing.T) 
 	if err := st.UpsertInferenceSpec(&userSpec); err != nil {
 		t.Fatal(err)
 	}
-	if err := Seed(st); err != nil {
+	if err := reconcileEmbeddedCatalog(st); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := st.InferenceModelByModelID(evidence.ModelID)

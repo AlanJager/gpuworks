@@ -84,3 +84,27 @@ func ToFlatStoreModels(catalog FlatCatalog) ([]store.InferenceModel, error) {
 	}
 	return models, nil
 }
+
+// ReconcileUpstreamCatalog applies a validated package projection while keeping
+// user-created models and specs. Embedded data and imported data share this
+// existing persistence boundary; the source package does not need a Store.
+func ReconcileUpstreamCatalog(st *store.Store, catalog FlatCatalog, digest string) error {
+	if st == nil {
+		return fmt.Errorf("seed inference catalog: store is nil")
+	}
+	models, err := ToFlatStoreModels(catalog)
+	if err != nil {
+		return fmt.Errorf("convert embedded inference catalog: %w", err)
+	}
+	for index := range models {
+		models[index].PackageDigest = digest
+		for specIndex := range models[index].Specs {
+			models[index].Specs[specIndex].Source = "upstream"
+			models[index].Specs[specIndex].PackageDigest = digest
+		}
+	}
+	if err := st.ReconcileInferenceCatalog(models); err != nil {
+		return fmt.Errorf("reconcile embedded inference catalog: %w", err)
+	}
+	return nil
+}

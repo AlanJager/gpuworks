@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/distribution"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog/community"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/outbound"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -61,7 +63,7 @@ func (e embeddedCatalogs) finish(st *store.Store) error {
 	if !e.due {
 		return nil
 	}
-	if err := seed.Seed(st); err != nil {
+	if err := SyncInferenceCatalog(st); err != nil {
 		return err
 	}
 	return st.RecordEmbeddedCatalogsApplied(e.build)
@@ -95,4 +97,17 @@ func outsideSources(st *store.Store, allowedPrivateHosts ...string) api.OutsideS
 		Community:         community.NewBrowser(&http.Client{Transport: transport}),
 		Channel:           &distribution.Client{HTTP: &http.Client{Transport: channelTransport}},
 	}
+}
+
+// SyncInferenceCatalog applies the embedded package's upstream projection.
+// The embedded-data package stays independent of database orchestration.
+func SyncInferenceCatalog(st *store.Store) error {
+	if st == nil {
+		return fmt.Errorf("seed inference catalog: store is nil")
+	}
+	catalog, digest, err := seed.CatalogWithDigest()
+	if err != nil {
+		return err
+	}
+	return inferencecatalog.ReconcileUpstreamCatalog(st, catalog, digest)
 }
