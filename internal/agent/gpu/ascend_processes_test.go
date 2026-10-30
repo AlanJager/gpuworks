@@ -36,6 +36,18 @@ func TestParseAscendProcessesOneChipCards(t *testing.T) {
 	}
 }
 
+// The row exactly as npu-smi 26.0.rc1 printed it on 172.30.8.31 (2026-10-30)
+// for a host python3 holding 512 MiB through ACL on NPU 4; a process outside
+// any container reads "NA" in the last column.
+func TestParseAscendProcessesRealRow(t *testing.T) {
+	table := withAscendProcessRows(t, readNPUFixture(t, "npu-smi-info-910b4.txt"), "6",
+		"| 6       0                 | 600747        | python3            | 626                   | NA                      |")
+	want := []ComputeProcess{{PID: 600747, Name: "python3", PCIeBDF: "0000:41:00.0", MemoryBytes: 626 << 20}}
+	if got := parseAscendProcesses(table); !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseAscendProcesses = %+v, want %+v", got, want)
+	}
+}
+
 func TestParseAscendProcessesMultiChipCards(t *testing.T) {
 	// 910C: each NPU has chips 0 and 1 with their own Bus-Id; a process row
 	// names the chip by (NPU, chip), not by Phy-ID. Older releases have no
