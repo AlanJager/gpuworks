@@ -288,3 +288,57 @@ test("refresh keeps the reviewed selection even when the list selection changes"
   await waitFor(() => assert.equal(started, 1));
   assert.deepEqual(state.created[0].node_uuids, selected);
 });
+
+test("finished result rows distinguish full start and finish times and omit an unused action column", async () => {
+  const { formatTimeSec } = await import("../src/i18n/datetime.ts");
+  const started = "2026-10-30T03:20:01Z";
+  const finished = "2026-10-30T03:20:59Z";
+  const state = backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, succeeded: 1, skipped: 1, queued: 0, active: 0 }) })]);
+  state.items = [
+    item({ node_uuid: "done", name: "completed node", phase: "succeeded", started_at: started, finished_at: finished }),
+    item({ node_uuid: "offline", name: "not started node", phase: "skipped", reason: "offline" }),
+  ];
+  mount(true, 7);
+  const name = await screen.findByText("completed node");
+  const drawer = screen.getByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  assert.ok(!within(drawer).queryByRole("columnheader", { name: k.columns.action }));
+  const timeIndex = within(drawer).getAllByRole("columnheader").findIndex((cell) => cell.textContent === k.columns.time);
+  assert.ok(timeIndex >= 0);
+  const completed = within(name.closest("tr")!).getAllByRole("cell")[timeIndex];
+  assert.ok(completed.textContent?.includes(formatTimeSec(started)), "start must include time of day, not only the date");
+  assert.ok(completed.textContent?.includes(formatTimeSec(finished)), "finish must preserve its distinct seconds");
+  assert.ok(completed.textContent?.includes(i18n.t("nodes:batchUpgrade.startedAt", { at: formatTimeSec(started) })));
+  assert.ok(completed.textContent?.includes(i18n.t("nodes:batchUpgrade.finishedAt", { at: formatTimeSec(finished) })));
+  const skipped = within(screen.getByText("not started node").closest("tr")!).getAllByRole("cell")[timeIndex];
+  assert.equal((skipped.textContent?.match(/—/g) ?? []).length, 2, "missing start and finish each have an explicit placeholder");
+});
+
+test("the result action column appears only for unresolved rows and disappears after verification", async () => {
+  const state = backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, succeeded: 1, unconfirmed: 1, queued: 0, active: 0 }) })]);
+  state.items = [
+    item({ node_uuid: "uncertain", name: "needs inspection", phase: "unconfirmed" }),
+    item({ node_uuid: "done", name: "already confirmed", phase: "succeeded" }),
+  ];
+  mount(true, 7);
+  const name = await screen.findByText("needs inspection");
+  const drawer = screen.getByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  assert.ok(within(drawer).getByRole("columnheader", { name: k.columns.action }));
+  assert.ok(within(name.closest("tr")!).getByRole("button", { name: k.release }));
+  const done = within(screen.getByText("already confirmed").closest("tr")!);
+  assert.ok(!done.queryByRole("button", { name: k.release }));
+  assert.equal(done.getAllByRole("cell").at(-1)?.textContent, "—");
+  state.items = state.items.map((entry) => entry.phase === "unconfirmed" ? { ...entry, verified_at: "2026-10-30T03:21:00Z", verification_note: "Inspected process and log; old operation ended" } : entry);
+  await act(async () => Events.emit("agent_upgrade"));
+  await waitFor(() => assert.ok(!within(drawer).queryByRole("columnheader", { name: k.columns.action })));
+  assert.ok(!within(drawer).queryByRole("button", { name: k.release }));
+});
+
+test("viewers do not receive an empty result action column even when a row needs admin verification", async () => {
+  const state = backend([run({ state: "finished", counts: counts({ total: 1, processed: 1, unconfirmed: 1, queued: 0, active: 0 }) })]);
+  state.items = [item({ phase: "unconfirmed" })];
+  mount(false, 7);
+  await screen.findByText("node outside current page");
+  const drawer = screen.getByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  assert.ok(!within(drawer).queryByRole("columnheader", { name: k.columns.action }));
+  assert.ok(!within(drawer).queryByRole("button", { name: k.release }));
+});

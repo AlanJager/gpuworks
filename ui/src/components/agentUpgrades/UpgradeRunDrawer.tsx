@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, useEvents, usePolling } from "../../api";
 import { agentUpgradeRunning, type AgentUpgradeItem, type AgentUpgradeRun } from "../../agentUpgradesTypes";
-import { formatDate } from "../../i18n/datetime";
+import { formatTimeSec } from "../../i18n/datetime";
 import UpgradeSummary from "./UpgradeSummary";
 import { useAgentUpgradeAction } from "../../agentUpgrades";
 
@@ -50,8 +50,10 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   });
+  const showActions = isAdmin && !!items.data?.items.some((item) => item.phase === "unconfirmed" && !item.verified_at);
+  const renderVersion = (value?: string) => <Typography.Text style={{ overflowWrap: "anywhere" }}>{value || "—"}</Typography.Text>;
   return <>
-    <Drawer open title={t("batchUpgrade.runTitle", { id: runID })} width={1050} onClose={onClose}>
+    <Drawer open title={t("batchUpgrade.runTitle", { id: runID })} width="min(1280px, calc(100vw - 32px))" onClose={onClose}>
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
         <Button onClick={refresh}>{t("batchUpgrade.refresh")}</Button>
         {status.loading && !run && <Spin aria-label={t("batchUpgrade.loadingRun")} />}
@@ -73,24 +75,26 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
           ...phases.map((value) => ({ value, label: t(`batchUpgrade.phase.${value}`) })),
         ]} />
         <Table<AgentUpgradeItem> size="small" rowKey="node_uuid" loading={items.loading} dataSource={items.data?.items ?? []}
+          tableLayout="fixed" scroll={{ x: showActions ? 1324 : 1164 }}
           locale={{ emptyText: t("batchUpgrade.noItems") }}
           pagination={{ current: page, pageSize: 20, total: items.data?.total ?? 0, showSizeChanger: false, onChange: setPage }}
           columns={[
-            { title: t("batchUpgrade.columns.node"), key: "node", render: (_, item) => <Space direction="vertical" size={0}><Typography.Text>{item.name || item.node_uuid}</Typography.Text><Typography.Text type="secondary">{item.node_uuid}</Typography.Text></Space> },
-            { title: t("batchUpgrade.columns.from"), dataIndex: "from_version", render: (value: string) => value || "—" },
-            { title: t("batchUpgrade.columns.current"), key: "current", render: (_, item) => item.current_version || item.observed_version || "—" },
-            { title: t("batchUpgrade.columns.phase"), dataIndex: "phase", render: (value: string) => <Tag>{t(`batchUpgrade.phase.${value}`, { defaultValue: t("batchUpgrade.phase.unknown") })}</Tag> },
-            { title: t("batchUpgrade.columns.reason"), key: "reason", render: (_, item) => <Space direction="vertical" size={0}>
+            { title: t("batchUpgrade.columns.node"), key: "node", width: 220, render: (_, item) => <div style={{ overflowWrap: "anywhere" }}><Typography.Text style={{ display: "block" }}>{item.name || item.node_uuid}</Typography.Text><Typography.Text type="secondary">{item.node_uuid}</Typography.Text></div> },
+            { title: t("batchUpgrade.columns.from"), dataIndex: "from_version", width: 150, render: renderVersion },
+            { title: t("batchUpgrade.columns.current"), key: "current", width: 150, render: (_, item) => renderVersion(item.current_version || item.observed_version) },
+            { title: t("batchUpgrade.columns.phase"), dataIndex: "phase", width: 144, render: (value: string) => <Tag>{t(`batchUpgrade.phase.${value}`, { defaultValue: t("batchUpgrade.phase.unknown") })}</Tag> },
+            { title: t("batchUpgrade.columns.reason"), key: "reason", width: 280, render: (_, item) => <Space direction="vertical" size={0} style={{ width: "100%", overflowWrap: "anywhere" }}>
+              {!item.reason && !item.error && !item.verified_at && !item.verification_note && "—"}
               {item.reason && <Typography.Text>{t(`batchUpgrade.reason.${item.reason}`, { defaultValue: t("batchUpgrade.reason.unavailable") })}</Typography.Text>}
               {item.error && <Typography.Text type="danger">{item.error}</Typography.Text>}
-              {item.verified_at && <Typography.Text>{t("batchUpgrade.verifiedAt", { at: formatDate(item.verified_at) })}</Typography.Text>}
+              {item.verified_at && <Typography.Text>{t("batchUpgrade.verifiedAt", { at: formatTimeSec(item.verified_at) })}</Typography.Text>}
               {item.verification_note && <Typography.Text>{t("batchUpgrade.verified", { note: item.verification_note })}</Typography.Text>}
             </Space> },
-            { title: t("batchUpgrade.columns.time"), key: "time", render: (_, item) => <Space direction="vertical" size={0}>
-              {item.started_at && <Typography.Text>{formatDate(item.started_at)}</Typography.Text>}
-              {item.finished_at && <Typography.Text>{formatDate(item.finished_at)}</Typography.Text>}
+            { title: t("batchUpgrade.columns.time"), key: "time", width: 220, render: (_, item) => <Space direction="vertical" size={0} style={{ whiteSpace: "nowrap" }}>
+              <Typography.Text>{t("batchUpgrade.startedAt", { at: formatTimeSec(item.started_at) })}</Typography.Text>
+              <Typography.Text>{t("batchUpgrade.finishedAt", { at: formatTimeSec(item.finished_at) })}</Typography.Text>
             </Space> },
-            { title: t("batchUpgrade.columns.action"), key: "action", render: (_, item) => isAdmin && item.phase === "unconfirmed" && !item.verified_at ? <Button size="small" onClick={() => { setRelease(item); setNote(""); setNoteError(false); }}>{t("batchUpgrade.release")}</Button> : null },
+            { title: t("batchUpgrade.columns.action"), key: "action", width: 160, fixed: "right", hidden: !showActions, render: (_, item) => isAdmin && item.phase === "unconfirmed" && !item.verified_at ? <Button size="small" onClick={() => { setRelease(item); setNote(""); setNoteError(false); }}>{t("batchUpgrade.release")}</Button> : "—" },
           ]} />
       </Space>
     </Drawer>

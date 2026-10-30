@@ -192,6 +192,11 @@ test-ui-motion:
 test-ui-playground-layout:
 	python3 -B ui/tests/browser/playground_layout.py
 
+.PHONY: test-ui-agent-upgrade-results-layout
+## Real Chromium result-column geometry; requires no management server or GPU.
+test-ui-agent-upgrade-results-layout:
+	python3 -B ui/tests/browser/agent_upgrade_results_layout.py
+
 .PHONY: ensure-bins
 ## ensure-bins: the E2E entry points need bin/gpuworks and bin/gpuworks-agent,
 ## but a full `make build` (UI bundle plus every cross-compiled agent) takes

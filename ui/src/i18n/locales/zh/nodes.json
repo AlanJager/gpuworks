@@ -818,6 +818,8 @@
     },
     "activeBlock": "{{name}} 所在升级批次尚未结束，请等待完成或查看进度。",
     "activeHelp": "当前尝试确认结束前会保留执行名额，其他批次不能并行启动。",
+    "startedAt": "开始：{{at}}",
+    "finishedAt": "结束：{{at}}",
     "verifiedAt": "后续已核实旧操作结束：{{at}}"
   }
 }

@@ -818,6 +818,8 @@
     },
     "activeBlock": "{{name}} is part of an active upgrade batch. Wait for it to finish or view its progress.",
     "activeHelp": "The execution slot remains reserved until the current attempt is confirmed. Other batches cannot start in parallel.",
+    "startedAt": "Started: {{at}}",
+    "finishedAt": "Finished: {{at}}",
     "verifiedAt": "The previous attempt was later verified to have ended: {{at}}"
   }
 }
