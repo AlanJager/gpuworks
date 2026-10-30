@@ -242,8 +242,15 @@ func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, 
 	return level, err
 }
 
-func (a *residencyAdapter) Drain(id uint, on bool) {
-	a.proxy.SetDraining(id, on)
+// Drain stops (on) or resumes the gateway routing new requests to the
+// instances; the deployment's other replicas take them.
+func (a *residencyAdapter) Drain(id uint, instances []string, on bool) {
+	a.proxy.SetDraining(id, instances, on)
+}
+
+// InstancesInFlight is the requests the gateway serves on the instances.
+func (a *residencyAdapter) InstancesInFlight(instances []string) int {
+	return a.proxy.InstancesInFlight(instances)
 }
 
 // wakeHeldBy is the gateway's held requests by deployment, for the scheduling

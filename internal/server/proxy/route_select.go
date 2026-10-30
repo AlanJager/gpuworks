@@ -28,10 +28,7 @@ func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*st
 		deployments, ok := p.routes.snapshot(modelName)
 		if ok {
 			for _, rd := range deployments {
-				if p.hold.isDraining(rd.dep.ID) {
-					continue
-				}
-				if tgt, ok := p.pickRouted(rd, modelName, affinity); ok {
+				if tgt, ok := p.pickRouted(rd, modelName, affinity, p.hold.drainingOf(rd.dep.ID)); ok {
 					return rd.dep, tgt, 0, "", false
 				}
 			}
@@ -68,9 +65,12 @@ func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*st
 	return attempted, target{}, http.StatusServiceUnavailable, message, asleep
 }
 
-// pickRouted picks one of a snapshot deployment's replicas, false when
-// none is ready.
-func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string) (target, bool) {
+// pickRouted picks one of a snapshot deployment's replicas that is not
+// draining, false when none is ready. A multi-node deployment drains whole.
+func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, draining map[string]bool) (target, bool) {
+	if draining != nil && rd.nnodes > 1 {
+		return target{}, false
+	}
 	if rd.nnodes > 1 {
 		// Distributed readiness is read through once per request because
 		// all ranks must belong to the same current attempt. The route
@@ -80,16 +80,23 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string) (tar
 		tgt, status, _, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes)
 		return tgt, status == 0
 	}
-	lease := p.pickAwake(rd.candidates, rd.policy, affinity, false)
+	candidates := withoutDraining(rd.candidates, draining)
+	if len(candidates) == 0 {
+		return target{}, false
+	}
+	lease := p.pickAwake(candidates, rd.policy, affinity, false)
 	if lease == nil {
 		return target{}, false
 	}
-	attempt := &routeAttempt{candidates: rd.candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct}
-	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: rd.candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct}
+	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true
 }
 
 func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affinity string) (target, int, string, bool) {
-	if p.hold.isDraining(dep.ID) {
+	// Draining replicas take no new request; with none other left, the
+	// request is held as if the deployment slept (drain.go).
+	draining := p.hold.drainingOf(dep.ID)
+	if draining != nil && dep.NNodes > 1 {
 		return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
 	}
 	insts, _ := p.store.InstancesForDeployment(dep.ID)
@@ -140,6 +147,12 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 			}
 		}
 		candidates = pd.withoutUnroutable(candidates, insts, nodes)
+	}
+	if routable := withoutDraining(candidates, draining); len(routable) < len(candidates) {
+		if len(routable) == 0 {
+			return target{}, http.StatusServiceUnavailable, asleepMessage(dep), true
+		}
+		candidates = routable
 	}
 	if len(candidates) > 0 {
 		policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)

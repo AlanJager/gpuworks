@@ -196,8 +196,11 @@ func TestResidencyAdapterBlockingAndHeldSleeps(t *testing.T) {
 	if act := res.Activity(dep.ID); act.InFlight != 0 || act.Held != 0 || !act.LastRequest.IsZero() {
 		t.Fatalf("activity with no traffic = %+v", act)
 	}
-	res.Drain(other.ID, true)
-	res.Drain(other.ID, false)
+	res.Drain(other.ID, []string{"batch-1"}, true)
+	if n := res.InstancesInFlight([]string{"batch-1"}); n != 0 {
+		t.Fatalf("in flight on an idle replica = %d", n)
+	}
+	res.Drain(other.ID, []string{"batch-1"}, false)
 }
 
 // A host that cannot hold the weights gets an L2 yield instead of L1.

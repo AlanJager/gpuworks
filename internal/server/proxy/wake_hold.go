@@ -37,16 +37,17 @@ type wakeHold struct {
 	// holdMax is how long a request for the deployment waits: its policy's
 	// hold_max_sec.
 	holdMax func(dep *store.Deployment) time.Duration
-	// draining are deployments about to give their cards up: new requests
-	// for them are held as if they slept, while those in flight finish.
-	draining map[uint]bool
+	// draining are the instances about to give their cards up, by
+	// deployment (drain.go). Each set is replaced, never changed in place,
+	// so a request reads the one it took under the lock after letting go.
+	draining map[uint]map[string]bool
 }
 
 type heldRequest struct{ since time.Time }
 
 func newWakeHold() *wakeHold {
 	return &wakeHold{
-		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]bool{},
+		held: map[uint]map[*heldRequest]struct{}{}, changed: make(chan struct{}), now: time.Now, draining: map[uint]map[string]bool{},
 		holdMax: func(dep *store.Deployment) time.Duration { return dep.Policy().HoldMax() },
 	}
 }
@@ -134,31 +135,6 @@ func (p *Proxy) SetWakeDemand(fn func(deploymentID uint)) {
 // wake and since when the oldest has waited.
 func (p *Proxy) HeldRequests(deploymentID uint) (int, time.Time) {
 	return p.hold.Held(deploymentID)
-}
-
-// SetDraining stops (on) or resumes routing new requests to the deployment:
-// while it drains they are held as if it slept, so the requests in flight can
-// finish before it gives its cards up.
-func (p *Proxy) SetDraining(deploymentID uint, on bool) {
-	p.hold.mu.Lock()
-	if on {
-		p.hold.draining[deploymentID] = true
-	} else {
-		delete(p.hold.draining, deploymentID)
-	}
-	p.hold.mu.Unlock()
-	if !on {
-		p.hold.signal()
-	}
-}
-
-func (h *wakeHold) isDraining(deploymentID uint) bool {
-	if h == nil {
-		return false
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.draining[deploymentID]
 }
 
 // HeldDeployments are the deployments with a request held for their wake.

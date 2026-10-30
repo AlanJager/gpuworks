@@ -76,6 +76,9 @@ type ResidencySource interface {
 	Blocking(deploymentID uint) (Blocking, error)
 	// Activity is the deployment's traffic.
 	Activity(deploymentID uint) Activity
+	// InstancesInFlight is how many requests run on the instances: what a
+	// holder's replica drains before it sleeps, its siblings serving on.
+	InstancesInFlight(instances []string) int
 	// Settling says the deployment is not serving yet: its replica waits to
 	// be placed, or an instance of it is still starting. It is asked of a
 	// deployment a holder gave its cards to (stillWakingFor); whether a
@@ -89,9 +92,10 @@ type ResidencyActions interface {
 	// its requests off when abort; it returns the level it chose (the
 	// holder's sleep level preference, yieldpolicy.Policy.SleepLevel).
 	Yield(deploymentID uint, instances []string, abort bool) (int, error)
-	// Drain stops (on) or resumes routing new requests to the deployment;
-	// they are held as if it slept.
-	Drain(deploymentID uint, on bool)
+	// Drain stops (on) or resumes routing new requests to the deployment's
+	// instances; its other replicas take them, and with none left they are
+	// held as if it slept.
+	Drain(deploymentID uint, instances []string, on bool)
 }
 
 // DefaultDemandSettle gathers the demand of a burst of requests for sleeping
@@ -491,8 +495,9 @@ func (e *Evaluator) residencyDue() (time.Duration, bool) {
 
 // yield puts a holder to sleep for a waiter. A holder idle for the reason has
 // nothing running and sleeps at once. Otherwise its policy says what becomes
-// of the requests still running (Policy.Drain): cut off at once, or new ones
-// are held and those running get the time its policy gives them.
+// of the requests still running on the replica (Policy.Drain): cut off at
+// once, or new ones go elsewhere (or are held) and those running get the
+// time its policy gives them.
 func (e *Evaluator) yield(now time.Time, h Holder, reason yieldpolicy.Reason, w waiting) {
 	r := e.res
 	params := map[string]any{"trigger": TriggerPreempt, "reason": string(reason), "for_deployment": w.id, "instances": h.Instances}
@@ -501,8 +506,8 @@ func (e *Evaluator) yield(now time.Time, h Holder, reason yieldpolicy.Reason, w 
 		e.sleepHolder(h.DeploymentID, h.Instances, false, params)
 		return
 	}
-	if !abort && r.source.Activity(h.DeploymentID).InFlight > 0 {
-		r.actions.Drain(h.DeploymentID, true)
+	if !abort && r.source.InstancesInFlight(h.Instances) > 0 {
+		r.actions.Drain(h.DeploymentID, h.Instances, true)
 		r.draining[h.DeploymentID] = drain{since: now, limit: limit, instances: h.Instances, params: params}
 		r.dueAt(now.Add(min(limit, busyPoll)))
 		return
@@ -540,7 +545,7 @@ func (e *Evaluator) sleepHolder(id uint, instances []string, abort bool, params 
 func (e *Evaluator) finishDrains(now time.Time) {
 	r := e.res
 	for id, d := range r.draining {
-		inFlight := r.source.Activity(id).InFlight
+		inFlight := r.source.InstancesInFlight(d.instances)
 		if inFlight > 0 && now.Sub(d.since) < d.limit {
 			// Its requests may end sooner than the limit: look again soon.
 			r.dueAt(d.since.Add(d.limit))
@@ -549,7 +554,7 @@ func (e *Evaluator) finishDrains(now time.Time) {
 		}
 		delete(r.draining, id)
 		e.sleepHolder(id, d.instances, inFlight > 0, d.params)
-		r.actions.Drain(id, false)
+		r.actions.Drain(id, d.instances, false)
 	}
 }
 

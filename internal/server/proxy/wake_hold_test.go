@@ -243,11 +243,11 @@ func TestADrainingDeploymentHoldsNewRequestsUntilItResumes(t *testing.T) {
 	if err := st.DB().Model(&store.Instance{}).Where("uuid = ?", "omni-instance").Update("sleep_level", 0).Error; err != nil {
 		t.Fatal(err)
 	}
-	p.SetDraining(depID, true)
+	p.SetDraining(depID, []string{"omni-instance"}, true)
 	p.SetWakeDemand(func(uint) {
 		go func() {
 			time.Sleep(150 * time.Millisecond)
-			p.SetDraining(depID, false)
+			p.SetDraining(depID, []string{"omni-instance"}, false)
 		}()
 	})
 	start := time.Now()
@@ -258,7 +258,7 @@ func TestADrainingDeploymentHoldsNewRequestsUntilItResumes(t *testing.T) {
 	if waited := time.Since(start); waited < 150*time.Millisecond {
 		t.Fatalf("a draining deployment took a new request after %v", waited)
 	}
-	if p.hold.isDraining(depID) {
+	if p.hold.drainingOf(depID) != nil {
 		t.Fatal("still draining")
 	}
 }

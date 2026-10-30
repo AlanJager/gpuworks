@@ -21,6 +21,7 @@ type residencyWorld struct {
 	fitsNow   map[uint]bool // Wake wakes it at once
 	yields    []string
 	drains    []string
+	inFlight  map[string]int // requests running, by instance
 	yieldErr  error
 	wakeCalls []uint
 	settling  map[uint]bool // waiting to be placed, or starting
@@ -29,7 +30,7 @@ type residencyWorld struct {
 func newResidencyWorld() *residencyWorld {
 	return &residencyWorld{
 		fakeWorld: newFakeWorld(), levels: map[uint]yieldpolicy.Policy{}, asleep: map[uint]bool{}, blocking: map[uint]Blocking{},
-		activity: map[uint]Activity{}, fitsNow: map[uint]bool{}, settling: map[uint]bool{},
+		activity: map[uint]Activity{}, fitsNow: map[uint]bool{}, settling: map[uint]bool{}, inFlight: map[string]int{},
 	}
 }
 
@@ -48,8 +49,15 @@ func (w *residencyWorld) Yield(id uint, instances []string, abort bool) (int, er
 	w.asleep[id] = true
 	return 1, nil
 }
-func (w *residencyWorld) Drain(id uint, on bool) {
-	w.drains = append(w.drains, fmt.Sprintf("%d %v", id, on))
+func (w *residencyWorld) InstancesInFlight(instances []string) int {
+	n := 0
+	for _, uuid := range instances {
+		n += w.inFlight[uuid]
+	}
+	return n
+}
+func (w *residencyWorld) Drain(id uint, instances []string, on bool) {
+	w.drains = append(w.drains, fmt.Sprintf("%d %s %v", id, strings.Join(instances, ","), on))
 }
 func (w *residencyWorld) Wake(id uint) (WakeResult, error) {
 	w.wakeCalls = append(w.wakeCalls, id)
@@ -174,6 +182,7 @@ func TestSharedDeploymentsTakeTurnsAndDrain(t *testing.T) {
 	w.levels[a], w.levels[b] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.TimeSlice)
 	w.asleep[b] = true
 	w.activity[a] = Activity{InFlight: 2, LastRequest: t0}
+	w.inFlight["a-1"] = 2
 	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"a-1"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.res.awakeAt[a] = t0
@@ -186,14 +195,15 @@ func TestSharedDeploymentsTakeTurnsAndDrain(t *testing.T) {
 	}
 	c.t = t0.Add(2*time.Minute + wakeRepeat)
 	e.residency(c.t)
-	if !slices.Equal(w.drains, []string{"1 true"}) || len(w.yields) != 0 {
+	if !slices.Equal(w.drains, []string{"1 a-1 true"}) || len(w.yields) != 0 {
 		t.Fatalf("a busy shared holder must drain first: drains %v yields %v", w.drains, w.yields)
 	}
 	// Its requests finish within the drain: it sleeps without cutting any off.
 	w.activity[a] = Activity{LastRequest: c.t}
+	w.inFlight["a-1"] = 0
 	c.t = c.t.Add(10 * time.Second)
 	e.residency(c.t)
-	if !slices.Equal(w.yields, []string{"1 abort=false"}) || !slices.Equal(w.drains, []string{"1 true", "1 false"}) {
+	if !slices.Equal(w.yields, []string{"1 abort=false"}) || !slices.Equal(w.drains, []string{"1 a-1 true", "1 a-1 false"}) {
 		t.Fatalf("after draining: yields %v drains %v", w.yields, w.drains)
 	}
 	if got := w.eventsFor(a); !slices.Equal(got, []string{"1 AUTO_SLEEP preempt/turn"}) {
@@ -207,11 +217,12 @@ func TestADrainThatRunsOverCutsTheRestOff(t *testing.T) {
 	w.levels[a], w.levels[b] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.Idle)
 	w.asleep[b] = true
 	w.activity[a] = Activity{InFlight: 1, LastRequest: t0}
+	w.inFlight["a-1"] = 1
 	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"a-1"}}}}
 	w.waiters = []Waiter{{DeploymentID: b, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.residency(c.t)
-	if !slices.Equal(w.drains, []string{"1 true"}) {
+	if !slices.Equal(w.drains, []string{"1 a-1 true"}) {
 		t.Fatalf("drains = %v", w.drains)
 	}
 	c.t = c.t.Add(29 * time.Second)
@@ -415,6 +426,7 @@ func TestATurnEndingFallsDueAndIsActedOnAtOnce(t *testing.T) {
 	w.levels[a], w.levels[b] = pol(yieldpolicy.TimeSlice), pol(yieldpolicy.TimeSlice)
 	w.asleep[b] = true
 	w.activity[a] = Activity{InFlight: 1, LastRequest: t0}
+	w.inFlight["a-1"] = 1
 	w.blocking[b] = Blocking{Holders: []Holder{{DeploymentID: a, Policy: pol(yieldpolicy.TimeSlice), Instances: []string{"a-1"}}}}
 	e, c := newResidencyEvaluator(w, t0)
 	e.res.awakeAt[a] = t0
@@ -430,7 +442,7 @@ func TestATurnEndingFallsDueAndIsActedOnAtOnce(t *testing.T) {
 	}
 	c.t = t0.Add(120 * time.Second)
 	e.residency(c.t)
-	if !slices.Equal(w.drains, []string{"1 true"}) {
+	if !slices.Equal(w.drains, []string{"1 a-1 true"}) {
 		t.Fatalf("a did not give way when its turn ended: drains %v", w.drains)
 	}
 	if got := len(w.wakeCalls); got != 1 {

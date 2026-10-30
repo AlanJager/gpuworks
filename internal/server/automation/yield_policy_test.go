@@ -24,6 +24,7 @@ func holderWorld(holder yieldpolicy.Policy, inFlight int) (*residencyWorld, *Eva
 	w.levels[1], w.levels[2] = holder, pol(yieldpolicy.Idle)
 	w.asleep[2] = true
 	w.activity[1] = Activity{InFlight: inFlight, LastRequest: t0}
+	w.inFlight["h-1"] = inFlight
 	w.blocking[2] = Blocking{Holders: []Holder{{DeploymentID: 1, Policy: holder, Instances: []string{"h-1"}}}}
 	w.waiters = []Waiter{{DeploymentID: 2, Policy: pol(yieldpolicy.Idle), Since: t0}}
 	e, c := newResidencyEvaluator(w, t0)
@@ -58,7 +59,7 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 	t.Run("wait drains for the time the policy gives and then cuts off", func(t *testing.T) {
 		w, e, c := holderWorld(waitFor(45), 4)
 		e.residency(c.t)
-		if !slices.Equal(w.drains, []string{"1 true"}) || len(w.yields) != 0 {
+		if !slices.Equal(w.drains, []string{"1 h-1 true"}) || len(w.yields) != 0 {
 			t.Fatalf("drains %v yields %v", w.drains, w.yields)
 		}
 		c.t = c.t.Add(44 * time.Second)
@@ -77,7 +78,7 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 		e.residency(c.t)
 		c.t = c.t.Add(89 * time.Second)
 		e.residency(c.t)
-		if !slices.Equal(w.drains, []string{"1 true"}) || len(w.yields) != 0 {
+		if !slices.Equal(w.drains, []string{"1 h-1 true"}) || len(w.yields) != 0 {
 			t.Fatalf("drains %v yields %v", w.drains, w.yields)
 		}
 		c.t = c.t.Add(time.Second)
@@ -90,9 +91,10 @@ func TestUnfinishedRequestsAreHandledAsThePolicySays(t *testing.T) {
 		w, e, c := holderWorld(waitFor(45), 4)
 		e.residency(c.t)
 		w.activity[1] = Activity{LastRequest: c.t}
+		w.inFlight["h-1"] = 0
 		c.t = c.t.Add(5 * time.Second)
 		e.residency(c.t)
-		if !slices.Equal(w.yields, []string{"1 abort=false"}) || !slices.Equal(w.drains, []string{"1 true", "1 false"}) {
+		if !slices.Equal(w.yields, []string{"1 abort=false"}) || !slices.Equal(w.drains, []string{"1 h-1 true", "1 h-1 false"}) {
 			t.Fatalf("yields %v drains %v", w.yields, w.drains)
 		}
 	})
