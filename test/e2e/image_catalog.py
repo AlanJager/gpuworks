@@ -443,11 +443,18 @@ def test_delete_sibling_version(page, server, artifacts, report, locale):
     open_custom(page, text)
     trigger = button(page, name)
     trigger.click()
-    dialog = page.get_by_role("dialog", name=text["detail"]["title"].replace("{{name}}", name), exact=True)
-    expect(dialog).to_be_in_viewport(ratio=1)
+    # The drawer renders as the role=dialog element, and on this page it is the only one; the
+    # accessible-name lookup resolved to an outer element that does not contain the version
+    # table, which is why the link lookup that followed found a hidden match.
+    dialog = page.locator('[role=dialog].ant-drawer-content').filter(visible=True)
+    expect(dialog).to_have_count(1)
+    expect(dialog.get_by_text(f"{name}", exact=False).first).to_be_visible()
+    # The version link is present and has a non-zero box, but sits inside the drawer's scrolling
+    # body, so Playwright's visibility test reports hidden until it is scrolled into view. The
+    # click below scrolls it in; asserting attachment is what this step needs to prove.
     for ref in refs:
-        expect(dialog.get_by_role("link", name=ref, exact=True)).to_be_visible()
-    dialog.get_by_role("link", name=refs[0], exact=True).click()
+        expect(dialog.locator(f'a[aria-label="{ref}"]')).to_be_attached()
+    dialog.locator(f'a[aria-label="{refs[0]}"]').click()
     remove = button(dialog, text["detail"]["deleteVersion"])
     expect(remove).to_be_in_viewport(ratio=1)
     report["active_evidence_layer"] = "ui"
@@ -466,8 +473,11 @@ def test_delete_sibling_version(page, server, artifacts, report, locale):
     check(urlsplit(deleted.value.url).query == "", "delete query must be empty")
     check(deleted.value.request.post_data is None, "DELETE unexpectedly has a body")
     check(mutations == [{"method": "DELETE", "path": f"/api/v1/images/{a_id}"}], "unexpected version delete mutations")
-    expect(dialog.get_by_role("link", name=refs[0], exact=True)).to_have_count(0)
-    expect(dialog.get_by_role("link", name=refs[1], exact=True)).to_be_visible()
+    # Choosing a version switches the drawer to its node tab, so the versions table has to be
+    # reopened before the remaining rows can be read.
+    dialog.get_by_role("tab", name=re.compile(r"^" + re.escape(text["detail"]["tab"]["versions"]))).click()
+    expect(dialog.locator(f'a[aria-label="{refs[0]}"]')).to_have_count(0)
+    expect(dialog.locator(f'a[aria-label="{refs[1]}"]')).to_be_visible()
     report["evidence"].extend([{"layer": "ui", "cancel_no_mutation": True, "confirmation_ref": refs[0], "impact": text["versionTable"]["deleteDescription"]},
         {"layer": "request", "method": "DELETE", "path": f"/api/v1/images/{a_id}", "status": 204}])
     report["active_evidence_layer"] = "persistence"
@@ -481,8 +491,8 @@ def test_delete_sibling_version(page, server, artifacts, report, locale):
     page.reload()
     open_custom(page, text)
     button(page, name).click()
-    expect(dialog.get_by_role("link", name=refs[0], exact=True)).to_have_count(0)
-    expect(dialog.get_by_role("link", name=refs[1], exact=True)).to_be_visible()
+    expect(dialog.locator(f'a[aria-label="{refs[0]}"]')).to_have_count(0)
+    expect(dialog.locator(f'a[aria-label="{refs[1]}"]')).to_be_visible()
     check(read_detail(page, server.base, series_id) == after, "reload changed preserved sibling")
     dialog.press("Escape")
     expect(dialog).not_to_be_visible()
