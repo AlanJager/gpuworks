@@ -14,7 +14,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -328,5 +330,52 @@ func TestAutomationRunsAPDRoleSchedule(t *testing.T) {
 	}
 	if failed["role"] != "decode" || failed["reason_code"] != messages.ErrorPDRoleUnitsEmpty || failed["action"] != "replicas" {
 		t.Fatalf("SCHEDULE_ACTION_FAILED = %v", failed)
+	}
+}
+
+// A sleeper does not wake onto a card a replica waits to be placed on when
+// that replica's deployment ranks at least as high: the card was given up
+// for it. One ranked lower does not hold the card.
+func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
+	adapter, st, dep := automationFixture(t)
+	anytime, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
+	if err := st.SetDeploymentYieldPolicy(dep.ID, anytime); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDeploymentSleep(dep.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "auto-1", State: proto.InstRunning, SleepLevel: 1}); err != nil {
+		t.Fatal(err)
+	}
+	newcomer, err := st.CreateDeployment(&store.Deployment{Name: "chat", ModelID: dep.ModelID, NodeID: dep.NodeID, ServedName: "chat", Engine: "vllm", Sleepable: true, State: store.DeployActive, Replicas: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idle, _ := servicelevel.Parse(servicelevel.Idle, servicelevel.Overrides{})
+	if err := st.SetDeploymentYieldPolicy(newcomer.ID, idle); err != nil {
+		t.Fatal(err)
+	}
+	waits := placewait.New()
+	adapter.waits = waits
+	waits.Wait(newcomer.ID, []string{"auto-1"}, time.Now())
+
+	// The newcomer is idle and ranks higher: the card is its.
+	result, err := adapter.Wake(dep.ID)
+	if err != nil || len(result.Woken) != 0 || len(result.Waiting) != 1 || intentOf(t, st, "auto-1") != 1 {
+		t.Fatalf("wake onto a placement's card = %+v err=%v intent=%d, want it left waiting", result, err, intentOf(t, st, "auto-1"))
+	}
+	if woken, err := adapter.WakeWaiting(dep.ID, []string{"auto-1"}); err != nil || len(woken) != 0 {
+		t.Fatalf("waiting wake onto a placement's card = %v err=%v", woken, err)
+	}
+	// A newcomer that ranks lower does not hold the card.
+	if err := st.SetDeploymentYieldPolicy(newcomer.ID, anytime); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetDeploymentYieldPolicy(dep.ID, idle); err != nil {
+		t.Fatal(err)
+	}
+	if woken, err := adapter.WakeWaiting(dep.ID, []string{"auto-1"}); err != nil || len(woken) != 1 {
+		t.Fatalf("waiting wake past a lower placement = %v err=%v", woken, err)
 	}
 }
