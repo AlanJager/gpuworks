@@ -69,6 +69,16 @@ const deployLocale = JSON.parse(
     "utf8",
   ),
 );
+const deploymentsLocale = JSON.parse(
+  fs.readFileSync(
+    new URL("../src/i18n/locales/en/deployments.json", import.meta.url),
+    "utf8",
+  ),
+);
+// The yield policy dictionary, as GET /scheduling/yield-policies answers it.
+const yieldDictionary = JSON.parse(
+  fs.readFileSync(new URL("./fixtures/yield-policies.json", import.meta.url), "utf8"),
+);
 const commonLocale = JSON.parse(
   fs.readFileSync(
     new URL("../src/i18n/locales/en/common.json", import.meta.url),
@@ -79,7 +89,7 @@ const i18n = createInstance();
 await i18n.use(initReactI18next).init({
   lng: "en",
   fallbackLng: "en",
-  resources: { en: { deploy: deployLocale, common: commonLocale } },
+  resources: { en: { deploy: deployLocale, deployments: deploymentsLocale, common: commonLocale } },
   defaultNS: "common",
   interpolation: { escapeValue: false },
 });
@@ -186,6 +196,11 @@ stub("engines", async () => list([engineProfile]));
 stub("inferenceTemplateIndex", async () => ({ items: [] }));
 stub("imageVersions", async () => list([]));
 stub("images", async () => list([]));
+let yieldPoliciesFail = false;
+stub("yieldPolicies", async () => {
+  if (yieldPoliciesFail) throw new Error("dictionary unavailable");
+  return structuredClone(yieldDictionary);
+});
 afterEach(() => {
   cleanup();
   // Later cases in this file override individual stubs; restore the shared
@@ -199,6 +214,7 @@ afterEach(() => {
   calls.evaluate.length = 0;
   calls.create.length = 0;
   evaluateOverride = {};
+  yieldPoliciesFail = false;
 });
 
 async function openDeployPage() {
@@ -343,47 +359,71 @@ test("the automatic mode renders the server's selection and the create confirms 
   assert.equal(modelsFake.listedAll, 0);
 });
 
-test("the service level is chosen only for a sleepable single-node deployment, and reaches the preview and the create", async () => {
-  const label = deployLocale.serviceLevel.label;
+const policyOptionText = (policy: "never" | "idle" | "timeslice" | "anytime") =>
+  `${deploymentsLocale.yieldPolicy.policy.name[policy]} - ${deploymentsLocale.yieldPolicy.policy.description[policy]}`;
+
+test("the yield policy is chosen only for a sleepable single-node deployment, takes the dictionary's defaults, and reaches the preview and the create", async () => {
+  const label = deployLocale.yieldPolicy.label;
   const { user } = await openDeployPage();
   await pickVendorAndName(user, "tiered");
   await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
-  assert.equal(screen.queryByRole("combobox", { name: label }), null, "a deployment that cannot sleep has no level to choose");
+  assert.ok(screen.queryByRole("combobox", { name: label }) === null, "a deployment that cannot sleep has no policy to choose");
 
   await user.click(screen.getByText(deployLocale.workbench.resource.sleepable));
   const select = await screen.findByRole("combobox", { name: label });
-  // The default is resident, and resident states nothing.
-  assert.ok(screen.getAllByText(deployLocale.serviceLevel.name.resident).length > 0);
+  // The default is never, and never states nothing.
+  assert.ok(screen.getAllByText(deploymentsLocale.yieldPolicy.policy.name.never).length > 0);
   await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).sleepable, true));
-  assert.equal("service_level" in (calls.evaluate.at(-1) as Record<string, unknown>), false);
+  assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false);
+  await screen.findByText(deployLocale.yieldPolicy.help);
 
   await user.click(select);
-  await user.click(await screen.findByText(`${deployLocale.serviceLevel.name.shared} - ${deployLocale.serviceLevel.hint.shared}`));
-  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).service_level, "shared"), { timeout: 4000 });
+  await user.click(await screen.findByText(policyOptionText("timeslice")));
+  const timeslice = { policy: "timeslice", idle_sec: 30, sleep_level: "auto", max_serve_sec: 120, unfinished: "wait", unfinished_wait_sec: 30, hold_max_sec: 600 };
+  await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, timeslice), { timeout: 4000 });
 
   await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
   await waitFor(() => assert.ok(calls.create.length > 0));
-  assert.equal((calls.create[0] as Record<string, unknown>).service_level, "shared");
+  assert.deepEqual((calls.create[0] as Record<string, unknown>).yield_policy, timeslice);
+  assert.equal("service_level" in (calls.create[0] as Record<string, unknown>), false);
   assert.equal((calls.create[0] as Record<string, unknown>).sleepable, true);
 });
 
-test("turning sleep off takes the service level out of the form and the request", async () => {
-  const label = deployLocale.serviceLevel.label;
+test("choosing never again states no yield policy, and a dictionary that cannot be read leaves only never", async () => {
+  yieldPoliciesFail = true;
+  const label = deployLocale.yieldPolicy.label;
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "no-dictionary");
+  await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
+  await user.click(screen.getByText(deployLocale.workbench.resource.sleepable));
+  await screen.findByRole("combobox", { name: label });
+  await screen.findByText(deployLocale.yieldPolicy.loadFailed.replace("{{detail}}", "dictionary unavailable"));
+  await user.click(screen.getByRole("combobox", { name: label }));
+  assert.ok(screen.queryByText(policyOptionText("idle")) === null, "no options without a dictionary");
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
+  await waitFor(() => assert.ok(calls.create.length > 0));
+  assert.equal("yield_policy" in (calls.create[0] as Record<string, unknown>), false);
+});
+
+test("turning sleep off takes the yield policy out of the form and the request", async () => {
+  const label = deployLocale.yieldPolicy.label;
   const { user } = await openDeployPage();
   await pickVendorAndName(user, "untiered");
   await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
   const card = screen.getByText(deployLocale.workbench.resource.sleepable);
   await user.click(card);
   await user.click(await screen.findByRole("combobox", { name: label }));
-  await user.click(await screen.findByText(`${deployLocale.serviceLevel.name.offline} - ${deployLocale.serviceLevel.hint.offline}`));
-  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).service_level, "offline"), { timeout: 4000 });
+  await user.click(await screen.findByText(policyOptionText("anytime")));
+  const anytime = { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", unfinished_wait_sec: 30, hold_max_sec: 3600 };
+  await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, anytime), { timeout: 4000 });
 
   await user.click(card);
-  await waitFor(() => assert.equal(screen.queryByRole("combobox", { name: label }), null));
-  await waitFor(() => assert.equal("service_level" in (calls.evaluate.at(-1) as Record<string, unknown>), false), { timeout: 4000 });
+  await waitFor(() => assert.ok(screen.queryByRole("combobox", { name: label }) === null));
+  await waitFor(() => assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false), { timeout: 4000 });
   await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));
   await waitFor(() => assert.ok(calls.create.length > 0));
-  assert.equal("service_level" in (calls.create[0] as Record<string, unknown>), false);
+  assert.equal("yield_policy" in (calls.create[0] as Record<string, unknown>), false);
   assert.equal("sleepable" in (calls.create[0] as Record<string, unknown>), false);
 });
 

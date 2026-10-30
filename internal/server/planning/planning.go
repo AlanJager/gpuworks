@@ -76,11 +76,11 @@ type Input struct {
 	// instances: an edit of the deployment replaces them, so what they hold
 	// now is not in the way of the launch being previewed. Zero excludes none.
 	ExcludeDeploymentID uint
-	// ServiceLevel is the launching deployment's: a sleeping deployment that
-	// does not share its cards with that level keeps its whole claim on them
-	// (servicelevel.SharesCardsWith), so the launch does not take cards it
-	// would want back. Empty reads as resident.
-	ServiceLevel string
+	// YieldPolicy is the launching deployment's (servicelevel.Never, Idle, ...):
+	// a sleeping deployment that does not share its cards with that policy
+	// keeps its whole claim on them (servicelevel.SharesCardsWith), so the
+	// launch does not take cards it would want back. Empty reads as never.
+	YieldPolicy string
 	// ModelRules are the deployment's model source rules (store.SourceRules).
 	ModelRules store.SourceRules
 }
@@ -181,7 +181,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Warnings = append(out.Warnings, messages.NewWarning(messages.WarningPlanningGPUArchCaution, map[string]any{"detail": q}))
 	}
 
-	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, reserved: reservedAgainst(st, in.ServiceLevel)}
+	view := ledgerView{excludeDeployment: in.ExcludeDeploymentID, reserved: reservedAgainst(st, in.YieldPolicy)}
 	snap := nodeSnapshot(st, in.Node, dtypeOK, dtypeReason, view)
 	snap.ServingUnavailable = in.ServingUnavailable
 	if in.Unloaded {

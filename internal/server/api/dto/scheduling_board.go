@@ -36,10 +36,12 @@ type BoardGPU struct {
 }
 
 // BoardOccupant is one instance on a GPU. State is awake or asleep;
-// ResidueBytes is set while asleep.
+// ResidueBytes is set while asleep. YieldPolicy is its
+// deployment's yield policy (never, idle, timeslice or anytime).
 type BoardOccupant struct {
 	DeploymentID uint   `json:"deployment_id"`
 	Deployment   string `json:"deployment"`
+	YieldPolicy  string `json:"yield_policy"`
 	Instance     string `json:"instance"`
 	State        string `json:"state"`
 	SleepLevel   int    `json:"sleep_level,omitempty"`
@@ -66,13 +68,16 @@ type BoardWaitingWake struct {
 
 // BoardUpcomingAction is one occurrence of a schedule in the next 24 hours.
 type BoardUpcomingAction struct {
-	DeploymentID uint      `json:"deployment_id"`
-	Deployment   string    `json:"deployment"`
-	ScheduleID   uint      `json:"schedule_id"`
-	Action       string    `json:"action"`
-	SleepLevel   int       `json:"sleep_level,omitempty"`
-	Replicas     int       `json:"replicas,omitempty"`
-	At           time.Time `json:"at"`
+	DeploymentID uint   `json:"deployment_id"`
+	Deployment   string `json:"deployment"`
+	ScheduleID   uint   `json:"schedule_id"`
+	Action       string `json:"action"`
+	SleepLevel   int    `json:"sleep_level,omitempty"`
+	// Replicas is stated for a replicas order (0 included) and Role names the
+	// PD role it scales; both are absent for a sleep or a wake.
+	Replicas *int      `json:"replicas,omitempty"`
+	Role     string    `json:"role,omitempty"`
+	At       time.Time `json:"at"`
 }
 
 // BoardEvent is one thing the scheduling center did, from a deployment's

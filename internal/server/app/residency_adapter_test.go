@@ -8,6 +8,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -26,7 +27,8 @@ func residencyFixture(t *testing.T) (*residencyAdapter, *automationAdapter, *sto
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SetDeploymentServiceLevel(other.ID, store.ServiceLevelOffline); err != nil {
+	offline, _ := servicelevel.Parse(servicelevel.Anytime, servicelevel.Overrides{})
+	if err := st.SetDeploymentYieldPolicy(other.ID, offline); err != nil {
 		t.Fatal(err)
 	}
 	spec, _ := json.Marshal(proto.InstanceDesiredState{UUID: "batch-1", DesiredState: "running", Sleepable: true})
@@ -47,8 +49,8 @@ func (noServingNetworks) ServingEndpoints() (map[string]network.ServingEndpoint,
 
 func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	res, auto, st, dep, other := residencyFixture(t)
-	if level, ok := res.Wakeable(dep.ID); !ok || level != store.ServiceLevelResident {
-		t.Fatalf("an idle-slept deployment is not wakeable: %q %v", level, ok)
+	if policy, ok := res.Wakeable(dep.ID); !ok || policy.Yield != servicelevel.Never {
+		t.Fatalf("an auto-slept deployment is not wakeable: %+v %v", policy, ok)
 	}
 	if _, ok := res.Wakeable(other.ID); ok {
 		t.Fatal("an awake deployment reads wakeable")
@@ -65,7 +67,7 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 		t.Fatalf("blocking = %+v err=%v", b, err)
 	}
 	h := b.Holders[0]
-	if h.DeploymentID != other.ID || h.Name != "batch" || h.Level != store.ServiceLevelOffline || !slices.Equal(h.Instances, []string{"batch-1"}) {
+	if h.DeploymentID != other.ID || h.Name != "batch" || h.Policy.Yield != servicelevel.Anytime || !slices.Equal(h.Instances, []string{"batch-1"}) {
 		t.Fatalf("holder = %+v", h)
 	}
 
@@ -89,8 +91,8 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	if woken, err := auto.WakeWaiting(dep.ID, result.Waiting); err != nil || len(woken) != 1 {
 		t.Fatalf("waiting wake after the yield = %v err=%v", woken, err)
 	}
-	if level, ok := res.Wakeable(other.ID); !ok || level != store.ServiceLevelOffline {
-		t.Fatalf("the holder put to sleep for another is not wakeable: %q %v", level, ok)
+	if policy, ok := res.Wakeable(other.ID); !ok || policy.Yield != servicelevel.Anytime {
+		t.Fatalf("the holder put to sleep for another is not wakeable: %+v %v", policy, ok)
 	}
 }
 
@@ -133,5 +135,47 @@ func TestResidencyAdapterYieldsAtL2WhenTheHostCannotHoldTheWeights(t *testing.T)
 	level, err := res.Yield(other.ID, []string{"batch-1"}, false)
 	if err != nil || level != proto.SleepLevelL2 || intentOf(t, st, "batch-1") != proto.SleepLevelL2 {
 		t.Fatalf("yield = %d err=%v intent=%d, want L2", level, err, intentOf(t, st, "batch-1"))
+	}
+}
+
+// The holder's sleep level preference decides the level of its yield: l2
+// whatever the host has, l1 strictly (refused where the host cannot hold the
+// weights), auto L1 with the L2 fallback.
+func TestResidencyAdapterYieldFollowsTheHoldersSleepLevelPreference(t *testing.T) {
+	roomy := func(string) (int64, int64, bool) { return 64 << 30, 64 << 30, true }
+	full := func(string) (int64, int64, bool) { return 1 << 30, 64 << 30, true }
+	for _, c := range []struct {
+		name, pref string
+		host       func(string) (int64, int64, bool)
+		level      int
+		refused    bool
+	}{
+		{"auto with room", servicelevel.LevelAuto, roomy, proto.SleepLevelL1, false},
+		{"auto without room", servicelevel.LevelAuto, full, proto.SleepLevelL2, false},
+		{"l2 with room", servicelevel.LevelL2, roomy, proto.SleepLevelL2, false},
+		{"l2 without room", servicelevel.LevelL2, full, proto.SleepLevelL2, false},
+		{"l1 with room", servicelevel.LevelL1, roomy, proto.SleepLevelL1, false},
+		{"l1 without room is refused", servicelevel.LevelL1, full, 0, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			res, auto, st, dep, other := residencyFixture(t)
+			res.host = c.host
+			if err := st.SetDeploymentYieldPolicy(other.ID, servicelevel.Policy{Yield: servicelevel.Anytime, SleepLevel: c.pref, Unfinished: servicelevel.UnfinishedAbort, HoldMaxSec: 1800}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := auto.Wake(dep.ID); err != nil {
+				t.Fatal(err)
+			}
+			level, err := res.Yield(other.ID, []string{"batch-1"}, false)
+			if c.refused {
+				if err == nil || intentOf(t, st, "batch-1") != 0 {
+					t.Fatalf("yield = %d err=%v intent=%d, want a refusal that changes nothing", level, err, intentOf(t, st, "batch-1"))
+				}
+				return
+			}
+			if err != nil || level != c.level || intentOf(t, st, "batch-1") != c.level {
+				t.Fatalf("yield = %d err=%v intent=%d, want L%d", level, err, intentOf(t, st, "batch-1"), c.level)
+			}
+		})
 	}
 }

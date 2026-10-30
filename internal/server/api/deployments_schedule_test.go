@@ -15,7 +15,7 @@ import (
 
 type scheduleRig struct {
 	*tokenRig
-	sleepable, plain, multi, multiAuto, pd *store.Deployment
+	sleepable, plain, multi, multiAuto, pd, pdManual *store.Deployment
 }
 
 func newScheduleRig(t *testing.T) *scheduleRig {
@@ -37,6 +37,8 @@ func newScheduleRig(t *testing.T) *scheduleRig {
 		multi:     create(&store.Deployment{Name: "multi", ServedName: "multi", Engine: "vllm", Sleepable: true, NNodes: 2, Replicas: 1}),
 		multiAuto: create(&store.Deployment{Name: "multi-auto", ServedName: "multi-auto", Engine: "vllm", Sleepable: true, NNodes: 2, Replicas: 1, UnitsAuto: true}),
 		pd: create(&store.Deployment{Name: "pd", ServedName: "pd", Engine: "vllm", Sleepable: true, Replicas: 1, UnitsAuto: true,
+			Placement: `{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"n1"}]},"decode":{"units":[{"node_uuid":"n2"}]}}}}`}),
+		pdManual: create(&store.Deployment{Name: "pd-manual", ServedName: "pd-manual", Engine: "vllm", Sleepable: true, Replicas: 1,
 			Placement: `{"pd":{"mode":"vllm-nixl","roles":{"prefill":{"units":[{"node_uuid":"n1"}]},"decode":{"units":[{"node_uuid":"n2"}]}}}}`}),
 	}
 }
@@ -188,7 +190,15 @@ func TestScheduleValidation(t *testing.T) {
 		{name: "replicas negative", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":-1}`, dep: rig.plain, field: "replicas"},
 		{name: "unknown time zone", body: `{"action":"wake","weekdays":[1],"time":"21:00","timezone":"Mars/Base"}`, status: 400, code: "SCHEDULE_TIMEZONE_UNKNOWN"},
 		{name: "replicas of a multi-node deployment placed by hand", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.multi, status: 400, code: "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"},
-		{name: "replicas of a PD deployment", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.pd, status: 400, code: "SCHEDULE_REPLICAS_SHAPE"},
+		{name: "replicas of a PD deployment without a role", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`, dep: rig.pd, field: "role"},
+		{name: "replicas of a PD deployment for an unknown role", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2,"role":"encode"}`, dep: rig.pd, field: "role"},
+		{name: "a role of a deployment that is not PD", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2,"role":"decode"}`, dep: rig.plain, field: "role"},
+		{name: "a role of a multi-node deployment", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2,"role":"decode"}`, dep: rig.multiAuto, field: "role"},
+		{name: "a role on a sleep order", body: base(`,"role":"decode"`), dep: rig.pd, field: "role"},
+		{name: "a role on a wake order", body: `{"action":"wake","weekdays":[1],"time":"21:00","role":"decode"}`, field: "role"},
+		{name: "decode to 0 replicas", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":0,"role":"decode"}`, dep: rig.pd, field: "replicas"},
+		{name: "prefill over the limit", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":33,"role":"prefill"}`, dep: rig.pd, field: "replicas"},
+		{name: "replicas of a PD deployment placed by hand", body: `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2,"role":"decode"}`, dep: rig.pdManual, status: 400, code: "SCHEDULE_REPLICAS_MANUAL_PLACEMENT"},
 		{name: "sleep on a deployment without sleep mode", body: base(``), dep: rig.plain, status: 400, code: "SLEEP_NOT_ENABLED"},
 		{name: "wake on a deployment without sleep mode", body: `{"action":"wake","weekdays":[1],"time":"21:00"}`, dep: rig.plain, status: 400, code: "SLEEP_NOT_ENABLED"},
 		{name: "unknown JSON field", body: `{"action":"wake","weekdays":[1],"time":"21:00","force":true}`, status: 400},
@@ -256,7 +266,7 @@ func TestScheduleValidation(t *testing.T) {
 		})
 	}
 	// None of the refusals stored an order.
-	for _, dep := range []*store.Deployment{rig.sleepable, rig.plain, rig.multi, rig.pd} {
+	for _, dep := range []*store.Deployment{rig.sleepable, rig.plain, rig.multi, rig.pd, rig.pdManual} {
 		rows, err := rig.st.LifecycleSchedules(dep.ID)
 		if err != nil {
 			t.Fatal(err)
@@ -286,5 +296,79 @@ func TestScheduleReplicasOfAnAutomaticallyPlacedMultiNodeDeployment(t *testing.T
 	rec = rig.do(rig.session, http.MethodPost, schedPath(rig.multi, "schedule"), `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2}`)
 	if body := decodeBody(t, rec); rec.Code != http.StatusBadRequest || body["code"] != "SCHEDULE_REPLICAS_MANUAL_PLACEMENT" {
 		t.Fatalf("manual placement = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// A PD deployment's replica count is per role: the order names the role, the
+// answer says it, and the mode's minimum bounds the count (prefill may be
+// scheduled down to 0, decode may not).
+func TestScheduleReplicasOfAPDRole(t *testing.T) {
+	rig := newScheduleRig(t)
+	path := schedPath(rig.pd, "schedule")
+
+	rec := rig.do(rig.session, http.MethodPost, path, `{"action":"replicas","weekdays":[1],"time":"21:00","timezone":"UTC","replicas":3,"role":"decode","enabled":false}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d %s", rec.Code, rec.Body)
+	}
+	var created dto.LifecycleSchedule
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf(`{"id":%d,"action":"replicas","weekdays":[1],"time":"21:00","timezone":"UTC","replicas":3,"role":"decode","enabled":false}`, created.ID); strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("create body\n got %s\nwant %s", rec.Body, want)
+	}
+	if stored, err := rig.st.LifecycleSchedule(rig.pd.ID, created.ID); err != nil || stored.Role != "decode" || stored.Replicas != 3 {
+		t.Fatalf("stored = %+v %v", stored, err)
+	}
+
+	// Prefill to 0 is a count, not an absent one: the answer states it.
+	rec = rig.do(rig.session, http.MethodPost, path, `{"action":"replicas","weekdays":[1],"time":"22:00","timezone":"UTC","replicas":0,"role":"prefill","enabled":false}`)
+	if rec.Code != http.StatusCreated || !strings.Contains(rec.Body.String(), `"replicas":0,"role":"prefill"`) {
+		t.Fatalf("prefill to 0 = %d %s", rec.Code, rec.Body)
+	}
+	var zero dto.LifecycleSchedule
+	_ = json.Unmarshal(rec.Body.Bytes(), &zero)
+
+	rec = rig.do(rig.session, http.MethodGet, path, "")
+	var list struct {
+		Items []dto.LifecycleSchedule `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Items) != 2 ||
+		list.Items[0].Role != "decode" || list.Items[0].Replicas == nil || *list.Items[0].Replicas != 3 ||
+		list.Items[1].Role != "prefill" || list.Items[1].Replicas == nil || *list.Items[1].Replicas != 0 {
+		t.Fatalf("list = %d %s", rec.Code, rec.Body)
+	}
+
+	// An update restates the order whole, role included: another role now,
+	// and none leaves it refused.
+	sid := fmt.Sprintf("schedule/%d", created.ID)
+	rec = rig.do(rig.session, http.MethodPut, schedPath(rig.pd, sid), `{"action":"replicas","weekdays":[1],"time":"21:00","timezone":"UTC","replicas":2,"role":"prefill","enabled":false}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"replicas":2,"role":"prefill"`) {
+		t.Fatalf("update = %d %s", rec.Code, rec.Body)
+	}
+	if stored, _ := rig.st.LifecycleSchedule(rig.pd.ID, created.ID); stored.Role != "prefill" || stored.Replicas != 2 {
+		t.Fatalf("stored after update = %+v", stored)
+	}
+	rec = rig.do(rig.session, http.MethodPut, schedPath(rig.pd, sid), `{"action":"wake","weekdays":[1],"time":"21:00"}`)
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "role") || strings.Contains(rec.Body.String(), "replicas") {
+		t.Fatalf("turned into a wake = %d %s", rec.Code, rec.Body)
+	}
+	if stored, _ := rig.st.LifecycleSchedule(rig.pd.ID, created.ID); stored.Role != "" || stored.Replicas != 0 {
+		t.Fatalf("stored after becoming a wake = %+v: the role and count go with the replicas order", stored)
+	}
+
+	// A sleep order carries no role in its answer.
+	rec = rig.do(rig.session, http.MethodPost, schedPath(rig.sleepable, "schedule"), sleepOrder)
+	if rec.Code != http.StatusCreated || strings.Contains(rec.Body.String(), `"role"`) || strings.Contains(rec.Body.String(), `"replicas"`) {
+		t.Fatalf("sleep order = %d %s", rec.Code, rec.Body)
+	}
+
+	// The refusals name the field, and the role the modes allow.
+	rec = rig.do(rig.session, http.MethodPost, path, `{"action":"replicas","weekdays":[1],"time":"21:00","replicas":2,"role":"encode"}`)
+	body := decodeBody(t, rec)
+	params, _ := body["params"].(map[string]any)
+	roles, _ := json.Marshal(params["roles"])
+	if rec.Code != http.StatusBadRequest || body["code"] != "SCHEDULE_INVALID" || params["field"] != "role" || string(roles) != `["decode","prefill"]` {
+		t.Fatalf("unknown role = %d %s", rec.Code, rec.Body)
 	}
 }

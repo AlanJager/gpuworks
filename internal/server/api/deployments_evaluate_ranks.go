@@ -80,7 +80,7 @@ func (a *apiHandlers) evaluateRanks(env evaluateRankEnv) bool {
 			Topology:   topology,
 			Source:     planning.LaunchSourceFromRequest(rankImage, requestOverrides),
 			ModelMount: modelMount, ComponentMounts: componentMounts,
-			ServedName: servedName, Sleepable: req.Sleepable, ServiceLevel: req.ServiceLevel,
+			ServedName: servedName, Sleepable: req.Sleepable, YieldPolicy: requestYield(req.YieldPolicy),
 			MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			VRAMLimitBytes: int64(req.VRAMLimitGiB * (1 << 30)), PartitionBackend: req.PartitionBackend,
 			RuntimeImageCached: nodeImageCached, APIContract: rankSelection.APIContract,

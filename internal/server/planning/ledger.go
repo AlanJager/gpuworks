@@ -328,7 +328,7 @@ type ledgerView struct {
 	// the memory they hold now is not counted against it (Input.ExcludeDeploymentID).
 	excludeDeployment uint
 	// reserved says a sleeper keeps its whole claim rather than its residue:
-	// it shares its cards by service level, but not with the deployment
+	// it shares its cards by yield policy, but not with the deployment
 	// being placed (reservedAgainst).
 	reserved func(*store.Instance) bool
 }
@@ -436,8 +436,20 @@ func GPUAllocations(st *store.Store, node *store.Node) map[int]GPUAllocation {
 }
 
 func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]GPUAllocation {
-	result := map[int]GPUAllocation{}
 	if st == nil || node == nil {
+		return map[int]GPUAllocation{}
+	}
+	instances, _ := st.InstancesForNode(node.ID)
+	return allocateInstances(st, node, instances, view, newResidues(st), func(in *store.Instance) bool { return chargesResidue(st, in) })
+}
+
+// allocateInstances charges a node's instances to its GPUs: the arithmetic
+// of the ledger, apart from where the instances come from (one node's read,
+// or the fleet's single pass, FleetCards) and how a confirmed sleeper is told
+// (sleeper: chargesResidue, or the same test over rows already in hand).
+func allocateInstances(st *store.Store, node *store.Node, instances []store.Instance, view ledgerView, residue *residues, sleeper func(*store.Instance) bool) map[int]GPUAllocation {
+	result := map[int]GPUAllocation{}
+	if node == nil {
 		return result
 	}
 	capacity := map[int]int64{}
@@ -446,12 +458,10 @@ func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]
 	}
 	// The node is homogeneous, so one architecture describes every claim on it.
 	_, _, archFamily, _ := nodeGPUProfile(node)
-	instances, _ := st.InstancesForNode(node.ID)
-	residue := newResidues(st)
 	for _, instance := range instances {
 		// A failed non-sleep generation is handled by the controller's removing
 		// flow and follows the master ledger: it is not a live claim. A failed
-		// sleep report is different—its engine may still own the card—so retain
+		// sleep report is different - its engine may still own the card - so retain
 		// that claim until the agent confirms stopped.
 		if instance.State == proto.InstStopped || (instance.State == proto.InstFailed && instance.Phase != proto.PhaseSleep) || view.excludes(&instance) {
 			continue
@@ -460,7 +470,7 @@ func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]
 		// instance's intent is already zero while the observed level may still
 		// be L1/L2, so the full claim remains reserved.
 		asleep := (view.alsoAsleep != nil && view.alsoAsleep(&instance)) ||
-			(chargesResidue(st, &instance) && (view.reserved == nil || !view.reserved(&instance)))
+			(sleeper(&instance) && (view.reserved == nil || !view.reserved(&instance)))
 		claim := instanceClaim(st, &instance, archFamily)
 		for _, gpuIndex := range parseInts(instance.GPUIndexes) {
 			allocation := result[gpuIndex]

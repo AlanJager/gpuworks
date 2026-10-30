@@ -2,6 +2,8 @@ package store
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // A wake that did not fit can wait for room (Instance.WakeWaitingSince): the
@@ -11,16 +13,23 @@ import (
 
 // MarkWakeWaiting starts the wait of a deployment's sleeping instances whose
 // wake did not fit. An instance already waiting keeps its start, so asking
-// again does not extend the wait.
+// again does not extend the wait. A wake that waits is a wake all the same:
+// the deployment's sleep is no longer held (Deployment.SleepHeld), so a
+// request for it is held for the wake rather than refused.
 func (s *Store) MarkWakeWaiting(depID uint, uuids []string, at time.Time) error {
 	if len(uuids) == 0 {
 		return nil
 	}
-	res := s.db.Model(&Instance{}).
-		Where("deployment_id = ? AND uuid IN ? AND wake_waiting_since IS NULL", depID, uuids).
-		Update("wake_waiting_since", at.UTC())
-	if res.Error != nil {
-		return res.Error
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&Instance{}).
+			Where("deployment_id = ? AND uuid IN ? AND wake_waiting_since IS NULL", depID, uuids).
+			Update("wake_waiting_since", at.UTC()).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Deployment{}).Where("id = ? AND sleep_held = ?", depID, true).Update("sleep_held", false).Error
+	})
+	if err != nil {
+		return err
 	}
 	s.Bus.PublishChange("deployment", uintKey(depID), "wake-waiting")
 	return nil

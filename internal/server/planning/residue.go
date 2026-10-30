@@ -15,6 +15,10 @@ import (
 type residues struct {
 	st     *store.Store
 	params map[uint]float64 // by deployment ID
+	// known, when set, answers a deployment's parameter count from rows the
+	// caller loaded in bulk (FleetCards), so a pass over the fleet reads
+	// neither deployments nor models one at a time.
+	known func(deploymentID uint) float64
 }
 
 func newResidues(st *store.Store) *residues {
@@ -34,7 +38,9 @@ func (r *residues) paramsOf(deploymentID uint) float64 {
 		return params
 	}
 	var params float64
-	if r.st != nil {
+	if r.known != nil {
+		params = r.known(deploymentID)
+	} else if r.st != nil {
 		if dep, err := r.st.GetDeployment(deploymentID); err == nil {
 			if model, err := r.st.GetModel(dep.ModelID); err == nil {
 				params = modelParams(model)

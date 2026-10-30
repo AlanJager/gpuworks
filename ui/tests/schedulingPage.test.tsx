@@ -4,53 +4,98 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import { smallFleet } from "./helpers/overviewFixtures.ts";
 
-// The scheduling center: the board's loading / empty / error / success states,
-// the GPU bars and their occupants, the link into a deployment, the pending
-// reason worded like the deployment drawer words it, and the keyboard path to
-// cancel a waiting wake.
+// The scheduling center: the overview's loading / empty / error / success
+// states, the fleet summary, the heatmap with its filters, the node drawer that
+// reads one node in full, the queues (pending reason worded like the deployment
+// drawer words it, upcoming, waiting wakes cancelled from the keyboard) and the
+// sharing stats.
 
 const closeChannels = trackMessageChannels();
 const { i18n, locale } = await createI18n(["scheduling", "deployments", "deploy"]);
-const { cleanup, render, screen, waitFor, within } = await import("@testing-library/react");
+const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { APIError } = await import("../src/apiError.ts");
 const { default: SchedulingPage } = await import("../src/pages/SchedulingPage.tsx");
 type Board = import("../src/api.ts").SchedulingBoard;
+type Overview = import("../src/api.ts").SchedulingOverview;
+type Timeline = import("../src/api.ts").SchedulingTimeline;
 
 const GIB = 1024 ** 3;
 const s = locale.scheduling;
-const original = { schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting, schedulingHistory: api.schedulingHistory };
+const original = {
+  schedulingOverview: api.schedulingOverview, schedulingBoard: api.schedulingBoard, endWakeWaiting: api.endWakeWaiting,
+  schedulingHistory: api.schedulingHistory, schedulingTimeline: api.schedulingTimeline,
+};
 
-function board(overrides: Partial<Board> = {}): Board {
+/** The fleet-wide lists of the board, as GET /scheduling/board?queues=1 answers. */
+function queues(overrides: Partial<Board> = {}): Board {
   return {
-    nodes: {
-      items: [{
-        uuid: "node-a", name: "gpu-a", online: true,
-        gpus: [
-          {
-            index: 0, name: "RTX 8000", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, held_outside: false,
-            occupants: [
-              { deployment_id: 7, deployment: "qwen", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
-              { deployment_id: 8, deployment: "llama", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
-            ],
-          },
-          { index: 1, name: "RTX 8000", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, held_outside: true, occupants: [] },
-        ],
-      }],
-      page: 1, page_size: 10, total: 1,
-    },
+    nodes: { items: [], page: 1, page_size: 10, total: 0 },
     pending: [{ deployment_id: 9, deployment: "big-model", reason: { code: "pool_empty", params: { nodes: 3, unmet: 1, cordoned: 1, offline: 1 } }, at: "2026-10-25T08:00:00Z" }],
     waiting_wakes: [{ deployment_id: 8, deployment: "llama", instances: ["inst-llama-0001"], since: "2026-10-25T09:00:00Z" }],
     upcoming: [
       { deployment_id: 7, deployment: "qwen", schedule_id: 1, action: "sleep", sleep_level: 2, at: "2026-10-25T22:00:00Z" },
       { deployment_id: 7, deployment: "qwen", schedule_id: 2, action: "replicas", replicas: 3, at: "2026-10-26T06:00:00Z" },
     ],
-    recent: [{ deployment_id: 7, deployment: "qwen", code: "AUTO_SLEEP", params: { trigger: "idle", level: 2, idle_sec: 900 }, at: "2026-10-25T07:00:00Z" }],
+    recent: [],
     ...overrides,
   };
+}
+
+/** One node read in full, as GET /scheduling/board?node= answers. */
+function nodeBoard(uuid: string): Board {
+  return queues({
+    nodes: {
+      items: [{
+        uuid, name: "gpu-a", online: true,
+        gpus: [
+          {
+            index: 0, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 20 * GIB, sleeping_bytes: 4 * GIB, free_bytes: 24 * GIB, held_outside: false,
+            occupants: [
+              { deployment_id: 7, deployment: "qwen", yield_policy: "idle", instance: "inst-qwen-0001", state: "awake", claim_bytes: 20 * GIB },
+              { deployment_id: 8, deployment: "llama", yield_policy: "timeslice", instance: "inst-llama-0001", state: "asleep", sleep_level: 2, claim_bytes: 20 * GIB, residue_bytes: 4 * GIB },
+            ],
+          },
+          { index: 1, name: "L20", memory_bytes: 48 * GIB, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 40 * GIB, held_outside: true, occupants: [] },
+        ],
+      }],
+      page: 1, page_size: 1, total: 1,
+    },
+    pending: [], waiting_wakes: [], upcoming: [],
+  });
+}
+
+const sharing = (): Timeline => ({
+  window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [],
+  deployments: [{ deployment_id: 8, deployment: "llama", yield_policy: "timeslice", awake_seconds: 3600, awake_share: 0.25, switches: 3, yielded: 2, yielded_to: 1, wakes: 1, held_requests: 6, wait_p50_ms: 4200, wait_p95_ms: 31000 }],
+});
+
+interface Calls { board: unknown[]; timeline: unknown[] }
+
+function serve(options: { overview?: () => Promise<Overview>; board?: () => Board; sharing?: () => Timeline } = {}): Calls {
+  const calls: Calls = { board: [], timeline: [] };
+  api.schedulingOverview = options.overview ?? (async () => smallFleet());
+  api.schedulingBoard = async (query) => {
+    calls.board.push(query);
+    if ("node" in query) return nodeBoard(query.node);
+    if ("queues" in query) return (options.board ?? queues)();
+    throw new Error(`the page must not ask for a page of nodes: ${JSON.stringify(query)}`);
+  };
+  api.schedulingTimeline = async (query) => {
+    calls.timeline.push(query);
+    if ("sharing" in query) return (options.sharing ?? sharing)();
+    return { window: { from: "2026-10-28T06:00:00Z", to: "2026-10-28T12:00:00Z", hours: 6 }, nodes: [], deployments: [] };
+  };
+  // The scheduling history has its own tests (schedulingHistory.test.tsx).
+  api.schedulingHistory = async () => ({ items: [{
+    id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
+    params: { trigger: "idle", level: 2, idle_sec: 900 },
+  }] });
+  return calls;
 }
 
 function Probe() {
@@ -59,11 +104,6 @@ function Probe() {
 }
 
 function mount() {
-  // The scheduling history has its own tests (schedulingHistory.test.tsx).
-  api.schedulingHistory = async () => ({ items: [{
-    id: 1, created_at: "2026-10-25T07:00:00Z", deployment_id: 7, deployment: "qwen", kind: "automation", code: "AUTO_SLEEP", category: "auto",
-    params: { trigger: "idle", level: 2, idle_sec: 900 },
-  }] });
   render(
     <I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={["/scheduling"]}>
@@ -84,122 +124,248 @@ afterEach(() => {
 });
 after(() => closeChannels());
 
-test("a loading status shows until the board answers", async () => {
+const cells = () => [...document.querySelectorAll<HTMLButtonElement>("button.hm-cell")];
+const status = () => screen.getAllByRole("status").map((el) => el.textContent).join(" | ");
+
+/** choose picks an option of an antd select by its label. */
+async function choose(name: string, option: string) {
+  fireEvent.mouseDown(screen.getByRole("combobox", { name }));
+  const found = await waitFor(() => {
+    const el = document.querySelector<HTMLElement>(`.ant-select-item-option[title="${option}"]`);
+    assert.ok(el, `no option ${option}`);
+    return el;
+  });
+  fireEvent.click(found);
+}
+
+test("a loading status shows until the overview answers", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
-  api.schedulingBoard = async () => { await gate; return board(); };
+  serve({ overview: async () => { await gate; return smallFleet(); } });
   mount();
   assert.ok(screen.getByRole("status"));
   assert.ok(screen.getByText(s.page.loading));
   release();
-  await screen.findByText("gpu-a");
+  await screen.findByRole("group", { name: s.heatmap.aria });
   assert.equal(screen.queryByText(s.page.loading), null);
 });
 
 test("a failed first load shows the error and retries on request", async () => {
   let calls = 0;
-  api.schedulingBoard = async () => {
-    calls += 1;
-    if (calls === 1) throw new Error("board unavailable");
-    return board();
-  };
+  serve({ overview: async () => { calls += 1; if (calls === 1) throw new Error("overview unavailable"); return smallFleet(); } });
   const user = mount();
   assert.ok(await screen.findByText(s.page.loadFailed));
-  assert.ok(screen.getByText("board unavailable"));
+  assert.ok(screen.getByText("overview unavailable"));
   await user.click(screen.getByRole("button", { name: s.page.retry }));
-  await screen.findByText("gpu-a");
+  await screen.findByRole("group", { name: s.heatmap.aria });
   assert.equal(screen.queryByText(s.page.loadFailed), null);
 });
 
-test("an empty board says so in every table and the node list", async () => {
-  api.schedulingBoard = async () => board({
-    nodes: { items: [], page: 1, page_size: 10, total: 0 },
-    pending: [], waiting_wakes: [], upcoming: [], recent: [],
+test("an empty fleet says so, and every queue says it is empty", async () => {
+  serve({
+    overview: async () => ({ summary: { nodes: 0, online_nodes: 0, cards: 0, awake: 0, asleep: 0, free: 0, held_outside: 0, unhealthy: 0, offline: 0, by_model: [], contention: { waiting_wakes: 0, held_requests: 0, yields_last_hour: 0 } }, models: [], deployments: [], nodes: [] }),
+    board: () => queues({ pending: [], waiting_wakes: [], upcoming: [] }),
   });
   mount();
   await screen.findByText(s.nodes.empty);
-  for (const text of [s.pending.empty, s.waiting.empty, s.upcoming.empty]) assert.ok(screen.getByText(text), text);
+  for (const text of [s.pending.empty, s.waiting.empty, s.upcoming.empty]) assert.ok(await screen.findByText(text), text);
+  assert.equal(screen.queryByRole("group", { name: s.heatmap.aria }), null);
 });
 
-test("the summary counts what waits, and each GPU is a bar of awake, sleeping residue and free memory", async () => {
-  api.schedulingBoard = async () => board();
+test("the summary counts the cards by state and model and the contention, with the queues' counts", async () => {
+  serve();
   mount();
-  await screen.findByText("gpu-a");
-  const summary = screen.getByRole("group", { name: s.summary.title });
-  for (const [label, count] of [[s.summary.waitingWakes, "1"], [s.summary.pending, "1"], [s.summary.upcoming, "2"]]) {
-    const tile = within(summary).getByText(label).parentElement as HTMLElement;
-    assert.equal(within(tile).getByText(count).textContent, count, label);
+  const summary = await screen.findByRole("group", { name: s.summary.title });
+  const tile = (group: string, label: string) => {
+    const el = within(within(summary).getByRole("group", { name: group })).getByText(label).closest(".scheduling-tile") as HTMLElement;
+    return el.querySelector("strong")?.textContent;
+  };
+  assert.equal(tile(s.summary.cardsTitle, s.summary.total), "6");
+  assert.ok(within(summary).getByText(i18n.t("scheduling:summary.nodesOnline", { online: 2, count: 3 })));
+  for (const [state, count] of [["awake", "2"], ["asleep", "1"], ["free", "1"], ["held", "1"], ["offline", "1"]]) {
+    assert.equal(tile(s.summary.cardsTitle, s.states[state as keyof typeof s.states]), count, state);
   }
-  const bar = screen.getByRole("img", { name: i18n.t("scheduling:nodes.barAria", { node: "gpu-a", index: 0, awake: "20.0 GiB", sleeping: "4.0 GiB", free: "24.0 GiB", total: "48.0 GiB" }) });
-  assert.equal(bar.querySelectorAll("span").length, 3);
-  assert.deepEqual([...bar.querySelectorAll("span")].map((span) => Math.round(parseFloat((span as HTMLElement).style.width))), [42, 8, 50]);
-  assert.ok(screen.getByText(i18n.t("scheduling:nodes.figures", { awake: "20.0 GiB", sleeping: "4.0 GiB", free: "24.0 GiB", total: "48.0 GiB" })));
-  const legend = screen.getByRole("list", { name: s.nodes.legend.title });
-  for (const label of [s.nodes.legend.awake, s.nodes.legend.sleeping, s.nodes.legend.free]) assert.ok(within(legend).getByText(label));
+  assert.equal(within(summary).queryByText(s.states.unhealthy), null, "no faulty card, no faulty tile");
+  const models = within(summary).getByRole("list", { name: s.summary.models });
+  assert.deepEqual(within(models).getAllByRole("listitem").map((li) => li.textContent), [
+    i18n.t("scheduling:summary.modelLine", { model: "L20", cards: 3, free: 0 }),
+    i18n.t("scheduling:summary.modelLine", { model: "H100", cards: 3, free: 1 }),
+  ]);
+  assert.equal(tile(s.summary.contentionTitle, s.summary.waitingWakes), "1");
+  assert.equal(tile(s.summary.contentionTitle, s.summary.heldRequests), "3");
+  assert.equal(tile(s.summary.contentionTitle, s.summary.yields), "2");
+  await waitFor(() => assert.equal(tile(s.summary.contentionTitle, s.summary.pending), "1"));
+  assert.equal(tile(s.summary.contentionTitle, s.summary.upcoming), "2");
 });
 
-test("occupants show their state: the claim while awake, the residue while asleep; a card held outside warns", async () => {
-  api.schedulingBoard = async () => board();
+test("the heatmap shows every card and says how many are shown; the page never reads a page of nodes", async () => {
+  const calls = serve();
   mount();
-  await screen.findByText("gpu-a");
-  const node = within(screen.getByRole("region", { name: "gpu-a" }));
-  const awake = node.getByRole("link", { name: "qwen" }).parentElement as HTMLElement;
-  assert.ok(within(awake).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.awake", { claim: "20.0 GiB" }))));
-  const asleep = node.getByRole("link", { name: "llama" }).parentElement as HTMLElement;
-  assert.ok(within(asleep).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.asleep", { level: 2, residue: "4.0 GiB" }))));
-  assert.ok(screen.getByText(s.nodes.heldOutside));
-  assert.ok(screen.getByText(s.nodes.heldOutsideHint));
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  assert.equal(cells().length, 6);
+  assert.ok(status().includes(i18n.t("scheduling:heatmap.shown", { nodes: 3, cards: 6 })));
+  assert.deepEqual(calls.board, [{ queues: true }]);
+  const legend = screen.getByRole("list", { name: s.nodes.legend.title });
+  for (const label of [s.states.awake, s.states.asleep, s.states.free, s.states.held, s.states.offline, s.heatmap.legendSwitching]) assert.ok(within(legend).getByText(label), label);
 });
 
-test("a deployment name opens that deployment's drawer", async () => {
-  api.schedulingBoard = async () => board();
+test("filters narrow the heatmap by model, node label and state, and a search rings the deployment's cards", async () => {
+  serve();
   const user = mount();
-  await screen.findByText("gpu-a");
-  await user.click(within(screen.getByRole("region", { name: "gpu-a" })).getByRole("link", { name: "qwen" }));
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  await choose(s.filters.models, "H100");
+  await waitFor(() => assert.equal(cells().length, 3));
+  assert.ok(status().includes(i18n.t("scheduling:heatmap.shown", { nodes: 1, cards: 3 })));
+  await user.click(screen.getByRole("button", { name: s.filters.reset }));
+  await waitFor(() => assert.equal(cells().length, 6));
+
+  await choose(s.filters.label, "zone=a");
+  await waitFor(() => assert.equal(cells().length, 2));
+  await user.click(screen.getByRole("button", { name: s.filters.reset }));
+
+  await choose(s.filters.state, s.filters.stateOptions.offline);
+  await waitFor(() => assert.equal(cells().length, 1));
+  await user.click(screen.getByRole("button", { name: s.filters.reset }));
+
+  await user.type(screen.getByRole("textbox", { name: s.filters.search }), "night");
+  await waitFor(() => assert.ok(status().includes(i18n.t("scheduling:heatmap.highlighted", { cards: 2 }))));
+  assert.equal(cells().filter((cell) => cell.classList.contains("is-hit")).length, 2);
+  await user.clear(screen.getByRole("textbox", { name: s.filters.search }));
+  await user.type(screen.getByRole("textbox", { name: s.filters.search }), "nothing like it");
+  await waitFor(() => assert.ok(status().includes(s.heatmap.noDeployment)));
+});
+
+test("a filter that matches nothing says so instead of drawing an empty grid", async () => {
+  serve();
+  const user = mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  await choose(s.filters.models, "H100");
+  await choose(s.filters.label, "zone=a");
+  await screen.findByText(s.heatmap.emptyFiltered);
+  assert.equal(screen.queryByRole("group", { name: s.heatmap.aria }), null);
+  await user.click(screen.getByRole("button", { name: s.filters.reset }));
+  await screen.findByRole("group", { name: s.heatmap.aria });
+});
+
+test("grouping by a label and sorting by contention reorder the nodes", async () => {
+  serve();
+  mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  await choose(s.filters.groupBy, i18n.t("scheduling:filters.group.label", { key: "zone" }));
+  const sections = await waitFor(() => {
+    const found = screen.getAllByRole("region");
+    assert.equal(found.length, 3);
+    return found;
+  });
+  assert.deepEqual(sections.map((el) => el.getAttribute("aria-label")), ["a", "c", s.heatmap.noLabel]);
+  await choose(s.filters.sortBy, s.filters.sort.contention);
+  const order = () => [...document.querySelectorAll(".hm-node")].map((el) => el.getAttribute("aria-label"));
+  await waitFor(() => assert.deepEqual(order(), ["gpu-a", "gpu-c", "gpu-b"]));
+});
+
+test("opening a node reads it in full: each GPU as a bar with its holders, and its residency timeline", async () => {
+  const calls = serve();
+  const user = mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  assert.ok(!calls.board.some((query) => "node" in (query as object)), "no node is read until one is opened");
+  await user.click(screen.getByRole("button", { name: new RegExp("^gpu-a GPU 0,") }));
+  const drawer = await screen.findByRole("dialog");
+  await within(drawer).findByRole("region", { name: "gpu-a" });
+  assert.deepEqual(calls.board.at(-1), { node: "node-a" });
+  const bar = within(drawer).getByRole("img", { name: i18n.t("scheduling:nodes.barAria", { node: "gpu-a", index: 0, awake: "20.0 GiB", sleeping: "4.0 GiB", free: "24.0 GiB", total: "48.0 GiB" }) });
+  assert.deepEqual([...bar.querySelectorAll("span")].map((span) => Math.round(parseFloat((span as HTMLElement).style.width))), [42, 8, 50]);
+  const level = (name: string) => i18n.t("scheduling:nodes.occupant.level", { level: i18n.t(`deployments:yieldPolicy.policy.name.${name}`) }).trim();
+  const awake = within(drawer).getByRole("link", { name: "qwen" }).parentElement as HTMLElement;
+  assert.ok(within(awake).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.awake", { claim: "20.0 GiB" }))));
+  assert.ok(within(awake).getByText(level("idle")));
+  const asleep = within(drawer).getByRole("link", { name: "llama" }).parentElement as HTMLElement;
+  assert.ok(within(asleep).getByText(new RegExp(i18n.t("scheduling:nodes.occupant.asleep", { level: 2, residue: "4.0 GiB" }))));
+  assert.ok(within(asleep).getByText(level("timeslice")));
+  assert.ok(within(drawer).getByText(s.nodes.heldOutside));
+  assert.ok(within(drawer).getByText(s.timeline.title));
+  await waitFor(() => assert.deepEqual(calls.timeline.find((query) => "nodes" in (query as object)), { nodes: ["node-a"], hours: 6 }));
+  await user.click(within(drawer).getByRole("link", { name: "qwen" }));
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
 
-test("pending reasons read like the deployment drawer's placement alert; upcoming entries are worded; the history replaces the board's recent list", async () => {
-  api.schedulingBoard = async () => board();
+test("a node that cannot be read says so in its drawer and retries", async () => {
+  serve();
+  let calls = 0;
+  const base = api.schedulingBoard;
+  api.schedulingBoard = async (query) => {
+    if ("node" in query) { calls += 1; if (calls === 1) throw new Error("node unavailable"); }
+    return base(query);
+  };
+  const user = mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  await user.click(screen.getByRole("button", { name: new RegExp("^gpu-a GPU 0,") }));
+  const drawer = await screen.findByRole("dialog");
+  assert.ok(await within(drawer).findByText(s.drawer.loadFailed));
+  assert.ok(within(drawer).getByText("node unavailable"));
+  await user.click(within(drawer).getByRole("button", { name: s.page.retry }));
+  await within(drawer).findByRole("region", { name: "gpu-a" });
+});
+
+test("a node can be opened from the keyboard alone", async () => {
+  serve();
+  const user = mount();
+  await screen.findByRole("group", { name: s.heatmap.aria });
+  cells()[0].focus();
+  await user.keyboard("{ArrowRight}{ArrowRight}{Enter}");
+  const drawer = await screen.findByRole("dialog");
+  assert.ok(within(drawer).getByText("gpu-b"), "the third card is gpu-b's, and its name titles the drawer");
+});
+
+test("pending reasons read like the deployment drawer's placement alert; upcoming entries are worded; the history sits below", async () => {
+  serve();
   mount();
   await screen.findByText("big-model");
   assert.ok(screen.getByText(i18n.t("deploy:schedule.pool_empty", { nodes: 3, unmet: 1, cordoned: 1, offline: 1 })));
   assert.ok(screen.getByText(i18n.t("scheduling:upcoming.action.sleep", { level: 2 })));
   assert.ok(screen.getByText(i18n.t("scheduling:upcoming.action.replicas", { count: 3 })));
-  // What was done lately is the scheduling history, worded as the timeline words it.
   assert.ok(await screen.findByText(i18n.t("deployments:instance.event.AUTO_SLEEP", {
     level: 2, cause: i18n.t("deployments:automation.cause.idle", { idle: "15 min" }),
   })));
   assert.ok(screen.getByText(s.history.title));
-  assert.equal(screen.queryByText("Recent automation actions"), null);
 });
 
-test("the search narrows the nodes on the server and starts from the first page", async () => {
-  const queries: unknown[] = [];
-  api.schedulingBoard = async (query) => { queries.push(query); return board(); };
-  const user = mount();
-  await screen.findByText("gpu-a");
-  await user.type(screen.getByRole("searchbox", { name: s.nodes.search }), "gpu-b{Enter}");
-  await waitFor(() => assert.deepEqual(queries.at(-1), { page: 1, page_size: 10, q: "gpu-b" }));
+test("a PD role's scheduled count names the role, and a count of 0 is still a count", async () => {
+  serve({
+    board: () => queues({
+      upcoming: [
+        { deployment_id: 11, deployment: "pd-chat", schedule_id: 3, action: "replicas", replicas: 0, role: "prefill", at: "2026-10-26T07:00:00Z" },
+        { deployment_id: 11, deployment: "pd-chat", schedule_id: 4, action: "replicas", replicas: 3, role: "decode", at: "2026-10-26T08:00:00Z" },
+      ],
+    }),
+  });
+  mount();
+  for (const [role, count] of [["prefill", 0], ["decode", 3]] as const) {
+    assert.ok(await screen.findByText(i18n.t("scheduling:upcoming.action.roleReplicas", { role: i18n.t(`deployments:detail.pd.role.${role}`), count })), role);
+  }
 });
 
-test("a waiting wake is cancelled from the keyboard, then the board reloads", async () => {
-  let waiting = board().waiting_wakes;
-  api.schedulingBoard = async () => board({ waiting_wakes: waiting });
+test("a waiting wake is cancelled from the keyboard, then the queues and the overview reload", async () => {
+  let waiting = queues().waiting_wakes;
+  serve({ board: () => queues({ waiting_wakes: waiting }) });
   const cancelled: number[] = [];
   api.endWakeWaiting = async (id) => { cancelled.push(id); waiting = []; return { items: ["inst-llama-0001"], total: 1 }; };
+  let reads = 0;
+  const base = api.schedulingOverview;
+  api.schedulingOverview = async () => { reads += 1; return base(); };
   const user = mount();
   await screen.findByText("big-model");
+  const before = reads;
   const cancel = screen.getByRole("button", { name: i18n.t("scheduling:waiting.cancelOf", { name: "llama" }) });
   cancel.focus();
   assert.equal(document.activeElement, cancel);
   await user.keyboard("{Enter}");
   await waitFor(() => assert.deepEqual(cancelled, [8]));
   await screen.findByText(s.waiting.empty);
+  assert.ok(reads > before, "the overview is read again");
 });
 
 test("a refused cancel keeps the waiting wake and says why", async () => {
-  api.schedulingBoard = async () => board();
+  serve();
   api.endWakeWaiting = async () => { throw new APIError("DEPLOYMENT_DELETING", {}, "the deployment is being deleted", 409); };
   const user = mount();
   await screen.findByText("big-model");
@@ -208,18 +374,29 @@ test("a refused cancel keeps the waiting wake and says why", async () => {
   assert.ok(screen.getByRole("button", { name: i18n.t("scheduling:waiting.cancelOf", { name: "llama" }) }));
 });
 
-test("a later failed refresh keeps the last board and warns", async () => {
+test("the sharing stats cover the fleet, are read for the chosen window, and say when they fail", async () => {
+  let fail = false;
+  const calls = serve({ sharing: () => { if (fail) throw new Error("log unavailable"); return sharing(); } });
+  const user = mount();
+  const title = await screen.findByText(s.sharing.title);
+  const card = title.closest(".ant-card") as HTMLElement;
+  await within(card).findByRole("link", { name: "llama" });
+  assert.deepEqual(calls.timeline.at(-1), { sharing: true, hours: 6 });
+  fail = true;
+  await user.click(within(card).getByText(i18n.t("scheduling:timeline.hours", { hours: 24 })));
+  await waitFor(() => assert.deepEqual(calls.timeline.at(-1), { sharing: true, hours: 24 }));
+  assert.ok(await within(card).findByText(i18n.t("scheduling:sharing.refreshFailed", { detail: "log unavailable" })), "the last stats stay under the warning");
+  assert.ok(within(card).getByRole("link", { name: "llama" }));
+});
+
+test("a later failed refresh keeps the last overview and warns", async () => {
   let calls = 0;
-  api.schedulingBoard = async () => {
-    calls += 1;
-    if (calls > 1) throw new Error("server restarting");
-    return board();
-  };
+  serve({ overview: async () => { calls += 1; if (calls > 1) throw new Error("server restarting"); return smallFleet(); } });
   mount();
-  await screen.findByText("gpu-a");
+  await screen.findByRole("group", { name: s.heatmap.aria });
   // The poll skips hidden documents, and jsdom's is hidden.
   Object.defineProperty(document, "hidden", { value: false, configurable: true });
   document.dispatchEvent(new dom.window.Event("visibilitychange"));
   await screen.findByText(i18n.t("scheduling:page.refreshFailed", { detail: "server restarting" }));
-  assert.ok(screen.getByText("gpu-a"));
+  assert.equal(cells().length, 6);
 });

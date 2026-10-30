@@ -16,8 +16,8 @@ import (
 
 // TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment proves on-demand
 // wake and the residency arbiter across the real process boundary. An online
-// deployment the platform put to sleep (idle sleep) shares its one card with
-// an offline deployment placed while it slept. A request for the online one
+// deployment shares its one card with an offline deployment placed while it
+// slept, and its wake waits for room. A request for the online one
 // is held by the gateway, the arbiter puts the offline one to sleep, the
 // online one wakes on the engine, and the held request is answered. An
 // operator's sleep, by contrast, is held: a request gets 503. The engine is
@@ -59,23 +59,13 @@ func TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment(t *testing.T) {
 		})
 		return created.ID, inst
 	}
-	put := func(path string, body any) {
-		t.Helper()
-		raw, _ := json.Marshal(body)
-		if resp, data := authedDo(t, http.MethodPut, base, token, path, raw); resp.StatusCode != http.StatusOK {
-			t.Fatalf("PUT %s status=%d body=%s", path, resp.StatusCode, data)
-		}
-	}
 
-	// The online deployment, put to sleep by idle sleep: a sleep the
-	// platform chose.
-	chat, chatInst := create("residency-chat", map[string]any{"service_level": "online"})
-	put(fmt.Sprintf("/api/v1/deployments/%d/idle-sleep", chat), map[string]any{"after_sec": 60, "level": 2})
-	waitSleepLevelWithin(t, base, token, chatInst.UUID, 2, 3*time.Minute)
-	put(fmt.Sprintf("/api/v1/deployments/%d/idle-sleep", chat), map[string]any{"after_sec": 0, "level": 2})
-
-	// The offline deployment takes the card the sleeper gave up.
-	batch, batchInst := create("residency-batch", map[string]any{"service_level": "offline"})
+	// The online deployment, asleep, and the offline one on the card it gave
+	// up; the online one's wake then waits for room, so a request may wake it.
+	chat, chatInst := create("residency-chat", map[string]any{"yield_policy": map[string]any{"policy": "idle"}})
+	sleepForTheTaking(t, base, token, chat, chatInst.UUID)
+	batch, batchInst := create("residency-batch", map[string]any{"yield_policy": map[string]any{"policy": "anytime"}})
+	wakeWhenThereIsRoom(t, base, token, chat)
 
 	_, keyData := authedDo(t, http.MethodPost, base, token, "/api/v1/apikeys", []byte(`{"name":"residency"}`))
 	var key struct {
@@ -143,4 +133,44 @@ func TestProcessARequestTakesTheCardsBackFromAnOfflineDeployment(t *testing.T) {
 	if status, body := ask("residency-chat", 30*time.Second); status != http.StatusServiceUnavailable || !strings.Contains(body, "asleep") {
 		t.Fatalf("a request for an operator's sleep = %d %s, want 503 asleep", status, body)
 	}
+}
+
+// sleepForTheTaking puts the deployment to sleep at L2, an operator's sleep,
+// so another may be placed on its cards.
+func sleepForTheTaking(t *testing.T, base, token string, deploymentID uint, instanceUUID string) {
+	t.Helper()
+	if resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=2", deploymentID), nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("operator sleep status=%d body=%s", resp.StatusCode, data)
+	}
+	waitSleepLevelWithin(t, base, token, instanceUUID, 2, time.Minute)
+}
+
+// wakeWhenThereIsRoom orders the sleeping deployment's wake, which waits for
+// room another deployment holds: the sleep is no longer an operator's, so a
+// request for it makes the residency arbiter look.
+func wakeWhenThereIsRoom(t *testing.T, base, token string, deploymentID uint) {
+	t.Helper()
+	resp, data := authedDo(t, http.MethodPost, base, token, fmt.Sprintf("/api/v1/deployments/%d/wake?wait=true", deploymentID), nil)
+	var result struct {
+		Status  string   `json:"status"`
+		Woken   []string `json:"woken"`
+		Waiting []string `json:"waiting"`
+	}
+	if err := json.Unmarshal(data, &result); err != nil || resp.StatusCode != http.StatusAccepted || result.Status != "waiting" || len(result.Woken) != 0 || len(result.Waiting) != 1 {
+		t.Fatalf("wake that waits for room = %d %s, want one waiting", resp.StatusCode, data)
+	}
+	if got := deploymentField(t, base, token, deploymentID, "sleep_held"); got != false {
+		t.Fatalf("sleep_held = %v after the wake order, want false", got)
+	}
+}
+
+// deploymentField is one top-level field of the deployment's wire.
+func deploymentField(t *testing.T, base, token string, deploymentID uint, field string) any {
+	t.Helper()
+	_, data := authedDo(t, http.MethodGet, base, token, fmt.Sprintf("/api/v1/deployments/%d", deploymentID), nil)
+	var wire map[string]any
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("deployment %d: %v (%s)", deploymentID, err, data)
+	}
+	return wire[field]
 }

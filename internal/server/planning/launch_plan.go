@@ -57,10 +57,10 @@ type LaunchRequest struct {
 
 	ServedName string
 	Sleepable  bool
-	// ServiceLevel is the deployment's (servicelevel): the cards of
+	// YieldPolicy is the deployment's (servicelevel): the cards of
 	// deployments it does not share with stay reserved against it even while
-	// they sleep. Empty reads as resident.
-	ServiceLevel       string
+	// they sleep. Empty reads as never.
+	YieldPolicy        string
 	MasterAddr         string
 	MasterPort         int
 	VRAMLimitBytes     int64
@@ -221,7 +221,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		RuntimeImageCached:   runtimeImageCached(st, req),
 		Unloaded:             req.Unloaded,
 		ExcludeDeploymentID:  req.ExcludeDeploymentID,
-		ServiceLevel:         req.ServiceLevel,
+		YieldPolicy:          req.YieldPolicy,
 		Parallel:             req.Placement.Parallelism(req.Topology.NNodes),
 		GPUIndexes:           req.Placement.GPUIndexes,
 		VRAMLimitBytes:       req.VRAMLimitBytes,

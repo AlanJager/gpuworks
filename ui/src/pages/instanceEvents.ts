@@ -13,6 +13,7 @@ export const instanceEventCodes = [
   "INSTANCE_STATE_CHANGED",
   "INSTANCE_STATUS_UPDATED",
   "INSTANCE_SLEEP_RESULT",
+  "INSTANCE_REMOVED",
 ] as const;
 
 const knownInstanceEventCodes = new Set<string>(instanceEventCodes);

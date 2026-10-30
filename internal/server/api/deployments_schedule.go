@@ -1,6 +1,6 @@
 package api
 
-// A deployment's schedule, idle sleep and node replacement: orders given in
+// A deployment's schedule and node replacement: orders given in
 // advance that the scheduling automation (internal/server/automation) carries
 // out as an operator's own orders.
 
@@ -24,10 +24,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// Bounds of the idle sleep wait, in seconds.
+// Bounds of the schedule look-ahead.
 const (
-	idleSleepMinSec         = 60
-	idleSleepMaxSec         = 7 * 24 * 3600
 	scheduleNextHorizonDays = 8
 )
 
@@ -125,6 +123,9 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		return nil, false
 	}
 	row := &store.LifecycleSchedule{DeploymentID: dep.ID, Action: req.Action, Timezone: strings.TrimSpace(req.Timezone), Enabled: req.Enabled == nil || *req.Enabled}
+	if req.Role != "" && req.Action != store.ScheduleActionReplicas {
+		return invalid("role", "only a replicas order names a role")
+	}
 	if len(req.Weekdays) == 0 {
 		return invalid("weekdays", "name at least one day")
 	}
@@ -171,14 +172,17 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		if req.SleepLevel != nil {
 			return invalid("sleep_level", "only a sleep order sets a level")
 		}
-		if err := scheduledReplicasRefusal(dep); err != nil {
+		role := strings.TrimSpace(req.Role)
+		if err := scheduledReplicasRefusal(dep, role); err != nil {
 			writeErr(w, http.StatusBadRequest, err)
 			return nil, false
 		}
-		if req.Replicas == nil || *req.Replicas < 1 || *req.Replicas > planning.MaxReplicas {
-			return invalid("replicas", fmt.Sprintf("a replica count is 1 to %d", planning.MaxReplicas))
+		lowest, highest := scheduledReplicasBounds(dep, role)
+		if req.Replicas == nil || *req.Replicas < lowest || *req.Replicas > highest {
+			return invalid("replicas", fmt.Sprintf("a replica count is %d to %d", lowest, highest))
 		}
 		row.Replicas = *req.Replicas
+		row.Role = role
 	default:
 		return invalid("action", "an order is sleep, wake or replicas")
 	}
@@ -209,7 +213,7 @@ func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
 			loc = l
 		}
 	}
-	s := automation.Schedule{ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute, Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas}
+	s := automation.Schedule{ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute, Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Role: row.Role}
 	if row.LastFiredAt != nil {
 		s.LastFiredAt = *row.LastFiredAt
 	}
@@ -219,7 +223,11 @@ func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
 func scheduleDTO(row store.LifecycleSchedule, now time.Time) dto.LifecycleSchedule {
 	out := dto.LifecycleSchedule{
 		ID: row.ID, Action: row.Action, Weekdays: []int{}, Time: fmt.Sprintf("%02d:%02d", row.Minute/60, row.Minute%60),
-		Timezone: row.Timezone, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Enabled: row.Enabled,
+		Timezone: row.Timezone, SleepLevel: row.SleepLevel, Enabled: row.Enabled,
+	}
+	if row.Action == store.ScheduleActionReplicas {
+		// A PD role may be scheduled down to 0, so the count is stated even then.
+		out.Replicas, out.Role = &row.Replicas, row.Role
 	}
 	for day := 0; day < 7; day++ {
 		if row.Weekdays&(1<<day) != 0 {
@@ -233,45 +241,6 @@ func scheduleDTO(row store.LifecycleSchedule, now time.Time) dto.LifecycleSchedu
 		}
 	}
 	return out
-}
-
-func (a *apiHandlers) setIdleSleep(w http.ResponseWriter, r *http.Request) {
-	dep, err := a.d.Store.GetDeployment(parseUint(chi.URLParam(r, "id")))
-	if err != nil {
-		writeErr(w, http.StatusNotFound, err)
-		return
-	}
-	var req dto.IdleSleep
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, err)
-		return
-	}
-	if req.AfterSec != 0 && (req.AfterSec < idleSleepMinSec || req.AfterSec > idleSleepMaxSec) {
-		writeProductError(w, http.StatusBadRequest, messages.ErrorIdleSleepInvalid, fmt.Sprintf("after_sec is 0 (off) or %d to %d", idleSleepMinSec, idleSleepMaxSec), map[string]any{"field": "after_sec", "minimum": idleSleepMinSec, "maximum": idleSleepMaxSec})
-		return
-	}
-	if req.AfterSec == 0 && req.Level == 0 {
-		// Turning idle sleep off need not restate a level: the one set
-		// before is kept for when it is turned on again.
-		req.Level = max(dep.IdleSleepLevel, proto.SleepLevelL1)
-	}
-	if req.Level != proto.SleepLevelL1 && req.Level != proto.SleepLevelL2 {
-		writeProductError(w, http.StatusBadRequest, messages.ErrorIdleSleepInvalid, "level is 1 or 2", map[string]any{"field": "level"})
-		return
-	}
-	if req.AfterSec > 0 {
-		if code := planning.SleepEligibility(dep); code != "" {
-			writeSleepRefusal(w, http.StatusBadRequest, &planning.SleepRefusal{Code: code, Params: map[string]any{"engine": dep.Engine}})
-			return
-		}
-	}
-	if err := a.d.Store.SetDeploymentIdleSleep(dep.ID, req.AfterSec, req.Level); err != nil {
-		writeErr(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, req)
 }
 
 // endWakeWaiting withdraws every wake of the deployment that waits for room.

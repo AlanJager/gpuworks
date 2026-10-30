@@ -72,3 +72,11 @@ func TestCallerRoundTripsThroughContext(t *testing.T) {
 		t.Fatalf("caller = %+v %v, want %+v", got, ok, want)
 	}
 }
+
+func TestSourceNames(t *testing.T) {
+	for source, want := range map[Source]string{SourceAPI: "api", SourcePlayground: "playground", SourceBatch: "batch", Source(9): "api"} {
+		if got := source.String(); got != want {
+			t.Errorf("Source(%d) = %q, want %q", source, got, want)
+		}
+	}
+}

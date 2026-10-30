@@ -324,3 +324,11 @@ test("buckets before live accumulation count as filled in only when older histor
   assert.equal(leadingBackfilled({ ...days, earliest_ms: 0, live_since_ms: D + 5 * H }), 0);
   assert.equal(leadingBackfilled({ ...days, earliest_ms: 1, live_since_ms: 2 * D + 5 * H }), 3);
 });
+
+test("a console batch's keyless requests are one identity per user, named as a batch", () => {
+  const row = { api_key_id: 0, source: "batch", user_id: 4, user_name: "alice", api_key_name: "", api_key_prefix: "", api_key_revoked: false, api_key_deleted: false } as unknown as Parameters<typeof keyIdentity>[0];
+  assert.equal(keyIdentity(row), "b4");
+  assert.equal(keyIdentity({ ...row, user_id: 5 }), "b5");
+  assert.equal(keyIdentity({ ...row, source: "api" }), "nokey");
+  assert.equal(keyIdentity({ ...row, api_key_id: 7 }), "k7");
+});

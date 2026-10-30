@@ -1289,6 +1289,10 @@ var migrations = []migration{
 	{Version: 184, Name: "lifecycle_schedules", Apply: createLifecycleSchedules},
 	{Version: 185, Name: "instance_event_kind_index", Apply: indexInstanceEventKind},
 	{Version: 186, Name: "deployment_service_level", Apply: addDeploymentServiceLevel},
+	{Version: 187, Name: "batch_tables", Apply: createBatchTables},
+	{Version: 188, Name: "lifecycle_schedule_role", Apply: addLifecycleScheduleRole},
+	{Version: 189, Name: "deployment_yield_policy", Apply: addDeploymentYieldPolicy},
+	{Version: 190, Name: "deployment_yield_policy_reshape", Apply: reshapeDeploymentYieldPolicy},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1597,7 +1601,7 @@ func (s *Store) AutoMigrateDev() error {
 		&Model{}, &ModelFile{}, &Deployment{}, &Instance{}, &InstanceEvent{},
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},
-		&NoticeRead{}, &LifecycleSchedule{},
+		&NoticeRead{}, &LifecycleSchedule{}, &BatchFile{}, &Batch{}, &BatchMetadata{},
 		&UsageHourly{}, &UsageDaily{}, &UsageRolledDay{}, &UsageRollupState{}, &DeletedDeployment{}, &DeletedNode{},
 	)
 }

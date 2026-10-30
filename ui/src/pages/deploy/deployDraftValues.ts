@@ -1,4 +1,5 @@
 import type { EngineProfile } from "../../api";
+import { paramsOfValue } from "../yieldPolicy/model";
 import { visibleParamSpecs } from "./deployParamApplicability";
 
 const NODE_KEY = "gpuworks.ai/node";
@@ -90,6 +91,13 @@ function pdToControls(pd: Obj): Obj {
   };
 }
 
+// draftYieldPolicy reads the create form's yield policy out of a draft: the
+// policy with its parameters, none for never (what an absent policy means).
+function draftYieldPolicy(policy: unknown): Obj | undefined {
+  const params = paramsOfValue(policy);
+  return params && params.policy !== "never" ? (params as unknown as Obj) : undefined;
+}
+
 // draftToFormValues is buildPayload's inverse: the deploy form's values for a
 // stored deployment, read back as a create request (GET /deployments/{id}/draft).
 // The deployment's image is put in explicit mode so it is submitted as it is
@@ -118,7 +126,7 @@ export function draftToFormValues(
     target_vendor: request.target_vendor || undefined,
     extra_args: request.extra_args || undefined,
     sleepable: request.sleepable === true,
-    service_level: request.service_level || undefined,
+    yield_policy: draftYieldPolicy(request.yield_policy),
     replicas: Number(request.replicas) > 0 ? request.replicas : 1,
     routing_policy: request.routing_policy || undefined,
     nnodes: Math.max(nnodes, 1),

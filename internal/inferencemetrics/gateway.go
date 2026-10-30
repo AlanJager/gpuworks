@@ -46,6 +46,9 @@ var gatewayDefinitions = []GatewayDefinition{
 	{Definition{"reported_queue_ms", Histogram, "milliseconds"}},
 	{Definition{"reported_prefill_ms", Histogram, "milliseconds"}},
 	{Definition{"reported_decode_ms", Histogram, "milliseconds"}},
+	// How long a request the gateway held while its deployment woke waited
+	// before it was served, refused or gave up; it counts every held request.
+	{Definition{"wake_hold_wait_ms", Histogram, "milliseconds"}},
 }
 
 var gatewayByName = func() map[string]GatewayDefinition {

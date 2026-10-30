@@ -7,6 +7,7 @@ For your first call, see [Log In and Query the Inference Service List](api-conve
 
 Model inference uses a separate set of endpoints: `/v1/*` is the external OpenAI-compatible gateway, and `/api/v1/playground/v1/*` is
 the internal Playground proxy. See [OpenAI-Compatible Gateway](openai-gateway.md) for their calling conventions; they are not listed again here.
+The OpenAI-compatible batch endpoints (`/v1/files`, `/v1/batches`) are the exception: they are listed together with the management batch routes in the [Batches](#batches批处理任务) section.
 
 ## Authentication Model
 
@@ -548,21 +549,23 @@ This endpoint does not check whether a user spec with the same name already exis
 | POST | `/api/v1/deployments/{id}/start` | Start a stopped deployment and reschedule it using the retained configuration (resetting each replica's retry count). Does nothing if already running; returns 409 `DEPLOYMENT_DELETING` if the deployment is being deleted | JWT |
 | DELETE | `/api/v1/deployments/{id}` | Delete the deployment | JWT |
 | POST | `/api/v1/deployments/{id}/sleep` | Put the deployment to sleep (`?level=1\|2`, default 1; `?mode=wait\|abort`, default wait): write the sleep intent to every active instance's desired state. The gateway immediately stops dispatching requests to them, and the deployment is marked as under a deployment-wide sleep command (instances started afterward also sleep accordingly). `?role=prefill` puts only instances of that PD role to sleep (the response includes `role` and `instances`), without placing the whole deployment under a sleep command. Returns 400 `PD_NOT_PD` for non-PD deployments, 400 `PD_ROLE_UNKNOWN` for a role not in the deployment's mode, or 400 `SLEEP_ROLE_CANNOT_EMPTY` for a role that the mode does not allow to be empty (such as decode). With `level=1`, if the node's host memory cannot hold the weights to be offloaded (available memory minus a headroom of max(5% of total, 4 GiB)), returns 409 `SLEEP_HOST_MEMORY_INSUFFICIENT` (`params.node`, `need_gib`, `available_gib`); use L2. A node with no recent host memory observation is not refused | JWT |
-| POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command. A card held by a process outside the platform returns 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters, `refused[].held_outside` is true). `?wait=true` wakes what fits and makes the rest wait for room; `?yield=true` (optionally `&yield_level=1\|2`, default 1, switched to 2 automatically when the occupant's host cannot hold L1) first puts the occupants to sleep and then waits; see [Waiting Wakes and Yielding Wakes](#唤醒等位与让位唤醒) for the responses | JWT |
+| POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command, and a wake that has to wait (202 `waiting`) also clears the held sleep. A card held by a process outside the platform returns 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters, `refused[].held_outside` is true). `?wait=true` wakes what fits and makes the rest wait for room; `?yield=true` (optionally `&yield_level=1\|2`, default 1, switched to 2 automatically when the occupant's host cannot hold L1) first puts the occupants to sleep and then waits; see [Waiting Wakes and Yielding Wakes](#唤醒等位与让位唤醒) for the responses | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | Suggest nodes for one replica of a multi-node deployment. The request body `{"units":[...]}` lists the replicas already selected. Returns a suggested `unit` or the reason placement is not possible, without saving. See [Suggest Nodes for a Multi-Node Replica](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | Give a replica a fresh retry allowance: request body `{"role","index"}` (`role` is empty for regular deployments). Remove the replica's failed attempts (clean up containers and retain the timeline); the controller then recreates it without affecting other replicas. Returns 404 `UNIT_UNKNOWN` if the replica does not exist, 409 `UNIT_NOT_FAILED` if there are no failed attempts or instances still exist, or 409 `UNIT_RETRY_NOT_ACTIVE` if the deployment is not running | JWT |
 | PUT | `/api/v1/deployments/{id}/replicas` | Change the replica count for a single-node deployment (when growing, `place_on` names the nodes the new replicas start on first), the replica node list for a manually placed multi-node deployment, or the replica count for an automatically placed multi-node deployment (`place_on` names the nodes of the new replicas' ranks). See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for all fields and conditions | JWT |
 | PUT | `/api/v1/deployments/{id}/placement-mode` | Switch a multi-node or PD deployment between placement modes: body `{"mode":"auto"}` or `{"mode":"manual"}`. Instances are not restarted and units keep their current nodes; switching to `auto` also drops the cards PD units were pinned to. 200 returns the deployment detail (`placement_mode` has the new value). A `mode` other than these two returns 400 `FIELD_INVALID` (`params.field` is `mode`), a single-node deployment returns 400 `PLACEMENT_MODE_SHAPE`, and an unknown deployment returns 404; see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署) | JWT |
 | DELETE | `/api/v1/deployments/{id}/wake-waiting` | Cancel every waiting wake of the deployment; returns `{"items":[instance UUIDs],"total":n}` | JWT |
 | GET | `/api/v1/deployments/{id}/schedule` | The deployment's schedule, `{"items":[schedules],"total":n}`; see [Schedules](#定时计划) | JWT |
-| POST | `/api/v1/deployments/{id}/schedule` | Create a schedule entry; 201 returns it. Validation failures return 400 `SCHEDULE_INVALID`, `SCHEDULE_TIMEZONE_UNKNOWN`, `SCHEDULE_REPLICAS_SHAPE` (PD), `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` (a multi-node deployment placed by hand), `SLEEP_NOT_ENABLED`, or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
+| POST | `/api/v1/deployments/{id}/schedule` | Create a schedule entry; 201 returns it. Validation failures return 400 `SCHEDULE_INVALID`, `SCHEDULE_TIMEZONE_UNKNOWN`, `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` (a multi-node or PD deployment placed by hand), `SLEEP_NOT_ENABLED`, or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
 | PUT | `/api/v1/deployments/{id}/schedule/{sid}` | Replace one entry; the body is the same as for creating it, 200; an entry that does not belong to the deployment returns 404 | JWT |
 | DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | Delete one entry, 204; a missing one returns 404 | JWT |
-| PUT | `/api/v1/deployments/{id}/idle-sleep` | Set idle sleep `{"after_sec":900,"level":2}`; `after_sec` is 0 (off) or 60–604800 and `level` is 1 or 2. 200 returns the same body; out of range returns 400 `IDLE_SLEEP_INVALID`, and `after_sec` above 0 on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
-| PUT | `/api/v1/deployments/{id}/service-level` | Set the service level `{"level":"offline"}`; values are `resident` / `online` / `shared` / `offline`. 200 returns the same body; an invalid value returns 400 `SERVICE_LEVEL_INVALID` (`params.level`); anything other than resident requires sleep capability (400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`) and a single-node deployment (400 `SERVICE_LEVEL_SHAPE`); setting online while sharing cards with another online deployment returns 409 `SERVICE_LEVEL_ONLINE_SHARED` (`params.deployment`); see [Service levels](../explanation/service-levels.md) | JWT |
+| PUT | `/api/v1/deployments/{id}/yield-policy` | Set the yield policy and its parameters. The body is `{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}`; `policy` (`never` / `idle` / `timeslice` / `anytime`) is required, every other key may be omitted and then takes the policy's default, and inapplicable keys are ignored. 200 returns the stored policy, inapplicable parameters absent; setting `idle` while the cards already hold another `idle` deployment adds `idle_neighbours`. A missing `policy` (`{}`, or parameters only), an invalid value, or an out-of-range number returns 400 `YIELD_POLICY_INVALID` (`params.field`, `reason`: `required` / `invalid_value` / `out_of_range`, which also carries `minimum` and `maximum`); a policy other than `never` on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`; a policy other than `never` on a multi-node or PD deployment returns 400 `YIELD_POLICY_SHAPE`; see [Yield policy](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Reschedule Replicas on Node Loss](../how-to/node-failover.md) | JWT |
-| GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); see [Scheduling Board](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); `?node=<uuid>` answers for that one node only (a one-row `nodes` page and empty other lists; 404 for an unknown node), and `?queues=1` answers only the last four lists (an empty `nodes` page, no node is read); see [Scheduling Board](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/overview` | The scheduling overview: every node and the compact state of every card of the whole cluster in one response, plus the summary, for the heatmap; served from a cache (rebuilt at most every 2 seconds), with an `ETag` and a 304 for a matching `If-None-Match`; see [Scheduling Overview](#调度总览) | JWT |
 | GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
+| GET | `/api/v1/scheduling/timeline` | The residency timeline: `?node=<uuid>` (repeatable, at most 200, normally the node that was opened) `&hours=6\|24` (default 6). The segments in which each deployment's instance held each card over the last `hours` (`awake` / `asleep` / `switching` / `starting`), and the stats of the deployments whose yield policy is not `never` that appear; `?sharing=1&hours=` without `node` answers only the stats of the cluster's deployments whose yield policy is not `never` (`nodes` empty, cached for about 30 seconds); a missing `node` (without `sharing`), a `sharing` that is not 1 or is used with `node`, or an `hours` that is not 6 or 24 returns 400 `FIELD_INVALID` (`params.field`), unknown nodes are skipped; see [Residency Timeline](#residency-timeline) | JWT |
+| GET | `/api/v1/scheduling/yield-policies` | The dictionary of yield policies: the four policies from the highest rank to the lowest, each with its `defaults` and the parameters that apply (`applies`), plus the range of each numeric parameter (`bounds`, with `at_most` naming another parameter it may not exceed), `sleep_levels`, and `unfinished`, from which a client edits without keeping its own defaults; see [Yield policy](#出让策略) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | Recreate the deployment using the current configuration and reset replica retry counts. The request body accepts an optional `strategy` (default `rolling`; `all` interrupts service). See [Restart Strategies](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | Estimate GPU memory, simulate scheduling, and estimate acquisition (without creating a deployment). The response's `acquisition` includes `present` (storage that already holds the model and is readable by the target node), `targets` (storage to which nodes can save the model when acquiring it), `providers` (the template's weight sources), `image`, and `nodes[]` when nodes are specified in the request (see "Evaluation Requests and Acquisition Estimates") | JWT |
@@ -662,9 +665,8 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information |
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |
-| `idle_sleep` | Object | Idle sleep `{after_sec, level}`; an `after_sec` of 0 means off |
 | `node_replacement` | Object | How long a lost node is waited for before its replicas move, `{after_sec}`; default 600, 0 means never |
-| `service_level` | String | Service level: `resident` (default), `online`, `shared`, or `offline`; see [Service levels](../explanation/service-levels.md) |
+| `yield_policy` | Object | The yield policy and parameters, shaped like the response in [Yield policy](#出让策略): `policy` and the parameters that apply; see [Yield policy](../explanation/service-levels.md) |
 | `sleep_held` | Boolean | Whether the sleep was issued by an operator or a schedule (held sleep): when `true`, requests do not wake the deployment |
 | `wake_waiting_since` (optional) | RFC3339 time | Present when a wake of the deployment is waiting for room; the value is when the wait began |
 
@@ -836,12 +838,95 @@ An unknown strategy returns 400 `RESTART_STRATEGY_INVALID`; a non-active deploym
 
 `?wait=true` and `?yield=true` on `POST /api/v1/deployments/{id}/wake` and `POST /api/v1/instances/{uuid}/wake`:
 
-- `wait`: replicas that fit wake first and the rest wait for room; the server wakes them automatically once capacity frees up, and gives up after 30 minutes (timeline `WAKE_WAIT_TIMEOUT`). The start of the wait is kept on the instance, and the deployment's `wake_waiting_since` is the earliest of them.
+- `wait`: replicas that fit wake first and the rest wait for room; the server wakes them automatically once capacity frees up, and gives up after 30 minutes (timeline `WAKE_WAIT_TIMEOUT`). The start of the wait is kept on the instance, and the deployment's `wake_waiting_since` is the earliest of them. The answer 202 `waiting` also clears the deployment's held sleep (`sleep_held`): the deployment is meant to be awake, so a request that arrives while it waits is held by the gateway for that wake (and the residency arbiter may make room for it under the yield policies) instead of getting a 503; before, the hold stayed until the wake landed.
 - `yield`: first puts the awake deployments holding the needed GPUs to sleep (`yield_level` is 1 or 2, default 1; when the occupant's host memory cannot hold L1 it switches to 2 automatically), then waits.
 - When everything fits the response is 200 `{"status":"waking","woken":[…],"waiting":[],"yielded":[]}`; when some must wait it is 202 `{"status":"waiting",…}`, where `waiting` lists the instance UUIDs waiting and `yielded` the names of the deployments put to sleep.
 - When an occupant cannot sleep (a deployment that is not sleep-capable, the last awake role of a PD deployment, or a process outside the platform) the response is 409 `WAKE_YIELD_BLOCKED` (`params.occupants` names, `woken`) and nothing changes; a `yield_level` other than 1 or 2 returns 400 `SLEEP_INVALID_LEVEL`.
 
 A wake without these parameters behaves as before. For usage see [Sleep and Wake Operations](../how-to/sleep-wake.md#放不下时等位与让位).
+
+### Yield Policy
+
+`PUT /api/v1/deployments/{id}/yield-policy` sets how a deployment gets along with the other deployments that share its cards. The yield policy is the only thing to choose. For the rules see [Yield Policy: How Deployments Share a Set of GPUs](../explanation/service-levels.md), and for the steps see [Use the Scheduling Center](../how-to/scheduling-center.md#出让策略). The body:
+
+```json
+{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
+```
+
+Every key but `policy` may be omitted and then takes the policy's default; inapplicable keys are ignored (so is `idle_neighbours`), so a response can be sent back as a request body as it is.
+
+| Field | Values | Applies to |
+|---|---|---|
+| `policy` | `never` never yield automatically, `idle` yield when idle, `timeslice` yield on a turn, `anytime` yield anytime; from the highest rank to the lowest | Always required |
+| `idle_sec` | 15–604800 s: how long without a request counts as idle; once idle this long the deployment yields if another one waits for its cards; with `timeslice` it may not exceed `max_serve_sec` | `idle`, `timeslice`, `anytime` |
+| `sleep_level` | `auto` (L1, falling back to L2 when host memory cannot hold the weights), `l1` (strict L1, refused where it does not fit), `l2`; applies to every sleep the platform chooses for the deployment (a yield); sleeps ordered by an operator or a schedule are unaffected | A policy other than `never` |
+| `max_serve_sec` | 30–86400 s: when taking turns with another `timeslice` deployment, how long one wake may serve before giving way | `timeslice` |
+| `unfinished` | `abort` cuts them off at once; `wait` lets them finish, for at most `unfinished_wait_sec` seconds, then cuts off what is left | `timeslice`, `anytime` |
+| `unfinished_wait_sec` | 1–600 s | `unfinished` is `wait` |
+| `hold_max_sec` | 10–3600 s: how long the gateway holds a request for the deployment to wake; on timeout 503 with `Retry-After` | A policy other than `never` |
+
+The defaults of each policy:
+
+| Policy | Defaults |
+|---|---|
+| `never` | No parameters |
+| `idle` | `idle_sec` 60, `sleep_level` `auto`, `hold_max_sec` 300 |
+| `timeslice` | `idle_sec` 30, `max_serve_sec` 120, `unfinished` `wait` with `unfinished_wait_sec` 30, `sleep_level` `auto`, `hold_max_sec` 600 |
+| `anytime` | `idle_sec` 30, `unfinished` `abort`, `sleep_level` `auto`, `hold_max_sec` 3600 |
+
+Success returns 200 with the stored policy, with inapplicable parameters absent. The `yield_policy` in deployment details has the same shape. Example responses:
+
+```json
+{"policy":"never"}
+{"policy":"idle","idle_sec":60,"sleep_level":"auto","hold_max_sec":300}
+{"policy":"timeslice","idle_sec":30,"sleep_level":"auto","max_serve_sec":120,"unfinished":"wait","unfinished_wait_sec":30,"hold_max_sec":600}
+{"policy":"anytime","idle_sec":30,"sleep_level":"auto","unfinished":"abort","hold_max_sec":3600}
+```
+
+Setting `idle` while the cards already hold another `idle` deployment is still 200, and the response carries one more field, `idle_neighbours` (an array of the other deployments' names): while both `idle` deployments are busy neither yields, so one side's requests are held by the gateway until the other is idle, or until they reach `hold_max_sec` and get a 503; to make them take turns, use `timeslice`.
+
+Errors:
+
+| Case | Response |
+|---|---|
+| `{}`, or parameters without a `policy` | 400 `YIELD_POLICY_INVALID`, with `params` of `{"field":"policy","reason":"required"}` |
+| An invalid value | 400 `YIELD_POLICY_INVALID`; `params.reason` is `invalid_value` and `params.field` is `policy`, `sleep_level`, or `unfinished` |
+| A number out of range | 400 `YIELD_POLICY_INVALID`; `params.reason` is `out_of_range` and `params.field` is `idle_sec`, `max_serve_sec`, `unfinished_wait_sec`, or `hold_max_sec`, with `params.minimum` and `params.maximum`; when the `idle_sec` of a `timeslice` deployment exceeds `max_serve_sec`, the `maximum` of `idle_sec` is `max_serve_sec` |
+| The policy is not `never` and the deployment is not sleep capable / the engine does not support sleep | 400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED` |
+| A multi-node or PD deployment with a policy other than `never` | 400 `YIELD_POLICY_SHAPE` |
+
+When creating a deployment (`POST /api/v1/deployments`), `yield_policy` takes the same request object and defaults to `never` when omitted; validation is the same.
+
+`GET /api/v1/scheduling/yield-policies` (JWT, read-only) is the dictionary of policies, from which a client edits without keeping its own copy of the defaults or ranges:
+
+```json
+{
+  "policies": [
+    {"policy": "never", "defaults": {"policy": "never"}, "applies": []},
+    {"policy": "idle", "defaults": {"policy": "idle", "idle_sec": 60, "sleep_level": "auto", "hold_max_sec": 300}, "applies": ["idle_sec", "sleep_level", "hold_max_sec"]},
+    {"policy": "timeslice", "defaults": {"policy": "timeslice", "idle_sec": 30, "sleep_level": "auto", "max_serve_sec": 120, "unfinished": "wait", "unfinished_wait_sec": 30, "hold_max_sec": 600}, "applies": ["idle_sec", "sleep_level", "max_serve_sec", "unfinished", "unfinished_wait_sec", "hold_max_sec"]},
+    {"policy": "anytime", "defaults": {"policy": "anytime", "idle_sec": 30, "sleep_level": "auto", "unfinished": "abort", "unfinished_wait_sec": 30, "hold_max_sec": 3600}, "applies": ["idle_sec", "sleep_level", "unfinished", "unfinished_wait_sec", "hold_max_sec"]}
+  ],
+  "bounds": {
+    "hold_max_sec": {"minimum": 10, "maximum": 3600},
+    "idle_sec": {"minimum": 15, "maximum": 604800, "at_most": "max_serve_sec"},
+    "max_serve_sec": {"minimum": 30, "maximum": 86400},
+    "unfinished_wait_sec": {"minimum": 1, "maximum": 600}
+  },
+  "sleep_levels": ["auto", "l1", "l2"],
+  "unfinished": ["abort", "wait"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `policies[]` | From the highest rank to the lowest; `defaults` are the values filled in when a policy is chosen (every policy to which `unfinished` applies carries `unfinished_wait_sec`, for a client that turns waiting on); `applies` names the parameters that apply, of which `unfinished_wait_sec` matters only while `unfinished` is `wait` |
+| `bounds` | The range of each numeric parameter, in seconds; `at_most` names another parameter it may not exceed when both apply |
+| `sleep_levels`, `unfinished` | The values of the two enumerated parameters |
+
+Without a token the answer is 401, and other methods such as `POST` are 405.
+
+The `trigger` of the timeline event `AUTO_SLEEP` is `schedule` (a schedule) or `preempt` (yielding cards, with `reason` `idle` / `rank` / `turn`); `level` is always the level the platform actually chose (1 or 2). For event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件).
 
 ### Schedules
 
@@ -858,7 +943,8 @@ A wake without these parameters behaves as before. For usage see [Sleep and Wake
 | `time` | `HH:MM`, 24-hour |
 | `timezone` | An IANA time zone name; an empty string uses the server's time zone |
 | `sleep_level` | Required for `sleep`, 1 or 2; not accepted for other actions |
-| `replicas` | Required for `replicas`, 1 to `max_replicas`; single-node deployments and automatically placed multi-node deployments (not PD); not accepted for other actions |
+| `replicas` | Required for `replicas`, 1 to `max_replicas` (1 to 32 for a PD role, 0 allowed for a role the mode lets be empty); single-node deployments and automatically placed multi-node and PD deployments; not accepted for other actions. The response always states it for a `replicas` entry (0 included) and omits it for the others |
+| `role` | The PD role a `replicas` entry scales (a role of its mode, such as `prefill` or `decode`): required for a PD deployment, not accepted for any other deployment or action (400 `SCHEDULE_INVALID`, `params.field` `role`); omitted from the response of an entry that is not PD |
 | `enabled` | May be omitted in a request, default true |
 | `next_at` | Response field, the next time it runs; omitted when disabled |
 
@@ -870,13 +956,84 @@ Each occurrence runs once; after a server outage only the newest missed occurren
 
 | Field | Meaning |
 |---|---|
-| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
+| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `yield_policy`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
 | `pending` | Active deployments refused by the scheduler in the last 30 minutes: `deployment_id`, `deployment`, `reason{code,params}`, `at` |
 | `waiting_wakes` | Wakes waiting for room: `deployment_id`, `deployment`, `instances`, `since` |
-| `upcoming` | Schedule actions in the next 24 hours: `deployment_id`, `deployment`, `schedule_id`, `action`, `sleep_level`, `replicas`, `at` |
+| `upcoming` | Schedule actions in the next 24 hours: `deployment_id`, `deployment`, `schedule_id`, `action`, `sleep_level`, `replicas` (only for a `replicas` action, 0 included), `role` (a `replicas` action of a PD role), `at` |
 | `recent` | The latest 50 automation events: `deployment_id`, `deployment`, `code`, `params`, `at` |
 
+`?node=<uuid>` reads only that node: `nodes` is a one-row page (`page` and `page_size` 1, `total` 1; `page`, `page_size` and `q` are ignored) and `pending`, `waiting_wakes`, `upcoming` and `recent` are empty arrays; an unknown node returns 404. The console reads it when a node's drawer is open, at a cost independent of the cluster size. `?queues=1` is the opposite: it answers only `pending`, `waiting_wakes`, `upcoming` and `recent`, with an empty `nodes` page, and reads no node.
+
 For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件) and [Reschedule Replicas on Node Loss](../how-to/node-failover.md#时间线事件).
+
+### Scheduling Overview
+
+`GET /api/v1/scheduling/overview` is read-only and returns every card of every node of the cluster at once, each as the few small integers a heatmap needs and without the detail of its occupants (read that with `GET /scheduling/board?node=`). For 1000 nodes of 8 cards and about 3000 instances the response is about 290 KB (about 25 KB gzipped).
+
+```json
+{
+  "summary": {
+    "nodes": 3, "online_nodes": 2, "cards": 6,
+    "awake": 2, "asleep": 1, "free": 1, "held_outside": 1, "unhealthy": 0, "offline": 1,
+    "by_model": [{"model": "L20", "cards": 3, "awake": 2, "asleep": 0, "free": 0, "held_outside": 0, "unhealthy": 0, "offline": 1}],
+    "contention": {"waiting_wakes": 1, "held_requests": 3, "yields_last_hour": 1}
+  },
+  "models": ["L20", "H100"],
+  "deployments": [{"id": 7, "name": "qwen", "yield_policy": "never"}, {"id": 9, "name": "night", "yield_policy": "idle"}],
+  "nodes": [{
+    "uuid": "…", "name": "gpu-a", "online": true, "labels": {"zone": "a"}, "contention": 5,
+    "cards": [[0, 0, 49152, 100, 0, 0, [0]], [1, 0, 49152, 25, 4, 2, [2, 5]]]
+  }]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `summary` | The card counts of the whole cluster. A card is counted once, in the first bucket that holds, in this order: `offline` (its node is not online), `unhealthy` (the card is faulty or unusable because of ownership or health), `held_outside` (a process outside the platform uses it), `awake` (an instance holds memory on it), `asleep` (only sleepers' residue is on it), `free`; the six buckets add up to `cards`. `by_model` is the same count per GPU model (the card's name), the model with the most cards first |
+| `summary.contention` | `waiting_wakes`: deployments with a sleeping instance waiting for room to wake; `held_requests`: requests the gateway holds for a wake right now; `yields_last_hour`: sleeps in the last hour that made room for another deployment (an operator's yielding wake and the residency arbiter's preemption) |
+| `models`, `deployments` | The dictionaries the cards refer to: GPU model names, and the deployments that occupy a card (`id`, `name`, `yield_policy`: `never`, `idle`, `timeslice`, or `anytime`), each in order of first appearance |
+| `nodes[]` | Sorted by name. `labels` are the node labels an operator wrote (omitted when none); `contention` is the number of the node's sleepers waiting to wake, plus the requests held for deployments asleep on it, plus the yields of the deployments that have cards on it (omitted when 0) |
+| `nodes[].cards[]` | The array `[index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants]`: `index` is the card's device index on the node; `model` an index into `models`; `memory_mib` the memory in MiB; `awake_pct` / `sleeping_pct` the shares of the memory claimed by awake instances and kept by sleepers (0 to 100, a non-zero share is never rounded to 0, and the two never add up to more than 100); `flags` the bits 1 held by a process outside the platform, 2 an instance on the card is switching (starting, going to sleep, waking, draining), 4 the card is unusable (faulty or by ownership); `occupants` is left out when empty, otherwise a list of integers `index * 2` (`+ 1` when asleep) where the index is into `deployments` |
+
+Only the cards the node owns and the vendor tool numbers are listed, as on the board.
+
+The response comes from a cache in the server's memory and is not recomputed for each request: events of nodes, instances and deployments invalidate it, but it is rebuilt at most every 2 seconds (nodes report status often), and with no events every 10 seconds to pick up the requests the gateway holds and the hour of yields. A rebuild reads the nodes once, the live instances once and the deployments once, and charges all the cards in one pass with the same ledger arithmetic as the board, not node by node. The response carries an `ETag` (a hash of the content), and a request with a matching `If-None-Match` gets a 304.
+
+### Residency Timeline
+
+`GET /api/v1/scheduling/timeline?node=<uuid>&node=<uuid>&hours=6` is read-only. It is separate from the board because the board refreshes every few seconds while the timeline reads the event log over a window; the console reads it once per opened node and chosen window, and refreshes it about every minute. `?sharing=1&hours=6` has no `node`: it answers only the stats of the cluster's deployments whose yield policy is not `never` (`deployments[]`, `nodes` an empty array), reading only those deployments' instances and events and caching the result for about 30 seconds; the console uses it for the "Deployments sharing cards" table. The response:
+
+```json
+{
+  "window": {"from": "2026-10-28T06:00:00Z", "to": "2026-10-28T12:00:00Z", "hours": 6},
+  "nodes": [{
+    "uuid": "…", "name": "host2",
+    "gpus": [{
+      "index": 0, "truncated": false,
+      "segments": [
+        {"deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "awake",
+         "from": "2026-10-28T06:00:00Z", "to": "2026-10-28T09:00:00Z"},
+        {"deployment_id": 7, "deployment": "qwen", "instance": "…", "state": "asleep", "level": 2,
+         "from": "2026-10-28T09:01:00Z", "to": "2026-10-28T12:00:00Z"}
+      ]
+    }]
+  }],
+  "deployments": [{
+    "deployment_id": 7, "deployment": "qwen", "yield_policy": "timeslice",
+    "awake_seconds": 10800, "awake_share": 0.5, "switches": 3, "yielded": 1, "yielded_to": 1, "wakes": 2,
+    "held_requests": 4, "wait_p50_ms": 4200, "wait_p95_ms": 31000
+  }]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `window` | The window: `hours` (6 or 24), `from`, `to` (now) |
+| `nodes[].gpus[]` | The same cards as the board (`index`); `segments[]` run oldest to newest; `truncated` true means only the latest 200 segments were kept |
+| `segments[]` | One instance holding the card for a stretch: `deployment_id`, `deployment`, `instance`, `state` (`awake` / `asleep` / `switching` / `starting`), `level` (1 or 2) while asleep, `from`, `to` (both inside the window); an instance on several cards appears once on each |
+| `deployments[]` | Deployments that held these cards in the window and whose yield policy is not `never` (each with its `yield_policy`): `awake_seconds` (time at least one replica was awake), `awake_share` (of the window, 0 to 1), `switches` (`yielded` + `wakes`), `yielded` (put to sleep to give a card to another deployment), `yielded_to` (another deployment gave a card to it), `wakes` (the platform woke it), `held_requests` (requests the gateway held while it woke), `wait_p50_ms` / `wait_p95_ms` (the waits of those requests, approximate; omitted when no request was held or the gateway keeps no metrics) |
+
+The timeline is derived from instance records and the event log; the `INSTANCE_REMOVED` event written when an instance is removed (`kind` `residency`, params `node_id`, `gpus`) says which node and cards it held. For the semantics and limits see [Use the Scheduling Center](../how-to/scheduling-center.md#residency-timeline).
 
 ### 调度记录
 
@@ -991,7 +1148,7 @@ For **single-node deployments**, submit the replica count: `{"replicas":N,"remov
 | `placement_mode` | `auto` lets the server select nodes; `manual` uses explicit nodes. Defaults to `manual` if omitted. Single-node: only request terminology, the deployment does not store this field, and manual placement is stored as node requirement `gpuworks.ai/node: [node_uuid]`. Multi-node and PD: with `auto` the server picks nodes for the ranks or units the request leaves out at creation (see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署)), the deployment is stored as automatically placed, and `placement_mode` in the detail is `auto` |
 | `target_vendor` | Evaluation and creation use the same accelerator vendor; stored as node requirement `gpuworks.ai/vendor`. If omitted, creation fills it in using the destination node's vendor |
 | `node_requirements` | Node requirements: `{"<key>": ["<value>", …]}`. Multiple values for one key mean "any of these"; different keys must "all match." Keys can be node labels or system labels (see "Node Labels" above). Any key in the reserved domain other than the eight system keys is rejected (a misspelled key does not silently match 0 nodes). `gpuworks.ai/vendor` can have only one value; network key values are network IDs or `management`. Multi-node and PD deployments list nodes per rank and do not accept `gpuworks.ai/node`. Errors: `NODE_REQUIREMENTS_INVALID`; selected nodes do not meet requirements: `NODE_REQUIREMENTS_UNMET` (`params.detail` identifies the key) |
-| `service_level` | The service level; when omitted it is `resident`. Anything other than resident requires `sleepable` and a single-node deployment, otherwise 400 `SERVICE_LEVEL_INVALID` / `SLEEP_NOT_ENABLED` / `SERVICE_LEVEL_SHAPE`. Evaluation computes placement from it: while a deployment that shares cards by service level is asleep, levels it does not share with are still counted at full usage |
+| `yield_policy` | The yield policy, an object shaped like the body of `PUT /deployments/{id}/yield-policy` (`policy` plus parameters); when omitted it is `never`. A policy other than `never` requires `sleepable`, and a policy other than `never` also a single-node deployment, otherwise 400 `YIELD_POLICY_INVALID` / `SLEEP_NOT_ENABLED` / `YIELD_POLICY_SHAPE`. Evaluation computes placement from it: while a deployment that shares cards by yield policy is asleep, deployments it does not share with still count it at full usage |
 | `placement_strategy` | `spread` or `binpack`, saved with the deployment; other values return `PLACEMENT_STRATEGY_INVALID`. When omitted it is `spread` for single-node and `binpack` for multi-node and PD (automatic or manual) |
 | `placement.gpus`, `placement.tp`, `placement.pp` | Explicit physical GPU indexes; TP and PP are parallelism for the entire deployment (TP × PP ÷ `nnodes` GPUs per node, which must divide evenly). If TP is omitted for multi-node deployment, the default is one pipeline stage per node, with TP set to the smallest GPU count among the selected nodes; effective values are written back to placement. If TP is omitted for single-node deployment, the scheduler selects a GPU count that is an integer multiple of PP (TP = GPU count ÷ PP). Automatic placement also selects nodes according to the supplied TP and PP. Evaluation returns values in `form_values.tp/pp` and `parallelism` (`tp`, `pp`, `nodes`, `gpus_per_node`); `acquisition.nodes` in multi-node evaluation and manual placement provides acquisition estimates for each node |
 | `routing_policy` | Multi-replica gateway policy: `least_request` (default), `prefix_affinity`, or `failover`; not an engine launch parameter |
@@ -1536,7 +1693,7 @@ Each range-based response includes `range`: `from_ms`, `to_ms`, `granularity`, `
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/analytics/usage` | Token usage. Filters: `deployment` (deployment ID), `key` (API key ID; `none` for requests without a key), and `source` (`api` or `playground`). `totals` and `series[]` contain counts: `requests`, `no_usage` (requests without usage), `prompt_tokens` (total input), `completion_tokens`, `reasoning_tokens` (reported by `reasoning_reported` requests), and `cached_tokens` (cache hits reported by `cache_reported` requests; hit rate = `cached_tokens` ÷ `cache_reported_prompt`). `rows[]` has one row per key × user × deployment × source, with `api_key_name`/`api_key_prefix`/`api_key_revoked`/`api_key_deleted` (keys deleted before revocation began retaining records), `user_name`, `deployment_name`/`served_name`/`deployment_deleted`, `source`, and `first_ms`/`last_ms` (first and last buckets used) | JWT |
+| GET | `/api/v1/analytics/usage` | Token usage. Filters: `deployment` (deployment ID), `key` (API key ID; `none` for requests without a key), and `source` (`api`, `playground`, or `batch`, the requests a batch sends). `totals` and `series[]` contain counts: `requests`, `no_usage` (requests without usage), `prompt_tokens` (total input), `completion_tokens`, `reasoning_tokens` (reported by `reasoning_reported` requests), and `cached_tokens` (cache hits reported by `cache_reported` requests; hit rate = `cached_tokens` ÷ `cache_reported_prompt`). `rows[]` has one row per key × user × deployment × source, with `api_key_name`/`api_key_prefix`/`api_key_revoked`/`api_key_deleted` (keys deleted before revocation began retaining records), `user_name`, `deployment_name`/`served_name`/`deployment_deleted`, `source`, and `first_ms`/`last_ms` (first and last buckets used) | JWT |
 | GET | `/api/v1/analytics/quality` | Service quality; optional `deployment` filter. `totals`, `series[]`, and `rows[]` (by deployment) include result counts (`completed`, `length`, `client_closed`, `interrupted`, `error`), `ttft_p50_ms`/`ttft_p95_ms` (time to first token for complete streaming responses), `e2e_p50_ms`/`e2e_p95_ms` (end-to-end time for complete responses), and `output_tokens_per_sec`. Quantiles are reconstructed from quarter-octave buckets, with approximately 10% error; missing values are `null` | JWT |
 | GET | `/api/v1/analytics/gpus` | GPU utilization. `group_by` is `model` (default), `node`, or `gpu` and determines table and heatmap rows. `metric` is `util` (default), `power`, `temp`, or `mem` and selects the heatmap value, averaged within each bucket. Filters: repeatable `label=key=value` (same matching as the node list, against current user and system labels; deleted nodes no longer match) and `model` (GPU model). `card_count` and `by_model[]{model, cards}` give the current cards covered by the filters. With at most 256 cards, `detail: true` and `cards[]` has one row per card: `node_name`, `node_deleted` (the node is deleted; `node_name` is the name it had when deleted), `gpu_index`, `gpu_uuid`, `gpu_model`, `present` (still in the inventory, including when the node is offline), `deployments` (currently using it), `util_avg`/`util_max`, `mem_used_avg_bytes`/`mem_used_max_bytes`/`mem_total_bytes`, `power_avg_watts`, and `temp_avg_celsius`/`temp_max_celsius`. Above 256 cards, `detail: false` and `cards` is empty. Cards of nodes deleted within the time range are listed too. When grouped by model or node, `groups[]` has one row per group: `key`, `label`, `node_deleted` (when grouped by node, a deleted node; its `cards` and `nodes` are 0), `cards`, `nodes`, `models[]`, `deployments[]{name, cards}`, `unassigned` (cards not allocated to a deployment), and the same statistics, taken from node/model aggregates. `heat[]` contains `{key, label, node_deleted, values[]}`; when grouping more than 100 nodes, it includes only the 50 highest and 50 lowest nodes for the selected metric, while `heat_total` gives the total row count. Grouping by card with more than 256 cards returns 400 `ANALYTICS_TOO_MANY_CARDS` | JWT |
 | GET | `/api/v1/analytics/gpu-time` | GPU-hours; optional `deployment` filter. `rows[]` has one row per deployment × GPU model: `gpu_hours` (dGPU usage weighted by its memory share), `whole_gpu_hours`, `avg_instances` (average replica count up to now), `max_instances`, `prompt_tokens`/`completion_tokens` for the deployment in the same period, and `gpu_hours_per_million_output`/`gpu_hours_per_million_tokens` (`null` without token data). `series[]` gives each deployment's GPU-hours per bucket. `capacity[]` gives each GPU model's `total_gpu_hours` (platform-usable cards on online nodes), `schedulable_gpu_hours`, and `allocated_gpu_hours` | JWT |
@@ -1621,10 +1778,158 @@ Deterministic estimator outputs remain fully available without an LLM configured
 For the boundary between Playground and the `/v1` gateway, and external model naming `external:<config-id>:<model>`, see
 [`openai-gateway.md`](openai-gateway.md).
 
+## Batches
+
+A batch runs the requests in one JSONL file asynchronously through the gateway and writes the results to an output file and an error file. It has two groups of endpoints:
+
+- Management endpoints `/api/v1/batches`, used by the console and authenticated like the other routes in this document.
+- OpenAI-compatible endpoints `/v1/files` and `/v1/batches`, authenticated with an inference API key and usable directly from the official SDKs.
+
+For the procedure, the result file format, and the retry rules, see [Run Batches](../how-to/batch-api.md).
+
+### Console Endpoints `/api/v1/batches`
+
+| Method | Path | Description | Authentication |
+|---|---|---|---|
+| GET | `/api/v1/batches` | List batches, newest first, as the paged structure `{items,page,page_size,total}`. `state` is one of the 8 statuses; separate several values with commas; an invalid value returns 400 `LIST_FILTER_INVALID`; `q` is not supported and also returns 400 `LIST_FILTER_INVALID`. Administrators see every user's batches; other users see only their own. List items do not include `input_filename` | JWT |
+| GET | `/api/v1/batches/{id}` | Batch details, including `input_filename`; a missing batch, or one that is not yours (administrators excepted), returns 404 `BATCH_NOT_FOUND` | JWT |
+| GET | `/api/v1/batches/{id}/files/{kind}` | Download a batch file; `kind` is `input`, `output`, or `error`; the response is JSON Lines (`application/x-ndjson`, with an attachment filename); an invalid `kind` returns 400 `BATCH_REQUEST_INVALID`; a missing or deleted file returns 404 `BATCH_NOT_FOUND` | JWT |
+| POST | `/api/v1/batches` | Create a batch: `multipart/form-data` with the fields `file` (JSONL), `endpoint`, and optionally `completion_window` (a whole number of hours from `1h` to `72h`, `24h` by default; an invalid one returns 400 `BATCH_REQUEST_INVALID` with `params.field` `completion_window`) and `model` (when set, the `body.model` of every request is replaced by it; it must be the served model name of a running or sleeping deployment, otherwise 400 `BATCH_MODEL_UNKNOWN`); the file is validated line by line on upload, and success returns 201 and the batch object, with `warnings` when the chosen model's deployment sleeps by an operator's order (a request does not wake it). The batch belongs to the signed-in user | JWT(admin) |
+| POST | `/api/v1/batches/{id}/cancel` | Cancel a batch; returns the batch object with status `cancelling`; a batch that has ended returns 409 `BATCH_NOT_CANCELLABLE` | JWT(admin) |
+
+Reading (GET) works with a read-only platform token; writing needs the administrator role (otherwise 403 `ADMINISTRATOR_REQUIRED`) and a platform token with write scope (otherwise 403 `PLATFORM_TOKEN_READ_ONLY`).
+
+The batch object (RFC3339 times; time fields not yet reached are omitted, as are `output_file_id`, `error_file_id`, and `failure`):
+
+| Field | Meaning |
+|---|---|
+| `id`, `endpoint`, `status` | Batch ID, endpoint (one of `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`), and status |
+| `status` | `validating`, `in_progress`, `finalizing`, `completed`, `failed`, `expired`, `cancelling`, `cancelled` |
+| `input_file_id`, `input_filename` | Input file ID; the file name appears only in detail, create, and cancel responses |
+| `output_file_id`, `error_file_id` | Output and error file IDs, present once the file exists |
+| `completion_window` | The completion window chosen at creation, a whole number of hours from `1h` to `72h`, `24h` by default |
+| `model` | The model chosen at creation: every request is sent to it and the line's own `body.model` is replaced; absent when none was chosen and each line uses its own |
+| `request_counts` | `{total, completed, failed}`, updated about every 5 seconds; a request being retried is counted in neither |
+| `metadata` | An object of string to string, `{}` when there is none |
+| `failure` | `{code, message}`, present only in the `failed` status |
+| `warnings` | Findings at creation that do not stop the batch; present only in the create response, for example `[{"code":"BATCH_MODEL_SLEEP_HELD","params":{"model":"qwen3-offline"}}]`: the chosen model's deployment sleeps by an operator's or a schedule's order, which a request does not wake |
+| `user_id`, `api_key_id` | The creator; a batch created from the console has no `api_key_id` |
+| `created_at`, `expires_at` | Creation time and expiry time (creation time plus the completion window) |
+| `in_progress_at`, `finalizing_at`, `completed_at`, `failed_at`, `expired_at`, `cancelling_at`, `cancelled_at` | When each stage was reached |
+
+```json
+{"id":"batch_5a1e9d03c7b24f6e8d2a4b19","endpoint":"/v1/chat/completions","status":"in_progress","input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","input_filename":"requests.jsonl","completion_window":"24h","request_counts":{"total":1000,"completed":410,"failed":3},"metadata":{},"user_id":3,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z","in_progress_at":"2026-10-28T09:00:02Z"}
+```
+
+Product error codes:
+
+| Error code | Status | Meaning |
+|---|---|---|
+| `BATCH_NOT_FOUND` | 404 | The batch or file does not exist, or does not belong to the caller |
+| `BATCH_NOT_CANCELLABLE` | 409 | The batch has ended |
+| `BATCH_FILE_INVALID` | 400 | The input file is invalid; `params` is `{line, reason, detail}`, `line` 0 means the file as a whole, and `reason` is one of the validation error codes below |
+| `BATCH_FILE_TOO_LARGE` | 413 | The file exceeds the limit; `params` is `{limit_mb}` |
+| `BATCH_MODEL_UNKNOWN` | 400 | The `model` chosen at creation is served by no running or sleeping deployment; `params` is `{model}`. A stopped deployment does not count |
+| `BATCH_REQUEST_INVALID` | 400 | A field of the request is invalid; `params` is `{field, reason}`, for example not multipart, `file` missing, `endpoint` unsupported, or `endpoint` different from the `url` in the file |
+
+Files are stored under `batch-files/` in the server data directory.
+
+### OpenAI-Compatible Files and Batches Endpoints
+
+These routes are mounted under `/v1` together with the other gateway endpoints such as `/v1/chat/completions`, and authenticate with an inference API key (`Authorization: Bearer <key>`); when the server has no inference token configured they need no authentication, like the other `/v1` routes. A failed authentication returns 401 with the error code `invalid_api_key`. Files and batches belong to the user that owns the API key that created them: any key of the same user can access them, and other users get 404.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v1/files` | Upload an input file, `multipart/form-data` with the fields `file` and `purpose` (only `batch`); success returns 200 and a file object |
+| GET | `/v1/files` | List files; `purpose` is `batch` or `batch_output`, `limit` defaults to and is capped at 10000, `after` is the last file ID of the previous page, and only `order=desc` (newest first) is supported |
+| GET | `/v1/files/{id}` | The file object |
+| GET | `/v1/files/{id}/content` | The file content, `application/jsonl` |
+| DELETE | `/v1/files/{id}` | Delete a file; returns `{"id","object":"file","deleted":true}`; while a batch that has not ended still reads it, returns 409 `file_in_use` |
+| POST | `/v1/batches` | Create a batch; success returns 200 and the batch object |
+| GET | `/v1/batches` | List batches, newest first; `limit` defaults to 20 and is capped at 100, `after` is the last batch ID of the previous page |
+| GET | `/v1/batches/{id}` | The batch object |
+| POST | `/v1/batches/{id}/cancel` | Cancel a batch; returns the batch object with status `cancelling`; a batch that has ended returns 409 `batch_not_cancellable` |
+
+A list response is `{"object":"list","data":[...],"first_id","last_id","has_more"}`; when `data` is empty, `first_id` and `last_id` are `null`.
+
+The file object:
+
+```json
+{"id":"file-3f9c2a7e1b6d4c8a90e5d721","object":"file","bytes":412,"created_at":1790000000,"filename":"requests.jsonl","purpose":"batch","status":"processed"}
+```
+
+`id` is `file-` plus 24 hexadecimal digits; `purpose` is `batch` (input) or `batch_output` (output and error files); `created_at` is Unix seconds.
+
+The request body for creating a batch:
+
+| Field | Requirement |
+|---|---|
+| `input_file_id` | Required. A file with `purpose` `batch` that the caller can see; otherwise 400 `file_not_found` (`param` is `input_file_id`) |
+| `endpoint` | Required, one of `/v1/chat/completions`, `/v1/completions`, `/v1/embeddings`, and equal to the `url` of every line in the file; otherwise 400 `endpoint_mismatch` |
+| `completion_window` | Required: `"24h"` (OpenAI's value) or a whole number of hours from `"1h"` to `"72h"` without leading zeros (a gpuworks extension); otherwise 400 `invalid_completion_window` (`param` is `completion_window`). `expires_at` is `created_at` plus this time |
+| `metadata` | Optional, an object of string to string with at most 16 keys, keys of 1–64 characters, and values of at most 512 characters; otherwise 400 `invalid_metadata` |
+| `model` | A gpuworks extension, optional. A served model name: every request is sent to it and the line's own `body.model` is replaced; omitted, each line uses its own model. It must be the served model name of a running or sleeping deployment, otherwise 400 `model_not_found` (`param` is `model`). A deployment that sleeps by an operator's or a schedule's order (a request does not wake it) is still accepted, and the create response carries `warnings` |
+
+All times in the batch object are Unix seconds, and `null` when not yet reached:
+
+```json
+{"id":"batch_5a1e9d03c7b24f6e8d2a4b19","object":"batch","endpoint":"/v1/chat/completions","errors":null,"input_file_id":"file-3f9c2a7e1b6d4c8a90e5d721","completion_window":"24h","status":"in_progress","output_file_id":null,"error_file_id":null,"created_at":1790000010,"in_progress_at":1790000012,"expires_at":1790086410,"finalizing_at":null,"completed_at":null,"failed_at":null,"expired_at":null,"cancelling_at":null,"cancelled_at":null,"request_counts":{"total":1000,"completed":410,"failed":3},"metadata":null}
+```
+
+- A batch object created with a `model` has an extra `model` field (absent when none was chosen), and the create response has an extra `warnings` array `[{"code":"model_sleep_held","message":"…","param":"model"}]` when needed; other reads do not carry it. Both fields are gpuworks extensions that the official SDKs ignore.
+- `id` is `batch_` plus 24 hexadecimal digits; `metadata` is `null` when there is none; `errors` is normally `null` and, in the `failed` status, is `{"object":"list","data":[{"code","message","param":null,"line":null}]}`.
+- `status` values: `validating` (waiting for an execution slot; at most 32 batches run at once across the server), `in_progress`, `finalizing`, `completed`, `failed` (only because of a platform fault, such as the input file disappearing), `expired` (the completion window passed; requests without a result go to the error file with the code `batch_expired`), `cancelling`, `cancelled`.
+- Cancellation: no new requests are sent, in-flight requests get up to 2 more minutes, and then the batch ends as `cancelled`, with the results so far kept in the output and error files.
+
+**Input file validation**: the file is validated while it is received and the first error rejects it. The error carries `line`, its `message` starts with `Line N: `, and a rejected upload leaves no file behind.
+
+| Item | Limit |
+|---|---|
+| File size | 200 MB; larger returns 413 `file_too_large` |
+| Number of requests | At most 50000 non-blank lines; more returns 400 `too_many_requests` |
+| Line length | 16 MiB; longer returns 400 `line_too_long` |
+| Empty file | 400 `empty_file` |
+
+Each non-blank line must be a JSON object. The validation error codes are:
+
+| Error code | Meaning |
+|---|---|
+| `invalid_json_line` | The line is not a JSON object |
+| `missing_custom_id` | `custom_id` is missing or not a non-empty string |
+| `duplicate_custom_id` | `custom_id` is repeated in the file |
+| `invalid_method` | `method` is not `POST` |
+| `invalid_url` | `url` is not one of the three supported endpoints |
+| `missing_body` | `body` is missing or not an object |
+| `missing_model` | `body.model` is missing or not a non-empty string |
+| `streaming_not_supported` | `body.stream` is `true` |
+
+Errors of the upload request itself, all 400: `invalid_content_type`, `invalid_multipart`, `invalid_purpose` (`purpose` is not `batch`), and `missing_required_parameter` (`file` or `purpose` missing).
+
+**Result files**: after a batch ends, `output_file_id` points to the output file of successful requests and `error_file_id` to the error file of requests that finally failed. Both are JSON Lines with `purpose` `batch_output`, one line per `custom_id`, in completion order. A line of the output file is `{"id":"batch_req_<hex>","custom_id","response":{"status_code":200,"request_id","body":{...}},"error":null}`, and a line of the error file is `{"id","custom_id","response":null|{"status_code","request_id","body"},"error":{"code","message"}}`. The output file exists only if at least one request succeeded, and the error file only if at least one request failed. Both are deleted 30 days after the batch ends and reading them afterwards returns 404 `file_not_found`; the batch keeps its counts. Input files are kept until the user deletes them.
+
+**Which requests are retried**: when the answer is HTTP 200 but some choice has `finish_reason` `abort`, or is 503, 429, 408, any other 5xx, or a transport error, the request is retried with exponential backoff (starting at 2 seconds, doubling, capped at 60 seconds, honoring `Retry-After`, with jitter) until the batch expires and does not count as failed; any other 4xx is a final failure.
+
+**Error format**: these routes return errors in OpenAI's format, and file validation errors carry an extra `line`:
+
+```json
+{"error":{"message":"Line 2: custom_id must be a non-empty string","type":"invalid_request_error","param":null,"code":"missing_custom_id","line":2}}
+```
+
+| Status | `code` | Scenario |
+|---|---|---|
+| 400 | `invalid_json`, `invalid_limit`, `invalid_order`, `invalid_endpoint`, `invalid_completion_window`, `invalid_metadata`, `endpoint_mismatch`, `file_not_found`, `invalid_purpose`, `model_not_found` | Invalid batch creation or list parameters; the input file validation codes are listed above |
+| 401 | `invalid_api_key` | The API key is missing or invalid |
+| 404 | `file_not_found`, `batch_not_found`, `not_found` | The object does not exist or does not belong to the caller; unknown path |
+| 405 | `method_not_allowed` | The path does not support the method |
+| 409 | `file_in_use`, `batch_not_cancellable` | Deleting a file still read by a batch that has not ended; cancelling a batch that has ended |
+| 413 | `file_too_large` | The upload exceeds 200 MB |
+
+**Execution and limits**: a batch's requests take the same gateway path as a client's request (routing by `body.model`, on-demand wake of sleeping deployments, usage counting, and request records attributed to the API key and user that created the batch). Each batch runs 8 requests at a time and all batches together have at most 64 requests in flight; progress is saved about every 5 seconds, and after a server restart unfinished batches resume from the latest checkpoint without sending again the requests that already have a result.
+
 ## Out of Scope
 
 - For data plane `/v1/*` endpoints (OpenAI-compatible chat/embeddings/rerank/audio/image/video/realtime endpoints, etc.), see
-  [`openai-gateway.md`](openai-gateway.md); they are not repeated here.
+  [`openai-gateway.md`](openai-gateway.md); they are not repeated here, except `/v1/files` and `/v1/batches`, which are in [Batches](#batches批处理任务).
 - Agent-side yamux subprotocols (`ctrl`/`metrics`/`logtail`/`tunnel`/`model.read`/`model.write`/
   `image.read`/`image.write`/`terminal`) are not HTTP routes. They belong to the `internal/proto` control plane protocol and are outside this document's scope.
 

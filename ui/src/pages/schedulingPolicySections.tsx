@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import type { TFunction } from "i18next";
 import type { Deployment } from "../api";
 import { formatTime } from "../i18n/datetime";
-import IdleSleepEditor from "./DeploymentIdleSleep";
 import NodeReplacementEditor, { nodeReplacementSeconds } from "./DeploymentNodeReplacement";
-import ServiceLevelEditor, { canShareGPUs, levelOf } from "./DeploymentServiceLevel";
+import YieldPolicyEditor from "./yieldPolicy/DeploymentYieldPolicy";
+import { savedPolicy } from "./yieldPolicy/model";
+import { yieldSummary } from "./yieldPolicy/summary";
 import ScheduleSection, { scheduleOrderText, type Schedules } from "./DeploymentSchedule";
 import { durationText } from "./nodeReplacementEvents";
 
@@ -22,14 +23,14 @@ export interface PolicyContext {
 // is one more entry here.
 export interface PolicySection {
   key: string;
-  // The i18n key of its name, in the deployments namespace.
+  // The i18n key of its name, in the deployments namespace, and of the name
+  // its summary phrase goes by when that differs from the tab's.
   label: string;
+  summaryLabel?: string;
   visible: (dep: Deployment) => boolean;
   summary: (t: TFunction<"deployments">, context: PolicyContext) => string;
   render: (context: PolicyContext) => ReactNode;
 }
-
-const idleAfterSec = (dep: Deployment) => dep.idle_sleep?.after_sec ?? 0;
 
 export const policySections: PolicySection[] = [
   {
@@ -52,29 +53,16 @@ export const policySections: PolicySection[] = [
     render: ({ dep, schedules }) => <ScheduleSection dep={dep} schedules={schedules} />,
   },
   {
-    key: "idle",
-    label: "automation.idle.title",
-    // A deployment that cannot sleep has no idle sleep to set; one that kept a
-    // setting from when it could still shows it so it can be turned off.
-    visible: (dep) => dep.sleepable || idleAfterSec(dep) > 0,
-    summary: (t, { dep }) => {
-      const sec = idleAfterSec(dep);
-      return sec > 0
-        ? t("schedulingPolicy.idleOn", { minutes: Math.round(sec / 60), level: dep.idle_sleep?.level ?? 2 })
-        : t("schedulingPolicy.off");
-    },
+    key: "yieldPolicy",
+    label: "yieldPolicy.title",
+    summaryLabel: "yieldPolicy.summaryLabel",
+    // A deployment that cannot sleep has nothing to set; one that kept a policy
+    // from when it could still shows it so it can go back.
+    visible: (dep) => dep.sleepable || savedPolicy(dep).policy !== "never",
+    summary: (t, { dep }) => yieldSummary(t, dep),
     render: ({ dep, onChanged }) => (
-      <IdleSleepEditor key={`idle-${dep.id}-${idleAfterSec(dep)}-${dep.idle_sleep?.level ?? 0}`} dep={dep} onChanged={onChanged} />
+      <YieldPolicyEditor key={`yield-${dep.id}-${JSON.stringify(savedPolicy(dep))}`} dep={dep} onChanged={onChanged} />
     ),
-  },
-  {
-    key: "serviceLevel",
-    label: "serviceLevel.title",
-    // Only a sleepable single-node deployment can leave resident; one that
-    // kept another level from when it could still shows it so it can go back.
-    visible: (dep) => canShareGPUs(dep) || levelOf(dep) !== "resident",
-    summary: (t, { dep }) => t(`serviceLevel.name.${levelOf(dep)}`),
-    render: ({ dep, onChanged }) => <ServiceLevelEditor key={`level-${dep.id}-${levelOf(dep)}`} dep={dep} onChanged={onChanged} />,
   },
 ];
 
@@ -97,6 +85,6 @@ function scheduleSummary(t: TFunction<"deployments">, { rows, error }: Schedules
 export function policySummary(t: TFunction<"deployments">, context: PolicyContext): string {
   return policySections
     .filter((section) => section.visible(context.dep))
-    .map((section) => t("schedulingPolicy.item", { label: t(section.label), value: section.summary(t, context) }))
+    .map((section) => t("schedulingPolicy.item", { label: t(section.summaryLabel ?? section.label), value: section.summary(t, context) }))
     .join(t("schedulingPolicy.separator"));
 }

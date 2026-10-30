@@ -1021,11 +1021,62 @@ export type DeploymentPage = ListPage<DeploymentListItem>;
 export interface BoardOccupant {
   deployment_id: number;
   deployment: string;
+  yield_policy: YieldPolicyName;
   instance: string;
   state: "awake" | "asleep";
   sleep_level?: number;
   claim_bytes: number;
   residue_bytes?: number;
+}
+
+// The residency timeline (GET /scheduling/timeline): for the nodes of a board
+// page, which deployment's instance held each GPU over the last `hours` and in
+// what state, and the stats of the deployments that share GPUs.
+export type TimelineState = "awake" | "asleep" | "switching" | "starting";
+
+export interface TimelineSegment {
+  deployment_id: number;
+  deployment: string;
+  instance: string;
+  state: TimelineState;
+  level?: number;
+  from: string;
+  to: string;
+}
+
+export interface TimelineGPU {
+  index: number;
+  segments: TimelineSegment[];
+  truncated: boolean;
+}
+
+export interface TimelineNode {
+  uuid: string;
+  name: string;
+  gpus: TimelineGPU[];
+}
+
+export interface TimelineDeployment {
+  deployment_id: number;
+  deployment: string;
+  yield_policy: YieldPolicyName;
+  awake_seconds: number;
+  awake_share: number;
+  switches: number;
+  yielded: number;
+  yielded_to: number;
+  wakes: number;
+  held_requests: number;
+  wait_p50_ms?: number;
+  wait_p95_ms?: number;
+}
+
+export type TimelineHours = 6 | 24;
+
+export interface SchedulingTimeline {
+  window: { from: string; to: string; hours: TimelineHours };
+  nodes: TimelineNode[];
+  deployments: TimelineDeployment[];
 }
 
 export interface BoardGPU {
@@ -1044,6 +1095,56 @@ export interface BoardNode {
   name: string;
   online: boolean;
   gpus: BoardGPU[];
+}
+
+// The scheduling center's overview (GET /scheduling/overview): every node and
+// each card of the fleet in one compact response. A card is an array
+// [index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants?]:
+// model is a position in `models`; occupants, when present, are
+// position*2 + 1 when asleep (position in `deployments`) for the deployments
+// on the card; flags are OVERVIEW_FLAG bits (pages/scheduling/overviewModel.ts).
+export type OverviewCardWire = [number, number, number, number, number, number, number[]?];
+
+export interface OverviewCounts {
+  cards: number;
+  awake: number;
+  asleep: number;
+  free: number;
+  held_outside: number;
+  unhealthy: number;
+  offline: number;
+}
+
+export interface OverviewModelCounts extends OverviewCounts {
+  model: string;
+}
+
+export interface OverviewContention {
+  waiting_wakes: number;
+  held_requests: number;
+  yields_last_hour: number;
+}
+
+export interface OverviewNode {
+  uuid: string;
+  name: string;
+  online: boolean;
+  labels?: Record<string, string>;
+  contention?: number;
+  cards: OverviewCardWire[];
+}
+
+export interface OverviewDeployment {
+  id: number;
+  name: string;
+  yield_policy: YieldPolicyName;
+}
+
+export interface SchedulingOverview {
+  summary: OverviewCounts & { nodes: number; online_nodes: number; by_model: OverviewModelCounts[]; contention: OverviewContention };
+  models: string[];
+  deployments: OverviewDeployment[];
+  nodes: OverviewNode[];
 }
 
 export interface BoardPending {
@@ -1067,6 +1168,7 @@ export interface BoardUpcoming {
   action: ScheduleAction;
   sleep_level?: number;
   replicas?: number;
+  role?: string;
   at: string;
 }
 
@@ -1848,31 +1950,75 @@ export interface Deployment {
   // placement_status is set while replicas of an ordinary deployment wait
   // for a node: how many, and the controller's latest reason.
   placement_status?: DeploymentPlacementStatus;
-  // idle_sleep puts the deployment to sleep after after_sec without a user
-  // request (0 is off); node_replacement moves a replica off a node that
-  // stays offline for after_sec (0 never moves it). wake_waiting_since is set
-  // while some wake of the deployment waits for room.
-  idle_sleep?: IdleSleep;
+  // node_replacement moves a replica off a node that stays offline for
+  // after_sec (0 never moves it). wake_waiting_since is set while some wake
+  // of the deployment waits for room.
   node_replacement?: NodeReplacement;
   wake_waiting_since?: string;
-  // service_level is how the deployment shares its GPUs with the others on
-  // them; absent counts as resident. sleep_held is set while an operator's or
-  // a schedule's sleep keeps it asleep: a request does not wake it.
-  service_level?: ServiceLevel;
+  // yield_policy is how the deployment shares its GPUs with the others on
+  // them; absent counts as never.
+  // sleep_held is set while an operator's or a schedule's sleep keeps it
+  // asleep: a request does not wake it.
+  yield_policy?: YieldPolicy;
   sleep_held?: boolean;
 }
 
-// ServiceLevel orders deployments that share GPUs: resident never gives its
-// GPUs up, online gives them up after 5 idle minutes and takes them back on a
-// request, shared takes turns with other shared deployments and gives way to
-// online, offline gives way to everyone at once. The create and evaluate
-// bodies carry it as service_level (absent: resident).
-export type ServiceLevel = "resident" | "online" | "shared" | "offline";
-export const serviceLevels: ServiceLevel[] = ["resident", "online", "shared", "offline"];
+// YieldPolicyName is how a deployment shares its GPUs, in rank order (highest
+// first): never gives its GPUs to another deployment, idle gives them up when
+// another waits and it has been idle, timeslice also takes turns with other
+// timeslice deployments and gives way at once to a higher-ranked waiter,
+// anytime gives them to any higher-ranked waiter at once.
+export type YieldPolicyName = "never" | "idle" | "timeslice" | "anytime";
+export type YieldSleepLevel = "auto" | "l1" | "l2";
+export type YieldUnfinished = "abort" | "wait";
 
-export interface IdleSleep {
-  after_sec: number;
-  level: 1 | 2;
+// YieldPolicy is a policy with the parameters that apply to it, as the server
+// holds it and as PUT /deployments/{id}/yield-policy and a create request's
+// yield_policy take it: a parameter that does not apply is absent.
+export interface YieldPolicy {
+  policy: YieldPolicyName;
+  idle_sec?: number;
+  sleep_level?: YieldSleepLevel;
+  max_serve_sec?: number;
+  unfinished?: YieldUnfinished;
+  unfinished_wait_sec?: number;
+  hold_max_sec?: number;
+}
+
+export type YieldPolicyRequest = YieldPolicy;
+
+// YieldPolicyAnswer is what the PUT answers: the policy as stored, and the
+// other idle-policy deployments on the same cards (the server allows this, the
+// operator should know). Only the PUT answer carries them.
+export interface YieldPolicyAnswer extends YieldPolicy {
+  idle_neighbours?: string[];
+}
+
+export type YieldParamName = "idle_sec" | "sleep_level" | "max_serve_sec" | "unfinished" | "unfinished_wait_sec" | "hold_max_sec";
+
+// One policy of the dictionary (GET /scheduling/yield-policies): its default
+// parameters and which of them apply to it.
+export interface YieldPolicyEntry {
+  policy: YieldPolicyName;
+  defaults: YieldPolicy;
+  applies: YieldParamName[];
+}
+
+// The range of a numeric parameter in seconds. at_most names the parameter it
+// may not exceed when both apply.
+export interface YieldBound {
+  minimum: number;
+  maximum: number;
+  at_most?: YieldParamName;
+}
+
+// The yield policy dictionary: the policies in rank order with their defaults,
+// the bounds of the numeric parameters and the values of the choices.
+export interface YieldPolicyDictionary {
+  policies: YieldPolicyEntry[];
+  bounds: Partial<Record<YieldParamName, YieldBound>>;
+  sleep_levels: YieldSleepLevel[];
+  unfinished: YieldUnfinished[];
 }
 
 export interface NodeReplacement {
@@ -1949,7 +2095,10 @@ export interface LifecycleSchedule {
   time: string;
   timezone: string;
   sleep_level?: 1 | 2;
+  // replicas is stated for a replicas order (0 included, for a PD role the mode
+  // lets be empty); role is the PD role it scales, absent otherwise.
   replicas?: number;
+  role?: string;
   enabled: boolean;
   next_at?: string;
 }
@@ -1961,6 +2110,9 @@ export interface LifecycleScheduleRequest {
   timezone: string;
   sleep_level?: 1 | 2;
   replicas?: number;
+  // role names the PD role a replicas order scales: required for a PD
+  // deployment, refused for any other.
+  role?: string;
   enabled?: boolean;
 }
 
@@ -4483,7 +4635,7 @@ export const api = {
   wakeInstance: (uuid: string, opts: WakeOptions = {}) =>
     sendJSON<WakeResult | void>("POST", `/api/v1/instances/${encodeURIComponent(uuid)}/wake${wakeQuery(opts)}`),
   // A deployment's standing schedule (sleep, wake or replica count at a time
-  // on some weekdays), idle sleep and the wait before a lost node's replica
+  // on some weekdays), yield policy and the wait before a lost node's replica
   // moves.
   deploymentSchedule: (id: number) => getJSON<List<LifecycleSchedule>>(`/api/v1/deployments/${id}/schedule`),
   createSchedule: (id: number, body: LifecycleScheduleRequest) =>
@@ -4492,14 +4644,29 @@ export const api = {
     sendJSON<LifecycleSchedule>("PUT", `/api/v1/deployments/${id}/schedule/${scheduleID}`, body),
   deleteSchedule: (id: number, scheduleID: number) =>
     sendJSON<void>("DELETE", `/api/v1/deployments/${id}/schedule/${scheduleID}`),
-  setIdleSleep: (id: number, body: IdleSleep) =>
-    sendJSON<IdleSleep>("PUT", `/api/v1/deployments/${id}/idle-sleep`, body),
-  setServiceLevel: (id: number, level: ServiceLevel) =>
-    sendJSON<Deployment>("PUT", `/api/v1/deployments/${id}/service-level`, { level }),
+  setYieldPolicy: (id: number, body: YieldPolicyRequest) =>
+    sendJSON<YieldPolicyAnswer>("PUT", `/api/v1/deployments/${id}/yield-policy`, body),
+  yieldPolicies: () => getJSON<YieldPolicyDictionary>("/api/v1/scheduling/yield-policies"),
   setNodeReplacement: (id: number, body: NodeReplacement) =>
     sendJSON<NodeReplacement>("PUT", `/api/v1/deployments/${id}/node-replacement`, body),
-  schedulingBoard: (query: { page: number; page_size: number; q?: string }) =>
-    getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`),
+  // The board is a page of nodes with their holders (page, page_size, q); or
+  // one node's (node); or the fleet-wide lists alone (queues), which read no node.
+  schedulingBoard: (query: { page: number; page_size: number; q?: string } | { node: string } | { queues: true }) => {
+    if ("node" in query) return getJSON<SchedulingBoard>(`/api/v1/scheduling/board?node=${encodeURIComponent(query.node)}`);
+    if ("queues" in query) return getJSON<SchedulingBoard>("/api/v1/scheduling/board?queues=1");
+    return getJSON<SchedulingBoard>(`/api/v1/scheduling/board?${listQueryString(query)}`);
+  },
+  // Every node and card of the fleet in one compact response.
+  schedulingOverview: () => getJSON<SchedulingOverview>("/api/v1/scheduling/overview"),
+  // The residency timeline of some nodes, or (sharing) the stats of the
+  // deployments that share cards across the fleet and no lanes.
+  schedulingTimeline: (query: { nodes: string[]; hours: TimelineHours } | { sharing: true; hours: TimelineHours }) => {
+    const params = new URLSearchParams();
+    if ("sharing" in query) params.set("sharing", "1");
+    else for (const node of query.nodes) params.append("node", node);
+    params.set("hours", String(query.hours));
+    return getJSON<SchedulingTimeline>(`/api/v1/scheduling/timeline?${params.toString()}`);
+  },
   // The history is newest-first and cursor paginated like a deployment's
   // timeline: `before` is the id of the last entry of the page already held.
   schedulingHistory: (query: SchedulingHistoryQuery) =>

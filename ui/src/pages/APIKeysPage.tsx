@@ -171,6 +171,7 @@ export default function APIKeysPage() {
   -H "Authorization: Bearer <key>" \\
   -d '{"model":"<served_name>","messages":[{"role":"user","content":"hi"}]}'`}
             </pre>
+            {t("usageBatches")} <Link to="/batches">{t("usageBatchesLink")}</Link>
           </Paragraph>
         }
       />

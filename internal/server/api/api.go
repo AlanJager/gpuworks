@@ -125,7 +125,10 @@ type Deps struct {
 	UIHandler     http.Handler // embedded SPA (may be nil in dev)
 
 	// Hub integration.
-	Online          func(uuid string) bool
+	Online func(uuid string) bool
+	// WakeHeld counts the requests the gateway holds for each deployment's
+	// wake right now (the scheduling overview's contention); nil reads none.
+	WakeHeld        func() map[uint]int
 	KickNode        func(uuid string)
 	NodeSync        NodeSync
 	CallNode        func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error)
@@ -153,12 +156,13 @@ type Deps struct {
 	// stays unaware of hub and yamux. Terminal owns admission and audit;
 	// NodeCaps lets the handler refuse agents that predate webterm with a clear
 	// message.
-	OpenTerminal  func(nodeUUID, target, ref string, rows, cols uint16, graceSec int) (net.Conn, error)
-	NodeCaps      func(nodeUUID string) []string
-	Terminal      *webterm.Manager
-	ProxyV1       http.Handler // /v1/* data plane
-	ProxyModels   http.Handler // /v1/models
-	PlaygroundV1  http.Handler // authenticated internal proxy, no platform API key
+	OpenTerminal func(nodeUUID, target, ref string, rows, cols uint16, graceSec int) (net.Conn, error)
+	NodeCaps     func(nodeUUID string) []string
+	Terminal     *webterm.Manager
+	ProxyV1      http.Handler // /v1/* data plane: models, the OpenAI-compatible files and batches, and the model requests
+	PlaygroundV1 http.Handler // authenticated internal proxy, no platform API key
+	// Batches is the Batch API's console side (batches.go); nil answers 404.
+	Batches       BatchService
 	NodePrecheck  provision.Prechecker
 	NodeInstaller provision.Installer
 	Recovery      interface {
@@ -265,11 +269,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 	}
 
 	// Data plane: OpenAI-compatible /v1. ProxyV1 owns API-key auth for every
-	// endpoint, including /v1/models.
+	// endpoint, including /v1/models and the batch files.
 	if d.ProxyV1 != nil {
-		if d.ProxyModels != nil {
-			r.Handle("/v1/models", d.ProxyModels)
-		}
 		r.Handle("/v1/*", d.ProxyV1)
 	}
 
@@ -456,9 +457,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Post("/deployments/{id}/schedule", a.createSchedule)
 			r.Put("/deployments/{id}/schedule/{sid}", a.updateSchedule)
 			r.Delete("/deployments/{id}/schedule/{sid}", a.deleteSchedule)
-			r.Put("/deployments/{id}/idle-sleep", a.setIdleSleep)
 			r.Put("/deployments/{id}/node-replacement", a.setNodeReplacement)
-			r.Put("/deployments/{id}/service-level", a.setServiceLevel)
+			r.Put("/deployments/{id}/yield-policy", a.setYieldPolicy)
 			r.Put("/deployments/{id}/placement-mode", a.setPlacementMode)
 			// A deployment's own timeline, including scheduling outcomes
 			// recorded before any instance existed.
@@ -601,7 +601,10 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/logs/histogram", a.logsHistogram)
 			r.Get("/monitor/overview", a.monitorOverview)
 			r.Get("/scheduling/board", a.schedulingBoard)
+			r.Get("/scheduling/overview", a.schedulingOverview)
 			r.Get("/scheduling/history", a.schedulingHistory)
+			r.Get("/scheduling/timeline", a.schedulingTimeline)
+			r.Get("/scheduling/yield-policies", a.yieldPolicyDictionary)
 			r.Get("/monitor/deployments/{id}", a.monitorDeployment)
 			r.Get("/monitor/deployments/{id}/requests", a.monitorRequests)
 			r.Get("/monitor/requests/lookup", a.monitorRequestLookup)
@@ -638,6 +641,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			if d.PlaygroundV1 != nil {
 				r.Handle("/playground/v1/*", a.withClaims(d.PlaygroundV1))
 			}
+
+			// Batches: the console's side of the Batch API. Anyone signed in reads
+			// (an administrator sees every user's), an administrator writes.
+			r.Get("/batches", a.listBatches)
+			r.With(a.managementAdmin).Post("/batches", a.createBatch)
+			r.Get("/batches/{id}", a.getBatch)
+			r.With(a.managementAdmin).Post("/batches/{id}/cancel", a.cancelBatch)
+			r.Get("/batches/{id}/files/{kind}", a.downloadBatchFile)
 		})
 	})
 	r.Get("/healthz", a.health)
@@ -658,6 +669,7 @@ type apiHandlers struct {
 	gpuCacheAt          time.Time
 	gpuCache            *gpuInventoryCache
 	gpuCacheGeneration  uint64
+	overview            overviewCache // the scheduling overview (scheduling_overview.go)
 	benchmarkMu         sync.Mutex
 	benchmarkExecutions map[uint]*benchmarkExecution
 	updates             distribution.CheckCache

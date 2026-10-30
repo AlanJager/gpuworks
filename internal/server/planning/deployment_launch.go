@@ -192,7 +192,7 @@ func DeploymentLaunch(dep *store.Deployment, reqs map[string][]string, node *sto
 		Source: LaunchSourceFromDeployment(dep), Quick: quick, ExtraArgs: extra,
 		ModelMount: modelMount, ModelHostPath: modelHostPath, ComponentMounts: componentMounts,
 		ServedName: served, Sleepable: dep.Sleepable, MasterAddr: dep.MasterAddr, MasterPort: dep.MasterPort,
-		ServiceLevel:   dep.ServiceLevel,
+		YieldPolicy:    dep.YieldPolicy,
 		VRAMLimitBytes: dep.VRAMLimitBytes, PartitionBackend: dep.PartitionBackend,
 		APIContract: DeploymentAPIContract(model, templateLayer.APIContract),
 		ModelRules:  store.SourceRules{Pinned: store.StoragePins(reqs), SaveTo: dep.SaveToStorageID},

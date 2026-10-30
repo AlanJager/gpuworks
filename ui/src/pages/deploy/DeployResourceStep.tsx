@@ -28,7 +28,7 @@ import EligibleNodePicker from "./EligibleNodePicker";
 import DeployParallelFields from "./DeployParallelFields";
 import { gpuSelectOptions } from "./gpuOptions";
 import { LockedHint, useControlLocked } from "./DeployEditContext";
-import DeployServiceLevelField from "./DeployServiceLevelField";
+import DeployYieldPolicyField from "./DeployYieldPolicyField";
 import AutoGroupPreview from "./DeployAutoGroupPreview";
 
 const ONLINE = { state: ["online"] };
@@ -178,7 +178,7 @@ export default function DeployResourceStep({
           </Form.Item>
         </Col>
         <Col xs={24} md={12}>
-          <DeployServiceLevelField />
+          <DeployYieldPolicyField />
         </Col>
         <Form.Item name="partition_backend" hidden>
           <Input />

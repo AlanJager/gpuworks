@@ -54,10 +54,9 @@ export function editPayload(
   if (image) body.image = image;
   else delete body.image;
 
-  // The level is changed on the deployment's scheduling policy, not by an
-  // edit: the edit states the stored one, so a preview plans with it.
-  if (stated(base.request.service_level)) body.service_level = base.request.service_level;
-  else delete body.service_level;
+  // The yield policy is changed on the deployment's scheduling policy, not by
+  // an edit (the server ignores it there), so an edit never states one.
+  delete body.yield_policy;
 
   const storedQuick = isObject(base.request.quick_params) ? base.request.quick_params : {};
   const quick = isObject(body.quick_params) ? body.quick_params : {};

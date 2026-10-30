@@ -919,9 +919,9 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | L1 休眠需要把权重搬进主机内存，可用内存减去余量（总量的 5% 与 4 GiB 中较大者）放不下；`params` 含 `node`、`need_gib`、`available_gib`，改用 L2 |
 | `SCHEDULE_INVALID` | 400 | 定时计划的某个字段不合法：`params.field`、`params.reason` 指出哪一项（周几、时间格式 `HH:MM`、休眠级别、副本数 1–32、动作） |
 | `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | server 不认识这个时区名；用 IANA 名（如 `Asia/Shanghai`），留空则用 server 时区 |
-| `SCHEDULE_REPLICAS_SHAPE` | 400 | PD 部署不能定时改副本数，它的各角色各有自己的数量 |
-| `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
-| `IDLE_SLEEP_INVALID` | 400 | 闲置休眠的 `after_sec` 要是 0（关闭）或 60–604800，`level` 要是 1 或 2 |
+| `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机或 PD 部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
+| `YIELD_POLICY_INVALID` | 400 | 出让策略请求不合法：`params.field` 是字段（`policy`、`sleep_level`、`unfinished`、`idle_sec`、`max_serve_sec`、`unfinished_wait_sec`、`hold_max_sec`），`params.reason` 为 `required`（没给 `policy`：请求体是 `{}`，或只带参数不带 `policy`）、`invalid_value`（不在允许的取值里）或 `out_of_range`（数值越界，另带 `minimum`、`maximum`；按时自动出让的闲置时间超过最长服务时间时，`idle_sec` 的 `maximum` 就是最长服务时间）；见[出让策略](scheduling-center.md#出让策略) |
+| `YIELD_POLICY_SHAPE` | 400 | 多机或 PD 部署只能是不自动出让 |
 | `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
@@ -935,7 +935,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 3. 可确认的失败：保留已确认的实际休眠级别；如果期望仍对应这次失败命令，再将期望回退到该实际级别（也适用于 L1 / L2 切换失败），事件 `INSTANCE_SLEEP_RESULT`，
    `params.result` 为 `failed_rollback`（成功为 `applied`）。失败不会自动重试。
 
-### 定时计划、闲置休眠或等位没有按预期执行
+### 定时计划、让卡或等位没有按预期执行
 
 **现象**：到点没有休眠 / 唤醒，或部署被意外睡下。
 
@@ -946,7 +946,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SCHEDULE_ACTION_FAILED` | 自动动作被拒绝，`params.reason` 是原因，`reason_code` 是对应错误码（见上表）；失败的时间点不会重试，处理后等下一次，或手动执行 |
 | `WAKE_WAITING` | 定时唤醒放不下，已进入等位；到调度看板看谁占着卡 |
 | `WAKE_WAIT_TIMEOUT` | 等位满 30 分钟仍没有空位，已放弃；腾出卡后重新唤醒 |
-| `AUTO_SLEEP`（`trigger` 为 `idle`） | 闲置休眠触发，`idle_sec` 是闲置时长；健康检查等平台自发请求不重置计时 |
+| `AUTO_SLEEP`（`trigger` 为 `preempt`） | 为别的部署让卡，`reason` 是 `idle`（闲置满闲置时间）、`rank`（对方等级更高）或 `turn`（按时自动出让轮到对方，已服务满最长服务时间），`for_deployment` 是为谁让；部署不想被抢就把出让策略设为不自动出让（健康检查等平台自发请求不算用户请求，不重置闲置计时）。没有别的部署等它的卡时，部署不会自己休眠；之前靠“无抢占时自动休眠”睡下的，改用定时计划 |
 
 server 停机错过的计划只补 12 小时内最新的一次。计划的 `next_at` 与时区不符时，检查计划的 `timezone`（空表示 server 所在时区）。
 

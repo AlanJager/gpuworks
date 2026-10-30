@@ -80,6 +80,7 @@
 | `tpot_ms` | histogram | milliseconds | 网关口径的 TPOT：每个流式回复从第一个到最后一个生成 token 的时间，除以第一个之后的输出 token 数，兜底用 |
 | `ttft_ms` | histogram | milliseconds | 请求交给实例到流式回复第一个生成 token 的耗时 |
 | `usage_missing_total` | counter | requests | 完整收到、但没有带 `usage` 的回复数；token 计数少算的就是这些请求 |
+| `wake_hold_wait_ms` | histogram | milliseconds | 网关为正在唤醒的部署扣住的请求，从被扣住到被放行、被拒绝或客户端离开的等待时间；每个被扣住的请求都计一次 |
 
 ### token 用量的读取与计数
 

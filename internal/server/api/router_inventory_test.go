@@ -125,6 +125,9 @@ GET /api/v1/analytics/quality
 GET /api/v1/analytics/usage
 GET /api/v1/apikeys
 GET /api/v1/auth/me
+GET /api/v1/batches
+GET /api/v1/batches/{id}
+GET /api/v1/batches/{id}/files/{kind}
 GET /api/v1/benchmarks
 GET /api/v1/benchmarks/meta
 GET /api/v1/benchmarks/{id}
@@ -214,6 +217,9 @@ GET /api/v1/pull/sync-groups
 GET /api/v1/routing-policies
 GET /api/v1/scheduling/board
 GET /api/v1/scheduling/history
+GET /api/v1/scheduling/overview
+GET /api/v1/scheduling/timeline
+GET /api/v1/scheduling/yield-policies
 GET /api/v1/security/settings
 GET /api/v1/server/listen
 GET /api/v1/settings
@@ -257,6 +263,8 @@ POST /api/v1/apikeys
 POST /api/v1/auth/activity
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
+POST /api/v1/batches
+POST /api/v1/batches/{id}/cancel
 POST /api/v1/benchmarks
 POST /api/v1/benchmarks/datasets/import
 POST /api/v1/benchmarks/models
@@ -357,7 +365,6 @@ PUT /api/v1/data-retention
 PUT /api/v1/deployments/{id}
 PUT /api/v1/deployments/{id}/dgpu
 PUT /api/v1/deployments/{id}/health-check
-PUT /api/v1/deployments/{id}/idle-sleep
 PUT /api/v1/deployments/{id}/node-replacement
 PUT /api/v1/deployments/{id}/pd
 PUT /api/v1/deployments/{id}/placement-mode
@@ -365,8 +372,8 @@ PUT /api/v1/deployments/{id}/replicas
 PUT /api/v1/deployments/{id}/requirements
 PUT /api/v1/deployments/{id}/routing
 PUT /api/v1/deployments/{id}/schedule/{sid}
-PUT /api/v1/deployments/{id}/service-level
 PUT /api/v1/deployments/{id}/tokenize
+PUT /api/v1/deployments/{id}/yield-policy
 PUT /api/v1/experience/enabled
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}

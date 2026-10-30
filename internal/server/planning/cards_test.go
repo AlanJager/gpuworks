@@ -12,7 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// A sleeping deployment that shares its cards by service level keeps them
+// A sleeping deployment that shares its cards by yield policy keeps them
 // against a newcomer it does not share with, and gives them to one it does.
 func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *testing.T) {
 	st, err := store.Open("file:planning_reserved_"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())
@@ -44,25 +44,25 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 		snap := nodeSnapshot(st, node, true, "", ledgerView{reserved: reservedAgainst(st, level)})
 		return scheduler.Schedule(req, snap).OK
 	}
-	// A resident sleeper: its card is free for anyone, as before.
-	for _, level := range []string{"", servicelevel.Resident, servicelevel.Online, servicelevel.Offline} {
+	// A never sleeper: its card is free for anyone, as before.
+	for _, level := range []string{"", servicelevel.Never, servicelevel.Idle, servicelevel.Anytime} {
 		if !fits(level) {
-			t.Fatalf("a resident sleeper's card is closed to %q", level)
+			t.Fatalf("a never sleeper's card is closed to %q", level)
 		}
 	}
-	if reservedAgainst(st, servicelevel.Online) != nil {
-		t.Fatal("a reservation without any deployment sharing by service level")
+	if reservedAgainst(st, servicelevel.Idle) != nil {
+		t.Fatal("a reservation without any deployment sharing by yield policy")
 	}
 
-	if err := st.SetDeploymentServiceLevel(dep.ID, servicelevel.Online); err != nil {
+	if err := st.SetDeploymentYieldPolicy(dep.ID, servicelevel.Policy{Yield: servicelevel.Idle, IdleSec: 300}); err != nil {
 		t.Fatal(err)
 	}
 	for level, want := range map[string]bool{
-		"": false, servicelevel.Resident: false, servicelevel.Online: false,
-		servicelevel.Shared: true, servicelevel.Offline: true,
+		"": false, servicelevel.Never: false, servicelevel.Idle: true,
+		servicelevel.TimeSlice: true, servicelevel.Anytime: true,
 	} {
 		if got := fits(level); got != want {
-			t.Fatalf("a %q newcomer on a sleeping online deployment's card fits = %v, want %v", level, got, want)
+			t.Fatalf("a %q newcomer on a sleeping idle deployment's card fits = %v, want %v", level, got, want)
 		}
 	}
 	// The ledger outside placement (wake admission, the board) is unchanged.

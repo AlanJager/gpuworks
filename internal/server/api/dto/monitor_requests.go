@@ -52,7 +52,7 @@ type MonitorRequest struct {
 	// APIKeyName is the key's name; empty for none or a deleted key.
 	APIKeyName string `json:"api_key_name"`
 	UserID     uint   `json:"user_id"`
-	// Source is "api" or "playground".
+	// Source is "api", "playground" or "batch".
 	Source    string `json:"source"`
 	Stream    bool   `json:"stream"`
 	BodyBytes int64  `json:"body_bytes"`

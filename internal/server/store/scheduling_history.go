@@ -17,7 +17,7 @@ type SchedulingCategory string
 
 const (
 	// SchedulingAuto: the platform acted on its own settings or a plan: a
-	// schedule, idle sleep, a waiting wake, a replica placed automatically, a
+	// schedule, auto sleep, a waiting wake, a replica placed automatically, a
 	// replica moved off a node an operator drains.
 	SchedulingAuto SchedulingCategory = "auto"
 	// SchedulingFailure: something went wrong and the platform reacted, or

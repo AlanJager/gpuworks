@@ -5,7 +5,7 @@ import { getJSON } from "./api";
 export type Granularity = "hour" | "day";
 export type GpuGroupBy = "model" | "node" | "gpu";
 export type GpuMetric = "util" | "power" | "temp" | "mem";
-export type UsageSource = "api" | "playground";
+export type UsageSource = "api" | "playground" | "batch";
 
 /** The span a statistics answer covers, as the server resolved it. */
 export interface AnalyticsRange {

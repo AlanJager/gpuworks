@@ -1,5 +1,5 @@
 // Package automation is the scheduling center's hand: it carries out the
-// orders operators gave in advance - a deployment's schedule, its idle sleep,
+// orders operators gave in advance - a deployment's schedule, its auto sleep,
 // a wake waiting for room - through the same sleep, wake and replica orders
 // an operator gives by hand. It decides nothing an operator did not ask for:
 // there is no preemption and no load-driven scaling.
@@ -25,6 +25,9 @@ type Schedule struct {
 	Location   *time.Location
 	SleepLevel int
 	Replicas   int
+	// Role is the PD role a replicas order scales; empty for a deployment
+	// that is not PD.
+	Role string
 	// LastFiredAt is the scheduled time of the newest occurrence handled.
 	LastFiredAt time.Time
 }

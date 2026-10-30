@@ -517,6 +517,7 @@ const (
 	instanceEventStateChanged  = "INSTANCE_STATE_CHANGED"
 	instanceEventStatusUpdated = "INSTANCE_STATUS_UPDATED"
 	instanceEventSleepResult   = "INSTANCE_SLEEP_RESULT"
+	instanceEventRemoved       = "INSTANCE_REMOVED"
 )
 
 // Event kinds carried in InstanceEvent.Kind. The schema reserved `schedule`
@@ -888,6 +889,9 @@ func (s *Store) DeleteInstance(uuid string) error {
 // the table instead (see RetentionSweep).
 func deleteInstanceRecords(tx *gorm.DB, inst *Instance) error {
 	if err := tx.Where("instance_id = ?", inst.ID).Delete(&InstanceModelFile{}).Error; err != nil {
+		return err
+	}
+	if err := recordInstanceRemoved(tx, inst); err != nil {
 		return err
 	}
 	return tx.Delete(&Instance{}, inst.ID).Error

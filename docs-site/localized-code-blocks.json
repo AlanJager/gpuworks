@@ -488,5 +488,12 @@
     "source_sha256": "2b4cabed9b9f0472760573657d754e4bfb95b8bd581e0412999244c40beda9c8",
     "translation_sha256": "2b54fc45d9d78a3cdbe1e1174ecbeedde8330da72118674f94c1d33f0ee45278",
     "reason": "E2E prerequisite commands; the comments are translated."
+  },
+  {
+    "path": "how-to/batch-api.md",
+    "block_index": 1,
+    "source_sha256": "99c27d4c7c0f7c7f316e94615dd19c248a756fda2cd3f87c48828bbb4ffa1f84",
+    "translation_sha256": "f0fd6c6bfd121918a8813d6f5c64fdaa9479e8d6b3991fbccfc9c66c4a2110d5",
+    "reason": "Shell prompt text is translated; the commands are unchanged."
   }
 ]

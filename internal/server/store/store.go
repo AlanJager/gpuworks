@@ -30,6 +30,8 @@ import (
 type Store struct {
 	db  *gorm.DB
 	Bus *bus.Bus
+	// sharing keeps SharingDeployments' rows between deployment changes.
+	sharing sharingCache
 	// readDB is a second connection pool (same database file) dedicated to
 	// hot, pure-read paths (ListNodes, ListDeployments, ListInstances, the
 	// timeline reads, InstanceByUUID — see reader()): under WAL, readers do

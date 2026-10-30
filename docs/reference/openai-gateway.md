@@ -15,6 +15,7 @@ server 的 `/v1/*` 使用 API key 鉴权。请求体中的 `model` 指定对外�
 | image generation | /v1/images/generations | JSON 或 multipart |
 | video generation | /v1/videos | JSON 或 multipart；可 async |
 | realtime | /v1/realtime | WebSocket |
+| batch（Files 与 Batches） | /v1/files、/v1/batches | JSON；上传文件为 multipart。异步批处理，见[批处理](#批处理files-与-batches) |
 
 每个档位（spec）的 API contract（接口契约）声明该部署可用的操作和 endpoint（接口路径）。两个入口的检查范围不同：
 
@@ -32,6 +33,15 @@ server 的 `/v1/*` 使用 API key 鉴权。请求体中的 `model` 指定对外�
 - 实例休眠、启动中或 rank 非 0 不可服务时，返回 503，并保留重试语义。
 
 部署可以通过管理 API `PUT /api/v1/deployments/{id}/routing` 选择 `least_request`、`prefix_affinity` 或 `failover`。前缀亲和优先读取 `X-GPUWorks-Affinity-Key`，也支持从 chat messages、prompt 或 input 提取稳定 key；该请求头不会转发给引擎。
+
+## 批处理（Files 与 Batches）
+
+网关支持 OpenAI 的 Batch API：用 `POST /v1/files`（`purpose=batch`）上传 JSONL 文件，用 `POST /v1/batches` 创建任务，再用 `GET /v1/batches/{id}` 查询进度，从 `GET /v1/files/{id}/content` 取输出文件和错误文件。已支持的路由有：
+
+- Files：`POST /v1/files`、`GET /v1/files`、`GET /v1/files/{id}`、`GET /v1/files/{id}/content`、`DELETE /v1/files/{id}`。
+- Batches：`POST /v1/batches`、`GET /v1/batches`、`GET /v1/batches/{id}`、`POST /v1/batches/{id}/cancel`。
+
+任务里的 `chat/completions`、`completions`、`embeddings` 请求按 `body.model` 走和普通请求相同的网关路径，计入用量和请求记录，不支持流式。这两组路由和其余 `/v1` 路由一样用 API key 鉴权，错误按 OpenAI 格式返回。步骤和示例见[运行批处理任务](../how-to/batch-api.md)，对象与错误码见 [REST API 全量路由](api.md#batches批处理任务)。
 
 ## 分词（tokenize）
 

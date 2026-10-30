@@ -13,13 +13,12 @@ import (
 // every order given. Orders can be made to fail.
 type fakeWorld struct {
 	schedules []Schedule
-	idle      []IdleDeployment
 	waits     []WaitingWake
-	lastReq   map[uint]time.Time
 
 	sleepErr   error
 	wakeResult WakeResult
 	wakeErr    error
+	scaleErr   error
 	fits       map[uint][]string // WakeWaiting answers these as woken
 	readErr    error
 
@@ -32,7 +31,7 @@ type fakeWorld struct {
 }
 
 func newFakeWorld() *fakeWorld {
-	return &fakeWorld{lastReq: map[uint]time.Time{}, fits: map[uint][]string{}, fired: map[uint]time.Time{}}
+	return &fakeWorld{fits: map[uint][]string{}, fired: map[uint]time.Time{}}
 }
 
 func (w *fakeWorld) Schedules() ([]Schedule, error) {
@@ -47,16 +46,15 @@ func (w *fakeWorld) Schedules() ([]Schedule, error) {
 	}
 	return out, nil
 }
-func (w *fakeWorld) IdleDeployments() ([]IdleDeployment, error) { return w.idle, w.readErr }
-func (w *fakeWorld) WaitingWakes() ([]WaitingWake, error)       { return w.waits, w.readErr }
-func (w *fakeWorld) LastRequestAt(id uint) (time.Time, bool) {
-	at, ok := w.lastReq[id]
-	return at, ok
-}
-func (w *fakeWorld) Sleep(id uint, level int, held bool) error {
+func (w *fakeWorld) WaitingWakes() ([]WaitingWake, error) { return w.waits, w.readErr }
+func (w *fakeWorld) Sleep(id uint, level int, held bool) (int, error) {
 	w.orders = append(w.orders, fmt.Sprintf("sleep %d L%d", id, level))
 	w.held = append(w.held, held)
-	return w.sleepErr
+	if level == LevelAuto {
+		// The platform's choice, as the adapter makes it with room in host memory.
+		level = 1
+	}
+	return level, w.sleepErr
 }
 func (w *fakeWorld) Wake(id uint) (WakeResult, error) {
 	w.orders = append(w.orders, fmt.Sprintf("wake %d", id))
@@ -70,9 +68,13 @@ func (w *fakeWorld) EndWaiting(id uint, instances []string) error {
 	w.ended = append(w.ended, instances)
 	return nil
 }
-func (w *fakeWorld) ScaleReplicas(id uint, n int) error {
-	w.orders = append(w.orders, fmt.Sprintf("replicas %d=%d", id, n))
-	return nil
+func (w *fakeWorld) ScaleReplicas(id uint, role string, n int) error {
+	if role != "" {
+		w.orders = append(w.orders, fmt.Sprintf("replicas %d %s=%d", id, role, n))
+	} else {
+		w.orders = append(w.orders, fmt.Sprintf("replicas %d=%d", id, n))
+	}
+	return w.scaleErr
 }
 func (w *fakeWorld) MarkFired(id uint, at time.Time) error {
 	if at.After(w.fired[id]) {
@@ -241,73 +243,59 @@ func TestAScheduledReplicaCountIsApplied(t *testing.T) {
 	}
 }
 
-// Idle sleep waits a whole idle period from when the server started watching,
-// counts from the last user request, and never sleeps an asleep deployment.
-func TestIdleSleepCountsFromTheLastRequest(t *testing.T) {
+// A PD deployment's replicas order names its role: the count goes to that
+// role, the timeline event carries the role, and a refusal is recorded with
+// the role and its code.
+func TestAScheduledPDRoleCountIsAppliedAndFailuresNameTheRole(t *testing.T) {
 	w := newFakeWorld()
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []IdleDeployment{{ID: 5, AfterSec: 900, Level: 2, Awake: true}}
-	e, c := newEvaluator(w, start)
-	e.Tick()
-	c.t = start.Add(10 * time.Minute)
-	w.lastReq[5] = start.Add(8 * time.Minute)
-	e.Tick()
-	c.t = start.Add(20 * time.Minute)
-	e.Tick()
-	if len(w.orders) != 0 {
-		t.Fatalf("slept before 15 idle minutes: %v", w.orders)
+	start := time.Date(2026, 10, 26, 9, 0, 30, 0, shanghai)
+	fired := start.Add(-time.Hour)
+	w.schedules = []Schedule{
+		{ID: 1, DeploymentID: 7, Action: "replicas", Replicas: 4, Role: "decode", Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: fired},
+		{ID: 2, DeploymentID: 7, Action: "replicas", Replicas: 0, Role: "prefill", Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: fired},
 	}
-	c.t = start.Add(23 * time.Minute)
+	e, _ := newEvaluator(w, start)
 	e.Tick()
-	if !slices.Equal(w.orders, []string{"sleep 5 L2"}) || w.params[0]["trigger"] != TriggerIdle || w.params[0]["idle_sec"] != 900 {
-		t.Fatalf("orders %v params %v", w.orders, w.params)
+	if !slices.Equal(w.orders, []string{"replicas 7 decode=4", "replicas 7 prefill=0"}) || !slices.Equal(w.events, []string{"7 AUTO_SCALE", "7 AUTO_SCALE"}) {
+		t.Fatalf("orders %v events %v", w.orders, w.events)
 	}
-	if !slices.Equal(w.held, []bool{false}) {
-		t.Fatalf("held = %v: an idle sleep must wake on the next request", w.held)
+	if w.params[0]["role"] != "decode" || w.params[0]["replicas"] != 4 || w.params[1]["role"] != "prefill" || w.params[1]["replicas"] != 0 {
+		t.Fatalf("params = %v", w.params)
 	}
-	// Asleep now: nothing more happens.
-	w.idle[0].Awake = false
-	c.t = c.t.Add(time.Hour)
+
+	failing := newFakeWorld()
+	failing.scaleErr = codedError{code: "PD_ROLE_UNITS_EMPTY", msg: "the decode role needs at least one instance"}
+	failing.schedules = []Schedule{{ID: 3, DeploymentID: 7, Action: "replicas", Replicas: 0, Role: "decode", Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: fired}}
+	e, _ = newEvaluator(failing, start)
 	e.Tick()
-	if len(w.orders) != 1 {
-		t.Fatalf("asleep deployment slept again: %v", w.orders)
+	if !slices.Equal(failing.events, []string{"7 SCHEDULE_ACTION_FAILED"}) {
+		t.Fatalf("events = %v", failing.events)
 	}
-	// Woken by hand: a full idle period again before it sleeps.
-	w.idle[0].Awake = true
-	woke := c.t
-	e.Tick()
-	c.t = woke.Add(14 * time.Minute)
-	e.Tick()
-	if len(w.orders) != 1 {
-		t.Fatalf("slept right after a wake: %v", w.orders)
+	p := failing.params[0]
+	if p["role"] != "decode" || p["action"] != "replicas" || p["reason_code"] != "PD_ROLE_UNITS_EMPTY" || p["trigger"] != TriggerSchedule {
+		t.Fatalf("failure params = %v", p)
 	}
-	c.t = woke.Add(15 * time.Minute)
+	// Handled, not retried every tick.
 	e.Tick()
-	if len(w.orders) != 2 {
-		t.Fatalf("did not sleep a full period after the wake: %v", w.orders)
+	if len(failing.orders) != 1 {
+		t.Fatalf("a failed order was retried: %v", failing.orders)
 	}
 }
 
-// A refused idle sleep is recorded and not retried until another idle period
-// passes.
-func TestARefusedIdleSleepWaitsAnotherPeriod(t *testing.T) {
+type codedError struct{ code, msg string }
+
+func (e codedError) Error() string { return e.msg }
+func (e codedError) Code() string  { return e.code }
+
+// A replicas order of a deployment that is not PD names no role.
+func TestAScheduledReplicaCountOfANonPDDeploymentCarriesNoRole(t *testing.T) {
 	w := newFakeWorld()
-	start := time.Date(2026, 10, 26, 10, 0, 0, 0, shanghai)
-	w.idle = []IdleDeployment{{ID: 5, AfterSec: 60, Level: 1, Awake: true}}
-	w.sleepErr = errors.New("boom")
-	e, c := newEvaluator(w, start)
+	start := time.Date(2026, 10, 26, 9, 0, 30, 0, shanghai)
+	w.schedules = []Schedule{{ID: 1, DeploymentID: 7, Action: "replicas", Replicas: 2, Weekdays: AllWeekdays, Minute: 9 * 60, Location: shanghai, LastFiredAt: start.Add(-time.Hour)}}
+	e, _ := newEvaluator(w, start)
 	e.Tick()
-	c.t = start.Add(61 * time.Second)
-	e.Tick()
-	c.t = start.Add(90 * time.Second)
-	e.Tick()
-	if len(w.orders) != 1 || !slices.Equal(w.events, []string{"5 SCHEDULE_ACTION_FAILED"}) {
-		t.Fatalf("orders %v events %v", w.orders, w.events)
-	}
-	c.t = start.Add(122 * time.Second)
-	e.Tick()
-	if len(w.orders) != 2 {
-		t.Fatalf("not retried after another period: %v", w.orders)
+	if _, has := w.params[0]["role"]; has {
+		t.Fatalf("params = %v", w.params[0])
 	}
 }
 

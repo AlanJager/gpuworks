@@ -11,29 +11,34 @@
     "title": "Scheduling summary",
     "waitingWakes": "Waiting wakes",
     "pending": "Pending deployments",
-    "upcoming": "Scheduled in the next 24 hours"
+    "upcoming": "Scheduled in the next 24 hours",
+    "cardsTitle": "Cards by state",
+    "total": "Total cards",
+    "nodesOnline": "{{online}} of {{count}} nodes online",
+    "models": "Cards by GPU model",
+    "modelLine": "{{model}} ×{{cards}}, {{free}} free",
+    "contentionTitle": "Contention and queues",
+    "heldRequests": "Requests held for a wake now",
+    "yields": "Yields in the last hour"
   },
   "nodes": {
-    "title": "GPUs by node",
-    "search": "Search nodes by name",
     "empty": "No nodes yet.",
-    "emptyFiltered": "No node matches the search.",
-    "total": "{{count}} nodes",
     "online": "Online",
     "offline": "Offline",
     "noGpus": "This node reports no GPUs.",
     "gpuLabel": "GPU {{index}} · {{name}}",
-    "figures": "{{awake}} awake · {{sleeping}} sleeping · {{free}} free of {{total}}",
-    "barAria": "{{node}} GPU {{index}}: {{awake}} awake, {{sleeping}} sleeping residue, {{free}} free of {{total}}",
+    "figures": "{{awake}} serving · {{sleeping}} asleep · {{free}} free of {{total}}",
+    "barAria": "{{node}} GPU {{index}}: {{awake}} serving, {{sleeping}} asleep, {{free}} free of {{total}}",
     "legend": {
       "title": "Legend",
-      "awake": "Awake",
-      "sleeping": "Sleeping residue",
+      "awake": "Serving",
+      "sleeping": "Asleep",
       "free": "Free"
     },
     "occupant": {
-      "awake": "awake · {{claim}}",
-      "asleep": "asleep L{{level}} · residue {{residue}}"
+      "awake": "serving · {{claim}}",
+      "asleep": "asleep L{{level}} · residue {{residue}}",
+      "level": " ({{level}})"
     },
     "heldOutside": "Held by a process outside the platform",
     "heldOutsideHint": "Part of this card's memory is used by a process gpuworks does not manage. Sleeping or stopping deployments cannot free it."
@@ -71,7 +76,8 @@
     "action": {
       "sleep": "Sleep (L{{level}})",
       "wake": "Wake",
-      "replicas": "Set replicas to {{count}}"
+      "replicas": "Set replicas to {{count}}",
+      "roleReplicas": "Set {{role}} replicas to {{count}}"
     }
   },
   "history": {
@@ -139,5 +145,140 @@
       "SLEEP_ORDERED": "Sleep ordered",
       "WAKE_ORDERED": "Wake ordered"
     }
+  },
+  "timeline": {
+    "title": "Residency timeline",
+    "window": "Time window",
+    "hours": "{{hours}} h",
+    "legend": "State legend",
+    "state": {
+      "awake": "Serving",
+      "asleep": "Asleep",
+      "asleepLevel": "Asleep L{{level}}",
+      "switching": "Switching",
+      "starting": "Starting"
+    },
+    "nodeAria": "Residency timeline of {{node}}",
+    "gpuAria": "Residency timeline of GPU {{index}} on {{node}}",
+    "gpuPlain": "GPU {{index}}",
+    "laneAria": "When {{deployment}} held this card",
+    "segmentText": "{{deployment}} · {{state}} · {{from}} to {{to}}",
+    "truncated": "Only the latest segments are shown",
+    "noneOnCard": "No instance held this card in this window.",
+    "noNodes": "There are no nodes on this page.",
+    "noCards": "These nodes have no schedulable GPUs.",
+    "noneInWindow": "No instance held these cards in the last {{hours}} hours.",
+    "loading": "Loading the residency timeline…",
+    "loadFailed": "Failed to load the residency timeline",
+    "refreshFailed": "Failed to refresh the residency timeline: {{detail}}",
+    "sharingTitle": "Deployments sharing cards",
+    "sharingEmpty": "No deployment that shares cards (any yield policy but never) held cards in this window.",
+    "columns": {
+      "deployment": "Deployment",
+      "level": "Yield policy",
+      "awake": "Serving time",
+      "switches": "Switches",
+      "yielded": "Yielded",
+      "yieldedTo": "Yielded to",
+      "held": "Held requests",
+      "waitP50": "Wait p50",
+      "waitP95": "Wait p95"
+    },
+    "awakeShare": "{{span}} ({{share}}%)",
+    "duration": {
+      "seconds": "{{seconds}} s",
+      "minutes": "{{minutes}} min",
+      "hours": "{{hours}} h {{minutes}} min"
+    },
+    "wait": {
+      "ms": "{{value}} ms",
+      "seconds": "{{value}} s",
+      "minutes": "{{value}} min"
+    }
+  },
+  "states": {
+    "awake": "Serving",
+    "asleep": "Asleep",
+    "free": "Free",
+    "held": "Held outside the platform",
+    "unhealthy": "Faulty",
+    "offline": "Node offline"
+  },
+  "heatmap": {
+    "title": "GPU heatmap",
+    "aria": "GPU cards by node",
+    "help": "Each cell is a card. Use Left and Right to move between cards, Up and Down between nodes, Page Up and Page Down ten nodes, Enter to open the node.",
+    "noLabel": "No label",
+    "sectionCount": "{{cards}} cards, {{free}} free",
+    "openNode": "Open {{node}}",
+    "shown": "{{nodes}} nodes · {{cards}} cards shown",
+    "highlighted": "{{cards}} cards occupied by matching deployments",
+    "noDeployment": "no deployment matches the search",
+    "emptyFiltered": "No card matches the filters.",
+    "cell": "{{node}} GPU {{index}}, {{model}} {{memory}}: {{state}}",
+    "detail": {
+      "claimed": "{{pct}}% claimed by serving deployments",
+      "residue": "{{pct}}% kept by sleepers",
+      "held": "A process outside the platform uses it",
+      "switching": "changing state",
+      "holders": "Held by {{list}}"
+    },
+    "holder": "{{name}} ({{level}}, {{state}})",
+    "holderState": {
+      "awake": "serving",
+      "asleep": "asleep"
+    },
+    "tipTitle": "{{node}} · GPU {{index}}",
+    "tipModel": "{{model}} · {{memory}}",
+    "tipShares": "{{awake}}% serving · {{sleeping}}% asleep · {{free}}% free",
+    "legendShade": "Serving, deeper = more claimed",
+    "legendSwitching": "Changing state",
+    "legendHit": "Held by the searched deployment"
+  },
+  "filters": {
+    "title": "Filters and view",
+    "models": "GPU model",
+    "modelsPlaceholder": "All GPU models",
+    "label": "Node label",
+    "labelPlaceholder": "Any node label",
+    "noLabels": "No node has labels",
+    "state": "Node state",
+    "statePlaceholder": "Any node state",
+    "stateOptions": {
+      "free": "Has free cards",
+      "sleepers": "Has sleepers",
+      "held": "Has cards held outside",
+      "offline": "Offline"
+    },
+    "search": "Find a deployment",
+    "searchPlaceholder": "Highlight the cards a deployment occupies",
+    "groupBy": "Group by",
+    "group": {
+      "node": "Group by node",
+      "model": "Group by GPU model",
+      "label": "Group by label {{key}}"
+    },
+    "sortBy": "Sort by",
+    "sort": {
+      "name": "Sort by name",
+      "free": "Sort by free capacity",
+      "contention": "Sort by contention"
+    },
+    "reset": "Clear filters and view"
+  },
+  "drawer": {
+    "aria": "Details of {{node}}",
+    "loading": "Loading the node…",
+    "loadFailed": "Could not load the node"
+  },
+  "sharing": {
+    "title": "Deployments sharing cards",
+    "loading": "Loading the stats of the sharing deployments…",
+    "loadFailed": "Could not load the stats of the sharing deployments",
+    "refreshFailed": "Could not refresh the stats of the sharing deployments: {{detail}}"
+  },
+  "queues": {
+    "loading": "Loading what waits and what is scheduled…",
+    "loadFailed": "Could not load what waits and what is scheduled"
   }
 }

@@ -33,6 +33,7 @@ export function segmentLabel(kind: SegmentKind, pd: boolean, t: TFunction): stri
 export function callerName(r: MonitorRequest, t: TFunction): string {
   if (r.api_key_name) return r.api_key_name;
   if (r.source === "playground") return t("requests.playground");
+  if (r.source === "batch" && !r.api_key_id) return t("requests.batch");
   return r.api_key_id ? t("requests.deletedKey", { id: r.api_key_id }) : t("requests.noKey");
 }
 

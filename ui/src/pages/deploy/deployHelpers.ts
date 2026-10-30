@@ -15,6 +15,7 @@ import {
 } from "../../components/partitionCapabilities.ts";
 import { visibleParamSpecs } from "./deployParamApplicability";
 import { buildPdPlacement, pdActive, unitsPlacementAuto } from "./deployPd";
+import { paramsOfValue } from "../yieldPolicy/model";
 
 export { pdActive, unitsPlacementAuto } from "./deployPd";
 
@@ -227,11 +228,11 @@ export function buildPayload(
   if (v.image) payload.image = v.image;
   if (v.extra_args) payload.extra_args = v.extra_args;
   if (v.sleepable) payload.sleepable = true;
-  // Only a sleepable single-node deployment can leave the resident level; the
-  // server refuses the rest, and resident is what an absent level means.
-  const level = String(v.service_level ?? "");
-  if (level && level !== "resident" && v.sleepable && !pdActive(v) && Number(v.nnodes || 1) <= 1)
-    payload.service_level = level;
+  // Only a sleepable single-node deployment can leave never; the server
+  // refuses the rest, and never is what an absent policy means.
+  const yieldPolicy = paramsOfValue(v.yield_policy);
+  if (yieldPolicy && yieldPolicy.policy !== "never" && v.sleepable && !pdActive(v) && Number(v.nnodes || 1) <= 1)
+    payload.yield_policy = yieldPolicy;
   if (
     v.vram_limit_gib != null &&
     v.vram_limit_gib !== "" &&

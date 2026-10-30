@@ -89,6 +89,9 @@ type responseCounters struct {
 	// fallback holds the fallback histograms (accounting_fallback.go) by
 	// gateway metric name, created on a deployment's first observation.
 	fallback map[string]*histogram
+	// holdWait is how long the requests held for a wake waited
+	// (accounting_hold.go).
+	holdWait histogram
 }
 
 func (r *responseCounters) record(duration time.Duration, stats responseStats, fallbacks []inferencemetrics.GatewayFallback) {
@@ -128,6 +131,7 @@ func (r *responseCounters) samples(dep string, tms int64) []tsdb.Sample {
 			tsdb.Sample{Metric: metricUsageMissing, Labels: labels, Value: float64(r.usageMissing), TimeMS: tms},
 		)
 	}
+	out = append(out, r.holdWaitSamples(labels, tms)...)
 	return append(out, r.fallbackSamples(labels, tms)...)
 }
 

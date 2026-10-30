@@ -375,6 +375,7 @@
       "default": "Preparing"
     },
     "event": {
+      "INSTANCE_REMOVED": "Instance removed (its cards are free)",
       "INSTANCE_CREATED": "Instance created ({{state}})",
       "INSTANCE_STATE_CHANGED": "State changed to {{state}}",
       "INSTANCE_STATUS_UPDATED": "State reported as {{state}}",
@@ -399,7 +400,7 @@
       "STORAGE_RECOVERED": "Storage {{storage}} is available again on {{node}}",
       "AUTO_SLEEP": "Put to sleep (L{{level}}) {{cause}}",
       "AUTO_WAKE": "Woke instance {{instances}} {{cause}}",
-      "AUTO_SCALE": "Replicas set to {{replicas}} {{cause}}",
+      "AUTO_SCALE": "Replicas set to {{replicas}}{{roleNote}} {{cause}}",
       "WAKE_WAITING": "Wake of instance {{instances}} waits for room{{yielded}}",
       "WAKE_WAIT_TIMEOUT": "Stopped waiting for room to wake instance {{instances}} after {{waited}}",
       "SCHEDULE_ACTION_FAILED": "Scheduled {{action}} failed: {{reason}}",
@@ -734,7 +735,7 @@
     },
     "cause": {
       "schedule": "by its schedule",
-      "idle": "after {{idle}} without requests",
+      "idle": "after {{idle}} without requests (auto sleep when not preempted)",
       "wake_waiting": "once its GPUs had room",
       "operator": "as ordered",
       "request": "because a request arrived",
@@ -742,9 +743,9 @@
     },
     "yieldedNote": ", after putting {{names}} to sleep",
     "preempt": {
-      "idle": "to give its GPUs to {{who}} after sitting idle past its hold time",
-      "rank": "to give its GPUs to {{who}}, which has a higher service level",
-      "turn": "to give its GPUs to {{who}}, whose turn it is in the time share",
+      "idle": "to give its GPUs to {{who}} under its yield policy, after sitting idle for the idle time",
+      "rank": "to give its GPUs to {{who}}, which ranks higher, under its yield policy",
+      "turn": "to give its GPUs to {{who}}, whose turn it is in the time slice",
       "other": "to give its GPUs to {{who}}",
       "who": "deployment #{{id}}",
       "someone": "another deployment",
@@ -770,7 +771,7 @@
       "deleteConfirm": "Delete this scheduled order?",
       "deleted": "Scheduled order deleted",
       "empty": "No scheduled orders.",
-      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node ones (not PD).",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node or PD ones.",
       "loadFailed": "Failed to load the schedule: {{detail}}",
       "saveFailed": "Failed to save the order: {{detail}}",
       "deleteFailed": "Failed to delete the order: {{detail}}",
@@ -790,7 +791,8 @@
       "actionText": {
         "sleep": "Sleep (L{{level}})",
         "wake": "Wake",
-        "replicas": "Set replicas to {{count}}"
+        "replicas": "Set replicas to {{count}}",
+        "roleReplicas": "Set {{role}} replicas to {{count}}"
       },
       "actionName": {
         "sleep": "Sleep",
@@ -804,12 +806,14 @@
         "timezone": "Time zone",
         "sleep_level": "Sleep level",
         "replicas": "Replicas",
+        "role": "Role",
         "enabled": "Enabled"
       },
+      "roleHint": "A PD deployment scales each role with its own count; the order sets the count of the role you pick.",
       "errors": {
         "weekdays": "Pick at least one day.",
         "time": "Enter the time as HH:MM.",
-        "replicas": "Replicas must be between 1 and {{maximum}}."
+        "replicas": "Replicas must be between {{minimum}} and {{maximum}}."
       },
       "weekday": {
         "0": "Sun",
@@ -820,17 +824,6 @@
         "5": "Fri",
         "6": "Sat"
       }
-    },
-    "idle": {
-      "title": "Idle sleep",
-      "hint": "Put the deployment to sleep after it has had no user request for a while. Health-check probes do not count as requests.",
-      "notSleepable": "Idle sleep needs a deployment created with sleep mode enabled.",
-      "enable": "Enable idle sleep",
-      "after": "After",
-      "minutes": "Idle minutes",
-      "level": "Sleep level",
-      "saved": "Idle sleep saved",
-      "saveFailed": "Failed to save idle sleep: {{detail}}"
     }
   },
   "schedulingPolicy": {
@@ -838,36 +831,86 @@
     "edit": "Edit",
     "close": "Done",
     "helpLabel": "About the scheduling policy",
-    "help": "See the docs \"Use the Scheduling Center\" (schedule, idle sleep) and \"Reschedule on Node Loss\" for details.",
+    "help": "See the docs \"Use the Scheduling Center\" (schedule, yield policy) and \"Reschedule on Node Loss\" for details.",
     "item": "{{label}}: {{value}}",
     "separator": " · ",
     "off": "Off",
     "none": "None",
     "loading": "Loading…",
     "loadFailed": "Failed to load",
-    "idleOn": "{{minutes}} min / L{{level}}",
     "scheduleCount_one": "{{count}} order",
     "scheduleCount_other": "{{count}} orders",
     "scheduleNext": ", next {{time}}: {{order}}",
     "scheduleAllOff": ", all disabled"
   },
-  "serviceLevel": {
-    "title": "Service level",
-    "hint": "When several deployments share GPUs, the service level decides who gives way. A request for a non-resident deployment the platform put to sleep is held while it wakes, instead of failing with 503.",
-    "notEligible": "Only a sleepable single-node (non-PD) deployment can change its service level.",
-    "saved": "Service level saved",
-    "saveFailed": "Failed to save the service level: {{detail}}",
-    "name": {
-      "resident": "Resident",
-      "online": "Online",
-      "shared": "Shared",
-      "offline": "Offline"
+  "yieldPolicy": {
+    "title": "Yield policy",
+    "summaryLabel": "Yield policy",
+    "hint": "When several sleepable deployments share GPUs, the yield policy decides who gives way to whom. A request for a deployment the platform put to sleep is held while it wakes, instead of failing with 503.",
+    "notSleepable": "Sleep mode is not enabled for this deployment: it can only never yield automatically.",
+    "singleNodeOnly": "A multi-node or PD deployment can only never yield automatically.",
+    "saved": "Yield policy saved",
+    "saveFailed": "Failed to save the yield policy: {{detail}}",
+    "idleNeighbours": "It shares GPUs with {{names}}, and all of them yield when idle: while both are busy neither gives way, and the other's requests are held until they time out. To take turns, switch to yield on a turn.",
+    "nameSeparator": ", ",
+    "policyLabel": "Yield policy",
+    "policy": {
+      "name": {
+        "never": "Never yield automatically",
+        "idle": "Yield when idle",
+        "timeslice": "Yield on a turn",
+        "anytime": "Yield anytime"
+      },
+      "description": {
+        "never": "Is never pushed out automatically; its GPUs free up only after a manual or scheduled sleep. For always-on services (default).",
+        "idle": "Gives its GPUs up only when another deployment waits and it has been idle for the idle time; on a request it can take them back from yield-on-a-turn and yield-anytime deployments. For online services.",
+        "timeslice": "Gives its GPUs up once idle for the idle time; when sharing with other yield-on-a-turn deployments, also once it has served for the longest serving time (even with requests running); gives way at once to a higher-ranked deployment. For several models taking turns on the same GPUs.",
+        "anytime": "Gives way at once to a higher-ranked deployment, busy or not; resumes by itself when the GPUs are free again. For batch and offline work."
+      }
     },
-    "description": {
-      "resident": "Never gives its GPUs to another deployment (default).",
-      "online": "Gives its GPUs up only after 5 minutes without requests; takes them back from shared and offline deployments when a request comes. Two online deployments cannot share GPUs.",
-      "shared": "Takes turns with other shared deployments on the same GPUs (at least 2 minutes each); gives way to online at once, letting requests in flight finish for up to 30 s.",
-      "offline": "Gives its GPUs to everyone else at once and cuts off requests in flight (clients see finish_reason \"abort\"); resumes when the GPUs are free again. For batch work."
+    "field": {
+      "policy": "Yield policy",
+      "idle_sec": "Idle time",
+      "max_serve_sec": "Longest serving time",
+      "unfinished": "When yielding, requests not yet finished",
+      "unfinished_wait_sec": "Wait at most",
+      "sleep_level": "Sleep level",
+      "hold_max_sec": "Longest request hold"
+    },
+    "help": {
+      "idle_sec": "Yields after this long without a user request (health checks do not count) while another deployment waits for the GPUs.",
+      "max_serve_sec": "When sharing GPUs with other yield-on-a-turn deployments, each turn serves at most this long before giving way.",
+      "hold_max_sec": "While the deployment is asleep or has yielded, a request is held at most this long waiting for the wake, then fails."
+    },
+    "sleepLevel": {
+      "auto": "Automatic (L1 first, L2 when host memory cannot hold the weights)",
+      "l1": "L1 · memory (fast)",
+      "l2": "L2 · deep"
+    },
+    "unfinished": {
+      "abort": "Cut off at once",
+      "wait": "Wait for them to finish"
+    },
+    "unit": "s",
+    "range": "Range {{minimum}} to {{maximum}} s",
+    "modified": "Modified",
+    "restoreDefaults": "Restore defaults",
+    "dictionary": {
+      "loading": "Loading the yield policy options",
+      "failed": "Failed to load the yield policy options: {{detail}}",
+      "retry": "Retry"
+    },
+    "error": {
+      "invalid_value": "The value of \"{{field}}\" is not valid.",
+      "out_of_range": "\"{{field}}\" must be between {{minimum}} and {{maximum}} seconds.",
+      "required": "\"{{field}}\" cannot be empty."
+    },
+    "summary": {
+      "line": "{{policy}} · {{digest}}",
+      "idle": "idle {{value}}",
+      "idleYield": "yields after {{value}} idle",
+      "turn": "up to {{value}} per turn",
+      "separator": " / "
     }
   },
   "nodeReplacement": {

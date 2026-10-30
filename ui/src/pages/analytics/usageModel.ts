@@ -43,6 +43,8 @@ export interface KeyInfo {
   deleted: boolean;
   /** A Playground request: no key, told apart by user. */
   playground: boolean;
+  /** A batch created in the console: no key, told apart by user. */
+  batch?: boolean;
   userName: string;
 }
 
@@ -70,10 +72,11 @@ export interface UsageNode {
   children?: UsageNode[];
 }
 
-/** keyIdentity says which requests are "one key": the key, or for keyless Playground requests the user. */
+/** keyIdentity says which requests are "one key": the key, or for keyless Playground or console batch requests the user. */
 export function keyIdentity(r: UsageRow): string {
   if (r.api_key_id) return `k${r.api_key_id}`;
   if (r.source === "playground") return `pg${r.user_id}`;
+  if (r.source === "batch") return `b${r.user_id}`;
   return "nokey";
 }
 
@@ -85,6 +88,7 @@ export function keyInfoOf(r: UsageRow): KeyInfo {
     revoked: r.api_key_revoked,
     deleted: r.api_key_deleted,
     playground: !r.api_key_id && r.source === "playground",
+    batch: !r.api_key_id && r.source === "batch",
     userName: r.user_name,
   };
 }

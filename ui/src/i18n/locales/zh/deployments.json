@@ -375,6 +375,7 @@
       "default": "准备中"
     },
     "event": {
+      "INSTANCE_REMOVED": "实例已移除（释放所占的卡）",
       "INSTANCE_CREATED": "实例已创建（{{state}}）",
       "INSTANCE_STATE_CHANGED": "状态已变更为{{state}}",
       "INSTANCE_STATUS_UPDATED": "状态上报为{{state}}",
@@ -399,7 +400,7 @@
       "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
       "AUTO_SLEEP": "已休眠（L{{level}}）{{cause}}",
       "AUTO_WAKE": "已唤醒实例 {{instances}}{{cause}}",
-      "AUTO_SCALE": "副本数已设为 {{replicas}}{{cause}}",
+      "AUTO_SCALE": "副本数已设为 {{replicas}}{{roleNote}}{{cause}}",
       "WAKE_WAITING": "实例 {{instances}} 等位唤醒中{{yielded}}",
       "WAKE_WAIT_TIMEOUT": "等位 {{waited}} 仍未腾出空间，已放弃唤醒实例 {{instances}}",
       "SCHEDULE_ACTION_FAILED": "定时{{action}}失败：{{reason}}",
@@ -734,7 +735,7 @@
     },
     "cause": {
       "schedule": "，由定时计划触发",
-      "idle": "，因 {{idle}}内没有请求",
+      "idle": "，无抢占时自动休眠（{{idle}}内没有请求）",
       "wake_waiting": "，GPU 已腾出空间",
       "operator": "，按操作员指令",
       "request": "，因请求到达",
@@ -742,9 +743,9 @@
     },
     "yieldedNote": "，已先让 {{names}} 休眠",
     "preempt": {
-      "idle": "，空闲超过让卡时间，为 {{who}} 让出 GPU",
-      "rank": "，{{who}} 的服务等级更高，为其让出 GPU",
-      "turn": "，分时轮到 {{who}}，为其让出 GPU",
+      "idle": "，已闲置达到闲置时间，按出让策略为 {{who}} 让出 GPU",
+      "rank": "，按出让策略，为排位更高的 {{who}} 让出 GPU",
+      "turn": "，时间片轮到 {{who}}，为其让出 GPU",
       "other": "，为 {{who}} 让出 GPU",
       "who": "部署 #{{id}}",
       "someone": "其他部署",
@@ -770,7 +771,7 @@
       "deleteConfirm": "删除这条定时指令？",
       "deleted": "已删除定时指令",
       "empty": "暂无定时指令。",
-      "noActions": "该部署无法按计划休眠或调整副本数：休眠和唤醒需要可休眠的部署，副本数只能为单机部署，或自动放置的多机部署（非 PD）定时调整。",
+      "noActions": "该部署无法按计划休眠或调整副本数：休眠和唤醒需要可休眠的部署，副本数只能为单机部署，或自动放置的多机、PD 部署定时调整。",
       "loadFailed": "加载定时计划失败：{{detail}}",
       "saveFailed": "保存指令失败：{{detail}}",
       "deleteFailed": "删除指令失败：{{detail}}",
@@ -790,7 +791,8 @@
       "actionText": {
         "sleep": "休眠（L{{level}}）",
         "wake": "唤醒",
-        "replicas": "副本数设为 {{count}}"
+        "replicas": "副本数设为 {{count}}",
+        "roleReplicas": "{{role}}副本数设为 {{count}}"
       },
       "actionName": {
         "sleep": "休眠",
@@ -804,12 +806,14 @@
         "timezone": "时区",
         "sleep_level": "休眠级别",
         "replicas": "副本数",
+        "role": "角色",
         "enabled": "启用"
       },
+      "roleHint": "PD 部署的每个角色各有自己的副本数；这条指令设置所选角色的副本数。",
       "errors": {
         "weekdays": "请至少选择一天。",
         "time": "时间请按 HH:MM 填写。",
-        "replicas": "副本数需在 1 到 {{maximum}} 之间。"
+        "replicas": "副本数需在 {{minimum}} 到 {{maximum}} 之间。"
       },
       "weekday": {
         "0": "周日",
@@ -820,17 +824,6 @@
         "5": "周五",
         "6": "周六"
       }
-    },
-    "idle": {
-      "title": "闲置休眠",
-      "hint": "部署一段时间没有用户请求后自动休眠。健康检查探测不算请求。",
-      "notSleepable": "闲置休眠需要以启用休眠模式创建的部署。",
-      "enable": "启用闲置休眠",
-      "after": "闲置",
-      "minutes": "闲置分钟数",
-      "level": "休眠级别",
-      "saved": "已保存闲置休眠",
-      "saveFailed": "保存闲置休眠失败：{{detail}}"
     }
   },
   "schedulingPolicy": {
@@ -838,36 +831,86 @@
     "edit": "编辑",
     "close": "完成",
     "helpLabel": "调度策略说明",
-    "help": "详细说明见文档《使用调度中心》（定时计划、闲置休眠）和《节点失联重调度》。",
+    "help": "详细说明见文档《使用调度中心》（定时计划、出让策略）和《节点失联重调度》。",
     "item": "{{label}}：{{value}}",
     "separator": " · ",
     "off": "关闭",
     "none": "无",
     "loading": "加载中…",
     "loadFailed": "加载失败",
-    "idleOn": "{{minutes}} 分钟 / L{{level}}",
     "scheduleCount_one": "{{count}} 条",
     "scheduleCount_other": "{{count}} 条",
     "scheduleNext": "，下次 {{time}} {{order}}",
     "scheduleAllOff": "，均未启用"
   },
-  "serviceLevel": {
-    "title": "服务等级",
-    "hint": "同一批 GPU 上有多个部署时，服务等级决定谁让谁。非常驻的部署被平台休眠后，请求到达会被挂起等待唤醒，而不是直接返回 503。",
-    "notEligible": "只有可休眠的单机（非 PD）部署能改服务等级。",
-    "saved": "已保存服务等级",
-    "saveFailed": "保存服务等级失败：{{detail}}",
-    "name": {
-      "resident": "常驻",
-      "online": "在线",
-      "shared": "分时",
-      "offline": "离线"
+  "yieldPolicy": {
+    "title": "出让策略",
+    "summaryLabel": "出让策略",
+    "hint": "同一批 GPU 上有多个可休眠部署时，出让策略决定谁让给谁；被平台休眠的部署收到请求会挂起等待唤醒，而不是直接返回 503。",
+    "notSleepable": "该部署没有启用休眠模式，只能不自动出让。",
+    "singleNodeOnly": "多机与 PD 部署只能不自动出让。",
+    "saved": "已保存出让策略",
+    "saveFailed": "保存出让策略失败：{{detail}}",
+    "idleNeighbours": "与 {{names}} 共用 GPU，且都是闲置自动出让：两者都忙时互不让出，对方的请求会挂起直到超时。需要轮流使用请改为按时自动出让。",
+    "nameSeparator": "、",
+    "policyLabel": "出让策略",
+    "policy": {
+      "name": {
+        "never": "不自动出让",
+        "idle": "闲置自动出让",
+        "timeslice": "按时自动出让",
+        "anytime": "随时出让"
+      },
+      "description": {
+        "never": "不会被自动挤走；手动或定时休眠后 GPU 才会腾出。适合常驻服务（默认）。",
+        "idle": "有其他部署在等 GPU、且自己闲置满闲置时间才让出；有请求时可从按时、随时出让的部署手里收回 GPU。适合在线服务。",
+        "timeslice": "闲置满闲置时间就让出；与其他按时自动出让的部署共用时，服务满最长服务时间也让出（即使还有请求）；更高优先级的部署来时立即让出。适合多个模型分时共用。",
+        "anytime": "更高优先级的部署来时立即让出（忙也让）；GPU 空出后自动恢复。适合批处理、离线任务。"
+      }
     },
-    "description": {
-      "resident": "不把 GPU 让给其他部署（默认）。",
-      "online": "空闲 5 分钟后才让出 GPU；有请求时从分时、离线部署手里收回。两个在线部署不能共用 GPU。",
-      "shared": "与同一批 GPU 上的其他分时部署轮流使用（每轮至少 2 分钟）；在线部署需要时立即让出，进行中的请求最多再等 30 秒。",
-      "offline": "立即把 GPU 让给其他所有部署，并中断进行中的请求（客户端看到 finish_reason 为 abort）；GPU 空出后自动恢复。适合批处理。"
+    "field": {
+      "policy": "出让策略",
+      "idle_sec": "闲置时间",
+      "max_serve_sec": "最长服务时间",
+      "unfinished": "出让时未完成请求的处理策略",
+      "unfinished_wait_sec": "最多等待",
+      "sleep_level": "休眠级别",
+      "hold_max_sec": "请求最长挂起时间"
+    },
+    "help": {
+      "idle_sec": "持续这么久没有用户请求（健康检查不算），且有其他部署在等 GPU 时让出。",
+      "max_serve_sec": "与其他按时自动出让的部署共用 GPU 时，每轮最多服务这么久就让出。",
+      "hold_max_sec": "部署休眠或被让出期间，请求最多被挂起这么久等待唤醒，超时返回错误。"
+    },
+    "sleepLevel": {
+      "auto": "自动（优先 L1，主机内存放不下权重时用 L2）",
+      "l1": "L1 · 内存（快速）",
+      "l2": "L2 · 深度"
+    },
+    "unfinished": {
+      "abort": "立即中断",
+      "wait": "等待完成"
+    },
+    "unit": "秒",
+    "range": "范围 {{minimum}} 到 {{maximum}} 秒",
+    "modified": "已修改",
+    "restoreDefaults": "恢复默认",
+    "dictionary": {
+      "loading": "加载出让策略选项",
+      "failed": "加载出让策略选项失败：{{detail}}",
+      "retry": "重试"
+    },
+    "error": {
+      "invalid_value": "“{{field}}”的取值不合法。",
+      "out_of_range": "“{{field}}”必须在 {{minimum}} 到 {{maximum}} 秒之间。",
+      "required": "“{{field}}”不能为空。"
+    },
+    "summary": {
+      "line": "{{policy}} · {{digest}}",
+      "idle": "闲置 {{value}}",
+      "idleYield": "闲置 {{value}}后让出",
+      "turn": "每轮最长 {{value}}",
+      "separator": " / "
     }
   },
   "nodeReplacement": {

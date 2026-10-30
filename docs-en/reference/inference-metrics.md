@@ -80,6 +80,7 @@ Stored names use `gpuworks_proxy_<short-name>`, with the labels `deployment` and
 | `tpot_ms` | histogram | milliseconds | Gateway-measured TPOT: time from the first to the last generated token in each streaming response, divided by the number of output tokens after the first; used as a fallback |
 | `ttft_ms` | histogram | milliseconds | Time from handing the request to the instance until the first generated token in the streaming response |
 | `usage_missing_total` | counter | requests | Responses received in full but without `usage`; these are the requests omitted from token counts |
+| `wake_hold_wait_ms` | histogram | milliseconds | How long a request the gateway held while its deployment woke waited, from being held until it was served, refused or abandoned by the client; every held request counts once |
 
 ### Reading and Counting Token Usage
 

@@ -17,15 +17,14 @@ import (
 	"gpuworks.ai/gpuworks/internal/testenv/apiwire"
 )
 
-// TestProcessIdleSleepAndAScheduledWakeDriveTheRealEngine proves the
-// scheduling automation across the real process boundary: a deployment with
-// idle sleep on is put to sleep by the server once nobody has used it for
-// the idle period, and a scheduled wake brings it back at its minute, each
-// recorded on the timeline. The engine is the fake engine in a real
+// TestProcessAScheduledWakeDrivesTheRealEngine proves the scheduling
+// automation across the real process boundary: a deployment an operator put
+// to sleep is woken by a scheduled wake at its minute, recorded on the
+// timeline. The engine is the fake engine in a real
 // container, so the levels are the engine's own. Skipped without Docker.
 //
-//	go test -tags=multiproc -run TestProcessIdleSleepAndAScheduledWakeDriveTheRealEngine -timeout 15m ./test/l2/
-func TestProcessIdleSleepAndAScheduledWakeDriveTheRealEngine(t *testing.T) {
+//	go test -tags=multiproc -run TestProcessAScheduledWakeDrivesTheRealEngine -timeout 15m ./test/l2/
+func TestProcessAScheduledWakeDrivesTheRealEngine(t *testing.T) {
 	base, adminToken, seed, modelID := startDockerAutomationRig(t, "automation")
 
 	deployBody, _ := json.Marshal(map[string]any{
@@ -63,22 +62,13 @@ func TestProcessIdleSleepAndAScheduledWakeDriveTheRealEngine(t *testing.T) {
 		}
 	})
 
-	idle, _ := json.Marshal(map[string]any{"after_sec": 60, "level": 1})
-	if resp, data := authedDo(t, http.MethodPut, base, adminToken, fmt.Sprintf("/api/v1/deployments/%d/idle-sleep", created.ID), idle); resp.StatusCode != http.StatusOK {
-		t.Fatalf("set idle sleep status=%d body=%s", resp.StatusCode, data)
+	// An operator's sleep, which only a wake ends: the schedule's.
+	if resp, data := authedDo(t, http.MethodPost, base, adminToken, fmt.Sprintf("/api/v1/deployments/%d/sleep?level=1", created.ID), nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("operator sleep status=%d body=%s", resp.StatusCode, data)
 	}
-	waitSleepLevelWithin(t, base, adminToken, instance.UUID, 1, 3*time.Minute)
+	waitSleepLevelWithin(t, base, adminToken, instance.UUID, 1, time.Minute)
 	if !engineSleeping(t, instance.APIPort) {
-		t.Fatalf("server reports the idle sleep but the engine never slept")
-	}
-	if params := waitEvent(t, base, adminToken, created.ID, "AUTO_SLEEP"); params["trigger"] != "idle" {
-		t.Fatalf("AUTO_SLEEP params = %v, want trigger idle", params)
-	}
-	// Idle sleep stays on; turn it off so the scheduled wake is not slept
-	// again before the test reads it.
-	off, _ := json.Marshal(map[string]any{"after_sec": 0, "level": 1})
-	if resp, data := authedDo(t, http.MethodPut, base, adminToken, fmt.Sprintf("/api/v1/deployments/%d/idle-sleep", created.ID), off); resp.StatusCode != http.StatusOK {
-		t.Fatalf("turn idle sleep off status=%d body=%s", resp.StatusCode, data)
+		t.Fatalf("server reports the sleep but the engine never slept")
 	}
 
 	// A wake every day at the next whole minute, in the server's zone (the

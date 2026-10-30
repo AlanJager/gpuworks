@@ -378,7 +378,8 @@
       "prefill_no_kv_params": "Prefill instance returned no KV handoff",
       "prefill_failed": "Prefill call failed"
     },
-    "deletedName": "{{name}} (deleted)"
+    "deletedName": "{{name}} (deleted)",
+    "batch": "Batch"
   },
   "latency": {
     "title": "End-to-end latency breakdown",
