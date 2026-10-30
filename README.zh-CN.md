@@ -190,7 +190,9 @@ make test       # 静态检查 + Go 单元测试 + 前端测试
 make test-l2    # 多进程测试：真实二进制 + 假 GPU
 ```
 
-见[开发者文档](docs/dev/README.md)和[测试指南](docs/dev/testing.md)，开发规约在 [CLAUDE.md](CLAUDE.md)，领域词汇在 [CONTEXT.md](CONTEXT.md)。
+见[开发者文档](docs/dev/README.md)和[测试指南](docs/dev/testing.md)。缺陷报告、补丁提交和硬件结果入库的流程见
+[CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)，开发规约在 [CLAUDE.md](CLAUDE.md)，领域词汇在 [CONTEXT.md](CONTEXT.md)。
+安全问题请按 [SECURITY.zh-CN.md](SECURITY.zh-CN.md) 私下报告，不要开公开 issue。
 
 ## 请帮助我们一起优化产品
 

@@ -326,6 +326,47 @@ test("a PD deployment sleeps the role its mode runs without, and only that one",
   await waitFor(() => assert.deepEqual(orders, [[1, 1, "wait", "prefill"]]));
 });
 
+// The drawer's own replica pair comes from the server, not from counting the
+// instances client-side: a PD deployment's replicas are its role units, so the
+// denominator is 3 while the stored replicas field is 1. The bug this pins
+// printed a unit-counted numerator over the stored 1 ("Partly asleep · 2/1
+// replicas"), which told the operator the deployment had more sleeping
+// replicas than it had.
+test("a partly asleep PD deployment shows the server's pair, not the stored count", async () => {
+  // The server rewrites a PD deployment's replicas to its role units (the
+  // stored field only configures an ordinary deployment and PD creation forces
+  // it to 1), so the detail response this fixture stands in for carries 3.
+  const pd = sleepable({
+    replicas: 3,
+    ready_replicas: 1,
+    asleep_replicas: 2,
+    state: "running",
+    pd: { mode: "vllm-nixl", fallback: "decode", kv_load_failure: "fail", state: "running", short: false, roles: [
+      { role: "decode", tp: 1, desired: 1, ready: 1, asleep: 0, may_be_empty: false, units: [] },
+      { role: "prefill", tp: 1, desired: 2, ready: 0, asleep: 2, may_be_empty: true, units: [] },
+    ] },
+    // The prefill role's units are the sleepers; decode keeps serving, so the
+    // deployment is still running rather than asleep.
+    instances: [
+      instance("decode-0", { role: "decode", replica: { role: "decode", index: 0 }, ...alone }),
+      instance("prefill-0", { role: "prefill", sleep_level: 1, desired_sleep: 1, asleep: true, replica: { role: "prefill", index: 0 }, ...alone }),
+      instance("prefill-1", { role: "prefill", sleep_level: 1, desired_sleep: 1, asleep: true, replica: { role: "prefill", index: 1 }, ...alone }),
+    ],
+  });
+  stub("deploymentsPage", async () => listPage([pd]));
+  stub("deployment", async () => pd);
+  await openDetail();
+  // The drawer's status row prints the server's pair; the sleep controls print
+  // their own summary from the same replicas, so both read 2 of 3.
+  assert.ok(within(drawer()).getAllByText(i18n.t("sleep.partial", { asleep: 2, total: 3 })).length >= 1);
+  // A denominator smaller than the numerator is the defect: never render the
+  // stored 1 beside a count of 2 sleepers.
+  assert.equal(within(drawer()).queryAllByText(i18n.t("sleep.partial", { asleep: 2, total: 1 })).length, 0);
+  // ready_replicas is filled for a PD deployment now, so the drawer prints the
+  // ready count beside the same denominator instead of hiding the row.
+  assert.ok(within(drawer()).getByText(i18n.t("detail.readyReplicas", { ready: 1, desired: 3 })));
+});
+
 test("a refused sleep order leaves the last sleep failure shown", async () => {
   stub("deploymentsPage", async () => listPage([sleepable()]));
   stub("deployment", async () => sleepable());

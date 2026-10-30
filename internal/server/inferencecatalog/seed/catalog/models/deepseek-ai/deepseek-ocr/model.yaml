@@ -155,7 +155,7 @@ specs:
         revision: 9f30c71f441d010e5429c532364a86705536c53a
     - modelscope:
         repo_id: deepseek-ai/DeepSeek-OCR
-        revision: 9f30c71f441d010e5429c532364a86705536c53a
+        revision: 99e7e2063f5efd86e50e69c41d37f53b1438caad
   weight_bytes: 6672547120
   gpus:
     vendor: ppu

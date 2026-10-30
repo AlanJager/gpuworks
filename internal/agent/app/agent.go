@@ -21,6 +21,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/dockerproxy"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/registryprobe"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agentconf"
@@ -58,6 +59,9 @@ type Config struct {
 	// NetworkInventory replaces the host network inventory the agent reports.
 	// Nil reports the real host; hermetic agents simulate their own addresses.
 	NetworkInventory func() proto.NetInventory
+	// SimulatedHost makes the agent stand in for another machine (the
+	// experience environment's simulated node); nil is a real node.
+	SimulatedHost *hostsim.Host
 	// SelfLog captures the agent's own warn+ slog records so they ship to the
 	// log center under source=agent. Nil disables that follower.
 	SelfLog *selflog.Collector
@@ -131,7 +135,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.cfg.NetworkInterfaceResolver != nil {
 		engineOptions = append(engineOptions, engine.WithNetworkInterfaceResolver(a.cfg.NetworkInterfaceResolver))
 	}
+	if h := a.cfg.SimulatedHost; h != nil {
+		h.Dir = modelsDir
+	}
+	if extract := a.cfg.SimulatedHost.LibvgpuExtractor(); extract != nil {
+		engineOptions = append(engineOptions, engine.WithLibvgpuExtractor(extract))
+	}
 	node := newNodeRuntime(a.log, a.cfg.Driver, modelsDir, a.cfg.ForceDriver, prober, a.cfg.RegistryProbe, engineOptions...)
+	node.host = a.cfg.SimulatedHost
 	node.selfLog = a.cfg.SelfLog
 	node.accelerator.preference = acceleratorPreference
 	node.accelerator.census = host
@@ -169,6 +180,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			NodeToken:   nodeToken,
 			ConnectMode: connectMode(a.cfg.ConnectMode),
 			DataLane:    a.cfg.DataLane,
+			Simulated:   a.cfg.SimulatedHost,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			nodeUUID = uuid
@@ -254,6 +266,7 @@ func (a *Agent) runServerDial(ctx context.Context, serverURL, nodeToken string, 
 			NodeUUID:    *nodeUUID,
 			NodeToken:   nodeToken,
 			ConnectMode: "server_dial",
+			Simulated:   a.cfg.SimulatedHost,
 		}
 		onReg := func(uuid, issuedToken string) error {
 			*nodeUUID = uuid

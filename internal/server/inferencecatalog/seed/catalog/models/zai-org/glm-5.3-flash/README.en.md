@@ -1,6 +1,8 @@
 # GLM-5.3-Flash
 
-Original FP8 weights (~328.3 GB). The NVIDIA profiles follow the [SGLang recipe](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash): H200 uses TileLang DSA with a BF16 KV cache, B200/B300 use TRT-LLM DSA with an FP8 KV cache; both accept 4 or 8 GPUs on one node (TP = EP = GPU count). Upstream publishes 8-GPU commands only; the 4-GPU variant follows its GB300 TP4 recipe. 4 MI355X GPUs use the [vLLM ROCm recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) with the ROCm 10 nightly image.
+Original FP8 weights (~328.3 GB). The NVIDIA profiles follow the [SGLang recipe](https://docs.sglang.io/cookbook/autoregressive/GLM/GLM-5.3-Flash): H200/H20 use TileLang DSA with a BF16 KV cache, B200/B300 use TRT-LLM DSA with an FP8 KV cache; both accept 4 or 8 GPUs on one node (TP = EP = GPU count). Upstream publishes 8-GPU commands only; the 4-GPU variant follows its GB300 TP4 recipe. 4 MI355X GPUs use the [vLLM ROCm recipe](https://recipes.vllm.ai/zai-org/GLM-5.3-Flash) with the ROCm 10 nightly image.
+
+H20 shares the Hopper profile. With the default parameters, the 96 GB variant needs 8 GPUs; 4 GPUs fail memory admission. The 141 GB variant can be evaluated with 4 or 8 GPUs. Admission uses the capacity reported by the node. H20 inference has not been validated on hardware.
 
 The Ascend profile follows the vLLM-Ascend v0.30.0rc2 A3 recipe: one 16-die
 910C node, TP16/EP16, W8A8 weights, INT8 KV cache and 1M context. It pins the

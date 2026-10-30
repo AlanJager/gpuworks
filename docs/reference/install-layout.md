@@ -6,15 +6,17 @@
 
 | 项目 | 默认 |
 |---|---|
-| 安装目录 | `/opt/gpuworks/server` |
+| 安装目录 | `/opt/gpuworks/server`；macOS 上是 `~/gpuworks/server`（执行安装的用户的主目录，`sudo` 下取 `SUDO_USER` 的） |
 | 监听地址 | `<本机默认路由出口 IP>:8800` |
 | 数据目录 | `<dir>/data` |
 | 日志 | `<dir>/logs/gpuworks-server.log`，10 MB × 20 代 |
 | 备份 | `<dir>/backups`，保留最近 3 组 |
-| 服务 | systemd 单元 `gpuworks.service`，以系统用户 `gpuworks` 运行；macOS 上是 launch daemon `/Library/LaunchDaemons/ai.gpuworks.server.plist`，以执行安装的用户运行 |
+| 服务 | systemd 单元 `gpuworks.service`，以系统用户 `gpuworks` 运行；macOS 上默认不注册服务，以 nohup 后台进程运行（`serve --supervise`），加 `--autostart` 才写 launch daemon `/Library/LaunchDaemons/ai.gpuworks.server.plist`，以执行安装的用户运行 |
 | 受信代理 | `127.0.0.1/32,::1/128` |
 
-安装目录是 agent 默认目录 `/opt/gpuworks` 的子目录：同机同时装控制面和 agent 时，两者的二进制、state 和数据互不覆盖。
+安装目录是 agent 默认目录（Linux 上 `/opt/gpuworks`，macOS 上 `~/gpuworks`）的子目录：同机同时装控制面和 agent 时，两者的二进制、state 和数据互不覆盖。
+
+`--dir`、`--data`、`--logs` 以及 `install directory` 提问的回答中，开头的 `~`、`~/x`、`~user/x` 展开为对应用户的主目录。
 
 监听地址取本机默认路由出口 IP、端口 8800；找不到默认路由时取第一个非回环、非虚拟网卡的 IPv4。`--addr` 只写 `:端口` 表示绑定 `0.0.0.0`。
 
@@ -92,13 +94,13 @@ install 时的密码优先级：
 
 | 提问 | 新安装的默认 | 已有安装时的默认 | 命令行已给出时 |
 |---|---|---|---|
-| `install directory` | `/opt/gpuworks/server` | 同左（由 `--dir` 决定目录） | `--dir` 跳过 |
+| `install directory` | `/opt/gpuworks/server`；macOS 上为 `~/gpuworks/server` | 同左（由 `--dir` 决定目录） | `--dir` 跳过 |
 | `listen address` | 探测到的 `<IP>:8800` | `server.yaml` 里控制台监听地址的第一项 | `--addr` 跳过 |
-| `start the service automatically` | `yes` | 原安装是 nohup 时为 `no`，否则 `yes` | `--no-systemd` 跳过 |
+| `start the service automatically` | `yes`；macOS 上为 `no` | 原安装是 nohup 时为 `no`，否则 `yes`；macOS 上原安装有 launch daemon 时为 `yes`，否则 `no` | `--autostart` 或 `--no-systemd` 跳过 |
 | `Admin password`（关闭回显，最后一步） | 随机 | 数据库已有 admin 时不问 | `--password` 或 `GPUWORKS_ADMIN_PASSWORD` 已确认时不问 |
 
 - 监听地址只输入端口号时保留默认里的地址、只替换端口；其他输入必须是 `IP:端口`，否则重新提问。
-- 自启问 `no` 等价于 `--no-systemd`，回答只认 `yes`/`y`/`no`/`n`。
+- 自启问 `yes` 等价于 `--autostart`，`no` 等价于 `--no-systemd`，回答只认 `yes`/`y`/`no`/`n`。
 - `--quiet` 或 stdin 不是终端时不打印 banner、不提问，全部按默认值走；结束时的摘要仍会打印（里面有管理员凭证）。
 
 ## systemd 单元
@@ -109,7 +111,7 @@ install 时的密码优先级：
 - `User=` 为 `--service-user` 指定的服务账户；`Restart=always`、`RestartSec=3`；`TimeoutStopSec=30`，给进行中的模型与镜像同步留出优雅退出时间。
 - `KillMode` 保持默认（control-group）：server 不拥有推理容器，子进程应随它一起退出（agent 的单元则相反）。
 
-只有在有可用 root/`sudo`、`systemctl` 存在且 `/run/systemd/system` 真的存在（容器里装了 systemctl 但没有 systemd 不算）时才写单元；macOS 上写下面的 launchd plist；都不满足时回退到 nohup 后台进程加 PID 文件。
+只有在有可用 root/`sudo`、`systemctl` 存在且 `/run/systemd/system` 真的存在（容器里装了 systemctl 但没有 systemd 不算）时才写单元；macOS 上只在 `--autostart`（或提问回答 `yes`、重装已有 launch daemon 的安装）时写下面的 launchd plist；都不满足时使用 nohup 后台进程加 PID 文件。
 
 ## launchd plist（macOS）
 
@@ -139,7 +141,7 @@ server 因错误退出（如监听地址被占用）时，原因以 `msg="server
 
 ## agent 配置文件
 
-这一节说节点上的 agent，不是控制面。agent 的启动配置只记在一处：state 目录（默认 `/opt/gpuworks`）里的 `gpuworks-agent.conf`，权限 `0600`，里面有节点 token。它只由 `gpuworks-agent configure` 写（安装脚本调用，见 [CLI](cli.md#gpuworks-agent-configure)），每次安装整份重写。
+这一节说节点上的 agent，不是控制面。agent 的启动配置只记在一处：state 目录（默认 `/opt/gpuworks`，macOS 上是 `~/gpuworks`）里的 `gpuworks-agent.conf`，权限 `0600`，里面有节点 token。它只由 `gpuworks-agent configure` 写（安装脚本调用，见 [CLI](cli.md#gpuworks-agent-configure)），每次安装整份重写。
 
 ```
 # gpuworks agent configuration, written by `gpuworks-agent configure`.

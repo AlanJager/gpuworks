@@ -18,7 +18,7 @@ await i18n.use(initReactI18next).init({
 	resources: { zh: { nodes: { upgrade: { action: "升级 Agent", waitingReconnect: "等待重连" } } } },
 });
 
-const { act, cleanup, fireEvent, render, screen } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { evaluateUpgrade, useAgentUpgrades, UPGRADE_TIMEOUT_MS } = await import("../src/agentUpgrade.ts");
 const { default: AgentUpgradeButton } = await import("../src/components/AgentUpgradeButton.tsx");
 type NodeT = import("../src/api.ts").Node;
@@ -169,4 +169,31 @@ test("upgrade button shows the waiting state and is disabled while waiting or of
 
 	rerender(<I18nextProvider i18n={i18n}><AgentUpgradeButton online={false} onUpgrade={() => {}} /></I18nextProvider>);
 	assert.equal((screen.getByRole("button", { name: /升级 Agent/ }) as HTMLButtonElement).disabled, true);
+});
+
+
+test("a server run settles from persisted items after the node leaves the current page without a local timeout", async () => {
+  const { api } = await import("../src/api.ts");
+  const originalItems = api.agentUpgradeItems;
+  const originalNode = api.node;
+  let finish!: () => void;
+  api.agentUpgradeItems = async () => {
+    await new Promise<void>((resolve) => { finish = resolve; });
+    return { items: [{ run_id: 31, node_uuid: "a", name: "host-a", from_version: "v1", target_version: "v2", phase: "succeeded" }], total: 1, page: 1, page_size: 20 };
+  };
+  const observed = node("a", { agent_version: "v2", last_seen_at: iso(T0 + 1000) });
+  api.node = async () => observed;
+  try {
+    const h = harness(async () => ({ status: "upgrading", run_id: 31 }));
+    await act(async () => { await h.api.start(node("a")); });
+    h.clock.now += UPGRADE_TIMEOUT_MS + 1000;
+    h.update({ nodes: [] });
+    assert.equal(h.api.phaseOf("a"), "waiting");
+    assert.deepEqual(h.events.map((event) => event.kind), ["serverTracked"]);
+    await act(async () => finish());
+    await waitFor(() => assert.equal(h.api.phaseOf("a"), undefined));
+    const settled = h.events.find((event) => event.kind === "serverSettled");
+    assert.ok(settled && settled.node?.agent_version === "v2");
+    assert.equal(h.events.some((event) => event.kind === "timeout"), false);
+  } finally { api.agentUpgradeItems = originalItems; api.node = originalNode; }
 });

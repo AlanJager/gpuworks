@@ -86,6 +86,7 @@
 - `distribution`：发布通道客户端（ADR 0040）：签名信封与索引 schema、同时请求所有发布源取第一个验签通过的索引、文件按 sha256 校验并换源续传；发布方通知 `notices.json` 的 schema、校验、本地匹配与拉取（`notices.go`，ADR 0054）；默认源与信任公钥是包内常量。只依赖标准库（`check-architecture` 守护），selfinstall 与 api 共用。
 - `usagereport`：用户体验改进计划（ADR 0054，字段见 `docs/reference/usage-report.md`）：叶子包，日报结构与裁剪、进程内计数器（API 路由/错误码/panic、登录、agent 连接问题，由 `api.countUsage` 中间件与 hub 写入）、SLS WebTracking 与 Cloudflare 收集端的发送、每日发送时刻，以及检查更新附带的装机规模 `FleetReport`；库侧日汇总是 `store/usage_report.go`，调度与组装在 `app/usage_report.go`，通知铃铛服务在 `app/notices.go`。
 - `bus`：事件发布。**不用 ORM 钩子**，写操作收敛进 `store` 显式方法，事务提交后 publish。
+- `experiencelaunch`：设置页「功能体验模式」开关背后的启动器：在控制台端口 +10 起停独立的 `gpuworks experience` 进程（自己的数据目录与密码），`gpuworks experience` 的命令行契约（子命令与 flag 名）只定义在这里。
 
 ## agent 侧（`internal/agent/`）
 
@@ -109,6 +110,7 @@
 - `modelscan`：叶子包，"已完成的模型目录"校验的唯一产地（`ValidateModelDir`：可读、有非空文件、无未完成下载，不认任何布局——布局归推理模板所选引擎；完成标记名），以及共享存储的扫描（发现期按 config.json/Mistral 布局启发式识别、身份判定、未下载完痕迹、跳过原因、分页）。
 - `download` / `modelsync`：可续传多连接限速 HTTP 下载（HF/ModelScope）与节点间认证直传（server 只协调端点与一次性凭据，不中转模型字节）。
 - `netinfo` / `perftest`：网卡清单（sysfs，只读不起进程）、引擎端口范围内的主机 TCP listener（netlink sock_diag，内核只回 LISTEN socket，供调度避让）与 RDMA 带宽测试：`perftest` 运行 `ib_write_bw`，先用宿主机的，没有时解出 `assets` 内置的一份（`locate.go`），按 rail 返回带原因码的结果。
+- `hostsim` / `simulate`：体验环境的模拟节点。`hostsim` 是叶子包，是「代表另一台机器的节点」的唯一策略：替代真实主机上报的主机信息、主机指标与引擎端口占用，拒绝会碰到真实主机的一切（终端、节点目录外的文件、非本节点引擎的端口、存储、镜像与模型传输、升级、评测发压、模型下载）；每个 RPC 与流类型都在 `rules.go` 显式分类，proto 新增一种而未分类时测试失败、运行时默认拒绝。真实节点的 `*hostsim.Host` 为 nil，所有方法原样放行，主线路径各只有一次调用、不感知模拟。`simulate` 提供模拟的卡、运行时（不起容器，向体验环境的引擎宿主认领端口）与该机器的 `hostsim.Host`，只由 `GPUWORKS_SIMULATED_NODE` 且父进程为写入它的体验环境时启用。
 
 ## 共享库（`pkg/` 与 `internal/` 顶层）
 
@@ -139,7 +141,9 @@
 - `platformmetrics`（平台自身序列的词表：GPU、dGPU、节点、网络、KV 缓存盘、评测与网关运营指标的名字、单位、label 与含义，与推理词表 `inferencemetrics` 并列，共同构成 `GET /api/v1/monitor/metrics` 的指标目录；纯叶子，agent 与 server 共用；`TestEveryMetricLiteralIsRegistered` 扫描 agent、server 与 UI 源码，要求出现的每个指标名都已登记）、
 - `agentconf`（agent 启动配置的唯一定义，叶子包：`<state>/gpuworks-agent.conf` 的字段、校验、读写、默认监听地址 `DefaultListen`，以及供所有脚本读取主机上 agent 配置的 shell 函数 `ShellFuncs`，同时识别较早安装的命令行形式；agent 的 `configure`/`run`/`smoke`/`upgrade` 与 server 的安装、预检查、卸载、带外恢复共用，见 [ADR 0051](../adr/0051-agent-launch-configuration-file.md)）、
 - `launchd`（Mac agent 的 launchd 任务唯一产地：label、plist 位置、plist 编解码，以及 `install-service`/`uninstall` 用的安装与移除序列；纯叶子，agent 安装、server 查找已有 agent 共用）、
-- `version`（server 与 agent 共用的构建版本、提交、构建时间与发布渠道）。
+- `version`（server 与 agent 共用的构建版本、提交、构建时间与发布渠道）、
+- `experience`（`gpuworks experience` 进程：一个带 guard 的控制台、模拟节点 fleet、为所有模拟实例应答的引擎宿主、离线 HF 仓库、种子数据与持续的轻量流量；guard 按路由器自己的路由模式判断请求，写默认拒绝，读默认放行但沿用 `aihelper` 不可读的路由一律拒绝）、
+- `parentwatch`（父进程消失即结束子进程的工作，体验环境与其模拟节点共用）。
 
 ## 辅助 cmd
 

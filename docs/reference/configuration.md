@@ -282,7 +282,7 @@ udocker-bundle 对应的变量，只在需要临时覆盖文件中的值时使�
 |---|---|---|---|
 | `GPUWORKS_SERVER` | 无 | server 基址，作为 `--server` 的默认值；覆盖配置文件的 `SERVER`。`server_dial` 的 agent 不用它 | `agent run`、`smoke`、`upgrade` |
 | `GPUWORKS_TOKEN` | 无 | per-node token，作为 `--token` 的默认值；覆盖配置文件的 `TOKEN` | 同上 |
-| `GPUWORKS_STATE_DIR` | `/opt/gpuworks`（目录存在时），macOS 上其次是 `~/.gpuworks`（目录存在时），否则 `<用户配置目录>/gpuworks`，再否则 `./gpuworks-state` | state、日志和模型目录，作为 `--state` 的默认值 | `agent run`、`upgrade`、`uninstall`、`runveil`、`grant-device-access`；`install.sh` |
+| `GPUWORKS_STATE_DIR` | `/opt/gpuworks`（目录存在时），macOS 上其次是 `~/gpuworks`（其中有 `gpuworks-agent.conf` 时）、`~/.gpuworks`（目录存在时），否则 `<用户配置目录>/gpuworks`，再否则 `./gpuworks-state` | state、日志和模型目录，作为 `--state` 的默认值 | `agent run`、`upgrade`、`uninstall`、`runveil`、`grant-device-access`；`install.sh` |
 | `GPUWORKS_RUNTIME_DRIVER` | 空（自动探测：docker > nerdctl > runveil） | 强制运行时：`docker`、`udocker`、`nerdctl` 或 `none`；`udocker` 即 runveil（界面显示名），名称为兼容已有节点保留；未知值会使该节点不启用任何运行时 | `agent run`、`upgrade`；`install.sh` |
 | `GPUWORKS_CONNECT_MODE` | `agent_dial` | `agent_dial`（agent 外连）或 `server_dial`（server 直连 agent 的 `--listen` 端口） | `agent run`、`upgrade`；`install.sh` |
 | `GPUWORKS_SERVER_DIAL_LISTEN` | `0.0.0.0:18800` | `server_dial` 模式 agent 的监听地址（`host:port` 或 `:port`）；只在 `server_dial` 时有意义。已有节点保留各自记录的监听地址，不随默认值改变 | 同上 |
@@ -297,7 +297,7 @@ udocker-bundle 对应的变量，只在需要临时覆盖文件中的值时使�
 | `GPUWORKS_UDOCKER_DISABLE_TAR_CACHE`（布尔） | 关 | 开启后拉取镜像时不再把大层（≥512 MiB）预先展开成 tar 缓存（`<state>/udocker/tarcache`，上限 48 GiB，并为节点保留 20 GiB 空闲），磁盘紧张的节点可用 | runveil 驱动 |
 | `GPUWORKS_UDOCKER_UNPACK_DEBUG`（布尔） | 关 | 开启后记录逐层解包耗时，排查镜像创建慢时用 | runveil 驱动 |
 | `GPUWORKS_PARTITION_ASSETS` | 空 | dGPU 后端运行时资产（NVIDIA 的 `libvgpu.so`、Ascend 的 `libvruntime.so` 等）的额外搜索根目录，优先于默认位置 `<state>/dgpu-runtime`、`<state>/partition-assets` 和 `/opt/gpuworks/dgpu-runtime` | dGPU 注入与资产上报，见[启用和排查 dGPU](../how-to/dgpu.md) |
-| `GPUWORKS_INSTALL_DIR` | `/opt/gpuworks` | agent 二进制的安装目录（`--install-dir` 的默认值） | `install.sh` |
+| `GPUWORKS_INSTALL_DIR` | `/opt/gpuworks`；macOS 上是 `~/gpuworks`（或沿用早先安装的 agent 目录） | agent 二进制的安装目录（`--install-dir` 的默认值） | `install.sh` |
 | `GPUWORKS_NO_SYSTEMD` | `0` | 设为 `1` 强制走 nohup/前台回退，不动 systemd 单元 | `install.sh` |
 
 ### 其他被读取的通用变量

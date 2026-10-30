@@ -73,7 +73,7 @@ specs:
         revision: fada3b2f655b89601929198343c94cd2f64d93cc
     - modelscope:
         repo_id: Qwen/Qwen3Guard-Gen-0.6B
-        revision: fada3b2f655b89601929198343c94cd2f64d93cc
+        revision: 9812ecb552e9f6e857110575e5cdb5738083a3d0
   weight_bytes: 1503300328
   gpus:
     vendor: ppu

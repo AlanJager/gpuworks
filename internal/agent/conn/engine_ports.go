@@ -27,6 +27,9 @@ func (c *Conn) enginePortListeners() []int {
 	if r == nil {
 		return nil
 	}
+	if ports, ok := c.creds.Simulated.EnginePortListeners(*r); ok {
+		return ports
+	}
 	ports, err := netinfo.ListenPorts(*r)
 	if err != nil {
 		c.log.Debug("engine port listeners incomplete", "err", err)

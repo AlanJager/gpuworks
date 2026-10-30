@@ -9,9 +9,9 @@ import (
 )
 
 func TestBatchTablesMigration(t *testing.T) {
-	m := migrationByVersion(t, 185)
+	m := migrationByVersion(t, 187)
 	if m.Name != "batch_tables" {
-		t.Fatalf("migration 185 is %q", m.Name)
+		t.Fatalf("migration 187 is %q", m.Name)
 	}
 	open := func(name string) *gorm.DB {
 		db, err := gorm.Open(sqlite.Open("file:"+name+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -57,7 +57,7 @@ func TestBatchTablesMigration(t *testing.T) {
 		t.Error("batches index idx_batches_created missing")
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 185).Error; err != nil || marker.Name != "batch_tables" {
+	if err := db.First(&marker, 187).Error; err != nil || marker.Name != "batch_tables" {
 		t.Fatalf("marker = %+v err=%v", marker, err)
 	}
 
@@ -69,7 +69,7 @@ func TestBatchTablesMigration(t *testing.T) {
 	if err := migrateDB(db, []migration{m}); err != nil {
 		t.Fatalf("rerun: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 185").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 187").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, []migration{m}); err != nil {

@@ -81,6 +81,12 @@ type ReplicaGPU struct {
 
 	HasTemp bool
 	TempC   float64
+
+	HasPower bool
+	// PowerW is the card's average draw over the window, in watts - the
+	// metric's own unit (gpuworks_gpu_power_watts, internal/platformmetrics'
+	// "watts"), so it needs no scaling here or at the wire boundary.
+	PowerW float64
 }
 
 // deploymentNotFoundError reports a BuildService call for a deployment id
@@ -443,6 +449,20 @@ func buildReplicaRow(store tsdb.Store, inst InstanceRef, nodeNames map[string]st
 		} else if len(temp) > 0 {
 			if combined := MaxBy(temp, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
 				gpu.HasTemp, gpu.TempC = true, MaxOf(Values(combined[0]))
+			}
+		}
+		// Power takes the mean, not temperature's max: watts is an
+		// instantaneous draw that swings with every idle gap and boost burst
+		// inside the diagnosis window, so the window's peak reports the one
+		// busiest instant rather than what the card is drawing. A missing
+		// series (a node whose collector or card does not export the metric)
+		// leaves HasPower false, so the wire carries null rather than a
+		// fabricated 0 W.
+		if power, err := store.QueryRange("gpuworks_gpu_power_watts", gpuMatcher, startMS, endMS, stepMS); err != nil {
+			return row, err
+		} else if len(power) > 0 {
+			if combined := AvgBy(power, ""); len(combined) > 0 && len(combined[0].Points) > 0 {
+				gpu.HasPower, gpu.PowerW = true, Mean(Values(combined[0]))
 			}
 		}
 		row.GPUs = append(row.GPUs, gpu)

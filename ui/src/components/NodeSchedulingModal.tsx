@@ -2,9 +2,11 @@ import { Alert, Button, Modal, Popconfirm, Space, Table, Tag, Tooltip, Typograph
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { api, type Node, type NodeReplica, type NodeReplicas, type NodeScheduling } from "../api";
+import { api, type Node, type NodeReplica, type NodeReplicas, type NodeScheduling, type ScheduleMessage } from "../api";
 import { apiErrorText } from "../apiError";
 import { nodeDisplayName } from "../nodeDisplay";
+import { formatDate } from "../i18n/datetime";
+import { scheduleText } from "../pages/deploy/deploySchedule";
 import { runtimeGpuBlockedReason } from "../nodes/runtimeGpuBlock";
 
 const DRAIN_REFRESH_MS = 5000;
@@ -30,17 +32,19 @@ export function NodeSchedulingTag({ node }: { node: Node }) {
   if (scheduling === "schedulable") return null;
   const tag = <Tag color={schedulingColor[scheduling]}>{t(`scheduling.state.${scheduling}`)}</Tag>;
   const reason = scheduling === "cordoned" ? runtimeGpuBlockedReason(t, node) : "";
+  if (scheduling === "draining") return <Tooltip title={t("scheduling.drainHint")}>{tag}</Tooltip>;
   if (!reason) return tag;
   return <Tooltip title={reason}>{tag}</Tooltip>;
 }
 
 // NodeSchedulingModal cordons, drains or uncordons a node and follows a
 // drain to empty: what still runs there and whether the drain moves it. A
-// replica a drain cannot move (pinned to the node, a multi-node or PD rank)
-// is evicted only on the operator's word.
+// pinned replica stays until the operator changes placement or evicts it.
+// Stopping a drain keeps the node cordoned rather than enabling placement.
 export function NodeSchedulingModal({ node, onClose, onChanged }: { node: Node; onClose: () => void; onChanged: (node: Node) => void }) {
   const { t } = useTranslation("nodes");
   const { t: tCommon } = useTranslation("common");
+  const { t: tDeploy } = useTranslation("deploy");
   const [scheduling, setScheduling] = useState<NodeScheduling>(node.scheduling ?? "schedulable");
   const [replicas, setReplicas] = useState<NodeReplicas | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,10 +107,24 @@ export function NodeSchedulingModal({ node, onClose, onChanged }: { node: Node; 
   };
 
   const items = replicas?.items ?? [];
-  const stuck = items.filter((item) => item.kind !== "pool").length;
+  const stuck = items.filter((item) => item.kind === "pinned").length;
+  const waiting = items.filter((item) => item.state !== "draining" && item.state !== "removing").length;
+  const feedback = (item: NodeReplica) => {
+    const reason = item.drain_reason;
+    const first = reason?.params?.first_reason as ScheduleMessage | undefined;
+    const rendered = reason ? scheduleText(tDeploy, first ? { ...reason, params: { ...reason.params, first: scheduleText(tDeploy, first) } } : reason) : "";
+    if (item.state === "draining" || item.state === "removing") return <Typography.Text type="secondary">{t("scheduling.retiring")}</Typography.Text>;
+    if (item.kind === "pinned") return <Typography.Text type="warning">{t("scheduling.pinnedReason")}</Typography.Text>;
+    return <Space direction="vertical" size={0}>
+      {rendered && <Typography.Text>{t("scheduling.lastFeedback", { reason: rendered })}</Typography.Text>}
+      {item.drain_reason_at && <Typography.Text type="secondary">{formatDate(item.drain_reason_at)}</Typography.Text>}
+      {item.drain_message && <Typography.Text type="danger">{t("scheduling.lastFailedAttempt", { message: item.drain_message })}</Typography.Text>}
+      {!rendered && !item.drain_message && <Typography.Text type="secondary">{t("scheduling.awaitingReason")}</Typography.Text>}
+    </Space>;
+  };
 
   return (
-    <Modal open title={t("scheduling.title", { node: nodeDisplayName(node) })} onCancel={onClose} footer={null} width={760}>
+    <Modal open title={t("scheduling.title", { node: nodeDisplayName(node) })} onCancel={onClose} footer={null} width={960}>
       <Space direction="vertical" style={{ width: "100%" }}>
         <Space wrap>
           <Typography.Text>{t("scheduling.current")}</Typography.Text>
@@ -114,7 +132,7 @@ export function NodeSchedulingModal({ node, onClose, onChanged }: { node: Node; 
         </Space>
         <Typography.Paragraph type="secondary" style={{ margin: 0 }}>{t(`scheduling.help.${scheduling}`)}</Typography.Paragraph>
         <Space wrap>
-          {scheduling !== "cordoned" && <Button loading={busy} onClick={() => void change("cordoned")}>{t("scheduling.action.cordon")}</Button>}
+          {scheduling !== "cordoned" && <Button loading={busy} onClick={() => void change("cordoned")}>{t(scheduling === "draining" ? "scheduling.action.stopDrain" : "scheduling.action.cordon")}</Button>}
           {scheduling !== "draining" && <Button loading={busy} onClick={() => void change("draining")}>{t("scheduling.action.drain")}</Button>}
           {scheduling !== "schedulable" && (
             // The platform cordons a node whose runtime cannot give a
@@ -142,6 +160,9 @@ export function NodeSchedulingModal({ node, onClose, onChanged }: { node: Node; 
           )}
         </Space>
         {error && <Alert type="error" showIcon message={error} />}
+        {scheduling === "draining" && replicas?.drain_offline && <Alert type="warning" showIcon message={t("scheduling.offline")} description={t("scheduling.offlineHint")} />}
+        {scheduling === "draining" && waiting > 0 && <Alert type="warning" showIcon message={t("scheduling.waiting", { count: waiting })} description={t("scheduling.stopHint")} />}
+        {scheduling === "draining" && replicas && !error && items.length === 0 && <Alert type="success" showIcon message={t("scheduling.completed")} />}
         {scheduling === "draining" && stuck > 0 && <Alert type="warning" showIcon message={t("scheduling.stuck", { count: stuck })} />}
         <Typography.Text strong>{t("scheduling.replicas", { count: items.length })}</Typography.Text>
         <Table<NodeReplica>
@@ -152,6 +173,7 @@ export function NodeSchedulingModal({ node, onClose, onChanged }: { node: Node; 
           pagination={false}
           locale={{ emptyText: t("scheduling.empty") }}
           columns={[
+            ...(scheduling === "draining" ? [{ title: t("scheduling.columns.feedback"), key: "drain_feedback", render: (_: unknown, item: NodeReplica) => feedback(item) }] : []),
             { title: t("scheduling.columns.deployment"), dataIndex: "deployment" },
             { title: t("scheduling.columns.instance"), dataIndex: "instance", render: (uuid: string) => <Typography.Text code>{uuid.slice(0, 12)}</Typography.Text> },
             { title: t("scheduling.columns.state"), dataIndex: "state", width: 110 },

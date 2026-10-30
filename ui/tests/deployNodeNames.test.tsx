@@ -25,7 +25,7 @@ const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-l
 const { Form } = await import("antd");
 const NodeSection = (await import("../src/pages/deploy/DeployNodeSection.tsx")).default;
 const { nodeDisplayName, nodeRankAddress } = await import("../src/nodeDisplay.ts");
-const { deploymentNodesLabel } = await import("../src/pages/DeploymentsPage.tsx");
+const { deploymentTargetLabel, runtimeNodesLabel, actualNodesDiffer } = await import("../src/pages/DeploymentsPage.tsx");
 const { api } = await import("../src/api.ts");
 const { installFleet } = await import("./helpers/fakeFleet.ts");
 const apiOriginal = { ...api };
@@ -51,10 +51,36 @@ test("display names prefer the operator's name, and rank addresses prefer the co
   assert.equal(nodeRankAddress({}), "");
 });
 
-test("deployments name every rank's node", () => {
-  assert.equal(deploymentNodesLabel({ node_name: "nebius-h200-1", node_names: ["nebius-h200-1", "nebius-h200-2"] } as never), "nebius-h200-1, nebius-h200-2");
-  assert.equal(deploymentNodesLabel({ node_name: "gpu3" } as never), "gpu3");
-  assert.equal(deploymentNodesLabel({} as never, "0123456789"), "01234567");
+test("the target column names every rank's node", () => {
+  assert.equal(deploymentTargetLabel({ node_name: "nebius-h200-1", node_names: ["nebius-h200-1", "nebius-h200-2"] } as never), "nebius-h200-1, nebius-h200-2");
+  assert.equal(deploymentTargetLabel({ node_name: "gpu3" } as never), "gpu3");
+  assert.equal(deploymentTargetLabel({} as never, "0123456789"), "01234567");
+});
+
+// The 「计算节点」 cell reads runtime_nodes only. It never borrows node_name: a
+// deployment whose replicas moved must not print the node it was asked for.
+test("the compute-node cell folds a spread deployment and names nothing when unplaced", () => {
+  const folded = (others: number, total: number) => `plus ${others} of ${total}`;
+  assert.equal(runtimeNodesLabel(undefined, folded), "—");
+  assert.equal(runtimeNodesLabel([], folded), "—");
+  assert.equal(runtimeNodesLabel([{ node_uuid: "aaaa1111", node_name: "172.30.8.31", instances: 1 }], folded), "172.30.8.31");
+  assert.equal(runtimeNodesLabel([
+    { node_uuid: "aaaa1111", node_name: "172.30.8.31", instances: 1 },
+    { node_uuid: "bbbb2222", node_name: "172.30.8.32", instances: 1 },
+  ], folded), "172.30.8.31 plus 1 of 2");
+  // A node with no operator name falls back to its uuid, as elsewhere.
+  assert.equal(runtimeNodesLabel([{ node_uuid: "0123456789abcdef", instances: 1 }], folded), "01234567");
+});
+
+test("the drawer only claims a move when a replica is on an unrequested node", () => {
+  assert.equal(actualNodesDiffer({ node_uuid: "a", runtime_nodes: [{ node_uuid: "a", instances: 1 }] } as never), false);
+  assert.equal(actualNodesDiffer({ node_uuid: "a", runtime_nodes: [{ node_uuid: "b", instances: 1 }] } as never), true);
+  assert.equal(actualNodesDiffer({ node_uuids: ["a", "b"], runtime_nodes: [{ node_uuid: "a", instances: 1 }, { node_uuid: "b", instances: 1 }] } as never), false);
+  assert.equal(actualNodesDiffer({ node_uuids: ["a", "b"], runtime_nodes: [{ node_uuid: "a", instances: 1 }, { node_uuid: "c", instances: 1 }] } as never), true);
+  // Nothing placed yet is not a move, and an automatically placed deployment
+  // that names no target node has nothing to differ from until it runs.
+  assert.equal(actualNodesDiffer({ node_uuid: "a", runtime_nodes: [] } as never), false);
+  assert.equal(actualNodesDiffer({ node_uuid: "", runtime_nodes: [{ node_uuid: "b", instances: 1 }] } as never), true);
 });
 
 // The pickers search the online nodes on the server; the fake answers as it does.

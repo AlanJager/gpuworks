@@ -1,7 +1,7 @@
 import UnsupportedModel from "./UnsupportedModel";
 import SleepNotice from "./SleepNotice";
 import InputsForm from "./InputsForm";
-import { composeRequest } from "./compose";
+import { composeRequest, declaredValues } from "./compose";
 import { useDiscovery } from "./useDiscovery";
 import RequestDrawer from "./RequestDrawer";
 import { AudioOutlined, DeleteOutlined, PauseOutlined, PlayCircleOutlined, UploadOutlined } from "@ant-design/icons";
@@ -43,6 +43,7 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
   const [elapsedMS, setElapsedMS] = useState<number>();
   const [speechText, setSpeechText] = useState("Hello from GPUWorks");
   const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
+  const declaredInputValues = operation ? declaredValues(operation, inputValues) : {};
   const [rawRequest, setRawRequest] = useState<string>();
   const [audioURL, setAudioURL] = useState("");
   const mountedRef = useRef(true);
@@ -57,10 +58,11 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
   // request is in flight; composeRequest intentionally rejects incomplete
   // requests, while the request drawer still needs a draft to render.
   useEffect(() => {
+    if (!operation?.inputs?.some((field) => field.name === "voice")) return;
     const firstVoice = voices.data?.voices?.[0];
     if (!firstVoice) return;
     setInputValues((current) => current.voice === undefined ? { ...current, voice: firstVoice } : current);
-  }, [voices.data]);
+  }, [operation, voices.data]);
 
   useEffect(() => {
     const next = new URLSearchParams(searchParams);
@@ -152,7 +154,7 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
     try {
       const value = mode === "transcribe"
         ? await invokeMultipart(operation, model, {}, file, controller.signal)
-        : await invokeJSON(operation, model, rawOverride || rawRequest ? JSON.parse(rawOverride || rawRequest!) : composeRequest(operation, model, { input: speechText }, inputValues), controller.signal);
+        : await invokeJSON(operation, model, rawOverride || rawRequest ? JSON.parse(rawOverride || rawRequest!) : composeRequest(operation, model, { input: speechText }, declaredInputValues), controller.signal);
       // Blob can come from a different realm (for example, the fetch
       // implementation in a test runner or an embedded webview).  An
       // instanceof check would reject an otherwise valid binary response.
@@ -185,7 +187,7 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
             options={models.map((item) => ({ value: item.id, label: item.label }))}
             className="playground-model-select"
           />
-          {mode === "speech" && <RequestDrawer operation={operation} model={model} body={composeDraft(operation || { type: operationType, endpoint: "/v1/audio/speech", mode: "sync", request_encodings: ["json"], renderer: "audio", response: "audio" }, model, { input: speechText }, inputValues)} onSend={(raw) => { setRawRequest(raw); void submit(raw); }} />}
+          {mode === "speech" && <RequestDrawer operation={operation} model={model} body={composeDraft(operation || { type: operationType, endpoint: "/v1/audio/speech", mode: "sync", request_encodings: ["json"], renderer: "audio", response: "audio" }, model, { input: speechText }, declaredInputValues)} onSend={(raw) => { setRawRequest(raw); void submit(raw); }} />}
           {model && <SleepNotice model={catalog.models.find((item) => item.id === model)} />}
         </div>
         {requested && !operation ? <UnsupportedModel modelID={requested} models={catalog.models} /> : !models.length ? (

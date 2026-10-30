@@ -83,7 +83,7 @@ type InServiceUpgrade struct {
 // given), leaves the marker and swaps the binary. The caller restarts the
 // process afterwards. Nothing is changed when an error is returned.
 func (i *Installer) StageInService(ctx context.Context, from string, archive io.Reader, snapshotDB func(dest string) error, by string) (InServiceUpgrade, error) {
-	unlock, err := i.lockUpgrade()
+	unlock, err := i.lockUpgrade(ctx)
 	if err != nil {
 		return InServiceUpgrade{}, err
 	}
@@ -269,7 +269,7 @@ func ConfirmStart(layout Layout, pending PendingUpgrade, mode string, now time.T
 	if err := os.Remove(layout.PendingUpgradePath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	(&Installer{layout: layout}).pruneBackups(keep)
+	(&Installer{layout: layout}).pruneBackups(keep, pending.Backup)
 	return nil
 }
 

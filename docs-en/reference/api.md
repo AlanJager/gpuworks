@@ -191,6 +191,14 @@ Login, logout, and management write requests using login sessions check the requ
 | POST | `/api/v1/nodes` | Create a node awaiting connection and return the installation command and token; see [Connection Parameters for Node Creation](#创建节点的连接参数) for all fields and conditions | JWT(admin) |
 | GET | `/api/v1/agent/rejects` | Recent rejected connection attempts | JWT |
 | GET | `/api/v1/agent/upgrade-errors` | Recent agent upgrade failures | JWT |
+| POST | `/api/v1/agent-upgrades/preview` | Preview eligibility and target for all or selected nodes | JWT(admin) |
+| POST | `/api/v1/agent-upgrades` | Create a run using the preview UUID snapshot, target, manifest fingerprint, and idempotency key | JWT(admin) |
+| GET | `/api/v1/agent-upgrades` | List paginated runs and the global blocking item | JWT |
+| GET | `/api/v1/agent-upgrades/{id}` | Read run progress and counts | JWT |
+| GET | `/api/v1/agent-upgrades/{id}/items` | Read paginated node outcomes, optionally filtered by state | JWT |
+| POST | `/api/v1/agent-upgrades/{id}/stop` | Cancel queued nodes and keep observing the active node | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/continue-preview` | Preview remaining nodes from a paused run | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | Release an unconfirmed reservation with an administrator audit note | JWT(admin) |
 | POST | `/api/v1/nodes/precheck` | Check the host environment and bidirectional connectivity required for SSH connection; see [SSH Checks and Installation](#ssh-检查与安装) for address rules | JWT(admin) |
 | POST | `/api/v1/nodes/install` | Install the agent through SSH; connection parameters are the same as for node creation. Use `no_systemd` to select the Linux background execution mode. See [SSH Checks and Installation](#ssh-检查与安装) for conflicts and replacement conditions | JWT(admin) |
 | GET | `/api/v1/nodes/{uuid}` | Node details (including the GPU list; also includes the token for administrators) | JWT |
@@ -198,7 +206,7 @@ Login, logout, and management write requests using login sessions check the requ
 | POST | `/api/v1/nodes/{uuid}/doctor` | Trigger the node self-check RPC | JWT |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | Trigger a remote agent upgrade | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | Set `scheduling` to `cordoned`, `draining`, or `schedulable` and return the node; invalid values return 400 `FIELD_INVALID`. See [Node Scheduling and Accelerator Switching](#节点调度与加速卡切换) for the effects of each state | JWT |
-| GET | `/api/v1/nodes/{uuid}/replicas` | Instances still running on the node and how eviction handles them: `{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`. `kind` is `pool` (moves to another node), `pinned` (the deployment is pinned only to this node and waits), or `named` (a multi-node or PD rank: a drain starts a replacement on another node first and switches over once it runs, waiting if there is no node to go to; only forced eviction removes it immediately); stopped and failed instances are excluded | JWT |
+| GET | `/api/v1/nodes/{uuid}/replicas` | Instances still running on the node and how eviction handles them: `{"scheduling", "items": [{"instance", "deployment_id", "deployment", "state", "kind"}]}`. `kind` is `pool` (moves to another node), `pinned` (the deployment is pinned only to this node and waits), or `named` (a multi-node or PD rank: a drain starts a replacement on another node first and switches over once it runs, waiting if there is no node to go to; only forced eviction removes it immediately); stopped and failed instances are excluded. While draining, rows may also include `drain_reason` (latest structured scheduling feedback), `drain_reason_at`, and `drain_message` (the latest failed attempt on another node). These are existing observations, not a new persisted drain state; use the timestamp to distinguish historical feedback. The optional top-level `drain_offline` indicates that the agent is currently disconnected, so retirement and container removal cannot be confirmed; it clears after reconnection. | JWT |
 | POST | `/api/v1/nodes/{uuid}/evict` | Force eviction: immediately remove every replica on the node without waiting for replacements (the replica's leader drains, followed by its followers). Replicas are recreated wherever placement is possible, without counting toward retries; returns `{"evicted": [leader UUID…]}` (202). Returns 409 `NODE_SCHEDULABLE` if the node is still schedulable | JWT |
 | PUT | `/api/v1/nodes/{uuid}/labels` | Replace node labels (key/value; an empty object clears them). Keys must not use the platform-reserved `gpuworks.ai/` namespace or its subdomains | JWT |
 | PATCH | `/api/v1/nodes/{uuid}/name` | Rename the node | JWT |
@@ -215,6 +223,32 @@ Login, logout, and management write requests using login sessions check the requ
 | POST | `/api/v1/nodes/{uuid}/token/regenerate` | Regenerate the node token (disconnects the current connection) | JWT(admin) |
 | DELETE | `/api/v1/nodes/{uuid}` | By default, uninstall the agent using saved SSH credentials, delete the record after confirming completion, and return `{"status":"deleted","agent_uninstalled":true}`. If uninstallation is not confirmed, return 409 `NODE_UNINSTALL_UNCONFIRMED` and retain the node and SSH credentials. Explicitly specifying `?force=true` skips uninstallation, deletes only the record, and returns `agent_uninstalled:false`; both modes reject nodes with instances (409). A non-boolean force value or repeated parameter returns 400; a nonexistent node returns 404 | JWT |
 | GET | `/api/v1/events` | SSE change event stream | JWT |
+
+### Bulk Agent Upgrades
+
+An administrator first posts the platform-wide scope to `/api/v1/agent-upgrades/preview`, independently of node list filters and pagination:
+
+```json
+{"scope":"all"}
+```
+
+Alternatively, submit `{"node_uuids":["node-a"]}`. The preview returns the complete `node_uuids` snapshot, `target_version`, `manifest_fingerprint`, per-node eligibility in `nodes`, eligibility `counts`, and the global `blocked_by_item`. Reuse that snapshot and target in the create request:
+
+```json
+{
+  "node_uuids": ["node-a", "node-b"],
+  "expected_target_version": "v0.6.0",
+  "expected_manifest_fingerprint": "<preview.manifest_fingerprint>",
+  "idempotency_key": "<client-generated-unique-key>"
+}
+```
+
+
+The preview’s `target_build` and the update API’s `server.current_build` share running-build metadata: `version`, `kind` (`stable`, `prerelease`, `development`, `unknown`), and, when available, `commit`, `built_at`, `build_channel`, `published_version`, and `published_at`. Build time describes the running binary, not a remote candidate. Published fields require the version, full commit, and build time to match a verified signed index. Agent previews read only the existing update-check cache and do not make new outbound requests; local artifact previews remain available when a source is unavailable or no record matches.
+
+Success returns 202 and a run object with `id`, `state`, and `counts`. An identical request with the same idempotency key returns the original run. A changed request, target, or artifact returns 409 and requires another preview. `GET /agent-upgrades` and `GET /agent-upgrades/{id}/items` support `page` and `page_size`; items also accept a single `state` filter. `processed` includes all terminal outcomes and does not mean `succeeded`; `unconfirmed` remains an unknown outcome that reserves the global execution slot.
+
+Stopping cancels only queued items. To continue, call `continue-preview`, then create a new run with `source_run_id` pointing to the original run; cancellation of the original queue and creation of the new run are atomic. After verifying an unconfirmed node, an administrator posts `{"note":"处理依据"}` to `items/{uuid}/release`; success returns 204. The original result remains and verification is audited separately. Management identities can read results; bulk writes require an administrator and reject read-only platform tokens. The existing single-node route retains its permissions, adds `run_id` to its 202 response, and shares the global execution reservation. For workflow and workload impact, see [Upgrade the Agent](../how-to/upgrade-and-compatibility.md#升级-agent).
 
 ### Node List Filters and Response Fields
 
@@ -331,6 +365,7 @@ so renaming changes only `display` and does not affect label-based matching.
 | DELETE | `/api/v1/models/{id}` | Delete a model | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | Fetch model metadata again (config/README/logo) | JWT |
 | POST | `/api/v1/models/{id}/download` | Start a public repository download: `storage_id` selects the storage (defaults to the default storage when omitted). For local storage, also provide `node_uuid` or `node_uuids`; for shared storage, one writer node downloads the model once | JWT |
+| POST | `/api/v1/models/{id}/download/cancel` | Cancel a model download in a specified storage (`storage_id`; local storage also requires `node_uuid`); retain downloaded data for retry | JWT |
 | POST | `/api/v1/models/{id}/copy` | Copy model files between two locations: `source`/`target` each contain `{storage_id, node_uuid?}`. Copy locally when the same node can read the source and write the target; otherwise, transfer directly between nodes. Returns 400 if the source and target are the same location; shared storage is identified by storage ID (ignoring the node). State conflicts such as offline or non-writable storage still return 409 | JWT |
 | POST | `/api/v1/models/{id}/nodes/{uuid}/cache/retry` | Retry a failed NFS Cache copy (`preparation.retryable=true`), with request body `{storage_id}`; returns 202 when accepted. Returns 409 `MODEL_CACHE_RETRY_BLOCKED` if the task has not failed, the node is disconnected, capacity is insufficient, termination of the previous task is unconfirmed, or a concurrent change occurs | JWT |
 | DELETE | `/api/v1/models/{id}/storages/{storage_id}` | Delete model files from shared storage (and all node caches for NFS with caching); returns 409 `STORAGE_SHARED_BY_OTHER_CONTROL_PLANES` if another gpuworks control plane is using it. Use `?force=1` to force deletion | JWT(admin) |
@@ -367,11 +402,11 @@ The request for `POST /api/v1/models/{id}/register-path` is
 This operation only registers existing files; it does not copy or move directories. To import a library from shared storage, use the storage scan/import endpoints.
 
 Returns `200 {"status":"registered"}` on success. The node checks that the directory is readable, contains non-empty files, and has no incomplete downloads;
-it does not require fixed weight filenames or `config.json`, preserving custom engine layouts. `registered` means the path selected by the caller has been registered;
-it does not prove that the directory contains the correct model or that the engine can load it. Do not treat a request as invalid because the path is outside the storage root.
+Metadata must identify exactly one complete model entry in the directory. Formats with embedded metadata, such as GGUF, do not require `config.json`; parent directories, non-model directories, and unknown layouts return 409. `registered` means the selected model directory has been registered;
+it does not guarantee that the engine can load the model. Do not treat a request as invalid because the path is outside the storage root.
 
 An empty `path` returns 400; a missing target model returns 404. The node rejects missing or empty directories and directories containing `.part`/`.part.state` files;
-the endpoint returns 409 and does not replace the existing registration. Errors such as unavailable RPC to the actual node may also return 409; handle them according to the error details.
+the endpoint returns 409 and does not replace the existing registration. If the agent cannot return directory recognition metadata, the endpoint returns `AGENT_UPGRADE_REQUIRED`; upgrade the agent first. Errors such as unavailable RPC to the actual node may also return 409; handle them according to the error details.
 
 ## Images / Storages (Image Catalog and Storage Policies)
 
@@ -495,7 +530,7 @@ This endpoint does not check whether a user spec with the same name already exis
 
 | Method | Path | Description | Authentication |
 |---|---|---|---|
-| GET | `/api/v1/deployments` | List deployments; with `page`/`page_size`, returns paginated list columns and supports filtering by `q`/`state` (see “Error and Response Conventions”) | JWT |
+| GET | `/api/v1/deployments` | List deployments; with `page`/`page_size`, returns paginated list columns and supports filtering by `q`/`state` (see “Error and Response Conventions”). `state` includes `sleeping`/`asleep`, and rows also carry `asleep_replicas` and `sleep_level`; see [Deployment Sleep State](#deployment-sleep-state-state-asleep_replicas-sleep_level) | JWT |
 | GET | `/api/v1/routing-policies` | Get server-provided multi-replica routing policies and localized descriptions | JWT |
 | POST | `/api/v1/deployments/preflight` | Run preflight checks for multi-node inference deployment (rank assignment and network probing) | JWT |
 | POST | `/api/v1/deployments` | Create a deployment (`model_source` contains only `{storage_id, provider}`: where to store the model and which provider's weights to run; it does not accept an image acquisition method. `placement.pd` specifies a PD disaggregated deployment; see below). Returns 409 `SERVED_NAME_IN_USE` if the served model name is occupied by a deployment that is not being deleted; `params` includes `served_name`, `deployment`, and `deployment_id`. When omitted, the name defaults to the model name and undergoes the same validation | JWT |
@@ -503,7 +538,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | GET | `/api/v1/deployments/{id}/draft` | Read the deployment back as the request that creates it (`deployment`), with `revision` and the non-editable fields `locked`. The deploy page fills its edit and "Clone and modify" forms from it. See [Edit a Deployment](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}` | Edit a deployment: submit the modified draft with `base_revision`; `?dry_run=1` returns only the change plan. Launch configuration changes replace instances according to `apply` (`rolling`/`all`/`none`). See [Edit a Deployment](#编辑部署) | JWT |
 | PUT | `/api/v1/deployments/{id}/requirements` | Replace the node requirements and placement strategy of a regular single-node deployment and return its details. Affects only replicas started afterward; running replicas are not migrated. See [Modify Node Requirements](#修改节点条件) | JWT |
-| GET | `/api/v1/deployments/{id}` | Get deployment details. Takes no query parameters; returns the deployment object directly, or 404 if not found. Includes `instances`, `node_requirements`, `node_requirement_labels`, `placement_strategy`, `ready_replicas` (check each role for PD), `health`, `tokenize_enabled`, and `max_replicas`; `placement_status` gives scheduling failure reasons, `retry_exhausted` identifies replicas that have exhausted their retries, and `restart_requested_at` identifies a rolling restart. See `units` for multi-node replicas. See [Query Deployment Details](#查询部署详情) | JWT |
+| GET | `/api/v1/deployments/{id}` | Get deployment details. Takes no query parameters; returns the deployment object directly, or 404 if not found. Includes `state` (the one state to show, `asleep`/`sleeping` when it sleeps), `asleep_replicas` (replicas the gateway does not dispatch to because of sleep), `sleep_level` (the level an engine reports), `instances`, `node_requirements`, `node_requirement_labels`, `placement_strategy`, `ready_replicas` (two counts of the same replicas as `asleep_replicas`; a PD deployment also gives the per-role breakdown), `health`, `tokenize_enabled`, and `max_replicas`; `placement_status` gives scheduling failure reasons, `retry_exhausted` identifies replicas that have exhausted their retries, and `restart_requested_at` identifies a rolling restart. See `units` for multi-node replicas. See [Query Deployment Details](#查询部署详情) and [Deployment Sleep State](#deployment-sleep-state-state-asleep_replicas-sleep_level) | JWT |
 | PUT | `/api/v1/deployments/{id}/routing` | Change the routing policy (`least_request`, `prefix_affinity`, or `failover`) | JWT + administrator |
 | PUT | `/api/v1/deployments/{id}/dgpu` | Adjust `vram_limit_gib` for a single-node dGPU deployment. Returns `live` instances where the change takes effect immediately and `pending` instances that require a restart. See [Adjust the GPU Memory Limit](#调整显存上限) | JWT |
 | PUT | `/api/v1/deployments/{id}/health-check` | Enable or disable health checks for the deployment and set the threshold: `{"enabled": true, "threshold_sec": 60}` (`threshold_sec` is 1–600; omit it or use 0 to retain the current value). Enabling requires the model to provide chat or embedding; otherwise returns 400 `FIELD_INVALID` (`params.field` is `health_check`). An out-of-range threshold returns 400 `FIELD_INVALID`. Does not restart instances; the new settings apply to the next check. Returns deployment details | JWT |
@@ -549,8 +584,17 @@ Missing or unavailable information remains unknown and is not replaced with info
 ### Deployment List Filters and Response Fields
 
 `q` matches the deployment name, served model name, and model name. `state` corresponds to the state displayed in the UI: `running`, `starting`, `pulling`,
-`pending`, `failed`, `stopped`, or `deleting`; the deleting state takes precedence over runtime states.
-Sortable columns are `name`, `model`, `state`, `replicas`, and `created_at`.
+`pending`, `offline`, `failed`, `stopped`, `deleting`, `sleeping`, or `asleep`; the deleting state takes precedence over runtime states.
+A value must be one of these; anything else returns 400 `LIST_FILTER_INVALID` rather than silently matching everything.
+Sortable columns are `name`, `model`, `state`, `replicas`, and `created_at`; `sort=state` sorts by this same `state`.
+
+`state` is the one state a row should display; `runtime_state` is not, because a sleeping engine is still running and stays `running` there
+while the gateway no longer dispatches requests to it. The precedence is:
+
+- A deployment being deleted reads `deleting`, ahead of any runtime state.
+- Otherwise it equals `runtime_state`, with two exceptions that apply only while `runtime_state` is `running`: it reads `asleep` when the gateway refuses every request because the replicas it needs sleep, and `sleeping` when the sleep order has been accepted but at least one engine has not reported its level yet (see [Query Deployment Details](#查询部署详情)).
+- `offline` is a value of `runtime_state` itself: no replica can serve (no running, non-headless instance on an online node whose multi-node generation is complete), while running instances remain on nodes that went offline.
+- A deployment with only some replicas asleep still serves: `state` stays `running` and `asleep_replicas` says how many sleep; such rows also match `state=running`.
 
 Success returns HTTP 200. In the outer response, `items` is an array of deployment objects, and `total` is the total number of matches after filtering (an integer).
 When pagination is enabled, integer fields `page` and `page_size` are also included. An empty result is `items: []`; requests beyond the last page also return an empty array.
@@ -561,9 +605,19 @@ With pagination, each deployment returns only the following list fields. See [Qu
 |---|---|
 | Identity and creation time | `id`, `name`, `created_at` |
 | Template and model | `template_id`, `template_deviated`, `engine`, `image`, `model_id`, `model_name`, `served_name` |
-| Nodes | `node_uuid`, `node_name`, `node_names` |
-| State and replicas | `desired_state`, `runtime_state`, `sleepable`, `replicas`, `ready_replicas`, `health`, `preparation` |
+| Nodes | `node_uuid`, `node_name`, `node_names`, `runtime_nodes`, `runtime_node_names` |
+| State and replicas | `desired_state`, `runtime_state`, `state`, `sleepable`, `asleep_replicas`, `sleep_level`, `replicas`, `ready_replicas`, `health`, `preparation` |
 | Operations | `operations` |
+
+The node fields fall into two groups with different meanings, and neither stands in for the other: `node_uuid`, `node_name` and `node_names` are the **placement target** — the node the deployment was asked to run on (the node an operator wrote for manual placement; absent when placement is automatic) — while `runtime_nodes` is **where it runs now**, taken from the instance rows themselves, the same source the GPU inventory attributes cards from, so both pages name the same machine for the same instances.
+The two legitimately differ: automatic placement picks the node later, a retried replica is relaunched on another node, and a `spread` deployment runs its replicas on several at once.
+`runtime_nodes` is an array of objects, one per node: `node_uuid`, `node_name`, and `instances` (how many instances the node holds).
+The order is stable and deduplicated per node, and a multi-replica deployment lists every node rather than one of them. The whole field is omitted when no instance row names a node: nothing has been placed yet, or every replica is stopped.
+`runtime_node_names` names the same nodes in the same order.
+
+`state`, `asleep_replicas`, and `sleep_level` mean and carry exactly what the fields of the same name carry in the details (see [Query Deployment Details](#查询部署详情));
+reading `runtime_state` alone misses sleep, because a sleeping engine still reports `running`.
+When `asleep_replicas` or `sleep_level` is 0 the whole field is omitted, as in the details.
 
 In a paginated list, `preparation` contains information about the first model file that is not yet ready in an active deployment; it is omitted if there is none.
 Complete preparation information is in `model_progress` in the details.
@@ -600,10 +654,14 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `served_name` | String | The `model` name to specify in inference requests |
 | `model_id`, `model_name` | Integer, string | ID and name of the associated registered model |
 | `desired_state` | String | Desired state: `active` (keep running), `stopped` (stopped), or `deleting` (being deleted) |
-| `runtime_state` | String | Current runtime state: `pending`, `pulling`, `starting`, `running`, `failed`, or `stopped` |
-| `replicas`, `ready_replicas` | Integer | Target replica count for a regular deployment and the current number of replicas with all ranks running. PD deployments omit `ready_replicas`; check `pd.roles[].ready` instead |
+| `runtime_state` | String | Current runtime state: `pending`, `pulling`, `starting`, `running`, `offline`, `failed`, or `stopped`. Derived from instances and the desired state only, never from sleep: a sleeping engine is still `running` |
+| `state` | String | The one state to show. Takes the values of the list filter's `state`: `deleting` first for a deployment being deleted; otherwise `runtime_state`, except that it reads `asleep` (every asleep replica's engine reports its level) or `sleeping` (the order is accepted and the gateway already refuses, but at least one engine has not reported its level) when the gateway refuses every request because the replicas it needs sleep |
+| `asleep_replicas` (optional) | Integer | Replicas the gateway does not dispatch to because they sleep, across every role; it and `ready_replicas` are two counts of one set of replicas, and their sum is the number of replicas the gateway can reach. Omitted when 0 |
+| `sleep_level` (optional) | Integer | The deepest sleep level an engine reports (1 or 2); omitted while every replica is awake and while a sleep order is still being carried out. An absent field is not awake: ask `state` whether it sleeps |
+| `replicas`, `ready_replicas` | Integer | The deployment's replica count and the number of awake replicas with all ranks running. PD deployments sum the units of each role (`replicas` is the sum of `pd.roles[].desired`, `ready_replicas` the sum of `pd.roles[].ready`), the same pair the list row gives; `asleep_replicas` never exceeds `replicas` |
 | `health` | Object | Health check status and latest results; see [Health Checks](#健康检查) |
 | `instances` (optional) | Array of objects | Instances in the deployment; `uuid` identifies an instance, `state` indicates its state, and `node_uuid` and `gpu_indexes` indicate where it runs |
+| `runtime_nodes` (optional) | Array of objects | The nodes the instances are on now, one entry per node: `{node_uuid, node_name, instances}`, with the meaning and value the same field has on a list row. `node_uuid`, `node_name` and `node_names` are the placement target, which can differ from it |
 | `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information |
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |
@@ -627,6 +685,38 @@ Do not uniformly treat absent optional fields as `0` or empty arrays. Use the fo
 - For regular deployments, `retry_exhausted{index,failed_attempts,last_failure}` identifies replicas that have exhausted their retries; use `units/retry` to retry them. For multi-node deployments, `units[]` gives each replica's leader and `followers[]`. See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for adjustment methods.
 
 For a request example, see [Query Details of One Deployment](api-conventions.md#3-查询一个部署的详情).
+
+### Deployment Sleep State (`state`, `asleep_replicas`, `sleep_level`)
+
+A sleeping deployment is indistinguishable in `runtime_state`: the engine process is still running and the gateway simply refuses to dispatch to it.
+The fields that answer "is this deployment asleep right now" are `state`, `asleep_replicas`, and `sleep_level`. They mean the same and carry the same values
+in deployment details and in list rows (the paginated list's `items[]`), and the `state` filter matches the same `state`.
+
+All three are **derived at read time**, never stored: the only persisted facts are each instance's ordered sleep intent and the `sleep_level` it reports,
+and the judgement is the same one the gateway itself uses to refuse requests.
+
+- **`asleep_replicas`**: replicas the gateway does not dispatch to because of sleep, across every role (PD deployments count each role's units).
+  A replica is judged by its leader: if the leader is running and has been ordered to sleep (intent alone counts) or still reports a sleep level, the replica is asleep.
+  So **in the seconds after the order is placed, while the engine is still swapping memory out, the replica already counts in `asleep_replicas`**, because it really is not receiving requests.
+  It and `ready_replicas` are two counts of one set of replicas: their sum is the number of replicas the gateway can **reach**; a replica it cannot reach for another reason
+  (stopped, failed, its node gone, a multi-node replica missing a rank) counts in neither. A replica down for another reason never reads as asleep.
+- **`state`**: the precedence above. `asleep` and `sleeping` appear only when the gateway answers **no request at all** — some role it needs has no awake replica,
+  and every role refusing it refuses because of sleep (it has sleeping replicas and none awake), not because it is down. A deployment with only some replicas asleep
+  still serves: `state` stays `running`, the awake replicas keep receiving requests, and `asleep_replicas` says how many the rest are; such a row neither poses as
+  entirely healthy nor as entirely asleep. `deleting` outranks all of the above.
+- **Where `sleeping` ends and `asleep` begins**: it is `asleep` once every asleep replica's engine reports the level it was ordered to; a single engine not there yet makes it `sleeping`.
+  Changing levels (say L1 to L2) goes through awake before sleeping again, and the row reads `sleeping` during it rather than an unchanging `asleep`, so the click visibly takes effect.
+- **`sleep_level`**: the deepest level an engine reports (1 or 2). It is 0 (field omitted) while every replica is awake; a sleep order not yet carried out also has no value —
+  **do not read an absent field as "not asleep"**. Ask `state` and `asleep_replicas` whether it sleeps; `sleep_level` only answers how deep.
+- **A deployment with nothing left is not asleep**: with no serving replica at all (instances stopped or failed) there is nothing to wake, so `state` gives the failure's or
+  stopped state itself and `asleep_replicas` is 0, even if a sleep intent remains on the instances.
+- **PD deployments**: `pd.roles[].asleep` is the same replicas split by role (`ready` + `asleep` is the role's units the gateway can reach).
+  A role the mode runs without and that is entirely asleep (vLLM NIXL's prefill, for example) does not count as refusing service; the deployment reads
+  `asleep`/`sleeping` only when a role that must exist, such as decode, is entirely asleep.
+
+For the instance-level sleep fields (`instances[].asleep`, `instances[].sleep_level`, `instances[].desired_sleep`,
+`can_sleep_alone` / `can_wake_alone`), see the [Deployments and Instances route entries](#deployments--instances部署与实例).
+For the procedure, see [Sleep and Wake Operations](../how-to/sleep-wake.md).
 
 ### Query the Candidate Pool
 
@@ -1395,6 +1485,10 @@ See [Configure Node Networks](../how-to/configure-networks.md).
 | GET | `/api/v1/usage-report` | User Experience Improvement Program status `{enabled, editable, last_day?, last_attempt?: {at, day, ok, error?}, next_due_at?}`: whether you participate (`usage_report` in `server.yaml`), whether you can change participation in the console, the UTC day covered by the most recently delivered report, this process's latest delivery attempt, and the estimated time of the next report ([User Experience Improvement Program](usage-report.md)) | JWT(admin) |
 | PUT | `/api/v1/usage-report/enabled` | Join or leave with `{"enabled":true\|false}`: writes `usage_report` to `server.yaml` (removes the key when joining), takes effect immediately, and returns the status. Returns 409 `USAGE_REPORT_READ_ONLY` if server.yaml does not exist, or 400 `USAGE_REPORT_INVALID` if the value is missing or not Boolean | JWT(admin) |
 | GET | `/api/v1/usage-report/preview` | Raw content of the next report (`application/json`, identical to the bytes actually sent, without consuming in-process counters). Returns 404 `USAGE_REPORT_UNAVAILABLE` if the server does not participate in the improvement program | JWT(admin) |
+| GET | `/api/v1/experience` | Experience mode status `{enabled, ready, port, user, password?, error?}`: whether the experience environment runs, whether its console answers, its port (the console port +10), its account, and its password while it runs; `error` says why it stopped by itself. The environment is a separate process and data directory holding only simulated data. Returns 404 `EXPERIENCE_UNAVAILABLE` on the environment's own console and on a server without a data directory | JWT(admin) |
+| PUT | `/api/v1/experience/enabled` | Turn the experience environment on or off with `{"enabled":true\|false}`: turning on clears the previous data, generates a new password and starts it (no change if it already runs); turning off stops the process. Returns the status; 400 `EXPERIENCE_INVALID` if the value is missing or not Boolean, 409 `EXPERIENCE_PORT_IN_USE` (`params.port`) if another program holds the port, 409 `EXPERIENCE_FAILED` (`params.reason`) if it cannot start for another reason | JWT(admin) |
+| POST | `/api/v1/experience/reset` | Clears the running environment's data and starts it again, keeping its password; 409 `EXPERIENCE_FAILED` if it is not running | JWT(admin) |
+| POST | `/api/v1/experience/password` | Generates a new password for the running environment; sessions of the old one end. 409 `EXPERIENCE_FAILED` if it is not running | JWT(admin) |
 | GET | `/api/v1/notices` | Header notification bell `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`: publisher-signed notices applicable to this installation (`kind` is `security` / `release` / `event`; `title`/`body` provide plain text by language). Sorted by urgency, then by time; `read` and `unread` are calculated per caller | JWT |
 | POST | `/api/v1/notices/read` | Mark notices as read with `{"ids": [...]}` (1–128 IDs, each ≤64 bytes; otherwise, 400 `NOTICE_IDS_INVALID`). Records only the caller's own read status; repeated marking has no side effects. Returns 204 | JWT |
 | POST | `/api/v1/updates/server` | Download a release package, back up and replace the server, and restart. On acceptance, returns 202 `{from,to,backup}`; confirms or rolls back on the next startup. See [Server Upgrade Restrictions](#服务端升级限制) | JWT(admin) |
@@ -1512,7 +1606,7 @@ Records with `code` carry detailed values in `params` and no longer also return 
 |---|---|---|---|
 | GET | `/api/v1/metrics/query` | Query time-series metrics (`metric`, `range`, `step`, and `node`/`gpu`/`gpu_uuid`/`instance`/`benchmark`/`point`/`iface`/`hca`/`role` matchers). Returns `{"items": [{"labels": {…}, "points": [[unix_ms, value], …]}], "total"}`, with one series per label combination. If no data exists and the metric name is absent from the metric catalog (`GET /api/v1/monitor/metrics`), returns 400 `METRIC_UNKNOWN`; `params.similar` provides the closest registered names. A metric in the catalog with no data in the time window returns an empty result normally | JWT |
 | GET | `/api/v1/logs/search` | Search/tail logs (`q`, `instance` prefix, `instances` (a comma-separated set of exact UUID matches, up to 64, mutually exclusive with `instance`), `node`, `level`, `source`, `from`/`to`, `cursor_ts`/`cursor_id`, `limit`, `with_total`; paginated in reverse arrival order. An omitted time boundary leaves that direction unrestricted; when both are omitted, queries all logs that have not been cleaned up. The list and total use the same range; by default, the page explicitly passes the last 24h). Returns `{"items": [{"id", "instance", "node", "level", "source", "time_ms", "line"}], "total", "total_capped", "truncated"}` (the last three fields appear as needed) | JWT |
-| GET | `/api/v1/logs/context` | Context window around a single match (`instance`, `ts`, `id`, and `before`/`after` from 0–500), equivalent to grep -C. Returns `{"items": [log entries], "match_index"}` | JWT |
+| GET | `/api/v1/logs/context` | Context window around a single match (`instance`, `ts`, `id`, and `before`/`after` from 0–500), equivalent to grep -C. Returns `{"items": [log entries], "match_index"}`; `match_index` is the anchor row's index in `items`, or `-1` when the anchor is absent from that partition (already pruned by retention, or a `ts` from a different day than the `id`), in which case `items` still holds the real rows around that position and the endpoint still returns 200. Callers must check `match_index >= 0` before indexing, or only compare against it | JWT |
 | GET | `/api/v1/logs/histogram` | Counts by time bucket × level (same filters as search, including `instances`, plus `bucket` in milliseconds, 1s–24h). Returns `{"items": [{"start_ms", "counts": {"error": N, …}}], "total"}`; buckets align to UTC | JWT |
 | GET | `/api/v1/monitor/overview` | Cluster snapshot for the monitoring center (`range` ∈ `15m\|1h\|6h\|24h\|168h`, default `1h`, or a custom `from`+`to` range as described below; signal rows report only facts—values, details, and recent trends, without severity; service table includes each deployment's `health` check, sorted by health: failed, timed out, no available replicas, checking, healthy, disabled, then by name within each category; GPU memory bar, cluster tok/s, and capacity events) | JWT |
 | GET | `/api/v1/monitor/deployments/{id}` | Service monitoring snapshot; `range` is `15m/1h/6h/24h/168h` (default `1h`), or use `from`+`to`. Includes requests, latency, replicas, `health`, `log_instances` for log queries, and metric `sources` (engine/gateway); PD also includes fallback, Prefill statistics, and `kv_transfer` under `pd`. Unknown deployments return 404; deleted deployments return 404 `MONITOR_DEPLOYMENT_DELETED` with `deployment_id`, `name`, and `served_name` in `params`. See [Service Monitoring Response](#服务监控返回值) | JWT |

@@ -58,14 +58,19 @@ type Deployment struct {
 	Image                    string                `json:"image,omitempty"`
 	ModelID                  uint                  `json:"model_id"`
 	ModelName                string                `json:"model_name"`
-	NodeUUID                 string                `json:"node_uuid"`
+	// NodeUUID/NodeName/NodeUUIDs/NodeNames are the placement target - what was
+	// asked for, not where the replicas are. Read RuntimeNodes for the location.
+	NodeUUID string `json:"node_uuid"`
 	// NodeName is what a person calls the node. The uuid stays authoritative
 	// for addressing; this exists so clients never have to show a raw uuid.
 	NodeName  string   `json:"node_name,omitempty"`
 	NodeUUIDs []string `json:"node_uuids,omitempty"`
 	// NodeNames name NodeUUIDs, rank by rank.
 	NodeNames []string `json:"node_names,omitempty"`
-	// RuntimeNodeNames are the distinct nodes hosting active instances now.
+	// RuntimeNodes are the nodes the instances are on now, with how many each
+	// holds, from the instance rows the GPU page attributes cards from.
+	RuntimeNodes []DeploymentRuntimeNode `json:"runtime_nodes,omitempty"`
+	// RuntimeNodeNames name RuntimeNodes in the same order.
 	RuntimeNodeNames []string `json:"runtime_node_names,omitempty"`
 	// NodeRequirements is where the deployment may run, as DeployRequest
 	// states it: always present, {} when it names nothing. A deployment
@@ -117,7 +122,12 @@ type Deployment struct {
 	// card; absent for a deployment on whole cards. A change replaces the
 	// instances, so an instance's own vram_limit_bytes may trail it.
 	VRAMLimitBytes int64 `json:"vram_limit_bytes,omitempty"`
-	Replicas       int   `json:"replicas"`
+	// Replicas is how many replicas the deployment has, and it is the
+	// denominator of the sleep count: AsleepReplicas never exceeds it. A PD
+	// deployment has one replica per role unit, so this totals the roles the
+	// way the list row does rather than echoing the stored field, which PD
+	// creation forces to 1 and which would print "2/1 replicas".
+	Replicas int `json:"replicas"`
 	// MaxReplicas is how many replicas the deployment may be scaled to.
 	MaxReplicas   int    `json:"max_replicas"`
 	RoutingPolicy string `json:"routing_policy"`
@@ -126,8 +136,10 @@ type Deployment struct {
 	StartTimeoutSec int `json:"start_timeout_sec,omitempty"`
 	// ReadyReplicas counts the replicas the gateway would serve a request from
 	// now: running, on an online node, every rank of a multi-node one up, and
-	// awake. It is absent for a PD deployment, whose roles count their own
-	// (pd.roles[].ready, the same replicas).
+	// awake. A PD deployment counts the same replicas the list row does, one
+	// per role, so it totals pd.roles[].ready rather than omitting the field:
+	// the drawer prints it beside AsleepReplicas, and a missing half of that
+	// pair left the sleep count without the count it adds to.
 	//
 	// ReadyReplicas and AsleepReplicas are two counts of one set of replicas,
 	// judged the way the gateway judges them, so they never contradict each
@@ -524,30 +536,4 @@ type DeploymentRequirementsRequest struct {
 	NodeRequirements map[string][]string `json:"node_requirements"`
 	// PlacementStrategy is spread or binpack; unstated keeps the current one.
 	PlacementStrategy string `json:"placement_strategy,omitempty"`
-}
-
-// DeploymentDGPUQuotaRequest is the body of PUT /deployments/{id}/dgpu: the
-// dGPU memory limit each replica is to run under per card, from now on.
-type DeploymentDGPUQuotaRequest struct {
-	VRAMLimitGiB float64 `json:"vram_limit_gib"`
-}
-
-// DGPUQuotaResult answers a dGPU quota change: the deployment under its new
-// limit, the instances held to it in place (Live, by UUID), and the ones that
-// keep their own limit until their next restart (Pending).
-type DGPUQuotaResult struct {
-	Deployment Deployment         `json:"deployment"`
-	Live       []string           `json:"live"`
-	Pending    []DGPUQuotaPending `json:"pending"`
-}
-
-// DGPUQuotaPending is an instance a quota change leaves at its limit until
-// it restarts. Reason is backend (its partition backend reads the limit only
-// at start), asleep, starting, in_use (it holds UsedBytes, more than the new
-// limit) or no_usage (what it holds is not known); the last four only for a
-// lower limit.
-type DGPUQuotaPending struct {
-	InstanceUUID string `json:"instance_uuid"`
-	Reason       string `json:"reason"`
-	UsedBytes    int64  `json:"used_bytes,omitempty"`
 }

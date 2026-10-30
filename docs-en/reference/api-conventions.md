@@ -72,7 +72,7 @@ A successful response returns HTTP `200`. The following example shows key fields
 | `id` | Deployment ID, used to query management endpoints such as `GET /api/v1/deployments/{id}`. |
 | `name` / `served_name` | `name` is the display name in the management UI. `served_name` is the `model` name to specify in inference requests. |
 | `desired_state` / `runtime_state` | Desired state and current runtime state, respectively. To determine whether a deployment can serve requests, also check its ready replicas; do not rely only on `active`. |
-| `replicas` / `ready_replicas` | Target and ready replica counts for regular deployments. Prefill/decode (PD) disaggregation deployments do not return `ready_replicas`. Check the per-role statistics in `pd` in the details response; do not treat an omitted value as `0`. |
+| `replicas` / `ready_replicas` | The deployment's replica and ready replica counts. Prefill/decode (PD) disaggregation deployments sum the units of each role, with the same names and values as the list row; the details response also has `pd.roles` giving the same numbers split by role; do not treat an omitted value as `0`. |
 
 `page` starts at `1`, and `page_size` ranges from `1`–`200`. Without pagination parameters, the response returns all matching deployments, with more complete individual records than the paginated list.
 An empty list also returns HTTP `200`. A failed request returns an error object, which must not be treated as an empty list.

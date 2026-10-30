@@ -322,7 +322,7 @@ func TestUpdateStatusWire(t *testing.T) {
 	wire, err := json.Marshal(dto.UpdateStatus{
 		Channel: "nightly", CheckedAt: time.Date(2026, 10, 11, 1, 2, 3, 0, time.UTC), Available: true, Source: "https://a",
 		Sources:         []dto.UpdateSourceStatus{{URL: "https://a", OK: true, LatencyMS: 12}, {URL: "https://b", Error: "GET: 404"}},
-		Server:          dto.ServerUpdate{Current: "r1", Latest: "r2", BuiltAt: "t", UpdateAvailable: true, Installable: true, SelfUpgradeBlocker: "no_service_manager", InstallDir: "/opt/gpuworks/server"},
+		Server:          dto.ServerUpdate{CurrentBuild: dto.ServerBuildInfo{Version: "r1", Kind: "development", BuildChannel: "nightly"}, Current: "r1", Latest: "r2", BuiltAt: "t", UpdateAvailable: true, Installable: true, SelfUpgradeBlocker: "no_service_manager", InstallDir: "/opt/gpuworks/server"},
 		ImageCatalog:    dto.CatalogUpdate{Current: "i1", Latest: "i2", UpdateAvailable: true, Compatible: true},
 		TemplateCatalog: dto.CatalogUpdate{Current: "t1", Compatible: true},
 	})
@@ -331,7 +331,7 @@ func TestUpdateStatusWire(t *testing.T) {
 	}
 	want := `{"channel":"nightly","channel_editable":false,"auto_check":false,"checked_at":"2026-10-11T01:02:03Z","available":true,"source":"https://a",` +
 		`"sources":[{"url":"https://a","ok":true,"latency_ms":12},{"url":"https://b","ok":false,"latency_ms":0,"error":"GET: 404"}],` +
-		`"server":{"current":"r1","latest":"r2","built_at":"t","update_available":true,"installable":true,"self_upgrade":false,"self_upgrade_blocker":"no_service_manager","install_dir":"/opt/gpuworks/server"},` +
+		`"server":{"current_build":{"version":"r1","build_channel":"nightly","kind":"development"},"current":"r1","latest":"r2","built_at":"t","update_available":true,"installable":true,"self_upgrade":false,"self_upgrade_blocker":"no_service_manager","install_dir":"/opt/gpuworks/server"},` +
 		`"image_catalog":{"current":"i1","latest":"i2","update_available":true,"compatible":true},` +
 		`"template_catalog":{"current":"t1","update_available":false,"compatible":true}}`
 	if string(wire) != want {

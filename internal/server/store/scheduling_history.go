@@ -58,7 +58,7 @@ const (
 // constants to this list.
 //
 // The kind is part of the entry because the read goes by (kind, id): the
-// instance_events index that serves it (migration 183), so a page costs a
+// instance_events index that serves it (migration 185), so a page costs a
 // bounded range scan rather than a pass over the timeline.
 var schedulingEventCodes = []SchedulingEventCode{
 	{codeAutoSleep, EventKindAutomation, SchedulingAuto},

@@ -193,6 +193,26 @@
           "compatible": true
         },
         {
+          "image": "gpuworks/gpuworks-runner:cann9.2-310p-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
           "image": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
           "reason": "catalog_match",
           "compatible": true

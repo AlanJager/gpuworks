@@ -22,9 +22,18 @@ const (
 	ServerLabel = "ai.gpuworks.server"
 	// DaemonDir holds the launch daemon's plist.
 	DaemonDir = "/Library/LaunchDaemons"
-	// HomeInstallDir is where an install without administrator rights puts
-	// the agent, under the user's home: /opt is not writable to them.
-	HomeInstallDir = ".gpuworks"
+	// HomeInstallDir is where an install that names no directory puts the
+	// agent on a Mac, under the installing user's home: a Mac is its user's
+	// own machine, and models and environment packages belong where they look
+	// for files, with or without administrator rights. The control plane
+	// installs beside it, in its server subdirectory.
+	HomeInstallDir = "gpuworks"
+	// LegacyHomeInstallDir and LegacySystemInstallDir are where earlier
+	// installs put a Mac's agent (without and with administrator rights). An
+	// install that names no directory keeps an agent already in one of them,
+	// with its models.
+	LegacyHomeInstallDir   = ".gpuworks"
+	LegacySystemInstallDir = "/opt/gpuworks"
 	// StderrLog, in the state directory, takes what the agent writes before
 	// its own log is open.
 	StderrLog = "agent.stderr.log"

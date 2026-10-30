@@ -207,3 +207,21 @@ func TestRunDetachedTimedOutNameCollisionDoesNotRemoveExistingContainer(t *testi
 	}
 	rec.none(t, 100*time.Millisecond)
 }
+
+func TestRunDetachedTimeoutPreservesObservedDriverErrorWithoutGuessingCause(t *testing.T) {
+	release := filepath.Join(t.TempDir(), "release")
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
+	detail := "nvidia-container-cli: driver rpc error: timed out"
+	cli := fakeRunCLI(t, "echo '"+detail+"' >&2\n"+waitForRelease(release)+"echo late-id")
+	rec := newRemoveRecorder(nil)
+	_, err := RunDetached(context.Background(), DetachedRun{CLI: cli, Name: "gpuworks-x", Remove: rec.remove, Timeout: 200 * time.Millisecond})
+	if err == nil || !strings.Contains(err.Error(), detail) || strings.Contains(err.Error(), "daemon slow or overloaded") {
+		t.Fatalf("timeout must retain observed failure without guessing its cause: %v", err)
+	}
+	if err := os.WriteFile(release, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := rec.next(t); got != "late-id" {
+		t.Fatalf("removed %q, want late-id", got)
+	}
+}

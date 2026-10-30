@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/agent/conn"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
 	"gpuworks.ai/gpuworks/internal/commandlog"
@@ -179,6 +180,7 @@ func (n *NodeRuntime) queueBenchmarkStatusLocked(st proto.BenchmarkStatus) {
 
 // OnStateSync applies a full desired state (server replayed on connect).
 func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
+	n.refuseModelFiles(n.host.ConfineState(&ds))
 	n.log.Info("desired state sync", "instances", len(ds.Instances), "model_files", len(ds.ModelFiles))
 	if strings.TrimSpace(ds.RuntimePreference) != "" {
 		if err := n.applyRuntimePreference(ctx, ds.RuntimePreference, true); err != nil {
@@ -219,6 +221,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 	n.applyAcceleratorPreference(ds.AcceleratorPreference)
 	// A full state lists every model file the node should have; a task parked
 	// for its storage that is not among them was withdrawn.
+	n.withdrawUnlistedDownloads(ds.ModelFiles)
 	n.pruneWaiting(ds.ModelFiles)
 	for _, mf := range ds.ModelFiles {
 		n.reconcileModelFile(ctx, mf)
@@ -227,6 +230,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 
 // OnStateUpdate applies an incremental update.
 func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) bool {
+	n.refuseModelFiles(n.host.ConfineUpdate(&su))
 	imageRefsChanged := false
 	if su.Network != nil {
 		n.setNetwork(*su.Network)
@@ -350,6 +354,8 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		return n.rpcRegisterPath(ctx, params)
 	case proto.RPCSourceProbe:
 		return n.rpcSourceProbe(ctx, params)
+	case proto.RPCModelDownloadStop:
+		return n.stopModelTransfer(ctx, params, false)
 	case proto.RPCModelCopyStop:
 		return n.stopModelCopy(ctx, params)
 	case proto.RPCModelEvict:
@@ -501,6 +507,12 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 		n.lockImageOperation(p.CanonicalRef, "pulling")
 		defer n.imagePullMu.Unlock()
 		n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: "pulling " + p.EffectiveRef})
+		if !n.host.PullsImages() {
+			// Every image is on a simulated node; asking a registry would
+			// reach the network from the real host.
+			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image present"})
+			return
+		}
 		d := n.runtimeDriver()
 		if d == nil {
 			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime driver is unavailable"})
@@ -541,3 +553,11 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 }
 
 // StreamLogs streams an instance's container logs into w (logtail data plane).
+
+// refuseModelFiles fails the model downloads a simulated node refuses
+// (hostsim.Host.ConfineState); a real node refuses none.
+func (n *NodeRuntime) refuseModelFiles(tasks []proto.ModelFileTask) {
+	for _, mf := range tasks {
+		n.failModelFile(mf, hostsim.ErrRefused)
+	}
+}

@@ -92,7 +92,7 @@ func (i *Installer) Uninstall(ctx context.Context, req UninstallRequest, beforeS
 	if err := ctx.Err(); err != nil {
 		return report, err
 	}
-	unlock, err := i.lockUpgrade()
+	unlock, err := i.lockUpgrade(ctx)
 	if err != nil {
 		return report, err
 	}

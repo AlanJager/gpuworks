@@ -17,6 +17,14 @@ import (
 
 const managementCookie = "gpuworks_session"
 
+// sessionCookie is the management session cookie's name (SessionPolicy.Cookie).
+func (a *apiHandlers) sessionCookie() string {
+	if a.sessionPolicy.Cookie != "" {
+		return a.sessionPolicy.Cookie
+	}
+	return managementCookie
+}
+
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -85,7 +93,7 @@ func (a *apiHandlers) logout(w http.ResponseWriter, r *http.Request) {
 	// Revoke every presented credential, even if a stale Authorization header
 	// would otherwise hide the browser cookie under normal Bearer precedence.
 	hashes := []string{}
-	if cookie, err := r.Cookie(managementCookie); err == nil && len(cookie.Value) == 64 {
+	if cookie, err := r.Cookie(a.sessionCookie()); err == nil && len(cookie.Value) == 64 {
 		hashes = append(hashes, store.HashToken(cookie.Value))
 	}
 	if hash, err := a.managementSessionHash(r); err == nil && (len(hashes) == 0 || hashes[0] != hash) {
@@ -100,7 +108,7 @@ func (a *apiHandlers) logout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, &http.Cookie{Name: managementCookie, Value: "", Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteLaxMode, Secure: a.managementCookieSecure(r)})
+	http.SetCookie(w, &http.Cookie{Name: a.sessionCookie(), Value: "", Path: "/", HttpOnly: true, MaxAge: -1, SameSite: http.SameSiteLaxMode, Secure: a.managementCookieSecure(r)})
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
@@ -137,7 +145,7 @@ func (a *apiHandlers) managementSessionHash(r *http.Request) (string, error) {
 		}
 		return claims.SessionID, nil
 	}
-	cookie, err := r.Cookie(managementCookie)
+	cookie, err := r.Cookie(a.sessionCookie())
 	if err != nil || cookie.Value == "" || len(cookie.Value) != 64 {
 		return "", auth.ErrInvalidToken
 	}
@@ -207,7 +215,7 @@ func (a *apiHandlers) managementAuth(next http.Handler) http.Handler {
 				return
 			}
 			if auth.BearerToken(r.Header.Get("Authorization")) == "" {
-				cookie, _ := r.Cookie(managementCookie)
+				cookie, _ := r.Cookie(a.sessionCookie())
 				a.setManagementCookie(w, r, cookie.Value, session.AbsoluteExpiresAt)
 			}
 		}
@@ -260,7 +268,7 @@ func (a *apiHandlers) setManagementCookie(w http.ResponseWriter, r *http.Request
 	if maxAge <= 0 {
 		maxAge = -1
 	}
-	http.SetCookie(w, &http.Cookie{Name: managementCookie, Value: value, Path: "/", HttpOnly: true,
+	http.SetCookie(w, &http.Cookie{Name: a.sessionCookie(), Value: value, Path: "/", HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, Secure: a.managementCookieSecure(r), Expires: expires, MaxAge: maxAge})
 }
 

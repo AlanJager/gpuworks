@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -18,6 +20,7 @@ import (
 func installCommand(ctx context.Context, args []string) error {
 	req := selfinstall.InstallRequest{}
 	var dir, dataDir, logsDir string
+	var autostart bool
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	fs.StringVar(&dir, "dir", selfinstall.DefaultDir, "install directory")
@@ -33,11 +36,19 @@ func installCommand(ctx context.Context, args []string) error {
 	fs.IntVar(&req.LogKeep, "log-keep", selfinstall.DefaultLogKeep, "rotated log files to keep")
 	fs.BoolVar(&req.Quiet, "quiet", false, "never prompt; generate a password unless one was given")
 	fs.BoolVar(&req.NoSystemd, "no-systemd", false, "run detached instead of installing a systemd unit (a launch daemon on macOS)")
+	fs.BoolVar(&autostart, "autostart", false, "install a systemd unit (a launch daemon on macOS) that starts the server at boot; the default on Linux, while macOS runs it detached unless this is given")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 0 {
 		return fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	autostartSet := flagProvided(fs, "autostart") || flagProvided(fs, "no-systemd")
+	if flagProvided(fs, "autostart") && flagProvided(fs, "no-systemd") && autostart == req.NoSystemd {
+		return fmt.Errorf("--autostart and --no-systemd contradict each other; pass one")
+	}
+	if flagProvided(fs, "autostart") {
+		req.NoSystemd = !autostart
 	}
 	// A setting left out is not the same as one set to its default: an existing
 	// installation's layout wins over the default, but not over an explicit flag.
@@ -56,11 +67,14 @@ func installCommand(ctx context.Context, args []string) error {
 	// An earlier installation's server.yaml gives the defaults the questions
 	// offer, so pressing enter on a repair keeps it instead of resetting it.
 	prev, hasPrev := selfinstall.New(probe, selfinstall.NewDeps(os.Stderr), io).Existing(ctx)
+	if !autostartSet {
+		req.NoSystemd = !defaultAutostart(runtime.GOOS, hasPrev, prev)
+	}
 	if !req.Quiet {
 		if err := askInstallPrompts(io, installPrompts{
 			dir: &dir, addr: &req.Addr, addrSet: &req.AddrSet, noSystemd: &req.NoSystemd,
 			skipDir: flagProvided(fs, "dir"), skipAddr: req.AddrSet,
-			skipAutostart: flagProvided(fs, "no-systemd"),
+			skipAutostart: autostartSet,
 			hasPrev:       hasPrev, prev: prev,
 		}); err != nil {
 			return err
@@ -75,6 +89,19 @@ func installCommand(ctx context.Context, args []string) error {
 	}
 	printInstallReport(io, report)
 	return nil
+}
+
+// defaultAutostart says whether an install that names neither --autostart nor
+// --no-systemd registers a boot-time service. On Linux the control plane is a
+// server and starts at boot (a detached installation that systemd has since
+// appeared under is moved over to it). A Mac is the operator's own machine:
+// the server runs when they start it, unless an earlier install registered a
+// launch daemon, which a repair keeps.
+func defaultAutostart(goos string, hasPrev bool, prev selfinstall.Existing) bool {
+	if goos == "darwin" {
+		return hasPrev && prev.Mode == selfinstall.ModeLaunchd
+	}
+	return true
 }
 
 // printInstallIntro opens the command with the banner. --quiet is what makes
@@ -121,12 +148,12 @@ func askInstallPrompts(io *selfinstall.IO, p installPrompts) error {
 
 	if !p.skipDir {
 		def := *p.dir
-		answer, err := io.Prompt(fmt.Sprintf("install directory (default: %s): ", def))
+		answer, err := io.Prompt(fmt.Sprintf("install directory (default: %s): ", tildePath(def)))
 		if err != nil {
 			return err
 		}
 		if answer != "" {
-			def = answer
+			def = selfinstall.ExpandHome(answer)
 		}
 		*p.dir = def
 	}
@@ -150,8 +177,10 @@ func askInstallPrompts(io *selfinstall.IO, p installPrompts) error {
 	}
 
 	if !p.skipAutostart {
+		// The question offers what *noSystemd already holds (the platform's
+		// default, see defaultAutostart), or what an earlier installation did.
 		def := "yes"
-		if p.hasPrev && p.prev.Mode == selfinstall.ModeNohup {
+		if *p.noSystemd || (p.hasPrev && p.prev.Mode == selfinstall.ModeNohup) {
 			def = "no"
 		}
 		for {
@@ -207,8 +236,13 @@ func printInstallReport(io *selfinstall.IO, r selfinstall.InstallReport) {
 		io.Say("")
 		io.Say("gpuworks runs behind its own supervisor (serve --supervise), which starts it again when it")
 		io.Say("exits, but nothing starts it after a reboot or a container restart.")
-		io.Say("Start it again with: gpuworks restart --dir %s", r.Layout.Dir)
-		io.Say("As a container's entry point: %s serve --supervise --config %s", r.Layout.Binary(), r.Layout.ConfigPath())
+		io.Say("Start it again with: %s restart", r.Layout.Binary())
+		io.Say("Stop it with:        %s stop", r.Layout.Binary())
+		if runtime.GOOS == "darwin" {
+			io.Say("Start it at boot:    %s install --autostart", r.Layout.Binary())
+		} else {
+			io.Say("As a container's entry point: %s serve --supervise --config %s", r.Layout.Binary(), r.Layout.ConfigPath())
+		}
 	}
 	if r.Adopted {
 		io.Say("")
@@ -427,13 +461,13 @@ func stopCommand(ctx context.Context, args []string) error {
 
 // installedDirUsage describes --dir for the commands that act on an existing
 // installation: without it they act on the one this binary belongs to.
-const installedDirUsage = "install directory (default: the installation this binary belongs to, else " + selfinstall.DefaultDir + ")"
+var installedDirUsage = "install directory (default: the installation this binary belongs to, else " + selfinstall.DefaultDir + ")"
 
 // installUsage is the help text for the installation subcommands.
-const installUsage = `  gpuworks install [--dir /opt/gpuworks/server] [--data DIR] [--logs DIR] [--addr IP:PORT]
+const installUsage = `  gpuworks install [--dir DIR] [--data DIR] [--logs DIR] [--addr IP:PORT]
                    [--trusted-proxies CIDRS] [--password PW]
                    [--service-user gpuworks] [--log-max-size 10MB] [--log-keep 20]
-                   [--quiet] [--no-systemd]
+                   [--quiet] [--autostart | --no-systemd]
   gpuworks upgrade [--dir DIR] [--channel nightly|release]
                    [--source URL ... | --base-url URL | --archive FILE] [--version ID]
                    [--keep 3] [--force] [--check] [--quiet]
@@ -441,11 +475,29 @@ const installUsage = `  gpuworks install [--dir /opt/gpuworks/server] [--data DI
   gpuworks stop [--dir DIR]
   gpuworks uninstall [--dir DIR] [--purge] [--yes|-y] [--dry-run] [--json] [--quiet]
 
+install defaults to /opt/gpuworks/server and a systemd unit on Linux, and to ~/gpuworks/server
+run detached (no launch daemon unless --autostart) on macOS.
 upgrade, restart, stop and uninstall act on the installation the binary belongs to (the one
-whose directory holds it and its server.yaml), else /opt/gpuworks/server.
+whose directory holds it and its server.yaml), else the default directory.
 uninstall retains configuration and data by default; --purge deletes them.
 Unattended uninstall requires --yes; --dry-run only displays the checklist.
 `
+
+// tildePath shows a directory under the operator's home as ~/..., the way the
+// operator would type it back.
+func tildePath(dir string) string {
+	home := selfinstall.ExpandHome("~")
+	if home == "~" || home == "/" {
+		return dir
+	}
+	if dir == home {
+		return "~"
+	}
+	if rel, ok := strings.CutPrefix(dir, home+string(filepath.Separator)); ok {
+		return "~/" + rel
+	}
+	return dir
+}
 
 // stringList is a repeatable string flag.
 type stringList []string

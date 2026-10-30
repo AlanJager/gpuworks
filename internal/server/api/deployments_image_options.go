@@ -3,6 +3,7 @@ package api
 import (
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
@@ -32,6 +33,10 @@ func deploymentImageTargetForGPU(engine, targetVendor string, node *store.Node, 
 	}
 	target.Vendor = vendor
 	target.PlatformArch = node.Arch
+	target.PlatformOS = "linux"
+	if node.RuntimeDriver == proto.RuntimeDriverHost {
+		target.PlatformOS = node.OS
+	}
 	target.DriverVersion = node.GPUDriver
 	target.Framework = node.Framework
 	target.FrameworkVersion = node.FrameworkVersion
@@ -100,15 +105,14 @@ func (a *apiHandlers) deploymentImageOptions(target deploy.ImageTarget, selectio
 			continue
 		}
 		seen[key] = struct{}{}
-		compatible := value.trusted
-		if !compatible {
-			checkTarget := target
-			checkTarget.Override = value.image
-			if catalogErr == nil {
-				compatible = !deploy.ResolveImageCatalog(checkTarget, catalogCandidates).Blocking
-			} else {
-				compatible = !imagecatalog.Resolve(a.d.Store, checkTarget).Blocking
-			}
+		checkTarget := target
+		checkTarget.Override = value.image
+		checkTarget.TrustedOverride = value.trusted
+		var compatible bool
+		if catalogErr == nil {
+			compatible = !deploy.ResolveImageCatalog(checkTarget, catalogCandidates).Blocking
+		} else {
+			compatible = !imagecatalog.Resolve(a.d.Store, checkTarget).Blocking
 		}
 		option := dto.ImageOption{Image: value.image, Reason: value.reason, Compatible: compatible}
 		if strings.EqualFold(value.image, strings.TrimSpace(selected)) && cached != nil {

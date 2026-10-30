@@ -40,7 +40,7 @@ func SourceRefusal(src store.ModelSource, node *store.Node, model *store.Model) 
 			return nil
 		}
 		switch mf.State {
-		case proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk, proto.MFDeleting:
+		case proto.MFCanceled, proto.MFFailed, proto.MFDownloadRequired, proto.MFInsufficientDisk, proto.MFDeleting:
 		default:
 			return nil
 		}

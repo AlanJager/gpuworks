@@ -427,3 +427,21 @@ test("a switch that cannot be saved keeps its position and a server without serv
     readOnly.restore();
   }
 });
+
+test("the running build keeps its own label when the selected update channel offers another release", async () => {
+  const value = statusFixture();
+  value.channel = "release";
+  value.server.latest = "v99.0.0";
+  value.server.built_at = "2099-01-01T00:00:00Z";
+  value.server.current_build = { version: value.server.current, kind: "development", build_channel: "nightly", built_at: "2026-10-01T00:00:00Z" };
+  const backend = stub([value]);
+  try {
+    renderCard();
+    const summary = await screen.findByRole("region", { name: u.currentBuild });
+    assert.ok(within(summary).getByText(commonLocale.buildInfo.kind.development));
+    assert.ok(within(summary).getByText(value.server.current));
+    assert.equal(within(summary).queryByText(/v99\.0\.0/), null);
+    assert.equal(within(summary).queryByText(/2099/), null);
+    assert.equal(within(summary).queryByText(commonLocale.buildInfo.kind.stable), null);
+  } finally { backend.restore(); }
+});

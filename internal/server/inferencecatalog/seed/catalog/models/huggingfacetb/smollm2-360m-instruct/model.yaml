@@ -21,7 +21,7 @@ specs:
         revision: a10cc1512eabd3dde888204e902eca88bddb4951
     - modelscope:
         repo_id: HuggingFaceTB/SmolLM2-360M-Instruct
-        revision: a10cc1512eabd3dde888204e902eca88bddb4951
+        revision: 41afc025e05a12e7348c12b49cf1896a4a44722f
   weight_bytes: 723681432
   gpus:
     vendor: ppu

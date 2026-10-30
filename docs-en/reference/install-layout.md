@@ -6,15 +6,17 @@ Use this page to look up the defaults, directory and file permissions, credentia
 
 | Item | Default |
 |---|---|
-| Installation directory | `/opt/gpuworks/server` |
+| Installation directory | `/opt/gpuworks/server`; on macOS, `~/gpuworks/server` (the home directory of the user who performs the installation, or of `SUDO_USER` under `sudo`) |
 | Listen address | `<default-route-interface-IP>:8800` |
 | Data directory | `<dir>/data` |
 | Logs | `<dir>/logs/gpuworks-server.log`, 10 MB × 20 rotations |
 | Backups | `<dir>/backups`, retaining the latest 3 sets |
-| Service | systemd unit `gpuworks.service`, running as system user `gpuworks`; on macOS, launch daemon `/Library/LaunchDaemons/ai.gpuworks.server.plist`, running as the user who performs the installation |
+| Service | systemd unit `gpuworks.service`, running as system user `gpuworks`; on macOS, no service is registered by default and the server runs as a nohup background process (`serve --supervise`); only `--autostart` writes the launch daemon `/Library/LaunchDaemons/ai.gpuworks.server.plist`, running as the user who performs the installation |
 | Trusted proxies | `127.0.0.1/32,::1/128` |
 
-The installation directory is a subdirectory of the agent's default directory, `/opt/gpuworks`. When you install the control plane and agent on the same machine, their binaries, state, and data do not overwrite each other.
+The installation directory is a subdirectory of the agent's default directory (`/opt/gpuworks` on Linux, `~/gpuworks` on macOS). When you install the control plane and agent on the same machine, their binaries, state, and data do not overwrite each other.
+
+A leading `~`, `~/x`, or `~user/x` in `--dir`, `--data`, `--logs`, and in the answer to the `install directory` prompt expands to that user's home directory.
 
 The listen address uses the IP of the local default route's outbound interface and port 8800. If no default route is found, it uses the first IPv4 address on a non-loopback, non-virtual interface. Specifying only `:port` for `--addr` binds to `0.0.0.0`.
 
@@ -92,13 +94,13 @@ When output is a terminal and `--quiet` is not set, install first prints a banne
 
 | Prompt | New installation default | Existing installation default | When supplied on the command line |
 |---|---|---|---|
-| `install directory` | `/opt/gpuworks/server` | Same as on the left (`--dir` determines the directory) | `--dir` skips the prompt |
+| `install directory` | `/opt/gpuworks/server`; `~/gpuworks/server` on macOS | Same as on the left (`--dir` determines the directory) | `--dir` skips the prompt |
 | `listen address` | Detected `<IP>:8800` | First console listen address in `server.yaml` | `--addr` skips the prompt |
-| `start the service automatically` | `yes` | `no` if the original installation uses nohup; otherwise `yes` | `--no-systemd` skips the prompt |
+| `start the service automatically` | `yes`; `no` on macOS | `no` if the original installation uses nohup; otherwise `yes`. On macOS, `yes` if the original installation has a launch daemon; otherwise `no` | `--autostart` or `--no-systemd` skips the prompt |
 | `Admin password` (echo disabled, final step) | Random | No prompt if the database already has an admin account | No prompt if `--password` is supplied or `GPUWORKS_ADMIN_PASSWORD` is confirmed |
 
 - Entering only a port number for the listen address preserves the default address and replaces only the port. Other input must use `IP:port`; otherwise, the prompt repeats.
-- Answering `no` to automatic startup is equivalent to `--no-systemd`. Only `yes`/`y`/`no`/`n` are accepted.
+- Answering `yes` to automatic startup is equivalent to `--autostart`, and `no` to `--no-systemd`. Only `yes`/`y`/`no`/`n` are accepted.
 - When `--quiet` is set or stdin is not a terminal, no banner or prompts are shown, and all defaults are used. The final summary is still printed, including the administrator credentials.
 
 ## systemd Unit
@@ -109,7 +111,7 @@ The service unit reads the server configuration through `server.yaml`; it does n
 - `User=` is the service account specified by `--service-user`; `Restart=always` and `RestartSec=3`; `TimeoutStopSec=30` allows ongoing model and image sync operations time to shut down gracefully.
 - `KillMode` retains the default (control-group): the server does not own inference containers, and its child processes should exit with it (the agent unit uses the opposite behavior).
 
-The unit is written only when root or usable `sudo` is available, `systemctl` exists, and `/run/systemd/system` actually exists (a container with systemctl installed but no systemd does not qualify). On macOS, the launchd plist below is written instead. If neither applies, installation falls back to a nohup background process with a PID file.
+The unit is written only when root or usable `sudo` is available, `systemctl` exists, and `/run/systemd/system` actually exists (a container with systemctl installed but no systemd does not qualify). On macOS, the launchd plist below is written only with `--autostart` (or a `yes` answer to the prompt, or when reinstalling over an installation that has a launch daemon). Otherwise, installation uses a nohup background process with a PID file.
 
 ## launchd plist (macOS)
 
@@ -139,7 +141,7 @@ When the server exits because of an error, such as an occupied listen address, i
 
 ## Agent Configuration File
 
-This section covers the agent on a node, rather than the control plane. The agent's startup configuration is stored in only one place: `gpuworks-agent.conf` in the state directory (default: `/opt/gpuworks`). The file has permissions `0600` and contains the node token. Only `gpuworks-agent configure` writes it (called by the installation script; see [CLI](cli.md#gpuworks-agent-configure)), rewriting the entire file on every installation.
+This section covers the agent on a node, rather than the control plane. The agent's startup configuration is stored in only one place: `gpuworks-agent.conf` in the state directory (default: `/opt/gpuworks`; `~/gpuworks` on macOS). The file has permissions `0600` and contains the node token. Only `gpuworks-agent configure` writes it (called by the installation script; see [CLI](cli.md#gpuworks-agent-configure)), rewriting the entire file on every installation.
 
 ```
 # gpuworks agent configuration, written by `gpuworks-agent configure`.

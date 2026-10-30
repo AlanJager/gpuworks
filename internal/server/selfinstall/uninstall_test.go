@@ -186,7 +186,7 @@ func TestUninstallFailureKeepsRecoveryDataAndProgram(t *testing.T) {
 			case "remove unit":
 				h.run.fail["sudo rm -f "+h.layout.UnitPath()] = failure
 			case "upgrade lock":
-				unlock, err := h.installer.lockUpgrade()
+				unlock, err := h.installer.lockUpgrade(context.Background())
 				if err != nil {
 					t.Fatal(err)
 				}

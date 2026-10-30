@@ -29,6 +29,7 @@ var deniedRoutes = map[string]string{
 	"/api/v1/agent/connect":                       "the agents' WebSocket, not a read",
 	"/api/v1/ai/configs":                          "AI endpoints and their keys",
 	"/api/v1/apikeys":                             "API keys",
+	"/api/v1/experience":                          "the experience environment's console password",
 	"/api/v1/deployments/{id}/draft":              "the deploy form's edit draft, environment values included; GET /api/v1/deployments/{id} describes the deployment",
 	"/api/v1/branding":                            "console branding, mostly an inline logo image",
 	"/api/v1/platform-tokens":                     "platform API tokens",

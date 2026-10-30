@@ -371,6 +371,32 @@ func TestMonitorDeploymentPhase2AlignmentAndTTFTBreakdownWireContract(t *testing
 	}
 }
 
+// TestMonitorDeploymentReplicaGPUPowerWireContract pins power_w as a real
+// wire value, not just the null the phase2 fixtures above decode: a card
+// whose power was collected carries its watts as a plain JSON number under
+// "power_w", and round-tripping through MonitorReplicaGPU keeps it.
+func TestMonitorDeploymentReplicaGPUPowerWireContract(t *testing.T) {
+	const wire = `{"instance_uuid": "inst-1", "state": "running", "node_name": "gpu3", "gpu_indexes": [0],
+		"running": null, "waiting": null, "kv_usage_pct": null, "kv_hit_rate_pct": null,
+		"prompt_tok_s": null, "generation_tok_s": null,
+		"gpus": [{"index": 0, "util_pct": 91, "mem_bw_pct": 70, "temperature_c": 78, "power_w": 213.4}]}`
+	var decoded MonitorReplicaRow
+	if err := json.Unmarshal([]byte(wire), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	gpu := decoded.GPUs[0]
+	if gpu.PowerW == nil || *gpu.PowerW != 213.4 {
+		t.Fatalf("gpu.PowerW = %v, want 213.4", gpu.PowerW)
+	}
+	raw, err := json.Marshal(gpu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"power_w":213.4`) {
+		t.Fatalf("marshaled gpu missing power_w:213.4: %s", raw)
+	}
+}
+
 // TestMonitorTTFTBreakdownApproximateWhenClamped proves Approximate is set
 // (and FirstTokenMs is clamped to 0, not negative) whenever queue+prefill
 // alone would already exceed - or exactly consume - the TTFT total.

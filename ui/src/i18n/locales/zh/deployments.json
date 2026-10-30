@@ -32,6 +32,7 @@
       "model": "模型",
       "runtime": "引擎 / 镜像",
       "node": "计算节点",
+      "targetNode": "目标节点",
       "state": "状态",
       "health": "健康",
       "instances": "就绪 / 期望副本",
@@ -51,7 +52,12 @@
     "empty": "暂无部署，请先创建一个推理服务",
     "create": "创建部署",
     "emptyFiltered": "没有符合搜索或状态筛选的部署",
-    "search": "按名称或模型搜索"
+    "search": "按名称或模型搜索",
+    "runtimeNodes": {
+      "none": "无实例",
+      "others": "等 {{total}} 台",
+      "replicas": "{{count}} 个实例"
+    }
   },
   "sleep": {
     "quick": "快速/内存",
@@ -213,6 +219,8 @@
     "model": "模型",
     "servedName": "对外模型名",
     "node": "计算节点",
+    "targetNode": "目标节点",
+    "scheduledElsewhere": "已调度到其它节点：实际运行于 {{nodes}}，目标节点为 {{target}}。",
     "state": "状态",
     "sleepable": "可休眠",
     "yes": "是",

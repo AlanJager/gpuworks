@@ -197,10 +197,8 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	model, err := a.resolveDeploymentModelFromTemplate(r.Context(), req.ModelID, &selection, req.TemplateID)
 	if err != nil {
-		resp.OK = false
-		resp.Warnings = append(resp.Warnings, messages.NewWarning(messages.WarningModelNotFound, nil))
-		resp.Errors = errs.items
-		writeJSON(w, http.StatusOK, resp)
+		errs.add("model_id", err)
+		writeEvaluateFieldErrors(w, &resp, errs)
 		return
 	}
 	// A quick registration may not have metadata yet. Keep evaluation and

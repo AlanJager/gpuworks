@@ -71,7 +71,7 @@
     "DGPU_QUOTA_NO_ROOM": "{{node}} 的 GPU {{gpu}} 放不下：扣掉该部署自己的占用后可用 {{free_gib}} GiB，新配额需要 {{need_gib}} GiB。",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "没有节点满足自动放置要求。请查看候选节点原因，或改为手动选择节点。",
     "AUTOMATIC_PLACEMENT_STALE": "评估后的节点或 GPU 方案已发生变化，请重新评估部署。",
-    "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再拉取镜像。",
+    "AGENT_UPGRADE_REQUIRED": "目标节点的 agent 版本过旧；请先升级 agent，再继续操作。",
     "NODE_RPC_UNAVAILABLE": "节点 RPC 尚未配置。",
     "NODE_OFFLINE": "计算节点已离线。",
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
@@ -224,6 +224,12 @@
     "USAGE_REPORT_READ_ONLY": "服务端没有 server.yaml，不能在这里开关用户体验改进计划。",
     "USAGE_REPORT_INVALID": "用户体验改进计划只能设为开启或关闭。",
     "USAGE_REPORT_UNAVAILABLE": "这个服务端没有使用报告。",
+    "EXPERIENCE_UNSUPPORTED": "体验模式仅用于展示，不支持此操作。",
+    "EXPERIENCE_MODEL_NOT_PRELOADED": "体验模式只能部署预置模型：{{models}}。",
+    "EXPERIENCE_UNAVAILABLE": "当前服务端不提供功能体验模式。",
+    "EXPERIENCE_INVALID": "功能体验模式只能设为开启或关闭。",
+    "EXPERIENCE_FAILED": "功能体验模式操作失败：{{reason}}",
+    "EXPERIENCE_PORT_IN_USE": "端口 {{port}} 已被其他程序占用：请释放该端口，或调整本服务的控制台端口（体验环境使用控制台端口 +10）。",
     "NOTICE_IDS_INVALID": "请指定 1 到 128 条要标为已读的通知。",
     "IMAGE_MANIFEST_INVALID": "镜像 manifest 无效：{{detail}}",
     "IMAGE_IMPORT_CONFLICT": "manifest 与已有的社区或自定义镜像冲突：{{detail}}",
@@ -485,7 +491,8 @@
     "BATCH_FILE_TOO_LARGE": "批处理输入文件超过 {{limit_mb}} MB。",
     "BATCH_MODEL_UNKNOWN": "没有运行中的部署使用模型名 {{model}}，请选择平台上已有的部署。",
     "BATCH_REQUEST_INVALID": "批处理请求无效（{{field}}）：{{reason}}",
-    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有运行中的部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。"
+    "BATCH_FILE_MODELS_UNKNOWN": "文件里的这些模型没有运行中的部署：{{models, list}}。请选一个模型来接收全部请求，或先部署这些模型。",
+    "AGENT_UPGRADE_REFUSED": "Agent 升级请求无法执行：{{detail}}"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}：浏览器与 gpuworks 之间的反向代理或隧道返回了它自己的错误页，server 给出的原因丢失了。直接通过 server 自身地址访问并重试，可以看到原因。"
@@ -822,5 +829,26 @@
       "release": "版本",
       "event": "活动"
     }
+  },
+  "buildInfo": {
+    "kind": {
+      "stable": "稳定版",
+      "prerelease": "预发布版",
+      "development": "开发测试版",
+      "unknown": "发布类型未知"
+    },
+    "description": {
+      "stable": "此构建已匹配到经过校验的稳定发布记录。",
+      "prerelease": "此构建已匹配到已发布的预览或测试版本。",
+      "development": "此构建来自开发／测试渠道，未标记为稳定发布。",
+      "unknown": "目前发布信息不足，无法确认此构建是否为稳定版。"
+    },
+    "builtAt": "构建时间：{{time}}",
+    "publishedAt": "发布时间：{{time}}",
+    "matched": "匹配发布版本：{{version}}",
+    "unmatched": "目前没有可匹配的发布记录。",
+    "details": "构建详情",
+    "commit": "Commit：{{commit}}",
+    "channel": "构建渠道：{{channel}}"
   }
 }

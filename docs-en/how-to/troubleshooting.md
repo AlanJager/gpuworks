@@ -22,8 +22,8 @@ Run node commands on the affected node and server commands on the control plane 
 | Instance event timeline | Instance details; API `GET /api/v1/instances/{uuid}/events` (deployment level: `GET /api/v1/deployments/{id}/events`) | The state and phase where it is stuck and the failure reason (`params.detail`) |
 | Scheduling explanation | Deployments page; `schedule.explain` in the instance response; `plan` in the `POST /api/v1/evaluate` response | Why this card was selected and why other candidates were rejected |
 | Logs page | Search by instance, level, source (`source=instance\|node\|agent\|server`), and keyword; see [Monitoring and Logs](monitor-and-logs.md) | Engine output, errors such as `CUDA out of memory` |
-| Server logs | Installed with `gpuworks install`: `/opt/gpuworks/server/logs/gpuworks-server.log`; direct `serve`: `<data>/logs/gpuworks-server.log`; under systemd: `journalctl -u gpuworks` | Handshake failures, recovery rounds, and proxy errors |
-| Agent logs | `<state>/agent.log` (the default installation state directory is `/opt/gpuworks`; rotates at 10 MB and keeps one previous file, `agent.log.1`); `systemctl status gpuworks-agent` | Connections, GPU probing, pulls, and startup |
+| Server logs | Installed with `gpuworks install`: `/opt/gpuworks/server/logs/gpuworks-server.log` (`~/gpuworks/server/logs/gpuworks-server.log` on macOS); direct `serve`: `<data>/logs/gpuworks-server.log`; under systemd: `journalctl -u gpuworks` | Handshake failures, recovery rounds, and proxy errors |
+| Agent logs | `<state>/agent.log` (the default installation state directory is `/opt/gpuworks`, or `~/gpuworks` on macOS; rotates at 10 MB and keeps one previous file, `agent.log.1`); `systemctl status gpuworks-agent` | Connections, GPU probing, pulls, and startup |
 | Environment self-check | `gpuworks-agent doctor` on the node | Runtimes, GPUs, drivers, and device permissions |
 
 Instance status values are `pending`, `pulling`, `starting`, `optimizing`, `running`, `removing`, `stopped`, `failed`, and

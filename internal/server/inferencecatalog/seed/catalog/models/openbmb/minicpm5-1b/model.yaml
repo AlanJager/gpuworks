@@ -76,7 +76,7 @@ specs:
         revision: 87179e5c1f455ef22e6223592d2d61351b525bfc
     - modelscope:
         repo_id: openbmb/MiniCPM5-1B
-        revision: 87179e5c1f455ef22e6223592d2d61351b525bfc
+        revision: fc2e73f63bbf2cce5739929c2bebbb046fbfae8d
   weight_bytes: 2161290912
   gpus:
     vendor: ppu

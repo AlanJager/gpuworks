@@ -149,7 +149,9 @@ test("the list shows each batch's status, endpoint, progress and times", async (
   assert.ok(within(done).getByText("/v1/embeddings"));
   assert.ok(within(done).getByText("8 / 8 done"));
   assert.ok(!within(done).queryByText(/failed$/));
-  assert.ok(within(done).getByText(/^2026-10-2[78] \d\d:\d\d$/));
+  // Created and expires, in the viewer's own time zone: whichever zone the
+  // test runs in, both fall on 26–28 October.
+  assert.equal(within(done).getAllByText(/^2026-10-2[678] \d\d:\d\d$/).length, 2);
   assert.deepEqual(listCalls[0], { state: [], page: 1, page_size: 20 });
 });
 
