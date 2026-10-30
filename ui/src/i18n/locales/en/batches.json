@@ -146,7 +146,7 @@
     "failed": "Could not create the batch",
     "sample": {
       "title": "Sample file",
-      "help": "Builds a 5-request sample for the chosen endpoint and model: download it to edit, or use it as is to create a batch.",
+      "help": "Builds a 1,000-request sample for the chosen endpoint and model (math reasoning, translation, summaries, writing and code, in English and Chinese), enough to keep a GPU busy for minutes: download it to edit, or use it as is to create a batch.",
       "model": "Model the sample uses",
       "noModel": "No active deployment",
       "download": "Download sample",
