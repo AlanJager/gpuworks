@@ -219,6 +219,12 @@ func TestInstallDockerCommandPinsDockerAndUsesMainlandMirrors(t *testing.T) {
 	if strings.Contains(command, "sudo") {
 		t.Error("the builder runs as root; sudo would only add a failure mode")
 	}
+	if strings.Index(command, "rm -f /etc/apt/sources.list.d/docker.list") > strings.Index(command, "apt-get update") {
+		t.Error("a resumed build must drop the Docker repository of the earlier attempt before the base apt update")
+	}
+	if aliyun, tuna := strings.Index(command, "mirrors.aliyun.com/docker-ce"), strings.Index(command, "mirrors.tuna.tsinghua.edu.cn/docker-ce"); aliyun < 0 || tuna < aliyun {
+		t.Error("a Docker CE mirror caught mid-sync must fall back to the next mirror, the cloud's own first")
+	}
 	if strings.Index(command, "mirrors.aliyun.com/nvidia-container-toolkit") > strings.Index(command, "nvidia.github.io") {
 		t.Error("the toolkit mirrors must be tried before nvidia.github.io")
 	}
