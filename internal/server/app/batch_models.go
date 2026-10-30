@@ -23,9 +23,6 @@ func (m batchModels) Lookup(name string) (batch.ModelState, error) {
 	}
 	instances := map[uint][]store.Instance{}
 	for _, d := range rows {
-		if d.SleepHeld {
-			continue // held whatever its instances say
-		}
 		insts, err := m.st.InstancesForDeployment(d.ID)
 		if err != nil {
 			return batch.ModelUnknown, err
@@ -84,18 +81,32 @@ func nameState(rows []store.Deployment, instances map[uint][]store.Instance) bat
 // deploymentState is what one active deployment is to a batch: awake (or
 // starting) it serves; asleep, a request wakes it when
 // Deployment.WakesOnRequest says so - the gateway's rule - and otherwise the
-// sleep is held. A held sleep (Deployment.SleepHeld, cleared by any wake) is
-// asleep whatever the instances report yet; otherwise the deployment is
+// sleep is held. A replica awake with no sleep ordered serves, held or not:
+// an operator's sleep of some replicas holds the deployment's sleep
+// (Deployment.SleepHeld) while the others serve. Otherwise a held sleep is
+// asleep whatever the instances report yet, and a deployment not held is
 // asleep when it has running replicas and the gateway would refuse each for
 // sleep (planning.InstanceAsleep on their leaders).
 func deploymentState(d *store.Deployment, insts []store.Instance) batch.ModelState {
-	if !d.SleepHeld && !replicasAsleep(insts) {
+	if anyReplicaServes(insts) || !d.SleepHeld && !replicasAsleep(insts) {
 		return batch.ModelAvailable
 	}
 	if d.WakesOnRequest() {
 		return batch.ModelAsleep
 	}
 	return batch.ModelSleepHeld
+}
+
+// anyReplicaServes says a running replica takes requests: its leader is not
+// asleep and is not ordered to sleep.
+func anyReplicaServes(insts []store.Instance) bool {
+	for i := range insts {
+		in := &insts[i]
+		if in.State == proto.InstRunning && !in.Headless && !planning.InstanceAsleep(in) {
+			return true
+		}
+	}
+	return false
 }
 
 // replicasAsleep says the deployment has running replicas and every one is
