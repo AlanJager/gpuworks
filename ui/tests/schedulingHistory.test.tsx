@@ -120,6 +120,31 @@ test("each entry shows its time, deployment, action, worded details, category an
   assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=7");
 });
 
+test("an entry that gave GPUs to another deployment names it, and the name opens it", async () => {
+  const preempt = (id: number, target: Entry["target"]) => entry(id, {
+    params: { trigger: "preempt", reason: "rank", for_deployment: target?.id ?? 0, level: 1, instances: ["abcdef012345"] }, target,
+  });
+  serve([
+    preempt(40, { id: 8, name: "llama" }),
+    preempt(39, { id: 9, name: "gone", deleted: true }),
+    preempt(38, { id: 11 }),
+  ]);
+  const user = mount();
+  await screen.findByRole("link", { name: "llama" });
+  const rows = screen.getAllByRole("row").slice(1);
+  // The sentence reads as the timeline's, with the name where "#id" was.
+  const sentence = i18n.t("deployments:instance.event.AUTO_SLEEP", {
+    level: 1, instances: "abcdef01", cause: i18n.t("deployments:automation.preempt.rank", { who: "llama" }),
+  });
+  assert.equal(within(rows[0]).getByText((_, el) => el?.tagName === "SPAN" && el.textContent === sentence && el.querySelector("a") !== null) !== null, true);
+  // A deleted one is named but has no page; an unknown one shows its id.
+  assert.ok(within(rows[1]).getByText(i18n.t("scheduling:history.deleted", { name: "gone" })));
+  assert.equal(within(rows[1]).queryAllByRole("link").map((a) => a.textContent).join(), "qwen");
+  assert.ok(within(rows[2]).getByText(/#11/));
+  await user.click(within(rows[0]).getByRole("link", { name: "llama" }));
+  assert.equal(screen.getByTestId("loc").textContent, "/deployments?deployment=8");
+});
+
 test("an empty history says so, and says differently when filters hide everything", async () => {
   const queries = serve([]);
   const user = mount();

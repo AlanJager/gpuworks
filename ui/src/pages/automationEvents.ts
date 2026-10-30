@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import type { InstanceEvent } from "../api";
 
 /**
- * The scheduling center's timeline entries (kind "automation"): what a
+ * The automation's timeline entries (kind "automation"): what a
  * schedule, auto sleep, a yield or a waiting wake did to the deployment. Their params
  * are lists and names, not counts, so they are worded here rather than by the
  * lifecycle mapping. The node-replacement entries are worded in
@@ -58,23 +58,30 @@ function shortIDs(ids: string[]): string {
 // preemptCause words a deployment giving its GPUs to another under its yield
 // policy: who got them, why (idle for the idle time, rank, a time-slice turn)
 // and whether requests in flight were cut off.
-function preemptCause(t: TFunction<"deployments">, event: InstanceEvent): string {
+function preemptCause(t: TFunction<"deployments">, event: InstanceEvent, name?: DeploymentLabel): string {
   const target = num(event, "for_deployment");
-  const who = target != null ? t("automation.preempt.who", { id: target }) : t("automation.preempt.someone");
+  const who = target == null ? t("automation.preempt.someone") : name ? name(target) : t("automation.preempt.who", { id: target });
   const reason = text(event, "reason");
   const why = t(`automation.preempt.${reason}`, { who, defaultValue: "" }) || t("automation.preempt.other", { who });
   return event.params?.abort === true ? why + t("automation.preempt.abort") : why;
 }
 
+/**
+ * DeploymentLabel words the deployment an entry acted for, given its id; by
+ * default "部署 #id". A caller that knows names (the scheduling history) puts
+ * them, or a marker it replaces with a link, in its place.
+ */
+export type DeploymentLabel = (id: number) => string;
+
 /** Word one automation entry from its code and params. */
-export function automationEventText(t: TFunction<"deployments">, event: InstanceEvent, code: string): string {
+export function automationEventText(t: TFunction<"deployments">, event: InstanceEvent, code: string, name?: DeploymentLabel): string {
   const trigger = text(event, "trigger");
   const level = num(event, "level") ?? "";
   const instances = shortIDs(list(event, "instances"));
   const idle = num(event, "idle_sec");
   const preempt = trigger === "preempt";
   const cause = preempt
-    ? preemptCause(t, event)
+    ? preemptCause(t, event, name)
     : trigger ? t(`automation.cause.${trigger}`, { defaultValue: "", idle: idle != null ? durationText(t, idle) : "" }) : "";
   const waited = num(event, "waited_sec");
   const yielded = list(event, "yielded");

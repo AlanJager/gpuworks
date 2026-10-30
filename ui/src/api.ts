@@ -1191,6 +1191,15 @@ export interface SchedulingHistoryEntry {
   params: Record<string, unknown>;
   /** The user who ordered a manual entry, when known. */
   actor?: string;
+  /** The deployment the entry acted for (a yield gave it the GPUs), named. */
+  target?: SchedulingHistoryDeployment;
+}
+
+/** A deployment a history entry refers to; name is absent when unknown. */
+export interface SchedulingHistoryDeployment {
+  id: number;
+  name?: string;
+  deleted?: boolean;
 }
 
 export interface SchedulingHistoryQuery {

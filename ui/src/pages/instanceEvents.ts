@@ -2,7 +2,7 @@ import type { TFunction } from "i18next";
 
 import type { InstanceEvent } from "../api";
 import { isNodeReplacementEvent, nodeReplacementEventText } from "./nodeReplacementEvents.ts";
-import { automationEventText, isAutomationEvent } from "./automationEvents.ts";
+import { automationEventText, isAutomationEvent, type DeploymentLabel } from "./automationEvents.ts";
 import { isOperatorEvent, operatorEventText } from "./operatorEvents.ts";
 import { stateLabel } from "./state.ts";
 import { formatBytes as formatSize } from "../format";
@@ -155,9 +155,9 @@ export function instanceEventText(
   t: TFunction<"deployments">,
   tCommon: TFunction<"common">,
   event: InstanceEvent,
-  options: { withActor?: boolean } = {},
+  options: { withActor?: boolean; deploymentLabel?: DeploymentLabel } = {},
 ): string {
-  const text = eventBodyText(t, tCommon, event);
+  const text = eventBodyText(t, tCommon, event, options.deploymentLabel);
   const actor = paramText(event, "actor");
   return actor && options.withActor !== false ? text + t("instance.actorNote", { actor }) : text;
 }
@@ -166,12 +166,13 @@ function eventBodyText(
   t: TFunction<"deployments">,
   tCommon: TFunction<"common">,
   event: InstanceEvent,
+  deploymentLabel?: DeploymentLabel,
 ): string {
   const code = event.code?.trim() ?? "";
   if (isOperatorEvent(code)) return operatorEventText(t, event, code);
   if (knownLifecycleEventCodes.has(code)) return lifecycleEventText(t, event, code);
   if (isNodeReplacementEvent(code)) return nodeReplacementEventText(t, event, code);
-  if (isAutomationEvent(code)) return automationEventText(t, event, code);
+  if (isAutomationEvent(code)) return automationEventText(t, event, code, deploymentLabel);
   if (!knownInstanceEventCodes.has(code)) return event.message?.trim() || code;
 
   const rawState = paramText(event, "state");

@@ -170,12 +170,32 @@ function DeploymentCell({ row }: { row: SchedulingHistoryEntry }) {
   return <Link to={`/deployments?deployment=${row.deployment_id}`}>{name}</Link>;
 }
 
-// HistoryTable words each entry as the deployment's own timeline words it, so
-// the two read the same; the actor has a column of its own.
-function HistoryTable({ rows }: { rows: SchedulingHistoryEntry[] }) {
+// TARGET marks where the details name the deployment the entry acted for, so
+// that name can be a link.
+const TARGET = "\u0000target\u0000";
+
+// DetailsCell words an entry as the deployment's own timeline words it, so
+// the two read the same, with the deployment it acted for (a yield's) named
+// and linked rather than "#id".
+function DetailsCell({ row }: { row: SchedulingHistoryEntry }) {
   const { t } = useTranslation("scheduling");
   const { t: tDeployments } = useTranslation("deployments");
   const { t: tCommon } = useTranslation("common");
+  const event = { id: row.id, kind: row.kind, code: row.code, params: row.params, created_at: row.created_at };
+  const text = instanceEventText(tDeployments, tCommon, event, { withActor: false, deploymentLabel: row.target ? () => TARGET : undefined });
+  const target = row.target;
+  if (!target || !text.includes(TARGET)) return <Typography.Text>{text}</Typography.Text>;
+  const name = target.name || `#${target.id}`;
+  const label = target.deleted || !target.name
+    ? <span>{target.deleted ? t("history.deleted", { name }) : name}</span>
+    : <Link to={`/deployments?deployment=${target.id}`}>{name}</Link>;
+  const [before, ...after] = text.split(TARGET);
+  return <Typography.Text>{before}{label}{after.join(name)}</Typography.Text>;
+}
+
+// HistoryTable lists the entries; the actor has a column of its own.
+function HistoryTable({ rows }: { rows: SchedulingHistoryEntry[] }) {
+  const { t } = useTranslation("scheduling");
   const columns: ResourceColumn<SchedulingHistoryEntry>[] = [
     { key: "at", title: t("history.columns.at"), width: 160, render: (_: unknown, row) => formatTime(row.created_at) },
     { key: "deployment", title: t("history.columns.deployment"), width: 180, render: (_: unknown, row) => <DeploymentCell row={row} /> },
@@ -185,11 +205,7 @@ function HistoryTable({ rows }: { rows: SchedulingHistoryEntry[] }) {
       title: t("history.columns.details"),
       width: 440,
       ellipsis: false,
-      render: (_: unknown, row) => (
-        <Typography.Text>
-          {instanceEventText(tDeployments, tCommon, { id: row.id, kind: row.kind, code: row.code, params: row.params, created_at: row.created_at }, { withActor: false })}
-        </Typography.Text>
-      ),
+      render: (_: unknown, row) => <DetailsCell row={row} />,
     },
     { key: "category", title: t("history.columns.category"), width: 90, render: (_: unknown, row) => <Tag color={CATEGORY_COLORS[row.category]}>{t(`history.category.${row.category}`)}</Tag> },
     { key: "actor", title: t("history.columns.actor"), width: 110, render: (_: unknown, row) => row.actor || "—" },
