@@ -280,7 +280,7 @@ func (m *memRepo) RequestCancel(id string, at time.Time) (Batch, error) {
 	if Terminal(b.Status) {
 		return b, ErrTerminal
 	}
-	if b.Status == StatusValidating || b.Status == StatusInProgress {
+	if Cancellable(b.Status) {
 		b.Status, b.CancellingAt = StatusCancelling, &at
 		m.batches[id] = b
 	}

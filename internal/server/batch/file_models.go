@@ -20,13 +20,23 @@ const (
 	maxReportedModels = 20
 )
 
-// ModelsText names the first few of models, with an ellipsis when more
-// follow. It is language-neutral, for a message of any language to embed.
-func ModelsText(models []string) string {
+// NamedModels splits models into the first few a message names and the
+// number of those that follow, for a client to word in its own language.
+func NamedModels(models []string) (named []string, more int) {
 	if len(models) > namedModels {
-		return strings.Join(models[:namedModels], ", ") + ", ..."
+		return models[:namedModels], len(models) - namedModels
 	}
-	return strings.Join(models, ", ")
+	return models, 0
+}
+
+// ModelsText names the first few of models in English punctuation, with an
+// ellipsis when more follow: the wording of the OpenAI-compatible messages.
+func ModelsText(models []string) string {
+	named, more := NamedModels(models)
+	if more > 0 {
+		return strings.Join(named, ", ") + ", ..."
+	}
+	return strings.Join(named, ", ")
 }
 
 // fileModels reads the distinct body.model values of a stored input file in
@@ -36,12 +46,12 @@ func ModelsText(models []string) string {
 func (s *Service) fileModels(f File) ([]string, error) {
 	path, err := s.filePath(f.ID)
 	if err != nil {
-		return nil, notFound("file_not_found", "No such File object: "+f.ID)
+		return nil, notFound(CodeFileNotFound, "No such File object: "+f.ID)
 	}
 	fh, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, notFound("file_not_found", "The file's content is no longer available: "+f.ID)
+			return nil, notFound(CodeFileNotFound, "The file's content is no longer available: "+f.ID)
 		}
 		return nil, err
 	}
@@ -84,16 +94,32 @@ func (s *Service) checkFileModels(f File) ([]Warning, error) {
 	if err != nil {
 		return nil, err
 	}
-	var unknown, held []string
+	unknown, held, err := s.classify(names)
+	if err != nil {
+		return nil, err
+	}
+	if len(unknown) > 0 {
+		e := invalid(CodeModelNotFound, ParamInputFileID, "The input file names models that no active deployment serves: "+ModelsText(unknown)+
+			". Set a model to send every request to, or deploy these models first")
+		e.Models = unknown
+		return nil, e
+	}
+	return heldWarnings(ParamInputFileID, held), nil
+}
+
+// classify looks names up and returns those no active deployment serves and
+// those whose every deployment sleeps by an operator's or a schedule's order,
+// each in the order of names. It stops once maxReportedModels are unknown.
+func (s *Service) classify(names []string) (unknown, held []string, err error) {
 	for _, name := range names {
 		state, err := s.cfg.Models.Lookup(name)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		switch state {
+		case ModelAvailable:
 		case ModelSleepHeld:
 			held = append(held, name)
-		case ModelAvailable:
 		default:
 			unknown = append(unknown, name)
 		}
@@ -101,17 +127,19 @@ func (s *Service) checkFileModels(f File) ([]Warning, error) {
 			break
 		}
 	}
-	if len(unknown) > 0 {
-		e := invalid("model_not_found", "input_file_id", "The input file names models that no active deployment serves: "+ModelsText(unknown)+
-			". Set a model to send every request to, or deploy these models first")
-		e.Models = unknown
-		return nil, e
+	return unknown, held, nil
+}
+
+// heldWarnings is the warning about models whose deployments sleep by an
+// operator's or a schedule's order, none when held is empty; param is the
+// request field that chose them.
+func heldWarnings(param string, held []string) []Warning {
+	if len(held) == 0 {
+		return nil
 	}
-	if len(held) > 0 {
-		return []Warning{{
-			Code: WarningModelSleepHeld, Param: "input_file_id", Models: held,
-			Message: "The deployments serving " + ModelsText(held) + " sleep by an operator's or a schedule's order, which requests do not wake; their requests are retried until they are woken or the batch expires",
-		}}, nil
+	message := "The deployment serving " + held[0] + " sleeps by an operator's or a schedule's order, which requests do not wake; the batch's requests are retried until it is woken or the batch expires"
+	if len(held) > 1 {
+		message = "The deployments serving " + ModelsText(held) + " sleep by an operator's or a schedule's order, which requests do not wake; their requests are retried until they are woken or the batch expires"
 	}
-	return nil, nil
+	return []Warning{{Code: WarningModelSleepHeld, Param: param, Models: held, Message: message}}
 }

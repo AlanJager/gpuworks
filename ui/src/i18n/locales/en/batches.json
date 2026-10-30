@@ -90,7 +90,7 @@
       "output": "Download output",
       "error": "Download errors",
       "unavailable": "Not available",
-      "hint": "Output and error files are deleted {{days}} days after the batch ends.",
+      "hint": "The output and error files are deleted at {{time}}.",
       "expired": "This file has expired and was deleted."
     },
     "cancelPending": "Cancel requested. The batch stays cancelling until the requests in flight end, up to 2 minutes.",
@@ -131,7 +131,8 @@
       "replaced": "The models in the file ({{models}}) will all be replaced by {{model}}."
     },
     "warnings": {
-      "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires."
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} sleeps by an operator's or a schedule's order, which requests do not wake: the batch's requests are retried until someone wakes it or the batch expires.",
+      "BATCH_FILE_MODELS_SLEEP_HELD": "{{models, list}} in the file sleep by an operator's or a schedule's order, which requests do not wake: their requests are retried until someone wakes them or the batch expires."
     },
     "created": "Batch {{id}} created",
     "hintTitle": "Format and limits",
@@ -177,7 +178,7 @@
       "invalid_multipart": "the upload is not a valid form"
     },
     "requestInvalid": "The batch request is not valid ({{field}}): {{reason}}",
-    "fileModelsUnknown": "The file names models that no active deployment serves: {{models}}. Choose a model to send every request to, or deploy these models first."
+    "moreModels": "{{count}} more"
   },
   "api": {
     "title": "Call it through the API (OpenAI-compatible /v1/files and /v1/batches)",

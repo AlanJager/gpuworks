@@ -480,11 +480,12 @@
     "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
     "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments.",
     "BATCH_NOT_FOUND": "The batch or file was not found, or its output has expired and was deleted.",
-    "BATCH_NOT_CANCELLABLE": "The batch has already finished and cannot be cancelled.",
+    "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
     "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
-    "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}"
+    "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
+    "BATCH_FILE_MODELS_UNKNOWN": "The file names models that no active deployment serves: {{models, list}}. Choose a model to send every request to, or deploy these models first."
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."

@@ -171,6 +171,12 @@ func TestCreateBatchWarnsAboutHeldModelsOfTheFile(t *testing.T) {
 	if stored, _ := r.repo.GetBatch(b.ID); len(stored.Warnings) != 0 {
 		t.Fatalf("a warning was stored: %+v", stored.Warnings)
 	}
+	// One held model is worded in the singular.
+	one, _, err := r.createOver(modelLines("real", "held"), "")
+	if err != nil || len(one.Warnings) != 1 || one.Warnings[0].Param != ParamInputFileID ||
+		!strings.HasPrefix(one.Warnings[0].Message, "The deployment serving held sleeps by") {
+		t.Fatalf("one held model = %+v err = %v", one.Warnings, err)
+	}
 	// A held model beside an unknown one is still a refusal.
 	_, _, err = r.createOver(modelLines("held", "ghost"), "")
 	var e *Error

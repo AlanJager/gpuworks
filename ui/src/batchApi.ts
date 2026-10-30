@@ -34,7 +34,10 @@ export interface BatchFailure {
   message: string;
 }
 
-/** A finding that does not refuse the batch; BATCH_MODEL_SLEEP_HELD says the model's deployment sleeps by an operator's order, which requests do not wake. */
+/**
+ * A finding that does not refuse the batch: BATCH_MODEL_SLEEP_HELD {model} says the model the batch was given sleeps by an
+ * operator's order, which requests do not wake; BATCH_FILE_MODELS_SLEEP_HELD {models, more} says so of models its file names.
+ */
 export interface BatchWarning {
   code: string;
   params?: Record<string, unknown>;
@@ -44,6 +47,8 @@ export interface Batch {
   id: string;
   endpoint: BatchEndpoint | string;
   status: BatchStatus;
+  /** Whether a cancel would stop the batch now; the server decides (a finalizing batch, for one, ends as it is). */
+  cancellable: boolean;
   input_file_id: string;
   /** Only on a single batch (GET, create, cancel), not on list rows. */
   input_filename?: string;
@@ -55,6 +60,8 @@ export interface Batch {
   request_counts: BatchRequestCounts;
   metadata: Record<string, string>;
   failure?: BatchFailure;
+  /** When the output and error files are deleted, the server's retention after the batch ended; absent while it runs or without files. */
+  output_expires_at?: string;
   /** Non-blocking findings of creating the batch; only on the create response. */
   warnings?: BatchWarning[];
   user_id: number;
@@ -83,27 +90,14 @@ export const BATCH_WINDOW_HOURS = { min: 1, max: 72, default: 24 } as const;
 /** The limits the create form shows; the server enforces them. */
 export const BATCH_LIMITS = { maxFileMB: 200, maxRequests: 50_000 } as const;
 
-/** Output and error files are deleted this long after the batch ended. */
-export const BATCH_OUTPUT_RETENTION_DAYS = 30;
-
 /** Seconds-level cadence at which the server checkpoints a running batch's progress. */
 export const BATCH_POLL_MS = 5000;
 
 const TERMINAL: ReadonlySet<string> = new Set(["completed", "failed", "expired", "cancelled"]);
 
-/** Whether a batch is still moving: validating, running, finalizing or being cancelled. */
+/** Whether a batch is still moving (validating, running, finalizing or being cancelled), so the page keeps polling it. */
 export function isBatchActive(status: string): boolean {
   return !TERMINAL.has(status);
-}
-
-/** Whether the owner can still ask for the batch to be cancelled. */
-export function isBatchCancellable(status: string): boolean {
-  return isBatchActive(status) && status !== "cancelling";
-}
-
-/** When the batch ended: the latest of its terminal timestamps, absent while it runs. */
-export function batchEndedAt(batch: Batch): string | undefined {
-  return batch.completed_at ?? batch.failed_at ?? batch.expired_at ?? batch.cancelled_at;
 }
 
 /** The authenticated link of one of a batch's JSON Lines files (the session cookie carries the login). */

@@ -14,9 +14,13 @@ import (
 // succeeded, the error file those that failed; both are read through
 // GET /batches/{id}/files/{kind}. Times the batch has not reached are left out.
 type Batch struct {
-	ID               string `json:"id"`
-	Endpoint         string `json:"endpoint"`
-	Status           string `json:"status"`
+	ID       string `json:"id"`
+	Endpoint string `json:"endpoint"`
+	Status   string `json:"status"`
+	// Cancellable: POST /batches/{id}/cancel would move the batch to
+	// cancelling (validating or in_progress); the server decides, the client
+	// only shows it.
+	Cancellable      bool   `json:"cancellable"`
 	InputFileID      string `json:"input_file_id"`
 	InputFilename    string `json:"input_filename,omitempty"`
 	OutputFileID     string `json:"output_file_id,omitempty"`
@@ -29,8 +33,14 @@ type Batch struct {
 	Metadata      map[string]string `json:"metadata"`
 	// Failure says why a failed batch failed.
 	Failure *BatchFailure `json:"failure,omitempty"`
+	// OutputExpiresAt is when the output and error files are removed, the
+	// server's retention after the batch ended; absent while it runs or when
+	// it wrote neither file. A time in the past means they are gone.
+	OutputExpiresAt *time.Time `json:"output_expires_at,omitempty"`
 	// Warnings are the non-blocking findings of creating the batch, on the
-	// create response only: BATCH_MODEL_SLEEP_HELD {model}.
+	// create response only: BATCH_MODEL_SLEEP_HELD {model} for the model the
+	// batch was given, BATCH_FILE_MODELS_SLEEP_HELD {models, more} for the
+	// models its input file names.
 	Warnings []messages.Warning `json:"warnings,omitempty"`
 	// UserID is the user that created the batch, through an API key or the console.
 	UserID       uint       `json:"user_id"`

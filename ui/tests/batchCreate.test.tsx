@@ -23,7 +23,7 @@ const { APIError } = await import("../src/apiError.ts");
 const { batchApi } = await import("../src/batchApi.ts");
 const { default: BatchesPage } = await import("../src/pages/BatchesPage.tsx");
 const { default: BatchCreateModal } = await import("../src/pages/batches/BatchCreateModal.tsx");
-const { batchErrorText } = await import("../src/pages/batches/batchErrors.ts");
+const { batchErrorText, batchWarningText } = await import("../src/pages/batches/batchErrors.ts");
 type Batch = import("../src/batchApi.ts").Batch;
 
 // user-event does not set keyCode, which the dialogs read; the focused element receives the key.
@@ -159,14 +159,33 @@ test("an invalid file names its line, keeps the dialog open and lets the file be
 test("a refusal because the file's models are served by nothing is shown in the dialog in the reader's language", async () => {
   batchApi.list = async () => page([]);
   batchApi.create = async () => {
-    throw new APIError("BATCH_MODEL_UNKNOWN", { model: "ghost-1, ghost-2", models: "ghost-1, ghost-2" }, "The input file names models that no active deployment serves: ghost-1, ghost-2", 400);
+    throw new APIError("BATCH_FILE_MODELS_UNKNOWN", { models: ["ghost-1", "ghost-2"], more: 0 }, "The input file names models that no active deployment serves: ghost-1, ghost-2", 400);
   };
   const user = mountPage();
   const dialog = await openCreate(user);
   await user.upload(within(dialog).getByLabelText(b.create.file), jsonl("ghosts.jsonl"));
   await user.click(submitButton(dialog));
-  assert.ok(await within(dialog).findByText(b.errors.fileModelsUnknown.replace("{{models}}", "ghost-1, ghost-2")));
+  const list = new Intl.ListFormat("en", { type: "conjunction" }).format(["ghost-1", "ghost-2"]);
+  assert.ok(await within(dialog).findByText(c.apiError.BATCH_FILE_MODELS_UNKNOWN.replace("{{models, list}}", list)));
   assert.ok(screen.getByRole("dialog", { name: b.create.title }), "the dialog stays open");
+});
+
+test("the models of a file are joined with the reader's separators, the further ones counted", async () => {
+  const many = { models: ["m1", "m2", "m3", "m4", "m5"], more: 3 };
+  for (const lng of ["en", "zh"] as const) {
+    const { i18n: local, locale: words } = await createI18n(["batches"], lng);
+    const t = local.getFixedT(lng, "batches");
+    const tc = local.getFixedT(lng, "common");
+    const more = words.batches.errors.moreModels.replace("{{count}}", "3");
+    const list = new Intl.ListFormat(lng, { type: "conjunction" }).format([...many.models, more]);
+    const refusal = batchErrorText(t, tc, new APIError("BATCH_FILE_MODELS_UNKNOWN", many, "fallback", 400));
+    assert.equal(refusal.message, words.common.apiError.BATCH_FILE_MODELS_UNKNOWN.replace("{{models, list}}", list), lng);
+    assert.ok(lng === "zh" ? list.includes("、") && !list.includes(", ") : list.includes(", "), `${lng} separators: ${list}`);
+    const warning = batchWarningText(t, { code: "BATCH_FILE_MODELS_SLEEP_HELD", params: { models: ["napping"], more: 0 } });
+    assert.equal(warning, words.batches.create.warnings.BATCH_FILE_MODELS_SLEEP_HELD.replace("{{models, list}}", "napping"), lng);
+    const single = batchWarningText(t, { code: "BATCH_MODEL_SLEEP_HELD", params: { model: "napping" } });
+    assert.equal(single, words.batches.create.warnings.BATCH_MODEL_SLEEP_HELD.replace("{{model}}", "napping"), lng);
+  }
 });
 
 test("an error about the whole file or the request is worded without a line", async () => {

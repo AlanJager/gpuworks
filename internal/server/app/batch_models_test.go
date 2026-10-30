@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -14,6 +15,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/batch"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -213,8 +215,18 @@ func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 
 	_, err := create(map[string]string{"file": file("serving", "Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone", "stopped-one", "serving"), "endpoint": chat})
 	be, ok := err.(*api.BatchError)
-	if !ok || be.Status != 400 || be.Code != api.ErrorBatchModelUnknown || be.Params["models"] != "Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone, stopped-one" || be.Params["model"] != be.Params["models"] {
+	if !ok || be.Status != 400 || be.Code != messages.ErrorBatchFileModelsUnknown {
 		t.Fatalf("unknown models: %#v", err)
+	}
+	// The models go as a list for the client to join in its own language.
+	if raw, _ := json.Marshal(be.Params); string(raw) != `{"models":["Qwen/Qwen2.5-0.5B-Instruct-rp2l-clone","stopped-one"],"more":0}` {
+		t.Fatalf("unknown models params = %s", raw)
+	}
+	_, err = create(map[string]string{"file": file("g1", "g2", "g3", "g4", "g5", "g6", "g7"), "endpoint": chat})
+	if be, ok := err.(*api.BatchError); !ok || be.Code != messages.ErrorBatchFileModelsUnknown {
+		t.Fatalf("seven unknown models: %#v", err)
+	} else if raw, _ := json.Marshal(be.Params); string(raw) != `{"models":["g1","g2","g3","g4","g5"],"more":2}` {
+		t.Fatalf("seven unknown models params = %s", raw)
 	}
 	if page, err := console.List(caller, nil, 1, 50); err != nil || page.Total != 0 {
 		t.Fatalf("a refused file left %d batches (%v)", page.Total, err)
@@ -229,8 +241,11 @@ func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 		t.Fatalf("served models: %+v err=%v", ok1, err)
 	}
 	held, err := create(map[string]string{"file": file("serving", "napping"), "endpoint": chat})
-	if err != nil || len(held.Warnings) != 1 || held.Warnings[0].Code != api.WarningBatchModelSleepHeld || held.Warnings[0].Params["model"] != "napping" {
+	if err != nil || len(held.Warnings) != 1 {
 		t.Fatalf("held model: %+v err=%v", held, err)
+	}
+	if raw, _ := json.Marshal(held.Warnings); string(raw) != `[{"code":"BATCH_FILE_MODELS_SLEEP_HELD","params":{"models":["napping"],"more":0}}]` {
+		t.Fatalf("held model warnings = %s", raw)
 	}
 	over, err := create(map[string]string{"file": file("ghost"), "endpoint": chat, "model": "serving"})
 	if err != nil || over.Model != "serving" {

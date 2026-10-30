@@ -36,25 +36,33 @@ func Terminal(status string) bool {
 	return false
 }
 
+// Cancellable reports whether Cancel moves a batch in status to cancelling:
+// one that has not started or is running. A finalizing batch is assembling its
+// results and ends as it is; a cancelling one is already on its way.
+func Cancellable(status string) bool {
+	return status == StatusValidating || status == StatusInProgress
+}
+
 // Purposes of a file: the OpenAI Files API's names.
 const (
 	PurposeBatch  = "batch"
 	PurposeOutput = "batch_output"
 )
 
-// Endpoints a batch may call, and the only completion window.
+// Endpoints a batch may call.
 const (
 	EndpointChat       = "/v1/chat/completions"
 	EndpointCompletion = "/v1/completions"
 	EndpointEmbedding  = "/v1/embeddings"
-	CompletionWindow   = "24h"
 )
 
 // The completion windows a batch may ask for, in whole hours: "24h" is OpenAI's
-// and the default, "1h" to "72h" are a gpuworks extension.
+// and the default (CompletionWindow), MinWindowHours to MaxWindowHours are a
+// gpuworks extension.
 const (
-	MinWindowHours = 1
-	MaxWindowHours = 72
+	CompletionWindow = "24h"
+	MinWindowHours   = 1
+	MaxWindowHours   = 72
 )
 
 // ParseWindow reads a completion window of the form "<hours>h" with whole
@@ -279,6 +287,25 @@ type Error struct {
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// Codes of the refusals that callers tell apart: the console maps them to
+// product errors of their own.
+const (
+	CodeFileNotFound         = "file_not_found"
+	CodeBatchNotFound        = "batch_not_found"
+	CodeModelNotFound        = "model_not_found"
+	CodeBatchNotCancellable  = "batch_not_cancellable"
+	CodeEmptyFile            = "empty_file"
+	CodeTooManyRequests      = "too_many_requests"
+	CodeInvalidFileExtension = "invalid_file_extension"
+)
+
+// Request fields a refusal or warning about models is about: the model every
+// request is sent to, or the input file whose lines name their own.
+const (
+	ParamModel       = "model"
+	ParamInputFileID = "input_file_id"
+)
 
 func invalid(code, param, message string) *Error {
 	return &Error{Status: 400, Type: "invalid_request_error", Code: code, Param: param, Message: message}

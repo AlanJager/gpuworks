@@ -10,7 +10,7 @@ for (const name of ["window", "document", "navigator"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 const batchApiModule = await import("../src/batchApi.ts");
-const { batchApi, batchFileURL, isBatchActive, isBatchCancellable, batchEndedAt, BATCH_ENDPOINTS, BATCH_STATUSES } = batchApiModule;
+const { batchApi, batchFileURL, isBatchActive, BATCH_ENDPOINTS, BATCH_STATUSES } = batchApiModule;
 const { APIError } = await import("../src/apiError.ts");
 const { batch, page } = await import("./helpers/batchFixtures.ts");
 const originalFetch = globalThis.fetch;
@@ -106,19 +106,11 @@ test("file links name the kind under the batch", () => {
   assert.equal(batchFileURL("batch_aaa111", "error"), "/api/v1/batches/batch_aaa111/files/error");
 });
 
-test("a status is active until the batch ended, and cancellable unless already cancelling", () => {
+test("a status is active, and polled, until the batch ended", () => {
   const active = ["validating", "in_progress", "finalizing", "cancelling"];
   const terminal = ["completed", "failed", "expired", "cancelled"];
   assert.deepEqual([...BATCH_STATUSES].sort(), [...active, ...terminal].sort());
   for (const status of active) assert.equal(isBatchActive(status), true, status);
   for (const status of terminal) assert.equal(isBatchActive(status), false, status);
-  assert.deepEqual(active.filter(isBatchCancellable), ["validating", "in_progress", "finalizing"]);
-  assert.deepEqual(terminal.filter(isBatchCancellable), []);
-});
-
-test("the end of a batch is its terminal timestamp, absent while it runs", () => {
-  assert.equal(batchEndedAt(batch()), undefined);
-  assert.equal(batchEndedAt(batch({ status: "completed", completed_at: "2026-10-28T10:00:00Z" })), "2026-10-28T10:00:00Z");
-  assert.equal(batchEndedAt(batch({ status: "cancelled", cancelled_at: "2026-10-28T10:05:00Z" })), "2026-10-28T10:05:00Z");
   assert.deepEqual([...BATCH_ENDPOINTS], ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"]);
 });

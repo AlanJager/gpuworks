@@ -493,7 +493,8 @@ const (
 const (
 	// ErrorBatchNotFound: no such batch, file or output file for the caller.
 	ErrorBatchNotFound = "BATCH_NOT_FOUND"
-	// ErrorBatchNotCancellable: the batch has finished ({status}).
+	// ErrorBatchNotCancellable: the batch has finished or is assembling its
+	// results ({status}).
 	ErrorBatchNotCancellable = "BATCH_NOT_CANCELLABLE"
 	// ErrorBatchFileInvalid: the uploaded file is not a valid batch input:
 	// {line} of it (0 for the file as a whole), {reason} the check that failed
@@ -504,9 +505,8 @@ const (
 	// ErrorBatchRequestInvalid: a field of the request ({field}) is not valid.
 	ErrorBatchRequestInvalid = "BATCH_REQUEST_INVALID"
 	// ErrorBatchModelUnknown: no active deployment serves the {model} the batch
-	// was asked to send its requests to. For a file of requests that name
-	// models of their own, {models} is the list of those nothing serves (the
-	// first few, "..." when more follow), and {model} the same list.
+	// was asked to send its requests to. Models a file's requests name are
+	// refused with messages.ErrorBatchFileModelsUnknown instead.
 	ErrorBatchModelUnknown = "BATCH_MODEL_UNKNOWN"
 )
 

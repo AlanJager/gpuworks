@@ -90,7 +90,7 @@
       "output": "下载输出文件",
       "error": "下载错误文件",
       "unavailable": "不可用",
-      "hint": "输出文件和错误文件在任务结束 {{days}} 天后删除。",
+      "hint": "输出文件和错误文件将于 {{time}} 删除。",
       "expired": "该文件已过期并被删除。"
     },
     "cancelPending": "已请求取消。在执行中的请求结束之前（最多 2 分钟），任务会一直显示为取消中。",
@@ -131,7 +131,8 @@
       "replaced": "文件里的模型 {{models}} 都会被替换为 {{model}}。"
     },
     "warnings": {
-      "BATCH_MODEL_SLEEP_HELD": "{{model}} 被手动或定时计划休眠，请求不会唤醒它：任务的请求会一直重试，直到有人唤醒它或任务过期。"
+      "BATCH_MODEL_SLEEP_HELD": "{{model}} 被手动或定时计划休眠，请求不会唤醒它：任务的请求会一直重试，直到有人唤醒它或任务过期。",
+      "BATCH_FILE_MODELS_SLEEP_HELD": "文件里的 {{models, list}} 被手动或定时计划休眠，请求不会唤醒它们：这些请求会一直重试，直到有人唤醒它们或任务过期。"
     },
     "created": "已创建批处理任务 {{id}}",
     "hintTitle": "格式与限制",
@@ -177,7 +178,7 @@
       "invalid_multipart": "上传的表单无效"
     },
     "requestInvalid": "批处理请求无效（{{field}}）：{{reason}}",
-    "fileModelsUnknown": "文件里的这些模型没有运行中的部署：{{models}}。请选一个模型来接收全部请求，或先部署这些模型。"
+    "moreModels": "另外 {{count}} 个"
   },
   "api": {
     "title": "通过 API 调用（OpenAI 兼容的 /v1/files 与 /v1/batches）",

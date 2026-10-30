@@ -13,6 +13,7 @@ import { usePagedList } from "../pagedList";
 import BatchCreateModal from "./batches/BatchCreateModal";
 import BatchAPIUsage from "./batches/BatchAPIUsage";
 import BatchDetailDrawer from "./batches/BatchDetailDrawer";
+import { batchWarningText } from "./batches/batchErrors";
 import { BatchProgress, BatchStatusTag } from "./batches/batchDisplay";
 import { useBatchPolling } from "./batches/useBatchPolling";
 
@@ -64,7 +65,7 @@ export default function BatchesPage({ pollMs = BATCH_POLL_MS }: { pollMs?: numbe
     message.success(t("create.created", { id: batch.id }));
     // A finding that did not refuse the batch, e.g. its model sleeps by an operator's order.
     for (const warning of batch.warnings ?? []) {
-      message.warning(t(`create.warnings.${warning.code}`, { ...warning.params, defaultValue: warning.code }));
+      message.warning(batchWarningText(t, warning));
     }
     void list.refetch();
     openDetail(batch.id);

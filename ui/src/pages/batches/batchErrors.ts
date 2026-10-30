@@ -21,8 +21,9 @@ export interface BatchErrorText {
  */
 export function batchErrorText(t: APIErrorTranslator, tCommon: APIErrorTranslator, error: unknown): BatchErrorText {
   if (error instanceof APIError) {
-    if (error.code === "BATCH_MODEL_UNKNOWN" && typeof error.params?.models === "string") {
-      return { message: t("errors.fileModelsUnknown", { models: error.params.models }) };
+    if (error.code === "BATCH_FILE_MODELS_UNKNOWN") {
+      const params = { ...error.params, models: modelList(t, error.params) };
+      return { message: apiErrorText(tCommon, new APIError(error.code, params, error.fallback, error.status)) };
     }
     const reason = String(error.params?.reason ?? "");
     if (error.code === "BATCH_FILE_INVALID" && FILE_REASONS.has(reason)) {
@@ -36,4 +37,21 @@ export function batchErrorText(t: APIErrorTranslator, tCommon: APIErrorTranslato
     }
   }
   return { message: apiErrorText(tCommon, error) };
+}
+
+/**
+ * modelList is the {models, more} of a message about the models of an input
+ * file as the list its text formats with the reader's list separators: the
+ * names the server sent, then "N more" when it found further ones.
+ */
+export function modelList(t: APIErrorTranslator, params: Record<string, unknown> | undefined): string[] {
+  const models = Array.isArray(params?.models) ? params.models.map(String) : [];
+  const more = Number(params?.more ?? 0);
+  return more > 0 ? [...models, t("errors.moreModels", { count: more })] : models;
+}
+
+/** batchWarningText words a warning of a created batch in the reader's language. */
+export function batchWarningText(t: APIErrorTranslator, warning: { code: string; params?: Record<string, unknown> }): string {
+  const params = warning.code === "BATCH_FILE_MODELS_SLEEP_HELD" ? { ...warning.params, models: modelList(t, warning.params) } : warning.params;
+  return t(`create.warnings.${warning.code}`, { ...params, defaultValue: warning.code });
 }
