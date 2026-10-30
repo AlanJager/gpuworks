@@ -363,8 +363,8 @@
     },
     {
       "item": "1.15",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 键盘与布局：Tab 可达、Enter 不误提交、错误可感知，1440×900 下字段与底部操作可达且不重叠。"
+      "status": "COVERED",
+      "assertion": "Enter in a filled draft field does not create the deployment - the run counts the recorded creates, presses Enter in the name field and re-counts, so an implicit submit is caught. Tab walks the draft from that field to the deploy button instead of leaving the page, asserted by watching document.activeElement for up to 220 presses and by requiring the trail to hold several distinct stops. At the recorded 1440x900 viewport the submit bar is scrolled into view, measured inside the viewport (823..855 against 900) and the page is checked for horizontal overflow (0). Proven by mutation: making Enter click the submit button fails with 'Enter in a draft field created the deployment'."
     },
     {
       "item": "2.1",

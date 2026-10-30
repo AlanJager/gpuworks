@@ -191,6 +191,51 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
                 observed["parse_error"] = artifacts.redact(str(error))
             report["last_evaluations"].append(observed)
         raise
+    # 1.15: the draft is keyboard-reachable and submits only on purpose. Enter in a filled
+    # text field must not create the deployment, and at the recorded 1440x900 viewport the
+    # submit bar must be reachable by scrolling with no horizontal overflow. The form is long
+    # (the page scrolls, the bar is static at its foot), so "reachable" is measured after
+    # scrolling rather than by demanding every field and the bar share one viewport -
+    # that would be a stricter claim than the product makes.
+    creates_before = len(report.get("deployment_post_requests") or [])
+    name_input.focus()
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(500)
+    check(len(report.get("deployment_post_requests") or []) == creates_before,
+          "Enter in a draft field created the deployment")
+    deploy.evaluate("el => el.scrollIntoView({block: 'center'})")
+    expect(deploy).to_be_in_viewport(ratio=1)
+    geometry = page.evaluate("""({buttonEl}) => {
+        const r = (el) => el ? (({left, top, right, bottom}) => ({left, top, right, bottom}))(el.getBoundingClientRect()) : null;
+        return {overflow: document.documentElement.scrollWidth - window.innerWidth,
+                button: r(buttonEl), vw: innerWidth, vh: innerHeight};
+    }""", {"buttonEl": deploy.element_handle()})
+    check(geometry["overflow"] <= 0, f"horizontal overflow at 1440x900: {geometry}")
+    box = geometry["button"]
+    check(box is not None, "deploy button not measured")
+    check(box["left"] >= 0 and box["right"] <= geometry["vw"],
+          f"deploy button clipped horizontally: {box} vs {geometry['vw']}")
+    check(box["top"] >= 0 and box["bottom"] <= geometry["vh"],
+          f"deploy button outside the viewport after scrolling: {box} vs {geometry['vh']}")
+    # Tab order reaches the submit bar instead of skipping it or leaving the page.
+    name_input.focus()
+    reached = False
+    trail = []
+    for _ in range(220):
+        page.keyboard.press("Tab")
+        info = page.evaluate("""() => { const a = document.activeElement; if (!a) return null;
+            return {tag: a.tagName, text: (a.textContent || '').trim().slice(0, 30),
+                    name: a.getAttribute('aria-label') || a.getAttribute('placeholder') || '',
+                    cls: (a.className || '').toString().slice(0, 40)}; }""")
+        trail.append(info)
+        if info and info["text"] == labels["page"]["deploy"]:
+            reached = True
+            break
+    check(reached, f"Tab never reached the deploy button from the name field: {trail[:14]}")
+    check(len({str(t.get('tag')) + str(t.get('name')) + str(t.get('text')) for t in trail if t}) > 5,
+          "Tab order collapsed instead of walking the draft fields")
+    report["draft_keyboard_layout"] = {"enter_created": False, "tab_reached_deploy": True,
+                                       "geometry": geometry}
     launch_preview = launch_checks.draft_checks(
         page, labels, expected_body(fixture, fixture["name"]), report, token=token)
     report["last_step"] = "draft-selected"
