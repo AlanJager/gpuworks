@@ -26,18 +26,22 @@ type PlaygroundHTMLPreview struct {
 }
 
 type PlaygroundModel struct {
-	ID                 string                `json:"id"`
-	Label              string                `json:"label"`
-	Operations         []PlaygroundOperation `json:"operations"`
-	InputModalities    []string              `json:"input_modalities,omitempty"`
-	ContextLength      int64                 `json:"context_length,omitempty"`
-	Sleeping           bool                  `json:"sleeping"`
-	DeploymentID       uint                  `json:"deployment_id,omitempty"`
-	TemplateID         uint                  `json:"template_id,omitempty"`
-	TemplateSpecSource string                `json:"template_spec_source,omitempty"`
-	TemplateSpecName   string                `json:"template_spec_name,omitempty"`
-	External           bool                  `json:"external,omitempty"`
-	PublicDataPlane    bool                  `json:"public_data_plane"`
+	ID              string                `json:"id"`
+	Label           string                `json:"label"`
+	Operations      []PlaygroundOperation `json:"operations"`
+	InputModalities []string              `json:"input_modalities,omitempty"`
+	ContextLength   int64                 `json:"context_length,omitempty"`
+	Sleeping        bool                  `json:"sleeping"`
+	// WakesOnRequest is set on a sleeping model whose sleep a request ends:
+	// the gateway holds the request while it wakes. A sleeping model without
+	// it (an operator's or a schedule's sleep) answers 503 until woken.
+	WakesOnRequest     bool   `json:"wakes_on_request,omitempty"`
+	DeploymentID       uint   `json:"deployment_id,omitempty"`
+	TemplateID         uint   `json:"template_id,omitempty"`
+	TemplateSpecSource string `json:"template_spec_source,omitempty"`
+	TemplateSpecName   string `json:"template_spec_name,omitempty"`
+	External           bool   `json:"external,omitempty"`
+	PublicDataPlane    bool   `json:"public_data_plane"`
 	// ExtraParameterPresets are the extra-parameter buttons for this
 	// deployment. Which chat-template field stops thinking depends on the
 	// model family and the engine, so the server resolves it here instead of

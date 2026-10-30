@@ -1,4 +1,5 @@
 import UnsupportedModel from "./UnsupportedModel";
+import SleepNotice from "./SleepNotice";
 import InputsForm from "./InputsForm";
 import { composeRequest } from "./compose";
 import { useDiscovery } from "./useDiscovery";
@@ -185,7 +186,7 @@ export default function AudioPage({ catalog }: { catalog: PlaygroundCatalog }) {
             className="playground-model-select"
           />
           {mode === "speech" && <RequestDrawer operation={operation} model={model} body={composeDraft(operation || { type: operationType, endpoint: "/v1/audio/speech", mode: "sync", request_encodings: ["json"], renderer: "audio", response: "audio" }, model, { input: speechText }, inputValues)} onSend={(raw) => { setRawRequest(raw); void submit(raw); }} />}
-          {model && catalog.models.find((item) => item.id === model)?.sleeping && <Alert type="warning" showIcon message={t("audio.sleeping")} />}
+          {model && <SleepNotice model={catalog.models.find((item) => item.id === model)} />}
         </div>
         {requested && !operation ? <UnsupportedModel modelID={requested} models={catalog.models} /> : !models.length ? (
           <Empty description={t("audio.noModels")} />
