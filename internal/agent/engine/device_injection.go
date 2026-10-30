@@ -77,15 +77,7 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 			args = removeDockerOption(args, option)
 		}
 	}
-	// The scheduled selection is authoritative over image- or user-provided
-	// singleton runtime options: an image-level `--gpus all` must not remain
-	// alongside the injected `--gpus '"device=0,1"'`.
-	for _, option := range []string{"--gpus", "--runtime"} {
-		if hasDockerOption(inj.DockerArgs, option) {
-			args = removeDockerOption(args, option)
-		}
-	}
-	updated.DockerArgs = append(args, inj.DockerArgs...)
+	updated.DockerArgs = mergeDeviceDockerArgs(args, inj.DockerArgs)
 	if len(inj.Mounts) > 0 {
 		mounts := append([]runtime.Mount(nil), ws.Mounts...)
 		for _, mount := range inj.Mounts {
