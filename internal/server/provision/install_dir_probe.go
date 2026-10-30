@@ -306,7 +306,7 @@ func installDirAccessCheck(f installDirFacts, noexec bool) CheckResult {
 	case f.mac && !f.writable && f.macAdmin:
 		access = "created by the installer with administrator rights"
 	case f.mac && !f.writable:
-		problems = append(problems, fmt.Sprintf("%s is not writable by %s and the installer has no administrator rights; leave the directory empty to install in ~/.gpuworks, or sign in with the account password so the installer can use sudo", f.probed, f.userLabel()))
+		problems = append(problems, fmt.Sprintf("%s is not writable by %s and the installer has no administrator rights; leave the directory empty to install in ~/gpuworks, or sign in with the account password so the installer can use sudo", f.probed, f.userLabel()))
 	case f.writable:
 		access = "writable by " + f.userLabel()
 	case f.sudo && f.privWritable:

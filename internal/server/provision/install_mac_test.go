@@ -22,6 +22,8 @@ type fakeMac struct {
 	sudoPassword string
 	passwordless bool
 	launchdErr   bool
+	// agentDir is where an earlier install left the agent; empty means none.
+	agentDir string
 
 	mu       sync.Mutex
 	uploads  map[string][]byte // staged path -> decompressed payload
@@ -78,6 +80,11 @@ func (m *fakeMac) handle(cmd string, stdin io.Reader) (string, string, uint32) {
 		return "gpuworks: installing agent from http://server:8800 (darwin/arm64)\ngpuworks: agent running under launchd (system/ai.gpuworks.agent, pid 4242); logs: /opt/gpuworks/agent.log\ngpuworks: installed in /opt/gpuworks\n", "", 0
 	case cmd == `printf '%s' "$HOME"`:
 		return "/Users/me", "", 0
+	case strings.HasSuffix(cmd, `gw_mac_install_dir "$HOME"`):
+		if m.agentDir != "" {
+			return m.agentDir, "", 0
+		}
+		return "/Users/me/gpuworks", "", 0
 	case strings.HasPrefix(cmd, "rm -rf "):
 		m.removed = true
 		return "", "", 0
@@ -119,7 +126,7 @@ func TestInstallSSHOnAMacRunsTheInstallScriptWithSudoFromThePassword(t *testing.
 	if err != nil {
 		t.Fatalf("install: %v (checks %+v)", err, report.Checks)
 	}
-	if report.BinaryName != "gpuworks-agent-darwin-arm64" || report.Arch != "arm64" || report.InstallDir != "/opt/gpuworks" {
+	if report.BinaryName != "gpuworks-agent-darwin-arm64" || report.Arch != "arm64" || report.InstallDir != "/Users/me/gpuworks" {
 		t.Fatalf("report = %+v", report)
 	}
 	var bin, script []byte
@@ -149,7 +156,7 @@ func TestInstallSSHOnAMacRunsTheInstallScriptWithSudoFromThePassword(t *testing.
 		}
 	}
 	// The directory is the server's decision, passed explicitly.
-	if !strings.Contains(mac.install, "--install-dir '/opt/gpuworks'") || strings.Contains(mac.install, "pw") {
+	if !strings.Contains(mac.install, "--install-dir '/Users/me/gpuworks'") || strings.Contains(mac.install, "pw") {
 		t.Errorf("install command lacks the directory, or carries the password:\n%s", mac.install)
 	}
 	if logged := commandlog.Redact(mac.install); !strings.Contains(logged, "--token <redacted>") || strings.Contains(logged, "tok'") {
@@ -194,7 +201,20 @@ func TestInstallSSHOnAMacWithoutAdminRightsDefaultsToTheHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("install: %v (checks %+v)", err, report.Checks)
 	}
-	if report.InstallDir != "/Users/me/.gpuworks" || !strings.Contains(mac.install, "--install-dir '/Users/me/.gpuworks'") {
+	if report.InstallDir != "/Users/me/gpuworks" || !strings.Contains(mac.install, "--install-dir '/Users/me/gpuworks'") {
+		t.Fatalf("install dir %q, command %s", report.InstallDir, mac.install)
+	}
+}
+
+// An agent an earlier install left in /opt/gpuworks is reinstalled there, with
+// its models, rather than beside a fresh one in the home.
+func TestInstallSSHOnAMacKeepsAnEarlierInstallDirectory(t *testing.T) {
+	mac := &fakeMac{arch: "arm64", sudoPassword: "pw", agentDir: "/opt/gpuworks"}
+	report, err := installOnFakeMac(t, mac, SSHAuth{}, "")
+	if err != nil {
+		t.Fatalf("install: %v (checks %+v)", err, report.Checks)
+	}
+	if report.InstallDir != "/opt/gpuworks" || !strings.Contains(mac.install, "--install-dir '/opt/gpuworks'") {
 		t.Fatalf("install dir %q, command %s", report.InstallDir, mac.install)
 	}
 }
