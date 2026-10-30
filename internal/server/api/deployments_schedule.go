@@ -143,11 +143,9 @@ func (a *apiHandlers) scheduleFromRequest(w http.ResponseWriter, r *http.Request
 		return invalid("time", "use HH:MM, 00:00 to 23:59")
 	}
 	row.Minute = minute
-	if row.Timezone != "" {
-		if _, err := time.LoadLocation(row.Timezone); err != nil {
-			writeProductError(w, http.StatusBadRequest, messages.ErrorScheduleTimezoneUnknown, "the server does not know this time zone", map[string]any{"timezone": row.Timezone})
-			return nil, false
-		}
+	if _, err := automation.ScheduleLocation(row.Timezone); err != nil {
+		writeProductError(w, http.StatusBadRequest, messages.ErrorScheduleTimezoneUnknown, "the server does not know this time zone", map[string]any{"timezone": row.Timezone})
+		return nil, false
 	}
 	switch req.Action {
 	case store.ScheduleActionSleep, store.ScheduleActionWake:
@@ -203,19 +201,28 @@ func parseScheduleTime(raw string) (int, bool) {
 	return h*60 + m, true
 }
 
-// automationSchedule is a stored order as the automation reads it. An unknown
-// zone (validated on write, so only a zone the server lost since) falls back
-// to the server's own.
-func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
-	loc := time.Local
-	if row.Timezone != "" {
-		if l, err := time.LoadLocation(row.Timezone); err == nil {
-			loc = l
-		}
+// AutomationSchedule is a stored order as the automation runs it, in the
+// zone it names (automation.ScheduleLocation). A zone the server does not
+// know (validated on write, so only one the server lost since) is an error:
+// the automation skips the order rather than run it in another zone.
+func AutomationSchedule(row store.LifecycleSchedule) (automation.Schedule, error) {
+	loc, err := automation.ScheduleLocation(row.Timezone)
+	if err != nil {
+		return automation.Schedule{}, err
 	}
 	s := automation.Schedule{ID: row.ID, DeploymentID: row.DeploymentID, Action: row.Action, Weekdays: row.Weekdays, Minute: row.Minute, Location: loc, SleepLevel: row.SleepLevel, Replicas: row.Replicas, Role: row.Role}
 	if row.LastFiredAt != nil {
 		s.LastFiredAt = *row.LastFiredAt
+	}
+	return s, nil
+}
+
+// automationSchedule is AutomationSchedule as the API shows an order: one the
+// automation skips names no occurrence, so it shows none either.
+func automationSchedule(row store.LifecycleSchedule) automation.Schedule {
+	s, err := AutomationSchedule(row)
+	if err != nil {
+		return automation.Schedule{}
 	}
 	return s
 }

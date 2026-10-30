@@ -110,6 +110,9 @@ func instanceUUIDs(insts []store.Instance) []string {
 type YieldTarget struct {
 	Deployment *store.Deployment
 	Instance   store.Instance
+	// Members are the instances of the replica it leads, leader first
+	// (ReplicaMembers): a sleep order for it is written on every one.
+	Members []store.Instance
 }
 
 // YieldBlocker is an occupant a yielding wake cannot put to sleep, and why:
@@ -173,7 +176,9 @@ func YieldTargets(st *store.Store, refusals []WakeRefusal) ([]YieldTarget, []Yie
 					blockers = append(blockers, YieldBlocker{Deployment: dep.Name, Code: refusal.Code})
 					continue
 				}
-				targets = append(targets, YieldTarget{Deployment: dep, Instance: inst})
+				// A target has a slot: an instance without one is refused
+				// its sleep (InstanceSleepRefusal) and is a blocker above.
+				targets = append(targets, YieldTarget{Deployment: dep, Instance: inst, Members: ReplicaMembers(slot)})
 			}
 		}
 	}

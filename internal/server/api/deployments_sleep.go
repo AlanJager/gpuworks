@@ -247,18 +247,28 @@ func appendUnique(values []string, more ...string) []string {
 	return values
 }
 
-// hostMemory is a node's host memory as its agent last reported it (within
-// two minutes).
+// hostMemory is a node's host memory as its agent recently reported it
+// (planning.RecentHostMemory).
 func (a *apiHandlers) hostMemory(nodeUUID string) (available, total int64, ok bool) {
-	if a.d.MetricsLatest == nil {
+	host := HostMemory(a.d.MetricsLatest)
+	if host == nil {
 		return 0, 0, false
 	}
-	since := time.Now().UTC().Add(-2 * time.Minute).UnixMilli()
-	return planning.HostMemoryFromMetrics(func(metric, node string) (float64, bool) {
-		rows, err := a.d.MetricsLatest(metric, map[string]string{"node": node}, since)
+	return host(nodeUUID)
+}
+
+// HostMemory is planning.RecentHostMemory over latest, the metrics store's
+// newest samples (Deps.MetricsLatest): the one reader of host memory for an
+// operator's L1 sleep and the automation's. Nil latest knows nothing.
+func HostMemory(latest func(metric string, matchers map[string]string, sinceMS int64, asOfMS ...int64) ([]MetricLatest, error)) planning.HostMemory {
+	if latest == nil {
+		return nil
+	}
+	return planning.RecentHostMemory(func(metric, node string, sinceMS int64) (float64, bool) {
+		rows, err := latest(metric, map[string]string{"node": node}, sinceMS)
 		if err != nil || len(rows) == 0 {
 			return 0, false
 		}
 		return rows[0].Value, true
-	})(nodeUUID)
+	}, time.Now)
 }

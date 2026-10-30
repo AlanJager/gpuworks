@@ -12,13 +12,22 @@ type Card struct {
 	Index  int
 }
 
+// holdsClaim says the instance holds a claim on its cards, awake or asleep.
+// A failed generation outside a sleep is the controller's to remove and holds
+// none; a failed sleep report does, since its engine may still own the card
+// until the agent confirms it stopped. The ledger, the board, the cards and
+// the quota room all charge the same instances.
+func holdsClaim(in *store.Instance) bool {
+	return in.State != proto.InstStopped && (in.State != proto.InstFailed || in.Phase == proto.PhaseSleep)
+}
+
 // InstanceCards are the cards the instances hold a claim on, awake or asleep:
 // the same instances the ledger charges (gpuAllocations).
 func InstanceCards(insts []store.Instance) map[Card]bool {
 	out := map[Card]bool{}
 	for i := range insts {
 		in := &insts[i]
-		if in.State == proto.InstStopped || (in.State == proto.InstFailed && in.Phase != proto.PhaseSleep) {
+		if !holdsClaim(in) {
 			continue
 		}
 		for _, index := range parseInts(in.GPUIndexes) {
@@ -26,6 +35,28 @@ func InstanceCards(insts []store.Instance) map[Card]bool {
 		}
 	}
 	return out
+}
+
+// SplitByCards splits insts into those that hold a claim on one of cards
+// (on) and the rest (off).
+func SplitByCards(insts []store.Instance, cards map[Card]bool) (off, on []store.Instance) {
+	for i := range insts {
+		held := false
+		if holdsClaim(&insts[i]) {
+			for _, index := range parseInts(insts[i].GPUIndexes) {
+				if cards[Card{NodeID: insts[i].NodeID, Index: index}] {
+					held = true
+					break
+				}
+			}
+		}
+		if held {
+			on = append(on, insts[i])
+		} else {
+			off = append(off, insts[i])
+		}
+	}
+	return off, on
 }
 
 // reservedAgainst is the ledger's reservation for a deployment of yield

@@ -53,6 +53,15 @@ func automationFixture(t *testing.T) (*automationAdapter, *store.Store, *store.D
 	return adapter, st, dep
 }
 
+func mustInstance(t *testing.T, st *store.Store, uuid string) *store.Instance {
+	t.Helper()
+	in, err := st.InstanceByUUID(uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return in
+}
+
 func intentOf(t *testing.T, st *store.Store, uuid string) int {
 	t.Helper()
 	in, err := st.InstanceByUUID(uuid)
@@ -99,7 +108,8 @@ func TestAutomationAdapterRefusesL1WhenTheHostCannotHoldTheWeights(t *testing.T)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	adapter.metrics = metrics
+	// The reader the app wires: the metrics store through the API's host memory.
+	adapter.host = api.HostMemory((&observability{tsdb: metrics}).latestMetrics)
 	_, err = adapter.Sleep(dep.ID, 1, true)
 	coded, ok := err.(interface{ Code() string })
 	if !ok || coded.Code() != "SLEEP_HOST_MEMORY_INSUFFICIENT" {
@@ -358,7 +368,20 @@ func TestAWakeLeavesTheCardsAPlacementWaitsFor(t *testing.T) {
 	}
 	waits := placewait.New()
 	adapter.waits = waits
-	waits.Wait(newcomer.ID, []string{"auto-1"}, time.Now())
+	card := placewait.Cards{NodeID: dep.NodeID, GPUIndexes: []int{0}}
+	// auto-1's sleep is ordered already: the controller's next plan of the
+	// newcomer waits for no holder, only for that sleep to land. The card is
+	// still the newcomer's.
+	waits.Wait(newcomer.ID, card, nil, time.Now())
+	if woken, err := adapter.WakeWaiting(dep.ID, []string{"auto-1"}); err != nil || len(woken) != 0 {
+		t.Fatalf("waiting wake onto a card whose holder's sleep was ordered for a placement = %v err=%v", woken, err)
+	}
+	// A wait for other cards leaves the sleeper be.
+	waits.Wait(newcomer.ID, placewait.Cards{NodeID: dep.NodeID, GPUIndexes: []int{1}}, nil, time.Now())
+	if free, held := adapter.notForPlacement(dep, []store.Instance{*mustInstance(t, st, "auto-1")}); len(free) != 1 || len(held) != 0 {
+		t.Fatalf("a wait for card 1 kept card 0: free %d held %d", len(free), len(held))
+	}
+	waits.Wait(newcomer.ID, card, []string{"auto-1"}, time.Now())
 
 	// The newcomer is idle and ranks higher: the card is its.
 	result, err := adapter.Wake(dep.ID)

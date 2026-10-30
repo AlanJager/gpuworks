@@ -459,11 +459,7 @@ func allocateInstances(st *store.Store, node *store.Node, instances []store.Inst
 	// The node is homogeneous, so one architecture describes every claim on it.
 	_, _, archFamily, _ := nodeGPUProfile(node)
 	for _, instance := range instances {
-		// A failed non-sleep generation is handled by the controller's removing
-		// flow and follows the master ledger: it is not a live claim. A failed
-		// sleep report is different - its engine may still own the card - so retain
-		// that claim until the agent confirms stopped.
-		if instance.State == proto.InstStopped || (instance.State == proto.InstFailed && instance.Phase != proto.PhaseSleep) || view.excludes(&instance) {
+		if !holdsClaim(&instance) || view.excludes(&instance) {
 			continue
 		}
 		// A wake order is conservative until the agent reports awake: the

@@ -10,7 +10,10 @@
 // served its turn.
 package servicelevel
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Yield policies, stored in Deployment.YieldPolicy, in rank order: a
 // deployment waiting for cards may take them from a busy one of lower rank
@@ -268,8 +271,8 @@ const (
 	ReasonRequired = "required"
 )
 
-// Validate checks p: the enumerations it states and the ranges of the
-// parameters that apply to it. nil when it is valid.
+// Validate checks p: the enumerations it states, and the parameters that
+// apply to it against their Bounds. nil when it is valid.
 func (p Policy) Validate() *Violation {
 	if !ValidYield(p.Yield) {
 		return &Violation{Field: "policy", Reason: ReasonValue}
@@ -277,45 +280,58 @@ func (p Policy) Validate() *Violation {
 	if p.SleepLevel != "" && !ValidSleepLevel(p.SleepLevel) {
 		return &Violation{Field: "sleep_level", Reason: ReasonValue}
 	}
-	if p.Unfinished != "" && !ValidUnfinished(p.Unfinished) {
+	if (p.Unfinished != "" || p.Applies().Unfinished) && !ValidUnfinished(p.Unfinished) {
 		return &Violation{Field: "unfinished", Reason: ReasonValue}
 	}
-	apply := p.Applies()
-	if apply.IdleSec && (p.IdleSec < IdleSecMin || p.IdleSec > IdleSecMax) {
-		return &Violation{Field: "idle_sec", Reason: ReasonRange, Min: IdleSecMin, Max: IdleSecMax}
-	}
-	if apply.MaxServeSec && (p.MaxServeSec < MaxServeSecMin || p.MaxServeSec > MaxServeSecMax) {
-		return &Violation{Field: "max_serve_sec", Reason: ReasonRange, Min: MaxServeSecMin, Max: MaxServeSecMax}
-	}
-	// Idle that long never comes before the turn ends: the idle time would
-	// do nothing.
-	if apply.MaxServeSec && p.IdleSec > p.MaxServeSec {
-		return &Violation{Field: "idle_sec", Reason: ReasonRange, Min: IdleSecMin, Max: p.MaxServeSec}
-	}
-	if apply.Unfinished && !ValidUnfinished(p.Unfinished) {
-		return &Violation{Field: "unfinished", Reason: ReasonValue}
-	}
-	if apply.UnfinishedWaitSec && (p.UnfinishedWaitSec < UnfinishedWaitSecMin || p.UnfinishedWaitSec > UnfinishedWaitSecMax) {
-		return &Violation{Field: "unfinished_wait_sec", Reason: ReasonRange, Min: UnfinishedWaitSecMin, Max: UnfinishedWaitSecMax}
-	}
-	if apply.HoldMaxSec && (p.HoldMaxSec < HoldMaxSecMin || p.HoldMaxSec > HoldMaxSecMax) {
-		return &Violation{Field: "hold_max_sec", Reason: ReasonRange, Min: HoldMaxSecMin, Max: HoldMaxSecMax}
+	params := p.numeric()
+	for i, param := range params {
+		if !param.applies {
+			continue
+		}
+		bound := Bounds[param.name]
+		if param.value < bound.Min || param.value > bound.Max {
+			return &Violation{Field: param.name, Reason: ReasonRange, Min: bound.Min, Max: bound.Max}
+		}
+		// A parameter checked already that may not exceed this one: past it,
+		// it would do nothing (idle that long never comes before the turn
+		// ends).
+		for _, earlier := range params[:i] {
+			if limited := Bounds[earlier.name]; earlier.applies && limited.AtMost == param.name && earlier.value > param.value {
+				return &Violation{Field: earlier.name, Reason: ReasonRange, Min: limited.Min, Max: param.value}
+			}
+		}
 	}
 	return nil
 }
 
-// Rank orders policies: a waiting deployment may preempt one of lower rank.
-// An unknown policy reads as never.
-func (p Policy) Rank() int {
-	switch p.Yield {
-	case Idle:
-		return 3
-	case TimeSlice:
-		return 2
-	case Anytime:
-		return 1
+// numericParam is one of a policy's numeric parameters, by its request name
+// (Bounds), and whether it applies.
+type numericParam struct {
+	name    string
+	applies bool
+	value   int
+}
+
+// numeric are p's numeric parameters in the order Validate checks them; a
+// parameter comes before the one it may not exceed (Bound.AtMost).
+func (p Policy) numeric() []numericParam {
+	apply := p.Applies()
+	return []numericParam{
+		{"idle_sec", apply.IdleSec, p.IdleSec},
+		{"max_serve_sec", apply.MaxServeSec, p.MaxServeSec},
+		{"unfinished_wait_sec", apply.UnfinishedWaitSec, p.UnfinishedWaitSec},
+		{"hold_max_sec", apply.HoldMaxSec, p.HoldMaxSec},
 	}
-	return 4
+}
+
+// Rank orders policies by their place in Policies, highest first: a waiting
+// deployment may preempt one of lower rank. An unknown policy reads as never.
+func (p Policy) Rank() int {
+	index := slices.Index(Policies, p.Yield)
+	if index < 0 {
+		index = slices.Index(Policies, Never)
+	}
+	return len(Policies) - index
 }
 
 // Preemptible says the arbiter may put the deployment to sleep for another
@@ -357,14 +373,6 @@ func (p Policy) Drain() (abort bool, limit time.Duration) {
 		return false, time.Duration(p.UnfinishedWaitSec) * time.Second
 	}
 	return true, 0
-}
-
-// SleepLevelPref is the sleep level preference, auto when none is stated.
-func (p Policy) SleepLevelPref() string {
-	if p.SleepLevel == "" {
-		return LevelAuto
-	}
-	return p.SleepLevel
 }
 
 // Holder is a deployment awake on cards another one waits for.
@@ -466,6 +474,13 @@ func TermsOf(holder, waiter Policy) Terms {
 	}
 	return out
 }
+
+// KeepsCardsAgainst says cards given up for a deployment of policy waiter
+// whose replica waits to be placed stay its against the wake of a sleeping
+// deployment of policy sleeper: the waiter ranks at least as high. TermsOf
+// is when a holder gives cards up; this is whether a sleeper may take them
+// back before the waiter is placed on them.
+func KeepsCardsAgainst(waiter, sleeper Policy) bool { return waiter.Rank() >= sleeper.Rank() }
 
 // SharesCardsWith says a deployment of yield policy a may be placed on cards
 // a deployment of policy b holds (awake or asleep). A never deployment

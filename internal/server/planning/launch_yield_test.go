@@ -49,16 +49,34 @@ func TestALaunchWaitsForTheDeploymentsThatShareItsCards(t *testing.T) {
 		if scheduler.Schedule(req, nodeSnapshot(st, node, true, "", view)).OK {
 			t.Fatal("the card is free with batch awake on it")
 		}
-		return launchYield(st, node, policy, req, true, "", false, view)
+		return launchYield(st, node, nodeInstances(t, st, node), policy, req, true, "", false, view)
 	}
 
 	yield := plan(servicelevel.Idle)
-	if yield == nil || len(yield.Holders) != 1 || yield.Holders[0].Instance != "batch-1" || yield.Holders[0].Deployment != "batch" || len(yield.GPUIndexes) != 1 {
+	if yield == nil || len(yield.Holders) != 1 || yield.Holders[0].Instance != "batch-1" || yield.Holders[0].Deployment != "batch" ||
+		yield.NodeID != node.ID || len(yield.GPUIndexes) != 1 || yield.GPUIndexes[0] != 0 {
 		t.Fatalf("idle newcomer = %+v, want it to wait for batch on card 0", yield)
 	}
+	if got := yield.HolderInstances(); len(got) != 1 || got[0] != "batch-1" {
+		t.Fatalf("holder instances = %v", got)
+	}
+	// The params are for display: what it waits for is the typed yield.
 	reason := YieldRefusal(node, servicelevel.Policy{Yield: servicelevel.Idle}, yield)
 	if reason.Code != scheduler.ReasonWaitingForYield || jsonText(t, reason.Params) != `{"holders":[{"at_once":true,"deployment":"batch"}],"instances":["batch-1"],"node":"yield-node"}` {
 		t.Fatalf("refusal = %s %s", reason.Code, jsonText(t, reason.Params))
+	}
+	// The plan's own refusal is the same one, and the wait it carries.
+	launch := LaunchPlan{Output: Output{Yield: yield}}
+	if got := launch.Output.Refusal(node, servicelevel.Policy{Yield: servicelevel.Idle}); jsonText(t, got) != jsonText(t, reason) {
+		t.Fatalf("output refusal = %s, want %s", jsonText(t, got), jsonText(t, reason))
+	}
+	if launch.YieldWait(&reason) != yield || launch.YieldWait(&scheduler.Reason{Code: scheduler.ReasonNoFreeGPU}) != nil || launch.YieldWait(nil) != nil {
+		t.Fatal("the yield wait is carried only with its own refusal")
+	}
+	// An edit preview of batch itself waits for nobody: its own instance is
+	// not a holder.
+	if got := launchYield(st, node, nodeInstances(t, st, node), servicelevel.Idle, req, true, "", false, ledgerView{excludeDeployment: batch.ID}); got != nil {
+		t.Fatalf("an edit preview of the holder = %+v", got)
 	}
 	// An equal waits for batch to go idle.
 	if reason := YieldRefusal(node, servicelevel.Policy{Yield: servicelevel.Anytime}, plan(servicelevel.Anytime)); jsonText(t, reason.Params["holders"]) != `[{"at_once":false,"deployment":"batch","idle_sec":30}]` {
@@ -75,6 +93,15 @@ func TestALaunchWaitsForTheDeploymentsThatShareItsCards(t *testing.T) {
 	if yield := plan(servicelevel.Idle); yield != nil {
 		t.Fatalf("waiting for a never holder = %+v", yield)
 	}
+}
+
+func nodeInstances(t *testing.T, st *store.Store, node *store.Node) []store.Instance {
+	t.Helper()
+	insts, err := st.InstancesForNode(node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return insts
 }
 
 func jsonText(t *testing.T, v any) string {
@@ -117,9 +144,9 @@ func TestALaunchWaitsForASleepAlreadyOrdered(t *testing.T) {
 	if scheduler.Schedule(req, nodeSnapshot(st, node, true, "", view)).OK {
 		t.Fatal("a sleep that has not landed already freed the card")
 	}
-	yield := launchYield(st, node, servicelevel.Idle, req, true, "", false, view)
-	if yield == nil || len(yield.Holders) != 0 {
-		t.Fatalf("yield = %+v, want a wait with no holder to put to sleep", yield)
+	yield := launchYield(st, node, nodeInstances(t, st, node), servicelevel.Idle, req, true, "", false, view)
+	if yield == nil || len(yield.Holders) != 0 || yield.NodeID != node.ID || len(yield.GPUIndexes) != 1 || yield.GPUIndexes[0] != 0 {
+		t.Fatalf("yield = %+v, want a wait for card 0 with no holder to put to sleep", yield)
 	}
 	if reason := YieldRefusal(node, servicelevel.Policy{Yield: servicelevel.Idle}, yield); reason.Code != scheduler.ReasonWaitingForYield {
 		t.Fatalf("refusal = %+v", reason)

@@ -74,9 +74,17 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 
 	// A never newcomer is refused by name: it would fit but for the sleeper.
 	view := ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}
-	reserved := launchReserved(st, node, req, true, "", false, view)
-	if reserved == nil || len(reserved.Deployments) != 1 || reserved.Deployments[0].Deployment != "chat" || len(reserved.GPUIndexes) != 1 || reserved.GPUIndexes[0] != 0 {
+	reserved := launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, view)
+	if reserved == nil || len(reserved.Sleepers) != 1 || reserved.Sleepers[0].Deployment != "chat" || len(reserved.GPUIndexes) != 1 || reserved.GPUIndexes[0] != 0 {
 		t.Fatalf("reserved = %+v, want chat asleep on card 0", reserved)
+	}
+	if reserved.Sleepers[0].DeploymentID != dep.ID || reserved.Sleepers[0].Policy.Yield != servicelevel.Idle {
+		t.Fatalf("sleeper = %+v", reserved.Sleepers[0])
+	}
+	// An edit preview of chat itself does not name its own sleeper.
+	own := ledgerView{excludeDeployment: dep.ID, reserved: reservedAgainst(st, servicelevel.Never)}
+	if got := launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, own); got != nil {
+		t.Fatalf("an edit preview names its own sleeper: %+v", got)
 	}
 	reason := ReservedRefusal(node, reserved)
 	if raw, _ := json.Marshal(reason.Params); reason.Code != scheduler.ReasonReservedForSleepers ||
@@ -95,7 +103,7 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 			t.Fatalf("a %q newcomer is kept off a held sleeper's card", level)
 		}
 	}
-	if launchReserved(st, node, req, true, "", false, ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}) != nil {
+	if launchReserved(st, node, nodeInstances(t, st, node), req, true, "", false, ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}) != nil {
 		t.Fatal("a held sleeper is named as reserving its card")
 	}
 }

@@ -42,6 +42,10 @@ type Holder struct {
 	Policy       servicelevel.Policy
 	// Instances are the replica's instances, put to sleep together.
 	Instances []string
+	// Starting says the replica is still starting: it has served nothing
+	// yet. Only the replica's own instances say so; another replica of its
+	// deployment starting or waiting to be placed does not.
+	Starting bool
 }
 
 // Blocking is what keeps a waiting deployment's sleepers from waking: the
@@ -73,7 +77,9 @@ type ResidencySource interface {
 	// Activity is the deployment's traffic.
 	Activity(deploymentID uint) Activity
 	// Settling says the deployment is not serving yet: its replica waits to
-	// be placed, or an instance of it is still starting.
+	// be placed, or an instance of it is still starting. It is asked of a
+	// deployment a holder gave its cards to (stillWakingFor); whether a
+	// holder itself is starting is its own replica's (Holder.Starting).
 	Settling(deploymentID uint) bool
 }
 
@@ -153,6 +159,10 @@ const yieldPoll = 250 * time.Millisecond
 // busyPoll is how often the arbiter looks again at a holder that yields
 // once idle but is busy: no clock says when its requests end.
 const busyPoll = 2 * time.Second
+
+// startingPoll is how often the arbiter looks again at a holder still
+// starting: nothing tells it when the engine is ready.
+const startingPoll = 2 * time.Second
 
 // wakeRepeat is how long after ordering a waiter's wake the arbiter leaves it
 // alone.
@@ -341,9 +351,9 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 		}
 		// A holder still starting has served nothing and is asked nothing:
 		// look again once it may have started.
-		if r.source.Settling(h.DeploymentID) {
+		if h.Starting {
 			r.starting[h.DeploymentID] = true
-			r.dueAt(now.Add(busyPoll))
+			r.dueAt(now.Add(startingPoll))
 			return
 		}
 		state := e.holderState(now, h)

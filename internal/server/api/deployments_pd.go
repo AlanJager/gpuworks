@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/pdmode"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -363,7 +364,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 		return dto.EvaluatePDUnit{}, plan, err
 	}
 	res := plan.Resolved
-	fits := plan.Output.Result.OK && plan.Output.Result.Plan != nil
+	fits := plan.Output.Fits()
 	item := dto.EvaluatePDUnit{
 		NodeUUID: target.UUID, NodeName: nodeDisplayName(target), Address: topology.NodeAddress,
 		Fits: fits, Breakdown: plan.Output.Breakdown,
@@ -373,7 +374,7 @@ func (a *apiHandlers) previewPDRank(env evaluatePDEnv, pd *planning.PDPlacement,
 	if fits {
 		item.GPUs = plan.Output.Result.Plan.GPUIndexes
 	} else {
-		item.Reason = plan.Output.Result.Message
+		item.Reason = plan.Output.Refusal(target, servicelevel.Policy{Yield: requestYield(req.YieldPolicy)})
 	}
 	return item, plan, nil
 }

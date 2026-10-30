@@ -523,20 +523,21 @@ func TestAHolderStillStartingIsNotAskedToYield(t *testing.T) {
 	const batch, nightly = 1, 2
 	w.levels[batch], w.levels[nightly] = pol(servicelevel.Anytime), pol(servicelevel.TimeSlice)
 	w.asleep[batch] = true
-	w.blocking[batch] = Blocking{Holders: []Holder{{DeploymentID: nightly, Policy: pol(servicelevel.TimeSlice), Instances: []string{"n-1"}}}}
+	starting := Holder{DeploymentID: nightly, Policy: pol(servicelevel.TimeSlice), Instances: []string{"n-1"}, Starting: true}
+	w.blocking[batch] = Blocking{Holders: []Holder{starting}}
 	w.waiters = []Waiter{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Since: t0}}
-	w.settling[nightly] = true
 	e, c := newResidencyEvaluator(w, t0)
 	c.t = t0.Add(time.Hour)
 	e.residency(c.t)
 	if len(w.yields) != 0 {
 		t.Fatalf("a starting holder was put to sleep: %v", w.yields)
 	}
-	if after, ok := e.residencyDue(); !ok || after != busyPoll {
-		t.Fatalf("next look in %v (%v), want the busy poll", after, ok)
+	if after, ok := e.residencyDue(); !ok || after != startingPoll {
+		t.Fatalf("next look in %v (%v), want the starting poll", after, ok)
 	}
 	// It serves now: idle for its 30 s from here, not from an hour ago.
-	w.settling[nightly] = false
+	starting.Starting = false
+	w.blocking[batch] = Blocking{Holders: []Holder{starting}}
 	e.residency(c.t)
 	c.t = c.t.Add(29 * time.Second)
 	e.residency(c.t)
@@ -547,6 +548,40 @@ func TestAHolderStillStartingIsNotAskedToYield(t *testing.T) {
 	e.residency(c.t)
 	if !slices.Equal(w.yields, []string{"2 abort=false"}) {
 		t.Fatalf("did not yield once idle 30 s after starting: %v", w.yields)
+	}
+}
+
+// A schedule names its IANA zone, or the server's own when it names none; a
+// zone the server does not know is an error, never another zone.
+func TestScheduleLocation(t *testing.T) {
+	if loc, err := ScheduleLocation(""); err != nil || loc != time.Local {
+		t.Fatalf("no zone = %v %v, want the server's own", loc, err)
+	}
+	if loc, err := ScheduleLocation("Asia/Shanghai"); err != nil || loc.String() != "Asia/Shanghai" {
+		t.Fatalf("named zone = %v %v", loc, err)
+	}
+	if loc, err := ScheduleLocation("Nowhere/Never"); err == nil {
+		t.Fatalf("unknown zone = %v, want an error", loc)
+	}
+}
+
+// A holder whose deployment scales up gives way by its running replica's own
+// state: another of its replicas starting or waiting to be placed does not
+// keep the running one from yielding (or two deployments could each wait for
+// the other).
+func TestAHolderScalingUpStillYieldsItsRunningReplica(t *testing.T) {
+	w := newResidencyWorld()
+	const batch, chat = 1, 2
+	w.levels[batch], w.levels[chat] = pol(servicelevel.Anytime), pol(servicelevel.Idle)
+	w.activity[batch] = Activity{InFlight: 1, LastRequest: t0}
+	// batch's second replica is starting, or waits for chat's cards.
+	w.settling[batch] = true
+	w.blocking[chat] = Blocking{Holders: []Holder{{DeploymentID: batch, Policy: pol(servicelevel.Anytime), Instances: []string{"b-1"}}}}
+	w.waiters = []Waiter{{DeploymentID: chat, Policy: pol(servicelevel.Idle), Since: t0, Place: true}}
+	e, c := newResidencyEvaluator(w, t0)
+	e.residency(c.t)
+	if !slices.Equal(w.yields, []string{"1 abort=true"}) {
+		t.Fatalf("batch's running replica did not give way while another replica of it started: %v", w.yields)
 	}
 }
 

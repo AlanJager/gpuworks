@@ -169,13 +169,14 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 	// yieldWait is the best candidate that fits once deployments sharing its
 	// cards give them up: taken only when none fits outright.
 	var yieldWait *scheduler.Reason
+	var waitsFor *planning.LaunchYield
 	for _, index := range order {
 		if tried == poolTrialBudget {
 			break
 		}
 		candidate := &pool.Ranked[index]
 		tried++
-		refusal, err := c.trialPoolNode(ctx, dep, candidate.Node, model)
+		refusal, yield, err := c.trialPoolNode(ctx, dep, candidate.Node, model)
 		if err == nil && refusal == nil {
 			candidate.Replicas++
 			candidate.FreeGPUs -= pool.need
@@ -188,9 +189,9 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 			c.log.Warn("candidate trial plan", "dep", dep.ID, "node", candidate.Node.UUID, "err", err)
 			refusal = &scheduler.Reason{Code: scheduler.ReasonPlacementRejected, Params: map[string]any{"detail": err.Error()}}
 		}
-		if refusal.Code == scheduler.ReasonWaitingForYield {
+		if yield != nil {
 			if yieldWait == nil {
-				yieldWait = refusal
+				yieldWait, waitsFor = refusal, yield
 			}
 			continue
 		}
@@ -200,7 +201,7 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 		}
 	}
 	if yieldWait != nil {
-		c.recordUnschedulable(dep, *yieldWait)
+		c.recordRefusal(dep, *yieldWait, waitsFor, nil)
 		c.rememberPoolWait(dep.ID)
 		return nil, false
 	}
@@ -222,24 +223,25 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 // trialPoolNode plans a replica on node as a preview: the estimate, the
 // scheduler against the node's ledger and the template's hardware contract,
 // without the model being there yet, a port reserved or anything written. A
-// non-nil refusal is the scheduler's reason, or the model being stuck there.
-func (c *Controller) trialPoolNode(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model) (*scheduler.Reason, error) {
+// non-nil refusal is the scheduler's reason, or the model being stuck there;
+// yield is what a refusal that waits for holders to yield waits for.
+func (c *Controller) trialPoolNode(ctx context.Context, dep *store.Deployment, node *store.Node, model *store.Model) (refusal *scheduler.Reason, yield *planning.LaunchYield, err error) {
 	// A node where the model is stuck would take the replica and then hold
 	// it there; the pool passes it over until the model is sorted out.
 	if refusal, err := c.modelUnavailable(dep, node, model); refusal != nil || err != nil {
-		return refusal, err
+		return refusal, nil, err
 	}
 	req, templateLayer, _, err := c.launchRequest(dep, node, model, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	topology, err := planning.RankTopology(node, nil, planning.GroupRank{Ranks: 1})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Preview, req.Topology = true, topology
-	_, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
-	return refusal, err
+	plan, refusal, err := c.planInstanceLaunch(ctx, dep, node, req, templateLayer)
+	return refusal, plan.YieldWait(refusal), err
 }
 
 func (c *Controller) poolRefusedRecently(depID, nodeID uint) bool {
@@ -275,6 +277,7 @@ func (c *Controller) forgetPool(depID uint) {
 	defer c.poolMu.Unlock()
 	delete(c.poolRefused, depID)
 	delete(c.poolWaiting, depID)
+	c.waits.Done(depID)
 }
 
 // poolSettleBackoff is how long a deployment whose last pass found no node

@@ -15,10 +15,6 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// automationEventKind is the timeline kind of the scheduling center's
-// events, the automation's own and an operator's waiting or yielding wake.
-const automationEventKind = store.EventKindAutomation
-
 // wakeWaitHow is how a wake that does not fit proceeds: wait waits for room
 // (the automation wakes the sleepers once their GPUs can take them back);
 // yield first puts the awake occupants of those GPUs to sleep at yieldLevel,
@@ -93,29 +89,17 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 		}
 		for _, target := range targets {
 			level := how.yieldLevel
-			members := []store.Instance{target.Instance}
-			if level == proto.SleepLevelL1 && planning.L1HostMemoryRefusal(a.d.Store, target.Deployment, members, a.hostMemory) != nil {
+			if level == proto.SleepLevelL1 && planning.L1HostMemoryRefusal(a.d.Store, target.Deployment, target.Members, a.hostMemory) != nil {
 				// The occupant's host cannot hold its weights: it gives way at
 				// L2, which needs no host memory.
 				level = proto.SleepLevelL2
 			}
-			targetInsts, err := a.d.Store.InstancesForDeployment(target.Deployment.ID)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err)
-				return
-			}
-			targetMatch, err := planning.DeploymentMatch(a.d.Store, target.Deployment, targetInsts)
-			if err != nil {
-				writeErr(w, http.StatusInternalServerError, err)
-				return
-			}
-			replica := planning.ReplicaMembers(targetMatch.SlotOf(target.Instance.UUID))
-			if err := a.d.Store.OrderInstancesSleepHeld(target.Deployment.ID, uuidsOf(replica), level, proto.SleepModeWait, true); err != nil {
+			if err := a.d.Store.OrderInstancesSleepHeld(target.Deployment.ID, uuidsOf(target.Members), level, proto.SleepModeWait, true); err != nil {
 				writeReplicaOrderErr(w, err)
 				return
 			}
-			a.d.Store.AddDeploymentEventCode(target.Deployment.ID, automationEventKind, automation.EventYieldedForWake, map[string]any{
-				"deployment": dep.Name, "instances": uuidsOf(replica), "level": level,
+			a.d.Store.AddDeploymentEventCode(target.Deployment.ID, store.EventKindAutomation, automation.EventYieldedForWake, map[string]any{
+				"deployment": dep.Name, "for_deployment": dep.ID, "instances": uuidsOf(target.Members), "level": level,
 			})
 			result.Yielded = appendUnique(result.Yielded, target.Deployment.Name)
 		}
@@ -127,7 +111,7 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	a.d.Store.AddDeploymentEventCode(dep.ID, automationEventKind, automation.EventWakeWaiting, map[string]any{"trigger": automation.TriggerOperator, "instances": result.Waiting, "yielded": result.Yielded})
+	a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindAutomation, automation.EventWakeWaiting, map[string]any{"trigger": automation.TriggerOperator, "instances": result.Waiting, "yielded": result.Yielded})
 	result.Status = "waiting"
 	writeJSON(w, http.StatusAccepted, result)
 }

@@ -12,20 +12,47 @@ import (
 	"time"
 )
 
-// Fresh is how long a note stands without the controller noting it again;
-// the controller plans a waiting replica far more often (every few seconds),
-// so a note older than this is one it no longer makes: the replica was
-// placed, or no longer waits.
-const Fresh = 30 * time.Second
+// Recheck is how often the controller plans a waiting replica again, noting
+// it each time.
+const Recheck = 5 * time.Second
 
-// Waiter is a deployment whose replica waits for the holders' instances to
-// sleep.
+// Fresh is how long a note stands without the controller noting it again:
+// several Rechecks, so a note older than this is one the controller no
+// longer makes (the replica was placed, or no longer waits), not one a slow
+// pass has yet to renew.
+const Fresh = 6 * Recheck
+
+// Cards are the cards on one node a waiting replica would take.
+type Cards struct {
+	NodeID     uint
+	GPUIndexes []int
+}
+
+// Takes says the replica would take card index of node.
+func (c Cards) Takes(nodeID uint, index int) bool {
+	return c.NodeID == nodeID && slices.Contains(c.GPUIndexes, index)
+}
+
+// Waiter is a deployment whose replica waits for the cards it would take to
+// be given up.
 type Waiter struct {
 	DeploymentID uint
-	// Instances are the awake instances it waits for.
-	Instances []string
+	// Cards are the cards it waits for. They stay its once the holders'
+	// sleeps are ordered: a sleeper's wake does not take them back while it
+	// waits (servicelevel.KeepsCardsAgainst).
+	Cards Cards
+	// Holders are the awake instances on them whose sleep is not ordered
+	// yet: what the residency arbiter puts to sleep. None is a wait for
+	// sleeps already ordered to land.
+	Holders []string
 	// Since is when it started waiting; Seen when it was last noted.
 	Since, Seen time.Time
+}
+
+func (w Waiter) clone() Waiter {
+	w.Holders = slices.Clone(w.Holders)
+	w.Cards.GPUIndexes = slices.Clone(w.Cards.GPUIndexes)
+	return w
 }
 
 // Registry is the waiting deployments. The zero value is not usable; New.
@@ -47,16 +74,17 @@ func (r *Registry) OnWait(f func(deploymentID uint)) {
 // New is an empty registry.
 func New() *Registry { return &Registry{m: map[uint]Waiter{}} }
 
-// Wait notes that the deployment's replica waits for instances, at now. A
-// deployment already waiting keeps when it started.
-func (r *Registry) Wait(deploymentID uint, instances []string, now time.Time) {
+// Wait notes that the deployment's replica waits for cards and the awake
+// holders on them, at now. A deployment already waiting keeps when it
+// started.
+func (r *Registry) Wait(deploymentID uint, cards Cards, holders []string, now time.Time) {
 	r.mu.Lock()
 	w, ok := r.m[deploymentID]
 	if !ok {
 		w = Waiter{DeploymentID: deploymentID, Since: now}
 	}
-	w.Instances, w.Seen = slices.Clone(instances), now
-	r.m[deploymentID] = w
+	w.Cards, w.Holders, w.Seen = cards, holders, now
+	r.m[deploymentID] = w.clone()
 	notify := r.onWait
 	r.mu.Unlock()
 	if !ok && notify != nil {
@@ -64,7 +92,8 @@ func (r *Registry) Wait(deploymentID uint, instances []string, now time.Time) {
 	}
 }
 
-// Done ends the deployment's wait: its replica was placed, or it is gone.
+// Done ends the deployment's wait: its replica was placed, no longer waits
+// for others' cards, or it is gone.
 func (r *Registry) Done(deploymentID uint) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -82,8 +111,7 @@ func (r *Registry) Waiting(now time.Time) []Waiter {
 			delete(r.m, id)
 			continue
 		}
-		w.Instances = slices.Clone(w.Instances)
-		out = append(out, w)
+		out = append(out, w.clone())
 	}
 	slices.SortFunc(out, func(a, b Waiter) int { return a.Since.Compare(b.Since) })
 	return out
@@ -97,6 +125,5 @@ func (r *Registry) Get(deploymentID uint, now time.Time) (Waiter, bool) {
 	if !ok || now.Sub(w.Seen) >= Fresh {
 		return Waiter{}, false
 	}
-	w.Instances = slices.Clone(w.Instances)
-	return w, true
+	return w.clone(), true
 }

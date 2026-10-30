@@ -168,7 +168,14 @@ type rankPlace struct {
 // recordUnschedulableRank is recordUnschedulable for one rank of a
 // generation; at is nil for a single-node replica.
 func (c *Controller) recordUnschedulableRank(dep *store.Deployment, reason scheduler.Reason, at *rankPlace) {
-	c.noteYieldWait(dep, reason)
+	c.recordRefusal(dep, reason, nil, at)
+}
+
+// recordRefusal records why a replica cannot be placed now; yield is what a
+// refusal that waits for holders to yield waits for (LaunchPlan.YieldWait),
+// nil for any other.
+func (c *Controller) recordRefusal(dep *store.Deployment, reason scheduler.Reason, yield *planning.LaunchYield, at *rankPlace) {
+	c.noteYieldWait(dep, reason, yield)
 	if c.agentsReconnecting(reason) {
 		// Just after the server starts, a node counts offline until its
 		// agent reconnects: that is not a refusal worth showing. Look again

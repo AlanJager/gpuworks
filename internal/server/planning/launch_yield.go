@@ -17,11 +17,22 @@ import (
 
 // LaunchYield is how a launch that does not fit would: the awake instances
 // on the cards it would take, of deployments that share them with it, put to
-// sleep. No holders is a launch that waits only for sleeps already ordered.
+// sleep. No holders is a launch that waits only for sleeps already ordered;
+// the cards are its all the same.
 type LaunchYield struct {
 	Holders []YieldHolder
-	// GPUIndexes are the cards it would take.
+	// NodeID and GPUIndexes are the cards it would take.
+	NodeID     uint
 	GPUIndexes []int
+}
+
+// HolderInstances are the awake instances the launch waits for.
+func (y *LaunchYield) HolderInstances() []string {
+	out := make([]string, 0, len(y.Holders))
+	for _, h := range y.Holders {
+		out = append(out, h.Instance)
+	}
+	return out
 }
 
 // YieldHolder is an awake instance a launch waits for, and its deployment.
@@ -32,30 +43,57 @@ type YieldHolder struct {
 	Instance     string
 }
 
-// launchYield re-plans req with the awake instances of the deployments that
-// share cards with a deployment of policy asleep, as the ledger will charge
-// them once they have slept; nil when policy shares with none, nothing would
-// sleep, or the launch would not fit even so. Sharing deployments are
-// single-node, so an instance is a whole replica.
-func launchYield(st *store.Store, node *store.Node, policy string, req scheduler.Request, dtypeOK bool, dtypeReason string, servingUnavailable bool, view ledgerView) *LaunchYield {
-	if policy == "" || policy == servicelevel.Never {
-		return nil
-	}
+// sharingByID are the deployments that share cards by yield policy
+// (store.Store.SharingDeployments, cached), by id; nil when there are none
+// or they cannot be read.
+func sharingByID(st *store.Store) map[uint]*store.Deployment {
 	sharing, err := st.SharingDeployments()
 	if err != nil || len(sharing) == 0 {
 		return nil
 	}
-	shares := make(map[uint]*store.Deployment, len(sharing))
+	out := make(map[uint]*store.Deployment, len(sharing))
 	for i := range sharing {
-		if servicelevel.SharesCardsWith(policy, sharing[i].YieldPolicy) {
-			shares[sharing[i].ID] = &sharing[i]
+		out[sharing[i].ID] = &sharing[i]
+	}
+	return out
+}
+
+// instancesOnCards are the instances of candidates that hold one of the
+// cards a plan took, in candidates' order.
+func instancesOnCards(candidates []*store.Instance, plan *scheduler.Plan) []*store.Instance {
+	cards := make(map[int]bool, len(plan.GPUIndexes))
+	for _, index := range plan.GPUIndexes {
+		cards[index] = true
+	}
+	var out []*store.Instance
+	for _, in := range candidates {
+		for _, index := range parseInts(in.GPUIndexes) {
+			if cards[index] {
+				out = append(out, in)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// launchYield re-plans req with the awake instances among insts (the
+// node's) of the deployments that share cards with a deployment of policy
+// asleep, as the ledger will charge them once they have slept; nil when
+// policy shares with none, nothing would sleep, or the launch would not fit
+// even so. Sharing deployments are single-node, so an instance is a whole
+// replica.
+func launchYield(st *store.Store, node *store.Node, insts []store.Instance, policy string, req scheduler.Request, dtypeOK bool, dtypeReason string, servingUnavailable bool, view ledgerView) *LaunchYield {
+	if policy == "" || policy == servicelevel.Never {
+		return nil
+	}
+	shares := sharingByID(st)
+	for id, dep := range shares {
+		if !servicelevel.SharesCardsWith(policy, dep.YieldPolicy) {
+			delete(shares, id)
 		}
 	}
 	if len(shares) == 0 {
-		return nil
-	}
-	insts, err := st.InstancesForNode(node.ID)
-	if err != nil {
 		return nil
 	}
 	// The awake ones are what it waits for; one already ordered to sleep is
@@ -82,32 +120,23 @@ func launchYield(st *store.Store, node *store.Node, policy string, req scheduler
 	if !result.OK || result.Plan == nil {
 		return nil
 	}
-	cards := map[int]bool{}
-	for _, index := range result.Plan.GPUIndexes {
-		cards[index] = true
-	}
-	out := &LaunchYield{GPUIndexes: result.Plan.GPUIndexes}
-	for _, in := range awake {
-		for _, index := range parseInts(in.GPUIndexes) {
-			if cards[index] {
-				dep := shares[in.DeploymentID]
-				out.Holders = append(out.Holders, YieldHolder{DeploymentID: dep.ID, Deployment: dep.Name, Policy: dep.Policy(), Instance: in.UUID})
-				break
-			}
-		}
+	out := &LaunchYield{NodeID: node.ID, GPUIndexes: result.Plan.GPUIndexes}
+	for _, in := range instancesOnCards(awake, result.Plan) {
+		dep := shares[in.DeploymentID]
+		out.Holders = append(out.Holders, YieldHolder{DeploymentID: dep.ID, Deployment: dep.Name, Policy: dep.Policy(), Instance: in.UUID})
 	}
 	return out
 }
 
 // YieldRefusal is the refusal of a launch that waits for holders to give up
 // node's cards: each holder deployment once, with the terms it gives way to
-// a deployment of policy on (servicelevel.TermsOf), and the instances.
+// a deployment of policy on (servicelevel.TermsOf), and the instances. The
+// params are for display; what the launch waits for is the LaunchYield
+// itself (LaunchPlan.YieldWait).
 func YieldRefusal(node *store.Node, policy servicelevel.Policy, yield *LaunchYield) scheduler.Reason {
-	var holders []map[string]any
-	var instances []string
+	holders := []map[string]any{}
 	seen := map[uint]bool{}
 	for _, h := range yield.Holders {
-		instances = append(instances, h.Instance)
 		if seen[h.DeploymentID] {
 			continue
 		}
@@ -123,6 +152,6 @@ func YieldRefusal(node *store.Node, policy servicelevel.Policy, yield *LaunchYie
 		holders = append(holders, entry)
 	}
 	return scheduler.Reason{Code: scheduler.ReasonWaitingForYield, Params: map[string]any{
-		"node": node.DisplayName(), "holders": holders, "instances": instances,
+		"node": node.DisplayName(), "holders": holders, "instances": yield.HolderInstances(),
 	}}
 }

@@ -51,10 +51,6 @@ func newWakeHold() *wakeHold {
 	}
 }
 
-// wakesOnRequest says a request for dep should be held while it wakes
-// (store.Deployment.WakesOnRequest).
-func wakesOnRequest(dep *store.Deployment) bool { return dep.WakesOnRequest() }
-
 // signal wakes every held request to look at the routes again.
 func (h *wakeHold) signal() {
 	h.mu.Lock()
@@ -184,7 +180,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 	p.hold.mu.Lock()
 	demand := p.hold.demand
 	p.hold.mu.Unlock()
-	if demand == nil || !wakesOnRequest(dep) {
+	if demand == nil || !dep.WakesOnRequest() {
 		return refuse()
 	}
 	req, changed, ok := p.hold.enter(dep.ID)
@@ -214,7 +210,7 @@ func (p *Proxy) holdForWake(ctx context.Context, w http.ResponseWriter, modelNam
 		if status == 0 || !asleep {
 			return got, tgt, status, msg, asleep
 		}
-		if got != nil && got.ID == dep.ID && !wakesOnRequest(got) {
+		if got != nil && got.ID == dep.ID && !got.WakesOnRequest() {
 			// An operator or a schedule put it to sleep meanwhile.
 			return got, tgt, status, msg, asleep
 		}

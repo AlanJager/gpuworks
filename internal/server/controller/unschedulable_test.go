@@ -2,11 +2,14 @@ package controller
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -233,8 +236,9 @@ func TestARefusalForOfflineNodesWhileAgentsReconnectIsNotRecorded(t *testing.T) 
 }
 
 // A replica that waits for holders to yield is noted in the placement waits,
-// with the instances it waits for, and planned again soon; another refusal
-// notes nothing.
+// with the cards and the holders the plan's typed yield names, and planned
+// again soon; a refusal that waits for no one notes nothing, and ends a wait
+// at once rather than leaving the arbiter making room until it goes stale.
 func TestARefusalThatWaitsForAYieldIsNoted(t *testing.T) {
 	c, _, dep := unschedulableFixture(t)
 	now := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
@@ -243,17 +247,35 @@ func TestARefusalThatWaitsForAYieldIsNoted(t *testing.T) {
 	if _, ok := c.PlacementWaits().Get(dep.ID, now); ok {
 		t.Fatal("a refusal that waits for no one was noted")
 	}
-	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonWaitingForYield, Params: map[string]any{
-		"node": "gpu-1", "holders": []map[string]any{{"deployment": "batch", "at_once": true}}, "instances": []string{"batch-1"},
-	}})
+	waiting := scheduler.Reason{Code: scheduler.ReasonWaitingForYield, Params: map[string]any{
+		"node": "gpu-1", "holders": []map[string]any{{"deployment": "batch", "at_once": true}},
+	}}
+	// The display params alone say nothing the controller acts on.
+	c.recordRefusal(dep, waiting, nil, nil)
+	if _, ok := c.PlacementWaits().Get(dep.ID, now); ok {
+		t.Fatal("a wait was noted from a refusal's display params")
+	}
+	yield := &planning.LaunchYield{NodeID: 7, GPUIndexes: []int{1}, Holders: []planning.YieldHolder{{DeploymentID: 9, Deployment: "batch", Instance: "batch-1"}}}
+	c.recordRefusal(dep, waiting, yield, nil)
 	w, ok := c.PlacementWaits().Get(dep.ID, now)
-	if !ok || len(w.Instances) != 1 || w.Instances[0] != "batch-1" || !w.Since.Equal(now) {
+	if !ok || !slices.Equal(w.Holders, []string{"batch-1"}) || !w.Cards.Takes(7, 1) || !w.Since.Equal(now) {
 		t.Fatalf("placement wait = %+v %v", w, ok)
 	}
 	c.q.mu.Lock()
 	at, queued := c.q.pending[depKey(dep.ID)]
 	c.q.mu.Unlock()
-	if !queued || time.Until(at) > yieldRecheck {
-		t.Fatalf("not planned again within %v (queued=%v at %v)", yieldRecheck, queued, at)
+	if !queued || time.Until(at) > placewait.Recheck {
+		t.Fatalf("not planned again within %v (queued=%v at %v)", placewait.Recheck, queued, at)
+	}
+	// Once batch's sleep is ordered the plan waits for no holder; the cards
+	// are still the replica's.
+	c.recordRefusal(dep, waiting, &planning.LaunchYield{NodeID: 7, GPUIndexes: []int{1}}, nil)
+	if w, ok := c.PlacementWaits().Get(dep.ID, now); !ok || len(w.Holders) != 0 || !w.Cards.Takes(7, 1) {
+		t.Fatalf("placement wait for an ordered sleep = %+v %v", w, ok)
+	}
+	// The refusal changes: the replica no longer waits for anyone's cards.
+	c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonNoFreeGPU, Params: map[string]any{"free": 0}})
+	if w, ok := c.PlacementWaits().Get(dep.ID, now); ok {
+		t.Fatalf("a stale wait stands after the refusal changed: %+v", w)
 	}
 }

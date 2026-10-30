@@ -78,6 +78,10 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 	}
 	deployment.insts = insts
 	match := planning.MatchUnits(units, insts, deployment.nodeUUIDs, dep.PlacementStrategy)
+	if !match.Unfilled() {
+		// Nothing left to place: the deployment waits for no one's cards.
+		c.waits.Done(dep.ID)
+	}
 	if moved, err := c.failoverNamedUnits(ctx, deployment, match); moved || err != nil {
 		return err
 	}

@@ -18,6 +18,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/placement"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	pkgest "gpuworks.ai/gpuworks/pkg/estimate"
 	"gpuworks.ai/gpuworks/pkg/modelconfig"
@@ -301,10 +302,17 @@ func (in Input) Evaluate(st *store.Store) Output {
 	// the platform never sleeps silently).
 	if !out.Result.OK {
 		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
-		if !in.Unloaded {
-			out.Yield = launchYield(st, in.Node, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
-			if out.Yield == nil {
-				out.Reserved = launchReserved(st, in.Node, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+		// Only a launch that shares cards by yield policy may wait for
+		// holders, and only one sleepers keep cards from may be refused by
+		// their name: anything else reads nothing more. One read of the
+		// node's instances serves both re-plans.
+		shares := in.YieldPolicy != "" && in.YieldPolicy != servicelevel.Never
+		if !in.Unloaded && st != nil && (shares || view.reserved != nil) {
+			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
+				out.Yield = launchYield(st, in.Node, insts, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				if out.Yield == nil {
+					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				}
 			}
 		}
 	}

@@ -74,7 +74,8 @@ func (a *residencyAdapter) placeWaits() []placewait.Waiter {
 }
 
 // Settling says the deployment's replica waits to be placed, or an instance
-// of it is still starting.
+// of it is still starting: asked of the deployment a holder gave its cards
+// to, which is not serving yet.
 func (a *residencyAdapter) Settling(id uint) bool {
 	if a.waits != nil {
 		if _, ok := a.waits.Get(id, a.now()); ok {
@@ -85,9 +86,22 @@ func (a *residencyAdapter) Settling(id uint) bool {
 	if err != nil {
 		return false
 	}
+	return anyStarting(insts)
+}
+
+// instanceStarting says the instance has not started serving yet.
+func instanceStarting(in *store.Instance) bool {
+	switch in.State {
+	case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
+		return true
+	}
+	return false
+}
+
+// anyStarting says one of the instances has not started serving yet.
+func anyStarting(insts []store.Instance) bool {
 	for i := range insts {
-		switch insts[i].State {
-		case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
+		if instanceStarting(&insts[i]) {
 			return true
 		}
 	}
@@ -95,12 +109,12 @@ func (a *residencyAdapter) Settling(id uint) bool {
 }
 
 // placeBlocking is what keeps a replica waiting to be placed: the awake
-// instances it waits for, still awake, by deployment. Sharing deployments
+// holders it waits for, still awake, by deployment. Sharing deployments
 // are single-node, so an instance is a whole replica.
 func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blocking, error) {
 	var out automation.Blocking
 	at := map[uint]int{}
-	for _, uuid := range w.Instances {
+	for _, uuid := range w.Holders {
 		in, err := a.store.InstanceByUUID(uuid)
 		if err != nil || in.State != proto.InstRunning || planning.InstanceSleepIntent(in) > 0 || in.SleepLevel > 0 {
 			continue
@@ -116,6 +130,7 @@ func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blockin
 			index = len(out.Holders) - 1
 		}
 		out.Holders[index].Instances = append(out.Holders[index].Instances, in.UUID)
+		out.Holders[index].Starting = out.Holders[index].Starting || instanceStarting(in)
 	}
 	return out, nil
 }
@@ -185,16 +200,6 @@ func (a *residencyAdapter) Blocking(id uint) (automation.Blocking, error) {
 	out := automation.Blocking{Blocked: len(blockers) > 0}
 	at := map[uint]int{}
 	for _, target := range targets {
-		members := []store.Instance{target.Instance}
-		targetInsts, err := a.store.InstancesForDeployment(target.Deployment.ID)
-		if err != nil {
-			return automation.Blocking{}, err
-		}
-		if targetMatch, err := planning.DeploymentMatch(a.store, target.Deployment, targetInsts); err == nil {
-			if slot := targetMatch.SlotOf(target.Instance.UUID); slot != nil {
-				members = planning.ReplicaMembers(slot)
-			}
-		}
 		index, ok := at[target.Deployment.ID]
 		if !ok {
 			at[target.Deployment.ID] = len(out.Holders)
@@ -203,9 +208,12 @@ func (a *residencyAdapter) Blocking(id uint) (automation.Blocking, error) {
 			})
 			index = len(out.Holders) - 1
 		}
-		for _, member := range members {
+		for _, member := range target.Members {
 			out.Holders[index].Instances = append(out.Holders[index].Instances, member.UUID)
 		}
+		// Whether the holder is starting is its replica's own: another
+		// replica of its deployment starting does not hold this one back.
+		out.Holders[index].Starting = out.Holders[index].Starting || anyStarting(target.Members)
 	}
 	return out, nil
 }
@@ -230,7 +238,7 @@ func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, 
 	}
 	level := proto.SleepLevelL1
 	if dep, err := a.store.GetDeployment(id); err == nil {
-		pref := dep.Policy().SleepLevelPref()
+		pref := dep.Policy().SleepLevel
 		if pref == servicelevel.LevelL2 {
 			level = proto.SleepLevelL2
 		} else {

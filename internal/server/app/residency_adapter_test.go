@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"slices"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -93,6 +95,57 @@ func TestResidencyAdapterFindsTheHolderAndPutsItToSleep(t *testing.T) {
 	}
 	if policy, ok := res.Wakeable(other.ID); !ok || policy.Yield != servicelevel.Anytime {
 		t.Fatalf("the holder put to sleep for another is not wakeable: %+v %v", policy, ok)
+	}
+}
+
+// Whether a holder is starting is its own replica's: batch scaling to two,
+// its second replica starting, still has its running replica named as a
+// holder that is not starting; the deployment as a whole is settling.
+func TestResidencyAdapterHolderStartingIsItsOwnReplicas(t *testing.T) {
+	res, auto, st, dep, other := residencyFixture(t)
+	if err := st.DB().Model(&store.Deployment{}).Where("id = ?", other.ID).Update("replicas", 2).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CreateInstance(&store.Instance{UUID: "batch-2", DeploymentID: other.ID, NodeID: dep.NodeID, State: proto.InstPending, NNodes: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auto.Wake(dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	b, err := res.Blocking(dep.ID)
+	if err != nil || len(b.Holders) != 1 || !slices.Equal(b.Holders[0].Instances, []string{"batch-1"}) || b.Holders[0].Starting {
+		t.Fatalf("blocking = %+v err=%v, want batch-1 running, not starting", b, err)
+	}
+	if !res.Settling(other.ID) {
+		t.Fatal("a deployment with a replica starting does not read settling")
+	}
+	// The holder's own replica starting is.
+	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "batch-1", State: proto.InstStarting}); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := res.Blocking(dep.ID); err != nil || len(b.Holders) != 1 || !b.Holders[0].Starting {
+		t.Fatalf("blocking = %+v err=%v, want batch-1 starting", b, err)
+	}
+}
+
+// A replica waiting to be placed is blocked by the holders it waits for that
+// are still awake with no sleep ordered.
+func TestResidencyAdapterPlaceBlockingNamesTheAwakeHolders(t *testing.T) {
+	res, _, st, dep, other := residencyFixture(t)
+	res.waits, res.now = placewait.New(), time.Now
+	res.waits.Wait(dep.ID, placewait.Cards{NodeID: dep.NodeID, GPUIndexes: []int{0}}, []string{"batch-1"}, time.Now())
+	b, err := res.Blocking(dep.ID)
+	if err != nil || len(b.Holders) != 1 || b.Holders[0].DeploymentID != other.ID || !slices.Equal(b.Holders[0].Instances, []string{"batch-1"}) {
+		t.Fatalf("blocking = %+v err=%v", b, err)
+	}
+	if !res.Settling(dep.ID) {
+		t.Fatal("a deployment waiting to be placed does not read settling")
+	}
+	if err := st.OrderInstancesSleepHeld(other.ID, []string{"batch-1"}, 1, proto.SleepModeWait, false); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := res.Blocking(dep.ID); err != nil || len(b.Holders) != 0 {
+		t.Fatalf("blocking once the holder's sleep is ordered = %+v err=%v", b, err)
 	}
 }
 
