@@ -6,7 +6,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
-	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
@@ -54,13 +53,20 @@ func (c *yieldCards) instance(t *testing.T, dep *store.Deployment, uuid, gpus st
 	if _, err := c.st.CreateInstance(in); err != nil {
 		t.Fatal(err)
 	}
+	// A new instance starts under its deployment's standing order (awake);
+	// one asleep was ordered to sleep on its own.
+	if sleepLevel > 0 {
+		if err := c.st.OrderInstancesSleep(dep.ID, []string{uuid}, sleepLevel, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // launch is launchYield for a deployment of policy (launching, zero for a
-// newcomer) needing gpus cards of 8 GiB weights each.
+// newcomer) needing gpus cards at 60% of each, 4 GiB of weights on each.
 func (c *yieldCards) launch(t *testing.T, launching uint, policy string, gpus int) *LaunchYield {
 	t.Helper()
-	req := scheduler.Request{WeightBytes: int64(gpus) * 8 << 30, HeadCount: 8, GPUMemUtil: deploy.DefaultGPUMemUtil("vllm"), AllowedTPs: []int{gpus}}
+	req := scheduler.Request{WeightBytes: int64(gpus) * 4 << 30, HeadCount: 8, GPUMemUtil: 0.6, AllowedTPs: []int{gpus}}
 	view := ledgerView{reserved: reservedAgainst(c.st, policy)}
 	return launchYield(c.st, c.node, nodeInstances(t, c.st, c.node), launching, policy, req, true, "", false, view)
 }
@@ -102,6 +108,78 @@ func TestALaunchNeverWaitsForItsOwnDeployment(t *testing.T) {
 	}
 	if got := c.launch(t, chat.ID, yieldpolicy.Idle, 1); got != nil {
 		t.Fatalf("chat's second replica waits for its own first: %+v", got)
+	}
+}
+
+// A holds cards 0 and 1 (TP=2) and B card 1. A one-card launch takes card 0
+// and waits for A alone; a two-card launch waits for both, all or none; a
+// holder asleep is no holder; a holder that never yields keeps its card from
+// any launch that needs it.
+func TestAPartlyOverlappingLaunchWaitsForEveryHolderOnItsCards(t *testing.T) {
+	c := newYieldCards(t, 2)
+	a := c.deployment(t, "a", yieldpolicy.Anytime)
+	b := c.deployment(t, "b", yieldpolicy.Anytime)
+	c.instance(t, a, "a-1", "[0,1]", 0)
+	c.instance(t, b, "b-1", "[1]", 0)
+
+	one := c.launch(t, 0, yieldpolicy.Idle, 1)
+	if one == nil || !slices.Equal(one.GPUIndexes, []int{0}) || !slices.Equal(holderNames(one), []string{"a-1"}) {
+		t.Fatalf("one card = %+v, want card 0 from a-1 alone", one)
+	}
+	two := c.launch(t, 0, yieldpolicy.Idle, 2)
+	if two == nil || !slices.Equal(two.GPUIndexes, []int{0, 1}) || !slices.Equal(holderNames(two), []string{"a-1", "b-1"}) {
+		t.Fatalf("two cards = %+v, want cards 0,1 from a-1 and b-1", two)
+	}
+	// The refusal names each holder deployment once.
+	if reason := YieldRefusal(c.node, yieldpolicy.Policy{Yield: yieldpolicy.Idle}, two); jsonText(t, reason.Params["holders"]) != `[{"at_once":true,"deployment":"a"},{"at_once":true,"deployment":"b"}]` {
+		t.Fatalf("holders = %s", jsonText(t, reason.Params["holders"]))
+	}
+
+	// B asleep on card 1 keeps its residue there and is waited for by no one.
+	replaceB := func(sleepLevel int) {
+		t.Helper()
+		if err := c.st.DB().Delete(&store.Instance{}, "uuid = ?", "b-1").Error; err != nil {
+			t.Fatal(err)
+		}
+		c.instance(t, b, "b-1", "[1]", sleepLevel)
+	}
+	replaceB(1)
+	if two := c.launch(t, 0, yieldpolicy.Idle, 2); two == nil || !slices.Equal(holderNames(two), []string{"a-1"}) {
+		t.Fatalf("two cards with b asleep = %+v, want a-1 alone", two)
+	}
+
+	// B awake and never yielding: card 1 is out of reach, so a one-card
+	// launch still waits for A on card 0, and a two-card one for nothing.
+	replaceB(0)
+	if err := c.st.SetDeploymentYieldPolicy(b.ID, yieldpolicy.Policy{Yield: yieldpolicy.Never}); err != nil {
+		t.Fatal(err)
+	}
+	if one := c.launch(t, 0, yieldpolicy.Idle, 1); one == nil || !slices.Equal(one.GPUIndexes, []int{0}) || !slices.Equal(holderNames(one), []string{"a-1"}) {
+		t.Fatalf("one card beside a never holder = %+v", one)
+	}
+	if two := c.launch(t, 0, yieldpolicy.Idle, 2); two != nil {
+		t.Fatalf("two cards over a never holder = %+v, want no wait", two)
+	}
+}
+
+// Where several card sets would do, the launch takes the scheduler's choice
+// with every sharing holder counted asleep: it does not weigh how many
+// replicas, or of which rank, the set puts to sleep. A on cards 0 and 1
+// (TP=2) and B on card 2: a one-card launch takes card 0 and waits for A's
+// whole replica, though card 2 would have cost only B's.
+func TestALaunchDoesNotWeighWhatItsCardsPutToSleep(t *testing.T) {
+	c := newYieldCards(t, 3)
+	a := c.deployment(t, "a", yieldpolicy.Anytime)
+	b := c.deployment(t, "b", yieldpolicy.Anytime)
+	c.instance(t, a, "a-1", "[0,1]", 0)
+	c.instance(t, b, "b-1", "[2]", 0)
+	one := c.launch(t, 0, yieldpolicy.Idle, 1)
+	if one == nil || !slices.Equal(one.GPUIndexes, []int{0}) || !slices.Equal(holderNames(one), []string{"a-1"}) {
+		t.Fatalf("one card = %+v", one)
+	}
+	two := c.launch(t, 0, yieldpolicy.Idle, 2)
+	if two == nil || !slices.Equal(two.GPUIndexes, []int{0, 1}) || !slices.Equal(holderNames(two), []string{"a-1"}) {
+		t.Fatalf("two cards = %+v, want cards 0,1 from a-1 alone", two)
 	}
 }
 
