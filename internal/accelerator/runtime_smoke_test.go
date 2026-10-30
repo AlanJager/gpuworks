@@ -75,7 +75,7 @@ func TestRuntimeSmokeCommandsCarryTheCheckScripts(t *testing.T) {
 // The scripts are pasted inside single quotes, so a single quote in one would
 // end the quoting and hand the shell the rest of the script as commands.
 func TestRuntimeSmokeScriptsSurviveShellQuoting(t *testing.T) {
-	for name, script := range map[string]string{"ascend": AscendACLSmokeScript, "cuda": CUDASmokeScript} {
+	for name, script := range map[string]string{"ascend": AscendACLSmokeScript, "cuda": CUDASmokeScript, "hygon": HygonHIPSmokeScript} {
 		if strings.Contains(script, "'") {
 			t.Errorf("%s script contains a single quote; keep it to double quotes so the command can be pasted", name)
 		}
@@ -203,5 +203,21 @@ func TestRuntimeUnusableGuidePerVendor(t *testing.T) {
 		if g, ok := HealthGuideFor(HealthCard{Vendor: vendor, Code: HealthRuntimeUnusable, BDF: "0000:7e:00.0", Index: 0}, nil); ok {
 			t.Errorf("%s runtime_unusable guide = %+v, want none", vendor, g)
 		}
+	}
+}
+
+func TestHygonRuntimeSmokeCommand(t *testing.T) {
+	if HygonRuntimeSmokeCommand(" ") != "" {
+		t.Fatal("a card without an address got a command")
+	}
+	cmd := HygonRuntimeSmokeCommand("0000:67:00.0")
+	for _, want := range []string{"HYGON_SMOKE_BDF='0000:67:00.0'", "/opt/dtk/lib/libamdhip64.so", "LD_LIBRARY_PATH=/opt/dtk/lib:/opt/dtk/lib64:/opt/hyhal/lib", "python3 -c 'import ctypes"} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("command lacks %q:\n%s", want, cmd)
+		}
+	}
+	g, ok := HealthGuideFor(HealthCard{Vendor: VendorHygon, Code: HealthRuntimeUnusable, BDF: "0000:67:00.0"}, nil)
+	if !ok || g.Probe != cmd || g.Recheck != "hy-smi --healthcheck" {
+		t.Fatalf("guide = %+v ok=%v", g, ok)
 	}
 }

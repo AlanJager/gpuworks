@@ -263,14 +263,17 @@ Xid / NVRM errors.
 **`runtime_unusable`: accelerator runtime context creation failed**
 
 A card's health is “Runtime cannot use it” (`runtime_unusable`): accelerator runtime smoke checks target each card every 15 minutes.
-Cards running instances are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
+Cards running instances and cards in use by processes outside the platform are skipped, the whole round is skipped if the driver does not respond, and the check does not change the node's connection status.
 NVIDIA requires `python3` and `libcuda.so.1` and creates a CUDA context on the selected card. One card failing to initialize often makes `cuInit`
 fail for the entire host, so examine findings for the other cards as well. On an Ascend host with CANN installed, the check uses `python3` and
 `libascendcl.so` to create an ACL context and allocate 4 KiB. For example, `aclrtSetDevice=507033` marks that die unusable
 (a die passed through to a VM can return the same code, so first confirm during manual review that nothing else occupies it;
 the smoke check itself only asks about cards owned by this node). A driver-only Ascend node without `libascendcl.so` skips the check rather than reporting a missing tool as a card failure.
+On a Hygon host with DTK installed, the check uses `python3` and `libamdhip64.so` (`/opt/dtk/lib` and similar) to find the card by its PCI address, `hipSetDevice` to it and allocate 4 KiB;
+for example, `hipMalloc=2` marks that card unusable. HIP not listing the card or `hipInit` failing is a host problem, not a card failure; without DTK the check is skipped.
+A PPU host usually has only the management library (`libhgml.so`) and no HGGC runtime, so there is no host-side check yet and `ppu-smi`'s verdict stands; Apple has none either.
 
-**Diagnose now runs the same per-die check on Ascend, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
+**Diagnose now runs the same per-card check (per die on Ascend) on Ascend and Hygon, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
 (it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `runtime_unusable` always shows up in the diagnosis.
 A failing die is shown as “Runtime cannot use it” in the accelerator table, and **Action required** lists a `runtime_unusable` item per die (level Error, with the same evidence the periodic check records).
 When the table already carries a more specific vendor verdict for the die (for example `reset_required`), the table keeps that one and `runtime_unusable` is still listed on its own.
@@ -401,7 +404,7 @@ Each item in “Action required” provides **Evidence** (the command or call us
 An **Action** command, such as a reset command, is provided only when the vendor tool itself gives a recovery method.
 
 Checks include accelerator health (see the next section), disk space below 10% free (root partition, model directory, container data directory, and storage),
-an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die runtime check failures (`runtime_unusable`).
+an unresponsive selected container runtime, accelerator tool execution failures, NVIDIA CUDA initialization failures and multi-card communication check failures, and Ascend per-die and Hygon per-card runtime check failures (`runtime_unusable`). Cards in use by processes outside the platform are not checked and are listed as not checked.
 
 There are five additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
 `runtime_provision_failed` (runtime provisioning failed), `runtime_state_untraversable` (the dedicated runtime user cannot reach the agent directory), `path_noexec`, `path_read_only`, and `path_ephemeral`.

@@ -263,14 +263,17 @@ Xid / NVRM 报错。
 **`runtime_unusable`：加速卡运行时上下文创建失败**
 
 某张卡健康是「运行时无法使用」（`runtime_unusable`）：加速卡运行时冒烟每 15 分钟逐卡跑一轮，
-只点名这一张卡；正在跑实例的卡跳过，驱动不应答时整轮跳过，冒烟不改变节点连接状态。
+只点名这一张卡；正在跑实例的卡、被平台外进程占用的卡跳过，驱动不应答时整轮跳过，冒烟不改变节点连接状态。
 NVIDIA 需要 `python3` 和 `libcuda.so.1`，在这张卡上创建 CUDA 上下文；一张卡初始化失败常常让整机的
 `cuInit` 都失败，所以要连别的卡的结论一起看。昇腾在主机装有 CANN 时用 `python3` + `libascendcl.so`
 创建 ACL context 并分配 4 KiB，例如 `aclrtSetDevice=507033` 表示该 die 无法使用
 （直通给虚拟机的 die 也返回这个码，所以人工复查时要先确认这张 die 没被别的东西占着；
 冒烟本身只问本节点拥有的卡）。driver-only 昇腾节点没有 `libascendcl.so` 时跳过检查，不把缺工具算成卡故障。
+海光在主机装有 DTK 时用 `python3` + `libamdhip64.so`（`/opt/dtk/lib` 等）按 PCI 地址找到这张卡，`hipSetDevice` 后分配 4 KiB，
+例如 `hipMalloc=2` 表示这张卡无法使用；HIP 列不出这张卡或 `hipInit` 失败算主机的问题，不判卡故障；没装 DTK 时跳过检查。
+PPU 主机上通常只有管理库（`libhgml.so`）、没有 HGGC 运行时，暂不做主机侧冒烟，沿用 `ppu-smi` 的结论；Apple 也不做。
 
-**点「诊断」会立刻对昇腾做同一项逐 die 检查**：节点详情的「诊断」与 `gpuworks-agent doctor` 对本节点拥有的每张 die 按需跑一遍上面这项运行时检查
+**点「诊断」会立刻对昇腾、海光做同一项逐卡（昇腾逐 die）检查**：节点详情的「诊断」与 `gpuworks-agent doctor` 对本节点拥有的每张 die 按需跑一遍上面这项运行时检查
 （和周期检查是同一段代码，不另写一套），所以周期检查已经判为 `runtime_unusable` 的 die，诊断里一定看得到。
 失败的 die 在加速卡表里显示「运行时无法使用」，并在 **需要处理** 里按 die 列出一项 `runtime_unusable`（级别「错误」，依据与周期检查记录的相同）；
 表里已有更具体的厂商结论（如 `reset_required`）时，表中仍显示那一条，`runtime_unusable` 照样单独列出。
@@ -402,7 +405,7 @@ PCI 设备，但不符合该厂商任何一条识别规则——通常是我们�
 只有厂商工具本身给出恢复方式时，才提供 **处理** 命令，例如复位。
 
 检查项目包括加速卡健康（见下一节）、磁盘可用空间不足 10%（根分区、模型目录、容器数据目录、存储）、
-已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及昇腾逐 die 运行时检查失败（`runtime_unusable`）。
+已选用的容器运行时无响应、加速卡工具执行失败，NVIDIA 的 CUDA 初始化失败和多卡通信检查失败，以及昇腾逐 die、海光逐卡运行时检查失败（`runtime_unusable`）。被平台外进程占用的卡不检查，列为未检查。
 
 运行时与文件系统方面另有五项（见[运行时初始化失败与容器节点的文件系统](#运行时初始化失败与容器节点的文件系统)）：
 `runtime_provision_failed`（运行时初始化失败）、`runtime_state_untraversable`（专用运行用户进不了 agent 目录）、`path_noexec`、`path_read_only`、`path_ephemeral`。

@@ -182,7 +182,8 @@ func TestHostRuntimeCheckTableCoversTheHostRuntimes(t *testing.T) {
 	for vendor, want := range map[string]bool{
 		"nvidia": true, "NVIDIA": true,
 		"ascend": true, "ASCEND": true,
-		"hygon": false, "ppu": false, "apple": false, "": false,
+		"hygon": true, "HYGON": true,
+		"ppu": false, "apple": false, "": false,
 	} {
 		check, ok := HostRuntimeCheckFor(vendor)
 		if ok != want {

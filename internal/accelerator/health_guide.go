@@ -128,6 +128,11 @@ func runtimeUnusableGuide(card HealthCard) (HealthGuide, bool) {
 			// row is what `npu-smi info` prints for it.
 			Recheck: "npu-smi info -m; npu-smi info",
 		}, true
+	case VendorHygon:
+		if strings.TrimSpace(card.BDF) == "" {
+			return HealthGuide{}, false
+		}
+		return HealthGuide{Probe: HygonRuntimeSmokeCommand(card.BDF), Recheck: "hy-smi --healthcheck"}, true
 	}
 	return HealthGuide{}, false
 }

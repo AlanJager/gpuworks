@@ -88,7 +88,7 @@ func buildDoctorReportWith(ctx context.Context, p gpu.Prober, disks []proto.Path
 	}
 	// Dies that exist only in a fixture say nothing about the host's CANN.
 	if r.Accelerators != nil && !gpu.IsSynthetic(p) {
-		doctorAscendChecks(ctx, &r, gpus)
+		doctorCardRuntimeChecks(ctx, &r, gpus)
 	}
 	if doctorOnMac {
 		doctorMacChecks(ctx, &r, gpus)
