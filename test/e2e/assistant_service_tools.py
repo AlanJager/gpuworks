@@ -256,6 +256,36 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
         has_text=re.compile(r"^" + re.escape(settings["ai"]["presetName"]["custom"]) + r"$"))
     expect(custom).to_be_visible()
     custom.click()
+    # 1.3: each required text field must reject a whitespace-only value and send nothing.
+    # antd's required rule only trims when whitespace:true is set, so without it a value of
+    # spaces validates and the form posts a record with a blank name, URL or model.
+    blank_writes = []
+    def on_blank(request):
+        if urlsplit(request.url).path.startswith(CONFIGS) and request.method in {"POST", "PUT", "PATCH"}:
+            blank_writes.append(request.method)
+    page.on("request", on_blank)
+    try:
+        for label, message in ((settings["ai"]["name"], settings["ai"]["nameRequired"]),
+                               (settings["ai"]["baseUrl"], settings["ai"]["baseUrlRequired"]),
+                               (settings["ai"]["model"], settings["ai"]["modelRequired"])):
+            # Fill every other required text field so the only thing that can fail is this
+            # field's whitespace check - otherwise the other blank fields raise their own
+            # errors and the assertion would pass without proving anything about this one.
+            for other_label, other_value in (
+                    (settings["ai"]["name"], "probe-name"),
+                    (settings["ai"]["baseUrl"], "https://probe.invalid/v1"),
+                    (settings["ai"]["model"], "probe-model")):
+                modal.get_by_label(other_label, exact=True).fill(other_value)
+            field = modal.get_by_label(label, exact=True)
+            field.fill("   ")
+            button(modal, settings["common"]["add"]).click()
+            expect(modal.get_by_text(message, exact=True)).to_be_visible()
+            check(blank_writes == [], f"whitespace-only {label} submitted {blank_writes}")
+            field.fill("")
+    finally:
+        page.remove_listener("request", on_blank)
+    report["whitespace_rejected"] = {"fields": 3, "requests": 0}
+
     modal.get_by_label(settings["ai"]["name"], exact=True).fill(config_name)
     modal.get_by_label(settings["ai"]["baseUrl"], exact=True).fill(fixture.base)
     modal.get_by_label(settings["ai"]["model"], exact=True).fill(fixture.model)
