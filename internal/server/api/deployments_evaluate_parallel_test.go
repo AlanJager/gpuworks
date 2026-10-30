@@ -3,17 +3,21 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -193,12 +197,34 @@ func TestDistributedRequestStatesItsParallelism(t *testing.T) {
 		{map[string]any{"tp": float64(2)}, 2, 1},
 	} {
 		req := dto.DeployRequest{NodeUUIDs: []string{"par-a", "par-b"}, NNodes: 2, Placement: tc.placement}
-		if _, err := h.prepareDistributedDeployRequest(&req); err != nil {
+		if _, err := h.prepareDistributedDeployRequest(&req, 1); err != nil {
 			t.Fatalf("%v: %v", tc.placement, err)
 		}
 		if req.Placement["tp"] != tc.tp || req.Placement["pp"] != tc.pp {
 			t.Fatalf("%v stored as %v, want tp %d pp %d", tc.placement, req.Placement, tc.tp, tc.pp)
 		}
+	}
+}
+
+func TestDistributedDPDefaultsTPAfterCountingReplicas(t *testing.T) {
+	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for i, uuid := range []string{"dp-default-a", "dp-default-b"} {
+		launchConfigNode(t, st, uuid)
+		if err := st.UpdateNodeStatus(uuid, nodeStatusTwoGPUs(uuid, i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := &apiHandlers{d: Deps{Store: st}}
+	req := dto.DeployRequest{Engine: "vllm", NodeUUIDs: []string{"dp-default-a", "dp-default-b"}, NNodes: 2, QuickParams: map[string]any{"data_parallel_size": 2}}
+	if _, err := h.prepareDistributedDeployRequest(&req, 2); err != nil {
+		t.Fatal(err)
+	}
+	if req.Placement["tp"] != 1 || req.Placement["pp"] != 2 {
+		t.Fatalf("wrong per-copy topology: %v", req.Placement)
 	}
 }
 
@@ -239,4 +265,78 @@ func TestEvaluateReportsAcquisitionPerNode(t *testing.T) {
 		{"node_uuid":"par-b","node_name":"par-b","image_cached":false,"image_plan":"pull","image_pull_refs":["example/vllm:test"],"image_pull_ranked":true,
 		 "weights_present":false,"weights_plan":"copy","weights_copy_from":"par-a"}
 	]`)
+}
+
+func TestDistributedDPRequiresReplicaCardsOnEachNode(t *testing.T) {
+	st, err := store.Open("file:"+t.Name()+"?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for i, uuid := range []string{"dp-a", "dp-b"} {
+		launchConfigNode(t, st, uuid)
+		status := nodeStatusTwoGPUs(uuid, i)
+		status.GPUs = status.GPUs[:1]
+		if err := st.UpdateNodeStatus(uuid, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := &apiHandlers{d: Deps{Store: st}}
+	req := dto.DeployRequest{NodeUUIDs: []string{"dp-a", "dp-b"}, NNodes: 2, Placement: map[string]any{"tp": float64(2)}}
+	_, err = h.prepareDistributedDeployRequest(&req, 2)
+	var refusal *messages.ProductError
+	if !errors.As(err, &refusal) || refusal.Code() != ErrorDistributedGPUCount || refusal.Params()["required"] != 2 || refusal.Params()["available"] != 1 {
+		t.Fatalf("TP2 DP2 on one-card nodes must report required=2, available=1: %v", err)
+	}
+}
+
+func TestRouterEvaluateTwoNodeDataParallel(t *testing.T) {
+	_, modelID, st := newParallelEvaluateWith(t, nil)
+	signer, err := auth.NewTokenSigner("parallel-dp-test-secret", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := managementSessionTestToken(t, st, signer, auth.Claims{Username: "admin", Role: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := Router(Deps{Store: st, Bus: st.Bus, AuthSigner: signer})
+	for _, tc := range []struct {
+		name, suffix string
+		ok           bool
+	}{
+		{"default DP1", "", false},
+		{"quick DP2", `,"quick_params":{"data_parallel_size":2}`, true},
+		{"explicit DP2", `,"extra_args":"--data-parallel-size 2"`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"model_id":%d,"engine":"vllm","nnodes":2,"node_uuids":["par-a","par-b"],"placement":{"tp":1,"pp":1}%s}`, modelID, tc.suffix)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/evaluate", strings.NewReader(body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+			}
+			var out parallelEvaluation
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+			if out.OK != tc.ok {
+				t.Fatalf("ok = %v, want %v; errors = %+v", out.OK, tc.ok, out.Errors)
+			}
+			if !tc.ok {
+				if len(out.Errors) != 1 || out.Errors[0].Code != ErrorDistributedParallelIndivisible {
+					t.Fatalf("DP1 should not split one rank: %+v", out.Errors)
+				}
+				return
+			}
+			if len(out.Errors) != 0 || out.Parallelism == nil || out.Parallelism.GPUsPerNode != 1 {
+				t.Fatalf("DP2 parallelism = %+v, errors = %+v", out.Parallelism, out.Errors)
+			}
+			if !strings.Contains(strings.Join(out.Argv, " "), "--data-parallel-size 2") {
+				t.Fatalf("DP2 command = %q", out.Argv)
+			}
+		})
+	}
 }

@@ -323,7 +323,7 @@ func TestPrepareDistributedDeployRequestDerivesLeaderAndValidatesTP(t *testing.T
 		Placement: map[string]any{"tp": float64(2)},
 	}
 	h := apiHandlers{d: Deps{Store: st}}
-	nodes, err := h.prepareDistributedDeployRequest(&req)
+	nodes, err := h.prepareDistributedDeployRequest(&req, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestPrepareDistributedDeployRequestRequiresANetworkForComputeTraffic(t *tes
 	}
 	req := dto.DeployRequest{NodeUUIDs: []string{"node-1", "node-2"}, NNodes: 2, Placement: map[string]any{"tp": float64(2)}}
 	// Neither node reported a management address or is on a compute network.
-	_, err = (&apiHandlers{d: Deps{Store: st}}).prepareDistributedDeployRequest(&req)
+	_, err = (&apiHandlers{d: Deps{Store: st}}).prepareDistributedDeployRequest(&req, 1)
 	var product interface{ Code() string }
 	if !errors.As(err, &product) || product.Code() != ErrorComputeNetworkNone {
 		t.Fatalf("error = %v, want %s", err, ErrorComputeNetworkNone)
@@ -436,13 +436,13 @@ func TestPrepareDistributedDeployRequestRejectsInvalidPortAndCapacity(t *testing
 	}
 	h := apiHandlers{d: Deps{Store: st}}
 	req := dto.DeployRequest{NodeUUIDs: []string{"node-1", "node-2"}, NNodes: 2, MasterPort: 80, Placement: map[string]any{"tp": float64(2)}}
-	if _, err := h.prepareDistributedDeployRequest(&req); err == nil || !strings.Contains(err.Error(), "master_port") {
+	if _, err := h.prepareDistributedDeployRequest(&req, 1); err == nil || !strings.Contains(err.Error(), "master_port") {
 		t.Fatalf("port error = %v", err)
 	}
 	req.MasterPort = 29500
 	// TP 4 over two nodes is two GPUs on each; these nodes have one.
 	req.Placement["tp"] = float64(4)
-	if _, err := h.prepareDistributedDeployRequest(&req); err == nil || !strings.Contains(err.Error(), "has 1 GPUs, the parallelism needs 2 per node") {
+	if _, err := h.prepareDistributedDeployRequest(&req, 1); err == nil || !strings.Contains(err.Error(), "has 1 GPUs, the parallelism needs 2 per node") {
 		t.Fatalf("capacity error = %v", err)
 	}
 }
@@ -1105,7 +1105,7 @@ func TestPrepareDistributedDeployRequestFallsBackToTheManagementNetwork(t *testi
 	}
 	h := &apiHandlers{d: Deps{Store: st}}
 	req := dto.DeployRequest{NodeUUIDs: []string{"node-1", "node-2"}, NNodes: 2, Placement: map[string]any{"tp": float64(2)}}
-	if _, err := h.prepareDistributedDeployRequest(&req); err != nil || req.MasterAddr != "172.25.0.1" {
+	if _, err := h.prepareDistributedDeployRequest(&req, 1); err != nil || req.MasterAddr != "172.25.0.1" {
 		t.Fatalf("fallback = %q, %v", req.MasterAddr, err)
 	}
 	nodes := []*store.Node{node1}
@@ -1122,7 +1122,7 @@ func TestPrepareDistributedDeployRequestFallsBackToTheManagementNetwork(t *testi
 		t.Fatal(err)
 	}
 	req = dto.DeployRequest{NodeUUIDs: []string{"node-1", "node-2"}, NNodes: 2, Placement: map[string]any{"tp": float64(2)}}
-	_, err = h.prepareDistributedDeployRequest(&req)
+	_, err = h.prepareDistributedDeployRequest(&req, 1)
 	var product interface{ Code() string }
 	if !errors.As(err, &product) || product.Code() != ErrorComputeNetworkMixed {
 		t.Fatalf("mixed err = %v", err)

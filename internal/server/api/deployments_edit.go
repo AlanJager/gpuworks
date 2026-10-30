@@ -266,13 +266,6 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 			return bad(err)
 		}
 		next.Placement = keepEquivalentJSON(dep.Placement, jsonStr(placement))
-	} else if shape == deploymentShapeMulti {
-		// The nodes are the deployment's; the parallelism over them may
-		// change, judged as a create judges it.
-		if _, err := a.prepareDistributedDeployRequest(req); err != nil {
-			return bad(err)
-		}
-		next.Placement = keepEquivalentJSON(dep.Placement, jsonStr(storedPlacement(req.Placement, false)))
 	}
 
 	base, err := storedLaunchConfig(dep)
@@ -311,6 +304,18 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 	})
 	if err != nil {
 		return bad(err)
+	}
+	if shape == deploymentShapeMulti {
+		// Count the effective DP after applying the stored base and edits,
+		// exactly as create does. An omitted field retains the stored value.
+		dp, err := deploy.PlacementDataParallel(engine.Name(), launch.Quick.DP, launch.TemplateResidual, launch.UserResidual)
+		if err != nil {
+			return bad(err)
+		}
+		if _, err := a.prepareDistributedDeployRequest(req, dp); err != nil {
+			return bad(err)
+		}
+		next.Placement = keepEquivalentJSON(dep.Placement, jsonStr(storedPlacement(req.Placement, false)))
 	}
 	if shape == deploymentShapePD {
 		if err := planning.CheckPDArgs(engine.Name(), launch.TemplateResidual, launch.UserResidual); err != nil {

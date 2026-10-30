@@ -138,6 +138,13 @@ func (a *apiHandlers) evaluateRankFallback(env evaluateRankEnv) bool {
 	modelMount, componentMounts := previewComponentMounts(a.d.Store, selection.Components, nil)
 	// tp is the degree the plan settled on; an unstated spec takes it.
 	parallel := env.placement.Parallelism(req.NNodes)
+	dp, err := deploy.PlacementDataParallel(eng.Name(), quick.DP, templateArgs, userExtraArgs)
+	if err != nil {
+		env.errs.add("", err)
+		writeEvaluateFieldErrors(w, resp, env.errs)
+		return false
+	}
+	parallel.DP = dp
 	if !parallel.Stated() {
 		parallel.TP = tp
 	}

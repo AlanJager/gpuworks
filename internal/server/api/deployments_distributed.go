@@ -13,7 +13,7 @@ import (
 // prepareDistributedDeployRequest checks a multi-node request's nodes - one
 // per rank, distinct, online - and its parallelism and master port, and
 // points the request's leader fields at its first node.
-func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest) ([]*store.Node, error) {
+func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest, dp int) ([]*store.Node, error) {
 	if len(req.NodeUUIDs) != req.NNodes {
 		return nil, productError(ErrorDistributedNodeCount, "node_uuids count must equal nnodes", map[string]any{"actual": len(req.NodeUUIDs), "required": req.NNodes})
 	}
@@ -47,7 +47,9 @@ func (a *apiHandlers) prepareDistributedDeployRequest(req *dto.DeployRequest) ([
 	}
 	// An unstated TP and PP default from the nodes; what takes effect is
 	// written back, so the stored deployment always states its parallelism.
-	parallel := placement.ParallelismOn(gpuCounts)
+	// The caller has already materialized the launch. Do not re-read raw
+	// template flags here: they may have been overridden or unset.
+	parallel := placement.ParallelismOnDP(gpuCounts, dp)
 	perNode, err := parallelGPUsPerNode(parallel)
 	if err != nil {
 		return nil, err

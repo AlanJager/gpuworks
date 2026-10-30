@@ -56,7 +56,7 @@ func (a *apiHandlers) autoPlaceRequest(req *dto.DeployRequest) (bool, error) {
 		if err := autoPlacePD(req, pd, facts, strategy); err != nil {
 			return false, err
 		}
-	} else if err := autoPlaceReplica(req, facts, strategy); err != nil {
+	} else if err := a.autoPlaceReplica(req, facts, strategy); err != nil {
 		return false, err
 	}
 	// The request now names every node: from here it is checked and stored
@@ -67,7 +67,7 @@ func (a *apiHandlers) autoPlaceRequest(req *dto.DeployRequest) (bool, error) {
 
 // autoPlaceReplica picks the ranks of a multi-node request it does not name;
 // the nodes it names take the first ranks.
-func autoPlaceReplica(req *dto.DeployRequest, facts planning.UnitSuggestFacts, strategy store.PlacementStrategy) error {
+func (a *apiHandlers) autoPlaceReplica(req *dto.DeployRequest, facts planning.UnitSuggestFacts, strategy store.PlacementStrategy) error {
 	placement, err := planning.ParsePlacement(req.Placement)
 	if err != nil {
 		return err
@@ -75,16 +75,51 @@ func autoPlaceReplica(req *dto.DeployRequest, facts planning.UnitSuggestFacts, s
 	if placement.TP <= 0 {
 		return productError(ErrorAutoPlacementTPRequired, "automatic placement of a multi-node deployment needs placement.tp: how many GPUs each node gives a rank", nil)
 	}
-	perRank, err := placement.Parallelism(req.NNodes).GPUsPerNode()
-	if err != nil {
-		return err
+	parallel := placement.Parallelism(req.NNodes)
+	// Named specs have a known launch contract before a node is chosen.
+	// Unnamed specs depend on the proposed hardware and are checked below.
+	dynamicSpec := req.TemplateID != 0 && req.TemplateSpecName == ""
+	perRank := 1 // a lower bound until a hardware-dependent spec is resolved
+	if !dynamicSpec {
+		parallel.DP, err = a.automaticReplicaDP(req, nil)
+		if err != nil {
+			return err
+		}
+		perRank, err = parallel.GPUsPerNode()
+		if err != nil {
+			return err
+		}
 	}
 	if len(req.NodeUUIDs) > req.NNodes {
 		return productError(ErrorDistributedNodeCount, fmt.Sprintf("%d nodes named for %d ranks", len(req.NodeUUIDs), req.NNodes), map[string]any{"count": len(req.NodeUUIDs), "nnodes": req.NNodes})
 	}
 	facts.Ranks, facts.PerRank = req.NNodes, perRank
-	chosen, counts, ok := planning.ChooseReplicaNodes(facts, strategy, req.NodeUUIDs, func([]*store.Node) int { return -1 })
+	var candidateErr error
+	chosen, counts, ok := planning.ChooseReplicaNodes(facts, strategy, req.NodeUUIDs, func(nodes []*store.Node) int {
+		if !dynamicSpec {
+			return -1
+		}
+		candidate := parallel
+		candidate.DP, candidateErr = a.automaticReplicaDP(req, nodes[0])
+		if candidateErr != nil {
+			return 0
+		}
+		need, err := candidate.GPUsPerNode()
+		if err != nil {
+			candidateErr = err
+			return 0
+		}
+		for rank, node := range nodes {
+			if planning.FreeHealthyGPUs(node, facts.Held[node.ID])-facts.Claimed[node.UUID] < need {
+				return rank
+			}
+		}
+		return -1
+	})
 	if !ok {
+		if candidateErr != nil {
+			return candidateErr
+		}
 		return planning.UnitPlacementNone(counts)
 	}
 	req.NodeUUIDs = req.NodeUUIDs[:0]

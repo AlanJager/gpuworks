@@ -310,7 +310,12 @@ func ReplicaGPUNeed(dep *store.Deployment) int {
 	if err != nil {
 		return 0
 	}
-	need, err := placement.Parallelism(1).GPUsPerNode()
+	spec, err := DeploymentParallelism(dep, placement)
+	if err != nil {
+		return 0
+	}
+	spec.NNodes = 1
+	need, err := spec.GPUsPerNode()
 	if err != nil {
 		return 0
 	}

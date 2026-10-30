@@ -52,6 +52,7 @@ func (vLLMEngine) Profile() Profile {
 		QuickFormKeys: []string{
 			"max_model_len", "dtype", "quantization", "gpu_memory_utilization",
 			"max_num_seqs", "max_num_batched_tokens", "enable_prefix_caching",
+			"data_parallel_size",
 			"enable_cache_report",
 			"kv_cache_dtype",
 			// The KV tier row of the quick form is driven by these keys: without

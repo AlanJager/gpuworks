@@ -136,7 +136,7 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 		return plan, nil
 	}
 
-	gpus, assigned, parallel := previewPlacement(req, plan.Output)
+	gpus, assigned, parallel := previewPlacement(req, plan.Output, input.Parallel)
 	if !(req.Preview && req.AllowUnresolvedImage && strings.TrimSpace(req.Source.Image) == "") {
 		imagePull, err := ImagePullPlanFor(st, nodeResolverOf(networks), req.Source, req.Node, req.Selection)
 		if err != nil {
@@ -208,7 +208,13 @@ func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, erro
 	if err != nil {
 		return nil, err
 	}
-	_, assigned, parallel := previewPlacement(req, Output{})
+	dp, err := deploy.PlacementDataParallel(req.Engine, req.Quick.DP, req.Selection.ExtraArgs, req.ExtraArgs)
+	if err != nil {
+		return nil, err
+	}
+	spec := req.Placement.Parallelism(req.Topology.NNodes)
+	spec.DP = dp
+	_, assigned, parallel := previewPlacement(req, Output{}, spec)
 	params := launchParams(req, gpu, assigned, parallel, PreviewAPIPort)
 	params.AssignedGPUs = 0
 	params.TensorParallel = 0
@@ -240,6 +246,12 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		return Input{}, err
 	}
 	requests, features := targetRequestsFor(req, validator, targetRequestCache{}, previewRequestedFeatures)
+	dp, err := deploy.PlacementDataParallel(req.Engine, req.Quick.DP, req.Selection.ExtraArgs, req.ExtraArgs)
+	if err != nil {
+		return Input{}, err
+	}
+	parallel := req.Placement.Parallelism(req.Topology.NNodes)
+	parallel.DP = dp
 	return Input{
 		Model: req.Model, Node: req.Node, Engine: req.Engine, Quick: req.Quick,
 		SpecWeightBytes:      req.Selection.WeightBytes,
@@ -254,7 +266,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		DeploymentID:         req.Source.DeploymentID,
 		YieldPolicy:          req.YieldPolicy,
 		ExplainHolders:       req.ExplainHolders,
-		Parallel:             req.Placement.Parallelism(req.Topology.NNodes),
+		Parallel:             parallel,
 		GPUIndexes:           req.Placement.GPUIndexes,
 		VRAMLimitBytes:       req.VRAMLimitBytes,
 		PartitionBackend:     req.PartitionBackend,
@@ -292,8 +304,7 @@ func runtimeImageCached(st *store.Store, req LaunchRequest) *bool {
 // that is, and the deployment's parallelism. A schedule that resolved gives
 // the GPUs; a preview without one keeps the GPUs the request pinned and the
 // per-node count the stated parallelism implies (or one).
-func previewPlacement(req LaunchRequest, out Output) ([]int, int, parallelism.Spec) {
-	spec := req.Placement.Parallelism(req.Topology.NNodes)
+func previewPlacement(req LaunchRequest, out Output, spec parallelism.Spec) ([]int, int, parallelism.Spec) {
 	if out.Result.OK && out.Result.Plan != nil {
 		return out.Result.Plan.GPUIndexes, len(out.Result.Plan.GPUIndexes), spec.Assigned(out.Result.Plan.TP)
 	}

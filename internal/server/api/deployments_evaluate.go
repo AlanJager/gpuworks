@@ -287,7 +287,13 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 			NodeRank: req.NodeRank, MasterAddr: req.MasterAddr, MasterPort: req.MasterPort,
 			Placement: req.Placement,
 		}
-		nodes, err := a.prepareDistributedDeployRequest(&normalized)
+		dp, err := deploy.PlacementDataParallel(eng.Name(), quick.DP, launch.TemplateResidual, launch.UserResidual)
+		if err != nil {
+			errs.add("data_parallel_size", err)
+			writeFieldErrors()
+			return
+		}
+		nodes, err := a.prepareDistributedDeployRequest(&normalized, dp)
 		if err != nil {
 			field := distributedErrorField(err)
 			errs.add(field, err)
@@ -338,7 +344,9 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	if isAutomaticPlacement(req) && req.NNodes <= 1 {
 		requestOverrides, overrideErr := requestContainerOverrides(req.ContainerOverrides)
 		if overrideErr == nil {
-			selected, candidates := a.evaluateAutomaticPlacement(r.Context(), req, eng, model, selection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes, evaluateReq.DeploymentID)
+			automaticSelection := selection
+			automaticSelection.ExtraArgs = launch.TemplateResidual
+			selected, candidates := a.evaluateAutomaticPlacement(r.Context(), req, eng, model, automaticSelection, placement, quick, userExtraArgs, servedName, resp.Image, requestOverrides, resp.EligibleNodes, evaluateReq.DeploymentID)
 			resp.SelectedNode = selected
 			resp.Candidates = candidates
 			if selected != nil {
@@ -431,7 +439,7 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 	}
 	nodeImageCached, quick, gpuCount = plan.nodeImageCached, plan.quick, plan.gpuCount
 	tp := plan.tp
-	resp.Parallelism = evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved)
+	resp.Parallelism = evaluateParallelism(placement, req.NNodes, tp, plan.placementResolved, quick, launch.TemplateResidual, launch.UserResidual, eng.Name())
 	placementVariables, allowUnresolvedPlacement := plan.placementVariables, plan.allowUnresolved
 	dynamicTPPreview := plan.dynamicTPPreview
 
@@ -487,8 +495,13 @@ func isParallelismField(field string) bool {
 // evaluateParallelism is the split the draft launches with: the stated
 // degrees, or the TP a single-node schedule settled on. Nil while neither
 // is known.
-func evaluateParallelism(placement planning.Placement, nnodes, scheduledTP int, scheduled bool) *dto.EvaluateParallelism {
+func evaluateParallelism(placement planning.Placement, nnodes, scheduledTP int, scheduled bool, quick deploy.LaunchConfig, templateArgs, userArgs []string, engine string) *dto.EvaluateParallelism {
 	spec := placement.Parallelism(nnodes)
+	dp, err := deploy.PlacementDataParallel(engine, quick.DP, templateArgs, userArgs)
+	if err != nil {
+		return nil
+	}
+	spec.DP = dp
 	if !spec.Stated() {
 		if !scheduled {
 			return nil

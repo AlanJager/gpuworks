@@ -51,7 +51,12 @@ func (a *apiHandlers) suggestUnit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	perRank, err := placement.Parallelism(dep.NNodes).GPUsPerNode()
+	spec, err := planning.DeploymentParallelism(dep, placement)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	perRank, err := spec.GPUsPerNode()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
