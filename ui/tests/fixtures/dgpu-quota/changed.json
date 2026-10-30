@@ -153,6 +153,7 @@
         "sleep_level": 0,
         "desired_sleep": 0,
         "asleep": false,
+        "sleep_held": false,
         "replica": {
           "index": 0
         },
