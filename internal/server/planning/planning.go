@@ -106,7 +106,10 @@ type Output struct {
 	Eviction  []EvictSuggestion // when no fit but sleeping these would free room
 	// Yield is set when no fit but the deployments sharing the node's cards
 	// by yield policy would make room by giving them up (launchYield).
-	Yield          *LaunchYield
+	Yield *LaunchYield
+	// Reserved is set when no fit only because sleepers keep their cards for
+	// a request's wake against this launch (launchReserved).
+	Reserved       *LaunchReserved
 	Placement      placement.Result
 	PlacementError error
 }
@@ -300,6 +303,9 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.Eviction = suggestEviction(st, in.Node, req, in.ServingUnavailable, view)
 		if !in.Unloaded {
 			out.Yield = launchYield(st, in.Node, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+			if out.Yield == nil {
+				out.Reserved = launchReserved(st, in.Node, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+			}
 		}
 	}
 	if out.Result.OK && out.Breakdown.ContextExceedsKVPool() {

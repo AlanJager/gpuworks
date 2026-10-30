@@ -121,7 +121,7 @@ func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blockin
 }
 
 func wakeableByRequest(dep *store.Deployment) bool {
-	return dep.State == store.DeployActive && dep.Sleepable && !dep.SleepHeld
+	return dep.State == store.DeployActive && dep.WakesOnRequest()
 }
 
 // Wakeable says the deployment is active, asleep by the platform's choice,

@@ -1,6 +1,8 @@
 package planning
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -68,5 +70,32 @@ func TestASleepingSharersCardsAreReservedAgainstLevelsItDoesNotShareWith(t *test
 	// The ledger outside placement (wake admission, the board) is unchanged.
 	if snap := NodeSnapshot(st, node, true, ""); snap.GPUs[0].AllocatedBytes != 0 {
 		t.Fatalf("the plain ledger charges the sleeper's claim: %+v", snap.GPUs[0])
+	}
+
+	// A never newcomer is refused by name: it would fit but for the sleeper.
+	view := ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}
+	reserved := launchReserved(st, node, req, true, "", false, view)
+	if reserved == nil || len(reserved.Deployments) != 1 || reserved.Deployments[0].Deployment != "chat" || len(reserved.GPUIndexes) != 1 || reserved.GPUIndexes[0] != 0 {
+		t.Fatalf("reserved = %+v, want chat asleep on card 0", reserved)
+	}
+	reason := ReservedRefusal(node, reserved)
+	if raw, _ := json.Marshal(reason.Params); reason.Code != scheduler.ReasonReservedForSleepers ||
+		string(raw) != `{"gpus":[0],"node":"reserved-node","sleepers":[{"deployment":"chat","policy":"idle"}]}` {
+		t.Fatalf("refusal = %s %s", reason.Code, raw)
+	}
+
+	// An operator's sleep is held: no request wakes it, so it keeps nothing
+	// and the card is anyone's.
+	if err := st.OrderDeploymentSleepHeld(dep.ID, 2, proto.SleepModeWait, true); err != nil {
+		t.Fatal(err)
+	}
+	st.Bus.PublishChange("deployment", fmt.Sprint(dep.ID), "test")
+	for _, level := range []string{"", servicelevel.Never, servicelevel.Idle} {
+		if !fits(level) {
+			t.Fatalf("a %q newcomer is kept off a held sleeper's card", level)
+		}
+	}
+	if launchReserved(st, node, req, true, "", false, ledgerView{reserved: reservedAgainst(st, servicelevel.Never)}) != nil {
+		t.Fatal("a held sleeper is named as reserving its card")
 	}
 }

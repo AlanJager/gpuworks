@@ -22,7 +22,11 @@ export function scheduleText(
     // schedule.* holds the scheduler's own codes (the i18n check ties it to
     // the scheduler source), worded for replicas that exist.
     const key = `schedule.${code}`;
-    const params = code === "waiting_for_yield" ? { ...value.params, holders: holdersText(t, value.params?.holders) } : value.params;
+    const params = code === "waiting_for_yield"
+      ? { ...value.params, holders: holdersText(t, value.params?.holders) }
+      : code === "reserved_for_sleepers"
+        ? { ...value.params, sleepers: sleepersText(t, value.params?.sleepers), gpus: listText(value.params?.gpus) }
+        : value.params;
     const translated = t(key, { ...params, defaultValue: "" });
     if (translated && translated !== key) return translated + scheduleNote(t, value);
   }
@@ -118,4 +122,20 @@ function holdersText(t: TFunction<"deploy">, holders: unknown): string {
       return t("scheduleHolder.idle", { deployment, idle });
     })
     .join(t("scheduleHolder.separator"));
+}
+
+// sleepersText names the deployments asleep on cards they keep, each with
+// its yield policy's name.
+function sleepersText(t: TFunction<"deploy">, sleepers: unknown): string {
+  const list = Array.isArray(sleepers) ? (sleepers as Array<{ deployment?: string; policy?: string }>) : [];
+  return list
+    .map((sleeper) => t("scheduleSleeper", {
+      deployment: sleeper.deployment ?? "",
+      policy: t(`yieldPolicy.policy.name.${sleeper.policy ?? ""}`, { ns: "deployments", defaultValue: sleeper.policy ?? "" }),
+    }))
+    .join(t("scheduleHolder.separator"));
+}
+
+function listText(values: unknown): string {
+  return Array.isArray(values) ? values.join(", ") : "";
 }

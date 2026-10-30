@@ -210,8 +210,11 @@ func PlanTemplateLaunch(ctx context.Context, st *store.Store, networks Networks,
 	}
 	if !plan.Output.Result.OK || plan.Output.Result.Plan == nil {
 		reason := plan.Output.Result.Message
-		if plan.Output.Yield != nil {
+		switch {
+		case plan.Output.Yield != nil:
 			reason = YieldRefusal(node, servicelevel.Policy{Yield: req.YieldPolicy}, plan.Output.Yield)
+		case plan.Output.Reserved != nil:
+			reason = ReservedRefusal(node, plan.Output.Reserved)
 		}
 		return plan, &reason, nil
 	}

@@ -290,6 +290,11 @@ const (
 	// {idle_sec} or, taking turns, at the end of {max_serve_sec}); the
 	// residency arbiter puts them to sleep by those terms.
 	ReasonWaitingForYield = "waiting_for_yield"
+	// ReasonReservedForSleepers: the replica would fit on {node}'s cards
+	// {gpus} but deployments asleep there ({sleepers}: each one's {deployment}
+	// and yield {policy}) keep them for a request's wake, and the replica's
+	// deployment does not share cards with them (its policy is never).
+	ReasonReservedForSleepers = "reserved_for_sleepers"
 	// ReasonModelUnavailable: a model the replica reads ({model}) is stuck on
 	// its node ({node}) - its acquisition failed or waits for an operator to
 	// choose a source ({state}, {detail}).

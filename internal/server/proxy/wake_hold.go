@@ -51,12 +51,9 @@ func newWakeHold() *wakeHold {
 	}
 }
 
-// wakesOnRequest says a request for dep should be held while it wakes: it can
-// sleep, and its sleep is the platform's choice rather than an operator's or
-// a schedule's.
-func wakesOnRequest(dep *store.Deployment) bool {
-	return dep != nil && dep.Sleepable && !dep.SleepHeld
-}
+// wakesOnRequest says a request for dep should be held while it wakes
+// (store.Deployment.WakesOnRequest).
+func wakesOnRequest(dep *store.Deployment) bool { return dep.WakesOnRequest() }
 
 // signal wakes every held request to look at the routes again.
 func (h *wakeHold) signal() {

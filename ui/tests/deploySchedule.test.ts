@@ -5,13 +5,16 @@ import { createInstance } from "i18next";
 
 import { scheduleText } from "../src/pages/deploy/deploySchedule.ts";
 
-const locale = (lng: string) =>
-  JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${lng}/deploy.json`, import.meta.url), "utf8"));
+const locale = (lng: string, ns = "deploy") =>
+  JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${lng}/${ns}.json`, import.meta.url), "utf8"));
 const i18n = createInstance();
 await i18n.init({
   lng: "en",
   fallbackLng: "en",
-  resources: { en: { deploy: locale("en") }, zh: { deploy: locale("zh") } },
+  resources: {
+    en: { deploy: locale("en"), deployments: locale("en", "deployments") },
+    zh: { deploy: locale("zh"), deployments: locale("zh", "deployments") },
+  },
   defaultNS: "deploy",
   interpolation: { escapeValue: false },
 });
@@ -164,4 +167,13 @@ test("a replica waiting for holders to yield names each one and its terms", asyn
     scheduleText(i18n.getFixedT("zh", "deploy") as never, { code: "waiting_for_yield", params: { node: "gpu-1", holders: [], instances: [] } }),
     "等待：已让出 GPU 的部署完成休眠。之后在 gpu-1 上放置副本。",
   );
+});
+
+test("a replica kept off a sleeper's card names the sleeper, its policy and what to do", () => {
+  const reason = { code: "reserved_for_sleepers", params: { node: "gpu3", gpus: [0], sleepers: [{ deployment: "qwen3-asr", policy: "idle" }] } };
+  assert.equal(
+    scheduleText(i18n.getFixedT("zh", "deploy") as never, reason),
+    "gpu3 的 GPU 0 为休眠中的 qwen3-asr（闲置自动出让）保留，供请求到达时唤醒；不自动出让的部署不会放到这些卡上。可以换一张卡，为本部署开启休眠并选择能共卡的出让策略，或手动休眠占卡的部署（手动休眠的部署不保留卡）。",
+  );
+  assert.match(scheduleText(i18n.getFixedT("en", "deploy") as never, reason), /^GPU 0 on gpu3 is kept for qwen3-asr \(Yield when idle\), asleep there/);
 });

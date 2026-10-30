@@ -10,6 +10,15 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 )
 
+// WakesOnRequest says a request for the deployment, while it sleeps, is
+// held for its wake rather than refused: it can sleep, and its sleep is the
+// platform's choice rather than an operator's or a schedule's (SleepHeld).
+// The gateway, the residency arbiter, placement and the playground all ask
+// this one question.
+func (d *Deployment) WakesOnRequest() bool {
+	return d != nil && d.Sleepable && !d.SleepHeld
+}
+
 // Policy is the deployment's yield policy as its columns state it,
 // normalized; the policy a row from before the columns reads as is never.
 func (d *Deployment) Policy() servicelevel.Policy {

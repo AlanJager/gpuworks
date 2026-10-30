@@ -162,6 +162,7 @@
     "node_cordoned": "Node {{node}} is cordoned; the replica starts once scheduling resumes there, or pick another node under Adjust replicas.",
     "pool_no_fit": "None of the {{tried}} best of {{candidates}} candidate nodes has room for a replica. The best, {{node}}, refused: {{first}}. Free resources there, scale down another deployment, or add nodes.",
     "waiting_for_yield": "Waiting until {{holders}}; the replica then goes on {{node}}.",
+    "reserved_for_sleepers": "GPU {{gpus}} on {{node}} is kept for {{sleepers}}, asleep there until a request wakes it; a deployment that never yields is not placed on those cards. Choose another card, enable sleep for this deployment and pick a yield policy that shares cards, or put the deployment on the card to sleep by hand (a sleep ordered by hand keeps no card).",
     "model_unavailable": "Model {{model}} could not be acquired on node {{node}}, or waits for a source to be chosen, so no replica starts there. Retry the sync for that node on the models page, or use the public download instead.",
     "image_delivery_waiting": "Waiting for image {{image}} to arrive on node {{node}}. Check its transfer progress on the images page; a stalled peer transfer is cancelled so it can be retried.",
     "image_delivery_failed": "Pre-pulling image {{image}} on node {{node}} failed, so the multi-node deployment cannot start. The platform keeps retrying; check the reason on the images page or review the pull settings.",
@@ -1023,6 +1024,7 @@
       "partition_change": "Turning dGPU on or off, or changing its partition backend, retires every old instance before the new ones start: the replicas cannot be replaced one at a time, and the service is interrupted until they are ready."
     }
   },
+  "scheduleSleeper": "{{deployment}} ({{policy}})",
   "scheduleHolder": {
     "atOnce": "{{deployment}} gives up its GPUs now",
     "idle": "{{deployment}} gives up its GPUs after {{idle}} idle",

@@ -162,6 +162,7 @@
     "node_cordoned": "节点 {{node}} 已停止调度，副本等它恢复调度后再启动；也可以在“调整副本”里换一台节点。",
     "pool_no_fit": "{{candidates}} 台候选节点中最合适的 {{tried}} 台都放不下一个副本；最合适的 {{node}} 的原因：{{first}}。请在该节点上释放资源、缩容其他部署，或增加节点。",
     "waiting_for_yield": "等待：{{holders}}。之后在 {{node}} 上放置副本。",
+    "reserved_for_sleepers": "{{node}} 的 GPU {{gpus}} 为休眠中的 {{sleepers}}保留，供请求到达时唤醒；不自动出让的部署不会放到这些卡上。可以换一张卡，为本部署开启休眠并选择能共卡的出让策略，或手动休眠占卡的部署（手动休眠的部署不保留卡）。",
     "model_unavailable": "模型 {{model}} 在节点 {{node}} 上获取失败或在等待选择来源，副本不会在这台节点上启动；请在模型页为该节点重试同步或改用公网下载。",
     "image_delivery_waiting": "正在等待镜像 {{image}} 到达节点 {{node}}。可在镜像页查看传输进度；停滞的节点间传输会被取消，以便重试。",
     "image_delivery_failed": "镜像 {{image}} 在节点 {{node}} 上预拉取失败，多机部署因此无法启动；平台会继续重试，也可在镜像页查看原因或检查拉取设置。",
@@ -1023,6 +1024,7 @@
       "partition_change": "开启或关闭 dGPU、更换分区后端时，旧实例要全部退出后新实例才能启动，无法逐个替换，服务会中断到新实例就绪。"
     }
   },
+  "scheduleSleeper": "{{deployment}}（{{policy}}）",
   "scheduleHolder": {
     "atOnce": "{{deployment}} 立即让出 GPU",
     "idle": "{{deployment}} 闲置 {{idle}}后让出 GPU",
