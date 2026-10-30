@@ -56,6 +56,7 @@ make demo       # 起 server + agent，验证接入/心跳/重连
 - **entity 与 DTO 严格分离**：store 层是 GORM entity，api 层是 dto，二者不混用。
 - **事件发布不用 ORM 钩子**：写操作收敛进 `store` 显式方法，事务提交后 publish。
 - 前端参数字典由 server 下发，不硬编码进前端。
+- **前端不做业务判断**：可用性与资格（能否共卡、能否休眠、可选的动作）、上下限与默认值、优先级与派生状态（卡片状态、是否可取消）都由 server 计算后随 DTO 或字典接口下发，前端只负责展示、交互和本地化；同一条规则不在 TS 里再写一份，确需即时校验时也以 server 下发的数据为准。
 - **测试夹具必须忠实还原真实外部 API 的行为**（含默认值、错误形态、参数校验），且后端测试必须覆盖前端/上层实际会传的默认值组合；宽松的 stub 视为测试缺陷。
 - **依赖方向由 `make check-architecture` 强制**：叶子包不依赖 `store`、`api` 与 `controller` 互不依赖、`pkg` 不依赖 `internal`、agent 不依赖 server、`proto` 无本仓库依赖；另有 `scripts/arch-constraints.txt` 棘轮预算（`max` 只降不升、`min` 只升不降，上调须带 `# raised: <原因>`，由脚本对比基线强制，误报修模式不调预算，规则说明见 `scripts/arch-constraints.md`）。
 - **过程/里程碑标签（`M1`、`S0`、`G2`、`P3` 之类）禁止出现在生产代码**的标识符、注释与文件名里，由 `process_name_refs` 预算守护；测试文件不受限。
