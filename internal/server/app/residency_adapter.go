@@ -88,19 +88,10 @@ func (a *residencyAdapter) Settling(id uint) bool {
 	return anyStarting(insts)
 }
 
-// instanceStarting says the instance has not started serving yet.
-func instanceStarting(in *store.Instance) bool {
-	switch in.State {
-	case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
-		return true
-	}
-	return false
-}
-
 // anyStarting says one of the instances has not started serving yet.
 func anyStarting(insts []store.Instance) bool {
 	for i := range insts {
-		if instanceStarting(&insts[i]) {
+		if planning.InstanceStarting(&insts[i]) {
 			return true
 		}
 	}
@@ -108,14 +99,16 @@ func anyStarting(insts []store.Instance) bool {
 }
 
 // placeBlocking is what keeps a replica waiting to be placed: the awake
-// holders it waits for, still awake, by deployment. Sharing deployments
-// are single-node, so an instance is a whole replica.
+// holders it waits for, still awake with no sleep ordered, by deployment
+// (planning.HoldsCardsAwake: one still starting holds its cards too, and
+// reads starting). Sharing deployments are single-node, so an instance is a
+// whole replica.
 func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blocking, error) {
 	var out automation.Blocking
 	at := map[uint]int{}
 	for _, uuid := range w.Holders {
 		in, err := a.store.InstanceByUUID(uuid)
-		if err != nil || in.State != proto.InstRunning || planning.InstanceSleepIntent(in) > 0 || in.SleepLevel > 0 {
+		if err != nil || !planning.HoldsCardsAwake(in) || planning.InstanceSleepIntent(in) > 0 {
 			continue
 		}
 		index, ok := at[in.DeploymentID]
@@ -129,7 +122,7 @@ func (a *residencyAdapter) placeBlocking(w placewait.Waiter) (automation.Blockin
 			index = len(out.Holders) - 1
 		}
 		out.Holders[index].Instances = append(out.Holders[index].Instances, in.UUID)
-		out.Holders[index].Starting = out.Holders[index].Starting || instanceStarting(in)
+		out.Holders[index].Starting = out.Holders[index].Starting || planning.InstanceStarting(in)
 	}
 	return out, nil
 }

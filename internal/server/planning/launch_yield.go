@@ -43,6 +43,24 @@ type YieldHolder struct {
 	Instance     string
 }
 
+// InstanceStarting says the instance has not started serving yet: it is
+// placed and on its way up (pending, pulling, starting, optimizing).
+func InstanceStarting(in *store.Instance) bool {
+	switch in.State {
+	case proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing:
+		return true
+	}
+	return false
+}
+
+// HoldsCardsAwake says the instance holds its cards awake for a launch to
+// wait for: running or still starting, and reporting no sleep. One still
+// starting is waited for all the same, as a wake waits for a starting
+// occupant (YieldTargets); the arbiter asks it nothing until it serves.
+func HoldsCardsAwake(in *store.Instance) bool {
+	return (in.State == proto.InstRunning || InstanceStarting(in)) && in.SleepLevel == 0
+}
+
 // sharingByID are the deployments that share cards by yield policy
 // (store.Store.SharingDeployments, cached), by id; nil when there are none
 // or they cannot be read.
@@ -104,7 +122,7 @@ func launchYield(st *store.Store, node *store.Node, insts []store.Instance, laun
 	asleep := map[string]bool{}
 	for i := range insts {
 		in := &insts[i]
-		if shares[in.DeploymentID] == nil || view.excludes(in) || in.State != proto.InstRunning || in.SleepLevel > 0 {
+		if shares[in.DeploymentID] == nil || view.excludes(in) || !HoldsCardsAwake(in) {
 			continue
 		}
 		if InstanceSleepIntent(in) == 0 {

@@ -149,6 +149,28 @@ func TestResidencyAdapterPlaceBlockingNamesTheAwakeHolders(t *testing.T) {
 	}
 }
 
+// A holder a placement waits for that is still starting is still a holder,
+// as a wake's occupant is (planning.YieldTargets): it reads starting, so the
+// arbiter asks it nothing until it serves. One stopped is no holder.
+func TestResidencyAdapterPlaceBlockingCountsAStartingHolder(t *testing.T) {
+	res, _, st, dep, other := residencyFixture(t)
+	res.waits, res.now = placewait.New(), time.Now
+	res.waits.Wait(dep.ID, placewait.Cards{NodeID: dep.NodeID, GPUIndexes: []int{0}}, []string{"batch-1"}, time.Now())
+	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "batch-1", State: proto.InstStarting}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := res.Blocking(dep.ID)
+	if err != nil || len(b.Holders) != 1 || b.Holders[0].DeploymentID != other.ID || !slices.Equal(b.Holders[0].Instances, []string{"batch-1"}) || !b.Holders[0].Starting {
+		t.Fatalf("blocking = %+v err=%v, want batch-1 starting", b, err)
+	}
+	if err := st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "batch-1", State: proto.InstStopped}); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := res.Blocking(dep.ID); err != nil || len(b.Holders) != 0 {
+		t.Fatalf("blocking once the holder stopped = %+v err=%v", b, err)
+	}
+}
+
 func TestResidencyAdapterBlockingAndHeldSleeps(t *testing.T) {
 	res, auto, st, dep, other := residencyFixture(t)
 	// An occupant that cannot sleep blocks the wake.

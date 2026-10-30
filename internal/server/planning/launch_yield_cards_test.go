@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
@@ -101,6 +102,35 @@ func TestALaunchNeverWaitsForItsOwnDeployment(t *testing.T) {
 	}
 	if got := c.launch(t, chat.ID, yieldpolicy.Idle, 1); got != nil {
 		t.Fatalf("chat's second replica waits for its own first: %+v", got)
+	}
+}
+
+// A sharing instance still starting on the card holds it as one running
+// does: the launch waits for it (the arbiter asks it nothing until it
+// serves), as a wake waits for a starting occupant (YieldTargets). One that
+// failed holds nothing.
+func TestALaunchWaitsForAHolderStillStarting(t *testing.T) {
+	for _, state := range []string{proto.InstPending, proto.InstPulling, proto.InstStarting, proto.InstOptimizing} {
+		t.Run(state, func(t *testing.T) {
+			c := newYieldCards(t, 1)
+			batch := c.deployment(t, "batch", yieldpolicy.Anytime)
+			c.instance(t, batch, "batch-1", "[0]", 0)
+			if err := c.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "batch-1", State: state}); err != nil {
+				t.Fatal(err)
+			}
+			if got := c.launch(t, 0, yieldpolicy.Idle, 1); got == nil || !slices.Equal(holderNames(got), []string{"batch-1"}) {
+				t.Fatalf("a launch beside batch %s = %+v, want it to wait for batch-1", state, got)
+			}
+		})
+	}
+	c := newYieldCards(t, 1)
+	batch := c.deployment(t, "batch", yieldpolicy.Anytime)
+	c.instance(t, batch, "batch-1", "[0]", 0)
+	if err := c.st.UpdateInstanceStatus(proto.InstanceStatus{UUID: "batch-1", State: proto.InstFailed}); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.launch(t, 0, yieldpolicy.Idle, 1); got != nil {
+		t.Fatalf("a launch beside a failed holder = %+v", got)
 	}
 }
 
