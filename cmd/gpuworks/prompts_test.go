@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -164,5 +166,92 @@ func TestAskInstallPromptsSkipsWithoutATerminal(t *testing.T) {
 	}
 	if addrSet {
 		t.Fatal("questions that were never asked must not mark the address as explicit")
+	}
+}
+
+// On a Mac the install runs detached unless asked otherwise: the question
+// offers "no", and pressing enter keeps it.
+func TestAskInstallPromptsOffersTheDetachedDefault(t *testing.T) {
+	io, out := scriptedIO(t, "", "", "")
+	dir, addr, noSystemd := selfinstall.DefaultDir, "", !defaultAutostart("darwin", false, selfinstall.Existing{})
+	addrSet := false
+	if err := askInstallPrompts(io, installPrompts{
+		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd, detect: detected("10.0.0.2"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !noSystemd {
+		t.Fatal("pressing enter installed a boot-time service on a Mac")
+	}
+	if !strings.Contains(out.String(), "start the service automatically (default: no)") {
+		t.Fatalf("the question does not offer no:\n%s", out.String())
+	}
+}
+
+// A directory typed at the prompt reaches the installer without a shell, so
+// the prompt expands its ~ itself.
+func TestAskInstallPromptsExpandsATypedHome(t *testing.T) {
+	home := selfinstall.ExpandHome("~")
+	if home == "~" {
+		t.Skip("no home directory to expand against")
+	}
+	io, _ := scriptedIO(t, "~/gw", "", "")
+	dir, addr, noSystemd := selfinstall.DefaultDir, "", false
+	addrSet := false
+	if err := askInstallPrompts(io, installPrompts{
+		dir: &dir, addr: &addr, addrSet: &addrSet, noSystemd: &noSystemd, detect: detected("10.0.0.2"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if dir != filepath.Join(home, "gw") {
+		t.Fatalf("dir = %q, want %s/gw", dir, home)
+	}
+}
+
+func TestDefaultAutostart(t *testing.T) {
+	launchd := selfinstall.Existing{Mode: selfinstall.ModeLaunchd}
+	nohup := selfinstall.Existing{Mode: selfinstall.ModeNohup}
+	for _, tc := range []struct {
+		name    string
+		goos    string
+		hasPrev bool
+		prev    selfinstall.Existing
+		want    bool
+	}{
+		{"linux fresh", "linux", false, selfinstall.Existing{}, true},
+		// Linux moves a detached installation to systemd once it is there.
+		{"linux detached repair", "linux", true, nohup, true},
+		{"mac fresh", "darwin", false, selfinstall.Existing{}, false},
+		{"mac detached repair", "darwin", true, nohup, false},
+		// A repair keeps the launch daemon an earlier install registered.
+		{"mac launch daemon repair", "darwin", true, launchd, true},
+	} {
+		if got := defaultAutostart(tc.goos, tc.hasPrev, tc.prev); got != tc.want {
+			t.Errorf("%s: defaultAutostart = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestTildePath(t *testing.T) {
+	home := selfinstall.ExpandHome("~")
+	if home == "~" {
+		t.Skip("no home directory to expand against")
+	}
+	for in, want := range map[string]string{
+		filepath.Join(home, "gpuworks", "server"): "~/gpuworks/server",
+		home:                     "~",
+		"/opt/gpuworks/server":   "/opt/gpuworks/server",
+		home + "-other/gpuworks": home + "-other/gpuworks",
+	} {
+		if got := tildePath(in); got != want {
+			t.Errorf("tildePath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestInstallRejectsContradictoryAutostartFlags(t *testing.T) {
+	err := installCommand(context.Background(), []string{"--autostart", "--no-systemd", "--quiet"})
+	if err == nil || !strings.Contains(err.Error(), "contradict") {
+		t.Fatalf("err = %v, want the contradiction refused before anything is installed", err)
 	}
 }

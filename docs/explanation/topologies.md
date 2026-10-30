@@ -39,7 +39,7 @@ flowchart LR
 | agent → server | 同一个端口，走 `127.0.0.1` | 节点接入（本机回路，无需对外放行） |
 
 只在本机使用时，防火墙不必开放任何端口；需要从别的机器访问控制台或 `/v1` 时开放监听地址上的端口。
-控制面与 agent 的默认安装目录互不覆盖（`/opt/gpuworks/server` 与 `/opt/gpuworks`），同机共存没有问题。经
+控制面与 agent 的默认安装目录互不覆盖（`/opt/gpuworks/server` 与 `/opt/gpuworks`，macOS 上 `~/gpuworks/server` 与 `~/gpuworks`），同机共存没有问题。经
 `127.0.0.1` 连接时，节点的"管理网地址"取默认路由所在网卡的地址。
 
 **怎么配置**：[安装和升级控制面](../how-to/install-server.md)，然后在节点页创建节点，把安装命令里的

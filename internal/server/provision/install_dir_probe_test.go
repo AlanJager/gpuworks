@@ -941,7 +941,7 @@ func TestInstallDirProbeMacDirectoryTheInstallerCreatesWithSudo(t *testing.T) {
 	}
 
 	out = probeMacScenario(t, sc, "/proc/gpuworks", false)
-	wantCheck(t, out.Checks, checkInstallDir, "error", "/proc is not writable by huangsheng", "leave the directory empty to install in ~/.gpuworks", "account password")
+	wantCheck(t, out.Checks, checkInstallDir, "error", "/proc is not writable by huangsheng", "leave the directory empty to install in ~/gpuworks", "account password")
 }
 
 func TestExpandRemoteHome(t *testing.T) {

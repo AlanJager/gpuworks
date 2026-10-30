@@ -77,8 +77,12 @@ func (i *Installer) preflight(ctx context.Context, req InstallRequest, listen se
 		if !priv.Usable() {
 			pf.ServiceUser = ""
 		} else if req.NoSystemd {
-			pf.Warnings = append(pf.Warnings,
-				fmt.Sprintf("--service-user %s is ignored without %s: the detached process runs as the invoking user", pf.ServiceUser, manager))
+			// The default account is no request of the operator's; naming
+			// one and then running detached is.
+			if req.ServiceUserSet {
+				pf.Warnings = append(pf.Warnings,
+					fmt.Sprintf("--service-user %s is ignored without %s: the detached process runs as the invoking user", pf.ServiceUser, manager))
+			}
 			pf.ServiceUser = ""
 		} else {
 			pf.Warnings = append(pf.Warnings,
@@ -147,12 +151,12 @@ func (i *Installer) checkUserLevelDir() error {
 		probe = parent
 	}
 	if err := os.MkdirAll(i.layout.Dir, dirMode); err != nil {
-		return fmt.Errorf("%w: create %s needs root (try --dir ~/gpuworks-server, or run with sudo)",
+		return fmt.Errorf("%w: create %s needs root (try --dir ~/gpuworks/server, or run with sudo)",
 			err, i.layout.Dir)
 	}
 	tmp, err := os.CreateTemp(i.layout.Dir, ".write-probe*")
 	if err != nil {
-		return fmt.Errorf("cannot write to %s and sudo is unavailable (try --dir ~/gpuworks-server, or run with sudo): %w", i.layout.Dir, err)
+		return fmt.Errorf("cannot write to %s and sudo is unavailable (try --dir ~/gpuworks/server, or run with sudo): %w", i.layout.Dir, err)
 	}
 	name := tmp.Name()
 	tmp.Close()

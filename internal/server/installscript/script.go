@@ -35,9 +35,29 @@ import (
 // it was a nohup install, else systemd).
 var Script = strings.NewReplacer(
 	"@MIN_MACOS@", strconv.Itoa(accelerator.MinimumMacOSMajor),
-	"@HOME_INSTALL_DIR@", launchd.HomeInstallDir,
+	"@MAC_DIR_FUNCS@", MacInstallDirFuncs,
 	"@CONF_FUNCS@", agentconf.ShellFuncs,
 ).Replace(script)
+
+// MacInstallDirFuncs defines gw_mac_install_dir HOME [SYSTEM_DIR], which
+// prints where an install that names no directory puts a Mac's agent: where an
+// earlier install left one (its models stay with it), else HOME/gpuworks.
+// SYSTEM_DIR stands in for /opt/gpuworks in hermetic tests. The script decides
+// with it, and the SSH onboarding runs it to report the directory beforehand.
+var MacInstallDirFuncs = strings.NewReplacer(
+	"@SYSTEM_DIR@", launchd.LegacySystemInstallDir,
+	"@LEGACY_HOME_DIR@", launchd.LegacyHomeInstallDir,
+	"@HOME_DIR@", launchd.HomeInstallDir,
+	"@CONF_FILE@", agentconf.FileName,
+).Replace(`gw_mac_install_dir() {
+  for gw_dir in "$1/@HOME_DIR@" "${2:-@SYSTEM_DIR@}" "$1/@LEGACY_HOME_DIR@"; do
+    if [ -e "$gw_dir/@CONF_FILE@" ] || [ -x "$gw_dir/gpuworks-agent" ]; then
+      printf '%s' "$gw_dir"
+      return 0
+    fi
+  done
+  printf '%s' "$1/@HOME_DIR@"
+}`)
 
 const script = `#!/bin/sh
 set -eu
@@ -84,6 +104,27 @@ while [ $# -gt 0 ]; do
   esac
 done
 SERVER_URL="${SERVER_URL%/}"
+
+# The home of the person installing: under sudo, the account sudo was run from.
+GW_HOME="${HOME:-}"
+if [ "$(id -u)" = "0" ] && [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+  case "$SUDO_USER" in
+    *[!A-Za-z0-9._-]*) ;;
+    *) eval "GW_HOME=~$SUDO_USER" ;;
+  esac
+fi
+case "$GW_HOME" in /*) ;; *) GW_HOME="" ;; esac
+# A directory passed quoted ("~/gpuworks", --install-dir=~/x) reaches the
+# script without a shell having expanded its ~.
+gw_expand_home() {
+  case "$1" in
+    "~") printf '%s' "${GW_HOME:-~}" ;;
+    "~/"*) if [ -n "$GW_HOME" ]; then printf '%s/%s' "$GW_HOME" "${1#"~/"}"; else printf '%s' "$1"; fi ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+INSTALL_DIR="$(gw_expand_home "$INSTALL_DIR")"
+STATE_DIR="$(gw_expand_home "$STATE_DIR")"
 
 STATE_FOLLOWS_INSTALL=""
 if [ -z "$STATE_DIR" ]; then STATE_DIR="$INSTALL_DIR"; STATE_FOLLOWS_INSTALL=1; fi
@@ -148,10 +189,13 @@ elif [ "$GOOS" = "darwin" ] && [ "$(id -u)" != "0" ] && command -v sudo >/dev/nu
   echo "gpuworks: installing the agent as a launch daemon needs administrator rights"
   SUDO="sudo"
 fi
-if [ "$GOOS" = "darwin" ] && [ "$(id -u)" != "0" ] && [ -z "$SUDO" ] && [ -z "$INSTALL_DIR_GIVEN" ]; then
-  # Without administrator rights /opt is not writable; the agent lives in the
-  # user's home and runs as a launch agent of their session.
-  INSTALL_DIR="$HOME/@HOME_INSTALL_DIR@"
+@MAC_DIR_FUNCS@
+if [ "$GOOS" = "darwin" ] && [ -z "$INSTALL_DIR_GIVEN" ] && [ -n "$GW_HOME" ] && { [ "$(id -u)" != "0" ] || [ -n "${SUDO_USER:-}" ]; }; then
+  # A Mac is its user's own machine: the agent lives in their home, whether it
+  # runs as a launch daemon (administrator rights) or a launch agent of their
+  # session. An agent an earlier install left in /opt/gpuworks or ~/.gpuworks
+  # stays there.
+  INSTALL_DIR="$(gw_mac_install_dir "$GW_HOME" "${GPUWORKS_MAC_SYSTEM_DIR:-}")"
   if [ -n "$STATE_FOLLOWS_INSTALL" ]; then STATE_DIR="$INSTALL_DIR"; fi
 fi
 $SUDO mkdir -p "$INSTALL_DIR" "$STATE_DIR"

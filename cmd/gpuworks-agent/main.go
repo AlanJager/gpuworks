@@ -362,17 +362,25 @@ func agentLogger(base *slog.Logger, stateDir string) (*slog.Logger, func(), erro
 	return log, closeLog, nil
 }
 
+// systemStateDir is the state directory of a root install; tests point it
+// elsewhere so the host's own does not decide.
+var systemStateDir = "/opt/gpuworks"
+
 func defaultStateDir() string {
 	if d := os.Getenv("GPUWORKS_STATE_DIR"); d != "" {
 		return d
 	}
 	// Prefer a system path when writable (root install), else user config.
-	if _, err := os.Stat("/opt/gpuworks"); err == nil {
-		return "/opt/gpuworks"
+	if _, err := os.Stat(systemStateDir); err == nil {
+		return systemStateDir
 	}
 	if home, err := os.UserHomeDir(); err == nil && goruntime.GOOS == "darwin" {
-		// A Mac install without administrator rights lives in the home.
-		if dir := filepath.Join(home, launchd.HomeInstallDir); dirExists(dir) {
+		// A Mac install lives in the home. ~/gpuworks counts only with an
+		// agent configuration in it: the control plane installs there too.
+		if dir := filepath.Join(home, launchd.HomeInstallDir); fileExists(agentconf.Path(dir)) {
+			return dir
+		}
+		if dir := filepath.Join(home, launchd.LegacyHomeInstallDir); dirExists(dir) {
 			return dir
 		}
 	}
@@ -385,6 +393,11 @@ func defaultStateDir() string {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func usage() {
