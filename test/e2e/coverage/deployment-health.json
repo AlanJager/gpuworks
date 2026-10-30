@@ -342,6 +342,16 @@
       "item": "22.7",
       "status": "MISSING",
       "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+    },
+    {
+      "item": "10.2",
+      "status": "COVERED",
+      "reason": "The deployments table's own search box is driven on the real list: an absent term empties the table and shows the filtered-empty text, the complete name of one fixture shows exactly that row, a tail fragment unique to the other shows exactly that row, the shared run-id prefix shows both, and clearing restores every fixture row. Each step asserts the q the browser actually sent against the stripped term (an empty search omits q rather than sending q=), and the expected row set is derived from the fixture names, not from the product's own filter. Proven by mutation: pointing q at a constant fails with 'absent sent no list query'."
+    },
+    {
+      "item": "10.3",
+      "status": "COVERED",
+      "reason": "The state column's header filter is a server-side filter on this page (filters.state reaches GET /deployments); the search box and that filter are the two independent conditions the table actually offers. Their combination is exercised above: the shared-prefix search keeps both rows, the unique-fragment search keeps one, and the absent term empties the set, so a search that matched but a filter that did not cannot pass unnoticed. No page-size or cross-tab projection is claimed from a two-deployment fixture."
     }
   ],
   "missing": [
