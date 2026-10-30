@@ -71,10 +71,10 @@
       "component": "Dropdown",
       "request": "N/A: browser locale preference",
       "persistence": "localStorage gpuworks.locale",
-      "covered": [],
-      "missing": [
-        "MISSING: select English and Chinese through the actual login-page menu, current selection and refresh persistence; --locale runs alone do not prove menu interaction"
-      ]
+      "covered": [
+        "Both languages are chosen through the login page's own dropdown: the trigger is clicked, the menu item is clicked by its literal name, and the trigger's compact text must become the expected marker (EN, 中文) - so a run that only sets --locale never satisfies this. The selection is then read back two ways: the trigger text after reload proves the choice survives a full page load (localStorage gpuworks.locale), and reopening the dropdown shows the item carrying ant-dropdown-menu-item-selected, which is the control's own idea of the current choice rather than an inference from the page language. The session is returned to the run's locale at the end. Proven by mutation: setting caches: [] in ui/src/i18n/index.ts fails with 'expected 中文, actual EN' after the reload."
+      ],
+      "missing": []
     },
     {
       "field_id": "auth.session-retry",

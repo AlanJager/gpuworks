@@ -158,7 +158,9 @@ def test_two_tab_logout_relogin(play, context, server, artifacts, report, locale
     expect(login_form).to_have_count(1, timeout=12000)
     expect(login_form).to_have_class(re.compile(r"\bant-form-hide-required-mark\b"), timeout=12000)
     username = exercise_login_prefix(page, auth)
-    from login_inventory import exercise_login_inventory
+    from login_inventory import exercise_language_switcher, exercise_login_inventory
+    report["login_language_switcher"] = exercise_language_switcher(
+        page, auth, locale, common["language"]["switch"])
     report["login_inventory"] = exercise_login_inventory(page, auth)
     secret = page.get_by_label(auth["password"], exact=True)
     expect(username).to_be_empty()
