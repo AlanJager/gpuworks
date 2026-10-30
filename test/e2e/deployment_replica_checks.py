@@ -8,6 +8,20 @@ from local_browser_fixture import http
 from platform_token_read_revoke import check
 import deployment_replica_fixture as fixture
 
+def zh_button_name(text):
+    """Matcher for a two-character Chinese button label under antd's auto-spacing.
+
+    antd's Button defaults autoInsertSpace to true, so "应用" is rendered with a space
+    between the characters and the accessible name no longer equals the catalogue string;
+    an exact match then finds nothing and the zh run cannot start. Only two-CJK-character
+    labels are re-spaced, so only those get a pattern - and the pattern is anchored, so it
+    is exactly as strict as the exact match it replaces. Every other label is untouched.
+    """
+    if len(text) == 2 and all('\u4e00' <= ch <= '\u9fff' for ch in text):
+        return re.compile(r'^' + r'\s*'.join(re.escape(ch) for ch in text) + r'$')
+    return None
+
+
 FAMILIES = ('all', 'first-open', 'cancel', 'numeric', 'keyboard', 'notice', 'navigation', 'drain')
 
 
@@ -107,7 +121,7 @@ def first_open(page, server, token, data, labels, report, requests, expected_cou
             page.wait_for_timeout(50)
         check(bool(held), 'browser did not request selected deployment detail')
         expect(page.get_by_role('spinbutton', name=labels['detail']['replicas'], exact=True)).to_have_count(0)
-        expect(page.get_by_role('button', name=labels['replica']['apply'], exact=True)).to_have_count(0)
+        expect(page.get_by_role('button', name=zh_button_name(labels['replica']['apply']) or labels['replica']['apply'], exact=True)).to_have_count(0)
         with page.expect_response(lambda response: response.request.method == 'GET'
                                   and urlsplit(response.url).path == path) as read:
             releasing = True
@@ -120,7 +134,7 @@ def first_open(page, server, token, data, labels, report, requests, expected_cou
         check(body.get('name') == data['body']['name'], 'first-open deployment name differs')
         drawer = page.get_by_role('dialog', name=data['body']['name'], exact=True)
         expect(drawer.get_by_role('spinbutton', name=labels['detail']['replicas'], exact=True)).to_have_value(str(expected_count))
-        expect(drawer.get_by_role('button', name=labels['replica']['apply'], exact=True)).to_be_disabled()
+        expect(drawer.get_by_role('button', name=zh_button_name(labels['replica']['apply']) or labels['replica']['apply'], exact=True)).to_be_disabled()
         integer(get_document(server, token, ident).get('replicas'), expected_count, 'independent first-open count')
         check(requests == [], 'opening detail submitted an incomplete mutation')
         report['replica_first_open'] = {'request': {'method': 'GET', 'path': path},
@@ -157,7 +171,7 @@ def navigation_reentry(page, drawer, server, data, labels, report, expected_coun
 
 def count_editor(page, drawer, server, token, data, labels, report, requests, reopen, expected_count):
     spin = drawer.get_by_role('spinbutton', name=labels['detail']['replicas'], exact=True)
-    apply = drawer.get_by_role('button', name=labels['replica']['apply'], exact=True)
+    apply = drawer.get_by_role('button', name=zh_button_name(labels['replica']['apply']) or labels['replica']['apply'], exact=True)
     before = stable(get_document(server, token, data['deployment']['id']))
     integer(before['replicas'], expected_count, 'saved editor count')
     if active(report, 'numeric'):
@@ -194,7 +208,7 @@ def count_editor(page, drawer, server, token, data, labels, report, requests, re
         for dismissal in ('close', 'escape'):
             spin = drawer.get_by_role('spinbutton', name=labels['detail']['replicas'], exact=True)
             spin.fill(str(expected_count + 1))
-            expect(drawer.get_by_role('button', name=labels['replica']['apply'], exact=True)).to_be_enabled()
+            expect(drawer.get_by_role('button', name=zh_button_name(labels['replica']['apply']) or labels['replica']['apply'], exact=True)).to_be_enabled()
             if dismissal == 'close':
                 drawer.locator('.ant-drawer-close').click()
             else:
@@ -205,7 +219,7 @@ def count_editor(page, drawer, server, token, data, labels, report, requests, re
                   'discarding replica draft changed persisted deployment configuration')
             drawer = reopen()
             expect(drawer.get_by_role('spinbutton', name=labels['detail']['replicas'], exact=True)).to_have_value(str(expected_count))
-            expect(drawer.get_by_role('button', name=labels['replica']['apply'], exact=True)).to_be_disabled()
+            expect(drawer.get_by_role('button', name=zh_button_name(labels['replica']['apply']) or labels['replica']['apply'], exact=True)).to_be_disabled()
             observed.append(dismissal)
         report['replica_draft_cancel'] = {'dismissals': observed, 'cancel_button': 'not provided by inline editor',
             'mutation_count': 0, 'saved_config': before, 'reopened_count': expected_count}
