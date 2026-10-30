@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -232,6 +233,9 @@ func (e *Evaluator) residency(now time.Time) {
 		}
 		return queue[a].since.Before(queue[b].since)
 	})
+	if len(queue) > 0 {
+		e.log.Debug("automation: residency look", "queue", queueText(queue))
+	}
 	yielding := map[uint]bool{}
 	for id := range r.draining {
 		yielding[id] = true
@@ -316,8 +320,9 @@ func (e *Evaluator) makeRoom(now time.Time, w waiting, yielding map[uint]bool) {
 		if yielding[h.DeploymentID] || h.DeploymentID == w.id {
 			return
 		}
-		// Put to sleep for this waiter already: the sleep has not landed.
-		if y, ok := r.yieldedFor[h.DeploymentID]; ok && y.to == w.id && now.Sub(y.at) < yieldGuard {
+		// Put to sleep for a waiter already: the sleep has not landed, and
+		// the cards it frees are that waiter's.
+		if y, ok := r.yieldedFor[h.DeploymentID]; ok && now.Sub(y.at) < yieldGuard {
 			return
 		}
 		// A holder still starting has served nothing and is asked nothing:
@@ -489,4 +494,19 @@ func (e *Evaluator) stillWakingFor(now time.Time, id uint) bool {
 	}
 	delete(r.yieldedFor, id)
 	return false
+}
+
+func queueText(queue []waiting) []string {
+	out := make([]string, len(queue))
+	for i, w := range queue {
+		kind := "request"
+		switch {
+		case w.place:
+			kind = "place"
+		case w.resume:
+			kind = "resume"
+		}
+		out[i] = fmt.Sprintf("%d:%s:%s", w.id, w.policy.Yield, kind)
+	}
+	return out
 }
