@@ -79,11 +79,15 @@
     "wakeWhatFits": "Wake what fits",
     "partialWoken": "Woke {{woken}}; {{refused}} could not fit back on their cards",
     "waitStarted": "Waiting for room: the wake follows when the GPUs free up",
-    "yieldStarted": "Putting {{names}} to sleep; the wake follows once there is room",
+    "yieldStarted": "Putting {{names}} to sleep; the wake follows once there is room. {{names}} stay asleep: requests do not wake them, wake them by hand",
     "refused": {
       "title": "Not enough GPU memory to wake",
       "wait": "Wait for room",
       "yield": "Put {{occupants}} to sleep, then wake",
+      "yieldConfirm": "Put {{occupants}} to sleep, then wake?",
+      "yieldHeld": "{{occupants}} will stay asleep: requests do not wake them, someone has to wake them by hand (or a schedule does).",
+      "yieldOk": "Put to sleep and wake",
+      "yieldCancel": "Cancel",
       "theOccupants": "the occupants",
       "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after {{limit}}). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
       "heldOutside": "A process outside the platform holds the GPU"

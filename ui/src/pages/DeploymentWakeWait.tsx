@@ -1,4 +1,4 @@
-import { Alert, Button, Space, Typography } from "antd";
+import { Alert, Button, Popconfirm, Space, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { formatTime } from "../i18n/datetime";
 import { durationText } from "./durationText";
@@ -22,7 +22,9 @@ export function occupantNames(value: unknown): string[] {
 // WakeRefusalAlert shows a refused wake. When the cards are short because
 // other deployments hold them, it offers the two ways on: wait for room (the
 // server wakes the sleepers once the cards are free) or put the occupants to
-// sleep and then wake.
+// sleep and then wake. Putting them to sleep is confirmed first: the
+// occupants an operator's wake puts to sleep stay asleep, held, until someone
+// wakes them by hand (docs/explanation/service-levels.md).
 export function WakeRefusalAlert({ refusal, limitSec, busy, onWait, onYield }: {
   refusal: WakeRefusalState;
   // How long a waiting wake waits for room, as the server says.
@@ -47,7 +49,15 @@ export function WakeRefusalAlert({ refusal, limitSec, busy, onWait, onYield }: {
           <Typography.Text>{refusal.text}</Typography.Text>
           <Space wrap>
             <Button size="small" loading={busy} onClick={onWait}>{t("sleep.refused.wait")}</Button>
-            <Button size="small" type="primary" loading={busy} onClick={onYield}>{t("sleep.refused.yield", { occupants })}</Button>
+            <Popconfirm
+              title={t("sleep.refused.yieldConfirm", { occupants })}
+              description={t("sleep.refused.yieldHeld", { occupants })}
+              onConfirm={onYield}
+              okText={t("sleep.refused.yieldOk")}
+              cancelText={t("sleep.refused.yieldCancel")}
+            >
+              <Button size="small" type="primary" loading={busy}>{t("sleep.refused.yield", { occupants })}</Button>
+            </Popconfirm>
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("sleep.refused.hint", { limit: durationText(t, limitSec) })}</Typography.Text>
         </Space>

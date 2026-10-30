@@ -52,6 +52,8 @@ Between two yield-anytime deployments only rule 1 applies: whichever is idle yie
 
 When yields are counted, the residency arbiter putting a holder to sleep and an operator's yielding wake putting an occupant to sleep are the same kind of event: the overview, the timeline and the scheduling history count the same ones, and both record which deployment the cards were given up for.
 
+The two wake up differently. A deployment the arbiter puts to sleep sleeps by the platform's choice: a request wakes it, and it takes its cards back by the rules above. A deployment that gives way to an operator's yielding wake is **held asleep** instead: that wake is the operator's explicit choice, so the yielder waits for an operator (or a schedule) to wake it by hand; a request does not wake it, and it keeps no cards for itself. The UI says so when it asks to confirm a yielding wake, and lists the deployments that yielded in the result.
+
 If several awake replicas sit on the cards W needs, they either all yield or none does: yielding only some would stop service without freeing room. When several deployments wait at once, the higher rank goes first and, within the same rank, the one that has waited longest, so peers do not starve; a lower rank can be starved by design, for example batch work keeps waiting while the real-time model stays busy.
 
 The rule is applied at the moment a yield falls due, not at a periodic evaluation: the evaluator keeps one timer for the next due moment (an idle time ending, a turn ending, a wait-to-finish limit running out), so thresholds of 15 or 30 seconds hold to about a second. For a busy holder that yields only once idle, the platform looks every 2 seconds whether it has become idle.

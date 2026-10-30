@@ -79,11 +79,15 @@
     "wakeWhatFits": "唤醒放得下的副本",
     "partialWoken": "已唤醒 {{woken}} 个；{{refused}} 个放不回原卡",
     "waitStarted": "已开始等位：GPU 腾出空间后自动唤醒",
-    "yieldStarted": "正在让 {{names}} 休眠，腾出空间后唤醒",
+    "yieldStarted": "正在让 {{names}} 休眠，腾出空间后唤醒。{{names}} 将保持休眠，请求不会唤醒，需手动唤醒",
     "refused": {
       "title": "显存不足，无法唤醒",
       "wait": "等位唤醒",
       "yield": "让 {{occupants}} 休眠后唤醒",
+      "yieldConfirm": "让 {{occupants}} 休眠后唤醒？",
+      "yieldHeld": "{{occupants}} 会保持休眠：请求不会唤醒，需要有人手动唤醒（或由定时计划唤醒）。",
+      "yieldOk": "让位唤醒",
+      "yieldCancel": "取消",
       "theOccupants": "占用者",
       "hint": "等位会先唤醒放得下的副本，其余在 GPU 腾出空间后自动唤醒（{{limit}}后放弃）。让位唤醒会先让占用者休眠；占用者无法休眠时不做任何改动。",
       "heldOutside": "平台外的进程占用着 GPU"

@@ -105,17 +105,42 @@ test("Wait for room wakes with wait=true, says it waits and drops the refusal", 
 
 test("Put the occupants to sleep, then wake wakes with yield=true and names who was put to sleep", async () => {
   stub(async (opts) => {
-    if (opts.yield) return { status: "waiting", woken: [], waiting: ["inst-a"], yielded: ["other", "third"] };
+    // The server names who it put to sleep: here only one of the two the
+    // refusal named, and the result says that one.
+    if (opts.yield) return { status: "waiting", woken: [], waiting: ["inst-a"], yielded: ["other"] };
     throw shortage();
   });
   const user = mount();
   await user.click(screen.getByRole("button", { name: sl.wake }));
   await screen.findByText(sl.refused.title);
-  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  await confirmYield(user, "other, third");
   await waitFor(() => assert.deepEqual(wakes, [{ partial: false }, { yield: true }]));
-  await screen.findByText(i18n.t("deployments:sleep.yieldStarted", { names: "other, third" }));
+  await screen.findByText(i18n.t("deployments:sleep.yieldStarted", { names: "other" }));
   await waitFor(() => assert.equal(screen.queryByText(sl.refused.title), null));
 });
+
+test("putting the occupants to sleep is confirmed first, saying they stay asleep until woken by hand; cancelling changes nothing", async () => {
+  stub(async () => { throw shortage(); });
+  const user = mount();
+  await user.click(screen.getByRole("button", { name: sl.wake }));
+  await screen.findByText(sl.refused.title);
+  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  const confirm = (await screen.findByText(i18n.t("deployments:sleep.refused.yieldConfirm", { occupants: "other, third" }))).closest(".ant-popover") as HTMLElement;
+  assert.ok(within(confirm).getByText(i18n.t("deployments:sleep.refused.yieldHeld", { occupants: "other, third" })));
+  // Nothing is ordered until the operator confirms.
+  assert.deepEqual(wakes, [{ partial: false }]);
+  await user.click(within(confirm).getByRole("button", { name: sl.refused.yieldCancel }));
+  assert.deepEqual(wakes, [{ partial: false }]);
+  assert.ok(screen.getByText(sl.refused.title));
+});
+
+// confirmYield clicks the yield button for occupants and confirms it in its
+// popover.
+async function confirmYield(user: ReturnType<typeof mount>, occupants: string) {
+  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants })));
+  const confirm = (await screen.findByText(i18n.t("deployments:sleep.refused.yieldConfirm", { occupants }))).closest(".ant-popover") as HTMLElement;
+  await user.click(within(confirm).getByRole("button", { name: sl.refused.yieldOk }));
+}
 
 test("a yield an occupant blocks is refused with the reason and the choice stays", async () => {
   stub(async (opts) => {
@@ -125,7 +150,7 @@ test("a yield an occupant blocks is refused with the reason and the choice stays
   const user = mount();
   await user.click(screen.getByRole("button", { name: sl.wake }));
   await screen.findByText(sl.refused.title);
-  await user.click(button(i18n.t("deployments:sleep.refused.yield", { occupants: "other, third" })));
+  await confirmYield(user, "other, third");
   await screen.findByText(i18n.t("deployments:sleep.wakeFailed", { detail: i18n.t("common:apiError.WAKE_YIELD_BLOCKED", { occupants: ["other"], woken: [] }) }));
   assert.ok(screen.getByText(sl.refused.title));
 });
