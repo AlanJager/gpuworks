@@ -94,7 +94,6 @@
     "deleted": "{{name}}（已删除）",
     "filters": {
       "category": "按类别筛选",
-      "range": "按时间范围筛选",
       "deployment": "按部署筛选",
       "deploymentPlaceholder": "全部部署",
       "deploymentNone": "没有匹配的部署"
@@ -106,10 +105,7 @@
       "manual": "手动"
     },
     "range": {
-      "all": "全部时间",
-      "1h": "近 1 小时",
-      "24h": "近 24 小时",
-      "7d": "近 7 天"
+      "all": "全部时间"
     },
     "columns": {
       "at": "时间",

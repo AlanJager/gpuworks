@@ -351,7 +351,7 @@ The **Scheduling history** at the bottom of the Scheduling Analysis page lists t
 
 An entry that gave cards to another deployment (a yield) also names that deployment, clickable the same way; it shows “deleted” when that deployment is gone.
 
-Filter by category, deployment (search by name), and time range (last hour / 24 hours / 7 days), and page with Older / Newer, 20 entries per page. The API is `GET /api/v1/scheduling/history`; see the [history API](../reference/api.md#调度记录).
+Filter by category, deployment (search by name), and time range (the platform’s time picker: quick ranges from 15 minutes to 1 year, or custom start and end times), and page with Older / Newer, 20 entries per page. The API is `GET /api/v1/scheduling/history`; see the [history API](../reference/api.md#调度记录).
 
 What is in the history:
 

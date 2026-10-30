@@ -6,24 +6,39 @@ import { api, usePolling } from "../../api";
 import { schedulingApi, type SchedulingCategory, type SchedulingHistoryEntry } from "../../schedulingApi";
 import EmptyState from "../../components/EmptyState";
 import ResourceTable, { type ResourceColumn } from "../../components/resourceTable/ResourceTable";
+import TimeRangePicker, { type TimeRangeValue } from "../../components/TimeRangePicker";
 import { formatTime } from "../../i18n/datetime";
+import { resolveRange } from "../../timeRange";
 import { instanceEventText } from "../instanceEvents";
 
 const HISTORY_POLL_MS = 15_000;
 // A page shows PAGE_SIZE entries; one more is asked for to know whether there
 // is a next page without counting the history.
 const PAGE_SIZE = 20;
-const RANGES = { all: 0, "1h": 3_600_000, "24h": 86_400_000, "7d": 7 * 86_400_000 } as const;
-type Range = keyof typeof RANGES;
 const CATEGORY_COLORS: Record<SchedulingCategory, string> = { auto: "blue", failure: "red", manual: "default" };
 
 interface Filters {
   category: SchedulingCategory | "all";
   deployment: number | null;
-  range: Range;
+  // null is all time; a quick range slides with now, a custom one is fixed.
+  range: TimeRangeValue;
 }
 
-const NO_FILTERS: Filters = { category: "all", deployment: null, range: "all" };
+const NO_FILTERS: Filters = { category: "all", deployment: null, range: null };
+
+/**
+ * The since/until of a history query: none for all time, since now minus the
+ * span for a quick range (it slides as the page polls, so it has no end), and
+ * both ends of a custom range.
+ */
+export function historyWindow(range: TimeRangeValue, nowMS: number): { since?: string; until?: string } {
+  if (!range) return {};
+  const window = resolveRange(range, nowMS);
+  return {
+    since: new Date(window.startMS).toISOString(),
+    until: range.kind === "custom" ? new Date(window.endMS).toISOString() : undefined,
+  };
+}
 
 // HistoryCard is the scheduling history: when, why and what the platform or an
 // operator did to where, whether and how many replicas run, newest first. It
@@ -37,13 +52,12 @@ export default function HistoryCard() {
   const before = cursors[page - 1] || undefined;
   const history = usePolling(
     () => {
-      const since = filters.range === "all" ? undefined : new Date(Date.now() - RANGES[filters.range]).toISOString();
       return schedulingApi.history({
         limit: PAGE_SIZE + 1,
         before,
         category: filters.category === "all" ? undefined : [filters.category],
         deployment_id: filters.deployment ?? undefined,
-        since,
+        ...historyWindow(filters.range, Date.now()),
       });
     },
     HISTORY_POLL_MS,
@@ -56,7 +70,7 @@ export default function HistoryCard() {
   const entries = history.data?.items ?? [];
   const shown = entries.slice(0, PAGE_SIZE);
   const hasNext = entries.length > PAGE_SIZE;
-  const filtered = filters.category !== "all" || filters.deployment !== null || filters.range !== "all";
+  const filtered = filters.category !== "all" || filters.deployment !== null || filters.range !== null;
 
   let body;
   if (!history.data && history.error) {
@@ -113,12 +127,7 @@ export default function HistoryCard() {
           onChange={(value) => refine({ category: value as Filters["category"] })}
         />
         <DeploymentFilter value={filters.deployment} onChange={(deployment) => refine({ deployment })} />
-        <Segmented
-          aria-label={t("history.filters.range")}
-          value={filters.range}
-          options={(Object.keys(RANGES) as Range[]).map((value) => ({ value, label: t(`history.range.${value}`) }))}
-          onChange={(value) => refine({ range: value as Range })}
-        />
+        <TimeRangePicker liveLabel={t("history.range.all")} value={filters.range} onChange={(range) => refine({ range })} />
       </Space>
       {body}
     </Card>

@@ -94,7 +94,6 @@
     "deleted": "{{name}} (deleted)",
     "filters": {
       "category": "Filter by category",
-      "range": "Filter by time range",
       "deployment": "Filter by deployment",
       "deploymentPlaceholder": "All deployments",
       "deploymentNone": "No matching deployment"
@@ -106,10 +105,7 @@
       "manual": "Manual"
     },
     "range": {
-      "all": "All time",
-      "1h": "Last hour",
-      "24h": "Last 24 hours",
-      "7d": "Last 7 days"
+      "all": "All time"
     },
     "columns": {
       "at": "Time",

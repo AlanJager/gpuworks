@@ -351,7 +351,7 @@ curl --fail-with-body -sS "$API_URL/api/v1/scheduling/yield-policies" \
 
 记录给别的部署让出了卡（让卡）时，会同时写出让给的那个部署，同样可点击打开其详情；对方已被删除时显示“已删除”。
 
-可按类别、部署（输入名称搜索）和时间范围（近 1 小时 / 24 小时 / 7 天）筛选，较早 / 较新翻页，每页 20 条。接口为 `GET /api/v1/scheduling/history`，见[调度记录接口](../reference/api.md#调度记录)。
+可按类别、部署（输入名称搜索）和时间范围（平台通用的时间选择器：15 分钟到 1 年的快捷范围，或自定义起止时间）筛选，较早 / 较新翻页，每页 20 条。接口为 `GET /api/v1/scheduling/history`，见[调度记录接口](../reference/api.md#调度记录)。
 
 记录里有哪些事件：
 

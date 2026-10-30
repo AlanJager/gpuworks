@@ -17,7 +17,7 @@ const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { schedulingApi } = await import("../src/schedulingApi.ts");
-const { default: HistoryCard } = await import("../src/pages/scheduling/HistoryCard.tsx");
+const { default: HistoryCard, historyWindow } = await import("../src/pages/scheduling/HistoryCard.tsx");
 type Entry = import("../src/schedulingApi.ts").SchedulingHistoryEntry;
 type Query = import("../src/schedulingApi.ts").SchedulingHistoryQuery;
 
@@ -205,16 +205,36 @@ test("the category filter works from the keyboard and starts over from the newes
   assert.equal(queries.at(-1)?.before, undefined);
 });
 
-test("the time range asks for entries since that long ago", async () => {
+test("the time range is the platform's picker and asks for entries since that long ago", async () => {
   const queries = serve(sample);
-  const user = mount();
+  mount();
   await screen.findByText("qwen");
   assert.equal(queries[0].since, undefined);
+  const box = screen.getByRole("combobox", { name: locale.deployments.timeRange.ariaLabel });
+  fireEvent.mouseDown(box);
+  const day = await waitFor(() => {
+    const option = document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange["1d"]}"]`);
+    assert.ok(option, "the quick ranges are offered");
+    return option;
+  });
+  assert.ok(document.querySelector(`.ant-select-item-option[title="${h.range.all}"]`), "all time is the first choice");
+  assert.ok(document.querySelector(`.ant-select-item-option[title="${locale.deployments.timeRange.custom}"]`), "a custom range is offered");
   const before = Date.now();
-  await choose(user, h.range["24h"]);
+  fireEvent.click(day!);
   await waitFor(() => assert.ok(queries.at(-1)?.since));
   const since = Date.parse(queries.at(-1)?.since ?? "");
   assert.ok(since >= before - 86_400_000 - 1000 && since <= Date.now() - 86_400_000 + 1000, `since = ${queries.at(-1)?.since}`);
+  assert.equal(queries.at(-1)?.until, undefined, "a quick range slides with now");
+});
+
+test("a history window is open for all time, slides for a quick range and is fixed for a custom one", () => {
+  const now = Date.parse("2026-10-30T12:00:00Z");
+  assert.deepEqual(historyWindow(null, now), {});
+  assert.deepEqual(historyWindow({ kind: "quick", key: "1h" }, now), { since: "2026-10-30T11:00:00.000Z", until: undefined });
+  assert.deepEqual(
+    historyWindow({ kind: "custom", startMS: Date.parse("2026-10-29T08:06:00Z"), endMS: Date.parse("2026-10-29T08:21:00Z") }, now),
+    { since: "2026-10-29T08:06:00.000Z", until: "2026-10-29T08:21:00.000Z" },
+  );
 });
 
 test("a deployment is found by name and chosen from the keyboard", async () => {
