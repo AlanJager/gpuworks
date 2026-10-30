@@ -391,6 +391,7 @@ func TestAgentUpgradeEndpointAtomicallyReplacesBinary(t *testing.T) {
 	}
 	defer stopProcess(agent)
 	waitNode(t, base, adminToken, func(n processNode) bool { return n.UUID == node.UUID && n.State == "online" })
+	waitAgentUpgradeEligible(t, base, adminToken, node.UUID)
 	req, err := http.NewRequest(http.MethodPost, base+"/api/v1/nodes/"+node.UUID+"/upgrade", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -476,6 +477,7 @@ func TestServerDialAgentUpgradesWithoutReachingTheServer(t *testing.T) {
 		}
 	}()
 	waitNode(t, base, adminToken, func(n processNode) bool { return n.UUID == created.Node.UUID && n.State == "online" })
+	waitAgentUpgradeEligible(t, base, adminToken, created.Node.UUID)
 
 	req, err = http.NewRequest(http.MethodPost, base+"/api/v1/nodes/"+created.Node.UUID+"/upgrade", nil)
 	if err != nil {

@@ -122,6 +122,24 @@ func upgradeJSON(t *testing.T, base, token, method, path string, body any, want 
 	}
 }
 
+// Registration marks a node online before its asynchronous status report has
+// persisted OS/Arch. On a busy host, waiting only for online can therefore send
+// an upgrade while the real preview still correctly says unsupported. Observe
+// eligibility first; the side-effecting upgrade request is still sent once.
+func waitAgentUpgradeEligible(t *testing.T, base, token, uuid string) {
+	t.Helper()
+	var preview dto.AgentUpgradePreview
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		upgradeJSON(t, base, token, http.MethodPost, "/agent-upgrades/preview", dto.AgentUpgradePreviewRequest{NodeUUIDs: []string{uuid}}, http.StatusOK, &preview)
+		if len(preview.Nodes) == 1 && preview.Nodes[0].NodeUUID == uuid && preview.Nodes[0].Eligibility == "eligible" {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("node %s never became eligible for upgrade: %+v", uuid, preview)
+}
+
 func TestAgentBatchUpgradeConfirmsBothReplacementProcesses(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		if os.Getenv("GPUWORKS_TEST_STRICT") == "1" {
@@ -165,6 +183,7 @@ func TestAgentBatchUpgradeConfirmsBothReplacementProcesses(t *testing.T) {
 		}
 		defer stopProcess(agent)
 		waitNode(t, base, token, func(n processNode) bool { return n.UUID == node.UUID && n.State == "online" })
+		waitAgentUpgradeEligible(t, base, token, node.UUID)
 	}
 	var preview dto.AgentUpgradePreview
 	upgradeJSON(t, base, token, http.MethodPost, "/agent-upgrades/preview", map[string]string{"scope": "all"}, http.StatusOK, &preview)
