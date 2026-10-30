@@ -1698,6 +1698,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | Method | Path | 说明 | 鉴权 |
 |---|---|---|---|
 | GET | `/api/v1/batches` | 批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename` | JWT |
+| GET | `/api/v1/batches/dictionary` | 创建批处理任务可用的字典：`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：运行中部署的对外模型名及其状态 `served`（在服务）、`asleep`（休眠，请求会唤醒）、`asleep_held`（手动或定时休眠，请求不会唤醒），与创建时的模型校验同一判定 | JWT |
 | GET | `/api/v1/batches/{id}` | 批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND` | JWT |
 | GET | `/api/v1/batches/{id}/files/{kind}` | 下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND` | JWT |
 | POST | `/api/v1/batches` | 创建批处理任务：`multipart/form-data`，字段 `file`（JSONL）、`endpoint`，可选 `completion_window`（`1h` 到 `72h` 的整小时，默认 `24h`，不合法返回 400 `BATCH_REQUEST_INVALID`，`params.field` 为 `completion_window`）和 `model`（指定后每个请求的 `body.model` 都改成它，必须是某个运行中或休眠中的部署的对外模型名，否则 400 `BATCH_MODEL_UNKNOWN`）；上传时逐行校验，成功返回 201 和任务对象，所选模型（未指定 `model` 时是文件里各行的模型）的部署是手动休眠（请求不会唤醒）时响应带 `warnings`。未指定 `model` 时，文件里有模型没有运行中或休眠中的部署使用，返回 400 `BATCH_MODEL_UNKNOWN`（`params.models` 与 `params.model` 为这些模型名，最多列 5 个，更多以 `, ...` 结尾），不创建任务。任务属于当前登录用户 | JWT(admin) |

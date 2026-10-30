@@ -4,8 +4,8 @@
 // absent.
 import { getJSON, listQueryString, localizedResponseError, type ListPage, type ListQuery } from "./api";
 
+/** The endpoints the sample file knows how to fill; the ones offered are the dictionary's. */
 export type BatchEndpoint = "/v1/chat/completions" | "/v1/completions" | "/v1/embeddings";
-export const BATCH_ENDPOINTS: readonly BatchEndpoint[] = ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"];
 
 export type BatchStatus =
   | "validating"
@@ -16,9 +16,6 @@ export type BatchStatus =
   | "expired"
   | "cancelling"
   | "cancelled";
-export const BATCH_STATUSES: readonly BatchStatus[] = [
-  "validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled",
-];
 
 export type BatchFileKind = "input" | "output" | "error";
 
@@ -84,11 +81,33 @@ export interface BatchCreateOptions {
   signal?: AbortSignal;
 }
 
-/** The completion windows a batch may ask for, in whole hours. */
-export const BATCH_WINDOW_HOURS = { min: 1, max: 72, default: 24 } as const;
+/**
+ * What a served name is to a batch, as the server judges it (the same rule its
+ * create check uses): served now, asleep with a sleep a request wakes, or
+ * asleep by an operator's or a schedule's order, which requests do not wake.
+ */
+export type BatchModelState = "served" | "asleep" | "asleep_held";
 
-/** The limits the create form shows; the server enforces them. */
-export const BATCH_LIMITS = { maxFileMB: 200, maxRequests: 50_000 } as const;
+export interface BatchModel {
+  name: string;
+  state: BatchModelState | string;
+}
+
+/**
+ * What a batch is offered with (GET /api/v1/batches/dictionary): the server
+ * enforces every one of these, the page only shows them.
+ */
+export interface BatchDictionary {
+  endpoints: string[];
+  completion_window_hours: { min: number; max: number; default: number };
+  max_file_bytes: number;
+  max_file_lines: number;
+  /** Every status, in the order a filter lists them. */
+  statuses: BatchStatus[];
+  output_retention_days: number;
+  /** The served names of the active deployments, the ones that serve first. */
+  models: BatchModel[];
+}
 
 /** Seconds-level cadence at which the server checkpoints a running batch's progress. */
 export const BATCH_POLL_MS = 5000;
@@ -106,12 +125,13 @@ export function batchFileURL(id: string, kind: BatchFileKind): string {
 }
 
 export const batchApi = {
+  dictionary: () => getJSON<BatchDictionary>("/api/v1/batches/dictionary"),
   list: (query: ListQuery) => getJSON<ListPage<Batch>>(`/api/v1/batches?${listQueryString(query)}`),
   get: (id: string) => getJSON<Batch>(`/api/v1/batches/${encodeURIComponent(id)}`),
   /**
    * Uploads the JSONL input and starts the batch (admin only). model, when
    * given, replaces the model of every line; completionWindowHours is the time
-   * the batch has (the server's default is 24, BATCH_WINDOW_HOURS the range).
+   * the batch has (the dictionary's completion_window_hours bound it).
    */
   create: async (file: File, endpoint: string, options: BatchCreateOptions = {}): Promise<Batch> => {
     const { model, completionWindowHours, signal } = options;

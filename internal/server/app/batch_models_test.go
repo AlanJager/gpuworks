@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/batch"
@@ -250,5 +251,79 @@ func TestBatchConsoleChecksTheModelsOfTheFile(t *testing.T) {
 	over, err := create(map[string]string{"file": file("ghost"), "endpoint": chat, "model": "serving"})
 	if err != nil || over.Model != "serving" {
 		t.Fatalf("an override replaces the unknown model: %+v err=%v", over, err)
+	}
+}
+
+// The list a create dialog offers and the check a create makes judge every
+// name alike: awake (or starting) serves, asleep with a sleep a request wakes
+// is asleep, asleep with a held sleep - or on a deployment a request cannot
+// wake - is held, and a shared name is as good as its best deployment.
+func TestBatchModelsListAgreesWithLookup(t *testing.T) {
+	st, console := modelStack(t, &scriptedSender{reply: func(string, []byte) batch.Reply { return batch.Reply{Status: 200} }})
+	node, err := st.RegisterNode("n1", store.HashToken("token"), "n1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := 0
+	deploy := func(served string, sleepable, held bool, levels ...int) {
+		t.Helper()
+		d, err := st.CreateDeployment(&store.Deployment{Name: fmt.Sprintf("%s-%d", served, seq), ServedName: fmt.Sprintf("%s-%d", served, seq), State: store.DeployActive, Sleepable: sleepable})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The store refuses a second active deployment of a name; a rollout's
+		// pair is renamed after creation.
+		if err := st.DB().Model(&store.Deployment{}).Where("id = ?", d.ID).Updates(map[string]any{"served_name": served, "sleep_held": held}).Error; err != nil {
+			t.Fatal(err)
+		}
+		for i, level := range levels {
+			if _, err := st.CreateInstance(&store.Instance{UUID: fmt.Sprintf("%s-%d-%d", served, seq, i), DeploymentID: d.ID, NodeID: node.ID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, SleepLevel: level}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		seq++
+	}
+	deploy("awake", true, false, 0)
+	deploy("starting", true, false)       // no running replica yet
+	deploy("half", true, false, 1, 0)     // one replica serves
+	deploy("napping", true, false, 1, 2)  // every replica asleep, a request wakes it
+	deploy("ordered", true, true)         // a held sleep, whatever the instances report yet
+	deploy("unwakeable", false, false, 1) // asleep, but not sleepable: a request does not wake it
+	deploy("rolling", true, true)         // a held old deployment ...
+	deploy("rolling", true, false, 1)     // ... beside a new one a request wakes
+	addDeployment(t, st, "stopped-one", store.DeployStopped, false)
+
+	m := batchModels{st}
+	list, err := m.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []batch.ModelEntry{
+		{Name: "awake", State: batch.ModelAvailable}, {Name: "half", State: batch.ModelAvailable}, {Name: "starting", State: batch.ModelAvailable},
+		{Name: "napping", State: batch.ModelAsleep}, {Name: "rolling", State: batch.ModelAsleep},
+		{Name: "ordered", State: batch.ModelSleepHeld}, {Name: "unwakeable", State: batch.ModelSleepHeld},
+	}
+	if fmt.Sprint(list) != fmt.Sprint(want) {
+		t.Fatalf("list = %v\nwant %v", list, want)
+	}
+	for _, entry := range list {
+		if got, err := m.Lookup(entry.Name); err != nil || got != entry.State {
+			t.Errorf("Lookup(%s) = %v %v, the list says %v", entry.Name, got, err, entry.State)
+		}
+	}
+	if got, _ := m.Lookup("stopped-one"); got != batch.ModelUnknown {
+		t.Errorf("a stopped deployment's name = %v", got)
+	}
+
+	d, err := console.Dictionary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(d.Models)
+	if wantJSON := `[{"name":"awake","state":"served"},{"name":"half","state":"served"},{"name":"starting","state":"served"},{"name":"napping","state":"asleep"},{"name":"rolling","state":"asleep"},{"name":"ordered","state":"asleep_held"},{"name":"unwakeable","state":"asleep_held"}]`; string(raw) != wantJSON {
+		t.Fatalf("dictionary models = %s", raw)
+	}
+	if d.OutputRetentionDays != 30 || d.CompletionWindowHours != (dto.BatchWindowHours{Min: 1, Max: 72, Default: 24}) || d.MaxFileBytes != 200<<20 || d.MaxFileLines != 50000 || len(d.Statuses) != 8 || len(d.Endpoints) != 3 {
+		t.Fatalf("dictionary = %+v", d)
 	}
 }

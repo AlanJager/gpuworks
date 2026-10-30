@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,28 @@ import (
 type fakeModels struct {
 	states  map[string]ModelState
 	failing map[string]bool
+	listErr error
+}
+
+// List is every name of the table but the unknown ones, the best first and
+// then by name, as Models.List says.
+func (f fakeModels) List() ([]ModelEntry, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	out := []ModelEntry{}
+	for name, state := range f.states {
+		if state != ModelUnknown {
+			out = append(out, ModelEntry{Name: name, State: state})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].State != out[j].State {
+			return out[i].State.Better(out[j].State)
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out, nil
 }
 
 func (f fakeModels) Lookup(name string) (ModelState, error) {

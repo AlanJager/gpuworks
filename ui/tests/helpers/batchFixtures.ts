@@ -1,4 +1,4 @@
-import type { Batch } from "../../src/batchApi.ts";
+import type { Batch, BatchDictionary, BatchModel } from "../../src/batchApi.ts";
 
 const RETENTION_MS = 30 * 86_400_000;
 
@@ -33,4 +33,22 @@ export function batch(overrides: Partial<Batch> = {}): Batch {
 
 export function page(items: Batch[], extra: { page?: number; page_size?: number; total?: number } = {}) {
   return { items, page: extra.page ?? 1, page_size: extra.page_size ?? 20, total: extra.total ?? items.length };
+}
+
+/**
+ * The batch dictionary as GET /api/v1/batches/dictionary answers it: the
+ * server's endpoints, window, limits, statuses and retention, with the models
+ * a test names (none by default).
+ */
+export function dictionary(models: BatchModel[] = [], overrides: Partial<BatchDictionary> = {}): BatchDictionary {
+  return {
+    endpoints: ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"],
+    completion_window_hours: { min: 1, max: 72, default: 24 },
+    max_file_bytes: 200 * 1024 * 1024,
+    max_file_lines: 50000,
+    statuses: ["validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled"],
+    output_retention_days: 30,
+    models,
+    ...overrides,
+  };
 }

@@ -116,9 +116,9 @@ func (s *Service) classify(names []string) (unknown, held []string, err error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		switch state {
-		case ModelAvailable:
-		case ModelSleepHeld:
+		switch {
+		case state.Accepts():
+		case state == ModelSleepHeld:
 			held = append(held, name)
 		default:
 			unknown = append(unknown, name)

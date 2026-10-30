@@ -141,7 +141,8 @@
       "line": "Each line is one request: {\"custom_id\", \"method\": \"POST\", \"url\", \"body\": {\"model\", ...}}.",
       "unique": "custom_id must be unique within the file.",
       "sameUrl": "All lines use the same url, and it must equal the endpoint you choose.",
-      "noStream": "Streaming requests are not supported."
+      "noStream": "Streaming requests are not supported.",
+      "retention": "The output and error files are kept for {{days}} days after the batch ends."
     },
     "tooLarge": "The file is larger than {{limit}} MB.",
     "failed": "Could not create the batch",
@@ -151,6 +152,11 @@
       "noModel": "No active deployment",
       "download": "Download sample",
       "use": "Use sample"
+    },
+    "dictionary": {
+      "loading": "Reading what a batch can be created with...",
+      "failed": "Could not read what a batch can be created with",
+      "retry": "Retry"
     }
   },
   "errors": {

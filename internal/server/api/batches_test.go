@@ -27,8 +27,16 @@ type fakeBatches struct {
 	form     map[string]string
 	fileBody string
 
-	batch dto.Batch
-	err   error
+	batch      dto.Batch
+	dictionary dto.BatchDictionary
+	err        error
+}
+
+func (f *fakeBatches) Dictionary() (dto.BatchDictionary, error) {
+	if f.err != nil {
+		return dto.BatchDictionary{}, f.err
+	}
+	return f.dictionary, nil
 }
 
 func (f *fakeBatches) List(c BatchCaller, states []string, page, pageSize int) (dto.BatchPage, error) {
@@ -133,6 +141,7 @@ func TestBatchRoutesRequireAuthentication(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
 		{"GET", "/api/v1/batches"}, {"POST", "/api/v1/batches"}, {"GET", "/api/v1/batches/batch_1"},
 		{"POST", "/api/v1/batches/batch_1/cancel"}, {"GET", "/api/v1/batches/batch_1/files/output"},
+		{"GET", "/api/v1/batches/dictionary"},
 	} {
 		rec := r.do("", route.method, route.path, "")
 		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"code":"AUTHENTICATION_REQUIRED"`) {
@@ -294,6 +303,7 @@ func TestBatchRoutesAnswerNotFoundWithoutAService(t *testing.T) {
 	for _, route := range []struct{ method, path string }{
 		{"GET", "/api/v1/batches"}, {"POST", "/api/v1/batches"}, {"GET", "/api/v1/batches/batch_1"},
 		{"POST", "/api/v1/batches/batch_1/cancel"}, {"GET", "/api/v1/batches/batch_1/files/output"},
+		{"GET", "/api/v1/batches/dictionary"},
 	} {
 		if rec := rig.do(rig.session, route.method, route.path, ""); rec.Code != http.StatusNotFound {
 			t.Errorf("%s %s = %d", route.method, route.path, rec.Code)
@@ -347,5 +357,53 @@ func TestBatchFileModelsAndFinishedBatchWire(t *testing.T) {
 	want := `{"id":"batch_1","endpoint":"/v1/chat/completions","status":"completed","cancellable":false,"input_file_id":"file-in","output_file_id":"file-out","completion_window":"24h","request_counts":{"total":3,"completed":0,"failed":0},"metadata":{},"output_expires_at":"2026-11-27T10:00:00Z","user_id":1,"created_at":"2026-10-28T09:00:00Z","expires_at":"2026-10-29T09:00:00Z","completed_at":"2026-10-28T10:00:00Z"}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("finished batch = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
+	}
+}
+
+// The dictionary a create dialog is built from, in its exact wire shape: it
+// is the dictionary route, not a batch named "dictionary"; any signed-in user
+// reads it; and it only reads.
+func TestBatchDictionaryWire(t *testing.T) {
+	r := newBatchRig(t)
+	r.fake.dictionary = dto.BatchDictionary{
+		Endpoints:             []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings"},
+		CompletionWindowHours: dto.BatchWindowHours{Min: 1, Max: 72, Default: 24},
+		MaxFileBytes:          200 << 20, MaxFileLines: 50000,
+		Statuses:            []string{"validating", "in_progress", "finalizing", "cancelling", "completed", "failed", "expired", "cancelled"},
+		OutputRetentionDays: 30,
+		Models: []dto.BatchModel{
+			{Name: "qwen", State: dto.BatchModelServed}, {Name: "napping", State: dto.BatchModelAsleep}, {Name: "held", State: dto.BatchModelAsleepHeld},
+		},
+	}
+	want := `{"endpoints":["/v1/chat/completions","/v1/completions","/v1/embeddings"],"completion_window_hours":{"min":1,"max":72,"default":24},` +
+		`"max_file_bytes":209715200,"max_file_lines":50000,"statuses":["validating","in_progress","finalizing","cancelling","completed","failed","expired","cancelled"],` +
+		`"output_retention_days":30,"models":[{"name":"qwen","state":"served"},{"name":"napping","state":"asleep"},{"name":"held","state":"asleep_held"}]}`
+	for _, bearer := range []string{r.session, r.user, r.mint("read")} {
+		rec := r.do(bearer, "GET", "/api/v1/batches/dictionary", "")
+		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
+			t.Fatalf("dictionary = %d\n got %s\nwant %s", rec.Code, rec.Body, want)
+		}
+	}
+	if r.fake.id != "" {
+		t.Fatalf("the dictionary was read as the batch %q", r.fake.id)
+	}
+	var round dto.BatchDictionary
+	if err := jsonDecode([]byte(want), &round); err != nil || len(round.Models) != 3 || round.Models[2].State != dto.BatchModelAsleepHeld || round.CompletionWindowHours.Default != 24 {
+		t.Fatalf("round trip = %+v err=%v", round, err)
+	}
+
+	// No model served is an empty list, not null.
+	r.fake.dictionary.Models = []dto.BatchModel{}
+	if rec := r.do(r.session, "GET", "/api/v1/batches/dictionary", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"models":[]`) {
+		t.Fatalf("no models = %d %s", rec.Code, rec.Body)
+	}
+	for _, method := range []string{"POST", "PUT", "DELETE"} {
+		if rec := r.do(r.session, method, "/api/v1/batches/dictionary", ""); rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s /batches/dictionary = %d %s", method, rec.Code, rec.Body)
+		}
+	}
+	r.fake.err = io.ErrUnexpectedEOF
+	if rec := r.do(r.session, "GET", "/api/v1/batches/dictionary", ""); rec.Code != http.StatusInternalServerError {
+		t.Errorf("a failed read = %d %s", rec.Code, rec.Body)
 	}
 }

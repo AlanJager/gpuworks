@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 // The batches page: the list's loading / empty / error / success states, the
 // status filter, polling that stops once everything has ended, and the detail
@@ -33,7 +33,7 @@ const escape = () => fireEvent.keyDown(document.activeElement ?? document.body, 
 
 const b = locale.batches;
 const c = locale.common;
-const original = { list: batchApi.list, get: batchApi.get, cancel: batchApi.cancel, create: batchApi.create, me: api.me };
+const original = { list: batchApi.list, get: batchApi.get, cancel: batchApi.cancel, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 let listCalls: Array<Record<string, unknown>> = [];
 let getCalls: string[] = [];
@@ -47,6 +47,7 @@ beforeEach(() => {
   listCalls = [];
   getCalls = [];
   stubAdmin();
+  batchApi.dictionary = async () => dictionary();
 });
 afterEach(() => {
   cleanup();

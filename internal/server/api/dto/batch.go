@@ -73,3 +73,49 @@ type BatchFailure struct {
 
 // BatchPage is one page of GET /api/v1/batches, newest first.
 type BatchPage = ListPage[Batch]
+
+// BatchDictionary is what the console offers a batch with
+// (GET /batches/dictionary): the endpoints a batch may call, the completion
+// windows it may ask for, the limits of its input file, the statuses it moves
+// through in the order a list filters them, how many days its output and
+// error files are kept, and the served names it can be sent to. The server
+// enforces every one of them; a client only shows them.
+type BatchDictionary struct {
+	Endpoints             []string         `json:"endpoints"`
+	CompletionWindowHours BatchWindowHours `json:"completion_window_hours"`
+	MaxFileBytes          int64            `json:"max_file_bytes"`
+	MaxFileLines          int              `json:"max_file_lines"`
+	Statuses              []string         `json:"statuses"`
+	OutputRetentionDays   int              `json:"output_retention_days"`
+	// Models are the served names of the active deployments, the ones that
+	// serve first and then by name. A create names one of them, or a file
+	// whose lines do, or it is refused; a held one is accepted with a warning.
+	Models []BatchModel `json:"models"`
+}
+
+// BatchWindowHours bounds a batch's completion window in whole hours and
+// gives the one a batch gets when it asks for none.
+type BatchWindowHours struct {
+	Min     int `json:"min"`
+	Max     int `json:"max"`
+	Default int `json:"default"`
+}
+
+// The states of a BatchModel.
+const (
+	// BatchModelServed: a deployment serving the name is awake (or starting).
+	BatchModelServed = "served"
+	// BatchModelAsleep: it sleeps, and a request wakes it.
+	BatchModelAsleep = "asleep"
+	// BatchModelAsleepHeld: it sleeps by an operator's or a schedule's order,
+	// which a request does not wake; a batch sent to it waits and retries.
+	BatchModelAsleepHeld = "asleep_held"
+)
+
+// BatchModel is a served name a batch can be sent to and what it is now
+// (BatchModelServed, BatchModelAsleep or BatchModelAsleepHeld). A name several
+// deployments share is as good as the best of them.
+type BatchModel struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+}

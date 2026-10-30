@@ -4,6 +4,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -63,6 +64,34 @@ func (c batchConsole) Download(caller api.BatchCaller, id, kind string) (api.Bat
 		return api.BatchDownload{}, consoleBatchError(err)
 	}
 	return api.BatchDownload{Filename: f.Filename, Size: f.Bytes, Body: fh}, nil
+}
+
+// Dictionary is the batch service's dictionary as the console reads it.
+func (c batchConsole) Dictionary() (dto.BatchDictionary, error) {
+	d, err := c.svc.Dictionary()
+	if err != nil {
+		return dto.BatchDictionary{}, err
+	}
+	out := dto.BatchDictionary{
+		Endpoints:             d.Endpoints,
+		CompletionWindowHours: dto.BatchWindowHours{Min: d.MinWindowHours, Max: d.MaxWindowHours, Default: d.DefaultWindowHours},
+		MaxFileBytes:          d.MaxFileBytes, MaxFileLines: d.MaxFileLines, Statuses: d.Statuses,
+		OutputRetentionDays: int(d.OutputRetention / (24 * time.Hour)),
+		Models:              make([]dto.BatchModel, 0, len(d.Models)),
+	}
+	for _, m := range d.Models {
+		if state, ok := batchModelStates[m.State]; ok {
+			out.Models = append(out.Models, dto.BatchModel{Name: m.Name, State: state})
+		}
+	}
+	return out, nil
+}
+
+// batchModelStates are the wire names of the states a batch can be sent to.
+var batchModelStates = map[batch.ModelState]string{
+	batch.ModelAvailable: dto.BatchModelServed,
+	batch.ModelAsleep:    dto.BatchModelAsleep,
+	batch.ModelSleepHeld: dto.BatchModelAsleepHeld,
 }
 
 // detail is a batch with the name of its input file, which a list row leaves out.

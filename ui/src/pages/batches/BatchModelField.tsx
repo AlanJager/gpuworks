@@ -1,27 +1,25 @@
 import { Alert, Select, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import { stateLabel } from "../state";
-import type { BatchModelOption } from "./batchModels";
+import type { BatchModel } from "../../batchApi";
 
-/** The state of a model option in the reader's words. */
+/** The words of a model's state; the state is the server's (the batch dictionary). */
 export function useModelStateText() {
   const { t } = useTranslation("batches");
-  const { t: tCommon } = useTranslation("common");
   return (state: string): string => {
-    if (state === "running") return t("create.model.state.serving");
+    if (state === "served") return t("create.model.state.serving");
     if (state === "asleep") return t("create.model.state.asleep");
-    if (state === "asleepHeld") return t("create.model.state.asleepHeld");
-    return stateLabel(state, (key) => tCommon(key)).text;
+    if (state === "asleep_held") return t("create.model.state.asleepHeld");
+    return state;
   };
 }
 
 /**
  * BatchModelField picks the model every request of the batch is sent to, or
- * none to use each line's own. The deployments that are active are offered,
- * asleep ones with their state; one a request does not wake is warned about.
+ * none to use each line's own. The server's list is offered, asleep ones with
+ * their state; one a request does not wake is warned about.
  */
 export default function BatchModelField({ options, value, onChange, disabled }: {
-  options: BatchModelOption[];
+  options: BatchModel[];
   value: string | undefined;
   onChange: (model: string | undefined) => void;
   disabled: boolean;
@@ -43,7 +41,7 @@ export default function BatchModelField({ options, value, onChange, disabled }: 
         style={{ width: "100%" }}
       />
       <Typography.Text type="secondary">{t("create.model.help")}</Typography.Text>
-      {chosen?.state === "asleepHeld" && <Alert type="warning" showIcon message={t("create.model.heldWarning", { model: chosen.name })} />}
+      {chosen?.state === "asleep_held" && <Alert type="warning" showIcon message={t("create.model.heldWarning", { model: chosen.name })} />}
     </div>
   );
 }

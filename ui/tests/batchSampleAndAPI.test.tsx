@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 // The sample requests file (downloaded or used as is), the .jsonl-only file
 // picker, and the panel that tells the reader batches are an API.
@@ -25,27 +25,18 @@ const { batchSampleJSONL, samplePrompts, sampleFileName, SAMPLE_LINES, SAMPLE_MA
 const { batchAPISteps } = await import("../src/pages/batches/BatchAPIUsage.tsx");
 
 const b = locale.batches;
-const original = { list: batchApi.list, create: batchApi.create, me: api.me, deployments: api.deployments };
+const original = { list: batchApi.list, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
   batchApi.list = (async () => page([])) as never;
-  api.deployments = (async () => ({
-    items: [
-      { id: 1, served_name: "qwen-chat", desired_state: "active", runtime_state: "running", state: "running" },
-      { id: 2, served_name: "stopped-one", desired_state: "stopped", runtime_state: "stopped", state: "stopped" },
-      { id: 3, served_name: "qwen-chat", desired_state: "active", runtime_state: "running", state: "running" },
-      { id: 4, served_name: "embedder", desired_state: "active", runtime_state: "running", state: "running" },
-    ],
-    total: 4,
-  })) as never;
+  batchApi.dictionary = async () => dictionary([{ name: "qwen-chat", state: "served" }, { name: "embedder", state: "served" }]);
 });
 afterEach(() => {
   cleanup();
-  Object.assign(batchApi, { list: original.list, create: original.create });
+  Object.assign(batchApi, { list: original.list, create: original.create, dictionary: original.dictionary });
   api.me = original.me;
-  api.deployments = original.deployments;
 });
 after(() => closeChannels());
 

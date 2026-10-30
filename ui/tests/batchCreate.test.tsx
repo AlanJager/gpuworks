@@ -4,7 +4,7 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
 // Creating a batch: the file and endpoint choice, the hint block, the upload
 // state, an invalid file named by its line, and the keyboard paths.
@@ -31,11 +31,12 @@ const escape = () => fireEvent.keyDown(document.activeElement ?? document.body, 
 
 const b = locale.batches;
 const c = locale.common;
-const original = { list: batchApi.list, get: batchApi.get, create: batchApi.create, me: api.me };
+const original = { list: batchApi.list, get: batchApi.get, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
+  batchApi.dictionary = async () => dictionary([{ name: "qwen-chat", state: "served" }]);
 });
 afterEach(() => {
   cleanup();
@@ -276,4 +277,59 @@ test("the modal component reports nothing while closed", () => {
     </I18nextProvider>,
   );
   assert.ok(!screen.queryByRole("dialog"));
+});
+
+// The dialog is built from the server's dictionary: it says so while it is
+// read, offers a retry when it cannot be read, and then shows what it says.
+test("the dialog reads the batch dictionary: loading, a failed read with a retry, then the server's choices", async () => {
+  // The page reads the dictionary too, for its status filter; the dialog's reads are what is scripted.
+  let reachable = false;
+  let answer: (value: ReturnType<typeof dictionary>) => void = () => {};
+  batchApi.list = async () => page([]);
+  batchApi.dictionary = () => (reachable ? new Promise((resolve) => { answer = resolve; }) : Promise.reject(new Error("server unreachable")));
+  const user = mountPage();
+  const dialog = await openCreate(user);
+  const failure = await within(dialog).findByText(b.create.dictionary.failed);
+  assert.ok(failure.closest(".ant-alert-error"));
+  assert.ok(within(dialog).getByText("server unreachable"));
+  assert.equal(submitButton(dialog).disabled, true, "nothing to create with before the dictionary is read");
+  assert.equal(within(dialog).queryByLabelText(b.create.file), null);
+
+  reachable = true;
+  await user.click(within(dialog).getByRole("button", { name: b.create.dictionary.retry }));
+  const loading = await within(dialog).findByRole("status");
+  assert.ok(within(loading).getByText(b.create.dictionary.loading));
+  assert.equal(submitButton(dialog).disabled, true);
+
+  answer(dictionary([{ name: "only-model", state: "asleep" }], {
+    endpoints: ["/v1/embeddings"], completion_window_hours: { min: 2, max: 12, default: 6 },
+    max_file_bytes: 10 * 1024 * 1024, max_file_lines: 1000, output_retention_days: 7,
+  }));
+  const fileInput = await within(dialog).findByLabelText(b.create.file);
+  assert.equal(within(dialog).queryByRole("status"), null);
+  // The server's endpoint, window bounds and default, limits and retention.
+  assert.ok(within(dialog).getByText("/v1/embeddings", { selector: ".ant-select-selection-item" }));
+  assert.equal((within(dialog).getByLabelText(b.create.window.label) as HTMLInputElement).value, "6");
+  assert.ok(within(dialog).getByText(i18n.t("batches:create.window.help", { min: 2, max: 12, default: 6 })));
+  assert.ok(within(dialog).getByText(i18n.t("batches:create.hint.format", { size: 10, requests: 1000 })));
+  assert.ok(within(dialog).getByText(i18n.t("batches:create.hint.retention", { days: 7 })));
+  // The models are the server's, with its state; the sample uses the first.
+  assert.ok(within(dialog).getByText(`only-model · ${b.create.model.state.asleep}`, { selector: ".ant-select-selection-item" }));
+  await user.upload(fileInput, jsonl("big.jsonl", 11 * 1024 * 1024));
+  assert.ok(await within(dialog).findByText(i18n.t("batches:create.tooLarge", { limit: 10 })));
+  assert.equal(submitButton(dialog).disabled, true, "a file over the server's limit is not sent");
+});
+
+test("a dictionary read again on every opening shows the models' states of now", async () => {
+  let state = "served";
+  batchApi.list = async () => page([]);
+  batchApi.dictionary = async () => dictionary([{ name: "m", state }]);
+  const user = mountPage();
+  let dialog = await openCreate(user);
+  await within(dialog).findByText(`m · ${b.create.model.state.serving}`, { selector: ".ant-select-selection-item" });
+  await user.click(within(dialog).getByRole("button", { name: b.create.cancel }));
+  await waitFor(() => assert.ok(!screen.queryByRole("dialog", { name: b.create.title })));
+  state = "asleep_held";
+  dialog = await openCreate(user);
+  await within(dialog).findByText(`m · ${b.create.model.state.asleepHeld}`, { selector: ".ant-select-selection-item" });
 });

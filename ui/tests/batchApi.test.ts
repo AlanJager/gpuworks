@@ -10,9 +10,9 @@ for (const name of ["window", "document", "navigator"] as const) {
   Object.defineProperty(globalThis, name, { value: dom.window[name], configurable: true });
 }
 const batchApiModule = await import("../src/batchApi.ts");
-const { batchApi, batchFileURL, isBatchActive, BATCH_ENDPOINTS, BATCH_STATUSES } = batchApiModule;
+const { batchApi, batchFileURL, isBatchActive } = batchApiModule;
 const { APIError } = await import("../src/apiError.ts");
-const { batch, page } = await import("./helpers/batchFixtures.ts");
+const { batch, dictionary, page } = await import("./helpers/batchFixtures.ts");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
@@ -109,8 +109,17 @@ test("file links name the kind under the batch", () => {
 test("a status is active, and polled, until the batch ended", () => {
   const active = ["validating", "in_progress", "finalizing", "cancelling"];
   const terminal = ["completed", "failed", "expired", "cancelled"];
-  assert.deepEqual([...BATCH_STATUSES].sort(), [...active, ...terminal].sort());
   for (const status of active) assert.equal(isBatchActive(status), true, status);
   for (const status of terminal) assert.equal(isBatchActive(status), false, status);
-  assert.deepEqual([...BATCH_ENDPOINTS], ["/v1/chat/completions", "/v1/completions", "/v1/embeddings"]);
+});
+
+test("the dictionary is one plain read, returned as the server states it", async () => {
+  const wire = dictionary([{ name: "qwen", state: "served" }, { name: "held", state: "asleep_held" }]);
+  const seen = fake(200, wire);
+  const got = await batchApi.dictionary();
+  assert.equal(seen[0].url, "/api/v1/batches/dictionary");
+  assert.equal(seen[0].method, undefined);
+  assert.deepEqual(got, wire);
+  fake(500, { error: "boom" });
+  await assert.rejects(batchApi.dictionary());
 });

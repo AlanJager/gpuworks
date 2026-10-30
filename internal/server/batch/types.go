@@ -27,6 +27,10 @@ const (
 	StatusCancelled  = "cancelled"
 )
 
+// Statuses are every status of a batch, the ones still moving first, in the
+// order a client lists them.
+var Statuses = []string{StatusValidating, StatusInProgress, StatusFinalizing, StatusCancelling, StatusCompleted, StatusFailed, StatusExpired, StatusCancelled}
+
 // Terminal reports whether a batch in status has finished for good.
 func Terminal(status string) bool {
 	switch status {
@@ -61,8 +65,10 @@ const (
 // gpuworks extension.
 const (
 	CompletionWindow = "24h"
-	MinWindowHours   = 1
-	MaxWindowHours   = 72
+	// DefaultWindowHours is CompletionWindow in hours (a test holds them equal).
+	DefaultWindowHours = 24
+	MinWindowHours     = 1
+	MaxWindowHours     = 72
 )
 
 // ParseWindow reads a completion window of the form "<hours>h" with whole
@@ -222,17 +228,42 @@ type ModelState int
 const (
 	// ModelUnknown: no active deployment serves the name.
 	ModelUnknown ModelState = iota
-	// ModelAvailable: an active deployment serves it, running or asleep in a
-	// way a request wakes (the gateway holds the request and wakes it).
+	// ModelAvailable: an active deployment serving it is awake (or starting):
+	// requests go to it.
 	ModelAvailable
-	// ModelSleepHeld: every active deployment serving it sleeps by an
-	// operator's or a schedule's order, which a request does not wake.
+	// ModelSleepHeld: every active deployment serving it sleeps and a request
+	// does not wake it (an operator's or a schedule's order).
 	ModelSleepHeld
+	// ModelAsleep: no active deployment serving it is awake, and one sleeps in
+	// a way a request wakes (the gateway holds the request and wakes it).
+	ModelAsleep
 )
 
-// Models looks a served model name up among the platform's deployments.
+// Accepts says requests for a model in this state are sent at once: it
+// serves or a request wakes it. A held model is accepted with a warning,
+// an unknown one refused.
+func (m ModelState) Accepts() bool { return m == ModelAvailable || m == ModelAsleep }
+
+// Better says m serves a batch better than other: awake before asleep before
+// held before unknown. A name several deployments share is as good as the best.
+func (m ModelState) Better(other ModelState) bool { return modelRank[m] > modelRank[other] }
+
+var modelRank = map[ModelState]int{ModelUnknown: 0, ModelSleepHeld: 1, ModelAsleep: 2, ModelAvailable: 3}
+
+// ModelEntry is a served name with what it is to a batch.
+type ModelEntry struct {
+	Name  string
+	State ModelState
+}
+
+// Models looks a served model name up among the platform's deployments, and
+// lists every name a batch can be sent to. Both answer from the same rule, so
+// the list a client chooses from and the check a create makes agree.
 type Models interface {
 	Lookup(name string) (ModelState, error)
+	// List is every served name of an active deployment with its state,
+	// none ModelUnknown, the best served first and then by name.
+	List() ([]ModelEntry, error)
 }
 
 // Reply is what sending one request came to.

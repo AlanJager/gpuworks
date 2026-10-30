@@ -4,7 +4,7 @@ import { PlusOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { useEvents } from "../api";
-import { BATCH_POLL_MS, BATCH_STATUSES, batchApi, isBatchActive, type Batch } from "../batchApi";
+import { BATCH_POLL_MS, batchApi, isBatchActive, type Batch, type BatchStatus } from "../batchApi";
 import { useIsAdmin } from "../components/useIsAdmin";
 import PageHeader from "../components/PageHeader";
 import ResourceTable, { storedPageSize, type ResourceColumn } from "../components/resourceTable/ResourceTable";
@@ -31,6 +31,13 @@ export default function BatchesPage({ pollMs = BATCH_POLL_MS }: { pollMs?: numbe
   const [status, setStatus] = useState<string[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const detailID = searchParams.get("detail");
+  // The statuses to filter by are the server's; until they are read the filter offers none.
+  const [statuses, setStatuses] = useState<BatchStatus[]>([]);
+  useEffect(() => {
+    let live = true;
+    batchApi.dictionary().then((dictionary) => { if (live) setStatuses(dictionary.statuses); }).catch(() => { /* the list still works unfiltered */ });
+    return () => { live = false; };
+  }, []);
 
   const list = usePagedList(batchApi.list, {
     filters: { state: status },
@@ -100,7 +107,7 @@ export default function BatchesPage({ pollMs = BATCH_POLL_MS }: { pollMs?: numbe
       value={status}
       onChange={setStatus}
       maxTagCount="responsive"
-      options={BATCH_STATUSES.map((value) => ({ value, label: t(`status.${value}`) }))}
+      options={statuses.map((value) => ({ value, label: t(`status.${value}`) }))}
     />
   );
   const createButton = (

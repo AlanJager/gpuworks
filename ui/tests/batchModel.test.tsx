@@ -4,11 +4,12 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n, dom } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
-import { batch, page } from "./helpers/batchFixtures.ts";
+import { batch, dictionary, page } from "./helpers/batchFixtures.ts";
 
-// The model of a batch chosen on the platform: the select of active and asleep
-// deployments, the override sent with the file, the check of the models the file
-// names, and where the override shows afterwards.
+// The model of a batch chosen on the platform: the select of the models the
+// server's batch dictionary lists with their states, the override sent with the
+// file, the check of the models the file names, and where the override shows
+// afterwards.
 
 const closeChannels = trackMessageChannels();
 Object.defineProperty(globalThis, "localStorage", { value: dom.window.localStorage, configurable: true });
@@ -22,34 +23,23 @@ const { MemoryRouter, Route, Routes } = await import("react-router-dom");
 const { api } = await import("../src/api.ts");
 const { batchApi } = await import("../src/batchApi.ts");
 const { default: BatchesPage } = await import("../src/pages/BatchesPage.tsx");
-const { batchModelOptions, modelsInJSONL } = await import("../src/pages/batches/batchModels.ts");
+const { modelsInJSONL } = await import("../src/pages/batches/batchModels.ts");
 
 const b = locale.batches;
-const original = { list: batchApi.list, get: batchApi.get, create: batchApi.create, me: api.me, deployments: api.deployments };
-
-const dep = (id: number, served_name: string, desired_state: string, state: string, sleep_held = false) =>
-  ({ id, served_name, desired_state, runtime_state: state === "asleep" || state === "sleeping" ? "running" : state, state, sleep_held });
+const original = { list: batchApi.list, get: batchApi.get, create: batchApi.create, dictionary: batchApi.dictionary, me: api.me };
 
 beforeEach(() => {
   localStorage.clear();
   api.me = (async () => ({ role: "admin" })) as never;
   batchApi.list = (async () => page([])) as never;
-  api.deployments = (async () => ({
-    items: [
-      dep(1, "qwen-chat", "active", "running"),
-      dep(2, "stopped-one", "stopped", "stopped"),
-      dep(3, "nap-model", "active", "asleep"),
-      dep(4, "held-model", "active", "asleep", true),
-      dep(5, "going-down", "deleting", "running"),
-    ],
-    total: 5,
-  })) as never;
+  batchApi.dictionary = async () => dictionary([
+    { name: "qwen-chat", state: "served" }, { name: "nap-model", state: "asleep" }, { name: "held-model", state: "asleep_held" },
+  ]);
 });
 afterEach(() => {
   cleanup();
-  Object.assign(batchApi, { list: original.list, get: original.get, create: original.create });
+  Object.assign(batchApi, { list: original.list, get: original.get, create: original.create, dictionary: original.dictionary });
   api.me = original.me;
-  api.deployments = original.deployments;
 });
 after(() => closeChannels());
 
@@ -87,34 +77,25 @@ async function chooseModel(user: ReturnType<typeof userEvent.setup>, dialog: HTM
   await user.click(await screen.findByText(label, { selector: ".ant-select-item-option-content" }));
 }
 
-test("batchModelOptions: active deployments by name, the best state of a shared name, held sleeps apart", () => {
-  const got = batchModelOptions([
-    dep(1, "shared", "active", "failed"), dep(2, "shared", "active", "running"), dep(3, "z", "active", "sleeping", true),
-    dep(4, "a", "active", "asleep"), dep(5, "off", "stopped", "stopped"), dep(6, "", "active", "running"),
-  ] as never);
-  assert.deepEqual(got, [
-    { name: "shared", state: "running" }, { name: "z", state: "asleepHeld" }, { name: "a", state: "asleep" },
-  ]);
-});
-
 test("modelsInJSONL lists each body.model once and skips lines that are not requests", () => {
   const text = `${requests("a", "b", "a")}not json\n\n{"custom_id":"x"}\n{"body":{"model":7}}\n`;
   assert.deepEqual(modelsInJSONL(text), ["a", "b"]);
 });
 
-test("the model select lists the active deployments, asleep ones with their state, and nothing stopped", async () => {
+test("the model select lists the dictionary's models in its order, each with the state the server gives it", async () => {
   const user = mountPage();
   const dialog = await openCreate(user);
   await waitFor(() => assert.ok(within(dialog).getByRole("combobox", { name: b.create.model.label })));
   assert.ok(within(dialog).getByText(b.create.model.placeholder));
   await user.click(within(dialog).getByRole("combobox", { name: b.create.model.label }));
   const labels = (await screen.findAllByText(/ · /, { selector: ".ant-select-item-option-content" })).map((node) => node.textContent);
-  for (const want of [
+  // Both selects - the batch's model and the sample's - list them.
+  const listed = [...new Set(labels)];
+  assert.deepEqual(listed, [
     optionLabel("qwen-chat", b.create.model.state.serving),
     optionLabel("nap-model", b.create.model.state.asleep),
     optionLabel("held-model", b.create.model.state.asleepHeld),
-  ]) assert.ok(labels.includes(want), `${want} in ${labels.join("|")}`);
-  assert.ok(!labels.some((label) => /stopped-one|going-down/.test(label ?? "")));
+  ]);
 });
 
 test("the chosen model goes up with the file; without one the upload carries none", async () => {

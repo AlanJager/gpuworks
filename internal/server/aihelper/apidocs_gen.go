@@ -18,6 +18,7 @@ var routeDocs = map[string]string{
 	"/api/v1/apikeys":                           "API key 列表（不含明文），含已吊销的 key：已吊销的带 `revoked_at`（UTC 时间），未吊销的不出现该字段",
 	"/api/v1/auth/me":                           "返回当前用户与实时权限；不延长空闲期限",
 	"/api/v1/batches":                           "批处理任务列表，最新优先，返回分页结构 `{items,page,page_size,total}`。`state` 为 8 种状态之一，多个值以逗号分隔；非法值返回 400 `LIST_FILTER_INVALID`；不支持 `q`，带 `q` 同样返回 400 `LIST_FILTER_INVALID`。管理员看到所有用户的任务，其他用户只看到自己的。列表项不含 `input_filename`",
+	"/api/v1/batches/dictionary":                "创建批处理任务可用的字典：`endpoints`、`completion_window_hours`（`min`/`max`/`default`）、`max_file_bytes`、`max_file_lines`、`statuses`（列表筛选顺序）、`output_retention_days`，以及 `models`：运行中部署的对外模型名及其状态 `served`（在服务）、`asleep`（休眠，请求会唤醒）、`asleep_held`（手动或定时休眠，请求不会唤醒），与创建时的模型校验同一判定",
 	"/api/v1/batches/{}":                        "批处理任务详情，含 `input_filename`；不存在或不是自己的任务（管理员除外）返回 404 `BATCH_NOT_FOUND`",
 	"/api/v1/batches/{}/files/{}":               "下载任务的文件，`kind` 为 `input`、`output`、`error`，响应是 JSON Lines（`application/x-ndjson`，带附件文件名）；`kind` 非法返回 400 `BATCH_REQUEST_INVALID`，文件不存在或已删除返回 404 `BATCH_NOT_FOUND`",
 	"/api/v1/benchmarks":                        "评测任务列表",

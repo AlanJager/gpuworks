@@ -123,6 +123,7 @@ GET /api/v1/analytics/usage
 GET /api/v1/apikeys
 GET /api/v1/auth/me
 GET /api/v1/batches
+GET /api/v1/batches/dictionary
 GET /api/v1/batches/{id}
 GET /api/v1/batches/{id}/files/{kind}
 GET /api/v1/benchmarks

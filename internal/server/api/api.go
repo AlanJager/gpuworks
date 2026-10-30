@@ -629,6 +629,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			// (an administrator sees every user's), an administrator writes.
 			r.Get("/batches", a.listBatches)
 			r.With(a.managementAdmin).Post("/batches", a.createBatch)
+			r.Get("/batches/dictionary", a.batchDictionary)
 			r.Get("/batches/{id}", a.getBatch)
 			r.With(a.managementAdmin).Post("/batches/{id}/cancel", a.cancelBatch)
 			r.Get("/batches/{id}/files/{kind}", a.downloadBatchFile)
