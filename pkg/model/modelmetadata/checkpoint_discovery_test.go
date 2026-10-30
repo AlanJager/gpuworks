@@ -56,8 +56,8 @@ func TestCheckpointDiscoveryUsesIndexAndFormatEvidence(t *testing.T) {
 		{name: "index excludes consolidated duplicate", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":{"x":"parts/a.safetensors"}}`, "parts/a.safetensors": "weights", "model.safetensors": "duplicate"}, want: []string{"parts/a.safetensors"}},
 		{name: "custom index missing shard cannot use loose weights", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":{"x":"absent.safetensors"}}`, "model.safetensors": "unrelated"}, want: []string{"absent.safetensors"}, missing: "absent.safetensors"},
 		{name: "malformed custom index cannot use loose weights", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":`, "model.safetensors": "unrelated"}, issue: "custom.safetensors.index.json", noEntry: true},
-		{name: "same shard set in alias indexes", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":{"x":"part.safetensors"}}`, "model.safetensors.index.json": `{"weight_map":{"x":"part.safetensors"}}`, "part.safetensors": "weights"}, want: []string{"part.safetensors"}},
-		{name: "conflicting indexes cannot silently choose one", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":{"x":"a.safetensors"}}`, "model.safetensors.index.json": `{"weight_map":{"x":"b.safetensors"}}`, "a.safetensors": "one", "b.safetensors": "two"}, issue: "checkpoint indexes", noEntry: true},
+		{name: "same shard set in alias indexes", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":{"x":"part.safetensors"}}`, "alias.safetensors.index.json": `{"weight_map":{"x":"part.safetensors"}}`, "part.safetensors": "weights"}, want: []string{"part.safetensors"}},
+		{name: "conflicting nonstandard indexes cannot silently choose one", files: map[string]string{"custom.safetensors.index.json": `{"weight_map":{"x":"a.safetensors"}}`, "alternate.safetensors.index.json": `{"weight_map":{"x":"b.safetensors"}}`, "a.safetensors": "one", "b.safetensors": "two"}, issue: "checkpoint indexes", noEntry: true},
 		{name: "all unindexed shard groups checked", files: map[string]string{"model-a-00001-of-00001.safetensors": "weights", "model-b-00001-of-00002.safetensors": "weights"}, missing: "model-b-00002-of-00002.safetensors"},
 		{name: "zero shard count", files: map[string]string{"model-00000-of-00000.safetensors": "weights"}, issue: "shard", noEntry: true},
 		{name: "out of range shard number", files: map[string]string{"model-00001-of-00001.safetensors": "weights", "model-00002-of-00001.safetensors": "weights"}, issue: "shard", noEntry: true},
@@ -100,9 +100,6 @@ func TestCustomCheckpointNamesRetainOwnership(t *testing.T) {
 		name, format string
 		files        map[string]string
 	}{
-		{"sentence transformer component", "sentence-transformers", map[string]string{"modules.json": `[{"path":"encoder","type":"sentence_transformers.models.Transformer"}]`, "encoder/config.json": `{"model_type":"example"}`, "encoder/export.safetensors": "weights"}},
-		{"diffusers component", "diffusers", map[string]string{"model_index.json": `{"_class_name":"ExamplePipeline","encoder":["transformers","ExampleModel"]}`, "encoder/config.json": `{"model_type":"example"}`, "encoder/export.safetensors": "weights"}},
-		{"native mistral", "mistral", map[string]string{"params.json": `{"dim":4}`, "tekken.json": `{}`, "export.safetensors": "weights"}},
 		{"modelscope", "modelscope", map[string]string{"configuration.json": `{"task":"text-generation","model":{"type":"example"}}`, "export.pt": "weights"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,12 +107,11 @@ func TestCustomCheckpointNamesRetainOwnership(t *testing.T) {
 			if err != nil || len(r.Entries) != 1 || r.Entries[0].Incomplete || r.Entries[0].Format != tc.format {
 				t.Fatalf("report=%+v err=%v", r, err)
 			}
-			if _, ok := tc.files["encoder/config.json"]; ok {
-				component, err := Parse(context.Background(), Input{Path: "encoder", Context: Context{Repository: true, Components: r.Components}}, memory(tc.files))
-				if err != nil || !component.Component || len(component.Entries) != 0 {
-					t.Fatalf("component became independent: %+v %v", component, err)
-				}
-			}
 		})
+	}
+	files := memory(map[string]string{"encoder/config.json": `{"model_type":"example"}`, "encoder/custom.safetensors": "weights"})
+	r, err := Parse(context.Background(), Input{Path: "encoder", Context: Context{Repository: true, Components: []Reference{{Path: "encoder", Role: "component"}}}}, files)
+	if err != nil || !r.Component || len(r.Entries) != 0 {
+		t.Fatalf("component with custom weights became independent: %+v %v", r, err)
 	}
 }

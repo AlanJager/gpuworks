@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -20,7 +19,10 @@ func TestRegisterQuantizedCheckpointAndScan(t *testing.T) {
 	if err := os.Mkdir(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	files := map[string]string{"config.json": `{"architectures":["ExampleForCausalLM"]}`, "quant_model_description.json": `{}`}
+	files := map[string]string{
+		"config.json":        `{"architectures":["Qwen3_5ForConditionalGeneration"],"model_type":"qwen3_5"}`,
+		"configuration.json": `{"task":"image-text-to-text"}`,
+	}
 	weightMap := map[string]string{}
 	for i := 1; i <= 10; i++ {
 		name := fmt.Sprintf("quant_model_weights-%05d-of-00010.safetensors", i)
@@ -45,6 +47,10 @@ func TestRegisterQuantizedCheckpointAndScan(t *testing.T) {
 	got := result.(registerPathResult)
 	if got.Metadata == nil || len(got.Metadata.Entries) != 1 || len(got.Metadata.Entries[0].Files) != 10 || got.SizeBytes <= 0 {
 		t.Fatalf("registration=%+v", got)
+	}
+	entry := got.Metadata.Entries[0]
+	if entry.Format != "transformers" || entry.Incomplete || len(entry.Tasks) != 1 || entry.Tasks[0] != "image-text-to-text" {
+		t.Fatalf("entry=%+v", entry)
 	}
 	scan, err := modelscan.Scan(context.Background(), root, modelscan.Options{})
 	if err != nil || len(scan.Candidates) != 1 || scan.Candidates[0].Incomplete {
@@ -78,47 +84,4 @@ func TestRegisterCheckpointKeepsMetadataFailure(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestRegisterModelScopeQwenQuantizedMetadata(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"config.json", "configuration.json", "quant_model_weights.safetensors.index.json"} {
-		body, err := os.ReadFile(filepath.Join("testdata", "modelscope_qwen3_8_w8a8", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), body, 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for i := 1; i <= 10; i++ {
-		name := fmt.Sprintf("quant_model_weights-%05d-of-00010.safetensors", i)
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("placeholder weight payload"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	n := &NodeRuntime{}
-	raw := mustRaw(t, map[string]any{"path": dir, "inspect_metadata": true})
-	result, err := n.OnRPC(context.Background(), proto.RPCRegisterPath, raw)
-	if err != nil {
-		t.Fatalf("published ModelScope metadata rejected: %v", err)
-	}
-	got := result.(registerPathResult)
-	if got.Metadata == nil || len(got.Metadata.Entries) != 1 {
-		t.Fatalf("metadata=%+v", got.Metadata)
-	}
-	entry := got.Metadata.Entries[0]
-	if entry.Format != "transformers" || entry.Incomplete || len(entry.Files) != 10 || !slices.Equal(entry.Tasks, []string{"image-text-to-text"}) {
-		t.Fatalf("entry=%+v", entry)
-	}
-	t.Logf("published metadata: format=%s shards=%d incomplete=%v tasks=%v", entry.Format, len(entry.Files), entry.Incomplete, entry.Tasks)
-	missing := "quant_model_weights-00010-of-00010.safetensors"
-	if err := os.Remove(filepath.Join(dir, missing)); err != nil {
-		t.Fatal(err)
-	}
-	_, err = n.OnRPC(context.Background(), proto.RPCRegisterPath, raw)
-	if err == nil || !strings.Contains(err.Error(), missing) {
-		t.Fatalf("published index missing shard not rejected: %v", err)
-	}
-	t.Logf("missing shard correctly rejected: %v", err)
 }

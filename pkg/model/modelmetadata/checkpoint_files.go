@@ -12,43 +12,63 @@ import (
 	"strings"
 )
 
-func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, error) {
-	// vLLM and SGLang's default loaders prefer safetensors, then bin, then pt.
-	return checkpointWithExtensions(ctx, dir, format, files, []string{".safetensors", ".bin", ".pt"})
+var checkpointEncodings = [...]struct{ extension, defaultIndex string }{
+	{".safetensors", "model.safetensors.index.json"},
+	{".bin", "pytorch_model.bin.index.json"},
+	{".pt", ""},
 }
 
-// An index owns its shard set. Loose files cannot repair a broken index, and
-// alternative encodings must not be combined into one required set of weights.
-func checkpointWithExtensions(ctx context.Context, dir, format string, files FileView, extensions []string) (Entry, error) {
+// An index owns its shard set. Preserve index precedence over loose files,
+// including a partial export in a different encoding.
+func checkpoint(ctx context.Context, dir, format string, files FileView) (Entry, error) {
 	e := Entry{Path: dir, Format: format}
 	items, err := files.ReadDir(ctx, dir)
 	if err != nil {
 		return e, err
 	}
-	for _, ext := range extensions {
-		var indexes, weights []string
+	if indexes := checkpointIndexes(dir, items); len(indexes) > 0 {
+		e.Files, err = indexedCheckpointFiles(ctx, files, dir, indexes)
+	} else {
+		var weights []string
+		for _, encoding := range checkpointEncodings {
+			for _, item := range items {
+				if !item.IsDir && strings.HasSuffix(item.Name, encoding.extension) && !trainingCheckpointFile(item.Name) {
+					weights = append(weights, path.Join(dir, item.Name))
+				}
+			}
+			if len(weights) > 0 {
+				break
+			}
+		}
+		e.Files, err = unindexedCheckpointFiles(weights)
+	}
+	if err != nil {
+		return e, err
+	}
+	checkRequired(ctx, &e, files)
+	return e, nil
+}
+
+func checkpointIndexes(dir string, items []FileInfo) []string {
+	// HF's standard indexes identify the default export when variants coexist.
+	// Their absence never restricts discovery to a particular filename prefix.
+	for _, encoding := range checkpointEncodings {
+		if encoding.defaultIndex != "" && hasName(items, encoding.defaultIndex) {
+			return []string{path.Join(dir, encoding.defaultIndex)}
+		}
+	}
+	for _, encoding := range checkpointEncodings {
+		var indexes []string
 		for _, item := range items {
-			name := path.Join(dir, item.Name)
-			if strings.HasSuffix(item.Name, ext+".index.json") {
-				indexes = append(indexes, name)
-			} else if !item.IsDir && strings.HasSuffix(item.Name, ext) && !trainingCheckpointFile(item.Name) {
-				weights = append(weights, name)
+			if strings.HasSuffix(item.Name, encoding.extension+".index.json") {
+				indexes = append(indexes, path.Join(dir, item.Name))
 			}
 		}
 		if len(indexes) > 0 {
-			e.Files, err = indexedCheckpointFiles(ctx, files, dir, indexes)
-		} else if len(weights) > 0 {
-			e.Files, err = unindexedCheckpointFiles(weights)
-		} else {
-			continue
+			return indexes
 		}
-		if err != nil {
-			return e, err
-		}
-		checkRequired(ctx, &e, files)
-		return e, nil
 	}
-	return e, nil
+	return nil
 }
 
 func indexedCheckpointFiles(ctx context.Context, files FileView, dir string, indexes []string) ([]string, error) {
@@ -81,7 +101,7 @@ func indexedCheckpointFiles(ctx context.Context, files FileView, dir string, ind
 	return selected, nil
 }
 
-var checkpointShard = regexp.MustCompile(`^(.+)-(\d{5})-of-(\d{5})(\.(?:safetensors|bin|pt))$`)
+var unindexedCheckpointShard = regexp.MustCompile(`^(.+)-(\d{5})-of-(\d{5})(\.(?:safetensors|bin|pt))$`)
 
 const maxUnindexedCheckpointFiles = 10000
 
@@ -90,7 +110,7 @@ func unindexedCheckpointFiles(weights []string) ([]string, error) {
 	groups := map[string]int{}
 	for _, name := range weights {
 		required[name] = true
-		match := checkpointShard.FindStringSubmatch(path.Base(name))
+		match := unindexedCheckpointShard.FindStringSubmatch(path.Base(name))
 		if match == nil {
 			continue
 		}
