@@ -328,8 +328,8 @@
     },
     {
       "item": "1.8",
-      "status": "MISSING",
-      "assertion": "Not fully exercised: 完整创建：填写所有适用可选项，逐字段验证持久化；可选项省略时另外验证后端默认值。"
+      "status": "COVERED",
+      "assertion": "The draft fills every optional surface the wizard offers and the stored record is compared field by field against what was sent: snapshot_checks asserts engine, image, served_name, quick_params, template_id, template_spec_source, template_spec_name, node_uuid, nnodes and replicas individually, plus the persisted catalog selection snapshot, so a field silently dropped or replaced cannot pass. Proven by mutation - forcing the stored replicas to 2 fails with 'persisted replicas: expected 1; actual 2'. The independent GET, the refresh and the real Docker/gateway execution confirm the record is the one that runs."
     },
     {
       "item": "1.9",
