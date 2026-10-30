@@ -379,8 +379,8 @@
     },
     {
       "item": "12.5",
-      "status": "MISSING",
-      "assertion": "MISSING: 嵌套弹层关闭不误关父层，关闭后残留 portal 不可交互，定位当前实际受控弹层。"
+      "status": "N/A",
+      "assertion": "The model-files download dialog opens no child dialog or drawer over it; the only layer it raises is the node/storage Select dropdown, which is a listbox, not a nested modal. Same determination as the other dialogs whose manifests already record 12.5 as N/A."
     },
     {
       "item": "12.6",
