@@ -12,22 +12,25 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
+	"gpuworks.ai/gpuworks/internal/server/servicelevel"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // wakeWaitHow is how a wake that does not fit proceeds: wait waits for room
 // (the automation wakes the sleepers once their GPUs can take them back);
-// yield first puts the awake occupants of those GPUs to sleep at yieldLevel,
-// then waits.
+// yield first puts the awake occupants of those GPUs to sleep at yieldPref,
+// then waits. An operator's yield_level=1 is the platform's choice
+// (servicelevel.LevelAuto): an occupant whose host cannot hold its weights
+// gives way at L2, which needs no host memory, rather than refusing the wake.
 type wakeWaitHow struct {
 	wait, yield bool
-	yieldLevel  int
+	yieldPref   string
 }
 
 // wakeWaitParams reads ?wait=, ?yield= and ?yield_level= (1 or 2, default 1),
 // writing the response when they are invalid.
 func wakeWaitParams(w http.ResponseWriter, r *http.Request) (wakeWaitHow, bool) {
-	how := wakeWaitHow{yieldLevel: proto.SleepLevelL1}
+	how := wakeWaitHow{yieldPref: servicelevel.LevelAuto}
 	for name, into := range map[string]*bool{"wait": &how.wait, "yield": &how.yield} {
 		raw := r.URL.Query().Get(name)
 		if raw == "" {
@@ -43,7 +46,7 @@ func wakeWaitParams(w http.ResponseWriter, r *http.Request) (wakeWaitHow, bool) 
 	switch raw := r.URL.Query().Get("yield_level"); raw {
 	case "", "1":
 	case "2":
-		how.yieldLevel = proto.SleepLevelL2
+		how.yieldPref = servicelevel.LevelL2
 	default:
 		writeProductError(w, http.StatusBadRequest, ErrorSleepInvalidLevel, "sleep level must be 1 or 2", map[string]any{"level": raw})
 		return how, false
@@ -88,14 +91,15 @@ func (a *apiHandlers) wakeAndWait(w http.ResponseWriter, r *http.Request, dep *s
 			return
 		}
 		for _, target := range targets {
-			level := how.yieldLevel
-			if level == proto.SleepLevelL1 && planning.L1HostMemoryRefusal(a.d.Store, target.Deployment, target.Members, a.hostMemory) != nil {
-				// The occupant's host cannot hold its weights: it gives way at
-				// L2, which needs no host memory.
-				level = proto.SleepLevelL2
-			}
-			if err := a.d.Store.OrderInstancesSleepHeld(target.Deployment.ID, uuidsOf(target.Members), level, proto.SleepModeWait, true); err != nil {
+			level, refusal, err := planning.OrderSleep(a.d.Store, target.Deployment, planning.SleepOrder{
+				Pref: how.yieldPref, Mode: proto.SleepModeWait, Held: true, Instances: uuidsOf(target.Members),
+			}, a.hostMemory)
+			if err != nil {
 				writeReplicaOrderErr(w, err)
+				return
+			}
+			if refusal != nil {
+				writeSleepRefusal(w, http.StatusConflict, refusal)
 				return
 			}
 			a.d.Store.AddDeploymentEventCode(target.Deployment.ID, store.EventKindAutomation, automation.EventYieldedForWake, map[string]any{

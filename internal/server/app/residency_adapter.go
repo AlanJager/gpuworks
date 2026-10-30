@@ -5,7 +5,6 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/automation"
-	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
@@ -226,48 +225,28 @@ func (a *residencyAdapter) Activity(id uint) automation.Activity {
 }
 
 // Yield puts the holder's replica to sleep at the level its policy prefers
-// (auto: L1 unless the host cannot hold the weights, planning.
-// L1HostMemoryRefusal), a sleep the platform chose (not held: a request for
-// it waits and wakes it again). A holder that prefers L1 is refused when the
-// host cannot hold the weights, as an operator's L1 sleep is.
+// (servicelevel.Policy.SleepLevel, resolved by planning.OrderSleep: auto is
+// L1 unless the host cannot hold the weights), a sleep the platform chose
+// (not held: a request for it waits and wakes it again). A holder that
+// prefers L1 is refused when the host cannot hold the weights, as an
+// operator's L1 sleep is.
 func (a *residencyAdapter) Yield(id uint, instances []string, abort bool) (int, error) {
 	defer planning.LockLifecycle()()
 	mode := proto.SleepModeWait
 	if abort {
 		mode = proto.SleepModeAbort
 	}
-	level := proto.SleepLevelL1
-	if dep, err := a.store.GetDeployment(id); err == nil {
-		pref := dep.Policy().SleepLevel
-		if pref == servicelevel.LevelL2 {
-			level = proto.SleepLevelL2
-		} else {
-			want := map[string]bool{}
-			for _, uuid := range instances {
-				want[uuid] = true
-			}
-			insts, err := a.store.InstancesForDeployment(id)
-			if err != nil {
-				return 0, err
-			}
-			var named []store.Instance
-			for _, in := range insts {
-				if want[in.UUID] {
-					named = append(named, in)
-				}
-			}
-			if refusal := planning.L1HostMemoryRefusal(a.store, dep, named, a.host); refusal != nil {
-				if pref == servicelevel.LevelL1 {
-					return 0, messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
-				}
-				level = proto.SleepLevelL2
-			}
-		}
-	}
-	if err := a.store.OrderInstancesSleepHeld(id, instances, level, mode, false); err != nil {
+	dep, err := a.store.GetDeployment(id)
+	if err != nil {
 		return 0, err
 	}
-	return level, nil
+	level, refusal, err := planning.OrderSleep(a.store, dep, planning.SleepOrder{
+		Pref: dep.Policy().SleepLevel, Mode: mode, Instances: append([]string{}, instances...),
+	}, a.host)
+	if refusal != nil {
+		return 0, refusal.Err()
+	}
+	return level, err
 }
 
 func (a *residencyAdapter) Drain(id uint, on bool) {

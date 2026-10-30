@@ -113,35 +113,23 @@ func (a *automationAdapter) WaitingWakes() ([]automation.WaitingWake, error) {
 }
 
 // Sleep orders a deployment to sleep as an operator's deployment-wide order
-// does: refused when the deployment cannot sleep, or at L1 when a host
-// cannot hold the weights. At the auto level it sleeps at L1, or at L2 where
-// the host cannot hold the weights; it returns the level ordered.
+// does (planning.OrderSleep): refused when the deployment cannot sleep, or at
+// an explicit L1 when a host cannot hold the weights; at the auto level
+// (automation.LevelAuto) it sleeps at L1, or at L2 where the host cannot hold
+// the weights. It returns the level ordered.
 func (a *automationAdapter) Sleep(deploymentID uint, level int, held bool) (int, error) {
 	defer planning.LockLifecycle()()
 	dep, err := a.store.GetDeployment(deploymentID)
 	if err != nil {
 		return 0, err
 	}
-	if code := planning.SleepEligibility(dep); code != "" {
-		return 0, messages.NewProductError(code, "the deployment cannot sleep", map[string]any{"engine": dep.Engine})
+	ordered, refusal, err := planning.OrderSleep(a.store, dep, planning.SleepOrder{
+		Pref: planning.SleepPreference(level), Mode: proto.SleepModeWait, Held: held,
+	}, a.host)
+	if refusal != nil {
+		return 0, refusal.Err()
 	}
-	auto := level == automation.LevelAuto
-	if auto {
-		level = proto.SleepLevelL1
-	}
-	if level == proto.SleepLevelL1 {
-		insts, err := a.store.InstancesForDeployment(dep.ID)
-		if err != nil {
-			return 0, err
-		}
-		if refusal := planning.L1HostMemoryRefusal(a.store, dep, planning.Sleepers(insts), a.host); refusal != nil {
-			if !auto {
-				return 0, messages.NewProductError(refusal.Code, "the host memory cannot hold the weights an L1 sleep moves there", refusal.Params)
-			}
-			level = proto.SleepLevelL2
-		}
-	}
-	return level, a.store.OrderDeploymentSleepHeld(dep.ID, level, proto.SleepModeWait, held)
+	return ordered, err
 }
 
 // Wake wakes the deployment's sleepers that fit and leaves the rest waiting
