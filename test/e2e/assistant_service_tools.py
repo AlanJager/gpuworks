@@ -551,7 +551,10 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
 
     button(card, settings["common"]["delete"]).click()
     popconfirm = page.locator(".ant-popconfirm")
-    expect(popconfirm).to_contain_text(settings["ai"]["deleteConfirm"])
+    # 12.7 asks the confirmation to name what is being deleted, so resolve the placeholder
+    # and assert the real name is in the prompt rather than the raw catalogue string.
+    delete_prompt = settings["ai"]["deleteConfirm"].replace("{{name}}", config_name)
+    expect(popconfirm).to_contain_text(delete_prompt)
     confirm_popconfirm(page)
     expect(page.get_by_text(settings["ai"]["deleted"], exact=True).first).to_be_visible()
     expect(card.get_by_text(settings["ai"]["empty"], exact=True)).to_be_visible()
@@ -596,7 +599,7 @@ def test_assistant_service_tools(page, context, server, artifacts, report, local
          "tool_step": ai["tool"]["cluster_overview"], "tool_answer": expected_answer,
          "denied_route": "rejected", "stop": ai["stopped"],
          "delete": settings["common"]["delete"],
-         "delete_confirmation": settings["ai"]["deleteConfirm"]},
+         "delete_confirmation": settings["ai"]["deleteConfirm"].replace("{{name}}", config_name)},
         {"layer": "request", "create": {"method": "POST", "path": CONFIGS,
          "status": 201, "body": {k: create_body[k] for k in
          ("name", "preset", "base_url", "model", "is_default")}},
