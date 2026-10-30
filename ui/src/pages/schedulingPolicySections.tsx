@@ -56,9 +56,12 @@ export const policySections: PolicySection[] = [
     key: "yieldPolicy",
     label: "yieldPolicy.title",
     summaryLabel: "yieldPolicy.summaryLabel",
-    // A deployment that cannot sleep has nothing to set; one that kept a policy
-    // from when it could still shows it so it can go back.
-    visible: (dep) => dep.sleepable || savedPolicy(dep).policy !== "never",
+    // Shown where the server allows a policy, and where the deployment can
+    // sleep but may not yield (the editor says why); a deployment that cannot
+    // sleep has nothing to set, unless it kept a policy from when it could, so
+    // it can go back.
+    visible: (dep) =>
+      dep.yield_policy_eligible?.ok === true || dep.schedule_capabilities?.sleep.ok === true || savedPolicy(dep).policy !== "never",
     summary: (t, { dep }) => yieldSummary(t, dep),
     render: ({ dep, onChanged }) => (
       <YieldPolicyEditor key={`yield-${dep.id}-${JSON.stringify(savedPolicy(dep))}`} dep={dep} onChanged={onChanged} />

@@ -1926,12 +1926,41 @@ export interface Deployment {
   // of the deployment waits for room.
   node_replacement?: NodeReplacement;
   wake_waiting_since?: string;
+  // wake_wait_limit_sec is how long a wake waits for room before it gives up.
+  wake_wait_limit_sec: number;
   // yield_policy is how the deployment shares its GPUs with the others on
   // them; absent counts as never.
   // sleep_held is set while an operator's or a schedule's sleep keeps it
   // asleep: a request does not wake it.
   yield_policy?: YieldPolicy;
   sleep_held?: boolean;
+  // yield_policy_eligible says whether the deployment may hold a policy other
+  // than never, and schedule_capabilities what its schedule may order: the
+  // server's decisions, which the pages render and do not re-derive.
+  yield_policy_eligible: Eligibility;
+  schedule_capabilities: ScheduleCapabilities;
+}
+
+// Eligibility is whether the server lets a client offer something; when not,
+// reason is the stable product code (an apiError.* key) that says why.
+export interface Eligibility {
+  ok: boolean;
+  reason?: string;
+}
+
+// ScheduleCapabilities is what a deployment's schedule may order: sleep, wake,
+// and a replica count - one entry with no role, or one per PD role in the
+// mode's order - between minimum and maximum.
+export interface ScheduleCapabilities {
+  sleep: Eligibility;
+  wake: Eligibility;
+  replicas: ReplicaCapability[];
+}
+
+export interface ReplicaCapability extends Eligibility {
+  role?: string;
+  minimum: number;
+  maximum: number;
 }
 
 // YieldPolicyName is how a deployment shares its GPUs, in rank order (highest
@@ -3326,6 +3355,9 @@ export interface EvaluateResponse {
   // PD previews a PD disaggregated draft instance by instance (ADR 0028); the
   // command fields above then describe the first decode instance.
   pd?: EvaluatePd;
+  // Whether the draft may be created with a yield policy other than never,
+  // the create's own check; absent until the draft's engine is known.
+  yield_policy_eligible?: Eligibility;
 }
 
 // PdRoleName is the fixed pair every PD mode declares today (ADR 0028); the

@@ -79,12 +79,12 @@
       "wait": "Wait for room",
       "yield": "Put {{occupants}} to sleep, then wake",
       "theOccupants": "the occupants",
-      "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after 30 minutes). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
+      "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after {{limit}}). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
       "heldOutside": "A process outside the platform holds the GPU"
     },
     "waiting": {
       "since": "Waiting for room since {{time}}",
-      "hint": "The server wakes the sleepers when their GPUs can take them back, and gives up after 30 minutes.",
+      "hint": "The server wakes the sleepers when their GPUs can take them back, and gives up after {{limit}}.",
       "cancel": "Cancel waiting",
       "cancelled": "Stopped waiting",
       "cancelFailed": "Failed to cancel waiting: {{detail}}"
@@ -757,7 +757,7 @@
       "deleteConfirm": "Delete this scheduled order?",
       "deleted": "Scheduled order deleted",
       "empty": "No scheduled orders.",
-      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node or PD ones.",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule:",
       "loadFailed": "Failed to load the schedule: {{detail}}",
       "saveFailed": "Failed to save the order: {{detail}}",
       "deleteFailed": "Failed to delete the order: {{detail}}",

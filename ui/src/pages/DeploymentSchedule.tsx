@@ -9,25 +9,46 @@ import { formatTime } from "../i18n/datetime";
 // Monday first, as a week reads; the server counts 0 as Sunday.
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DEFAULT_MAX_REPLICAS = 32;
 
-// scheduleActions are the orders this deployment may be given: sleep and wake
-// need a sleepable deployment, a replica count one whose new replicas get their
-// nodes picked: single-node, or multi-node or PD placed automatically (a
-// deployment whose replicas the operator placed by hand names the nodes of
-// every replica). A PD deployment's count is per role.
+// scheduleActions are the orders this deployment's schedule may give, as the
+// server's schedule_capabilities allow them; a replica count is offered when
+// the server allows it for the deployment (or, for PD, for one of its roles).
 export function scheduleActions(dep: Deployment): ScheduleAction[] {
+  const capabilities = dep.schedule_capabilities;
   const actions: ScheduleAction[] = [];
-  if (dep.sleepable) actions.push("sleep", "wake");
-  const placedByPlatform = dep.pd ? dep.placement_mode === "auto" : (dep.nnodes ?? 1) <= 1 || dep.placement_mode === "auto";
-  if (placedByPlatform) actions.push("replicas");
+  if (capabilities?.sleep.ok) actions.push("sleep");
+  if (capabilities?.wake.ok) actions.push("wake");
+  if ((capabilities?.replicas ?? []).some((item) => item.ok)) actions.push("replicas");
   return actions;
 }
 
-// scheduleRoles are the PD roles a replicas order may name, each with the
-// fewest replicas it may be given (0 where the mode lets the role be empty).
-export function scheduleRoles(dep: Deployment): Array<{ role: string; minimum: number; desired: number }> {
-  return (dep.pd?.roles ?? []).map((item) => ({ role: item.role, minimum: item.may_be_empty ? 0 : 1, desired: item.desired }));
+// ScheduleRole is a replica count a schedule may set, with the server's bounds:
+// role "" for any deployment but PD, one per role of a PD one. desired is what
+// it runs now, where the count starts.
+export interface ScheduleRole {
+  role: string;
+  minimum: number;
+  maximum: number;
+  desired: number;
+}
+
+// scheduleRoles are the replica counts the server lets the schedule set, in
+// its order.
+export function scheduleRoles(dep: Deployment): ScheduleRole[] {
+  return (dep.schedule_capabilities?.replicas ?? []).filter((item) => item.ok).map((item) => {
+    const role = item.role ?? "";
+    const desired = role ? (dep.pd?.roles.find((entry) => entry.role === role)?.desired ?? item.minimum) : dep.replicas;
+    return { role, minimum: item.minimum, maximum: item.maximum, desired };
+  });
+}
+
+// scheduleRefusals are the server's reasons for the orders it does not offer,
+// each once.
+export function scheduleRefusals(dep: Deployment): string[] {
+  const capabilities = dep.schedule_capabilities;
+  if (!capabilities) return [];
+  const reasons = [capabilities.sleep, capabilities.wake, ...capabilities.replicas].filter((item) => !item.ok && item.reason).map((item) => item.reason!);
+  return [...new Set(reasons)];
 }
 
 // useSchedules loads a deployment's standing orders. The scheduling policy
@@ -122,7 +143,12 @@ export default function ScheduleSection({ dep, schedules }: { dep: Deployment; s
         <Button size="small" disabled={actions.length === 0} onClick={() => setEditing("new")}>{t("automation.schedule.add")}</Button>
       </Space>
       {actions.length === 0 && (
-        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 4 }}>{t("automation.schedule.noActions")}</Typography.Paragraph>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 4 }}>
+          {t("automation.schedule.noActions")}
+          {scheduleRefusals(dep).map((reason) => (
+            <span key={reason} style={{ display: "block" }}>{tCommon(`apiError.${reason}`, { engine: dep.engine, defaultValue: reason })}</span>
+          ))}
+        </Typography.Paragraph>
       )}
       {error && (
         <Alert
@@ -224,20 +250,22 @@ function ScheduleModal({ dep, row, actions, onClose, onSaved }: {
   const [timezone, setTimezone] = useState(row?.timezone ?? "");
   const [level, setLevel] = useState<1 | 2>(row?.sleep_level ?? 2);
   const roles = scheduleRoles(dep);
+  // A PD deployment's count names its role; any other's names none.
+  const pdRoles = roles.filter((item) => item.role !== "");
   const [role, setRole] = useState(row?.role || roles[0]?.role || "");
   const [replicas, setReplicas] = useState<number | null>(row?.replicas ?? (roles.find((item) => item.role === role)?.desired ?? dep.replicas));
   const [enabled, setEnabled] = useState(row?.enabled ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // A PD role is counted on its own: 1 to 32, or 0 where the mode lets it be empty.
-  const minReplicas = roles.find((item) => item.role === role)?.minimum ?? 1;
-  const maxReplicas = roles.length > 0 ? DEFAULT_MAX_REPLICAS : (dep.max_replicas ?? DEFAULT_MAX_REPLICAS);
+  // The bounds are the server's, per role for PD; with none (an order the
+  // server no longer offers) the server judges the count on save.
+  const bound = roles.find((item) => item.role === role);
 
   const invalid = (() => {
     if (weekdays.length === 0) return t("automation.schedule.errors.weekdays");
     if (!TIME_PATTERN.test(time.trim())) return t("automation.schedule.errors.time");
-    if (action === "replicas" && (replicas == null || replicas < minReplicas || replicas > maxReplicas)) {
-      return t("automation.schedule.errors.replicas", { minimum: minReplicas, maximum: maxReplicas });
+    if (action === "replicas" && bound && (replicas == null || replicas < bound.minimum || replicas > bound.maximum)) {
+      return t("automation.schedule.errors.replicas", { minimum: bound.minimum, maximum: bound.maximum });
     }
     return "";
   })();
@@ -254,7 +282,7 @@ function ScheduleModal({ dep, row, actions, onClose, onSaved }: {
       time: time.trim(),
       timezone: timezone.trim(),
       ...(action === "sleep" ? { sleep_level: level } : {}),
-      ...(action === "replicas" && replicas != null ? { replicas, ...(roles.length > 0 ? { role } : {}) } : {}),
+      ...(action === "replicas" && replicas != null ? { replicas, ...(role ? { role } : {}) } : {}),
       enabled,
     };
     setSaving(true);
@@ -356,22 +384,22 @@ function ScheduleModal({ dep, row, actions, onClose, onSaved }: {
             />
           </Field>
         )}
-        {action === "replicas" && roles.length > 0 && (
+        {action === "replicas" && pdRoles.length > 0 && (
           <Field label={t("automation.schedule.field.role")} hint={t("automation.schedule.roleHint")}>
             <Select<string>
               style={{ width: "100%" }}
               aria-label={t("automation.schedule.field.role")}
               value={role}
               onChange={setRole}
-              options={roles.map((item) => ({ value: item.role, label: scheduleRoleName(t, item.role) }))}
+              options={pdRoles.map((item) => ({ value: item.role, label: scheduleRoleName(t, item.role) }))}
             />
           </Field>
         )}
         {action === "replicas" && (
           <Field label={t("automation.schedule.field.replicas")}>
             <InputNumber
-              min={minReplicas}
-              max={maxReplicas}
+              min={bound?.minimum}
+              max={bound?.maximum}
               precision={0}
               aria-label={t("automation.schedule.field.replicas")}
               value={replicas}

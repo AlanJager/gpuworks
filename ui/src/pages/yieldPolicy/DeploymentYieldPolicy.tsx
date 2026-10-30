@@ -5,7 +5,6 @@ import { api, usePolling, type Deployment, type YieldPolicyDictionary, type Yiel
 import { APIError, apiErrorText } from "../../apiError";
 import YieldPolicyFields from "./YieldPolicyFields";
 import {
-  canYield,
   draftEqual,
   draftErrors,
   draftOfParams,
@@ -40,21 +39,44 @@ function refusalText(
   return apiErrorText(tCommon, error);
 }
 
+// The editor's own wording of the two refusals it meets most; any other code
+// reads as the server's product error.
+const refusalKeys: Record<string, string> = {
+  SLEEP_NOT_ENABLED: "yieldPolicy.notSleepable",
+  YIELD_POLICY_SHAPE: "yieldPolicy.singleNodeOnly",
+};
+
+// yieldRefusalText words why the server lets the deployment hold no policy but
+// never; "" when it may hold one.
+export function yieldRefusalText(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  tCommon: (key: string, options?: Record<string, unknown>) => string,
+  dep: Pick<Deployment, "engine" | "yield_policy_eligible">,
+): string {
+  const eligible = dep.yield_policy_eligible;
+  if (!eligible || eligible.ok) return "";
+  const reason = eligible.reason ?? "";
+  const key = refusalKeys[reason];
+  return key ? t(key) : tCommon(`apiError.${reason}`, { engine: dep.engine, defaultValue: reason });
+}
+
 // YieldPolicyEditor sets how the deployment shares its GPUs with the others on
 // them: one yield policy and the parameters that apply to it. Which policies
 // and parameters there are, their defaults and bounds come from the server's
 // dictionary, which the editor waits for. The scheduling policy card keys it
 // by what is saved, so it restarts from that. A policy other than never needs a
-// sleepable single-node, non-PD deployment; a deployment that kept one it can
-// no longer have can still go back (choose never).
+// deployment the server marks eligible (yield_policy_eligible), and the editor
+// shows the server's reason when it does not; a deployment that kept one it
+// can no longer have can still go back (choose never).
 export default function YieldPolicyEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
+  const { t: tCommon } = useTranslation("common");
   const dictionary = usePolling(api.yieldPolicies, 0);
+  const refusal = yieldRefusalText(t, tCommon, dep);
   return (
     <section aria-label={t("yieldPolicy.title")}>
       <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>{t("yieldPolicy.hint")}</Typography.Paragraph>
-      {!dep.sleepable && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("yieldPolicy.notSleepable")} />}
-      {dep.sleepable && !canYield(dep) && <Alert style={{ marginTop: 8 }} type="info" showIcon message={t("yieldPolicy.singleNodeOnly")} />}
+      {refusal && <Alert style={{ marginTop: 8 }} type="info" showIcon message={refusal} />}
       {dictionary.data ? (
         <YieldPolicyForm dep={dep} dictionary={dictionary.data} onChanged={onChanged} />
       ) : dictionary.error ? (
@@ -81,7 +103,7 @@ function YieldPolicyForm({ dep, dictionary, onChanged }: { dep: Deployment; dict
   const [draft, setDraft] = useState<YieldDraft>(() => draftOfParams(saved));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  const yields = canYield(dep);
+  const yields = dep.yield_policy_eligible?.ok === true;
 
   const applies = applicable(dictionary, draft);
   const errors = draftErrors(dictionary, draft);

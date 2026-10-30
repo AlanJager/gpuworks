@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 import {
   api, choosePolicy, cleanup, controls, defaults, deployment, dictionary, f, fireEvent, i18n, locale, mount, openEditor, p, saveButton, screen, spin, state, stub, stubDictionary, summaryOf, summaryText, waitFor, withPolicy, within, y,
 } from "./helpers/yieldPolicyHarness.tsx";
@@ -33,19 +34,19 @@ test("the summary is one line: the policy and what matters, and a deployment wit
 
 test("the part shows for a deployment that can sleep, and for any that kept a policy besides never", async () => {
   stub();
-  mount(deployment({ sleepable: false }));
+  mount(deployment({ sleepable: false, ...shapes.notSleepableSingleNode }));
   await screen.findByRole("region", { name: p.title });
   assert.ok(!(await summaryText()).includes(y.summaryLabel));
   cleanup();
   // A multi-node or PD deployment that can sleep shows it, with never.
-  mount(deployment({ nnodes: 2 }));
+  mount(deployment({ nnodes: 2, ...shapes.sleepableMultiNodeManual }));
   assert.ok((await summaryText()).includes(summaryOf("Never yield automatically")));
   cleanup();
-  mount(deployment({ pd: { mode: "ep", roles: [] } }));
+  mount(deployment({ pd: { mode: "ep", roles: [] }, ...shapes.sleepablePDManual }));
   assert.ok((await summaryText()).includes(summaryOf("Never yield automatically")));
   cleanup();
   // One that kept a policy from when it could still shows it, to go back.
-  mount(deployment({ sleepable: false, yield_policy: defaults.anytime }));
+  mount(deployment({ sleepable: false, yield_policy: defaults.anytime, ...shapes.notSleepableSingleNode }));
   assert.ok((await summaryText()).includes(summaryOf("Yield anytime · idle 30 s")));
 });
 

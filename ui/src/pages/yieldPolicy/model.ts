@@ -166,13 +166,6 @@ export function savedPolicy(dep: Deployment): YieldParams {
   return dep.yield_policy ?? { policy: "never" };
 }
 
-// canYield is whether the deployment may use a policy other than never: it has
-// to be able to sleep, and to be single-node and not PD (the server refuses the
-// rest).
-export function canYield(dep: Deployment): boolean {
-  return dep.sleepable && !dep.pd && (dep.nnodes ?? 1) <= 1;
-}
-
 // The names a policy value can hold, for paramsOfValue: it reads values (a
 // stored deploy draft, a form field) where no dictionary is at hand, so these
 // are the wire contract's enumerations (api.ts); the editor itself takes every

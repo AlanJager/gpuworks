@@ -272,7 +272,12 @@ const evaluateAnswer = {
 let evaluateOverride: Record<string, unknown> = {};
 stub("evaluate", async (payload: unknown) => {
   calls.evaluate.push(payload);
-  return { ...structuredClone(evaluateAnswer), ...structuredClone(evaluateOverride) };
+  // The server says whether the draft may hold a yield policy other than
+  // never; for the single-node vllm drafts these cases send, that is whether
+  // it asks to sleep (internal/server/api's evaluate test asserts the same).
+  const sleepable = (payload as Record<string, unknown>).sleepable === true;
+  const yield_policy_eligible = sleepable ? { ok: true } : { ok: false, reason: "SLEEP_NOT_ENABLED" };
+  return { ...structuredClone(evaluateAnswer), yield_policy_eligible, ...structuredClone(evaluateOverride) };
 });
 stub("createDeployment", async (body: unknown) => {
   calls.create.push(body);
@@ -389,6 +394,20 @@ test("the yield policy is chosen only for a sleepable single-node deployment, ta
   assert.equal((calls.create[0] as Record<string, unknown>).sleepable, true);
 });
 
+test("the policy field follows the server's answer, not the form's own fields: a sleepable draft the server refuses offers none", async () => {
+  evaluateOverride = { yield_policy_eligible: { ok: false, reason: "YIELD_POLICY_SHAPE" } };
+  const label = deployLocale.yieldPolicy.label;
+  const { user } = await openDeployPage();
+  await pickVendorAndName(user, "refused-shape");
+  await waitFor(() => assert.ok(screen.getByText(deployLocale.workbench.node.schedulerSelected)));
+  await user.click(screen.getByText(deployLocale.workbench.resource.sleepable));
+  await waitFor(() => assert.equal((calls.evaluate.at(-1) as Record<string, unknown>).sleepable, true));
+  // The stub answers at once: let that answer render, then look. (Without the
+  // override the same steps show the field - the case above.)
+  for (let tick = 0; tick < 5; tick++) await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(screen.queryByRole("combobox", { name: label }), null);
+});
+
 test("choosing never again states no yield policy, and a dictionary that cannot be read leaves only never", async () => {
   yieldPoliciesFail = true;
   const label = deployLocale.yieldPolicy.label;
@@ -406,7 +425,7 @@ test("choosing never again states no yield policy, and a dictionary that cannot 
   assert.equal("yield_policy" in (calls.create[0] as Record<string, unknown>), false);
 });
 
-test("turning sleep off takes the yield policy out of the form and the request", async () => {
+test("turning sleep off keeps the chosen policy with the server's reason, until it is set back to never", async () => {
   const label = deployLocale.yieldPolicy.label;
   const { user } = await openDeployPage();
   await pickVendorAndName(user, "untiered");
@@ -418,7 +437,15 @@ test("turning sleep off takes the yield policy out of the form and the request",
   const anytime = { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", unfinished_wait_sec: 30, hold_max_sec: 3600 };
   await waitFor(() => assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, anytime), { timeout: 4000 });
 
+  // Sleep off: the form sends what was chosen and shows why the server will
+  // not take it; only never is left to choose.
   await user.click(card);
+  await screen.findByText(commonLocale.apiError.SLEEP_NOT_ENABLED, {}, { timeout: 4000 });
+  assert.deepEqual((calls.evaluate.at(-1) as Record<string, unknown>).yield_policy, anytime);
+  await user.click(screen.getByRole("combobox", { name: label }));
+  const option = (policy: "never" | "idle") => screen.getByText(policyOptionText(policy)).closest(".ant-select-item") as HTMLElement;
+  assert.ok(option("idle").className.includes("ant-select-item-option-disabled"));
+  await user.click(option("never"));
   await waitFor(() => assert.ok(screen.queryByRole("combobox", { name: label }) === null));
   await waitFor(() => assert.equal("yield_policy" in (calls.evaluate.at(-1) as Record<string, unknown>), false), { timeout: 4000 });
   await user.click(screen.getByRole("button", { name: deployLocale.action.deploy || "Deploy" }));

@@ -5,7 +5,6 @@ import type { YieldPolicyDictionary } from "../src/api.ts";
 import {
   applicable,
   boundOf,
-  canYield,
   chooseUnfinished,
   draftEqual,
   draftErrors,
@@ -165,15 +164,10 @@ test("idle_sec may not exceed max_serve_sec when both apply, and the bounds come
   assert.equal(boundOf({ ...dictionary, bounds: {} }, timeslice, "hold_max_sec"), null);
 });
 
-test("a deployment holds a policy or, with none, never; only a sleepable single-node non-PD one can yield", () => {
+test("a deployment holds a policy or, with none, never", () => {
   assert.deepEqual(savedPolicy({ id: 1 } as never), { policy: "never" });
   const held = { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 } as const;
   assert.deepEqual(savedPolicy({ id: 1, yield_policy: held } as never), held);
-  assert.equal(canYield({ sleepable: true, nnodes: 1 } as never), true);
-  assert.equal(canYield({ sleepable: true } as never), true);
-  assert.equal(canYield({ sleepable: false, nnodes: 1 } as never), false);
-  assert.equal(canYield({ sleepable: true, nnodes: 2 } as never), false);
-  assert.equal(canYield({ sleepable: true, nnodes: 1, pd: { mode: "ep", roles: [] } } as never), false);
 });
 
 test("paramsOfValue reads a policy out of a form value or a stored draft and drops what it does not know", () => {

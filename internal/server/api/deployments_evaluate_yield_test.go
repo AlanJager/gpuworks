@@ -96,4 +96,16 @@ func TestEvaluateSaysADraftWaitsForTheHolderToYield(t *testing.T) {
 	if reason != "waiting_for_yield" {
 		t.Fatalf("automatic candidate reason = %q, want waiting_for_yield: %v", reason, candidates)
 	}
+
+	// The answer also says whether the draft may hold a policy other than
+	// never - the create's own check - so the form offers one only then.
+	for _, tc := range []struct{ name, body, want string }{
+		{"sleepable single-node", fmt.Sprintf(manual, model.ID, ""), `{"ok":true}`},
+		{"not sleepable", fmt.Sprintf(`{"model_id":%d,"engine":"vllm","node_uuid":"yield-node"}`, model.ID), `{"ok":false,"reason":"SLEEP_NOT_ENABLED"}`},
+		{"multi-node", fmt.Sprintf(`{"model_id":%d,"engine":"vllm","node_uuids":["yield-node","yield-node"],"nnodes":2,"sleepable":true}`, model.ID), `{"ok":false,"reason":"YIELD_POLICY_SHAPE"}`},
+	} {
+		if got := jsonOf(t, evaluate(tc.body)["yield_policy_eligible"]); got != tc.want {
+			t.Errorf("%s: yield_policy_eligible = %s, want %s", tc.name, got, tc.want)
+		}
+	}
 }

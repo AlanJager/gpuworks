@@ -43,7 +43,7 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
       });
     return () => { active = false; };
   }, [dep.id, eventsRefresh, failureAfterID, sleepStatusKey]);
-  const show = dep.sleepable || summary.asleep > 0;
+  const show = dep.schedule_capabilities?.sleep.ok === true || summary.asleep > 0;
   if (!show) return null;
 
   const levelName = (lv: number) => (lv === 1 ? t("sleep.quick") : lv === 2 ? t("sleep.deep") : `L${lv}`);
@@ -144,8 +144,8 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
           style={{ flexBasis: "100%" }}
         />
       )}
-      {dep.wake_waiting_since && <WakeWaitingBanner since={dep.wake_waiting_since} busy={cancelling.busy} onCancel={() => void cancelWaiting()} />}
-      {refusal && <WakeRefusalAlert refusal={refusal} busy={busy} onWait={() => void doWaitWake({ wait: true })} onYield={() => void doWaitWake({ yield: true })} />}
+      {dep.wake_waiting_since && <WakeWaitingBanner since={dep.wake_waiting_since} limitSec={dep.wake_wait_limit_sec} busy={cancelling.busy} onCancel={() => void cancelWaiting()} />}
+      {refusal && <WakeRefusalAlert refusal={refusal} limitSec={dep.wake_wait_limit_sec} busy={busy} onWait={() => void doWaitWake({ wait: true })} onYield={() => void doWaitWake({ yield: true })} />}
       {all && <Tag color="orange">{t("sleep.sleeping", { level: summary.level, name: levelName(summary.level) })}</Tag>}
       {summary.asleep > 0 && !all && <Tag color="orange">{t("sleep.partial", { asleep: summary.asleep, total: summary.total })}</Tag>}
       {summary.asleep > 0 && (
@@ -173,7 +173,7 @@ export default function SleepControls({ dep, onDone }: { dep: Deployment; onDone
           </Button>
         </>
       )}
-      {dep.pd && dep.sleepable && <RoleSleepActions dep={dep} onDone={onDone} />}
+      {dep.pd && dep.schedule_capabilities?.sleep.ok && <RoleSleepActions dep={dep} onDone={onDone} />}
       <SleepModeDialog
         open={pendingLevel !== null}
         level={pendingLevel ?? 1}

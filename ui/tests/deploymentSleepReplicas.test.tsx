@@ -8,6 +8,7 @@ import { JSDOM } from "jsdom";
 import React from "react";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // Sleep and wake below the whole deployment: one replica from its instance
 // panel, the drawer's all / partly / none summary with a wake of what fits
@@ -114,6 +115,7 @@ function deployment(overrides: Record<string, unknown> = {}) {
     engine: "vllm", node_uuid: "node-a", desired_state: "active", runtime_state: "running",
     sleepable: false, health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] }, replicas: 2, max_replicas: 32, template_deviated: false, created_at: "2026-09-30T00:00:00Z",
     operations: [], instances: [instance("inst-a", { replica: { index: 0 } }), instance("inst-b", { replica: { index: 1 } })],
+    ...shapes.notSleepableSingleNode,
     ...overrides,
   };
 }
@@ -139,6 +141,7 @@ const { APIError } = await import("../src/apiError.ts");
 function sleepable(overrides: Record<string, unknown> = {}) {
   return deployment({
     sleepable: true,
+    ...shapes.sleepableSingleNode,
     instances: [instance("inst-a", { replica: { index: 0 }, ...alone }), instance("inst-b", { replica: { index: 1 }, ...alone })],
     ...overrides,
   });

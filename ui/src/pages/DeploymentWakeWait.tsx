@@ -1,6 +1,7 @@
 import { Alert, Button, Space, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import { formatTime } from "../i18n/datetime";
+import { durationText } from "./durationText";
 
 // WakeRefusalState is why the last wake was refused: the server's own words,
 // and who holds the memory. A card held by a process outside the platform
@@ -22,8 +23,10 @@ export function occupantNames(value: unknown): string[] {
 // other deployments hold them, it offers the two ways on: wait for room (the
 // server wakes the sleepers once the cards are free) or put the occupants to
 // sleep and then wake.
-export function WakeRefusalAlert({ refusal, busy, onWait, onYield }: {
+export function WakeRefusalAlert({ refusal, limitSec, busy, onWait, onYield }: {
   refusal: WakeRefusalState;
+  // How long a waiting wake waits for room, as the server says.
+  limitSec: number;
   busy: boolean;
   onWait: () => void;
   onYield: () => void;
@@ -46,7 +49,7 @@ export function WakeRefusalAlert({ refusal, busy, onWait, onYield }: {
             <Button size="small" loading={busy} onClick={onWait}>{t("sleep.refused.wait")}</Button>
             <Button size="small" type="primary" loading={busy} onClick={onYield}>{t("sleep.refused.yield", { occupants })}</Button>
           </Space>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("sleep.refused.hint")}</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>{t("sleep.refused.hint", { limit: durationText(t, limitSec) })}</Typography.Text>
         </Space>
       }
     />
@@ -55,7 +58,7 @@ export function WakeRefusalAlert({ refusal, busy, onWait, onYield }: {
 
 // WakeWaitingBanner says a wake of this deployment waits for room since when,
 // and lets the operator give up waiting.
-export function WakeWaitingBanner({ since, busy, onCancel }: { since: string; busy: boolean; onCancel: () => void }) {
+export function WakeWaitingBanner({ since, limitSec, busy, onCancel }: { since: string; limitSec: number; busy: boolean; onCancel: () => void }) {
   const { t } = useTranslation("deployments");
   return (
     <Alert
@@ -63,7 +66,7 @@ export function WakeWaitingBanner({ since, busy, onCancel }: { since: string; bu
       showIcon
       style={{ flexBasis: "100%" }}
       message={t("sleep.waiting.since", { time: formatTime(since) })}
-      description={t("sleep.waiting.hint")}
+      description={t("sleep.waiting.hint", { limit: durationText(t, limitSec) })}
       action={<Button size="small" loading={busy} onClick={onCancel}>{t("sleep.waiting.cancel")}</Button>}
     />
   );

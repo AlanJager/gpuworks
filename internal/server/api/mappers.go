@@ -10,6 +10,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/automation"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/planning"
@@ -75,6 +76,9 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.TokenizeEnabled = !d.TokenizeDisabled
 	out.YieldPolicy = dto.YieldPolicyOf(d.Policy())
 	out.SleepHeld = d.SleepHeld
+	out.WakeWaitLimitSec = int(automation.DefaultWakeWaitLimit / time.Second)
+	out.YieldPolicyEligible = dto.EligibilityOf(planning.YieldPolicyRefusal(d))
+	out.ScheduleCapabilities = scheduleCapabilitiesDTO(planning.ScheduleCapabilitiesOf(d))
 	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
 	out.PlacementMode = unitsPlacementMode(d)
 	if strings.TrimSpace(d.QuickParams) != "" {

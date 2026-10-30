@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./dom.ts";
 import { trackMessageChannels } from "./trackedMessageChannels.ts";
+import * as shapes from "./deploymentCapabilities.ts";
 
 // The harness of the yield policy editor's tests (deploymentYieldPolicy and
 // deploymentYieldPolicySave): the real English locale, a scheduling policy
@@ -39,6 +40,7 @@ export function deployment(overrides: Record<string, unknown> = {}): Deployment 
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
     node_replacement: { after_sec: 600 },
+    ...shapes.sleepableSingleNode,
     ...overrides,
   } as unknown as Deployment;
 }

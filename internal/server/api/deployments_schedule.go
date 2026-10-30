@@ -279,3 +279,13 @@ func (a *apiHandlers) endWakeWaiting(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, dto.List[string]{Items: waiting, Total: len(waiting)})
 }
+
+// scheduleCapabilitiesDTO is what a deployment's schedule may order, as the
+// deployment DTO carries it for the schedule editor.
+func scheduleCapabilitiesDTO(c planning.ScheduleCapabilities) dto.ScheduleCapabilities {
+	out := dto.ScheduleCapabilities{Sleep: dto.EligibilityOf(c.Sleep), Wake: dto.EligibilityOf(c.Wake), Replicas: []dto.ReplicaCapability{}}
+	for _, r := range c.Replicas {
+		out.Replicas = append(out.Replicas, dto.ReplicaCapability{Role: r.Role, Minimum: r.Lowest, Maximum: r.Highest, OK: r.Refusal == "", Reason: r.Refusal})
+	}
+	return out
+}

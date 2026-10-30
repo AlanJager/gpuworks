@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 import { trackMessageChannels } from "./helpers/trackedMessageChannels.ts";
+import * as shapes from "./helpers/deploymentCapabilities.ts";
 
 // A deployment's scheduling policy card: one summary line over the
 // policies (rescheduling on node loss, schedule, yield policy), and
@@ -36,6 +37,7 @@ function deployment(overrides: Record<string, unknown> = {}): Deployment {
     health: { status: "off", threshold_sec: 60, last: null, recent_mean_ms: null, recent_ok: 0, recent: [] },
     template_deviated: false, tokenize_enabled: false, created_at: "2026-10-01T00:00:00Z",
     node_replacement: { after_sec: 600 },
+    ...shapes.sleepableSingleNode,
     ...overrides,
   } as unknown as Deployment;
 }
@@ -145,7 +147,7 @@ test("the yield policy is summed up by its name and the parameters that matter; 
   mount(deployment({ yield_policy: { policy: "anytime", idle_sec: 30, sleep_level: "auto", unfinished: "abort", hold_max_sec: 3600 } }));
   await screen.findByText(line(failover("10 min"), schedule(p.none), level("Yield anytime · idle 30 s")));
   cleanup();
-  mount(deployment({ sleepable: false }));
+  mount(deployment({ sleepable: false, ...shapes.notSleepableSingleNode }));
   await screen.findByText(line(failover("10 min"), schedule(p.none)));
   assert.equal(screen.queryByText(new RegExp(y.summaryLabel)), null);
 });
@@ -194,7 +196,7 @@ test("the edit action opens the dialog from the keyboard, with a tab for each po
   await waitFor(() => assert.equal(screen.queryByRole("dialog"), null));
   cleanup();
 
-  const user2 = mount(deployment({ sleepable: false }));
+  const user2 = mount(deployment({ sleepable: false, ...shapes.notSleepableSingleNode }));
   await user2.click(await screen.findByRole("button", { name: p.edit }));
   const plain = within(await screen.findByRole("dialog"));
   assert.deepEqual(plain.getAllByRole("tab").map((tab) => tab.textContent), [n.title, a.schedule.title]);

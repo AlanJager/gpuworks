@@ -175,6 +175,10 @@ func (a *apiHandlers) evaluate(w http.ResponseWriter, r *http.Request) {
 		writeEvaluateFieldErrors(w, &resp, errs)
 		return
 	}
+	// Whether the form may offer a yield policy other than never: the create's
+	// own check, answered even when a field error stops the preview below.
+	yieldEligible := dto.EligibilityOf(planning.DraftYieldPolicyRefusal(req.Sleepable, eng.Name(), req.NNodes, placementPD(req) != nil))
+	resp.YieldPolicyEligible = &yieldEligible
 	if !errs.empty() {
 		// A draft with an early field error is what the form must fix before a
 		// preview means anything; continuing would only re-report the same
