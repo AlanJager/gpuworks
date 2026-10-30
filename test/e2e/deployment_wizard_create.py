@@ -337,9 +337,11 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
     expect(drawer.get_by_text(fixture["served_name"], exact=True)).to_be_visible()
     expect(drawer.get_by_text(IMAGE, exact=True).first).to_be_visible()
     delete_title = deployments["delete"]["title"].replace("{{name}}", fixture["name"])
+    delete_trigger = drawer.get_by_role(
+        "button", name=re.compile(re.escape(deployments["delete"]["button"]) + "$"))
     def open_delete():
         # The drawer button's icon contributes an accessible name prefix.
-        drawer.get_by_role("button", name=re.compile(re.escape(deployments["delete"]["button"]) + "$")).click()
+        delete_trigger.click()
         dialog = page.get_by_role("dialog", name=delete_title, exact=True)
         expect(dialog).to_be_visible()
         return dialog
@@ -352,7 +354,7 @@ def test_deployment_wizard_create(page, context, server, artifacts, report,
         confirm, drawer, open_delete,
         [("cancel", cancel_button(deployments["delete"]["cancel"])),
          ("escape", escape), ("close", close_button), ("mask", mask)],
-        lambda: len(delete_requests))
+        lambda: len(delete_requests), focus_trigger=delete_trigger)
     with page.expect_response(lambda r: urlsplit(r.url).path == DEPLOYMENTS + f"/{dep_id}"
                               and r.request.method == "DELETE") as deleted:
         button(confirm, deployments["delete"]["button"]).click()

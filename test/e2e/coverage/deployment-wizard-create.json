@@ -618,8 +618,8 @@
     },
     {
       "item": "12.4",
-      "status": "MISSING",
-      "assertion": "Delete dialog cancel, Escape, close and mask send no DELETE. Focus does not return to the trigger in this case. The weight dialog is latched for the template and was not dismissed."
+      "status": "COVERED",
+      "assertion": "The delete confirmation is dismissed four ways - cancel, Escape, the close button and the mask - and after each one the dialog is hidden, the drawer behind it is still visible, focus is back on the drawer's Delete button that opened it, and the DELETE count is unchanged, so a dismissal that sent the request would fail. This is the same helper and the same mutation-count guard the acquisition cases use for 12.4. Proven rather than assumed: pointing the focus assertion at another element fails with 'expected to be focused, actual inactive'."
     },
     {
       "item": "12.5",
