@@ -9,15 +9,17 @@ This optional package adds Qwen3-0.6B and Qwen3.8-27B text inference profiles to
 3. In **Inference templates → Import**, upload `kunlun-p800-qwen.tgz`. Both specs are user profiles named `bf16-vllm-kunlun-p800`; existing profiles are retained.
 4. Select the profile under Qwen3-0.6B or Qwen3.8-27B. Use Linux amd64, Docker, whole P800 PCIe/KL3 cards. Start with one card and the package defaults. Qwen3.8 is text-only here.
 
-The template uses the reviewed private-registry K26 vLLM 0.25.1 build, with the Qwen3.8 compatibility changes, recorded as manifest `sha256:47b3f487c3bfa2151116f30c518406aa107ba1c519a3a4624d815a2d571f723c`. The actual interpreter is `/opt/vllm025-venv/bin/python`. Registry publication to the upstream runner matrix is a separate step; this package does not invent public mirror references.
+The template uses the reviewed private-registry K26 vLLM 0.25.1 build, with Qwen3.8 compatibility and PP/DP worker-rank/device-mapping fixes, recorded as manifest `sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb`. The actual interpreter is `/opt/vllm025-venv/bin/python`. Registry publication to the upstream runner matrix is a separate step; this package does not invent public mirror references.
 
 Weights remain official, original BF16 files (no AWQ/GPTQ/INT4 replacement). The template requests FP16 computation: `float16`. This is a runtime cast, not quantized replacement weights. Revisions are pinned in each model file. Weight sizes and KV estimates are carried from the corresponding built-in original-weight profiles; they are not new measurements of this image.
 
 GPUWorks single-node device injection verifies and exposes only the selected XPUs and control device. It does not require XDR, RDMA devices, IPC_LOCK or relaxed memlock. The image and local multi-card communication combination still require validation; this does not promise arbitrary image compatibility.
 
-## Multi-node TP
+## Parallel deployment
 
-- TP means Tensor Parallelism. Set **PP=1** explicitly. TP is the total tensor degree across all nodes, while GPU count and CUDA-visible indexes in this package are per node. Two nodes × four cards means TP8, not TP4.
+- TP means Tensor Parallelism; PP means Pipeline Parallelism; engine DP means Data Parallelism. For TP-only deployment, set PP=1 and DP=1. TP×PP×DP determines the total GPU requirement, while GPU count and CUDA-visible indexes in this package are per node. Two nodes × four cards with PP=DP=1 means TP8.
+- Use the locked PP/DP image, not the earlier RDMA-only image: that image lacks the rank-sharded device mapping needed by DP. Engine DP also requires the server allocation fix for all replicas. Platform replicas are a separate deployment mechanism.
+- Cross-card communication must work on the host before TP/PP can succeed; an image update cannot correct a host XRE/OAM identity conflict. The following network requirements apply only across nodes.
 - Select a verified compute network. The launcher copies its system `GLOO_SOCKET_IFNAME` to BKCL; do not put an arbitrary management NIC in the template.
 - Set the deployment environment `BKCL_RDMA_NICS` to the verified RDMA **netdev** list for the selected cards on each node, for example `bond0,bond0` for two local cards when that bond is the actual RoCE netdev. This is not an HCA name such as `mlx5_0:1`. The package intentionally cannot guess a site's bridge/bond mapping; it refuses a multi-node launch without this setting. Nodes with different mappings need appropriate per-node deployment configuration before use.
 - Hosts need compatible native/XDR drivers and functional RDMA. The resolved host-RDMA network provides verbs devices, unlimited memlock and IPC_LOCK; the prober adds selected XPU devices and XDR only. Multi-node launches without these resolved resources, including finite memlock overrides, are refused. The template does not pass extra GPU devices, hardcode physical indexes or load kernel modules.

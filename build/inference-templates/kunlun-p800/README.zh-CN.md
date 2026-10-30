@@ -9,15 +9,17 @@
 3. Web 的“推理模板 → 导入模板”上传 tgz；在模型中选择上述 P800 档位。已有档位不会被删除。
 4. 使用 Linux amd64、Docker 和 P800 PCIe/KL3 整卡，先保留包内默认参数做单卡验证。Qwen3.8 的此档位只开放文本。
 
-镜像 tag 对应已记录的 K26 vLLM 0.25.1 的 manifest `sha256:47b3f487c3bfa2151116f30c518406aa107ba1c519a3a4624d815a2d571f723c`，含 Qwen3.8 适配；解释器固定 `/opt/vllm025-venv/bin/python`。正式公开镜像发布后再接入 upstream 内置目录，当前不声明不存在的公共镜像源。
+镜像 tag 对应已记录的 K26 vLLM 0.25.1 的 manifest `sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb`，含 Qwen3.8 适配与 PP/DP worker rank、设备映射修正；解释器固定 `/opt/vllm025-venv/bin/python`。正式公开镜像发布后再接入 upstream 内置目录，当前不声明不存在的公共镜像源。
 
 权重为官方原版 BF16，revision 固定在 model.yaml；计算 dtype 为 `float16`。这是运行时类型转换，不是 AWQ/GPTQ/INT4 权重替换。权重大小与 KV 估算沿用 upstream 对应原版档位，不冒充新镜像的实测数据。
 
 GPUWorks 单机设备接入只核对并注入所选 XPU 和控制设备，不要求 XDR、RDMA 设备、IPC_LOCK 或 memlock 放宽。单机多卡的镜像与卡间通信组合仍须单独验证；这不等于承诺任意镜像都能运行。
 
-## 多机配置
+## 并行部署
 
-TP 全称 Tensor Parallelism（张量并行）。**PP 明确设为 1**；两节点各四卡设 TP8。包内 GPU_COUNT 和 CUDA 逻辑编号是每节点卡数，不把它覆盖为全局 TP。
+TP 全称 Tensor Parallelism（张量并行），PP 为 Pipeline Parallelism（流水线并行），引擎 DP 为 Data Parallelism（数据并行）。纯 TP 部署将 PP、DP 设为 1；TP×PP×DP 决定总卡数，包内 GPU_COUNT 和 CUDA 逻辑编号仍为每节点卡数。两节点各四卡、PP=DP=1 时设 TP8。
+
+使用锁定的 PP/DP 修复版镜像；此前仅补 RDMA 库的镜像缺少 DP 分 rank 后的设备映射修正。引擎 DP 还要求服务端为所有副本分配 GPU 的修复；它与平台副本是不同机制。宿主卡间通信必须正常，更新镜像不能修复宿主 XRE/OAM 身份冲突。以下网络要求仅适用于跨节点部署。
 
 选择已验证的计算网络；入口将系统 `GLOO_SOCKET_IFNAME` 传给 BKCL。在部署环境变量中设置 `BKCL_RDMA_NICS`，填写对应本节点所选卡的 RDMA **netdev** 列表。两卡共用实际 RoCE bond0 时例为 `bond0,bond0`，不能写成 HCA 名 `mlx5_0:1`。模板不猜测现场 bridge/bond 关系；未填写时多机启动明确失败。各节点映射不同的情况须先准备对应的逐节点配置。
 

@@ -19,7 +19,7 @@ specs:
   display_profile: general
   scenario: balanced
   engine: vllm
-  image: registry.zstack.ai/gpuworks/gpuworks-runner@sha256:47b3f487c3bfa2151116f30c518406aa107ba1c519a3a4624d815a2d571f723c
+  image: registry.zstack.ai/gpuworks/gpuworks-runner@sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb
   weights:
     quantization: bf16
     sources:

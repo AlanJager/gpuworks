@@ -83,11 +83,9 @@ func TestKunlunTensorParallelLaunch(t *testing.T) {
 	}
 }
 
-func TestKunlunRejectsUnsupportedParallelModes(t *testing.T) {
+func TestKunlunRejectsPrefillDecodeDisaggregation(t *testing.T) {
 	engine, _ := SelectEngine("sglang")
 	for _, change := range []func(*Params){
-		func(p *Params) { p.PipelineParallel = 2 },
-		func(p *Params) { p.Quick.DP = 2 },
 		func(p *Params) { p.PD = &PDLaunch{} },
 	} {
 		p := Params{Vendor: "kunlunxin", AssignedGPUs: 2, TensorParallel: 2, ModelPath: "/model"}

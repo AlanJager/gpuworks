@@ -109,8 +109,8 @@ func TestKunlunQwenPackageImportsAndResolvesLaunches(t *testing.T) {
 			if source := spec.Weights.Sources[0]; source.RepoID != wantRepo || source.Revision != wantRevision {
 				t.Fatal(source)
 			}
-			if spec.Image != "registry.zstack.ai/gpuworks/gpuworks-runner@sha256:47b3f487c3bfa2151116f30c518406aa107ba1c519a3a4624d815a2d571f723c" {
-				t.Fatal("image must be the reviewed private-registry manifest digest")
+			if spec.Image != "registry.zstack.ai/gpuworks/gpuworks-runner@sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb" {
+				t.Fatalf("image %q must be the reviewed PP/DP r4 private-registry manifest digest", spec.Image)
 			}
 			// Template-owned digest refs do not need a mutable image-catalog row.
 			target := deploy.ImageTarget{Engine: spec.Engine, Vendor: "kunlunxin", PlatformArch: "amd64", Override: spec.Image,

@@ -2,7 +2,7 @@
 
 ## 当前能力
 
-P800 PCIe / KL3 使用 `kunlunxin` 厂商和 `xre` 框架，已验证的运行时为 Linux amd64、Docker；需求列表或适配器条目不代表 nerdctl 已受支持。该组合支持整卡单卡、单机 TP（Tensor Parallelism，张量并行）及有条件的跨节点 TP。PP、引擎 DP、PD、分区和 sleep 尚未开放。多个独立单机副本不等于跨机 TP。
+P800 PCIe / KL3 使用 `kunlunxin` 厂商和 `xre` 框架，已验证的运行时为 Linux amd64、Docker；需求列表或适配器条目不代表 nerdctl 已受支持。该组合支持整卡 TP（Tensor Parallelism，张量并行）、PP（Pipeline Parallelism，流水线并行）和引擎 DP（Data Parallelism，数据并行）。镜像与模型须支持所选组合；跨节点部署另须满足下文通信前提。PD、分区和 sleep 尚未开放。多个平台副本、引擎 DP 和跨机 TP 是不同拓扑。
 
 复用宿主已有 Docker daemon。独立 socket/data-root 不隔离宿主网络；不要在同一网络命名空间另起使用 `--bridge=none` 的 dockerd，这可能删除已有 `docker0`。镜像或推理测试不需要重启现有 Docker，离线探针使用容器级 `--network none`。
 
@@ -21,6 +21,14 @@ Qwen3-0.6B 和 Qwen3.8-27B 可使用仓库内的[可导入模板包](../../build
 3. 导入 spec 时，`weights.sources[].repo_id` 必须与模型 `source_id` 对应，`gpus.vendor` 为 `kunlunxin`，卡名谓词匹配 `P800 PCIe`。缺少 spec 或身份不对应会导致 Web 无兼容档位。
 4. spec 使用镜像中已验证的原生 entrypoint，明确 dtype、上下文和显存参数。依赖设备枚举的镜像可使用 `env -u XPU_VISIBLE_DEVICES`；不能把宿主编号当作容器逻辑编号。
 5. 单卡 spec 可明确固定 TP=1；跨机 spec 的 placement resolver 应核对每节点卡数，并把全局 TP 留给部署。两节点各两卡的请求使用 TP=4、PP=1、nnodes=2，而不是在 resolver 返回 TP=2。
+
+## 单机 PP 与 DP
+
+PP 按层分割一份模型，各 stage 传递中间激活；DP 启动多份模型副本并分发请求，每个副本仍按 TP × PP 切分权重。vLLM 的总卡数为 TP × PP × DP，增加 DP 不会减少每个副本的权重显存。平台副本数控制独立部署单元，不代替引擎 DP。
+
+在 Web 中先选两张空闲整卡。PP2 使用 TP=1、PP=2、DP=1；DP2 使用 TP=1、PP=1、DP=2（高级参数中的“数据并行数”）。核对评估结果确实分配两张卡、预览命令包含相应参数，再创建。它们均不要求 XDR；切换为多机仍执行 XDR 和计算网络检查，不因使用 DP 而绕过。
+
+DP 镜像必须正确处理每个 rank 已分片的设备映射：当 `assigned_physical_gpu_ids` 已指定时，不能再次对本地卡号加 DP 偏移。否则第二个 rank 会在单卡映射中查找编号 1 而失败。使用包含该修复的精确镜像；仅放开平台能力门控不能修复镜像。单机入口不应继承构建机的网卡名称，模板会清除旧的 BKCL 默认接口，由通信库选择可用接口。
 
 ## 双机通信前提
 

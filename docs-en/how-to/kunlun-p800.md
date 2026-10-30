@@ -2,7 +2,7 @@
 
 ## Current Capabilities
 
-P800 PCIe / KL3 uses vendor `kunlunxin` and framework `xre`. On Linux amd64, only Docker runtime has been validated; a runtime requirement or adapter listing does not establish nerdctl support. This combination supports whole-card single-GPU inference, single-node TP (Tensor Parallelism), and conditional cross-node TP. PP, engine DP, PD, partitions and sleep are unavailable. Independent single-node replicas are not cross-node TP.
+P800 PCIe / KL3 uses vendor `kunlunxin` and framework `xre`. On Linux amd64, only Docker runtime has been validated; a runtime requirement or adapter listing does not establish nerdctl support. This combination supports whole-card TP (Tensor Parallelism), PP (Pipeline Parallelism) and engine DP (Data Parallelism). The image and model must support the chosen combination; cross-node deployments also require the communication prerequisites below. PD, partitions and sleep remain unavailable. Platform replicas, engine DP and cross-node TP are distinct topologies.
 
 Reuse the host’s existing Docker daemon. Independent sockets/data roots do not isolate host networking. Do not launch another dockerd with `--bridge=none` in the same network namespace: it can remove the existing `docker0`. Image and inference testing does not require restarting Docker; offline probes use container-level `--network none`.
 
@@ -21,6 +21,14 @@ Qwen3-0.6B and Qwen3.8-27B are available as an [importable template package](../
 3. A spec’s `weights.sources[].repo_id` must match the model’s `source_id`; set `gpus.vendor` to `kunlunxin` and match the `P800 PCIe` card name. Missing specs or mismatched identities leave the Web form without a compatible profile.
 4. Use the image’s verified native entrypoint and explicit dtype, context and memory settings. Images that depend on device enumeration may use `env -u XPU_VISIBLE_DEVICES`; do not mistake host indexes for container-logical indexes.
 5. A single-card spec may fix TP=1. A cross-node placement resolver checks local card count but leaves global TP to the deployment: two nodes with two cards each use TP=4, PP=1, nnodes=2, not TP=2 from the resolver.
+
+## Single-Node PP and DP
+
+PP partitions one model by layer, passing intermediate activations between stages. DP starts multiple model replicas and distributes requests; each replica still shards its weights by TP × PP. vLLM requires TP × PP × DP GPUs in total. Increasing DP does not reduce per-replica weight memory. Platform replica count controls independent deployment units, not engine DP.
+
+In Web, first select two free whole GPUs. PP2 uses TP=1, PP=2 and DP=1. DP2 uses TP=1, PP=1 and DP=2 (the data-parallel size in advanced parameters). Confirm evaluation allocates two GPUs and the command preview carries those degrees before creating. Neither single-node mode requires XDR. Multi-node mode retains XDR and compute-network checks even with DP.
+
+The DP image must handle rank-sharded device mappings correctly: when `assigned_physical_gpu_ids` is set, it must not apply the DP offset to the local index again. Otherwise the second rank looks up index 1 in a one-device mapping and fails. Use an exact image containing this fix; enabling the platform capability does not repair the image. Single-node entrypoints must not inherit the build host's interface name. The template clears the old BKCL interface default so the communication library can discover an available interface.
 
 ## Two-Node Communication Prerequisites
 

@@ -3,9 +3,14 @@ package accelerator
 import "testing"
 
 func TestKunlunCapabilitiesAndHostRequirements(t *testing.T) {
-	for _, feature := range []Feature{FeatureEngineSleep, FeaturePipelineParallel, FeatureDataParallel, FeaturePD} {
+	for _, feature := range []Feature{FeatureEngineSleep, FeaturePD} {
 		if Supports("Kunlunxin", feature) || !Supports(VendorNVIDIA, feature) {
 			t.Fatal(feature)
+		}
+	}
+	for _, feature := range []Feature{FeaturePipelineParallel, FeatureDataParallel} {
+		if !Supports(VendorKunlunxin, feature) || !Supports(VendorNVIDIA, feature) || !Supports(VendorAscend, feature) {
+			t.Fatalf("whole-card parallel mode unexpectedly blocked: %s", feature)
 		}
 	}
 	if !Supports(VendorKunlunxin, FeatureMultiNode) || !RequiresDeviceSelection(VendorKunlunxin) {

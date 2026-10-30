@@ -26,22 +26,6 @@ func TestKunlunLaunchRestrictionsAreRefusals(t *testing.T) {
 		{"arch", "runtime_unsupported", func(r *LaunchRequest) { r.Node.Arch = "arm64" }},
 		{"OS", "runtime_unsupported", func(r *LaunchRequest) { r.Node.OS = "windows" }},
 		{"sleep", "sleep_unsupported_on_node", func(r *LaunchRequest) { r.Sleepable = true }},
-		{"PP", "accelerator_feature_unsupported", func(r *LaunchRequest) {
-			// Ask for a valid two-card topology so the preview tests the
-			// target capability refusal, not inconsistent rank allocation.
-			r.Node.GPUs = append(r.Node.GPUs, store.GPU{Index: 1, UUID: "k1", Name: "P800 PCIe", Vendor: "kunlunxin", ArchID: "kl3", MemoryTotal: 96 << 30})
-			r.Placement.GPUIndexes = []int{0, 1}
-			r.Placement.TP = 1
-			r.Placement.PP = 2
-		}},
-		{"DP", "accelerator_feature_unsupported", func(r *LaunchRequest) {
-			// Ask for a valid two-card topology so the preview tests the
-			// target capability refusal, not inconsistent rank allocation.
-			r.Node.GPUs = append(r.Node.GPUs, store.GPU{Index: 1, UUID: "k1", Name: "P800 PCIe", Vendor: "kunlunxin", ArchID: "kl3", MemoryTotal: 96 << 30})
-			r.Placement.GPUIndexes = []int{0, 1}
-			r.Placement.TP = 1
-			r.Quick.DP = 2
-		}},
 		{"PD", "pd_unsupported_on_node", func(r *LaunchRequest) { r.PD = &deploy.PDLaunch{} }},
 		{"partition", "partition_unavailable", func(r *LaunchRequest) { r.VRAMLimitBytes = 1 << 30 }},
 		{"sleep flag", "sleep_unsupported_on_node", func(r *LaunchRequest) { r.ExtraArgs = []string{"--enable-sleep-mode"} }},
@@ -196,6 +180,25 @@ func TestMixedNodeKeepsTemplateContractBeforeCapabilityFiltering(t *testing.T) {
 					t.Fatalf("template selection: %+v %v", plan.Output.Result, err)
 				}
 			}
+		}
+	}
+}
+
+// Supported whole-card modes must reach placement in both preview and launch.
+func TestKunlunPipelineParallelReachesPlacement(t *testing.T) {
+	st, err := store.Open("file:kunlun-parallel-modes?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	for _, preview := range []bool{false, true} {
+		r := kunlunReviewRequest(t)
+		r.Preview = preview
+		r.Node.GPUs = append(r.Node.GPUs, store.GPU{Index: 1, UUID: "k1", Name: "P800 PCIe", Vendor: "kunlunxin", ArchID: "kl3", MemoryTotal: 96 << 30})
+		r.Placement = Placement{GPUIndexes: []int{0, 1}, TP: 1, PP: 2}
+		plan, reason, err := PlanTemplateLaunch(t.Context(), st, storeNetworks(st), r.Node, r, deploy.CatalogSelection{})
+		if err != nil || reason != nil || !plan.Output.Result.OK || !slices.Equal(plan.Output.Result.Plan.GPUIndexes, []int{0, 1}) {
+			t.Fatalf("preview=%v: plan=%+v reason=%+v err=%v", preview, plan.Output.Result, reason, err)
 		}
 	}
 }
