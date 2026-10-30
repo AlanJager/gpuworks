@@ -385,3 +385,62 @@ func TestNodeFacetsWireJSON(t *testing.T) {
 		t.Fatalf("wire JSON\n got: %s\nwant: %s", got, want)
 	}
 }
+
+// A sleeping deployment serves nothing, so the fleet summary must not count it
+// as running — the same way it does not count a stopped one. That also means
+// Total does not equal Running+Warming, which the DTO documents; this test is
+// what pins the gap to sleep rather than to a counting bug.
+func TestDashboardSummaryDoesNotCountSleepingDeploymentsAsRunning(t *testing.T) {
+	n := fleetFixture(t)
+	model, err := n.store.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/m", Revision: "main", Name: "org/m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeA, err := n.store.NodeByUUID("node-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func(name string) uint {
+		dep, err := n.store.CreateDeployment(&store.Deployment{Name: name, ModelID: model.ID, NodeID: nodeA.ID, Replicas: 1, Sleepable: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := n.store.CreateInstance(&store.Instance{UUID: "inst-" + name, DeploymentID: dep.ID, NodeID: nodeA.ID,
+			State: proto.InstRunning, APIPort: 8000,
+			DesiredStateJSON: `{"uuid":"inst-` + name + `","desired_state":"running","sleepable":true}`}); err != nil {
+			t.Fatal(err)
+		}
+		return dep.ID
+	}
+	awake := mk("awake")
+	asleep := mk("asleep")
+	_ = awake
+	if err := n.store.OrderDeploymentSleep(asleep, 1, "wait"); err != nil {
+		t.Fatal(err)
+	}
+	if err := n.store.UpdateInstanceStatus(proto.InstanceStatus{UUID: "inst-asleep", State: proto.InstRunning,
+		SleepLevel: 1, Phase: proto.PhaseSleep}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got dto.DashboardSummary
+	if err := json.Unmarshal(n.memberGet("/api/v1/dashboard/summary"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Deployments.Running != 1 {
+		t.Errorf("running = %d, want 1: the asleep deployment serves nothing and must not count as running",
+			got.Deployments.Running)
+	}
+	if got.Deployments.Warming != 0 {
+		t.Errorf("warming = %d, want 0: a fully asleep deployment is not warming", got.Deployments.Warming)
+	}
+	if got.Deployments.Total != 2 {
+		t.Errorf("total = %d, want 2: it is still a deployment", got.Deployments.Total)
+	}
+	if got.Deployments.Total != got.Deployments.Running+got.Deployments.Warming {
+		// The gap is the point of this test, documented on the DTO.
+		if got.Deployments.Total-got.Deployments.Running-got.Deployments.Warming != 1 {
+			t.Errorf("deployments = %+v, want exactly one deployment outside running+warming (the sleeping one)", got.Deployments)
+		}
+	}
+}

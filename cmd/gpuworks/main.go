@@ -32,8 +32,8 @@ import (
 	"gpuworks.ai/gpuworks/internal/selflog"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/experiencelaunch"
 	"gpuworks.ai/gpuworks/internal/server/expose"
-	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/selfinstall"
 	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -106,6 +106,11 @@ func run(log *slog.Logger, args []string, stderr io.Writer) int {
 	case "expose":
 		if err := exposeCommand(cmdContext(), rest); err != nil && !errors.Is(err, flag.ErrHelp) {
 			log.Error("expose failed", "err", err)
+			return 1
+		}
+	case experiencelaunch.Command:
+		if err := experienceCommand(rest); err != nil && !errors.Is(err, flag.ErrHelp) {
+			log.Error("experience environment exited", "err", err)
 			return 1
 		}
 	case "help", "-h", "--help":
@@ -272,7 +277,7 @@ func migrate(log *slog.Logger, args []string) error {
 		return err
 	}
 	if applyEmbedded {
-		if err := seed.Seed(st); err != nil {
+		if err := app.SyncInferenceCatalog(st); err != nil {
 			return err
 		}
 		if err := app.SyncImageCatalog(st, log); err != nil {

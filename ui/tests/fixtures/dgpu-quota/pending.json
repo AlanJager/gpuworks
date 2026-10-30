@@ -17,6 +17,13 @@
     "node_names": [
       "quota-node"
     ],
+    "runtime_nodes": [
+      {
+        "node_uuid": "quota-node",
+        "node_name": "quota-node",
+        "instances": 1
+      }
+    ],
     "runtime_node_names": [
       "quota-node"
     ],

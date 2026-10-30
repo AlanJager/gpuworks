@@ -35,6 +35,14 @@ const (
 	pidFile     = "gpuworks.pid"
 	binaryName  = "gpuworks"
 
+	// A snapshot's name ends with <UTC timestamp>.tar.gz, and that timestamp is
+	// the only thing in the name that says how old it is (the release id in
+	// front of it says which version was replaced, nothing about age). Writer
+	// and pruner share the format here so a name that is written can always be
+	// read back.
+	backupStampLayout = "20060102T150405Z"
+	backupSuffix      = ".tar.gz"
+
 	binaryMode = 0o755
 	// The install tree is shared workspace between the service account and the
 	// operator: group-writable directories with the setgid bit, so files created
@@ -171,7 +179,7 @@ func (l Layout) BackupPath(releaseID string, at time.Time) string {
 	if name == "" {
 		name = "unknown"
 	}
-	return filepath.Join(l.BackupsDir, name+"-"+at.UTC().Format("20060102T150405Z")+".tar.gz")
+	return filepath.Join(l.BackupsDir, name+"-"+at.UTC().Format(backupStampLayout)+backupSuffix)
 }
 
 // sanitizeReleaseID keeps a release id usable as a file name. Release ids come

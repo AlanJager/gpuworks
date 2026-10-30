@@ -32,6 +32,8 @@ import { nodeDisplayName } from "../nodeDisplay";
 import NodeLabelsModal from "../components/NodeLabelsModal";
 import { NodeSchedulingModal } from "../components/NodeSchedulingModal";
 import { labelPair } from "../nodeLabels";
+import { useIsAdmin } from "../components/useIsAdmin";
+import AgentUpgradeManager from "../components/agentUpgrades/AgentUpgradeManager";
 import {
   useAgentUpgrades,
   type UpgradeEvent,
@@ -41,6 +43,9 @@ const NODE_PAGE_SIZE = 20;
 
 export default function NodesPage() {
   const { t } = useTranslation("nodes");
+  const isAdmin = useIsAdmin();
+  const [selectedNodeUUIDs, setSelectedNodeUUIDs] = useState<string[]>([]);
+  const [upgradeRunID, setUpgradeRunID] = useState<number>();
   const location = useLocation();
   const incoming = location.state as {
     nodeUUID?: string;
@@ -78,6 +83,13 @@ export default function NodesPage() {
   const onUpgradeEvent = (event: UpgradeEvent) => {
     const name = event.name;
     switch (event.kind) {
+      case "serverTracked":
+        setUpgradeRunID(event.runID);
+        break;
+      case "serverSettled":
+        if (event.node) setDetail((current) => current?.uuid === event.uuid ? event.node! : current);
+        refresh();
+        break;
       case "dispatched":
         message.success(t("upgrade.dispatched"));
         break;
@@ -143,6 +155,7 @@ export default function NodesPage() {
       await api.deleteNode(node.uuid, forceDelete);
       message.success(t(forceDelete ? "message.forceDeleted" : "message.deleted"));
       setConfirmingDelete(null);
+      setSelectedNodeUUIDs((current) => current.filter((uuid) => uuid !== node.uuid));
       if (detail?.uuid === node.uuid) setDetail(null);
       refetch();
     } catch (e) {
@@ -208,6 +221,18 @@ export default function NodesPage() {
           onRefresh={refetch}
           updatedAt={updatedAt}
           pagination={pagination}
+          rowSelection={isAdmin ? {
+            selectedRowKeys: selectedNodeUUIDs,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => setSelectedNodeUUIDs(keys.map(String)),
+          } : undefined}
+          toolbarExtra={<>
+            {isAdmin && selectedNodeUUIDs.length > 0 && <Space>
+              <Typography.Text>{t("batchUpgrade.selectedCount", { count: selectedNodeUUIDs.length })}</Typography.Text>
+              <Button type="link" onClick={() => setSelectedNodeUUIDs([])}>{t("batchUpgrade.clearSelection")}</Button>
+            </Space>}
+            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} onStarted={() => setSelectedNodeUUIDs([])} />
+          </>}
           sort={sort}
           onSortChange={setSort}
           onFiltersChange={(filters) => setStates(filters.state ?? [])}

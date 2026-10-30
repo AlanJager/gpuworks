@@ -1,5 +1,5 @@
 # GLM-5.3
 
-[官方 vLLM 配方](https://recipes.vllm.ai/zai-org/GLM-5.3)。默认仓库是 FP8（约 755.6 GB），不是 GLM-5.2 的 BF16。单节点 TP8；NVIDIA 限 H200/H20-3e（141 GB）/B200/B300，96 GB 的 H20 放不下 FP8 权重，AMD 限 MI300X/MI325X/MI350X/MI355X。已配置推理与工具解析器、原生 MTP；上下文上限分别为 256K / 512K，仍受实际 KV 空间限制。
+[官方 vLLM 配方](https://recipes.vllm.ai/zai-org/GLM-5.3)。默认仓库是 FP8（约 755.6 GB），不是 GLM-5.2 的 BF16。单节点 TP8；NVIDIA 限 H200/H20（包括 H20-3e）/B200/B300，H20 在当前 TP8 默认参数下需要 141 GB 版本，96 GB 版本会被显存准入拒绝；容量以节点上报数据为准，AMD 限 MI300X/MI325X/MI350X/MI355X。已配置推理与工具解析器、原生 MTP；上下文上限分别为 256K / 512K，仍受实际 KV 空间限制。
 
 新增模板通过离线检查不代表真机验收。GLM-5.3 非 Flash 尚无可据以发布档位的昇腾真机结果，本模板未提供昇腾档；海光、PPU、Apple 也未声明支持。

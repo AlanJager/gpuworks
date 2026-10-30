@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"math"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -115,9 +114,25 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	if viewErr == nil {
 		facts = deploymentFactsOf(rows, view, insts)
 		out.PD = deploymentPDDTO(rows, d, insts, view, facts)
+		// ready_replicas answers the same question for a PD deployment as for
+		// an ordinary one, and the drawer pairs it with asleep_replicas, so it
+		// is filled from the same walk either way. Leaving it off a PD response
+		// was what made the drawer show a numerator with no denominator.
+		ready := facts.Ready
+		out.ReadyReplicas = &ready
+		if out.PD != nil {
+			// The stored Replicas only configures an ordinary deployment (PD
+			// creation forces it to 1), while asleep_replicas counts PD units
+			// across roles. Rewriting it to the role total here is the same
+			// rewrite the list row makes, so the drawer's denominator and the
+			// table's describe the same replicas instead of printing "2/1".
+			desired := 0
+			for _, role := range out.PD.Roles {
+				desired += role.Desired
+			}
+			out.Replicas = desired
+		}
 		if out.PD == nil {
-			ready := facts.Ready
-			out.ReadyReplicas = &ready
 			out.RetryExhausted = ordinaryRetryExhausted(rows, view)
 			out.PlacementStatus = placementStatus(rows, d, view)
 			// Listed only while the stored node list reads: an unreadable
@@ -165,21 +180,7 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	if primaryNode != nil {
 		out.NodeName = nodeDisplayName(primaryNode)
 	}
-	seenRuntimeNodes := map[string]struct{}{}
-	for _, instance := range insts {
-		switch instance.State {
-		case proto.InstPulling, proto.InstStarting, proto.InstOptimizing, proto.InstRunning:
-		default:
-			continue
-		}
-		if node := rows.node(instance.NodeID); node != nil {
-			if _, seen := seenRuntimeNodes[node.UUID]; !seen {
-				seenRuntimeNodes[node.UUID] = struct{}{}
-				out.RuntimeNodeNames = append(out.RuntimeNodeNames, nodeDisplayName(node))
-			}
-		}
-	}
-	sort.Strings(out.RuntimeNodeNames)
+	out.RuntimeNodes, out.RuntimeNodeNames = deploymentRuntimeNodes(rows, insts)
 	out.RuntimeState = deploymentRuntimeState(rows, d, insts, recorded)
 	out.SleepLevel = facts.Level
 	out.AsleepReplicas = facts.AsleepReplicas
@@ -195,6 +196,73 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 		}
 	}
 	return out
+}
+
+// instanceRecordsPresence reports whether an instance row still means the
+// deployment is on that node. Every state but stopped does: a stopped row
+// records that its container is gone and only waits to be deleted, so a
+// replica that moved away must not keep its old node on the list.
+//
+// Failed counts, and it is the case that matters most: a replica that failed
+// on a node ran there, holds that node's GPUs until the controller retires it,
+// and is where an operator goes for its logs. Reporting only the node the
+// deployment was still targeting at the time is what sent operators to the
+// wrong machine.
+func instanceRecordsPresence(state string) bool {
+	return state != proto.InstStopped
+}
+
+// deploymentRuntimeNodes is where the deployment's instances are, node by
+// node: one entry per node with how many instance rows it holds, and the same
+// names in the same order. The rows are the authority - the deployment's
+// placement target says where it was asked to run, and automatic placement,
+// retries and spreading all move instances away from it.
+//
+// An instance whose node row is missing is left out: it names no node a client
+// could show. Deleting a node requires that no instance still runs on it
+// (store.DeleteNode), so a listed instance nearly always resolves.
+//
+// The order is stable and independent of the instance order in the store, so
+// the same fleet answers the same bytes whatever order the rows came back in.
+func deploymentRuntimeNodes(rows dtoLookup, insts []store.Instance) ([]dto.DeploymentRuntimeNode, []string) {
+	if len(insts) == 0 {
+		return nil, nil
+	}
+	counts := map[uint]int{}
+	var order []uint
+	for _, instance := range insts {
+		if !instanceRecordsPresence(instance.State) {
+			continue
+		}
+		if _, seen := counts[instance.NodeID]; !seen {
+			order = append(order, instance.NodeID)
+		}
+		counts[instance.NodeID]++
+	}
+	out := make([]dto.DeploymentRuntimeNode, 0, len(order))
+	for _, nodeID := range order {
+		node := rows.node(nodeID)
+		if node == nil {
+			continue
+		}
+		out = append(out, dto.DeploymentRuntimeNode{
+			NodeUUID: node.UUID, NodeName: nodeDisplayName(node), Instances: counts[nodeID],
+		})
+	}
+	sort.SliceStable(out, func(a, b int) bool {
+		if out[a].NodeName != out[b].NodeName {
+			return out[a].NodeName < out[b].NodeName
+		}
+		return out[a].NodeUUID < out[b].NodeUUID
+	})
+	if len(out) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(out))
+	for _, node := range out {
+		names = append(names, node.NodeName)
+	}
+	return out, names
 }
 
 // deploymentRuntimeState is the runtime_state the deployment DTO reports.
@@ -243,38 +311,6 @@ const deploymentStateDeleting = "deleting"
 
 // deploymentListStates are the states a deployment list can be filtered by.
 var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting, deploymentStateSleeping, deploymentStateAsleep}
-
-// redactAcquisitionSecrets prevents credentials embedded in an explicit proxy
-// URL from being returned by deployment read APIs or persisted snapshots.
-func redactAcquisitionSecrets(v any) {
-	switch x := v.(type) {
-	case map[string]any:
-		for k, value := range x {
-			if strings.EqualFold(k, "proxy") {
-				x[k] = redactProxy(value)
-				continue
-			}
-			redactAcquisitionSecrets(value)
-		}
-	case []any:
-		for _, value := range x {
-			redactAcquisitionSecrets(value)
-		}
-	}
-}
-
-func redactProxy(v any) any {
-	s, ok := v.(string)
-	if !ok || s == "" {
-		return v
-	}
-	u, err := url.Parse(s)
-	if err != nil || u.User == nil {
-		return s
-	}
-	u.User = url.User("REDACTED")
-	return u.String()
-}
 
 // scheduleStalled reports whether a deployment with no instance has been
 // refused a placement for longer than the configured timeout.

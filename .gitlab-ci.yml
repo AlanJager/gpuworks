@@ -315,9 +315,11 @@ core-vet:
           docker rm -f -v "$c" >/dev/null 2>&1 || true
         fi
       done
+    # The host agent reclaims gpuworks-* names as managed workloads.
+    # CI infrastructure must live outside that container namespace.
     - >
       docker run -d --privileged
-      --name "gpuworks-docker-core-dind-$CI_JOB_ID"
+      --name "ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       --label gpuworks-ci-docker-core
       -e DOCKER_TLS_CERTDIR=
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
@@ -330,18 +332,18 @@ core-vet:
     - |
       ready=0
       for attempt in $(seq 1 60); do
-        if docker exec "gpuworks-docker-core-dind-$CI_JOB_ID" docker --host unix:///run/gpuworks-e2e/docker.sock info >/dev/null 2>&1; then
+        if docker exec "ci-gpuworks-docker-core-dind-$CI_JOB_ID" docker --host unix:///run/gpuworks-e2e/docker.sock info >/dev/null 2>&1; then
           ready=1
           break
         fi
         sleep 1
       done
       if [ "$ready" != 1 ]; then
-        docker logs "gpuworks-docker-core-dind-$CI_JOB_ID" || true
+        docker logs "ci-gpuworks-docker-core-dind-$CI_JOB_ID" || true
         echo "isolated Docker test daemon did not become ready" >&2
         exit 1
       fi
-      docker exec "gpuworks-docker-core-dind-$CI_JOB_ID" chown "$(id -u):$(id -g)" /run/gpuworks-e2e/docker.sock
+      docker exec "ci-gpuworks-docker-core-dind-$CI_JOB_ID" chown "$(id -u):$(id -g)" /run/gpuworks-e2e/docker.sock
     # Every job starts a brand-new, empty DinD daemon, so without this it
     # re-pulls the L3 fixture base images from the network on every run. Seed
     # the fresh daemon from a host-side tar cache first; only pull (and then
@@ -351,7 +353,7 @@ core-vet:
     # tmp-file-plus-rename keeps a concurrent writer (e.g. a parallel core-l2
     # run) from exposing a half-written tar.
     - |
-      dind="gpuworks-docker-core-dind-$CI_JOB_ID"
+      dind="ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       for image in "$GPUWORKS_L3_SHELL_BASE_IMAGE" "$GPUWORKS_L3_RUNTIME_BASE_IMAGE" "$GPUWORKS_L3_NO_PYTHON_IMAGE" "$GPUWORKS_L3_REGISTRY_IMAGE"; do
         [ -n "$image" ] || continue
         cache_file="$DOCKER_HOST_CACHE/images/$(echo "$image" | tr -c 'A-Za-z0-9._-' '_').tar"
@@ -391,9 +393,9 @@ core-vet:
       done
     - >
       docker run --rm
-      --name "gpuworks-docker-core-go-$CI_JOB_ID"
+      --name "ci-gpuworks-docker-core-go-$CI_JOB_ID"
       --label gpuworks-ci-docker-core
-      --network "container:gpuworks-docker-core-dind-$CI_JOB_ID"
+      --network "container:ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       --user "$(id -u):$(id -g)"
       -v /usr/bin/docker:/usr/bin/docker:ro
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
@@ -427,12 +429,12 @@ core-vet:
         echo "== host load at job end: $(cat /proc/loadavg 2>/dev/null)"
         for p in cpu io memory; do echo "== /proc/pressure/$p: $(cat /proc/pressure/$p 2>/dev/null | tr '\n' ' ')"; done
         echo "== inner dockerd log (last 300 lines)"
-        docker logs --timestamps --tail 300 "gpuworks-docker-core-dind-$CI_JOB_ID" 2>&1 || true
+        docker logs --timestamps --tail 300 "ci-gpuworks-docker-core-dind-$CI_JOB_ID" 2>&1 || true
       fi
     # -v: the DinD image declares /var/lib/docker as an anonymous volume;
     # without it every job leaked ~1.6 GB and filled the runner's root disk.
-    - docker rm -f -v "gpuworks-docker-core-go-$CI_JOB_ID" >/dev/null 2>&1 || true
-    - docker rm -f -v "gpuworks-docker-core-dind-$CI_JOB_ID" >/dev/null 2>&1 || true
+    - docker rm -f -v "ci-gpuworks-docker-core-go-$CI_JOB_ID" >/dev/null 2>&1 || true
+    - docker rm -f -v "ci-gpuworks-docker-core-dind-$CI_JOB_ID" >/dev/null 2>&1 || true
     # Engine containers write root-owned files into TMPDIR (.tmp, kept inside
     # the workspace for DinD-visible bind mounts); a crashed-container test
     # cannot clean them itself. Prune as root via a container so the next

@@ -304,3 +304,84 @@ func TestStoppedDeploymentWithSleepOrderStaysStopped(t *testing.T) {
 		t.Fatalf("detail state = %q, want stopped", detail.State)
 	}
 }
+
+// Deepening a sleep level is a transition the row has to show. A change
+// between two levels goes through awake, because the engine only sleeps from
+// awake (engine.applySleepLevel wakes first), so a level-2 order on a level-1
+// engine reports level 1 for the whole wake-then-offload sequence. Comparing
+// the reported level against the level ordered is what separates "the order
+// did not start" from "the order finished": without it the row reads asleep
+// from the click to completion, byte-identical to the state before it, and a
+// rollback that rewrites the order to the reported level leaves no field
+// saying the deep sleep never happened.
+func TestDeploymentDeepeningSleepReadsSleepingUntilTheEngineArrives(t *testing.T) {
+	f := newSleepStateFixture(t)
+	deps, err := f.st.ListDeployments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id uint
+	for i := range deps {
+		if deps[i].Name == "asleep" {
+			id = deps[i].ID
+		}
+	}
+	if id == 0 {
+		t.Fatal("no deployment asleep")
+	}
+	// Settled at level 1 is asleep, the state the operator starts from.
+	if got := f.row(t, "asleep"); got.State != "asleep" || got.SleepLevel != 1 {
+		t.Fatalf("settled = state %q sleep_level %d, want asleep at 1", got.State, got.SleepLevel)
+	}
+	// Order level 2. The engine has not carried it out, so it still reports 1:
+	// the order is in flight and the row must say so rather than reusing the
+	// settled state it showed a moment earlier.
+	if err := f.st.OrderDeploymentSleep(id, 2, "wait"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.row(t, "asleep"); got.State != "sleeping" || got.SleepLevel != 1 || got.AsleepReplicas != 1 {
+		t.Fatalf("ordered again = state %q sleep_level %d asleep %d, want sleeping at the reported 1", got.State, got.SleepLevel, got.AsleepReplicas)
+	}
+	if got := f.detail(t, "asleep"); got.State != "sleeping" {
+		t.Fatalf("detail state = %q, want sleeping while the level-2 order is in flight", got.State)
+	}
+	// The engine arrives at 2: settled again, and the deeper level shows.
+	reportAsleep(t, f.st, "asleep-0", 2)
+	if got := f.row(t, "asleep"); got.State != "asleep" || got.SleepLevel != 2 {
+		t.Fatalf("arrived = state %q sleep_level %d, want asleep at 2", got.State, got.SleepLevel)
+	}
+}
+
+// A failed deepening rolls the order back to the level the engine reports. The
+// row must then read asleep at that level again rather than staying in the
+// transition forever.
+func TestDeploymentFailedDeepeningSettlesBackToTheReportedLevel(t *testing.T) {
+	f := newSleepStateFixture(t)
+	deps, err := f.st.ListDeployments()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id uint
+	for i := range deps {
+		if deps[i].Name == "asleep" {
+			id = deps[i].ID
+		}
+	}
+	if id == 0 {
+		t.Fatal("no deployment asleep")
+	}
+	if err := f.st.OrderDeploymentSleep(id, 2, "wait"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.row(t, "asleep"); got.State != "sleeping" {
+		t.Fatalf("ordered = state %q, want sleeping", got.State)
+	}
+	// The engine's level-2 attempt failed and the store rewrote the order back
+	// to the level it is still at, which is what rollbackSleepIntent does.
+	if err := f.st.OrderDeploymentSleep(id, 1, "wait"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.row(t, "asleep"); got.State != "asleep" || got.SleepLevel != 1 {
+		t.Fatalf("rolled back = state %q sleep_level %d, want asleep at 1", got.State, got.SleepLevel)
+	}
+}

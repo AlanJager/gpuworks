@@ -59,6 +59,8 @@ type ModelFile struct {
 	NodeID    uint `gorm:"index:idx_mf,unique,priority:3"`
 	// WriterNodeID is the node that writes a shared row (download or copy).
 	WriterNodeID uint `gorm:"index"`
+	// DownloadDeploymentID records who initiated the current download; zero is an independent user request.
+	DownloadDeploymentID uint `gorm:"index;not null;default:0"`
 	// LastUsedAt is when an instance last started or stopped on these files;
 	// the node cache evicts the least recently used first.
 	LastUsedAt           *time.Time

@@ -55,7 +55,7 @@ func newOfficialCatalogRun(t *testing.T) *officialCatalogRun {
 	if _, _, err := packageStore.PutArchive(bytes.NewReader(archive)); err != nil {
 		t.Fatal(err)
 	}
-	if err := seed.Seed(database); err != nil {
+	if err := seedInferenceCatalogFixture(database); err != nil {
 		t.Fatal(err)
 	}
 	signer, admin := roleTestToken(t, database, "admin")
@@ -297,4 +297,12 @@ func TestTemplateCheckForUpdatesRefusals(t *testing.T) {
 			}
 		})
 	}
+}
+
+func seedInferenceCatalogFixture(st *store.Store) error {
+	catalog, digest, err := seed.CatalogWithDigest()
+	if err != nil {
+		return err
+	}
+	return inferencecatalog.ReconcileUpstreamCatalog(st, catalog, digest)
 }

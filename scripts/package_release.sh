@@ -54,7 +54,7 @@ for target_os in $release_oses; do
   seen_oses="$seen_oses$target_os "
   target_count=$((target_count + 1))
   for target_arch in $release_arches; do
-    make VERSION="$release_id" DATE="$build_at" "server-${target_os}-${target_arch}-prebuilt-ui"
+    make VERSION="$release_id" COMMIT="$commit" DATE="$build_at" "server-${target_os}-${target_arch}-prebuilt-ui"
   done
 done
 

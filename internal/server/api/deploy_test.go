@@ -940,7 +940,7 @@ func TestRegisterModelPathEndpoint(t *testing.T) {
 			if uuid != "node-1" || method != proto.RPCRegisterPath {
 				t.Fatalf("rpc = %q/%q", uuid, method)
 			}
-			return json.RawMessage(`{"path":"/models/Qwen3","size_bytes":30}`), nil
+			return json.RawMessage(`{"path":"/models/Qwen3","size_bytes":30,"metadata":{"entries":[{"path":".","format":"transformers"}]}}`), nil
 		},
 	}}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/models/1/register-path", strings.NewReader(`{"node_uuid":"node-1","path":"/models/Qwen3"}`))
@@ -987,7 +987,7 @@ func TestRegisterModelPathEndpointRejectsInvalidDirectory(t *testing.T) {
 	}
 }
 
-func TestPreviewLocalModelParsesMetadataAndTruncation(t *testing.T) {
+func TestPreviewLocalModelParsesMetadata(t *testing.T) {
 	st, err := store.Open("file:api_preview_local_model_test?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -1004,7 +1004,7 @@ func TestPreviewLocalModelParsesMetadataAndTruncation(t *testing.T) {
 			}
 			switch method {
 			case proto.RPCRegisterPath:
-				return json.RawMessage(`{"path":"/models/Qwen2","size_bytes":123456}`), nil
+				return json.RawMessage(`{"path":"/models/Qwen2","size_bytes":123456,"metadata":{"entries":[{"path":".","format":"transformers"}],"config_raw":` + strconv.Quote(config) + `,"readme":"# Qwen2","tasks":["text-generation"]}}`), nil
 			case proto.RPCFSReadFile:
 				p := params.(map[string]any)
 				if strings.HasSuffix(p["path"].(string), "/config.json") {
@@ -1033,7 +1033,7 @@ func TestPreviewLocalModelParsesMetadataAndTruncation(t *testing.T) {
 	if len(got.Operations) != 1 || got.Operations[0].Type != "openai.chat" || len(got.InputModalities) != 1 || got.InputModalities[0] != "text" {
 		t.Fatalf("inference config = operations %+v modalities %v", got.Operations, got.InputModalities)
 	}
-	if got.README != "# Qwen2" || !got.READMETruncated {
+	if got.README != "# Qwen2" || got.READMETruncated {
 		t.Fatalf("readme = %q truncated=%v", got.README, got.READMETruncated)
 	}
 }
@@ -1064,7 +1064,7 @@ func TestPreviewLocalModelRejectsInvalidConfigAndMissingWeights(t *testing.T) {
 						return nil, staticErr("model directory must contain config.json and weight files")
 					}
 					if method == proto.RPCRegisterPath {
-						return json.RawMessage(`{"path":"/models/Qwen2","size_bytes":1}`), nil
+						return nil, staticErr("parse config.json: invalid model metadata")
 					}
 					return json.RawMessage(`{"path":"/models/Qwen2/config.json","content":` + strconv.Quote(tt.readConfig) + `,"size_bytes":10,"truncated":false}`), nil
 				},

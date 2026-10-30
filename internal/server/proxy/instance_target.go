@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -17,27 +18,46 @@ const instanceHeader = "X-GPUWorks-Instance"
 
 // pinnedTarget resolves the pinned instance of a deployment serving model.
 // ok is false when the request pins nothing; status is nonzero when it pins
-// an instance that cannot take it.
-func (p *Proxy) pinnedTarget(r *http.Request, modelName string) (dep *store.Deployment, tgt target, ok bool, status int, message string) {
+// an instance that cannot take it, and asleep reports that the refusal was
+// the sleep the deployment is under, so the caller can account it the way the
+// load balancing path accounts the same refusal rather than as a plain 5xx.
+func (p *Proxy) pinnedTarget(r *http.Request, modelName string) (dep *store.Deployment, tgt target, ok bool, status int, message string, asleep bool) {
 	uuid := strings.TrimSpace(r.Header.Get(instanceHeader))
 	r.Header.Del(instanceHeader)
 	if uuid == "" {
-		return nil, target{}, false, 0, ""
+		return nil, target{}, false, 0, "", false
 	}
 	inst, err := p.store.InstanceByUUID(uuid)
 	if err != nil {
-		return nil, target{}, true, http.StatusNotFound, "instance " + uuid + " does not exist"
+		return nil, target{}, true, http.StatusNotFound, "instance " + uuid + " does not exist", false
 	}
 	dep, err = p.store.GetDeployment(inst.DeploymentID)
 	if err != nil || dep.ServedName != modelName {
-		return nil, target{}, true, http.StatusNotFound, "instance " + uuid + " does not serve " + modelName
+		return nil, target{}, true, http.StatusNotFound, "instance " + uuid + " does not serve " + modelName, false
 	}
-	if inst.State != proto.InstRunning || inst.SleepLevel > 0 || inst.Headless || inst.APIPort <= 0 {
-		return dep, target{}, true, http.StatusServiceUnavailable, "instance " + uuid + " is not awake and running"
+	// Sleep is judged by planning.InstanceAsleep, the predicate the load
+	// balancing path and the deployment row use. Reading the reported level
+	// alone let a pinned request through to an engine under a sleep order its
+	// engine had not carried out yet — the window this feature exists for — so
+	// the request was forwarded to an engine on its way to sleep, hung or
+	// errored, and was accounted as awake while every other read of the same
+	// deployment called it asleep.
+	//
+	// asleep repeats the load balancing path's rule exactly: only a running
+	// instance refused for its sleep order is accounted asleep, so a replica
+	// that is stopped or failed stays a plain 5xx even when it also carries a
+	// stale sleep order. Getting that wrong would file stopped replicas under
+	// the asleep counter and hide a real outage.
+	asleep = inst.State == proto.InstRunning && planning.InstanceAsleep(inst)
+	if asleep {
+		return dep, target{}, true, http.StatusServiceUnavailable, "instance " + uuid + " does not take requests while its deployment sleeps; wake it first", true
+	}
+	if inst.State != proto.InstRunning || inst.Headless || inst.APIPort <= 0 {
+		return dep, target{}, true, http.StatusServiceUnavailable, "instance " + uuid + " is not awake and running", false
 	}
 	node, err := p.store.NodeByID(inst.NodeID)
 	if err != nil || !p.hub.Online(node.UUID) {
-		return dep, target{}, true, http.StatusServiceUnavailable, "instance " + uuid + " is offline"
+		return dep, target{}, true, http.StatusServiceUnavailable, "instance " + uuid + " is offline", false
 	}
-	return dep, target{nodeUUID: node.UUID, port: inst.APIPort, modelName: instanceModelName(dep, inst), instanceUUID: inst.UUID}, true, 0, ""
+	return dep, target{nodeUUID: node.UUID, port: inst.APIPort, modelName: instanceModelName(dep, inst), instanceUUID: inst.UUID}, true, 0, "", false
 }

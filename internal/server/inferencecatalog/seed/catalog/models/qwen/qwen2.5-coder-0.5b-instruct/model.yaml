@@ -21,7 +21,7 @@ specs:
         revision: ea3f2471cf1b1f0db85067f1ef93848e38e88c25
     - modelscope:
         repo_id: Qwen/Qwen2.5-Coder-0.5B-Instruct
-        revision: ea3f2471cf1b1f0db85067f1ef93848e38e88c25
+        revision: 62789576f47d1d43f192fe05a95773ab3ab9e9c6
   weight_bytes: 988097824
   gpus:
     vendor: ppu

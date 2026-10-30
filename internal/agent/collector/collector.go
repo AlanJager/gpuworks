@@ -18,6 +18,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/dgpucache"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/sysinfo"
 	"gpuworks.ai/gpuworks/internal/agent/traffic"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -83,6 +84,9 @@ type Collector struct {
 	// jsonCounters keeps the counters of JSON endpoints from dipping (see
 	// counterHold).
 	jsonCounters counterHold
+
+	// host is the machine a simulated node stands for; nil on a real node.
+	host *hostsim.Host
 }
 
 // New builds a Collector.
@@ -98,6 +102,10 @@ func New(nodeUUID string, prober gpu.Prober, instances func() []RunningInstance,
 // called once by the assembly root after New, before the first tick.
 func (c *Collector) SetModelsRoot(path string) { c.modelsRoot = path }
 
+// SetSimulatedHost makes the collector report the machine a simulated node
+// stands for (hostsim.Host); nil, the default, is the real host.
+func (c *Collector) SetSimulatedHost(h *hostsim.Host) { c.host = h }
+
 // SetDCGMProbe attaches an optional DCGM probe built by the assembly root
 // (nil when disabled or dcgmi is not on PATH). A concrete *gpu.DCGMProbe
 // parameter — rather than the dcgmSampler interface — means a nil probe here
@@ -111,9 +119,10 @@ func (c *Collector) SetDCGMProbe(p *gpu.DCGMProbe) {
 	c.dcgm = p
 }
 
-// Run collects every 10s until ctx is cancelled.
+// Run collects every 10s (a simulated node at its own interval) until ctx
+// is cancelled.
 func (c *Collector) Run(ctx context.Context) {
-	t := time.NewTicker(10 * time.Second)
+	t := time.NewTicker(c.host.CollectInterval(10 * time.Second))
 	defer t.Stop()
 	for {
 		select {
@@ -261,14 +270,16 @@ func gpuMetricSamples(metrics []gpu.Metric, nodeUUID string, now int64) []proto.
 // instantaneous gauge; CPU/disk/network are rates that need two ticks, so the
 // first call after a Collector is created emits none of those three.
 func (c *Collector) hostSamples(now int64) []proto.MetricSample {
-	sys := sysinfo.Collect()
+	sys := c.host.SysInfo(sysinfo.Collect())
 	lbl := map[string]string{"node": c.nodeUUID}
 	used := (sys.MemTotalKB - sys.MemAvailKB) * 1024
 	samples := []proto.MetricSample{
 		{Metric: "gpuworks_node_mem_used_bytes", Labels: lbl, Value: float64(used), TimeMS: now},
 		{Metric: "gpuworks_node_mem_total_bytes", Labels: lbl, Value: float64(sys.MemTotalKB * 1024), TimeMS: now},
 	}
-	if c.hostSample != nil {
+	if sim, ok := c.host.HostSamples(c.nodeUUID, now); ok {
+		samples = append(samples, sim...)
+	} else if c.hostSample != nil {
 		samples = append(samples, c.hostSample.sample(c.nodeUUID, c.modelsRoot, now)...)
 	}
 	return samples

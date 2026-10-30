@@ -87,13 +87,8 @@ func TestStorageMetadataReconstructsComponentOwnership(t *testing.T) {
 	<-r.storage.trigger
 	r.checkStorages(context.Background(), true)
 	raw := mustRaw(t, map[string]any{"path": filepath.Join(repo, "encoder"), "storage_id": 2, "inspect_metadata": true})
-	result, err := r.OnRPC(context.Background(), proto.RPCRegisterPath, raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	report := result.(registerPathResult).Metadata
-	if report == nil || !report.Component || len(report.Entries) != 0 {
-		t.Fatalf("component metadata=%+v", report)
+	if _, err := r.OnRPC(context.Background(), proto.RPCRegisterPath, raw); err == nil {
+		t.Fatal("model component accepted as an independent registration")
 	}
 	outside := t.TempDir()
 	writeModel(t, outside, "weights")

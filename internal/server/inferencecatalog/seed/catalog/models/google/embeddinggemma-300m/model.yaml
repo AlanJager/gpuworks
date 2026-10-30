@@ -47,7 +47,7 @@ specs:
         revision: 57c266a740f537b4dc058e1b0cda161fd15afa75
     - modelscope:
         repo_id: google/embeddinggemma-300m
-        revision: 57c266a740f537b4dc058e1b0cda161fd15afa75
+        revision: 480ee9b0e4761c35cf4f8295236b7b01b256b8cf
   weight_bytes: 1211486072
   gpus:
     vendor: ppu

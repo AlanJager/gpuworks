@@ -259,7 +259,7 @@ func TestRegisterLocalModelEndpointIsIdempotent(t *testing.T) {
 		CallNode: func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error) {
 			switch method {
 			case proto.RPCRegisterPath:
-				return json.RawMessage(`{"path":"/models/Qwen2","size_bytes":99}`), nil
+				return json.RawMessage(`{"path":"/models/Qwen2","size_bytes":99,"metadata":{"entries":[{"path":".","format":"transformers"}],"config_raw":` + strconv.Quote(config) + `,"readme":"readme","tasks":["text-generation"]}}`), nil
 			case proto.RPCFSReadFile:
 				p := params.(map[string]any)
 				if strings.HasSuffix(p["path"].(string), "/config.json") {
@@ -302,7 +302,10 @@ func agentFSReadFile(files map[string]string, knowsMissingOK bool) func(context.
 	return func(ctx context.Context, uuid, method string, params any) (json.RawMessage, error) {
 		switch method {
 		case proto.RPCRegisterPath:
-			return json.RawMessage(`{"path":"/models/gguf","size_bytes":5}`), nil
+			if !knowsMissingOK {
+				return json.RawMessage(`{"path":"/models/gguf","size_bytes":5}`), nil
+			}
+			return json.RawMessage(`{"path":"/models/gguf","size_bytes":5,"metadata":{"entries":[{"path":".","format":"gguf"}],"readme":"# gguf"}}`), nil
 		case proto.RPCFSReadFile:
 			p := params.(map[string]any)
 			path := p["path"].(string)
@@ -319,8 +322,7 @@ func agentFSReadFile(files map[string]string, knowsMissingOK bool) func(context.
 	}
 }
 
-// What a model directory must contain is the engine's business, so a directory
-// without config.json registers; it only states no metadata.
+// A GGUF entry can establish model identity without a separate config.json.
 func TestRegisterLocalModelWithoutConfig(t *testing.T) {
 	st, err := store.Open("file:api_register_local_model_without_config?mode=memory&cache=shared", bus.New())
 	if err != nil {
@@ -359,7 +361,7 @@ func TestRegisterLocalModelWithoutConfigOnAnOlderAgent(t *testing.T) {
 	h := apiHandlers{d: Deps{Store: st, CallNode: agentFSReadFile(nil, false)}}
 	rec := httptest.NewRecorder()
 	h.registerLocalModel(rec, httptest.NewRequest(http.MethodPost, "/api/v1/models/local", strings.NewReader(`{"node_uuid":"node-old","path":"/models/gguf"}`)))
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "read config.json") {
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "AGENT_UPGRADE_REQUIRED") {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	if models, _ := st.ListModels(); len(models) != 0 {

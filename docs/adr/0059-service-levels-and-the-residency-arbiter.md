@@ -80,7 +80,7 @@ L1 约 2.5 秒，L2 在模型文件留在页缓存里时 3.5–5 秒、读盘时
 
 **3. 其余原决定不变。** 两个“在线”不能共卡，现在写成两个 `idle` 不能共卡（409 `YIELD_POLICY_IDLE_SHARED`，放置同样避开）；`never` 以外的策略只用于可休眠的单机部署（`YIELD_POLICY_SHAPE`），自动休眠对多机与 PD 部署照旧可用；保持休眠、放置为共卡留位置、选 L1 的理由、状态只在内存的取舍都不变。评估器的 tick 从 15 秒改为 10 秒。
 
-**4. 持久化与迁移。** `deployments.service_level` 与闲置休眠的列删除，换成带类型的列：出让策略、自动休眠开关、闲置时间、休眠级别、最短服务时间、未完成请求处理与等待时间、挂起上限；预设不存。迁移 187 把已有部署的服务等级换成该预设的策略和参数；原来开着闲置休眠的部署，自动休眠打开，`idle_sec` 取原闲置时长（不足 30 秒的取 30 秒），`sleep_level` 取原休眠级别（`l1` / `l2`），因此成为自定义——它的闲置时间此后同时是它让卡的闲置时长。
+**4. 持久化与迁移。** `deployments.service_level` 与闲置休眠的列删除，换成带类型的列：出让策略、自动休眠开关、闲置时间、休眠级别、最短服务时间、未完成请求处理与等待时间、挂起上限；预设不存。迁移 189 把已有部署的服务等级换成该预设的策略和参数；原来开着闲置休眠的部署，自动休眠打开，`idle_sec` 取原闲置时长（不足 30 秒的取 30 秒），`sleep_level` 取原休眠级别（`l1` / `l2`），因此成为自定义——它的闲置时间此后同时是它让卡的闲置时长。
 
 **5. API。** 删除 `PUT /api/v1/deployments/{id}/service-level` 与 `PUT /api/v1/deployments/{id}/idle-sleep`，部署的 `service_level`、`idle_sleep` 字段与创建请求的 `service_level` 同时删除；新增 `PUT /api/v1/deployments/{id}/yield-policy`（请求体二选一：`{"preset":…}` 或 `policy` 加参数），部署详情带 `yield_policy`，创建请求带可选的 `yield_policy`。调度总览、看板占用者、驻留时间线里的 `service_level` 改名 `preset`。错误码 `SERVICE_LEVEL_INVALID`、`SERVICE_LEVEL_SHAPE`、`SERVICE_LEVEL_ONLINE_SHARED`、`IDLE_SLEEP_INVALID` 由 `YIELD_POLICY_INVALID`、`YIELD_POLICY_SHAPE`、`YIELD_POLICY_IDLE_SHARED` 取代。时间线事件码 `AUTO_SLEEP`、`AUTO_WAKE` 不变，`AUTO_SLEEP` 的 `trigger` 仍是 `schedule` / `idle` / `preempt`，`idle` 现在指无抢占时自动休眠，`level` 是平台实际选的级别（1 或 2）。
 
@@ -113,7 +113,7 @@ L1 约 2.5 秒，L2 在模型文件留在页缓存里时 3.5–5 秒、读盘时
 
 **9. 等位的唤醒解除保持休眠。** 运维的 `POST /deployments/{id}/wake?wait=true` 放不下、应答 202 `waiting` 时，部署的保持休眠（`sleep_held`）就解除了：部署是要醒的，之后到达的请求由网关挂起、等这次唤醒，驻留仲裁也可以按各自的出让策略为它腾地方，而不是回 503。以前保持要等唤醒落地才解除。
 
-**10. 持久化与迁移。** 迁移 188 把 `deployments` 的列改形：删除 `auto_sleep` 与 `min_serve_sec`，新增 `max_serve_sec`；`timeslice` 部署的 `max_serve_sec` 取原最短服务时间，不足 30 秒的取 30 秒；`anytime` 部署的 `idle_sec` 取原来内置的 30 秒；`unfinished` 为 `wait_unbounded` 的改为 `wait` 600 秒；开着自动休眠的不自动出让部署成为普通的不自动出让部署（升级后不再在无人等卡时自己睡下）；小于 15 秒的闲置时间提到 15 秒，`timeslice` 的闲置时间不超过 `max_serve_sec`，大于 3600 秒的挂起上限降到 3600 秒。
+**10. 持久化与迁移。** 迁移 190 把 `deployments` 的列改形：删除 `auto_sleep` 与 `min_serve_sec`，新增 `max_serve_sec`；`timeslice` 部署的 `max_serve_sec` 取原最短服务时间，不足 30 秒的取 30 秒；`anytime` 部署的 `idle_sec` 取原来内置的 30 秒；`unfinished` 为 `wait_unbounded` 的改为 `wait` 600 秒；开着自动休眠的不自动出让部署成为普通的不自动出让部署（升级后不再在无人等卡时自己睡下）；小于 15 秒的闲置时间提到 15 秒，`timeslice` 的闲置时间不超过 `max_serve_sec`，大于 3600 秒的挂起上限降到 3600 秒。
 
 **后果。**
 

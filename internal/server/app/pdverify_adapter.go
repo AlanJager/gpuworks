@@ -66,8 +66,11 @@ func (a *pdVerifyAdapter) Pending(context.Context) ([]pdverify.Candidate, error)
 		}
 		// A multi-node unit is verified through its leader; its followers
 		// serve nothing themselves.
+		// planning.InstanceAsleep rather than the reported level: an instance
+		// under a sleep order its engine has not carried out is already refused
+		// by the gateway, so verifying through it would prove nothing.
 		ready := func(inst store.Instance) bool {
-			return inst.State == proto.InstRunning && inst.SleepLevel == 0 && !inst.Headless
+			return inst.State == proto.InstRunning && !planning.InstanceAsleep(&inst) && !inst.Headless
 		}
 		decodeReady := false
 		for _, inst := range insts {

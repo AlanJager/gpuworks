@@ -69,6 +69,9 @@ func (s *Store) modelFileTask(mf *ModelFile, model *Model, ctx *taskContext) (pr
 		TransferID:   mf.TransferID,
 		StorageID:    mf.StorageID,
 	}
+	if mf.State == proto.MFCanceled {
+		task.DesiredState = "paused"
+	}
 	// Where a download is fetched from is planned from the pull source rules
 	// as they are when the task is sent (planning.PlanModelFetch). An HTTP
 	// directory's address is the model's own (SourceURL, set for that source

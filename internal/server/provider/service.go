@@ -70,15 +70,7 @@ func (s *Service) Add(ctx context.Context, kind, name string, creds Credentials)
 	if err := drv.ValidateCredentials(ctx, creds); err != nil {
 		return nil, fmt.Errorf("credential validation failed: %w", err)
 	}
-	raw, err := json.Marshal(creds)
-	if err != nil {
-		return nil, err
-	}
-	cipher, err := s.box.Encrypt(raw)
-	if err != nil {
-		return nil, err
-	}
-	p, err := s.store.CreateProvider(&store.Provider{Name: name, Kind: kind, CredsCipher: cipher, State: "valid"})
+	p, err := s.create(kind, name, creds)
 	if err != nil {
 		return nil, err
 	}
@@ -275,18 +267,9 @@ func (s *Service) Sync(ctx context.Context, providerID uint) ([]Instance, error)
 		return nil, err
 	}
 	_ = s.store.SetProviderState(providerID, "valid")
-	rows := make([]store.ProviderInstance, 0, len(insts))
-	for _, in := range insts {
-		connections, marshalErr := json.Marshal(in.SSHConnections)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("encode SSH connections for instance %s: %w", in.ExternalID, marshalErr)
-		}
-		rows = append(rows, store.ProviderInstance{
-			ProviderID: providerID, ExternalID: in.ExternalID, Name: in.Name,
-			GPUModel: in.GPUModel, GPUCount: in.GPUCount, Power: string(in.Power),
-			PricePerHr: in.PricePerHr, Region: in.Region, PublicIP: in.PublicIP,
-			SSHPort: in.SSHPort, SSHUser: in.SSHUser, SSHConnections: string(connections), Kind: in.Kind,
-		})
+	rows, err := instanceRows(providerID, insts)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.store.SyncProviderInstances(providerID, rows); err != nil {
 		return nil, err

@@ -50,6 +50,7 @@
     "autoCheckOffHelp": "已关闭：服务端不再自动检查。点「检查更新」时仍会读取版本索引。",
     "notChecked": "尚未检查更新",
     "notCheckedHelp": "自动检测已关闭。点右上角「检查更新」手动检查，或在这里上传文件更新。",
+    "currentBuild": "当前控制面构建",
     "checkedAt": "检查于 {{time}}"
   },
   "usageReport": {
@@ -414,5 +415,18 @@
         "description": "按天汇总的日界线。改动只影响之后汇总的天，已经汇总好的不重算。"
       }
     }
+  },
+  "experience": {
+    "title": "功能体验模式",
+    "starting": "正在启动…",
+    "exited": "已退出：{{error}}",
+    "address": "入口",
+    "user": "账号",
+    "password": "密码",
+    "portHint": "使用端口 {{port}}，其他电脑访问需放行该端口。每次开启都会恢复初始数据并生成新密码。",
+    "reset": "恢复初始数据",
+    "resetConfirm": "清空体验环境中的操作，恢复初始数据？",
+    "changePassword": "更换密码",
+    "passwordConfirm": "生成新密码？体验环境中已登录的会话会失效，需要用新密码重新登录。"
   }
 }

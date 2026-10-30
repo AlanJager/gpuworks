@@ -46,6 +46,9 @@ type Config struct {
 	// UsageReportOff is server.yaml's usage_report: false. The zero value
 	// takes part in the user experience improvement program.
 	UsageReportOff bool
+	// Experience, when set, makes this server the experience environment's
+	// console (experience.go).
+	Experience *ExperienceConsole
 
 	DataDir                   string // base dir for db and future tsdb/logs
 	DBPath                    string // sqlite path (derived from DataDir if empty)

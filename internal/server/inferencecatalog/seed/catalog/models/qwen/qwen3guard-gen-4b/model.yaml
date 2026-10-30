@@ -45,7 +45,7 @@ specs:
         revision: 6ec42827da0c1ff11e7a49dc269d2e810d27e108
     - modelscope:
         repo_id: Qwen/Qwen3Guard-Gen-4B
-        revision: 6ec42827da0c1ff11e7a49dc269d2e810d27e108
+        revision: 107171c041a049622f8f1787911367ac16462c6e
   weight_bytes: 8822894432
   gpus:
     vendor: ppu

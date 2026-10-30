@@ -3,6 +3,7 @@ import { formatBytes } from "../../format";
 
 /** Tag colour and models-namespace label of a model file's state. */
 export const presenceVisual: Record<string, { labelKey: string; color: string }> = {
+  canceled: { labelKey: "presence.canceled", color: "default" },
   pending: { labelKey: "presence.pending", color: "default" },
   downloading: { labelKey: "presence.downloading", color: "blue" },
   syncing: { labelKey: "presence.syncing", color: "processing" },

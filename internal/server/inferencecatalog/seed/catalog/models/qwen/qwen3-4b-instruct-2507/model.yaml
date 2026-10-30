@@ -74,7 +74,7 @@ specs:
         revision: cdbee75f17c01a7cc42f958dc650907174af0554
     - modelscope:
         repo_id: Qwen/Qwen3-4B-Instruct-2507
-        revision: cdbee75f17c01a7cc42f958dc650907174af0554
+        revision: 2de2439ea21be1dc5cb21f22f88af07e43393cbb
   weight_bytes: 8044982000
   gpus:
     vendor: ppu

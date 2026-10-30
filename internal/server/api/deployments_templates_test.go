@@ -145,7 +145,7 @@ func TestDeploymentPrefersReadyEquivalentArtifactOnTargetNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := &store.InferenceModel{ModelID: "acme/target", Architecture: "qwen3", ContextLength: 32768}
-	hf, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "Acme/Target", Revision: "hf-rev", Arch: "qwen3", ContextLength: 32768, WeightBytes: 16 << 30})
+	_, err = st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "Acme/Target", Revision: "hf-rev", Arch: "qwen3", ContextLength: 32768, WeightBytes: 16 << 30})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestDeploymentPrefersReadyEquivalentArtifactOnTargetNode(t *testing.T) {
 		Spec:   &store.InferenceSpecRow{Engine: "vllm", Quantization: "bf16", WeightBytes: 16 << 30},
 		Weight: weightSource{Provider: "huggingface", RepoID: "Acme/Target", Revision: "hf-rev"},
 	}
-	got, err := h.resolveDeploymentModelFromTemplate(context.Background(), hf.ID, selection, 1)
+	got, err := h.resolveDeploymentModelFromTemplate(context.Background(), 0, selection, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

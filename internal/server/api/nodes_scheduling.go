@@ -77,8 +77,10 @@ func (a *apiHandlers) nodeReplicas(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := dto.NodeReplicas{Scheduling: nodeSchedulingName(node.Scheduling), Items: []dto.NodeReplica{}}
+	out.DrainOffline = node.Scheduling == store.NodeDraining && a.d.Online != nil && !a.d.Online(node.UUID)
 	kinds := map[uint]string{}
 	names := map[uint]string{}
+	feedback := map[uint]dto.NodeReplica{}
 	for _, inst := range insts {
 		if inst.State == proto.InstStopped || inst.State == proto.InstFailed {
 			continue
@@ -94,11 +96,20 @@ func (a *apiHandlers) nodeReplicas(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			kinds[dep.ID], names[dep.ID] = kind, dep.Name
+			if node.Scheduling == store.NodeDraining && kind != "pinned" {
+				detail, err := a.nodeDrainFeedback(dep.ID, node.ID, inst)
+				if err != nil {
+					writeErr(w, http.StatusInternalServerError, err)
+					return
+				}
+				feedback[dep.ID] = detail
+			}
 		}
-		out.Items = append(out.Items, dto.NodeReplica{
-			Instance: inst.UUID, DeploymentID: inst.DeploymentID, Deployment: names[inst.DeploymentID],
-			State: inst.State, Kind: kind,
-		})
+		item := dto.NodeReplica{Instance: inst.UUID, DeploymentID: inst.DeploymentID, Deployment: names[inst.DeploymentID], State: inst.State, Kind: kind}
+		if inst.State != proto.InstDraining && inst.State != proto.InstRemoving {
+			item.DrainReason, item.DrainReasonAt, item.DrainMessage = feedback[inst.DeploymentID].DrainReason, feedback[inst.DeploymentID].DrainReasonAt, feedback[inst.DeploymentID].DrainMessage
+		}
+		out.Items = append(out.Items, item)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

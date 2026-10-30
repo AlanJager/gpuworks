@@ -37,6 +37,7 @@ import (
 	udockerruntime "gpuworks.ai/gpuworks/internal/agent/runtime/udocker"
 	udockernative "gpuworks.ai/gpuworks/internal/agent/runtime/udocker/native"
 	"gpuworks.ai/gpuworks/internal/agent/runveilcli"
+	"gpuworks.ai/gpuworks/internal/agent/simulate"
 	"gpuworks.ai/gpuworks/internal/agentconf"
 	"gpuworks.ai/gpuworks/internal/benchrun"
 	"gpuworks.ai/gpuworks/internal/launchd"
@@ -226,6 +227,12 @@ func run(log *slog.Logger, args []string) error {
 		cfg.Driver = driver
 		cfg.ForceDriver = "recording"
 		log.Warn("recording runtime enabled for process test", "path", record)
+	}
+	if path := strings.TrimSpace(os.Getenv(simulate.EnvSpec)); path != "" {
+		if err := applySimulation(&cfg, path); err != nil {
+			return err
+		}
+		log.Warn("simulated node: cards, runtime and host are simulated", "spec", path)
 	}
 	fileLog, closeLog, _ := agentLogger(log, cfg.StateDir)
 	defer closeLog()

@@ -165,7 +165,10 @@ func TestMetadataReportSeedsSingleModelPreview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report := modelmetadata.Report{ConfigRaw: `{"architectures":["BertModel"]}`, Tasks: []string{"feature-extraction"}}
+	report := modelmetadata.Report{
+		Entries:   []modelmetadata.Entry{{Path: ".", Format: "transformers", Files: []string{"model.safetensors"}}},
+		ConfigRaw: `{"architectures":["BertModel"]}`, Tasks: []string{"feature-extraction"},
+	}
 	h := apiHandlers{d: Deps{Store: st, CallNode: func(_ context.Context, _, method string, params any) (json.RawMessage, error) {
 		if method != proto.RPCRegisterPath || params.(map[string]any)["inspect_metadata"] != true {
 			t.Fatalf("unexpected metadata fetch: %s", method)

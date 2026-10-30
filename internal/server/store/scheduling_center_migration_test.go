@@ -34,7 +34,7 @@ func openSchedulingCenterLegacy(t *testing.T, name string) *gorm.DB {
 }
 
 func TestSchedulingCenterMigrations(t *testing.T) {
-	ms := []migration{migrationByVersion(t, 180), migrationByVersion(t, 181), migrationByVersion(t, 182)}
+	ms := []migration{migrationByVersion(t, 182), migrationByVersion(t, 183), migrationByVersion(t, 184)}
 	db := openSchedulingCenterLegacy(t, "scheduling-center")
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestSchedulingCenterMigrations(t *testing.T) {
 		dep.IdleSleepAfterSec != 0 || dep.IdleSleepLevel != 2 {
 		t.Fatalf("existing deployment = %+v err=%v", dep, err)
 	}
-	for _, version := range []int{180, 181, 182} {
+	for _, version := range []int{182, 183, 184} {
 		var marker SchemaMigration
 		if err := db.First(&marker, version).Error; err != nil {
 			t.Fatalf("marker %d: %v", version, err)
@@ -73,7 +73,7 @@ func TestSchedulingCenterMigrations(t *testing.T) {
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("not idempotent: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version IN (180, 181, 182)").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version IN (182, 183, 184)").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, ms); err != nil {
@@ -94,15 +94,15 @@ func TestSchedulingCenterMigrations(t *testing.T) {
 			t.Fatalf("%s error = %v", m.Name, err)
 		}
 		switch m.Version {
-		case 180:
+		case 182:
 			if rollback.Migrator().HasColumn(&deploymentServiceColumns{}, "IdleSleepAfterSec") {
 				t.Fatal("deployment columns survived the failed migration")
 			}
-		case 181:
+		case 183:
 			if rollback.Migrator().HasColumn(&Instance{}, "WakeWaitingSince") {
 				t.Fatal("instance column survived the failed migration")
 			}
-		case 182:
+		case 184:
 			if rollback.Migrator().HasTable(&LifecycleSchedule{}) {
 				t.Fatal("lifecycle_schedules survived the failed migration")
 			}
@@ -118,7 +118,7 @@ func TestSchedulingCenterMigrations(t *testing.T) {
 }
 
 func TestInstanceEventKindIndexMigration(t *testing.T) {
-	m := migrationByVersion(t, 183)
+	m := migrationByVersion(t, 185)
 	db, err := gorm.Open(sqlite.Open("file:event-kind-index?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestInstanceEventKindIndexMigration(t *testing.T) {
 	if !db.Migrator().HasIndex(&InstanceEvent{}, "idx_instance_events_kind_id") {
 		t.Fatal("instance_events(kind, id) is not indexed")
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 183").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 185").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, []migration{m}); err != nil {

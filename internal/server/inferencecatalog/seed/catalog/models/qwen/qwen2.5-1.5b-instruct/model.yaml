@@ -21,7 +21,7 @@ specs:
         revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
     - modelscope:
         repo_id: Qwen/Qwen2.5-1.5B-Instruct
-        revision: 989aa7980e4cf806f80c7fef2b1adb7bc71aa306
+        revision: 3c3787b7c81927cc64ad45dc32ff1c9ce2a5de34
   weight_bytes: 3087467144
   gpus:
     vendor: ppu

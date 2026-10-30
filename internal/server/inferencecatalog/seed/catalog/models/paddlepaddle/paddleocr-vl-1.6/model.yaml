@@ -120,7 +120,7 @@ specs:
         revision: c5630abae1d940eafe0697512a0325494b02ab42
     - modelscope:
         repo_id: PaddlePaddle/PaddleOCR-VL-1.6
-        revision: c5630abae1d940eafe0697512a0325494b02ab42
+        revision: 9164b4090ec1aab1855a40ab24adc0e731d247e4
   weight_bytes: 1917255968
   gpus:
     vendor: ppu

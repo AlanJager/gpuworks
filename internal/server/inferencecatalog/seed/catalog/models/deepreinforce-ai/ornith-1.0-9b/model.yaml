@@ -47,7 +47,7 @@ specs:
         revision: 83dc1f5e24ef8527af019a6b3bf66ac0f1c2c999
     - modelscope:
         repo_id: deepreinforce-ai/Ornith-1.0-9B
-        revision: 83dc1f5e24ef8527af019a6b3bf66ac0f1c2c999
+        revision: 83c1442b5cf2df318017ff0f9d6bc2b93bc9586c
   weight_bytes: 18819721120
   gpus:
     vendor: ppu

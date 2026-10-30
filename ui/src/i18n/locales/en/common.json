@@ -71,7 +71,7 @@
     "DGPU_QUOTA_NO_ROOM": "GPU {{gpu}} of {{node}} cannot hold it: {{free_gib}} GiB is free once the deployment's own claim is handed back, and the new quota needs {{need_gib}} GiB.",
     "AUTOMATIC_PLACEMENT_UNAVAILABLE": "No node can satisfy automatic placement. Review the candidate reasons or choose a node manually.",
     "AUTOMATIC_PLACEMENT_STALE": "The evaluated node or GPU plan has changed. Evaluate the deployment again.",
-    "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before pulling images.",
+    "AGENT_UPGRADE_REQUIRED": "The target node is running an older agent. Upgrade the agent before continuing.",
     "NODE_RPC_UNAVAILABLE": "Node RPC is not configured.",
     "NODE_OFFLINE": "The node is offline.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
@@ -224,6 +224,12 @@
     "USAGE_REPORT_READ_ONLY": "The server has no server.yaml, so the user experience improvement program cannot be switched here.",
     "USAGE_REPORT_INVALID": "The user experience improvement program must be set to true or false.",
     "USAGE_REPORT_UNAVAILABLE": "This server has no usage report.",
+    "EXPERIENCE_UNSUPPORTED": "The experience mode is for showing the product and does not support this operation.",
+    "EXPERIENCE_MODEL_NOT_PRELOADED": "The experience mode deploys only its preloaded models: {{models}}.",
+    "EXPERIENCE_UNAVAILABLE": "This server has no experience mode.",
+    "EXPERIENCE_INVALID": "The experience mode can only be turned on or off.",
+    "EXPERIENCE_FAILED": "Experience mode operation failed: {{reason}}",
+    "EXPERIENCE_PORT_IN_USE": "Port {{port}} is held by another program: free it, or move this server's console port (the experience environment uses the console port + 10).",
     "NOTICE_IDS_INVALID": "Name between 1 and 128 notices to mark as read.",
     "IMAGE_MANIFEST_INVALID": "The image manifest is invalid: {{detail}}",
     "IMAGE_IMPORT_CONFLICT": "The manifest conflicts with a community or custom image: {{detail}}",
@@ -484,7 +490,8 @@
     "BATCH_FILE_INVALID": "The batch input file is not valid. {{detail}}",
     "BATCH_FILE_TOO_LARGE": "The batch input file is larger than {{limit_mb}} MB.",
     "BATCH_MODEL_UNKNOWN": "No active deployment serves the model {{model}}. Choose a deployment that exists on the platform.",
-    "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}"
+    "BATCH_REQUEST_INVALID": "The batch request is not valid ({{field}}): {{reason}}",
+    "AGENT_UPGRADE_REFUSED": "Agent upgrade request could not proceed: {{detail}}"
   },
   "httpError": {
     "proxyPage": "HTTP {{status}}: a reverse proxy or tunnel between the browser and gpuworks answered with its own error page, so the server's reason was lost. Retry from the server's own address to see it."
@@ -821,5 +828,26 @@
       "release": "Release",
       "event": "Event"
     }
+  },
+  "buildInfo": {
+    "kind": {
+      "stable": "Stable release",
+      "prerelease": "Pre-release",
+      "development": "Development / test build",
+      "unknown": "Release type unknown"
+    },
+    "description": {
+      "stable": "This build matches a verified stable release record.",
+      "prerelease": "This build matches a published preview or test release.",
+      "development": "Built for the development / test channel; it is not labelled as a stable release.",
+      "unknown": "There is not enough release information to confirm whether this is a stable build."
+    },
+    "builtAt": "Built: {{time}}",
+    "publishedAt": "Published: {{time}}",
+    "matched": "Matching release: {{version}}",
+    "unmatched": "No matching release record is currently available.",
+    "details": "Build details",
+    "commit": "Commit: {{commit}}",
+    "channel": "Build channel: {{channel}}"
   }
 }

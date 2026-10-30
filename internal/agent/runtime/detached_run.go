@@ -115,7 +115,11 @@ func RunDetached(ctx context.Context, r DetachedRun) (string, error) {
 	case <-timer.C:
 		slog.Warn("runtime run timed out; reclaiming its container in the background", "runtime", r.CLI, "container", r.Name, "timeout", timeout)
 		go reapAbandonedRun(r, cmd, done, &stdout)
-		return "", fmt.Errorf("%s run timed out after %s: the container runtime did not finish creating the container (daemon slow or overloaded); it is removed once the runtime returns", r.CLI, timeout)
+		message := fmt.Sprintf("%s run timed out after %s: container creation has not completed; cleanup continues in the background", r.CLI, timeout)
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			message += "; runtime stderr: " + tailText(detail, 400)
+		}
+		return "", errors.New(message)
 	case <-ctx.Done():
 		slog.Info("runtime run cancelled; reclaiming its container in the background", "runtime", r.CLI, "container", r.Name)
 		go reapAbandonedRun(r, cmd, done, &stdout)

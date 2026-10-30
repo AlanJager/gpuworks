@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-10-16.12310d0c",
-  "sha256": "39c7895b9a35e79cd943886e57ac76c744c6e805288c81c2861d75bb76c49528",
+  "catalog_version": "2026-10-29.a672e1ab",
+  "sha256": "145e9b60420e7a4b1e78cc7a6a29583a674e2ea2ebea924ffdf1f1da4ccd154d",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -368,6 +368,54 @@
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.1-a3-vllm0.27.1rc1-r2"
           ],
           "notes": "A3（910C），要求 HDK ≥ 26.1.1，其余同 910b 档。\nrequires: engine, mooncake, overlays\nmodel: a3"
+        },
+        {
+          "name": "cann9.2-310p-vllm0.30.0rc2-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.2-310p-vllm0.30.0rc2-r1",
+          "engine_version": "0.30.0rc2",
+          "framework_version": "9.2",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.2-310p-vllm0.30.0rc2-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.2-310p-vllm0.30.0rc2-r1"
+          ],
+          "notes": "310P 的 0.30.0rc2 档。**不含 mooncake**：该型号没有对应的 NPU 传输后端。 该硬件没有 bf16 单元，部署规格必须钉 `--dtype float16`。 base 是否仍留着遮蔽真 triton 的空目录待构建时确认，先沿用 0.27.1rc1 档的 PURGE_STUB_PKGS 声明；若已修复，构建会因「声明过期」失败，届时删掉该项。\nrequires: engine, overlays\nmodel: 310p"
+        },
+        {
+          "name": "cann9.2-910b-vllm0.30.0rc2-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0rc2-r1",
+          "engine_version": "0.30.0rc2",
+          "framework_version": "9.2",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0rc2-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0rc2-r1"
+          ],
+          "notes": "910B 的 0.30.0rc2 档，CANN 9.2.0。含 NPU 版 mooncake。\nrequires: engine, mooncake, overlays\nmodel: 910b"
+        },
+        {
+          "name": "cann9.2-950-vllm0.30.0rc2-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1",
+          "engine_version": "0.30.0rc2",
+          "framework_version": "9.2",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1"
+          ],
+          "notes": "950 的 0.30.0rc2 档。950 自己的驱动线与 910B 不同，不照搬 910B 的 HDK 门槛。 含 NPU 版 mooncake。\nrequires: engine, mooncake, overlays\nmodel: 950"
+        },
+        {
+          "name": "cann9.2-a3-vllm0.30.0rc2-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1",
+          "engine_version": "0.30.0rc2",
+          "framework_version": "9.2",
+          "arch": "multi",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1"
+          ],
+          "notes": "A3（910C）的 0.30.0rc2 档，其余同 910b 档。\nrequires: engine, mooncake, overlays\nmodel: a3"
         }
       ]
     },

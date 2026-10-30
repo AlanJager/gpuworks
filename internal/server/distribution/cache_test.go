@@ -124,3 +124,30 @@ func TestCheckCachePrefetch(t *testing.T) {
 		t.Fatalf("a failure past its retry window was not asked again: %d requests", got)
 	}
 }
+
+func TestCheckCacheTryCachedRetainsProbeIdentityAndFailure(t *testing.T) {
+	store := newObjectStore(t)
+	publish(t, testIndex("nightly"), store)
+	client := clientFor(store)
+	var cache CheckCache
+	if f, err, at, ok := cache.TryCached("nightly"); ok || f != nil || err != nil || !at.IsZero() {
+		t.Fatalf("empty cache = %+v, %v, %v, %v", f, err, at, ok)
+	}
+	fetched, err, checkedAt := cache.Probe(context.Background(), client, "nightly", false, nil)
+	if err != nil || fetched == nil || fetched.KeyID != testKeyID {
+		t.Fatalf("verified probe = %+v, %v", fetched, err)
+	}
+	if f, err, at, ok := cache.TryCached("nightly"); !ok || f != fetched || err != nil || !at.Equal(checkedAt) {
+		t.Fatalf("cached probe = %+v, %v, %v, %v", f, err, at, ok)
+	}
+	if f, err, at, ok := cache.TryCached("release"); ok || f != nil || err != nil || !at.IsZero() {
+		t.Fatalf("another channel borrowed cached nightly: %+v, %v, %v, %v", f, err, at, ok)
+	}
+	store.put("nightly/index.json", []byte(`{"schema":1,"channel":"nightly"}`))
+	if _, err, _ := cache.Probe(context.Background(), client, "nightly", true, nil); err == nil {
+		t.Fatal("unsigned index was accepted")
+	}
+	if f, err, at, ok := cache.TryCached("nightly"); !ok || f != nil || err == nil || at.IsZero() {
+		t.Fatalf("failed probe resurrected earlier publication: %+v, %v, %v, %v", f, err, at, ok)
+	}
+}
