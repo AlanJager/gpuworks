@@ -132,8 +132,12 @@ func TestSchedulingHistoryQueryPlans(t *testing.T) {
 		"time window": {Since: since, Until: until},
 		"everything":  {DeploymentID: 2, Before: 4000, Since: since, Until: until, Categories: []SchedulingCategory{SchedulingFailure}},
 	} {
+		ids, _, err := s.historyIDRange(f.Since, f.Until)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for kind, codes := range map[string][]string{EventKindSchedule: {EventUnitRetried}, EventKindLifecycle: {EventReplicaRebuilt}, EventKindAutomation: {"AUTO_SLEEP", "NODE_REPLACED"}} {
-			stmt := s.historyKindQuery(f, kind, codes, 100).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
+			stmt := s.historyKindQuery(f, ids, kind, codes, 100).Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
 			var plan []struct {
 				Detail string
 			}
@@ -152,6 +156,80 @@ func TestSchedulingHistoryQueryPlans(t *testing.T) {
 			if strings.Contains(joined, "TEMP B-TREE") || strings.Contains(joined, "SCAN instance_events") && !strings.Contains(joined, "USING") {
 				t.Errorf("%s/%s sorts or scans the table: %s", name, kind, joined)
 			}
+		}
+	}
+}
+
+// A time window is read through the id range its events can hold. Rows
+// written a moment out of id order (the clock is read before the insert) are
+// still found at either end, a window with no event is empty without a
+// kind read, and the window's own bounds are exact.
+func TestSchedulingHistoryTimeWindowByIDRange(t *testing.T) {
+	s := newTestStore(t)
+	base := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	at := func(sec int) time.Time { return base.Add(time.Duration(sec) * time.Second) }
+	rows := []InstanceEvent{
+		{DeploymentID: 1, Kind: EventKindAutomation, Code: "AUTO_SLEEP", Data: "{}", CreatedAt: at(100)},
+		// Written after the next row but stamped earlier: id order and time
+		// order disagree by two seconds.
+		{DeploymentID: 1, Kind: EventKindAutomation, Code: "AUTO_WAKE", Data: "{}", CreatedAt: at(202)},
+		{DeploymentID: 2, Kind: EventKindAutomation, Code: "AUTO_SLEEP", Data: "{}", CreatedAt: at(200)},
+		{DeploymentID: 2, Kind: EventKindAutomation, Code: "AUTO_WAKE", Data: "{}", CreatedAt: at(300)},
+		{DeploymentID: 3, Kind: EventKindAutomation, Code: "AUTO_SLEEP", Data: "{}", CreatedAt: at(301)},
+		{DeploymentID: 3, Kind: EventKindAutomation, Code: "AUTO_WAKE", Data: "{}", CreatedAt: at(299)},
+	}
+	if err := s.DB().Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	deployments := func(got []InstanceEvent) string {
+		var out []string
+		for _, r := range got {
+			out = append(out, fmt.Sprintf("%d:%s", r.DeploymentID, r.Code))
+		}
+		return strings.Join(out, ",")
+	}
+	for _, c := range []struct {
+		name         string
+		since, until time.Time
+		want         string
+	}{
+		{"since lands on the row written early", at(201), time.Time{}, "3:AUTO_WAKE,3:AUTO_SLEEP,2:AUTO_WAKE,1:AUTO_WAKE"},
+		{"until lands on the row written late", time.Time{}, at(299), "3:AUTO_WAKE,2:AUTO_SLEEP,1:AUTO_WAKE,1:AUTO_SLEEP"},
+		// The first event by time (id 3) is written after one inside the
+		// window (id 2), and the last by time (id 4) before one (id 6).
+		{"since before rows out of order", at(199), at(250), "2:AUTO_SLEEP,1:AUTO_WAKE"},
+		{"until after rows out of order", at(250), at(300), "3:AUTO_WAKE,2:AUTO_WAKE"},
+		{"both ends exact", at(200), at(300), "3:AUTO_WAKE,2:AUTO_WAKE,2:AUTO_SLEEP,1:AUTO_WAKE"},
+		{"before every event", at(0), at(50), ""},
+		{"after every event", at(400), time.Time{}, ""},
+		{"between events", at(101), at(199), ""},
+	} {
+		got, err := s.SchedulingHistory(SchedulingHistoryFilter{Since: c.since, Until: c.until})
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if deployments(got) != c.want {
+			t.Errorf("%s = %s, want %s", c.name, deployments(got), c.want)
+		}
+	}
+
+	// Each end is a read of the created_at index, not a pass over the table.
+	for name, q := range map[string]*gorm.DB{
+		"first at or after": s.reader().Select("created_at").Where("created_at >= ?", at(201)).Order("created_at").Limit(1),
+		"min id near it":    s.reader().Model(&InstanceEvent{}).Select("COALESCE(MIN(id), 0)").Where("created_at >= ? AND created_at < ?", at(201), at(261)),
+	} {
+		stmt := q.Session(&gorm.Session{DryRun: true}).Find(&[]InstanceEvent{}).Statement
+		var plan []struct{ Detail string }
+		if err := s.DB().Raw("EXPLAIN QUERY PLAN "+stmt.SQL.String(), stmt.Vars...).Scan(&plan).Error; err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var text []string
+		for _, row := range plan {
+			text = append(text, row.Detail)
+		}
+		joined := strings.Join(text, " | ")
+		if !strings.Contains(joined, "created_at") || strings.Contains(joined, "TEMP B-TREE") {
+			t.Errorf("%s does not read the created_at index: %s", name, joined)
 		}
 	}
 }

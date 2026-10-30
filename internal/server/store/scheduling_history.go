@@ -137,9 +137,15 @@ type SchedulingHistoryFilter struct {
 // The codes the filter selects are grouped by the kind they are written with
 // and each kind is one range read of the (kind, id) index in id order, cut at
 // the page size, so no pass sorts or scans the timeline; the per-kind pages
-// are then merged by id.
+// are then merged by id. A time window is first turned into an id range
+// through the created_at index, so a window long past is read as a bounded
+// range rather than by walking every newer row of the kind.
 func (s *Store) SchedulingHistory(f SchedulingHistoryFilter) ([]InstanceEvent, error) {
 	limit := NormalizeEventTimelineLimit(f.Limit)
+	ids, empty, err := s.historyIDRange(f.Since, f.Until)
+	if err != nil || empty {
+		return nil, err
+	}
 	byKind := map[string][]string{}
 	for _, entry := range schedulingEventCodes {
 		if len(f.Categories) > 0 && !containsCategory(f.Categories, entry.Category) {
@@ -150,7 +156,7 @@ func (s *Store) SchedulingHistory(f SchedulingHistoryFilter) ([]InstanceEvent, e
 	var out []InstanceEvent
 	for kind, codes := range byKind {
 		var page []InstanceEvent
-		if err := s.historyKindQuery(f, kind, codes, limit).Find(&page).Error; err != nil {
+		if err := s.historyKindQuery(f, ids, kind, codes, limit).Find(&page).Error; err != nil {
 			return nil, err
 		}
 		out = append(out, page...)
@@ -164,13 +170,19 @@ func (s *Store) SchedulingHistory(f SchedulingHistoryFilter) ([]InstanceEvent, e
 
 // historyKindQuery is the read of one kind's codes: the newest rows first,
 // by id, within the filter.
-func (s *Store) historyKindQuery(f SchedulingHistoryFilter, kind string, codes []string, limit int) *gorm.DB {
+func (s *Store) historyKindQuery(f SchedulingHistoryFilter, ids eventIDRange, kind string, codes []string, limit int) *gorm.DB {
 	query := s.reader().Where("kind = ? AND code IN ?", kind, codes)
 	if f.DeploymentID != 0 {
 		query = query.Where("deployment_id = ?", f.DeploymentID)
 	}
 	if f.Before != 0 {
 		query = query.Where("id < ?", f.Before)
+	}
+	if ids.from != 0 {
+		query = query.Where("id >= ?", ids.from)
+	}
+	if ids.to != 0 {
+		query = query.Where("id <= ?", ids.to)
 	}
 	if !f.Since.IsZero() {
 		query = query.Where("created_at >= ?", f.Since.UTC())
@@ -179,6 +191,44 @@ func (s *Store) historyKindQuery(f SchedulingHistoryFilter, kind string, codes [
 		query = query.Where("created_at <= ?", f.Until.UTC())
 	}
 	return query.Order("id desc").Limit(limit)
+}
+
+// eventIDRange bounds a read by event id; a zero end is open.
+type eventIDRange struct{ from, to uint }
+
+// eventClockSkew is how far apart in time two events may be written out of
+// id order (the clock is read before the insert), with room to spare. The id
+// bounds of a time window are widened by it; the created_at conditions still
+// decide which rows are in.
+const eventClockSkew = time.Minute
+
+// historyIDRange turns a time window into the ids that can hold its events,
+// each end one or two reads of the created_at index; empty when no event
+// lies in the window.
+func (s *Store) historyIDRange(since, until time.Time) (ids eventIDRange, empty bool, err error) {
+	if !since.IsZero() {
+		var first InstanceEvent
+		res := s.reader().Select("created_at").Where("created_at >= ?", since.UTC()).Order("created_at").Limit(1).Find(&first)
+		if res.Error != nil || res.RowsAffected == 0 {
+			return ids, res.Error == nil, res.Error
+		}
+		if err := s.reader().Model(&InstanceEvent{}).Select("COALESCE(MIN(id), 0)").
+			Where("created_at >= ? AND created_at < ?", first.CreatedAt, first.CreatedAt.Add(eventClockSkew)).Scan(&ids.from).Error; err != nil {
+			return ids, false, err
+		}
+	}
+	if !until.IsZero() {
+		var last InstanceEvent
+		res := s.reader().Select("created_at").Where("created_at <= ?", until.UTC()).Order("created_at desc").Limit(1).Find(&last)
+		if res.Error != nil || res.RowsAffected == 0 {
+			return ids, res.Error == nil, res.Error
+		}
+		if err := s.reader().Model(&InstanceEvent{}).Select("COALESCE(MAX(id), 0)").
+			Where("created_at > ? AND created_at <= ?", last.CreatedAt.Add(-eventClockSkew), last.CreatedAt).Scan(&ids.to).Error; err != nil {
+			return ids, false, err
+		}
+	}
+	return ids, ids.from != 0 && ids.to != 0 && ids.from > ids.to, nil
 }
 
 func containsCategory(list []SchedulingCategory, c SchedulingCategory) bool {
