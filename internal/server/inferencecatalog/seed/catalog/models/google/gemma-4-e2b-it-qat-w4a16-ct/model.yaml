@@ -21,7 +21,7 @@ specs:
         revision: 971342c08f607aa7779983f6b5289778b5d271a7
     - modelscope:
         repo_id: google/gemma-4-E2B-it-qat-w4a16-ct
-        revision: 971342c08f607aa7779983f6b5289778b5d271a7
+        revision: 5bdbf89b944c027915fd322913a00f6be6476309
   weight_bytes: 8316306646
   gpus:
     vendor: ppu

@@ -74,7 +74,7 @@ When determining tasks, note the following precedence and outcomes:
 
 #### Determine Why an Entry Cannot Be Imported
 
-Both single-model registration and scan-and-import reject confirmed component directories, directories containing multiple models, and recognized entries whose files are missing or cannot be verified. Scan-and-import also requires exactly one recognized entry. Explicit registration of unknown layouts retains the previous compatibility behavior.
+Both single-model registration and scan-and-import reject confirmed component directories, directories containing multiple models, and recognized entries whose files are missing or cannot be verified. Both paths require metadata to identify exactly one complete model entry in the selected directory; parent directories, non-model directories, and unknown layouts are rejected.
 
 Do not treat an entry as verified complete when either of these messages appears:
 
@@ -186,6 +186,7 @@ Administrators can browse the entire storage in its details, download any file o
 ## Disable Storage
 
 You can disable any storage. Disabled means read-only: model files can no longer be downloaded, copied into it, or deleted, including downloads triggered by deployment. Existing model files can still be deployed as usual.
+For **NFS with local cache**, disabling protects the NFS model library. Node caches can still be filled, cleared, and trimmed according to their capacity policy. This also applies to manually disabled storage; caches that are in use, being transferred, or lack an NFS source copy remain protected.
 Images are not stored in storage; they reside in each node's container runtime. Disabling storage does not affect image synchronization.
 
 ## Notes

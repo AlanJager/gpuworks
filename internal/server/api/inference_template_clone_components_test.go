@@ -41,7 +41,7 @@ func TestCloneAndEditATemplateThatMountsAComponentModel(t *testing.T) {
 	if _, _, err := packageStore.PutArchive(bytes.NewReader(archive)); err != nil {
 		t.Fatal(err)
 	}
-	if err := seed.Seed(database); err != nil {
+	if err := seedInferenceCatalogFixture(database); err != nil {
 		t.Fatal(err)
 	}
 	draftBefore, err := database.InferenceModelByModelID("incoai/glm-5.3-flash-dflash2")

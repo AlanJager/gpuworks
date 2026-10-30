@@ -19,7 +19,7 @@ func withPolicy(d *Deployment, yield string) *Deployment {
 }
 
 func TestDeploymentServiceLevelMigration(t *testing.T) {
-	m := migrationByVersion(t, 184)
+	m := migrationByVersion(t, 186)
 	ms := []migration{m}
 	db := openSchedulingCenterLegacy(t, "service-level")
 	// Deployment 1's instance is at sleep level 2 (an operator slept a
@@ -52,13 +52,13 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 		}
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 184).Error; err != nil {
+	if err := db.First(&marker, 186).Error; err != nil {
 		t.Fatalf("marker: %v", err)
 	}
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("not idempotent: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 184").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 186").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, ms); err != nil {
@@ -80,7 +80,7 @@ func TestDeploymentServiceLevelMigration(t *testing.T) {
 		t.Fatal("columns survived the failed migration")
 	}
 	var count int64
-	if err := rollback.Model(&SchemaMigration{}).Where("version = 184").Count(&count).Error; err != nil || count != 0 {
+	if err := rollback.Model(&SchemaMigration{}).Where("version = 186").Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("marker count = %d err=%v", count, err)
 	}
 	if err := migrateDB(rollback, ms); err != nil {
@@ -190,7 +190,7 @@ func TestDeploymentPolicyRoundTripsNormalized(t *testing.T) {
 	}
 }
 
-// legacyYieldRow is a deployment's yield policy columns as migration 187
+// legacyYieldRow is a deployment's yield policy columns as migration 189
 // leaves them.
 type legacyYieldRow struct {
 	YieldPolicy       string
@@ -203,13 +203,13 @@ type legacyYieldRow struct {
 	HoldMaxSec        int
 }
 
-// openYieldPolicyLegacy is a database that ran migrations 180 to 186 (the
+// openYieldPolicyLegacy is a database that ran migrations 182 to 188 (the
 // gpu3 demo's): service levels and idle sleep on deployments, one row per
 // case.
 func openYieldPolicyLegacy(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db := openSchedulingCenterLegacy(t, name)
-	if err := migrateDB(db, []migration{migrationByVersion(t, 180), migrationByVersion(t, 184)}); err != nil {
+	if err := migrateDB(db, []migration{migrationByVersion(t, 182), migrationByVersion(t, 186)}); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct {
@@ -246,7 +246,7 @@ func readLegacyYieldRows(t *testing.T, db *gorm.DB) map[int]legacyYieldRow {
 	return out
 }
 
-// The rows migration 187 makes of openYieldPolicyLegacy's.
+// The rows migration 189 makes of openYieldPolicyLegacy's.
 var legacyYieldRows = map[int]legacyYieldRow{
 	1:  {YieldPolicy: "never"}, // the row the legacy fixture started with
 	10: {YieldPolicy: "never"},
@@ -263,7 +263,7 @@ var legacyYieldRows = map[int]legacyYieldRow{
 }
 
 func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *testing.T) {
-	m := migrationByVersion(t, 187)
+	m := migrationByVersion(t, 189)
 	ms := []migration{m}
 	db := openYieldPolicyLegacy(t, "yield-policy")
 	if err := migrateDB(db, ms); err != nil {
@@ -281,7 +281,7 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 		}
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 187).Error; err != nil {
+	if err := db.First(&marker, 189).Error; err != nil {
 		t.Fatalf("marker: %v", err)
 	}
 
@@ -289,7 +289,7 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("not idempotent: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 187").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 189").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, ms); err != nil {
@@ -319,7 +319,7 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 		t.Fatal("the failed migration left its schema change behind")
 	}
 	var count int64
-	if err := rollback.Model(&SchemaMigration{}).Where("version = 187").Count(&count).Error; err != nil || count != 0 {
+	if err := rollback.Model(&SchemaMigration{}).Where("version = 189").Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("marker count = %d err=%v", count, err)
 	}
 	if err := migrateDB(rollback, ms); err != nil {
@@ -332,13 +332,13 @@ func TestDeploymentYieldPolicyMigrationConvertsServiceLevelsAndIdleSleep(t *test
 	}
 }
 
-// openYieldPolicy187 is openYieldPolicyLegacy after migration 187, with two
+// openYieldPolicy189 is openYieldPolicyLegacy after migration 189, with two
 // more rows: a timeslice one with a short least turn and an idle time past
 // it, and one that waits for its unfinished requests without bound.
-func openYieldPolicy187(t *testing.T, name string) *gorm.DB {
+func openYieldPolicy189(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	db := openYieldPolicyLegacy(t, name)
-	if err := migrateDB(db, []migration{migrationByVersion(t, 187)}); err != nil {
+	if err := migrateDB(db, []migration{migrationByVersion(t, 189)}); err != nil {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
@@ -369,9 +369,9 @@ func readYieldRows(t *testing.T, db *gorm.DB) map[int]servicelevel.Policy {
 }
 
 func TestDeploymentYieldPolicyReshapeMigration(t *testing.T) {
-	m := migrationByVersion(t, 188)
+	m := migrationByVersion(t, 190)
 	ms := []migration{m}
-	db := openYieldPolicy187(t, "yield-reshape")
+	db := openYieldPolicy189(t, "yield-reshape")
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatal(err)
 	}
@@ -409,13 +409,13 @@ func TestDeploymentYieldPolicyReshapeMigration(t *testing.T) {
 		}
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 188).Error; err != nil {
+	if err := db.First(&marker, 190).Error; err != nil {
 		t.Fatalf("marker: %v", err)
 	}
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("not idempotent: %v", err)
 	}
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 188").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 190").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, ms); err != nil {
@@ -427,7 +427,7 @@ func TestDeploymentYieldPolicyReshapeMigration(t *testing.T) {
 		}
 	}
 
-	rollback := openYieldPolicy187(t, "yield-reshape-rollback")
+	rollback := openYieldPolicy189(t, "yield-reshape-rollback")
 	boom := errors.New("injected failure")
 	failing := migration{Version: m.Version, Name: m.Name, Apply: func(tx *gorm.DB) error {
 		if err := m.Apply(tx); err != nil {
@@ -445,7 +445,7 @@ func TestDeploymentYieldPolicyReshapeMigration(t *testing.T) {
 		t.Fatal("the failed migration dropped auto_sleep")
 	}
 	var count int64
-	if err := rollback.Model(&SchemaMigration{}).Where("version = 188").Count(&count).Error; err != nil || count != 0 {
+	if err := rollback.Model(&SchemaMigration{}).Where("version = 190").Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("marker count = %d err=%v", count, err)
 	}
 	if err := migrateDB(rollback, ms); err != nil {

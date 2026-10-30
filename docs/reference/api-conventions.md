@@ -72,7 +72,7 @@ curl --fail-with-body -sS \
 | `id` | 部署 ID，用于查询 `GET /api/v1/deployments/{id}` 等管理接口 |
 | `name` / `served_name` | `name` 是管理界面显示名；`served_name` 是发起推理请求时填写的 `model` 名称 |
 | `desired_state` / `runtime_state` | 分别是期望状态和当前运行状态；判断能否服务时还要结合就绪副本，不能仅凭 `active` |
-| `replicas` / `ready_replicas` | 普通部署的目标副本数和就绪副本数。预填充/解码分离（PD）部署不返回 `ready_replicas`，需在详情的 `pd` 中查看各角色统计；不能把缺省当作 `0` |
+| `replicas` / `ready_replicas` | 部署的副本数和就绪副本数。预填充/解码分离（PD）部署按各角色的 unit 汇总，与列表行同名同值；详情里另有 `pd.roles` 给出按角色拆开的同一组数；不能把缺省当作 `0` |
 
 `page` 从 `1` 开始，`page_size` 为 `1`–`200`。不带分页参数时返回全部匹配部署，单条记录也比分页列表更完整。
 空列表同样返回 HTTP `200`；请求失败时返回错误对象，不能把它当作空列表处理。

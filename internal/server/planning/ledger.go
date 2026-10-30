@@ -50,7 +50,7 @@ func suggestEviction(st *store.Store, node *store.Node, req scheduler.Request, s
 			continue
 		}
 		dep, err := st.GetDeployment(in.DeploymentID)
-		if err != nil || !dep.Sleepable || InstanceSleepIntent(in) > 0 || in.SleepLevel > 0 {
+		if err != nil || !dep.Sleepable || InstanceAsleep(in) {
 			continue
 		}
 		gis := parseInts(in.GPUIndexes)

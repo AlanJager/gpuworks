@@ -108,6 +108,9 @@ DELETE /api/v1/pull/sync-groups/{id}
 DELETE /api/v1/storages/{id}
 DELETE /api/v1/storages/{id}/cache
 DELETE /api/v1/storages/{id}/files
+GET /api/v1/agent-upgrades
+GET /api/v1/agent-upgrades/{id}
+GET /api/v1/agent-upgrades/{id}/items
 GET /api/v1/agent/connect
 GET /api/v1/agent/rejects
 GET /api/v1/agent/upgrade-errors
@@ -144,6 +147,7 @@ GET /api/v1/deployments/{id}/schedule
 GET /api/v1/dgpus
 GET /api/v1/engines
 GET /api/v1/events
+GET /api/v1/experience
 GET /api/v1/gpus
 GET /api/v1/healthz
 GET /api/v1/images
@@ -247,6 +251,11 @@ PATCH /api/v1/security/settings
 PATCH /api/v1/storages/settings
 PATCH /api/v1/storages/{id}
 PATCH /api/v1/storages/{id}/node-overrides
+POST /api/v1/agent-upgrades
+POST /api/v1/agent-upgrades/preview
+POST /api/v1/agent-upgrades/{id}/continue-preview
+POST /api/v1/agent-upgrades/{id}/items/{uuid}/release
+POST /api/v1/agent-upgrades/{id}/stop
 POST /api/v1/ai/ask
 POST /api/v1/ai/configs
 POST /api/v1/ai/configs/test
@@ -274,6 +283,8 @@ POST /api/v1/deployments/{id}/units/retry
 POST /api/v1/deployments/{id}/units/suggest
 POST /api/v1/deployments/{id}/wake
 POST /api/v1/evaluate
+POST /api/v1/experience/password
+POST /api/v1/experience/reset
 POST /api/v1/images/import
 POST /api/v1/images/preview-archive-url
 POST /api/v1/images/sync
@@ -299,6 +310,7 @@ POST /api/v1/models/quick-register
 POST /api/v1/models/register-url
 POST /api/v1/models/{id}/copy
 POST /api/v1/models/{id}/download
+POST /api/v1/models/{id}/download/cancel
 POST /api/v1/models/{id}/metadata/refresh
 POST /api/v1/models/{id}/nodes/{uuid}/cache/retry
 POST /api/v1/models/{id}/nodes/{uuid}/sync
@@ -362,6 +374,7 @@ PUT /api/v1/deployments/{id}/routing
 PUT /api/v1/deployments/{id}/schedule/{sid}
 PUT /api/v1/deployments/{id}/tokenize
 PUT /api/v1/deployments/{id}/yield-policy
+PUT /api/v1/experience/enabled
 PUT /api/v1/mcp/settings
 PUT /api/v1/networks/{id}
 PUT /api/v1/networks/{id}/attachments/{attachmentID}

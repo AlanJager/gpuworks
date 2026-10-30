@@ -26,7 +26,8 @@ const i18n = createInstance();
 await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", resources: { en: { models, common: read("common") } }, defaultNS: "models", interpolation: { escapeValue: false } });
 
 const { MemoryRouter } = await import("react-router-dom");
-const { cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor, within } = await import("@testing-library/react");
+const { message } = await import("antd");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { api } = await import("../src/api.ts");
 const { default: ModelsPage } = await import("../src/pages/ModelsPage.tsx");
@@ -61,7 +62,10 @@ beforeEach(() => {
     return { items: matched.slice(start, start + query.page_size), page: query.page, page_size: query.page_size, total: matched.length, summary: { registered: 45, ready_files: 135, sources: 2, weight_gib: 45 } };
   };
 });
-afterEach(() => { cleanup(); Object.assign(api, originals); });
+afterEach(async () => {
+  await act(async () => { message.destroy(); cleanup(); });
+  Object.assign(api, originals);
+});
 after(() => { closeChannels(); dom.window.close(); });
 
 function renderPage(view: "grid" | "list", path = "/models") {
@@ -150,6 +154,7 @@ test("deleting the last row of a page steps back to the previous page instead of
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await screen.findByText("model-2");
+    await screen.findByText(models.message.deleted);
     assert.equal(queries.at(-1)?.page, 2, "the emptied page 3 must not be refetched; the previous page loads");
     assert.equal(screen.queryByText("model-1"), null);
     assert.deepEqual(deleted, [1]);

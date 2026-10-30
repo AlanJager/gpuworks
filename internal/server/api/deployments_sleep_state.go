@@ -155,9 +155,16 @@ func replicaCountsOf(rows dtoLookup, view replicaView, role string, incomplete m
 			out.Awake++
 		case replicaAsleep:
 			out.Asleep++
-			if leader.SleepLevel > 0 {
+			out.Level = max(out.Level, leader.SleepLevel)
+			// Settled means the engine has reached the level it was ordered
+			// to, which is not the same as it reporting some level: a change
+			// between two levels goes through awake (the engine only sleeps
+			// from awake), so a level-2 order on a level-1 engine reports 1
+			// for the whole wake-then-offload sequence. Comparing against the
+			// order is what makes that transition read "sleeping" instead of
+			// byte-identically to the settled state before the click.
+			if leader.SleepLevel > 0 && leader.SleepLevel >= leader.SleepIntent() {
 				out.Settled++
-				out.Level = max(out.Level, leader.SleepLevel)
 			}
 		}
 	}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
 )
 
 // agentUpgradePushTimeout bounds one pushed upgrade: the binary crosses the
@@ -106,12 +107,18 @@ func (s *Session) pushAgentUpgrade(ctx context.Context, name string, binary []by
 		if status.State == "verified" {
 			return nil
 		}
-		if status.Error != "" {
-			return errors.New("agent rejected upgrade: " + status.Error)
+		if status.State == "failed" {
+			detail := strings.TrimSpace(status.Error)
+			if detail == "" {
+				detail = "agent rejected upgrade"
+			}
+			return &agentupgrade.RejectedError{Detail: detail, Busy: strings.Contains(strings.ToLower(detail), "already in progress")}
 		}
-		return fmt.Errorf("agent rejected upgrade (state %q)", status.State)
+		return fmt.Errorf("unrecognized agent upgrade verdict (state %q)", status.State)
 	}
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case status := <-answer:
 		return verdict(status)
 	case err := <-answerErr:
@@ -129,6 +136,8 @@ func (s *Session) pushAgentUpgrade(ctx context.Context, name string, binary []by
 	timer := time.NewTimer(agentUpgradeAnswerTimeout)
 	defer timer.Stop()
 	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case status := <-answer:
 		return verdict(status)
 	case err := <-answerErr:

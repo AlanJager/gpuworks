@@ -77,6 +77,20 @@ function TransferProgress({ row }: { row: Pick<ModelNodePresence, "state" | "pro
   </Space>;
 }
 
+function CancelDownload({ modelId, storageId, nodeUuid, onChanged }: { modelId: number; storageId?: number; nodeUuid?: string; onChanged: () => void }) {
+  const { t } = useTranslation("models");
+  const cancel = async () => {
+    try {
+      await api.cancelModelDownload(modelId, { storage_id: storageId, node_uuid: nodeUuid });
+      message.success(t("presenceMessage.downloadCanceled"));
+      onChanged();
+    } catch (e) {
+      message.error(storageErrorText(t, e));
+    }
+  };
+  return <Popconfirm title={t("presenceAction.cancelDownloadConfirm")} onConfirm={cancel} okText={t("presenceAction.cancelDownload")} cancelText={t("action.cancel")}><Button size="small" danger>{t("presenceAction.cancelDownload")}</Button></Popconfirm>;
+}
+
 function NodeFileTable({ model, group, isAdmin, onChanged }: { model: Model; group: NodeGroup; isAdmin: boolean; onChanged: () => void }) {
   const { t } = useTranslation("models");
   const run = async (action: () => Promise<unknown>, success: string) => {
@@ -118,14 +132,15 @@ function NodeFileTable({ model, group, isAdmin, onChanged }: { model: Model; gro
     { title: t("detail.size"), dataIndex: "size_bytes", render: (value: number) => value ? formatBytes(value) : "—" },
     { title: t("detail.status"), dataIndex: "state", render: (value: string, row) => <Space direction="vertical" size={0}>
       <StateTag state={value} />
-      {row.message && (value === "failed" || value === "download_required") && <Typography.Text type="danger" style={{ wordBreak: "break-word" }}>{row.message}</Typography.Text>}
+      {row.message && (value === "failed" || value === "download_required" || value === "canceled") && <Typography.Text type="danger" style={{ wordBreak: "break-word" }}>{row.message}</Typography.Text>}
     </Space> },
     { title: t("detail.progress"), key: "progress", render: (_: unknown, row) => <TransferProgress row={row} /> },
     { title: t("column.source"), key: "source", render: (_: unknown, row) => <SourceText row={row} /> },
     { title: t("files.lastUsed"), dataIndex: "last_used_at", render: (value?: string) => value ? formatTime(value) : <Typography.Text type="secondary">{t("files.neverUsed")}</Typography.Text> },
     { title: t("column.actions"), key: "action", render: (_: unknown, row) => <Space size={4}>
       {row.state === "download_required" && <Button size="small" onClick={() => run(() => api.downloadModel(model.id, row.node_uuid), t("presenceMessage.downloadStarted"))}>{t("action.internetDownload")}</Button>}
-      {(row.state === "failed" || row.state === "download_required") && <Button size="small" onClick={() => retry(row)}>{t("action.retry")}</Button>}
+      {(row.state === "failed" || row.state === "download_required" || row.state === "canceled") && <Button size="small" onClick={() => retry(row)}>{t("action.retry")}</Button>}
+      {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} nodeUuid={row.node_uuid} onChanged={onChanged} />}
       {row.state === "syncing" && <Popconfirm title={t("presenceAction.cancelConfirm")} onConfirm={() => run(() => api.cancelModelSync(model.id, row.node_uuid), t("presenceMessage.syncCanceled"))} okText={t("presenceAction.cancelSync")} cancelText={t("presenceAction.continueSync")}><Button size="small" danger>{t("presenceAction.cancelSync")}</Button></Popconfirm>}
       {isAdmin && deleteButton(row)}
     </Space> },
@@ -142,7 +157,7 @@ function SharedFileTable({ model, rows, isAdmin, onChanged }: { model: Model; ro
       <StateTag state={value} />
       {value === "missing"
         ? <Typography.Text type="danger">{t("files.missingHint")}</Typography.Text>
-        : row.message && (value === "failed" || value === "download_required") && <Typography.Text type="danger" style={{ wordBreak: "break-word" }}>{row.message}</Typography.Text>}
+        : row.message && (value === "failed" || value === "download_required" || value === "canceled") && <Typography.Text type="danger" style={{ wordBreak: "break-word" }}>{row.message}</Typography.Text>}
     </Space> },
     { title: t("column.source"), key: "source", render: (_: unknown, row) => <SourceText row={row} /> },
     { title: t("detail.progress"), key: "progress", render: (_: unknown, row) => row.state === "downloading" || row.state === "syncing" ? <TransferProgress row={row} /> : "—" },
@@ -151,7 +166,10 @@ function SharedFileTable({ model, rows, isAdmin, onChanged }: { model: Model; ro
       {storageTypeInfo(row.storage_type).cache && <Typography.Text>{t("files.cachedNodes", { count: row.cached_nodes })}</Typography.Text>}
       {row.writer_node && <Typography.Text type="secondary">{t("files.writerNode", { node: row.writer_node })}</Typography.Text>}
     </Space> },
-    ...(isAdmin ? [{ title: t("column.actions"), key: "action", render: (_: unknown, row: ModelStoragePresence) => <ModelStorageFileDelete modelId={model.id} storageId={row.storage_id} storageName={row.storage_name} storageType={row.storage_type} writable={row.writable} cachedNodes={row.cached_nodes} onDone={onChanged} /> }] : []),
+    { title: t("column.actions"), key: "action", render: (_: unknown, row) => <Space size={4}>
+      {row.acquisition === "download" && (row.state === "pending" || row.state === "downloading") && <CancelDownload modelId={model.id} storageId={row.storage_id} onChanged={onChanged} />}
+      {isAdmin && <ModelStorageFileDelete modelId={model.id} storageId={row.storage_id} storageName={row.storage_name} storageType={row.storage_type} writable={row.writable} cachedNodes={row.cached_nodes} onDone={onChanged} />}
+    </Space> },
   ]} />;
 }
 

@@ -89,8 +89,8 @@ type sharingCache struct {
 	ok         bool
 }
 
-// deploymentServiceColumns are the columns migrations 180 and 184 added to
-// deployments and 187 dropped, once the yield policy columns said the same:
+// deploymentServiceColumns are the columns migrations 182 and 186 added to
+// deployments and 189 dropped, once the yield policy columns said the same:
 // the old idle sleep (after how long, at which level) and the service level.
 type deploymentServiceColumns struct {
 	IdleSleepAfterSec int    `gorm:"not null;default:0"`
@@ -150,7 +150,7 @@ func addDeploymentServiceLevel(db *gorm.DB) error {
 	return db.Exec(held).Error
 }
 
-// presetColumns are what migration 187 writes for each service level: the
+// presetColumns are what migration 189 writes for each service level: the
 // preset's parameters as they were when the migration was written (the
 // presets of package servicelevel may change later; a migration may not).
 var presetColumns = []struct {
@@ -223,8 +223,8 @@ func addDeploymentYieldPolicy(db *gorm.DB) error {
 	return nil
 }
 
-// deploymentYieldColumns are the yield policy columns as migration 187 added
-// them; 188 dropped auto_sleep and min_serve_sec.
+// deploymentYieldColumns are the yield policy columns as migration 189 added
+// them; 190 dropped auto_sleep and min_serve_sec.
 type deploymentYieldColumns struct {
 	YieldPolicy       string `gorm:"size:16;not null;default:'never'"`
 	AutoSleep         bool   `gorm:"not null;default:false"`

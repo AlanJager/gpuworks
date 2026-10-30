@@ -94,29 +94,13 @@ func (a *apiHandlers) resolveDeploymentModelFromTemplate(ctx context.Context, mo
 		if err != nil {
 			return nil, err
 		}
-		if templateWeightMatchesAnySource(append(specWeightSources(selection.Spec), selection.Weight), requested) {
-			if !selection.ExplicitProvider {
-				model = requested
-			}
-		} else {
+		if !templateWeightMatchesAnySource(append(specWeightSources(selection.Spec), selection.Weight), requested) {
 			return nil, fmt.Errorf("model_id %d conflicts with template model %s@%s", modelID, selection.Weight.RepoID, selection.Weight.Revision)
 		}
-		// The UI may have selected an equivalent model record from another
-		// provider before it knew which artifact is ready on the target node.
-		// Prefer that ready artifact over an incomplete remote record so a
-		// deployment does not unexpectedly start a public Hugging Face download.
-		if model != nil && selection.NodeID != 0 {
-			ready, err := a.modelHasReadyArtifact(model, selection.NodeID, selection.StoragePins)
-			if err != nil {
-				return nil, err
-			}
-			if !ready {
-				model, err = a.resolveTemplateWeightModelForNode(selection.Weight, selection.Model, selection.Spec.Engine, selection.Spec.Quantization, selection.Spec.WeightBytes, selection.NodeID, selection.StoragePins)
-				if err != nil {
-					return nil, err
-				}
-			}
+		if selection.ExplicitProvider && !strings.EqualFold(strings.TrimSpace(requested.Source), strings.TrimSpace(selection.Weight.Provider)) {
+			return nil, fmt.Errorf("model_id %d uses provider %s, which conflicts with model_source.provider %s", modelID, requested.Source, selection.Weight.Provider)
 		}
+		model = requested
 	}
 	if model == nil {
 		model, err = a.resolveTemplateWeightModelForNode(selection.Weight, selection.Model, selection.Spec.Engine, selection.Spec.Quantization, selection.Spec.WeightBytes, selection.NodeID, selection.StoragePins, selection.ExplicitProvider)
@@ -131,13 +115,6 @@ func (a *apiHandlers) resolveDeploymentModelFromTemplate(ctx context.Context, mo
 	selection.Weight = weightSource{Provider: model.Source, RepoID: model.SourceID, Revision: model.Revision, Subfolder: model.ArtifactSubfolder}
 	if err := a.resolveTemplateComponentModels(selection, model); err != nil {
 		return nil, err
-	}
-	if primary, ok := deploy.PrimaryComponent(selection.Components); ok && primary.StoreModelID != model.ID {
-		primaryModel, getErr := a.d.Store.GetModel(primary.StoreModelID)
-		if getErr != nil {
-			return nil, getErr
-		}
-		model = primaryModel
 	}
 	applyCurrentModelAPIContract(selection, model)
 	a.applyCatalogEstimationConfig(selection, model)
@@ -221,9 +198,10 @@ func applyCurrentModelAPIContract(selection *templateSelection, model *store.Mod
 func (a *apiHandlers) resolveTemplateComponentModels(selection *templateSelection, fallbackPrimary *store.Model) error {
 	for index := range selection.Components {
 		component := &selection.Components[index]
-		if component.Role == "primary" && templateWeightMatchesModel(
-			weightSource{Provider: component.Provider, RepoID: component.RepoID, Revision: component.Revision, Subfolder: component.Subfolder}, fallbackPrimary) {
+		if component.Role == "primary" {
 			component.StoreModelID = fallbackPrimary.ID
+			component.Provider, component.RepoID = fallbackPrimary.Source, fallbackPrimary.SourceID
+			component.Revision, component.Subfolder = fallbackPrimary.Revision, fallbackPrimary.ArtifactSubfolder
 			continue
 		}
 		original, err := a.d.Store.InferenceModelByModelID(component.OriginalModelID)

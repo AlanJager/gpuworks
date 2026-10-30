@@ -337,3 +337,53 @@ func TestNodeWireCarriesTheRuntimePassedOver(t *testing.T) {
 	assertJSONKeysAbsent(t, marshalJSONObject(t, dto.Node{UUID: "node-1"}),
 		"runtime_fallback_from", "runtime_fallback_reason", "runtime_fallback_plugin")
 }
+
+// The sleep keys answer "is this deployment asleep?", which is the question
+// this contract exists for, so their wire shape is pinned rather than left to
+// whichever fixture happens to run. `state` is always present and never empty
+// — a client reading it must not fall back to runtime_state for a deployment
+// the server already classified. `asleep_replicas` and `sleep_level` are
+// omitted when there is no sleep to report, so a zero on the wire always means
+// a counted zero and never "the server forgot the field".
+func TestDeploymentSleepKeysWireContract(t *testing.T) {
+	awake := marshalJSONObject(t, dto.Deployment{RuntimeState: "running", State: "running"})
+	if got, ok := awake["state"]; !ok || got != "running" {
+		t.Fatalf("state = %#v (present %v), want the literal \"running\"", got, ok)
+	}
+	assertJSONKeysAbsent(t, awake, "asleep_replicas", "sleep_level")
+
+	// A deployment that is asleep carries both, and asleep_replicas counts
+	// replicas rather than being a flag.
+	asleep := marshalJSONObject(t, dto.Deployment{RuntimeState: "running", State: "asleep", AsleepReplicas: 2, SleepLevel: 1})
+	if got := asleep["state"]; got != "asleep" {
+		t.Fatalf("state = %#v, want \"asleep\"", got)
+	}
+	if got := asleep["asleep_replicas"]; got != float64(2) {
+		t.Fatalf("asleep_replicas = %#v, want 2", got)
+	}
+	if got := asleep["sleep_level"]; got != float64(1) {
+		t.Fatalf("sleep_level = %#v, want 1", got)
+	}
+
+	// A partly-asleep deployment keeps state "running" and still reports the
+	// number that sleeps, which is the case the whole ticket is about: the row
+	// reads running while some replicas sleep behind it.
+	partial := marshalJSONObject(t, dto.Deployment{RuntimeState: "running", State: "running", AsleepReplicas: 1})
+	if got := partial["asleep_replicas"]; got != float64(1) {
+		t.Fatalf("asleep_replicas = %#v, want 1 on a partly asleep deployment", got)
+	}
+
+	// The list row carries the same three keys: the row is where the operator
+	// reads the state, and a list-only shape that dropped them would leave the
+	// table falling back to runtime_state.
+	row := marshalJSONObject(t, dto.DeploymentListItem{RuntimeState: "running", State: "asleep", AsleepReplicas: 1, SleepLevel: 1})
+	if got := row["state"]; got != "asleep" {
+		t.Fatalf("list row state = %#v, want \"asleep\"", got)
+	}
+	if got := row["asleep_replicas"]; got != float64(1) {
+		t.Fatalf("list row asleep_replicas = %#v, want 1", got)
+	}
+	if got := row["sleep_level"]; got != float64(1) {
+		t.Fatalf("list row sleep_level = %#v, want 1", got)
+	}
+}

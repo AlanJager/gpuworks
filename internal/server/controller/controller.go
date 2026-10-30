@@ -38,7 +38,8 @@ type HubPusher interface {
 
 // Controller reconciles deployments and instances.
 type Controller struct {
-	cacheCopies cacheCopyClaims
+	cacheCopies   cacheCopyClaims
+	downloadUsers downloadDependencyCache
 	// placements and evictions are what the deployment view shows of
 	// preparation the controller itself drives (preparation_view.go).
 	placements preparationPlacements
@@ -333,6 +334,9 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 		if !errors.Is(err, store.ErrNotFound) {
 			return err
 		}
+		if err := c.withdrawDeploymentDownloads(ctx, id); err != nil {
+			return err
+		}
 		if err := c.withdrawCacheCopies(ctx, id); err != nil {
 			return err
 		}
@@ -407,6 +411,9 @@ func (c *Controller) reconcileDeployment(ctx context.Context, id uint) error {
 	// Stopped/deleting deployments: tear down all their instances. A deleting
 	// deployment is removed only after the agent confirms the teardown.
 	if dep.State == store.DeployStopped || dep.State == store.DeployDeleting {
+		if err := c.withdrawDeploymentDownloads(ctx, dep.ID); err != nil {
+			return err
+		}
 		if err := c.withdrawCacheCopies(ctx, dep.ID); err != nil {
 			return err
 		}

@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// openLifecycleScheduleLegacy is a database as migration 185 left it: orders
+// openLifecycleScheduleLegacy is a database as migration 187 left it: orders
 // written before a schedule could name a PD role.
 func openLifecycleScheduleLegacy(t *testing.T, name string) *gorm.DB {
 	t.Helper()
@@ -25,7 +25,7 @@ func openLifecycleScheduleLegacy(t *testing.T, name string) *gorm.DB {
 }
 
 func TestLifecycleScheduleRoleMigration(t *testing.T) {
-	m := migrationByVersion(t, 186)
+	m := migrationByVersion(t, 188)
 	ms := []migration{m}
 	db := openLifecycleScheduleLegacy(t, "schedule-role")
 	if err := migrateDB(db, ms); err != nil {
@@ -43,14 +43,14 @@ func TestLifecycleScheduleRoleMigration(t *testing.T) {
 		t.Fatalf("existing orders changed: %+v", rows)
 	}
 	var marker SchemaMigration
-	if err := db.First(&marker, 186).Error; err != nil {
+	if err := db.First(&marker, 188).Error; err != nil {
 		t.Fatalf("marker: %v", err)
 	}
 	if err := migrateDB(db, ms); err != nil {
 		t.Fatalf("not idempotent: %v", err)
 	}
 	// A rerun without the marker (the column already there) changes nothing.
-	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 186").Error; err != nil {
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = 188").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := migrateDB(db, ms); err != nil {
@@ -72,7 +72,7 @@ func TestLifecycleScheduleRoleMigration(t *testing.T) {
 		t.Fatal("role column survived the failed migration")
 	}
 	var count int64
-	if err := rollback.Model(&SchemaMigration{}).Where("version = 186").Count(&count).Error; err != nil || count != 0 {
+	if err := rollback.Model(&SchemaMigration{}).Where("version = 188").Count(&count).Error; err != nil || count != 0 {
 		t.Fatalf("marker count = %d err=%v", count, err)
 	}
 	if err := migrateDB(rollback, ms); err != nil {

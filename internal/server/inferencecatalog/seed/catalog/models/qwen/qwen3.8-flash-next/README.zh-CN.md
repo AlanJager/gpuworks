@@ -1,8 +1,10 @@
 # Qwen3.8-Flash-Next
 
-[官方 SGLang 配方](https://docs.sglang.io/cookbook/autoregressive/Qwen/Qwen3.8-Flash-Next)。原始 FP8 权重约 185.5 GB；单节点 H200 × 4 或 MI350X/MI355X × 8。使用配方专用镜像。NVIDIA 启用原生 MTP，AMD 使用 AITER 配方。
+[官方 SGLang 配方](https://docs.sglang.io/cookbook/autoregressive/Qwen/Qwen3.8-Flash-Next)。原始 FP8 权重约 185.5 GB；单节点 H200/H20 × 4 或 MI350X/MI355X × 8。使用配方专用镜像。NVIDIA 启用原生 MTP，AMD 使用 AITER 配方。
 
 现有 Apple GGUF 和 NVIDIA Strata 模板保持独立；NVIDIA H200 × 4 配方已在本平台实测（见下），AMD 配方尚未实测。昇腾档位使用 vLLM-Ascend 官方实验性 W8A8-MTP 配方：固定权重 revision `c76aa96a…`，8 个 64 GiB 的 A3 逻辑设备，TP8。不能使用本页 NVIDIA/AMD 的 FP8 模板代替。海光和 PPU 未核实可执行配方。
+
+H20 的 96 GB 和 141 GB 版本共用 4 卡配方，资源准入使用节点上报的实际显存。H20 尚未完成真机推理验证。
 
 ## 实测（H200 × 4，TP4，2026-10-19）
 

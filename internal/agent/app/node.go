@@ -21,6 +21,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
+	"gpuworks.ai/gpuworks/internal/agent/hostsim"
 	"gpuworks.ai/gpuworks/internal/agent/imagepull"
 	"gpuworks.ai/gpuworks/internal/agent/perftest"
 	partitionprobe "gpuworks.ai/gpuworks/internal/agent/probe"
@@ -87,14 +88,16 @@ type NodeRuntime struct {
 	progress *progressGate
 
 	// model-file download bookkeeping
-	dlMu           sync.Mutex
-	downloading    map[string]*modelDownload
-	stoppedCopies  map[string]string
-	syncMu         sync.Mutex
-	modelSyncs     map[string]*activeModelSync
-	imageSyncs     map[string]*activeImageSync
-	imageSyncMu    sync.Mutex
-	imageSyncSends map[string]context.CancelFunc // source runtime calls, keyed by transfer id
+	dlMu          sync.Mutex
+	downloading   map[string]*modelDownload
+	stoppedCopies map[string]string
+	// stoppedDownloads fences canceled attempts across retries and stale replays.
+	stoppedDownloads map[string]map[string]bool
+	syncMu           sync.Mutex
+	modelSyncs       map[string]*activeModelSync
+	imageSyncs       map[string]*activeImageSync
+	imageSyncMu      sync.Mutex
+	imageSyncSends   map[string]context.CancelFunc // source runtime calls, keyed by transfer id
 
 	// netcfg is the effective network/accelerator configuration from the
 	// server. The node owns it - downloads, model sync and image pulls all read
@@ -161,6 +164,10 @@ type NodeRuntime struct {
 	nodeToken      atomic.Value // string
 	servingForward *servingForwarder
 	perftest       perftest.Runner
+
+	// host is the machine a simulated node stands for (hostsim); nil on a
+	// real node.
+	host *hostsim.Host
 
 	// stateDir is the agent's own state directory (udocker, runtime assets,
 	// caches). It is fixed for the process: the models root can move with a
@@ -383,7 +390,7 @@ func (n *NodeRuntime) PartitionAssets(ctx context.Context) []proto.AssetReport {
 	}
 	vendor := accelerator.NormalizeVendor(n.prober.Vendor())
 	if vendor == accelerator.VendorNVIDIA {
-		if assets.LibvgpuAvailable() {
+		if assets.LibvgpuAvailable() || n.host.LibvgpuExtractor() != nil {
 			return []proto.AssetReport{{Backend: accelerator.BackendNVIDIALogical, Root: "embedded://dgpu", Files: []string{"libvgpu.so"}}}
 		}
 		return []proto.AssetReport{}

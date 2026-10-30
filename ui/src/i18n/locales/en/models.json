@@ -85,11 +85,16 @@
   "unknownSize": "Size unknown",
   "unrecognized": "Unrecognized",
   "presenceMessage": {
+    "downloadCanceled": "Download canceled",
+
     "downloadStarted": "Internet download started",
     "syncStarted": "Node sync started",
     "syncCanceled": "Node sync canceled"
   },
   "presenceAction": {
+    "cancelDownload": "Cancel download",
+    "cancelDownloadConfirm": "Cancel this download? Downloaded data is kept for a retry.",
+
     "cancelConfirm": "Cancel the current node sync?",
     "cancelSync": "Cancel sync",
     "continueSync": "Continue sync",
@@ -181,7 +186,9 @@
     "noWritableStorage": "No storage can be written to. Enable one on the Storage page first.",
     "nodes": "Nodes",
     "nodesPlaceholder": "Select online nodes; each one gets its own copy of the files",
-    "sharedHint": "Downloaded once. Every node that mounts this storage can use it right away."
+    "writer": "Download node",
+    "writerPlaceholder": "Choose an online node with access to this storage",
+    "sharedHint": "Choose the node that downloads one shared copy. Cancel a running transfer before changing its node."
   },
   "path": {
     "title": "Register existing path · {{name}}",
@@ -222,6 +229,8 @@
     "open": "View the model files on each node"
   },
   "presence": {
+    "canceled": "Canceled",
+
     "deleting": "Deletion awaiting confirmation",
     "pending": "Pending",
     "downloading": "Internet download",

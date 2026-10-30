@@ -2171,7 +2171,7 @@ specs:
   display_profile: general
   scenario: balanced
   engine: vllm
-  image: gpuworks/gpuworks-runner:cann9.1-950-vllm0.27.1rc1-r2
+  image: gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1
   weights:
     quantization: mxfp4
     sources:

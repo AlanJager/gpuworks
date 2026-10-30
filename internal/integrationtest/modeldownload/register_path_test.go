@@ -54,9 +54,12 @@ func TestRegisterPathOutsideStorageThroughRealAgent(t *testing.T) {
 		t.Fatalf("model=%s err=%v", data, err)
 	}
 	outside := t.TempDir()
-	// Unknown engine layouts remain supported; registration does not assert
-	// a particular weight format or prove that an engine can load the files.
-	if err := os.WriteFile(filepath.Join(outside, "engine.plan"), []byte("weights"), 0o600); err != nil {
+	// Metadata must identify the selected model directory.
+	if err := os.WriteFile(filepath.Join(outside, "model.safetensors"), []byte("weights"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const config = `{"model_type":"qwen3"}`
+	if err := os.WriteFile(filepath.Join(outside, "config.json"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	endpoint := fmt.Sprintf("/api/v1/models/%d/register-path", model.ID)
@@ -85,7 +88,7 @@ func TestRegisterPathOutsideStorageThroughRealAgent(t *testing.T) {
 		if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil || resp.StatusCode != http.StatusOK {
 			t.Fatalf("model detail status=%d err=%v", resp.StatusCode, err)
 		}
-		if len(detail.Nodes) != 1 || detail.Nodes[0].NodeUUID != node.UUID || detail.Nodes[0].StorageID != storage.ID || detail.Nodes[0].Path != outside || detail.Nodes[0].State != "registered" || detail.Nodes[0].SizeBytes != 7 {
+		if len(detail.Nodes) != 1 || detail.Nodes[0].NodeUUID != node.UUID || detail.Nodes[0].StorageID != storage.ID || detail.Nodes[0].Path != outside || detail.Nodes[0].State != "registered" || detail.Nodes[0].SizeBytes != int64(7+len(config)) {
 			t.Fatalf("registered location=%+v", detail.Nodes)
 		}
 	}
@@ -95,10 +98,26 @@ func TestRegisterPathOutsideStorageThroughRealAgent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(unfinished, "model.part"), []byte("partial"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	parent := t.TempDir()
+	child := filepath.Join(parent, "model")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"config.json": config, "model.safetensors": "child weights"} {
+		if err := os.WriteFile(filepath.Join(child, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nonmodel := t.TempDir()
+	if err := os.WriteFile(filepath.Join(nonmodel, "notes.txt"), []byte("not a model"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name, path string
 		status     int
 	}{
+		{"parent of model directory", parent, http.StatusConflict},
+		{"non-model directory", nonmodel, http.StatusConflict},
 		{"missing path parameter", "", http.StatusBadRequest},
 		{"missing directory", filepath.Join(outside, "absent"), http.StatusConflict},
 		{"empty directory", empty, http.StatusConflict},

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/pkg/model/modelmetadata"
 )
 
@@ -29,16 +30,16 @@ func callNodeParseModelMetadata(ctx context.Context, call func(context.Context, 
 }
 
 // Both import paths reject known invalid entries before writing to Store.
-// A nil report is an older agent; an unknown layout may still be explicitly
-// registered. Storage discovery additionally requires a recognized entry.
+// Agents must identify one complete model entry in the selected directory.
+// Older agents that cannot return recognition evidence must be upgraded.
 func validateModelMetadata(report *modelmetadata.Report) error {
 	if report == nil {
-		return nil
+		return messages.NewProductError(messages.ErrorAgentUpgradeRequired, "upgrade the agent to validate model directory metadata before registration", nil)
 	}
 	if report.Component && len(report.Entries) == 0 {
 		return errors.New("directory is a model component")
 	}
-	if len(report.Entries) > 1 {
+	if len(report.Entries) != 1 {
 		return errors.New("directory does not identify exactly one model entry")
 	}
 	if len(report.Entries) == 1 && report.Entries[0].Incomplete {

@@ -73,8 +73,18 @@ func TestExecutorCompletesABatchAndWritesTheOutputFile(t *testing.T) {
 	if err != nil || file.Purpose != PurposeOutput || file.UserID != testOwner.UserID || file.Bytes == 0 {
 		t.Fatalf("output row = %+v err=%v", file, err)
 	}
-	if _, err := os.Stat(r.svc.partialPath(b.ID)); !os.IsNotExist(err) {
-		t.Fatalf("the partial file is still there: %v", err)
+	// The partial results go once the finish is recorded, a moment after the
+	// batch reads completed.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		_, err := os.Stat(r.svc.partialPath(b.ID))
+		if os.IsNotExist(err) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the partial file is still there: %v", err)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

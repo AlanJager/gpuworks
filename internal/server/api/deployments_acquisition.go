@@ -118,11 +118,11 @@ func (a *apiHandlers) checkStorageServes(storage *store.Storage, model *store.Mo
 // through a writer node, rather than by each node. A local storage needs
 // nothing here; each node gets the model when it starts (from a node of its
 // sync group, else by downloading it).
-func (a *apiHandlers) startSharedModelDownload(model *store.Model, storage *store.Storage, targets []*store.Node) (int, error) {
+func (a *apiHandlers) startSharedModelDownload(model *store.Model, storage *store.Storage, targets []*store.Node, owner ...uint) (int, error) {
 	if model == nil || storage == nil || !proto.StorageShared(storage.Type) || a.storageHoldsModel(storage, model, uniqueNodes(targets)) {
 		return http.StatusOK, nil
 	}
-	if _, status, err := a.startSharedDownload(model, storage); err != nil {
+	if _, status, err := a.startSharedDownloadOn(model, storage, "", owner...); err != nil {
 		return status, err
 	}
 	return http.StatusOK, nil

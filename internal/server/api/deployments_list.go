@@ -148,6 +148,10 @@ func deploymentListItem(d dto.Deployment, preparation *dto.ModelNodePresence) dt
 		Preparation: preparation, ID: d.ID, Name: d.Name, TemplateID: d.TemplateID, TemplateDeviated: d.TemplateDeviated,
 		Engine: d.Engine, Image: d.Image, ModelID: d.ModelID, ModelName: d.ModelName, ServedName: d.ServedName,
 		NodeUUID: d.NodeUUID, NodeName: d.NodeName, NodeNames: d.NodeNames,
+		// The row shows where the replicas run as well as where they were
+		// asked to run; both come from the DTO so the row and the drawer can
+		// never disagree about either.
+		RuntimeNodes: d.RuntimeNodes, RuntimeNodeNames: d.RuntimeNodeNames,
 		DesiredState: d.DesiredState, RuntimeState: d.RuntimeState, State: d.State,
 		AsleepReplicas: d.AsleepReplicas, SleepLevel: d.SleepLevel, Sleepable: d.Sleepable, Replicas: d.Replicas,
 		ReadyReplicas: d.ReadyReplicas, Health: d.Health,

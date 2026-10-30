@@ -44,6 +44,11 @@ func supersedes(active *modelDownload, task proto.ModelFileTask) bool {
 // waits behind a download of the same key without canceling it.
 func (n *NodeRuntime) copyTaskRunning(task proto.ModelFileTask, retry bool) bool {
 	n.dlMu.Lock()
+	if n.stoppedDownloads[task.Key][task.TransferID] {
+		n.dlMu.Unlock()
+		n.settleParkedModelFile(task, retry)
+		return true
+	}
 	if stopped, ok := n.stoppedCopies[task.Key]; ok {
 		if stopped == task.TransferID {
 			n.dlMu.Unlock()
