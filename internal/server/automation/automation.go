@@ -168,7 +168,11 @@ func (e *Evaluator) Run(ctx context.Context) {
 			e.Tick()
 			rearm()
 		case <-due.C:
-			e.residency(e.now())
+			now := e.now()
+			// A yield may have landed: the waiting wake it made room for
+			// goes first, as on a nudge, without the nudge's settle.
+			e.waitingWakes(now)
+			e.residency(now)
 			rearm()
 		case <-e.wake:
 			if settled == nil {
