@@ -124,12 +124,13 @@ test("the board of one node, and the fleet-wide lists alone, are separate reads"
 });
 
 test("the overview is one plain read, and its cards stay the server's compact arrays", async () => {
-  const wire = { summary: { nodes: 1 }, models: ["L20"], deployments: [{ id: 7, name: "qwen", yield_policy: "timeslice" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 0, [1]], [1, 0, 49152, 0, 0, 0]] }] };
+  const wire = { summary: { nodes: 1 }, states: ["offline", "unhealthy", "held_outside", "awake", "asleep", "free"], models: ["L20"], deployments: [{ id: 7, name: "qwen", yield_policy: "timeslice" }], nodes: [{ uuid: "n1", name: "gpu-1", online: true, cards: [[0, 0, 49152, 100, 0, 3, 1, [1]], [1, 0, 49152, 0, 0, 5, 0]] }] };
   const seen = fake(200, wire);
   const got = await api.schedulingOverview();
   assert.deepEqual(seen, [{ url: "/api/v1/scheduling/overview", method: undefined, body: undefined }]);
-  assert.deepEqual(got.nodes[0].cards[0], [0, 0, 49152, 100, 0, 0, [1]]);
-  assert.equal(got.nodes[0].cards[1].length, 6, "a card with no occupants has no seventh element");
+  assert.deepEqual(got.nodes[0].cards[0], [0, 0, 49152, 100, 0, 3, 1, [1]]);
+  assert.equal(got.nodes[0].cards[1].length, 7, "a card with no occupants has no eighth element");
+  assert.deepEqual(got.states, wire.states);
 });
 
 test("scaling may name first-placement nodes, and the server's refusal keeps its code and params", async () => {

@@ -24,7 +24,6 @@ export function cellText(t: TFunction<"scheduling">, tDeploy: TFunction<"deploym
   })];
   if (card.awakePct > 0) parts.push(t("heatmap.detail.claimed", { pct: card.awakePct }));
   if (card.sleepingPct > 0) parts.push(t("heatmap.detail.residue", { pct: card.sleepingPct }));
-  if (card.held) parts.push(t("heatmap.detail.held"));
   if (card.switching) parts.push(t("heatmap.detail.switching"));
   if (card.occupants.length > 0) {
     const holders = card.occupants.map((o) => {

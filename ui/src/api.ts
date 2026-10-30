@@ -1081,7 +1081,10 @@ export interface BoardGPU {
   awake_bytes: number;
   sleeping_bytes: number;
   free_bytes: number;
+  /** The card's state as the overview gives it (one of its `states`). */
+  state: string;
   held_outside: boolean;
+  switching: boolean;
   occupants: BoardOccupant[];
 }
 
@@ -1094,11 +1097,12 @@ export interface BoardNode {
 
 // The scheduling center's overview (GET /scheduling/overview): every node and
 // each card of the fleet in one compact response. A card is an array
-// [index, model, memory_mib, awake_pct, sleeping_pct, flags, occupants?]:
-// model is a position in `models`; occupants, when present, are
-// position*2 + 1 when asleep (position in `deployments`) for the deployments
-// on the card; flags are OVERVIEW_FLAG bits (pages/scheduling/overviewModel.ts).
-export type OverviewCardWire = [number, number, number, number, number, number, number[]?];
+// [index, model, memory_mib, awake_pct, sleeping_pct, state, switching, occupants?]:
+// model is a position in `models` and state in `states` (the server derives
+// it); switching is 1 while an instance on the card changes state; occupants,
+// when present, are position*2 + 1 when asleep (position in `deployments`)
+// for the deployments on the card.
+export type OverviewCardWire = [number, number, number, number, number, number, 0 | 1, number[]?];
 
 export interface OverviewCounts {
   cards: number;
@@ -1137,6 +1141,8 @@ export interface OverviewDeployment {
 
 export interface SchedulingOverview {
   summary: OverviewCounts & { nodes: number; online_nodes: number; by_model: OverviewModelCounts[]; contention: OverviewContention };
+  /** The card states the cards refer to by position. */
+  states: string[];
   models: string[];
   deployments: OverviewDeployment[];
   nodes: OverviewNode[];

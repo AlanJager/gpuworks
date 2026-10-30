@@ -21,7 +21,11 @@ type BoardNode struct {
 
 // BoardGPU is one GPU as the ledger charges it: AwakeBytes is what awake
 // instances claim, SleepingBytes the residue sleepers keep, FreeBytes the
-// rest. HeldOutside is a process outside the platform on the card.
+// rest. State is the card's state as the overview gives it (one of
+// SchedulingOverview.States: offline, unhealthy, held_outside, awake, asleep,
+// free). HeldOutside is a process outside the platform on the card, whatever
+// the state; Switching an instance on it starting, going to sleep, waking or
+// draining.
 type BoardGPU struct {
 	Index         int             `json:"index"`
 	Name          string          `json:"name"`
@@ -29,7 +33,9 @@ type BoardGPU struct {
 	AwakeBytes    int64           `json:"awake_bytes"`
 	SleepingBytes int64           `json:"sleeping_bytes"`
 	FreeBytes     int64           `json:"free_bytes"`
+	State         string          `json:"state"`
 	HeldOutside   bool            `json:"held_outside"`
+	Switching     bool            `json:"switching"`
 	Occupants     []BoardOccupant `json:"occupants"`
 }
 

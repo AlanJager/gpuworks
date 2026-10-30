@@ -30,8 +30,8 @@ const at = (hoursAfterFrom: number) => new Date(Date.parse(FROM) + hoursAfterFro
 const nodes: BoardNode[] = [{
   uuid: "node-a", name: "gpu-a", online: true,
   gpus: [
-    { index: 0, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, held_outside: false, occupants: [] },
-    { index: 1, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, held_outside: false, occupants: [] },
+    { index: 0, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, state: "free", held_outside: false, switching: false, occupants: [] },
+    { index: 1, name: "RTX 8000", memory_bytes: 1, awake_bytes: 0, sleeping_bytes: 0, free_bytes: 1, state: "free", held_outside: false, switching: false, occupants: [] },
   ],
 }];
 

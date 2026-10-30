@@ -195,7 +195,7 @@
     "awake": "Serving",
     "asleep": "Asleep",
     "free": "Free",
-    "held": "Held outside the platform",
+    "held_outside": "Held outside the platform",
     "unhealthy": "Faulty",
     "offline": "Node offline"
   },
@@ -214,7 +214,6 @@
     "detail": {
       "claimed": "{{pct}}% claimed by serving deployments",
       "residue": "{{pct}}% kept by sleepers",
-      "held": "A process outside the platform uses it",
       "switching": "changing state",
       "holders": "Held by {{list}}"
     },

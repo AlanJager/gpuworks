@@ -5,11 +5,50 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// FleetOccupant is one deployment holding a card: awake with its claim, or
-// asleep with its residue.
+// FleetOccupant is one instance holding a card: awake with its claim, or
+// asleep with its residue (GPUOccupant, without the whole row).
 type FleetOccupant struct {
 	DeploymentID uint
 	Asleep       bool
+	Instance     string
+	SleepLevel   int
+	ClaimBytes   int64
+	ResidueBytes int64
+}
+
+// CardState is what a card is, for anything that shows a card: the first of
+// CardStates that holds. It is derived here once, so the overview's counts,
+// its cards and the board cannot tell a card apart.
+type CardState string
+
+const (
+	CardOffline     CardState = "offline"      // its node is not online
+	CardUnhealthy   CardState = "unhealthy"    // faulty or unusable for a reason other than being held
+	CardHeldOutside CardState = "held_outside" // a process outside the platform uses it
+	CardAwake       CardState = "awake"        // an instance claims memory on it
+	CardAsleep      CardState = "asleep"       // only sleepers' residue is on it
+	CardFree        CardState = "free"
+)
+
+// CardStates are the states in their precedence.
+var CardStates = []CardState{CardOffline, CardUnhealthy, CardHeldOutside, CardAwake, CardAsleep, CardFree}
+
+// State is the card's state on a node that is online or not.
+func (c FleetCard) State(online bool) CardState {
+	switch {
+	case !online:
+		return CardOffline
+	case c.Unhealthy:
+		return CardUnhealthy
+	case c.HeldOutside:
+		return CardHeldOutside
+	case c.AwakeBytes > 0:
+		return CardAwake
+	case c.SleepingBytes > 0:
+		return CardAsleep
+	default:
+		return CardFree
+	}
 }
 
 // FleetCard is one card as the ledger charges it, without the detail of who
@@ -112,31 +151,52 @@ func FleetCards(st *store.Store, nodes []store.Node) (*FleetLedger, error) {
 
 	for i := range nodes {
 		node := &nodes[i]
-		rows := byNode[node.ID]
-		allocations := allocateInstances(st, node, rows, ledgerView{}, residue, sleeper)
-		occupants := occupantsOf(st, node, rows, residue, sleeper)
-		cards := make([]FleetCard, 0, len(node.GPUs))
-		for _, gpu := range node.OwnedGPUs() {
-			if gpu.Index < 0 {
-				continue // a card the vendor tool does not list holds nothing schedulable
-			}
-			alloc := allocations[gpu.Index]
-			card := FleetCard{
-				Index: gpu.Index, Name: gpu.Name, MemoryBytes: gpu.MemoryTotal,
-				AwakeBytes: alloc.AllocatedBytes, SleepingBytes: alloc.SleepingBytes, HeldOutside: gpu.HeldOutsidePlatform(),
-				Unhealthy: !gpu.CanTakeWork() && !gpu.HeldOutsidePlatform(),
-			}
-			for _, o := range occupants[gpu.Index] {
-				card.Occupants = append(card.Occupants, FleetOccupant{DeploymentID: o.Instance.DeploymentID, Asleep: o.Asleep})
-				if inFlux(&o.Instance, reported) {
-					card.Switching = true
-				}
-			}
-			cards = append(cards, card)
-		}
-		out.Cards[node.ID] = cards
+		out.Cards[node.ID] = nodeCards(st, node, byNode[node.ID], residue, sleeper, reported)
 	}
 	return out, nil
+}
+
+// NodeCards is one node's cards, as FleetCards gives them, from that node's
+// instances alone: what a view of one node reads.
+func NodeCards(st *store.Store, node *store.Node) ([]FleetCard, error) {
+	rows, err := st.InstancesForNode(node.ID)
+	if err != nil {
+		return nil, err
+	}
+	reported := func(in *store.Instance) int { return ReportedSleepLevel(st, in) }
+	sleeper := func(in *store.Instance) bool { return chargesResidue(st, in) }
+	return nodeCards(st, node, rows, newResidues(st), sleeper, reported), nil
+}
+
+// nodeCards charges a node's instances (rows) to its cards - the arithmetic
+// of the ledger, allocateInstances and occupantsOf - with what a card shows
+// besides.
+func nodeCards(st *store.Store, node *store.Node, rows []store.Instance, residue *residues, sleeper func(*store.Instance) bool, reported func(*store.Instance) int) []FleetCard {
+	allocations := allocateInstances(st, node, rows, ledgerView{}, residue, sleeper)
+	occupants := occupantsOf(st, node, rows, residue, sleeper)
+	cards := make([]FleetCard, 0, len(node.GPUs))
+	for _, gpu := range node.OwnedGPUs() {
+		if gpu.Index < 0 {
+			continue // a card the vendor tool does not list holds nothing schedulable
+		}
+		alloc := allocations[gpu.Index]
+		card := FleetCard{
+			Index: gpu.Index, Name: gpu.Name, MemoryBytes: gpu.MemoryTotal,
+			AwakeBytes: alloc.AllocatedBytes, SleepingBytes: alloc.SleepingBytes, HeldOutside: gpu.HeldOutsidePlatform(),
+			Unhealthy: !gpu.CanTakeWork() && !gpu.HeldOutsidePlatform(),
+		}
+		for _, o := range occupants[gpu.Index] {
+			card.Occupants = append(card.Occupants, FleetOccupant{
+				DeploymentID: o.Instance.DeploymentID, Asleep: o.Asleep, Instance: o.Instance.UUID,
+				SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
+			})
+			if inFlux(&o.Instance, reported) {
+				card.Switching = true
+			}
+		}
+		cards = append(cards, card)
+	}
+	return cards
 }
 
 // inFlux reports whether an instance is between states: not running, or

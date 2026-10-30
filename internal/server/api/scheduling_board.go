@@ -107,25 +107,26 @@ func (a *apiHandlers) boardNode(node *store.Node, online bool, nameOf func(uint)
 	if err != nil {
 		return out
 	}
-	allocations := planning.GPUAllocations(a.d.Store, withGPUs)
-	occupants := planning.GPUOccupants(a.d.Store, withGPUs)
-	for _, gpu := range withGPUs.OwnedGPUs() {
-		if gpu.Index < 0 {
-			continue // a card the vendor tool does not list holds nothing schedulable
-		}
-		alloc := allocations[gpu.Index]
+	// The cards are the overview's (planning.NodeCards gives one node what
+	// planning.FleetCards gives the fleet), state included.
+	cards, err := planning.NodeCards(a.d.Store, withGPUs)
+	if err != nil {
+		return out
+	}
+	for _, card := range cards {
 		item := dto.BoardGPU{
-			Index: gpu.Index, Name: gpu.Name, MemoryBytes: gpu.MemoryTotal, AwakeBytes: alloc.AllocatedBytes, SleepingBytes: alloc.SleepingBytes,
-			FreeBytes: max(gpu.MemoryTotal-alloc.AllocatedBytes-alloc.SleepingBytes, 0), HeldOutside: gpu.HeldOutsidePlatform(), Occupants: []dto.BoardOccupant{},
+			Index: card.Index, Name: card.Name, MemoryBytes: card.MemoryBytes, AwakeBytes: card.AwakeBytes, SleepingBytes: card.SleepingBytes,
+			FreeBytes: max(card.MemoryBytes-card.AwakeBytes-card.SleepingBytes, 0), State: string(card.State(online)),
+			HeldOutside: card.HeldOutside, Switching: card.Switching, Occupants: []dto.BoardOccupant{},
 		}
-		for _, o := range occupants[gpu.Index] {
+		for _, o := range card.Occupants {
 			state := "awake"
 			if o.Asleep {
 				state = "asleep"
 			}
 			item.Occupants = append(item.Occupants, dto.BoardOccupant{
-				DeploymentID: o.Instance.DeploymentID, Deployment: nameOf(o.Instance.DeploymentID), YieldPolicy: levelOf(o.Instance.DeploymentID), Instance: o.Instance.UUID,
-				State: state, SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
+				DeploymentID: o.DeploymentID, Deployment: nameOf(o.DeploymentID), YieldPolicy: levelOf(o.DeploymentID), Instance: o.Instance,
+				State: state, SleepLevel: o.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
 			})
 		}
 		out.GPUs = append(out.GPUs, item)

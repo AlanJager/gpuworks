@@ -39,12 +39,47 @@ func assertFleetMatchesPerNode(t *testing.T, st *store.Store, nodes ...*store.No
 			}
 			var want []FleetOccupant
 			for _, o := range occupants[card.Index] {
-				want = append(want, FleetOccupant{DeploymentID: o.Instance.DeploymentID, Asleep: o.Asleep})
+				want = append(want, FleetOccupant{
+					DeploymentID: o.Instance.DeploymentID, Asleep: o.Asleep, Instance: o.Instance.UUID,
+					SleepLevel: o.Instance.SleepLevel, ClaimBytes: o.ClaimBytes, ResidueBytes: o.ResidueBytes,
+				})
 			}
 			if !reflect.DeepEqual(card.Occupants, want) {
 				t.Errorf("node %s card %d: occupants %+v, want %+v", node.Name, card.Index, card.Occupants, want)
 			}
 		}
+		// One node read on its own gives the cards the fleet pass gives it.
+		alone, err := NodeCards(st, node)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(alone, cards) {
+			t.Errorf("node %s: NodeCards %+v, FleetCards %+v", node.Name, alone, cards)
+		}
+	}
+}
+
+// A card's state is the first that holds: offline, unhealthy, held outside,
+// awake, asleep, free.
+func TestFleetCardStatePrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		card   FleetCard
+		online bool
+		want   CardState
+	}{
+		{FleetCard{Unhealthy: true, AwakeBytes: 1}, false, CardOffline},
+		{FleetCard{Unhealthy: true, HeldOutside: true, AwakeBytes: 1}, true, CardUnhealthy},
+		{FleetCard{HeldOutside: true, AwakeBytes: 1, SleepingBytes: 1}, true, CardHeldOutside},
+		{FleetCard{AwakeBytes: 1, SleepingBytes: 1}, true, CardAwake},
+		{FleetCard{SleepingBytes: 1}, true, CardAsleep},
+		{FleetCard{}, true, CardFree},
+	} {
+		if got := tc.card.State(tc.online); got != tc.want {
+			t.Errorf("%+v online=%v = %s, want %s", tc.card, tc.online, got, tc.want)
+		}
+	}
+	if len(CardStates) != 6 || CardStates[0] != CardOffline || CardStates[5] != CardFree {
+		t.Fatalf("CardStates = %v", CardStates)
 	}
 }
 

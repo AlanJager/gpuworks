@@ -5,7 +5,7 @@ import { stateFill } from "./cellColor";
 import { CELL_STATES, type CellState } from "./overviewModel";
 
 const SUMMARY_KEY: Record<CellState, keyof SchedulingOverview["summary"]> = {
-  awake: "awake", asleep: "asleep", free: "free", held: "held_outside", unhealthy: "unhealthy", offline: "offline",
+  awake: "awake", asleep: "asleep", free: "free", held_outside: "held_outside", unhealthy: "unhealthy", offline: "offline",
 };
 
 export interface QueueCounts {

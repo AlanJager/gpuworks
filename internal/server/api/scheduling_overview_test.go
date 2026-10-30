@@ -140,12 +140,13 @@ func TestSchedulingOverviewWire(t *testing.T) {
 		`"by_model":[{"model":"L20","cards":3,"awake":2,"asleep":0,"free":0,"held_outside":0,"unhealthy":0,"offline":1},`+
 		`{"model":"H100","cards":3,"awake":0,"asleep":1,"free":1,"held_outside":1,"unhealthy":0,"offline":0}],`+
 		`"contention":{"waiting_wakes":1,"held_requests":3,"yields_last_hour":1}},`+
+		`"states":["offline","unhealthy","held_outside","awake","asleep","free"],`+
 		`"models":["L20","H100"],`+
 		`"deployments":[{"id":%d,"name":"qwen","yield_policy":"never"},{"id":%d,"name":"batch","yield_policy":"timeslice"},{"id":%d,"name":"night","yield_policy":"idle"}],`+
 		`"nodes":[`+
-		`{"uuid":"gpu-a","name":"gpu-a","online":true,"labels":{"zone":"a"},"contention":%d,"cards":[[0,0,49152,100,0,0,[0]],[1,0,49152,25,4,0,[2,5]]]},`+
-		`{"uuid":"gpu-b","name":"gpu-b","online":false,"cards":[[0,0,49152,100,0,0,[0]]]},`+
-		`{"uuid":"gpu-c","name":"gpu-c","online":true,"contention":3,"cards":[[0,1,81920,0,0,1],[1,1,81920,0,5,0,[5]],[2,1,81920,0,0,0]]}]}`,
+		`{"uuid":"gpu-a","name":"gpu-a","online":true,"labels":{"zone":"a"},"contention":%d,"cards":[[0,0,49152,100,0,3,0,[0]],[1,0,49152,25,4,3,0,[2,5]]]},`+
+		`{"uuid":"gpu-b","name":"gpu-b","online":false,"cards":[[0,0,49152,100,0,0,0,[0]]]},`+
+		`{"uuid":"gpu-c","name":"gpu-c","online":true,"contention":3,"cards":[[0,1,81920,0,0,2,0],[1,1,81920,0,5,4,0,[5]],[2,1,81920,0,0,5,0]]}]}`,
 		rig.qwen.ID, rig.batch.ID, rig.night.ID, 1+3+1)
 	// gpu-a's contention: 1 sleeper waiting to wake, 3 held requests for night
 	// (asleep there) and 1 yield of batch (on it); gpu-c's: the 3 held
@@ -178,6 +179,7 @@ func TestSchedulingOverviewSummaryAddsUp(t *testing.T) {
 	if byModel != s.Cards {
 		t.Fatalf("models count %d cards of %d", byModel, s.Cards)
 	}
+	assertCardStatesMatchSummary(t, out)
 	// A card on an offline node is offline whatever it holds, and one held
 	// outside the platform is held whatever it also carries.
 	rig.offline["gpu-c"] = true
@@ -185,6 +187,29 @@ func TestSchedulingOverviewSummaryAddsUp(t *testing.T) {
 	out, _ = rig.overview(t)
 	if out.Summary.Offline != 4 || out.Summary.HeldOutside != 0 || out.Summary.Free != 0 {
 		t.Fatalf("summary with gpu-c offline = %+v", out.Summary)
+	}
+	assertCardStatesMatchSummary(t, out)
+}
+
+// assertCardStatesMatchSummary checks that the state each card carries is the
+// bucket the summary counts it in: one derivation, not two.
+func assertCardStatesMatchSummary(t *testing.T, out dto.SchedulingOverview) {
+	t.Helper()
+	tally := map[string]int{}
+	for _, node := range out.Nodes {
+		for _, card := range node.Cards {
+			if card.State < 0 || card.State >= len(out.States) {
+				t.Fatalf("card %+v of %s refers to no state of %v", card, node.Name, out.States)
+			}
+			tally[out.States[card.State]]++
+		}
+	}
+	s := out.Summary
+	want := map[string]int{"offline": s.Offline, "unhealthy": s.Unhealthy, "held_outside": s.HeldOutside, "awake": s.Awake, "asleep": s.Asleep, "free": s.Free}
+	for state, n := range want {
+		if tally[state] != n {
+			t.Errorf("%d cards carry %s, the summary counts %d (cards %v, summary %+v)", tally[state], state, n, tally, s)
+		}
 	}
 }
 
@@ -224,7 +249,7 @@ func TestSchedulingOverviewEndpointContract(t *testing.T) {
 func TestSchedulingOverviewOfAnEmptyFleet(t *testing.T) {
 	rig := newScheduleRig(t)
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/scheduling/overview", "")
-	want := `{"summary":{"nodes":0,"online_nodes":0,"cards":0,"awake":0,"asleep":0,"free":0,"held_outside":0,"unhealthy":0,"offline":0,"by_model":[],"contention":{"waiting_wakes":0,"held_requests":0,"yields_last_hour":0}},"models":[],"deployments":[],"nodes":[]}`
+	want := `{"summary":{"nodes":0,"online_nodes":0,"cards":0,"awake":0,"asleep":0,"free":0,"held_outside":0,"unhealthy":0,"offline":0,"by_model":[],"contention":{"waiting_wakes":0,"held_requests":0,"yields_last_hour":0}},"states":["offline","unhealthy","held_outside","awake","asleep","free"],"models":[],"deployments":[],"nodes":[]}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("empty fleet = %d %s", rec.Code, rec.Body)
 	}
