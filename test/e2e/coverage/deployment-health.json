@@ -275,8 +275,8 @@
     },
     {
       "item": "12.2",
-      "status": "MISSING",
-      "reason": "Outside this bounded deployment health editor/runtime contract; not a whole-page or generic-component completion claim"
+      "status": "COVERED",
+      "reason": "Measured in the browser at 1440x900 on every drawer open, not asserted from CSS: the drawer box, header, title, body and header actions all lie inside the viewport, the body starts at or below the header's bottom edge, the title stays inside the header, and the header actions start to the right of the title. The measurement is taken on each show() so a longer status label or a latency suffix cannot silently push the content under the header. Proven by mutation: a -60px body margin fails with 'drawer body overlaps its header' (body top 21 against header bottom 81)."
     },
     {
       "item": "12.3",

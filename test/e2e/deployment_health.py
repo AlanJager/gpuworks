@@ -171,6 +171,47 @@ def prove_inflight_health_save(page, drawer, server, token, report, text, common
 
 # Mainline: 真server/agent/Docker→开着的健康探针→UI阈值1→真实2s上游超时取消→UI阈值3后恢复
 # →外部503→恢复→UI关→guard下一轮证明无目标探针→UI开恢复；全程相同容器/PID且不自动重启。
+def drawer_geometry(page, drawer, name):
+    """12.2 for this drawer: at 1440x900 the header, the body and the header actions are all
+    inside the viewport and none of them overlap the others."""
+    check(page.viewport_size == {"width": 1440, "height": 900},
+          f"drawer layout measured at {page.viewport_size}, not 1440x900")
+    regions = drawer.evaluate("""element => {
+        const rect = (node) => {
+            if (!node) return null;
+            const box = node.getBoundingClientRect();
+            return {top: Math.round(box.top), left: Math.round(box.left),
+                    right: Math.round(box.right), bottom: Math.round(box.bottom)};
+        };
+        return {
+            box: rect(element),
+            header: rect(element.querySelector('.ant-drawer-header')),
+            title: rect(element.querySelector('.ant-drawer-title')),
+            body: rect(element.querySelector('.ant-drawer-body')),
+            extra: rect(element.querySelector('.ant-drawer-extra')),
+        };
+    }""")
+    vw, vh = 1440, 900
+    for key in ("header", "title", "body"):
+        region = regions.get(key)
+        check(region is not None, f"drawer has no {key} region: {regions}")
+        check(region["top"] >= 0 and region["left"] >= 0
+              and region["right"] <= vw and region["bottom"] <= vh,
+              f"drawer {key} leaves the viewport: {region}")
+    # The body starts below the header and the title sits inside it; an overlap means a long
+    # title has pushed the content under the header.
+    check(regions["body"]["top"] >= regions["header"]["bottom"] - 1,
+          f"drawer body overlaps its header: {regions}")
+    check(regions["title"]["bottom"] <= regions["header"]["bottom"] + 1,
+          f"drawer title spills out of its header: {regions}")
+    extra = regions.get("extra")
+    if extra is not None:
+        check(extra["right"] <= vw and extra["top"] >= 0, f"drawer actions leave the viewport: {extra}")
+        check(extra["left"] >= regions["title"]["right"] - 1,
+              f"drawer actions overlap the title: {regions}")
+    return regions
+
+
 def exercise_deployment_list(page, server, token, deployments, text, fixtures, report):
     """10.2 and 10.3 on the real deployments table: the query the browser sends and the rows
     it keeps must both follow the fixture facts, not the product's own filter construction.
@@ -342,6 +383,7 @@ def test_deployment_health(page, context, server, artifacts, report, locale, dat
         drawer = page.get_by_role("dialog", name=target["name"], exact=True)
         expect(drawer).to_be_visible()
         expect(drawer).to_be_in_viewport(ratio=1)
+        report.setdefault("drawer_layout", drawer_geometry(page, drawer, target["name"]))
         label = text["status"][status]
         if status == "ok":
             label += " · " + format_ms(observation["health"]["last"]["latency_ms"])
