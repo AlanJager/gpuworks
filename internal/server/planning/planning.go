@@ -77,6 +77,9 @@ type Input struct {
 	// instances: an edit of the deployment replaces them, so what they hold
 	// now is not in the way of the launch being previewed. Zero excludes none.
 	ExcludeDeploymentID uint
+	// DeploymentID is the launching deployment's, zero for one not created
+	// yet: its own instances never give up their cards to it (launchYield).
+	DeploymentID uint
 	// YieldPolicy is the launching deployment's (yieldpolicy.Never, Idle, ...):
 	// a sleeping deployment that does not share its cards with that policy
 	// keeps its whole claim on them (yieldpolicy.SharesCardsWith), so the
@@ -309,7 +312,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		shares := in.YieldPolicy != "" && in.YieldPolicy != yieldpolicy.Never
 		if !in.Unloaded && st != nil && (shares || view.reserved != nil) {
 			if insts, err := st.InstancesForNode(in.Node.ID); err == nil {
-				out.Yield = launchYield(st, in.Node, insts, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
+				out.Yield = launchYield(st, in.Node, insts, in.DeploymentID, in.YieldPolicy, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
 				if out.Yield == nil {
 					out.Reserved = launchReserved(st, in.Node, insts, req, dtypeOK, dtypeReason, in.ServingUnavailable, view)
 				}

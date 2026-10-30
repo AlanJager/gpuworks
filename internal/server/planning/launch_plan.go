@@ -221,6 +221,7 @@ func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
 		RuntimeImageCached:   runtimeImageCached(st, req),
 		Unloaded:             req.Unloaded,
 		ExcludeDeploymentID:  req.ExcludeDeploymentID,
+		DeploymentID:         req.Source.DeploymentID,
 		YieldPolicy:          req.YieldPolicy,
 		Parallel:             req.Placement.Parallelism(req.Topology.NNodes),
 		GPUIndexes:           req.Placement.GPUIndexes,

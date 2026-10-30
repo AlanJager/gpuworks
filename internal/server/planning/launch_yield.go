@@ -82,14 +82,16 @@ func instancesOnCards(candidates []*store.Instance, plan *scheduler.Plan) []*sto
 // asleep, as the ledger will charge them once they have slept; nil when
 // policy shares with none, nothing would sleep, or the launch would not fit
 // even so. Sharing deployments are single-node, so an instance is a whole
-// replica.
-func launchYield(st *store.Store, node *store.Node, insts []store.Instance, policy string, req scheduler.Request, dtypeOK bool, dtypeReason string, servingUnavailable bool, view ledgerView) *LaunchYield {
+// replica. The launching deployment's own instances (launching, zero for a
+// newcomer) give way to nothing of their own: a replica never waits for its
+// sibling, so they are neither holders nor counted asleep.
+func launchYield(st *store.Store, node *store.Node, insts []store.Instance, launching uint, policy string, req scheduler.Request, dtypeOK bool, dtypeReason string, servingUnavailable bool, view ledgerView) *LaunchYield {
 	if policy == "" || policy == yieldpolicy.Never {
 		return nil
 	}
 	shares := sharingByID(st)
 	for id, dep := range shares {
-		if !yieldpolicy.SharesCardsWith(policy, dep.YieldPolicy) {
+		if id == launching || !yieldpolicy.SharesCardsWith(policy, dep.YieldPolicy) {
 			delete(shares, id)
 		}
 	}
