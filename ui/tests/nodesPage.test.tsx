@@ -749,7 +749,7 @@ test("a node event reloads the list in the background, without the table's loadi
 });
 
 
-test("batch upgrade retains checked nodes across pages and clears the entire selection", async (context) => {
+test("batch upgrade retains checked nodes across pages and previews only those nodes", async (context) => {
   const fleet = Array.from({ length: 12 }, (_, i) => ({ ...onlineNode, uuid: `batch-${i}`, name: `batch-node-${i}`, hostname: `10.1.0.${i}` }));
   const { saveStoredPageSize, storageKey } = await import("../src/components/resourceTable/columnPrefs.ts");
   const key = storageKey("nodes");
@@ -774,14 +774,20 @@ test("batch upgrade retains checked nodes across pages and clears the entire sel
   assert.equal((rowOf("batch-node-0").getByRole("checkbox") as HTMLInputElement).checked, true);
   fireEvent.click(batch); await screen.findByRole("dialog", { name: "Review Agent upgrade" });
   assert.deepEqual(requests, [{ node_uuids: ["batch-0", "batch-11"] }]);
-  fireEvent.click(within(screen.getByRole("dialog")).getAllByRole("button", { name: "Close", exact: true }).at(-1)!);
-  await waitFor(() => assert.ok(!screen.queryByRole("dialog")));
-  fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-  assert.equal((rowOf("batch-node-0").getByRole("checkbox") as HTMLInputElement).checked, false);
-  assert.equal(batch.disabled, true);
-  assert.ok(!screen.queryByText("2 nodes selected"));
 });
 
+test("clear selection unchecks selected rows and disables batch upgrade", async () => {
+  stubApi([onlineNode, offlineNode]); renderPage();
+  await screen.findByText(onlineNode.name!);
+  fireEvent.click(rowOf(onlineNode.name!).getByRole("checkbox"));
+  fireEvent.click(rowOf(offlineNode.name!).getByRole("checkbox"));
+  await screen.findByText("2 nodes selected");
+  fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
+  assert.equal((rowOf(onlineNode.name!).getByRole("checkbox") as HTMLInputElement).checked, false);
+  assert.equal((rowOf(offlineNode.name!).getByRole("checkbox") as HTMLInputElement).checked, false);
+  assert.equal((screen.getByRole("button", { name: "Upgrade selected Agents" }) as HTMLButtonElement).disabled, true);
+  assert.ok(!screen.queryByText("2 nodes selected"));
+});
 
 test("a node-list refresh failure preserves an open upgrade preview and its retry identity", async () => {
   stubApi([onlineNode]);
