@@ -42,6 +42,9 @@ const (
 
 type options struct {
 	regions       []string
+	sourceRegions []string
+	modelRepo     string
+	modelRev      string
 	baseImage     string
 	gpuModel      string
 	diskGB        int
@@ -62,7 +65,8 @@ type options struct {
 
 func main() {
 	var (
-		regions = flag.String("regions", defaultRegions, "regions the golden image is made available in; the source VM is rented in whichever has stock")
+		regions = flag.String("regions", defaultRegions, "regions the golden image is made available in")
+		sources = flag.String("source-regions", "", "regions the source and validation VMs may be rented in, whichever has stock (default -regions)")
 		pull    = flag.String("pull-sources", defaultPullSources, "registry references tried in order to obtain the runner image")
 		o       options
 	)
@@ -70,7 +74,9 @@ func main() {
 	flag.StringVar(&o.gpuModel, "gpu-model", "T4", "card of the source VM (any 1-GPU card works; the driver is generic)")
 	flag.IntVar(&o.diskGB, "disk-gb", 150, "system disk of the source VM, which becomes the image's minimum disk")
 	flag.StringVar(&o.dockerImage, "docker-image", goldenimage.DefaultDockerImage, "tag the runner image carries in the golden image (what the L4 cases deploy)")
-	flag.StringVar(&o.imageName, "name", "", "image name (default gpuworks-golden-qwen2-0-5b-<UTC timestamp>)")
+	flag.StringVar(&o.modelRepo, "model-repo", goldenimage.DefaultModelRepo, "ModelScope model stored in the image")
+	flag.StringVar(&o.modelRev, "model-rev", goldenimage.DefaultModelRev, "revision of -model-repo")
+	flag.StringVar(&o.imageName, "name", "", "image name (default gpuworks-golden-<model>-<UTC timestamp>)")
 	flag.BoolVar(&o.onDemand, "on-demand", false, "rent the source VM on-demand instead of spot-first (a reclaimed spot VM loses the build)")
 	flag.BoolVar(&o.validate, "validate", true, "boot the finished image once in the source region and check it")
 	flag.BoolVar(&o.listOnly, "list-placements", false, "only print where a source VM could be rented right now; rents nothing")
@@ -81,6 +87,7 @@ func main() {
 	flag.DurationVar(&o.buildDeadline, "timeout", 3*time.Hour, "overall limit")
 	flag.Parse()
 	o.regions = splitList(*regions)
+	o.sourceRegions = splitList(*sources)
 	o.pullSources = splitList(*pull)
 	if err := run(o); err != nil {
 		fmt.Fprintln(os.Stderr, "prepare Aliyun golden image:", err)
@@ -93,6 +100,23 @@ func (o options) copyPollEvery() time.Duration {
 		return o.copyPoll
 	}
 	return 30 * time.Second
+}
+
+// modelSlug turns a repository into the image-name part: Qwen/Qwen3-0.6B
+// becomes qwen3-0-6b (image names allow no dots or slashes).
+func modelSlug(repo string) string {
+	name := repo[strings.LastIndex(repo, "/")+1:]
+	name = strings.TrimSuffix(strings.ToLower(name), "-instruct")
+	return strings.NewReplacer(".", "-", "_", "-").Replace(name)
+}
+
+// imageDescription names what the image carries; ECS caps it at 256 chars.
+func imageDescription(o options) string {
+	description := "gpuworks golden: Docker " + dockerMajor + ", NVIDIA container toolkit, " + o.dockerImage + ", " + o.modelRepo + " at " + o.modelPath
+	if len(description) > 256 {
+		description = description[:256]
+	}
+	return description
 }
 
 func splitList(value string) []string {
@@ -119,8 +143,11 @@ func run(o options) error {
 	if o.diskGB < 100 {
 		return fmt.Errorf("disk-gb=%d is below the 100 GiB base image", o.diskGB)
 	}
+	if len(o.sourceRegions) == 0 {
+		o.sourceRegions = o.regions
+	}
 	if strings.TrimSpace(o.imageName) == "" {
-		o.imageName = "gpuworks-golden-qwen2-0-5b-" + time.Now().UTC().Format("20060102-150405")
+		o.imageName = "gpuworks-golden-" + modelSlug(o.modelRepo) + "-" + time.Now().UTC().Format("20060102-150405")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), o.buildDeadline)
 	defer cancel()
@@ -130,7 +157,7 @@ func run(o options) error {
 	}
 	runID = "golden-" + runID
 	images := map[string]string{}
-	for _, region := range o.regions {
+	for _, region := range o.sourceRegions {
 		images[region] = o.baseImage
 	}
 	provider, err := cloudprovider.NewAliyun(cloudprovider.AliyunConfig{
@@ -189,7 +216,7 @@ func (s sourceVM) run(ctx context.Context, command string) (string, error) {
 }
 
 func build(ctx context.Context, provider *cloudprovider.Aliyun, api imageAPI, o options, runID, keyID, secret string) (err error) {
-	files, err := goldenimage.ModelFiles(ctx)
+	files, err := goldenimage.ModelFiles(ctx, o.modelRepo, o.modelRev)
 	if err != nil {
 		return err
 	}
@@ -262,7 +289,7 @@ func build(ctx context.Context, provider *cloudprovider.Aliyun, api imageAPI, o 
 	}
 
 	fmt.Printf("run_id=%s phase=create-image name=%s\n", runID, o.imageName)
-	imageID, err := api.create(ctx, source.Region, source.InstanceID, o.imageName, "gpuworks L4: Docker 29, NVIDIA container toolkit, vLLM runner and Qwen2-0.5B-Instruct preloaded")
+	imageID, err := api.create(ctx, source.Region, source.InstanceID, o.imageName, imageDescription(o))
 	if err != nil {
 		return err
 	}
