@@ -34,7 +34,7 @@ func newMacHost(t *testing.T, arch, uid, user string, withSudo bool) *macHost {
 	t.Helper()
 	h := &macHost{t: t, dir: t.TempDir(), home: t.TempDir(), version: "15.4.1"}
 	h.log = filepath.Join(t.TempDir(), "calls")
-	for _, tool := range []string{"sh", "cat", "cp", "sed", "mkdir", "rm", "chmod", "mv", "printf", "echo"} {
+	for _, tool := range []string{"sh", "cat", "cp", "sed", "mkdir", "rm", "chmod", "mv", "printf", "echo", "tail"} {
 		real, err := exec.LookPath(tool)
 		if err != nil {
 			t.Skipf("no %s", tool)
@@ -68,7 +68,9 @@ while [ $# -gt 0 ]; do [ "$1" = "-o" ] && { cat > "$2" <<'AGENT'
 func (h *macHost) run(env map[string]string, args ...string) (string, error) {
 	h.t.Helper()
 	cmd := exec.Command(filepath.Join(h.dir, "sh"), append([]string{"-c", Script, "install.sh"}, args...)...)
-	cmd.Env = []string{"PATH=" + h.dir, "HOME=" + h.home, "CALLS=" + h.log, "MACOS_VERSION=" + h.version}
+	// The host's own /opt/gpuworks must not decide where the test installs.
+	cmd.Env = []string{"PATH=" + h.dir, "HOME=" + h.home, "CALLS=" + h.log, "MACOS_VERSION=" + h.version,
+		"GPUWORKS_MAC_SYSTEM_DIR=" + filepath.Join(h.home, "no-opt")}
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
@@ -87,7 +89,7 @@ func TestScriptOnAMacWithoutAdministratorRightsRegistersALaunchAgent(t *testing.
 	if err != nil {
 		t.Fatalf("install failed: %v\n%s", err, out)
 	}
-	installDir := filepath.Join(h.home, ".gpuworks")
+	installDir := filepath.Join(h.home, "gpuworks")
 	calls := h.calls()
 	for _, want := range []string{
 		"curl -fsSL http://gw:8800/dl/gpuworks-agent-darwin-arm64",
@@ -189,5 +191,72 @@ func TestScriptRefusesAMacItCannotServe(t *testing.T) {
 		if strings.Contains(h.calls(), "curl") {
 			t.Errorf("%s: downloaded an agent", name)
 		}
+	}
+}
+
+// With administrator rights the agent still lives in the installing user's
+// home on a Mac; only the launch daemon needs sudo.
+func TestScriptOnAMacAsAdministratorDefaultsToTheHome(t *testing.T) {
+	h := newMacHost(t, "arm64", "501", "alice", true)
+	out, err := h.run(nil, "--server", "http://gw:8800", "--token", "t")
+	if err != nil {
+		t.Fatalf("install failed: %v\n%s", err, out)
+	}
+	installDir := filepath.Join(h.home, "gpuworks")
+	if !strings.Contains(h.calls(), "sudo -n "+installDir+"/gpuworks-agent install-service --state "+installDir+" --user alice") {
+		t.Fatalf("calls:\n%s", h.calls())
+	}
+	if !strings.Contains(out, "gpuworks: installed in "+installDir+"\n") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+// An agent an earlier install left in /opt/gpuworks or ~/.gpuworks is
+// reinstalled where it is, with its models, rather than beside a fresh one.
+func TestScriptOnAMacKeepsAnEarlierInstallDirectory(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dir  func(h *macHost) string
+	}{
+		{"system", func(h *macHost) string { return filepath.Join(h.home, "no-opt") }},
+		{"legacy home", func(h *macHost) string { return filepath.Join(h.home, ".gpuworks") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newMacHost(t, "arm64", "501", "alice", true)
+			dir := tc.dir(h)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "gpuworks-agent.conf"), []byte("TOKEN=old\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			out, err := h.run(nil, "--server", "http://gw:8800", "--token", "t")
+			if err != nil {
+				t.Fatalf("install failed: %v\n%s", err, out)
+			}
+			if !strings.Contains(h.calls(), "install-service --state "+dir+" ") {
+				t.Fatalf("calls:\n%s", h.calls())
+			}
+			if _, err := os.Stat(filepath.Join(h.home, "gpuworks")); !os.IsNotExist(err) {
+				t.Fatalf("a second agent directory was created: %v", err)
+			}
+		})
+	}
+}
+
+// A quoted ~ reaches the script unexpanded; it must land in the home, not in
+// a directory named "~".
+func TestScriptExpandsAQuotedHome(t *testing.T) {
+	h := newMacHost(t, "arm64", "501", "alice", false)
+	out, err := h.run(nil, "--server", "http://gw:8800", "--token", "t", "--install-dir", "~/gw-agent")
+	if err != nil {
+		t.Fatalf("install failed: %v\n%s", err, out)
+	}
+	installDir := filepath.Join(h.home, "gw-agent")
+	if !strings.Contains(h.calls(), "install-service --state "+installDir+" ") {
+		t.Fatalf("calls:\n%s", h.calls())
+	}
+	if _, err := os.Stat(filepath.Join(installDir, "gpuworks-agent")); err != nil {
+		t.Fatalf("agent binary not installed: %v", err)
 	}
 }

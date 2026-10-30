@@ -125,9 +125,9 @@ test("the install directory sits under Advanced in both SSH branches", () => {
   renderDrawer();
   for (const branch of [nodes.add.sshSupported, nodes.add.sshUnsupported]) {
     fireEvent.click(screen.getByRole("radio", { name: branch }));
-    assert.equal(screen.queryByPlaceholderText("/opt/gpuworks"), null, `${branch}: collapsed by default`);
+    assert.equal(screen.queryByPlaceholderText(nodes.add.installDirPlaceholder), null, `${branch}: collapsed by default`);
     fireEvent.click(screen.getByText(nodes.add.advanced));
-    assert.ok(screen.getByPlaceholderText("/opt/gpuworks"), `${branch}: shown once expanded`);
+    assert.ok(screen.getByPlaceholderText(nodes.add.installDirPlaceholder), `${branch}: shown once expanded`);
     fireEvent.click(screen.getByText(nodes.add.advanced));
   }
 });
@@ -367,7 +367,7 @@ test("the precheck sends the install directory and lists each directory verdict"
     renderDrawer();
     fireEvent.change(screen.getByPlaceholderText("root@192.0.2.10:22"), { target: { value: "root@203.0.113.7:51223" } });
     fireEvent.click(screen.getByText(nodes.add.advanced));
-    fireEvent.change(screen.getByPlaceholderText("/opt/gpuworks"), { target: { value: "/workspace/gpuworks" } });
+    fireEvent.change(screen.getByPlaceholderText(nodes.add.installDirPlaceholder), { target: { value: "/workspace/gpuworks" } });
     fireEvent.click(screen.getByRole("button", { name: nodes.add.startPrecheck }));
     await waitFor(() => assert.equal(precheck.bodies.length, 1));
     assert.equal(precheck.bodies[0].install_dir, "/workspace/gpuworks");

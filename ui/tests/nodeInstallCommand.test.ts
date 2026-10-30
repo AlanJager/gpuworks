@@ -63,3 +63,11 @@ test("custom command arguments stay single shell words", () => {
   });
   assert.equal(command, "curl -fsSL 'https://control.example/o'\\'';touch /tmp/pwned/install.sh' | sh -s -- --server 'https://control.example/o'\\'';touch /tmp/pwned' --token 'token-1' --install-dir '/srv/gpu works'");
 });
+
+// The default directory is the node's (/opt/gpuworks on Linux, ~/gpuworks on
+// a Mac), so only an empty field leaves it out; a typed /opt/gpuworks is kept.
+test("an empty install directory is left to the node, a typed one is passed", () => {
+  const options = { baseCommand: "base", token: "t", connectMode: "agent_dial" as const, serverURL: "", origin: "http://control.example" };
+  assert.equal(buildInstallCommand({ ...options, installDir: "  " }), "base");
+  assert.equal(buildInstallCommand({ ...options, installDir: "/opt/gpuworks" }), "base --install-dir '/opt/gpuworks'");
+});

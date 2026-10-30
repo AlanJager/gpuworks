@@ -36,13 +36,10 @@ Both the console and the inference node run on this Mac. The Mac uses the `host`
    tar -xzf "$GPUWORKS_PACKAGE.tar.gz"
    cd "$GPUWORKS_PACKAGE"
    ./gpuworks version
-   ./gpuworks install \
-     --dir "$HOME/.gpuworks/server" \
-     --addr 127.0.0.1:8800 \
-     --no-systemd --quiet
+   ./gpuworks install --addr 127.0.0.1:8800 --quiet
    ```
 
-   `--quiet` skips installation prompts. A new installation generates a random administrator password and provides it in the final summary. On a Mac, `--no-systemd` runs a background process without registering a service to start at boot. The console in this tutorial listens only on the local address `127.0.0.1:8800`.
+   `--quiet` skips installation prompts. A new installation generates a random administrator password and provides it in the final summary. On a Mac, the default installation directory is `~/gpuworks/server`, and the console runs as a background process without registering a service to start at boot (run `~/gpuworks/server/gpuworks install --autostart` later if you need one). The console in this tutorial listens only on the local address `127.0.0.1:8800`.
 
 3. Check that the console is ready.
 
@@ -65,9 +62,9 @@ Both the console and the inference node run on this Mac. The Mac uses the `host`
 
 ![Add a local node: name it mac-local, select no SSH support, and have the Agent connect to the local address 127.0.0.1:8800](../assets/screenshots/en/tutorial-mac-add-node.png)
 
-2. Click **Create node and generate command**. Copy the complete command, append `--install-dir "$HOME/.gpuworks" --no-sudo`, and run it in a terminal on this Mac. Keep the node-specific token in the generated command.
+2. Click **Create node and generate command**. Copy the complete command, append `--no-sudo`, and run it in a terminal on this Mac. Keep the node-specific token in the generated command.
 
-   This places the agent and node data in `~/.gpuworks`. `--no-sudo` performs a user-level installation. Normally, the agent runs through the user's launchd job and is available only while that user is logged in. If a LaunchAgents permission error appears, follow the permission troubleshooting steps below before continuing to Step 3.
+   The agent and node data go to `~/gpuworks` by default, separate from the console's `~/gpuworks/server`. `--no-sudo` performs a user-level installation. Normally, the agent runs through the user's launchd job and is available only while that user is logged in. If a LaunchAgents permission error appears, follow the permission troubleshooting steps below before continuing to Step 3.
 
 3. Wait for the installation output to show `agent running under launchd`. Return to **Compute Nodes** and confirm that `mac-local` is **Online**. This example shows `1× M5`, `32 GiB` of system memory, and the `host` runtime.
 
@@ -83,11 +80,11 @@ If installation fails while writing the launchd configuration with an error such
 ls -ld "$HOME/Library/LaunchAgents"
 ```
 
-On the device in this example, the directory belongs to `root` and the current user cannot write to it. At this point, the installation script has already written the node configuration to `~/.gpuworks`. You can register the installed agent directly as a system-level LaunchDaemon:
+On the device in this example, the directory belongs to `root` and the current user cannot write to it. At this point, the installation script has already written the node configuration to `~/gpuworks`. You can register the installed agent directly as a system-level LaunchDaemon:
 
 ```bash
-sudo "$HOME/.gpuworks/gpuworks-agent" install-service \
-  --state "$HOME/.gpuworks" \
+sudo "$HOME/gpuworks/gpuworks-agent" install-service \
+  --state "$HOME/gpuworks" \
   --user "$(id -un)"
 ```
 

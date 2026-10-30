@@ -67,7 +67,7 @@ After closing the endpoint, run `status` again to confirm that it is disabled an
 ## Data-dir and Origin
 
 - The data-dir resolution order is: `--data` > `server.yaml` next to the binary > `server.yaml` in the default installation directory
-  (`/opt/gpuworks/server/server.yaml`) > `./data` in development mode. The CLI always prints which one it uses
+  (`/opt/gpuworks/server/server.yaml`; `~/gpuworks/server/server.yaml` on macOS) > `./data` in development mode. The CLI always prints which one it uses
   (except with `--url-only`, when stdout contains only the address).
 - You usually do not need to specify origin: it uses the **actual listening** address recorded when the server starts (wildcard addresses become loopback addresses, with IPv6 also handled).
   If no address is recorded, it uses the first console address in the installation directory's `server.yaml`. If neither is suitable, use `--origin`. After changing the server's listening

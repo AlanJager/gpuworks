@@ -108,7 +108,7 @@ gpuworks restarted (systemd)
 
 | flag | 默认值 | 说明 |
 |---|---|---|
-| `--dir DIR` | `/opt/gpuworks/server` | 安装目录 |
+| `--dir DIR` | `/opt/gpuworks/server`；macOS 上是 `~/gpuworks/server` | 安装目录；`--dir`、`--data`、`--logs` 开头的 `~` 展开为主目录 |
 | `--data DIR` | `<dir>/data` | 数据目录；既有安装沿用其 `server.yaml` 里的值 |
 | `--logs DIR` | `<dir>/logs` | 日志目录；既有安装沿用其现值 |
 | `--addr IP:PORT` | 默认路由出口 IP、端口 8800 | 监听地址（承载全部功能）；只写 `:端口` 表示 `0.0.0.0` |
@@ -118,6 +118,7 @@ gpuworks restarted (systemd)
 | `--log-max-size SIZE` | `10MB` | 日志轮转阈值 |
 | `--log-keep N` | `20` | 日志保留代数 |
 | `--quiet` | `false` | 不打印 banner、不提问，未给密码则随机生成（结束摘要仍会打印） |
+| `--autostart` | Linux 上 `true`，macOS 上 `false` | 安装开机启动的 systemd 单元（macOS 上是 launch daemon）；与 `--no-systemd` 同给时报错 |
 | `--no-systemd` | `false` | 不用服务管理器（systemd，macOS 上是 launchd），改为 nohup 后台启动 |
 
 行为要点：
@@ -125,9 +126,9 @@ gpuworks restarted (systemd)
 - 预检：需要 root 或可用的 `sudo`（否则降级为 nohup 并告警）；目标端口被别的进程占用则失败（被当前安装占用除外）；安装目录所在文件系统至少要有 2 GiB 空闲。
 - 提权：install/upgrade/reset-password 以操作员身份运行，特权步骤（建目录、建账户、写单元、`systemctl`）各自以 `sudo` 命令执行；`sudo` 首次问一次密码并缓存，无终端又没有缓存的 `sudo` 会直接失败而不是挂起。
 - systemd 模式：创建 `--service-user` 系统账户（已存在则复用），并把操作员加入该组（当前终端需 `newgrp` 或重新登录）；此后 upgrade 备份和替换二进制不再需要 `sudo`，但 `systemctl` 和收尾的 `chown`/`chmod` 仍需要；reset-password 不需要。
-- nohup 模式（`--no-systemd`、没有运行中的 systemd、或没有 root/`sudo`）：忽略 `--service-user`，以调用用户在后台运行 `serve --supervise --config <dir>/server.yaml`，server 退出后由它重新拉起（因此支持控制台升级）；重启机器或容器后不会自动恢复，用 `gpuworks restart --dir <dir>` 拉起，或把这条命令设为容器的启动命令，见[在容器里运行](../how-to/install-server.md#在容器里运行)。
-- macOS（launchd 模式，有 root/`sudo` 且没有 `--no-systemd`）：写 `/Library/LaunchDaemons/ai.gpuworks.server.plist` 并 `launchctl bootstrap`，以执行安装的用户运行、开机即起、退出后由 launchd 拉起（支持控制台升级）；安装目录默认同样是 `/opt/gpuworks/server`，安装树归该用户。plist 内容见[控制面安装布局 · launchd plist](install-layout.md#launchd-plistmacos)。
-- 交互：不带 `--quiet` 时先打印 banner（输出是终端且 locale 为 UTF-8 时是块状字符，否则纯 ASCII）；在终端上再依次问安装目录、监听地址、是否自启（yes/no），最后问管理员密码；命令行已给出的项不再问，回车采用括号里的默认值（既有安装的现值或静态默认）。
+- nohup 模式（`--no-systemd`、没有运行中的 systemd、没有 root/`sudo`，或 macOS 上未给 `--autostart`）：忽略 `--service-user`（只在显式给出时告警），以调用用户在后台运行 `serve --supervise --config <dir>/server.yaml`，server 退出后由它重新拉起（因此支持控制台升级）；重启机器或容器后不会自动恢复，用 `<dir>/gpuworks restart` 拉起、`<dir>/gpuworks stop` 停止，或把这条命令设为容器的启动命令，见[在容器里运行](../how-to/install-server.md#在容器里运行)；macOS 上可再执行 `<dir>/gpuworks install --autostart` 改为开机启动。安装摘要会打印这些命令。
+- macOS：默认以 nohup 模式运行，安装目录默认 `~/gpuworks/server`（执行安装的用户的主目录，`sudo` 下取 `SUDO_USER` 的）。launchd 模式（有 root/`sudo` 且给了 `--autostart`；重装已有 launch daemon 的安装时不给也沿用）写 `/Library/LaunchDaemons/ai.gpuworks.server.plist` 并 `launchctl bootstrap`，以执行安装的用户运行、开机即起、退出后由 launchd 拉起（支持控制台升级），安装树归该用户。plist 内容见[控制面安装布局 · launchd plist](install-layout.md#launchd-plistmacos)。
+- 交互：不带 `--quiet` 时先打印 banner（输出是终端且 locale 为 UTF-8 时是块状字符，否则纯 ASCII）；在终端上再依次问安装目录（回答开头的 `~` 同样展开）、监听地址、是否自启（yes/no，macOS 上默认 no），最后问管理员密码；命令行已给出的项不再问，回车采用括号里的默认值（既有安装的现值或静态默认）。
 - 管理员密码优先级：`--password` > 环境变量 `GPUWORKS_ADMIN_PASSWORD`（交互时回显并确认）> 交互提问（回车随机生成）> 随机生成；写入 `<data>/initial-credentials`（0664），不进单元文件。数据目录已有 `gpuworks.db` 时不再解析密码，`--password` 被忽略并提示用 `reset-password`。
 - 重复执行是修复路径：保留既有 `server.yaml`（命令行显式给出才覆盖）、替换二进制、重建服务并重启，不碰数据库、`master.key` 和 admin 账户。
 - server 不管理自己的对外地址：添加节点、云厂商安装等 API 一律要求调用方显式给出 `server_url`。
@@ -138,7 +139,7 @@ gpuworks restarted (systemd)
 
 | flag | 默认值 | 说明 |
 |---|---|---|
-| `--dir DIR` | 本二进制所属的安装（所在目录有 `server.yaml` 或 `install.json`），否则 `/opt/gpuworks/server` | 安装目录 |
+| `--dir DIR` | 本二进制所属的安装（所在目录有 `server.yaml` 或 `install.json`），否则默认安装目录（`/opt/gpuworks/server`，macOS 上 `~/gpuworks/server`） | 安装目录 |
 | `--data DIR` / `--logs DIR` | 安装时记录的目录 | 覆盖数据/日志目录 |
 | `--channel NAME` | `server.yaml` 的 `update_channel`，没有时为构建时的渠道（master 构建 `nightly`，`v*` tag 构建 `release`） | 读哪个渠道的发布索引：`release`（正式发布版）或 `nightly`（滚动预览版）；只用于发布通道 |
 | `--source URL` | 内置的三个公共源 | 发布通道格式的源（`<URL>/<channel>/index.json`），可重复，替换内置源；用于客户自建镜像站 |
@@ -153,7 +154,7 @@ gpuworks restarted (systemd)
 行为要点：
 
 - `--dir` 下没有 `server.yaml`、但有 `server.yaml` 之前的版本留下的 `install.json` 时，先把其中的监听地址、数据/日志目录、日志轮转和可信代理写成 `server.yaml`，把用环境变量传配置的单元改写成 `serve --config`，删掉 `install.json`，再继续；这一步只能由已安装的二进制执行（`<dir>/gpuworks upgrade` / `restart`），换别的二进制会报错退出、不做任何修改。两者都没有时视为未采纳的安装，报错并提示先跑 `install`。已是最新版时打印提示并以 0 退出。
-- 不给 `--dir` 时操作执行的这个二进制所属的安装：`/opt/gpuworks1/gpuworks upgrade` 升级 `/opt/gpuworks1`，不会去动默认目录里的另一套安装；下载到别处的二进制仍操作 `/opt/gpuworks/server`。开始时打印 `upgrading the installation at <dir> (<当前版本>, <服务方式>)`。
+- 不给 `--dir` 时操作执行的这个二进制所属的安装：`/opt/gpuworks1/gpuworks upgrade` 升级 `/opt/gpuworks1`，不会去动默认目录里的另一套安装；下载到别处的二进制仍操作默认安装目录。开始时打印 `upgrading the installation at <dir> (<当前版本>, <服务方式>)`。
 - 停服后先确认 `server.yaml` 里的监听地址已经释放；仍被占用（例如同机另一套安装监听同一端口）时直接失败，不备份、不替换，停掉的服务原样拉起。Linux 上报出占用进程的 pid 与命令行，占用者是另一套 gpuworks 安装时提示用 `--dir <它的目录>`；查不到进程时报出该地址 `/healthz` 应答的版本。
 - 本地构建（`dev` 或 `-dirty`）不加 `--force` 会被拒绝。
 - `--source`、`--base-url`、`--archive` 三者互斥；`--channel` 只能与发布通道（默认或 `--source`）一起用。
@@ -169,7 +170,7 @@ gpuworks restarted (systemd)
 
 | flag | 默认值 | 说明 |
 |---|---|---|
-| `--dir DIR` | 本二进制所属的安装（所在目录有 `server.yaml` 或 `install.json`），否则 `/opt/gpuworks/server` | 安装目录 |
+| `--dir DIR` | 本二进制所属的安装（所在目录有 `server.yaml` 或 `install.json`），否则默认安装目录（`/opt/gpuworks/server`，macOS 上 `~/gpuworks/server`） | 安装目录 |
 
 - systemd 安装走 `systemctl stop` + `systemctl restart`；nohup 安装先结束旧的守护进程（server 随之退出），再在后台执行 `serve --supervise --config <dir>/server.yaml`。守护进程是 1 号进程（容器的启动命令）时拒绝执行，因为停掉它就是停掉容器；`upgrade` 与重复 `install` 同样拒绝。
 - 两种方式都先停服并确认监听地址已释放（仍被占用时像 `upgrade` 一样报出占用者并失败，不再启动），再启动并等待 `/healthz` 报出已安装二进制的版本，别的服务器在该地址上的应答不算恢复；编辑 `server.yaml` 后用它使配置生效。
@@ -229,7 +230,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 
 - cloudflared 跑在独立的连接器服务（`gpuworks expose run`）里，不归 server 管：server 重启、升级都不影响它，quick 地址不变。`up` 默认把服务作为后台进程启动，机器重启后不会自动恢复；`--systemd`（需 root）把它装成 `gpuworks-expose.service`，开机自启。服务以数据目录属主的账号运行，入口关闭后自行退出。
 - 转发目标按 `--origin` > server 启动时记下的监听地址（`<data>/expose/server-origin`）> 安装目录 `server.yaml` 的第一个 console 地址解析。
-- 数据目录按 `--data` > 二进制旁边的 `server.yaml` > 默认安装目录 `/opt/gpuworks/server/server.yaml` > `./data` 解析，并把命中的规则打印出来。
+- 数据目录按 `--data` > 二进制旁边的 `server.yaml` > 默认安装的 `server.yaml`（`/opt/gpuworks/server/server.yaml`，macOS 上 `~/gpuworks/server/server.yaml`）> `./data` 解析，并把命中的规则打印出来。
 - `up` 的等待上限是 3 分钟，超时或 Ctrl-C 只结束等待，不撤销请求（`down` 才停）；配置未变且入口仍在时复用现有入口，不会换新的 quick 地址。
 - `status --url-only` 在入口不是「连接器服务在运行、revision 匹配、已就绪」时以非零码退出，原因写到 stderr。
 - 当前只开放 `cloudflare-quick`：地址是临时的且不支持 SSE，会在 `up`/`status`/`--url-only` 里提示。`--provider cloudflare-named` 目前会报「尚未开放」。
@@ -256,7 +257,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `--data DIR` | 见下 | 数据目录 |
 | `--db PATH` | `<data>/gpuworks.db` | SQLite 路径 |
 
-- 不给 `--data` 时依次取：二进制同目录 `server.yaml` 的 `data_dir`、默认安装（`/opt/gpuworks/server/server.yaml`）的 `data_dir`、`./data`，与当前工作目录无关地找到安装的数据库。
+- 不给 `--data` 时依次取：二进制同目录 `server.yaml` 的 `data_dir`、默认安装（`/opt/gpuworks/server/server.yaml`，macOS 上 `~/gpuworks/server/server.yaml`）的 `data_dir`、`./data`，与当前工作目录无关地找到安装的数据库。
 - 数据库文件必须已存在：不存在时报出所用路径及其来源并退出，不会新建空库。
 - 以操作员身份运行、不需要 `sudo`；数据库权限不足时按其自身的权限错误失败。
 - 密码和 key 不要写进 shell history 或日志。
@@ -299,7 +300,7 @@ gpuworks uninstall --dir /opt/gpuworks/server --purge --dry-run --json
 | `--image-pull-max-connections N` | `$GPUWORKS_IMAGE_PULL_MAX_CONNECTIONS` | runveil（udocker）节点拉取镜像时，到每个仓库 host（经代理时为代理）同时打开的连接数上限；`0` 或不设为自动（最多 16），`1` 为只用一条连接，最大 32，超出范围启动失败。应对只允许少量连接或对多连接限流的仓库与代理，不是日常设置，见[限制镜像拉取的连接数](../how-to/configure-pull-settings.md#限制镜像拉取的连接数runveil-节点) |
 | `--dcgm MODE` | `$GPUWORKS_DCGM`，默认 `off` | 可选 DCGM SM 占用探针：`off` / `auto`（仅当 `dcgmi` 在 PATH 上才启用） |
 
-- `--state` 默认：`$GPUWORKS_STATE_DIR`，否则 `/opt/gpuworks`（存在时），否则用户配置目录下的 `gpuworks`，最后 `./gpuworks-state`。
+- `--state` 默认：`$GPUWORKS_STATE_DIR`，否则 `/opt/gpuworks`（存在时）；macOS 上其次是 `~/gpuworks`（其中有 `gpuworks-agent.conf` 时）、`~/.gpuworks`（存在时）；否则用户配置目录下的 `gpuworks`，最后 `./gpuworks-state`。
 - `--data-lane`、`--dcgm`、`--image-pull-max-connections` 不属于配置文件，不被 `configure` 记录。
 - `--driver udocker` 选择 runveil：`udocker` 是保留的 driver 名（节点记录与 API 沿用），实现是 native 镜像处理加直接调用内嵌 PRoot 的启动器，界面显示为 runveil。
 - `--driver host` 把引擎作为宿主机进程运行，用于 macOS（Apple silicon）节点：Linux 容器在 macOS 上跑在虚拟机里，拿不到 Metal GPU。镜像是 darwin/arm64 的环境包，解包后由 agent 直接启动。
@@ -448,7 +449,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 | `--mount-root DIR` | `GPUWORKS_RUNTIME_MOUNT_ROOT` | 空 | 运行时 bind-mount 源的根目录 |
 | `--udocker-bundle DIR` | `GPUWORKS_UDOCKER_BUNDLE` | 空 | 离线 udocker 包目录 |
 | `--state DIR` | `GPUWORKS_STATE_DIR` | 同 `--install-dir` | state 目录，配置文件写在这里 |
-| `--install-dir DIR` | `GPUWORKS_INSTALL_DIR` | `/opt/gpuworks` | agent 二进制所在目录 |
+| `--install-dir DIR` | `GPUWORKS_INSTALL_DIR` | `/opt/gpuworks`；macOS 上见下 | agent 二进制所在目录 |
 | `--supervisor MODE` | 无 | `systemd` | 谁来保持 Linux agent 运行：`systemd`（有 systemd 且有权写单元时注册 `gpuworks-agent.service`，否则 nohup）、`nohup`（从不动 systemd 单元）、`keep`（沿用主机上这个 agent 现在的方式：本节点的单元在则 systemd；没有单元也没有 `agent-restart.sh` 则 systemd；其余 nohup）。其他值报错；macOS 忽略 |
 | `--no-systemd` | `GPUWORKS_NO_SYSTEMD=1` | 关 | 等同 `--supervisor nohup`：不注册 systemd 服务，nohup 后台运行；不动主机上已有的 `gpuworks-agent.service` 和其他目录里的 agent |
 | `--clean-existing` | 无 | 关 | 与 nohup（`--no-systemd` 或 `--supervisor nohup`）同用：有 root/免密 sudo 时把已有的 `gpuworks-agent.service` `disable --now` 并删除；界面不生成这个参数 |
@@ -461,7 +462,7 @@ server 在 `/install.sh` 提供的引导脚本，添加节点时界面生成 `cu
 - nohup 分支同时写 `<state>/agent-restart.sh`（`0700`，每次安装重写）：无 systemd 的主机上没有任何进程监督 agent，崩溃后靠这份脚本按 `nohup <二进制> run --state <state>` 拉起；配置在文件里，脚本不含 token，也不依赖安装时的环境变量。
 - 替换已有的 agent 时，脚本先读出它属于哪个 server：这次用 systemd 且单元已存在时取单元所指 state 目录里的配置文件（没有配置文件的老 agent 取单元命令行里的 `--server`），读不到再取本次 state 目录的配置文件。与本次 `--server` 不同就在 stderr 打一行 `WARNING`，照常安装；`server_dial` 的安装没有 `--server`，也按这条比较。
 - 非 root + 免密 `sudo` + `--driver udocker` 时，安装后自动执行 [`grant-device-access`](#gpuworks-agent-grant-device-access) 授权 `udocker` 账户。
-- macOS：只接受 Apple silicon 与 macOS 15 及以上；下载 `gpuworks-agent-darwin-arm64`（`GPUWORKS_AGENT_BINARY` 同上），写好配置后交给 [`install-service`](#gpuworks-agent-install-service) 注册 launchd 任务。没有免密 `sudo` 但有终端时由 `sudo` 在终端里要密码，装成 LaunchDaemon；都没有时装成 LaunchAgent，未指定 `--install-dir` 时目录是 `~/.gpuworks`。
+- macOS：只接受 Apple silicon 与 macOS 15 及以上；下载 `gpuworks-agent-darwin-arm64`（`GPUWORKS_AGENT_BINARY` 同上），写好配置后交给 [`install-service`](#gpuworks-agent-install-service) 注册 launchd 任务。没有免密 `sudo` 但有终端时由 `sudo` 在终端里要密码，装成 LaunchDaemon；都没有时装成 LaunchAgent。未指定 `--install-dir` 时，无论有无管理员权限，目录都是 `~/gpuworks`（执行安装的用户的主目录，`sudo` 下取 `SUDO_USER` 的）；早先的安装在 `~/gpuworks`、`/opt/gpuworks` 或 `~/.gpuworks` 留有 agent（`gpuworks-agent.conf` 或 `gpuworks-agent` 二进制）时，按此顺序沿用找到的目录。`--install-dir`、`--state` 中加了引号的 `~`、`~/x` 展开为执行安装的用户的主目录。同机的控制面默认在 `~/gpuworks/server`，两者互不覆盖。
 
 ## 其他 CLI
 

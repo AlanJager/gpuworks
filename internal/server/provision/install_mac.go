@@ -128,7 +128,7 @@ func (i *SSHInstaller) installMac(ctx context.Context, client *ssh.Client, req S
 
 	// The directory is decided here, by the rule the precheck reported, and
 	// handed to the installer rather than left to its own default.
-	report.InstallDir = macInstallDir(ctx, client, req.InstallDir, sudo.admin)
+	report.InstallDir = macInstallDir(ctx, client, req.InstallDir)
 	// The same arguments as the Linux install; --supervisor means nothing to
 	// launchd and the script ignores it there.
 	args := scriptInstall{installDir: report.InstallDir, conf: req.agentConfig()}.args()
