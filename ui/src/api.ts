@@ -1,3 +1,4 @@
+import type { ServerBuildInfo } from "./serverBuildInfo";
 import type { BenchmarkPointEvidence } from "./benchmarkEvidenceTypes";
 export type * from "./benchmarkEvidenceTypes";
 // API client + shared types. Types mirror internal/server/api/dto.
@@ -1254,6 +1255,7 @@ export interface UpdateStatus {
   source?: string;
   sources: UpdateSourceStatus[];
   server: {
+    current_build?: ServerBuildInfo;
     current: string;
     latest?: string;
     built_at?: string;

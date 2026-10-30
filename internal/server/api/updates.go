@@ -92,7 +92,7 @@ func (a *apiHandlers) getUpdates(w http.ResponseWriter, r *http.Request) {
 		ChannelEditable: editable,
 		AutoCheck:       auto,
 		Sources:         []dto.UpdateSourceStatus{},
-		Server:          dto.ServerUpdate{Current: version.Version},
+		Server:          dto.ServerUpdate{Current: version.Version, CurrentBuild: serverBuildInfo(version.Version, nil)},
 	}
 	blocker := a.serverSettings().SelfUpgradeBlocker()
 	status.Server.SelfUpgrade, status.Server.SelfUpgradeBlocker = blocker == "", blocker
@@ -160,6 +160,7 @@ func (a *apiHandlers) getUpdates(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, status)
 		return
 	}
+	status.Server.CurrentBuild = serverBuildInfo(version.Version, fetched)
 	index := fetched.Index
 	status.Available, status.Source = true, fetched.Source
 	status.Server.Latest, status.Server.BuiltAt = index.Server.ReleaseID, index.Server.BuiltAt

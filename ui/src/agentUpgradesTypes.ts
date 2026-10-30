@@ -1,3 +1,5 @@
+import type { ServerBuildInfo } from "./serverBuildInfo";
+
 export interface AgentUpgradeCounts {
   total: number;
   processed: number;
@@ -30,6 +32,7 @@ export interface AgentUpgradeCandidate {
 }
 
 export interface AgentUpgradePreview {
+  target_build?: ServerBuildInfo;
   target_version: string;
   manifest_fingerprint: string;
   node_uuids: string[];

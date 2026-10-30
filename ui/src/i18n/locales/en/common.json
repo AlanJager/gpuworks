@@ -814,5 +814,26 @@
       "release": "Release",
       "event": "Event"
     }
+  },
+  "buildInfo": {
+    "kind": {
+      "stable": "Stable release",
+      "prerelease": "Pre-release",
+      "development": "Development / test build",
+      "unknown": "Release type unknown"
+    },
+    "description": {
+      "stable": "This build matches a verified stable release record.",
+      "prerelease": "This build matches a published preview or test release.",
+      "development": "Built for the development / test channel; it is not labelled as a stable release.",
+      "unknown": "There is not enough release information to confirm whether this is a stable build."
+    },
+    "builtAt": "Built: {{time}}",
+    "publishedAt": "Published: {{time}}",
+    "matched": "Matching release: {{version}}",
+    "unmatched": "No matching release record is currently available.",
+    "details": "Build details",
+    "commit": "Commit: {{commit}}",
+    "channel": "Build channel: {{channel}}"
   }
 }

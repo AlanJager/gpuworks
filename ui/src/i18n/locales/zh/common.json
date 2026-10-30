@@ -814,5 +814,26 @@
       "release": "版本",
       "event": "活动"
     }
+  },
+  "buildInfo": {
+    "kind": {
+      "stable": "稳定版",
+      "prerelease": "预发布版",
+      "development": "开发测试版",
+      "unknown": "发布类型未知"
+    },
+    "description": {
+      "stable": "此构建已匹配到经过校验的稳定发布记录。",
+      "prerelease": "此构建已匹配到已发布的预览或测试版本。",
+      "development": "此构建来自开发／测试渠道，未标记为稳定发布。",
+      "unknown": "目前发布信息不足，无法确认此构建是否为稳定版。"
+    },
+    "builtAt": "构建时间：{{time}}",
+    "publishedAt": "发布时间：{{time}}",
+    "matched": "匹配发布版本：{{version}}",
+    "unmatched": "目前没有可匹配的发布记录。",
+    "details": "构建详情",
+    "commit": "Commit：{{commit}}",
+    "channel": "构建渠道：{{channel}}"
   }
 }

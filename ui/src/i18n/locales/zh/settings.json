@@ -50,6 +50,7 @@
     "autoCheckOffHelp": "已关闭：服务端不再自动检查。点「检查更新」时仍会读取版本索引。",
     "notChecked": "尚未检查更新",
     "notCheckedHelp": "自动检测已关闭。点右上角「检查更新」手动检查，或在这里上传文件更新。",
+    "currentBuild": "当前控制面构建",
     "checkedAt": "检查于 {{time}}"
   },
   "usageReport": {

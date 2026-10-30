@@ -101,6 +101,7 @@ func (a *apiHandlers) previewAgentUpgrade(w http.ResponseWriter, r *http.Request
 		writeAgentUpgradeError(w, err)
 		return
 	}
+	preview.TargetBuild = a.agentUpgradeBuildInfo(preview.TargetVersion)
 	writeJSON(w, http.StatusOK, preview)
 }
 
@@ -214,6 +215,7 @@ func (a *apiHandlers) continueAgentUpgradePreview(w http.ResponseWriter, r *http
 		writeAgentUpgradeError(w, err)
 		return
 	}
+	preview.TargetBuild = a.agentUpgradeBuildInfo(preview.TargetVersion)
 	writeJSON(w, http.StatusOK, preview)
 }
 

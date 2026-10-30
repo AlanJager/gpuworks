@@ -1,6 +1,7 @@
 import { Alert, Button, Checkbox, Modal, Space, Spin, Table, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import ServerBuildSummary from "../ServerBuildSummary";
 import type { AgentUpgradeCandidate, AgentUpgradePreview } from "../../agentUpgradesTypes";
 
 export default function UpgradePreviewModal({ open, preview, loading, busy, error, onClose, onRefresh, onStart }: {
@@ -30,7 +31,9 @@ export default function UpgradePreviewModal({ open, preview, loading, busy, erro
       {loading && <Spin aria-label={t("batchUpgrade.loadingPreview")} />}
       {error && <Alert type="error" showIcon message={error} />}
       {preview && <>
-        <Typography.Text strong>{t("batchUpgrade.target", { version: preview.target_version })}</Typography.Text>
+        <Typography.Text strong>{t("batchUpgrade.targetHeading")}</Typography.Text>
+        <ServerBuildSummary version={preview.target_version} build={preview.target_build} />
+        <Typography.Paragraph>{t("batchUpgrade.targetSource")} <Typography.Link href="/settings#updates" target="_blank" rel="noopener noreferrer">{t("batchUpgrade.versionDetails")}</Typography.Link></Typography.Paragraph>
         <Typography.Text>{t("batchUpgrade.previewCounts", { total: preview.node_uuids.length, eligible, skipped: preview.node_uuids.length - eligible })}</Typography.Text>
         {preview.blocked_by_item && <Alert type="warning" showIcon message={t(preview.blocked_by_item.reason === "unconfirmed" ? "batchUpgrade.blocked" : "batchUpgrade.activeBlock", { name: preview.blocked_by_item.name || preview.blocked_by_item.node_uuid })} />}
         {!eligible && <Alert type="info" showIcon message={t("batchUpgrade.noEligible")} />}

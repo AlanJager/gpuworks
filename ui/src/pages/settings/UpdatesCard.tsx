@@ -7,6 +7,7 @@ import { api, type CatalogUpdate, type ServerUpgradeStarted, type UpdateStatus }
 import { apiErrorText } from "../../apiError";
 import { formatTime } from "../../i18n/datetime";
 import { publishUpdateStatus } from "../../components/UpdateNotice";
+import ServerBuildSummary from "../../components/ServerBuildSummary";
 import UsageReportSwitch from "./UsageReportSwitch";
 
 const { Text } = Typography;
@@ -296,6 +297,7 @@ export default function UpdatesCard() {
         {status && !notChecked && <Text type="secondary">{loading ? t("updates.checking") : t("updates.checkedAt", { time: formatTime(status.checked_at) })}</Text>}
         {status && notChecked && !loading && <Alert type="info" showIcon message={t("updates.notChecked")} description={t("updates.notCheckedHelp")} />}
         {status && !notChecked && !status.available && !loading && <UnavailableAlert status={status} channelName={channelName(status.channel)} />}
+        {status && <section aria-label={t("updates.currentBuild")}><Text strong>{t("updates.currentBuild")}</Text><ServerBuildSummary version={status.server.current} build={status.server.current_build} /></section>}
         <Table<Row> rowKey="key" size="small" pagination={false} loading={loading}
           dataSource={status ? rowsOf(status, names) : []} columns={columns} />
         <Text type="secondary">{t("updates.serverHelp")}</Text>

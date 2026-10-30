@@ -35,6 +35,7 @@ type AgentUpgradeBlocker struct {
 }
 
 type AgentUpgradePreview struct {
+	TargetBuild         ServerBuildInfo         `json:"target_build"`
 	TargetVersion       string                  `json:"target_version"`
 	ManifestFingerprint string                  `json:"manifest_fingerprint"`
 	NodeUUIDs           []string                `json:"node_uuids"`
