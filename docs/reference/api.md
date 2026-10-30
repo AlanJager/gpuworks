@@ -750,7 +750,7 @@ macOS 忽略 `no_systemd`。
 {"deployment": {...}, "base_revision": "...", "apply": "rolling", "start": false, "wake": false}
 ```
 
-`deployment` 是改过的 draft。`locked` 字段写了就必须与 draft 一致（不写则保持），否则 400 `DEPLOYMENT_FIELD_NOT_EDITABLE`（`params.field`）。其余字段按创建的规则校验（参数字典、节点条件、健康检查、「永远放不下」检查 `DEPLOYMENT_NEVER_FITS` 等）。
+`deployment` 是改过的 draft。`locked` 字段写了就必须与 draft 一致（不写则保持），否则 400 `DEPLOYMENT_FIELD_NOT_EDITABLE`（`params.field`）。其余字段按创建的规则校验（参数字典、节点条件、健康检查、「永远放不下」检查 `DEPLOYMENT_NEVER_FITS` 等）。出让策略不是 `never` 时不能关掉 `sleepable`（出让就是休眠），400 `YIELD_POLICY_NEEDS_SLEEP`（`params.policy`）；先用 `PUT /deployments/{id}/yield-policy` 改回 `never`。
 
 启动配置从部署保存的配置出发，不重新套用模板：draft 里原样送回的值保持不变，只有改过的值才按参数字典的取值范围检查；模板在部署之后的修改不会经编辑带进部署，也不会补上部署原本没有的字典默认值。
 

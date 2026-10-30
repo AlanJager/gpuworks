@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
 
 // editDeployment answers PUT /deployments/{id}: the deploy form's draft
@@ -327,6 +329,14 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 		return bad(productError(code, sleepRefusalFallback(code), map[string]any{"engine": engine.Name()}))
 	}
 	next.Sleepable = req.Sleepable
+	// A yield policy that gives way needs the sleep it gives way by, as on
+	// create (planning.YieldPolicyRefusal); the policy is changed on its own
+	// route, so the edit is refused rather than the policy dropped.
+	if next.Policy().Yield != yieldpolicy.Never && planning.YieldPolicyRefusal(&next) == ErrorSleepNotEnabled {
+		return bad(productError(messages.ErrorYieldPolicyNeedsSleep,
+			fmt.Sprintf("the deployment gives its cards way by yield policy %s; set the policy to never before turning sleep off", next.YieldPolicy),
+			map[string]any{"policy": next.YieldPolicy}))
+	}
 	if next.HealthCheck, next.HealthCheckThresholdSec, err = createHealthCheck(req, model); err != nil {
 		return bad(err)
 	}

@@ -477,6 +477,7 @@
     "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "多机或 PD 部署的副本由运维手动放置，不能按副本数定时调整；先把它切换为自动放置。",
     "YIELD_POLICY_INVALID": "出让策略不合法（{{field}}）：{{reason}}。",
     "YIELD_POLICY_SHAPE": "只有单机部署能出让 GPU；多机与 PD 部署的出让策略只能是不自动出让。",
+    "YIELD_POLICY_NEEDS_SLEEP": "该部署的出让策略是 {{policy}}，出让 GPU 就是休眠，不能关闭可休眠。请先在调度策略里把出让策略改为不自动出让，再关闭可休眠。",
     "NODE_REPLACEMENT_INVALID": "节点失联重调度的等待时间只能是 0（关闭）或 {{minimum}} 到 {{maximum}} 秒。",
     "WAKE_YIELD_BLOCKED": "无法让位：{{occupants}} 不能休眠（未启用休眠、PD 部署最后一个清醒的角色，或是平台外的进程）。未做任何改动。",
     "REPLICAS_PLACE_ON_TOO_MANY": "首次放置指定了 {{count}} 个节点，但只新增了 {{maximum}} 个副本。",

@@ -742,7 +742,7 @@ This endpoint does not simulate placement. Whether nodes that "appear to have fr
 {"deployment": {...}, "base_revision": "...", "apply": "rolling", "start": false, "wake": false}
 ```
 
-`deployment` is the modified draft. A `locked` field, when stated, must match the draft (omitted means unchanged); otherwise the response is 400 `DEPLOYMENT_FIELD_NOT_EDITABLE` (`params.field`). Other fields are validated by the create rules (parameter dictionary, node requirements, health checks, the "never fits" check `DEPLOYMENT_NEVER_FITS`, and so on).
+`deployment` is the modified draft. A `locked` field, when stated, must match the draft (omitted means unchanged); otherwise the response is 400 `DEPLOYMENT_FIELD_NOT_EDITABLE` (`params.field`). Other fields are validated by the create rules (parameter dictionary, node requirements, health checks, the "never fits" check `DEPLOYMENT_NEVER_FITS`, and so on). While the yield policy is not `never`, `sleepable` cannot be turned off (yielding is sleeping): 400 `YIELD_POLICY_NEEDS_SLEEP` (`params.policy`); set the policy back to `never` with `PUT /deployments/{id}/yield-policy` first.
 
 The launch configuration starts from the configuration the deployment stores and does not reapply the template: values sent back unchanged from the draft stay as they are, and only changed values are checked against the parameter dictionary's ranges. Template changes made after the deployment are not brought in by an edit, and dictionary defaults the deployment never had are not added.
 

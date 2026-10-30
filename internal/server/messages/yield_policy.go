@@ -11,4 +11,8 @@ const (
 	// ErrorYieldPolicyShape: a policy other than never is for a single-node
 	// deployment; a multi-node or PD one stays never.
 	ErrorYieldPolicyShape = "YIELD_POLICY_SHAPE"
+	// ErrorYieldPolicyNeedsSleep: an edit turns sleep off while the
+	// deployment's yield policy {policy} gives way; giving way is sleeping,
+	// so the policy goes back to never first.
+	ErrorYieldPolicyNeedsSleep = "YIELD_POLICY_NEEDS_SLEEP"
 )

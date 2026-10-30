@@ -924,6 +924,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机或 PD 部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
 | `YIELD_POLICY_INVALID` | 400 | 出让策略请求不合法：`params.field` 是字段（`policy`、`sleep_level`、`unfinished`、`idle_sec`、`max_serve_sec`、`unfinished_wait_sec`、`hold_max_sec`），`params.reason` 为 `required`（没给 `policy`：请求体是 `{}`，或只带参数不带 `policy`）、`invalid_value`（不在允许的取值里）或 `out_of_range`（数值越界，另带 `minimum`、`maximum`；按时自动出让的闲置时间超过最长服务时间时，`idle_sec` 的 `maximum` 就是最长服务时间）；见[出让策略](scheduling-center.md#出让策略) |
 | `YIELD_POLICY_SHAPE` | 400 | 多机或 PD 部署只能是不自动出让 |
+| `YIELD_POLICY_NEEDS_SLEEP` | 400 | 编辑部署时要关掉可休眠，但它的出让策略（`params.policy`）不是不自动出让；先把出让策略改为不自动出让 |
 | `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
