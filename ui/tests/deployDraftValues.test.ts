@@ -228,3 +228,16 @@ test("a clone gets suffixed names and a draft names its template spec", () => {
   assert.equal(templateSpecKey({ template_id: 4, template_spec_source: "builtin", template_spec_name: "a" }), "4:builtin:a");
   assert.equal(templateSpecKey({ model_id: 1 }), undefined);
 });
+
+test("a cloned draft keeps its service level, and an edit states the stored one rather than the form's", () => {
+  const leveled = { ...manualDraft, service_level: "online" };
+  const values = draftToFormValues(leveled, vllm);
+  assert.equal(values.service_level, "online");
+  // The level is changed on the scheduling policy, so an edit repeats the stored one.
+  const payload = editPayload({ ...values, service_level: "offline" }, [], vllm, [], { request: leveled, locked: identity });
+  assert.ok(payload);
+  assert.equal(payload.service_level, "online");
+  const plain = editPayload({ ...values, service_level: "offline" }, [], vllm, [], { request: manualDraft, locked: identity });
+  assert.ok(plain);
+  assert.equal("service_level" in plain, false);
+});

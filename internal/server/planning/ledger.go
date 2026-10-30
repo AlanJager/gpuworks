@@ -327,6 +327,10 @@ type ledgerView struct {
 	// edit of a deployment is previewed as the launch that replaces them, so
 	// the memory they hold now is not counted against it (Input.ExcludeDeploymentID).
 	excludeDeployment uint
+	// reserved says a sleeper keeps its whole claim rather than its residue:
+	// it shares its cards by service level, but not with the deployment
+	// being placed (reservedAgainst).
+	reserved func(*store.Instance) bool
 }
 
 func (v ledgerView) excludes(in *store.Instance) bool {
@@ -455,7 +459,8 @@ func gpuAllocations(st *store.Store, node *store.Node, view ledgerView) map[int]
 		// A wake order is conservative until the agent reports awake: the
 		// instance's intent is already zero while the observed level may still
 		// be L1/L2, so the full claim remains reserved.
-		asleep := (view.alsoAsleep != nil && view.alsoAsleep(&instance)) || chargesResidue(st, &instance)
+		asleep := (view.alsoAsleep != nil && view.alsoAsleep(&instance)) ||
+			(chargesResidue(st, &instance) && (view.reserved == nil || !view.reserved(&instance)))
 		claim := instanceClaim(st, &instance, archFamily)
 		for _, gpuIndex := range parseInts(instance.GPUIndexes) {
 			allocation := result[gpuIndex]

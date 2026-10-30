@@ -315,6 +315,22 @@
     "dictionaryDescription": "Parameter names, values, and help come from the server engine dictionary",
     "paramCount": "{{count}} parameters"
   },
+  "serviceLevel": {
+    "label": "Service level",
+    "help": "When several deployments share GPUs, this decides who gives way. Below resident, a request wakes the deployment if it is asleep.",
+    "name": {
+      "resident": "Resident",
+      "online": "Online",
+      "shared": "Shared",
+      "offline": "Offline"
+    },
+    "hint": {
+      "resident": "never gives up its GPUs",
+      "online": "gives them up after 5 idle minutes, takes them back on a request",
+      "shared": "takes turns with other shared deployments, gives way to online at once",
+      "offline": "gives way to everyone at once, cuts off requests in flight, for batch work"
+    }
+  },
   "resource": {
     "title": "Resource Configuration",
     "targetNode": "Target Node",
@@ -663,7 +679,7 @@
       "autoPoolDescription": "Each replica starts on whichever candidate node has room, chosen anew every time it starts",
       "manualPoolDescription": "Pin the deployment to one node: every replica runs there",
       "autoUnitsDescription": "The platform picks each unit's nodes and cards whenever it starts, keeping the nodes it ran on last while they still fit. The list below is only a preview from the current free resources.",
-      "manualUnitsDescription": "The nodes you name are fixed: a unit is not moved to other nodes automatically (only a node that stays offline is replaced, after the node replacement wait).",
+      "manualUnitsDescription": "The nodes you name are fixed: a unit is not moved to other nodes automatically (only a node that stays offline is replaced, after the node-loss rescheduling wait).",
       "previewTitle": "Preview (the actual scheduling decides)",
       "multiAutoTitle": "Nodes picked automatically",
       "autoGroupNoPreview": "No group of nodes fits yet; see the message above.",

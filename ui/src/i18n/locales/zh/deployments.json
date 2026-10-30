@@ -74,8 +74,27 @@
     "deepAction": "深度休眠（L2）",
     "partial": "部分休眠 · {{asleep}}/{{total}} 个副本",
     "wakeAll": "全部唤醒",
+    "heldHint": "手动休眠，请求不会唤醒",
+    "requestWakesHint": "有请求时会自动唤醒",
     "wakeWhatFits": "唤醒放得下的副本",
     "partialWoken": "已唤醒 {{woken}} 个；{{refused}} 个放不回原卡",
+    "waitStarted": "已开始等位：GPU 腾出空间后自动唤醒",
+    "yieldStarted": "正在让 {{names}} 休眠，腾出空间后唤醒",
+    "refused": {
+      "title": "显存不足，无法唤醒",
+      "wait": "等位唤醒",
+      "yield": "让 {{occupants}} 休眠后唤醒",
+      "theOccupants": "占用者",
+      "hint": "等位会先唤醒放得下的副本，其余在 GPU 腾出空间后自动唤醒（30 分钟后放弃）。让位唤醒会先让占用者休眠；占用者无法休眠时不做任何改动。",
+      "heldOutside": "平台外的进程占用着 GPU"
+    },
+    "waiting": {
+      "since": "自 {{time}} 起等位唤醒中",
+      "hint": "GPU 能放下休眠副本时服务器会自动唤醒，等待 30 分钟后放弃。",
+      "cancel": "取消等位",
+      "cancelled": "已取消等位",
+      "cancelFailed": "取消等位失败：{{detail}}"
+    },
     "role": {
       "summary": "{{role}}：{{asleep}}/{{total}} 在休眠",
       "sleep": "休眠 {{role}}（L1）",
@@ -372,14 +391,28 @@
       "REPLICA_RESTARTED": "已请求重启实例 {{instance}} 所在的副本",
       "UNIT_RETRY_EXHAUSTED": "已放弃重试：连续失败 {{attempts}} 次（{{reason}}）",
       "UNIT_RETRIED": "已请求重试：清除了 {{attempts}} 次失败记录",
+      "REPLICA_REBUILT": "副本 {{replica}} 失败后已自动重建（第 {{attempt}} 次尝试，放在 {{node}}）{{reasonNote}}",
+      "REPLICAS_CHANGED": "副本数 {{from}} → {{to}}{{roleNote}}",
+      "SLEEP_ORDERED": "已下达休眠（L{{level}}）：{{scope}}{{modeNote}}",
+      "WAKE_ORDERED": "已下达唤醒：实例 {{instances}}",
       "STORAGE_UNAVAILABLE": "存储 {{storage}} 在节点 {{node}} 上不可用（{{state}}）：运行中的实例继续用显存里的权重服务，正在加载的实例会等它恢复",
       "STORAGE_RECOVERED": "存储 {{storage}} 在节点 {{node}} 上已恢复",
-      "NODE_REPLACED": "节点 {{from}} 离线超过 {{after}}：{{what}} {{target}}",
-      "NODE_REPLACE_REVERTED": "{{what}} 在 {{from}} 上跑起来前节点 {{to}} 已恢复，换节点已撤回",
+      "AUTO_SLEEP": "已休眠（L{{level}}）{{cause}}",
+      "AUTO_WAKE": "已唤醒实例 {{instances}}{{cause}}",
+      "AUTO_SCALE": "副本数已设为 {{replicas}}{{cause}}",
+      "WAKE_WAITING": "实例 {{instances}} 等位唤醒中{{yielded}}",
+      "WAKE_WAIT_TIMEOUT": "等位 {{waited}} 仍未腾出空间，已放弃唤醒实例 {{instances}}",
+      "SCHEDULE_ACTION_FAILED": "定时{{action}}失败：{{reason}}",
+      "SCHEDULE_ACTION_FAILED_preempt": "让出 GPU 时{{action}}失败：{{reason}}",
+      "YIELDED_FOR_WAKE": "已休眠（L{{level}}），为 {{deployment}} 的唤醒让位",
+      "NODE_REPLACED": "节点失联重调度：节点 {{from}} 离线超过 {{after}}，{{what}} {{target}}",
+      "NODE_REPLACE_REVERTED": "{{what}} 在 {{from}} 上跑起来前节点 {{to}} 已恢复，重调度已撤回",
       "NODE_REPLACE_NO_CANDIDATE": "节点 {{nodes}} 持续离线，但没有别的节点能接收它们的副本",
       "NODE_DRAIN_MOVED": "{{what}} 已从排空中的节点迁走",
       "UNIT_PLACED": "自动放置：{{what}} 已放到 {{to}}{{from}}{{cause}}"
     },
+    "actorNote": "（操作人：{{actor}}）",
+    "reasonNote": "；上次失败：{{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
       "tcp": "TCP",
@@ -680,26 +713,179 @@
       "prefixHint": "请从第一个 rank 起依次指定：前面的 rank 指定后才能指定后面的。"
     }
   },
-  "nodeReplacement": {
-    "title": "节点失联换节点",
-    "hint": "运行副本的节点离线超过换节点等待后，副本会换到别的节点。",
-    "hintSingle": "单机部署由候选池在别处补位。",
-    "hintMulti": "多机或 PD 副本迁到同一计算网络、同 GPU 架构且有空闲卡的节点。",
-    "hintRevert": "新节点上的副本还没跑起来时原节点就回来，换节点会撤回；跑起来之后不再换回。钉在节点上的副本不换。",
-    "after": "等待",
-    "minutes": "节点离线多少分钟后换节点",
-    "unit": "分钟",
-    "zeroNever": "0 表示从不换",
+  "operator": {
+    "roleNote": "（{{role}}）",
+    "abortNote": "；立即中止在途请求",
+    "scope": {
+      "deployment": "整个部署",
+      "role": "{{role}}角色",
+      "replica": "实例 {{instances}} 所在的副本"
+    }
+  },
+  "automation": {
+    "minutes": "分钟",
     "save": "保存",
-    "saved": "已保存换节点等待",
-    "saveFailed": "保存换节点等待失败：{{detail}}",
+    "retry": "重新加载定时计划",
     "duration": {
       "seconds": "{{value}} 秒",
       "minutes": "{{value}} 分钟",
       "hours": "{{value}} 小时",
       "days": "{{value}} 天"
     },
-    "movedTo": "已换到 {{node}}",
+    "cause": {
+      "schedule": "，由定时计划触发",
+      "idle": "，因 {{idle}}内没有请求",
+      "wake_waiting": "，GPU 已腾出空间",
+      "operator": "，按操作员指令",
+      "request": "，因请求到达",
+      "resume": "，让出的 GPU 已空出，恢复运行"
+    },
+    "yieldedNote": "，已先让 {{names}} 休眠",
+    "preempt": {
+      "idle": "，空闲超过让卡时间，为 {{who}} 让出 GPU",
+      "rank": "，{{who}} 的服务等级更高，为其让出 GPU",
+      "turn": "，分时轮到 {{who}}，为其让出 GPU",
+      "other": "，为 {{who}} 让出 GPU",
+      "who": "部署 #{{id}}",
+      "someone": "其他部署",
+      "abort": "，中断了进行中的请求"
+    },
+    "action": {
+      "sleep": "休眠",
+      "wake": "唤醒",
+      "replicas": "副本数"
+    },
+    "level": {
+      "1": "L1 · 内存（快速）",
+      "2": "L2 · 深度"
+    },
+    "schedule": {
+      "title": "定时计划",
+      "hint": "到点自动执行的常驻指令。每次只执行一次；期间手动下的指令不会被覆盖。新增或修改的指令从下一次触发时间起生效。",
+      "add": "添加指令",
+      "addTitle": "添加定时指令",
+      "editTitle": "编辑定时指令",
+      "edit": "编辑",
+      "delete": "删除",
+      "deleteConfirm": "删除这条定时指令？",
+      "deleted": "已删除定时指令",
+      "empty": "暂无定时指令。",
+      "noActions": "该部署无法按计划休眠或调整副本数：休眠和唤醒需要可休眠的部署，副本数只能为单机部署，或自动放置的多机部署（非 PD）定时调整。",
+      "loadFailed": "加载定时计划失败：{{detail}}",
+      "saveFailed": "保存指令失败：{{detail}}",
+      "deleteFailed": "删除指令失败：{{detail}}",
+      "saved": "已保存定时指令",
+      "save": "保存",
+      "serverZone": "服务器时区",
+      "timezoneHint": "留空则使用服务器时区，也可填 IANA 名称，如 Asia/Shanghai。",
+      "everyDay": "每天",
+      "enabledOf": "启用 {{time}} 的{{order}}",
+      "columns": {
+        "order": "指令",
+        "days": "星期",
+        "time": "时间",
+        "next": "下次执行",
+        "enabled": "启用"
+      },
+      "actionText": {
+        "sleep": "休眠（L{{level}}）",
+        "wake": "唤醒",
+        "replicas": "副本数设为 {{count}}"
+      },
+      "actionName": {
+        "sleep": "休眠",
+        "wake": "唤醒",
+        "replicas": "调整副本数"
+      },
+      "field": {
+        "action": "指令",
+        "weekdays": "星期",
+        "time": "时间",
+        "timezone": "时区",
+        "sleep_level": "休眠级别",
+        "replicas": "副本数",
+        "enabled": "启用"
+      },
+      "errors": {
+        "weekdays": "请至少选择一天。",
+        "time": "时间请按 HH:MM 填写。",
+        "replicas": "副本数需在 1 到 {{maximum}} 之间。"
+      },
+      "weekday": {
+        "0": "周日",
+        "1": "周一",
+        "2": "周二",
+        "3": "周三",
+        "4": "周四",
+        "5": "周五",
+        "6": "周六"
+      }
+    },
+    "idle": {
+      "title": "闲置休眠",
+      "hint": "部署一段时间没有用户请求后自动休眠。健康检查探测不算请求。",
+      "notSleepable": "闲置休眠需要以启用休眠模式创建的部署。",
+      "enable": "启用闲置休眠",
+      "after": "闲置",
+      "minutes": "闲置分钟数",
+      "level": "休眠级别",
+      "saved": "已保存闲置休眠",
+      "saveFailed": "保存闲置休眠失败：{{detail}}"
+    }
+  },
+  "schedulingPolicy": {
+    "title": "调度策略",
+    "edit": "编辑",
+    "close": "完成",
+    "helpLabel": "调度策略说明",
+    "help": "详细说明见文档《使用调度中心》（定时计划、闲置休眠）和《节点失联重调度》。",
+    "item": "{{label}}：{{value}}",
+    "separator": " · ",
+    "off": "关闭",
+    "none": "无",
+    "loading": "加载中…",
+    "loadFailed": "加载失败",
+    "idleOn": "{{minutes}} 分钟 / L{{level}}",
+    "scheduleCount_one": "{{count}} 条",
+    "scheduleCount_other": "{{count}} 条",
+    "scheduleNext": "，下次 {{time}} {{order}}",
+    "scheduleAllOff": "，均未启用"
+  },
+  "serviceLevel": {
+    "title": "服务等级",
+    "hint": "同一批 GPU 上有多个部署时，服务等级决定谁让谁。非常驻的部署被平台休眠后，请求到达会被挂起等待唤醒，而不是直接返回 503。",
+    "notEligible": "只有可休眠的单机（非 PD）部署能改服务等级。",
+    "saved": "已保存服务等级",
+    "saveFailed": "保存服务等级失败：{{detail}}",
+    "name": {
+      "resident": "常驻",
+      "online": "在线",
+      "shared": "分时",
+      "offline": "离线"
+    },
+    "description": {
+      "resident": "不把 GPU 让给其他部署（默认）。",
+      "online": "空闲 5 分钟后才让出 GPU；有请求时从分时、离线部署手里收回。两个在线部署不能共用 GPU。",
+      "shared": "与同一批 GPU 上的其他分时部署轮流使用（每轮至少 2 分钟）；在线部署需要时立即让出，进行中的请求最多再等 30 秒。",
+      "offline": "立即把 GPU 让给其他所有部署，并中断进行中的请求（客户端看到 finish_reason 为 abort）；GPU 空出后自动恢复。适合批处理。"
+    }
+  },
+  "nodeReplacement": {
+    "title": "节点失联重调度",
+    "after": "等待",
+    "minutes": "节点离线多少分钟后重调度",
+    "unit": "分钟",
+    "zeroNever": "0 表示从不重调度",
+    "save": "保存",
+    "saved": "已保存节点失联重调度",
+    "saveFailed": "保存节点失联重调度失败：{{detail}}",
+    "duration": {
+      "seconds": "{{value}} 秒",
+      "minutes": "{{value}} 分钟",
+      "hours": "{{value}} 小时",
+      "days": "{{value}} 天"
+    },
+    "movedTo": "已重调度到 {{node}}",
     "movedElsewhere": "正在别的节点重建",
     "placedFrom": "（原在 {{from}}）",
     "placedCause": "：{{reason}}",

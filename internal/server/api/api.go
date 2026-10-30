@@ -451,7 +451,14 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Delete("/deployments/{id}", a.deleteDeployment)
 			r.Post("/deployments/{id}/sleep", a.sleepDeployment)
 			r.Post("/deployments/{id}/wake", a.wakeDeployment)
+			r.Delete("/deployments/{id}/wake-waiting", a.endWakeWaiting)
+			r.Get("/deployments/{id}/schedule", a.listSchedule)
+			r.Post("/deployments/{id}/schedule", a.createSchedule)
+			r.Put("/deployments/{id}/schedule/{sid}", a.updateSchedule)
+			r.Delete("/deployments/{id}/schedule/{sid}", a.deleteSchedule)
+			r.Put("/deployments/{id}/idle-sleep", a.setIdleSleep)
 			r.Put("/deployments/{id}/node-replacement", a.setNodeReplacement)
+			r.Put("/deployments/{id}/service-level", a.setServiceLevel)
 			r.Put("/deployments/{id}/placement-mode", a.setPlacementMode)
 			// A deployment's own timeline, including scheduling outcomes
 			// recorded before any instance existed.
@@ -593,6 +600,8 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/logs/context", a.logsContext)
 			r.Get("/logs/histogram", a.logsHistogram)
 			r.Get("/monitor/overview", a.monitorOverview)
+			r.Get("/scheduling/board", a.schedulingBoard)
+			r.Get("/scheduling/history", a.schedulingHistory)
 			r.Get("/monitor/deployments/{id}", a.monitorDeployment)
 			r.Get("/monitor/deployments/{id}/requests", a.monitorRequests)
 			r.Get("/monitor/requests/lookup", a.monitorRequestLookup)

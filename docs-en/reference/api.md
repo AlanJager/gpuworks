@@ -548,12 +548,21 @@ This endpoint does not check whether a user spec with the same name already exis
 | POST | `/api/v1/deployments/{id}/start` | Start a stopped deployment and reschedule it using the retained configuration (resetting each replica's retry count). Does nothing if already running; returns 409 `DEPLOYMENT_DELETING` if the deployment is being deleted | JWT |
 | DELETE | `/api/v1/deployments/{id}` | Delete the deployment | JWT |
 | POST | `/api/v1/deployments/{id}/sleep` | Put the deployment to sleep (`?level=1\|2`, default 1; `?mode=wait\|abort`, default wait): write the sleep intent to every active instance's desired state. The gateway immediately stops dispatching requests to them, and the deployment is marked as under a deployment-wide sleep command (instances started afterward also sleep accordingly). `?role=prefill` puts only instances of that PD role to sleep (the response includes `role` and `instances`), without placing the whole deployment under a sleep command. Returns 400 `PD_NOT_PD` for non-PD deployments, 400 `PD_ROLE_UNKNOWN` for a role not in the deployment's mode, or 400 `SLEEP_ROLE_CANNOT_EMPTY` for a role that the mode does not allow to be empty (such as decode). With `level=1`, if the node's host memory cannot hold the weights to be offloaded (available memory minus a headroom of max(5% of total, 4 GiB)), returns 409 `SLEEP_HOST_MEMORY_INSUFFICIENT` (`params.node`, `need_gib`, `available_gib`); use L2. A node with no recent host memory observation is not refused | JWT |
-| POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command. A card held by a process outside the platform gives 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters as above, with `refused[].held_outside` true) | JWT |
+| POST | `/api/v1/deployments/{id}/wake` | Wake the deployment: sleeping instances must fit back on their original GPUs; otherwise returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY` (all or nothing). `?role=` wakes only instances of that PD role. `?partial=true` wakes those that fit, with response `{"status":"waking","woken":[...],"refused":[{"instances","node","gpu_indexes","shortfall_gib","occupants"}]}`; still returns 409 if none fit. The 409 parameters describe the first rejected node, and `refused` lists all rejected replicas. Any wake operation revokes the deployment-wide sleep command. A card held by a process outside the platform returns 409 `WAKE_GPU_HELD_OUTSIDE` (same parameters, `refused[].held_outside` is true). `?wait=true` wakes what fits and makes the rest wait for room; `?yield=true` (optionally `&yield_level=1\|2`, default 1, switched to 2 automatically when the occupant's host cannot hold L1) first puts the occupants to sleep and then waits; see [Waiting Wakes and Yielding Wakes](#唤醒等位与让位唤醒) for the responses | JWT |
 | POST | `/api/v1/deployments/{id}/units/suggest` | Suggest nodes for one replica of a multi-node deployment. The request body `{"units":[...]}` lists the replicas already selected. Returns a suggested `unit` or the reason placement is not possible, without saving. See [Suggest Nodes for a Multi-Node Replica](#推荐多机副本节点) | JWT |
 | POST | `/api/v1/deployments/{id}/units/retry` | Give a replica a fresh retry allowance: request body `{"role","index"}` (`role` is empty for regular deployments). Remove the replica's failed attempts (clean up containers and retain the timeline); the controller then recreates it without affecting other replicas. Returns 404 `UNIT_UNKNOWN` if the replica does not exist, 409 `UNIT_NOT_FAILED` if there are no failed attempts or instances still exist, or 409 `UNIT_RETRY_NOT_ACTIVE` if the deployment is not running | JWT |
 | PUT | `/api/v1/deployments/{id}/replicas` | Change the replica count for a single-node deployment (when growing, `place_on` names the nodes the new replicas start on first), the replica node list for a manually placed multi-node deployment, or the replica count for an automatically placed multi-node deployment (`place_on` names the nodes of the new replicas' ranks). See [Adjust Replicas for Regular Deployments](#普通部署的副本调整) for all fields and conditions | JWT |
 | PUT | `/api/v1/deployments/{id}/placement-mode` | Switch a multi-node or PD deployment between placement modes: body `{"mode":"auto"}` or `{"mode":"manual"}`. Instances are not restarted and units keep their current nodes; switching to `auto` also drops the cards PD units were pinned to. 200 returns the deployment detail (`placement_mode` has the new value). A `mode` other than these two returns 400 `FIELD_INVALID` (`params.field` is `mode`), a single-node deployment returns 400 `PLACEMENT_MODE_SHAPE`, and an unknown deployment returns 404; see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署) | JWT |
-| PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Replace Lost Nodes Automatically](../how-to/node-failover.md) | JWT |
+| DELETE | `/api/v1/deployments/{id}/wake-waiting` | Cancel every waiting wake of the deployment; returns `{"items":[instance UUIDs],"total":n}` | JWT |
+| GET | `/api/v1/deployments/{id}/schedule` | The deployment's schedule, `{"items":[schedules],"total":n}`; see [Schedules](#定时计划) | JWT |
+| POST | `/api/v1/deployments/{id}/schedule` | Create a schedule entry; 201 returns it. Validation failures return 400 `SCHEDULE_INVALID`, `SCHEDULE_TIMEZONE_UNKNOWN`, `SCHEDULE_REPLICAS_SHAPE` (PD), `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` (a multi-node deployment placed by hand), `SLEEP_NOT_ENABLED`, or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
+| PUT | `/api/v1/deployments/{id}/schedule/{sid}` | Replace one entry; the body is the same as for creating it, 200; an entry that does not belong to the deployment returns 404 | JWT |
+| DELETE | `/api/v1/deployments/{id}/schedule/{sid}` | Delete one entry, 204; a missing one returns 404 | JWT |
+| PUT | `/api/v1/deployments/{id}/idle-sleep` | Set idle sleep `{"after_sec":900,"level":2}`; `after_sec` is 0 (off) or 60–604800 and `level` is 1 or 2. 200 returns the same body; out of range returns 400 `IDLE_SLEEP_INVALID`, and `after_sec` above 0 on a deployment that cannot sleep returns 400 `SLEEP_NOT_ENABLED` or `SLEEP_ENGINE_UNSUPPORTED` | JWT |
+| PUT | `/api/v1/deployments/{id}/service-level` | Set the service level `{"level":"offline"}`; values are `resident` / `online` / `shared` / `offline`. 200 returns the same body; an invalid value returns 400 `SERVICE_LEVEL_INVALID` (`params.level`); anything other than resident requires sleep capability (400 `SLEEP_NOT_ENABLED` / `SLEEP_ENGINE_UNSUPPORTED`) and a single-node deployment (400 `SERVICE_LEVEL_SHAPE`); setting online while sharing cards with another online deployment returns 409 `SERVICE_LEVEL_ONLINE_SHARED` (`params.deployment`); see [Service levels](../explanation/service-levels.md) | JWT |
+| PUT | `/api/v1/deployments/{id}/node-replacement` | Set how long a lost node is waited for before its replicas move, `{"after_sec":600}`; 0 is never, otherwise 60–604800. 200 returns the same body; out of range returns 400 `NODE_REPLACEMENT_INVALID` (`params.minimum`, `maximum`); see [Reschedule Replicas on Node Loss](../how-to/node-failover.md) | JWT |
+| GET | `/api/v1/scheduling/board` | The scheduling board: nodes paged by `?page=&page_size=&q=` (each GPU's awake usage, sleep residue, free amount, occupants, and outside processes) plus fleet-wide `pending` (deployments refused by the scheduler in the last 30 minutes), `waiting_wakes`, `upcoming` (schedule actions in the next 24 hours), and `recent` (the latest 50 automation events, kept for compatibility; the console reads the scheduling history instead); see [Scheduling Board](#调度看板) | JWT |
+| GET | `/api/v1/scheduling/history` | The scheduling history: scheduling events of the whole cluster, newest first, cursor-paged (`limit`, `before`, as for the deployment timeline), filterable by `deployment_id`, `category` (`auto` / `failure` / `manual`, comma separated), and `since` / `until` (RFC 3339); an invalid filter returns 400 `FIELD_INVALID` (`params.field`), an invalid cursor or page size 400 `EVENT_CURSOR_INVALID` / `EVENT_LIMIT_INVALID`; see [Scheduling History](#调度记录) | JWT |
 | PUT | `/api/v1/deployments/{id}/pd` | Adjust replicas for each role (`roles.<role>.units`) and `fallback` in a PD deployment. `mode`, each role's `tp`/`pp`, and `kv_load_failure` are immutable (`PD_IMMUTABLE`). Returns 400 `PD_NOT_PD` for non-PD deployments | JWT |
 | POST | `/api/v1/deployments/{id}/restart` | Recreate the deployment using the current configuration and reset replica retry counts. The request body accepts an optional `strategy` (default `rolling`; `all` interrupts service). See [Restart Strategies](#重启策略) | JWT |
 | POST | `/api/v1/evaluate` | Estimate GPU memory, simulate scheduling, and estimate acquisition (without creating a deployment). The response's `acquisition` includes `present` (storage that already holds the model and is readable by the target node), `targets` (storage to which nodes can save the model when acquiring it), `providers` (the template's weight sources), `image`, and `nodes[]` when nodes are specified in the request (see "Evaluation Requests and Acquisition Estimates") | JWT |
@@ -563,7 +572,7 @@ This endpoint does not check whether a user spec with the same name already exis
 | GET | `/api/v1/instances/{uuid}/launch-facts` | Three-layer projection of instance launch facts (intent/resolved/runtime observation; unknown is not replaced by a fallback; sensitive text is redacted) | JWT |
 | GET | `/api/v1/instances/{uuid}/logs` | Instance container logs (SSE, through the agent logtail tunnel) | JWT |
 | POST | `/api/v1/instances/{uuid}/sleep` | Put only the replica containing this instance to sleep (`?level=` and `?mode=` are the same as at deployment level). Any rank of a multi-node replica represents the entire replica; intent is written to all its instances, and the leader's engine puts followers to sleep along with it. The response's `instances` lists all ranks. Other replicas in the deployment continue serving, and the deployment is not considered asleep as a whole (new instances are awake if this replica is recreated). Returns 400 if the deployment cannot sleep (same codes as at deployment level), 409 `INSTANCE_NOT_SERVING` if the instance is not serving a replica, or 409 `SLEEP_ROLE_CANNOT_EMPTY` if this is the last awake replica of a role that the PD mode does not allow to be empty | JWT |
-| POST | `/api/v1/instances/{uuid}/wake` | Wake the replica containing this instance (the entire multi-node replica, as above). Checks only whether this replica fits back on its original GPUs (409 `WAKE_INSUFFICIENT_GPU_MEMORY`). Revokes the deployment-wide sleep command; other sleeping replicas remain asleep. A card held by a process outside the platform gives 409 `WAKE_GPU_HELD_OUTSIDE` | JWT |
+| POST | `/api/v1/instances/{uuid}/wake` | Wake the replica containing this instance (the entire multi-node replica, as above). Checks only whether this replica fits back on its original GPUs (409 `WAKE_INSUFFICIENT_GPU_MEMORY`). Revokes the deployment-wide sleep command; other sleeping replicas remain asleep. Also accepts `?wait=true`, `?yield=true`, and `yield_level`, and can return 409 `WAKE_GPU_HELD_OUTSIDE` | JWT |
 | POST | `/api/v1/instances/{uuid}/restart` | Restart the replica containing this instance (a follower represents its entire generation). By default, put the replica's leader into `draining` (the gateway stops dispatching new requests, and it retires after finishing its current requests) while starting replacement instances. `?drain=false` immediately removes the entire generation. Does not consume the replica's retry allowance. Records deployment event `REPLICA_RESTARTED{instance,drain}`. Returns 409 `DEPLOYMENT_NOT_ACTIVE` if the deployment is not active, or 409 `INSTANCE_NOT_SERVING` if the instance is not serving a replica (failed, draining, or being removed) | JWT |
 
 The instance launch facts endpoint provides three layers of information: deployment intent (intent), the resolved launch plan (resolved), and runtime observations (runtime observation).
@@ -653,7 +662,11 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information |
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |
+| `idle_sleep` | Object | Idle sleep `{after_sec, level}`; an `after_sec` of 0 means off |
 | `node_replacement` | Object | How long a lost node is waited for before its replicas move, `{after_sec}`; default 600, 0 means never |
+| `service_level` | String | Service level: `resident` (default), `online`, `shared`, or `offline`; see [Service levels](../explanation/service-levels.md) |
+| `sleep_held` | Boolean | Whether the sleep was issued by an operator or a schedule (held sleep): when `true`, requests do not wake the deployment |
+| `wake_waiting_since` (optional) | RFC3339 time | Present when a wake of the deployment is waiting for room; the value is when the wait began |
 
 `active` means the deployment is intended to run, not that it can already serve requests; also check its runtime state, ready replicas, and health checks.
 Do not uniformly treat absent optional fields as `0` or empty arrays. Use the following fields to determine placement and retry status:
@@ -819,6 +832,120 @@ Omit the request body or submit `{"strategy":"rolling"}` / `{"strategy":"all"}`:
 
 An unknown strategy returns 400 `RESTART_STRATEGY_INVALID`; a non-active deployment returns 409 `DEPLOYMENT_NOT_ACTIVE`.
 
+### Waiting Wakes and Yielding Wakes
+
+`?wait=true` and `?yield=true` on `POST /api/v1/deployments/{id}/wake` and `POST /api/v1/instances/{uuid}/wake`:
+
+- `wait`: replicas that fit wake first and the rest wait for room; the server wakes them automatically once capacity frees up, and gives up after 30 minutes (timeline `WAKE_WAIT_TIMEOUT`). The start of the wait is kept on the instance, and the deployment's `wake_waiting_since` is the earliest of them.
+- `yield`: first puts the awake deployments holding the needed GPUs to sleep (`yield_level` is 1 or 2, default 1; when the occupant's host memory cannot hold L1 it switches to 2 automatically), then waits.
+- When everything fits the response is 200 `{"status":"waking","woken":[…],"waiting":[],"yielded":[]}`; when some must wait it is 202 `{"status":"waiting",…}`, where `waiting` lists the instance UUIDs waiting and `yielded` the names of the deployments put to sleep.
+- When an occupant cannot sleep (a deployment that is not sleep-capable, the last awake role of a PD deployment, or a process outside the platform) the response is 409 `WAKE_YIELD_BLOCKED` (`params.occupants` names, `woken`) and nothing changes; a `yield_level` other than 1 or 2 returns 400 `SLEEP_INVALID_LEVEL`.
+
+A wake without these parameters behaves as before. For usage see [Sleep and Wake Operations](../how-to/sleep-wake.md#放不下时等位与让位).
+
+### Schedules
+
+`/api/v1/deployments/{id}/schedule` manages a deployment's schedule. A schedule entry:
+
+```json
+{"id":3,"action":"sleep","weekdays":[1,2,3,4,5],"time":"22:00","timezone":"Asia/Shanghai","sleep_level":2,"enabled":true,"next_at":"2026-10-26T14:00:00Z"}
+```
+
+| Field | Meaning |
+|---|---|
+| `action` | `sleep`, `wake`, or `replicas` |
+| `weekdays` | Array, 0 for Sunday through 6 for Saturday, at least one, no repeats |
+| `time` | `HH:MM`, 24-hour |
+| `timezone` | An IANA time zone name; an empty string uses the server's time zone |
+| `sleep_level` | Required for `sleep`, 1 or 2; not accepted for other actions |
+| `replicas` | Required for `replicas`, 1 to `max_replicas`; single-node deployments and automatically placed multi-node deployments (not PD); not accepted for other actions |
+| `enabled` | May be omitted in a request, default true |
+| `next_at` | Response field, the next time it runs; omitted when disabled |
+
+Each occurrence runs once; after a server outage only the newest missed occurrence runs, and only if it is within 12 hours; manual operations are not overridden; a new or edited entry takes effect from its next occurrence. See [Use the Scheduling Center](../how-to/scheduling-center.md).
+
+### Scheduling Board
+
+`GET /api/v1/scheduling/board?page=1&page_size=20&q=` is read-only. The response:
+
+| Field | Meaning |
+|---|---|
+| `nodes` | A paged object (`items`, `page`, `page_size`, `total`) with nodes sorted by name; `q` matches the name or UUID. Each node has `uuid`, `name`, `online`, and `gpus[]`: `index`, `name`, `memory_bytes`, `awake_bytes`, `sleeping_bytes`, `free_bytes`, `held_outside`, and `occupants[]` (`deployment_id`, `deployment`, `instance`, `state`: `awake` or `asleep`, `sleep_level`, `claim_bytes`, `residue_bytes`) |
+| `pending` | Active deployments refused by the scheduler in the last 30 minutes: `deployment_id`, `deployment`, `reason{code,params}`, `at` |
+| `waiting_wakes` | Wakes waiting for room: `deployment_id`, `deployment`, `instances`, `since` |
+| `upcoming` | Schedule actions in the next 24 hours: `deployment_id`, `deployment`, `schedule_id`, `action`, `sleep_level`, `replicas`, `at` |
+| `recent` | The latest 50 automation events: `deployment_id`, `deployment`, `code`, `params`, `at` |
+
+For timeline event codes see [Use the Scheduling Center](../how-to/scheduling-center.md#时间线事件) and [Reschedule Replicas on Node Loss](../how-to/node-failover.md#时间线事件).
+
+### 调度记录
+
+`GET /api/v1/scheduling/history` is read-only and returns scheduling events across deployments, newest first:
+
+```bash
+curl --fail-with-body -sS \
+  "$API_URL/api/v1/scheduling/history?category=failure,manual&since=2026-10-27T00:00:00Z&limit=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{"items":[
+  {"id":812,"created_at":"2026-10-28T09:14:03Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
+   "code":"REPLICA_REBUILT","category":"failure",
+   "params":{"replica":1,"attempt":2,"reason":"CUDA out of memory","node":"gpu-3"}},
+  {"id":810,"created_at":"2026-10-28T09:10:41Z","deployment_id":7,"deployment":"qwen","kind":"schedule",
+   "code":"REPLICAS_CHANGED","category":"manual","params":{"from":1,"to":3,"actor":"alice"},"actor":"alice"}
+]}
+```
+
+| Parameter | Meaning |
+|---|---|
+| `limit`, `before` | As for `GET /api/v1/deployments/{id}/events`: `limit` defaults to 100 and is capped at 500; pass the `id` of the last item of the previous page as `before` for the next page |
+| `deployment_id` | Only one deployment |
+| `category` | `auto`, `failure`, `manual`; give several separated by commas; omitted means all |
+| `since`, `until` | RFC 3339 times, inclusive |
+
+| Response field | Meaning |
+|---|---|
+| `id`, `created_at` | The event id (the paging cursor) and its UTC time |
+| `deployment_id`, `deployment` | The deployment and its name; for a deleted deployment the name comes from what it left behind and `deployment_deleted: true` is set; when not even a name is known, `deployment` is omitted |
+| `instance` | The instance UUID when the event hangs on an instance, otherwise omitted |
+| `kind`, `code` | The event kind (`schedule` / `automation`) and the event code |
+| `category` | `auto`: the platform acted on its own settings or schedules; `failure`: something went wrong and the platform is dealing with it or has given up; `manual`: an operator's order |
+| `params` | The event code's params, as on the deployment timeline |
+| `actor` | The user who gave the order; present only on `manual` events whose request carried an identity, and also in `params.actor` |
+
+The server decides in one place which event codes belong to the history and in which category:
+
+| Category | Event codes |
+|---|---|
+| `auto` | `AUTO_SLEEP`, `AUTO_WAKE`, `AUTO_SCALE`, `WAKE_WAITING`, `WAKE_WAIT_TIMEOUT`, `SCHEDULE_ACTION_FAILED`, `YIELDED_FOR_WAKE`, `UNIT_PLACED`, `NODE_DRAIN_MOVED` |
+| `failure` | `NODE_REPLACED`, `NODE_REPLACE_REVERTED`, `NODE_REPLACE_NO_CANDIDATE`, `REPLICA_REBUILT`, `UNIT_RETRY_EXHAUSTED`, `DEPLOYMENT_UNSCHEDULABLE`, `DEPLOYMENT_ROLLING_STALLED` |
+| `manual` | `REPLICAS_CHANGED`, `REPLICA_RESTARTED`, `UNIT_RETRIED`, `DEPLOYMENT_RESTARTED`, `DEPLOYMENT_ROLLING_RESTARTED`, `SLEEP_ORDERED`, `WAKE_ORDERED` |
+
+An order an operator gives through the API leaves an event on the deployment timeline with `params.actor`:
+
+| Event code | When it is recorded | Main params |
+|---|---|---|
+| `REPLICAS_CHANGED` | `PUT /deployments/{id}/replicas` or `PUT /deployments/{id}/pd` changed the replica count (no event if the count is unchanged). Unrelated to the 409 error code of the same name | `from`, `to`, and `role` for PD |
+| `SLEEP_ORDERED` | A deployment, a PD role, or one replica was ordered to sleep | `level`, `mode`, `scope` (`deployment` / `role` / `replica`), `role`, `instances` |
+| `WAKE_ORDERED` | A wake started waking at least one instance; a wake in which every instance waits for room records nothing here (it has `WAKE_WAITING`) | `instances` |
+| `DEPLOYMENT_RESTARTED`, `DEPLOYMENT_ROLLING_RESTARTED`, `REPLICA_RESTARTED`, `UNIT_RETRIED` | Restarts and retries | Their existing params |
+
+The platform's own actions (the controller, the automation) carry no `actor`.
+
+When a failed replica is rebuilt, the controller records `REPLICA_REBUILT` (deployment timeline, `kind` `schedule`), one per rebuild, so their number is bounded by the retry budget (see [Retry After a Fix](../how-to/troubleshooting.md#修复后重试)):
+
+| Param | Meaning |
+|---|---|
+| `replica` | The replica number, counting from 1 |
+| `role` | The role of a PD deployment |
+| `attempt` | Which attempt this is |
+| `reason` | The message of the previous failed attempt, cut off after 200 characters |
+| `node` | The name of the node of the new attempt's leader |
+
+The read goes through the `(kind, id)` index of `instance_events`: one page per event kind, merged, without scanning the whole timeline.
+
 ### Adjust Replicas for Regular Deployments
 
 `PUT /api/v1/deployments/{id}/replicas` adjusts replicas of regular deployments. Multi-node and single-node deployments use different request bodies.
@@ -864,6 +991,7 @@ For **single-node deployments**, submit the replica count: `{"replicas":N,"remov
 | `placement_mode` | `auto` lets the server select nodes; `manual` uses explicit nodes. Defaults to `manual` if omitted. Single-node: only request terminology, the deployment does not store this field, and manual placement is stored as node requirement `gpuworks.ai/node: [node_uuid]`. Multi-node and PD: with `auto` the server picks nodes for the ranks or units the request leaves out at creation (see [Automatically Placed Multi-Node and PD Deployments](#自动放置多机与-pd-部署)), the deployment is stored as automatically placed, and `placement_mode` in the detail is `auto` |
 | `target_vendor` | Evaluation and creation use the same accelerator vendor; stored as node requirement `gpuworks.ai/vendor`. If omitted, creation fills it in using the destination node's vendor |
 | `node_requirements` | Node requirements: `{"<key>": ["<value>", …]}`. Multiple values for one key mean "any of these"; different keys must "all match." Keys can be node labels or system labels (see "Node Labels" above). Any key in the reserved domain other than the eight system keys is rejected (a misspelled key does not silently match 0 nodes). `gpuworks.ai/vendor` can have only one value; network key values are network IDs or `management`. Multi-node and PD deployments list nodes per rank and do not accept `gpuworks.ai/node`. Errors: `NODE_REQUIREMENTS_INVALID`; selected nodes do not meet requirements: `NODE_REQUIREMENTS_UNMET` (`params.detail` identifies the key) |
+| `service_level` | The service level; when omitted it is `resident`. Anything other than resident requires `sleepable` and a single-node deployment, otherwise 400 `SERVICE_LEVEL_INVALID` / `SLEEP_NOT_ENABLED` / `SERVICE_LEVEL_SHAPE`. Evaluation computes placement from it: while a deployment that shares cards by service level is asleep, levels it does not share with are still counted at full usage |
 | `placement_strategy` | `spread` or `binpack`, saved with the deployment; other values return `PLACEMENT_STRATEGY_INVALID`. When omitted it is `spread` for single-node and `binpack` for multi-node and PD (automatic or manual) |
 | `placement.gpus`, `placement.tp`, `placement.pp` | Explicit physical GPU indexes; TP and PP are parallelism for the entire deployment (TP × PP ÷ `nnodes` GPUs per node, which must divide evenly). If TP is omitted for multi-node deployment, the default is one pipeline stage per node, with TP set to the smallest GPU count among the selected nodes; effective values are written back to placement. If TP is omitted for single-node deployment, the scheduler selects a GPU count that is an integer multiple of PP (TP = GPU count ÷ PP). Automatic placement also selects nodes according to the supplied TP and PP. Evaluation returns values in `form_values.tp/pp` and `parallelism` (`tp`, `pp`, `nodes`, `gpus_per_node`); `acquisition.nodes` in multi-node evaluation and manual placement provides acquisition estimates for each node |
 | `routing_policy` | Multi-replica gateway policy: `least_request` (default), `prefix_affinity`, or `failover`; not an engine launch parameter |
@@ -921,7 +1049,7 @@ When no group fits, the request returns 409 `UNIT_PLACEMENT_NONE`, with `params`
 
 A successful evaluation carries `auto_placed: true` and previews the nodes picked now; creation picks again, so the two can differ. Creation does not submit the nodes evaluation selected, so it has none of single-node automatic placement's `AUTOMATIC_PLACEMENT_STALE`; when resources are taken after evaluation, the re-pick when the unit starts handles it. The deployment stores the nodes that were picked (in the multi-node `node_uuids` or in the PD units), and `placement_mode` in the detail is `auto`.
 
-When a unit starts, the controller plans its nodes against the current free cards. If all nodes are online and fit, it starts. If nodes were cordoned, no longer meet the node requirements, or would be refused by scheduling (another deployment holds the cards), only those ranks move to other nodes and `UNIT_PLACED` is recorded (`params`: `unit` (from 1), `role`, `from`, `to` (node names by rank), `reason`). With nowhere to go the unit keeps its nodes and waits, trying again about every minute. Offline nodes belong to node replacement and draining nodes to drain, regardless of the placement mode. Manually placed units do not do this; when PD pinned cards are held by other deployments the scheduling reason is `pinned_gpus_unavailable` (`params`: `node`, `gpus`, `holders`).
+When a unit starts, the controller plans its nodes against the current free cards. If all nodes are online and fit, it starts. If nodes were cordoned, no longer meet the node requirements, or would be refused by scheduling (another deployment holds the cards), only those ranks move to other nodes and `UNIT_PLACED` is recorded (`params`: `unit` (from 1), `role`, `from`, `to` (node names by rank), `reason`). With nowhere to go the unit keeps its nodes and waits, trying again about every minute. Offline nodes belong to node-loss rescheduling and draining nodes to drain, regardless of the placement mode. Manually placed units do not do this; when PD pinned cards are held by other deployments the scheduling reason is `pinned_gpus_unavailable` (`params`: `node`, `gpus`, `holders`).
 
 `PUT /deployments/{id}/placement-mode` switches between automatic and manual; existing deployments are manual.
 

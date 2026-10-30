@@ -84,6 +84,9 @@ type App struct {
 	// notices the console's notice bell.
 	usage   *usageReporter
 	notices *noticeService
+	// scaleReplicas sets a deployment's replica count as the API does, for
+	// the scheduling automation's replica schedules.
+	scaleReplicas func(deploymentID uint, replicas int) error
 }
 
 // proxyMetricsSink adapts an Accountant flush batch to observability's tsdb
@@ -306,7 +309,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	a.recovery = recoverer
 
 	metadataClient := &http.Client{Transport: outbound.Transport(func() (proto.NetworkConfig, error) { return planning.ControlPlaneNetwork(st) }, cfg.OutboundAllowPrivateHosts...)}
-	handler := api.Router(api.Deps{
+	apiDeps := api.Deps{
 		Store:         st,
 		Bus:           b,
 		Log:           log,
@@ -375,7 +378,9 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 		AISecretbox:          box,
 		BenchmarkArtifactDir: filepath.Join(cfg.DataDir, "benchmark-artifacts"),
 		Recovery:             recoverer,
-	}, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
+	}
+	handler := api.Router(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
+	a.scaleReplicas = api.ReplicaScaler(apiDeps)
 	handler = api.WithSecurityHeaders(proxies, accessLogHandler(log, a.routeByFunction(cfg.experienceGuard(handler))))
 
 	// No read/write timeouts: the agent WS and SSE are long-lived. The WS
@@ -451,6 +456,8 @@ func (a *App) Run(ctx context.Context) error {
 	goBG(func() { a.agentUpgrades.Run(ctx) })
 	// Background: verify each PD prefill instance's KV handoff once.
 	goBG(func() { runPDVerifier(ctx, a.store, a.proxy, a.obs.tsdb) })
+	// Background: schedules, idle sleep, waiting wakes, residency.
+	goBG(func() { runAutomation(ctx, a.store, a.proxy, a.proxyAcct, a.obs.tsdb, a.scaleReplicas, a.log) })
 	goBG(func() { a.health.Run(ctx) })  // Background: the deployments' health checks.
 	goBG(func() { a.usage.Run(ctx) })   // Background: the daily usage report.
 	goBG(func() { a.notices.Run(ctx) }) // Background: the notices' refresh.

@@ -1284,6 +1284,11 @@ var migrations = []migration{
 	{Version: 179, Name: "ai_config_single_default", Apply: addAIConfigSingleDefault},
 	{Version: 180, Name: "model_download_deployment", Apply: addModelDownloadDeployment},
 	{Version: 181, Name: "agent_upgrade_runs", Apply: createAgentUpgradeTables},
+	{Version: 182, Name: "deployment_idle_sleep", Apply: addDeploymentIdleSleep},
+	{Version: 183, Name: "instance_wake_waiting", Apply: addInstanceWakeWaiting},
+	{Version: 184, Name: "lifecycle_schedules", Apply: createLifecycleSchedules},
+	{Version: 185, Name: "instance_event_kind_index", Apply: indexInstanceEventKind},
+	{Version: 186, Name: "deployment_service_level", Apply: addDeploymentServiceLevel},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1592,7 +1597,7 @@ func (s *Store) AutoMigrateDev() error {
 		&Model{}, &ModelFile{}, &Deployment{}, &Instance{}, &InstanceEvent{},
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},
-		&NoticeRead{},
+		&NoticeRead{}, &LifecycleSchedule{},
 		&UsageHourly{}, &UsageDaily{}, &UsageRolledDay{}, &UsageRollupState{}, &DeletedDeployment{}, &DeletedNode{},
 	)
 }

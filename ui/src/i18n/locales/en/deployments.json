@@ -74,8 +74,27 @@
     "deepAction": "Deep Sleep (L2)",
     "partial": "Partly asleep · {{asleep}}/{{total}} replicas",
     "wakeAll": "Wake all",
+    "heldHint": "Put to sleep by an operator or a schedule: requests do not wake it",
+    "requestWakesHint": "A request wakes it automatically",
     "wakeWhatFits": "Wake what fits",
     "partialWoken": "Woke {{woken}}; {{refused}} could not fit back on their cards",
+    "waitStarted": "Waiting for room: the wake follows when the GPUs free up",
+    "yieldStarted": "Putting {{names}} to sleep; the wake follows once there is room",
+    "refused": {
+      "title": "Not enough GPU memory to wake",
+      "wait": "Wait for room",
+      "yield": "Put {{occupants}} to sleep, then wake",
+      "theOccupants": "the occupants",
+      "hint": "Waiting wakes what fits now and wakes the rest when the GPUs free up (it gives up after 30 minutes). Putting the occupants to sleep frees the GPUs first; if an occupant cannot sleep, nothing is changed.",
+      "heldOutside": "A process outside the platform holds the GPU"
+    },
+    "waiting": {
+      "since": "Waiting for room since {{time}}",
+      "hint": "The server wakes the sleepers when their GPUs can take them back, and gives up after 30 minutes.",
+      "cancel": "Cancel waiting",
+      "cancelled": "Stopped waiting",
+      "cancelFailed": "Failed to cancel waiting: {{detail}}"
+    },
     "role": {
       "summary": "{{role}}: {{asleep}}/{{total}} asleep",
       "sleep": "Sleep {{role}} (L1)",
@@ -372,14 +391,28 @@
       "REPLICA_RESTARTED": "Restart requested for the replica of instance {{instance}}",
       "UNIT_RETRY_EXHAUSTED": "Gave up after {{attempts}} failed attempts ({{reason}})",
       "UNIT_RETRIED": "Retry requested: {{attempts}} failed attempts cleared",
+      "REPLICA_REBUILT": "Replica {{replica}} failed and was rebuilt automatically (attempt {{attempt}}, on {{node}}){{reasonNote}}",
+      "REPLICAS_CHANGED": "Replicas {{from}} → {{to}}{{roleNote}}",
+      "SLEEP_ORDERED": "Sleep ordered (L{{level}}): {{scope}}{{modeNote}}",
+      "WAKE_ORDERED": "Wake ordered: instances {{instances}}",
       "STORAGE_UNAVAILABLE": "Storage {{storage}} is unavailable on {{node}} ({{state}}): running instances keep serving from GPU memory, loading ones wait for it to return",
       "STORAGE_RECOVERED": "Storage {{storage}} is available again on {{node}}",
-      "NODE_REPLACED": "Node {{from}} stayed offline for over {{after}}: {{what}} {{target}}",
-      "NODE_REPLACE_REVERTED": "Node {{to}} came back before {{what}} ran on {{from}}: the move is undone",
+      "AUTO_SLEEP": "Put to sleep (L{{level}}) {{cause}}",
+      "AUTO_WAKE": "Woke instance {{instances}} {{cause}}",
+      "AUTO_SCALE": "Replicas set to {{replicas}} {{cause}}",
+      "WAKE_WAITING": "Wake of instance {{instances}} waits for room{{yielded}}",
+      "WAKE_WAIT_TIMEOUT": "Stopped waiting for room to wake instance {{instances}} after {{waited}}",
+      "SCHEDULE_ACTION_FAILED": "Scheduled {{action}} failed: {{reason}}",
+      "SCHEDULE_ACTION_FAILED_preempt": "Failed to {{action}} to give up GPUs: {{reason}}",
+      "YIELDED_FOR_WAKE": "Put to sleep (L{{level}}) to make room for waking {{deployment}}",
+      "NODE_REPLACED": "Reschedule on node loss: node {{from}} stayed offline for over {{after}}, {{what}} {{target}}",
+      "NODE_REPLACE_REVERTED": "Node {{to}} came back before {{what}} ran on {{from}}: the rescheduling is undone",
       "NODE_REPLACE_NO_CANDIDATE": "Nodes {{nodes}} stayed offline, but no other node can take their replicas",
       "NODE_DRAIN_MOVED": "{{what}} moved off a draining node",
       "UNIT_PLACED": "Automatic placement: {{what}} placed on {{to}}{{from}}{{cause}}"
     },
+    "actorNote": " (by {{actor}})",
+    "reasonNote": "; it failed with: {{reason}}",
     "pdTransport": {
       "rdma": "RDMA",
       "tcp": "TCP",
@@ -680,26 +713,179 @@
       "prefixHint": "Name nodes from the first rank on: a rank can be named only after the ranks before it."
     }
   },
-  "nodeReplacement": {
-    "title": "Node failure",
-    "hint": "When a node running a replica stays offline longer than this, the replica moves to another node.",
-    "hintSingle": "A single-node deployment picks one from its candidate pool.",
-    "hintMulti": "A multi-node or PD replica moves to a node on the same compute network with the same GPU architecture and free cards.",
-    "hintRevert": "If the node returns before the moved replica runs, the move is undone; after that the replica is not moved back. A replica pinned to its node stays.",
-    "after": "Move after",
-    "minutes": "Minutes offline before a replica moves",
-    "unit": "min",
-    "zeroNever": "0 = never move",
+  "operator": {
+    "roleNote": " ({{role}})",
+    "abortNote": "; in-flight requests aborted",
+    "scope": {
+      "deployment": "the whole deployment",
+      "role": "the {{role}} role",
+      "replica": "the replica of instance {{instances}}"
+    }
+  },
+  "automation": {
+    "minutes": "min",
     "save": "Save",
-    "saved": "Node failure setting saved",
-    "saveFailed": "Failed to save the node failure setting: {{detail}}",
+    "retry": "Reload schedule",
     "duration": {
       "seconds": "{{value}} s",
       "minutes": "{{value}} min",
       "hours": "{{value}} h",
       "days": "{{value}} d"
     },
-    "movedTo": "moved to {{node}}",
+    "cause": {
+      "schedule": "by its schedule",
+      "idle": "after {{idle}} without requests",
+      "wake_waiting": "once its GPUs had room",
+      "operator": "as ordered",
+      "request": "because a request arrived",
+      "resume": "once the GPUs it gave up were free again"
+    },
+    "yieldedNote": ", after putting {{names}} to sleep",
+    "preempt": {
+      "idle": "to give its GPUs to {{who}} after sitting idle past its hold time",
+      "rank": "to give its GPUs to {{who}}, which has a higher service level",
+      "turn": "to give its GPUs to {{who}}, whose turn it is in the time share",
+      "other": "to give its GPUs to {{who}}",
+      "who": "deployment #{{id}}",
+      "someone": "another deployment",
+      "abort": "; requests in flight were cut off"
+    },
+    "action": {
+      "sleep": "sleep",
+      "wake": "wake",
+      "replicas": "replica count"
+    },
+    "level": {
+      "1": "L1 · memory (quick)",
+      "2": "L2 · deep"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "hint": "Standing orders that run on their own at a set time. Each occurrence runs once; a manual order given in between is not overridden. A new or edited order fires from its next occurrence.",
+      "add": "Add order",
+      "addTitle": "Add a scheduled order",
+      "editTitle": "Edit scheduled order",
+      "edit": "Edit",
+      "delete": "Delete",
+      "deleteConfirm": "Delete this scheduled order?",
+      "deleted": "Scheduled order deleted",
+      "empty": "No scheduled orders.",
+      "noActions": "This deployment can neither sleep nor change its replica count on a schedule: sleep and wake need a sleepable deployment, and replica counts are scheduled only for single-node deployments and automatically placed multi-node ones (not PD).",
+      "loadFailed": "Failed to load the schedule: {{detail}}",
+      "saveFailed": "Failed to save the order: {{detail}}",
+      "deleteFailed": "Failed to delete the order: {{detail}}",
+      "saved": "Scheduled order saved",
+      "save": "Save",
+      "serverZone": "server time zone",
+      "timezoneHint": "Leave empty for the server's time zone, or give an IANA name such as Asia/Shanghai.",
+      "everyDay": "Every day",
+      "enabledOf": "Enable {{order}} at {{time}}",
+      "columns": {
+        "order": "Order",
+        "days": "Days",
+        "time": "Time",
+        "next": "Next run",
+        "enabled": "Enabled"
+      },
+      "actionText": {
+        "sleep": "Sleep (L{{level}})",
+        "wake": "Wake",
+        "replicas": "Set replicas to {{count}}"
+      },
+      "actionName": {
+        "sleep": "Sleep",
+        "wake": "Wake",
+        "replicas": "Set replica count"
+      },
+      "field": {
+        "action": "Order",
+        "weekdays": "Days",
+        "time": "Time",
+        "timezone": "Time zone",
+        "sleep_level": "Sleep level",
+        "replicas": "Replicas",
+        "enabled": "Enabled"
+      },
+      "errors": {
+        "weekdays": "Pick at least one day.",
+        "time": "Enter the time as HH:MM.",
+        "replicas": "Replicas must be between 1 and {{maximum}}."
+      },
+      "weekday": {
+        "0": "Sun",
+        "1": "Mon",
+        "2": "Tue",
+        "3": "Wed",
+        "4": "Thu",
+        "5": "Fri",
+        "6": "Sat"
+      }
+    },
+    "idle": {
+      "title": "Idle sleep",
+      "hint": "Put the deployment to sleep after it has had no user request for a while. Health-check probes do not count as requests.",
+      "notSleepable": "Idle sleep needs a deployment created with sleep mode enabled.",
+      "enable": "Enable idle sleep",
+      "after": "After",
+      "minutes": "Idle minutes",
+      "level": "Sleep level",
+      "saved": "Idle sleep saved",
+      "saveFailed": "Failed to save idle sleep: {{detail}}"
+    }
+  },
+  "schedulingPolicy": {
+    "title": "Scheduling policy",
+    "edit": "Edit",
+    "close": "Done",
+    "helpLabel": "About the scheduling policy",
+    "help": "See the docs \"Use the Scheduling Center\" (schedule, idle sleep) and \"Reschedule on Node Loss\" for details.",
+    "item": "{{label}}: {{value}}",
+    "separator": " · ",
+    "off": "Off",
+    "none": "None",
+    "loading": "Loading…",
+    "loadFailed": "Failed to load",
+    "idleOn": "{{minutes}} min / L{{level}}",
+    "scheduleCount_one": "{{count}} order",
+    "scheduleCount_other": "{{count}} orders",
+    "scheduleNext": ", next {{time}}: {{order}}",
+    "scheduleAllOff": ", all disabled"
+  },
+  "serviceLevel": {
+    "title": "Service level",
+    "hint": "When several deployments share GPUs, the service level decides who gives way. A request for a non-resident deployment the platform put to sleep is held while it wakes, instead of failing with 503.",
+    "notEligible": "Only a sleepable single-node (non-PD) deployment can change its service level.",
+    "saved": "Service level saved",
+    "saveFailed": "Failed to save the service level: {{detail}}",
+    "name": {
+      "resident": "Resident",
+      "online": "Online",
+      "shared": "Shared",
+      "offline": "Offline"
+    },
+    "description": {
+      "resident": "Never gives its GPUs to another deployment (default).",
+      "online": "Gives its GPUs up only after 5 minutes without requests; takes them back from shared and offline deployments when a request comes. Two online deployments cannot share GPUs.",
+      "shared": "Takes turns with other shared deployments on the same GPUs (at least 2 minutes each); gives way to online at once, letting requests in flight finish for up to 30 s.",
+      "offline": "Gives its GPUs to everyone else at once and cuts off requests in flight (clients see finish_reason \"abort\"); resumes when the GPUs are free again. For batch work."
+    }
+  },
+  "nodeReplacement": {
+    "title": "Reschedule on node loss",
+    "after": "Reschedule after",
+    "minutes": "Minutes offline before a replica is rescheduled",
+    "unit": "min",
+    "zeroNever": "0 = never reschedule",
+    "save": "Save",
+    "saved": "Node-loss rescheduling saved",
+    "saveFailed": "Failed to save node-loss rescheduling: {{detail}}",
+    "duration": {
+      "seconds": "{{value}} s",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "days": "{{value}} d"
+    },
+    "movedTo": "rescheduled to {{node}}",
     "movedElsewhere": "is rebuilt on another node",
     "placedFrom": " (was on {{from}})",
     "placedCause": ": {{reason}}",

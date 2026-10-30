@@ -1,0 +1,143 @@
+{
+  "page": {
+    "title": "调度中心",
+    "description": "每张 GPU 被谁占着、哪些在等待放置或唤醒，以及定时计划和自动化接下来要做什么",
+    "loading": "正在加载调度中心…",
+    "loadFailed": "无法加载调度中心",
+    "refreshFailed": "刷新失败：{{detail}}",
+    "retry": "重试"
+  },
+  "summary": {
+    "title": "调度概览",
+    "waitingWakes": "等位中的唤醒",
+    "pending": "待放置的部署",
+    "upcoming": "24 小时内的定时计划"
+  },
+  "nodes": {
+    "title": "各节点 GPU",
+    "search": "按名称搜索节点",
+    "empty": "还没有节点。",
+    "emptyFiltered": "没有节点匹配搜索。",
+    "total": "共 {{count}} 个节点",
+    "online": "在线",
+    "offline": "离线",
+    "noGpus": "该节点没有上报 GPU。",
+    "gpuLabel": "GPU {{index}} · {{name}}",
+    "figures": "清醒 {{awake}} · 休眠 {{sleeping}} · 空闲 {{free}}，共 {{total}}",
+    "barAria": "{{node}} 的 GPU {{index}}：清醒 {{awake}}，休眠残留 {{sleeping}}，空闲 {{free}}，共 {{total}}",
+    "legend": {
+      "title": "图例",
+      "awake": "清醒",
+      "sleeping": "休眠残留",
+      "free": "空闲"
+    },
+    "occupant": {
+      "awake": "清醒 · {{claim}}",
+      "asleep": "休眠 L{{level}} · 残留 {{residue}}"
+    },
+    "heldOutside": "被平台外的进程占用",
+    "heldOutsideHint": "这张卡有一部分显存被 gpuworks 不管理的进程占用，休眠或停止部署都无法释放。"
+  },
+  "pending": {
+    "title": "待放置的部署",
+    "empty": "没有部署在等节点。",
+    "columns": {
+      "deployment": "部署",
+      "reason": "等待原因",
+      "at": "记录时间"
+    }
+  },
+  "waiting": {
+    "title": "等位中的唤醒",
+    "empty": "没有唤醒在等位。",
+    "columns": {
+      "deployment": "部署",
+      "instances": "实例",
+      "since": "等位开始于"
+    },
+    "cancel": "取消等位",
+    "cancelOf": "取消 {{name}} 的等位唤醒",
+    "cancelled": "已取消 {{name}} 的等位",
+    "cancelFailed": "取消等位失败：{{detail}}"
+  },
+  "upcoming": {
+    "title": "24 小时内的定时计划",
+    "empty": "24 小时内没有定时计划要执行。",
+    "columns": {
+      "at": "时间",
+      "deployment": "部署",
+      "action": "指令"
+    },
+    "action": {
+      "sleep": "休眠（L{{level}}）",
+      "wake": "唤醒",
+      "replicas": "副本数设为 {{count}}"
+    }
+  },
+  "history": {
+    "title": "调度记录",
+    "loading": "正在加载调度记录…",
+    "loadFailed": "无法加载调度记录",
+    "refreshFailed": "刷新调度记录失败：{{detail}}",
+    "empty": "还没有调度记录。",
+    "emptyFiltered": "没有符合筛选条件的调度记录。",
+    "pagination": "调度记录分页",
+    "page": "第 {{page}} 页",
+    "newer": "较新",
+    "older": "较早",
+    "deleted": "{{name}}（已删除）",
+    "filters": {
+      "category": "按类别筛选",
+      "range": "按时间范围筛选",
+      "deployment": "按部署筛选",
+      "deploymentPlaceholder": "全部部署",
+      "deploymentNone": "没有匹配的部署"
+    },
+    "category": {
+      "all": "全部",
+      "auto": "自动",
+      "failure": "故障",
+      "manual": "手动"
+    },
+    "range": {
+      "all": "全部时间",
+      "1h": "近 1 小时",
+      "24h": "近 24 小时",
+      "7d": "近 7 天"
+    },
+    "columns": {
+      "at": "时间",
+      "deployment": "部署",
+      "action": "动作",
+      "details": "原因与详情",
+      "category": "类别",
+      "actor": "操作人"
+    },
+    "action": {
+      "AUTO_SLEEP": "自动休眠",
+      "AUTO_WAKE": "自动唤醒",
+      "AUTO_SCALE": "自动调整副本数",
+      "WAKE_WAITING": "唤醒等位",
+      "WAKE_WAIT_TIMEOUT": "等位超时放弃",
+      "SCHEDULE_ACTION_FAILED": "自动动作失败",
+      "YIELDED_FOR_WAKE": "让位休眠",
+      "UNIT_PLACED": "自动放置副本",
+      "NODE_DRAIN_MOVED": "排空迁移副本",
+      "NODE_REPLACED": "节点失联重调度",
+      "NODE_REPLACE_REVERTED": "撤回重调度",
+      "NODE_REPLACE_NO_CANDIDATE": "无可用节点重调度",
+      "REPLICA_REBUILT": "副本自动重建",
+      "UNIT_RETRY_EXHAUSTED": "放弃重试",
+      "DEPLOYMENT_UNSCHEDULABLE": "无法放置",
+      "DEPLOYMENT_ROLLING_STALLED": "滚动重启暂停",
+      "REPLICAS_CHANGED": "调整副本数",
+      "REPLICA_RESTARTED": "重启副本",
+      "UNIT_RETRIED": "重试副本",
+      "DEPLOYMENT_RESTARTED": "重启部署",
+      "PD_GROUP_RESTARTED": "重启部署",
+      "DEPLOYMENT_ROLLING_RESTARTED": "滚动重启",
+      "SLEEP_ORDERED": "下达休眠",
+      "WAKE_ORDERED": "下达唤醒"
+    }
+  }
+}

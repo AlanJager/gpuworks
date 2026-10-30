@@ -40,7 +40,7 @@ function list(event: InstanceEvent, name: string): string[] {
 
 // duration words a span of seconds the way the order form counts it: whole
 // days, then hours, then minutes.
-function durationText(t: TFunction<"deployments">, seconds: number): string {
+export function durationText(t: TFunction<"deployments">, seconds: number): string {
   if (seconds >= 86400 && seconds % 86400 === 0) return t("nodeReplacement.duration.days", { value: seconds / 86400 });
   if (seconds >= 3600 && seconds % 3600 === 0) return t("nodeReplacement.duration.hours", { value: seconds / 3600 });
   if (seconds < 60) return t("nodeReplacement.duration.seconds", { value: Math.round(seconds) });

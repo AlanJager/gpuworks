@@ -75,7 +75,8 @@ func TestWakeRefusedWhileAProcessOutsideHoldsTheCard(t *testing.T) {
 	f := newSleepFixture(t)
 	sleeper := f.deployment(t, &store.Deployment{Name: "sleeper", ServedName: "sleeper", Engine: "vllm", Sleepable: true, DesiredSleep: 1})
 	f.instance(t, sleeper, "sleeper-1", 1)
-	holdOutside(t, f.st)
+	wf := wakeWaitFixture{sleepFixture: f, sleeper: sleeper}
+	wf.holdOutside(t)
 
 	check := func(t *testing.T, status int, body string) {
 		t.Helper()
@@ -108,15 +109,21 @@ func TestWakeRefusedWhileAProcessOutsideHoldsTheCard(t *testing.T) {
 		}
 	}
 	t.Run("deployment", func(t *testing.T) {
-		status, body := wakeDeploymentCall(t, f, sleeper.ID, "")
+		status, body := wf.deploymentCall(t, sleeper.ID, "")
 		check(t, status, body)
 		// ?partial=true wakes what fits; nothing does, so it is the same refusal.
-		status, body = wakeDeploymentCall(t, f, sleeper.ID, "?partial=true")
+		status, body = wf.deploymentCall(t, sleeper.ID, "?partial=true")
 		check(t, status, body)
 	})
 	t.Run("instance", func(t *testing.T) {
 		rec := instanceRequest(f.h.wakeInstance, "sleeper-1", "")
 		check(t, rec.Code, strings.TrimSpace(rec.Body.String()))
+	})
+	t.Run("waiting is still allowed", func(t *testing.T) {
+		status, body := wf.deploymentCall(t, sleeper.ID, "?wait=true")
+		if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":[]}`; status != http.StatusAccepted || body != want {
+			t.Fatalf("%d %s", status, body)
+		}
 	})
 	if sleepIntent(t, f.st, "sleeper-1") != 1 {
 		t.Fatal("a refused wake woke the sleeper")
@@ -225,6 +232,26 @@ func TestSleepL1RefusedWhenHostMemoryCannotHoldTheWeights(t *testing.T) {
 		}
 		if rec = instanceRequest(f.h.sleepInstance, "inst-1", "?level=2"); rec.Code != http.StatusOK {
 			t.Fatalf("instance L2 = %d %s", rec.Code, rec.Body)
+		}
+	})
+
+	t.Run("a yielding wake gives way at L2 when the host cannot hold the weights", func(t *testing.T) {
+		f := newSleepFixture(t)
+		if _, err := f.st.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/weights", Revision: "main", Name: "weights", WeightBytes: 14 * gib}); err != nil {
+			t.Fatal(err)
+		}
+		f.h.d.MetricsLatest = metricsFor(f.node.UUID, 64*gib, 60*gib)
+		sleeper := f.deployment(t, &store.Deployment{Name: "sleeper", ServedName: "sleeper", Engine: "vllm", Sleepable: true, DesiredSleep: 2})
+		f.instance(t, sleeper, "sleeper-1", 2)
+		newcomer := f.deployment(t, &store.Deployment{Name: "newcomer", ServedName: "newcomer", Engine: "vllm", Sleepable: true})
+		f.instance(t, newcomer, "newcomer-1", 0)
+		wf := wakeWaitFixture{sleepFixture: f, sleeper: sleeper, newcomer: newcomer}
+		status, body := wf.deploymentCall(t, sleeper.ID, "?yield=true")
+		if want := `{"status":"waiting","woken":[],"waiting":["sleeper-1"],"yielded":["newcomer"]}`; status != http.StatusAccepted || body != want {
+			t.Fatalf("%d %s", status, body)
+		}
+		if got := sleepIntent(t, f.st, "newcomer-1"); got != 2 {
+			t.Fatalf("co-tenant's level = %d, want 2: L1 does not fit the host", got)
 		}
 	})
 }

@@ -860,7 +860,7 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | 404 | `no deployment serves model <name>` | 模型名不是部署的 served name（`GET /v1/models` 可列出），或部署已停止 |
 | 404 | `deployment <name> does not expose <METHOD> <path>` | 只有试验场（`/api/v1/playground/v1/*`）会做 contract 检查并返回它：该部署的 API contract 不包含这个接口（比如对 Chat 模型调 `/v1/embeddings`）；`GET /api/v1/playground/openapi.json` 可查看它声明了哪些接口。公网 `/v1` 不做这项检查，请求原样转给引擎，由引擎自己返回 404 等 |
 | 404 | （`/v1` 整个路径 404） | 访问的监听地址不承载推理 API，检查 `listen.gateway` |
-| 503 | `model is asleep; wake it first` | 没有可服务的清醒副本；按需调用 `POST /api/v1/deployments/{id}/wake`。休眠意图发出后，所选实例即不再接收新请求 |
+| 503 | `model is asleep; wake it first (console, or POST /api/v1/deployments/<id>/wake; a schedule or a waiting wake may also wake it)` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度中心](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
 | 503 | `no running instance for <name> (still starting?)` | 没有 running 副本：还在启动、失败、被停止或节点离线；看实例状态 |
 | 503 | `distributed model <name> is not ready: rank N is unavailable`、`distributed model leader is offline for <name>`、`distributed model leader is not ready for <name>`、`distributed deployment node set is incomplete for <name>` | 多机部署的 rank 或 leader 没就绪 |
 | 503 + `Retry-After: 2` | `upstream error: … data lane unavailable: … did not reattach within 5s` | 节点数据通道断开后 5 秒内没重连；**可重试**，不会回落到控制通道 |
@@ -913,10 +913,16 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 | `SLEEP_ENGINE_UNSUPPORTED` | 400 | 引擎不支持（只有 vLLM 支持） |
 | `PD_SLEEP_RDMA_UNSUPPORTED` | 400 | 可休眠的 PD 部署不能让 KV 走主机 RDMA 网络：关闭可休眠，或让节点改用以太网参数网络 |
 | `SLEEP_INVALID_LEVEL` / `SLEEP_INVALID_MODE` | 400 | `level` 只能 `1` 或 `2`，`mode` 只能 `wait` 或 `abort` |
-| `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | 卡已被占用，放不回休眠实例；`params` 含 `gpu_indexes`、`shortfall_gib`、`occupants`，先停止或休眠占用者 |
-| `WAKE_GPU_HELD_OUTSIDE` | 409 | 卡被平台外的进程占着，平台看不到占用量，不允许唤醒；`params` 同上，`refused[].held_outside` 为 true。在节点上释放该进程后重试，见[卡被平台外进程占用](#卡被平台外进程占用) |
+| `WAKE_INSUFFICIENT_GPU_MEMORY` | 409 | 卡已被占用，放不回休眠实例；`params` 含 `gpu_indexes`、`shortfall_gib`、`occupants`，先停止或休眠占用者，或用 `?wait=true` 等位、`?yield=true` 让占用者休眠后唤醒 |
+| `WAKE_GPU_HELD_OUTSIDE` | 409 | 卡被平台外的进程占着，平台看不到占用量，不允许唤醒（等位和让位也不行）；`params` 同上，`refused[].held_outside` 为 true。在节点上释放该进程后重试，见[卡被平台外进程占用](#卡被平台外进程占用) |
+| `WAKE_YIELD_BLOCKED` | 409 | 让位唤醒做不到，什么都没改：`params.occupants` 里有不可休眠的部署、PD 最后一个醒着的角色或平台外进程；改为等位，或手动处理占用者 |
 | `SLEEP_HOST_MEMORY_INSUFFICIENT` | 409 | L1 休眠需要把权重搬进主机内存，可用内存减去余量（总量的 5% 与 4 GiB 中较大者）放不下；`params` 含 `node`、`need_gib`、`available_gib`，改用 L2 |
-| `NODE_REPLACEMENT_INVALID` | 400 | 换节点等待时间要是 0（从不）或 60–604800 秒 |
+| `SCHEDULE_INVALID` | 400 | 定时计划的某个字段不合法：`params.field`、`params.reason` 指出哪一项（周几、时间格式 `HH:MM`、休眠级别、副本数 1–32、动作） |
+| `SCHEDULE_TIMEZONE_UNKNOWN` | 400 | server 不认识这个时区名；用 IANA 名（如 `Asia/Shanghai`），留空则用 server 时区 |
+| `SCHEDULE_REPLICAS_SHAPE` | 400 | PD 部署不能定时改副本数，它的各角色各有自己的数量 |
+| `SCHEDULE_REPLICAS_MANUAL_PLACEMENT` | 400 | 手动放置的多机部署不能定时改副本数；先用 `PUT /deployments/{id}/placement-mode` 切到自动放置。计划写好后才切到手动放置的，到点时计划失败并记 `SCHEDULE_ACTION_FAILED` |
+| `IDLE_SLEEP_INVALID` | 400 | 闲置休眠的 `after_sec` 要是 0（关闭）或 60–604800，`level` 要是 1 或 2 |
+| `NODE_REPLACEMENT_INVALID` | 400 | 重调度等待时间要是 0（从不）或 60–604800 秒 |
 | `REPLICAS_PLACE_ON_TOO_MANY` | 400 | `place_on` 的节点数超过本次增加的副本数 |
 | `REPLICAS_PLACE_ON_REFUSED` | 409 | `place_on` 里的某个节点不能放新副本，`params.reason` 为 `unknown`（节点不存在）、`offline`、`cordoned`、`requirements`（不满足节点条件）或 `no_room`（试算放不下）；自动放置的多机部署还有 `no_group`（所写的节点凑不成一个放得下的副本：不同计算网络或架构，或卡不够） |
 
@@ -929,19 +935,34 @@ agent 每 15 秒检查一次运行中实例的容器。被 `docker stop`、进�
 3. 可确认的失败：保留已确认的实际休眠级别；如果期望仍对应这次失败命令，再将期望回退到该实际级别（也适用于 L1 / L2 切换失败），事件 `INSTANCE_SLEEP_RESULT`，
    `params.result` 为 `failed_rollback`（成功为 `applied`）。失败不会自动重试。
 
+### 定时计划、闲置休眠或等位没有按预期执行
+
+**现象**：到点没有休眠 / 唤醒，或部署被意外睡下。
+
+**怎么确认与处理**：先看部署时间线里事件类型为 `automation` 的条目，或调度中心的**最近的自动动作**：
+
+| 事件 | 含义与处理 |
+|---|---|
+| `SCHEDULE_ACTION_FAILED` | 自动动作被拒绝，`params.reason` 是原因，`reason_code` 是对应错误码（见上表）；失败的时间点不会重试，处理后等下一次，或手动执行 |
+| `WAKE_WAITING` | 定时唤醒放不下，已进入等位；到调度看板看谁占着卡 |
+| `WAKE_WAIT_TIMEOUT` | 等位满 30 分钟仍没有空位，已放弃；腾出卡后重新唤醒 |
+| `AUTO_SLEEP`（`trigger` 为 `idle`） | 闲置休眠触发，`idle_sec` 是闲置时长；健康检查等平台自发请求不重置计时 |
+
+server 停机错过的计划只补 12 小时内最新的一次。计划的 `next_at` 与时区不符时，检查计划的 `timezone`（空表示 server 所在时区）。
+
 ### 节点离线后副本没有换到别的节点
 
 **现象**：节点离线很久，副本仍留在原处。
 
 **怎么确认与处理**：
 
-1. 部署详情的**换节点等待时间**是否为 0（从不）或还没到点；默认 10 分钟，从 server 最后一次见到节点算起。
+1. 部署详情**调度策略**卡片里**节点失联重调度**的等待时间是否为 0（从不）或还没到点；默认 10 分钟，从 server 最后一次见到节点算起。
 2. 时间线有 `NODE_REPLACE_NO_CANDIDATE`：没有节点能接手。多机与 PD 副本要求替换节点在线、可调度、满足节点条件、与其余 rank 同计算网络、同 GPU 厂商和架构、卡空闲且试算放得下；补齐其中缺的一项即可，平台每分钟重试。
 3. 钉在这台节点上的单机副本（节点条件只允许这一台）不会换，等节点回来，或编辑节点条件。
 
-节点在线却放不下副本（卡被占、停止调度）不属于换节点：自动放置的多机与 PD 部署会在副本要启动时只换放不下的 rank（时间线 `UNIT_PLACED`），手动放置的部署等待，见[节点在线但放不下](node-failover.md#节点在线但放不下自动放置的重新挑选)。
+节点在线却放不下副本（卡被占、停止调度）不属于节点失联重调度：自动放置的多机与 PD 部署会在副本要启动时只换放不下的 rank（时间线 `UNIT_PLACED`），手动放置的部署等待，见[节点在线但放不下](node-failover.md#节点在线但放不下自动放置的重新挑选)。
 
-换节点的规则和撤回见[节点失联时自动换节点](node-failover.md)。
+节点失联重调度的规则和撤回见[节点失联重调度](node-failover.md)。
 
 ## 多机、NCCL 或 RDMA 网络不通
 

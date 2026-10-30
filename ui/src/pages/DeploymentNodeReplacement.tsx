@@ -5,22 +5,22 @@ import { api, type Deployment } from "../api";
 import { useOrder } from "./useOrder";
 
 // What a deployment waits for a lost node by default.
-const DEFAULT_REPLACE_MINUTES = 10;
+export const DEFAULT_REPLACE_MINUTES = 10;
 // The server accepts 60 s to 7 days.
 const MAX_MINUTES = 7 * 24 * 60;
 
-// DeploymentNodeReplacement sets how long a node running one of the
-// deployment's replicas may stay offline before the replica moves to another
-// node. 0 never moves it.
-export default function DeploymentNodeReplacement({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
-  if (dep.desired_state === "deleting") return null;
-  return <NodeReplacementEditor key={`${dep.id}-${dep.node_replacement?.after_sec ?? ""}`} dep={dep} onChanged={onChanged} />;
+// nodeReplacementSeconds is how long a node running one of the deployment's
+// replicas may stay offline before the replica moves to another node; 0 never
+// moves it.
+export function nodeReplacementSeconds(dep: Deployment): number {
+  return dep.node_replacement?.after_sec ?? DEFAULT_REPLACE_MINUTES * 60;
 }
 
-function NodeReplacementEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
+// NodeReplacementEditor sets that wait, in minutes.
+export default function NodeReplacementEditor({ dep, onChanged }: { dep: Deployment; onChanged: () => void }) {
   const { t } = useTranslation("deployments");
   const { busy, run } = useOrder();
-  const savedSec = dep.node_replacement?.after_sec ?? DEFAULT_REPLACE_MINUTES * 60;
+  const savedSec = nodeReplacementSeconds(dep);
   const [minutes, setMinutes] = useState<number | null>(savedSec / 60);
   const save = async () => {
     if (minutes == null) return;
@@ -32,14 +32,9 @@ function NodeReplacementEditor({ dep, onChanged }: { dep: Deployment; onChanged:
     message.success(t("nodeReplacement.saved"));
     onChanged();
   };
-  const multi = dep.pd != null || (dep.nnodes ?? 1) > 1;
   return (
-    <section aria-label={t("nodeReplacement.title")} style={{ marginTop: 20 }}>
-      <Typography.Title level={5} style={{ marginBottom: 0 }}>{t("nodeReplacement.title")}</Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
-        {t("nodeReplacement.hint")} {multi ? t("nodeReplacement.hintMulti") : t("nodeReplacement.hintSingle")} {t("nodeReplacement.hintRevert")}
-      </Typography.Paragraph>
-      <Space size={8} wrap style={{ marginTop: 8 }}>
+    <section aria-label={t("nodeReplacement.title")}>
+      <Space size={8} wrap>
         <InputNumber
           size="small"
           min={0}

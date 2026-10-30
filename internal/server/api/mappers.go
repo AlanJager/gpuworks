@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"math"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -73,6 +72,12 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 	out.ExtraArgs = d.ExtraArgs
 	out.Health = a.deploymentHealth(d)
 	out.TokenizeEnabled = !d.TokenizeDisabled
+	out.IdleSleep = dto.IdleSleep{AfterSec: d.IdleSleepAfterSec, Level: d.IdleSleepLevel}
+	out.ServiceLevel = d.ServiceLevel
+	if out.ServiceLevel == "" {
+		out.ServiceLevel = store.ServiceLevelResident
+	}
+	out.SleepHeld = d.SleepHeld
 	out.NodeReplacement = dto.NodeReplacement{AfterSec: d.NodeReplaceAfterSec}
 	out.PlacementMode = unitsPlacementMode(d)
 	if strings.TrimSpace(d.QuickParams) != "" {
@@ -99,6 +104,11 @@ func (a *apiHandlers) deploymentDTOFrom(rows dtoLookup, d *store.Deployment, wit
 		redactAcquisitionSecrets(out.CatalogSelectionSnapshot)
 	}
 	insts := rows.instances(d.ID)
+	for i := range insts {
+		if since := insts[i].WakeWaitingSince; since != nil && (out.WakeWaitingSince == nil || since.Before(*out.WakeWaitingSince)) {
+			out.WakeWaitingSince = utcTimePtr(since)
+		}
+	}
 	// One match and one walk serve every replica field of the response:
 	// ready_replicas and asleep_replicas are two counts of the same replicas,
 	// judged by the predicate the gateway routes on, so no field of a row can
@@ -305,38 +315,6 @@ const deploymentStateDeleting = "deleting"
 
 // deploymentListStates are the states a deployment list can be filtered by.
 var deploymentListStates = []string{"pending", "pulling", "starting", "running", "offline", "failed", "stopped", deploymentStateDeleting, deploymentStateSleeping, deploymentStateAsleep}
-
-// redactAcquisitionSecrets prevents credentials embedded in an explicit proxy
-// URL from being returned by deployment read APIs or persisted snapshots.
-func redactAcquisitionSecrets(v any) {
-	switch x := v.(type) {
-	case map[string]any:
-		for k, value := range x {
-			if strings.EqualFold(k, "proxy") {
-				x[k] = redactProxy(value)
-				continue
-			}
-			redactAcquisitionSecrets(value)
-		}
-	case []any:
-		for _, value := range x {
-			redactAcquisitionSecrets(value)
-		}
-	}
-}
-
-func redactProxy(v any) any {
-	s, ok := v.(string)
-	if !ok || s == "" {
-		return v
-	}
-	u, err := url.Parse(s)
-	if err != nil || u.User == nil {
-		return s
-	}
-	u.User = url.User("REDACTED")
-	return u.String()
-}
 
 // scheduleStalled reports whether a deployment with no instance has been
 // refused a placement for longer than the configured timeout.

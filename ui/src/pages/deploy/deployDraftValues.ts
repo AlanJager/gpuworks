@@ -118,6 +118,7 @@ export function draftToFormValues(
     target_vendor: request.target_vendor || undefined,
     extra_args: request.extra_args || undefined,
     sleepable: request.sleepable === true,
+    service_level: request.service_level || undefined,
     replicas: Number(request.replicas) > 0 ? request.replicas : 1,
     routing_policy: request.routing_policy || undefined,
     nnodes: Math.max(nnodes, 1),

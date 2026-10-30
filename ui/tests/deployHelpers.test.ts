@@ -980,3 +980,17 @@ test("removed variables travel as env_unset, trimmed and de-duplicated", () => {
     },
   );
 });
+
+test("the service level is stated only for a sleepable single-node draft that left resident", () => {
+  const base = { model_id: 7, engine: "vllm", sleepable: true, nnodes: 1 };
+  const level = (values: Record<string, unknown>) => (buildPayload({ ...base, ...values }).payload as Record<string, unknown>).service_level;
+  assert.equal(level({ service_level: "online" }), "online");
+  assert.equal(level({ service_level: "shared" }), "shared");
+  assert.equal(level({ service_level: "offline" }), "offline");
+  assert.equal(level({ service_level: "resident" }), undefined, "resident is what an absent level means");
+  assert.equal(level({}), undefined);
+  // A level left in the form after the draft became one the server refuses is not sent.
+  assert.equal(level({ service_level: "online", sleepable: false }), undefined);
+  assert.equal(level({ service_level: "online", nnodes: 2 }), undefined);
+  assert.equal(level({ service_level: "online", node_selection_mode: "pd", pd_mode: "pd_disagg" }), undefined);
+});

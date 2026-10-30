@@ -458,6 +458,9 @@ func (s *Store) DeleteDeployment(id uint) error {
 		if err := tx.Where("deployment_id = ?", id).Delete(&DeploymentNodeRequirement{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
+			return err
+		}
 		result := tx.Delete(&Deployment{}, id)
 		if result.Error != nil {
 			return result.Error
@@ -536,6 +539,12 @@ const (
 	// EventUnitRetried: an operator gave a unit its retry budget back.
 	// Params: role, unit, attempts.
 	EventUnitRetried = "UNIT_RETRIED"
+	// EventReplicaRebuilt: the controller started a replica again after its
+	// previous attempt failed, within the unit's retry budget (ADR 0029).
+	// Recorded once per rebuild, so at most the budget per unit. Params:
+	// role (PD only), replica (1-based), attempt, reason (the failed attempt's
+	// message, shortened), node (the leader's node name).
+	EventReplicaRebuilt = "REPLICA_REBUILT"
 )
 
 // CreateInstance persists a scheduled instance with its desired spec.

@@ -472,7 +472,16 @@
     "DEPLOYMENT_EDIT_APPLY_INVALID": "This change cannot be applied as {{apply}}; choose one of: {{options}}.",
     "WAKE_GPU_HELD_OUTSIDE": "GPU {{gpu_indexes}} on {{node}} is held by a process outside the platform, so the sleeping instance cannot take it back. Stop that process first.",
     "SLEEP_HOST_MEMORY_INSUFFICIENT": "{{node}} has {{available_gib}} GiB of host memory free, but L1 sleep needs {{need_gib}} GiB. Use deep sleep (L2) instead.",
-    "NODE_REPLACEMENT_INVALID": "The wait before a replica moves must be 0 (never) or between {{minimum}} and {{maximum}} seconds.",
+    "SCHEDULE_INVALID": "The scheduled order is not valid ({{field}}): {{reason}}",
+    "SCHEDULE_TIMEZONE_UNKNOWN": "The server does not know the time zone \"{{timezone}}\". Use an IANA name such as Asia/Shanghai.",
+    "SCHEDULE_REPLICAS_SHAPE": "A PD deployment scales each role with its own count, so a schedule cannot set it; scale its roles directly.",
+    "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "This multi-node deployment's replicas are placed by hand, so a schedule cannot set their count; switch it to automatic placement first.",
+    "IDLE_SLEEP_INVALID": "Idle sleep is not valid ({{field}}): use 0 to turn it off, or 1 minute to 7 days at level 1 or 2.",
+    "SERVICE_LEVEL_INVALID": "The service level must be resident, online, shared or offline.",
+    "SERVICE_LEVEL_SHAPE": "Only a single-node deployment can share its GPUs by service level; a multi-node or PD deployment stays resident.",
+    "SERVICE_LEVEL_ONLINE_SHARED": "{{deployment}} is online on the same GPUs. Two online deployments cannot share GPUs; make one of them shared or offline.",
+    "NODE_REPLACEMENT_INVALID": "The wait before node-loss rescheduling must be 0 (off) or between {{minimum}} and {{maximum}} seconds.",
+    "WAKE_YIELD_BLOCKED": "Cannot make room: {{occupants}} cannot be put to sleep (not sleepable, the last awake role of a PD deployment, or a process outside the platform). Nothing was changed.",
     "REPLICAS_PLACE_ON_TOO_MANY": "{{count}} nodes were named for the first placement, but only {{maximum}} replicas are added.",
     "REPLICAS_PLACE_ON_REFUSED": "Node {{node}} cannot take a new replica ({{reason}}). {{detail}}",
     "UNIT_PLACEMENT_NONE": "No group of nodes can take this deployment now: of {{nodes}} nodes, {{unmet}} do not satisfy the requirements, {{cordoned}} are cordoned, {{offline}} are offline, {{busy}} lack free GPUs, {{no_network}} have no compute network; the largest group sharing a network and GPU architecture has {{largest}} nodes.",
@@ -543,7 +552,8 @@
     "apiKeys": "API Tokens",
     "logs": "Logs",
     "settings": "Settings",
-    "networks": "Networks"
+    "networks": "Networks",
+    "scheduling": "Scheduling"
   },
   "branding": {
     "defaultLoginDescription": "Manage heterogeneous GPU nodes, model deployments, inference services, and runtime status in one place."

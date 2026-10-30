@@ -378,6 +378,19 @@ func (a *Accountant) record(deploymentID uint, status int, asleep bool, duration
 // LastRequestAt reports the last time any request touched deploymentID —
 // dispatched, finished, or immediately rejected. It is exposed for a later
 // stage's idle detection (monitor Deps); this stage only wires the accessor.
+// InFlight is how many of the deployment's requests are being served now.
+func (a *Accountant) InFlight(deploymentID uint) int {
+	if a == nil {
+		return 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if c, ok := a.counters[deploymentID]; ok && c.inflight > 0 {
+		return int(c.inflight)
+	}
+	return 0
+}
+
 func (a *Accountant) LastRequestAt(deploymentID uint) (time.Time, bool) {
 	if a == nil {
 		return time.Time{}, false

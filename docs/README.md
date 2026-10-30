@@ -57,7 +57,8 @@
 - [PD 分离部署](how-to/pd-disaggregation.md)
 - [启用和排查 dGPU](how-to/dgpu.md)
 - [让实例 sleep / wake](how-to/sleep-wake.md)
-- [节点失联时自动换节点](how-to/node-failover.md)
+- [使用调度中心：定时计划、闲置休眠与唤醒等位](how-to/scheduling-center.md)
+- [节点失联重调度](how-to/node-failover.md)
 
 **运维与评测**
 
@@ -99,6 +100,7 @@
 - [典型部署拓扑](explanation/topologies.md)
 - [怎么选：dGPU、sleep/wake、多机、副本、PD](explanation/choosing-features.md)
 - [调度与显存估算](explanation/scheduling-and-estimation.md)
+- [服务等级：几个部署怎样共用一批 GPU](explanation/service-levels.md)
 - [部署启动配置的语义](explanation/launch-config.md)
 - [SGLang 日志注入的行为与边界](explanation/sglang-logging.md)
 - [dGPU 的语义与边界](explanation/dgpu.md)

@@ -103,12 +103,13 @@ They **never silently fall back to unlimited GPU memory**.
 
 **Costs and limitations**:
 
-- Wake time: L1 (moves weights to host memory) takes one step and a few seconds, but consumes host RAM equal to the weight size. L2 (discards weights)
-  reloads them from the model directory on wake, taking tens of seconds to several minutes, without consuming host RAM. Both levels discard the KV cache.
-- If a sleeping instance receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`) and **does not wake it automatically**.
-  Automatic switching on demand is currently unavailable.
+- Wake time: L1 (moves weights to host memory) takes one step and a few seconds, but measured it pins about 1.9 times the weight size in host RAM, and keeps it pinned after the wake. L2 (discards weights)
+  reloads them from the model directory on wake: a few seconds while the model files are in page cache, tens of seconds to several minutes when they are read from disk, without consuming host RAM. Both levels discard the KV cache.
+- If a sleep you ordered receives a request, the gateway returns HTTP 503 (`model is asleep; wake it first`); a deployment the platform put to sleep (idle sleep, or
+  yielding by [service level](service-levels.md)) is woken on demand: the gateway holds the request while it wakes. Both on-demand and agreed switches belong to the [Scheduling Center](../how-to/scheduling-center.md):
+  schedules sleep and wake on chosen weekdays and times, idle sleep puts an unused deployment to sleep, service levels let deployments sharing GPUs take turns by request, and a wake that does not fit can wait for room.
 - Waking requires admission first: if a new deployment occupies the GPU, it returns 409 `WAKE_INSUFFICIENT_GPU_MEMORY`. Stop or
-  sleep the occupying instance first; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
+  sleep the occupying instance first, or choose to wait for room or to put the occupant to sleep and then wake; a GPU held by a process outside the platform is refused outright (`WAKE_GPU_HELD_OUTSIDE`).
 - When putting an instance to sleep, choose "Finish in-flight requests first (recommended)" (default; finishes in-flight requests first) or "Abort in-flight requests now."
 - Only **vLLM** is supported. SGLang deployments cannot declare sleep capability (rejected at creation with `SLEEP_ENGINE_UNSUPPORTED`). Enable
   "Sleep Capable" when creating the deployment. Multi-node deployments can sleep: the command goes to the leader, whose engine puts followers to sleep and wakes them together. PD
@@ -147,7 +148,7 @@ GPU interconnect bandwidth depends on hardware (such as NVLink), which is the ma
 - **Vendor boundaries**: Compute networks come in four types: host Ethernet, host RDMA (NVIDIA, NCCL/UCX), accelerator RDMA (Ascend RoCE), and accelerator HCCS (Ascend A3/910C LingQu).
   Ascend multi-node deployments must share one accelerator RDMA or accelerator HCCS network (`COMPUTE_NETWORK_ACCELERATOR_REQUIRED`). Host RDMA compute networks cannot be used on runveil
   (`udocker` driver) nodes (`COMPUTE_NETWORK_RUNTIME`). Multi-node inference on other vendors has no validation result.
-- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points. Once the node has been offline longer than the deployment's node replacement wait (default 10 minutes), the platform replaces only the lost rank without spending retries; see [Replace Lost Nodes Automatically](../how-to/node-failover.md).
+- If a node hosting one rank goes offline, the whole group fails and is rebuilt. Spanning more machines adds failure points. Once the node has been offline longer than the deployment's node-loss rescheduling wait (default 10 minutes), the platform replaces only the lost rank without spending retries; see [Reschedule Replicas on Node Loss](../how-to/node-failover.md).
 
 **When not to use multiple nodes**: The model fits on one machine. Cross-machine deployment is appropriate only when GPU memory or compute capacity is genuinely insufficient.
 

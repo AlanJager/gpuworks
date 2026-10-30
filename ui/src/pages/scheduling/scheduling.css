@@ -1,0 +1,24 @@
+.scheduling-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.scheduling-tile { display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; background: #ffffff; border: 1px solid #dbdde0; border-radius: 8px; }
+.scheduling-tile strong { font-size: 24px; line-height: 1.2; color: #181a1d; }
+.scheduling-num { font-variant-numeric: tabular-nums; }
+.scheduling-card { margin-bottom: 16px; }
+.scheduling-loading { display: flex; align-items: center; gap: 8px; padding: 48px 0; justify-content: center; color: #707275; }
+.scheduling-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.scheduling-legend li { display: flex; align-items: center; gap: 6px; }
+.scheduling-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.scheduling-swatch.is-awake, .scheduling-bar > span.is-awake { background: #0076f7; }
+.scheduling-swatch.is-sleeping, .scheduling-bar > span.is-sleeping { background: #9a45e4 repeating-linear-gradient(45deg, rgba(255,255,255,.55) 0 3px, transparent 3px 6px); }
+.scheduling-swatch.is-free, .scheduling-bar > span.is-free { background: #f0f2f5; }
+.scheduling-nodes { display: grid; gap: 12px; }
+.scheduling-node { padding: 12px 16px; border: 1px solid #f0f2f5; border-radius: 8px; }
+.scheduling-gpu { margin-top: 12px; }
+.scheduling-gpu-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; font-size: 13px; }
+.scheduling-bar { display: flex; height: 18px; overflow: hidden; border: 1px solid #dbdde0; border-radius: 4px; background: #f0f2f5; }
+.scheduling-bar > span { height: 100%; min-width: 0; border-right: 1px solid #ffffff; }
+.scheduling-bar > span:last-child { border-right: 0; }
+.scheduling-occupants { margin-top: 6px; }
+.scheduling-occupant { margin-inline-end: 0; }
+.scheduling-held { margin-top: 6px; }
+.scheduling-pagination { margin-top: 12px; text-align: right; }
+.scheduling-filters { margin-bottom: 12px; }

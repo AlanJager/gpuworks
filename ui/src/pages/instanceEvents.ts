@@ -2,6 +2,8 @@ import type { TFunction } from "i18next";
 
 import type { InstanceEvent } from "../api";
 import { isNodeReplacementEvent, nodeReplacementEventText } from "./nodeReplacementEvents.ts";
+import { automationEventText, isAutomationEvent } from "./automationEvents.ts";
+import { isOperatorEvent, operatorEventText } from "./operatorEvents.ts";
 import { stateLabel } from "./state.ts";
 import { formatBytes as formatSize } from "../format";
 import { storageStateLabel } from "../storageDisplay";
@@ -20,7 +22,7 @@ const knownInstanceEventCodes = new Set<string>(instanceEventCodes);
  * a prefill instance (ADR 0028), an operator's restart of the deployment or
  * of one replica, an edit of its configuration, a change of its dGPU memory
  * limit, a replica giving up
- * after its retry budget or being retried (ADR 0029), and a rolling restart waiting on a replica that gave
+ * after its retry budget or being retried (ADR 0029) or rebuilt within it, and a rolling restart waiting on a replica that gave
  * up, and the shared storage the deployment reads its weights from becoming
  * unavailable on an instance's node or recovering. PD_GROUP_RESTARTED is
  * what restarts wrote before they covered every deployment shape.
@@ -38,6 +40,7 @@ export const lifecycleEventCodes = [
   "REPLICA_RESTARTED",
   "UNIT_RETRY_EXHAUSTED",
   "UNIT_RETRIED",
+  "REPLICA_REBUILT",
   "STORAGE_UNAVAILABLE",
   "STORAGE_RECOVERED",
 ] as const;
@@ -65,6 +68,8 @@ function lifecycleEventText(t: TFunction<"deployments">, event: InstanceEvent, c
     replica: replicaLabel(t, event),
     instance: paramText(event, "instance").slice(0, 8),
     attempts: numberParam(event, "attempts") ?? "",
+    attempt: numberParam(event, "attempt") ?? "",
+    reasonNote: paramText(event, "reason") ? t("instance.reasonNote", { reason: paramText(event, "reason") }) : "",
     storage: paramText(event, "storage"),
     node: paramText(event, "node"),
     fields: paramText(event, "fields"),
@@ -140,15 +145,32 @@ function translatedPhase(t: TFunction<"deployments">, phase: string): string {
   return t(`instance.phase.${phase}`, { defaultValue: phase });
 }
 
-/** Render new code/params events while preserving every historical message. */
+/**
+ * Render new code/params events while preserving every historical message.
+ * An operator's order names the user who gave it, unless the caller shows the
+ * actor in a column of its own (withActor false).
+ */
 export function instanceEventText(
+  t: TFunction<"deployments">,
+  tCommon: TFunction<"common">,
+  event: InstanceEvent,
+  options: { withActor?: boolean } = {},
+): string {
+  const text = eventBodyText(t, tCommon, event);
+  const actor = paramText(event, "actor");
+  return actor && options.withActor !== false ? text + t("instance.actorNote", { actor }) : text;
+}
+
+function eventBodyText(
   t: TFunction<"deployments">,
   tCommon: TFunction<"common">,
   event: InstanceEvent,
 ): string {
   const code = event.code?.trim() ?? "";
+  if (isOperatorEvent(code)) return operatorEventText(t, event, code);
   if (knownLifecycleEventCodes.has(code)) return lifecycleEventText(t, event, code);
   if (isNodeReplacementEvent(code)) return nodeReplacementEventText(t, event, code);
+  if (isAutomationEvent(code)) return automationEventText(t, event, code);
   if (!knownInstanceEventCodes.has(code)) return event.message?.trim() || code;
 
   const rawState = paramText(event, "state");

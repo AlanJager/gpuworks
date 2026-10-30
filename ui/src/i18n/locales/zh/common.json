@@ -472,7 +472,16 @@
     "DEPLOYMENT_EDIT_APPLY_INVALID": "这次变更不能以 {{apply}} 方式生效，可选：{{options}}。",
     "WAKE_GPU_HELD_OUTSIDE": "节点 {{node}} 的 GPU {{gpu_indexes}} 被平台外的进程占用，休眠实例无法唤醒。请先停掉该进程。",
     "SLEEP_HOST_MEMORY_INSUFFICIENT": "节点 {{node}} 的空闲主机内存只有 {{available_gib}} GiB，而 L1 休眠需要 {{need_gib}} GiB。请改用深度休眠（L2）。",
-    "NODE_REPLACEMENT_INVALID": "换节点等待时间只能是 0（不迁）或 {{minimum}} 到 {{maximum}} 秒。",
+    "SCHEDULE_INVALID": "定时指令不合法（{{field}}）：{{reason}}",
+    "SCHEDULE_TIMEZONE_UNKNOWN": "服务器不认识时区“{{timezone}}”。请使用 IANA 名称，如 Asia/Shanghai。",
+    "SCHEDULE_REPLICAS_SHAPE": "PD 部署的每个角色各有自己的副本数，定时计划无法设置；请直接调整各角色。",
+    "SCHEDULE_REPLICAS_MANUAL_PLACEMENT": "多机部署的副本由运维手动放置，不能按副本数定时调整；先把它切换为自动放置。",
+    "IDLE_SLEEP_INVALID": "闲置休眠设置不合法（{{field}}）：0 表示关闭，否则为 1 分钟到 7 天，级别为 1 或 2。",
+    "SERVICE_LEVEL_INVALID": "服务等级只能是常驻、在线、分时或离线。",
+    "SERVICE_LEVEL_SHAPE": "只有单机部署能按服务等级共用 GPU；多机与 PD 部署保持常驻。",
+    "SERVICE_LEVEL_ONLINE_SHARED": "{{deployment}} 是在线部署，与它共用同一批 GPU。两个在线部署不能共用 GPU，请把其中一个改为分时或离线。",
+    "NODE_REPLACEMENT_INVALID": "节点失联重调度的等待时间只能是 0（关闭）或 {{minimum}} 到 {{maximum}} 秒。",
+    "WAKE_YIELD_BLOCKED": "无法让位：{{occupants}} 不能休眠（未启用休眠、PD 部署最后一个清醒的角色，或是平台外的进程）。未做任何改动。",
     "REPLICAS_PLACE_ON_TOO_MANY": "首次放置指定了 {{count}} 个节点，但只新增了 {{maximum}} 个副本。",
     "REPLICAS_PLACE_ON_REFUSED": "节点 {{node}} 不能接收新副本（{{reason}}）。{{detail}}",
     "UNIT_PLACEMENT_NONE": "目前凑不出能放下该部署的节点组：共 {{nodes}} 个节点，{{unmet}} 个不满足条件，{{cordoned}} 个已停止调度，{{offline}} 个离线，{{busy}} 个空闲 GPU 不够，{{no_network}} 个没有参数网络；同一网络、同一 GPU 架构下最大的一组只有 {{largest}} 个节点。",
@@ -543,7 +552,8 @@
     "apiKeys": "API 令牌",
     "logs": "日志",
     "settings": "设置",
-    "networks": "网络"
+    "networks": "网络",
+    "scheduling": "调度中心"
   },
   "branding": {
     "defaultLoginDescription": "集中管理异构 GPU 计算节点、模型部署、推理服务与运行状态。"

@@ -152,9 +152,18 @@ type Deployment struct {
 	// TokenizeEnabled says whether the gateway forwards /v1/tokenize and
 	// /v1/detokenize to the deployment's engine.
 	TokenizeEnabled bool `json:"tokenize_enabled"`
-	// NodeReplacement is how long a node may stay offline before its
-	// replicas move (after_sec 0 never moves them).
+	// IdleSleep is the deployment's idle sleep (after_sec 0 is off) and
+	// NodeReplacement how long a node may stay offline before its replicas
+	// move (after_sec 0 never moves them).
+	IdleSleep       IdleSleep       `json:"idle_sleep"`
 	NodeReplacement NodeReplacement `json:"node_replacement"`
+	// ServiceLevel is resident, online, shared or offline; SleepHeld says an
+	// operator's or a schedule's sleep holds it, so a request does not wake it.
+	ServiceLevel string `json:"service_level"`
+	SleepHeld    bool   `json:"sleep_held"`
+	// WakeWaitingSince is when the oldest wake of the deployment that waits
+	// for room started waiting; absent when none waits.
+	WakeWaitingSince *time.Time `json:"wake_waiting_since,omitempty"`
 	// PlacementMode is "auto" when the platform picks a multi-node or PD
 	// deployment's nodes whenever a unit starts, "manual" when they are the
 	// operator's; absent for a single-node deployment, whose draft says it.
@@ -411,13 +420,15 @@ type DeployRequest struct {
 	// QuickParamsUnset is a request-only tombstone. It removes named engine
 	// dictionary keys from template/user launch layers without persisting a
 	// second launch configuration.
-	QuickParamsUnset []string       `json:"quick_params_unset,omitempty"`
-	ExtraArgs        string         `json:"extra_args"`
-	Sleepable        bool           `json:"sleepable"`
-	Replicas         int            `json:"replicas,omitempty"`
-	RoutingPolicy    string         `json:"routing_policy,omitempty"`
-	Placement        map[string]any `json:"placement"`
-	VRAMLimitGiB     float64        `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
+	QuickParamsUnset []string `json:"quick_params_unset,omitempty"`
+	ExtraArgs        string   `json:"extra_args"`
+	Sleepable        bool     `json:"sleepable"`
+	// ServiceLevel: resident when absent (PUT .../service-level checks).
+	ServiceLevel  string         `json:"service_level,omitempty"`
+	Replicas      int            `json:"replicas,omitempty"`
+	RoutingPolicy string         `json:"routing_policy,omitempty"`
+	Placement     map[string]any `json:"placement"`
+	VRAMLimitGiB  float64        `json:"vram_limit_gib"` // >0 = dGPU memory limit (shareable GPU)
 	// StartTimeoutSec is how long a started instance may take to answer its
 	// health check before the start counts as failed. Zero (or absent) states
 	// none: each launch takes the cluster default then.
@@ -518,32 +529,6 @@ type DeploymentRequirementsRequest struct {
 	NodeRequirements map[string][]string `json:"node_requirements"`
 	// PlacementStrategy is spread or binpack; unstated keeps the current one.
 	PlacementStrategy string `json:"placement_strategy,omitempty"`
-}
-
-// DeploymentDGPUQuotaRequest is the body of PUT /deployments/{id}/dgpu: the
-// dGPU memory limit each replica is to run under per card, from now on.
-type DeploymentDGPUQuotaRequest struct {
-	VRAMLimitGiB float64 `json:"vram_limit_gib"`
-}
-
-// DGPUQuotaResult answers a dGPU quota change: the deployment under its new
-// limit, the instances held to it in place (Live, by UUID), and the ones that
-// keep their own limit until their next restart (Pending).
-type DGPUQuotaResult struct {
-	Deployment Deployment         `json:"deployment"`
-	Live       []string           `json:"live"`
-	Pending    []DGPUQuotaPending `json:"pending"`
-}
-
-// DGPUQuotaPending is an instance a quota change leaves at its limit until
-// it restarts. Reason is backend (its partition backend reads the limit only
-// at start), asleep, starting, in_use (it holds UsedBytes, more than the new
-// limit) or no_usage (what it holds is not known); the last four only for a
-// lower limit.
-type DGPUQuotaPending struct {
-	InstanceUUID string `json:"instance_uuid"`
-	Reason       string `json:"reason"`
-	UsedBytes    int64  `json:"used_bytes,omitempty"`
 }
 
 // UnitSuggestRequest asks for the nodes of one more multi-node replica

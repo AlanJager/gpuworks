@@ -48,10 +48,11 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if err := a.d.Store.OrderDeploymentSleep(dep.ID, level, mode); err != nil {
+		if err := a.d.Store.OrderDeploymentSleepHeld(dep.ID, level, mode, true); err != nil {
 			writeErr(w, http.StatusInternalServerError, err)
 			return
 		}
+		a.sleepOrdered(r, dep.ID, level, mode, "deployment", "", nil)
 		writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode})
 		return
 	}
@@ -65,10 +66,11 @@ func (a *apiHandlers) sleepDeployment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := a.d.Store.OrderInstancesSleep(dep.ID, uuidsOf(named), level, mode); err != nil {
+	if err := a.d.Store.OrderInstancesSleepHeld(dep.ID, uuidsOf(named), level, mode, true); err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	a.sleepOrdered(r, dep.ID, level, mode, "role", role, uuidsOf(named))
 	writeJSON(w, http.StatusOK, dto.SleepOrder{Status: "sleeping", Level: level, Mode: mode, Role: role, Instances: uuidsOf(named)})
 }
 
@@ -149,6 +151,14 @@ func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	how, ok := wakeWaitParams(w, r)
+	if !ok {
+		return
+	}
+	if how.wait || how.yield {
+		a.wakeAndWait(w, r, dep, match, named, role == "", how)
+		return
+	}
 	woken, refused, err := planning.OrderWake(a.d.Store, dep, match, named, partial, role == "")
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
@@ -158,6 +168,7 @@ func (a *apiHandlers) wakeDeployment(w http.ResponseWriter, r *http.Request) {
 		writeWakeRefusal(w, refused)
 		return
 	}
+	a.wakeOrdered(r, dep.ID, uuidsOf(woken))
 	result := dto.WakeResult{Status: "waking"}
 	if partial {
 		result.Woken = uuidsOf(woken)

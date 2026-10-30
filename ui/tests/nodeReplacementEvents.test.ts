@@ -29,17 +29,17 @@ test("every node replacement event has text in both locales", () => {
 
 test("node replacement entries name the node, the wait, the replica and where it went", async () => {
   const text = await texts("en");
-  assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 600, unit: 2, rank: 0 }), "Node gpu-a stayed offline for over 10 min: replica 2 moved to gpu-b");
-  assert.equal(text("NODE_REPLACED", { from: "gpu-a", after_sec: 600, instances: [uuid] }), "Node gpu-a stayed offline for over 10 min: a replica is rebuilt on another node");
-  assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 7200, unit: 1, role: "prefill" }), "Node gpu-a stayed offline for over 2 h: replica Prefill 1 moved to gpu-b");
-  assert.equal(text("NODE_REPLACE_REVERTED", { from: "gpu-b", to: "gpu-a", unit: 2, rank: 0 }), "Node gpu-a came back before replica 2 ran on gpu-b: the move is undone");
+  assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 600, unit: 2, rank: 0 }), "Reschedule on node loss: node gpu-a stayed offline for over 10 min, replica 2 rescheduled to gpu-b");
+  assert.equal(text("NODE_REPLACED", { from: "gpu-a", after_sec: 600, instances: [uuid] }), "Reschedule on node loss: node gpu-a stayed offline for over 10 min, a replica is rebuilt on another node");
+  assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 7200, unit: 1, role: "prefill" }), "Reschedule on node loss: node gpu-a stayed offline for over 2 h, replica Prefill 1 rescheduled to gpu-b");
+  assert.equal(text("NODE_REPLACE_REVERTED", { from: "gpu-b", to: "gpu-a", unit: 2, rank: 0 }), "Node gpu-a came back before replica 2 ran on gpu-b: the rescheduling is undone");
   assert.equal(text("NODE_REPLACE_NO_CANDIDATE", { nodes: ["gpu-a", "gpu-c"] }), "Nodes gpu-a, gpu-c stayed offline, but no other node can take their replicas");
   assert.equal(text("NODE_DRAIN_MOVED", { unit: 3 }), "replica 3 moved off a draining node");
 });
 
 test("the same entries read in Chinese, and a payload without params still renders", async () => {
   const text = await texts("zh");
-  assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 600, unit: 2 }), "节点 gpu-a 离线超过 10 分钟：副本 2 已换到 gpu-b");
+  assert.equal(text("NODE_REPLACED", { from: "gpu-a", to: "gpu-b", after_sec: 600, unit: 2 }), "节点失联重调度：节点 gpu-a 离线超过 10 分钟，副本 2 已重调度到 gpu-b");
   assert.ok(text("NODE_REPLACE_NO_CANDIDATE", {}).length > 0);
 });
 

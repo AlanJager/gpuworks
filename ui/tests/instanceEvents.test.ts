@@ -91,6 +91,16 @@ test("every lifecycle event has text in both locales, and a stalled rolling rest
     params: { role: "prefill", replica: 2, attempts: 3 },
     created_at: "2026-09-30T00:00:00Z",
   }), "Rolling restart waits: replica Prefill 2 gave up after 3 failed attempts; retry it to continue");
+  // A rebuilt replica says which attempt it is, where it starts and why the
+  // last one failed; a failure without a message drops the clause.
+  const t = i18n.getFixedT("en", "deployments") as never;
+  const tc = i18n.getFixedT("en", "common") as never;
+  assert.equal(instanceEventText(t, tc, {
+    kind: "schedule", code: "REPLICA_REBUILT", params: { role: "decode", replica: 1, attempt: 2, node: "gpu-3", reason: "CUDA out of memory" }, created_at: "2026-09-30T00:00:00Z",
+  }), "Replica Decode 1 failed and was rebuilt automatically (attempt 2, on gpu-3); it failed with: CUDA out of memory");
+  assert.equal(instanceEventText(t, tc, {
+    kind: "schedule", code: "REPLICA_REBUILT", params: { replica: 3, attempt: 3, node: "gpu-3", reason: "" }, created_at: "2026-09-30T00:00:00Z",
+  }), "Replica 3 failed and was rebuilt automatically (attempt 3, on gpu-3)");
 });
 
 test("a storage outage on the timeline names the storage, the node and the localized state", async () => {
@@ -111,4 +121,27 @@ test("a storage outage on the timeline names the storage, the node and the local
     params: { storage: "nfs-test", node: "gpu3" },
     created_at: "2026-10-02T17:34:00Z",
   }), "存储 nfs-test 在节点 gpu3 上已恢复");
+});
+
+test("an operator's order is worded with its scope and names the user who gave it", async () => {
+  const bundle = (lang: string, ns: string) => JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${lang}/${ns}.json`, import.meta.url), "utf8"));
+  const i18n = createInstance();
+  await i18n.init({ lng: "en", resources: { en: { deployments: bundle("en", "deployments"), common: bundle("en", "common") } }, interpolation: { escapeValue: false } });
+  const t = i18n.getFixedT("en", "deployments") as never;
+  const tc = i18n.getFixedT("en", "common") as never;
+  const at = "2026-10-28T00:00:00Z";
+  const words = (code: string, params: Record<string, unknown>, withActor?: boolean) => instanceEventText(t, tc, { id: 1, kind: "schedule", code, params, created_at: at }, { withActor });
+  assert.equal(words("REPLICAS_CHANGED", { from: 1, to: 3, actor: "alice" }), "Replicas 1 → 3 (by alice)");
+  assert.equal(words("REPLICAS_CHANGED", { from: 1, to: 3, actor: "alice" }, false), "Replicas 1 → 3");
+  assert.equal(words("REPLICAS_CHANGED", { role: "decode", from: 2, to: 1 }), "Replicas 2 → 1 (Decode)");
+  assert.equal(words("SLEEP_ORDERED", { level: 2, mode: "wait", scope: "deployment", actor: "bob" }), "Sleep ordered (L2): the whole deployment (by bob)");
+  assert.equal(words("SLEEP_ORDERED", { level: 1, mode: "abort", scope: "role", role: "prefill" }), "Sleep ordered (L1): the Prefill role; in-flight requests aborted");
+  assert.equal(words("SLEEP_ORDERED", { level: 1, mode: "wait", scope: "replica", instances: ["abcdef0123456"] }), "Sleep ordered (L1): the replica of instance abcdef01");
+  assert.equal(words("WAKE_ORDERED", { instances: ["abcdef0123456", "12345678aaaa"] }), "Wake ordered: instances abcdef01, 12345678");
+  // The existing restarts name their actor too.
+  assert.match(words("DEPLOYMENT_RESTARTED", { instances: 2, actor: "alice" }), / \(by alice\)$/);
+  for (const lang of ["en", "zh"]) {
+    const events = bundle(lang, "deployments").instance.event;
+    for (const code of ["REPLICAS_CHANGED", "SLEEP_ORDERED", "WAKE_ORDERED"]) assert.ok(events[code], `${lang} has text for ${code}`);
+  }
 });

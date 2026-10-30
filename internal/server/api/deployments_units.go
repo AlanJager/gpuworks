@@ -118,7 +118,7 @@ func (a *apiHandlers) retryUnit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.d.Store.AddDeploymentEventCode(dep.ID, store.EventKindSchedule, store.EventUnitRetried, map[string]any{"role": req.Role, "unit": req.Index, "attempts": len(attempts)})
+	a.operatorEvent(r, dep.ID, store.EventUnitRetried, map[string]any{"role": req.Role, "unit": req.Index, "attempts": len(attempts)})
 	updated, err := a.d.Store.GetDeployment(dep.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
