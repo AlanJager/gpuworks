@@ -207,25 +207,25 @@ export default function AIConfigModal({
         <Form.Item label={t("ai.preset")} name="preset" rules={[{ required: true }]}>
           <Select options={PRESETS.map((preset) => ({ value: preset.value, label: presetLabel(t, preset.value) }))} onChange={onPreset} />
         </Form.Item>
-        <Form.Item label={t("ai.name")} name="name" rules={[{ required: true, message: t("ai.nameRequired") }]}>
+        <Form.Item label={t("ai.name")} name="name" rules={[{ required: true, whitespace: true, message: t("ai.nameRequired") }]}>
           <Input placeholder={t("ai.namePlaceholder")} />
         </Form.Item>
         <Form.Item
           label={t("ai.baseUrl")}
           name="base_url"
           extra={t("ai.baseUrlHint")}
-          rules={[{ required: true, message: t("ai.baseUrlRequired") }]}
+          rules={[{ required: true, whitespace: true, message: t("ai.baseUrlRequired") }]}
         >
           <Input placeholder="https://api.deepseek.com" />
         </Form.Item>
         <OutboundHostAccess access={outboundAccess} />
-        <Form.Item label={t("ai.model")} name="model" rules={[{ required: true, message: t("ai.modelRequired") }]}>
+        <Form.Item label={t("ai.model")} name="model" rules={[{ required: true, whitespace: true, message: t("ai.modelRequired") }]}>
           <Input placeholder="deepseek-v4-flash" />
         </Form.Item>
         <Form.Item
           label={t("ai.upstreamKey")}
           name="api_key"
-          rules={editing ? [] : [{ required: true, message: t("ai.keyRequired") }]}
+          rules={editing ? [] : [{ required: true, whitespace: true, message: t("ai.keyRequired") }]}
         >
           <Input.Password placeholder={editing ? t("ai.keyKeep") : "sk-…"} autoComplete="new-password" />
         </Form.Item>
